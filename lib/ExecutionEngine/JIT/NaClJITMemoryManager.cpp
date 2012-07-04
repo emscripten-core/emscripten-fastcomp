@@ -18,6 +18,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Config/config.h"
 #include <vector>
 
 #if defined(__linux__) || defined(__native_client__)
