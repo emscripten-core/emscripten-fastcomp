@@ -353,6 +353,20 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     }
   }
 
+  // @LOCALMOD-START
+  const X86Subtarget& Subtarget = MF.getTarget().getSubtarget<X86Subtarget>();
+  if (Subtarget.isTargetNaCl64()) {
+    Reserved.set(X86::R15);
+    Reserved.set(X86::R15D);
+    Reserved.set(X86::R15W);
+    Reserved.set(X86::R15B);
+    Reserved.set(X86::RBP);
+    Reserved.set(X86::EBP);
+    Reserved.set(X86::BP);
+    Reserved.set(X86::BPL);
+  }
+  // @LOCALMOD-END
+
   return Reserved;
 }
 

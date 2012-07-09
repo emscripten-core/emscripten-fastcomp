@@ -210,6 +210,13 @@ namespace llvm {
       // TLSBASEADDR - Thread Local Storage. A call to get the start address
       // of the TLS block for the current module.
       TLSBASEADDR,
+      // @LOCALMOD-BEGIN
+      // TLSADDR_LE - Thread Local Storage. (Local Exec Model)
+      TLSADDR_LE,
+
+      // TLSADDR_IE - Thread Local Storage. (Initial Exec Model)
+      TLSADDR_IE,
+      // @LOCALMOD-END
 
       // TLSCALL - Thread Local Storage.  When calling to an OS provided
       // thunk at the address from an earlier relocation.
@@ -424,6 +431,7 @@ namespace llvm {
   //===--------------------------------------------------------------------===//
   //  X86TargetLowering - X86 Implementation of the TargetLowering interface
   class X86TargetLowering : public TargetLowering {
+
   public:
     explicit X86TargetLowering(X86TargetMachine &TM);
 
@@ -792,11 +800,19 @@ namespace llvm {
     SDValue LowerSIGN_EXTEND_INREG(SDValue Op, SelectionDAG &DAG) const;
     SDValue PerformTruncateCombine(SDNode* N, SelectionDAG &DAG, DAGCombinerInfo &DCI) const;
 
+    // @LOCALMOD-BEGIN
+    SDValue LowerNaClThreadStackPadding(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpAlign(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const;
+    // @LOCALMOD-END
+
     // Utility functions to help LowerVECTOR_SHUFFLE
     SDValue LowerVECTOR_SHUFFLEv8i16(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVectorBroadcast(SDValue &Op, SelectionDAG &DAG) const;
     SDValue NormalizeVectorShuffle(SDValue Op, SelectionDAG &DAG) const;
-
+    
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
                            CallingConv::ID CallConv, bool isVarArg,

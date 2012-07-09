@@ -546,6 +546,12 @@ static bool isMatchingDecrement(MachineInstr *MI, unsigned Base,
     break;
   }
 
+  // @LOCALMOD-BEGIN
+  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2575
+  if (MI->hasOptionalDef())
+    return false;
+  // @LOCALMOD-END
+
   // Make sure the offset fits in 8 bits.
   if (Bytes == 0 || (Limit && Bytes >= Limit))
     return false;
@@ -578,6 +584,12 @@ static bool isMatchingIncrement(MachineInstr *MI, unsigned Base,
   case ARM::tADDspi:
     break;
   }
+
+  // @LOCALMOD-BEGIN
+  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2575
+  if (MI->hasOptionalDef())
+    return false;
+  // @LOCALMOD-END
 
   if (Bytes == 0 || (Limit && Bytes >= Limit))
     // Make sure the offset fits in 8 bits.
@@ -709,6 +721,7 @@ static unsigned getUpdatingLSMultipleOpcode(unsigned Opc,
 /// ldmia rn, <ra, rb, rc>
 /// =>
 /// ldmdb rn!, <ra, rb, rc>
+/// @LOCALMOD This is especially useful for rn == sp
 bool ARMLoadStoreOpt::MergeBaseUpdateLSMultiple(MachineBasicBlock &MBB,
                                                MachineBasicBlock::iterator MBBI,
                                                bool &Advance,
@@ -1389,7 +1402,16 @@ bool ARMLoadStoreOpt::LoadStoreMultipleOpti(MachineBasicBlock &MBB) {
 ///   mov pc, lr
 /// =>
 ///   ldmfd sp!, {..., pc}
+// @LOCALMOD for sfi we do not want this to happen
 bool ARMLoadStoreOpt::MergeReturnIntoLDM(MachineBasicBlock &MBB) {
+  // @LOCALMOD-START
+  // For NaCl, do not load into PC directly for a return, since NaCl requires
+  // masking the address first.
+  if (STI->isTargetNaCl()) {
+    return false;
+  }
+  // @LOCALMOD-END
+
   if (MBB.empty()) return false;
 
   MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();

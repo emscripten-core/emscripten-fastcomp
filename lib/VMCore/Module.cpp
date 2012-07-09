@@ -22,6 +22,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LeakDetector.h"
+#include "llvm/Support/ErrorHandling.h" // @LOCALMOD
 #include "SymbolTableListTraitsImpl.h"
 #include <algorithm>
 #include <cstdarg>
@@ -607,3 +608,180 @@ void Module::findUsedStructTypes(std::vector<StructType*> &StructTypes,
                                  bool OnlyNamed) const {
   TypeFinder(StructTypes, OnlyNamed).run(*this);
 }
+
+// @LOCALMOD-BEGIN
+// TODO(pdox):
+// If possible, use actual bitcode records instead of NamedMetadata.
+// This is contingent upon whether we can get these changes upstreamed
+// immediately, to avoid creating incompatibilities in the bitcode format.
+
+static std::string
+ModuleMetaGet(const Module *module, StringRef MetaName) {
+  NamedMDNode *node = module->getNamedMetadata(MetaName);
+  if (node == NULL)
+    return "";
+  assert(node->getNumOperands() == 1);
+  MDNode *subnode = node->getOperand(0);
+  assert(subnode->getNumOperands() == 1);
+  MDString *value = dyn_cast<MDString>(subnode->getOperand(0));
+  assert(value != NULL);
+  return value->getString();
+}
+
+static void
+ModuleMetaSet(Module *module, StringRef MetaName, StringRef ValueStr) {
+  NamedMDNode *node = module->getNamedMetadata(MetaName);
+  if (node)
+    module->eraseNamedMetadata(node);
+  node = module->getOrInsertNamedMetadata(MetaName);
+  MDString *value = MDString::get(module->getContext(), ValueStr);
+  node->addOperand(MDNode::get(module->getContext(),
+                   makeArrayRef(static_cast<Value*>(value))));
+}
+
+const std::string &Module::getSOName() const {
+  if (ModuleSOName == "")
+    ModuleSOName.assign(ModuleMetaGet(this, "SOName"));
+  return ModuleSOName;
+}
+
+void Module::setSOName(StringRef Name) {
+  ModuleMetaSet(this, "SOName", Name);
+  ModuleSOName = Name;
+}
+
+void Module::setOutputFormat(Module::OutputFormat F) {
+  const char *formatStr;
+  switch (F) {
+  case ObjectOutputFormat: formatStr = "object"; break;
+  case SharedOutputFormat: formatStr = "shared"; break;
+  case ExecutableOutputFormat: formatStr = "executable"; break;
+  default:
+    llvm_unreachable("Unrecognized output format in setOutputFormat()");
+  }
+  ModuleMetaSet(this, "OutputFormat", formatStr);
+}
+
+Module::OutputFormat Module::getOutputFormat() const {
+  std::string formatStr = ModuleMetaGet(this, "OutputFormat");
+  if (formatStr == "" || formatStr == "object")
+    return ObjectOutputFormat;
+  else if (formatStr == "shared")
+    return SharedOutputFormat;
+  else if (formatStr == "executable")
+    return ExecutableOutputFormat;
+  llvm_unreachable("Invalid module compile type in getOutputFormat()");
+}
+
+void
+Module::wrapSymbol(StringRef symName) {
+  std::string wrapSymName("__wrap_");
+  wrapSymName += symName;
+
+  std::string realSymName("__real_");
+  realSymName += symName;
+
+  GlobalValue *SymGV = getNamedValue(symName);
+  GlobalValue *WrapGV = getNamedValue(wrapSymName);
+  GlobalValue *RealGV = getNamedValue(realSymName);
+
+  // Replace uses of "sym" with __wrap_sym.
+  if (SymGV) {
+    if (!WrapGV)
+      WrapGV = cast<GlobalValue>(getOrInsertGlobal(wrapSymName,
+                                                   SymGV->getType()));
+    SymGV->replaceAllUsesWith(ConstantExpr::getBitCast(WrapGV,
+                                                       SymGV->getType()));
+  }
+
+  // Replace uses of "__real_sym" with "sym".
+  if (RealGV) {
+    if (!SymGV)
+      SymGV = cast<GlobalValue>(getOrInsertGlobal(symName, RealGV->getType()));
+    RealGV->replaceAllUsesWith(ConstantExpr::getBitCast(SymGV,
+                                                        RealGV->getType()));
+  }
+}
+
+// The metadata key prefix for NeededRecords.
+static const char *NeededPrefix = "NeededRecord_";
+
+void
+Module::dumpMeta(raw_ostream &OS) const {
+  OS << "OutputFormat: ";
+  switch (getOutputFormat()) {
+    case Module::ObjectOutputFormat: OS << "object"; break;
+    case Module::SharedOutputFormat: OS << "shared"; break;
+    case Module::ExecutableOutputFormat: OS << "executable"; break;
+  }
+  OS << "\n";
+  OS << "SOName: " << getSOName() << "\n";
+  for (Module::lib_iterator L = lib_begin(),
+                            E = lib_end();
+       L != E; ++L) {
+    OS << "NeedsLibrary: " << (*L) << "\n";
+  }
+  std::vector<NeededRecord> NList;
+  getNeededRecords(&NList);
+  for (unsigned i = 0; i < NList.size(); ++i) {
+    const NeededRecord &NR = NList[i];
+    OS << StringRef(NeededPrefix) << NR.DynFile << ": ";
+    for (unsigned j = 0; j < NR.Symbols.size(); ++j) {
+      if (j != 0)
+        OS << " ";
+      OS << NR.Symbols[j];
+    }
+    OS << "\n";
+  }
+}
+
+void Module::addNeededRecord(StringRef DynFile, GlobalValue *GV) {
+  if (DynFile.empty()) {
+    // We never resolved this symbol, even after linking.
+    // This should only happen in a shared object.
+    // It is safe to ignore this symbol, and let the dynamic loader
+    // figure out where it comes from.
+    return;
+  }
+  std::string Key = NeededPrefix;
+  Key += DynFile;
+  // Get the node for this file.
+  NamedMDNode *Node = getOrInsertNamedMetadata(Key);
+  // Add this global value's name to the list.
+  MDString *value = MDString::get(getContext(), GV->getName());
+  Node->addOperand(MDNode::get(getContext(),
+                   makeArrayRef(static_cast<Value*>(value))));
+}
+
+// Get the NeededRecord for SOName.
+// Returns an empty NeededRecord if there was no metadata found.
+static void getNeededRecordFor(const Module *M,
+                               StringRef SOName,
+                               Module::NeededRecord *NR) {
+  NR->DynFile = SOName;
+  NR->Symbols.clear();
+
+  std::string Key = NeededPrefix;
+  Key += SOName;
+  NamedMDNode *Node = M->getNamedMetadata(Key);
+  if (!Node)
+    return;
+
+  for (unsigned k = 0; k < Node->getNumOperands(); ++k) {
+    // Insert the symbol name.
+    const MDString *SymName =
+        dyn_cast<MDString>(Node->getOperand(k)->getOperand(0));
+    NR->Symbols.push_back(SymName->getString());
+  }
+}
+
+// Place the complete list of needed records in NeededOut.
+void Module::getNeededRecords(std::vector<NeededRecord> *NeededOut) const {
+  // Iterate through the libraries needed, grabbing each NeededRecord.
+  for (lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I) {
+    NeededRecord NR;
+    getNeededRecordFor(this, *I, &NR);
+    NeededOut->push_back(NR);
+  }
+}
+// @LOCALMOD-END

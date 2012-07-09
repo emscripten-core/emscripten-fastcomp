@@ -638,6 +638,17 @@ endif
 endif
 endif
 
+ifeq ($(NACL_SANDBOX),1)
+  LIBS += -lsrpc -limc_syscalls -lplatform -lgio -lpthread -lm -lnacl -lnacl_dyncode -lnosys
+  ifeq ($(USE_TCMALLOC),1)
+    # Note: -ltcmalloc_minimal needs to stay last on the link line
+    LIBS += -ltcmalloc_minimal
+    CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+    C.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+  endif
+else
+  LIBS +=
+endif
 
 #----------------------------------------------------------
 # Options To Invoke Tools

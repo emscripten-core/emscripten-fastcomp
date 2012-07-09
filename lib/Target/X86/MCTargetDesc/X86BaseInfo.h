@@ -291,6 +291,8 @@ namespace X86II {
     /// manual, this operand is described as pntr16:32 and pntr16:16
     RawFrmImm16 = 44,
 
+    CustomFrm = 62, // @LOCALMOD
+
     FormMask       = 63,
 
     //===------------------------------------------------------------------===//
@@ -542,6 +544,7 @@ namespace X86II {
     case X86II::MRMSrcReg:
     case X86II::RawFrmImm8:
     case X86II::RawFrmImm16:
+    case X86II::CustomFrm: // @LOCALMOD
        return -1;
     case X86II::MRMDestMem:
       return 0;

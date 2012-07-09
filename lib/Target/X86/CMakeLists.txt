@@ -27,6 +27,7 @@ set(sources
   X86JITInfo.cpp
   X86MCInstLower.cpp
   X86MachineFunctionInfo.cpp
+  X86NaClRewritePass.cpp
   X86RegisterInfo.cpp
   X86SelectionDAGInfo.cpp
   X86Subtarget.cpp

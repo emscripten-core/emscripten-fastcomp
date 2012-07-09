@@ -60,6 +60,13 @@ typedef enum {
     LTO_CODEGEN_PIC_MODEL_DYNAMIC_NO_PIC = 2
 } lto_codegen_model;
 
+/* @LOCALMOD-BEGIN */
+typedef enum {
+    LTO_OUTPUT_FORMAT_OBJECT = 0,  /* object file */
+    LTO_OUTPUT_FORMAT_SHARED = 1,  /* shared library */
+    LTO_OUTPUT_FORMAT_EXEC   = 2   /* executable */
+} lto_output_format;
+/* @LOCALMOD-END */
 
 /** opaque reference to a loaded object module */
 typedef struct LTOModule*         lto_module_t;
@@ -70,6 +77,17 @@ typedef struct LTOCodeGenerator*  lto_code_gen_t;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+/* @LOCALMOD-BEGIN */
+
+/* Add a command-line option */
+void lto_add_command_line_option(const char* opt);
+
+/* Parse command line options */
+void lto_parse_command_line_options();
+
+/* @LOCALMOD-END */
 
 /**
  * Returns a printable string.
@@ -165,6 +183,36 @@ lto_module_get_target_triple(lto_module_t mod);
 extern void
 lto_module_set_target_triple(lto_module_t mod, const char *triple);
 
+/* @LOCALMOD-BEGIN */
+
+/**
+ * Get the module format for this module
+ */
+extern lto_output_format
+lto_module_get_output_format(lto_module_t mod);
+
+/**
+ * Get the module soname
+ */
+extern const char*
+lto_module_get_soname(lto_module_t mod);
+
+
+/**
+ * Get the i'th library dependency.
+ * Returns NULL if i >= lto_module_get_num_library_deps()
+ */
+extern const char*
+lto_module_get_library_dep(lto_module_t mod, unsigned int i);
+
+
+/**
+ * Return the number of library dependencies of this module.
+ */
+extern unsigned int
+lto_module_get_num_library_deps(lto_module_t mod);
+
+/* @LOCALMOD-END */
 
 /**
  * Returns the number of symbols in the object module.
@@ -258,6 +306,56 @@ lto_codegen_set_assembler_args(lto_code_gen_t cg, const char **args,
 extern void
 lto_codegen_add_must_preserve_symbol(lto_code_gen_t cg, const char* symbol);
 
+/* @LOCALMOD-BEGIN */
+
+/**
+ * Sets the module type for the merged module
+ */
+extern void
+lto_codegen_set_merged_module_output_format(lto_code_gen_t cg,
+                                            lto_output_format format);
+
+/**
+ * Sets the SOName for the merged module
+ */
+extern void
+lto_codegen_set_merged_module_soname(lto_code_gen_t cg,
+                                     const char *soname);
+
+/**
+ * Add a library dependency to the merged module
+ */
+extern void
+lto_codegen_add_merged_module_library_dep(lto_code_gen_t cg,
+                                          const char *lib);
+
+/**
+ * Wrap a symbol in the merged module.
+ */
+extern void
+lto_codegen_wrap_symbol_in_merged_module(lto_code_gen_t cg,
+                                         const char *sym);
+
+
+/**
+ * Set version of a defined symbol in the merged module
+ */
+extern const char *
+lto_codegen_set_symbol_def_version(lto_code_gen_t cg,
+                                   const char *sym,
+                                   const char *version,
+                                   bool is_default);
+
+
+/**
+ * Set version of an undefined symbol in the merged module
+ */
+extern const char *
+lto_codegen_set_symbol_needed(lto_code_gen_t cg,
+                              const char *sym,
+                              const char *version,
+                              const char *dynfile);
+/* @LOCALMOD-END */
 /**
  * Writes a new object file at the specified path that contains the
  * merged contents of all modules added so far.

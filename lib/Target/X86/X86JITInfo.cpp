@@ -18,6 +18,8 @@
 #include "X86TargetMachine.h"
 #include "llvm/Function.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Debug.h"//TODO(dschuff):don't forget to remove these
+#include "llvm/Support/Disassembler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Valgrind.h"
 #include <cstdlib>
@@ -82,7 +84,7 @@ static TargetJITInfo::JITCompilerFn JITCompilerFunction;
 // Provide a wrapper for X86CompilationCallback2 that saves non-traditional
 // callee saved registers, for the fastcc calling convention.
 extern "C" {
-#if defined(X86_64_JIT)
+#if defined(X86_64_JIT) && !defined(__native_client__)
 # ifndef _MSC_VER
   // No need to save EAX/EDX for X86-64.
   void X86CompilationCallback(void);
@@ -230,7 +232,11 @@ extern "C" {
     "popl    %ebp\n"
     CFI(".cfi_adjust_cfa_offset -4\n")
     CFI(".cfi_restore %ebp\n")
+#if defined(__native_client__) // @LOCALMOD-BEGIN
+    "popl %ecx; nacljmp %ecx\n"
+#else
     "ret\n"
+#endif // @LOCALMOD-END
     CFI(".cfi_endproc\n")
     SIZE(X86CompilationCallback)
   );
@@ -295,7 +301,11 @@ extern "C" {
     "popl    %ebp\n"
     CFI(".cfi_adjust_cfa_offset -4\n")
     CFI(".cfi_restore %ebp\n")
+#if defined(__native_client__) // @LOCALMOD-BEGIN
+    "popl %ecx; nacljmp %ecx\n"
+#else
     "ret\n"
+#endif // @LOCALMOD-END
     CFI(".cfi_endproc\n")
     SIZE(X86CompilationCallback_SSE)
   );
@@ -469,7 +479,14 @@ TargetJITInfo::StubLayout X86JITInfo::getStubLayout() {
   // The 32-bit stub contains a 5-byte call|jmp.
   // If the stub is a call to the compilation callback, an extra byte is added
   // to mark it as a stub.
+#ifdef __native_client__
+  // NaCl call targets must be bundle-aligned. In the case of stubs with
+  // CALLs, the calls do not need to be aligned to the end of the bundle
+  // because there is no return
+  StubLayout Result = {32, 32};//TODO(dschuff): use named constant here
+#else
   StubLayout Result = {14, 4};
+#endif
   return Result;
 }
 
@@ -498,6 +515,9 @@ void *X86JITInfo::emitFunctionStub(const Function* F, void *Target,
     JCE.emitByte(0xE9);
     JCE.emitWordLE((intptr_t)Target-JCE.getCurrentPCValue()-4);
 #endif
+    DEBUG(dbgs() <<"emitted stub: "<< sys::disassembleBuffer(
+        (uint8_t *)Result,JCE.getCurrentPCValue()-(uintptr_t)Result,
+        (intptr_t)Result));
     return Result;
   }
 
@@ -519,6 +539,9 @@ void *X86JITInfo::emitFunctionStub(const Function* F, void *Target,
   // initialize the buffer with garbage, which means it may follow a
   // noreturn function call, confusing X86CompilationCallback2.  PR 4929.
   JCE.emitByte(0xCE);   // Interrupt - Just a marker identifying the stub!
+  DEBUG(dbgs()  <<"emitted stub: "<< sys::disassembleBuffer(
+      (uint8_t *)Result,JCE.getCurrentPCValue()-(uintptr_t)Result,
+      (intptr_t)Result));
   return Result;
 }
 

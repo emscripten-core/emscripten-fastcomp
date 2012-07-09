@@ -197,6 +197,14 @@ public:
     return Offset;
   }
 
+  // @LOCALMOD-START
+  /// setMachineCodeOffset() - Adjust the offset in the code buffer (this is
+  /// used when the instruction is moved after emission for bundle alignment)
+  void setMachineCodeOffset(intptr_t offset) {
+    Offset = offset;
+  }
+  // @LOCALMOD-END
+
   /// getRelocationType - Return the target-specific relocation ID for this
   /// relocation.
   unsigned getRelocationType() const {

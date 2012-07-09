@@ -932,6 +932,19 @@ void ModuleLinker::linkFunctionBody(Function *Dst, Function *Src) {
     ValueMap[I] = DI;
   }
 
+  // @LOCALMOD-BEGIN
+  // Local patch for http://llvm.org/bugs/show_bug.cgi?id=11112
+  // and http://llvm.org/bugs/show_bug.cgi?id=10887
+  // Create an identity mapping for instructions so that alloca instructions
+  // do not get dropped and related debug info isn't lost.  E.g., prevent
+  //   call @llvm.dbg.declare(metadata !{i32 * %local_var}, ...)
+  // from becoming
+  //   call @llvm.dbg.declare(null, ...)
+  for (Function::iterator BB = Src->begin(), BE = Src->end(); BB != BE; ++BB)
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+      ValueMap[I] = I;
+  // @LOCALMOD-END
+
   if (Mode == Linker::DestroySource) {
     // Splice the body of the source function into the dest function.
     Dst->getBasicBlockList().splice(Dst->end(), Src->getBasicBlockList());
@@ -949,6 +962,13 @@ void ModuleLinker::linkFunctionBody(Function *Dst, Function *Src) {
     SmallVector<ReturnInst*, 8> Returns; // Ignore returns.
     CloneFunctionInto(Dst, Src, ValueMap, false, Returns, "", NULL, &TypeMap);
   }
+
+  // @LOCALMOD-BEGIN
+  // There is no need for the identity mapping anymore.
+  for (Function::iterator BB = Src->begin(), BE = Src->end(); BB != BE; ++BB)
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+      ValueMap.erase(I);
+  // @LOCALMOD-END
   
   // There is no need to map the arguments anymore.
   for (Function::arg_iterator I = Src->arg_begin(), E = Src->arg_end();

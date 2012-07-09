@@ -88,6 +88,14 @@ def ARMWrapper       : SDNode<"ARMISD::Wrapper",     SDTIntUnaryOp>;
 def ARMWrapperDYN    : SDNode<"ARMISD::WrapperDYN",  SDTIntUnaryOp>;
 def ARMWrapperPIC    : SDNode<"ARMISD::WrapperPIC",  SDTIntUnaryOp>;
 def ARMWrapperJT     : SDNode<"ARMISD::WrapperJT",   SDTIntBinOp>;
+// @LOCALMOD-START
+// support non-inline jumptables
+// we do not use the extre uid immediate that comes with ARMWrapperJT
+// TODO(robertm): figure out what it is used for
+def ARMWrapperJT2    : SDNode<"ARMISD::WrapperJT2",  SDTIntUnaryOp>;
+// Support for MOVW/MOVT'ing the GOT address directly into a register.
+def ARMWrapperGOT       : SDNode<"ARMISD::WrapperGOT",  SDTPtrLeaf>;
+// @LOCALMOD-END
 
 def ARMcallseq_start : SDNode<"ISD::CALLSEQ_START", SDT_ARMCallSeqStart,
                               [SDNPHasChain, SDNPOutGlue]>;
@@ -240,6 +248,11 @@ def UseFusedMAC      : Predicate<"!TM.Options.NoExcessFPPrecision && "
                                  "!Subtarget->isTargetDarwin()">;
 def DontUseFusedMAC  : Predicate<"!Subtarget->hasVFP4() || "
                                  "Subtarget->isTargetDarwin()">;
+
+// @LOCALMOD-BEGIN
+def UseConstPool : Predicate<"Subtarget->useConstPool()">;
+def DontUseConstPool : Predicate<"!Subtarget->useConstPool()">;
+// @LOCALMOD-END
 
 //===----------------------------------------------------------------------===//
 // ARM Flag Definitions.
@@ -768,7 +781,8 @@ def postidx_reg : Operand<i32> {
 // use explicit imm vs. reg versions above (addrmode_imm12 and ldst_so_reg).
 def AddrMode2AsmOperand : AsmOperandClass { let Name = "AddrMode2"; }
 def addrmode2 : Operand<i32>,
-                ComplexPattern<i32, 3, "SelectAddrMode2", []> {
+                ComplexPattern<i32, 3, "SelectAddrMode2", [],
+                               [SDNPWantRoot]> { // @LOCALMOD
   let EncoderMethod = "getAddrMode2OpValue";
   let PrintMethod = "printAddrMode2Operand";
   let ParserMatchClass = AddrMode2AsmOperand;
@@ -808,7 +822,8 @@ def am2offset_imm : Operand<i32>,
 // FIXME: split into imm vs. reg versions.
 def AddrMode3AsmOperand : AsmOperandClass { let Name = "AddrMode3"; }
 def addrmode3 : Operand<i32>,
-                ComplexPattern<i32, 3, "SelectAddrMode3", []> {
+                ComplexPattern<i32, 3, "SelectAddrMode3", [],
+                               [SDNPWantRoot]> { // @LOCALMOD
   let EncoderMethod = "getAddrMode3OpValue";
   let PrintMethod = "printAddrMode3Operand";
   let ParserMatchClass = AddrMode3AsmOperand;
@@ -1529,6 +1544,46 @@ multiclass AI_str1nopc<bit isByte, string opc, InstrItinClass iii,
 // Instructions
 //===----------------------------------------------------------------------===//
 
+// @LOCALMOD-START
+
+// New ARM SFI Model
+include "ARMInstrNaCl.td"
+
+// Older Macro base SFI Model
+def SFI_GUARD_LOADSTORE :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
+
+let Defs = [CPSR] in
+def SFI_GUARD_LOADSTORE_TST :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a), NoItinerary, []>;
+
+// Like SFI_GUARD_LOADSTORE, but reserved for loads into SP.
+def SFI_GUARD_SP_LOAD :
+PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
+
+def SFI_GUARD_INDIRECT_CALL :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
+
+def SFI_GUARD_INDIRECT_JMP :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
+
+def SFI_GUARD_CALL :
+PseudoInst<(outs), (ins pred:$p), NoItinerary, []>;
+
+// NOTE: the BX_RET instruction hardcodes lr as well
+def SFI_GUARD_RETURN :
+PseudoInst<(outs), (ins pred:$p), NoItinerary, []>;
+
+def SFI_NOP_IF_AT_BUNDLE_END :
+PseudoInst<(outs), (ins), NoItinerary, []>;
+
+// Note: intention is that $src and $dst are the same register.
+def SFI_DATA_MASK :
+PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
+
+// @LOCALMOD-END
+
+
 //===----------------------------------------------------------------------===//
 //  Miscellaneous Instructions.
 //
@@ -1849,6 +1904,33 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
 
 // SP is marked as a use to prevent stack-pointer assignments that appear
 // immediately before calls from potentially appearing dead.
+// @LOCALMOD-START
+// Exception handling related Node and Instructions.
+// The conversion sequence is:
+// ISD::EH_RETURN -> ARMISD::EH_RETURN ->  
+// ARMeh_return -> (stack change + indirect branch)
+// 
+// ARMeh_return takes the place of regular return instruction
+// but takes two arguments.
+// R2, R3 are used for storing the offset and return address respectively.
+def SDT_ARMEHRET : SDTypeProfile<0, 2, [SDTCisInt<0>, SDTCisPtrTy<1>]>;
+
+def ARMehret : SDNode<"ARMISD::EH_RETURN", SDT_ARMEHRET,
+                      [SDNPHasChain, SDNPOptInGlue]>;
+
+
+let isTerminator = 1, isReturn = 1, isBarrier = 1,
+  Defs = [SP],
+  Uses = [SP] in {
+    def ARMeh_return : PseudoInst<(outs), 
+                               (ins GPR:$spadj, GPR:$dst),
+                               IIC_Br,
+                               [(ARMehret GPR:$spadj, GPR:$dst)]>,
+                    Requires<[IsARM]>; 
+}
+// @LOCALMOD-END
+
+
 let isCall = 1,
   // FIXME:  Do we really need a non-predicated version? If so, it should
   // at least be a pseudo instruction expanding to the predicated version
@@ -2937,6 +3019,69 @@ def MOVTi16_ga_pcrel : PseudoInst<(outs GPR:$Rd),
 
 } // Constraints
 
+// @LOCALMOD-BEGIN
+// PIC / PC-relative versions of MOVi16/MOVTi16, which have an extra 
+// operand representing the ID of the PICADD instruction that corrects
+// for relativity. This is used to materialize addresses into
+// a register in a PC-relative manner.
+// 
+// E.g. Rather than have an absolute address in $imm, and transferred to 
+// a register with:
+//    movw $Rd, :lower16:$imm
+//    movt $Rd, :upper16:$imm
+//
+// we will instead have a relative offset:
+//    movw $Rd, :lower16:$imm - ($pic_add_id + 8)
+//    ...
+//    movt $Rd, :upper16:$imm - ($pic_add_id + 8)
+//    ...
+// $pic_add_id:
+//    add  $Rd, pc, $Rd
+//
+// One way these pseudo instructions (and the corresponding PICADD) 
+// come about is during expansion of the MOVi32imm pseudo instruction
+// (see ARMExpandPseudo::ExpandMBB).
+// These pseudo instructions become real instructions when they are
+// finally lowered to MCInsts (e.g., at ARMAsmPrinter::EmitInstruction),
+// and the extra pclabel ID becomes part of the appropriate operand.
+//
+// NOTE: aside from adding the pclabel operand, all other operands should
+// be the same as the non-PIC versions to simplify conversion to the 
+// non-pseudo instructions.
+let isReMaterializable = 1, isAsCheapAsAMove = 1, isMoveImm = 1,
+    neverHasSideEffects = 1 in
+def MOVi16PIC : PseudoInst<(outs GPR:$Rd), (ins imm0_65535_expr:$imm,
+                                                pclabel:$pic_add_id,
+                                                pred:$p),
+                           IIC_iMOVi,
+                           []>,
+                 Requires<[IsARM, HasV6T2]>, UnaryDP;
+
+let Constraints = "$src = $Rd" in
+def MOVTi16PIC : PseudoInst<(outs GPR:$Rd), (ins GPR:$src,
+                                                 imm0_65535_expr:$imm,
+                                                 pclabel:$pic_add_id,
+                                                 pred:$p),
+                            IIC_iMOVi,
+                            []>,
+                 UnaryDP, Requires<[IsARM, HasV6T2]>;
+// @LOCALMOD-END
+
+// @LOCALMOD-BEGIN
+// Pseudo-instruction that will be expanded into MOVW / MOVT (PIC versions) w/
+// GOT as the operand. 
+// The alternative is to create a constant pool entry with the (relative)
+// GOT address and load from the constant pool. This is currently used
+// when constant islands are turned off, since MOVW / MOVT will be faster.
+let isReMaterializable = 1, isMoveImm = 1, neverHasSideEffects = 1 in
+def MOVGOTAddr : PseudoInst<(outs GPR:$dst), (ins),
+                           IIC_iMOVix2, // will expand to two MOVi's
+                           []>,
+                           Requires<[IsARM, UseMovt]>;
+
+def : ARMPat<(ARMWrapperGOT), (MOVGOTAddr)>;
+// @LOCALMOD-END
+
 def : ARMPat<(or GPR:$src, 0xffff0000), (MOVTi16 GPR:$src, 0xffff)>,
       Requires<[IsARM, HasV6T2]>;
 
@@ -3043,6 +3188,8 @@ def UBFX  : I<(outs GPR:$Rd),
 //===----------------------------------------------------------------------===//
 //  Arithmetic Instructions.
 //
+
+
 
 defm ADD  : AsI1_bin_irs<0b0100, "add",
                          IIC_iALUi, IIC_iALUr, IIC_iALUsr,
@@ -4794,9 +4941,20 @@ def MOV_ga_pcrel_ldr : PseudoInst<(outs GPR:$dst), (ins i32imm:$addr),
 // ConstantPool, GlobalAddress, and JumpTable
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (LEApcrel tglobaladdr :$dst)>,
             Requires<[IsARM, DontUseMovt]>;
-def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>;
+// @LOCALMOD-START
+def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>,
+            Requires<[IsARM, DontUseMovt]>;
+// @LOCALMOD-END
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (MOVi32imm tglobaladdr :$dst)>,
             Requires<[IsARM, UseMovt]>;
+// @LOCALMOD-START
+def : ARMPat<(ARMWrapper  tconstpool :$dst), (MOVi32imm tconstpool :$dst)>,
+            Requires<[IsARM, UseMovt, DontUseConstPool]>;
+def : ARMPat<(ARMWrapper  tconstpool :$dst), (LEApcrel tconstpool :$dst)>,
+            Requires<[IsARM, UseMovt, UseConstPool]>;
+def : ARMPat<(ARMWrapperJT2  tjumptable :$dst), (MOVi32imm tjumptable :$dst)>,
+            Requires<[IsARM, UseMovt]>;
+// @LOCALMOD-END
 def : ARMPat<(ARMWrapperJT tjumptable:$dst, imm:$id),
              (LEApcrelJT tjumptable:$dst, imm:$id)>;
 
@@ -5142,3 +5300,47 @@ def : InstAlias<"umull${s}${p} $RdLo, $RdHi, $Rn, $Rm",
 // 'it' blocks in ARM mode just validate the predicates. The IT itself
 // is discarded.
 def ITasm : ARMAsmPseudo<"it$mask $cc", (ins it_pred:$cc, it_mask:$mask)>;
+                   
+// @LOCALMOD-BEGIN
+//===----------------------------------------------------------------------===//
+// NativeClient intrinsics
+// These provide the ability to implement several low-level features without
+// having to link native ASM code on the client.
+// This code has to be kept in sync with include/llvm/Intrinsics.td and
+// lib/Target/X86InstrNaCl.{td, cpp}.
+// TODO(sehr): conditionalize this on IsNaCl64 | IsNaCl32 | IsNaClArm.
+
+let Uses = [R0], Defs = [R0] in {
+  // Saves all the callee-saves registers, sp, and lr to the JMP_BUF structure
+  // pointed to by r0.  The JMP_BUF structure is the maximum size over all
+  // supported architectures.
+  def NACL_SETJ : AXI<(outs), (ins),
+                      MiscFrm, NoItinerary,
+                      // Bundle start
+                      "sfi_nop_if_at_bundle_end; "
+                      "sfi_data_mask r0; "
+                      "stmia r0!, {{r4, r5, r6, r7, r8, r10, r11, sp, lr}}; "
+                      "mov r0, #0; ",
+                      [(set R0, (int_nacl_setjmp R0, LR))]>;
+}
+
+let isBranch = 1, isBarrier = 1, isTerminator = 1, Uses = [R0, R1] in {
+  // Restores all the callee-saves registers, sp, and lr from the JMP_BUF
+  // structure pointed to by r0.  Returns the value in r1 at entry.  This
+  // implements the tail of longjmp, with the normalization of the return value
+  // (if the caller passes zero to longjmp, it should return 1) done in the
+  // caller.
+  def NACL_LONGJ : AXI<(outs), (ins), MiscFrm, NoItinerary,
+                       // Bundle start
+                       "ldmia r0!, {{r4, r5, r6, r7, r8, r10, r11, r12, lr}}; "
+                       "sfi_nop_if_at_bundle_end; "
+                       "mov sp, r12; "
+                       "sfi_data_mask sp; "
+                       "movs r0, r1; "
+                       "moveq r0, #1; "
+                       "sfi_nop_if_at_bundle_end; "
+                       "sfi_code_mask lr; "
+                       "bx lr; ",
+                       [(int_nacl_longjmp R0, R1)]>;
+}
+// @LOCALMOD-END

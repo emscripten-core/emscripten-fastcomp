@@ -77,6 +77,26 @@ public:
     removeDeadConstantUsers();   // remove any dead constants using this.
   }
 
+  // @LOCALMOD-BEGIN
+  /// Set the symbol version for this definition.
+  void setVersionDef(StringRef Version, bool IsDefault);
+
+  /// Set the symbol version and dynamic source file (soname)
+  /// for this exterally provided global.
+  void setNeeded(StringRef Version, StringRef DynFile);
+
+  /// Get the name of this symbol without the version suffix.
+  StringRef getUnversionedName() const;
+
+  /// Get the version of this symbol.
+  /// Returns an empty string if the symbol is unversioned.
+  StringRef getVersion() const;
+
+  /// Returns true if this is the default version of the symbol.
+  /// This may only be called if the symbol is versioned.
+  bool isDefaultVersion() const;
+  // @LOCALMOD-END
+
   unsigned getAlignment() const {
     return (1u << Alignment) >> 1;
   }

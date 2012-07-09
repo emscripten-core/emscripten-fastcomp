@@ -109,7 +109,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
   def JMP32r     : I<0xFF, MRM4r, (outs), (ins GR32:$dst), "jmp{l}\t{*}$dst",
                      [(brind GR32:$dst)], IIC_JMP_REG>, Requires<[In32BitMode]>;
   def JMP32m     : I<0xFF, MRM4m, (outs), (ins i32mem:$dst), "jmp{l}\t{*}$dst",
-                     [(brind (loadi32 addr:$dst))], IIC_JMP_MEM>, Requires<[In32BitMode]>;
+                     [(brind (loadi32 addr:$dst))], IIC_JMP_MEM>, Requires<[In32BitMode,NotNaCl]>;
 
   def JMP64r     : I<0xFF, MRM4r, (outs), (ins GR64:$dst), "jmp{q}\t{*}$dst",
                      [(brind GR64:$dst)], IIC_JMP_REG>, Requires<[In64BitMode]>;
@@ -123,7 +123,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
                           (ins i32imm:$off, i16imm:$seg),
                           "ljmp{l}\t{$seg, $off|$off, $seg}", [], IIC_JMP_FAR_PTR>;
   def FARJMP64   : RI<0xFF, MRM5m, (outs), (ins opaque80mem:$dst),
-                      "ljmp{q}\t{*}$dst", [], IIC_JMP_FAR_MEM>;
+                      "ljmp{q}\t{*}$dst", [], IIC_JMP_FAR_MEM>, Requires<[NotNaCl]>;
 
   def FARJMP16m  : I<0xFF, MRM5m, (outs), (ins opaque32mem:$dst),
                      "ljmp{w}\t{*}$dst", [], IIC_JMP_FAR_MEM>, OpSize;
@@ -152,10 +152,10 @@ let isCall = 1 in
                            "call{l}\t$dst", [], IIC_CALL_RI>, Requires<[In32BitMode]>;
     def CALL32r     : I<0xFF, MRM2r, (outs), (ins GR32:$dst, variable_ops),
                         "call{l}\t{*}$dst", [(X86call GR32:$dst)], IIC_CALL_RI>,
-                         Requires<[In32BitMode]>;
+                         Requires<[In32BitMode,NotNaCl]>; // @LOCALMOD
     def CALL32m     : I<0xFF, MRM2m, (outs), (ins i32mem:$dst, variable_ops),
                         "call{l}\t{*}$dst", [(X86call (loadi32 addr:$dst))], IIC_CALL_MEM>,
-                        Requires<[In32BitMode]>;
+                        Requires<[In32BitMode,NotNaCl]>; // @LOCALMOD
 
     def FARCALL16i  : Iseg16<0x9A, RawFrmImm16, (outs),
                              (ins i16imm:$off, i16imm:$seg),
@@ -175,9 +175,20 @@ let isCall = 1 in
     let isAsmParserOnly = 1 in
       def CALLpcrel16 : Ii16PCRel<0xE8, RawFrm,
                        (outs), (ins i16imm_pcrel:$dst, variable_ops),
-                       "callw\t$dst", []>, OpSize;
+                       "callw\t$dst", []>, OpSize,
+                       Requires<[NotNaCl]>; // @LOCALMOD
   }
 
+// @LOCALMOD-BEGIN
+// These CodeGen patterns are normally part of the declaration above.
+// However, we need to be able to disable these patterns for NaCl
+// without disabling the the instruction itself. (so we can use the
+// instruction in assembly input)
+def : Pat<(X86call GR32:$dst),
+          (CALL32r GR32:$dst)>, Requires<[NotNaCl]>;
+def : Pat<(X86call (loadi32 addr:$dst)),
+          (CALL32m addr:$dst)>, Requires<[NotNaCl]>;
+// @LOCALMOD-END
 
 // Tail call stuff.
 
@@ -202,7 +213,7 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
                    "", [], IIC_JMP_REG>;  // FIXME: Remove encoding when JIT is dead.
   let mayLoad = 1 in
   def TAILJMPm : I<0xFF, MRM4m, (outs), (ins i32mem_TC:$dst, variable_ops),
-                   "jmp{l}\t{*}$dst  # TAILCALL", [], IIC_JMP_MEM>;
+                   "jmp{l}\t{*}$dst  # TAILCALL", [], IIC_JMP_MEM>, Requires<[NotNaCl]>; // @LOCALMOD
 }
 
 
@@ -220,18 +231,18 @@ let isCall = 1, Uses = [RSP] in {
   def CALL64pcrel32 : Ii32PCRel<0xE8, RawFrm,
                         (outs), (ins i64i32imm_pcrel:$dst, variable_ops),
                         "call{q}\t$dst", [], IIC_CALL_RI>,
-                      Requires<[In64BitMode]>;
+                        Requires<[In64BitMode, NotNaCl]>; // @LOCALMOD
   def CALL64r       : I<0xFF, MRM2r, (outs), (ins GR64:$dst, variable_ops),
                         "call{q}\t{*}$dst", [(X86call GR64:$dst)],
                         IIC_CALL_RI>,
-                      Requires<[In64BitMode]>;
+                        Requires<[In64BitMode, NotNaCl]>; // @LOCALMOD
   def CALL64m       : I<0xFF, MRM2m, (outs), (ins i64mem:$dst, variable_ops),
                         "call{q}\t{*}$dst", [(X86call (loadi64 addr:$dst))],
                         IIC_CALL_MEM>,
-                      Requires<[In64BitMode]>;
+                        Requires<[In64BitMode, NotNaCl]>; // @LOCALMOD
 
   def FARCALL64   : RI<0xFF, MRM3m, (outs), (ins opaque80mem:$dst),
-                       "lcall{q}\t{*}$dst", [], IIC_CALL_FAR_MEM>;
+                       "lcall{q}\t{*}$dst", [], IIC_CALL_FAR_MEM>, Requires<[NotNaCl]>; // @LOCALMOD
 }
 
 let isCall = 1, isCodeGenOnly = 1 in
@@ -266,5 +277,6 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
 
   let mayLoad = 1 in
   def TAILJMPm64 : I<0xFF, MRM4m, (outs), (ins i64mem_TC:$dst, variable_ops),
-                     "jmp{q}\t{*}$dst  # TAILCALL", [], IIC_JMP_MEM>;
+                     "jmp{q}\t{*}$dst  # TAILCALL", [], IIC_JMP_MEM>,
+                   Requires<[NotNaCl]>; // @LOCALMOD
 }

@@ -12,8 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "Unix.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/Debug.h"
 
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
@@ -61,8 +63,10 @@ llvm::sys::Memory::AllocateRWX(size_t NumBytes, const MemoryBlock* NearBlock,
   void *pa = ::mmap(start, pageSize*NumPages, PROT_READ|PROT_EXEC,
                     flags, fd, 0);
 #else
+dbgs() << "calling mmap, start " << start << "\n";
   void *pa = ::mmap(start, pageSize*NumPages, PROT_READ|PROT_WRITE|PROT_EXEC,
                     flags, fd, 0);
+  DEBUG(dbgs() << "mmap returned " << pa<<"\n");
 #endif
   if (pa == MAP_FAILED) {
     if (NearBlock) //Try again without a near hint

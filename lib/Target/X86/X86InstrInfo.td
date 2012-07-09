@@ -208,6 +208,14 @@ def X86tlsaddr : SDNode<"X86ISD::TLSADDR", SDT_X86TLSADDR,
 def X86tlsbaseaddr : SDNode<"X86ISD::TLSBASEADDR", SDT_X86TLSBASEADDR,
                         [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
+// @LOCALMOD-BEGIN
+def X86tlsaddr_le : SDNode<"X86ISD::TLSADDR_LE", SDT_X86TLSADDR,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+
+def X86tlsaddr_ie : SDNode<"X86ISD::TLSADDR_IE", SDT_X86TLSADDR,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+// @LOCALMOD-END
+
 def X86ehret : SDNode<"X86ISD::EH_RETURN", SDT_X86EHRET,
                         [SDNPHasChain]>;
 
@@ -477,6 +485,13 @@ def i64i8imm   : Operand<i64> {
   let OperandType = "OPERAND_IMMEDIATE";
 }
 
+// @LOCALMOD
+def lea64mem : Operand<i64> {
+  let PrintMethod = "printi64mem";
+  let MIOperandInfo = (ops GR64, i8imm, GR64_NOSP, i32imm, i8imm);
+  let ParserMatchClass = X86MemAsmOperand;
+}
+
 def lea64_32mem : Operand<i32> {
   let PrintMethod = "printi32mem";
   let AsmOperandLowerMethod = "lower_lea64_32mem";
@@ -492,7 +507,8 @@ def lea64_32mem : Operand<i32> {
 // Define X86 specific addressing mode.
 def addr      : ComplexPattern<iPTR, 5, "SelectAddr", [], [SDNPWantParent]>;
 def lea32addr : ComplexPattern<i32, 5, "SelectLEAAddr",
-                               [add, sub, mul, X86mul_imm, shl, or, frameindex],
+                               [add, sub, mul, X86mul_imm, shl, or, frameindex,
+                               X86WrapperRIP], // @LOCALMOD
                                []>;
 def tls32addr : ComplexPattern<i32, 5, "SelectTLSADDRAddr",
                                [tglobaltlsaddr], []>;
@@ -1611,6 +1627,12 @@ let Predicates = [HasBMI2] in {
 //===----------------------------------------------------------------------===//
 
 include "X86InstrArithmetic.td"
+
+//===----------------------------------------------------------------------===//
+// NaCl support (@LOCALMOD)
+//===----------------------------------------------------------------------===//
+
+include "X86InstrNaCl.td"
 include "X86InstrCMovSetCC.td"
 include "X86InstrExtension.td"
 include "X86InstrControl.td"
@@ -1645,9 +1667,6 @@ include "X86InstrCompiler.td"
 //===----------------------------------------------------------------------===//
 // Assembler Mnemonic Aliases
 //===----------------------------------------------------------------------===//
-
-def : MnemonicAlias<"call", "calll">, Requires<[In32BitMode]>;
-def : MnemonicAlias<"call", "callq">, Requires<[In64BitMode]>;
 
 def : MnemonicAlias<"cbw",  "cbtw">;
 def : MnemonicAlias<"cwde", "cwtl">;

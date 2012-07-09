@@ -150,6 +150,13 @@ namespace llvm {
     SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
 
+    // @LOCALMOD-BEGIN
+    SDValue LowerNaClThreadStackPadding(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpAlign(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
+    // @LOCALMOD-END
+
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
                            CallingConv::ID CallConv, bool isVarArg,

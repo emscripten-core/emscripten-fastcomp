@@ -520,7 +520,8 @@ DIE *DwarfDebug::constructScopeDIE(CompileUnit *TheCU, LexicalScope *Scope) {
 /// in the SourceIds map. This can update DirectoryNames and SourceFileNames
 /// maps as well.
 unsigned DwarfDebug::GetOrCreateSourceID(StringRef FileName, 
-                                         StringRef DirName) {
+                                         StringRef DirName,
+                                         StringRef Extra) { // @LOCALMOD
   // If FE did not provide a file name, then assume stdin.
   if (FileName.empty())
     return GetOrCreateSourceID("<stdin>", StringRef());
@@ -536,6 +537,9 @@ unsigned DwarfDebug::GetOrCreateSourceID(StringRef FileName,
   NamePair += DirName;
   NamePair += '\0'; // Zero bytes are not allowed in paths.
   NamePair += FileName;
+  // @LOCALMOD
+  NamePair += '\0'; // Zero bytes are not allowed in paths.
+  NamePair += Extra;
 
   StringMapEntry<unsigned> &Ent = SourceIdMap.GetOrCreateValue(NamePair, SrcId);
   if (Ent.getValue() != SrcId)
@@ -547,13 +551,37 @@ unsigned DwarfDebug::GetOrCreateSourceID(StringRef FileName,
   return SrcId;
 }
 
+// @LOCALMOD-BEGIN
+// A special version of GetOrCreateSourceID for CompileUnits.
+// It is possible that with bitcode linking, we end up with distinct
+// compile units based on the same source file.
+// E.g., compile foo.c with -DMACRO1 to foo1.bc, then compile
+// foo.c again with -DMACRO2 to foo2.bc and link.
+// We use additional information to form a unique ID in that case.
+unsigned DwarfDebug::GetOrCreateCompileUnitID(StringRef Filename,
+                                              StringRef Dirname,
+                                              const MDNode *N) {
+  std::string DIUnitStr;
+  raw_string_ostream ostr(DIUnitStr);
+
+  // Using information from the compile unit (N)'s getEnumTypes(),
+  // getRetainedTypes(), getSubprograms(), getGlobalVariables()
+  // could be pretty expensive.
+  // Cheat and use the MDNode's address as an additional identifying factor.
+  // constructCompileUnit() is only called once per compile unit.
+  ostr << static_cast<const void*>(N);
+  return GetOrCreateSourceID(Filename, Dirname, ostr.str());
+}
+// @LOCALMOD-END
+
 /// constructCompileUnit - Create new CompileUnit for the given
 /// metadata node with tag DW_TAG_compile_unit.
 CompileUnit *DwarfDebug::constructCompileUnit(const MDNode *N) {
   DICompileUnit DIUnit(N);
   StringRef FN = DIUnit.getFilename();
   CompilationDir = DIUnit.getDirectory();
-  unsigned ID = GetOrCreateSourceID(FN, CompilationDir);
+  // @LOCALMOD
+  unsigned ID = GetOrCreateCompileUnitID(FN, CompilationDir, N);
 
   DIE *Die = new DIE(dwarf::DW_TAG_compile_unit);
   CompileUnit *NewCU = new CompileUnit(ID, DIUnit.getLanguage(), Die, Asm, this);

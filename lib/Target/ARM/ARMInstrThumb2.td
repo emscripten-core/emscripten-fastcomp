@@ -3540,12 +3540,24 @@ def t2MOV_ga_dyn : PseudoInst<(outs rGPR:$dst), (ins i32imm:$addr),
 // ConstantPool, GlobalAddress, and JumpTable
 def : T2Pat<(ARMWrapper  tglobaladdr :$dst), (t2LEApcrel tglobaladdr :$dst)>,
            Requires<[IsThumb2, DontUseMovt]>;
+// @LOCALMOD-START
+def : T2Pat<(ARMWrapper  tconstpool  :$dst), (t2LEApcrel tconstpool  :$dst)>,
+            Requires<[IsThumb2, DontUseMovt]>;
+// @LOCALMOD-END
 def : T2Pat<(ARMWrapper  tconstpool  :$dst), (t2LEApcrel tconstpool  :$dst)>;
 def : T2Pat<(ARMWrapper  tglobaladdr :$dst), (t2MOVi32imm tglobaladdr :$dst)>,
            Requires<[IsThumb2, UseMovt]>;
 
 def : T2Pat<(ARMWrapperJT tjumptable:$dst, imm:$id),
             (t2LEApcrelJT tjumptable:$dst, imm:$id)>;
+// @LOCALMOD-START
+def : T2Pat<(ARMWrapper  tconstpool :$dst), (t2MOVi32imm tconstpool :$dst)>,
+            Requires<[IsThumb2, UseMovt, DontUseConstPool]>;
+def : T2Pat<(ARMWrapper  tconstpool :$dst), (t2LEApcrel tconstpool :$dst)>,
+            Requires<[IsThumb2, UseMovt, UseConstPool]>;
+def : T2Pat<(ARMWrapperJT2  tjumptable :$dst), (t2MOVi32imm tjumptable :$dst)>,
+            Requires<[IsThumb2, UseMovt]>;
+// @LOCALMOD-END
 
 // Pseudo instruction that combines ldr from constpool and add pc. This should
 // be expanded into two instructions late to allow if-conversion and

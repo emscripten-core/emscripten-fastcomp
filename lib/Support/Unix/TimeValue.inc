@@ -18,6 +18,13 @@
 
 #include "Unix.h"
 
+// @LOCALMOD-START
+#ifndef timerclear
+// Newlib does not have the timer{clear,add,sub} macros
+#define timerclear(tvp)  ((tvp)->tv_sec = (tvp)->tv_usec = 0)
+#endif
+// @LOCALMOD-END
+
 namespace llvm {
   using namespace sys;
 

@@ -67,6 +67,12 @@ public:
         return ELF::ELFOSABI_FREEBSD;
       case Triple::Linux:
         return ELF::ELFOSABI_LINUX;
+        // @LOCALMOD-BEGIN
+        // This shouldn't be needed anymore (sel_ldr doesn't check for it),
+        // but removing it may require some changes in binutils also.
+      case Triple::NativeClient:
+        return ELF::ELFOSABI_NACL;
+        // @LOCALMOD-END
       default:
         return ELF::ELFOSABI_NONE;
     }

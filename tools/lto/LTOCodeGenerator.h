@@ -50,6 +50,16 @@ struct LTOCodeGenerator {
   }
 
   bool writeMergedModules(const char *path, std::string &errMsg);
+  // @LOCALMOD-BEGIN
+  void                setMergedModuleOutputFormat(lto_output_format format);
+  void                setMergedModuleSOName(const char *soname);
+  void                addLibraryDep(const char *lib);
+  void                wrapSymbol(const char *sym);
+  const char*         setSymbolDefVersion(const char *sym, const char *ver,
+                                          bool is_default);
+  const char*         setSymbolNeeded(const char *sym, const char *ver,
+                                      const char *dynfile);
+  // @LOCALMOD-END
   bool compile_to_file(const char **name, std::string &errMsg);
   const void *compile(size_t *length, std::string &errMsg);
   void setCodeGenDebugOptions(const char *opts);

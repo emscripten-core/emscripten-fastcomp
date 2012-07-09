@@ -11,6 +11,7 @@
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "MCTargetDesc/ARMFixupKinds.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
+#include "MCTargetDesc/ARMMCNaCl.h" // @LOCALMOD
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDirectives.h"
@@ -232,8 +233,16 @@ bool ARMAsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   const uint32_t nopEncoding = hasNOP() ? ARMv6T2_NopEncoding
                                         : ARMv4_NopEncoding;
   uint64_t NumNops = Count / 4;
+  // @LOCALMOD-BEGIN-UPSTREAM
+  // FIXME: e1a00000 vs e320f000
+  //  e1a00000 is mov r0, r0 which may result in a stall
+  //  but the real nop instruction is not available on early hw....
+  //  Perhaps this really needs to be switched on the Subtarget??
+  //  GNU as likes to emit e320f000...
   for (uint64_t i = 0; i != NumNops; ++i)
-    OW->Write32(nopEncoding);
+    OW->Write32(0xe320f000); // regular NOP
+  // @LOCALMOD-END
+
   // FIXME: should this function return false when unable to write exactly
   // 'Count' bytes with NOP encodings?
   switch (Count % 4) {
@@ -559,12 +568,30 @@ namespace {
 class ELFARMAsmBackend : public ARMAsmBackend {
 public:
   uint8_t OSABI;
+  Triple::OSType OSType; // @LOCALMOD: kept OSTYPE vs upstream. FIXME: remove.
   ELFARMAsmBackend(const Target &T, const StringRef TT,
-                   uint8_t _OSABI)
-    : ARMAsmBackend(T, TT), OSABI(_OSABI) { }
+                   uint8_t _OSABI,
+                   Triple::OSType _OSType)
+    : ARMAsmBackend(T, TT), OSABI(_OSABI), OSType(_OSType) { }
 
   void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
                   uint64_t Value) const;
+
+  // @LOCALMOD-BEGIN
+  // FIXME! NaCl should INHERIT from ELFARMAsmBackend, not
+  // add to it.
+  unsigned getBundleSize() const {
+    return (OSType == Triple::NativeClient) ? 16 : 0;
+  }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
+    if (OSType == Triple::NativeClient) {
+      return CustomExpandInstNaClARM(Inst, Out);
+    }
+    return false;
+  }
+
+ // @LOCALMOD-END
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createARMELFObjectWriter(OS, OSABI);
@@ -694,5 +721,5 @@ MCAsmBackend *llvm::createARMAsmBackend(const Target &T, StringRef TT) {
     assert(0 && "Windows not supported on ARM");
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
-  return new ELFARMAsmBackend(T, TT, OSABI);
+  return new ELFARMAsmBackend(T, TT, OSABI, TheTriple.getOS());
 }

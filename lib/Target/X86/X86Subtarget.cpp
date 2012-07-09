@@ -160,7 +160,11 @@ const char *X86Subtarget::getBZeroEntry() const {
 bool X86Subtarget::IsLegalToCallImmediateAddr(const TargetMachine &TM) const {
   if (In64BitMode)
     return false;
-  return isTargetELF() || TM.getRelocationModel() == Reloc::Static;
+  // @LOCALMOD-BEGIN
+  // Upstream LLVM bug fix
+  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2367
+  return isTargetELF() && TM.getRelocationModel() == Reloc::Static;
+  // @LOCALMOD-END
 }
 
 /// getSpecialAddressLatency - For targets where it is beneficial to
@@ -412,12 +416,14 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   assert((!In64BitMode || HasX86_64) &&
          "64-bit code requested on a subtarget that doesn't support it!");
 
-  // Stack alignment is 16 bytes on Darwin, FreeBSD, Linux and Solaris (both
-  // 32 and 64 bit) and for all 64-bit targets.
+  // Stack alignment is 16 bytes on Darwin, FreeBSD, Linux, Solaris (both
+  // 32 and 64 bit), NaCl and for all 64-bit targets.
   if (StackAlignOverride)
     stackAlignment = StackAlignOverride;
   else if (isTargetDarwin() || isTargetFreeBSD() || isTargetLinux() ||
-           isTargetSolaris() || In64BitMode)
+           isTargetSolaris() ||
+           isTargetNaCl() || // @LOCALMOD
+           In64BitMode)
     stackAlignment = 16;
 }
 

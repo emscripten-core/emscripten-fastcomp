@@ -159,6 +159,12 @@ getJumpTargetOpValue(const MCInst &MI, unsigned OpNo,
                      SmallVectorImpl<MCFixup> &Fixups) const {
 
   const MCOperand &MO = MI.getOperand(OpNo);
+
+  /* LOCALMOD-START */
+  // If the destination is an immediate, we have nothing to do.
+  if (MO.isImm()) return (unsigned)MO.getImm() / 4;
+  /* LOCALMOD-END */
+
   assert(MO.isExpr() && "getJumpTargetOpValue expects only expressions");
 
   const MCExpr *Expr = MO.getExpr();

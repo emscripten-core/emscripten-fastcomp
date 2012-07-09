@@ -40,10 +40,13 @@ namespace llvm {
       WrapperPIC,   // WrapperPIC - A wrapper node for TargetGlobalAddress in
                     // PIC mode.
       WrapperJT,    // WrapperJT - A wrapper node for TargetJumpTable
-
+      // @LOCALMOD-START
+      WrapperJT2,   // like WrapperJT but without the UID
+      WrapperGOT,   // A Wrapper node for GOT addresses
+      EH_RETURN,    // For LowerEH_RETURN
+      // @LOCALMOD-END
       // Add pseudo op to model memcpy for struct byval.
       COPY_STRUCT_BYVAL,
-
       CALL,         // Function call.
       CALL_PRED,    // Function call that's predicable.
       CALL_NOLINK,  // Function call with branch not branch-and-link.
@@ -428,6 +431,16 @@ namespace llvm {
     SDValue LowerToTLSExecModels(GlobalAddressSDNode *GA,
                                  SelectionDAG &DAG,
                                  TLSModel::Model model) const;
+    // @LOCALMOD-START
+    SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClThreadStackPadding(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpAlign(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const;
+    // @LOCALMOD-END
+
     SDValue LowerGLOBAL_OFFSET_TABLE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBR_JT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;

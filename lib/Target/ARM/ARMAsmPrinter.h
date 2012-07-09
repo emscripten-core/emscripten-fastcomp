@@ -72,8 +72,18 @@ public:
   virtual void EmitInstruction(const MachineInstr *MI);
   bool runOnMachineFunction(MachineFunction &F);
 
-  virtual void EmitConstantPool() {} // we emit constant pools customly!
   virtual void EmitFunctionBodyEnd();
+
+  // @LOCALMOD-START
+  // usually this does nothing on ARM as constants pools
+  // are handled with custom code.
+  // For the sfi case we do not use the custom logic and fall back
+  // to the default implementation.
+  virtual void EmitConstantPool() {
+    if (FlagSfiDisableCP) AsmPrinter::EmitConstantPool();
+  }
+  // @LOCALMOD-END
+
   virtual void EmitFunctionEntryLabel();
   void EmitStartOfAsmFile(Module &M);
   void EmitEndOfAsmFile(Module &M);
@@ -81,6 +91,17 @@ public:
 
   // lowerOperand - Convert a MachineOperand into the equivalent MCOperand.
   bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
+  
+  // @LOCALMOD-START
+  /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
+  virtual bool UseReadOnlyJumpTables() const;
+  /// GetTargetBasicBlockAlign - Get the target alignment for basic blocks.
+  virtual unsigned GetTargetBasicBlockAlign() const;
+  /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
+  /// labels E.g., EH_LABEL.
+  /// TODO(sehr,robertm): remove this if the labeled block has address taken.
+  virtual unsigned GetTargetLabelAlign(const MachineInstr *MI) const;
+  // @LOCALMOD-END
 
 private:
   // Helpers for EmitStartOfAsmFile() and EmitEndOfAsmFile()

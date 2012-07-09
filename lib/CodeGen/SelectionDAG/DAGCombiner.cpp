@@ -8262,6 +8262,11 @@ SDValue DAGCombiner::SimplifySelectCC(DebugLoc DL, SDValue N0, SDValue N1,
   if (ConstantFPSDNode *TV = dyn_cast<ConstantFPSDNode>(N2))
     if (ConstantFPSDNode *FV = dyn_cast<ConstantFPSDNode>(N3)) {
       if (TLI.isTypeLegal(N2.getValueType()) &&
+          // @LOCALMOD-START
+          // when we combine two 8byte constants into a 16byte one
+          // we get constant pool entries which are too big
+          TLI.getTargetData()->getTypeAllocSize(FV->getConstantFPValue()->getType()) <= 4 &&
+          // @LOCALMOD-STOP
           (TLI.getOperationAction(ISD::ConstantFP, N2.getValueType()) !=
            TargetLowering::Legal) &&
           // If both constants have multiple uses, then we won't need to do an

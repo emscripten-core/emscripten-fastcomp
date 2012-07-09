@@ -92,6 +92,46 @@ static CallInst *ReplaceCallWith(const char *NewFn, CallInst *CI,
 #  define setjmp_undefined_for_msvc
 #endif
 
+// @LOCALMOD-BEGIN
+// Calls to these functions may materialize as part of a conversion
+// from an intrinsics, e.g. llvm.memset -> memset
+// So if these functions are available in bitcode form we need to:
+// * make sure they do not get discarded -- if there is a chance that
+//   a caller might materialize
+// * make sure they do not get specialized for a given callsite
+// Both problems are avoided by pretending there are unknown callers.
+// The function: IntrinsicLowering::AddPrototypes() below does just that.
+// TODO(robertm): elaborate some more
+static const char *IntrinsicNames[] = {
+  "abort",
+  "memcpy", "memset", "memmove",
+  "sqrtf", "sqrt", "sqrtl",
+  "sinf", "sin", "sinl",
+  "cosf", "cos", "cosl",
+  "powf", "pow", "powl",
+  "logf", "log", "logl",
+  "log2f", "log2", "log2l",
+  "log10f", "log10", "log10l",
+  "expf", "exp", "expl",
+  "exp2f", "exp2", "exp2l",
+  NULL
+};
+
+StringSet<> IntrinsicLowering::FuncNames;
+
+const StringSet<> &IntrinsicLowering::GetFuncNames() {
+  if (FuncNames.empty()) {
+    for (unsigned i=0; IntrinsicNames[i]; ++i)
+      FuncNames.insert(IntrinsicNames[i]);
+  }
+  return FuncNames;
+}
+
+bool IntrinsicLowering::IsCalledByIntrinsic(const StringRef &FuncName) {
+  return IntrinsicLowering::GetFuncNames().count(FuncName) > 0;
+}
+// @LOCALMOD-END
+
 void IntrinsicLowering::AddPrototypes(Module &M) {
   LLVMContext &Context = M.getContext();
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)

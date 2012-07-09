@@ -282,7 +282,7 @@ SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
     if (VT.getSizeInBits() / 8 > LS->getAlignment()) {
       assert(TLI.allowsUnalignedMemoryAccesses(VT) &&
              "Unaligned loads/stores not supported for this type.");
-      if (VT == MVT::f32)
+      if (VT == MVT::f32 && !Subtarget.isTargetNaCl()/*@LOCALMOD*/)
         return false;
     }
   }
@@ -346,7 +346,7 @@ SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
 
     // If an indexed floating point load/store can be emitted, return false.
     if (LS && (LS->getMemoryVT() == MVT::f32 || LS->getMemoryVT() == MVT::f64) &&
-        Subtarget.hasMips32r2Or64())
+        Subtarget.hasMips32r2Or64() && !Subtarget.isTargetNaCl()/*@LOCALMOD*/)
       return false;
   }
 

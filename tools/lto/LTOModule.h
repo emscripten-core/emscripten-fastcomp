@@ -98,6 +98,14 @@ public:
     _module->setTargetTriple(triple);
   }
 
+  // @LOCALMOD-BEGIN
+  lto_output_format        getOutputFormat();
+  const char*              getSOName();
+  const char*              getLibraryDep(uint32_t index);
+  uint32_t                 getNumLibraryDeps();
+  // @LOCALMOD-END
+
+
   /// getSymbolCount - Get the number of symbols
   uint32_t getSymbolCount() {
     return _symbols.size();

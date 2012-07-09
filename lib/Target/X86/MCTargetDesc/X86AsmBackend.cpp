@@ -9,6 +9,7 @@
 
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "MCTargetDesc/X86FixupKinds.h"
+#include "MCTargetDesc/X86MCNaCl.h" // @LOCALMOD
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCELFObjectWriter.h"
@@ -327,8 +328,10 @@ namespace {
 class ELFX86AsmBackend : public X86AsmBackend {
 public:
   uint8_t OSABI;
-  ELFX86AsmBackend(const Target &T, uint8_t _OSABI)
-    : X86AsmBackend(T), OSABI(_OSABI) {
+  Triple::OSType OSType; // @LOCALMOD: kept OSTYPE vs upstream. FIXME: remove.
+  ELFX86AsmBackend(const Target &T, uint8_t _OSABI,
+                   Triple::OSType _OSType)
+    : X86AsmBackend(T), OSABI(_OSABI), OSType(_OSType) {
     HasReliableSymbolDifference = true;
   }
 
@@ -336,12 +339,28 @@ public:
     const MCSectionELF &ES = static_cast<const MCSectionELF&>(Section);
     return ES.getFlags() & ELF::SHF_MERGE;
   }
+
+  // @LOCALMOD-BEGIN
+  // FIXME! NaCl should inherit from ELFX86AsmBackend!
+  unsigned getBundleSize() const {
+    return OSType == Triple::NativeClient ? 32 : 0;
+  }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
+    if (OSType == Triple::NativeClient) {
+      return CustomExpandInstNaClX86(Inst, Out);
+    }
+    return false;
+  }
+  // @LOCALMOD-END
+
 };
 
 class ELFX86_32AsmBackend : public ELFX86AsmBackend {
 public:
-  ELFX86_32AsmBackend(const Target &T, uint8_t OSABI)
-    : ELFX86AsmBackend(T, OSABI) {}
+  ELFX86_32AsmBackend(const Target &T, uint8_t OSABI,
+                      Triple::OSType OSType) // @LOCALMOD: kept OSType
+    : ELFX86AsmBackend(T, OSABI, OSType) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86ELFObjectWriter(OS, /*Is64Bit*/ false, OSABI);
@@ -350,8 +369,9 @@ public:
 
 class ELFX86_64AsmBackend : public ELFX86AsmBackend {
 public:
-  ELFX86_64AsmBackend(const Target &T, uint8_t OSABI)
-    : ELFX86AsmBackend(T, OSABI) {}
+  ELFX86_64AsmBackend(const Target &T, uint8_t OSABI,
+                      Triple::OSType OSType) // @LOCALMOD: kept OSType
+    : ELFX86AsmBackend(T, OSABI, OSType) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createX86ELFObjectWriter(OS, /*Is64Bit*/ true, OSABI);
@@ -449,7 +469,7 @@ MCAsmBackend *llvm::createX86_32AsmBackend(const Target &T, StringRef TT) {
     return new WindowsX86AsmBackend(T, false);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
-  return new ELFX86_32AsmBackend(T, OSABI);
+  return new ELFX86_32AsmBackend(T, OSABI, TheTriple.getOS());
 }
 
 MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T, StringRef TT) {
@@ -462,5 +482,5 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T, StringRef TT) {
     return new WindowsX86AsmBackend(T, true);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
-  return new ELFX86_64AsmBackend(T, OSABI);
+  return new ELFX86_64AsmBackend(T, OSABI, TheTriple.getOS());
 }

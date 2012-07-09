@@ -31,6 +31,9 @@ MipsSubtarget::MipsSubtarget(const std::string &TT, const std::string &CPU,
   IsSingleFloat(false), IsFP64bit(false), IsGP64bit(false), HasVFPU(false),
   IsLinux(true), HasSEInReg(false), HasCondMov(false), HasMulDivAdd(false),
   HasMinMax(false), HasSwap(false), HasBitCount(false), InMips16Mode(false)
+  // @LOCALMOD-START
+  , TargetTriple(TT)
+  // @LOCALMOD-END
 {
   std::string CPUName = CPU;
   if (CPUName.empty())

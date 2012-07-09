@@ -106,6 +106,18 @@ public:
     ZeroOrNegativeOneBooleanContent // All bits equal to bit 0.
   };
 
+  // @LOCALMOD-START
+  // This needs to be kept in sync with
+  // native_client/src/untrusted/nacl/pnaclintrin.h.
+  enum PnaclTargetArchitecture {
+    PnaclTargetArchitectureInvalid = 0,
+    PnaclTargetArchitectureX86_32,
+    PnaclTargetArchitectureX86_64,
+    PnaclTargetArchitectureARM_32,
+    PnaclTargetArchitectureARM_32_Thumb
+  };
+  // @LOCALMOD-END
+
   static ISD::NodeType getExtendForContent(BooleanContent Content) {
     switch (Content) {
     case UndefinedBooleanContent:

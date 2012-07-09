@@ -93,6 +93,12 @@ namespace llvm {
     /// default, this is equal to CurrentFnSym.
     MCSymbol *CurrentFnSymForSize;
 
+    /// @LOCALMOD-BEGIN
+    /// Is the bitcode module a plain object? This is false
+    /// for shared (pso) and executable (pexe) files.
+    bool IsPlainObject;
+    /// @LOCALMOD-END
+
   private:
     // GCMetadataPrinters - The garbage collection metadata printer table.
     void *GCMetadataPrinters;  // Really a DenseMap.
@@ -239,6 +245,18 @@ namespace llvm {
     // Targets can, or in the case of EmitInstruction, must implement these to
     // customize output.
 
+    // @LOCALMOD-START
+    /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
+    virtual bool UseReadOnlyJumpTables() const { return false; }
+    /// GetTargetBasicBlockAlign - the target alignment for basic blocks.
+    virtual unsigned GetTargetBasicBlockAlign() const { return 0; }
+    /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
+    /// labels E.g., EH_LABEL.
+    virtual unsigned GetTargetLabelAlign(const MachineInstr *MI) const {
+      return 0;
+    }
+    // @LOCALMOD-END
+
     /// EmitStartOfAsmFile - This virtual method can be overridden by targets
     /// that want to emit something at the start of their file.
     virtual void EmitStartOfAsmFile(Module &) {}
@@ -253,7 +271,12 @@ namespace llvm {
 
     /// EmitFunctionBodyEnd - Targets can override this to emit stuff after
     /// the last basic block in the function.
-    virtual void EmitFunctionBodyEnd() {}
+    virtual void EmitFunctionBodyEnd() {
+      // @LOCALMOD-START
+      unsigned NextFunctionAlignment = GetTargetBasicBlockAlign();
+      if (NextFunctionAlignment) EmitAlignment(NextFunctionAlignment);
+      // @LOCALMOD-END
+    }
 
     /// EmitInstruction - Targets should implement this to emit instructions.
     virtual void EmitInstruction(const MachineInstr *) {

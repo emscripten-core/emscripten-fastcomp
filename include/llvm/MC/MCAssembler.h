@@ -52,8 +52,17 @@ public:
     FT_Org,
     FT_Dwarf,
     FT_DwarfFrame,
-    FT_LEB
+    FT_LEB,
+    FT_Tiny           // @LOCALMOD
   };
+
+  // @LOCALMOD-BEGIN
+  enum BundleAlignType {
+    BundleAlignNone  = 0,
+    BundleAlignStart = 1,
+    BundleAlignEnd   = 2
+  };
+  // @LOCALMOD-END
 
 private:
   FragmentType Kind;
@@ -78,6 +87,16 @@ private:
   /// LayoutOrder - The layout order of this fragment.
   unsigned LayoutOrder;
 
+  // @LOCALMOD-BEGIN
+  BundleAlignType BundleAlign : 2;
+  bool BundleGroupStart       : 1;
+  bool BundleGroupEnd         : 1;
+
+  /// BundlePadding - The computed padding for this fragment. This is ~0
+  /// until initialized.
+  uint8_t BundlePadding;
+  // @LOCALMOD-END
+
   /// @}
 
 protected:
@@ -99,14 +118,46 @@ public:
   unsigned getLayoutOrder() const { return LayoutOrder; }
   void setLayoutOrder(unsigned Value) { LayoutOrder = Value; }
 
+  // @LOCALMOD-BEGIN
+  bool isBundleGroupStart() const { return BundleGroupStart; }
+  void setBundleGroupStart(bool Value) { BundleGroupStart = Value; }
+
+  bool isBundleGroupEnd() const { return BundleGroupEnd; }
+  void setBundleGroupEnd(bool Value) { BundleGroupEnd = Value; }
+
+  BundleAlignType getBundleAlign() const { return BundleAlign; }
+  void setBundleAlign(BundleAlignType Value) { BundleAlign = Value; }
+  // @LOCALMOD-END
+
   static bool classof(const MCFragment *O) { return true; }
 
   void dump();
 };
 
+// @LOCALMOD-BEGIN
+// This is just a tiny data fragment with no fixups.
+// (To help with memory usage)
+class MCTinyFragment : public MCFragment {
+ private:
+  SmallString<6> Contents;
+
+ public:
+
+  MCTinyFragment(MCSectionData *SD = 0) : MCFragment(FT_Tiny, SD) {}
+
+  SmallString<6> &getContents() { return Contents; }
+  const SmallString<6> &getContents() const { return Contents; }
+
+  static bool classof(const MCFragment *F) {
+    return F->getKind() == MCFragment::FT_Tiny;
+  }
+  static bool classof(const MCTinyFragment *) { return true; }
+};
+// @LOCALMOD-END
+
 class MCDataFragment : public MCFragment {
   virtual void anchor();
-  SmallString<32> Contents;
+  SmallString<6> Contents;  // @LOCALMOD: Memory efficiency
 
   /// Fixups - The list of fixups in this fragment.
   std::vector<MCFixup> Fixups;
@@ -121,8 +172,8 @@ public:
   /// @name Accessors
   /// @{
 
-  SmallString<32> &getContents() { return Contents; }
-  const SmallString<32> &getContents() const { return Contents; }
+  SmallString<6> &getContents() { return Contents; }  // @LOCALMOD
+  const SmallString<6> &getContents() const { return Contents; } // @LOCALMOD
 
   /// @}
   /// @name Fixup Access
@@ -474,6 +525,21 @@ private:
   /// it.
   unsigned HasInstructions : 1;
 
+  // @LOCALMOD-BEGIN
+  bool BundlingEnabled;
+  bool BundleLocked;
+
+  // Because ".bundle_lock" occurs before the fragment it applies to exists,
+  // we need to keep this flag around so we know to mark the next fragment
+  // as the start of a bundle group. A similar flag is not necessary for the
+  // last fragment, because when a .bundle_unlock occurs, the last fragment
+  // in the group already exists and can be marked directly.
+  bool BundleGroupFirstFrag;
+
+  typedef MCFragment::BundleAlignType BundleAlignType;
+  BundleAlignType BundleAlignNext;
+  // @LOCALMOD-END
+
   /// @}
 
 public:
@@ -494,6 +560,20 @@ public:
 
   unsigned getLayoutOrder() const { return LayoutOrder; }
   void setLayoutOrder(unsigned Value) { LayoutOrder = Value; }
+
+  // @LOCALMOD-BEGIN
+  bool isBundlingEnabled() const { return BundlingEnabled; }
+
+  bool isBundleLocked() const { return BundleLocked; }
+  void setBundleLocked(bool Value) { BundleLocked = Value; }
+
+  bool isBundleGroupFirstFrag() const { return BundleGroupFirstFrag; }
+  void setBundleGroupFirstFrag(bool Value) { BundleGroupFirstFrag = Value; }
+
+
+  BundleAlignType getBundleAlignNext() const { return BundleAlignNext; }
+  void setBundleAlignNext(BundleAlignType Value) { BundleAlignNext = Value; }
+  // @LOCALMOD-END
 
   /// @name Fragment Access
   /// @{
@@ -753,6 +833,13 @@ private:
   bool fragmentNeedsRelaxation(const MCInstFragment *IF,
                                const MCAsmLayout &Layout) const;
 
+  // @LOCALMOD-BEGIN
+  uint8_t ComputeBundlePadding(const MCAsmLayout &Layout,
+                               MCFragment *F,
+                               uint64_t FragmentOffset) const;
+  // @LOCALMOD-END
+
+
   /// layoutOnce - Perform one layout iteration and return true if any offsets
   /// were adjusted.
   bool layoutOnce(MCAsmLayout &Layout);
@@ -818,6 +905,12 @@ public:
   MCContext &getContext() const { return Context; }
 
   MCAsmBackend &getBackend() const { return Backend; }
+
+  // @LOCALMOD-BEGIN
+  uint64_t getBundleSize() const;
+  uint64_t getBundleMask() const;
+  // @LOCALMOD-END
+
 
   MCCodeEmitter &getEmitter() const { return Emitter; }
 

@@ -443,6 +443,37 @@ def int_convertus  : Intrinsic<[llvm_anyint_ty],
 def int_convertuu  : Intrinsic<[llvm_anyint_ty],
                                [llvm_anyint_ty, llvm_i32_ty, llvm_i32_ty]>;
 
+// @LOCALMOD-BEGIN
+//===----------------------- Native Client Intrinsics ---------------------===//
+// TODO(sehr): conditionalize this on IsNaCl64 | IsNaCl32 | IsNaClArm.
+// The expansions of these are in lib/Target/X86/X86InstrNacl.{td, cpp} and
+// lib/Target/ARM/ARMInstrInfo.td.
+def int_nacl_setjmp : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty, llvm_ptr_ty]>,
+                      GCCBuiltin<"__builtin_nacl_setjmp">;
+def int_nacl_longjmp : Intrinsic<[],  [llvm_ptr_ty, llvm_i32_ty]>,
+                       GCCBuiltin<"__builtin_nacl_longjmp">;
+
+// The following intrinsics provide target-specific implementations of
+// the interface in native_client/src/untrusted/nacl/tls_params.h.
+// The intrinsic names are basically the functions there without the
+// leading underscores.
+def int_nacl_tp_alignment : Intrinsic<[llvm_i32_ty], []>,
+                            GCCBuiltin<"__builtin_nacl_tp_alignment">;
+def int_nacl_tp_tls_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
+                             GCCBuiltin<"__builtin_nacl_tp_tls_offset">;
+def int_nacl_tp_tdb_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
+                             GCCBuiltin<"__builtin_nacl_tp_tdb_offset">;
+def int_nacl_thread_stack_padding :
+        Intrinsic<[llvm_i32_ty], []>,
+        GCCBuiltin<"__builtin_nacl_thread_stack_padding">;
+
+// The following intrinsic provides a target-specific constant value to
+// indicate the target platform compiled to.  The enum values are enumerated
+// pnaclintrin.h.
+def int_nacl_target_arch : Intrinsic<[llvm_i32_ty], []>,
+                            GCCBuiltin<"__builtin_nacl_target_arch">;
+// @LOCALMOD-END
+
 //===----------------------------------------------------------------------===//
 // Target-specific intrinsics
 //===----------------------------------------------------------------------===//

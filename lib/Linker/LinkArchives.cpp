@@ -16,10 +16,24 @@
 #include "llvm/Module.h"
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/Bitcode/Archive.h"
+
+#include "llvm/Support/CommandLine.h" // @LOCALMOD
+
 #include <memory>
 #include <set>
 using namespace llvm;
 
+// @LOCALMOD-START
+// NOTE: this has a similar effect as
+//        tools/llvm/llvm-preserve.ll
+// which in turn is similar to the GNUS's attribute((used))
+// TODO(robertm): This is a little hackish for now
+static cl::list<std::string>
+UndefList("referenced-list", cl::value_desc("list"),
+          cl::desc("A list of symbols assumed to be referenced externally"),
+          cl::CommaSeparated);
+// @LOCALMOD-END
+  
 /// GetAllUndefinedSymbols - calculates the set of undefined symbols that still
 /// exist in an LLVM module. This is a bit tricky because there may be two
 /// symbols with the same name but different LLVM types that will be resolved to
@@ -36,7 +50,10 @@ static void
 GetAllUndefinedSymbols(Module *M, std::set<std::string> &UndefinedSymbols) {
   std::set<std::string> DefinedSymbols;
   UndefinedSymbols.clear();
-
+  // @LOCALMOD-START
+  UndefinedSymbols.insert(UndefList.begin(), UndefList.end());
+  // @LOCALMOD-END
+  
   // If the program doesn't define a main, try pulling one in from a .a file.
   // This is needed for programs where the main function is defined in an
   // archive, such f2c'd programs.

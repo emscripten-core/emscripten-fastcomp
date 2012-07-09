@@ -24,6 +24,7 @@ using namespace llvm;
 
 MCAsmInfo::MCAsmInfo() {
   PointerSize = 4;
+  StackSlotSize = 4; // @LOCALMOD
   IsLittleEndian = true;
   StackGrowsUp = false;
   HasSubsectionsViaSymbols = false;

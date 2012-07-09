@@ -231,7 +231,7 @@ error_code MemoryBuffer::getFile(const char *Filename,
 static bool shouldUseMmap(int FD,
                           size_t FileSize,
                           size_t MapSize,
-                          off_t Offset,
+                          int64_t Offset,
                           bool RequiresNullTerminator,
                           int PageSize) {
   // We don't use mmap for small files because this can severely fragment our
@@ -243,6 +243,10 @@ static bool shouldUseMmap(int FD,
     return true;
 
 
+// LLVM uses mmap to read the file contents. This disallows use of the
+// wrapper syscalls defined in tools/llc/nacl_file.c. Thus, when NACL_SRPC
+// is specified, code sequence execising the read syscall below is used.
+#if !defined(NACL_SRPC)
   // If we don't know the file size, use fstat to find out.  fstat on an open
   // file descriptor is cheaper than stat on a random path.
   // FIXME: this chunk of code is duplicated, but it avoids a fstat when
@@ -255,6 +259,9 @@ static bool shouldUseMmap(int FD,
     }
     FileSize = FileInfo.st_size;
   }
+#else
+  assert(FileSize != -1 && "invalid file size!");
+#endif
 
   // If we need a null terminator and the end of the map is inside the file,
   // we cannot use mmap.
@@ -282,6 +289,7 @@ error_code MemoryBuffer::getOpenFile(int FD, const char *Filename,
   if (MapSize == uint64_t(-1)) {
     // If we don't know the file size, use fstat to find out.  fstat on an open
     // file descriptor is cheaper than stat on a random path.
+#if !defined(NACL_SRPC)
     if (FileSize == uint64_t(-1)) {
       struct stat FileInfo;
       // TODO: This should use fstat64 when available.
@@ -290,13 +298,16 @@ error_code MemoryBuffer::getOpenFile(int FD, const char *Filename,
       }
       FileSize = FileInfo.st_size;
     }
+#else
+    assert(FileSize != -1 && "invalid file size!");
+#endif
     MapSize = FileSize;
   }
 
   if (shouldUseMmap(FD, FileSize, MapSize, Offset, RequiresNullTerminator,
                     PageSize)) {
-    off_t RealMapOffset = Offset & ~(PageSize - 1);
-    off_t Delta = Offset - RealMapOffset;
+    int64_t RealMapOffset = Offset & ~(PageSize - 1);
+    int64_t Delta = Offset - RealMapOffset;
     size_t RealMapSize = MapSize + Delta;
 
     if (const char *Pages = sys::Path::MapInFilePages(FD,

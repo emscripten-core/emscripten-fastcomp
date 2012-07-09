@@ -277,25 +277,26 @@ let Predicates = [NotN64, NotMips64, HasStandardEncoding] in {
 }
 
 // Indexed loads and stores.
-let Predicates = [HasMips32r2Or64, HasStandardEncoding] in {
+let Predicates = [HasMips32r2Or64, NotNaCl/*@LOCALMOD*/] in {
   def LWXC1 : FPIdxLoad<0x0, "lwxc1", FGR32, CPURegs, load_a>;
   def LUXC1 : FPIdxLoad<0x5, "luxc1", FGR32, CPURegs, load_u>;
   def SWXC1 : FPIdxStore<0x8, "swxc1", FGR32, CPURegs, store_a>;
   def SUXC1 : FPIdxStore<0xd, "suxc1", FGR32, CPURegs, store_u>;
 }
 
-let Predicates = [HasMips32r2, NotMips64, HasStandardEncoding] in {
+let Predicates = [HasMips32r2, NotMips64, NotNaCl/*@LOCALMOD*/] in {
   def LDXC1 : FPIdxLoad<0x1, "ldxc1", AFGR64, CPURegs, load_a>;
   def SDXC1 : FPIdxStore<0x9, "sdxc1", AFGR64, CPURegs, store_a>;
 }
 
-let Predicates = [HasMips64, NotN64, HasStandardEncoding], DecoderNamespace="Mips64" in {
+let Predicates = [HasMips64, NotN64, NotNaCl/*@LOCALMOD*/],
+    DecoderNamespace="Mips64" in {
   def LDXC164 : FPIdxLoad<0x1, "ldxc1", FGR64, CPURegs, load_a>;
   def SDXC164 : FPIdxStore<0x9, "sdxc1", FGR64, CPURegs, store_a>;
 }
 
 // n64
-let Predicates = [IsN64, HasStandardEncoding], isCodeGenOnly=1 in {
+let Predicates = [IsN64, NotNaCl/*@LOCALMOD*/], isCodeGenOnly=1 in {
   def LWXC1_P8   : FPIdxLoad<0x0, "lwxc1", FGR32, CPU64Regs, load_a>;
   def LUXC1_P8   : FPIdxLoad<0x5, "luxc1", FGR32, CPU64Regs, load_u>;
   def LDXC164_P8 : FPIdxLoad<0x1, "ldxc1", FGR64, CPU64Regs, load_a>;
@@ -459,13 +460,13 @@ let Predicates = [IsFP64bit, HasStandardEncoding] in {
 }
 
 // Patterns for unaligned floating point loads and stores.
-let Predicates = [HasMips32r2Or64, NotN64, HasStandardEncoding] in {
+let Predicates = [HasMips32r2Or64, NotN64, NotNaCl/*@LOCALMOD*/] in {
   def : Pat<(f32 (load_u CPURegs:$addr)), (LUXC1 CPURegs:$addr, ZERO)>;
   def : Pat<(store_u FGR32:$src, CPURegs:$addr),
             (SUXC1 FGR32:$src, CPURegs:$addr, ZERO)>;
 }
 
-let Predicates = [IsN64, HasStandardEncoding] in {
+let Predicates = [IsN64, NotNaCl/*@LOCALMOD*/] in {
   def : Pat<(f32 (load_u CPU64Regs:$addr)), (LUXC1_P8 CPU64Regs:$addr, ZERO_64)>;
   def : Pat<(store_u FGR32:$src, CPU64Regs:$addr),
             (SUXC1_P8 FGR32:$src, CPU64Regs:$addr, ZERO_64)>;

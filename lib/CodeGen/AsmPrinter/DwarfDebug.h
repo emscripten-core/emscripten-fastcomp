@@ -515,7 +515,16 @@ public:
   /// GetOrCreateSourceID - Look up the source id with the given directory and
   /// source file names. If none currently exists, create a new id and insert it
   /// in the SourceIds map.
-  unsigned GetOrCreateSourceID(StringRef DirName, StringRef FullName);
+  unsigned GetOrCreateSourceID(StringRef DirName, StringRef FullName,
+                               StringRef Extra = ""); // @LOCALMOD for Extra
+
+  // @LOCALMOD-BEGIN - Create an ID for CompileUnits, taking extra care
+  // in the case that we have multiple compile units coming from the
+  // same source file and directory.
+  unsigned GetOrCreateCompileUnitID(StringRef FileName, StringRef DirName,
+                                    const MDNode *N);
+  // @LOCALMOD-END
+
 
   /// createSubprogramDIE - Create new DIE using SP.
   DIE *createSubprogramDIE(DISubprogram SP);

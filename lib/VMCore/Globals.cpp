@@ -45,6 +45,116 @@ void GlobalValue::destroyConstant() {
   llvm_unreachable("You can't GV->destroyConstant()!");
 }
 
+// @LOCALMOD-BEGIN
+
+// Extract the version information from GV.
+static void ExtractVersion(const GlobalValue *GV,
+                           StringRef *Name,
+                           StringRef *Ver,
+                           bool *IsDefault) {
+  // The version information is stored in the GlobalValue's name, e.g.:
+  //
+  //     GV Name      Name  Ver  IsDefault
+  //    ------------------------------------
+  //     foo@@V1 -->  foo   V1     true
+  //     bar@V2  -->  bar   V2     false
+  //     baz     -->  baz          false
+
+  StringRef GVName = GV->getName();
+  size_t atpos = GVName.find("@");
+  if (atpos == StringRef::npos) {
+    *Name = GVName;
+    *Ver = "";
+    *IsDefault = false;
+    return;
+  }
+  *Name = GVName.substr(0, atpos);
+  ++atpos;
+  if (atpos < GVName.size() && GVName[atpos] == '@') {
+    *IsDefault = true;
+    ++atpos;
+  } else {
+    *IsDefault = false;
+  }
+  *Ver = GVName.substr(atpos);
+}
+
+// Set the version information on GV.
+static void SetVersion(Module *M,
+                       GlobalValue *GV,
+                       StringRef Ver,
+                       bool IsDefault) {
+  StringRef Name;
+  StringRef PrevVersion;
+  bool PrevIsDefault;
+  ExtractVersion(GV, &Name, &PrevVersion, &PrevIsDefault);
+
+  // If this symbol already has a version, make sure it matches.
+  if (!PrevVersion.empty()) {
+    if (!PrevVersion.equals(Ver) || PrevIsDefault != IsDefault) {
+      llvm_unreachable("Trying to override symbol version info!");
+    }
+    return;
+  }
+  // If there's no version to set, there's nothing to do.
+  if (Ver.empty())
+    return;
+
+  // Make sure the versioned symbol name doesn't already exist.
+  std::string NewName = Name.str() + (IsDefault ? "@@" : "@") + Ver.str();
+  if (M->getNamedValue(NewName)) {
+    // It may make sense to do this as long as one of the globals being
+    // merged is only a declaration. But since this situation seems to be
+    // a corner case, for now it is unimplemented.
+    llvm_unreachable("Merging unversioned global into "
+                     "existing versioned global is unimplemented");
+  }
+  GV->setName(NewName);
+}
+
+StringRef GlobalValue::getUnversionedName() const {
+  StringRef Name;
+  StringRef Ver;
+  bool IsDefaultVersion;
+  ExtractVersion(this, &Name, &Ver, &IsDefaultVersion);
+  return Name;
+}
+
+StringRef GlobalValue::getVersion() const {
+  StringRef Name;
+  StringRef Ver;
+  bool IsDefaultVersion;
+  ExtractVersion(this, &Name, &Ver, &IsDefaultVersion);
+  return Ver;
+}
+
+bool GlobalValue::isDefaultVersion() const {
+  StringRef Name;
+  StringRef Ver;
+  bool IsDefaultVersion;
+  ExtractVersion(this, &Name, &Ver, &IsDefaultVersion);
+  // It is an error to call this function on an unversioned symbol.
+  assert(!Ver.empty());
+  return IsDefaultVersion;
+}
+
+void GlobalValue::setVersionDef(StringRef Version, bool IsDefault) {
+  // This call only makes sense for definitions.
+  assert(!isDeclaration());
+  SetVersion(Parent, this, Version, IsDefault);
+}
+
+void GlobalValue::setNeeded(StringRef Version, StringRef DynFile) {
+  // This call makes sense on declarations or
+  // available-externally definitions.
+  // TODO(pdox): If this is a definition, should we turn it
+  //             into a declaration here?
+  assert(isDeclaration() || hasAvailableExternallyLinkage());
+  SetVersion(Parent, this, Version, false);
+  Parent->addNeededRecord(DynFile, this);
+}
+// @LOCALMOD-END
+
 /// copyAttributesFrom - copy all additional attributes (those not needed to
 /// create a GlobalValue) from the GlobalValue Src to this one.
 void GlobalValue::copyAttributesFrom(const GlobalValue *Src) {

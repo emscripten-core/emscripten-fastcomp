@@ -162,7 +162,8 @@ MachineBasicBlock::SkipPHIsAndLabels(MachineBasicBlock::iterator I) {
 
 MachineBasicBlock::iterator MachineBasicBlock::getFirstTerminator() {
   iterator B = begin(), E = end(), I = E;
-  while (I != B && ((--I)->isTerminator() || I->isDebugValue()))
+  while (I != B && ((--I)->isTerminator() || I->isDebugValue()
+      || I->getOpcode() == TargetOpcode::BUNDLE_UNLOCK)) // @LOCALMOD
     ; /*noop */
   while (I != E && !I->isTerminator())
     ++I;

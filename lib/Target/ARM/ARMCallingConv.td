@@ -86,6 +86,10 @@ def RetFastCC_ARM_APCS : CallingConv<[
 
 def CC_ARM_AAPCS_Common : CallingConv<[
 
+  // @LOCALMOD-BEGIN (PR11018)
+  CCIfByVal<CCPassByVal<4, 4>>,
+  // @LOCALMOD-END
+
   CCIfType<[i1, i8, i16], CCPromoteToType<i32>>,
 
   // i64/f64 is passed in even pairs of GPRs
@@ -171,3 +175,9 @@ def CSR_AAPCS : CalleeSavedRegs<(add LR, R11, R10, R9, R8, R7, R6, R5, R4,
 // iOS ABI deviates from ARM standard ABI. R9 is not a callee-saved register.
 // Also save R7-R4 first to match the stack frame fixed spill areas.
 def CSR_iOS : CalleeSavedRegs<(add LR, R7, R6, R5, R4, (sub CSR_AAPCS, R9))>;
+
+// @LOCALMOD-START
+// NaCl does not save R9, but otherwise uses the same order as AAPCS
+def CSR_NaCl : CalleeSavedRegs<(add LR, R11, R10, R8, R7, R6, R5, R4,
+                                     (sequence "D%u", 15, 8))>;
+// @LOCALMOD-END

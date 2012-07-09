@@ -71,8 +71,18 @@ X86_64MCAsmInfoDarwin::X86_64MCAsmInfoDarwin(const Triple &Triple)
 void X86ELFMCAsmInfo::anchor() { }
 
 X86ELFMCAsmInfo::X86ELFMCAsmInfo(const Triple &T) {
-  if (T.getArch() == Triple::x86_64)
-    PointerSize = 8;
+
+  // @LOCALMOD-BEGIN
+  if (T.getArch() == Triple::x86_64) {
+    if (T.getOS() == Triple::NativeClient) {
+      PointerSize = 4;
+      StackSlotSize = 8;
+    } else {
+      PointerSize = 8;
+      StackSlotSize = 8;
+    }
+  }
+  // @LOCALMOD-END
 
   AssemblerDialect = AsmWriterFlavor;
 

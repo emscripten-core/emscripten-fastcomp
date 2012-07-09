@@ -3686,6 +3686,11 @@ else
     llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
     llvm_cv_os_type="GNU"
     llvm_cv_platform_type="Unix" ;;
+  *-*-nacl*)
+    llvm_cv_link_all_option="-Wl,--whole-archive"
+    llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
+    llvm_cv_os_type="NativeClient"
+    llvm_cv_platform_type="Unix" ;;
   *-*-solaris*)
     llvm_cv_link_all_option="-Wl,-z,allextract"
     llvm_cv_no_link_all_option="-Wl,-z,defaultextract"

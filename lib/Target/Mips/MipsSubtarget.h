@@ -91,6 +91,8 @@ protected:
 
   InstrItineraryData InstrItins;
 
+  Triple TargetTriple;  // @LOCALMOD
+
 public:
   virtual bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
                                      AntiDepBreakMode& Mode,
@@ -139,6 +141,13 @@ public:
   bool hasMinMax()    const { return HasMinMax; }
   bool hasSwap()      const { return HasSwap; }
   bool hasBitCount()  const { return HasBitCount; }
+
+  // @LOCALMOD-BEGIN
+  bool isTargetNaCl() const {
+    return TargetTriple.getOS() == Triple::NativeClient;
+  }
+  // @LOCALMOD-END
+
 };
 } // End llvm namespace
 

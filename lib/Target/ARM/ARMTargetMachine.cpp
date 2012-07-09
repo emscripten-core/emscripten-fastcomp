@@ -28,6 +28,13 @@ EnableGlobalMerge("global-merge", cl::Hidden,
                   cl::desc("Enable global merge pass"),
                   cl::init(true));
 
+// @LOCALMOD-START
+namespace llvm {
+cl::opt<bool> FlagSfiDisableCP("sfi-disable-cp",
+                               cl::desc("disable arm constant island pools"));
+}
+// @LOCALMOD-END
+
 extern "C" void LLVMInitializeARMTarget() {
   // Register the target.
   RegisterTargetMachine<ARMTargetMachine> X(TheARMTarget);
@@ -189,8 +196,24 @@ bool ARMPassConfig::addPreEmitPass() {
     addPass(UnpackMachineBundlesID);
   }
 
+  // @LOCALMOD-START
+  // Note with FlagSfiDisableCP we effectively disable the
+  // ARMConstantIslandPass and rely on movt/movw to eliminate the need
+  // for constant islands
+  if (FlagSfiDisableCP) {
+    assert(getARMSubtarget().useMovt());
+  }
+  // @LOCALMOD-END
+
   PM->add(createARMConstantIslandPass());
 
+  // @LOCALMOD-START
+  // This pass does all the heavy sfi lifting.
+  if (getARMSubtarget().isTargetNaCl()) {
+    PM->add(createARMNaClRewritePass());
+  }
+  // @LOCALMOD-END
+ 
   return true;
 }
 

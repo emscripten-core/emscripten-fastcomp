@@ -186,6 +186,22 @@ public:
       : Behavior(B), Key(K), Val(V) {}
   };
 
+  /// @LOCALMOD-BEGIN
+  /// An enumeration for describing the module format
+  enum OutputFormat {
+    ObjectOutputFormat,
+    SharedOutputFormat,
+    ExecutableOutputFormat
+  };
+
+  /// A structure describing the symbols needed from an external file.
+  struct NeededRecord {
+    std::string              DynFile; // Source file (soname)
+    std::vector<std::string> Symbols; // List of symbol names
+                                      // (with version suffix)
+  };
+  /// @LOCALMOD-END
+  
 /// @}
 /// @name Member Variables
 /// @{
@@ -203,6 +219,9 @@ private:
   std::string ModuleID;           ///< Human readable identifier for the module
   std::string TargetTriple;       ///< Platform target triple Module compiled on
   std::string DataLayout;         ///< Target data description
+  // @LOCALMOD-BEGIN
+  mutable std::string ModuleSOName; ///< Module SOName (for shared format)
+  // @LOCALMOD-END
   void *NamedMDSymTab;            ///< NamedMDNode names.
 
   friend class Constant;
@@ -234,6 +253,24 @@ public:
   /// @returns a string containing the target triple.
   const std::string &getTargetTriple() const { return TargetTriple; }
 
+  // @LOCALMOD-BEGIN
+
+  /// Get the module format
+  /// @returns the module format
+  OutputFormat getOutputFormat() const;
+
+  /// Get the SOName of this module.
+  /// @returns a string containing the module soname
+  const std::string &getSOName() const;
+
+  /// Record the needed information for a global value.
+  /// This creates a needed record for DynFile, if one does not already exist.
+  void addNeededRecord(StringRef DynFile, GlobalValue *GV);
+
+  // Fill NeededOut with all needed records present in the module.
+  void getNeededRecords(std::vector<NeededRecord> *NeededOut) const;
+  // @LOCALMOD-END
+
   /// Get the target endian information.
   /// @returns Endianess - an enumeration for the endianess of the target
   Endianness getEndianness() const;
@@ -262,6 +299,18 @@ public:
 
   /// Set the target triple.
   void setTargetTriple(StringRef T) { TargetTriple = T; }
+
+  /// @LOCALMOD-BEGIN
+
+  /// Set the module format
+  void setOutputFormat(OutputFormat F);
+
+  /// For modules with output format "shared", set the output soname.
+  void setSOName(StringRef Name);
+
+  /// Wrap a global symbol.
+  void wrapSymbol(StringRef SymName);
+  /// @LOCALMOD-END
 
   /// Set the module-scope inline assembly blocks.
   void setModuleInlineAsm(StringRef Asm) {
@@ -589,6 +638,11 @@ public:
   /// Dump the module to stderr (for debugging).
   void dump() const;
   
+  /// @LOCALMOD-BEGIN
+  /// Print the PNaCl metadata for the module.
+  void dumpMeta(raw_ostream &OS) const;
+  /// @LOCALMOD-END
+
   /// This function causes all the subinstructions to "let go" of all references
   /// that they are maintaining.  This allows one to 'delete' a whole class at
   /// a time, even though there may be circular references... first all

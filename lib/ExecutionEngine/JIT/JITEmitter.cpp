@@ -30,6 +30,7 @@
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/JITMemoryManager.h"
+#include "llvm/ExecutionEngine/NaClJITMemoryManager.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetJITInfo.h"
@@ -52,12 +53,15 @@
 #ifndef NDEBUG
 #include <iomanip>
 #endif
+#ifdef __native_client__
+#include <nacl/nacl_dyncode.h>
+#endif
 using namespace llvm;
 
 STATISTIC(NumBytes, "Number of bytes of machine code compiled");
 STATISTIC(NumRelos, "Number of relocations applied");
 STATISTIC(NumRetries, "Number of retries with more memory");
-
+STATISTIC(NumNopBytes, "Number of bytes of NOPs emitted");
 
 // A declaration may stop being a declaration once it's fully read from bitcode.
 // This function returns true if F is fully read and is still a declaration.
@@ -276,8 +280,6 @@ namespace {
   /// JITEmitter - The JIT implementation of the MachineCodeEmitter, which is
   /// used to output functions to memory for execution.
   class JITEmitter : public JITCodeEmitter {
-    JITMemoryManager *MemMgr;
-
     // When outputting a function stub in the context of some other function, we
     // save BufferBegin/BufferEnd/CurBufferPtr here.
     uint8_t *SavedBufferBegin, *SavedBufferEnd, *SavedCurBufferPtr;
@@ -287,11 +289,13 @@ namespace {
     // ask the memory manager for at least this much space.  When we
     // successfully emit the function, we reset this back to zero.
     uintptr_t SizeEstimate;
-
+protected: //TODO:(dschuff): fix/move this once we do validation and are sure
+           // which functions/data we need in NaClJITEmitter. also add LOCALMOD
+    JITMemoryManager *MemMgr;
     /// Relocations - These are the relocations that the function needs, as
     /// emitted.
     std::vector<MachineRelocation> Relocations;
-
+private:
     /// MBBLocations - This vector is a mapping from MBB ID's to their address.
     /// It is filled in by the StartMachineBasicBlock callback and queried by
     /// the getMachineBasicBlockAddress callback.
@@ -375,7 +379,7 @@ namespace {
         DE.reset(new JITDwarfEmitter(jit));
       }
     }
-    ~JITEmitter() {
+    virtual ~JITEmitter() { // @LOCALMOD
       delete MemMgr;
     }
 
@@ -393,10 +397,10 @@ namespace {
     void initJumpTableInfo(MachineJumpTableInfo *MJTI);
     void emitJumpTableInfo(MachineJumpTableInfo *MJTI);
 
-    void startGVStub(const GlobalValue* GV,
+    virtual void startGVStub(const GlobalValue* GV,
                      unsigned StubSize, unsigned Alignment = 1);
-    void startGVStub(void *Buffer, unsigned StubSize);
-    void finishGVStub();
+    virtual void startGVStub(void *Buffer, unsigned StubSize);
+    virtual void finishGVStub();
     virtual void *allocIndirectGV(const GlobalValue *GV,
                                   const uint8_t *Buffer, size_t Size,
                                   unsigned Alignment);
@@ -468,6 +472,360 @@ namespace {
                              bool MayNeedFarStub);
     void *getPointerToGVIndirectSym(GlobalValue *V, void *Reference);
   };
+
+  // @LOCALMOD-START
+  class NaClJITEmitter : public JITEmitter {
+    /* There are two Nacl-specific requirements that must be dealt with: the
+     * first is that the data and code spaces are strictly separated, and code
+     * must be copied (by the service runtime/validator)to its destination
+     * after emission and relocation have finished.
+     * The second is bundle alignment: neither instructions nor multi-
+     * instruction pseudoinstruction groups may cross bundle boundaries.
+     *
+     * Requirement 1 is dealt with jointly by NaClJITMemoryManager  and
+     * and NaClJITEmitter. NaClJITMemoryManager separates metadata from
+     * code and returns pointers in the proper space
+     * for code (startFunctionBody, allocateStub) and data (allocateSpace,
+     * startExceptionTable, etc). NaClJITEmitter emits code into a separate
+     * memory buffer (EmissionBuffer). After startFunction allocates the
+     * function's memory, NaClJITEmitter's startFunction points BufferBegin,
+     * CurBufferPtr and BufferEnd at the EmissionBuffer (this avoids having to
+     * override all of the actual emission methods from JITCodeEmitter)
+     * JITEmitter already uses this trick for emitting a stub in the middle
+     * of emitting a function so it doesn't seem so terrible to do our own
+     *  similar swapping of the pointers.
+     *
+     * Requirement 2 is bundle alignment.
+     * X86CodeEmitter makes several calls into JITCodeEmitter per instruction,
+     * to add the various bytes, constants, etc. To implement bundle alignment,
+     * we add methods to start and end a bundle-locked group
+     * (the group can include just one instruction or several).
+     * The X86CodeEmitter will pass-through any such markers created by the
+     * rewriting passes (which surround multiple-instruction groups),
+     * and will also generate them surrounding each individual instruction
+     * (there should never be more than two-deep nesting).
+     * When beginBundleLock is called, the CurBufferPtr is marked. When
+     * endBundleLock is called, it checks that the group does not cross a
+     * bundle boundary; if it does, it inserts nop padding as necessary.
+     * If padding is added, the relocations must also be fixed up; this also
+     * happens in endBundleLock.
+     *
+     */
+  public:
+    NaClJITEmitter(JIT &jit, TargetMachine &TM) :
+        JITEmitter(jit, new NaClJITMemoryManager(), TM),
+        BundleLockSavedCurBufferPtr(NULL),
+        BundleNestCount(0),
+        AlignNextGroup(kNone),
+        GroupRelocationCount(0),
+        JITInfo(&jit.getJITInfo()),
+        kBundleSize(jit.getJITInfo().getBundleSize()),
+        kJumpMask(jit.getJITInfo().getJumpMask()) {
+      uintptr_t CodeSlabSize = MemMgr->GetDefaultCodeSlabSize();
+      EmissionBuffer = MemMgr->allocateSpace(CodeSlabSize, kBundleSize);
+      EmissionBufferSize = CodeSlabSize;
+      DEBUG(dbgs() << "EmissionBuffer " << EmissionBuffer << " size "
+                  << EmissionBufferSize << "\n");
+      StubEmissionBuffer = MemMgr->allocateSpace(kBundleSize, kBundleSize);
+      StubEmissionBufferSize = kBundleSize;
+      DEBUG(dbgs() << "StubEmissionBuffer " << StubEmissionBuffer << " size "
+                  << StubEmissionBufferSize << "\n");
+      JITInfo = &jit.getJITInfo();
+    }
+
+    virtual ~NaClJITEmitter() {
+    }
+
+    static inline bool classof(const JITEmitter*) { return true; }
+
+    virtual void startFunction(MachineFunction &F) {
+      JITEmitter::startFunction(F);
+      // Make sure the emission buffer is at least as big as the allocated
+      // function
+      if (BufferEnd - BufferBegin > (intptr_t)EmissionBufferSize) {
+        EmissionBufferSize = std::max((uintptr_t)(BufferEnd - BufferBegin),
+                                      2 * EmissionBufferSize);
+        // BumpPtrAllocator doesn't do anything when you call Deallocate. it
+        // will be freed on destruction
+        EmissionBuffer = MemMgr->allocateSpace(EmissionBufferSize,
+                                                   kBundleSize);
+        DEBUG(dbgs() << "new EmissionBuffer " << EmissionBuffer << " size "
+                    << EmissionBufferSize << "\n");
+      }
+      // We ensure that the emission buffer is bundle-aligned, and constant
+      // pool emission should not go into code space
+      assert((CurBufferPtr == BufferBegin ||
+          (int)F.getFunction()->getAlignment() > kBundleSize) &&
+             "Pre-function data should not be emitted into code space");
+      if (CurBufferPtr > BufferBegin) {
+        // If CurBufferPtr has been bumped forward for alignment, we need to
+        // pad the space with nops
+        memcpy(EmissionBuffer,
+               JITInfo->getNopSequence(CurBufferPtr - BufferBegin),
+               CurBufferPtr - BufferBegin);
+        NumNopBytes += CurBufferPtr - BufferBegin;
+      }
+      FunctionDestination = BufferBegin;
+      setBufferPtrs(EmissionBuffer);
+    }
+
+    virtual bool finishFunction(MachineFunction &F) {
+      uint8_t *end = CurBufferPtr;
+      emitAlignment(kBundleSize);
+      memcpy(end, JITInfo->getNopSequence(CurBufferPtr - end),
+                   CurBufferPtr - end);
+      NumNopBytes += CurBufferPtr - end;
+      JITInfo->setRelocationBuffer(BufferBegin);
+      assert(BufferBegin == EmissionBuffer);
+      int FunctionSize = CurBufferPtr - BufferBegin;
+      setBufferPtrs(FunctionDestination);
+      bool result = JITEmitter::finishFunction(F);
+      // If we ran out of memory, don't bother validating, we'll just retry
+      if (result) return result;
+
+      DEBUG({
+        dbgs() << "Validating " << FunctionDestination << "-" <<
+            FunctionDestination + FunctionSize << "\n";
+        if (sys::hasDisassembler()) {
+          dbgs() << "Disassembled code:\n";
+          dbgs() << sys::disassembleBuffer(EmissionBuffer,
+                                           FunctionSize,
+                                           (uintptr_t)FunctionDestination);
+        } else {
+          dbgs() << "Binary code:\n";
+          uint8_t* q = BufferBegin;
+          for (int i = 0; q < CurBufferPtr; q += 4, ++i) {
+            if (i == 4)
+              i = 0;
+            if (i == 0)
+              dbgs() << "JIT: " << (long)(q - BufferBegin) << ": ";
+            bool Done = false;
+            for (int j = 3; j >= 0; --j) {
+              if (q + j >= CurBufferPtr)
+                Done = true;
+              else
+                dbgs() << (unsigned short)q[j];
+            }
+            if (Done)
+              break;
+            dbgs() << ' ';
+            if (i == 3)
+              dbgs() << '\n';
+          }
+          dbgs()<< '\n';
+        }
+      });
+#ifdef __native_client__
+      if(nacl_dyncode_create(FunctionDestination, EmissionBuffer,
+                             FunctionSize) != 0) {
+        report_fatal_error("NaCl validation failed");
+      }
+#endif
+      return result;
+    }
+
+    virtual void startGVStub(const GlobalValue* GV,
+                             unsigned StubSize, unsigned Alignment = 1) {
+      JITEmitter::startGVStub(GV, StubSize, Alignment);
+      ReusedStub = false;
+      assert(StubSize <= StubEmissionBufferSize);
+      StubDestination = BufferBegin;
+      setBufferPtrs(StubEmissionBuffer);
+    }
+    virtual void startGVStub(void *Buffer, unsigned StubSize) {
+      JITEmitter::startGVStub(Buffer, StubSize);
+      ReusedStub = true;
+      assert(StubSize <= StubEmissionBufferSize);
+      StubDestination = BufferBegin;
+      setBufferPtrs(StubEmissionBuffer);
+    }
+    virtual void finishGVStub() {
+      assert(CurBufferPtr - BufferBegin == kBundleSize);
+
+      DEBUG(dbgs() << "Validating "<< BufferBegin<<"-"<<StubDestination<<"\n");
+      int ValidationResult;
+#ifdef __native_client__
+      if (!ReusedStub) {
+         ValidationResult = nacl_dyncode_create(StubDestination, BufferBegin,
+                                                CurBufferPtr - BufferBegin);
+      } else {
+        // This is not a thread-safe modification because it updates the whole
+        // stub rather than just a jump target. However it is only used by
+        // eager compilation to replace a stub which is not in use yet
+        // (it jumps to 0).
+        ValidationResult = nacl_dyncode_modify(StubDestination, BufferBegin,
+                                               CurBufferPtr - BufferBegin);
+      }
+#endif
+      if (ValidationResult) {
+        dbgs() << "NaCl stub validation failed:\n";
+        if (sys::hasDisassembler()) {
+          dbgs() << "Disassembled code:\n";
+          dbgs() << sys::disassembleBuffer(BufferBegin,
+                                           CurBufferPtr-BufferBegin,
+                                           (uintptr_t)StubDestination);
+        }
+        report_fatal_error("Stub validation failed");
+      }
+      setBufferPtrs(StubDestination);
+      JITEmitter::finishGVStub();
+    }
+
+    /// allocateSpace - Allocates *data* space, rather than space in the
+    // current code block.
+    virtual void *allocateSpace(uintptr_t Size, unsigned Alignment) {
+      return MemMgr->allocateSpace(Size, Alignment);
+    }
+
+    virtual void StartMachineBasicBlock(MachineBasicBlock *MBB) {
+      uint8_t *end = CurBufferPtr;
+      emitAlignment(MBB->getAlignment());
+      memcpy(end, JITInfo->getNopSequence(CurBufferPtr - end),
+             CurBufferPtr - end);
+      NumNopBytes += CurBufferPtr - end;
+      JITEmitter::StartMachineBasicBlock(MBB);
+    }
+
+    /// beginBundleLock - Save the current location of CurBufferPtr so we can
+    // tell if the block crosses a bundle boundary
+    virtual void beginBundleLock() {
+      assert(BundleNestCount <= 2 && "Bundle-locked groups can't be nested");
+      if (++BundleNestCount == 2) return;
+      DEBUG(dbgs() << "begin lock, buffer begin:end:cur "<<BufferBegin<<" "<<
+            BufferEnd<< " "<<CurBufferPtr << "\n");
+      BundleLockSavedCurBufferPtr = CurBufferPtr;
+      GroupRelocationCount = 0;
+    }
+
+    /// endBundleLock - Check if the group crosses a bundle boundary. If so
+    // (or if the group must be aligned to the end of a bundle), move the
+    // group and add appropriate padding
+    virtual void endBundleLock() {
+      assert(BundleNestCount > 0 && "mismatched bundle-lock start/end");
+      if (--BundleNestCount > 0) return;
+      DEBUG(dbgs() <<"end lock, buffer begin:end:cur:savd "<<BufferBegin<<" "<<
+            BufferEnd<< " "<<CurBufferPtr <<" "<<
+            BundleLockSavedCurBufferPtr<<"\n");
+
+      int GroupLen = CurBufferPtr - BundleLockSavedCurBufferPtr;
+      if (BufferEnd - CurBufferPtr <
+          GroupLen + kBundleSize) {
+        // Added padding can be no more than kBundleSize. Retry if there's any
+        // possibility of overflow
+        CurBufferPtr = BufferEnd;
+        AlignNextGroup = kNone;
+        return;
+      }
+      // Space left in the current bundle
+      int SpaceLeft = (((intptr_t)BundleLockSavedCurBufferPtr + kBundleSize)
+                       & kJumpMask) - (intptr_t)BundleLockSavedCurBufferPtr;
+      int TotalPadding = 0;
+      if (SpaceLeft < GroupLen || AlignNextGroup == kBegin) {
+        DEBUG(dbgs() << "space " << SpaceLeft <<" len "<<GroupLen<<"\n");
+        memmove(BundleLockSavedCurBufferPtr + SpaceLeft,
+                BundleLockSavedCurBufferPtr, GroupLen);
+        memcpy(BundleLockSavedCurBufferPtr, JITInfo->getNopSequence(SpaceLeft),
+               SpaceLeft);
+        NumNopBytes += SpaceLeft;
+        assert(CurBufferPtr == BundleLockSavedCurBufferPtr + GroupLen);
+        CurBufferPtr += SpaceLeft;
+        BundleLockSavedCurBufferPtr += SpaceLeft;
+        TotalPadding = SpaceLeft;
+        SpaceLeft = kBundleSize;
+      }
+
+      if (AlignNextGroup == kEnd) {
+        DEBUG(dbgs() << "alignend, space len "<<SpaceLeft<<" "<<GroupLen<<"\n");
+        int MoveDistance = SpaceLeft - GroupLen;
+        memmove(BundleLockSavedCurBufferPtr + MoveDistance,
+                BundleLockSavedCurBufferPtr, GroupLen);
+        memcpy(BundleLockSavedCurBufferPtr,
+               JITInfo->getNopSequence(MoveDistance), MoveDistance);
+        NumNopBytes += MoveDistance;
+        CurBufferPtr += MoveDistance;
+        TotalPadding += MoveDistance;
+      }
+
+      AlignNextGroup = kNone;
+
+      assert(CurBufferPtr <= BufferEnd && "Bundled group caused buf overflow");
+      if (TotalPadding && GroupRelocationCount) {
+        assert(Relocations.size() >= GroupRelocationCount &&
+               "Too many relocations recorded for this group");
+        for(std::vector<MachineRelocation>::reverse_iterator I =
+            Relocations.rbegin(); GroupRelocationCount > 0;
+            ++I, GroupRelocationCount--) {
+          int NewOffset = I->getMachineCodeOffset()
+                          + TotalPadding;
+          I->setMachineCodeOffset(NewOffset);
+        }
+      }
+    }
+
+    virtual void alignToBundleBeginning() {
+      // mark that the next locked group must be aligned to bundle start
+      // (e.g. an indirect branch target)
+      assert(AlignNextGroup == kNone && "Conflicting group alignments");
+      AlignNextGroup = kBegin;
+    }
+
+    virtual void alignToBundleEnd() {
+      // mark that the next locked group must be aligned to bundle end (e.g. a
+      // call)
+      assert(AlignNextGroup == kNone && "Conflicting group alignments");
+      AlignNextGroup = kEnd;
+    }
+
+    virtual uintptr_t getCurrentPCValue() const {
+      // return destination PC value rather than generating location
+      if (BufferBegin == EmissionBuffer) {
+        return (uintptr_t)(FunctionDestination + (CurBufferPtr - BufferBegin));
+      } else if (BufferBegin == StubEmissionBuffer) {
+        return (uintptr_t)(StubDestination + (CurBufferPtr - BufferBegin));
+      } else {
+        return (uintptr_t)CurBufferPtr;
+      }
+    }
+
+    // addRelocation gets called in the middle of emitting an instruction, and
+    // creates the relocation based on the instruction's current position in
+    // the emission buffer; however it could get moved if it crosses the bundle
+    // boundary. so we intercept relocation creation and adjust newly-created
+    // relocations if necessary
+    virtual void addRelocation(const MachineRelocation &MR) {
+      GroupRelocationCount++;
+      JITEmitter::addRelocation(MR);
+    }
+
+ private:
+    typedef enum _GroupAlign { kNone, kBegin, kEnd } GroupAlign;
+    // FunctionDestination points to the final destination for the function
+    // (i.e. where it will be copied after validation)
+    uint8_t *FunctionDestination;
+    uint8_t *BundleLockSavedCurBufferPtr;
+    int BundleNestCount; // should not exceed 2
+    GroupAlign AlignNextGroup;
+    unsigned GroupRelocationCount;
+    uint8_t *EmissionBuffer;
+    uintptr_t EmissionBufferSize;
+
+    bool ReusedStub;
+    uint8_t *StubDestination;
+    uint8_t *StubEmissionBuffer;
+    uintptr_t StubEmissionBufferSize;
+
+    TargetJITInfo *JITInfo;
+    const int kBundleSize;
+    const int32_t kJumpMask;
+
+    // Set the buffer pointers (begin, cur, end) so they point into the buffer
+    // at dest, preserving their relative positions
+    void setBufferPtrs(uint8_t* dest) {
+      BufferEnd = dest + (BufferEnd - BufferBegin);
+      CurBufferPtr = dest + (CurBufferPtr - BufferBegin);
+      BufferBegin = dest;
+    }
+};
 }
 
 void CallSiteValueMapConfig::onDelete(JITResolverState *JRS, Function *F) {
@@ -934,6 +1292,12 @@ bool JITEmitter::finishFunction(MachineFunction &F) {
   // Mark code region readable and executable if it's not so already.
   MemMgr->setMemoryExecutable();
 
+  // @LOCALMOD-START
+#ifndef __native_client__
+  // In NaCl, we haven't yet validated and copied the function code to the
+  // destination yet, so there is nothing to disassemble. Furthermore we can't
+  // touch the destination because it may not even be mapped yet
+  // @LOCALMOD-END
   DEBUG({
       if (sys::hasDisassembler()) {
         dbgs() << "JIT: Disassembled code:\n";
@@ -963,6 +1327,7 @@ bool JITEmitter::finishFunction(MachineFunction &F) {
         dbgs()<< '\n';
       }
     });
+#endif // @LOCALMOD
 
   if (JITExceptionHandling) {
     uintptr_t ActualSize = 0;
@@ -1247,7 +1612,14 @@ void JITEmitter::EmittedFunctionConfig::onRAUW(
 
 JITCodeEmitter *JIT::createEmitter(JIT &jit, JITMemoryManager *JMM,
                                    TargetMachine &tm) {
+// @LOCALMOD-START
+#ifndef __native_client__
   return new JITEmitter(jit, JMM, tm);
+#else
+  assert(!JMM && "NaCl does not support custom memory managers");
+  return new NaClJITEmitter(jit, tm);
+#endif
+// @LOCALMOD-END
 }
 
 // getPointerToFunctionOrStub - If the specified function has been

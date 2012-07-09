@@ -3776,6 +3776,11 @@ else
     llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
     llvm_cv_os_type="Freestanding"
     llvm_cv_platform_type="Unix" ;;
+  *-*-nacl*)
+    llvm_cv_link_all_option="-Wl,--whole-archive"
+    llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
+    llvm_cv_os_type="Freestanding"
+    llvm_cv_platform_type="Unix" ;;
   *)
     llvm_cv_link_all_option=""
     llvm_cv_no_link_all_option=""

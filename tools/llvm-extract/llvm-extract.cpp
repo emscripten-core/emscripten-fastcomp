@@ -20,6 +20,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h" // @LOCALMOD
 #include "llvm/Support/IRReader.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -46,6 +47,18 @@ Force("f", cl::desc("Enable binary output on terminals"));
 
 static cl::opt<bool>
 DeleteFn("delete", cl::desc("Delete specified Globals from Module"));
+
+// @LOCALMOD-BEGIN
+static cl::opt<unsigned>
+Divisor("divisor",
+        cl::init(0),
+        cl::desc("select GV by position (pos % divisor = remainder "));
+
+static cl::opt<unsigned>
+Remainder("remainder",
+          cl::init(0),
+          cl::desc("select GV by position (pos % divisor = remainder "));
+// @LOCALMOD-END
 
 // ExtractFuncs - The functions to extract from the module.
 static cl::list<std::string>
@@ -131,6 +144,24 @@ int main(int argc, char **argv) {
     }
   }
 
+  // @LOCALMOD-BEGIN
+  // Extract globals via modulo operation.
+  size_t count_globals = 0;
+  if (Divisor != 0) {
+    size_t pos = 0;
+    for (Module::global_iterator GV = M->global_begin(), E = M->global_end();
+         GV != E;
+         GV++, pos++) {
+      if (pos % Divisor == Remainder) {
+        GVs.insert(&*GV);
+      }
+    }
+    dbgs() << "total globals: " <<  pos << "\n";
+    count_globals = GVs.size();
+    dbgs() << "selected globals: " << count_globals  << "\n";
+  }
+  // @LOCALMOD-END
+  
   // Figure out which functions we should extract.
   for (size_t i = 0, e = ExtractFuncs.size(); i != e; ++i) {
     GlobalValue *GV = M->getFunction(ExtractFuncs[i]);
@@ -165,6 +196,22 @@ int main(int argc, char **argv) {
     }
   }
 
+  // @LOCALMOD-BEGIN
+  // Extract functions via modulo operation.
+  if (Divisor != 0) {
+    size_t pos = 0;
+    for (Module::iterator F = M->begin(), E = M->end();
+         F != E;
+         F++, pos++) {
+       if (pos % Divisor == Remainder) {
+         GVs.insert(&*F);
+      }
+    }
+    dbgs() << "total functions: " <<  pos << "\n";
+    dbgs() << "selected functions: " << GVs.size() - count_globals  << "\n";
+  }
+  // @LOCALMOD-END
+  
   // Materialize requisite global values.
   if (!DeleteFn)
     for (size_t i = 0, e = GVs.size(); i != e; ++i) {

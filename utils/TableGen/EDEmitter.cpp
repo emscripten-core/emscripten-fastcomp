@@ -272,6 +272,7 @@ static int X86TypeFromOpName(LiteralConstantEmitter *type,
   REG("RFP32");
   REG("GR64");
   REG("GR64_NOAX");
+  REG("GR32_TC_64"); // @LOCALMOD
   REG("GR64_TC");
   REG("FR64");
   REG("VR64");

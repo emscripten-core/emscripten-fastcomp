@@ -1006,6 +1006,10 @@ EncodeInstruction(const MCInst &MI, raw_ostream &OS,
     llvm_unreachable("Unknown FormMask value in X86MCCodeEmitter!");
   case X86II::Pseudo:
     llvm_unreachable("Pseudo instruction shouldn't be emitted");
+  // @LOCALMOD-BEGIN
+  case X86II::CustomFrm:
+    assert(0 && "CustomFrm instruction shouldn't be emitted");
+  // @LOCALMOD-END
   case X86II::RawFrm:
     EmitByte(BaseOpcode, CurByte, OS);
     break;

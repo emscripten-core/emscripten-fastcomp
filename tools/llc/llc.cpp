@@ -18,7 +18,9 @@
 #include "llvm/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Support/DataStream.h"
 #include "llvm/Support/IRReader.h"
+#include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
 #include "llvm/MC/SubtargetFeature.h"
@@ -26,7 +28,9 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/ManagedStatic.h"
+#if !defined(__native_client__)
 #include "llvm/Support/PluginLoader.h"
+#endif
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/Host.h"
@@ -36,7 +40,32 @@
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
+
+// @LOCALMOD-BEGIN
+#include "StubMaker.h"
+#include "TextStubWriter.h"
+// @LOCALMOD-END
+
 using namespace llvm;
+
+// @LOCALMOD-BEGIN
+// NOTE: this tool can be build as a "sandboxed" translator.
+//       There are two ways to build the translator
+//       SRPC-style:  no file operations are allowed
+//                    see nacl_file.cc for support code
+//       non-SRPC-style: some basic file operations are allowed
+//                       This can be useful for debugging but will
+//                       not be deployed.
+#if defined(__native_client__) && defined(NACL_SRPC)
+MemoryBuffer* NaClGetMemoryBufferForFile(const char* filename);
+void NaClOutputStringToFile(const char* filename, const std::string& data);
+// The following two functions communicate metadata to the SRPC wrapper for LLC.
+void NaClRecordObjectInformation(bool is_shared, const std::string& soname);
+void NaClRecordSharedLibraryDependency(const std::string& library_name);
+DataStreamer* NaClBitcodeStreamer;
+#endif
+// @LOCALMOD-END
+
 
 // General options for llc.  Other pass-specific options are specified
 // within the corresponding llc passes, and target-specific options
@@ -47,6 +76,12 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
+
+// @LOCALMOD-BEGIN
+static cl::opt<std::string>
+MetadataTextFilename("metadata-text", cl::desc("Metadata as text, out filename"),
+                     cl::value_desc("filename"));
+// @LOCALMOD-END
 
 // Determine optimization level.
 static cl::opt<char>
@@ -244,6 +279,26 @@ SegmentedStacks("segmented-stacks",
   cl::desc("Use segmented stacks if possible."),
   cl::init(false));
 
+// @LOCALMOD-BEGIN
+// Using bitcode streaming has a couple of ramifications. Primarily it means
+// that the module in the file will be compiled one function at a time rather
+// than the whole module. This allows earlier functions to be compiled before
+// later functions are read from the bitcode but of course means no whole-module
+// optimizations. For now, streaming is only supported for files and stdin.
+static cl::opt<bool>
+LazyBitcode("streaming-bitcode",
+  cl::desc("Use lazy bitcode streaming for file inputs"),
+  cl::init(false));
+
+// The option below overlaps very much with bitcode streaming.
+// We keep it separate because it is still experimental and we want
+// to use it without changing the outside behavior which is especially
+// relevant for the sandboxed case.
+static cl::opt<bool>
+ReduceMemoryFootprint("reduce-memory-footprint",
+  cl::desc("Aggressively reduce memory used by llc"),
+  cl::init(false));
+// @LOCALMOD-END
 
 // GetFileNameRoot - Helper function to get the basename of a filename.
 static inline std::string
@@ -323,9 +378,60 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   return FDOut;
 }
 
+// @LOCALMOD-BEGIN
+#if defined(__native_client__) && defined(NACL_SRPC)
+void RecordMetadataForSrpc(const Module &mod) {
+  bool is_shared = (mod.getOutputFormat() == Module::SharedOutputFormat);
+  std::string soname = mod.getSOName();
+  NaClRecordObjectInformation(is_shared, soname);
+  for (Module::lib_iterator L = mod.lib_begin(),
+                            E = mod.lib_end();
+       L != E; ++L) {
+    NaClRecordSharedLibraryDependency(*L);
+  }
+}
+#endif  // defined(__native_client__) && defined(NACL_SRPC)
+// @LOCALMOD-END
+
+
+// @LOCALMOD-BEGIN
+
+// Write the ELF Stubs to the metadata file, in text format
+// Returns 0 on success, non-zero on error.
+int WriteTextMetadataFile(const Module &M, const Triple &TheTriple) {
+  // Build the ELF stubs (in high level format)
+  SmallVector<ELFStub*, 8> StubList;
+  // NOTE: The triple is unnecessary for the text version.
+  MakeAllStubs(M, TheTriple, &StubList);
+  // For each stub, write the ELF object to the metadata file.
+  std::string s;
+  for (unsigned i = 0; i < StubList.size(); i++) {
+    WriteTextELFStub(StubList[i], &s);
+  }
+  FreeStubList(&StubList);
+
+#if defined(__native_client__) && defined(NACL_SRPC)
+  NaClOutputStringToFile(MetadataTextFilename.c_str(), s);
+#else
+  std::string error;
+  OwningPtr<tool_output_file> MOut(
+      new tool_output_file(MetadataTextFilename.c_str(), error,
+                           raw_fd_ostream::F_Binary));
+  if (!error.empty()) {
+    errs() << error << '\n';
+    return 1;
+  }
+  MOut->os().write(s.data(), s.size());
+  MOut->keep();
+#endif
+  return 0;
+}
+
+// @LOCALMOD-END
+
 // main - Entry point for the llc compiler.
 //
-int main(int argc, char **argv) {
+int llc_main(int argc, char **argv) {
   sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
 
@@ -350,12 +456,63 @@ int main(int argc, char **argv) {
   SMDiagnostic Err;
   std::auto_ptr<Module> M;
 
-  M.reset(ParseIRFile(InputFilename, Err, Context));
+  // @LOCALMOD-BEGIN
+#if defined(__native_client__) && defined(NACL_SRPC)
+  if (LazyBitcode) {
+    std::string StrError;
+    M.reset(getStreamedBitcodeModule(std::string("<SRPC stream>"),
+                                     NaClBitcodeStreamer, Context, &StrError));
+    if (!StrError.empty()) {
+      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
+    }
+  } else {
+    // In the NACL_SRPC case, fake a memory mapped file
+    // TODO(jvoung): revert changes in MemoryBuffer.cpp, no longer needed
+    M.reset(ParseIR(NaClGetMemoryBufferForFile(InputFilename.c_str()),
+                    Err,
+                    Context));
+    M->setModuleIdentifier(InputFilename);
+  }
+#else
+  if (LazyBitcode) {
+    std::string StrError;
+    DataStreamer *streamer = getDataFileStreamer(InputFilename, &StrError);
+    if (streamer) {
+      M.reset(getStreamedBitcodeModule(InputFilename, streamer, Context,
+                                       &StrError));
+    }
+    if (!StrError.empty()) {
+      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
+    }
+  } else {
+    M.reset(ParseIRFile(InputFilename, Err, Context));
+  }
+#endif
+  // @LOCALMOD-END
+
   if (M.get() == 0) {
     Err.print(argv[0], errs());
     return 1;
   }
   Module &mod = *M.get();
+
+  // @LOCALMOD-BEGIN
+#if defined(__native_client__) && defined(NACL_SRPC)
+  RecordMetadataForSrpc(mod);
+
+  // To determine if we should compile PIC or not, we needed to load at
+  // least the metadata. Since we've already constructed the commandline,
+  // we have to hack this in after commandline processing.
+  if (mod.getOutputFormat() == Module::SharedOutputFormat) {
+    RelocModel = Reloc::PIC_;
+  }
+  // Also set PIC_ for dynamic executables:
+  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
+  if (mod.lib_size() > 0) {
+    RelocModel = Reloc::PIC_;
+  }
+#endif  // defined(__native_client__) && defined(NACL_SRPC)
+  // @LOCALMOD-END
 
   // If we are supposed to override the target triple, do so now.
   if (!TargetTriple.empty())
@@ -379,6 +536,11 @@ int main(int argc, char **argv) {
   std::string FeaturesStr;
   if (MAttrs.size()) {
     SubtargetFeatures Features;
+    // @LOCALMOD-BEGIN
+    // Use the same default attribute settings as libLTO.
+    // TODO(pdox): Figure out why this isn't done for upstream llc.
+    Features.getDefaultSubtargetFeatures(TheTriple);
+    // @LOCALMOD-END
     for (unsigned i = 0; i != MAttrs.size(); ++i)
       Features.AddFeature(MAttrs[i]);
     FeaturesStr = Features.getString();
@@ -443,19 +605,27 @@ int main(int argc, char **argv) {
       TheTriple.isMacOSXVersionLT(10, 6))
     Target.setMCUseLoc(false);
 
+#if !defined(NACL_SRPC)
   // Figure out where we are going to send the output...
   OwningPtr<tool_output_file> Out
     (GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
   if (!Out) return 1;
-
+#endif
+  
   // Build up all of the passes that we want to do to the module.
-  PassManager PM;
+  // @LOCALMOD-BEGIN
+  OwningPtr<PassManagerBase> PM;
+  if (LazyBitcode || ReduceMemoryFootprint)
+    PM.reset(new FunctionPassManager(&mod));
+  else
+    PM.reset(new PassManager());
+  // @LOCALMOD-END
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const TargetData *TD = Target.getTargetData())
-    PM.add(new TargetData(*TD));
+    PM->add(new TargetData(*TD));
   else
-    PM.add(new TargetData(&mod));
+    PM->add(new TargetData(&mod));
 
   // Override default to generate verbose assembly.
   Target.setAsmVerbosityDefault(true);
@@ -468,11 +638,44 @@ int main(int argc, char **argv) {
       Target.setMCRelaxAll(true);
   }
 
+
+  
+#if defined __native_client__ && defined(NACL_SRPC)
+  {
+    std::string s;
+    raw_string_ostream ROS(s);
+    formatted_raw_ostream FOS(ROS);
+    // Ask the target to add backend passes as necessary.
+    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
+      errs() << argv[0] << ": target does not support generation of this"
+             << " file type!\n";
+      return 1;
+    }
+
+    if (LazyBitcode || ReduceMemoryFootprint) {
+      FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
+      P->doInitialization();
+      for (Module::iterator I = mod.begin(), E = mod.end(); I != E; ++I) {
+        P->run(*I);
+        if (ReduceMemoryFootprint) {
+          I->Dematerialize();
+        }
+      }
+      P->doFinalization();
+    } else {
+      static_cast<PassManager*>(PM.get())->run(mod);
+    }
+    FOS.flush();
+    ROS.flush();
+    NaClOutputStringToFile(OutputFilename.c_str(), ROS.str());
+  }
+#else
+      
   {
     formatted_raw_ostream FOS(Out->os());
 
     // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(PM, FOS, FileType, NoVerify)) {
+    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
       errs() << argv[0] << ": target does not support generation of this"
              << " file type!\n";
       return 1;
@@ -481,11 +684,50 @@ int main(int argc, char **argv) {
     // Before executing passes, print the final values of the LLVM options.
     cl::PrintOptionValues();
 
-    PM.run(mod);
+    if (LazyBitcode || ReduceMemoryFootprint) {
+      FunctionPassManager *P = static_cast<FunctionPassManager*>(PM.get());
+      P->doInitialization();
+      for (Module::iterator I = mod.begin(), E = mod.end(); I != E; ++I) {
+        P->run(*I);
+        if (ReduceMemoryFootprint) {
+          I->Dematerialize();
+        }
+      }
+      P->doFinalization();
+    } else {
+      static_cast<PassManager*>(PM.get())->run(mod);
+    }
   }
 
   // Declare success.
   Out->keep();
+#endif
+
+  // @LOCALMOD-BEGIN
+  // Write out the metadata.
+  //
+  // We need to ensure that intrinsic prototypes are available, in case
+  // we have a NeededRecord for one of them.
+  // They may have been eliminated by the StripDeadPrototypes pass,
+  // or some other pass that is unaware of NeededRecords / IntrinsicLowering.
+  IntrinsicLowering IL(*target->getTargetData());
+  IL.AddPrototypes(*M);
+
+  if (!MetadataTextFilename.empty()) {
+    int err = WriteTextMetadataFile(*M.get(), TheTriple);
+    if (err != 0)
+      return err;
+  }
+  // @LOCALMOD-END
 
   return 0;
 }
+
+#if !defined(NACL_SRPC)
+int
+main (int argc, char **argv) {
+  return llc_main(argc, argv);
+}
+#else
+// main() is in nacl_file.cpp.
+#endif

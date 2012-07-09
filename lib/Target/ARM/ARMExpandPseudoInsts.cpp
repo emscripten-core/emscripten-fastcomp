@@ -24,6 +24,7 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Target/TargetFrameLowering.h"
+#include "llvm/Target/TargetOptions.h" // @LOCALMOD for llvm::TLSUseCall
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h" // FIXME: for debug only. remove!
@@ -43,6 +44,7 @@ namespace {
     const TargetRegisterInfo *TRI;
     const ARMSubtarget *STI;
     ARMFunctionInfo *AFI;
+    bool IsRelocPIC; // @LOCALMOD
 
     virtual bool runOnMachineFunction(MachineFunction &Fn);
 
@@ -63,6 +65,16 @@ namespace {
                     unsigned Opc, bool IsExt);
     void ExpandMOV32BitImm(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator &MBBI);
+    // @LOCALMOD-BEGIN
+    void AddPICADD_MOVi16_PICID(MachineInstr &MI,
+                                MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator &MBBI,
+                                bool NotThumb,
+                                unsigned PredReg, ARMCC::CondCodes Pred,
+                                unsigned DstReg, bool DstIsDead,
+                                MachineInstrBuilder &LO16,
+                                MachineInstrBuilder &HI16);
+    // @LOCALMOD-END
   };
   char ARMExpandPseudo::ID = 0;
 }
@@ -477,12 +489,45 @@ void ARMExpandPseudo::ExpandVST(MachineBasicBlock::iterator &MBBI) {
   if (SrcIsKill) // Add an implicit kill for the super-reg.
     MIB->addRegisterKilled(SrcReg, TRI, true);
   TransferImpOps(MI, MIB, MIB);
-
   // Transfer memoperands.
   MIB->setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
-
   MI.eraseFromParent();
 }
+
+// @LOCALMOD-BEGIN
+// AddPICADD_MOVi16_PICID - Inserts a PICADD into the given basic block,
+// and adds the PC label ID (of the PICADD) as an operand of the LO16 / HI16
+// MOVs. The ID operand will follow the "Immediate" operand (assumes that
+// operand is already added).
+void ARMExpandPseudo::AddPICADD_MOVi16_PICID(MachineInstr &MI,
+                                       MachineBasicBlock &MBB,
+                                       MachineBasicBlock::iterator &MBBI,
+                                       bool NotThumb,
+                                       unsigned PredReg, ARMCC::CondCodes Pred,
+                                       unsigned DstReg, bool DstIsDead,
+                                       MachineInstrBuilder &LO16,
+                                       MachineInstrBuilder &HI16) {
+  // Throw in a PICADD, and tack on the PC label ID to the MOVT/MOVWs
+  MachineFunction &MF = *MI.getParent()->getParent();
+  ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
+
+  // Make a unique ID for this PC by pulling from pool of constPoolIDs
+  unsigned PC_ID = AFI->createPICLabelUId();
+  MachineInstrBuilder PicADD =
+      BuildMI(MBB, MBBI, MI.getDebugLoc(),
+              TII->get(NotThumb ? ARM::PICADD : ARM::tPICADD))
+      .addReg(DstReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addReg(DstReg)
+      .addImm(PC_ID)
+      .addImm(Pred)
+      .addReg(PredReg);
+  (void)PicADD; // squelch unused warning.
+
+  // Add the PC label ID after what would have been an absolute address.
+  LO16 = LO16.addImm(PC_ID);
+  HI16 = HI16.addImm(PC_ID);
+}
+// @LOCALMOD-END
 
 /// ExpandLaneOp - Translate VLD*LN and VST*LN instructions with Q, QQ or QQQQ
 /// register operands to real instructions with D register operands.
@@ -644,7 +689,9 @@ void ARMExpandPseudo::ExpandMOV32BitImm(MachineBasicBlock &MBB,
 
   unsigned LO16Opc = 0;
   unsigned HI16Opc = 0;
-  if (Opcode == ARM::t2MOVi32imm || Opcode == ARM::t2MOVCCi32imm) {
+  // @LOCALMOD
+  bool isThumb2 = (Opcode == ARM::t2MOVi32imm || Opcode == ARM::t2MOVCCi32imm);
+  if (isThumb2) {
     LO16Opc = ARM::t2MOVi16;
     HI16Opc = ARM::t2MOVTi16;
   } else {
@@ -652,10 +699,28 @@ void ARMExpandPseudo::ExpandMOV32BitImm(MachineBasicBlock &MBB,
     HI16Opc = ARM::MOVTi16;
   }
 
+  // @LOCALMOD-BEGIN
+  // If constant pools are "disabled" (actually, moved to rodata), then
+  // many addresses (e.g., the addresses of what used to be the "pools")
+  // may not be materialized in a pc-relative manner, because MOVT / MOVW
+  // are used to materialize the addresses.
+  // We need to know if it matters that references are pc-relative
+  // (e.g., to be PIC).
+  // See the comments on MOVi16PIC / MOVTi16PIC for more details.
+  const bool ShouldUseMOV16PIC = FlagSfiDisableCP && IsRelocPIC &&
+      (MO.isCPI() || MO.isJTI() || MO.isGlobal()); // TODO check this list.
+  if (ShouldUseMOV16PIC) {
+    if (isThumb2)
+      llvm_unreachable("FIXME: add PIC versions of t2MOVi16");
+    LO16Opc = ARM::MOVi16PIC;
+    HI16Opc = ARM::MOVTi16PIC;
+  }
+  // @LOCALMOD-END
+
   LO16 = BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(LO16Opc), DstReg);
   HI16 = BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(HI16Opc))
     .addReg(DstReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstReg);
+    .addReg(DstReg, RegState::Kill); // @LOCALMOD
 
   if (MO.isImm()) {
     unsigned Imm = MO.getImm();
@@ -663,13 +728,31 @@ void ARMExpandPseudo::ExpandMOV32BitImm(MachineBasicBlock &MBB,
     unsigned Hi16 = (Imm >> 16) & 0xffff;
     LO16 = LO16.addImm(Lo16);
     HI16 = HI16.addImm(Hi16);
-  } else {
+  } else if (MO.isGlobal()) { // @LOCALMOD
     const GlobalValue *GV = MO.getGlobal();
     unsigned TF = MO.getTargetFlags();
     LO16 = LO16.addGlobalAddress(GV, MO.getOffset(), TF | ARMII::MO_LO16);
     HI16 = HI16.addGlobalAddress(GV, MO.getOffset(), TF | ARMII::MO_HI16);
+  // @LOCALMOD-START - support for jumptable addresses and CPI
+  } else if (MO.isCPI()) {
+    int i = MO.getIndex();
+    unsigned TF = MO.getTargetFlags();
+    LO16 = LO16.addConstantPoolIndex(i, MO.getOffset(), TF|ARMII::MO_LO16);
+    HI16 = HI16.addConstantPoolIndex(i, MO.getOffset(), TF|ARMII::MO_HI16);
+  } else if (MO.isJTI()){
+    unsigned TF = MO.getTargetFlags();
+    LO16 = LO16.addJumpTableIndex(MO.getIndex(), TF | ARMII::MO_LO16);
+    HI16 = HI16.addJumpTableIndex(MO.getIndex(), TF | ARMII::MO_HI16);
+  } else {
+    assert (0 && "unexpected operand");
+  // @LOCALMOD-END
   }
-
+  // @LOCALMOD-BEGIN
+  if (ShouldUseMOV16PIC) {
+    AddPICADD_MOVi16_PICID(MI, MBB, MBBI, !isThumb2,
+                           PredReg, Pred, DstReg, DstIsDead, LO16, HI16);
+  }
+  // @LOCALMOD-END
   LO16->setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
   HI16->setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
   LO16.addImm(Pred).addReg(PredReg);
@@ -849,13 +932,27 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
     }
     case ARM::tTPsoft:
     case ARM::TPsoft: {
+      // @LOCALMOD-BEGIN
+      if (llvm::TLSUseCall) {
+        // Don't add implicit uses/defs for this call, otherwise
+        // liveness analysis passes get confused.
       MachineInstrBuilder MIB =
-        BuildMI(MBB, MBBI, MI.getDebugLoc(),
+          BuildMI_NoImp(MBB, MBBI, MI.getDebugLoc(), // @LOCALMOD
                 TII->get(Opcode == ARM::tTPsoft ? ARM::tBL : ARM::BL))
-        .addExternalSymbol("__aeabi_read_tp", 0);
+          .addExternalSymbol("__aeabi_read_tp", 0);
 
       MIB->setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
-      TransferImpOps(MI, MIB, MIB);
+        TransferImpOps(MI, MIB, MIB);
+      } else {
+        // Inline version for native client.
+        // See native_client/src/untrusted/stubs/aeabi_read_tp.S
+        // mov r0, r9
+        AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(ARM::MOVr),
+                               ARM::R0)
+                       .addReg(ARM::R9))
+        .addReg(0); // Doesn't use/modify CPSR.
+      }
+      // @LOCALMOD-END
       MI.eraseFromParent();
       return true;
     }
@@ -1211,6 +1308,62 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
     case ARM::VTBL4Pseudo: ExpandVTBL(MBBI, ARM::VTBL4, false); return true;
     case ARM::VTBX3Pseudo: ExpandVTBL(MBBI, ARM::VTBX3, true); return true;
     case ARM::VTBX4Pseudo: ExpandVTBL(MBBI, ARM::VTBX4, true); return true;
+
+    // @LOCALMOD-BEGIN
+    case ARM::ARMeh_return: {
+      // This pseudo instruction is generated as part of the lowering of
+      // ISD::EH_RETURN (c.f. ARMISelLowering.cpp)
+      // we convert it to a stack increment by OffsetReg and
+      // indirect jump to TargetReg
+      unsigned PredReg = 0;
+      ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
+      unsigned OffsetReg = MI.getOperand(0).getReg();
+      unsigned TargetReg = MI.getOperand(1).getReg();
+      BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(ARM::ADDrr), ARM::SP)
+          .addReg(OffsetReg)
+          .addReg(ARM::SP)
+          .addImm(Pred)
+          .addReg(PredReg)
+          .addReg(0);
+
+      BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(ARM::BX))
+          .addReg(TargetReg);
+      MI.eraseFromParent();
+      break;
+    }
+    case ARM::MOVGOTAddr : {
+      // Expand the pseudo-inst that requests for the GOT address
+      // to be materialized into a register. We use MOVW/MOVT for this.
+      // See ARMISelLowering.cpp for a comment on the strategy.
+      unsigned PredReg = 0;
+      ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
+      unsigned DstReg = MI.getOperand(0).getReg();
+      bool DstIsDead = MI.getOperand(0).isDead();
+      MachineInstrBuilder LO16, HI16;
+
+      LO16 = BuildMI(MBB, MBBI, MI.getDebugLoc(),
+                     TII->get(ARM::MOVi16PIC),
+                     DstReg)
+        .addExternalSymbol("_GLOBAL_OFFSET_TABLE_", ARMII::MO_LO16);
+
+      HI16 = BuildMI(MBB, MBBI, MI.getDebugLoc(),
+                     TII->get(ARM::MOVTi16PIC))
+        .addReg(DstReg, RegState::Define | getDeadRegState(DstIsDead))
+        .addReg(DstReg)
+        .addExternalSymbol("_GLOBAL_OFFSET_TABLE_", ARMII::MO_HI16);
+
+      AddPICADD_MOVi16_PICID(MI, MBB, MBBI, true,
+                             PredReg, Pred, DstReg, DstIsDead, LO16, HI16);
+
+      (*LO16).setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
+      (*HI16).setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
+      LO16.addImm(Pred).addReg(PredReg);
+      HI16.addImm(Pred).addReg(PredReg);
+      TransferImpOps(MI, LO16, HI16);
+      MI.eraseFromParent();
+      break;
+    }
+    // @LOCALMOD-END
   }
 }
 
@@ -1233,6 +1386,7 @@ bool ARMExpandPseudo::runOnMachineFunction(MachineFunction &MF) {
   TRI = TM.getRegisterInfo();
   STI = &TM.getSubtarget<ARMSubtarget>();
   AFI = MF.getInfo<ARMFunctionInfo>();
+  IsRelocPIC = MF.getTarget().getRelocationModel() == Reloc::PIC_;
 
   bool Modified = false;
   for (MachineFunction::iterator MFI = MF.begin(), E = MF.end(); MFI != E;

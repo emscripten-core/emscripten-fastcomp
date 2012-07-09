@@ -205,8 +205,12 @@ def : Processor<"arm1156t2f-s",     ARMV6Itineraries, [HasV6T2Ops, FeatureVFP2,
 
 // V7a Processors.
 def : Processor<"cortex-a8",        CortexA8Itineraries,
-                                    [ProcA8, HasV7Ops, FeatureNEON, FeatureDB,
-                                     FeatureDSPThumb2, FeatureHasRAS]>;
+// @LOCALMOD-BEGIN
+// TODO(pdox): Resolve this mismatch.
+                                    [ProcA8, HasV7Ops, FeatureDB]>;
+// FeatureNEON, FeatureDSPThumb2, FeatureHasRAS]>;
+// @LOCALMOD-END
+
 def : Processor<"cortex-a9",        CortexA9Itineraries,
                                     [ProcA9, HasV7Ops, FeatureNEON, FeatureDB,
                                      FeatureDSPThumb2, FeatureHasRAS]>;

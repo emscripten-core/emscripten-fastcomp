@@ -15,6 +15,8 @@
 #include "llvm-c/lto.h"
 #include "llvm-c/Core.h"
 
+#include "llvm/Support/CommandLine.h" // @LOCALMOD
+
 #include "LTOModule.h"
 #include "LTOCodeGenerator.h"
 
@@ -22,6 +24,25 @@
 // Holds most recent error string.
 // *** Not thread safe ***
 static std::string sLastErrorString;
+
+// @LOCALMOD-BEGIN
+static std::vector<const char*> lto_options;
+extern void lto_add_command_line_option(const char* opt)
+{
+  // ParseCommandLineOptions() expects argv[0] to be program name.
+  if (lto_options.empty())
+    lto_options.push_back("libLTO");
+
+  lto_options.push_back(strdup(opt));
+}
+
+extern void lto_parse_command_line_options()
+{
+  if ( !lto_options.empty() )
+      llvm::cl::ParseCommandLineOptions(lto_options.size(),
+                                        const_cast<char **>(&lto_options[0]));
+}
+// @LOCALMOD-END
 
 /// lto_get_version - Returns a printable string.
 extern const char* lto_get_version() {
@@ -107,6 +128,45 @@ void lto_module_set_target_triple(lto_module_t mod, const char *triple) {
   return mod->setTargetTriple(triple);
 }
 
+// @LOCALMOD-BEGIN
+
+//
+// Get the module format for this module
+//
+lto_output_format lto_module_get_output_format(lto_module_t mod)
+{
+  return mod->getOutputFormat();
+}
+
+//
+// Get the module soname
+//
+const char* lto_module_get_soname(lto_module_t mod)
+{
+  return mod->getSOName();
+}
+
+//
+// Get the i'th library dependency.
+// Returns NULL if i >= lto_module_get_num_library_deps()
+//
+const char *
+lto_module_get_library_dep(lto_module_t mod, unsigned int i)
+{
+  return mod->getLibraryDep(i);
+}
+
+//
+// Return the number of library dependencies of this module.
+//
+unsigned int
+lto_module_get_num_library_deps(lto_module_t mod)
+{
+  return mod->getNumLibraryDeps();
+}
+
+// @LOCALMOD-END
+
 /// lto_module_get_num_symbols - Returns the number of symbols in the object
 /// module.
 unsigned int lto_module_get_num_symbols(lto_module_t mod) {
@@ -183,6 +243,77 @@ void lto_codegen_add_must_preserve_symbol(lto_code_gen_t cg,
   cg->addMustPreserveSymbol(symbol);
 }
 
+// @LOCALMOD-BEGIN
+
+//
+// Set the module format for the merged module
+//
+void lto_codegen_set_merged_module_output_format(lto_code_gen_t cg,
+                                                 lto_output_format format)
+{
+  cg->setMergedModuleOutputFormat(format);
+}
+
+//
+// Set the module soname (for shared library bitcode)
+//
+void lto_codegen_set_merged_module_soname(lto_code_gen_t cg,
+                                          const char* soname)
+{
+  cg->setMergedModuleSOName(soname);
+}
+
+//
+// Add a library dependency to the linked bitcode module.
+//
+void lto_codegen_add_merged_module_library_dep(lto_code_gen_t cg,
+                                               const char* soname)
+{
+  cg->addLibraryDep(soname);
+}
+
+//
+// Apply symbol wrapping in the linked bitcode module.
+//
+void lto_codegen_wrap_symbol_in_merged_module(lto_code_gen_t cg,
+                                              const char* sym) {
+  cg->wrapSymbol(sym);
+}
+
+//
+// Set the symbol version of defined symbol 'sym'.
+// 'sym' is the name of the GlobalValue, exactly as it is
+// in the LLVM module. It may already have a version suffix.
+// In that case, this function verifies that the old version
+// and new version match.
+// Returns a reference to the new name.
+//
+const char *
+lto_codegen_set_symbol_def_version(lto_code_gen_t cg,
+                                   const char *sym,
+                                   const char *version,
+                                   bool is_default) {
+  return cg->setSymbolDefVersion(sym, version, is_default);
+}
+
+//
+// Set the symbol version of needed symbol 'sym' from file 'dynfile'.
+// 'sym' is the name of the GlobalValue, exactly as it is
+// in the LLVM module. It may already have a version suffix.
+// In that case, this function verifies that the old version
+// and new version match.
+// In any case, it adds a NeededRecord entry.
+// Returns a reference to the new name.
+//
+const char*
+lto_codegen_set_symbol_needed(lto_code_gen_t cg,
+                              const char *sym,
+                              const char *version,
+                              const char *dynfile) {
+  return cg->setSymbolNeeded(sym, version, dynfile);
+}
+// @LOCALMOD-END
+
 /// lto_codegen_write_merged_modules - Writes a new file at the specified path
 /// that contains the merged contents of all modules added so far. Returns true
 /// on error (check lto_get_error_message() for details).
@@ -212,3 +343,4 @@ bool lto_codegen_compile_to_file(lto_code_gen_t cg, const char **name) {
 void lto_codegen_debug_options(lto_code_gen_t cg, const char *opt) {
   cg->setCodeGenDebugOptions(opt);
 }
+

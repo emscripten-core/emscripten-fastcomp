@@ -162,6 +162,50 @@ void MipsMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
 //  "addiu $2, $2, %lo(_gp_disp)"
 void MipsMCInstLower::LowerSETGP01(SmallVector<MCInst, 4>& MCInsts) {
   MCOperand RegOpnd = MCOperand::CreateReg(Mips::V0);
+  MCInst Instr4, Mask1, Mask2; // @LOCALMOD
+  // @LOCALMOD-START
+  MCOperand MaskReg = MCOperand::CreateReg(Mips::LoadStoreStackMaskReg);
+  // @LOCALMOD-END
+
+  // @LOCALMOD-START
+  if (AsmPrinter.TM.getSubtarget<MipsSubtarget>().isTargetNaCl()) {
+    Mask1.setOpcode(Mips::SFI_GUARD_LOADSTORE);
+    Mask1.addOperand(Base);
+    Mask1.addOperand(Base);
+    Mask1.addOperand(MaskReg);
+
+    Mask2.setOpcode(Mips::SFI_GUARD_LOADSTORE);
+    Mask2.addOperand(Base);
+    Mask2.addOperand(Base);
+    Mask2.addOperand(MaskReg);
+    if (Opc == Mips::ULW || Opc == Mips::USW || Opc == Mips::ULHu) {
+     // FIXME: ULHu should be rewritten because it uses mips32r2 instr. INS
+      MCInsts.push_back(Mask1);
+      MCInsts.push_back(Instr1);
+      MCInsts.push_back(Mask2);
+      MCInsts.push_back(Instr2);
+      if (!TwoInstructions) MCInsts.push_back(Instr3);
+      return;
+    } else if (Opc == Mips::ULH) {
+      MCInsts.push_back(Mask1);
+      MCInsts.push_back(Instr1);
+      MCInsts.push_back(Mask2);
+      MCInsts.push_back(Instr2);
+      MCInsts.push_back(Instr3);
+      MCInsts.push_back(Instr4);
+      return;
+    } else if (Opc == Mips::USH) {
+      MCInsts.push_back(Mask1);
+      MCInsts.push_back(Instr1);
+      MCInsts.push_back(Instr2);
+      MCInsts.push_back(Mask2);
+      MCInsts.push_back(Instr3);
+      return;
+    } else {
+      llvm_unreachable("unaligned instruction not sandboxed");
+    }
+  }
+  // @LOCALMOD-END
   StringRef SymName("_gp_disp");
   const MCSymbol *Sym = Ctx->GetOrCreateSymbol(SymName);
   const MCSymbolRefExpr *MCSym;

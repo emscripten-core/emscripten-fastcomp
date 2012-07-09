@@ -1,3 +1,5 @@
+lto_add_command_line_option
+lto_parse_command_line_options
 lto_get_error_message
 lto_get_version
 lto_module_create
@@ -9,6 +11,10 @@ lto_module_get_symbol_attribute
 lto_module_get_symbol_name
 lto_module_get_target_triple
 lto_module_set_target_triple
+lto_module_get_output_format
+lto_module_get_soname
+lto_module_get_library_dep
+lto_module_get_num_library_deps
 lto_module_is_object_file
 lto_module_is_object_file_for_target
 lto_module_is_object_file_in_memory
@@ -19,6 +25,9 @@ lto_codegen_add_must_preserve_symbol
 lto_codegen_compile
 lto_codegen_create
 lto_codegen_dispose
+lto_codegen_set_assembler_args
+lto_codegen_set_assembler_path
+lto_codegen_set_cpu
 lto_codegen_set_debug_model
 lto_codegen_set_pic_model
 lto_codegen_write_merged_modules
@@ -26,6 +35,12 @@ lto_codegen_debug_options
 lto_codegen_set_assembler_args
 lto_codegen_set_assembler_path
 lto_codegen_set_cpu
+lto_codegen_set_merged_module_output_format
+lto_codegen_set_merged_module_soname
+lto_codegen_add_merged_module_library_dep
+lto_codegen_set_symbol_def_version
+lto_codegen_set_symbol_needed
+lto_codegen_wrap_symbol_in_merged_module
 lto_codegen_compile_to_file
 LLVMCreateDisasm
 LLVMDisasmDispose

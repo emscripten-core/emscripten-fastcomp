@@ -30,6 +30,12 @@ namespace llvm {
     };
   }
 
+  // @LOCALMOD-BEGIN
+  /// TLSUseCall - This flag enables the use of a function call to get the
+  /// thread pointer for TLS accesses, instead of using inline code.
+  extern bool TLSUseCall;
+  // @LOCALMOD-END
+
   class TargetOptions {
   public:
     TargetOptions()

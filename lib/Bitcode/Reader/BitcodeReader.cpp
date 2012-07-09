@@ -1481,6 +1481,14 @@ bool BitcodeReader::ParseModule(bool Resume) {
       std::string S;
       if (ConvertToString(Record, 0, S))
         return Error("Invalid MODULE_CODE_TRIPLE record");
+
+      // @LOCALMOD-BEGIN
+      // This hack is needed in order to get Clang compiled binaries
+      // working with the Gold plugin, until PNaCl backend is introduced
+      // in lib/Target/PNaCl.
+      if (S == "le32-unknown-nacl")
+        S = "armv7-none-linux-gnueabi";
+      // @LOCALMOD-END
       TheModule->setTargetTriple(S);
       break;
     }

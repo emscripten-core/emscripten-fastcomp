@@ -72,6 +72,35 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   return false;
 }
 
+// @LOCALMOD-BEGIN
+bool X86AsmPrinter::UseReadOnlyJumpTables() const {
+  return Subtarget->isTargetNaCl();
+}
+
+unsigned X86AsmPrinter::GetTargetBasicBlockAlign() const {
+  if (Subtarget->isTargetNaCl())
+    return 5;
+  return 0;
+}
+
+unsigned X86AsmPrinter::GetTargetLabelAlign(const MachineInstr *MI) const {
+  if (Subtarget->isTargetNaCl()) {
+    switch (MI->getOpcode()) {
+      default: return 0;
+      // These labels may indicate an indirect entry point that is
+      // externally reachable and hence must be bundle aligned.
+      // Note: these labels appear to be always at basic block beginnings
+      // so it may be possible to simply set the MBB alignment.
+      // However, it is unclear whether this always holds.
+      case TargetOpcode::EH_LABEL:
+      case TargetOpcode::GC_LABEL:
+        return 5;
+    }
+  }
+  return 0;
+}
+// @LOCALMOD-END
+
 /// printSymbolOperand - Print a raw symbol reference operand.  This handles
 /// jump tables, constant pools, global address and external symbols, all of
 /// which print to a label with various suffixes for relocation types etc.

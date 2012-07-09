@@ -35,6 +35,14 @@ X86SelectionDAGInfo::EmitTargetCodeForMemset(SelectionDAG &DAG, DebugLoc dl,
                                          MachinePointerInfo DstPtrInfo) const {
   ConstantSDNode *ConstantSize = dyn_cast<ConstantSDNode>(Size);
 
+  // @LOCALMOD-BEGIN
+  if (Subtarget->isTargetNaCl()) {
+    // TODO: Can we allow this optimization for Native Client?
+    // At the very least, pointer size needs to be fixed below.
+    return SDValue();
+  }
+  // @LOCALMOD-END
+
   // If to a segment-relative address space, use the default lowering.
   if (DstPtrInfo.getAddrSpace() >= 256)
     return SDValue();
@@ -189,6 +197,13 @@ X86SelectionDAGInfo::EmitTargetCodeForMemcpy(SelectionDAG &DAG, DebugLoc dl,
   uint64_t SizeVal = ConstantSize->getZExtValue();
   if (!AlwaysInline && SizeVal > Subtarget->getMaxInlineSizeThreshold())
     return SDValue();
+
+  // @LOCALMOD-BEGIN
+  if (Subtarget->isTargetNaCl()) {
+    // TODO(pdox): Allow use of the NaCl pseudo-instruction for REP MOV
+    return SDValue();
+  }
+  // @LOCALMOD-END
 
   /// If not DWORD aligned, it is more efficient to call the library.  However
   /// if calling the library is not allowed (AlwaysInline), then soldier on as

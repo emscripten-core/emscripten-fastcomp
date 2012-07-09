@@ -114,6 +114,8 @@ static unsigned findDeadCallerSavedReg(MachineBasicBlock &MBB,
   case X86::TCRETURNmi:
   case X86::TCRETURNdi64:
   case X86::TCRETURNri64:
+  case X86::NACL_CG_TCRETURNdi64: // @LOCALMOD
+  case X86::NACL_CG_TCRETURNri64: // @LOCALMOD
   case X86::TCRETURNmi64:
   case X86::EH_RETURN:
   case X86::EH_RETURN64: {
@@ -317,7 +319,7 @@ void X86FrameLowering::emitCalleeSavedFrameMoves(MachineFunction &MF,
   bool HasFP = hasFP(MF);
 
   // Calculate amount of bytes used for return address storing.
-  int stackGrowth = -TD->getPointerSize();
+  int stackGrowth = -TM.getFrameLowering()->getStackSlotSize(); // @LOCALMOD
 
   // FIXME: This is dirty hack. The code itself is pretty mess right now.
   // It should be rewritten from scratch and generalized sometimes.
@@ -717,7 +719,7 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
   std::vector<MachineMove> &Moves = MMI.getFrameMoves();
   const TargetData *TD = MF.getTarget().getTargetData();
   uint64_t NumBytes = 0;
-  int stackGrowth = -TD->getPointerSize();
+  int stackGrowth = -TM.getFrameLowering()->getStackSlotSize(); // @LOCALMOD
 
   if (HasFP) {
     // Calculate required stack adjustment.
@@ -985,6 +987,8 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   case X86::TCRETURNdi64:
   case X86::TCRETURNri64:
   case X86::TCRETURNmi64:
+  case X86::NACL_CG_TCRETURNdi64: // @LOCALMOD
+  case X86::NACL_CG_TCRETURNri64: // @LOCALMOD
   case X86::EH_RETURN:
   case X86::EH_RETURN64:
     break;  // These are ok
@@ -1085,6 +1089,8 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   } else if (RetOpcode == X86::TCRETURNri || RetOpcode == X86::TCRETURNdi ||
              RetOpcode == X86::TCRETURNmi ||
              RetOpcode == X86::TCRETURNri64 || RetOpcode == X86::TCRETURNdi64 ||
+             RetOpcode == X86::NACL_CG_TCRETURNri64 || // @LOCALMOD
+             RetOpcode == X86::NACL_CG_TCRETURNdi64 || // @LOCALMOD
              RetOpcode == X86::TCRETURNmi64) {
     bool isMem = RetOpcode == X86::TCRETURNmi || RetOpcode == X86::TCRETURNmi64;
     // Tail call return: adjust the stack pointer and jump to callee.
@@ -1110,10 +1116,22 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
     }
 
     // Jump to label or value in register.
-    if (RetOpcode == X86::TCRETURNdi || RetOpcode == X86::TCRETURNdi64) {
+    if (RetOpcode == X86::TCRETURNdi || RetOpcode == X86::TCRETURNdi64 ||
+        RetOpcode == X86::NACL_CG_TCRETURNdi64) { // @LOCALMOD
+      // @LOCALMOD-BEGIN
+      unsigned TailJmpOpc;
+      switch (RetOpcode) {
+      case X86::TCRETURNdi  : TailJmpOpc = X86::TAILJMPd; break;
+      case X86::TCRETURNdi64: TailJmpOpc = X86::TAILJMPd64; break;
+      case X86::NACL_CG_TCRETURNdi64:
+        TailJmpOpc = X86::NACL_CG_TAILJMPd64;
+        break;
+      default: llvm_unreachable("Unexpected return opcode");
+      }
+      // @LOCALMOD-END
       MachineInstrBuilder MIB =
-        BuildMI(MBB, MBBI, DL, TII.get((RetOpcode == X86::TCRETURNdi)
-                                       ? X86::TAILJMPd : X86::TAILJMPd64));
+        BuildMI(MBB, MBBI, DL, TII.get(TailJmpOpc)); // @LOCALMOD
+
       if (JumpTarget.isGlobal())
         MIB.addGlobalAddress(JumpTarget.getGlobal(), JumpTarget.getOffset(),
                              JumpTarget.getTargetFlags());
@@ -1131,6 +1149,11 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
     } else if (RetOpcode == X86::TCRETURNri64) {
       BuildMI(MBB, MBBI, DL, TII.get(X86::TAILJMPr64)).
         addReg(JumpTarget.getReg(), RegState::Kill);
+// @LOCALMOD-BEGIN
+    } else if (RetOpcode == X86::NACL_CG_TCRETURNri64) {
+      BuildMI(MBB, MBBI, DL, TII.get(X86::NACL_CG_TAILJMPr64)).
+        addReg(JumpTarget.getReg(), RegState::Kill);
+// @LOCALMOD-END
     } else {
       BuildMI(MBB, MBBI, DL, TII.get(X86::TAILJMPr)).
         addReg(JumpTarget.getReg(), RegState::Kill);

@@ -11,7 +11,12 @@ LEVEL = ..
 include $(LEVEL)/Makefile.config
 
 PARALLEL_DIRS := VMCore AsmParser Bitcode Archive Analysis Transforms CodeGen \
-                Target ExecutionEngine Linker MC Object DebugInfo
+                Target ExecutionEngine Linker MC Object Wrap DebugInfo
+
+ifeq ($(NACL_SANDBOX),1)
+  PARALLEL_DIRS := $(filter-out Archive Linker, \
+                $(PARALLEL_DIRS))
+endif
 
 include $(LEVEL)/Makefile.common
 

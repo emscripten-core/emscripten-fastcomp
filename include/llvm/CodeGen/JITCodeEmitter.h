@@ -290,7 +290,7 @@ public:
 
   /// getCurrentPCOffset - Return the offset from the start of the emitted
   /// buffer that we are currently writing to.
-  uintptr_t getCurrentPCOffset() const {
+  virtual uintptr_t getCurrentPCOffset() const { // @LOCALMOD
     return CurBufferPtr-BufferBegin;
   }
 
@@ -335,6 +335,13 @@ public:
   /// getLabelLocations - Return the label locations map of the label IDs to
   /// their address.
   virtual DenseMap<MCSymbol*, uintptr_t> *getLabelLocations() { return 0; }
+
+  // @LOCALMOD-START
+  virtual void beginBundleLock() {};
+  virtual void endBundleLock() {};
+  virtual void alignToBundleBeginning() {};
+  virtual void alignToBundleEnd() {};
+  // @LOCALMOD-END
 };
 
 } // End llvm namespace

@@ -691,7 +691,13 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     
     // Emit the call.
     MCSymbol *PICBase = MF->getPICBaseSymbol();
-    TmpInst.setOpcode(X86::CALLpcrel32);
+    // @LOCALMOD-BEGIN
+    // For NaCl, the call should be aligned to the end of a bundle. Since the
+    // call is at the end of the bundle, there should be no padding between
+    // the call and the next instruction (the label should still make sense).
+    TmpInst.setOpcode(getSubtarget().isTargetNaCl() ?
+                      X86::NACL_CALL32d : X86::CALLpcrel32);
+    // @LOCALMOD-END
     // FIXME: We would like an efficient form for this, so we don't have to do a
     // lot of extra uniquing.
     TmpInst.addOperand(MCOperand::CreateExpr(MCSymbolRefExpr::Create(PICBase,

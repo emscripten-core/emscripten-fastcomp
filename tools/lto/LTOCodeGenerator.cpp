@@ -23,6 +23,7 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/Config/config.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -69,6 +70,16 @@ LTOCodeGenerator::LTOCodeGenerator()
   InitializeAllTargets();
   InitializeAllTargetMCs();
   InitializeAllAsmPrinters();
+
+    // @LOCALMOD-BEGIN
+    // Preserve symbols which may be referenced due to the lowering
+    // of an intrinsic.
+    const llvm::StringSet<> &IntrinsicSymbols = IntrinsicLowering::GetFuncNames();
+    for (llvm::StringSet<>::const_iterator it = IntrinsicSymbols.begin(),
+         ie = IntrinsicSymbols.end(); it != ie; ++it) {
+      _mustPreserveSymbols[it->getKey().str().c_str()] = 1;
+    }
+    // @LOCALMOD-END
 }
 
 LTOCodeGenerator::~LTOCodeGenerator() {
@@ -116,6 +127,81 @@ bool LTOCodeGenerator::setCodePICModel(lto_codegen_model model,
   llvm_unreachable("Unknown PIC model!");
 }
 
+// @LOCALMOD-BEGIN
+void LTOCodeGenerator::setMergedModuleOutputFormat(lto_output_format format)
+{
+  Module::OutputFormat outputFormat;
+  switch (format) {
+  case LTO_OUTPUT_FORMAT_OBJECT:
+    outputFormat = Module::ObjectOutputFormat;
+    break;
+  case LTO_OUTPUT_FORMAT_SHARED:
+    outputFormat = Module::SharedOutputFormat;
+    break;
+  case LTO_OUTPUT_FORMAT_EXEC:
+    outputFormat = Module::ExecutableOutputFormat;
+    break;
+  }
+  Module *mergedModule = _linker.getModule();
+  mergedModule->setOutputFormat(outputFormat);
+}
+
+void LTOCodeGenerator::setMergedModuleSOName(const char *soname)
+{
+  Module *mergedModule = _linker.getModule();
+  mergedModule->setSOName(soname);
+}
+
+void LTOCodeGenerator::addLibraryDep(const char *lib)
+{
+  Module *mergedModule = _linker.getModule();
+  mergedModule->addLibrary(lib);
+}
+
+void LTOCodeGenerator::wrapSymbol(const char *sym)
+{
+  Module *mergedModule = _linker.getModule();
+  mergedModule->wrapSymbol(sym);
+}
+
+const char* LTOCodeGenerator::setSymbolDefVersion(const char *sym,
+                                                  const char *ver,
+                                                  bool is_default)
+{
+  Module *mergedModule = _linker.getModule();
+  GlobalValue *GV = mergedModule->getNamedValue(sym);
+  if (!GV) {
+    llvm_unreachable("Invalid global in setSymbolDefVersion");
+  }
+  GV->setVersionDef(ver, is_default);
+  return strdup(GV->getName().str().c_str());
+}
+
+const char* LTOCodeGenerator::setSymbolNeeded(const char *sym,
+                                              const char *ver,
+                                              const char *dynfile)
+{
+  Module *mergedModule = _linker.getModule();
+  GlobalValue *GV = mergedModule->getNamedValue(sym);
+  if (!GV) {
+    // Symbol lookup may have failed because this symbol was already
+    // renamed for versioning. Make sure this is the case.
+    if (strchr(sym, '@') != NULL || ver == NULL || ver[0] == '\0') {
+      llvm_unreachable("Unexpected condition in setSymbolNeeded");
+    }
+    std::string NewName = std::string(sym) + "@" + ver;
+    GV = mergedModule->getNamedValue(NewName);
+  }
+  if (!GV) {
+    // Ignore failures due to unused declarations.
+    // This caused a falure to build libppruntime.so for glibc.
+    // TODO(sehr): better document under which circumstances this is needed.
+    return sym;
+  }
+  GV->setNeeded(ver, dynfile);
+  return strdup(GV->getName().str().c_str());
+}
+// @LOCALMOD-END
 bool LTOCodeGenerator::writeMergedModules(const char *path,
                                           std::string &errMsg) {
   if (determineTarget(errMsg))

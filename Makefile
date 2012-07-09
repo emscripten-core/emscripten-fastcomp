@@ -43,6 +43,11 @@ EXTRA_DIST := test unittests llvm.spec include win32 Xcode
 
 include $(LEVEL)/Makefile.config
 
+ifeq ($(NACL_SANDBOX),1)
+  DIRS := $(filter-out tools/llvm-shlib runtime docs unittests, $(DIRS))
+  OPTIONAL_DIRS :=
+endif
+
 ifneq ($(ENABLE_SHARED),1)
   DIRS := $(filter-out tools/llvm-shlib, $(DIRS))
 endif
@@ -119,6 +124,7 @@ cross-compile-build-tools:
 	(unset SDKROOT; \
 	 $(MAKE) -C BuildTools \
 	  BUILD_DIRS_ONLY=1 \
+	  NACL_SANDBOX=0 \
 	  UNIVERSAL= \
 	  TARGET_NATIVE_ARCH="$(TARGET_NATIVE_ARCH)" \
 	  TARGETS_TO_BUILD="$(TARGETS_TO_BUILD)" \

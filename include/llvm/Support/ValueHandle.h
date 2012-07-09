@@ -104,6 +104,11 @@ protected:
   void setValPtrInt(unsigned K) { VP.setInt(K); }
   unsigned getValPtrInt() const { return VP.getInt(); }
 
+  // @LOCALMOD-BEGIN -- Hack for bug:
+  // http://code.google.com/p/nativeclient/issues/detail?id=2786
+  void setKind(HandleBaseKind K) { PrevPair.setInt(K); }
+  // @LOCALMOD-END
+
   static bool isValid(Value *V) {
     return V &&
            V != DenseMapInfo<Value *>::getEmptyKey() &&
@@ -230,6 +235,15 @@ public:
     setValPtr(RHS.getValPtr());
     return getValPtr();
   }
+
+  // @LOCALMOD-BEGIN -- Hack for bug:
+  // http://code.google.com/p/nativeclient/issues/detail?id=2786
+  // This allows us to weaken the Asserting Value Handle in LexicalScopes.h,
+  // for Debug info only.
+  void make_weak() {
+    setKind(Weak);
+  }
+  // @LOCALMOD-END
 
   ValueTy *operator->() const { return getValPtr(); }
   ValueTy &operator*() const { return *getValPtr(); }

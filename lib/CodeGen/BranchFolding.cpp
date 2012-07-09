@@ -20,6 +20,7 @@
 #include "BranchFolding.h"
 #include "llvm/Function.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/MachineConstantPool.h" //  @LOCALMOD
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
@@ -233,6 +234,21 @@ bool BranchFolder::OptimizeFunction(MachineFunction &MF,
         JTIsLive.set(Op.getIndex());
       }
   }
+
+    // @LOCALMOD-START
+    // This currently only used on ARM targets where the ConstantPool
+    // subclass is overloading getJumpTableIndex()
+    const std::vector<MachineConstantPoolEntry>& CPs =
+      MF.getConstantPool()->getConstants();
+    for (unsigned i = 0, e = CPs.size(); i != e; ++i) {
+      if (!CPs[i].isMachineConstantPoolEntry()) continue;
+      unsigned *JTIndex = CPs[i].Val.MachineCPVal->getJumpTableIndex();
+      if (!JTIndex) continue;
+      // Remember that this JT is live.
+      JTIsLive.set(*JTIndex);
+    }
+    // @LOCALMOD-END
+
 
   // Finally, remove dead jump tables.  This happens when the
   // indirect jump was unreachable (and thus deleted).

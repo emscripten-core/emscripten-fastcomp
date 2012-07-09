@@ -58,6 +58,15 @@ namespace {
 	    continue;
 	  if (I->getName() == "llvm.global_ctors")
 	    continue;
+          // @LOCALMOD-BEGIN - this is likely upstreamable
+          // Note: there will likely be more cases once this
+          // is exercises more thorougly.
+	  if (I->getName() == "llvm.global_dtors")
+            continue;
+          // not observed yet 
+          if (I->hasExternalWeakLinkage()) 
+	    continue;
+          // @LOCALMOD-END
 	}
 
         if (I->hasLocalLinkage())
@@ -72,8 +81,15 @@ namespace {
 	} else {
 	  if (I->hasAvailableExternallyLinkage())
 	    continue;
-	}
-
+          // @LOCALMOD-BEGIN - this is likely upstreamable
+          // Note: there will likely be more cases once this
+          // is exercises more thorougly.
+          // observed for pthread_cancel
+          if (I->hasExternalWeakLinkage())
+	    continue;
+          // @LOCALMOD-END
+        }
+ 
         if (I->hasLocalLinkage())
           I->setVisibility(GlobalValue::HiddenVisibility);
         I->setLinkage(GlobalValue::ExternalLinkage);

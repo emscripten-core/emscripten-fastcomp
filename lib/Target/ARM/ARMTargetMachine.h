@@ -29,6 +29,13 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/ADT/OwningPtr.h"
 
+// @LOCALMOD-START
+#include "llvm/Support/CommandLine.h"
+namespace llvm {
+   extern cl::opt<bool> FlagSfiDisableCP;
+}
+// @LOCALMOD-END
+
 namespace llvm {
 
 class ARMBaseTargetMachine : public LLVMTargetMachine {

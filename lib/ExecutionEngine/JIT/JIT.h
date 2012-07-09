@@ -210,6 +210,8 @@ public:
 private:
   static JITCodeEmitter *createEmitter(JIT &J, JITMemoryManager *JMM,
                                        TargetMachine &tm);
+  // Native client needs its own memory manager, so custom ones are unsupported
+  static JITCodeEmitter *createNaClEmitter(JIT &J, TargetMachine &tm);
   void runJITOnFunctionUnlocked(Function *F, const MutexGuard &locked);
   void updateFunctionStub(Function *F);
   void jitTheFunction(Function *F, const MutexGuard &locked);

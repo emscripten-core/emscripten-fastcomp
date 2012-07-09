@@ -187,3 +187,4 @@ void* DynamicLibrary::SearchForAddressOfSymbol(const char *symbolName) {
 }
 
 #endif // LLVM_ON_WIN32
+

@@ -87,7 +87,14 @@ namespace TargetOpcode {
     /// BUNDLE - This instruction represents an instruction bundle. Instructions
     /// which immediately follow a BUNDLE instruction which are marked with
     /// 'InsideBundle' flag are inside the bundle.
-    BUNDLE
+    BUNDLE,
+    
+    // @LOCALMOD-BEGIN
+    BUNDLE_ALIGN_START = 14,
+    BUNDLE_ALIGN_END = 15,
+    BUNDLE_LOCK = 16,
+    BUNDLE_UNLOCK = 17
+    // @LOCALMOD-END
   };
 } // end namespace TargetOpcode
 } // end namespace llvm

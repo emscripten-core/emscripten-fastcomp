@@ -55,6 +55,25 @@ namespace {
   ld_plugin_set_extra_library_path set_extra_library_path = NULL;
   ld_plugin_get_view get_view = NULL;
   ld_plugin_message message = discard_message;
+  // @LOCALMOD-BEGIN
+  // REL, DYN, or EXEC
+  ld_plugin_output_file_type linker_output;
+
+  // Callback for getting link soname from gold
+  ld_plugin_get_output_soname get_output_soname = NULL;
+
+  // Callback for getting needed libraries from gold
+  ld_plugin_get_needed get_needed = NULL;
+
+  // Callback for getting number of needed library from gold
+  ld_plugin_get_num_needed get_num_needed = NULL;
+
+  // Callback for getting the number of --wrap'd symbols.
+  ld_plugin_get_num_wrapped get_num_wrapped = NULL;
+
+  // Callback for getting the name of a wrapped symbol.
+  ld_plugin_get_wrapped get_wrapped = NULL;
+  // @LOCALMOD-END
 
   int api_version = 0;
   int gold_version = 0;
@@ -62,11 +81,17 @@ namespace {
   struct claimed_file {
     void *handle;
     std::vector<ld_plugin_symbol> syms;
+    bool is_linked_in; // @LOCALMOD
   };
 
   lto_codegen_model output_type = LTO_CODEGEN_PIC_MODEL_STATIC;
   std::string output_name = "";
   std::list<claimed_file> Modules;
+
+  // @LOCALMOD-BEGIN
+  std::vector<std::string> DepLibs;
+  // @LOCALMOD-END
+
   std::vector<sys::Path> Cleanup;
   lto_code_gen_t code_gen = NULL;
 }
@@ -123,13 +148,25 @@ namespace options {
   }
 }
 
+// @LOCALMOD-BEGIN
+static const char *get_basename(const char *path) {
+  if (path == NULL)
+    return NULL;
+  const char *slash = strrchr(path, '/');
+  if (slash)
+    return slash + 1;
+
+  return path;
+}
+// @LOCALMOD-END
+
 static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
                                         int *claimed);
 static ld_plugin_status all_symbols_read_hook(void);
 static ld_plugin_status cleanup_hook(void);
 
-extern "C" ld_plugin_status onload(ld_plugin_tv *tv);
-ld_plugin_status onload(ld_plugin_tv *tv) {
+extern "C" ld_plugin_status llvm_plugin_onload(ld_plugin_tv *tv); // @LOCALMOD
+ld_plugin_status llvm_plugin_onload(ld_plugin_tv *tv) { // @LOCALMOD
   // We're given a pointer to the first transfer vector. We read through them
   // until we find one where tv_tag == LDPT_NULL. The REGISTER_* tagged values
   // contain pointers to functions that we need to call to register our own
@@ -150,6 +187,10 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
         output_name = tv->tv_u.tv_string;
         break;
       case LDPT_LINKER_OUTPUT:
+        // @LOCALMOD-BEGIN
+        linker_output =
+          static_cast<ld_plugin_output_file_type>(tv->tv_u.tv_val);
+        // @LOCALMOD-END
         switch (tv->tv_u.tv_val) {
           case LDPO_REL:  // .o
           case LDPO_DYN:  // .so
@@ -213,7 +254,23 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
         break;
       case LDPT_GET_VIEW:
         get_view = tv->tv_u.tv_get_view;
+      // @LOCALMOD-BEGIN
+      case LDPT_GET_OUTPUT_SONAME:
+        get_output_soname = tv->tv_u.tv_get_output_soname;
         break;
+      case LDPT_GET_NEEDED:
+        get_needed = tv->tv_u.tv_get_needed;
+        break;
+      case LDPT_GET_NUM_NEEDED:
+        get_num_needed = tv->tv_u.tv_get_num_needed;
+        break;
+      case LDPT_GET_WRAPPED:
+        get_wrapped = tv->tv_u.tv_get_wrapped;
+        break;
+      case LDPT_GET_NUM_WRAPPED:
+        get_num_wrapped = tv->tv_u.tv_get_num_wrapped;
+        break;
+      // @LOCALMOD-END
       case LDPT_MESSAGE:
         message = tv->tv_u.tv_message;
         break;
@@ -230,6 +287,24 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
     (*message)(LDPL_ERROR, "add_symbols not passed to LLVMgold.");
     return LDPS_ERR;
   }
+
+  // @LOCALMOD-BEGIN
+  // Parse extra command-line options
+  // Although lto_codegen provides a way to parse command-line arguments,
+  // we need the arguments to be parsed and applied before LTOModules are
+  // even created. In particular, this is needed because the
+  // "-add-nacl-read-tp-dependency" flag affects how modules are created.
+  if (!options::extra.empty()) {
+    for (std::vector<std::string>::iterator it = options::extra.begin();
+         it != options::extra.end(); ++it) {
+      lto_add_command_line_option((*it).c_str());
+    }
+    lto_parse_command_line_options();
+    // We clear the options so that they don't get parsed again in
+    // lto_codegen_debug_options.
+    options::extra.clear();
+  }
+  // @LOCALMOD-END
 
   return LDPS_OK;
 }
@@ -297,7 +372,21 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
     ld_plugin_symbol &sym = cf.syms.back();
     sym.name = const_cast<char *>(lto_module_get_symbol_name(M, i));
     sym.name = strdup(sym.name);
+    // @LOCALMOD-BEGIN
+    // Localmods have disabled the use of the 'version' field for passing
+    // version information to Gold. Instead, the version is now transmitted as
+    // part of the 'name' field, which has the form "sym@VER" or "sym@@VER".
+    // This is nicer because it communicates one extra bit of information (@@
+    // marks the default version), and allows us to access the real symbol
+    // name in all_symbols_read.
+
+    // These fields are set by Gold to communicate the updated version info
+    // to the plugin. They are used in all_symbols_read_hook().
+    // Initialize them for predictability.
     sym.version = NULL;
+    sym.is_default = false;
+    sym.dynfile = NULL;
+    // @LOCALMOD-END
 
     int scope = attrs & LTO_SYMBOL_SCOPE_MASK;
     switch (scope) {
@@ -346,16 +435,37 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
   }
 
   cf.syms.reserve(cf.syms.size());
+  // @LOCALMOD-BEGIN
+  bool is_shared =
+    (lto_module_get_output_format(M) == LTO_OUTPUT_FORMAT_SHARED);
+  const char* soname = lto_module_get_soname(M);
+  if (soname[0] == '\0')
+    soname = NULL;
+  // @LOCALMOD-END
 
   if (!cf.syms.empty()) {
-    if ((*add_symbols)(cf.handle, cf.syms.size(), &cf.syms[0]) != LDPS_OK) {
+    if ((*add_symbols)(cf.handle, cf.syms.size(), &cf.syms[0],
+                       is_shared, soname) != LDPS_OK) { // @LOCALMOD
       (*message)(LDPL_ERROR, "Unable to add symbols!");
       return LDPS_ERR;
     }
   }
 
-  if (code_gen)
-    lto_codegen_add_module(code_gen, M);
+  // @LOCALMOD-BEGIN
+  // Do not merge the module if it's a PSO.
+  // If the PSO's soname is set, add it to DepLibs.
+  cf.is_linked_in = false;
+  if (code_gen) {
+    if (is_shared) {
+      if (soname && strlen(soname) > 0) {
+        DepLibs.push_back(soname);
+      }
+    } else {
+      lto_codegen_add_module(code_gen, M);
+      cf.is_linked_in = true;
+    }
+  }
+  // @LOCALMOD-END
 
   lto_module_dispose(M);
 
@@ -387,13 +497,46 @@ static ld_plugin_status all_symbols_read_hook(void) {
       continue;
     (*get_symbols)(I->handle, I->syms.size(), &I->syms[0]);
     for (unsigned i = 0, e = I->syms.size(); i != e; i++) {
+      // @LOCALMOD-BEGIN
+      // Don't process the symbols inside a dynamic object.
+      if (!I->is_linked_in)
+        continue;
+      // @LOCALMOD-END
+
       if (I->syms[i].resolution == LDPR_PREVAILING_DEF) {
+        // @LOCALMOD-BEGIN
+        // Set the symbol version in the module.
+        if (linker_output != LDPO_REL && I->syms[i].version) {
+          // NOTE: This may change the name of the symbol, so it must happen
+          // before the call to lto_codegen_add_must_preserve_symbols() below.
+          I->syms[i].name = const_cast<char *>(
+            lto_codegen_set_symbol_def_version(code_gen, I->syms[i].name,
+                                               I->syms[i].version,
+                                               I->syms[i].is_default));
+        }
         lto_codegen_add_must_preserve_symbol(code_gen, I->syms[i].name);
+        // @LOCALMOD-END
         anySymbolsPreserved = true;
 
         if (options::generate_api_file)
           api_file << I->syms[i].name << "\n";
       }
+      // @LOCALMOD-BEGIN
+      else if (linker_output != LDPO_REL &&
+               (I->syms[i].resolution == LDPR_RESOLVED_DYN ||
+                I->syms[i].resolution == LDPR_UNDEF)) {
+        // This symbol is provided by an external object.
+        // Set the version and source dynamic file for it.
+        const char *ver = I->syms[i].version;
+        const char *dynfile = I->syms[i].dynfile;
+        dynfile = get_basename(dynfile);
+        // NOTE: This may change the name of the symbol.
+        I->syms[i].name = const_cast<char *>(
+          lto_codegen_set_symbol_needed(code_gen, I->syms[i].name,
+                                        ver ? ver : "",
+                                        dynfile ? dynfile : ""));
+      }
+      // @LOCALMOD-END
     }
   }
 
@@ -411,6 +554,11 @@ static ld_plugin_status all_symbols_read_hook(void) {
   if (!options::mcpu.empty())
     lto_codegen_set_cpu(code_gen, options::mcpu.c_str());
 
+  // @LOCALMOD-BEGIN (COMMENT)
+  // "extra" will always be empty below, because we process the extra
+  // options earlier, at the end of onload().
+  // @LOCALMOD-END
+
   // Pass through extra options to the code generator.
   if (!options::extra.empty()) {
     for (std::vector<std::string>::iterator it = options::extra.begin();
@@ -419,6 +567,57 @@ static ld_plugin_status all_symbols_read_hook(void) {
     }
   }
 
+  // @LOCALMOD-BEGIN
+  // Store the linker output format into the bitcode.
+  lto_output_format format;
+  switch (linker_output) {
+    case LDPO_REL:
+      format = LTO_OUTPUT_FORMAT_OBJECT;
+      break;
+    case LDPO_DYN:
+      format = LTO_OUTPUT_FORMAT_SHARED;
+      break;
+    case LDPO_EXEC:
+      format = LTO_OUTPUT_FORMAT_EXEC;
+      break;
+    default:
+      (*message)(LDPL_FATAL, "Unknown linker output format (gold-plugin)");
+      abort();
+      break;
+  }
+  lto_codegen_set_merged_module_output_format(code_gen, format);
+  // @LOCALMOD-END
+
+  // @LOCALMOD-BEGIN
+  // For -shared linking, store the soname into the bitcode.
+  if (linker_output == LDPO_DYN) {
+    const char *soname = (*get_output_soname)();
+    lto_codegen_set_merged_module_soname(code_gen, soname);
+  }
+  // @LOCALMOD-END
+
+  // @LOCALMOD-BEGIN
+  // Add the needed libraries to the bitcode.
+  unsigned int num_needed = (*get_num_needed)();
+  for (unsigned i=0; i < num_needed; ++i) {
+    const char *soname = (*get_needed)(i);
+    soname = get_basename(soname);
+    lto_codegen_add_merged_module_library_dep(code_gen, soname);
+  }
+  for (std::vector<std::string>::iterator I = DepLibs.begin(),
+           E = DepLibs.end(); I != E; ++I) {
+    lto_codegen_add_merged_module_library_dep(code_gen, I->c_str());
+  }
+  // @LOCALMOD-END
+
+  // @LOCALMOD-BEGIN
+  // Perform symbol wrapping.
+  unsigned int num_wrapped = (*get_num_wrapped)();
+  for (unsigned i=0; i < num_wrapped; ++i) {
+    const char *sym = (*get_wrapped)(i);
+    lto_codegen_wrap_symbol_in_merged_module(code_gen, sym);
+  }
+  // @LOCALMOD-END
   if (options::generate_bc_file != options::BC_NO) {
     std::string path;
     if (options::generate_bc_file == options::BC_ONLY)

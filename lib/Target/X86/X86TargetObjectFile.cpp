@@ -9,9 +9,11 @@
 
 #include "X86TargetObjectFile.h"
 #include "X86TargetMachine.h"
+#include "X86Subtarget.h"  // @LOCALMOD
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCSectionELF.h" // @LOCALMOD
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/Target/Mangler.h"
 #include "llvm/Support/Dwarf.h"
@@ -42,3 +44,30 @@ getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
                         MachineModuleInfo *MMI) const {
   return Mang->getSymbol(GV);
 }
+
+// @LOCALMOD-START
+// NOTE: this was largely lifted from
+// lib/Target/ARM/ARMTargetObjectFile.cpp
+//
+// The default is .ctors/.dtors while the arm backend uses
+// .init_array/.fini_array
+//
+// Without this the linker defined symbols __fini_array_start and
+// __fini_array_end do not have useful values. c.f.:
+// http://code.google.com/p/nativeclient/issues/detail?id=805
+void TargetLoweringObjectFileNaCl::Initialize(MCContext &Ctx,
+                                              const TargetMachine &TM) {
+  TargetLoweringObjectFileELF::Initialize(Ctx, TM);
+
+  StaticCtorSection =
+    getContext().getELFSection(".init_array", ELF::SHT_INIT_ARRAY,
+                               ELF::SHF_WRITE |
+                               ELF::SHF_ALLOC,
+                               SectionKind::getDataRel());
+  StaticDtorSection =
+    getContext().getELFSection(".fini_array", ELF::SHT_FINI_ARRAY,
+                               ELF::SHF_WRITE |
+                               ELF::SHF_ALLOC,
+                               SectionKind::getDataRel());
+}
+// @LOCALMOD-END

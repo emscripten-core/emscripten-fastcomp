@@ -374,6 +374,7 @@ FunctionPass *llvm::createARMConstantIslandPass() {
 }
 
 bool ARMConstantIslands::runOnMachineFunction(MachineFunction &mf) {
+  if (FlagSfiDisableCP) return false;   // @LOCALMOD
   MF = &mf;
   MCP = mf.getConstantPool();
 

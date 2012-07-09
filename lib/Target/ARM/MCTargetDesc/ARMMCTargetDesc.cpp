@@ -78,10 +78,22 @@ std::string ARM_MC::ParseARMTriple(StringRef TT, StringRef CPU) {
         // features.
         if (NoCPU)
           // v7a: FeatureNEON, FeatureDB, FeatureDSPThumb2, FeatureT2XtPk
-          ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
+          // @LOCALMOD-BEGIN
+          // Orig:    ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
+          // TODO(pdox): Eliminate this strange exception, possibly
+          // with our own cpu tag. (neon doesn't work, but vfp2 does).
+          // We also don't seem to handle The DSP features.
+          ARMArchFeature = "+v7,+db,+vfp2";
+          // @LOCALMOD-END
         else
           // Use CPU to figure out the exact features.
-          ARMArchFeature = "+v7";
+          // @LOCALMOD-BEGIN
+          // Orig:    ARMArchFeature = "+v7";
+          // TODO(pdox): Eliminate this strange exception, possibly
+          // with our own cpu tag. (neon doesn't work, but vfp2 does).
+          // We also don't seem to handle The DSP features.
+          ARMArchFeature = "+v7,+db,+vfp2";
+          // @LOCALMOD-END
       }
     } else if (SubVer == '6') {
       if (Len >= Idx+3 && TT[Idx+1] == 't' && TT[Idx+2] == '2')
@@ -146,7 +158,16 @@ static MCAsmInfo *createARMMCAsmInfo(const Target &T, StringRef TT) {
   if (TheTriple.isOSDarwin())
     return new ARMMCAsmInfoDarwin();
 
-  return new ARMELFMCAsmInfo();
+  // @LOCALMOD-BEGIN
+  ARMELFMCAsmInfo *MAI = new ARMELFMCAsmInfo();
+  if (TheTriple.getOS() == Triple::NativeClient) {
+    // Initial state of the frame ARM:SP points to cfa
+    MachineLocation Dst(MachineLocation::VirtualFP);
+    MachineLocation Src(ARM::SP, 0);
+    MAI->addInitialFrameState(0, Dst, Src);
+  }
+  return MAI;
+  // @LOCALMOD-END
 }
 
 static MCCodeGenInfo *createARMMCCodeGenInfo(StringRef TT, Reloc::Model RM,

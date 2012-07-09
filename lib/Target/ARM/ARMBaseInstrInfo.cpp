@@ -1589,6 +1589,7 @@ void llvm::emitARMRegPlusImmediate(MachineBasicBlock &MBB,
 
     // Build the new ADD / SUB.
     unsigned Opc = isSub ? ARM::SUBri : ARM::ADDri;
+
     BuildMI(MBB, MBBI, dl, TII.get(Opc), DestReg)
       .addReg(BaseReg, RegState::Kill).addImm(ThisVal)
       .addImm((unsigned)Pred).addReg(PredReg).addReg(0)

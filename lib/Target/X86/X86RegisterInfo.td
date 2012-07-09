@@ -268,6 +268,9 @@ let Namespace = "X86" in {
   // Pseudo index registers
   def EIZ : Register<"eiz">;
   def RIZ : Register<"riz">;
+  
+  def PSEUDO_NACL_SEG : Register<"nacl">; // @LOCALMOD
+
 }
 
 
@@ -335,6 +338,10 @@ def GR16_ABCD : RegisterClass<"X86", [i16], 16, (add AX, CX, DX, BX)>;
 def GR32_ABCD : RegisterClass<"X86", [i32], 32, (add EAX, ECX, EDX, EBX)>;
 def GR64_ABCD : RegisterClass<"X86", [i64], 64, (add RAX, RCX, RDX, RBX)>;
 def GR32_TC   : RegisterClass<"X86", [i32], 32, (add EAX, ECX, EDX)>;
+// @LOCALMOD-START
+def GR32_TC_64: RegisterClass<"X86", [i32], 32, (add EAX, ECX, EDX, ESI, EDI,
+                                                 R8D, R9D, R11D)>;
+// @LOCALMOD-END
 def GR64_TC   : RegisterClass<"X86", [i64], 64, (add RAX, RCX, RDX, RSI, RDI,
                                                      R8, R9, R11, RIP)>;
 def GR64_TCW64 : RegisterClass<"X86", [i64], 64, (add RAX, RCX, RDX,

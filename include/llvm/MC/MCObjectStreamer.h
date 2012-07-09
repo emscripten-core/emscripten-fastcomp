@@ -68,6 +68,14 @@ public:
                              unsigned AddrSpace);
   virtual void EmitULEB128Value(const MCExpr *Value);
   virtual void EmitSLEB128Value(const MCExpr *Value);
+                             
+  // @LOCALMOD-BEGIN
+  void EmitBundleLock();
+  void EmitBundleUnlock();
+  void EmitBundleAlignStart();
+  void EmitBundleAlignEnd();
+  // @LOCALMOD-END
+
   virtual void EmitWeakReference(MCSymbol *Alias, const MCSymbol *Symbol);
   virtual void ChangeSection(const MCSection *Section);
   virtual void EmitInstruction(const MCInst &Inst);

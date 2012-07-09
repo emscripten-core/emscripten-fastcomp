@@ -595,7 +595,7 @@ enum _ {
 #else
   stream_timeout                      = ETIMEDOUT,
 #endif
-  text_file_busy                      = ETXTBSY,
+  text_file_busy                      = EINVAL, // @LOCALMOD
   timed_out                           = ETIMEDOUT,
   too_many_files_open_in_system       = ENFILE,
   too_many_files_open                 = EMFILE,

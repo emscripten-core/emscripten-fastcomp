@@ -14,6 +14,7 @@
 
 #include "MipsFixupKinds.h"
 #include "MCTargetDesc/MipsMCTargetDesc.h"
+#include "MCTargetDesc/MipsMCNaCl.h" // @LOCALMOD
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCDirectives.h"
@@ -74,7 +75,10 @@ public:
     :MCAsmBackend(), OSType(_OSType), IsLittle(_isLittle), Is64Bit(_is64Bit) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createMipsELFObjectWriter(OS, OSType, IsLittle, Is64Bit);
+    // @LOCALMOD-BEGIN-UPSTREAM
+    return createMipsELFObjectWriter(OS,
+      MCELFObjectTargetWriter::getOSABI(OSType), IsLittle, Is64Bit);
+    // @LOCALMOD-END-UPSTREAM
   }
 
   /// ApplyFixup - Apply the \arg Value for given \arg Fixup into the provided
@@ -206,8 +210,33 @@ public:
   ///
   /// \return - True on success.
   bool writeNopData(uint64_t Count, MCObjectWriter *OW) const {
+    // @LOCALMOD-START
+    uint64_t NumNops = Count / 4;
+    for (uint64_t i = 0; i != NumNops; ++i)
+      OW->Write32(0x0); // regular NOP
+
+    switch (Count % 4) {
+    case 0: break; // No leftover bytes to write
+    default:
+      return false;  // TODO(rtrk): Should we handle this differently?
+    }
+    // @LOCALMOD-END
     return true;
   }
+
+  // @LOCALMOD-BEGIN
+  // FIXME! NaCl should INHERIT from MipsAsmBackend, not add to it.
+  unsigned getBundleSize() const {
+    return (OSType == Triple::NativeClient) ? 16 : 0;
+  }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
+    if (OSType == Triple::NativeClient) {
+      return CustomExpandInstNaClMips(Inst, Out);
+    }
+    return false;
+  }
+  // @LOCALMOD-END
 }; // class MipsAsmBackend
 
 } // namespace

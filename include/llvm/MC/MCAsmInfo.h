@@ -48,6 +48,14 @@ namespace llvm {
     ///               Default is 4.
     unsigned PointerSize;
 
+    /// @LOCALMOD-BEGIN
+    /// TODO(pdox): Before upstreaming this, make sure every target backend
+    ///             sets it correctly.
+    /// StackSlotSize - Stack slot size in bytes.
+    ///                 Default is 4.
+    unsigned StackSlotSize;
+    /// @LOCALMOD-END
+
     /// IsLittleEndian - True if target is little endian.
     ///                  Default is true.
     bool IsLittleEndian;
@@ -347,6 +355,13 @@ namespace llvm {
     unsigned getPointerSize() const {
       return PointerSize;
     }
+
+    /// @LOCALMOD-BEGIN
+    /// getStackSlotSize - Get the stack slot size in bytes.
+    unsigned getStackSlotSize() const {
+      return StackSlotSize;
+    }
+    /// @LOCALMOD-END
 
     /// islittleendian - True if the target is little endian.
     bool isLittleEndian() const {

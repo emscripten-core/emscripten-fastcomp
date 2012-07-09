@@ -156,6 +156,11 @@ bool AsmPrinter::doInitialization(Module &M) {
   MMI = getAnalysisIfAvailable<MachineModuleInfo>();
   MMI->AnalyzeModule(M);
 
+  // @LOCALMOD-BEGIN
+  IsPlainObject =
+    (MMI->getModule()->getOutputFormat() == Module::ObjectOutputFormat);
+  // @LOCALMOD-END
+
   // Initialize TargetLoweringObjectFile.
   const_cast<TargetLoweringObjectFile&>(getObjFileLowering())
     .Initialize(OutContext, TM);
@@ -271,6 +276,17 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
 
   MCSymbol *GVSym = Mang->getSymbol(GV);
   EmitVisibility(GVSym, GV->getVisibility(), !GV->isDeclaration());
+
+  // @LOCALMOD-BEGIN
+  // For .pexe and .pso files, emit ELF type STT_OBJECT or STT_TLS instead
+  // of NOTYPE for undefined symbols.
+  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2527
+  if (!GV->hasInitializer() && !IsPlainObject) {
+    OutStreamer.EmitSymbolAttribute(GVSym,
+                                    GV->isThreadLocal() ? MCSA_ELF_TypeTLS
+                                                        : MCSA_ELF_TypeObject);
+  }
+  // @LOCALMOD-END
 
   if (!GV->hasInitializer())   // External globals require no extra code.
     return;
@@ -682,9 +698,14 @@ void AsmPrinter::EmitFunctionBody() {
         break;
 
       case TargetOpcode::EH_LABEL:
-      case TargetOpcode::GC_LABEL:
+      case TargetOpcode::GC_LABEL: {
+        // @LOCALMOD-START
+        unsigned LabelAlign = GetTargetLabelAlign(II);
+        if (LabelAlign) EmitAlignment(LabelAlign);
+        // @LOCALMOD-END
         OutStreamer.EmitLabel(II->getOperand(0).getMCSymbol());
         break;
+      }
       case TargetOpcode::INLINEASM:
         EmitInlineAsm(II);
         break;
@@ -700,6 +721,20 @@ void AsmPrinter::EmitFunctionBody() {
       case TargetOpcode::KILL:
         if (isVerbose()) EmitKill(II, *this);
         break;
+      // @LOCALMOD-BEGIN
+      case TargetOpcode::BUNDLE_ALIGN_START:
+        OutStreamer.EmitBundleAlignStart();
+        break;
+      case TargetOpcode::BUNDLE_ALIGN_END:
+        OutStreamer.EmitBundleAlignEnd();
+        break;
+      case TargetOpcode::BUNDLE_LOCK:
+        OutStreamer.EmitBundleLock();
+        break;
+      case TargetOpcode::BUNDLE_UNLOCK:
+        OutStreamer.EmitBundleUnlock();
+        break;
+      // @LOCALMOD-END
       default:
         if (!TM.hasMCUseLoc())
           MCLineEntry::Make(&OutStreamer, getCurrentSection());
@@ -849,6 +884,16 @@ bool AsmPrinter::doFinalization(Module &M) {
     const Function &F = *I;
     if (!F.isDeclaration())
       continue;
+
+    // @LOCALMOD-BEGIN
+    // For .pexe and .pso files, emit STT_FUNC for function declarations.
+    // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2527
+    if (!IsPlainObject) {
+      OutStreamer.EmitSymbolAttribute(Mang->getSymbol(&F),
+                                      MCSA_ELF_TypeFunction);
+    }
+    // @LOCALMOD-END
+
     GlobalValue::VisibilityTypes V = F.getVisibility();
     if (V == GlobalValue::DefaultVisibility)
       continue;
@@ -1066,12 +1111,25 @@ void AsmPrinter::EmitJumpTableInfo() {
   if (// In PIC mode, we need to emit the jump table to the same section as the
       // function body itself, otherwise the label differences won't make sense.
       // FIXME: Need a better predicate for this: what about custom entries?
-      MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference32 ||
+      (MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference32 ||
       // We should also do if the section name is NULL or function is declared
       // in discardable section
       // FIXME: this isn't the right predicate, should be based on the MCSection
       // for the function.
-      F->isWeakForLinker()) {
+      // @LOCALMOD-START
+      // the original code is a hack
+      // jumptables usually end up in .rodata
+      // but for functions with weak linkage there is a chance that the are
+      // not needed. So in order to be discard the function AND the jumptable
+      // they keep them both in .text. This fix only works if we never discard
+      // weak functions. This is guaranteed because the bitcode linker already
+      // throws out unused ones.
+      // TODO: Investigate the other case of concern -- PIC code.
+      // Concern is about jumptables being in a different section: can the
+      // rodata and text be too far apart for a RIP-relative offset?
+       F->isWeakForLinker())
+      && !UseReadOnlyJumpTables()) {
+      // @LOCALMOD-END
     OutStreamer.SwitchSection(getObjFileLowering().SectionForGlobal(F,Mang,TM));
   } else {
     // Otherwise, drop it in the readonly section.
@@ -1093,7 +1151,7 @@ void AsmPrinter::EmitJumpTableInfo() {
     // .set directive for each unique entry.  This reduces the number of
     // relocations the assembler will generate for the jump table.
     if (MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference32 &&
-        MAI->hasSetDirective()) {
+        MAI->hasSetDirective() && !UseReadOnlyJumpTables()) { // @LOCALMOD
       SmallPtrSet<const MachineBasicBlock*, 16> EmittedSets;
       const TargetLowering *TLI = TM.getTargetLowering();
       const MCExpr *Base = TLI->getPICJumpTableRelocBaseExpr(MF,JTI,OutContext);
@@ -1174,7 +1232,7 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
     // If we have emitted set directives for the jump table entries, print
     // them rather than the entries themselves.  If we're emitting PIC, then
     // emit the table entries as differences between two text section labels.
-    if (MAI->hasSetDirective()) {
+    if (MAI->hasSetDirective() && !UseReadOnlyJumpTables()) { // @LOCALMOD
       // If we used .set, reference the .set's symbol.
       Value = MCSymbolRefExpr::Create(GetJTSetSymbol(UID, MBB->getNumber()),
                                       OutContext);
@@ -1193,7 +1251,6 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
   unsigned EntrySize = MJTI->getEntrySize(*TM.getTargetData());
   OutStreamer.EmitValue(Value, EntrySize, /*addrspace*/0);
 }
-
 
 /// EmitSpecialLLVMGlobal - Check to see if the specified global is a
 /// special global used by LLVM.  If so, emit it and return true, otherwise

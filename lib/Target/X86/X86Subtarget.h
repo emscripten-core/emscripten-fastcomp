@@ -185,6 +185,9 @@ public:
 
   bool is64Bit() const { return In64BitMode; }
 
+  // @LOCALMOD
+  bool has64BitPointers() const { return is64Bit() && !isTargetNaCl(); }
+
   PICStyles::Style getPICStyle() const { return PICStyle; }
   void setPICStyle(PICStyles::Style Style)  { PICStyle = Style; }
 

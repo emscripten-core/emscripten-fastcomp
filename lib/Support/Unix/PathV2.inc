@@ -108,7 +108,9 @@ error_code current_path(SmallVectorImpl<char> &result) {
 // For GNU Hurd
   result.reserve(1024);
 #endif
-
+#ifdef __native_client__
+  llvm_unreachable("current_path() not implemented for Native Client");
+#else
   while (true) {
     if (::getcwd(result.data(), result.capacity()) == 0) {
       // See if there was a real error.
@@ -121,6 +123,7 @@ error_code current_path(SmallVectorImpl<char> &result) {
   }
 
   result.set_size(strlen(result.data()));
+#endif
   return error_code::success();
 }
 
@@ -184,6 +187,9 @@ error_code copy_file(const Twine &from, const Twine &to, copy_option copt) {
 }
 
 error_code create_directory(const Twine &path, bool &existed) {
+#ifdef __native_client__
+  llvm_unreachable("create_directory() not implemented for Native Client");
+#else
   SmallString<128> path_storage;
   StringRef p = path.toNullTerminatedStringRef(path_storage);
 
@@ -195,9 +201,13 @@ error_code create_directory(const Twine &path, bool &existed) {
     existed = false;
 
   return error_code::success();
+#endif
 }
 
 error_code create_hard_link(const Twine &to, const Twine &from) {
+#ifdef __native_client__
+  llvm_unreachable("create_hard_link() not implemented for Native Client");
+#else
   // Get arguments.
   SmallString<128> from_storage;
   SmallString<128> to_storage;
@@ -208,9 +218,13 @@ error_code create_hard_link(const Twine &to, const Twine &from) {
     return error_code(errno, system_category());
 
   return error_code::success();
+#endif
 }
 
 error_code create_symlink(const Twine &to, const Twine &from) {
+#ifdef __native_client__
+  llvm_unreachable("create_symlink() not implemented for Native Client");
+#else
   // Get arguments.
   SmallString<128> from_storage;
   SmallString<128> to_storage;
@@ -221,9 +235,13 @@ error_code create_symlink(const Twine &to, const Twine &from) {
     return error_code(errno, system_category());
 
   return error_code::success();
+#endif
 }
 
 error_code remove(const Twine &path, bool &existed) {
+#ifdef __native_client__
+  llvm_unreachable("remove() not implemented for Native Client");
+#else
   SmallString<128> path_storage;
   StringRef p = path.toNullTerminatedStringRef(path_storage);
 
@@ -233,11 +251,14 @@ error_code remove(const Twine &path, bool &existed) {
     existed = false;
   } else
     existed = true;
-
   return error_code::success();
+#endif
 }
 
 error_code rename(const Twine &from, const Twine &to) {
+#ifdef __native_client__
+  llvm_unreachable("rename() not implemented for Native Client");
+#else
   // Get arguments.
   SmallString<128> from_storage;
   SmallString<128> to_storage;
@@ -257,9 +278,13 @@ error_code rename(const Twine &from, const Twine &to) {
   }
 
   return error_code::success();
+#endif
 }
 
 error_code resize_file(const Twine &path, uint64_t size) {
+#ifdef __native_client__
+  llvm_unreachable("resize_file() not implemented for Native Client");
+#else
   SmallString<128> path_storage;
   StringRef p = path.toNullTerminatedStringRef(path_storage);
 
@@ -267,6 +292,7 @@ error_code resize_file(const Twine &path, uint64_t size) {
     return error_code(errno, system_category());
 
   return error_code::success();
+#endif
 }
 
 error_code exists(const Twine &path, bool &result) {
@@ -350,6 +376,9 @@ error_code status(const Twine &path, file_status &result) {
 error_code unique_file(const Twine &model, int &result_fd,
                        SmallVectorImpl<char> &result_path,
                        bool makeAbsolute, unsigned mode) {
+#ifdef __native_client__
+  llvm_unreachable("unique_file() not implemented for Native Client");
+#else
   SmallString<128> Model;
   model.toVector(Model);
   // Null terminate.
@@ -423,6 +452,7 @@ rety_open_create:
 
   result_fd = RandomFD;
   return error_code::success();
+#endif
 }
 
 error_code detail::directory_iterator_construct(detail::DirIterState &it,

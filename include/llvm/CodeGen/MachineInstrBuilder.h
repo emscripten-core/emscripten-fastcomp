@@ -276,6 +276,21 @@ inline MachineInstrBuilder BuildMI(MachineBasicBlock &BB,
   return BuildMI(BB, MII, DL, MCID);
 }
 
+// @LOCALMOD-BEGIN
+/// BuildMI - This version of the builder inserts the newly-built
+/// instruction before the given position in the given MachineBasicBlock,
+/// does NOT take a destination register, and does not add implicit operands.
+///
+inline MachineInstrBuilder BuildMI_NoImp(MachineBasicBlock &BB,
+                                         MachineBasicBlock::iterator I,
+                                         DebugLoc DL,
+                                         const MCInstrDesc &MCID) {
+  MachineInstr *MI = BB.getParent()->CreateMachineInstr(MCID, DL, true);
+  BB.insert(I, MI);
+  return MachineInstrBuilder(MI);
+}
+// @LOCALMOD-END
+
 /// BuildMI - This version of the builder inserts the newly-built
 /// instruction at the end of the given MachineBasicBlock, and does NOT take a
 /// destination register.

@@ -32,6 +32,13 @@ namespace llvm {
                             MachineModuleInfo *MMI) const;
   };
 
+  // @LOCALMOD-BEGIN
+  class TargetLoweringObjectFileNaCl : public TargetLoweringObjectFileELF {
+  public:
+    virtual void Initialize(MCContext &ctx, const TargetMachine &TM);
+  };
+ // @LOCALMOD-END
+
 } // end namespace llvm
 
 #endif

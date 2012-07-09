@@ -466,7 +466,6 @@ void MCELFStreamer::EmitInstToFragment(const MCInst &Inst) {
 }
 
 void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
-  MCDataFragment *DF = getOrCreateDataFragment();
 
   SmallVector<MCFixup, 4> Fixups;
   SmallString<256> Code;
@@ -477,12 +476,21 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
   for (unsigned i = 0, e = Fixups.size(); i != e; ++i)
     fixSymbolsInTLSFixups(Fixups[i].getValue());
 
-  // Add the fixups and data.
-  for (unsigned i = 0, e = Fixups.size(); i != e; ++i) {
-    Fixups[i].setOffset(Fixups[i].getOffset() + DF->getContents().size());
-    DF->addFixup(Fixups[i]);
+  // @LOCALMOD-BEGIN
+  if (Fixups.size() > 0) {
+    MCDataFragment *DF = getOrCreateDataFragment();
+
+    // Add the fixups and data.
+    for (unsigned i = 0, e = Fixups.size(); i != e; ++i) {
+      Fixups[i].setOffset(Fixups[i].getOffset() + DF->getContents().size());
+      DF->addFixup(Fixups[i]);
+    }
+    DF->getContents().append(Code.begin(), Code.end());
+  } else {
+    MCTinyFragment *TF = new MCTinyFragment(getCurrentSectionData());
+    TF->getContents().append(Code.begin(), Code.end());
   }
-  DF->getContents().append(Code.begin(), Code.end());
+  // @LOCALMOD-END
 }
 
 void MCELFStreamer::FinishImpl() {

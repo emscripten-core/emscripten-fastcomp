@@ -240,6 +240,13 @@ private:
   // ".align{,32}", ".p2align{,w,l}"
   bool ParseDirectiveAlign(bool IsPow2, unsigned ValueSize);
 
+  // @LOCALMOD-BEGIN
+  bool ParseDirectiveBundleLock();
+  bool ParseDirectiveBundleUnlock();
+  bool ParseDirectiveBundleAlignStart();
+  bool ParseDirectiveBundleAlignEnd();
+  // @LOCALMOD-END
+
   /// ParseDirectiveSymbolAttribute - Parse a directive like ".globl" which
   /// accepts a single symbol (which should be a label or an external).
   bool ParseDirectiveSymbolAttribute(MCSymbolAttr Attr);
@@ -517,6 +524,13 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
   // Create the initial section, if requested.
   if (!NoInitialTextSection)
     Out.InitSections();
+
+  // @LOCALMOD-BEGIN
+  // This is needed to make crtn compile, but do we really need this?
+  // TODO(pdox): Figure out if there's a better way or place to define this.
+  MCSymbol *Sym = getContext().GetOrCreateSymbol(StringRef("NACLENTRYALIGN"));
+  Out.EmitAssignment(Sym, MCConstantExpr::Create(5, getContext()));
+  // @LOCALMOD-END
 
   // Prime the lexer.
   Lex();
@@ -1218,6 +1232,17 @@ bool AsmParser::ParseStatement() {
       return ParseDirectiveAlign(/*IsPow2=*/true, /*ExprSize=*/2);
     if (IDVal == ".p2alignl")
       return ParseDirectiveAlign(/*IsPow2=*/true, /*ExprSize=*/4);
+
+    // @LOCALMOD-BEGIN
+    if (IDVal == ".bundle_lock")
+      return ParseDirectiveBundleLock();
+    if (IDVal == ".bundle_unlock")
+      return ParseDirectiveBundleUnlock();
+    if (IDVal == ".bundle_align_start")
+      return ParseDirectiveBundleAlignStart();
+    if (IDVal == ".bundle_align_end")
+      return ParseDirectiveBundleAlignEnd();
+    // @LOCALMOD-END
 
     if (IDVal == ".org")
       return ParseDirectiveOrg();
@@ -2160,6 +2185,50 @@ bool AsmParser::ParseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
 
   return false;
 }
+
+// @LOCALMOD-BEGIN
+bool AsmParser::ParseDirectiveBundleLock() {
+  CheckForValidSection();
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.bundle_lock' directive");
+  Lex();
+  getStreamer().EmitBundleLock();
+  return false;
+}
+
+bool AsmParser::ParseDirectiveBundleUnlock() {
+  CheckForValidSection();
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.bundle_unlock' directive");
+  Lex();
+  getStreamer().EmitBundleUnlock();
+  return false;
+}
+
+bool AsmParser::ParseDirectiveBundleAlignStart() {
+  CheckForValidSection();
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.bundle_align_start' directive");
+  Lex();
+  getStreamer().EmitBundleAlignStart();
+  return false;
+}
+
+bool AsmParser::ParseDirectiveBundleAlignEnd() {
+  CheckForValidSection();
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.bundle_align_end' directive");
+  Lex();
+  getStreamer().EmitBundleAlignEnd();
+  return false;
+}
+
+// @LOCALMOD-END
+
 
 /// ParseDirectiveSymbolAttribute
 ///  ::= { ".globl", ".weak", ... } [ identifier ( , identifier )* ]

@@ -129,6 +129,25 @@ namespace llvm {
     /// separately allocated heap memory rather than in the same
     /// code memory allocated by JITCodeEmitter.
     virtual bool allocateSeparateGVMemory() const { return false; }
+
+    // @LOCALMOD-START
+    // NaCl-specific, target-specific stuff
+    typedef struct { uint8_t *ins; int len; } HaltInstruction;
+    /// Get a sequence of NOPs of length len. Returns a pointer to a buffer
+    /// containing a val
+    virtual const uint8_t *getNopSequence(size_t len) const { return NULL; }
+    /// Get the length and definition of the halt/roadblock instruction
+    virtual const HaltInstruction *getHalt() const { return NULL; }
+    virtual int getBundleSize() const { return 0; }
+    virtual int32_t getJumpMask() const { return 0; }
+
+    /// Relocations cannot happen in-place in NaCl because we can't write to
+    /// code. This function takes a pointer to where the code has been emitted,
+    /// before it is copied to the code region. The subsequent call to
+    /// relocate takes pointers to the target code location, but rewrites the
+    /// code in the relocation buffer rather than at the target
+    virtual void setRelocationBuffer(unsigned char * BufferBegin) {}
+    // @LOCALMOD-END
   protected:
     bool useGOT;
   };

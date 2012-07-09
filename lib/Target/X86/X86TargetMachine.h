@@ -20,6 +20,9 @@
 #include "X86ISelLowering.h"
 #include "X86FrameLowering.h"
 #include "X86JITInfo.h"
+#ifdef __native_client__
+#include "X86NaClJITInfo.h"
+#endif
 #include "X86SelectionDAGInfo.h"
 #include "X86Subtarget.h"
 #include "llvm/Target/TargetMachine.h"
@@ -84,7 +87,11 @@ class X86_32TargetMachine : public X86TargetMachine {
   X86InstrInfo      InstrInfo;
   X86SelectionDAGInfo TSInfo;
   X86TargetLowering TLInfo;
+#ifdef __native_client__
+  X86NaClJITInfo        JITInfo;
+#else
   X86JITInfo        JITInfo;
+#endif
 public:
   X86_32TargetMachine(const Target &T, StringRef TT,
                       StringRef CPU, StringRef FS, const TargetOptions &Options,

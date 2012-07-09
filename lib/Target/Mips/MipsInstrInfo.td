@@ -171,6 +171,8 @@ def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">,
                       AssemblerPredicate<"FeatureMips32">;
 def HasStandardEncoding : Predicate<"Subtarget.hasStandardEncoding()">,
                           AssemblerPredicate<"!FeatureMips16">;
+def IsNaCl       :    Predicate<"Subtarget.isTargetNaCl()">;
+def NotNaCl      :    Predicate<"!Subtarget.isTargetNaCl()">;
 
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
@@ -828,6 +830,37 @@ class SCBase<bits<6> Opc, string opstring, RegisterClass RC, Operand Mem> :
 //===----------------------------------------------------------------------===//
 // Pseudo instructions
 //===----------------------------------------------------------------------===//
+
+// @LOCALMOD-START
+
+// Older Macro based SFI Model
+def SFI_GUARD_LOADSTORE :
+MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$src1, CPURegs:$src2),
+    "sfi_load_store_preamble\t$dst, $src1, $src2", []>;
+
+def SFI_GUARD_INDIRECT_CALL :
+MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$src1, CPURegs:$src2),
+    "sfi_indirect_call_preamble\t$dst, $src1, $src2", []>;
+
+def SFI_GUARD_INDIRECT_JMP :
+MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$src1, CPURegs:$src2),
+    "sfi_indirect_jump_preamble\t$dst, $src1, $src2", []>;
+
+def SFI_GUARD_CALL :
+MipsPseudo<(outs), (ins), "sfi_call_preamble", []>;
+
+def SFI_GUARD_RETURN :
+MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$src1, CPURegs:$src2),
+    "sfi_return_preamble\t$dst, $src1, $src2", []>;
+
+def SFI_NOP_IF_AT_BUNDLE_END :
+MipsPseudo<(outs), (ins), "sfi_nop_if_at_bundle_end", []>;
+
+def SFI_DATA_MASK :
+MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$src1, CPURegs:$src2),
+    "sfi_data_mask\t$dst, $src1, $src2", []>;
+
+// @LOCALMOD-END
 
 // As stack alignment is always done with addiu, we need a 16-bit immediate
 let Defs = [SP], Uses = [SP] in {

@@ -52,6 +52,7 @@ def MRM_DC : Format<52>;
 def MRM_DD : Format<53>;
 def MRM_DE : Format<54>;
 def MRM_DF : Format<55>;
+def CustomFrm : Format<62>; // @LOCALMOD
 
 // ImmType - This specifies the immediate type used by an instruction. This is
 // part of the ad-hoc solution used to emit machine instruction encodings by our

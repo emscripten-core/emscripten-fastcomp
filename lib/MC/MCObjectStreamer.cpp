@@ -16,6 +16,7 @@
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectWriter.h"
+#include "llvm/MC/MCSection.h" // @LOCALMOD
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
@@ -54,6 +55,11 @@ MCFragment *MCObjectStreamer::getCurrentFragment() const {
 }
 
 MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() const {
+  // @LOCALMOD-BEGIN
+  if (getCurrentSectionData()->isBundlingEnabled()) {
+    return new MCDataFragment(getCurrentSectionData());
+  }
+  // @LOCALMOD-END
   MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
   if (!F)
     F = new MCDataFragment(getCurrentSectionData());
@@ -153,6 +159,55 @@ void MCObjectStreamer::EmitWeakReference(MCSymbol *Alias,
   report_fatal_error("This file format doesn't support weak aliases.");
 }
 
+// @LOCALMOD-BEGIN ========================================================
+
+void MCObjectStreamer::EmitBundleAlignStart() {
+  MCSectionData *SD = getCurrentSectionData();
+  assert(SD->isBundlingEnabled() &&
+         ".bundle_align_start called, but bundling disabled!");
+  assert(!SD->isBundleLocked() &&
+         ".bundle_align_start while bundle locked");
+  SD->setBundleAlignNext(MCFragment::BundleAlignStart);
+}
+
+void MCObjectStreamer::EmitBundleAlignEnd() {
+  MCSectionData *SD = getCurrentSectionData();
+  assert(SD->isBundlingEnabled() &&
+         ".bundle_align_end called, but bundling disabled!");
+  assert(!SD->isBundleLocked() &&
+         ".bundle_align_end while bundle locked");
+  SD->setBundleAlignNext(MCFragment::BundleAlignEnd);
+}
+
+void MCObjectStreamer::EmitBundleLock() {
+  MCSectionData *SD = getCurrentSectionData();
+  assert(SD->isBundlingEnabled() &&
+         ".bundle_lock called, but bundling disabled!");
+  assert(!SD->isBundleLocked() &&
+         ".bundle_lock issued when bundle already locked");
+  SD->setBundleLocked(true);
+  SD->setBundleGroupFirstFrag(true);
+}
+
+void MCObjectStreamer::EmitBundleUnlock() {
+  MCSectionData *SD = getCurrentSectionData();
+  assert(SD->isBundlingEnabled() &&
+         ".bundle_unlock called, but bundling disabled!");
+  assert(SD->isBundleLocked() &&
+         ".bundle_unlock called when bundle not locked");
+
+  // If there has been at least one fragment emitted inside
+  // this bundle lock, then we need to mark the last emitted
+  // fragment as the group end.
+  if (!SD->isBundleGroupFirstFrag()) {
+    assert(getCurrentFragment() != NULL);
+    getCurrentFragment()->setBundleGroupEnd(true);
+  }
+  SD->setBundleLocked(false);
+  SD->setBundleGroupFirstFrag(false);
+}
+// @LOCALMOD-END ==========================================================
+
 void MCObjectStreamer::ChangeSection(const MCSection *Section) {
   assert(Section && "Cannot switch to a null section!");
 
@@ -160,6 +215,13 @@ void MCObjectStreamer::ChangeSection(const MCSection *Section) {
 }
 
 void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
+
+  // @LOCALMOD-BEGIN
+  if (getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
+    return;
+  }
+  // @LOCALMOD-END
+
   // Scan for values.
   for (unsigned i = Inst.getNumOperands(); i--; )
     if (Inst.getOperand(i).isExpr())

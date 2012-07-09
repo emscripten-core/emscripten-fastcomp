@@ -195,13 +195,24 @@ const char *MipsAsmPrinter::getCurrentABIString() const {
 }
 
 void MipsAsmPrinter::EmitFunctionEntryLabel() {
-  if (OutStreamer.hasRawTextSupport()) {
+  // @LOCALMOD-START
+  // make sure function entry is aligned. We use XmagicX as our basis
+  // for alignment decisions (c.f. assembler sfi macros).
+  int alignment = MF->getAlignment();
+  if (alignment < 4) alignment = 4;
+  EmitAlignment(alignment);
+  if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
     if (Subtarget->inMips16Mode())
       OutStreamer.EmitRawText(StringRef("\t.set\tmips16"));
     else
       OutStreamer.EmitRawText(StringRef("\t.set\tnomips16"));
     // leave out until FSF available gas has micromips changes
     // OutStreamer.EmitRawText(StringRef("\t.set\tnomicromips"));
+    OutStreamer.EmitRawText(StringRef("\t.set XmagicX, .\n"));
+  }
+  // @LOCALMOD-END
+
+  if (OutStreamer.hasRawTextSupport()) {
     OutStreamer.EmitRawText("\t.ent\t" + Twine(CurrentFnSym->getName()));
   }
   OutStreamer.EmitLabel(CurrentFnSym);
@@ -455,6 +466,10 @@ printFCCOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
   O << Mips::MipsFCCToString((Mips::CondCode)MO.getImm());
 }
 
+// @LOCALMOD-START
+extern void EmitMipsSFIHeaders(raw_ostream &O);
+// @LOCALMOD-END
+
 void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
   // FIXME: Use SwitchSection.
 
@@ -476,7 +491,35 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
   // return to previous section
   if (OutStreamer.hasRawTextSupport())
     OutStreamer.EmitRawText(StringRef("\t.previous"));
+
+  // @LOCALMOD-START
+  if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
+    std::string str;
+    raw_string_ostream OS(str);
+    EmitMipsSFIHeaders(OS);
+    OutStreamer.EmitRawText(StringRef(OS.str()));
+  }
+  // @LOCALMOD-END
 }
+
+// @LOCALMOD-START
+unsigned MipsAsmPrinter::GetTargetLabelAlign(const MachineInstr *MI) const {
+  if (Subtarget->isTargetNaCl()) {
+    switch (MI->getOpcode()) {
+      default: return 0;
+      // These labels may indicate an indirect entry point that is
+      // externally reachable and hence must be bundle aligned.
+      // Note: these labels appear to be always at basic block beginnings
+      // so it may be possible to simply set the MBB alignment.
+      // However, it is unclear whether this always holds.
+      case TargetOpcode::EH_LABEL:
+      case TargetOpcode::GC_LABEL:
+        return 4;
+    }
+  }
+  return 0;
+}
+// @LOCALMOD-END
 
 MachineLocation
 MipsAsmPrinter::getDebugValueLocation(const MachineInstr *MI) const {

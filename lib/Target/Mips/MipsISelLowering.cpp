@@ -288,6 +288,15 @@ MipsTargetLowering(MipsTargetMachine &TM)
     setTruncStoreAction(MVT::i64, MVT::i32, Custom);
   }
 
+  // @LOCALMOD-BEGIN
+  if (Subtarget->isTargetNaCl()) {
+    setOperationAction(ISD::NACL_THREAD_STACK_PADDING, MVT::i32, Custom);
+    setOperationAction(ISD::NACL_TP_ALIGN,             MVT::i32, Custom);
+    setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
+    setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
+  }
+  // @LOCALMOD-END
+
   setTargetDAGCombine(ISD::ADDE);
   setTargetDAGCombine(ISD::SUBE);
   setTargetDAGCombine(ISD::SDIVREM);
@@ -313,7 +322,7 @@ bool MipsTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
   case MVT::i32:
     return true;
   case MVT::f32:
-    return Subtarget->hasMips32r2Or64();
+    return Subtarget->hasMips32r2Or64() && !Subtarget->isTargetNaCl()/*@LOCALMOD*/;
   default:
     return false;
   }
@@ -781,6 +790,14 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
     case ISD::SRL_PARTS:          return LowerShiftRightParts(Op, DAG, false);
     case ISD::LOAD:               return LowerLOAD(Op, DAG);
     case ISD::STORE:              return LowerSTORE(Op, DAG);
+
+    // @LOCALMOD-BEGIN
+    case ISD::NACL_THREAD_STACK_PADDING:
+      return LowerNaClThreadStackPadding(Op, DAG);
+    case ISD::NACL_TP_ALIGN:      return LowerNaClTpAlign(Op, DAG);
+    case ISD::NACL_TP_TLS_OFFSET: return LowerNaClTpTlsOffset(Op, DAG);
+    case ISD::NACL_TP_TDB_OFFSET: return LowerNaClTpTdbOffset(Op, DAG);
+    // @LOCALMOD-END
   }
   return SDValue();
 }
@@ -1633,6 +1650,35 @@ SDValue MipsTargetLowering::LowerBlockAddress(SDValue Op,
   return DAG.getNode(ISD::ADD, dl, ValTy, Load, Lo);
 }
 
+// @LOCALMOD-BEGIN
+
+// NaCl TLS setup / layout intrinsics.
+// See: native_client/src/untrusted/nacl/tls_params.h
+
+SDValue MipsTargetLowering::LowerNaClThreadStackPadding(SDValue Op,
+                                                      SelectionDAG &DAG) const {
+  return DAG.getConstant(0, Op.getValueType().getSimpleVT());
+}
+
+SDValue MipsTargetLowering::LowerNaClTpAlign(SDValue Op,
+                                             SelectionDAG &DAG) const {
+  return DAG.getConstant(4, Op.getValueType().getSimpleVT());
+}
+
+SDValue MipsTargetLowering::LowerNaClTpTlsOffset(SDValue Op,
+                                                 SelectionDAG &DAG) const {
+  return DAG.getConstant(0, Op.getValueType().getSimpleVT());
+}
+
+SDValue MipsTargetLowering::LowerNaClTpTdbOffset(SDValue Op,
+                                                 SelectionDAG &DAG) const {
+  DebugLoc dl = Op.getDebugLoc();
+  return DAG.getNode(ISD::SUB, dl, Op.getValueType().getSimpleVT(),
+                     DAG.getConstant(0, Op.getValueType().getSimpleVT()),
+		     Op.getOperand(0));
+}
+// @LOCALMOD-END
+
 SDValue MipsTargetLowering::
 LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
 {
@@ -1646,6 +1692,34 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
   EVT PtrVT = getPointerTy();
 
   TLSModel::Model model = getTargetMachine().getTLSModel(GV);
+
+  // @LOCALMOD-BEGIN
+  if (getTargetMachine().getSubtarget<MipsSubtarget>().isTargetNaCl()) {
+    SDVTList VTs = DAG.getVTList(MVT::i32);
+    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+                                                 MipsII::MO_TPREL_HI);
+    SDValue TGALo = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+                                                 MipsII::MO_TPREL_LO);
+    SDValue Hi = DAG.getNode(MipsISD::Hi, dl, VTs, &TGAHi, 1);
+    SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, TGALo);
+    SDValue Offset = DAG.getNode(ISD::ADD, dl, MVT::i32, Hi, Lo);
+
+    unsigned PtrSize = PtrVT.getSizeInBits();
+    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+
+    SDValue TlsGetAddr = DAG.getExternalSymbol("__tls_get_addr", PtrVT);
+
+    ArgListTy Args;
+    std::pair<SDValue, SDValue> CallResult =
+        LowerCallTo(DAG.getEntryNode(),
+                   (Type *) Type::getInt32Ty(*DAG.getContext()),
+                   false, false, false, false, 0, CallingConv::C, false,
+                   false, true, TlsGetAddr, Args, DAG, dl);
+
+    SDValue ThreadPointer = CallResult.first;
+    return DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer, Offset);
+  }
+  // @LOCALMOD-END
 
   if (model == TLSModel::GeneralDynamic || model == TLSModel::LocalDynamic) {
     // General Dynamic and Local Dynamic TLS Model.

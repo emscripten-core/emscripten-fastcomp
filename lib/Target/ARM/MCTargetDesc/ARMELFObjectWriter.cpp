@@ -71,10 +71,11 @@ const MCSymbol *ARMELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
                                                    const MCFixup &Fixup,
                                                    bool IsPCRel) const {
   const MCSymbol &Symbol = Target.getSymA()->getSymbol().AliasedSymbol();
+  const MCSymbol &ASymbol = Symbol.AliasedSymbol();
   bool EmitThisSym = false;
 
   const MCSectionELF &Section =
-    static_cast<const MCSectionELF&>(Symbol.getSection());
+    static_cast<const MCSectionELF&>(ASymbol.getSection());
   bool InNormalSection = true;
   unsigned RelocType = 0;
   RelocType = GetRelocTypeInner(Target, Fixup, IsPCRel);
@@ -137,9 +138,9 @@ const MCSymbol *ARMELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
   }
 
   if (EmitThisSym)
-    return &Symbol;
+    return &ASymbol;
   if (! Symbol.isTemporary() && InNormalSection) {
-    return &Symbol;
+    return &ASymbol;
   }
   return NULL;
 }

@@ -467,6 +467,27 @@ namespace llvm {
 
     /// @}
 
+    // @LOCALMOD-BEGIN
+    /// @name Bundling Directives
+    /// @{
+
+    /// EmitBundleLock - Begin a group of instructions which cannot
+    /// cross a bundle boundary.
+    virtual void EmitBundleLock() = 0;
+
+    /// EmitBundleUnlock - End a bundle-locked group of instructions.
+    virtual void EmitBundleUnlock() = 0;
+
+    /// EmitBundleAlignStart - Guarantee that the next instruction or
+    /// bundle-locked group starts at the beginning of a bundle.
+    virtual void EmitBundleAlignStart() = 0;
+
+    /// EmitBundleAlignEnd - Guarantee that the next instruction or
+    /// bundle-locked group finishes at the end of a bundle.
+    virtual void EmitBundleAlignEnd() = 0;
+    /// @}
+    // @LOCALMOD-END
+
     /// EmitFileDirective - Switch to a new logical file.  This is used to
     /// implement the '.file "foo.c"' assembler directive.
     virtual void EmitFileDirective(StringRef Filename) = 0;

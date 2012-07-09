@@ -125,6 +125,14 @@ bool MipsPassConfig::addInstSelector() {
 // print out the code after the passes.
 bool MipsPassConfig::addPreEmitPass() {
   PM->add(createMipsDelaySlotFillerPass(getMipsTargetMachine()));
+
+  // @LOCALMOD-START
+  if (getMipsSubtarget().isTargetNaCl()) {
+    // This pass does all the heavy sfi lifting.
+    PM->add(createMipsNaClRewritePass());
+  }
+  // @LOCALMOD-END
+
   return true;
 }
 
