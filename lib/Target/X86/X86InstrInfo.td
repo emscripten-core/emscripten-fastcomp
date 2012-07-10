@@ -1668,6 +1668,9 @@ include "X86InstrCompiler.td"
 // Assembler Mnemonic Aliases
 //===----------------------------------------------------------------------===//
 
+def : MnemonicAlias<"call", "calll">, Requires<[In32BitMode]>;
+def : MnemonicAlias<"call", "callq">, Requires<[In64BitMode]>;
+
 def : MnemonicAlias<"cbw",  "cbtw">;
 def : MnemonicAlias<"cwde", "cwtl">;
 def : MnemonicAlias<"cwd",  "cwtd">;
