@@ -33,6 +33,7 @@ CCState::CCState(CallingConv::ID CC, bool isVarArg, MachineFunction &mf,
   StackOffset = 0;
 
   clearFirstByValReg();
+  clearHasByValInRegPosition(); // @LOCALMOD.
   UsedRegs.resize((TRI.getNumRegs()+31)/32);
 }
 

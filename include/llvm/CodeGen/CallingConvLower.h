@@ -164,6 +164,7 @@ private:
   SmallVector<uint32_t, 16> UsedRegs;
   unsigned FirstByValReg;
   bool FirstByValRegValid;
+  bool HasByValInRegPosition;  // @LOCALMOD -- ARM only: see comment below.
 
 protected:
   ParmContext CallOrPrologue;
@@ -310,6 +311,19 @@ public:
   void setFirstByValReg(unsigned r) { FirstByValReg = r; FirstByValRegValid = true; }
   void clearFirstByValReg() { FirstByValReg = 0; FirstByValRegValid = false; }
   bool isFirstByValRegValid() const { return FirstByValRegValid; }
+
+  // @LOCALMOD-BEGIN
+  // We disabled the splitting of byval between registers and memory.
+  // This separate flag indicates that a byval existed.  We cannot reuse
+  // isFirstByValRegValid() because that is already used by the broken
+  // mechanism of splitting between stack and regs.  We should check
+  // again if this mechanism is still broken later, or try to fix that
+  // mechanism.
+  // NOTE: this is only for ARM, so should be refactored.
+  bool hasByValInRegPosition() const { return HasByValInRegPosition; }
+  void setHasByValInRegPosition() { HasByValInRegPosition = true; }
+  void clearHasByValInRegPosition() { HasByValInRegPosition = false; }
+  // @LOCALMOD-END
 
   ParmContext getCallOrPrologue() const { return CallOrPrologue; }
 

@@ -1704,10 +1704,22 @@ ARMTargetLowering::HandleByVal(CCState *State, unsigned &size) const {
          "unhandled ParmContext");
 
   // @LOCALMOD-BEGIN
-  // This mechanism tries to split a byval argument between registers
-  // and the stack. It doesn't work correctly yet, so disable it.
-  // This leaves the entire byval argument on the stack.
+  // The original mechanism tries to split a byval argument between registers
+  // and the stack.  It doesn't work correctly yet, so disable it.
+  // This leaves the entire byval argument on the stack, and the rest
+  // of the parameters will need to be on the stack as well, to have
+  // the correct order for var-args.  We remember the fact that there was
+  // a byval param that forced this, so that we know not to use the
+  // handle var-args reg-save area.
   // PR11018.
+  if ((!State->isFirstByValRegValid()) &&
+      (ARM::R0 <= reg) && (reg <= ARM::R3)) {
+    State->setHasByValInRegPosition();
+  }
+  // Confiscate any remaining parameter registers to preclude their
+  // assignment to subsequent parameters.
+  while (State->AllocateReg(GPRArgRegs, 4))
+    ;
   return;
   // @LOCALMOD-END
 
@@ -2740,6 +2752,10 @@ ARMTargetLowering::computeRegArea(CCState &CCInfo, MachineFunction &MF,
   unsigned NumGPRs;
   if (CCInfo.isFirstByValRegValid())
     NumGPRs = ARM::R4 - CCInfo.getFirstByValReg();
+    // @LOCALMOD-BEGIN
+  else if (CCInfo.hasByValInRegPosition())
+    NumGPRs = 0;
+    // @LOCALMOD-END
   else {
     unsigned int firstUnalloced;
     firstUnalloced = CCInfo.getFirstUnallocated(GPRArgRegs,
@@ -2770,6 +2786,10 @@ ARMTargetLowering::VarArgStyleRegisters(CCState &CCInfo, SelectionDAG &DAG,
   unsigned firstRegToSaveIndex;
   if (CCInfo.isFirstByValRegValid())
     firstRegToSaveIndex = CCInfo.getFirstByValReg() - ARM::R0;
+  // @LOCALMOD-BEGIN
+  else if (CCInfo.hasByValInRegPosition())
+    firstRegToSaveIndex = 4; // Nothing to save.
+  // @LOCALMOD-END
   else {
     firstRegToSaveIndex = CCInfo.getFirstUnallocated
       (GPRArgRegs, sizeof(GPRArgRegs) / sizeof(GPRArgRegs[0]));
