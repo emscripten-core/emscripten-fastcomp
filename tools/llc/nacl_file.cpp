@@ -26,7 +26,9 @@
 #include <sys/nacl_syscalls.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <nacl/nacl_srpc.h>
+// Headers which are not properly part of the SDK are included by their
+// path in the nacl tree
+#include "native_client/src/shared/srpc/nacl_srpc.h"
 #ifdef __pnacl__
 #include <nacl/pnacl.h>
 #endif
