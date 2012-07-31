@@ -33,6 +33,11 @@
 using namespace llvm;
 
 extern cl::opt<bool> FlagUseZeroBasedSandbox;
+cl::opt<bool> FlagRestrictR15("sfi-restrict-r15",
+                              cl::desc("Restrict use of %r15.  This flag can"
+                                       " be turned off for the zero-based"
+                                       " sandbox model."),
+                              cl::init(true));
 
 namespace {
   class X86NaClRewritePass : public MachineFunctionPass {
@@ -134,8 +139,10 @@ static bool IsDirectBranch(const MachineInstr &MI) {
 
 static bool IsRegAbsolute(unsigned Reg) {
   const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
+  const bool RestrictR15 = FlagRestrictR15;
+  assert(UseZeroBasedSandbox || RestrictR15);
   return (Reg == X86::RSP || Reg == X86::RBP ||
-          (Reg == X86::R15 && !UseZeroBasedSandbox) ||
+          (Reg == X86::R15 && RestrictR15) ||
           Reg == X86::RIP);
 }
 
