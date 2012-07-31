@@ -22,14 +22,9 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
-// @LOCALMOD
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
-
-// @LOCALMOD
-extern cl::opt<bool> FlagUseZeroBasedSandbox;
 
 namespace {
 class X86MCCodeEmitter : public MCCodeEmitter {
@@ -848,9 +843,6 @@ void X86MCCodeEmitter::EmitOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
                                         int MemOperand, const MCInst &MI,
                                         const MCInstrDesc &Desc,
                                         raw_ostream &OS) const {
-  // @LOCALMOD
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
-
   // Emit the lock opcode prefix as needed.
   if (TSFlags & X86II::LOCK)
     EmitByte(0xF0, CurByte, OS);
@@ -878,18 +870,6 @@ void X86MCCodeEmitter::EmitOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
     need_address_override = false;
   }
 
-  // @LOCALMOD-begin
-  // With the zero-based sandbox model, CALLs and JMPs must jump to
-  // the bottom 4 GB.  For reads and writes in the zero-based sandbox
-  // model, 32-bit memory operands are used for forcing an address 
-  // prefix byte in the above logic. Since we cannot use that logic for
-  // the CALL and JMP instructions, we handle those cases here.
-  if (UseZeroBasedSandbox &&
-      (MI.getOpcode() == X86::CALL64r ||
-       MI.getOpcode() == X86::JMP64r))
-    need_address_override = true;
-  // @LOCALMOD-end
-  
   if (need_address_override)
     EmitByte(0x67, CurByte, OS);
 
