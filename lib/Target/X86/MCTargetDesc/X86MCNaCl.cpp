@@ -245,6 +245,33 @@ static void EmitRegTruncate(unsigned Reg64, MCStreamer &Out) {
   EmitMoveRegReg(false, Reg32, Reg32, Out);
 }
 
+static void HandleMemoryRefTruncation(MCInst *Inst, unsigned IndexOpPosition,
+                                      MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
+  unsigned IndexReg = Inst->getOperand(IndexOpPosition).getReg();
+  if (UseZeroBasedSandbox) {
+    // With the zero-based sandbox, we use a 32-bit register on the index
+    Inst->getOperand(IndexOpPosition).setReg(DemoteRegTo32_(IndexReg));
+  } else {
+    EmitRegTruncate(IndexReg, Out);
+  }
+}
+
+static void ShortenMemoryRef(MCInst *Inst, unsigned IndexOpPosition) {
+  unsigned ImmOpPosition = IndexOpPosition - 1;
+  unsigned BaseOpPosition = IndexOpPosition - 2;
+  unsigned IndexReg = Inst->getOperand(IndexOpPosition).getReg();
+  // For the SIB byte, if the scale is 1 and the base is 0, then
+  // an equivalent setup moves index to base, and index to 0.  The
+  // equivalent setup is optimized to remove the SIB byte in
+  // X86MCCodeEmitter.cpp.
+  if (Inst->getOperand(ImmOpPosition).getImm() == 1 &&
+      Inst->getOperand(BaseOpPosition).getReg() == 0) {
+    Inst->getOperand(BaseOpPosition).setReg(IndexReg);
+    Inst->getOperand(IndexOpPosition).setReg(0);
+  }
+}
+
 static void EmitPushReg(bool Is64Bit, unsigned FromReg, MCStreamer &Out) {
   MCInst Push;
   Push.setOpcode(Is64Bit ? X86::PUSH64r : X86::PUSH32r);
@@ -267,7 +294,6 @@ static void EmitLoad(bool Is64Bit,
                      unsigned Offset,
                      unsigned SegmentReg,
                      MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   // Load DestReg from address BaseReg + Scale * IndexReg + Offset
   MCInst Load;
   Load.setOpcode(Is64Bit ? X86::MOV64rm : X86::MOV32rm);
@@ -313,9 +339,10 @@ static void EmitAndRegReg(bool Is64Bit, unsigned DestReg,
   Out.EmitInstruction(AndInst);
 }
 
+
+
 static bool SandboxMemoryRef(MCInst *Inst,
-                             unsigned *IndexReg,
-                             MCStreamer &Out) {
+                             unsigned *IndexOpPosition) {
   const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   for (unsigned i = 0, last = Inst->getNumOperands(); i < last; i++) {
     if (!Inst->getOperand(i).isReg() ||
@@ -327,11 +354,8 @@ static bool SandboxMemoryRef(MCInst *Inst,
     // (BaseReg, ScaleImm, IndexReg, DisplacementImm, SegmentReg),
     // So if we found a match for a segment register value, we know that
     // the index register is exactly two operands prior.
-    *IndexReg = Inst->getOperand(i - 2).getReg();
+    *IndexOpPosition = i - 2;
 
-    if (UseZeroBasedSandbox)
-      Inst->getOperand(i - 2).setReg(DemoteRegTo32_(*IndexReg));
-    
     // Remove the PSEUDO_NACL_SEG annotation.
     Inst->getOperand(i).setReg(0);
     return true;
@@ -367,17 +391,16 @@ static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
 
 
 static void EmitREST(const MCInst &Inst, unsigned Reg32, bool IsMem, MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
   Out.EmitBundleLock();
   if (!IsMem) {
     EmitMoveRegReg(false, Reg32, Inst.getOperand(0).getReg(), Out);
   } else {
-    unsigned IndexReg;
+    unsigned IndexOpPosition;
     MCInst SandboxedInst = Inst;
-    if (SandboxMemoryRef(&SandboxedInst, &IndexReg, Out) &&
-        !UseZeroBasedSandbox) {
-      EmitRegTruncate(IndexReg, Out);
+    if (SandboxMemoryRef(&SandboxedInst, &IndexOpPosition)) {
+      HandleMemoryRefTruncation(&SandboxedInst, IndexOpPosition, Out);
+      ShortenMemoryRef(&SandboxedInst, IndexOpPosition);
     }
     EmitLoad(false,
              Reg32,
@@ -622,18 +645,17 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     return true;
   }
 
-  unsigned IndexReg;
+  unsigned IndexOpPosition;
   MCInst SandboxedInst = Inst;
-  if (SandboxMemoryRef(&SandboxedInst, &IndexReg, Out)) {
+  if (SandboxMemoryRef(&SandboxedInst, &IndexOpPosition)) {
     unsigned PrefixLocal = PrefixSaved;
     PrefixSaved = 0;
 
     if (PrefixLocal || !UseZeroBasedSandbox)
       Out.EmitBundleLock();
 
-    if (!UseZeroBasedSandbox) {
-      EmitRegTruncate(IndexReg, Out);
-    }
+    HandleMemoryRefTruncation(&SandboxedInst, IndexOpPosition, Out);
+    ShortenMemoryRef(&SandboxedInst, IndexOpPosition);
 
     if (PrefixLocal)
       EmitPrefix(PrefixLocal, Out);
