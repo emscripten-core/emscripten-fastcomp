@@ -574,6 +574,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     EmitTLSAddr32(Inst, Out);
     return true;
   case X86::NACL_JMP64r:
+  case X86::NACL_JMP64z:
     assert(PrefixSaved == 0);
     EmitIndirectBranch(Inst.getOperand(0), true, false, Out);
     return true;
@@ -618,6 +619,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     EmitREST(Inst, X86::EBP, true, Out);
     return true;
   case X86::NACL_RESTBPr:
+  case X86::NACL_RESTBPrz:
     assert(PrefixSaved == 0);
     EmitREST(Inst, X86::EBP, false, Out);
     return true;
@@ -626,6 +628,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     EmitREST(Inst, X86::ESP, true, Out);
     return true;
   case X86::NACL_RESTSPr:
+  case X86::NACL_RESTSPrz:
     assert(PrefixSaved == 0);
     EmitREST(Inst, X86::ESP, false, Out);
     return true;

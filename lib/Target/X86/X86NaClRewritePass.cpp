@@ -839,6 +839,7 @@ static bool IsSandboxed(MachineInstr &MI) {
   case X86::NACL_TRAP64:
   case X86::NACL_RET64:
   case X86::NACL_JMP64r:
+  case X86::NACL_JMP64z:
   case X86::NACL_CALL64r:
   case X86::NACL_CALL64d:
 
@@ -849,8 +850,10 @@ static bool IsSandboxed(MachineInstr &MI) {
   case X86::NACL_SPADJi32:
   case X86::NACL_RESTSPr:
   case X86::NACL_RESTSPm:
+  case X86::NACL_RESTSPrz:
   case X86::NACL_RESTBPr:
   case X86::NACL_RESTBPm:
+  case X86::NACL_RESTBPrz:
     return true;
 
   case X86::MOV64rr:

@@ -106,6 +106,8 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1,
     isAsmParserOnly = 1 in {
   def NACL_JMP64r : NaClPI64<(outs), (ins GR32:$dst, GR64:$rZP),
                     "nacljmp\t{$dst, $rZP|$rZP, $dst}">;
+  def NACL_JMP64z : NaClPI64<(outs), (ins GR32:$dst),
+                    "nacljmp\t$dst">;
 }
 
 
@@ -143,6 +145,8 @@ let Defs = [RSP], isAsmParserOnly = 1 in {
                        "naclrestsp_noflags\t{$src, $rZP|$rZP, $src}">;
   def NACL_RESTSPm   : NaClPI64<(outs), (ins i32mem:$src, GR64:$rZP),
                        "naclrestsp_noflags\t{$src, $rZP|$rZP, $src}">;
+  def NACL_RESTSPrz   : NaClPI64<(outs), (ins GR32:$src),
+                       "naclrestsp_noflags\t$src">;
 }
 
 def : MnemonicAlias<"naclrestsp", "naclrestsp_noflags">;
@@ -152,6 +156,8 @@ let Defs = [RBP], isAsmParserOnly = 1 in {
                        "naclrestbp\t{$src, $rZP|$rZP, $src}">;
   def NACL_RESTBPm   : NaClPI64<(outs), (ins i32mem:$src, GR64:$rZP),
                        "naclrestbp\t{$src, $rZP|$rZP, $src}">;
+  def NACL_RESTBPrz   : NaClPI64<(outs), (ins GR32:$src),
+                       "naclrestbp\t$src">;
 }
 
 //===----------------------------------------------------------------------===//
