@@ -2922,6 +2922,9 @@ Module *llvm::getStreamedBitcodeModule(const std::string &name,
     return 0;
   }
   R->setBufferOwned(false); // no buffer to delete
+
+  R->materializeForwardReferencedFunctions();
+
   return M;
 }
 
