@@ -1239,8 +1239,10 @@ endif
 $(LibName.SO): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths) $(SharedLibDir)/.dir
 	$(Echo) Linking $(BuildMode) $(SharedLibKindMessage) \
 	  $(notdir $@)
+        # @LOCALMOD: the EXTRA_LIBS hack is necessary for LLVMgold.so
+	#             c.f. llvm/tools/gold/Makefile
 	$(Verb) $(Link) $(SharedLinkOptions) -o $@ $(ObjectsO) \
-	  $(ProjLibsOptions) $(LLVMLibsOptions) $(LIBS)
+	  $(ProjLibsOptions) $(LLVMLibsOptions) $(LIBS) $(EXTRA_LIBS)
 else
 $(LibName.SO): $(ObjectsO) $(SharedLibDir)/.dir
 	$(Echo) Linking $(BuildMode) Shared Library $(notdir $@)

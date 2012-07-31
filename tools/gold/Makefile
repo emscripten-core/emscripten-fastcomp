@@ -14,6 +14,10 @@ LINK_LIBS_IN_SHARED := 1
 SHARED_LIBRARY := 1
 LOADABLE_MODULE := 1
 
+# @LOCALMOD: this forces to appear -lLTO *after* the object file
+#            on the linkline. This is necessary for linking on ubuntu precise.
+#            Otherwise LLVMgold.so will not have a dt_needed entry for LTO
+EXTRA_LIBS := -lLTO
 EXPORTED_SYMBOL_FILE = $(PROJ_SRC_DIR)/gold.exports
 
 # Include this here so we can get the configuration of the targets
