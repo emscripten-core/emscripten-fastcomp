@@ -32,6 +32,8 @@
 
 using namespace llvm;
 
+extern cl::opt<bool> FlagUseZeroBasedSandbox;
+
 namespace {
   class X86NaClRewritePass : public MachineFunctionPass {
   public:
@@ -131,8 +133,10 @@ static bool IsDirectBranch(const MachineInstr &MI) {
 }
 
 static bool IsRegAbsolute(unsigned Reg) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   return (Reg == X86::RSP || Reg == X86::RBP ||
-          Reg == X86::R15 || Reg == X86::RIP);
+          (Reg == X86::R15 && !UseZeroBasedSandbox) ||
+          Reg == X86::RIP);
 }
 
 static bool FindMemoryOperand(const MachineInstr &MI, unsigned* index) {
@@ -204,6 +208,7 @@ X86NaClRewritePass::TraceLog(const char *func,
 
 bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
                                        MachineBasicBlock::iterator MBBI) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   TraceLog("ApplyStackSFI", MBB, MBBI);
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
@@ -233,7 +238,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
   if (NewOpc) {
     BuildMI(MBB, MBBI, DL, TII->get(NewOpc))
       .addImm(MI.getOperand(2).getImm())
-      .addReg(X86::R15);
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     MI.eraseFromParent();
     return true;
   }
@@ -272,7 +277,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
     const MachineOperand &Offset = MI.getOperand(4);
     BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_SPADJi32))
       .addImm(Offset.getImm())
-      .addReg(X86::R15);
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     MI.eraseFromParent();
     return true;
   }
@@ -280,7 +285,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
   if (Opc == X86::MOV32rr || Opc == X86::MOV64rr) {
     BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_RESTSPr))
       .addReg(DemoteRegTo32(MI.getOperand(1).getReg()))
-      .addReg(X86::R15);
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     MI.eraseFromParent();
     return true;
   }
@@ -292,7 +297,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
       .addOperand(MI.getOperand(3)) // Index
       .addOperand(MI.getOperand(4)) // Offset
       .addOperand(MI.getOperand(5)) // Segment
-      .addReg(X86::R15);
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     MI.eraseFromParent();
     return true;
   }
@@ -303,6 +308,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
 
 bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
                                        MachineBasicBlock::iterator MBBI) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   TraceLog("ApplyFrameSFI", MBB, MBBI);
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
@@ -323,10 +329,10 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
       return false;
 
     // Rewrite: mov %rbp, %rX
-    // To:      naclrestbp %eX, %r15
+    // To:      naclrestbp %eX, %rZP
     BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_RESTBPr))
       .addReg(DemoteRegTo32(SrcReg))
-      .addReg(X86::R15);
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15); // rZP
     MI.eraseFromParent();
     return true;
   }
@@ -335,29 +341,33 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
   if (Opc == X86::MOV64rm) {
     assert(MI.getOperand(0).getReg() == X86::RBP);
 
+    // Zero-based sandbox model uses address clipping
+    if (UseZeroBasedSandbox)
+      return false;
+
     // Rewrite: mov %rbp, (...)
-    // To:      naclrestbp (...), %r15
+    // To:      naclrestbp (...), %rZP
     BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_RESTBPm))
       .addOperand(MI.getOperand(1))  // Base
       .addOperand(MI.getOperand(2))  // Scale
       .addOperand(MI.getOperand(3))  // Index
       .addOperand(MI.getOperand(4))  // Offset
       .addOperand(MI.getOperand(5))  // Segment
-      .addReg(X86::R15); // rZP
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15); // rZP
     MI.eraseFromParent();
     return true;
   }
 
   // Popping onto RBP
   // Rewrite to:
-  //   naclrestbp (%rsp), %r15
-  //   naclasp $8, %r15
+  //   naclrestbp (%rsp), %rZP
+  //   naclasp $8, %rZP
   //
   // TODO(pdox): Consider rewriting to this instead:
   //   .bundle_lock
   //   pop %rbp
   //   mov %ebp,%ebp
-  //   add %r15, %rbp
+  //   add %rZP, %rbp
   //   .bundle_unlock
   if (Opc == X86::POP64r) {
     assert(MI.getOperand(0).getReg() == X86::RBP);
@@ -368,11 +378,11 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
       .addReg(0)  // Index
       .addImm(0)  // Offset
       .addReg(0)  // Segment
-      .addReg(X86::R15); // rZP
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15); // rZP
 
     BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_ASPi8))
       .addImm(8)
-      .addReg(X86::R15);
+      .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
 
     MI.eraseFromParent();
     return true;
@@ -384,6 +394,7 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
 
 bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
                                          MachineBasicBlock::iterator MBBI) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   TraceLog("ApplyControlSFI", MBB, MBBI);
   MachineInstr &MI = *MBBI;
 
@@ -414,7 +425,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
      BuildMI(MBB, MBBI, DL, TII->get(NewOpc))
        .addOperand(MI.getOperand(0));
     if (Is64Bit) {
-      NewMI.addReg(X86::R15);
+      NewMI.addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     }
     MI.eraseFromParent();
     return true;
@@ -431,7 +442,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP64r), X86::RCX);
       BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP64r))
         .addReg(X86::ECX)
-        .addReg(X86::R15);
+        .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     } else {
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP32r), X86::ECX);
       BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP32r))
@@ -460,7 +471,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     // To maintain compatibility with nacl-as, for now we don't emit nacltrap.
     // MI.setDesc(TII->get(Is64Bit ? X86::NACL_TRAP64 : X86::NACL_TRAP32));
     BuildMI(MBB, MBBI, DL, TII->get(X86::MOV32mi))
-      .addReg(Is64Bit ? X86::R15 : 0) // Base
+      .addReg(Is64Bit && !UseZeroBasedSandbox ? X86::R15 : 0) // Base
       .addImm(1) // Scale
       .addReg(0) // Index
       .addImm(0) // Offset
@@ -488,6 +499,7 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
   TraceLog("ApplyMemorySFI", MBB, MBBI);
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
 
   if (!IsLoad(MI) && !IsStore(MI))
     return false;
@@ -525,7 +537,7 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
     AddrReg = 0;
   } else {
     assert(!BaseReg.getReg() && "Unexpected relative register pair");
-    BaseReg.setReg(X86::R15);
+    BaseReg.setReg(UseZeroBasedSandbox ? 0 : X86::R15);
     AddrReg = IndexReg.getReg();
   }
 
@@ -540,7 +552,6 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
 
 bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
                                        MachineBasicBlock::iterator MBBI) {
-
   MachineInstr &MI = *MBBI;
   DebugLoc DL = MI.getDebugLoc();
   unsigned Opc = MI.getOpcode();

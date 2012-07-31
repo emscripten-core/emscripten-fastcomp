@@ -30,13 +30,19 @@ using namespace llvm;
 // help with linking this code with non-sandboxed libs (at least for x86-32).
 cl::opt<int> FlagSfiX86JmpMask("sfi-x86-jmp-mask", cl::init(-32));
 
+cl::opt<bool> FlagUseZeroBasedSandbox("sfi-zero-based-sandbox",
+                                      cl::desc("Use a zero-based sandbox model"
+                                               " for the NaCl SFI."),
+                                      cl::init(false));
+
 static unsigned PrefixSaved = 0;
 static bool PrefixPass = false;
 
-// See the note below where this function is defined.
-namespace llvm {
+// See the notes below where these functions are defined.
+namespace {
 unsigned getX86SubSuperRegister_(unsigned Reg, EVT VT, bool High=false);
-}
+unsigned DemoteRegTo32_(unsigned RegIn);
+} // namespace
 
 static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
                            MCStreamer &Out) {
@@ -52,6 +58,7 @@ static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
 
 static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
                                MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   const int JmpMask = FlagSfiX86JmpMask;
   const unsigned Reg32 = Op.getReg();
   const unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
@@ -68,7 +75,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   ANDInst.addOperand(MCOperand::CreateImm(JmpMask));
   Out.EmitInstruction(ANDInst);
 
-  if (Is64Bit) {
+  if (Is64Bit && !UseZeroBasedSandbox) {
     MCInst InstADD;
     InstADD.setOpcode(X86::ADD64rr);
     InstADD.addOperand(MCOperand::CreateReg(Reg64));
@@ -118,7 +125,9 @@ static void EmitTrap(bool Is64Bit, MCStreamer &Out) {
   // Rewrite to:
   //    X86-32:  mov $0, 0
   //    X86-64:  mov $0, (%r15)
-  unsigned BaseReg = Is64Bit ? X86::R15 : 0;
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
+  unsigned BaseReg = Is64Bit && !UseZeroBasedSandbox ? X86::R15 : 0;
+
   MCInst Tmp;
   Tmp.setOpcode(X86::MOV32mi);
   Tmp.addOperand(MCOperand::CreateReg(BaseReg)); // BaseReg
@@ -134,15 +143,19 @@ static void EmitTrap(bool Is64Bit, MCStreamer &Out) {
 // Fix a register after being truncated to 32-bits.
 static void EmitRegFix(unsigned Reg64, MCStreamer &Out) {
   // lea (%rsp, %r15, 1), %rsp
-  MCInst Tmp;
-  Tmp.setOpcode(X86::LEA64r);
-  Tmp.addOperand(MCOperand::CreateReg(Reg64));    // DestReg
-  Tmp.addOperand(MCOperand::CreateReg(Reg64));    // BaseReg
-  Tmp.addOperand(MCOperand::CreateImm(1));        // Scale
-  Tmp.addOperand(MCOperand::CreateReg(X86::R15)); // IndexReg
-  Tmp.addOperand(MCOperand::CreateImm(0));        // Offset
-  Tmp.addOperand(MCOperand::CreateReg(0));        // SegmentReg
-  Out.EmitInstruction(Tmp);
+  // We do not need to add the R15 base for the zero-based sandbox model
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
+  if (!UseZeroBasedSandbox) {
+    MCInst Tmp;
+    Tmp.setOpcode(X86::LEA64r);
+    Tmp.addOperand(MCOperand::CreateReg(Reg64));    // DestReg
+    Tmp.addOperand(MCOperand::CreateReg(Reg64));    // BaseReg
+    Tmp.addOperand(MCOperand::CreateImm(1));        // Scale
+    Tmp.addOperand(MCOperand::CreateReg(X86::R15)); // IndexReg
+    Tmp.addOperand(MCOperand::CreateImm(0));        // Offset
+    Tmp.addOperand(MCOperand::CreateReg(0));        // SegmentReg
+    Out.EmitInstruction(Tmp);
+  }
 }
 
 static void EmitSPArith(unsigned Opc, const MCOperand &ImmOp,
@@ -254,6 +267,7 @@ static void EmitLoad(bool Is64Bit,
                      unsigned Offset,
                      unsigned SegmentReg,
                      MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   // Load DestReg from address BaseReg + Scale * IndexReg + Offset
   MCInst Load;
   Load.setOpcode(Is64Bit ? X86::MOV64rm : X86::MOV32rm);
@@ -276,6 +290,7 @@ static void EmitStore(bool Is64Bit,
                       unsigned SegmentReg,
                       unsigned SrcReg,
                       MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   // Store SrcReg to address BaseReg + Scale * IndexReg + Offset
   MCInst Store;
   Store.setOpcode(Is64Bit ? X86::MOV64mr : X86::MOV32mr);
@@ -301,6 +316,7 @@ static void EmitAndRegReg(bool Is64Bit, unsigned DestReg,
 static bool SandboxMemoryRef(MCInst *Inst,
                              unsigned *IndexReg,
                              MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   for (unsigned i = 0, last = Inst->getNumOperands(); i < last; i++) {
     if (!Inst->getOperand(i).isReg() ||
         Inst->getOperand(i).getReg() != X86::PSEUDO_NACL_SEG) {
@@ -312,6 +328,10 @@ static bool SandboxMemoryRef(MCInst *Inst,
     // So if we found a match for a segment register value, we know that
     // the index register is exactly two operands prior.
     *IndexReg = Inst->getOperand(i - 2).getReg();
+
+    if (UseZeroBasedSandbox)
+      Inst->getOperand(i - 2).setReg(DemoteRegTo32_(*IndexReg));
+    
     // Remove the PSEUDO_NACL_SEG annotation.
     Inst->getOperand(i).setReg(0);
     return true;
@@ -347,6 +367,7 @@ static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
 
 
 static void EmitREST(const MCInst &Inst, unsigned Reg32, bool IsMem, MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
   Out.EmitBundleLock();
   if (!IsMem) {
@@ -354,7 +375,8 @@ static void EmitREST(const MCInst &Inst, unsigned Reg32, bool IsMem, MCStreamer 
   } else {
     unsigned IndexReg;
     MCInst SandboxedInst = Inst;
-    if (SandboxMemoryRef(&SandboxedInst, &IndexReg, Out)) {
+    if (SandboxMemoryRef(&SandboxedInst, &IndexReg, Out) &&
+        !UseZeroBasedSandbox) {
       EmitRegTruncate(IndexReg, Out);
     }
     EmitLoad(false,
@@ -377,11 +399,13 @@ static void EmitREST(const MCInst &Inst, unsigned Reg32, bool IsMem, MCStreamer 
 // The JMP_BUF is a structure that has the maximum size over all supported
 // architectures.  The callee-saves registers plus [er]ip and [er]sp are stored
 // into the JMP_BUF.
+// TODO(arbenson): Is this code dead? If so, clean it up.
 static void EmitSetjmp(bool Is64Bit, MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   unsigned JmpBuf = Is64Bit ? X86::RDI : X86::ECX;
   unsigned RetAddr = Is64Bit ? X86::RDX : X86::EDX;
   if (Is64Bit) {
-    unsigned BasePtr = X86::R15;
+    unsigned BasePtr = UseZeroBasedSandbox ? 0 : X86::R15;
     unsigned Segment = X86::PSEUDO_NACL_SEG;
     // Save the registers.
     EmitStore(true, BasePtr, 1, JmpBuf,  0, Segment, X86::RBX, Out);
@@ -410,14 +434,16 @@ static void EmitSetjmp(bool Is64Bit, MCStreamer &Out) {
 // value is in %eax.
 // The JMP_BUF is a structure that has the maximum size over all supported
 // architectures.  The saved registers are restored from the JMP_BUF.
+// TODO(arbenson): Is this code dead? If so, clean it up.
 static void EmitLongjmp(bool Is64Bit, MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   unsigned JmpBuf = Is64Bit ? X86::RDI : X86::ECX;
   // If the return value was 0, make it 1.
   EmitAndRegReg(false, X86::EAX, X86::EAX, Out);
   EmitMoveRegImm32(false, X86::EBX, 1, Out);
   EmitCmove(false, X86::EAX, X86::EBX, Out);
   if (Is64Bit) {
-    unsigned BasePtr = X86::R15;
+    unsigned BasePtr = UseZeroBasedSandbox ? 0 : X86::R15;
     unsigned Segment = X86::PSEUDO_NACL_SEG;
     // Restore the registers.
     EmitLoad(true, X86::RBX, BasePtr, 1, JmpBuf,  0, Segment, Out);
@@ -470,6 +496,7 @@ namespace llvm {
 //   these instead of combined instructions. At this time, having only
 //   one explicit prefix is supported.
 bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   // If we are emitting to .s, just emit all pseudo-instructions directly.
   if (Out.hasRawTextSupport()) {
     return false;
@@ -601,12 +628,19 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     unsigned PrefixLocal = PrefixSaved;
     PrefixSaved = 0;
 
-    Out.EmitBundleLock();
-    EmitRegTruncate(IndexReg, Out);
+    if (PrefixLocal || !UseZeroBasedSandbox)
+      Out.EmitBundleLock();
+
+    if (!UseZeroBasedSandbox) {
+      EmitRegTruncate(IndexReg, Out);
+    }
+
     if (PrefixLocal)
       EmitPrefix(PrefixLocal, Out);
     Out.EmitInstruction(SandboxedInst);
-    Out.EmitBundleUnlock();
+
+    if (PrefixLocal || !UseZeroBasedSandbox)
+      Out.EmitBundleUnlock();
     return true;
   }
 
@@ -633,7 +667,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
 // eventually be moved to MCTargetDesc, and then this copy can be
 // removed.
 
-namespace llvm {
+namespace {
 unsigned getX86SubSuperRegister_(unsigned Reg, EVT VT, bool High) {
   switch (VT.getSimpleVT().SimpleTy) {
   default: return Reg;
@@ -799,5 +833,19 @@ unsigned getX86SubSuperRegister_(unsigned Reg, EVT VT, bool High) {
 
   return Reg;
 }
+
+// This is a copy of DemoteRegTo32 from X86NaClRewritePass.cpp.
+// We cannot use the original because it uses part of libLLVMX86CodeGen,
+// which cannot be a dependency of this module (libLLVMX86Desc).
+// Note that this function calls getX86SubSuperRegister_, which is
+// also a copied function for the same reason.
+
+unsigned DemoteRegTo32_(unsigned RegIn) {
+  if (RegIn == 0)
+    return 0;
+  unsigned RegOut = getX86SubSuperRegister_(RegIn, MVT::i32, false);
+  assert(RegOut != 0);
+  return RegOut;
 }
+} //namespace
 // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

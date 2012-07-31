@@ -54,6 +54,9 @@ cl::opt<bool>
 EnableBasePointer("x86-use-base-pointer", cl::Hidden, cl::init(true),
           cl::desc("Enable use of a base pointer for complex stack frames"));
 
+// @LOCALMOD
+extern cl::opt<bool> FlagUseZeroBasedSandbox;
+
 X86RegisterInfo::X86RegisterInfo(X86TargetMachine &tm,
                                  const TargetInstrInfo &tii)
   : X86GenRegisterInfo(tm.getSubtarget<X86Subtarget>().is64Bit()
@@ -355,11 +358,14 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   // @LOCALMOD-START
   const X86Subtarget& Subtarget = MF.getTarget().getSubtarget<X86Subtarget>();
+  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   if (Subtarget.isTargetNaCl64()) {
-    Reserved.set(X86::R15);
-    Reserved.set(X86::R15D);
-    Reserved.set(X86::R15W);
-    Reserved.set(X86::R15B);
+    if (!UseZeroBasedSandbox) {
+      Reserved.set(X86::R15);
+      Reserved.set(X86::R15D);
+      Reserved.set(X86::R15W);
+      Reserved.set(X86::R15B);
+    }
     Reserved.set(X86::RBP);
     Reserved.set(X86::EBP);
     Reserved.set(X86::BP);
