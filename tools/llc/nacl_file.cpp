@@ -49,7 +49,8 @@ using std::map;
 #define MMAP_PAGE_SIZE 64 * 1024
 #define MMAP_ROUND_MASK (MMAP_PAGE_SIZE - 1)
 #define printerr(...)  fprintf(stderr, __VA_ARGS__)
-#define printdbg(...)
+// Temporarily enabling debug prints to debug temp-file usage on windows bots.
+#define printdbg(...)  fprintf(stderr, __VA_ARGS__)
 
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 
@@ -102,13 +103,20 @@ class FileInfo {
   // computed and a shared memory descriptor is stored in fd_.
   FileInfo(string fn, int fd) :
     filename_(fn), fd_(fd), size_(-1) {
-    printdbg("DBG: registering file %d (%s) %d\n", fd, fn.c_str(), size_);
+    printdbg("LLVM-SB-DBG: registering file %d (%s) %d\n",
+             fd, fn.c_str(), size_);
     descriptor_map_[fn] = this;
     if (fd >= 0) {
       struct stat stb;
       int result = fstat(fd_, &stb);
       if (result != 0) {
-        printerr("ERROR: cannot stat %d (%s)\n", fd, fn.c_str());
+        printerr("LLVM-SB-ERROR: cannot stat %d (%s), result: %d\n",
+                 fd, fn.c_str(), result);
+        perror("LLVM-SB-ERROR: stat");
+      } else {
+        printdbg("LLVM-SB-DBG: registered file (%d, %s) stat_size %lld\n",
+                 fd, fn.c_str(), stb.st_size);
+        PrintFstatInfo(fd, stb);
       }
       size_ = stb.st_size;;
     }
@@ -116,7 +124,7 @@ class FileInfo {
 
   int GetSize() {
     if (fd_ < 0) {
-      printerr("ERROR: file has not been initialized!\n");
+      printerr("LLVM-SB-ERROR: file has not been initialized!\n");
     }
     return size_;
   }
@@ -126,13 +134,13 @@ class FileInfo {
   }
 
   MemoryBuffer* ReadAllDataAsMemoryBuffer() {
-    printdbg("DBG: reading file %d (%s): %d bytes\n",
+    printdbg("LLVM-SB-DBG: reading file %d (%s): %d bytes\n",
              fd_, filename_.c_str(), size_);
 
     const int count_up = roundToNextPageSize(size_);
     char *buf = (char *) mmap(NULL, count_up, PROT_READ, MAP_SHARED, fd_, 0);
     if (NULL == buf) {
-      printerr("ERROR: mmap call failed!\n");
+      perror("LLVM-SB-ERROR: ReadAllDataAsMemoryBuffer mmap call failed!\n");
       return 0;
     }
 
@@ -140,25 +148,29 @@ class FileInfo {
     // This copies the data into a new buffer
     MemoryBuffer* mb = MemoryBuffer::getMemBufferCopy(StringRef(buf, size_));
     munmap(buf, count_up);
-    printdbg("after unmapping %p %d\n",
+    printdbg("LLVM-SB-DBG: after unmapping %p %d\n",
              mb->getBufferStart(), mb->getBufferSize());
     return mb;
   }
 
   void WriteAllDataToTmpFile(string data) {
-    printdbg("DBG: writing file %d (%s): %d bytes\n",
+    printdbg("LLVM-SB-DBG: writing file %d (%s): %d bytes\n",
              fd_, filename_.c_str(), data.size());
 
     if (fd_ < 0) {
-      printerr("ERROR: invalid fd for write\n");
+      printerr("LLVM-SB-ERROR: invalid fd for write\n");
       return;
     }
     size_t bytes_to_write = data.size();
     const char* buf = data.c_str();
     while (bytes_to_write > 0) {
       ssize_t bytes_written = write(fd_, (const void*) buf, bytes_to_write);
+      printdbg("LLVM-SB-DBG: write call to file %d (req: %zu, got: %zd)\n",
+               fd_, bytes_to_write, bytes_written);
       if (bytes_written < 0) {
-        printerr("ERROR: write failed\n");
+        printerr("LLVM-SB-ERROR: write to file %d failed with %zd\n",
+                 fd_, bytes_written);
+        perror("LLVM-SB-ERROR: WriteAllDataToTmpFile write failed");
         return;
       }
       buf += bytes_written;
@@ -168,23 +180,23 @@ class FileInfo {
 
   // TODO(sehr): remove this method once switched to using the Run SRPC.
   void WriteAllDataToShmem(string data) {
-    printdbg("DBG: writing file %d (%s): %d bytes\n",
+    printdbg("LLVM-SB-DBG: writing file %d (%s): %d bytes\n",
              fd_, filename_.c_str(), data.size());
 
     if (fd_ >= 0) {
-      printerr("ERROR: cannot write file twice\n");
+      printerr("LLVM-SB-ERROR: cannot write file twice\n");
       return;
     }
-    const int count_up =  roundToNextPageSize(data.size());
+    const int count_up = roundToNextPageSize(data.size());
     const int fd = imc_mem_obj_create(count_up);
     if (fd < 0) {
-      printerr("ERROR: imc_mem_obj_create failed\n");
+      printerr("LLVM-SB-ERROR: imc_mem_obj_create failed\n");
       return;
     }
 
     char* buf = (char *) mmap(NULL, count_up, PROT_WRITE, MAP_SHARED, fd, 0);
     if (NULL == buf) {
-      printerr("ERROR: cannot map shm for write\n");
+      perror("LLVM-SB-ERROR: cannot map shm for write\n");
       return;
     }
 
@@ -205,10 +217,29 @@ class FileInfo {
   static FileInfo* FindFileInfo(const string& fn) {
     map<string, FileInfo*>::iterator it = descriptor_map_.find(fn);
     if (it == descriptor_map_.end()) {
-      printerr("ERROR: no mapping for filename\n");
+      printerr("LLVM-SB-ERROR: no mapping for filename\n");
       return NULL;
     }
     return it->second;
+  }
+
+ private:
+  void PrintFstatInfo(int fd, const struct stat& stb) {
+    printdbg("LLVM-SB-DBG file stat info for %d (may be fake): \n", fd);
+    printdbg("LLVM-SB-DBG: uid: %d, gid: %d, is_reg: %d\n",
+             stb.st_uid, stb.st_gid, S_ISREG(stb.st_mode));
+    printdbg("LLVM-SB-DBG permissions: ");
+    printdbg( (S_ISDIR(stb.st_mode)) ? "d" : "-");
+    printdbg( (stb.st_mode & S_IRUSR) ? "r" : "-");
+    printdbg( (stb.st_mode & S_IWUSR) ? "w" : "-");
+    printdbg( (stb.st_mode & S_IXUSR) ? "x" : "-");
+    printdbg( (stb.st_mode & S_IRGRP) ? "r" : "-");
+    printdbg( (stb.st_mode & S_IWGRP) ? "w" : "-");
+    printdbg( (stb.st_mode & S_IXGRP) ? "x" : "-");
+    printdbg( (stb.st_mode & S_IROTH) ? "r" : "-");
+    printdbg( (stb.st_mode & S_IWOTH) ? "w" : "-");
+    printdbg( (stb.st_mode & S_IXOTH) ? "x" : "-");
+    printdbg("\n");
   }
 };
 
@@ -220,7 +251,7 @@ extern int llc_main(int argc, char **argv);
 MemoryBuffer* NaClGetMemoryBufferForFile(const char* filename) {
   FileInfo* fi = FileInfo::FindFileInfo(filename);
   if (fi == NULL) {
-    printerr("ERROR: unknown file %s\n", filename);
+    printerr("LLVM-SB-ERROR: unknown file %s\n", filename);
     return NULL;
   }
   return fi->ReadAllDataAsMemoryBuffer();
