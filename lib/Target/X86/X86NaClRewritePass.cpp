@@ -536,9 +536,23 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
     assert(Scale.getImm() == 1);
     AddrReg = 0;
   } else {
-    assert(!BaseReg.getReg() && "Unexpected relative register pair");
-    BaseReg.setReg(UseZeroBasedSandbox ? 0 : X86::R15);
-    AddrReg = IndexReg.getReg();
+    if (!BaseReg.getReg()) {
+      // No base, fill in relative.
+      BaseReg.setReg(UseZeroBasedSandbox ? 0 : X86::R15);
+      AddrReg = IndexReg.getReg();
+    } else if (!UseZeroBasedSandbox) {
+      // Switch base and index registers if index register is undefined.
+      // That is do conversions like "mov d(%r,0,0) -> mov d(%r15, %r, 1)".
+      assert (!IndexReg.getReg()
+              && "Unexpected index and base register");
+      IndexReg.setReg(BaseReg.getReg());
+      Scale.setImm(1);
+      BaseReg.setReg(X86::R15);
+      AddrReg = IndexReg.getReg();
+    } else {
+      llvm_unreachable(
+          "Unexpected index and base register");
+    }
   }
 
   if (AddrReg) {
