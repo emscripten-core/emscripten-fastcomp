@@ -214,7 +214,7 @@ namespace {
                              SDValue &Segment,
                              SDValue &NodeWithChain);
     // @LOCALMOD-BEGIN
-    void LegalizeIndexForNaCl(SDValue N, X86ISelAddressMode &AM);
+    void LegalizeAddressingModeForNaCl(SDValue N, X86ISelAddressMode &AM);
     // @LOCALMOD-END
 
     
@@ -1337,9 +1337,7 @@ bool X86DAGToDAGISel::SelectAddr(SDNode *Parent, SDValue N, SDValue &Base,
 
   // @LOCALMOD-START
   if (Subtarget->isTargetNaCl64()) {
-    // NaCl needs to zero the top 32-bits of the index, so we can't
-    // allow the index register to be negative.
-    LegalizeIndexForNaCl(N, AM);
+      LegalizeAddressingModeForNaCl(N, AM);
   }
   // @LOCALMOD-END
 
@@ -1534,13 +1532,29 @@ bool X86DAGToDAGISel::TryFoldLoad(SDNode *P, SDValue N,
 }
 
 // @LOCALMOD-BEGIN
-// LegalizeIndexForNaCl - NaCl specific addressing fix
+// LegalizeAddressingModeForNaCl - NaCl specific addressing fixes.  This ensures
+// two addressing mode invariants.
 //
-//   Because NaCl needs to zero the top 32-bits of the index, we can't
+//   case 1. Addressing using only a displacement (constant address references)
+//   is only legal when the displacement is positive.  This is because, when
+//   later we replace
+//     movl 0xffffffff, %eax
+//   by
+//     movl 0xffffffff(%r15), %eax
+//   the displacement becomes a negative offset from %r15, making this a
+//   reference to the guard region below %r15 rather than to %r15 + 4GB - 1,
+//   as the programmer expected.  To handle these cases we pull negative
+//   displacements out whenever there is no base or index register in the
+//   addressing mode.  I.e., the above becomes
+//     movl $0xffffffff, %ebx
+//     movl %rbx, %rbx
+//     movl (%r15, %rbx, 1), %eax
+//
+//   case 2. Because NaCl needs to zero the top 32-bits of the index, we can't
 //   allow the index register to be negative. However, if we are using a base
 //   frame index, global address or the constant pool, and AM.Disp > 0, then
 //   negative values of "index" may be expected to legally occur.
-//   To avoid this, we fold the displacement (and scale) back into the 
+//   To avoid this, we fold the displacement (and scale) back into the
 //   index. This results in a LEA before the current instruction.
 //   Unfortunately, this may add a requirement for an additional register.
 //
@@ -1560,11 +1574,25 @@ bool X86DAGToDAGISel::TryFoldLoad(SDNode *P, SDValue N,
 //  valid and not depend on further patching. A more desirable fix is
 //  probably to update the matching code to avoid assigning a register
 //  to a value that we cannot prove is positive.
-void X86DAGToDAGISel::LegalizeIndexForNaCl(SDValue N, X86ISelAddressMode &AM) {
+void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
+                                                    X86ISelAddressMode &AM) {
 
 
+  // RIP-relative addressing is always fine.
   if (AM.isRIPRelative())
     return;
+
+  DebugLoc dl = N->getDebugLoc();
+  // Case 1 above:
+  if (!AM.hasBaseOrIndexReg() && !AM.hasSymbolicDisplacement() && AM.Disp < 0) {
+    SDValue Imm = CurDAG->getTargetConstant(AM.Disp, MVT::i32);
+    SDValue MovNode =
+      SDValue(CurDAG->getMachineNode(X86::MOV32ri, dl, MVT::i32, Imm), 0);
+    AM.IndexReg = MovNode;
+    AM.Disp = 0;
+    InsertDAGNode(*CurDAG, N, MovNode);
+    return;
+  }
 
   // MatchAddress wants to use the base register when there's only
   // one register and no scale. We need to use the index register instead.
@@ -1575,28 +1603,28 @@ void X86DAGToDAGISel::LegalizeIndexForNaCl(SDValue N, X86ISelAddressMode &AM) {
     AM.setBaseReg(SDValue());
   }
 
-  // Case 1: Prevent negative indexes
+  // Case 2 above comprises two sub-cases:
+  // sub-case 1: Prevent negative indexes
   bool NeedsFixing1 =
        (AM.BaseType == X86ISelAddressMode::FrameIndexBase || AM.GV || AM.CP) &&
-       AM.IndexReg.getNode() && 
+       AM.IndexReg.getNode() &&
        AM.Disp > 0;
 
-  // Case 2: Both index and base registers are being used
+  // sub-case 2: Both index and base registers are being used
   bool NeedsFixing2 =
        (AM.BaseType == X86ISelAddressMode::RegBase) &&
        AM.Base_Reg.getNode() &&
        AM.IndexReg.getNode();
 
-  if (!NeedsFixing1 && !NeedsFixing2) 
+  if (!NeedsFixing1 && !NeedsFixing2)
     return;
 
-  DebugLoc dl = N->getDebugLoc();
   static const unsigned LogTable[] = { ~0, 0, 1, ~0, 2, ~0, ~0, ~0, 3 };
   assert(AM.Scale < sizeof(LogTable)/sizeof(LogTable[0]));
   unsigned ScaleLog = LogTable[AM.Scale];
   assert(ScaleLog <= 3);
   SmallVector<SDNode*, 8> NewNodes;
-  
+
   SDValue NewIndex = AM.IndexReg;
   if (ScaleLog > 0) {
     SDValue ShlCount = CurDAG->getConstant(ScaleLog, MVT::i8);
@@ -1610,7 +1638,7 @@ void X86DAGToDAGISel::LegalizeIndexForNaCl(SDValue N, X86ISelAddressMode &AM) {
     SDValue DispNode = CurDAG->getConstant(AM.Disp, N.getValueType());
     NewNodes.push_back(DispNode.getNode());
 
-    SDValue AddNode = CurDAG->getNode(ISD::ADD, dl, N.getValueType(), 
+    SDValue AddNode = CurDAG->getNode(ISD::ADD, dl, N.getValueType(),
                                   NewIndex, DispNode);
     NewNodes.push_back(AddNode.getNode());
     NewIndex = AddNode;
@@ -1618,7 +1646,7 @@ void X86DAGToDAGISel::LegalizeIndexForNaCl(SDValue N, X86ISelAddressMode &AM) {
 
   if (NeedsFixing2) {
     SDValue AddBase = CurDAG->getNode(ISD::ADD, dl, N.getValueType(),
-                                      NewIndex, AM.Base_Reg); 
+                                      NewIndex, AM.Base_Reg);
     NewNodes.push_back(AddBase.getNode());
     NewIndex = AddBase;
     AM.setBaseReg(SDValue());
