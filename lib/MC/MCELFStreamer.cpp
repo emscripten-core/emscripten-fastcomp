@@ -487,7 +487,14 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
     }
     DF->getContents().append(Code.begin(), Code.end());
   } else {
-    MCTinyFragment *TF = new MCTinyFragment(getCurrentSectionData());
+    MCTinyFragment *TF = dyn_cast_or_null<MCTinyFragment>(getCurrentFragment());
+    // A bundle group is a contiguous group of bytes aligned as a unit.  We
+    // always try to append to the current bundle group, if there is one, to
+    // reduce the number of fragments created.
+    if (!TF || !TF->isBundleGroupStart() || TF->isBundleGroupEnd()) {
+      // We need to start a new bundle group.
+      TF = new MCTinyFragment(getCurrentSectionData());
+    }
     TF->getContents().append(Code.begin(), Code.end());
   }
   // @LOCALMOD-END

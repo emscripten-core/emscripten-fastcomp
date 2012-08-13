@@ -1052,7 +1052,18 @@ void MCFragment::dump() {
   }
 
   OS << "<MCFragment " << (void*) this << " LayoutOrder:" << LayoutOrder
-     << " Offset:" << Offset << ">";
+     << " Offset:" << Offset;
+  // @LOCALMOD-BEGIN
+  if (BundleGroupStart)
+    OS << " BundleGroupStart";
+  if (BundleGroupEnd)
+    OS << " BundleGroupEnd";
+  if (BundleAlign == BundleAlignStart)
+    OS << " BundleAlign: Start";
+  else if (BundleAlign == BundleAlignEnd)
+    OS << " BundleAlign: End";
+  OS << ">";
+  // @LOCALMOD-END
 
   switch (getKind()) {
   case MCFragment::FT_Align: {
