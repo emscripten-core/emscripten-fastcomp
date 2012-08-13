@@ -101,6 +101,68 @@ bool LTOCodeGenerator::addModule(LTOModule* mod, std::string& errMsg) {
   return ret;
 }
 
+// @LOCALMOD-BEGIN
+/// Add a module that will be merged with the final output module.
+/// The merging does not happen until linkGatheredModulesAndDispose().
+bool LTOCodeGenerator::gatherModuleForLinking(LTOModule* mod) {
+  _gatheredModules.push_back(mod);
+}
+
+/// Merge all modules gathered from gatherModuleForLinking(), and
+/// destroy the source modules in the process.
+bool LTOCodeGenerator::linkGatheredModulesAndDispose(std::string& errMsg) {
+
+  // We gather the asm undefs earlier than addModule() does,
+  // since we delete the modules during linking, and would not be
+  // able to do this after linking.  The undefs vector contain lists
+  // of global variable names which are considered "used", which will be
+  // appended into the "llvm.compiler.used" list.  The names must be the
+  // same before linking as they are after linking, since we have switched
+  // the order.
+  for (unsigned i = 0, ei = _gatheredModules.size(); i != ei; ++i) {
+    const std::vector<const char*> &undefs =
+        _gatheredModules[i]->getAsmUndefinedRefs();
+    for (int j = 0, ej = undefs.size(); j != ej; ++j) {
+      _asmUndefinedRefs[undefs[j]] = 1;
+    }
+  }
+
+  // Tree-reduce the mods, re-using the incoming mods as scratch
+  // intermediate results.  Module i is linked with (i + stride), with i as
+  // the dest.  We begin with a stride of 1, and double each time.  E.g.,
+  // after the first round, only the even-indexed modules are still available,
+  // and after the second, only those with index that are a multiple of 4
+  // are available.  Eventually the Module with the content of all other modules
+  // will be Module 0.
+  // NOTE: we may be able to be smarter about linking if we did not do them
+  // pairwise using Linker::LinkModules.  We also disregard module sizes
+  // and try our best to keep the modules in order (linking adjacent modules).
+  for (unsigned stride = 1, len = _gatheredModules.size();
+       stride < len;
+       stride *= 2) {
+    for (unsigned i = 0; i + stride < len; i = i + (stride * 2)) {
+      if (Linker::LinkModules(_gatheredModules[i]->getLLVVMModule(),
+                              _gatheredModules[i+stride]->getLLVVMModule(),
+                              Linker::DestroySource, &errMsg)) {
+        errs() << "LinkModules " << i << " w/ " << i + stride << " failed...\n";
+        // We leak the memory in this case...
+        return true;
+      }
+      delete _gatheredModules[i+stride];
+    }
+  }
+
+  // Finally, link Node 0 with the Dest and delete Node 0.
+  if (_linker.LinkInModule(_gatheredModules[0]->getLLVVMModule(), &errMsg)) {
+    errs() << "LinkModules Dst w/ _gatheredModules[0] failed...\n";
+    return true;
+  }
+  delete _gatheredModules[0];
+
+  return false;
+}
+// @LOCALMOD-END
+
 bool LTOCodeGenerator::setDebugInfo(lto_debug_model debug,
                                     std::string& errMsg) {
   switch (debug) {

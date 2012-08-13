@@ -710,10 +710,10 @@ int llc_main(int argc, char **argv) {
   // we have a NeededRecord for one of them.
   // They may have been eliminated by the StripDeadPrototypes pass,
   // or some other pass that is unaware of NeededRecords / IntrinsicLowering.
-  IntrinsicLowering IL(*target->getTargetData());
-  IL.AddPrototypes(*M);
-
   if (!MetadataTextFilename.empty()) {
+    IntrinsicLowering IL(*target->getTargetData());
+    IL.AddPrototypes(*M);
+
     int err = WriteTextMetadataFile(*M.get(), TheTriple);
     if (err != 0)
       return err;

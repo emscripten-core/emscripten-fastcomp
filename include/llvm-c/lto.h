@@ -259,7 +259,26 @@ lto_codegen_dispose(lto_code_gen_t);
 extern bool
 lto_codegen_add_module(lto_code_gen_t cg, lto_module_t mod);
 
+/* @LOCALMOD-BEGIN */
+/**
+ * Add an object module to the set of modules for which code will be generated.
+ * This does not merge the module immediately, unlike lto_codegen_add_module.
+ * It will hold onto the module until the user calls
+ * lto_codegen_link_gathered_modules_and_dispose().  The lto_module_t
+ * should now by owned by the lto_code_gen_t, and will be freed when
+ * the link is done.
+ */
+extern bool
+lto_codegen_gather_module_for_link(lto_code_gen_t cg, lto_module_t mod);
 
+/**
+ * Merges modules that are part of the set of modules gathered by
+ * lto_codegen_gather_module_for_link(), and the also destroys the modules
+ * as lto_module_dispose() would.
+ */
+extern bool
+lto_codegen_link_gathered_modules_and_dispose(lto_code_gen_t cg);
+/* @LOCALMOD-END*/
 
 /**
  * Sets if debug info should be generated.

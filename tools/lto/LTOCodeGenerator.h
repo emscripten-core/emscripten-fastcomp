@@ -19,6 +19,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm-c/lto.h"
 #include <string>
+#include <vector>
 
 namespace llvm {
   class LLVMContext;
@@ -40,6 +41,12 @@ struct LTOCodeGenerator {
   ~LTOCodeGenerator();
 
   bool addModule(struct LTOModule*, std::string &errMsg);
+  // @LOCALMOD-BEGIN
+  // Alternative methods of adding modules, which delay merging modules until
+  // all modules are available.
+  bool gatherModuleForLinking(struct LTOModule*);
+  bool linkGatheredModulesAndDispose(std::string &errMsg);
+  // @LOCALMOD-END
   bool setDebugInfo(lto_debug_model, std::string &errMsg);
   bool setCodePICModel(lto_codegen_model, std::string &errMsg);
 
@@ -87,6 +94,9 @@ private:
   std::vector<char*>          _codegenOptions;
   std::string                 _mCpu;
   std::string                 _nativeObjectPath;
+
+  // @LOCALMOD
+  std::vector<LTOModule*> _gatheredModules;
 };
 
 #endif // LTO_CODE_GENERATOR_H
