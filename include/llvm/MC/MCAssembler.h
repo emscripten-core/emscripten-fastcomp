@@ -65,7 +65,26 @@ public:
   // @LOCALMOD-END
 
 private:
-  FragmentType Kind;
+  // @LOCALMOD-BEGIN
+  // Try to compress the layout of MCFragment by:
+  // 1) Making Kind, the bundling flags, and BundlePadding fit in 32 bits.
+  // 2) Move LayoutOrder to fit in the hole left by aligning for 64 bits.
+
+  FragmentType Kind : 4;
+
+  BundleAlignType BundleAlign : 2;
+  bool BundleGroupStart       : 1;
+  bool BundleGroupEnd         : 1;
+
+  /// BundlePadding - The computed padding for this fragment. This is ~0
+  /// until initialized.
+  uint8_t BundlePadding;
+
+  /// LayoutOrder - The layout order of this fragment.
+  unsigned LayoutOrder;
+
+  // @LOCALMOD-END
+
 
   /// Parent - The data for the section this fragment is in.
   MCSectionData *Parent;
@@ -83,19 +102,6 @@ private:
   /// Offset - The offset of this fragment in its section. This is ~0 until
   /// initialized.
   uint64_t Offset;
-
-  /// LayoutOrder - The layout order of this fragment.
-  unsigned LayoutOrder;
-
-  // @LOCALMOD-BEGIN
-  BundleAlignType BundleAlign : 2;
-  bool BundleGroupStart       : 1;
-  bool BundleGroupEnd         : 1;
-
-  /// BundlePadding - The computed padding for this fragment. This is ~0
-  /// until initialized.
-  uint8_t BundlePadding;
-  // @LOCALMOD-END
 
   /// @}
 

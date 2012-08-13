@@ -487,13 +487,16 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
     }
     DF->getContents().append(Code.begin(), Code.end());
   } else {
+    // Only create a new fragment if:
+    // 1) there is no current fragment,
+    // 2) we are not currently emitting a bundle locked sequence, or
+    // 3) we are emitting the first instruction of a bundle locked sequence.
+    // Otherwise, append to the current fragment to reduce the number of
+    // fragments.
     MCTinyFragment *TF = dyn_cast_or_null<MCTinyFragment>(getCurrentFragment());
-    // A bundle group is a contiguous group of bytes aligned as a unit.  We
-    // always try to append to the current bundle group, if there is one, to
-    // reduce the number of fragments created.
-    if (!TF || !TF->isBundleGroupStart() || TF->isBundleGroupEnd()) {
-      // We need to start a new bundle group.
-      TF = new MCTinyFragment(getCurrentSectionData());
+    MCSectionData *SD = getCurrentSectionData();
+    if (!TF || !SD->isBundleLocked() || SD->isBundleGroupFirstFrag()) {
+      TF = new MCTinyFragment(SD);
     }
     TF->getContents().append(Code.begin(), Code.end());
   }
