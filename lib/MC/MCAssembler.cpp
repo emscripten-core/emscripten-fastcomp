@@ -186,13 +186,14 @@ MCFragment::~MCFragment() {
 }
 
 MCFragment::MCFragment(FragmentType _Kind, MCSectionData *_Parent)
-  : Kind(_Kind), Parent(_Parent), Atom(0), Offset(~UINT64_C(0)),
+  : Kind(_Kind),
     // @LOCALMOD-BEGIN
     BundleAlign(BundleAlignNone),
     BundleGroupStart(false),
     BundleGroupEnd(false),
-    BundlePadding(~UINT8_C(0))
+    BundlePadding(~UINT8_C(0)),
     // @LOCALMOD-END
+    Parent(_Parent), Atom(0), Offset(~UINT64_C(0))
 {
   if (Parent)
     Parent->getFragmentList().push_back(this);
@@ -226,20 +227,81 @@ MCSectionData::MCSectionData(const MCSection &_Section, MCAssembler *A)
     BundlingEnabled(false),
     BundleLocked(false),
     BundleGroupFirstFrag(false),
-    BundleAlignNext(MCFragment::BundleAlignNone)
+    BundleAlignNext(MCFragment::BundleAlignNone),
+    BundleOffsetKnown(false),
+    BundleOffset(0)
 // @LOCALMOD-END
 {
   if (A)
     A->getSectionList().push_back(this);
 
   // @LOCALMOD-BEGIN
-  unsigned BundleSize = A->getBackend().getBundleSize();
+  BundleSize = A->getBackend().getBundleSize();
   if (BundleSize && _Section.UseCodeAlign()) {
     BundlingEnabled = true;
     setAlignment(BundleSize);
   }
   // @LOCALMOD-END
 }
+
+// @LOCALMOD-BEGIN
+void MCSectionData::setAlignment(unsigned Value) {
+  Alignment = Value;
+  // If the alignment is at least as big as a bundle, then we know the offset
+  // relative to the start of a bundle.
+  if (Alignment >= BundleSize) {
+    BundleOffsetKnown = true;
+    BundleOffset = 0;
+  } else {
+    BundleOffsetKnown = false;
+    BundleOffset = 0;
+  }
+}
+
+void MCSectionData::MarkBundleOffsetUnknown() {
+  BundleOffsetKnown = false;
+  BundleOffset = 0;
+}
+
+// Only create a new fragment if:
+// 1) we are emitting the first instruction of a bundle locked sequence.
+// 2) we are not currently emitting a bundle locked sequence and we cannot
+//    guarantee the instruction would not span a bundle boundary.
+// Otherwise, append to the current fragment to reduce the number of fragments.
+bool MCSectionData::ShouldCreateNewFragment(size_t Size) {
+  // The first instruction of a bundle locked region starts a new fragment.
+  if (isBundleLocked() && isBundleGroupFirstFrag())
+    return true;
+  // Unless we know the relative offset of the end of the current fragment,
+  // we need to create a new fragment.
+  if (!isBundleLocked() && !BundleOffsetKnown)
+    return true;
+  assert(BundleSize != 0 && "BundleSize needs to be non-zero");
+  assert(Size < BundleSize && "Instruction size must be less than BundleSize");
+  // If inserting the instruction would overlap a bundle boundary, start a
+  // new fragment.
+  // TODO(sehr): we could still explicitly insert a NOP and continue here.
+  if (BundleOffset + (unsigned) Size > BundleSize)
+    return true;
+  return false;
+}
+
+void MCSectionData::UpdateBundleOffset(size_t Size) {
+  // A bundle locked fragment could move if it spans a bundle boundary.
+  if (isBundleLocked()) {
+    BundleOffsetKnown = false;
+    return;
+  }
+  // If inserting the instruction would overlap a bundle boundary, starting a
+  // new fragment moves the known offset to the end of the instruction in the
+  // next bundle.
+  // TODO(sehr): we could insert a NOP and continue the fragment.
+  if (BundleOffset + (unsigned) Size > BundleSize)
+    BundleOffset = Size;
+  else
+    BundleOffset = BundleOffset + Size;
+}
+// @LOCALMOD-END
 
 /* *** */
 
