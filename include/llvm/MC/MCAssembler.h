@@ -532,26 +532,18 @@ private:
   unsigned HasInstructions : 1;
 
   // @LOCALMOD-BEGIN
-  bool BundlingEnabled : 1;
-  bool BundleLocked : 1;
+  bool BundlingEnabled;
+  bool BundleLocked;
 
   // Because ".bundle_lock" occurs before the fragment it applies to exists,
   // we need to keep this flag around so we know to mark the next fragment
   // as the start of a bundle group. A similar flag is not necessary for the
   // last fragment, because when a .bundle_unlock occurs, the last fragment
   // in the group already exists and can be marked directly.
-  bool BundleGroupFirstFrag : 1;
+  bool BundleGroupFirstFrag;
 
   typedef MCFragment::BundleAlignType BundleAlignType;
-  BundleAlignType BundleAlignNext : 2;
-
-  // Optimization to reduce the number of fragments generated (for memory
-  // savings).  Keep track of when we know the offset of the next point to
-  // emit an instruction.  If we know the offset from a known alignment point,
-  // we can just append to the previous fragment.
-  bool BundleOffsetKnown : 1;
-  unsigned BundleSize;
-  unsigned BundleOffset;
+  BundleAlignType BundleAlignNext;
   // @LOCALMOD-END
 
   /// @}
@@ -564,7 +556,7 @@ public:
   const MCSection &getSection() const { return *Section; }
 
   unsigned getAlignment() const { return Alignment; }
-  void setAlignment(unsigned Value); // @LOCALMOD
+  void setAlignment(unsigned Value) { Alignment = Value; }
 
   bool hasInstructions() const { return HasInstructions; }
   void setHasInstructions(bool Value) { HasInstructions = Value; }
@@ -587,10 +579,6 @@ public:
 
   BundleAlignType getBundleAlignNext() const { return BundleAlignNext; }
   void setBundleAlignNext(BundleAlignType Value) { BundleAlignNext = Value; }
-
-  void MarkBundleOffsetUnknown();
-  bool ShouldCreateNewFragment(size_t Size);
-  void UpdateBundleOffset(size_t Size);
   // @LOCALMOD-END
 
   /// @name Fragment Access
