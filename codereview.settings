@@ -1,7 +1,7 @@
 # This file is used by gcl to get repository specific information.
 CODE_REVIEW_SERVER: codereview.chromium.org
 CC_LIST: native-client-reviews@googlegroups.com
-VIEW_VC: https://gerrit.chromium.org/gerrit/gitweb?p=native_client%2Fpnacl-llvm.git;a=commit;h=
+VIEW_VC: https://gerrit.chromium.org/gerrit/gitweb?p=native_client/pnacl-llvm.git;a=commit;h=
 STATUS: http://nativeclient-status.appspot.com/status
 TRY_ON_UPLOAD: False
 TRYSERVER_PROJECT: nacl
