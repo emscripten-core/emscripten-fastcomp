@@ -359,6 +359,7 @@ void MCELFStreamer::EmitBytes(StringRef Data, unsigned AddrSpace) {
   // TODO: This is exactly the same as WinCOFFStreamer. Consider merging into
   // MCObjectStreamer.
   getOrCreateDataFragment()->getContents().append(Data.begin(), Data.end());
+  getCurrentSectionData()->MarkBundleOffsetUnknown();  // @LOCALMOD
 }
 
 void MCELFStreamer::EmitValueToAlignment(unsigned ByteAlignment,
@@ -371,6 +372,10 @@ void MCELFStreamer::EmitValueToAlignment(unsigned ByteAlignment,
   new MCAlignFragment(ByteAlignment, Value, ValueSize, MaxBytesToEmit,
                       getCurrentSectionData());
 
+  // @LOCALMOD-BEGIN
+  // Bump the bundle offset to account for alignment.
+  getCurrentSectionData()->AlignBundleOffsetTo(ByteAlignment);
+  // @LOCALMOD-END
   // Update the maximum alignment on the current section if necessary.
   if (ByteAlignment > getCurrentSectionData()->getAlignment())
     getCurrentSectionData()->setAlignment(ByteAlignment);
@@ -386,6 +391,10 @@ void MCELFStreamer::EmitCodeAlignment(unsigned ByteAlignment,
                                            getCurrentSectionData());
   F->setEmitNops(true);
 
+  // @LOCALMOD-BEGIN
+  // Bump the bundle offset to account for alignment.
+  getCurrentSectionData()->AlignBundleOffsetTo(ByteAlignment);
+  // @LOCALMOD-END
   // Update the maximum alignment on the current section if necessary.
   if (ByteAlignment > getCurrentSectionData()->getAlignment())
     getCurrentSectionData()->setAlignment(ByteAlignment);
@@ -395,6 +404,7 @@ void MCELFStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
                                   unsigned AddrSpace) {
   fixSymbolsInTLSFixups(Value);
   MCObjectStreamer::EmitValueImpl(Value, Size, AddrSpace);
+  getCurrentSectionData()->MarkBundleOffsetUnknown();  // @LOCALMOD
 }
 
 
@@ -463,6 +473,7 @@ void MCELFStreamer::EmitInstToFragment(const MCInst &Inst) {
 
   for (unsigned i = 0, e = F.getFixups().size(); i != e; ++i)
     fixSymbolsInTLSFixups(F.getFixups()[i].getValue());
+  getCurrentSectionData()->MarkBundleOffsetUnknown();  // @LOCALMOD
 }
 
 void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
@@ -486,19 +497,14 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
       DF->addFixup(Fixups[i]);
     }
     DF->getContents().append(Code.begin(), Code.end());
+    getCurrentSectionData()->UpdateBundleOffset(Code.size());
   } else {
-    // Only create a new fragment if:
-    // 1) there is no current fragment,
-    // 2) we are not currently emitting a bundle locked sequence, or
-    // 3) we are emitting the first instruction of a bundle locked sequence.
-    // Otherwise, append to the current fragment to reduce the number of
-    // fragments.
     MCTinyFragment *TF = dyn_cast_or_null<MCTinyFragment>(getCurrentFragment());
     MCSectionData *SD = getCurrentSectionData();
-    if (!TF || !SD->isBundleLocked() || SD->isBundleGroupFirstFrag()) {
+    if (!TF || SD->ShouldCreateNewFragment(Code.size()))
       TF = new MCTinyFragment(SD);
-    }
     TF->getContents().append(Code.begin(), Code.end());
+    SD->UpdateBundleOffset(Code.size());
   }
   // @LOCALMOD-END
 }
