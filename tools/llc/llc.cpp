@@ -18,7 +18,8 @@
 #include "llvm/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/Support/DataStream.h"
+#include "llvm/Assembly/PrintModulePass.h"
+#include "llvm/Support/DataStream.h"  // @LOCALMOD
 #include "llvm/Support/IRReader.h"
 #include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
@@ -38,6 +39,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
 
@@ -191,11 +193,6 @@ DisableFPElimNonLeaf("disable-non-leaf-fp-elim",
   cl::init(false));
 
 static cl::opt<bool>
-DisableExcessPrecision("disable-excess-fp-precision",
-  cl::desc("Disable optimizations that may increase FP precision"),
-  cl::init(false));
-
-static cl::opt<bool>
 EnableUnsafeFPMath("enable-unsafe-fp-math",
   cl::desc("Enable optimizations that may decrease FP precision"),
   cl::init(false));
@@ -234,9 +231,27 @@ FloatABIForCalls("float-abi",
                "Hard float ABI (uses FP registers)"),
     clEnumValEnd));
 
+static cl::opt<llvm::FPOpFusion::FPOpFusionMode>
+FuseFPOps("fp-contract",
+  cl::desc("Enable aggresive formation of fused FP ops"),
+  cl::init(FPOpFusion::Standard),
+  cl::values(
+    clEnumValN(FPOpFusion::Fast, "fast",
+               "Fuse FP ops whenever profitable"),
+    clEnumValN(FPOpFusion::Standard, "on",
+               "Only fuse 'blessed' FP ops."),
+    clEnumValN(FPOpFusion::Strict, "off",
+               "Only fuse FP ops when the result won't be effected."),
+    clEnumValEnd));
+
 static cl::opt<bool>
 DontPlaceZerosInBSS("nozero-initialized-in-bss",
   cl::desc("Don't place zero-initialized symbols into bss section"),
+  cl::init(false));
+
+static cl::opt<bool>
+DisableSimplifyLibCalls("disable-simplify-libcalls",
+  cl::desc("Disable simplify-libcalls"),
   cl::init(false));
 
 static cl::opt<bool>
@@ -259,11 +274,6 @@ EnableRealignStack("realign-stack",
   cl::desc("Realign stack if needed"),
   cl::init(true));
 
-static cl::opt<bool>
-DisableSwitchTables(cl::Hidden, "disable-jump-tables",
-  cl::desc("Do not generate jump tables."),
-  cl::init(false));
-
 static cl::opt<std::string>
 TrapFuncName("trap-func", cl::Hidden,
   cl::desc("Emit a call to trap function rather than a trap instruction"),
@@ -279,6 +289,20 @@ SegmentedStacks("segmented-stacks",
   cl::desc("Use segmented stacks if possible."),
   cl::init(false));
 
+static cl::opt<bool>
+UseInitArray("use-init-array",
+  cl::desc("Use .init_array instead of .ctors."),
+  cl::init(false));
+
+static cl::opt<std::string> StopAfter("stop-after",
+  cl::desc("Stop compilation after a specific pass"),
+  cl::value_desc("pass-name"),
+  cl::init(""));
+static cl::opt<std::string> StartAfter("start-after",
+  cl::desc("Resume compilation after a specific pass"),
+  cl::value_desc("pass-name"),
+  cl::init(""));
+  
 // @LOCALMOD-BEGIN
 // Using bitcode streaming has a couple of ramifications. Primarily it means
 // that the module in the file will be compiled one function at a time rather
@@ -447,6 +471,15 @@ int llc_main(int argc, char **argv) {
   InitializeAllAsmPrinters();
   InitializeAllAsmParsers();
 
+  // Initialize codegen and IR passes used by llc so that the -print-after,
+  // -print-before, and -stop-after options work.
+  PassRegistry *Registry = PassRegistry::getPassRegistry();
+  initializeCore(*Registry);
+  initializeCodeGen(*Registry);
+  initializeLoopStrengthReducePass(*Registry);
+  initializeLowerIntrinsicsPass(*Registry);
+  initializeUnreachableBlockElimPass(*Registry);
+
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
@@ -455,7 +488,14 @@ int llc_main(int argc, char **argv) {
   // Load the module to be compiled...
   SMDiagnostic Err;
   std::auto_ptr<Module> M;
+  Module *mod = 0;
+  Triple TheTriple;
 
+  bool SkipModule = MCPU == "help" ||
+                    (!MAttrs.empty() && MAttrs.front() == "help");
+
+  // If user just wants to list available options, skip module loading
+  if (!SkipModule) {
   // @LOCALMOD-BEGIN
 #if defined(__native_client__) && defined(NACL_SRPC)
   if (LazyBitcode) {
@@ -490,36 +530,38 @@ int llc_main(int argc, char **argv) {
 #endif
   // @LOCALMOD-END
 
-  if (M.get() == 0) {
-    Err.print(argv[0], errs());
-    return 1;
-  }
-  Module &mod = *M.get();
+    mod = M.get();
+    if (mod == 0) {
+      Err.print(argv[0], errs());
+      return 1;
+    }
 
   // @LOCALMOD-BEGIN
 #if defined(__native_client__) && defined(NACL_SRPC)
-  RecordMetadataForSrpc(mod);
+  RecordMetadataForSrpc(*mod);
 
   // To determine if we should compile PIC or not, we needed to load at
   // least the metadata. Since we've already constructed the commandline,
   // we have to hack this in after commandline processing.
-  if (mod.getOutputFormat() == Module::SharedOutputFormat) {
+  if (mod->getOutputFormat() == Module::SharedOutputFormat) {
     RelocModel = Reloc::PIC_;
   }
   // Also set PIC_ for dynamic executables:
   // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
-  if (mod.lib_size() > 0) {
+  if (mod->lib_size() > 0) {
     RelocModel = Reloc::PIC_;
   }
 #endif  // defined(__native_client__) && defined(NACL_SRPC)
   // @LOCALMOD-END
 
-  // If we are supposed to override the target triple, do so now.
-  if (!TargetTriple.empty())
-    mod.setTargetTriple(Triple::normalize(TargetTriple));
+    // If we are supposed to override the target triple, do so now.
+    if (!TargetTriple.empty())
+      mod->setTargetTriple(Triple::normalize(TargetTriple));
+    TheTriple = Triple(mod->getTargetTriple());
+  } else {
+    TheTriple = Triple(Triple::normalize(TargetTriple));
+  }
 
-  // Figure out the target triple.
-  Triple TheTriple(mod.getTargetTriple());
   if (TheTriple.getTriple().empty())
     TheTriple.setTriple(sys::getDefaultTargetTriple());
 
@@ -562,7 +604,7 @@ int llc_main(int argc, char **argv) {
   Options.LessPreciseFPMADOption = EnableFPMAD;
   Options.NoFramePointerElim = DisableFPElim;
   Options.NoFramePointerElimNonLeaf = DisableFPElimNonLeaf;
-  Options.NoExcessFPPrecision = DisableExcessPrecision;
+  Options.AllowFPOpFusion = FuseFPOps;
   Options.UnsafeFPMath = EnableUnsafeFPMath;
   Options.NoInfsFPMath = EnableNoInfsFPMath;
   Options.NoNaNsFPMath = EnableNoNaNsFPMath;
@@ -576,16 +618,17 @@ int llc_main(int argc, char **argv) {
   Options.DisableTailCalls = DisableTailCalls;
   Options.StackAlignmentOverride = OverrideStackAlignment;
   Options.RealignStack = EnableRealignStack;
-  Options.DisableJumpTables = DisableSwitchTables;
   Options.TrapFuncName = TrapFuncName;
   Options.PositionIndependentExecutable = EnablePIE;
   Options.EnableSegmentedStacks = SegmentedStacks;
+  Options.UseInitArray = UseInitArray;
 
   std::auto_ptr<TargetMachine>
     target(TheTarget->createTargetMachine(TheTriple.getTriple(),
                                           MCPU, FeaturesStr, Options,
                                           RelocModel, CMModel, OLvl));
   assert(target.get() && "Could not allocate target machine!");
+  assert(mod && "Should have exited after outputting help!");
   TargetMachine &Target = *target.get();
 
   if (DisableDotLoc)
@@ -606,26 +649,32 @@ int llc_main(int argc, char **argv) {
     Target.setMCUseLoc(false);
 
 #if !defined(NACL_SRPC)
-  // Figure out where we are going to send the output...
+  // Figure out where we are going to send the output.
   OwningPtr<tool_output_file> Out
     (GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
   if (!Out) return 1;
 #endif
-  
+
   // Build up all of the passes that we want to do to the module.
   // @LOCALMOD-BEGIN
   OwningPtr<PassManagerBase> PM;
   if (LazyBitcode || ReduceMemoryFootprint)
-    PM.reset(new FunctionPassManager(&mod));
+    PM.reset(new FunctionPassManager(mod));
   else
     PM.reset(new PassManager());
   // @LOCALMOD-END
+
+  // Add an appropriate TargetLibraryInfo pass for the module's triple.
+  TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
+  if (DisableSimplifyLibCalls)
+    TLI->disableAllFunctions();
+  PM->add(TLI);
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const TargetData *TD = Target.getTargetData())
     PM->add(new TargetData(*TD));
   else
-    PM->add(new TargetData(&mod));
+    PM->add(new TargetData(mod));
 
   // Override default to generate verbose assembly.
   Target.setAsmVerbosityDefault(true);
@@ -655,7 +704,7 @@ int llc_main(int argc, char **argv) {
     if (LazyBitcode || ReduceMemoryFootprint) {
       FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
       P->doInitialization();
-      for (Module::iterator I = mod.begin(), E = mod.end(); I != E; ++I) {
+      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
         P->run(*I);
         if (ReduceMemoryFootprint) {
           I->Dematerialize();
@@ -663,7 +712,7 @@ int llc_main(int argc, char **argv) {
       }
       P->doFinalization();
     } else {
-      static_cast<PassManager*>(PM.get())->run(mod);
+      static_cast<PassManager*>(PM.get())->run(*mod);
     }
     FOS.flush();
     ROS.flush();
@@ -674,8 +723,29 @@ int llc_main(int argc, char **argv) {
   {
     formatted_raw_ostream FOS(Out->os());
 
+    AnalysisID StartAfterID = 0;
+    AnalysisID StopAfterID = 0;
+    const PassRegistry *PR = PassRegistry::getPassRegistry();
+    if (!StartAfter.empty()) {
+      const PassInfo *PI = PR->getPassInfo(StartAfter);
+      if (!PI) {
+        errs() << argv[0] << ": start-after pass is not registered.\n";
+        return 1;
+      }
+      StartAfterID = PI->getTypeInfo();
+    }
+    if (!StopAfter.empty()) {
+      const PassInfo *PI = PR->getPassInfo(StopAfter);
+      if (!PI) {
+        errs() << argv[0] << ": stop-after pass is not registered.\n";
+        return 1;
+      }
+      StopAfterID = PI->getTypeInfo();
+    }
+
     // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
+    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify,
+                                   StartAfterID, StopAfterID)) {
       errs() << argv[0] << ": target does not support generation of this"
              << " file type!\n";
       return 1;
@@ -687,7 +757,7 @@ int llc_main(int argc, char **argv) {
     if (LazyBitcode || ReduceMemoryFootprint) {
       FunctionPassManager *P = static_cast<FunctionPassManager*>(PM.get());
       P->doInitialization();
-      for (Module::iterator I = mod.begin(), E = mod.end(); I != E; ++I) {
+      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
         P->run(*I);
         if (ReduceMemoryFootprint) {
           I->Dematerialize();
@@ -695,7 +765,7 @@ int llc_main(int argc, char **argv) {
       }
       P->doFinalization();
     } else {
-      static_cast<PassManager*>(PM.get())->run(mod);
+      static_cast<PassManager*>(PM.get())->run(*mod);
     }
   }
 

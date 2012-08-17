@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/IRBuilder.h"
 #include "llvm/BasicBlock.h"
 #include "llvm/Function.h"
+#include "llvm/IRBuilder.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
@@ -20,6 +20,7 @@
 using namespace llvm;
 
 namespace {
+
 class IRBuilderTest : public testing::Test {
 protected:
   virtual void SetUp() {
@@ -38,7 +39,6 @@ protected:
   OwningPtr<Module> M;
   BasicBlock *BB;
 };
-}
 
 TEST_F(IRBuilderTest, Lifetime) {
   IRBuilder<> Builder(BB);
@@ -69,4 +69,6 @@ TEST_F(IRBuilderTest, Lifetime) {
   EXPECT_EQ(II_Start1->getIntrinsicID(), Intrinsic::lifetime_start);
   ASSERT_TRUE(II_End1 != NULL);
   EXPECT_EQ(II_End1->getIntrinsicID(), Intrinsic::lifetime_end);
+}
+
 }

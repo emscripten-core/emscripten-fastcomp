@@ -17,11 +17,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/LLVMContext.h"
+#include "llvm/DebugInfo.h"
 #include "llvm/Module.h"
 #include "llvm/Type.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/Analysis/DebugInfo.h"
 #include "llvm/Assembly/AssemblyAnnotationWriter.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataStream.h"
@@ -100,7 +100,6 @@ public:
         DIVariable Var(DDI->getVariable());
         if (!Padded) {
           OS.PadToColumn(50);
-          Padded = true;
           OS << ";";
         }
         OS << " [debug variable = " << Var.getName() << "]";
@@ -109,7 +108,6 @@ public:
         DIVariable Var(DVI->getVariable());
         if (!Padded) {
           OS.PadToColumn(50);
-          Padded = true;
           OS << ";";
         }
         OS << " [debug variable = " << Var.getName() << "]";

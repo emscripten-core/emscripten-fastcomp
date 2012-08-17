@@ -31,7 +31,6 @@
 
 #define DEBUG_TYPE "regalloc"
 
-#include "RenderMachineFunction.h"
 #include "Spiller.h"
 #include "VirtRegMap.h"
 #include "RegisterCoalescer.h"
@@ -98,7 +97,6 @@ public:
     initializeLiveStacksPass(*PassRegistry::getPassRegistry());
     initializeMachineLoopInfoPass(*PassRegistry::getPassRegistry());
     initializeVirtRegMapPass(*PassRegistry::getPassRegistry());
-    initializeRenderMachineFunctionPass(*PassRegistry::getPassRegistry());
   }
 
   /// Return the pass name.
@@ -134,7 +132,6 @@ private:
   const TargetInstrInfo *tii;
   const MachineLoopInfo *loopInfo;
   MachineRegisterInfo *mri;
-  RenderMachineFunction *rmf;
 
   std::auto_ptr<Spiller> spiller;
   LiveIntervals *lis;
@@ -196,7 +193,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
                                                 const RegSet &vregs) {
 
   typedef std::vector<const LiveInterval*> LIVector;
-  ArrayRef<SlotIndex> regMaskSlots = lis->getRegMaskSlots();
+  LiveIntervals *LIS = const_cast<LiveIntervals*>(lis);
   MachineRegisterInfo *mri = &mf->getRegInfo();
   const TargetRegisterInfo *tri = mf->getTarget().getRegisterInfo();
 
@@ -205,12 +202,11 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
   RegSet pregs;
 
   // Collect the set of preg intervals, record that they're used in the MF.
-  for (LiveIntervals::const_iterator itr = lis->begin(), end = lis->end();
-       itr != end; ++itr) {
-    if (TargetRegisterInfo::isPhysicalRegister(itr->first)) {
-      pregs.insert(itr->first);
-      mri->setPhysRegUsed(itr->first);
-    }
+  for (unsigned Reg = 1, e = tri->getNumRegs(); Reg != e; ++Reg) {
+    if (mri->def_empty(Reg))
+      continue;
+    pregs.insert(Reg);
+    mri->setPhysRegUsed(Reg);
   }
 
   BitVector reservedRegs = tri->getReservedRegs(*mf);
@@ -220,7 +216,11 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
        vregItr != vregEnd; ++vregItr) {
     unsigned vreg = *vregItr;
     const TargetRegisterClass *trc = mri->getRegClass(vreg);
-    const LiveInterval *vregLI = &lis->getInterval(vreg);
+    LiveInterval *vregLI = &LIS->getInterval(vreg);
+
+    // Record any overlaps with regmask operands.
+    BitVector regMaskOverlaps(tri->getNumRegs());
+    LIS->checkRegMaskInterference(*vregLI, regMaskOverlaps);
 
     // Compute an initial allowed set for the current vreg.
     typedef std::vector<unsigned> VRAllowed;
@@ -228,76 +228,26 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
     ArrayRef<uint16_t> rawOrder = trc->getRawAllocationOrder(*mf);
     for (unsigned i = 0; i != rawOrder.size(); ++i) {
       unsigned preg = rawOrder[i];
-      if (!reservedRegs.test(preg)) {
-        vrAllowed.push_back(preg);
-      }
-    }
-
-    RegSet overlappingPRegs;
-
-    // Record physical registers whose ranges overlap.
-    for (RegSet::const_iterator pregItr = pregs.begin(),
-                                pregEnd = pregs.end();
-         pregItr != pregEnd; ++pregItr) {
-      unsigned preg = *pregItr;
-      const LiveInterval *pregLI = &lis->getInterval(preg);
-
-      if (pregLI->empty()) {
+      if (reservedRegs.test(preg))
         continue;
-      }
 
-      if (vregLI->overlaps(*pregLI))
-        overlappingPRegs.insert(preg);      
-    }
+      // vregLI crosses a regmask operand that clobbers preg.
+      if (!regMaskOverlaps.empty() && !regMaskOverlaps.test(preg))
+        continue;
 
-    // Record any overlaps with regmask operands.
-    BitVector regMaskOverlaps(tri->getNumRegs());
-    for (ArrayRef<SlotIndex>::iterator rmItr = regMaskSlots.begin(),
-                                       rmEnd = regMaskSlots.end();
-         rmItr != rmEnd; ++rmItr) {
-      SlotIndex rmIdx = *rmItr;
-      if (vregLI->liveAt(rmIdx)) {
-        MachineInstr *rmMI = lis->getInstructionFromIndex(rmIdx);
-        const uint32_t* regMask = 0;
-        for (MachineInstr::mop_iterator mopItr = rmMI->operands_begin(),
-                                        mopEnd = rmMI->operands_end();
-             mopItr != mopEnd; ++mopItr) {
-          if (mopItr->isRegMask()) {
-            regMask = mopItr->getRegMask();
-            break;
-          }
-        }
-        assert(regMask != 0 && "Couldn't find register mask.");
-        regMaskOverlaps.setBitsNotInMask(regMask);
-      }
-    }
-
-    for (unsigned preg = 0; preg < tri->getNumRegs(); ++preg) {
-      if (regMaskOverlaps.test(preg))
-        overlappingPRegs.insert(preg);
-    }
-
-    for (RegSet::const_iterator pregItr = overlappingPRegs.begin(),
-                                pregEnd = overlappingPRegs.end();
-         pregItr != pregEnd; ++pregItr) {
-      unsigned preg = *pregItr;
-
-      // Remove the register from the allowed set.
-      VRAllowed::iterator eraseItr =
-        std::find(vrAllowed.begin(), vrAllowed.end(), preg);
-
-      if (eraseItr != vrAllowed.end()) {
-        vrAllowed.erase(eraseItr);
-      }
-
-      // Also remove any aliases.
-      for (MCRegAliasIterator AI(preg, tri, false); AI.isValid(); ++AI) {
-        VRAllowed::iterator eraseItr =
-          std::find(vrAllowed.begin(), vrAllowed.end(), *AI);
-        if (eraseItr != vrAllowed.end()) {
-          vrAllowed.erase(eraseItr);
+      // vregLI overlaps fixed regunit interference.
+      bool Interference = false;
+      for (MCRegUnitIterator Units(preg, tri); Units.isValid(); ++Units) {
+        if (vregLI->overlaps(LIS->getRegUnit(*Units))) {
+          Interference = true;
+          break;
         }
       }
+      if (Interference)
+        continue;
+
+      // preg is usable for this virtual register.
+      vrAllowed.push_back(preg);
     }
 
     // Construct the node.
@@ -494,21 +444,17 @@ void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
   au.addRequired<MachineLoopInfo>();
   au.addPreserved<MachineLoopInfo>();
   au.addRequired<VirtRegMap>();
-  au.addRequired<RenderMachineFunction>();
   MachineFunctionPass::getAnalysisUsage(au);
 }
 
 void RegAllocPBQP::findVRegIntervalsToAlloc() {
 
   // Iterate over all live ranges.
-  for (LiveIntervals::iterator itr = lis->begin(), end = lis->end();
-       itr != end; ++itr) {
-
-    // Ignore physical ones.
-    if (TargetRegisterInfo::isPhysicalRegister(itr->first))
+  for (unsigned i = 0, e = mri->getNumVirtRegs(); i != e; ++i) {
+    unsigned Reg = TargetRegisterInfo::index2VirtReg(i);
+    if (mri->reg_nodbg_empty(Reg))
       continue;
-
-    LiveInterval *li = itr->second;
+    LiveInterval *li = &lis->getInterval(Reg);
 
     // If this live interval is non-empty we will use pbqp to allocate it.
     // Empty intervals we allocate in a simple post-processing stage in
@@ -576,9 +522,6 @@ bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAProblem &problem,
 
 
 void RegAllocPBQP::finalizeAlloc() const {
-  typedef LiveIntervals::iterator LIIterator;
-  typedef LiveInterval::Ranges::const_iterator LRIterator;
-
   // First allocate registers for the empty intervals.
   for (RegSet::const_iterator
          itr = emptyIntervalVRegs.begin(), end = emptyIntervalVRegs.end();
@@ -607,7 +550,6 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   lis = &getAnalysis<LiveIntervals>();
   lss = &getAnalysis<LiveStacks>();
   loopInfo = &getAnalysis<MachineLoopInfo>();
-  rmf = &getAnalysis<RenderMachineFunction>();
 
   vrm = &getAnalysis<VirtRegMap>();
   spiller.reset(createInlineSpiller(*this, MF, *vrm));
@@ -671,9 +613,6 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
 
   // Finalise allocation, allocate empty ranges.
   finalizeAlloc();
-
-  rmf->renderMachineFunction("After PBQP register allocation.", vrm);
-
   vregsToAlloc.clear();
   emptyIntervalVRegs.clear();
 

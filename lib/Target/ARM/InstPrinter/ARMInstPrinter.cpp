@@ -52,6 +52,27 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
                                StringRef Annot) {
   unsigned Opcode = MI->getOpcode();
 
+  // Check for HINT instructions w/ canonical names.
+  if (Opcode == ARM::HINT || Opcode == ARM::t2HINT) {
+    switch (MI->getOperand(0).getImm()) {
+    case 0: O << "\tnop"; break;
+    case 1: O << "\tyield"; break;
+    case 2: O << "\twfe"; break;
+    case 3: O << "\twfi"; break;
+    case 4: O << "\tsev"; break;
+    default:
+      // Anything else should just print normally.
+      printInstruction(MI, O);
+      printAnnotation(O, Annot);
+      return;
+    }
+    printPredicateOperand(MI, 1, O);
+    if (Opcode == ARM::t2HINT)
+      O << ".w";
+    printAnnotation(O, Annot);
+    return;
+  }
+
   // Check for MOVs and print canonical forms, instead.
   if (Opcode == ARM::MOVsr) {
     // FIXME: Thumb variants?
@@ -736,16 +757,26 @@ void ARMInstPrinter::printMSRMaskOperand(const MCInst *MI, unsigned OpNum,
     case 0x803: O << "xpsr"; return; // with _nzcvq bits is an alias for xpsr
     case 0x403: O << "xpsr_g"; return;
     case 0xc03: O << "xpsr_nzcvqg"; return;
-    case 5: O << "ipsr"; return;
-    case 6: O << "epsr"; return;
-    case 7: O << "iepsr"; return;
-    case 8: O << "msp"; return;
-    case 9: O << "psp"; return;
-    case 16: O << "primask"; return;
-    case 17: O << "basepri"; return;
-    case 18: O << "basepri_max"; return;
-    case 19: O << "faultmask"; return;
-    case 20: O << "control"; return;
+    case     5:
+    case 0x805: O << "ipsr"; return;
+    case     6:
+    case 0x806: O << "epsr"; return;
+    case     7:
+    case 0x807: O << "iepsr"; return;
+    case     8:
+    case 0x808: O << "msp"; return;
+    case     9:
+    case 0x809: O << "psp"; return;
+    case  0x10:
+    case 0x810: O << "primask"; return;
+    case  0x11:
+    case 0x811: O << "basepri"; return;
+    case  0x12:
+    case 0x812: O << "basepri_max"; return;
+    case  0x13:
+    case 0x813: O << "faultmask"; return;
+    case  0x14:
+    case 0x814: O << "control"; return;
     }
   }
 

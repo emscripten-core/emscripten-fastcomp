@@ -111,13 +111,20 @@ class RegisterWithSubRegs<string n, list<Register> subregs> : Register<n> {
   let SubRegs = subregs;
 }
 
+// DAGOperand - An empty base class that unifies RegisterClass's and other forms
+// of Operand's that are legal as type qualifiers in DAG patterns.  This should
+// only ever be used for defining multiclasses that are polymorphic over both
+// RegisterClass's and other Operand's.
+class DAGOperand { }
+
 // RegisterClass - Now that all of the registers are defined, and aliases
 // between registers are defined, specify which registers belong to which
 // register classes.  This also defines the default allocation order of
 // registers by register allocators.
 //
 class RegisterClass<string namespace, list<ValueType> regTypes, int alignment,
-                    dag regList, RegAltNameIndex idx = NoRegAltName> {
+                    dag regList, RegAltNameIndex idx = NoRegAltName>
+  : DAGOperand {
   string Namespace = namespace;
 
   // RegType - Specify the list ValueType of the registers in this register
@@ -523,6 +530,11 @@ class AsmOperandClass {
   /// to immediates or registers and are very instruction specific (as flags to
   /// set in a processor register, coprocessor number, ...).
   string ParserMethod = ?;
+
+  // The diagnostic type to present when referencing this operand in a
+  // match failure error message. By default, use a generic "invalid operand"
+  // diagnostic. The target AsmParser maps these codes to text.
+  string DiagnosticType = "";
 }
 
 def ImmAsmOperand : AsmOperandClass {
@@ -532,7 +544,7 @@ def ImmAsmOperand : AsmOperandClass {
 /// Operand Types - These provide the built-in operand types that may be used
 /// by a target.  Targets can optionally provide their own operand types as
 /// needed, though this should not be needed for RISC targets.
-class Operand<ValueType ty> {
+class Operand<ValueType ty> : DAGOperand {
   ValueType Type = ty;
   string PrintMethod = "printOperand";
   string EncoderMethod = "";

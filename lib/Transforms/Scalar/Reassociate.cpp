@@ -26,20 +26,20 @@
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
+#include "llvm/IRBuilder.h"
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Pass.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Assembly/Writer.h"
 #include "llvm/Support/CFG.h"
-#include "llvm/Support/IRBuilder.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ValueHandle.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Statistic.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -132,7 +132,7 @@ namespace {
   private:
     void BuildRankMap(Function &F);
     unsigned getRank(Value *V);
-    Value *ReassociateExpression(BinaryOperator *I);
+    void ReassociateExpression(BinaryOperator *I);
     void RewriteExprTree(BinaryOperator *I, SmallVectorImpl<ValueEntry> &Ops);
     Value *OptimizeExpression(BinaryOperator *I,
                               SmallVectorImpl<ValueEntry> &Ops);
@@ -667,23 +667,13 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
   /// the new expression into.
   SmallVector<BinaryOperator*, 8> NodesToRewrite;
   unsigned Opcode = I->getOpcode();
-  NodesToRewrite.push_back(I);
+  BinaryOperator *Op = I;
 
   // ExpressionChanged - Non-null if the rewritten expression differs from the
   // original in some non-trivial way, requiring the clearing of optional flags.
   // Flags are cleared from the operator in ExpressionChanged up to I inclusive.
   BinaryOperator *ExpressionChanged = 0;
-  BinaryOperator *Previous;
-  BinaryOperator *Op = 0;
-  for (unsigned i = 0, e = Ops.size(); i != e; ++i) {
-    assert(!NodesToRewrite.empty() &&
-           "Optimized expressions has more nodes than original!");
-    Previous = Op; Op = NodesToRewrite.pop_back_val();
-    if (ExpressionChanged)
-      // Compactify the tree instructions together with each other to guarantee
-      // that the expression tree is dominated by all of Ops.
-      Op->moveBefore(Previous);
-
+  for (unsigned i = 0; ; ++i) {
     // The last operation (which comes earliest in the IR) is special as both
     // operands will come from Ops, rather than just one with the other being
     // a subexpression.
@@ -754,32 +744,47 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
     // from the original expression then just rewrite the rest of the expression
     // into it.
     if (BinaryOperator *BO = isReassociableOp(Op->getOperand(0), Opcode)) {
-      NodesToRewrite.push_back(BO);
+      Op = BO;
       continue;
     }
 
     // Otherwise, grab a spare node from the original expression and use that as
-    // the left-hand side.
-    assert(!NodesToRewrite.empty() &&
-           "Optimized expressions has more nodes than original!");
+    // the left-hand side.  If there are no nodes left then the optimizers made
+    // an expression with more nodes than the original!  This usually means that
+    // they did something stupid but it might mean that the problem was just too
+    // hard (finding the mimimal number of multiplications needed to realize a
+    // multiplication expression is NP-complete).  Whatever the reason, smart or
+    // stupid, create a new node if there are none left.
+    BinaryOperator *NewOp;
+    if (NodesToRewrite.empty()) {
+      Constant *Undef = UndefValue::get(I->getType());
+      NewOp = BinaryOperator::Create(Instruction::BinaryOps(Opcode),
+                                     Undef, Undef, "", I);
+    } else {
+      NewOp = NodesToRewrite.pop_back_val();
+    }
+
     DEBUG(dbgs() << "RA: " << *Op << '\n');
-    Op->setOperand(0, NodesToRewrite.back());
+    Op->setOperand(0, NewOp);
     DEBUG(dbgs() << "TO: " << *Op << '\n');
     ExpressionChanged = Op;
     MadeChange = true;
     ++NumChanged;
+    Op = NewOp;
   }
 
   // If the expression changed non-trivially then clear out all subclass data
-  // starting from the operator specified in ExpressionChanged.
-  if (ExpressionChanged) {
+  // starting from the operator specified in ExpressionChanged, and compactify
+  // the operators to just before the expression root to guarantee that the
+  // expression tree is dominated by all of Ops.
+  if (ExpressionChanged)
     do {
       ExpressionChanged->clearSubclassOptionalData();
       if (ExpressionChanged == I)
         break;
+      ExpressionChanged->moveBefore(I);
       ExpressionChanged = cast<BinaryOperator>(*ExpressionChanged->use_begin());
     } while (1);
-  }
 
   // Throw away any left over nodes from the original expression.
   for (unsigned i = 0, e = NodesToRewrite.size(); i != e; ++i)
@@ -1478,14 +1483,17 @@ void Reassociate::EraseInst(Instruction *I) {
   SmallVector<Value*, 8> Ops(I->op_begin(), I->op_end());
   // Erase the dead instruction.
   ValueRankMap.erase(I);
+  RedoInsts.remove(I);
   I->eraseFromParent();
   // Optimize its operands.
+  SmallPtrSet<Instruction *, 8> Visited; // Detect self-referential nodes.
   for (unsigned i = 0, e = Ops.size(); i != e; ++i)
     if (Instruction *Op = dyn_cast<Instruction>(Ops[i])) {
       // If this is a node in an expression tree, climb to the expression root
       // and add that since that's where optimization actually happens.
       unsigned Opcode = Op->getOpcode();
-      while (Op->hasOneUse() && Op->use_back()->getOpcode() == Opcode)
+      while (Op->hasOneUse() && Op->use_back()->getOpcode() == Opcode &&
+             Visited.insert(Op))
         Op = Op->use_back();
       RedoInsts.insert(Op);
     }
@@ -1585,7 +1593,7 @@ void Reassociate::OptimizeInst(Instruction *I) {
   ReassociateExpression(BO);
 }
 
-Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
+void Reassociate::ReassociateExpression(BinaryOperator *I) {
 
   // First, walk the expression tree, linearizing the tree, collecting the
   // operand information.
@@ -1612,6 +1620,9 @@ Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
   // OptimizeExpression - Now that we have the expression tree in a convenient
   // sorted form, optimize it globally if possible.
   if (Value *V = OptimizeExpression(I, Ops)) {
+    if (V == I)
+      // Self-referential expression in unreachable code.
+      return;
     // This expression tree simplified to something that isn't a tree,
     // eliminate it.
     DEBUG(dbgs() << "Reassoc to scalar: " << *V << '\n');
@@ -1620,7 +1631,7 @@ Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
       VI->setDebugLoc(I->getDebugLoc());
     RedoInsts.insert(I);
     ++NumAnnihil;
-    return V;
+    return;
   }
 
   // We want to sink immediates as deeply as possible except in the case where
@@ -1638,19 +1649,22 @@ Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
   DEBUG(dbgs() << "RAOut:\t"; PrintOps(I, Ops); dbgs() << '\n');
 
   if (Ops.size() == 1) {
+    if (Ops[0].Op == I)
+      // Self-referential expression in unreachable code.
+      return;
+
     // This expression tree simplified to something that isn't a tree,
     // eliminate it.
     I->replaceAllUsesWith(Ops[0].Op);
     if (Instruction *OI = dyn_cast<Instruction>(Ops[0].Op))
       OI->setDebugLoc(I->getDebugLoc());
     RedoInsts.insert(I);
-    return Ops[0].Op;
+    return;
   }
 
   // Now that we ordered and optimized the expressions, splat them back into
   // the expression tree, removing any unneeded nodes.
   RewriteExprTree(I, Ops);
-  return I;
 }
 
 bool Reassociate::runOnFunction(Function &F) {

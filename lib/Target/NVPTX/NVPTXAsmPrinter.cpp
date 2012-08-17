@@ -12,17 +12,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "NVPTXAsmPrinter.h"
 #include "NVPTX.h"
 #include "NVPTXInstrInfo.h"
 #include "NVPTXTargetMachine.h"
 #include "NVPTXRegisterInfo.h"
-#include "NVPTXAsmPrinter.h"
+#include "NVPTXUtilities.h"
 #include "MCTargetDesc/NVPTXMCAsmInfo.h"
 #include "NVPTXNumRegisters.h"
-#include "../lib/CodeGen/AsmPrinter/DwarfDebug.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/GlobalVariable.h"
+#include "llvm/DebugInfo.h"
 #include "llvm/Function.h"
+#include "llvm/GlobalVariable.h"
 #include "llvm/Module.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -36,17 +37,13 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/DerivedTypes.h"
-#include "NVPTXUtilities.h"
 #include "llvm/Support/TimeValue.h"
-#include <sstream>
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Analysis/DebugInfo.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Assembly/Writer.h"
 #include "cl_common_defines.h"
-
-
+#include <sstream>
 using namespace llvm;
 
 
@@ -1914,7 +1911,9 @@ bool NVPTXAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
     if (ExtraCode[1] != 0) return true; // Unknown modifier.
 
     switch (ExtraCode[0]) {
-    default: return true;  // Unknown modifier.
+    default:
+      // See if this is a generic print operand
+      return AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, O);
     case 'r':
       break;
     }

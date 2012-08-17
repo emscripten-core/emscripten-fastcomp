@@ -55,12 +55,24 @@ ReMatPICStubLoad("remat-pic-stub-load",
 
 enum {
   // Select which memory operand is being unfolded.
-  // (stored in bits 0 - 7)
+  // (stored in bits 0 - 3)
   TB_INDEX_0    = 0,
   TB_INDEX_1    = 1,
   TB_INDEX_2    = 2,
   TB_INDEX_3    = 3,
-  TB_INDEX_MASK = 0xff,
+  TB_INDEX_MASK = 0xf,
+
+  // Do not insert the reverse map (MemOp -> RegOp) into the table.
+  // This may be needed because there is a many -> one mapping.
+  TB_NO_REVERSE   = 1 << 4,
+
+  // Do not insert the forward map (RegOp -> MemOp) into the table.
+  // This is needed for Native Client, which prohibits branch
+  // instructions from using a memory operand.
+  TB_NO_FORWARD   = 1 << 5,
+
+  TB_FOLDED_LOAD  = 1 << 6,
+  TB_FOLDED_STORE = 1 << 7,
 
   // Minimum alignment required for load/store.
   // Used for RegOp->MemOp conversion.
@@ -69,25 +81,13 @@ enum {
   TB_ALIGN_NONE  =    0 << TB_ALIGN_SHIFT,
   TB_ALIGN_16    =   16 << TB_ALIGN_SHIFT,
   TB_ALIGN_32    =   32 << TB_ALIGN_SHIFT,
-  TB_ALIGN_MASK  = 0xff << TB_ALIGN_SHIFT,
-
-  // Do not insert the reverse map (MemOp -> RegOp) into the table.
-  // This may be needed because there is a many -> one mapping.
-  TB_NO_REVERSE   = 1 << 16,
-
-  // Do not insert the forward map (RegOp -> MemOp) into the table.
-  // This is needed for Native Client, which prohibits branch
-  // instructions from using a memory operand.
-  TB_NO_FORWARD   = 1 << 17,
-
-  TB_FOLDED_LOAD  = 1 << 18,
-  TB_FOLDED_STORE = 1 << 19
+  TB_ALIGN_MASK  = 0xff << TB_ALIGN_SHIFT
 };
 
 struct X86OpTblEntry {
   uint16_t RegOp;
   uint16_t MemOp;
-  uint32_t Flags;
+  uint16_t Flags;
 };
 
 X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
@@ -415,14 +415,10 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::IMUL64rri8,      X86::IMUL64rmi8,          0 },
     { X86::Int_COMISDrr,    X86::Int_COMISDrm,        0 },
     { X86::Int_COMISSrr,    X86::Int_COMISSrm,        0 },
-    { X86::Int_CVTDQ2PDrr,  X86::Int_CVTDQ2PDrm,      TB_ALIGN_16 },
-    { X86::Int_CVTDQ2PSrr,  X86::Int_CVTDQ2PSrm,      TB_ALIGN_16 },
-    { X86::Int_CVTPD2DQrr,  X86::Int_CVTPD2DQrm,      TB_ALIGN_16 },
-    { X86::Int_CVTPD2PSrr,  X86::Int_CVTPD2PSrm,      TB_ALIGN_16 },
-    { X86::Int_CVTPS2DQrr,  X86::Int_CVTPS2DQrm,      TB_ALIGN_16 },
-    { X86::Int_CVTPS2PDrr,  X86::Int_CVTPS2PDrm,      0 },
     { X86::CVTSD2SI64rr,    X86::CVTSD2SI64rm,        0 },
     { X86::CVTSD2SIrr,      X86::CVTSD2SIrm,          0 },
+    { X86::CVTSS2SI64rr,    X86::CVTSS2SI64rm,        0 },
+    { X86::CVTSS2SIrr,      X86::CVTSS2SIrm,          0 },
     { X86::Int_CVTSD2SSrr,  X86::Int_CVTSD2SSrm,      0 },
     { X86::Int_CVTSI2SD64rr,X86::Int_CVTSI2SD64rm,    0 },
     { X86::Int_CVTSI2SDrr,  X86::Int_CVTSI2SDrm,      0 },
@@ -499,14 +495,20 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     // AVX 128-bit versions of foldable instructions
     { X86::Int_VCOMISDrr,   X86::Int_VCOMISDrm,       0 },
     { X86::Int_VCOMISSrr,   X86::Int_VCOMISSrm,       0 },
-    { X86::Int_VCVTDQ2PDrr, X86::Int_VCVTDQ2PDrm,     TB_ALIGN_16 },
-    { X86::Int_VCVTDQ2PSrr, X86::Int_VCVTDQ2PSrm,     TB_ALIGN_16 },
-    { X86::Int_VCVTPD2DQrr, X86::Int_VCVTPD2DQrm,     TB_ALIGN_16 },
-    { X86::Int_VCVTPD2PSrr, X86::Int_VCVTPD2PSrm,     TB_ALIGN_16 },
-    { X86::Int_VCVTPS2DQrr, X86::Int_VCVTPS2DQrm,     TB_ALIGN_16 },
-    { X86::Int_VCVTPS2PDrr, X86::Int_VCVTPS2PDrm,     0 },
     { X86::Int_VUCOMISDrr,  X86::Int_VUCOMISDrm,      0 },
     { X86::Int_VUCOMISSrr,  X86::Int_VUCOMISSrm,      0 },
+    { X86::VCVTTSD2SI64rr,  X86::VCVTTSD2SI64rm,      0 },
+    { X86::Int_VCVTTSD2SI64rr,X86::Int_VCVTTSD2SI64rm,0 },
+    { X86::VCVTTSD2SIrr,    X86::VCVTTSD2SIrm,        0 },
+    { X86::Int_VCVTTSD2SIrr,X86::Int_VCVTTSD2SIrm,    0 },
+    { X86::VCVTTSS2SI64rr,  X86::VCVTTSS2SI64rm,      0 },
+    { X86::Int_VCVTTSS2SI64rr,X86::Int_VCVTTSS2SI64rm,0 },
+    { X86::VCVTTSS2SIrr,    X86::VCVTTSS2SIrm,        0 },
+    { X86::Int_VCVTTSS2SIrr,X86::Int_VCVTTSS2SIrm,    0 },
+    { X86::VCVTSD2SI64rr,   X86::VCVTSD2SI64rm,       0 },
+    { X86::VCVTSD2SIrr,     X86::VCVTSD2SIrm,         0 },
+    { X86::VCVTSS2SI64rr,   X86::VCVTSS2SI64rm,       0 },
+    { X86::VCVTSS2SIrr,     X86::VCVTSS2SIrm,         0 },
     { X86::FsVMOVAPDrr,     X86::VMOVSDrm,            TB_NO_REVERSE },
     { X86::FsVMOVAPSrr,     X86::VMOVSSrm,            TB_NO_REVERSE },
     { X86::VMOV64toPQIrr,   X86::VMOVQI2PQIrm,        0 },
@@ -815,17 +817,7 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::Int_VCVTSI2SSrr,   X86::Int_VCVTSI2SSrm,    0 },
     { X86::VCVTSS2SDrr,       X86::VCVTSS2SDrm,        0 },
     { X86::Int_VCVTSS2SDrr,   X86::Int_VCVTSS2SDrm,    0 },
-    { X86::VCVTTSD2SI64rr,    X86::VCVTTSD2SI64rm,     0 },
-    { X86::Int_VCVTTSD2SI64rr,X86::Int_VCVTTSD2SI64rm, 0 },
-    { X86::VCVTTSD2SIrr,      X86::VCVTTSD2SIrm,       0 },
-    { X86::Int_VCVTTSD2SIrr,  X86::Int_VCVTTSD2SIrm,   0 },
-    { X86::VCVTTSS2SI64rr,    X86::VCVTTSS2SI64rm,     0 },
-    { X86::Int_VCVTTSS2SI64rr,X86::Int_VCVTTSS2SI64rm, 0 },
-    { X86::VCVTTSS2SIrr,      X86::VCVTTSS2SIrm,       0 },
-    { X86::Int_VCVTTSS2SIrr,  X86::Int_VCVTTSS2SIrm,   0 },
-    { X86::VCVTSD2SI64rr,     X86::VCVTSD2SI64rm,      0 },
-    { X86::VCVTSD2SIrr,       X86::VCVTSD2SIrm,        0 },
-    { X86::VCVTTPD2DQrr,      X86::VCVTTPD2DQrm,       TB_ALIGN_16 },
+    { X86::VCVTTPD2DQrr,      X86::VCVTTPD2DQXrm,      TB_ALIGN_16 },
     { X86::VCVTTPS2DQrr,      X86::VCVTTPS2DQrm,       TB_ALIGN_16 },
     { X86::VRSQRTSSr,         X86::VRSQRTSSm,          0 },
     { X86::VSQRTSDr,          X86::VSQRTSDm,           0 },

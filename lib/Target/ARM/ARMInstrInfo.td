@@ -244,7 +244,8 @@ def UseFPVMLx        : Predicate<"Subtarget->useFPVMLx()">;
 // Prefer fused MAC for fp mul + add over fp VMLA / VMLS if they are available.
 // But only select them if more precision in FP computation is allowed.
 // Do not use them for Darwin platforms.
-def UseFusedMAC      : Predicate<"!TM.Options.NoExcessFPPrecision && "
+def UseFusedMAC      : Predicate<"(TM.Options.AllowFPOpFusion =="
+                                 " FPOpFusion::Fast) && "
                                  "!Subtarget->isTargetDarwin()">;
 def DontUseFusedMAC  : Predicate<"!Subtarget->hasVFP4() || "
                                  "Subtarget->isTargetDarwin()">;
@@ -265,9 +266,9 @@ class RegConstraint<string C> {
 //  ARM specific transformation functions and pattern fragments.
 //
 
-// so_imm_neg_XFORM - Return a so_imm value packed into the format described for
-// so_imm_neg def below.
-def so_imm_neg_XFORM : SDNodeXForm<imm, [{
+// imm_neg_XFORM - Return a imm value packed into the format described for
+// imm_neg defs below.
+def imm_neg_XFORM : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(-(int)N->getZExtValue(), MVT::i32);
 }]>;
 
@@ -286,7 +287,7 @@ def so_imm_neg_asmoperand : AsmOperandClass { let Name = "ARMSOImmNeg"; }
 def so_imm_neg : Operand<i32>, PatLeaf<(imm), [{
     int64_t Value = -(int)N->getZExtValue();
     return Value && ARM_AM::getSOImmVal(Value) != -1;
-  }], so_imm_neg_XFORM> {
+  }], imm_neg_XFORM> {
   let ParserMatchClass = so_imm_neg_asmoperand;
 }
 
@@ -599,7 +600,10 @@ def imm1_31 : Operand<i32>, ImmLeaf<i32, [{ return Imm > 0 && Imm < 32; }]> {
 }
 
 /// imm0_15 predicate - Immediate in the range [0,15].
-def Imm0_15AsmOperand: ImmAsmOperand { let Name = "Imm0_15"; }
+def Imm0_15AsmOperand: ImmAsmOperand {
+  let Name = "Imm0_15";
+  let DiagnosticType = "ImmRange0_15";
+}
 def imm0_15 : Operand<i32>, ImmLeaf<i32, [{
   return Imm >= 0 && Imm < 16;
 }]> {
@@ -643,6 +647,11 @@ def imm0_65535 : Operand<i32>, ImmLeaf<i32, [{
 }]> {
   let ParserMatchClass = Imm0_65535AsmOperand;
 }
+
+// imm0_65535_neg - An immediate whose negative value is in the range [0.65535].
+def imm0_65535_neg : Operand<i32>, ImmLeaf<i32, [{
+  return -Imm >= 0 && -Imm < 65536;
+}]>;
 
 // imm0_65535_expr - For movt/movw - 16-bit immediate that can also reference
 // a relocatable expression.
@@ -1640,33 +1649,18 @@ def ATOMCMPXCHG6432 : PseudoInst<(outs GPR:$dst1, GPR:$dst2),
                                  NoItinerary, []>;
 }
 
-def NOP : AI<(outs), (ins), MiscFrm, NoItinerary, "nop", "", []>,
-          Requires<[IsARM, HasV6T2]> {
-  let Inst{27-16} = 0b001100100000;
-  let Inst{15-8} = 0b11110000;
-  let Inst{7-0} = 0b00000000;
+def HINT : AI<(outs), (ins imm0_255:$imm), MiscFrm, NoItinerary,
+              "hint", "\t$imm", []>, Requires<[IsARM, HasV6]> {
+  bits<8> imm;
+  let Inst{27-8} = 0b00110010000011110000;
+  let Inst{7-0} = imm;
 }
 
-def YIELD : AI<(outs), (ins), MiscFrm, NoItinerary, "yield", "", []>,
-          Requires<[IsARM, HasV6T2]> {
-  let Inst{27-16} = 0b001100100000;
-  let Inst{15-8} = 0b11110000;
-  let Inst{7-0} = 0b00000001;
-}
-
-def WFE : AI<(outs), (ins), MiscFrm, NoItinerary, "wfe", "", []>,
-          Requires<[IsARM, HasV6T2]> {
-  let Inst{27-16} = 0b001100100000;
-  let Inst{15-8} = 0b11110000;
-  let Inst{7-0} = 0b00000010;
-}
-
-def WFI : AI<(outs), (ins), MiscFrm, NoItinerary, "wfi", "", []>,
-          Requires<[IsARM, HasV6T2]> {
-  let Inst{27-16} = 0b001100100000;
-  let Inst{15-8} = 0b11110000;
-  let Inst{7-0} = 0b00000011;
-}
+def : InstAlias<"nop$p", (HINT 0, pred:$p)>, Requires<[IsARM, HasV6T2]>;
+def : InstAlias<"yield$p", (HINT 1, pred:$p)>, Requires<[IsARM, HasV6T2]>;
+def : InstAlias<"wfe$p", (HINT 2, pred:$p)>, Requires<[IsARM, HasV6T2]>;
+def : InstAlias<"wfi$p", (HINT 3, pred:$p)>, Requires<[IsARM, HasV6T2]>;
+def : InstAlias<"sev$p", (HINT 4, pred:$p)>, Requires<[IsARM, HasV6T2]>;
 
 def SEL : AI<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm), DPFrm, NoItinerary, "sel",
              "\t$Rd, $Rn, $Rm", []>, Requires<[IsARM, HasV6]> {
@@ -1679,18 +1673,10 @@ def SEL : AI<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm), DPFrm, NoItinerary, "sel",
   let Inst{27-20} = 0b01101000;
   let Inst{7-4} = 0b1011;
   let Inst{11-8} = 0b1111;
-  
   let Unpredictable{11-8} = 0b1111;
 }
 
-def SEV : AI<(outs), (ins), MiscFrm, NoItinerary, "sev", "",
-             []>, Requires<[IsARM, HasV6T2]> {
-  let Inst{27-16} = 0b001100100000;
-  let Inst{15-8} = 0b11110000;
-  let Inst{7-0} = 0b00000100;
-}
-
-// The i32imm operand $val can be used by a debugger to store more information
+// The 16-bit operand $val can be used by a debugger to store more information
 // about the breakpoint.
 def BKPT : AI<(outs), (ins imm0_65535:$val), MiscFrm, NoItinerary,
               "bkpt", "\t$val", []>, Requires<[IsARM]> {
@@ -3242,6 +3228,11 @@ def : ARMPat<(add     GPR:$src, so_imm_neg:$imm),
              (SUBri   GPR:$src, so_imm_neg:$imm)>;
 def : ARMPat<(ARMaddc GPR:$src, so_imm_neg:$imm),
              (SUBSri  GPR:$src, so_imm_neg:$imm)>;
+
+def : ARMPat<(add     GPR:$src, imm0_65535_neg:$imm),
+             (SUBrr   GPR:$src, (MOVi16 (imm_neg_XFORM imm:$imm)))>;
+def : ARMPat<(ARMaddc GPR:$src, imm0_65535_neg:$imm),
+             (SUBSrr  GPR:$src, (MOVi16 (imm_neg_XFORM imm:$imm)))>;
 
 // The with-carry-in form matches bitwise not instead of the negation.
 // Effectively, the inverse interpretation of the carry flag already accounts

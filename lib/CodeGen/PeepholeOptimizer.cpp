@@ -145,8 +145,7 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
       TargetRegisterInfo::isPhysicalRegister(SrcReg))
     return false;
 
-  MachineRegisterInfo::use_nodbg_iterator UI = MRI->use_nodbg_begin(SrcReg);
-  if (++UI == MRI->use_nodbg_end())
+  if (MRI->hasOneNonDBGUse(SrcReg))
     // No other uses.
     return false;
 
@@ -157,11 +156,19 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
   if (!DstRC)
     return false;
 
+  // The ext instr may be operating on a sub-register of SrcReg as well.
+  // PPC::EXTSW is a 32 -> 64-bit sign extension, but it reads a 64-bit
+  // register.
+  // If UseSrcSubIdx is Set, SubIdx also applies to SrcReg, and only uses of
+  // SrcReg:SubIdx should be replaced.
+  bool UseSrcSubIdx = TM->getRegisterInfo()->
+    getSubClassWithSubReg(MRI->getRegClass(SrcReg), SubIdx) != 0;
+
   // The source has other uses. See if we can replace the other uses with use of
   // the result of the extension.
   SmallPtrSet<MachineBasicBlock*, 4> ReachedBBs;
-  UI = MRI->use_nodbg_begin(DstReg);
-  for (MachineRegisterInfo::use_nodbg_iterator UE = MRI->use_nodbg_end();
+  for (MachineRegisterInfo::use_nodbg_iterator
+       UI = MRI->use_nodbg_begin(DstReg), UE = MRI->use_nodbg_end();
        UI != UE; ++UI)
     ReachedBBs.insert(UI->getParent());
 
@@ -172,8 +179,8 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
   SmallVector<MachineOperand*, 8> ExtendedUses;
 
   bool ExtendLife = true;
-  UI = MRI->use_nodbg_begin(SrcReg);
-  for (MachineRegisterInfo::use_nodbg_iterator UE = MRI->use_nodbg_end();
+  for (MachineRegisterInfo::use_nodbg_iterator
+       UI = MRI->use_nodbg_begin(SrcReg), UE = MRI->use_nodbg_end();
        UI != UE; ++UI) {
     MachineOperand &UseMO = UI.getOperand();
     MachineInstr *UseMI = &*UI;
@@ -184,6 +191,10 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
       ExtendLife = false;
       continue;
     }
+
+    // Only accept uses of SrcReg:SubIdx.
+    if (UseSrcSubIdx && UseMO.getSubReg() != SubIdx)
+      continue;
 
     // It's an error to translate this:
     //
@@ -239,9 +250,9 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
     // Look for PHI uses of the extended result, we don't want to extend the
     // liveness of a PHI input. It breaks all kinds of assumptions down
     // stream. A PHI use is expected to be the kill of its source values.
-    UI = MRI->use_nodbg_begin(DstReg);
     for (MachineRegisterInfo::use_nodbg_iterator
-           UE = MRI->use_nodbg_end(); UI != UE; ++UI)
+         UI = MRI->use_nodbg_begin(DstReg), UE = MRI->use_nodbg_end();
+         UI != UE; ++UI)
       if (UI->isPHI())
         PHIBBs.insert(UI->getParent());
 
@@ -260,10 +271,14 @@ optimizeExtInstr(MachineInstr *MI, MachineBasicBlock *MBB,
       }
 
       unsigned NewVR = MRI->createVirtualRegister(RC);
-      BuildMI(*UseMBB, UseMI, UseMI->getDebugLoc(),
-              TII->get(TargetOpcode::COPY), NewVR)
+      MachineInstr *Copy = BuildMI(*UseMBB, UseMI, UseMI->getDebugLoc(),
+                                   TII->get(TargetOpcode::COPY), NewVR)
         .addReg(DstReg, 0, SubIdx);
-
+      // SubIdx applies to both SrcReg and DstReg when UseSrcSubIdx is set.
+      if (UseSrcSubIdx) {
+        Copy->getOperand(0).setSubReg(SubIdx);
+        Copy->getOperand(0).setIsUndef();
+      }
       UseMO->setReg(NewVR);
       ++NumReuse;
       Changed = true;
@@ -353,14 +368,15 @@ bool PeepholeOptimizer::optimizeCmpInstr(MachineInstr *MI,
                                          MachineBasicBlock *MBB) {
   // If this instruction is a comparison against zero and isn't comparing a
   // physical register, we can try to optimize it.
-  unsigned SrcReg;
+  unsigned SrcReg, SrcReg2;
   int CmpMask, CmpValue;
-  if (!TII->AnalyzeCompare(MI, SrcReg, CmpMask, CmpValue) ||
-      TargetRegisterInfo::isPhysicalRegister(SrcReg))
+  if (!TII->analyzeCompare(MI, SrcReg, SrcReg2, CmpMask, CmpValue) ||
+      TargetRegisterInfo::isPhysicalRegister(SrcReg) ||
+      (SrcReg2 != 0 && TargetRegisterInfo::isPhysicalRegister(SrcReg2)))
     return false;
 
   // Attempt to optimize the comparison instruction.
-  if (TII->OptimizeCompareInstr(MI, SrcReg, CmpMask, CmpValue, MRI)) {
+  if (TII->optimizeCompareInstr(MI, SrcReg, SrcReg2, CmpMask, CmpValue, MRI)) {
     ++NumCmps;
     return true;
   }

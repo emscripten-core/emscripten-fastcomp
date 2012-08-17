@@ -11,7 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Analysis/DebugInfo.h"
+#include "llvm/CallingConv.h"
+#include "llvm/Constants.h"
+#include "llvm/DebugInfo.h"
+#include "llvm/DerivedTypes.h"
+#include "llvm/LLVMContext.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
@@ -20,10 +24,6 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/CallingConv.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/LLVMContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -1930,9 +1930,11 @@ static bool isDivRemLibcallAvailable(SDNode *Node, bool isSigned,
   return TLI.getLibcallName(LC) != 0;
 }
 
-/// UseDivRem - Only issue divrem libcall if both quotient and remainder are
+/// useDivRem - Only issue divrem libcall if both quotient and remainder are
 /// needed.
-static bool UseDivRem(SDNode *Node, bool isSigned, bool isDIV) {
+static bool useDivRem(SDNode *Node, bool isSigned, bool isDIV) {
+  // The other use might have been replaced with a divrem already.
+  unsigned DivRemOpc = isSigned ? ISD::SDIVREM : ISD::UDIVREM;
   unsigned OtherOpcode = 0;
   if (isSigned)
     OtherOpcode = isDIV ? ISD::SREM : ISD::SDIV;
@@ -1946,7 +1948,7 @@ static bool UseDivRem(SDNode *Node, bool isSigned, bool isDIV) {
     SDNode *User = *UI;
     if (User == Node)
       continue;
-    if (User->getOpcode() == OtherOpcode &&
+    if ((User->getOpcode() == OtherOpcode || User->getOpcode() == DivRemOpc) &&
         User->getOperand(0) == Op0 &&
         User->getOperand(1) == Op1)
       return true;
@@ -3092,7 +3094,7 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
     Tmp3 = Node->getOperand(1);
     if (TLI.isOperationLegalOrCustom(DivRemOpc, VT) ||
         (isDivRemLibcallAvailable(Node, isSigned, TLI) &&
-         UseDivRem(Node, isSigned, false))) {
+         useDivRem(Node, isSigned, false))) {
       Tmp1 = DAG.getNode(DivRemOpc, dl, VTs, Tmp2, Tmp3).getValue(1);
     } else if (TLI.isOperationLegalOrCustom(DivOpc, VT)) {
       // X % Y -> X-X/Y*Y
@@ -3120,7 +3122,7 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
     SDVTList VTs = DAG.getVTList(VT, VT);
     if (TLI.isOperationLegalOrCustom(DivRemOpc, VT) ||
         (isDivRemLibcallAvailable(Node, isSigned, TLI) &&
-         UseDivRem(Node, isSigned, true)))
+         useDivRem(Node, isSigned, true)))
       Tmp1 = DAG.getNode(DivRemOpc, dl, VTs, Node->getOperand(0),
                          Node->getOperand(1));
     else if (isSigned)

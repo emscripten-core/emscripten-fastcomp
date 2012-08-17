@@ -145,7 +145,9 @@ AddGlobalVariable(Module *M,
   GlobalVariable *GV =
     new GlobalVariable(*M, Ty, /*isConstant=*/ false,
                        Linkage, /*Initializer=*/ InitVal,
-                       Twine(Name), /*InsertBefore=*/ NULL, isTLS,
+                       Twine(Name), /*InsertBefore=*/ NULL,
+                       isTLS ? GlobalVariable::GeneralDynamicTLSModel :
+                               GlobalVariable::NotThreadLocal,
                        /*AddressSpace=*/ 0);
   AddUsedGlobal(GV);
 }

@@ -29,7 +29,7 @@ using namespace llvm;
 MipsMCInstLower::MipsMCInstLower(MipsAsmPrinter &asmprinter)
   : AsmPrinter(asmprinter) {}
 
-void MipsMCInstLower::Initialize(Mangler *M, MCContext* C) {
+void MipsMCInstLower::Initialize(Mangler *M, MCContext *C) {
   Mang = M;
   Ctx = C;
 }
@@ -105,21 +105,23 @@ MCOperand MipsMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
   assert(Offset > 0);
 
   const MCConstantExpr *OffsetExpr =  MCConstantExpr::Create(Offset, *Ctx);
-  const MCBinaryExpr *AddExpr = MCBinaryExpr::CreateAdd(MCSym, OffsetExpr, *Ctx);
-  return MCOperand::CreateExpr(AddExpr);
+  const MCBinaryExpr *Add = MCBinaryExpr::CreateAdd(MCSym, OffsetExpr, *Ctx);
+  return MCOperand::CreateExpr(Add);
 }
 
-static void CreateMCInst(MCInst& Inst, unsigned Opc, const MCOperand& Opnd0,
-                         const MCOperand& Opnd1,
-                         const MCOperand& Opnd2 = MCOperand()) {
+/*
+static void CreateMCInst(MCInst& Inst, unsigned Opc, const MCOperand &Opnd0,
+                         const MCOperand &Opnd1,
+                         const MCOperand &Opnd2 = MCOperand()) {
   Inst.setOpcode(Opc);
   Inst.addOperand(Opnd0);
   Inst.addOperand(Opnd1);
   if (Opnd2.isValid())
     Inst.addOperand(Opnd2);
 }
+*/
 
-MCOperand MipsMCInstLower::LowerOperand(const MachineOperand& MO,
+MCOperand MipsMCInstLower::LowerOperand(const MachineOperand &MO,
                                         unsigned offset) const {
   MachineOperandType MOTy = MO.getType();
 
@@ -157,11 +159,6 @@ void MipsMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
   }
 }
 
-// Create the following two instructions:
-//  "lui   $2, %hi(_gp_disp)"
-//  "addiu $2, $2, %lo(_gp_disp)"
-void MipsMCInstLower::LowerSETGP01(SmallVector<MCInst, 4>& MCInsts) {
-  MCOperand RegOpnd = MCOperand::CreateReg(Mips::V0);
   MCInst Instr4, Mask1, Mask2; // @LOCALMOD
   // @LOCALMOD-START
   MCOperand MaskReg = MCOperand::CreateReg(Mips::LoadStoreStackMaskReg);
@@ -206,17 +203,3 @@ void MipsMCInstLower::LowerSETGP01(SmallVector<MCInst, 4>& MCInsts) {
     }
   }
   // @LOCALMOD-END
-  StringRef SymName("_gp_disp");
-  const MCSymbol *Sym = Ctx->GetOrCreateSymbol(SymName);
-  const MCSymbolRefExpr *MCSym;
-
-  MCSym = MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_Mips_ABS_HI, *Ctx);
-  MCOperand SymHi = MCOperand::CreateExpr(MCSym);
-  MCSym = MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_Mips_ABS_LO, *Ctx);
-  MCOperand SymLo = MCOperand::CreateExpr(MCSym);
-
-  MCInsts.resize(2);
-
-  CreateMCInst(MCInsts[0], Mips::LUi, RegOpnd, SymHi);
-  CreateMCInst(MCInsts[1], Mips::ADDiu, RegOpnd, RegOpnd, SymLo);
-}

@@ -601,6 +601,12 @@ Lforward:
 @ CHECK: dsb	oshst                   @ encoding: [0x42,0xf0,0x7f,0xf5]
 @ CHECK: dsb	sy                      @ encoding: [0x4f,0xf0,0x7f,0xf5]
 
+@ With capitals
+        dsb SY
+        dsb OSHST
+
+@ CHECK: dsb	sy                      @ encoding: [0x4f,0xf0,0x7f,0xf5]
+@ CHECK: dsb	oshst                   @ encoding: [0x42,0xf0,0x7f,0xf5]
 @------------------------------------------------------------------------------
 @ EOR
 @------------------------------------------------------------------------------
@@ -2711,10 +2717,22 @@ Lforward:
         wfilt
         yield
         yieldne
+        hint #5
+        hint #4
+        hint #3
+        hint #2
+        hint #1
+        hint #0
 
-@ CHECK: wfe @ encoding: [0x02,0xf0,0x20,0xe3]
-@ CHECK: wfehi @ encoding: [0x02,0xf0,0x20,0x83]
-@ CHECK: wfi @ encoding: [0x03,0xf0,0x20,0xe3]
-@ CHECK: wfilt @ encoding: [0x03,0xf0,0x20,0xb3]
-@ CHECK: yield @ encoding: [0x01,0xf0,0x20,0xe3]
-@ CHECK: yieldne @ encoding: [0x01,0xf0,0x20,0x13]
+@ CHECK: wfe                            @ encoding: [0x02,0xf0,0x20,0xe3]
+@ CHECK: wfehi                          @ encoding: [0x02,0xf0,0x20,0x83]
+@ CHECK: wfi                            @ encoding: [0x03,0xf0,0x20,0xe3]
+@ CHECK: wfilt                          @ encoding: [0x03,0xf0,0x20,0xb3]
+@ CHECK: yield                          @ encoding: [0x01,0xf0,0x20,0xe3]
+@ CHECK: yieldne                        @ encoding: [0x01,0xf0,0x20,0x13]
+@ CHECK: hint	#5                      @ encoding: [0x05,0xf0,0x20,0xe3]
+@ CHECK: sev                            @ encoding: [0x04,0xf0,0x20,0xe3]
+@ CHECK: wfi                            @ encoding: [0x03,0xf0,0x20,0xe3]
+@ CHECK: wfe                            @ encoding: [0x02,0xf0,0x20,0xe3]
+@ CHECK: yield                          @ encoding: [0x01,0xf0,0x20,0xe3]
+@ CHECK: nop                            @ encoding: [0x00,0xf0,0x20,0xe3]
