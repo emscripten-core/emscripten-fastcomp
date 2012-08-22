@@ -195,11 +195,11 @@ let isCall = 1 in
       Uses = [ESP] in {
 
     def NACL_CG_CALLpcrel32 : I<0, Pseudo,
-                              (outs), (ins i32imm_pcrel:$dst, variable_ops),
+                              (outs), (ins i32imm_pcrel:$dst),
                               "naclcall\t$dst", []>,
                               Requires<[IsNaCl, In32BitMode]>;
     def NACL_CG_CALL32r     : I<0, Pseudo,
-                              (outs), (ins GR32:$dst, variable_ops),
+                              (outs), (ins GR32:$dst),
                               "naclcall\t$dst", [(X86call GR32:$dst)]>,
                               Requires<[IsNaCl, In32BitMode]>;
 }
@@ -227,7 +227,7 @@ def : Pat<(X86call (i32 imm:$dst)),
 // addresses which are i32 instead of i64.
 
 let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
-  def NACL_CG_JMP64r     : I<0, Pseudo, (outs), (ins GR32:$dst, variable_ops),
+  def NACL_CG_JMP64r     : I<0, Pseudo, (outs), (ins GR32:$dst),
                            "nacljmp\t$dst",
                            [(brind GR32:$dst)]>,
                            Requires<[IsNaCl, In64BitMode]>;
@@ -246,11 +246,11 @@ let isCall = 1 in
       Uses = [RSP] in {
 
     def NACL_CG_CALL64pcrel32 : I<0, Pseudo, (outs),
-                                (ins i32imm_pcrel:$dst, variable_ops),
+                                (ins i32imm_pcrel:$dst),
                                 "naclcall\t$dst", []>,
                                 Requires<[IsNaCl, In64BitMode]>;
 
-    def NACL_CG_CALL64r       : I<0, Pseudo, (outs), (ins GR32:$dst, variable_ops),
+    def NACL_CG_CALL64r       : I<0, Pseudo, (outs), (ins GR32:$dst),
                                 "naclcall\t$dst,%r15",
                                 [(X86call GR32:$dst)]>,
                                 Requires<[IsNaCl, In64BitMode]>;
@@ -275,22 +275,20 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
       Uses = [RSP] in {
 
   def NACL_CG_TCRETURNdi64 : I<0, Pseudo, (outs),
-                             (ins i32imm_pcrel:$dst, i32imm:$offset, 
-                             variable_ops),
+                             (ins i32imm_pcrel:$dst, i32imm:$offset),
                              "#TC_RETURN $dst $offset", []>,
                           Requires<[IsNaCl, In64BitMode]>;
   def NACL_CG_TCRETURNri64 : I<0, Pseudo, (outs),
-                            (ins GR32_TC_64:$dst, i32imm:$offset,
-                             variable_ops),
+                            (ins GR32_TC_64:$dst, i32imm:$offset),
                             "#TC_RETURN $dst $offset", []>,
                             Requires<[IsNaCl, In64BitMode]>;
 
   def NACL_CG_TAILJMPd64 : I<0, Pseudo, (outs),
-                           (ins i32imm_pcrel:$dst, variable_ops),
+                           (ins i32imm_pcrel:$dst),
                            "jmp\t$dst  # TAILCALL", []>,
                            Requires<[IsNaCl, In64BitMode]>;
   def NACL_CG_TAILJMPr64 : I<0, Pseudo, (outs),
-                           (ins GR32_TC_64:$dst, variable_ops),
+                           (ins GR32_TC_64:$dst),
                            "nacljmp\t$dst,%r15  # TAILCALL", []>,
                            Requires<[IsNaCl, In64BitMode]>;
 }
