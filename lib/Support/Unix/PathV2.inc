@@ -496,6 +496,10 @@ rety_open_create:
 }
 
 error_code mapped_file_region::init(int fd, uint64_t offset) {
+#ifdef __native_client__
+  // Newlib does not have ftruncate.
+  llvm_unreachable("mapped_file_region not implemented for native client");
+#else
   AutoFD FD(fd);
 
   // Figure out how large the file is.
@@ -521,6 +525,7 @@ error_code mapped_file_region::init(int fd, uint64_t offset) {
   if (Mapping == MAP_FAILED)
     return error_code(errno, system_category());
   return error_code::success();
+#endif // __native_client__
 }
 
 mapped_file_region::mapped_file_region(const Twine &path,
@@ -531,6 +536,9 @@ mapped_file_region::mapped_file_region(const Twine &path,
   : Mode(mode)
   , Size(length)
   , Mapping() {
+#ifdef __native_client__
+  llvm_unreachable("mapped_file_region not implemented for native client");
+#endif
   // Make sure that the requested size fits within SIZE_T.
   if (length > std::numeric_limits<size_t>::max()) {
     ec = make_error_code(errc::invalid_argument);
@@ -559,6 +567,9 @@ mapped_file_region::mapped_file_region(int fd,
   : Mode(mode)
   , Size(length)
   , Mapping() {
+#ifdef __native_client__
+  llvm_unreachable("mapped_file_region not implemented for native client");
+#endif
   // Make sure that the requested size fits within SIZE_T.
   if (length > std::numeric_limits<size_t>::max()) {
     ec = make_error_code(errc::invalid_argument);
