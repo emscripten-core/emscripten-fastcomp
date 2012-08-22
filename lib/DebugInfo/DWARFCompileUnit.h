@@ -43,7 +43,7 @@ public:
                    const DWARFAbbreviationDeclarationSet *abbrevs);
 
   /// extractDIEsIfNeeded - Parses a compile unit and indexes its DIEs if it
-  /// hasn't already been done.
+  /// hasn't already been done. Returns the number of DIEs parsed at this call.
   size_t extractDIEsIfNeeded(bool cu_die_only);
   void clear();
   void dump(raw_ostream &OS);
@@ -77,6 +77,8 @@ public:
       return NULL;
     return &DieArray[0];
   }
+
+  const char *getCompilationDir();
 
   /// setDIERelations - We read in all of the DIE entries into our flat list
   /// of DIE entries and now we need to go back through all of them and set the

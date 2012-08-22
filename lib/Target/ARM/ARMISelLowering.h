@@ -66,9 +66,6 @@ namespace llvm {
       FMSTAT,       // ARM fmstat instruction.
 
       CMOV,         // ARM conditional move instructions.
-      CAND,         // ARM conditional and instructions.
-      COR,          // ARM conditional or instructions.
-      CXOR,         // ARM conditional xor instructions.
 
       BCC_i64,
 
@@ -364,7 +361,8 @@ namespace llvm {
 
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
-    virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo) const;
+    virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                                     const TargetLibraryInfo *libInfo) const;
 
     Sched::Preference getSchedulingPreference(SDNode *N) const;
 
@@ -396,9 +394,9 @@ namespace llvm {
     ///
     unsigned ARMPCLabelIndex;
 
-    void addTypeForNEON(EVT VT, EVT PromotedLdStVT, EVT PromotedBitwiseVT);
-    void addDRTypeForNEON(EVT VT);
-    void addQRTypeForNEON(EVT VT);
+    void addTypeForNEON(MVT VT, MVT PromotedLdStVT, MVT PromotedBitwiseVT);
+    void addDRTypeForNEON(MVT VT);
+    void addQRTypeForNEON(MVT VT);
 
     typedef SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPassVector;
     void PassF64ArgInRegs(DebugLoc dl, SelectionDAG &DAG,
@@ -557,7 +555,8 @@ namespace llvm {
 
 
   namespace ARM {
-    FastISel *createFastISel(FunctionLoweringInfo &funcInfo);
+    FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                             const TargetLibraryInfo *libInfo);
   }
 }
 

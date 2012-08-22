@@ -28,6 +28,24 @@ class SubRegIndex<list<SubRegIndex> comps = []> {
   // ComposedOf - A list of two SubRegIndex instances, [A, B].
   // This indicates that this SubRegIndex is the result of composing A and B.
   list<SubRegIndex> ComposedOf = comps;
+
+  // CoveringSubRegIndices - A list of two or more sub-register indexes that
+  // cover this sub-register.
+  //
+  // This field should normally be left blank as TableGen can infer it.
+  //
+  // TableGen automatically detects sub-registers that straddle the registers
+  // in the SubRegs field of a Register definition. For example:
+  //
+  //   Q0    = dsub_0 -> D0, dsub_1 -> D1
+  //   Q1    = dsub_0 -> D2, dsub_1 -> D3
+  //   D1_D2 = dsub_0 -> D1, dsub_1 -> D2
+  //   QQ0   = qsub_0 -> Q0, qsub_1 -> Q1
+  //
+  // TableGen will infer that D1_D2 is a sub-register of QQ0. It will be given
+  // the synthetic index dsub_1_dsub_2 unless some SubRegIndex is defined with
+  // CoveringSubRegIndices = [dsub_1, dsub_2].
+  list<SubRegIndex> CoveringSubRegIndices = [];
 }
 
 // RegAltNameIndex - The alternate name set to use for register operands of
@@ -63,18 +81,6 @@ class Register<string n, list<string> altNames = []> {
   // RegAltNameIndices - The alternate name indices which are valid for this
   // register.
   list<RegAltNameIndex> RegAltNameIndices = [];
-
-  // CompositeIndices - Specify subreg indices that don't correspond directly to
-  // a register in SubRegs and are not inherited. The following formats are
-  // supported:
-  //
-  // (a)     Identity  - Reg:a == Reg
-  // (a b)   Alias     - Reg:a == Reg:b
-  // (a b,c) Composite - Reg:a == (Reg:b):c
-  //
-  // This can be used to disambiguate a sub-sub-register that exists in more
-  // than one subregister and other weird stuff.
-  list<dag> CompositeIndices = [];
 
   // DwarfNumbers - Numbers used internally by gcc/gdb to identify the register.
   // These values can be determined by locating the <target>.h file in the
@@ -252,9 +258,6 @@ class RegisterTuples<list<SubRegIndex> Indices, list<dag> Regs> {
   // SubRegIndices - N SubRegIndex instances. This provides the names of the
   // sub-registers in the synthesized super-registers.
   list<SubRegIndex> SubRegIndices = Indices;
-
-  // Compose sub-register indices like in a normal Register.
-  list<dag> CompositeIndices = [];
 }
 
 
@@ -336,6 +339,7 @@ class Instruction {
   bit isCompare    = 0;     // Is this instruction a comparison instruction?
   bit isMoveImm    = 0;     // Is this instruction a move immediate instruction?
   bit isBitcast    = 0;     // Is this instruction a bitcast instruction?
+  bit isSelect     = 0;     // Is this instruction a select instruction?
   bit isBarrier    = 0;     // Can control flow fall through this instruction?
   bit isCall       = 0;     // Is this instruction a call instruction?
   bit canFoldAsLoad = 0;    // Can this be folded as a simple memory operand?
@@ -564,7 +568,8 @@ class Operand<ValueType ty> : DAGOperand {
   AsmOperandClass ParserMatchClass = ImmAsmOperand;
 }
 
-class RegisterOperand<RegisterClass regclass, string pm = "printOperand"> {
+class RegisterOperand<RegisterClass regclass, string pm = "printOperand">
+  : DAGOperand {
   // RegClass - The register class of the operand.
   RegisterClass RegClass = regclass;
   // PrintMethod - The target method to call to print register operands of
@@ -782,11 +787,15 @@ class AsmParser {
   // function of the AsmParser class to call on every matched instruction.
   // This can be used to perform target specific instruction post-processing.
   string AsmParserInstCleanup  = "";
+
+  //ShouldEmitMatchRegisterName - Set to false if the target needs a hand
+  //written register name matcher
+  bit ShouldEmitMatchRegisterName = 1;
 }
 def DefaultAsmParser : AsmParser;
 
 //===----------------------------------------------------------------------===//
-// AsmParserVariant - Subtargets can have multiple different assembly parsers 
+// AsmParserVariant - Subtargets can have multiple different assembly parsers
 // (e.g. AT&T vs Intel syntax on X86 for example). This class can be
 // implemented by targets to describe such variants.
 //
@@ -919,7 +928,7 @@ class Target {
   // AssemblyParsers - The AsmParser instances available for this target.
   list<AsmParser> AssemblyParsers = [DefaultAsmParser];
 
-  /// AssemblyParserVariants - The AsmParserVariant instances available for 
+  /// AssemblyParserVariants - The AsmParserVariant instances available for
   /// this target.
   list<AsmParserVariant> AssemblyParserVariants = [DefaultAsmParserVariant];
 
@@ -967,12 +976,24 @@ class Processor<string n, ProcessorItineraries pi, list<SubtargetFeature> f> {
   //
   string Name = n;
 
+  // SchedModel - The machine model for scheduling and instruction cost.
+  //
+  SchedMachineModel SchedModel = NoSchedModel;
+
   // ProcItin - The scheduling information for the target processor.
   //
   ProcessorItineraries ProcItin = pi;
 
   // Features - list of
   list<SubtargetFeature> Features = f;
+}
+
+// ProcessorModel allows subtargets to specify the more general
+// SchedMachineModel instead if a ProcessorItinerary. Subtargets will
+// gradually move to this newer form.
+class ProcessorModel<string n, SchedMachineModel m, list<SubtargetFeature> f>
+  : Processor<n, NoItineraries, f> {
+  let SchedModel = m;
 }
 
 //===----------------------------------------------------------------------===//

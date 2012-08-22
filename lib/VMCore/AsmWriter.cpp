@@ -26,6 +26,7 @@
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Operator.h"
 #include "llvm/Module.h"
+#include "llvm/TypeFinder.h"
 #include "llvm/ValueSymbolTable.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
@@ -100,7 +101,11 @@ static void PrintLLVMName(raw_ostream &OS, StringRef Name, PrefixType Prefix) {
   bool NeedsQuotes = isdigit(Name[0]);
   if (!NeedsQuotes) {
     for (unsigned i = 0, e = Name.size(); i != e; ++i) {
-      char C = Name[i];
+      // By making this unsigned, the value passed in to isalnum will always be
+      // in the range 0-255.  This is important when building with MSVC because
+      // its implementation will assert.  This situation can arise when dealing
+      // with UTF-8 multibyte characters.
+      unsigned char C = Name[i];
       if (!isalnum(C) && C != '-' && C != '.' && C != '_') {
         NeedsQuotes = true;
         break;
@@ -141,7 +146,7 @@ class TypePrinting {
 public:
 
   /// NamedTypes - The named types that are used by the current module.
-  std::vector<StructType*> NamedTypes;
+  TypeFinder NamedTypes;
 
   /// NumberedTypes - The numbered types, along with their value.
   DenseMap<StructType*, unsigned> NumberedTypes;
@@ -160,7 +165,7 @@ public:
 
 
 void TypePrinting::incorporateTypes(const Module &M) {
-  M.findUsedStructTypes(NamedTypes);
+  NamedTypes.run(M, false);
 
   // The list of struct types we got back includes all the struct types, split
   // the unnamed ones out to a numbering and remove the anonymous structs.
@@ -1348,12 +1353,12 @@ static void PrintLinkage(GlobalValue::LinkageTypes LT,
   case GlobalValue::LinkerPrivateWeakLinkage:
     Out << "linker_private_weak ";
     break;
-  case GlobalValue::LinkerPrivateWeakDefAutoLinkage:
-    Out << "linker_private_weak_def_auto ";
-    break;
   case GlobalValue::InternalLinkage:      Out << "internal ";       break;
   case GlobalValue::LinkOnceAnyLinkage:   Out << "linkonce ";       break;
   case GlobalValue::LinkOnceODRLinkage:   Out << "linkonce_odr ";   break;
+  case GlobalValue::LinkOnceODRAutoHideLinkage:
+    Out << "linkonce_odr_auto_hide ";
+    break;
   case GlobalValue::WeakAnyLinkage:       Out << "weak ";           break;
   case GlobalValue::WeakODRLinkage:       Out << "weak_odr ";       break;
   case GlobalValue::CommonLinkage:        Out << "common ";         break;
@@ -2043,10 +2048,12 @@ static void WriteMDNodeComment(const MDNode *Node,
 
   unsigned Tag = Desc.getTag();
   Out.PadToColumn(50);
-  if (Tag == dwarf::DW_TAG_user_base)
+  if (dwarf::TagString(Tag)) {
+    Out << "; ";
+    Desc.print(Out);
+  } else if (Tag == dwarf::DW_TAG_user_base) {
     Out << "; [ DW_TAG_user_base ]";
-  else if (const char *TagName = dwarf::TagString(Tag))
-    Out << "; [ " << TagName << " ]";
+  }
 }
 
 void AssemblyWriter::writeAllMDNodes() {

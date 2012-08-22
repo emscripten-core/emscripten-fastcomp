@@ -36,11 +36,13 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
     return 0;
   case FK_GPRel_4:
   case FK_Data_4:
+  case FK_Data_8:
   case Mips::fixup_Mips_LO16:
   case Mips::fixup_Mips_GPOFF_HI:
   case Mips::fixup_Mips_GPOFF_LO:
   case Mips::fixup_Mips_GOT_PAGE:
   case Mips::fixup_Mips_GOT_OFST:
+  case Mips::fixup_Mips_GOT_DISP:
     break;
   case Mips::fixup_Mips_PC16:
     // So far we are only using this type for branches.
@@ -59,8 +61,16 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
     break;
   case Mips::fixup_Mips_HI16:
   case Mips::fixup_Mips_GOT_Local:
-    // Get the higher 16-bits. Also add 1 if bit 15 is 1.
+    // Get the 2nd 16-bits. Also add 1 if bit 15 is 1.
     Value = ((Value + 0x8000) >> 16) & 0xffff;
+    break;
+  case Mips::fixup_Mips_HIGHER:
+    // Get the 3rd 16-bits.
+    Value = ((Value + 0x80008000LL) >> 32) & 0xffff;
+    break;
+  case Mips::fixup_Mips_HIGHEST:
+    // Get the 4th 16-bits.
+    Value = ((Value + 0x800080008000LL) >> 48) & 0xffff;
     break;
   }
 
@@ -167,7 +177,10 @@ public:
       { "fixup_Mips_GPOFF_HI",     0,     16,   0 },
       { "fixup_Mips_GPOFF_LO",     0,     16,   0 },
       { "fixup_Mips_GOT_PAGE",     0,     16,   0 },
-      { "fixup_Mips_GOT_OFST",     0,     16,   0 }
+      { "fixup_Mips_GOT_OFST",     0,     16,   0 },
+      { "fixup_Mips_GOT_DISP",     0,     16,   0 },
+      { "fixup_Mips_HIGHER",       0,     16,   0 },
+      { "fixup_Mips_HIGHEST",      0,     16,   0 }
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -217,17 +230,14 @@ public:
   ///
   /// \return - True on success.
   bool writeNopData(uint64_t Count, MCObjectWriter *OW) const {
-    // @LOCALMOD-START
+    // Check for a less than instruction size number of bytes
+    // FIXME: 16 bit instructions are not handled yet here.
+    // We shouldn't be using a hard coded number for instruction size.
+    if (Count % 4) return false;
+
     uint64_t NumNops = Count / 4;
     for (uint64_t i = 0; i != NumNops; ++i)
-      OW->Write32(0x0); // regular NOP
-
-    switch (Count % 4) {
-    case 0: break; // No leftover bytes to write
-    default:
-      return false;  // TODO(rtrk): Should we handle this differently?
-    }
-    // @LOCALMOD-END
+      OW->Write32(0);
     return true;
   }
 

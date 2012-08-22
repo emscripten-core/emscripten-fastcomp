@@ -49,6 +49,8 @@ static cl::opt<bool> DisableSSC("disable-ssc", cl::Hidden,
     cl::desc("Disable Stack Slot Coloring"));
 static cl::opt<bool> DisableMachineDCE("disable-machine-dce", cl::Hidden,
     cl::desc("Disable Machine Dead Code Elimination"));
+static cl::opt<bool> EnableEarlyIfConversion("enable-early-ifcvt", cl::Hidden,
+    cl::desc("Enable Early If-conversion"));
 static cl::opt<bool> DisableMachineLICM("disable-machine-licm", cl::Hidden,
     cl::desc("Disable Machine LICM"));
 static cl::opt<bool> DisableMachineCSE("disable-machine-cse", cl::Hidden,
@@ -85,6 +87,10 @@ static cl::opt<std::string>
 PrintMachineInstrs("print-machineinstrs", cl::ValueOptional,
                    cl::desc("Print machine instrs"),
                    cl::value_desc("pass-name"), cl::init("option-unspecified"));
+
+// Experimental option to run live inteerval analysis early.
+static cl::opt<bool> EarlyLiveIntervals("early-live-intervals", cl::Hidden,
+    cl::desc("Run live interval analysis earlier in the pipeline"));
 
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
@@ -153,6 +159,9 @@ static AnalysisID overridePass(AnalysisID StandardID, AnalysisID TargetID) {
 
   if (StandardID == &DeadMachineInstructionElimID)
     return applyDisable(TargetID, DisableMachineDCE);
+
+  if (StandardID == &EarlyIfConverterID)
+    return applyDisable(TargetID, !EnableEarlyIfConversion);
 
   if (StandardID == &MachineLICMID)
     return applyDisable(TargetID, DisableMachineLICM);
@@ -227,6 +236,9 @@ TargetPassConfig::TargetPassConfig(TargetMachine *tm, PassManagerBase &pm)
   // Substitute Pseudo Pass IDs for real ones.
   substitutePass(&EarlyTailDuplicateID, &TailDuplicateID);
   substitutePass(&PostRAMachineLICMID, &MachineLICMID);
+
+  // Disable early if-conversion. Targets that are ready can enable it.
+  disablePass(&EarlyIfConverterID);
 
   // Temporarily disable experimental passes.
   substitutePass(&MachineSchedulerID, 0);
@@ -425,9 +437,6 @@ void TargetPassConfig::addISelPrepare() {
 /// TODO: We could use a single addPre/Post(ID) hook to allow pass injection
 /// before/after any target-independent pass. But it's currently overkill.
 void TargetPassConfig::addMachinePasses() {
-  // Print the instruction selected machine code...
-  printAndVerify("After Instruction Selection");
-
   // Insert a machine instr printer pass after the specified pass.
   // If -print-machineinstrs specified, print machineinstrs after all passes.
   if (StringRef(PrintMachineInstrs.getValue()).equals(""))
@@ -443,8 +452,12 @@ void TargetPassConfig::addMachinePasses() {
     insertPass(TID, IID);
   }
 
+  // Print the instruction selected machine code...
+  printAndVerify("After Instruction Selection");
+
   // Expand pseudo-instructions emitted by ISel.
-  addPass(&ExpandISelPseudosID);
+  if (addPass(&ExpandISelPseudosID))
+    printAndVerify("After ExpandISelPseudos");
 
   // Add passes that optimize machine instructions in SSA form.
   if (getOptLevel() != CodeGenOpt::None) {
@@ -527,6 +540,7 @@ void TargetPassConfig::addMachineSSAOptimization() {
   addPass(&DeadMachineInstructionElimID);
   printAndVerify("After codegen DCE pass");
 
+  addPass(&EarlyIfConverterID);
   addPass(&MachineLICMID);
   addPass(&MachineCSEID);
   addPass(&MachineSinkingID);
@@ -639,6 +653,11 @@ void TargetPassConfig::addOptimizedRegAlloc(FunctionPass *RegAllocPass) {
     addPass(&MachineLoopInfoID);
     addPass(&PHIEliminationID);
   }
+
+  // Eventually, we want to run LiveIntervals before PHI elimination.
+  if (EarlyLiveIntervals)
+    addPass(&LiveIntervalsID);
+
   addPass(&TwoAddressInstructionPassID);
 
   if (EnableStrongPHIElim)

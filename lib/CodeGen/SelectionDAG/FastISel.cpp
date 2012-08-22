@@ -55,6 +55,7 @@
 #include "llvm/Analysis/Loads.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -484,7 +485,7 @@ bool FastISel::SelectGetElementPtr(const User *I) {
       if (const ConstantInt *CI = dyn_cast<ConstantInt>(Idx)) {
         if (CI->isZero()) continue;
         // N = N + Offset
-        TotalOffs += 
+        TotalOffs +=
           TD.getTypeAllocSize(Ty)*cast<ConstantInt>(CI)->getSExtValue();
         if (TotalOffs >= MaxOffs) {
           N = FastEmit_ri_(VT, ISD::ADD, N, NIsKill, TotalOffs, VT);
@@ -573,7 +574,10 @@ bool FastISel::SelectCall(const User *I) {
     // At -O0 we don't care about the lifetime intrinsics.
   case Intrinsic::lifetime_start:
   case Intrinsic::lifetime_end:
+    // The donothing intrinsic does, well, nothing.
+  case Intrinsic::donothing:
     return true;
+
   case Intrinsic::dbg_declare: {
     const DbgDeclareInst *DI = cast<DbgDeclareInst>(Call);
     if (!DIVariable(DI->getVariable()).Verify() ||
@@ -642,7 +646,7 @@ bool FastISel::SelectCall(const User *I) {
         BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, II)
           .addCImm(CI).addImm(DI->getOffset())
           .addMetadata(DI->getVariable());
-      else 
+      else
         BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, II)
           .addImm(CI->getZExtValue()).addImm(DI->getOffset())
           .addMetadata(DI->getVariable());
@@ -786,13 +790,24 @@ FastISel::SelectInstruction(const Instruction *I) {
 
   MachineBasicBlock::iterator SavedInsertPt = FuncInfo.InsertPt;
 
+  // As a special case, don't handle calls to builtin library functions that
+  // may be translated directly to target instructions.
+  if (const CallInst *Call = dyn_cast<CallInst>(I)) {
+    const Function *F = Call->getCalledFunction();
+    LibFunc::Func Func;
+    if (F && !F->hasLocalLinkage() && F->hasName() &&
+        LibInfo->getLibFunc(F->getName(), Func) &&
+        LibInfo->hasOptimizedCodeGen(Func))
+      return false;
+  }
+
   // First, try doing target-independent selection.
   if (SelectOperator(I, I->getOpcode())) {
     ++NumFastIselSuccessIndependent;
     DL = DebugLoc();
     return true;
   }
-  // Remove dead code.  However, ignore call instructions since we've flushed 
+  // Remove dead code.  However, ignore call instructions since we've flushed
   // the local value map and recomputed the insert point.
   if (!isa<CallInst>(I)) {
     recomputeInsertPt();
@@ -1037,7 +1052,8 @@ FastISel::SelectOperator(const User *I, unsigned Opcode) {
   }
 }
 
-FastISel::FastISel(FunctionLoweringInfo &funcInfo)
+FastISel::FastISel(FunctionLoweringInfo &funcInfo,
+                   const TargetLibraryInfo *libInfo)
   : FuncInfo(funcInfo),
     MRI(FuncInfo.MF->getRegInfo()),
     MFI(*FuncInfo.MF->getFrameInfo()),
@@ -1046,7 +1062,8 @@ FastISel::FastISel(FunctionLoweringInfo &funcInfo)
     TD(*TM.getTargetData()),
     TII(*TM.getInstrInfo()),
     TLI(*TM.getTargetLowering()),
-    TRI(*TM.getRegisterInfo()) {
+    TRI(*TM.getRegisterInfo()),
+    LibInfo(libInfo) {
 }
 
 FastISel::~FastISel() {}

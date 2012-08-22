@@ -37,13 +37,13 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   virtual const char *getPassName() const {
     return "X86 AT&T-Style Assembly Printer";
   }
-  
+
   const X86Subtarget &getSubtarget() const { return *Subtarget; }
 
   virtual void EmitStartOfAsmFile(Module &M);
 
   virtual void EmitEndOfAsmFile(Module &M);
-  
+
   virtual void EmitInstruction(const MachineInstr *MI);
 
   virtual bool UseReadOnlyJumpTables() const; // @LOCALMOD
@@ -77,7 +77,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   void printPICLabel(const MachineInstr *MI, unsigned Op, raw_ostream &O);
 
   bool runOnMachineFunction(MachineFunction &F);
-  
+
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
 
   MachineLocation getDebugValueLocation(const MachineInstr *MI) const;

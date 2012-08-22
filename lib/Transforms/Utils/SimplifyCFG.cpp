@@ -20,6 +20,7 @@
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/LLVMContext.h"
+#include "llvm/MDBuilder.h"
 #include "llvm/Metadata.h"
 #include "llvm/Operator.h"
 #include "llvm/Type.h"
@@ -35,7 +36,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ConstantRange.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/MDBuilder.h"
 #include "llvm/Support/NoFolder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetData.h"
@@ -1330,7 +1330,7 @@ static bool FoldTwoEntryPHINode(PHINode *PN, const TargetData *TD) {
       return false;
   }
   
-  // If we folded the the first phi, PN dangles at this point.  Refresh it.  If
+  // If we folded the first phi, PN dangles at this point.  Refresh it.  If
   // we ran out of PHIs then we simplified them all.
   PN = dyn_cast<PHINode>(BB->begin());
   if (PN == 0) return true;
@@ -1550,7 +1550,7 @@ static APInt MultiplyAndLosePrecision(APInt &A, APInt &B, APInt &C, APInt &D,
 /// checkCSEInPredecessor - Return true if the given instruction is available
 /// in its predecessor block. If yes, the instruction will be removed.
 ///
-bool checkCSEInPredecessor(Instruction *Inst, BasicBlock *PB) {
+static bool checkCSEInPredecessor(Instruction *Inst, BasicBlock *PB) {
   if (!isa<BinaryOperator>(Inst) && !isa<CmpInst>(Inst))
     return false;
   for (BasicBlock::iterator I = PB->begin(), E = PB->end(); I != E; I++) {

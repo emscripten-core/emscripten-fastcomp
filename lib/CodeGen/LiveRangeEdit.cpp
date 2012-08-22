@@ -177,6 +177,19 @@ bool LiveRangeEdit::foldAsLoad(LiveInterval *LI,
   if (!DefMI || !UseMI)
     return false;
 
+  // Since we're moving the DefMI load, make sure we're not extending any live
+  // ranges.
+  if (!allUsesAvailableAt(DefMI,
+                          LIS.getInstructionIndex(DefMI),
+                          LIS.getInstructionIndex(UseMI)))
+    return false;
+
+  // We also need to make sure it is safe to move the load.
+  // Assume there are stores between DefMI and UseMI.
+  bool SawStore = true;
+  if (!DefMI->isSafeToMove(&TII, 0, SawStore))
+    return false;
+
   DEBUG(dbgs() << "Try to fold single def: " << *DefMI
                << "       into single use: " << *UseMI);
 
@@ -226,6 +239,7 @@ void LiveRangeEdit::eliminateDeadDefs(SmallVectorImpl<MachineInstr*> &Dead,
 
       // Collect virtual registers to be erased after MI is gone.
       SmallVector<unsigned, 8> RegsToErase;
+      bool ReadsPhysRegs = false;
 
       // Check for live intervals that may shrink
       for (MachineInstr::mop_iterator MOI = MI->operands_begin(),
@@ -233,8 +247,12 @@ void LiveRangeEdit::eliminateDeadDefs(SmallVectorImpl<MachineInstr*> &Dead,
         if (!MOI->isReg())
           continue;
         unsigned Reg = MOI->getReg();
-        if (!TargetRegisterInfo::isVirtualRegister(Reg))
+        if (!TargetRegisterInfo::isVirtualRegister(Reg)) {
+          // Check if MI reads any unreserved physregs.
+          if (Reg && MOI->readsReg() && !LIS.isReserved(Reg))
+            ReadsPhysRegs = true;
           continue;
+        }
         LiveInterval &LI = LIS.getInterval(Reg);
 
         // Shrink read registers, unless it is likely to be expensive and
@@ -258,11 +276,30 @@ void LiveRangeEdit::eliminateDeadDefs(SmallVectorImpl<MachineInstr*> &Dead,
         }
       }
 
-      if (TheDelegate)
-        TheDelegate->LRE_WillEraseInstruction(MI);
-      LIS.RemoveMachineInstrFromMaps(MI);
-      MI->eraseFromParent();
-      ++NumDCEDeleted;
+      // Currently, we don't support DCE of physreg live ranges. If MI reads
+      // any unreserved physregs, don't erase the instruction, but turn it into
+      // a KILL instead. This way, the physreg live ranges don't end up
+      // dangling.
+      // FIXME: It would be better to have something like shrinkToUses() for
+      // physregs. That could potentially enable more DCE and it would free up
+      // the physreg. It would not happen often, though.
+      if (ReadsPhysRegs) {
+        MI->setDesc(TII.get(TargetOpcode::KILL));
+        // Remove all operands that aren't physregs.
+        for (unsigned i = MI->getNumOperands(); i; --i) {
+          const MachineOperand &MO = MI->getOperand(i-1);
+          if (MO.isReg() && TargetRegisterInfo::isPhysicalRegister(MO.getReg()))
+            continue;
+          MI->RemoveOperand(i-1);
+        }
+        DEBUG(dbgs() << "Converted physregs to:\t" << *MI);
+      } else {
+        if (TheDelegate)
+          TheDelegate->LRE_WillEraseInstruction(MI);
+        LIS.RemoveMachineInstrFromMaps(MI);
+        MI->eraseFromParent();
+        ++NumDCEDeleted;
+      }
 
       // Erase any virtregs that are now empty and unused. There may be <undef>
       // uses around. Keep the empty live range in that case.

@@ -109,6 +109,11 @@ def DSRA     : shift_rotate_imm64<0x3b, 0x00, "dsra", sra>;
 def DSLLV    : shift_rotate_reg<0x14, 0x00, "dsllv", shl, CPU64Regs>;
 def DSRLV    : shift_rotate_reg<0x16, 0x00, "dsrlv", srl, CPU64Regs>;
 def DSRAV    : shift_rotate_reg<0x17, 0x00, "dsrav", sra, CPU64Regs>;
+let Pattern = []<dag> in {
+def DSLL32   : shift_rotate_imm64<0x3c, 0x00, "dsll32", shl>;
+def DSRL32   : shift_rotate_imm64<0x3e, 0x00, "dsrl32", srl>;
+def DSRA32   : shift_rotate_imm64<0x3f, 0x00, "dsra32", sra>;
+}
 }
 // Rotate Instructions
 let Predicates = [HasMips64r2, HasStandardEncoding],
@@ -168,7 +173,7 @@ def SCD_P8 : SCBase<0x3c, "scd", CPU64Regs, mem64>,
 }
 
 /// Jump and Branch Instructions
-def JR64   : JumpFR<0x00, 0x08, "jr", CPU64Regs>;
+def JR64   : IndirectBranch<CPU64Regs>;
 def BEQ64  : CBranch<0x04, "beq", seteq, CPU64Regs>;
 def BNE64  : CBranch<0x05, "bne", setne, CPU64Regs>;
 def BGEZ64 : CBranchZero<0x01, 1, "bgez", setge, CPU64Regs>;
@@ -203,26 +208,25 @@ def DCLO : CountLeading1<0x25, "dclo", CPU64Regs>;
 def DSBH : SubwordSwap<0x24, 0x2, "dsbh", CPU64Regs>;
 def DSHD : SubwordSwap<0x24, 0x5, "dshd", CPU64Regs>;
 
-def LEA_ADDiu64 : EffectiveAddress<"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>;
+def LEA_ADDiu64 : EffectiveAddress<0x19,"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>;
 }
 let Uses = [SP_64], DecoderNamespace = "Mips64" in
-def DynAlloc64 : EffectiveAddress<"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>,
-                 Requires<[IsN64, HasStandardEncoding]> {
-  let isCodeGenOnly = 1;
-}
+def DynAlloc64 : EffectiveAddress<0x19,"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>,
+                 Requires<[IsN64, HasStandardEncoding]>;
 let DecoderNamespace = "Mips64" in {
 def RDHWR64 : ReadHardware<CPU64Regs, HWRegs64>;
 
 def DEXT : ExtBase<3, "dext", CPU64Regs>;
 def DINS : InsBase<7, "dins", CPU64Regs>;
 
-def DSLL64_32 : FR<0x3c, 0x00, (outs CPU64Regs:$rd), (ins CPURegs:$rt),
-                   "dsll\t$rd, $rt, 32", [], IIAlu>;
-def SLL64_32 : FR<0x0, 0x00, (outs CPU64Regs:$rd), (ins CPURegs:$rt),
-                  "sll\t$rd, $rt, 0", [], IIAlu>;
-let isCodeGenOnly = 1 in
-def SLL64_64 : FR<0x0, 0x00, (outs CPU64Regs:$rd), (ins CPU64Regs:$rt),
-                  "sll\t$rd, $rt, 0", [], IIAlu>;
+let isCodeGenOnly = 1, rs = 0, shamt = 0 in {
+  def DSLL64_32 : FR<0x00, 0x3c, (outs CPU64Regs:$rd), (ins CPURegs:$rt),
+                     "dsll\t$rd, $rt, 32", [], IIAlu>;
+  def SLL64_32 : FR<0x0, 0x00, (outs CPU64Regs:$rd), (ins CPURegs:$rt),
+                    "sll\t$rd, $rt, 0", [], IIAlu>;
+  def SLL64_64 : FR<0x0, 0x00, (outs CPU64Regs:$rd), (ins CPU64Regs:$rt),
+                    "sll\t$rd, $rt, 0", [], IIAlu>;
+}
 }
 //===----------------------------------------------------------------------===//
 //  Arbitrary patterns that map to one or more instructions

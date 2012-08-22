@@ -380,14 +380,14 @@ static InstructionClass GetBasicInstructionClass(const Value *V) {
   return isa<InvokeInst>(V) ? IC_CallOrUser : IC_User;
 }
 
-/// IsRetain - Test if the the given class is objc_retain or
+/// IsRetain - Test if the given class is objc_retain or
 /// equivalent.
 static bool IsRetain(InstructionClass Class) {
   return Class == IC_Retain ||
          Class == IC_RetainRV;
 }
 
-/// IsAutorelease - Test if the the given class is objc_autorelease or
+/// IsAutorelease - Test if the given class is objc_autorelease or
 /// equivalent.
 static bool IsAutorelease(InstructionClass Class) {
   return Class == IC_Autorelease ||
@@ -2829,7 +2829,10 @@ ObjCARCOpt::VisitInstructionTopDown(Instruction *Inst,
     }
 
     S.IncrementNestCount();
-    return NestingDetected;
+
+    // A retain can be a potential use; procede to the generic checking
+    // code below.
+    break;
   }
   case IC_Release: {
     Arg = GetObjCArg(Inst);

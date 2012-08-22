@@ -442,11 +442,10 @@ private:
   template<typename LookupKeyT>
   bool LookupBucketFor(const LookupKeyT &Val,
                        const BucketT *&FoundBucket) const {
-    unsigned BucketNo = getHashValue(Val);
-    unsigned ProbeAmt = 1;
     const BucketT *BucketsPtr = getBuckets();
+    const unsigned NumBuckets = getNumBuckets();
 
-    if (getNumBuckets() == 0) {
+    if (NumBuckets == 0) {
       FoundBucket = 0;
       return false;
     }
@@ -459,8 +458,10 @@ private:
            !KeyInfoT::isEqual(Val, TombstoneKey) &&
            "Empty/Tombstone value shouldn't be inserted into map!");
 
+    unsigned BucketNo = getHashValue(Val) & (NumBuckets-1);
+    unsigned ProbeAmt = 1;
     while (1) {
-      const BucketT *ThisBucket = BucketsPtr + (BucketNo & (getNumBuckets()-1));
+      const BucketT *ThisBucket = BucketsPtr + BucketNo;
       // Found Val's bucket?  If so, return it.
       if (KeyInfoT::isEqual(Val, ThisBucket->first)) {
         FoundBucket = ThisBucket;
@@ -485,6 +486,7 @@ private:
       // Otherwise, it's a hash collision or a tombstone, continue quadratic
       // probing.
       BucketNo += ProbeAmt++;
+      BucketNo &= (NumBuckets-1);
     }
   }
 
@@ -615,8 +617,9 @@ public:
     this->destroyAll();
 
     // Reduce the number of buckets.
-    unsigned NewNumBuckets
-      = std::max(64, 1 << (Log2_32_Ceil(OldNumEntries) + 1));
+    unsigned NewNumBuckets = 0;
+    if (OldNumEntries)
+      NewNumBuckets = std::max(64, 1 << (Log2_32_Ceil(OldNumEntries) + 1));
     if (NewNumBuckets == NumBuckets) {
       this->BaseT::initEmpty();
       return;
@@ -684,8 +687,7 @@ class SmallDenseMap
 
   /// A "union" of an inline bucket array and the struct representing
   /// a large bucket. This union will be discriminated by the 'Small' bit.
-  typename AlignedCharArray<BucketT[InlineBuckets], LargeRep>::union_type
-    storage;
+  AlignedCharArrayUnion<BucketT[InlineBuckets], LargeRep> storage;
 
 public:
   explicit SmallDenseMap(unsigned NumInitBuckets = 0) {
@@ -831,8 +833,7 @@ public:
         return; // Nothing to do.
 
       // First move the inline buckets into a temporary storage.
-      typename AlignedCharArray<BucketT[InlineBuckets]>::union_type
-        TmpStorage;
+      AlignedCharArrayUnion<BucketT[InlineBuckets]> TmpStorage;
       BucketT *TmpBegin = reinterpret_cast<BucketT *>(TmpStorage.buffer);
       BucketT *TmpEnd = TmpBegin;
 

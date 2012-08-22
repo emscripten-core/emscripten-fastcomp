@@ -65,8 +65,20 @@ extern cl::opt<bool> ReserveR9; // @LOCALMOD
 const uint16_t*
 ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   if (ReserveR9) return CSR_NaCl_SaveList; // @LOCALMOD
+  bool ghcCall = false;
+ 
+  if (MF) {
+    const Function *F = MF->getFunction();
+    ghcCall = (F ? F->getCallingConv() == CallingConv::GHC : false);
+  }
+ 
+  if (ghcCall) {
+      return CSR_GHC_SaveList;
+  }
+  else {
   return (STI.isTargetIOS() && !STI.isAAPCS_ABI())
     ? CSR_iOS_SaveList : CSR_AAPCS_SaveList;
+  }
 }
 
 const uint32_t*

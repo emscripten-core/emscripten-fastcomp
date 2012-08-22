@@ -20,9 +20,10 @@
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
-// DragonFly BSD has deprecated <malloc.h> for <stdlib.h> instead,
-//  Unix.h includes this for us already.
-#if defined(HAVE_MALLOC_H) && !defined(__DragonFly__)
+// DragonFlyBSD, OpenBSD, and Bitrig have deprecated <malloc.h> for
+// <stdlib.h> instead. Unix.h includes this for us already.
+#if defined(HAVE_MALLOC_H) && !defined(__DragonFly__) && \
+    !defined(__OpenBSD__) && !defined(__Bitrig__)
 #include <malloc.h>
 #endif
 #ifdef HAVE_MALLOC_MALLOC_H
@@ -264,16 +265,18 @@ static bool terminalHasColors() {
   return false;
 }
 
+bool Process::FileDescriptorHasColors(int fd) {
+  // A file descriptor has colors if it is displayed and the terminal has
+  // colors.
+  return FileDescriptorIsDisplayed(fd) && terminalHasColors();
+}
+
 bool Process::StandardOutHasColors() {
-  if (!StandardOutIsDisplayed())
-    return false;
-  return terminalHasColors();
+  return FileDescriptorHasColors(STDOUT_FILENO);
 }
 
 bool Process::StandardErrHasColors() {
-  if (!StandardErrIsDisplayed())
-    return false;
-  return terminalHasColors();
+  return FileDescriptorHasColors(STDERR_FILENO);
 }
 
 bool Process::ColorNeedsFlush() {

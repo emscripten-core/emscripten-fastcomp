@@ -324,6 +324,11 @@ ReduceMemoryFootprint("reduce-memory-footprint",
   cl::init(false));
 // @LOCALMOD-END
 
+static cl::opt<unsigned>
+SSPBufferSize("stack-protector-buffer-size", cl::init(8),
+              cl::desc("Lower bound for a buffer to be considered for "
+                       "stack protection"));
+
 // GetFileNameRoot - Helper function to get the basename of a filename.
 static inline std::string
 GetFileNameRoot(const std::string &InputFilename) {
@@ -622,6 +627,7 @@ int llc_main(int argc, char **argv) {
   Options.PositionIndependentExecutable = EnablePIE;
   Options.EnableSegmentedStacks = SegmentedStacks;
   Options.UseInitArray = UseInitArray;
+  Options.SSPBufferSize = SSPBufferSize;
 
   std::auto_ptr<TargetMachine>
     target(TheTarget->createTargetMachine(TheTriple.getTriple(),

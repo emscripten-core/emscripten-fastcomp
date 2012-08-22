@@ -11,6 +11,7 @@ add_llvm_library(LLVMCodeGen
   DeadMachineInstructionElim.cpp
   DFAPacketizer.cpp
   DwarfEHPrepare.cpp
+  EarlyIfConversion.cpp
   EdgeBundles.cpp
   ExecutionDepsFix.cpp
   ExpandISelPseudos.cpp
@@ -60,6 +61,7 @@ add_llvm_library(LLVMCodeGen
   MachineSSAUpdater.cpp
   MachineScheduler.cpp
   MachineSink.cpp
+  MachineTraceMetrics.cpp
   MachineVerifier.cpp
   OcamlGC.cpp
   OptimizePHIs.cpp

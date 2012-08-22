@@ -66,8 +66,8 @@ ${name} ignored.")
       set_target_properties( ${name} PROPERTIES EXCLUDE_FROM_ALL ON)
     else()
       install(TARGETS ${name}
-	LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
-	ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
+        LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+        ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
     endif()
   endif()
 
@@ -271,11 +271,6 @@ function(add_lit_target target comment)
     COMMAND ${LIT_COMMAND} ${ARG_DEFAULT_ARGS}
     COMMENT "${comment}"
     )
-
-  # It would be nice to use the DEPENDS clause in add_custom_target above, but
-  # that has bugs with the CMake 2.8.0 installed on Ubuntu Lucid when the entry
-  # in the depends is another custom target. Instead we add them through an
-  # explicit add_dependencies.
   add_dependencies(${target} ${ARG_DEPENDS})
 endfunction()
 

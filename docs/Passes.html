@@ -100,7 +100,6 @@ perl -e '$/ = undef; for (split(/\n/, <>)) { s:^ *///? ?::; print "  <p>\n" if !
 <tr><td><a href="#module-debuginfo">-module-debuginfo</a></td><td>Decodes module-level debug info</td></tr>
 <tr><td><a href="#no-aa">-no-aa</a></td><td>No Alias Analysis (always returns 'may' alias)</td></tr>
 <tr><td><a href="#no-profile">-no-profile</a></td><td>No Profile Information</td></tr>
-<tr><td><a href="#postdomfrontier">-postdomfrontier</a></td><td>Post-Dominance Frontier Construction</td></tr>
 <tr><td><a href="#postdomtree">-postdomtree</a></td><td>Post-Dominator Tree Construction</td></tr>
 <tr><td><a href="#print-alias-sets">-print-alias-sets</a></td><td>Alias Set Printer</td></tr>
 <tr><td><a href="#print-callgraph">-print-callgraph</a></td><td>Print a call graph</td></tr>
@@ -755,7 +754,7 @@ perl -e '$/ = undef; for (split(/\n/, <>)) { s:^ *///? ?::; print "  <p>\n" if !
 </h3>
 <div>
   <p>Provides other passes access to information on how the size and alignment
-  required by the the target ABI for various data types.</p>
+  required by the target ABI for various data types.</p>
 </div>
 
 </div>
@@ -1971,7 +1970,7 @@ if (X &lt; 3) {</pre>
     <li>Verify that a function's argument list agrees with its declared
         type.</li>
     <li>It is illegal to specify a name for a void value.</li>
-    <li>It is illegal to have a internal global value with no initializer.</li>
+    <li>It is illegal to have an internal global value with no initializer.</li>
     <li>It is illegal to have a ret instruction that returns a value that does
         not agree with the function return value type.</li>
     <li>Function call argument types match the function prototype.</li>

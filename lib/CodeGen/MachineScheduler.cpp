@@ -212,7 +212,7 @@ bool MachineScheduler::runOnMachineFunction(MachineFunction &mf) {
     Scheduler->startBlock(MBB);
 
     // Break the block into scheduling regions [I, RegionEnd), and schedule each
-    // region as soon as it is discovered. RegionEnd points the the scheduling
+    // region as soon as it is discovered. RegionEnd points the scheduling
     // boundary at the bottom of the region. The DAG does not include RegionEnd,
     // but the region does (i.e. the next RegionEnd is above the previous
     // RegionBegin). If the current block has no terminator then RegionEnd ==
@@ -403,7 +403,8 @@ public:
 
   /// getIssueWidth - Return the max instructions per scheduling group.
   unsigned getIssueWidth() const {
-    return InstrItins ? InstrItins->Props.IssueWidth : 1;
+    return (InstrItins && InstrItins->SchedModel)
+      ? InstrItins->SchedModel->IssueWidth : 1;
   }
 
   /// getNumMicroOps - Return the number of issue slots required for this MI.

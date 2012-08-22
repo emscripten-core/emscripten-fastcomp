@@ -878,13 +878,6 @@ const SCEV *ScalarEvolution::getTruncateExpr(const SCEV *Op,
     return getAddRecExpr(Operands, AddRec->getLoop(), SCEV::FlagAnyWrap);
   }
 
-  // As a special case, fold trunc(undef) to undef. We don't want to
-  // know too much about SCEVUnknowns, but this special case is handy
-  // and harmless.
-  if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(Op))
-    if (isa<UndefValue>(U->getValue()))
-      return getSCEV(UndefValue::get(Ty));
-
   // The cast wasn't folded; create an explicit cast node. We can reuse
   // the existing insert position since if we get here, we won't have
   // made any changes which would invalidate it.
@@ -1343,13 +1336,6 @@ const SCEV *ScalarEvolution::getAnyExtendExpr(const SCEV *Op,
       Ops.push_back(getAnyExtendExpr(*I, Ty));
     return getAddRecExpr(Ops, AR->getLoop(), SCEV::FlagNW);
   }
-
-  // As a special case, fold anyext(undef) to undef. We don't want to
-  // know too much about SCEVUnknowns, but this special case is handy
-  // and harmless.
-  if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(Op))
-    if (isa<UndefValue>(U->getValue()))
-      return getSCEV(UndefValue::get(Ty));
 
   // If the expression is obviously signed, use the sext cast value.
   if (isa<SCEVSMaxExpr>(Op))
@@ -5384,6 +5370,12 @@ SolveQuadraticEquation(const SCEVAddRecExpr *AddRec, ScalarEvolution &SE) {
     SqrtTerm *= B;
     SqrtTerm -= Four * (A * C);
 
+    if (SqrtTerm.isNegative()) {
+      // The loop is provably infinite.
+      const SCEV *CNC = SE.getCouldNotCompute();
+      return std::make_pair(CNC, CNC);
+    }
+
     // Compute sqrt(B^2-4ac). This is guaranteed to be the nearest
     // integer value or else APInt::sqrt() will assert.
     APInt SqrtVal(SqrtTerm.sqrt());
@@ -6908,59 +6900,27 @@ bool ScalarEvolution::properlyDominates(const SCEV *S, const BasicBlock *BB) {
   return getBlockDisposition(S, BB) == ProperlyDominatesBlock;
 }
 
+namespace {
+// Search for a SCEV expression node within an expression tree.
+// Implements SCEVTraversal::Visitor.
+struct SCEVSearch {
+  const SCEV *Node;
+  bool IsFound;
+
+  SCEVSearch(const SCEV *N): Node(N), IsFound(false) {}
+
+  bool follow(const SCEV *S) {
+    IsFound |= (S == Node);
+    return !IsFound;
+  }
+  bool isDone() const { return IsFound; }
+};
+}
+
 bool ScalarEvolution::hasOperand(const SCEV *S, const SCEV *Op) const {
-  SmallVector<const SCEV *, 8> Worklist;
-  Worklist.push_back(S);
-  do {
-    S = Worklist.pop_back_val();
-
-    switch (S->getSCEVType()) {
-    case scConstant:
-      break;
-    case scTruncate:
-    case scZeroExtend:
-    case scSignExtend: {
-      const SCEVCastExpr *Cast = cast<SCEVCastExpr>(S);
-      const SCEV *CastOp = Cast->getOperand();
-      if (Op == CastOp)
-        return true;
-      Worklist.push_back(CastOp);
-      break;
-    }
-    case scAddRecExpr:
-    case scAddExpr:
-    case scMulExpr:
-    case scUMaxExpr:
-    case scSMaxExpr: {
-      const SCEVNAryExpr *NAry = cast<SCEVNAryExpr>(S);
-      for (SCEVNAryExpr::op_iterator I = NAry->op_begin(), E = NAry->op_end();
-           I != E; ++I) {
-        const SCEV *NAryOp = *I;
-        if (NAryOp == Op)
-          return true;
-        Worklist.push_back(NAryOp);
-      }
-      break;
-    }
-    case scUDivExpr: {
-      const SCEVUDivExpr *UDiv = cast<SCEVUDivExpr>(S);
-      const SCEV *LHS = UDiv->getLHS(), *RHS = UDiv->getRHS();
-      if (LHS == Op || RHS == Op)
-        return true;
-      Worklist.push_back(LHS);
-      Worklist.push_back(RHS);
-      break;
-    }
-    case scUnknown:
-      break;
-    case scCouldNotCompute:
-      llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-    default:
-      llvm_unreachable("Unknown SCEV kind!");
-    }
-  } while (!Worklist.empty());
-
-  return false;
+  SCEVSearch Search(Op);
+  visitAll(S, Search);
+  return Search.IsFound;
 }
 
 void ScalarEvolution::forgetMemoizedResults(const SCEV *S) {

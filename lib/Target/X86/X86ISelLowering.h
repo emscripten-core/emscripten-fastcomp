@@ -137,10 +137,6 @@ namespace llvm {
       /// relative displacements.
       WrapperRIP,
 
-      /// MOVQ2DQ - Copies a 64-bit value from an MMX vector to the low word
-      /// of an XMM vector, with the high word zero filled.
-      MOVQ2DQ,
-
       /// MOVDQ2Q - Copies a 64-bit value from the low word of an XMM vector
       /// to an MMX vector.  If you think this is too close to the previous
       /// mnemonic, so do I; blame Intel.
@@ -199,6 +195,9 @@ namespace llvm {
       ///
       FMAX, FMIN,
 
+      /// FMAXC, FMINC - Commutative FMIN and FMAX.
+      FMAXC, FMINC,
+
       /// FRSQRT, FRCP - Floating point reciprocal-sqrt and reciprocal
       /// approximation.  Note that these typically require refinement
       /// in order to obtain suitable precision.
@@ -237,6 +236,9 @@ namespace llvm {
 
       // VSEXT_MOVL - Vector move low and sign extend.
       VSEXT_MOVL,
+
+      // VFPEXT - Vector FP extend.
+      VFPEXT,
 
       // VSHL, VSRL - 128-bit vector logical left / right shift
       VSHLDQ, VSRLDQ,
@@ -301,6 +303,14 @@ namespace llvm {
       // PMULUDQ - Vector multiply packed unsigned doubleword integers
       PMULUDQ,
 
+      // FMA nodes
+      FMADD,
+      FNMADD,
+      FMSUB,
+      FNMSUB,
+      FMADDSUB,
+      FMSUBADD,
+
       // VASTART_SAVE_XMM_REGS - Save xmm argument registers to the stack,
       // according to %al. An operator is needed so that this can be expanded
       // with control flow.
@@ -328,6 +338,13 @@ namespace llvm {
 
       // SAHF - Store contents of %ah into %eflags.
       SAHF,
+
+      // RDRAND - Get a random integer and indicate whether it is valid in CF.
+      RDRAND,
+
+      // PCMP*STRI
+      PCMPISTRI,
+      PCMPESTRI,
 
       // ATOMADD64_DAG, ATOMSUB64_DAG, ATOMOR64_DAG, ATOMAND64_DAG,
       // ATOMXOR64_DAG, ATOMNAND64_DAG, ATOMSWAP64_DAG -
@@ -573,6 +590,18 @@ namespace llvm {
     /// by AM is legal for this target, for a load/store of the specified type.
     virtual bool isLegalAddressingMode(const AddrMode &AM, Type *Ty)const;
 
+    /// isLegalICmpImmediate - Return true if the specified immediate is legal
+    /// icmp immediate, that is the target has icmp instructions which can
+    /// compare a register against the immediate without having to materialize
+    /// the immediate into a register.
+    virtual bool isLegalICmpImmediate(int64_t Imm) const;
+
+    /// isLegalAddImmediate - Return true if the specified immediate is legal
+    /// add immediate, that is the target has add instructions which can
+    /// add a register and the immediate without having to materialize
+    /// the immediate into a register.
+    virtual bool isLegalAddImmediate(int64_t Imm) const;
+
     /// isTruncateFree - Return true if it's free to truncate a value of
     /// type Ty1 to type Ty2. e.g. On x86 it's free to truncate a i32 value in
     /// register EAX to i16 by referencing its sub-register AX.
@@ -589,6 +618,12 @@ namespace llvm {
     /// result out to 64 bits.
     virtual bool isZExtFree(Type *Ty1, Type *Ty2) const;
     virtual bool isZExtFree(EVT VT1, EVT VT2) const;
+
+    /// isFMAFasterThanMulAndAdd - Return true if an FMA operation is faster than
+    /// a pair of mul and add instructions. fmuladd intrinsics will be expanded to
+    /// FMAs when this method returns true (and FMAs are legal), otherwise fmuladd
+    /// is expanded to mul + add.
+    virtual bool isFMAFasterThanMulAndAdd(EVT) const { return true; }
 
     /// isNarrowingProfitable - Return true if it's profitable to narrow
     /// operations of type VT1 to VT2. e.g. on x86, it's profitable to narrow
@@ -649,7 +684,8 @@ namespace llvm {
 
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
-    virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo) const;
+    virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                                     const TargetLibraryInfo *libInfo) const;
 
     /// getStackCookieLocation - Return true if the target stores stack
     /// protector cookies at a fixed offset in some non-standard address
@@ -776,6 +812,7 @@ namespace llvm {
     SDValue LowerVAARG(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVACOPY(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAME_TO_ARGS_OFFSET(SDValue Op, SelectionDAG &DAG) const;
@@ -813,6 +850,8 @@ namespace llvm {
     SDValue LowerVectorBroadcast(SDValue &Op, SelectionDAG &DAG) const;
     SDValue NormalizeVectorShuffle(SDValue Op, SelectionDAG &DAG) const;
     
+    SDValue LowerVectorFpExtend(SDValue &Op, SelectionDAG &DAG) const;
+
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
                            CallingConv::ID CallConv, bool isVarArg,
@@ -840,12 +879,9 @@ namespace llvm {
 
     virtual bool
     CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF,
-		   bool isVarArg,
-		   const SmallVectorImpl<ISD::OutputArg> &Outs,
-		   LLVMContext &Context) const;
-
-    void ReplaceATOMIC_BINARY_64(SDNode *N, SmallVectorImpl<SDValue> &Results,
-                                 SelectionDAG &DAG, unsigned NewOp) const;
+                   bool isVarArg,
+                   const SmallVectorImpl<ISD::OutputArg> &Outs,
+                   LLVMContext &Context) const;
 
     /// Utility function to emit string processing sse4.2 instructions
     /// that return in xmm0.
@@ -933,7 +969,8 @@ namespace llvm {
   };
 
   namespace X86 {
-    FastISel *createFastISel(FunctionLoweringInfo &funcInfo);
+    FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                             const TargetLibraryInfo *libInfo);
   }
 }
 

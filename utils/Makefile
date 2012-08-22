@@ -9,7 +9,7 @@
 
 LEVEL = ..
 PARALLEL_DIRS := FileCheck FileUpdate TableGen PerfectShuffle \
-	      count fpcmp llvm-lit not unittest
+	      count fpcmp llvm-lit not unittest yaml2obj
 
 ifeq ($(NACL_SANDBOX),1)
   # In sandboxed mode, just build the bare minimum

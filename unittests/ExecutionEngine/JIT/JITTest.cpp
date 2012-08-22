@@ -18,6 +18,7 @@
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
 #include "llvm/Type.h"
+#include "llvm/TypeBuilder.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Assembly/Parser.h"
@@ -27,7 +28,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/TypeBuilder.h"
 
 #include "gtest/gtest.h"
 #include <vector>
@@ -555,10 +555,10 @@ TEST_F(JITTest, FunctionPointersOutliveTheirCreator) {
 #endif
 }
 
-// ARM and MIPS do not have an implementation
+// ARM does not have an implementation
 // of replaceMachineCodeForFunction(), so recompileAndRelinkFunction
 // doesn't work.
-#if !defined(__arm__) && !defined(__mips__)
+#if !defined(__arm__)
 TEST_F(JITTest, FunctionIsRecompiledAndRelinked) {
   Function *F = Function::Create(TypeBuilder<int(void), false>::get(Context),
                                  GlobalValue::ExternalLinkage, "test", M);

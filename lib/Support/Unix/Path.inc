@@ -266,7 +266,7 @@ Path::GetCurrentDirectory() {
 #endif // (__native_client__)
 }
 
-#if defined(__FreeBSD__) || defined (__NetBSD__) || \
+#if defined(__FreeBSD__) || defined (__NetBSD__) || defined(__Bitrig__) || \
     defined(__OpenBSD__) || defined(__minix) || defined(__FreeBSD_kernel__)
 static int
 test_dir(char buf[PATH_MAX], char ret[PATH_MAX],
@@ -337,7 +337,7 @@ Path Path::GetMainExecutable(const char *argv0, void *MainAddr) {
     if (realpath(exe_path, link_path))
       return Path(link_path);
   }
-#elif defined(__FreeBSD__) || defined (__NetBSD__) || \
+#elif defined(__FreeBSD__) || defined (__NetBSD__) || defined(__Bitrig__) || \
       defined(__OpenBSD__) || defined(__minix) || defined(__FreeBSD_kernel__)
   char exe_path[PATH_MAX];
 
@@ -929,7 +929,8 @@ const char *Path::MapInFilePages(int FD, size_t FileSize, off_t Offset) {
 }
 
 void Path::UnMapFilePages(const char *BasePtr, size_t FileSize) {
-  ::munmap((void*)BasePtr, FileSize);
+  const void *Addr = static_cast<const void *>(BasePtr);
+  ::munmap(const_cast<void *>(Addr), FileSize);
 }
 
 } // end llvm namespace

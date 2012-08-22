@@ -53,11 +53,11 @@ namespace {
            I != E; ++I) {
         if (deleteStuff == (bool)Named.count(I) && !I->isDeclaration()) {
           I->setInitializer(0);
-	} else {
-	  if (I->hasAvailableExternallyLinkage())
-	    continue;
-	  if (I->getName() == "llvm.global_ctors")
-	    continue;
+        } else {
+          if (I->hasAvailableExternallyLinkage())
+            continue;
+          if (I->getName() == "llvm.global_ctors")
+            continue;
           // @LOCALMOD-BEGIN - this is likely upstreamable
           // Note: there will likely be more cases once this
           // is exercises more thorougly.
@@ -67,7 +67,7 @@ namespace {
           if (I->hasExternalWeakLinkage()) 
 	    continue;
           // @LOCALMOD-END
-	}
+        }
 
         if (I->hasLocalLinkage())
           I->setVisibility(GlobalValue::HiddenVisibility);
@@ -78,9 +78,9 @@ namespace {
       for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
         if (deleteStuff == (bool)Named.count(I) && !I->isDeclaration()) {
           I->deleteBody();
-	} else {
-	  if (I->hasAvailableExternallyLinkage())
-	    continue;
+        } else {
+          if (I->hasAvailableExternallyLinkage())
+            continue;
           // @LOCALMOD-BEGIN - this is likely upstreamable
           // Note: there will likely be more cases once this
           // is exercises more thorougly.

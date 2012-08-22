@@ -64,7 +64,7 @@ static const AllocFnsTy AllocationFnData[] = {
   {"realloc",             ReallocLike, 2, 1,  -1},
   {"reallocf",            ReallocLike, 2, 1,  -1},
   {"strdup",              StrDupLike,  1, -1, -1},
-  {"strndup",             StrDupLike,  2, -1, -1}
+  {"strndup",             StrDupLike,  2, 1,  -1}
 };
 
 
@@ -358,11 +358,16 @@ ObjectSizeOffsetVisitor::ObjectSizeOffsetVisitor(const TargetData *TD,
 
 SizeOffsetType ObjectSizeOffsetVisitor::compute(Value *V) {
   V = V->stripPointerCasts();
+  if (Instruction *I = dyn_cast<Instruction>(V)) {
+    // If we have already seen this instruction, bail out. Cycles can happen in
+    // unreachable code after constant propagation.
+    if (!SeenInsts.insert(I))
+      return unknown();
 
-  if (GEPOperator *GEP = dyn_cast<GEPOperator>(V))
-    return visitGEPOperator(*GEP);
-  if (Instruction *I = dyn_cast<Instruction>(V))
+    if (GEPOperator *GEP = dyn_cast<GEPOperator>(V))
+      return visitGEPOperator(*GEP);
     return visit(*I);
+  }
   if (Argument *A = dyn_cast<Argument>(V))
     return visitArgument(*A);
   if (ConstantPointerNull *P = dyn_cast<ConstantPointerNull>(V))
@@ -371,9 +376,12 @@ SizeOffsetType ObjectSizeOffsetVisitor::compute(Value *V) {
     return visitGlobalVariable(*GV);
   if (UndefValue *UV = dyn_cast<UndefValue>(V))
     return visitUndefValue(*UV);
-  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V))
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V)) {
     if (CE->getOpcode() == Instruction::IntToPtr)
       return unknown(); // clueless
+    if (CE->getOpcode() == Instruction::GetElementPtr)
+      return visitGEPOperator(cast<GEPOperator>(*CE));
+  }
 
   DEBUG(dbgs() << "ObjectSizeOffsetVisitor::compute() unhandled value: " << *V
         << '\n');
@@ -414,8 +422,21 @@ SizeOffsetType ObjectSizeOffsetVisitor::visitCallSite(CallSite CS) {
 
   // handle strdup-like functions separately
   if (FnData->AllocTy == StrDupLike) {
-    // TODO
-    return unknown();
+    APInt Size(IntTyBits, GetStringLength(CS.getArgument(0)));
+    if (!Size)
+      return unknown();
+
+    // strndup limits strlen
+    if (FnData->FstParam > 0) {
+      ConstantInt *Arg= dyn_cast<ConstantInt>(CS.getArgument(FnData->FstParam));
+      if (!Arg)
+        return unknown();
+
+      APInt MaxSize = Arg->getValue().zextOrSelf(IntTyBits);
+      if (Size.ugt(MaxSize))
+        Size = MaxSize + 1;
+    }
+    return std::make_pair(Size, Zero);
   }
 
   ConstantInt *Arg = dyn_cast<ConstantInt>(CS.getArgument(FnData->FstParam));
@@ -512,8 +533,7 @@ SizeOffsetType ObjectSizeOffsetVisitor::visitInstruction(Instruction &I) {
 
 ObjectSizeOffsetEvaluator::ObjectSizeOffsetEvaluator(const TargetData *TD,
                                                      LLVMContext &Context)
-: TD(TD), Context(Context), Builder(Context, TargetFolder(TD)),
-Visitor(TD, Context) {
+: TD(TD), Context(Context), Builder(Context, TargetFolder(TD)) {
   IntTy = TD->getIntPtrType(Context);
   Zero = ConstantInt::get(IntTy, 0);
 }
@@ -538,6 +558,7 @@ SizeOffsetEvalType ObjectSizeOffsetEvaluator::compute(Value *V) {
 }
 
 SizeOffsetEvalType ObjectSizeOffsetEvaluator::compute_(Value *V) {
+  ObjectSizeOffsetVisitor Visitor(TD, Context);
   SizeOffsetType Const = Visitor.compute(V);
   if (Visitor.bothKnown(Const))
     return std::make_pair(ConstantInt::get(Context, Const.first),
@@ -645,7 +666,7 @@ ObjectSizeOffsetEvaluator::visitGEPOperator(GEPOperator &GEP) {
   if (!bothKnown(PtrData))
     return unknown();
 
-  Value *Offset = EmitGEPOffset(&Builder, *TD, &GEP);
+  Value *Offset = EmitGEPOffset(&Builder, *TD, &GEP, /*NoAssumptions=*/true);
   Offset = Builder.CreateAdd(PtrData.second, Offset);
   return std::make_pair(PtrData.first, Offset);
 }
@@ -682,7 +703,19 @@ SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitPHINode(PHINode &PHI) {
     SizePHI->addIncoming(EdgeData.first, PHI.getIncomingBlock(i));
     OffsetPHI->addIncoming(EdgeData.second, PHI.getIncomingBlock(i));
   }
-  return std::make_pair(SizePHI, OffsetPHI);
+
+  Value *Size = SizePHI, *Offset = OffsetPHI, *Tmp;
+  if ((Tmp = SizePHI->hasConstantValue())) {
+    Size = Tmp;
+    SizePHI->replaceAllUsesWith(Size);
+    SizePHI->eraseFromParent();
+  }
+  if ((Tmp = OffsetPHI->hasConstantValue())) {
+    Offset = Tmp;
+    OffsetPHI->replaceAllUsesWith(Offset);
+    OffsetPHI->eraseFromParent();
+  }
+  return std::make_pair(Size, Offset);
 }
 
 SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitSelectInst(SelectInst &I) {

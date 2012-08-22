@@ -46,14 +46,9 @@ class Attributes {
   Attributes() : Bits(0) { }
   explicit Attributes(uint64_t Val) : Bits(Val) { }
   /*implicit*/ Attributes(Attribute::AttrConst Val) : Bits(Val.v) { }
-  Attributes(const Attributes &Attrs) : Bits(Attrs.Bits) { }
   // This is a "safe bool() operator".
   operator const void *() const { return Bits ? this : 0; }
   bool isEmptyOrSingleton() const { return (Bits & (Bits - 1)) == 0; }
-  Attributes &operator = (const Attributes &Attrs) {
-    Bits = Attrs.Bits;
-    return *this;
-  }
   bool operator == (const Attributes &Attrs) const {
     return Bits == Attrs.Bits;
   }
@@ -139,6 +134,9 @@ DECLARE_LLVM_ATTRIBUTE(NonLazyBind,1U<<31) ///< Function is called early and/or
                                             /// often, so lazy binding isn't
                                             /// worthwhile.
 DECLARE_LLVM_ATTRIBUTE(AddressSafety,1ULL<<32) ///< Address safety checking is on.
+DECLARE_LLVM_ATTRIBUTE(IANSDialect,1ULL<<33) ///< Inline asm non-standard dialect.
+                                           /// When not set, ATT dialect assumed.
+                                           /// When set implies the Intel dialect.
 
 #undef DECLARE_LLVM_ATTRIBUTE
 
@@ -164,14 +162,16 @@ const AttrConst FunctionOnly = {NoReturn_i | NoUnwind_i | ReadNone_i |
   ReadOnly_i | NoInline_i | AlwaysInline_i | OptimizeForSize_i |
   StackProtect_i | StackProtectReq_i | NoRedZone_i | NoImplicitFloat_i |
   Naked_i | InlineHint_i | StackAlignment_i |
-  UWTable_i | NonLazyBind_i | ReturnsTwice_i | AddressSafety_i};
+  UWTable_i | NonLazyBind_i | ReturnsTwice_i | AddressSafety_i |
+  IANSDialect_i};
 
 /// @brief Parameter attributes that do not apply to vararg call arguments.
 const AttrConst VarArgsIncompatible = {StructRet_i};
 
 /// @brief Attributes that are mutually incompatible.
-const AttrConst MutuallyIncompatible[4] = {
-  {ByVal_i | InReg_i | Nest_i | StructRet_i},
+const AttrConst MutuallyIncompatible[5] = {
+  {ByVal_i | Nest_i | StructRet_i},
+  {ByVal_i | Nest_i | InReg_i },
   {ZExt_i  | SExt_i},
   {ReadNone_i | ReadOnly_i},
   {NoInline_i | AlwaysInline_i}

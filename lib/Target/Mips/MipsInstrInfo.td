@@ -16,7 +16,6 @@
 // Mips profiles and nodes
 //===----------------------------------------------------------------------===//
 
-def SDT_MipsRet          : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 def SDT_MipsJmpLink      : SDTypeProfile<0, 1, [SDTCisVT<0, iPTR>]>;
 def SDT_MipsCMov         : SDTypeProfile<1, 4, [SDTCisSameAs<0, 1>,
                                                 SDTCisSameAs<1, 2>,
@@ -71,8 +70,7 @@ def MipsTprelLo    : SDNode<"MipsISD::TprelLo", SDTIntUnaryOp>;
 def MipsThreadPointer: SDNode<"MipsISD::ThreadPointer", SDT_MipsThreadPointer>;
 
 // Return
-def MipsRet : SDNode<"MipsISD::Ret", SDT_MipsRet, [SDNPHasChain,
-                     SDNPOptInGlue]>;
+def MipsRet : SDNode<"MipsISD::Ret", SDTNone, [SDNPHasChain, SDNPOptInGlue]>;
 
 // These are target-independent nodes, but have target-specific formats.
 def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_MipsCallSeqStart,
@@ -212,17 +210,24 @@ def uimm16      : Operand<i32> {
   let PrintMethod = "printUnsignedImm";
 }
 
+def MipsMemAsmOperand : AsmOperandClass {
+  let Name = "Mem";
+  let ParserMethod = "parseMemOperand";
+}
+
 // Address operand
 def mem : Operand<i32> {
   let PrintMethod = "printMemOperand";
   let MIOperandInfo = (ops CPURegs, simm16);
   let EncoderMethod = "getMemEncoding";
+  let ParserMatchClass = MipsMemAsmOperand;
 }
 
 def mem64 : Operand<i64> {
   let PrintMethod = "printMemOperand";
   let MIOperandInfo = (ops CPU64Regs, simm16_64);
   let EncoderMethod = "getMemEncoding";
+  let ParserMatchClass = MipsMemAsmOperand;
 }
 
 def mem_ea : Operand<i32> {
@@ -627,20 +632,33 @@ class UncondBranch<bits<6> op, string instr_asm>:
   let Defs = [AT];
 }
 
-let isBranch=1, isTerminator=1, isBarrier=1, rd=0, hasDelaySlot = 1,
-    isIndirectBranch = 1 in
-class JumpFR<bits<6> op, bits<6> func, string instr_asm, RegisterClass RC>:
-  FR<op, func, (outs), (ins RC:$rs),
-     !strconcat(instr_asm, "\t$rs"), [(brind RC:$rs)], IIBranch> {
+// Base class for indirect branch and return instruction classes.
+let isTerminator=1, isBarrier=1, hasDelaySlot = 1 in
+class JumpFR<RegisterClass RC, list<dag> pattern>:
+  FR<0, 0x8, (outs), (ins RC:$rs), "jr\t$rs", pattern, IIBranch> {
   let rt = 0;
   let rd = 0;
   let shamt = 0;
 }
 
+// Indirect branch
+class IndirectBranch<RegisterClass RC>: JumpFR<RC, [(brind RC:$rs)]> {
+  let isBranch = 1;
+  let isIndirectBranch = 1;
+}
+
+// Return instruction
+class RetBase<RegisterClass RC>: JumpFR<RC, []> {
+  let isReturn = 1;
+  let isCodeGenOnly = 1;
+  let hasCtrlDep = 1;
+  let hasExtraSrcRegAllocReq = 1;
+}
+
 // Jump and Link (Call)
-let isCall=1, hasDelaySlot=1 in {
+let isCall=1, hasDelaySlot=1, Defs = [RA] in {
   class JumpLink<bits<6> op, string instr_asm>:
-    FJ<op, (outs), (ins calltarget:$target, variable_ops),
+    FJ<op, (outs), (ins calltarget:$target),
        !strconcat(instr_asm, "\t$target"), [(MipsJmpLink imm:$target)],
        IIBranch> {
        let DecoderMethod = "DecodeJumpTarget";
@@ -648,7 +666,7 @@ let isCall=1, hasDelaySlot=1 in {
 
   class JumpLinkReg<bits<6> op, bits<6> func, string instr_asm,
                     RegisterClass RC>:
-    FR<op, func, (outs), (ins RC:$rs, variable_ops),
+    FR<op, func, (outs), (ins RC:$rs),
        !strconcat(instr_asm, "\t$rs"), [(MipsJmpLink RC:$rs)], IIBranch> {
     let rt = 0;
     let rd = 31;
@@ -656,7 +674,7 @@ let isCall=1, hasDelaySlot=1 in {
   }
 
   class BranchLink<string instr_asm, bits<5> _rt, RegisterClass RC>:
-    FI<0x1, (outs), (ins RC:$rs, brtarget:$imm16, variable_ops),
+    FI<0x1, (outs), (ins RC:$rs, brtarget:$imm16),
        !strconcat(instr_asm, "\t$rs, $imm16"), [], IIBranch> {
     let rt = _rt;
   }
@@ -713,9 +731,11 @@ class MoveToLOHI<bits<6> func, string instr_asm, RegisterClass RC,
   let neverHasSideEffects = 1;
 }
 
-class EffectiveAddress<string instr_asm, RegisterClass RC, Operand Mem> :
-  FMem<0x09, (outs RC:$rt), (ins Mem:$addr),
-     instr_asm, [(set RC:$rt, addr:$addr)], IIAlu>;
+class EffectiveAddress<bits<6> opc, string instr_asm, RegisterClass RC, Operand Mem> :
+  FMem<opc, (outs RC:$rt), (ins Mem:$addr),
+     instr_asm, [(set RC:$rt, addr:$addr)], IIAlu> {
+ let isCodeGenOnly = 1;
+}
 
 // Count Leading Ones/Zeros in Word
 class CountLeading0<bits<6> func, string instr_asm, RegisterClass RC>:
@@ -794,9 +814,9 @@ class InsBase<bits<6> _funct, string instr_asm, RegisterClass RC>:
 // Atomic instructions with 2 source operands (ATOMIC_SWAP & ATOMIC_LOAD_*).
 class Atomic2Ops<PatFrag Op, string Opstr, RegisterClass DRC,
                  RegisterClass PRC> :
-  MipsPseudo<(outs DRC:$dst), (ins PRC:$ptr, DRC:$incr),
-             !strconcat("atomic_", Opstr, "\t$dst, $ptr, $incr"),
-             [(set DRC:$dst, (Op PRC:$ptr, DRC:$incr))]>;
+  PseudoSE<(outs DRC:$dst), (ins PRC:$ptr, DRC:$incr),
+           !strconcat("atomic_", Opstr, "\t$dst, $ptr, $incr"),
+           [(set DRC:$dst, (Op PRC:$ptr, DRC:$incr))]>;
 
 multiclass Atomic2Ops32<PatFrag Op, string Opstr> {
   def #NAME# : Atomic2Ops<Op, Opstr, CPURegs, CPURegs>,
@@ -810,9 +830,9 @@ multiclass Atomic2Ops32<PatFrag Op, string Opstr> {
 // Atomic Compare & Swap.
 class AtomicCmpSwap<PatFrag Op, string Width, RegisterClass DRC,
                     RegisterClass PRC> :
-  MipsPseudo<(outs DRC:$dst), (ins PRC:$ptr, DRC:$cmp, DRC:$swap),
-             !strconcat("atomic_cmp_swap_", Width, "\t$dst, $ptr, $cmp, $swap"),
-             [(set DRC:$dst, (Op PRC:$ptr, DRC:$cmp, DRC:$swap))]>;
+  PseudoSE<(outs DRC:$dst), (ins PRC:$ptr, DRC:$cmp, DRC:$swap),
+           !strconcat("atomic_cmp_swap_", Width, "\t$dst, $ptr, $cmp, $swap"),
+           [(set DRC:$dst, (Op PRC:$ptr, DRC:$cmp, DRC:$swap))]>;
 
 multiclass AtomicCmpSwap32<PatFrag Op, string Width>  {
   def #NAME# : AtomicCmpSwap<Op, Width, CPURegs, CPURegs>,
@@ -871,12 +891,15 @@ MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$src1, CPURegs:$src2),
 
 // @LOCALMOD-END
 
-// As stack alignment is always done with addiu, we need a 16-bit immediate
-let Defs = [SP], Uses = [SP] in {
-def ADJCALLSTACKDOWN : MipsPseudo<(outs), (ins uimm16:$amt),
+// Return RA.
+let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in
+def RetRA : PseudoSE<(outs), (ins), "", [(MipsRet)]>;
+
+let Defs = [SP], Uses = [SP], hasSideEffects = 1 in {
+def ADJCALLSTACKDOWN : MipsPseudo<(outs), (ins i32imm:$amt),
                                   "!ADJCALLSTACKDOWN $amt",
                                   [(callseq_start timm:$amt)]>;
-def ADJCALLSTACKUP   : MipsPseudo<(outs), (ins uimm16:$amt1, uimm16:$amt2),
+def ADJCALLSTACKUP   : MipsPseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
                                   "!ADJCALLSTACKUP $amt1",
                                   [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
@@ -886,8 +909,8 @@ def ADJCALLSTACKUP   : MipsPseudo<(outs), (ins uimm16:$amt1, uimm16:$amt2),
 // are used, we have the same behavior, but get also a bunch of warnings
 // from the assembler.
 let neverHasSideEffects = 1 in
-def CPRESTORE : MipsPseudo<(outs), (ins i32imm:$loc, CPURegs:$gp),
-                           ".cprestore\t$loc", []>;
+def CPRESTORE : PseudoSE<(outs), (ins i32imm:$loc, CPURegs:$gp),
+                         ".cprestore\t$loc", []>;
 
 let usesCustomInserter = 1 in {
   defm ATOMIC_LOAD_ADD_I8   : Atomic2Ops32<atomic_load_add_8, "load_add_8">;
@@ -987,8 +1010,8 @@ defm SWL : StoreLeftRightM32<0x2a, "swl", MipsSWL>;
 defm SWR : StoreLeftRightM32<0x2e, "swr", MipsSWR>;
 
 let hasSideEffects = 1 in
-def SYNC : MipsInst<(outs), (ins i32imm:$stype), "sync $stype",
-                    [(MipsSync imm:$stype)], NoItinerary, FrmOther>
+def SYNC : InstSE<(outs), (ins i32imm:$stype), "sync $stype",
+                  [(MipsSync imm:$stype)], NoItinerary, FrmOther>
 {
   bits<5> stype;
   let Opcode = 0;
@@ -1014,7 +1037,7 @@ def SC_P8 : SCBase<0x38, "sc", CPURegs, mem64>,
 
 /// Jump and Branch Instructions
 def J       : JumpFJ<0x02, "j">;
-def JR      : JumpFR<0x00, 0x08, "jr", CPURegs>;
+def JR      : IndirectBranch<CPURegs>;
 def B       : UncondBranch<0x04, "b">;
 def BEQ     : CBranch<0x04, "beq", seteq, CPURegs>;
 def BNE     : CBranch<0x05, "bne", setne, CPURegs>;
@@ -1023,15 +1046,16 @@ def BGTZ    : CBranchZero<0x07, 0, "bgtz", setgt, CPURegs>;
 def BLEZ    : CBranchZero<0x06, 0, "blez", setle, CPURegs>;
 def BLTZ    : CBranchZero<0x01, 0, "bltz", setlt, CPURegs>;
 
+let rt = 0, rs = 0, isBranch = 1, isTerminator = 1, isBarrier = 1,
+    hasDelaySlot = 1, Defs = [RA] in
+def BAL_BR: FI<0x1, (outs), (ins brtarget:$imm16), "bal\t$imm16", [], IIBranch>;
+
 def JAL  : JumpLink<0x03, "jal">;
 def JALR : JumpLinkReg<0x00, 0x09, "jalr", CPURegs>;
 def BGEZAL  : BranchLink<"bgezal", 0x11, CPURegs>;
 def BLTZAL  : BranchLink<"bltzal", 0x10, CPURegs>;
 
-let isReturn=1, isTerminator=1, hasDelaySlot=1, isCodeGenOnly=1,
-    isBarrier=1, hasCtrlDep=1, rd=0, rt=0, shamt=0 in
-  def RET : FR <0x00, 0x08, (outs), (ins CPURegs:$target),
-                "jr\t$target", [(MipsRet CPURegs:$target)], IIBranch>;
+def RET : RetBase<CPURegs>;
 
 /// Multiply and Divide Instructions.
 def MULT    : Mult32<0x18, "mult", IIImul>;
@@ -1063,17 +1087,13 @@ let addr=0 in
 // instructions. The same not happens for stack address copies, so an
 // add op with mem ComplexPattern is used and the stack address copy
 // can be matched. It's similar to Sparc LEA_ADDRi
-def LEA_ADDiu : EffectiveAddress<"addiu\t$rt, $addr", CPURegs, mem_ea> {
-  let isCodeGenOnly = 1;
-}
+def LEA_ADDiu : EffectiveAddress<0x09,"addiu\t$rt, $addr", CPURegs, mem_ea>;
 
 // DynAlloc node points to dynamically allocated stack space.
 // $sp is added to the list of implicitly used registers to prevent dead code
 // elimination from removing instructions that modify $sp.
 let Uses = [SP] in
-def DynAlloc : EffectiveAddress<"addiu\t$rt, $addr", CPURegs, mem_ea> {
-  let isCodeGenOnly = 1;
-}
+def DynAlloc : EffectiveAddress<0x09,"addiu\t$rt, $addr", CPURegs, mem_ea>;
 
 // MADD*/MSUB*
 def MADD  : MArithR<0, "madd", MipsMAdd, 1>;

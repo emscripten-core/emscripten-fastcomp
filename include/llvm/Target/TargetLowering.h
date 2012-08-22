@@ -51,6 +51,7 @@ namespace llvm {
   template<typename T> class SmallVectorImpl;
   class TargetData;
   class TargetRegisterClass;
+  class TargetLibraryInfo;
   class TargetLoweringObjectFile;
   class Value;
 
@@ -377,7 +378,9 @@ public:
   /// for it.
   LegalizeAction getOperationAction(unsigned Op, EVT VT) const {
     if (VT.isExtended()) return Expand;
-    assert(Op < array_lengthof(OpActions[0]) && "Table isn't big enough!");
+    // If a target-specific SDNode requires legalization, require the target
+    // to provide custom legalization for it.
+    if (Op > array_lengthof(OpActions[0])) return Custom;
     unsigned I = (unsigned) VT.getSimpleVT().SimpleTy;
     return (LegalizeAction)OpActions[I][Op];
   }
@@ -1200,7 +1203,7 @@ protected:
     ShouldFoldAtomicFences = fold;
   }
 
-  /// setInsertFencesForAtomic - Set if the the DAG builder should
+  /// setInsertFencesForAtomic - Set if the DAG builder should
   /// automatically insert fences and reduce the order of atomic memory
   /// operations to Monotonic.
   void setInsertFencesForAtomic(bool fence) {
@@ -1330,7 +1333,7 @@ public:
   /// registers.  If false is returned, an sret-demotion is performed.
   ///
   virtual bool CanLowerReturn(CallingConv::ID /*CallConv*/,
-			      MachineFunction &/*MF*/, bool /*isVarArg*/,
+                              MachineFunction &/*MF*/, bool /*isVarArg*/,
                const SmallVectorImpl<ISD::OutputArg> &/*Outs*/,
                LLVMContext &/*Context*/) const
   {
@@ -1425,7 +1428,8 @@ public:
 
   /// createFastISel - This method returns a target specific FastISel object,
   /// or null if the target does not support "fast" ISel.
-  virtual FastISel *createFastISel(FunctionLoweringInfo &) const {
+  virtual FastISel *createFastISel(FunctionLoweringInfo &,
+                                   const TargetLibraryInfo *) const {
     return 0;
   }
 

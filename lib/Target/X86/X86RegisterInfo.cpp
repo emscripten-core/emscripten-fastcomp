@@ -50,6 +50,10 @@ ForceStackAlign("force-align-stack",
                            " needed for the function."),
                  cl::init(false), cl::Hidden);
 
+cl::opt<bool>
+EnableBasePointer("x86-use-base-pointer", cl::Hidden, cl::init(true),
+          cl::desc("Enable use of a base pointer for complex stack frames"));
+
 // @LOCALMOD-BEGIN
 extern cl::opt<bool> FlagUseZeroBasedSandbox;
 extern cl::opt<bool> FlagRestrictR15;
@@ -78,6 +82,10 @@ X86RegisterInfo::X86RegisterInfo(X86TargetMachine &tm,
     StackPtr = X86::ESP;
     FramePtr = X86::EBP;
   }
+  // Use a callee-saved register as the base pointer.  These registers must
+  // not conflict with any ABI requirements.  For example, in 32-bit mode PIC
+  // requires GOT in the EBX register before function calls via PLT GOT pointer.
+  BasePtr = Is64Bit ? X86::RBX : X86::ESI;
 }
 
 /// getCompactUnwindRegNum - This function maps the register to the number for
@@ -295,6 +303,20 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
       Reserved.set(*I);
   }
 
+  // Set the base-pointer register and its aliases as reserved if needed.
+  if (hasBasePointer(MF)) {
+    CallingConv::ID CC = MF.getFunction()->getCallingConv();
+    const uint32_t* RegMask = getCallPreservedMask(CC);
+    if (MachineOperand::clobbersPhysReg(RegMask, getBaseRegister()))
+      report_fatal_error(
+        "Stack realignment in presence of dynamic allocas is not supported with"
+        "this calling convention.");
+
+    Reserved.set(getBaseRegister());
+    for (MCSubRegIterator I(getBaseRegister(), this); I.isValid(); ++I)
+      Reserved.set(*I);
+  }
+
   // Mark the segment registers as reserved.
   Reserved.set(X86::CS);
   Reserved.set(X86::SS);
@@ -364,10 +386,36 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 // Stack Frame Processing methods
 //===----------------------------------------------------------------------===//
 
+bool X86RegisterInfo::hasBasePointer(const MachineFunction &MF) const {
+   const MachineFrameInfo *MFI = MF.getFrameInfo();
+
+   if (!EnableBasePointer)
+     return false;
+
+   // When we need stack realignment and there are dynamic allocas, we can't
+   // reference off of the stack pointer, so we reserve a base pointer.
+   if (needsStackRealignment(MF) && MFI->hasVarSizedObjects())
+     return true;
+
+   return false;
+}
+
 bool X86RegisterInfo::canRealignStack(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
-  return (MF.getTarget().Options.RealignStack &&
-          !MFI->hasVarSizedObjects());
+  const MachineRegisterInfo *MRI = &MF.getRegInfo();
+  if (!MF.getTarget().Options.RealignStack)
+    return false;
+
+  // Stack realignment requires a frame pointer.  If we already started
+  // register allocation with frame pointer elimination, it is too late now.
+  if (!MRI->canReserveReg(FramePtr))
+    return false;
+
+  // If a base pointer is necessary.  Check that it isn't too late to reserve
+  // it.
+  if (MFI->hasVarSizedObjects())
+    return MRI->canReserveReg(BasePtr);
+  return true;
 }
 
 bool X86RegisterInfo::needsStackRealignment(const MachineFunction &MF) const {
@@ -376,13 +424,6 @@ bool X86RegisterInfo::needsStackRealignment(const MachineFunction &MF) const {
   unsigned StackAlign = TM.getFrameLowering()->getStackAlignment();
   bool requiresRealignment = ((MFI->getMaxAlignment() > StackAlign) ||
                                F->hasFnAttr(Attribute::StackAlignment));
-
-  // FIXME: Currently we don't support stack realignment for functions with
-  //        variable-sized allocas.
-  // FIXME: It's more complicated than this...
-  if (0 && requiresRealignment && MFI->hasVarSizedObjects())
-    report_fatal_error(
-      "Stack realignment in presence of dynamic allocas is not supported");
 
   // If we've requested that we force align the stack do so now.
   if (ForceStackAlign)
@@ -523,7 +564,9 @@ X86RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   unsigned Opc = MI.getOpcode();
   bool AfterFPPop = Opc == X86::TAILJMPm64 || Opc == X86::TAILJMPm;
-  if (needsStackRealignment(MF))
+  if (hasBasePointer(MF))
+    BasePtr = (FrameIndex < 0 ? FramePtr : getBaseRegister());
+  else if (needsStackRealignment(MF))
     BasePtr = (FrameIndex < 0 ? FramePtr : StackPtr);
   else if (AfterFPPop)
     BasePtr = StackPtr;
