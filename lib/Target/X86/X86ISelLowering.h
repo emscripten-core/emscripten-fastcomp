@@ -838,7 +838,6 @@ namespace llvm {
     SDValue PerformTruncateCombine(SDNode* N, SelectionDAG &DAG, DAGCombinerInfo &DCI) const;
 
     // @LOCALMOD-BEGIN
-    SDValue LowerNaClThreadStackPadding(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerNaClTpAlign(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;

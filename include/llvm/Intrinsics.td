@@ -471,9 +471,6 @@ def int_nacl_tp_tls_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
                              GCCBuiltin<"__builtin_nacl_tp_tls_offset">;
 def int_nacl_tp_tdb_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
                              GCCBuiltin<"__builtin_nacl_tp_tdb_offset">;
-def int_nacl_thread_stack_padding :
-        Intrinsic<[llvm_i32_ty], []>,
-        GCCBuiltin<"__builtin_nacl_thread_stack_padding">;
 
 // The following intrinsic provides a target-specific constant value to
 // indicate the target platform compiled to.  The enum values are enumerated

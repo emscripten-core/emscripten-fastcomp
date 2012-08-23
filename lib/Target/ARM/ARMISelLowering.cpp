@@ -816,7 +816,6 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
 
   // @LOCALMOD-BEGIN
   if (Subtarget->isTargetNaCl()) {
-    setOperationAction(ISD::NACL_THREAD_STACK_PADDING, MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_ALIGN,             MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
@@ -2182,15 +2181,6 @@ SDValue ARMTargetLowering::LowerNaClTpTdbOffset(SDValue Op,
   return DAG.getNode(ISD::SUB, dl, Op.getValueType().getSimpleVT(),
                      DAG.getConstant(0, Op.getValueType().getSimpleVT()),
                      Op.getOperand(0));
-}
-
-SDValue
-ARMTargetLowering::LowerNaClThreadStackPadding(SDValue Op,
-                                               SelectionDAG &DAG) const {
-  // size_t __nacl_thread_stack_padding () {
-  //   return 0;
-  // }
-  return DAG.getConstant(0, Op.getValueType().getSimpleVT());
 }
 
 SDValue
@@ -5504,8 +5494,6 @@ SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::ATOMIC_LOAD:
   case ISD::ATOMIC_STORE:  return LowerAtomicLoadStore(Op, DAG);
   // @LOCALMOD-BEGIN
-  case ISD::NACL_THREAD_STACK_PADDING:
-    return LowerNaClThreadStackPadding(Op, DAG);
   case ISD::NACL_TP_ALIGN:         return LowerNaClTpAlign(Op, DAG);
   case ISD::NACL_TP_TLS_OFFSET:    return LowerNaClTpTlsOffset(Op, DAG);
   case ISD::NACL_TP_TDB_OFFSET:    return LowerNaClTpTdbOffset(Op, DAG);
