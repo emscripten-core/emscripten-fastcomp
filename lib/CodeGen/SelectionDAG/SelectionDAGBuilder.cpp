@@ -5195,11 +5195,6 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     return 0;
   // @LOCALMOD-BEGIN
   // Native Client Intrinsics for TLS setup / layout.
-  case Intrinsic::nacl_tp_alignment: {
-    EVT DestVT = TLI.getValueType(I.getType());
-    setValue(&I, DAG.getNode(ISD::NACL_TP_ALIGN, dl, DestVT));
-    return 0;
-  }
   case Intrinsic::nacl_tp_tls_offset: {
     SDValue tls_size = getValue(I.getArgOperand(0));
     setValue(&I, DAG.getNode(ISD::NACL_TP_TLS_OFFSET, dl,

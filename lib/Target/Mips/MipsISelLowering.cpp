@@ -289,7 +289,6 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
   // @LOCALMOD-BEGIN
   if (Subtarget->isTargetNaCl()) {
-    setOperationAction(ISD::NACL_TP_ALIGN,             MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
   }
@@ -821,7 +820,6 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
     case ISD::STORE:              return LowerSTORE(Op, DAG);
 
     // @LOCALMOD-BEGIN
-    case ISD::NACL_TP_ALIGN:      return LowerNaClTpAlign(Op, DAG);
     case ISD::NACL_TP_TLS_OFFSET: return LowerNaClTpTlsOffset(Op, DAG);
     case ISD::NACL_TP_TDB_OFFSET: return LowerNaClTpTdbOffset(Op, DAG);
     // @LOCALMOD-END
@@ -1658,12 +1656,6 @@ SDValue MipsTargetLowering::LowerBlockAddress(SDValue Op,
 
 // NaCl TLS setup / layout intrinsics.
 // See: native_client/src/untrusted/nacl/tls_params.h
-
-SDValue MipsTargetLowering::LowerNaClTpAlign(SDValue Op,
-                                             SelectionDAG &DAG) const {
-  return DAG.getConstant(4, Op.getValueType().getSimpleVT());
-}
-
 SDValue MipsTargetLowering::LowerNaClTpTlsOffset(SDValue Op,
                                                  SelectionDAG &DAG) const {
   return DAG.getConstant(0, Op.getValueType().getSimpleVT());

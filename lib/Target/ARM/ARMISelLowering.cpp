@@ -816,7 +816,6 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
 
   // @LOCALMOD-BEGIN
   if (Subtarget->isTargetNaCl()) {
-    setOperationAction(ISD::NACL_TP_ALIGN,             MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
     setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
     setOperationAction(ISD::NACL_TARGET_ARCH,          MVT::i32, Custom);
@@ -2156,14 +2155,6 @@ SDValue ARMTargetLowering::LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
 //////////////////////////////////////////////////////////////////////
 // NaCl TLS setup / layout intrinsics.
 // See: native_client/src/untrusted/stubs/tls_params.h
-SDValue ARMTargetLowering::LowerNaClTpAlign(SDValue Op,
-                                            SelectionDAG &DAG) const {
-  // size_t __nacl_tp_alignment () {
-  //   return 4;
-  // }
-  return DAG.getConstant(4, Op.getValueType().getSimpleVT());
-}
-
 SDValue ARMTargetLowering::LowerNaClTpTlsOffset(SDValue Op,
                                                 SelectionDAG &DAG) const {
   // ssize_t __nacl_tp_tls_offset (size_t tls_size) {
@@ -5494,7 +5485,6 @@ SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::ATOMIC_LOAD:
   case ISD::ATOMIC_STORE:  return LowerAtomicLoadStore(Op, DAG);
   // @LOCALMOD-BEGIN
-  case ISD::NACL_TP_ALIGN:         return LowerNaClTpAlign(Op, DAG);
   case ISD::NACL_TP_TLS_OFFSET:    return LowerNaClTpTlsOffset(Op, DAG);
   case ISD::NACL_TP_TDB_OFFSET:    return LowerNaClTpTdbOffset(Op, DAG);
   case ISD::NACL_TARGET_ARCH:      return LowerNaClTargetArch(Op, DAG);

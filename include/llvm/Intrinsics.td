@@ -465,8 +465,6 @@ def int_nacl_longjmp : Intrinsic<[],  [llvm_ptr_ty, llvm_i32_ty]>,
 // the interface in native_client/src/untrusted/nacl/tls_params.h.
 // The intrinsic names are basically the functions there without the
 // leading underscores.
-def int_nacl_tp_alignment : Intrinsic<[llvm_i32_ty], []>,
-                            GCCBuiltin<"__builtin_nacl_tp_alignment">;
 def int_nacl_tp_tls_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
                              GCCBuiltin<"__builtin_nacl_tp_tls_offset">;
 def int_nacl_tp_tdb_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,

@@ -314,7 +314,6 @@ std::string SDNode::getOperationName(const SelectionDAG *G) const {
 
   // @LOCALMOD-BEGIN
   // NaCl intrinsics for TLS setup
-  case ISD::NACL_TP_ALIGN:             return "nacl_tp_alignment";
   case ISD::NACL_TP_TLS_OFFSET:        return "nacl_tls_offset";
   case ISD::NACL_TP_TDB_OFFSET:        return "nacl_tdb_offset";
   case ISD::NACL_TARGET_ARCH:          return "nacl_target_arch";
