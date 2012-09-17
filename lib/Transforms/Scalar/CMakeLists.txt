@@ -31,6 +31,7 @@ add_llvm_library(LLVMScalarOpts
   SimplifyLibCalls.cpp
   Sink.cpp
   TailRecursionElimination.cpp
+  NaClCcRewrite.cpp
   )
 
 add_dependencies(LLVMScalarOpts intrinsics_gen)
