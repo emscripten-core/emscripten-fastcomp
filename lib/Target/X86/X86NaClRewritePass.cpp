@@ -81,9 +81,6 @@ namespace {
 
     void PassLightWeightValidator(MachineBasicBlock &MBB);
     bool AlignJumpTableTargets(MachineFunction &MF);
-    bool RewritePushfPopf(MachineBasicBlock &MBB,
-                          MachineBasicBlock::iterator MBBI,
-                          MachineBasicBlock::iterator *Next);
   };
 
   char X86NaClRewritePass::ID = 0;
@@ -690,97 +687,6 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
   return false;
 }
 
-// Rewrite the sequence generated to implement CopyToReg for EFLAGS, when
-// LLVM tries to keep EFLAGS live across a call to avoid emitting a CMP.
-// %r/m = <some flags-setting op>
-// pushf
-// pop %rY
-// <call>
-// push %rY
-// popf
-// <conditional branch>
-// becomes:
-// %r/m = <some flags-setting op>
-// %rY = %r/m
-// <call>
-// cmp %rY, 0
-// <conditional branch>
-// A proper fix would involve fixing X86TargetLowering::EmitTest to check
-// that a the path to the flags-setting op does not chain through a call
-// and avoid the optimization in that case
-// BUG: http://code.google.com/p/nativeclient/issues/detail?id=2711
-
-bool X86NaClRewritePass::RewritePushfPopf(MachineBasicBlock &MBB,
-                                          MachineBasicBlock::iterator MBBI,
-                                          MachineBasicBlock::iterator *Next) {
-  MachineInstr &MI = *MBBI;
-  DebugLoc DL = MI.getDebugLoc();
-  unsigned Opc = MI.getOpcode();
-  bool Is64Bit = false;
-
-  switch(Opc) {
-    case X86::PUSHF64:
-      Is64Bit = true;
-      // fall through
-    case X86::PUSHF32: {
-      MachineBasicBlock::iterator Prev = MBBI;
-      --Prev;
-      assert((*Next)->getOpcode() == (Is64Bit ? X86::POP64r : X86::POP32r)
-             && "Unknown pushf sequence");
-      // Take the destination of the flags-setting op (Prev) and move it to
-      // the destination of the pop (Next)
-      int MovOpc;
-      if (Prev->memoperands_empty()) {
-        MovOpc = Is64Bit ? X86::MOV64rr : X86::MOV32rr;
-        BuildMI(MBB, MBBI, DL, TII->get(MovOpc))
-            .addOperand((*Next)->getOperand(0))
-            .addOperand(Prev->getOperand(0));
-      } else {
-        MovOpc = Is64Bit ? X86::MOV64rm : X86::MOV32rm;
-        // Memory operands are an operand tuple of
-        // [base,scale,index,disp,segment]
-        BuildMI(MBB, MBBI, DL, TII->get(MovOpc))
-            .addOperand((*Next)->getOperand(0))
-            .addOperand(Prev->getOperand(0))
-            .addOperand(Prev->getOperand(1))
-            .addOperand(Prev->getOperand(2))
-            .addOperand(Prev->getOperand(3))
-            .addOperand(Prev->getOperand(4))
-            .addMemOperand(*Prev->memoperands_begin());
-      }
-
-      MI.eraseFromParent();
-      // Just use Prev as a placeholder to delete the pop
-      Prev = *Next;
-      ++(*Next);
-      Prev->eraseFromParent();
-      return true;
-    }
-    case X86::POPF64:
-      Is64Bit = true;
-      // fall through
-    case X86::POPF32: {
-      int PushOpc;
-      int CmpOpc;
-      PushOpc = Is64Bit ? X86::PUSH64r : X86::PUSH32r;
-      CmpOpc = Is64Bit ? X86::CMP64ri32 : X86::CMP32ri;
-
-      MachineBasicBlock::iterator Prev = MBBI;
-      --Prev;
-      // Create a compare of the destination of the push (Prev) to 0
-      assert(Prev->getOpcode() == PushOpc && "Unknown popf sequence");
-      BuildMI(MBB, MBBI, DL, TII->get(CmpOpc))
-          .addReg(Prev->getOperand(0).getReg())
-          .addImm(0);
-      Prev->eraseFromParent();
-      MI.eraseFromParent();
-      return true;
-    }
-    default:
-      return false;
-  }
-}
-
 bool X86NaClRewritePass::AlignJumpTableTargets(MachineFunction &MF) {
   bool Modified = true;
 
@@ -835,7 +741,6 @@ bool X86NaClRewritePass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     // When one of these methods makes a change,
     // it returns true, skipping the others.
     if (ApplyRewrites(MBB, MBBI) ||
-        RewritePushfPopf(MBB, MBBI, &NextMBBI) ||
         (Is64Bit && ApplyStackSFI(MBB, MBBI)) ||
         (Is64Bit && ApplyMemorySFI(MBB, MBBI)) ||
         (Is64Bit && ApplyFrameSFI(MBB, MBBI)) ||

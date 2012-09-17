@@ -8378,13 +8378,31 @@ SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC,
     break;
   }
 
+  // @LOCALMOD-BEGIN
+  // This function only peeks at the data dependencies of the DAG to find
+  // an arith op that also defines EFLAGS.  However, function calls may
+  // clobber EFLAGS and the data dependencies do not show that.
+  // When that occurs, EFLAGS must be copied via PUSHF and POPF.
+  // The problem is that NaCl does not allow PUSHF and POPF.
+  // We could try to detect such clobbers for NaCl, but for now, we
+  // keep this code simple, and bail out for NaCl.  A further
+  // PeepholeOptimizer pass can do a similar optimization
+  // (see optimizeCompareInstr in X86InstrInfo.cpp), so it's not *so*
+  // bad.  This function also converts "add op, -1" to DEC, which can
+  // help fold load/stores:
+  //    (store m, (add (load m), -1)) -> (dec m)
+  // So we lose out on that.
+  // BUG=http://code.google.com/p/nativeclient/issues/detail?id=2711
+  bool ConservativeForNaCl = Subtarget->isTargetNaCl();
+
   // See if we can use the EFLAGS value from the operand instead of
   // doing a separate TEST. TEST always sets OF and CF to 0, so unless
   // we prove that the arithmetic won't overflow, we can't use OF or CF.
-  if (Op.getResNo() != 0 || NeedOF || NeedCF)
+  if (Op.getResNo() != 0 || NeedOF || NeedCF || ConservativeForNaCl)
     // Emit a CMP with 0, which is the TEST pattern.
     return DAG.getNode(X86ISD::CMP, dl, MVT::i32, Op,
                        DAG.getConstant(0, Op.getValueType()));
+  // @LOCALMOD-END
 
   unsigned Opcode = 0;
   unsigned NumOperands = 0;
