@@ -14,7 +14,6 @@
 
 
 // Major TODOs:
-// * add register constraints to x86-64 rewrite decissions
 // * dealing with vararg
 //   (We shoulf exclude all var arg functions and calls to them from rewrites)
 
@@ -25,6 +24,7 @@
 #include "llvm/Constant.h"
 #include "llvm/Instruction.h"
 #include "llvm/Instructions.h"
+#include "llvm/IntrinsicInst.h"
 #include "llvm/Function.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
@@ -74,6 +74,7 @@ struct TypeRewriteRule {
 // C:   "copy", use src as dst (only allowed for dst and sret)
 // F:   generic function type (only allowed for src)
 
+// TODO: consider getting rid of the "C" feature
 
 // The X8664 Rewrite rules are also subject to
 // register constraints, c.f.: section 3.2.3
@@ -104,6 +105,49 @@ TypeRewriteRule SretRulesARM[] = {
   {"s(ff)",     "C", "PP_FloatPoint"},
   {0, 0, 0},
 };
+
+// Helper class to model Register Usage as required by
+// the x86-64 calling conventions
+class RegUse {
+  uint32_t n_int_;
+  uint32_t n_float_;
+
+ public:
+  RegUse(uint32_t n_int=0, uint32_t n_float=0) :
+    n_int_(n_int), n_float_(n_float) {}
+
+  static RegUse OneIntReg() { return RegUse(1, 0); }
+  static RegUse OnePointerReg() { return RegUse(1, 0); }
+  static RegUse OneFloatReg() { return RegUse(0, 1); }
+
+  RegUse operator+(RegUse other) const {
+    return RegUse(n_int_ + other.n_int_, n_float_ + other.n_float_); }
+  RegUse operator-(RegUse other) const {
+    return RegUse(n_int_ - other.n_int_, n_float_ - other.n_float_); }
+  bool operator==(RegUse other) const {
+    return n_int_ == other.n_int_ &&  n_float_ == other.n_float_; }
+  bool operator!=(RegUse other) const {
+    return n_int_ != other.n_int_ &&  n_float_ != other.n_float_; }
+  bool operator<=(RegUse other) const {
+    return n_int_ <= other.n_int_ &&  n_float_ <= other.n_float_; }
+  bool operator<(RegUse other) const {
+    return n_int_ < other.n_int_ &&  n_float_ < other.n_float_; }
+  bool operator>=(RegUse other) const {
+    return n_int_ >= other.n_int_ &&  n_float_ >= other.n_float_; }
+  bool operator>(RegUse other) const {
+    return n_int_ > other.n_int_ &&  n_float_ > other.n_float_; }
+  RegUse& operator+=(const RegUse& other) {
+    n_int_ += other.n_int_; n_float_ += other.n_float_; return *this;}
+  RegUse& operator-=(const RegUse& other) {
+    n_int_ -= other.n_int_; n_float_ -= other.n_float_; return *this;}
+
+  friend raw_ostream& operator<<(raw_ostream &O, const RegUse& reg);
+};
+
+raw_ostream& operator<<(raw_ostream &O, const RegUse& reg) {
+  O << "(" << reg.n_int_ << ", " << reg.n_float_ << ")";
+  return O;
+}
 
 // TODO: Find a better way to determine the architecture
 const TypeRewriteRule* GetByvalRewriteRulesForTarget(
@@ -137,19 +181,44 @@ const TypeRewriteRule* GetSretRewriteRulesForTarget(
   return 0;
 }
 
+// TODO: Find a better way to determine the architecture
+// Describes the number of registers available for function
+// argument passing which may affect rewrite decisions on
+// some platforms.
+RegUse GetAvailableRegsForTarget(
+  const TargetLowering* tli) {
+  if (!FlagEnableCcRewrite) return RegUse(0, 0);
+
+  const TargetMachine &m = tli->getTargetMachine();
+  const StringRef triple = m.getTargetTriple();
+
+  // integer: RDI, RSI, RDX, RCX, R8, R9
+  // float XMM0, ..., XMM7
+  if (0 == triple.find("x86_64"))  return RegUse(6, 8);
+  // unused
+  if (0 == triple.find("i686")) return RegUse(0, 0);
+  // no constraints enforced here - the backend handles all the details
+  uint32_t max = std::numeric_limits<uint32_t>::max();
+  if (0 == triple.find("armv7a")) return RegUse(max, max);
+
+  llvm_unreachable("Unknown arch");
+  return 0;
+}
+
 // This class represents the a bitcode rewrite pass which ensures
 // that all ppapi interfaces are calling convention compatible
 // with gcc. This pass is archtitecture dependent.
 struct NaClCcRewrite : public FunctionPass {
   static char ID; // Pass identification, replacement for typeid
-
   const TypeRewriteRule* SretRewriteRules;
   const TypeRewriteRule* ByvalRewriteRules;
+  const RegUse AvailableRegs;
 
   explicit NaClCcRewrite(const TargetLowering *tli = 0)
     : FunctionPass(ID),
       SretRewriteRules(GetSretRewriteRulesForTarget(tli)),
-      ByvalRewriteRules(GetByvalRewriteRulesForTarget(tli)) {
+      ByvalRewriteRules(GetByvalRewriteRulesForTarget(tli)),
+      AvailableRegs(GetAvailableRegsForTarget(tli)) {
     initializeNaClCcRewritePass(*PassRegistry::getPassRegistry());
   }
 
@@ -250,6 +319,48 @@ bool HasRewriteType(const Type* type, const char*& pattern) {
   }
 }
 
+RegUse RegUseForRewriteRule(const TypeRewriteRule* rule) {
+  const char* pattern = std::string("C") == rule->dst ? rule->src : rule->dst;
+  RegUse result(0, 0);
+  while (char c = *pattern++) {
+    // Note, we only support a subset here, complex types (s, P)
+    // would require more work
+    switch (c) {
+     case 'i':
+     case 'l':
+      result += RegUse::OneIntReg();
+      break;
+     case 'd':
+     case 'f':
+      result += RegUse::OneFloatReg();
+      break;
+     default:
+      dbgs() << c << "\n";
+      llvm_unreachable("unexpected return type");
+    }
+  }
+  return result;
+}
+
+// Note, this only has to be accurate for x86-64 and is intentionally
+// quite strict so that we know when to add support for new types.
+// Ideally, unexpected types would be flagged by a bitcode checker.
+RegUse RegUseForType(const Type* t) {
+ if (t->isPointerTy()) {
+   return RegUse::OnePointerReg();
+ } else if (t->isFloatTy() || t->isDoubleTy()) {
+   return RegUse::OneFloatReg();
+ } else if (t->isIntegerTy()) {
+   const IntegerType* it = dyn_cast<const IntegerType>(t);
+   unsigned width = it->getBitWidth();
+   // x86-64 assumption here - use "register info" to make this better
+   if (width <= 64) return RegUse::OneIntReg();
+ }
+
+ dbgs() << *const_cast<Type*>(t) << "\n";
+ llvm_unreachable("unexpected type in RegUseForType");
+}
+
 // Match a type against a set of rewrite rules.
 // Return the matching rule, if any.
 const TypeRewriteRule* MatchRewriteRules(
@@ -285,28 +396,34 @@ Type* CreateFunctionPointerType(Type* result_type,
 // Determines whether a function body needs a rewrite
 bool FunctionNeedsRewrite(const Function* fun,
                           const TypeRewriteRule* ByvalRewriteRules,
-                          const TypeRewriteRule* SretRewriteRules) {
+                          const TypeRewriteRule* SretRewriteRules,
+                          RegUse available) {
   // TODO: can this be detected on indirect callsites as well.
   //       if we skip the rewrite for the function body
   //       we also need to skip it at the callsites
   // if (F.isVarArg()) return false;
-
   for (Function::const_arg_iterator AI = fun->arg_begin(), AE = fun->arg_end();
        AI != AE;
        ++AI) {
     const Argument& a = *AI;
     const Type* t = a.getType();
     // byval and srets are modelled as pointers (to structs)
-    if (!t->isPointerTy()) continue;
-    Type* pointee = dyn_cast<PointerType>(t)->getElementType();
+    if (t->isPointerTy()) {
+      Type* pointee = dyn_cast<PointerType>(t)->getElementType();
 
-    if (ByvalRewriteRules && a.hasByValAttr()) {
-      if (0 != MatchRewriteRules(pointee, ByvalRewriteRules)) return true;
+      if (ByvalRewriteRules && a.hasByValAttr()) {
+        const TypeRewriteRule* rule =
+          MatchRewriteRules(pointee, ByvalRewriteRules);
+        if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
+          return true;
+        }
+      } else if (SretRewriteRules && a.hasStructRetAttr()) {
+        if (0 != MatchRewriteRules(pointee, SretRewriteRules)) {
+          return true;
+        }
+      }
     }
-
-    if (SretRewriteRules && a.hasStructRetAttr()) {
-      if (0 != MatchRewriteRules(pointee, SretRewriteRules)) return true;
-    }
+    available -= RegUseForType(t);
   }
   return false;
 }
@@ -471,6 +588,23 @@ void UpdateFunctionSignature(Function &F,
   F.setAttributes(AttrListPtr::get(new_attributes_vec));
 }
 
+
+void ExtractFunctionArgsAndAttributes(Function& F,
+                                      std::vector<Argument*>& old_arguments,
+                                      std::vector<Attributes>& old_attributes) {
+  for (Function::arg_iterator ai = F.arg_begin(),
+                             end = F.arg_end();
+       ai != end;
+       ++ai) {
+    old_arguments.push_back(ai);
+  }
+
+  for (size_t i = 0; i < old_arguments.size(); ++i) {
+    // index zero is for return value attributes
+    old_attributes.push_back(F.getAttributes().getParamAttributes(i + 1));
+  }
+}
+
 // Apply byval or sret rewrites to function body.
 void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
 
@@ -483,52 +617,55 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
   std::vector<Argument*> new_arguments;
   std::vector<Attributes> new_attributes;
   std::vector<Argument*> old_arguments;
+  std::vector<Attributes> old_attributes;
 
-  // make copy first as create Argument adds them to the list
-  for (Function::arg_iterator ai = F.arg_begin(),
-                             end = F.arg_end();
-       ai != end;
-       ++ai) {
-    old_arguments.push_back(ai);
-  }
 
-  for (size_t i = 0; i < old_arguments.size(); ++i) {
-    Argument* arg = old_arguments[i];
-    Type* t = arg->getType();
-    // index zero is for return value attributes
-    Attributes attr = F.getAttributes().getParamAttributes(i + 1);
-    const TypeRewriteRule* rule = 0;
-    if (attr & Attribute::ByVal) {
-      rule = MatchRewriteRulesPointee(t, ByvalRewriteRules);
-    }
-    if (rule == 0) {
-      new_arguments.push_back(arg);
-      new_attributes.push_back(attr);
-      continue;
-    }
-    DEBUG(dbgs() << "REWRITING BYVAL "
-          << *t << " arg " << arg->getName() << " " << rule->name << "\n");
-    FixFunctionByvalsParameter(F,
-                               new_arguments,
-                               new_attributes,
-                               arg,
-                               rule);
-  }
+  // make a copy of everything first as create Argument adds them to the list
+  ExtractFunctionArgsAndAttributes(F, old_arguments, old_attributes);
 
   // A non-zero new_result_type indicates an sret rewrite
   Type* new_result_type = 0;
+
   // only the first arg can be "sret"
-  if (new_attributes[0] & Attribute::StructRet) {
-    const TypeRewriteRule* sret_rule = MatchRewriteRulesPointee(
-      new_arguments[0]->getType(), SretRewriteRules);
+  if (old_attributes.size() > 0 && old_attributes[0] & Attribute::StructRet) {
+    const TypeRewriteRule* sret_rule =
+      MatchRewriteRulesPointee(old_arguments[0]->getType(), SretRewriteRules);
     if (sret_rule) {
-      Argument* arg = F.getArgumentList().begin();
+      Argument* arg = old_arguments[0];
       DEBUG(dbgs() << "REWRITING SRET "
             << " arg " << arg->getName() << " " << sret_rule->name << "\n");
       new_result_type = RewriteFunctionSret(F, arg, sret_rule);
-      new_arguments.erase(new_arguments.begin());
-      new_attributes.erase(new_attributes.begin());
+      old_arguments.erase(old_arguments.begin());
+      old_attributes.erase(old_attributes.begin());
     }
+  }
+
+  // now deal with the byval arguments
+  RegUse available = AvailableRegs;
+  for (size_t i = 0; i < old_arguments.size(); ++i) {
+    Argument* arg = old_arguments[i];
+    Type* t = arg->getType();
+    Attributes attr = old_attributes[i];
+    if (attr & Attribute::ByVal) {
+      const TypeRewriteRule* rule =
+        MatchRewriteRulesPointee(t, ByvalRewriteRules);
+      if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
+        DEBUG(dbgs() << "REWRITING BYVAL "
+              << *t << " arg " << arg->getName() << " " << rule->name << "\n");
+        FixFunctionByvalsParameter(F,
+                                   new_arguments,
+                                   new_attributes,
+                                   arg,
+                                   rule);
+        available -= RegUseForRewriteRule(rule);
+        continue;
+      }
+    }
+
+    // fall through case - no rewrite is happening
+    new_arguments.push_back(arg);
+    new_attributes.push_back(attr);
+    available -= RegUseForType(t);
   }
 
   UpdateFunctionSignature(F, new_result_type, new_arguments, new_attributes);
@@ -539,31 +676,38 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
 }
 
 // used for T in {CallInst, InvokeInst}
+// TODO(robertm): try unifying this code with FunctionNeedsRewrite()
 template<class T> bool CallNeedsRewrite(
   const Instruction* inst,
   const TypeRewriteRule* ByvalRewriteRules,
-  const TypeRewriteRule* SretRewriteRules) {
+  const TypeRewriteRule* SretRewriteRules,
+  RegUse available) {
 
   const T* call = cast<T>(inst);
   // skip non parameter operands at the end
-  size_t num_params = call->getNumOperands() -
-                      (isa<CallInst>(inst) ? 1 : 3);
+  size_t num_params = call->getNumOperands() - (isa<CallInst>(inst) ? 1 : 3);
   for (size_t i = 0; i <  num_params; ++i) {
     Type* t = call->getOperand(i)->getType();
     // byval and srets are modelled as pointers (to structs)
-    if (!t->isPointerTy()) continue;
-    Type* pointee = dyn_cast<PointerType>(t)->getElementType();
+    if (t->isPointerTy()) {
+      Type* pointee = dyn_cast<PointerType>(t)->getElementType();
 
-    //  param zero is for the return value
-    if (ByvalRewriteRules && call->paramHasAttr(i + 1, Attribute::ByVal)) {
-      if (0 != MatchRewriteRules(pointee, ByvalRewriteRules)) return true;
+      //  param zero is for the return value
+      if (ByvalRewriteRules && call->paramHasAttr(i + 1, Attribute::ByVal)) {
+        const TypeRewriteRule* rule =
+          MatchRewriteRules(pointee, ByvalRewriteRules);
+        if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
+          return true;
+        }
+      } else if (SretRewriteRules &&
+                 call->paramHasAttr(i + 1, Attribute::StructRet)) {
+        if (0 != MatchRewriteRules(pointee, SretRewriteRules)) {
+          return true;
+        }
+      }
     }
-
-    if (SretRewriteRules && call->paramHasAttr(i + 1, Attribute::StructRet)) {
-      if (0 != MatchRewriteRules(pointee, SretRewriteRules)) return true;
-    }
+    available -= RegUseForType(t);
   }
-
   return false;
 }
 
@@ -571,11 +715,11 @@ template<class T> bool CallNeedsRewrite(
 // which will then be used as argument when we rewrite the actual call
 // instruction.
 void PrependCompensationForByvals(std::vector<Value*>& new_operands,
-                                   std::vector<Attributes>& new_attributes,
-                                   Instruction* call,
-                                   Value* byval,
-                                   const TypeRewriteRule* rule,
-                                   LLVMContext& C) {
+                                  std::vector<Attributes>& new_attributes,
+                                  Instruction* call,
+                                  Value* byval,
+                                  const TypeRewriteRule* rule,
+                                  LLVMContext& C) {
   // convert byval poiner to char pointer
   Value* base = CastInst::CreatePointerCast(
     byval, PointerType::getInt8PtrTy(C), "byval_base", call);
@@ -607,7 +751,21 @@ void CallsiteFixupSrets(Instruction* call,
                         Type* new_type,
                         const TypeRewriteRule* rule) {
   const char* pattern = rule->dst;
-  Instruction* next= call->getNextNode();
+  Instruction* next;
+  if (isa<CallInst>(call)) {
+    next = call->getNextNode();
+  } else if (isa<InvokeInst>(call)) {
+    // if this scheme turns out to be too simplistic (i.e. asserts fire)
+    // we need to introduce a new basic block for the compensation code.
+    BasicBlock* normal = dyn_cast<InvokeInst>(call)->getNormalDest();
+    if (!normal->getSinglePredecessor()) {
+      llvm_unreachable("unexpected invoke normal bb");
+    }
+    next = normal->getFirstNonPHI();
+  } else {
+    llvm_unreachable("unexpected call instruction");
+  }
+
   if (next == 0) {
     llvm_unreachable("unexpected missing next instruction");
   }
@@ -702,11 +860,16 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
   DEBUG(dbgs() << "CALLSITE BB BEFORE " << *BB);
   DEBUG(dbgs() << "\n");
   DEBUG(dbgs() << *call << "\n");
+  if (isa<InvokeInst>(call)) {
+    DEBUG(dbgs() << "\n" << *(dyn_cast<InvokeInst>(call)->getNormalDest()));
+  }
 
   // new_result(_type) is only relevent if an sret is rewritten
   // whish is indicated by sret_rule != 0
   const TypeRewriteRule* sret_rule = 0;
   Type* new_result_type = call->getType();
+  // This is the sret which was originally passed in as the first arg.
+  // After the rewrite we simply copy the function result into it.
   Value* new_result = 0;
 
   std::vector<Value*> old_operands;
@@ -721,45 +884,51 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
     llvm_unreachable("Unexpected instruction type");
   }
 
+  // handle sret (just the book-keeping, 'new_result' is dealt with below)
+  // only the first arg can be "sret"
+  if (old_attributes[0] & Attribute::StructRet) {
+    sret_rule = MatchRewriteRulesPointee(
+      old_operands[0]->getType(), SretRewriteRules);
+    if (sret_rule) {
+      new_result_type =
+        GetNewReturnType(old_operands[0]->getType(), sret_rule, C);
+      new_result = old_operands[0];
+      old_operands.erase(old_operands.begin());
+      old_attributes.erase(old_attributes.begin());
+    }
+  }
+
+  // handle byval
   std::vector<Value*> new_operands;
   std::vector<Attributes> new_attributes;
+  RegUse available = AvailableRegs;
 
   for (size_t i = 0; i <  old_operands.size(); ++i) {
     Value *operand = old_operands[i];
     Type* t = operand->getType();
-    const TypeRewriteRule* rule = 0;
-    if (old_attributes[i] & Attribute::ByVal) {
-      rule = MatchRewriteRulesPointee(t, ByvalRewriteRules);
+    Attributes attr = old_attributes[i];
+
+    if (attr & Attribute::ByVal) {
+      const TypeRewriteRule* rule =
+        MatchRewriteRulesPointee(t, ByvalRewriteRules);
+      if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
+        DEBUG(dbgs() << "REWRITING BYVAL "
+              << *t << " arg " << i << " " << rule->name << "\n");
+        PrependCompensationForByvals(new_operands,
+                                     new_attributes,
+                                     call,
+                                     operand,
+                                     rule,
+                                     C);
+        available -= RegUseForRewriteRule(rule);
+        continue;
+      }
     }
-    if (rule == 0) {
-      new_operands.push_back(operand);
-      new_attributes.push_back(old_attributes[i]);
-      continue;
-    }
 
-    DEBUG(dbgs() << "REWRITING BYVAL "
-          << *t << " arg " << i << " " << rule->name << "\n");
-    PrependCompensationForByvals(new_operands,
-                                 new_attributes,
-                                 call,
-                                 operand,
-                                 rule,
-                                 C);
-  }
-
-  // only the first arg can be "sret"
-  if (new_attributes[0] & Attribute::StructRet) {
-    sret_rule = MatchRewriteRulesPointee(
-      new_operands[0]->getType(), SretRewriteRules);
-  }
-
-  // we have to patch the call before we can add the sret compensation code
-  // because otherwise the type checker complains
-  if (sret_rule) {
-    new_result_type = GetNewReturnType(new_operands[0]->getType(), sret_rule, C);
-    new_result = new_operands[0];
-    new_operands.erase(new_operands.begin());
-    new_attributes.erase(new_attributes.begin());
+    // fall through case - no rewrite is happening
+    new_operands.push_back(operand);
+    new_attributes.push_back(attr);
+    available -= RegUseForType(t);
   }
 
   // Note, this code is tricky.
@@ -814,6 +983,9 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
   DEBUG(dbgs() << "CALLSITE BB AFTER" << *BB);
   DEBUG(dbgs() << "\n");
   DEBUG(dbgs() << *new_call << "\n");
+  if (isa<InvokeInst>(call)) {
+    DEBUG(dbgs() << "\n" << *(dyn_cast<InvokeInst>(call)->getNormalDest()));
+  }
 }
 
 bool NaClCcRewrite::runOnFunction(Function &F) {
@@ -822,7 +994,7 @@ bool NaClCcRewrite::runOnFunction(Function &F) {
 
   bool Changed = false;
 
-  if (FunctionNeedsRewrite(&F, ByvalRewriteRules, SretRewriteRules)) {
+  if (FunctionNeedsRewrite(&F, ByvalRewriteRules, SretRewriteRules, AvailableRegs)) {
     DEBUG(dbgs() << "FUNCTION NEEDS REWRITE " << F.getName() << "\n");
     RewriteFunctionPrologAndEpilog(F);
     Changed = true;
@@ -837,15 +1009,17 @@ bool NaClCcRewrite::runOnFunction(Function &F) {
       // we do decontructive magic below, so advance the iterator here
       // (this is still a little iffy)
       ++II;
-
       if (isa<InvokeInst>(inst) || isa<CallInst>(inst))  {
+        // skip calls to llvm.dbg.declare, etc.
+        if (isa<IntrinsicInst>(inst)) continue;
+
         if (isa<CallInst>(inst) &&
             !CallNeedsRewrite<CallInst>
-            (inst, ByvalRewriteRules, SretRewriteRules)) continue;
+            (inst, ByvalRewriteRules, SretRewriteRules, AvailableRegs)) continue;
 
         if (isa<InvokeInst>(inst) &&
             !CallNeedsRewrite<InvokeInst>
-            (inst, ByvalRewriteRules, SretRewriteRules)) continue;
+            (inst, ByvalRewriteRules, SretRewriteRules, AvailableRegs)) continue;
 
         RewriteCallsite(inst, F.getContext());
         Changed = true;
