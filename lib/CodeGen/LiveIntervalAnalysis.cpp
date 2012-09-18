@@ -34,6 +34,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "LiveRangeCalc.h"
+#include "VirtRegMap.h"
 #include <algorithm>
 #include <limits>
 #include <cmath>
@@ -155,9 +156,11 @@ void LiveIntervals::printInstrs(raw_ostream &OS) const {
   MF->print(OS, Indexes);
 }
 
+#ifndef NDEBUG
 void LiveIntervals::dumpInstrs() const {
   printInstrs(dbgs());
 }
+#endif
 
 static
 bool MultipleDefsBySameMI(const MachineInstr &MI, unsigned MOIdx) {
@@ -382,8 +385,7 @@ void LiveIntervals::handleRegisterDef(MachineBasicBlock *MBB,
 /// which a variable is live
 void LiveIntervals::computeIntervals() {
   DEBUG(dbgs() << "********** COMPUTING LIVE INTERVALS **********\n"
-               << "********** Function: "
-               << ((Value*)MF->getFunction())->getName() << '\n');
+               << "********** Function: " << MF->getName() << '\n');
 
   RegMaskBlocks.resize(MF->getNumBlockIDs());
 
@@ -734,12 +736,28 @@ bool LiveIntervals::shrinkToUses(LiveInterval *li,
 // Register allocator hooks.
 //
 
-void LiveIntervals::addKillFlags() {
+void LiveIntervals::addKillFlags(const VirtRegMap *VRM) {
+  // Keep track of regunit ranges.
+  SmallVector<std::pair<LiveInterval*, LiveInterval::iterator>, 8> RU;
+
   for (unsigned i = 0, e = MRI->getNumVirtRegs(); i != e; ++i) {
     unsigned Reg = TargetRegisterInfo::index2VirtReg(i);
     if (MRI->reg_nodbg_empty(Reg))
       continue;
     LiveInterval *LI = &getInterval(Reg);
+    if (LI->empty())
+      continue;
+
+    // Find the regunit intervals for the assigned register. They may overlap
+    // the virtual register live range, cancelling any kills.
+    RU.clear();
+    for (MCRegUnitIterator Units(VRM->getPhys(Reg), TRI); Units.isValid();
+         ++Units) {
+      LiveInterval *RUInt = &getRegUnit(*Units);
+      if (RUInt->empty())
+        continue;
+      RU.push_back(std::make_pair(RUInt, RUInt->find(LI->begin()->end)));
+    }
 
     // Every instruction that kills Reg corresponds to a live range end point.
     for (LiveInterval::iterator RI = LI->begin(), RE = LI->end(); RI != RE;
@@ -750,7 +768,32 @@ void LiveIntervals::addKillFlags() {
       MachineInstr *MI = getInstructionFromIndex(RI->end);
       if (!MI)
         continue;
-      MI->addRegisterKilled(Reg, NULL);
+
+      // Check if any of the reguints are live beyond the end of RI. That could
+      // happen when a physreg is defined as a copy of a virtreg:
+      //
+      //   %EAX = COPY %vreg5
+      //   FOO %vreg5         <--- MI, cancel kill because %EAX is live.
+      //   BAR %EAX<kill>
+      //
+      // There should be no kill flag on FOO when %vreg5 is rewritten as %EAX.
+      bool CancelKill = false;
+      for (unsigned u = 0, e = RU.size(); u != e; ++u) {
+        LiveInterval *RInt = RU[u].first;
+        LiveInterval::iterator &I = RU[u].second;
+        if (I == RInt->end())
+          continue;
+        I = RInt->advanceTo(I, RI->end);
+        if (I == RInt->end() || I->start >= RI->end)
+          continue;
+        // I is overlapping RI.
+        CancelKill = true;
+        break;
+      }
+      if (CancelKill)
+        MI->clearRegisterKills(Reg, NULL);
+      else
+        MI->addRegisterKilled(Reg, NULL);
     }
   }
 }
@@ -1174,7 +1217,7 @@ private:
     SlotIndex LastUse = findLastUseBefore(LI->reg, OldIdx);
     if (LastUse != NewIdx)
       moveKillFlags(LI->reg, NewIdx, LastUse);
-    LR->end = LastUse.getRegSlot();
+    LR->end = LastUse.getRegSlot(LR->end.isEarlyClobber());
   }
 
   void moveEnteringDownFrom(SlotIndex OldIdx, IntRangePair& P) {
@@ -1188,7 +1231,7 @@ private:
         assert(LR->end > OldIdx && "LiveRange does not cover original slot");
         moveKillFlags(LI->reg, LR->end, NewIdx);
       }
-      LR->end = NewIdx.getRegSlot();
+      LR->end = NewIdx.getRegSlot(LR->end.isEarlyClobber());
     }
   }
 

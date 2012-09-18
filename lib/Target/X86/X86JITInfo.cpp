@@ -555,7 +555,7 @@ uintptr_t X86JITInfo::getPICJumpTableEntry(uintptr_t BB, uintptr_t Entry) {
 #endif
 }
 
-template<typename T> void addUnaligned(void *Pos, T Delta) {
+template<typename T> static void addUnaligned(void *Pos, T Delta) {
   T Value;
   std::memcpy(reinterpret_cast<char*>(&Value), reinterpret_cast<char*>(Pos),
               sizeof(T));

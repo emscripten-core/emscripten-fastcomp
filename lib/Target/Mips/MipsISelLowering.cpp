@@ -1583,15 +1583,15 @@ SDValue MipsTargetLowering::LowerGlobalAddress(SDValue Op,
   if (getTargetMachine().getRelocationModel() != Reloc::PIC_ && !IsN64) {
     SDVTList VTs = DAG.getVTList(MVT::i32);
 
-    MipsTargetObjectFile &TLOF = (MipsTargetObjectFile&)getObjFileLowering();
+    const MipsTargetObjectFile &TLOF = (const MipsTargetObjectFile&)getObjFileLowering();
 
     // %gp_rel relocation
     if (TLOF.IsGlobalInSmallSection(GV, getTargetMachine())) {
       SDValue GA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
                                               MipsII::MO_GPREL);
       SDValue GPRelNode = DAG.getNode(MipsISD::GPRel, dl, VTs, &GA, 1);
-      SDValue GOT = DAG.getGLOBAL_OFFSET_TABLE(MVT::i32);
-      return DAG.getNode(ISD::ADD, dl, MVT::i32, GOT, GPRelNode);
+      SDValue GPReg = DAG.getRegister(Mips::GP, MVT::i32);
+      return DAG.getNode(ISD::ADD, dl, MVT::i32, GPReg, GPRelNode);
     }
     // %hi/%lo relocation
     SDValue GAHi = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,

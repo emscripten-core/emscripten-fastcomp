@@ -114,7 +114,7 @@ def SDT_X86TCRET : SDTypeProfile<0, 2, [SDTCisPtrTy<0>, SDTCisVT<1, i32>]>;
 def SDT_X86MEMBARRIER : SDTypeProfile<0, 0, []>;
 
 def X86MemBarrier : SDNode<"X86ISD::MEMBARRIER", SDT_X86MEMBARRIER,
-                            [SDNPHasChain]>;
+                            [SDNPHasChain,SDNPSideEffect]>;
 def X86MFence : SDNode<"X86ISD::MFENCE", SDT_X86MEMBARRIER,
                         [SDNPHasChain]>;
 def X86SFence : SDNode<"X86ISD::SFENCE", SDT_X86MEMBARRIER,
@@ -568,14 +568,21 @@ def HasMMX       : Predicate<"Subtarget->hasMMX()">;
 def Has3DNow     : Predicate<"Subtarget->has3DNow()">;
 def Has3DNowA    : Predicate<"Subtarget->has3DNowA()">;
 def HasSSE1      : Predicate<"Subtarget->hasSSE1()">;
+def UseSSE1      : Predicate<"Subtarget->hasSSE1() && Subtarget->hasNoAVX()">;
 def HasSSE2      : Predicate<"Subtarget->hasSSE2()">;
+def UseSSE2      : Predicate<"Subtarget->hasSSE2() && Subtarget->hasNoAVX()">;
 def HasSSE3      : Predicate<"Subtarget->hasSSE3()">;
+def UseSSE3      : Predicate<"Subtarget->hasSSE3() && Subtarget->hasNoAVX()">;
 def HasSSSE3     : Predicate<"Subtarget->hasSSSE3()">;
+def UseSSSE3     : Predicate<"Subtarget->hasSSSE3() && Subtarget->hasNoAVX()">;
 def HasSSE41     : Predicate<"Subtarget->hasSSE41()">;
+def UseSSE41     : Predicate<"Subtarget->hasSSE41() && Subtarget->hasNoAVX()">;
 def HasSSE42     : Predicate<"Subtarget->hasSSE42()">;
+def UseSSE42     : Predicate<"Subtarget->hasSSE42() && Subtarget->hasNoAVX()">;
 def HasSSE4A     : Predicate<"Subtarget->hasSSE4A()">;
 def HasAVX       : Predicate<"Subtarget->hasAVX()">;
 def HasAVX2      : Predicate<"Subtarget->hasAVX2()">;
+def HasAVX1Only  : Predicate<"Subtarget->hasAVX() && !Subtarget->hasAVX2()">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
 def HasAES       : Predicate<"Subtarget->hasAES()">;

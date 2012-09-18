@@ -576,6 +576,11 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     }
   }
 
+  // ARM and Thumb2 support UMLAL/SMLAL.
+  if (!Subtarget->isThumb1Only())
+    setTargetDAGCombine(ISD::ADDC);
+
+
   computeRegisterProperties();
 
   // ARM does not have f32 extending load.
@@ -1021,6 +1026,8 @@ const char *ARMTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case ARMISD::VTBL2:         return "ARMISD::VTBL2";
   case ARMISD::VMULLs:        return "ARMISD::VMULLs";
   case ARMISD::VMULLu:        return "ARMISD::VMULLu";
+  case ARMISD::UMLAL:         return "ARMISD::UMLAL";
+  case ARMISD::SMLAL:         return "ARMISD::SMLAL";
   case ARMISD::BUILD_VECTOR:  return "ARMISD::BUILD_VECTOR";
   case ARMISD::FMAX:          return "ARMISD::FMAX";
   case ARMISD::FMIN:          return "ARMISD::FMIN";
@@ -4383,10 +4390,21 @@ SDValue ARMTargetLowering::LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
   }
 
   // Scan through the operands to see if only one value is used.
+  //
+  // As an optimisation, even if more than one value is used it may be more
+  // profitable to splat with one value then change some lanes.
+  //
+  // Heuristically we decide to do this if the vector has a "dominant" value,
+  // defined as splatted to more than half of the lanes.
   unsigned NumElts = VT.getVectorNumElements();
   bool isOnlyLowElement = true;
   bool usesOnlyOneValue = true;
+  bool hasDominantValue = false;
   bool isConstant = true;
+
+  // Map of the number of times a particular SDValue appears in the
+  // element list.
+  DenseMap<SDValue, unsigned> ValueCounts;
   SDValue Value;
   for (unsigned i = 0; i < NumElts; ++i) {
     SDValue V = Op.getOperand(i);
@@ -4397,13 +4415,21 @@ SDValue ARMTargetLowering::LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
     if (!isa<ConstantFPSDNode>(V) && !isa<ConstantSDNode>(V))
       isConstant = false;
 
-    if (!Value.getNode())
+    ValueCounts.insert(std::make_pair(V, 0));
+    unsigned &Count = ValueCounts[V];
+    
+    // Is this value dominant? (takes up more than half of the lanes)
+    if (++Count > (NumElts / 2)) {
+      hasDominantValue = true;
       Value = V;
-    else if (V != Value)
-      usesOnlyOneValue = false;
+    }
   }
+  if (ValueCounts.size() != 1)
+    usesOnlyOneValue = false;
+  if (!Value.getNode() && ValueCounts.size() > 0)
+    Value = ValueCounts.begin()->first;
 
-  if (!Value.getNode())
+  if (ValueCounts.size() == 0)
     return DAG.getUNDEF(VT);
 
   if (isOnlyLowElement)
@@ -4413,9 +4439,34 @@ SDValue ARMTargetLowering::LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
 
   // Use VDUP for non-constant splats.  For f32 constant splats, reduce to
   // i32 and try again.
-  if (usesOnlyOneValue && EltSize <= 32) {
-    if (!isConstant)
-      return DAG.getNode(ARMISD::VDUP, dl, VT, Value);
+  if (hasDominantValue && EltSize <= 32) {
+    if (!isConstant) {
+      SDValue N;
+
+      // If we are VDUPing a value that comes directly from a vector, that will
+      // cause an unnecessary move to and from a GPR, where instead we could
+      // just use VDUPLANE.
+      if (Value->getOpcode() == ISD::EXTRACT_VECTOR_ELT)
+        N = DAG.getNode(ARMISD::VDUPLANE, dl, VT,
+                        Value->getOperand(0), Value->getOperand(1));
+      else
+        N = DAG.getNode(ARMISD::VDUP, dl, VT, Value);
+
+      if (!usesOnlyOneValue) {
+        // The dominant value was splatted as 'N', but we now have to insert
+        // all differing elements.
+        for (unsigned I = 0; I < NumElts; ++I) {
+          if (Op.getOperand(I) == Value)
+            continue;
+          SmallVector<SDValue, 3> Ops;
+          Ops.push_back(N);
+          Ops.push_back(Op.getOperand(I));
+          Ops.push_back(DAG.getConstant(I, MVT::i32));
+          N = DAG.getNode(ISD::INSERT_VECTOR_ELT, dl, VT, &Ops[0], 3);
+        }
+      }
+      return N;
+    }
     if (VT.getVectorElementType().isFloatingPoint()) {
       SmallVector<SDValue, 8> Ops;
       for (unsigned i = 0; i < NumElts; ++i)
@@ -4427,9 +4478,11 @@ SDValue ARMTargetLowering::LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
       if (Val.getNode())
         return DAG.getNode(ISD::BITCAST, dl, VT, Val);
     }
-    SDValue Val = IsSingleInstrConstant(Value, DAG, ST, dl);
-    if (Val.getNode())
-      return DAG.getNode(ARMISD::VDUP, dl, VT, Val);
+    if (usesOnlyOneValue) {
+      SDValue Val = IsSingleInstrConstant(Value, DAG, ST, dl);
+      if (isConstant && Val.getNode())
+        return DAG.getNode(ARMISD::VDUP, dl, VT, Val); 
+    }
   }
 
   // If all elements are constants and the case above didn't get hit, fall back
@@ -5697,7 +5750,7 @@ ARMTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
   exitMBB->transferSuccessorsAndUpdatePHIs(BB);
 
   const TargetRegisterClass *TRC = isThumb2 ?
-    (const TargetRegisterClass*)&ARM::tGPRRegClass :
+    (const TargetRegisterClass*)&ARM::rGPRRegClass :
     (const TargetRegisterClass*)&ARM::GPRRegClass;
   unsigned scratch = MRI.createVirtualRegister(TRC);
   unsigned scratch2 = (!BinOpcode) ? incr : MRI.createVirtualRegister(TRC);
@@ -5808,7 +5861,7 @@ ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
   exitMBB->transferSuccessorsAndUpdatePHIs(BB);
 
   const TargetRegisterClass *TRC = isThumb2 ?
-    (const TargetRegisterClass*)&ARM::tGPRRegClass :
+    (const TargetRegisterClass*)&ARM::rGPRRegClass :
     (const TargetRegisterClass*)&ARM::GPRRegClass;
   unsigned scratch = MRI.createVirtualRegister(TRC);
   unsigned scratch2 = MRI.createVirtualRegister(TRC);
@@ -7476,6 +7529,154 @@ static SDValue AddCombineToVPADDL(SDNode *N, SDValue N0, SDValue N1,
   return DAG.getNode(ISD::TRUNCATE, N->getDebugLoc(), VT, tmp);
 }
 
+static SDValue findMUL_LOHI(SDValue V) {
+  if (V->getOpcode() == ISD::UMUL_LOHI ||
+      V->getOpcode() == ISD::SMUL_LOHI)
+    return V;
+  return SDValue();
+}
+
+static SDValue AddCombineTo64bitMLAL(SDNode *AddcNode,
+                                     TargetLowering::DAGCombinerInfo &DCI,
+                                     const ARMSubtarget *Subtarget) {
+
+  if (Subtarget->isThumb1Only()) return SDValue();
+
+  // Only perform the checks after legalize when the pattern is available.
+  if (DCI.isBeforeLegalize()) return SDValue();
+
+  // Look for multiply add opportunities.
+  // The pattern is a ISD::UMUL_LOHI followed by two add nodes, where
+  // each add nodes consumes a value from ISD::UMUL_LOHI and there is
+  // a glue link from the first add to the second add.
+  // If we find this pattern, we can replace the U/SMUL_LOHI, ADDC, and ADDE by
+  // a S/UMLAL instruction.
+  //          loAdd   UMUL_LOHI
+  //            \    / :lo    \ :hi
+  //             \  /          \          [no multiline comment]
+  //              ADDC         |  hiAdd
+  //                 \ :glue  /  /
+  //                  \      /  /
+  //                    ADDE
+  //
+  assert(AddcNode->getOpcode() == ISD::ADDC && "Expect an ADDC");
+  SDValue AddcOp0 = AddcNode->getOperand(0);
+  SDValue AddcOp1 = AddcNode->getOperand(1);
+
+  // Check if the two operands are from the same mul_lohi node.
+  if (AddcOp0.getNode() == AddcOp1.getNode())
+    return SDValue();
+
+  assert(AddcNode->getNumValues() == 2 &&
+         AddcNode->getValueType(0) == MVT::i32 &&
+         AddcNode->getValueType(1) == MVT::Glue &&
+         "Expect ADDC with two result values: i32, glue");
+
+  // Check that the ADDC adds the low result of the S/UMUL_LOHI.
+  if (AddcOp0->getOpcode() != ISD::UMUL_LOHI &&
+      AddcOp0->getOpcode() != ISD::SMUL_LOHI &&
+      AddcOp1->getOpcode() != ISD::UMUL_LOHI &&
+      AddcOp1->getOpcode() != ISD::SMUL_LOHI)
+    return SDValue();
+
+  // Look for the glued ADDE.
+  SDNode* AddeNode = AddcNode->getGluedUser();
+  if (AddeNode == NULL)
+    return SDValue();
+
+  // Make sure it is really an ADDE.
+  if (AddeNode->getOpcode() != ISD::ADDE)
+    return SDValue();
+
+  assert(AddeNode->getNumOperands() == 3 &&
+         AddeNode->getOperand(2).getValueType() == MVT::Glue &&
+         "ADDE node has the wrong inputs");
+
+  // Check for the triangle shape.
+  SDValue AddeOp0 = AddeNode->getOperand(0);
+  SDValue AddeOp1 = AddeNode->getOperand(1);
+
+  // Make sure that the ADDE operands are not coming from the same node.
+  if (AddeOp0.getNode() == AddeOp1.getNode())
+    return SDValue();
+
+  // Find the MUL_LOHI node walking up ADDE's operands.
+  bool IsLeftOperandMUL = false;
+  SDValue MULOp = findMUL_LOHI(AddeOp0);
+  if (MULOp == SDValue())
+   MULOp = findMUL_LOHI(AddeOp1);
+  else
+    IsLeftOperandMUL = true;
+  if (MULOp == SDValue())
+     return SDValue();
+
+  // Figure out the right opcode.
+  unsigned Opc = MULOp->getOpcode();
+  unsigned FinalOpc = (Opc == ISD::SMUL_LOHI) ? ARMISD::SMLAL : ARMISD::UMLAL;
+
+  // Figure out the high and low input values to the MLAL node.
+  SDValue* HiMul = &MULOp;
+  SDValue* HiAdd = NULL;
+  SDValue* LoMul = NULL;
+  SDValue* LowAdd = NULL;
+
+  if (IsLeftOperandMUL)
+    HiAdd = &AddeOp1;
+  else
+    HiAdd = &AddeOp0;
+
+
+  if (AddcOp0->getOpcode() == Opc) {
+    LoMul = &AddcOp0;
+    LowAdd = &AddcOp1;
+  }
+  if (AddcOp1->getOpcode() == Opc) {
+    LoMul = &AddcOp1;
+    LowAdd = &AddcOp0;
+  }
+
+  if (LoMul == NULL)
+    return SDValue();
+
+  if (LoMul->getNode() != HiMul->getNode())
+    return SDValue();
+
+  // Create the merged node.
+  SelectionDAG &DAG = DCI.DAG;
+
+  // Build operand list.
+  SmallVector<SDValue, 8> Ops;
+  Ops.push_back(LoMul->getOperand(0));
+  Ops.push_back(LoMul->getOperand(1));
+  Ops.push_back(*LowAdd);
+  Ops.push_back(*HiAdd);
+
+  SDValue MLALNode =  DAG.getNode(FinalOpc, AddcNode->getDebugLoc(),
+                                 DAG.getVTList(MVT::i32, MVT::i32),
+                                 &Ops[0], Ops.size());
+
+  // Replace the ADDs' nodes uses by the MLA node's values.
+  SDValue HiMLALResult(MLALNode.getNode(), 1);
+  DAG.ReplaceAllUsesOfValueWith(SDValue(AddeNode, 0), HiMLALResult);
+
+  SDValue LoMLALResult(MLALNode.getNode(), 0);
+  DAG.ReplaceAllUsesOfValueWith(SDValue(AddcNode, 0), LoMLALResult);
+
+  // Return original node to notify the driver to stop replacing.
+  SDValue resNode(AddcNode, 0);
+  return resNode;
+}
+
+/// PerformADDCCombine - Target-specific dag combine transform from
+/// ISD::ADDC, ISD::ADDE, and ISD::MUL_LOHI to MLAL.
+static SDValue PerformADDCCombine(SDNode *N,
+                                 TargetLowering::DAGCombinerInfo &DCI,
+                                 const ARMSubtarget *Subtarget) {
+
+  return AddCombineTo64bitMLAL(N, DCI, Subtarget);
+
+}
+
 /// PerformADDCombineWithOperands - Try DAG combinations for an ADD with
 /// operands N0 and N1.  This is a helper for PerformADDCombine that is
 /// called with the default operands, and if that fails, with commuted
@@ -9047,6 +9248,7 @@ SDValue ARMTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
   switch (N->getOpcode()) {
   default: break;
+  case ISD::ADDC:       return PerformADDCCombine(N, DCI, Subtarget);
   case ISD::ADD:        return PerformADDCombine(N, DCI, Subtarget);
   case ISD::SUB:        return PerformSUBCombine(N, DCI);
   case ISD::MUL:        return PerformMULCombine(N, DCI, Subtarget);

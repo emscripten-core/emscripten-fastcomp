@@ -14,7 +14,6 @@
 #ifndef LLVM_CODEGEN_MACHINEOPERAND_H
 #define LLVM_CODEGEN_MACHINEOPERAND_H
 
-#include "llvm/ADT/Hashing.h"
 #include "llvm/Support/DataTypes.h"
 #include <cassert>
 
@@ -30,6 +29,7 @@ class MachineRegisterInfo;
 class MDNode;
 class TargetMachine;
 class TargetRegisterInfo;
+class hash_code;
 class raw_ostream;
 class MCSymbol;
 
@@ -60,12 +60,20 @@ private:
   /// union.
   unsigned char OpKind; // MachineOperandType
 
-  /// SubReg - Subregister number, only valid for MO_Register.  A value of 0
-  /// indicates the MO_Register has no subReg.
-  unsigned char SubReg;
+  // This union is discriminated by OpKind.
+  union {
+    /// SubReg - Subregister number, only valid for MO_Register.  A value of 0
+    /// indicates the MO_Register has no subReg.
+    unsigned char SubReg;
 
-  /// TargetFlags - This is a set of target-specific operand flags.
-  unsigned char TargetFlags;
+    /// TargetFlags - This is a set of target-specific operand flags.
+    unsigned char TargetFlags;
+  };
+
+  /// TiedTo - Non-zero when this register operand is tied to another register
+  /// operand. The encoding of this field is described in the block comment
+  /// before MachineInstr::tieOperands().
+  unsigned char TiedTo : 4;
 
   /// IsDef/IsImp/IsKill/IsDead flags - These are only valid for MO_Register
   /// operands.
@@ -176,9 +184,17 @@ public:
   ///
   MachineOperandType getType() const { return (MachineOperandType)OpKind; }
 
-  unsigned char getTargetFlags() const { return TargetFlags; }
-  void setTargetFlags(unsigned char F) { TargetFlags = F; }
-  void addTargetFlag(unsigned char F) { TargetFlags |= F; }
+  unsigned char getTargetFlags() const {
+    return isReg() ? 0 : TargetFlags;
+  }
+  void setTargetFlags(unsigned char F) {
+    assert(!isReg() && "Register operands can't have target flags");
+    TargetFlags = F;
+  }
+  void addTargetFlag(unsigned char F) {
+    assert(!isReg() && "Register operands can't have target flags");
+    TargetFlags |= F;
+  }
 
 
   /// getParent - Return the instruction that this operand belongs to.
@@ -286,6 +302,11 @@ public:
   bool isEarlyClobber() const {
     assert(isReg() && "Wrong MachineOperand accessor");
     return IsEarlyClobber;
+  }
+
+  bool isTied() const {
+    assert(isReg() && "Wrong MachineOperand accessor");
+    return TiedTo;
   }
 
   bool isDebug() const {
@@ -421,7 +442,7 @@ public:
   int64_t getOffset() const {
     assert((isGlobal() || isSymbol() || isCPI() || isTargetIndex() ||
             isBlockAddress()) && "Wrong MachineOperand accessor");
-    return (int64_t(Contents.OffsetedInfo.OffsetHi) << 32) |
+    return int64_t(uint64_t(Contents.OffsetedInfo.OffsetHi) << 32) |
            SmallContents.OffsetLo;
   }
 
@@ -548,6 +569,7 @@ public:
     Op.IsUndef = isUndef;
     Op.IsInternalRead = isInternalRead;
     Op.IsEarlyClobber = isEarlyClobber;
+    Op.TiedTo = 0;
     Op.IsDebug = isDebug;
     Op.SmallContents.RegNo = Reg;
     Op.Contents.Reg.Prev = 0;

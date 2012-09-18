@@ -67,11 +67,18 @@ private:
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                                MCStreamer &Out);
 
-  bool MatchInstruction(SMLoc IDLoc,
+  bool MatchInstruction(SMLoc IDLoc,  unsigned &Kind,
                         SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                         SmallVectorImpl<MCInst> &MCInsts,
                         unsigned &OrigErrorInfo,
                         bool matchingInlineAsm = false);
+
+  unsigned getMCInstOperandNum(unsigned Kind, MCInst &Inst,
+                    const SmallVectorImpl<MCParsedAsmOperand*> &Operands,
+                               unsigned OperandNum, unsigned &NumMCOperands) {
+    return getMCInstOperandNumImpl(Kind, Inst, Operands, OperandNum,
+                                   NumMCOperands);
+  }
 
   /// isSrcOp - Returns true if operand is either (%rsi) or %ds:%(rsi)
   /// in 64bit mode or (%esi) or %es:(%esi) in 32bit mode.
@@ -514,12 +521,13 @@ bool X86AsmParser::isDstOp(X86Operand &Op) {
 bool X86AsmParser::ParseRegister(unsigned &RegNo,
                                  SMLoc &StartLoc, SMLoc &EndLoc) {
   RegNo = 0;
-  if (!isParsingIntelSyntax()) {
-    const AsmToken &TokPercent = Parser.getTok();
-    assert(TokPercent.is(AsmToken::Percent) && "Invalid token kind!");
-    StartLoc = TokPercent.getLoc();
+  const AsmToken &PercentTok = Parser.getTok();
+  StartLoc = PercentTok.getLoc();
+
+  // If we encounter a %, ignore it. This code handles registers with and
+  // without the prefix, unprefixed registers can occur in cfi directives.
+  if (!isParsingIntelSyntax() && PercentTok.is(AsmToken::Percent))
     Parser.Lex(); // Eat percent token.
-  }
 
   const AsmToken &Tok = Parser.getTok();
   if (Tok.isNot(AsmToken::Identifier)) {
@@ -1516,9 +1524,12 @@ bool X86AsmParser::
 MatchAndEmitInstruction(SMLoc IDLoc,
                         SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                         MCStreamer &Out) {
-  SmallVector<MCInst, 2> Insts;
+  unsigned Kind;
   unsigned ErrorInfo;
-  bool Error = MatchInstruction(IDLoc, Operands, Insts, ErrorInfo);
+  SmallVector<MCInst, 2> Insts;
+
+  bool Error = MatchInstruction(IDLoc, Kind, Operands, Insts,
+                                ErrorInfo);
   if (!Error)
     for (unsigned i = 0, e = Insts.size(); i != e; ++i)
       Out.EmitInstruction(Insts[i]);
@@ -1526,7 +1537,7 @@ MatchAndEmitInstruction(SMLoc IDLoc,
 }
 
 bool X86AsmParser::
-MatchInstruction(SMLoc IDLoc,
+MatchInstruction(SMLoc IDLoc, unsigned &Kind,
                  SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                  SmallVectorImpl<MCInst> &MCInsts, unsigned &OrigErrorInfo,
                  bool matchingInlineAsm) {
@@ -1537,7 +1548,7 @@ MatchInstruction(SMLoc IDLoc,
 
   // First, handle aliases that expand to multiple instructions.
   // FIXME: This should be replaced with a real .td file alias mechanism.
-  // Also, MatchInstructionImpl should do actually *do* the EmitInstruction
+  // Also, MatchInstructionImpl should actually *do* the EmitInstruction
   // call.
   if (Op->getToken() == "fstsw" || Op->getToken() == "fstcw" ||
       Op->getToken() == "fstsww" || Op->getToken() == "fstcww" ||
@@ -1568,7 +1579,7 @@ MatchInstruction(SMLoc IDLoc,
   MCInst Inst;
 
   // First, try a direct match.
-  switch (MatchInstructionImpl(Operands, Inst, OrigErrorInfo,
+  switch (MatchInstructionImpl(Operands, Kind, Inst, OrigErrorInfo,
                                isParsingIntelSyntax())) {
   default: break;
   case Match_Success:
@@ -1585,9 +1596,6 @@ MatchInstruction(SMLoc IDLoc,
     Error(IDLoc, "instruction requires a CPU feature not currently enabled",
           EmptyRanges, matchingInlineAsm);
     return true;
-  case Match_ConversionFail:
-    return Error(IDLoc, "unable to convert operands to instruction",
-                 EmptyRanges, matchingInlineAsm);
   case Match_InvalidOperand:
     WasOriginallyInvalidOperand = true;
     break;
@@ -1619,14 +1627,19 @@ MatchInstruction(SMLoc IDLoc,
   Tmp[Base.size()] = Suffixes[0];
   unsigned ErrorInfoIgnore;
   unsigned Match1, Match2, Match3, Match4;
+  unsigned tKind;
 
-  Match1 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore);
+  Match1 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  if (Match1 == Match_Success) Kind = tKind;
   Tmp[Base.size()] = Suffixes[1];
-  Match2 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore);
+  Match2 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  if (Match2 == Match_Success) Kind = tKind;
   Tmp[Base.size()] = Suffixes[2];
-  Match3 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore);
+  Match3 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  if (Match3 == Match_Success) Kind = tKind;
   Tmp[Base.size()] = Suffixes[3];
-  Match4 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore);
+  Match4 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  if (Match4 == Match_Success) Kind = tKind;
 
   // Restore the old token.
   Op->setTokenValue(Base);
@@ -1677,8 +1690,10 @@ MatchInstruction(SMLoc IDLoc,
   if ((Match1 == Match_MnemonicFail) && (Match2 == Match_MnemonicFail) &&
       (Match3 == Match_MnemonicFail) && (Match4 == Match_MnemonicFail)) {
     if (!WasOriginallyInvalidOperand) {
+      ArrayRef<SMRange> Ranges = matchingInlineAsm ? EmptyRanges :
+        Op->getLocRange();
       return Error(IDLoc, "invalid instruction mnemonic '" + Base + "'",
-                   Op->getLocRange(), matchingInlineAsm);
+                   Ranges, matchingInlineAsm);
     }
 
     // Recover location info for the operand if we know which was the problem.

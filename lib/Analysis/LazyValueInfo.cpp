@@ -470,8 +470,10 @@ bool LazyValueInfoCache::hasBlockValue(Value *Val, BasicBlock *BB) {
     return true;
 
   LVIValueHandle ValHandle(Val, this);
-  if (!ValueCache.count(ValHandle)) return false;
-  return ValueCache[ValHandle].count(BB);
+  std::map<LVIValueHandle, ValueCacheEntryTy>::iterator I =
+    ValueCache.find(ValHandle);
+  if (I == ValueCache.end()) return false;
+  return I->second.count(BB);
 }
 
 LVILatticeVal LazyValueInfoCache::getBlockValue(Value *Val, BasicBlock *BB) {
@@ -845,9 +847,12 @@ static bool getEdgeValueLocal(Value *Val, BasicBlock *BBFrom,
     for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end();
          i != e; ++i) {
       ConstantRange EdgeVal(i.getCaseValue()->getValue());
-      if (DefaultCase)
-        EdgesVals = EdgesVals.difference(EdgeVal);
-      else if (i.getCaseSuccessor() == BBTo)
+      if (DefaultCase) {
+        // It is possible that the default destination is the destination of
+        // some cases. There is no need to perform difference for those cases.
+        if (i.getCaseSuccessor() != BBTo)
+          EdgesVals = EdgesVals.difference(EdgeVal);
+      } else if (i.getCaseSuccessor() == BBTo)
         EdgesVals = EdgesVals.unionWith(EdgeVal);
     }
     Result = LVILatticeVal::getRange(EdgesVals);

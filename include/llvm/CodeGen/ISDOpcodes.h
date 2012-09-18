@@ -637,6 +637,10 @@ namespace ISD {
     ATOMIC_LOAD_UMIN,
     ATOMIC_LOAD_UMAX,
 
+    /// This corresponds to the llvm.lifetime.* intrinsics. The first operand
+    /// is the chain and the second operand is the alloca pointer.
+    LIFETIME_START, LIFETIME_END,
+
     // @LOCALMOD-BEGIN
     // NACL_* - Native Client instrinsics.
     // These correspond to functions in:

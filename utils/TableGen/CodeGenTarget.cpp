@@ -300,6 +300,8 @@ void CodeGenTarget::ComputeInstrsByEnum() const {
     "REG_SEQUENCE",
     "COPY",
     "BUNDLE",
+    "LIFETIME_START",
+    "LIFETIME_END",
     // @LOCALMOD-BEGIN
     "BUNDLE_ALIGN_START",
     "BUNDLE_ALIGN_END",
@@ -338,6 +340,15 @@ void CodeGenTarget::ComputeInstrsByEnum() const {
 ///
 bool CodeGenTarget::isLittleEndianEncoding() const {
   return getInstructionSet()->getValueAsBit("isLittleEndianEncoding");
+}
+
+/// guessInstructionProperties - Return true if it's OK to guess instruction
+/// properties instead of raising an error.
+///
+/// This is configurable as a temporary migration aid. It will eventually be
+/// permanently false.
+bool CodeGenTarget::guessInstructionProperties() const {
+  return getInstructionSet()->getValueAsBit("guessInstructionProperties");
 }
 
 //===----------------------------------------------------------------------===//

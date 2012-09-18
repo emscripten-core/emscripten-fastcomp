@@ -74,7 +74,8 @@ public:
     PC,
     SCEI,
     BGP,
-    BGQ
+    BGQ,
+    Freescale
   };
   enum OSType {
     UnknownOS,
@@ -109,7 +110,7 @@ public:
     GNUEABIHF,
     EABI,
     MachO,
-    ANDROIDEABI
+    Android
   };
 
 private:

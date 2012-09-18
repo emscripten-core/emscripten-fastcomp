@@ -21,7 +21,7 @@
 
 #define DEBUG_TYPE "tsan"
 
-#include "FunctionBlackList.h"
+#include "BlackList.h"
 #include "llvm/Function.h"
 #include "llvm/IRBuilder.h"
 #include "llvm/Intrinsics.h"
@@ -50,7 +50,7 @@ static cl::opt<std::string>  ClBlackListFile("tsan-blacklist",
 
 STATISTIC(NumInstrumentedReads, "Number of instrumented reads");
 STATISTIC(NumInstrumentedWrites, "Number of instrumented writes");
-STATISTIC(NumOmittedReadsBeforeWrite, 
+STATISTIC(NumOmittedReadsBeforeWrite,
           "Number of reads ignored due to following writes");
 STATISTIC(NumAccessesWithBadSize, "Number of accesses with bad size");
 STATISTIC(NumInstrumentedVtableWrites, "Number of vtable ptr writes");
@@ -77,7 +77,7 @@ struct ThreadSanitizer : public FunctionPass {
   int getMemoryAccessFuncIndex(Value *Addr);
 
   TargetData *TD;
-  OwningPtr<FunctionBlackList> BL;
+  OwningPtr<BlackList> BL;
   IntegerType *OrdTy;
   // Callbacks to run-time library are computed in doInitialization.
   Function *TsanFuncEntry;
@@ -121,7 +121,7 @@ bool ThreadSanitizer::doInitialization(Module &M) {
   TD = getAnalysisIfAvailable<TargetData>();
   if (!TD)
     return false;
-  BL.reset(new FunctionBlackList(ClBlackListFile));
+  BL.reset(new BlackList(ClBlackListFile));
 
   // Always insert a call to __tsan_init into the module's CTORs.
   IRBuilder<> IRB(M.getContext());
@@ -186,7 +186,7 @@ bool ThreadSanitizer::addrPointsToConstantData(Value *Addr) {
       NumOmittedReadsFromConstantGlobals++;
       return true;
     }
-  } else if(LoadInst *L = dyn_cast<LoadInst>(Addr)) {
+  } else if (LoadInst *L = dyn_cast<LoadInst>(Addr)) {
     if (isVtableAccess(L)) {
       // Reads from a vtable pointer can not race with any writes.
       NumOmittedReadsFromVtable++;
@@ -344,7 +344,7 @@ static ConstantInt *createOrdering(IRBuilder<> *IRB, AtomicOrdering ord) {
     case NotAtomic:              assert(false);
     case Unordered:              // Fall-through.
     case Monotonic:              v = 1 << 0; break;
- // case Consume:                v = 1 << 1; break;  // Not specified yet.
+    // case Consume:                v = 1 << 1; break;  // Not specified yet.
     case Acquire:                v = 1 << 2; break;
     case Release:                v = 1 << 3; break;
     case AcquireRelease:         v = 1 << 4; break;

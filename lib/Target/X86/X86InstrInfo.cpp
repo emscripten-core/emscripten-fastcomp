@@ -1115,6 +1115,36 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VPUNPCKLWDYrr,     X86::VPUNPCKLWDYrm,      TB_ALIGN_32 },
     { X86::VPXORYrr,          X86::VPXORYrm,           TB_ALIGN_32 },
     // FIXME: add AVX 256-bit foldable instructions
+
+    // FMA4 foldable patterns
+    { X86::VFMADDSS4rr,       X86::VFMADDSS4mr,        TB_ALIGN_16 },
+    { X86::VFMADDSD4rr,       X86::VFMADDSD4mr,        TB_ALIGN_16 },
+    { X86::VFMADDPS4rr,       X86::VFMADDPS4mr,        TB_ALIGN_16 },
+    { X86::VFMADDPD4rr,       X86::VFMADDPD4mr,        TB_ALIGN_16 },
+    { X86::VFMADDPS4rrY,      X86::VFMADDPS4mrY,       TB_ALIGN_32 },
+    { X86::VFMADDPD4rrY,      X86::VFMADDPD4mrY,       TB_ALIGN_32 },
+    { X86::VFNMADDPS4rr,      X86::VFNMADDPS4mr,       TB_ALIGN_16 },
+    { X86::VFNMADDPD4rr,      X86::VFNMADDPD4mr,       TB_ALIGN_16 },
+    { X86::VFNMADDPS4rrY,     X86::VFNMADDPS4mrY,      TB_ALIGN_32 },
+    { X86::VFNMADDPD4rrY,     X86::VFNMADDPD4mrY,      TB_ALIGN_32 },
+    { X86::VFMSUBSS4rr,       X86::VFMSUBSS4mr,        TB_ALIGN_16 },
+    { X86::VFMSUBSD4rr,       X86::VFMSUBSD4mr,        TB_ALIGN_16 },
+    { X86::VFMSUBPS4rr,       X86::VFMSUBPS4mr,        TB_ALIGN_16 },
+    { X86::VFMSUBPD4rr,       X86::VFMSUBPD4mr,        TB_ALIGN_16 },
+    { X86::VFMSUBPS4rrY,      X86::VFMSUBPS4mrY,       TB_ALIGN_32 },
+    { X86::VFMSUBPD4rrY,      X86::VFMSUBPD4mrY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPS4rr,      X86::VFNMSUBPS4mr,       TB_ALIGN_16 },
+    { X86::VFNMSUBPD4rr,      X86::VFNMSUBPD4mr,       TB_ALIGN_16 },
+    { X86::VFNMSUBPS4rrY,     X86::VFNMSUBPS4mrY,      TB_ALIGN_32 },
+    { X86::VFNMSUBPD4rrY,     X86::VFNMSUBPD4mrY,      TB_ALIGN_32 },
+    { X86::VFMADDSUBPS4rr,    X86::VFMADDSUBPS4mr,     TB_ALIGN_16 },
+    { X86::VFMADDSUBPD4rr,    X86::VFMADDSUBPD4mr,     TB_ALIGN_16 },
+    { X86::VFMADDSUBPS4rrY,   X86::VFMADDSUBPS4mrY,    TB_ALIGN_32 },
+    { X86::VFMADDSUBPD4rrY,   X86::VFMADDSUBPD4mrY,    TB_ALIGN_32 },
+    { X86::VFMSUBADDPS4rr,    X86::VFMSUBADDPS4mr,     TB_ALIGN_16 },
+    { X86::VFMSUBADDPD4rr,    X86::VFMSUBADDPD4mr,     TB_ALIGN_16 },
+    { X86::VFMSUBADDPS4rrY,   X86::VFMSUBADDPS4mrY,    TB_ALIGN_32 },
+    { X86::VFMSUBADDPD4rrY,   X86::VFMSUBADDPD4mrY,    TB_ALIGN_32 },
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl2); i != e; ++i) {
@@ -1242,6 +1272,36 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VFMSUBADDPDr132rY,     X86::VFMSUBADDPDr132mY,     TB_ALIGN_32 },
     { X86::VFMSUBADDPSr213rY,     X86::VFMSUBADDPSr213mY,     TB_ALIGN_32 },
     { X86::VFMSUBADDPDr213rY,     X86::VFMSUBADDPDr213mY,     TB_ALIGN_32 },
+
+    // FMA4 foldable patterns
+    { X86::VFMADDSS4rr,           X86::VFMADDSS4rm,           TB_ALIGN_16 },
+    { X86::VFMADDSD4rr,           X86::VFMADDSD4rm,           TB_ALIGN_16 },
+    { X86::VFMADDPS4rr,           X86::VFMADDPS4rm,           TB_ALIGN_16 },
+    { X86::VFMADDPD4rr,           X86::VFMADDPD4rm,           TB_ALIGN_16 },
+    { X86::VFMADDPS4rrY,          X86::VFMADDPS4rmY,          TB_ALIGN_32 },
+    { X86::VFMADDPD4rrY,          X86::VFMADDPD4rmY,          TB_ALIGN_32 },
+    { X86::VFNMADDPS4rr,          X86::VFNMADDPS4rm,          TB_ALIGN_16 },
+    { X86::VFNMADDPD4rr,          X86::VFNMADDPD4rm,          TB_ALIGN_16 },
+    { X86::VFNMADDPS4rrY,         X86::VFNMADDPS4rmY,         TB_ALIGN_32 },
+    { X86::VFNMADDPD4rrY,         X86::VFNMADDPD4rmY,         TB_ALIGN_32 },
+    { X86::VFMSUBSS4rr,           X86::VFMSUBSS4rm,           TB_ALIGN_16 },
+    { X86::VFMSUBSD4rr,           X86::VFMSUBSD4rm,           TB_ALIGN_16 },
+    { X86::VFMSUBPS4rr,           X86::VFMSUBPS4rm,           TB_ALIGN_16 },
+    { X86::VFMSUBPD4rr,           X86::VFMSUBPD4rm,           TB_ALIGN_16 },
+    { X86::VFMSUBPS4rrY,          X86::VFMSUBPS4rmY,          TB_ALIGN_32 },
+    { X86::VFMSUBPD4rrY,          X86::VFMSUBPD4rmY,          TB_ALIGN_32 },
+    { X86::VFNMSUBPS4rr,          X86::VFNMSUBPS4rm,          TB_ALIGN_16 },
+    { X86::VFNMSUBPD4rr,          X86::VFNMSUBPD4rm,          TB_ALIGN_16 },
+    { X86::VFNMSUBPS4rrY,         X86::VFNMSUBPS4rmY,         TB_ALIGN_32 },
+    { X86::VFNMSUBPD4rrY,         X86::VFNMSUBPD4rmY,         TB_ALIGN_32 },
+    { X86::VFMADDSUBPS4rr,        X86::VFMADDSUBPS4rm,        TB_ALIGN_16 },
+    { X86::VFMADDSUBPD4rr,        X86::VFMADDSUBPD4rm,        TB_ALIGN_16 },
+    { X86::VFMADDSUBPS4rrY,       X86::VFMADDSUBPS4rmY,       TB_ALIGN_32 },
+    { X86::VFMADDSUBPD4rrY,       X86::VFMADDSUBPD4rmY,       TB_ALIGN_32 },
+    { X86::VFMSUBADDPS4rr,        X86::VFMSUBADDPS4rm,        TB_ALIGN_16 },
+    { X86::VFMSUBADDPD4rr,        X86::VFMSUBADDPD4rm,        TB_ALIGN_16 },
+    { X86::VFMSUBADDPS4rrY,       X86::VFMSUBADDPS4rmY,       TB_ALIGN_32 },
+    { X86::VFMSUBADDPD4rrY,       X86::VFMSUBADDPD4rmY,       TB_ALIGN_32 },
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl3); i != e; ++i) {
@@ -1791,10 +1851,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
   MachineInstr *MI = MBBI;
   MachineFunction &MF = *MI->getParent()->getParent();
   // All instructions input are two-addr instructions.  Get the known operands.
-  unsigned Dest = MI->getOperand(0).getReg();
-  unsigned Src = MI->getOperand(1).getReg();
-  bool isDead = MI->getOperand(0).isDead();
-  bool isKill = MI->getOperand(1).isKill();
+  const MachineOperand &Dest = MI->getOperand(0);
+  const MachineOperand &Src = MI->getOperand(1);
 
   MachineInstr *NewMI = NULL;
   // FIXME: 16-bit LEA's are really slow on Athlons, but not bad on P4's.  When
@@ -1812,11 +1870,9 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     unsigned B = MI->getOperand(1).getReg();
     unsigned C = MI->getOperand(2).getReg();
     if (B != C) return 0;
-    unsigned A = MI->getOperand(0).getReg();
     unsigned M = MI->getOperand(3).getImm();
     NewMI = BuildMI(MF, MI->getDebugLoc(), get(X86::PSHUFDri))
-      .addReg(A, RegState::Define | getDeadRegState(isDead))
-      .addReg(B, getKillRegState(isKill)).addImm(M);
+      .addOperand(Dest).addOperand(Src).addImm(M);
     break;
   }
   case X86::SHUFPDrri: {
@@ -1826,15 +1882,13 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     unsigned B = MI->getOperand(1).getReg();
     unsigned C = MI->getOperand(2).getReg();
     if (B != C) return 0;
-    unsigned A = MI->getOperand(0).getReg();
     unsigned M = MI->getOperand(3).getImm();
 
     // Convert to PSHUFD mask.
     M = ((M & 1) << 1) | ((M & 1) << 3) | ((M & 2) << 4) | ((M & 2) << 6)| 0x44;
 
     NewMI = BuildMI(MF, MI->getDebugLoc(), get(X86::PSHUFDri))
-      .addReg(A, RegState::Define | getDeadRegState(isDead))
-      .addReg(B, getKillRegState(isKill)).addImm(M);
+      .addOperand(Dest).addOperand(Src).addImm(M);
     break;
   }
   case X86::SHL64ri: {
@@ -1845,15 +1899,14 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     if (ShAmt == 0 || ShAmt >= 4) return 0;
 
     // LEA can't handle RSP.
-    if (TargetRegisterInfo::isVirtualRegister(Src) &&
-        !MF.getRegInfo().constrainRegClass(Src, &X86::GR64_NOSPRegClass))
+    if (TargetRegisterInfo::isVirtualRegister(Src.getReg()) &&
+        !MF.getRegInfo().constrainRegClass(Src.getReg(),
+                                           &X86::GR64_NOSPRegClass))
       return 0;
 
     NewMI = BuildMI(MF, MI->getDebugLoc(), get(X86::LEA64r))
-      .addReg(Dest, RegState::Define | getDeadRegState(isDead))
-      .addReg(0).addImm(1 << ShAmt)
-      .addReg(Src, getKillRegState(isKill))
-      .addImm(0).addReg(0);
+      .addOperand(Dest)
+      .addReg(0).addImm(1 << ShAmt).addOperand(Src).addImm(0).addReg(0);
     break;
   }
   case X86::SHL32ri: {
@@ -1864,15 +1917,15 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     if (ShAmt == 0 || ShAmt >= 4) return 0;
 
     // LEA can't handle ESP.
-    if (TargetRegisterInfo::isVirtualRegister(Src) &&
-        !MF.getRegInfo().constrainRegClass(Src, &X86::GR32_NOSPRegClass))
+    if (TargetRegisterInfo::isVirtualRegister(Src.getReg()) &&
+        !MF.getRegInfo().constrainRegClass(Src.getReg(),
+                                           &X86::GR32_NOSPRegClass))
       return 0;
 
     unsigned Opc = is64Bit ? X86::LEA64_32r : X86::LEA32r;
     NewMI = BuildMI(MF, MI->getDebugLoc(), get(Opc))
-      .addReg(Dest, RegState::Define | getDeadRegState(isDead))
-      .addReg(0).addImm(1 << ShAmt)
-      .addReg(Src, getKillRegState(isKill)).addImm(0).addReg(0);
+      .addOperand(Dest)
+      .addReg(0).addImm(1 << ShAmt).addOperand(Src).addImm(0).addReg(0);
     break;
   }
   case X86::SHL16ri: {
@@ -1885,10 +1938,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     if (DisableLEA16)
       return is64Bit ? convertToThreeAddressWithLEA(MIOpc, MFI, MBBI, LV) : 0;
     NewMI = BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
-      .addReg(Dest, RegState::Define | getDeadRegState(isDead))
-      .addReg(0).addImm(1 << ShAmt)
-      .addReg(Src, getKillRegState(isKill))
-      .addImm(0).addReg(0);
+      .addOperand(Dest)
+      .addReg(0).addImm(1 << ShAmt).addOperand(Src).addImm(0).addReg(0);
     break;
   }
   default: {
@@ -1911,14 +1962,12 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
         (const TargetRegisterClass*)&X86::GR32_NOSPRegClass;
 
       // LEA can't handle RSP.
-      if (TargetRegisterInfo::isVirtualRegister(Src) &&
-          !MF.getRegInfo().constrainRegClass(Src, RC))
+      if (TargetRegisterInfo::isVirtualRegister(Src.getReg()) &&
+          !MF.getRegInfo().constrainRegClass(Src.getReg(), RC))
         return 0;
 
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
-                              .addReg(Dest, RegState::Define |
-                                      getDeadRegState(isDead)),
-                              Src, isKill, 1);
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
+                        .addOperand(Dest).addOperand(Src), 1);
       break;
     }
     case X86::INC16r:
@@ -1926,10 +1975,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       if (DisableLEA16)
         return is64Bit ? convertToThreeAddressWithLEA(MIOpc, MFI, MBBI, LV) : 0;
       assert(MI->getNumOperands() >= 2 && "Unknown inc instruction!");
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
-                           .addReg(Dest, RegState::Define |
-                                   getDeadRegState(isDead)),
-                           Src, isKill, 1);
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
+                        .addOperand(Dest).addOperand(Src), 1);
       break;
     case X86::DEC64r:
     case X86::DEC32r:
@@ -1941,14 +1988,12 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
         (const TargetRegisterClass*)&X86::GR64_NOSPRegClass :
         (const TargetRegisterClass*)&X86::GR32_NOSPRegClass;
       // LEA can't handle RSP.
-      if (TargetRegisterInfo::isVirtualRegister(Src) &&
-          !MF.getRegInfo().constrainRegClass(Src, RC))
+      if (TargetRegisterInfo::isVirtualRegister(Src.getReg()) &&
+          !MF.getRegInfo().constrainRegClass(Src.getReg(), RC))
         return 0;
 
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
-                              .addReg(Dest, RegState::Define |
-                                      getDeadRegState(isDead)),
-                              Src, isKill, -1);
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
+                        .addOperand(Dest).addOperand(Src), -1);
       break;
     }
     case X86::DEC16r:
@@ -1956,10 +2001,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       if (DisableLEA16)
         return is64Bit ? convertToThreeAddressWithLEA(MIOpc, MFI, MBBI, LV) : 0;
       assert(MI->getNumOperands() >= 2 && "Unknown dec instruction!");
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
-                           .addReg(Dest, RegState::Define |
-                                   getDeadRegState(isDead)),
-                           Src, isKill, -1);
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
+                        .addOperand(Dest).addOperand(Src), -1);
       break;
     case X86::ADD64rr:
     case X86::ADD64rr_DB:
@@ -1986,9 +2029,8 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
         return 0;
 
       NewMI = addRegReg(BuildMI(MF, MI->getDebugLoc(), get(Opc))
-                        .addReg(Dest, RegState::Define |
-                                getDeadRegState(isDead)),
-                        Src, isKill, Src2, isKill2);
+                        .addOperand(Dest),
+                        Src.getReg(), Src.isKill(), Src2, isKill2);
 
       // Preserve undefness of the operands.
       bool isUndef = MI->getOperand(1).isUndef();
@@ -2008,9 +2050,15 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       unsigned Src2 = MI->getOperand(2).getReg();
       bool isKill2 = MI->getOperand(2).isKill();
       NewMI = addRegReg(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
-                        .addReg(Dest, RegState::Define |
-                                getDeadRegState(isDead)),
-                        Src, isKill, Src2, isKill2);
+                        .addOperand(Dest),
+                        Src.getReg(), Src.isKill(), Src2, isKill2);
+
+      // Preserve undefness of the operands.
+      bool isUndef = MI->getOperand(1).isUndef();
+      bool isUndef2 = MI->getOperand(2).isUndef();
+      NewMI->getOperand(1).setIsUndef(isUndef);
+      NewMI->getOperand(3).setIsUndef(isUndef2);
+
       if (LV && isKill2)
         LV->replaceKillInstruction(Src2, MI, NewMI);
       break;
@@ -2020,10 +2068,9 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     case X86::ADD64ri32_DB:
     case X86::ADD64ri8_DB:
       assert(MI->getNumOperands() >= 3 && "Unknown add instruction!");
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA64r))
-                              .addReg(Dest, RegState::Define |
-                                      getDeadRegState(isDead)),
-                              Src, isKill, MI->getOperand(2).getImm());
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA64r))
+                        .addOperand(Dest).addOperand(Src),
+                        MI->getOperand(2).getImm());
       break;
     case X86::ADD32ri:
     case X86::ADD32ri8:
@@ -2031,10 +2078,9 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     case X86::ADD32ri8_DB: {
       assert(MI->getNumOperands() >= 3 && "Unknown add instruction!");
       unsigned Opc = is64Bit ? X86::LEA64_32r : X86::LEA32r;
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
-                              .addReg(Dest, RegState::Define |
-                                      getDeadRegState(isDead)),
-                                Src, isKill, MI->getOperand(2).getImm());
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
+                        .addOperand(Dest).addOperand(Src),
+                        MI->getOperand(2).getImm());
       break;
     }
     case X86::ADD16ri:
@@ -2044,10 +2090,9 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       if (DisableLEA16)
         return is64Bit ? convertToThreeAddressWithLEA(MIOpc, MFI, MBBI, LV) : 0;
       assert(MI->getNumOperands() >= 3 && "Unknown add instruction!");
-      NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
-                              .addReg(Dest, RegState::Define |
-                                      getDeadRegState(isDead)),
-                              Src, isKill, MI->getOperand(2).getImm());
+      NewMI = addOffset(BuildMI(MF, MI->getDebugLoc(), get(X86::LEA16r))
+                        .addOperand(Dest).addOperand(Src),
+                        MI->getOperand(2).getImm());
       break;
     }
   }
@@ -2056,10 +2101,10 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
   if (!NewMI) return 0;
 
   if (LV) {  // Update live variables
-    if (isKill)
-      LV->replaceKillInstruction(Src, MI, NewMI);
-    if (isDead)
-      LV->replaceKillInstruction(Dest, MI, NewMI);
+    if (Src.isKill())
+      LV->replaceKillInstruction(Src.getReg(), MI, NewMI);
+    if (Dest.isDead())
+      LV->replaceKillInstruction(Dest.getReg(), MI, NewMI);
   }
 
   MFI->insert(MBBI, NewMI);          // Insert the new inst
@@ -3450,6 +3495,13 @@ bool X86InstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
   case X86::FsFLD0SS:
   case X86::FsFLD0SD:
     return Expand2AddrUndef(MI, get(HasAVX ? X86::VXORPSrr : X86::XORPSrr));
+  case X86::AVX_SET0:
+    assert(HasAVX && "AVX not supported");
+    return Expand2AddrUndef(MI, get(X86::VXORPSYrr));
+  case X86::V_SETALLONES:
+    return Expand2AddrUndef(MI, get(HasAVX ? X86::VPCMPEQDrr : X86::PCMPEQDrr));
+  case X86::AVX2_SETALLONES:
+    return Expand2AddrUndef(MI, get(X86::VPCMPEQDYrr));
   case X86::TEST8ri_NOREX:
     MI->setDesc(get(X86::TEST8ri));
     return true;
@@ -3563,14 +3615,16 @@ X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
     OpcodeTablePtr = &RegOp2MemOpTable2Addr;
     isTwoAddrFold = true;
   } else if (i == 0) { // If operand 0
-    if (MI->getOpcode() == X86::MOV64r0)
-      NewMI = MakeM0Inst(*this, X86::MOV64mi32, MOs, MI);
-    else if (MI->getOpcode() == X86::MOV32r0)
-      NewMI = MakeM0Inst(*this, X86::MOV32mi, MOs, MI);
-    else if (MI->getOpcode() == X86::MOV16r0)
-      NewMI = MakeM0Inst(*this, X86::MOV16mi, MOs, MI);
-    else if (MI->getOpcode() == X86::MOV8r0)
-      NewMI = MakeM0Inst(*this, X86::MOV8mi, MOs, MI);
+    unsigned Opc = 0;
+    switch (MI->getOpcode()) {
+    default: break;
+    case X86::MOV64r0: Opc = X86::MOV64mi32; break;
+    case X86::MOV32r0: Opc = X86::MOV32mi;   break;
+    case X86::MOV16r0: Opc = X86::MOV16mi;   break;
+    case X86::MOV8r0:  Opc = X86::MOV8mi;    break;
+    }
+    if (Opc)
+       NewMI = MakeM0Inst(*this, Opc, MOs, MI);
     if (NewMI)
       return NewMI;
 
@@ -3799,15 +3853,12 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
     Alignment = (*LoadMI->memoperands_begin())->getAlignment();
   else
     switch (LoadMI->getOpcode()) {
-    case X86::AVX_SET0PSY:
-    case X86::AVX_SET0PDY:
     case X86::AVX2_SETALLONES:
-    case X86::AVX2_SET0:
+    case X86::AVX_SET0:
       Alignment = 32;
       break;
     case X86::V_SET0:
     case X86::V_SETALLONES:
-    case X86::AVX_SETALLONES:
       Alignment = 16;
       break;
     case X86::FsFLD0SD:
@@ -3843,11 +3894,8 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
   switch (LoadMI->getOpcode()) {
   case X86::V_SET0:
   case X86::V_SETALLONES:
-  case X86::AVX_SET0PSY:
-  case X86::AVX_SET0PDY:
-  case X86::AVX_SETALLONES:
   case X86::AVX2_SETALLONES:
-  case X86::AVX2_SET0:
+  case X86::AVX_SET0:
   case X86::FsFLD0SD:
   case X86::FsFLD0SS: {
     // Folding a V_SET0 or V_SETALLONES as a load, to ease register pressure.
@@ -3879,15 +3927,12 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
       Ty = Type::getFloatTy(MF.getFunction()->getContext());
     else if (Opc == X86::FsFLD0SD)
       Ty = Type::getDoubleTy(MF.getFunction()->getContext());
-    else if (Opc == X86::AVX_SET0PSY || Opc == X86::AVX_SET0PDY)
-      Ty = VectorType::get(Type::getFloatTy(MF.getFunction()->getContext()), 8);
-    else if (Opc == X86::AVX2_SETALLONES || Opc == X86::AVX2_SET0)
+    else if (Opc == X86::AVX2_SETALLONES || Opc == X86::AVX_SET0)
       Ty = VectorType::get(Type::getInt32Ty(MF.getFunction()->getContext()), 8);
     else
       Ty = VectorType::get(Type::getInt32Ty(MF.getFunction()->getContext()), 4);
 
-    bool IsAllOnes = (Opc == X86::V_SETALLONES || Opc == X86::AVX_SETALLONES ||
-                      Opc == X86::AVX2_SETALLONES);
+    bool IsAllOnes = (Opc == X86::V_SETALLONES || Opc == X86::AVX2_SETALLONES);
     const Constant *C = IsAllOnes ? Constant::getAllOnesValue(Ty) :
                                     Constant::getNullValue(Ty);
     unsigned CPI = MCP.getConstantPoolIndex(C, Alignment);
@@ -3962,6 +4007,8 @@ bool X86InstrInfo::canFoldMemoryOperand(const MachineInstr *MI,
     OpcodeTablePtr = &RegOp2MemOpTable1;
   } else if (OpNum == 2) {
     OpcodeTablePtr = &RegOp2MemOpTable2;
+  } else if (OpNum == 3) {
+    OpcodeTablePtr = &RegOp2MemOpTable3;
   }
 
   if (OpcodeTablePtr && OpcodeTablePtr->count(Opc))

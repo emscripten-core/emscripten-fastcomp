@@ -632,6 +632,7 @@ INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfo)
 INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(GVN, "gvn", "Global Value Numbering", false, false)
 
+#ifndef NDEBUG
 void GVN::dump(DenseMap<uint32_t, Value*>& d) {
   errs() << "{\n";
   for (DenseMap<uint32_t, Value*>::iterator I = d.begin(),
@@ -641,6 +642,7 @@ void GVN::dump(DenseMap<uint32_t, Value*>& d) {
   }
   errs() << "}\n";
 }
+#endif
 
 /// IsValueFullyAvailableInBlock - Return true if we can prove that the value
 /// we're analyzing is fully available in the specified block.  As we go, keep
@@ -1436,7 +1438,7 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
     Instruction *DepInst = DepInfo.getInst();
 
     // Loading the allocation -> undef.
-    if (isa<AllocaInst>(DepInst) || isMallocLikeFn(DepInst) ||
+    if (isa<AllocaInst>(DepInst) || isMallocLikeFn(DepInst, TLI) ||
         // Loading immediately after lifetime begin -> undef.
         isLifetimeStart(DepInst)) {
       ValuesPerBlock.push_back(AvailableValueInBlock::get(DepBB,
@@ -1951,7 +1953,7 @@ bool GVN::processLoad(LoadInst *L) {
   // If this load really doesn't depend on anything, then we must be loading an
   // undef value.  This can happen when loading for a fresh allocation with no
   // intervening stores, for example.
-  if (isa<AllocaInst>(DepInst) || isMallocLikeFn(DepInst)) {
+  if (isa<AllocaInst>(DepInst) || isMallocLikeFn(DepInst, TLI)) {
     L->replaceAllUsesWith(UndefValue::get(L->getType()));
     markInstructionForDeletion(L);
     ++NumGVNLoad;
@@ -2231,12 +2233,20 @@ bool GVN::processInstruction(Instruction *I) {
     Value *SwitchCond = SI->getCondition();
     BasicBlock *Parent = SI->getParent();
     bool Changed = false;
+
+    // Remember how many outgoing edges there are to every successor.
+    SmallDenseMap<BasicBlock *, unsigned, 16> SwitchEdges;
+    for (unsigned i = 0, n = SI->getNumSuccessors(); i != n; ++i)
+      ++SwitchEdges[SI->getSuccessor(i)];
+
     for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end();
          i != e; ++i) {
       BasicBlock *Dst = i.getCaseSuccessor();
-      BasicBlockEdge E(Parent, Dst);
-      if (E.isSingleEdge())
+      // If there is only a single edge, propagate the case value into it.
+      if (SwitchEdges.lookup(Dst) == 1) {
+        BasicBlockEdge E(Parent, Dst);
         Changed |= propagateEquality(SwitchCond, i.getCaseValue(), E);
+      }
     }
     return Changed;
   }

@@ -26,6 +26,7 @@ SSThreshold("mips-ssection-threshold", cl::Hidden,
 
 void MipsTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM){
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
+  InitializeELF(TM.Options.UseInitArray);
 
   SmallDataSection =
     getContext().getELFSection(".sdata", ELF::SHT_PROGBITS,
@@ -77,9 +78,10 @@ bool MipsTargetObjectFile::
 IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
                        SectionKind Kind) const {
 
-  // Only use small section for non linux targets.
   const MipsSubtarget &Subtarget = TM.getSubtarget<MipsSubtarget>();
-  if (Subtarget.isLinux())
+
+  // Return if small section is not available.
+  if (!Subtarget.useSmallSection())
     return false;
 
   // @LOCALMOD-BEGIN

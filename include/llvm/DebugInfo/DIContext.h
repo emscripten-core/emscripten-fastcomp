@@ -15,6 +15,7 @@
 #ifndef LLVM_DEBUGINFO_DICONTEXT_H
 #define LLVM_DEBUGINFO_DICONTEXT_H
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/DataTypes.h"
@@ -54,6 +55,23 @@ public:
   }
 };
 
+/// DIInliningInfo - a format-neutral container for inlined code description.
+class DIInliningInfo {
+  SmallVector<DILineInfo, 4> Frames;
+ public:
+  DIInliningInfo() {}
+  DILineInfo getFrame(unsigned Index) const {
+    assert(Index < Frames.size());
+    return Frames[Index];
+  }
+  uint32_t getNumberOfFrames() const {
+    return Frames.size();
+  }
+  void addFrame(const DILineInfo &Frame) {
+    Frames.push_back(Frame);
+  }
+};
+
 /// DILineInfoSpecifier - controls which fields of DILineInfo container
 /// should be filled with data.
 class DILineInfoSpecifier {
@@ -81,12 +99,15 @@ public:
                                     StringRef abbrevSection,
                                     StringRef aRangeSection = StringRef(),
                                     StringRef lineSection = StringRef(),
-                                    StringRef stringSection = StringRef());
+                                    StringRef stringSection = StringRef(),
+                                    StringRef rangeSection = StringRef());
 
   virtual void dump(raw_ostream &OS) = 0;
 
-  virtual DILineInfo getLineInfoForAddress(uint64_t address,
-      DILineInfoSpecifier specifier = DILineInfoSpecifier()) = 0;
+  virtual DILineInfo getLineInfoForAddress(uint64_t Address,
+      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) = 0;
+  virtual DIInliningInfo getInliningInfoForAddress(uint64_t Address,
+      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) = 0;
 };
 
 }

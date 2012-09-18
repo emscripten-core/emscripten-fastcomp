@@ -23,8 +23,9 @@
 // the verifier errors.
 //===----------------------------------------------------------------------===//
 
+#include "llvm/BasicBlock.h"
+#include "llvm/InlineAsm.h"
 #include "llvm/Instructions.h"
-#include "llvm/Function.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/LiveVariables.h"
 #include "llvm/CodeGen/LiveStackAnalysis.h"
@@ -213,6 +214,8 @@ namespace {
     void report(const char *msg, const MachineBasicBlock *MBB,
                 const LiveInterval &LI);
 
+    void verifyInlineAsm(const MachineInstr *MI);
+
     void checkLiveness(const MachineOperand *MO, unsigned MONum);
     void markReachable(const MachineBasicBlock *MBB);
     void calcRegsPassed();
@@ -357,7 +360,7 @@ void MachineVerifier::report(const char *msg, const MachineFunction *MF) {
     MF->print(*OS, Indexes);
   }
   *OS << "*** Bad machine code: " << msg << " ***\n"
-      << "- function:    " << MF->getFunction()->getName() << "\n";
+      << "- function:    " << MF->getName() << "\n";
 }
 
 void MachineVerifier::report(const char *msg, const MachineBasicBlock *MBB) {
@@ -365,7 +368,7 @@ void MachineVerifier::report(const char *msg, const MachineBasicBlock *MBB) {
   report(msg, MBB->getParent());
   *OS << "- basic block: BB#" << MBB->getNumber()
       << ' ' << MBB->getName()
-      << " (" << (void*)MBB << ')';
+      << " (" << (const void*)MBB << ')';
   if (Indexes)
     *OS << " [" << Indexes->getMBBStartIdx(MBB)
         << ';' <<  Indexes->getMBBEndIdx(MBB) << ')';
@@ -695,6 +698,49 @@ void MachineVerifier::visitMachineBundleBefore(const MachineInstr *MI) {
   }
 }
 
+// The operands on an INLINEASM instruction must follow a template.
+// Verify that the flag operands make sense.
+void MachineVerifier::verifyInlineAsm(const MachineInstr *MI) {
+  // The first two operands on INLINEASM are the asm string and global flags.
+  if (MI->getNumOperands() < 2) {
+    report("Too few operands on inline asm", MI);
+    return;
+  }
+  if (!MI->getOperand(0).isSymbol())
+    report("Asm string must be an external symbol", MI);
+  if (!MI->getOperand(1).isImm())
+    report("Asm flags must be an immediate", MI);
+  // Allowed flags are Extra_HasSideEffects = 1, and Extra_IsAlignStack = 2.
+  if (!isUInt<2>(MI->getOperand(1).getImm()))
+    report("Unknown asm flags", &MI->getOperand(1), 1);
+
+  assert(InlineAsm::MIOp_FirstOperand == 2 && "Asm format changed");
+
+  unsigned OpNo = InlineAsm::MIOp_FirstOperand;
+  unsigned NumOps;
+  for (unsigned e = MI->getNumOperands(); OpNo < e; OpNo += NumOps) {
+    const MachineOperand &MO = MI->getOperand(OpNo);
+    // There may be implicit ops after the fixed operands.
+    if (!MO.isImm())
+      break;
+    NumOps = 1 + InlineAsm::getNumOperandRegisters(MO.getImm());
+  }
+
+  if (OpNo > MI->getNumOperands())
+    report("Missing operands in last group", MI);
+
+  // An optional MDNode follows the groups.
+  if (OpNo < MI->getNumOperands() && MI->getOperand(OpNo).isMetadata())
+    ++OpNo;
+
+  // All trailing operands must be implicit registers.
+  for (unsigned e = MI->getNumOperands(); OpNo < e; ++OpNo) {
+    const MachineOperand &MO = MI->getOperand(OpNo);
+    if (!MO.isReg() || !MO.isImplicit())
+      report("Expected implicit register after groups", &MO, OpNo);
+  }
+}
+
 void MachineVerifier::visitMachineInstrBefore(const MachineInstr *MI) {
   const MCInstrDesc &MCID = MI->getDesc();
   if (MI->getNumOperands() < MCID.getNumOperands()) {
@@ -702,6 +748,10 @@ void MachineVerifier::visitMachineInstrBefore(const MachineInstr *MI) {
     *OS << MCID.getNumOperands() << " operands expected, but "
         << MI->getNumExplicitOperands() << " given.\n";
   }
+
+  // Check the tied operands.
+  if (MI->isInlineAsm())
+    verifyInlineAsm(MI);
 
   // Check the MachineMemOperands for basic consistency.
   for (MachineInstr::mmo_iterator I = MI->memoperands_begin(),
@@ -758,6 +808,17 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
       if (MO->isImplicit())
         report("Explicit operand marked as implicit", MO, MONum);
     }
+
+    int TiedTo = MCID.getOperandConstraint(MONum, MCOI::TIED_TO);
+    if (TiedTo != -1) {
+      if (!MO->isReg())
+        report("Tied use must be a register", MO, MONum);
+      else if (!MO->isTied())
+        report("Operand should be tied", MO, MONum);
+      else if (unsigned(TiedTo) != MI->findTiedOperandIdx(MONum))
+        report("Tied def doesn't match MCInstrDesc", MO, MONum);
+    } else if (MO->isReg() && MO->isTied())
+      report("Explicit operand should not be tied", MO, MONum);
   } else {
     // ARM adds %reg0 operands to indicate predicates. We'll allow that.
     if (MO->isReg() && !MO->isImplicit() && !MI->isVariadic() && MO->getReg())
@@ -771,6 +832,28 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
       return;
     if (MRI->tracksLiveness() && !MI->isDebugValue())
       checkLiveness(MO, MONum);
+
+    // Verify the consistency of tied operands.
+    if (MO->isTied()) {
+      unsigned OtherIdx = MI->findTiedOperandIdx(MONum);
+      const MachineOperand &OtherMO = MI->getOperand(OtherIdx);
+      if (!OtherMO.isReg())
+        report("Must be tied to a register", MO, MONum);
+      if (!OtherMO.isTied())
+        report("Missing tie flags on tied operand", MO, MONum);
+      if (MI->findTiedOperandIdx(OtherIdx) != MONum)
+        report("Inconsistent tie links", MO, MONum);
+      if (MONum < MCID.getNumDefs()) {
+        if (OtherIdx < MCID.getNumOperands()) {
+          if (-1 == MCID.getOperandConstraint(OtherIdx, MCOI::TIED_TO))
+            report("Explicit def tied to explicit use without tie constraint",
+                   MO, MONum);
+        } else {
+          if (!OtherMO.isImplicit())
+            report("Explicit def should be tied to implicit use", MO, MONum);
+        }
+      }
+    }
 
     // Verify two-address constraints after leaving SSA form.
     unsigned DefIdx;

@@ -1202,8 +1202,7 @@ bool TwoAddressInstructionPass::
 collectTiedOperands(MachineInstr *MI, TiedOperandMap &TiedOperands) {
   const MCInstrDesc &MCID = MI->getDesc();
   bool AnyOps = false;
-  unsigned NumOps = MI->isInlineAsm() ?
-    MI->getNumOperands() : MCID.getNumOperands();
+  unsigned NumOps = MI->getNumOperands();
 
   for (unsigned SrcIdx = 0; SrcIdx < NumOps; ++SrcIdx) {
     unsigned DstIdx = 0;
@@ -1373,7 +1372,7 @@ bool TwoAddressInstructionPass::runOnMachineFunction(MachineFunction &Func) {
 
   DEBUG(dbgs() << "********** REWRITING TWO-ADDR INSTRS **********\n");
   DEBUG(dbgs() << "********** Function: "
-        << MF->getFunction()->getName() << '\n');
+        << MF->getName() << '\n');
 
   // This pass takes the function out of SSA form.
   MRI->leaveSSA();

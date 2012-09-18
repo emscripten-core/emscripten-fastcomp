@@ -19,7 +19,6 @@
 #define DEBUG_TYPE "regalloc"
 #include "VirtRegMap.h"
 #include "LiveDebugVariables.h"
-#include "llvm/Function.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -127,9 +126,11 @@ void VirtRegMap::print(raw_ostream &OS, const Module*) const {
   OS << '\n';
 }
 
+#ifndef NDEBUG
 void VirtRegMap::dump() const {
   print(dbgs());
 }
+#endif
 
 //===----------------------------------------------------------------------===//
 //                              VirtRegRewriter
@@ -197,11 +198,11 @@ bool VirtRegRewriter::runOnMachineFunction(MachineFunction &fn) {
   VRM = &getAnalysis<VirtRegMap>();
   DEBUG(dbgs() << "********** REWRITE VIRTUAL REGISTERS **********\n"
                << "********** Function: "
-               << MF->getFunction()->getName() << '\n');
+               << MF->getName() << '\n');
   DEBUG(VRM->dump());
 
   // Add kill flags while we still have virtual registers.
-  LIS->addKillFlags();
+  LIS->addKillFlags(VRM);
 
   // Live-in lists on basic blocks are required for physregs.
   addMBBLiveIns();
