@@ -402,6 +402,15 @@ bool FunctionNeedsRewrite(const Function* fun,
   //       if we skip the rewrite for the function body
   //       we also need to skip it at the callsites
   // if (F.isVarArg()) return false;
+
+  // Vectors and Arrays are not supported for compatibility
+  for (Function::const_arg_iterator AI = fun->arg_begin(), AE = fun->arg_end();
+       AI != AE;
+       ++AI) {
+    const Type* t = AI->getType();
+    if (isa<VectorType>(t) || isa<ArrayType>(t)) return false;
+  }
+
   for (Function::const_arg_iterator AI = fun->arg_begin(), AE = fun->arg_end();
        AI != AE;
        ++AI) {
@@ -686,6 +695,13 @@ template<class T> bool CallNeedsRewrite(
   const T* call = cast<T>(inst);
   // skip non parameter operands at the end
   size_t num_params = call->getNumOperands() - (isa<CallInst>(inst) ? 1 : 3);
+
+  // Vectors and Arrays are not supported for compatibility
+  for (size_t i = 0; i <  num_params; ++i) {
+    Type* t = call->getOperand(i)->getType();
+    if (isa<VectorType>(t) || isa<ArrayType>(t)) return false;
+  }
+
   for (size_t i = 0; i <  num_params; ++i) {
     Type* t = call->getOperand(i)->getType();
     // byval and srets are modelled as pointers (to structs)
