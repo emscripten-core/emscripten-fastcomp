@@ -1148,8 +1148,10 @@ bool InstCombiner::transformConstExprCastCall(CallSite CS) {
   // If we are removing arguments to the function, emit an obnoxious warning.
   if (FT->getNumParams() < NumActualArgs) {
     if (!FT->isVarArg()) {
-      errs() << "WARNING: While resolving call to function '"
-             << Callee->getName() << "' arguments were dropped!\n";
+      if (Callee->getName() != "main") { // @LOCALMOD
+        errs() << "WARNING: While resolving call to function '"
+               << Callee->getName() << "' arguments were dropped!\n";
+      }
     } else {
       // Add all of the arguments in their promoted form to the arg list.
       for (unsigned i = FT->getNumParams(); i != NumActualArgs; ++i, ++AI) {
