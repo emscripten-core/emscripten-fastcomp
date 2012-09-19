@@ -326,7 +326,7 @@ DIE *DwarfDebug::updateSubprogramScopeDIE(CompileUnit *SPCU,
       if (SPTag == dwarf::DW_TAG_subroutine_type)
         for (unsigned i = 1, N = Args.getNumElements(); i < N; ++i) {
           DIE *Arg = new DIE(dwarf::DW_TAG_formal_parameter);
-          DIType ATy = DIType(DIType(Args.getElement(i)));
+          DIType ATy = DIType(Args.getElement(i));
           SPCU->addType(Arg, ATy);
           if (ATy.isArtificial())
             SPCU->addFlag(Arg, dwarf::DW_AT_artificial);
@@ -619,7 +619,8 @@ CompileUnit *DwarfDebug::constructCompileUnit(const MDNode *N) {
   unsigned ID = GetOrCreateCompileUnitID(FN, CompilationDir, N);
 
   DIE *Die = new DIE(dwarf::DW_TAG_compile_unit);
-  CompileUnit *NewCU = new CompileUnit(ID, DIUnit.getLanguage(), Die, Asm, this);
+  CompileUnit *NewCU = new CompileUnit(ID, DIUnit.getLanguage(), Die,
+                                       Asm, this);
   NewCU->addString(Die, dwarf::DW_AT_producer, DIUnit.getProducer());
   NewCU->addUInt(Die, dwarf::DW_AT_language, dwarf::DW_FORM_data2,
                  DIUnit.getLanguage());
@@ -1452,7 +1453,7 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
                                        MF->getFunction()->getContext());
     recordSourceLine(FnStartDL.getLine(), FnStartDL.getCol(),
                      FnStartDL.getScope(MF->getFunction()->getContext()),
-                     DWARF2_LINE_DEFAULT_IS_STMT ? DWARF2_FLAG_IS_STMT : 0);
+                     0);
   }
 }
 

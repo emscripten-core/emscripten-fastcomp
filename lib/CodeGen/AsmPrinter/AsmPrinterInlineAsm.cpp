@@ -43,10 +43,10 @@ namespace {
   };
 }
 
-/// SrcMgrDiagHandler - This callback is invoked when the SourceMgr for an
+/// srcMgrDiagHandler - This callback is invoked when the SourceMgr for an
 /// inline asm has an error in it.  diagInfo is a pointer to the SrcMgrDiagInfo
 /// struct above.
-static void SrcMgrDiagHandler(const SMDiagnostic &Diag, void *diagInfo) {
+static void srcMgrDiagHandler(const SMDiagnostic &Diag, void *diagInfo) {
   SrcMgrDiagInfo *DiagInfo = static_cast<SrcMgrDiagInfo *>(diagInfo);
   assert(DiagInfo && "Diagnostic context not passed down?");
 
@@ -92,12 +92,12 @@ void AsmPrinter::EmitInlineAsm(StringRef Str, const MDNode *LocMDNode,
   LLVMContext &LLVMCtx = MMI->getModule()->getContext();
   bool HasDiagHandler = false;
   if (LLVMCtx.getInlineAsmDiagnosticHandler() != 0) {
-    // If the source manager has an issue, we arrange for SrcMgrDiagHandler
+    // If the source manager has an issue, we arrange for srcMgrDiagHandler
     // to be invoked, getting DiagInfo passed into it.
     DiagInfo.LocInfo = LocMDNode;
     DiagInfo.DiagHandler = LLVMCtx.getInlineAsmDiagnosticHandler();
     DiagInfo.DiagContext = LLVMCtx.getInlineAsmDiagnosticContext();
-    SrcMgr.setDiagHandler(SrcMgrDiagHandler, &DiagInfo);
+    SrcMgr.setDiagHandler(srcMgrDiagHandler, &DiagInfo);
     HasDiagHandler = true;
   }
 
@@ -199,6 +199,15 @@ void AsmPrinter::EmitInlineAsm(const MachineInstr *MI) const {
 
   // The variant of the current asmprinter.
   int AsmPrinterVariant = MAI->getAssemblerDialect();
+  int InlineAsmVariant = MI->getInlineAsmDialect();
+
+  // Switch to the inline assembly variant.
+  if (AsmPrinterVariant != InlineAsmVariant) {
+    if (InlineAsmVariant == 0)
+      OS << ".att_syntax\n\t";
+    else
+      OS << ".intel_syntax\n\t";
+  }
 
   int CurVariant = -1;            // The number of the {.|.|.} region we are in.
   const char *LastEmitted = AsmStr; // One past the last character emitted.
@@ -344,11 +353,11 @@ void AsmPrinter::EmitInlineAsm(const MachineInstr *MI) const {
           else {
             AsmPrinter *AP = const_cast<AsmPrinter*>(this);
             if (InlineAsm::isMemKind(OpFlags)) {
-              Error = AP->PrintAsmMemoryOperand(MI, OpNo, AsmPrinterVariant,
+              Error = AP->PrintAsmMemoryOperand(MI, OpNo, InlineAsmVariant,
                                                 Modifier[0] ? Modifier : 0,
                                                 OS);
             } else {
-              Error = AP->PrintAsmOperand(MI, OpNo, AsmPrinterVariant,
+              Error = AP->PrintAsmOperand(MI, OpNo, InlineAsmVariant,
                                           Modifier[0] ? Modifier : 0, OS);
             }
           }
@@ -364,6 +373,14 @@ void AsmPrinter::EmitInlineAsm(const MachineInstr *MI) const {
     }
     }
   }
+  // Switch to the AsmPrinter variant.
+  if (AsmPrinterVariant != InlineAsmVariant) {
+    if (AsmPrinterVariant == 0)
+      OS << "\n\t.att_syntax";
+    else
+      OS << "\n\t.intel_syntax";
+  }
+
   OS << '\n' << (char)0;  // null terminate string.
   EmitInlineAsm(OS.str(), LocMD, MI->getInlineAsmDialect());
 
@@ -411,8 +428,8 @@ void AsmPrinter::PrintSpecial(const MachineInstr *MI, raw_ostream &OS,
 /// instruction, using the specified assembler variant.  Targets should
 /// override this to format as appropriate.
 bool AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
-    unsigned AsmVariant, const char *ExtraCode,
-    raw_ostream &O) {
+                                 unsigned AsmVariant, const char *ExtraCode,
+                                 raw_ostream &O) {
   // Does this asm operand have a single letter operand modifier?
   if (ExtraCode && ExtraCode[0]) {
     if (ExtraCode[1] != 0) return true; // Unknown modifier.

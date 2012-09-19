@@ -2816,6 +2816,24 @@ SDValue SelectionDAG::getNode(unsigned Opcode, DebugLoc DL, EVT VT,
         if (ConstantFPSDNode *CFP = dyn_cast<ConstantFPSDNode>(N2))
           if (CFP->getValueAPF().isZero())
             return N1;
+      } else if (Opcode == ISD::FMUL) {
+        ConstantFPSDNode *CFP = dyn_cast<ConstantFPSDNode>(N1);
+        SDValue V = N2;
+
+        // If the first operand isn't the constant, try the second
+        if (!CFP) {
+          CFP = dyn_cast<ConstantFPSDNode>(N2);
+          V = N1;
+        }
+
+        if (CFP) {
+          // 0*x --> 0
+          if (CFP->isZero())
+            return SDValue(CFP,0);
+          // 1*x --> x
+          if (CFP->isExactlyValue(1.0))
+            return V;
+        }
       }
     }
     assert(VT.isFloatingPoint() && "This operator only applies to FP types!");
@@ -2934,17 +2952,13 @@ SDValue SelectionDAG::getNode(unsigned Opcode, DebugLoc DL, EVT VT,
     // expanding large vector constants.
     if (N2C && N1.getOpcode() == ISD::BUILD_VECTOR) {
       SDValue Elt = N1.getOperand(N2C->getZExtValue());
-      EVT VEltTy = N1.getValueType().getVectorElementType();
-      if (Elt.getValueType() != VEltTy) {
+
+      if (VT != Elt.getValueType())
         // If the vector element type is not legal, the BUILD_VECTOR operands
-        // are promoted and implicitly truncated.  Make that explicit here.
-        Elt = getNode(ISD::TRUNCATE, DL, VEltTy, Elt);
-      }
-      if (VT != VEltTy) {
-        // If the vector element type is not legal, the EXTRACT_VECTOR_ELT
-        // result is implicitly extended.
-        Elt = getNode(ISD::ANY_EXTEND, DL, VT, Elt);
-      }
+        // are promoted and implicitly truncated, and the result implicitly
+        // extended. Make that explicit here.
+        Elt = getAnyExtOrTrunc(Elt, DL, VT);
+
       return Elt;
     }
 
@@ -3922,7 +3936,7 @@ SDValue SelectionDAG::getAtomic(unsigned Opcode, DebugLoc dl, EVT MemVT,
                                 SDValue Swp, MachinePointerInfo PtrInfo,
                                 unsigned Alignment,
                                 AtomicOrdering Ordering,
-                                SynchronizationScope SynchScope) {                                
+                                SynchronizationScope SynchScope) {
   if (Alignment == 0)  // Ensure that codegen never sees alignment 0
     Alignment = getEVTAlignment(MemVT);
 
@@ -4232,7 +4246,7 @@ SelectionDAG::getLoad(ISD::MemIndexedMode AM, ISD::LoadExtType ExtType,
                       bool isVolatile, bool isNonTemporal, bool isInvariant,
                       unsigned Alignment, const MDNode *TBAAInfo,
                       const MDNode *Ranges) {
-  assert(Chain.getValueType() == MVT::Other && 
+  assert(Chain.getValueType() == MVT::Other &&
         "Invalid chain type");
   if (Alignment == 0)  // Ensure that codegen never sees alignment 0
     Alignment = getEVTAlignment(VT);
@@ -4290,7 +4304,7 @@ SelectionDAG::getLoad(ISD::MemIndexedMode AM, ISD::LoadExtType ExtType,
   AddNodeIDNode(ID, ISD::LOAD, VTs, Ops, 3);
   ID.AddInteger(MemVT.getRawBits());
   ID.AddInteger(encodeMemSDNodeFlags(ExtType, AM, MMO->isVolatile(),
-                                     MMO->isNonTemporal(), 
+                                     MMO->isNonTemporal(),
                                      MMO->isInvariant()));
   ID.AddInteger(MMO->getPointerInfo().getAddrSpace());
   void *IP = 0;
@@ -4309,7 +4323,7 @@ SDValue SelectionDAG::getLoad(EVT VT, DebugLoc dl,
                               SDValue Chain, SDValue Ptr,
                               MachinePointerInfo PtrInfo,
                               bool isVolatile, bool isNonTemporal,
-                              bool isInvariant, unsigned Alignment, 
+                              bool isInvariant, unsigned Alignment,
                               const MDNode *TBAAInfo,
                               const MDNode *Ranges) {
   SDValue Undef = getUNDEF(Ptr.getValueType());
@@ -4338,7 +4352,7 @@ SelectionDAG::getIndexedLoad(SDValue OrigLoad, DebugLoc dl, SDValue Base,
          "Load is already a indexed load!");
   return getLoad(AM, LD->getExtensionType(), OrigLoad.getValueType(), dl,
                  LD->getChain(), Base, Offset, LD->getPointerInfo(),
-                 LD->getMemoryVT(), LD->isVolatile(), LD->isNonTemporal(), 
+                 LD->getMemoryVT(), LD->isVolatile(), LD->isNonTemporal(),
                  false, LD->getAlignment());
 }
 
@@ -4346,7 +4360,7 @@ SDValue SelectionDAG::getStore(SDValue Chain, DebugLoc dl, SDValue Val,
                                SDValue Ptr, MachinePointerInfo PtrInfo,
                                bool isVolatile, bool isNonTemporal,
                                unsigned Alignment, const MDNode *TBAAInfo) {
-  assert(Chain.getValueType() == MVT::Other && 
+  assert(Chain.getValueType() == MVT::Other &&
         "Invalid chain type");
   if (Alignment == 0)  // Ensure that codegen never sees alignment 0
     Alignment = getEVTAlignment(Val.getValueType());
@@ -4371,7 +4385,7 @@ SDValue SelectionDAG::getStore(SDValue Chain, DebugLoc dl, SDValue Val,
 
 SDValue SelectionDAG::getStore(SDValue Chain, DebugLoc dl, SDValue Val,
                                SDValue Ptr, MachineMemOperand *MMO) {
-  assert(Chain.getValueType() == MVT::Other && 
+  assert(Chain.getValueType() == MVT::Other &&
         "Invalid chain type");
   EVT VT = Val.getValueType();
   SDVTList VTs = getVTList(MVT::Other);
@@ -4400,7 +4414,7 @@ SDValue SelectionDAG::getTruncStore(SDValue Chain, DebugLoc dl, SDValue Val,
                                     EVT SVT,bool isVolatile, bool isNonTemporal,
                                     unsigned Alignment,
                                     const MDNode *TBAAInfo) {
-  assert(Chain.getValueType() == MVT::Other && 
+  assert(Chain.getValueType() == MVT::Other &&
         "Invalid chain type");
   if (Alignment == 0)  // Ensure that codegen never sees alignment 0
     Alignment = getEVTAlignment(SVT);
@@ -4427,7 +4441,7 @@ SDValue SelectionDAG::getTruncStore(SDValue Chain, DebugLoc dl, SDValue Val,
                                     MachineMemOperand *MMO) {
   EVT VT = Val.getValueType();
 
-  assert(Chain.getValueType() == MVT::Other && 
+  assert(Chain.getValueType() == MVT::Other &&
         "Invalid chain type");
   if (VT == SVT)
     return getStore(Chain, dl, Val, Ptr, MMO);

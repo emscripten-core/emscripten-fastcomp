@@ -220,7 +220,7 @@ unsigned StackColoring::collectMarkers(unsigned NumSlot) {
        FI != FE; ++FI) {
 
     // Assign a serial number to this basic block.
-    BasicBlocks[*FI] = BasicBlockNumbering.size();;
+    BasicBlocks[*FI] = BasicBlockNumbering.size();
     BasicBlockNumbering.push_back(*FI);
 
     BlockLiveness[*FI].Begin.resize(NumSlot);
@@ -241,7 +241,7 @@ unsigned StackColoring::collectMarkers(unsigned NumSlot) {
 
       MarkersFound++;
 
-      const Value* Allocation = MFI->getObjectAllocation(Slot);
+      const Value *Allocation = MFI->getObjectAllocation(Slot);
       if (Allocation) {
         DEBUG(dbgs()<<"Found lifetime marker for allocation: "<<
               Allocation->getName()<<"\n");
@@ -315,6 +315,18 @@ void StackColoring::calculateLocalLiveness() {
       LocalLiveOut.reset(BlockLiveness[BB].End);
       LocalLiveIn.reset(BlockLiveness[BB].Begin);
 
+      // If we have both BEGIN and END markers in the same basic block then
+      // we know that the BEGIN marker comes after the END, because we already
+      // handle the case where the BEGIN comes before the END when collecting
+      // the markers (and building the BEGIN/END vectore).
+      // Want to enable the LIVE_IN and LIVE_OUT of slots that have both
+      // BEGIN and END because it means that the value lives before and after
+      // this basic block.
+      BitVector LocalEndBegin = BlockLiveness[BB].End;
+      LocalEndBegin &= BlockLiveness[BB].Begin;
+      LocalLiveIn |= LocalEndBegin;
+      LocalLiveOut |= LocalEndBegin;
+
       if (LocalLiveIn.test(BlockLiveness[BB].LiveIn)) {
         changed = true;
         BlockLiveness[BB].LiveIn |= LocalLiveIn;
@@ -351,40 +363,50 @@ void StackColoring::calculateLiveIntervals(unsigned NumSlots) {
     Finishes.clear();
     Finishes.resize(NumSlots);
 
+    // Create the interval for the basic blocks with lifetime markers in them.
+    for (SmallVector<MachineInstr*, 8>::iterator it = Markers.begin(),
+         e = Markers.end(); it != e; ++it) {
+      MachineInstr *MI = *it;
+      if (MI->getParent() != MBB)
+        continue;
+
+      assert((MI->getOpcode() == TargetOpcode::LIFETIME_START ||
+              MI->getOpcode() == TargetOpcode::LIFETIME_END) &&
+             "Invalid Lifetime marker");
+
+      bool IsStart = MI->getOpcode() == TargetOpcode::LIFETIME_START;
+      MachineOperand &Mo = MI->getOperand(0);
+      int Slot = Mo.getIndex();
+      assert(Slot >= 0 && "Invalid slot");
+
+      SlotIndex ThisIndex = Indexes->getInstructionIndex(MI);
+
+      if (IsStart) {
+        if (!Starts[Slot].isValid() || Starts[Slot] > ThisIndex)
+          Starts[Slot] = ThisIndex;
+      } else {
+        if (!Finishes[Slot].isValid() || Finishes[Slot] < ThisIndex)
+          Finishes[Slot] = ThisIndex;
+      }
+    }
+
+    // Create the interval of the blocks that we previously found to be 'alive'.
     BitVector Alive = BlockLiveness[MBB].LiveIn;
     Alive |= BlockLiveness[MBB].LiveOut;
 
     if (Alive.any()) {
       for (int pos = Alive.find_first(); pos != -1;
            pos = Alive.find_next(pos)) {
-        Starts[pos] = Indexes->getMBBStartIdx(MBB);
-        Finishes[pos] = Indexes->getMBBEndIdx(MBB);
-      }
-    }
-
-    for (SmallVector<MachineInstr*, 8>::iterator it = Markers.begin(),
-         e = Markers.end(); it != e; ++it) {
-      MachineInstr *MI = *it;
-      assert((MI->getOpcode() == TargetOpcode::LIFETIME_START ||
-              MI->getOpcode() == TargetOpcode::LIFETIME_END) &&
-             "Invalid Lifetime marker");
-
-      if (MI->getParent() == MBB) {
-        bool IsStart = MI->getOpcode() == TargetOpcode::LIFETIME_START;
-        MachineOperand &Mo = MI->getOperand(0);
-        int Slot = Mo.getIndex();
-        assert(Slot >= 0 && "Invalid slot");
-        if (IsStart) {
-          Starts[Slot] = Indexes->getInstructionIndex(MI);
-        } else {
-          Finishes[Slot] = Indexes->getInstructionIndex(MI);
-        }
+        if (!Starts[pos].isValid())
+          Starts[pos] = Indexes->getMBBStartIdx(MBB);
+        if (!Finishes[pos].isValid())
+          Finishes[pos] = Indexes->getMBBEndIdx(MBB);
       }
     }
 
     for (unsigned i = 0; i < NumSlots; ++i) {
-      assert(!!Starts[i] == !!Finishes[i] && "Unmatched range");
-      if (Starts[i] == Finishes[i])
+      assert(Starts[i].isValid() == Finishes[i].isValid() && "Unmatched range");
+      if (!Starts[i].isValid())
         continue;
 
       assert(Starts[i] && Finishes[i] && "Invalid interval");
@@ -442,8 +464,8 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
   DenseMap<const Value*, const Value*> Allocas;
   for (DenseMap<int, int>::iterator it = SlotRemap.begin(),
        e = SlotRemap.end(); it != e; ++it) {
-    const Value* From = MFI->getObjectAllocation(it->first);
-    const Value* To = MFI->getObjectAllocation(it->second);
+    const Value *From = MFI->getObjectAllocation(it->first);
+    const Value *To = MFI->getObjectAllocation(it->second);
     assert(To && From && "Invalid allocation object");
     Allocas[From] = To;
   }
@@ -453,6 +475,11 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
   MachineBasicBlock::iterator I, IE;
   for (BB = MF->begin(), BBE = MF->end(); BB != BBE; ++BB)
     for (I = BB->begin(), IE = BB->end(); I != IE; ++I) {
+
+      // Skip lifetime markers. We'll remove them soon.
+      if (I->getOpcode() == TargetOpcode::LIFETIME_START ||
+          I->getOpcode() == TargetOpcode::LIFETIME_END)
+        continue;
 
       // Update the MachineMemOperand to use the new alloca.
       for (MachineInstr::mmo_iterator MM = I->memoperands_begin(),
@@ -490,6 +517,19 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
         // Only look at mapped slots.
         if (!SlotRemap.count(FromSlot))
           continue;
+
+        // In a debug build, check that the instruction that we are modifying is
+        // inside the expected live range. If the instruction is not inside
+        // the calculated range then it means that the alloca usage moved
+        // outside of the lifetime markers.
+#ifndef NDEBUG
+        if (!I->isDebugValue()) {
+          SlotIndex Index = Indexes->getInstructionIndex(I);
+          LiveInterval* Interval = Intervals[FromSlot];
+          assert(Interval->find(Index) != Interval->end() &&
+               "Found instruction usage outside of live range.");
+        }
+#endif
 
         // Fix the machine instructions.
         int ToSlot = SlotRemap[FromSlot];
@@ -604,7 +644,7 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
       if (SortedSlots[I] == -1)
         continue;
 
-      for (unsigned J=0; J < NumSlots; ++J) {
+      for (unsigned J=I+1; J < NumSlots; ++J) {
         if (SortedSlots[J] == -1)
           continue;
 
@@ -620,7 +660,8 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
           First->MergeRangesInAsValue(*Second, First->getValNumInfo(0));
           SlotRemap[SecondSlot] = FirstSlot;
           SortedSlots[J] = -1;
-          DEBUG(dbgs()<<"Merging #"<<I<<" and slots #"<<J<<" together.\n");
+          DEBUG(dbgs()<<"Merging #"<<FirstSlot<<" and slots #"<<
+                SecondSlot<<" together.\n");
           unsigned MaxAlignment = std::max(MFI->getObjectAlignment(FirstSlot),
                                            MFI->getObjectAlignment(SecondSlot));
 

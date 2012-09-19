@@ -524,6 +524,7 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setOperationAction(ISD::FLOG10, MVT::v4f32, Expand);
     setOperationAction(ISD::FEXP, MVT::v4f32, Expand);
     setOperationAction(ISD::FEXP2, MVT::v4f32, Expand);
+    setOperationAction(ISD::FFLOOR, MVT::v4f32, Expand);
 
     // Neon does not support some operations on v1i64 and v2i64 types.
     setOperationAction(ISD::MUL, MVT::v1i64, Expand);
@@ -832,12 +833,9 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
   setTargetDAGCombine(ISD::ADD);
   setTargetDAGCombine(ISD::SUB);
   setTargetDAGCombine(ISD::MUL);
-
-  if (Subtarget->hasV6T2Ops() || Subtarget->hasNEON()) {
-    setTargetDAGCombine(ISD::AND);
-    setTargetDAGCombine(ISD::OR);
-    setTargetDAGCombine(ISD::XOR);
-  }
+  setTargetDAGCombine(ISD::AND);
+  setTargetDAGCombine(ISD::OR);
+  setTargetDAGCombine(ISD::XOR);
 
   if (Subtarget->hasV6Ops())
     setTargetDAGCombine(ISD::SRL);
