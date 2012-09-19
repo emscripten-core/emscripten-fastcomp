@@ -7,12 +7,38 @@
 
 EXCLUDE_PROJECT_CHECKS_DIRS = [ '.' ]
 
+import subprocess
+def CheckGitBranch():
+  p = subprocess.Popen("git branch -vv", shell=True,
+                       stdout=subprocess.PIPE)
+  output, _ = p.communicate()
+
+  lines = output.split('\n')
+  for line in lines:
+    # output format for checked-out branch should be
+    # * branchname hash [TrackedBranchName ...
+    toks = line.split()
+    if '*' not in toks[0]:
+      continue
+    if not 'origin/master' in toks[3]:
+      warning = 'Warning: your current branch:\n' + line
+      warning += '\nis not tracking origin/master. git cl push may silently '
+      warning += 'fail to push your change. To fix this, do\n'
+      warning += 'git branch --set-upstream '+ toks[1] + ' origin/master'
+      return warning
+    return None
+  print 'Warning: presubmit check could not determine local git branch'
+  return None
+
 def _CommonChecks(input_api, output_api):
   """Checks for both upload and commit."""
   results = []
   results.extend(input_api.canned_checks.PanProjectChecks(
       input_api, output_api, project_name='Native Client',
       excluded_paths=tuple(EXCLUDE_PROJECT_CHECKS_DIRS)))
+  branch_warning = CheckGitBranch()
+  if branch_warning:
+    results.append(output_api.PresubmitPromptWarning(branch_warning))
   return results
 
 def CheckChangeOnUpload(input_api, output_api):
