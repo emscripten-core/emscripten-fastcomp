@@ -156,7 +156,7 @@ void LiveIntervals::printInstrs(raw_ostream &OS) const {
   MF->print(OS, Indexes);
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LiveIntervals::dumpInstrs() const {
   printInstrs(dbgs());
 }
@@ -731,6 +731,70 @@ bool LiveIntervals::shrinkToUses(LiveInterval *li,
   return CanSeparate;
 }
 
+void LiveIntervals::extendToIndices(LiveInterval *LI,
+                                    ArrayRef<SlotIndex> Indices) {
+  assert(LRCalc && "LRCalc not initialized.");
+  LRCalc->reset(MF, getSlotIndexes(), DomTree, &getVNInfoAllocator());
+  for (unsigned i = 0, e = Indices.size(); i != e; ++i)
+    LRCalc->extend(LI, Indices[i]);
+}
+
+void LiveIntervals::pruneValue(LiveInterval *LI, SlotIndex Kill,
+                               SmallVectorImpl<SlotIndex> *EndPoints) {
+  LiveRangeQuery LRQ(*LI, Kill);
+  VNInfo *VNI = LRQ.valueOut();
+  if (!VNI)
+    return;
+
+  MachineBasicBlock *KillMBB = Indexes->getMBBFromIndex(Kill);
+  SlotIndex MBBStart, MBBEnd;
+  tie(MBBStart, MBBEnd) = Indexes->getMBBRange(KillMBB);
+
+  // If VNI isn't live out from KillMBB, the value is trivially pruned.
+  if (LRQ.endPoint() < MBBEnd) {
+    LI->removeRange(Kill, LRQ.endPoint());
+    if (EndPoints) EndPoints->push_back(LRQ.endPoint());
+    return;
+  }
+
+  // VNI is live out of KillMBB.
+  LI->removeRange(Kill, MBBEnd);
+  if (EndPoints) EndPoints->push_back(MBBEnd);
+
+  // Find all blocks that are reachable from MBB without leaving VNI's live
+  // range.
+  for (df_iterator<MachineBasicBlock*>
+       I = df_begin(KillMBB), E = df_end(KillMBB); I != E;) {
+    MachineBasicBlock *MBB = *I;
+    // KillMBB itself was already handled.
+    if (MBB == KillMBB) {
+      ++I;
+      continue;
+    }
+
+    // Check if VNI is live in to MBB.
+    tie(MBBStart, MBBEnd) = Indexes->getMBBRange(MBB);
+    LiveRangeQuery LRQ(*LI, MBBStart);
+    if (LRQ.valueIn() != VNI) {
+      // This block isn't part of the VNI live range. Prune the search.
+      I.skipChildren();
+      continue;
+    }
+
+    // Prune the search if VNI is killed in MBB.
+    if (LRQ.endPoint() < MBBEnd) {
+      LI->removeRange(MBBStart, LRQ.endPoint());
+      if (EndPoints) EndPoints->push_back(LRQ.endPoint());
+      I.skipChildren();
+      continue;
+    }
+
+    // VNI is live through MBB.
+    LI->removeRange(MBBStart, MBBEnd);
+    if (EndPoints) EndPoints->push_back(MBBEnd);
+    ++I;
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // Register allocator hooks.
@@ -1196,14 +1260,35 @@ private:
   // Return the last use of reg between NewIdx and OldIdx.
   SlotIndex findLastUseBefore(unsigned Reg, SlotIndex OldIdx) {
     SlotIndex LastUse = NewIdx;
-    for (MachineRegisterInfo::use_nodbg_iterator
-           UI = MRI.use_nodbg_begin(Reg),
-           UE = MRI.use_nodbg_end();
-         UI != UE; UI.skipInstruction()) {
-      const MachineInstr* MI = &*UI;
-      SlotIndex InstSlot = LIS.getSlotIndexes()->getInstructionIndex(MI);
-      if (InstSlot > LastUse && InstSlot < OldIdx)
-        LastUse = InstSlot;
+
+    if (TargetRegisterInfo::isVirtualRegister(Reg)) {
+      for (MachineRegisterInfo::use_nodbg_iterator
+             UI = MRI.use_nodbg_begin(Reg),
+             UE = MRI.use_nodbg_end();
+           UI != UE; UI.skipInstruction()) {
+        const MachineInstr* MI = &*UI;
+        SlotIndex InstSlot = LIS.getSlotIndexes()->getInstructionIndex(MI);
+        if (InstSlot > LastUse && InstSlot < OldIdx)
+          LastUse = InstSlot;
+      }
+    } else {
+      MachineInstr* MI = LIS.getSlotIndexes()->getInstructionFromIndex(NewIdx);
+      MachineBasicBlock::iterator MII(MI);
+      ++MII;
+      MachineBasicBlock* MBB = MI->getParent();
+      for (; MII != MBB->end() && LIS.getInstructionIndex(MII) < OldIdx; ++MII){
+        for (MachineInstr::mop_iterator MOI = MII->operands_begin(),
+                                        MOE = MII->operands_end();
+             MOI != MOE; ++MOI) {
+          const MachineOperand& mop = *MOI;
+          if (!mop.isReg() || mop.getReg() == 0 ||
+              TargetRegisterInfo::isVirtualRegister(mop.getReg()))
+            continue;
+
+          if (TRI.hasRegUnit(mop.getReg(), Reg))
+            LastUse = LIS.getInstructionIndex(MII);
+        }
+      }
     }
     return LastUse;
   }

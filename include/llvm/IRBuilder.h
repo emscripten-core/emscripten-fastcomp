@@ -1052,7 +1052,7 @@ public:
 private:
   // Provided to resolve 'CreateIntCast(Ptr, Ptr, "...")', giving a compile time
   // error, instead of converting the string to bool for the isSigned parameter.
-  Value *CreateIntCast(Value *, Type *, const char *); // DO NOT IMPLEMENT
+  Value *CreateIntCast(Value *, Type *, const char *) LLVM_DELETED_FUNCTION;
 public:
   Value *CreateFPCast(Value *V, Type *DestTy, const Twine &Name = "") {
     if (V->getType() == DestTy)
@@ -1261,13 +1261,13 @@ public:
   // Utility creation methods
   //===--------------------------------------------------------------------===//
 
-  /// CreateIsNull - Return an i1 value testing if \arg Arg is null.
+  /// CreateIsNull - Return an i1 value testing if \p Arg is null.
   Value *CreateIsNull(Value *Arg, const Twine &Name = "") {
     return CreateICmpEQ(Arg, Constant::getNullValue(Arg->getType()),
                         Name);
   }
 
-  /// CreateIsNotNull - Return an i1 value testing if \arg Arg is not null.
+  /// CreateIsNotNull - Return an i1 value testing if \p Arg is not null.
   Value *CreateIsNotNull(Value *Arg, const Twine &Name = "") {
     return CreateICmpNE(Arg, Constant::getNullValue(Arg->getType()),
                         Name);

@@ -2344,6 +2344,37 @@ bool ARMBaseInstrInfo::FoldImmediate(MachineInstr *UseMI,
   return true;
 }
 
+// Return the number of 32-bit words loaded by LDM or stored by STM. If this
+// can't be easily determined return 0 (missing MachineMemOperand).
+//
+// FIXME: The current MachineInstr design does not support relying on machine
+// mem operands to determine the width of a memory access. Instead, we expect
+// the target to provide this information based on the instruction opcode and
+// operands. However, using MachineMemOperand is a the best solution now for
+// two reasons:
+//
+// 1) getNumMicroOps tries to infer LDM memory width from the total number of MI
+// operands. This is much more dangerous than using the MachineMemOperand
+// sizes because CodeGen passes can insert/remove optional machine operands. In
+// fact, it's totally incorrect for preRA passes and appears to be wrong for
+// postRA passes as well.
+//
+// 2) getNumLDMAddresses is only used by the scheduling machine model and any
+// machine model that calls this should handle the unknown (zero size) case.
+//
+// Long term, we should require a target hook that verifies MachineMemOperand
+// sizes during MC lowering. That target hook should be local to MC lowering
+// because we can't ensure that it is aware of other MI forms. Doing this will
+// ensure that MachineMemOperands are correctly propagated through all passes.
+unsigned ARMBaseInstrInfo::getNumLDMAddresses(const MachineInstr *MI) const {
+  unsigned Size = 0;
+  for (MachineInstr::mmo_iterator I = MI->memoperands_begin(),
+         E = MI->memoperands_end(); I != E; ++I) {
+    Size += (*I)->getSize();
+  }
+  return Size / 4;
+}
+
 unsigned
 ARMBaseInstrInfo::getNumMicroOps(const InstrItineraryData *ItinData,
                                  const MachineInstr *MI) const {
@@ -2432,7 +2463,7 @@ ARMBaseInstrInfo::getNumMicroOps(const InstrItineraryData *ItinData,
       if (NumRegs % 2)
         ++A8UOps;
       return A8UOps;
-    } else if (Subtarget.isCortexA9()) {
+    } else if (Subtarget.isLikeA9()) {
       int A9UOps = (NumRegs / 2);
       // If there are odd number of registers or if it's not 64-bit aligned,
       // then it takes an extra AGU (Address Generation Unit) cycle.
@@ -2465,7 +2496,7 @@ ARMBaseInstrInfo::getVLDMDefCycle(const InstrItineraryData *ItinData,
     DefCycle = RegNo / 2 + 1;
     if (RegNo % 2)
       ++DefCycle;
-  } else if (Subtarget.isCortexA9()) {
+  } else if (Subtarget.isLikeA9()) {
     DefCycle = RegNo;
     bool isSLoad = false;
 
@@ -2509,7 +2540,7 @@ ARMBaseInstrInfo::getLDMDefCycle(const InstrItineraryData *ItinData,
       DefCycle = 1;
     // Result latency is issue cycle + 2: E2.
     DefCycle += 2;
-  } else if (Subtarget.isCortexA9()) {
+  } else if (Subtarget.isLikeA9()) {
     DefCycle = (RegNo / 2);
     // If there are odd number of registers or if it's not 64-bit aligned,
     // then it takes an extra AGU (Address Generation Unit) cycle.
@@ -2540,7 +2571,7 @@ ARMBaseInstrInfo::getVSTMUseCycle(const InstrItineraryData *ItinData,
     UseCycle = RegNo / 2 + 1;
     if (RegNo % 2)
       ++UseCycle;
-  } else if (Subtarget.isCortexA9()) {
+  } else if (Subtarget.isLikeA9()) {
     UseCycle = RegNo;
     bool isSStore = false;
 
@@ -2581,7 +2612,7 @@ ARMBaseInstrInfo::getSTMUseCycle(const InstrItineraryData *ItinData,
       UseCycle = 2;
     // Read in E3.
     UseCycle += 2;
-  } else if (Subtarget.isCortexA9()) {
+  } else if (Subtarget.isLikeA9()) {
     UseCycle = (RegNo / 2);
     // If there are odd number of registers or if it's not 64-bit aligned,
     // then it takes an extra AGU (Address Generation Unit) cycle.
@@ -2766,7 +2797,7 @@ static int adjustDefLatency(const ARMSubtarget &Subtarget,
                             const MachineInstr *DefMI,
                             const MCInstrDesc *DefMCID, unsigned DefAlign) {
   int Adjust = 0;
-  if (Subtarget.isCortexA8() || Subtarget.isCortexA9()) {
+  if (Subtarget.isCortexA8() || Subtarget.isLikeA9()) {
     // FIXME: Shifter op hack: no shift (i.e. [r +/- r]) or [r + r << 2]
     // variants are one cycle cheaper.
     switch (DefMCID->getOpcode()) {
@@ -2793,7 +2824,7 @@ static int adjustDefLatency(const ARMSubtarget &Subtarget,
     }
   }
 
-  if (DefAlign < 8 && Subtarget.isCortexA9()) {
+  if (DefAlign < 8 && Subtarget.isLikeA9()) {
     switch (DefMCID->getOpcode()) {
     default: break;
     case ARM::VLD1q8:
@@ -2951,7 +2982,7 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
   if (Reg == ARM::CPSR) {
     if (DefMI->getOpcode() == ARM::FMSTAT) {
       // fpscr -> cpsr stalls over 20 cycles on A8 (and earlier?)
-      return Subtarget.isCortexA9() ? 1 : 20;
+      return Subtarget.isLikeA9() ? 1 : 20;
     }
 
     // CPSR set and branch can be paired in the same cycle.
@@ -3017,7 +3048,7 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
 
   if (!UseNode->isMachineOpcode()) {
     int Latency = ItinData->getOperandCycle(DefMCID.getSchedClass(), DefIdx);
-    if (Subtarget.isCortexA9())
+    if (Subtarget.isLikeA9())
       return Latency <= 2 ? 1 : Latency - 1;
     else
       return Latency <= 3 ? 1 : Latency - 2;
@@ -3034,7 +3065,7 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
                                   UseMCID, UseIdx, UseAlign);
 
   if (Latency > 1 &&
-      (Subtarget.isCortexA8() || Subtarget.isCortexA9())) {
+      (Subtarget.isCortexA8() || Subtarget.isLikeA9())) {
     // FIXME: Shifter op hack: no shift (i.e. [r +/- r]) or [r + r << 2]
     // variants are one cycle cheaper.
     switch (DefMCID.getOpcode()) {
@@ -3063,7 +3094,7 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     }
   }
 
-  if (DefAlign < 8 && Subtarget.isCortexA9())
+  if (DefAlign < 8 && Subtarget.isLikeA9())
     switch (DefMCID.getOpcode()) {
     default: break;
     case ARM::VLD1q8:
@@ -3356,9 +3387,9 @@ ARMBaseInstrInfo::getExecutionDomain(const MachineInstr *MI) const {
   if (MI->getOpcode() == ARM::VMOVD && !isPredicated(MI))
     return std::make_pair(ExeVFP, (1<<ExeVFP) | (1<<ExeNEON));
 
-  // Cortex-A9 is particularly picky about mixing the two and wants these
+  // A9-like cores are particularly picky about mixing the two and want these
   // converted.
-  if (Subtarget.isCortexA9() && !isPredicated(MI) &&
+  if (Subtarget.isLikeA9() && !isPredicated(MI) &&
       (MI->getOpcode() == ARM::VMOVRS ||
        MI->getOpcode() == ARM::VMOVSR ||
        MI->getOpcode() == ARM::VMOVS))
@@ -3396,6 +3427,48 @@ static unsigned getCorrespondingDRegAndLane(const TargetRegisterInfo *TRI,
   return DReg;
 }
 
+/// getImplicitSPRUseForDPRUse - Given a use of a DPR register and lane, 
+/// set ImplicitSReg to a register number that must be marked as implicit-use or
+/// zero if no register needs to be defined as implicit-use.
+///
+/// If the function cannot determine if an SPR should be marked implicit use or
+/// not, it returns false.
+///
+/// This function handles cases where an instruction is being modified from taking
+/// an SPR to a DPR[Lane]. A use of the DPR is being added, which may conflict 
+/// with an earlier def of an SPR corresponding to DPR[Lane^1] (i.e. the other
+/// lane of the DPR).
+///
+/// If the other SPR is defined, an implicit-use of it should be added. Else,
+/// (including the case where the DPR itself is defined), it should not.
+/// 
+static bool getImplicitSPRUseForDPRUse(const TargetRegisterInfo *TRI,
+                                       MachineInstr *MI,
+                                       unsigned DReg, unsigned Lane,
+                                       unsigned &ImplicitSReg) {
+  // If the DPR is defined or used already, the other SPR lane will be chained
+  // correctly, so there is nothing to be done.
+  if (MI->definesRegister(DReg, TRI) || MI->readsRegister(DReg, TRI)) {
+    ImplicitSReg = 0;
+    return true;
+  }
+
+  // Otherwise we need to go searching to see if the SPR is set explicitly.
+  ImplicitSReg = TRI->getSubReg(DReg,
+                                (Lane & 1) ? ARM::ssub_0 : ARM::ssub_1);
+  MachineBasicBlock::LivenessQueryResult LQR =
+    MI->getParent()->computeRegisterLiveness(TRI, ImplicitSReg, MI);
+
+  if (LQR == MachineBasicBlock::LQR_Live)
+    return true;
+  else if (LQR == MachineBasicBlock::LQR_Unknown)
+    return false;
+
+  // If the register is known not to be live, there is no need to add an
+  // implicit-use.
+  ImplicitSReg = 0;
+  return true;
+}
 
 void
 ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
@@ -3453,7 +3526,7 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
       // was dead before here.
       MIB.addReg(SrcReg, RegState::Implicit);
       break;
-    case ARM::VMOVSR:
+    case ARM::VMOVSR: {
       if (Domain != ExeNEON)
         break;
       assert(!isPredicated(MI) && "Cannot predicate a VSETLN");
@@ -3464,12 +3537,9 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
 
       DReg = getCorrespondingDRegAndLane(TRI, DstReg, Lane);
 
-      // If we insert both a novel <def> and an <undef> on the DReg, we break
-      // any existing dependency chain on the unused lane. Either already being
-      // present means this instruction is in that chain anyway so we can make
-      // the transformation.
-      if (!MI->definesRegister(DReg, TRI) && !MI->readsRegister(DReg, TRI))
-          break;
+      unsigned ImplicitSReg;
+      if (!getImplicitSPRUseForDPRUse(TRI, MI, DReg, Lane, ImplicitSReg))
+        break;
 
       for (unsigned i = MI->getDesc().getNumOperands(); i; --i)
         MI->RemoveOperand(i-1);
@@ -3486,7 +3556,10 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
       // The narrower destination must be marked as set to keep previous chains
       // in place.
       MIB.addReg(DstReg, RegState::Define | RegState::Implicit);
+      if (ImplicitSReg != 0)
+        MIB.addReg(ImplicitSReg, RegState::Implicit);
       break;
+    }
     case ARM::VMOVS: {
       if (Domain != ExeNEON)
         break;
@@ -3499,12 +3572,9 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
       DDst = getCorrespondingDRegAndLane(TRI, DstReg, DstLane);
       DSrc = getCorrespondingDRegAndLane(TRI, SrcReg, SrcLane);
 
-      // If we insert both a novel <def> and an <undef> on the DReg, we break
-      // any existing dependency chain on the unused lane. Either already being
-      // present means this instruction is in that chain anyway so we can make
-      // the transformation.
-      if (!MI->definesRegister(DDst, TRI) && !MI->readsRegister(DDst, TRI))
-          break;
+      unsigned ImplicitSReg;
+      if (!getImplicitSPRUseForDPRUse(TRI, MI, DSrc, SrcLane, ImplicitSReg))
+        break;
 
       for (unsigned i = MI->getDesc().getNumOperands(); i; --i)
         MI->RemoveOperand(i-1);
@@ -3522,6 +3592,8 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
         // more, so add them in manually.
         MIB.addReg(DstReg, RegState::Implicit | RegState::Define);
         MIB.addReg(SrcReg, RegState::Implicit);
+        if (ImplicitSReg != 0)
+          MIB.addReg(ImplicitSReg, RegState::Implicit);
         break;
       }
 
@@ -3580,6 +3652,8 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
       // As before, the original destination is no longer represented, add it
       // implicitly.
       MIB.addReg(DstReg, RegState::Define | RegState::Implicit);
+      if (ImplicitSReg != 0)
+        MIB.addReg(ImplicitSReg, RegState::Implicit);
       break;
     }
   }

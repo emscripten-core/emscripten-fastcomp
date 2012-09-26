@@ -59,12 +59,23 @@ using namespace llvm;
 
 static cl::opt<bool>
 DisableColoring("no-stack-coloring",
-               cl::init(true), cl::Hidden,
-               cl::desc("Suppress stack coloring"));
+        cl::init(false), cl::Hidden,
+        cl::desc("Disable stack coloring"));
 
-STATISTIC(NumMarkerSeen,  "Number of life markers found.");
+/// The user may write code that uses allocas outside of the declared lifetime
+/// zone. This can happen when the user returns a reference to a local
+/// data-structure. We can detect these cases and decide not to optimize the
+/// code. If this flag is enabled, we try to save the user.
+static cl::opt<bool>
+ProtectFromEscapedAllocas("protect-from-escaped-allocas",
+        cl::init(false), cl::Hidden,
+        cl::desc("Do not optimize lifetime zones that are broken"));
+
+STATISTIC(NumMarkerSeen,  "Number of lifetime markers found.");
 STATISTIC(StackSpaceSaved, "Number of bytes saved due to merging slots.");
 STATISTIC(StackSlotMerged, "Number of stack slot merged.");
+STATISTIC(EscapedAllocas,
+          "Number of allocas that escaped the lifetime region");
 
 //===----------------------------------------------------------------------===//
 //                           StackColoring Pass
@@ -104,7 +115,7 @@ class StackColoring : public MachineFunctionPass {
   /// VNInfo is used for the construction of LiveIntervals.
   VNInfo::Allocator VNInfoAllocator;
   /// SlotIndex analysis object.
-  SlotIndexes* Indexes;
+  SlotIndexes *Indexes;
 
   /// The list of lifetime markers found. These markers are to be removed
   /// once the coloring is done.
@@ -157,6 +168,14 @@ private:
   /// Go over the machine function and change instructions which use stack
   /// slots to use the joint slots.
   void remapInstructions(DenseMap<int, int> &SlotRemap);
+
+  /// The input program may contain intructions which are not inside lifetime
+  /// markers. This can happen due to a bug in the compiler or due to a bug in
+  /// user code (for example, returning a reference to a local variable).
+  /// This procedure checks all of the instructions in the function and
+  /// invalidates lifetime ranges which do not contain all of the instructions
+  /// which access that frame slot.
+  void removeInvalidSlotRanges();
 
   /// Map entries which point to other entries to their destination.
   ///   A->B->C becomes A->C.
@@ -243,8 +262,8 @@ unsigned StackColoring::collectMarkers(unsigned NumSlot) {
 
       const Value *Allocation = MFI->getObjectAllocation(Slot);
       if (Allocation) {
-        DEBUG(dbgs()<<"Found lifetime marker for allocation: "<<
-              Allocation->getName()<<"\n");
+        DEBUG(dbgs()<<"Found a lifetime marker for slot #"<<Slot<<
+              " with allocation: "<< Allocation->getName()<<"\n");
       }
 
       if (IsStart) {
@@ -521,11 +540,17 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
         // In a debug build, check that the instruction that we are modifying is
         // inside the expected live range. If the instruction is not inside
         // the calculated range then it means that the alloca usage moved
-        // outside of the lifetime markers.
+        // outside of the lifetime markers, or that the user has a bug.
+        // NOTE: Alloca address calculations which happen outside the lifetime
+        // zone are are okay, despite the fact that we don't have a good way
+        // for validating all of the usages of the calculation.
 #ifndef NDEBUG
-        if (!I->isDebugValue()) {
+        bool TouchesMemory = I->mayLoad() || I->mayStore();
+        // If we *don't* protect the user from escaped allocas, don't bother
+        // validating the instructions.
+        if (!I->isDebugValue() && TouchesMemory && ProtectFromEscapedAllocas) {
           SlotIndex Index = Indexes->getInstructionIndex(I);
-          LiveInterval* Interval = Intervals[FromSlot];
+          LiveInterval *Interval = Intervals[FromSlot];
           assert(Interval->find(Index) != Interval->end() &&
                "Found instruction usage outside of live range.");
         }
@@ -541,6 +566,53 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
   DEBUG(dbgs()<<"Fixed "<<FixedMemOp<<" machine memory operands.\n");
   DEBUG(dbgs()<<"Fixed "<<FixedDbg<<" debug locations.\n");
   DEBUG(dbgs()<<"Fixed "<<FixedInstr<<" machine instructions.\n");
+}
+
+void StackColoring::removeInvalidSlotRanges() {
+  MachineFunction::iterator BB, BBE;
+  MachineBasicBlock::iterator I, IE;
+  for (BB = MF->begin(), BBE = MF->end(); BB != BBE; ++BB)
+    for (I = BB->begin(), IE = BB->end(); I != IE; ++I) {
+
+      if (I->getOpcode() == TargetOpcode::LIFETIME_START ||
+          I->getOpcode() == TargetOpcode::LIFETIME_END || I->isDebugValue())
+        continue;
+
+      // Some intervals are suspicious! In some cases we find address
+      // calculations outside of the lifetime zone, but not actual memory
+      // read or write. Memory accesses outside of the lifetime zone are a clear
+      // violation, but address calculations are okay. This can happen when
+      // GEPs are hoisted outside of the lifetime zone.
+      // So, in here we only check instructions which can read or write memory.
+      if (!I->mayLoad() && !I->mayStore())
+        continue;
+
+      // Check all of the machine operands.
+      for (unsigned i = 0 ; i <  I->getNumOperands(); ++i) {
+        MachineOperand &MO = I->getOperand(i);
+
+        if (!MO.isFI())
+          continue;
+
+        int Slot = MO.getIndex();
+
+        if (Slot<0)
+          continue;
+
+        if (Intervals[Slot]->empty())
+          continue;
+
+        // Check that the used slot is inside the calculated lifetime range.
+        // If it is not, warn about it and invalidate the range.
+        LiveInterval *Interval = Intervals[Slot];
+        SlotIndex Index = Indexes->getInstructionIndex(I);
+        if (Interval->find(Index) == Interval->end()) {
+          Intervals[Slot]->clear();
+          DEBUG(dbgs()<<"Invalidating range #"<<Slot<<"\n");
+          EscapedAllocas++;
+        }
+      }
+    }
 }
 
 void StackColoring::expungeSlotMap(DenseMap<int, int> &SlotRemap,
@@ -598,7 +670,7 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
   DEBUG(dbgs()<<"Total Stack size: "<<TotalSize<<" bytes\n\n");
 
   // Don't continue because there are not enough lifetime markers, or the
-  // stack or too small, or we are told not to optimize the slots.
+  // stack is too small, or we are told not to optimize the slots.
   if (NumMarkers < 2 || TotalSize < 16 || DisableColoring) {
     DEBUG(dbgs()<<"Will not try to merge slots.\n");
     return removeAllMarkers();
@@ -616,6 +688,11 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
 
   // Propagate the liveness information.
   calculateLiveIntervals(NumSlots);
+
+  // Search for allocas which are used outside of the declared lifetime
+  // markers.
+  if (ProtectFromEscapedAllocas)
+    removeInvalidSlotRanges();
 
   // Maps old slots to new slots.
   DenseMap<int, int> SlotRemap;

@@ -89,6 +89,20 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case MipsISD::LDR:               return "MipsISD::LDR";
   case MipsISD::SDL:               return "MipsISD::SDL";
   case MipsISD::SDR:               return "MipsISD::SDR";
+  case MipsISD::EXTP:              return "MipsISD::EXTP";
+  case MipsISD::EXTPDP:            return "MipsISD::EXTPDP";
+  case MipsISD::EXTR_S_H:          return "MipsISD::EXTR_S_H";
+  case MipsISD::EXTR_W:            return "MipsISD::EXTR_W";
+  case MipsISD::EXTR_R_W:          return "MipsISD::EXTR_R_W";
+  case MipsISD::EXTR_RS_W:         return "MipsISD::EXTR_RS_W";
+  case MipsISD::SHILO:             return "MipsISD::SHILO";
+  case MipsISD::MTHLIP:            return "MipsISD::MTHLIP";
+  case MipsISD::MULT:              return "MipsISD::MULT";
+  case MipsISD::MULTU:             return "MipsISD::MULTU";
+  case MipsISD::MADD_DSP:          return "MipsISD::MADD_DSPDSP";
+  case MipsISD::MADDU_DSP:         return "MipsISD::MADDU_DSP";
+  case MipsISD::MSUB_DSP:          return "MipsISD::MSUB_DSP";
+  case MipsISD::MSUBU_DSP:         return "MipsISD::MSUBU_DSP";
   default:                         return NULL;
   }
 }
@@ -113,7 +127,22 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
   if (Subtarget->inMips16Mode()) {
     addRegisterClass(MVT::i32, &Mips::CPU16RegsRegClass);
-    addRegisterClass(MVT::i32, &Mips::CPURARegRegClass);
+  }
+
+  if (Subtarget->hasDSP()) {
+    MVT::SimpleValueType VecTys[2] = {MVT::v2i16, MVT::v4i8};
+
+    for (unsigned i = 0; i < array_lengthof(VecTys); ++i) {
+      addRegisterClass(VecTys[i], &Mips::DSPRegsRegClass);
+
+      // Expand all builtin opcodes.
+      for (unsigned Opc = 0; Opc < ISD::BUILTIN_OP_END; ++Opc)
+        setOperationAction(Opc, VecTys[i], Expand);
+
+      setOperationAction(ISD::LOAD, VecTys[i], Legal);
+      setOperationAction(ISD::STORE, VecTys[i], Legal);
+      setOperationAction(ISD::BITCAST, VecTys[i], Legal);
+    }
   }
 
   if (!TM.Options.UseSoftFloat) {
@@ -162,8 +191,10 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::FCOPYSIGN,          MVT::f64,   Custom);
   setOperationAction(ISD::MEMBARRIER,         MVT::Other, Custom);
   setOperationAction(ISD::ATOMIC_FENCE,       MVT::Other, Custom);
-  setOperationAction(ISD::LOAD,               MVT::i32, Custom);
-  setOperationAction(ISD::STORE,              MVT::i32, Custom);
+  if (!Subtarget->inMips16Mode()) {
+    setOperationAction(ISD::LOAD,               MVT::i32, Custom);
+    setOperationAction(ISD::STORE,              MVT::i32, Custom);
+  }
 
   if (!TM.Options.NoNaNsFPMath) {
     setOperationAction(ISD::FABS,             MVT::f32,   Custom);
@@ -254,6 +285,9 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::VACOPY,            MVT::Other, Expand);
   setOperationAction(ISD::VAEND,             MVT::Other, Expand);
 
+  setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
+  setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::i64, Custom);
+
   // Use the default for now
   setOperationAction(ISD::STACKSAVE,         MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,      MVT::Other, Expand);
@@ -316,6 +350,9 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
 bool MipsTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
   MVT::SimpleValueType SVT = VT.getSimpleVT().SimpleTy;
+
+  if (Subtarget->inMips16Mode())
+    return false;
 
   switch (SVT) {
   case MVT::i64:
@@ -790,6 +827,26 @@ SDValue  MipsTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
   }
 
   return SDValue();
+}
+
+void
+MipsTargetLowering::LowerOperationWrapper(SDNode *N,
+                                          SmallVectorImpl<SDValue> &Results,
+                                          SelectionDAG &DAG) const {
+  SDValue Res = LowerOperation(SDValue(N, 0), DAG);
+
+  for (unsigned I = 0, E = Res->getNumValues(); I != E; ++I)
+    Results.push_back(Res.getValue(I));
+}
+
+void
+MipsTargetLowering::ReplaceNodeResults(SDNode *N,
+                                       SmallVectorImpl<SDValue> &Results,
+                                       SelectionDAG &DAG) const {
+  SDValue Res = LowerOperation(SDValue(N, 0), DAG);
+
+  for (unsigned I = 0, E = Res->getNumValues(); I != E; ++I)
+    Results.push_back(Res.getValue(I));
 }
 
 SDValue MipsTargetLowering::
@@ -1583,7 +1640,8 @@ SDValue MipsTargetLowering::LowerGlobalAddress(SDValue Op,
   if (getTargetMachine().getRelocationModel() != Reloc::PIC_ && !IsN64) {
     SDVTList VTs = DAG.getVTList(MVT::i32);
 
-    const MipsTargetObjectFile &TLOF = (const MipsTargetObjectFile&)getObjFileLowering();
+    const MipsTargetObjectFile &TLOF =
+      (const MipsTargetObjectFile&)getObjFileLowering();
 
     // %gp_rel relocation
     if (TLOF.IsGlobalInSmallSection(GV, getTargetMachine())) {
@@ -1632,8 +1690,8 @@ SDValue MipsTargetLowering::LowerBlockAddress(SDValue Op,
 
   if (getTargetMachine().getRelocationModel() != Reloc::PIC_ && !IsN64) {
     // %hi/%lo relocation
-    SDValue BAHi = DAG.getBlockAddress(BA, MVT::i32, true, MipsII::MO_ABS_HI);
-    SDValue BALo = DAG.getBlockAddress(BA, MVT::i32, true, MipsII::MO_ABS_LO);
+    SDValue BAHi = DAG.getTargetBlockAddress(BA, MVT::i32, 0, MipsII::MO_ABS_HI);
+    SDValue BALo = DAG.getTargetBlockAddress(BA, MVT::i32, 0, MipsII::MO_ABS_LO);
     SDValue Hi = DAG.getNode(MipsISD::Hi, dl, MVT::i32, BAHi);
     SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, BALo);
     return DAG.getNode(ISD::ADD, dl, MVT::i32, Hi, Lo);
@@ -1642,10 +1700,10 @@ SDValue MipsTargetLowering::LowerBlockAddress(SDValue Op,
   EVT ValTy = Op.getValueType();
   unsigned GOTFlag = HasMips64 ? MipsII::MO_GOT_PAGE : MipsII::MO_GOT;
   unsigned OFSTFlag = HasMips64 ? MipsII::MO_GOT_OFST : MipsII::MO_ABS_LO;
-  SDValue BAGOTOffset = DAG.getBlockAddress(BA, ValTy, true, GOTFlag);
+  SDValue BAGOTOffset = DAG.getTargetBlockAddress(BA, ValTy, 0, GOTFlag);
   BAGOTOffset = DAG.getNode(MipsISD::Wrapper, dl, ValTy,
                             GetGlobalReg(DAG, ValTy), BAGOTOffset);
-  SDValue BALOOffset = DAG.getBlockAddress(BA, ValTy, true, OFSTFlag);
+  SDValue BALOOffset = DAG.getTargetBlockAddress(BA, ValTy, 0, OFSTFlag);
   SDValue Load = DAG.getLoad(ValTy, dl, DAG.getEntryNode(), BAGOTOffset,
                              MachinePointerInfo(), false, false, false, 0);
   SDValue Lo = DAG.getNode(MipsISD::Lo, dl, ValTy, BALOOffset);
@@ -3383,8 +3441,11 @@ getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const
     case 'd': // Address register. Same as 'r' unless generating MIPS16 code.
     case 'y': // Same as 'r'. Exists for compatibility.
     case 'r':
-      if (VT == MVT::i32 || VT == MVT::i16 || VT == MVT::i8)
+      if (VT == MVT::i32 || VT == MVT::i16 || VT == MVT::i8) {
+        if (Subtarget->inMips16Mode())
+          return std::make_pair(0U, &Mips::CPU16RegsRegClass);
         return std::make_pair(0U, &Mips::CPURegsRegClass);
+      }
       if (VT == MVT::i64 && !HasMips64)
         return std::make_pair(0U, &Mips::CPURegsRegClass);
       if (VT == MVT::i64 && HasMips64)

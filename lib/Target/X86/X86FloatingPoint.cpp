@@ -171,7 +171,7 @@ namespace {
     // Shuffle live registers to match the expectations of successor blocks.
     void finishBlockStack();
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
     void dumpStack() const {
       dbgs() << "Stack contents:";
       for (unsigned i = 0; i != StackTop; ++i) {
@@ -577,8 +577,8 @@ namespace {
     friend bool operator<(const TableEntry &TE, unsigned V) {
       return TE.from < V;
     }
-    friend bool LLVM_ATTRIBUTE_USED operator<(unsigned V,
-                                              const TableEntry &TE) {
+    friend bool LLVM_ATTRIBUTE_UNUSED operator<(unsigned V,
+                                                const TableEntry &TE) {
       return V < TE.from;
     }
   };

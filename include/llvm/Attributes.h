@@ -21,11 +21,13 @@
 #include <string>
 
 namespace llvm {
+
 class Type;
 
 namespace Attribute {
-/// We use this proxy POD type to allow constructing Attributes constants
-/// using initializer lists. Do not use this class directly.
+
+/// We use this proxy POD type to allow constructing Attributes constants using
+/// initializer lists. Do not use this class directly.
 struct AttrConst {
   uint64_t v;
   AttrConst operator | (const AttrConst Attrs) const {
@@ -37,49 +39,6 @@ struct AttrConst {
     return Res;
   }
 };
-}  // namespace Attribute
-
-
-/// Attributes - A bitset of attributes.
-class Attributes {
- public:
-  Attributes() : Bits(0) { }
-  explicit Attributes(uint64_t Val) : Bits(Val) { }
-  /*implicit*/ Attributes(Attribute::AttrConst Val) : Bits(Val.v) { }
-  // This is a "safe bool() operator".
-  operator const void *() const { return Bits ? this : 0; }
-  bool isEmptyOrSingleton() const { return (Bits & (Bits - 1)) == 0; }
-  bool operator == (const Attributes &Attrs) const {
-    return Bits == Attrs.Bits;
-  }
-  bool operator != (const Attributes &Attrs) const {
-    return Bits != Attrs.Bits;
-  }
-  Attributes operator | (const Attributes &Attrs) const {
-    return Attributes(Bits | Attrs.Bits);
-  }
-  Attributes operator & (const Attributes &Attrs) const {
-    return Attributes(Bits & Attrs.Bits);
-  }
-  Attributes operator ^ (const Attributes &Attrs) const {
-    return Attributes(Bits ^ Attrs.Bits);
-  }
-  Attributes &operator |= (const Attributes &Attrs) {
-    Bits |= Attrs.Bits;
-    return *this;
-  }
-  Attributes &operator &= (const Attributes &Attrs) {
-    Bits &= Attrs.Bits;
-    return *this;
-  }
-  Attributes operator ~ () const { return Attributes(~Bits); }
-  uint64_t Raw() const { return Bits; }
- private:
-  // Currently, we need less than 64 bits.
-  uint64_t Bits;
-};
-
-namespace Attribute {
 
 /// Function parameters and results can have attributes to indicate how they
 /// should be treated by optimizations and code generation. This enumeration
@@ -87,10 +46,10 @@ namespace Attribute {
 /// results or the function itself.
 /// @brief Function attributes.
 
-// We declare AttrConst objects that will be used throughout the code
-// and also raw uint64_t objects with _i suffix to be used below for other
-// constant declarations. This is done to avoid static CTORs and at the same
-// time to keep type-safety of Attributes.
+/// We declare AttrConst objects that will be used throughout the code and also
+/// raw uint64_t objects with _i suffix to be used below for other constant
+/// declarations. This is done to avoid static CTORs and at the same time to
+/// keep type-safety of Attributes.
 #define DECLARE_LLVM_ATTRIBUTE(name, value) \
   const uint64_t name##_i = value; \
   const AttrConst name = {value};
@@ -137,6 +96,195 @@ DECLARE_LLVM_ATTRIBUTE(AddressSafety,1ULL<<32) ///< Address safety checking is o
 
 #undef DECLARE_LLVM_ATTRIBUTE
 
+}  // namespace Attribute
+
+/// Attributes - A bitset of attributes.
+class Attributes {
+  // Currently, we need less than 64 bits.
+  uint64_t Bits;
+public:
+  Attributes() : Bits(0) { }
+  explicit Attributes(uint64_t Val) : Bits(Val) { }
+  /*implicit*/ Attributes(Attribute::AttrConst Val) : Bits(Val.v) { }
+
+  // Attribute query methods.
+  // FIXME: StackAlignment & Alignment attributes have no predicate methods.
+  bool hasAttributes() const {
+    return Bits != 0;
+  }
+  bool hasAttributes(const Attributes &A) const {
+    return Bits & A.Bits;
+  }
+
+  bool hasZExtAttr() const {
+    return Bits & Attribute::ZExt_i;
+  }
+  bool hasSExtAttr() const {
+    return Bits & Attribute::SExt_i;
+  }
+  bool hasNoReturnAttr() const {
+    return Bits & Attribute::NoReturn_i;
+  }
+  bool hasInRegAttr() const {
+    return Bits & Attribute::InReg_i;
+  }
+  bool hasStructRetAttr() const {
+    return Bits & Attribute::StructRet_i;
+  }
+  bool hasNoUnwindAttr() const {
+    return Bits & Attribute::NoUnwind_i;
+  }
+  bool hasNoAliasAttr() const {
+    return Bits & Attribute::NoAlias_i;
+  }
+  bool hasByValAttr() const {
+    return Bits & Attribute::ByVal_i;
+  }
+  bool hasNestAttr() const {
+    return Bits & Attribute::Nest_i;
+  }
+  bool hasReadNoneAttr() const {
+    return Bits & Attribute::ReadNone_i;
+  }
+  bool hasReadOnlyAttr() const {
+    return Bits & Attribute::ReadOnly_i;
+  }
+  bool hasNoInlineAttr() const {
+    return Bits & Attribute::NoInline_i;
+  }
+  bool hasAlwaysInlineAttr() const {
+    return Bits & Attribute::AlwaysInline_i;
+  }
+  bool hasOptimizeForSizeAttr() const {
+    return Bits & Attribute::OptimizeForSize_i;
+  }
+  bool hasStackProtectAttr() const {
+    return Bits & Attribute::StackProtect_i;
+  }
+  bool hasStackProtectReqAttr() const {
+    return Bits & Attribute::StackProtectReq_i;
+  }
+  bool hasAlignmentAttr() const {
+    return Bits & Attribute::Alignment_i;
+  }
+  bool hasNoCaptureAttr() const {
+    return Bits & Attribute::NoCapture_i;
+  }
+  bool hasNoRedZoneAttr() const {
+    return Bits & Attribute::NoRedZone_i;
+  }
+  bool hasNoImplicitFloatAttr() const {
+    return Bits & Attribute::NoImplicitFloat_i;
+  }
+  bool hasNakedAttr() const {
+    return Bits & Attribute::Naked_i;
+  }
+  bool hasInlineHintAttr() const {
+    return Bits & Attribute::InlineHint_i;
+  }
+  bool hasReturnsTwiceAttr() const {
+    return Bits & Attribute::ReturnsTwice_i;
+  }
+  bool hasStackAlignmentAttr() const {
+    return Bits & Attribute::StackAlignment_i;
+  }
+  bool hasUWTableAttr() const {
+    return Bits & Attribute::UWTable_i;
+  }
+  bool hasNonLazyBindAttr() const {
+    return Bits & Attribute::NonLazyBind_i;
+  }
+  bool hasAddressSafetyAttr() const {
+    return Bits & Attribute::AddressSafety_i;
+  }
+
+  uint64_t getRawAlignment() const {
+    return Bits & Attribute::Alignment_i;
+  }
+  uint64_t getRawStackAlignment() const {
+    return Bits & Attribute::StackAlignment_i;
+  }
+
+  /// This returns the alignment field of an attribute as a byte alignment
+  /// value.
+  unsigned getAlignment() const {
+    if (!hasAlignmentAttr())
+      return 0;
+
+    return 1U << ((getRawAlignment() >> 16) - 1);
+  }
+
+  /// This returns the stack alignment field of an attribute as a byte alignment
+  /// value.
+  unsigned getStackAlignment() const {
+    if (!hasStackAlignmentAttr())
+      return 0;
+
+    return 1U << ((getRawStackAlignment() >> 26) - 1);
+  }
+
+  /// This turns an int alignment (a power of 2, normally) into the form used
+  /// internally in Attributes.
+  static Attributes constructAlignmentFromInt(unsigned i) {
+    // Default alignment, allow the target to define how to align it.
+    if (i == 0)
+      return Attribute::None;
+
+    assert(isPowerOf2_32(i) && "Alignment must be a power of two.");
+    assert(i <= 0x40000000 && "Alignment too large.");
+    return Attributes((Log2_32(i)+1) << 16);
+  }
+
+  /// This turns an int stack alignment (which must be a power of 2) into the
+  /// form used internally in Attributes.
+  static Attributes constructStackAlignmentFromInt(unsigned i) {
+    // Default alignment, allow the target to define how to align it.
+    if (i == 0)
+      return Attribute::None;
+
+    assert(isPowerOf2_32(i) && "Alignment must be a power of two.");
+    assert(i <= 0x100 && "Alignment too large.");
+    return Attributes((Log2_32(i)+1) << 26);
+  }
+
+  // This is a "safe bool() operator".
+  operator const void *() const { return Bits ? this : 0; }
+  bool isEmptyOrSingleton() const { return (Bits & (Bits - 1)) == 0; }
+  bool operator == (const Attributes &Attrs) const {
+    return Bits == Attrs.Bits;
+  }
+  bool operator != (const Attributes &Attrs) const {
+    return Bits != Attrs.Bits;
+  }
+  Attributes operator | (const Attributes &Attrs) const {
+    return Attributes(Bits | Attrs.Bits);
+  }
+  Attributes operator & (const Attributes &Attrs) const {
+    return Attributes(Bits & Attrs.Bits);
+  }
+  Attributes operator ^ (const Attributes &Attrs) const {
+    return Attributes(Bits ^ Attrs.Bits);
+  }
+  Attributes &operator |= (const Attributes &Attrs) {
+    Bits |= Attrs.Bits;
+    return *this;
+  }
+  Attributes &operator &= (const Attributes &Attrs) {
+    Bits &= Attrs.Bits;
+    return *this;
+  }
+  Attributes operator ~ () const { return Attributes(~Bits); }
+  uint64_t Raw() const { return Bits; }
+
+  /// The set of Attributes set in Attributes is converted to a string of
+  /// equivalent mnemonics. This is, presumably, for writing out the mnemonics
+  /// for the assembly writer.
+  /// @brief Convert attribute bits to text
+  std::string getAsString() const;
+};
+
+namespace Attribute {
+
 /// Note that uwtable is about the ABI or the user mandating an entry in the
 /// unwind table. The nounwind attribute is about an exception passing by the
 /// function.
@@ -176,49 +324,6 @@ const AttrConst MutuallyIncompatible[5] = {
 /// @brief Which attributes cannot be applied to a type.
 Attributes typeIncompatible(Type *Ty);
 
-/// This turns an int alignment (a power of 2, normally) into the
-/// form used internally in Attributes.
-inline Attributes constructAlignmentFromInt(unsigned i) {
-  // Default alignment, allow the target to define how to align it.
-  if (i == 0)
-    return None;
-
-  assert(isPowerOf2_32(i) && "Alignment must be a power of two.");
-  assert(i <= 0x40000000 && "Alignment too large.");
-  return Attributes((Log2_32(i)+1) << 16);
-}
-
-/// This returns the alignment field of an attribute as a byte alignment value.
-inline unsigned getAlignmentFromAttrs(Attributes A) {
-  Attributes Align = A & Attribute::Alignment;
-  if (!Align)
-    return 0;
-
-  return 1U << ((Align.Raw() >> 16) - 1);
-}
-
-/// This turns an int stack alignment (which must be a power of 2) into
-/// the form used internally in Attributes.
-inline Attributes constructStackAlignmentFromInt(unsigned i) {
-  // Default alignment, allow the target to define how to align it.
-  if (i == 0)
-    return None;
-
-  assert(isPowerOf2_32(i) && "Alignment must be a power of two.");
-  assert(i <= 0x100 && "Alignment too large.");
-  return Attributes((Log2_32(i)+1) << 26);
-}
-
-/// This returns the stack alignment field of an attribute as a byte alignment
-/// value.
-inline unsigned getStackAlignmentFromAttrs(Attributes A) {
-  Attributes StackAlign = A & Attribute::StackAlignment;
-  if (!StackAlign)
-    return 0;
-
-  return 1U << ((StackAlign.Raw() >> 26) - 1);
-}
-
 /// This returns an integer containing an encoding of all the
 /// LLVM attributes found in the given attribute bitset.  Any
 /// change to this encoding is a breaking change to bitcode
@@ -236,9 +341,9 @@ inline uint64_t encodeLLVMAttributesForBitcode(Attributes Attrs) {
   // 11 bits.
 
   uint64_t EncodedAttrs = Attrs.Raw() & 0xffff;
-  if (Attrs & Attribute::Alignment)
+  if (Attrs.hasAlignmentAttr())
     EncodedAttrs |= (1ull << 16) <<
-      (((Attrs & Attribute::Alignment).Raw()-1) >> 16);
+      ((Attrs.getRawAlignment() - 1) >> 16);
   EncodedAttrs |= (Attrs.Raw() & (0xfffull << 21)) << 11;
 
   return EncodedAttrs;
@@ -257,18 +362,12 @@ inline Attributes decodeLLVMAttributesForBitcode(uint64_t EncodedAttrs) {
 
   Attributes Attrs(EncodedAttrs & 0xffff);
   if (Alignment)
-    Attrs |= Attribute::constructAlignmentFromInt(Alignment);
+    Attrs |= Attributes::constructAlignmentFromInt(Alignment);
   Attrs |= Attributes((EncodedAttrs & (0xfffull << 32)) >> 11);
 
   return Attrs;
 }
 
-
-/// The set of Attributes set in Attributes is converted to a
-/// string of equivalent mnemonics. This is, presumably, for writing out
-/// the mnemonics for the assembly writer.
-/// @brief Convert attribute bits to text
-std::string getAsString(Attributes Attrs);
 } // end namespace Attribute
 
 /// This is just a pair of values to associate a set of attributes
@@ -346,13 +445,13 @@ public:
   /// paramHasAttr - Return true if the specified parameter index has the
   /// specified attribute set.
   bool paramHasAttr(unsigned Idx, Attributes Attr) const {
-    return getAttributes(Idx) & Attr;
+    return getAttributes(Idx).hasAttributes(Attr);
   }
 
   /// getParamAlignment - Return the alignment for the specified function
   /// parameter.
   unsigned getParamAlignment(unsigned Idx) const {
-    return Attribute::getAlignmentFromAttrs(getAttributes(Idx));
+    return getAttributes(Idx).getAlignment();
   }
 
   /// hasAttrSomewhere - Return true if the specified attribute is set for at

@@ -330,6 +330,9 @@ DIE *DwarfDebug::updateSubprogramScopeDIE(CompileUnit *SPCU,
           SPCU->addType(Arg, ATy);
           if (ATy.isArtificial())
             SPCU->addFlag(Arg, dwarf::DW_AT_artificial);
+          if (ATy.isObjectPointer())
+            SPCU->addDIEEntry(SPDie, dwarf::DW_AT_object_pointer, dwarf::DW_FORM_ref4,
+                              Arg);
           SPDie->addChild(Arg);
         }
       DIE *SPDeclDie = SPDie;
@@ -496,21 +499,26 @@ DIE *DwarfDebug::constructScopeDIE(CompileUnit *TheCU, LexicalScope *Scope) {
     return NULL;
 
   SmallVector<DIE *, 8> Children;
+  DIE *ObjectPointer = NULL;
 
   // Collect arguments for current function.
   if (LScopes.isCurrentFunctionScope(Scope))
     for (unsigned i = 0, N = CurrentFnArguments.size(); i < N; ++i)
       if (DbgVariable *ArgDV = CurrentFnArguments[i])
         if (DIE *Arg = 
-            TheCU->constructVariableDIE(ArgDV, Scope->isAbstractScope()))
+            TheCU->constructVariableDIE(ArgDV, Scope->isAbstractScope())) {
           Children.push_back(Arg);
+          if (ArgDV->isObjectPointer()) ObjectPointer = Arg;
+        }
 
   // Collect lexical scope children first.
   const SmallVector<DbgVariable *, 8> &Variables = ScopeVariables.lookup(Scope);
   for (unsigned i = 0, N = Variables.size(); i < N; ++i)
     if (DIE *Variable = 
-        TheCU->constructVariableDIE(Variables[i], Scope->isAbstractScope()))
+        TheCU->constructVariableDIE(Variables[i], Scope->isAbstractScope())) {
       Children.push_back(Variable);
+      if (Variables[i]->isObjectPointer()) ObjectPointer = Variable;
+    }
   const SmallVector<LexicalScope *, 4> &Scopes = Scope->getChildren();
   for (unsigned j = 0, M = Scopes.size(); j < M; ++j)
     if (DIE *Nested = constructScopeDIE(TheCU, Scopes[j]))
@@ -543,6 +551,10 @@ DIE *DwarfDebug::constructScopeDIE(CompileUnit *TheCU, LexicalScope *Scope) {
   for (SmallVector<DIE *, 8>::iterator I = Children.begin(),
          E = Children.end(); I != E; ++I)
     ScopeDIE->addChild(*I);
+
+  if (DS.isSubprogram() && ObjectPointer != NULL)
+    TheCU->addDIEEntry(ScopeDIE, dwarf::DW_AT_object_pointer,
+                       dwarf::DW_FORM_ref4, ObjectPointer);
 
   if (DS.isSubprogram())
     TheCU->addPubTypes(DISubprogram(DS));

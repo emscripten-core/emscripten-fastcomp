@@ -658,7 +658,9 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     setOperationAction(ISD::FCOPYSIGN, MVT::f32, Expand);
 
     if (!TM.Options.UnsafeFPMath) {
+      setOperationAction(ISD::FSIN           , MVT::f32  , Expand);
       setOperationAction(ISD::FSIN           , MVT::f64  , Expand);
+      setOperationAction(ISD::FCOS           , MVT::f32  , Expand);
       setOperationAction(ISD::FCOS           , MVT::f64  , Expand);
     }
     addLegalFPImmediate(APFloat(+0.0)); // FLD0
@@ -6968,9 +6970,9 @@ X86TargetLowering::LowerEXTRACT_VECTOR_ELT_SSE4(SDValue Op,
 
   if (VT.getSizeInBits() == 8) {
     SDValue Extract = DAG.getNode(X86ISD::PEXTRB, dl, MVT::i32,
-                                    Op.getOperand(0), Op.getOperand(1));
+                                  Op.getOperand(0), Op.getOperand(1));
     SDValue Assert  = DAG.getNode(ISD::AssertZext, dl, MVT::i32, Extract,
-                                    DAG.getValueType(VT));
+                                  DAG.getValueType(VT));
     return DAG.getNode(ISD::TRUNCATE, dl, VT, Assert);
   }
 
@@ -6985,9 +6987,9 @@ X86TargetLowering::LowerEXTRACT_VECTOR_ELT_SSE4(SDValue Op,
                                                  Op.getOperand(0)),
                                      Op.getOperand(1)));
     SDValue Extract = DAG.getNode(X86ISD::PEXTRW, dl, MVT::i32,
-                                    Op.getOperand(0), Op.getOperand(1));
+                                  Op.getOperand(0), Op.getOperand(1));
     SDValue Assert  = DAG.getNode(ISD::AssertZext, dl, MVT::i32, Extract,
-                                    DAG.getValueType(VT));
+                                  DAG.getValueType(VT));
     return DAG.getNode(ISD::TRUNCATE, dl, VT, Assert);
   }
 
@@ -7071,9 +7073,9 @@ X86TargetLowering::LowerEXTRACT_VECTOR_ELT(SDValue Op,
     // Transform it so it match pextrw which produces a 32-bit result.
     EVT EltVT = MVT::i32;
     SDValue Extract = DAG.getNode(X86ISD::PEXTRW, dl, EltVT,
-                                    Op.getOperand(0), Op.getOperand(1));
+                                  Op.getOperand(0), Op.getOperand(1));
     SDValue Assert  = DAG.getNode(ISD::AssertZext, dl, EltVT, Extract,
-                                    DAG.getValueType(VT));
+                                  DAG.getValueType(VT));
     return DAG.getNode(ISD::TRUNCATE, dl, VT, Assert);
   }
 
@@ -7412,9 +7414,10 @@ X86TargetLowering::LowerBlockAddress(SDValue Op, SelectionDAG &DAG) const {
     Subtarget->ClassifyBlockAddressReference();
   CodeModel::Model M = getTargetMachine().getCodeModel();
   const BlockAddress *BA = cast<BlockAddressSDNode>(Op)->getBlockAddress();
+  int64_t Offset = cast<BlockAddressSDNode>(Op)->getOffset();
   DebugLoc dl = Op.getDebugLoc();
-  SDValue Result = DAG.getBlockAddress(BA, getPointerTy(),
-                                       /*isTarget=*/true, OpFlags);
+  SDValue Result = DAG.getTargetBlockAddress(BA, getPointerTy(), Offset,
+                                             OpFlags);
 
   if (Subtarget->isPICStyleRIPRel() &&
       (M == CodeModel::Small || M == CodeModel::Kernel))
@@ -7520,8 +7523,8 @@ LowerToTLSGeneralDynamicModel32(GlobalAddressSDNode *GA, SelectionDAG &DAG,
   SDValue InFlag;
   DebugLoc dl = GA->getDebugLoc();  // ? function entry point might be better
   SDValue Chain = DAG.getCopyToReg(DAG.getEntryNode(), dl, X86::EBX,
-                                     DAG.getNode(X86ISD::GlobalBaseReg,
-                                                 DebugLoc(), PtrVT), InFlag);
+                                   DAG.getNode(X86ISD::GlobalBaseReg,
+                                               DebugLoc(), PtrVT), InFlag);
   InFlag = Chain.getValue(1);
 
   return GetTLSADDR(DAG, Chain, GA, &InFlag, PtrVT, X86::EAX, X86II::MO_TLSGD);
@@ -8447,6 +8450,98 @@ static SDValue LowerFGETSIGN(SDValue Op, SelectionDAG &DAG) {
   return DAG.getNode(ISD::AND, dl, VT, xFGETSIGN, DAG.getConstant(1, VT));
 }
 
+// LowerVectorAllZeroTest - Check whether an OR'd tree is PTEST-able.
+//
+SDValue X86TargetLowering::LowerVectorAllZeroTest(SDValue Op, SelectionDAG &DAG) const {
+  assert(Op.getOpcode() == ISD::OR && "Only check OR'd tree.");
+
+  if (!Subtarget->hasSSE41())
+    return SDValue();
+
+  if (!Op->hasOneUse())
+    return SDValue();
+
+  SDNode *N = Op.getNode();
+  DebugLoc DL = N->getDebugLoc();
+
+  SmallVector<SDValue, 8> Opnds;
+  DenseMap<SDValue, unsigned> VecInMap;
+  EVT VT = MVT::Other;
+
+  // Recognize a special case where a vector is casted into wide integer to
+  // test all 0s.
+  Opnds.push_back(N->getOperand(0));
+  Opnds.push_back(N->getOperand(1));
+
+  for (unsigned Slot = 0, e = Opnds.size(); Slot < e; ++Slot) {
+    SmallVector<SDValue, 8>::const_iterator I = Opnds.begin() + Slot;
+    // BFS traverse all OR'd operands.
+    if (I->getOpcode() == ISD::OR) {
+      Opnds.push_back(I->getOperand(0));
+      Opnds.push_back(I->getOperand(1));
+      // Re-evaluate the number of nodes to be traversed.
+      e += 2; // 2 more nodes (LHS and RHS) are pushed.
+      continue;
+    }
+
+    // Quit if a non-EXTRACT_VECTOR_ELT
+    if (I->getOpcode() != ISD::EXTRACT_VECTOR_ELT)
+      return SDValue();
+
+    // Quit if without a constant index.
+    SDValue Idx = I->getOperand(1);
+    if (!isa<ConstantSDNode>(Idx))
+      return SDValue();
+
+    SDValue ExtractedFromVec = I->getOperand(0);
+    DenseMap<SDValue, unsigned>::iterator M = VecInMap.find(ExtractedFromVec);
+    if (M == VecInMap.end()) {
+      VT = ExtractedFromVec.getValueType();
+      // Quit if not 128/256-bit vector.
+      if (!VT.is128BitVector() && !VT.is256BitVector())
+        return SDValue();
+      // Quit if not the same type.
+      if (VecInMap.begin() != VecInMap.end() &&
+          VT != VecInMap.begin()->first.getValueType())
+        return SDValue();
+      M = VecInMap.insert(std::make_pair(ExtractedFromVec, 0)).first;
+    }
+    M->second |= 1U << cast<ConstantSDNode>(Idx)->getZExtValue();
+  }
+
+  assert((VT.is128BitVector() || VT.is256BitVector()) &&
+         "Not extracted from 128-/256-bit vector.");
+
+  unsigned FullMask = (1U << VT.getVectorNumElements()) - 1U;
+  SmallVector<SDValue, 8> VecIns;
+
+  for (DenseMap<SDValue, unsigned>::const_iterator
+        I = VecInMap.begin(), E = VecInMap.end(); I != E; ++I) {
+    // Quit if not all elements are used.
+    if (I->second != FullMask)
+      return SDValue();
+    VecIns.push_back(I->first);
+  }
+
+  EVT TestVT = VT.is128BitVector() ? MVT::v2i64 : MVT::v4i64;
+
+  // Cast all vectors into TestVT for PTEST.
+  for (unsigned i = 0, e = VecIns.size(); i < e; ++i)
+    VecIns[i] = DAG.getNode(ISD::BITCAST, DL, TestVT, VecIns[i]);
+
+  // If more than one full vectors are evaluated, OR them first before PTEST.
+  for (unsigned Slot = 0, e = VecIns.size(); e - Slot > 1; Slot += 2, e += 1) {
+    // Each iteration will OR 2 nodes and append the result until there is only
+    // 1 node left, i.e. the final OR'd value of all vectors.
+    SDValue LHS = VecIns[Slot];
+    SDValue RHS = VecIns[Slot + 1];
+    VecIns.push_back(DAG.getNode(ISD::OR, DL, TestVT, LHS, RHS));
+  }
+
+  return DAG.getNode(X86ISD::PTEST, DL, MVT::i32,
+                     VecIns.back(), VecIns.back());
+}
+
 /// Emit nodes that will be selected as "test Op0,Op0", or something
 /// equivalent.
 SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC,
@@ -8604,9 +8699,17 @@ SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC,
     switch (ArithOp.getOpcode()) {
     default: llvm_unreachable("unexpected operator!");
     case ISD::SUB: Opcode = X86ISD::SUB; break;
-    case ISD::OR:  Opcode = X86ISD::OR;  break;
     case ISD::XOR: Opcode = X86ISD::XOR; break;
     case ISD::AND: Opcode = X86ISD::AND; break;
+    case ISD::OR: {
+      if (!NeedTruncation && (X86CC == X86::COND_E || X86CC == X86::COND_NE)) {
+        SDValue EFLAGS = LowerVectorAllZeroTest(Op, DAG);
+        if (EFLAGS.getNode())
+          return EFLAGS;
+      }
+      Opcode = X86ISD::OR;
+      break;
+    }
     }
 
     NumOperands = 2;
@@ -11994,385 +12097,534 @@ X86TargetLowering::isVectorClearMaskLegal(const SmallVectorImpl<int> &Mask,
 //===----------------------------------------------------------------------===//
 
 // private utility function
-MachineBasicBlock *
-X86TargetLowering::EmitAtomicBitwiseWithCustomInserter(MachineInstr *bInstr,
-                                                       MachineBasicBlock *MBB,
-                                                       unsigned regOpc,
-                                                       unsigned immOpc,
-                                                       unsigned LoadOpc,
-                                                       unsigned CXchgOpc,
-                                                       unsigned notOpc,
-                                                       unsigned EAXreg,
-                                                 const TargetRegisterClass *RC,
-                                                       bool Invert) const {
-  // For the atomic bitwise operator, we generate
-  //   thisMBB:
-  //   newMBB:
-  //     ld  t1 = [bitinstr.addr]
-  //     op  t2 = t1, [bitinstr.val]
-  //     not t3 = t2  (if Invert)
-  //     mov EAX = t1
-  //     lcs dest = [bitinstr.addr], t3  [EAX is implicit]
-  //     bz  newMBB
-  //     fallthrough -->nextMBB
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
-  const BasicBlock *LLVM_BB = MBB->getBasicBlock();
-  MachineFunction::iterator MBBIter = MBB;
-  ++MBBIter;
 
-  /// First build the CFG
-  MachineFunction *F = MBB->getParent();
-  MachineBasicBlock *thisMBB = MBB;
-  MachineBasicBlock *newMBB = F->CreateMachineBasicBlock(LLVM_BB);
-  MachineBasicBlock *nextMBB = F->CreateMachineBasicBlock(LLVM_BB);
-  F->insert(MBBIter, newMBB);
-  F->insert(MBBIter, nextMBB);
-
-  // Transfer the remainder of thisMBB and its successor edges to nextMBB.
-  nextMBB->splice(nextMBB->begin(), thisMBB,
-                  llvm::next(MachineBasicBlock::iterator(bInstr)),
-                  thisMBB->end());
-  nextMBB->transferSuccessorsAndUpdatePHIs(thisMBB);
-
-  // Update thisMBB to fall through to newMBB
-  thisMBB->addSuccessor(newMBB);
-
-  // newMBB jumps to itself and fall through to nextMBB
-  newMBB->addSuccessor(nextMBB);
-  newMBB->addSuccessor(newMBB);
-
-  // Insert instructions into newMBB based on incoming instruction
-  assert(bInstr->getNumOperands() < X86::AddrNumOperands + 4 &&
-         "unexpected number of operands");
-  DebugLoc dl = bInstr->getDebugLoc();
-  MachineOperand& destOper = bInstr->getOperand(0);
-  MachineOperand* argOpers[2 + X86::AddrNumOperands];
-  int numArgs = bInstr->getNumOperands() - 1;
-  for (int i=0; i < numArgs; ++i)
-    argOpers[i] = &bInstr->getOperand(i+1);
-
-  // x86 address has 4 operands: base, index, scale, and displacement
-  int lastAddrIndx = X86::AddrNumOperands - 1; // [0,3]
-  int valArgIndx = lastAddrIndx + 1;
-
-  unsigned t1 = F->getRegInfo().createVirtualRegister(RC);
-  MachineInstrBuilder MIB = BuildMI(newMBB, dl, TII->get(LoadOpc), t1);
-  for (int i=0; i <= lastAddrIndx; ++i)
-    (*MIB).addOperand(*argOpers[i]);
-
-  unsigned t2 = F->getRegInfo().createVirtualRegister(RC);
-  assert((argOpers[valArgIndx]->isReg() ||
-          argOpers[valArgIndx]->isImm()) &&
-         "invalid operand");
-  if (argOpers[valArgIndx]->isReg())
-    MIB = BuildMI(newMBB, dl, TII->get(regOpc), t2);
-  else
-    MIB = BuildMI(newMBB, dl, TII->get(immOpc), t2);
-  MIB.addReg(t1);
-  (*MIB).addOperand(*argOpers[valArgIndx]);
-
-  unsigned t3 = F->getRegInfo().createVirtualRegister(RC);
-  if (Invert) {
-    MIB = BuildMI(newMBB, dl, TII->get(notOpc), t3).addReg(t2);
+// Get CMPXCHG opcode for the specified data type.
+static unsigned getCmpXChgOpcode(EVT VT) {
+  switch (VT.getSimpleVT().SimpleTy) {
+  case MVT::i8:  return X86::LCMPXCHG8;
+  case MVT::i16: return X86::LCMPXCHG16;
+  case MVT::i32: return X86::LCMPXCHG32;
+  case MVT::i64: return X86::LCMPXCHG64;
+  default:
+    break;
   }
-  else
-    t3 = t2;
-
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), EAXreg);
-  MIB.addReg(t1);
-
-  MIB = BuildMI(newMBB, dl, TII->get(CXchgOpc));
-  for (int i=0; i <= lastAddrIndx; ++i)
-    (*MIB).addOperand(*argOpers[i]);
-  MIB.addReg(t3);
-  assert(bInstr->hasOneMemOperand() && "Unexpected number of memoperand");
-  (*MIB).setMemRefs(bInstr->memoperands_begin(),
-                    bInstr->memoperands_end());
-
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), destOper.getReg());
-  MIB.addReg(EAXreg);
-
-  // insert branch
-  BuildMI(newMBB, dl, TII->get(X86::JNE_4)).addMBB(newMBB);
-
-  bInstr->eraseFromParent();   // The pseudo instruction is gone now.
-  return nextMBB;
+  llvm_unreachable("Invalid operand size!");
 }
 
-// private utility function:  64 bit atomics on 32 bit host.
+// Get LOAD opcode for the specified data type.
+static unsigned getLoadOpcode(EVT VT) {
+  switch (VT.getSimpleVT().SimpleTy) {
+  case MVT::i8:  return X86::MOV8rm;
+  case MVT::i16: return X86::MOV16rm;
+  case MVT::i32: return X86::MOV32rm;
+  case MVT::i64: return X86::MOV64rm;
+  default:
+    break;
+  }
+  llvm_unreachable("Invalid operand size!");
+}
+
+// Get opcode of the non-atomic one from the specified atomic instruction.
+static unsigned getNonAtomicOpcode(unsigned Opc) {
+  switch (Opc) {
+  case X86::ATOMAND8:  return X86::AND8rr;
+  case X86::ATOMAND16: return X86::AND16rr;
+  case X86::ATOMAND32: return X86::AND32rr;
+  case X86::ATOMAND64: return X86::AND64rr;
+  case X86::ATOMOR8:   return X86::OR8rr;
+  case X86::ATOMOR16:  return X86::OR16rr;
+  case X86::ATOMOR32:  return X86::OR32rr;
+  case X86::ATOMOR64:  return X86::OR64rr;
+  case X86::ATOMXOR8:  return X86::XOR8rr;
+  case X86::ATOMXOR16: return X86::XOR16rr;
+  case X86::ATOMXOR32: return X86::XOR32rr;
+  case X86::ATOMXOR64: return X86::XOR64rr;
+  }
+  llvm_unreachable("Unhandled atomic-load-op opcode!");
+}
+
+// Get opcode of the non-atomic one from the specified atomic instruction with
+// extra opcode.
+static unsigned getNonAtomicOpcodeWithExtraOpc(unsigned Opc,
+                                               unsigned &ExtraOpc) {
+  switch (Opc) {
+  case X86::ATOMNAND8:  ExtraOpc = X86::NOT8r;   return X86::AND8rr;
+  case X86::ATOMNAND16: ExtraOpc = X86::NOT16r;  return X86::AND16rr;
+  case X86::ATOMNAND32: ExtraOpc = X86::NOT32r;  return X86::AND32rr;
+  case X86::ATOMNAND64: ExtraOpc = X86::NOT64r;  return X86::AND64rr;
+  case X86::ATOMMAX8:   ExtraOpc = X86::CMP8rr;  return X86::CMOVL32rr;
+  case X86::ATOMMAX16:  ExtraOpc = X86::CMP16rr; return X86::CMOVL16rr;
+  case X86::ATOMMAX32:  ExtraOpc = X86::CMP32rr; return X86::CMOVL32rr;
+  case X86::ATOMMAX64:  ExtraOpc = X86::CMP64rr; return X86::CMOVL64rr;
+  case X86::ATOMMIN8:   ExtraOpc = X86::CMP8rr;  return X86::CMOVG32rr;
+  case X86::ATOMMIN16:  ExtraOpc = X86::CMP16rr; return X86::CMOVG16rr;
+  case X86::ATOMMIN32:  ExtraOpc = X86::CMP32rr; return X86::CMOVG32rr;
+  case X86::ATOMMIN64:  ExtraOpc = X86::CMP64rr; return X86::CMOVG64rr;
+  case X86::ATOMUMAX8:  ExtraOpc = X86::CMP8rr;  return X86::CMOVB32rr;
+  case X86::ATOMUMAX16: ExtraOpc = X86::CMP16rr; return X86::CMOVB16rr;
+  case X86::ATOMUMAX32: ExtraOpc = X86::CMP32rr; return X86::CMOVB32rr;
+  case X86::ATOMUMAX64: ExtraOpc = X86::CMP64rr; return X86::CMOVB64rr;
+  case X86::ATOMUMIN8:  ExtraOpc = X86::CMP8rr;  return X86::CMOVA32rr;
+  case X86::ATOMUMIN16: ExtraOpc = X86::CMP16rr; return X86::CMOVA16rr;
+  case X86::ATOMUMIN32: ExtraOpc = X86::CMP32rr; return X86::CMOVA32rr;
+  case X86::ATOMUMIN64: ExtraOpc = X86::CMP64rr; return X86::CMOVA64rr;
+  }
+  llvm_unreachable("Unhandled atomic-load-op opcode!");
+}
+
+// Get opcode of the non-atomic one from the specified atomic instruction for
+// 64-bit data type on 32-bit target.
+static unsigned getNonAtomic6432Opcode(unsigned Opc, unsigned &HiOpc) {
+  switch (Opc) {
+  case X86::ATOMAND6432:  HiOpc = X86::AND32rr; return X86::AND32rr;
+  case X86::ATOMOR6432:   HiOpc = X86::OR32rr;  return X86::OR32rr;
+  case X86::ATOMXOR6432:  HiOpc = X86::XOR32rr; return X86::XOR32rr;
+  case X86::ATOMADD6432:  HiOpc = X86::ADC32rr; return X86::ADD32rr;
+  case X86::ATOMSUB6432:  HiOpc = X86::SBB32rr; return X86::SUB32rr;
+  case X86::ATOMSWAP6432: HiOpc = X86::MOV32rr; return X86::MOV32rr;
+  }
+  llvm_unreachable("Unhandled atomic-load-op opcode!");
+}
+
+// Get opcode of the non-atomic one from the specified atomic instruction for
+// 64-bit data type on 32-bit target with extra opcode.
+static unsigned getNonAtomic6432OpcodeWithExtraOpc(unsigned Opc,
+                                                   unsigned &HiOpc,
+                                                   unsigned &ExtraOpc) {
+  switch (Opc) {
+  case X86::ATOMNAND6432:
+    ExtraOpc = X86::NOT32r;
+    HiOpc = X86::AND32rr;
+    return X86::AND32rr;
+  }
+  llvm_unreachable("Unhandled atomic-load-op opcode!");
+}
+
+// Get pseudo CMOV opcode from the specified data type.
+static unsigned getPseudoCMOVOpc(EVT VT) {
+  switch (VT.getSimpleVT().SimpleTy) {
+  case MVT::i8:  return X86::CMOV_GR8;
+  case MVT::i16: return X86::CMOV_GR16;
+  case MVT::i32: return X86::CMOV_GR32;
+  default:
+    break;
+  }
+  llvm_unreachable("Unknown CMOV opcode!");
+}
+
+// EmitAtomicLoadArith - emit the code sequence for pseudo atomic instructions.
+// They will be translated into a spin-loop or compare-exchange loop from
+//
+//    ...
+//    dst = atomic-fetch-op MI.addr, MI.val
+//    ...
+//
+// to
+//
+//    ...
+//    EAX = LOAD MI.addr
+// loop:
+//    t1 = OP MI.val, EAX
+//    LCMPXCHG [MI.addr], t1, [EAX is implicitly used & defined]
+//    JNE loop
+// sink:
+//    dst = EAX
+//    ...
 MachineBasicBlock *
-X86TargetLowering::EmitAtomicBit6432WithCustomInserter(MachineInstr *bInstr,
-                                                       MachineBasicBlock *MBB,
-                                                       unsigned regOpcL,
-                                                       unsigned regOpcH,
-                                                       unsigned immOpcL,
-                                                       unsigned immOpcH,
-                                                       bool Invert) const {
-  // For the atomic bitwise operator, we generate
-  //   thisMBB (instructions are in pairs, except cmpxchg8b)
-  //     ld t1,t2 = [bitinstr.addr]
-  //   newMBB:
-  //     out1, out2 = phi (thisMBB, t1/t2) (newMBB, t3/t4)
-  //     op  t5, t6 <- out1, out2, [bitinstr.val]
-  //      (for SWAP, substitute:  mov t5, t6 <- [bitinstr.val])
-  //     neg t7, t8 < t5, t6  (if Invert)
-  //     mov ECX, EBX <- t5, t6
-  //     mov EAX, EDX <- t1, t2
-  //     cmpxchg8b [bitinstr.addr]  [EAX, EDX, EBX, ECX implicit]
-  //     mov t3, t4 <- EAX, EDX
-  //     bz  newMBB
-  //     result in out1, out2
-  //     fallthrough -->nextMBB
+X86TargetLowering::EmitAtomicLoadArith(MachineInstr *MI,
+                                       MachineBasicBlock *MBB) const {
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  DebugLoc DL = MI->getDebugLoc();
+
+  MachineFunction *MF = MBB->getParent();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+
+  const BasicBlock *BB = MBB->getBasicBlock();
+  MachineFunction::iterator I = MBB;
+  ++I;
+
+  assert(MI->getNumOperands() <= X86::AddrNumOperands + 2 &&
+         "Unexpected number of operands");
+
+  assert(MI->hasOneMemOperand() &&
+         "Expected atomic-load-op to have one memoperand");
+
+  // Memory Reference
+  MachineInstr::mmo_iterator MMOBegin = MI->memoperands_begin();
+  MachineInstr::mmo_iterator MMOEnd = MI->memoperands_end();
+
+  unsigned DstReg, SrcReg;
+  unsigned MemOpndSlot;
+
+  unsigned CurOp = 0;
+
+  DstReg = MI->getOperand(CurOp++).getReg();
+  MemOpndSlot = CurOp;
+  CurOp += X86::AddrNumOperands;
+  SrcReg = MI->getOperand(CurOp++).getReg();
+
+  const TargetRegisterClass *RC = MRI.getRegClass(DstReg);
+  EVT VT = *RC->vt_begin();
+  unsigned AccPhyReg = getX86SubSuperRegister(X86::EAX, VT);
+
+  unsigned LCMPXCHGOpc = getCmpXChgOpcode(VT);
+  unsigned LOADOpc = getLoadOpcode(VT);
+
+  // For the atomic load-arith operator, we generate
+  //
+  //  thisMBB:
+  //    EAX = LOAD [MI.addr]
+  //  mainMBB:
+  //    t1 = OP MI.val, EAX
+  //    LCMPXCHG [MI.addr], t1, [EAX is implicitly used & defined]
+  //    JNE mainMBB
+  //  sinkMBB:
+
+  MachineBasicBlock *thisMBB = MBB;
+  MachineBasicBlock *mainMBB = MF->CreateMachineBasicBlock(BB);
+  MachineBasicBlock *sinkMBB = MF->CreateMachineBasicBlock(BB);
+  MF->insert(I, mainMBB);
+  MF->insert(I, sinkMBB);
+
+  MachineInstrBuilder MIB;
+
+  // Transfer the remainder of BB and its successor edges to sinkMBB.
+  sinkMBB->splice(sinkMBB->begin(), MBB,
+                  llvm::next(MachineBasicBlock::iterator(MI)), MBB->end());
+  sinkMBB->transferSuccessorsAndUpdatePHIs(MBB);
+
+  // thisMBB:
+  MIB = BuildMI(thisMBB, DL, TII->get(LOADOpc), AccPhyReg);
+  for (unsigned i = 0; i < X86::AddrNumOperands; ++i)
+    MIB.addOperand(MI->getOperand(MemOpndSlot + i));
+  MIB.setMemRefs(MMOBegin, MMOEnd);
+
+  thisMBB->addSuccessor(mainMBB);
+
+  // mainMBB:
+  MachineBasicBlock *origMainMBB = mainMBB;
+  mainMBB->addLiveIn(AccPhyReg);
+
+  // Copy AccPhyReg as it is used more than once.
+  unsigned AccReg = MRI.createVirtualRegister(RC);
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), AccReg)
+    .addReg(AccPhyReg);
+
+  unsigned t1 = MRI.createVirtualRegister(RC);
+  unsigned Opc = MI->getOpcode();
+  switch (Opc) {
+  default:
+    llvm_unreachable("Unhandled atomic-load-op opcode!");
+  case X86::ATOMAND8:
+  case X86::ATOMAND16:
+  case X86::ATOMAND32:
+  case X86::ATOMAND64:
+  case X86::ATOMOR8:
+  case X86::ATOMOR16:
+  case X86::ATOMOR32:
+  case X86::ATOMOR64:
+  case X86::ATOMXOR8:
+  case X86::ATOMXOR16:
+  case X86::ATOMXOR32:
+  case X86::ATOMXOR64: {
+    unsigned ARITHOpc = getNonAtomicOpcode(Opc);
+    BuildMI(mainMBB, DL, TII->get(ARITHOpc), t1).addReg(SrcReg)
+      .addReg(AccReg);
+    break;
+  }
+  case X86::ATOMNAND8:
+  case X86::ATOMNAND16:
+  case X86::ATOMNAND32:
+  case X86::ATOMNAND64: {
+    unsigned t2 = MRI.createVirtualRegister(RC);
+    unsigned NOTOpc;
+    unsigned ANDOpc = getNonAtomicOpcodeWithExtraOpc(Opc, NOTOpc);
+    BuildMI(mainMBB, DL, TII->get(ANDOpc), t2).addReg(SrcReg)
+      .addReg(AccReg);
+    BuildMI(mainMBB, DL, TII->get(NOTOpc), t1).addReg(t2);
+    break;
+  }
+  case X86::ATOMMAX8:
+  case X86::ATOMMAX16:
+  case X86::ATOMMAX32:
+  case X86::ATOMMAX64:
+  case X86::ATOMMIN8:
+  case X86::ATOMMIN16:
+  case X86::ATOMMIN32:
+  case X86::ATOMMIN64:
+  case X86::ATOMUMAX8:
+  case X86::ATOMUMAX16:
+  case X86::ATOMUMAX32:
+  case X86::ATOMUMAX64:
+  case X86::ATOMUMIN8:
+  case X86::ATOMUMIN16:
+  case X86::ATOMUMIN32:
+  case X86::ATOMUMIN64: {
+    unsigned CMPOpc;
+    unsigned CMOVOpc = getNonAtomicOpcodeWithExtraOpc(Opc, CMPOpc);
+
+    BuildMI(mainMBB, DL, TII->get(CMPOpc))
+      .addReg(SrcReg)
+      .addReg(AccReg);
+
+    if (Subtarget->hasCMov()) {
+      if (VT != MVT::i8) {
+        // Native support
+        BuildMI(mainMBB, DL, TII->get(CMOVOpc), t1)
+          .addReg(SrcReg)
+          .addReg(AccReg);
+      } else {
+        // Promote i8 to i32 to use CMOV32
+        const TargetRegisterClass *RC32 = getRegClassFor(MVT::i32);
+        unsigned SrcReg32 = MRI.createVirtualRegister(RC32);
+        unsigned AccReg32 = MRI.createVirtualRegister(RC32);
+        unsigned t2 = MRI.createVirtualRegister(RC32);
+
+        unsigned Undef = MRI.createVirtualRegister(RC32);
+        BuildMI(mainMBB, DL, TII->get(TargetOpcode::IMPLICIT_DEF), Undef);
+
+        BuildMI(mainMBB, DL, TII->get(TargetOpcode::INSERT_SUBREG), SrcReg32)
+          .addReg(Undef)
+          .addReg(SrcReg)
+          .addImm(X86::sub_8bit);
+        BuildMI(mainMBB, DL, TII->get(TargetOpcode::INSERT_SUBREG), AccReg32)
+          .addReg(Undef)
+          .addReg(AccReg)
+          .addImm(X86::sub_8bit);
+
+        BuildMI(mainMBB, DL, TII->get(CMOVOpc), t2)
+          .addReg(SrcReg32)
+          .addReg(AccReg32);
+
+        BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), t1)
+          .addReg(t2, 0, X86::sub_8bit);
+      }
+    } else {
+      // Use pseudo select and lower them.
+      assert((VT == MVT::i8 || VT == MVT::i16 || VT == MVT::i32) &&
+             "Invalid atomic-load-op transformation!");
+      unsigned SelOpc = getPseudoCMOVOpc(VT);
+      X86::CondCode CC = X86::getCondFromCMovOpc(CMOVOpc);
+      assert(CC != X86::COND_INVALID && "Invalid atomic-load-op transformation!");
+      MIB = BuildMI(mainMBB, DL, TII->get(SelOpc), t1)
+              .addReg(SrcReg).addReg(AccReg)
+              .addImm(CC);
+      mainMBB = EmitLoweredSelect(MIB, mainMBB);
+    }
+    break;
+  }
+  }
+
+  // Copy AccPhyReg back from virtual register.
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), AccPhyReg)
+    .addReg(AccReg);
+
+  MIB = BuildMI(mainMBB, DL, TII->get(LCMPXCHGOpc));
+  for (unsigned i = 0; i < X86::AddrNumOperands; ++i)
+    MIB.addOperand(MI->getOperand(MemOpndSlot + i));
+  MIB.addReg(t1);
+  MIB.setMemRefs(MMOBegin, MMOEnd);
+
+  BuildMI(mainMBB, DL, TII->get(X86::JNE_4)).addMBB(origMainMBB);
+
+  mainMBB->addSuccessor(origMainMBB);
+  mainMBB->addSuccessor(sinkMBB);
+
+  // sinkMBB:
+  sinkMBB->addLiveIn(AccPhyReg);
+
+  BuildMI(*sinkMBB, sinkMBB->begin(), DL,
+          TII->get(TargetOpcode::COPY), DstReg)
+    .addReg(AccPhyReg);
+
+  MI->eraseFromParent();
+  return sinkMBB;
+}
+
+// EmitAtomicLoadArith6432 - emit the code sequence for pseudo atomic
+// instructions. They will be translated into a spin-loop or compare-exchange
+// loop from
+//
+//    ...
+//    dst = atomic-fetch-op MI.addr, MI.val
+//    ...
+//
+// to
+//
+//    ...
+//    EAX = LOAD [MI.addr + 0]
+//    EDX = LOAD [MI.addr + 4]
+// loop:
+//    EBX = OP MI.val.lo, EAX
+//    ECX = OP MI.val.hi, EDX
+//    LCMPXCHG8B [MI.addr], [ECX:EBX & EDX:EAX are implicitly used and EDX:EAX is implicitly defined]
+//    JNE loop
+// sink:
+//    dst = EDX:EAX
+//    ...
+MachineBasicBlock *
+X86TargetLowering::EmitAtomicLoadArith6432(MachineInstr *MI,
+                                           MachineBasicBlock *MBB) const {
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  DebugLoc DL = MI->getDebugLoc();
+
+  MachineFunction *MF = MBB->getParent();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+
+  const BasicBlock *BB = MBB->getBasicBlock();
+  MachineFunction::iterator I = MBB;
+  ++I;
+
+  assert(MI->getNumOperands() <= X86::AddrNumOperands + 4 &&
+         "Unexpected number of operands");
+
+  assert(MI->hasOneMemOperand() &&
+         "Expected atomic-load-op32 to have one memoperand");
+
+  // Memory Reference
+  MachineInstr::mmo_iterator MMOBegin = MI->memoperands_begin();
+  MachineInstr::mmo_iterator MMOEnd = MI->memoperands_end();
+
+  unsigned DstLoReg, DstHiReg;
+  unsigned SrcLoReg, SrcHiReg;
+  unsigned MemOpndSlot;
+
+  unsigned CurOp = 0;
+
+  DstLoReg = MI->getOperand(CurOp++).getReg();
+  DstHiReg = MI->getOperand(CurOp++).getReg();
+  MemOpndSlot = CurOp;
+  CurOp += X86::AddrNumOperands;
+  SrcLoReg = MI->getOperand(CurOp++).getReg();
+  SrcHiReg = MI->getOperand(CurOp++).getReg();
 
   const TargetRegisterClass *RC = &X86::GR32RegClass;
-  const unsigned LoadOpc = X86::MOV32rm;
-  const unsigned NotOpc = X86::NOT32r;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
-  const BasicBlock *LLVM_BB = MBB->getBasicBlock();
-  MachineFunction::iterator MBBIter = MBB;
-  ++MBBIter;
 
-  /// First build the CFG
-  MachineFunction *F = MBB->getParent();
-  MachineBasicBlock *thisMBB = MBB;
-  MachineBasicBlock *newMBB = F->CreateMachineBasicBlock(LLVM_BB);
-  MachineBasicBlock *nextMBB = F->CreateMachineBasicBlock(LLVM_BB);
-  F->insert(MBBIter, newMBB);
-  F->insert(MBBIter, nextMBB);
+  unsigned LCMPXCHGOpc = X86::LCMPXCHG8B;
+  unsigned LOADOpc = X86::MOV32rm;
 
-  // Transfer the remainder of thisMBB and its successor edges to nextMBB.
-  nextMBB->splice(nextMBB->begin(), thisMBB,
-                  llvm::next(MachineBasicBlock::iterator(bInstr)),
-                  thisMBB->end());
-  nextMBB->transferSuccessorsAndUpdatePHIs(thisMBB);
-
-  // Update thisMBB to fall through to newMBB
-  thisMBB->addSuccessor(newMBB);
-
-  // newMBB jumps to itself and fall through to nextMBB
-  newMBB->addSuccessor(nextMBB);
-  newMBB->addSuccessor(newMBB);
-
-  DebugLoc dl = bInstr->getDebugLoc();
-  // Insert instructions into newMBB based on incoming instruction
-  // There are 8 "real" operands plus 9 implicit def/uses, ignored here.
-  assert(bInstr->getNumOperands() < X86::AddrNumOperands + 14 &&
-         "unexpected number of operands");
-  MachineOperand& dest1Oper = bInstr->getOperand(0);
-  MachineOperand& dest2Oper = bInstr->getOperand(1);
-  MachineOperand* argOpers[2 + X86::AddrNumOperands];
-  for (int i=0; i < 2 + X86::AddrNumOperands; ++i) {
-    argOpers[i] = &bInstr->getOperand(i+2);
-
-    // We use some of the operands multiple times, so conservatively just
-    // clear any kill flags that might be present.
-    if (argOpers[i]->isReg() && argOpers[i]->isUse())
-      argOpers[i]->setIsKill(false);
-  }
-
-  // x86 address has 5 operands: base, index, scale, displacement, and segment.
-  int lastAddrIndx = X86::AddrNumOperands - 1; // [0,3]
-
-  unsigned t1 = F->getRegInfo().createVirtualRegister(RC);
-  MachineInstrBuilder MIB = BuildMI(thisMBB, dl, TII->get(LoadOpc), t1);
-  for (int i=0; i <= lastAddrIndx; ++i)
-    (*MIB).addOperand(*argOpers[i]);
-  unsigned t2 = F->getRegInfo().createVirtualRegister(RC);
-  MIB = BuildMI(thisMBB, dl, TII->get(LoadOpc), t2);
-  // add 4 to displacement.
-  for (int i=0; i <= lastAddrIndx-2; ++i)
-    (*MIB).addOperand(*argOpers[i]);
-  MachineOperand newOp3 = *(argOpers[3]);
-  if (newOp3.isImm())
-    newOp3.setImm(newOp3.getImm()+4);
-  else
-    newOp3.setOffset(newOp3.getOffset()+4);
-  (*MIB).addOperand(newOp3);
-  (*MIB).addOperand(*argOpers[lastAddrIndx]);
-
-  // t3/4 are defined later, at the bottom of the loop
-  unsigned t3 = F->getRegInfo().createVirtualRegister(RC);
-  unsigned t4 = F->getRegInfo().createVirtualRegister(RC);
-  BuildMI(newMBB, dl, TII->get(X86::PHI), dest1Oper.getReg())
-    .addReg(t1).addMBB(thisMBB).addReg(t3).addMBB(newMBB);
-  BuildMI(newMBB, dl, TII->get(X86::PHI), dest2Oper.getReg())
-    .addReg(t2).addMBB(thisMBB).addReg(t4).addMBB(newMBB);
-
-  // The subsequent operations should be using the destination registers of
-  // the PHI instructions.
-  t1 = dest1Oper.getReg();
-  t2 = dest2Oper.getReg();
-
-  int valArgIndx = lastAddrIndx + 1;
-  assert((argOpers[valArgIndx]->isReg() ||
-          argOpers[valArgIndx]->isImm()) &&
-         "invalid operand");
-  unsigned t5 = F->getRegInfo().createVirtualRegister(RC);
-  unsigned t6 = F->getRegInfo().createVirtualRegister(RC);
-  if (argOpers[valArgIndx]->isReg())
-    MIB = BuildMI(newMBB, dl, TII->get(regOpcL), t5);
-  else
-    MIB = BuildMI(newMBB, dl, TII->get(immOpcL), t5);
-  if (regOpcL != X86::MOV32rr)
-    MIB.addReg(t1);
-  (*MIB).addOperand(*argOpers[valArgIndx]);
-  assert(argOpers[valArgIndx + 1]->isReg() ==
-         argOpers[valArgIndx]->isReg());
-  assert(argOpers[valArgIndx + 1]->isImm() ==
-         argOpers[valArgIndx]->isImm());
-  if (argOpers[valArgIndx + 1]->isReg())
-    MIB = BuildMI(newMBB, dl, TII->get(regOpcH), t6);
-  else
-    MIB = BuildMI(newMBB, dl, TII->get(immOpcH), t6);
-  if (regOpcH != X86::MOV32rr)
-    MIB.addReg(t2);
-  (*MIB).addOperand(*argOpers[valArgIndx + 1]);
-
-  unsigned t7, t8;
-  if (Invert) {
-    t7 = F->getRegInfo().createVirtualRegister(RC);
-    t8 = F->getRegInfo().createVirtualRegister(RC);
-    MIB = BuildMI(newMBB, dl, TII->get(NotOpc), t7).addReg(t5);
-    MIB = BuildMI(newMBB, dl, TII->get(NotOpc), t8).addReg(t6);
-  } else {
-    t7 = t5;
-    t8 = t6;
-  }
-
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), X86::EAX);
-  MIB.addReg(t1);
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), X86::EDX);
-  MIB.addReg(t2);
-
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), X86::EBX);
-  MIB.addReg(t7);
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), X86::ECX);
-  MIB.addReg(t8);
-
-  MIB = BuildMI(newMBB, dl, TII->get(X86::LCMPXCHG8B));
-  for (int i=0; i <= lastAddrIndx; ++i)
-    (*MIB).addOperand(*argOpers[i]);
-
-  assert(bInstr->hasOneMemOperand() && "Unexpected number of memoperand");
-  (*MIB).setMemRefs(bInstr->memoperands_begin(),
-                    bInstr->memoperands_end());
-
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), t3);
-  MIB.addReg(X86::EAX);
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), t4);
-  MIB.addReg(X86::EDX);
-
-  // insert branch
-  BuildMI(newMBB, dl, TII->get(X86::JNE_4)).addMBB(newMBB);
-
-  bInstr->eraseFromParent();   // The pseudo instruction is gone now.
-  return nextMBB;
-}
-
-// private utility function
-MachineBasicBlock *
-X86TargetLowering::EmitAtomicMinMaxWithCustomInserter(MachineInstr *mInstr,
-                                                      MachineBasicBlock *MBB,
-                                                      unsigned cmovOpc) const {
-  // For the atomic min/max operator, we generate
-  //   thisMBB:
-  //   newMBB:
-  //     ld t1 = [min/max.addr]
-  //     mov t2 = [min/max.val]
-  //     cmp  t1, t2
-  //     cmov[cond] t2 = t1
-  //     mov EAX = t1
-  //     lcs dest = [bitinstr.addr], t2  [EAX is implicit]
-  //     bz   newMBB
-  //     fallthrough -->nextMBB
+  // For the atomic load-arith operator, we generate
   //
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
-  const BasicBlock *LLVM_BB = MBB->getBasicBlock();
-  MachineFunction::iterator MBBIter = MBB;
-  ++MBBIter;
+  //  thisMBB:
+  //    EAX = LOAD [MI.addr + 0]
+  //    EDX = LOAD [MI.addr + 4]
+  //  mainMBB:
+  //    EBX = OP MI.vallo, EAX
+  //    ECX = OP MI.valhi, EDX
+  //    LCMPXCHG8B [MI.addr], [ECX:EBX & EDX:EAX are implicitly used and EDX:EAX is implicitly defined]
+  //    JNE mainMBB
+  //  sinkMBB:
 
-  /// First build the CFG
-  MachineFunction *F = MBB->getParent();
   MachineBasicBlock *thisMBB = MBB;
-  MachineBasicBlock *newMBB = F->CreateMachineBasicBlock(LLVM_BB);
-  MachineBasicBlock *nextMBB = F->CreateMachineBasicBlock(LLVM_BB);
-  F->insert(MBBIter, newMBB);
-  F->insert(MBBIter, nextMBB);
+  MachineBasicBlock *mainMBB = MF->CreateMachineBasicBlock(BB);
+  MachineBasicBlock *sinkMBB = MF->CreateMachineBasicBlock(BB);
+  MF->insert(I, mainMBB);
+  MF->insert(I, sinkMBB);
 
-  // Transfer the remainder of thisMBB and its successor edges to nextMBB.
-  nextMBB->splice(nextMBB->begin(), thisMBB,
-                  llvm::next(MachineBasicBlock::iterator(mInstr)),
-                  thisMBB->end());
-  nextMBB->transferSuccessorsAndUpdatePHIs(thisMBB);
+  MachineInstrBuilder MIB;
 
-  // Update thisMBB to fall through to newMBB
-  thisMBB->addSuccessor(newMBB);
+  // Transfer the remainder of BB and its successor edges to sinkMBB.
+  sinkMBB->splice(sinkMBB->begin(), MBB,
+                  llvm::next(MachineBasicBlock::iterator(MI)), MBB->end());
+  sinkMBB->transferSuccessorsAndUpdatePHIs(MBB);
 
-  // newMBB jumps to newMBB and fall through to nextMBB
-  newMBB->addSuccessor(nextMBB);
-  newMBB->addSuccessor(newMBB);
+  // thisMBB:
+  // Lo
+  MIB = BuildMI(thisMBB, DL, TII->get(LOADOpc), X86::EAX);
+  for (unsigned i = 0; i < X86::AddrNumOperands; ++i)
+    MIB.addOperand(MI->getOperand(MemOpndSlot + i));
+  MIB.setMemRefs(MMOBegin, MMOEnd);
+  // Hi
+  MIB = BuildMI(thisMBB, DL, TII->get(LOADOpc), X86::EDX);
+  for (unsigned i = 0; i < X86::AddrNumOperands; ++i) {
+    if (i == X86::AddrDisp)
+      MIB.addDisp(MI->getOperand(MemOpndSlot + i), 4); // 4 == sizeof(i32)
+    else
+      MIB.addOperand(MI->getOperand(MemOpndSlot + i));
+  }
+  MIB.setMemRefs(MMOBegin, MMOEnd);
 
-  DebugLoc dl = mInstr->getDebugLoc();
-  // Insert instructions into newMBB based on incoming instruction
-  assert(mInstr->getNumOperands() < X86::AddrNumOperands + 4 &&
-         "unexpected number of operands");
-  MachineOperand& destOper = mInstr->getOperand(0);
-  MachineOperand* argOpers[2 + X86::AddrNumOperands];
-  int numArgs = mInstr->getNumOperands() - 1;
-  for (int i=0; i < numArgs; ++i)
-    argOpers[i] = &mInstr->getOperand(i+1);
+  thisMBB->addSuccessor(mainMBB);
 
-  // x86 address has 4 operands: base, index, scale, and displacement
-  int lastAddrIndx = X86::AddrNumOperands - 1; // [0,3]
-  int valArgIndx = lastAddrIndx + 1;
+  // mainMBB:
+  MachineBasicBlock *origMainMBB = mainMBB;
+  mainMBB->addLiveIn(X86::EAX);
+  mainMBB->addLiveIn(X86::EDX);
 
-  unsigned t1 = F->getRegInfo().createVirtualRegister(&X86::GR32RegClass);
-  MachineInstrBuilder MIB = BuildMI(newMBB, dl, TII->get(X86::MOV32rm), t1);
-  for (int i=0; i <= lastAddrIndx; ++i)
-    (*MIB).addOperand(*argOpers[i]);
+  // Copy EDX:EAX as they are used more than once.
+  unsigned LoReg = MRI.createVirtualRegister(RC);
+  unsigned HiReg = MRI.createVirtualRegister(RC);
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), LoReg).addReg(X86::EAX);
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), HiReg).addReg(X86::EDX);
 
-  // We only support register and immediate values
-  assert((argOpers[valArgIndx]->isReg() ||
-          argOpers[valArgIndx]->isImm()) &&
-         "invalid operand");
+  unsigned t1L = MRI.createVirtualRegister(RC);
+  unsigned t1H = MRI.createVirtualRegister(RC);
 
-  unsigned t2 = F->getRegInfo().createVirtualRegister(&X86::GR32RegClass);
-  if (argOpers[valArgIndx]->isReg())
-    MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), t2);
-  else
-    MIB = BuildMI(newMBB, dl, TII->get(X86::MOV32rr), t2);
-  (*MIB).addOperand(*argOpers[valArgIndx]);
+  unsigned Opc = MI->getOpcode();
+  switch (Opc) {
+  default:
+    llvm_unreachable("Unhandled atomic-load-op6432 opcode!");
+  case X86::ATOMAND6432:
+  case X86::ATOMOR6432:
+  case X86::ATOMXOR6432:
+  case X86::ATOMADD6432:
+  case X86::ATOMSUB6432: {
+    unsigned HiOpc;
+    unsigned LoOpc = getNonAtomic6432Opcode(Opc, HiOpc);
+    BuildMI(mainMBB, DL, TII->get(LoOpc), t1L).addReg(SrcLoReg).addReg(LoReg);
+    BuildMI(mainMBB, DL, TII->get(HiOpc), t1H).addReg(SrcHiReg).addReg(HiReg);
+    break;
+  }
+  case X86::ATOMNAND6432: {
+    unsigned HiOpc, NOTOpc;
+    unsigned LoOpc = getNonAtomic6432OpcodeWithExtraOpc(Opc, HiOpc, NOTOpc);
+    unsigned t2L = MRI.createVirtualRegister(RC);
+    unsigned t2H = MRI.createVirtualRegister(RC);
+    BuildMI(mainMBB, DL, TII->get(LoOpc), t2L).addReg(SrcLoReg).addReg(LoReg);
+    BuildMI(mainMBB, DL, TII->get(HiOpc), t2H).addReg(SrcHiReg).addReg(HiReg);
+    BuildMI(mainMBB, DL, TII->get(NOTOpc), t1L).addReg(t2L);
+    BuildMI(mainMBB, DL, TII->get(NOTOpc), t1H).addReg(t2H);
+    break;
+  }
+  case X86::ATOMSWAP6432: {
+    unsigned HiOpc;
+    unsigned LoOpc = getNonAtomic6432Opcode(Opc, HiOpc);
+    BuildMI(mainMBB, DL, TII->get(LoOpc), t1L).addReg(SrcLoReg);
+    BuildMI(mainMBB, DL, TII->get(HiOpc), t1H).addReg(SrcHiReg);
+    break;
+  }
+  }
 
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), X86::EAX);
-  MIB.addReg(t1);
+  // Copy EDX:EAX back from HiReg:LoReg
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), X86::EAX).addReg(LoReg);
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), X86::EDX).addReg(HiReg);
+  // Copy ECX:EBX from t1H:t1L
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), X86::EBX).addReg(t1L);
+  BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), X86::ECX).addReg(t1H);
 
-  MIB = BuildMI(newMBB, dl, TII->get(X86::CMP32rr));
-  MIB.addReg(t1);
-  MIB.addReg(t2);
+  MIB = BuildMI(mainMBB, DL, TII->get(LCMPXCHGOpc));
+  for (unsigned i = 0; i < X86::AddrNumOperands; ++i)
+    MIB.addOperand(MI->getOperand(MemOpndSlot + i));
+  MIB.setMemRefs(MMOBegin, MMOEnd);
 
-  // Generate movc
-  unsigned t3 = F->getRegInfo().createVirtualRegister(&X86::GR32RegClass);
-  MIB = BuildMI(newMBB, dl, TII->get(cmovOpc),t3);
-  MIB.addReg(t2);
-  MIB.addReg(t1);
+  BuildMI(mainMBB, DL, TII->get(X86::JNE_4)).addMBB(origMainMBB);
 
-  // Cmp and exchange if none has modified the memory location
-  MIB = BuildMI(newMBB, dl, TII->get(X86::LCMPXCHG32));
-  for (int i=0; i <= lastAddrIndx; ++i)
-    (*MIB).addOperand(*argOpers[i]);
-  MIB.addReg(t3);
-  assert(mInstr->hasOneMemOperand() && "Unexpected number of memoperand");
-  (*MIB).setMemRefs(mInstr->memoperands_begin(),
-                    mInstr->memoperands_end());
+  mainMBB->addSuccessor(origMainMBB);
+  mainMBB->addSuccessor(sinkMBB);
 
-  MIB = BuildMI(newMBB, dl, TII->get(TargetOpcode::COPY), destOper.getReg());
-  MIB.addReg(X86::EAX);
+  // sinkMBB:
+  sinkMBB->addLiveIn(X86::EAX);
+  sinkMBB->addLiveIn(X86::EDX);
 
-  // insert branch
-  BuildMI(newMBB, dl, TII->get(X86::JNE_4)).addMBB(newMBB);
+  BuildMI(*sinkMBB, sinkMBB->begin(), DL,
+          TII->get(TargetOpcode::COPY), DstLoReg)
+    .addReg(X86::EAX);
+  BuildMI(*sinkMBB, sinkMBB->begin(), DL,
+          TII->get(TargetOpcode::COPY), DstHiReg)
+    .addReg(X86::EDX);
 
-  mInstr->eraseFromParent();   // The pseudo instruction is gone now.
-  return nextMBB;
+  MI->eraseFromParent();
+  return sinkMBB;
 }
 
 // FIXME: When we get size specific XMM0 registers, i.e. XMM0_V16I8
@@ -13276,130 +13528,46 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     return EmitMonitor(MI, BB);
 
     // Atomic Lowering.
-  case X86::ATOMMIN32:
-  case X86::ATOMMAX32:
-  case X86::ATOMUMIN32:
-  case X86::ATOMUMAX32:
-  case X86::ATOMMIN16:
-  case X86::ATOMMAX16:
-  case X86::ATOMUMIN16:
-  case X86::ATOMUMAX16:
-  case X86::ATOMMIN64:
-  case X86::ATOMMAX64:
-  case X86::ATOMUMIN64:
-  case X86::ATOMUMAX64: {
-    unsigned Opc;
-    switch (MI->getOpcode()) {
-    default: llvm_unreachable("illegal opcode!");
-    case X86::ATOMMIN32:  Opc = X86::CMOVL32rr; break;
-    case X86::ATOMMAX32:  Opc = X86::CMOVG32rr; break;
-    case X86::ATOMUMIN32: Opc = X86::CMOVB32rr; break;
-    case X86::ATOMUMAX32: Opc = X86::CMOVA32rr; break;
-    case X86::ATOMMIN16:  Opc = X86::CMOVL16rr; break;
-    case X86::ATOMMAX16:  Opc = X86::CMOVG16rr; break;
-    case X86::ATOMUMIN16: Opc = X86::CMOVB16rr; break;
-    case X86::ATOMUMAX16: Opc = X86::CMOVA16rr; break;
-    case X86::ATOMMIN64:  Opc = X86::CMOVL64rr; break;
-    case X86::ATOMMAX64:  Opc = X86::CMOVG64rr; break;
-    case X86::ATOMUMIN64: Opc = X86::CMOVB64rr; break;
-    case X86::ATOMUMAX64: Opc = X86::CMOVA64rr; break;
-    // FIXME: There are no CMOV8 instructions; MIN/MAX need some other way.
-    }
-    return EmitAtomicMinMaxWithCustomInserter(MI, BB, Opc);
-  }
-
-  case X86::ATOMAND32:
-  case X86::ATOMOR32:
-  case X86::ATOMXOR32:
-  case X86::ATOMNAND32: {
-    bool Invert = false;
-    unsigned RegOpc, ImmOpc;
-    switch (MI->getOpcode()) {
-    default: llvm_unreachable("illegal opcode!");
-    case X86::ATOMAND32:
-      RegOpc = X86::AND32rr; ImmOpc = X86::AND32ri; break;
-    case X86::ATOMOR32:
-      RegOpc = X86::OR32rr;  ImmOpc = X86::OR32ri; break;
-    case X86::ATOMXOR32:
-      RegOpc = X86::XOR32rr; ImmOpc = X86::XOR32ri; break;
-    case X86::ATOMNAND32:
-      RegOpc = X86::AND32rr; ImmOpc = X86::AND32ri; Invert = true; break;
-    }
-    return EmitAtomicBitwiseWithCustomInserter(MI, BB, RegOpc, ImmOpc,
-                                               X86::MOV32rm, X86::LCMPXCHG32,
-                                               X86::NOT32r, X86::EAX,
-                                               &X86::GR32RegClass, Invert);
-  }
-
-  case X86::ATOMAND16:
-  case X86::ATOMOR16:
-  case X86::ATOMXOR16:
-  case X86::ATOMNAND16: {
-    bool Invert = false;
-    unsigned RegOpc, ImmOpc;
-    switch (MI->getOpcode()) {
-    default: llvm_unreachable("illegal opcode!");
-    case X86::ATOMAND16:
-      RegOpc = X86::AND16rr; ImmOpc = X86::AND16ri; break;
-    case X86::ATOMOR16:
-      RegOpc = X86::OR16rr;  ImmOpc = X86::OR16ri; break;
-    case X86::ATOMXOR16:
-      RegOpc = X86::XOR16rr; ImmOpc = X86::XOR16ri; break;
-    case X86::ATOMNAND16:
-      RegOpc = X86::AND16rr; ImmOpc = X86::AND16ri; Invert = true; break;
-    }
-    return EmitAtomicBitwiseWithCustomInserter(MI, BB, RegOpc, ImmOpc,
-                                               X86::MOV16rm, X86::LCMPXCHG16,
-                                               X86::NOT16r, X86::AX,
-                                               &X86::GR16RegClass, Invert);
-  }
-
   case X86::ATOMAND8:
-  case X86::ATOMOR8:
-  case X86::ATOMXOR8:
-  case X86::ATOMNAND8: {
-    bool Invert = false;
-    unsigned RegOpc, ImmOpc;
-    switch (MI->getOpcode()) {
-    default: llvm_unreachable("illegal opcode!");
-    case X86::ATOMAND8:
-      RegOpc = X86::AND8rr; ImmOpc = X86::AND8ri; break;
-    case X86::ATOMOR8:
-      RegOpc = X86::OR8rr;  ImmOpc = X86::OR8ri; break;
-    case X86::ATOMXOR8:
-      RegOpc = X86::XOR8rr; ImmOpc = X86::XOR8ri; break;
-    case X86::ATOMNAND8:
-      RegOpc = X86::AND8rr; ImmOpc = X86::AND8ri; Invert = true; break;
-    }
-    return EmitAtomicBitwiseWithCustomInserter(MI, BB, RegOpc, ImmOpc,
-                                               X86::MOV8rm, X86::LCMPXCHG8,
-                                               X86::NOT8r, X86::AL,
-                                               &X86::GR8RegClass, Invert);
-  }
-
-  // This group is for 64-bit host.
+  case X86::ATOMAND16:
+  case X86::ATOMAND32:
   case X86::ATOMAND64:
+    // Fall through
+  case X86::ATOMOR8:
+  case X86::ATOMOR16:
+  case X86::ATOMOR32:
   case X86::ATOMOR64:
+    // Fall through
+  case X86::ATOMXOR16:
+  case X86::ATOMXOR8:
+  case X86::ATOMXOR32:
   case X86::ATOMXOR64:
-  case X86::ATOMNAND64: {
-    bool Invert = false;
-    unsigned RegOpc, ImmOpc;
-    switch (MI->getOpcode()) {
-    default: llvm_unreachable("illegal opcode!");
-    case X86::ATOMAND64:
-      RegOpc = X86::AND64rr; ImmOpc = X86::AND64ri32; break;
-    case X86::ATOMOR64:
-      RegOpc = X86::OR64rr;  ImmOpc = X86::OR64ri32; break;
-    case X86::ATOMXOR64:
-      RegOpc = X86::XOR64rr; ImmOpc = X86::XOR64ri32; break;
-    case X86::ATOMNAND64:
-      RegOpc = X86::AND64rr; ImmOpc = X86::AND64ri32; Invert = true; break;
-    }
-    return EmitAtomicBitwiseWithCustomInserter(MI, BB, RegOpc, ImmOpc,
-                                               X86::MOV64rm, X86::LCMPXCHG64,
-                                               X86::NOT64r, X86::RAX,
-                                               &X86::GR64RegClass, Invert);
-  }
+    // Fall through
+  case X86::ATOMNAND8:
+  case X86::ATOMNAND16:
+  case X86::ATOMNAND32:
+  case X86::ATOMNAND64:
+    // Fall through
+  case X86::ATOMMAX8:
+  case X86::ATOMMAX16:
+  case X86::ATOMMAX32:
+  case X86::ATOMMAX64:
+    // Fall through
+  case X86::ATOMMIN8:
+  case X86::ATOMMIN16:
+  case X86::ATOMMIN32:
+  case X86::ATOMMIN64:
+    // Fall through
+  case X86::ATOMUMAX8:
+  case X86::ATOMUMAX16:
+  case X86::ATOMUMAX32:
+  case X86::ATOMUMAX64:
+    // Fall through
+  case X86::ATOMUMIN8:
+  case X86::ATOMUMIN16:
+  case X86::ATOMUMIN32:
+  case X86::ATOMUMIN64:
+    return EmitAtomicLoadArith(MI, BB);
 
   // This group does 64-bit operations on a 32-bit host.
   case X86::ATOMAND6432:
@@ -13408,44 +13576,8 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   case X86::ATOMNAND6432:
   case X86::ATOMADD6432:
   case X86::ATOMSUB6432:
-  case X86::ATOMSWAP6432: {
-    bool Invert = false;
-    unsigned RegOpcL, RegOpcH, ImmOpcL, ImmOpcH;
-    switch (MI->getOpcode()) {
-    default: llvm_unreachable("illegal opcode!");
-    case X86::ATOMAND6432:
-      RegOpcL = RegOpcH = X86::AND32rr;
-      ImmOpcL = ImmOpcH = X86::AND32ri;
-      break;
-    case X86::ATOMOR6432:
-      RegOpcL = RegOpcH = X86::OR32rr;
-      ImmOpcL = ImmOpcH = X86::OR32ri;
-      break;
-    case X86::ATOMXOR6432:
-      RegOpcL = RegOpcH = X86::XOR32rr;
-      ImmOpcL = ImmOpcH = X86::XOR32ri;
-      break;
-    case X86::ATOMNAND6432:
-      RegOpcL = RegOpcH = X86::AND32rr;
-      ImmOpcL = ImmOpcH = X86::AND32ri;
-      Invert = true;
-      break;
-    case X86::ATOMADD6432:
-      RegOpcL = X86::ADD32rr; RegOpcH = X86::ADC32rr;
-      ImmOpcL = X86::ADD32ri; ImmOpcH = X86::ADC32ri;
-      break;
-    case X86::ATOMSUB6432:
-      RegOpcL = X86::SUB32rr; RegOpcH = X86::SBB32rr;
-      ImmOpcL = X86::SUB32ri; ImmOpcH = X86::SBB32ri;
-      break;
-    case X86::ATOMSWAP6432:
-      RegOpcL = RegOpcH = X86::MOV32rr;
-      ImmOpcL = ImmOpcH = X86::MOV32ri;
-      break;
-    }
-    return EmitAtomicBit6432WithCustomInserter(MI, BB, RegOpcL, RegOpcH,
-                                               ImmOpcL, ImmOpcH, Invert);
-  }
+  case X86::ATOMSWAP6432:
+    return EmitAtomicLoadArith6432(MI, BB);
 
   case X86::VASTART_SAVE_XMM_REGS:
     return EmitVAStartSaveXMMRegsWithCustomInserter(MI, BB);
@@ -14408,84 +14540,6 @@ static SDValue checkBoolTestSetCCCombine(SDValue Cmp, X86::CondCode &CC) {
   return SDValue();
 }
 
-/// checkFlaggedOrCombine - DAG combination on X86ISD::OR, i.e. with EFLAGS
-/// updated. If only flag result is used and the result is evaluated from a
-/// series of element extraction, try to combine it into a PTEST.
-static SDValue checkFlaggedOrCombine(SDValue Or, X86::CondCode &CC,
-                                     SelectionDAG &DAG,
-                                     const X86Subtarget *Subtarget) {
-  SDNode *N = Or.getNode();
-  DebugLoc DL = N->getDebugLoc();
-
-  // Only SSE4.1 and beyond supports PTEST or like.
-  if (!Subtarget->hasSSE41())
-    return SDValue();
-
-  if (N->getOpcode() != X86ISD::OR)
-    return SDValue();
-
-  // Quit if the value result of OR is used.
-  if (N->hasAnyUseOfValue(0))
-    return SDValue();
-
-  // Quit if not used as a boolean value.
-  if (CC != X86::COND_E && CC != X86::COND_NE)
-    return SDValue();
-
-  SmallVector<SDValue, 8> Opnds;
-  SDValue VecIn;
-  EVT VT = MVT::Other;
-  unsigned Mask = 0;
-
-  // Recognize a special case where a vector is casted into wide integer to
-  // test all 0s.
-  Opnds.push_back(N->getOperand(0));
-  Opnds.push_back(N->getOperand(1));
-
-  for (unsigned Slot = 0, e = Opnds.size(); Slot < e; ++Slot) {
-    SmallVector<SDValue, 8>::const_iterator I = Opnds.begin() + Slot;
-    // BFS traverse all OR'd operands.
-    if (I->getOpcode() == ISD::OR) {
-      Opnds.push_back(I->getOperand(0));
-      Opnds.push_back(I->getOperand(1));
-      // Re-evaluate the number of nodes to be traversed.
-      e += 2; // 2 more nodes (LHS and RHS) are pushed.
-      continue;
-    }
-
-    // Quit if a non-EXTRACT_VECTOR_ELT
-    if (I->getOpcode() != ISD::EXTRACT_VECTOR_ELT)
-      return SDValue();
-
-    // Quit if without a constant index.
-    SDValue Idx = I->getOperand(1);
-    if (!isa<ConstantSDNode>(Idx))
-      return SDValue();
-
-    // Check if all elements are extracted from the same vector.
-    SDValue ExtractedFromVec = I->getOperand(0);
-    if (VecIn.getNode() == 0) {
-      VT = ExtractedFromVec.getValueType();
-      // FIXME: only 128-bit vector is supported so far.
-      if (!VT.is128BitVector())
-        return SDValue();
-      VecIn = ExtractedFromVec;
-    } else if (VecIn != ExtractedFromVec)
-      return SDValue();
-
-    // Record the constant index.
-    Mask |= 1U << cast<ConstantSDNode>(Idx)->getZExtValue();
-  }
-
-  assert(VT.is128BitVector() && "Only 128-bit vector PTEST is supported so far.");
-
-  // Quit if not all elements are used.
-  if (Mask != (1U << VT.getVectorNumElements()) - 1U)
-    return SDValue();
-
-  return DAG.getNode(X86ISD::PTEST, DL, MVT::i32, VecIn, VecIn);
-}
-
 /// Optimize X86ISD::CMOV [LHS, RHS, CONDCODE (e.g. X86::COND_NE), CONDVAL]
 static SDValue PerformCMOVCombine(SDNode *N, SelectionDAG &DAG,
                                   TargetLowering::DAGCombinerInfo &DCI,
@@ -14518,14 +14572,6 @@ static SDValue PerformCMOVCombine(SDNode *N, SelectionDAG &DAG,
   if (Flags.getNode() &&
       // Extra check as FCMOV only supports a subset of X86 cond.
       (FalseOp.getValueType() != MVT::f80 || hasFPCMov(CC))) {
-    SDValue Ops[] = { FalseOp, TrueOp,
-                      DAG.getConstant(CC, MVT::i8), Flags };
-    return DAG.getNode(X86ISD::CMOV, DL, N->getVTList(),
-                       Ops, array_lengthof(Ops));
-  }
-
-  Flags = checkFlaggedOrCombine(Cond, CC, DAG, Subtarget);
-  if (Flags.getNode()) {
     SDValue Ops[] = { FalseOp, TrueOp,
                       DAG.getConstant(CC, MVT::i8), Flags };
     return DAG.getNode(X86ISD::CMOV, DL, N->getVTList(),
@@ -16069,12 +16115,6 @@ static SDValue PerformSETCCCombine(SDNode *N, SelectionDAG &DAG,
     return DAG.getNode(X86ISD::SETCC, DL, N->getVTList(), Cond, Flags);
   }
 
-  Flags = checkFlaggedOrCombine(EFLAGS, CC, DAG, Subtarget);
-  if (Flags.getNode()) {
-    SDValue Cond = DAG.getConstant(CC, MVT::i8);
-    return DAG.getNode(X86ISD::SETCC, DL, N->getVTList(), Cond, Flags);
-  }
-
   return SDValue();
 }
 
@@ -16092,13 +16132,6 @@ static SDValue PerformBrCondCombine(SDNode *N, SelectionDAG &DAG,
   SDValue Flags;
 
   Flags = checkBoolTestSetCCCombine(EFLAGS, CC);
-  if (Flags.getNode()) {
-    SDValue Cond = DAG.getConstant(CC, MVT::i8);
-    return DAG.getNode(X86ISD::BRCOND, DL, N->getVTList(), Chain, Dest, Cond,
-                       Flags);
-  }
-
-  Flags = checkFlaggedOrCombine(EFLAGS, CC, DAG, Subtarget);
   if (Flags.getNode()) {
     SDValue Cond = DAG.getConstant(CC, MVT::i8);
     return DAG.getNode(X86ISD::BRCOND, DL, N->getVTList(), Chain, Dest, Cond,

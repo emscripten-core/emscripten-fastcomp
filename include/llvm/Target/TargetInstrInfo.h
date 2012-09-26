@@ -45,8 +45,8 @@ template<class T> class SmallVectorImpl;
 /// TargetInstrInfo - Interface to description of machine instruction set
 ///
 class TargetInstrInfo : public MCInstrInfo {
-  TargetInstrInfo(const TargetInstrInfo &);  // DO NOT IMPLEMENT
-  void operator=(const TargetInstrInfo &);   // DO NOT IMPLEMENT
+  TargetInstrInfo(const TargetInstrInfo &) LLVM_DELETED_FUNCTION;
+  void operator=(const TargetInstrInfo &) LLVM_DELETED_FUNCTION;
 public:
   TargetInstrInfo(int CFSetupOpcode = -1, int CFDestroyOpcode = -1)
     : CallFrameSetupOpcode(CFSetupOpcode),
@@ -823,6 +823,9 @@ public:
   /// Return the default expected latency for a def based on it's opcode.
   unsigned defaultDefLatency(const MCSchedModel *SchedModel,
                              const MachineInstr *DefMI) const;
+
+  int computeDefOperandLatency(const InstrItineraryData *ItinData,
+                               const MachineInstr *DefMI, bool FindMin) const;
 
   /// isHighLatencyDef - Return true if this opcode has high latency to its
   /// result.

@@ -40,6 +40,7 @@ public:
     // No-value.
     EndOfStatement,
     Colon,
+    Space,
     Plus, Minus, Tilde,
     Slash,    // '/'
     BackSlash, // '\'
@@ -126,6 +127,7 @@ class MCAsmLexer {
   void operator=(const MCAsmLexer &) LLVM_DELETED_FUNCTION;
 protected: // Can only create subclasses.
   const char *TokStart;
+  bool SkipSpace;
 
   MCAsmLexer();
 
@@ -170,11 +172,14 @@ public:
   /// getKind - Get the kind of current token.
   AsmToken::TokenKind getKind() const { return CurTok.getKind(); }
 
-  /// is - Check if the current token has kind \arg K.
+  /// is - Check if the current token has kind \p K.
   bool is(AsmToken::TokenKind K) const { return CurTok.is(K); }
 
-  /// isNot - Check if the current token has kind \arg K.
+  /// isNot - Check if the current token has kind \p K.
   bool isNot(AsmToken::TokenKind K) const { return CurTok.isNot(K); }
+
+  /// setSkipSpace - Set whether spaces should be ignored by the lexer
+  void setSkipSpace(bool val) { SkipSpace = val; }
 };
 
 } // End llvm namespace

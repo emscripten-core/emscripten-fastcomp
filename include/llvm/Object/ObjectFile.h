@@ -212,6 +212,8 @@ public:
   error_code getNext(SymbolRef &Result) const;
 
   error_code getName(StringRef &Result) const;
+  /// Returns the symbol virtual address (i.e. address at which it will be
+  /// mapped).
   error_code getAddress(uint64_t &Result) const;
   error_code getFileOffset(uint64_t &Result) const;
   error_code getSize(uint64_t &Result) const;
@@ -266,8 +268,8 @@ const uint64_t UnknownAddressOrSize = ~0ULL;
 /// figure out which type to create.
 class ObjectFile : public Binary {
   virtual void anchor();
-  ObjectFile(); // = delete
-  ObjectFile(const ObjectFile &other); // = delete
+  ObjectFile() LLVM_DELETED_FUNCTION;
+  ObjectFile(const ObjectFile &other) LLVM_DELETED_FUNCTION;
 
 protected:
   ObjectFile(unsigned int Type, MemoryBuffer *source, error_code &ec);

@@ -77,7 +77,7 @@
 //
 //  Some targets need a custom way to parse operands, some specific instructions
 //  can contain arguments that can represent processor flags and other kinds of
-//  identifiers that need to be mapped to specific valeus in the final encoded
+//  identifiers that need to be mapped to specific values in the final encoded
 //  instructions. The target specific custom operand parsing works in the
 //  following way:
 //
@@ -199,7 +199,7 @@ public:
     return Kind >= UserClass0;
   }
 
-  /// isRelatedTo - Check whether this class is "related" to \arg RHS. Classes
+  /// isRelatedTo - Check whether this class is "related" to \p RHS. Classes
   /// are related if they are in the same class hierarchy.
   bool isRelatedTo(const ClassInfo &RHS) const {
     // Tokens are only related to tokens.
@@ -238,7 +238,7 @@ public:
     return Root == RHSRoot;
   }
 
-  /// isSubsetOf - Test whether this class is a subset of \arg RHS;
+  /// isSubsetOf - Test whether this class is a subset of \p RHS.
   bool isSubsetOf(const ClassInfo &RHS) const {
     // This is a subset of RHS if it is the same class...
     if (this == &RHS)
@@ -278,6 +278,15 @@ public:
     }
   }
 };
+
+namespace {
+/// Sort ClassInfo pointers independently of pointer value.
+struct LessClassInfoPtr {
+  bool operator()(const ClassInfo *LHS, const ClassInfo *RHS) const {
+    return *LHS < *RHS;
+  }
+};
+}
 
 /// MatchableInfo - Helper class for storing the necessary information for an
 /// instruction or alias which is capable of being matched.
@@ -501,7 +510,7 @@ struct MatchableInfo {
   }
 
   /// couldMatchAmbiguouslyWith - Check whether this matchable could
-  /// ambiguously match the same set of operands as \arg RHS (without being a
+  /// ambiguously match the same set of operands as \p RHS (without being a
   /// strictly superior match).
   bool couldMatchAmbiguouslyWith(const MatchableInfo &RHS) {
     // The primary comparator is the instruction mnemonic.
@@ -599,7 +608,8 @@ public:
   std::vector<OperandMatchEntry> OperandMatchInfo;
 
   /// Map of Register records to their class information.
-  std::map<Record*, ClassInfo*> RegisterClasses;
+  typedef std::map<Record*, ClassInfo*, LessRecordByID> RegisterClassesTy;
+  RegisterClassesTy RegisterClasses;
 
   /// Map of Predicate records to their subtarget information.
   std::map<Record*, SubtargetFeatureInfo*> SubtargetFeatures;
@@ -1020,7 +1030,9 @@ AsmMatcherInfo::getOperandClass(Record *Rec, int SubOpIdx) {
     throw TGError(Rec->getLoc(), "register class has no class info!");
   }
 
-  assert(Rec->isSubClassOf("Operand") && "Unexpected operand!");
+  if (!Rec->isSubClassOf("Operand"))
+    throw TGError(Rec->getLoc(), "Operand `" + Rec->getName() +
+                  "' does not derive from class Operand!\n");
   Record *MatchClass = Rec->getValueAsDef("ParserMatchClass");
   if (ClassInfo *CI = AsmOperandClasses[MatchClass])
     return CI;
@@ -1237,7 +1249,8 @@ void AsmMatcherInfo::buildOperandMatchInfo() {
 
   /// Map containing a mask with all operands indices that can be found for
   /// that class inside a instruction.
-  std::map<ClassInfo*, unsigned> OpClassMask;
+  typedef std::map<ClassInfo*, unsigned, LessClassInfoPtr> OpClassMaskTy;
+  OpClassMaskTy OpClassMask;
 
   for (std::vector<MatchableInfo*>::const_iterator it =
        Matchables.begin(), ie = Matchables.end();
@@ -1256,7 +1269,7 @@ void AsmMatcherInfo::buildOperandMatchInfo() {
     }
 
     // Generate operand match info for each mnemonic/operand class pair.
-    for (std::map<ClassInfo*, unsigned>::iterator iit = OpClassMask.begin(),
+    for (OpClassMaskTy::iterator iit = OpClassMask.begin(),
          iie = OpClassMask.end(); iit != iie; ++iit) {
       unsigned OpMask = iit->second;
       ClassInfo *CI = iit->first;
@@ -1684,9 +1697,9 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
         << "                const SmallVectorImpl<MCParsedAsmOperand*"
         << "> &Operands) {\n"
         << "  assert(Kind < CVT_NUM_SIGNATURES && \"Invalid signature!\");\n"
-        << "  uint8_t *Converter = ConversionTable[Kind];\n"
+        << "  const uint8_t *Converter = ConversionTable[Kind];\n"
         << "  Inst.setOpcode(Opcode);\n"
-        << "  for (uint8_t *p = Converter; *p; p+= 2) {\n"
+        << "  for (const uint8_t *p = Converter; *p; p+= 2) {\n"
         << "    switch (*p) {\n"
         << "    default: llvm_unreachable(\"invalid conversion entry!\");\n"
         << "    case CVT_Reg:\n"
@@ -1708,8 +1721,8 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
        << "  assert(Kind < CVT_NUM_SIGNATURES && \"Invalid signature!\");\n"
        << "  NumMCOperands = 0;\n"
        << "  unsigned MCOperandNum = 0;\n"
-       << "  uint8_t *Converter = ConversionTable[Kind];\n"
-       << "  for (uint8_t *p = Converter; *p; p+= 2) {\n"
+       << "  const uint8_t *Converter = ConversionTable[Kind];\n"
+       << "  for (const uint8_t *p = Converter; *p; p+= 2) {\n"
        << "    if (*(p + 1) > OperandNum) continue;\n"
        << "    switch (*p) {\n"
        << "    default: llvm_unreachable(\"invalid conversion entry!\");\n"
@@ -1945,7 +1958,7 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
   OS << "} // end anonymous namespace\n\n";
 
   // Output the conversion table.
-  OS << "static uint8_t ConversionTable[CVT_NUM_SIGNATURES]["
+  OS << "static const uint8_t ConversionTable[CVT_NUM_SIGNATURES]["
      << MaxRowLength << "] = {\n";
 
   for (unsigned Row = 0, ERow = ConversionTable.size(); Row != ERow; ++Row) {
@@ -2041,7 +2054,7 @@ static void emitValidateOperandClass(AsmMatcherInfo &Info,
   OS << "    MatchClassKind OpKind;\n";
   OS << "    switch (Operand.getReg()) {\n";
   OS << "    default: OpKind = InvalidMatchClass; break;\n";
-  for (std::map<Record*, ClassInfo*>::iterator
+  for (AsmMatcherInfo::RegisterClassesTy::iterator
          it = Info.RegisterClasses.begin(), ie = Info.RegisterClasses.end();
        it != ie; ++it)
     OS << "    case " << Info.Target.getName() << "::"
@@ -2062,7 +2075,7 @@ static void emitValidateOperandClass(AsmMatcherInfo &Info,
 static void emitIsSubclass(CodeGenTarget &Target,
                            std::vector<ClassInfo*> &Infos,
                            raw_ostream &OS) {
-  OS << "/// isSubclass - Compute whether \\arg A is a subclass of \\arg B.\n";
+  OS << "/// isSubclass - Compute whether \\p A is a subclass of \\p B.\n";
   OS << "static bool isSubclass(MatchClassKind A, MatchClassKind B) {\n";
   OS << "  if (A == B)\n";
   OS << "    return true;\n\n";
@@ -2377,17 +2390,27 @@ static const char *getMinimalTypeForRange(uint64_t Range) {
 }
 
 static void emitCustomOperandParsing(raw_ostream &OS, CodeGenTarget &Target,
-                              const AsmMatcherInfo &Info, StringRef ClassName) {
+                              const AsmMatcherInfo &Info, StringRef ClassName,
+                              StringToOffsetTable &StringTable,
+                              unsigned MaxMnemonicIndex) {
+  unsigned MaxMask = 0;
+  for (std::vector<OperandMatchEntry>::const_iterator it =
+       Info.OperandMatchInfo.begin(), ie = Info.OperandMatchInfo.end();
+       it != ie; ++it) {
+    MaxMask |= it->OperandMask;
+  }
+
   // Emit the static custom operand parsing table;
   OS << "namespace {\n";
   OS << "  struct OperandMatchEntry {\n";
-  OS << "    static const char *const MnemonicTable;\n";
-  OS << "    uint32_t OperandMask;\n";
-  OS << "    uint32_t Mnemonic;\n";
   OS << "    " << getMinimalTypeForRange(1ULL << Info.SubtargetFeatures.size())
                << " RequiredFeatures;\n";
+  OS << "    " << getMinimalTypeForRange(MaxMnemonicIndex)
+               << " Mnemonic;\n";
   OS << "    " << getMinimalTypeForRange(Info.Classes.size())
-               << " Class;\n\n";
+               << " Class;\n";
+  OS << "    " << getMinimalTypeForRange(MaxMask)
+               << " OperandMask;\n\n";
   OS << "    StringRef getMnemonic() const {\n";
   OS << "      return StringRef(MnemonicTable + Mnemonic + 1,\n";
   OS << "                       MnemonicTable[Mnemonic]);\n";
@@ -2410,8 +2433,6 @@ static void emitCustomOperandParsing(raw_ostream &OS, CodeGenTarget &Target,
 
   OS << "} // end anonymous namespace.\n\n";
 
-  StringToOffsetTable StringTable;
-
   OS << "static const OperandMatchEntry OperandMatchTable["
      << Info.OperandMatchInfo.size() << "] = {\n";
 
@@ -2422,8 +2443,25 @@ static void emitCustomOperandParsing(raw_ostream &OS, CodeGenTarget &Target,
     const OperandMatchEntry &OMI = *it;
     const MatchableInfo &II = *OMI.MI;
 
-    OS << "  { " << OMI.OperandMask;
+    OS << "  { ";
 
+    // Write the required features mask.
+    if (!II.RequiredFeatures.empty()) {
+      for (unsigned i = 0, e = II.RequiredFeatures.size(); i != e; ++i) {
+        if (i) OS << "|";
+        OS << II.RequiredFeatures[i]->getEnumName();
+      }
+    } else
+      OS << "0";
+
+    // Store a pascal-style length byte in the mnemonic.
+    std::string LenMnemonic = char(II.Mnemonic.size()) + II.Mnemonic.str();
+    OS << ", " << StringTable.GetOrAddStringOffset(LenMnemonic, false)
+       << " /* " << II.Mnemonic << " */, ";
+
+    OS << OMI.CI->Name;
+
+    OS << ", " << OMI.OperandMask;
     OS << " /* ";
     bool printComma = false;
     for (int i = 0, e = 31; i !=e; ++i)
@@ -2435,29 +2473,9 @@ static void emitCustomOperandParsing(raw_ostream &OS, CodeGenTarget &Target,
       }
     OS << " */";
 
-    // Store a pascal-style length byte in the mnemonic.
-    std::string LenMnemonic = char(II.Mnemonic.size()) + II.Mnemonic.str();
-    OS << ", " << StringTable.GetOrAddStringOffset(LenMnemonic, false)
-       << " /* " << II.Mnemonic << " */, ";
-
-    // Write the required features mask.
-    if (!II.RequiredFeatures.empty()) {
-      for (unsigned i = 0, e = II.RequiredFeatures.size(); i != e; ++i) {
-        if (i) OS << "|";
-        OS << II.RequiredFeatures[i]->getEnumName();
-      }
-    } else
-      OS << "0";
-
-    OS << ", " << OMI.CI->Name;
-
     OS << " },\n";
   }
   OS << "};\n\n";
-
-  OS << "const char *const OperandMatchEntry::MnemonicTable =\n";
-  StringTable.EmitString(OS);
-  OS << ";\n\n";
 
   // Emit the operand class switch to call the correct custom parser for
   // the found operand class.
@@ -2599,11 +2617,11 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
      << "unsigned Opcode,\n"
      << "                          const SmallVectorImpl<MCParsedAsmOperand*> "
      << "&Operands);\n";
-  OS << "  unsigned getMCInstOperandNumImpl(unsigned Kind, MCInst &Inst,\n     "
-     << "                              const "
+  OS << "  unsigned getMCInstOperandNumImpl(unsigned Kind, MCInst &Inst,\n"
+     << "                           const "
      << "SmallVectorImpl<MCParsedAsmOperand*> &Operands,\n                     "
      << "          unsigned OperandNum, unsigned &NumMCOperands);\n";
-  OS << "  bool MnemonicIsValid(StringRef Mnemonic);\n";
+  OS << "  bool mnemonicIsValidImpl(StringRef Mnemonic);\n";
   OS << "  unsigned MatchInstructionImpl(\n"
      << "    const SmallVectorImpl<MCParsedAsmOperand*> &Operands,\n"
      << "    unsigned &Kind, MCInst &Inst, "
@@ -2679,11 +2697,25 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   emitComputeAvailableFeatures(Info, OS);
 
 
+  StringToOffsetTable StringTable;
+
   size_t MaxNumOperands = 0;
+  unsigned MaxMnemonicIndex = 0;
   for (std::vector<MatchableInfo*>::const_iterator it =
          Info.Matchables.begin(), ie = Info.Matchables.end();
-       it != ie; ++it)
-    MaxNumOperands = std::max(MaxNumOperands, (*it)->AsmOperands.size());
+       it != ie; ++it) {
+    MatchableInfo &II = **it;
+    MaxNumOperands = std::max(MaxNumOperands, II.AsmOperands.size());
+
+    // Store a pascal-style length byte in the mnemonic.
+    std::string LenMnemonic = char(II.Mnemonic.size()) + II.Mnemonic.str();
+    MaxMnemonicIndex = std::max(MaxMnemonicIndex,
+                        StringTable.GetOrAddStringOffset(LenMnemonic, false));
+  }
+
+  OS << "static const char *const MnemonicTable =\n";
+  StringTable.EmitString(OS);
+  OS << ";\n\n";
 
   // Emit the static match table; unused classes get initalized to 0 which is
   // guaranteed to be InvalidMatchClass.
@@ -2697,8 +2729,8 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   // following the mnemonic.
   OS << "namespace {\n";
   OS << "  struct MatchEntry {\n";
-  OS << "    static const char *const MnemonicTable;\n";
-  OS << "    uint32_t Mnemonic;\n";
+  OS << "    " << getMinimalTypeForRange(MaxMnemonicIndex)
+               << " Mnemonic;\n";
   OS << "    uint16_t Opcode;\n";
   OS << "    " << getMinimalTypeForRange(Info.Matchables.size())
                << " ConvertFn;\n";
@@ -2727,8 +2759,6 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "  };\n";
 
   OS << "} // end anonymous namespace.\n\n";
-
-  StringToOffsetTable StringTable;
 
   OS << "static const MatchEntry MatchTable["
      << Info.Matchables.size() << "] = {\n";
@@ -2768,13 +2798,9 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
 
   OS << "};\n\n";
 
-  OS << "const char *const MatchEntry::MnemonicTable =\n";
-  StringTable.EmitString(OS);
-  OS << ";\n\n";
-
   // A method to determine if a mnemonic is in the list.
   OS << "bool " << Target.getName() << ClassName << "::\n"
-     << "MnemonicIsValid(StringRef Mnemonic) {\n";
+     << "mnemonicIsValidImpl(StringRef Mnemonic) {\n";
   OS << "  // Search the table.\n";
   OS << "  std::pair<const MatchEntry*, const MatchEntry*> MnemonicRange =\n";
   OS << "    std::equal_range(MatchTable, MatchTable+"
@@ -2918,7 +2944,8 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "}\n\n";
 
   if (Info.OperandMatchInfo.size())
-    emitCustomOperandParsing(OS, Target, Info, ClassName);
+    emitCustomOperandParsing(OS, Target, Info, ClassName, StringTable,
+                             MaxMnemonicIndex);
 
   OS << "#endif // GET_MATCHER_IMPLEMENTATION\n\n";
 }

@@ -68,22 +68,30 @@ std::string llvm::getEnumName(MVT::SimpleValueType T) {
   case MVT::x86mmx:   return "MVT::x86mmx";
   case MVT::Glue:     return "MVT::Glue";
   case MVT::isVoid:   return "MVT::isVoid";
+  case MVT::v2i1:     return "MVT::v2i1";
+  case MVT::v4i1:     return "MVT::v4i1";
+  case MVT::v8i1:     return "MVT::v8i1";
+  case MVT::v16i1:    return "MVT::v16i1";
   case MVT::v2i8:     return "MVT::v2i8";
   case MVT::v4i8:     return "MVT::v4i8";
   case MVT::v8i8:     return "MVT::v8i8";
   case MVT::v16i8:    return "MVT::v16i8";
   case MVT::v32i8:    return "MVT::v32i8";
+  case MVT::v1i16:    return "MVT::v1i16";
   case MVT::v2i16:    return "MVT::v2i16";
   case MVT::v4i16:    return "MVT::v4i16";
   case MVT::v8i16:    return "MVT::v8i16";
   case MVT::v16i16:   return "MVT::v16i16";
+  case MVT::v1i32:    return "MVT::v1i32";
   case MVT::v2i32:    return "MVT::v2i32";
   case MVT::v4i32:    return "MVT::v4i32";
   case MVT::v8i32:    return "MVT::v8i32";
+  case MVT::v16i32:   return "MVT::v16i32";
   case MVT::v1i64:    return "MVT::v1i64";
   case MVT::v2i64:    return "MVT::v2i64";
   case MVT::v4i64:    return "MVT::v4i64";
   case MVT::v8i64:    return "MVT::v8i64";
+  case MVT::v16i64:   return "MVT::v16i64";
   case MVT::v2f16:    return "MVT::v2f16";
   case MVT::v2f32:    return "MVT::v2f32";
   case MVT::v4f32:    return "MVT::v4f32";
@@ -199,12 +207,11 @@ void CodeGenTarget::ReadRegAltNameIndices() const {
 /// getRegisterByName - If there is a register with the specific AsmName,
 /// return it.
 const CodeGenRegister *CodeGenTarget::getRegisterByName(StringRef Name) const {
-  const std::vector<CodeGenRegister*> &Regs = getRegBank().getRegisters();
-  for (unsigned i = 0, e = Regs.size(); i != e; ++i)
-    if (Regs[i]->TheDef->getValueAsString("AsmName") == Name)
-      return Regs[i];
-
-  return 0;
+  const StringMap<CodeGenRegister*> &Regs = getRegBank().getRegistersByName();
+  StringMap<CodeGenRegister*>::const_iterator I = Regs.find(Name);
+  if (I == Regs.end())
+    return 0;
+  return I->second;
 }
 
 std::vector<MVT::SimpleValueType> CodeGenTarget::

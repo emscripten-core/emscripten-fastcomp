@@ -17,11 +17,13 @@ add_llvm_unittest(SupportTests
   LeakDetectorTest.cpp
   ManagedStatic.cpp
   MathExtrasTest.cpp
+  MemoryTest.cpp
   Path.cpp
-  raw_ostream_test.cpp
   RegexTest.cpp
   SwapByteOrderTest.cpp
   TimeValue.cpp
   ValueHandleTest.cpp
   YAMLParserTest.cpp
+  formatted_raw_ostream_test.cpp
+  raw_ostream_test.cpp
   )

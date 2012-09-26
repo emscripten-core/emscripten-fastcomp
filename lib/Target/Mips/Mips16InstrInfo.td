@@ -20,6 +20,13 @@ class FRRR16_ins<bits<2> _f, string asmstr,  InstrItinClass itin> :
          !strconcat(asmstr, "\t$rz, $rx, $ry"), [], itin>;
 
 //
+// I8_MOVR32 instruction format (used only by the MOVR32 instructio
+//
+class FI8_MOVR3216_ins<string asmstr, InstrItinClass itin>:
+       FI8_MOVR3216<(outs CPU16Regs:$rz), (ins CPURegs:$r32),
+       !strconcat(asmstr,  "\t$rz, $r32"), [], itin>;
+
+//
 // I8_MOV32R instruction format (used only by MOV32R instruction)
 //
 class FI8_MOV32R16_ins<string asmstr, InstrItinClass itin>:
@@ -204,7 +211,14 @@ def LwRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lw", mem16, IIAlu>;
 // Purpose: Move
 // To move the contents of a GPR to a GPR.
 //
-def Mov32R16: FI8_MOV32R16_ins<"move", IIAlu>;
+def Move32R16: FI8_MOV32R16_ins<"move", IIAlu>;
+
+//
+// Format: MOVE ry, r32 MIPS16e
+//Purpose: Move
+// To move the contents of a GPR to a GPR.
+//
+def MoveR3216: FI8_MOVR3216_ins<"move", IIAlu>;
 
 //
 // Format: NEG rx, ry MIPS16e
@@ -240,10 +254,12 @@ def OrRxRxRy16: FRxRxRy16_ins<0b01101, "or", IIAlu>, ArithLogic16Defs<1>;
 // for direct object emitter, encoding needs to be adjusted for the
 // frame size
 //
-let ra=1, s=0,s0=0,s1=0 in
+let ra=1, s=0,s0=1,s1=1 in
 def RestoreRaF16:
   FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
-             "restore \t$$ra, $frame_size", [], IILoad >;
+             "restore \t$$ra,  $$s0, $$s1, $frame_size", [], IILoad > {
+  let isCodeGenOnly = 1;
+}
 
 //
 // Format: SAVE {ra,}{s0/s1/s0-1,}{framesize} (All arguments are optional)
@@ -252,11 +268,12 @@ def RestoreRaF16:
 // To set up a stack frame on entry to a subroutine,
 // saving return address and static registers, and adjusting stack
 //
-let ra=1, s=1,s0=0,s1=0 in
+let ra=1, s=1,s0=1,s1=1 in
 def SaveRaF16:
   FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
-             "save \t$$ra, $frame_size", [], IILoad >;
-
+             "save \t$$ra, $$s0, $$s1, $frame_size", [], IILoad > {
+  let isCodeGenOnly = 1;
+}
 //
 // Format: SB ry, offset(rx) MIPS16e
 // Purpose: Store Byte (Extended)
@@ -389,16 +406,16 @@ class LoadM16_pat<PatFrag OpNode, Instruction I> :
 
 def: LoadM16_pat<sextloadi8, LbRxRyOffMemX16>;
 def: LoadM16_pat<zextloadi8, LbuRxRyOffMemX16>;
-def: LoadM16_pat<sextloadi16_a, LhRxRyOffMemX16>;
-def: LoadM16_pat<zextloadi16_a, LhuRxRyOffMemX16>;
-def: LoadM16_pat<load_a, LwRxRyOffMemX16>;
+def: LoadM16_pat<sextloadi16, LhRxRyOffMemX16>;
+def: LoadM16_pat<zextloadi16, LhuRxRyOffMemX16>;
+def: LoadM16_pat<load, LwRxRyOffMemX16>;
 
 class StoreM16_pat<PatFrag OpNode, Instruction I> :
   Mips16Pat<(OpNode CPU16Regs:$r, addr:$addr), (I CPU16Regs:$r, addr:$addr)>;
 
 def: StoreM16_pat<truncstorei8, SbRxRyOffMemX16>;
-def: StoreM16_pat<truncstorei16_a, ShRxRyOffMemX16>;
-def: StoreM16_pat<store_a, SwRxRyOffMemX16>;
+def: StoreM16_pat<truncstorei16, ShRxRyOffMemX16>;
+def: StoreM16_pat<store, SwRxRyOffMemX16>;
 
 
 // Jump and Link (Call)

@@ -121,7 +121,7 @@ void RegSortData::print(raw_ostream &OS) const {
   OS << "[NumUses=" << UsedByIndices.count() << ']';
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void RegSortData::dump() const {
   print(errs()); errs() << '\n';
 }
@@ -416,7 +416,7 @@ void Formula::print(raw_ostream &OS) const {
   }
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void Formula::dump() const {
   print(errs()); errs() << '\n';
 }
@@ -978,7 +978,7 @@ void Cost::print(raw_ostream &OS) const {
     OS << ", plus " << SetupCost << " setup cost";
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void Cost::dump() const {
   print(errs()); errs() << '\n';
 }
@@ -1066,7 +1066,7 @@ void LSRFixup::print(raw_ostream &OS) const {
     OS << ", Offset=" << Offset;
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LSRFixup::dump() const {
   print(errs()); errs() << '\n';
 }
@@ -1260,7 +1260,7 @@ void LSRUse::print(raw_ostream &OS) const {
     OS << ", widest fixup type: " << *WidestFixupType;
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LSRUse::dump() const {
   print(errs()); errs() << '\n';
 }
@@ -3446,7 +3446,7 @@ void WorkItem::print(raw_ostream &OS) const {
      << " , add offset " << Imm;
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void WorkItem::dump() const {
   print(errs()); errs() << '\n';
 }
@@ -4464,17 +4464,21 @@ void LSRInstance::RewriteForPHI(PHINode *PN,
             SplitLandingPadPredecessors(Parent, BB, "", "", P, NewBBs);
             NewBB = NewBBs[0];
           }
+          // If NewBB==NULL, then SplitCriticalEdge refused to split because all
+          // phi predecessors are identical. The simple thing to do is skip
+          // splitting in this case rather than complicate the API.
+          if (NewBB) {
+            // If PN is outside of the loop and BB is in the loop, we want to
+            // move the block to be immediately before the PHI block, not
+            // immediately after BB.
+            if (L->contains(BB) && !L->contains(PN))
+              NewBB->moveBefore(PN->getParent());
 
-          // If PN is outside of the loop and BB is in the loop, we want to
-          // move the block to be immediately before the PHI block, not
-          // immediately after BB.
-          if (L->contains(BB) && !L->contains(PN))
-            NewBB->moveBefore(PN->getParent());
-
-          // Splitting the edge can reduce the number of PHI entries we have.
-          e = PN->getNumIncomingValues();
-          BB = NewBB;
-          i = PN->getBasicBlockIndex(BB);
+            // Splitting the edge can reduce the number of PHI entries we have.
+            e = PN->getNumIncomingValues();
+            BB = NewBB;
+            i = PN->getBasicBlockIndex(BB);
+          }
         }
       }
 
@@ -4743,7 +4747,7 @@ void LSRInstance::print(raw_ostream &OS) const {
   print_uses(OS);
 }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LSRInstance::dump() const {
   print(errs()); errs() << '\n';
 }

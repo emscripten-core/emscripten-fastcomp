@@ -60,6 +60,10 @@ private:
   bool ParseDirectiveWord(unsigned Size, SMLoc L);
   bool ParseDirectiveCode(StringRef IDVal, SMLoc L);
 
+  bool mnemonicIsValid(StringRef Mnemonic) {
+    return mnemonicIsValidImpl(Mnemonic);
+  }
+
   bool processInstruction(MCInst &Inst,
                           const SmallVectorImpl<MCParsedAsmOperand*> &Ops);
 
@@ -202,7 +206,8 @@ struct X86Operand : public MCParsedAsmOperand {
   SMLoc getStartLoc() const { return StartLoc; }
   /// getEndLoc - Get the location of the last token of this operand.
   SMLoc getEndLoc() const { return EndLoc; }
-
+  /// getLocRange - Get the range between the first and last token of this
+  /// operand.
   SMRange getLocRange() const { return SMRange(StartLoc, EndLoc); }
 
   virtual void print(raw_ostream &OS) const {}
@@ -633,14 +638,15 @@ X86Operand *X86AsmParser::ParseOperand() {
 
 /// getIntelMemOperandSize - Return intel memory operand size.
 static unsigned getIntelMemOperandSize(StringRef OpStr) {
-  unsigned Size = 0;
-  if (OpStr == "BYTE") Size = 8;
-  if (OpStr == "WORD") Size = 16;
-  if (OpStr == "DWORD") Size = 32;
-  if (OpStr == "QWORD") Size = 64;
-  if (OpStr == "XWORD") Size = 80;
-  if (OpStr == "XMMWORD") Size = 128;
-  if (OpStr == "YMMWORD") Size = 256;
+  unsigned Size = StringSwitch<unsigned>(OpStr)
+    .Cases("BYTE", "byte", 8)
+    .Cases("WORD", "word", 16)
+    .Cases("DWORD", "dword", 32)
+    .Cases("QWORD", "qword", 64)
+    .Cases("XWORD", "xword", 80)
+    .Cases("XMMWORD", "xmmword", 128)
+    .Cases("YMMWORD", "ymmword", 256)
+    .Default(0);
   return Size;
 }
 
@@ -743,7 +749,8 @@ X86Operand *X86AsmParser::ParseIntelMemOperand() {
   unsigned Size = getIntelMemOperandSize(Tok.getString());
   if (Size) {
     Parser.Lex();
-    assert (Tok.getString() == "PTR" && "Unexpected token!");
+    assert ((Tok.getString() == "PTR" || Tok.getString() == "ptr") &&
+            "Unexpected token!");
     Parser.Lex();
   }
 

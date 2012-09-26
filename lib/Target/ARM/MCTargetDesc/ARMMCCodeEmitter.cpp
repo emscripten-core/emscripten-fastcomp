@@ -35,8 +35,8 @@ STATISTIC(MCNumCPRelocations, "Number of constant pool relocations created.");
 
 namespace {
 class ARMMCCodeEmitter : public MCCodeEmitter {
-  ARMMCCodeEmitter(const ARMMCCodeEmitter &); // DO NOT IMPLEMENT
-  void operator=(const ARMMCCodeEmitter &); // DO NOT IMPLEMENT
+  ARMMCCodeEmitter(const ARMMCCodeEmitter &) LLVM_DELETED_FUNCTION;
+  void operator=(const ARMMCCodeEmitter &) LLVM_DELETED_FUNCTION;
   const MCInstrInfo &MCII;
   const MCSubtargetInfo &STI;
   const MCContext &CTX;
@@ -933,6 +933,10 @@ getLdStSORegOpValue(const MCInst &MI, unsigned OpIdx,
   bool isAdd = ARM_AM::getAM2Op(MO2.getImm()) == ARM_AM::add;
   ARM_AM::ShiftOpc ShOp = ARM_AM::getAM2ShiftOpc(MO2.getImm());
   unsigned SBits = getShiftOp(ShOp);
+
+  // While "lsr #32" and "asr #32" exist, they are encoded with a 0 in the shift
+  // amount. However, it would be an easy mistake to make so check here.
+  assert((ShImm & ~0x1f) == 0 && "Out of range shift amount");
 
   // {16-13} = Rn
   // {12}    = isAdd

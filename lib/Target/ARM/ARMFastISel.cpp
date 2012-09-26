@@ -1026,6 +1026,9 @@ bool ARMFastISel::ARMEmitLoad(EVT VT, unsigned &ResultReg, Address &Addr,
       RC = &ARM::GPRRegClass;
       break;
     case MVT::i16:
+      if (Alignment && Alignment < 2 && !Subtarget->allowsUnalignedMem())
+        return false;
+
       if (isThumb2) {
         if (Addr.Offset < 0 && Addr.Offset > -256 && Subtarget->hasV6T2Ops())
           Opc = isZExt ? ARM::t2LDRHi8 : ARM::t2LDRSHi8;
@@ -1038,6 +1041,9 @@ bool ARMFastISel::ARMEmitLoad(EVT VT, unsigned &ResultReg, Address &Addr,
       RC = &ARM::GPRRegClass;
       break;
     case MVT::i32:
+      if (Alignment && Alignment < 4 && !Subtarget->allowsUnalignedMem())
+        return false;
+
       if (isThumb2) {
         if (Addr.Offset < 0 && Addr.Offset > -256 && Subtarget->hasV6T2Ops())
           Opc = ARM::t2LDRi8;
@@ -1144,6 +1150,9 @@ bool ARMFastISel::ARMEmitStore(EVT VT, unsigned SrcReg, Address &Addr,
       }
       break;
     case MVT::i16:
+      if (Alignment && Alignment < 2 && !Subtarget->allowsUnalignedMem())
+        return false;
+
       if (isThumb2) {
         if (Addr.Offset < 0 && Addr.Offset > -256 && Subtarget->hasV6T2Ops())
           StrOpc = ARM::t2STRHi8;
@@ -1155,6 +1164,9 @@ bool ARMFastISel::ARMEmitStore(EVT VT, unsigned SrcReg, Address &Addr,
       }
       break;
     case MVT::i32:
+      if (Alignment && Alignment < 4 && !Subtarget->allowsUnalignedMem())
+        return false;
+
       if (isThumb2) {
         if (Addr.Offset < 0 && Addr.Offset > -256 && Subtarget->hasV6T2Ops())
           StrOpc = ARM::t2STRi8;

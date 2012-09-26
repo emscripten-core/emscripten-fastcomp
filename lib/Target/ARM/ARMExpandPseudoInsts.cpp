@@ -115,9 +115,9 @@ namespace {
     bool IsLoad;
     bool isUpdating;
     bool hasWritebackOperand;
-    NEONRegSpacing RegSpacing;
-    unsigned char NumRegs; // D registers loaded or stored
-    unsigned char RegElts; // elements per D register; used for lane ops
+    uint8_t RegSpacing; // One of type NEONRegSpacing
+    uint8_t NumRegs; // D registers loaded or stored
+    uint8_t RegElts; // elements per D register; used for lane ops
     // FIXME: Temporary flag to denote whether the real instruction takes
     // a single register (like the encoding) or all of the registers in
     // the list (like the asm syntax and the isel DAG). When all definitions
@@ -389,7 +389,7 @@ void ARMExpandPseudo::ExpandVLD(MachineBasicBlock::iterator &MBBI) {
 
   const NEONLdStTableEntry *TableEntry = LookupNEONLdSt(MI.getOpcode());
   assert(TableEntry && TableEntry->IsLoad && "NEONLdStTable lookup failed");
-  NEONRegSpacing RegSpc = TableEntry->RegSpacing;
+  NEONRegSpacing RegSpc = (NEONRegSpacing)TableEntry->RegSpacing;
   unsigned NumRegs = TableEntry->NumRegs;
 
   MachineInstrBuilder MIB = BuildMI(MBB, MBBI, MI.getDebugLoc(),
@@ -454,7 +454,7 @@ void ARMExpandPseudo::ExpandVST(MachineBasicBlock::iterator &MBBI) {
 
   const NEONLdStTableEntry *TableEntry = LookupNEONLdSt(MI.getOpcode());
   assert(TableEntry && !TableEntry->IsLoad && "NEONLdStTable lookup failed");
-  NEONRegSpacing RegSpc = TableEntry->RegSpacing;
+  NEONRegSpacing RegSpc = (NEONRegSpacing)TableEntry->RegSpacing;
   unsigned NumRegs = TableEntry->NumRegs;
 
   MachineInstrBuilder MIB = BuildMI(MBB, MBBI, MI.getDebugLoc(),
@@ -538,7 +538,7 @@ void ARMExpandPseudo::ExpandLaneOp(MachineBasicBlock::iterator &MBBI) {
 
   const NEONLdStTableEntry *TableEntry = LookupNEONLdSt(MI.getOpcode());
   assert(TableEntry && "NEONLdStTable lookup failed");
-  NEONRegSpacing RegSpc = TableEntry->RegSpacing;
+  NEONRegSpacing RegSpc = (NEONRegSpacing)TableEntry->RegSpacing;
   unsigned NumRegs = TableEntry->NumRegs;
   unsigned RegElts = TableEntry->RegElts;
 

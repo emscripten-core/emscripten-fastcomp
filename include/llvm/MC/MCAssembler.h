@@ -282,7 +282,7 @@ class MCAlignFragment : public MCFragment {
   /// Value - Value to use for filling padding bytes.
   int64_t Value;
 
-  /// ValueSize - The size of the integer (in bytes) of \arg Value.
+  /// ValueSize - The size of the integer (in bytes) of \p Value.
   unsigned ValueSize;
 
   /// MaxBytesToEmit - The maximum number of bytes to emit; if the alignment
@@ -329,7 +329,7 @@ class MCFillFragment : public MCFragment {
   /// Value - Value to use for filling bytes.
   int64_t Value;
 
-  /// ValueSize - The size (in bytes) of \arg Value to use when filling, or 0 if
+  /// ValueSize - The size (in bytes) of \p Value to use when filling, or 0 if
   /// this is a virtual fill fragment.
   unsigned ValueSize;
 
@@ -497,8 +497,8 @@ public:
 class MCSectionData : public ilist_node<MCSectionData> {
   friend class MCAsmLayout;
 
-  MCSectionData(const MCSectionData&);  // DO NOT IMPLEMENT
-  void operator=(const MCSectionData&); // DO NOT IMPLEMENT
+  MCSectionData(const MCSectionData&) LLVM_DELETED_FUNCTION;
+  void operator=(const MCSectionData&) LLVM_DELETED_FUNCTION;
 
 public:
   typedef iplist<MCFragment> FragmentListType;
@@ -782,8 +782,8 @@ public:
   typedef std::vector<DataRegionData>::iterator data_region_iterator;
 
 private:
-  MCAssembler(const MCAssembler&);    // DO NOT IMPLEMENT
-  void operator=(const MCAssembler&); // DO NOT IMPLEMENT
+  MCAssembler(const MCAssembler&) LLVM_DELETED_FUNCTION;
+  void operator=(const MCAssembler&) LLVM_DELETED_FUNCTION;
 
   MCContext &Context;
 
@@ -837,7 +837,7 @@ private:
   /// \param Value [out] On return, the value of the fixup as currently laid
   /// out.
   /// \return Whether the fixup value was fully resolved. This is true if the
-  /// \arg Value result is fixed, otherwise the value may change due to
+  /// \p Value result is fixed, otherwise the value may change due to
   /// relocation.
   bool evaluateFixup(const MCAsmLayout &Layout,
                      const MCFixup &Fixup, const MCFragment *DF,
@@ -881,7 +881,7 @@ private:
 
 public:
   /// Compute the effective fragment size assuming it is laid out at the given
-  /// \arg SectionAddress and \arg FragmentOffset.
+  /// \p SectionAddress and \p FragmentOffset.
   uint64_t computeFragmentSize(const MCAsmLayout &Layout,
                                const MCFragment &F) const;
 
@@ -910,7 +910,7 @@ public:
 public:
   /// Construct a new assembler instance.
   ///
-  /// \arg OS - The stream to output to.
+  /// \param OS The stream to output to.
   //
   // FIXME: How are we going to parameterize this? Two obvious options are stay
   // concrete and require clients to pass in a target like object. The other
@@ -936,7 +936,7 @@ public:
   MCObjectWriter &getWriter() const { return Writer; }
 
   /// Finish - Do final processing and write the object to the output stream.
-  /// \arg Writer is used for custom object writer (as the MCJIT does),
+  /// \p Writer is used for custom object writer (as the MCJIT does),
   /// if not specified it is automatically created from backend.
   void Finish();
 
