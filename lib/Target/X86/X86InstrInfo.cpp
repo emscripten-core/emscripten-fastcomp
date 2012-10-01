@@ -566,6 +566,16 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VSQRTPSYr_Int,   X86::VSQRTPSYm_Int,       TB_ALIGN_32 },
     { X86::VBROADCASTSSYrr, X86::VBROADCASTSSYrm,     TB_NO_REVERSE },
     { X86::VBROADCASTSDYrr, X86::VBROADCASTSDYrm,     TB_NO_REVERSE },
+
+    // BMI/BMI2 foldable instructions
+    { X86::RORX32ri,        X86::RORX32mi,            0 },
+    { X86::RORX64ri,        X86::RORX64mi,            0 },
+    { X86::SARX32rr,        X86::SARX32rm,            0 },
+    { X86::SARX64rr,        X86::SARX64rm,            0 },
+    { X86::SHRX32rr,        X86::SHRX32rm,            0 },
+    { X86::SHRX64rr,        X86::SHRX64rm,            0 },
+    { X86::SHLX32rr,        X86::SHLX32rm,            0 },
+    { X86::SHLX64rr,        X86::SHLX64rm,            0 },
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl1); i != e; ++i) {
@@ -1145,6 +1155,10 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VFMSUBADDPD4rr,    X86::VFMSUBADDPD4mr,     TB_ALIGN_16 },
     { X86::VFMSUBADDPS4rrY,   X86::VFMSUBADDPS4mrY,    TB_ALIGN_32 },
     { X86::VFMSUBADDPD4rrY,   X86::VFMSUBADDPD4mrY,    TB_ALIGN_32 },
+
+    // BMI/BMI2 foldable instructions
+    { X86::MULX32rr,          X86::MULX32rm,            0 },
+    { X86::MULX64rr,          X86::MULX64rm,            0 },
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl2); i != e; ++i) {
@@ -3812,7 +3826,7 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
 
   // Unless optimizing for size, don't fold to avoid partial
   // register update stalls
-  if (!MF.getFunction()->hasFnAttr(Attribute::OptimizeForSize) &&
+  if (!MF.getFunction()->getFnAttributes().hasOptimizeForSizeAttr() &&
       hasPartialRegUpdate(MI->getOpcode()))
     return 0;
 
@@ -3853,7 +3867,7 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
 
   // Unless optimizing for size, don't fold to avoid partial
   // register update stalls
-  if (!MF.getFunction()->hasFnAttr(Attribute::OptimizeForSize) &&
+  if (!MF.getFunction()->getFnAttributes().hasOptimizeForSizeAttr() &&
       hasPartialRegUpdate(MI->getOpcode()))
     return 0;
 

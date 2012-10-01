@@ -35,7 +35,9 @@ private:
   void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
   void *operator new(size_t s) LLVM_DELETED_FUNCTION;
   Operator() LLVM_DELETED_FUNCTION;
-  ~Operator() LLVM_DELETED_FUNCTION;
+  // NOTE: cannot use LLVM_DELETED_FUNCTION because gcc errors when deleting
+  // an override of a non-deleted function.
+  ~Operator();
 
 public:
   /// getOpcode - Return the opcode for this Instruction or ConstantExpr.
@@ -77,7 +79,7 @@ public:
   };
 
 private:
-  ~OverflowingBinaryOperator() LLVM_DELETED_FUNCTION;
+  ~OverflowingBinaryOperator(); // DO NOT IMPLEMENT
 
   friend class BinaryOperator;
   friend class ConstantExpr;
@@ -131,7 +133,7 @@ public:
   };
   
 private:
-  ~PossiblyExactOperator() LLVM_DELETED_FUNCTION;
+  ~PossiblyExactOperator(); // DO NOT IMPLEMENT
 
   friend class BinaryOperator;
   friend class ConstantExpr;
@@ -168,7 +170,7 @@ public:
 /// information about relaxed accuracy requirements attached to them.
 class FPMathOperator : public Operator {
 private:
-  ~FPMathOperator() LLVM_DELETED_FUNCTION;
+  ~FPMathOperator(); // DO NOT IMPLEMENT
 
 public:
 

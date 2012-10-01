@@ -855,3 +855,45 @@ entry:
   %result = or i8 %load, %load2
   ret i8 %result
 }
+
+%PR13916.struct = type { i8 }
+
+define void @PR13916.1() {
+; Ensure that we handle overlapping memcpy intrinsics correctly, especially in
+; the case where there is a directly identical value for both source and dest.
+; CHECK: @PR13916.1
+; FIXME: We shouldn't leave this alloca around.
+; CHECK: alloca
+; CHECK: ret void
+
+entry:
+  %a = alloca i8
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %a, i8* %a, i32 1, i32 1, i1 false)
+  %tmp2 = load i8* %a
+  ret void
+}
+
+define void @PR13916.2() {
+; Check whether we continue to handle them correctly when they start off with
+; different pointer value chains, but during rewriting we coalesce them into the
+; same value.
+; CHECK: @PR13916.2
+; FIXME: We shouldn't leave this alloca around.
+; CHECK: alloca
+; CHECK: ret void
+
+entry:
+  %a = alloca %PR13916.struct, align 1
+  br i1 undef, label %if.then, label %if.end
+
+if.then:
+  %tmp0 = bitcast %PR13916.struct* %a to i8*
+  %tmp1 = bitcast %PR13916.struct* %a to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %tmp0, i8* %tmp1, i32 1, i32 1, i1 false)
+  br label %if.end
+
+if.end:
+  %gep = getelementptr %PR13916.struct* %a, i32 0, i32 0
+  %tmp2 = load i8* %gep
+  ret void
+}

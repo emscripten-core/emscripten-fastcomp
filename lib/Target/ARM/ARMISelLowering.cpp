@@ -645,9 +645,9 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
   if (!Subtarget->hasV6Ops())
     setOperationAction(ISD::BSWAP, MVT::i32, Expand);
 
-  // These are expanded into libcalls.
-  if (!Subtarget->hasDivide() || !Subtarget->isThumb2()) {
-    // v7M has a hardware divider
+  if (!(Subtarget->hasDivide() && Subtarget->isThumb2()) &&
+      !(Subtarget->hasDivideInARMMode() && !Subtarget->isThumb())) {
+    // These are expanded into libcalls if the cpu doesn't have HW divider.
     setOperationAction(ISD::SDIV,  MVT::i32, Expand);
     setOperationAction(ISD::UDIV,  MVT::i32, Expand);
   }
@@ -5873,7 +5873,7 @@ ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
   //   ldrex dest, ptr
   //   (sign extend dest, if required)
   //   cmp dest, incr
-  //   cmov.cond scratch2, dest, incr
+  //   cmov.cond scratch2, incr, dest
   //   strex scratch, scratch2, ptr
   //   cmp scratch, #0
   //   bne- loopMBB
@@ -5896,7 +5896,7 @@ ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
   AddDefaultPred(BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2CMPrr : ARM::CMPrr))
                  .addReg(oldval).addReg(incr));
   BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2MOVCCr : ARM::MOVCCr), scratch2)
-         .addReg(oldval).addReg(incr).addImm(Cond).addReg(ARM::CPSR);
+         .addReg(incr).addReg(oldval).addImm(Cond).addReg(ARM::CPSR);
 
   MIB = BuildMI(BB, dl, TII->get(strOpc), scratch).addReg(scratch2).addReg(ptr);
   if (strOpc == ARM::t2STREX)
@@ -6605,7 +6605,7 @@ EmitStructByval(MachineInstr *MI, MachineBasicBlock *BB) const {
     UnitSize = 2;
   } else {
     // Check whether we can use NEON instructions.
-    if (!MF->getFunction()->hasFnAttr(Attribute::NoImplicitFloat) &&
+    if (!MF->getFunction()->getFnAttributes().hasNoImplicitFloatAttr() &&
         Subtarget->hasNEON()) {
       if ((Align % 16 == 0) && SizeVal >= 16) {
         ldrOpc = ARM::VLD1q32wb_fixed;
@@ -9343,7 +9343,7 @@ EVT ARMTargetLowering::getOptimalMemOpType(uint64_t Size,
 
   // See if we can use NEON instructions for this...
   if (IsZeroVal &&
-      !F->hasFnAttr(Attribute::NoImplicitFloat) &&
+      !F->getFnAttributes().hasNoImplicitFloatAttr() &&
       Subtarget->hasNEON()) {
     if (memOpAlign(SrcAlign, DstAlign, 16) && Size >= 16) {
       return MVT::v4i32;

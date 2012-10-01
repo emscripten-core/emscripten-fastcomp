@@ -70,7 +70,7 @@ VerifyCoalescing("verify-coalescing",
 
 // Temporary option for testing new coalescer algo.
 static cl::opt<bool>
-NewCoalescer("new-coalescer", cl::Hidden,
+NewCoalescer("new-coalescer", cl::Hidden, cl::init(true),
              cl::desc("Use new coalescer algorithm"));
 
 namespace {
@@ -1732,6 +1732,12 @@ void JoinVals::pruneValues(JoinVals &Other,
     case CR_Replace:
       // This value takes precedence over the value in Other.LI.
       LIS->pruneValue(&Other.LI, Def, &EndPoints);
+      // Remove <def,read-undef> flags. This def is now a partial redef.
+      if (!Def.isBlock())
+        for (MIOperands MO(Indexes->getInstructionFromIndex(Def));
+             MO.isValid(); ++MO)
+          if (MO->isReg() && MO->isDef() && MO->getReg() == LI.reg)
+            MO->setIsUndef(false);
       DEBUG(dbgs() << "\t\tpruned " << PrintReg(Other.LI.reg) << " at " << Def
                    << ": " << Other.LI << '\n');
       break;

@@ -257,21 +257,11 @@ public:
                         SmallVectorImpl<MCParsedAsmOperand*> &Operands);
   bool ParseDirective(AsmToken DirectiveID);
 
-  bool mnemonicIsValid(StringRef Mnemonic) {
-    return mnemonicIsValidImpl(Mnemonic);
-  }
-
   unsigned checkTargetMatchPredicate(MCInst &Inst);
 
   bool MatchAndEmitInstruction(SMLoc IDLoc,
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                                MCStreamer &Out);
-
-  unsigned getMCInstOperandNum(unsigned Kind, MCInst &Inst,
-                           const SmallVectorImpl<MCParsedAsmOperand*> &Operands,
-                               unsigned OperandNum, unsigned &NumMCOperands) {
-    return getMCInstOperandNumImpl(Kind, Inst, Operands, OperandNum, NumMCOperands);
-  }
 };
 } // end anonymous namespace
 
@@ -5676,6 +5666,20 @@ bool ARMAsmParser::
 processInstruction(MCInst &Inst,
                    const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   switch (Inst.getOpcode()) {
+  // Alias for alternate form of 'ADR Rd, #imm' instruction.
+  case ARM::ADDri: {
+    if (Inst.getOperand(1).getReg() != ARM::PC ||
+        Inst.getOperand(5).getReg() != 0)
+      return false;
+    MCInst TmpInst;
+    TmpInst.setOpcode(ARM::ADR);
+    TmpInst.addOperand(Inst.getOperand(0));
+    TmpInst.addOperand(Inst.getOperand(2));
+    TmpInst.addOperand(Inst.getOperand(3));
+    TmpInst.addOperand(Inst.getOperand(4));
+    Inst = TmpInst;
+    return true;
+  }
   // Aliases for alternate PC+imm syntax of LDR instructions.
   case ARM::t2LDRpcrel:
     Inst.setOpcode(ARM::t2LDRpci);

@@ -150,6 +150,11 @@ bool ARMPassConfig::addPreISel() {
 
 bool ARMPassConfig::addInstSelector() {
   addPass(createARMISelDag(getARMTargetMachine(), getOptLevel()));
+
+  const ARMSubtarget *Subtarget = &getARMSubtarget();
+  if (Subtarget->isTargetELF() && !Subtarget->isThumb1Only() &&
+      TM->Options.EnableFastISel)
+    addPass(createARMGlobalBaseRegPass());
   return false;
 }
 

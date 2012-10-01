@@ -202,6 +202,8 @@ namespace llvm {
                                  bool IsSRA) const;
     SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, SelectionDAG &DAG) const;
 
     // @LOCALMOD-BEGIN
     SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
@@ -265,6 +267,8 @@ namespace llvm {
 
     virtual unsigned getJumpTableEncoding() const;
 
+    MachineBasicBlock *EmitBPOSGE32(MachineInstr *MI,
+                                    MachineBasicBlock *BB) const;
     MachineBasicBlock *EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
                     unsigned Size, unsigned BinOpcode, bool Nand = false) const;
     MachineBasicBlock *EmitAtomicBinaryPartword(MachineInstr *MI,

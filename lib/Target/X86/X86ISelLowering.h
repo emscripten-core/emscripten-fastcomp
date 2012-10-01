@@ -355,6 +355,10 @@ namespace llvm {
       ATOMXOR64_DAG,
       ATOMAND64_DAG,
       ATOMNAND64_DAG,
+      ATOMMAX64_DAG,
+      ATOMMIN64_DAG,
+      ATOMUMAX64_DAG,
+      ATOMUMIN64_DAG,
       ATOMSWAP64_DAG,
 
       // LCMPXCHG_DAG, LCMPXCHG8_DAG, LCMPXCHG16_DAG - Compare and swap.
@@ -752,6 +756,7 @@ namespace llvm {
                                            bool isVarArg,
                                            bool isCalleeStructRet,
                                            bool isCallerStructRet,
+                                           Type *RetTy,
                                     const SmallVectorImpl<ISD::OutputArg> &Outs,
                                     const SmallVectorImpl<SDValue> &OutVals,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,

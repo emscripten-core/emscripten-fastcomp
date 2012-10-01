@@ -202,11 +202,11 @@ public:
   use_iterator use_begin(const_iterator I) { return Uses[I - begin()].begin(); }
   use_iterator use_end(unsigned Idx) { return Uses[Idx].end(); }
   use_iterator use_end(const_iterator I) { return Uses[I - begin()].end(); }
-  void use_insert(unsigned Idx, use_iterator UI, const PartitionUse &U) {
-    Uses[Idx].insert(UI, U);
+  void use_push_back(unsigned Idx, const PartitionUse &U) {
+    Uses[Idx].push_back(U);
   }
-  void use_insert(const_iterator I, use_iterator UI, const PartitionUse &U) {
-    Uses[I - begin()].insert(UI, U);
+  void use_push_back(const_iterator I, const PartitionUse &U) {
+    Uses[I - begin()].push_back(U);
   }
   void use_erase(unsigned Idx, use_iterator UI) { Uses[Idx].erase(UI); }
   void use_erase(const_iterator I, use_iterator UI) {
@@ -522,8 +522,10 @@ private:
 
   void insertUse(Instruction &I, int64_t Offset, uint64_t Size,
                  bool IsSplittable = false) {
-    // Completely skip uses which don't overlap the allocation.
-    if ((Offset >= 0 && (uint64_t)Offset >= AllocSize) ||
+    // Completely skip uses which have a zero size or don't overlap the
+    // allocation.
+    if (Size == 0 ||
+        (Offset >= 0 && (uint64_t)Offset >= AllocSize) ||
         (Offset < 0 && (uint64_t)-Offset >= Size)) {
       DEBUG(dbgs() << "WARNING: Ignoring " << Size << " byte use @" << Offset
                    << " which starts past the end of the " << AllocSize
@@ -660,11 +662,14 @@ private:
     bool Inserted = false;
     llvm::tie(PMI, Inserted)
       = MemTransferPartitionMap.insert(std::make_pair(&II, NewIdx));
-    if (!Inserted && Offsets.IsSplittable) {
+    if (Offsets.IsSplittable &&
+        (!Inserted || II.getRawSource() == II.getRawDest())) {
       // We've found a memory transfer intrinsic which refers to the alloca as
-      // both a source and dest. We refuse to split these to simplify splitting
-      // logic. If possible, SROA will still split them into separate allocas
-      // and then re-analyze.
+      // both a source and dest. This is detected either by direct equality of
+      // the operand values, or when we visit the intrinsic twice due to two
+      // different chains of values leading to it. We refuse to split these to
+      // simplify splitting logic. If possible, SROA will still split them into
+      // separate allocas and then re-analyze.
       Offsets.IsSplittable = false;
       P.Partitions[PMI->second].IsSplittable = false;
       P.Partitions[NewIdx].IsSplittable = false;
@@ -697,6 +702,9 @@ private:
     SmallVector<std::pair<Instruction *, Instruction *>, 4> Uses;
     Visited.insert(Root);
     Uses.push_back(std::make_pair(cast<Instruction>(*U), Root));
+    // If there are no loads or stores, the access is dead. We mark that as
+    // a size zero access.
+    Size = 0;
     do {
       Instruction *I, *UsedI;
       llvm::tie(UsedI, I) = Uses.pop_back_val();
@@ -824,9 +832,9 @@ private:
   }
 
   void insertUse(Instruction &User, int64_t Offset, uint64_t Size) {
-    // If the use extends outside of the allocation, record it as a dead use
-    // for elimination later.
-    if ((uint64_t)Offset >= AllocSize ||
+    // If the use has a zero size or extends outside of the allocation, record
+    // it as a dead use for elimination later.
+    if (Size == 0 || (uint64_t)Offset >= AllocSize ||
         (Offset < 0 && (uint64_t)-Offset >= Size))
       return markAsDead(User);
 
@@ -853,7 +861,7 @@ private:
       PartitionUse NewUse(std::max(I->BeginOffset, BeginOffset),
                           std::min(I->EndOffset, EndOffset),
                           &User, cast<Instruction>(*U));
-      P.Uses[I - P.begin()].push_back(NewUse);
+      P.use_push_back(I, NewUse);
       if (isa<PHINode>(U->getUser()) || isa<SelectInst>(U->getUser()))
         P.PHIOrSelectOpMap[std::make_pair(&User, U->get())]
           = std::make_pair(I - P.begin(), P.Uses[I - P.begin()].size() - 1);
@@ -1102,8 +1110,6 @@ AllocaPartitioning::AllocaPartitioning(const TargetData &TD, AllocaInst &AI)
   Uses.resize(Partitions.size());
   UseBuilder UB(TD, AI, *this);
   UB();
-  for (iterator I = Partitions.begin(), E = Partitions.end(); I != E; ++I)
-    std::stable_sort(use_begin(I), use_end(I));
 }
 
 Type *AllocaPartitioning::getCommonType(iterator I) const {
@@ -1890,7 +1896,8 @@ private:
   Value *extractInteger(IRBuilder<> &IRB, IntegerType *TargetTy,
                         uint64_t Offset) {
     assert(IntPromotionTy && "Alloca is not an integer we can extract from");
-    Value *V = IRB.CreateLoad(&NewAI, getName(".load"));
+    Value *V = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                     getName(".load"));
     assert(Offset >= NewAllocaBeginOffset && "Out of bounds offset");
     uint64_t RelOffset = Offset - NewAllocaBeginOffset;
     if (RelOffset)
@@ -1906,7 +1913,7 @@ private:
   StoreInst *insertInteger(IRBuilder<> &IRB, Value *V, uint64_t Offset) {
     IntegerType *Ty = cast<IntegerType>(V->getType());
     if (Ty == IntPromotionTy)
-      return IRB.CreateStore(V, &NewAI);
+      return IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
 
     assert(Ty->getBitWidth() < IntPromotionTy->getBitWidth() &&
            "Cannot insert a larger integer!");
@@ -1918,10 +1925,12 @@ private:
 
     APInt Mask = ~Ty->getMask().zext(IntPromotionTy->getBitWidth())
                                .shl(RelOffset*8);
-    Value *Old = IRB.CreateAnd(IRB.CreateLoad(&NewAI, getName(".oldload")),
+    Value *Old = IRB.CreateAnd(IRB.CreateAlignedLoad(&NewAI,
+                                                     NewAI.getAlignment(),
+                                                     getName(".oldload")),
                                Mask, getName(".mask"));
-    return IRB.CreateStore(IRB.CreateOr(Old, V, getName(".insert")),
-                           &NewAI);
+    return IRB.CreateAlignedStore(IRB.CreateOr(Old, V, getName(".insert")),
+                                  &NewAI, NewAI.getAlignment());
   }
 
   void deleteIfTriviallyDead(Value *V) {
@@ -1943,12 +1952,12 @@ private:
     Value *Result;
     if (LI.getType() == VecTy->getElementType() ||
         BeginOffset > NewAllocaBeginOffset || EndOffset < NewAllocaEndOffset) {
-      Result
-        = IRB.CreateExtractElement(IRB.CreateLoad(&NewAI, getName(".load")),
-                                   getIndex(IRB, BeginOffset),
-                                   getName(".extract"));
+      Result = IRB.CreateExtractElement(
+        IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(), getName(".load")),
+        getIndex(IRB, BeginOffset), getName(".extract"));
     } else {
-      Result = IRB.CreateLoad(&NewAI, getName(".load"));
+      Result = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                     getName(".load"));
     }
     if (Result->getType() != LI.getType())
       Result = getValueCast(IRB, Result, LI.getType());
@@ -1983,6 +1992,9 @@ private:
     Value *NewPtr = getAdjustedAllocaPtr(IRB,
                                          LI.getPointerOperand()->getType());
     LI.setOperand(0, NewPtr);
+    if (LI.getAlignment())
+      LI.setAlignment(MinAlign(NewAI.getAlignment(),
+                               BeginOffset - NewAllocaBeginOffset));
     DEBUG(dbgs() << "          to: " << LI << "\n");
 
     deleteIfTriviallyDead(OldOp);
@@ -1996,13 +2008,14 @@ private:
         BeginOffset > NewAllocaBeginOffset || EndOffset < NewAllocaEndOffset) {
       if (V->getType() != ElementTy)
         V = getValueCast(IRB, V, ElementTy);
-      V = IRB.CreateInsertElement(IRB.CreateLoad(&NewAI, getName(".load")), V,
-                                  getIndex(IRB, BeginOffset),
+      LoadInst *LI = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                           getName(".load"));
+      V = IRB.CreateInsertElement(LI, V, getIndex(IRB, BeginOffset),
                                   getName(".insert"));
     } else if (V->getType() != VecTy) {
       V = getValueCast(IRB, V, VecTy);
     }
-    StoreInst *Store = IRB.CreateStore(V, &NewAI);
+    StoreInst *Store = IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
     Pass.DeadInsts.push_back(&SI);
 
     (void)Store;
@@ -2033,6 +2046,9 @@ private:
     Value *NewPtr = getAdjustedAllocaPtr(IRB,
                                          SI.getPointerOperand()->getType());
     SI.setOperand(1, NewPtr);
+    if (SI.getAlignment())
+      SI.setAlignment(MinAlign(NewAI.getAlignment(),
+                               BeginOffset - NewAllocaBeginOffset));
     DEBUG(dbgs() << "          to: " << SI << "\n");
 
     deleteIfTriviallyDead(OldOp);
@@ -2048,6 +2064,15 @@ private:
     // pointer to the new alloca.
     if (!isa<Constant>(II.getLength())) {
       II.setDest(getAdjustedAllocaPtr(IRB, II.getRawDest()->getType()));
+
+      Type *CstTy = II.getAlignmentCst()->getType();
+      if (!NewAI.getAlignment())
+        II.setAlignment(ConstantInt::get(CstTy, 0));
+      else
+        II.setAlignment(
+          ConstantInt::get(CstTy, MinAlign(NewAI.getAlignment(),
+                                           BeginOffset - NewAllocaBeginOffset)));
+
       deleteIfTriviallyDead(OldPtr);
       return false;
     }
@@ -2067,11 +2092,15 @@ private:
                    !TD.isLegalInteger(TD.getTypeSizeInBits(ScalarTy)))) {
       Type *SizeTy = II.getLength()->getType();
       Constant *Size = ConstantInt::get(SizeTy, EndOffset - BeginOffset);
+      unsigned Align = 1;
+      if (NewAI.getAlignment())
+        Align = MinAlign(NewAI.getAlignment(),
+                         BeginOffset - NewAllocaBeginOffset);
 
       CallInst *New
         = IRB.CreateMemSet(getAdjustedAllocaPtr(IRB,
                                                 II.getRawDest()->getType()),
-                           II.getValue(), Size, II.getAlignment(),
+                           II.getValue(), Size, Align,
                            II.isVolatile());
       (void)New;
       DEBUG(dbgs() << "          to: " << *New << "\n");
@@ -2109,11 +2138,13 @@ private:
     // If this is an element-wide memset of a vectorizable alloca, insert it.
     if (VecTy && (BeginOffset > NewAllocaBeginOffset ||
                   EndOffset < NewAllocaEndOffset)) {
-      StoreInst *Store = IRB.CreateStore(
-        IRB.CreateInsertElement(IRB.CreateLoad(&NewAI, getName(".load")), V,
-                                getIndex(IRB, BeginOffset),
+      StoreInst *Store = IRB.CreateAlignedStore(
+        IRB.CreateInsertElement(IRB.CreateAlignedLoad(&NewAI,
+                                                      NewAI.getAlignment(),
+                                                      getName(".load")),
+                                V, getIndex(IRB, BeginOffset),
                                 getName(".insert")),
-        &NewAI);
+        &NewAI, NewAI.getAlignment());
       (void)Store;
       DEBUG(dbgs() << "          to: " << *Store << "\n");
       return true;
@@ -2131,7 +2162,8 @@ private:
       assert(V->getType() == VecTy);
     }
 
-    Value *New = IRB.CreateStore(V, &NewAI, II.isVolatile());
+    Value *New = IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment(),
+                                        II.isVolatile());
     (void)New;
     DEBUG(dbgs() << "          to: " << *New << "\n");
     return !II.isVolatile();
@@ -2163,6 +2195,13 @@ private:
         II.setDest(getAdjustedAllocaPtr(IRB, II.getRawDest()->getType()));
       else
         II.setSource(getAdjustedAllocaPtr(IRB, II.getRawSource()->getType()));
+
+      Type *CstTy = II.getAlignmentCst()->getType();
+      if (II.getAlignment() > 1)
+        II.setAlignment(ConstantInt::get(
+            CstTy, MinAlign(II.getAlignment(),
+                            MinAlign(NewAI.getAlignment(),
+                                     BeginOffset - NewAllocaBeginOffset))));
 
       DEBUG(dbgs() << "          to: " << II << "\n");
       deleteIfTriviallyDead(OldOp);
@@ -2221,6 +2260,11 @@ private:
     OtherPtr = getAdjustedPtr(IRB, TD, OtherPtr, RelOffset, OtherPtrTy,
                               getName("." + OtherPtr->getName()));
 
+    unsigned Align = II.getAlignment();
+    if (Align > 1)
+      Align = MinAlign(RelOffset.zextOrTrunc(64).getZExtValue(),
+                       MinAlign(II.getAlignment(), NewAI.getAlignment()));
+
     // Strip all inbounds GEPs and pointer casts to try to dig out any root
     // alloca that should be re-examined after rewriting this instruction.
     if (AllocaInst *AI
@@ -2236,8 +2280,7 @@ private:
 
       CallInst *New = IRB.CreateMemCpy(IsDest ? OurPtr : OtherPtr,
                                        IsDest ? OtherPtr : OurPtr,
-                                       Size, II.getAlignment(),
-                                       II.isVolatile());
+                                       Size, Align, II.isVolatile());
       (void)New;
       DEBUG(dbgs() << "          to: " << *New << "\n");
       return false;
@@ -2251,22 +2294,25 @@ private:
     Value *Src;
     if (IsVectorElement && !IsDest) {
       // We have to extract rather than load.
-      Src = IRB.CreateExtractElement(IRB.CreateLoad(SrcPtr,
-                                                    getName(".copyload")),
-                                     getIndex(IRB, BeginOffset),
-                                     getName(".copyextract"));
+      Src = IRB.CreateExtractElement(
+        IRB.CreateAlignedLoad(SrcPtr, Align, getName(".copyload")),
+        getIndex(IRB, BeginOffset),
+        getName(".copyextract"));
     } else {
-      Src = IRB.CreateLoad(SrcPtr, II.isVolatile(), getName(".copyload"));
+      Src = IRB.CreateAlignedLoad(SrcPtr, Align, II.isVolatile(),
+                                  getName(".copyload"));
     }
 
     if (IsVectorElement && IsDest) {
       // We have to insert into a loaded copy before storing.
-      Src = IRB.CreateInsertElement(IRB.CreateLoad(&NewAI, getName(".load")),
-                                    Src, getIndex(IRB, BeginOffset),
-                                    getName(".insert"));
+      Src = IRB.CreateInsertElement(
+        IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(), getName(".load")),
+        Src, getIndex(IRB, BeginOffset),
+        getName(".insert"));
     }
 
-    Value *Store = IRB.CreateStore(Src, DstPtr, II.isVolatile());
+    StoreInst *Store = cast<StoreInst>(
+      IRB.CreateAlignedStore(Src, DstPtr, Align, II.isVolatile()));
     (void)Store;
     DEBUG(dbgs() << "          to: " << *Store << "\n");
     return !II.isVolatile();
@@ -2460,8 +2506,7 @@ private:
         else {
           AllocaPartitioning::PartitionUse OtherUse = *UI;
           OtherUse.User = Load;
-          P.use_insert(PI, std::upper_bound(UI, P.use_end(PI), OtherUse),
-                       OtherUse);
+          P.use_push_back(PI, OtherUse);
         }
       }
     }
@@ -2559,7 +2604,7 @@ private:
         LoadInst *OtherLoad = IsTrueVal ? FL : TL;
         assert(OtherUse.Ptr == OtherLoad->getOperand(0));
         OtherUse.User = OtherLoad;
-        P.use_insert(PI, P.use_end(PI), OtherUse);
+        P.use_push_back(PI, OtherUse);
       }
 
       // Transfer alignment and TBAA info if present.
@@ -2576,8 +2621,6 @@ private:
       LI->replaceAllUsesWith(V);
       Pass.DeadInsts.push_back(LI);
     }
-    if (PI != P.end())
-      std::stable_sort(P.use_begin(PI), P.use_end(PI));
 
     deleteIfTriviallyDead(OldPtr);
     return NewPtr == &NewAI;
@@ -2959,9 +3002,19 @@ bool SROA::rewriteAllocaPartition(AllocaInst &AI,
     assert(PI == P.begin() && "Begin offset is zero on later partition");
     NewAI = &AI;
   } else {
-    // FIXME: The alignment here is overly conservative -- we could in many
-    // cases get away with much weaker alignment constraints.
-    NewAI = new AllocaInst(AllocaTy, 0, AI.getAlignment(),
+    unsigned Alignment = AI.getAlignment();
+    if (!Alignment) {
+      // The minimum alignment which users can rely on when the explicit
+      // alignment is omitted or zero is that required by the ABI for this
+      // type.
+      Alignment = TD->getABITypeAlignment(AI.getAllocatedType());
+    }
+    Alignment = MinAlign(Alignment, PI->BeginOffset);
+    // If we will get at least this much alignment from the type alone, leave
+    // the alloca's alignment unconstrained.
+    if (Alignment <= TD->getABITypeAlignment(AllocaTy))
+      Alignment = 0;
+    NewAI = new AllocaInst(AllocaTy, 0, Alignment,
                            AI.getName() + ".sroa." + Twine(PI - P.begin()),
                            &AI);
     ++NumNewAllocas;
