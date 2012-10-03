@@ -544,12 +544,6 @@ static bool isMatchingDecrement(MachineInstr *MI, unsigned Base,
     break;
   }
 
-  // @LOCALMOD-BEGIN
-  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2575
-  if (MI->hasOptionalDef())
-    return false;
-  // @LOCALMOD-END
-
   // Make sure the offset fits in 8 bits.
   if (Bytes == 0 || (Limit && Bytes >= Limit))
     return false;
@@ -582,12 +576,6 @@ static bool isMatchingIncrement(MachineInstr *MI, unsigned Base,
   case ARM::tADDspi:
     break;
   }
-
-  // @LOCALMOD-BEGIN
-  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2575
-  if (MI->hasOptionalDef())
-    return false;
-  // @LOCALMOD-END
 
   if (Bytes == 0 || (Limit && Bytes >= Limit))
     // Make sure the offset fits in 8 bits.
