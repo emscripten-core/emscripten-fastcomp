@@ -531,7 +531,10 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
                                        bool IsLoad) {
   MachineOperand &Addr = MI.getOperand(AddrIdx);
 
-  if (!CPSRLive && TryPredicating(MI, ARMCC::EQ)) {
+  if (Addr.getReg() == ARM::R9) {
+    // R9-relative loads are no longer sandboxed.
+    assert(IsLoad && "There should be no r9-relative stores");
+  } else if (!CPSRLive && TryPredicating(MI, ARMCC::EQ)) {
     /*
      * For unconditional memory references where CPSR is not in use, we can use
      * a faster sandboxing sequence by predicating the load/store -- assuming we
