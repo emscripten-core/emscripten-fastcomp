@@ -1891,18 +1891,6 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
       Fn->getName() == "main")
     FuncInfo->setForceFramePointer(true);
 
-  // @LOCALMOD-START
-  if (Subtarget->isTargetNaCl64()) {
-    FuncInfo->setForceFramePointer(true);
-  }
-  // @TODO(pdox): This shouldn't be necessary, but there is a bug
-  // where hasFP() changes during stack-slot spilling after register
-  // allocation has allocated ebp. Look into this.
-  if (Subtarget->isTargetNaCl32()) {
-    FuncInfo->setForceFramePointer(true);
-  }
-  // @LOCALMOD-END
-  
   MachineFrameInfo *MFI = MF.getFrameInfo();
   bool Is64Bit = Subtarget->is64Bit();
   bool IsWindows = Subtarget->isTargetWindows();
