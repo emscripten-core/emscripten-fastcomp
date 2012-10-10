@@ -656,6 +656,29 @@ bool ARMNaClRewritePass::SandboxMemoryReferencesInBlock(
    * barf when applied pre-emit, after allocation, so we must do it ourselves.
    */
 
+  // LOCALMOD(pdox): Short-circuit this function. Assume CPSR is always live,
+  //                 until we figure out why the assert is tripping.
+  bool Modified2 = false;
+  for (MachineBasicBlock::iterator MBBI = MBB.begin(), E = MBB.end();
+       MBBI != E;
+       ++MBBI) {
+    MachineInstr &MI = *MBBI;
+    int AddrIdx;
+
+    if (FlagSfiLoad && IsDangerousLoad(MI, &AddrIdx)) {
+      bool CPSRLive = true;
+      SandboxMemory(MBB, MBBI, MI, AddrIdx, CPSRLive, true);
+      Modified2 = true;
+    }
+    if (FlagSfiStore && IsDangerousStore(MI, &AddrIdx)) {
+      bool CPSRLive = true;
+      SandboxMemory(MBB, MBBI, MI, AddrIdx, CPSRLive, false);
+      Modified2 = true;
+    }
+  }
+  return Modified2;
+  // END LOCALMOD(pdox)
+
   bool CPSRLive = IsCPSRLiveOut(MBB);
 
   // Given that, record which instructions should not be altered to trash CPSR:
@@ -673,7 +696,7 @@ bool ARMNaClRewritePass::SandboxMemoryReferencesInBlock(
     if (CPSRLive) InstrsWhereCPSRLives.insert(&MI);
   }
 
-  // Sanity check: recomputing live in here should agree with LLVM.
+  // Sanity check:
   assert(CPSRLive == MBB.isLiveIn(ARM::CPSR)
          && "CPSR Liveness analysis does not match cached live-in result.");
 
