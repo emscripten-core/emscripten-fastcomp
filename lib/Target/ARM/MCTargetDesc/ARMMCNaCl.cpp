@@ -57,6 +57,7 @@ static void EmitTST(MCStreamer &Out, unsigned Reg) {
   }
   TSTInst.addOperand(MCOperand::CreateImm((int64_t)ARMCC::AL)); // Always
   TSTInst.addOperand(MCOperand::CreateImm(0)); // flag out
+  Out.EmitInstruction(TSTInst);
 }
 
 
