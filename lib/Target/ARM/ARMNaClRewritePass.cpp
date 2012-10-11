@@ -190,6 +190,10 @@ bool IsSandboxedStackChange(const MachineInstr &MI) {
   switch (opcode) {
     default: break;
 
+    // Our mask instructions correctly update the stack pointer.
+    case ARM::SFI_DATA_MASK:
+      return true;
+
     // These just bump SP by a little (and access the stack),
     // so that is okay due to guard pages.
     case ARM::STMIA_UPD:
@@ -342,7 +346,8 @@ void ARMNaClRewritePass::SandboxStackChange(MachineBasicBlock &MBB,
   MachineInstr &MI = *MBBI;
 
   // Use same predicate as current instruction.
-  ARMCC::CondCodes Pred = TII->getPredicate(&MI);
+  unsigned PredReg = 0;
+  ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
 
   BuildMI(MBB, MBBI, MI.getDebugLoc(),
           TII->get(ARM::SFI_NOP_IF_AT_BUNDLE_END));
@@ -353,12 +358,10 @@ void ARMNaClRewritePass::SandboxStackChange(MachineBasicBlock &MBB,
 
   BuildMI(MBB, MBBINext2, MI.getDebugLoc(),
           TII->get(ARM::SFI_DATA_MASK))
-      .addReg(ARM::SP)         // modify SP (as dst)
-      .addReg(ARM::SP)         // start with SP (as src)
-      .addImm((int64_t) Pred)  // predicate condition
-      .addReg(ARM::CPSR);      // predicate source register (CPSR)
-
-  return;
+      .addReg(ARM::SP, RegState::Define)  // modify SP (as dst)
+      .addReg(ARM::SP, RegState::Kill)    // start with SP (as src)
+      .addImm((int64_t) Pred)             // predicate condition
+      .addReg(PredReg);                   // predicate source register (CPSR)
 }
 
 bool ARMNaClRewritePass::SandboxStackChangesInBlock(MachineBasicBlock &MBB) {
@@ -382,46 +385,45 @@ bool ARMNaClRewritePass::SandboxBranchesInBlock(MachineBasicBlock &MBB) {
        MBBI != E;
        ++MBBI) {
     MachineInstr &MI = *MBBI;
+    // Use same predicate as current instruction.
+    unsigned PredReg = 0;
+    ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
 
     if (IsReturn(MI)) {
-      ARMCC::CondCodes Pred = TII->getPredicate(&MI);
       BuildMI(MBB, MBBI, MI.getDebugLoc(),
               TII->get(ARM::SFI_GUARD_RETURN))
         .addImm((int64_t) Pred)  // predicate condition
-        .addReg(ARM::CPSR);      // predicate source register (CPSR)
+        .addReg(PredReg);        // predicate source register (CPSR)
       Modified = true;
     }
 
     if (IsIndirectJump(MI)) {
-      MachineOperand &Addr = MI.getOperand(0);
-      ARMCC::CondCodes Pred = TII->getPredicate(&MI);
+      unsigned Addr = MI.getOperand(0).getReg();
       BuildMI(MBB, MBBI, MI.getDebugLoc(),
               TII->get(ARM::SFI_GUARD_INDIRECT_JMP))
-        .addOperand(Addr)        // rD
-        .addReg(0)               // apparently unused source register?
-        .addImm((int64_t) Pred)  // predicate condition
-        .addReg(ARM::CPSR);      // predicate source register (CPSR)
+        .addReg(Addr, RegState::Define)  // Destination definition (as dst)
+        .addReg(Addr, RegState::Kill)    // Destination read (as src)
+        .addImm((int64_t) Pred)          // predicate condition
+        .addReg(PredReg);                // predicate source register (CPSR)
       Modified = true;
     }
 
     if (IsDirectCall(MI)) {
-      ARMCC::CondCodes Pred = TII->getPredicate(&MI);
       BuildMI(MBB, MBBI, MI.getDebugLoc(),
               TII->get(ARM::SFI_GUARD_CALL))
         .addImm((int64_t) Pred)  // predicate condition
-        .addReg(ARM::CPSR);      // predicate source register (CPSR)
+        .addReg(PredReg);        // predicate source register (CPSR)
       Modified = true;
     }
 
     if (IsIndirectCall(MI)) {
-      MachineOperand &Addr = MI.getOperand(0);
-      ARMCC::CondCodes Pred = TII->getPredicate(&MI);
+      unsigned Addr = MI.getOperand(0).getReg();
       BuildMI(MBB, MBBI, MI.getDebugLoc(),
               TII->get(ARM::SFI_GUARD_INDIRECT_CALL))
-        .addOperand(Addr)        // rD
-        .addReg(0)               // apparently unused source register?
-        .addImm((int64_t) Pred)  // predicate condition
-        .addReg(ARM::CPSR);      // predicate source register (CPSR)
+        .addReg(Addr, RegState::Define)  // Destination definition (as dst)
+        .addReg(Addr, RegState::Kill)    // Destination read (as src)
+        .addImm((int64_t) Pred)          // predicate condition
+        .addReg(PredReg);                // predicate source register (CPSR)
         Modified = true;
     }
   }
@@ -529,9 +531,9 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
                                        int AddrIdx,
                                        bool CPSRLive,
                                        bool IsLoad) {
-  MachineOperand &Addr = MI.getOperand(AddrIdx);
+  unsigned Addr = MI.getOperand(AddrIdx).getReg();
 
-  if (Addr.getReg() == ARM::R9) {
+  if (Addr == ARM::R9) {
     // R9-relative loads are no longer sandboxed.
     assert(IsLoad && "There should be no r9-relative stores");
   } else if (!CPSRLive && TryPredicating(MI, ARMCC::EQ)) {
@@ -545,8 +547,8 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
     // Instruction can be predicated -- use the new sandbox.
     BuildMI(MBB, MBBI, MI.getDebugLoc(),
             TII->get(ARM::SFI_GUARD_LOADSTORE_TST))
-      .addOperand(Addr)   // rD
-      .addReg(0);         // apparently unused source register?
+      .addReg(Addr, RegState::Define)  // Address definition (as dst)
+      .addReg(Addr, RegState::Kill);   // Address read (as src)
   } else {
     unsigned Opcode;
     if (IsLoad && (MI.getOperand(0).getReg() == ARM::SP)) {
@@ -554,13 +556,15 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
     } else {
       Opcode = ARM::SFI_GUARD_LOADSTORE;
     }
+    // Use same predicate as current instruction.
+    unsigned PredReg = 0;
+    ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
     // Use the older BIC sandbox, which is universal, but incurs a stall.
-    ARMCC::CondCodes Pred = TII->getPredicate(&MI);
     BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(Opcode))
-      .addOperand(Addr)        // rD
-      .addReg(0)               // apparently unused source register?
-      .addImm((int64_t) Pred)  // predicate condition
-      .addReg(ARM::CPSR);      // predicate source register (CPSR)
+      .addReg(Addr, RegState::Define)  // Address definition (as dst).
+      .addReg(Addr, RegState::Kill)    // Address read (as src).
+      .addImm((int64_t) Pred)          // predicate condition
+      .addReg(PredReg);                // predicate source register (CPSR)
 
     /*
      * This pseudo-instruction is intended to generate something resembling the
@@ -570,11 +574,11 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
      *  // bic<cc> Addr, Addr, #0xC0000000
      *  BuildMI(MBB, MBBI, MI.getDebugLoc(),
      *          TII->get(ARM::BICri))
-     *    .addOperand(Addr)        // rD
-     *    .addOperand(Addr)        // rN
+     *    .addReg(Addr)            // rD
+     *    .addReg(Addr)            // rN
      *    .addImm(0xC0000000)      // imm
      *    .addImm((int64_t) Pred)  // predicate condition
-     *    .addReg(ARM::CPSR)       // predicate source register (CPSR)
+     *    .addReg(PredReg)         // predicate source register (CPSR)
      *    .addReg(0);              // flag output register (0 == no flags)
      */
   }
