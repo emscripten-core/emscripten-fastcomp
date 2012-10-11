@@ -1,4 +1,4 @@
-;===- ./lib/Transforms/LLVMBuild.txt ---------------------------*- Conf -*--===;
+;===- ./lib/Transforms/NaCl/LLVMBuild.txt ----------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,10 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = IPO InstCombine Instrumentation Scalar Utils Vectorize NaCl
-
 [component_0]
-type = Group
-name = Transforms
-parent = Libraries
+type = Library
+name = NaCl
+parent = Transforms
+library_name = NaCl
+required_libraries = Core
