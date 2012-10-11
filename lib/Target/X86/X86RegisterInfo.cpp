@@ -738,6 +738,9 @@ unsigned getX86SubSuperRegister(unsigned Reg, EVT VT, bool High) {
       return X86::R14D;
     case X86::R15B: case X86::R15W: case X86::R15D: case X86::R15:
       return X86::R15D;
+    // @LOCALMOD. TODO: possibly revert this after LEA .td fixes
+    case X86::EIP: case X86::RIP:
+      return X86::EIP;
     }
   case MVT::i64:
     // For 64-bit mode if we've requested a "high" register and the
@@ -790,6 +793,9 @@ unsigned getX86SubSuperRegister(unsigned Reg, EVT VT, bool High) {
       return X86::R14;
     case X86::R15B: case X86::R15W: case X86::R15D: case X86::R15:
       return X86::R15;
+    // @LOCALMOD. TODO: possibly revert this after LEA .td fixes
+    case X86::EIP: case X86::RIP:
+      return X86::RIP;
     }
   }
 }

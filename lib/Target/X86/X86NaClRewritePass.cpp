@@ -139,8 +139,7 @@ static bool IsRegAbsolute(unsigned Reg) {
   const bool RestrictR15 = FlagRestrictR15;
   assert(UseZeroBasedSandbox || RestrictR15);
   return (Reg == X86::RSP || Reg == X86::RBP ||
-          (Reg == X86::R15 && RestrictR15) ||
-          Reg == X86::RIP);
+          (Reg == X86::R15 && RestrictR15));
 }
 
 static bool FindMemoryOperand(const MachineInstr &MI, unsigned* index) {
@@ -520,6 +519,10 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
   MachineOperand &IndexReg  = MI.getOperand(MemOp + 2);
   //MachineOperand &Disp = MI.getOperand(MemOp + 3);
   MachineOperand &SegmentReg = MI.getOperand(MemOp + 4);
+
+  // RIP-relative addressing is safe.
+  if (BaseReg.getReg() == X86::RIP)
+    return false;
 
   // Make sure the base and index are 64-bit registers.
   IndexReg.setReg(PromoteRegTo64(IndexReg.getReg()));
