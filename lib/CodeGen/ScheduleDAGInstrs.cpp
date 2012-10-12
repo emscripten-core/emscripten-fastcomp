@@ -44,10 +44,8 @@ ScheduleDAGInstrs::ScheduleDAGInstrs(MachineFunction &mf,
                                      const MachineDominatorTree &mdt,
                                      bool IsPostRAFlag,
                                      LiveIntervals *lis)
-  : ScheduleDAG(mf), MLI(mli), MDT(mdt), MFI(mf.getFrameInfo()),
-    InstrItins(mf.getTarget().getInstrItineraryData()), LIS(lis),
-    IsPostRA(IsPostRAFlag), CanHandleTerminators(false), LoopRegs(MDT),
-    FirstDbgValue(0) {
+  : ScheduleDAG(mf), MLI(mli), MDT(mdt), MFI(mf.getFrameInfo()), LIS(lis),
+    IsPostRA(IsPostRAFlag), CanHandleTerminators(false), FirstDbgValue(0) {
   assert((IsPostRA || LIS) && "PreRA scheduling requires LiveIntervals");
   DbgValues.clear();
   assert(!(IsPostRA && MRI.getNumVirtRegs()) &&
@@ -138,10 +136,6 @@ static const Value *getUnderlyingObjectForInstr(const MachineInstr *MI,
 
 void ScheduleDAGInstrs::startBlock(MachineBasicBlock *bb) {
   BB = bb;
-  LoopRegs.Deps.clear();
-  if (MachineLoop *ML = MLI.getLoopFor(BB))
-    if (BB == ML->getLoopLatch())
-      LoopRegs.VisitLoop(ML);
 }
 
 void ScheduleDAGInstrs::finishBlock() {
@@ -297,8 +291,8 @@ void ScheduleDAGInstrs::addPhysRegDeps(SUnit *SU, unsigned OperIdx) {
         if (Kind == SDep::Anti)
           DefSU->addPred(SDep(SU, Kind, 0, /*Reg=*/*Alias));
         else {
-          unsigned AOLat = TII->getOutputLatency(InstrItins, MI, OperIdx,
-                                                 DefSU->getInstr());
+          unsigned AOLat =
+            SchedModel.computeOutputLatency(MI, OperIdx, DefSU->getInstr());
           DefSU->addPred(SDep(SU, Kind, AOLat, /*Reg=*/*Alias));
         }
       }
@@ -317,40 +311,6 @@ void ScheduleDAGInstrs::addPhysRegDeps(SUnit *SU, unsigned OperIdx) {
     // Either insert a new Reg2SUnits entry with an empty SUnits list, or
     // retrieve the existing SUnits list for this register's defs.
     std::vector<PhysRegSUOper> &DefList = Defs[MO.getReg()];
-
-    // If a def is going to wrap back around to the top of the loop,
-    // backschedule it.
-    if (DefList.empty()) {
-      LoopDependencies::LoopDeps::iterator I = LoopRegs.Deps.find(MO.getReg());
-      if (I != LoopRegs.Deps.end()) {
-        const MachineOperand *UseMO = I->second.first;
-        unsigned Count = I->second.second;
-        const MachineInstr *UseMI = UseMO->getParent();
-        unsigned UseMOIdx = UseMO - &UseMI->getOperand(0);
-        const MCInstrDesc &UseMCID = UseMI->getDesc();
-        // TODO: If we knew the total depth of the region here, we could
-        // handle the case where the whole loop is inside the region but
-        // is large enough that the isScheduleHigh trick isn't needed.
-        if (UseMOIdx < UseMCID.getNumOperands()) {
-          // Currently, we only support scheduling regions consisting of
-          // single basic blocks. Check to see if the instruction is in
-          // the same region by checking to see if it has the same parent.
-          if (UseMI->getParent() != MI->getParent()) {
-            unsigned Latency = SU->Latency;
-            // This is a wild guess as to the portion of the latency which
-            // will be overlapped by work done outside the current
-            // scheduling region.
-            Latency -= std::min(Latency, Count);
-            // Add the artificial edge.
-            ExitSU.addPred(SDep(SU, SDep::Order, Latency,
-                                /*Reg=*/0, /*isNormalMemory=*/false,
-                                /*isMustAlias=*/false,
-                                /*isArtificial=*/true));
-          }
-        }
-        LoopRegs.Deps.erase(I);
-      }
-    }
 
     // clear this register's use list
     if (Uses.contains(MO.getReg()))
@@ -402,8 +362,8 @@ void ScheduleDAGInstrs::addVRegDefDeps(SUnit *SU, unsigned OperIdx) {
   else {
     SUnit *DefSU = DefI->SU;
     if (DefSU != SU && DefSU != &ExitSU) {
-      unsigned OutLatency = TII->getOutputLatency(InstrItins, MI, OperIdx,
-                                                  DefSU->getInstr());
+      unsigned OutLatency =
+        SchedModel.computeOutputLatency(MI, OperIdx, DefSU->getInstr());
       DefSU->addPred(SDep(SU, SDep::Output, OutLatency, Reg));
     }
     DefI->SU = SU;
@@ -689,7 +649,7 @@ void ScheduleDAGInstrs::initSUnits() {
     SU->isCommutable = MI->isCommutable();
 
     // Assign the Latency field of SU using target-provided information.
-    computeLatency(SU);
+    SU->Latency = SchedModel.computeInstrLatency(SU->getInstr());
   }
 }
 
@@ -948,21 +908,6 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
   Uses.clear();
   VRegDefs.clear();
   PendingLoads.clear();
-}
-
-void ScheduleDAGInstrs::computeLatency(SUnit *SU) {
-  // Compute the latency for the node. We only provide a default for missing
-  // itineraries. Empty itineraries still have latency properties.
-  if (!InstrItins) {
-    SU->Latency = 1;
-
-    // Simplistic target-independent heuristic: assume that loads take
-    // extra time.
-    if (SU->getInstr()->mayLoad())
-      SU->Latency += 2;
-  } else {
-    SU->Latency = TII->getInstrLatency(InstrItins, SU->getInstr());
-  }
 }
 
 void ScheduleDAGInstrs::dumpNode(const SUnit *SU) const {

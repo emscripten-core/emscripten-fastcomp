@@ -26,91 +26,6 @@ namespace llvm {
 class LLVMContext;
 class Type;
 
-namespace Attribute {
-
-/// AttrConst - We use this proxy POD type to allow constructing Attributes
-/// constants using initializer lists. Do not use this class directly.
-struct AttrConst {
-  uint64_t v;
-  AttrConst operator | (const AttrConst Attrs) const {
-    AttrConst Res = {v | Attrs.v};
-    return Res;
-  }
-  AttrConst operator ~ () const {
-    AttrConst Res = {~v};
-    return Res;
-  }
-};
-
-/// Function parameters and results can have attributes to indicate how they
-/// should be treated by optimizations and code generation. This enumeration
-/// lists the attributes that can be associated with parameters, function
-/// results or the function itself.
-/// @brief Function attributes.
-
-/// We declare AttrConst objects that will be used throughout the code and also
-/// raw uint64_t objects with _i suffix to be used below for other constant
-/// declarations. This is done to avoid static CTORs and at the same time to
-/// keep type-safety of Attributes.
-#define DECLARE_LLVM_ATTRIBUTE(name, value) \
-  const AttrConst name = {value};
-
-DECLARE_LLVM_ATTRIBUTE(None,0)    ///< No attributes have been set
-DECLARE_LLVM_ATTRIBUTE(ZExt,1<<0) ///< Zero extended before/after call
-DECLARE_LLVM_ATTRIBUTE(SExt,1<<1) ///< Sign extended before/after call
-DECLARE_LLVM_ATTRIBUTE(NoReturn,1<<2) ///< Mark the function as not returning
-DECLARE_LLVM_ATTRIBUTE(InReg,1<<3) ///< Force argument to be passed in register
-DECLARE_LLVM_ATTRIBUTE(StructRet,1<<4) ///< Hidden pointer to structure to return
-DECLARE_LLVM_ATTRIBUTE(NoUnwind,1<<5) ///< Function doesn't unwind stack
-DECLARE_LLVM_ATTRIBUTE(NoAlias,1<<6) ///< Considered to not alias after call
-DECLARE_LLVM_ATTRIBUTE(ByVal,1<<7) ///< Pass structure by value
-DECLARE_LLVM_ATTRIBUTE(Nest,1<<8) ///< Nested function static chain
-DECLARE_LLVM_ATTRIBUTE(ReadNone,1<<9) ///< Function does not access memory
-DECLARE_LLVM_ATTRIBUTE(ReadOnly,1<<10) ///< Function only reads from memory
-DECLARE_LLVM_ATTRIBUTE(NoInline,1<<11) ///< inline=never
-DECLARE_LLVM_ATTRIBUTE(AlwaysInline,1<<12) ///< inline=always
-DECLARE_LLVM_ATTRIBUTE(OptimizeForSize,1<<13) ///< opt_size
-DECLARE_LLVM_ATTRIBUTE(StackProtect,1<<14) ///< Stack protection.
-DECLARE_LLVM_ATTRIBUTE(StackProtectReq,1<<15) ///< Stack protection required.
-DECLARE_LLVM_ATTRIBUTE(Alignment,31<<16) ///< Alignment of parameter (5 bits)
-                                     // stored as log2 of alignment with +1 bias
-                                     // 0 means unaligned different from align 1
-DECLARE_LLVM_ATTRIBUTE(NoCapture,1<<21) ///< Function creates no aliases of pointer
-DECLARE_LLVM_ATTRIBUTE(NoRedZone,1<<22) /// disable redzone
-DECLARE_LLVM_ATTRIBUTE(NoImplicitFloat,1<<23) /// disable implicit floating point
-                                           /// instructions.
-DECLARE_LLVM_ATTRIBUTE(Naked,1<<24) ///< Naked function
-DECLARE_LLVM_ATTRIBUTE(InlineHint,1<<25) ///< source said inlining was
-                                           ///desirable
-DECLARE_LLVM_ATTRIBUTE(StackAlignment,7<<26) ///< Alignment of stack for
-                                           ///function (3 bits) stored as log2
-                                           ///of alignment with +1 bias
-                                           ///0 means unaligned (different from
-                                           ///alignstack= {1))
-DECLARE_LLVM_ATTRIBUTE(ReturnsTwice,1<<29) ///< Function can return twice
-DECLARE_LLVM_ATTRIBUTE(UWTable,1<<30) ///< Function must be in a unwind
-                                           ///table
-DECLARE_LLVM_ATTRIBUTE(NonLazyBind,1U<<31) ///< Function is called early and/or
-                                            /// often, so lazy binding isn't
-                                            /// worthwhile.
-DECLARE_LLVM_ATTRIBUTE(AddressSafety,1ULL<<32) ///< Address safety checking is on.
-
-#undef DECLARE_LLVM_ATTRIBUTE
-
-/// Note that uwtable is about the ABI or the user mandating an entry in the
-/// unwind table. The nounwind attribute is about an exception passing by the
-/// function.
-/// In a theoretical system that uses tables for profiling and sjlj for
-/// exceptions, they would be fully independent. In a normal system that
-/// uses tables for both, the semantics are:
-/// nil                = Needs an entry because an exception might pass by.
-/// nounwind           = No need for an entry
-/// uwtable            = Needs an entry because the ABI says so and because
-///                      an exception might pass by.
-/// uwtable + nounwind = Needs an entry because the ABI says so.
-
-}  // namespace Attribute
-
 /// AttributeImpl - The internal representation of the Attributes class. This is
 /// uniquified.
 class AttributesImpl;
@@ -118,6 +33,25 @@ class AttributesImpl;
 /// Attributes - A bitset of attributes.
 class Attributes {
 public:
+  /// Function parameters and results can have attributes to indicate how they
+  /// should be treated by optimizations and code generation. This enumeration
+  /// lists the attributes that can be associated with parameters, function
+  /// results or the function itself.
+  /// 
+  /// Note that uwtable is about the ABI or the user mandating an entry in the
+  /// unwind table. The nounwind attribute is about an exception passing by the
+  /// function.
+  /// 
+  /// In a theoretical system that uses tables for profiling and sjlj for
+  /// exceptions, they would be fully independent. In a normal system that uses
+  /// tables for both, the semantics are:
+  /// 
+  /// nil                = Needs an entry because an exception might pass by.
+  /// nounwind           = No need for an entry
+  /// uwtable            = Needs an entry because the ABI says so and because
+  ///                      an exception might pass by.
+  /// uwtable + nounwind = Needs an entry because the ABI says so.
+
   enum AttrVal {
     None            = 0,   ///< No attributes have been set
     AddressSafety   = 1,   ///< Address safety checking is on.
@@ -161,7 +95,7 @@ private:
 public:
   Attributes() : Attrs(0) {}
   explicit Attributes(uint64_t Val);
-  /*implicit*/ Attributes(Attribute::AttrConst Val);
+  explicit Attributes(LLVMContext &C, AttrVal Val);
   Attributes(const Attributes &A);
 
   class Builder {
@@ -173,11 +107,13 @@ public:
 
     void clear() { Bits = 0; }
 
+    bool hasAttribute(Attributes::AttrVal A) const;
     bool hasAttributes() const;
     bool hasAttributes(const Attributes &A) const;
     bool hasAlignmentAttr() const;
 
     uint64_t getAlignment() const;
+    uint64_t getStackAlignment() const;
 
     Builder &addAttribute(Attributes::AttrVal Val);
     Builder &removeAttribute(Attributes::AttrVal Val);
@@ -375,6 +311,19 @@ struct AttributeWithIndex {
                      ///< Index 0 is used for return value attributes.
                      ///< Index ~0U is used for function attributes.
 
+  static AttributeWithIndex get(unsigned Idx,
+                                ArrayRef<Attributes::AttrVal> Attrs) {
+    Attributes::Builder B;
+
+    for (ArrayRef<Attributes::AttrVal>::iterator I = Attrs.begin(),
+           E = Attrs.end(); I != E; ++I)
+      B.addAttribute(*I);
+
+    AttributeWithIndex P;
+    P.Index = Idx;
+    P.Attrs = Attributes::get(B);
+    return P;
+  }
   static AttributeWithIndex get(unsigned Idx, Attributes Attrs) {
     AttributeWithIndex P;
     P.Index = Idx;
@@ -452,7 +401,7 @@ public:
 
   /// hasAttrSomewhere - Return true if the specified attribute is set for at
   /// least one parameter or for the return value.
-  bool hasAttrSomewhere(Attributes Attr) const;
+  bool hasAttrSomewhere(Attributes::AttrVal Attr) const;
 
   unsigned getNumAttrs() const;
   Attributes &getAttributesAtIndex(unsigned i) const;

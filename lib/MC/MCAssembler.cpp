@@ -579,15 +579,21 @@ uint8_t MCAssembler::ComputeBundlePadding(const MCAsmLayout &Layout,
   uint64_t BundleSize = getBundleSize();
   uint64_t BundleMask = getBundleMask();
   unsigned GroupSize = ComputeGroupSize(F);
-  assert(GroupSize <= BundleSize &&
-         "Bundle lock contents too large!");
+
+  if (GroupSize > BundleSize) {
+    // EmitFill creates large groups consisting of repeated single bytes.
+    // These should be safe at any alignment, and in any case we cannot
+    // fix them up here.
+    return 0;
+  }
 
   uint64_t Padding = 0;
   uint64_t OffsetInBundle = FragmentOffset & BundleMask;
 
   if (OffsetInBundle + GroupSize > BundleSize ||
       F->getBundleAlign() == MCFragment::BundleAlignStart) {
-    // Pad up to start of the next bundle
+    // If this group would cross the bundle boundary, or this group must be
+    // aligned to the start of a bundle, then pad up to start of the next bundle
     Padding += AddressToBundlePadding(OffsetInBundle, BundleMask);
     OffsetInBundle = 0;
   }

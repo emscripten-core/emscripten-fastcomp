@@ -195,7 +195,6 @@ void MCObjectStreamer::EmitBundleUnlock() {
          ".bundle_unlock called, but bundling disabled!");
   assert(SD->isBundleLocked() &&
          ".bundle_unlock called when bundle not locked");
-
   // If there has been at least one fragment emitted inside
   // this bundle lock, then we need to mark the last emitted
   // fragment as the group end.
@@ -368,6 +367,7 @@ void MCObjectStreamer::EmitFill(uint64_t NumBytes, uint8_t FillValue,
   // FIXME: A MCFillFragment would be more memory efficient but MCExpr has
   //        problems evaluating expressions across multiple fragments.
   getOrCreateDataFragment()->getContents().append(NumBytes, FillValue);
+  getCurrentSectionData()->MarkBundleOffsetUnknown();
 }
 
 void MCObjectStreamer::FinishImpl() {

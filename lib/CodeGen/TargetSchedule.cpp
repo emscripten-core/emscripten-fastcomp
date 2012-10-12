@@ -14,6 +14,7 @@
 
 #include "llvm/CodeGen/TargetSchedule.h"
 #include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Support/CommandLine.h"
@@ -27,6 +28,14 @@ static cl::opt<bool> EnableSchedModel("schedmodel", cl::Hidden, cl::init(true),
 static cl::opt<bool> EnableSchedItins("scheditins", cl::Hidden, cl::init(true),
   cl::desc("Use InstrItineraryData for latency lookup"));
 
+bool TargetSchedModel::hasInstrSchedModel() const {
+  return EnableSchedModel && SchedModel.hasInstrSchedModel();
+}
+
+bool TargetSchedModel::hasInstrItineraries() const {
+  return EnableSchedItins && !InstrItins.isEmpty();
+}
+
 void TargetSchedModel::init(const MCSchedModel &sm,
                             const TargetSubtargetInfo *sti,
                             const TargetInstrInfo *tii) {
@@ -34,6 +43,19 @@ void TargetSchedModel::init(const MCSchedModel &sm,
   STI = sti;
   TII = tii;
   STI->initInstrItins(InstrItins);
+}
+
+unsigned TargetSchedModel::getNumMicroOps(MachineInstr *MI) const {
+  if (hasInstrItineraries()) {
+    int UOps = InstrItins.getNumMicroOps(MI->getDesc().getSchedClass());
+    return (UOps >= 0) ? UOps : TII->getNumMicroOps(&InstrItins, MI);
+  }
+  if (hasInstrSchedModel()) {
+    const MCSchedClassDesc *SCDesc = resolveSchedClass(MI);
+    if (SCDesc->isValid())
+      return SCDesc->NumMicroOps;
+  }
+  return MI->isTransient() ? 0 : 1;
 }
 
 /// If we can determine the operand latency from the def only, without machine
@@ -47,14 +69,12 @@ int TargetSchedModel::getDefLatency(const MachineInstr *DefMI,
   if (FindMin) {
     // If MinLatency is invalid, then use the itinerary for MinLatency. If no
     // itinerary exists either, then use single cycle latency.
-    if (SchedModel.MinLatency < 0
-        && !(EnableSchedItins && hasInstrItineraries())) {
+    if (SchedModel.MinLatency < 0 && !hasInstrItineraries()) {
       return 1;
     }
     return SchedModel.MinLatency;
   }
-  else if (!(EnableSchedModel && hasInstrSchedModel())
-           && !(EnableSchedItins && hasInstrItineraries())) {
+  else if (!hasInstrSchedModel() && !hasInstrItineraries()) {
     return TII->defaultDefLatency(&SchedModel, DefMI);
   }
   // ...operand lookup required
@@ -123,7 +143,7 @@ unsigned TargetSchedModel::computeOperandLatency(
   if (DefLatency >= 0)
     return DefLatency;
 
-  if (EnableSchedItins && hasInstrItineraries()) {
+  if (hasInstrItineraries()) {
     int OperLatency = 0;
     if (UseMI) {
       OperLatency =
@@ -140,12 +160,16 @@ unsigned TargetSchedModel::computeOperandLatency(
     unsigned InstrLatency = TII->getInstrLatency(&InstrItins, DefMI);
 
     // Expected latency is the max of the stage latency and itinerary props.
+    // Rather than directly querying InstrItins stage latency, we call a TII
+    // hook to allow subtargets to specialize latency. This hook is only
+    // applicable to the InstrItins model. InstrSchedModel should model all
+    // special cases without TII hooks.
     if (!FindMin)
       InstrLatency = std::max(InstrLatency,
                               TII->defaultDefLatency(&SchedModel, DefMI));
     return InstrLatency;
   }
-  assert(!FindMin && EnableSchedModel && hasInstrSchedModel() &&
+  assert(!FindMin && hasInstrSchedModel() &&
          "Expected a SchedModel for this cpu");
   const MCSchedClassDesc *SCDesc = resolveSchedClass(DefMI);
   unsigned DefIdx = findDefIdx(DefMI, DefOperIdx);
@@ -177,5 +201,67 @@ unsigned TargetSchedModel::computeOperandLatency(
     report_fatal_error(ss.str());
   }
 #endif
-  return 1;
+  return DefMI->isTransient() ? 0 : 1;
+}
+
+unsigned TargetSchedModel::computeInstrLatency(const MachineInstr *MI) const {
+  // For the itinerary model, fall back to the old subtarget hook.
+  // Allow subtargets to compute Bundle latencies outside the machine model.
+  if (hasInstrItineraries() || MI->isBundle())
+    return TII->getInstrLatency(&InstrItins, MI);
+
+  if (hasInstrSchedModel()) {
+    const MCSchedClassDesc *SCDesc = resolveSchedClass(MI);
+    if (SCDesc->isValid()) {
+      unsigned Latency = 0;
+      for (unsigned DefIdx = 0, DefEnd = SCDesc->NumWriteLatencyEntries;
+           DefIdx != DefEnd; ++DefIdx) {
+        // Lookup the definition's write latency in SubtargetInfo.
+        const MCWriteLatencyEntry *WLEntry =
+          STI->getWriteLatencyEntry(SCDesc, DefIdx);
+        Latency = std::max(Latency, WLEntry->Cycles);
+      }
+      return Latency;
+    }
+  }
+  return TII->defaultDefLatency(&SchedModel, MI);
+}
+
+unsigned TargetSchedModel::
+computeOutputLatency(const MachineInstr *DefMI, unsigned DefOperIdx,
+                     const MachineInstr *DepMI) const {
+  // MinLatency == -1 is for in-order processors that always have unit
+  // MinLatency. MinLatency > 0 is for in-order processors with varying min
+  // latencies, but since this is not a RAW dep, we always use unit latency.
+  if (SchedModel.MinLatency != 0)
+    return 1;
+
+  // MinLatency == 0 indicates an out-of-order processor that can dispatch
+  // WAW dependencies in the same cycle.
+
+  // Treat predication as a data dependency for out-of-order cpus. In-order
+  // cpus do not need to treat predicated writes specially.
+  //
+  // TODO: The following hack exists because predication passes do not
+  // correctly append imp-use operands, and readsReg() strangely returns false
+  // for predicated defs.
+  unsigned Reg = DefMI->getOperand(DefOperIdx).getReg();
+  const MachineFunction &MF = *DefMI->getParent()->getParent();
+  const TargetRegisterInfo *TRI = MF.getTarget().getRegisterInfo();
+  if (!DepMI->readsRegister(Reg, TRI) && TII->isPredicated(DepMI))
+    return computeInstrLatency(DefMI);
+
+  // If we have a per operand scheduling model, check if this def is writing
+  // an unbuffered resource. If so, it treated like an in-order cpu.
+  if (hasInstrSchedModel()) {
+    const MCSchedClassDesc *SCDesc = resolveSchedClass(DefMI);
+    if (SCDesc->isValid()) {
+      for (const MCWriteProcResEntry *PRI = STI->getWriteProcResBegin(SCDesc),
+             *PRE = STI->getWriteProcResEnd(SCDesc); PRI != PRE; ++PRI) {
+        if (!SchedModel.getProcResource(PRI->ProcResourceIdx)->IsBuffered)
+          return 1;
+      }
+    }
+  }
+  return 0;
 }

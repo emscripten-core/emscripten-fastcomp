@@ -135,8 +135,6 @@ public:
   void setBundleAlign(BundleAlignType Value) { BundleAlign = Value; }
   // @LOCALMOD-END
 
-  static bool classof(const MCFragment *O) { return true; }
-
   void dump();
 };
 
@@ -208,7 +206,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Data;
   }
-  static bool classof(const MCDataFragment *) { return true; }
 };
 
 // FIXME: This current incarnation of MCInstFragment doesn't make much sense, as
@@ -270,7 +267,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Inst;
   }
-  static bool classof(const MCInstFragment *) { return true; }
 };
 
 class MCAlignFragment : public MCFragment {
@@ -320,7 +316,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Align;
   }
-  static bool classof(const MCAlignFragment *) { return true; }
 };
 
 class MCFillFragment : public MCFragment {
@@ -359,7 +354,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Fill;
   }
-  static bool classof(const MCFillFragment *) { return true; }
 };
 
 class MCOrgFragment : public MCFragment {
@@ -388,7 +382,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Org;
   }
-  static bool classof(const MCOrgFragment *) { return true; }
 };
 
 class MCLEBFragment : public MCFragment {
@@ -421,7 +414,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_LEB;
   }
-  static bool classof(const MCLEBFragment *) { return true; }
 };
 
 class MCDwarfLineAddrFragment : public MCFragment {
@@ -458,7 +450,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Dwarf;
   }
-  static bool classof(const MCDwarfLineAddrFragment *) { return true; }
 };
 
 class MCDwarfCallFrameFragment : public MCFragment {
@@ -488,7 +479,6 @@ public:
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_DwarfFrame;
   }
-  static bool classof(const MCDwarfCallFrameFragment *) { return true; }
 };
 
 // FIXME: Should this be a separate class, or just merged into MCSection? Since
