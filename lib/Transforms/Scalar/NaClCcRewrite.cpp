@@ -543,7 +543,7 @@ void FixFunctionByvalsParameter(Function& F,
     v = new StoreInst(arg, v, before);
 
     new_arguments.push_back(arg);
-    new_attributes.push_back(Attribute::None);
+    new_attributes.push_back(Attributes(Attributes::None));
   }
 }
 
@@ -583,18 +583,13 @@ void UpdateFunctionSignature(Function &F,
 
   DEBUG(dbgs() << "PHASE ATTRIBUTES UPDATE\n");
   // Update function attributes
-  std::vector<AttributeWithIndex> new_attributes_vec;
   for (size_t i = 0; i < new_attributes.size(); ++i) {
     Attributes attr = new_attributes[i];
     if (attr) {
       // index 0 is for the return value
-      new_attributes_vec.push_back(AttributeWithIndex::get(i + 1, attr));
+      F.addAttribute(i + 1, attr);
     }
   }
-  if (Attributes attrs = F.getAttributes().getFnAttributes())
-    new_attributes_vec.push_back(AttributeWithIndex::get(~0, attrs));
-
-  F.setAttributes(AttrListPtr::get(new_attributes_vec));
 }
 
 
@@ -610,7 +605,7 @@ void ExtractFunctionArgsAndAttributes(Function& F,
 
   for (size_t i = 0; i < old_arguments.size(); ++i) {
     // index zero is for return value attributes
-    old_attributes.push_back(F.getAttributes().getParamAttributes(i + 1));
+    old_attributes.push_back(F.getParamAttributes(i + 1));
   }
 }
 
@@ -636,7 +631,7 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
   Type* new_result_type = 0;
 
   // only the first arg can be "sret"
-  if (old_attributes.size() > 0 && old_attributes[0] & Attribute::StructRet) {
+  if (old_attributes.size() > 0 && old_attributes[0].hasAttribute(Attributes::StructRet)) {
     const TypeRewriteRule* sret_rule =
       MatchRewriteRulesPointee(old_arguments[0]->getType(), SretRewriteRules);
     if (sret_rule) {
@@ -655,7 +650,7 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
     Argument* arg = old_arguments[i];
     Type* t = arg->getType();
     Attributes attr = old_attributes[i];
-    if (attr & Attribute::ByVal) {
+    if (attr.hasAttribute(Attributes::ByVal)) {
       const TypeRewriteRule* rule =
         MatchRewriteRulesPointee(t, ByvalRewriteRules);
       if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
@@ -757,7 +752,7 @@ void PrependCompensationForByvals(std::vector<Value*>& new_operands,
     v = new LoadInst(v, "byval_extract", call);
 
     new_operands.push_back(v);
-    new_attributes.push_back(Attribute::None);
+    new_attributes.push_back(Attributes(Attributes::None));
   }
 }
 
@@ -902,7 +897,7 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
 
   // handle sret (just the book-keeping, 'new_result' is dealt with below)
   // only the first arg can be "sret"
-  if (old_attributes[0] & Attribute::StructRet) {
+  if (old_attributes[0].hasAttribute(Attributes::StructRet)) {
     sret_rule = MatchRewriteRulesPointee(
       old_operands[0]->getType(), SretRewriteRules);
     if (sret_rule) {
@@ -924,7 +919,7 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
     Type* t = operand->getType();
     Attributes attr = old_attributes[i];
 
-    if (attr & Attribute::ByVal) {
+    if (attr.hasAttribute(Attributes::ByVal)) {
       const TypeRewriteRule* rule =
         MatchRewriteRulesPointee(t, ByvalRewriteRules);
       if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
