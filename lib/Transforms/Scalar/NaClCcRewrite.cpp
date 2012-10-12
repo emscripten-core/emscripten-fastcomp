@@ -22,6 +22,7 @@
 #include "llvm/Argument.h"
 #include "llvm/Attributes.h"
 #include "llvm/Constant.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Instruction.h"
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
@@ -31,7 +32,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/InstIterator.h"
-#include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetLowering.h"
@@ -709,14 +709,14 @@ template<class T> bool CallNeedsRewrite(
       Type* pointee = dyn_cast<PointerType>(t)->getElementType();
 
       //  param zero is for the return value
-      if (ByvalRewriteRules && call->paramHasAttr(i + 1, Attribute::ByVal)) {
+      if (ByvalRewriteRules && call->paramHasAttr(i + 1, Attributes::ByVal)) {
         const TypeRewriteRule* rule =
           MatchRewriteRules(pointee, ByvalRewriteRules);
         if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
           return true;
         }
       } else if (SretRewriteRules &&
-                 call->paramHasAttr(i + 1, Attribute::StructRet)) {
+                 call->paramHasAttr(i + 1, Attributes::StructRet)) {
         if (0 != MatchRewriteRules(pointee, SretRewriteRules)) {
           return true;
         }
@@ -1053,4 +1053,3 @@ INITIALIZE_PASS(NaClCcRewrite, "naclcc", "NaCl CC Rewriter", false, false)
 FunctionPass *llvm::createNaClCcRewritePass(const TargetLowering *tli) {
   return new NaClCcRewrite(tli);
 }
-

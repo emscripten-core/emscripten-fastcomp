@@ -58,10 +58,6 @@ private:
 public:
   X86RegisterInfo(X86TargetMachine &tm, const TargetInstrInfo &tii);
 
-  /// getX86RegNum - Returns the native X86 register number for the given LLVM
-  /// register identifier.
-  static unsigned getX86RegNum(unsigned RegNo);
-
   // FIXME: This should be tablegen'd like getDwarfRegNum is
   int getSEHRegNum(unsigned i) const;
 
@@ -141,8 +137,8 @@ public:
 
 // getX86SubSuperRegister - X86 utility function. It returns the sub or super
 // register of a specific X86 register.
-// e.g. getX86SubSuperRegister(X86::EAX, EVT::i16) return X86:AX
-unsigned getX86SubSuperRegister(unsigned, EVT, bool High=false);
+// e.g. getX86SubSuperRegister(X86::EAX, MVT::i16) return X86:AX
+unsigned getX86SubSuperRegister(unsigned, MVT::SimpleValueType, bool High=false);
 
 } // End llvm namespace
 

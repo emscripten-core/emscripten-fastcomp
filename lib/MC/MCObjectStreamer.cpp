@@ -294,6 +294,36 @@ void MCObjectStreamer::EmitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
   new MCDwarfCallFrameFragment(*AddrDelta, getCurrentSectionData());
 }
 
+void MCObjectStreamer::EmitBytes(StringRef Data, unsigned AddrSpace) {
+  assert(AddrSpace == 0 && "Address space must be 0!");
+  getOrCreateDataFragment()->getContents().append(Data.begin(), Data.end());
+  getCurrentSectionData()->MarkBundleOffsetUnknown();  // @LOCALMOD
+}
+
+void MCObjectStreamer::EmitValueToAlignment(unsigned ByteAlignment,
+                                            int64_t Value,
+                                            unsigned ValueSize,
+                                            unsigned MaxBytesToEmit) {
+  if (MaxBytesToEmit == 0)
+    MaxBytesToEmit = ByteAlignment;
+  new MCAlignFragment(ByteAlignment, Value, ValueSize, MaxBytesToEmit,
+                      getCurrentSectionData());
+
+  // @LOCALMOD-BEGIN
+  // Bump the bundle offset to account for alignment.
+  getCurrentSectionData()->AlignBundleOffsetTo(ByteAlignment);
+  // @LOCALMOD-END
+  // Update the maximum alignment on the current section if necessary.
+  if (ByteAlignment > getCurrentSectionData()->getAlignment())
+    getCurrentSectionData()->setAlignment(ByteAlignment);
+}
+
+void MCObjectStreamer::EmitCodeAlignment(unsigned ByteAlignment,
+                                         unsigned MaxBytesToEmit) {
+  EmitValueToAlignment(ByteAlignment, 0, 1, MaxBytesToEmit);
+  cast<MCAlignFragment>(getCurrentFragment())->setEmitNops(true);
+}
+
 bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
                                          unsigned char Value) {
   int64_t Res;
@@ -330,6 +360,14 @@ void MCObjectStreamer::EmitGPRel64Value(const MCExpr *Value) {
 
   DF->addFixup(MCFixup::Create(DF->getContents().size(), Value, FK_GPRel_4));
   DF->getContents().resize(DF->getContents().size() + 8, 0);
+}
+
+void MCObjectStreamer::EmitFill(uint64_t NumBytes, uint8_t FillValue,
+                                unsigned AddrSpace) {
+  assert(AddrSpace == 0 && "Address space must be 0!");
+  // FIXME: A MCFillFragment would be more memory efficient but MCExpr has
+  //        problems evaluating expressions across multiple fragments.
+  getOrCreateDataFragment()->getContents().append(NumBytes, FillValue);
 }
 
 void MCObjectStreamer::FinishImpl() {

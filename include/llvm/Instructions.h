@@ -1267,13 +1267,11 @@ public:
   /// removeAttribute - removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, Attributes attr);
 
-  /// \brief Return true if this call has the given attribute.
-  bool hasFnAttr(Attributes N) const {
-    return paramHasAttr(~0, N);
-  }
+  /// @brief Determine whether this call has the given attribute.
+  bool hasFnAttr(Attributes::AttrVal A) const;
 
-  /// @brief Determine whether the call or the callee has the given attribute.
-  bool paramHasAttr(unsigned i, Attributes attr) const;
+  /// @brief Determine whether the call or the callee has the given attributes.
+  bool paramHasAttr(unsigned i, Attributes::AttrVal A) const;
 
   /// @brief Extract the alignment for a call or parameter (0=unknown).
   unsigned getParamAlignment(unsigned i) const {
@@ -1281,7 +1279,7 @@ public:
   }
 
   /// @brief Return true if the call should not be inlined.
-  bool isNoInline() const { return hasFnAttr(Attribute::NoInline); }
+  bool isNoInline() const { return hasFnAttr(Attributes::NoInline); }
   void setIsNoInline(bool Value = true) {
     if (Value) addAttribute(~0, Attribute::NoInline);
     else removeAttribute(~0, Attribute::NoInline);
@@ -1289,7 +1287,7 @@ public:
 
   /// @brief Return true if the call can return twice
   bool canReturnTwice() const {
-    return hasFnAttr(Attribute::ReturnsTwice);
+    return hasFnAttr(Attributes::ReturnsTwice);
   }
   void setCanReturnTwice(bool Value = true) {
     if (Value) addAttribute(~0, Attribute::ReturnsTwice);
@@ -1298,7 +1296,7 @@ public:
 
   /// @brief Determine if the call does not access memory.
   bool doesNotAccessMemory() const {
-    return hasFnAttr(Attribute::ReadNone);
+    return hasFnAttr(Attributes::ReadNone);
   }
   void setDoesNotAccessMemory(bool NotAccessMemory = true) {
     if (NotAccessMemory) addAttribute(~0, Attribute::ReadNone);
@@ -1307,7 +1305,7 @@ public:
 
   /// @brief Determine if the call does not access or only reads memory.
   bool onlyReadsMemory() const {
-    return doesNotAccessMemory() || hasFnAttr(Attribute::ReadOnly);
+    return doesNotAccessMemory() || hasFnAttr(Attributes::ReadOnly);
   }
   void setOnlyReadsMemory(bool OnlyReadsMemory = true) {
     if (OnlyReadsMemory) addAttribute(~0, Attribute::ReadOnly);
@@ -1315,14 +1313,14 @@ public:
   }
 
   /// @brief Determine if the call cannot return.
-  bool doesNotReturn() const { return hasFnAttr(Attribute::NoReturn); }
+  bool doesNotReturn() const { return hasFnAttr(Attributes::NoReturn); }
   void setDoesNotReturn(bool DoesNotReturn = true) {
     if (DoesNotReturn) addAttribute(~0, Attribute::NoReturn);
     else removeAttribute(~0, Attribute::NoReturn);
   }
 
   /// @brief Determine if the call cannot unwind.
-  bool doesNotThrow() const { return hasFnAttr(Attribute::NoUnwind); }
+  bool doesNotThrow() const { return hasFnAttr(Attributes::NoUnwind); }
   void setDoesNotThrow(bool DoesNotThrow = true) {
     if (DoesNotThrow) addAttribute(~0, Attribute::NoUnwind);
     else removeAttribute(~0, Attribute::NoUnwind);
@@ -1332,12 +1330,15 @@ public:
   /// pointer argument.
   bool hasStructRetAttr() const {
     // Be friendly and also check the callee.
-    return paramHasAttr(1, Attribute::StructRet);
+    return paramHasAttr(1, Attributes::StructRet);
   }
 
   /// @brief Determine if any call argument is an aggregate passed by value.
   bool hasByValArgument() const {
-    return AttributeList.hasAttrSomewhere(Attribute::ByVal);
+    for (unsigned I = 0, E = AttributeList.getNumAttrs(); I != E; ++I)
+      if (AttributeList.getAttributesAtIndex(I).hasAttribute(Attributes::ByVal))
+        return true;
+    return false;
   }
 
   /// getCalledFunction - Return the function called, or null if this is an
@@ -3029,13 +3030,11 @@ public:
   /// removeAttribute - removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, Attributes attr);
 
-  /// \brief Return true if this call has the given attribute.
-  bool hasFnAttr(Attributes N) const {
-    return paramHasAttr(~0, N);
-  }
+  /// @brief Determine whether this call has the NoAlias attribute.
+  bool hasFnAttr(Attributes::AttrVal A) const;
 
-  /// @brief Determine whether the call or the callee has the given attribute.
-  bool paramHasAttr(unsigned i, Attributes attr) const;
+  /// @brief Determine whether the call or the callee has the given attributes.
+  bool paramHasAttr(unsigned i, Attributes::AttrVal A) const;
 
   /// @brief Extract the alignment for a call or parameter (0=unknown).
   unsigned getParamAlignment(unsigned i) const {
@@ -3043,7 +3042,7 @@ public:
   }
 
   /// @brief Return true if the call should not be inlined.
-  bool isNoInline() const { return hasFnAttr(Attribute::NoInline); }
+  bool isNoInline() const { return hasFnAttr(Attributes::NoInline); }
   void setIsNoInline(bool Value = true) {
     if (Value) addAttribute(~0, Attribute::NoInline);
     else removeAttribute(~0, Attribute::NoInline);
@@ -3051,7 +3050,7 @@ public:
 
   /// @brief Determine if the call does not access memory.
   bool doesNotAccessMemory() const {
-    return hasFnAttr(Attribute::ReadNone);
+    return hasFnAttr(Attributes::ReadNone);
   }
   void setDoesNotAccessMemory(bool NotAccessMemory = true) {
     if (NotAccessMemory) addAttribute(~0, Attribute::ReadNone);
@@ -3060,7 +3059,7 @@ public:
 
   /// @brief Determine if the call does not access or only reads memory.
   bool onlyReadsMemory() const {
-    return doesNotAccessMemory() || hasFnAttr(Attribute::ReadOnly);
+    return doesNotAccessMemory() || hasFnAttr(Attributes::ReadOnly);
   }
   void setOnlyReadsMemory(bool OnlyReadsMemory = true) {
     if (OnlyReadsMemory) addAttribute(~0, Attribute::ReadOnly);
@@ -3068,14 +3067,14 @@ public:
   }
 
   /// @brief Determine if the call cannot return.
-  bool doesNotReturn() const { return hasFnAttr(Attribute::NoReturn); }
+  bool doesNotReturn() const { return hasFnAttr(Attributes::NoReturn); }
   void setDoesNotReturn(bool DoesNotReturn = true) {
     if (DoesNotReturn) addAttribute(~0, Attribute::NoReturn);
     else removeAttribute(~0, Attribute::NoReturn);
   }
 
   /// @brief Determine if the call cannot unwind.
-  bool doesNotThrow() const { return hasFnAttr(Attribute::NoUnwind); }
+  bool doesNotThrow() const { return hasFnAttr(Attributes::NoUnwind); }
   void setDoesNotThrow(bool DoesNotThrow = true) {
     if (DoesNotThrow) addAttribute(~0, Attribute::NoUnwind);
     else removeAttribute(~0, Attribute::NoUnwind);
@@ -3085,12 +3084,15 @@ public:
   /// pointer argument.
   bool hasStructRetAttr() const {
     // Be friendly and also check the callee.
-    return paramHasAttr(1, Attribute::StructRet);
+    return paramHasAttr(1, Attributes::StructRet);
   }
 
   /// @brief Determine if any call argument is an aggregate passed by value.
   bool hasByValArgument() const {
-    return AttributeList.hasAttrSomewhere(Attribute::ByVal);
+    for (unsigned I = 0, E = AttributeList.getNumAttrs(); I != E; ++I)
+      if (AttributeList.getAttributesAtIndex(I).hasAttribute(Attributes::ByVal))
+        return true;
+    return false;
   }
 
   /// getCalledFunction - Return the function called, or null if this is an

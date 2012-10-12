@@ -169,7 +169,7 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
   // @LOCALMOD-END
 
   RegInfo = TM.getRegisterInfo();
-  TD = getTargetData();
+  TD = getDataLayout();
 
   // Set up the TargetLowering object.
   static const MVT IntVTs[] = { MVT::i8, MVT::i16, MVT::i32, MVT::i64 };
@@ -192,7 +192,7 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
 
   // Bypass i32 with i8 on Atom when compiling with O2
   if (Subtarget->hasSlowDivide() && TM.getOptLevel() >= CodeGenOpt::Default)
-    addBypassSlowDivType(Type::getInt32Ty(getGlobalContext()), Type::getInt8Ty(getGlobalContext()));
+    addBypassSlowDiv(32, 8);
 
   if (Subtarget->isTargetWindows() && !Subtarget->isTargetCygMing()) {
     // Setup Windows compiler runtime calls.
@@ -1361,7 +1361,7 @@ X86TargetLowering::getOptimalMemOpType(uint64_t Size,
   // cases like PR2962.  This should be removed when PR2962 is fixed.
   const Function *F = MF.getFunction();
   if (IsZeroVal &&
-      !F->getFnAttributes().hasNoImplicitFloatAttr()) {
+      !F->getFnAttributes().hasAttribute(Attributes::NoImplicitFloat)) {
     if (Size >= 16 &&
         (Subtarget->isUnalignedMemAccessFast() ||
          ((DstAlign == 0 || DstAlign >= 16) &&
@@ -2040,7 +2040,8 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
       unsigned NumIntRegs = CCInfo.getFirstUnallocated(GPR64ArgRegs,
                                                        TotalNumIntRegs);
 
-      bool NoImplicitFloatOps = Fn->getFnAttributes().hasNoImplicitFloatAttr();
+      bool NoImplicitFloatOps = Fn->getFnAttributes().
+        hasAttribute(Attributes::NoImplicitFloat);
       assert(!(NumXMMRegs && !Subtarget->hasSSE1()) &&
              "SSE register cannot be used when SSE is disabled!");
       assert(!(NumXMMRegs && MF.getTarget().Options.UseSoftFloat &&
@@ -2516,7 +2517,8 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
         OpFlags = X86II::MO_DARWIN_STUB;
       } else if (Subtarget->isPICStyleRIPRel() &&
                  isa<Function>(GV) &&
-                 cast<Function>(GV)->getFnAttributes().hasNonLazyBindAttr()) {
+                 cast<Function>(GV)->getFnAttributes().
+                   hasAttribute(Attributes::NonLazyBind)) {
         // If the function is marked as non-lazy, generate an indirect call
         // which loads from the GOT directly. This avoids runtime overhead
         // at the cost of eager binding (and one extra byte of encoding).
@@ -3573,7 +3575,7 @@ SDValue Compact8x32ShuffleNode(ShuffleVectorSDNode *SVOp,
 
   if (!MatchEvenMask && !MatchOddMask)
     return SDValue();
-  
+
   SDValue UndefNode = DAG.getNode(ISD::UNDEF, dl, VT);
 
   SDValue Op0 = SVOp->getOperand(0);
@@ -6085,7 +6087,7 @@ SDValue LowerVECTOR_SHUFFLEv32i8(ShuffleVectorSDNode *SVOp,
   bool V1IsAllZero = ISD::isBuildVectorAllZeros(V1.getNode());
   bool V2IsAllZero = ISD::isBuildVectorAllZeros(V2.getNode());
 
-  // VPSHUFB may be generated if 
+  // VPSHUFB may be generated if
   // (1) one of input vector is undefined or zeroinitializer.
   // The mask value 0x80 puts 0 in the corresponding slot of the vector.
   // And (2) the mask indexes don't cross the 128-bit lane.
@@ -6661,7 +6663,8 @@ X86TargetLowering::LowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG) const {
   bool HasAVX    = Subtarget->hasAVX();
   bool HasAVX2   = Subtarget->hasAVX2();
   MachineFunction &MF = DAG.getMachineFunction();
-  bool OptForSize = MF.getFunction()->getFnAttributes().hasOptimizeForSizeAttr();
+  bool OptForSize = MF.getFunction()->getFnAttributes().
+    hasAttribute(Attributes::OptimizeForSize);
 
   assert(VT.getSizeInBits() != 64 && "Can't lower MMX shuffles");
 
@@ -9763,7 +9766,7 @@ SDValue X86TargetLowering::LowerVAARG(SDValue Op, SelectionDAG &DAG) const {
 
   EVT ArgVT = Op.getNode()->getValueType(0);
   Type *ArgTy = ArgVT.getTypeForEVT(*DAG.getContext());
-  uint32_t ArgSize = getTargetData()->getTypeAllocSize(ArgTy);
+  uint32_t ArgSize = getDataLayout()->getTypeAllocSize(ArgTy);
   uint8_t ArgMode;
 
   // Decide which area this value should be read from.
@@ -9783,7 +9786,8 @@ SDValue X86TargetLowering::LowerVAARG(SDValue Op, SelectionDAG &DAG) const {
     // Sanity Check: Make sure using fp_offset makes sense.
     assert(!getTargetMachine().Options.UseSoftFloat &&
            !(DAG.getMachineFunction()
-                .getFunction()->getFnAttributes().hasNoImplicitFloatAttr()) &&
+                .getFunction()->getFnAttributes()
+                .hasAttribute(Attributes::NoImplicitFloat)) &&
            Subtarget->hasSSE1());
   }
 
@@ -10579,6 +10583,7 @@ SDValue X86TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
   DebugLoc dl  = Op.getDebugLoc();
 
   const Value *TrmpAddr = cast<SrcValueSDNode>(Op.getOperand(4))->getValue();
+  const TargetRegisterInfo* TRI = getTargetMachine().getRegisterInfo();
 
   if (Subtarget->is64Bit()) {
     SDValue OutChains[6];
@@ -10587,8 +10592,8 @@ SDValue X86TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
     const unsigned char JMP64r  = 0xFF; // 64-bit jmp through register opcode.
     const unsigned char MOV64ri = 0xB8; // X86::MOV64ri opcode.
 
-    const unsigned char N86R10 = X86_MC::getX86RegNum(X86::R10);
-    const unsigned char N86R11 = X86_MC::getX86RegNum(X86::R11);
+    const unsigned char N86R10 = TRI->getEncodingValue(X86::R10) & 0x7;
+    const unsigned char N86R11 = TRI->getEncodingValue(X86::R11) & 0x7;
 
     const unsigned char REX_WB = 0x40 | 0x08 | 0x01; // REX prefix
 
@@ -10661,7 +10666,7 @@ SDValue X86TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
 
         for (FunctionType::param_iterator I = FTy->param_begin(),
              E = FTy->param_end(); I != E; ++I, ++Idx)
-          if (Attrs.paramHasAttr(Idx, Attribute::InReg))
+          if (Attrs.getParamAttributes(Idx).hasAttribute(Attributes::InReg))
             // FIXME: should only count parameters that are lowered to integers.
             InRegCount += (TD->getTypeSizeInBits(*I) + 31) / 32;
 
@@ -10690,7 +10695,7 @@ SDValue X86TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
 
     // This is storing the opcode for MOV32ri.
     const unsigned char MOV32ri = 0xB8; // X86::MOV32ri's opcode byte.
-    const unsigned char N86Reg = X86_MC::getX86RegNum(NestReg);
+    const unsigned char N86Reg = TRI->getEncodingValue(NestReg) & 0x7;
     OutChains[0] = DAG.getStore(Root, dl,
                                 DAG.getConstant(MOV32ri|N86Reg, MVT::i8),
                                 Trmp, MachinePointerInfo(TrmpAddr),
@@ -12284,7 +12289,7 @@ X86TargetLowering::EmitAtomicLoadArith(MachineInstr *MI,
   SrcReg = MI->getOperand(CurOp++).getReg();
 
   const TargetRegisterClass *RC = MRI.getRegClass(DstReg);
-  EVT VT = *RC->vt_begin();
+  MVT::SimpleValueType VT = *RC->vt_begin();
   unsigned AccPhyReg = getX86SubSuperRegister(X86::EAX, VT);
 
   unsigned LCMPXCHGOpc = getCmpXChgOpcode(VT);
@@ -14102,7 +14107,7 @@ static SDValue XFormVExtractWithShuffleIntoLoad(SDNode *N, SelectionDAG &DAG,
     // alignment is valid.
     unsigned Align = LN0->getAlignment();
     const TargetLowering &TLI = DAG.getTargetLoweringInfo();
-    unsigned NewAlign = TLI.getTargetData()->
+    unsigned NewAlign = TLI.getDataLayout()->
       getABITypeAlignment(VT.getTypeForEVT(*DAG.getContext()));
 
     if (NewAlign > Align || !TLI.isOperationLegalOrCustom(ISD::LOAD, VT))
@@ -15636,7 +15641,8 @@ static SDValue PerformSTORECombine(SDNode *N, SelectionDAG &DAG,
     return SDValue();
 
   const Function *F = DAG.getMachineFunction().getFunction();
-  bool NoImplicitFloatOps = F->getFnAttributes().hasNoImplicitFloatAttr();
+  bool NoImplicitFloatOps = F->getFnAttributes().
+    hasAttribute(Attributes::NoImplicitFloat);
   bool F64IsLegal = !DAG.getTarget().Options.UseSoftFloat && !NoImplicitFloatOps
                      && Subtarget->hasSSE2();
   if ((VT.isVector() ||

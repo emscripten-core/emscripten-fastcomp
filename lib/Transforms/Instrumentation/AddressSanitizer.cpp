@@ -35,7 +35,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -207,7 +207,7 @@ struct AddressSanitizer : public ModulePass {
   bool HasDynamicInitializer(GlobalVariable *G);
 
   LLVMContext *C;
-  TargetData *TD;
+  DataLayout *TD;
   uint64_t MappingOffset;
   int MappingScale;
   size_t RedzoneSize;
@@ -736,7 +736,7 @@ bool AddressSanitizer::insertGlobalRedzones(Module &M) {
 // virtual
 bool AddressSanitizer::runOnModule(Module &M) {
   // Initialize the private fields. No one has accessed them before.
-  TD = getAnalysisIfAvailable<TargetData>();
+  TD = getAnalysisIfAvailable<DataLayout>();
   if (!TD)
     return false;
   BL.reset(new BlackList(ClBlackListFile));
@@ -854,12 +854,14 @@ bool AddressSanitizer::handleFunction(Module &M, Function &F) {
   // If needed, insert __asan_init before checking for AddressSafety attr.
   maybeInsertAsanInitAtFunctionEntry(F);
 
-  if (!F.getFnAttributes().hasAddressSafetyAttr()) return false;
+  if (!F.getFnAttributes().hasAttribute(Attributes::AddressSafety))
+    return false;
 
   if (!ClDebugFunc.empty() && ClDebugFunc != F.getName())
     return false;
-  // We want to instrument every address only once per basic block
-  // (unless there are calls between uses).
+
+  // We want to instrument every address only once per basic block (unless there
+  // are calls between uses).
   SmallSet<Value*, 16> TempsToInstrument;
   SmallVector<Instruction*, 16> ToInstrument;
   SmallVector<Instruction*, 8> NoReturnCalls;

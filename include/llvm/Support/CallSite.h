@@ -185,13 +185,13 @@ public:
   }
 
   /// \brief Return true if this function has the given attribute.
-  bool hasFnAttr(Attributes N) const {
-    CALLSITE_DELEGATE_GETTER(hasFnAttr(N));
+  bool hasFnAttr(Attributes::AttrVal A) const {
+    CALLSITE_DELEGATE_GETTER(hasFnAttr(A));
   }
 
-  /// paramHasAttr - whether the call or the callee has the given attribute.
-  bool paramHasAttr(uint16_t i, Attributes attr) const {
-    CALLSITE_DELEGATE_GETTER(paramHasAttr(i, attr));
+  /// \brief Return true if the call or the callee has the given attribute.
+  bool paramHasAttr(unsigned i, Attributes::AttrVal A) const {
+    CALLSITE_DELEGATE_GETTER(paramHasAttr(i, A));
   }
 
   /// @brief Extract the alignment for a call or parameter (0=unknown).
@@ -244,12 +244,12 @@ public:
 
   /// @brief Determine whether this argument is not captured.
   bool doesNotCapture(unsigned ArgNo) const {
-    return paramHasAttr(ArgNo + 1, Attribute::NoCapture);
+    return paramHasAttr(ArgNo + 1, Attributes::NoCapture);
   }
 
   /// @brief Determine whether this argument is passed by value.
   bool isByValArgument(unsigned ArgNo) const {
-    return paramHasAttr(ArgNo + 1, Attribute::ByVal);
+    return paramHasAttr(ArgNo + 1, Attributes::ByVal);
   }
 
   /// hasArgument - Returns true if this CallSite passes the given Value* as an

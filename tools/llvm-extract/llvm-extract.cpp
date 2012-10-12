@@ -18,7 +18,7 @@
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h" // @LOCALMOD
 #include "llvm/Support/IRReader.h"
@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
   // In addition to deleting all other functions, we also want to spiff it
   // up a little bit.  Do this now.
   PassManager Passes;
-  Passes.add(new TargetData(M.get())); // Use correct TargetData
+  Passes.add(new DataLayout(M.get())); // Use correct DataLayout
 
   std::vector<GlobalValue*> Gvs(GVs.begin(), GVs.end());
 

@@ -246,7 +246,7 @@ void initializeStrongPHIEliminationPass(PassRegistry&);
 void initializeTailCallElimPass(PassRegistry&);
 void initializeTailDuplicatePassPass(PassRegistry&);
 void initializeTargetPassConfigPass(PassRegistry&);
-void initializeTargetDataPass(PassRegistry&);
+void initializeDataLayoutPass(PassRegistry&);
 void initializeTargetLibraryInfoPass(PassRegistry&);
 void initializeTwoAddressInstructionPassPass(PassRegistry&);
 void initializeTypeBasedAliasAnalysisPass(PassRegistry&);

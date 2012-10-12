@@ -276,8 +276,6 @@ namespace {
 
     void tooManyUses() { Captured = true; }
 
-    bool shouldExplore(Use *U) { return true; }
-
     bool captured(Use *U) {
       CallSite CS(U->getUser());
       if (!CS.getInstruction()) { Captured = true; return true; }
@@ -520,7 +518,7 @@ bool FunctionAttrs::IsFunctionMallocLike(Function *F,
         case Instruction::Call:
         case Instruction::Invoke: {
           CallSite CS(RVI);
-          if (CS.paramHasAttr(0, Attribute::NoAlias))
+          if (CS.paramHasAttr(0, Attributes::NoAlias))
             break;
           if (CS.getCalledFunction() &&
               SCCNodes.count(CS.getCalledFunction()))

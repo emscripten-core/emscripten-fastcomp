@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/LLVMContext.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Module.h"
 #include "llvm/PassManager.h"
 #include "llvm/Pass.h"
@@ -38,7 +39,6 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
@@ -677,10 +677,10 @@ int llc_main(int argc, char **argv) {
   PM->add(TLI);
 
   // Add the target data from the target machine, if it exists, or the module.
-  if (const TargetData *TD = Target.getTargetData())
-    PM->add(new TargetData(*TD));
+  if (const DataLayout *TD = Target.getDataLayout())
+    PM->add(new DataLayout(*TD));
   else
-    PM->add(new TargetData(mod));
+    PM->add(new DataLayout(mod));
 
   // Override default to generate verbose assembly.
   Target.setAsmVerbosityDefault(true);
@@ -787,7 +787,7 @@ int llc_main(int argc, char **argv) {
   // They may have been eliminated by the StripDeadPrototypes pass,
   // or some other pass that is unaware of NeededRecords / IntrinsicLowering.
   if (!MetadataTextFilename.empty()) {
-    IntrinsicLowering IL(*target->getTargetData());
+    IntrinsicLowering IL(*target->getDataLayout());
     IL.AddPrototypes(*M);
 
     int err = WriteTextMetadataFile(*M.get(), TheTriple);

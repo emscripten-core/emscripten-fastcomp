@@ -1,7 +1,7 @@
 ; RUN: opt < %s -sroa -S | FileCheck %s
 ; RUN: opt < %s -sroa -force-ssa-updater -S | FileCheck %s
 
-target datalayout = "E-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-n8:16:32:64"
+target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-n8:16:32:64"
 
 declare void @llvm.lifetime.start(i64, i8* nocapture)
 declare void @llvm.lifetime.end(i64, i8* nocapture)
@@ -862,8 +862,7 @@ define void @PR13916.1() {
 ; Ensure that we handle overlapping memcpy intrinsics correctly, especially in
 ; the case where there is a directly identical value for both source and dest.
 ; CHECK: @PR13916.1
-; FIXME: We shouldn't leave this alloca around.
-; CHECK: alloca
+; CHECK-NOT: alloca
 ; CHECK: ret void
 
 entry:
@@ -878,8 +877,7 @@ define void @PR13916.2() {
 ; different pointer value chains, but during rewriting we coalesce them into the
 ; same value.
 ; CHECK: @PR13916.2
-; FIXME: We shouldn't leave this alloca around.
-; CHECK: alloca
+; CHECK-NOT: alloca
 ; CHECK: ret void
 
 entry:
@@ -895,5 +893,78 @@ if.then:
 if.end:
   %gep = getelementptr %PR13916.struct* %a, i32 0, i32 0
   %tmp2 = load i8* %gep
+  ret void
+}
+
+define void @PR13990() {
+; Ensure we can handle cases where processing one alloca causes the other
+; alloca to become dead and get deleted. This might crash or fail under
+; Valgrind if we regress.
+; CHECK: @PR13990
+; CHECK-NOT: alloca
+; CHECK: unreachable
+; CHECK: unreachable
+
+entry:
+  %tmp1 = alloca i8*
+  %tmp2 = alloca i8*
+  br i1 undef, label %bb1, label %bb2
+
+bb1:
+  store i8* undef, i8** %tmp2
+  br i1 undef, label %bb2, label %bb3
+
+bb2:
+  %tmp50 = select i1 undef, i8** %tmp2, i8** %tmp1
+  br i1 undef, label %bb3, label %bb4
+
+bb3:
+  unreachable
+
+bb4:
+  unreachable
+}
+
+define double @PR13969(double %x) {
+; Check that we detect when promotion will un-escape an alloca and iterate to
+; re-try running SROA over that alloca. Without that, the two allocas that are
+; stored into a dead alloca don't get rewritten and promoted.
+; CHECK: @PR13969
+
+entry:
+  %a = alloca double
+  %b = alloca double*
+  %c = alloca double
+; CHECK-NOT: alloca
+
+  store double %x, double* %a
+  store double* %c, double** %b
+  store double* %a, double** %b
+  store double %x, double* %c
+  %ret = load double* %a
+; CHECK-NOT: store
+; CHECK-NOT: load
+
+  ret double %ret
+; CHECK: ret double %x
+}
+
+%PR14034.struct = type { { {} }, i32, %PR14034.list }
+%PR14034.list = type { %PR14034.list*, %PR14034.list* }
+
+define void @PR14034() {
+; This test case tries to form GEPs into the empty leading struct members, and
+; subsequently crashed (under valgrind) before we fixed the PR. The important
+; thing is to handle empty structs gracefully.
+; CHECK: @PR14034
+
+entry:
+  %a = alloca %PR14034.struct
+  %list = getelementptr %PR14034.struct* %a, i32 0, i32 2
+  %prev = getelementptr %PR14034.list* %list, i32 0, i32 1
+  store %PR14034.list* undef, %PR14034.list** %prev
+  %cast0 = bitcast %PR14034.struct* undef to i8*
+  %cast1 = bitcast %PR14034.struct* %a to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %cast0, i8* %cast1, i32 12, i32 0, i1 false)
   ret void
 }

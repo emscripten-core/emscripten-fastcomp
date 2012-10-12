@@ -1,4 +1,4 @@
-//===-- llvm/Target/TargetData.h - Data size & alignment info ---*- C++ -*-===//
+//===--------- llvm/DataLayout.h - Data size & alignment info ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines target properties related to datatype size/offset/alignment
+// This file defines layout properties related to datatype size/offset/alignment
 // information.  It uses lazy annotations to cache information about how
 // structure types are laid out and used.
 //
@@ -17,11 +17,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TARGET_TARGETDATA_H
-#define LLVM_TARGET_TARGETDATA_H
+#ifndef LLVM_DATALAYOUT_H
+#define LLVM_DATALAYOUT_H
 
 #include "llvm/Pass.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
@@ -36,7 +37,7 @@ class LLVMContext;
 template<typename T>
 class ArrayRef;
 
-/// Enum used to categorize the alignment types stored by TargetAlignElem
+/// Enum used to categorize the alignment types stored by LayoutAlignElem
 enum AlignTypeEnum {
   INTEGER_ALIGN = 'i',               ///< Integer type alignment
   VECTOR_ALIGN = 'v',                ///< Vector type alignment
@@ -45,38 +46,55 @@ enum AlignTypeEnum {
   STACK_ALIGN = 's'                  ///< Stack objects alignment
 };
 
-/// Target alignment element.
+/// Layout alignment element.
 ///
-/// Stores the alignment data associated with a given alignment type (pointer,
-/// integer, vector, float) and type bit width.
+/// Stores the alignment data associated with a given alignment type (integer,
+/// vector, float) and type bit width.
 ///
 /// @note The unusual order of elements in the structure attempts to reduce
 /// padding and make the structure slightly more cache friendly.
-struct TargetAlignElem {
-  uint32_t AlignType    : 8;  ///< Alignment type (AlignTypeEnum)
-  uint32_t TypeBitWidth : 24; ///< Type bit width
-  uint32_t ABIAlign     : 16; ///< ABI alignment for this type/bitw
-  uint32_t PrefAlign    : 16; ///< Pref. alignment for this type/bitw
+struct LayoutAlignElem {
+  unsigned AlignType    : 8;  ///< Alignment type (AlignTypeEnum)
+  unsigned TypeBitWidth : 24; ///< Type bit width
+  unsigned ABIAlign     : 16; ///< ABI alignment for this type/bitw
+  unsigned PrefAlign    : 16; ///< Pref. alignment for this type/bitw
 
   /// Initializer
-  static TargetAlignElem get(AlignTypeEnum align_type, unsigned abi_align,
+  static LayoutAlignElem get(AlignTypeEnum align_type, unsigned abi_align,
                              unsigned pref_align, uint32_t bit_width);
   /// Equality predicate
-  bool operator==(const TargetAlignElem &rhs) const;
+  bool operator==(const LayoutAlignElem &rhs) const;
 };
 
-/// TargetData - This class holds a parsed version of the target data layout
+/// Layout pointer alignment element.
+///
+/// Stores the alignment data associated with a given pointer and address space.
+///
+/// @note The unusual order of elements in the structure attempts to reduce
+/// padding and make the structure slightly more cache friendly.
+struct PointerAlignElem {
+  unsigned            ABIAlign;       ///< ABI alignment for this type/bitw
+  unsigned            PrefAlign;      ///< Pref. alignment for this type/bitw
+  uint32_t            TypeBitWidth;   ///< Type bit width
+  uint32_t            AddressSpace;   ///< Address space for the pointer type
+
+  /// Initializer
+  static PointerAlignElem get(uint32_t addr_space, unsigned abi_align,
+                             unsigned pref_align, uint32_t bit_width);
+  /// Equality predicate
+  bool operator==(const PointerAlignElem &rhs) const;
+};
+
+
+/// DataLayout - This class holds a parsed version of the target data layout
 /// string in a module and provides methods for querying it.  The target data
 /// layout string is specified *by the target* - a frontend generating LLVM IR
 /// is required to generate the right target data for the target being codegen'd
 /// to.  If some measure of portability is desired, an empty string may be
 /// specified in the module.
-class TargetData : public ImmutablePass {
+class DataLayout : public ImmutablePass {
 private:
   bool          LittleEndian;          ///< Defaults to false
-  unsigned      PointerMemSize;        ///< Pointer size in bytes
-  unsigned      PointerABIAlign;       ///< Pointer ABI alignment
-  unsigned      PointerPrefAlign;      ///< Pointer preferred alignment
   unsigned      StackNaturalAlign;     ///< Stack natural alignment
 
   SmallVector<unsigned char, 8> LegalIntWidths; ///< Legal Integers.
@@ -85,13 +103,18 @@ private:
   ///
   /// @sa init().
   /// @note Could support multiple size pointer alignments, e.g., 32-bit
-  /// pointers vs. 64-bit pointers by extending TargetAlignment, but for now,
+  /// pointers vs. 64-bit pointers by extending LayoutAlignment, but for now,
   /// we don't.
-  SmallVector<TargetAlignElem, 16> Alignments;
+  SmallVector<LayoutAlignElem, 16> Alignments;
+  DenseMap<unsigned, PointerAlignElem> Pointers;
 
   /// InvalidAlignmentElem - This member is a signal that a requested alignment
   /// type and bit width were not found in the SmallVector.
-  static const TargetAlignElem InvalidAlignmentElem;
+  static const LayoutAlignElem InvalidAlignmentElem;
+
+  /// InvalidPointerElem - This member is a signal that a requested pointer
+  /// type and bit width were not found in the DenseSet.
+  static const PointerAlignElem InvalidPointerElem;
 
   // The StructType -> StructLayout map.
   mutable void *LayoutMap;
@@ -101,18 +124,31 @@ private:
                     unsigned pref_align, uint32_t bit_width);
   unsigned getAlignmentInfo(AlignTypeEnum align_type, uint32_t bit_width,
                             bool ABIAlign, Type *Ty) const;
+
+  //! Set/initialize pointer alignments
+  void setPointerAlignment(uint32_t addr_space, unsigned abi_align,
+      unsigned pref_align, uint32_t bit_width);
+
   //! Internal helper method that returns requested alignment for type.
   unsigned getAlignment(Type *Ty, bool abi_or_pref) const;
 
   /// Valid alignment predicate.
   ///
-  /// Predicate that tests a TargetAlignElem reference returned by get() against
+  /// Predicate that tests a LayoutAlignElem reference returned by get() against
   /// InvalidAlignmentElem.
-  bool validAlignment(const TargetAlignElem &align) const {
+  bool validAlignment(const LayoutAlignElem &align) const {
     return &align != &InvalidAlignmentElem;
   }
 
-  /// Initialise a TargetData object with default values, ensure that the
+  /// Valid pointer predicate.
+  ///
+  /// Predicate that tests a PointerAlignElem reference returned by get() against
+  /// InvalidPointerElem.
+  bool validPointer(const PointerAlignElem &align) const {
+    return &align != &InvalidPointerElem;
+  }
+
+  /// Initialise a DataLayout object with default values, ensure that the
   /// target data pass is registered.
   void init();
 
@@ -121,43 +157,42 @@ public:
   ///
   /// @note This has to exist, because this is a pass, but it should never be
   /// used.
-  TargetData();
+  DataLayout();
 
-  /// Constructs a TargetData from a specification string. See init().
-  explicit TargetData(StringRef TargetDescription)
+  /// Constructs a DataLayout from a specification string. See init().
+  explicit DataLayout(StringRef LayoutDescription)
     : ImmutablePass(ID) {
-    std::string errMsg = parseSpecifier(TargetDescription, this);
+    std::string errMsg = parseSpecifier(LayoutDescription, this);
     assert(errMsg == "" && "Invalid target data layout string.");
     (void)errMsg;
   }
 
   /// Parses a target data specification string. Returns an error message
   /// if the string is malformed, or the empty string on success. Optionally
-  /// initialises a TargetData object if passed a non-null pointer.
-  static std::string parseSpecifier(StringRef TargetDescription, TargetData* td = 0);
+  /// initialises a DataLayout object if passed a non-null pointer.
+  static std::string parseSpecifier(StringRef LayoutDescription,
+                                    DataLayout* td = 0);
 
   /// Initialize target data from properties stored in the module.
-  explicit TargetData(const Module *M);
+  explicit DataLayout(const Module *M);
 
-  TargetData(const TargetData &TD) :
+  DataLayout(const DataLayout &TD) :
     ImmutablePass(ID),
     LittleEndian(TD.isLittleEndian()),
-    PointerMemSize(TD.PointerMemSize),
-    PointerABIAlign(TD.PointerABIAlign),
-    PointerPrefAlign(TD.PointerPrefAlign),
     LegalIntWidths(TD.LegalIntWidths),
     Alignments(TD.Alignments),
+    Pointers(TD.Pointers),
     LayoutMap(0)
   { }
 
-  ~TargetData();  // Not virtual, do not subclass this class
+  ~DataLayout();  // Not virtual, do not subclass this class
 
-  /// Target endianness...
+  /// Layout endianness...
   bool isLittleEndian() const { return LittleEndian; }
   bool isBigEndian() const { return !LittleEndian; }
 
   /// getStringRepresentation - Return the string representation of the
-  /// TargetData.  This representation is in the same format accepted by the
+  /// DataLayout.  This representation is in the same format accepted by the
   /// string constructor above.
   std::string getStringRepresentation() const;
 
@@ -195,15 +230,46 @@ public:
     return false;
   }
 
-  /// Target pointer alignment
-  unsigned getPointerABIAlignment() const { return PointerABIAlign; }
+  /// Layout pointer alignment
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerABIAlignment(unsigned AS = 0)  const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return val->second.ABIAlign;
+  }
   /// Return target's alignment for stack-based pointers
-  unsigned getPointerPrefAlignment() const { return PointerPrefAlign; }
-  /// Target pointer size
-  unsigned getPointerSize()         const { return PointerMemSize; }
-  /// Target pointer size, in bits
-  unsigned getPointerSizeInBits()   const { return 8*PointerMemSize; }
-
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerPrefAlignment(unsigned AS = 0) const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return val->second.PrefAlign;
+  }
+  /// Layout pointer size
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerSize(unsigned AS = 0)          const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return val->second.TypeBitWidth;
+  }
+  /// Layout pointer size, in bits
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerSizeInBits(unsigned AS = 0)    const {
+    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
+    if (val == Pointers.end()) {
+      val = Pointers.find(0);
+    }
+    return 8*val->second.TypeBitWidth;
+  }
   /// Size examples:
   ///
   /// Type        SizeInBits  StoreSizeInBits  AllocSizeInBits[*]
@@ -281,8 +347,9 @@ public:
 
   /// getIntPtrType - Return an unsigned integer type that is the same size or
   /// greater to the host pointer size.
-  ///
-  IntegerType *getIntPtrType(LLVMContext &C) const;
+  /// FIXME: Need to remove the default argument when the rest of the LLVM code
+  /// base has been updated.
+  IntegerType *getIntPtrType(LLVMContext &C, unsigned AddressSpace = 0) const;
 
   /// getIndexedOffset - return the offset from the beginning of the type for
   /// the specified indices.  This is used to implement getelementptr.
@@ -318,7 +385,7 @@ public:
 };
 
 /// StructLayout - used to lazily calculate structure layout information for a
-/// target machine, based on the TargetData structure.
+/// target machine, based on the DataLayout structure.
 ///
 class StructLayout {
   uint64_t StructSize;
@@ -354,8 +421,8 @@ public:
   }
 
 private:
-  friend class TargetData;   // Only TargetData can create this class
-  StructLayout(StructType *ST, const TargetData &TD);
+  friend class DataLayout;   // Only DataLayout can create this class
+  StructLayout(StructType *ST, const DataLayout &TD);
 };
 
 } // End llvm namespace

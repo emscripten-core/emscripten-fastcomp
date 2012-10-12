@@ -6343,9 +6343,9 @@ EmitSjLjDispatchBlock(MachineInstr *MI, MachineBasicBlock *MBB) const {
       const Constant *C = ConstantInt::get(Int32Ty, NumLPads);
 
       // MachineConstantPool wants an explicit alignment.
-      unsigned Align = getTargetData()->getPrefTypeAlignment(Int32Ty);
+      unsigned Align = getDataLayout()->getPrefTypeAlignment(Int32Ty);
       if (Align == 0)
-        Align = getTargetData()->getTypeAllocSize(C->getType());
+        Align = getDataLayout()->getTypeAllocSize(C->getType());
       unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align);
 
       unsigned VReg1 = MRI->createVirtualRegister(TRC);
@@ -6432,9 +6432,9 @@ EmitSjLjDispatchBlock(MachineInstr *MI, MachineBasicBlock *MBB) const {
       const Constant *C = ConstantInt::get(Int32Ty, NumLPads);
 
       // MachineConstantPool wants an explicit alignment.
-      unsigned Align = getTargetData()->getPrefTypeAlignment(Int32Ty);
+      unsigned Align = getDataLayout()->getPrefTypeAlignment(Int32Ty);
       if (Align == 0)
-        Align = getTargetData()->getTypeAllocSize(C->getType());
+        Align = getDataLayout()->getTypeAllocSize(C->getType());
       unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align);
 
       unsigned VReg1 = MRI->createVirtualRegister(TRC);
@@ -6605,7 +6605,8 @@ EmitStructByval(MachineInstr *MI, MachineBasicBlock *BB) const {
     UnitSize = 2;
   } else {
     // Check whether we can use NEON instructions.
-    if (!MF->getFunction()->getFnAttributes().hasNoImplicitFloatAttr() &&
+    if (!MF->getFunction()->getFnAttributes().
+          hasAttribute(Attributes::NoImplicitFloat) &&
         Subtarget->hasNEON()) {
       if ((Align % 16 == 0) && SizeVal >= 16) {
         ldrOpc = ARM::VLD1q32wb_fixed;
@@ -6757,9 +6758,9 @@ EmitStructByval(MachineInstr *MI, MachineBasicBlock *BB) const {
     const Constant *C = ConstantInt::get(Int32Ty, LoopSize);
 
     // MachineConstantPool wants an explicit alignment.
-    unsigned Align = getTargetData()->getPrefTypeAlignment(Int32Ty);
+    unsigned Align = getDataLayout()->getPrefTypeAlignment(Int32Ty);
     if (Align == 0)
-      Align = getTargetData()->getTypeAllocSize(C->getType());
+      Align = getDataLayout()->getTypeAllocSize(C->getType());
     unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align);
 
     AddDefaultPred(BuildMI(BB, dl, TII->get(ARM::LDRcp))
@@ -9343,7 +9344,7 @@ EVT ARMTargetLowering::getOptimalMemOpType(uint64_t Size,
 
   // See if we can use NEON instructions for this...
   if (IsZeroVal &&
-      !F->getFnAttributes().hasNoImplicitFloatAttr() &&
+      !F->getFnAttributes().hasAttribute(Attributes::NoImplicitFloat) &&
       Subtarget->hasNEON()) {
     if (memOpAlign(SrcAlign, DstAlign, 16) && Size >= 16) {
       return MVT::v4i32;
@@ -10155,7 +10156,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
   case Intrinsic::arm_neon_vld4lane: {
     Info.opc = ISD::INTRINSIC_W_CHAIN;
     // Conservatively set memVT to the entire set of vectors loaded.
-    uint64_t NumElts = getTargetData()->getTypeAllocSize(I.getType()) / 8;
+    uint64_t NumElts = getDataLayout()->getTypeAllocSize(I.getType()) / 8;
     Info.memVT = EVT::getVectorVT(I.getType()->getContext(), MVT::i64, NumElts);
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
@@ -10180,7 +10181,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
       Type *ArgTy = I.getArgOperand(ArgI)->getType();
       if (!ArgTy->isVectorTy())
         break;
-      NumElts += getTargetData()->getTypeAllocSize(ArgTy) / 8;
+      NumElts += getDataLayout()->getTypeAllocSize(ArgTy) / 8;
     }
     Info.memVT = EVT::getVectorVT(I.getType()->getContext(), MVT::i64, NumElts);
     Info.ptrVal = I.getArgOperand(0);

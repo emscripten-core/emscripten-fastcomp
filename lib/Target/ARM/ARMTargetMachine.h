@@ -25,7 +25,7 @@
 #include "Thumb1FrameLowering.h"
 #include "Thumb2InstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/ADT/OwningPtr.h"
 
@@ -69,7 +69,7 @@ public:
 class ARMTargetMachine : public ARMBaseTargetMachine {
   virtual void anchor();
   ARMInstrInfo        InstrInfo;
-  const TargetData    DataLayout;       // Calculates type size & alignment
+  const DataLayout    DL;       // Calculates type size & alignment
   ARMELFWriterInfo    ELFWriterInfo;
   ARMTargetLowering   TLInfo;
   ARMSelectionDAGInfo TSInfo;
@@ -97,7 +97,7 @@ class ARMTargetMachine : public ARMBaseTargetMachine {
   }
 
   virtual const ARMInstrInfo     *getInstrInfo() const { return &InstrInfo; }
-  virtual const TargetData       *getTargetData() const { return &DataLayout; }
+  virtual const DataLayout       *getDataLayout() const { return &DL; }
   virtual const ARMELFWriterInfo *getELFWriterInfo() const {
     return Subtarget.isTargetELF() ? &ELFWriterInfo : 0;
   }
@@ -111,7 +111,7 @@ class ThumbTargetMachine : public ARMBaseTargetMachine {
   virtual void anchor();
   // Either Thumb1InstrInfo or Thumb2InstrInfo.
   OwningPtr<ARMBaseInstrInfo> InstrInfo;
-  const TargetData    DataLayout;   // Calculates type size & alignment
+  const DataLayout    DL;   // Calculates type size & alignment
   ARMELFWriterInfo    ELFWriterInfo;
   ARMTargetLowering   TLInfo;
   ARMSelectionDAGInfo TSInfo;
@@ -145,7 +145,7 @@ public:
   virtual const ARMFrameLowering *getFrameLowering() const {
     return FrameLowering.get();
   }
-  virtual const TargetData       *getTargetData() const { return &DataLayout; }
+  virtual const DataLayout       *getDataLayout() const { return &DL; }
   virtual const ARMELFWriterInfo *getELFWriterInfo() const {
     return Subtarget.isTargetELF() ? &ELFWriterInfo : 0;
   }

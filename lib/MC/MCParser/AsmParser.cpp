@@ -1044,9 +1044,6 @@ bool AsmParser::ParseBinOpRHS(unsigned Precedence, const MCExpr *&Res,
   }
 }
 
-
-
-
 /// ParseStatement:
 ///   ::= EndOfStatement
 ///   ::= Label* Directive ...Operands... EndOfStatement

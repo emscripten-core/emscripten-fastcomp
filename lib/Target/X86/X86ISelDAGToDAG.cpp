@@ -377,7 +377,7 @@ X86DAGToDAGISel::IsProfitableToFold(SDValue N, SDNode *U, SDNode *Root) const {
 /// MoveBelowCallOrigChain - Replace the original chain operand of the call with
 /// load's chain operand and move load below the call's chain operand.
 static void MoveBelowOrigChain(SelectionDAG *CurDAG, SDValue Load,
-                                  SDValue Call, SDValue OrigChain) {
+                               SDValue Call, SDValue OrigChain) {
   SmallVector<SDValue, 8> Ops;
   SDValue Chain = OrigChain.getOperand(0);
   if (Chain.getNode() == Load.getNode())
@@ -401,11 +401,13 @@ static void MoveBelowOrigChain(SelectionDAG *CurDAG, SDValue Load,
   CurDAG->UpdateNodeOperands(OrigChain.getNode(), &Ops[0], Ops.size());
   CurDAG->UpdateNodeOperands(Load.getNode(), Call.getOperand(0),
                              Load.getOperand(1), Load.getOperand(2));
+
+  unsigned NumOps = Call.getNode()->getNumOperands();
   Ops.clear();
   Ops.push_back(SDValue(Load.getNode(), 1));
-  for (unsigned i = 1, e = Call.getNode()->getNumOperands(); i != e; ++i)
+  for (unsigned i = 1, e = NumOps; i != e; ++i)
     Ops.push_back(Call.getOperand(i));
-  CurDAG->UpdateNodeOperands(Call.getNode(), &Ops[0], Ops.size());
+  CurDAG->UpdateNodeOperands(Call.getNode(), &Ops[0], NumOps);
 }
 
 /// isCalleeLoad - Return true if call address is a load and it can be
@@ -414,6 +416,10 @@ static void MoveBelowOrigChain(SelectionDAG *CurDAG, SDValue Load,
 /// In the case of a tail call, there isn't a callseq node between the call
 /// chain and the load.
 static bool isCalleeLoad(SDValue Callee, SDValue &Chain, bool HasCallSeq) {
+  // The transformation is somewhat dangerous if the call's chain was glued to
+  // the call. After MoveBelowOrigChain the load is moved between the call and
+  // the chain, this can create a cycle if the load is not folded. So it is
+  // *really* important that we are sure the load will be folded.
   if (Callee.getNode() == Chain.getNode() || !Callee.hasOneUse())
     return false;
   LoadSDNode *LD = dyn_cast<LoadSDNode>(Callee.getNode());
@@ -443,7 +449,8 @@ static bool isCalleeLoad(SDValue Callee, SDValue &Chain, bool HasCallSeq) {
 
 void X86DAGToDAGISel::PreprocessISelDAG() {
   // OptForSize is used in pattern predicates that isel is matching.
-  OptForSize = MF->getFunction()->getFnAttributes().hasOptimizeForSizeAttr();
+  OptForSize = MF->getFunction()->getFnAttributes().
+    hasAttribute(Attributes::OptimizeForSize);
 
   for (SelectionDAG::allnodes_iterator I = CurDAG->allnodes_begin(),
        E = CurDAG->allnodes_end(); I != E; ) {
@@ -452,7 +459,10 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
     if (OptLevel != CodeGenOpt::None &&
         !Subtarget->isTargetNaCl() &&   // @LOCALMOD: We can't fold load/call
         (N->getOpcode() == X86ISD::CALL ||
-         N->getOpcode() == X86ISD::TC_RETURN)) {
+         (N->getOpcode() == X86ISD::TC_RETURN &&
+          // Only does this if load can be foled into TC_RETURN.
+          (Subtarget->is64Bit() ||
+           getTargetMachine().getRelocationModel() != Reloc::PIC_)))) {
       /// Also try moving call address load from outside callseq_start to just
       /// before the call to allow it to be folded.
       ///

@@ -161,7 +161,7 @@ SSPBufferSize("stack-protector-buffer-size", cl::init(8),
 LTOModule::LTOModule(llvm::Module *m, llvm::TargetMachine *t)
   : _module(m), _target(t),
     _context(*_target->getMCAsmInfo(), *_target->getRegisterInfo(), NULL),
-    _mangler(_context, *_target->getTargetData()) {}
+    _mangler(_context, *_target->getDataLayout()) {}
 
 /// isBitcodeFile - Returns 'true' if the file (or memory contents) is LLVM
 /// bitcode.
@@ -302,7 +302,7 @@ LTOModule *LTOModule::makeLTOModule(MemoryBuffer *buffer,
 
   // @LOCALMOD-BEGIN
   // Add declarations for functions which may be used by intrinsics.
-  IntrinsicLowering IL(*target->getTargetData());
+  IntrinsicLowering IL(*target->getDataLayout());
   IL.AddPrototypes(*m);
   // @LOCALMOD-END
 

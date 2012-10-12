@@ -22,16 +22,16 @@
 namespace llvm {
   class CallInst;
   class Module;
-  class TargetData;
+  class DataLayout;
 
   class IntrinsicLowering {
-    const TargetData& TD;
+    const DataLayout& TD;
 
     static StringSet<> FuncNames; // @LOCALMOD
 
     bool Warned;
   public:
-    explicit IntrinsicLowering(const TargetData &td) :
+    explicit IntrinsicLowering(const DataLayout &td) :
       TD(td), Warned(false) {}
 
     /// @LOCALMOD-BEGIN
