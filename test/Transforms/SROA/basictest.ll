@@ -409,8 +409,11 @@ declare void @llvm.memset.p0i8.i32(i8* nocapture, i8, i32, i32, i1) nounwind
 
 define i16 @test5() {
 ; CHECK: @test5
-; CHECK: alloca float
-; CHECK: ret i16 %
+; CHECK-NOT: alloca float
+; CHECK:      %[[cast:.*]] = bitcast float 0.0{{.*}} to i32
+; CHECK-NEXT: %[[shr:.*]] = lshr i32 %[[cast]], 16
+; CHECK-NEXT: %[[trunc:.*]] = trunc i32 %[[shr]] to i16
+; CHECK-NEXT: ret i16 %[[trunc]]
 
 entry:
   %a = alloca [4 x i8]
@@ -966,5 +969,97 @@ entry:
   %cast0 = bitcast %PR14034.struct* undef to i8*
   %cast1 = bitcast %PR14034.struct* %a to i8*
   call void @llvm.memcpy.p0i8.p0i8.i32(i8* %cast0, i8* %cast1, i32 12, i32 0, i1 false)
+  ret void
+}
+
+define i32 @test22(i32 %x) {
+; Test that SROA and promotion is not confused by a grab bax mixture of pointer
+; types involving wrapper aggregates and zero-length aggregate members.
+; CHECK: @test22
+
+entry:
+  %a1 = alloca { { [1 x { i32 }] } }
+  %a2 = alloca { {}, { float }, [0 x i8] }
+  %a3 = alloca { [0 x i8], { [0 x double], [1 x [1 x <4 x i8>]], {} }, { { {} } } }
+; CHECK-NOT: alloca
+
+  %wrap1 = insertvalue [1 x { i32 }] undef, i32 %x, 0, 0
+  %gep1 = getelementptr { { [1 x { i32 }] } }* %a1, i32 0, i32 0, i32 0
+  store [1 x { i32 }] %wrap1, [1 x { i32 }]* %gep1
+
+  %gep2 = getelementptr { { [1 x { i32 }] } }* %a1, i32 0, i32 0
+  %ptrcast1 = bitcast { [1 x { i32 }] }* %gep2 to { [1 x { float }] }*
+  %load1 = load { [1 x { float }] }* %ptrcast1
+  %unwrap1 = extractvalue { [1 x { float }] } %load1, 0, 0
+
+  %wrap2 = insertvalue { {}, { float }, [0 x i8] } undef, { float } %unwrap1, 1
+  store { {}, { float }, [0 x i8] } %wrap2, { {}, { float }, [0 x i8] }* %a2
+
+  %gep3 = getelementptr { {}, { float }, [0 x i8] }* %a2, i32 0, i32 1, i32 0
+  %ptrcast2 = bitcast float* %gep3 to <4 x i8>*
+  %load3 = load <4 x i8>* %ptrcast2
+  %valcast1 = bitcast <4 x i8> %load3 to i32
+
+  %wrap3 = insertvalue [1 x [1 x i32]] undef, i32 %valcast1, 0, 0
+  %wrap4 = insertvalue { [1 x [1 x i32]], {} } undef, [1 x [1 x i32]] %wrap3, 0
+  %gep4 = getelementptr { [0 x i8], { [0 x double], [1 x [1 x <4 x i8>]], {} }, { { {} } } }* %a3, i32 0, i32 1
+  %ptrcast3 = bitcast { [0 x double], [1 x [1 x <4 x i8>]], {} }* %gep4 to { [1 x [1 x i32]], {} }*
+  store { [1 x [1 x i32]], {} } %wrap4, { [1 x [1 x i32]], {} }* %ptrcast3
+
+  %gep5 = getelementptr { [0 x i8], { [0 x double], [1 x [1 x <4 x i8>]], {} }, { { {} } } }* %a3, i32 0, i32 1, i32 1, i32 0
+  %ptrcast4 = bitcast [1 x <4 x i8>]* %gep5 to { {}, float, {} }*
+  %load4 = load { {}, float, {} }* %ptrcast4
+  %unwrap2 = extractvalue { {}, float, {} } %load4, 1
+  %valcast2 = bitcast float %unwrap2 to i32
+
+  ret i32 %valcast2
+; CHECK: ret i32
+}
+
+define void @PR14059.1(double* %d) {
+; In PR14059 a peculiar construct was identified as something that is used
+; pervasively in ARM's ABI-calling-convention lowering: the passing of a struct
+; of doubles via an array of i32 in order to place the data into integer
+; registers. This in turn was missed as an optimization by SROA due to the
+; partial loads and stores of integers to the double alloca we were trying to
+; form and promote. The solution is to widen the integer operations to be
+; whole-alloca operations, and perform the appropriate bitcasting on the
+; *values* rather than the pointers. When this works, partial reads and writes
+; via integers can be promoted away.
+; CHECK: @PR14059.1
+; CHECK-NOT: alloca
+; CHECK: ret void
+
+entry:
+  %X.sroa.0.i = alloca double, align 8
+  %0 = bitcast double* %X.sroa.0.i to i8*
+  call void @llvm.lifetime.start(i64 -1, i8* %0)
+
+  ; Store to the low 32-bits...
+  %X.sroa.0.0.cast2.i = bitcast double* %X.sroa.0.i to i32*
+  store i32 0, i32* %X.sroa.0.0.cast2.i, align 8
+
+  ; Also use a memset to the middle 32-bits for fun.
+  %X.sroa.0.2.raw_idx2.i = getelementptr inbounds i8* %0, i32 2
+  call void @llvm.memset.p0i8.i64(i8* %X.sroa.0.2.raw_idx2.i, i8 0, i64 4, i32 1, i1 false)
+
+  ; Or a memset of the whole thing.
+  call void @llvm.memset.p0i8.i64(i8* %0, i8 0, i64 8, i32 1, i1 false)
+
+  ; Write to the high 32-bits with a memcpy.
+  %X.sroa.0.4.raw_idx4.i = getelementptr inbounds i8* %0, i32 4
+  %d.raw = bitcast double* %d to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %X.sroa.0.4.raw_idx4.i, i8* %d.raw, i32 4, i32 1, i1 false)
+
+  ; Store to the high 32-bits...
+  %X.sroa.0.4.cast5.i = bitcast i8* %X.sroa.0.4.raw_idx4.i to i32*
+  store i32 1072693248, i32* %X.sroa.0.4.cast5.i, align 4
+
+  ; Do the actual math...
+  %X.sroa.0.0.load1.i = load double* %X.sroa.0.i, align 8
+  %accum.real.i = load double* %d, align 8
+  %add.r.i = fadd double %accum.real.i, %X.sroa.0.0.load1.i
+  store double %add.r.i, double* %d, align 8
+  call void @llvm.lifetime.end(i64 -1, i8* %0)
   ret void
 }

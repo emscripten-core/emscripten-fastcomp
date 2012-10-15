@@ -185,7 +185,7 @@ Function::Function(FunctionType *Ty, LinkageTypes Linkage,
 
   // Ensure intrinsics have the right parameter attributes.
   if (unsigned IID = getIntrinsicID())
-    setAttributes(Intrinsic::getAttributes(Intrinsic::ID(IID)));
+    setAttributes(Intrinsic::getAttributes(getContext(), Intrinsic::ID(IID)));
 
 }
 
@@ -249,13 +249,13 @@ void Function::dropAllReferences() {
 
 void Function::addAttribute(unsigned i, Attributes attr) {
   AttrListPtr PAL = getAttributes();
-  PAL = PAL.addAttr(i, attr);
+  PAL = PAL.addAttr(getContext(), i, attr);
   setAttributes(PAL);
 }
 
 void Function::removeAttribute(unsigned i, Attributes attr) {
   AttrListPtr PAL = getAttributes();
-  PAL = PAL.removeAttr(i, attr);
+  PAL = PAL.removeAttr(getContext(), i, attr);
   setAttributes(PAL);
 }
 

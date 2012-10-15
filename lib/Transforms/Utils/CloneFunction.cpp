@@ -98,10 +98,14 @@ void llvm::CloneFunctionInto(Function *NewFunc, const Function *OldFunc,
         Anew->addAttr( OldFunc->getAttributes()
                        .getParamAttributes(I->getArgNo() + 1));
     NewFunc->setAttributes(NewFunc->getAttributes()
-                           .addAttr(0, OldFunc->getAttributes()
+                           .addAttr(NewFunc->getContext(),
+                                    AttrListPtr::ReturnIndex,
+                                    OldFunc->getAttributes()
                                      .getRetAttributes()));
     NewFunc->setAttributes(NewFunc->getAttributes()
-                           .addAttr(~0, OldFunc->getAttributes()
+                           .addAttr(NewFunc->getContext(),
+                                    AttrListPtr::FunctionIndex,
+                                    OldFunc->getAttributes()
                                      .getFnAttributes()));
 
   }

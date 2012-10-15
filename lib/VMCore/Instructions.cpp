@@ -332,21 +332,22 @@ CallInst::CallInst(const CallInst &CI)
 
 void CallInst::addAttribute(unsigned i, Attributes attr) {
   AttrListPtr PAL = getAttributes();
-  PAL = PAL.addAttr(i, attr);
+  PAL = PAL.addAttr(getContext(), i, attr);
   setAttributes(PAL);
 }
 
 void CallInst::removeAttribute(unsigned i, Attributes attr) {
   AttrListPtr PAL = getAttributes();
-  PAL = PAL.removeAttr(i, attr);
+  PAL = PAL.removeAttr(getContext(), i, attr);
   setAttributes(PAL);
 }
 
 bool CallInst::hasFnAttr(Attributes::AttrVal A) const {
-  if (AttributeList.getParamAttributes(~0U).hasAttribute(A))
+  if (AttributeList.getParamAttributes(AttrListPtr::FunctionIndex)
+      .hasAttribute(A))
     return true;
   if (const Function *F = getCalledFunction())
-    return F->getParamAttributes(~0U).hasAttribute(A);
+    return F->getParamAttributes(AttrListPtr::FunctionIndex).hasAttribute(A);
   return false;
 }
 
@@ -571,10 +572,11 @@ void InvokeInst::setSuccessorV(unsigned idx, BasicBlock *B) {
 }
 
 bool InvokeInst::hasFnAttr(Attributes::AttrVal A) const {
-  if (AttributeList.getParamAttributes(~0U).hasAttribute(A))
+  if (AttributeList.getParamAttributes(AttrListPtr::FunctionIndex).
+      hasAttribute(A))
     return true;
   if (const Function *F = getCalledFunction())
-    return F->getParamAttributes(~0U).hasAttribute(A);
+    return F->getParamAttributes(AttrListPtr::FunctionIndex).hasAttribute(A);
   return false;
 }
 
@@ -588,13 +590,13 @@ bool InvokeInst::paramHasAttr(unsigned i, Attributes::AttrVal A) const {
 
 void InvokeInst::addAttribute(unsigned i, Attributes attr) {
   AttrListPtr PAL = getAttributes();
-  PAL = PAL.addAttr(i, attr);
+  PAL = PAL.addAttr(getContext(), i, attr);
   setAttributes(PAL);
 }
 
 void InvokeInst::removeAttribute(unsigned i, Attributes attr) {
   AttrListPtr PAL = getAttributes();
-  PAL = PAL.removeAttr(i, attr);
+  PAL = PAL.removeAttr(getContext(), i, attr);
   setAttributes(PAL);
 }
 

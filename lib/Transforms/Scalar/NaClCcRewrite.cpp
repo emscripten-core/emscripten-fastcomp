@@ -543,7 +543,7 @@ void FixFunctionByvalsParameter(Function& F,
     v = new StoreInst(arg, v, before);
 
     new_arguments.push_back(arg);
-    new_attributes.push_back(Attributes(Attributes::None));
+    new_attributes.push_back(Attributes());
   }
 }
 
@@ -585,7 +585,7 @@ void UpdateFunctionSignature(Function &F,
   // Update function attributes
   for (size_t i = 0; i < new_attributes.size(); ++i) {
     Attributes attr = new_attributes[i];
-    if (attr) {
+    if (attr.hasAttributes()) {
       // index 0 is for the return value
       F.addAttribute(i + 1, attr);
     }
@@ -752,7 +752,7 @@ void PrependCompensationForByvals(std::vector<Value*>& new_operands,
     v = new LoadInst(v, "byval_extract", call);
 
     new_operands.push_back(v);
-    new_attributes.push_back(Attributes(Attributes::None));
+    new_attributes.push_back(Attributes());
   }
 }
 

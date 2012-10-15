@@ -146,7 +146,9 @@ bool PruneEH::runOnSCC(CallGraphSCC &SCC) {
 
       Function *F = (*I)->getFunction();
       const AttrListPtr &PAL = F->getAttributes();
-      const AttrListPtr &NPAL = PAL.addAttr(~0, Attributes::get(NewAttributes));
+      const AttrListPtr &NPAL = PAL.addAttr(F->getContext(), ~0,
+                                            Attributes::get(F->getContext(),
+                                                            NewAttributes));
       if (PAL != NPAL) {
         MadeChange = true;
         F->setAttributes(NPAL);

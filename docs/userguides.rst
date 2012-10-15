@@ -18,6 +18,8 @@ User Guides
    HowToAddABuilder
    yaml2obj
    HowToSubmitABug
+   SphinxQuickstartTemplate
+   Phabricator
 
 * :ref:`getting_started`
     
@@ -70,6 +72,10 @@ User Guides
     
    Instructions for properly submitting information about any bugs you run into
    in the LLVM system.
+* :doc:`SphinxQuickstartTemplate`
+
+  A template + tutorial for writing new Sphinx documentation. It is meant
+  to be read in source form.
     
 * `LLVM Testing Infrastructure Guide <TestingGuide.html>`_
 
