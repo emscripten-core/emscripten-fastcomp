@@ -547,8 +547,7 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
     // Instruction can be predicated -- use the new sandbox.
     BuildMI(MBB, MBBI, MI.getDebugLoc(),
             TII->get(ARM::SFI_GUARD_LOADSTORE_TST))
-      .addReg(Addr, RegState::Define)  // Address definition (as dst)
-      .addReg(Addr, RegState::Kill);   // Address read (as src)
+      .addReg(Addr);   // Address read (as src)
   } else {
     unsigned Opcode;
     if (IsLoad && (MI.getOperand(0).getReg() == ARM::SP)) {

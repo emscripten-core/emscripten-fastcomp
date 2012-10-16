@@ -1596,7 +1596,7 @@ PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
 
 let Defs = [CPSR] in
 def SFI_GUARD_LOADSTORE_TST :
-PseudoInst<(outs GPR:$dst), (ins GPR:$a), NoItinerary, []>;
+PseudoInst<(outs), (ins GPR:$a), NoItinerary, []>;
 
 // Like SFI_GUARD_LOADSTORE, but reserved for loads into SP.
 def SFI_GUARD_SP_LOAD :
