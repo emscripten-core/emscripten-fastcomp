@@ -136,9 +136,6 @@ private:
   /// ParsingInlineAsm - Are we parsing ms-style inline assembly?
   bool ParsingInlineAsm;
 
-  /// IsInstruction - Was the last parsed statement an instruction?
-  bool IsInstruction;
-
   /// ParsedOperands - The parsed operands from the last parsed statement.
   SmallVector<MCParsedAsmOperand*, 8> ParsedOperands;
 
@@ -185,6 +182,7 @@ public:
 
   bool ParseStatement();
   void setParsingInlineAsm(bool V) { ParsingInlineAsm = V; }
+  bool isParsingInlineAsm() { return ParsingInlineAsm; }
   unsigned getNumParsedOperands() { return ParsedOperands.size(); }
   MCParsedAsmOperand &getParsedOperand(unsigned OpNum) {
     assert (ParsedOperands.size() > OpNum);
@@ -195,7 +193,7 @@ public:
       delete ParsedOperands[i];
     ParsedOperands.clear();
   }
-  bool isInstruction() { return IsInstruction; }
+  bool isInstruction() { return Opcode != (unsigned)~0x0; }
   unsigned getOpcode() { return Opcode; }
 
   bool ParseExpression(const MCExpr *&Res);
@@ -446,7 +444,7 @@ AsmParser::AsmParser(SourceMgr &_SM, MCContext &_Ctx,
     GenericParser(new GenericAsmParser), PlatformParser(0),
     CurBuffer(0), MacrosEnabled(true), CppHashLineNumber(0),
     AssemblerDialect(~0U), IsDarwin(false), ParsingInlineAsm(false),
-    IsInstruction(false), Opcode(0) {
+    Opcode(~0x0) {
   // Save the old handler.
   SavedDiagHandler = SrcMgr.getDiagHandler();
   SavedDiagContext = SrcMgr.getDiagContext();

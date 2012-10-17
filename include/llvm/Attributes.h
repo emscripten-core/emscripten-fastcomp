@@ -22,12 +22,10 @@
 
 namespace llvm {
 
+class AttrBuilder;
+class AttributesImpl;
 class LLVMContext;
 class Type;
-
-/// AttributeImpl - The internal representation of the Attributes class. This is
-/// uniquified.
-class AttributesImpl;
 
 /// Attributes - A bitset of attributes.
 class Attributes {
@@ -36,15 +34,15 @@ public:
   /// should be treated by optimizations and code generation. This enumeration
   /// lists the attributes that can be associated with parameters, function
   /// results or the function itself.
-  /// 
+  ///
   /// Note that uwtable is about the ABI or the user mandating an entry in the
   /// unwind table. The nounwind attribute is about an exception passing by the
   /// function.
-  /// 
+  ///
   /// In a theoretical system that uses tables for profiling and sjlj for
   /// exceptions, they would be fully independent. In a normal system that uses
   /// tables for both, the semantics are:
-  /// 
+  ///
   /// nil                = Needs an entry because an exception might pass by.
   /// nounwind           = No need for an entry
   /// uwtable            = Needs an entry because the ABI says so and because
@@ -52,6 +50,7 @@ public:
   /// uwtable + nounwind = Needs an entry because the ABI says so.
 
   enum AttrVal {
+    // IR-Level Attributes
     None            = 0,   ///< No attributes have been set
     AddressSafety   = 1,   ///< Address safety checking is on.
     Alignment       = 2,   ///< Alignment of parameter (5 bits)
@@ -89,10 +88,10 @@ public:
   };
 private:
   AttributesImpl *Attrs;
-  Attributes(AttributesImpl *A);
+  Attributes(AttributesImpl *A) : Attrs(A) {}
 public:
   Attributes() : Attrs(0) {}
-  Attributes(const Attributes &A);
+  Attributes(const Attributes &A) : Attrs(A.Attrs) {}
   Attributes &operator=(const Attributes &A) {
     Attrs = A.Attrs;
     return *this;
@@ -100,81 +99,8 @@ public:
 
   /// get - Return a uniquified Attributes object. This takes the uniquified
   /// value from the Builder and wraps it in the Attributes class.
-  class Builder;
   static Attributes get(LLVMContext &Context, ArrayRef<AttrVal> Vals);
-  static Attributes get(LLVMContext &Context, Builder &B);
-
-  //===--------------------------------------------------------------------===//
-  /// Attributes::Builder - This class is used in conjunction with the
-  /// Attributes::get method to create an Attributes object. The object itself
-  /// is uniquified. The Builder's value, however, is not. So this can be used
-  /// as a quick way to test for equality, presence of attributes, etc.
-  class Builder {
-    friend class Attributes;
-    uint64_t Bits;
-  public:
-    Builder() : Bits(0) {}
-    explicit Builder(uint64_t B) : Bits(B) {}
-    Builder(const Attributes &A) : Bits(A.Raw()) {}
-    Builder(const Builder &B) : Bits(B.Bits) {}
-
-    void clear() { Bits = 0; }
-
-    bool hasAttribute(Attributes::AttrVal A) const;
-    bool hasAttributes() const;
-    bool hasAttributes(const Attributes &A) const;
-    bool hasAlignmentAttr() const;
-
-    uint64_t getAlignment() const;
-    uint64_t getStackAlignment() const;
-
-    Builder &addAttribute(Attributes::AttrVal Val);
-    Builder &removeAttribute(Attributes::AttrVal Val);
-
-    Builder &addAttributes(const Attributes &A);
-    Builder &removeAttributes(const Attributes &A);
-
-    /// addRawValue - Add the raw value to the internal representation. This
-    /// should be used ONLY for decoding bitcode!
-    Builder &addRawValue(uint64_t Val);
-
-    /// addAlignmentAttr - This turns an int alignment (which must be a power of
-    /// 2) into the form used internally in Attributes.
-    Builder &addAlignmentAttr(unsigned Align);
-
-    /// addStackAlignmentAttr - This turns an int stack alignment (which must be
-    /// a power of 2) into the form used internally in Attributes.
-    Builder &addStackAlignmentAttr(unsigned Align);
-
-    /// @brief Remove attributes that are used on functions only.
-    void removeFunctionOnlyAttrs() {
-      removeAttribute(Attributes::NoReturn)
-        .removeAttribute(Attributes::NoUnwind)
-        .removeAttribute(Attributes::ReadNone)
-        .removeAttribute(Attributes::ReadOnly)
-        .removeAttribute(Attributes::NoInline)
-        .removeAttribute(Attributes::AlwaysInline)
-        .removeAttribute(Attributes::OptimizeForSize)
-        .removeAttribute(Attributes::StackProtect)
-        .removeAttribute(Attributes::StackProtectReq)
-        .removeAttribute(Attributes::NoRedZone)
-        .removeAttribute(Attributes::NoImplicitFloat)
-        .removeAttribute(Attributes::Naked)
-        .removeAttribute(Attributes::InlineHint)
-        .removeAttribute(Attributes::StackAlignment)
-        .removeAttribute(Attributes::UWTable)
-        .removeAttribute(Attributes::NonLazyBind)
-        .removeAttribute(Attributes::ReturnsTwice)
-        .removeAttribute(Attributes::AddressSafety);
-    }
-
-    bool operator==(const Builder &B) {
-      return Bits == B.Bits;
-    }
-    bool operator!=(const Builder &B) {
-      return Bits != B.Bits;
-    }
-  };
+  static Attributes get(LLVMContext &Context, AttrBuilder &B);
 
   /// @brief Return true if the attribute is present.
   bool hasAttribute(AttrVal Val) const;
@@ -244,48 +170,110 @@ public:
   /// encodeLLVMAttributesForBitcode - This returns an integer containing an
   /// encoding of all the LLVM attributes found in the given attribute bitset.
   /// Any change to this encoding is a breaking change to bitcode compatibility.
-  static uint64_t encodeLLVMAttributesForBitcode(Attributes Attrs) {
-    // FIXME: It doesn't make sense to store the alignment information as an
-    // expanded out value, we should store it as a log2 value.  However, we
-    // can't just change that here without breaking bitcode compatibility.  If
-    // this ever becomes a problem in practice, we should introduce new tag
-    // numbers in the bitcode file and have those tags use a more efficiently
-    // encoded alignment field.
-
-    // Store the alignment in the bitcode as a 16-bit raw value instead of a
-    // 5-bit log2 encoded value. Shift the bits above the alignment up by 11
-    // bits.
-    uint64_t EncodedAttrs = Attrs.Raw() & 0xffff;
-    if (Attrs.hasAttribute(Attributes::Alignment))
-      EncodedAttrs |= Attrs.getAlignment() << 16;
-    EncodedAttrs |= (Attrs.Raw() & (0xfffULL << 21)) << 11;
-    return EncodedAttrs;
-  }
+  static uint64_t encodeLLVMAttributesForBitcode(Attributes Attrs);
 
   /// decodeLLVMAttributesForBitcode - This returns an attribute bitset
   /// containing the LLVM attributes that have been decoded from the given
   /// integer.  This function must stay in sync with
   /// 'encodeLLVMAttributesForBitcode'.
   static Attributes decodeLLVMAttributesForBitcode(LLVMContext &C,
-                                                   uint64_t EncodedAttrs) {
-    // The alignment is stored as a 16-bit raw value from bits 31--16.  We shift
-    // the bits above 31 down by 11 bits.
-    unsigned Alignment = (EncodedAttrs & (0xffffULL << 16)) >> 16;
-    assert((!Alignment || isPowerOf2_32(Alignment)) &&
-           "Alignment must be a power of two.");
-
-    Attributes::Builder B(EncodedAttrs & 0xffff);
-    if (Alignment)
-      B.addAlignmentAttr(Alignment);
-    B.addRawValue((EncodedAttrs & (0xfffULL << 32)) >> 11);
-    return Attributes::get(C, B);
-  }
+                                                   uint64_t EncodedAttrs);
 
   /// getAsString - The set of Attributes set in Attributes is converted to a
   /// string of equivalent mnemonics. This is, presumably, for writing out the
   /// mnemonics for the assembly writer.
   /// @brief Convert attribute bits to text
   std::string getAsString() const;
+};
+
+//===----------------------------------------------------------------------===//
+/// AttrBuilder - This class is used in conjunction with the Attributes::get
+/// method to create an Attributes object. The object itself is uniquified. The
+/// Builder's value, however, is not. So this can be used as a quick way to test
+/// for equality, presence of attributes, etc.
+class AttrBuilder {
+  uint64_t Bits;
+public:
+  AttrBuilder() : Bits(0) {}
+  explicit AttrBuilder(uint64_t B) : Bits(B) {}
+  AttrBuilder(const Attributes &A) : Bits(A.Raw()) {}
+  AttrBuilder(const AttrBuilder &B) : Bits(B.Bits) {}
+
+  void clear() { Bits = 0; }
+
+  /// addAttribute - Add an attribute to the builder.
+  AttrBuilder &addAttribute(Attributes::AttrVal Val);
+
+  /// removeAttribute - Remove an attribute from the builder.
+  AttrBuilder &removeAttribute(Attributes::AttrVal Val);
+
+  /// addAttribute - Add the attributes from A to the builder.
+  AttrBuilder &addAttributes(const Attributes &A);
+
+  /// removeAttribute - Remove the attributes from A from the builder.
+  AttrBuilder &removeAttributes(const Attributes &A);
+
+  /// hasAttribute - Return true if the builder has the specified attribute.
+  bool hasAttribute(Attributes::AttrVal A) const;
+
+  /// hasAttributes - Return true if the builder has IR-level attributes.
+  bool hasAttributes() const;
+
+  /// hasAttributes - Return true if the builder has any attribute that's in the
+  /// specified attribute.
+  bool hasAttributes(const Attributes &A) const;
+
+  /// hasAlignmentAttr - Return true if the builder has an alignment attribute.
+  bool hasAlignmentAttr() const;
+
+  /// getAlignment - Retrieve the alignment attribute, if it exists.
+  uint64_t getAlignment() const;
+
+  /// getStackAlignment - Retrieve the stack alignment attribute, if it exists.
+  uint64_t getStackAlignment() const;
+
+  /// addAlignmentAttr - This turns an int alignment (which must be a power of
+  /// 2) into the form used internally in Attributes.
+  AttrBuilder &addAlignmentAttr(unsigned Align);
+
+  /// addStackAlignmentAttr - This turns an int stack alignment (which must be a
+  /// power of 2) into the form used internally in Attributes.
+  AttrBuilder &addStackAlignmentAttr(unsigned Align);
+
+  /// addRawValue - Add the raw value to the internal representation.
+  /// N.B. This should be used ONLY for decoding LLVM bitcode!
+  AttrBuilder &addRawValue(uint64_t Val);
+
+  /// @brief Remove attributes that are used on functions only.
+  void removeFunctionOnlyAttrs() {
+    removeAttribute(Attributes::NoReturn)
+      .removeAttribute(Attributes::NoUnwind)
+      .removeAttribute(Attributes::ReadNone)
+      .removeAttribute(Attributes::ReadOnly)
+      .removeAttribute(Attributes::NoInline)
+      .removeAttribute(Attributes::AlwaysInline)
+      .removeAttribute(Attributes::OptimizeForSize)
+      .removeAttribute(Attributes::StackProtect)
+      .removeAttribute(Attributes::StackProtectReq)
+      .removeAttribute(Attributes::NoRedZone)
+      .removeAttribute(Attributes::NoImplicitFloat)
+      .removeAttribute(Attributes::Naked)
+      .removeAttribute(Attributes::InlineHint)
+      .removeAttribute(Attributes::StackAlignment)
+      .removeAttribute(Attributes::UWTable)
+      .removeAttribute(Attributes::NonLazyBind)
+      .removeAttribute(Attributes::ReturnsTwice)
+      .removeAttribute(Attributes::AddressSafety);
+  }
+
+  uint64_t Raw() const { return Bits; }
+
+  bool operator==(const AttrBuilder &B) {
+    return Bits == B.Bits;
+  }
+  bool operator!=(const AttrBuilder &B) {
+    return Bits != B.Bits;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -302,16 +290,7 @@ struct AttributeWithIndex {
 
   static AttributeWithIndex get(LLVMContext &C, unsigned Idx,
                                 ArrayRef<Attributes::AttrVal> Attrs) {
-    Attributes::Builder B;
-
-    for (ArrayRef<Attributes::AttrVal>::iterator I = Attrs.begin(),
-           E = Attrs.end(); I != E; ++I)
-      B.addAttribute(*I);
-
-    AttributeWithIndex P;
-    P.Index = Idx;
-    P.Attrs = Attributes::get(C, B);
-    return P;
+    return get(Idx, Attributes::get(C, Attrs));
   }
   static AttributeWithIndex get(unsigned Idx, Attributes Attrs) {
     AttributeWithIndex P;
@@ -336,8 +315,8 @@ public:
     FunctionIndex = ~0U
   };
 private:
-  /// AttrList - The attributes that we are managing.  This can be null
-  /// to represent the empty attributes list.
+  /// AttrList - The attributes that we are managing.  This can be null to
+  /// represent the empty attributes list.
   AttributeListImpl *AttrList;
 public:
   AttrListPtr() : AttrList(0) {}
@@ -407,8 +386,6 @@ public:
   bool operator!=(const AttrListPtr &RHS) const
   { return AttrList != RHS.AttrList; }
 
-  void dump() const;
-
   //===--------------------------------------------------------------------===//
   // Attribute List Introspection
   //===--------------------------------------------------------------------===//
@@ -437,6 +414,8 @@ public:
   /// getSlot - Return the AttributeWithIndex at the specified slot.  This
   /// holds a index number plus a set of attributes.
   const AttributeWithIndex &getSlot(unsigned Slot) const;
+
+  void dump() const;
 
 private:
   explicit AttrListPtr(AttributeListImpl *L);

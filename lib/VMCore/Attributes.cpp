@@ -7,7 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the AttributesList class and Attribute utilities.
+// This file implements the Attributes, AttributeImpl, AttrBuilder,
+// AttributeListImpl, and AttrListPtr classes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,27 +29,23 @@ using namespace llvm;
 // Attributes Implementation
 //===----------------------------------------------------------------------===//
 
-Attributes::Attributes(AttributesImpl *A) : Attrs(A) {}
-
-Attributes::Attributes(const Attributes &A) : Attrs(A.Attrs) {}
-
 Attributes Attributes::get(LLVMContext &Context, ArrayRef<AttrVal> Vals) {
-  Attributes::Builder B;
+  AttrBuilder B;
   for (ArrayRef<AttrVal>::iterator I = Vals.begin(), E = Vals.end();
        I != E; ++I)
     B.addAttribute(*I);
   return Attributes::get(Context, B);
 }
 
-Attributes Attributes::get(LLVMContext &Context, Attributes::Builder &B) {
+Attributes Attributes::get(LLVMContext &Context, AttrBuilder &B) {
   // If there are no attributes, return an empty Attributes class.
-  if (B.Bits == 0)
+  if (!B.hasAttributes())
     return Attributes();
 
   // Otherwise, build a key to look up the existing attributes.
   LLVMContextImpl *pImpl = Context.pImpl;
   FoldingSetNodeID ID;
-  ID.AddInteger(B.Bits);
+  ID.AddInteger(B.Raw());
 
   void *InsertPoint;
   AttributesImpl *PA = pImpl->AttrsSet.FindNodeOrInsertPos(ID, InsertPoint);
@@ -56,7 +53,7 @@ Attributes Attributes::get(LLVMContext &Context, Attributes::Builder &B) {
   if (!PA) {
     // If we didn't find any existing attributes of the same shape then create a
     // new one and insert it.
-    PA = new AttributesImpl(B.Bits);
+    PA = new AttributesImpl(B.Raw());
     pImpl->AttrsSet.InsertNode(PA, InsertPoint);
   }
 
@@ -92,17 +89,17 @@ unsigned Attributes::getStackAlignment() const {
 }
 
 uint64_t Attributes::Raw() const {
-  return Attrs ? Attrs->Bits : 0; // FIXME: Don't access this directly!
+  return Attrs ? Attrs->Raw() : 0;
 }
 
 Attributes Attributes::typeIncompatible(Type *Ty) {
-  Attributes::Builder Incompatible;
-  
+  AttrBuilder Incompatible;
+
   if (!Ty->isIntegerTy())
     // Attributes that only apply to integers.
     Incompatible.addAttribute(Attributes::SExt)
       .addAttribute(Attributes::ZExt);
-  
+
   if (!Ty->isPointerTy())
     // Attributes that only apply to pointers.
     Incompatible.addAttribute(Attributes::ByVal)
@@ -110,8 +107,46 @@ Attributes Attributes::typeIncompatible(Type *Ty) {
       .addAttribute(Attributes::NoAlias)
       .addAttribute(Attributes::NoCapture)
       .addAttribute(Attributes::StructRet);
-  
+
   return Attributes::get(Ty->getContext(), Incompatible);
+}
+
+/// encodeLLVMAttributesForBitcode - This returns an integer containing an
+/// encoding of all the LLVM attributes found in the given attribute bitset.
+/// Any change to this encoding is a breaking change to bitcode compatibility.
+uint64_t Attributes::encodeLLVMAttributesForBitcode(Attributes Attrs) {
+  // FIXME: It doesn't make sense to store the alignment information as an
+  // expanded out value, we should store it as a log2 value.  However, we can't
+  // just change that here without breaking bitcode compatibility.  If this ever
+  // becomes a problem in practice, we should introduce new tag numbers in the
+  // bitcode file and have those tags use a more efficiently encoded alignment
+  // field.
+
+  // Store the alignment in the bitcode as a 16-bit raw value instead of a 5-bit
+  // log2 encoded value. Shift the bits above the alignment up by 11 bits.
+  uint64_t EncodedAttrs = Attrs.Raw() & 0xffff;
+  if (Attrs.hasAttribute(Attributes::Alignment))
+    EncodedAttrs |= Attrs.getAlignment() << 16;
+  EncodedAttrs |= (Attrs.Raw() & (0xfffULL << 21)) << 11;
+  return EncodedAttrs;
+}
+
+/// decodeLLVMAttributesForBitcode - This returns an attribute bitset containing
+/// the LLVM attributes that have been decoded from the given integer.  This
+/// function must stay in sync with 'encodeLLVMAttributesForBitcode'.
+Attributes Attributes::decodeLLVMAttributesForBitcode(LLVMContext &C,
+                                                      uint64_t EncodedAttrs) {
+  // The alignment is stored as a 16-bit raw value from bits 31--16.  We shift
+  // the bits above 31 down by 11 bits.
+  unsigned Alignment = (EncodedAttrs & (0xffffULL << 16)) >> 16;
+  assert((!Alignment || isPowerOf2_32(Alignment)) &&
+         "Alignment must be a power of two.");
+
+  AttrBuilder B(EncodedAttrs & 0xffff);
+  if (Alignment)
+    B.addAlignmentAttr(Alignment);
+  B.addRawValue((EncodedAttrs & (0xfffULL << 32)) >> 11);
+  return Attributes::get(C, B);
 }
 
 std::string Attributes::getAsString() const {
@@ -183,27 +218,27 @@ std::string Attributes::getAsString() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Attributes::Builder Implementation
+// AttrBuilder Implementation
 //===----------------------------------------------------------------------===//
 
-Attributes::Builder &Attributes::Builder::addAttribute(Attributes::AttrVal Val){
+AttrBuilder &AttrBuilder::addAttribute(Attributes::AttrVal Val){
   Bits |= AttributesImpl::getAttrMask(Val);
   return *this;
 }
 
-Attributes::Builder &Attributes::Builder::addRawValue(uint64_t Val) {
+AttrBuilder &AttrBuilder::addRawValue(uint64_t Val) {
   Bits |= Val;
   return *this;
 }
 
-Attributes::Builder &Attributes::Builder::addAlignmentAttr(unsigned Align) {
+AttrBuilder &AttrBuilder::addAlignmentAttr(unsigned Align) {
   if (Align == 0) return *this;
   assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
   assert(Align <= 0x40000000 && "Alignment too large.");
   Bits |= (Log2_32(Align) + 1) << 16;
   return *this;
 }
-Attributes::Builder &Attributes::Builder::addStackAlignmentAttr(unsigned Align){
+AttrBuilder &AttrBuilder::addStackAlignmentAttr(unsigned Align){
   // Default alignment, allow the target to define how to align it.
   if (Align == 0) return *this;
   assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
@@ -212,44 +247,43 @@ Attributes::Builder &Attributes::Builder::addStackAlignmentAttr(unsigned Align){
   return *this;
 }
 
-Attributes::Builder &Attributes::Builder::
-removeAttribute(Attributes::AttrVal Val) {
+AttrBuilder &AttrBuilder::removeAttribute(Attributes::AttrVal Val) {
   Bits &= ~AttributesImpl::getAttrMask(Val);
   return *this;
 }
 
-Attributes::Builder &Attributes::Builder::addAttributes(const Attributes &A) {
+AttrBuilder &AttrBuilder::addAttributes(const Attributes &A) {
   Bits |= A.Raw();
   return *this;
 }
 
-Attributes::Builder &Attributes::Builder::removeAttributes(const Attributes &A){
+AttrBuilder &AttrBuilder::removeAttributes(const Attributes &A){
   Bits &= ~A.Raw();
   return *this;
 }
 
-bool Attributes::Builder::hasAttribute(Attributes::AttrVal A) const {
+bool AttrBuilder::hasAttribute(Attributes::AttrVal A) const {
   return Bits & AttributesImpl::getAttrMask(A);
 }
 
-bool Attributes::Builder::hasAttributes() const {
+bool AttrBuilder::hasAttributes() const {
   return Bits != 0;
 }
-bool Attributes::Builder::hasAttributes(const Attributes &A) const {
+bool AttrBuilder::hasAttributes(const Attributes &A) const {
   return Bits & A.Raw();
 }
-bool Attributes::Builder::hasAlignmentAttr() const {
+bool AttrBuilder::hasAlignmentAttr() const {
   return Bits & AttributesImpl::getAttrMask(Attributes::Alignment);
 }
 
-uint64_t Attributes::Builder::getAlignment() const {
+uint64_t AttrBuilder::getAlignment() const {
   if (!hasAlignmentAttr())
     return 0;
   return 1U <<
     (((Bits & AttributesImpl::getAttrMask(Attributes::Alignment)) >> 16) - 1);
 }
 
-uint64_t Attributes::Builder::getStackAlignment() const {
+uint64_t AttrBuilder::getStackAlignment() const {
   if (!hasAlignmentAttr())
     return 0;
   return 1U <<
@@ -329,19 +363,19 @@ static ManagedStatic<sys::SmartMutex<true> > ALMutex;
 
 class AttributeListImpl : public FoldingSetNode {
   sys::cas_flag RefCount;
-  
+
   // AttributesList is uniqued, these should not be publicly available.
   void operator=(const AttributeListImpl &) LLVM_DELETED_FUNCTION;
   AttributeListImpl(const AttributeListImpl &) LLVM_DELETED_FUNCTION;
   ~AttributeListImpl();                        // Private implementation
 public:
   SmallVector<AttributeWithIndex, 4> Attrs;
-  
+
   AttributeListImpl(ArrayRef<AttributeWithIndex> attrs)
     : Attrs(attrs.begin(), attrs.end()) {
     RefCount = 0;
   }
-  
+
   void AddRef() {
     sys::SmartScopedLock<true> Lock(*ALMutex);
     ++RefCount;
@@ -354,7 +388,7 @@ public:
     if (new_val == 0)
       delete this;
   }
-  
+
   void Profile(FoldingSetNodeID &ID) const {
     Profile(ID, Attrs);
   }
@@ -365,49 +399,48 @@ public:
     }
   }
 };
-}
+
+} // end llvm namespace
 
 AttributeListImpl::~AttributeListImpl() {
   // NOTE: Lock must be acquired by caller.
   AttributesLists->RemoveNode(this);
 }
 
-
 AttrListPtr AttrListPtr::get(ArrayRef<AttributeWithIndex> Attrs) {
   // If there are no attributes then return a null AttributesList pointer.
   if (Attrs.empty())
     return AttrListPtr();
-  
+
 #ifndef NDEBUG
   for (unsigned i = 0, e = Attrs.size(); i != e; ++i) {
-    assert(Attrs[i].Attrs.hasAttributes() && 
+    assert(Attrs[i].Attrs.hasAttributes() &&
            "Pointless attribute!");
     assert((!i || Attrs[i-1].Index < Attrs[i].Index) &&
            "Misordered AttributesList!");
   }
 #endif
-  
+
   // Otherwise, build a key to look up the existing attributes.
   FoldingSetNodeID ID;
   AttributeListImpl::Profile(ID, Attrs);
   void *InsertPos;
-  
+
   sys::SmartScopedLock<true> Lock(*ALMutex);
-  
+
   AttributeListImpl *PAL =
     AttributesLists->FindNodeOrInsertPos(ID, InsertPos);
-  
+
   // If we didn't find any existing attributes of the same shape then
   // create a new one and insert it.
   if (!PAL) {
     PAL = new AttributeListImpl(Attrs);
     AttributesLists->InsertNode(PAL, InsertPos);
   }
-  
+
   // Return the AttributesList that we found or created.
   return AttrListPtr(PAL);
 }
-
 
 //===----------------------------------------------------------------------===//
 // AttrListPtr Method Implementations
@@ -418,7 +451,7 @@ AttrListPtr::AttrListPtr(AttributeListImpl *LI) : AttrList(LI) {
 }
 
 AttrListPtr::AttrListPtr(const AttrListPtr &P) : AttrList(P.AttrList) {
-  if (AttrList) AttrList->AddRef();  
+  if (AttrList) AttrList->AddRef();
 }
 
 const AttrListPtr &AttrListPtr::operator=(const AttrListPtr &RHS) {
@@ -434,7 +467,7 @@ AttrListPtr::~AttrListPtr() {
   if (AttrList) AttrList->DropRef();
 }
 
-/// getNumSlots - Return the number of slots used in this attribute list. 
+/// getNumSlots - Return the number of slots used in this attribute list.
 /// This is the number of arguments that have an attribute set on them
 /// (including the function itself).
 unsigned AttrListPtr::getNumSlots() const {
@@ -448,13 +481,12 @@ const AttributeWithIndex &AttrListPtr::getSlot(unsigned Slot) const {
   return AttrList->Attrs[Slot];
 }
 
-
-/// getAttributes - The attributes for the specified index are
-/// returned.  Attributes for the result are denoted with Idx = 0.
-/// Function notes are denoted with idx = ~0.
+/// getAttributes - The attributes for the specified index are returned.
+/// Attributes for the result are denoted with Idx = 0.  Function notes are
+/// denoted with idx = ~0.
 Attributes AttrListPtr::getAttributes(unsigned Idx) const {
   if (AttrList == 0) return Attributes();
-  
+
   const SmallVector<AttributeWithIndex, 4> &Attrs = AttrList->Attrs;
   for (unsigned i = 0, e = Attrs.size(); i != e && Attrs[i].Index <= Idx; ++i)
     if (Attrs[i].Index == Idx)
@@ -496,12 +528,12 @@ AttrListPtr AttrListPtr::addAttr(LLVMContext &C, unsigned Idx,
   assert((!OldAlign || !NewAlign || OldAlign == NewAlign) &&
          "Attempt to change alignment!");
 #endif
-  
-  Attributes::Builder NewAttrs =
-    Attributes::Builder(OldAttrs).addAttributes(Attrs);
-  if (NewAttrs == Attributes::Builder(OldAttrs))
+
+  AttrBuilder NewAttrs =
+    AttrBuilder(OldAttrs).addAttributes(Attrs);
+  if (NewAttrs == AttrBuilder(OldAttrs))
     return *this;
-  
+
   SmallVector<AttributeWithIndex, 8> NewAttrList;
   if (AttrList == 0)
     NewAttrList.push_back(AttributeWithIndex::get(Idx, Attrs));
@@ -515,18 +547,18 @@ AttrListPtr AttrListPtr::addAttr(LLVMContext &C, unsigned Idx,
     // If there are attributes already at this index, merge them in.
     if (i != e && OldAttrList[i].Index == Idx) {
       Attrs =
-        Attributes::get(C, Attributes::Builder(Attrs).
+        Attributes::get(C, AttrBuilder(Attrs).
                         addAttributes(OldAttrList[i].Attrs));
       ++i;
     }
-    
+
     NewAttrList.push_back(AttributeWithIndex::get(Idx, Attrs));
-    
+
     // Copy attributes for arguments after this one.
-    NewAttrList.insert(NewAttrList.end(), 
+    NewAttrList.insert(NewAttrList.end(),
                        OldAttrList.begin()+i, OldAttrList.end());
   }
-  
+
   return get(NewAttrList);
 }
 
@@ -539,33 +571,33 @@ AttrListPtr AttrListPtr::removeAttr(LLVMContext &C, unsigned Idx,
          "Attempt to exclude alignment!");
 #endif
   if (AttrList == 0) return AttrListPtr();
-  
+
   Attributes OldAttrs = getAttributes(Idx);
-  Attributes::Builder NewAttrs =
-    Attributes::Builder(OldAttrs).removeAttributes(Attrs);
-  if (NewAttrs == Attributes::Builder(OldAttrs))
+  AttrBuilder NewAttrs =
+    AttrBuilder(OldAttrs).removeAttributes(Attrs);
+  if (NewAttrs == AttrBuilder(OldAttrs))
     return *this;
 
   SmallVector<AttributeWithIndex, 8> NewAttrList;
   const SmallVector<AttributeWithIndex, 4> &OldAttrList = AttrList->Attrs;
   unsigned i = 0, e = OldAttrList.size();
-  
+
   // Copy attributes for arguments before this one.
   for (; i != e && OldAttrList[i].Index < Idx; ++i)
     NewAttrList.push_back(OldAttrList[i]);
-  
+
   // If there are attributes already at this index, merge them in.
   assert(OldAttrList[i].Index == Idx && "Attribute isn't set?");
-  Attrs = Attributes::get(C, Attributes::Builder(OldAttrList[i].Attrs).
+  Attrs = Attributes::get(C, AttrBuilder(OldAttrList[i].Attrs).
                           removeAttributes(Attrs));
   ++i;
   if (Attrs.hasAttributes()) // If any attributes left for this param, add them.
     NewAttrList.push_back(AttributeWithIndex::get(Idx, Attrs));
-  
+
   // Copy attributes for arguments after this one.
-  NewAttrList.insert(NewAttrList.end(), 
+  NewAttrList.insert(NewAttrList.end(),
                      OldAttrList.begin()+i, OldAttrList.end());
-  
+
   return get(NewAttrList);
 }
 
@@ -575,6 +607,6 @@ void AttrListPtr::dump() const {
     const AttributeWithIndex &PAWI = getSlot(i);
     dbgs() << "{" << PAWI.Index << "," << PAWI.Attrs.getAsString() << "} ";
   }
-  
+
   dbgs() << "]\n";
 }

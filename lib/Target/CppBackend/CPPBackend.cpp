@@ -474,9 +474,9 @@ void CppWriter::printAttributes(const AttrListPtr &PAL,
     Out << "AttributeWithIndex PAWI;"; nl(Out);
     for (unsigned i = 0; i < PAL.getNumSlots(); ++i) {
       unsigned index = PAL.getSlot(i).Index;
-      Attributes::Builder attrs(PAL.getSlot(i).Attrs);
+      AttrBuilder attrs(PAL.getSlot(i).Attrs);
       Out << "PAWI.Index = " << index << "U;\n";
-      Out << "   Attributes::Builder B;\n";
+      Out << "   AttrBuilder B;\n";
 
 #define HANDLE_ATTR(X)                                     \
       if (attrs.hasAttribute(Attributes::X))               \
@@ -513,7 +513,7 @@ void CppWriter::printAttributes(const AttrListPtr &PAL,
       nl(Out);
       attrs.removeAttribute(Attributes::StackAlignment);
       assert(!attrs.hasAttributes() && "Unhandled attribute!");
-      Out << "PAWI.Attrs = Attributes::get(B);";
+      Out << "PAWI.Attrs = Attributes::get(mod->getContext(), B);";
       nl(Out);
       Out << "Attrs.push_back(PAWI);";
       nl(Out);
