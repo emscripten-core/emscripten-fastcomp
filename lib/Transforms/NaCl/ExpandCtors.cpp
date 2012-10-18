@@ -79,22 +79,24 @@ static void defineFuncArray(Module &M, const char *LlvmArrayName,
   std::vector<Constant*> Funcs;
 
   GlobalVariable *Array = M.getNamedGlobal(LlvmArrayName);
-  if (Array && Array->hasInitializer()) {
-    ConstantArray *InitList = cast<ConstantArray>(Array->getInitializer());
-    std::vector<FuncArrayEntry> FuncsToSort;
-    for (unsigned Index = 0; Index < InitList->getNumOperands(); ++Index) {
-      ConstantStruct *CS = cast<ConstantStruct>(InitList->getOperand(Index));
-      FuncArrayEntry Entry;
-      Entry.priority = cast<ConstantInt>(CS->getOperand(0))->getZExtValue();
-      Entry.func = CS->getOperand(1);
-      FuncsToSort.push_back(Entry);
-    }
+  if (Array) {
+    if (Array->hasInitializer() && !Array->getInitializer()->isNullValue()) {
+      ConstantArray *InitList = cast<ConstantArray>(Array->getInitializer());
+      std::vector<FuncArrayEntry> FuncsToSort;
+      for (unsigned Index = 0; Index < InitList->getNumOperands(); ++Index) {
+        ConstantStruct *CS = cast<ConstantStruct>(InitList->getOperand(Index));
+        FuncArrayEntry Entry;
+        Entry.priority = cast<ConstantInt>(CS->getOperand(0))->getZExtValue();
+        Entry.func = CS->getOperand(1);
+        FuncsToSort.push_back(Entry);
+      }
 
-    std::sort(FuncsToSort.begin(), FuncsToSort.end(), compareEntries);
-    for (std::vector<FuncArrayEntry>::iterator Iter = FuncsToSort.begin();
-         Iter != FuncsToSort.end();
-         ++Iter) {
-      Funcs.push_back(Iter->func);
+      std::sort(FuncsToSort.begin(), FuncsToSort.end(), compareEntries);
+      for (std::vector<FuncArrayEntry>::iterator Iter = FuncsToSort.begin();
+           Iter != FuncsToSort.end();
+           ++Iter) {
+        Funcs.push_back(Iter->func);
+      }
     }
     // No code should be referencing global_ctors/global_dtors,
     // because this symbol is internal to LLVM.
