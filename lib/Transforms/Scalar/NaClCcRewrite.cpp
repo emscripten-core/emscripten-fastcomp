@@ -71,14 +71,16 @@ struct TypeRewriteRule {
 // d:   64 bit float (= double)
 // p:   untyped pointer (only allowed for src)
 // P(): typed pointer (currently not used, only allowed for src)
-// C:   "copy", use src as dst (only allowed for dst and sret)
 // F:   generic function type (only allowed for src)
-
-// TODO: consider getting rid of the "C" feature
 
 // The X8664 Rewrite rules are also subject to
 // register constraints, c.f.: section 3.2.3
 // http://www.x86-64.org/documentation/abi.pdf
+// (roughly) for X8664: up to 2 regs per struct can be used for struct passsing
+//                      and up to 2 regs for struct returns
+// The rewrite rules are straight forward except for: s(iis(d)) => ll
+// which would be straight forward if the frontend had lowered the union inside
+// of PP_Var to s(l) instead of s(d), yielding: s(iis(l)) => ll
 TypeRewriteRule ByvalRulesX8664[] = {
   {"s(iis(d))", "ll", "PP_Var"},
   {"s(pp)",     "l",  "PP_ArrayOutput"},
@@ -87,6 +89,7 @@ TypeRewriteRule ByvalRulesX8664[] = {
 };
 
 TypeRewriteRule SretRulesX8664[] = {
+  // Note: for srets, multireg returns are modeled as struct returns
   {"s(iis(d))", "s(ll)", "PP_Var"},
   {"s(ff)",     "d",     "PP_FloatPoint"},
   {"s(ii)",     "l",     "PP_Point" },
@@ -94,6 +97,8 @@ TypeRewriteRule SretRulesX8664[] = {
   {0, 0, 0},
 };
 
+// for ARM: up to 4 regs can be used for struct passsing
+//          and up to 2 float regs for struct returns
 TypeRewriteRule ByvalRulesARM[] = {
   {"s(iis(d))",  "ll",  "PP_Var"},
   {"s(ppi)",     "iii", "PP_CompletionCallback" },
@@ -102,7 +107,8 @@ TypeRewriteRule ByvalRulesARM[] = {
 };
 
 TypeRewriteRule SretRulesARM[] = {
-  {"s(ff)",     "C", "PP_FloatPoint"},
+  // Note: for srets, multireg returns are modeled as struct returns
+  {"s(ff)",     "s(ff)", "PP_FloatPoint"},
   {0, 0, 0},
 };
 
@@ -441,14 +447,8 @@ bool FunctionNeedsRewrite(const Function* fun,
 Type* GetNewReturnType(Type* type,
                        const TypeRewriteRule* rule,
                        LLVMContext& C) {
-  if (std::string("C") == rule->dst) {
-    if (!type->isPointerTy()) {
-      llvm_unreachable("unexpected return type for C");
-    }
-    Type* pointee = dyn_cast<PointerType>(type)->getElementType();
-    return pointee;
-  } else if (std::string("l") == rule->dst ||
-             std::string("d") == rule->dst) {
+  if (std::string("l") == rule->dst ||
+      std::string("d") == rule->dst) {
     return GetElementaryType(rule->dst[0], C);
   } else if (rule->dst[0] == 's') {
     const char* cp = rule->dst + 2; // skip 's('
@@ -571,25 +571,32 @@ void UpdateFunctionSignature(Function &F,
   F.setType(PointerType::getUnqual(new_fun_type));
 
   Function::ArgumentListType& args = F.getArgumentList();
-  DEBUG(dbgs() << "PHASE ARGUMENT ERASE " <<  args.size() << "\n");
+  DEBUG(dbgs() << "PHASE ARGUMENT DEL " <<  args.size() << "\n");
   while (args.size()) {
-    Argument* arg = args.remove(args.begin());
+    Argument* arg = args.begin();
+    DEBUG(dbgs() << "DEL " << arg->getArgNo() << " " << arg->getName() << "\n");
+    args.remove(args.begin());
   }
 
-  DEBUG(dbgs() << "PHASE ARGUMENT REFILL" <<  new_arguments.size()   << "\n");
+  DEBUG(dbgs() << "PHASE ARGUMENT ADD " <<  new_arguments.size()   << "\n");
   for (size_t i = 0; i < new_arguments.size(); ++i) {
-    args.push_back(new_arguments[i]);
+    Argument* arg = new_arguments[i];
+    DEBUG(dbgs() << "ADD " << i << " " << arg->getName() << "\n");
+    args.push_back(arg);
   }
 
   DEBUG(dbgs() << "PHASE ATTRIBUTES UPDATE\n");
-  // Update function attributes
+  std::vector<AttributeWithIndex> new_attributes_vec;
   for (size_t i = 0; i < new_attributes.size(); ++i) {
     Attributes attr = new_attributes[i];
     if (attr.hasAttributes()) {
-      // index 0 is for the return value
-      F.addAttribute(i + 1, attr);
+      new_attributes_vec.push_back(AttributeWithIndex::get(i + 1, attr));
     }
   }
+  Attributes fattr = F.getAttributes().getFnAttributes();
+  if (fattr.hasAttributes())
+    new_attributes_vec.push_back(AttributeWithIndex::get(~0, fattr));
+  F.setAttributes(AttrListPtr::get(new_attributes_vec));
 }
 
 
@@ -781,13 +788,9 @@ void CallsiteFixupSrets(Instruction* call,
     llvm_unreachable("unexpected missing next instruction");
   }
 
-  if (std::string("C") == pattern) {
-    // Note, this may store complex values, e.g. struct values, same code:
-    // store %struct.PP_FloatPoint <CALL-RESULT>, %struct.PP_FloatPoint* <SRET-PTR>
-    new StoreInst(call, sret, next);
-  } else if (pattern[0] == 's' ||
-             std::string("l") == pattern ||
-             std::string("d") == pattern) {
+  if (pattern[0] == 's' ||
+      std::string("l") == pattern ||
+      std::string("d") == pattern) {
     Type* pt = PointerType::getUnqual(new_type);
     Value* cast = CastInst::CreatePointerCast(sret, pt, "cast", next);
     new StoreInst(call, cast, next);
