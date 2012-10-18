@@ -78,8 +78,7 @@ ARMTargetMachine::ARMTargetMachine(const Target &T, StringRef TT,
     ELFWriterInfo(*this),
     TLInfo(*this),
     TSInfo(*this),
-    FrameLowering(Subtarget),
-    STTI(&TLInfo) {
+    FrameLowering(Subtarget) {
   if (!Subtarget.hasARMOps())
     report_fatal_error("CPU: '" + Subtarget.getCPUString() + "' does not "
                        "support ARM mode execution!");
@@ -112,8 +111,7 @@ ThumbTargetMachine::ThumbTargetMachine(const Target &T, StringRef TT,
     TSInfo(*this),
     FrameLowering(Subtarget.hasThumb2()
               ? new ARMFrameLowering(Subtarget)
-              : (ARMFrameLowering*)new Thumb1FrameLowering(Subtarget)),
-    STTI(&TLInfo){
+              : (ARMFrameLowering*)new Thumb1FrameLowering(Subtarget)) {
 }
 
 namespace {

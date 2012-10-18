@@ -5308,10 +5308,6 @@ SDValue DAGCombiner::visitTRUNCATE(SDNode *N) {
     if (Reduced.getNode())
       return Reduced;
   }
-  // fold (trunc (fptoXi x)) -> (smaller fptoXi x)
-  if ((N0.getOpcode() == ISD::FP_TO_UINT ||
-       N0.getOpcode() == ISD::FP_TO_SINT) && !LegalTypes)
-    return DAG.getNode(N0.getOpcode(), N->getDebugLoc(), VT, N0.getOperand(0));
   // fold (trunc (concat ... x ...)) -> (concat ..., (trunc x), ...)),
   // where ... are all 'undef'.
   if (N0.getOpcode() == ISD::CONCAT_VECTORS && !LegalTypes) {
@@ -8610,8 +8606,8 @@ SDValue DAGCombiner::visitEXTRACT_SUBVECTOR(SDNode* N) {
       return SDValue();
 
     // Only handle cases where both indexes are constants with the same type.
-    ConstantSDNode *InsIdx = dyn_cast<ConstantSDNode>(N->getOperand(1));
-    ConstantSDNode *ExtIdx = dyn_cast<ConstantSDNode>(V->getOperand(2));
+    ConstantSDNode *ExtIdx = dyn_cast<ConstantSDNode>(N->getOperand(1));
+    ConstantSDNode *InsIdx = dyn_cast<ConstantSDNode>(V->getOperand(2));
 
     if (InsIdx && ExtIdx &&
         InsIdx->getValueType(0).getSizeInBits() <= 64 &&
@@ -8626,6 +8622,21 @@ SDValue DAGCombiner::visitEXTRACT_SUBVECTOR(SDNode* N) {
       return DAG.getNode(ISD::EXTRACT_SUBVECTOR, N->getDebugLoc(), NVT,
                          V->getOperand(0), N->getOperand(1));
     }
+  }
+
+  if (V->getOpcode() == ISD::CONCAT_VECTORS) {
+    // Combine:
+    //    (extract_subvec (concat V1, V2, ...), i)
+    // Into:
+    //    Vi if possible
+    for (unsigned i = 0, e = V->getNumOperands(); i != e; ++i)
+      if (V->getOperand(i).getValueType() != NVT)
+        return SDValue();
+    unsigned Idx = dyn_cast<ConstantSDNode>(N->getOperand(1))->getZExtValue();
+    unsigned NumElems = NVT.getVectorNumElements();
+    assert((Idx % NumElems) == 0 &&
+           "IDX in concat is not a multiple of the result vector length.");
+    return V->getOperand(Idx / NumElems);
   }
 
   return SDValue();
@@ -9063,6 +9074,10 @@ bool DAGCombiner::SimplifySelectOps(SDNode *TheSelect, SDValue LHS,
       SDNode *CondNode = TheSelect->getOperand(0).getNode();
       if ((LLD->hasAnyUseOfValue(1) && LLD->isPredecessorOf(CondNode)) ||
           (RLD->hasAnyUseOfValue(1) && RLD->isPredecessorOf(CondNode)))
+        return false;
+      // The loads must not depend on one another.
+      if (LLD->isPredecessorOf(RLD) ||
+          RLD->isPredecessorOf(LLD))
         return false;
       Addr = DAG.getNode(ISD::SELECT, TheSelect->getDebugLoc(),
                          LLD->getBasePtr().getValueType(),

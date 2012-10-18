@@ -132,9 +132,6 @@ public:
     ///
     /// We flag partitions as splittable when they are formed entirely due to
     /// accesses by trivially splittable operations such as memset and memcpy.
-    ///
-    /// FIXME: At some point we should consider loads and stores of FCAs to be
-    /// splittable and eagerly split them into scalar values.
     bool IsSplittable;
 
     /// \brief Test whether a partition has been marked as dead.
@@ -1785,9 +1782,9 @@ static Value *getNaturalGEPWithType(IRBuilder<> &IRB, const DataLayout &TD,
       break;
     if (SequentialType *SeqTy = dyn_cast<SequentialType>(ElementTy)) {
       ElementTy = SeqTy->getElementType();
-      Indices.push_back(IRB.getInt(APInt(TD.getPointerSizeInBits(
-                ElementTy->isPointerTy() ? 
-                cast<PointerType>(ElementTy)->getAddressSpace(): 0), 0)));
+      // Note that we use the default address space as this index is over an
+      // array or a vector, not a pointer.
+      Indices.push_back(IRB.getInt(APInt(TD.getPointerSizeInBits(0), 0)));
     } else if (StructType *STy = dyn_cast<StructType>(ElementTy)) {
       if (STy->element_begin() == STy->element_end())
         break; // Nothing left to descend into.
@@ -1828,7 +1825,7 @@ static Value *getNaturalGEPRecursively(IRBuilder<> &IRB, const DataLayout &TD,
     if (ElementSizeInBits % 8)
       return 0; // GEPs over non-multiple of 8 size vector elements are invalid.
     APInt ElementSize(Offset.getBitWidth(), ElementSizeInBits / 8);
-    APInt NumSkippedElements = Offset.udiv(ElementSize);
+    APInt NumSkippedElements = Offset.sdiv(ElementSize);
     if (NumSkippedElements.ugt(VecTy->getNumElements()))
       return 0;
     Offset -= NumSkippedElements * ElementSize;
@@ -1840,7 +1837,7 @@ static Value *getNaturalGEPRecursively(IRBuilder<> &IRB, const DataLayout &TD,
   if (ArrayType *ArrTy = dyn_cast<ArrayType>(Ty)) {
     Type *ElementTy = ArrTy->getElementType();
     APInt ElementSize(Offset.getBitWidth(), TD.getTypeAllocSize(ElementTy));
-    APInt NumSkippedElements = Offset.udiv(ElementSize);
+    APInt NumSkippedElements = Offset.sdiv(ElementSize);
     if (NumSkippedElements.ugt(ArrTy->getNumElements()))
       return 0;
 
@@ -1896,7 +1893,7 @@ static Value *getNaturalGEPWithOffset(IRBuilder<> &IRB, const DataLayout &TD,
   APInt ElementSize(Offset.getBitWidth(), TD.getTypeAllocSize(ElementTy));
   if (ElementSize == 0)
     return 0; // Zero-length arrays can't help us build a natural GEP.
-  APInt NumSkippedElements = Offset.udiv(ElementSize);
+  APInt NumSkippedElements = Offset.sdiv(ElementSize);
 
   Offset -= NumSkippedElements * ElementSize;
   Indices.push_back(IRB.getInt(NumSkippedElements));
@@ -2211,6 +2208,48 @@ static bool isIntegerWideningViable(const DataLayout &TD,
   return WholeAllocaOp;
 }
 
+static Value *extractInteger(const DataLayout &DL, IRBuilder<> &IRB, Value *V,
+                             IntegerType *Ty, uint64_t Offset,
+                             const Twine &Name) {
+  IntegerType *IntTy = cast<IntegerType>(V->getType());
+  assert(DL.getTypeStoreSize(Ty) + Offset <= DL.getTypeStoreSize(IntTy) &&
+         "Element extends past full value");
+  uint64_t ShAmt = 8*Offset;
+  if (DL.isBigEndian())
+    ShAmt = 8*(DL.getTypeStoreSize(IntTy) - DL.getTypeStoreSize(Ty) - Offset);
+  if (ShAmt)
+    V = IRB.CreateLShr(V, ShAmt, Name + ".shift");
+  assert(Ty->getBitWidth() <= IntTy->getBitWidth() &&
+         "Cannot extract to a larger integer!");
+  if (Ty != IntTy)
+    V = IRB.CreateTrunc(V, Ty, Name + ".trunc");
+  return V;
+}
+
+static Value *insertInteger(const DataLayout &DL, IRBuilder<> &IRB, Value *Old,
+                            Value *V, uint64_t Offset, const Twine &Name) {
+  IntegerType *IntTy = cast<IntegerType>(Old->getType());
+  IntegerType *Ty = cast<IntegerType>(V->getType());
+  assert(Ty->getBitWidth() <= IntTy->getBitWidth() &&
+         "Cannot insert a larger integer!");
+  if (Ty != IntTy)
+    V = IRB.CreateZExt(V, IntTy, Name + ".ext");
+  assert(DL.getTypeStoreSize(Ty) + Offset <= DL.getTypeStoreSize(IntTy) &&
+         "Element store outside of alloca store");
+  uint64_t ShAmt = 8*Offset;
+  if (DL.isBigEndian())
+    ShAmt = 8*(DL.getTypeStoreSize(IntTy) - DL.getTypeStoreSize(Ty) - Offset);
+  if (ShAmt)
+    V = IRB.CreateShl(V, ShAmt, Name + ".shift");
+
+  if (ShAmt || Ty->getBitWidth() < IntTy->getBitWidth()) {
+    APInt Mask = ~Ty->getMask().zext(IntTy->getBitWidth()).shl(ShAmt);
+    Old = IRB.CreateAnd(Old, Mask, Name + ".mask");
+    V = IRB.CreateOr(Old, V, Name + ".insert");
+  }
+  return V;
+}
+
 namespace {
 /// \brief Visitor to rewrite instructions using a partition of an alloca to
 /// use a new alloca.
@@ -2371,60 +2410,6 @@ private:
     return IRB.getInt32(Index);
   }
 
-  Value *extractInteger(IRBuilder<> &IRB, IntegerType *TargetTy,
-                        uint64_t Offset) {
-    assert(IntTy && "We cannot extract an integer from the alloca");
-    Value *V = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
-                                     getName(".load"));
-    V = convertValue(TD, IRB, V, IntTy);
-    assert(Offset >= NewAllocaBeginOffset && "Out of bounds offset");
-    uint64_t RelOffset = Offset - NewAllocaBeginOffset;
-    assert(TD.getTypeStoreSize(TargetTy) + RelOffset <=
-           TD.getTypeStoreSize(IntTy) &&
-           "Element load outside of alloca store");
-    uint64_t ShAmt = 8*RelOffset;
-    if (TD.isBigEndian())
-      ShAmt = 8*(TD.getTypeStoreSize(IntTy) -
-                 TD.getTypeStoreSize(TargetTy) - RelOffset);
-    if (ShAmt)
-      V = IRB.CreateLShr(V, ShAmt, getName(".shift"));
-    assert(TargetTy->getBitWidth() <= IntTy->getBitWidth() &&
-           "Cannot extract to a larger integer!");
-    if (TargetTy != IntTy)
-      V = IRB.CreateTrunc(V, TargetTy, getName(".trunc"));
-    return V;
-  }
-
-  StoreInst *insertInteger(IRBuilder<> &IRB, Value *V, uint64_t Offset) {
-    IntegerType *Ty = cast<IntegerType>(V->getType());
-    assert(Ty->getBitWidth() <= IntTy->getBitWidth() &&
-           "Cannot insert a larger integer!");
-    if (Ty != IntTy)
-      V = IRB.CreateZExt(V, IntTy, getName(".ext"));
-    assert(Offset >= NewAllocaBeginOffset && "Out of bounds offset");
-    uint64_t RelOffset = Offset - NewAllocaBeginOffset;
-    assert(TD.getTypeStoreSize(Ty) + RelOffset <=
-           TD.getTypeStoreSize(IntTy) &&
-           "Element store outside of alloca store");
-    uint64_t ShAmt = 8*RelOffset;
-    if (TD.isBigEndian())
-      ShAmt = 8*(TD.getTypeStoreSize(IntTy) - TD.getTypeStoreSize(Ty)
-                 - RelOffset);
-    if (ShAmt)
-      V = IRB.CreateShl(V, ShAmt, getName(".shift"));
-
-    if (ShAmt || Ty->getBitWidth() < IntTy->getBitWidth()) {
-      APInt Mask = ~Ty->getMask().zext(IntTy->getBitWidth()).shl(ShAmt);
-      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
-                                         getName(".oldload"));
-      Old = convertValue(TD, IRB, Old, IntTy);
-      Old = IRB.CreateAnd(Old, Mask, getName(".mask"));
-      V = IRB.CreateOr(Old, V, getName(".insert"));
-    }
-    V = convertValue(TD, IRB, V, NewAllocaTy);
-    return IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
-  }
-
   void deleteIfTriviallyDead(Value *V) {
     Instruction *I = cast<Instruction>(V);
     if (isInstructionTriviallyDead(I))
@@ -2452,12 +2437,18 @@ private:
   }
 
   bool rewriteIntegerLoad(IRBuilder<> &IRB, LoadInst &LI) {
+    assert(IntTy && "We cannot insert an integer to the alloca");
     assert(!LI.isVolatile());
-    Value *Result = extractInteger(IRB, cast<IntegerType>(LI.getType()),
-                                   BeginOffset);
-    LI.replaceAllUsesWith(Result);
+    Value *V = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                     getName(".load"));
+    V = convertValue(TD, IRB, V, IntTy);
+    assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+    uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+    V = extractInteger(TD, IRB, V, cast<IntegerType>(LI.getType()), Offset,
+                       getName(".extract"));
+    LI.replaceAllUsesWith(V);
     Pass.DeadInsts.push_back(&LI);
-    DEBUG(dbgs() << "          to: " << *Result << "\n");
+    DEBUG(dbgs() << "          to: " << *V << "\n");
     return true;
   }
 
@@ -2519,8 +2510,20 @@ private:
   }
 
   bool rewriteIntegerStore(IRBuilder<> &IRB, StoreInst &SI) {
+    assert(IntTy && "We cannot extract an integer from the alloca");
     assert(!SI.isVolatile());
-    StoreInst *Store = insertInteger(IRB, SI.getValueOperand(), BeginOffset);
+    Value *V = SI.getValueOperand();
+    if (TD.getTypeSizeInBits(V->getType()) != IntTy->getBitWidth()) {
+      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                         getName(".oldload"));
+      Old = convertValue(TD, IRB, Old, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      V = insertInteger(TD, IRB, Old, SI.getValueOperand(), Offset,
+                        getName(".insert"));
+    }
+    V = convertValue(TD, IRB, V, NewAllocaTy);
+    StoreInst *Store = IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
     Pass.DeadInsts.push_back(&SI);
     (void)Store;
     DEBUG(dbgs() << "          to: " << *Store << "\n");
@@ -2652,10 +2655,12 @@ private:
     if (IntTy && (BeginOffset > NewAllocaBeginOffset ||
                   EndOffset < NewAllocaEndOffset)) {
       assert(!II.isVolatile());
-      StoreInst *Store = insertInteger(IRB, V, BeginOffset);
-      (void)Store;
-      DEBUG(dbgs() << "          to: " << *Store << "\n");
-      return true;
+      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                         getName(".oldload"));
+      Old = convertValue(TD, IRB, Old, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      V = insertInteger(TD, IRB, Old, V, Offset, getName(".insert"));
     }
 
     if (V->getType() != AllocaTy)
@@ -2811,17 +2816,25 @@ private:
         getIndex(IRB, BeginOffset),
         getName(".copyextract"));
     } else if (IntTy && !IsWholeAlloca && !IsDest) {
-      Src = extractInteger(IRB, SubIntTy, BeginOffset);
+      Src = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                  getName(".load"));
+      Src = convertValue(TD, IRB, Src, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      Src = extractInteger(TD, IRB, Src, SubIntTy, Offset, getName(".extract"));
     } else {
       Src = IRB.CreateAlignedLoad(SrcPtr, Align, II.isVolatile(),
                                   getName(".copyload"));
     }
 
     if (IntTy && !IsWholeAlloca && IsDest) {
-      StoreInst *Store = insertInteger(IRB, Src, BeginOffset);
-      (void)Store;
-      DEBUG(dbgs() << "          to: " << *Store << "\n");
-      return true;
+      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                         getName(".oldload"));
+      Old = convertValue(TD, IRB, Old, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      Src = insertInteger(TD, IRB, Old, Src, Offset, getName(".insert"));
+      Src = convertValue(TD, IRB, Src, NewAllocaTy);
     }
 
     if (IsVectorElement && IsDest) {
