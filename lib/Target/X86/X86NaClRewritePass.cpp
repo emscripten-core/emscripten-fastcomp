@@ -437,34 +437,32 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   // EH_RETURN has a single argment which is not actually used directly.
   // The argument gives the location where to reposition the stack pointer
   // before returning. EmitPrologue takes care of that repositioning.
-  // So EH_RETURN just ultimately emits a plain "ret"
-  if (Opc == X86::RET || Opc == X86::EH_RETURN || Opc == X86::EH_RETURN64) {
+  // So EH_RETURN just ultimately emits a plain "ret".
+  // RETI returns and pops some number of bytes from the stack.
+  if (Opc == X86::RET || Opc == X86::EH_RETURN || Opc == X86::EH_RETURN64 ||
+      Opc == X86::RETI) {
     // To maintain compatibility with nacl-as, for now we don't emit naclret.
     // MI.setDesc(TII->get(Is64Bit ? X86::NACL_RET64 : X86::NACL_RET32));
     if (Is64Bit) {
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP64r), X86::RCX);
+      if (Opc == X86::RETI) {
+        BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_ASPi32))
+          .addOperand(MI.getOperand(0))
+          .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
+      }
       BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP64r))
         .addReg(X86::ECX)
         .addReg(UseZeroBasedSandbox ? 0 : X86::R15);
     } else {
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP32r), X86::ECX);
+      if (Opc == X86::RETI) {
+        BuildMI(MBB, MBBI, DL, TII->get(X86::ADD32ri), X86::ESP)
+          .addReg(X86::ESP)
+          .addOperand(MI.getOperand(0));
+      }
       BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP32r))
         .addReg(X86::ECX);
     }
-    MI.eraseFromParent();
-    return true;
-  }
-
-  if (Opc == X86::RETI) {
-    // To maintain compatibility with nacl-as, for now we don't emit naclret.
-    // MI.setDesc(TII->get(X86::NACL_RETI32));
-    assert(!Is64Bit);
-    BuildMI(MBB, MBBI, DL, TII->get(X86::POP32r), X86::ECX);
-    BuildMI(MBB, MBBI, DL, TII->get(X86::ADD32ri), X86::ESP)
-      .addReg(X86::ESP)
-      .addOperand(MI.getOperand(0));
-    BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP32r))
-      .addReg(X86::ECX);
     MI.eraseFromParent();
     return true;
   }
