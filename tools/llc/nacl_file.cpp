@@ -1,31 +1,20 @@
 /* Copyright 2012 The Native Client Authors. All rights reserved.
  * Use of this source code is governed by a BSD-style license that can
  * be found in the LICENSE file.
-
- * This file provides wrappers to lseek(2), read(2), etc. that read bytes from
- * an mmap()'ed buffer.  There are three steps required:
- *    1. Use linker aliasing to wrap lseek(), etc.  This is done in the
- *       Makefile using the "-XLinker --wrap -Xlinker lseek" arguments to
- *       nacl-gcc.  Note that this makes *all* calls to things like read() go
- *       through these wrappers, so if you also need to read() from, say, a
- *       socket, this code will not work as-is.
- *    2. Use lseek(), read() etc as you normally would for a file.
  *
- * Note: This code is very temporary and will disappear when the Pepper 2 API
- * is available in Native Client.
+ * This file provides wrappers to open() to use pre-opened file descriptors
+ * for the input bitcode and the output file.
+ *
+ * It also has the SRPC interfaces, but that should probably be refactored
+ * into a separate file.
  */
 
 #if defined(__native_client__) && defined(NACL_SRPC)
 
 #include <argz.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/nacl_syscalls.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 // Headers which are not properly part of the SDK are included by their
 // path in the nacl tree
 #include "native_client/src/shared/srpc/nacl_srpc.h"
@@ -39,17 +28,17 @@
 #include <map>
 #include <vector>
 
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/system_error.h"
+
 
 using llvm::MemoryBuffer;
 using llvm::StringRef;
 using std::string;
 using std::map;
 
-#define MMAP_PAGE_SIZE 64 * 1024
-#define MMAP_ROUND_MASK (MMAP_PAGE_SIZE - 1)
 #define printerr(...)  fprintf(stderr, __VA_ARGS__)
 // Temporarily enabling debug prints to debug temp-file usage on windows bots.
 #define printdbg(...)  fprintf(stderr, __VA_ARGS__)
@@ -76,11 +65,6 @@ char kObjectFilename[] = "pnacl.o";
 // Object which manages streaming bitcode over SRPC and threading.
 SRPCStreamer *srpc_streamer;
 
-static size_t roundToNextPageSize(size_t size) {
-  size_t count_up = size + (MMAP_ROUND_MASK);
-  return (count_up & ~(MMAP_ROUND_MASK));
-}
-
 }  // namespace
 
 //TODO(dschuff): a little more elegant interface into llc than this?
@@ -92,43 +76,16 @@ class FileInfo {
 
   string filename_;
   int fd_;
-  int size_;
 
  public:
   // Construct a FileInfo for a file descriptor.
   // File descriptors are used for the bitcode (input) file and for the
   // object (output) file passed in by the coordinator when using the Run
   // SRPC.
-  // They are also used to represent an association with a shared memory
-  // region.  In this case the initial fd_ is -1, representing that the shared
-  // memory is not yet created.  Once data is ready to write, the size is
-  // computed and a shared memory descriptor is stored in fd_.
   FileInfo(string fn, int fd) :
-    filename_(fn), fd_(fd), size_(-1) {
-    printdbg("LLVM-SB-DBG: registering file %d (%s) %d\n",
-             fd, fn.c_str(), size_);
+    filename_(fn), fd_(fd) {
+    printdbg("LLVM-SB-DBG: registering file %d (%s)\n", fd, fn.c_str());
     descriptor_map_[fn] = this;
-    if (fd >= 0) {
-      struct stat stb;
-      int result = fstat(fd_, &stb);
-      if (result != 0) {
-        printerr("LLVM-SB-ERROR: cannot stat %d (%s), result: %d\n",
-                 fd, fn.c_str(), result);
-        perror("LLVM-SB-ERROR: stat");
-      } else {
-        printdbg("LLVM-SB-DBG: registered file (%d, %s) stat_size %lld\n",
-                 fd, fn.c_str(), stb.st_size);
-        PrintFstatInfo(fd, stb);
-      }
-      size_ = stb.st_size;;
-    }
-  }
-
-  int GetSize() {
-    if (fd_ < 0) {
-      printerr("LLVM-SB-ERROR: file has not been initialized!\n");
-    }
-    return size_;
   }
 
   int GetFd() {
@@ -136,23 +93,15 @@ class FileInfo {
   }
 
   MemoryBuffer* ReadAllDataAsMemoryBuffer() {
-    printdbg("LLVM-SB-DBG: reading file %d (%s): %d bytes\n",
-             fd_, filename_.c_str(), size_);
-
-    const int count_up = roundToNextPageSize(size_);
-    char *buf = (char *) mmap(NULL, count_up, PROT_READ, MAP_SHARED, fd_, 0);
-    if (NULL == buf) {
-      perror("LLVM-SB-ERROR: ReadAllDataAsMemoryBuffer mmap call failed!\n");
+    printdbg("LLVM-SB-DBG: opening file %d (%s)\n", fd_, filename_.c_str());
+    llvm::OwningPtr<MemoryBuffer> mb;
+    if (llvm::error_code::success() != MemoryBuffer::getOpenFile(
+            fd_, filename_.c_str(), mb,
+            -1, -1, 0, false)) {
+      perror("LLVM-SB-ERROR: ReadAllDataAsMemoryBuffer getOpenFile failed!\n");
       return 0;
     }
-
-    printdbg("after mapping %p %d\n", buf, size_);
-    // This copies the data into a new buffer
-    MemoryBuffer* mb = MemoryBuffer::getMemBufferCopy(StringRef(buf, size_));
-    munmap(buf, count_up);
-    printdbg("LLVM-SB-DBG: after unmapping %p %d\n",
-             mb->getBufferStart(), mb->getBufferSize());
-    return mb;
+    return mb.take();
   }
 
   void WriteAllDataToTmpFile(string data) {
@@ -180,40 +129,8 @@ class FileInfo {
     }
   }
 
-  // TODO(sehr): remove this method once switched to using the Run SRPC.
-  void WriteAllDataToShmem(string data) {
-    printdbg("LLVM-SB-DBG: writing file %d (%s): %d bytes\n",
-             fd_, filename_.c_str(), data.size());
-
-    if (fd_ >= 0) {
-      printerr("LLVM-SB-ERROR: cannot write file twice\n");
-      return;
-    }
-    const int count_up = roundToNextPageSize(data.size());
-    const int fd = imc_mem_obj_create(count_up);
-    if (fd < 0) {
-      printerr("LLVM-SB-ERROR: imc_mem_obj_create failed\n");
-      return;
-    }
-
-    char* buf = (char *) mmap(NULL, count_up, PROT_WRITE, MAP_SHARED, fd, 0);
-    if (NULL == buf) {
-      perror("LLVM-SB-ERROR: cannot map shm for write\n");
-      return;
-    }
-
-    memcpy(buf, data.c_str(), data.size());
-    munmap(buf, count_up);
-    fd_ = fd;
-    size_ = data.size();
-  }
-
   void WriteAllData(string data) {
-    if (fd_ < 0) {
-      WriteAllDataToShmem(data);
-    } else {
-      WriteAllDataToTmpFile(data);
-    }
+    WriteAllDataToTmpFile(data);
   }
 
   static FileInfo* FindFileInfo(const string& fn) {
@@ -225,24 +142,6 @@ class FileInfo {
     return it->second;
   }
 
- private:
-  void PrintFstatInfo(int fd, const struct stat& stb) {
-    printdbg("LLVM-SB-DBG file stat info for %d (may be fake): \n", fd);
-    printdbg("LLVM-SB-DBG: uid: %d, gid: %d, is_reg: %d\n",
-             stb.st_uid, stb.st_gid, S_ISREG(stb.st_mode));
-    printdbg("LLVM-SB-DBG permissions: ");
-    printdbg( (S_ISDIR(stb.st_mode)) ? "d" : "-");
-    printdbg( (stb.st_mode & S_IRUSR) ? "r" : "-");
-    printdbg( (stb.st_mode & S_IWUSR) ? "w" : "-");
-    printdbg( (stb.st_mode & S_IXUSR) ? "x" : "-");
-    printdbg( (stb.st_mode & S_IRGRP) ? "r" : "-");
-    printdbg( (stb.st_mode & S_IWGRP) ? "w" : "-");
-    printdbg( (stb.st_mode & S_IXGRP) ? "x" : "-");
-    printdbg( (stb.st_mode & S_IROTH) ? "r" : "-");
-    printdbg( (stb.st_mode & S_IWOTH) ? "w" : "-");
-    printdbg( (stb.st_mode & S_IXOTH) ? "x" : "-");
-    printdbg("\n");
-  }
 };
 
 map<string, FileInfo*> FileInfo::descriptor_map_;

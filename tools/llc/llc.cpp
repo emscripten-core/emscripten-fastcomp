@@ -510,8 +510,10 @@ int llc_main(int argc, char **argv) {
       Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
     }
   } else {
-    // In the NACL_SRPC case, fake a memory mapped file
-    // TODO(jvoung): revert changes in MemoryBuffer.cpp, no longer needed
+    // In the NACL_SRPC case, open the file with our special wrapper, which
+    // is aware of pre-opened file descriptors.
+    // NOTE: we could remove this if we only support streaming.
+    // ParseIR() should take ownership of the MemoryBuffer.
     M.reset(ParseIR(NaClGetMemoryBufferForFile(InputFilename.c_str()),
                     Err,
                     Context));
