@@ -1835,17 +1835,21 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
     unsigned PtrSize = PtrVT.getSizeInBits();
     IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
 
-    SDValue TlsGetAddr = DAG.getExternalSymbol("__tls_get_addr", PtrVT);
+    SDValue TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
 
     ArgListTy Args;
-    std::pair<SDValue, SDValue> CallResult =
-        LowerCallTo(DAG.getEntryNode(),
-                   (Type *) Type::getInt32Ty(*DAG.getContext()),
-                   false, false, false, false, 0, CallingConv::C, false,
-                   false, true, TlsGetAddr, Args, DAG, dl);
+    TargetLowering::CallLoweringInfo CLI(DAG.getEntryNode(), PtrTy,
+                  false, false, false, false, 0, CallingConv::C,
+                  /*isTailCall=*/false, /*doesNotRet=*/false,
+                  /*isReturnValueUsed=*/true,
+                  TlsReadTp, Args, DAG, dl);
+    std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
 
     SDValue ThreadPointer = CallResult.first;
-    return DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer, Offset);
+    SDValue TPOffset = DAG.getConstant(0x7000, MVT::i32);
+    SDValue ThreadPointer2 = DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer,
+                                         TPOffset);
+    return DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer2, Offset);
   }
   // @LOCALMOD-END
 

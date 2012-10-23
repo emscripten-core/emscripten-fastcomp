@@ -189,7 +189,7 @@ void MipsNaClRewritePass::SandboxLoadStore(MachineBasicBlock &MBB,
   return;
 }
 
-static bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
+bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
   unsigned Opcode = MI.getOpcode();
   switch (Opcode) {
   default: return false;
@@ -217,7 +217,7 @@ static bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
   return true;
 }
 
-static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
+bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   unsigned Opcode = MI.getOpcode();
   switch (Opcode) {
   default: return false;

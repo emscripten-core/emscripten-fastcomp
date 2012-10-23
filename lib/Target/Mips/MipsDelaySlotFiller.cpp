@@ -141,6 +141,11 @@ FunctionPass *llvm::createMipsDelaySlotFillerPass(MipsTargetMachine &tm) {
   return new Filler(tm);
 }
 
+// @LOCALMOD-START
+extern bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx);
+extern bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx);
+// @LOCALMOD-END
+
 bool Filler::findDelayInstr(MachineBasicBlock &MBB,
                             InstrIter slot,
                             InstrIter &Filler) {
@@ -160,11 +165,18 @@ bool Filler::findDelayInstr(MachineBasicBlock &MBB,
     // Convert to forward iterator.
     InstrIter FI(llvm::next(I).base());
 
+    int Dummy; // @LOCALMOD
     if (I->hasUnmodeledSideEffects()
         || I->isInlineAsm()
         || I->isLabel()
         || FI == LastFiller
         || I->isPseudo()
+        // @LOCALMOD-START
+        // Don't put in delay slot instructions that could be masked.
+        || IsDangerousLoad(*FI, &Dummy)
+        || IsDangerousStore(*FI, &Dummy)
+        || FI->modifiesRegister(Mips::SP, TM.getRegisterInfo())
+        // @LOCALMOD-END
         //
         // Should not allow:
         // ERET, DERET or WAIT, PAUSE. Need to add these to instruction

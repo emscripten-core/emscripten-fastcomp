@@ -81,8 +81,9 @@ MipsRegisterInfo::getCallPreservedMask(CallingConv::ID) const {
 BitVector MipsRegisterInfo::
 getReservedRegs(const MachineFunction &MF) const {
   static const uint16_t ReservedCPURegs[] = {
-    Mips::ZERO, Mips::AT, Mips::K0, Mips::K1, Mips::SP
-    Mips::T6, Mips::T7, Mips::T8          // @LOCALMOD: reserved for PNaCl use
+    Mips::ZERO, Mips::AT,
+    Mips::T6, Mips::T7, Mips::T8,          // @LOCALMOD: reserved for PNaCl use
+    Mips::K0, Mips::K1, Mips::SP
   };
 
   static const uint16_t ReservedCPU64Regs[] = {

@@ -18,6 +18,13 @@
 #include "llvm/Support/ErrorHandling.h"
 #include <list>
 
+// @LOCALMOD-START
+// TODO(petarj): HACK! Find better way to set ELF::EF_MIPS_PIC flag.
+// See also file lib/MC/MCObjectFileInfo.cpp.
+#include "llvm/Support/CodeGen.h"
+extern llvm::Reloc::Model RelocModelOption;
+// @LOCALMOD-END
+
 using namespace llvm;
 
 namespace {
@@ -71,6 +78,10 @@ unsigned MipsELFObjectWriter::getEFlags() const {
     Flag |= ELF::EF_MIPS_ARCH_64R2;
   else
     Flag |= ELF::EF_MIPS_ARCH_32R2;
+  /* @LOCLAMOD-START */
+  if (RelocModelOption == Reloc::PIC_ || RelocModelOption == Reloc::Default)
+    Flag |= ELF::EF_MIPS_PIC;
+  /* @LOCLAMOD-END */
   return Flag;
 }
 
