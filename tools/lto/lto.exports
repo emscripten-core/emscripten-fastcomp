@@ -47,3 +47,4 @@ lto_codegen_compile_to_file
 LLVMCreateDisasm
 LLVMDisasmDispose
 LLVMDisasmInstruction
+LLVMSetDisasmOptions
