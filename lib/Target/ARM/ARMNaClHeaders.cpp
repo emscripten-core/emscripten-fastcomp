@@ -39,7 +39,7 @@ void EmitSFIHeaders(raw_ostream &O) {
 
   O <<
     "\t.macro sfi_illegal_if_at_bundle_begining\n"
-    "\tsfi_long_based_on_pos 1 0 0 0 0xe1277777\n"
+    "\tsfi_long_based_on_pos 1 0 0 0 0xe125be70\n"
     "\t.endm\n"
     "\n\n";
 

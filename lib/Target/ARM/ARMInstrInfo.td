@@ -1810,7 +1810,9 @@ let isBarrier = 1, isTerminator = 1 in
 def TRAP : AXI<(outs), (ins), MiscFrm, NoItinerary,
                "trap", [(trap)]>,
            Requires<[IsARM]> {
-  let Inst = 0xe7ffdefe;
+  // @LOCALMOD-START
+  let Inst = 0xe7fedef0;
+  // @LOCALMOD-END
 }
 
 // Address computation and loads and stores in PIC mode.
