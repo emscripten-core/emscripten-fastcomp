@@ -668,12 +668,7 @@ const MCSymbol *ELFObjectWriter::SymbolToReloc(const MCAssembler &Asm,
   if (&Sec2 != &Section &&
       (Kind == MCSymbolRefExpr::VK_PLT ||
        Kind == MCSymbolRefExpr::VK_GOTPCREL ||
-       Kind == MCSymbolRefExpr::VK_GOTOFF ||
-  // @LOCALMOD-BEGIN-IS-UPSTREAM
-  // Fixes an LLVM bug. This bug has already been fixed upstream
-  // and should disappear on the next merge.
-       Kind == MCSymbolRefExpr::VK_NTPOFF)) {
-  // @LOCALMOD-END
+       Kind == MCSymbolRefExpr::VK_GOTOFF)) {
     if (Renamed)
       return Renamed;
     return &Symbol;
