@@ -155,21 +155,21 @@ void IntrinsicLowering::AddPrototypes(Module &M) {
           Type::getInt8PtrTy(Context),
                               Type::getInt8PtrTy(Context), 
                               Type::getInt8PtrTy(Context), 
-                              TD.getIntPtrType(Context), (Type *)0);
+                              TD.getIntPtrType(Context, 0), (Type *)0);
         break;
       case Intrinsic::memmove:
         M.getOrInsertFunction("memmove",
           Type::getInt8PtrTy(Context),
                               Type::getInt8PtrTy(Context), 
                               Type::getInt8PtrTy(Context), 
-                              TD.getIntPtrType(Context), (Type *)0);
+                              TD.getIntPtrType(Context, 0), (Type *)0);
         break;
       case Intrinsic::memset:
         M.getOrInsertFunction("memset",
           Type::getInt8PtrTy(Context),
                               Type::getInt8PtrTy(Context), 
                               Type::getInt32Ty(M.getContext()), 
-                              TD.getIntPtrType(Context), (Type *)0);
+                              TD.getIntPtrType(Context, 0), (Type *)0);
         break;
       case Intrinsic::sqrt:
         EnsureFPIntrinsicsExist(M, I, "sqrtf", "sqrt", "sqrtl");
@@ -497,7 +497,7 @@ void IntrinsicLowering::LowerIntrinsicCall(CallInst *CI) {
     break;   // Strip out annotate intrinsic
     
   case Intrinsic::memcpy: {
-    IntegerType *IntPtr = TD.getIntPtrType(Context);
+    IntegerType *IntPtr = TD.getIntPtrType(CI->getArgOperand(0)->getType());
     Value *Size = Builder.CreateIntCast(CI->getArgOperand(2), IntPtr,
                                         /* isSigned */ false);
     Value *Ops[3];
@@ -508,7 +508,7 @@ void IntrinsicLowering::LowerIntrinsicCall(CallInst *CI) {
     break;
   }
   case Intrinsic::memmove: {
-    IntegerType *IntPtr = TD.getIntPtrType(Context);
+    IntegerType *IntPtr = TD.getIntPtrType(CI->getArgOperand(0)->getType());
     Value *Size = Builder.CreateIntCast(CI->getArgOperand(2), IntPtr,
                                         /* isSigned */ false);
     Value *Ops[3];
@@ -519,7 +519,7 @@ void IntrinsicLowering::LowerIntrinsicCall(CallInst *CI) {
     break;
   }
   case Intrinsic::memset: {
-    IntegerType *IntPtr = TD.getIntPtrType(Context);
+    IntegerType *IntPtr = TD.getIntPtrType(CI->getArgOperand(0)->getType());
     Value *Size = Builder.CreateIntCast(CI->getArgOperand(2), IntPtr,
                                         /* isSigned */ false);
     Value *Ops[3];
