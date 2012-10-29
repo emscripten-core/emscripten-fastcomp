@@ -439,7 +439,9 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
     fixSymbolsInTLSFixups(Fixups[i].getValue());
 
   // @LOCALMOD-BEGIN
-  if (Fixups.size() > 0) {
+  MCSectionData *SD = getCurrentSectionData();
+
+  if (Fixups.size() > 0 || !SD->isBundlingEnabled()) {
     MCDataFragment *DF = getOrCreateDataFragment();
 
     // Add the fixups and data.
@@ -448,15 +450,13 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
       DF->addFixup(Fixups[i]);
     }
     DF->getContents().append(Code.begin(), Code.end());
-    getCurrentSectionData()->UpdateBundleOffset(Code.size());
   } else {
     MCTinyFragment *TF = dyn_cast_or_null<MCTinyFragment>(getCurrentFragment());
-    MCSectionData *SD = getCurrentSectionData();
     if (!TF || SD->ShouldCreateNewFragment(Code.size()))
       TF = new MCTinyFragment(SD);
     TF->getContents().append(Code.begin(), Code.end());
-    SD->UpdateBundleOffset(Code.size());
   }
+  SD->UpdateBundleOffset(Code.size());
   // @LOCALMOD-END
 }
 
