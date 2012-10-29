@@ -1,5 +1,6 @@
 ; RUN: llc < %s -mattr=-avx -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s
 ; RUN: llc < %s -mattr=+avx -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s --check-prefix=AVX
+; RUN: llc < %s -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort -mtriple=x86_64-none-nacl | FileCheck %s --check-prefix=NACL64
 
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64"
 target triple = "x86_64-apple-darwin10.0.0"
@@ -301,6 +302,11 @@ define void @test23(i8* noalias sret %result) {
 ; CHECK: call
 ; CHECK: movq  %rdi, %rax
 ; CHECK: ret
+; NACL64: test23:
+; NACL64: call
+; NACL64: movl  %edi, %eax
+; NACL64: popq %rcx
+; NACL64: nacljmp %ecx, %r15
 }
 
 declare i8* @foo23()

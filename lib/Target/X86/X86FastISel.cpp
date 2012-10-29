@@ -833,9 +833,16 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
     unsigned Reg = X86MFInfo->getSRetReturnReg();
     assert(Reg &&
            "SRetReturnReg should have been set in LowerFormalArguments()!");
+    // @LOCALMOD-BEGIN -- Ensure that the register classes match.
+    // At this point, SRetReturnReg is EDI, because PointerTy() for NaCl
+    // is i32.  We then copy to EAX instead of RAX.  Alternatively, we could
+    // have zero-extended EDI to RDI then copy to RAX, but this has a smaller
+    // encoding (2 bytes vs 3 bytes).
+    unsigned CopyTo = Subtarget->has64BitPointers() ? X86::RAX : X86::EAX;
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
-            X86::RAX).addReg(Reg);
-    MRI.addLiveOut(X86::RAX);
+            CopyTo).addReg(Reg);
+    MRI.addLiveOut(CopyTo);
+    // @LOCALMOD-END
   }
 
   // Now emit the RET.
