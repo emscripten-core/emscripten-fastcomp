@@ -137,6 +137,12 @@ ARMSubtarget::ARMSubtarget(const std::string &TT, const std::string &CPU,
   }
 
   // @LOCALMOD-BEGIN
+  // Advanced SIMD and Q registers are part of the NaCl ARM ABI.  The ARM
+  // EABI specifies only an 8 byte alignment, which can result in poor
+  // performance for these 16 byte data types if they straddle cache lines, etc.
+  // Therefore, NaCl aligns stack frames 0mod16.
+  if (isTargetNaCl())
+    stackAlignment = 16;
   // NaCl uses MovT to avoid generating constant islands.
   if (isTargetNaCl() && !useConstPool())
     UseMovt = true;
