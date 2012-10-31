@@ -53,6 +53,10 @@ FlagSfiStack("sfi-stack", cl::desc("enable sandboxing for stack changes"));
 cl::opt<bool>
 FlagSfiBranch("sfi-branch", cl::desc("enable sandboxing for branches"));
 
+cl::opt<bool>
+FlagNaClUseM23ArmAbi("nacl-use-m23-arm-abi",
+                     cl::desc("use the Chrome M23 ARM ABI"));
+
 }
 
 namespace {
@@ -533,7 +537,7 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
                                        bool IsLoad) {
   unsigned Addr = MI.getOperand(AddrIdx).getReg();
 
-  if (Addr == ARM::R9) {
+  if (!FlagNaClUseM23ArmAbi && Addr == ARM::R9) {
     // R9-relative loads are no longer sandboxed.
     assert(IsLoad && "There should be no r9-relative stores");
   } else if (!CPSRLive && TryPredicating(MI, ARMCC::EQ)) {

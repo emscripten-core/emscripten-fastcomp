@@ -949,11 +949,19 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
         // See native_client/src/untrusted/nacl/aeabi_read_tp.S
         // .nexe builds use this version, while irt builds use a call to
         // __aeabi_read_tp.
-        // ldr r0, [r9, #0]
-        AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(),
-                               TII->get(ARM::LDRi12), ARM::R0)
-                       .addReg(ARM::R9)
-                       .addImm(0));
+        if (FlagNaClUseM23ArmAbi) {
+          // mov r0, r9
+          AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(),
+                                 TII->get(ARM::MOVr), ARM::R0)
+                         .addReg(ARM::R9))
+              .addReg(0); // Doesn't use/modify CPSR.
+        } else {
+          // ldr r0, [r9, #0]
+          AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(),
+                                 TII->get(ARM::LDRi12), ARM::R0)
+                         .addReg(ARM::R9)
+                         .addImm(0));
+        }
       }
       // @LOCALMOD-END
       MI.eraseFromParent();
