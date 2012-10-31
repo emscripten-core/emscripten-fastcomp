@@ -100,8 +100,6 @@ static bool IsPushPop(MachineInstr &MI) {
   }
 }
 
-static bool IsSandboxed(MachineInstr &MI);
-
 static bool IsStore(MachineInstr &MI) {
   return MI.getDesc().mayStore();
 }
@@ -482,12 +480,6 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  if (Opc == X86::NACL_LONGJ32 ||
-      Opc == X86::NACL_LONGJ64) {
-    // The expansions for these intrinsics already handle control SFI.
-    return false;
-  }
-
   DumpInstructionVerbose(MI);
   llvm_unreachable("Unhandled Control SFI");
 }
@@ -750,46 +742,6 @@ bool X86NaClRewritePass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     }
   }
   return Modified;
-}
-
-static bool IsSandboxed(MachineInstr &MI) {
-  switch (MI.getOpcode()) {
-  // 32-bit
-  case X86::NACL_TRAP32:
-  case X86::NACL_RET32:
-  case X86::NACL_RETI32:
-  case X86::NACL_JMP32r:
-  case X86::NACL_CALL32d:
-  case X86::NACL_CALL32r:
-
-  // 64-bit
-  case X86::NACL_TRAP64:
-  case X86::NACL_RET64:
-  case X86::NACL_JMP64r:
-  case X86::NACL_JMP64z:
-  case X86::NACL_CALL64r:
-  case X86::NACL_CALL64d:
-
-  case X86::NACL_ASPi8:
-  case X86::NACL_ASPi32:
-  case X86::NACL_SSPi8:
-  case X86::NACL_SSPi32:
-  case X86::NACL_SPADJi32:
-  case X86::NACL_RESTSPr:
-  case X86::NACL_RESTSPm:
-  case X86::NACL_RESTSPrz:
-  case X86::NACL_RESTBPr:
-  case X86::NACL_RESTBPm:
-  case X86::NACL_RESTBPrz:
-    return true;
-
-  case X86::MOV64rr:
-    // copy from safe regs
-    const MachineOperand &DestReg = MI.getOperand(0);
-    const MachineOperand &SrcReg = MI.getOperand(1);
-    return DestReg.getReg() == X86::RSP && SrcReg.getReg() == X86::RBP;
-  }
-  return false;
 }
 
 static void DumpInstructionVerbose(const MachineInstr &MI) {

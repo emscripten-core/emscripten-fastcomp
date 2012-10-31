@@ -100,6 +100,11 @@ protected:
   /// IsR9Reserved - True if R9 is a not available as general purpose register.
   bool IsR9Reserved;
 
+  // @LOCALMOD-START
+  /// UseInlineJumpTables - True if jump tables should be in-line in the code.
+  bool UseInlineJumpTables;
+  // @LOCALMOD-END
+
   /// UseMovt - True if MOVT / MOVW pairs are used for materialization of 32-bit
   /// imms (including global addresses).
   bool UseMovt;
@@ -176,12 +181,6 @@ protected:
 
   /// Selected instruction itineraries (one entry per itinerary class.)
   InstrItineraryData InstrItins;
-
-  // @LOCALMOD-START
-  /// UseInlineJumpTables - True if jump tables should be in-line in the code.
-  bool UseInlineJumpTables;
-  // @LOCALMOD-END
-
 
  public:
   enum {

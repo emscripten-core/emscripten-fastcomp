@@ -39,7 +39,7 @@ static cl::opt<bool>
 NoInlineJumpTables("no-inline-jumptables",
                   cl::desc("Do not place jump tables inline in the code"));
 // @LOCALMOD-END
-                     
+
 static cl::opt<bool>
 UseFusedMulOps("arm-use-mulops",
                cl::init(true), cl::Hidden);

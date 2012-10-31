@@ -212,34 +212,6 @@ static void EmitMoveRegReg(bool Is64Bit, unsigned ToReg,
   Out.EmitInstruction(Move);
 }
 
-static void EmitMoveRegImm32(bool Is64Bit, unsigned ToReg,
-                             unsigned Imm32, MCStreamer &Out) {
-  MCInst MovInst;
-  MovInst.setOpcode(X86::MOV32ri);
-  MovInst.addOperand(MCOperand::CreateReg(X86::EBX));
-  MovInst.addOperand(MCOperand::CreateImm(Imm32));
-  Out.EmitInstruction(MovInst);
-}
-
-static void EmitCmove(bool Is64Bit, unsigned ToReg,
-                      unsigned FromReg, MCStreamer &Out) {
-  MCInst CmovInst;
-  CmovInst.setOpcode(Is64Bit ? X86::CMOVE64rr : X86::CMOVE32rr);
-  CmovInst.addOperand(MCOperand::CreateReg(ToReg));
-  CmovInst.addOperand(MCOperand::CreateReg(ToReg));
-  CmovInst.addOperand(MCOperand::CreateReg(FromReg));
-  Out.EmitInstruction(CmovInst);
-}
-
-static void EmitClearReg(bool Is64Bit, unsigned Reg, MCStreamer &Out) {
-  MCInst Clear;
-  Clear.setOpcode(X86::XOR32rr);
-  Clear.addOperand(MCOperand::CreateReg(Reg));
-  Clear.addOperand(MCOperand::CreateReg(Reg));
-  Clear.addOperand(MCOperand::CreateReg(Reg));
-  Out.EmitInstruction(Clear);
-}
-
 static void EmitRegTruncate(unsigned Reg64, MCStreamer &Out) {
   unsigned Reg32 = getX86SubSuperRegister_(Reg64, MVT::i32);
   EmitMoveRegReg(false, Reg32, Reg32, Out);
@@ -272,20 +244,6 @@ static void ShortenMemoryRef(MCInst *Inst, unsigned IndexOpPosition) {
   }
 }
 
-static void EmitPushReg(bool Is64Bit, unsigned FromReg, MCStreamer &Out) {
-  MCInst Push;
-  Push.setOpcode(Is64Bit ? X86::PUSH64r : X86::PUSH32r);
-  Push.addOperand(MCOperand::CreateReg(FromReg));
-  Out.EmitInstruction(Push);
-}
-
-static void EmitPopReg(bool Is64Bit, unsigned ToReg, MCStreamer &Out) {
-  MCInst Pop;
-  Pop.setOpcode(Is64Bit ? X86::POP64r : X86::POP32r);
-  Pop.addOperand(MCOperand::CreateReg(ToReg));
-  Out.EmitInstruction(Pop);
-}
-
 static void EmitLoad(bool Is64Bit,
                      unsigned DestReg,
                      unsigned BaseReg,
@@ -306,44 +264,8 @@ static void EmitLoad(bool Is64Bit,
   Out.EmitInstruction(Load);
 }
 
-// Utility function for storing done by setjmp.
-// Creates a store from Reg into the address PtrReg + Offset.
-static void EmitStore(bool Is64Bit,
-                      unsigned BaseReg,
-                      unsigned Scale,
-                      unsigned IndexReg,
-                      unsigned Offset,
-                      unsigned SegmentReg,
-                      unsigned SrcReg,
-                      MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
-  // Store SrcReg to address BaseReg + Scale * IndexReg + Offset
-  MCInst Store;
-  Store.setOpcode(Is64Bit ? X86::MOV64mr : X86::MOV32mr);
-  Store.addOperand(MCOperand::CreateReg(BaseReg));
-  Store.addOperand(MCOperand::CreateImm(Scale));
-  Store.addOperand(MCOperand::CreateReg(IndexReg));
-  Store.addOperand(MCOperand::CreateImm(Offset));
-  Store.addOperand(MCOperand::CreateReg(SegmentReg));
-  Store.addOperand(MCOperand::CreateReg(SrcReg));
-  Out.EmitInstruction(Store);
-}
-
-static void EmitAndRegReg(bool Is64Bit, unsigned DestReg,
-                          unsigned SrcReg, MCStreamer &Out) {
-  MCInst AndInst;
-  AndInst.setOpcode(X86::AND32rr);
-  AndInst.addOperand(MCOperand::CreateReg(DestReg));
-  AndInst.addOperand(MCOperand::CreateReg(DestReg));
-  AndInst.addOperand(MCOperand::CreateReg(SrcReg));
-  Out.EmitInstruction(AndInst);
-}
-
-
-
 static bool SandboxMemoryRef(MCInst *Inst,
                              unsigned *IndexOpPosition) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   for (unsigned i = 0, last = Inst->getNumOperands(); i < last; i++) {
     if (!Inst->getOperand(i).isReg() ||
         Inst->getOperand(i).getReg() != X86::PSEUDO_NACL_SEG) {
@@ -390,7 +312,8 @@ static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
 }
 
 
-static void EmitREST(const MCInst &Inst, unsigned Reg32, bool IsMem, MCStreamer &Out) {
+static void EmitREST(const MCInst &Inst, unsigned Reg32,
+                     bool IsMem, MCStreamer &Out) {
   unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
   Out.EmitBundleLock();
   if (!IsMem) {
@@ -416,91 +339,6 @@ static void EmitREST(const MCInst &Inst, unsigned Reg32, bool IsMem, MCStreamer 
   Out.EmitBundleUnlock();
 }
 
-// Does the x86 platform specific work for setjmp.
-// It expects that a pointer to a JMP_BUF in %ecx/%rdi, and that the return
-// address is in %edx/%rdx.
-// The JMP_BUF is a structure that has the maximum size over all supported
-// architectures.  The callee-saves registers plus [er]ip and [er]sp are stored
-// into the JMP_BUF.
-// TODO(arbenson): Is this code dead? If so, clean it up.
-static void EmitSetjmp(bool Is64Bit, MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
-  unsigned JmpBuf = Is64Bit ? X86::RDI : X86::ECX;
-  unsigned RetAddr = Is64Bit ? X86::RDX : X86::EDX;
-  if (Is64Bit) {
-    unsigned BasePtr = UseZeroBasedSandbox ? 0 : X86::R15;
-    unsigned Segment = X86::PSEUDO_NACL_SEG;
-    // Save the registers.
-    EmitStore(true, BasePtr, 1, JmpBuf,  0, Segment, X86::RBX, Out);
-    EmitStore(true, BasePtr, 1, JmpBuf,  8, Segment, X86::RBP, Out);
-    EmitStore(true, BasePtr, 1, JmpBuf, 16, Segment, X86::RSP, Out);
-    EmitStore(true, BasePtr, 1, JmpBuf, 24, Segment, X86::R12, Out);
-    EmitStore(true, BasePtr, 1, JmpBuf, 32, Segment, X86::R13, Out);
-    EmitStore(true, BasePtr, 1, JmpBuf, 40, Segment, X86::R14, Out);
-    EmitStore(true, BasePtr, 1, JmpBuf, 48, Segment, X86::RDX, Out);
-  } else {
-    // Save the registers.
-    EmitStore(false, JmpBuf, 1, 0,  0, 0, X86::EBX, Out);
-    EmitStore(false, JmpBuf, 1, 0,  4, 0, X86::EBP, Out);
-    EmitStore(false, JmpBuf, 1, 0,  8, 0, X86::ESP, Out);
-    EmitStore(false, JmpBuf, 1, 0, 12, 0, X86::ESI, Out);
-    EmitStore(false, JmpBuf, 1, 0, 16, 0, X86::EDI, Out);
-    EmitStore(false, JmpBuf, 1, 0, 20, 0, X86::EDX, Out);
-  }
-  // Return 0.
-  EmitClearReg(false, X86::EAX, Out);
-}
-
-// Does the x86 platform specific work for longjmp other than normalizing the
-// return parameter (returns of zero are changed to return 1 in the caller).
-// It expects that a pointer to a JMP_BUF in %ecx/%rdi, and that the return
-// value is in %eax.
-// The JMP_BUF is a structure that has the maximum size over all supported
-// architectures.  The saved registers are restored from the JMP_BUF.
-// TODO(arbenson): Is this code dead? If so, clean it up.
-static void EmitLongjmp(bool Is64Bit, MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
-  unsigned JmpBuf = Is64Bit ? X86::RDI : X86::ECX;
-  // If the return value was 0, make it 1.
-  EmitAndRegReg(false, X86::EAX, X86::EAX, Out);
-  EmitMoveRegImm32(false, X86::EBX, 1, Out);
-  EmitCmove(false, X86::EAX, X86::EBX, Out);
-  if (Is64Bit) {
-    unsigned BasePtr = UseZeroBasedSandbox ? 0 : X86::R15;
-    unsigned Segment = X86::PSEUDO_NACL_SEG;
-    // Restore the registers.
-    EmitLoad(true, X86::RBX, BasePtr, 1, JmpBuf,  0, Segment, Out);
-    EmitLoad(true, X86::RDX, BasePtr, 1, JmpBuf,  8, Segment, Out);
-    // restbp
-    Out.EmitBundleLock();
-    EmitRegTruncate(X86::RBP, Out);
-    EmitRegFix(X86::RBP, Out);
-    Out.EmitBundleUnlock();
-    EmitLoad(true, X86::RDX, BasePtr, 1, JmpBuf, 16, Segment, Out);
-    // restsp
-    Out.EmitBundleLock();
-    EmitRegTruncate(X86::RSP, Out);
-    EmitRegFix(X86::RSP, Out);
-    Out.EmitBundleUnlock();
-    EmitLoad(true, X86::R12, BasePtr, 1, JmpBuf, 24, Segment, Out);
-    EmitLoad(true, X86::R13, BasePtr, 1, JmpBuf, 32, Segment, Out);
-    EmitLoad(true, X86::R14, BasePtr, 1, JmpBuf, 40, Segment, Out);
-    EmitLoad(true, X86::RDX, BasePtr, 1, JmpBuf, 48, Segment, Out);
-  } else {
-    // Restore the registers.
-    EmitLoad(false, X86::EBX, JmpBuf, 1, 0,  0, 0, Out);
-    EmitLoad(false, X86::EBP, JmpBuf, 1, 0,  4, 0, Out);
-    EmitLoad(false, X86::ESP, JmpBuf, 1, 0,  8, 0, Out);
-    EmitLoad(false, X86::ESI, JmpBuf, 1, 0, 12, 0, Out);
-    EmitLoad(false, X86::EDI, JmpBuf, 1, 0, 16, 0, Out);
-    EmitLoad(false, X86::ECX, JmpBuf, 1, 0, 20, 0, Out);
-  }
-  // Jmp to the saved return address.
-  MCInst JMPInst;
-  JMPInst.setOpcode(Is64Bit ? X86::NACL_JMP64r : X86::NACL_JMP32r);
-  JMPInst.addOperand(MCOperand::CreateReg(X86::ECX));
-  Out.EmitInstruction(JMPInst);
-}
 
 namespace llvm {
 // CustomExpandInstNaClX86 -
@@ -631,20 +469,6 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
   case X86::NACL_RESTSPrz:
     assert(PrefixSaved == 0);
     EmitREST(Inst, X86::ESP, false, Out);
-    return true;
-  // Intrinsics for eliminating platform specific .s code from the client
-  // side link.  These are recognized in X86InstrNaCl.td.
-  case X86::NACL_SETJ32:
-    EmitSetjmp(false, Out);
-    return true;
-  case X86::NACL_SETJ64:
-    EmitSetjmp(true, Out);
-    return true;
-  case X86::NACL_LONGJ32:
-    EmitLongjmp(false, Out);
-    return true;
-  case X86::NACL_LONGJ64:
-    EmitLongjmp(true, Out);
     return true;
   }
 

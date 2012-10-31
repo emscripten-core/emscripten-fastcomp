@@ -171,22 +171,6 @@ void EmitSFIHeaders(raw_ostream &O) {
       "\n\n";
   }
 
-  const char* kPreds[] = {
-    "eq",
-    "ne",
-    "lt",
-    "le",
-    "ls",
-    "ge",
-    "gt",
-    "hs",
-    "hi",
-    "lo",
-    "mi",
-    "pl",
-    NULL,
-  };
-
   O << " @ ========================================\n";
   O << "\t.text\n";
 }

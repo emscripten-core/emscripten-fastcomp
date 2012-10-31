@@ -5251,8 +5251,7 @@ static SDValue LowerMUL(SDValue Op, SelectionDAG &DAG) {
 // The effect of this is to adjust the stack pointer by "offset"
 // and then branch to "handler".
 SDValue ARMTargetLowering::LowerEH_RETURN(SDValue Op, SelectionDAG &DAG)
-  const {
-  MachineFunction &MF = DAG.getMachineFunction();
+    const {
   SDValue Chain     = Op.getOperand(0);
   SDValue Offset    = Op.getOperand(1);
   SDValue Handler   = Op.getOperand(2);
@@ -5274,7 +5273,7 @@ SDValue ARMTargetLowering::LowerEH_RETURN(SDValue Op, SelectionDAG &DAG)
                      Chain,
                      DAG.getRegister(OffsetReg, MVT::i32),
                      DAG.getRegister(AddrReg, getPointerTy()));
-  }
+}
 // @LOCALMOD-END
 
 

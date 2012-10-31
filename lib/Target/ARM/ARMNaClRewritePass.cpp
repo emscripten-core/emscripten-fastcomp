@@ -13,7 +13,7 @@
 // isolation (SFI) constructions to be put in place, to prevent escape from
 // the sandbox. Native Client refuses to execute binaries without the correct
 // SFI sequences.
-// 
+//
 // Potentially dangerous operations which are protected include:
 // * Stores
 // * Branches
@@ -152,12 +152,6 @@ static void DumpBasicBlockVerbose(const MachineBasicBlock &MBB) {
     DumpInstructionVerbose(*MBBI);
   }
   dbgs() << "<<<<< DUMP BASIC BLOCK END\n\n";
-}
-
-static void DumpBasicBlockVerboseCond(const MachineBasicBlock &MBB, bool b) {
-  if (b) {
-    DumpBasicBlockVerbose(MBB);
-  }
 }
 
 /**********************************************************************/
@@ -356,11 +350,10 @@ void ARMNaClRewritePass::SandboxStackChange(MachineBasicBlock &MBB,
   BuildMI(MBB, MBBI, MI.getDebugLoc(),
           TII->get(ARM::SFI_NOP_IF_AT_BUNDLE_END));
 
-  // Get to next instr (one + to get the original, and one more + to get past)
-  MachineBasicBlock::iterator MBBINext = (MBBI++);
-  MachineBasicBlock::iterator MBBINext2 = (MBBI++);
+  // Get to next instr.
+  MachineBasicBlock::iterator MBBINext = (++MBBI);
 
-  BuildMI(MBB, MBBINext2, MI.getDebugLoc(),
+  BuildMI(MBB, MBBINext, MI.getDebugLoc(),
           TII->get(ARM::SFI_DATA_MASK))
       .addReg(ARM::SP, RegState::Define)  // modify SP (as dst)
       .addReg(ARM::SP, RegState::Kill)    // start with SP (as src)

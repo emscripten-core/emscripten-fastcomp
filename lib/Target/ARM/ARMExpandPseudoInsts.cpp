@@ -1391,7 +1391,7 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(ARM::BX))
           .addReg(TargetReg);
       MI.eraseFromParent();
-      break;
+      return true;
     }
     case ARM::MOVGOTAddr : {
       // Expand the pseudo-inst that requests for the GOT address
@@ -1423,7 +1423,7 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       HI16.addImm(Pred).addReg(PredReg);
       TransferImpOps(MI, LO16, HI16);
       MI.eraseFromParent();
-      break;
+      return true;
     }
     // @LOCALMOD-END
   }

@@ -272,14 +272,14 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
   }
   if (SFIInst) {
     O << '\t' << SFIInst;
-    if (SFIEmitDest != ~0) {
+    if (SFIEmitDest != (unsigned)~0) {
       O << ' ';
       printOperand(MI, SFIEmitDest, O);
     }
-    if (SFIEmitDest != ~0 && SFIEmitPred != ~0) {
+    if (SFIEmitDest != (unsigned)~0 && SFIEmitPred != (unsigned)~0) {
       O << ',';
     }
-    if (SFIEmitPred != ~0) {
+    if (SFIEmitPred != (unsigned)~0) {
       O << ' ';
       printPredicateOperand(MI, SFIEmitPred, O);
     }
@@ -287,7 +287,7 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
     return;
   }
   // @LOCALMOD-END
-  
+
   if (Opcode == ARM::tLDMIA) {
     bool Writeback = true;
     unsigned BaseReg = MI->getOperand(0).getReg();
