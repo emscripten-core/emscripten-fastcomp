@@ -585,13 +585,6 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
   if (!NoInitialTextSection)
     Out.InitSections();
 
-  // @LOCALMOD-BEGIN
-  // This is needed to make crtn compile, but do we really need this?
-  // TODO(pdox): Figure out if there's a better way or place to define this.
-  MCSymbol *Sym = getContext().GetOrCreateSymbol(StringRef("NACLENTRYALIGN"));
-  Out.EmitAssignment(Sym, MCConstantExpr::Create(5, getContext()));
-  // @LOCALMOD-END
-
   // Prime the lexer.
   Lex();
 
