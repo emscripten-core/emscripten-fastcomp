@@ -86,13 +86,7 @@ std::string ARM_MC::ParseARMTriple(StringRef TT, StringRef CPU) {
         // features.
         if (NoCPU)
           // v7a: FeatureNEON, FeatureDB, FeatureDSPThumb2, FeatureT2XtPk
-          // @LOCALMOD-BEGIN
-          // Orig:    ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
-          // TODO(pdox): Eliminate this strange exception, possibly
-          // with our own cpu tag. (neon doesn't work, but vfp2 does).
-          // We also don't seem to handle The DSP features.
-          ARMArchFeature = "+v7,+db,+vfp2";
-          // @LOCALMOD-END
+          ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
         else
           // Use CPU to figure out the exact features.
           // @LOCALMOD-BEGIN
