@@ -161,9 +161,13 @@ bool X86Subtarget::IsLegalToCallImmediateAddr(const TargetMachine &TM) const {
   if (In64BitMode)
     return false;
   // @LOCALMOD-BEGIN
-  // Upstream LLVM bug fix
   // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2367
-  return isTargetELF() && TM.getRelocationModel() == Reloc::Static;
+  // For NaCl dynamic linking we do not want to generate a text relocation to
+  // an absolute address in PIC mode.  Such a situation arises from
+  // test/CodeGen/X86/call-imm.ll with the default implementation.
+  // For other platforms we retain the default behavior.
+  return (isTargetELF() && !isTargetNaCl()) ||
+         TM.getRelocationModel() == Reloc::Static;
   // @LOCALMOD-END
 }
 
