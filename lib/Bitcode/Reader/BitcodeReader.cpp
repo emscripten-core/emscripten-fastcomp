@@ -2839,6 +2839,16 @@ bool BitcodeReader::isDematerializable(const GlobalValue *GV) const {
   const Function *F = dyn_cast<Function>(GV);
   if (!F || F->isDeclaration())
     return false;
+  // @LOCALMOD-START
+  // Don't dematerialize functions with BBs which have their address taken;
+  // it will cause any referencing blockAddress constants to also be destroyed,
+  // but because they are GVs, they need to stay around until PassManager
+  // finalization.
+  for (Function::const_iterator BB = F->begin(); BB != F->end(); ++BB) {
+    if (BB->hasAddressTaken())
+      return false;
+  }
+  // @LOCALMOD-END
   return DeferredFunctionInfo.count(const_cast<Function*>(F));
 }
 
