@@ -524,14 +524,6 @@ std::string DataLayout::getStringRepresentation() const {
   return OS.str();
 }
 
-unsigned DataLayout::getPointerTypeSizeInBits(Type *Ty) const
-{
-    if (Ty->isPointerTy()) return getTypeSizeInBits(Ty);
-    if (Ty->isVectorTy()
-        && cast<VectorType>(Ty)->getElementType()->isPointerTy())
-      return getTypeSizeInBits(cast<VectorType>(Ty)->getElementType());
-    return getPointerSizeInBits(0);
-}
 
 uint64_t DataLayout::getTypeSizeInBits(Type *Ty) const {
   assert(Ty->isSized() && "Cannot getTypeInfo() on a type that is unsized!");
@@ -668,32 +660,25 @@ unsigned DataLayout::getPreferredTypeAlignmentShift(Type *Ty) const {
   return Log2_32(Align);
 }
 
-/// getIntPtrType - Return an integer type that is the same size or
-/// greater to the pointer size for the address space.
+/// getIntPtrType - Return an integer type with size at least as big as that
+/// of a pointer in the given address space.
 IntegerType *DataLayout::getIntPtrType(LLVMContext &C,
                                        unsigned AddressSpace) const {
   return IntegerType::get(C, getPointerSizeInBits(AddressSpace));
 }
 
-/// getIntPtrType - Return an integer type that is the same size or
-/// greater to the pointer size of the specific PointerType.
-IntegerType *DataLayout::getIntPtrType(Type *Ty) const {
-  LLVMContext &C = Ty->getContext();
-  // For pointers, we return the size for the specific address space.
-  if (Ty->isPointerTy()) return IntegerType::get(C, getTypeSizeInBits(Ty));
-  // For vector of pointers, we return the size of the address space
-  // of the pointer type.
-  if (Ty->isVectorTy() && cast<VectorType>(Ty)->getElementType()->isPointerTy())
-    return IntegerType::get(C,
-        getTypeSizeInBits(cast<VectorType>(Ty)->getElementType()));
-  // Otherwise return the address space for the default address space.
-  // An example of this occuring is that you want to get the IntPtr
-  // for all of the arguments in a function. However, the IntPtr
-  // for a non-pointer type cannot be determined by the type, so
-  // the default value is used.
-  return getIntPtrType(C, 0);
+/// getIntPtrType - Return an integer (vector of integer) type with size at
+/// least as big as that of a pointer of the given pointer (vector of pointer)
+/// type.
+Type *DataLayout::getIntPtrType(Type *Ty) const {
+  assert(Ty->isPtrOrPtrVectorTy() &&
+         "Expected a pointer or pointer vector type.");
+  unsigned NumBits = getTypeSizeInBits(Ty->getScalarType());
+  IntegerType *IntTy = IntegerType::get(Ty->getContext(), NumBits);
+  if (VectorType *VecTy = dyn_cast<VectorType>(Ty))
+    return VectorType::get(IntTy, VecTy->getNumElements());
+  return IntTy;
 }
-
 
 uint64_t DataLayout::getIndexedOffset(Type *ptrTy,
                                       ArrayRef<Value *> Indices) const {

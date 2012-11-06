@@ -401,8 +401,7 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     //   - __tlv_bootstrap - used to make sure support exists
     //   - spare pointer, used when mapped by the runtime
     //   - pointer to mangled symbol above with initializer
-    assert(GV->getType()->isPointerTy() && "GV must be a pointer type!");
-    unsigned PtrSize = TD->getTypeSizeInBits(GV->getType())/8;
+    unsigned PtrSize = TD->getPointerSizeInBits()/8;
     OutStreamer.EmitSymbolValue(GetExternalSymbolSymbol("_tlv_bootstrap"),
                           PtrSize, 0);
     OutStreamer.EmitIntValue(0, PtrSize, 0);
@@ -1357,7 +1356,7 @@ void AsmPrinter::EmitXXStructorList(const Constant *List, bool isCtor) {
 
   // Emit the function pointers in the target-specific order
   const DataLayout *TD = TM.getDataLayout();
-  unsigned Align = Log2_32(TD->getPointerPrefAlignment(0));
+  unsigned Align = Log2_32(TD->getPointerPrefAlignment());
   std::stable_sort(Structors.begin(), Structors.end(), priority_order);
   for (unsigned i = 0, e = Structors.size(); i != e; ++i) {
     const MCSection *OutputSection =
@@ -1538,9 +1537,8 @@ static const MCExpr *lowerConstant(const Constant *CV, AsmPrinter &AP) {
     if (Offset == 0)
       return Base;
 
-    assert(CE->getType()->isPointerTy() && "We must have a pointer type!");
     // Truncate/sext the offset to the pointer size.
-    unsigned Width = TD.getTypeSizeInBits(CE->getType());
+    unsigned Width = TD.getPointerSizeInBits();
     if (Width < 64)
       Offset = SignExtend64(Offset, Width);
 
@@ -1562,7 +1560,7 @@ static const MCExpr *lowerConstant(const Constant *CV, AsmPrinter &AP) {
     // Handle casts to pointers by changing them into casts to the appropriate
     // integer type.  This promotes constant folding and simplifies this code.
     Constant *Op = CE->getOperand(0);
-    Op = ConstantExpr::getIntegerCast(Op, TD.getIntPtrType(CE->getType()),
+    Op = ConstantExpr::getIntegerCast(Op, TD.getIntPtrType(CV->getContext()),
                                       false/*ZExt*/);
     return lowerConstant(Op, AP);
   }

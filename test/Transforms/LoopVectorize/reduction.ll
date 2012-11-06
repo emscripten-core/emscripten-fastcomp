@@ -66,7 +66,7 @@ define i32 @reduction_prod(i32 %n, i32* noalias nocapture %A, i32* noalias nocap
 ;CHECK: @reduction_mix
 ;CHECK: phi <4 x i32>
 ;CHECK: load <4 x i32>
-;CHECK: mul <4 x i32>
+;CHECK: mul nsw <4 x i32>
 ;CHECK: ret i32
 define i32 @reduction_mix(i32 %n, i32* noalias nocapture %A, i32* noalias nocapture %B) nounwind uwtable readonly noinline ssp {
   %1 = icmp sgt i32 %n, 0
@@ -151,6 +151,7 @@ for.end:                                          ; preds = %for.body, %entry
 
 ;CHECK: @reduction_and
 ;CHECK: and <4 x i32>
+;CHECK: <i32 -1, i32 -1, i32 -1, i32 -1>
 ;CHECK: ret i32
 define i32 @reduction_and(i32 %n, i32* nocapture %A, i32* nocapture %B) nounwind uwtable readonly {
 entry:

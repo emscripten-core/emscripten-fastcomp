@@ -202,6 +202,14 @@ class IsTailCall {
   bit isCodeGenOnly = 1;
 }
 
+class IsAsCheapAsAMove {
+  bit isAsCheapAsAMove = 1;
+}
+
+class NeverHasSideEffects {
+  bit neverHasSideEffects = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
 //===----------------------------------------------------------------------===//
@@ -419,7 +427,7 @@ class shift_rotate_reg<bits<6> func, bits<5> isRotate, string instr_asm,
 // Load Upper Imediate
 class LoadUpper<bits<6> op, string instr_asm, RegisterClass RC, Operand Imm>:
   FI<op, (outs RC:$rt), (ins Imm:$imm16),
-     !strconcat(instr_asm, "\t$rt, $imm16"), [], IIAlu> {
+     !strconcat(instr_asm, "\t$rt, $imm16"), [], IIAlu>, IsAsCheapAsAMove {
   let rs = 0;
   let neverHasSideEffects = 1;
   let isReMaterializable = 1;
@@ -958,7 +966,8 @@ def LoadAddr32Imm : LoadAddressImm<"la", shamt,CPURegs>;
 //===----------------------------------------------------------------------===//
 
 /// Arithmetic Instructions (ALU Immediate)
-def ADDiu   : ArithLogicI<0x09, "addiu", add, simm16, immSExt16, CPURegs>;
+def ADDiu   : ArithLogicI<0x09, "addiu", add, simm16, immSExt16, CPURegs>,
+              IsAsCheapAsAMove;
 def ADDi    : ArithOverflowI<0x08, "addi", add, simm16, immSExt16, CPURegs>;
 def SLTi    : SetCC_I<0x0a, "slti", setlt, simm16, immSExt16, CPURegs>;
 def SLTiu   : SetCC_I<0x0b, "sltiu", setult, simm16, immSExt16, CPURegs>;

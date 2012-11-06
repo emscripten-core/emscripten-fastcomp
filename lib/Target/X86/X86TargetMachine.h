@@ -15,7 +15,6 @@
 #define X86TARGETMACHINE_H
 
 #include "X86.h"
-#include "X86ELFWriterInfo.h"
 #include "X86InstrInfo.h"
 #include "X86ISelLowering.h"
 #include "X86FrameLowering.h"
@@ -37,7 +36,6 @@ class StringRef;
 class X86TargetMachine : public LLVMTargetMachine {
   X86Subtarget       Subtarget;
   X86FrameLowering   FrameLowering;
-  X86ELFWriterInfo   ELFWriterInfo;
   InstrItineraryData InstrItins;
 
 public:
@@ -66,9 +64,6 @@ public:
   virtual const X86RegisterInfo  *getRegisterInfo() const {
     return &getInstrInfo()->getRegisterInfo();
   }
-  virtual const X86ELFWriterInfo *getELFWriterInfo() const {
-    return Subtarget.isTargetELF() ? &ELFWriterInfo : 0;
-  }
   virtual const InstrItineraryData *getInstrItineraryData() const {
     return &InstrItins;
   }
@@ -94,7 +89,7 @@ class X86_32TargetMachine : public X86TargetMachine {
   X86JITInfo        JITInfo;
 #endif
   ScalarTargetTransformImpl STTI;
-  VectorTargetTransformImpl VTTI;
+  X86VectorTargetTransformInfo VTTI;
 public:
   X86_32TargetMachine(const Target &T, StringRef TT,
                       StringRef CPU, StringRef FS, const TargetOptions &Options,
@@ -131,7 +126,7 @@ class X86_64TargetMachine : public X86TargetMachine {
   X86TargetLowering TLInfo;
   X86JITInfo        JITInfo;
   ScalarTargetTransformImpl STTI;
-  VectorTargetTransformImpl VTTI;
+  X86VectorTargetTransformInfo VTTI;
 public:
   X86_64TargetMachine(const Target &T, StringRef TT,
                       StringRef CPU, StringRef FS, const TargetOptions &Options,

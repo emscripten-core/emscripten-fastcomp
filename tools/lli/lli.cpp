@@ -42,6 +42,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/Memory.h"
+#include "llvm/Support/MathExtras.h"
 #include <cerrno>
 
 #ifdef __linux__
@@ -241,7 +242,7 @@ public:
   // the data cache but not to the instruction cache.
   virtual void invalidateInstructionCache();
 
-  // The MCJITMemoryManager doesn't use the following functions, so we don't
+  // The RTDyldMemoryManager doesn't use the following functions, so we don't
   // need implement them.
   virtual void setMemoryWritable() {
     llvm_unreachable("Unexpected call!");
@@ -303,9 +304,16 @@ uint8_t *LLIMCJITMemoryManager::allocateDataSection(uintptr_t Size,
                                                     unsigned SectionID) {
   if (!Alignment)
     Alignment = 16;
-  uint8_t *Addr = (uint8_t*)calloc((Size + Alignment - 1)/Alignment, Alignment);
-  AllocatedDataMem.push_back(sys::MemoryBlock(Addr, Size));
-  return Addr;
+  // Ensure that enough memory is requested to allow aligning.
+  size_t NumElementsAligned = 1 + (Size + Alignment - 1)/Alignment;
+  uint8_t *Addr = (uint8_t*)calloc(NumElementsAligned, Alignment);
+
+  // Honour the alignment requirement.
+  uint8_t *AlignedAddr = (uint8_t*)RoundUpToAlignment((uint64_t)Addr, Alignment);
+
+  // Store the original address from calloc so we can free it later.
+  AllocatedDataMem.push_back(sys::MemoryBlock(Addr, NumElementsAligned*Alignment));
+  return AlignedAddr;
 }
 
 uint8_t *LLIMCJITMemoryManager::allocateCodeSection(uintptr_t Size,
@@ -464,7 +472,7 @@ void layoutRemoteTargetMemory(RemoteTarget *T, RecordingMemoryManager *JMM) {
     EE->mapSectionAddress(const_cast<void*>(Offsets[i].first), Addr);
 
     DEBUG(dbgs() << "  Mapping local: " << Offsets[i].first
-                 << " to remote: " << format("%#018x", Addr) << "\n");
+                 << " to remote: " << format("%p", Addr) << "\n");
 
   }
   // Now load it all to the target.
@@ -475,12 +483,12 @@ void layoutRemoteTargetMemory(RemoteTarget *T, RecordingMemoryManager *JMM) {
       T->loadCode(Addr, Offsets[i].first, Sizes[i]);
 
       DEBUG(dbgs() << "  loading code: " << Offsets[i].first
-            << " to remote: " << format("%#018x", Addr) << "\n");
+            << " to remote: " << format("%p", Addr) << "\n");
     } else {
       T->loadData(Addr, Offsets[i].first, Sizes[i]);
 
       DEBUG(dbgs() << "  loading data: " << Offsets[i].first
-            << " to remote: " << format("%#018x", Addr) << "\n");
+            << " to remote: " << format("%p", Addr) << "\n");
     }
 
   }
@@ -685,7 +693,7 @@ int main(int argc, char **argv, char * const *envp) {
     uint64_t Entry = (uint64_t)EE->getPointerToFunction(EntryFn);
 
     DEBUG(dbgs() << "Executing '" << EntryFn->getName() << "' at "
-                 << format("%#18x", Entry) << "\n");
+                 << format("%p", Entry) << "\n");
 
     if (Target.executeCode(Entry, Result))
       errs() << "ERROR: " << Target.getErrorMsg() << "\n";

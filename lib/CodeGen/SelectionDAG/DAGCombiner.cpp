@@ -393,10 +393,6 @@ static char isNegatibleForFree(SDValue Op, bool LegalOperations,
                                const TargetLowering &TLI,
                                const TargetOptions *Options,
                                unsigned Depth = 0) {
-  // No compile time optimizations on this type.
-  if (Op.getValueType() == MVT::ppcf128)
-    return 0;
-
   // fneg is removable even if it has multiple uses.
   if (Op.getOpcode() == ISD::FNEG) return 2;
 
@@ -5705,7 +5701,7 @@ SDValue DAGCombiner::visitFADD(SDNode *N) {
   }
 
   // fold (fadd c1, c2) -> c1 + c2
-  if (N0CFP && N1CFP && VT != MVT::ppcf128)
+  if (N0CFP && N1CFP)
     return DAG.getNode(ISD::FADD, N->getDebugLoc(), VT, N0, N1);
   // canonicalize constant to RHS
   if (N0CFP && !N1CFP)
@@ -5732,6 +5728,18 @@ SDValue DAGCombiner::visitFADD(SDNode *N) {
     return DAG.getNode(ISD::FADD, N->getDebugLoc(), VT, N0.getOperand(0),
                        DAG.getNode(ISD::FADD, N->getDebugLoc(), VT,
                                    N0.getOperand(1), N1));
+
+  // If allow, fold (fadd (fneg x), x) -> 0.0
+  if (DAG.getTarget().Options.UnsafeFPMath &&
+      N0.getOpcode() == ISD::FNEG && N0.getOperand(0) == N1) {
+    return DAG.getConstantFP(0.0, VT);
+  }
+
+    // If allow, fold (fadd x, (fneg x)) -> 0.0
+  if (DAG.getTarget().Options.UnsafeFPMath &&
+      N1.getOpcode() == ISD::FNEG && N1.getOperand(0) == N0) {
+    return DAG.getConstantFP(0.0, VT);
+  }
 
   // In unsafe math mode, we can fold chains of FADD's of the same value
   // into multiplications.  This transform is not safe in general because
@@ -5892,7 +5900,7 @@ SDValue DAGCombiner::visitFSUB(SDNode *N) {
   }
 
   // fold (fsub c1, c2) -> c1-c2
-  if (N0CFP && N1CFP && VT != MVT::ppcf128)
+  if (N0CFP && N1CFP)
     return DAG.getNode(ISD::FSUB, N->getDebugLoc(), VT, N0, N1);
   // fold (fsub A, 0) -> A
   if (DAG.getTarget().Options.UnsafeFPMath &&
@@ -5984,7 +5992,7 @@ SDValue DAGCombiner::visitFMUL(SDNode *N) {
   }
 
   // fold (fmul c1, c2) -> c1*c2
-  if (N0CFP && N1CFP && VT != MVT::ppcf128)
+  if (N0CFP && N1CFP)
     return DAG.getNode(ISD::FMUL, N->getDebugLoc(), VT, N0, N1);
   // canonicalize constant to RHS
   if (N0CFP && !N1CFP)
@@ -6042,6 +6050,12 @@ SDValue DAGCombiner::visitFMA(SDNode *N) {
   EVT VT = N->getValueType(0);
   DebugLoc dl = N->getDebugLoc();
 
+  if (DAG.getTarget().Options.UnsafeFPMath) {
+    if (N0CFP && N0CFP->isZero())
+      return N2;
+    if (N1CFP && N1CFP->isZero())
+      return N2;
+  }
   if (N0CFP && N0CFP->isExactlyValue(1.0))
     return DAG.getNode(ISD::FADD, N->getDebugLoc(), VT, N1, N2);
   if (N1CFP && N1CFP->isExactlyValue(1.0))
@@ -6121,11 +6135,11 @@ SDValue DAGCombiner::visitFDIV(SDNode *N) {
   }
 
   // fold (fdiv c1, c2) -> c1/c2
-  if (N0CFP && N1CFP && VT != MVT::ppcf128)
+  if (N0CFP && N1CFP)
     return DAG.getNode(ISD::FDIV, N->getDebugLoc(), VT, N0, N1);
 
   // fold (fdiv X, c2) -> fmul X, 1/c2 if losing precision is acceptable.
-  if (N1CFP && VT != MVT::ppcf128 && DAG.getTarget().Options.UnsafeFPMath) {
+  if (N1CFP && DAG.getTarget().Options.UnsafeFPMath) {
     // Compute the reciprocal 1.0 / c2.
     APFloat N1APF = N1CFP->getValueAPF();
     APFloat Recip(N1APF.getSemantics(), 1); // 1.0
@@ -6168,7 +6182,7 @@ SDValue DAGCombiner::visitFREM(SDNode *N) {
   EVT VT = N->getValueType(0);
 
   // fold (frem c1, c2) -> fmod(c1,c2)
-  if (N0CFP && N1CFP && VT != MVT::ppcf128)
+  if (N0CFP && N1CFP)
     return DAG.getNode(ISD::FREM, N->getDebugLoc(), VT, N0, N1);
 
   return SDValue();
@@ -6181,7 +6195,7 @@ SDValue DAGCombiner::visitFCOPYSIGN(SDNode *N) {
   ConstantFPSDNode *N1CFP = dyn_cast<ConstantFPSDNode>(N1);
   EVT VT = N->getValueType(0);
 
-  if (N0CFP && N1CFP && VT != MVT::ppcf128)  // Constant fold
+  if (N0CFP && N1CFP)  // Constant fold
     return DAG.getNode(ISD::FCOPYSIGN, N->getDebugLoc(), VT, N0, N1);
 
   if (N1CFP) {
@@ -6231,7 +6245,7 @@ SDValue DAGCombiner::visitSINT_TO_FP(SDNode *N) {
   EVT OpVT = N0.getValueType();
 
   // fold (sint_to_fp c1) -> c1fp
-  if (N0C && OpVT != MVT::ppcf128 &&
+  if (N0C &&
       // ...but only if the target supports immediate floating-point values
       (!LegalOperations ||
        TLI.isOperationLegalOrCustom(llvm::ISD::ConstantFP, VT)))
@@ -6288,7 +6302,7 @@ SDValue DAGCombiner::visitUINT_TO_FP(SDNode *N) {
   EVT OpVT = N0.getValueType();
 
   // fold (uint_to_fp c1) -> c1fp
-  if (N0C && OpVT != MVT::ppcf128 &&
+  if (N0C &&
       // ...but only if the target supports immediate floating-point values
       (!LegalOperations ||
        TLI.isOperationLegalOrCustom(llvm::ISD::ConstantFP, VT)))
@@ -6343,7 +6357,7 @@ SDValue DAGCombiner::visitFP_TO_UINT(SDNode *N) {
   EVT VT = N->getValueType(0);
 
   // fold (fp_to_uint c1fp) -> c1
-  if (N0CFP && VT != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FP_TO_UINT, N->getDebugLoc(), VT, N0);
 
   return SDValue();
@@ -6356,7 +6370,7 @@ SDValue DAGCombiner::visitFP_ROUND(SDNode *N) {
   EVT VT = N->getValueType(0);
 
   // fold (fp_round c1fp) -> c1fp
-  if (N0CFP && N0.getValueType() != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FP_ROUND, N->getDebugLoc(), VT, N0, N1);
 
   // fold (fp_round (fp_extend x)) -> x
@@ -6410,7 +6424,7 @@ SDValue DAGCombiner::visitFP_EXTEND(SDNode *N) {
     return SDValue();
 
   // fold (fp_extend c1fp) -> c1fp
-  if (N0CFP && VT != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FP_EXTEND, N->getDebugLoc(), VT, N0);
 
   // Turn fp_extend(fp_round(X, 1)) -> x since the fp_round doesn't affect the
@@ -6497,7 +6511,7 @@ SDValue DAGCombiner::visitFCEIL(SDNode *N) {
   EVT VT = N->getValueType(0);
 
   // fold (fceil c1) -> fceil(c1)
-  if (N0CFP && VT != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FCEIL, N->getDebugLoc(), VT, N0);
 
   return SDValue();
@@ -6509,7 +6523,7 @@ SDValue DAGCombiner::visitFTRUNC(SDNode *N) {
   EVT VT = N->getValueType(0);
 
   // fold (ftrunc c1) -> ftrunc(c1)
-  if (N0CFP && VT != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FTRUNC, N->getDebugLoc(), VT, N0);
 
   return SDValue();
@@ -6521,7 +6535,7 @@ SDValue DAGCombiner::visitFFLOOR(SDNode *N) {
   EVT VT = N->getValueType(0);
 
   // fold (ffloor c1) -> ffloor(c1)
-  if (N0CFP && VT != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FFLOOR, N->getDebugLoc(), VT, N0);
 
   return SDValue();
@@ -6538,7 +6552,7 @@ SDValue DAGCombiner::visitFABS(SDNode *N) {
   }
 
   // fold (fabs c1) -> fabs(c1)
-  if (N0CFP && VT != MVT::ppcf128)
+  if (N0CFP)
     return DAG.getNode(ISD::FABS, N->getDebugLoc(), VT, N0);
   // fold (fabs (fabs x)) -> (fabs x)
   if (N0.getOpcode() == ISD::FABS)
@@ -9403,34 +9417,38 @@ SDValue DAGCombiner::SimplifySelectCC(DebugLoc DL, SDValue N0, SDValue N1,
       return SDValue();
 
     // Get a SetCC of the condition
-    // FIXME: Should probably make sure that setcc is legal if we ever have a
-    // target where it isn't.
-    SDValue Temp, SCC;
-    // cast from setcc result type to select result type
-    if (LegalTypes) {
-      SCC  = DAG.getSetCC(DL, TLI.getSetCCResultType(N0.getValueType()),
-                          N0, N1, CC);
-      if (N2.getValueType().bitsLT(SCC.getValueType()))
-        Temp = DAG.getZeroExtendInReg(SCC, N2.getDebugLoc(), N2.getValueType());
-      else
+    // NOTE: Don't create a SETCC if it's not legal on this target.
+    if (!LegalOperations ||
+        TLI.isOperationLegal(ISD::SETCC,
+          LegalTypes ? TLI.getSetCCResultType(N0.getValueType()) : MVT::i1)) {
+      SDValue Temp, SCC;
+      // cast from setcc result type to select result type
+      if (LegalTypes) {
+        SCC  = DAG.getSetCC(DL, TLI.getSetCCResultType(N0.getValueType()),
+                            N0, N1, CC);
+        if (N2.getValueType().bitsLT(SCC.getValueType()))
+          Temp = DAG.getZeroExtendInReg(SCC, N2.getDebugLoc(),
+                                        N2.getValueType());
+        else
+          Temp = DAG.getNode(ISD::ZERO_EXTEND, N2.getDebugLoc(),
+                             N2.getValueType(), SCC);
+      } else {
+        SCC  = DAG.getSetCC(N0.getDebugLoc(), MVT::i1, N0, N1, CC);
         Temp = DAG.getNode(ISD::ZERO_EXTEND, N2.getDebugLoc(),
                            N2.getValueType(), SCC);
-    } else {
-      SCC  = DAG.getSetCC(N0.getDebugLoc(), MVT::i1, N0, N1, CC);
-      Temp = DAG.getNode(ISD::ZERO_EXTEND, N2.getDebugLoc(),
-                         N2.getValueType(), SCC);
+      }
+
+      AddToWorkList(SCC.getNode());
+      AddToWorkList(Temp.getNode());
+
+      if (N2C->getAPIntValue() == 1)
+        return Temp;
+
+      // shl setcc result by log2 n2c
+      return DAG.getNode(ISD::SHL, DL, N2.getValueType(), Temp,
+                         DAG.getConstant(N2C->getAPIntValue().logBase2(),
+                                         getShiftAmountTy(Temp.getValueType())));
     }
-
-    AddToWorkList(SCC.getNode());
-    AddToWorkList(Temp.getNode());
-
-    if (N2C->getAPIntValue() == 1)
-      return Temp;
-
-    // shl setcc result by log2 n2c
-    return DAG.getNode(ISD::SHL, DL, N2.getValueType(), Temp,
-                       DAG.getConstant(N2C->getAPIntValue().logBase2(),
-                                       getShiftAmountTy(Temp.getValueType())));
   }
 
   // Check to see if this is the equivalent of setcc

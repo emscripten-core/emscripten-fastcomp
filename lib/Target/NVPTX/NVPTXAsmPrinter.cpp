@@ -126,9 +126,8 @@ const MCExpr *nvptx::LowerConstant(const Constant *CV, AsmPrinter &AP) {
       return Base;
 
     // Truncate/sext the offset to the pointer size.
-    unsigned PtrSize = TD.getPointerTypeSizeInBits(PtrVal->getType());
-    if (PtrSize != 64) {
-      int SExtAmount = 64-PtrSize;
+    if (TD.getPointerSizeInBits() != 64) {
+      int SExtAmount = 64-TD.getPointerSizeInBits();
       Offset = (Offset << SExtAmount) >> SExtAmount;
     }
 
@@ -150,7 +149,7 @@ const MCExpr *nvptx::LowerConstant(const Constant *CV, AsmPrinter &AP) {
     // Handle casts to pointers by changing them into casts to the appropriate
     // integer type.  This promotes constant folding and simplifies this code.
     Constant *Op = CE->getOperand(0);
-    Op = ConstantExpr::getIntegerCast(Op, TD.getIntPtrType(CE->getType()),
+    Op = ConstantExpr::getIntegerCast(Op, TD.getIntPtrType(CV->getContext()),
                                       false/*ZExt*/);
     return LowerConstant(Op, AP);
   }
@@ -1379,7 +1378,7 @@ getOpenCLAlignment(const DataLayout *TD,
 
   const FunctionType *FTy = dyn_cast<FunctionType>(Ty);
   if (FTy)
-    return TD->getPointerPrefAlignment(0);
+    return TD->getPointerPrefAlignment();
   return TD->getPrefTypeAlignment(Ty);
 }
 

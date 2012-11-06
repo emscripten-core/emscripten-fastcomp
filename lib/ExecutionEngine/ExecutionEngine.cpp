@@ -17,7 +17,6 @@
 
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
-#include "llvm/Instructions.h"
 #include "llvm/Module.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ADT/SmallString.h"
@@ -268,7 +267,7 @@ public:
 void *ArgvArray::reset(LLVMContext &C, ExecutionEngine *EE,
                        const std::vector<std::string> &InputArgv) {
   clear();  // Free the old contents.
-  unsigned PtrSize = EE->getDataLayout()->getPointerSize(0);
+  unsigned PtrSize = EE->getDataLayout()->getPointerSize();
   Array = new char[(InputArgv.size()+1)*PtrSize];
 
   DEBUG(dbgs() << "JIT: ARGV = " << (void*)Array << "\n");
@@ -343,7 +342,7 @@ void ExecutionEngine::runStaticConstructorsDestructors(bool isDtors) {
 #ifndef NDEBUG
 /// isTargetNullPtr - Return whether the target pointer stored at Loc is null.
 static bool isTargetNullPtr(ExecutionEngine *EE, void *Loc) {
-  unsigned PtrSize = EE->getDataLayout()->getPointerSize(0);
+  unsigned PtrSize = EE->getDataLayout()->getPointerSize();
   for (unsigned i = 0; i < PtrSize; ++i)
     if (*(i + (uint8_t*)Loc))
       return false;
@@ -645,19 +644,17 @@ GenericValue ExecutionEngine::getConstantValue(const Constant *C) {
     }
     case Instruction::PtrToInt: {
       GenericValue GV = getConstantValue(Op0);
-      assert(CE->getOperand(1)->getType()->isPointerTy() &&
-          "Must be a pointer type!");
-      uint32_t PtrWidth = TD->getTypeSizeInBits(CE->getOperand(1)->getType());
+      uint32_t PtrWidth = TD->getTypeSizeInBits(Op0->getType());
+      assert(PtrWidth <= 64 && "Bad pointer width");
       GV.IntVal = APInt(PtrWidth, uintptr_t(GV.PointerVal));
+      uint32_t IntWidth = TD->getTypeSizeInBits(CE->getType());
+      GV.IntVal = GV.IntVal.zextOrTrunc(IntWidth);
       return GV;
     }
     case Instruction::IntToPtr: {
       GenericValue GV = getConstantValue(Op0);
-      assert(CE->getOperand(1)->getType()->isPointerTy() &&
-          "Must be a pointer type!");
       uint32_t PtrWidth = TD->getTypeSizeInBits(CE->getType());
-      if (PtrWidth != GV.IntVal.getBitWidth())
-        GV.IntVal = GV.IntVal.zextOrTrunc(PtrWidth);
+      GV.IntVal = GV.IntVal.zextOrTrunc(PtrWidth);
       assert(GV.IntVal.getBitWidth() <= 64 && "Bad pointer width");
       GV.PointerVal = PointerTy(uintptr_t(GV.IntVal.getZExtValue()));
       return GV;

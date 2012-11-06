@@ -505,9 +505,6 @@ static ld_plugin_status all_symbols_read_hook(void) {
     }
   }
 
-  // If we don't preserve any symbols, libLTO will assume that all symbols are
-  // needed. Keep all symbols unless we're producing a final executable.
-  bool anySymbolsPreserved = false;
   for (std::list<claimed_file>::iterator I = Modules.begin(),
          E = Modules.end(); I != E; ++I) {
     if (I->syms.empty())
@@ -533,7 +530,6 @@ static ld_plugin_status all_symbols_read_hook(void) {
         }
         lto_codegen_add_must_preserve_symbol(code_gen, I->syms[i].name);
         // @LOCALMOD-END
-        anySymbolsPreserved = true;
 
         if (options::generate_api_file)
           api_file << I->syms[i].name << "\n";
@@ -559,12 +555,6 @@ static ld_plugin_status all_symbols_read_hook(void) {
 
   if (options::generate_api_file)
     api_file.close();
-
-  if (!anySymbolsPreserved) {
-    // All of the IL is unnecessary!
-    lto_codegen_dispose(code_gen);
-    return LDPS_OK;
-  }
 
   lto_codegen_set_pic_model(code_gen, output_type);
   lto_codegen_set_debug_model(code_gen, LTO_DEBUG_MODEL_DWARF);

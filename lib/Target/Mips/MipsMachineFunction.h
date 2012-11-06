@@ -39,26 +39,26 @@ class MipsFunctionInfo : public MachineFunctionInfo {
   /// relocation models.
   unsigned GlobalBaseReg;
 
+  /// Mips16SPAliasReg - keeps track of the virtual register initialized for
+  /// use as an alias for SP for use in load/store of halfword/byte from/to
+  /// the stack
+  unsigned Mips16SPAliasReg;
+
   /// VarArgsFrameIndex - FrameIndex for start of varargs area.
   int VarArgsFrameIndex;
 
-  // Range of frame object indices.
-  // InArgFIRange: Range of indices of all frame objects created during call to
-  //               LowerFormalArguments.
-  std::pair<int, int> InArgFIRange;
+  // Formal argument information obtained during call to LowerFormalArguments.
+  unsigned NextStackOffset;
+  bool HasByvalArg;
 
-  bool EmitNOAT;
+  // Size of incoming argument area.
+  unsigned IncomingArgSize;
 
 public:
   MipsFunctionInfo(MachineFunction& MF)
-  : MF(MF), SRetReturnReg(0), GlobalBaseReg(0),
-    VarArgsFrameIndex(0), InArgFIRange(std::make_pair(-1, 0)), EmitNOAT(false)
+   : MF(MF), SRetReturnReg(0), GlobalBaseReg(0), Mips16SPAliasReg(0),
+     VarArgsFrameIndex(0)
   {}
-
-  bool isInArgFI(int FI) const {
-    return FI <= InArgFIRange.first && FI >= InArgFIRange.second;
-  }
-  void setLastInArgFI(int FI) { InArgFIRange.second = FI; }
 
   unsigned getSRetReturnReg() const { return SRetReturnReg; }
   void setSRetReturnReg(unsigned Reg) { SRetReturnReg = Reg; }
@@ -66,11 +66,21 @@ public:
   bool globalBaseRegSet() const;
   unsigned getGlobalBaseReg();
 
+  bool mips16SPAliasRegSet() const;
+  unsigned getMips16SPAliasReg();
+
   int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
   void setVarArgsFrameIndex(int Index) { VarArgsFrameIndex = Index; }
 
-  bool getEmitNOAT() const { return EmitNOAT; }
-  void setEmitNOAT() { EmitNOAT = true; }
+  unsigned nextStackOffset() const { return NextStackOffset; }
+  bool hasByvalArg() const { return HasByvalArg; }
+  void setFormalArgInfo(unsigned Offset, bool HasByval) {
+    NextStackOffset = Offset;
+    HasByvalArg = HasByval;
+  }
+
+  unsigned getIncomingArgSize() const { return IncomingArgSize; }
+  void setIncomingArgSize(unsigned S) { IncomingArgSize = S; }
 };
 
 } // end of namespace llvm

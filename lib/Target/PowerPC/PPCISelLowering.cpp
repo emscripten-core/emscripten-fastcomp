@@ -361,6 +361,22 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
       setOperationAction(ISD::CTLZ_ZERO_UNDEF, VT, Expand);
       setOperationAction(ISD::CTTZ, VT, Expand);
       setOperationAction(ISD::CTTZ_ZERO_UNDEF, VT, Expand);
+      setOperationAction(ISD::SIGN_EXTEND_INREG, VT, Expand);
+
+      for (unsigned j = (unsigned)MVT::FIRST_VECTOR_VALUETYPE;
+           j <= (unsigned)MVT::LAST_VECTOR_VALUETYPE; ++j) {
+        MVT::SimpleValueType InnerVT = (MVT::SimpleValueType)j;
+        setTruncStoreAction(VT, InnerVT, Expand);
+      }
+      setLoadExtAction(ISD::SEXTLOAD, VT, Expand);
+      setLoadExtAction(ISD::ZEXTLOAD, VT, Expand);
+      setLoadExtAction(ISD::EXTLOAD, VT, Expand);
+    }
+
+    for (unsigned i = (unsigned)MVT::FIRST_FP_VECTOR_VALUETYPE;
+         i <= (unsigned)MVT::LAST_FP_VECTOR_VALUETYPE; ++i) {
+      MVT::SimpleValueType VT = (MVT::SimpleValueType)i;
+      setOperationAction(ISD::FSQRT, VT, Expand);
     }
 
     // We can custom expand all VECTOR_SHUFFLEs to VPERM, others we can handle
@@ -396,6 +412,14 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
     setOperationAction(ISD::BUILD_VECTOR, MVT::v8i16, Custom);
     setOperationAction(ISD::BUILD_VECTOR, MVT::v4i32, Custom);
     setOperationAction(ISD::BUILD_VECTOR, MVT::v4f32, Custom);
+
+    // Altivec does not contain unordered floating-point compare instructions
+    setCondCodeAction(ISD::SETUO, MVT::v4f32, Expand);
+    setCondCodeAction(ISD::SETUEQ, MVT::v4f32, Expand);
+    setCondCodeAction(ISD::SETUGT, MVT::v4f32, Expand);
+    setCondCodeAction(ISD::SETUGE, MVT::v4f32, Expand);
+    setCondCodeAction(ISD::SETULT, MVT::v4f32, Expand);
+    setCondCodeAction(ISD::SETULE, MVT::v4f32, Expand);
   }
 
   if (Subtarget->has64BitSupport()) {
@@ -1498,10 +1522,9 @@ SDValue PPCTargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
 
   EVT PtrVT = DAG.getTargetLoweringInfo().getPointerTy();
   bool isPPC64 = (PtrVT == MVT::i64);
-  unsigned AS = 0;
   Type *IntPtrTy =
     DAG.getTargetLoweringInfo().getDataLayout()->getIntPtrType(
-                                                             *DAG.getContext(), AS);
+                                                             *DAG.getContext());
 
   TargetLowering::ArgListTy Args;
   TargetLowering::ArgListEntry Entry;
@@ -2077,6 +2100,19 @@ PPCTargetLowering::LowerFormalArguments_64SVR4(
       // ObjSize is the true size, ArgSize rounded up to multiple of registers.
       ObjSize = Flags.getByValSize();
       ArgSize = ((ObjSize + PtrByteSize - 1)/PtrByteSize) * PtrByteSize;
+      // Empty aggregate parameters do not take up registers.  Examples:
+      //   struct { } a;
+      //   union  { } b;
+      //   int c[0];
+      // etc.  However, we have to provide a place-holder in InVals, so
+      // pretend we have an 8-byte item at the current address for that
+      // purpose.
+      if (!ObjSize) {
+        int FI = MFI->CreateFixedObject(PtrByteSize, ArgOffset, true);
+        SDValue FIN = DAG.getFrameIndex(FI, PtrVT);
+        InVals.push_back(FIN);
+        continue;
+      }
       // All aggregates smaller than 8 bytes must be passed right-justified.
       if (ObjSize < PtrByteSize)
         CurArgOffset = CurArgOffset + (PtrByteSize - ObjSize);
@@ -3641,6 +3677,12 @@ PPCTargetLowering::LowerCall_64SVR4(SDValue Chain, SDValue Callee,
       // These are the proper values we need for right-justifying the
       // aggregate in a parameter register.
       unsigned Size = Flags.getByValSize();
+
+      // An empty aggregate parameter takes up no storage and no
+      // registers.
+      if (Size == 0)
+        continue;
+
       // All aggregates smaller than 8 bytes must be passed right-justified.
       if (Size==1 || Size==2 || Size==4) {
         EVT VT = (Size==1) ? MVT::i8 : ((Size==2) ? MVT::i16 : MVT::i32);
@@ -3751,7 +3793,17 @@ PPCTargetLowering::LowerCall_64SVR4(SDValue Chain, SDValue Callee,
         RegsToPass.push_back(std::make_pair(FPR[FPR_idx++], Arg));
 
         if (isVarArg) {
-          SDValue Store = DAG.getStore(Chain, dl, Arg, PtrOff,
+          // A single float or an aggregate containing only a single float
+          // must be passed right-justified in the stack doubleword, and
+          // in the GPR, if one is available.
+          SDValue StoreOff;
+          if (Arg.getValueType().getSimpleVT().SimpleTy == MVT::f32) {
+            SDValue ConstFour = DAG.getConstant(4, PtrOff.getValueType());
+            StoreOff = DAG.getNode(ISD::ADD, dl, PtrVT, PtrOff, ConstFour);
+          } else
+            StoreOff = PtrOff;
+
+          SDValue Store = DAG.getStore(Chain, dl, Arg, StoreOff,
                                        MachinePointerInfo(), false, false, 0);
           MemOpChains.push_back(Store);
 
@@ -6449,9 +6501,9 @@ PPCTargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
         return std::make_pair(0U, &PPC::G8RCRegClass);
       return std::make_pair(0U, &PPC::GPRCRegClass);
     case 'f':
-      if (VT == MVT::f32)
+      if (VT == MVT::f32 || VT == MVT::i32)
         return std::make_pair(0U, &PPC::F4RCRegClass);
-      if (VT == MVT::f64)
+      if (VT == MVT::f64 || VT == MVT::i64)
         return std::make_pair(0U, &PPC::F8RCRegClass);
       break;
     case 'v':

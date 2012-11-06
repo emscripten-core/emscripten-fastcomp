@@ -468,9 +468,10 @@ Release Notes</a>.</h1>
 
 <p> Loop Vectorizer - We've added a loop vectorizer and we are now able to
     vectorize small loops. The loop vectorizer is disabled by default and
-    can be enabled using the <b>-mllvm -vectorize</b> flag.
+    can be enabled using the <b>-mllvm -vectorize-loops</b> flag.
     The SIMD vector width can be specified using the flag
     <b>-mllvm -force-vector-width=4</b>.
+    The default value is <b>0</b> which means auto-select.
     <br/>
     We can now vectorize this code:
 
@@ -481,9 +482,13 @@ Release Notes</a>.</h1>
     }
     </pre>
 
- </p>
+</p>
+
+<p>SROA - We've re-written SROA to be significantly more powerful.
+<!-- FIXME: Add more text here... --></p>
 
 <ul>
+  <li>Branch weight metadata is preseved through more of the optimizer.</li>
   <li>...</li>
 </ul>
 
@@ -668,6 +673,9 @@ Release Notes</a>.</h1>
   target-specific information. A new IR-level pass, called
   "TargetTransformInfo" provides a number of low-level interfaces.
   LSR and LowerInvoke already use the new interface. </p>
+
+<p> The TargetData structure has been renamed to DataLayout and moved to VMCore
+to remove a dependency on Target. </p>
 
 <ul>
   <li>...</li>

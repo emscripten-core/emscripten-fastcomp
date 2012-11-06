@@ -40,8 +40,7 @@ static unsigned getBitWidth(Type *Ty, const DataLayout *TD) {
   if (unsigned BitWidth = Ty->getScalarSizeInBits())
     return BitWidth;
   assert(isa<PointerType>(Ty) && "Expected a pointer type!");
-  return TD ?
-    TD->getPointerSizeInBits(cast<PointerType>(Ty)->getAddressSpace()) : 0;
+  return TD ? TD->getPointerSizeInBits() : 0;
 }
 
 static void ComputeMaskedBitsAddSub(bool Add, Value *Op0, Value *Op1, bool NSW,
@@ -430,15 +429,13 @@ void llvm::ComputeMaskedBits(Value *V, APInt &KnownZero, APInt &KnownOne,
   case Instruction::ZExt:
   case Instruction::Trunc: {
     Type *SrcTy = I->getOperand(0)->getType();
-    
+
     unsigned SrcBitWidth;
     // Note that we handle pointer operands here because of inttoptr/ptrtoint
     // which fall through here.
-    if (SrcTy->isPointerTy())
-      SrcBitWidth = TD->getTypeSizeInBits(SrcTy);
-    else
-      SrcBitWidth = SrcTy->getScalarSizeInBits();
-    
+    SrcBitWidth = TD->getTypeSizeInBits(SrcTy->getScalarType());
+
+    assert(SrcBitWidth && "SrcBitWidth can't be zero");
     KnownZero = KnownZero.zextOrTrunc(SrcBitWidth);
     KnownOne = KnownOne.zextOrTrunc(SrcBitWidth);
     ComputeMaskedBits(I->getOperand(0), KnownZero, KnownOne, TD, Depth+1);
@@ -1622,8 +1619,7 @@ Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
   
   // Re-sign extend from the pointer size if needed to get overflow edge cases
   // right.
-  unsigned AS = GEP->getPointerAddressSpace();
-  unsigned PtrSize = TD.getPointerSizeInBits(AS);
+  unsigned PtrSize = TD.getPointerSizeInBits();
   if (PtrSize < 64)
     Offset = SignExtend64(Offset, PtrSize);
   

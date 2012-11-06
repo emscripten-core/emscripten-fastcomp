@@ -224,7 +224,7 @@ The ``DataLayout`` class
 ------------------------
 
 The ``DataLayout`` class is the only required target description class, and it
-is the only class that is not extensible (you cannot derived a new class from
+is the only class that is not extensible (you cannot derive a new class from
 it).  ``DataLayout`` specifies information about how the target lays out memory
 for structures, the alignment requirements for various data types, the size of
 pointers in the target, and whether the target is little-endian or
@@ -248,7 +248,7 @@ operations.  Among other things, this class indicates:
 * the type to use for shift amounts, and
 
 * various high-level characteristics, like whether it is profitable to turn
-  division by a constant into a multiplication sequence
+  division by a constant into a multiplication sequence.
 
 The ``TargetRegisterInfo`` class
 --------------------------------
@@ -256,10 +256,10 @@ The ``TargetRegisterInfo`` class
 The ``TargetRegisterInfo`` class is used to describe the register file of the
 target and any interactions between the registers.
 
-Registers in the code generator are represented in the code generator by
-unsigned integers.  Physical registers (those that actually exist in the target
-description) are unique small numbers, and virtual registers are generally
-large.  Note that register ``#0`` is reserved as a flag value.
+Registers are represented in the code generator by unsigned integers.  Physical
+registers (those that actually exist in the target description) are unique
+small numbers, and virtual registers are generally large.  Note that
+register ``#0`` is reserved as a flag value.
 
 Each register in the processor description has an associated
 ``TargetRegisterDesc`` entry, which provides a textual name for the register
@@ -838,8 +838,7 @@ Initial SelectionDAG Construction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The initial SelectionDAG is na\ :raw-html:`&iuml;`\ vely peephole expanded from
-the LLVM input by the ``SelectionDAGLowering`` class in the
-``lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp`` file.  The intent of this pass
+the LLVM input by the ``SelectionDAGBuilder`` class.  The intent of this pass
 is to expose as much low-level, target-specific details to the SelectionDAG as
 possible.  This pass is mostly hard-coded (e.g. an LLVM ``add`` turns into an
 ``SDNode add`` while a ``getelementptr`` is expanded into the obvious
