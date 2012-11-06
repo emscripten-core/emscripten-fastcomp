@@ -8,6 +8,6 @@ define void @test_vstr_sandbox(<8 x i8>* %ptr) nounwind {
   ret void
 }
 
-; CHECK:       {{[0-9a-f:]+}}   bic r0, r0, #3221225472
-; CHECK-NEXT:  {{[0-9a-f:]+}}   vstr {{[0-9a-z]+}}, [r0]
+; CHECK:         bic r0, r0, #3221225472
+; CHECK-NEXT:    vstr {{[0-9a-z]+}}, [r0]
 
