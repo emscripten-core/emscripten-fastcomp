@@ -1585,10 +1585,6 @@ multiclass AI_str1nopc<bit isByte, string opc, InstrItinClass iii,
 
 // @LOCALMOD-START
 
-// New ARM SFI Model
-include "ARMInstrNaCl.td"
-
-// Older Macro base SFI Model
 def SFI_GUARD_LOADSTORE :
 PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
 
