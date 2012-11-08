@@ -10129,11 +10129,43 @@ static SDValue getTargetVShiftNode(unsigned Opc, DebugLoc dl, EVT VT,
   return DAG.getNode(Opc, dl, VT, SrcOp, ShAmt);
 }
 
-static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) {
+SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
+                                                   SelectionDAG &DAG) const {
   DebugLoc dl = Op.getDebugLoc();
   unsigned IntNo = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
   switch (IntNo) {
   default: return SDValue();    // Don't custom lower most intrinsics.
+
+  // @LOCALMOD-BEGIN
+  case Intrinsic::nacl_read_tp: {
+    EVT PtrVT = DAG.getTargetLoweringInfo().getPointerTy();
+    if (Subtarget->is64Bit() || llvm::TLSUseCall) {
+      // Call __nacl_read_tp() to get the thread pointer.
+      unsigned PtrSize = PtrVT.getSizeInBits();
+      IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+      SDValue ReadTpFunction = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
+      ArgListTy Args;
+      TargetLowering::CallLoweringInfo CLI(
+          DAG.getEntryNode(), PtrTy,
+          false, false, false, false, 0, CallingConv::C,
+          /*isTailCall=*/false, /*doesNotRet=*/false,
+          /*isReturnValueUsed=*/true,
+          ReadTpFunction, Args, DAG, dl);
+      std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
+      return CallResult.first;
+    } else {
+      // Get %gs:0, which contains the thread pointer on x86-32.
+      unsigned GSAddrSpace = 256;
+      Value *Ptr = Constant::getNullValue(
+          Type::getInt8PtrTy(*DAG.getContext(), GSAddrSpace));
+      return DAG.getLoad(PtrVT, dl, DAG.getEntryNode(),
+                         DAG.getIntPtrConstant(0),
+                         MachinePointerInfo(Ptr),
+                         false, false, false, 0);
+    }
+  }
+  // @LOCALMOD-END
+
   // Comparison intrinsics.
   case Intrinsic::x86_sse_comieq_ss:
   case Intrinsic::x86_sse_comilt_ss:

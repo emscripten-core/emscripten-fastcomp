@@ -643,6 +643,9 @@ namespace ISD {
 
     // @LOCALMOD-BEGIN
     // NACL_* - Native Client instrinsics.
+    // NACL_READ_TP is a fast built-in version of NaCl's tls_get() IRT
+    // interface.
+    NACL_READ_TP,
     // These correspond to functions in:
     // native_client/src/untrusted/nacl/tls_params.h
     NACL_TP_TLS_OFFSET,

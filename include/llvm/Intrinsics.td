@@ -467,6 +467,10 @@ def int_nacl_setjmp : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty, llvm_ptr_ty]>,
 def int_nacl_longjmp : Intrinsic<[],  [llvm_ptr_ty, llvm_i32_ty]>,
                        GCCBuiltin<"__builtin_nacl_longjmp">;
 
+// Fast built-in version of NaCl's tls_get() IRT interface.
+def int_nacl_read_tp : Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>,
+                       GCCBuiltin<"__builtin_nacl_read_tp">;
+
 // The following intrinsics provide target-specific implementations of
 // the interface in native_client/src/untrusted/nacl/tls_params.h.
 // The intrinsic names are basically the functions there without the

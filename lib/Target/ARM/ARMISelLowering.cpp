@@ -2587,6 +2587,7 @@ ARMTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG,
   DebugLoc dl = Op.getDebugLoc();
   switch (IntNo) {
   default: return SDValue();    // Don't custom lower most intrinsics.
+  case Intrinsic::nacl_read_tp:  // @LOCALMOD
   case Intrinsic::arm_thread_pointer: {
     EVT PtrVT = DAG.getTargetLoweringInfo().getPointerTy();
     return DAG.getNode(ARMISD::THREAD_POINTER, dl, PtrVT);
