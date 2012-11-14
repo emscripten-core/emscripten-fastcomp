@@ -175,7 +175,7 @@ def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">,
 def HasStandardEncoding : Predicate<"Subtarget.hasStandardEncoding()">,
                           AssemblerPredicate<"!FeatureMips16">;
 def IsNaCl       :    Predicate<"Subtarget.isTargetNaCl()">;
-def NotNaCl      :    Predicate<"!Subtarget.isTargetNaCl()">;
+def IsNotNaCl    :    Predicate<"!Subtarget.isTargetNaCl()">;
 
 class MipsPat<dag pattern, dag result> : Pat<pattern, result> {
   let Predicates = [HasStandardEncoding];

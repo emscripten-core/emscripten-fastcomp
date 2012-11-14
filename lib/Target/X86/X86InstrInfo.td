@@ -615,7 +615,7 @@ def In64BitMode  : Predicate<"Subtarget->is64Bit()">,
                              AssemblerPredicate<"Mode64Bit">;
 def IsWin64      : Predicate<"Subtarget->isTargetWin64()">;
 def IsNaCl       : Predicate<"Subtarget->isTargetNaCl()">;
-def NotNaCl      : Predicate<"!Subtarget->isTargetNaCl()">;
+def IsNotNaCl    : Predicate<"!Subtarget->isTargetNaCl()">;
 def SmallCode    : Predicate<"TM.getCodeModel() == CodeModel::Small">;
 def KernelCode   : Predicate<"TM.getCodeModel() == CodeModel::Kernel">;
 def FarData      : Predicate<"TM.getCodeModel() != CodeModel::Small &&"
