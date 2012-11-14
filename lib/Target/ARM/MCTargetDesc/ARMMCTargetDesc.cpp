@@ -163,6 +163,8 @@ static MCAsmInfo *createARMMCAsmInfo(const Target &T, StringRef TT) {
   // @LOCALMOD-BEGIN
   ARMELFMCAsmInfo *MAI = new ARMELFMCAsmInfo();
   if (TheTriple.getOS() == Triple::NativeClient) {
+    // NativeClient uses Dwarf exception handling
+    MAI->setExceptionsType(ExceptionHandling::DwarfCFI);
     // Initial state of the frame ARM:SP points to cfa
     MachineLocation Dst(MachineLocation::VirtualFP);
     MachineLocation Src(ARM::SP, 0);

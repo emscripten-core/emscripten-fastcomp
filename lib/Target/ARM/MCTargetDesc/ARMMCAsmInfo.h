@@ -28,6 +28,12 @@ namespace llvm {
     virtual void anchor();
   public:
     explicit ARMELFMCAsmInfo();
+    // @LOCALMOD-BEGIN
+    // Exceptions handling
+    void setExceptionsType(ExceptionHandling::ExceptionsType ExType) {
+       ExceptionsType = ExType;
+    }
+    // @LOCALMOD-END
   };
 
 } // namespace llvm

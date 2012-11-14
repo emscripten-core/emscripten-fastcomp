@@ -57,9 +57,4 @@ ARMELFMCAsmInfo::ARMELFMCAsmInfo() {
   // Exceptions handling
   if (EnableARMEHABI)
     ExceptionsType = ExceptionHandling::ARM;
-
-  // @LOCALMOD-BEGIN
-  // Exceptions handling
-  ExceptionsType = ExceptionHandling::DwarfCFI;
-  // @LOCALMOD-END
 }
