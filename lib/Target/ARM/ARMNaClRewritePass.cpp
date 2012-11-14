@@ -616,6 +616,131 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
     *AddrIdx = 1;
     break;
 
+  //
+  // NEON stores
+  //
+
+  // VST1
+  case ARM::VST1d8:
+  case ARM::VST1d16:
+  case ARM::VST1d32:
+  case ARM::VST1d64:
+  case ARM::VST1q8:
+  case ARM::VST1q16:
+  case ARM::VST1q32:
+  case ARM::VST1q64:
+  case ARM::VST1d8wb_fixed:
+  case ARM::VST1d16wb_fixed:
+  case ARM::VST1d32wb_fixed:
+  case ARM::VST1d64wb_fixed:
+  case ARM::VST1q8wb_fixed:
+  case ARM::VST1q16wb_fixed:
+  case ARM::VST1q32wb_fixed:
+  case ARM::VST1q64wb_fixed:
+  case ARM::VST1d8wb_register:
+  case ARM::VST1d16wb_register:
+  case ARM::VST1d32wb_register:
+  case ARM::VST1d64wb_register:
+  case ARM::VST1q8wb_register:
+  case ARM::VST1q16wb_register:
+  case ARM::VST1q32wb_register:
+  case ARM::VST1q64wb_register:
+
+  // VST1LN
+  case ARM::VST1LNd8:
+  case ARM::VST1LNd16:
+  case ARM::VST1LNd32:
+  case ARM::VST1LNd8_UPD:
+  case ARM::VST1LNd16_UPD:
+  case ARM::VST1LNd32_UPD:
+
+  // VST2
+  case ARM::VST2d8:
+  case ARM::VST2d16:
+  case ARM::VST2d32:
+  case ARM::VST2q8:
+  case ARM::VST2q16:
+  case ARM::VST2q32:
+  case ARM::VST2d8wb_fixed:
+  case ARM::VST2d16wb_fixed:
+  case ARM::VST2d32wb_fixed:
+  case ARM::VST2q8wb_fixed:
+  case ARM::VST2q16wb_fixed:
+  case ARM::VST2q32wb_fixed:
+  case ARM::VST2d8wb_register:
+  case ARM::VST2d16wb_register:
+  case ARM::VST2d32wb_register:
+  case ARM::VST2q8wb_register:
+  case ARM::VST2q16wb_register:
+  case ARM::VST2q32wb_register:
+
+  // VST2LN
+  case ARM::VST2LNd8:
+  case ARM::VST2LNd16:
+  case ARM::VST2LNq16:
+  case ARM::VST2LNd32:
+  case ARM::VST2LNq32:
+  case ARM::VST2LNd8_UPD:
+  case ARM::VST2LNd16_UPD:
+  case ARM::VST2LNq16_UPD:
+  case ARM::VST2LNd32_UPD:
+  case ARM::VST2LNq32_UPD:
+
+  // VST3
+  case ARM::VST3d8:
+  case ARM::VST3d16:
+  case ARM::VST3d32:
+  case ARM::VST3q8:
+  case ARM::VST3q16:
+  case ARM::VST3q32:
+  case ARM::VST3d8_UPD:
+  case ARM::VST3d16_UPD:
+  case ARM::VST3d32_UPD:
+  case ARM::VST3q8_UPD:
+  case ARM::VST3q16_UPD:
+  case ARM::VST3q32_UPD:
+
+  // VST3LN
+  case ARM::VST3LNd8:
+  case ARM::VST3LNd16:
+  case ARM::VST3LNq16:
+  case ARM::VST3LNd32:
+  case ARM::VST3LNq32:
+  case ARM::VST3LNd8_UPD:
+  case ARM::VST3LNd16_UPD:
+  case ARM::VST3LNq16_UPD:
+  case ARM::VST3LNd32_UPD:
+  case ARM::VST3LNq32_UPD:
+
+  // VST4
+  case ARM::VST4d8:
+  case ARM::VST4d16:
+  case ARM::VST4d32:
+  case ARM::VST4q8:
+  case ARM::VST4q16:
+  case ARM::VST4q32:
+  case ARM::VST4d8_UPD:
+  case ARM::VST4d16_UPD:
+  case ARM::VST4d32_UPD:
+  case ARM::VST4q8_UPD:
+  case ARM::VST4q16_UPD:
+  case ARM::VST4q32_UPD:
+
+  // VST4LN
+  case ARM::VST4LNd8:
+  case ARM::VST4LNd16:
+  case ARM::VST4LNq16:
+  case ARM::VST4LNd32:
+  case ARM::VST4LNq32:
+  case ARM::VST4LNd8_UPD:
+  case ARM::VST4LNd16_UPD:
+  case ARM::VST4LNq16_UPD:
+  case ARM::VST4LNd32_UPD:
+  case ARM::VST4LNq32_UPD:
+
+    *AddrIdx = 0;
+    break;
+
   // Instructions with base address register in position 2...
   case ARM::STR_PRE_REG:
   case ARM::STR_PRE_IMM:
