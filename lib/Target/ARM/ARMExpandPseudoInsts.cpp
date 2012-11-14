@@ -932,7 +932,7 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
     case ARM::tTPsoft:
     case ARM::TPsoft: {
       // @LOCALMOD-BEGIN
-      if (llvm::TLSUseCall) {
+      if (!STI->isTargetNaCl() || llvm::TLSUseCall) {
         // Don't add implicit uses/defs for this call, otherwise
         // liveness analysis passes get confused.
       MachineInstrBuilder MIB =
