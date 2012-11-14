@@ -310,6 +310,10 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
         HasBMI2 = true;
         ToggleFeature(X86::FeatureBMI2);
       }
+      if (IsIntel && ((EBX >> 11) & 0x1)) {
+        HasRTM = true;
+        ToggleFeature(X86::FeatureRTM);
+      }
     }
   }
 }
@@ -338,6 +342,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   , HasLZCNT(false)
   , HasBMI(false)
   , HasBMI2(false)
+  , HasRTM(false)
   , IsBTMemSlow(false)
   , IsUAMemFast(false)
   , HasVectorUAMem(false)

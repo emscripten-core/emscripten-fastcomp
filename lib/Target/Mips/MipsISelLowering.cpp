@@ -247,6 +247,10 @@ MipsTargetLowering(MipsTargetMachine &TM)
     setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Custom);
   }
 
+  setOperationAction(ISD::ADD,                MVT::i32,   Custom);
+  if (HasMips64)
+    setOperationAction(ISD::ADD,                MVT::i64,   Custom);
+
   setOperationAction(ISD::SDIV, MVT::i32, Expand);
   setOperationAction(ISD::SREM, MVT::i32, Expand);
   setOperationAction(ISD::UDIV, MVT::i32, Expand);
@@ -921,7 +925,7 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
     case ISD::STORE:              return LowerSTORE(Op, DAG);
     case ISD::INTRINSIC_WO_CHAIN: return LowerINTRINSIC_WO_CHAIN(Op, DAG);
     case ISD::INTRINSIC_W_CHAIN:  return LowerINTRINSIC_W_CHAIN(Op, DAG);
-
+    case ISD::ADD:                return LowerADD(Op, DAG);
     // @LOCALMOD-BEGIN
     case ISD::NACL_TP_TLS_OFFSET: return LowerNaClTpTlsOffset(Op, DAG);
     case ISD::NACL_TP_TDB_OFFSET: return LowerNaClTpTdbOffset(Op, DAG);
@@ -2603,6 +2607,27 @@ SDValue MipsTargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
   }
 }
 
+SDValue MipsTargetLowering::LowerADD(SDValue Op, SelectionDAG &DAG) const {
+  if (Op->getOperand(0).getOpcode() != ISD::FRAMEADDR
+      || cast<ConstantSDNode>
+        (Op->getOperand(0).getOperand(0))->getZExtValue() != 0
+      || Op->getOperand(1).getOpcode() != ISD::FRAME_TO_ARGS_OFFSET)
+    return SDValue();
+
+  // The pattern
+  //   (add (frameaddr 0), (frame_to_args_offset))
+  // results from lowering llvm.eh.dwarf.cfa intrinsic. Transform it to
+  //   (add FrameObject, 0)
+  // where FrameObject is a fixed StackObject with offset 0 which points to
+  // the old stack pointer.
+  MachineFrameInfo *MFI = DAG.getMachineFunction().getFrameInfo();
+  EVT ValTy = Op->getValueType(0);
+  int FI = MFI->CreateFixedObject(Op.getValueSizeInBits() / 8, 0, false);
+  SDValue InArgsAddr = DAG.getFrameIndex(FI, ValTy);
+  return DAG.getNode(ISD::ADD, Op->getDebugLoc(), ValTy, InArgsAddr,
+                     DAG.getConstant(0, ValTy));
+}
+
 //===----------------------------------------------------------------------===//
 //                      Calling Convention Implementation
 //===----------------------------------------------------------------------===//
@@ -2736,9 +2761,9 @@ IsEligibleForTailCallOptimization(const MipsCC &MipsCCInfo,
   if (MipsCCInfo.hasByValArg() || FI.hasByvalArg())
     return false;
 
-  // Return true if the callee's next stack offset is no larger than the
+  // Return true if the callee's argument area is no larger than the
   // caller's.
-  return NextStackOffset <= FI.nextStackOffset();
+  return NextStackOffset <= FI.getIncomingArgSize();
 }
 
 SDValue
@@ -3089,7 +3114,6 @@ MipsTargetLowering::LowerFormalArguments(SDValue Chain,
   MipsCCInfo.analyzeFormalArguments(Ins);
   MipsFI->setFormalArgInfo(CCInfo.getNextStackOffset(),
                            MipsCCInfo.hasByValArg());
-  MipsFI->setIncomingArgSize(CCInfo.getNextStackOffset());
 
   Function::const_arg_iterator FuncArg =
     DAG.getMachineFunction().getFunction()->arg_begin();

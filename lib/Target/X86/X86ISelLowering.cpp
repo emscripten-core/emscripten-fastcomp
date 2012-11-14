@@ -12396,6 +12396,63 @@ X86TargetLowering::isVectorClearMaskLegal(const SmallVectorImpl<int> &Mask,
 
 // private utility function
 
+/// Utility function to emit xbegin specifying the start of an RTM region.
+MachineBasicBlock *
+X86TargetLowering::EmitXBegin(MachineInstr *MI, MachineBasicBlock *MBB) const {
+  DebugLoc DL = MI->getDebugLoc();
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+
+  const BasicBlock *BB = MBB->getBasicBlock();
+  MachineFunction::iterator I = MBB;
+  ++I;
+
+  // For the v = xbegin(), we generate
+  //
+  // thisMBB:
+  //  xbegin sinkMBB
+  //
+  // mainMBB:
+  //  eax = -1
+  //
+  // sinkMBB:
+  //  v = eax
+
+  MachineBasicBlock *thisMBB = MBB;
+  MachineFunction *MF = MBB->getParent();
+  MachineBasicBlock *mainMBB = MF->CreateMachineBasicBlock(BB);
+  MachineBasicBlock *sinkMBB = MF->CreateMachineBasicBlock(BB);
+  MF->insert(I, mainMBB);
+  MF->insert(I, sinkMBB);
+
+  // Transfer the remainder of BB and its successor edges to sinkMBB.
+  sinkMBB->splice(sinkMBB->begin(), MBB,
+                  llvm::next(MachineBasicBlock::iterator(MI)), MBB->end());
+  sinkMBB->transferSuccessorsAndUpdatePHIs(MBB);
+
+  // thisMBB:
+  //  xbegin sinkMBB
+  //  # fallthrough to mainMBB
+  //  # abortion to sinkMBB
+  BuildMI(thisMBB, DL, TII->get(X86::XBEGIN_4)).addMBB(sinkMBB);
+  thisMBB->addSuccessor(mainMBB);
+  thisMBB->addSuccessor(sinkMBB);
+
+  // mainMBB:
+  //  EAX = -1
+  BuildMI(mainMBB, DL, TII->get(X86::MOV32ri), X86::EAX).addImm(-1);
+  mainMBB->addSuccessor(sinkMBB);
+
+  // sinkMBB:
+  // EAX is live into the sinkMBB
+  sinkMBB->addLiveIn(X86::EAX);
+  BuildMI(*sinkMBB, sinkMBB->begin(), DL,
+          TII->get(TargetOpcode::COPY), MI->getOperand(0).getReg())
+    .addReg(X86::EAX);
+
+  MI->eraseFromParent();
+  return sinkMBB;
+}
+
 // Get CMPXCHG opcode for the specified data type.
 static unsigned getCmpXChgOpcode(EVT VT) {
   switch (VT.getSimpleVT().SimpleTy) {
@@ -14075,6 +14132,10 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     // Thread synchronization.
   case X86::MONITOR:
     return EmitMonitor(MI, BB);
+
+  // xbegin
+  case X86::XBEGIN:
+    return EmitXBegin(MI, BB);
 
     // Atomic Lowering.
   case X86::ATOMAND8:
@@ -17404,7 +17465,7 @@ void X86TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
     return;
   case 'K':
     if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-      if ((int8_t)C->getSExtValue() == C->getSExtValue()) {
+      if (isInt<8>(C->getSExtValue())) {
         Result = DAG.getTargetConstant(C->getZExtValue(), Op.getValueType());
         break;
       }
@@ -17730,71 +17791,205 @@ X86TargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
   return Res;
 }
 
+//===----------------------------------------------------------------------===//
+//
+// X86 cost model.
+//
+//===----------------------------------------------------------------------===//
+
+struct X86CostTblEntry {
+  int ISD;
+  MVT Type;
+  unsigned Cost;
+};
+
+static int
+FindInTable(const X86CostTblEntry *Tbl, unsigned len, int ISD, MVT Ty) {
+  for (unsigned int i = 0; i < len; ++i)
+    if (Tbl[i].ISD == ISD && Tbl[i].Type == Ty)
+      return i;
+
+  // Could not find an entry.
+  return -1;
+}
+
+struct X86TypeConversionCostTblEntry {
+  int ISD;
+  MVT Dst;
+  MVT Src;
+  unsigned Cost;
+};
+
+static int
+FindInConvertTable(const X86TypeConversionCostTblEntry *Tbl, unsigned len,
+                   int ISD, MVT Dst, MVT Src) {
+  for (unsigned int i = 0; i < len; ++i)
+    if (Tbl[i].ISD == ISD && Tbl[i].Src == Src && Tbl[i].Dst == Dst)
+      return i;
+
+  // Could not find an entry.
+  return -1;
+}
+
 unsigned
 X86VectorTargetTransformInfo::getArithmeticInstrCost(unsigned Opcode,
                                                      Type *Ty) const {
-  const X86Subtarget &ST =
-  TLI->getTargetMachine().getSubtarget<X86Subtarget>();
+  // Legalize the type.
+  std::pair<unsigned, MVT> LT = getTypeLegalizationCost(Ty);
 
-  // Fix some of the inaccuracies of the target independent estimation.
-  if (Ty->isVectorTy() && ST.hasSSE41()) {
-    unsigned NumElem = Ty->getVectorNumElements();
-    unsigned SizeInBits = Ty->getScalarType()->getScalarSizeInBits();
+  int ISD = InstructionOpcodeToISD(Opcode);
+  assert(ISD && "Invalid opcode");
 
-    bool Is2 = (NumElem == 2);
-    bool Is4 = (NumElem == 4);
-    bool Is8 = (NumElem == 8);
-    bool Is32bits = (SizeInBits == 32);
-    bool Is64bits = (SizeInBits == 64);
-    bool HasAvx = ST.hasAVX();
-    bool HasAvx2 = ST.hasAVX2();
+  const X86Subtarget &ST = TLI->getTargetMachine().getSubtarget<X86Subtarget>();
 
-    switch (Opcode) {
-      case Instruction::Add:
-      case Instruction::Sub:
-      case Instruction::Mul: {
-        // Only AVX2 has support for 8-wide integer operations.
-        if (Is32bits && (Is4 || (Is8 && HasAvx2))) return 1;
-        if (Is64bits && (Is2 || (Is4 && HasAvx2))) return 1;
+  static const X86CostTblEntry AVX1CostTable[] = {
+    // We don't have to scalarize unsupported ops. We can issue two half-sized
+    // operations and we only need to extract the upper YMM half.
+    // Two ops + 1 extract + 1 insert = 4.
+    { ISD::MUL,     MVT::v8i32,    4 },
+    { ISD::SUB,     MVT::v8i32,    4 },
+    { ISD::ADD,     MVT::v8i32,    4 },
+    { ISD::MUL,     MVT::v4i64,    4 },
+    { ISD::SUB,     MVT::v4i64,    4 },
+    { ISD::ADD,     MVT::v4i64,    4 },
+    };
 
-        // We don't have to completly scalarize unsupported ops. We can
-        // issue two half-sized operations (with some overhead).
-        // We don't need to extract the lower part of the YMM to the XMM.
-        // Extract the upper, two ops, insert the upper = 4.
-        if (Is32bits && Is8 && HasAvx) return 4;
-        if (Is64bits && Is4 && HasAvx) return 4;
-        break;
-      }
-      case Instruction::FAdd:
-      case Instruction::FSub:
-      case Instruction::FMul: {
-        // AVX has support for 8-wide float operations.
-        if (Is32bits && (Is4 || (Is8 && HasAvx))) return 1;
-        if (Is64bits && (Is2 || (Is4 && HasAvx))) return 1;
-        break;
-      }
-      case Instruction::Shl:
-      case Instruction::LShr:
-      case Instruction::AShr:
-      case Instruction::And:
-      case Instruction::Or:
-      case Instruction::Xor: {
-        // AVX has support for 8-wide integer bitwise operations.
-        if (Is32bits && (Is4 || (Is8 && HasAvx))) return 1;
-        if (Is64bits && (Is2 || (Is4 && HasAvx))) return 1;
-        break;
-      }
-    }
+  // Look for AVX1 lowering tricks.
+  if (ST.hasAVX()) {
+    int Idx = FindInTable(AVX1CostTable, array_lengthof(AVX1CostTable), ISD,
+                          LT.second);
+    if (Idx != -1)
+      return LT.first * AVX1CostTable[Idx].Cost;
   }
-
+  // Fallback to the default implementation.
   return VectorTargetTransformImpl::getArithmeticInstrCost(Opcode, Ty);
 }
 
 unsigned
 X86VectorTargetTransformInfo::getVectorInstrCost(unsigned Opcode, Type *Val,
-                                    unsigned Index) const {
-  // Floating point scalars are already located in index #0.
-  if (Val->getScalarType()->isFloatingPointTy() && Index == 0)
-    return 0;
+                                                 unsigned Index) const {
+  assert(Val->isVectorTy() && "This must be a vector type");
+
+  if (Index != -1U) {
+    // Legalize the type.
+    std::pair<unsigned, MVT> LT = getTypeLegalizationCost(Val);
+
+    // This type is legalized to a scalar type.
+    if (!LT.second.isVector())
+      return 0;
+
+    // The type may be split. Normalize the index to the new type.
+    unsigned Width = LT.second.getVectorNumElements();
+    Index = Index % Width;
+
+    // Floating point scalars are already located in index #0.
+    if (Val->getScalarType()->isFloatingPointTy() && Index == 0)
+      return 0;
+  }
+
   return VectorTargetTransformImpl::getVectorInstrCost(Opcode, Val, Index);
+}
+
+unsigned X86VectorTargetTransformInfo::getCmpSelInstrCost(unsigned Opcode,
+                                                          Type *ValTy,
+                                                          Type *CondTy) const {
+  // Legalize the type.
+  std::pair<unsigned, MVT> LT = getTypeLegalizationCost(ValTy);
+
+  MVT MTy = LT.second;
+
+  int ISD = InstructionOpcodeToISD(Opcode);
+  assert(ISD && "Invalid opcode");
+
+  const X86Subtarget &ST =
+  TLI->getTargetMachine().getSubtarget<X86Subtarget>();
+
+  static const X86CostTblEntry SSE42CostTbl[] = {
+    { ISD::SETCC,   MVT::v2f64,   1 },
+    { ISD::SETCC,   MVT::v4f32,   1 },
+    { ISD::SETCC,   MVT::v2i64,   1 },
+    { ISD::SETCC,   MVT::v4i32,   1 },
+    { ISD::SETCC,   MVT::v8i16,   1 },
+    { ISD::SETCC,   MVT::v16i8,   1 },
+  };
+
+  static const X86CostTblEntry AVX1CostTbl[] = {
+    { ISD::SETCC,   MVT::v4f64,   1 },
+    { ISD::SETCC,   MVT::v8f32,   1 },
+    // AVX1 does not support 8-wide integer compare.
+    { ISD::SETCC,   MVT::v4i64,   4 },
+    { ISD::SETCC,   MVT::v8i32,   4 },
+    { ISD::SETCC,   MVT::v16i16,  4 },
+    { ISD::SETCC,   MVT::v32i8,   4 },
+  };
+
+  static const X86CostTblEntry AVX2CostTbl[] = {
+    { ISD::SETCC,   MVT::v4i64,   1 },
+    { ISD::SETCC,   MVT::v8i32,   1 },
+    { ISD::SETCC,   MVT::v16i16,  1 },
+    { ISD::SETCC,   MVT::v32i8,   1 },
+  };
+
+  if (ST.hasSSE42()) {
+    int Idx = FindInTable(SSE42CostTbl, array_lengthof(SSE42CostTbl), ISD, MTy);
+    if (Idx != -1)
+      return LT.first * SSE42CostTbl[Idx].Cost;
+  }
+
+  if (ST.hasAVX()) {
+    int Idx = FindInTable(AVX1CostTbl, array_lengthof(AVX1CostTbl), ISD, MTy);
+    if (Idx != -1)
+      return LT.first * AVX1CostTbl[Idx].Cost;
+  }
+
+  if (ST.hasAVX2()) {
+    int Idx = FindInTable(AVX2CostTbl, array_lengthof(AVX2CostTbl), ISD, MTy);
+    if (Idx != -1)
+      return LT.first * AVX2CostTbl[Idx].Cost;
+  }
+
+  return VectorTargetTransformImpl::getCmpSelInstrCost(Opcode, ValTy, CondTy);
+}
+
+unsigned X86VectorTargetTransformInfo::getCastInstrCost(unsigned Opcode,
+                                                        Type *Dst,
+                                                        Type *Src) const {
+  int ISD = InstructionOpcodeToISD(Opcode);
+  assert(ISD && "Invalid opcode");
+
+  EVT SrcTy = TLI->getValueType(Src);
+  EVT DstTy = TLI->getValueType(Dst);
+
+  if (!SrcTy.isSimple() || !DstTy.isSimple())
+    return VectorTargetTransformImpl::getCastInstrCost(Opcode, Dst, Src);
+
+  const X86Subtarget &ST = TLI->getTargetMachine().getSubtarget<X86Subtarget>();
+
+  static const X86TypeConversionCostTblEntry AVXConversionTbl[] = {
+    { ISD::SIGN_EXTEND, MVT::v8i32, MVT::v8i16, 1 },
+    { ISD::ZERO_EXTEND, MVT::v8i32, MVT::v8i16, 1 },
+    { ISD::SIGN_EXTEND, MVT::v4i64, MVT::v4i32, 1 },
+    { ISD::ZERO_EXTEND, MVT::v4i64, MVT::v4i32, 1 },
+    { ISD::TRUNCATE,    MVT::v4i32, MVT::v4i64, 1 },
+    { ISD::TRUNCATE,    MVT::v8i16, MVT::v8i32, 1 },
+    { ISD::SINT_TO_FP,  MVT::v8f32, MVT::v8i8,  1 },
+    { ISD::SINT_TO_FP,  MVT::v4f32, MVT::v4i8,  1 },
+    { ISD::UINT_TO_FP,  MVT::v8f32, MVT::v8i8,  1 },
+    { ISD::UINT_TO_FP,  MVT::v4f32, MVT::v4i8,  1 },
+    { ISD::FP_TO_SINT,  MVT::v8i8, MVT::v8f32,  1 },
+    { ISD::FP_TO_SINT,  MVT::v4i8, MVT::v4f32,  1 },
+    { ISD::ZERO_EXTEND, MVT::v8i32, MVT::v8i1,  6 },
+    { ISD::SIGN_EXTEND, MVT::v8i32, MVT::v8i1,  9 },
+    { ISD::TRUNCATE,    MVT::v8i32, MVT::v8i64, 3 },
+  };
+
+  if (ST.hasAVX()) {
+    int Idx = FindInConvertTable(AVXConversionTbl,
+                                 array_lengthof(AVXConversionTbl),
+                                 ISD, DstTy.getSimpleVT(), SrcTy.getSimpleVT());
+    if (Idx != -1)
+      return AVXConversionTbl[Idx].Cost;
+  }
+
+  return VectorTargetTransformImpl::getCastInstrCost(Opcode, Dst, Src);
 }
