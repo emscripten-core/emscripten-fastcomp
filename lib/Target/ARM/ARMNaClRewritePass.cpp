@@ -629,6 +629,9 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VLD1q16:
   case ARM::VLD1q32:
   case ARM::VLD1q64:
+    *AddrIdx = 1;
+    break;
+
   case ARM::VLD1d8wb_fixed:
   case ARM::VLD1d16wb_fixed:
   case ARM::VLD1d32wb_fixed:
@@ -645,6 +648,8 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VLD1q16wb_register:
   case ARM::VLD1q32wb_register:
   case ARM::VLD1q64wb_register:
+    *AddrIdx = 2;
+    break;
 
   // VLD1T
   case ARM::VLD1d8T:
@@ -653,6 +658,7 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VLD1d64T:
     *AddrIdx = 1;
     break;
+
   case ARM::VLD1d8Twb_fixed:
   case ARM::VLD1d16Twb_fixed:
   case ARM::VLD1d32Twb_fixed:
@@ -671,6 +677,7 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VLD1d64Q:
     *AddrIdx = 1;
     break;
+
   case ARM::VLD1d8Qwb_fixed:
   case ARM::VLD1d16Qwb_fixed:
   case ARM::VLD1d32Qwb_fixed:
@@ -901,6 +908,9 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST1q16:
   case ARM::VST1q32:
   case ARM::VST1q64:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST1d8wb_fixed:
   case ARM::VST1d16wb_fixed:
   case ARM::VST1d32wb_fixed:
@@ -917,14 +927,21 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST1q16wb_register:
   case ARM::VST1q32wb_register:
   case ARM::VST1q64wb_register:
+    *AddrIdx = 1;
+    break;
 
   // VST1LN
   case ARM::VST1LNd8:
   case ARM::VST1LNd16:
   case ARM::VST1LNd32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST1LNd8_UPD:
   case ARM::VST1LNd16_UPD:
   case ARM::VST1LNd32_UPD:
+    *AddrIdx = 1;
+    break;
 
   // VST2
   case ARM::VST2d8:
@@ -933,6 +950,9 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST2q8:
   case ARM::VST2q16:
   case ARM::VST2q32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST2d8wb_fixed:
   case ARM::VST2d16wb_fixed:
   case ARM::VST2d32wb_fixed:
@@ -945,6 +965,8 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST2q8wb_register:
   case ARM::VST2q16wb_register:
   case ARM::VST2q32wb_register:
+    *AddrIdx = 1;
+    break;
 
   // VST2LN
   case ARM::VST2LNd8:
@@ -952,11 +974,16 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST2LNq16:
   case ARM::VST2LNd32:
   case ARM::VST2LNq32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST2LNd8_UPD:
   case ARM::VST2LNd16_UPD:
   case ARM::VST2LNq16_UPD:
   case ARM::VST2LNd32_UPD:
   case ARM::VST2LNq32_UPD:
+    *AddrIdx = 1;
+    break;
 
   // VST3
   case ARM::VST3d8:
@@ -965,12 +992,17 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST3q8:
   case ARM::VST3q16:
   case ARM::VST3q32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST3d8_UPD:
   case ARM::VST3d16_UPD:
   case ARM::VST3d32_UPD:
   case ARM::VST3q8_UPD:
   case ARM::VST3q16_UPD:
   case ARM::VST3q32_UPD:
+    *AddrIdx = 1;
+    break;
 
   // VST3LN
   case ARM::VST3LNd8:
@@ -978,11 +1010,16 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST3LNq16:
   case ARM::VST3LNd32:
   case ARM::VST3LNq32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST3LNd8_UPD:
   case ARM::VST3LNd16_UPD:
   case ARM::VST3LNq16_UPD:
   case ARM::VST3LNd32_UPD:
   case ARM::VST3LNq32_UPD:
+    *AddrIdx = 1;
+    break;
 
   // VST4
   case ARM::VST4d8:
@@ -991,12 +1028,17 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST4q8:
   case ARM::VST4q16:
   case ARM::VST4q32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST4d8_UPD:
   case ARM::VST4d16_UPD:
   case ARM::VST4d32_UPD:
   case ARM::VST4q8_UPD:
   case ARM::VST4q16_UPD:
   case ARM::VST4q32_UPD:
+    *AddrIdx = 1;
+    break;
 
   // VST4LN
   case ARM::VST4LNd8:
@@ -1004,13 +1046,15 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VST4LNq16:
   case ARM::VST4LNd32:
   case ARM::VST4LNq32:
+    *AddrIdx = 0;
+    break;
+
   case ARM::VST4LNd8_UPD:
   case ARM::VST4LNd16_UPD:
   case ARM::VST4LNq16_UPD:
   case ARM::VST4LNd32_UPD:
   case ARM::VST4LNq32_UPD:
-
-    *AddrIdx = 0;
+    *AddrIdx = 1;
     break;
 
   // Instructions with base address register in position 2...
