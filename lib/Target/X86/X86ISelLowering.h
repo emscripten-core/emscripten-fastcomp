@@ -220,6 +220,9 @@ namespace llvm {
 
       // TLSADDR_IE - Thread Local Storage. (Initial Exec Model)
       TLSADDR_IE,
+
+      // THREAD_POINTER_FROM_GS - Read thread pointer from %gs:0 on x86-32.
+      THREAD_POINTER_FROM_GS,
       // @LOCALMOD-END
 
       // TLSCALL - Thread Local Storage.  When calling to an OS provided
@@ -940,6 +943,12 @@ namespace llvm {
     MachineBasicBlock *EmitLoweredSegAlloca(MachineInstr *MI,
                                             MachineBasicBlock *BB,
                                             bool Is64Bit) const;
+
+    // @LOCALMOD-BEGIN
+    MachineBasicBlock *EmitLoweredThreadPointerFromGs(
+        MachineInstr *MI,
+        MachineBasicBlock *BB) const;
+    // @LOCALMOD-END
 
     MachineBasicBlock *EmitLoweredTLSCall(MachineInstr *MI,
                                           MachineBasicBlock *BB) const;

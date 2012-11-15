@@ -10155,13 +10155,7 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       return CallResult.first;
     } else {
       // Get %gs:0, which contains the thread pointer on x86-32.
-      unsigned GSAddrSpace = 256;
-      Value *Ptr = Constant::getNullValue(
-          Type::getInt8PtrTy(*DAG.getContext(), GSAddrSpace));
-      return DAG.getLoad(PtrVT, dl, DAG.getEntryNode(),
-                         DAG.getIntPtrConstant(0),
-                         MachinePointerInfo(Ptr),
-                         false, false, false, 0);
+      return DAG.getNode(X86ISD::THREAD_POINTER_FROM_GS, dl, PtrVT);
     }
   }
   // @LOCALMOD-END
@@ -13723,6 +13717,25 @@ X86TargetLowering::EmitLoweredWinAlloca(MachineInstr *MI,
   return BB;
 }
 
+// @LOCALMOD-BEGIN
+MachineBasicBlock *
+X86TargetLowering::EmitLoweredThreadPointerFromGs(MachineInstr *MI,
+                                                  MachineBasicBlock *BB) const {
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  DebugLoc DL = MI->getDebugLoc();
+  // This generates "movl %gs:0, %DEST", which fetches the thread
+  // pointer on x86-32.
+  BuildMI(*BB, MI, DL, TII->get(X86::MOV32rm), MI->getOperand(0).getReg())
+    .addReg(/*Base=*/0)
+    .addImm(/*Scale=*/1)
+    .addReg(/*IndexReg=*/0)
+    .addImm(/*Disp=*/0)
+    .addReg(/*Segment=*/X86::GS);
+  MI->eraseFromParent();
+  return BB;
+}
+// @LOCALMOD-END
+
 MachineBasicBlock *
 X86TargetLowering::EmitLoweredTLSCall(MachineInstr *MI,
                                       MachineBasicBlock *BB) const {
@@ -13998,6 +14011,10 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     return EmitLoweredSegAlloca(MI, BB, false);
   case X86::SEG_ALLOCA_64:
     return EmitLoweredSegAlloca(MI, BB, true);
+  // @LOCALMOD-BEGIN
+  case X86::THREAD_POINTER_FROM_GS:
+    return EmitLoweredThreadPointerFromGs(MI, BB);
+  // @LOCALMOD-END
   case X86::TLSCall_32:
   case X86::TLSCall_64:
     return EmitLoweredTLSCall(MI, BB);

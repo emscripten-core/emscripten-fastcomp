@@ -425,6 +425,16 @@ def TLS_base_addr64 : I<0, Pseudo, (outs), (ins i64mem:$sym),
                   Requires<[In64BitMode]>;
 }
 
+// @LOCALMOD-BEGIN
+// NaCl TLS support
+let usesCustomInserter = 1 in {
+  def THREAD_POINTER_FROM_GS :
+    I<0, Pseudo, (outs GR32:$dst), (ins),
+      "# get thread pointer from %gs:0",
+      [(set GR32:$dst, (X86thread_pointer_from_gs))]>;
+}
+// @LOCALMOD-END
+
 // Darwin TLS Support
 // For i386, the address of the thunk is passed on the stack, on return the
 // address of the variable is in %eax.  %ecx is trashed during the function
