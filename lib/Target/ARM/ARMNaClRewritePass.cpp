@@ -617,6 +617,278 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
     break;
 
   //
+  // NEON loads
+  //
+
+  // VLD1
+  case ARM::VLD1d8:
+  case ARM::VLD1d16:
+  case ARM::VLD1d32:
+  case ARM::VLD1d64:
+  case ARM::VLD1q8:
+  case ARM::VLD1q16:
+  case ARM::VLD1q32:
+  case ARM::VLD1q64:
+  case ARM::VLD1d8wb_fixed:
+  case ARM::VLD1d16wb_fixed:
+  case ARM::VLD1d32wb_fixed:
+  case ARM::VLD1d64wb_fixed:
+  case ARM::VLD1q8wb_fixed:
+  case ARM::VLD1q16wb_fixed:
+  case ARM::VLD1q32wb_fixed:
+  case ARM::VLD1q64wb_fixed:
+  case ARM::VLD1d8wb_register:
+  case ARM::VLD1d16wb_register:
+  case ARM::VLD1d32wb_register:
+  case ARM::VLD1d64wb_register:
+  case ARM::VLD1q8wb_register:
+  case ARM::VLD1q16wb_register:
+  case ARM::VLD1q32wb_register:
+  case ARM::VLD1q64wb_register:
+
+  // VLD1T
+  case ARM::VLD1d8T:
+  case ARM::VLD1d16T:
+  case ARM::VLD1d32T:
+  case ARM::VLD1d64T:
+    *AddrIdx = 1;
+    break;
+  case ARM::VLD1d8Twb_fixed:
+  case ARM::VLD1d16Twb_fixed:
+  case ARM::VLD1d32Twb_fixed:
+  case ARM::VLD1d64Twb_fixed:
+  case ARM::VLD1d8Twb_register:
+  case ARM::VLD1d16Twb_register:
+  case ARM::VLD1d32Twb_register:
+  case ARM::VLD1d64Twb_register:
+    *AddrIdx = 2;
+    break;
+
+  // VLD1Q
+  case ARM::VLD1d8Q:
+  case ARM::VLD1d16Q:
+  case ARM::VLD1d32Q:
+  case ARM::VLD1d64Q:
+    *AddrIdx = 1;
+    break;
+  case ARM::VLD1d8Qwb_fixed:
+  case ARM::VLD1d16Qwb_fixed:
+  case ARM::VLD1d32Qwb_fixed:
+  case ARM::VLD1d64Qwb_fixed:
+  case ARM::VLD1d8Qwb_register:
+  case ARM::VLD1d16Qwb_register:
+  case ARM::VLD1d32Qwb_register:
+  case ARM::VLD1d64Qwb_register:
+    *AddrIdx = 2;
+    break;
+
+  // VLD1LN
+  case ARM::VLD1LNd8:
+  case ARM::VLD1LNd16:
+  case ARM::VLD1LNd32:
+  case ARM::VLD1LNd8_UPD:
+  case ARM::VLD1LNd16_UPD:
+  case ARM::VLD1LNd32_UPD:
+
+  // VLD1DUP
+  case ARM::VLD1DUPd8:
+  case ARM::VLD1DUPd16:
+  case ARM::VLD1DUPd32:
+  case ARM::VLD1DUPq8:
+  case ARM::VLD1DUPq16:
+  case ARM::VLD1DUPq32:
+  case ARM::VLD1DUPd8wb_fixed:
+  case ARM::VLD1DUPd16wb_fixed:
+  case ARM::VLD1DUPd32wb_fixed:
+  case ARM::VLD1DUPq8wb_fixed:
+  case ARM::VLD1DUPq16wb_fixed:
+  case ARM::VLD1DUPq32wb_fixed:
+  case ARM::VLD1DUPd8wb_register:
+  case ARM::VLD1DUPd16wb_register:
+  case ARM::VLD1DUPd32wb_register:
+  case ARM::VLD1DUPq8wb_register:
+  case ARM::VLD1DUPq16wb_register:
+  case ARM::VLD1DUPq32wb_register:
+
+  // VLD2
+  case ARM::VLD2d8:
+  case ARM::VLD2d16:
+  case ARM::VLD2d32:
+  case ARM::VLD2b8:
+  case ARM::VLD2b16:
+  case ARM::VLD2b32:
+  case ARM::VLD2q8:
+  case ARM::VLD2q16:
+  case ARM::VLD2q32:
+    *AddrIdx = 1;
+    break;
+
+  case ARM::VLD2d8wb_fixed:
+  case ARM::VLD2d16wb_fixed:
+  case ARM::VLD2d32wb_fixed:
+  case ARM::VLD2b8wb_fixed:
+  case ARM::VLD2b16wb_fixed:
+  case ARM::VLD2b32wb_fixed:
+  case ARM::VLD2q8wb_fixed:
+  case ARM::VLD2q16wb_fixed:
+  case ARM::VLD2q32wb_fixed:
+  case ARM::VLD2d8wb_register:
+  case ARM::VLD2d16wb_register:
+  case ARM::VLD2d32wb_register:
+  case ARM::VLD2b8wb_register:
+  case ARM::VLD2b16wb_register:
+  case ARM::VLD2b32wb_register:
+  case ARM::VLD2q8wb_register:
+  case ARM::VLD2q16wb_register:
+  case ARM::VLD2q32wb_register:
+    *AddrIdx = 2;
+    break;
+
+  // VLD2LN
+  case ARM::VLD2LNd8:
+  case ARM::VLD2LNd16:
+  case ARM::VLD2LNd32:
+  case ARM::VLD2LNq16:
+  case ARM::VLD2LNq32:
+    *AddrIdx = 2;
+    break;
+
+  case ARM::VLD2LNd8_UPD:
+  case ARM::VLD2LNd16_UPD:
+  case ARM::VLD2LNd32_UPD:
+  case ARM::VLD2LNq16_UPD:
+  case ARM::VLD2LNq32_UPD:
+    *AddrIdx = 3;
+    break;
+
+  // VLD2DUP
+  case ARM::VLD2DUPd8:
+  case ARM::VLD2DUPd16:
+  case ARM::VLD2DUPd32:
+  case ARM::VLD2DUPd8x2:
+  case ARM::VLD2DUPd16x2:
+  case ARM::VLD2DUPd32x2:
+    *AddrIdx = 1;
+    break;
+
+  case ARM::VLD2DUPd8wb_fixed:
+  case ARM::VLD2DUPd16wb_fixed:
+  case ARM::VLD2DUPd32wb_fixed:
+  case ARM::VLD2DUPd8wb_register:
+  case ARM::VLD2DUPd16wb_register:
+  case ARM::VLD2DUPd32wb_register:
+  case ARM::VLD2DUPd8x2wb_fixed:
+  case ARM::VLD2DUPd16x2wb_fixed:
+  case ARM::VLD2DUPd32x2wb_fixed:
+  case ARM::VLD2DUPd8x2wb_register:
+  case ARM::VLD2DUPd16x2wb_register:
+  case ARM::VLD2DUPd32x2wb_register:
+    *AddrIdx = 2;
+    break;
+
+  // VLD3
+  case ARM::VLD3d8:
+  case ARM::VLD3d16:
+  case ARM::VLD3d32:
+  case ARM::VLD3q8:
+  case ARM::VLD3q16:
+  case ARM::VLD3q32:
+  case ARM::VLD3d8_UPD:
+  case ARM::VLD3d16_UPD:
+  case ARM::VLD3d32_UPD:
+  case ARM::VLD3q8_UPD:
+  case ARM::VLD3q16_UPD:
+  case ARM::VLD3q32_UPD:
+
+  // VLD3LN
+  case ARM::VLD3LNd8:
+  case ARM::VLD3LNd16:
+  case ARM::VLD3LNd32:
+  case ARM::VLD3LNq16:
+  case ARM::VLD3LNq32:
+    *AddrIdx = 3;
+    break;
+
+  case ARM::VLD3LNd8_UPD:
+  case ARM::VLD3LNd16_UPD:
+  case ARM::VLD3LNd32_UPD:
+  case ARM::VLD3LNq16_UPD:
+  case ARM::VLD3LNq32_UPD:
+    *AddrIdx = 4;
+    break;
+
+  // VLD3DUP
+  case ARM::VLD3DUPd8:
+  case ARM::VLD3DUPd16:
+  case ARM::VLD3DUPd32:
+  case ARM::VLD3DUPq8:
+  case ARM::VLD3DUPq16:
+  case ARM::VLD3DUPq32:
+    *AddrIdx = 3;
+    break;
+
+  case ARM::VLD3DUPd8_UPD:
+  case ARM::VLD3DUPd16_UPD:
+  case ARM::VLD3DUPd32_UPD:
+  case ARM::VLD3DUPq8_UPD:
+  case ARM::VLD3DUPq16_UPD:
+  case ARM::VLD3DUPq32_UPD:
+    *AddrIdx = 4;
+    break;
+
+  // VLD4
+  case ARM::VLD4d8:
+  case ARM::VLD4d16:
+  case ARM::VLD4d32:
+  case ARM::VLD4q8:
+  case ARM::VLD4q16:
+  case ARM::VLD4q32:
+    *AddrIdx = 4;
+    break;
+
+  case ARM::VLD4d8_UPD:
+  case ARM::VLD4d16_UPD:
+  case ARM::VLD4d32_UPD:
+  case ARM::VLD4q8_UPD:
+  case ARM::VLD4q16_UPD:
+  case ARM::VLD4q32_UPD:
+    *AddrIdx = 5;
+    break;
+
+  // VLD4LN
+  case ARM::VLD4LNd8:
+  case ARM::VLD4LNd16:
+  case ARM::VLD4LNd32:
+  case ARM::VLD4LNq16:
+  case ARM::VLD4LNq32:
+    *AddrIdx = 4;
+    break;
+
+  case ARM::VLD4LNd8_UPD:
+  case ARM::VLD4LNd16_UPD:
+  case ARM::VLD4LNd32_UPD:
+  case ARM::VLD4LNq16_UPD:
+  case ARM::VLD4LNq32_UPD:
+    *AddrIdx = 5;
+    break;
+
+  case ARM::VLD4DUPd8:
+  case ARM::VLD4DUPd16:
+  case ARM::VLD4DUPd32:
+  case ARM::VLD4DUPq16:
+  case ARM::VLD4DUPq32:
+    *AddrIdx = 4;
+    break;
+
+  case ARM::VLD4DUPd8_UPD:
+  case ARM::VLD4DUPd16_UPD:
+  case ARM::VLD4DUPd32_UPD:
+  case ARM::VLD4DUPq16_UPD:
+  case ARM::VLD4DUPq32_UPD:
+    *AddrIdx = 5;
+    break;
+
+  //
   // NEON stores
   //
 

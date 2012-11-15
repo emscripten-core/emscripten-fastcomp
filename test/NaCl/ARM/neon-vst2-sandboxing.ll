@@ -38,6 +38,8 @@ define void @vst2f(float* %A, <2 x float>* %B) nounwind {
 
 define void @vst2Qi8(i8* %A, <16 x i8>* %B) nounwind {
   %tmp1 = load <16 x i8>* %B
+; CHECK:         bic r1, r1, #3221225472
+; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst2.v16i8(i8* %A, <16 x i8> %tmp1, <16 x i8> %tmp1, i32 8)
 ; CHECK:         bic r0, r0, #3221225472
 ; CHECK-NEXT:    vst2.8 {{{d[0-9]+, d[0-9]+, d[0-9]+, d[0-9]+}}}, [r0, :64]
@@ -47,6 +49,8 @@ define void @vst2Qi8(i8* %A, <16 x i8>* %B) nounwind {
 define void @vst2Qi16(i16* %A, <8 x i16>* %B) nounwind {
   %tmp0 = bitcast i16* %A to i8*
   %tmp1 = load <8 x i16>* %B
+; CHECK:         bic r1, r1, #3221225472
+; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst2.v8i16(i8* %tmp0, <8 x i16> %tmp1, <8 x i16> %tmp1, i32 16)
 ; CHECK:         bic r0, r0, #3221225472
 ; CHECK-NEXT:    vst2.16 {{{d[0-9]+, d[0-9]+, d[0-9]+, d[0-9]+}}}, [r0, :128]
@@ -56,6 +60,8 @@ define void @vst2Qi16(i16* %A, <8 x i16>* %B) nounwind {
 define void @vst2Qi32(i32* %A, <4 x i32>* %B) nounwind {
   %tmp0 = bitcast i32* %A to i8*
   %tmp1 = load <4 x i32>* %B
+; CHECK:         bic r1, r1, #3221225472
+; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst2.v4i32(i8* %tmp0, <4 x i32> %tmp1, <4 x i32> %tmp1, i32 64)
 ; CHECK:         bic r0, r0, #3221225472
 ; CHECK-NEXT:    vst2.32 {{{d[0-9]+, d[0-9]+, d[0-9]+, d[0-9]+}}}, [r0, :256]
@@ -65,6 +71,8 @@ define void @vst2Qi32(i32* %A, <4 x i32>* %B) nounwind {
 define void @vst2Qf(float* %A, <4 x float>* %B) nounwind {
   %tmp0 = bitcast float* %A to i8*
   %tmp1 = load <4 x float>* %B
+; CHECK:         bic r1, r1, #3221225472
+; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst2.v4f32(i8* %tmp0, <4 x float> %tmp1, <4 x float> %tmp1, i32 1)
 ; CHECK:         bic r0, r0, #3221225472
 ; CHECK-NEXT:    vst2.32 {{{d[0-9]+, d[0-9]+, d[0-9]+, d[0-9]+}}}, [r0]

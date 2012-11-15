@@ -32,6 +32,8 @@ define void @vst3Qi16_update(i16** %ptr, <8 x i16>* %B) nounwind {
   %A = load i16** %ptr
   %tmp0 = bitcast i16* %A to i8*
   %tmp1 = load <8 x i16>* %B
+; CHECK:         bic r1, r1, #3221225472
+; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst3.v8i16(i8* %tmp0, <8 x i16> %tmp1, <8 x i16> %tmp1, <8 x i16> %tmp1, i32 1)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vst3.16 {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r1]!
