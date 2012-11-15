@@ -910,7 +910,8 @@ void NVPTXAsmPrinter::emitHeader (Module &M, raw_ostream &O) {
   O << "//\n";
   O << "\n";
 
-  O << ".version 3.0\n";
+  unsigned PTXVersion = nvptxSubtarget.getPTXVersion();
+  O << ".version " << (PTXVersion / 10) << "." << (PTXVersion % 10) << "\n";
 
   O << ".target ";
   O << nvptxSubtarget.getTargetName();
@@ -1525,6 +1526,9 @@ void NVPTXAsmPrinter::emitFunctionParamList(const Function *F,
       // <a> = PAL.getparamalignment
       // size = typeallocsize of element type
       unsigned align = PAL.getParamAlignment(paramIndex+1);
+      if (align == 0)
+        align = TD->getABITypeAlignment(ETy);
+
       unsigned sz = TD->getTypeAllocSize(ETy);
       O << "\t.param .align " << align
           << " .b8 ";

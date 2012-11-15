@@ -34,6 +34,7 @@ protected:
   Function *Caller;
   const DataLayout *TD;
   const TargetLibraryInfo *TLI;
+  const LibCallSimplifier *LCS;
   LLVMContext* Context;
 public:
   LibCallOptimization() { }
@@ -48,10 +49,12 @@ public:
     =0;
 
   Value *optimizeCall(CallInst *CI, const DataLayout *TD,
-                      const TargetLibraryInfo *TLI, IRBuilder<> &B) {
+                      const TargetLibraryInfo *TLI,
+                      const LibCallSimplifier *LCS, IRBuilder<> &B) {
     Caller = CI->getParent()->getParent();
     this->TD = TD;
     this->TLI = TLI;
+    this->LCS = LCS;
     if (CI->getCalledFunction())
       Context = &CI->getCalledFunction()->getContext();
 
@@ -77,6 +80,20 @@ static bool isOnlyUsedInZeroEqualityComparison(Value *V) {
         if (Constant *C = dyn_cast<Constant>(IC->getOperand(1)))
           if (C->isNullValue())
             continue;
+    // Unknown instruction.
+    return false;
+  }
+  return true;
+}
+
+/// isOnlyUsedInEqualityComparison - Return true if it is only used in equality
+/// comparisons with With.
+static bool isOnlyUsedInEqualityComparison(Value *V, Value *With) {
+  for (Value::use_iterator UI = V->use_begin(), E = V->use_end();
+       UI != E; ++UI) {
+    if (ICmpInst *IC = dyn_cast<ICmpInst>(*UI))
+      if (IC->isEquality() && IC->getOperand(1) == With)
+        continue;
     // Unknown instruction.
     return false;
   }
@@ -801,6 +818,204 @@ struct StrSpnOpt : public LibCallOptimization {
   }
 };
 
+struct StrCSpnOpt : public LibCallOptimization {
+  virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 2 ||
+        FT->getParamType(0) != B.getInt8PtrTy() ||
+        FT->getParamType(1) != FT->getParamType(0) ||
+        !FT->getReturnType()->isIntegerTy())
+      return 0;
+
+    StringRef S1, S2;
+    bool HasS1 = getConstantStringInfo(CI->getArgOperand(0), S1);
+    bool HasS2 = getConstantStringInfo(CI->getArgOperand(1), S2);
+
+    // strcspn("", s) -> 0
+    if (HasS1 && S1.empty())
+      return Constant::getNullValue(CI->getType());
+
+    // Constant folding.
+    if (HasS1 && HasS2) {
+      size_t Pos = S1.find_first_of(S2);
+      if (Pos == StringRef::npos) Pos = S1.size();
+      return ConstantInt::get(CI->getType(), Pos);
+    }
+
+    // strcspn(s, "") -> strlen(s)
+    if (TD && HasS2 && S2.empty())
+      return EmitStrLen(CI->getArgOperand(0), B, TD, TLI);
+
+    return 0;
+  }
+};
+
+struct StrStrOpt : public LibCallOptimization {
+  virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 2 ||
+        !FT->getParamType(0)->isPointerTy() ||
+        !FT->getParamType(1)->isPointerTy() ||
+        !FT->getReturnType()->isPointerTy())
+      return 0;
+
+    // fold strstr(x, x) -> x.
+    if (CI->getArgOperand(0) == CI->getArgOperand(1))
+      return B.CreateBitCast(CI->getArgOperand(0), CI->getType());
+
+    // fold strstr(a, b) == a -> strncmp(a, b, strlen(b)) == 0
+    if (TD && isOnlyUsedInEqualityComparison(CI, CI->getArgOperand(0))) {
+      Value *StrLen = EmitStrLen(CI->getArgOperand(1), B, TD, TLI);
+      if (!StrLen)
+        return 0;
+      Value *StrNCmp = EmitStrNCmp(CI->getArgOperand(0), CI->getArgOperand(1),
+                                   StrLen, B, TD, TLI);
+      if (!StrNCmp)
+        return 0;
+      for (Value::use_iterator UI = CI->use_begin(), UE = CI->use_end();
+           UI != UE; ) {
+        ICmpInst *Old = cast<ICmpInst>(*UI++);
+        Value *Cmp = B.CreateICmp(Old->getPredicate(), StrNCmp,
+                                  ConstantInt::getNullValue(StrNCmp->getType()),
+                                  "cmp");
+        LCS->replaceAllUsesWith(Old, Cmp);
+      }
+      return CI;
+    }
+
+    // See if either input string is a constant string.
+    StringRef SearchStr, ToFindStr;
+    bool HasStr1 = getConstantStringInfo(CI->getArgOperand(0), SearchStr);
+    bool HasStr2 = getConstantStringInfo(CI->getArgOperand(1), ToFindStr);
+
+    // fold strstr(x, "") -> x.
+    if (HasStr2 && ToFindStr.empty())
+      return B.CreateBitCast(CI->getArgOperand(0), CI->getType());
+
+    // If both strings are known, constant fold it.
+    if (HasStr1 && HasStr2) {
+      std::string::size_type Offset = SearchStr.find(ToFindStr);
+
+      if (Offset == StringRef::npos) // strstr("foo", "bar") -> null
+        return Constant::getNullValue(CI->getType());
+
+      // strstr("abcd", "bc") -> gep((char*)"abcd", 1)
+      Value *Result = CastToCStr(CI->getArgOperand(0), B);
+      Result = B.CreateConstInBoundsGEP1_64(Result, Offset, "strstr");
+      return B.CreateBitCast(Result, CI->getType());
+    }
+
+    // fold strstr(x, "y") -> strchr(x, 'y').
+    if (HasStr2 && ToFindStr.size() == 1) {
+      Value *StrChr= EmitStrChr(CI->getArgOperand(0), ToFindStr[0], B, TD, TLI);
+      return StrChr ? B.CreateBitCast(StrChr, CI->getType()) : 0;
+    }
+    return 0;
+  }
+};
+
+struct MemCmpOpt : public LibCallOptimization {
+  virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 3 || !FT->getParamType(0)->isPointerTy() ||
+        !FT->getParamType(1)->isPointerTy() ||
+        !FT->getReturnType()->isIntegerTy(32))
+      return 0;
+
+    Value *LHS = CI->getArgOperand(0), *RHS = CI->getArgOperand(1);
+
+    if (LHS == RHS)  // memcmp(s,s,x) -> 0
+      return Constant::getNullValue(CI->getType());
+
+    // Make sure we have a constant length.
+    ConstantInt *LenC = dyn_cast<ConstantInt>(CI->getArgOperand(2));
+    if (!LenC) return 0;
+    uint64_t Len = LenC->getZExtValue();
+
+    if (Len == 0) // memcmp(s1,s2,0) -> 0
+      return Constant::getNullValue(CI->getType());
+
+    // memcmp(S1,S2,1) -> *(unsigned char*)LHS - *(unsigned char*)RHS
+    if (Len == 1) {
+      Value *LHSV = B.CreateZExt(B.CreateLoad(CastToCStr(LHS, B), "lhsc"),
+                                 CI->getType(), "lhsv");
+      Value *RHSV = B.CreateZExt(B.CreateLoad(CastToCStr(RHS, B), "rhsc"),
+                                 CI->getType(), "rhsv");
+      return B.CreateSub(LHSV, RHSV, "chardiff");
+    }
+
+    // Constant folding: memcmp(x, y, l) -> cnst (all arguments are constant)
+    StringRef LHSStr, RHSStr;
+    if (getConstantStringInfo(LHS, LHSStr) &&
+        getConstantStringInfo(RHS, RHSStr)) {
+      // Make sure we're not reading out-of-bounds memory.
+      if (Len > LHSStr.size() || Len > RHSStr.size())
+        return 0;
+      uint64_t Ret = memcmp(LHSStr.data(), RHSStr.data(), Len);
+      return ConstantInt::get(CI->getType(), Ret);
+    }
+
+    return 0;
+  }
+};
+
+struct MemCpyOpt : public LibCallOptimization {
+  virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    // These optimizations require DataLayout.
+    if (!TD) return 0;
+
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 3 || FT->getReturnType() != FT->getParamType(0) ||
+        !FT->getParamType(0)->isPointerTy() ||
+        !FT->getParamType(1)->isPointerTy() ||
+        FT->getParamType(2) != TD->getIntPtrType(*Context))
+      return 0;
+
+    // memcpy(x, y, n) -> llvm.memcpy(x, y, n, 1)
+    B.CreateMemCpy(CI->getArgOperand(0), CI->getArgOperand(1),
+                   CI->getArgOperand(2), 1);
+    return CI->getArgOperand(0);
+  }
+};
+
+struct MemMoveOpt : public LibCallOptimization {
+  virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    // These optimizations require DataLayout.
+    if (!TD) return 0;
+
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 3 || FT->getReturnType() != FT->getParamType(0) ||
+        !FT->getParamType(0)->isPointerTy() ||
+        !FT->getParamType(1)->isPointerTy() ||
+        FT->getParamType(2) != TD->getIntPtrType(*Context))
+      return 0;
+
+    // memmove(x, y, n) -> llvm.memmove(x, y, n, 1)
+    B.CreateMemMove(CI->getArgOperand(0), CI->getArgOperand(1),
+                    CI->getArgOperand(2), 1);
+    return CI->getArgOperand(0);
+  }
+};
+
+struct MemSetOpt : public LibCallOptimization {
+  virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    // These optimizations require DataLayout.
+    if (!TD) return 0;
+
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 3 || FT->getReturnType() != FT->getParamType(0) ||
+        !FT->getParamType(0)->isPointerTy() ||
+        !FT->getParamType(1)->isIntegerTy() ||
+        FT->getParamType(2) != TD->getIntPtrType(*Context))
+      return 0;
+
+    // memset(p, v, n) -> llvm.memset(p, v, n, 1)
+    Value *Val = B.CreateIntCast(CI->getArgOperand(1), B.getInt8Ty(), false);
+    B.CreateMemSet(CI->getArgOperand(0), Val, CI->getArgOperand(2), 1);
+    return CI->getArgOperand(0);
+  }
+};
+
 } // End anonymous namespace.
 
 namespace llvm {
@@ -808,6 +1023,7 @@ namespace llvm {
 class LibCallSimplifierImpl {
   const DataLayout *TD;
   const TargetLibraryInfo *TLI;
+  const LibCallSimplifier *LCS;
   StringMap<LibCallOptimization*> Optimizations;
 
   // Fortified library call optimizations.
@@ -818,7 +1034,7 @@ class LibCallSimplifierImpl {
   StpCpyChkOpt StpCpyChk;
   StrNCpyChkOpt StrNCpyChk;
 
-  // String and memory library call optimizations.
+  // String library call optimizations.
   StrCatOpt StrCat;
   StrNCatOpt StrNCat;
   StrChrOpt StrChr;
@@ -832,12 +1048,23 @@ class LibCallSimplifierImpl {
   StrPBrkOpt StrPBrk;
   StrToOpt StrTo;
   StrSpnOpt StrSpn;
+  StrCSpnOpt StrCSpn;
+  StrStrOpt StrStr;
+
+  // Memory library call optimizations.
+  MemCmpOpt MemCmp;
+  MemCpyOpt MemCpy;
+  MemMoveOpt MemMove;
+  MemSetOpt MemSet;
 
   void initOptimizations();
+  void addOpt(LibFunc::Func F, LibCallOptimization* Opt);
 public:
-  LibCallSimplifierImpl(const DataLayout *TD, const TargetLibraryInfo *TLI) {
+  LibCallSimplifierImpl(const DataLayout *TD, const TargetLibraryInfo *TLI,
+                        const LibCallSimplifier *LCS) {
     this->TD = TD;
     this->TLI = TLI;
+    this->LCS = LCS;
   }
 
   Value *optimizeCall(CallInst *CI);
@@ -853,26 +1080,34 @@ void LibCallSimplifierImpl::initOptimizations() {
   Optimizations["__strncpy_chk"] = &StrNCpyChk;
   Optimizations["__stpncpy_chk"] = &StrNCpyChk;
 
-  // String and memory library call optimizations.
-  Optimizations["strcat"] = &StrCat;
-  Optimizations["strncat"] = &StrNCat;
-  Optimizations["strchr"] = &StrChr;
-  Optimizations["strrchr"] = &StrRChr;
-  Optimizations["strcmp"] = &StrCmp;
-  Optimizations["strncmp"] = &StrNCmp;
-  Optimizations["strcpy"] = &StrCpy;
-  Optimizations["stpcpy"] = &StpCpy;
-  Optimizations["strncpy"] = &StrNCpy;
-  Optimizations["strlen"] = &StrLen;
-  Optimizations["strpbrk"] = &StrPBrk;
-  Optimizations["strtol"] = &StrTo;
-  Optimizations["strtod"] = &StrTo;
-  Optimizations["strtof"] = &StrTo;
-  Optimizations["strtoul"] = &StrTo;
-  Optimizations["strtoll"] = &StrTo;
-  Optimizations["strtold"] = &StrTo;
-  Optimizations["strtoull"] = &StrTo;
-  Optimizations["strspn"] = &StrSpn;
+  // String library call optimizations.
+  addOpt(LibFunc::strcat, &StrCat);
+  addOpt(LibFunc::strncat, &StrNCat);
+  addOpt(LibFunc::strchr, &StrChr);
+  addOpt(LibFunc::strrchr, &StrRChr);
+  addOpt(LibFunc::strcmp, &StrCmp);
+  addOpt(LibFunc::strncmp, &StrNCmp);
+  addOpt(LibFunc::strcpy, &StrCpy);
+  addOpt(LibFunc::stpcpy, &StpCpy);
+  addOpt(LibFunc::strncpy, &StrNCpy);
+  addOpt(LibFunc::strlen, &StrLen);
+  addOpt(LibFunc::strpbrk, &StrPBrk);
+  addOpt(LibFunc::strtol, &StrTo);
+  addOpt(LibFunc::strtod, &StrTo);
+  addOpt(LibFunc::strtof, &StrTo);
+  addOpt(LibFunc::strtoul, &StrTo);
+  addOpt(LibFunc::strtoll, &StrTo);
+  addOpt(LibFunc::strtold, &StrTo);
+  addOpt(LibFunc::strtoull, &StrTo);
+  addOpt(LibFunc::strspn, &StrSpn);
+  addOpt(LibFunc::strcspn, &StrCSpn);
+  addOpt(LibFunc::strstr, &StrStr);
+
+  // Memory library call optimizations.
+  addOpt(LibFunc::memcmp, &MemCmp);
+  addOpt(LibFunc::memcpy, &MemCpy);
+  addOpt(LibFunc::memmove, &MemMove);
+  addOpt(LibFunc::memset, &MemSet);
 }
 
 Value *LibCallSimplifierImpl::optimizeCall(CallInst *CI) {
@@ -883,14 +1118,19 @@ Value *LibCallSimplifierImpl::optimizeCall(CallInst *CI) {
   LibCallOptimization *LCO = Optimizations.lookup(Callee->getName());
   if (LCO) {
     IRBuilder<> Builder(CI);
-    return LCO->optimizeCall(CI, TD, TLI, Builder);
+    return LCO->optimizeCall(CI, TD, TLI, LCS, Builder);
   }
   return 0;
 }
 
+void LibCallSimplifierImpl::addOpt(LibFunc::Func F, LibCallOptimization* Opt) {
+  if (TLI->has(F))
+    Optimizations[TLI->getName(F)] = Opt;
+}
+
 LibCallSimplifier::LibCallSimplifier(const DataLayout *TD,
                                      const TargetLibraryInfo *TLI) {
-  Impl = new LibCallSimplifierImpl(TD, TLI);
+  Impl = new LibCallSimplifierImpl(TD, TLI, this);
 }
 
 LibCallSimplifier::~LibCallSimplifier() {
@@ -899,6 +1139,11 @@ LibCallSimplifier::~LibCallSimplifier() {
 
 Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
   return Impl->optimizeCall(CI);
+}
+
+void LibCallSimplifier::replaceAllUsesWith(Instruction *I, Value *With) const {
+  I->replaceAllUsesWith(With);
+  I->eraseFromParent();
 }
 
 }

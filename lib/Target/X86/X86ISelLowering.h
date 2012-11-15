@@ -893,21 +893,6 @@ namespace llvm {
                    const SmallVectorImpl<ISD::OutputArg> &Outs,
                    LLVMContext &Context) const;
 
-    /// Utility function to emit string processing sse4.2 instructions
-    /// that return in xmm0.
-    /// This takes the instruction to expand, the associated machine basic
-    /// block, the number of args, and whether or not the second arg is
-    /// in memory or not.
-    MachineBasicBlock *EmitPCMP(MachineInstr *BInstr, MachineBasicBlock *BB,
-                                unsigned argNum, bool inMem) const;
-
-    /// Utility functions to emit monitor and mwait instructions. These
-    /// need to make sure that the arguments to the intrinsic are in the
-    /// correct registers.
-    MachineBasicBlock *EmitMonitor(MachineInstr *MI,
-                                   MachineBasicBlock *BB) const;
-    MachineBasicBlock *EmitMwait(MachineInstr *MI, MachineBasicBlock *BB) const;
-
     /// Utility function to emit atomic-load-arith operations (and, or, xor,
     /// nand, max, min, umax, umin). It takes the corresponding instruction to
     /// expand, the associated machine basic block, and the associated X86
@@ -919,10 +904,6 @@ namespace llvm {
     /// nand, add, sub, swap) for 64-bit operands on 32-bit target.
     MachineBasicBlock *EmitAtomicLoadArith6432(MachineInstr *MI,
                                                MachineBasicBlock *MBB) const;
-
-    /// Utility function to emit xbegin specifying the start of an RTM region.
-    MachineBasicBlock *EmitXBegin(MachineInstr *MI,
-                                  MachineBasicBlock *MBB) const;
 
     // Utility function to emit the low-level va_arg code for X86-64.
     MachineBasicBlock *EmitVAARG64WithCustomInserter(
