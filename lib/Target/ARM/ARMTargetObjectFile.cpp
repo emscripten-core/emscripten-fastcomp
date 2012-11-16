@@ -28,8 +28,10 @@ void ARMElfTargetObjectFile::Initialize(MCContext &Ctx,
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
   InitializeELF(isAAPCS_ABI);
 
-  if (isAAPCS_ABI) {
-    //LSDASection = NULL;
+  // @LOCALMOD-BEGIN
+  if (isAAPCS_ABI && !TM.getSubtarget<ARMSubtarget>().isTargetNaCl()) {
+  // @LOCALMOD-END
+    LSDASection = NULL;
   }
 
   AttributesSection =
