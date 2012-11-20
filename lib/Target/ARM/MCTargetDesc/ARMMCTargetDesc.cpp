@@ -89,13 +89,7 @@ std::string ARM_MC::ParseARMTriple(StringRef TT, StringRef CPU) {
           ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
         else
           // Use CPU to figure out the exact features.
-          // @LOCALMOD-BEGIN
-          // Orig:    ARMArchFeature = "+v7";
-          // TODO(pdox): Eliminate this strange exception, possibly
-          // with our own cpu tag. (neon doesn't work, but vfp2 does).
-          // We also don't seem to handle The DSP features.
-          ARMArchFeature = "+v7,+db,+vfp2";
-          // @LOCALMOD-END
+          ARMArchFeature = "+v7";
       }
     } else if (SubVer == '6') {
       if (Len >= Idx+3 && TT[Idx+1] == 't' && TT[Idx+2] == '2')
