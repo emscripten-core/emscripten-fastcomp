@@ -370,11 +370,5 @@ void SubtargetFeatures::getDefaultSubtargetFeatures(const Triple& Triple) {
       AddFeature("64bit");
       AddFeature("altivec");
     }
-// @LOCALMOD-BEGIN
-  } else if (Triple.getArch() == Triple::arm &&
-             Triple.getOS() == Triple::NativeClient) {
-    AddFeature("-neon");
-    AddFeature("+vfp2");
-// @LOCALMOD-END
   }
 }
