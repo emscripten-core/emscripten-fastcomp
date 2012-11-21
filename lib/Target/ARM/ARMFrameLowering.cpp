@@ -159,9 +159,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   // @LOCALMOD-START
   MachineModuleInfo &MMI = MF.getMMI();
   // This condition was gleaned from x86 / PowerPC / XCore
-  bool needsFrameMoves = MMI.hasDebugInfo() ||
-                         !MF.getFunction()->doesNotThrow() ||
-                         MF.getFunction()->needsUnwindTableEntry();
+  bool needsFrameMoves = STI.isTargetNaCl() &&
+                         (MMI.hasDebugInfo() ||
+                          !MF.getFunction()->doesNotThrow() ||
+                          MF.getFunction()->needsUnwindTableEntry());
   // @LOCALMOD-END
   
   // All calls are tail calls in GHC calling conv, and functions have no
@@ -752,7 +753,7 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
         continue;
 
       if (Reg == ARM::LR && !isTailCall && !isVarArg && STI.hasV5TOps() &&
-          false /* @LOCALMOD */) {
+          !STI.isTargetNaCl() /* @LOCALMOD */) {
         Reg = ARM::PC;
         LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_RET : ARM::LDMIA_RET;
         // Fold the return instruction into the LDM.

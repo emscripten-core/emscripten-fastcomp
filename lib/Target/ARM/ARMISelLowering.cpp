@@ -682,17 +682,22 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     // Non-Darwin platforms may return values in these registers via the
     // personality function.
     setOperationAction(ISD::EHSELECTION,      MVT::i32,   Expand);
-    // @LOCALMOD-START
     setOperationAction(ISD::EXCEPTIONADDR,    MVT::i32,   Expand);
-    // we use the first caller saved regs here
-    // c.f.: llvm-gcc/llvm-gcc-4.2/gcc/unwind-dw2.c::uw_install_context
-    // NOTE: these are related to the _Unwind_PNaClSetResult{0,1} functions
-    setExceptionPointerRegister(ARM::R4);
-    setExceptionSelectorRegister(ARM::R5);
+    // @LOCALMOD-START
+    if (Subtarget->isTargetNaCl()) {
+      // we use the first caller saved regs here
+      // c.f.: llvm-gcc/llvm-gcc-4.2/gcc/unwind-dw2.c::uw_install_context
+      // NOTE: these are related to the _Unwind_PNaClSetResult{0,1} functions
+      setExceptionPointerRegister(ARM::R4);
+      setExceptionSelectorRegister(ARM::R5);
+  
+      setOperationAction(ISD::FRAME_TO_ARGS_OFFSET, MVT::i32, Custom);
 
-    setOperationAction(ISD::FRAME_TO_ARGS_OFFSET, MVT::i32, Custom);
-
-    setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
+      setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
+    } else {
+      setExceptionPointerRegister(ARM::R0);
+      setExceptionSelectorRegister(ARM::R1);
+    }
     // @LOCALMOD-END
   }
 
@@ -1712,15 +1717,17 @@ ARMTargetLowering::HandleByVal(
   // a byval param that forced this, so that we know not to use the
   // handle var-args reg-save area.
   // PR11018.
-  if ((!State->isFirstByValRegValid()) &&
-      (ARM::R0 <= reg) && (reg <= ARM::R3)) {
-    State->setHasByValInRegPosition();
+  if (Subtarget->isTargetNaCl()) {
+    if ((!State->isFirstByValRegValid()) &&
+        (ARM::R0 <= reg) && (reg <= ARM::R3)) {
+      State->setHasByValInRegPosition();
+    }
+    // Confiscate any remaining parameter registers to preclude their
+    // assignment to subsequent parameters.
+    while (State->AllocateReg(GPRArgRegs, 4))
+      ;
+    return;
   }
-  // Confiscate any remaining parameter registers to preclude their
-  // assignment to subsequent parameters.
-  while (State->AllocateReg(GPRArgRegs, 4))
-    ;
-  return;
   // @LOCALMOD-END
 
   if ((!State->isFirstByValRegValid()) &&
@@ -2753,7 +2760,7 @@ ARMTargetLowering::computeRegArea(CCState &CCInfo, MachineFunction &MF,
   if (CCInfo.isFirstByValRegValid())
     NumGPRs = ARM::R4 - CCInfo.getFirstByValReg();
     // @LOCALMOD-BEGIN
-  else if (CCInfo.hasByValInRegPosition())
+  else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition())
     NumGPRs = 0;
     // @LOCALMOD-END
   else {
@@ -2790,7 +2797,7 @@ ARMTargetLowering::VarArgStyleRegisters(CCState &CCInfo, SelectionDAG &DAG,
   if (CCInfo.isFirstByValRegValid())
     firstRegToSaveIndex = CCInfo.getFirstByValReg() - ARM::R0;
   // @LOCALMOD-BEGIN
-  else if (CCInfo.hasByValInRegPosition())
+  else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition())
     firstRegToSaveIndex = 4; // Nothing to save.
   // @LOCALMOD-END
   else {
