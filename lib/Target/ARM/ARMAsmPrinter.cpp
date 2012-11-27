@@ -378,9 +378,12 @@ void ARMAsmPrinter::EmitFunctionEntryLabel() {
   // @LOCALMOD-START
   // make sure function entry is aligned. We use  XmagicX as our basis
   // for alignment decisions (c.f. assembler sfi macros)
-  if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
-    EmitAlignment(std::min(MF->getAlignment(), 4u));
-    OutStreamer.EmitRawText(StringRef("\t.set XmagicX, .\n"));
+  if (Subtarget->isTargetNaCl()) {
+    EmitAlignment(std::max(MF->getAlignment(), 4u));
+
+    if (OutStreamer.hasRawTextSupport()) {
+      OutStreamer.EmitRawText(StringRef("\t.set XmagicX, .\n"));
+    }
   }
   // @LOCALMOD-END
  
