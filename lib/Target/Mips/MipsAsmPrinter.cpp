@@ -215,21 +215,20 @@ void MipsAsmPrinter::EmitFunctionEntryLabel() {
   // @LOCALMOD-START
   // make sure function entry is aligned. We use XmagicX as our basis
   // for alignment decisions (c.f. assembler sfi macros).
-  int alignment = MF->getAlignment();
-  if (alignment < 4) alignment = 4;
-  EmitAlignment(alignment);
-  if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
+  if (Subtarget->isTargetNaCl()) {
+    EmitAlignment(std::max(MF->getAlignment(), 4u));
+    if (OutStreamer.hasRawTextSupport()) {
+      OutStreamer.EmitRawText(StringRef("\t.set XmagicX, .\n"));
+    }
+  }
+  // @LOCALMOD-END
+  if (OutStreamer.hasRawTextSupport()) {
     if (Subtarget->inMips16Mode())
       OutStreamer.EmitRawText(StringRef("\t.set\tmips16"));
     else
       OutStreamer.EmitRawText(StringRef("\t.set\tnomips16"));
     // leave out until FSF available gas has micromips changes
     // OutStreamer.EmitRawText(StringRef("\t.set\tnomicromips"));
-    OutStreamer.EmitRawText(StringRef("\t.set XmagicX, .\n"));
-  }
-  // @LOCALMOD-END
-
-  if (OutStreamer.hasRawTextSupport()) {
     OutStreamer.EmitRawText("\t.ent\t" + Twine(CurrentFnSym->getName()));
   }
   OutStreamer.EmitLabel(CurrentFnSym);
