@@ -737,74 +737,79 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
   // First set operation action for all vector types to either promote
   // (for widening) or expand (for scalarization). Then we will selectively
   // turn on ones that can be effectively codegen'd.
-  for (int VT = MVT::FIRST_VECTOR_VALUETYPE;
-           VT <= MVT::LAST_VECTOR_VALUETYPE; ++VT) {
-    setOperationAction(ISD::ADD , (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SUB , (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FADD, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FNEG, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FSUB, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::MUL , (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FMUL, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SDIV, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::UDIV, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FDIV, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SREM, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::UREM, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::LOAD, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::VECTOR_SHUFFLE, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::EXTRACT_VECTOR_ELT,(MVT::SimpleValueType)VT,Expand);
-    setOperationAction(ISD::INSERT_VECTOR_ELT,(MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::EXTRACT_SUBVECTOR,(MVT::SimpleValueType)VT,Expand);
-    setOperationAction(ISD::INSERT_SUBVECTOR,(MVT::SimpleValueType)VT,Expand);
-    setOperationAction(ISD::FABS, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FSIN, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FCOS, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FREM, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FMA,  (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FPOWI, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FSQRT, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FCOPYSIGN, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FFLOOR, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SMUL_LOHI, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::UMUL_LOHI, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SDIVREM, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::UDIVREM, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FPOW, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::CTPOP, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::CTTZ, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::CTTZ_ZERO_UNDEF, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::CTLZ, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::CTLZ_ZERO_UNDEF, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SHL, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SRA, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SRL, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::ROTL, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::ROTR, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::BSWAP, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SETCC, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FLOG, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FLOG2, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FLOG10, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FEXP, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FEXP2, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FP_TO_UINT, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::FP_TO_SINT, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::UINT_TO_FP, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SINT_TO_FP, (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SIGN_EXTEND_INREG, (MVT::SimpleValueType)VT,Expand);
-    setOperationAction(ISD::TRUNCATE,  (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::SIGN_EXTEND,  (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::ZERO_EXTEND,  (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::ANY_EXTEND,  (MVT::SimpleValueType)VT, Expand);
-    setOperationAction(ISD::VSELECT,  (MVT::SimpleValueType)VT, Expand);
+  for (int i = MVT::FIRST_VECTOR_VALUETYPE;
+           i <= MVT::LAST_VECTOR_VALUETYPE; ++i) {
+    MVT VT = (MVT::SimpleValueType)i;
+    setOperationAction(ISD::ADD , VT, Expand);
+    setOperationAction(ISD::SUB , VT, Expand);
+    setOperationAction(ISD::FADD, VT, Expand);
+    setOperationAction(ISD::FNEG, VT, Expand);
+    setOperationAction(ISD::FSUB, VT, Expand);
+    setOperationAction(ISD::MUL , VT, Expand);
+    setOperationAction(ISD::FMUL, VT, Expand);
+    setOperationAction(ISD::SDIV, VT, Expand);
+    setOperationAction(ISD::UDIV, VT, Expand);
+    setOperationAction(ISD::FDIV, VT, Expand);
+    setOperationAction(ISD::SREM, VT, Expand);
+    setOperationAction(ISD::UREM, VT, Expand);
+    setOperationAction(ISD::LOAD, VT, Expand);
+    setOperationAction(ISD::VECTOR_SHUFFLE, VT, Expand);
+    setOperationAction(ISD::EXTRACT_VECTOR_ELT, VT,Expand);
+    setOperationAction(ISD::INSERT_VECTOR_ELT, VT, Expand);
+    setOperationAction(ISD::EXTRACT_SUBVECTOR, VT,Expand);
+    setOperationAction(ISD::INSERT_SUBVECTOR, VT,Expand);
+    setOperationAction(ISD::FABS, VT, Expand);
+    setOperationAction(ISD::FSIN, VT, Expand);
+    setOperationAction(ISD::FCOS, VT, Expand);
+    setOperationAction(ISD::FREM, VT, Expand);
+    setOperationAction(ISD::FMA,  VT, Expand);
+    setOperationAction(ISD::FPOWI, VT, Expand);
+    setOperationAction(ISD::FSQRT, VT, Expand);
+    setOperationAction(ISD::FCOPYSIGN, VT, Expand);
+    setOperationAction(ISD::FFLOOR, VT, Expand);
+    setOperationAction(ISD::FCEIL, VT, Expand);
+    setOperationAction(ISD::FTRUNC, VT, Expand);
+    setOperationAction(ISD::FRINT, VT, Expand);
+    setOperationAction(ISD::FNEARBYINT, VT, Expand);
+    setOperationAction(ISD::SMUL_LOHI, VT, Expand);
+    setOperationAction(ISD::UMUL_LOHI, VT, Expand);
+    setOperationAction(ISD::SDIVREM, VT, Expand);
+    setOperationAction(ISD::UDIVREM, VT, Expand);
+    setOperationAction(ISD::FPOW, VT, Expand);
+    setOperationAction(ISD::CTPOP, VT, Expand);
+    setOperationAction(ISD::CTTZ, VT, Expand);
+    setOperationAction(ISD::CTTZ_ZERO_UNDEF, VT, Expand);
+    setOperationAction(ISD::CTLZ, VT, Expand);
+    setOperationAction(ISD::CTLZ_ZERO_UNDEF, VT, Expand);
+    setOperationAction(ISD::SHL, VT, Expand);
+    setOperationAction(ISD::SRA, VT, Expand);
+    setOperationAction(ISD::SRL, VT, Expand);
+    setOperationAction(ISD::ROTL, VT, Expand);
+    setOperationAction(ISD::ROTR, VT, Expand);
+    setOperationAction(ISD::BSWAP, VT, Expand);
+    setOperationAction(ISD::SETCC, VT, Expand);
+    setOperationAction(ISD::FLOG, VT, Expand);
+    setOperationAction(ISD::FLOG2, VT, Expand);
+    setOperationAction(ISD::FLOG10, VT, Expand);
+    setOperationAction(ISD::FEXP, VT, Expand);
+    setOperationAction(ISD::FEXP2, VT, Expand);
+    setOperationAction(ISD::FP_TO_UINT, VT, Expand);
+    setOperationAction(ISD::FP_TO_SINT, VT, Expand);
+    setOperationAction(ISD::UINT_TO_FP, VT, Expand);
+    setOperationAction(ISD::SINT_TO_FP, VT, Expand);
+    setOperationAction(ISD::SIGN_EXTEND_INREG, VT,Expand);
+    setOperationAction(ISD::TRUNCATE, VT, Expand);
+    setOperationAction(ISD::SIGN_EXTEND, VT, Expand);
+    setOperationAction(ISD::ZERO_EXTEND, VT, Expand);
+    setOperationAction(ISD::ANY_EXTEND, VT, Expand);
+    setOperationAction(ISD::VSELECT, VT, Expand);
     for (int InnerVT = MVT::FIRST_VECTOR_VALUETYPE;
              InnerVT <= MVT::LAST_VECTOR_VALUETYPE; ++InnerVT)
-      setTruncStoreAction((MVT::SimpleValueType)VT,
+      setTruncStoreAction(VT,
                           (MVT::SimpleValueType)InnerVT, Expand);
-    setLoadExtAction(ISD::SEXTLOAD, (MVT::SimpleValueType)VT, Expand);
-    setLoadExtAction(ISD::ZEXTLOAD, (MVT::SimpleValueType)VT, Expand);
-    setLoadExtAction(ISD::EXTLOAD, (MVT::SimpleValueType)VT, Expand);
+    setLoadExtAction(ISD::SEXTLOAD, VT, Expand);
+    setLoadExtAction(ISD::ZEXTLOAD, VT, Expand);
+    setLoadExtAction(ISD::EXTLOAD, VT, Expand);
   }
 
   // FIXME: In order to prevent SSE instructions being expanded to MMX ones
@@ -985,7 +990,15 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     setOperationAction(ISD::FNEARBYINT,         MVT::f64,   Legal);
 
     setOperationAction(ISD::FFLOOR,             MVT::v4f32, Legal);
+    setOperationAction(ISD::FCEIL,              MVT::v4f32, Legal);
+    setOperationAction(ISD::FTRUNC,             MVT::v4f32, Legal);
+    setOperationAction(ISD::FRINT,              MVT::v4f32, Legal);
+    setOperationAction(ISD::FNEARBYINT,         MVT::v4f32, Legal);
     setOperationAction(ISD::FFLOOR,             MVT::v2f64, Legal);
+    setOperationAction(ISD::FCEIL,              MVT::v2f64, Legal);
+    setOperationAction(ISD::FTRUNC,             MVT::v2f64, Legal);
+    setOperationAction(ISD::FRINT,              MVT::v2f64, Legal);
+    setOperationAction(ISD::FNEARBYINT,         MVT::v2f64, Legal);
 
     // FIXME: Do we need to handle scalar-to-vector here?
     setOperationAction(ISD::MUL,                MVT::v4i32, Legal);
@@ -1065,6 +1078,10 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     setOperationAction(ISD::FDIV,               MVT::v8f32, Legal);
     setOperationAction(ISD::FSQRT,              MVT::v8f32, Legal);
     setOperationAction(ISD::FFLOOR,             MVT::v8f32, Legal);
+    setOperationAction(ISD::FCEIL,              MVT::v8f32, Legal);
+    setOperationAction(ISD::FTRUNC,             MVT::v8f32, Legal);
+    setOperationAction(ISD::FRINT,              MVT::v8f32, Legal);
+    setOperationAction(ISD::FNEARBYINT,         MVT::v8f32, Legal);
     setOperationAction(ISD::FNEG,               MVT::v8f32, Custom);
     setOperationAction(ISD::FABS,               MVT::v8f32, Custom);
 
@@ -1074,6 +1091,10 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     setOperationAction(ISD::FDIV,               MVT::v4f64, Legal);
     setOperationAction(ISD::FSQRT,              MVT::v4f64, Legal);
     setOperationAction(ISD::FFLOOR,             MVT::v4f64, Legal);
+    setOperationAction(ISD::FCEIL,              MVT::v4f64, Legal);
+    setOperationAction(ISD::FTRUNC,             MVT::v4f64, Legal);
+    setOperationAction(ISD::FRINT,              MVT::v4f64, Legal);
+    setOperationAction(ISD::FNEARBYINT,         MVT::v4f64, Legal);
     setOperationAction(ISD::FNEG,               MVT::v4f64, Custom);
     setOperationAction(ISD::FABS,               MVT::v4f64, Custom);
 
@@ -1115,12 +1136,12 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     setOperationAction(ISD::VSELECT,           MVT::v8f32, Legal);
 
     if (Subtarget->hasFMA() || Subtarget->hasFMA4()) {
-      setOperationAction(ISD::FMA,             MVT::v8f32, Custom);
-      setOperationAction(ISD::FMA,             MVT::v4f64, Custom);
-      setOperationAction(ISD::FMA,             MVT::v4f32, Custom);
-      setOperationAction(ISD::FMA,             MVT::v2f64, Custom);
-      setOperationAction(ISD::FMA,             MVT::f32, Custom);
-      setOperationAction(ISD::FMA,             MVT::f64, Custom);
+      setOperationAction(ISD::FMA,             MVT::v8f32, Legal);
+      setOperationAction(ISD::FMA,             MVT::v4f64, Legal);
+      setOperationAction(ISD::FMA,             MVT::v4f32, Legal);
+      setOperationAction(ISD::FMA,             MVT::v2f64, Legal);
+      setOperationAction(ISD::FMA,             MVT::f32, Legal);
+      setOperationAction(ISD::FMA,             MVT::f64, Legal);
     }
 
     if (Subtarget->hasAVX2()) {
@@ -1381,18 +1402,14 @@ X86TargetLowering::getOptimalMemOpType(uint64_t Size,
                                        bool IsZeroVal,
                                        bool MemcpyStrSrc,
                                        MachineFunction &MF) const {
-  // FIXME: This turns off use of xmm stores for memset/memcpy on targets like
-  // linux.  This is because the stack realignment code can't handle certain
-  // cases like PR2962.  This should be removed when PR2962 is fixed.
   const Function *F = MF.getFunction();
   if (IsZeroVal &&
       !F->getFnAttributes().hasAttribute(Attributes::NoImplicitFloat)) {
     if (Size >= 16 &&
         (Subtarget->isUnalignedMemAccessFast() ||
          ((DstAlign == 0 || DstAlign >= 16) &&
-          (SrcAlign == 0 || SrcAlign >= 16))) &&
-        Subtarget->getStackAlignment() >= 16) {
-      if (Subtarget->getStackAlignment() >= 32) {
+          (SrcAlign == 0 || SrcAlign >= 16)))) {
+      if (Size >= 32) {
         if (Subtarget->hasAVX2())
           return MVT::v8i32;
         if (Subtarget->hasAVX())
@@ -1404,7 +1421,6 @@ X86TargetLowering::getOptimalMemOpType(uint64_t Size,
         return MVT::v4f32;
     } else if (!MemcpyStrSrc && Size >= 8 &&
                !Subtarget->is64Bit() &&
-               Subtarget->getStackAlignment() >= 8 &&
                Subtarget->hasSSE2()) {
       // Do not use f64 to lower memcpy if source is string constant. It's
       // better to use i32 to avoid the loads.
@@ -1835,7 +1851,8 @@ CreateCopyOfByValArgument(SDValue Src, SDValue Dst, SDValue Chain,
 /// IsTailCallConvention - Return true if the calling convention is one that
 /// supports tail call optimization.
 static bool IsTailCallConvention(CallingConv::ID CC) {
-  return (CC == CallingConv::Fast || CC == CallingConv::GHC);
+  return (CC == CallingConv::Fast || CC == CallingConv::GHC ||
+          CC == CallingConv::HiPE);
 }
 
 bool X86TargetLowering::mayBeEmittedAsTailCall(CallInst *CI) const {
@@ -1922,7 +1939,7 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
   bool IsWin64 = Subtarget->isTargetWin64();
 
   assert(!(isVarArg && IsTailCallConvention(CallConv)) &&
-         "Var args not supported with calling convention fastcc or ghc");
+         "Var args not supported with calling convention fastcc, ghc or hipe");
 
   // Assign locations to all of the incoming arguments.
   SmallVector<CCValAssign, 16> ArgLocs;
@@ -2269,7 +2286,7 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   }
 
   assert(!(isVarArg && IsTailCallConvention(CallConv)) &&
-         "Var args not supported with calling convention fastcc or ghc");
+         "Var args not supported with calling convention fastcc, ghc or hipe");
 
   // Analyze operands of the call, assigning locations to each operand.
   SmallVector<CCValAssign, 16> ArgLocs;
@@ -3134,6 +3151,8 @@ bool X86::isCalleePop(CallingConv::ID CallingConv,
   case CallingConv::Fast:
     return TailCallOpt;
   case CallingConv::GHC:
+    return TailCallOpt;
+  case CallingConv::HiPE:
     return TailCallOpt;
   }
 }
@@ -6702,7 +6721,7 @@ X86TargetLowering::NormalizeVectorShuffle(SDValue Op, SelectionDAG &DAG) const {
 
     // Handle splats by matching through known shuffle masks
     if ((Size == 128 && NumElem <= 4) ||
-        (Size == 256 && NumElem < 8))
+        (Size == 256 && NumElem <= 8))
       return SDValue();
 
     // All remaning splats are promoted to target supported vector shuffles.
@@ -12924,8 +12943,8 @@ X86TargetLowering::EmitAtomicLoadArith6432(MachineInstr *MI,
   case X86::ATOMSUB6432: {
     unsigned HiOpc;
     unsigned LoOpc = getNonAtomic6432Opcode(Opc, HiOpc);
-    BuildMI(mainMBB, DL, TII->get(LoOpc), t1L).addReg(SrcLoReg).addReg(LoReg);
-    BuildMI(mainMBB, DL, TII->get(HiOpc), t1H).addReg(SrcHiReg).addReg(HiReg);
+    BuildMI(mainMBB, DL, TII->get(LoOpc), t1L).addReg(LoReg).addReg(SrcLoReg);
+    BuildMI(mainMBB, DL, TII->get(HiOpc), t1H).addReg(HiReg).addReg(SrcHiReg);
     break;
   }
   case X86::ATOMNAND6432: {
@@ -14439,6 +14458,18 @@ static SDValue PerformShuffleCombine256(SDNode *N, SelectionDAG &DAG,
                                   Ld->getAlignment(),
                                   false/*isVolatile*/, true/*ReadMem*/,
                                   false/*WriteMem*/);
+
+        // Make sure the newly-created LOAD is in the same position as Ld in
+        // terms of dependency. We create a TokenFactor for Ld and ResNode,
+        // and update uses of Ld's output chain to use the TokenFactor.
+        if (Ld->hasAnyUseOfValue(1)) {
+          SDValue NewChain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
+                             SDValue(Ld, 1), SDValue(ResNode.getNode(), 1));
+          DAG.ReplaceAllUsesOfValueWith(SDValue(Ld, 1), NewChain);
+          DAG.UpdateNodeOperands(NewChain.getNode(), SDValue(Ld, 1),
+                                 SDValue(ResNode.getNode(), 1));
+        }
+
         return DAG.getNode(ISD::BITCAST, dl, VT, ResNode);
       }
     }

@@ -227,7 +227,8 @@ uint8_t *NaClJITMemoryManager::allocateCodeSection(uintptr_t Size,
 
 uint8_t *NaClJITMemoryManager::allocateDataSection(uintptr_t Size,
                                                    unsigned Alignment,
-                                                   unsigned SectionID) {
+                                                   unsigned SectionID,
+                                                   bool IsReadOnly) {
   return (uint8_t *)DataAllocator.Allocate(Size, Alignment);
 }
 

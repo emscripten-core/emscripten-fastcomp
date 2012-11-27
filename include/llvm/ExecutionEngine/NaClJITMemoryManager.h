@@ -189,7 +189,10 @@ class NaClJITMemoryManager : public JITMemoryManager {
   /// the instance class to use if it needs to communicate to the JIT about
   /// a given section after the fact.
   virtual uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                       unsigned SectionID);
+                                       unsigned SectionID, bool IsReadOnly);
+
+  /// Ignored.
+  virtual bool applyPermissions(std::string *ErrMsg = 0) {}
 
   /// allocateSpace - Allocate a memory block of the given size.  This method
   /// cannot be called between calls to startFunctionBody and endFunctionBody.

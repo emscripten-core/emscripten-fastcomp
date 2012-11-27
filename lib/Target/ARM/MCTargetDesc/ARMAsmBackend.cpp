@@ -115,6 +115,10 @@ public:
                          MCValue &Target, uint64_t &Value,
                          bool &IsResolved);
 
+
+  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
+                  uint64_t Value) const;
+
   bool mayNeedRelaxation(const MCInst &Inst) const;
 
   bool fixupNeedsRelaxation(const MCFixup &Fixup,
@@ -561,83 +565,6 @@ void ARMAsmBackend::processFixupValue(const MCAssembler &Asm,
   (void)adjustFixupValue(Fixup, Value, &Asm.getContext());
 }
 
-namespace {
-
-// FIXME: This should be in a separate file.
-// ELF is an ELF of course...
-class ELFARMAsmBackend : public ARMAsmBackend {
-public:
-  uint8_t OSABI;
-  Triple::OSType OSType; // @LOCALMOD: kept OSTYPE vs upstream. FIXME: remove.
-  ELFARMAsmBackend(const Target &T, const StringRef TT,
-                   uint8_t _OSABI,
-                   Triple::OSType _OSType)
-    : ARMAsmBackend(T, TT), OSABI(_OSABI), OSType(_OSType) { }
-
-  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value) const;
-
-  // @LOCALMOD-BEGIN
-  // FIXME! NaCl should INHERIT from ELFARMAsmBackend, not
-  // add to it.
-  unsigned getBundleSize() const {
-    return (OSType == Triple::NativeClient) ? 16 : 0;
-  }
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    if (OSType == Triple::NativeClient) {
-      return CustomExpandInstNaClARM(Inst, Out);
-    }
-    return false;
-  }
-
- // @LOCALMOD-END
-
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createARMELFObjectWriter(OS, OSABI);
-  }
-};
-
-// FIXME: Raise this to share code between Darwin and ELF.
-void ELFARMAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
-                                  unsigned DataSize, uint64_t Value) const {
-  unsigned NumBytes = 4;        // FIXME: 2 for Thumb
-  Value = adjustFixupValue(Fixup, Value);
-  if (!Value) return;           // Doesn't change encoding.
-
-  unsigned Offset = Fixup.getOffset();
-
-  // For each byte of the fragment that the fixup touches, mask in the bits from
-  // the fixup value. The Value has been "split up" into the appropriate
-  // bitfields above.
-  for (unsigned i = 0; i != NumBytes; ++i)
-    Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
-}
-
-// FIXME: This should be in a separate file.
-class DarwinARMAsmBackend : public ARMAsmBackend {
-public:
-  const object::mach::CPUSubtypeARM Subtype;
-  DarwinARMAsmBackend(const Target &T, const StringRef TT,
-                      object::mach::CPUSubtypeARM st)
-    : ARMAsmBackend(T, TT), Subtype(st) {
-      HasDataInCodeSupport = true;
-    }
-
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createARMMachObjectWriter(OS, /*Is64Bit=*/false,
-                                     object::mach::CTM_ARM,
-                                     Subtype);
-  }
-
-  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value) const;
-
-  virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
-    return false;
-  }
-};
-
 /// getFixupKindNumBytes - The number of bytes the fixup may change.
 static unsigned getFixupKindNumBytes(unsigned Kind) {
   switch (Kind) {
@@ -686,8 +613,8 @@ static unsigned getFixupKindNumBytes(unsigned Kind) {
   }
 }
 
-void DarwinARMAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
-                                     unsigned DataSize, uint64_t Value) const {
+void ARMAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
+                               unsigned DataSize, uint64_t Value) const {
   unsigned NumBytes = getFixupKindNumBytes(Fixup.getKind());
   Value = adjustFixupValue(Fixup, Value);
   if (!Value) return;           // Doesn't change encoding.
@@ -695,11 +622,65 @@ void DarwinARMAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
   unsigned Offset = Fixup.getOffset();
   assert(Offset + NumBytes <= DataSize && "Invalid fixup offset!");
 
-  // For each byte of the fragment that the fixup touches, mask in the
-  // bits from the fixup value.
+  // For each byte of the fragment that the fixup touches, mask in the bits from
+  // the fixup value. The Value has been "split up" into the appropriate
+  // bitfields above.
   for (unsigned i = 0; i != NumBytes; ++i)
     Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
 }
+
+namespace {
+
+// FIXME: This should be in a separate file.
+// ELF is an ELF of course...
+class ELFARMAsmBackend : public ARMAsmBackend {
+public:
+  uint8_t OSABI;
+  ELFARMAsmBackend(const Target &T, const StringRef TT,
+                   uint8_t _OSABI)
+    : ARMAsmBackend(T, TT), OSABI(_OSABI) { }
+
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
+    return createARMELFObjectWriter(OS, OSABI);
+  }
+};
+
+// @LOCALMOD-BEGIN
+class NaClARMAsmBackend : public ELFARMAsmBackend {
+ public:
+  NaClARMAsmBackend(const Target &T, const StringRef TT,
+                    uint8_t OSABI)
+      : ELFARMAsmBackend(T, TT, OSABI) { }
+  unsigned getBundleSize() const {
+    return 16;
+  }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
+    return CustomExpandInstNaClARM(Inst, Out);
+  }
+};
+// @LOCALMOD-END
+
+// FIXME: This should be in a separate file.
+class DarwinARMAsmBackend : public ARMAsmBackend {
+public:
+  const object::mach::CPUSubtypeARM Subtype;
+  DarwinARMAsmBackend(const Target &T, const StringRef TT,
+                      object::mach::CPUSubtypeARM st)
+    : ARMAsmBackend(T, TT), Subtype(st) {
+      HasDataInCodeSupport = true;
+    }
+
+  MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
+    return createARMMachObjectWriter(OS, /*Is64Bit=*/false,
+                                     object::mach::CTM_ARM,
+                                     Subtype);
+  }
+
+  virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
+    return false;
+  }
+};
 
 } // end anonymous namespace
 
@@ -732,5 +713,7 @@ MCAsmBackend *llvm::createARMAsmBackend(const Target &T, StringRef TT, StringRef
     assert(0 && "Windows not supported on ARM");
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
-  return new ELFARMAsmBackend(T, TT, OSABI, TheTriple.getOS());
+  if (TheTriple.getOS() == llvm::Triple::NativeClient)
+    return new NaClARMAsmBackend(T, TT, OSABI);
+  return new ELFARMAsmBackend(T, TT, OSABI);
 }

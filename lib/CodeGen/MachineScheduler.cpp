@@ -58,6 +58,14 @@ static cl::opt<unsigned> ILPWindow("ilp-window", cl::Hidden,
            "before attempting to balance ILP"),
   cl::init(10U));
 
+// Experimental heuristics
+static cl::opt<bool> EnableLoadCluster("misched-cluster", cl::Hidden,
+  cl::desc("Enable load clustering."), cl::init(true));
+
+// Experimental heuristics
+static cl::opt<bool> EnableMacroFusion("misched-fusion", cl::Hidden,
+  cl::desc("Enable scheduling for macro fusion."), cl::init(true));
+
 //===----------------------------------------------------------------------===//
 // Machine Instruction Scheduling Pass and Registry
 //===----------------------------------------------------------------------===//
@@ -303,6 +311,19 @@ void ReadyQueue::dump() {
 // preservation.
 //===----------------------------------------------------------------------===//
 
+bool ScheduleDAGMI::addEdge(SUnit *SuccSU, const SDep &PredDep) {
+  if (SuccSU != &ExitSU) {
+    // Do not use WillCreateCycle, it assumes SD scheduling.
+    // If Pred is reachable from Succ, then the edge creates a cycle.
+    if (Topo.IsReachable(PredDep.getSUnit(), SuccSU))
+      return false;
+    Topo.AddPred(SuccSU, PredDep.getSUnit());
+  }
+  SuccSU->addPred(PredDep, /*Required=*/!PredDep.isArtificial());
+  // Return true regardless of whether a new edge needed to be inserted.
+  return true;
+}
+
 /// ReleaseSucc - Decrement the NumPredsLeft count of a successor. When
 /// NumPredsLeft reaches zero, release the successor node.
 ///
@@ -310,6 +331,12 @@ void ReadyQueue::dump() {
 void ScheduleDAGMI::releaseSucc(SUnit *SU, SDep *SuccEdge) {
   SUnit *SuccSU = SuccEdge->getSUnit();
 
+  if (SuccEdge->isWeak()) {
+    --SuccSU->WeakPredsLeft;
+    if (SuccEdge->isCluster())
+      NextClusterSucc = SuccSU;
+    return;
+  }
 #ifndef NDEBUG
   if (SuccSU->NumPredsLeft == 0) {
     dbgs() << "*** Scheduling failed! ***\n";
@@ -338,6 +365,12 @@ void ScheduleDAGMI::releaseSuccessors(SUnit *SU) {
 void ScheduleDAGMI::releasePred(SUnit *SU, SDep *PredEdge) {
   SUnit *PredSU = PredEdge->getSUnit();
 
+  if (PredEdge->isWeak()) {
+    --PredSU->WeakSuccsLeft;
+    if (PredEdge->isCluster())
+      NextClusterPred = PredSU;
+    return;
+  }
 #ifndef NDEBUG
   if (PredSU->NumSuccsLeft == 0) {
     dbgs() << "*** Scheduling failed! ***\n";
@@ -474,6 +507,8 @@ updateScheduledPressure(std::vector<unsigned> NewMaxPressure) {
 void ScheduleDAGMI::schedule() {
   buildDAGWithRegPressure();
 
+  Topo.InitDAGTopologicalSorting();
+
   postprocessDAG();
 
   DEBUG(for (unsigned su = 0, e = SUnits.size(); su != e; ++su)
@@ -530,17 +565,20 @@ void ScheduleDAGMI::postprocessDAG() {
 }
 
 // Release all DAG roots for scheduling.
+//
+// Nodes with unreleased weak edges can still be roots.
 void ScheduleDAGMI::releaseRoots() {
   SmallVector<SUnit*, 16> BotRoots;
 
   for (std::vector<SUnit>::iterator
          I = SUnits.begin(), E = SUnits.end(); I != E; ++I) {
+    SUnit *SU = &(*I);
     // A SUnit is ready to top schedule if it has no predecessors.
-    if (I->Preds.empty())
-      SchedImpl->releaseTopNode(&(*I));
+    if (!I->NumPredsLeft && SU != &EntrySU)
+      SchedImpl->releaseTopNode(SU);
     // A SUnit is ready to bottom schedule if it has no successors.
-    if (I->Succs.empty())
-      BotRoots.push_back(&(*I));
+    if (!I->NumSuccsLeft && SU != &ExitSU)
+      BotRoots.push_back(SU);
   }
   // Release bottom roots in reverse order so the higher priority nodes appear
   // first. This is more natural and slightly more efficient.
@@ -551,16 +589,17 @@ void ScheduleDAGMI::releaseRoots() {
 
 /// Identify DAG roots and setup scheduler queues.
 void ScheduleDAGMI::initQueues() {
+  NextClusterSucc = NULL;
+  NextClusterPred = NULL;
 
   // Initialize the strategy before modifying the DAG.
   SchedImpl->initialize(this);
 
-  // Release edges from the special Entry node or to the special Exit node.
+  // Release all DAG roots for scheduling, not including EntrySU/ExitSU.
+  releaseRoots();
+
   releaseSuccessors(&EntrySU);
   releasePredecessors(&ExitSU);
-
-  // Release all DAG roots for scheduling.
-  releaseRoots();
 
   SchedImpl->registerRoots();
 
@@ -655,6 +694,166 @@ void ScheduleDAGMI::dumpSchedule() const {
 #endif
 
 //===----------------------------------------------------------------------===//
+// LoadClusterMutation - DAG post-processing to cluster loads.
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// \brief Post-process the DAG to create cluster edges between neighboring
+/// loads.
+class LoadClusterMutation : public ScheduleDAGMutation {
+  struct LoadInfo {
+    SUnit *SU;
+    unsigned BaseReg;
+    unsigned Offset;
+    LoadInfo(SUnit *su, unsigned reg, unsigned ofs)
+      : SU(su), BaseReg(reg), Offset(ofs) {}
+  };
+  static bool LoadInfoLess(const LoadClusterMutation::LoadInfo &LHS,
+                           const LoadClusterMutation::LoadInfo &RHS);
+
+  const TargetInstrInfo *TII;
+  const TargetRegisterInfo *TRI;
+public:
+  LoadClusterMutation(const TargetInstrInfo *tii,
+                      const TargetRegisterInfo *tri)
+    : TII(tii), TRI(tri) {}
+
+  virtual void apply(ScheduleDAGMI *DAG);
+protected:
+  void clusterNeighboringLoads(ArrayRef<SUnit*> Loads, ScheduleDAGMI *DAG);
+};
+} // anonymous
+
+bool LoadClusterMutation::LoadInfoLess(
+  const LoadClusterMutation::LoadInfo &LHS,
+  const LoadClusterMutation::LoadInfo &RHS) {
+  if (LHS.BaseReg != RHS.BaseReg)
+    return LHS.BaseReg < RHS.BaseReg;
+  return LHS.Offset < RHS.Offset;
+}
+
+void LoadClusterMutation::clusterNeighboringLoads(ArrayRef<SUnit*> Loads,
+                                                  ScheduleDAGMI *DAG) {
+  SmallVector<LoadClusterMutation::LoadInfo,32> LoadRecords;
+  for (unsigned Idx = 0, End = Loads.size(); Idx != End; ++Idx) {
+    SUnit *SU = Loads[Idx];
+    unsigned BaseReg;
+    unsigned Offset;
+    if (TII->getLdStBaseRegImmOfs(SU->getInstr(), BaseReg, Offset, TRI))
+      LoadRecords.push_back(LoadInfo(SU, BaseReg, Offset));
+  }
+  if (LoadRecords.size() < 2)
+    return;
+  std::sort(LoadRecords.begin(), LoadRecords.end(), LoadInfoLess);
+  unsigned ClusterLength = 1;
+  for (unsigned Idx = 0, End = LoadRecords.size(); Idx < (End - 1); ++Idx) {
+    if (LoadRecords[Idx].BaseReg != LoadRecords[Idx+1].BaseReg) {
+      ClusterLength = 1;
+      continue;
+    }
+
+    SUnit *SUa = LoadRecords[Idx].SU;
+    SUnit *SUb = LoadRecords[Idx+1].SU;
+    if (TII->shouldClusterLoads(SUa->getInstr(), SUb->getInstr(), ClusterLength)
+        && DAG->addEdge(SUb, SDep(SUa, SDep::Cluster))) {
+
+      DEBUG(dbgs() << "Cluster loads SU(" << SUa->NodeNum << ") - SU("
+            << SUb->NodeNum << ")\n");
+      // Copy successor edges from SUa to SUb. Interleaving computation
+      // dependent on SUa can prevent load combining due to register reuse.
+      // Predecessor edges do not need to be copied from SUb to SUa since nearby
+      // loads should have effectively the same inputs.
+      for (SUnit::const_succ_iterator
+             SI = SUa->Succs.begin(), SE = SUa->Succs.end(); SI != SE; ++SI) {
+        if (SI->getSUnit() == SUb)
+          continue;
+        DEBUG(dbgs() << "  Copy Succ SU(" << SI->getSUnit()->NodeNum << ")\n");
+        DAG->addEdge(SI->getSUnit(), SDep(SUb, SDep::Artificial));
+      }
+      ++ClusterLength;
+    }
+    else
+      ClusterLength = 1;
+  }
+}
+
+/// \brief Callback from DAG postProcessing to create cluster edges for loads.
+void LoadClusterMutation::apply(ScheduleDAGMI *DAG) {
+  // Map DAG NodeNum to store chain ID.
+  DenseMap<unsigned, unsigned> StoreChainIDs;
+  // Map each store chain to a set of dependent loads.
+  SmallVector<SmallVector<SUnit*,4>, 32> StoreChainDependents;
+  for (unsigned Idx = 0, End = DAG->SUnits.size(); Idx != End; ++Idx) {
+    SUnit *SU = &DAG->SUnits[Idx];
+    if (!SU->getInstr()->mayLoad())
+      continue;
+    unsigned ChainPredID = DAG->SUnits.size();
+    for (SUnit::const_pred_iterator
+           PI = SU->Preds.begin(), PE = SU->Preds.end(); PI != PE; ++PI) {
+      if (PI->isCtrl()) {
+        ChainPredID = PI->getSUnit()->NodeNum;
+        break;
+      }
+    }
+    // Check if this chain-like pred has been seen
+    // before. ChainPredID==MaxNodeID for loads at the top of the schedule.
+    unsigned NumChains = StoreChainDependents.size();
+    std::pair<DenseMap<unsigned, unsigned>::iterator, bool> Result =
+      StoreChainIDs.insert(std::make_pair(ChainPredID, NumChains));
+    if (Result.second)
+      StoreChainDependents.resize(NumChains + 1);
+    StoreChainDependents[Result.first->second].push_back(SU);
+  }
+  // Iterate over the store chains.
+  for (unsigned Idx = 0, End = StoreChainDependents.size(); Idx != End; ++Idx)
+    clusterNeighboringLoads(StoreChainDependents[Idx], DAG);
+}
+
+//===----------------------------------------------------------------------===//
+// MacroFusion - DAG post-processing to encourage fusion of macro ops.
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// \brief Post-process the DAG to create cluster edges between instructions
+/// that may be fused by the processor into a single operation.
+class MacroFusion : public ScheduleDAGMutation {
+  const TargetInstrInfo *TII;
+public:
+  MacroFusion(const TargetInstrInfo *tii): TII(tii) {}
+
+  virtual void apply(ScheduleDAGMI *DAG);
+};
+} // anonymous
+
+/// \brief Callback from DAG postProcessing to create cluster edges to encourage
+/// fused operations.
+void MacroFusion::apply(ScheduleDAGMI *DAG) {
+  // For now, assume targets can only fuse with the branch.
+  MachineInstr *Branch = DAG->ExitSU.getInstr();
+  if (!Branch)
+    return;
+
+  for (unsigned Idx = DAG->SUnits.size(); Idx > 0;) {
+    SUnit *SU = &DAG->SUnits[--Idx];
+    if (!TII->shouldScheduleAdjacent(SU->getInstr(), Branch))
+      continue;
+
+    // Create a single weak edge from SU to ExitSU. The only effect is to cause
+    // bottom-up scheduling to heavily prioritize the clustered SU.  There is no
+    // need to copy predecessor edges from ExitSU to SU, since top-down
+    // scheduling cannot prioritize ExitSU anyway. To defer top-down scheduling
+    // of SU, we could create an artificial edge from the deepest root, but it
+    // hasn't been needed yet.
+    bool Success = DAG->addEdge(&DAG->ExitSU, SDep(SU, SDep::Cluster));
+    (void)Success;
+    assert(Success && "No DAG nodes should be reachable from ExitSU");
+
+    DEBUG(dbgs() << "Macro Fuse SU(" << SU->NodeNum << ")\n");
+    break;
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // ConvergingScheduler - Implementation of the standard MachineSchedStrategy.
 //===----------------------------------------------------------------------===//
 
@@ -666,9 +865,10 @@ public:
   /// Represent the type of SchedCandidate found within a single queue.
   /// pickNodeBidirectional depends on these listed by decreasing priority.
   enum CandReason {
-    NoCand, SingleExcess, SingleCritical, ResourceReduce, ResourceDemand,
-    BotHeightReduce, BotPathReduce, TopDepthReduce, TopPathReduce,
-    SingleMax, MultiPressure, NextDefUse, NodeOrder};
+    NoCand, SingleExcess, SingleCritical, Cluster,
+    ResourceReduce, ResourceDemand, BotHeightReduce, BotPathReduce,
+    TopDepthReduce, TopPathReduce, SingleMax, MultiPressure, NextDefUse,
+    NodeOrder};
 
 #ifndef NDEBUG
   static const char *getReasonStr(ConvergingScheduler::CandReason Reason);
@@ -1019,6 +1219,8 @@ void ConvergingScheduler::releaseBottomNode(SUnit *SU) {
 
   for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
        I != E; ++I) {
+    if (I->isWeak())
+      continue;
     unsigned SuccReadyCycle = I->getSUnit()->BotReadyCycle;
     unsigned MinLatency = I->getMinLatency();
 #ifndef NDEBUG
@@ -1414,6 +1616,7 @@ static bool tryLess(unsigned TryVal, unsigned CandVal,
   }
   return false;
 }
+
 static bool tryGreater(unsigned TryVal, unsigned CandVal,
                        ConvergingScheduler::SchedCandidate &TryCand,
                        ConvergingScheduler::SchedCandidate &Cand,
@@ -1428,6 +1631,10 @@ static bool tryGreater(unsigned TryVal, unsigned CandVal,
     return true;
   }
   return false;
+}
+
+static unsigned getWeakLeft(const SUnit *SU, bool isTop) {
+  return (isTop) ? SU->WeakPredsLeft : SU->WeakSuccsLeft;
 }
 
 /// Apply a set of heursitics to a new candidate. Heuristics are currently
@@ -1472,6 +1679,26 @@ void ConvergingScheduler::tryCandidate(SchedCandidate &Cand,
   if (Cand.Reason == SingleCritical)
     Cand.Reason = MultiPressure;
 
+  // Keep clustered nodes together to encourage downstream peephole
+  // optimizations which may reduce resource requirements.
+  //
+  // This is a best effort to set things up for a post-RA pass. Optimizations
+  // like generating loads of multiple registers should ideally be done within
+  // the scheduler pass by combining the loads during DAG postprocessing.
+  const SUnit *NextClusterSU =
+    Zone.isTop() ? DAG->getNextClusterSucc() : DAG->getNextClusterPred();
+  if (tryGreater(TryCand.SU == NextClusterSU, Cand.SU == NextClusterSU,
+                 TryCand, Cand, Cluster))
+    return;
+  // Currently, weak edges are for clustering, so we hard-code that reason.
+  // However, deferring the current TryCand will not change Cand's reason.
+  CandReason OrigReason = Cand.Reason;
+  if (tryLess(getWeakLeft(TryCand.SU, Zone.isTop()),
+              getWeakLeft(Cand.SU, Zone.isTop()),
+              TryCand, Cand, Cluster)) {
+    Cand.Reason = OrigReason;
+    return;
+  }
   // Avoid critical resource consumption and balance the schedule.
   TryCand.initResourceDelta(DAG, SchedModel);
   if (tryLess(TryCand.ResDelta.CritResources, Cand.ResDelta.CritResources,
@@ -1518,15 +1745,10 @@ void ConvergingScheduler::tryCandidate(SchedCandidate &Cand,
   // Prefer immediate defs/users of the last scheduled instruction. This is a
   // nice pressure avoidance strategy that also conserves the processor's
   // register renaming resources and keeps the machine code readable.
-  if (Zone.NextSUs.count(TryCand.SU) && !Zone.NextSUs.count(Cand.SU)) {
-    TryCand.Reason = NextDefUse;
+  if (tryGreater(Zone.NextSUs.count(TryCand.SU), Zone.NextSUs.count(Cand.SU),
+                 TryCand, Cand, NextDefUse))
     return;
-  }
-  if (!Zone.NextSUs.count(TryCand.SU) && Zone.NextSUs.count(Cand.SU)) {
-    if (Cand.Reason > NextDefUse)
-      Cand.Reason = NextDefUse;
-    return;
-  }
+
   // Fall through to original instruction order.
   if ((Zone.isTop() && TryCand.SU->NodeNum < Cand.SU->NodeNum)
       || (!Zone.isTop() && TryCand.SU->NodeNum > Cand.SU->NodeNum)) {
@@ -1572,6 +1794,7 @@ const char *ConvergingScheduler::getReasonStr(
   case NoCand:         return "NOCAND    ";
   case SingleExcess:   return "REG-EXCESS";
   case SingleCritical: return "REG-CRIT  ";
+  case Cluster:        return "CLUSTER   ";
   case SingleMax:      return "REG-MAX   ";
   case MultiPressure:  return "REG-MULTI ";
   case ResourceReduce: return "RES-REDUCE";
@@ -1812,7 +2035,13 @@ void ConvergingScheduler::schedNode(SUnit *SU, bool IsTopNode) {
 static ScheduleDAGInstrs *createConvergingSched(MachineSchedContext *C) {
   assert((!ForceTopDown || !ForceBottomUp) &&
          "-misched-topdown incompatible with -misched-bottomup");
-  return new ScheduleDAGMI(C, new ConvergingScheduler());
+  ScheduleDAGMI *DAG = new ScheduleDAGMI(C, new ConvergingScheduler());
+  // Register DAG post-processors.
+  if (EnableLoadCluster)
+    DAG->addMutation(new LoadClusterMutation(DAG->TII, DAG->TRI));
+  if (EnableMacroFusion)
+    DAG->addMutation(new MacroFusion(DAG->TII));
+  return DAG;
 }
 static MachineSchedRegistry
 ConvergingSchedRegistry("converge", "Standard converging scheduler.",

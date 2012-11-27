@@ -75,7 +75,7 @@ CCState::AnalyzeFormalArguments(const SmallVectorImpl<ISD::InputArg> &Ins,
     if (Fn(i, ArgVT, ArgVT, CCValAssign::Full, ArgFlags, *this)) {
 #ifndef NDEBUG
       dbgs() << "Formal argument #" << i << " has unhandled type "
-             << EVT(ArgVT).getEVTString();
+             << EVT(ArgVT).getEVTString() << '\n';
 #endif
       llvm_unreachable(0);
     }
@@ -107,7 +107,7 @@ void CCState::AnalyzeReturn(const SmallVectorImpl<ISD::OutputArg> &Outs,
     if (Fn(i, VT, VT, CCValAssign::Full, ArgFlags, *this)) {
 #ifndef NDEBUG
       dbgs() << "Return operand #" << i << " has unhandled type "
-             << EVT(VT).getEVTString();
+             << EVT(VT).getEVTString() << '\n';
 #endif
       llvm_unreachable(0);
     }
@@ -125,7 +125,7 @@ void CCState::AnalyzeCallOperands(const SmallVectorImpl<ISD::OutputArg> &Outs,
     if (Fn(i, ArgVT, ArgVT, CCValAssign::Full, ArgFlags, *this)) {
 #ifndef NDEBUG
       dbgs() << "Call operand #" << i << " has unhandled type "
-             << EVT(ArgVT).getEVTString();
+             << EVT(ArgVT).getEVTString() << '\n';
 #endif
       llvm_unreachable(0);
     }
@@ -144,7 +144,7 @@ void CCState::AnalyzeCallOperands(SmallVectorImpl<MVT> &ArgVTs,
     if (Fn(i, ArgVT, ArgVT, CCValAssign::Full, ArgFlags, *this)) {
 #ifndef NDEBUG
       dbgs() << "Call operand #" << i << " has unhandled type "
-             << EVT(ArgVT).getEVTString();
+             << EVT(ArgVT).getEVTString() << '\n';
 #endif
       llvm_unreachable(0);
     }
@@ -161,7 +161,7 @@ void CCState::AnalyzeCallResult(const SmallVectorImpl<ISD::InputArg> &Ins,
     if (Fn(i, VT, VT, CCValAssign::Full, Flags, *this)) {
 #ifndef NDEBUG
       dbgs() << "Call result #" << i << " has unhandled type "
-             << EVT(VT).getEVTString() << "\n";
+             << EVT(VT).getEVTString() << '\n';
 #endif
       llvm_unreachable(0);
     }
@@ -174,7 +174,7 @@ void CCState::AnalyzeCallResult(MVT VT, CCAssignFn Fn) {
   if (Fn(0, VT, VT, CCValAssign::Full, ISD::ArgFlagsTy(), *this)) {
 #ifndef NDEBUG
     dbgs() << "Call result has unhandled type "
-           << EVT(VT).getEVTString();
+           << EVT(VT).getEVTString() << '\n';
 #endif
     llvm_unreachable(0);
   }

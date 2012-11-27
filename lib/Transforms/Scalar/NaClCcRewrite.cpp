@@ -596,7 +596,7 @@ void UpdateFunctionSignature(Function &F,
   Attributes fattr = F.getAttributes().getFnAttributes();
   if (fattr.hasAttributes())
     new_attributes_vec.push_back(AttributeWithIndex::get(~0, fattr));
-  F.setAttributes(AttrListPtr::get(new_attributes_vec));
+  F.setAttributes(AttrListPtr::get(F.getContext(), new_attributes_vec));
 }
 
 

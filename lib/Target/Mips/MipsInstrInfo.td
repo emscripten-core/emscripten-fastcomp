@@ -148,14 +148,14 @@ def HasSwap     :     Predicate<"Subtarget.hasSwap()">,
                       AssemblerPredicate<"FeatureSwap">;
 def HasCondMov  :     Predicate<"Subtarget.hasCondMov()">,
                       AssemblerPredicate<"FeatureCondMov">;
+def HasFPIdx    :     Predicate<"Subtarget.hasFPIdx()">,
+                      AssemblerPredicate<"FeatureFPIdx">;
 def HasMips32    :    Predicate<"Subtarget.hasMips32()">,
                       AssemblerPredicate<"FeatureMips32">;
 def HasMips32r2  :    Predicate<"Subtarget.hasMips32r2()">,
                       AssemblerPredicate<"FeatureMips32r2">;
 def HasMips64    :    Predicate<"Subtarget.hasMips64()">,
                       AssemblerPredicate<"FeatureMips64">;
-def HasMips32r2Or64 : Predicate<"Subtarget.hasMips32r2Or64()">,
-                      AssemblerPredicate<"FeatureMips32r2,FeatureMips64">;
 def NotMips64    :    Predicate<"!Subtarget.hasMips64()">,
                       AssemblerPredicate<"!FeatureMips64">;
 def HasMips64r2  :    Predicate<"Subtarget.hasMips64r2()">,
@@ -1187,12 +1187,14 @@ def : MipsPat<(MipsHi tblockaddress:$in), (LUi tblockaddress:$in)>;
 def : MipsPat<(MipsHi tjumptable:$in), (LUi tjumptable:$in)>;
 def : MipsPat<(MipsHi tconstpool:$in), (LUi tconstpool:$in)>;
 def : MipsPat<(MipsHi tglobaltlsaddr:$in), (LUi tglobaltlsaddr:$in)>;
+def : MipsPat<(MipsHi texternalsym:$in), (LUi texternalsym:$in)>;
 
 def : MipsPat<(MipsLo tglobaladdr:$in), (ADDiu ZERO, tglobaladdr:$in)>;
 def : MipsPat<(MipsLo tblockaddress:$in), (ADDiu ZERO, tblockaddress:$in)>;
 def : MipsPat<(MipsLo tjumptable:$in), (ADDiu ZERO, tjumptable:$in)>;
 def : MipsPat<(MipsLo tconstpool:$in), (ADDiu ZERO, tconstpool:$in)>;
 def : MipsPat<(MipsLo tglobaltlsaddr:$in), (ADDiu ZERO, tglobaltlsaddr:$in)>;
+def : MipsPat<(MipsLo texternalsym:$in), (ADDiu ZERO, texternalsym:$in)>;
 
 def : MipsPat<(add CPURegs:$hi, (MipsLo tglobaladdr:$lo)),
               (ADDiu CPURegs:$hi, tglobaladdr:$lo)>;
