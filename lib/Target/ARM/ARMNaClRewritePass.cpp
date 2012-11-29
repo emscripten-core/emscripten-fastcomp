@@ -427,6 +427,10 @@ static bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
 
   case ARM::VLDMDIA:
   case ARM::VLDMSIA:
+
+  case ARM::PLDi12:
+  case ARM::PLDWi12:
+  case ARM::PLIi12:
     *AddrIdx = 0;
     break;
   // Instructions with base address register in position 1...
