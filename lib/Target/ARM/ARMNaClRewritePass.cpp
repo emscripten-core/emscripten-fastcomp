@@ -81,9 +81,7 @@ namespace {
                        MachineBasicBlock::iterator MBBI,
                        MachineInstr &MI,
                        int AddrIdx,
-                       bool CPSRLive,
                        bool IsLoad);
-    bool TryPredicating(MachineInstr &MI, ARMCC::CondCodes);
 
     bool SandboxBranchesInBlock(MachineBasicBlock &MBB);
     bool SandboxStackChangesInBlock(MachineBasicBlock &MBB);
@@ -120,18 +118,6 @@ static bool IsDirectCall(const MachineInstr &MI) {
    case ARM::TPsoft:
      return true;
   }
-}
-
-static bool IsCPSRLiveOut(const MachineBasicBlock &MBB) {
-  // CPSR is live-out if any successor lists it as live-in.
-  for (MachineBasicBlock::const_succ_iterator SI = MBB.succ_begin(),
-                                              E = MBB.succ_end();
-       SI != E;
-       ++SI) {
-    const MachineBasicBlock *Succ = *SI;
-    if (Succ->isLiveIn(ARM::CPSR)) return true;
-  }
-  return false;
 }
 
 static void DumpInstructionVerbose(const MachineInstr &MI) {
@@ -428,23 +414,6 @@ bool ARMNaClRewritePass::SandboxBranchesInBlock(MachineBasicBlock &MBB) {
   return Modified;
 }
 
-bool ARMNaClRewritePass::TryPredicating(MachineInstr &MI, ARMCC::CondCodes Pred) {
-  // Can't predicate if it's already predicated.
-  // TODO(cbiffle): actually we can, if the conditions match.
-  if (TII->isPredicated(&MI)) return false;
-
-  /*
-   * ARM predicate operands use two actual MachineOperands: an immediate
-   * holding the predicate condition, and a register referencing the flags.
-   */
-  SmallVector<MachineOperand, 2> PredOperands;
-  PredOperands.push_back(MachineOperand::CreateImm((int64_t) Pred));
-  PredOperands.push_back(MachineOperand::CreateReg(ARM::CPSR, false));
-
-  // This attempts to rewrite, but some instructions can't be predicated.
-  return TII->PredicateInstruction(&MI, PredOperands);
-}
-
 static bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
   unsigned Opcode = MI.getOpcode();
   switch (Opcode) {
@@ -526,25 +495,12 @@ void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
                                        MachineBasicBlock::iterator MBBI,
                                        MachineInstr &MI,
                                        int AddrIdx,
-                                       bool CPSRLive,
                                        bool IsLoad) {
   unsigned Addr = MI.getOperand(AddrIdx).getReg();
 
   if (!FlagNaClUseM23ArmAbi && Addr == ARM::R9) {
     // R9-relative loads are no longer sandboxed.
     assert(IsLoad && "There should be no r9-relative stores");
-  } else if (!CPSRLive && TryPredicating(MI, ARMCC::EQ)) {
-    /*
-     * For unconditional memory references where CPSR is not in use, we can use
-     * a faster sandboxing sequence by predicating the load/store -- assuming we
-     * *can* predicate the load/store.
-     */
-
-    // TODO(sehr): add SFI_GUARD_SP_LOAD_TST.
-    // Instruction can be predicated -- use the new sandbox.
-    BuildMI(MBB, MBBI, MI.getDebugLoc(),
-            TII->get(ARM::SFI_GUARD_LOADSTORE_TST))
-      .addReg(Addr);   // Address read (as src)
   } else {
     unsigned Opcode;
     if (IsLoad && (MI.getOperand(0).getReg() == ARM::SP)) {
@@ -1090,58 +1046,6 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
 
 bool ARMNaClRewritePass::SandboxMemoryReferencesInBlock(
     MachineBasicBlock &MBB) {
-  /*
-   * This is a simple local reverse-dataflow analysis to determine where CPSR
-   * is live.  We cannot use the conditional store sequence anywhere that CPSR
-   * is live, or we'd affect correctness.  The existing liveness analysis passes
-   * barf when applied pre-emit, after allocation, so we must do it ourselves.
-   */
-
-  // LOCALMOD(pdox): Short-circuit this function. Assume CPSR is always live,
-  //                 until we figure out why the assert is tripping.
-  bool Modified2 = false;
-  for (MachineBasicBlock::iterator MBBI = MBB.begin(), E = MBB.end();
-       MBBI != E;
-       ++MBBI) {
-    MachineInstr &MI = *MBBI;
-    int AddrIdx;
-
-    if (FlagSfiLoad && IsDangerousLoad(MI, &AddrIdx)) {
-      bool CPSRLive = true;
-      SandboxMemory(MBB, MBBI, MI, AddrIdx, CPSRLive, true);
-      Modified2 = true;
-    }
-    if (FlagSfiStore && IsDangerousStore(MI, &AddrIdx)) {
-      bool CPSRLive = true;
-      SandboxMemory(MBB, MBBI, MI, AddrIdx, CPSRLive, false);
-      Modified2 = true;
-    }
-  }
-  return Modified2;
-  // END LOCALMOD(pdox)
-
-  bool CPSRLive = IsCPSRLiveOut(MBB);
-
-  // Given that, record which instructions should not be altered to trash CPSR:
-  std::set<const MachineInstr *> InstrsWhereCPSRLives;
-  for (MachineBasicBlock::const_reverse_iterator MBBI = MBB.rbegin(),
-                                                 E = MBB.rend();
-       MBBI != E;
-       ++MBBI) {
-    const MachineInstr &MI = *MBBI;
-    // Check for kills first.
-    if (MI.modifiesRegister(ARM::CPSR, TRI)) CPSRLive = false;
-    // Then check for uses.
-    if (MI.readsRegister(ARM::CPSR)) CPSRLive = true;
-
-    if (CPSRLive) InstrsWhereCPSRLives.insert(&MI);
-  }
-
-  // Sanity check:
-  assert(CPSRLive == MBB.isLiveIn(ARM::CPSR)
-         && "CPSR Liveness analysis does not match cached live-in result.");
-
-  // Now: find and sandbox stores.
   bool Modified = false;
   for (MachineBasicBlock::iterator MBBI = MBB.begin(), E = MBB.end();
        MBBI != E;
@@ -1150,19 +1054,14 @@ bool ARMNaClRewritePass::SandboxMemoryReferencesInBlock(
     int AddrIdx;
 
     if (FlagSfiLoad && IsDangerousLoad(MI, &AddrIdx)) {
-      bool CPSRLive =
-        (InstrsWhereCPSRLives.find(&MI) != InstrsWhereCPSRLives.end());
-      SandboxMemory(MBB, MBBI, MI, AddrIdx, CPSRLive, true);
+      SandboxMemory(MBB, MBBI, MI, AddrIdx, true);
       Modified = true;
     }
     if (FlagSfiStore && IsDangerousStore(MI, &AddrIdx)) {
-      bool CPSRLive =
-        (InstrsWhereCPSRLives.find(&MI) != InstrsWhereCPSRLives.end());
-      SandboxMemory(MBB, MBBI, MI, AddrIdx, CPSRLive, false);
+      SandboxMemory(MBB, MBBI, MI, AddrIdx, false);
       Modified = true;
     }
   }
-
   return Modified;
 }
 
