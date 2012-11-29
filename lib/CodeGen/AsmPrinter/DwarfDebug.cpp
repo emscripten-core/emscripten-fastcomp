@@ -645,8 +645,14 @@ CompileUnit *DwarfDebug::constructCompileUnit(const MDNode *N) {
   DICompileUnit DIUnit(N);
   StringRef FN = DIUnit.getFilename();
   CompilationDir = DIUnit.getDirectory();
-  // @LOCALMOD
-  unsigned ID = getOrCreateCompileUnitID(FN, CompilationDir, N);
+  // @LOCALMOD-BEGIN
+  unsigned ID;
+  if (Triple(Asm->TM.getTargetTriple()).getOS() == Triple::NativeClient) {
+    ID = getOrCreateCompileUnitID(FN, CompilationDir, N);
+  } else {
+    ID = getOrCreateSourceID(FN, CompilationDir);
+  }
+  // @LOCALMOD-END
 
   DIE *Die = new DIE(dwarf::DW_TAG_compile_unit);
   CompileUnit *NewCU = new CompileUnit(ID, DIUnit.getLanguage(), Die,
@@ -764,7 +770,6 @@ bool DwarfDebug::collectLegacyDebugInfo(const Module *M) {
   for (DebugInfoFinder::iterator I = DbgFinder.compile_unit_begin(),
          E = DbgFinder.compile_unit_end(); I != E; ++I)
     constructCompileUnit(*I);
-
   // Create DIEs for each global variable.
   for (DebugInfoFinder::iterator I = DbgFinder.global_variable_begin(),
          E = DbgFinder.global_variable_end(); I != E; ++I) {
