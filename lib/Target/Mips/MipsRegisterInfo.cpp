@@ -81,9 +81,7 @@ MipsRegisterInfo::getCallPreservedMask(CallingConv::ID) const {
 BitVector MipsRegisterInfo::
 getReservedRegs(const MachineFunction &MF) const {
   static const uint16_t ReservedCPURegs[] = {
-    Mips::ZERO,
-    Mips::T6, Mips::T7, Mips::T8,          // @LOCALMOD: reserved for PNaCl use
-    Mips::K0, Mips::K1, Mips::SP
+    Mips::ZERO, Mips::K0, Mips::K1, Mips::SP
   };
 
   static const uint16_t ReservedCPU64Regs[] = {
@@ -95,6 +93,16 @@ getReservedRegs(const MachineFunction &MF) const {
 
   for (unsigned I = 0; I < array_lengthof(ReservedCPURegs); ++I)
     Reserved.set(ReservedCPURegs[I]);
+
+  // @LOCALMOD-BEGIN: reserved for PNaCl use
+  if (Subtarget.isTargetNaCl()) {
+    static const uint16_t PnaclReservedCPURegs[] = {
+      Mips::T6, Mips::T7, Mips::T8
+    };
+    for (unsigned I = 0; I < array_lengthof(PnaclReservedCPURegs); ++I)
+      Reserved.set(PnaclReservedCPURegs[I]);
+  }
+  // @LOCALMOD-END
 
   for (unsigned I = 0; I < array_lengthof(ReservedCPU64Regs); ++I)
     Reserved.set(ReservedCPU64Regs[I]);
