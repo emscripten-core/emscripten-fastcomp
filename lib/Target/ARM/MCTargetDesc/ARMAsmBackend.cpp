@@ -237,16 +237,8 @@ bool ARMAsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   const uint32_t nopEncoding = hasNOP() ? ARMv6T2_NopEncoding
                                         : ARMv4_NopEncoding;
   uint64_t NumNops = Count / 4;
-  // @LOCALMOD-BEGIN-UPSTREAM
-  // FIXME: e1a00000 vs e320f000
-  //  e1a00000 is mov r0, r0 which may result in a stall
-  //  but the real nop instruction is not available on early hw....
-  //  Perhaps this really needs to be switched on the Subtarget??
-  //  GNU as likes to emit e320f000...
   for (uint64_t i = 0; i != NumNops; ++i)
-    OW->Write32(0xe320f000); // regular NOP
-  // @LOCALMOD-END
-
+    OW->Write32(nopEncoding);
   // FIXME: should this function return false when unable to write exactly
   // 'Count' bytes with NOP encodings?
   switch (Count % 4) {
