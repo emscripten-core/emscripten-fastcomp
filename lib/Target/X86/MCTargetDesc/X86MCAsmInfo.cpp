@@ -79,7 +79,7 @@ X86ELFMCAsmInfo::X86ELFMCAsmInfo(const Triple &T) {
 
   // @LOCALMOD-BEGIN
   if (T.getArch() == Triple::x86_64) {
-    if (T.getOS() == Triple::NativeClient) {
+    if (T.isOSNaCl()) {
       PointerSize = 4;
       StackSlotSize = 8;
     } else {

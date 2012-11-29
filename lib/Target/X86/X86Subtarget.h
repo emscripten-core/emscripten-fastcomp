@@ -249,9 +249,7 @@ public:
             TargetTriple.isOSBinFormatELF());
   }
   bool isTargetLinux() const { return TargetTriple.getOS() == Triple::Linux; }
-  bool isTargetNaCl() const {
-    return TargetTriple.getOS() == Triple::NativeClient;
-  }
+  bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }  // @LOCALMOD
   bool isTargetNaCl32() const { return isTargetNaCl() && !is64Bit(); }
   bool isTargetNaCl64() const { return isTargetNaCl() && is64Bit(); }
   bool isTargetWindows() const { return TargetTriple.getOS() == Triple::Win32; }

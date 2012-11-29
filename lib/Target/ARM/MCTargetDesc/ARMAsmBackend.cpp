@@ -632,20 +632,37 @@ public:
                    uint8_t _OSABI)
     : ARMAsmBackend(T, TT), OSABI(_OSABI) { }
 
+  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
+                  uint64_t Value) const;
+
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createARMELFObjectWriter(OS, OSABI);
   }
 };
 
+// FIXME: Raise this to share code between Darwin and ELF.
+void ELFARMAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
+                                  unsigned DataSize, uint64_t Value) const {
+  unsigned NumBytes = 4;        // FIXME: 2 for Thumb
+  Value = adjustFixupValue(Fixup, Value);
+  if (!Value) return;           // Doesn't change encoding.
+
+  unsigned Offset = Fixup.getOffset();
+
+  // For each byte of the fragment that the fixup touches, mask in the bits from
+  // the fixup value. The Value has been "split up" into the appropriate
+  // bitfields above.
+  for (unsigned i = 0; i != NumBytes; ++i)
+    Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
+}
+
 // @LOCALMOD-BEGIN
 class NaClARMAsmBackend : public ELFARMAsmBackend {
- public:
-  NaClARMAsmBackend(const Target &T, const StringRef TT,
-                    uint8_t OSABI)
-      : ELFARMAsmBackend(T, TT, OSABI) { }
-  unsigned getBundleSize() const {
-    return 16;
-  }
+public:
+  NaClARMAsmBackend(const Target &T, const StringRef TT, uint8_t _OSABI)
+    : ELFARMAsmBackend(T, TT, _OSABI) { }
+
+  unsigned getBundleSize() const { return 16; }
 
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
     return CustomExpandInstNaClARM(Inst, Out);
@@ -705,7 +722,9 @@ MCAsmBackend *llvm::createARMAsmBackend(const Target &T, StringRef TT, StringRef
     assert(0 && "Windows not supported on ARM");
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
-  if (TheTriple.getOS() == llvm::Triple::NativeClient)
+  // @LOCALMOD-END
+  if (TheTriple.isOSNaCl())
     return new NaClARMAsmBackend(T, TT, OSABI);
+  // @LOCALMOD-END
   return new ELFARMAsmBackend(T, TT, OSABI);
 }

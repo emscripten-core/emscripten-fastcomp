@@ -157,11 +157,7 @@ public:
   bool hasBitCount()  const { return HasBitCount; }
   bool hasFPIdx()     const { return HasFPIdx; }
 
-  // @LOCALMOD-BEGIN
-  bool isTargetNaCl() const {
-    return TargetTriple.getOS() == Triple::NativeClient;
-  }
-  // @LOCALMOD-END
+  bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }  // @LOCALMOD
 
 };
 } // End llvm namespace

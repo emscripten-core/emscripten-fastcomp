@@ -248,29 +248,36 @@ public:
       OW->Write32(0);
     return true;
   }
+}; // class MipsAsmBackend
 
-  // @LOCALMOD-BEGIN
-  // FIXME! NaCl should INHERIT from MipsAsmBackend, not add to it.
+// @LOCALMOD-BEGIN
+class NaClMipsAsmBackend : public MipsAsmBackend {
+public:
+  NaClMipsAsmBackend(const Target &T, bool _is64Bit)
+    : MipsAsmBackend(T, Triple::NativeClient, /* IsLittle */ true, _is64Bit) {}
+
   unsigned getBundleSize() const {
-    return (OSType == Triple::NativeClient) ? 16 : 0;
+    return 16;
   }
 
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    if (OSType == Triple::NativeClient) {
-      return CustomExpandInstNaClMips(Inst, Out);
-    }
-    return false;
+    return CustomExpandInstNaClMips(Inst, Out);
   }
-  // @LOCALMOD-END
-}; // class MipsAsmBackend
+}; // class NaClMipsAsmBackend
+// @LOCALMOD-END
 
 } // namespace
 
 // MCAsmBackend
 MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T, StringRef TT,
                                              StringRef CPU) {
-  return new MipsAsmBackend(T, Triple(TT).getOS(),
-                            /*IsLittle*/true, /*Is64Bit*/false);
+  // @LOCALMOD-BEGIN
+  if (Triple(TT).isOSNaCl())
+    return new NaClMipsAsmBackend(T, /*Is64Bit*/false);
+  else
+    return new MipsAsmBackend(T, Triple(TT).getOS(),
+                              /*IsLittle*/true, /*Is64Bit*/false);
+  // @LOCALMOD-END
 }
 
 MCAsmBackend *llvm::createMipsAsmBackendEB32(const Target &T, StringRef TT,
@@ -281,8 +288,13 @@ MCAsmBackend *llvm::createMipsAsmBackendEB32(const Target &T, StringRef TT,
 
 MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T, StringRef TT,
                                              StringRef CPU) {
-  return new MipsAsmBackend(T, Triple(TT).getOS(),
-                            /*IsLittle*/true, /*Is64Bit*/true);
+  // @LOCALMOD-BEGIN
+  if (Triple(TT).isOSNaCl())
+    return new NaClMipsAsmBackend(T, /*Is64Bit*/true);
+  else
+    return new MipsAsmBackend(T, Triple(TT).getOS(),
+                              /*IsLittle*/true, /*Is64Bit*/true);
+  // @LOCALMOD-END
 }
 
 MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T, StringRef TT,

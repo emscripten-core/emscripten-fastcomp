@@ -256,9 +256,7 @@ protected:
 
   bool isTargetIOS() const { return TargetTriple.getOS() == Triple::IOS; }
   bool isTargetDarwin() const { return TargetTriple.isOSDarwin(); }
-  bool isTargetNaCl() const {
-    return TargetTriple.getOS() == Triple::NativeClient;
-  }
+  bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }  // @LOCALMOD
   bool isTargetELF() const { return !isTargetDarwin(); }
 
   bool isAPCS_ABI() const { return TargetABI == ARM_ABI_APCS; }

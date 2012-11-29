@@ -310,6 +310,11 @@ public:
     return getOS() == Triple::Win32 || isOSCygMing();
   }
 
+  /// \brief isOSNaCl - Is this the Native Client OS.
+  bool isOSNaCl() const {
+    return getOS() == Triple::NativeClient;
+  }
+
   /// \brief Tests whether the OS uses the ELF binary format.
   bool isOSBinFormatELF() const {
     return !isOSDarwin() && !isOSWindows();
