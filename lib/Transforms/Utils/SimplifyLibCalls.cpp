@@ -1594,6 +1594,13 @@ Value *LibCallSimplifierImpl::optimizeCall(CallInst *CI) {
   if (Optimizations.empty())
     initOptimizations();
 
+  // @LOCALMOD-BEGIN
+  Function *Caller = CI->getParent()->getParent();
+  LibFunc::Func F = LibFunc::NumLibFuncs;
+  // Don't modify the implementation of known library functions
+  if (TLI->getLibFunc(Caller->getName(), F))
+    return 0;
+  // @LOCALMOD-END
   Function *Callee = CI->getCalledFunction();
   LibCallOptimization *LCO = Optimizations.lookup(Callee->getName());
   if (LCO) {
