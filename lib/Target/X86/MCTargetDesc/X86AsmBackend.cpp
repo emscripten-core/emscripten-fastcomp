@@ -490,9 +490,8 @@ MCAsmBackend *llvm::createX86_32AsmBackend(const Target &T, StringRef TT, String
   // @LOCALMOD-BEGIN
   if (TheTriple.isOSNaCl())
     return new NaClX86_32AsmBackend(T, OSABI, CPU);
-  else
-    return new ELFX86_32AsmBackend(T, OSABI, CPU);
   // @LOCALMOD-END
+  return new ELFX86_32AsmBackend(T, OSABI, CPU);
 }
 
 MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T, StringRef TT, StringRef CPU) {
@@ -508,7 +507,6 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T, StringRef TT, String
   // @LOCALMOD-BEGIN
   if (TheTriple.isOSNaCl())
     return new NaClX86_64AsmBackend(T, OSABI, CPU);
-  else
-    return new ELFX86_64AsmBackend(T, OSABI, CPU);
   // @LOCALMOD-END
+  return new ELFX86_64AsmBackend(T, OSABI, CPU);
 }

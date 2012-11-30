@@ -53,7 +53,7 @@ getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
   // @LOCALMOD-BEGIN
   // FIXME: There has got to be a better way to get this info.
   Triple T(MMI->getModule()->getTargetTriple());
-  if (T.getOS() == Triple::NativeClient)
+  if (T.isOSNaCl())
     return TargetLoweringObjectFileELF::getTTypeGlobalReference(GV, Mang,
                                         MMI, Encoding, Streamer);
   // @LOCALMOD-END

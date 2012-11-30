@@ -250,7 +250,7 @@ void NaclAlignAllJumpTargetsAndConstantPools(MachineFunction &MF) {
     }
   }
 
-  // FIRST ENTRY IN A ConstanPool
+  // FIRST ENTRY IN A ConstantPool
   bool last_bb_was_constant_pool = false;
   for (MachineFunction::iterator I = MF.begin(), E = MF.end();
        I != E; ++I) {

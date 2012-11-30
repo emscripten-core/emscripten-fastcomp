@@ -274,10 +274,9 @@ MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T, StringRef TT,
   // @LOCALMOD-BEGIN
   if (Triple(TT).isOSNaCl())
     return new NaClMipsAsmBackend(T, /*Is64Bit*/false);
-  else
-    return new MipsAsmBackend(T, Triple(TT).getOS(),
-                              /*IsLittle*/true, /*Is64Bit*/false);
   // @LOCALMOD-END
+  return new MipsAsmBackend(T, Triple(TT).getOS(),
+                            /*IsLittle*/true, /*Is64Bit*/false);
 }
 
 MCAsmBackend *llvm::createMipsAsmBackendEB32(const Target &T, StringRef TT,
@@ -291,10 +290,9 @@ MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T, StringRef TT,
   // @LOCALMOD-BEGIN
   if (Triple(TT).isOSNaCl())
     return new NaClMipsAsmBackend(T, /*Is64Bit*/true);
-  else
-    return new MipsAsmBackend(T, Triple(TT).getOS(),
-                              /*IsLittle*/true, /*Is64Bit*/true);
   // @LOCALMOD-END
+  return new MipsAsmBackend(T, Triple(TT).getOS(),
+                            /*IsLittle*/true, /*Is64Bit*/true);
 }
 
 MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T, StringRef TT,

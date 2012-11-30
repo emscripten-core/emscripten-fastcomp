@@ -647,7 +647,7 @@ CompileUnit *DwarfDebug::constructCompileUnit(const MDNode *N) {
   CompilationDir = DIUnit.getDirectory();
   // @LOCALMOD-BEGIN
   unsigned ID;
-  if (Triple(Asm->TM.getTargetTriple()).getOS() == Triple::NativeClient) {
+  if (Triple(Asm->TM.getTargetTriple()).isOSNaCl()) {
     ID = getOrCreateCompileUnitID(FN, CompilationDir, N);
   } else {
     ID = getOrCreateSourceID(FN, CompilationDir);

@@ -173,7 +173,7 @@ bool Filler::findDelayInstr(MachineBasicBlock &MBB,
         || I->isPseudo()
         // @LOCALMOD-START
         // Don't put in delay slot instructions that could be masked.
-        || (Triple(TM.getTargetTriple()).getOS() == Triple::NativeClient &&
+        || (Triple(TM.getTargetTriple()).isOSNaCl() &&
             (IsDangerousLoad(*FI, &Dummy)
              || IsDangerousStore(*FI, &Dummy)
              || FI->modifiesRegister(Mips::SP, TM.getRegisterInfo())
