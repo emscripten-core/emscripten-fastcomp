@@ -581,6 +581,8 @@ int main(int argc, char **argv) {
   initializeInstrumentation(Registry);
   initializeTarget(Registry);
   initializeExpandCtorsPass(Registry);
+  initializeExpandTlsPass(Registry);
+  initializeExpandTlsConstantExprPass(Registry);
 
   cl::ParseCommandLineOptions(argc, argv,
     "llvm .bc -> .bc modular optimizer and analysis printer\n");
