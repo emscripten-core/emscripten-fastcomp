@@ -19,9 +19,6 @@
 #include "X86ISelLowering.h"
 #include "X86FrameLowering.h"
 #include "X86JITInfo.h"
-#ifdef __native_client__
-#include "X86NaClJITInfo.h"
-#endif
 #include "X86SelectionDAGInfo.h"
 #include "X86Subtarget.h"
 #include "llvm/Target/TargetMachine.h"
