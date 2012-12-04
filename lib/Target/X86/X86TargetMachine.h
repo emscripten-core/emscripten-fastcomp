@@ -83,11 +83,7 @@ class X86_32TargetMachine : public X86TargetMachine {
   X86InstrInfo      InstrInfo;
   X86SelectionDAGInfo TSInfo;
   X86TargetLowering TLInfo;
-#ifdef __native_client__
-  X86NaClJITInfo        JITInfo;
-#else
   X86JITInfo        JITInfo;
-#endif
   ScalarTargetTransformImpl STTI;
   X86VectorTargetTransformInfo VTTI;
 public:
