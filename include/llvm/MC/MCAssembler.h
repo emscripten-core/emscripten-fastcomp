@@ -842,13 +842,6 @@ private:
   bool fragmentNeedsRelaxation(const MCInstFragment *IF,
                                const MCAsmLayout &Layout) const;
 
-  // @LOCALMOD-BEGIN
-  uint8_t ComputeBundlePadding(const MCAsmLayout &Layout,
-                               MCFragment *F,
-                               uint64_t FragmentOffset) const;
-  // @LOCALMOD-END
-
-
   /// layoutOnce - Perform one layout iteration and return true if any offsets
   /// were adjusted.
   bool layoutOnce(MCAsmLayout &Layout);
@@ -914,12 +907,6 @@ public:
   MCContext &getContext() const { return Context; }
 
   MCAsmBackend &getBackend() const { return Backend; }
-
-  // @LOCALMOD-BEGIN
-  uint64_t getBundleSize() const;
-  uint64_t getBundleMask() const;
-  // @LOCALMOD-END
-
 
   MCCodeEmitter &getEmitter() const { return Emitter; }
 

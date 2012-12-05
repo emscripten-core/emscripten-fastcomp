@@ -493,42 +493,13 @@ uint64_t MCAssembler::computeFragmentSize(const MCAsmLayout &Layout,
   llvm_unreachable("invalid fragment kind");
 }
 
-void MCAsmLayout::LayoutFragment(MCFragment *F) {
-  MCFragment *Prev = F->getPrevNode();
-
-  // We should never try to recompute something which is up-to-date.
-  assert(!isFragmentUpToDate(F) && "Attempt to recompute up-to-date fragment!");
-  // We should never try to compute the fragment layout if it's predecessor
-  // isn't up-to-date.
-  assert((!Prev || isFragmentUpToDate(Prev)) &&
-         "Attempt to compute fragment before it's predecessor!");
-
-  ++stats::FragmentLayouts;
-
-  // Compute fragment offset and size.
-  uint64_t Offset = 0;
-  if (Prev)
-    Offset += Prev->Offset + getAssembler().computeFragmentSize(*this, *Prev);
-  // @LOCALMOD-BEGIN
-  F->BundlePadding = getAssembler().ComputeBundlePadding(*this, F, Offset);
-  Offset += F->BundlePadding;
-  // @LOCALMOD-END
-  F->Offset = Offset;
-  LastValidFragment[F->getParent()] = F;
-}
-
 // @LOCALMOD-BEGIN
 // Returns number of bytes of padding needed to align to bundle start.
 static uint64_t AddressToBundlePadding(uint64_t Address, uint64_t BundleMask) {
   return (~Address + 1) & BundleMask;
 }
 
-uint64_t MCAssembler::getBundleSize() const {
-  return getBackend().getBundleSize();
-}
-
-uint64_t MCAssembler::getBundleMask() const {
-  uint64_t BundleSize = getBundleSize();
+static uint64_t ComputeBundleMask(uint64_t BundleSize) {
   uint64_t BundleMask = BundleSize - 1;
   assert(BundleSize != 0);
   assert((BundleSize & BundleMask) == 0 &&
@@ -570,14 +541,15 @@ static unsigned ComputeGroupSize(MCFragment *F) {
   return GroupSize;
 }
 
-uint8_t MCAssembler::ComputeBundlePadding(const MCAsmLayout &Layout,
-                                          MCFragment *F,
-                                          uint64_t FragmentOffset) const {
+static uint8_t ComputeBundlePadding(const MCAssembler &Asm,
+                                    const MCAsmLayout &Layout,
+                                    MCFragment *F,
+                                    uint64_t FragmentOffset) {
   if (!F->getParent()->isBundlingEnabled())
     return 0;
 
-  uint64_t BundleSize = getBundleSize();
-  uint64_t BundleMask = getBundleMask();
+  uint64_t BundleSize = Asm.getBackend().getBundleSize();
+  uint64_t BundleMask = ComputeBundleMask(BundleSize);
   unsigned GroupSize = ComputeGroupSize(F);
 
   if (GroupSize > BundleSize) {
@@ -603,20 +575,15 @@ uint8_t MCAssembler::ComputeBundlePadding(const MCAsmLayout &Layout,
   }
   return Padding;
 }
-// @LOCALMOD-END
 
-
-
-
-// @LOCALMOD-BEGIN
 // Write out BundlePadding bytes in NOPs, being careful not to cross a bundle
 // boundary.
 static void WriteBundlePadding(const MCAssembler &Asm,
                                const MCAsmLayout &Layout,
                                uint64_t Offset, uint64_t TotalPadding,
                                MCObjectWriter *OW) {
-  uint64_t BundleSize = Asm.getBundleSize();
-  uint64_t BundleMask = Asm.getBundleMask();
+  uint64_t BundleSize = Asm.getBackend().getBundleSize();
+  uint64_t BundleMask = ComputeBundleMask(BundleSize);
   uint64_t PaddingLeft = TotalPadding;
   uint64_t StartPos = Offset;
 
@@ -635,6 +602,31 @@ static void WriteBundlePadding(const MCAssembler &Asm,
   }
 }
 // @LOCALMOD-END
+
+void MCAsmLayout::LayoutFragment(MCFragment *F) {
+  MCFragment *Prev = F->getPrevNode();
+
+  // We should never try to recompute something which is up-to-date.
+  assert(!isFragmentUpToDate(F) && "Attempt to recompute up-to-date fragment!");
+  // We should never try to compute the fragment layout if it's predecessor
+  // isn't up-to-date.
+  assert((!Prev || isFragmentUpToDate(Prev)) &&
+         "Attempt to compute fragment before it's predecessor!");
+
+  ++stats::FragmentLayouts;
+
+  // Compute fragment offset and size.
+  uint64_t Offset = 0;
+  if (Prev)
+    Offset += Prev->Offset + getAssembler().computeFragmentSize(*this, *Prev);
+  // @LOCALMOD-BEGIN
+  F->BundlePadding = ComputeBundlePadding(getAssembler(), *this, F, Offset);
+  Offset += F->BundlePadding;
+  // @LOCALMOD-END
+  F->Offset = Offset;
+  LastValidFragment[F->getParent()] = F;
+}
+
 
 /// WriteFragmentData - Write the \p F data to the output file.
 static void WriteFragmentData(const MCAssembler &Asm, const MCAsmLayout &Layout,
@@ -677,7 +669,7 @@ static void WriteFragmentData(const MCAssembler &Asm, const MCAsmLayout &Layout,
     // If we are aligning with nops, ask that target to emit the right data.
     if (AF.hasEmitNops()) {
       // @LOCALMOD-BEGIN
-      if (Asm.getBundleSize()) {
+      if (Asm.getBackend().getBundleSize()) {
         WriteBundlePadding(Asm, Layout,
                            Layout.getFragmentOffset(&F),
                            FragmentSize,
