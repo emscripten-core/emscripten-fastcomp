@@ -55,11 +55,6 @@ MCFragment *MCObjectStreamer::getCurrentFragment() const {
 }
 
 MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() const {
-  // @LOCALMOD-BEGIN
-  if (getCurrentSectionData()->isBundlingEnabled()) {
-    return new MCDataFragment(getCurrentSectionData());
-  }
-  // @LOCALMOD-END
   MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
   if (!F)
     F = new MCDataFragment(getCurrentSectionData());

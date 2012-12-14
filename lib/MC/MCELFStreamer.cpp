@@ -442,7 +442,11 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
   MCSectionData *SD = getCurrentSectionData();
 
   if (Fixups.size() > 0 || !SD->isBundlingEnabled()) {
-    MCDataFragment *DF = getOrCreateDataFragment();
+    MCDataFragment *DF;
+    if (SD->isBundlingEnabled())
+      DF = new MCDataFragment(SD);
+    else
+      DF = getOrCreateDataFragment();
 
     // Add the fixups and data.
     for (unsigned i = 0, e = Fixups.size(); i != e; ++i) {
