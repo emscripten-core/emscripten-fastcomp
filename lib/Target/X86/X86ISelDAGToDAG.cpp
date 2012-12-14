@@ -1595,6 +1595,10 @@ bool X86DAGToDAGISel::TryFoldLoad(SDNode *P, SDValue N,
 //  valid and not depend on further patching. A more desirable fix is
 //  probably to update the matching code to avoid assigning a register
 //  to a value that we cannot prove is positive.
+//
+//  Note: Any changes to the testing logic need to be synchronized
+//  with the implementation of isLegalAddressingModeForNaCl() in
+//  X86FastISel.cpp.
 void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
                                                     X86ISelAddressMode &AM) {
 

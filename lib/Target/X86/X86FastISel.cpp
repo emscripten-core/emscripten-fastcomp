@@ -36,7 +36,13 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/ADT/Statistic.h" // @LOCALMOD
 using namespace llvm;
+
+// @LOCALMOD-BEGIN
+#define DEBUG_TYPE "isel"
+STATISTIC(NumFastIselNaClFailures, "Number of instructions fast isel failed on for NaCl illegality");
+// @LOCALMOD-END
 
 namespace {
 
@@ -334,8 +340,86 @@ bool X86FastISel::X86FastEmitExtend(ISD::NodeType Opc, EVT DstVT,
     return false;
 }
 
+/// @LOCALMOD-BEGIN
+/// isLegalAddressingModeForNaCl - Determine if the addressing mode is
+/// legal for NaCl translation.  If not, the caller is expected to
+/// reject the instruction for fast-ISel code generation.
+///
+/// The logic for the test is translated from the corresponding logic
+/// in X86DAGToDAGISel::LegalizeAddressingModeForNaCl().  It can't be
+/// used directly due to the X86AddressMode vs X86ISelAddressMode
+/// types.  As such, any changes to isLegalAddressingModeForNaCl() and
+/// X86DAGToDAGISel::LegalizeAddressingModeForNaCl() need to be
+/// synchronized.  The original conditions are indicated in comments.
+static bool isLegalAddressingModeForNaCl(const X86Subtarget *Subtarget,
+                                         const X86AddressMode &AM) {
+  if (Subtarget->isTargetNaCl64()) {
+    // Return true (i.e., is legal) if the equivalent of
+    // X86ISelAddressMode::isRIPRelative() is true.
+    if (AM.BaseType == X86AddressMode::RegBase &&
+        AM.Base.Reg == X86::RIP)
+      return true;
+
+    // Check for the equivalent of
+    // (!AM.hasBaseOrIndexReg() &&
+    //  !AM.hasSymbolicDisplacement() &&
+    //  AM.Disp < 0)
+    if (!((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
+          AM.IndexReg) &&
+        !AM.GV &&
+        AM.Disp < 0) {
+      ++NumFastIselNaClFailures;
+      return false;
+    }
+
+    // At this point in the LegalizeAddressingModeForNaCl() code, it
+    // normalizes an addressing mode with a base register and no index
+    // register into an equivalent mode with an index register and no
+    // base register.  Since we don't modify AM, we may have to check
+    // both the base and index register fields in the remainder of the
+    // tests.
+
+    // Check for the equivalent of
+    // ((AM.BaseType == X86ISelAddressMode::FrameIndexBase || AM.GV || AM.CP) &&
+    //   AM.IndexReg.getNode() &&
+    //   AM.Disp > 0)
+    // Note: X86AddressMode doesn't have a CP analogue
+    if ((AM.BaseType == X86AddressMode::FrameIndexBase || AM.GV) &&
+        ((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
+         AM.IndexReg) &&
+        AM.Disp > 0) {
+      ++NumFastIselNaClFailures;
+      return false;
+    }
+
+    // Check for the equivalent of
+    // ((AM.BaseType == X86ISelAddressMode::RegBase) &&
+    //  AM.Base_Reg.getNode() &&
+    //  AM.IndexReg.getNode())
+    if ((AM.BaseType == X86AddressMode::RegBase) &&
+        AM.Base.Reg &&
+        AM.IndexReg) {
+      ++NumFastIselNaClFailures;
+      return false;
+    }
+  }
+
+  return true;
+}
+// @LOCALMOD-END
+
 /// X86SelectAddress - Attempt to fill in an address from the given value.
 ///
+/// @LOCALMOD-BEGIN
+/// All "return v;" statements must be converted to
+/// "return (v) && isLegalAddressingModeForNaCl(Subtarget, AM);"
+/// except that "return false;" can of course be left unchanged.
+///
+/// Since X86SelectAddress() recursively builds up the AM result
+/// object, there is a risk that an intermediate result could be
+/// rejected in a situation where the final result was in fact legal,
+/// though it is hard to imagine this happening.
+/// @LOCALMOD-END
 bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
   const User *U = NULL;
   unsigned Opcode = Instruction::UserOp1;
@@ -385,7 +469,7 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
     if (SI != FuncInfo.StaticAllocaMap.end()) {
       AM.BaseType = X86AddressMode::FrameIndexBase;
       AM.Base.FrameIndex = SI->second;
-      return true;
+      return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
     }
     break;
   }
@@ -468,7 +552,7 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
     AM.Scale = Scale;
     AM.Disp = (uint32_t)Disp;
     if (X86SelectAddress(U->getOperand(0), AM))
-      return true;
+      return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
 
     // If we couldn't merge the gep value into this addr mode, revert back to
     // our address and just match the value instead of completely failing.
@@ -526,7 +610,7 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
           AM.Base.Reg = X86::RIP;
         }
         AM.GVOpFlags = GVFlags;
-        return true;
+        return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
       }
 
       // Ok, we need to do a load from a stub.  If we've already loaded from
@@ -574,7 +658,7 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
       // and Index values may already be set here.
       AM.Base.Reg = LoadReg;
       AM.GV = 0;
-      return true;
+      return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
     }
   }
 
@@ -589,19 +673,22 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
         // Put into index register so that the NaCl rewrite pass will
         // convert this to a 64-bit address.
         AM.IndexReg = getRegForValue(V);
-        return AM.IndexReg != 0;
+        return AM.IndexReg != 0
+          && isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
       }
       return false;
     }
     // @LOCALMOD-END
     if (AM.Base.Reg == 0) {
       AM.Base.Reg = getRegForValue(V);
-      return AM.Base.Reg != 0;
+      return AM.Base.Reg != 0
+        && isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
     }
     if (AM.IndexReg == 0) {
       assert(AM.Scale == 1 && "Scale with no index!");
       AM.IndexReg = getRegForValue(V);
-      return AM.IndexReg != 0;
+      return AM.IndexReg != 0
+        && isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
     }
   }
 
