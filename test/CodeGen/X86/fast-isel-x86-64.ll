@@ -1,6 +1,7 @@
 ; RUN: llc < %s -mattr=-avx -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s
 ; RUN: llc < %s -mattr=+avx -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s --check-prefix=AVX
 ; RUN: llc < %s -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort -mtriple=x86_64-none-nacl | FileCheck %s --check-prefix=NACL64
+; RUN: llc < %s -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort -mtriple=x86_64-none-nacl -relocation-model=pic | FileCheck %s --check-prefix=NACL64_PIC
 
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64"
 target triple = "x86_64-apple-darwin10.0.0"
@@ -47,6 +48,16 @@ define i64 @test3() nounwind {
 ; CHECK-NEXT: ret
 }
 
+; NACL64 version uses i32 for 32-bit pointers.
+define i32 @test3_nacl64() nounwind {
+  %A = ptrtoint i32* @G to i32
+  ret i32 %A
+
+; NACL64_PIC: test3_nacl64:
+; NACL64_PIC: movl G@GOTPCREL(%rip), %eax
+; NACL64_PIC-NEXT: popq    %rcx
+; NACL64_PIC-NEXT: nacljmp %ecx, %r15
+}
 
 
 ; rdar://9289558

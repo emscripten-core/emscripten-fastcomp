@@ -637,6 +637,14 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
 
           if (Subtarget->isPICStyleRIPRel())
             StubAM.Base.Reg = X86::RIP;
+        // @LOCALMOD-BEGIN
+        } else if (Subtarget->isTargetNaCl64()) {
+          Opc = X86::MOV32rm;
+          RC  = &X86::GR32RegClass;
+
+          if (Subtarget->isPICStyleRIPRel())
+            StubAM.Base.Reg = X86::RIP;
+        // @LOCALMOD-END
         } else {
           Opc = X86::MOV32rm;
           RC  = &X86::GR32RegClass;
