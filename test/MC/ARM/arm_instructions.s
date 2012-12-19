@@ -1,7 +1,9 @@
 @ RUN: llvm-mc -mcpu=cortex-a8 -triple arm-unknown-unknown -show-encoding %s | FileCheck %s
 
 @ CHECK: trap
-@ CHECK: encoding: [0xfe,0xde,0xff,0xe7]
+// @LOCALMOD-START
+@ CHECK: encoding: [0xf0,0xde,0xfe,0xe7]
+// @LOCALMOD-END
         trap
 
 @ CHECK: bx	lr
