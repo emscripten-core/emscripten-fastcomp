@@ -387,7 +387,12 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::VACOPY,            MVT::Other, Expand);
   setOperationAction(ISD::VAEND,             MVT::Other, Expand);
 
-  setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
+  // @LOCALMOD-BEGIN
+  if (Subtarget->isTargetNaCl())
+    setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
+  else
+    setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
+  // @LOCALMOD-END
   setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::i64, Custom);
 
   // Use the default for now
@@ -1875,6 +1880,30 @@ SDValue MipsTargetLowering::LowerNaClTpTdbOffset(SDValue Op,
                      DAG.getConstant(0, Op.getValueType().getSimpleVT()),
 		     Op.getOperand(0));
 }
+
+SDValue MipsTargetLowering::
+GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const {
+  EVT PtrVT = getPointerTy();
+  SDValue ThreadPointer;
+  if (llvm::TLSUseCall) {
+    unsigned PtrSize = PtrVT.getSizeInBits();
+    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+
+    SDValue TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
+
+    ArgListTy Args;
+    TargetLowering::CallLoweringInfo CLI(
+        DAG.getEntryNode(), PtrTy, false, false, false, false, 0,
+        CallingConv::C, /*isTailCall=*/false, /*doesNotRet=*/false,
+        /*isReturnValueUsed=*/true, TlsReadTp, Args, DAG, DL);
+    std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
+    ThreadPointer = CallResult.first;
+  } else {
+    ThreadPointer = DAG.getCopyFromReg(DAG.getEntryNode(), DL,
+                                       Mips::T8, PtrVT);
+  }
+  return ThreadPointer;
+}
 // @LOCALMOD-END
 
 SDValue MipsTargetLowering::
@@ -1892,7 +1921,7 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
   TLSModel::Model model = getTargetMachine().getTLSModel(GV);
 
   // @LOCALMOD-BEGIN
-  if (getTargetMachine().getSubtarget<MipsSubtarget>().isTargetNaCl()) {
+  if (Subtarget->isTargetNaCl()) {
     SDVTList VTs = DAG.getVTList(MVT::i32);
     SDValue TGAHi = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
                                                  MipsII::MO_TPREL_HI);
@@ -1902,20 +1931,9 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
     SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, TGALo);
     SDValue Offset = DAG.getNode(ISD::ADD, dl, MVT::i32, Hi, Lo);
 
-    unsigned PtrSize = PtrVT.getSizeInBits();
-    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
-
-    SDValue TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
-
-    ArgListTy Args;
-    TargetLowering::CallLoweringInfo CLI(DAG.getEntryNode(), PtrTy,
-                  false, false, false, false, 0, CallingConv::C,
-                  /*isTailCall=*/false, /*doesNotRet=*/false,
-                  /*isReturnValueUsed=*/true,
-                  TlsReadTp, Args, DAG, dl);
-    std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
-
-    SDValue ThreadPointer = CallResult.first;
+    SDValue ThreadPointer = GetNaClThreadPointer(DAG, dl);
+    // tprel_hi and tprel_lo relocations expect that thread pointer is offset
+    // by 0x7000 from the start of the TLS data area.
     SDValue TPOffset = DAG.getConstant(0x7000, MVT::i32);
     SDValue ThreadPointer2 = DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer,
                                          TPOffset);
@@ -2508,6 +2526,10 @@ SDValue MipsTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
   switch (cast<ConstantSDNode>(Op->getOperand(0))->getZExtValue()) {
   default:
     return SDValue();
+  // @LOCALMOD-BEGIN
+  case Intrinsic::nacl_read_tp:
+    return GetNaClThreadPointer(DAG, Op->getDebugLoc());
+  // @LOCALMOD-END
   case Intrinsic::mips_shilo:
     return LowerDSPIntr(Op, DAG, MipsISD::SHILO, true, true);
   case Intrinsic::mips_dpau_h_qbl:

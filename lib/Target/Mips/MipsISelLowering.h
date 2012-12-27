@@ -307,6 +307,7 @@ namespace llvm {
     // @LOCALMOD-BEGIN
     SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const;
     // @LOCALMOD-END
 
     virtual SDValue

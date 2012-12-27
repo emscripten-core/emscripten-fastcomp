@@ -157,7 +157,10 @@ public:
   bool hasBitCount()  const { return HasBitCount; }
   bool hasFPIdx()     const { return HasFPIdx; }
 
-  bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }  // @LOCALMOD
+  // @LOCALMOD-START
+  bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }
+  bool isNotTargetNaCl() const { return !TargetTriple.isOSNaCl(); }
+  // @LOCALMOD-END
 
 };
 } // End llvm namespace
