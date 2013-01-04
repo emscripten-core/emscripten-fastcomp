@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=armv7-unknown-nacl -mattr=+neon -sfi-store -filetype=obj %s -o - \
+; RUN: llc -mtriple=armv7-unknown-nacl -mattr=+neon -sfi-store -sfi-load -filetype=obj %s -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
 
 define void @vst1lanei8(i8* %A, <8 x i8>* %B) nounwind {
@@ -196,6 +196,7 @@ declare void @llvm.arm.neon.vst4lane.v4f32(i8*, <4 x float>, <4 x float>, <4 x f
 
 ;Check for a post-increment updating store with register increment.
 define void @vst2lanei16_update(i16** %ptr, <4 x i16>* %B, i32 %inc) nounwind {
+; CHECK:         bic r1, r1, #3221225472
   %A = load i16** %ptr
   %tmp0 = bitcast i16* %A to i8*
   %tmp1 = load <4 x i16>* %B

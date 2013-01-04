@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=armv7-unknown-nacl -mattr=+neon -sfi-store -filetype=obj %s -o - \
+; RUN: llc -mtriple=armv7-unknown-nacl -mattr=+neon -sfi-store -sfi-load -filetype=obj %s -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
 
 define void @vst1i8(i8* %A, <8 x i8>* %B) nounwind {
@@ -101,6 +101,7 @@ define void @vst1Qi64(i64* %A, <2 x i64>* %B) nounwind {
 
 ;Check for a post-increment updating store.
 define void @vst1f_update(float** %ptr, <2 x float>* %B) nounwind {
+; CHECK:         bic r1, r1, #3221225472
   %A = load float** %ptr
   %tmp0 = bitcast float* %A to i8*
   %tmp1 = load <2 x float>* %B

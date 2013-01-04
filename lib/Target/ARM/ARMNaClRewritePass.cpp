@@ -481,100 +481,6 @@ static bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
   case ARM::LDRD:
     *AddrIdx = 2;
     break;
-  }
-
-  if (MI.getOperand(*AddrIdx).getReg() == ARM::SP) {
-    // The contents of SP do not require masking.
-    return false;
-  }
-
-  return true;
-}
-
-/*
- * Sandboxes a memory reference instruction by inserting an appropriate mask
- * or check operation before it.
- */
-void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
-                                       MachineBasicBlock::iterator MBBI,
-                                       MachineInstr &MI,
-                                       int AddrIdx,
-                                       bool IsLoad) {
-  unsigned Addr = MI.getOperand(AddrIdx).getReg();
-
-  if (!FlagNaClUseM23ArmAbi && Addr == ARM::R9) {
-    // R9-relative loads are no longer sandboxed.
-    assert(IsLoad && "There should be no r9-relative stores");
-  } else {
-    unsigned Opcode;
-    if (IsLoad && (MI.getOperand(0).getReg() == ARM::SP)) {
-      Opcode = ARM::SFI_GUARD_SP_LOAD;
-    } else {
-      Opcode = ARM::SFI_GUARD_LOADSTORE;
-    }
-    // Use same predicate as current instruction.
-    unsigned PredReg = 0;
-    ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
-    // Use the older BIC sandbox, which is universal, but incurs a stall.
-    BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(Opcode))
-      .addReg(Addr, RegState::Define)  // Address definition (as dst).
-      .addReg(Addr, RegState::Kill)    // Address read (as src).
-      .addImm((int64_t) Pred)          // predicate condition
-      .addReg(PredReg);                // predicate source register (CPSR)
-
-    /*
-     * This pseudo-instruction is intended to generate something resembling the
-     * following, but with alignment enforced.
-     * TODO(cbiffle): move alignment into this function, use the code below.
-     *
-     *  // bic<cc> Addr, Addr, #0xC0000000
-     *  BuildMI(MBB, MBBI, MI.getDebugLoc(),
-     *          TII->get(ARM::BICri))
-     *    .addReg(Addr)            // rD
-     *    .addReg(Addr)            // rN
-     *    .addImm(0xC0000000)      // imm
-     *    .addImm((int64_t) Pred)  // predicate condition
-     *    .addReg(PredReg)         // predicate source register (CPSR)
-     *    .addReg(0);              // flag output register (0 == no flags)
-     */
-  }
-}
-
-static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
-  unsigned Opcode = MI.getOpcode();
-  switch (Opcode) {
-  default: return false;
-
-  // Instructions with base address register in position 0...
-  case ARM::STMIA:
-  case ARM::STMDA:
-  case ARM::STMDB:
-  case ARM::STMIB:
-
-  case ARM::VSTMDIA:
-  case ARM::VSTMSIA:
-    *AddrIdx = 0;
-    break;
-
-  // Instructions with base address register in position 1...
-  case ARM::STMIA_UPD: // same reg at position 0 and position 1
-  case ARM::STMDA_UPD:
-  case ARM::STMDB_UPD:
-  case ARM::STMIB_UPD:
-
-  case ARM::STRH:
-  case ARM::STRi12:
-  case ARM::STRrs:
-  case ARM::STRBi12:
-  case ARM::STRBrs:
-  case ARM::VSTMDIA_UPD:
-  case ARM::VSTMDDB_UPD:
-  case ARM::VSTMSIA_UPD:
-  case ARM::VSTMSDB_UPD:
-  case ARM::VSTRS:
-  case ARM::VSTRD:
-    *AddrIdx = 1;
-    break;
 
   //
   // NEON loads
@@ -853,6 +759,100 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::VLD4DUPq16_UPD:
   case ARM::VLD4DUPq32_UPD:
     *AddrIdx = 5;
+    break;
+  }
+
+  if (MI.getOperand(*AddrIdx).getReg() == ARM::SP) {
+    // The contents of SP do not require masking.
+    return false;
+  }
+
+  return true;
+}
+
+/*
+ * Sandboxes a memory reference instruction by inserting an appropriate mask
+ * or check operation before it.
+ */
+void ARMNaClRewritePass::SandboxMemory(MachineBasicBlock &MBB,
+                                       MachineBasicBlock::iterator MBBI,
+                                       MachineInstr &MI,
+                                       int AddrIdx,
+                                       bool IsLoad) {
+  unsigned Addr = MI.getOperand(AddrIdx).getReg();
+
+  if (!FlagNaClUseM23ArmAbi && Addr == ARM::R9) {
+    // R9-relative loads are no longer sandboxed.
+    assert(IsLoad && "There should be no r9-relative stores");
+  } else {
+    unsigned Opcode;
+    if (IsLoad && (MI.getOperand(0).getReg() == ARM::SP)) {
+      Opcode = ARM::SFI_GUARD_SP_LOAD;
+    } else {
+      Opcode = ARM::SFI_GUARD_LOADSTORE;
+    }
+    // Use same predicate as current instruction.
+    unsigned PredReg = 0;
+    ARMCC::CondCodes Pred = llvm::getInstrPredicate(&MI, PredReg);
+    // Use the older BIC sandbox, which is universal, but incurs a stall.
+    BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(Opcode))
+      .addReg(Addr, RegState::Define)  // Address definition (as dst).
+      .addReg(Addr, RegState::Kill)    // Address read (as src).
+      .addImm((int64_t) Pred)          // predicate condition
+      .addReg(PredReg);                // predicate source register (CPSR)
+
+    /*
+     * This pseudo-instruction is intended to generate something resembling the
+     * following, but with alignment enforced.
+     * TODO(cbiffle): move alignment into this function, use the code below.
+     *
+     *  // bic<cc> Addr, Addr, #0xC0000000
+     *  BuildMI(MBB, MBBI, MI.getDebugLoc(),
+     *          TII->get(ARM::BICri))
+     *    .addReg(Addr)            // rD
+     *    .addReg(Addr)            // rN
+     *    .addImm(0xC0000000)      // imm
+     *    .addImm((int64_t) Pred)  // predicate condition
+     *    .addReg(PredReg)         // predicate source register (CPSR)
+     *    .addReg(0);              // flag output register (0 == no flags)
+     */
+  }
+}
+
+static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
+  unsigned Opcode = MI.getOpcode();
+  switch (Opcode) {
+  default: return false;
+
+  // Instructions with base address register in position 0...
+  case ARM::STMIA:
+  case ARM::STMDA:
+  case ARM::STMDB:
+  case ARM::STMIB:
+
+  case ARM::VSTMDIA:
+  case ARM::VSTMSIA:
+    *AddrIdx = 0;
+    break;
+
+  // Instructions with base address register in position 1...
+  case ARM::STMIA_UPD: // same reg at position 0 and position 1
+  case ARM::STMDA_UPD:
+  case ARM::STMDB_UPD:
+  case ARM::STMIB_UPD:
+
+  case ARM::STRH:
+  case ARM::STRi12:
+  case ARM::STRrs:
+  case ARM::STRBi12:
+  case ARM::STRBrs:
+  case ARM::VSTMDIA_UPD:
+  case ARM::VSTMDDB_UPD:
+  case ARM::VSTMSIA_UPD:
+  case ARM::VSTMSDB_UPD:
+  case ARM::VSTRS:
+  case ARM::VSTRD:
+    *AddrIdx = 1;
     break;
 
   //
