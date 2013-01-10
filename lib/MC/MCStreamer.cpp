@@ -7,23 +7,24 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/LEB128.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/Twine.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cstdlib>
 using namespace llvm;
 
 MCStreamer::MCStreamer(MCContext &Ctx)
   : Context(Ctx), EmitEHFrame(true), EmitDebugFrame(false),
-    CurrentW64UnwindInfo(0), LastSymbol(0) {
+    CurrentW64UnwindInfo(0), LastSymbol(0),
+    AutoInitSections(false) {
   const MCSection *section = NULL;
   SectionStack.push_back(std::make_pair(section, section));
 }

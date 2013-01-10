@@ -254,7 +254,7 @@ public:
 class NaClMipsAsmBackend : public MipsAsmBackend {
 public:
   NaClMipsAsmBackend(const Target &T, bool _is64Bit)
-    : MipsAsmBackend(T, Triple::NativeClient, /* IsLittle */ true, _is64Bit) {}
+    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {}
 
   unsigned getBundleSize() const {
     return 16;
@@ -300,4 +300,3 @@ MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T, StringRef TT,
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/false, /*Is64Bit*/true);
 }
-

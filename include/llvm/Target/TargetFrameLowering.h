@@ -15,7 +15,6 @@
 #define LLVM_TARGET_TARGETFRAMELOWERING_H
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
-
 #include <utility>
 #include <vector>
 
@@ -48,19 +47,19 @@ private:
   unsigned StackAlignment;
   unsigned TransientStackAlignment;
   int LocalAreaOffset;
-
+  bool StackRealignable;
+  
   // @LOCALMOD-BEGIN
   // TODO(pdox): Refactor this and upstream it, to get rid of the
   // assumption that StackSlotSize == PointerSize.
   unsigned StackSlotSize;
   // @LOCALMOD-END
 public:
-  TargetFrameLowering(StackDirection D,
-                      unsigned StackAl, int LAO,
-                      unsigned TransAl = 1,
+  TargetFrameLowering(StackDirection D, unsigned StackAl, int LAO,
+                      unsigned TransAl = 1, bool StackReal = true,
                       unsigned SlotSize = 0) // @LOCALMOD
     : StackDir(D), StackAlignment(StackAl), TransientStackAlignment(TransAl),
-      LocalAreaOffset(LAO), StackSlotSize(SlotSize) {}
+      LocalAreaOffset(LAO), StackRealignable(StackReal), StackSlotSize(SlotSize) {}
 
   virtual ~TargetFrameLowering();
 
@@ -88,6 +87,12 @@ public:
   ///
   unsigned getTransientStackAlignment() const {
     return TransientStackAlignment;
+  }
+
+  /// isStackRealignable - This method returns whether the stack can be
+  /// realigned.
+  bool isStackRealignable() const {
+    return StackRealignable;
   }
 
   /// getOffsetOfLocalArea - This method returns the offset of the local area

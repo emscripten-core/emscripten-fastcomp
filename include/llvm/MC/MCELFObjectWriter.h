@@ -72,7 +72,7 @@ public:
         // @LOCALMOD-BEGIN
         // This shouldn't be needed anymore (sel_ldr doesn't check for it),
         // but removing it may require some changes in binutils also.
-      case Triple::NativeClient:
+      case Triple::NaCl:
         return ELF::ELFOSABI_NACL;
         // @LOCALMOD-END
       default:

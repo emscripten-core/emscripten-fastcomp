@@ -33,8 +33,6 @@ def SDT_MipsDivRem       : SDTypeProfile<0, 2,
 
 def SDT_MipsThreadPointer : SDTypeProfile<1, 0, [SDTCisPtrTy<0>]>;
 
-def SDT_MipsDynAlloc    : SDTypeProfile<1, 1, [SDTCisVT<0, iPTR>,
-                                               SDTCisSameAs<0, 1>]>;
 def SDT_Sync             : SDTypeProfile<0, 1, [SDTCisVT<0, i32>]>;
 
 def SDT_Ext : SDTypeProfile<1, 3, [SDTCisInt<0>, SDTCisSameAs<0, 1>,
@@ -111,10 +109,6 @@ def MipsDivRemU   : SDNode<"MipsISD::DivRemU", SDT_MipsDivRem,
 
 def MipsWrapper    : SDNode<"MipsISD::Wrapper", SDTIntBinOp>;
 
-// Pointer to dynamically allocated stack area.
-def MipsDynAlloc  : SDNode<"MipsISD::DynAlloc", SDT_MipsDynAlloc,
-                           [SDNPHasChain, SDNPInGlue]>;
-
 def MipsSync : SDNode<"MipsISD::Sync", SDT_Sync, [SDNPHasChain,SDNPSideEffect]>;
 
 def MipsExt :  SDNode<"MipsISD::Ext", SDT_Ext>;
@@ -172,13 +166,13 @@ def RelocPIC    :     Predicate<"TM.getRelocationModel() == Reloc::PIC_">,
                       AssemblerPredicate<"FeatureMips32">;
 def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">,
                       AssemblerPredicate<"FeatureMips32">;
-def HasStandardEncoding : Predicate<"Subtarget.hasStandardEncoding()">,
-                          AssemblerPredicate<"!FeatureMips16">;
+def HasStdEnc :       Predicate<"Subtarget.hasStandardEncoding()">,
+                      AssemblerPredicate<"!FeatureMips16">;
 def IsNaCl       :    Predicate<"Subtarget.isTargetNaCl()">;
 def IsNotNaCl    :    Predicate<"!Subtarget.isTargetNaCl()">;
 
 class MipsPat<dag pattern, dag result> : Pat<pattern, result> {
-  let Predicates = [HasStandardEncoding];
+  let Predicates = [HasStdEnc];
 }
 
 class IsBranch {
@@ -463,9 +457,9 @@ class StoreM<bits<6> op, string instr_asm, PatFrag OpNode, RegisterClass RC,
 multiclass LoadM32<bits<6> op, string instr_asm, PatFrag OpNode,
                    bit Pseudo = 0> {
   def #NAME# : LoadM<op, instr_asm, OpNode, CPURegs, mem, Pseudo>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : LoadM<op, instr_asm, OpNode, CPURegs, mem64, Pseudo>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -475,9 +469,9 @@ multiclass LoadM32<bits<6> op, string instr_asm, PatFrag OpNode,
 multiclass LoadM64<bits<6> op, string instr_asm, PatFrag OpNode,
                    bit Pseudo = 0> {
   def #NAME# : LoadM<op, instr_asm, OpNode, CPU64Regs, mem, Pseudo>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : LoadM<op, instr_asm, OpNode, CPU64Regs, mem64, Pseudo>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -487,9 +481,9 @@ multiclass LoadM64<bits<6> op, string instr_asm, PatFrag OpNode,
 multiclass StoreM32<bits<6> op, string instr_asm, PatFrag OpNode,
                     bit Pseudo = 0> {
   def #NAME# : StoreM<op, instr_asm, OpNode, CPURegs, mem, Pseudo>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : StoreM<op, instr_asm, OpNode, CPURegs, mem64, Pseudo>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -499,9 +493,9 @@ multiclass StoreM32<bits<6> op, string instr_asm, PatFrag OpNode,
 multiclass StoreM64<bits<6> op, string instr_asm, PatFrag OpNode,
                     bit Pseudo = 0> {
   def #NAME# : StoreM<op, instr_asm, OpNode, CPU64Regs, mem, Pseudo>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : StoreM<op, instr_asm, OpNode, CPU64Regs, mem64, Pseudo>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -526,9 +520,9 @@ class StoreLeftRight<bits<6> op, string instr_asm, SDNode OpNode,
 // 32-bit load left/right.
 multiclass LoadLeftRightM32<bits<6> op, string instr_asm, SDNode OpNode> {
   def #NAME# : LoadLeftRight<op, instr_asm, OpNode, CPURegs, mem>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : LoadLeftRight<op, instr_asm, OpNode, CPURegs, mem64>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -537,9 +531,9 @@ multiclass LoadLeftRightM32<bits<6> op, string instr_asm, SDNode OpNode> {
 // 64-bit load left/right.
 multiclass LoadLeftRightM64<bits<6> op, string instr_asm, SDNode OpNode> {
   def #NAME# : LoadLeftRight<op, instr_asm, OpNode, CPU64Regs, mem>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : LoadLeftRight<op, instr_asm, OpNode, CPU64Regs, mem64>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -548,9 +542,9 @@ multiclass LoadLeftRightM64<bits<6> op, string instr_asm, SDNode OpNode> {
 // 32-bit store left/right.
 multiclass StoreLeftRightM32<bits<6> op, string instr_asm, SDNode OpNode> {
   def #NAME# : StoreLeftRight<op, instr_asm, OpNode, CPURegs, mem>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : StoreLeftRight<op, instr_asm, OpNode, CPURegs, mem64>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -559,9 +553,9 @@ multiclass StoreLeftRightM32<bits<6> op, string instr_asm, SDNode OpNode> {
 // 64-bit store left/right.
 multiclass StoreLeftRightM64<bits<6> op, string instr_asm, SDNode OpNode> {
   def #NAME# : StoreLeftRight<op, instr_asm, OpNode, CPU64Regs, mem>,
-               Requires<[NotN64, HasStandardEncoding]>;
+               Requires<[NotN64, HasStdEnc]>;
   def _P8    : StoreLeftRight<op, instr_asm, OpNode, CPU64Regs, mem64>,
-               Requires<[IsN64, HasStandardEncoding]> {
+               Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
   }
@@ -629,7 +623,7 @@ class UncondBranch<bits<6> op, string instr_asm>:
   let isTerminator = 1;
   let isBarrier = 1;
   let hasDelaySlot = 1;
-  let Predicates = [RelocPIC, HasStandardEncoding];
+  let Predicates = [RelocPIC, HasStdEnc];
   let Defs = [AT];
 }
 
@@ -743,7 +737,7 @@ class CountLeading0<bits<6> func, string instr_asm, RegisterClass RC>:
   FR<0x1c, func, (outs RC:$rd), (ins RC:$rs),
      !strconcat(instr_asm, "\t$rd, $rs"),
      [(set RC:$rd, (ctlz RC:$rs))], IIAlu>,
-     Requires<[HasBitCount, HasStandardEncoding]> {
+     Requires<[HasBitCount, HasStdEnc]> {
   let shamt = 0;
   let rt = rd;
 }
@@ -752,7 +746,7 @@ class CountLeading1<bits<6> func, string instr_asm, RegisterClass RC>:
   FR<0x1c, func, (outs RC:$rd), (ins RC:$rs),
      !strconcat(instr_asm, "\t$rd, $rs"),
      [(set RC:$rd, (ctlz (not RC:$rs)))], IIAlu>,
-     Requires<[HasBitCount, HasStandardEncoding]> {
+     Requires<[HasBitCount, HasStdEnc]> {
   let shamt = 0;
   let rt = rd;
 }
@@ -765,7 +759,7 @@ class SignExtInReg<bits<5> sa, string instr_asm, ValueType vt,
      [(set RC:$rd, (sext_inreg RC:$rt, vt))], NoItinerary> {
   let rs = 0;
   let shamt = sa;
-  let Predicates = [HasSEInReg, HasStandardEncoding];
+  let Predicates = [HasSEInReg, HasStdEnc];
 }
 
 // Subword Swap
@@ -774,7 +768,7 @@ class SubwordSwap<bits<6> func, bits<5> sa, string instr_asm, RegisterClass RC>:
      !strconcat(instr_asm, "\t$rd, $rt"), [], NoItinerary> {
   let rs = 0;
   let shamt = sa;
-  let Predicates = [HasSwap, HasStandardEncoding];
+  let Predicates = [HasSwap, HasStdEnc];
   let neverHasSideEffects = 1;
 }
 
@@ -795,7 +789,7 @@ class ExtBase<bits<6> _funct, string instr_asm, RegisterClass RC>:
   bits<5> sz;
   let rd = sz;
   let shamt = pos;
-  let Predicates = [HasMips32r2, HasStandardEncoding];
+  let Predicates = [HasMips32r2, HasStdEnc];
 }
 
 class InsBase<bits<6> _funct, string instr_asm, RegisterClass RC>:
@@ -808,7 +802,7 @@ class InsBase<bits<6> _funct, string instr_asm, RegisterClass RC>:
   bits<5> sz;
   let rd = sz;
   let shamt = pos;
-  let Predicates = [HasMips32r2, HasStandardEncoding];
+  let Predicates = [HasMips32r2, HasStdEnc];
   let Constraints = "$src = $rt";
 }
 
@@ -821,9 +815,9 @@ class Atomic2Ops<PatFrag Op, string Opstr, RegisterClass DRC,
 
 multiclass Atomic2Ops32<PatFrag Op, string Opstr> {
   def #NAME# : Atomic2Ops<Op, Opstr, CPURegs, CPURegs>,
-                          Requires<[NotN64, HasStandardEncoding]>;
+                          Requires<[NotN64, HasStdEnc]>;
   def _P8    : Atomic2Ops<Op, Opstr, CPURegs, CPU64Regs>,
-                          Requires<[IsN64, HasStandardEncoding]> {
+                          Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
   }
 }
@@ -837,9 +831,9 @@ class AtomicCmpSwap<PatFrag Op, string Width, RegisterClass DRC,
 
 multiclass AtomicCmpSwap32<PatFrag Op, string Width>  {
   def #NAME# : AtomicCmpSwap<Op, Width, CPURegs, CPURegs>,
-                             Requires<[NotN64, HasStandardEncoding]>;
+                             Requires<[NotN64, HasStdEnc]>;
   def _P8    : AtomicCmpSwap<Op, Width, CPURegs, CPU64Regs>,
-                             Requires<[IsN64, HasStandardEncoding]> {
+                             Requires<[IsN64, HasStdEnc]> {
     let DecoderNamespace = "Mips64";
   }
 }
@@ -997,7 +991,7 @@ def SRLV    : shift_rotate_reg<0x06, 0x00, "srlv", srl, CPURegs>;
 def SRAV    : shift_rotate_reg<0x07, 0x00, "srav", sra, CPURegs>;
 
 // Rotate Instructions
-let Predicates = [HasMips32r2, HasStandardEncoding] in {
+let Predicates = [HasMips32r2, HasStdEnc] in {
     def ROTR    : shift_rotate_imm32<0x02, 0x01, "rotr", rotr>;
     def ROTRV   : shift_rotate_reg<0x06, 0x01, "rotrv", rotr, CPURegs>;
 }
@@ -1032,22 +1026,22 @@ def SYNC : InstSE<(outs), (ins i32imm:$stype), "sync $stype",
 
 /// Load-linked, Store-conditional
 def LL    : LLBase<0x30, "ll", CPURegs, mem>,
-            Requires<[NotN64, HasStandardEncoding]>;
+            Requires<[NotN64, HasStdEnc]>;
 def LL_P8 : LLBase<0x30, "ll", CPURegs, mem64>,
-            Requires<[IsN64, HasStandardEncoding]> {
+            Requires<[IsN64, HasStdEnc]> {
   let DecoderNamespace = "Mips64";
 }
 
 def SC    : SCBase<0x38, "sc", CPURegs, mem>,
-            Requires<[NotN64, HasStandardEncoding]>;
+            Requires<[NotN64, HasStdEnc]>;
 def SC_P8 : SCBase<0x38, "sc", CPURegs, mem64>,
-            Requires<[IsN64, HasStandardEncoding]> {
+            Requires<[IsN64, HasStdEnc]> {
   let DecoderNamespace = "Mips64";
 }
 
 /// Jump and Branch Instructions
 def J       : JumpFJ<0x02, jmptarget, "j", br, bb>,
-              Requires<[RelocStatic, HasStandardEncoding]>, IsBranch;
+              Requires<[RelocStatic, HasStdEnc]>, IsBranch;
 def JR      : IndirectBranch<CPURegs>;
 def B       : UncondBranch<0x04, "b">;
 def BEQ     : CBranch<0x04, "beq", seteq, CPURegs>;
@@ -1102,12 +1096,6 @@ let addr=0 in
 // can be matched. It's similar to Sparc LEA_ADDRi
 def LEA_ADDiu : EffectiveAddress<0x09,"addiu\t$rt, $addr", CPURegs, mem_ea>;
 
-// DynAlloc node points to dynamically allocated stack space.
-// $sp is added to the list of implicitly used registers to prevent dead code
-// elimination from removing instructions that modify $sp.
-let Uses = [SP] in
-def DynAlloc : EffectiveAddress<0x09,"addiu\t$rt, $addr", CPURegs, mem_ea>;
-
 // MADD*/MSUB*
 def MADD  : MArithR<0, "madd", MipsMAdd, 1>;
 def MADDU : MArithR<1, "maddu", MipsMAddu, 1>;
@@ -1117,7 +1105,7 @@ def MSUBU : MArithR<5, "msubu", MipsMSubu>;
 // MUL is a assembly macro in the current used ISAs. In recent ISA's
 // it is a real instruction.
 def MUL   : ArithLogicR<0x1c, 0x02, "mul", mul, IIImul, CPURegs, 1>,
-            Requires<[HasMips32, HasStandardEncoding]>;
+            Requires<[HasStdEnc]>;
 
 def RDHWR : ReadHardware<CPURegs, HWRegs>;
 
@@ -1230,22 +1218,22 @@ def : MipsPat<(not CPURegs:$in),
               (NOR CPURegs:$in, ZERO)>;
 
 // extended loads
-let Predicates = [NotN64, HasStandardEncoding] in {
+let Predicates = [NotN64, HasStdEnc] in {
   def : MipsPat<(i32 (extloadi1  addr:$src)), (LBu addr:$src)>;
   def : MipsPat<(i32 (extloadi8  addr:$src)), (LBu addr:$src)>;
   def : MipsPat<(i32 (extloadi16 addr:$src)), (LHu addr:$src)>;
 }
-let Predicates = [IsN64, HasStandardEncoding] in {
+let Predicates = [IsN64, HasStdEnc] in {
   def : MipsPat<(i32 (extloadi1  addr:$src)), (LBu_P8 addr:$src)>;
   def : MipsPat<(i32 (extloadi8  addr:$src)), (LBu_P8 addr:$src)>;
   def : MipsPat<(i32 (extloadi16 addr:$src)), (LHu_P8 addr:$src)>;
 }
 
 // peepholes
-let Predicates = [NotN64, HasStandardEncoding] in {
+let Predicates = [NotN64, HasStdEnc] in {
   def : MipsPat<(store (i32 0), addr:$dst), (SW ZERO, addr:$dst)>;
 }
-let Predicates = [IsN64, HasStandardEncoding] in {
+let Predicates = [IsN64, HasStdEnc] in {
   def : MipsPat<(store (i32 0), addr:$dst), (SW_P8 ZERO, addr:$dst)>;
 }
 
@@ -1321,9 +1309,6 @@ defm : SetlePats<CPURegs, SLT, SLTu>;
 defm : SetgtPats<CPURegs, SLT, SLTu>;
 defm : SetgePats<CPURegs, SLT, SLTu>;
 defm : SetgeImmPats<CPURegs, SLTi, SLTiu>;
-
-// select MipsDynAlloc
-def : MipsPat<(MipsDynAlloc addr:$f), (DynAlloc addr:$f)>;
 
 // bswap pattern
 def : MipsPat<(bswap CPURegs:$rt), (ROTR (WSBH CPURegs:$rt), 16)>;

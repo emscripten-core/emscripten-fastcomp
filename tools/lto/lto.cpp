@@ -13,12 +13,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm-c/lto.h"
-#include "llvm-c/Core.h"
-
 #include "llvm/Support/CommandLine.h" // @LOCALMOD
 
-#include "LTOModule.h"
 #include "LTOCodeGenerator.h"
+#include "LTOModule.h"
+#include "llvm-c/Core.h"
 
 
 // Holds most recent error string.

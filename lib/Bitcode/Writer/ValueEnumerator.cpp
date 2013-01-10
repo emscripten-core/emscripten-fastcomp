@@ -12,15 +12,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "ValueEnumerator.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
-#include "llvm/Module.h"
-#include "llvm/ValueSymbolTable.h"
 #include "llvm/Instructions.h"
+#include "llvm/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ValueSymbolTable.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -418,7 +418,7 @@ void ValueEnumerator::EnumerateOperandType(const Value *V) {
     EnumerateMetadata(V);
 }
 
-void ValueEnumerator::EnumerateAttributes(const AttrListPtr &PAL) {
+void ValueEnumerator::EnumerateAttributes(const AttributeSet &PAL) {
   if (PAL.isEmpty()) return;  // null is always 0.
   // Do a lookup.
   unsigned &Entry = AttributeMap[PAL.getRawPointer()];

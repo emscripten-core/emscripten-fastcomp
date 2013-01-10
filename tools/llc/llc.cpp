@@ -14,32 +14,32 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/LLVMContext.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Module.h"
-#include "llvm/PassManager.h"
-#include "llvm/Pass.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"  // @LOCALMOD
-#include "llvm/Support/IRReader.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
+#include "llvm/DataLayout.h"
 #include "llvm/MC/SubtargetFeature.h"
+#include "llvm/Module.h"
+#include "llvm/Pass.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/Host.h"
+#include "llvm/Support/IRReader.h"
 #include "llvm/Support/ManagedStatic.h"
 #if !defined(__native_client__)
 #include "llvm/Support/PluginLoader.h"
 #endif
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
@@ -80,6 +80,10 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
 
+static cl::opt<unsigned>
+TimeCompilations("time-compilations", cl::Hidden, cl::init(1u),
+                 cl::value_desc("N"),
+                 cl::desc("Repeat compilation N times for timing"));
 // @LOCALMOD-BEGIN
 static cl::opt<std::string>
 MetadataTextFilename("metadata-text", cl::desc("Metadata as text, out filename"),
@@ -125,6 +129,8 @@ cl::opt<bool>
 DisableSimplifyLibCalls("disable-simplify-libcalls",
                         cl::desc("Disable simplify-libcalls"),
                         cl::init(false));
+
+static int compileModule(char**, LLVMContext&);
 
 // GetFileNameRoot - Helper function to get the basename of a filename.
 static inline std::string
@@ -210,11 +216,12 @@ void RecordMetadataForSrpc(const Module &mod) {
   bool is_shared = (mod.getOutputFormat() == Module::SharedOutputFormat);
   std::string soname = mod.getSOName();
   NaClRecordObjectInformation(is_shared, soname);
+  /* TEMPORARY LOCALMOD until we put back lib_iterator
   for (Module::lib_iterator L = mod.lib_begin(),
                             E = mod.lib_end();
        L != E; ++L) {
     NaClRecordSharedLibraryDependency(*L);
-  }
+    } */
 }
 #endif  // defined(__native_client__) && defined(NACL_SRPC)
 // @LOCALMOD-END
@@ -287,6 +294,15 @@ int llc_main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "llvm system compiler\n");
 
+  // Compile the module TimeCompilations times to give better compile time
+  // metrics.
+  for (unsigned I = TimeCompilations; I; --I)
+    if (int RetVal = compileModule(argv, Context))
+      return RetVal;
+  return 0;
+}
+
+static int compileModule(char **argv, LLVMContext &Context) {
   // Load the module to be compiled...
   SMDiagnostic Err;
   std::auto_ptr<Module> M;
@@ -352,9 +368,10 @@ int llc_main(int argc, char **argv) {
   }
   // Also set PIC_ for dynamic executables:
   // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
+  /* TEMPORARY LOCALMOD until we put back lib_iterator
   if (mod->lib_size() > 0) {
     RelocModel = Reloc::PIC_;
-  }
+    } */
 #endif  // defined(__native_client__) && defined(NACL_SRPC)
   // @LOCALMOD-END
 

@@ -596,7 +596,7 @@ void UpdateFunctionSignature(Function &F,
   Attributes fattr = F.getAttributes().getFnAttributes();
   if (fattr.hasAttributes())
     new_attributes_vec.push_back(AttributeWithIndex::get(~0, fattr));
-  F.setAttributes(AttrListPtr::get(F.getContext(), new_attributes_vec));
+  F.setAttributes(AttributeSet::get(F.getContext(), new_attributes_vec));
 }
 
 
@@ -805,7 +805,7 @@ void ExtractOperandsAndAttributesFromCallInst(
   std::vector<Value*>& operands,
   std::vector<Attributes>& attributes) {
 
-  AttrListPtr PAL = call->getAttributes();
+  AttributeSet PAL = call->getAttributes();
   // last operand is: function
   for (size_t i = 0; i <  call->getNumOperands() - 1; ++i) {
     operands.push_back(call->getArgOperand(i));
@@ -819,7 +819,7 @@ void ExtractOperandsAndAttributesFromeInvokeInst(
   InvokeInst* call,
   std::vector<Value*>& operands,
   std::vector<Attributes>& attributes) {
-  AttrListPtr PAL = call->getAttributes();
+  AttributeSet PAL = call->getAttributes();
   // last three operands are: function, bb-normal, bb-exception
   for (size_t i = 0; i <  call->getNumOperands() - 3; ++i) {
     operands.push_back(call->getArgOperand(i));

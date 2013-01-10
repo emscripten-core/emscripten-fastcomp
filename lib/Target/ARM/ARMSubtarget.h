@@ -15,9 +15,9 @@
 #define ARMSUBTARGET_H
 
 #include "MCTargetDesc/ARMMCTargetDesc.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
-#include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/MC/MCInstrItineraries.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include <string>
 
 #define GET_SUBTARGETINFO_HEADER
@@ -39,7 +39,7 @@ class StringRef;
 class ARMSubtarget : public ARMGenSubtargetInfo {
 protected:
   enum ARMProcFamilyEnum {
-    Others, CortexA8, CortexA9, CortexA15, Swift
+    Others, CortexA5, CortexA8, CortexA9, CortexA15, Swift
   };
 
   /// ARMProcFamily - ARM processor family: Cortex-A8, Cortex-A9, and others.
@@ -218,6 +218,7 @@ protected:
   bool hasV6T2Ops() const { return HasV6T2Ops; }
   bool hasV7Ops()   const { return HasV7Ops;  }
 
+  bool isCortexA5() const { return ARMProcFamily == CortexA5; }
   bool isCortexA8() const { return ARMProcFamily == CortexA8; }
   bool isCortexA9() const { return ARMProcFamily == CortexA9; }
   bool isCortexA15() const { return ARMProcFamily == CortexA15; }
@@ -256,7 +257,9 @@ protected:
 
   bool isTargetIOS() const { return TargetTriple.getOS() == Triple::IOS; }
   bool isTargetDarwin() const { return TargetTriple.isOSDarwin(); }
-  bool isTargetNaCl() const { return TargetTriple.isOSNaCl(); }  // @LOCALMOD
+  bool isTargetNaCl() const {
+    return TargetTriple.getOS() == Triple::NaCl;
+  }
   bool isTargetELF() const { return !isTargetDarwin(); }
 
   bool isAPCS_ABI() const { return TargetABI == ARM_ABI_APCS; }

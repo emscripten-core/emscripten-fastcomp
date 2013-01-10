@@ -12,18 +12,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Module.h"
-#include "llvm/InstrTypes.h"
+#include "SymbolTableListTraitsImpl.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/GVMaterializer.h"
+#include "llvm/InstrTypes.h"
 #include "llvm/LLVMContext.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LeakDetector.h"
 #include "llvm/Support/ErrorHandling.h" // @LOCALMOD
-#include "SymbolTableListTraitsImpl.h"
 #include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
@@ -56,7 +56,6 @@ Module::~Module() {
   GlobalList.clear();
   FunctionList.clear();
   AliasList.clear();
-  LibraryList.clear();
   NamedMDList.clear();
   delete ValSymTab;
   delete static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab);
@@ -139,7 +138,7 @@ void Module::getMDKindNames(SmallVectorImpl<StringRef> &Result) const {
 //
 Constant *Module::getOrInsertFunction(StringRef Name,
                                       FunctionType *Ty,
-                                      AttrListPtr AttributeList) {
+                                      AttributeSet AttributeList) {
   // See if we have a definition for the specified function already.
   GlobalValue *F = getNamedValue(Name);
   if (F == 0) {
@@ -172,7 +171,7 @@ Constant *Module::getOrInsertFunction(StringRef Name,
 
 Constant *Module::getOrInsertTargetIntrinsic(StringRef Name,
                                              FunctionType *Ty,
-                                             AttrListPtr AttributeList) {
+                                             AttributeSet AttributeList) {
   // See if we have a definition for the specified function already.
   GlobalValue *F = getNamedValue(Name);
   if (F == 0) {
@@ -189,7 +188,7 @@ Constant *Module::getOrInsertTargetIntrinsic(StringRef Name,
 
 Constant *Module::getOrInsertFunction(StringRef Name,
                                       FunctionType *Ty) {
-  return getOrInsertFunction(Name, Ty, AttrListPtr());
+  return getOrInsertFunction(Name, Ty, AttributeSet());
 }
 
 // getOrInsertFunction - Look up the specified function in the module symbol
@@ -198,7 +197,7 @@ Constant *Module::getOrInsertFunction(StringRef Name,
 // arguments, which makes it easier for clients to use.
 //
 Constant *Module::getOrInsertFunction(StringRef Name,
-                                      AttrListPtr AttributeList,
+                                      AttributeSet AttributeList,
                                       Type *RetTy, ...) {
   va_list Args;
   va_start(Args, RetTy);
@@ -231,7 +230,7 @@ Constant *Module::getOrInsertFunction(StringRef Name,
   // Build the function type and chain to the other getOrInsertFunction...
   return getOrInsertFunction(Name,
                              FunctionType::get(RetTy, ArgTys, false),
-                             AttrListPtr());
+                             AttributeSet());
 }
 
 // getFunction - Look up the specified function in the module symbol table.
@@ -452,23 +451,6 @@ void Module::dropAllReferences() {
     I->dropAllReferences();
 }
 
-void Module::addLibrary(StringRef Lib) {
-  for (Module::lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I)
-    if (*I == Lib)
-      return;
-  LibraryList.push_back(Lib);
-}
-
-void Module::removeLibrary(StringRef Lib) {
-  LibraryListType::iterator I = LibraryList.begin();
-  LibraryListType::iterator E = LibraryList.end();
-  for (;I != E; ++I)
-    if (*I == Lib) {
-      LibraryList.erase(I);
-      return;
-    }
-}
-
 
 // @LOCALMOD-BEGIN
 // TODO(pdox):
@@ -577,11 +559,12 @@ Module::dumpMeta(raw_ostream &OS) const {
   }
   OS << "\n";
   OS << "SOName: " << getSOName() << "\n";
+  /* Commented out until we put lib_iterator back
   for (Module::lib_iterator L = lib_begin(),
                             E = lib_end();
        L != E; ++L) {
     OS << "NeedsLibrary: " << (*L) << "\n";
-  }
+    }*/
   std::vector<NeededRecord> NList;
   getNeededRecords(&NList);
   for (unsigned i = 0; i < NList.size(); ++i) {
@@ -639,10 +622,12 @@ static void getNeededRecordFor(const Module *M,
 // Place the complete list of needed records in NeededOut.
 void Module::getNeededRecords(std::vector<NeededRecord> *NeededOut) const {
   // Iterate through the libraries needed, grabbing each NeededRecord.
+  /* commented out until we pub lib_iterator back
   for (lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I) {
     NeededRecord NR;
     getNeededRecordFor(this, *I, &NR);
     NeededOut->push_back(NR);
   }
+  */
 }
 // @LOCALMOD-END

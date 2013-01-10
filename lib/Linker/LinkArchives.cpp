@@ -13,10 +13,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Linker.h"
-#include "llvm/Module.h"
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/Bitcode/Archive.h"
-
+#include "llvm/Module.h"
 #include "llvm/Support/CommandLine.h" // @LOCALMOD
 
 #include <memory>

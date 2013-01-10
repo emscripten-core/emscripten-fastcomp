@@ -12,51 +12,51 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "isel"
-#include "SDNodeDbgValue.h"
 #include "SelectionDAGBuilder.h"
+#include "SDNodeDbgValue.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Constants.h"
 #include "llvm/CallingConv.h"
+#include "llvm/CodeGen/Analysis.h"
+#include "llvm/CodeGen/FastISel.h"
+#include "llvm/CodeGen/FunctionLoweringInfo.h"
+#include "llvm/CodeGen/GCMetadata.h"
+#include "llvm/CodeGen/GCStrategy.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineJumpTableInfo.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/Constants.h"
+#include "llvm/DataLayout.h"
 #include "llvm/DebugInfo.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
 #include "llvm/GlobalVariable.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/Instructions.h"
-#include "llvm/Intrinsics.h"
 #include "llvm/IntrinsicInst.h"
+#include "llvm/Intrinsics.h"
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
-#include "llvm/CodeGen/Analysis.h"
-#include "llvm/CodeGen/FastISel.h"
-#include "llvm/CodeGen/FunctionLoweringInfo.h"
-#include "llvm/CodeGen/GCStrategy.h"
-#include "llvm/CodeGen/GCMetadata.h"
-#include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineJumpTableInfo.h"
-#include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/DataLayout.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/IntegersSubsetMapping.h"
+#include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/IntegersSubsetMapping.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MathExtras.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -769,9 +769,11 @@ void RegsForValue::getCopyToRegs(SDValue Val, SelectionDAG &DAG, DebugLoc dl,
     EVT ValueVT = ValueVTs[Value];
     unsigned NumParts = TLI.getNumRegisters(*DAG.getContext(), ValueVT);
     EVT RegisterVT = RegVTs[Value];
+    ISD::NodeType ExtendKind =
+      TLI.isZExtFree(Val, RegisterVT)? ISD::ZERO_EXTEND: ISD::ANY_EXTEND;
 
     getCopyToParts(DAG, dl, Val.getValue(Val.getResNo() + Value),
-                   &Parts[Part], NumParts, RegisterVT, V);
+                   &Parts[Part], NumParts, RegisterVT, V, ExtendKind);
     Part += NumParts;
   }
 
@@ -5291,11 +5293,6 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
   // Target-dependent constraints are checked within TLI.LowerCallTo.
   if (isTailCall &&
       !isInTailCallPosition(CS, CS.getAttributes().getRetAttributes(), TLI))
-    isTailCall = false;
-
-  // If there's a possibility that fast-isel has already selected some amount
-  // of the current basic block, don't emit a tail call.
-  if (isTailCall && TM.Options.EnableFastISel)
     isTailCall = false;
 
   TargetLowering::

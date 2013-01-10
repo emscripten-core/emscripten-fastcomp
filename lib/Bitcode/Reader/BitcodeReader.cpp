@@ -13,19 +13,19 @@
 
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "BitcodeReader.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/AutoUpgrade.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Module.h"
+#include "llvm/OperandTraits.h"
 #include "llvm/Operator.h"
-#include "llvm/AutoUpgrade.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/OperandTraits.h"
 using namespace llvm;
 
 enum {
@@ -47,7 +47,7 @@ void BitcodeReader::FreeState() {
   ValueList.clear();
   MDValueList.clear();
 
-  std::vector<AttrListPtr>().swap(MAttributes);
+  std::vector<AttributeSet>().swap(MAttributes);
   std::vector<BasicBlock*>().swap(FunctionBBs);
   std::vector<Function*>().swap(FunctionsWithBodies);
   DeferredFunctionInfo.clear();
@@ -487,7 +487,7 @@ bool BitcodeReader::ParseAttributeBlock() {
                                                   Attributes::get(Context, B)));
       }
 
-      MAttributes.push_back(AttrListPtr::get(Context, Attrs));
+      MAttributes.push_back(AttributeSet::get(Context, Attrs));
       Attrs.clear();
       break;
     }
@@ -1573,10 +1573,11 @@ bool BitcodeReader::ParseModule(bool Resume) {
       break;
     }
     case bitc::MODULE_CODE_DEPLIB: {  // DEPLIB: [strchr x N]
+      // FIXME: Remove in 4.0.
       std::string S;
       if (ConvertToString(Record, 0, S))
         return Error("Invalid MODULE_CODE_DEPLIB record");
-      TheModule->addLibrary(S);
+      // Ignore value.
       break;
     }
     case bitc::MODULE_CODE_SECTIONNAME: {  // SECTIONNAME: [strchr x N]
@@ -2052,7 +2053,22 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
                    Opc == Instruction::AShr) {
           if (Record[OpNum] & (1 << bitc::PEO_EXACT))
             cast<BinaryOperator>(I)->setIsExact(true);
+        } else if (isa<FPMathOperator>(I)) {
+          FastMathFlags FMF;
+          if (0 != (Record[OpNum] & FastMathFlags::UnsafeAlgebra))
+            FMF.setUnsafeAlgebra();
+          if (0 != (Record[OpNum] & FastMathFlags::NoNaNs))
+            FMF.setNoNaNs();
+          if (0 != (Record[OpNum] & FastMathFlags::NoInfs))
+            FMF.setNoInfs();
+          if (0 != (Record[OpNum] & FastMathFlags::NoSignedZeros))
+            FMF.setNoSignedZeros();
+          if (0 != (Record[OpNum] & FastMathFlags::AllowReciprocal))
+            FMF.setAllowReciprocal();
+          if (FMF.any())
+            I->setFastMathFlags(FMF);
         }
+
       }
       break;
     }
@@ -2390,7 +2406,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
     case bitc::FUNC_CODE_INST_INVOKE: {
       // INVOKE: [attrs, cc, normBB, unwindBB, fnty, op0,op1,op2, ...]
       if (Record.size() < 4) return Error("Invalid INVOKE record");
-      AttrListPtr PAL = getAttributes(Record[0]);
+      AttributeSet PAL = getAttributes(Record[0]);
       unsigned CCInfo = Record[1];
       BasicBlock *NormalBB = getBasicBlock(Record[2]);
       BasicBlock *UnwindBB = getBasicBlock(Record[3]);
@@ -2655,7 +2671,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
       if (Record.size() < 3)
         return Error("Invalid CALL record");
 
-      AttrListPtr PAL = getAttributes(Record[0]);
+      AttributeSet PAL = getAttributes(Record[0]);
       unsigned CCInfo = Record[1];
 
       unsigned OpNum = 2;

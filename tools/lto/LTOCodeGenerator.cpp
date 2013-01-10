@@ -14,37 +14,37 @@
 
 #include "LTOCodeGenerator.h"
 #include "LTOModule.h"
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Linker.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#include "llvm/PassManager.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/Config/config.h"
+#include "llvm/Constants.h"
+#include "llvm/DataLayout.h"
+#include "llvm/DerivedTypes.h"
+#include "llvm/LLVMContext.h"
+#include "llvm/Linker.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetOptions.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Module.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/Host.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/system_error.h"
-#include "llvm/ADT/StringExtras.h"
+#include "llvm/Target/Mangler.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+#include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 using namespace llvm;
 
 static cl::opt<bool>
@@ -219,7 +219,8 @@ void LTOCodeGenerator::setMergedModuleSOName(const char *soname)
 void LTOCodeGenerator::addLibraryDep(const char *lib)
 {
   Module *mergedModule = _linker.getModule();
-  mergedModule->addLibrary(lib);
+  // TEMPORARY: make it compile until we add back addLibrary
+  //mergedModule->addLibrary(lib);
 }
 
 void LTOCodeGenerator::wrapSymbol(const char *sym)
@@ -490,9 +491,7 @@ void LTOCodeGenerator::applyScopeRestrictions() {
   passes.add(createInternalizePass(mustPreserveList));
 
   // apply scope restrictions
-  passes.doInitialization();
   passes.run(*mergedModule);
-  passes.doFinalization();
 
   _scopeRestrictionsDone = true;
 }
@@ -527,7 +526,8 @@ bool LTOCodeGenerator::generateObjectFile(raw_ostream &out,
   // Enabling internalize here would use its AllButMain variant. It
   // keeps only main if it exists and does nothing for libraries. Instead
   // we create the pass ourselves with the symbol list provided by the linker.
-  PassManagerBuilder().populateLTOPassManager(passes, /*Internalize=*/false,
+  PassManagerBuilder().populateLTOPassManager(passes,
+                                              /*Internalize=*/false,
                                               !DisableInline,
                                               DisableGVNLoadPRE);
 
@@ -547,9 +547,7 @@ bool LTOCodeGenerator::generateObjectFile(raw_ostream &out,
   }
 
   // Run our queue of passes all at once now, efficiently.
-  passes.doInitialization();
   passes.run(*mergedModule);
-  passes.doFinalization();
 
   // Run the code generator, and write assembly file
   codeGenPasses->doInitialization();

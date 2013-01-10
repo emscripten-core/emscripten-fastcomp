@@ -181,7 +181,6 @@ bool X86NaClRewriteFinalPass::ApplyCommonRewrites(MachineBasicBlock &MBB,
   case X86::NACL_RESTBPr:
   case X86::NACL_RESTSPm:
   case X86::NACL_RESTSPr:
-    dbgs() << "inst, opcode not handled: " << MI << Opcode;
     assert(false && "NaCl Pseudo-inst not handled");
   case X86::NACL_RET32:
   case X86::NACL_RET64:
@@ -200,8 +199,6 @@ bool X86NaClRewriteFinalPass::runOnMachineFunction(MachineFunction &MF) {
   assert(subtarget->isTargetNaCl() && "Target in NaClRewriteFinal is not NaCl");
 
   DEBUG(dbgs() << "*************** NaCl Rewrite Final ***************\n");
-  DEBUG(dbgs() << " funcnum " << MF.getFunctionNumber() << " "
-               << MF.getFunction()->getName() << "\n");
 
   for (MachineFunction::iterator MFI = MF.begin(), E = MF.end(); 
        MFI != E; ++MFI) {
