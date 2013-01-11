@@ -162,8 +162,7 @@ void TransferLibrariesNeeded(Module *M, const ObjectFile *obj) {
     StringRef path;
     it->getPath(path);
     outs() << "Adding library " << path << "\n";
-    // TEMPORARY LOCALMOD
-    // make it compile until we add back addLibrary M->addLibrary(path);
+    M->addLibrary(path);
   }
 }
 

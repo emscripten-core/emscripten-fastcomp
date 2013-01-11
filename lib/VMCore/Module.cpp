@@ -56,6 +56,7 @@ Module::~Module() {
   GlobalList.clear();
   FunctionList.clear();
   AliasList.clear();
+  LibraryList.clear(); // @LOCALMOD
   NamedMDList.clear();
   delete ValSymTab;
   delete static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab);
@@ -451,12 +452,59 @@ void Module::dropAllReferences() {
     I->dropAllReferences();
 }
 
-
 // @LOCALMOD-BEGIN
-// TODO(pdox):
-// If possible, use actual bitcode records instead of NamedMetadata.
-// This is contingent upon whether we can get these changes upstreamed
-// immediately, to avoid creating incompatibilities in the bitcode format.
+void Module::convertMetadataToLibraryList() {
+  LibraryList.clear();
+  // Get the DepLib node
+  NamedMDNode *Node = getNamedMetadata("DepLibs");
+  if (!Node)
+    return;
+  for (unsigned i = 0; i < Node->getNumOperands(); i++) {
+    MDString* Mds = dyn_cast_or_null<MDString>(
+        Node->getOperand(i)->getOperand(0));
+    assert(Mds && "Bad NamedMetadata operand");
+    LibraryList.push_back(Mds->getString());
+  }
+  // Clear the metadata so the linker won't try to merge it
+  Node->dropAllReferences();
+}
+
+void Module::convertLibraryListToMetadata() const {
+  if (LibraryList.size() == 0)
+    return;
+  // Get the DepLib node
+  NamedMDNode *Node = getNamedMetadata("DepLibs");
+  assert(Node && "DepLibs metadata node missing");
+  // Erase all existing operands
+  Node->dropAllReferences();
+  // Add all libraries from the library list
+  for (Module::lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I) {
+    MDString *value = MDString::get(getContext(), *I);
+    Node->addOperand(MDNode::get(getContext(),
+                                 makeArrayRef(static_cast<Value*>(value))));
+  }
+}
+
+void Module::addLibrary(StringRef Lib) {
+  for (Module::lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I)
+    if (*I == Lib)
+      return;
+  LibraryList.push_back(Lib);
+  // If the module previously had no deplibs, it may not have the metadata node.
+  // Ensure it exists now, so that we don't have to create it in
+  // convertLibraryListToMetadata (which is const)
+  getOrInsertNamedMetadata("DepLibs");
+}
+
+void Module::removeLibrary(StringRef Lib) {
+  LibraryListType::iterator I = LibraryList.begin();
+  LibraryListType::iterator E = LibraryList.end();
+  for (;I != E; ++I)
+    if (*I == Lib) {
+      LibraryList.erase(I);
+      return;
+    }
+}
 
 static std::string
 ModuleMetaGet(const Module *module, StringRef MetaName) {
@@ -559,12 +607,11 @@ Module::dumpMeta(raw_ostream &OS) const {
   }
   OS << "\n";
   OS << "SOName: " << getSOName() << "\n";
-  /* Commented out until we put lib_iterator back
   for (Module::lib_iterator L = lib_begin(),
                             E = lib_end();
        L != E; ++L) {
     OS << "NeedsLibrary: " << (*L) << "\n";
-    }*/
+  }
   std::vector<NeededRecord> NList;
   getNeededRecords(&NList);
   for (unsigned i = 0; i < NList.size(); ++i) {
@@ -622,12 +669,10 @@ static void getNeededRecordFor(const Module *M,
 // Place the complete list of needed records in NeededOut.
 void Module::getNeededRecords(std::vector<NeededRecord> *NeededOut) const {
   // Iterate through the libraries needed, grabbing each NeededRecord.
-  /* commented out until we pub lib_iterator back
   for (lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I) {
     NeededRecord NR;
     getNeededRecordFor(this, *I, &NR);
     NeededOut->push_back(NR);
   }
-  */
 }
 // @LOCALMOD-END

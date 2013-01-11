@@ -2999,6 +2999,8 @@ Module *llvm::getLazyBitcodeModule(MemoryBuffer *Buffer,
 
   R->materializeForwardReferencedFunctions();
 
+  M->convertMetadataToLibraryList(); // @LOCALMOD
+
   return M;
 }
 
@@ -3019,6 +3021,8 @@ Module *llvm::getStreamedBitcodeModule(const std::string &name,
   R->setBufferOwned(false); // no buffer to delete
 
   R->materializeForwardReferencedFunctions();
+
+  M->convertMetadataToLibraryList(); // @LOCALMOD
 
   return M;
 }

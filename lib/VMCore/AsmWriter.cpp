@@ -2073,6 +2073,7 @@ void Module::print(raw_ostream &ROS, AssemblyAnnotationWriter *AAW) const {
   SlotTracker SlotTable(this);
   formatted_raw_ostream OS(ROS);
   AssemblyWriter W(OS, SlotTable, this, AAW);
+  convertLibraryListToMetadata(); // @LOCALMOD
   W.printModule(this);
 }
 

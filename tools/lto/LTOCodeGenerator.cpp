@@ -219,8 +219,7 @@ void LTOCodeGenerator::setMergedModuleSOName(const char *soname)
 void LTOCodeGenerator::addLibraryDep(const char *lib)
 {
   Module *mergedModule = _linker.getModule();
-  // TEMPORARY: make it compile until we add back addLibrary
-  //mergedModule->addLibrary(lib);
+  mergedModule->addLibrary(lib);
 }
 
 void LTOCodeGenerator::wrapSymbol(const char *sym)

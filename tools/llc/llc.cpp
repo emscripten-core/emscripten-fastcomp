@@ -216,12 +216,11 @@ void RecordMetadataForSrpc(const Module &mod) {
   bool is_shared = (mod.getOutputFormat() == Module::SharedOutputFormat);
   std::string soname = mod.getSOName();
   NaClRecordObjectInformation(is_shared, soname);
-  /* TEMPORARY LOCALMOD until we put back lib_iterator
   for (Module::lib_iterator L = mod.lib_begin(),
                             E = mod.lib_end();
        L != E; ++L) {
     NaClRecordSharedLibraryDependency(*L);
-    } */
+  }
 }
 #endif  // defined(__native_client__) && defined(NACL_SRPC)
 // @LOCALMOD-END
@@ -368,10 +367,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   }
   // Also set PIC_ for dynamic executables:
   // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
-  /* TEMPORARY LOCALMOD until we put back lib_iterator
   if (mod->lib_size() > 0) {
     RelocModel = Reloc::PIC_;
-    } */
+  }
 #endif  // defined(__native_client__) && defined(NACL_SRPC)
   // @LOCALMOD-END
 
