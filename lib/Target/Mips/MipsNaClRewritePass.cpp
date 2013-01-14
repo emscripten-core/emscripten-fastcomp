@@ -209,9 +209,12 @@ bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
     break;
   }
 
-  if (MI.getOperand(*AddrIdx).getReg() == Mips::SP) {
-    // The contents of SP do not require masking.
-    return false;
+  switch (MI.getOperand(*AddrIdx).getReg()) {
+    default: break;
+    // The contents of SP and thread pointer register do not require masking.
+    case Mips::SP:
+    case Mips::T8:
+      return false;
   }
 
   return true;
@@ -238,9 +241,12 @@ bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
     break;
   }
 
-  if (MI.getOperand(*AddrIdx).getReg() == Mips::SP) {
-    // The contents of SP do not require masking.
-    return false;
+  switch (MI.getOperand(*AddrIdx).getReg()) {
+    default: break;
+    // The contents of SP and thread pointer register do not require masking.
+    case Mips::SP:
+    case Mips::T8:
+      return false;
   }
 
   return true;
