@@ -40,8 +40,8 @@ using std::string;
 using std::map;
 
 #define printerr(...)  fprintf(stderr, __VA_ARGS__)
-// Temporarily enabling debug prints to debug temp-file usage on windows bots.
-#define printdbg(...)  fprintf(stderr, __VA_ARGS__)
+// printdbg is currently disabled to reduce spew.
+#define printdbg(...)
 
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 
