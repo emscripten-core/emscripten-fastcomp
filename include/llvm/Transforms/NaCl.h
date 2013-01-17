@@ -12,11 +12,14 @@
 
 namespace llvm {
 
+class FunctionPass;
 class ModulePass;
 
 ModulePass *createExpandCtorsPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
+FunctionPass *createPNaClABIVerifyFunctionsPass();
+ModulePass *createPNaClABIVerifyModulePass();
 
 }
 

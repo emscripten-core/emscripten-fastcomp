@@ -1,4 +1,4 @@
-##===- lib/Analysis/Makefile -------------------------------*- Makefile -*-===##
+##===- lib/Analysis/NaCl/Makefile-------------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,10 +7,8 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../..
-LIBRARYNAME = LLVMAnalysis
-DIRS = IPA NaCl
+LEVEL = ../../..
+LIBRARYNAME = LLVMAnalysisNaCl
 BUILD_ARCHIVE = 1
 
 include $(LEVEL)/Makefile.common
-
