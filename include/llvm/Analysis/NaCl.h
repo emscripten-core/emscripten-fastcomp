@@ -1,4 +1,4 @@
-//===-- NaCl.h - NaCl Transformations ---------------------------*- C++ -*-===//
+//===-- NaCl.h - NaCl Analysis ---------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,16 +7,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TRANSFORMS_NACL_H
-#define LLVM_TRANSFORMS_NACL_H
+#ifndef LLVM_ANALYSIS_NACL_H
+#define LLVM_ANALYSIS_NACL_H
 
 namespace llvm {
 
+class FunctionPass;
 class ModulePass;
 
-ModulePass *createExpandCtorsPass();
-ModulePass *createExpandTlsPass();
-ModulePass *createExpandTlsConstantExprPass();
+FunctionPass *createPNaClABIVerifyFunctionsPass();
+ModulePass *createPNaClABIVerifyModulePass();
 
 }
 

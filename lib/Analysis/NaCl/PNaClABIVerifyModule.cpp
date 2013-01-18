@@ -17,7 +17,7 @@
 #include "llvm/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/NaCl.h"
+#include "llvm/Analysis/NaCl.h"
 using namespace llvm;
 
 namespace {
@@ -27,6 +27,11 @@ struct PNaClABIVerifyModule : public ModulePass {
   static char ID;
   PNaClABIVerifyModule() : ModulePass(ID) {}
   bool runOnModule(Module &M);
+  // For now, this print method exists to allow us to run the pass with
+  // opt -analyze to avoid dumping the result to stdout, to make testing
+  // simpler. In the future we will probably want to make it do something
+  // useful.
+  virtual void print(llvm::raw_ostream &O, const Module *M) const {};
 };
 
 static const char* LinkageName(GlobalValue::LinkageTypes LT) {
@@ -69,7 +74,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
         break;
       default:
         errs() << (Twine("Variable ") + MI->getName() +
-            " has Disallowed linkage type: " +
+            " has disallowed linkage type: " +
                 LinkageName(MI->getLinkage()) + "\n");
     }
   }
@@ -78,7 +83,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
 
 char PNaClABIVerifyModule::ID = 0;
 
-static RegisterPass<PNaClABIVerifyModule> X("pnaclabi-module",
+static RegisterPass<PNaClABIVerifyModule> X("verify-pnaclabi-module",
     "Verify module for PNaCl", false, false);
 
 ModulePass *llvm::createPNaClABIVerifyModulePass() {

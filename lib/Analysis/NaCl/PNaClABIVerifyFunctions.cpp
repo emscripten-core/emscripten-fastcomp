@@ -17,7 +17,7 @@
 #include "llvm/Instruction.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/NaCl.h"
+#include "llvm/Analysis/NaCl.h"
 using namespace llvm;
 
 namespace {
@@ -28,6 +28,11 @@ struct PNaClABIVerifyFunctions : public FunctionPass {
   static char ID;
   PNaClABIVerifyFunctions() : FunctionPass(ID) {}
   bool runOnFunction(Function &F);
+  // For now, this print method exists to allow us to run the pass with
+  // opt -analyze to avoid dumping the result to stdout, to make testing
+  // simpler. In the future we will probably want to make it do something
+  // useful.
+  virtual void print(llvm::raw_ostream &O, const Module *M) const {};
 };
 } // and anonymous namespace
 
@@ -47,8 +52,8 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
           // invoke and call are handled separately.
           break;
         default:
-          errs() << Twine("Function ") + FI->getName() +
-              " has Disallowed instruction: " +
+          errs() << Twine("Function ") + F.getName() +
+              " has disallowed instruction: " +
               BBI->getOpcodeName() + "\n";
       }
     }
@@ -58,7 +63,7 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
 
 char PNaClABIVerifyFunctions::ID = 0;
 
-static RegisterPass<PNaClABIVerifyFunctions> X("pnaclabi-functions",
+static RegisterPass<PNaClABIVerifyFunctions> X("verify-pnaclabi-functions",
     "Verify functions for PNaCl", false, false);
 
 FunctionPass *llvm::createPNaClABIVerifyFunctionsPass() {
