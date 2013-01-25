@@ -24,7 +24,7 @@ def CheckGitBranch():
       warning = 'Warning: your current branch:\n' + line
       warning += '\nis not tracking origin/master. git cl push may silently '
       warning += 'fail to push your change. To fix this, do\n'
-      warning += 'git branch --set-upstream '+ toks[1] + ' origin/master'
+      warning += 'git branch -u origin/master'
       return warning
     return None
   print 'Warning: presubmit check could not determine local git branch'
