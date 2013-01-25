@@ -14,10 +14,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/Twine.h"
+#include "llvm/DerivedTypes.h"
 #include "llvm/Module.h"
 #include "llvm/Pass.h"
+
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/NaCl.h"
+
+#include "CheckTypes.h"
 using namespace llvm;
 
 namespace {
@@ -32,6 +36,10 @@ struct PNaClABIVerifyModule : public ModulePass {
   // simpler. In the future we will probably want to make it do something
   // useful.
   virtual void print(llvm::raw_ostream &O, const Module *M) const {};
+ private:
+  // Ideally this would share an instance with the Function pass.
+  // TODO: see if that's feasible when we add checking in bodies
+  TypeChecker TC;
 };
 
 static const char* LinkageName(GlobalValue::LinkageTypes LT) {
@@ -63,10 +71,26 @@ static const char* LinkageName(GlobalValue::LinkageTypes LT) {
 } // end anonymous namespace
 
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
-  // Check GV linkage types
+
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
-    switch(MI->getLinkage()) {
+    // Check types of global variables and their initializers
+    if (!TC.IsValidType(MI->getType())) {
+      errs() << (Twine("Variable ") + MI->getName() +
+                 " has disallowed type: ");
+      // GVs are pointers, so print the pointed-to type for clarity
+      MI->getType()->getContainedType(0)->print(errs());
+      errs() << "\n";
+    } else if (MI->hasInitializer() &&
+               !TC.CheckTypesInValue(MI->getInitializer())) {
+      errs() << (Twine("Initializer for ") + MI->getName() +
+                 " has disallowed type: ");
+      MI->getInitializer()->print(errs());
+      errs() << "\n";
+    }
+
+    // Check GV linkage types
+    switch (MI->getLinkage()) {
       case GlobalValue::ExternalLinkage:
       case GlobalValue::AvailableExternallyLinkage:
       case GlobalValue::InternalLinkage:
@@ -78,6 +102,12 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
                 LinkageName(MI->getLinkage()) + "\n");
     }
   }
+  // No aliases allowed for now.
+  for (Module::alias_iterator MI = M.alias_begin(),
+           E = M.alias_end(); MI != E; ++MI)
+    errs() << (Twine("Variable ") + MI->getName() +
+               " is an alias (disallowed)\n");
+
   return false;
 }
 
