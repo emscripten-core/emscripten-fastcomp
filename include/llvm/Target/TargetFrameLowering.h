@@ -48,18 +48,11 @@ private:
   unsigned TransientStackAlignment;
   int LocalAreaOffset;
   bool StackRealignable;
-  
-  // @LOCALMOD-BEGIN
-  // TODO(pdox): Refactor this and upstream it, to get rid of the
-  // assumption that StackSlotSize == PointerSize.
-  unsigned StackSlotSize;
-  // @LOCALMOD-END
 public:
   TargetFrameLowering(StackDirection D, unsigned StackAl, int LAO,
-                      unsigned TransAl = 1, bool StackReal = true,
-                      unsigned SlotSize = 0) // @LOCALMOD
+                      unsigned TransAl = 1, bool StackReal = true)
     : StackDir(D), StackAlignment(StackAl), TransientStackAlignment(TransAl),
-      LocalAreaOffset(LAO), StackRealignable(StackReal), StackSlotSize(SlotSize) {}
+      LocalAreaOffset(LAO), StackRealignable(StackReal) {}
 
   virtual ~TargetFrameLowering();
 
@@ -69,11 +62,6 @@ public:
   /// getStackGrowthDirection - Return the direction the stack grows
   ///
   StackDirection getStackGrowthDirection() const { return StackDir; }
-
-  // @LOCALMOD-BEGIN
-  /// getStackSlotSize - Return the size of a stack slot
-  unsigned getStackSlotSize() const { return StackSlotSize; }
-  // @LOCALMOD-END
 
   /// getStackAlignment - This method returns the number of bytes to which the
   /// stack pointer must be aligned on entry to a function.  Typically, this
