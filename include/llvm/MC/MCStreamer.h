@@ -92,6 +92,10 @@ namespace llvm {
   public:
     virtual ~MCStreamer();
 
+    /// State management
+    ///
+    virtual void reset();
+
     MCContext &getContext() const { return Context; }
 
     unsigned getNumFrameInfos() {
@@ -230,6 +234,9 @@ namespace llvm {
     /// InitSections - Create the default sections and set the initial one.
     virtual void InitSections() = 0;
 
+    /// InitToTextSection - Create a text section and switch the streamer to it.
+    virtual void InitToTextSection() = 0;
+
     /// EmitLabel - Emit a label for @p Symbol into the current section.
     ///
     /// This corresponds to an assembler statement such as:
@@ -239,6 +246,8 @@ namespace llvm {
     /// emitted as a label once, and symbols emitted as a label should never be
     /// used in an assignment.
     virtual void EmitLabel(MCSymbol *Symbol);
+
+    virtual void EmitDebugLabel(MCSymbol *Symbol);
 
     virtual void EmitEHSymAttributes(const MCSymbol *Symbol,
                                      MCSymbol *EHSymbol);
@@ -360,7 +369,7 @@ namespace llvm {
     ///
     /// This is used to implement assembler directives such as .byte, .ascii,
     /// etc.
-    virtual void EmitBytes(StringRef Data, unsigned AddrSpace) = 0;
+    virtual void EmitBytes(StringRef Data, unsigned AddrSpace = 0) = 0;
 
     /// EmitValue - Emit the expression @p Value into the output as a native
     /// integer of the given @p Size bytes.
@@ -394,8 +403,8 @@ namespace llvm {
 
     /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.
-    void EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace = 0,
-                             unsigned Padding = 0);
+    void EmitULEB128IntValue(uint64_t Value, unsigned Padding = 0,
+			     unsigned AddrSpace = 0);
 
     /// EmitSLEB128Value - Special case of EmitSLEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.
@@ -423,14 +432,13 @@ namespace llvm {
     /// EmitFill - Emit NumBytes bytes worth of the value specified by
     /// FillValue.  This implements directives such as '.space'.
     virtual void EmitFill(uint64_t NumBytes, uint8_t FillValue,
-                          unsigned AddrSpace);
+                          unsigned AddrSpace = 0);
 
     /// EmitZeros - Emit NumBytes worth of zeros.  This is a convenience
     /// function that just wraps EmitFill.
-    void EmitZeros(uint64_t NumBytes, unsigned AddrSpace) {
+    void EmitZeros(uint64_t NumBytes, unsigned AddrSpace = 0) {
       EmitFill(NumBytes, 0, AddrSpace);
     }
-
 
     /// EmitValueToAlignment - Emit some number of copies of @p Value until
     /// the byte alignment @p ByteAlignment is reached.
@@ -480,27 +488,6 @@ namespace llvm {
                                    unsigned char Value = 0) = 0;
 
     /// @}
-
-    // @LOCALMOD-BEGIN
-    /// @name Bundling Directives
-    /// @{
-
-    /// EmitBundleLock - Begin a group of instructions which cannot
-    /// cross a bundle boundary.
-    virtual void EmitBundleLock() = 0;
-
-    /// EmitBundleUnlock - End a bundle-locked group of instructions.
-    virtual void EmitBundleUnlock() = 0;
-
-    /// EmitBundleAlignStart - Guarantee that the next instruction or
-    /// bundle-locked group starts at the beginning of a bundle.
-    virtual void EmitBundleAlignStart() = 0;
-
-    /// EmitBundleAlignEnd - Guarantee that the next instruction or
-    /// bundle-locked group finishes at the end of a bundle.
-    virtual void EmitBundleAlignEnd() = 0;
-    /// @}
-    // @LOCALMOD-END
 
     /// EmitFileDirective - Switch to a new logical file.  This is used to
     /// implement the '.file "foo.c"' assembler directive.
@@ -571,6 +558,20 @@ namespace llvm {
     /// EmitInstruction - Emit the given @p Instruction into the current
     /// section.
     virtual void EmitInstruction(const MCInst &Inst) = 0;
+
+    /// \brief Set the bundle alignment mode from now on in the section.
+    /// The argument is the power of 2 to which the alignment is set. The
+    /// value 0 means turn the bundle alignment off.
+    virtual void EmitBundleAlignMode(unsigned AlignPow2) = 0;
+
+    /// \brief The following instructions are a bundle-locked group.
+    ///
+    /// \param AlignToEnd - If true, the bundle-locked group will be aligned to
+    ///                     the end of a bundle.
+    virtual void EmitBundleLock(bool AlignToEnd) = 0;
+
+    /// \brief Ends a bundle-locked group.
+    virtual void EmitBundleUnlock() = 0;
 
     /// EmitRawText - If this file is backed by a assembly streamer, this dumps
     /// the specified string in the output .s file.  This capability is

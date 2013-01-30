@@ -15,17 +15,17 @@
 #include "CPPTargetMachine.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/CallingConv.h"
 #include "llvm/Config/config.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Instruction.h"
-#include "llvm/Instructions.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
@@ -479,9 +479,9 @@ void CppWriter::printAttributes(const AttributeSet &PAL,
       Out << " {\n    AttrBuilder B;\n";
 
 #define HANDLE_ATTR(X)                                     \
-      if (attrs.hasAttribute(Attributes::X))               \
-        Out << "    B.addAttribute(Attributes::" #X ");\n"; \
-      attrs.removeAttribute(Attributes::X);
+      if (attrs.contains(Attribute::X))                    \
+        Out << "    B.addAttribute(Attribute::" #X ");\n"; \
+      attrs.removeAttribute(Attribute::X);
 
       HANDLE_ATTR(SExt);
       HANDLE_ATTR(ZExt);
@@ -509,11 +509,11 @@ void CppWriter::printAttributes(const AttributeSet &PAL,
       HANDLE_ATTR(NonLazyBind);
       HANDLE_ATTR(MinSize);
 #undef HANDLE_ATTR
-      if (attrs.hasAttribute(Attributes::StackAlignment))
+      if (attrs.contains(Attribute::StackAlignment))
         Out << "    B.addStackAlignmentAttr(" << attrs.getStackAlignment() << ")\n";
-      attrs.removeAttribute(Attributes::StackAlignment);
+      attrs.removeAttribute(Attribute::StackAlignment);
       assert(!attrs.hasAttributes() && "Unhandled attribute!");
-      Out << "    PAWI.Attrs = Attributes::get(mod->getContext(), B);\n }";
+      Out << "    PAWI.Attrs = Attribute::get(mod->getContext(), B);\n }";
       nl(Out);
       Out << "Attrs.push_back(PAWI);";
       nl(Out);

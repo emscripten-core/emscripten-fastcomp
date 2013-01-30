@@ -57,12 +57,16 @@ class FEXT_I16_ins<bits<5> eop, string asmstr, InstrItinClass itin> :
 
 class FEXT_I816_ins_base<bits<3> _func, string asmstr,
                          string asmstr2, InstrItinClass itin>:
-  FEXT_I816<_func, (outs), (ins uimm16:$imm), !strconcat(asmstr, asmstr2),
+  FEXT_I816<_func, (outs), (ins simm16:$imm), !strconcat(asmstr, asmstr2),
             [], itin>;
 
 class FEXT_I816_ins<bits<3> _func, string asmstr,
                     InstrItinClass itin>:
   FEXT_I816_ins_base<_func, asmstr, "\t$imm", itin>;
+
+class FEXT_I816_SP_ins<bits<3> _func, string asmstr,
+                       InstrItinClass itin>:
+      FEXT_I816_ins_base<_func, asmstr, "\t$$sp, $imm", itin>;
 
 //
 // Assembler formats in alphabetical order.
@@ -352,6 +356,18 @@ class SelT<bits<5> f1, string op1, bits<5> f2, string op2,
   let Constraints = "$rd = $rd_";
 }
 
+//
+// 32 bit constant
+//
+def imm32: Operand<i32>;
+
+def Constant32:
+  MipsPseudo16<(outs), (ins imm32:$imm), "\t.word $imm", []>;
+  
+def LwConstant32:
+  MipsPseudo16<(outs), (ins CPU16Regs:$rx, imm32:$imm),
+    "lw\t$rx, 1f\n\tb\t2f\n\t.align\t2\n1: \t.word\t$imm\n2:", []>;
+
 
 //
 // Some general instruction class info
@@ -404,6 +420,18 @@ def AddiuRxRyOffMemX16:
 // To add a constant to the program counter.
 //
 def AddiuRxPcImmX16: FEXT_RI16_PC_ins<0b00001, "addiu", IIAlu>;
+
+//
+// Format: ADDIU sp, immediate MIPS16e
+// Purpose: Add Immediate Unsigned Word (2-Operand, SP-Relative, Extended)
+// To add a constant to the stack pointer.
+//
+def AddiuSpImmX16
+  : FEXT_I816_SP_ins<0b011, "addiu", IIAlu> {
+  let Defs = [SP];
+  let Uses = [SP];
+}   
+
 //
 // Format: ADDU rz, rx, ry MIPS16e
 // Purpose: Add Unsigned Word (3-Operand)
@@ -576,7 +604,9 @@ def LwRxRyOffMemX16: FEXT_RRI16_mem_ins<0b10011, "lw", mem16, IILoad>, MayLoad;
 // Purpose: Load Word (SP-Relative, Extended)
 // To load an SP-relative word from memory as a signed value.
 //
-def LwRxSpImmX16: FEXT_RI16_SP_explicit_ins<0b10110, "lw", IILoad>, MayLoad;
+def LwRxSpImmX16: FEXT_RI16_SP_explicit_ins<0b10110, "lw", IILoad>, MayLoad{
+  let Uses = [SP];
+}
 
 //
 // Format: MOVE r32, rz MIPS16e
@@ -688,6 +718,8 @@ def RestoreRaF16:
   FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
              "restore\t$$ra,  $$s0, $$s1, $frame_size", [], IILoad >, MayLoad {
   let isCodeGenOnly = 1;
+  let Defs = [S0, S1, RA, SP];
+  let Uses = [SP];
 }
 
 // Use Restore to increment SP since SP is not a Mip 16 register, this
@@ -698,6 +730,8 @@ def RestoreIncSpF16:
   FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
              "restore\t$frame_size", [], IILoad >, MayLoad {
   let isCodeGenOnly = 1;
+  let Defs = [SP];
+  let Uses = [SP];
 }
 
 //
@@ -712,6 +746,8 @@ def SaveRaF16:
   FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
              "save\t$$ra, $$s0, $$s1, $frame_size", [], IIStore >, MayStore {
   let isCodeGenOnly = 1;
+  let Uses = [RA, SP, S0, S1];
+  let Defs = [SP];
 }
 
 //
@@ -723,6 +759,8 @@ def SaveDecSpF16:
   FI8_SVRS16<0b1, (outs), (ins uimm16:$frame_size),
              "save\t$frame_size", [], IIStore >, MayStore {
   let isCodeGenOnly = 1;
+  let Uses = [SP];
+  let Defs = [SP];
 }
 //
 // Format: SB ry, offset(rx) MIPS16e

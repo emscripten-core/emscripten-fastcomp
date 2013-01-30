@@ -134,7 +134,7 @@ private:  // Parser methods.
   Record *InstantiateMulticlassDef(MultiClass &MC,
                                    Record *DefProto,
                                    Init *DefmPrefix,
-                                   SMLoc DefmPrefixLoc);
+                                   SMRange DefmPrefixRange);
   bool ResolveMulticlassDefArgs(MultiClass &MC,
                                 Record *DefProto,
                                 SMLoc DefmPrefixLoc,
@@ -183,7 +183,7 @@ private:  // Parser methods.
   Init *ParseObjectName(MultiClass *CurMultiClass);
   Record *ParseClassID();
   MultiClass *ParseMultiClassID();
-  Record *ParseDefmID();
+  bool ApplyLetStack(Record *CurRec);
 };
 
 } // end namespace llvm

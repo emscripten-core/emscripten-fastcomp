@@ -157,11 +157,18 @@ static cl::opt<bool>
 GenDwarfForAssembly("g", cl::desc("Generate dwarf debugging info for assembly "
                                   "source files"));
 
+static cl::opt<std::string>
+DebugCompilationDir("fdebug-compilation-dir",
+                    cl::desc("Specifies the debug info's compilation dir"));
+
+static cl::opt<std::string>
+MainFileName("main-file-name",
+             cl::desc("Specifies the name we should consider the input file"));
+
 enum ActionType {
   AC_AsLex,
   AC_Assemble,
   AC_Disassemble,
-  AC_EDisassemble,
   AC_MDisassemble,
   AC_HDisassemble
 };
@@ -175,8 +182,6 @@ Action(cl::desc("Action to perform:"),
                              "Assemble a .s file (default)"),
                   clEnumValN(AC_Disassemble, "disassemble",
                              "Disassemble strings of hex bytes"),
-                  clEnumValN(AC_EDisassemble, "edis",
-                             "Enhanced disassembly of strings of hex bytes"),
                   clEnumValN(AC_MDisassemble, "mdis",
                              "Marked up disassembly of strings of hex bytes"),
                   clEnumValN(AC_HDisassemble, "hdis",
@@ -257,9 +262,6 @@ static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI, tool_output_file *Out) 
       break;
     case AsmToken::Real:
       Out->os() << "real: " << Lexer.getTok().getString();
-      break;
-    case AsmToken::Register:
-      Out->os() << "register: " << Lexer.getTok().getRegVal();
       break;
     case AsmToken::String:
       Out->os() << "string: " << Lexer.getTok().getString();
@@ -389,8 +391,12 @@ int main(int argc, char **argv) {
     Ctx.setAllowTemporaryLabels(false);
 
   Ctx.setGenDwarfForAssembly(GenDwarfForAssembly);
-  if (!DwarfDebugFlags.empty()) 
+  if (!DwarfDebugFlags.empty())
     Ctx.setDwarfDebugFlags(StringRef(DwarfDebugFlags));
+  if (!DebugCompilationDir.empty())
+    Ctx.setCompilationDir(DebugCompilationDir);
+  if (!MainFileName.empty())
+    Ctx.setMainFileName(MainFileName);
 
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;
@@ -459,9 +465,6 @@ int main(int argc, char **argv) {
     break;
   case AC_Disassemble:
     disassemble = true;
-    break;
-  case AC_EDisassemble:
-    Res =  Disassembler::disassembleEnhanced(TripleName, *Buffer, SrcMgr, Out->os());
     break;
   }
   if (disassemble)

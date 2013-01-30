@@ -21,8 +21,9 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/ProfileInfo.h"
 #include "llvm/Analysis/ProfileInfoLoader.h"
-#include "llvm/Constants.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -75,8 +76,8 @@ inline static void printEdgeCounter(ProfileInfo::Edge e,
 bool OptimalEdgeProfiler::runOnModule(Module &M) {
   Function *Main = M.getFunction("main");
   if (Main == 0) {
-    errs() << "WARNING: cannot insert edge profiling into a module"
-           << " with no main function!\n";
+    M.getContext().emitWarning("cannot insert edge profiling into a module"
+                               " with no main function");
     return false;  // No main, no instrumentation!
   }
 

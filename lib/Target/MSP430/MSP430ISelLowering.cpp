@@ -18,7 +18,6 @@
 #include "MSP430MachineFunctionInfo.h"
 #include "MSP430Subtarget.h"
 #include "MSP430TargetMachine.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -27,11 +26,12 @@
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/GlobalAlias.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Intrinsics.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -1061,6 +1061,10 @@ bool MSP430TargetLowering::isZExtFree(Type *Ty1, Type *Ty2) const {
 bool MSP430TargetLowering::isZExtFree(EVT VT1, EVT VT2) const {
   // MSP430 implicitly zero-extends 8-bit results in 16-bit registers.
   return 0 && VT1 == MVT::i8 && VT2 == MVT::i16;
+}
+
+bool MSP430TargetLowering::isZExtFree(SDValue Val, EVT VT2) const {
+  return isZExtFree(Val.getValueType(), VT2);
 }
 
 //===----------------------------------------------------------------------===//

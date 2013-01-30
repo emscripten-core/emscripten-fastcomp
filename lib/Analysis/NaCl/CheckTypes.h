@@ -16,7 +16,7 @@
 #define LIB_ANALYSIS_NACL_CHECKTYPES_H
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/DerivedTypes.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/Support/raw_ostream.h"
 
 class TypeChecker {

@@ -41,6 +41,7 @@ class DIEAbbrev;
 class DIE;
 class DIEBlock;
 class DIEEntry;
+class DwarfDebug;
 
 //===----------------------------------------------------------------------===//
 /// \brief This class is used to record source line correspondence.
@@ -188,6 +189,12 @@ public:
   DIType getType() const;
 };
 
+
+// A String->Symbol mapping of strings used by indirect
+// references.
+typedef StringMap<std::pair<MCSymbol*, unsigned>,
+                  BumpPtrAllocator&> StrPool;
+
 /// \brief Collects and handles information specific to a particular
 /// collection of units.
 class DwarfUnits {
@@ -203,10 +210,17 @@ class DwarfUnits {
   // A pointer to all units in the section.
   SmallVector<CompileUnit *, 1> CUs;
 
+  // Collection of strings for this unit and assorted symbols.
+  StrPool StringPool;
+  unsigned NextStringPoolNumber;
+  std::string StringPref;
+
 public:
   DwarfUnits(AsmPrinter *AP, FoldingSet<DIEAbbrev> *AS,
-             std::vector<DIEAbbrev *> *A) :
-    Asm(AP), AbbreviationsSet(AS), Abbreviations(A) {}
+             std::vector<DIEAbbrev *> *A, const char *Pref,
+             BumpPtrAllocator &DA) :
+    Asm(AP), AbbreviationsSet(AS), Abbreviations(A),
+    StringPool(DA), NextStringPoolNumber(0), StringPref(Pref) {}
 
   /// \brief Compute the size and offset of a DIE given an incoming Offset.
   unsigned computeSizeAndOffset(DIE *Die, unsigned Offset);
@@ -219,6 +233,28 @@ public:
 
   /// \brief Add a unit to the list of CUs.
   void addUnit(CompileUnit *CU) { CUs.push_back(CU); }
+
+  /// \brief Emit all of the units to the section listed with the given
+  /// abbreviation section.
+  void emitUnits(DwarfDebug *, const MCSection *, const MCSection *,
+                 const MCSymbol *);
+
+  /// \brief Emit all of the strings to the section given.
+  void emitStrings(const MCSection *, const MCSection *, const MCSymbol *);
+
+  /// \brief Returns the entry into the start of the pool.
+  MCSymbol *getStringPoolSym();
+
+  /// \brief Returns an entry into the string pool with the given
+  /// string text.
+  MCSymbol *getStringPoolEntry(StringRef Str);
+
+  /// \brief Returns the index into the string pool with the given
+  /// string text.
+  unsigned getStringPoolIndex(StringRef Str);
+
+  /// \brief Returns the string pool.
+  StrPool *getStringPool() { return &StringPool; }
 };
 
 /// \brief Collects and handles dwarf debug information.
@@ -233,7 +269,7 @@ class DwarfDebug {
   BumpPtrAllocator DIEValueAllocator;
 
   //===--------------------------------------------------------------------===//
-  // Attributes used to construct specific Dwarf sections.
+  // Attribute used to construct specific Dwarf sections.
   //
 
   CompileUnit *FirstCU;
@@ -253,11 +289,6 @@ class DwarfDebug {
   // Source id map, i.e. pair of source filename and directory,
   // separated by a zero byte, mapped to a unique id.
   StringMap<unsigned, BumpPtrAllocator&> SourceIdMap;
-
-  // A String->Symbol mapping of strings used by indirect
-  // references.
-  StringMap<std::pair<MCSymbol*, unsigned>, BumpPtrAllocator&> StringPool;
-  unsigned NextStringPoolNumber;
 
   // Provides a unique id per text section.
   SetVector<const MCSection*> SectionMap;
@@ -289,7 +320,8 @@ class DwarfDebug {
   DenseMap<const MDNode *, SmallVector<InlineInfoLabels, 4> > InlineInfo;
   SmallVector<const MDNode *, 4> InlinedSPNodes;
 
-  // This is a collection of subprogram MDNodes that are processed to create DIEs.
+  // This is a collection of subprogram MDNodes that are processed to
+  // create DIEs.
   SmallPtrSet<const MDNode *, 16> ProcessedSPNodes;
 
   // Maps instruction with label emitted before instruction.
@@ -337,6 +369,7 @@ class DwarfDebug {
   MCSymbol *DwarfStrSectionSym, *TextSectionSym, *DwarfDebugRangeSectionSym;
   MCSymbol *DwarfDebugLocSectionSym;
   MCSymbol *FunctionBeginSym, *FunctionEndSym;
+  MCSymbol *DwarfAbbrevDWOSectionSym, *DwarfStrDWOSectionSym;
 
   // As an optimization, there is no need to emit an entry in the directory
   // table for the same directory as DW_at_comp_dir.
@@ -358,13 +391,21 @@ class DwarfDebug {
   bool HasDwarfAccelTables;
   bool HasSplitDwarf;
 
-  // Fission Variables
+  // Separated Dwarf Variables
   // In general these will all be for bits that are left in the
   // original object file, rather than things that are meant
   // to be in the .dwo sections.
 
-  // The CU left in the original object file for Fission debug info.
+  // The CU left in the original object file for separated debug info.
   CompileUnit *SkeletonCU;
+
+  // Used to uniquely define abbreviations for the skeleton emission.
+  FoldingSet<DIEAbbrev> SkeletonAbbrevSet;
+
+  // A list of all the unique abbreviations in use.
+  std::vector<DIEAbbrev *> SkeletonAbbrevs;
+
+  // Holder for the skeleton information.
   DwarfUnits SkeletonHolder;
 
 private:
@@ -394,9 +435,6 @@ private:
   /// \brief Emit initial Dwarf sections with a label at the start of each one.
   void emitSectionLabels();
 
-  /// \brief Recursively Emits a debug information entry.
-  void emitDIE(DIE *Die);
-
   /// \brief Compute the size and offset of a DIE given an incoming Offset.
   unsigned computeSizeAndOffset(DIE *Die, unsigned Offset);
 
@@ -417,8 +455,8 @@ private:
   /// open.
   void endSections();
 
-  /// \brief Emit all of the compile units to the target section.
-  void emitCompileUnits(const MCSection *);
+  /// \brief Emit a set of abbreviations to the specific section.
+  void emitAbbrevs(const MCSection *, std::vector<DIEAbbrev*> *);
 
   /// \brief Emit the debug info section.
   void emitDebugInfo();
@@ -473,8 +511,17 @@ private:
   /// \brief Emit the local split debug info section.
   void emitSkeletonCU(const MCSection *);
 
+  /// \brief Emit the local split abbreviations.
+  void emitSkeletonAbbrevs(const MCSection *);
+
   /// \brief Emit the debug info dwo section.
   void emitDebugInfoDWO();
+
+  /// \brief Emit the debug abbrev dwo section.
+  void emitDebugAbbrevDWO();
+
+  /// \brief Emit the debug str dwo section.
+  void emitDebugStrDWO();
 
   /// \brief Create new CompileUnit for the given metadata node with tag
   /// DW_TAG_compile_unit.
@@ -562,12 +609,8 @@ public:
   /// SourceIds map.
   unsigned getOrCreateSourceID(StringRef DirName, StringRef FullName);
 
-  /// \brief Returns the entry into the start of the pool.
-  MCSymbol *getStringPool();
-
-  /// \brief Returns an entry into the string pool with the given
-  /// string text.
-  MCSymbol *getStringPoolEntry(StringRef Str);
+  /// \brief Recursively Emits a debug information entry.
+  void emitDIE(DIE *Die, std::vector<DIEAbbrev *> *Abbrevs);
 
   /// \brief Returns whether or not to limit some of our debug
   /// output to the limitations of darwin gdb.

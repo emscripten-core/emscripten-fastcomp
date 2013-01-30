@@ -18,15 +18,15 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/Constants.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCTargetAsmParser.h"
-#include "llvm/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -38,7 +38,7 @@ using namespace llvm;
 namespace {
   struct SrcMgrDiagInfo {
     const MDNode *LocInfo;
-    LLVMContext::InlineAsmDiagHandlerTy DiagHandler;
+    LLVMContext::DiagHandlerTy DiagHandler;
     void *DiagContext;
   };
 }
@@ -88,15 +88,15 @@ void AsmPrinter::EmitInlineAsm(StringRef Str, const MDNode *LocMDNode,
   SourceMgr SrcMgr;
   SrcMgrDiagInfo DiagInfo;
 
-  // If the current LLVMContext has an inline asm handler, set it in SourceMgr.
+  // If the current LLVMContext has a diagnostic handler, set it in SourceMgr.
   LLVMContext &LLVMCtx = MMI->getModule()->getContext();
   bool HasDiagHandler = false;
-  if (LLVMCtx.getInlineAsmDiagnosticHandler() != 0) {
+  if (LLVMCtx.getDiagnosticHandler() != 0) {
     // If the source manager has an issue, we arrange for srcMgrDiagHandler
     // to be invoked, getting DiagInfo passed into it.
     DiagInfo.LocInfo = LocMDNode;
-    DiagInfo.DiagHandler = LLVMCtx.getInlineAsmDiagnosticHandler();
-    DiagInfo.DiagContext = LLVMCtx.getInlineAsmDiagnosticContext();
+    DiagInfo.DiagHandler = LLVMCtx.getDiagnosticHandler();
+    DiagInfo.DiagContext = LLVMCtx.getDiagnosticContext();
     SrcMgr.setDiagHandler(srcMgrDiagHandler, &DiagInfo);
     HasDiagHandler = true;
   }

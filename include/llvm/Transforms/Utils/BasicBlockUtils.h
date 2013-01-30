@@ -12,12 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TRANSFORMS_UTILS_BASICBLOCK_H
-#define LLVM_TRANSFORMS_UTILS_BASICBLOCK_H
+#ifndef LLVM_TRANSFORMS_UTILS_BASICBLOCKUTILS_H
+#define LLVM_TRANSFORMS_UTILS_BASICBLOCKUTILS_H
 
 // FIXME: Move to this file: BasicBlock::removePredecessor, BB::splitBasicBlock
 
-#include "llvm/BasicBlock.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/DebugLoc.h"
 

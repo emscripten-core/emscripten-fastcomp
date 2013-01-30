@@ -19,8 +19,8 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Function.h"
-#include "llvm/IntrinsicInst.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -274,10 +274,16 @@ bool LoopRotate::rotateLoop(Loop *L) {
   if (OrigLatch == 0 || L->isLoopExiting(OrigLatch))
     return false;
 
-  // Check size of original header and reject loop if it is very big.
+  // Check size of original header and reject loop if it is very big or we can't
+  // duplicate blocks inside it.
   {
     CodeMetrics Metrics;
     Metrics.analyzeBasicBlock(OrigHeader);
+    if (Metrics.notDuplicatable) {
+      DEBUG(dbgs() << "LoopRotation: NOT rotating - contains non duplicatable"
+            << " instructions: "; L->dump());
+      return false;
+    }
     if (Metrics.NumInsts > MAX_HEADER_SIZE)
       return false;
   }

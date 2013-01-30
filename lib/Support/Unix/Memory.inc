@@ -12,11 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "Unix.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/Debug.h"
 
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
@@ -75,7 +73,7 @@ Memory::allocateMappedMemory(size_t NumBytes,
   if (NumBytes == 0)
     return MemoryBlock();
 
-  static const size_t PageSize = Process::GetPageSize();
+  static const size_t PageSize = process::get_self()->page_size();
   const size_t NumPages = (NumBytes+PageSize-1)/PageSize;
 
   int fd = -1;
@@ -172,8 +170,8 @@ Memory::AllocateRWX(size_t NumBytes, const MemoryBlock* NearBlock,
                     std::string *ErrMsg) {
   if (NumBytes == 0) return MemoryBlock();
 
-  size_t pageSize = Process::GetPageSize();
-  size_t NumPages = (NumBytes+pageSize-1)/pageSize;
+  size_t PageSize = process::get_self()->page_size();
+  size_t NumPages = (NumBytes+PageSize-1)/PageSize;
 
   int fd = -1;
 #ifdef NEED_DEV_ZERO_FOR_MMAP
@@ -197,13 +195,11 @@ Memory::AllocateRWX(size_t NumBytes, const MemoryBlock* NearBlock,
                             NearBlock->size() : 0;
 
 #if defined(__APPLE__) && defined(__arm__)
-  void *pa = ::mmap(start, pageSize*NumPages, PROT_READ|PROT_EXEC,
+  void *pa = ::mmap(start, PageSize*NumPages, PROT_READ|PROT_EXEC,
                     flags, fd, 0);
 #else
-dbgs() << "calling mmap, start " << start << "\n";
-  void *pa = ::mmap(start, pageSize*NumPages, PROT_READ|PROT_WRITE|PROT_EXEC,
+  void *pa = ::mmap(start, PageSize*NumPages, PROT_READ|PROT_WRITE|PROT_EXEC,
                     flags, fd, 0);
-  DEBUG(dbgs() << "mmap returned " << pa<<"\n");
 #endif
   if (pa == MAP_FAILED) {
     if (NearBlock) //Try again without a near hint
@@ -215,7 +211,7 @@ dbgs() << "calling mmap, start " << start << "\n";
 
 #if defined(__APPLE__) && defined(__arm__)
   kern_return_t kr = vm_protect(mach_task_self(), (vm_address_t)pa,
-                                (vm_size_t)(pageSize*NumPages), 0,
+                                (vm_size_t)(PageSize*NumPages), 0,
                                 VM_PROT_READ | VM_PROT_EXECUTE | VM_PROT_COPY);
   if (KERN_SUCCESS != kr) {
     MakeErrMsg(ErrMsg, "vm_protect max RX failed");
@@ -223,7 +219,7 @@ dbgs() << "calling mmap, start " << start << "\n";
   }
 
   kr = vm_protect(mach_task_self(), (vm_address_t)pa,
-                  (vm_size_t)(pageSize*NumPages), 0,
+                  (vm_size_t)(PageSize*NumPages), 0,
                   VM_PROT_READ | VM_PROT_WRITE);
   if (KERN_SUCCESS != kr) {
     MakeErrMsg(ErrMsg, "vm_protect RW failed");
@@ -233,7 +229,7 @@ dbgs() << "calling mmap, start " << start << "\n";
 
   MemoryBlock result;
   result.Address = pa;
-  result.Size = NumPages*pageSize;
+  result.Size = NumPages*PageSize;
 
   return result;
 }

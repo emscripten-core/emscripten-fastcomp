@@ -24,12 +24,12 @@
 
 #include <vector>
 
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 
@@ -237,11 +237,11 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
   FunctionType *ReadTpType = FunctionType::get(PointerType::get(i8, 0),
                                                /*isVarArg=*/false);
   AttrBuilder B;
-  B.addAttribute(Attributes::ReadOnly);
-  B.addAttribute(Attributes::NoUnwind);
+  B.addAttribute(Attribute::ReadOnly);
+  B.addAttribute(Attribute::NoUnwind);
   AttributeSet ReadTpAttrs = AttributeSet().addAttr(
       M.getContext(), AttributeSet::FunctionIndex,
-      Attributes::get(M.getContext(), B));
+      Attribute::get(M.getContext(), B));
   Constant *ReadTpFunc = M.getOrInsertTargetIntrinsic("llvm.nacl.read.tp",
                                                       ReadTpType,
                                                       ReadTpAttrs);

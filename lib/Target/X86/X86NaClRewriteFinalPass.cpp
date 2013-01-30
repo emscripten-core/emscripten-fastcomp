@@ -24,7 +24,7 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 
 using namespace llvm;
 

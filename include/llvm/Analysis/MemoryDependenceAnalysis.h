@@ -11,15 +11,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ANALYSIS_MEMORY_DEPENDENCE_H
-#define LLVM_ANALYSIS_MEMORY_DEPENDENCE_H
+#ifndef LLVM_ANALYSIS_MEMORYDEPENDENCEANALYSIS_H
+#define LLVM_ANALYSIS_MEMORYDEPENDENCEANALYSIS_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/BasicBlock.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/ValueHandle.h"
 

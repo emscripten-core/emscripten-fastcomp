@@ -23,6 +23,7 @@
 namespace llvm {
 
 class DwarfDebug;
+class DwarfUnits;
 class MachineLocation;
 class MachineOperand;
 class ConstantInt;
@@ -47,7 +48,9 @@ class CompileUnit {
   /// Asm - Target of Dwarf emission.
   AsmPrinter *Asm;
 
+  // Holders for some common dwarf information.
   DwarfDebug *DD;
+  DwarfUnits *DU;
 
   /// IndexTyDie - An anonymous type for index type.  Owned by CUDie.
   DIE *IndexTyDie;
@@ -84,7 +87,8 @@ class CompileUnit {
   int64_t getDefaultLowerBound() const;
 
 public:
-  CompileUnit(unsigned UID, unsigned L, DIE *D, AsmPrinter *A, DwarfDebug *DW);
+  CompileUnit(unsigned UID, unsigned L, DIE *D, AsmPrinter *A, DwarfDebug *DW,
+              DwarfUnits *);
   ~CompileUnit();
 
   // Accessors.
@@ -106,7 +110,7 @@ public:
   &getAccelTypes() const {
     return AccelTypes;
   }
-  
+
   /// hasContent - Return true if this compile unit has something to write out.
   ///
   bool hasContent() const { return !CUDie->getChildren().empty(); }
@@ -133,12 +137,12 @@ public:
     std::vector<std::pair<DIE*, unsigned > > &DIEs = AccelTypes[Name];
     DIEs.push_back(Die);
   }
-  
+
   /// getDIE - Returns the debug information entry map slot for the
   /// specified debug variable.
   DIE *getDIE(const MDNode *N) { return MDNodeToDieMap.lookup(N); }
 
-  DIEBlock *getDIEBlock() { 
+  DIEBlock *getDIEBlock() {
     return new (DIEValueAllocator) DIEBlock();
   }
 
@@ -181,7 +185,7 @@ public:
 
   /// addFlag - Add a flag that is true to the DIE.
   void addFlag(DIE *Die, unsigned Attribute);
-  
+
   /// addUInt - Add an unsigned integer attribute data and value.
   ///
   void addUInt(DIE *Die, unsigned Attribute, unsigned Form, uint64_t Integer);
@@ -193,6 +197,10 @@ public:
   /// addString - Add a string attribute data and value.
   ///
   void addString(DIE *Die, unsigned Attribute, const StringRef Str);
+
+  /// addLocalString - Add a string attribute data and value.
+  ///
+  void addLocalString(DIE *Die, unsigned Attribute, const StringRef Str);
 
   /// addLabel - Add a Dwarf label attribute data and value.
   ///
@@ -207,7 +215,7 @@ public:
   /// addDIEEntry - Add a DIE attribute data and value.
   ///
   void addDIEEntry(DIE *Die, unsigned Attribute, unsigned Form, DIE *Entry);
-  
+
   /// addBlock - Add block data.
   ///
   void addBlock(DIE *Die, unsigned Attribute, unsigned Form, DIEBlock *Block);
@@ -260,7 +268,7 @@ public:
   void addBlockByrefAddress(DbgVariable *&DV, DIE *Die, unsigned Attribute,
                             const MachineLocation &Location);
 
-  /// addVariableAddress - Add DW_AT_location attribute for a 
+  /// addVariableAddress - Add DW_AT_location attribute for a
   /// DbgVariable based on provided MachineLocation.
   void addVariableAddress(DbgVariable *&DV, DIE *Die, MachineLocation Location);
 
@@ -282,7 +290,7 @@ public:
   /// given DIType.
   DIE *getOrCreateTypeDIE(const MDNode *N);
 
-  /// getOrCreateTemplateTypeParameterDIE - Find existing DIE or create new DIE 
+  /// getOrCreateTemplateTypeParameterDIE - Find existing DIE or create new DIE
   /// for the given DITemplateTypeParameter.
   DIE *getOrCreateTemplateTypeParameterDIE(DITemplateTypeParameter TP);
 
@@ -315,7 +323,7 @@ public:
   void constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy);
 
   /// constructArrayTypeDIE - Construct array type DIE from DICompositeType.
-  void constructArrayTypeDIE(DIE &Buffer, 
+  void constructArrayTypeDIE(DIE &Buffer,
                              DICompositeType *CTy);
 
   /// constructEnumTypeDIE - Construct enum type DIE from DIEnumerator.

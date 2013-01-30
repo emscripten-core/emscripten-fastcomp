@@ -1,5 +1,3 @@
-.. _design_and_overview:
-
 LLVM Design & Overview
 ======================
 
@@ -21,7 +19,7 @@ LLVM Design & Overview
 
   Book chapter providing a compiler hacker's introduction to LLVM.
 
-* `LLVM: A Compilation Framework forLifelong Program Analysis & Transformation
+* `LLVM: A Compilation Framework for Lifelong Program Analysis & Transformation
   <http://llvm.org/pubs/2004-01-30-CGO-LLVM.html>`_
 
   Design overview.
@@ -31,7 +29,7 @@ LLVM Design & Overview
 
   More details (quite old now).
 
-* :ref:`gep`
+* :doc:`GetElementPtr`
 
   Answers to some very frequent questions about LLVM's most frequently
   misunderstood instruction.

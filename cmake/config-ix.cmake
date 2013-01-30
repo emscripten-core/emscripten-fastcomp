@@ -99,6 +99,7 @@ if( NOT PURE_WINDOWS )
     endif()
   endif()
   check_library_exists(dl dlopen "" HAVE_LIBDL)
+  check_library_exists(rt clock_gettime "" HAVE_LIBRT)
 endif()
 
 # function checks
@@ -293,6 +294,11 @@ if( LLVM_ENABLE_PIC )
 else()
   set(ENABLE_PIC 0)
 endif()
+
+find_package(LibXml2)
+if (LIBXML2_FOUND)
+  set(CLANG_HAVE_LIBXML 1)
+endif ()
 
 include(CheckCXXCompilerFlag)
 

@@ -1,8 +1,9 @@
-.. _getting_started:
-
 ====================================
 Getting Started with the LLVM System  
 ====================================
+
+.. contents::
+   :local:
 
 Overview
 ========
@@ -68,27 +69,24 @@ Here's the short story for getting up and running quickly with LLVM:
    * ``../llvm/configure [options]``
      Some common options:
 
-     * ``--prefix=directory`` ---
+     * ``--prefix=directory`` --- Specify for *directory* the full pathname of
+       where you want the LLVM tools and libraries to be installed (default
+       ``/usr/local``).
 
-       Specify for *directory* the full pathname of where you want the LLVM
-       tools and libraries to be installed (default ``/usr/local``).
+     * ``--enable-optimized`` --- Compile with optimizations enabled (default
+       is NO).
 
-     * ``--enable-optimized`` ---
-
-       Compile with optimizations enabled (default is NO).
-
-     * ``--enable-assertions`` ---
-
-       Compile with assertion checks enabled (default is YES).
+     * ``--enable-assertions`` --- Compile with assertion checks enabled
+       (default is YES).
 
    * ``make [-j]`` --- The ``-j`` specifies the number of jobs (commands) to run
      simultaneously.  This builds both LLVM and Clang for Debug+Asserts mode.
-     The --enabled-optimized configure option is used to specify a Release
+     The ``--enabled-optimized`` configure option is used to specify a Release
      build.
 
    * ``make check-all`` --- This run the regression tests to ensure everything
      is in working order.
-  
+
    * ``make update`` --- This command is used to update all the svn repositories
      at once, rather then having to ``cd`` into the individual repositories and
      running ``svn update``.
@@ -384,6 +382,14 @@ intermittent failures when building LLVM with position independent code.  The
 symptom is an error about cyclic dependencies.  We recommend upgrading to a
 newer version of Gold.
 
+**Clang 3.0 with libstdc++ 4.7.x**: a few Linux distributions (Ubuntu 12.10,
+Fedora 17) have both Clang 3.0 and libstdc++ 4.7 in their repositories.  Clang
+3.0 does not implement a few builtins that are used in this library.  We
+recommend using the system GCC to compile LLVM and Clang in this case.
+
+**Clang 3.0 on Mageia 2**.  There's a packaging issue: Clang can not find at
+least some (``cxxabi.h``) libstdc++ headers.
+
 .. _Getting Started with LLVM:
 
 Getting Started with LLVM
@@ -459,6 +465,8 @@ The files are as follows, with *x.y* marking the version number:
 
   Binary release of the llvm-gcc-4.2 front end for a specific platform.
 
+.. _checkout:
+
 Checkout LLVM from Subversion
 -----------------------------
 
@@ -505,7 +513,7 @@ directory:
 If you would like to get the LLVM test suite (a separate package as of 1.4), you
 get it from the Subversion repository:
 
-.. code-block:: bash
+.. code-block:: console
 
   % cd llvm/projects
   % svn co http://llvm.org/svn/llvm-project/test-suite/trunk test-suite
@@ -523,13 +531,13 @@ marks (so, you can recreate git-svn metadata locally). Note that right now
 mirrors reflect only ``trunk`` for each project. You can do the read-only GIT
 clone of LLVM via:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git clone http://llvm.org/git/llvm.git
 
 If you want to check out clang too, run:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git clone http://llvm.org/git/llvm.git
   % cd llvm/tools
@@ -540,7 +548,7 @@ pull --rebase`` instead of ``git pull`` to avoid generating a non-linear history
 in your clone.  To configure ``git pull`` to pass ``--rebase`` by default on the
 master branch, run the following command:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git config branch.master.rebase true
 
@@ -553,13 +561,13 @@ Assume ``master`` points the upstream and ``mybranch`` points your working
 branch, and ``mybranch`` is rebased onto ``master``.  At first you may check
 sanity of whitespaces:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git diff --check master..mybranch
 
 The easiest way to generate a patch is as below:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git diff master..mybranch > /path/to/mybranch.diff
 
@@ -570,14 +578,14 @@ could be accepted with ``patch -p1 -N``.
 But you may generate patchset with git-format-patch. It generates by-each-commit
 patchset. To generate patch files to attach to your article:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git format-patch --no-attach master..mybranch -o /path/to/your/patchset
 
 If you would like to send patches directly, you may use git-send-email or
 git-imap-send. Here is an example to generate the patchset in Gmail's [Drafts].
 
-.. code-block:: bash
+.. code-block:: console
 
   % git format-patch --attach master..mybranch --stdout | git imap-send
 
@@ -603,7 +611,7 @@ For developers to work with git-svn
 
 To set up clone from which you can submit code using ``git-svn``, run:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git clone http://llvm.org/git/llvm.git
   % cd llvm
@@ -622,7 +630,7 @@ To set up clone from which you can submit code using ``git-svn``, run:
 To update this clone without generating git-svn tags that conflict with the
 upstream git repo, run:
 
-.. code-block:: bash
+.. code-block:: console
 
   % git fetch && (cd tools/clang && git fetch)  # Get matching revisions of both trees.
   % git checkout master
@@ -633,17 +641,32 @@ upstream git repo, run:
 
 This leaves your working directories on their master branches, so you'll need to
 ``checkout`` each working branch individually and ``rebase`` it on top of its
-parent branch.  (Note: This script is intended for relative newbies to git.  If
-you have more experience, you can likely improve on it.)
+parent branch.
+
+To commit back changes via git-svn, use ``dcommit``:
+
+.. code-block:: console
+
+  % git svn dcommit
+
+Note that git-svn will create one SVN commit for each Git commit you have pending,
+so squash and edit each commit before executing ``dcommit`` to make sure they all
+conform to the coding standards and the developers' policy.
+
+On success, ``dcommit`` will rebase against the HEAD of SVN, so to avoid conflict,
+please make sure your current branch is up-to-date (via fetch/rebase) before
+proceeding.
 
 The git-svn metadata can get out of sync after you mess around with branches and
 ``dcommit``. When that happens, ``git svn dcommit`` stops working, complaining
 about files with uncommitted changes. The fix is to rebuild the metadata:
 
-.. code-block:: bash
+.. code-block:: console
 
   % rm -rf .git/svn
   % git svn rebase -l
+
+Please, refer to the Git-SVN manual (``man git-svn``) for more information.
 
 Local LLVM Configuration
 ------------------------
@@ -661,14 +684,15 @@ configure the build system:
 | Variable   | Purpose                                                   |
 +============+===========================================================+
 | CC         | Tells ``configure`` which C compiler to use.  By default, |
-|            | ``configure`` will look for the first GCC C compiler in   |
-|            | ``PATH``.  Use this variable to override ``configure``\'s |
-|            | default behavior.                                         |
+|            | ``configure`` will check ``PATH`` for ``clang`` and GCC C |
+|            | compilers (in this order).  Use this variable to override |
+|            | ``configure``\'s  default behavior.                       |
 +------------+-----------------------------------------------------------+
 | CXX        | Tells ``configure`` which C++ compiler to use.  By        |
-|            | default, ``configure`` will look for the first GCC C++    |
-|            | compiler in ``PATH``.  Use this variable to override      |
-|            | ``configure``'s default behavior.                         |
+|            | default, ``configure`` will check ``PATH`` for            |
+|            | ``clang++`` and GCC C++ compilers (in this order).  Use   |
+|            | this variable to override  ``configure``'s default        |
+|            | behavior.                                                 |
 +------------+-----------------------------------------------------------+
 
 The following options can be used to set or enable LLVM specific options:
@@ -722,13 +746,13 @@ To configure LLVM, follow these steps:
 
 #. Change directory into the object root directory:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % cd OBJ_ROOT
 
 #. Run the ``configure`` script located in the LLVM source tree:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % SRC_ROOT/configure --prefix=/install/path [other options]
 
@@ -764,7 +788,7 @@ Profile Builds
 Once you have LLVM configured, you can build it by entering the *OBJ_ROOT*
 directory and issuing the following command:
 
-.. code-block:: bash
+.. code-block:: console
 
   % gmake
 
@@ -775,7 +799,7 @@ If you have multiple processors in your machine, you may wish to use some of the
 parallel build options provided by GNU Make.  For example, you could use the
 command:
 
-.. code-block:: bash
+.. code-block:: console
 
   % gmake -j2
 
@@ -857,7 +881,7 @@ For instructions on how to install Sphinx, see
 After following the instructions there for installing Sphinx, build the LLVM
 HTML documentation by doing the following:
 
-.. code-block:: bash
+.. code-block:: console
 
   $ cd SRC_ROOT/docs
   $ make -f Makefile.sphinx
@@ -893,13 +917,13 @@ This is accomplished in the typical autoconf manner:
 
 * Change directory to where the LLVM object files should live:
 
-  .. code-block:: bash
+  .. code-block:: console
 
     % cd OBJ_ROOT
 
 * Run the ``configure`` script found in the LLVM source directory:
 
-  .. code-block:: bash
+  .. code-block:: console
 
     % SRC_ROOT/configure
 
@@ -945,7 +969,7 @@ module, and you have root access on the system, you can set your system up to
 execute LLVM bitcode files directly. To do this, use commands like this (the
 first command may not be required if you are already using the module):
 
-.. code-block:: bash
+.. code-block:: console
 
   % mount -t binfmt_misc none /proc/sys/fs/binfmt_misc
   % echo ':llvm:M::BC::/path/to/lli:' > /proc/sys/fs/binfmt_misc/register
@@ -955,7 +979,7 @@ first command may not be required if you are already using the module):
 This allows you to execute LLVM bitcode files directly.  On Debian, you can also
 use this command instead of the 'echo' command above:
 
-.. code-block:: bash
+.. code-block:: console
 
   % sudo update-binfmts --install llvm /path/to/lli --magic 'BC'
 
@@ -1246,7 +1270,7 @@ Example with clang
 
 #. Next, compile the C file into a native executable:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % clang hello.c -o hello
 
@@ -1257,7 +1281,7 @@ Example with clang
 
 #. Next, compile the C file into a LLVM bitcode file:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % clang -O3 -emit-llvm hello.c -c -o hello.bc
 
@@ -1267,13 +1291,13 @@ Example with clang
 
 #. Run the program in both forms. To run the program, use:
 
-   .. code-block:: bash
+   .. code-block:: console
 
       % ./hello
  
    and
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % lli hello.bc
 
@@ -1282,27 +1306,27 @@ Example with clang
 
 #. Use the ``llvm-dis`` utility to take a look at the LLVM assembly code:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % llvm-dis < hello.bc | less
 
 #. Compile the program to native assembly using the LLC code generator:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % llc hello.bc -o hello.s
 
 #. Assemble the native assembly language file into a program:
 
-   .. code-block:: bash
+   .. code-block:: console
 
-     **Solaris:** % /opt/SUNWspro/bin/cc -xarch=v9 hello.s -o hello.native
+     % /opt/SUNWspro/bin/cc -xarch=v9 hello.s -o hello.native   # On Solaris
 
-     **Others:**  % gcc hello.s -o hello.native
+     % gcc hello.s -o hello.native                              # On others
 
 #. Execute the native code program:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      % ./hello.native
 

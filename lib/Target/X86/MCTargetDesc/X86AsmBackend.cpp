@@ -114,7 +114,7 @@ public:
 
   bool fixupNeedsRelaxation(const MCFixup &Fixup,
                             uint64_t Value,
-                            const MCInstFragment *DF,
+                            const MCRelaxableFragment *DF,
                             const MCAsmLayout &Layout) const;
 
   void relaxInstruction(const MCInst &Inst, MCInst &Res) const;
@@ -256,7 +256,7 @@ bool X86AsmBackend::mayNeedRelaxation(const MCInst &Inst) const {
 
 bool X86AsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
                                          uint64_t Value,
-                                         const MCInstFragment *DF,
+                                         const MCRelaxableFragment *DF,
                                          const MCAsmLayout &Layout) const {
   // Relax if the value is too big for a (signed) i8.
   return int64_t(Value) != int64_t(int8_t(Value));
@@ -280,9 +280,9 @@ void X86AsmBackend::relaxInstruction(const MCInst &Inst, MCInst &Res) const {
   Res.setOpcode(RelaxedOp);
 }
 
-/// writeNopData - Write optimal nops to the output file for the \p Count
-/// bytes.  This returns the number of bytes written.  It may return 0 if
-/// the \p Count is more than the maximum optimal nops.
+/// \brief Write a sequence of optimal nops to the output, covering \p Count
+/// bytes.
+/// \return - true on success, false on failure
 bool X86AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   static const uint8_t Nops[10][10] = {
     // nop

@@ -11,18 +11,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ANALYSIS_SCALAREVOLUTION_EXPANDER_H
-#define LLVM_ANALYSIS_SCALAREVOLUTION_EXPANDER_H
+#ifndef LLVM_ANALYSIS_SCALAREVOLUTIONEXPANDER_H
+#define LLVM_ANALYSIS_SCALAREVOLUTIONEXPANDER_H
 
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/ScalarEvolutionNormalization.h"
-#include "llvm/IRBuilder.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/TargetFolder.h"
 #include "llvm/Support/ValueHandle.h"
 #include <set>
 
 namespace llvm {
-  class TargetLowering;
+  class TargetTransformInfo;
 
   /// Return true if the given expression is safe to expand in the sense that
   /// all materialized values are safe to speculate.
@@ -129,7 +129,7 @@ namespace llvm {
     /// representative. Return the number of phis eliminated.
     unsigned replaceCongruentIVs(Loop *L, const DominatorTree *DT,
                                  SmallVectorImpl<WeakVH> &DeadInsts,
-                                 const TargetLowering *TLI = NULL);
+                                 const TargetTransformInfo *TTI = NULL);
 
     /// expandCodeFor - Insert code to directly compute the specified SCEV
     /// expression into the program.  The inserted code is inserted into the

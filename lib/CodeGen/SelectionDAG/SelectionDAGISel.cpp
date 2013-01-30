@@ -19,6 +19,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/GCMetadata.h"
@@ -31,15 +32,15 @@
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/Constants.h"
 #include "llvm/DebugInfo.h"
-#include "llvm/Function.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -350,13 +351,14 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   RegInfo = &MF->getRegInfo();
   AA = &getAnalysis<AliasAnalysis>();
   LibInfo = &getAnalysis<TargetLibraryInfo>();
+  TTI = getAnalysisIfAvailable<TargetTransformInfo>();
   GFI = Fn.hasGC() ? &getAnalysis<GCModuleInfo>().getFunctionInfo(Fn) : 0;
 
   DEBUG(dbgs() << "\n\n\n=== " << Fn.getName() << "\n");
 
   SplitCriticalSideEffectEdges(const_cast<Function&>(Fn), this);
 
-  CurDAG->init(*MF);
+  CurDAG->init(*MF, TTI);
   FuncInfo->set(Fn, *MF);
 
   if (UseMBPI && OptLevel != CodeGenOpt::None)
@@ -1185,14 +1187,12 @@ SelectionDAGISel::FinishBasicBlock() {
       SDB->JTCases.empty() &&
       SDB->BitTestCases.empty()) {
     for (unsigned i = 0, e = FuncInfo->PHINodesToUpdate.size(); i != e; ++i) {
-      MachineInstr *PHI = FuncInfo->PHINodesToUpdate[i].first;
+      MachineInstrBuilder PHI(*MF, FuncInfo->PHINodesToUpdate[i].first);
       assert(PHI->isPHI() &&
              "This is not a machine PHI node that we are updating!");
       if (!FuncInfo->MBB->isSuccessor(PHI->getParent()))
         continue;
-      PHI->addOperand(
-        MachineOperand::CreateReg(FuncInfo->PHINodesToUpdate[i].second, false));
-      PHI->addOperand(MachineOperand::CreateMBB(FuncInfo->MBB));
+      PHI.addReg(FuncInfo->PHINodesToUpdate[i].second).addMBB(FuncInfo->MBB);
     }
     return;
   }
@@ -1244,33 +1244,23 @@ SelectionDAGISel::FinishBasicBlock() {
     // Update PHI Nodes
     for (unsigned pi = 0, pe = FuncInfo->PHINodesToUpdate.size();
          pi != pe; ++pi) {
-      MachineInstr *PHI = FuncInfo->PHINodesToUpdate[pi].first;
+      MachineInstrBuilder PHI(*MF, FuncInfo->PHINodesToUpdate[pi].first);
       MachineBasicBlock *PHIBB = PHI->getParent();
       assert(PHI->isPHI() &&
              "This is not a machine PHI node that we are updating!");
       // This is "default" BB. We have two jumps to it. From "header" BB and
       // from last "case" BB.
-      if (PHIBB == SDB->BitTestCases[i].Default) {
-        PHI->addOperand(MachineOperand::
-                        CreateReg(FuncInfo->PHINodesToUpdate[pi].second,
-                                  false));
-        PHI->addOperand(MachineOperand::CreateMBB(SDB->BitTestCases[i].Parent));
-        PHI->addOperand(MachineOperand::
-                        CreateReg(FuncInfo->PHINodesToUpdate[pi].second,
-                                  false));
-        PHI->addOperand(MachineOperand::CreateMBB(SDB->BitTestCases[i].Cases.
-                                                  back().ThisBB));
-      }
+      if (PHIBB == SDB->BitTestCases[i].Default)
+        PHI.addReg(FuncInfo->PHINodesToUpdate[pi].second)
+           .addMBB(SDB->BitTestCases[i].Parent)
+           .addReg(FuncInfo->PHINodesToUpdate[pi].second)
+           .addMBB(SDB->BitTestCases[i].Cases.back().ThisBB);
       // One of "cases" BB.
       for (unsigned j = 0, ej = SDB->BitTestCases[i].Cases.size();
            j != ej; ++j) {
         MachineBasicBlock* cBB = SDB->BitTestCases[i].Cases[j].ThisBB;
-        if (cBB->isSuccessor(PHIBB)) {
-          PHI->addOperand(MachineOperand::
-                          CreateReg(FuncInfo->PHINodesToUpdate[pi].second,
-                                    false));
-          PHI->addOperand(MachineOperand::CreateMBB(cBB));
-        }
+        if (cBB->isSuccessor(PHIBB))
+          PHI.addReg(FuncInfo->PHINodesToUpdate[pi].second).addMBB(cBB);
       }
     }
   }
@@ -1305,25 +1295,17 @@ SelectionDAGISel::FinishBasicBlock() {
     // Update PHI Nodes
     for (unsigned pi = 0, pe = FuncInfo->PHINodesToUpdate.size();
          pi != pe; ++pi) {
-      MachineInstr *PHI = FuncInfo->PHINodesToUpdate[pi].first;
+      MachineInstrBuilder PHI(*MF, FuncInfo->PHINodesToUpdate[pi].first);
       MachineBasicBlock *PHIBB = PHI->getParent();
       assert(PHI->isPHI() &&
              "This is not a machine PHI node that we are updating!");
       // "default" BB. We can go there only from header BB.
-      if (PHIBB == SDB->JTCases[i].second.Default) {
-        PHI->addOperand
-          (MachineOperand::CreateReg(FuncInfo->PHINodesToUpdate[pi].second,
-                                     false));
-        PHI->addOperand
-          (MachineOperand::CreateMBB(SDB->JTCases[i].first.HeaderBB));
-      }
+      if (PHIBB == SDB->JTCases[i].second.Default)
+        PHI.addReg(FuncInfo->PHINodesToUpdate[pi].second)
+           .addMBB(SDB->JTCases[i].first.HeaderBB);
       // JT BB. Just iterate over successors here
-      if (FuncInfo->MBB->isSuccessor(PHIBB)) {
-        PHI->addOperand
-          (MachineOperand::CreateReg(FuncInfo->PHINodesToUpdate[pi].second,
-                                     false));
-        PHI->addOperand(MachineOperand::CreateMBB(FuncInfo->MBB));
-      }
+      if (FuncInfo->MBB->isSuccessor(PHIBB))
+        PHI.addReg(FuncInfo->PHINodesToUpdate[pi].second).addMBB(FuncInfo->MBB);
     }
   }
   SDB->JTCases.clear();
@@ -1331,14 +1313,11 @@ SelectionDAGISel::FinishBasicBlock() {
   // If the switch block involved a branch to one of the actual successors, we
   // need to update PHI nodes in that block.
   for (unsigned i = 0, e = FuncInfo->PHINodesToUpdate.size(); i != e; ++i) {
-    MachineInstr *PHI = FuncInfo->PHINodesToUpdate[i].first;
+    MachineInstrBuilder PHI(*MF, FuncInfo->PHINodesToUpdate[i].first);
     assert(PHI->isPHI() &&
            "This is not a machine PHI node that we are updating!");
-    if (FuncInfo->MBB->isSuccessor(PHI->getParent())) {
-      PHI->addOperand(
-        MachineOperand::CreateReg(FuncInfo->PHINodesToUpdate[i].second, false));
-      PHI->addOperand(MachineOperand::CreateMBB(FuncInfo->MBB));
-    }
+    if (FuncInfo->MBB->isSuccessor(PHI->getParent()))
+      PHI.addReg(FuncInfo->PHINodesToUpdate[i].second).addMBB(FuncInfo->MBB);
   }
 
   // If we generated any switch lowering information, build and codegen any
@@ -1374,18 +1353,16 @@ SelectionDAGISel::FinishBasicBlock() {
       // FuncInfo->MBB may have been removed from the CFG if a branch was
       // constant folded.
       if (ThisBB->isSuccessor(FuncInfo->MBB)) {
-        for (MachineBasicBlock::iterator Phi = FuncInfo->MBB->begin();
-             Phi != FuncInfo->MBB->end() && Phi->isPHI();
-             ++Phi) {
+        for (MachineBasicBlock::iterator
+             MBBI = FuncInfo->MBB->begin(), MBBE = FuncInfo->MBB->end();
+             MBBI != MBBE && MBBI->isPHI(); ++MBBI) {
+          MachineInstrBuilder PHI(*MF, MBBI);
           // This value for this PHI node is recorded in PHINodesToUpdate.
           for (unsigned pn = 0; ; ++pn) {
             assert(pn != FuncInfo->PHINodesToUpdate.size() &&
                    "Didn't find PHI entry!");
-            if (FuncInfo->PHINodesToUpdate[pn].first == Phi) {
-              Phi->addOperand(MachineOperand::
-                              CreateReg(FuncInfo->PHINodesToUpdate[pn].second,
-                                        false));
-              Phi->addOperand(MachineOperand::CreateMBB(ThisBB));
+            if (FuncInfo->PHINodesToUpdate[pn].first == PHI) {
+              PHI.addReg(FuncInfo->PHINodesToUpdate[pn].second).addMBB(ThisBB);
               break;
             }
           }

@@ -19,14 +19,14 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/IRBuilder.h"
-#include "llvm/Instructions.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -43,7 +43,7 @@ STATISTIC(NumSpilled, "Number of registers live across unwind edges");
 
 namespace {
   class SjLjEHPrepare : public FunctionPass {
-    const TargetLowering *TLI;
+    const TargetLoweringBase *TLI;
     Type *FunctionContextTy;
     Constant *RegisterFn;
     Constant *UnregisterFn;
@@ -58,7 +58,7 @@ namespace {
     AllocaInst *FuncCtx;
   public:
     static char ID; // Pass identification, replacement for typeid
-    explicit SjLjEHPrepare(const TargetLowering *tli = NULL)
+    explicit SjLjEHPrepare(const TargetLoweringBase *tli = NULL)
       : FunctionPass(ID), TLI(tli) { }
     bool doInitialization(Module &M);
     bool runOnFunction(Function &F);
@@ -82,7 +82,7 @@ namespace {
 char SjLjEHPrepare::ID = 0;
 
 // Public Interface To the SjLjEHPrepare pass.
-FunctionPass *llvm::createSjLjEHPreparePass(const TargetLowering *TLI) {
+FunctionPass *llvm::createSjLjEHPreparePass(const TargetLoweringBase *TLI) {
   return new SjLjEHPrepare(TLI);
 }
 // doInitialization - Set up decalarations and types needed to process

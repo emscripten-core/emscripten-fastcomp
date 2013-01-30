@@ -80,7 +80,7 @@
 # CHECK:  subu   $4, $3, $5      # encoding: [0x23,0x20,0x65,0x00]
 # CHECK:  sub     $6, $zero, $7  # encoding: [0x22,0x30,0x07,0x00]
 # CHECK:  subu    $6, $zero, $7  # encoding: [0x23,0x30,0x07,0x00]
-# CHECK:  add     $7, $8, $zero  # encoding: [0x20,0x38,0x00,0x01]
+# CHECK:  addu    $7, $8, $zero  # encoding: [0x21,0x38,0x00,0x01]
     add    $9,$6,$7
     add    $9,$6,17767
     addu   $9,$6,-15001

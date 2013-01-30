@@ -12,7 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "ARMMCTargetDesc.h"
+#include "ARMELFStreamer.h"
+#include "ARMMCAsmInfo.h"
 #include "ARMBaseInfo.h"
+#include "ARMELFStreamer.h"
 #include "ARMMCAsmInfo.h"
 #include "InstPrinter/ARMInstPrinter.h"
 #include "llvm/MC/MCCodeGenInfo.h"
@@ -144,7 +147,7 @@ static MCInstrInfo *createARMMCInstrInfo() {
 
 static MCRegisterInfo *createARMMCRegisterInfo(StringRef Triple) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitARMMCRegisterInfo(X, ARM::LR);
+  InitARMMCRegisterInfo(X, ARM::LR, 0, 0, ARM::PC);
   return X;
 }
 
@@ -196,8 +199,13 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
   if (TheTriple.isOSWindows()) {
     llvm_unreachable("ARM does not support Windows COFF format");
   }
-
-  return createELFStreamer(Ctx, MAB, OS, Emitter, false, NoExecStack);
+  // @LOCALMOD-BEGIN
+  MCStreamer *Streamer = createARMELFStreamer(Ctx, MAB, OS, Emitter, false,
+                           NoExecStack, TheTriple.getArch() == Triple::thumb);
+  if (TheTriple.isOSNaCl())
+    Streamer->EmitBundleAlignMode(4);
+  return Streamer;
+  // @LOCALMOD-END
 }
 
 static MCInstPrinter *createARMMCInstPrinter(const Target &T,

@@ -24,11 +24,11 @@
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/PHITransAddr.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/PredIteratorCache.h"
 using namespace llvm;
@@ -327,8 +327,8 @@ getLoadLoadClobberFullWidthSize(const Value *MemLocBase, int64_t MemLocOffs,
       return 0;
 
     if (LIOffs+NewLoadByteSize > MemLocEnd &&
-        LI->getParent()->getParent()->getFnAttributes().
-          hasAttribute(Attributes::AddressSafety))
+        LI->getParent()->getParent()->getAttributes().
+          hasAttribute(AttributeSet::FunctionIndex, Attribute::AddressSafety))
       // We will be reading past the location accessed by the original program.
       // While this is safe in a regular build, Address Safety analysis tools
       // may start reporting false warnings. So, don't do widening.

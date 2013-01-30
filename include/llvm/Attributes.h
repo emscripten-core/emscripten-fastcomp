@@ -6,10 +6,11 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
-// This file contains the simple types necessary to represent the
-// attributes associated with functions and their calls.
-//
+///
+/// \file
+/// \brief This file contains the simple types necessary to represent the
+/// attributes associated with functions and their calls.
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_ATTRIBUTES_H
@@ -23,19 +24,22 @@
 namespace llvm {
 
 class AttrBuilder;
-class AttributesImpl;
+class AttributeImpl;
 class LLVMContext;
 class Type;
 
-/// Attributes - A bitset of attributes.
-class Attributes {
+//===----------------------------------------------------------------------===//
+/// \class
+/// \brief Functions, function parameters, and return types can have attributes
+/// to indicate how they should be treated by optimizations and code
+/// generation. This class represents one of those attributes. It's light-weight
+/// and should be passed around by-value.
+class Attribute {
 public:
-  /// Function parameters and results can have attributes to indicate how they
-  /// should be treated by optimizations and code generation. This enumeration
-  /// lists the attributes that can be associated with parameters, function
-  /// results or the function itself.
+  /// This enumeration lists the attributes that can be associated with
+  /// parameters, function results or the function itself.
   ///
-  /// Note that uwtable is about the ABI or the user mandating an entry in the
+  /// Note: uwtable is about the ABI or the user mandating an entry in the
   /// unwind table. The nounwind attribute is about an exception passing by the
   /// function.
   ///
@@ -49,13 +53,13 @@ public:
   ///                      an exception might pass by.
   /// uwtable + nounwind = Needs an entry because the ABI says so.
 
-  enum AttrVal {
+  enum AttrKind {
     // IR-Level Attributes
     None,                  ///< No attributes have been set
     AddressSafety,         ///< Address safety checking is on.
     Alignment,             ///< Alignment of parameter (5 bits)
                            ///< stored as log2 of alignment with +1 bias
-                           ///< 0 means unaligned different from align 1
+                           ///< 0 means unaligned (different from align(1))
     AlwaysInline,          ///< inline=always
     ByVal,                 ///< Pass structure by value
     InlineHint,            ///< Source said inlining was desirable
@@ -65,6 +69,7 @@ public:
     Nest,                  ///< Nested function static chain
     NoAlias,               ///< Considered to not alias after call
     NoCapture,             ///< Function creates no aliases of pointer
+    NoDuplicate,           ///< Call cannot be duplicated
     NoImplicitFloat,       ///< Disable implicit floating point insts
     NoInline,              ///< inline=never
     NonLazyBind,           ///< Function is called early and/or
@@ -80,7 +85,7 @@ public:
     StackAlignment,        ///< Alignment of stack for function (3 bits)
                            ///< stored as log2 of alignment with +1 bias 0
                            ///< means unaligned (different from
-                           ///< alignstack={1))
+                           ///< alignstack=(1))
     StackProtect,          ///< Stack protection.
     StackProtectReq,       ///< Stack protection required.
     StructRet,             ///< Hidden pointer to structure to return
@@ -88,136 +93,101 @@ public:
     ZExt                   ///< Zero extended before/after call
   };
 private:
-  AttributesImpl *Attrs;
-  Attributes(AttributesImpl *A) : Attrs(A) {}
+  AttributeImpl *pImpl;
+  Attribute(AttributeImpl *A) : pImpl(A) {}
 public:
-  Attributes() : Attrs(0) {}
+  Attribute() : pImpl(0) {}
 
-  /// get - Return a uniquified Attributes object. This takes the uniquified
-  /// value from the Builder and wraps it in the Attributes class.
-  static Attributes get(LLVMContext &Context, ArrayRef<AttrVal> Vals);
-  static Attributes get(LLVMContext &Context, AttrBuilder &B);
+  /// \brief Return a uniquified Attribute object. This takes the uniquified
+  /// value from the Builder and wraps it in the Attribute class.
+  static Attribute get(LLVMContext &Context, ArrayRef<AttrKind> Vals);
+  static Attribute get(LLVMContext &Context, AttrBuilder &B);
 
-  /// @brief Return true if the attribute is present.
-  bool hasAttribute(AttrVal Val) const;
+  /// \brief Return true if the attribute is present.
+  bool hasAttribute(AttrKind Val) const;
 
-  /// @brief Return true if attributes exist
+  /// \brief Return true if attributes exist
   bool hasAttributes() const;
 
-  /// @brief Return true if the attributes are a non-null intersection.
-  bool hasAttributes(const Attributes &A) const;
+  /// \brief Return true if the attributes are a non-null intersection.
+  bool hasAttributes(const Attribute &A) const;
 
-  /// @brief Returns the alignment field of an attribute as a byte alignment
+  /// \brief Returns the alignment field of an attribute as a byte alignment
   /// value.
   unsigned getAlignment() const;
 
-  /// @brief Returns the stack alignment field of an attribute as a byte
+  /// \brief Returns the stack alignment field of an attribute as a byte
   /// alignment value.
   unsigned getStackAlignment() const;
 
-  /// @brief Parameter attributes that do not apply to vararg call arguments.
-  bool hasIncompatibleWithVarArgsAttrs() const {
-    return hasAttribute(Attributes::StructRet);
+  bool operator==(AttrKind K) const;
+  bool operator!=(AttrKind K) const;
+
+  // FIXME: Remove these 'operator' methods.
+  bool operator==(const Attribute &A) const {
+    return pImpl == A.pImpl;
+  }
+  bool operator!=(const Attribute &A) const {
+    return pImpl != A.pImpl;
   }
 
-  /// @brief Attributes that only apply to function parameters.
-  bool hasParameterOnlyAttrs() const {
-    return hasAttribute(Attributes::ByVal) ||
-      hasAttribute(Attributes::Nest) ||
-      hasAttribute(Attributes::StructRet) ||
-      hasAttribute(Attributes::NoCapture);
-  }
+  uint64_t getBitMask() const;
 
-  /// @brief Attributes that may be applied to the function itself.  These cannot
-  /// be used on return values or function parameters.
-  bool hasFunctionOnlyAttrs() const {
-    return hasAttribute(Attributes::NoReturn) ||
-      hasAttribute(Attributes::NoUnwind) ||
-      hasAttribute(Attributes::ReadNone) ||
-      hasAttribute(Attributes::ReadOnly) ||
-      hasAttribute(Attributes::NoInline) ||
-      hasAttribute(Attributes::AlwaysInline) ||
-      hasAttribute(Attributes::OptimizeForSize) ||
-      hasAttribute(Attributes::StackProtect) ||
-      hasAttribute(Attributes::StackProtectReq) ||
-      hasAttribute(Attributes::NoRedZone) ||
-      hasAttribute(Attributes::NoImplicitFloat) ||
-      hasAttribute(Attributes::Naked) ||
-      hasAttribute(Attributes::InlineHint) ||
-      hasAttribute(Attributes::StackAlignment) ||
-      hasAttribute(Attributes::UWTable) ||
-      hasAttribute(Attributes::NonLazyBind) ||
-      hasAttribute(Attributes::ReturnsTwice) ||
-      hasAttribute(Attributes::AddressSafety) ||
-      hasAttribute(Attributes::MinSize);
-  }
+  /// \brief Which attributes cannot be applied to a type.
+  static Attribute typeIncompatible(Type *Ty);
 
-  bool operator==(const Attributes &A) const {
-    return Attrs == A.Attrs;
-  }
-  bool operator!=(const Attributes &A) const {
-    return Attrs != A.Attrs;
-  }
+  /// \brief This returns an integer containing an encoding of all the LLVM
+  /// attributes found in the given attribute bitset.  Any change to this
+  /// encoding is a breaking change to bitcode compatibility.
+  static uint64_t encodeLLVMAttributesForBitcode(Attribute Attrs);
 
-  uint64_t Raw() const;
+  /// \brief This returns an attribute bitset containing the LLVM attributes
+  /// that have been decoded from the given integer.  This function must stay in
+  /// sync with 'encodeLLVMAttributesForBitcode'.
+  static Attribute decodeLLVMAttributesForBitcode(LLVMContext &C,
+                                                  uint64_t EncodedAttrs);
 
-  /// @brief Which attributes cannot be applied to a type.
-  static Attributes typeIncompatible(Type *Ty);
-
-  /// encodeLLVMAttributesForBitcode - This returns an integer containing an
-  /// encoding of all the LLVM attributes found in the given attribute bitset.
-  /// Any change to this encoding is a breaking change to bitcode compatibility.
-  static uint64_t encodeLLVMAttributesForBitcode(Attributes Attrs);
-
-  /// decodeLLVMAttributesForBitcode - This returns an attribute bitset
-  /// containing the LLVM attributes that have been decoded from the given
-  /// integer.  This function must stay in sync with
-  /// 'encodeLLVMAttributesForBitcode'.
-  static Attributes decodeLLVMAttributesForBitcode(LLVMContext &C,
-                                                   uint64_t EncodedAttrs);
-
-  /// getAsString - The set of Attributes set in Attributes is converted to a
-  /// string of equivalent mnemonics. This is, presumably, for writing out the
-  /// mnemonics for the assembly writer.
-  /// @brief Convert attribute bits to text
+  /// \brief The Attribute is converted to a string of equivalent mnemonic. This
+  /// is, presumably, for writing out the mnemonics for the assembly writer.
   std::string getAsString() const;
 };
 
 //===----------------------------------------------------------------------===//
-/// AttrBuilder - This class is used in conjunction with the Attributes::get
-/// method to create an Attributes object. The object itself is uniquified. The
-/// Builder's value, however, is not. So this can be used as a quick way to test
-/// for equality, presence of attributes, etc.
+/// \class
+/// \brief This class is used in conjunction with the Attribute::get method to
+/// create an Attribute object. The object itself is uniquified. The Builder's
+/// value, however, is not. So this can be used as a quick way to test for
+/// equality, presence of attributes, etc.
 class AttrBuilder {
   uint64_t Bits;
 public:
   AttrBuilder() : Bits(0) {}
   explicit AttrBuilder(uint64_t B) : Bits(B) {}
-  AttrBuilder(const Attributes &A) : Bits(A.Raw()) {}
+  AttrBuilder(const Attribute &A) : Bits(A.getBitMask()) {}
 
   void clear() { Bits = 0; }
 
   /// addAttribute - Add an attribute to the builder.
-  AttrBuilder &addAttribute(Attributes::AttrVal Val);
+  AttrBuilder &addAttribute(Attribute::AttrKind Val);
 
   /// removeAttribute - Remove an attribute from the builder.
-  AttrBuilder &removeAttribute(Attributes::AttrVal Val);
+  AttrBuilder &removeAttribute(Attribute::AttrKind Val);
 
   /// addAttribute - Add the attributes from A to the builder.
-  AttrBuilder &addAttributes(const Attributes &A);
+  AttrBuilder &addAttributes(const Attribute &A);
 
   /// removeAttribute - Remove the attributes from A from the builder.
-  AttrBuilder &removeAttributes(const Attributes &A);
+  AttrBuilder &removeAttributes(const Attribute &A);
 
-  /// hasAttribute - Return true if the builder has the specified attribute.
-  bool hasAttribute(Attributes::AttrVal A) const;
+  /// \brief Return true if the builder has the specified attribute.
+  bool contains(Attribute::AttrKind A) const;
 
   /// hasAttributes - Return true if the builder has IR-level attributes.
   bool hasAttributes() const;
 
   /// hasAttributes - Return true if the builder has any attribute that's in the
   /// specified attribute.
-  bool hasAttributes(const Attributes &A) const;
+  bool hasAttributes(const Attribute &A) const;
 
   /// hasAlignmentAttr - Return true if the builder has an alignment attribute.
   bool hasAlignmentAttr() const;
@@ -229,11 +199,11 @@ public:
   uint64_t getStackAlignment() const;
 
   /// addAlignmentAttr - This turns an int alignment (which must be a power of
-  /// 2) into the form used internally in Attributes.
+  /// 2) into the form used internally in Attribute.
   AttrBuilder &addAlignmentAttr(unsigned Align);
 
   /// addStackAlignmentAttr - This turns an int stack alignment (which must be a
-  /// power of 2) into the form used internally in Attributes.
+  /// power of 2) into the form used internally in Attribute.
   AttrBuilder &addStackAlignmentAttr(unsigned Align);
 
   /// addRawValue - Add the raw value to the internal representation.
@@ -242,28 +212,29 @@ public:
 
   /// @brief Remove attributes that are used on functions only.
   void removeFunctionOnlyAttrs() {
-    removeAttribute(Attributes::NoReturn)
-      .removeAttribute(Attributes::NoUnwind)
-      .removeAttribute(Attributes::ReadNone)
-      .removeAttribute(Attributes::ReadOnly)
-      .removeAttribute(Attributes::NoInline)
-      .removeAttribute(Attributes::AlwaysInline)
-      .removeAttribute(Attributes::OptimizeForSize)
-      .removeAttribute(Attributes::StackProtect)
-      .removeAttribute(Attributes::StackProtectReq)
-      .removeAttribute(Attributes::NoRedZone)
-      .removeAttribute(Attributes::NoImplicitFloat)
-      .removeAttribute(Attributes::Naked)
-      .removeAttribute(Attributes::InlineHint)
-      .removeAttribute(Attributes::StackAlignment)
-      .removeAttribute(Attributes::UWTable)
-      .removeAttribute(Attributes::NonLazyBind)
-      .removeAttribute(Attributes::ReturnsTwice)
-      .removeAttribute(Attributes::AddressSafety)
-      .removeAttribute(Attributes::MinSize);
+    removeAttribute(Attribute::NoReturn)
+      .removeAttribute(Attribute::NoUnwind)
+      .removeAttribute(Attribute::ReadNone)
+      .removeAttribute(Attribute::ReadOnly)
+      .removeAttribute(Attribute::NoInline)
+      .removeAttribute(Attribute::AlwaysInline)
+      .removeAttribute(Attribute::OptimizeForSize)
+      .removeAttribute(Attribute::StackProtect)
+      .removeAttribute(Attribute::StackProtectReq)
+      .removeAttribute(Attribute::NoRedZone)
+      .removeAttribute(Attribute::NoImplicitFloat)
+      .removeAttribute(Attribute::Naked)
+      .removeAttribute(Attribute::InlineHint)
+      .removeAttribute(Attribute::StackAlignment)
+      .removeAttribute(Attribute::UWTable)
+      .removeAttribute(Attribute::NonLazyBind)
+      .removeAttribute(Attribute::ReturnsTwice)
+      .removeAttribute(Attribute::AddressSafety)
+      .removeAttribute(Attribute::MinSize)
+      .removeAttribute(Attribute::NoDuplicate);
   }
 
-  uint64_t Raw() const { return Bits; }
+  uint64_t getBitMask() const { return Bits; }
 
   bool operator==(const AttrBuilder &B) {
     return Bits == B.Bits;
@@ -274,22 +245,20 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
-// AttributeWithIndex
-//===----------------------------------------------------------------------===//
-
-/// AttributeWithIndex - This is just a pair of values to associate a set of
-/// attributes with an index.
+/// \class
+/// \brief This is just a pair of values to associate a set of attributes with
+/// an index.
 struct AttributeWithIndex {
-  Attributes Attrs;  ///< The attributes that are set, or'd together.
-  unsigned Index;    ///< Index of the parameter for which the attributes apply.
-                     ///< Index 0 is used for return value attributes.
-                     ///< Index ~0U is used for function attributes.
+  Attribute Attrs;  ///< The attributes that are set, or'd together.
+  unsigned Index;   ///< Index of the parameter for which the attributes apply.
+                    ///< Index 0 is used for return value attributes.
+                    ///< Index ~0U is used for function attributes.
 
   static AttributeWithIndex get(LLVMContext &C, unsigned Idx,
-                                ArrayRef<Attributes::AttrVal> Attrs) {
-    return get(Idx, Attributes::get(C, Attrs));
+                                ArrayRef<Attribute::AttrKind> Attrs) {
+    return get(Idx, Attribute::get(C, Attrs));
   }
-  static AttributeWithIndex get(unsigned Idx, Attributes Attrs) {
+  static AttributeWithIndex get(unsigned Idx, Attribute Attrs) {
     AttributeWithIndex P;
     P.Index = Idx;
     P.Attrs = Attrs;
@@ -301,10 +270,12 @@ struct AttributeWithIndex {
 // AttributeSet Smart Pointer
 //===----------------------------------------------------------------------===//
 
-class AttributeListImpl;
+class AttributeSetImpl;
 
-/// AttributeSet - This class manages the ref count for the opaque
-/// AttributeListImpl object and provides accessors for it.
+//===----------------------------------------------------------------------===//
+/// \class
+/// \brief This class manages the ref count for the opaque AttributeSetImpl
+/// object and provides accessors for it.
 class AttributeSet {
 public:
   enum AttrIndex {
@@ -312,15 +283,15 @@ public:
     FunctionIndex = ~0U
   };
 private:
-  /// @brief The attributes that we are managing.  This can be null to represent
+  /// \brief The attributes that we are managing.  This can be null to represent
   /// the empty attributes list.
-  AttributeListImpl *AttrList;
+  AttributeSetImpl *AttrList;
 
-  /// @brief The attributes for the specified index are returned.  Attributes
+  /// \brief The attributes for the specified index are returned.  Attributes
   /// for the result are denoted with Idx = 0.
-  Attributes getAttributes(unsigned Idx) const;
+  Attribute getAttributes(unsigned Idx) const;
 
-  explicit AttributeSet(AttributeListImpl *LI) : AttrList(LI) {}
+  explicit AttributeSet(AttributeSetImpl *LI) : AttrList(LI) {}
 public:
   AttributeSet() : AttrList(0) {}
   AttributeSet(const AttributeSet &P) : AttrList(P.AttrList) {}
@@ -330,96 +301,99 @@ public:
   // Attribute List Construction and Mutation
   //===--------------------------------------------------------------------===//
 
-  /// get - Return a Attributes list with the specified parameters in it.
+  /// \brief Return an AttributeSet with the specified parameters in it.
   static AttributeSet get(LLVMContext &C, ArrayRef<AttributeWithIndex> Attrs);
 
-  /// addAttr - Add the specified attribute at the specified index to this
-  /// attribute list.  Since attribute lists are immutable, this
-  /// returns the new list.
-  AttributeSet addAttr(LLVMContext &C, unsigned Idx, Attributes Attrs) const;
+  /// \brief Add the specified attribute at the specified index to this
+  /// attribute list.  Since attribute lists are immutable, this returns the new
+  /// list.
+  AttributeSet addAttr(LLVMContext &C, unsigned Idx, Attribute Attrs) const;
 
-  /// removeAttr - Remove the specified attribute at the specified index from
-  /// this attribute list.  Since attribute lists are immutable, this
-  /// returns the new list.
-  AttributeSet removeAttr(LLVMContext &C, unsigned Idx, Attributes Attrs) const;
+  /// \brief Remove the specified attribute at the specified index from this
+  /// attribute list.  Since attribute lists are immutable, this returns the new
+  /// list.
+  AttributeSet removeAttr(LLVMContext &C, unsigned Idx, Attribute Attrs) const;
 
   //===--------------------------------------------------------------------===//
-  // Attribute List Accessors
+  // Attribute Set Accessors
   //===--------------------------------------------------------------------===//
-  /// getParamAttributes - The attributes for the specified index are
-  /// returned.
-  Attributes getParamAttributes(unsigned Idx) const {
+
+  /// \brief The attributes for the specified index are returned.
+  Attribute getParamAttributes(unsigned Idx) const {
     return getAttributes(Idx);
   }
 
-  /// getRetAttributes - The attributes for the ret value are
-  /// returned.
-  Attributes getRetAttributes() const {
+  /// \brief The attributes for the ret value are returned.
+  Attribute getRetAttributes() const {
     return getAttributes(ReturnIndex);
   }
 
-  /// getFnAttributes - The function attributes are returned.
-  Attributes getFnAttributes() const {
+  /// \brief The function attributes are returned.
+  Attribute getFnAttributes() const {
     return getAttributes(FunctionIndex);
   }
 
-  /// paramHasAttr - Return true if the specified parameter index has the
-  /// specified attribute set.
-  bool paramHasAttr(unsigned Idx, Attributes Attr) const {
-    return getAttributes(Idx).hasAttributes(Attr);
-  }
-
-  /// getParamAlignment - Return the alignment for the specified function
-  /// parameter.
+  /// \brief Return the alignment for the specified function parameter.
   unsigned getParamAlignment(unsigned Idx) const {
     return getAttributes(Idx).getAlignment();
   }
 
-  /// hasAttrSomewhere - Return true if the specified attribute is set for at
-  /// least one parameter or for the return value.
-  bool hasAttrSomewhere(Attributes::AttrVal Attr) const;
+  /// \brief Return true if the attribute exists at the given index.
+  bool hasAttribute(unsigned Index, Attribute::AttrKind Kind) const;
 
-  unsigned getNumAttrs() const;
-  Attributes &getAttributesAtIndex(unsigned i) const;
+  /// \brief Return true if attribute exists at the given index.
+  bool hasAttributes(unsigned Index) const;
+
+  /// \brief Get the stack alignment.
+  unsigned getStackAlignment(unsigned Index) const;
+
+  /// \brief Return the attributes at the index as a string.
+  std::string getAsString(unsigned Index) const;
+
+  uint64_t getBitMask(unsigned Index) const;
+
+  /// \brief Return true if the specified attribute is set for at least one
+  /// parameter or for the return value.
+  bool hasAttrSomewhere(Attribute::AttrKind Attr) const;
 
   /// operator==/!= - Provide equality predicates.
-  bool operator==(const AttributeSet &RHS) const
-  { return AttrList == RHS.AttrList; }
-  bool operator!=(const AttributeSet &RHS) const
-  { return AttrList != RHS.AttrList; }
+  bool operator==(const AttributeSet &RHS) const {
+    return AttrList == RHS.AttrList;
+  }
+  bool operator!=(const AttributeSet &RHS) const {
+    return AttrList != RHS.AttrList;
+  }
 
   //===--------------------------------------------------------------------===//
-  // Attribute List Introspection
+  // Attribute Set Introspection
   //===--------------------------------------------------------------------===//
 
-  /// getRawPointer - Return a raw pointer that uniquely identifies this
-  /// attribute list.
+  /// \brief Return a raw pointer that uniquely identifies this attribute list.
   void *getRawPointer() const {
     return AttrList;
   }
 
-  // Attributes are stored as a dense set of slots, where there is one
-  // slot for each argument that has an attribute.  This allows walking over the
-  // dense set instead of walking the sparse list of attributes.
+  // Attributes are stored as a dense set of slots, where there is one slot for
+  // each argument that has an attribute.  This allows walking over the dense
+  // set instead of walking the sparse list of attributes.
 
-  /// isEmpty - Return true if there are no attributes.
-  ///
+  /// \brief Return true if there are no attributes.
   bool isEmpty() const {
     return AttrList == 0;
   }
 
-  /// getNumSlots - Return the number of slots used in this attribute list.
-  /// This is the number of arguments that have an attribute set on them
-  /// (including the function itself).
+  /// \brief Return the number of slots used in this attribute list.  This is
+  /// the number of arguments that have an attribute set on them (including the
+  /// function itself).
   unsigned getNumSlots() const;
 
-  /// getSlot - Return the AttributeWithIndex at the specified slot.  This
-  /// holds a index number plus a set of attributes.
+  /// \brief Return the AttributeWithIndex at the specified slot.  This holds a
+  /// index number plus a set of attributes.
   const AttributeWithIndex &getSlot(unsigned Slot) const;
 
   void dump() const;
 };
 
-} // End llvm namespace
+} // end llvm namespace
 
 #endif

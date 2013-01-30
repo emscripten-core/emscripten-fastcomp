@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ADT_OPTIONAL
-#define LLVM_ADT_OPTIONAL
+#ifndef LLVM_ADT_OPTIONAL_H
+#define LLVM_ADT_OPTIONAL_H
 
 #include "llvm/Support/Compiler.h"
 #include <cassert>
@@ -28,7 +28,7 @@ namespace llvm {
 template<typename T>
 class Optional {
   T x;
-  unsigned hasVal : 1;
+  bool hasVal;
 public:
   explicit Optional() : x(), hasVal(false) {}
   Optional(const T &y) : x(y), hasVal(true) {}

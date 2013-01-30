@@ -19,8 +19,21 @@
 ; DW_AT_low_pc, DW_AT_high_pc, DW_AT_ranges, DW_AT_dwo_name, DW_AT_dwo_id,
 ; DW_AT_ranges_base, DW_AT_addr_base.
 
+; CHECK: .debug_info contents:
 ; CHECK: DW_TAG_compile_unit
-; CHECK: DW_AT_GNU_dwo_name [DW_FORM_strp] ( .debug_str[0x00000035] = "baz.c")
+; CHECK: DW_AT_GNU_dwo_name [DW_FORM_strp] ( .debug_str[0x00000000] = "baz.c")
 ; CHECK: DW_AT_low_pc [DW_FORM_addr]       (0x0000000000000000)
 ; CHECK: DW_AT_stmt_list [DW_FORM_data4]   (0x00000000)
-; CHECK: DW_AT_comp_dir [DW_FORM_strp]     ( .debug_str[0x0000003b] = "/usr/local/google/home/echristo/tmp")
+; CHECK: DW_AT_comp_dir [DW_FORM_strp]     ( .debug_str[0x00000006] = "/usr/local/google/home/echristo/tmp")
+
+; Check that the rest of the compile units have information.
+; FIXME: Strings will ultimately be a different form.
+; CHECK: .debug_info.dwo contents:
+; CHECK: DW_TAG_compile_unit
+; CHECK: DW_AT_producer [DW_FORM_GNU_str_index] ( indexed (00000000) string = "clang version 3.3 (trunk 169021) (llvm/trunk 169020)")
+; CHECK: DW_AT_language [DW_FORM_data2]        (0x000c)
+; CHECK: DW_AT_name [DW_FORM_GNU_str_index]    ( indexed (00000001) string = "baz.c")
+; CHECK: DW_TAG_base_type
+; CHECK: DW_AT_name [DW_FORM_GNU_str_index]     ( indexed (00000004) string = "int")
+; CHECK: DW_TAG_variable
+; CHECK: DW_AT_name [DW_FORM_GNU_str_index]     ( indexed (00000003) string = "a")

@@ -1,5 +1,5 @@
-; RUN: llc < %s -mattr=-avx -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s
-; RUN: llc < %s -mattr=+avx -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s --check-prefix=AVX
+; RUN: llc < %s -mattr=-avx -fast-isel -mcpu=core2 -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s
+; RUN: llc < %s -mattr=+avx -fast-isel -mcpu=core2 -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort | FileCheck %s --check-prefix=AVX
 ; RUN: llc < %s -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort -mtriple=x86_64-none-nacl | FileCheck %s --check-prefix=NACL64
 ; RUN: llc < %s -fast-isel -O0 -regalloc=fast -asm-verbose=0 -fast-isel-abort -mtriple=x86_64-none-nacl -relocation-model=pic | FileCheck %s --check-prefix=NACL64_PIC
 

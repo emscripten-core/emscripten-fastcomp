@@ -17,7 +17,6 @@
 #include "PPCPerfectShuffle.h"
 #include "PPCTargetMachine.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -25,10 +24,11 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/Intrinsics.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -376,6 +376,7 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
       setOperationAction(ISD::CTLZ_ZERO_UNDEF, VT, Expand);
       setOperationAction(ISD::CTTZ, VT, Expand);
       setOperationAction(ISD::CTTZ_ZERO_UNDEF, VT, Expand);
+      setOperationAction(ISD::VSELECT, VT, Expand);
       setOperationAction(ISD::SIGN_EXTEND_INREG, VT, Expand);
 
       for (unsigned j = (unsigned)MVT::FIRST_VECTOR_VALUETYPE;
@@ -442,6 +443,8 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
 
   setOperationAction(ISD::ATOMIC_LOAD,  MVT::i32, Expand);
   setOperationAction(ISD::ATOMIC_STORE, MVT::i32, Expand);
+  setOperationAction(ISD::ATOMIC_LOAD,  MVT::i64, Expand);
+  setOperationAction(ISD::ATOMIC_STORE, MVT::i64, Expand);
 
   setBooleanContents(ZeroOrOneBooleanContent);
   setBooleanVectorContents(ZeroOrOneBooleanContent); // FIXME: Is this correct?
@@ -578,8 +581,17 @@ const char *PPCTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case PPCISD::ADDIS_TOC_HA:    return "PPCISD::ADDIS_TOC_HA";
   case PPCISD::LD_TOC_L:        return "PPCISD::LD_TOC_L";
   case PPCISD::ADDI_TOC_L:      return "PPCISD::ADDI_TOC_L";
-  case PPCISD::LD_GOT_TPREL:    return "PPCISD::LD_GOT_TPREL";
+  case PPCISD::ADDIS_GOT_TPREL_HA: return "PPCISD::ADDIS_GOT_TPREL_HA";
+  case PPCISD::LD_GOT_TPREL_L:  return "PPCISD::LD_GOT_TPREL_L";
   case PPCISD::ADD_TLS:         return "PPCISD::ADD_TLS";
+  case PPCISD::ADDIS_TLSGD_HA:  return "PPCISD::ADDIS_TLSGD_HA";
+  case PPCISD::ADDI_TLSGD_L:    return "PPCISD::ADDI_TLSGD_L";
+  case PPCISD::GET_TLS_ADDR:    return "PPCISD::GET_TLS_ADDR";
+  case PPCISD::ADDIS_TLSLD_HA:  return "PPCISD::ADDIS_TLSLD_HA";
+  case PPCISD::ADDI_TLSLD_L:    return "PPCISD::ADDI_TLSLD_L";
+  case PPCISD::GET_TLSLD_ADDR:  return "PPCISD::GET_TLSLD_ADDR";
+  case PPCISD::ADDIS_DTPREL_HA: return "PPCISD::ADDIS_DTPREL_HA";
+  case PPCISD::ADDI_DTPREL_L:   return "PPCISD::ADDI_DTPREL_L";
   }
 }
 
@@ -1342,18 +1354,65 @@ SDValue PPCTargetLowering::LowerGlobalTLSAddress(SDValue Op,
   if (!is64bit)
     llvm_unreachable("only local-exec is currently supported for ppc32");
 
-  if (Model != TLSModel::InitialExec)
-    llvm_unreachable("only local-exec and initial-exec TLS modes supported");
+  if (Model == TLSModel::InitialExec) {
+    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0, 0);
+    SDValue GOTReg = DAG.getRegister(PPC::X2, MVT::i64);
+    SDValue TPOffsetHi = DAG.getNode(PPCISD::ADDIS_GOT_TPREL_HA, dl,
+                                     PtrVT, GOTReg, TGA);
+    SDValue TPOffset = DAG.getNode(PPCISD::LD_GOT_TPREL_L, dl,
+                                   PtrVT, TGA, TPOffsetHi);
+    return DAG.getNode(PPCISD::ADD_TLS, dl, PtrVT, TPOffset, TGA);
+  }
 
-  SDValue GOTOffset = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
-                                                 PPCII::MO_GOT_TPREL16_DS);
-  SDValue TPReg = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
-                                             PPCII::MO_TLS);
-  SDValue GOTReg = DAG.getRegister(is64bit ? PPC::X2  : PPC::R2,
-                                   is64bit ? MVT::i64 : MVT::i32);
-  SDValue TPOffset = DAG.getNode(PPCISD::LD_GOT_TPREL, dl, PtrVT,
-                                 GOTOffset, GOTReg);
-  return DAG.getNode(PPCISD::ADD_TLS, dl, PtrVT, TPOffset, TPReg);
+  if (Model == TLSModel::GeneralDynamic) {
+    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0, 0);
+    SDValue GOTReg = DAG.getRegister(PPC::X2, MVT::i64);
+    SDValue GOTEntryHi = DAG.getNode(PPCISD::ADDIS_TLSGD_HA, dl, PtrVT,
+                                     GOTReg, TGA);
+    SDValue GOTEntry = DAG.getNode(PPCISD::ADDI_TLSGD_L, dl, PtrVT,
+                                   GOTEntryHi, TGA);
+
+    // We need a chain node, and don't have one handy.  The underlying
+    // call has no side effects, so using the function entry node
+    // suffices.
+    SDValue Chain = DAG.getEntryNode();
+    Chain = DAG.getCopyToReg(Chain, dl, PPC::X3, GOTEntry);
+    SDValue ParmReg = DAG.getRegister(PPC::X3, MVT::i64);
+    SDValue TLSAddr = DAG.getNode(PPCISD::GET_TLS_ADDR, dl,
+                                  PtrVT, ParmReg, TGA);
+    // The return value from GET_TLS_ADDR really is in X3 already, but
+    // some hacks are needed here to tie everything together.  The extra
+    // copies dissolve during subsequent transforms.
+    Chain = DAG.getCopyToReg(Chain, dl, PPC::X3, TLSAddr);
+    return DAG.getCopyFromReg(Chain, dl, PPC::X3, PtrVT);
+  }
+
+  if (Model == TLSModel::LocalDynamic) {
+    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0, 0);
+    SDValue GOTReg = DAG.getRegister(PPC::X2, MVT::i64);
+    SDValue GOTEntryHi = DAG.getNode(PPCISD::ADDIS_TLSLD_HA, dl, PtrVT,
+                                     GOTReg, TGA);
+    SDValue GOTEntry = DAG.getNode(PPCISD::ADDI_TLSLD_L, dl, PtrVT,
+                                   GOTEntryHi, TGA);
+
+    // We need a chain node, and don't have one handy.  The underlying
+    // call has no side effects, so using the function entry node
+    // suffices.
+    SDValue Chain = DAG.getEntryNode();
+    Chain = DAG.getCopyToReg(Chain, dl, PPC::X3, GOTEntry);
+    SDValue ParmReg = DAG.getRegister(PPC::X3, MVT::i64);
+    SDValue TLSAddr = DAG.getNode(PPCISD::GET_TLSLD_ADDR, dl,
+                                  PtrVT, ParmReg, TGA);
+    // The return value from GET_TLSLD_ADDR really is in X3 already, but
+    // some hacks are needed here to tie everything together.  The extra
+    // copies dissolve during subsequent transforms.
+    Chain = DAG.getCopyToReg(Chain, dl, PPC::X3, TLSAddr);
+    SDValue DtvOffsetHi = DAG.getNode(PPCISD::ADDIS_DTPREL_HA, dl, PtrVT,
+                                      Chain, ParmReg, TGA);
+    return DAG.getNode(PPCISD::ADDI_DTPREL_L, dl, PtrVT, DtvOffsetHi, TGA);
+  }
+
+  llvm_unreachable("Unknown TLS model!");
 }
 
 SDValue PPCTargetLowering::LowerGlobalAddress(SDValue Op,
@@ -6763,8 +6822,8 @@ SDValue PPCTargetLowering::LowerFRAMEADDR(SDValue Op,
   bool is31 = (getTargetMachine().Options.DisableFramePointerElim(MF) ||
                MFI->hasVarSizedObjects()) &&
                   MFI->getStackSize() &&
-                  !MF.getFunction()->getFnAttributes().
-                    hasAttribute(Attributes::Naked);
+                  !MF.getFunction()->getAttributes().
+                    hasAttribute(AttributeSet::FunctionIndex, Attribute::Naked);
   unsigned FrameReg = isPPC64 ? (is31 ? PPC::X31 : PPC::X1) :
                                 (is31 ? PPC::R31 : PPC::R1);
   SDValue FrameAddr = DAG.getCopyFromReg(DAG.getEntryNode(), dl, FrameReg,
@@ -6787,16 +6846,15 @@ PPCTargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
 /// lowering. If DstAlign is zero that means it's safe to destination
 /// alignment can satisfy any constraint. Similarly if SrcAlign is zero it
 /// means there isn't a need to check it against alignment requirement,
-/// probably because the source does not need to be loaded. If
-/// 'IsZeroVal' is true, that means it's safe to return a
-/// non-scalar-integer type, e.g. empty string source, constant, or loaded
-/// from memory. 'MemcpyStrSrc' indicates whether the memcpy source is
-/// constant so it does not need to be loaded.
+/// probably because the source does not need to be loaded. If 'IsMemset' is
+/// true, that means it's expanding a memset. If 'ZeroMemset' is true, that
+/// means it's a memset of zero. 'MemcpyStrSrc' indicates whether the memcpy
+/// source is constant so it does not need to be loaded.
 /// It returns EVT::Other if the type should be determined using generic
 /// target-independent logic.
 EVT PPCTargetLowering::getOptimalMemOpType(uint64_t Size,
                                            unsigned DstAlign, unsigned SrcAlign,
-                                           bool IsZeroVal,
+                                           bool IsMemset, bool ZeroMemset,
                                            bool MemcpyStrSrc,
                                            MachineFunction &MF) const {
   if (this->PPCSubTarget.isPPC64()) {

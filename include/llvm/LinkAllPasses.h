@@ -16,6 +16,7 @@
 #define LLVM_LINKALLPASSES_H
 
 #include "llvm/Analysis/AliasSetTracker.h"
+#include "llvm/Analysis/CallPrinter.h"
 #include "llvm/Analysis/DomPrinter.h"
 #include "llvm/Analysis/FindUsedTypes.h"
 #include "llvm/Analysis/IntervalPartition.h"
@@ -27,7 +28,7 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Scalar.h"
@@ -57,6 +58,8 @@ namespace {
       (void) llvm::createBlockPlacementPass();
       (void) llvm::createBoundsCheckingPass();
       (void) llvm::createBreakCriticalEdgesPass();
+      (void) llvm::createCallGraphPrinterPass();
+      (void) llvm::createCallGraphViewerPass();
       (void) llvm::createCFGSimplificationPass();
       (void) llvm::createConstantMergePass();
       (void) llvm::createConstantPropagationPass();

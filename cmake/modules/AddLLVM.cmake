@@ -155,14 +155,20 @@ macro(add_llvm_external_project name)
   endif()
 endmacro(add_llvm_external_project)
 
+# Returns directory where unittest should reside.
+function(get_unittest_directory dir)
+  if (CMAKE_BUILD_TYPE)
+   set(result ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
+  else()
+   set(result ${CMAKE_CURRENT_BINARY_DIR})
+  endif()
+  set(${dir} ${result} PARENT_SCOPE)
+endfunction()
+
 # Generic support for adding a unittest.
 function(add_unittest test_suite test_name)
-  if (CMAKE_BUILD_TYPE)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
-      ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
-  else()
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-  endif()
+  get_unittest_directory(OUTPUT_DIR)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
   if( NOT LLVM_BUILD_TESTS )
     set(EXCLUDE_FROM_ALL ON)
   endif()
@@ -273,11 +279,17 @@ function(add_lit_target target comment)
   foreach(param ${ARG_PARAMS})
     list(APPEND LIT_COMMAND --param ${param})
   endforeach()
-  add_custom_target(${target}
-    COMMAND ${LIT_COMMAND} ${ARG_DEFAULT_ARGS}
-    COMMENT "${comment}"
-    )
-  add_dependencies(${target} ${ARG_DEPENDS})
+  if( ARG_DEPENDS )
+    add_custom_target(${target}
+      COMMAND ${LIT_COMMAND} ${ARG_DEFAULT_ARGS}
+      COMMENT "${comment}"
+      )
+    add_dependencies(${target} ${ARG_DEPENDS})
+  else()
+    add_custom_target(${target}
+      COMMAND cmake -E echo "${target} does nothing, no tools built.")
+    message(STATUS "${target} does nothing.")
+  endif()
 endfunction()
 
 # A function to add a set of lit test suites to be driven through 'check-*' targets.

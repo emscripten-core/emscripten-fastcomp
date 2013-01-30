@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ANALYSIS_DIBUILDER_H
-#define LLVM_ANALYSIS_DIBUILDER_H
+#ifndef LLVM_DIBUILDER_H
+#define LLVM_DIBUILDER_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -125,6 +125,11 @@ namespace llvm {
     DIType createPointerType(DIType PointeeTy, uint64_t SizeInBits,
                              uint64_t AlignInBits = 0, 
                              StringRef Name = StringRef());
+
+    /// \brief Create debugging information entry for a pointer to member.
+    /// @param PointeeTy Type pointed to by this pointer.
+    /// @param Class Type for which this pointer points to members of.
+    DIType createMemberPointerType(DIType PointeeTy, DIType Class);
 
     /// createReferenceType - Create debugging information entry for a c++
     /// style reference or rvalue reference type.

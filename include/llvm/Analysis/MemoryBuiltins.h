@@ -17,9 +17,9 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/IRBuilder.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/InstVisitor.h"
-#include "llvm/Operator.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/TargetFolder.h"
 #include "llvm/Support/ValueHandle.h"
@@ -153,12 +153,14 @@ typedef std::pair<APInt, APInt> SizeOffsetType;
 class ObjectSizeOffsetVisitor
   : public InstVisitor<ObjectSizeOffsetVisitor, SizeOffsetType> {
 
+  typedef DenseMap<const Value*, SizeOffsetType> CacheMapTy;
+
   const DataLayout *TD;
   const TargetLibraryInfo *TLI;
   bool RoundToAlign;
   unsigned IntTyBits;
   APInt Zero;
-  SmallPtrSet<Instruction *, 8> SeenInsts;
+  CacheMapTy CacheMap;
 
   APInt align(APInt Size, uint64_t Align);
 
@@ -191,6 +193,7 @@ public:
   SizeOffsetType visitExtractElementInst(ExtractElementInst &I);
   SizeOffsetType visitExtractValueInst(ExtractValueInst &I);
   SizeOffsetType visitGEPOperator(GEPOperator &GEP);
+  SizeOffsetType visitGlobalAlias(GlobalAlias &GA);
   SizeOffsetType visitGlobalVariable(GlobalVariable &GV);
   SizeOffsetType visitIntToPtrInst(IntToPtrInst&);
   SizeOffsetType visitLoadInst(LoadInst &I);

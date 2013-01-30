@@ -16,7 +16,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Attributes.h"
+#include "llvm/IR/Attributes.h"
 #include <vector>
 
 namespace llvm {
@@ -54,7 +54,7 @@ private:
 
   typedef DenseMap<void*, unsigned> AttributeMapType;
   AttributeMapType AttributeMap;
-  std::vector<AttributeSet> Attributes;
+  std::vector<AttributeSet> Attribute;
 
   /// GlobalBasicBlockIDs - This map memoizes the basic block ID's referenced by
   /// the "getGlobalBasicBlockID" method.
@@ -122,7 +122,7 @@ public:
     return BasicBlocks;
   }
   const std::vector<AttributeSet> &getAttributes() const {
-    return Attributes;
+    return Attribute;
   }
 
   /// getGlobalBasicBlockID - This returns the function-specific ID for the

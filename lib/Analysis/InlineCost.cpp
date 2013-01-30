@@ -20,12 +20,12 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/CallingConv.h"
-#include "llvm/DataLayout.h"
-#include "llvm/GlobalAlias.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/InstVisitor.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Operator.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
@@ -54,6 +54,8 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
   bool IsRecursiveCall;
   bool ExposesReturnsTwice;
   bool HasDynamicAlloca;
+  bool ContainsNoDuplicateCall;
+
   /// Number of bytes allocated statically by the callee.
   uint64_t AllocatedSize;
   unsigned NumInstructions, NumVectorInstructions;
@@ -94,6 +96,7 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
                            int InstructionCost);
   bool isGEPOffsetConstant(GetElementPtrInst &GEP);
   bool accumulateGEPOffset(GEPOperator &GEP, APInt &Offset);
+  bool simplifyCallSite(Function *F, CallSite CS);
   ConstantInt *stripAndComputeInBoundsConstantOffsets(Value *&V);
 
   // Custom analysis routines.
@@ -122,14 +125,16 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
   bool visitBinaryOperator(BinaryOperator &I);
   bool visitLoad(LoadInst &I);
   bool visitStore(StoreInst &I);
+  bool visitExtractValue(ExtractValueInst &I);
+  bool visitInsertValue(InsertValueInst &I);
   bool visitCallSite(CallSite CS);
 
 public:
   CallAnalyzer(const DataLayout *TD, Function &Callee, int Threshold)
     : TD(TD), F(Callee), Threshold(Threshold), Cost(0),
       IsCallerRecursive(false), IsRecursiveCall(false),
-      ExposesReturnsTwice(false), HasDynamicAlloca(false), AllocatedSize(0),
-      NumInstructions(0), NumVectorInstructions(0),
+      ExposesReturnsTwice(false), HasDynamicAlloca(false), ContainsNoDuplicateCall(false),
+      AllocatedSize(0), NumInstructions(0), NumVectorInstructions(0),
       FiftyPercentVectorBonus(0), TenPercentVectorBonus(0), VectorBonus(0),
       NumConstantArgs(0), NumConstantOffsetPtrArgs(0), NumAllocaArgs(0),
       NumConstantPtrCmps(0), NumConstantPtrDiffs(0),
@@ -353,7 +358,10 @@ bool CallAnalyzer::visitGetElementPtr(GetElementPtrInst &I) {
 
 bool CallAnalyzer::visitBitCast(BitCastInst &I) {
   // Propagate constants through bitcasts.
-  if (Constant *COp = dyn_cast<Constant>(I.getOperand(0)))
+  Constant *COp = dyn_cast<Constant>(I.getOperand(0));
+  if (!COp)
+    COp = SimplifiedValues.lookup(I.getOperand(0));
+  if (COp)
     if (Constant *C = ConstantExpr::getBitCast(COp, I.getType())) {
       SimplifiedValues[&I] = C;
       return true;
@@ -378,7 +386,10 @@ bool CallAnalyzer::visitBitCast(BitCastInst &I) {
 
 bool CallAnalyzer::visitPtrToInt(PtrToIntInst &I) {
   // Propagate constants through ptrtoint.
-  if (Constant *COp = dyn_cast<Constant>(I.getOperand(0)))
+  Constant *COp = dyn_cast<Constant>(I.getOperand(0));
+  if (!COp)
+    COp = SimplifiedValues.lookup(I.getOperand(0));
+  if (COp)
     if (Constant *C = ConstantExpr::getPtrToInt(COp, I.getType())) {
       SimplifiedValues[&I] = C;
       return true;
@@ -411,7 +422,10 @@ bool CallAnalyzer::visitPtrToInt(PtrToIntInst &I) {
 
 bool CallAnalyzer::visitIntToPtr(IntToPtrInst &I) {
   // Propagate constants through ptrtoint.
-  if (Constant *COp = dyn_cast<Constant>(I.getOperand(0)))
+  Constant *COp = dyn_cast<Constant>(I.getOperand(0));
+  if (!COp)
+    COp = SimplifiedValues.lookup(I.getOperand(0));
+  if (COp)
     if (Constant *C = ConstantExpr::getIntToPtr(COp, I.getType())) {
       SimplifiedValues[&I] = C;
       return true;
@@ -438,7 +452,10 @@ bool CallAnalyzer::visitIntToPtr(IntToPtrInst &I) {
 
 bool CallAnalyzer::visitCastInst(CastInst &I) {
   // Propagate constants through ptrtoint.
-  if (Constant *COp = dyn_cast<Constant>(I.getOperand(0)))
+  Constant *COp = dyn_cast<Constant>(I.getOperand(0));
+  if (!COp)
+    COp = SimplifiedValues.lookup(I.getOperand(0));
+  if (COp)
     if (Constant *C = ConstantExpr::getCast(I.getOpcode(), COp, I.getType())) {
       SimplifiedValues[&I] = C;
       return true;
@@ -608,28 +625,105 @@ bool CallAnalyzer::visitStore(StoreInst &I) {
   return false;
 }
 
+bool CallAnalyzer::visitExtractValue(ExtractValueInst &I) {
+  // Constant folding for extract value is trivial.
+  Constant *C = dyn_cast<Constant>(I.getAggregateOperand());
+  if (!C)
+    C = SimplifiedValues.lookup(I.getAggregateOperand());
+  if (C) {
+    SimplifiedValues[&I] = ConstantExpr::getExtractValue(C, I.getIndices());
+    return true;
+  }
+
+  // SROA can look through these but give them a cost.
+  return false;
+}
+
+bool CallAnalyzer::visitInsertValue(InsertValueInst &I) {
+  // Constant folding for insert value is trivial.
+  Constant *AggC = dyn_cast<Constant>(I.getAggregateOperand());
+  if (!AggC)
+    AggC = SimplifiedValues.lookup(I.getAggregateOperand());
+  Constant *InsertedC = dyn_cast<Constant>(I.getInsertedValueOperand());
+  if (!InsertedC)
+    InsertedC = SimplifiedValues.lookup(I.getInsertedValueOperand());
+  if (AggC && InsertedC) {
+    SimplifiedValues[&I] = ConstantExpr::getInsertValue(AggC, InsertedC,
+                                                        I.getIndices());
+    return true;
+  }
+
+  // SROA can look through these but give them a cost.
+  return false;
+}
+
+/// \brief Try to simplify a call site.
+///
+/// Takes a concrete function and callsite and tries to actually simplify it by
+/// analyzing the arguments and call itself with instsimplify. Returns true if
+/// it has simplified the callsite to some other entity (a constant), making it
+/// free.
+bool CallAnalyzer::simplifyCallSite(Function *F, CallSite CS) {
+  // FIXME: Using the instsimplify logic directly for this is inefficient
+  // because we have to continually rebuild the argument list even when no
+  // simplifications can be performed. Until that is fixed with remapping
+  // inside of instsimplify, directly constant fold calls here.
+  if (!canConstantFoldCallTo(F))
+    return false;
+
+  // Try to re-map the arguments to constants.
+  SmallVector<Constant *, 4> ConstantArgs;
+  ConstantArgs.reserve(CS.arg_size());
+  for (CallSite::arg_iterator I = CS.arg_begin(), E = CS.arg_end();
+       I != E; ++I) {
+    Constant *C = dyn_cast<Constant>(*I);
+    if (!C)
+      C = dyn_cast_or_null<Constant>(SimplifiedValues.lookup(*I));
+    if (!C)
+      return false; // This argument doesn't map to a constant.
+
+    ConstantArgs.push_back(C);
+  }
+  if (Constant *C = ConstantFoldCall(F, ConstantArgs)) {
+    SimplifiedValues[CS.getInstruction()] = C;
+    return true;
+  }
+
+  return false;
+}
+
 bool CallAnalyzer::visitCallSite(CallSite CS) {
   if (CS.isCall() && cast<CallInst>(CS.getInstruction())->canReturnTwice() &&
-      !F.getFnAttributes().hasAttribute(Attributes::ReturnsTwice)) {
+      !F.getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                      Attribute::ReturnsTwice)) {
     // This aborts the entire analysis.
     ExposesReturnsTwice = true;
     return false;
   }
-
-  if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(CS.getInstruction())) {
-    switch (II->getIntrinsicID()) {
-    default:
-      return Base::visitCallSite(CS);
-
-    case Intrinsic::memset:
-    case Intrinsic::memcpy:
-    case Intrinsic::memmove:
-      // SROA can usually chew through these intrinsics, but they aren't free.
-      return false;
-    }
-  }
+  if (CS.isCall() &&
+      cast<CallInst>(CS.getInstruction())->hasFnAttr(Attribute::NoDuplicate))
+    ContainsNoDuplicateCall = true;
 
   if (Function *F = CS.getCalledFunction()) {
+    // When we have a concrete function, first try to simplify it directly.
+    if (simplifyCallSite(F, CS))
+      return true;
+
+    // Next check if it is an intrinsic we know about.
+    // FIXME: Lift this into part of the InstVisitor.
+    if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(CS.getInstruction())) {
+      switch (II->getIntrinsicID()) {
+      default:
+        return Base::visitCallSite(CS);
+
+      case Intrinsic::memset:
+      case Intrinsic::memcpy:
+      case Intrinsic::memmove:
+        // SROA can usually chew through these intrinsics, but they aren't free.
+        return false;
+      }
+    }
+
     if (F == CS.getInstruction()->getParent()->getParent()) {
       // This flag will fully abort the analysis, so don't bother with anything
       // else.
@@ -842,7 +936,9 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
 
   // If there is only one call of the function, and it has internal linkage,
   // the cost of inlining it drops dramatically.
-  if (F.hasLocalLinkage() && F.hasOneUse() && &F == CS.getCalledFunction())
+  bool OnlyOneCallAndLocalLinkage = F.hasLocalLinkage() && F.hasOneUse() &&
+    &F == CS.getCalledFunction();
+  if (OnlyOneCallAndLocalLinkage)
     Cost += InlineConstants::LastCallToStaticBonus;
 
   // If the instruction after the call, or if the normal destination of the
@@ -1008,6 +1104,12 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
     }
   }
 
+  // If this is a noduplicate call, we can still inline as long as 
+  // inlining this would cause the removal of the caller (so the instruction
+  // is not actually duplicated, just moved).
+  if (!OnlyOneCallAndLocalLinkage && ContainsNoDuplicateCall)
+    return false;
+
   Threshold += VectorBonus;
 
   return Cost < Threshold;
@@ -1025,6 +1127,7 @@ void CallAnalyzer::dump() {
   DEBUG_PRINT_STAT(NumInstructionsSimplified);
   DEBUG_PRINT_STAT(SROACostSavings);
   DEBUG_PRINT_STAT(SROACostSavingsLost);
+  DEBUG_PRINT_STAT(ContainsNoDuplicateCall);
 #undef DEBUG_PRINT_STAT
 }
 #endif
@@ -1041,7 +1144,8 @@ InlineCost InlineCostAnalyzer::getInlineCost(CallSite CS, Function *Callee,
 
   // Calls to functions with always-inline attributes should be inlined
   // whenever possible.
-  if (Callee->getFnAttributes().hasAttribute(Attributes::AlwaysInline)) {
+  if (Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                           Attribute::AlwaysInline)) {
     if (isInlineViable(*Callee))
       return llvm::InlineCost::getAlways();
     return llvm::InlineCost::getNever();
@@ -1051,7 +1155,8 @@ InlineCost InlineCostAnalyzer::getInlineCost(CallSite CS, Function *Callee,
   // something else.  Don't inline functions marked noinline or call sites
   // marked noinline.
   if (Callee->mayBeOverridden() ||
-      Callee->getFnAttributes().hasAttribute(Attributes::NoInline) ||
+      Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                           Attribute::NoInline) ||
       CS.isNoInline())
     return llvm::InlineCost::getNever();
 
@@ -1073,7 +1178,8 @@ InlineCost InlineCostAnalyzer::getInlineCost(CallSite CS, Function *Callee,
 }
 
 bool InlineCostAnalyzer::isInlineViable(Function &F) {
-  bool ReturnsTwice =F.getFnAttributes().hasAttribute(Attributes::ReturnsTwice);
+  bool ReturnsTwice =F.getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                                    Attribute::ReturnsTwice);
   for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
     // Disallow inlining of functions which contain an indirect branch.
     if (isa<IndirectBrInst>(BI->getTerminator()))

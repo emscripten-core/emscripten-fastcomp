@@ -6,11 +6,6 @@ How To Release LLVM To The Public
    :local:
    :depth: 1
 
-.. sectionauthor:: Tanya Lattner <tonic@nondot.org>,
-                   Reid Spencer <rspencer@x10sys.com>,
-                   John Criswell <criswell@cs.uiuc.edu> and
-                   Bill Wendling <wendling@apple.com>
-
 Introduction
 ============
 
@@ -201,7 +196,7 @@ Build LLVM
 
 Build ``Debug``, ``Release+Asserts``, and ``Release`` versions
 of ``llvm`` on all supported platforms.  Directions to build ``llvm``
-are :ref:`here <getting_started>`.
+are :doc:`here <GettingStarted>`.
 
 Build Clang Binary Distribution
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -21,7 +21,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
@@ -198,8 +198,8 @@ void PPCFrameLowering::determineFrameLayout(MachineFunction &MF) const {
   // to adjust the stack pointer (we fit in the Red Zone).  For 64-bit
   // SVR4, we also require a stack frame if we need to spill the CR,
   // since this spill area is addressed relative to the stack pointer.
-  bool DisableRedZone = MF.getFunction()->getFnAttributes().
-    hasAttribute(Attributes::NoRedZone);
+  bool DisableRedZone = MF.getFunction()->getAttributes().
+    hasAttribute(AttributeSet::FunctionIndex, Attribute::NoRedZone);
   // FIXME SVR4 The 32-bit SVR4 ABI has no red zone.  However, it can
   // still generate stackless code if all local vars are reg-allocated.
   // Try: (FrameSize <= 224
@@ -261,7 +261,8 @@ bool PPCFrameLowering::needsFP(const MachineFunction &MF) const {
 
   // Naked functions have no stack frame pushed, so we don't have a frame
   // pointer.
-  if (MF.getFunction()->getFnAttributes().hasAttribute(Attributes::Naked))
+  if (MF.getFunction()->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                                     Attribute::Naked))
     return false;
 
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||

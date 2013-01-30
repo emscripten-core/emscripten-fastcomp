@@ -77,7 +77,7 @@ static void EmitDataMask(int I, MCInst Saved[], MCStreamer &Out) {
   int64_t  Pred = Saved[2].getOperand(2).getImm();
   assert((ARM::SP == Addr) && "Unexpected register at stack guard");
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   Out.EmitInstruction(Saved[1]);
   EmitBICMask(Out, Addr, Pred, 0xC0000000);
   Out.EmitBundleUnlock();
@@ -89,8 +89,7 @@ static void EmitDirectGuardCall(int I, MCInst Saved[],
   //   sfi_nops_to_force_slot3
   assert(I == 2 && (ARM::SFI_GUARD_CALL == Saved[0].getOpcode()) &&
          "Unexpected SFI Pseudo while lowering SFI_GUARD_CALL");
-  Out.EmitBundleAlignEnd();
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(true);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
 }
@@ -104,8 +103,7 @@ static void EmitIndirectGuardCall(int I, MCInst Saved[],
          "Unexpected SFI Pseudo while lowering SFI_GUARD_CALL");
   unsigned Reg = Saved[0].getOperand(0).getReg();
   int64_t Pred = Saved[0].getOperand(2).getImm();
-  Out.EmitBundleAlignEnd();
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(true);
   EmitBICMask(Out, Reg, Pred, 0xC000000F);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -120,7 +118,7 @@ static void EmitIndirectGuardJmp(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Reg = Saved[0].getOperand(0).getReg();
   int64_t Pred = Saved[0].getOperand(2).getImm();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitBICMask(Out, Reg, Pred, 0xC000000F);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -134,7 +132,7 @@ static void EmitGuardReturn(int I, MCInst Saved[], MCStreamer &Out) {
          "Unexpected SFI Pseudo while lowering SFI_GUARD_RETURN");
   int64_t Pred = Saved[0].getOperand(0).getImm();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitBICMask(Out, ARM::LR, Pred, 0xC000000F);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -149,7 +147,7 @@ static void EmitGuardLoadOrStore(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Reg = Saved[0].getOperand(0).getReg();
   int64_t Pred = Saved[0].getOperand(2).getImm();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitBICMask(Out, Reg, Pred, 0xC0000000);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -163,7 +161,7 @@ static void EmitGuardLoadOrStoreTst(int I, MCInst Saved[], MCStreamer &Out) {
          "Unexpected SFI Pseudo while lowering");
   unsigned Reg = Saved[0].getOperand(0).getReg();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitTST(Out, Reg);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -182,7 +180,7 @@ static void EmitGuardSpLoad(int I, MCInst Saved[], MCStreamer &Out) {
   int64_t  Pred = Saved[3].getOperand(2).getImm();
   assert((ARM::SP == SpReg) && "Unexpected register at stack guard");
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitBICMask(Out, AddrReg, Pred, 0xC0000000);
   Out.EmitInstruction(Saved[2]);
   EmitBICMask(Out, SpReg, Pred, 0xC0000000);

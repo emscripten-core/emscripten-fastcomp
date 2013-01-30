@@ -25,7 +25,6 @@
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/IntrinsicLowering.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -35,19 +34,20 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/Constants.h"
-#include "llvm/Function.h"
-#include "llvm/GlobalValue.h"
-#include "llvm/Instruction.h"
-#include "llvm/Instructions.h"
-#include "llvm/Intrinsics.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Type.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Type.h"
 
 // @LOCALMOD-START
 namespace llvm {
@@ -904,10 +904,10 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
 // due to the common occurrence of cross class copies and subregister insertions
 // and extractions.
 std::pair<const TargetRegisterClass*, uint8_t>
-ARMTargetLowering::findRepresentativeClass(EVT VT) const{
+ARMTargetLowering::findRepresentativeClass(MVT VT) const{
   const TargetRegisterClass *RRC = 0;
   uint8_t Cost = 1;
-  switch (VT.getSimpleVT().SimpleTy) {
+  switch (VT.SimpleTy) {
   default:
     return TargetLowering::findRepresentativeClass(VT);
   // Use DPR as representative register class for all floating point
@@ -1091,7 +1091,7 @@ EVT ARMTargetLowering::getSetCCResultType(EVT VT) const {
 
 /// getRegClassFor - Return the register class that should be used for the
 /// specified value type.
-const TargetRegisterClass *ARMTargetLowering::getRegClassFor(EVT VT) const {
+const TargetRegisterClass *ARMTargetLowering::getRegClassFor(MVT VT) const {
   // Map v4i64 to QQ registers but do not make the type legal. Similarly map
   // v8i64 to QQQQ registers. v4i64 and v8i64 are only used for REG_SEQUENCE to
   // load / store 4 to 8 consecutive D registers.
@@ -1661,8 +1661,8 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // FIXME: handle tail calls differently.
   unsigned CallOpc;
-  bool HasMinSizeAttr = MF.getFunction()->getFnAttributes().
-    hasAttribute(Attributes::MinSize);
+  bool HasMinSizeAttr = MF.getFunction()->getAttributes().
+    hasAttribute(AttributeSet::FunctionIndex, Attribute::MinSize);
   if (Subtarget->isThumb()) {
     if ((!isDirect || isARMFunc) && !Subtarget->hasV5TOps())
       CallOpc = ARMISD::CALL_NOLINK;
@@ -6899,7 +6899,7 @@ EmitSjLjDispatchBlock(MachineInstr *MI, MachineBasicBlock *MBB) const {
         DefRegs[OI->getReg()] = true;
       }
 
-      MachineInstrBuilder MIB(&*II);
+      MachineInstrBuilder MIB(*MF, &*II);
 
       for (unsigned i = 0; SavedRegs[i] != 0; ++i) {
         unsigned Reg = SavedRegs[i];
@@ -6976,8 +6976,9 @@ EmitStructByval(MachineInstr *MI, MachineBasicBlock *BB) const {
     UnitSize = 2;
   } else {
     // Check whether we can use NEON instructions.
-    if (!MF->getFunction()->getFnAttributes().
-          hasAttribute(Attributes::NoImplicitFloat) &&
+    if (!MF->getFunction()->getAttributes().
+          hasAttribute(AttributeSet::FunctionIndex,
+                       Attribute::NoImplicitFloat) &&
         Subtarget->hasNEON()) {
       if ((Align % 16 == 0) && SizeVal >= 16) {
         ldrOpc = ARM::VLD1q32wb_fixed;
@@ -9741,33 +9742,33 @@ static bool memOpAlign(unsigned DstAlign, unsigned SrcAlign,
 
 EVT ARMTargetLowering::getOptimalMemOpType(uint64_t Size,
                                            unsigned DstAlign, unsigned SrcAlign,
-                                           bool IsZeroVal,
+                                           bool IsMemset, bool ZeroMemset,
                                            bool MemcpyStrSrc,
                                            MachineFunction &MF) const {
   const Function *F = MF.getFunction();
 
   // See if we can use NEON instructions for this...
-  if (IsZeroVal &&
+  if ((!IsMemset || ZeroMemset) &&
       Subtarget->hasNEON() &&
-      !F->getFnAttributes().hasAttribute(Attributes::NoImplicitFloat)) {
+      !F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                       Attribute::NoImplicitFloat)) {
     bool Fast;
-    if (Size >= 16 && (memOpAlign(SrcAlign, DstAlign, 16) ||
-                       (allowsUnalignedMemoryAccesses(MVT::v2f64, &Fast) &&
-                        Fast))) {
+    if (Size >= 16 &&
+        (memOpAlign(SrcAlign, DstAlign, 16) ||
+         (allowsUnalignedMemoryAccesses(MVT::v2f64, &Fast) && Fast))) {
       return MVT::v2f64;
-    } else if (Size >= 8 && (memOpAlign(SrcAlign, DstAlign, 8) ||
-                             (allowsUnalignedMemoryAccesses(MVT::f64, &Fast) &&
-                              Fast))) {
+    } else if (Size >= 8 &&
+               (memOpAlign(SrcAlign, DstAlign, 8) ||
+                (allowsUnalignedMemoryAccesses(MVT::f64, &Fast) && Fast))) {
       return MVT::f64;
     }
   }
 
   // Lowering to i32/i16 if the size permits.
-  if (Size >= 4) {
+  if (Size >= 4)
     return MVT::i32;
-  } else if (Size >= 2) {
+  else if (Size >= 2)
     return MVT::i16;
-  }
 
   // Let the target-independent logic figure it out.
   return MVT::Other;
@@ -10570,24 +10571,6 @@ bool ARMTargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
   return false;
 }
 
-bool ARMTargetLowering::isIntImmLegal(const APInt &Imm, EVT VT) const {
-  if (VT.getSizeInBits() > 32)
-    return false;
-
-  int32_t ImmVal = Imm.getSExtValue();
-  if (!Subtarget->isThumb()) {
-    return (ImmVal >= 0 && ImmVal < 65536) ||
-      (ARM_AM::getSOImmVal(ImmVal) != -1) ||
-      (ARM_AM::getSOImmVal(~ImmVal) != -1);
-  } else if (Subtarget->isThumb2()) {
-    return (ImmVal >= 0 && ImmVal < 65536) ||
-      (ARM_AM::getT2SOImmVal(ImmVal) != -1) ||
-      (ARM_AM::getT2SOImmVal(~ImmVal) != -1);
-  } else /*Thumb1*/ {
-    return (ImmVal >= 0 && ImmVal < 256);
-  }
-}
-
 /// getTgtMemIntrinsic - Represent NEON load and store intrinsics as
 /// MemIntrinsicNodes.  The associated MachineMemOperands record the alignment
 /// specified in the intrinsic calls.
@@ -10669,3 +10652,4 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
 
   return false;
 }
+

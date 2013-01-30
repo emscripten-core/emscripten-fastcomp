@@ -257,7 +257,8 @@ static MCRegisterInfo *createX86MCRegisterInfo(StringRef TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
   InitX86MCRegisterInfo(X, RA,
                         X86_MC::getDwarfRegFlavour(TT, false),
-                        X86_MC::getDwarfRegFlavour(TT, true));
+                        X86_MC::getDwarfRegFlavour(TT, true),
+                        RA);
   X86_MC::InitLLVM2SEHRegisterMapping(X);
   return X;
 }
@@ -365,7 +366,14 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
   if (TheTriple.isOSWindows() && TheTriple.getEnvironment() != Triple::ELF)
     return createWinCOFFStreamer(Ctx, MAB, *_Emitter, _OS, RelaxAll);
 
-  return createELFStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll, NoExecStack);
+  // @LOCALMOD-BEGIN
+  MCStreamer *Streamer = createELFStreamer(Ctx, MAB, _OS, _Emitter,
+                                           RelaxAll, NoExecStack);
+  if (TheTriple.isOSNaCl())
+    Streamer->EmitBundleAlignMode(5);
+
+  return Streamer;
+  // @LOCALMOD-END
 }
 
 static MCInstPrinter *createX86MCInstPrinter(const Target &T,

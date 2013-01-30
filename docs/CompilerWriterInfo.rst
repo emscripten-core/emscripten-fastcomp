@@ -1,5 +1,3 @@
-.. _compiler_writer_info:
-
 ========================================================
 Architecture & Platform Information for Compiler Writers
 ========================================================
@@ -81,7 +79,7 @@ AMD - Official manuals and docs
 Intel - Official manuals and docs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* `IA-32 manuals <http://developer.intel.com/design/pentium4/manuals/index_new.htm>`_
+* `Intel 64 and IA-32 manuals <http://www.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html>`_
 * `Intel Itanium documentation <http://www.intel.com/design/itanium/documentation.htm?iid=ipp_srvr_proc_itanium2+techdocs>`_
 
 Other x86-specific information

@@ -7,14 +7,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_MC_MCASMPARSER_H
-#define LLVM_MC_MCASMPARSER_H
+#ifndef LLVM_MC_MCPARSER_MCASMPARSER_H
+#define LLVM_MC_MCPARSER_MCASMPARSER_H
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/Support/DataTypes.h"
+#include <vector>
 
 namespace llvm {
-class AsmToken;
 class MCAsmInfo;
 class MCAsmLexer;
 class MCAsmParserExtension;
@@ -36,10 +37,14 @@ class MCAsmParserSemaCallback {
 public:
   virtual ~MCAsmParserSemaCallback(); 
   virtual void *LookupInlineAsmIdentifier(StringRef Name, void *Loc,
-                                          unsigned &Size) = 0;
+                                          unsigned &Size, bool &IsVarDecl) = 0;
   virtual bool LookupInlineAsmField(StringRef Base, StringRef Member,
                                     unsigned &Offset) = 0;
 };
+
+
+typedef std::vector<AsmToken> MCAsmMacroArgument;
+
 
 /// MCAsmParser - Generic assembler parser interface, for use by target specific
 /// assembly parsers.
@@ -136,6 +141,16 @@ public:
   /// recovery.
   virtual void EatToEndOfStatement() = 0;
 
+  /// Control a flag in the parser that enables or disables macros.
+  virtual bool MacrosEnabled() = 0;
+  virtual void SetMacrosEnabled(bool flag) = 0;
+
+  /// ParseMacroArgument - Extract AsmTokens for a macro argument. If the
+  /// argument delimiter is initially unknown, set it to AsmToken::Eof. It will
+  /// be set to the correct delimiter by the method.
+  virtual bool ParseMacroArgument(MCAsmMacroArgument &MA,
+                                  AsmToken::TokenKind &ArgumentDelimiter) = 0;
+
   /// ParseExpression - Parse an arbitrary expression.
   ///
   /// @param Res - The value of the expression. The result is undefined
@@ -159,6 +174,10 @@ public:
   /// on error.
   /// @result - False on success.
   virtual bool ParseAbsoluteExpression(int64_t &Res) = 0;
+
+  /// CheckForValidSection - Ensure that we have a valid section set in the
+  /// streamer. Otherwise, report and error and switch to .text.
+  virtual void CheckForValidSection() = 0;
 };
 
 /// \brief Create an MCAsmParser instance.

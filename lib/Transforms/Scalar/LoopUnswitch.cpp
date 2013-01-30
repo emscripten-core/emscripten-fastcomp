@@ -37,10 +37,10 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -248,6 +248,13 @@ bool LUAnalysisCache::countLoop(const Loop* L) {
     Props.SizeEstimation = std::min(Metrics.NumInsts, Metrics.NumBlocks * 5);
     Props.CanBeUnswitchedCount = MaxSize / (Props.SizeEstimation);
     MaxSize -= Props.SizeEstimation * Props.CanBeUnswitchedCount;
+
+    if (Metrics.notDuplicatable) {
+      DEBUG(dbgs() << "NOT unswitching loop %"
+            << L->getHeader()->getName() << ", contents cannot be "
+            << "duplicated!\n");
+      return false;
+    }
   }
 
   if (!Props.CanBeUnswitchedCount) {
@@ -639,7 +646,8 @@ bool LoopUnswitch::UnswitchIfProfitable(Value *LoopCond, Constant *Val) {
 
   // Do not do non-trivial unswitch while optimizing for size.
   if (OptimizeForSize ||
-      F->getFnAttributes().hasAttribute(Attributes::OptimizeForSize))
+      F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                      Attribute::OptimizeForSize))
     return false;
 
   UnswitchNontrivialCondition(LoopCond, Val, currentLoop);

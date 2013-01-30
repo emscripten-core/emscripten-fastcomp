@@ -123,7 +123,7 @@ public:
 
   bool fixupNeedsRelaxation(const MCFixup &Fixup,
                             uint64_t Value,
-                            const MCInstFragment *DF,
+                            const MCRelaxableFragment *DF,
                             const MCAsmLayout &Layout) const;
 
   void relaxInstruction(const MCInst &Inst, MCInst &Res) const;
@@ -166,7 +166,7 @@ bool ARMAsmBackend::mayNeedRelaxation(const MCInst &Inst) const {
 
 bool ARMAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
                                          uint64_t Value,
-                                         const MCInstFragment *DF,
+                                         const MCRelaxableFragment *DF,
                                          const MCAsmLayout &Layout) const {
   switch ((unsigned)Fixup.getKind()) {
   case ARM::fixup_arm_thumb_br: {
@@ -221,10 +221,7 @@ void ARMAsmBackend::relaxInstruction(const MCInst &Inst, MCInst &Res) const {
 bool ARMAsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   const uint16_t Thumb1_16bitNopEncoding = 0x46c0; // using MOV r8,r8
   const uint16_t Thumb2_16bitNopEncoding = 0xbf00; // NOP
-  // @LOCALMOD-BEGIN
-  // The upstream operation for this encoding is not what it says it is.
   const uint32_t ARMv4_NopEncoding = 0xe1a00000; // using MOV r0,r0
-  // @LOCALMOD-END
   const uint32_t ARMv6T2_NopEncoding = 0xe320f000; // NOP
   if (isThumb()) {
     const uint16_t nopEncoding = hasNOP() ? Thumb2_16bitNopEncoding
@@ -635,29 +632,10 @@ public:
                    uint8_t _OSABI)
     : ARMAsmBackend(T, TT), OSABI(_OSABI) { }
 
-  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value) const;
-
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
     return createARMELFObjectWriter(OS, OSABI);
   }
 };
-
-// FIXME: Raise this to share code between Darwin and ELF.
-void ELFARMAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
-                                  unsigned DataSize, uint64_t Value) const {
-  unsigned NumBytes = 4;        // FIXME: 2 for Thumb
-  Value = adjustFixupValue(Fixup, Value);
-  if (!Value) return;           // Doesn't change encoding.
-
-  unsigned Offset = Fixup.getOffset();
-
-  // For each byte of the fragment that the fixup touches, mask in the bits from
-  // the fixup value. The Value has been "split up" into the appropriate
-  // bitfields above.
-  for (unsigned i = 0; i != NumBytes; ++i)
-    Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
-}
 
 // @LOCALMOD-BEGIN
 class NaClARMAsmBackend : public ELFARMAsmBackend {
@@ -726,7 +704,7 @@ MCAsmBackend *llvm::createARMAsmBackend(const Target &T, StringRef TT, StringRef
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
   // @LOCALMOD-END
-  if (TheTriple.isOSNaCl())
+  if (TheTriple.isOSNaCl()) 
     return new NaClARMAsmBackend(T, TT, OSABI);
   // @LOCALMOD-END
   return new ELFARMAsmBackend(T, TT, OSABI);

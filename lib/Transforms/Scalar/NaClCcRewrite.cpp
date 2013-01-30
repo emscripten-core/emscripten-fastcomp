@@ -19,15 +19,15 @@
 
 #define DEBUG_TYPE "naclcc"
 
-#include "llvm/Argument.h"
-#include "llvm/Attributes.h"
-#include "llvm/Constant.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Instruction.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Function.h"
 #include "llvm/Pass.h"
+#include "llvm/IR/Argument.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -510,7 +510,7 @@ Type* RewriteFunctionSret(Function& F,
 // Rewrite one byval function parameter while rewriting a function
 void FixFunctionByvalsParameter(Function& F,
                                 std::vector<Argument*>& new_arguments,
-                                std::vector<Attributes>& new_attributes,
+                                std::vector<Attribute>& new_attributes,
                                 Value* byval,
                                 const TypeRewriteRule* rule) {
   LLVMContext& C = F.getContext();
@@ -543,7 +543,7 @@ void FixFunctionByvalsParameter(Function& F,
     v = new StoreInst(arg, v, before);
 
     new_arguments.push_back(arg);
-    new_attributes.push_back(Attributes());
+    new_attributes.push_back(Attribute());
   }
 }
 
@@ -552,7 +552,7 @@ void FixFunctionByvalsParameter(Function& F,
 void UpdateFunctionSignature(Function &F,
                              Type* new_result_type,
                              std::vector<Argument*>& new_arguments,
-                             std::vector<Attributes>& new_attributes) {
+                             std::vector<Attribute>& new_attributes) {
   DEBUG(dbgs() << "PHASE PROTOTYPE UPDATE\n");
   if (new_result_type) {
     DEBUG(dbgs() << "NEW RESULT TYPE: " << *new_result_type << "\n");
@@ -588,12 +588,12 @@ void UpdateFunctionSignature(Function &F,
   DEBUG(dbgs() << "PHASE ATTRIBUTES UPDATE\n");
   std::vector<AttributeWithIndex> new_attributes_vec;
   for (size_t i = 0; i < new_attributes.size(); ++i) {
-    Attributes attr = new_attributes[i];
+    Attribute attr = new_attributes[i];
     if (attr.hasAttributes()) {
       new_attributes_vec.push_back(AttributeWithIndex::get(i + 1, attr));
     }
   }
-  Attributes fattr = F.getAttributes().getFnAttributes();
+  Attribute fattr = F.getAttributes().getFnAttributes();
   if (fattr.hasAttributes())
     new_attributes_vec.push_back(AttributeWithIndex::get(~0, fattr));
   F.setAttributes(AttributeSet::get(F.getContext(), new_attributes_vec));
@@ -602,7 +602,7 @@ void UpdateFunctionSignature(Function &F,
 
 void ExtractFunctionArgsAndAttributes(Function& F,
                                       std::vector<Argument*>& old_arguments,
-                                      std::vector<Attributes>& old_attributes) {
+                                      std::vector<Attribute>& old_attributes) {
   for (Function::arg_iterator ai = F.arg_begin(),
                              end = F.arg_end();
        ai != end;
@@ -612,7 +612,7 @@ void ExtractFunctionArgsAndAttributes(Function& F,
 
   for (size_t i = 0; i < old_arguments.size(); ++i) {
     // index zero is for return value attributes
-    old_attributes.push_back(F.getParamAttributes(i + 1));
+    old_attributes.push_back(F.getAttributes().getParamAttributes(i + 1));
   }
 }
 
@@ -626,9 +626,9 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
   DEBUG(dbgs() << "\n");
 
   std::vector<Argument*> new_arguments;
-  std::vector<Attributes> new_attributes;
+  std::vector<Attribute> new_attributes;
   std::vector<Argument*> old_arguments;
-  std::vector<Attributes> old_attributes;
+  std::vector<Attribute> old_attributes;
 
 
   // make a copy of everything first as create Argument adds them to the list
@@ -638,7 +638,7 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
   Type* new_result_type = 0;
 
   // only the first arg can be "sret"
-  if (old_attributes.size() > 0 && old_attributes[0].hasAttribute(Attributes::StructRet)) {
+  if (old_attributes.size() > 0 && old_attributes[0].hasAttribute(Attribute::StructRet)) {
     const TypeRewriteRule* sret_rule =
       MatchRewriteRulesPointee(old_arguments[0]->getType(), SretRewriteRules);
     if (sret_rule) {
@@ -656,8 +656,8 @@ void NaClCcRewrite::RewriteFunctionPrologAndEpilog(Function& F) {
   for (size_t i = 0; i < old_arguments.size(); ++i) {
     Argument* arg = old_arguments[i];
     Type* t = arg->getType();
-    Attributes attr = old_attributes[i];
-    if (attr.hasAttribute(Attributes::ByVal)) {
+    Attribute attr = old_attributes[i];
+    if (attr.hasAttribute(Attribute::ByVal)) {
       const TypeRewriteRule* rule =
         MatchRewriteRulesPointee(t, ByvalRewriteRules);
       if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
@@ -711,14 +711,14 @@ template<class T> bool CallNeedsRewrite(
       Type* pointee = dyn_cast<PointerType>(t)->getElementType();
 
       //  param zero is for the return value
-      if (ByvalRewriteRules && call->paramHasAttr(i + 1, Attributes::ByVal)) {
+      if (ByvalRewriteRules && call->paramHasAttr(i + 1, Attribute::ByVal)) {
         const TypeRewriteRule* rule =
           MatchRewriteRules(pointee, ByvalRewriteRules);
         if (rule != 0 && RegUseForRewriteRule(rule) <= available) {
           return true;
         }
       } else if (SretRewriteRules &&
-                 call->paramHasAttr(i + 1, Attributes::StructRet)) {
+                 call->paramHasAttr(i + 1, Attribute::StructRet)) {
         if (0 != MatchRewriteRules(pointee, SretRewriteRules)) {
           return true;
         }
@@ -733,7 +733,7 @@ template<class T> bool CallNeedsRewrite(
 // which will then be used as argument when we rewrite the actual call
 // instruction.
 void PrependCompensationForByvals(std::vector<Value*>& new_operands,
-                                  std::vector<Attributes>& new_attributes,
+                                  std::vector<Attribute>& new_attributes,
                                   Instruction* call,
                                   Value* byval,
                                   const TypeRewriteRule* rule,
@@ -759,7 +759,7 @@ void PrependCompensationForByvals(std::vector<Value*>& new_operands,
     v = new LoadInst(v, "byval_extract", call);
 
     new_operands.push_back(v);
-    new_attributes.push_back(Attributes());
+    new_attributes.push_back(Attribute());
   }
 }
 
@@ -803,7 +803,7 @@ void CallsiteFixupSrets(Instruction* call,
 void ExtractOperandsAndAttributesFromCallInst(
   CallInst* call,
   std::vector<Value*>& operands,
-  std::vector<Attributes>& attributes) {
+  std::vector<Attribute>& attributes) {
 
   AttributeSet PAL = call->getAttributes();
   // last operand is: function
@@ -818,7 +818,7 @@ void ExtractOperandsAndAttributesFromCallInst(
 void ExtractOperandsAndAttributesFromeInvokeInst(
   InvokeInst* call,
   std::vector<Value*>& operands,
-  std::vector<Attributes>& attributes) {
+  std::vector<Attribute>& attributes) {
   AttributeSet PAL = call->getAttributes();
   // last three operands are: function, bb-normal, bb-exception
   for (size_t i = 0; i <  call->getNumOperands() - 3; ++i) {
@@ -832,7 +832,7 @@ void ExtractOperandsAndAttributesFromeInvokeInst(
 Instruction* ReplaceCallInst(CallInst* call,
                              Type* function_pointer,
                              std::vector<Value*>& new_operands,
-                             std::vector<Attributes>& new_attributes) {
+                             std::vector<Attribute>& new_attributes) {
   Value* v = CastInst::CreatePointerCast(
     call->getCalledValue(), function_pointer, "fp_cast", call);
   CallInst* new_call = CallInst::Create(v, new_operands, "", call);
@@ -850,7 +850,7 @@ Instruction* ReplaceCallInst(CallInst* call,
 Instruction* ReplaceInvokeInst(InvokeInst* call,
                              Type* function_pointer,
                              std::vector<Value*>& new_operands,
-                             std::vector<Attributes>& new_attributes) {
+                             std::vector<Attribute>& new_attributes) {
   Value* v = CastInst::CreatePointerCast(
     call->getCalledValue(), function_pointer, "fp_cast", call);
   InvokeInst* new_call = InvokeInst::Create(v,
@@ -887,7 +887,7 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
   Value* new_result = 0;
 
   std::vector<Value*> old_operands;
-  std::vector<Attributes> old_attributes;
+  std::vector<Attribute> old_attributes;
   if (isa<CallInst>(call)) {
     ExtractOperandsAndAttributesFromCallInst(
       cast<CallInst>(call), old_operands, old_attributes);
@@ -900,7 +900,7 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
 
   // handle sret (just the book-keeping, 'new_result' is dealt with below)
   // only the first arg can be "sret"
-  if (old_attributes[0].hasAttribute(Attributes::StructRet)) {
+  if (old_attributes[0].hasAttribute(Attribute::StructRet)) {
     sret_rule = MatchRewriteRulesPointee(
       old_operands[0]->getType(), SretRewriteRules);
     if (sret_rule) {
@@ -914,15 +914,15 @@ void NaClCcRewrite::RewriteCallsite(Instruction* call, LLVMContext& C) {
 
   // handle byval
   std::vector<Value*> new_operands;
-  std::vector<Attributes> new_attributes;
+  std::vector<Attribute> new_attributes;
   RegUse available = AvailableRegs;
 
   for (size_t i = 0; i <  old_operands.size(); ++i) {
     Value *operand = old_operands[i];
     Type* t = operand->getType();
-    Attributes attr = old_attributes[i];
+    Attribute attr = old_attributes[i];
 
-    if (attr.hasAttribute(Attributes::ByVal)) {
+    if (attr.hasAttribute(Attribute::ByVal)) {
       const TypeRewriteRule* rule =
         MatchRewriteRulesPointee(t, ByvalRewriteRules);
       if (rule != 0 && RegUseForRewriteRule(rule) <= available) {

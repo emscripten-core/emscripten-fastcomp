@@ -34,6 +34,18 @@ MCStreamer::~MCStreamer() {
     delete W64UnwindInfos[i];
 }
 
+void MCStreamer::reset() {
+  for (unsigned i = 0; i < getNumW64UnwindInfos(); ++i)
+    delete W64UnwindInfos[i];
+  EmitEHFrame = true;
+  EmitDebugFrame = false;
+  CurrentW64UnwindInfo = 0;
+  LastSymbol = 0;
+  const MCSection *section = NULL;
+  SectionStack.clear();
+  SectionStack.push_back(std::make_pair(section, section));  
+}
+
 const MCExpr *MCStreamer::BuildSymbolDiff(MCContext &Context,
                                           const MCSymbol *A,
                                           const MCSymbol *B) {
@@ -92,8 +104,8 @@ void MCStreamer::EmitIntValue(uint64_t Value, unsigned Size,
 
 /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
 /// client having to pass in a MCExpr for constant integers.
-void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace,
-                                     unsigned Padding) {
+void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned Padding,
+				     unsigned AddrSpace) {
   SmallString<128> Tmp;
   raw_svector_ostream OSE(Tmp);
   encodeULEB128(Value, OSE, Padding);
@@ -176,6 +188,13 @@ void MCStreamer::EmitEHSymAttributes(const MCSymbol *Symbol,
 }
 
 void MCStreamer::EmitLabel(MCSymbol *Symbol) {
+  assert(!Symbol->isVariable() && "Cannot emit a variable symbol!");
+  assert(getCurrentSection() && "Cannot emit before setting section!");
+  Symbol->setSection(*getCurrentSection());
+  LastSymbol = Symbol;
+}
+
+void MCStreamer::EmitDebugLabel(MCSymbol *Symbol) {
   assert(!Symbol->isVariable() && "Cannot emit a variable symbol!");
   assert(getCurrentSection() && "Cannot emit before setting section!");
   Symbol->setSection(*getCurrentSection());

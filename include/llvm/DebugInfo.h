@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ANALYSIS_DEBUGINFO_H
-#define LLVM_ANALYSIS_DEBUGINFO_H
+#ifndef LLVM_DEBUGINFO_H
+#define LLVM_DEBUGINFO_H
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -61,7 +61,8 @@ namespace llvm {
       FlagExplicit           = 1 << 7,
       FlagPrototyped         = 1 << 8,
       FlagObjcClassComplete  = 1 << 9,
-      FlagObjectPointer      = 1 << 10
+      FlagObjectPointer      = 1 << 10,
+      FlagVector             = 1 << 11
     };
   protected:
     const MDNode *DbgNode;
@@ -296,6 +297,9 @@ namespace llvm {
     bool isObjcClassComplete() const {
       return (getFlags() & FlagObjcClassComplete) != 0;
     }
+    bool isVector() const {
+      return (getFlags() & FlagVector) != 0;
+    }
     bool isValid() const {
       return DbgNode && (isBasicType() || isDerivedType() || isCompositeType());
     }
@@ -353,6 +357,11 @@ namespace llvm {
     /// getObjCProperty - Return property node, if this ivar is
     /// associated with one.
     MDNode *getObjCProperty() const;
+
+    DIType getClassType() const {
+      assert(getTag() == dwarf::DW_TAG_ptr_to_member_type);
+      return getFieldAs<DIType>(10);
+    }
 
     StringRef getObjCPropertyName() const {
       if (getVersion() > LLVMDebugVersion11)
@@ -635,6 +644,7 @@ namespace llvm {
       DIFile F = getFieldAs<DIFile>(3);
       return F.getCompileUnit();
     }
+    DIFile getFile() const              { return getFieldAs<DIFile>(3); }
     unsigned getLineNumber() const      {
       return (getUnsignedField(4) << 8) >> 8;
     }

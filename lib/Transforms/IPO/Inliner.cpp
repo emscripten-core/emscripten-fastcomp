@@ -19,10 +19,10 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/InlineCost.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -64,8 +64,8 @@ Inliner::Inliner(char &ID, int Threshold, bool InsertLifetime)
 /// getAnalysisUsage - For this class, we declare that we require and preserve
 /// the call graph.  If the derived class implements this method, it should
 /// always explicitly call the implementation here.
-void Inliner::getAnalysisUsage(AnalysisUsage &Info) const {
-  CallGraphSCCPass::getAnalysisUsage(Info);
+void Inliner::getAnalysisUsage(AnalysisUsage &AU) const {
+  CallGraphSCCPass::getAnalysisUsage(AU);
 }
 
 
@@ -93,11 +93,14 @@ static bool InlineCallIfPossible(CallSite CS, InlineFunctionInfo &IFI,
 
   // If the inlined function had a higher stack protection level than the
   // calling function, then bump up the caller's stack protection level.
-  if (Callee->getFnAttributes().hasAttribute(Attributes::StackProtectReq))
-    Caller->addFnAttr(Attributes::StackProtectReq);
-  else if (Callee->getFnAttributes().hasAttribute(Attributes::StackProtect) &&
-           !Caller->getFnAttributes().hasAttribute(Attributes::StackProtectReq))
-    Caller->addFnAttr(Attributes::StackProtect);
+  if (Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                           Attribute::StackProtectReq))
+    Caller->addFnAttr(Attribute::StackProtectReq);
+  else if (Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                                Attribute::StackProtect) &&
+           !Caller->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                                 Attribute::StackProtectReq))
+    Caller->addFnAttr(Attribute::StackProtect);
 
   // Look at all of the allocas that we inlined through this call site.  If we
   // have already inlined other allocas through other calls into this function,
@@ -209,16 +212,21 @@ unsigned Inliner::getInlineThreshold(CallSite CS) const {
   // would decrease the threshold.
   Function *Caller = CS.getCaller();
   bool OptSize = Caller && !Caller->isDeclaration() &&
-    Caller->getFnAttributes().hasAttribute(Attributes::OptimizeForSize);
+    Caller->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                         Attribute::OptimizeForSize);
   if (!(InlineLimit.getNumOccurrences() > 0) && OptSize &&
       OptSizeThreshold < thres)
     thres = OptSizeThreshold;
 
-  // Listen to the inlinehint attribute when it would increase the threshold.
+  // Listen to the inlinehint attribute when it would increase the threshold
+  // and the caller does not need to minimize its size.
   Function *Callee = CS.getCalledFunction();
   bool InlineHint = Callee && !Callee->isDeclaration() &&
-    Callee->getFnAttributes().hasAttribute(Attributes::InlineHint);
-  if (InlineHint && HintThreshold > thres)
+    Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                         Attribute::InlineHint);
+  if (InlineHint && HintThreshold > thres
+      && !Caller->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                               Attribute::MinSize))
     thres = HintThreshold;
 
   return thres;
@@ -534,7 +542,8 @@ bool Inliner::removeDeadFunctions(CallGraph &CG, bool AlwaysInlineOnly) {
     // about always-inline functions. This is a bit of a hack to share code
     // between here and the InlineAlways pass.
     if (AlwaysInlineOnly &&
-        !F->getFnAttributes().hasAttribute(Attributes::AlwaysInline))
+        !F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                         Attribute::AlwaysInline))
       continue;
 
     // If the only remaining users of the function are dead constants, remove

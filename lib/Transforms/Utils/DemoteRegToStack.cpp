@@ -9,9 +9,9 @@
 
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/Type.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Type.h"
 using namespace llvm;
 
 /// DemoteRegToStack - This function takes a virtual register computed by an
@@ -124,7 +124,12 @@ AllocaInst *llvm::DemotePHIToStack(PHINode *P, Instruction *AllocaPoint) {
   }
 
   // Insert a load in place of the PHI and replace all uses.
-  Value *V = new LoadInst(Slot, P->getName()+".reload", P);
+  BasicBlock::iterator InsertPt = P;
+
+  for (; isa<PHINode>(InsertPt) || isa<LandingPadInst>(InsertPt); ++InsertPt)
+    /* empty */;   // Don't insert before PHI nodes or landingpad instrs.
+
+  Value *V = new LoadInst(Slot, P->getName()+".reload", InsertPt);
   P->replaceAllUsesWith(V);
 
   // Delete PHI.

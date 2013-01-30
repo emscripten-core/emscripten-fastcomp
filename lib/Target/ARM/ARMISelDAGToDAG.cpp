@@ -16,17 +16,17 @@
 #include "ARMBaseInstrInfo.h"
 #include "ARMTargetMachine.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
@@ -86,6 +86,8 @@ public:
   virtual const char *getPassName() const {
     return "ARM Instruction Selection";
   }
+
+  virtual void PreprocessISelDAG();
 
   /// getI32Imm - Return a target constant of type i32 with the specified
   /// value.
@@ -337,6 +339,87 @@ static bool isScaledConstantInRange(SDValue Node, int Scale,
 
   ScaledConstant /= Scale;
   return ScaledConstant >= RangeMin && ScaledConstant < RangeMax;
+}
+
+void ARMDAGToDAGISel::PreprocessISelDAG() {
+  if (!Subtarget->hasV6T2Ops())
+    return;
+
+  bool isThumb2 = Subtarget->isThumb();
+  for (SelectionDAG::allnodes_iterator I = CurDAG->allnodes_begin(),
+       E = CurDAG->allnodes_end(); I != E; ) {
+    SDNode *N = I++;  // Preincrement iterator to avoid invalidation issues.
+
+    if (N->getOpcode() != ISD::ADD)
+      continue;
+
+    // Look for (add X1, (and (srl X2, c1), c2)) where c2 is constant with
+    // leading zeros, followed by consecutive set bits, followed by 1 or 2
+    // trailing zeros, e.g. 1020.
+    // Transform the expression to
+    // (add X1, (shl (and (srl X2, c1), (c2>>tz)), tz)) where tz is the number
+    // of trailing zeros of c2. The left shift would be folded as an shifter
+    // operand of 'add' and the 'and' and 'srl' would become a bits extraction
+    // node (UBFX).
+
+    SDValue N0 = N->getOperand(0);
+    SDValue N1 = N->getOperand(1);
+    unsigned And_imm = 0;
+    if (!isOpcWithIntImmediate(N1.getNode(), ISD::AND, And_imm)) {
+      if (isOpcWithIntImmediate(N0.getNode(), ISD::AND, And_imm))
+        std::swap(N0, N1);
+    }
+    if (!And_imm)
+      continue;
+
+    // Check if the AND mask is an immediate of the form: 000.....1111111100
+    unsigned TZ = CountTrailingZeros_32(And_imm);
+    if (TZ != 1 && TZ != 2)
+      // Be conservative here. Shifter operands aren't always free. e.g. On
+      // Swift, left shifter operand of 1 / 2 for free but others are not.
+      // e.g.
+      //  ubfx   r3, r1, #16, #8
+      //  ldr.w  r3, [r0, r3, lsl #2]
+      // vs.
+      //  mov.w  r9, #1020
+      //  and.w  r2, r9, r1, lsr #14
+      //  ldr    r2, [r0, r2]
+      continue;
+    And_imm >>= TZ;
+    if (And_imm & (And_imm + 1))
+      continue;
+
+    // Look for (and (srl X, c1), c2).
+    SDValue Srl = N1.getOperand(0);
+    unsigned Srl_imm = 0;
+    if (!isOpcWithIntImmediate(Srl.getNode(), ISD::SRL, Srl_imm) ||
+        (Srl_imm <= 2))
+      continue;
+
+    // Make sure first operand is not a shifter operand which would prevent
+    // folding of the left shift.
+    SDValue CPTmp0;
+    SDValue CPTmp1;
+    SDValue CPTmp2;
+    if (isThumb2) {
+      if (SelectT2ShifterOperandReg(N0, CPTmp0, CPTmp1))
+        continue;
+    } else {
+      if (SelectImmShifterOperand(N0, CPTmp0, CPTmp1) ||
+          SelectRegShifterOperand(N0, CPTmp0, CPTmp1, CPTmp2))
+        continue;
+    }
+
+    // Now make the transformation.
+    Srl = CurDAG->getNode(ISD::SRL, Srl.getDebugLoc(), MVT::i32,
+                          Srl.getOperand(0),
+                          CurDAG->getConstant(Srl_imm+TZ, MVT::i32));
+    N1 = CurDAG->getNode(ISD::AND, N1.getDebugLoc(), MVT::i32,
+                         Srl, CurDAG->getConstant(And_imm, MVT::i32));
+    N1 = CurDAG->getNode(ISD::SHL, N1.getDebugLoc(), MVT::i32,
+                         N1, CurDAG->getConstant(TZ, MVT::i32));
+    CurDAG->UpdateNodeOperands(N, N0, N1);
+  }  
 }
 
 /// hasNoVMLxHazardUse - Return true if it's desirable to select a FP MLA / MLS
@@ -2218,9 +2301,9 @@ SDNode *ARMDAGToDAGISel::SelectV6T2BitfieldExtractOp(SDNode *N,
   if (!Subtarget->hasV6T2Ops())
     return NULL;
 
-  unsigned Opc = isSigned ? (Subtarget->isThumb() ? ARM::t2SBFX : ARM::SBFX)
+  unsigned Opc = isSigned
+    ? (Subtarget->isThumb() ? ARM::t2SBFX : ARM::SBFX)
     : (Subtarget->isThumb() ? ARM::t2UBFX : ARM::UBFX);
-
 
   // For unsigned extracts, check for a shift right and mask
   unsigned And_imm = 0;
@@ -2239,7 +2322,29 @@ SDNode *ARMDAGToDAGISel::SelectV6T2BitfieldExtractOp(SDNode *N,
         // Note: The width operand is encoded as width-1.
         unsigned Width = CountTrailingOnes_32(And_imm) - 1;
         unsigned LSB = Srl_imm;
+
         SDValue Reg0 = CurDAG->getRegister(0, MVT::i32);
+
+        if ((LSB + Width + 1) == N->getValueType(0).getSizeInBits()) {
+          // It's cheaper to use a right shift to extract the top bits.
+          if (Subtarget->isThumb()) {
+            Opc = isSigned ? ARM::t2ASRri : ARM::t2LSRri;
+            SDValue Ops[] = { N->getOperand(0).getOperand(0),
+                              CurDAG->getTargetConstant(LSB, MVT::i32),
+                              getAL(CurDAG), Reg0, Reg0 };
+            return CurDAG->SelectNodeTo(N, Opc, MVT::i32, Ops, 5);
+          }
+
+          // ARM models shift instructions as MOVsi with shifter operand.
+          ARM_AM::ShiftOpc ShOpcVal = ARM_AM::getShiftOpcForNode(ISD::SRL);
+          SDValue ShOpc =
+            CurDAG->getTargetConstant(ARM_AM::getSORegOpc(ShOpcVal, LSB),
+                                      MVT::i32);
+          SDValue Ops[] = { N->getOperand(0).getOperand(0), ShOpc,
+                            getAL(CurDAG), Reg0, Reg0 };
+          return CurDAG->SelectNodeTo(N, ARM::MOVsi, MVT::i32, Ops, 5);
+        }
+
         SDValue Ops[] = { N->getOperand(0).getOperand(0),
                           CurDAG->getTargetConstant(LSB, MVT::i32),
                           CurDAG->getTargetConstant(Width, MVT::i32),

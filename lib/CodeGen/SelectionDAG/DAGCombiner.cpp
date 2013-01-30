@@ -23,9 +23,10 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -1182,7 +1183,7 @@ SDValue DAGCombiner::combine(SDNode *N) {
 
       // Expose the DAG combiner to the target combiner impls.
       TargetLowering::DAGCombinerInfo
-        DagCombineInfo(DAG, !LegalTypes, !LegalOperations, false, this);
+        DagCombineInfo(DAG, Level, false, this);
 
       RV = TLI.PerformDAGCombine(N, DagCombineInfo);
     }
@@ -2632,7 +2633,8 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
       bool isInteger = LL.getValueType().isInteger();
       ISD::CondCode Result = ISD::getSetCCAndOperation(Op0, Op1, isInteger);
       if (Result != ISD::SETCC_INVALID &&
-          (!LegalOperations || TLI.isCondCodeLegal(Result, LL.getValueType())))
+          (!LegalOperations ||
+           TLI.isCondCodeLegal(Result, LL.getSimpleValueType())))
         return DAG.getSetCC(N->getDebugLoc(), N0.getValueType(),
                             LL, LR, Result);
     }
@@ -2984,7 +2986,8 @@ SDValue DAGCombiner::MatchBSwapHWord(SDNode *N, SDValue N0, SDValue N1) {
   SDValue N00 = N0.getOperand(0);
   SDValue N01 = N0.getOperand(1);
 
-  if (N1.getOpcode() == ISD::OR) {
+  if (N1.getOpcode() == ISD::OR &&
+      N00.getNumOperands() == 2 && N01.getNumOperands() == 2) {
     // (or (or (and), (and)), (or (and), (and)))
     SDValue N000 = N00.getOperand(0);
     if (!isBSwapHWordElement(N000, Parts))
@@ -3140,7 +3143,8 @@ SDValue DAGCombiner::visitOR(SDNode *N) {
       bool isInteger = LL.getValueType().isInteger();
       ISD::CondCode Result = ISD::getSetCCOrOperation(Op0, Op1, isInteger);
       if (Result != ISD::SETCC_INVALID &&
-          (!LegalOperations || TLI.isCondCodeLegal(Result, LL.getValueType())))
+          (!LegalOperations ||
+           TLI.isCondCodeLegal(Result, LL.getSimpleValueType())))
         return DAG.getSetCC(N->getDebugLoc(), N0.getValueType(),
                             LL, LR, Result);
     }
@@ -3403,7 +3407,8 @@ SDValue DAGCombiner::visitXOR(SDNode *N) {
     ISD::CondCode NotCC = ISD::getSetCCInverse(cast<CondCodeSDNode>(CC)->get(),
                                                isInt);
 
-    if (!LegalOperations || TLI.isCondCodeLegal(NotCC, LHS.getValueType())) {
+    if (!LegalOperations ||
+        TLI.isCondCodeLegal(NotCC, LHS.getSimpleValueType())) {
       switch (N0.getOpcode()) {
       default:
         llvm_unreachable("Unhandled SetCC Equivalent!");
@@ -5234,6 +5239,7 @@ SDValue DAGCombiner::visitSIGN_EXTEND_INREG(SDNode *N) {
                                      LN0->getAlignment());
     CombineTo(N, ExtLoad);
     CombineTo(N0.getNode(), ExtLoad, ExtLoad.getValue(1));
+    AddToWorkList(ExtLoad.getNode());
     return SDValue(N, 0);   // Return N so it doesn't get rechecked!
   }
   // fold (sext_inreg (zextload x)) -> (sextload x) iff load has one use
@@ -6729,18 +6735,24 @@ SDValue DAGCombiner::visitBRCOND(SDNode *N) {
     if (Op0.getOpcode() == Op1.getOpcode()) {
       // Avoid missing important xor optimizations.
       SDValue Tmp = visitXOR(TheXor);
-      if (Tmp.getNode() && Tmp.getNode() != TheXor) {
-        DEBUG(dbgs() << "\nReplacing.8 ";
-              TheXor->dump(&DAG);
-              dbgs() << "\nWith: ";
-              Tmp.getNode()->dump(&DAG);
-              dbgs() << '\n');
-        WorkListRemover DeadNodes(*this);
-        DAG.ReplaceAllUsesOfValueWith(N1, Tmp);
-        removeFromWorkList(TheXor);
-        DAG.DeleteNode(TheXor);
-        return DAG.getNode(ISD::BRCOND, N->getDebugLoc(),
-                           MVT::Other, Chain, Tmp, N2);
+      if (Tmp.getNode()) {
+        if (Tmp.getNode() != TheXor) {
+          DEBUG(dbgs() << "\nReplacing.8 ";
+                TheXor->dump(&DAG);
+                dbgs() << "\nWith: ";
+                Tmp.getNode()->dump(&DAG);
+                dbgs() << '\n');
+          WorkListRemover DeadNodes(*this);
+          DAG.ReplaceAllUsesOfValueWith(N1, Tmp);
+          removeFromWorkList(TheXor);
+          DAG.DeleteNode(TheXor);
+          return DAG.getNode(ISD::BRCOND, N->getDebugLoc(),
+                             MVT::Other, Chain, Tmp, N2);
+        }
+
+        // visitXOR has changed XOR's operands.
+        Op0 = TheXor->getOperand(0);
+        Op1 = TheXor->getOperand(1);
       }
     }
 
@@ -6819,7 +6831,7 @@ static bool canFoldInAddressingMode(SDNode *N, SDNode *Use,
   } else
     return false;
 
-  AddrMode AM;
+  TargetLowering::AddrMode AM;
   if (N->getOpcode() == ISD::ADD) {
     ConstantSDNode *Offset = dyn_cast<ConstantSDNode>(N->getOperand(1));
     if (Offset)
@@ -7433,7 +7445,8 @@ SDValue DAGCombiner::ReduceLoadOpStoreWidth(SDNode *N) {
     // start at the previous one.
     if (ShAmt % NewBW)
       ShAmt = (((ShAmt + NewBW - 1) / NewBW) * NewBW) - NewBW;
-    APInt Mask = APInt::getBitsSet(BitWidth, ShAmt, ShAmt + NewBW);
+    APInt Mask = APInt::getBitsSet(BitWidth, ShAmt,
+                                   std::min(BitWidth, ShAmt + NewBW));
     if ((Imm & Mask) == Imm) {
       APInt NewImm = (Imm & Mask).lshr(ShAmt).trunc(NewBW);
       if (Opc == ISD::AND)
@@ -7742,8 +7755,11 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode* St) {
         LastLegalVectorType = i + 1;
     }
 
-    // We only use vectors if the constant is known to be zero.
-    if (NonZero)
+    // We only use vectors if the constant is known to be zero and the
+    // function is not marked with the noimplicitfloat attribute.
+    if (NonZero || (DAG.getMachineFunction().getFunction()->getAttributes().
+                    hasAttribute(AttributeSet::FunctionIndex,
+                                 Attribute::NoImplicitFloat)))
       LastLegalVectorType = 0;
 
     // Check if we found a legal integer type to store.
@@ -8615,11 +8631,8 @@ SDValue DAGCombiner::reduceBuildVecConvertToConvertBuildVec(SDNode *N) {
     if (Opcode == ISD::DELETED_NODE &&
         (Opc == ISD::UINT_TO_FP || Opc == ISD::SINT_TO_FP)) {
       Opcode = Opc;
-      // If not supported by target, bail out.
-      if (TLI.getOperationAction(Opcode, VT) != TargetLowering::Legal &&
-          TLI.getOperationAction(Opcode, VT) != TargetLowering::Custom)
-        return SDValue();
     }
+
     if (Opc != Opcode)
       return SDValue();
 
@@ -8644,6 +8657,10 @@ SDValue DAGCombiner::reduceBuildVecConvertToConvertBuildVec(SDNode *N) {
   assert(SrcVT != MVT::Other && "Cannot determine source type!");
 
   EVT NVT = EVT::getVectorVT(*DAG.getContext(), SrcVT, NumInScalars);
+
+  if (!TLI.isOperationLegalOrCustom(Opcode, NVT))
+    return SDValue();
+
   SmallVector<SDValue, 8> Opnds;
   for (unsigned i = 0; i != NumInScalars; ++i) {
     SDValue In = N->getOperand(i);
@@ -9638,7 +9655,7 @@ SDValue DAGCombiner::SimplifySetCC(EVT VT, SDValue N0,
                                    SDValue N1, ISD::CondCode Cond,
                                    DebugLoc DL, bool foldBooleans) {
   TargetLowering::DAGCombinerInfo
-    DagCombineInfo(DAG, !LegalTypes, !LegalOperations, false, this);
+    DagCombineInfo(DAG, Level, false, this);
   return TLI.SimplifySetCC(VT, N0, N1, Cond, foldBooleans, DagCombineInfo, DL);
 }
 

@@ -17,8 +17,8 @@
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/DataLayout.h"
-#include "llvm/IntrinsicInst.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -113,12 +113,13 @@ Pass *llvm::createLoopUnrollPass(int Threshold, int Count, int AllowPartial) {
 
 /// ApproximateLoopSize - Approximate the size of the loop.
 static unsigned ApproximateLoopSize(const Loop *L, unsigned &NumCalls,
-                                    const DataLayout *TD) {
+                                    bool &NotDuplicatable, const DataLayout *TD) {
   CodeMetrics Metrics;
   for (Loop::block_iterator I = L->block_begin(), E = L->block_end();
        I != E; ++I)
     Metrics.analyzeBasicBlock(*I, TD);
   NumCalls = Metrics.NumInlineCandidates;
+  NotDuplicatable = Metrics.notDuplicatable;
 
   unsigned LoopSize = Metrics.NumInsts;
 
@@ -145,8 +146,9 @@ bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM) {
   // not user specified.
   unsigned Threshold = CurrentThreshold;
   if (!UserThreshold &&
-      Header->getParent()->getFnAttributes().
-        hasAttribute(Attributes::OptimizeForSize))
+      Header->getParent()->getAttributes().
+        hasAttribute(AttributeSet::FunctionIndex,
+                     Attribute::OptimizeForSize))
     Threshold = OptSizeUnrollThreshold;
 
   // Find trip count and trip multiple if count is not available
@@ -181,8 +183,15 @@ bool LoopUnroll::runOnLoop(Loop *L, LPPassManager &LPM) {
   if (Threshold != NoThreshold) {
     const DataLayout *TD = getAnalysisIfAvailable<DataLayout>();
     unsigned NumInlineCandidates;
-    unsigned LoopSize = ApproximateLoopSize(L, NumInlineCandidates, TD);
+    bool notDuplicatable;
+    unsigned LoopSize = ApproximateLoopSize(L, NumInlineCandidates,
+                                            notDuplicatable, TD);
     DEBUG(dbgs() << "  Loop Size = " << LoopSize << "\n");
+    if (notDuplicatable) {
+      DEBUG(dbgs() << "  Not unrolling loop which contains non duplicatable"
+            << " instructions.\n");
+      return false;
+    }
     if (NumInlineCandidates != 0) {
       DEBUG(dbgs() << "  Not unrolling loop with inlinable calls.\n");
       return false;

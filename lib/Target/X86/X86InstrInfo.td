@@ -262,9 +262,9 @@ def X86and_flag  : SDNode<"X86ISD::AND",  SDTBinaryArithWithFlags,
                           [SDNPCommutative]>;
 def X86andn_flag : SDNode<"X86ISD::ANDN", SDTBinaryArithWithFlags>;
 
-def X86blsi_flag : SDNode<"X86ISD::BLSI",  SDTUnaryArithWithFlags>;
-def X86blsmsk_flag : SDNode<"X86ISD::BLSMSK",  SDTUnaryArithWithFlags>;
-def X86blsr_flag : SDNode<"X86ISD::BLSR",  SDTUnaryArithWithFlags>;
+def X86blsi   : SDNode<"X86ISD::BLSI",   SDTIntUnaryOp>;
+def X86blsmsk : SDNode<"X86ISD::BLSMSK", SDTIntUnaryOp>;
+def X86blsr   : SDNode<"X86ISD::BLSR",   SDTIntUnaryOp>;
 
 def X86mul_imm : SDNode<"X86ISD::MUL_IMM", SDTIntBinOp>;
 
@@ -1066,7 +1066,7 @@ def MOV64ao64 : RIi32<0xA3, RawFrm, (outs offset64:$dst), (ins),
 */
 
 
-let isCodeGenOnly = 1 in {
+let isCodeGenOnly = 1, hasSideEffects = 0 in {
 def MOV8rr_REV : I<0x8A, MRMSrcReg, (outs GR8:$dst), (ins GR8:$src),
                    "mov{b}\t{$src, $dst|$dst, $src}", [], IIC_MOV>;
 def MOV16rr_REV : I<0x8B, MRMSrcReg, (outs GR16:$dst), (ins GR16:$src),
@@ -1156,24 +1156,26 @@ def BT64rr : RI<0xA3, MRMDestReg, (outs), (ins GR64:$src1, GR64:$src2),
 // perspective, this is pretty bizarre. Make these instructions disassembly
 // only for now.
 
-def BT16mr : I<0xA3, MRMDestMem, (outs), (ins i16mem:$src1, GR16:$src2),
-               "bt{w}\t{$src2, $src1|$src1, $src2}",
-//               [(X86bt (loadi16 addr:$src1), GR16:$src2),
-//                (implicit EFLAGS)]
-               [], IIC_BT_MR
-               >, OpSize, TB, Requires<[FastBTMem]>;
-def BT32mr : I<0xA3, MRMDestMem, (outs), (ins i32mem:$src1, GR32:$src2),
-               "bt{l}\t{$src2, $src1|$src1, $src2}",
-//               [(X86bt (loadi32 addr:$src1), GR32:$src2),
-//                (implicit EFLAGS)]
-               [], IIC_BT_MR
-               >, TB, Requires<[FastBTMem]>;
-def BT64mr : RI<0xA3, MRMDestMem, (outs), (ins i64mem:$src1, GR64:$src2),
-               "bt{q}\t{$src2, $src1|$src1, $src2}",
-//               [(X86bt (loadi64 addr:$src1), GR64:$src2),
-//                (implicit EFLAGS)]
-                [], IIC_BT_MR
-                >, TB;
+let mayLoad = 1, hasSideEffects = 0 in {
+  def BT16mr : I<0xA3, MRMDestMem, (outs), (ins i16mem:$src1, GR16:$src2),
+                 "bt{w}\t{$src2, $src1|$src1, $src2}",
+  //               [(X86bt (loadi16 addr:$src1), GR16:$src2),
+  //                (implicit EFLAGS)]
+                 [], IIC_BT_MR
+                 >, OpSize, TB, Requires<[FastBTMem]>;
+  def BT32mr : I<0xA3, MRMDestMem, (outs), (ins i32mem:$src1, GR32:$src2),
+                 "bt{l}\t{$src2, $src1|$src1, $src2}",
+  //               [(X86bt (loadi32 addr:$src1), GR32:$src2),
+  //                (implicit EFLAGS)]
+                 [], IIC_BT_MR
+                 >, TB, Requires<[FastBTMem]>;
+  def BT64mr : RI<0xA3, MRMDestMem, (outs), (ins i64mem:$src1, GR64:$src2),
+                 "bt{q}\t{$src2, $src1|$src1, $src2}",
+  //               [(X86bt (loadi64 addr:$src1), GR64:$src2),
+  //                (implicit EFLAGS)]
+                  [], IIC_BT_MR
+                  >, TB;
+}
 
 def BT16ri8 : Ii8<0xBA, MRM4r, (outs), (ins GR16:$src1, i16i8imm:$src2),
                 "bt{w}\t{$src2, $src1|$src1, $src2}",
@@ -1204,7 +1206,7 @@ def BT64mi8 : RIi8<0xBA, MRM4m, (outs), (ins i64mem:$src1, i64i8imm:$src2),
                 [(set EFLAGS, (X86bt (loadi64 addr:$src1),
                                      i64immSExt8:$src2))], IIC_BT_MI>, TB;
 
-
+let hasSideEffects = 0 in {
 def BTC16rr : I<0xBB, MRMDestReg, (outs), (ins GR16:$src1, GR16:$src2),
                 "btc{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>,
                 OpSize, TB;
@@ -1212,6 +1214,8 @@ def BTC32rr : I<0xBB, MRMDestReg, (outs), (ins GR32:$src1, GR32:$src2),
                 "btc{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>, TB;
 def BTC64rr : RI<0xBB, MRMDestReg, (outs), (ins GR64:$src1, GR64:$src2),
                  "btc{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>, TB;
+
+let mayLoad = 1, mayStore = 1 in {
 def BTC16mr : I<0xBB, MRMDestMem, (outs), (ins i16mem:$src1, GR16:$src2),
                 "btc{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>,
                 OpSize, TB;
@@ -1219,6 +1223,8 @@ def BTC32mr : I<0xBB, MRMDestMem, (outs), (ins i32mem:$src1, GR32:$src2),
                 "btc{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>, TB;
 def BTC64mr : RI<0xBB, MRMDestMem, (outs), (ins i64mem:$src1, GR64:$src2),
                  "btc{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>, TB;
+}
+
 def BTC16ri8 : Ii8<0xBA, MRM7r, (outs), (ins GR16:$src1, i16i8imm:$src2),
                     "btc{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>,
                     OpSize, TB;
@@ -1226,6 +1232,8 @@ def BTC32ri8 : Ii8<0xBA, MRM7r, (outs), (ins GR32:$src1, i32i8imm:$src2),
                     "btc{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>, TB;
 def BTC64ri8 : RIi8<0xBA, MRM7r, (outs), (ins GR64:$src1, i64i8imm:$src2),
                     "btc{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>, TB;
+
+let mayLoad = 1, mayStore = 1 in {
 def BTC16mi8 : Ii8<0xBA, MRM7m, (outs), (ins i16mem:$src1, i16i8imm:$src2),
                     "btc{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>,
                     OpSize, TB;
@@ -1233,6 +1241,7 @@ def BTC32mi8 : Ii8<0xBA, MRM7m, (outs), (ins i32mem:$src1, i32i8imm:$src2),
                     "btc{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>, TB;
 def BTC64mi8 : RIi8<0xBA, MRM7m, (outs), (ins i64mem:$src1, i64i8imm:$src2),
                     "btc{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>, TB;
+}
 
 def BTR16rr : I<0xB3, MRMDestReg, (outs), (ins GR16:$src1, GR16:$src2),
                 "btr{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>,
@@ -1241,6 +1250,8 @@ def BTR32rr : I<0xB3, MRMDestReg, (outs), (ins GR32:$src1, GR32:$src2),
                 "btr{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>, TB;
 def BTR64rr : RI<0xB3, MRMDestReg, (outs), (ins GR64:$src1, GR64:$src2),
                  "btr{q}\t{$src2, $src1|$src1, $src2}", []>, TB;
+
+let mayLoad = 1, mayStore = 1 in {
 def BTR16mr : I<0xB3, MRMDestMem, (outs), (ins i16mem:$src1, GR16:$src2),
                 "btr{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>,
                 OpSize, TB;
@@ -1248,6 +1259,8 @@ def BTR32mr : I<0xB3, MRMDestMem, (outs), (ins i32mem:$src1, GR32:$src2),
                 "btr{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>, TB;
 def BTR64mr : RI<0xB3, MRMDestMem, (outs), (ins i64mem:$src1, GR64:$src2),
                  "btr{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>, TB;
+}
+
 def BTR16ri8 : Ii8<0xBA, MRM6r, (outs), (ins GR16:$src1, i16i8imm:$src2),
                     "btr{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>,
                     OpSize, TB;
@@ -1255,6 +1268,8 @@ def BTR32ri8 : Ii8<0xBA, MRM6r, (outs), (ins GR32:$src1, i32i8imm:$src2),
                     "btr{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>, TB;
 def BTR64ri8 : RIi8<0xBA, MRM6r, (outs), (ins GR64:$src1, i64i8imm:$src2),
                     "btr{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>, TB;
+
+let mayLoad = 1, mayStore = 1 in {
 def BTR16mi8 : Ii8<0xBA, MRM6m, (outs), (ins i16mem:$src1, i16i8imm:$src2),
                     "btr{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>,
                     OpSize, TB;
@@ -1262,6 +1277,7 @@ def BTR32mi8 : Ii8<0xBA, MRM6m, (outs), (ins i32mem:$src1, i32i8imm:$src2),
                     "btr{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>, TB;
 def BTR64mi8 : RIi8<0xBA, MRM6m, (outs), (ins i64mem:$src1, i64i8imm:$src2),
                     "btr{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>, TB;
+}
 
 def BTS16rr : I<0xAB, MRMDestReg, (outs), (ins GR16:$src1, GR16:$src2),
                 "bts{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>,
@@ -1270,6 +1286,8 @@ def BTS32rr : I<0xAB, MRMDestReg, (outs), (ins GR32:$src1, GR32:$src2),
                 "bts{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>, TB;
 def BTS64rr : RI<0xAB, MRMDestReg, (outs), (ins GR64:$src1, GR64:$src2),
                  "bts{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RR>, TB;
+
+let mayLoad = 1, mayStore = 1 in {
 def BTS16mr : I<0xAB, MRMDestMem, (outs), (ins i16mem:$src1, GR16:$src2),
                 "bts{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>,
                 OpSize, TB;
@@ -1277,6 +1295,8 @@ def BTS32mr : I<0xAB, MRMDestMem, (outs), (ins i32mem:$src1, GR32:$src2),
                 "bts{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>, TB;
 def BTS64mr : RI<0xAB, MRMDestMem, (outs), (ins i64mem:$src1, GR64:$src2),
                  "bts{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MR>, TB;
+}
+
 def BTS16ri8 : Ii8<0xBA, MRM5r, (outs), (ins GR16:$src1, i16i8imm:$src2),
                     "bts{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>,
                     OpSize, TB;
@@ -1284,6 +1304,8 @@ def BTS32ri8 : Ii8<0xBA, MRM5r, (outs), (ins GR32:$src1, i32i8imm:$src2),
                     "bts{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>, TB;
 def BTS64ri8 : RIi8<0xBA, MRM5r, (outs), (ins GR64:$src1, i64i8imm:$src2),
                     "bts{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_RI>, TB;
+
+let mayLoad = 1, mayStore = 1 in {
 def BTS16mi8 : Ii8<0xBA, MRM5m, (outs), (ins i16mem:$src1, i16i8imm:$src2),
                     "bts{w}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>,
                     OpSize, TB;
@@ -1291,6 +1313,8 @@ def BTS32mi8 : Ii8<0xBA, MRM5m, (outs), (ins i32mem:$src1, i32i8imm:$src2),
                     "bts{l}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>, TB;
 def BTS64mi8 : RIi8<0xBA, MRM5m, (outs), (ins i64mem:$src1, i64i8imm:$src2),
                     "bts{q}\t{$src2, $src1|$src1, $src2}", [], IIC_BTX_MI>, TB;
+}
+} // hasSideEffects = 0
 } // Defs = [EFLAGS]
 
 
@@ -1303,34 +1327,34 @@ def BTS64mi8 : RIi8<0xBA, MRM5m, (outs), (ins i64mem:$src1, i64i8imm:$src2),
 multiclass ATOMIC_SWAP<bits<8> opc8, bits<8> opc, string mnemonic, string frag,
                        InstrItinClass itin> {
   let Constraints = "$val = $dst" in {
-    def #NAME#8rm  : I<opc8, MRMSrcMem, (outs GR8:$dst),
-                       (ins GR8:$val, i8mem:$ptr),
-                       !strconcat(mnemonic, "{b}\t{$val, $ptr|$ptr, $val}"),
+    def NAME#8rm  : I<opc8, MRMSrcMem, (outs GR8:$dst),
+                      (ins GR8:$val, i8mem:$ptr),
+                      !strconcat(mnemonic, "{b}\t{$val, $ptr|$ptr, $val}"),
+                      [(set
+                         GR8:$dst,
+                         (!cast<PatFrag>(frag # "_8") addr:$ptr, GR8:$val))],
+                      itin>;
+    def NAME#16rm : I<opc, MRMSrcMem, (outs GR16:$dst),
+                      (ins GR16:$val, i16mem:$ptr),
+                      !strconcat(mnemonic, "{w}\t{$val, $ptr|$ptr, $val}"),
+                      [(set
+                         GR16:$dst,
+                         (!cast<PatFrag>(frag # "_16") addr:$ptr, GR16:$val))],
+                      itin>, OpSize;
+    def NAME#32rm : I<opc, MRMSrcMem, (outs GR32:$dst),
+                      (ins GR32:$val, i32mem:$ptr),
+                      !strconcat(mnemonic, "{l}\t{$val, $ptr|$ptr, $val}"),
+                      [(set
+                         GR32:$dst,
+                         (!cast<PatFrag>(frag # "_32") addr:$ptr, GR32:$val))],
+                      itin>;
+    def NAME#64rm : RI<opc, MRMSrcMem, (outs GR64:$dst),
+                       (ins GR64:$val, i64mem:$ptr),
+                       !strconcat(mnemonic, "{q}\t{$val, $ptr|$ptr, $val}"),
                        [(set
-                          GR8:$dst,
-                          (!cast<PatFrag>(frag # "_8") addr:$ptr, GR8:$val))],
+                         GR64:$dst,
+                         (!cast<PatFrag>(frag # "_64") addr:$ptr, GR64:$val))],
                        itin>;
-    def #NAME#16rm : I<opc, MRMSrcMem, (outs GR16:$dst),
-                       (ins GR16:$val, i16mem:$ptr),
-                       !strconcat(mnemonic, "{w}\t{$val, $ptr|$ptr, $val}"),
-                       [(set
-                          GR16:$dst,
-                          (!cast<PatFrag>(frag # "_16") addr:$ptr, GR16:$val))],
-                       itin>, OpSize;
-    def #NAME#32rm : I<opc, MRMSrcMem, (outs GR32:$dst),
-                       (ins GR32:$val, i32mem:$ptr),
-                       !strconcat(mnemonic, "{l}\t{$val, $ptr|$ptr, $val}"),
-                       [(set
-                          GR32:$dst,
-                          (!cast<PatFrag>(frag # "_32") addr:$ptr, GR32:$val))],
-                       itin>;
-    def #NAME#64rm : RI<opc, MRMSrcMem, (outs GR64:$dst),
-                        (ins GR64:$val, i64mem:$ptr),
-                        !strconcat(mnemonic, "{q}\t{$val, $ptr|$ptr, $val}"),
-                        [(set
-                          GR64:$dst,
-                          (!cast<PatFrag>(frag # "_64") addr:$ptr, GR64:$val))],
-                        itin>;
   }
 }
 
@@ -1509,10 +1533,10 @@ def BOUNDS32rm : I<0x62, MRMSrcMem, (outs GR32:$dst), (ins i32mem:$src),
                    Requires<[In32BitMode]>;
 
 // Adjust RPL Field of Segment Selector
-def ARPL16rr : I<0x63, MRMDestReg, (outs GR16:$src), (ins GR16:$dst),
+def ARPL16rr : I<0x63, MRMDestReg, (outs GR16:$dst), (ins GR16:$src),
                  "arpl\t{$src, $dst|$dst, $src}", [], IIC_ARPL_REG>,
                  Requires<[In32BitMode]>;
-def ARPL16mr : I<0x63, MRMSrcMem, (outs GR16:$src), (ins i16mem:$dst),
+def ARPL16mr : I<0x63, MRMDestMem, (outs), (ins i16mem:$dst, GR16:$src),
                  "arpl\t{$src, $dst|$dst, $src}", [], IIC_ARPL_MEM>,
                  Requires<[In32BitMode]>;
 
@@ -1628,26 +1652,26 @@ multiclass bmi_bls<string mnemonic, Format RegMRM, Format MemMRM,
                   PatFrag ld_frag> {
   def rr : I<0xF3, RegMRM, (outs RC:$dst), (ins RC:$src),
              !strconcat(mnemonic, "\t{$src, $dst|$dst, $src}"),
-             [(set RC:$dst, EFLAGS, (OpNode RC:$src))]>, T8, VEX_4V;
+             [(set RC:$dst, (OpNode RC:$src)), (implicit EFLAGS)]>, T8, VEX_4V;
   def rm : I<0xF3, MemMRM, (outs RC:$dst), (ins x86memop:$src),
              !strconcat(mnemonic, "\t{$src, $dst|$dst, $src}"),
-             [(set RC:$dst, EFLAGS, (OpNode (ld_frag addr:$src)))]>,
+             [(set RC:$dst, (OpNode (ld_frag addr:$src))), (implicit EFLAGS)]>,
              T8, VEX_4V;
 }
 
 let Predicates = [HasBMI], Defs = [EFLAGS] in {
   defm BLSR32 : bmi_bls<"blsr{l}", MRM1r, MRM1m, GR32, i32mem,
-                        X86blsr_flag, loadi32>;
+                        X86blsr, loadi32>;
   defm BLSR64 : bmi_bls<"blsr{q}", MRM1r, MRM1m, GR64, i64mem,
-                        X86blsr_flag, loadi64>, VEX_W;
+                        X86blsr, loadi64>, VEX_W;
   defm BLSMSK32 : bmi_bls<"blsmsk{l}", MRM2r, MRM2m, GR32, i32mem,
-                          X86blsmsk_flag, loadi32>;
+                          X86blsmsk, loadi32>;
   defm BLSMSK64 : bmi_bls<"blsmsk{q}", MRM2r, MRM2m, GR64, i64mem,
-                          X86blsmsk_flag, loadi64>, VEX_W;
+                          X86blsmsk, loadi64>, VEX_W;
   defm BLSI32 : bmi_bls<"blsi{l}", MRM3r, MRM3m, GR32, i32mem,
-                        X86blsi_flag, loadi32>;
+                        X86blsi, loadi32>;
   defm BLSI64 : bmi_bls<"blsi{q}", MRM3r, MRM3m, GR64, i64mem,
-                        X86blsi_flag, loadi64>, VEX_W;
+                        X86blsi, loadi64>, VEX_W;
 }
 
 multiclass bmi_bextr_bzhi<bits<8> opc, string mnemonic, RegisterClass RC,
@@ -1915,6 +1939,8 @@ def : InstAlias<"fmulp",        (MUL_FPrST0  ST1)>;
 def : InstAlias<"fdivp",        (DIVR_FPrST0 ST1)>;
 def : InstAlias<"fdivrp",       (DIV_FPrST0  ST1)>;
 def : InstAlias<"fxch",         (XCH_F       ST1)>;
+def : InstAlias<"fcom",         (COM_FST0r   ST1)>;
+def : InstAlias<"fcomp",        (COMP_FST0r  ST1)>;
 def : InstAlias<"fcomi",        (COM_FIr     ST1)>;
 def : InstAlias<"fcompi",       (COM_FIPr    ST1)>;
 def : InstAlias<"fucom",        (UCOM_Fr     ST1)>;

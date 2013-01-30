@@ -17,7 +17,7 @@
 #define LLVM_CODEGEN_INTRINSICLOWERING_H
 
 #include "llvm/ADT/StringSet.h" // @LOCALMOD
-#include "llvm/Intrinsics.h"
+#include "llvm/IR/Intrinsics.h"
 
 namespace llvm {
   class CallInst;

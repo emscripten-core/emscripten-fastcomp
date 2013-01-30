@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = Analysis Archive AsmParser Bitcode CodeGen DebugInfo ExecutionEngine Linker MC Object Option Support TableGen Target Transforms VMCore Wrap
+subdirectories = Analysis Archive AsmParser Bitcode CodeGen DebugInfo ExecutionEngine Linker IR MC Object Option Support TableGen Target Transforms Wrap
 
 [component_0]
 type = Group

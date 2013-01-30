@@ -12,9 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/CodeMetrics.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Function.h"
-#include "llvm/IntrinsicInst.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/CallSite.h"
 
 using namespace llvm;
@@ -165,6 +165,14 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
     if (isa<ExtractElementInst>(II) || II->getType()->isVectorTy())
       ++NumVectorInsts;
 
+    if (const CallInst *CI = dyn_cast<CallInst>(II))
+      if (CI->hasFnAttr(Attribute::NoDuplicate))
+        notDuplicatable = true;
+
+    if (const InvokeInst *InvI = dyn_cast<InvokeInst>(II))
+      if (InvI->hasFnAttr(Attribute::NoDuplicate))
+        notDuplicatable = true;
+
     ++NumInsts;
   }
 
@@ -182,8 +190,7 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
   // if someone is using a blockaddress without an indirectbr, and that
   // reference somehow ends up in another function or global, we probably
   // don't want to inline this function.
-  if (isa<IndirectBrInst>(BB->getTerminator()))
-    containsIndirectBr = true;
+  notDuplicatable |= isa<IndirectBrInst>(BB->getTerminator());
 
   // Remember NumInsts for this BB.
   NumBBInsts[BB] = NumInsts - NumInstsBeforeThisBB;
@@ -196,7 +203,8 @@ void CodeMetrics::analyzeFunction(Function *F, const DataLayout *TD) {
   // as volatile if they are live across a setjmp call, and they probably
   // won't do this in callers.
   exposesReturnsTwice = F->callsFunctionThatReturnsTwice() &&
-    !F->getFnAttributes().hasAttribute(Attributes::ReturnsTwice);
+    !F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                     Attribute::ReturnsTwice);
 
   // Look at the size of the callee.
   for (Function::const_iterator BB = F->begin(), E = F->end(); BB != E; ++BB)

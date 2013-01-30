@@ -19,19 +19,19 @@
 #include "X86RegisterInfo.h"
 #include "X86Subtarget.h"
 #include "X86TargetMachine.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/GlobalAlias.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
@@ -849,8 +849,7 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
 
   if (Ret->getNumOperands() > 0) {
     SmallVector<ISD::OutputArg, 4> Outs;
-    GetReturnInfo(F.getReturnType(), F.getAttributes().getRetAttributes(),
-                  Outs, TLI);
+    GetReturnInfo(F.getReturnType(), F.getAttributes(), Outs, TLI);
 
     // Analyze operands of the call, assigning locations to each operand.
     SmallVector<CCValAssign, 16> ValLocs;
@@ -1661,9 +1660,9 @@ static unsigned computeBytesPoppedByCallee(const X86Subtarget &Subtarget,
   CallingConv::ID CC = CS.getCallingConv();
   if (CC == CallingConv::Fast || CC == CallingConv::GHC)
     return 0;
-  if (!CS.paramHasAttr(1, Attributes::StructRet))
+  if (!CS.paramHasAttr(1, Attribute::StructRet))
     return 0;
-  if (CS.paramHasAttr(1, Attributes::InReg))
+  if (CS.paramHasAttr(1, Attribute::InReg))
     return 0;
   return 4;
 }
@@ -1701,8 +1700,7 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
 
   // Check whether the function can return without sret-demotion.
   SmallVector<ISD::OutputArg, 4> Outs;
-  GetReturnInfo(I->getType(), CS.getAttributes().getRetAttributes(),
-                Outs, TLI);
+  GetReturnInfo(I->getType(), CS.getAttributes(), Outs, TLI);
   bool CanLowerReturn = TLI.CanLowerReturn(CS.getCallingConv(),
                                            *FuncInfo.MF, FTy->isVarArg(),
                                            Outs, FTy->getContext());
@@ -1742,12 +1740,12 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
     Value *ArgVal = *i;
     ISD::ArgFlagsTy Flags;
     unsigned AttrInd = i - CS.arg_begin() + 1;
-    if (CS.paramHasAttr(AttrInd, Attributes::SExt))
+    if (CS.paramHasAttr(AttrInd, Attribute::SExt))
       Flags.setSExt();
-    if (CS.paramHasAttr(AttrInd, Attributes::ZExt))
+    if (CS.paramHasAttr(AttrInd, Attribute::ZExt))
       Flags.setZExt();
 
-    if (CS.paramHasAttr(AttrInd, Attributes::ByVal)) {
+    if (CS.paramHasAttr(AttrInd, Attribute::ByVal)) {
       PointerType *Ty = cast<PointerType>(ArgVal->getType());
       Type *ElementTy = Ty->getElementType();
       unsigned FrameSize = TD.getTypeAllocSize(ElementTy);
@@ -1761,9 +1759,9 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
         return false;
     }
 
-    if (CS.paramHasAttr(AttrInd, Attributes::InReg))
+    if (CS.paramHasAttr(AttrInd, Attribute::InReg))
       Flags.setInReg();
-    if (CS.paramHasAttr(AttrInd, Attributes::Nest))
+    if (CS.paramHasAttr(AttrInd, Attribute::Nest))
       Flags.setNest();
 
     // If this is an i1/i8/i16 argument, promote to i32 to avoid an extra
@@ -2047,17 +2045,17 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
   ComputeValueVTs(TLI, I->getType(), RetTys);
   for (unsigned i = 0, e = RetTys.size(); i != e; ++i) {
     EVT VT = RetTys[i];
-    EVT RegisterVT = TLI.getRegisterType(I->getParent()->getContext(), VT);
+    MVT RegisterVT = TLI.getRegisterType(I->getParent()->getContext(), VT);
     unsigned NumRegs = TLI.getNumRegisters(I->getParent()->getContext(), VT);
     for (unsigned j = 0; j != NumRegs; ++j) {
       ISD::InputArg MyFlags;
-      MyFlags.VT = RegisterVT.getSimpleVT();
+      MyFlags.VT = RegisterVT;
       MyFlags.Used = !CS.getInstruction()->use_empty();
-      if (CS.paramHasAttr(0, Attributes::SExt))
+      if (CS.paramHasAttr(0, Attribute::SExt))
         MyFlags.Flags.setSExt();
-      if (CS.paramHasAttr(0, Attributes::ZExt))
+      if (CS.paramHasAttr(0, Attribute::ZExt))
         MyFlags.Flags.setZExt();
-      if (CS.paramHasAttr(0, Attributes::InReg))
+      if (CS.paramHasAttr(0, Attribute::InReg))
         MyFlags.Flags.setInReg();
       Ins.push_back(MyFlags);
     }

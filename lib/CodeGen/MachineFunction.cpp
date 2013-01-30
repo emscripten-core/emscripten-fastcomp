@@ -25,9 +25,9 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/DataLayout.h"
 #include "llvm/DebugInfo.h"
-#include "llvm/Function.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/Support/Debug.h"
@@ -60,13 +60,15 @@ MachineFunction::MachineFunction(const Function *F, const TargetMachine &TM,
   MFInfo = 0;
   FrameInfo = new (Allocator) MachineFrameInfo(*TM.getFrameLowering(),
                                                TM.Options.RealignStack);
-  if (Fn->getFnAttributes().hasAttribute(Attributes::StackAlignment))
+  if (Fn->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                       Attribute::StackAlignment))
     FrameInfo->ensureMaxAlignment(Fn->getAttributes().
-                                  getFnAttributes().getStackAlignment());
+                                getStackAlignment(AttributeSet::FunctionIndex));
   ConstantPool = new (Allocator) MachineConstantPool(TM.getDataLayout());
   Alignment = TM.getTargetLowering()->getMinFunctionAlignment();
   // FIXME: Shouldn't use pref alignment if explicit alignment is set on Fn.
-  if (!Fn->getFnAttributes().hasAttribute(Attributes::OptimizeForSize))
+  if (!Fn->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                        Attribute::OptimizeForSize))
     Alignment = std::max(Alignment,
                          TM.getTargetLowering()->getPrefFunctionAlignment());
   FunctionNumber = FunctionNum;
@@ -74,8 +76,15 @@ MachineFunction::MachineFunction(const Function *F, const TargetMachine &TM,
 }
 
 MachineFunction::~MachineFunction() {
-  BasicBlocks.clear();
+  // Don't call destructors on MachineInstr and MachineOperand. All of their
+  // memory comes from the BumpPtrAllocator which is about to be purged.
+  //
+  // Do call MachineBasicBlock destructors, it contains std::vectors.
+  for (iterator I = begin(), E = end(); I != E; I = BasicBlocks.erase(I))
+    I->Insts.clearAndLeakNodesUnsafely();
+
   InstructionRecycler.clear(Allocator);
+  OperandRecycler.clear(Allocator);
   BasicBlockRecycler.clear(Allocator);
   if (RegInfo) {
     RegInfo->~MachineRegisterInfo();
@@ -158,7 +167,7 @@ MachineInstr *
 MachineFunction::CreateMachineInstr(const MCInstrDesc &MCID,
                                     DebugLoc DL, bool NoImp) {
   return new (InstructionRecycler.Allocate<MachineInstr>(Allocator))
-    MachineInstr(MCID, DL, NoImp);
+    MachineInstr(*this, MCID, DL, NoImp);
 }
 
 /// CloneMachineInstr - Create a new MachineInstr which is a copy of the
@@ -173,9 +182,17 @@ MachineFunction::CloneMachineInstr(const MachineInstr *Orig) {
 
 /// DeleteMachineInstr - Delete the given MachineInstr.
 ///
+/// This function also serves as the MachineInstr destructor - the real
+/// ~MachineInstr() destructor must be empty.
 void
 MachineFunction::DeleteMachineInstr(MachineInstr *MI) {
-  MI->~MachineInstr();
+  // Strip it for parts. The operand array and the MI object itself are
+  // independently recyclable.
+  if (MI->Operands)
+    deallocateOperandArray(MI->CapOperands, MI->Operands);
+  // Don't call ~MachineInstr() which must be trivial anyway because
+  // ~MachineFunction drops whole lists of MachineInstrs wihout calling their
+  // destructors.
   InstructionRecycler.Deallocate(Allocator, MI);
 }
 
@@ -456,24 +473,32 @@ void MachineFrameInfo::ensureMaxAlignment(unsigned Align) {
 }
 
 /// clampStackAlignment - Clamp the alignment if requested and emit a warning.
-static inline unsigned clampStackAlignment(bool ShouldClamp, unsigned Align,
-                                           unsigned StackAlign) {
-  if (!ShouldClamp || Align <= StackAlign)
-    return Align;
-  DEBUG(dbgs() << "Warning: requested alignment " << Align
-               << " exceeds the stack alignment " << StackAlign
-               << " when stack realignment is off" << '\n');
+static inline unsigned clampStackAlignment(bool ShouldClamp, unsigned PrefAlign,
+                         unsigned MinAlign, unsigned StackAlign,
+                         const AllocaInst *Alloca = 0) {
+  if (!ShouldClamp || PrefAlign <= StackAlign)
+    return PrefAlign;
+  if (Alloca && MinAlign > StackAlign)
+    Alloca->getParent()->getContext().emitError(Alloca,
+        "Requested Minimal Alignment exceeds the Stack Alignment!");
+  else
+    assert(MinAlign <= StackAlign &&
+           "Requested Minimal Alignment exceeds the Stack Alignment!");
   return StackAlign;
 }
 
-/// CreateStackObject - Create a new statically sized stack object, returning
-/// a nonnegative identifier to represent it.
+/// CreateStackObjectWithMinAlign - Create a new statically sized stack
+/// object, returning a nonnegative identifier to represent it. This function
+/// takes a preferred alignment and a minimal alignment.
 ///
-int MachineFrameInfo::CreateStackObject(uint64_t Size, unsigned Alignment,
-                      bool isSS, bool MayNeedSP, const AllocaInst *Alloca) {
+int MachineFrameInfo::CreateStackObjectWithMinAlign(uint64_t Size,
+                          unsigned PrefAlignment, unsigned MinAlignment,
+                          bool isSS, bool MayNeedSP, const AllocaInst *Alloca) {
   assert(Size != 0 && "Cannot allocate zero size stack objects!");
-  Alignment = clampStackAlignment(!TFI.isStackRealignable() || !RealignOption,
-                                  Alignment, TFI.getStackAlignment());
+  unsigned Alignment = clampStackAlignment(
+                           !TFI.isStackRealignable() || !RealignOption,
+                           PrefAlignment, MinAlignment,
+                           TFI.getStackAlignment(), Alloca);
   Objects.push_back(StackObject(Size, Alignment, 0, false, isSS, MayNeedSP,
                                 Alloca));
   int Index = (int)Objects.size() - NumFixedObjects - 1;
@@ -489,7 +514,8 @@ int MachineFrameInfo::CreateStackObject(uint64_t Size, unsigned Alignment,
 int MachineFrameInfo::CreateSpillStackObject(uint64_t Size,
                                              unsigned Alignment) {
   Alignment = clampStackAlignment(!TFI.isStackRealignable() || !RealignOption,
-                                  Alignment, TFI.getStackAlignment()); 
+                                  Alignment, 0,
+                                  TFI.getStackAlignment()); 
   CreateStackObject(Size, Alignment, true, false);
   int Index = (int)Objects.size() - NumFixedObjects - 1;
   ensureMaxAlignment(Alignment);
@@ -501,10 +527,13 @@ int MachineFrameInfo::CreateSpillStackObject(uint64_t Size,
 /// variable sized object is created, whether or not the index returned is
 /// actually used.
 ///
-int MachineFrameInfo::CreateVariableSizedObject(unsigned Alignment) {
+int MachineFrameInfo::CreateVariableSizedObject(unsigned PrefAlignment,
+                        unsigned MinAlignment, const AllocaInst *Alloca) {
   HasVarSizedObjects = true;
-  Alignment = clampStackAlignment(!TFI.isStackRealignable() || !RealignOption,
-                                  Alignment, TFI.getStackAlignment()); 
+  unsigned Alignment = clampStackAlignment(
+                           !TFI.isStackRealignable() || !RealignOption,
+                           PrefAlignment, MinAlignment,
+                           TFI.getStackAlignment(), Alloca); 
   Objects.push_back(StackObject(0, Alignment, 0, false, false, true, 0));
   ensureMaxAlignment(Alignment);
   return (int)Objects.size()-NumFixedObjects-1;
@@ -525,7 +554,7 @@ int MachineFrameInfo::CreateFixedObject(uint64_t Size, int64_t SPOffset,
   unsigned StackAlign = TFI.getStackAlignment();
   unsigned Align = MinAlign(SPOffset, StackAlign);
   Align = clampStackAlignment(!TFI.isStackRealignable() || !RealignOption,
-                              Align, TFI.getStackAlignment()); 
+                              Align, 0, TFI.getStackAlignment()); 
   Objects.insert(Objects.begin(), StackObject(Size, Align, SPOffset, Immutable,
                                               /*isSS*/   false,
                                               /*NeedSP*/ false,

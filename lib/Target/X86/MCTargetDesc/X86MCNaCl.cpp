@@ -46,8 +46,7 @@ unsigned DemoteRegTo32_(unsigned RegIn);
 
 static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
                            MCStreamer &Out) {
-  Out.EmitBundleAlignEnd();
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(true);
 
   MCInst CALLInst;
   CALLInst.setOpcode(Is64Bit ? X86::CALL64pcrel32 : X86::CALLpcrel32);
@@ -63,10 +62,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   const unsigned Reg32 = Op.getReg();
   const unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
 
-  if (IsCall)
-    Out.EmitBundleAlignEnd();
-
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(IsCall);
 
   MCInst ANDInst;
   ANDInst.setOpcode(X86::AND32ri8);
@@ -160,7 +156,7 @@ static void EmitRegFix(unsigned Reg64, MCStreamer &Out) {
 
 static void EmitSPArith(unsigned Opc, const MCOperand &ImmOp,
                         MCStreamer &Out) {
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
 
   MCInst Tmp;
   Tmp.setOpcode(Opc);
@@ -174,7 +170,7 @@ static void EmitSPArith(unsigned Opc, const MCOperand &ImmOp,
 }
 
 static void EmitSPAdj(const MCOperand &ImmOp, MCStreamer &Out) {
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
 
   MCInst Tmp;
   Tmp.setOpcode(X86::LEA64_32r);
@@ -286,8 +282,7 @@ static bool SandboxMemoryRef(MCInst *Inst,
 }
 
 static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
-  Out.EmitBundleAlignEnd();
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(true);
 
   MCInst LeaInst;
   LeaInst.setOpcode(X86::LEA32r);
@@ -315,7 +310,7 @@ static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
 static void EmitREST(const MCInst &Inst, unsigned Reg32,
                      bool IsMem, MCStreamer &Out) {
   unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   if (!IsMem) {
     EmitMoveRegReg(false, Reg32, Inst.getOperand(0).getReg(), Out);
   } else {
@@ -479,7 +474,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     PrefixSaved = 0;
 
     if (PrefixLocal || !UseZeroBasedSandbox)
-      Out.EmitBundleLock();
+      Out.EmitBundleLock(false);
 
     HandleMemoryRefTruncation(&SandboxedInst, IndexOpPosition, Out);
     ShortenMemoryRef(&SandboxedInst, IndexOpPosition);

@@ -48,10 +48,9 @@ X86_32TargetMachine::X86_32TargetMachine(const Target &T, StringRef TT,
                "e-p:32:32-f64:32:64-i64:32:64-f80:32:32-f128:128:128-"
                "n8:16:32-S128"),
     InstrInfo(*this),
-    TSInfo(*this),
     TLInfo(*this),
-    JITInfo(*this),
-    STTI(&TLInfo), VTTI(&TLInfo) {
+    TSInfo(*this),
+    JITInfo(*this) {
 }
 
 void X86_64TargetMachine::anchor() { }
@@ -68,10 +67,9 @@ X86_64TargetMachine::X86_64TargetMachine(const Target &T, StringRef TT,
                "e-p:64:64-s:64-f64:64:64-i64:64:64-f80:128:128-f128:128:128-"
                "n8:16:32:64-S128"),
     InstrInfo(*this),
-    TSInfo(*this),
     TLInfo(*this),
-    JITInfo(*this),
-    STTI(&TLInfo), VTTI(&TLInfo){
+    TSInfo(*this),
+    JITInfo(*this) {
 }
 
 /// X86TargetMachine ctor - Create an X86 target.
@@ -124,6 +122,19 @@ UseVZeroUpper("x86-use-vzeroupper",
 static cl::opt<bool>
 X86EarlyIfConv("x86-early-ifcvt",
 	       cl::desc("Enable early if-conversion on X86"));
+
+//===----------------------------------------------------------------------===//
+// X86 Analysis Pass Setup
+//===----------------------------------------------------------------------===//
+
+void X86TargetMachine::addAnalysisPasses(PassManagerBase &PM) {
+  // Add first the target-independent BasicTTI pass, then our X86 pass. This
+  // allows the X86 pass to delegate to the target independent layer when
+  // appropriate.
+  PM.add(createBasicTargetTransformInfoPass(getTargetLowering()));
+  PM.add(createX86TargetTransformInfoPass(this));
+}
+
 
 //===----------------------------------------------------------------------===//
 // Pass Pipeline Configuration
@@ -193,6 +204,12 @@ bool X86PassConfig::addPreEmitPass() {
 
   if (getX86Subtarget().hasAVX() && UseVZeroUpper) {
     addPass(createX86IssueVZeroUpperPass());
+    ShouldPrint = true;
+  }
+
+  if (getOptLevel() != CodeGenOpt::None &&
+      getX86Subtarget().padShortFunctions()) {
+    addPass(createX86PadShortFunctions());
     ShouldPrint = true;
   }
 

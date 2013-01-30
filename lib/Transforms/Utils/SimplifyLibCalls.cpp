@@ -17,12 +17,12 @@
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Function.h"
-#include "llvm/IRBuilder.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
 
@@ -792,8 +792,8 @@ struct StrToOpt : public LibCallOptimization {
     if (isa<ConstantPointerNull>(EndPtr)) {
       // With a null EndPtr, this function won't capture the main argument.
       // It would be readonly too, except that it still may write to errno.
-      CI->addAttribute(1, Attributes::get(Callee->getContext(),
-                                          Attributes::NoCapture));
+      CI->addAttribute(1, Attribute::get(Callee->getContext(),
+                                          Attribute::NoCapture));
     }
 
     return 0;

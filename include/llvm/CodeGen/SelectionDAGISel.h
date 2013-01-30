@@ -12,12 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CODEGEN_SELECTIONDAG_ISEL_H
-#define LLVM_CODEGEN_SELECTIONDAG_ISEL_H
+#ifndef LLVM_CODEGEN_SELECTIONDAGISEL_H
+#define LLVM_CODEGEN_SELECTIONDAGISEL_H
 
-#include "llvm/BasicBlock.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
@@ -31,6 +31,7 @@ namespace llvm {
   class TargetLowering;
   class TargetLibraryInfo;
   class TargetInstrInfo;
+  class TargetTransformInfo;
   class FunctionLoweringInfo;
   class ScheduleHazardRecognizer;
   class GCFunctionInfo;
@@ -44,6 +45,7 @@ public:
   const TargetMachine &TM;
   const TargetLowering &TLI;
   const TargetLibraryInfo *LibInfo;
+  const TargetTransformInfo *TTI;
   FunctionLoweringInfo *FuncInfo;
   MachineFunction *MF;
   MachineRegisterInfo *RegInfo;
@@ -279,4 +281,4 @@ private:
 
 }
 
-#endif /* LLVM_CODEGEN_SELECTIONDAG_ISEL_H */
+#endif /* LLVM_CODEGEN_SELECTIONDAGISEL_H */

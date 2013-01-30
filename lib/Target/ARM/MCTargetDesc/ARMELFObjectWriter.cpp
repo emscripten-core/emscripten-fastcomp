@@ -71,11 +71,10 @@ const MCSymbol *ARMELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
                                                    const MCFixup &Fixup,
                                                    bool IsPCRel) const {
   const MCSymbol &Symbol = Target.getSymA()->getSymbol().AliasedSymbol();
-  const MCSymbol &ASymbol = Symbol.AliasedSymbol();
   bool EmitThisSym = false;
 
   const MCSectionELF &Section =
-    static_cast<const MCSectionELF&>(ASymbol.getSection());
+    static_cast<const MCSectionELF&>(Symbol.getSection());
   bool InNormalSection = true;
   unsigned RelocType = 0;
   RelocType = GetRelocTypeInner(Target, Fixup, IsPCRel);
@@ -134,13 +133,14 @@ const MCSymbol *ARMELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
     switch (RelocType) {
     default: EmitThisSym = true; break;
     case ELF::R_ARM_ABS32: EmitThisSym = false; break;
+    case ELF::R_ARM_PREL31: EmitThisSym = false; break;
     }
   }
 
   if (EmitThisSym)
-    return &ASymbol;
+    return &Symbol;
   if (! Symbol.isTemporary() && InNormalSection) {
-    return &ASymbol;
+    return &Symbol;
   }
   return NULL;
 }
@@ -226,6 +226,9 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case FK_Data_4:
       switch (Modifier) {
       default: llvm_unreachable("Unsupported Modifier");
+      case MCSymbolRefExpr::VK_ARM_NONE:
+        Type = ELF::R_ARM_NONE;
+        break;
       case MCSymbolRefExpr::VK_ARM_GOT:
         Type = ELF::R_ARM_GOT_BREL;
         break;
@@ -250,7 +253,10 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
       case MCSymbolRefExpr::VK_ARM_TARGET2:
         Type = ELF::R_ARM_TARGET2;
         break;
-      } 
+      case MCSymbolRefExpr::VK_ARM_PREL31:
+        Type = ELF::R_ARM_PREL31;
+        break;
+      }
       break;
     case ARM::fixup_arm_ldst_pcrel_12:
     case ARM::fixup_arm_pcrel_10:

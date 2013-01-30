@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCELFObjectWriter.h"
-#include "MCELF.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -22,6 +21,7 @@
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCELF.h"
 #include "llvm/MC/MCELFSymbolFlags.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixupKindInfo.h"
@@ -865,7 +865,7 @@ void ELFObjectWriter::ComputeSymbolTable(MCAssembler &Asm,
   // FIXME: Is this the correct place to do this?
   // FIXME: Why is an undefined reference to _GLOBAL_OFFSET_TABLE_ needed?
   if (NeedsGOT) {
-    llvm::StringRef Name = "_GLOBAL_OFFSET_TABLE_";
+    StringRef Name = "_GLOBAL_OFFSET_TABLE_";
     MCSymbol *Sym = Asm.getContext().GetOrCreateSymbol(Name);
     MCSymbolData &Data = Asm.getOrCreateSymbolData(*Sym);
     Data.setExternal(true);
@@ -1567,5 +1567,4 @@ MCObjectWriter *llvm::createELFObjectWriter(MCELFObjectTargetWriter *MOTW,
                                             raw_ostream &OS,
                                             bool IsLittleEndian) {
   return new ELFObjectWriter(MOTW, OS, IsLittleEndian);
-
 }

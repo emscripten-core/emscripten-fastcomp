@@ -93,7 +93,7 @@ define void @conversion() {
 define void @other() {
 entry:
   %a1 = icmp eq i32 undef, undef
-  %a2 = fcmp eq float undef, undef
+  %a2 = fcmp oeq float undef, undef
   br i1 undef, label %foo, label %bar
 foo:
 ; phi predecessor labels have to match to appease module verifier

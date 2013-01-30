@@ -17,9 +17,9 @@
 #define LLVM_TARGET_TARGETREGISTERINFO_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/IR/CallingConv.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include <cassert>
 #include <functional>
@@ -384,21 +384,6 @@ public:
   bool hasRegUnit(unsigned Reg, unsigned RegUnit) const {
     for (MCRegUnitIterator Units(Reg, this); Units.isValid(); ++Units)
       if (*Units == RegUnit)
-        return true;
-    return false;
-  }
-
-  /// isSubRegister - Returns true if regB is a sub-register of regA.
-  ///
-  bool isSubRegister(unsigned regA, unsigned regB) const {
-    return isSuperRegister(regB, regA);
-  }
-
-  /// isSuperRegister - Returns true if regB is a super-register of regA.
-  ///
-  bool isSuperRegister(unsigned RegA, unsigned RegB) const {
-    for (MCSuperRegIterator I(RegA, this); I.isValid(); ++I)
-      if (*I == RegB)
         return true;
     return false;
   }

@@ -14,7 +14,7 @@
 #define DEBUG_TYPE "subtarget"
 #include "X86Subtarget.h"
 #include "X86InstrInfo.h"
-#include "llvm/GlobalValue.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Host.h"
@@ -358,6 +358,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   , UseLeaForSP(false)
   , HasSlowDivide(false)
   , PostRAScheduler(false)
+  , PadShortFunctions(false)
   , stackAlignment(4)
   // FIXME: this is a known good value for Yonah. How about others?
   , MaxInlineSizeThreshold(128)

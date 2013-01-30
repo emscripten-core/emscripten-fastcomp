@@ -11,11 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef LLVM_SUPPORT_TIMEVALUE_H
+#define LLVM_SUPPORT_TIMEVALUE_H
+
 #include "llvm/Support/DataTypes.h"
 #include <string>
-
-#ifndef LLVM_SYSTEM_TIMEVALUE_H
-#define LLVM_SYSTEM_TIMEVALUE_H
 
 namespace llvm {
 namespace sys {
@@ -82,6 +82,9 @@ namespace sys {
   /// @name Constructors
   /// @{
   public:
+    /// \brief Default construct a time value, initializing to ZeroTime.
+    TimeValue() : seconds_(0), nanos_(0) {}
+
     /// Caller provides the exact value in seconds and nanoseconds. The
     /// \p nanos argument defaults to zero for convenience.
     /// @brief Explicit constructor

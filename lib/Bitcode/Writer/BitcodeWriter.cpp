@@ -16,18 +16,18 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/BitstreamWriter.h"
 #include "llvm/Bitcode/LLVMBitCodes.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ValueSymbolTable.h"
 #include <cctype>
 #include <map>
 using namespace llvm;
@@ -175,7 +175,7 @@ static void WriteAttributeTable(const ValueEnumerator &VE,
     for (unsigned i = 0, e = A.getNumSlots(); i != e; ++i) {
       const AttributeWithIndex &PAWI = A.getSlot(i);
       Record.push_back(PAWI.Index);
-      Record.push_back(Attributes::encodeLLVMAttributesForBitcode(PAWI.Attrs));
+      Record.push_back(Attribute::encodeLLVMAttributesForBitcode(PAWI.Attrs));
     }
 
     Stream.EmitRecord(bitc::PARAMATTR_CODE_ENTRY, Record);

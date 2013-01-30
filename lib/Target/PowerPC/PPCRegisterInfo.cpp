@@ -21,7 +21,6 @@
 #include "PPCSubtarget.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -29,8 +28,10 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/Constants.h"
-#include "llvm/Function.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -40,7 +41,6 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Type.h"
 #include <cstdlib>
 
 #define GET_REGINFO_TARGET_DESC
@@ -597,7 +597,8 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   // to Offset to get the correct offset.
   // Naked functions have stack size 0, although getStackSize may not reflect that
   // because we didn't call all the pieces that compute it for naked functions.
-  if (!MF.getFunction()->getFnAttributes().hasAttribute(Attributes::Naked))
+  if (!MF.getFunction()->getAttributes().
+        hasAttribute(AttributeSet::FunctionIndex, Attribute::Naked))
     Offset += MFI->getStackSize();
 
   // If we can, encode the offset directly into the instruction.  If this is a

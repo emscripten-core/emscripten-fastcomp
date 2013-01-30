@@ -176,7 +176,6 @@ if( MSVC )
 
     # Promoted warnings to errors.
     -we4238 # Promote 'nonstandard extension used : class rvalue used as lvalue' to error.
-    -we4239 # Promote 'nonstandard extension used : 'token' : conversion from 'type' to 'type'' to error.
     )
 
   # Enable warnings
@@ -197,11 +196,11 @@ elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
     endif (LLVM_ENABLE_PEDANTIC)
     check_cxx_compiler_flag("-Werror -Wcovered-switch-default" CXX_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG)
     if( CXX_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG )
-      set( CMAKE_CXX_FlAGS "${CMAKE_CXX_FLAGS} -Wcovered-switch-default" )
+      set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wcovered-switch-default" )
     endif()
     check_c_compiler_flag("-Werror -Wcovered-switch-default" C_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG)
     if( C_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG )
-      set( CMAKE_C_FlAGS "${CMAKE_C_FLAGS} -Wcovered-switch-default" )
+      set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wcovered-switch-default" )
     endif()
   endif (LLVM_ENABLE_WARNINGS)
   if (LLVM_ENABLE_WERROR)

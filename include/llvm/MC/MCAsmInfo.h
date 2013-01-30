@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TARGET_ASM_INFO_H
-#define LLVM_TARGET_ASM_INFO_H
+#ifndef LLVM_MC_MCASMINFO_H
+#define LLVM_MC_MCASMINFO_H
 
 #include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MachineLocation.h"
@@ -109,6 +109,9 @@ namespace llvm {
 
     /// LabelSuffix - This is appended to emitted labels.
     const char *LabelSuffix;                 // Defaults to ":"
+
+    /// LabelSuffix - This is appended to emitted labels.
+    const char *DebugLabelSuffix;                 // Defaults to ":"
 
     /// GlobalPrefix - If this is set to a non-empty string, it is prepended
     /// onto all global symbols.  This is often used for "_" or ".".
@@ -441,6 +444,11 @@ namespace llvm {
     const char *getLabelSuffix() const {
       return LabelSuffix;
     }
+
+    const char *getDebugLabelSuffix() const {
+      return DebugLabelSuffix;
+    }
+
     const char *getGlobalPrefix() const {
       return GlobalPrefix;
     }

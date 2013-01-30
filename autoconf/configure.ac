@@ -37,15 +37,15 @@ AC_DEFINE([LLVM_VERSION_MINOR], [3], [Minor version of the LLVM API])
 
 dnl Provide a copyright substitution and ensure the copyright notice is included
 dnl in the output of --version option of the generated configure script.
-AC_SUBST(LLVM_COPYRIGHT,["Copyright (c) 2003-2012 University of Illinois at Urbana-Champaign."])
-AC_COPYRIGHT([Copyright (c) 2003-2012 University of Illinois at Urbana-Champaign.])
+AC_SUBST(LLVM_COPYRIGHT,["Copyright (c) 2003-2013 University of Illinois at Urbana-Champaign."])
+AC_COPYRIGHT([Copyright (c) 2003-2013 University of Illinois at Urbana-Champaign.])
 
 dnl Indicate that we require autoconf 2.60 or later.
 AC_PREREQ(2.60)
 
 dnl Verify that the source directory is valid. This makes sure that we are
 dnl configuring LLVM and not some other package (it validates --srcdir argument)
-AC_CONFIG_SRCDIR([lib/VMCore/Module.cpp])
+AC_CONFIG_SRCDIR([lib/IR/Module.cpp])
 
 dnl Place all of the extra autoconf files into the config subdirectory. Tell
 dnl various tools where the m4 autoconf macros are.
@@ -64,6 +64,32 @@ dnl starting with a different one.
 AC_PROG_CC(clang llvm-gcc gcc)
 AC_PROG_CXX(clang++ llvm-g++ g++)
 AC_PROG_CPP
+
+dnl If CXX is Clang, check that it can find and parse C++ standard library
+dnl headers.
+if test "$CXX" = "clang++" ; then
+  AC_MSG_CHECKING([whether clang works])
+  AC_LANG_PUSH([C++])
+  dnl Note that space between 'include' and '(' is required.  There's a broken
+  dnl regex in aclocal that otherwise will think that we call m4's include
+  dnl builtin.
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <limits>
+#if __has_include (<cxxabi.h>)
+#include <cxxabi.h>
+#endif
+#if __has_include (<unwind.h>)
+#include <unwind.h>
+#endif
+]])],
+[
+  AC_MSG_RESULT([yes])
+],
+[
+  AC_MSG_RESULT([no])
+  AC_MSG_ERROR([Selected compiler could not find or parse C++ standard library headers.  Rerun with CC=c-compiler CXX=c++-compiler ./configure ...])
+])
+  AC_LANG_POP([C++])
+fi
 
 dnl Configure all of the projects present in our source tree. While we could
 dnl just AC_CONFIG_SUBDIRS on the set of directories in projects that have a
@@ -478,6 +504,54 @@ case "$enableval" in
   no)  AC_SUBST(ENABLE_CXX11,[0]) ;;
   default) AC_SUBST(ENABLE_CXX11,[0]);;
   *) AC_MSG_ERROR([Invalid setting for --enable-cxx11. Use "yes" or "no"]) ;;
+esac
+
+dnl --enable-clang-arcmt: check whether to enable clang arcmt
+clang_arcmt="yes"
+AC_ARG_ENABLE(clang-arcmt,
+              AS_HELP_STRING([--enable-clang-arcmt],
+                             [Enable building of clang ARCMT (default is YES)]),
+                             clang_arcmt="$enableval",
+                             enableval="yes")
+case "$enableval" in
+  yes) AC_SUBST(ENABLE_CLANG_ARCMT,[1]) ;;
+  no)  AC_SUBST(ENABLE_CLANG_ARCMT,[0]) ;;
+  default) AC_SUBST(ENABLE_CLANG_ARCMT,[1]);;
+  *) AC_MSG_ERROR([Invalid setting for --enable-clang-arcmt. Use "yes" or "no"]) ;;
+esac
+
+dnl --enable-clang-static-analyzer: check whether to enable static-analyzer
+clang_static_analyzer="yes"
+AC_ARG_ENABLE(clang-static-analyzer,
+              AS_HELP_STRING([--enable-clang-static-analyzer],
+                             [Enable building of clang Static Analyzer (default is YES)]),
+                             clang_static_analyzer="$enableval",
+                             enableval="yes")
+case "$enableval" in
+  yes) AC_SUBST(ENABLE_CLANG_STATIC_ANALYZER,[1]) ;;
+  no)  AC_SUBST(ENABLE_CLANG_STATIC_ANALYZER,[0]) ;;
+  default) AC_SUBST(ENABLE_CLANG_STATIC_ANALYZER,[1]);;
+  *) AC_MSG_ERROR([Invalid setting for --enable-clang-static-analyzer. Use "yes" or "no"]) ;;
+esac
+
+dnl --enable-clang-rewriter: check whether to enable clang rewriter
+AC_ARG_ENABLE(clang-rewriter,
+              AS_HELP_STRING([--enable-clang-rewriter],
+                             [Enable building of clang rewriter (default is YES)]),,
+                             enableval="yes")
+case "$enableval" in
+  yes) AC_SUBST(ENABLE_CLANG_REWRITER,[1]) ;;
+  no)  
+    if test ${clang_arcmt} != "no" ; then
+      AC_MSG_ERROR([Cannot enable clang ARC Migration Tool while disabling rewriter.])
+    fi
+    if test ${clang_static_analyzer} != "no" ; then
+      AC_MSG_ERROR([Cannot enable clang static analyzer while disabling rewriter.])
+    fi
+    AC_SUBST(ENABLE_CLANG_REWRITER,[0]) 
+    ;;
+  default) AC_SUBST(ENABLE_CLANG_REWRITER,[1]);;
+  *) AC_MSG_ERROR([Invalid setting for --enable-clang-rewriter. Use "yes" or "no"]) ;;
 esac
 
 dnl --enable-optimized : check whether they want to do an optimized build:
@@ -1188,7 +1262,27 @@ AC_MSG_CHECKING([optional compiler flags])
 CXX_FLAG_CHECK(NO_VARIADIC_MACROS, [-Wno-variadic-macros])
 CXX_FLAG_CHECK(NO_MISSING_FIELD_INITIALIZERS, [-Wno-missing-field-initializers])
 CXX_FLAG_CHECK(COVERED_SWITCH_DEFAULT, [-Wcovered-switch-default])
-AC_MSG_RESULT([$NO_VARIADIC_MACROS $NO_MISSING_FIELD_INITIALIZERS $COVERED_SWITCH_DEFAULT])
+dnl GCC's potential uninitialized use analysis is weak and presents lots of
+dnl false positives, so disable it.
+if test "$GXX" = "yes"
+then
+  CXX_FLAG_CHECK(NO_MAYBE_UNINITIALIZED, [-Wno-maybe-uninitialized])
+  dnl gcc 4.7 introduced -Wmaybe-uninitialized to distinguish cases which are
+  dnl known to be uninitialized from cases which might be uninitialized.  We 
+  dnl still want to catch the first kind of errors.
+  if test "$NO_MAYBE_UNINITIALIZED" != "-Wno-maybe-uninitialized"
+  then
+    CXX_FLAG_CHECK(NO_UNINITIALIZED, [-Wno-uninitialized])
+  else
+    dnl AC_SUBST doesn't work with empty strings.
+    NO_UNINITIALIZED=
+  fi
+else
+  NO_UNINITIALIZED=
+  NO_MAYBE_UNINITIALIZED=
+fi
+AC_MSG_RESULT([$NO_VARIADIC_MACROS $NO_MISSING_FIELD_INITIALIZERS $COVERED_SWITCH_DEFAULT $NO_UNINITIALIZED $NO_MAYBE_UNINITIALIZED])
+
 
 dnl===-----------------------------------------------------------------------===
 dnl===
@@ -1206,6 +1300,11 @@ dnl dlopen() is required for plugin support.
 AC_SEARCH_LIBS(dlopen,dl,AC_DEFINE([HAVE_DLOPEN],[1],
                [Define if dlopen() is available on this platform.]),
                AC_MSG_WARN([dlopen() not found - disabling plugin support]))
+
+dnl Search for the clock_gettime() function. Note that we rely on the POSIX
+dnl macros to detect whether clock_gettime is available, this just finds the
+dnl right libraries to link with.
+AC_SEARCH_LIBS(clock_gettime,rt)
 
 dnl libffi is optional; used to call external functions from the interpreter
 if test "$llvm_cv_enable_libffi" = "yes" ; then

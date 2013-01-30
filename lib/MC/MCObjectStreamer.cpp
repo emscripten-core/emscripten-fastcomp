@@ -16,7 +16,6 @@
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectWriter.h"
-#include "llvm/MC/MCSection.h" // @LOCALMOD
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
@@ -43,6 +42,13 @@ MCObjectStreamer::~MCObjectStreamer() {
   delete &Assembler->getEmitter();
   delete &Assembler->getWriter();
   delete Assembler;
+}
+
+void MCObjectStreamer::reset() {
+  if (Assembler)
+    Assembler->reset();
+  CurSectionData = 0;
+  MCStreamer::reset();
 }
 
 MCFragment *MCObjectStreamer::getCurrentFragment() const {
@@ -100,9 +106,9 @@ void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
     EmitIntValue(AbsValue, Size, AddrSpace);
     return;
   }
-  DF->addFixup(MCFixup::Create(DF->getContents().size(),
-                               Value,
-                               MCFixup::getKindForSize(Size, false)));
+  DF->getFixups().push_back(
+      MCFixup::Create(DF->getContents().size(), Value,
+                      MCFixup::getKindForSize(Size, false)));
   DF->getContents().resize(DF->getContents().size() + Size, 0);
 }
 
@@ -127,6 +133,10 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(!SD.getFragment() && "Unexpected fragment on symbol data!");
   SD.setFragment(F);
   SD.setOffset(F->getContents().size());
+}
+
+void MCObjectStreamer::EmitDebugLabel(MCSymbol *Symbol) {
+  EmitLabel(Symbol);
 }
 
 void MCObjectStreamer::EmitULEB128Value(const MCExpr *Value) {
@@ -154,62 +164,18 @@ void MCObjectStreamer::EmitWeakReference(MCSymbol *Alias,
   report_fatal_error("This file format doesn't support weak aliases.");
 }
 
-// @LOCALMOD-BEGIN ========================================================
-
-void MCObjectStreamer::EmitBundleAlignStart() {
-  MCSectionData *SD = getCurrentSectionData();
-  assert(SD->isBundlingEnabled() &&
-         ".bundle_align_start called, but bundling disabled!");
-  assert(!SD->isBundleLocked() &&
-         ".bundle_align_start while bundle locked");
-  SD->setBundleAlignNext(MCFragment::BundleAlignStart);
-}
-
-void MCObjectStreamer::EmitBundleAlignEnd() {
-  MCSectionData *SD = getCurrentSectionData();
-  assert(SD->isBundlingEnabled() &&
-         ".bundle_align_end called, but bundling disabled!");
-  assert(!SD->isBundleLocked() &&
-         ".bundle_align_end while bundle locked");
-  SD->setBundleAlignNext(MCFragment::BundleAlignEnd);
-}
-
-void MCObjectStreamer::EmitBundleLock() {
-  MCSectionData *SD = getCurrentSectionData();
-  assert(SD->isBundlingEnabled() &&
-         ".bundle_lock called, but bundling disabled!");
-  assert(!SD->isBundleLocked() &&
-         ".bundle_lock issued when bundle already locked");
-  SD->setBundleLocked(true);
-  SD->setBundleGroupFirstFrag(true);
-}
-
-void MCObjectStreamer::EmitBundleUnlock() {
-  MCSectionData *SD = getCurrentSectionData();
-  assert(SD->isBundlingEnabled() &&
-         ".bundle_unlock called, but bundling disabled!");
-  assert(SD->isBundleLocked() &&
-         ".bundle_unlock called when bundle not locked");
-  // If there has been at least one fragment emitted inside
-  // this bundle lock, then we need to mark the last emitted
-  // fragment as the group end.
-  if (!SD->isBundleGroupFirstFrag()) {
-    assert(getCurrentFragment() != NULL);
-    getCurrentFragment()->setBundleGroupEnd(true);
-  }
-  SD->setBundleLocked(false);
-  SD->setBundleGroupFirstFrag(false);
-}
-// @LOCALMOD-END ==========================================================
-
 void MCObjectStreamer::ChangeSection(const MCSection *Section) {
   assert(Section && "Cannot switch to a null section!");
 
   CurSectionData = &getAssembler().getOrCreateSectionData(*Section);
 }
 
-void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
+void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
+  getAssembler().getOrCreateSymbolData(*Symbol);
+  Symbol->setVariableValue(AddValueSymbols(Value));
+}
 
+void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
   // @LOCALMOD-BEGIN
   if (getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
     return;
@@ -221,21 +187,27 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
     if (Inst.getOperand(i).isExpr())
       AddValueSymbols(Inst.getOperand(i).getExpr());
 
-  getCurrentSectionData()->setHasInstructions(true);
+  MCSectionData *SD = getCurrentSectionData();
+  SD->setHasInstructions(true);
 
   // Now that a machine instruction has been assembled into this section, make
   // a line entry for any .loc directive that has been seen.
   MCLineEntry::Make(this, getCurrentSection());
 
   // If this instruction doesn't need relaxation, just emit it as data.
-  if (!getAssembler().getBackend().mayNeedRelaxation(Inst)) {
+  MCAssembler &Assembler = getAssembler();
+  if (!Assembler.getBackend().mayNeedRelaxation(Inst)) {
     EmitInstToData(Inst);
     return;
   }
 
-  // Otherwise, if we are relaxing everything, relax the instruction as much as
-  // possible and emit it as data.
-  if (getAssembler().getRelaxAll()) {
+  // Otherwise, relax and emit it as data if either:
+  // - The RelaxAll flag was passed
+  // - Bundling is enabled and this instruction is inside a bundle-locked
+  //   group. We want to emit all such instructions into the same data
+  //   fragment.
+  if (Assembler.getRelaxAll() ||
+      (Assembler.isBundlingEnabled() && SD->isBundleLocked())) {
     MCInst Relaxed;
     getAssembler().getBackend().relaxInstruction(Inst, Relaxed);
     while (getAssembler().getBackend().mayNeedRelaxation(Relaxed))
@@ -249,13 +221,31 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
 }
 
 void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst) {
-  MCInstFragment *IF = new MCInstFragment(Inst, getCurrentSectionData());
+  // Always create a new, separate fragment here, because its size can change
+  // during relaxation.
+  MCRelaxableFragment *IF =
+    new MCRelaxableFragment(Inst, getCurrentSectionData());
 
   SmallString<128> Code;
   raw_svector_ostream VecOS(Code);
   getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, IF->getFixups());
   VecOS.flush();
-  IF->getCode().append(Code.begin(), Code.end());
+  IF->getContents().append(Code.begin(), Code.end());
+}
+
+const char *BundlingNotImplementedMsg =
+  "Aligned bundling is not implemented for this object format";
+
+void MCObjectStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
+  llvm_unreachable(BundlingNotImplementedMsg);
+}
+
+void MCObjectStreamer::EmitBundleLock(bool AlignToEnd) {
+  llvm_unreachable(BundlingNotImplementedMsg);
+}
+
+void MCObjectStreamer::EmitBundleUnlock() {
+  llvm_unreachable(BundlingNotImplementedMsg);
 }
 
 void MCObjectStreamer::EmitDwarfAdvanceLineAddr(int64_t LineDelta,
@@ -291,7 +281,6 @@ void MCObjectStreamer::EmitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
 void MCObjectStreamer::EmitBytes(StringRef Data, unsigned AddrSpace) {
   assert(AddrSpace == 0 && "Address space must be 0!");
   getOrCreateDataFragment()->getContents().append(Data.begin(), Data.end());
-  getCurrentSectionData()->MarkBundleOffsetUnknown();  // @LOCALMOD
 }
 
 void MCObjectStreamer::EmitValueToAlignment(unsigned ByteAlignment,
@@ -303,10 +292,6 @@ void MCObjectStreamer::EmitValueToAlignment(unsigned ByteAlignment,
   new MCAlignFragment(ByteAlignment, Value, ValueSize, MaxBytesToEmit,
                       getCurrentSectionData());
 
-  // @LOCALMOD-BEGIN
-  // Bump the bundle offset to account for alignment.
-  getCurrentSectionData()->AlignBundleOffsetTo(ByteAlignment);
-  // @LOCALMOD-END
   // Update the maximum alignment on the current section if necessary.
   if (ByteAlignment > getCurrentSectionData()->getAlignment())
     getCurrentSectionData()->setAlignment(ByteAlignment);
@@ -336,7 +321,7 @@ bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
 
   if (!Delta->EvaluateAsAbsolute(Res, getAssembler()))
     return true;
-  EmitFill(Res, Value, 0);
+  EmitFill(Res, Value);
   return false;
 }
 
@@ -344,7 +329,8 @@ bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
 void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
   MCDataFragment *DF = getOrCreateDataFragment();
 
-  DF->addFixup(MCFixup::Create(DF->getContents().size(), Value, FK_GPRel_4));
+  DF->getFixups().push_back(MCFixup::Create(DF->getContents().size(), 
+                                            Value, FK_GPRel_4));
   DF->getContents().resize(DF->getContents().size() + 4, 0);
 }
 
@@ -352,7 +338,8 @@ void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
 void MCObjectStreamer::EmitGPRel64Value(const MCExpr *Value) {
   MCDataFragment *DF = getOrCreateDataFragment();
 
-  DF->addFixup(MCFixup::Create(DF->getContents().size(), Value, FK_GPRel_4));
+  DF->getFixups().push_back(MCFixup::Create(DF->getContents().size(), 
+                                            Value, FK_GPRel_4));
   DF->getContents().resize(DF->getContents().size() + 8, 0);
 }
 
@@ -362,7 +349,6 @@ void MCObjectStreamer::EmitFill(uint64_t NumBytes, uint8_t FillValue,
   // FIXME: A MCFillFragment would be more memory efficient but MCExpr has
   //        problems evaluating expressions across multiple fragments.
   getOrCreateDataFragment()->getContents().append(NumBytes, FillValue);
-  getCurrentSectionData()->MarkBundleOffsetUnknown();
 }
 
 void MCObjectStreamer::FinishImpl() {

@@ -12,10 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/Twine.h"
-#include "llvm/Function.h"
-#include "llvm/Instruction.h"
 #include "llvm/Pass.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/NaCl.h"
 using namespace llvm;

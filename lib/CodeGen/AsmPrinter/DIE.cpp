@@ -8,13 +8,13 @@
 //===----------------------------------------------------------------------===//
 //
 // Data structures for DWARF info entries.
-// 
+//
 //===----------------------------------------------------------------------===//
 
 #include "DIE.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/AsmPrinter.h"
-#include "llvm/DataLayout.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
@@ -197,13 +197,14 @@ void DIEInteger::EmitValue(AsmPrinter *Asm, unsigned Form) const {
   case dwarf::DW_FORM_data4: Size = 4; break;
   case dwarf::DW_FORM_ref8:  // Fall thru
   case dwarf::DW_FORM_data8: Size = 8; break;
+  case dwarf::DW_FORM_GNU_str_index: Asm->EmitULEB128(Integer); return;
   case dwarf::DW_FORM_udata: Asm->EmitULEB128(Integer); return;
   case dwarf::DW_FORM_sdata: Asm->EmitSLEB128(Integer); return;
   case dwarf::DW_FORM_addr:
     Size = Asm->getDataLayout().getPointerSize(); break;
   default: llvm_unreachable("DIE Value form not supported yet");
   }
-  Asm->OutStreamer.EmitIntValue(Integer, Size, 0/*addrspace*/);
+  Asm->OutStreamer.EmitIntValue(Integer, Size);
 }
 
 /// SizeOf - Determine size of integer value in bytes.
@@ -220,6 +221,7 @@ unsigned DIEInteger::SizeOf(AsmPrinter *AP, unsigned Form) const {
   case dwarf::DW_FORM_data4: return sizeof(int32_t);
   case dwarf::DW_FORM_ref8:  // Fall thru
   case dwarf::DW_FORM_data8: return sizeof(int64_t);
+  case dwarf::DW_FORM_GNU_str_index: return MCAsmInfo::getULEB128Size(Integer);
   case dwarf::DW_FORM_udata: return MCAsmInfo::getULEB128Size(Integer);
   case dwarf::DW_FORM_sdata: return MCAsmInfo::getSLEB128Size(Integer);
   case dwarf::DW_FORM_addr:  return AP->getDataLayout().getPointerSize();
@@ -241,7 +243,7 @@ void DIEInteger::print(raw_ostream &O) {
 /// EmitValue - Emit label value.
 ///
 void DIELabel::EmitValue(AsmPrinter *AP, unsigned Form) const {
-  AP->OutStreamer.EmitSymbolValue(Label, SizeOf(AP, Form), 0/*AddrSpace*/);
+  AP->OutStreamer.EmitSymbolValue(Label, SizeOf(AP, Form));
 }
 
 /// SizeOf - Determine size of label value in bytes.

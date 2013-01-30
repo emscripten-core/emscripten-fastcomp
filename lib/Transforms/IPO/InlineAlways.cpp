@@ -17,14 +17,14 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/InlineCost.h"
-#include "llvm/CallingConv.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Transforms/IPO/InlinerPass.h"
-#include "llvm/Type.h"
 
 using namespace llvm;
 
@@ -87,7 +87,8 @@ InlineCost AlwaysInliner::getInlineCost(CallSite CS) {
   // that are viable for inlining. FIXME: We shouldn't even get here for
   // declarations.
   if (Callee && !Callee->isDeclaration() &&
-      Callee->getFnAttributes().hasAttribute(Attributes::AlwaysInline) &&
+      Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                           Attribute::AlwaysInline) &&
       CA.isInlineViable(*Callee))
     return InlineCost::getAlways();
 

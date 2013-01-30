@@ -16,10 +16,10 @@
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/Constants.h"
-#include "llvm/LLVMContext.h"
 #include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
-
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
@@ -28,7 +28,6 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h" // @LOCALMOD
 #include "llvm/Support/Host.h"
@@ -360,8 +359,9 @@ uint32_t LTOModule::getNumLibraryDeps() {
 // @LOCALMOD-END
 
 /// objcClassNameFromExpression - Get string that the data pointer points to.
-bool LTOModule::objcClassNameFromExpression(Constant *c, std::string &name) {
-  if (ConstantExpr *ce = dyn_cast<ConstantExpr>(c)) {
+bool
+LTOModule::objcClassNameFromExpression(const Constant *c, std::string &name) {
+  if (const ConstantExpr *ce = dyn_cast<ConstantExpr>(c)) {
     Constant *op = ce->getOperand(0);
     if (GlobalVariable *gvn = dyn_cast<GlobalVariable>(op)) {
       Constant *cn = gvn->getInitializer();
@@ -377,8 +377,8 @@ bool LTOModule::objcClassNameFromExpression(Constant *c, std::string &name) {
 }
 
 /// addObjCClass - Parse i386/ppc ObjC class data structure.
-void LTOModule::addObjCClass(GlobalVariable *clgv) {
-  ConstantStruct *c = dyn_cast<ConstantStruct>(clgv->getInitializer());
+void LTOModule::addObjCClass(const GlobalVariable *clgv) {
+  const ConstantStruct *c = dyn_cast<ConstantStruct>(clgv->getInitializer());
   if (!c) return;
 
   // second slot in __OBJC,__class is pointer to superclass name
@@ -414,8 +414,8 @@ void LTOModule::addObjCClass(GlobalVariable *clgv) {
 }
 
 /// addObjCCategory - Parse i386/ppc ObjC category data structure.
-void LTOModule::addObjCCategory(GlobalVariable *clgv) {
-  ConstantStruct *c = dyn_cast<ConstantStruct>(clgv->getInitializer());
+void LTOModule::addObjCCategory(const GlobalVariable *clgv) {
+  const ConstantStruct *c = dyn_cast<ConstantStruct>(clgv->getInitializer());
   if (!c) return;
 
   // second slot in __OBJC,__category is pointer to target class name
@@ -439,7 +439,7 @@ void LTOModule::addObjCCategory(GlobalVariable *clgv) {
 }
 
 /// addObjCClassRef - Parse i386/ppc ObjC class list data structure.
-void LTOModule::addObjCClassRef(GlobalVariable *clgv) {
+void LTOModule::addObjCClassRef(const GlobalVariable *clgv) {
   std::string targetclassName;
   if (!objcClassNameFromExpression(clgv->getInitializer(), targetclassName))
     return;
@@ -459,7 +459,7 @@ void LTOModule::addObjCClassRef(GlobalVariable *clgv) {
 }
 
 /// addDefinedDataSymbol - Add a data symbol as defined to the list.
-void LTOModule::addDefinedDataSymbol(GlobalValue *v) {
+void LTOModule::addDefinedDataSymbol(const GlobalValue *v) {
   // Add to list of defined symbols.
   addDefinedSymbol(v, false);
 
@@ -488,34 +488,34 @@ void LTOModule::addDefinedDataSymbol(GlobalValue *v) {
 
   // special case if this data blob is an ObjC class definition
   if (v->getSection().compare(0, 15, "__OBJC,__class,") == 0) {
-    if (GlobalVariable *gv = dyn_cast<GlobalVariable>(v)) {
+    if (const GlobalVariable *gv = dyn_cast<GlobalVariable>(v)) {
       addObjCClass(gv);
     }
   }
 
   // special case if this data blob is an ObjC category definition
   else if (v->getSection().compare(0, 18, "__OBJC,__category,") == 0) {
-    if (GlobalVariable *gv = dyn_cast<GlobalVariable>(v)) {
+    if (const GlobalVariable *gv = dyn_cast<GlobalVariable>(v)) {
       addObjCCategory(gv);
     }
   }
 
   // special case if this data blob is the list of referenced classes
   else if (v->getSection().compare(0, 18, "__OBJC,__cls_refs,") == 0) {
-    if (GlobalVariable *gv = dyn_cast<GlobalVariable>(v)) {
+    if (const GlobalVariable *gv = dyn_cast<GlobalVariable>(v)) {
       addObjCClassRef(gv);
     }
   }
 }
 
 /// addDefinedFunctionSymbol - Add a function symbol as defined to the list.
-void LTOModule::addDefinedFunctionSymbol(Function *f) {
+void LTOModule::addDefinedFunctionSymbol(const Function *f) {
   // add to list of defined symbols
   addDefinedSymbol(f, true);
 }
 
 /// addDefinedSymbol - Add a defined symbol to the list.
-void LTOModule::addDefinedSymbol(GlobalValue *def, bool isFunction) {
+void LTOModule::addDefinedSymbol(const GlobalValue *def, bool isFunction) {
   // ignore all llvm.* symbols
   if (def->getName().startswith("llvm."))
     return;
@@ -532,7 +532,7 @@ void LTOModule::addDefinedSymbol(GlobalValue *def, bool isFunction) {
   if (isFunction) {
     attr |= LTO_SYMBOL_PERMISSIONS_CODE;
   } else {
-    GlobalVariable *gv = dyn_cast<GlobalVariable>(def);
+    const GlobalVariable *gv = dyn_cast<GlobalVariable>(def);
     if (gv && gv->isConstant())
       attr |= LTO_SYMBOL_PERMISSIONS_RODATA;
     else
@@ -647,7 +647,8 @@ void LTOModule::addAsmGlobalSymbolUndef(const char *name) {
 
 /// addPotentialUndefinedSymbol - Add a symbol which isn't defined just yet to a
 /// list to be resolved later.
-void LTOModule::addPotentialUndefinedSymbol(GlobalValue *decl, bool isFunc) {
+void
+LTOModule::addPotentialUndefinedSymbol(const GlobalValue *decl, bool isFunc) {
   // ignore all llvm.* symbols
   if (decl->getName().startswith("llvm."))
     return;
@@ -793,6 +794,9 @@ namespace {
       Symbol->setSection(*getCurrentSection());
       markDefined(*Symbol);
     }
+    virtual void EmitDebugLabel(MCSymbol *Symbol) {
+      EmitLabel(Symbol);
+    }
     virtual void EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
       // FIXME: should we handle aliases?
       markDefined(*Symbol);
@@ -810,8 +814,13 @@ namespace {
       markDefined(*Symbol);
     }
 
+    virtual void EmitBundleAlignMode(unsigned AlignPow2) {}
+    virtual void EmitBundleLock(bool AlignToEnd) {}
+    virtual void EmitBundleUnlock() {}
+
     // Noop calls.
     virtual void ChangeSection(const MCSection *Section) {}
+    virtual void InitToTextSection() {}
     virtual void InitSections() {}
     virtual void EmitAssemblerFlag(MCAssemblerFlag Flag) {}
     virtual void EmitThumbFunc(MCSymbol *Func) {}
@@ -838,12 +847,7 @@ namespace {
                                    unsigned MaxBytesToEmit) {}
     virtual bool EmitValueToOffset(const MCExpr *Offset,
                                    unsigned char Value ) { return false; }
-    // @LOCALMOD-BEGIN
-    virtual void EmitBundleLock() {}
-    virtual void EmitBundleUnlock() {}
-    virtual void EmitBundleAlignStart() {}
-    virtual void EmitBundleAlignEnd() {}
-    // @LOCALMOD-END
+
     virtual void EmitFileDirective(StringRef Filename) {}
     virtual void EmitDwarfAdvanceLineAddr(int64_t LineDelta,
                                           const MCSymbol *LastLabel,

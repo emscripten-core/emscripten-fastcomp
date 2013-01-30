@@ -13,7 +13,7 @@
 
 #include "InstCombine.h"
 #include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/DataLayout.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/PatternMatch.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 using namespace llvm;
@@ -1204,8 +1204,34 @@ Instruction *InstCombiner::visitFPTrunc(FPTruncInst &CI) {
       }
       break;  
     }
+
+    // (fptrunc (fneg x)) -> (fneg (fptrunc x))
+    if (BinaryOperator::isFNeg(OpI)) {
+      Value *InnerTrunc = Builder->CreateFPTrunc(OpI->getOperand(1),
+                                                 CI.getType());
+      return BinaryOperator::CreateFNeg(InnerTrunc);
+    }
   }
-  
+
+  IntrinsicInst *II = dyn_cast<IntrinsicInst>(CI.getOperand(0));
+  if (II) {
+    switch (II->getIntrinsicID()) {
+      default: break;
+      case Intrinsic::fabs: {
+        // (fptrunc (fabs x)) -> (fabs (fptrunc x))
+        Value *InnerTrunc = Builder->CreateFPTrunc(II->getArgOperand(0),
+                                                   CI.getType());
+        Type *IntrinsicType[] = { CI.getType() };
+        Function *Overload =
+          Intrinsic::getDeclaration(CI.getParent()->getParent()->getParent(),
+                                    II->getIntrinsicID(), IntrinsicType);
+
+        Value *Args[] = { InnerTrunc };
+        return CallInst::Create(Overload, Args, II->getName());
+      }
+    }
+  }
+
   // Fold (fptrunc (sqrt (fpext x))) -> (sqrtf x)
   CallInst *Call = dyn_cast<CallInst>(CI.getOperand(0));
   if (Call && Call->getCalledFunction() && TLI->has(LibFunc::sqrtf) &&
@@ -1337,17 +1363,15 @@ Instruction *InstCombiner::commonPointerCastTransforms(CastInst &CI) {
     // GEP computes a constant offset, see if we can convert these three
     // instructions into fewer.  This typically happens with unions and other
     // non-type-safe code.
+    APInt Offset(TD ? TD->getPointerSizeInBits() : 1, 0);
     if (TD && GEP->hasOneUse() && isa<BitCastInst>(GEP->getOperand(0)) &&
-        GEP->hasAllConstantIndices()) {
-      SmallVector<Value*, 8> Ops(GEP->idx_begin(), GEP->idx_end());
-      int64_t Offset = TD->getIndexedOffset(GEP->getPointerOperandType(), Ops);
-
+        GEP->accumulateConstantOffset(*TD, Offset)) {
       // Get the base pointer input of the bitcast, and the type it points to.
       Value *OrigBase = cast<BitCastInst>(GEP->getOperand(0))->getOperand(0);
       Type *GEPIdxTy =
       cast<PointerType>(OrigBase->getType())->getElementType();
       SmallVector<Value*, 8> NewIndices;
-      if (FindElementAtOffset(GEPIdxTy, Offset, NewIndices)) {
+      if (FindElementAtOffset(GEPIdxTy, Offset.getSExtValue(), NewIndices)) {
         // If we were able to index down into an element, create the GEP
         // and bitcast the result.  This eliminates one bitcast, potentially
         // two.

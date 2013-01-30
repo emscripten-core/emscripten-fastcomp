@@ -24,9 +24,10 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/Constants.h"
 #include "llvm/DebugInfo.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -35,13 +36,38 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Type.h"
 
 using namespace llvm;
 
 Mips16RegisterInfo::Mips16RegisterInfo(const MipsSubtarget &ST,
     const Mips16InstrInfo &I)
   : MipsRegisterInfo(ST), TII(I) {}
+
+bool Mips16RegisterInfo::requiresRegisterScavenging
+  (const MachineFunction &MF) const {
+  return true;
+}
+bool Mips16RegisterInfo::requiresFrameIndexScavenging
+  (const MachineFunction &MF) const {
+  return true;
+}
+
+bool Mips16RegisterInfo::useFPForScavengingIndex
+  (const MachineFunction &MF) const {
+  return false;
+}
+
+bool Mips16RegisterInfo::saveScavengerRegister
+  (MachineBasicBlock &MBB,
+   MachineBasicBlock::iterator I,
+   MachineBasicBlock::iterator &UseMI,
+   const TargetRegisterClass *RC,
+   unsigned Reg) const {
+  DebugLoc DL;
+  TII.copyPhysReg(MBB, I, DL, Mips::T0, Reg, true);
+  TII.copyPhysReg(MBB, UseMI, DL, Reg, Mips::T0, true);
+  return true;
+}
 
 // This function eliminate ADJCALLSTACKDOWN,
 // ADJCALLSTACKUP pseudo instructions
@@ -120,6 +146,10 @@ void Mips16RegisterInfo::eliminateFI(MachineBasicBlock::iterator II,
 
   DEBUG(errs() << "Offset     : " << Offset << "\n" << "<--------->\n");
 
+  if (!MI.isDebugValue() && ( ((FrameReg != Mips::SP) && !isInt<16>(Offset)) ||
+      ((FrameReg == Mips::SP) && !isInt<15>(Offset)) )) {
+    llvm_unreachable("frame offset does not fit in instruction");
+  }
   MI.getOperand(OpNo).ChangeToRegister(FrameReg, false);
   MI.getOperand(OpNo + 1).ChangeToImmediate(Offset);
 

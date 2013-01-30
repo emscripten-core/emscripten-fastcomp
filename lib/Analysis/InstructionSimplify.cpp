@@ -25,9 +25,9 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DataLayout.h"
-#include "llvm/GlobalAlias.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/ConstantRange.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/PatternMatch.h"
@@ -657,39 +657,6 @@ Value *llvm::SimplifyAddInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
                            RecursionLimit);
 }
 
-/// \brief Accumulate the constant integer offset a GEP represents.
-///
-/// Given a getelementptr instruction/constantexpr, accumulate the constant
-/// offset from the base pointer into the provided APInt 'Offset'. Returns true
-/// if the GEP has all-constant indices. Returns false if any non-constant
-/// index is encountered leaving the 'Offset' in an undefined state. The
-/// 'Offset' APInt must be the bitwidth of the target's pointer size.
-static bool accumulateGEPOffset(const DataLayout &TD, GEPOperator *GEP,
-                                APInt &Offset) {
-  unsigned IntPtrWidth = TD.getPointerSizeInBits();
-  assert(IntPtrWidth == Offset.getBitWidth());
-
-  gep_type_iterator GTI = gep_type_begin(GEP);
-  for (User::op_iterator I = GEP->op_begin() + 1, E = GEP->op_end(); I != E;
-       ++I, ++GTI) {
-    ConstantInt *OpC = dyn_cast<ConstantInt>(*I);
-    if (!OpC) return false;
-    if (OpC->isZero()) continue;
-
-    // Handle a struct index, which adds its field offset to the pointer.
-    if (StructType *STy = dyn_cast<StructType>(*GTI)) {
-      unsigned ElementIdx = OpC->getZExtValue();
-      const StructLayout *SL = TD.getStructLayout(STy);
-      Offset += APInt(IntPtrWidth, SL->getElementOffset(ElementIdx));
-      continue;
-    }
-
-    APInt TypeSize(IntPtrWidth, TD.getTypeAllocSize(GTI.getIndexedType()));
-    Offset += OpC->getValue().sextOrTrunc(IntPtrWidth) * TypeSize;
-  }
-  return true;
-}
-
 /// \brief Compute the base pointer and cumulative constant offsets for V.
 ///
 /// This strips all constant offsets off of V, leaving it the base pointer, and
@@ -710,7 +677,7 @@ static Constant *stripAndComputeConstantOffsets(const DataLayout &TD,
   Visited.insert(V);
   do {
     if (GEPOperator *GEP = dyn_cast<GEPOperator>(V)) {
-      if (!GEP->isInBounds() || !accumulateGEPOffset(TD, GEP, Offset))
+      if (!GEP->isInBounds() || !GEP->accumulateConstantOffset(TD, Offset))
         break;
       V = GEP->getPointerOperand();
     } else if (Operator::getOpcode(V) == Instruction::BitCast) {
@@ -886,6 +853,85 @@ Value *llvm::SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
                            RecursionLimit);
 }
 
+/// Given operands for an FAdd, see if we can fold the result.  If not, this
+/// returns null.
+static Value *SimplifyFAddInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                              const Query &Q, unsigned MaxRecurse) {
+  if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
+    if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
+      Constant *Ops[] = { CLHS, CRHS };
+      return ConstantFoldInstOperands(Instruction::FAdd, CLHS->getType(),
+                                      Ops, Q.TD, Q.TLI);
+    }
+
+    // Canonicalize the constant to the RHS.
+    std::swap(Op0, Op1);
+  }
+
+  // fadd X, -0 ==> X
+  if (match(Op1, m_NegZero()))
+    return Op0;
+
+  // fadd X, 0 ==> X, when we know X is not -0
+  if (match(Op1, m_Zero()) &&
+      (FMF.noSignedZeros() || CannotBeNegativeZero(Op0)))
+    return Op0;
+
+  // fadd [nnan ninf] X, (fsub [nnan ninf] 0, X) ==> 0
+  //   where nnan and ninf have to occur at least once somewhere in this
+  //   expression
+  Value *SubOp = 0;
+  if (match(Op1, m_FSub(m_AnyZero(), m_Specific(Op0))))
+    SubOp = Op1;
+  else if (match(Op0, m_FSub(m_AnyZero(), m_Specific(Op1))))
+    SubOp = Op0;
+  if (SubOp) {
+    Instruction *FSub = cast<Instruction>(SubOp);
+    if ((FMF.noNaNs() || FSub->hasNoNaNs()) &&
+        (FMF.noInfs() || FSub->hasNoInfs()))
+      return Constant::getNullValue(Op0->getType());
+  }
+
+  return 0;
+}
+
+/// Given operands for an FSub, see if we can fold the result.  If not, this
+/// returns null.
+static Value *SimplifyFSubInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                              const Query &Q, unsigned MaxRecurse) {
+  if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
+    if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
+      Constant *Ops[] = { CLHS, CRHS };
+      return ConstantFoldInstOperands(Instruction::FSub, CLHS->getType(),
+                                      Ops, Q.TD, Q.TLI);
+    }
+  }
+
+  // fsub X, 0 ==> X
+  if (match(Op1, m_Zero()))
+    return Op0;
+
+  // fsub X, -0 ==> X, when we know X is not -0
+  if (match(Op1, m_NegZero()) &&
+      (FMF.noSignedZeros() || CannotBeNegativeZero(Op0)))
+    return Op0;
+
+  // fsub 0, (fsub -0.0, X) ==> X
+  Value *X;
+  if (match(Op0, m_AnyZero())) {
+    if (match(Op1, m_FSub(m_NegZero(), m_Value(X))))
+      return X;
+    if (FMF.noSignedZeros() && match(Op1, m_FSub(m_AnyZero(), m_Value(X))))
+      return X;
+  }
+
+  // fsub nnan ninf x, x ==> 0.0
+  if (FMF.noNaNs() && FMF.noInfs() && Op0 == Op1)
+    return Constant::getNullValue(Op0->getType());
+
+  return 0;
+}
+
 /// Given the operands for an FMul, see if we can fold the result
 static Value *SimplifyFMulInst(Value *Op0, Value *Op1,
                                FastMathFlags FMF,
@@ -897,18 +943,18 @@ static Value *SimplifyFMulInst(Value *Op0, Value *Op1,
       return ConstantFoldInstOperands(Instruction::FMul, CLHS->getType(),
                                       Ops, Q.TD, Q.TLI);
     }
+
+    // Canonicalize the constant to the RHS.
+    std::swap(Op0, Op1);
  }
 
- // Check for some fast-math optimizations
- if (FMF.noNaNs()) {
-   if (FMF.noSignedZeros()) {
-     // fmul N S 0, x ==> 0
-     if (match(Op0, m_Zero()))
-       return Op0;
-     if (match(Op1, m_Zero()))
-       return Op1;
-   }
- }
+ // fmul X, 1.0 ==> X
+ if (match(Op1, m_FPOne()))
+   return Op0;
+
+ // fmul nnan nsz X, 0 ==> 0
+ if (FMF.noNaNs() && FMF.noSignedZeros() && match(Op1, m_AnyZero()))
+   return Op1;
 
  return 0;
 }
@@ -976,6 +1022,18 @@ static Value *SimplifyMulInst(Value *Op0, Value *Op1, const Query &Q,
       return V;
 
   return 0;
+}
+
+Value *llvm::SimplifyFAddInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
+                             const DominatorTree *DT) {
+  return ::SimplifyFAddInst(Op0, Op1, FMF, Query (TD, TLI, DT), RecursionLimit);
+}
+
+Value *llvm::SimplifyFSubInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
+                             const DominatorTree *DT) {
+  return ::SimplifyFSubInst(Op0, Op1, FMF, Query (TD, TLI, DT), RecursionLimit);
 }
 
 Value *llvm::SimplifyFMulInst(Value *Op0, Value *Op1,
@@ -1399,9 +1457,9 @@ static Value *SimplifyAndInst(Value *Op0, Value *Op1, const Query &Q,
   // A & (-A) = A if A is a power of two or zero.
   if (match(Op0, m_Neg(m_Specific(Op1))) ||
       match(Op1, m_Neg(m_Specific(Op0)))) {
-    if (isPowerOfTwo(Op0, Q.TD, /*OrZero*/true))
+    if (isKnownToBeAPowerOfTwo(Op0, /*OrZero*/true))
       return Op0;
-    if (isPowerOfTwo(Op1, Q.TD, /*OrZero*/true))
+    if (isKnownToBeAPowerOfTwo(Op1, /*OrZero*/true))
       return Op1;
   }
 
@@ -2732,10 +2790,18 @@ static Value *SimplifyBinOp(unsigned Opcode, Value *LHS, Value *RHS,
   case Instruction::Add:
     return SimplifyAddInst(LHS, RHS, /*isNSW*/false, /*isNUW*/false,
                            Q, MaxRecurse);
+  case Instruction::FAdd:
+    return SimplifyFAddInst(LHS, RHS, FastMathFlags(), Q, MaxRecurse);
+
   case Instruction::Sub:
     return SimplifySubInst(LHS, RHS, /*isNSW*/false, /*isNUW*/false,
                            Q, MaxRecurse);
+  case Instruction::FSub:
+    return SimplifyFSubInst(LHS, RHS, FastMathFlags(), Q, MaxRecurse);
+
   case Instruction::Mul:  return SimplifyMulInst (LHS, RHS, Q, MaxRecurse);
+  case Instruction::FMul:
+    return SimplifyFMulInst (LHS, RHS, FastMathFlags(), Q, MaxRecurse);
   case Instruction::SDiv: return SimplifySDivInst(LHS, RHS, Q, MaxRecurse);
   case Instruction::UDiv: return SimplifyUDivInst(LHS, RHS, Q, MaxRecurse);
   case Instruction::FDiv: return SimplifyFDivInst(LHS, RHS, Q, MaxRecurse);
@@ -2803,12 +2869,50 @@ Value *llvm::SimplifyCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                            RecursionLimit);
 }
 
-static Value *SimplifyCallInst(CallInst *CI, const Query &) {
-  // call undef -> undef
-  if (isa<UndefValue>(CI->getCalledValue()))
-    return UndefValue::get(CI->getType());
+template <typename IterTy>
+static Value *SimplifyCall(Value *V, IterTy ArgBegin, IterTy ArgEnd,
+                           const Query &Q, unsigned MaxRecurse) {
+  Type *Ty = V->getType();
+  if (PointerType *PTy = dyn_cast<PointerType>(Ty))
+    Ty = PTy->getElementType();
+  FunctionType *FTy = cast<FunctionType>(Ty);
 
-  return 0;
+  // call undef -> undef
+  if (isa<UndefValue>(V))
+    return UndefValue::get(FTy->getReturnType());
+
+  Function *F = dyn_cast<Function>(V);
+  if (!F)
+    return 0;
+
+  if (!canConstantFoldCallTo(F))
+    return 0;
+
+  SmallVector<Constant *, 4> ConstantArgs;
+  ConstantArgs.reserve(ArgEnd - ArgBegin);
+  for (IterTy I = ArgBegin, E = ArgEnd; I != E; ++I) {
+    Constant *C = dyn_cast<Constant>(*I);
+    if (!C)
+      return 0;
+    ConstantArgs.push_back(C);
+  }
+
+  return ConstantFoldCall(F, ConstantArgs, Q.TLI);
+}
+
+Value *llvm::SimplifyCall(Value *V, User::op_iterator ArgBegin,
+                          User::op_iterator ArgEnd, const DataLayout *TD,
+                          const TargetLibraryInfo *TLI,
+                          const DominatorTree *DT) {
+  return ::SimplifyCall(V, ArgBegin, ArgEnd, Query(TD, TLI, DT),
+                        RecursionLimit);
+}
+
+Value *llvm::SimplifyCall(Value *V, ArrayRef<Value *> Args,
+                          const DataLayout *TD, const TargetLibraryInfo *TLI,
+                          const DominatorTree *DT) {
+  return ::SimplifyCall(V, Args.begin(), Args.end(), Query(TD, TLI, DT),
+                        RecursionLimit);
 }
 
 /// SimplifyInstruction - See if we can compute a simplified version of this
@@ -2822,11 +2926,19 @@ Value *llvm::SimplifyInstruction(Instruction *I, const DataLayout *TD,
   default:
     Result = ConstantFoldInstruction(I, TD, TLI);
     break;
+  case Instruction::FAdd:
+    Result = SimplifyFAddInst(I->getOperand(0), I->getOperand(1),
+                              I->getFastMathFlags(), TD, TLI, DT);
+    break;
   case Instruction::Add:
     Result = SimplifyAddInst(I->getOperand(0), I->getOperand(1),
                              cast<BinaryOperator>(I)->hasNoSignedWrap(),
                              cast<BinaryOperator>(I)->hasNoUnsignedWrap(),
                              TD, TLI, DT);
+    break;
+  case Instruction::FSub:
+    Result = SimplifyFSubInst(I->getOperand(0), I->getOperand(1),
+                              I->getFastMathFlags(), TD, TLI, DT);
     break;
   case Instruction::Sub:
     Result = SimplifySubInst(I->getOperand(0), I->getOperand(1),
@@ -2911,9 +3023,12 @@ Value *llvm::SimplifyInstruction(Instruction *I, const DataLayout *TD,
   case Instruction::PHI:
     Result = SimplifyPHINode(cast<PHINode>(I), Query (TD, TLI, DT));
     break;
-  case Instruction::Call:
-    Result = SimplifyCallInst(cast<CallInst>(I), Query (TD, TLI, DT));
+  case Instruction::Call: {
+    CallSite CS(cast<CallInst>(I));
+    Result = SimplifyCall(CS.getCalledValue(), CS.arg_begin(), CS.arg_end(),
+                          TD, TLI, DT);
     break;
+  }
   case Instruction::Trunc:
     Result = SimplifyTruncInst(I->getOperand(0), I->getType(), TD, TLI, DT);
     break;

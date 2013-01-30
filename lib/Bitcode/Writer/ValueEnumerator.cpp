@@ -14,13 +14,13 @@
 #include "ValueEnumerator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ValueSymbolTable.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -424,8 +424,8 @@ void ValueEnumerator::EnumerateAttributes(const AttributeSet &PAL) {
   unsigned &Entry = AttributeMap[PAL.getRawPointer()];
   if (Entry == 0) {
     // Never saw this before, add it.
-    Attributes.push_back(PAL);
-    Entry = Attributes.size();
+    Attribute.push_back(PAL);
+    Entry = Attribute.size();
   }
 }
 

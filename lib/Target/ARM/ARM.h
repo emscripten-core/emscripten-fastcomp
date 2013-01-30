@@ -51,6 +51,10 @@ FunctionPass *createThumb2SizeReductionPass();
 FunctionPass *createARMNaClRewritePass();
 /* @LOCALMOD-END */
 
+/// \brief Creates an ARM-specific Target Transformation Info pass.
+ImmutablePass *createARMTargetTransformInfoPass(const ARMBaseTargetMachine *TM);
+
+
 void LowerARMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                   ARMAsmPrinter &AP);
 

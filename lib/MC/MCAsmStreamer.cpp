@@ -127,14 +127,21 @@ public:
   virtual void ChangeSection(const MCSection *Section);
 
   virtual void InitSections() {
+    InitToTextSection();
+  }
+
+  virtual void InitToTextSection() {
     // FIXME, this is MachO specific, but the testsuite
     // expects this.
-    SwitchSection(getContext().getMachOSection("__TEXT", "__text",
-                         MCSectionMachO::S_ATTR_PURE_INSTRUCTIONS,
-                         0, SectionKind::getText()));
+    SwitchSection(getContext().getMachOSection(
+                                      "__TEXT", "__text",
+                                      MCSectionMachO::S_ATTR_PURE_INSTRUCTIONS,
+                                      0, SectionKind::getText()));
   }
 
   virtual void EmitLabel(MCSymbol *Symbol);
+  virtual void EmitDebugLabel(MCSymbol *Symbol);
+
   virtual void EmitEHSymAttributes(const MCSymbol *Symbol,
                                    MCSymbol *EHSymbol);
   virtual void EmitAssemblerFlag(MCAssemblerFlag Flag);
@@ -205,13 +212,6 @@ public:
   virtual bool EmitValueToOffset(const MCExpr *Offset,
                                  unsigned char Value = 0);
 
-  // @LOCALMOD-BEGIN
-  virtual void EmitBundleLock();
-  virtual void EmitBundleUnlock();
-  virtual void EmitBundleAlignStart();
-  virtual void EmitBundleAlignEnd();
-  // @LOCALMOD-END
-
   virtual void EmitFileDirective(StringRef Filename);
   virtual bool EmitDwarfFileDirective(unsigned FileNo, StringRef Directory,
                                       StringRef Filename);
@@ -263,6 +263,10 @@ public:
   virtual void EmitTCEntry(const MCSymbol &S);
 
   virtual void EmitInstruction(const MCInst &Inst);
+
+  virtual void EmitBundleAlignMode(unsigned AlignPow2);
+  virtual void EmitBundleLock(bool AlignToEnd);
+  virtual void EmitBundleUnlock();
 
   /// EmitRawText - If this file is backed by an assembly streamer, this dumps
   /// the specified string in the output .s file.  This capability is
@@ -349,6 +353,14 @@ void MCAsmStreamer::EmitLabel(MCSymbol *Symbol) {
   MCStreamer::EmitLabel(Symbol);
 
   OS << *Symbol << MAI.getLabelSuffix();
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitDebugLabel(MCSymbol *Symbol) {
+  assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
+  MCStreamer::EmitDebugLabel(Symbol);
+
+  OS << *Symbol << MAI.getDebugLabelSuffix();
   EmitEOL();
 }
 
@@ -792,27 +804,6 @@ bool MCAsmStreamer::EmitValueToOffset(const MCExpr *Offset,
   return false;
 }
 
-// @LOCALMOD-BEGIN
-void MCAsmStreamer::EmitBundleLock() {
-  OS << "\t.bundle_lock";
-  EmitEOL();
-}
-
-void MCAsmStreamer::EmitBundleUnlock() {
-  OS << "\t.bundle_unlock";
-  EmitEOL();
-}
-
-void MCAsmStreamer::EmitBundleAlignStart() {
-  OS << "\t.bundle_align_start";
-  EmitEOL();
-}
-
-void MCAsmStreamer::EmitBundleAlignEnd() {
-  OS << "\t.bundle_align_end";
-  EmitEOL();
-}
-// @LOCALMOD-END
 
 void MCAsmStreamer::EmitFileDirective(StringRef Filename) {
   assert(MAI.hasSingleParameterDotFile());
@@ -1376,6 +1367,23 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst) {
     InstPrinter->printInst(&Inst, OS, "");
   else
     Inst.print(OS, &MAI);
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
+  OS << "\t.bundle_align_mode " << AlignPow2;
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitBundleLock(bool AlignToEnd) {
+  OS << "\t.bundle_lock";
+  if (AlignToEnd)
+    OS << " align_to_end";
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitBundleUnlock() {
+  OS << "\t.bundle_unlock";
   EmitEOL();
 }
 

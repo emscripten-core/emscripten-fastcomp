@@ -17,12 +17,12 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DataLayout.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Instructions.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Metadata.h"
-#include "llvm/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -132,7 +132,7 @@ static const AllocFnsTy *getAllocationData(const Value *V, AllocType AllocTy,
 
 static bool hasNoAliasAttr(const Value *V, bool LookThroughBitCast) {
   ImmutableCallSite CS(LookThroughBitCast ? V->stripPointerCasts() : V);
-  return CS && CS.hasFnAttr(Attributes::NoAlias);
+  return CS && CS.hasFnAttr(Attribute::NoAlias);
 }
 
 
@@ -385,20 +385,29 @@ ObjectSizeOffsetVisitor::ObjectSizeOffsetVisitor(const DataLayout *TD,
 
 SizeOffsetType ObjectSizeOffsetVisitor::compute(Value *V) {
   V = V->stripPointerCasts();
-  if (Instruction *I = dyn_cast<Instruction>(V)) {
-    // If we have already seen this instruction, bail out. Cycles can happen in
-    // unreachable code after constant propagation.
-    if (!SeenInsts.insert(I))
-      return unknown();
 
+  if (isa<Instruction>(V) || isa<GEPOperator>(V)) {
+    // return cached value or insert unknown in cache if size of V was not
+    // computed yet in order to avoid recursions in PHis
+    std::pair<CacheMapTy::iterator, bool> CacheVal =
+      CacheMap.insert(std::make_pair(V, unknown()));
+    if (!CacheVal.second)
+      return CacheVal.first->second;
+
+    SizeOffsetType Result;
     if (GEPOperator *GEP = dyn_cast<GEPOperator>(V))
-      return visitGEPOperator(*GEP);
-    return visit(*I);
+      Result = visitGEPOperator(*GEP);
+    else
+      Result = visit(cast<Instruction>(*V));
+    return CacheMap[V] = Result;
   }
+
   if (Argument *A = dyn_cast<Argument>(V))
     return visitArgument(*A);
   if (ConstantPointerNull *P = dyn_cast<ConstantPointerNull>(V))
     return visitConstantPointerNull(*P);
+  if (GlobalAlias *GA = dyn_cast<GlobalAlias>(V))
+    return visitGlobalAlias(*GA);
   if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V))
     return visitGlobalVariable(*GV);
   if (UndefValue *UV = dyn_cast<UndefValue>(V))
@@ -406,8 +415,6 @@ SizeOffsetType ObjectSizeOffsetVisitor::compute(Value *V) {
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V)) {
     if (CE->getOpcode() == Instruction::IntToPtr)
       return unknown(); // clueless
-    if (CE->getOpcode() == Instruction::GetElementPtr)
-      return visitGEPOperator(cast<GEPOperator>(*CE));
   }
 
   DEBUG(dbgs() << "ObjectSizeOffsetVisitor::compute() unhandled value: " << *V
@@ -510,12 +517,17 @@ ObjectSizeOffsetVisitor::visitExtractValueInst(ExtractValueInst&) {
 
 SizeOffsetType ObjectSizeOffsetVisitor::visitGEPOperator(GEPOperator &GEP) {
   SizeOffsetType PtrData = compute(GEP.getPointerOperand());
-  if (!bothKnown(PtrData) || !GEP.hasAllConstantIndices())
+  APInt Offset(IntTyBits, 0);
+  if (!bothKnown(PtrData) || !GEP.accumulateConstantOffset(*TD, Offset))
     return unknown();
 
-  SmallVector<Value*, 8> Ops(GEP.idx_begin(), GEP.idx_end());
-  APInt Offset(IntTyBits,TD->getIndexedOffset(GEP.getPointerOperandType(),Ops));
   return std::make_pair(PtrData.first, PtrData.second + Offset);
+}
+
+SizeOffsetType ObjectSizeOffsetVisitor::visitGlobalAlias(GlobalAlias &GA) {
+  if (GA.mayBeOverridden())
+    return unknown();
+  return compute(GA.getAliasee());
 }
 
 SizeOffsetType ObjectSizeOffsetVisitor::visitGlobalVariable(GlobalVariable &GV){
@@ -536,9 +548,21 @@ SizeOffsetType ObjectSizeOffsetVisitor::visitLoadInst(LoadInst&) {
   return unknown();
 }
 
-SizeOffsetType ObjectSizeOffsetVisitor::visitPHINode(PHINode&) {
-  // too complex to analyze statically.
-  return unknown();
+SizeOffsetType ObjectSizeOffsetVisitor::visitPHINode(PHINode &PHI) {
+  if (PHI.getNumIncomingValues() == 0)
+    return unknown();
+
+  SizeOffsetType Ret = compute(PHI.getIncomingValue(0));
+  if (!bothKnown(Ret))
+    return unknown();
+
+  // verify that all PHI incoming pointers have the same size and offset
+  for (unsigned i = 1, e = PHI.getNumIncomingValues(); i != e; ++i) {
+    SizeOffsetType EdgeData = compute(PHI.getIncomingValue(i));
+    if (!bothKnown(EdgeData) || EdgeData != Ret)
+      return unknown();
+  }
+  return Ret;
 }
 
 SizeOffsetType ObjectSizeOffsetVisitor::visitSelectInst(SelectInst &I) {
@@ -619,6 +643,7 @@ SizeOffsetEvalType ObjectSizeOffsetEvaluator::compute_(Value *V) {
   } else if (isa<Argument>(V) ||
              (isa<ConstantExpr>(V) &&
               cast<ConstantExpr>(V)->getOpcode() == Instruction::IntToPtr) ||
+             isa<GlobalAlias>(V) ||
              isa<GlobalVariable>(V)) {
     // ignore values where we cannot do more than what ObjectSizeVisitor can
     Result = unknown();

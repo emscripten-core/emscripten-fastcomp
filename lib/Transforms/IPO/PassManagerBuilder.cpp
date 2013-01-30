@@ -18,8 +18,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/Verifier.h"
-#include "llvm/DefaultPasses.h"
-#include "llvm/PassManager.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -188,7 +186,7 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
   MPM.add(createLoopIdiomPass());             // Recognize idioms like memset.
   MPM.add(createLoopDeletionPass());          // Delete dead loops
 
-  if (LoopVectorize && OptLevel > 1)
+  if (LoopVectorize && OptLevel > 2)
     MPM.add(createLoopVectorizePass());
 
   if (!DisableUnrollLoops)

@@ -9,9 +9,9 @@
 //
 // This file defines routines for folding instructions into constants.
 //
-// Also, to supplement the basic VMCore ConstantExpr simplifications,
+// Also, to supplement the basic IR ConstantExpr simplifications,
 // this file defines some additional folding routines that can make use of
-// DataLayout information. These functions cannot go in VMCore due to library
+// DataLayout information. These functions cannot go in IR due to library
 // dependency issues.
 //
 //===----------------------------------------------------------------------===//
@@ -20,14 +20,14 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Instructions.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FEnv.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
@@ -68,7 +68,7 @@ static Constant *FoldBitCast(Constant *C, Type *DestTy,
       unsigned FPWidth = SrcEltTy->getPrimitiveSizeInBits();
       Type *SrcIVTy =
         VectorType::get(IntegerType::get(C->getContext(), FPWidth), NumSrcElts);
-      // Ask VMCore to do the conversion now that #elts line up.
+      // Ask IR to do the conversion now that #elts line up.
       C = ConstantExpr::getBitCast(C, SrcIVTy);
       CDV = cast<ConstantDataVector>(C);
     }
@@ -104,7 +104,7 @@ static Constant *FoldBitCast(Constant *C, Type *DestTy,
   if (!isa<ConstantDataVector>(C) && !isa<ConstantVector>(C))
     return ConstantExpr::getBitCast(C, DestTy);
 
-  // If the element types match, VMCore can fold it.
+  // If the element types match, IR can fold it.
   unsigned NumDstElt = DestVTy->getNumElements();
   unsigned NumSrcElt = C->getType()->getVectorNumElements();
   if (NumDstElt == NumSrcElt)
@@ -131,7 +131,7 @@ static Constant *FoldBitCast(Constant *C, Type *DestTy,
     // Recursively handle this integer conversion, if possible.
     C = FoldBitCast(C, DestIVTy, TD);
 
-    // Finally, VMCore can handle this now that #elts line up.
+    // Finally, IR can handle this now that #elts line up.
     return ConstantExpr::getBitCast(C, DestTy);
   }
 
@@ -141,9 +141,9 @@ static Constant *FoldBitCast(Constant *C, Type *DestTy,
     unsigned FPWidth = SrcEltTy->getPrimitiveSizeInBits();
     Type *SrcIVTy =
       VectorType::get(IntegerType::get(C->getContext(), FPWidth), NumSrcElt);
-    // Ask VMCore to do the conversion now that #elts line up.
+    // Ask IR to do the conversion now that #elts line up.
     C = ConstantExpr::getBitCast(C, SrcIVTy);
-    // If VMCore wasn't able to fold it, bail out.
+    // If IR wasn't able to fold it, bail out.
     if (!isa<ConstantVector>(C) &&  // FIXME: Remove ConstantVector.
         !isa<ConstantDataVector>(C))
       return C;

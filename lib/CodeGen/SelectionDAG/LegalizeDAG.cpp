@@ -15,15 +15,16 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/CallingConv.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
 #include "llvm/DebugInfo.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -101,7 +102,7 @@ private:
                                                  SDNode *Node, bool isSigned);
   SDValue ExpandFPLibCall(SDNode *Node, RTLIB::Libcall Call_F32,
                           RTLIB::Libcall Call_F64, RTLIB::Libcall Call_F80,
-                          RTLIB::Libcall Call_PPCF128);
+                          RTLIB::Libcall Call_F128, RTLIB::Libcall Call_PPCF128);
   SDValue ExpandIntLibCall(SDNode *Node, bool isSigned,
                            RTLIB::Libcall Call_I8,
                            RTLIB::Libcall Call_I16,
@@ -321,7 +322,7 @@ static void ExpandUnalignedStore(StoreSDNode *ST, SelectionDAG &DAG,
     // Do a (aligned) store to a stack slot, then copy from the stack slot
     // to the final destination using (unaligned) integer loads and stores.
     EVT StoredVT = ST->getMemoryVT();
-    EVT RegVT =
+    MVT RegVT =
       TLI.getRegisterType(*DAG.getContext(),
                           EVT::getIntegerVT(*DAG.getContext(),
                                             StoredVT.getSizeInBits()));
@@ -447,7 +448,7 @@ ExpandUnalignedLoad(LoadSDNode *LD, SelectionDAG &DAG,
 
     // Copy the value to a (aligned) stack slot using (unaligned) integer
     // loads and stores, then do a (aligned) load from the stack slot.
-    EVT RegVT = TLI.getRegisterType(*DAG.getContext(), intVT);
+    MVT RegVT = TLI.getRegisterType(*DAG.getContext(), intVT);
     unsigned LoadedBytes = LoadedVT.getSizeInBits() / 8;
     unsigned RegBytes = RegVT.getSizeInBits() / 8;
     unsigned NumRegs = (LoadedBytes + RegBytes - 1) / RegBytes;
@@ -710,7 +711,7 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
 
       {
         SDValue Value = ST->getValue();
-        EVT VT = Value.getValueType();
+        MVT VT = Value.getSimpleValueType();
         switch (TLI.getOperationAction(ISD::STORE, VT)) {
         default: llvm_unreachable("This action is not supported yet!");
         case TargetLowering::Legal:
@@ -731,7 +732,7 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
           return;
         }
         case TargetLowering::Promote: {
-          EVT NVT = TLI.getTypeToPromoteTo(ISD::STORE, VT);
+          MVT NVT = TLI.getTypeToPromoteTo(ISD::STORE, VT);
           assert(NVT.getSizeInBits() == VT.getSizeInBits() &&
                  "Can only promote stores to same size type");
           Value = DAG.getNode(ISD::BITCAST, dl, NVT, Value);
@@ -818,7 +819,8 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
         SDValue Result = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Lo, Hi);
         ReplaceNode(SDValue(Node, 0), Result);
       } else {
-        switch (TLI.getTruncStoreAction(ST->getValue().getValueType(), StVT)) {
+        switch (TLI.getTruncStoreAction(ST->getValue().getSimpleValueType(),
+                                        StVT.getSimpleVT())) {
         default: llvm_unreachable("This action is not supported yet!");
         case TargetLowering::Legal:
           // If this is an unaligned store and the target doesn't support it,
@@ -863,7 +865,7 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
 
   ISD::LoadExtType ExtType = LD->getExtensionType();
   if (ExtType == ISD::NON_EXTLOAD) {
-    EVT VT = Node->getValueType(0);
+    MVT VT = Node->getSimpleValueType(0);
     SDValue RVal = SDValue(Node, 0);
     SDValue RChain = SDValue(Node, 1);
 
@@ -890,7 +892,7 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
       break;
     }
     case TargetLowering::Promote: {
-      EVT NVT = TLI.getTypeToPromoteTo(Node->getOpcode(), VT);
+      MVT NVT = TLI.getTypeToPromoteTo(Node->getOpcode(), VT);
       assert(NVT.getSizeInBits() == VT.getSizeInBits() &&
              "Can only promote loads to same size type");
 
@@ -1037,7 +1039,7 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
     Chain = Ch;
   } else {
     bool isCustom = false;
-    switch (TLI.getLoadExtAction(ExtType, SrcVT)) {
+    switch (TLI.getLoadExtAction(ExtType, SrcVT.getSimpleVT())) {
     default: llvm_unreachable("This action is not supported yet!");
     case TargetLowering::Custom:
              isCustom = true;
@@ -1184,7 +1186,7 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
     unsigned CCOperand = Node->getOpcode() == ISD::SELECT_CC ? 4 :
                          Node->getOpcode() == ISD::SETCC ? 2 : 1;
     unsigned CompareOperand = Node->getOpcode() == ISD::BR_CC ? 2 : 0;
-    EVT OpVT = Node->getOperand(CompareOperand).getValueType();
+    MVT OpVT = Node->getOperand(CompareOperand).getSimpleValueType();
     ISD::CondCode CCCode =
         cast<CondCodeSDNode>(Node->getOperand(CCOperand))->get();
     Action = TLI.getCondCodeAction(CCCode, OpVT);
@@ -1591,7 +1593,7 @@ void SelectionDAGLegalize::LegalizeSetCCCondCode(EVT VT,
                                                  SDValue &LHS, SDValue &RHS,
                                                  SDValue &CC,
                                                  DebugLoc dl) {
-  EVT OpVT = LHS.getValueType();
+  MVT OpVT = LHS.getSimpleValueType();
   ISD::CondCode CCCode = cast<CondCodeSDNode>(CC)->get();
   switch (TLI.getCondCodeAction(CCCode, OpVT)) {
   default: llvm_unreachable("Unknown condition code action!");
@@ -1869,7 +1871,7 @@ SDValue SelectionDAGLegalize::ExpandLibCall(RTLIB::Libcall LC, SDNode *Node,
   // isTailCall may be true since the callee does not reference caller stack
   // frame. Check if it's in the right position.
   SDValue TCChain = InChain;
-  bool isTailCall = isInTailCallPosition(DAG, Node, TCChain, TLI);
+  bool isTailCall = TLI.isInTailCallPosition(DAG, Node, TCChain);
   if (isTailCall)
     InChain = TCChain;
 
@@ -1956,6 +1958,7 @@ SDValue SelectionDAGLegalize::ExpandFPLibCall(SDNode* Node,
                                               RTLIB::Libcall Call_F32,
                                               RTLIB::Libcall Call_F64,
                                               RTLIB::Libcall Call_F80,
+                                              RTLIB::Libcall Call_F128,
                                               RTLIB::Libcall Call_PPCF128) {
   RTLIB::Libcall LC;
   switch (Node->getValueType(0).getSimpleVT().SimpleTy) {
@@ -1963,6 +1966,7 @@ SDValue SelectionDAGLegalize::ExpandFPLibCall(SDNode* Node,
   case MVT::f32: LC = Call_F32; break;
   case MVT::f64: LC = Call_F64; break;
   case MVT::f80: LC = Call_F80; break;
+  case MVT::f128: LC = Call_F128; break;
   case MVT::ppcf128: LC = Call_PPCF128; break;
   }
   return ExpandLibCall(LC, Node, false);
@@ -3032,77 +3036,95 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
   }
   case ISD::FSQRT:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::SQRT_F32, RTLIB::SQRT_F64,
-                                      RTLIB::SQRT_F80, RTLIB::SQRT_PPCF128));
+                                      RTLIB::SQRT_F80, RTLIB::SQRT_F128,
+                                      RTLIB::SQRT_PPCF128));
     break;
   case ISD::FSIN:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::SIN_F32, RTLIB::SIN_F64,
-                                      RTLIB::SIN_F80, RTLIB::SIN_PPCF128));
+                                      RTLIB::SIN_F80, RTLIB::SIN_F128,
+                                      RTLIB::SIN_PPCF128));
     break;
   case ISD::FCOS:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::COS_F32, RTLIB::COS_F64,
-                                      RTLIB::COS_F80, RTLIB::COS_PPCF128));
+                                      RTLIB::COS_F80, RTLIB::COS_F128,
+                                      RTLIB::COS_PPCF128));
     break;
   case ISD::FLOG:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::LOG_F32, RTLIB::LOG_F64,
-                                      RTLIB::LOG_F80, RTLIB::LOG_PPCF128));
+                                      RTLIB::LOG_F80, RTLIB::LOG_F128,
+                                      RTLIB::LOG_PPCF128));
     break;
   case ISD::FLOG2:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::LOG2_F32, RTLIB::LOG2_F64,
-                                      RTLIB::LOG2_F80, RTLIB::LOG2_PPCF128));
+                                      RTLIB::LOG2_F80, RTLIB::LOG2_F128,
+                                      RTLIB::LOG2_PPCF128));
     break;
   case ISD::FLOG10:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::LOG10_F32, RTLIB::LOG10_F64,
-                                      RTLIB::LOG10_F80, RTLIB::LOG10_PPCF128));
+                                      RTLIB::LOG10_F80, RTLIB::LOG10_F128,
+                                      RTLIB::LOG10_PPCF128));
     break;
   case ISD::FEXP:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::EXP_F32, RTLIB::EXP_F64,
-                                      RTLIB::EXP_F80, RTLIB::EXP_PPCF128));
+                                      RTLIB::EXP_F80, RTLIB::EXP_F128,
+                                      RTLIB::EXP_PPCF128));
     break;
   case ISD::FEXP2:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::EXP2_F32, RTLIB::EXP2_F64,
-                                      RTLIB::EXP2_F80, RTLIB::EXP2_PPCF128));
+                                      RTLIB::EXP2_F80, RTLIB::EXP2_F128,
+                                      RTLIB::EXP2_PPCF128));
     break;
   case ISD::FTRUNC:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::TRUNC_F32, RTLIB::TRUNC_F64,
-                                      RTLIB::TRUNC_F80, RTLIB::TRUNC_PPCF128));
+                                      RTLIB::TRUNC_F80, RTLIB::TRUNC_F128,
+                                      RTLIB::TRUNC_PPCF128));
     break;
   case ISD::FFLOOR:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::FLOOR_F32, RTLIB::FLOOR_F64,
-                                      RTLIB::FLOOR_F80, RTLIB::FLOOR_PPCF128));
+                                      RTLIB::FLOOR_F80, RTLIB::FLOOR_F128,
+                                      RTLIB::FLOOR_PPCF128));
     break;
   case ISD::FCEIL:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::CEIL_F32, RTLIB::CEIL_F64,
-                                      RTLIB::CEIL_F80, RTLIB::CEIL_PPCF128));
+                                      RTLIB::CEIL_F80, RTLIB::CEIL_F128,
+                                      RTLIB::CEIL_PPCF128));
     break;
   case ISD::FRINT:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::RINT_F32, RTLIB::RINT_F64,
-                                      RTLIB::RINT_F80, RTLIB::RINT_PPCF128));
+                                      RTLIB::RINT_F80, RTLIB::RINT_F128,
+                                      RTLIB::RINT_PPCF128));
     break;
   case ISD::FNEARBYINT:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::NEARBYINT_F32,
                                       RTLIB::NEARBYINT_F64,
                                       RTLIB::NEARBYINT_F80,
+                                      RTLIB::NEARBYINT_F128,
                                       RTLIB::NEARBYINT_PPCF128));
     break;
   case ISD::FPOWI:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::POWI_F32, RTLIB::POWI_F64,
-                                      RTLIB::POWI_F80, RTLIB::POWI_PPCF128));
+                                      RTLIB::POWI_F80, RTLIB::POWI_F128,
+                                      RTLIB::POWI_PPCF128));
     break;
   case ISD::FPOW:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::POW_F32, RTLIB::POW_F64,
-                                      RTLIB::POW_F80, RTLIB::POW_PPCF128));
+                                      RTLIB::POW_F80, RTLIB::POW_F128,
+                                      RTLIB::POW_PPCF128));
     break;
   case ISD::FDIV:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::DIV_F32, RTLIB::DIV_F64,
-                                      RTLIB::DIV_F80, RTLIB::DIV_PPCF128));
+                                      RTLIB::DIV_F80, RTLIB::DIV_F128,
+                                      RTLIB::DIV_PPCF128));
     break;
   case ISD::FREM:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::REM_F32, RTLIB::REM_F64,
-                                      RTLIB::REM_F80, RTLIB::REM_PPCF128));
+                                      RTLIB::REM_F80, RTLIB::REM_F128,
+                                      RTLIB::REM_PPCF128));
     break;
   case ISD::FMA:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::FMA_F32, RTLIB::FMA_F64,
-                                      RTLIB::FMA_F80, RTLIB::FMA_PPCF128));
+                                      RTLIB::FMA_F80, RTLIB::FMA_F128,
+                                      RTLIB::FMA_PPCF128));
     break;
   case ISD::FP16_TO_FP32:
     Results.push_back(ExpandLibCall(RTLIB::FPEXT_F16_F32, Node, false));
@@ -3575,13 +3597,13 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
 
 void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
   SmallVector<SDValue, 8> Results;
-  EVT OVT = Node->getValueType(0);
+  MVT OVT = Node->getSimpleValueType(0);
   if (Node->getOpcode() == ISD::UINT_TO_FP ||
       Node->getOpcode() == ISD::SINT_TO_FP ||
       Node->getOpcode() == ISD::SETCC) {
-    OVT = Node->getOperand(0).getValueType();
+    OVT = Node->getOperand(0).getSimpleValueType();
   }
-  EVT NVT = TLI.getTypeToPromoteTo(Node->getOpcode(), OVT);
+  MVT NVT = TLI.getTypeToPromoteTo(Node->getOpcode(), OVT);
   DebugLoc dl = Node->getDebugLoc();
   SDValue Tmp1, Tmp2, Tmp3;
   switch (Node->getOpcode()) {

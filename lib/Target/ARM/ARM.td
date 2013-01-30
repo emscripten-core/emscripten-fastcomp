@@ -89,6 +89,10 @@ def FeatureAvoidPartialCPSR : SubtargetFeature<"avoid-partial-cpsr",
                                                "AvoidCPSRPartialUpdate", "true",
                                  "Avoid CPSR partial update for OOO execution">;
 
+def FeatureAvoidMOVsShOp : SubtargetFeature<"avoid-movs-shop",
+                                            "AvoidMOVsShifterOperand", "true",
+                                "Avoid movs instructions with shifter operand">;
+
 // Some processors perform return stack prediction. CodeGen should avoid issue
 // "normal" call instructions to callees which do not return.
 def FeatureHasRAS : SubtargetFeature<"ras", "HasRAS", "true",
@@ -152,6 +156,7 @@ def ProcSwift   : SubtargetFeature<"swift", "ARMProcFamily", "Swift",
                                    [FeatureNEONForFP, FeatureT2XtPk,
                                     FeatureVFP4, FeatureMP, FeatureHWDiv,
                                     FeatureHWDivARM, FeatureAvoidPartialCPSR,
+                                    FeatureAvoidMOVsShOp,
                                     FeatureHasSlowFPVMLx]>;
 
 // FIXME: It has not been determined if A15 has these features.
@@ -159,6 +164,12 @@ def ProcA15      : SubtargetFeature<"a15", "ARMProcFamily", "CortexA15",
                                    "Cortex-A15 ARM processors",
                                    [FeatureT2XtPk, FeatureFP16,
                                     FeatureAvoidPartialCPSR]>;
+def ProcR5      : SubtargetFeature<"r5", "ARMProcFamily", "CortexR5",
+                                   "Cortex-R5 ARM processors",
+                                   [FeatureSlowFPBrcc, FeatureHWDivARM,
+                                    FeatureHasSlowFPVMLx,
+                                    FeatureAvoidPartialCPSR,
+                                    FeatureT2XtPk]>;
 
 class ProcNoItin<string Name, list<SubtargetFeature> Features>
  : Processor<Name, NoItineraries, Features>;
@@ -243,6 +254,11 @@ def : ProcessorModel<"cortex-a9-mp", CortexA9Model,
 def : ProcessorModel<"cortex-a15",   CortexA9Model,
                                     [ProcA15, HasV7Ops, FeatureNEON, FeatureDB,
                                      FeatureDSPThumb2, FeatureHasRAS]>;
+// FIXME: R5 has currently the same ProcessorModel as A8.
+def : ProcessorModel<"cortex-r5",   CortexA8Model,
+                                    [ProcR5, HasV7Ops, FeatureDB,
+                                     FeatureVFP3, FeatureDSPThumb2,
+                                     FeatureHasRAS]>;
 
 // V7M Processors.
 def : ProcNoItin<"cortex-m3",       [HasV7Ops,

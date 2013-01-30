@@ -14,7 +14,7 @@
 #include "ARMSubtarget.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMBaseRegisterInfo.h"
-#include "llvm/GlobalValue.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetInstrInfo.h"
 
@@ -84,6 +84,7 @@ ARMSubtarget::ARMSubtarget(const std::string &TT, const std::string &CPU,
   , HasDataBarrier(false)
   , Pref32BitThumb(false)
   , AvoidCPSRPartialUpdate(false)
+  , AvoidMOVsShifterOperand(false)
   , HasRAS(false)
   , HasMPExtension(false)
   , FPOnlySP(false)

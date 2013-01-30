@@ -48,7 +48,7 @@ static void EmitDataMask(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Mask = Saved[2].getOperand(2).getReg();
   assert((Mips::SP == Addr) && "Unexpected register at stack guard");
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   Out.EmitInstruction(Saved[1]);
   EmitMask(Out, Addr, Mask);
   Out.EmitBundleUnlock();
@@ -60,8 +60,7 @@ static void EmitDirectGuardCall(int I, MCInst Saved[],
   //   sfi_nops_to_force_slot2
   assert(I == 3 && (Mips::SFI_GUARD_CALL == Saved[0].getOpcode()) &&
          "Unexpected SFI Pseudo while lowering SFI_GUARD_CALL");
-  Out.EmitBundleAlignEnd();
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(true);
   Out.EmitInstruction(Saved[1]);
   Out.EmitInstruction(Saved[2]);
   Out.EmitBundleUnlock();
@@ -78,8 +77,7 @@ static void EmitIndirectGuardCall(int I, MCInst Saved[],
   unsigned Addr = Saved[0].getOperand(0).getReg();
   unsigned Mask = Saved[0].getOperand(2).getReg();
 
-  Out.EmitBundleAlignEnd();
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(true);
   EmitMask(Out, Addr, Mask);
   Out.EmitInstruction(Saved[1]);
   Out.EmitInstruction(Saved[2]);
@@ -95,7 +93,7 @@ static void EmitIndirectGuardJmp(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Addr = Saved[0].getOperand(0).getReg();
   unsigned Mask = Saved[0].getOperand(2).getReg();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitMask(Out, Addr, Mask);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -110,7 +108,7 @@ static void EmitGuardReturn(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Reg = Saved[0].getOperand(0).getReg();
   unsigned Mask = Saved[0].getOperand(2).getReg();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitMask(Out, Reg, Mask);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();
@@ -125,7 +123,7 @@ static void EmitGuardLoadOrStore(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Reg = Saved[0].getOperand(0).getReg();
   unsigned Mask = Saved[0].getOperand(2).getReg();
 
-  Out.EmitBundleLock();
+  Out.EmitBundleLock(false);
   EmitMask(Out, Reg, Mask);
   Out.EmitInstruction(Saved[1]);
   Out.EmitBundleUnlock();

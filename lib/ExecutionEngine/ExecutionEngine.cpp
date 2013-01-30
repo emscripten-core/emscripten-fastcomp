@@ -16,11 +16,12 @@
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -555,11 +556,11 @@ GenericValue ExecutionEngine::getConstantValue(const Constant *C) {
     case Instruction::GetElementPtr: {
       // Compute the index
       GenericValue Result = getConstantValue(Op0);
-      SmallVector<Value*, 8> Indices(CE->op_begin()+1, CE->op_end());
-      uint64_t Offset = TD->getIndexedOffset(Op0->getType(), Indices);
+      APInt Offset(TD->getPointerSizeInBits(), 0);
+      cast<GEPOperator>(CE)->accumulateConstantOffset(*TD, Offset);
 
       char* tmp = (char*) Result.PointerVal;
-      Result = PTOGV(tmp + Offset);
+      Result = PTOGV(tmp + Offset.getSExtValue());
       return Result;
     }
     case Instruction::Trunc: {

@@ -31,9 +31,9 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -1418,7 +1418,7 @@ bool ARMLoadStoreOpt::MergeReturnIntoLDM(MachineBasicBlock &MBB) {
               Opcode == ARM::LDMIA_UPD) && "Unsupported multiple load-return!");
       PrevMI->setDesc(TII->get(NewOpc));
       MO.setReg(ARM::PC);
-      PrevMI->copyImplicitOps(&*MBBI);
+      PrevMI->copyImplicitOps(*MBB.getParent(), &*MBBI);
       MBB.erase(MBBI);
       return true;
     }

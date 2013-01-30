@@ -41,7 +41,7 @@
 #define LLVM_ANALYSIS_DEPENDENCEANALYSIS_H
 
 #include "llvm/ADT/SmallBitVector.h"
-#include "llvm/Instructions.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
@@ -188,7 +188,7 @@ namespace llvm {
                    bool LoopIndependent,
                    unsigned Levels);
     ~FullDependence() {
-      delete DV;
+      delete[] DV;
     }
 
     /// isLoopIndependent - Returns true if this is a loop-independent

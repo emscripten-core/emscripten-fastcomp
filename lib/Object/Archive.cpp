@@ -48,9 +48,10 @@ struct ArchiveMemberHeader {
   }
 
   uint64_t getSize() const {
-    APInt ret;
-    StringRef(Size, sizeof(Size)).getAsInteger(10, ret);
-    return ret.getZExtValue();
+    uint64_t ret;
+    if (StringRef(Size, sizeof(Size)).rtrim(" ").getAsInteger(10, ret))
+      llvm_unreachable("Size is not an integer.");
+    return ret;
   }
 };
 }
@@ -110,11 +111,12 @@ error_code Archive::Child::getName(StringRef &Result) const {
     }
     // It's a long name.
     // Get the offset.
-    APInt offset;
-    name.substr(1).getAsInteger(10, offset);
+    std::size_t offset;
+    if (name.substr(1).rtrim(" ").getAsInteger(10, offset))
+      llvm_unreachable("Long name offset is not an integer");
     const char *addr = Parent->StringTable->Data.begin()
                        + sizeof(ArchiveMemberHeader)
-                       + offset.getZExtValue();
+                       + offset;
     // Verify it.
     if (Parent->StringTable == Parent->end_children()
         || addr < (Parent->StringTable->Data.begin()
@@ -133,9 +135,10 @@ error_code Archive::Child::getName(StringRef &Result) const {
     }
     return object_error::success;
   } else if (name.startswith("#1/")) {
-    APInt name_size;
-    name.substr(3).getAsInteger(10, name_size);
-    Result = Data.substr(0, name_size.getZExtValue());
+    uint64_t name_size;
+    if (name.substr(3).rtrim(" ").getAsInteger(10, name_size))
+      llvm_unreachable("Long name length is not an ingeter");
+    Result = Data.substr(sizeof(ArchiveMemberHeader), name_size);
     return object_error::success;
   }
   // It's a simple name.
@@ -151,22 +154,25 @@ uint64_t Archive::Child::getSize() const {
   // Don't include attached name.
   StringRef name =  ToHeader(Data.data())->getName();
   if (name.startswith("#1/")) {
-    APInt name_size;
-    name.substr(3).getAsInteger(10, name_size);
-    size -= name_size.getZExtValue();
+    uint64_t name_size;
+    if (name.substr(3).rtrim(" ").getAsInteger(10, name_size))
+      llvm_unreachable("Long name length is not an integer");
+    size -= name_size;
   }
   return size;
 }
 
 MemoryBuffer *Archive::Child::getBuffer() const {
-  StringRef name;
-  if (getName(name)) return NULL;
+  StringRef name = ToHeader(Data.data())->getName();
   int size = sizeof(ArchiveMemberHeader);
   if (name.startswith("#1/")) {
-    APInt name_size;
-    name.substr(3).getAsInteger(10, name_size);
-    size += name_size.getZExtValue();
+    uint64_t name_size;
+    if (name.substr(3).rtrim(" ").getAsInteger(10, name_size))
+      llvm_unreachable("Long name length is not an integer");
+    size += name_size;
   }
+  if (getName(name))
+    return 0;
   return MemoryBuffer::getMemBuffer(Data.substr(size, getSize()),
                                     name,
                                     false);
@@ -218,6 +224,10 @@ Archive::Archive(MemoryBuffer *source, error_code &ec)
     SymbolTable = i;
     StringTable = e;
     if (i != e) ++i;
+    if (i == e) {
+      ec = object_error::parse_failed;
+      return;
+    }
     if ((ec = i->getName(name)))
       return;
     if (name[0] != '/') {

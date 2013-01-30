@@ -465,13 +465,16 @@ enum {
 
 // ELF Relocation types for PPC64
 enum {
+  R_PPC64_ADDR32              = 1,
   R_PPC64_ADDR16_LO           = 4,
   R_PPC64_ADDR16_HI           = 5,
   R_PPC64_ADDR14              = 7,
   R_PPC64_REL24               = 10,
+  R_PPC64_REL32               = 26,
   R_PPC64_ADDR64              = 38,
   R_PPC64_ADDR16_HIGHER       = 39,
   R_PPC64_ADDR16_HIGHEST      = 41,
+  R_PPC64_REL64               = 44,
   R_PPC64_TOC16               = 47,
   R_PPC64_TOC16_LO            = 48,
   R_PPC64_TOC16_HA            = 50,
@@ -479,7 +482,16 @@ enum {
   R_PPC64_TOC16_DS            = 63,
   R_PPC64_TOC16_LO_DS         = 64,
   R_PPC64_TLS                 = 67,
-  R_PPC64_GOT_TPREL16_DS      = 87
+  R_PPC64_DTPREL16_LO         = 75,
+  R_PPC64_DTPREL16_HA         = 77,
+  R_PPC64_GOT_TLSGD16_LO      = 80,
+  R_PPC64_GOT_TLSGD16_HA      = 82,
+  R_PPC64_GOT_TLSLD16_LO      = 84,
+  R_PPC64_GOT_TLSLD16_HA      = 86,
+  R_PPC64_GOT_TPREL16_LO_DS   = 88,
+  R_PPC64_GOT_TPREL16_HA      = 90,
+  R_PPC64_TLSGD               = 107,
+  R_PPC64_TLSLD               = 108
 };
 
 // ARM Specific e_flags
@@ -894,7 +906,8 @@ enum {
   SHT_ARM_ATTRIBUTES      = 0x70000003U,
   SHT_ARM_DEBUGOVERLAY    = 0x70000004U,
   SHT_ARM_OVERLAYSECTION  = 0x70000005U,
-
+  SHT_HEX_ORDERED         = 0x70000000, // Link editor is to sort the entries in 
+                                        // this section based on their sizes
   SHT_X86_64_UNWIND       = 0x70000001, // Unwind information
 
   SHT_HIPROC        = 0x7fffffff, // Highest processor architecture-specific type.
@@ -959,7 +972,12 @@ enum {
   // sets this flag besides being able to refer to data in a section that does
   // not set it; likewise, a small code model object can refer only to code in a
   // section that does not set this flag.
-  SHF_X86_64_LARGE = 0x10000000
+  SHF_X86_64_LARGE = 0x10000000,
+
+  // All sections with the GPREL flag are grouped into a global data area 
+  // for faster accesses
+  SHF_HEX_GPREL = 0x10000000
+
 };
 
 // Section Group Flags
