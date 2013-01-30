@@ -29,8 +29,7 @@ public:
   explicit X86FrameLowering(const X86TargetMachine &tm, const X86Subtarget &sti)
     : TargetFrameLowering(StackGrowsDown,
                           sti.getStackAlignment(),
-                          (sti.is64Bit() ? -8 : -4),
-                          1, (sti.is64Bit() ? 8 : 4)), // @LOCALMOD
+                          (sti.is64Bit() ? -8 : -4)),
       TM(tm), STI(sti) {
   }
 
