@@ -200,6 +200,8 @@ namespace {
            E = M.named_metadata_end(); I != E; ++I)
         visitNamedMDNode(*I);
 
+      visitModuleFlags(M);
+
       // If the module is broken, abort at this time.
       return abortIfBroken();
     }
@@ -240,6 +242,9 @@ namespace {
     void visitGlobalAlias(GlobalAlias &GA);
     void visitNamedMDNode(NamedMDNode &NMD);
     void visitMDNode(MDNode &MD, Function *F);
+    void visitModuleFlags(Module &M);
+    void visitModuleFlag(MDNode *Op, DenseMap<MDString*, MDNode*> &SeenIDs,
+                         SmallVectorImpl<MDNode*> &Requirements);
     void visitFunction(Function &F);
     void visitBasicBlock(BasicBlock &BB);
     using InstVisitor<Verifier>::visit;
@@ -518,6 +523,86 @@ void Verifier::visitMDNode(MDNode &MD, Function *F) {
 
     Assert2(ActualF == F, "function-local metadata used in wrong function",
             &MD, Op);
+  }
+}
+
+void Verifier::visitModuleFlags(Module &M) {
+  const NamedMDNode *Flags = M.getModuleFlagsMetadata();
+  if (!Flags) return;
+
+  // Scan each flag, and track the flags and requirements.
+  DenseMap<MDString*, MDNode*> SeenIDs;
+  SmallVector<MDNode*, 16> Requirements;
+  for (unsigned I = 0, E = Flags->getNumOperands(); I != E; ++I) {
+    visitModuleFlag(Flags->getOperand(I), SeenIDs, Requirements);
+  }
+
+  // Validate that the requirements in the module are valid.
+  for (unsigned I = 0, E = Requirements.size(); I != E; ++I) {
+    MDNode *Requirement = Requirements[I];
+    MDString *Flag = cast<MDString>(Requirement->getOperand(0));
+    Value *ReqValue = Requirement->getOperand(1);
+
+    MDNode *Op = SeenIDs.lookup(Flag);
+    if (!Op) {
+      CheckFailed("invalid requirement on flag, flag is not present in module",
+                  Flag);
+      continue;
+    }
+
+    if (Op->getOperand(2) != ReqValue) {
+      CheckFailed(("invalid requirement on flag, "
+                   "flag does not have the required value"),
+                  Flag);
+      continue;
+    }
+  }
+}
+
+void Verifier::visitModuleFlag(MDNode *Op, DenseMap<MDString*, MDNode*>&SeenIDs,
+                               SmallVectorImpl<MDNode*> &Requirements) {
+  // Each module flag should have three arguments, the merge behavior (a
+  // constant int), the flag ID (an MDString), and the value.
+  Assert1(Op->getNumOperands() == 3,
+          "incorrect number of operands in module flag", Op);
+  ConstantInt *Behavior = dyn_cast<ConstantInt>(Op->getOperand(0));
+  MDString *ID = dyn_cast<MDString>(Op->getOperand(1));
+  Assert1(Behavior,
+          "invalid behavior operand in module flag (expected constant integer)",
+          Op->getOperand(0));
+  unsigned BehaviorValue = Behavior->getZExtValue();
+  Assert1((Module::Error <= BehaviorValue &&
+           BehaviorValue <= Module::Override),
+          "invalid behavior operand in module flag (unexpected constant)",
+          Op->getOperand(0));
+  Assert1(ID,
+          "invalid ID operand in module flag (expected metadata string)",
+          Op->getOperand(1));
+
+  // Unless this is a "requires" flag, check the ID is unique.
+  if (BehaviorValue != Module::Require) {
+    bool Inserted = SeenIDs.insert(std::make_pair(ID, Op)).second;
+    Assert1(Inserted,
+            "module flag identifiers must be unique (or of 'require' type)",
+            ID);
+  }
+
+  // If this is a "requires" flag, sanity check the value.
+  if (BehaviorValue == Module::Require) {
+    // The value should itself be an MDNode with two operands, a flag ID (an
+    // MDString), and a value.
+    MDNode *Value = dyn_cast<MDNode>(Op->getOperand(2));
+    Assert1(Value && Value->getNumOperands() == 2,
+            "invalid value for 'require' module flag (expected metadata pair)",
+            Op->getOperand(2));
+    Assert1(isa<MDString>(Value->getOperand(0)),
+            ("invalid value for 'require' module flag "
+             "(first value operand should be a string)"),
+            Value->getOperand(0));
+
+    // Append it to the list of requirements, to check once all module flags are
+    // scanned.
+    Requirements.push_back(Value);
   }
 }
 

@@ -120,9 +120,12 @@ class MipsCodeEmitter : public MachineFunctionPass {
 char MipsCodeEmitter::ID = 0;
 
 bool MipsCodeEmitter::runOnMachineFunction(MachineFunction &MF) {
-  JTI = ((MipsTargetMachine&) MF.getTarget()).getJITInfo();
-  II = ((const MipsTargetMachine&) MF.getTarget()).getInstrInfo();
-  TD = ((const MipsTargetMachine&) MF.getTarget()).getDataLayout();
+  MipsTargetMachine &Target = static_cast<MipsTargetMachine &>(
+                                const_cast<TargetMachine &>(MF.getTarget()));
+
+  JTI = Target.getJITInfo();
+  II = Target.getInstrInfo();
+  TD = Target.getDataLayout();
   Subtarget = &TM.getSubtarget<MipsSubtarget> ();
   MCPEs = &MF.getConstantPool()->getConstants();
   MJTEs = 0;

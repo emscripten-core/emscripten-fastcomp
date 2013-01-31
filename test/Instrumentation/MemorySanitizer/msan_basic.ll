@@ -362,6 +362,22 @@ define zeroext i1 @ICmpSLE(i32 %x) nounwind uwtable readnone {
 ; CHECK: ret i1
 
 
+; Check that we propagate shadow for x<0, x>=0, etc (i.e. sign bit tests)
+; of the vector arguments.
+
+define <2 x i1> @ICmpSLT_vector(<2 x i32*> %x) nounwind uwtable readnone {
+  %1 = icmp slt <2 x i32*> %x, zeroinitializer
+  ret <2 x i1> %1
+}
+
+; CHECK: @ICmpSLT_vector
+; CHECK: icmp slt <2 x i64>
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp slt <2 x i32*>
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret <2 x i1>
+
+
 ; Check that loads of shadow have the same aligment as the original loads.
 ; Check that loads of origin have the aligment of max(4, original alignment).
 
