@@ -700,7 +700,7 @@ MCAsmBackend *llvm::createARMAsmBackend(const Target &T, StringRef TT, StringRef
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
   // @LOCALMOD-END
-  if (TheTriple.isOSNaCl()) 
+  if (TheTriple.isOSNaCl())
     return new NaClARMAsmBackend(T, TT, OSABI);
   // @LOCALMOD-END
   return new ELFARMAsmBackend(T, TT, OSABI);
