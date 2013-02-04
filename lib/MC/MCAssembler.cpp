@@ -241,7 +241,9 @@ MCSectionData::MCSectionData(const MCSection &_Section, MCAssembler *A)
 {
   // @LOCALMOD-BEGIN
   if (A) {
-    // TODO(dschuff): Carryover from previous localmods. still necessary?
+    // Necessary for IRT building because the IRT loader expects the end of
+    // the section to be bundle-aligned. Padding happens with 0's though,
+    // so it's not really ideal. TODO(dschuff) figure out how to do it right.
     A->getSectionList().push_back(this);
     if (A->isBundlingEnabled() && _Section.UseCodeAlign())
       setAlignment(A->getBundleAlignSize());

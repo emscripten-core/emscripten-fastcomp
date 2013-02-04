@@ -146,8 +146,6 @@ private:
   }
 
   void EmitMappingSymbol(StringRef Name) {
-    // @LOCALMOD, and a terrible hack which should be fixed ASAP
-    return;
     MCSymbol *Start = getContext().CreateTempSymbol();
     EmitLabel(Start);
 
