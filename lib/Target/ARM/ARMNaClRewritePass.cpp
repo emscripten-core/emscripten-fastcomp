@@ -121,23 +121,28 @@ static bool IsDirectCall(const MachineInstr &MI) {
 }
 
 static void DumpInstructionVerbose(const MachineInstr &MI) {
-  dbgs() << MI;
-  dbgs() << MI.getNumOperands() << " operands:" << "\n";
-  for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
-    const MachineOperand& op = MI.getOperand(i);
-    dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
-  }
-  dbgs() << "\n";
+  DEBUG({
+      dbgs() << MI;
+      dbgs() << MI.getNumOperands() << " operands:" << "\n";
+      for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
+        const MachineOperand& op = MI.getOperand(i);
+        dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
+      }
+      dbgs() << "\n";
+    });
 }
 
 static void DumpBasicBlockVerbose(const MachineBasicBlock &MBB) {
-  dbgs() << "\n<<<<< DUMP BASIC BLOCK START\n";
-  for (MachineBasicBlock::const_iterator MBBI = MBB.begin(), MBBE = MBB.end();
-       MBBI != MBBE;
-       ++MBBI) {
-    DumpInstructionVerbose(*MBBI);
-  }
-  dbgs() << "<<<<< DUMP BASIC BLOCK END\n\n";
+  DEBUG({
+      dbgs() << "\n<<<<< DUMP BASIC BLOCK START\n";
+      for (MachineBasicBlock::const_iterator
+               MBBI = MBB.begin(), MBBE = MBB.end();
+           MBBI != MBBE;
+           ++MBBI) {
+        DumpInstructionVerbose(*MBBI);
+      }
+      dbgs() << "<<<<< DUMP BASIC BLOCK END\n\n";
+    });
 }
 
 /**********************************************************************/
@@ -301,25 +306,24 @@ void ARMNaClRewritePass::getAnalysisUsage(AnalysisUsage &AU) const {
  * E.g., it could be used along with bugpoint to reduce a bitcode file.
  */
 void ARMNaClRewritePass::LightweightVerify(MachineFunction &MF) {
-
-  for (MachineFunction::iterator MFI = MF.begin(), MFE = MF.end();
-       MFI != MFE;
-       ++MFI) {
-    MachineBasicBlock &MBB = *MFI;
-    for (MachineBasicBlock::iterator MBBI = MBB.begin(), MBBE = MBB.end();
-         MBBI != MBBE;
-         ++MBBI) {
-      MachineInstr &MI = *MBBI;
-
-      if (ARM_SFI::NeedSandboxStackChange(MI, TRI)) {
-        dbgs() << "LightWeightVerify for function: "
-               << MF.getFunction()->getName() << "  (BAD STACK CHANGE)\n";
-        DumpInstructionVerbose(MI);
-        DumpBasicBlockVerbose(MBB);
-        //        assert(false && "LightweightVerify Failed");
+  DEBUG({
+      for (MachineFunction::iterator MFI = MF.begin(), MFE = MF.end();
+           MFI != MFE;
+           ++MFI) {
+        MachineBasicBlock &MBB = *MFI;
+        for (MachineBasicBlock::iterator MBBI = MBB.begin(), MBBE = MBB.end();
+             MBBI != MBBE;
+             ++MBBI) {
+          MachineInstr &MI = *MBBI;
+          if (ARM_SFI::NeedSandboxStackChange(MI, TRI)) {
+            dbgs() << "LightWeightVerify for function: "
+                   << MF.getFunction()->getName() << "  (BAD STACK CHANGE)\n";
+            DumpInstructionVerbose(MI);
+            DumpBasicBlockVerbose(MBB);
+          }
+        }
       }
-    }
-  }
+    });
 }
 
 void ARMNaClRewritePass::SandboxStackChange(MachineBasicBlock &MBB,

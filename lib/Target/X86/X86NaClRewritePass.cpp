@@ -79,7 +79,6 @@ namespace {
     bool ApplyControlSFI(MachineBasicBlock &MBB,
                          MachineBasicBlock::iterator MBBI);
 
-    void PassLightWeightValidator(MachineBasicBlock &MBB);
     bool AlignJumpTableTargets(MachineFunction &MF);
   };
 
@@ -87,7 +86,17 @@ namespace {
 
 }
 
-static void DumpInstructionVerbose(const MachineInstr &MI);
+static void DumpInstructionVerbose(const MachineInstr &MI) {
+  DEBUG({
+      dbgs() << MI;
+      dbgs() << MI.getNumOperands() << " operands:" << "\n";
+      for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
+        const MachineOperand& op = MI.getOperand(i);
+        dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
+      }
+      dbgs() << "\n";
+    });
+}
 
 static bool IsPushPop(MachineInstr &MI) {
   const unsigned Opcode = MI.getOpcode();
@@ -204,7 +213,8 @@ void
 X86NaClRewritePass::TraceLog(const char *func,
                              const MachineBasicBlock &MBB,
                              const MachineBasicBlock::iterator MBBI) const {
-  DEBUG(dbgs() << "@" << func << "(" << MBB.getName() << ", " << (*MBBI) << ")\n");
+  DEBUG(dbgs() << "@" << func
+        << "(" << MBB.getName() << ", " << (*MBBI) << ")\n");
 }
 
 bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
@@ -303,7 +313,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  DumpInstructionVerbose(MI);
+  DEBUG(DumpInstructionVerbose(MI));
   llvm_unreachable("Unhandled Stack SFI");
 }
 
@@ -389,7 +399,7 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  DumpInstructionVerbose(MI);
+  DEBUG(DumpInstructionVerbose(MI));
   llvm_unreachable("Unhandled Frame SFI");
 }
 
@@ -480,7 +490,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  DumpInstructionVerbose(MI);
+  DEBUG(DumpInstructionVerbose(MI));
   llvm_unreachable("Unhandled Control SFI");
 }
 
@@ -742,16 +752,6 @@ bool X86NaClRewritePass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     }
   }
   return Modified;
-}
-
-static void DumpInstructionVerbose(const MachineInstr &MI) {
-  dbgs() << MI;
-  dbgs() << MI.getNumOperands() << " operands:" << "\n";
-  for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
-    const MachineOperand& op = MI.getOperand(i);
-    dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
-  }
-  dbgs() << "\n";
 }
 
 /// createX86NaClRewritePassPass - returns an instance of the pass.
