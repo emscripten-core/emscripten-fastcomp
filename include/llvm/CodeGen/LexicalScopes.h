@@ -164,8 +164,10 @@ public:
 #endif
     // @LOCALMOD-BEGIN -- Hack for bug
     // http://code.google.com/p/nativeclient/issues/detail?id=2786
+#ifndef NDEBUG
     Desc.make_weak();
     InlinedAtLocation.make_weak();
+#endif
     // @LOCALMOD-END
 
     if (Parent)

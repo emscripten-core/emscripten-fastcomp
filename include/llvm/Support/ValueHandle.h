@@ -240,10 +240,16 @@ public:
   // @LOCALMOD-BEGIN -- Hack for bug:
   // http://code.google.com/p/nativeclient/issues/detail?id=2786
   // This allows us to weaken the Asserting Value Handle in LexicalScopes.h,
-  // for Debug info only.
+  // for Debug info only. FIXME: check if this is fixed by some upstream
+  // changes, e.g., r174084.  Test by building the full ARM IRT w/ debug
+  // info, and dosbox with full debug info.
+#ifndef NDEBUG
+  // Only enable for !defined(NDEBUG), since this only inherits from
+  // ValueHandleBase when !defined(NDEBUG).
   void make_weak() {
     setKind(Weak);
   }
+#endif
   // @LOCALMOD-END
 
   ValueTy *operator->() const { return getValPtr(); }
