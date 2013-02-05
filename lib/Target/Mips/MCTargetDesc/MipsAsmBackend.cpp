@@ -257,10 +257,6 @@ public:
   NaClMipsAsmBackend(const Target &T, bool _is64Bit)
     : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {}
 
-  unsigned getBundleSize() const {
-    return 16;
-  }
-
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
     return CustomExpandInstNaClMips(Inst, Out);
   }

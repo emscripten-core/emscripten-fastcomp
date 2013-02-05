@@ -644,8 +644,6 @@ public:
   NaClARMAsmBackend(const Target &T, const StringRef TT, uint8_t _OSABI)
     : ELFARMAsmBackend(T, TT, _OSABI) { }
 
-  unsigned getBundleSize() const { return 16; }
-
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
     return CustomExpandInstNaClARM(Inst, Out);
   }

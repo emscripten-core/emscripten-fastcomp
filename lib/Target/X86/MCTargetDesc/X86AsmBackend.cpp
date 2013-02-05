@@ -376,8 +376,6 @@ public:
   NaClX86_32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
     : ELFX86_32AsmBackend(T, OSABI, CPU) {}
 
-  unsigned getBundleSize() const { return 32; }
-
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
     return CustomExpandInstNaClX86(Inst, Out);
   }
@@ -387,8 +385,6 @@ class NaClX86_64AsmBackend : public ELFX86_64AsmBackend {
 public:
   NaClX86_64AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
     : ELFX86_64AsmBackend(T, OSABI, CPU) {}
-
-  unsigned getBundleSize() const { return 32; }
 
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
     return CustomExpandInstNaClX86(Inst, Out);
