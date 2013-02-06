@@ -34,11 +34,12 @@ struct PNaClABIVerifyModule : public ModulePass {
   // opt -analyze to avoid dumping the result to stdout, to make testing
   // simpler. In the future we will probably want to make it do something
   // useful.
-  virtual void print(llvm::raw_ostream &O, const Module *M) const {};
+  virtual void print(llvm::raw_ostream &O, const Module *M) const;
  private:
   // Ideally this would share an instance with the Function pass.
   // TODO: see if that's feasible when we add checking in bodies
   TypeChecker TC;
+  ABIVerifyErrors Errors;
 };
 
 static const char* LinkageName(GlobalValue::LinkageTypes LT) {
@@ -75,17 +76,19 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
        MI != ME; ++MI) {
     // Check types of global variables and their initializers
     if (!TC.IsValidType(MI->getType())) {
-      errs() << (Twine("Variable ") + MI->getName() +
-                 " has disallowed type: ");
+      std::string TypeName;
+      raw_string_ostream N(TypeName);
       // GVs are pointers, so print the pointed-to type for clarity
-      MI->getType()->getContainedType(0)->print(errs());
-      errs() << "\n";
+      MI->getType()->getContainedType(0)->print(N);
+      Errors.addError(Twine("Variable ") + MI->getName() +
+                      " has disallowed type: " + N.str() + "\n");
     } else if (MI->hasInitializer() &&
                !TC.CheckTypesInValue(MI->getInitializer())) {
-      errs() << (Twine("Initializer for ") + MI->getName() +
-                 " has disallowed type: ");
-      MI->getInitializer()->print(errs());
-      errs() << "\n";
+      std::string TypeName;
+      raw_string_ostream N(TypeName);
+      MI->getInitializer()->print(N);
+      Errors.addError(Twine("Initializer for ") + MI->getName() +
+                      " has disallowed type: " + N.str() + "\n");
     }
 
     // Check GV linkage types
@@ -96,18 +99,24 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       case GlobalValue::PrivateLinkage:
         break;
       default:
-        errs() << (Twine("Variable ") + MI->getName() +
-            " has disallowed linkage type: " +
-                LinkageName(MI->getLinkage()) + "\n");
+        Errors.addError(Twine("Variable ") + MI->getName() +
+                        " has disallowed linkage type: " +
+                        LinkageName(MI->getLinkage()) + "\n");
     }
   }
   // No aliases allowed for now.
   for (Module::alias_iterator MI = M.alias_begin(),
            E = M.alias_end(); MI != E; ++MI)
-    errs() << (Twine("Variable ") + MI->getName() +
-               " is an alias (disallowed)\n");
+    Errors.addError(Twine("Variable ") + MI->getName() +
+                    " is an alias (disallowed)\n");
 
   return false;
+}
+
+void PNaClABIVerifyModule::print(llvm::raw_ostream &O, const Module *M) const {
+  for (ABIVerifyErrors::const_iterator I = Errors.begin(), E = Errors.end();
+       I != E; ++I)
+    O << *I;
 }
 
 char PNaClABIVerifyModule::ID = 0;
