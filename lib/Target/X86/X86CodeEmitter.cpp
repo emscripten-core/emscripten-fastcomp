@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "jit"
+#define DEBUG_TYPE "x86-emitter"
 #include "X86.h"
 #include "X86InstrInfo.h"
 #include "X86JITInfo.h"
@@ -34,7 +34,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Target/TargetOpcodes.h" // @LOCALMOD
 using namespace llvm;
 
 STATISTIC(NumEmitted, "Number of machine instructions emitted");
@@ -1121,28 +1120,6 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
 
   unsigned Opcode = Desc->Opcode;
 
-  // @LOCALMOD-START
-  if (TM.getSubtargetImpl()->isTargetNaCl()) {
-    switch (Opcode) {
-    case TargetOpcode::BUNDLE_LOCK:
-      MCE.beginBundleLock();
-      return;
-    case TargetOpcode::BUNDLE_UNLOCK:
-      MCE.endBundleLock();
-      return;
-    case TargetOpcode::BUNDLE_ALIGN_START:
-      MCE.alignToBundleBeginning();
-      return;
-    case TargetOpcode::BUNDLE_ALIGN_END:
-      MCE.alignToBundleEnd();
-      return;
-    }
-    // In addition to groups of instructions, each instruction must itself be
-    // bundle-locked because they are emitted with multiple calls into MCE
-    MCE.beginBundleLock();
-  }
-  // @LOCALMOD-END
-  
   // If this is a two-address instruction, skip one of the register operands.
   unsigned NumOps = Desc->getNumOperands();
   unsigned CurOp = 0;
@@ -1501,12 +1478,6 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
 #endif
     llvm_unreachable(0);
   }
-
-  // @LOCALMOD-START
-  if (TM.getSubtargetImpl()->isTargetNaCl()) {
-    MCE.endBundleLock();
-  }
-  // @LOCALMOD-END
 
   MCE.processDebugLoc(MI.getDebugLoc(), false);
 }

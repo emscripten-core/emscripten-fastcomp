@@ -225,13 +225,6 @@ bool X86PassConfig::addPreEmitPass() {
 
 bool X86TargetMachine::addCodeEmitter(PassManagerBase &PM,
                                       JITCodeEmitter &JCE) {
-  // @LOCALMOD-START
-  // Add this pass here instead of as a PreEmitPass because this function is
-  // only called in JIT mode
-  if (Subtarget.isTargetNaCl()) {
-    PM.add(createX86NaClRewriteFinalPass());
-  }
-  // @LOCALMOD-END
   PM.add(createX86JITCodeEmitterPass(*this, JCE));
 
   return false;
