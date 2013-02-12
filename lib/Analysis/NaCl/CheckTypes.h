@@ -21,7 +21,7 @@
 
 class TypeChecker {
  public:
-  bool IsValidType(const llvm::Type* Ty) {
+  bool isValidType(const llvm::Type *Ty) {
     if (VisitedTypes.count(Ty))
       return VisitedTypes[Ty];
 
@@ -64,7 +64,7 @@ class TypeChecker {
         VisitedTypes[Ty] = true;
         for (llvm::Type::subtype_iterator I = Ty->subtype_begin(),
                  E = Ty->subtype_end(); I != E; ++I)
-          Valid &= IsValidType(*I);
+          Valid &= isValidType(*I);
         break;
         // Handle NumTypeIDs, and no default case,
         // so we get a warning if new types are added
@@ -77,7 +77,9 @@ class TypeChecker {
     return Valid;
   }
 
-  bool CheckTypesInValue(const llvm::Value* V) {
+  // If the value contains an invalid type, return a pointer to the type.
+  // Return null if there are no invalid types.
+  llvm::Type *checkTypesInValue(const llvm::Value *V) {
     // TODO: Checking types in values probably belongs in its
     // own value checker which also handles the various types of
     // constexpr (in particular, blockaddr constexprs cause this code
@@ -87,22 +89,41 @@ class TypeChecker {
     if (VisitedConstants.count(V))
       return VisitedConstants[V];
 
-    bool Valid = IsValidType(V->getType());
-    VisitedConstants[V] = Valid;
+    if (!isValidType(V->getType())) {
+      VisitedConstants[V] = V->getType();
+      return V->getType();
+    }
 
+    // Operand values must also be valid. Values may be circular, so
+    // mark the current value as valid to avoid infinite recursion.
+    VisitedConstants[V] = NULL;
     const llvm::User *U = llvm::cast<llvm::User>(V);
     for (llvm::Constant::const_op_iterator I = U->op_begin(),
-             E = U->op_end(); I != E; ++I)
-      Valid &= CheckTypesInValue(*I);
-    VisitedConstants[V] = Valid;
-    return Valid;
+             E = U->op_end(); I != E; ++I) {
+      llvm::Type *Invalid = checkTypesInValue(*I);
+      if (Invalid) {
+        VisitedConstants[V] = Invalid;
+        return Invalid;
+      }
+    }
+    VisitedConstants[V] = NULL;
+    return NULL;
+  }
+
+  // There's no built-in way to get the name of a type, so use a
+  // string ostream to print it.
+  static std::string getTypeName(const llvm::Type *T) {
+    std::string TypeName;
+    llvm::raw_string_ostream N(TypeName);
+    T->print(N);
+    return N.str();
   }
 
  private:
   // To avoid walking constexprs and types multiple times, keep a cache of
   // what we have seen. This is also used to prevent infinite recursion e.g.
   // in case of structures like linked lists with pointers to themselves.
-  llvm::DenseMap<const llvm::Value*, bool> VisitedConstants;
+  llvm::DenseMap<const llvm::Value*, llvm::Type*> VisitedConstants;
   llvm::DenseMap<const llvm::Type*, bool> VisitedTypes;
 };
 

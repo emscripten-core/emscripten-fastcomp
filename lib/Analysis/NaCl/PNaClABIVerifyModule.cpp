@@ -24,25 +24,20 @@
 using namespace llvm;
 
 namespace {
-
 // This pass should not touch function bodies, to stay streaming-friendly
-struct PNaClABIVerifyModule : public ModulePass {
+class PNaClABIVerifyModule : public ModulePass {
+ public:
   static char ID;
-  PNaClABIVerifyModule() : ModulePass(ID) {}
+  PNaClABIVerifyModule();
   bool runOnModule(Module &M);
-  // For now, this print method exists to allow us to run the pass with
-  // opt -analyze to avoid dumping the result to stdout, to make testing
-  // simpler. In the future we will probably want to make it do something
-  // useful.
   virtual void print(llvm::raw_ostream &O, const Module *M) const;
  private:
-  // Ideally this would share an instance with the Function pass.
-  // TODO: see if that's feasible when we add checking in bodies
   TypeChecker TC;
-  ABIVerifyErrors Errors;
+  std::string ErrorsString;
+  llvm::raw_string_ostream Errors;
 };
 
-static const char* LinkageName(GlobalValue::LinkageTypes LT) {
+static const char *linkageName(GlobalValue::LinkageTypes LT) {
   // This logic is taken from PrintLinkage in lib/VMCore/AsmWriter.cpp
   switch (LT) {
     case GlobalValue::ExternalLinkage: return "external";
@@ -70,25 +65,25 @@ static const char* LinkageName(GlobalValue::LinkageTypes LT) {
 
 } // end anonymous namespace
 
-bool PNaClABIVerifyModule::runOnModule(Module &M) {
+PNaClABIVerifyModule::PNaClABIVerifyModule() : ModulePass(ID),
+                                               Errors(ErrorsString) {}
 
+bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
     // Check types of global variables and their initializers
-    if (!TC.IsValidType(MI->getType())) {
-      std::string TypeName;
-      raw_string_ostream N(TypeName);
+    if (!TC.isValidType(MI->getType())) {
       // GVs are pointers, so print the pointed-to type for clarity
-      MI->getType()->getContainedType(0)->print(N);
-      Errors.addError(Twine("Variable ") + MI->getName() +
-                      " has disallowed type: " + N.str() + "\n");
-    } else if (MI->hasInitializer() &&
-               !TC.CheckTypesInValue(MI->getInitializer())) {
-      std::string TypeName;
-      raw_string_ostream N(TypeName);
-      MI->getInitializer()->print(N);
-      Errors.addError(Twine("Initializer for ") + MI->getName() +
-                      " has disallowed type: " + N.str() + "\n");
+      Errors << "Variable " + MI->getName() +
+          " has disallowed type: " +
+          TypeChecker::getTypeName(MI->getType()->getContainedType(0)) + "\n";
+    } else if (MI->hasInitializer()) {
+      // If the type of the global is bad, no point in checking its initializer
+      Type *T = TC.checkTypesInValue(MI->getInitializer());
+      if (T)
+        Errors << "Initializer for " + MI->getName() +
+            " has disallowed type: " +
+            TypeChecker::getTypeName(T) + "\n";
     }
 
     // Check GV linkage types
@@ -99,24 +94,22 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       case GlobalValue::PrivateLinkage:
         break;
       default:
-        Errors.addError(Twine("Variable ") + MI->getName() +
-                        " has disallowed linkage type: " +
-                        LinkageName(MI->getLinkage()) + "\n");
+        Errors << "Variable " + MI->getName() +
+            " has disallowed linkage type: " +
+            linkageName(MI->getLinkage()) + "\n";
     }
   }
   // No aliases allowed for now.
   for (Module::alias_iterator MI = M.alias_begin(),
            E = M.alias_end(); MI != E; ++MI)
-    Errors.addError(Twine("Variable ") + MI->getName() +
-                    " is an alias (disallowed)\n");
+    Errors << "Variable " + MI->getName() + " is an alias (disallowed)\n";
 
+  Errors.flush();
   return false;
 }
 
 void PNaClABIVerifyModule::print(llvm::raw_ostream &O, const Module *M) const {
-  for (ABIVerifyErrors::const_iterator I = Errors.begin(), E = Errors.end();
-       I != E; ++I)
-    O << *I;
+  O << ErrorsString;
 }
 
 char PNaClABIVerifyModule::ID = 0;

@@ -67,10 +67,10 @@
 ; Initializers with constexprs
 ; CHECK: Variable cc1 has disallowed type: half
 @cc1 = private global half 0.0
-; CHECK: Initializer for ce1 has disallowed type: i8* bitcast (half* @cc1 to i8*)
+; CHECK: Initializer for ce1 has disallowed type: half*
 @ce1 = private global i8 * bitcast (half* @cc1 to i8*)
 @cc2 = private global { i32, half } undef
-; CHECK: Initializer for ce2 has disallowed type: i32* getelementptr inbounds ({ i32, half }* @cc2, i32 0, i32 0)
+; CHECK: Initializer for ce2 has disallowed type: { i32, half }*
 @ce2 = private global i32 * getelementptr ({ i32, half } * @cc2, i32 0, i32 0)
 
 ; Circularities:  here to make sure the verifier doesn't crash or assert.
@@ -83,6 +83,8 @@
 
 %struct.linked = type { i32, %struct.linked * }
 @list1 = private global %struct.linked { i32 0, %struct.linked* null }
+
+@list2 = private global i32* bitcast (i32** @list2 to i32*)
 ; CHECK-NOT: disallowed
 
 ; CHECK: Variable alias1 is an alias (disallowed)

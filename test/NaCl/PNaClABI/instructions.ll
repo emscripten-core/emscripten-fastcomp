@@ -47,10 +47,11 @@ define void @vectors() {
 ; CHECK-NOT: disallowed
   %a1 = extractelement <2 x i32> <i32 0, i32 0>, i32 0
 ; CHECK: Function vectors has disallowed instruction: extractelement
-  %a2 = shufflevector <2 x i32> undef , <2 x i32> undef, <2 x i32> undef
+  %a2 = shufflevector <2 x i32> undef, <2 x i32> undef, <2 x i32> undef
 ; CHECK: Function vectors has disallowed instruction: shufflevector
   %a3 = insertelement <2 x i32> undef, i32 1, i32 0
 ; CHECK: Function vectors has disallowed instruction: insertelement
+; CHECK: Function vectors has instruction with disallowed type
   ret void
 }
 

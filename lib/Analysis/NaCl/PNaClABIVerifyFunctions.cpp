@@ -18,30 +18,32 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/NaCl.h"
+
+#include "CheckTypes.h"
 using namespace llvm;
 
 namespace {
 
 // Checks that examine anything in the function body should be in
 // FunctionPasses to make them streaming-friendly
-struct PNaClABIVerifyFunctions : public FunctionPass {
+class PNaClABIVerifyFunctions : public FunctionPass {
+ public:
   static char ID;
-  PNaClABIVerifyFunctions() : FunctionPass(ID) {}
+  PNaClABIVerifyFunctions() : FunctionPass(ID), Errors(ErrorsString) {}
   bool runOnFunction(Function &F);
-  // For now, this print method exists to allow us to run the pass with
-  // opt -analyze to avoid dumping the result to stdout, to make testing
-  // simpler. In the future we will probably want to make it do something
-  // useful.
   virtual void print(llvm::raw_ostream &O, const Module *M) const;
  private:
-  ABIVerifyErrors Errors;
+  TypeChecker TC;
+  std::string ErrorsString;
+  raw_string_ostream Errors;
 };
+
 } // and anonymous namespace
 
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
   // For now just start with new errors on each function; this may change
   // once we want to do something with them other than just calling print()
-  Errors.clear();
+  ErrorsString.clear();
   for (Function::const_iterator FI = F.begin(), FE = F.end();
            FI != FE; ++FI) {
     for (BasicBlock::const_iterator BBI = FI->begin(), BBE = FI->end();
@@ -55,9 +57,9 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::ExtractElement:
         case Instruction::InsertElement:
         case Instruction::ShuffleVector:
-          Errors.addError(Twine("Function ") + F.getName() +
-                          " has disallowed instruction: " +
-                          BBI->getOpcodeName() + "\n");
+          Errors << "Function " + F.getName() +
+              " has disallowed instruction: " +
+              BBI->getOpcodeName() + "\n";
           break;
 
         // Terminator instructions
@@ -120,16 +122,22 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::LandingPad:
           break;
       }
+      // Check the types. First check the type of the instruction.
+      if (!TC.isValidType(BBI->getType())) {
+        Errors << "Function " + F.getName() +
+            " has instruction with disallowed type: " +
+            TypeChecker::getTypeName(BBI->getType()) + "\n";
+      }
     }
   }
+
+  Errors.flush();
   return false;
 }
 
 void PNaClABIVerifyFunctions::print(llvm::raw_ostream &O, const Module *M)
     const {
-  for (ABIVerifyErrors::const_iterator I = Errors.begin(), E = Errors.end();
-      I != E; ++I)
-    O << *I;
+  O << ErrorsString;
 }
 
 char PNaClABIVerifyFunctions::ID = 0;
