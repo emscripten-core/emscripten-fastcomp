@@ -64,103 +64,18 @@ char kBitcodeFilename[] = "pnacl.pexe";
 char kObjectFilename[] = "pnacl.o";
 // Object which manages streaming bitcode over SRPC and threading.
 SRPCStreamer *srpc_streamer;
+// FD of the object file.
+int object_file_fd;
 
 }  // namespace
 
 //TODO(dschuff): a little more elegant interface into llc than this?
 extern llvm::DataStreamer* NaClBitcodeStreamer;
 
-class FileInfo {
- private:
-  static map<string, FileInfo*> descriptor_map_;
-
-  string filename_;
-  int fd_;
-
- public:
-  // Construct a FileInfo for a file descriptor.
-  // File descriptors are used for the bitcode (input) file and for the
-  // object (output) file passed in by the coordinator when using the Run
-  // SRPC.
-  FileInfo(string fn, int fd) :
-    filename_(fn), fd_(fd) {
-    printdbg("LLVM-SB-DBG: registering file %d (%s)\n", fd, fn.c_str());
-    descriptor_map_[fn] = this;
-  }
-
-  int GetFd() {
-    return fd_;
-  }
-
-  MemoryBuffer* ReadAllDataAsMemoryBuffer() {
-    printdbg("LLVM-SB-DBG: opening file %d (%s)\n", fd_, filename_.c_str());
-    llvm::OwningPtr<MemoryBuffer> mb;
-    if (llvm::error_code::success() != MemoryBuffer::getOpenFile(
-            fd_, filename_.c_str(), mb,
-            -1, -1, 0, false)) {
-      perror("LLVM-SB-ERROR: ReadAllDataAsMemoryBuffer getOpenFile failed!\n");
-      return 0;
-    }
-    return mb.take();
-  }
-
-  void WriteAllDataToTmpFile(string data) {
-    printdbg("LLVM-SB-DBG: writing file %d (%s): %d bytes\n",
-             fd_, filename_.c_str(), data.size());
-
-    if (fd_ < 0) {
-      printerr("LLVM-SB-ERROR: invalid fd for write\n");
-      return;
-    }
-    size_t bytes_to_write = data.size();
-    const char* buf = data.c_str();
-    while (bytes_to_write > 0) {
-      ssize_t bytes_written = write(fd_, (const void*) buf, bytes_to_write);
-      printdbg("LLVM-SB-DBG: write call to file %d (req: %zu, got: %zd)\n",
-               fd_, bytes_to_write, bytes_written);
-      if (bytes_written < 0) {
-        printerr("LLVM-SB-ERROR: write to file %d failed with %zd\n",
-                 fd_, bytes_written);
-        perror("LLVM-SB-ERROR: WriteAllDataToTmpFile write failed");
-        return;
-      }
-      buf += bytes_written;
-      bytes_to_write -= (size_t) bytes_written;
-    }
-  }
-
-  void WriteAllData(string data) {
-    WriteAllDataToTmpFile(data);
-  }
-
-  static FileInfo* FindFileInfo(const string& fn) {
-    map<string, FileInfo*>::iterator it = descriptor_map_.find(fn);
-    if (it == descriptor_map_.end()) {
-      printerr("LLVM-SB-ERROR: no mapping for filename\n");
-      return NULL;
-    }
-    return it->second;
-  }
-
-};
-
-map<string, FileInfo*> FileInfo::descriptor_map_;
-
 extern int llc_main(int argc, char **argv);
 
-
-MemoryBuffer* NaClGetMemoryBufferForFile(const char* filename) {
-  FileInfo* fi = FileInfo::FindFileInfo(filename);
-  if (fi == NULL) {
-    printerr("LLVM-SB-ERROR: unknown file %s\n", filename);
-    return NULL;
-  }
-  return fi->ReadAllDataAsMemoryBuffer();
-}
-
-void NaClOutputStringToFile(const char* filename, const string& data) {
-  FileInfo* fi = FileInfo::FindFileInfo(filename);
-  fi->WriteAllData(data);
+int GetObjectFileFD() {
+  return object_file_fd;
 }
 
 void NaClRecordObjectInformation(bool is_shared, const std::string& soname) {
@@ -181,16 +96,11 @@ void NaClRecordSharedLibraryDependency(const std::string& library_name) {
 
 namespace {
 
-int DoTranslate(string_vector* cmd_line_vec, int bitcode_fd, int object_fd) {
+int DoTranslate(string_vector* cmd_line_vec, int object_fd) {
   if (cmd_line_vec == NULL) {
     return 1;
   }
-  if (bitcode_fd) {
-    // Add mapping for bitcode file (side effect is to register the file).
-    new FileInfo(kBitcodeFilename, bitcode_fd);
-  }
-  // Add mapping for object file (side effect is to register the file).
-  new FileInfo(kObjectFilename, object_fd);
+  object_file_fd = object_fd;
   // Make an argv array from the input vector.
   size_t argc = cmd_line_vec->size();
   char** argv = new char*[argc];
@@ -217,31 +127,6 @@ string_vector* CommandLineFromArgz(char* str, size_t str_len) {
   vec->push_back("-o");
   vec->push_back(kObjectFilename);
   return vec;
-}
-
-void run(NaClSrpcRpc *rpc,
-         NaClSrpcArg **in_args,
-         NaClSrpcArg **out_args,
-         NaClSrpcClosure *done) {
-  NaClSrpcClosureRunner runner(done);
-  rpc->result = NACL_SRPC_RESULT_APP_ERROR;
-  int bitcode_fd = in_args[0]->u.hval;
-  int object_fd = in_args[1]->u.hval;
-  char* command_line = in_args[2]->arrays.carr;
-  size_t command_line_len = in_args[2]->u.count;
-  string_vector* cmd_line_vec =
-      CommandLineFromArgz(command_line, command_line_len);
-  if (DoTranslate(cmd_line_vec, bitcode_fd, object_fd) != 0) {
-    printerr("DoTranslate failed.\n");
-    return;
-  }
-  delete cmd_line_vec;
-  out_args[0]->u.ival = g_bitcode_is_shared_library;
-  // SRPC deletes the strings returned when the closure is invoked.
-  // Therefore we need to use strdup.
-  out_args[1]->arrays.str = strdup(g_bitcode_soname->c_str());
-  out_args[2]->arrays.str = strdup(g_bitcode_lib_dependencies->c_str());
-  rpc->result = NACL_SRPC_RESULT_OK;
 }
 
 string_vector* GetDefaultCommandLine() {
@@ -310,28 +195,6 @@ string_vector* GetDefaultCommandLine() {
   return command_line;
 }
 
-void run_with_default_command_line(NaClSrpcRpc *rpc,
-                                   NaClSrpcArg **in_args,
-                                   NaClSrpcArg **out_args,
-                                   NaClSrpcClosure *done) {
-  NaClSrpcClosureRunner runner(done);
-  rpc->result = NACL_SRPC_RESULT_APP_ERROR;
-  int bitcode_fd = in_args[0]->u.hval;
-  int object_fd = in_args[1]->u.hval;
-  string_vector* cmd_line_vec = GetDefaultCommandLine();
-  if (DoTranslate(cmd_line_vec, bitcode_fd, object_fd) != 0) {
-    printerr("DoTranslate failed.\n");
-    return;
-  }
-  delete cmd_line_vec;
-  out_args[0]->u.ival = g_bitcode_is_shared_library;
-  // SRPC deletes the strings returned when the closure is invoked.
-  // Therefore we need to use strdup.
-  out_args[1]->arrays.str = strdup(g_bitcode_soname->c_str());
-  out_args[2]->arrays.str = strdup(g_bitcode_lib_dependencies->c_str());
-  rpc->result = NACL_SRPC_RESULT_OK;
-}
-
 // Data passed from main thread to compile thread.
 // Takes ownership of the commandline vector.
 class StreamingThreadData {
@@ -347,7 +210,7 @@ class StreamingThreadData {
 void *run_streamed(void *arg) {
   StreamingThreadData* data = reinterpret_cast<StreamingThreadData*>(arg);
   data->CmdLineVec()->push_back("-streaming-bitcode");
-  if (DoTranslate(data->CmdLineVec(), 0, data->ObjectFD()) != 0) {
+  if (DoTranslate(data->CmdLineVec(), data->ObjectFD()) != 0) {
     printerr("DoTranslate failed.\n");
     srpc_streamer->setError();
     return NULL;
@@ -448,8 +311,6 @@ void stream_end(NaClSrpcRpc *rpc,
 }
 
 const struct NaClSrpcHandlerDesc srpc_methods[] = {
-  { "Run:hhC:iss", run },
-  { "RunWithDefaultCommandLine:hh:iss", run_with_default_command_line },
   // Protocol for streaming:
   // (StreamInit(obj_fd) -> error_str |
   //    StreamInitWIthCommandLine(obj_fd, escaped_cmdline) -> error_str)

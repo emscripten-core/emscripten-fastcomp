@@ -60,8 +60,7 @@ using namespace llvm;
 //                       This can be useful for debugging but will
 //                       not be deployed.
 #if defined(__native_client__) && defined(NACL_SRPC)
-MemoryBuffer* NaClGetMemoryBufferForFile(const char* filename);
-void NaClOutputStringToFile(const char* filename, const std::string& data);
+int GetObjectFileFD();
 // The following two functions communicate metadata to the SRPC wrapper for LLC.
 void NaClRecordObjectInformation(bool is_shared, const std::string& soname);
 void NaClRecordSharedLibraryDependency(const std::string& library_name);
@@ -243,7 +242,7 @@ int WriteTextMetadataFile(const Module &M, const Triple &TheTriple) {
   FreeStubList(&StubList);
 
 #if defined(__native_client__) && defined(NACL_SRPC)
-  NaClOutputStringToFile(MetadataTextFilename.c_str(), s);
+  llvm_unreachable("Not yet implemented. Need a file handle to write to.");
 #else
   std::string error;
   OwningPtr<tool_output_file> MOut(
@@ -313,41 +312,25 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   // If user just wants to list available options, skip module loading
   if (!SkipModule) {
-  // @LOCALMOD-BEGIN
+    // @LOCALMOD-BEGIN
 #if defined(__native_client__) && defined(NACL_SRPC)
-  if (LazyBitcode) {
-    std::string StrError;
-    M.reset(getStreamedBitcodeModule(std::string("<SRPC stream>"),
-                                     NaClBitcodeStreamer, Context, &StrError));
-    if (!StrError.empty()) {
-      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
+    if (LazyBitcode) {
+      std::string StrError;
+      M.reset(getStreamedBitcodeModule(
+          std::string("<SRPC stream>"),
+          NaClBitcodeStreamer, Context, &StrError));
+      if (!StrError.empty()) {
+        Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
+      }
+    } else {
+      // Avoid using ParseIRFile to avoid pulling in the LLParser.
+      // Only handle binary bitcode.
+      llvm_unreachable("native client SRPC only supports streaming");
     }
-  } else {
-    // In the NACL_SRPC case, open the file with our special wrapper, which
-    // is aware of pre-opened file descriptors.
-    // NOTE: we could remove this if we only support streaming.
-    // ParseIR() should take ownership of the MemoryBuffer.
-    M.reset(ParseIR(NaClGetMemoryBufferForFile(InputFilename.c_str()),
-                    Err,
-                    Context));
-    M->setModuleIdentifier(InputFilename);
-  }
 #else
-  if (LazyBitcode) {
-    std::string StrError;
-    DataStreamer *streamer = getDataFileStreamer(InputFilename, &StrError);
-    if (streamer) {
-      M.reset(getStreamedBitcodeModule(InputFilename, streamer, Context,
-                                       &StrError));
-    }
-    if (!StrError.empty()) {
-      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
-    }
-  } else {
     M.reset(ParseIRFile(InputFilename, Err, Context));
-  }
 #endif
-  // @LOCALMOD-END
+    // @LOCALMOD-END
 
     mod = M.get();
     if (mod == 0) {
@@ -355,23 +338,23 @@ static int compileModule(char **argv, LLVMContext &Context) {
       return 1;
     }
 
-  // @LOCALMOD-BEGIN
+    // @LOCALMOD-BEGIN
 #if defined(__native_client__) && defined(NACL_SRPC)
-  RecordMetadataForSrpc(*mod);
+    RecordMetadataForSrpc(*mod);
 
-  // To determine if we should compile PIC or not, we needed to load at
-  // least the metadata. Since we've already constructed the commandline,
-  // we have to hack this in after commandline processing.
-  if (mod->getOutputFormat() == Module::SharedOutputFormat) {
-    RelocModel = Reloc::PIC_;
-  }
-  // Also set PIC_ for dynamic executables:
-  // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
-  if (mod->lib_size() > 0) {
-    RelocModel = Reloc::PIC_;
-  }
+    // To determine if we should compile PIC or not, we needed to load at
+    // least the metadata. Since we've already constructed the commandline,
+    // we have to hack this in after commandline processing.
+    if (mod->getOutputFormat() == Module::SharedOutputFormat) {
+      RelocModel = Reloc::PIC_;
+    }
+    // Also set PIC_ for dynamic executables:
+    // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
+    if (mod->lib_size() > 0) {
+      RelocModel = Reloc::PIC_;
+    }
 #endif  // defined(__native_client__) && defined(NACL_SRPC)
-  // @LOCALMOD-END
+    // @LOCALMOD-END
 
     // If we are supposed to override the target triple, do so now.
     if (!TargetTriple.empty())
@@ -511,11 +494,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   }
 
 
-  
 #if defined __native_client__ && defined(NACL_SRPC)
   {
-    std::string s;
-    raw_string_ostream ROS(s);
+    raw_fd_ostream ROS(GetObjectFileFD(), true);
     formatted_raw_ostream FOS(ROS);
     // Ask the target to add backend passes as necessary.
     if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
@@ -539,10 +520,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
     FOS.flush();
     ROS.flush();
-    NaClOutputStringToFile(OutputFilename.c_str(), ROS.str());
   }
 #else
-      
+
   {
     formatted_raw_ostream FOS(Out->os());
 
