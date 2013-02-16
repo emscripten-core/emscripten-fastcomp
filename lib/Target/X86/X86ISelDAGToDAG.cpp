@@ -607,6 +607,14 @@ bool X86DAGToDAGISel::FoldOffsetIntoAddress(uint64_t Offset,
     if (AM.BaseType == X86ISelAddressMode::FrameIndexBase &&
         !isDispSafeForFrameIndex(Val))
       return true;
+    // LOCALMOD-BEGIN
+    // Do not allow negative displacements to be folded into memory operations.
+    // This results in trying to dereference a negative offset from RZP
+    else if (Subtarget->isTargetNaCl64() &&
+             AM.BaseType == X86ISelAddressMode::RegBase && Val < 0 &&
+             selectingMemOp)
+      return true;
+    // LOCALMOD-END
   }
   AM.Disp = Val;
   return false;
