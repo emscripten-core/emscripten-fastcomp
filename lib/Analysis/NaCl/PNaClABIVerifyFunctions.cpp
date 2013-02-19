@@ -19,7 +19,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/NaCl.h"
 
-#include "CheckTypes.h"
+#include "PNaClABITypeChecker.h"
 using namespace llvm;
 
 namespace {
@@ -31,9 +31,9 @@ class PNaClABIVerifyFunctions : public FunctionPass {
   static char ID;
   PNaClABIVerifyFunctions() : FunctionPass(ID), Errors(ErrorsString) {}
   bool runOnFunction(Function &F);
-  virtual void print(llvm::raw_ostream &O, const Module *M) const;
+  virtual void print(raw_ostream &O, const Module *M) const;
  private:
-  TypeChecker TC;
+  PNaClABITypeChecker TC;
   std::string ErrorsString;
   raw_string_ostream Errors;
 };
@@ -126,7 +126,7 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       if (!TC.isValidType(BBI->getType())) {
         Errors << "Function " + F.getName() +
             " has instruction with disallowed type: " +
-            TypeChecker::getTypeName(BBI->getType()) + "\n";
+            PNaClABITypeChecker::getTypeName(BBI->getType()) + "\n";
       }
     }
   }

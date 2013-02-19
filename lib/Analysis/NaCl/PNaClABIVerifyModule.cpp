@@ -20,7 +20,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "CheckTypes.h"
+#include "PNaClABITypeChecker.h"
 using namespace llvm;
 
 namespace {
@@ -30,11 +30,11 @@ class PNaClABIVerifyModule : public ModulePass {
   static char ID;
   PNaClABIVerifyModule();
   bool runOnModule(Module &M);
-  virtual void print(llvm::raw_ostream &O, const Module *M) const;
+  virtual void print(raw_ostream &O, const Module *M) const;
  private:
-  TypeChecker TC;
+  PNaClABITypeChecker TC;
   std::string ErrorsString;
-  llvm::raw_string_ostream Errors;
+  raw_string_ostream Errors;
 };
 
 static const char *linkageName(GlobalValue::LinkageTypes LT) {
@@ -76,14 +76,15 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       // GVs are pointers, so print the pointed-to type for clarity
       Errors << "Variable " + MI->getName() +
           " has disallowed type: " +
-          TypeChecker::getTypeName(MI->getType()->getContainedType(0)) + "\n";
+          PNaClABITypeChecker::getTypeName(MI->getType()->getContainedType(0))
+          + "\n";
     } else if (MI->hasInitializer()) {
       // If the type of the global is bad, no point in checking its initializer
       Type *T = TC.checkTypesInValue(MI->getInitializer());
       if (T)
         Errors << "Initializer for " + MI->getName() +
             " has disallowed type: " +
-            TypeChecker::getTypeName(T) + "\n";
+            PNaClABITypeChecker::getTypeName(T) + "\n";
     }
 
     // Check GV linkage types
