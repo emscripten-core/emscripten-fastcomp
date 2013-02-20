@@ -15,9 +15,9 @@ next:
 next2:
   unreachable
   resume i8 0
-  indirectbr i8* undef, [label %next, label %next2]
 ; CHECK-NOT: disallowed
 ; CHECK: Function terminators has disallowed instruction: indirectbr
+  indirectbr i8* undef, [label %next, label %next2]
 }
 
 define void @binops() {
@@ -45,13 +45,14 @@ define void @binops() {
 
 define void @vectors() {
 ; CHECK-NOT: disallowed
-  %a1 = extractelement <2 x i32> <i32 0, i32 0>, i32 0
 ; CHECK: Function vectors has disallowed instruction: extractelement
-  %a2 = shufflevector <2 x i32> undef, <2 x i32> undef, <2 x i32> undef
+  %a1 = extractelement <2 x i32> <i32 0, i32 0>, i32 0
 ; CHECK: Function vectors has disallowed instruction: shufflevector
-  %a3 = insertelement <2 x i32> undef, i32 1, i32 0
+  %a2 = shufflevector <2 x i32> undef, <2 x i32> undef, <2 x i32> undef
 ; CHECK: Function vectors has disallowed instruction: insertelement
 ; CHECK: Function vectors has instruction with disallowed type
+; CHECK: Function vectors has instruction operand with disallowed type
+  %a3 = insertelement <2 x i32> undef, i32 1, i32 0
   ret void
 }
 

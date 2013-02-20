@@ -15,7 +15,7 @@
 #include "llvm/Pass.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/NaCl.h"
 
@@ -44,6 +44,7 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
   // For now just start with new errors on each function; this may change
   // once we want to do something with them other than just calling print()
   ErrorsString.clear();
+  // TODO: only report one error per instruction
   for (Function::const_iterator FI = F.begin(), FE = F.end();
            FI != FE; ++FI) {
     for (BasicBlock::const_iterator BBI = FI->begin(), BBE = FI->end();
@@ -128,6 +129,24 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
             " has instruction with disallowed type: " +
             PNaClABITypeChecker::getTypeName(BBI->getType()) + "\n";
       }
+
+      // Check the instruction operands. Operands which are Instructions will
+      // be checked on their own here, and GlobalValues will be checked by the
+      // Module verifier. That leaves Constants.
+      // Switches are implemented in the in-memory IR with vectors, so don't
+      // check them.
+      if (!isa<SwitchInst>(*BBI))
+        for (User::const_op_iterator OI = BBI->op_begin(), OE = BBI->op_end();
+             OI != OE; OI++) {
+          if (isa<Constant>(OI) && !isa<GlobalValue>(OI) &&
+              !isa<Instruction>(OI)) {
+            Type *T = TC.checkTypesInValue(*OI);
+            if (T)
+              Errors << "Function " + F.getName() +
+                  " has instruction operand with disallowed type: " +
+                  PNaClABITypeChecker::getTypeName(T) + "\n";
+          }
+        }
     }
   }
 

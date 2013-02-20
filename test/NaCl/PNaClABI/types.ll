@@ -89,3 +89,11 @@
 
 ; CHECK: Variable alias1 is an alias (disallowed)
 @alias1 = alias i32* @i32
+
+; CHECK: Function badReturn has disallowed return type
+declare half* @badReturn()
+
+; CHECK: Function badArgType1 argument 1 has disallowed type
+declare void @badArgType1(half %a, i32 %b)
+; CHECK: Function badArgType2 argument 2 has disallowed type
+declare void @badArgType2(i32 %a, half %b)

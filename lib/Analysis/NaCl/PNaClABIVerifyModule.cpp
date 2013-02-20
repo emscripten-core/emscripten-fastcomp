@@ -105,6 +105,21 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
            E = M.alias_end(); MI != E; ++MI)
     Errors << "Variable " + MI->getName() + " is an alias (disallowed)\n";
 
+  for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
+    // Check types of functions and their arguments
+    FunctionType *FT = MI->getFunctionType();
+    if (!TC.isValidType(FT->getReturnType()))
+      Errors << "Function " + MI->getName() + " has disallowed return type: " +
+          PNaClABITypeChecker::getTypeName(FT->getReturnType()) + "\n";
+    for (unsigned I = 0, E = FT->getNumParams(); I < E; ++I) {
+      Type *PT = FT->getParamType(I);
+      if (!TC.isValidType(PT))
+        Errors << "Function " << MI->getName() << " argument " << I + 1 <<
+            " has disallowed type: " <<
+            PNaClABITypeChecker::getTypeName(PT) + "\n";
+    }
+  }
+
   Errors.flush();
   return false;
 }
