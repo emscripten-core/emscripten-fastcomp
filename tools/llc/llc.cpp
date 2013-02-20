@@ -504,6 +504,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
 #if defined __native_client__ && defined(NACL_SRPC)
   {
     raw_fd_ostream ROS(GetObjectFileFD(), true);
+    ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
     // Ask the target to add backend passes as necessary.
     if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
