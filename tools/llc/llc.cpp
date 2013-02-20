@@ -276,7 +276,14 @@ int llc_main(int argc, char **argv) {
   InitializeAllTargets();
   InitializeAllTargetMCs();
   InitializeAllAsmPrinters();
-  InitializeAllAsmParsers();
+// @LOCALMOD-BEGIN
+// Prune asm parsing from sandboxed translator.
+// Do not prune "AsmPrinters" because that includes
+// the direct object emission.
+ #if !defined(__native_client__)
+   InitializeAllAsmParsers();
+#endif
+// @LOCALMOD-END
 
   // Initialize codegen and IR passes used by llc so that the -print-after,
   // -print-before, and -stop-after options work.
