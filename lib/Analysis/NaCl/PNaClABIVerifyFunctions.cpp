@@ -16,6 +16,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/NaCl.h"
 
@@ -138,15 +139,25 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       if (!isa<SwitchInst>(*BBI))
         for (User::const_op_iterator OI = BBI->op_begin(), OE = BBI->op_end();
              OI != OE; OI++) {
-          if (isa<Constant>(OI) && !isa<GlobalValue>(OI) &&
-              !isa<Instruction>(OI)) {
-            Type *T = TC.checkTypesInValue(*OI);
+          if (isa<Constant>(OI) && !isa<GlobalValue>(OI)) {
+            Type *T = TC.checkTypesInConstant(cast<Constant>(*OI));
             if (T)
               Errors << "Function " + F.getName() +
                   " has instruction operand with disallowed type: " +
                   PNaClABITypeChecker::getTypeName(T) + "\n";
           }
         }
+
+      // Get types hiding in metadata attached to the instruction
+      SmallVector<std::pair<unsigned, MDNode*>, 4> MDForInst;
+      BBI->getAllMetadataOtherThanDebugLoc(MDForInst);
+      for (unsigned i = 0, e = MDForInst.size(); i != e; i++) {
+        Type *T = TC.checkTypesInMDNode(MDForInst[i].second);
+        if (T)
+          Errors << "Function " + F.getName() +
+              " has instruction metadata containing disallowed type: " +
+              PNaClABITypeChecker::getTypeName(T) + "\n";
+      }
     }
   }
 

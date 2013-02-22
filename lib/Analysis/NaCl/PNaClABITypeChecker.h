@@ -20,6 +20,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
+class Constant;
+class MDNode;
 class Value;
 
 class PNaClABITypeChecker {
@@ -29,7 +31,11 @@ class PNaClABITypeChecker {
 
   // If the value contains an invalid type, return a pointer to the type.
   // Return null if there are no invalid types.
-  Type *checkTypesInValue(const Value *V);
+  Type *checkTypesInConstant(const Constant *V);
+
+  // If the Metadata node contains an invalid type, return a pointer to the
+  // type. Return null if there are no invalid types.
+  Type *checkTypesInMDNode(const MDNode *V);
 
   // There's no built-in way to get the name of a type, so use a
   // string ostream to print it.

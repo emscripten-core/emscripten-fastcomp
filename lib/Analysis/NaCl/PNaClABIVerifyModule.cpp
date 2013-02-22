@@ -80,7 +80,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
           + "\n";
     } else if (MI->hasInitializer()) {
       // If the type of the global is bad, no point in checking its initializer
-      Type *T = TC.checkTypesInValue(MI->getInitializer());
+      Type *T = TC.checkTypesInConstant(MI->getInitializer());
       if (T)
         Errors << "Initializer for " + MI->getName() +
             " has disallowed type: " +
@@ -120,6 +120,16 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
     }
   }
 
+  // Check named metadata nodes
+  for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
+           E = M.named_metadata_end(); I != E; ++I) {
+    for (unsigned i = 0, e = I->getNumOperands(); i != e; i++) {
+      if (Type *T = TC.checkTypesInMDNode(I->getOperand(i)))
+        Errors << "Named metadata node " + I->getName() +
+            " refers to disallowed type: " +
+            PNaClABITypeChecker::getTypeName(T) + "\n";
+    }
+  }
   Errors.flush();
   return false;
 }

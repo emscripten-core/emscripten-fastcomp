@@ -15,6 +15,7 @@
 #include "PNaClABITypeChecker.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Metadata.h"
 
 using namespace llvm;
 
@@ -74,13 +75,14 @@ bool PNaClABITypeChecker::isValidType(const Type *Ty) {
   return Valid;
 }
 
-Type *PNaClABITypeChecker::checkTypesInValue(const Value *V) {
-  // TODO: Checking types in values probably belongs in its
-  // own value checker which also handles the various types of
-  // constexpr (in particular, blockaddr constexprs cause this code
-  // to assert rather than go off and try to verify the BBs of a function)
-  // But this code is in a good consistent checkpoint-able state.
-  assert(isa<Constant>(V));
+Type *PNaClABITypeChecker::checkTypesInConstant(const Constant *V) {
+  // TODO: blockaddr constexprs cause this code
+  // to assert rather than go off and try to verify the BBs of a function
+  // We may just ban blockaddr constexprs, or maybe just ban them in GVs, which
+  // is really the thing that's streaming-unfriendly. If we end up with more
+  // complex non-type-related rules for constexprs, maybe this could get its
+  // own file.
+  if (!V) return NULL;
   if (VisitedConstants.count(V))
     return VisitedConstants[V];
 
@@ -95,12 +97,29 @@ Type *PNaClABITypeChecker::checkTypesInValue(const Value *V) {
   const User *U = cast<User>(V);
   for (Constant::const_op_iterator I = U->op_begin(),
            E = U->op_end(); I != E; ++I) {
-    Type *Invalid = checkTypesInValue(*I);
+    Type *Invalid = checkTypesInConstant(cast<Constant>(*I));
     if (Invalid) {
       VisitedConstants[V] = Invalid;
       return Invalid;
     }
   }
   VisitedConstants[V] = NULL;
+  return NULL;
+}
+
+
+// MDNodes don't support the same way of iterating over operands that Users do
+Type *PNaClABITypeChecker::checkTypesInMDNode(const MDNode *N) {
+  if (VisitedConstants.count(N))
+    return VisitedConstants[N];
+
+  for (unsigned i = 0, e = N->getNumOperands(); i != e; i++) {
+    if (Value *Op = N->getOperand(i)) {
+      if (Type *Invalid = checkTypesInConstant(dyn_cast<Constant>(Op))) {
+        VisitedConstants[N] = Invalid;
+        return Invalid;
+      }
+    }
+  }
   return NULL;
 }

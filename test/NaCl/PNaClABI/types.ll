@@ -97,3 +97,7 @@ declare half* @badReturn()
 declare void @badArgType1(half %a, i32 %b)
 ; CHECK: Function badArgType2 argument 2 has disallowed type
 declare void @badArgType2(i32 %a, half %b)
+
+; CHECK: Named metadata node namedmd refers to disallowed type
+!0 = metadata !{ half 0.0}
+!namedmd = !{!0}
