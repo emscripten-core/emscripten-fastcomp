@@ -608,11 +608,14 @@ bool X86DAGToDAGISel::FoldOffsetIntoAddress(uint64_t Offset,
         !isDispSafeForFrameIndex(Val))
       return true;
     // LOCALMOD-BEGIN
-    // Do not allow negative displacements to be folded into memory operations.
-    // This results in trying to dereference a negative offset from RZP
+    // Do not fold large offsets into displacements.
+    // Various constant folding and address-mode selections can result in
+    // 32-bit operations (e.g. from GEP) getting folded into the displacement
+    // and often results in a negative value in the index register
+    // (see also LegalizeAddressModeForNaCl)
     else if (Subtarget->isTargetNaCl64() &&
-             AM.BaseType == X86ISelAddressMode::RegBase && Val < 0 &&
-             selectingMemOp)
+             AM.BaseType == X86ISelAddressMode::RegBase &&
+             (Val > 65535 || Val < -65536) && selectingMemOp)
       return true;
     // LOCALMOD-END
   }
