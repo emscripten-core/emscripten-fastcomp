@@ -23,7 +23,6 @@
 #endif
 #include "SRPCStreamer.h"
 
-
 #include <string>
 #include <map>
 #include <vector>
@@ -120,13 +119,58 @@ string_vector* CommandLineFromArgz(char* str, size_t str_len) {
     vec->push_back(entry);
     entry = argz_next(str, str_len, entry);
   }
+  return vec;
+}
+
+void AddFixedArguments(string_vector* vec) {
   // Add fixed arguments to the command line.  These specify the bitcode
   // and object code filenames, removing them from the contract with the
   // coordinator.
   vec->push_back(kBitcodeFilename);
   vec->push_back("-o");
   vec->push_back(kObjectFilename);
-  return vec;
+}
+
+bool AddDefaultCPU(string_vector* vec) {
+#if defined (__pnacl__)
+  switch (__builtin_nacl_target_arch()) {
+    case PnaclTargetArchitectureX86_32: {
+      vec->push_back("-mcpu=pentium4");
+      break;
+    }
+    case PnaclTargetArchitectureX86_64: {
+      vec->push_back("-mcpu=core2");
+      break;
+    }
+    case PnaclTargetArchitectureARM_32: {
+      vec->push_back("-mcpu=cortex-a8");
+      break;
+    }
+    default:
+      printerr("no target architecture match.\n");
+      return false;
+  }
+// Some cases for building this with nacl-gcc.
+#elif defined (__i386__)
+  vec->push_back("-mcpu=pentium4");
+#elif defined (__x86_64__)
+  vec->push_back("-mcpu=core2");
+#elif defined (__arm__)
+  vec->push_back("-mcpu=cortex-a8");
+#error "Unknown architecture"
+#endif
+  return true;
+}
+
+bool HasCPUOverride(string_vector* vec) {
+  std::string mcpu = std::string("-mcpu=");
+  size_t len = mcpu.length();
+  for (size_t i = 0; i < vec->size(); ++i) {
+    std::string prefix = (*vec)[i].substr(0, len);
+    if (prefix.compare(mcpu) == 0)
+      return true;
+  }
+  return false;
 }
 
 string_vector* GetDefaultCommandLine() {
@@ -134,24 +178,16 @@ string_vector* GetDefaultCommandLine() {
   size_t i;
   // First, those common to all architectures.
   static const char* common_args[] = { "pnacl_translator",
-                                       "-filetype=obj",
-                                       kBitcodeFilename,
-                                       "-o",
-                                       kObjectFilename };
+                                       "-filetype=obj" };
   for (i = 0; i < ARRAY_SIZE(common_args); ++i) {
     command_line->push_back(common_args[i]);
   }
   // Then those particular to a platform.
-  static const char* llc_args_x8632[] = { "-march=x86",
-                                          "-mcpu=pentium4",
-                                          "-mtriple=i686-none-nacl-gnu",
+  static const char* llc_args_x8632[] = { "-mtriple=i686-none-nacl-gnu",
                                           NULL };
-  static const char* llc_args_x8664[] = { "-march=x86-64",
-                                          "-mcpu=core2",
-                                          "-mtriple=x86_64-none-nacl-gnu",
+  static const char* llc_args_x8664[] = { "-mtriple=x86_64-none-nacl-gnu",
                                           NULL };
-  static const char* llc_args_arm[] = { "-mcpu=cortex-a8",
-                                        "-mtriple=armv7a-none-nacl-gnueabi",
+  static const char* llc_args_arm[] = { "-mtriple=armv7a-none-nacl-gnueabi",
                                         "-arm-reserve-r9",
                                         "-sfi-disable-cp",
                                         "-sfi-store",
@@ -181,15 +217,17 @@ string_vector* GetDefaultCommandLine() {
     default:
       printerr("no target architecture match.\n");
       delete command_line;
-      command_line = NULL;
-      break;
+      return NULL;
   }
+// Some cases for building this with nacl-gcc.
 #elif defined (__i386__)
   llc_args = llc_args_x8632;
 #elif defined (__x86_64__)
   llc_args = llc_args_x8664;
+#elif defined (__arm__)
+  llc_args = llc_args_arm;
 #else
-#error
+#error "Unknown architecture"
 #endif
   for (i = 0; llc_args[i] != NULL; i++) command_line->push_back(llc_args[i]);
   return command_line;
@@ -253,7 +291,15 @@ void stream_init(NaClSrpcRpc *rpc,
                  NaClSrpcClosure *done) {
   // cmd_line_vec allocated by GetDefaultCommandLine() is freed by the
   // translation thread in run_streamed()
-  do_stream_init(rpc, in_args, out_args, done, GetDefaultCommandLine());
+  string_vector* cmd_line_vec = GetDefaultCommandLine();
+  if (!cmd_line_vec || !AddDefaultCPU(cmd_line_vec)) {
+    NaClSrpcClosureRunner runner(done);
+    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
+    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
+    return;
+  }
+  AddFixedArguments(cmd_line_vec);
+  do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
 }
 
 // Invoked by StreamInitWithCommandLine RPC. Same as stream_init, but
@@ -266,7 +312,40 @@ void stream_init_with_command_line(NaClSrpcRpc *rpc,
   size_t command_line_len = in_args[1]->u.count;
   string_vector* cmd_line_vec =
       CommandLineFromArgz(command_line, command_line_len);
+  AddFixedArguments(cmd_line_vec);
   // cmd_line_vec is freed by the translation thread in run_streamed
+  do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
+}
+
+// Invoked by StreamInitWithOverrides RPC. Same as stream_init, but
+// provides commandline flag overrides (appended to the default).
+void stream_init_with_overrides(NaClSrpcRpc *rpc,
+                                NaClSrpcArg **in_args,
+                                NaClSrpcArg **out_args,
+                                NaClSrpcClosure *done) {
+  string_vector* cmd_line_vec = GetDefaultCommandLine();
+  if (!cmd_line_vec) {
+    NaClSrpcClosureRunner runner(done);
+    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
+    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
+    return;
+  }
+  AddFixedArguments(cmd_line_vec);
+
+  char* command_line = in_args[1]->arrays.carr;
+  size_t command_line_len = in_args[1]->u.count;
+  llvm::OwningPtr<string_vector> extra_vec(
+      CommandLineFromArgz(command_line, command_line_len));
+  cmd_line_vec->insert(cmd_line_vec->end(),
+                       extra_vec->begin(), extra_vec->end());
+  // Make sure some -mcpu override exists for now to prevent
+  // auto-cpu feature detection from triggering instructions that
+  // we do not validate yet.
+  if (!HasCPUOverride(extra_vec.get())) {
+    AddDefaultCPU(cmd_line_vec);
+  }
+  extra_vec.reset(NULL);
+  // cmd_line_vec is freed by the translation thread in run_streamed.
   do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
 }
 
@@ -318,6 +397,7 @@ const struct NaClSrpcHandlerDesc srpc_methods[] = {
   // StreamEnd() -> (is_shared_lib,soname,dependencies,error_str)
   { "StreamInit:h:s", stream_init },
   { "StreamInitWithCommandLine:hC:s:", stream_init_with_command_line },
+  { "StreamInitWithOverrides:hC:s:", stream_init_with_overrides },
   { "StreamChunk:C:", stream_chunk },
   { "StreamEnd::isss", stream_end },
   { NULL, NULL },
