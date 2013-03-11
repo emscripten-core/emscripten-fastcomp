@@ -533,13 +533,6 @@ def i64i8imm   : Operand<i64> {
   let OperandType = "OPERAND_IMMEDIATE";
 }
 
-// @LOCALMOD
-def lea64mem : Operand<i64> {
-  let PrintMethod = "printi64mem";
-  let MIOperandInfo = (ops GR64, i8imm, GR64_NOSP, i32imm, i8imm);
-  let ParserMatchClass = X86MemAsmOperand;
-}
-
 def lea64_32mem : Operand<i32> {
   let PrintMethod = "printi32mem";
   let AsmOperandLowerMethod = "lower_lea64_32mem";
@@ -562,8 +555,7 @@ def lea64mem : Operand<i64> {
 // Define X86 specific addressing mode.
 def addr      : ComplexPattern<iPTR, 5, "SelectAddr", [], [SDNPWantParent]>;
 def lea32addr : ComplexPattern<i32, 5, "SelectLEAAddr",
-                               [add, sub, mul, X86mul_imm, shl, or, frameindex,
-                               X86WrapperRIP], // @LOCALMOD
+                               [add, sub, mul, X86mul_imm, shl, or, frameindex],
                                []>;
 // In 64-bit mode 32-bit LEAs can use RIP-relative addressing.
 def lea64_32addr : ComplexPattern<i32, 5, "SelectLEAAddr",

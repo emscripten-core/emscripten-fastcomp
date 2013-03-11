@@ -352,16 +352,6 @@ void TargetPassConfig::addIRPasses() {
   addPass(createTypeBasedAliasAnalysisPass());
   addPass(createBasicAliasAnalysisPass());
 
-  // @LOCALMOD-START
-  addPass(createNaClCcRewritePass(TM->getTargetLowering()));
-  // TODO: consider adding a cleanup pass, e.g. constant propagation
-  // Note: we run this before the verfier step because it may cause
-  // a *temporary* inconsistency:
-  //   A function may have been rewritting before we are rewriting
-  //   its callers - which would lead to a parameter mismatch complaint
-  //   from the verifier.
-  // @LOCALMOD-END
-
   // Before running any passes, run the verifier to determine if the input
   // coming from the front-end and/or optimizer is valid.
   if (!DisableVerify)

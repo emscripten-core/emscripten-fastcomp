@@ -239,9 +239,8 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
   AttrBuilder B;
   B.addAttribute(Attribute::ReadOnly);
   B.addAttribute(Attribute::NoUnwind);
-  AttributeSet ReadTpAttrs = AttributeSet().addAttr(
-      M.getContext(), AttributeSet::FunctionIndex,
-      Attribute::get(M.getContext(), B));
+  AttributeSet ReadTpAttrs = AttributeSet::get(
+      M.getContext(), AttributeSet::FunctionIndex, B);
   Constant *ReadTpFunc = M.getOrInsertTargetIntrinsic("llvm.nacl.read.tp",
                                                       ReadTpType,
                                                       ReadTpAttrs);

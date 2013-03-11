@@ -70,7 +70,6 @@ namespace {
       return "Mips Delay Slot Filler";
     }
 
-    bool runOnMachineBasicBlock(MachineBasicBlock &MBB);
     bool runOnMachineFunction(MachineFunction &F) {
       if (SkipDelaySlotFiller)
         return false;
@@ -169,7 +168,6 @@ bool RegDefsUses::isRegInSet(const BitVector &RegSet, unsigned Reg) const {
 /// We assume there is only one delay slot per delayed instruction.
 bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
-  LastFiller = MBB.instr_end();
 
   for (Iter I = MBB.begin(); I != MBB.end(); ++I) {
     if (!I->hasDelaySlot())
@@ -192,7 +190,6 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   }
 
   return Changed;
-
 }
 
 /// createMipsDelaySlotFillerPass - Returns a pass that fills in delay
@@ -206,11 +203,9 @@ extern bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx);
 extern bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx);
 // @LOCALMOD-END
 
-bool Filler::findDelayInstr(MachineBasicBlock &MBB,
-                            InstrIter slot,
-                            InstrIter &Filler) {
-  SmallSet<unsigned, 32> RegDefs;
-  SmallSet<unsigned, 32> RegUses;
+bool Filler::findDelayInstr(MachineBasicBlock &MBB, Iter Slot,
+                            Iter &Filler) const {
+  RegDefsUses RegDU(TM);
 
   RegDU.init(*Slot);
 
@@ -223,17 +218,22 @@ bool Filler::findDelayInstr(MachineBasicBlock &MBB,
       continue;
 
     // @LOCALMOD-START - Don't put in delay slot instructions that could be masked.
-    int Dummy;
-    if (terminateSearch(*I) || (Triple(TM.getTargetTriple()).isOSNaCl() &&
-                                (IsDangerousLoad(*FI, &Dummy)
-                                || IsDangerousStore(*FI, &Dummy)
-                                || FI->modifiesRegister(Mips::SP, TM.getRegisterInfo()))))
-      break;
-    // @LOCALMOD-END
     //
     // Should not allow:
     // ERET, DERET or WAIT, PAUSE. Need to add these to instruction
     // list. TBD.
+    if (Triple(TM.getTargetTriple()).isOSNaCl()) {
+      int Dummy;
+      Iter FI(llvm::next(I).base());
+      if (terminateSearch(*I) || (IsDangerousLoad(*FI, &Dummy)
+                              || IsDangerousStore(*FI, &Dummy)
+                              || FI->modifiesRegister(Mips::SP, TM.getRegisterInfo())))
+        break;
+    } else {
+      if (terminateSearch(*I))
+        break;
+    }
+    // @LOCALMOD-END
 
     if (delayHasHazard(*I, SawLoad, SawStore, RegDU))
       continue;

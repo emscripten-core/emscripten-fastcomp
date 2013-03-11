@@ -13,11 +13,11 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "mips-asm-printer"
-#include "MipsAsmPrinter.h"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
 #include "MCTargetDesc/MipsELFStreamer.h"
 #include "Mips.h"
+#include "MipsAsmPrinter.h"
 #include "MipsInstrInfo.h"
 #include "MipsMCInstLower.h"
 #include "llvm/ADT/SmallString.h"
@@ -67,7 +67,7 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     return;
   }
 
-  // @LOCALMOD-START
+  // @LOCALMOD-BEGIN:
   // Do any auto-generated pseudo lowerings.
   if (emitPseudoExpansionLowering(OutStreamer, MI))
     return;
@@ -81,15 +81,8 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     if (emitPseudoExpansionLowering(OutStreamer, &*I))
       continue;
 
-    // The inMips16Mode() test is not permanent.
-    // Some instructions are marked as pseudo right now which
-    // would make the test fail for the wrong reason but
-    // that will be fixed soon. We need this here because we are
-    // removing another test for this situation downstream in the
-    // callchain.
-    //
-    if (I->isPseudo() && !Subtarget->inMips16Mode())
-      llvm_unreachable("Pseudo opcode found in EmitInstruction()");
+    // @LOCALMOD: the I->isPseudo() assertion here has been removed because
+    // we may have SFI pseudos in I.
 
     MCInst TmpInst0;
     MCInstLowering.Lower(I, TmpInst0);

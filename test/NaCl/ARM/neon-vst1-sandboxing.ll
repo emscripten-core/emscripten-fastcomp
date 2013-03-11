@@ -5,7 +5,7 @@ define void @vst1i8(i8* %A, <8 x i8>* %B) nounwind {
   %tmp1 = load <8 x i8>* %B
   call void @llvm.arm.neon.vst1.v8i8(i8* %A, <8 x i8> %tmp1, i32 16)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vst1.8 {{{d[0-9]+}}}, [r0, :64]
+; CHECK-NEXT:    vst1.8 {{{d[0-9]+}}}, [r0:64]
   ret void
 }
 
@@ -51,7 +51,7 @@ define void @vst1Qi8(i8* %A, <16 x i8>* %B) nounwind {
 ; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst1.v16i8(i8* %A, <16 x i8> %tmp1, i32 8)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vst1.8 {d{{[0-9]+}}, d{{[0-9]+}}}, [r0, :64]
+; CHECK-NEXT:    vst1.8 {d{{[0-9]+}}, d{{[0-9]+}}}, [r0:64]
   ret void
 }
 
@@ -62,7 +62,7 @@ define void @vst1Qi16(i16* %A, <8 x i16>* %B) nounwind {
 ; CHECK-NEXT:    vld1.32 {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]
   call void @llvm.arm.neon.vst1.v8i16(i8* %tmp0, <8 x i16> %tmp1, i32 32)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vst1.16 {{{d[0-9]+, d[0-9]+}}}, [r0, :128]
+; CHECK-NEXT:    vst1.16 {{{d[0-9]+, d[0-9]+}}}, [r0:128]
   ret void
 }
 

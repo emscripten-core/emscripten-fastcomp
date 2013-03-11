@@ -29,7 +29,7 @@ define <8 x i8> @vld3i8(i32 %foobar, i32 %ba, i8* %A) nounwind {
   %tmp3 = extractvalue %struct.__neon_int8x8x3_t %tmp1, 2
   %tmp4 = add <8 x i8> %tmp2, %tmp3
 ; CHECK:         bic r2, r2, #3221225472
-; CHECK-NEXT:    vld3.8 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r2, :64]
+; CHECK-NEXT:    vld3.8 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r2:64]
   ret <8 x i8> %tmp4
 }
 
@@ -62,7 +62,7 @@ define <1 x i64> @vld3i64(i64* %A) nounwind {
   %tmp3 = extractvalue %struct.__neon_int64x1x3_t %tmp1, 2
   %tmp4 = add <1 x i64> %tmp2, %tmp3
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.64 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r0, :64]
+; CHECK-NEXT:    vld1.64 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r0:64]
   ret <1 x i64> %tmp4
 }
 
@@ -72,7 +72,7 @@ define <16 x i8> @vld3Qi8(i8* %A) nounwind {
   %tmp3 = extractvalue %struct.__neon_int8x16x3_t %tmp1, 2
   %tmp4 = add <16 x i8> %tmp2, %tmp3
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld3.8 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r0, :64]!
+; CHECK-NEXT:    vld3.8 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r0:64]!
   ret <16 x i8> %tmp4
 }
 

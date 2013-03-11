@@ -69,7 +69,7 @@ define <4 x i16> @vld1lanei16(i16* %A, <4 x i16>* %B) nounwind {
   %tmp2 = load i16* %A, align 8
   %tmp3 = insertelement <4 x i16> %tmp1, i16 %tmp2, i32 2
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.16 {{{d[0-9]+\[[0-9]\]}}}, [r0, :16]
+; CHECK-NEXT:    vld1.16 {{{d[0-9]+\[[0-9]\]}}}, [r0:16]
   ret <4 x i16> %tmp3
 }
 
@@ -78,7 +78,7 @@ define <2 x i32> @vld1lanei32(i32* %A, <2 x i32>* %B) nounwind {
   %tmp2 = load i32* %A, align 8
   %tmp3 = insertelement <2 x i32> %tmp1, i32 %tmp2, i32 1
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.32 {{{d[0-9]+\[[0-9]\]}}}, [r0, :32]
+; CHECK-NEXT:    vld1.32 {{{d[0-9]+\[[0-9]\]}}}, [r0:32]
   ret <2 x i32> %tmp3
 }
 
@@ -96,7 +96,7 @@ define <8 x i16> @vld1laneQi16(i16* %A, <8 x i16>* %B) nounwind {
   %tmp2 = load i16* %A, align 8
   %tmp3 = insertelement <8 x i16> %tmp1, i16 %tmp2, i32 5
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.16 {{{d[0-9]+\[[0-9]\]}}}, [r0, :16]
+; CHECK-NEXT:    vld1.16 {{{d[0-9]+\[[0-9]\]}}}, [r0:16]
   ret <8 x i16> %tmp3
 }
 
@@ -105,7 +105,7 @@ define <4 x i32> @vld1laneQi32(i32* %A, <4 x i32>* %B) nounwind {
   %tmp2 = load i32* %A, align 8
   %tmp3 = insertelement <4 x i32> %tmp1, i32 %tmp2, i32 3
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.32 {{{d[0-9]+\[[0-9]\]}}}, [r0, :32]
+; CHECK-NEXT:    vld1.32 {{{d[0-9]+\[[0-9]\]}}}, [r0:32]
   ret <4 x i32> %tmp3
 }
 
@@ -116,7 +116,7 @@ define <8 x i8> @vld2lanei8(i8* %A, <8 x i8>* %B) nounwind {
   %tmp4 = extractvalue %struct.__neon_int8x8x2_t %tmp2, 1
   %tmp5 = add <8 x i8> %tmp3, %tmp4
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld2.8 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0, :16]
+; CHECK-NEXT:    vld2.8 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0:16]
   ret <8 x i8> %tmp5
 }
 
@@ -128,7 +128,7 @@ define <4 x i16> @vld2lanei16(i16* %A, <4 x i16>* %B) nounwind {
   %tmp4 = extractvalue %struct.__neon_int16x4x2_t %tmp2, 1
   %tmp5 = add <4 x i16> %tmp3, %tmp4
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld2.16 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0, :32]
+; CHECK-NEXT:    vld2.16 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0:32]
   ret <4 x i16> %tmp5
 }
 
@@ -165,7 +165,7 @@ define <4 x i32> @vld2laneQi32(i32* %A, <4 x i32>* %B) nounwind {
   %tmp4 = extractvalue %struct.__neon_int32x4x2_t %tmp2, 1
   %tmp5 = add <4 x i32> %tmp3, %tmp4
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld2.32 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0, :64]
+; CHECK-NEXT:    vld2.32 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0:64]
   ret <4 x i32> %tmp5
 }
 
@@ -249,7 +249,7 @@ define <8 x i8> @vld4lanei8(i8* %A, <8 x i8>* %B) nounwind {
   %tmp8 = add <8 x i8> %tmp5, %tmp6
   %tmp9 = add <8 x i8> %tmp7, %tmp8
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld4.8 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0, :32]
+; CHECK-NEXT:    vld4.8 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0:32]
   ret <8 x i8> %tmp9
 }
 
@@ -281,7 +281,7 @@ define <2 x i32> @vld4lanei32(i32* %A, <2 x i32>* %B) nounwind {
   %tmp8 = add <2 x i32> %tmp5, %tmp6
   %tmp9 = add <2 x i32> %tmp7, %tmp8
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld4.32 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0, :64]
+; CHECK-NEXT:    vld4.32 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0:64]
   ret <2 x i32> %tmp9
 }
 
@@ -297,7 +297,7 @@ define <8 x i16> @vld4laneQi16(i16* %A, <8 x i16>* %B) nounwind {
   %tmp8 = add <8 x i16> %tmp5, %tmp6
   %tmp9 = add <8 x i16> %tmp7, %tmp8
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld4.16 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0, :64]
+; CHECK-NEXT:    vld4.16 {{{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}, {{d[0-9]+\[[0-9]\]}}}, [r0:64]
   ret <8 x i16> %tmp9
 }
 

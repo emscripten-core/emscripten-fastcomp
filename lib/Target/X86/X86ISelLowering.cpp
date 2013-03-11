@@ -1695,20 +1695,21 @@ X86TargetLowering::LowerReturn(SDValue Chain,
            "SRetReturnReg should have been set in LowerFormalArguments().");
     SDValue Val = DAG.getCopyFromReg(Chain, dl, Reg, getPointerTy());
 
-    // @LOCALMOD-START
+    unsigned RetValReg = Subtarget->isTarget64BitILP32() ? X86::EAX : X86::RAX;
+    // @LOCALMOD-BEGIN
     if (Subtarget->isTargetNaCl()) {
       // NaCl 64 uses 32-bit pointers, so there might be some zero-ext needed.
       SDValue Zext = DAG.getZExtOrTrunc(Val, dl, MVT::i64);
       Chain = DAG.getCopyToReg(Chain, dl, X86::RAX, Zext, Flag);
     } else {
-      Chain = DAG.getCopyToReg(Chain, dl, X86::RAX, Val, Flag);
+      Chain = DAG.getCopyToReg(Chain, dl, RetValReg, Val, Flag);
     }
     // @LOCALMOD-END
 
     Flag = Chain.getValue(1);
 
-    // RAX now acts like a return value.
-    MRI.addLiveOut(X86::RAX);
+    // RAX/EAX now acts like a return value.
+    RetOps.push_back(DAG.getRegister(RetValReg, MVT::i64));
   }
 
   RetOps[0] = Chain;  // Update chain.
@@ -2068,9 +2069,8 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
     X86MachineFunctionInfo *FuncInfo = MF.getInfo<X86MachineFunctionInfo>();
     unsigned Reg = FuncInfo->getSRetReturnReg();
     if (!Reg) {
-      // @LOCALMOD
-      Reg = MF.getRegInfo().createVirtualRegister(
-          getRegClassFor(getPointerTy()));
+      MVT PtrTy = getPointerTy();
+      Reg = MF.getRegInfo().createVirtualRegister(getRegClassFor(PtrTy));
       FuncInfo->setSRetReturnReg(Reg);
     }
     SDValue Copy = DAG.getCopyToReg(DAG.getEntryNode(), dl, Reg, InVals[0]);
@@ -2684,8 +2684,7 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // This isn't right, although it's probably harmless on x86; liveouts
     // should be computed from returns not tail calls.  Consider a void
     // function making a tail call to a function returning int.
-    return DAG.getNode(X86ISD::TC_RETURN, dl,
-                       NodeTys, &Ops[0], Ops.size());
+    return DAG.getNode(X86ISD::TC_RETURN, dl, NodeTys, &Ops[0], Ops.size());
   }
 
   Chain = DAG.getNode(X86ISD::CALL, dl, NodeTys, &Ops[0], Ops.size());
@@ -7634,8 +7633,8 @@ X86TargetLowering::LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const {
 static SDValue
 GetTLSADDR(SelectionDAG &DAG, SDValue Chain, GlobalAddressSDNode *GA,
            SDValue *InFlag, const EVT PtrVT, unsigned ReturnReg,
-           unsigned char OperandFlags,
-           unsigned Opcode = X86ISD::TLSADDR) { // @LOCALMOD
+           unsigned char OperandFlags, bool LocalDynamic = false,
+           unsigned Opcode = ISD::DELETED_NODE) { // @LOCALMOD
   MachineFrameInfo *MFI = DAG.getMachineFunction().getFrameInfo();
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
   DebugLoc dl = GA->getDebugLoc();
@@ -7644,15 +7643,22 @@ GetTLSADDR(SelectionDAG &DAG, SDValue Chain, GlobalAddressSDNode *GA,
                                            GA->getOffset(),
                                            OperandFlags);
 
-  X86ISD::NodeType CallType = LocalDynamic ? X86ISD::TLSBASEADDR
-                                           : X86ISD::TLSADDR;
+  // @LOCALMOD - changed type for casting
+  unsigned CallType = LocalDynamic ? X86ISD::TLSBASEADDR
+                                   : X86ISD::TLSADDR;
+
+  // @LOCALMOD-START
+  // If Opcode was explicitly overridden, use it as the call type.
+  if (Opcode != ISD::DELETED_NODE)
+    CallType = Opcode;
+  // @LOCALMOD-END
 
   if (InFlag) {
     SDValue Ops[] = { Chain,  TGA, *InFlag };
-    Chain = DAG.getNode(Opcode, dl, NodeTys, Ops, 3); // @LOCALMOD
+    Chain = DAG.getNode(CallType, dl, NodeTys, Ops, 3);
   } else {
     SDValue Ops[]  = { Chain, TGA };
-    Chain = DAG.getNode(Opcode, dl, NodeTys, Ops, 2); // @LOCALMOD
+    Chain = DAG.getNode(CallType, dl, NodeTys, Ops, 2);
   }
 
   // TLSADDR will be codegen'ed as call. Inform MFI that function has calls.
@@ -7704,7 +7710,7 @@ LowerToTLSExecCall(GlobalAddressSDNode *GA, SelectionDAG &DAG,
 
   return GetTLSADDR(DAG, DAG.getEntryNode(), GA, NULL, PtrVT,
                     X86::EAX, // PtrVT is 32-bit.
-                    TargetFlag, Opcode);
+                    TargetFlag, false, Opcode);
 }
 
 // @LOCALMOD-START
@@ -7726,7 +7732,7 @@ LowerToTLSNaCl64(GlobalAddressSDNode *GA, SelectionDAG &DAG,
 
   return GetTLSADDR(DAG, DAG.getEntryNode(), GA, NULL, PtrVT,
                     X86::EAX, // PtrVT is 32-bit.
-                    TargetFlag, Opcode);
+                    TargetFlag, false, Opcode);
 }
 // @LOCALMOD-END
 
@@ -7851,7 +7857,7 @@ X86TargetLowering::LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const {
       case TLSModel::InitialExec:
       case TLSModel::LocalExec:
         // @LOCALMOD-START
-        if (llvm::TLSUseCall) {
+        if (llvm::TLSUseCall && Subtarget->isTargetNaCl()) {
           return LowerToTLSExecCall(GA, DAG, getPointerTy(), model,
                                     Subtarget->is64Bit());
         } else {

@@ -5,7 +5,7 @@ define void @vst3i8(i8* %A, <8 x i8>* %B) nounwind {
   %tmp1 = load <8 x i8>* %B
   call void @llvm.arm.neon.vst3.v8i8(i8* %A, <8 x i8> %tmp1, <8 x i8> %tmp1, <8 x i8> %tmp1, i32 32)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vst3.8 {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r0, :64]
+; CHECK-NEXT:    vst3.8 {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r0:64]
   ret void
 }
 

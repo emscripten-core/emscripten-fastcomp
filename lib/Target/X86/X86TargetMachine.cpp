@@ -45,8 +45,7 @@ X86_32TargetMachine::X86_32TargetMachine(const Target &T, StringRef TT,
                "n8:16:32-S32" :
                getSubtargetImpl()->isTargetNaCl() ? // @LOCALMOD
                "e-p:32:32-s:32-f64:64:64-f32:32:32-f80:128:128-i64:64:64-n8:16:32-S128" :
-               "e-p:32:32-f64:32:64-i64:32:64-f80:32:32-f128:128:128-"
-               "n8:16:32-S128"),
+               "e-p:32:32-f64:32:64-i64:32:64-f80:32:32-f128:128:128-n8:16:32-S128"),
     InstrInfo(*this),
     TLInfo(*this),
     TSInfo(*this),
@@ -63,9 +62,11 @@ X86_64TargetMachine::X86_64TargetMachine(const Target &T, StringRef TT,
   : X86TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true),
     DL(getSubtargetImpl()->isTargetNaCl() ? // @LOCALMOD
                "e-p:32:32-s:64-f64:64:64-f32:32:32-f80:128:128-i64:64:64-"
-               "n8:16:32:64-S128" :
-               "e-p:64:64-s:64-f64:64:64-i64:64:64-f80:128:128-f128:128:128-"
-               "n8:16:32:64-S128"),
+               "n8:16:32:64-S128" : (getSubtargetImpl()->isTarget64BitILP32() ?
+                    "e-p:32:32-s:64-f64:64:64-i64:64:64-f80:128:128-f128:128:128-"
+                    "n8:16:32:64-S128" :
+                    "e-p:64:64-s:64-f64:64:64-i64:64:64-f80:128:128-f128:128:128-"
+                    "n8:16:32:64-S128")),
     InstrInfo(*this),
     TLInfo(*this),
     TSInfo(*this),
@@ -156,6 +157,7 @@ public:
   }
 
   virtual bool addInstSelector();
+  virtual bool addILPOpts();
   virtual bool addPreRegAlloc();
   virtual bool addPostRegAlloc();
   virtual bool addPreEmitPass();

@@ -112,6 +112,7 @@ void MipsNaClRewritePass::SandboxStackChange(MachineBasicBlock &MBB,
 
   // Get to next instr (one + to get the original, and one more + to get past).
   MachineBasicBlock::iterator MBBINext = (MBBI++);
+  (void) MBBINext;
   MachineBasicBlock::iterator MBBINext2 = (MBBI++);
 
   BuildMI(MBB, MBBINext2, MI.getDebugLoc(),

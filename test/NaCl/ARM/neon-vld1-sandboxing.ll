@@ -4,7 +4,7 @@
 define <8 x i8> @vld1i8(i8* %A) nounwind {
   %tmp1 = call <8 x i8> @llvm.arm.neon.vld1.v8i8(i8* %A, i32 16)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}}, [r0, :64]
+; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}}, [r0:64]
   ret <8 x i8> %tmp1
 }
 
@@ -39,7 +39,7 @@ define <1 x i64> @vld1i64(i32 %foo, i32 %bar, i32 %baz,
 define <16 x i8> @vld1Qi8(i8* %A) nounwind {
   %tmp1 = call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %A, i32 8)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}, {{d[0-9]+}}}, [r0, :64]
+; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}, {{d[0-9]+}}}, [r0:64]
   ret <16 x i8> %tmp1
 }
 
@@ -47,7 +47,7 @@ define <8 x i16> @vld1Qi16(i16* %A) nounwind {
   %tmp0 = bitcast i16* %A to i8*
   %tmp1 = call <8 x i16> @llvm.arm.neon.vld1.v8i16(i8* %tmp0, i32 32)
 ; CHECK:         bic r0, r0, #3221225472
-; CHECK-NEXT:    vld1.16 {{{d[0-9]+}}, {{d[0-9]+}}}, [r0, :128]
+; CHECK-NEXT:    vld1.16 {{{d[0-9]+}}, {{d[0-9]+}}}, [r0:128]
   ret <8 x i16> %tmp1
 }
 
@@ -83,7 +83,7 @@ define <16 x i8> @vld1Qi8_update(i8** %ptr) nounwind {
   %A = load i8** %ptr
   %tmp1 = call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %A, i32 8)
 ; CHECK:         bic r1, r1, #3221225472
-; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}, {{d[0-9]+}}}, [r1, :64]!
+; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}, {{d[0-9]+}}}, [r1:64]!
   %tmp2 = getelementptr i8* %A, i32 16
   store i8* %tmp2, i8** %ptr
   ret <16 x i8> %tmp1

@@ -164,4 +164,3 @@ void MipsMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
   }
 }
 
-

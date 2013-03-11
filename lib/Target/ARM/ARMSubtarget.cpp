@@ -74,7 +74,7 @@ void ARMSubtarget::initializeEnvironment() {
   HasVFPv4 = false;
   HasNEON = false;
   UseNEONForSinglePrecisionFP = false;
-  UseInlineJumpTables(!NoInlineJumpTables);
+  UseInlineJumpTables = !NoInlineJumpTables;
   UseMulOps = UseFusedMulOps;
   SlowFPVMLx = false;
   HasVMLxForwarding = false;

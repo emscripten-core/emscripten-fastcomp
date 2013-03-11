@@ -77,18 +77,21 @@ X86_64MCAsmInfoDarwin::X86_64MCAsmInfoDarwin(const Triple &Triple)
 void X86ELFMCAsmInfo::anchor() { }
 
 X86ELFMCAsmInfo::X86ELFMCAsmInfo(const Triple &T) {
-  // @LOCALMOD-BEGIN s/gnux32/nacl/
   bool is64Bit = T.getArch() == Triple::x86_64;
+  bool isX32 = T.getEnvironment() == Triple::GNUX32;
+
+  // @LOCALMOD-BEGIN(eliben)
+  // Until Nacl implies x32, we add &&!isNaCl in the PointerSize condition
   bool isNaCl = T.isOSNaCl();
 
   // For ELF, x86-64 pointer size depends on the ABI.
   // For x86-64 without the x32 ABI, pointer size is 8. For x86 and for x86-64
   // with the x32 ABI, pointer size remains the default 4.
-  PointerSize = (is64Bit && !isNaCl) ? 8 : 4;
+  PointerSize = (is64Bit && !isX32 && !isNaCl) ? 8 : 4;
+  // @LOCALMOD-END
 
   // OTOH, stack slot size is always 8 for x86-64, even with the x32 ABI.
   CalleeSaveStackSlotSize = is64Bit ? 8 : 4;
-  // @LOCALMOD-END
 
   AssemblerDialect = AsmWriterFlavor;
 

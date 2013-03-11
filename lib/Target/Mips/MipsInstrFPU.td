@@ -319,23 +319,23 @@ let Predicates = [NotN64, NotMips64, HasStdEnc] in {
 }
 
 // Indexed loads and stores.
-let Predicates = [HasFPIdx, IsNotNaCl/*@LOCALMOD*/] in {
+let Predicates = [HasFPIdx, HasStdEnc, IsNotNaCl/*@LOCALMOD*/] in {
   def LWXC1 : LWXC1_FT<"lwxc1", FGR32, CPURegs, IILoad, load>, LWXC1_FM<0>;
   def SWXC1 : SWXC1_FT<"swxc1", FGR32, CPURegs, IIStore, store>, SWXC1_FM<8>;
 }
 
-let Predicates = [HasMips32r2, NotMips64, IsNotNaCl/*@LOCALMOD*/] in {
+let Predicates = [HasMips32r2, NotMips64, HasStdEnc, IsNotNaCl/*@LOCALMOD*/] in {
   def LDXC1 : LWXC1_FT<"ldxc1", AFGR64, CPURegs, IILoad, load>, LWXC1_FM<1>;
   def SDXC1 : SWXC1_FT<"sdxc1", AFGR64, CPURegs, IIStore, store>, SWXC1_FM<9>;
 }
 
-let Predicates = [HasMips64, NotN64, IsNotNaCl/*@LOCALMOD*/], DecoderNamespace="Mips64" in {
+let Predicates = [HasMips64, NotN64, HasStdEnc, IsNotNaCl/*@LOCALMOD*/], DecoderNamespace="Mips64" in {
   def LDXC164 : LWXC1_FT<"ldxc1", FGR64, CPURegs, IILoad, load>, LWXC1_FM<1>;
   def SDXC164 : SWXC1_FT<"sdxc1", FGR64, CPURegs, IIStore, store>, SWXC1_FM<9>;
 }
 
 // n64
-let Predicates = [IsN64, IsNotNaCl/*@LOCALMOD*/], isCodeGenOnly=1 in {
+let Predicates = [IsN64, HasStdEnc, IsNotNaCl/*@LOCALMOD*/], isCodeGenOnly=1 in {
   def LWXC1_P8 : LWXC1_FT<"lwxc1", FGR32, CPU64Regs, IILoad, load>, LWXC1_FM<0>;
   def LDXC164_P8 : LWXC1_FT<"ldxc1", FGR64, CPU64Regs, IILoad, load>,
                    LWXC1_FM<1>;

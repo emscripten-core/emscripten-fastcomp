@@ -176,7 +176,8 @@ void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
 
 void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
   // @LOCALMOD-BEGIN
-  if (getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
+  if (getAssembler().isBundlingEnabled() &&
+      getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
     return;
   }
   // @LOCALMOD-END
