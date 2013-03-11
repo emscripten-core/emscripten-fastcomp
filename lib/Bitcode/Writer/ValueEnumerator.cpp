@@ -418,14 +418,25 @@ void ValueEnumerator::EnumerateOperandType(const Value *V) {
     EnumerateMetadata(V);
 }
 
-void ValueEnumerator::EnumerateAttributes(const AttributeSet &PAL) {
+void ValueEnumerator::EnumerateAttributes(AttributeSet PAL) {
   if (PAL.isEmpty()) return;  // null is always 0.
+
   // Do a lookup.
-  unsigned &Entry = AttributeMap[PAL.getRawPointer()];
+  unsigned &Entry = AttributeMap[PAL];
   if (Entry == 0) {
     // Never saw this before, add it.
     Attribute.push_back(PAL);
     Entry = Attribute.size();
+  }
+
+  // Do lookups for all attribute groups.
+  for (unsigned i = 0, e = PAL.getNumSlots(); i != e; ++i) {
+    AttributeSet AS = PAL.getSlotAttributes(i);
+    unsigned &Entry = AttributeGroupMap[AS];
+    if (Entry == 0) {
+      AttributeGroups.push_back(AS);
+      Entry = AttributeGroups.size();
+    }
   }
 }
 

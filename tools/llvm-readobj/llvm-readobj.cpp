@@ -7,14 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This program is a utility that works like traditional Unix "readelf",
-// except that it can handle any type of object file recognized by lib/Object.
+// This is a tool similar to readelf, except it works on multiple object file
+// formats. The main purpose of this tool is to provide detailed output suitable
+// for FileCheck.
 //
-// It makes use of the generic ObjectFile interface.
+// Flags should be similar to readelf where supported, but the output format
+// does not need to be identical. The point is to not make users learn yet
+// another set of flags.
 //
-// Caution: This utility is new, experimental, unsupported, and incomplete.
+// Output should be specialized for each format where appropriate.
 //
 //===----------------------------------------------------------------------===//
+
+#include "llvm-readobj.h"
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/Verifier.h"
@@ -237,7 +242,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  ObjectFile *obj = ObjectFile::createObjectFile(File.take());
+  OwningPtr<ObjectFile> o(ObjectFile::createObjectFile(File.take()));
+  ObjectFile *obj = o.get();
   if (!obj) {
     errs() << InputFilename << ": Object type not recognized\n";
   }
@@ -258,6 +264,13 @@ int main(int argc, char** argv) {
   dumpSectionHeader();
   dump(obj, &dumpSection, obj->begin_sections(), obj->end_sections(),
        "Section iteration failed");
+
+  if (obj->isELF()) {
+    if (ErrorOr<void> e = dumpELFDynamicTable(obj, outs()))
+      ;
+    else
+      errs() << "InputFilename" << ": " << error_code(e).message() << "\n";
+  }
 
   outs() << "Libraries needed:\n";
   dump(obj, &dumpLibrary, obj->begin_libraries_needed(),

@@ -17,9 +17,9 @@
 #define LLVM_OBJECT_RELOCVISITOR_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Object/ELF.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ELF.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
@@ -76,7 +76,34 @@ public:
         HasError = true;
         return RelocToApply();
       }
+    } else if (FileFormat == "ELF64-ppc64") {
+      switch (RelocType) {
+      case llvm::ELF::R_PPC64_ADDR32:
+        return visitELF_PPC64_ADDR32(R, Value);
+      default:
+        HasError = true;
+        return RelocToApply();
+      }
+    } else if (FileFormat == "ELF32-mips") {
+      switch (RelocType) {
+      case llvm::ELF::R_MIPS_32:
+        return visitELF_MIPS_32(R, Value);
+      default:
+        HasError = true;
+        return RelocToApply();
+      }
+    } else if (FileFormat == "ELF64-aarch64") {
+      switch (RelocType) {
+      case llvm::ELF::R_AARCH64_ABS32:
+        return visitELF_AARCH64_ABS32(R, Value);
+      case llvm::ELF::R_AARCH64_ABS64:
+        return visitELF_AARCH64_ABS64(R, Value);
+      default:
+        HasError = true;
+        return RelocToApply();
+      }
     }
+    HasError = true;
     return RelocToApply();
   }
 
@@ -139,6 +166,42 @@ private:
     int32_t Res = (Value + Addend) & 0xFFFFFFFF;
     return RelocToApply(Res, 4);
   }
+
+  /// PPC64 ELF
+  RelocToApply visitELF_PPC64_ADDR32(RelocationRef R, uint64_t Value) {
+    int64_t Addend;
+    R.getAdditionalInfo(Addend);
+    uint32_t Res = (Value + Addend) & 0xFFFFFFFF;
+    return RelocToApply(Res, 4);
+  }
+
+  /// MIPS ELF
+  RelocToApply visitELF_MIPS_32(RelocationRef R, uint64_t Value) {
+    int64_t Addend;
+    R.getAdditionalInfo(Addend);
+    uint32_t Res = (Value + Addend) & 0xFFFFFFFF;
+    return RelocToApply(Res, 4);
+  }
+
+  // AArch64 ELF
+  RelocToApply visitELF_AARCH64_ABS32(RelocationRef R, uint64_t Value) {
+    int64_t Addend;
+    R.getAdditionalInfo(Addend);
+    int64_t Res =  Value + Addend;
+
+    // Overflow check allows for both signed and unsigned interpretation.
+    if (Res < INT32_MIN || Res > UINT32_MAX)
+      HasError = true;
+
+    return RelocToApply(static_cast<uint32_t>(Res), 4);
+  }
+
+  RelocToApply visitELF_AARCH64_ABS64(RelocationRef R, uint64_t Value) {
+    int64_t Addend;
+    R.getAdditionalInfo(Addend);
+    return RelocToApply(Value + Addend, 8);
+  }
+
 };
 
 }

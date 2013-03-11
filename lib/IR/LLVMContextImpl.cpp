@@ -35,8 +35,8 @@ LLVMContextImpl::LLVMContextImpl(LLVMContext &C)
     Int16Ty(C, 16),
     Int32Ty(C, 32),
     Int64Ty(C, 64) {
-  DiagHandler = 0;
-  DiagContext = 0;
+  InlineAsmDiagHandler = 0;
+  InlineAsmDiagContext = 0;
   NamedStructTypesUniqueID = 0;
 }
 
@@ -106,6 +106,13 @@ LLVMContextImpl::~LLVMContextImpl() {
   for (FoldingSetIterator<AttributeSetImpl> I = AttrsLists.begin(),
          E = AttrsLists.end(); I != E; ) {
     FoldingSetIterator<AttributeSetImpl> Elem = I++;
+    delete &*Elem;
+  }
+
+  // Destroy attribute node lists.
+  for (FoldingSetIterator<AttributeSetNode> I = AttrsSetNodes.begin(),
+         E = AttrsSetNodes.end(); I != E; ) {
+    FoldingSetIterator<AttributeSetNode> Elem = I++;
     delete &*Elem;
   }
 

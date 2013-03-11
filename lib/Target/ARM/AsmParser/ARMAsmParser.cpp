@@ -18,7 +18,9 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrDesc.h"
@@ -28,6 +30,7 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/ELF.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -250,6 +253,13 @@ public:
 
     // Not in an ITBlock to start with.
     ITState.CurPosition = ~0U;
+
+    // Set ELF header flags.
+    // FIXME: This should eventually end up somewhere else where more
+    // intelligent flag decisions can be made. For now we are just maintaining
+    // the statu/parseDirects quo for ARM and setting EF_ARM_EABI_VER5 as the default.
+    if (MCELFStreamer *MES = dyn_cast<MCELFStreamer>(&Parser.getStreamer()))
+      MES->getAssembler().setELFHeaderEFlags(ELF::EF_ARM_EABI_VER5);
   }
 
   // Implementation of the MCTargetAsmParser interface:
@@ -259,6 +269,7 @@ public:
                         SmallVectorImpl<MCParsedAsmOperand*> &Operands);
   bool ParseDirective(AsmToken DirectiveID);
 
+  unsigned validateTargetOperandClass(MCParsedAsmOperand *Op, unsigned Kind);
   unsigned checkTargetMatchPredicate(MCInst &Inst);
 
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
@@ -2557,7 +2568,7 @@ int ARMAsmParser::tryParseShiftRegister(
       Parser.Lex(); // Eat hash.
       SMLoc ImmLoc = Parser.getTok().getLoc();
       const MCExpr *ShiftExpr = 0;
-      if (getParser().ParseExpression(ShiftExpr, EndLoc)) {
+      if (getParser().parseExpression(ShiftExpr, EndLoc)) {
         Error(ImmLoc, "invalid immediate shift value");
         return -1;
       }
@@ -2640,7 +2651,7 @@ tryParseRegisterWithWriteBack(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     Parser.Lex(); // Eat left bracket token.
 
     const MCExpr *ImmVal;
-    if (getParser().ParseExpression(ImmVal))
+    if (getParser().parseExpression(ImmVal))
       return true;
     const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(ImmVal);
     if (!MCE)
@@ -2785,7 +2796,7 @@ parseCoprocOptionOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 
   const MCExpr *Expr;
   SMLoc Loc = Parser.getTok().getLoc();
-  if (getParser().ParseExpression(Expr)) {
+  if (getParser().parseExpression(Expr)) {
     Error(Loc, "illegal expression");
     return MatchOperand_ParseFail;
   }
@@ -2998,7 +3009,7 @@ parseVectorLane(VectorLaneTy &LaneKind, unsigned &Index, SMLoc &EndLoc) {
 
     const MCExpr *LaneIndex;
     SMLoc Loc = Parser.getTok().getLoc();
-    if (getParser().ParseExpression(LaneIndex)) {
+    if (getParser().parseExpression(LaneIndex)) {
       Error(Loc, "illegal expression");
       return MatchOperand_ParseFail;
     }
@@ -3316,7 +3327,7 @@ parseMemBarrierOptOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     SMLoc Loc = Parser.getTok().getLoc();
 
     const MCExpr *MemBarrierID;
-    if (getParser().ParseExpression(MemBarrierID)) {
+    if (getParser().parseExpression(MemBarrierID)) {
       Error(Loc, "illegal expression");
       return MatchOperand_ParseFail;
     }
@@ -3532,7 +3543,7 @@ parsePKHImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands, StringRef Op,
   const MCExpr *ShiftAmount;
   SMLoc Loc = Parser.getTok().getLoc();
   SMLoc EndLoc;
-  if (getParser().ParseExpression(ShiftAmount, EndLoc)) {
+  if (getParser().parseExpression(ShiftAmount, EndLoc)) {
     Error(Loc, "illegal expression");
     return MatchOperand_ParseFail;
   }
@@ -3612,7 +3623,7 @@ parseShifterImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 
   const MCExpr *ShiftAmount;
   SMLoc EndLoc;
-  if (getParser().ParseExpression(ShiftAmount, EndLoc)) {
+  if (getParser().parseExpression(ShiftAmount, EndLoc)) {
     Error(ExLoc, "malformed shift expression");
     return MatchOperand_ParseFail;
   }
@@ -3673,7 +3684,7 @@ parseRotImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 
   const MCExpr *ShiftAmount;
   SMLoc EndLoc;
-  if (getParser().ParseExpression(ShiftAmount, EndLoc)) {
+  if (getParser().parseExpression(ShiftAmount, EndLoc)) {
     Error(ExLoc, "malformed rotate expression");
     return MatchOperand_ParseFail;
   }
@@ -3710,7 +3721,7 @@ parseBitfield(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 
   const MCExpr *LSBExpr;
   SMLoc E = Parser.getTok().getLoc();
-  if (getParser().ParseExpression(LSBExpr)) {
+  if (getParser().parseExpression(LSBExpr)) {
     Error(E, "malformed immediate expression");
     return MatchOperand_ParseFail;
   }
@@ -3743,7 +3754,7 @@ parseBitfield(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 
   const MCExpr *WidthExpr;
   SMLoc EndLoc;
-  if (getParser().ParseExpression(WidthExpr, EndLoc)) {
+  if (getParser().parseExpression(WidthExpr, EndLoc)) {
     Error(E, "malformed immediate expression");
     return MatchOperand_ParseFail;
   }
@@ -3839,7 +3850,7 @@ parseAM3Offset(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     bool isNegative = Parser.getTok().is(AsmToken::Minus);
     const MCExpr *Offset;
     SMLoc E;
-    if (getParser().ParseExpression(Offset, E))
+    if (getParser().parseExpression(Offset, E))
       return MatchOperand_ParseFail;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Offset);
     if (!CE) {
@@ -4226,9 +4237,10 @@ parseMemory(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   if (BaseRegNum == -1)
     return Error(BaseRegTok.getLoc(), "register expected");
 
-  // The next token must either be a comma or a closing bracket.
+  // The next token must either be a comma, a colon or a closing bracket.
   const AsmToken &Tok = Parser.getTok();
-  if (!Tok.is(AsmToken::Comma) && !Tok.is(AsmToken::RBrac))
+  if (!Tok.is(AsmToken::Colon) && !Tok.is(AsmToken::Comma) &&
+      !Tok.is(AsmToken::RBrac))
     return Error(Tok.getLoc(), "malformed memory operand");
 
   if (Tok.is(AsmToken::RBrac)) {
@@ -4248,8 +4260,11 @@ parseMemory(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     return false;
   }
 
-  assert(Tok.is(AsmToken::Comma) && "Lost comma in memory operand?!");
-  Parser.Lex(); // Eat the comma.
+  assert((Tok.is(AsmToken::Colon) || Tok.is(AsmToken::Comma)) &&
+         "Lost colon or comma in memory operand?!");
+  if (Tok.is(AsmToken::Comma)) {
+    Parser.Lex(); // Eat the comma.
+  }
 
   // If we have a ':', it's an alignment specifier.
   if (Parser.getTok().is(AsmToken::Colon)) {
@@ -4257,7 +4272,7 @@ parseMemory(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     E = Parser.getTok().getLoc();
 
     const MCExpr *Expr;
-    if (getParser().ParseExpression(Expr))
+    if (getParser().parseExpression(Expr))
      return true;
 
     // The expression has to be a constant. Memory references with relocations
@@ -4313,7 +4328,7 @@ parseMemory(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 
     bool isNegative = getParser().getTok().is(AsmToken::Minus);
     const MCExpr *Offset;
-    if (getParser().ParseExpression(Offset))
+    if (getParser().parseExpression(Offset))
      return true;
 
     // The expression has to be a constant. Memory references with relocations
@@ -4432,7 +4447,7 @@ bool ARMAsmParser::parseMemRegOffsetShift(ARM_AM::ShiftOpc &St,
     Parser.Lex(); // Eat hash token.
 
     const MCExpr *Expr;
-    if (getParser().ParseExpression(Expr))
+    if (getParser().parseExpression(Expr))
       return true;
     // Range check the immediate.
     // lsl, ror: 0 <= imm <= 31
@@ -4461,7 +4476,7 @@ bool ARMAsmParser::parseMemRegOffsetShift(ARM_AM::ShiftOpc &St,
 ARMAsmParser::OperandMatchResultTy ARMAsmParser::
 parseFPImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Anything that can accept a floating point constant as an operand
-  // needs to go through here, as the regular ParseExpression is
+  // needs to go through here, as the regular parseExpression is
   // integer only.
   //
   // This routine still creates a generic Immediate operand, containing
@@ -4581,7 +4596,7 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
     // identifier (like labels) as expressions and create them as immediates.
     const MCExpr *IdVal;
     S = Parser.getTok().getLoc();
-    if (getParser().ParseExpression(IdVal))
+    if (getParser().parseExpression(IdVal))
       return true;
     E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
     Operands.push_back(ARMOperand::CreateImm(IdVal, S, E));
@@ -4600,7 +4615,7 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
     if (Parser.getTok().isNot(AsmToken::Colon)) {
       bool isNegative = Parser.getTok().is(AsmToken::Minus);
       const MCExpr *ImmVal;
-      if (getParser().ParseExpression(ImmVal))
+      if (getParser().parseExpression(ImmVal))
         return true;
       const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(ImmVal);
       if (CE) {
@@ -4610,6 +4625,15 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
       }
       E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
       Operands.push_back(ARMOperand::CreateImm(ImmVal, S, E));
+
+      // There can be a trailing '!' on operands that we want as a separate
+      // '!' Token operand. Handle that here. For example, the compatibilty
+      // alias for 'srsdb sp!, #imm' is 'srsdb #imm!'.
+      if (Parser.getTok().is(AsmToken::Exclaim)) {
+        Operands.push_back(ARMOperand::CreateToken(Parser.getTok().getString(),
+                                                   Parser.getTok().getLoc()));
+        Parser.Lex(); // Eat exclaim token
+      }
       return false;
     }
     // w/ a ':' after the '#', it's just like a plain ':'.
@@ -4624,7 +4648,7 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
       return true;
 
     const MCExpr *SubExprVal;
-    if (getParser().ParseExpression(SubExprVal))
+    if (getParser().parseExpression(SubExprVal))
       return true;
 
     const MCExpr *ExprVal = ARMMCExpr::Create(RefKind, SubExprVal,
@@ -4997,7 +5021,7 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
 
   // In Thumb1, only the branch (B) instruction can be predicated.
   if (isThumbOne() && PredicationCode != ARMCC::AL && Mnemonic != "b") {
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(NameLoc, "conditional execution not supported in Thumb1");
   }
 
@@ -5011,14 +5035,14 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   if (Mnemonic == "it") {
     SMLoc Loc = SMLoc::getFromPointer(NameLoc.getPointer() + 2);
     if (ITMask.size() > 3) {
-      Parser.EatToEndOfStatement();
+      Parser.eatToEndOfStatement();
       return Error(Loc, "too many conditions on IT instruction");
     }
     unsigned Mask = 8;
     for (unsigned i = ITMask.size(); i != 0; --i) {
       char pos = ITMask[i - 1];
       if (pos != 't' && pos != 'e') {
-        Parser.EatToEndOfStatement();
+        Parser.eatToEndOfStatement();
         return Error(Loc, "illegal IT block condition mask '" + ITMask + "'");
       }
       Mask >>= 1;
@@ -5044,14 +5068,14 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   // If we had a carry-set on an instruction that can't do that, issue an
   // error.
   if (!CanAcceptCarrySet && CarrySetting) {
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(NameLoc, "instruction '" + Mnemonic +
                  "' can not set flags, but 's' suffix specified");
   }
   // If we had a predication code on an instruction that can't do that, issue an
   // error.
   if (!CanAcceptPredicationCode && PredicationCode != ARMCC::AL) {
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(NameLoc, "instruction '" + Mnemonic +
                  "' is not predicable, but condition code specified");
   }
@@ -5100,7 +5124,7 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     // Read the first operand.
     if (parseOperand(Operands, Mnemonic)) {
-      Parser.EatToEndOfStatement();
+      Parser.eatToEndOfStatement();
       return true;
     }
 
@@ -5109,7 +5133,7 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
 
       // Parse and remember the operand.
       if (parseOperand(Operands, Mnemonic)) {
-        Parser.EatToEndOfStatement();
+        Parser.eatToEndOfStatement();
         return true;
       }
     }
@@ -5117,7 +5141,7 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
 
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     SMLoc Loc = getLexer().getLoc();
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(Loc, "unexpected token in argument list");
   }
 
@@ -5146,53 +5170,6 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
     ARMOperand *Op = static_cast<ARMOperand*>(Operands[1]);
     Operands.erase(Operands.begin() + 1);
     delete Op;
-  }
-
-  // The vector-compare-to-zero instructions have a literal token "#0" at
-  // the end that comes to here as an immediate operand. Convert it to a
-  // token to play nicely with the matcher.
-  if ((Mnemonic == "vceq" || Mnemonic == "vcge" || Mnemonic == "vcgt" ||
-      Mnemonic == "vcle" || Mnemonic == "vclt") && Operands.size() == 6 &&
-      static_cast<ARMOperand*>(Operands[5])->isImm()) {
-    ARMOperand *Op = static_cast<ARMOperand*>(Operands[5]);
-    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Op->getImm());
-    if (CE && CE->getValue() == 0) {
-      Operands.erase(Operands.begin() + 5);
-      Operands.push_back(ARMOperand::CreateToken("#0", Op->getStartLoc()));
-      delete Op;
-    }
-  }
-  // VCMP{E} does the same thing, but with a different operand count.
-  if ((Mnemonic == "vcmp" || Mnemonic == "vcmpe") && Operands.size() == 5 &&
-      static_cast<ARMOperand*>(Operands[4])->isImm()) {
-    ARMOperand *Op = static_cast<ARMOperand*>(Operands[4]);
-    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Op->getImm());
-    if (CE && CE->getValue() == 0) {
-      Operands.erase(Operands.begin() + 4);
-      Operands.push_back(ARMOperand::CreateToken("#0", Op->getStartLoc()));
-      delete Op;
-    }
-  }
-  // Similarly, the Thumb1 "RSB" instruction has a literal "#0" on the
-  // end. Convert it to a token here. Take care not to convert those
-  // that should hit the Thumb2 encoding.
-  if (Mnemonic == "rsb" && isThumb() && Operands.size() == 6 &&
-      static_cast<ARMOperand*>(Operands[3])->isReg() &&
-      static_cast<ARMOperand*>(Operands[4])->isReg() &&
-      static_cast<ARMOperand*>(Operands[5])->isImm()) {
-    ARMOperand *Op = static_cast<ARMOperand*>(Operands[5]);
-    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Op->getImm());
-    if (CE && CE->getValue() == 0 &&
-        (isThumbOne() ||
-         // The cc_out operand matches the IT block.
-         ((inITBlock() != CarrySetting) &&
-         // Neither register operand is a high register.
-         (isARMLowRegister(static_cast<ARMOperand*>(Operands[3])->getReg()) &&
-          isARMLowRegister(static_cast<ARMOperand*>(Operands[4])->getReg()))))){
-      Operands.erase(Operands.begin() + 5);
-      Operands.push_back(ARMOperand::CreateToken("#0", Op->getStartLoc()));
-      delete Op;
-    }
   }
 
   // Adjust operands of ldrexd/strexd to MCK_GPRPair.
@@ -7646,7 +7623,7 @@ bool ARMAsmParser::parseDirectiveWord(unsigned Size, SMLoc L) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     for (;;) {
       const MCExpr *Value;
-      if (getParser().ParseExpression(Value))
+      if (getParser().parseExpression(Value))
         return true;
 
       getParser().getStreamer().EmitValue(Value, Size);
@@ -7793,13 +7770,13 @@ bool ARMAsmParser::parseDirectiveReq(StringRef Name, SMLoc L) {
   unsigned Reg;
   SMLoc SRegLoc, ERegLoc;
   if (ParseRegister(Reg, SRegLoc, ERegLoc)) {
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(SRegLoc, "register name expected");
   }
 
   // Shouldn't be anything else.
   if (Parser.getTok().isNot(AsmToken::EndOfStatement)) {
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(Parser.getTok().getLoc(),
                  "unexpected input in .req directive.");
   }
@@ -7817,7 +7794,7 @@ bool ARMAsmParser::parseDirectiveReq(StringRef Name, SMLoc L) {
 ///  ::= .unreq registername
 bool ARMAsmParser::parseDirectiveUnreq(SMLoc L) {
   if (Parser.getTok().isNot(AsmToken::Identifier)) {
-    Parser.EatToEndOfStatement();
+    Parser.eatToEndOfStatement();
     return Error(L, "unexpected input in .unreq directive.");
   }
   RegisterReqs.erase(Parser.getTok().getIdentifier());
@@ -7847,3 +7824,21 @@ extern "C" void LLVMInitializeARMAsmParser() {
 #define GET_SUBTARGET_FEATURE_NAME
 #define GET_MATCHER_IMPLEMENTATION
 #include "ARMGenAsmMatcher.inc"
+
+// Define this matcher function after the auto-generated include so we
+// have the match class enum definitions.
+unsigned ARMAsmParser::validateTargetOperandClass(MCParsedAsmOperand *AsmOp,
+                                                  unsigned Kind) {
+  ARMOperand *Op = static_cast<ARMOperand*>(AsmOp);
+  // If the kind is a token for a literal immediate, check if our asm
+  // operand matches. This is for InstAliases which have a fixed-value
+  // immediate in the syntax.
+  if (Kind == MCK__35_0 && Op->isImm()) {
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Op->getImm());
+    if (!CE)
+      return Match_InvalidOperand;
+    if (CE->getValue() == 0)
+      return Match_Success;
+  }
+  return Match_InvalidOperand;
+}

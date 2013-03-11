@@ -935,6 +935,7 @@ Init *BinOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
 
     break;
   }
+  case ADD:
   case SHL:
   case SRA:
   case SRL: {
@@ -945,6 +946,7 @@ Init *BinOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
       int64_t Result;
       switch (getOpcode()) {
       default: llvm_unreachable("Bad opcode!");
+      case ADD: Result = LHSv +  RHSv; break;
       case SHL: Result = LHSv << RHSv; break;
       case SRA: Result = LHSv >> RHSv; break;
       case SRL: Result = (uint64_t)LHSv >> (uint64_t)RHSv; break;
@@ -970,6 +972,7 @@ std::string BinOpInit::getAsString() const {
   std::string Result;
   switch (Opc) {
   case CONCAT: Result = "!con"; break;
+  case ADD: Result = "!add"; break;
   case SHL: Result = "!shl"; break;
   case SRA: Result = "!sra"; break;
   case SRL: Result = "!srl"; break;
@@ -1522,11 +1525,9 @@ Init *FieldInit::resolveReferences(Record &R, const RecordVal *RV) const {
   return const_cast<FieldInit *>(this);
 }
 
-void ProfileDagInit(FoldingSetNodeID &ID,
-                    Init *V,
-                    const std::string &VN,
-                    ArrayRef<Init *> ArgRange,
-                    ArrayRef<std::string> NameRange) {
+static void ProfileDagInit(FoldingSetNodeID &ID, Init *V, const std::string &VN,
+                           ArrayRef<Init *> ArgRange,
+                           ArrayRef<std::string> NameRange) {
   ID.AddPointer(V);
   ID.AddString(VN);
 

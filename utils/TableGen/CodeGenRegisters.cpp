@@ -703,7 +703,9 @@ CodeGenRegisterClass::CodeGenRegisterClass(CodeGenRegBank &RegBank, Record *R)
   // Rename anonymous register classes.
   if (R->getName().size() > 9 && R->getName()[9] == '.') {
     static unsigned AnonCounter = 0;
-    R->setName("AnonRegClass_"+utostr(AnonCounter++));
+    R->setName("AnonRegClass_" + utostr(AnonCounter));
+    // MSVC2012 ICEs if AnonCounter++ is directly passed to utostr.
+    ++AnonCounter;
   }
 
   std::vector<Record*> TypeList = R->getValueAsListOfDefs("RegTypes");
@@ -1198,6 +1200,12 @@ void CodeGenRegBank::computeSubRegIndexLaneMasks() {
     if (Idx->getComposites().empty()) {
       Idx->LaneMask = 1u << Bit;
       // Share bit 31 in the unlikely case there are more than 32 leafs.
+      //
+      // Sharing bits is harmless; it allows graceful degradation in targets
+      // with more than 32 vector lanes. They simply get a limited resolution
+      // view of lanes beyond the 32nd.
+      //
+      // See also the comment for getSubRegIndexLaneMask().
       if (Bit < 31) ++Bit;
     } else {
       Idx->LaneMask = 0;

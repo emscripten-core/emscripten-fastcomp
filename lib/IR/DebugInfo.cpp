@@ -383,7 +383,8 @@ bool DIType::isUnsignedDIType() {
   if (BTy.Verify()) {
     unsigned Encoding = BTy.getEncoding();
     if (Encoding == dwarf::DW_ATE_unsigned ||
-        Encoding == dwarf::DW_ATE_unsigned_char)
+        Encoding == dwarf::DW_ATE_unsigned_char ||
+        Encoding == dwarf::DW_ATE_boolean)
       return true;
   }
   return false;
@@ -592,17 +593,14 @@ unsigned DISubprogram::isOptimized() const {
 MDNode *DISubprogram::getVariablesNodes() const {
   if (!DbgNode || DbgNode->getNumOperands() <= 19)
     return NULL;
-  if (MDNode *Temp = dyn_cast_or_null<MDNode>(DbgNode->getOperand(19)))
-    return dyn_cast_or_null<MDNode>(Temp->getOperand(0));
-  return NULL;
+  return dyn_cast_or_null<MDNode>(DbgNode->getOperand(19));
 }
 
 DIArray DISubprogram::getVariables() const {
   if (!DbgNode || DbgNode->getNumOperands() <= 19)
     return DIArray();
   if (MDNode *T = dyn_cast_or_null<MDNode>(DbgNode->getOperand(19)))
-    if (MDNode *A = dyn_cast_or_null<MDNode>(T->getOperand(0)))
-      return DIArray(A);
+    return DIArray(T);
   return DIArray();
 }
 
@@ -651,8 +649,7 @@ DIArray DICompileUnit::getEnumTypes() const {
     return DIArray();
 
   if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(10)))
-    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
-      return DIArray(A);
+    return DIArray(N);
   return DIArray();
 }
 
@@ -661,8 +658,7 @@ DIArray DICompileUnit::getRetainedTypes() const {
     return DIArray();
 
   if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(11)))
-    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
-      return DIArray(A);
+    return DIArray(N);
   return DIArray();
 }
 
@@ -671,9 +667,7 @@ DIArray DICompileUnit::getSubprograms() const {
     return DIArray();
 
   if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(12)))
-    if (N->getNumOperands() > 0)
-      if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
-        return DIArray(A);
+    return DIArray(N);
   return DIArray();
 }
 
@@ -683,8 +677,7 @@ DIArray DICompileUnit::getGlobalVariables() const {
     return DIArray();
 
   if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(13)))
-    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
-      return DIArray(A);
+    return DIArray(N);
   return DIArray();
 }
 
@@ -1062,8 +1055,8 @@ void DIScope::printInternal(raw_ostream &OS) const {
 
 void DICompileUnit::printInternal(raw_ostream &OS) const {
   DIScope::printInternal(OS);
-  if (unsigned Lang = getLanguage())
-    OS << " [" << dwarf::LanguageString(Lang) << ']';
+  if (const char *Lang = dwarf::LanguageString(getLanguage()))
+    OS << " [" << Lang << ']';
 }
 
 void DIEnumerator::printInternal(raw_ostream &OS) const {
@@ -1101,6 +1094,8 @@ void DIType::printInternal(raw_ostream &OS) const {
     OS << " [fwd]";
   if (isVector())
     OS << " [vector]";
+  if (isStaticMember())
+    OS << " [static]";
 }
 
 void DIDerivedType::printInternal(raw_ostream &OS) const {

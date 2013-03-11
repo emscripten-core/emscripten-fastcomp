@@ -87,14 +87,14 @@ endif # SunOS
 
 check-local:: lit.site.cfg Unit/lit.site.cfg
 	( $(ULIMIT) \
-	  $(LLVM_SRC_ROOT)/utils/lit/lit.py $(LIT_ARGS) $(LIT_TESTSUITE) )
+	  $(PYTHON) $(LLVM_SRC_ROOT)/utils/lit/lit.py $(LIT_ARGS) $(LIT_TESTSUITE) )
 
 # This is a legacy alias dating from when both DejaGNU and lit were in use.
 check-local-lit:: check-local
 
 check-local-all:: lit.site.cfg Unit/lit.site.cfg extra-site-cfgs
 	( $(ULIMIT) \
-	  $(LLVM_SRC_ROOT)/utils/lit/lit.py $(LIT_ARGS) $(LIT_ALL_TESTSUITES) )
+	  $(PYTHON) $(LLVM_SRC_ROOT)/utils/lit/lit.py $(LIT_ARGS) $(LIT_ALL_TESTSUITES) )
 
 clean::
 	$(RM) -rf `find $(LLVM_OBJ_ROOT)/test -name Output -type d -print`
@@ -131,13 +131,14 @@ endif
 
 lit.site.cfg: FORCE
 	@echo "Making LLVM 'lit.site.cfg' file..."
-	@$(ECHOPATH) s=@TARGET_TRIPLE@=$(TARGET_TRIPLE)=g > lit.tmp
+	@$(ECHOPATH) s=@LLVM_HOSTTRIPLE@=$(HOST_TRIPLE)=g > lit.tmp
+	@$(ECHOPATH) s=@TARGET_TRIPLE@=$(TARGET_TRIPLE)=g >> lit.tmp
 	@$(ECHOPATH) s=@LLVM_SOURCE_DIR@=$(LLVM_SRC_ROOT)=g >> lit.tmp
 	@$(ECHOPATH) s=@LLVM_BINARY_DIR@=$(LLVM_OBJ_ROOT)=g >> lit.tmp
 	@$(ECHOPATH) s=@LLVM_TOOLS_DIR@=$(ToolDir)=g >> lit.tmp
 	@$(ECHOPATH) s=@SHLIBDIR@=$(SharedLibDir)=g >> lit.tmp
 	@$(ECHOPATH) s=@SHLIBEXT@=$(SHLIBEXT)=g >> lit.tmp
-	@$(ECHOPATH) s=@PYTHON_EXECUTABLE@=python=g >> lit.tmp
+	@$(ECHOPATH) s=@PYTHON_EXECUTABLE@=$(PYTHON)=g >> lit.tmp
 	@$(ECHOPATH) s=@OCAMLOPT@=$(OCAMLOPT) -cc $(subst *,'\\\"',*$(subst =,"\\=",$(CXX_FOR_OCAMLOPT))*) -I $(LibDir)/ocaml=g >> lit.tmp
 	@$(ECHOPATH) s=@ENABLE_SHARED@=$(ENABLE_SHARED)=g >> lit.tmp
 	@$(ECHOPATH) s=@ENABLE_ASSERTIONS@=$(ENABLE_ASSERTIONS)=g >> lit.tmp

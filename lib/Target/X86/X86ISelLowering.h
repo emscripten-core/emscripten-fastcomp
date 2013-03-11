@@ -244,11 +244,8 @@ namespace llvm {
       // EH_SJLJ_LONGJMP - SjLj exception handling longjmp.
       EH_SJLJ_LONGJMP,
 
-      /// TC_RETURN - Tail call return.
-      ///   operand #0 chain
-      ///   operand #1 callee (register or absolute)
-      ///   operand #2 stack adjustment
-      ///   operand #3 optional in flag
+      /// TC_RETURN - Tail call return. See X86TargetLowering::LowerCall for
+      /// the list of operands.
       TC_RETURN,
 
       // VZEXT_MOVL - Vector move low and zero extend.
@@ -304,7 +301,7 @@ namespace llvm {
       TESTP,
 
       // Several flavors of instructions with vector shuffle behaviors.
-      PALIGN,
+      PALIGNR,
       PSHUFD,
       PSHUFHW,
       PSHUFLW,
@@ -808,9 +805,7 @@ namespace llvm {
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEXTRACT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerEXTRACT_VECTOR_ELT_SSE4(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINSERT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerINSERT_VECTOR_ELT_SSE4(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerConstantPool(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBlockAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerGlobalAddress(const GlobalValue *GV, DebugLoc dl,
@@ -825,20 +820,18 @@ namespace llvm {
     SDValue LowerUINT_TO_FP_i64(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerUINT_TO_FP_i32(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerUINT_TO_FP_vec(SDValue Op, SelectionDAG &DAG) const;
-    SDValue lowerTRUNCATE(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerTRUNCATE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerZERO_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSIGN_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerANY_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFP_TO_SINT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFP_TO_UINT(SDValue Op, SelectionDAG &DAG) const;
-    SDValue lowerFP_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFABS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFNEG(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFCOPYSIGN(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerToBT(SDValue And, ISD::CondCode CC,
                       DebugLoc dl, SelectionDAG &DAG) const;
     SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerVSETCC(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerMEMSET(SDValue Op, SelectionDAG &DAG) const;
@@ -857,8 +850,8 @@ namespace llvm {
     SDValue LowerFLT_ROUNDS_(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerShift(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSDIV(SDValue Op, SelectionDAG &DAG) const;
-
     SDValue LowerSIGN_EXTEND_INREG(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerFSINCOS(SDValue Op, SelectionDAG &DAG) const;
 
     // @LOCALMOD-BEGIN
     SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
@@ -874,7 +867,7 @@ namespace llvm {
     
     SDValue LowerVectorAllZeroTest(SDValue Op, SelectionDAG &DAG) const;
 
-    SDValue lowerVectorIntExtend(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerVectorIntExtend(SDValue Op, SelectionDAG &DAG) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,

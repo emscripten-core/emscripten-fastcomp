@@ -30,8 +30,8 @@ protected:
                                           /*isVarArg=*/false);
     F = Function::Create(FTy, Function::ExternalLinkage, "", M.get());
     BB = BasicBlock::Create(getGlobalContext(), "", F);
-    GV = new GlobalVariable(Type::getFloatTy(getGlobalContext()), true,
-                            GlobalValue::ExternalLinkage);
+    GV = new GlobalVariable(*M, Type::getFloatTy(getGlobalContext()), true,
+                            GlobalValue::ExternalLinkage, 0);
   }
 
   virtual void TearDown() {
@@ -115,6 +115,7 @@ TEST_F(IRBuilderTest, GetIntTy) {
   IntegerType *IntPtrTy = Builder.getIntPtrTy(DL);
   unsigned IntPtrBitSize =  DL->getPointerSizeInBits(0);
   EXPECT_EQ(IntPtrTy, IntegerType::get(getGlobalContext(), IntPtrBitSize));
+  delete DL;
 }
 
 TEST_F(IRBuilderTest, FastMathFlags) {

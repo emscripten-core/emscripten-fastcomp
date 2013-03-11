@@ -523,15 +523,19 @@ def CMOV_RFP80 : I<0, Pseudo,
 
 multiclass PSEUDO_ATOMIC_LOAD_BINOP<string mnemonic> {
   let usesCustomInserter = 1, mayLoad = 1, mayStore = 1 in {
+    let Defs = [EFLAGS, AL] in
     def NAME#8  : I<0, Pseudo, (outs GR8:$dst),
                     (ins i8mem:$ptr, GR8:$val),
                     !strconcat(mnemonic, "8 PSEUDO!"), []>;
+    let Defs = [EFLAGS, AX] in
     def NAME#16 : I<0, Pseudo,(outs GR16:$dst),
                     (ins i16mem:$ptr, GR16:$val),
                     !strconcat(mnemonic, "16 PSEUDO!"), []>;
+    let Defs = [EFLAGS, EAX] in
     def NAME#32 : I<0, Pseudo, (outs GR32:$dst),
                     (ins i32mem:$ptr, GR32:$val),
                     !strconcat(mnemonic, "32 PSEUDO!"), []>;
+    let Defs = [EFLAGS, RAX] in
     def NAME#64 : I<0, Pseudo, (outs GR64:$dst),
                     (ins i64mem:$ptr, GR64:$val),
                     !strconcat(mnemonic, "64 PSEUDO!"), []>;
@@ -569,7 +573,8 @@ defm : PSEUDO_ATOMIC_LOAD_BINOP_PATS<"ATOMUMAX", "atomic_load_umax">;
 defm : PSEUDO_ATOMIC_LOAD_BINOP_PATS<"ATOMUMIN", "atomic_load_umin">;
 
 multiclass PSEUDO_ATOMIC_LOAD_BINOP6432<string mnemonic> {
-  let usesCustomInserter = 1, mayLoad = 1, mayStore = 1, hasSideEffects = 0 in
+  let usesCustomInserter = 1, Defs = [EFLAGS, EAX, EDX],
+      mayLoad = 1, mayStore = 1, hasSideEffects = 0 in
     def NAME#6432 : I<0, Pseudo, (outs GR32:$dst1, GR32:$dst2),
                       (ins i64mem:$ptr, GR32:$val1, GR32:$val2),
                       !strconcat(mnemonic, "6432 PSEUDO!"), []>;
@@ -1086,12 +1091,14 @@ def : Pat<(X86cmp GR64:$src1, 0),
 // inverted.
 multiclass CMOVmr<PatLeaf InvertedCond, Instruction Inst16, Instruction Inst32,
                   Instruction Inst64> {
-  def : Pat<(X86cmov (loadi16 addr:$src1), GR16:$src2, InvertedCond, EFLAGS),
-            (Inst16 GR16:$src2, addr:$src1)>;
-  def : Pat<(X86cmov (loadi32 addr:$src1), GR32:$src2, InvertedCond, EFLAGS),
-            (Inst32 GR32:$src2, addr:$src1)>;
-  def : Pat<(X86cmov (loadi64 addr:$src1), GR64:$src2, InvertedCond, EFLAGS),
-            (Inst64 GR64:$src2, addr:$src1)>;
+  let Predicates = [HasCMov] in {
+    def : Pat<(X86cmov (loadi16 addr:$src1), GR16:$src2, InvertedCond, EFLAGS),
+              (Inst16 GR16:$src2, addr:$src1)>;
+    def : Pat<(X86cmov (loadi32 addr:$src1), GR32:$src2, InvertedCond, EFLAGS),
+              (Inst32 GR32:$src2, addr:$src1)>;
+    def : Pat<(X86cmov (loadi64 addr:$src1), GR64:$src2, InvertedCond, EFLAGS),
+              (Inst64 GR64:$src2, addr:$src1)>;
+  }
 }
 
 defm : CMOVmr<X86_COND_B , CMOVAE16rm, CMOVAE32rm, CMOVAE64rm>;

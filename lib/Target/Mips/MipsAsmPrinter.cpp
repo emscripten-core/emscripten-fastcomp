@@ -16,6 +16,7 @@
 #include "MipsAsmPrinter.h"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
+#include "MCTargetDesc/MipsELFStreamer.h"
 #include "Mips.h"
 #include "MipsInstrInfo.h"
 #include "MipsMCInstLower.h"
@@ -35,6 +36,7 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
+#include "llvm/Support/ELF.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/Mangler.h"
@@ -65,19 +67,34 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     return;
   }
 
+  // @LOCALMOD-START
   // Do any auto-generated pseudo lowerings.
   if (emitPseudoExpansionLowering(OutStreamer, MI))
     return;
+  // @LOCALMOD-END
 
   MachineBasicBlock::const_instr_iterator I = MI;
   MachineBasicBlock::const_instr_iterator E = MI->getParent()->instr_end();
 
   do {
-    MCInst TmpInst0;
-    MCInstLowering.Lower(I++, TmpInst0);
+    // Do any auto-generated pseudo lowerings.
+    if (emitPseudoExpansionLowering(OutStreamer, &*I))
+      continue;
 
+    // The inMips16Mode() test is not permanent.
+    // Some instructions are marked as pseudo right now which
+    // would make the test fail for the wrong reason but
+    // that will be fixed soon. We need this here because we are
+    // removing another test for this situation downstream in the
+    // callchain.
+    //
+    if (I->isPseudo() && !Subtarget->inMips16Mode())
+      llvm_unreachable("Pseudo opcode found in EmitInstruction()");
+
+    MCInst TmpInst0;
+    MCInstLowering.Lower(I, TmpInst0);
     OutStreamer.EmitInstruction(TmpInst0);
-  } while ((I != E) && I->isInsideBundle()); // Delay slot check
+  } while ((++I != E) && I->isInsideBundle()); // Delay slot check
 }
 
 //===----------------------------------------------------------------------===//
@@ -231,6 +248,11 @@ void MipsAsmPrinter::EmitFunctionEntryLabel() {
     // OutStreamer.EmitRawText(StringRef("\t.set\tnomicromips"));
     OutStreamer.EmitRawText("\t.ent\t" + Twine(CurrentFnSym->getName()));
   }
+
+  if (Subtarget->inMicroMipsMode())
+    if (MipsELFStreamer *MES = dyn_cast<MipsELFStreamer>(&OutStreamer))
+      MES->emitMipsSTOCG(*Subtarget, CurrentFnSym,
+      (unsigned)ELF::STO_MIPS_MICROMIPS);
   OutStreamer.EmitLabel(CurrentFnSym);
 }
 
@@ -246,10 +268,11 @@ void MipsAsmPrinter::EmitFunctionBodyStart() {
     raw_svector_ostream OS(Str);
     printSavedRegsBitmask(OS);
     OutStreamer.EmitRawText(OS.str());
-
-    OutStreamer.EmitRawText(StringRef("\t.set\tnoreorder"));
-    OutStreamer.EmitRawText(StringRef("\t.set\tnomacro"));
-    OutStreamer.EmitRawText(StringRef("\t.set\tnoat"));
+    if (!Subtarget->inMips16Mode()) {
+      OutStreamer.EmitRawText(StringRef("\t.set\tnoreorder"));
+      OutStreamer.EmitRawText(StringRef("\t.set\tnomacro"));
+      OutStreamer.EmitRawText(StringRef("\t.set\tnoat"));
+    }
   }
 }
 
@@ -260,9 +283,11 @@ void MipsAsmPrinter::EmitFunctionBodyEnd() {
   // always be at the function end, and we can't emit and
   // break with BB logic.
   if (OutStreamer.hasRawTextSupport()) {
-    OutStreamer.EmitRawText(StringRef("\t.set\tat"));
-    OutStreamer.EmitRawText(StringRef("\t.set\tmacro"));
-    OutStreamer.EmitRawText(StringRef("\t.set\treorder"));
+    if (!Subtarget->inMips16Mode()) {
+      OutStreamer.EmitRawText(StringRef("\t.set\tat"));
+      OutStreamer.EmitRawText(StringRef("\t.set\tmacro"));
+      OutStreamer.EmitRawText(StringRef("\t.set\treorder"));
+    }
     OutStreamer.EmitRawText("\t.end\t" + Twine(CurrentFnSym->getName()));
   }
 }
@@ -583,6 +608,17 @@ unsigned MipsAsmPrinter::GetTargetLabelAlign(const MachineInstr *MI) const {
   return 0;
 }
 // @LOCALMOD-END
+
+void MipsAsmPrinter::EmitEndOfAsmFile(Module &M) {
+
+  if (OutStreamer.hasRawTextSupport()) return;
+
+  // Emit Mips ELF register info
+  Subtarget->getMReginfo().emitMipsReginfoSectionCG(
+             OutStreamer, getObjFileLowering(), *Subtarget);
+  if (MipsELFStreamer *MES = dyn_cast<MipsELFStreamer>(&OutStreamer))
+    MES->emitELFHeaderFlagsCG(*Subtarget);
+}
 
 MachineLocation
 MipsAsmPrinter::getDebugValueLocation(const MachineInstr *MI) const {

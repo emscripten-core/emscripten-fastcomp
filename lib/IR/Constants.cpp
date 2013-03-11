@@ -119,7 +119,8 @@ Constant *Constant::getNullValue(Type *Ty) {
                            APFloat::getZero(APFloat::IEEEquad));
   case Type::PPC_FP128TyID:
     return ConstantFP::get(Ty->getContext(),
-                           APFloat(APInt::getNullValue(128)));
+                           APFloat(APFloat::PPCDoubleDouble,
+                                   APInt::getNullValue(128)));
   case Type::PointerTyID:
     return ConstantPointerNull::get(cast<PointerType>(Ty));
   case Type::StructTyID:
@@ -1465,10 +1466,11 @@ Constant *ConstantExpr::getTruncOrBitCast(Constant *C, Type *Ty) {
 }
 
 Constant *ConstantExpr::getPointerCast(Constant *S, Type *Ty) {
-  assert(S->getType()->isPointerTy() && "Invalid cast");
-  assert((Ty->isIntegerTy() || Ty->isPointerTy()) && "Invalid cast");
+  assert(S->getType()->isPtrOrPtrVectorTy() && "Invalid cast");
+  assert((Ty->isIntOrIntVectorTy() || Ty->isPtrOrPtrVectorTy()) &&
+          "Invalid cast");
 
-  if (Ty->isIntegerTy())
+  if (Ty->isIntOrIntVectorTy())
     return getPtrToInt(S, Ty);
   return getBitCast(S, Ty);
 }

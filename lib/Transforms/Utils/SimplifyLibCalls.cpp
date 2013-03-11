@@ -23,6 +23,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Allocator.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
 
@@ -50,6 +51,10 @@ public:
   virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B)
     =0;
 
+  /// ignoreCallingConv - Returns false if this transformation could possibly
+  /// change the calling convention.
+  virtual bool ignoreCallingConv() { return false; }
+
   Value *optimizeCall(CallInst *CI, const DataLayout *TD,
                       const TargetLibraryInfo *TLI,
                       const LibCallSimplifier *LCS, IRBuilder<> &B) {
@@ -61,7 +66,7 @@ public:
       Context = &CI->getCalledFunction()->getContext();
 
     // We never change the calling convention.
-    if (CI->getCallingConv() != llvm::CallingConv::C)
+    if (!ignoreCallingConv() && CI->getCallingConv() != llvm::CallingConv::C)
       return NULL;
 
     return callOptimizer(CI->getCalledFunction(), CI, B);
@@ -724,6 +729,7 @@ struct StrNCpyOpt : public LibCallOptimization {
 };
 
 struct StrLenOpt : public LibCallOptimization {
+  virtual bool ignoreCallingConv() { return true; }
   virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
     FunctionType *FT = Callee->getFunctionType();
     if (FT->getNumParams() != 1 ||
@@ -1260,6 +1266,7 @@ struct FFSOpt : public LibCallOptimization {
 };
 
 struct AbsOpt : public LibCallOptimization {
+  virtual bool ignoreCallingConv() { return true; }
   virtual Value *callOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
     FunctionType *FT = Callee->getFunctionType();
     // We require integer(integer) where the types agree.
@@ -1666,7 +1673,7 @@ class LibCallSimplifierImpl {
   const TargetLibraryInfo *TLI;
   const LibCallSimplifier *LCS;
   bool UnsafeFPShrink;
-  StringMap<LibCallOptimization*> Optimizations;
+  StringMap<LibCallOptimization*, BumpPtrAllocator> Optimizations;
 
   // Fortified library call optimizations.
   MemCpyChkOpt MemCpyChk;
@@ -1890,6 +1897,7 @@ LibCallSimplifier::~LibCallSimplifier() {
 }
 
 Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
+  if (CI->hasFnAttr(Attribute::NoBuiltin)) return 0;
   return Impl->optimizeCall(CI);
 }
 

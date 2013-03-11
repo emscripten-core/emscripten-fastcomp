@@ -91,7 +91,7 @@ wide variety of meanings:
 .. productionlist::
    BangOperator: one of
                :!eq     !if      !head    !tail      !con
-               :!shl    !sra     !srl
+               :!add    !shl     !sra     !srl
                :!cast   !empty   !subst   !foreach   !strconcat
 
 Syntax
@@ -298,7 +298,7 @@ Bodies
 
 .. productionlist::
    ObjectBody: `BaseClassList` `Body`
-   BaseClassList: [`BaseClassListNE`]
+   BaseClassList: [":" `BaseClassListNE`]
    BaseClassListNE: `SubClassRef` ("," `SubClassRef`)*
    SubClassRef: (`ClassID` | `MultiClassID`) ["<" `ValueList` ">"]
    DefmID: `TokIdentifier`
@@ -343,7 +343,7 @@ a ``foreach``.
 --------
 
 .. productionlist::
-   Defm: "defm" `TokIdentifier` ":" `BaseClassList` ";"
+   Defm: "defm" `TokIdentifier` ":" `BaseClassListNE` ";"
 
 Note that in the :token:`BaseClassList`, all of the ``multiclass``'s must
 precede any ``class``'s that appear.

@@ -38,11 +38,26 @@ void MipsTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM){
                                ELF::SHF_WRITE |ELF::SHF_ALLOC,
                                SectionKind::getBSS());
 
+  // Register info information
+  const MipsSubtarget &Subtarget = TM.getSubtarget<MipsSubtarget>();
+  if (Subtarget.isABI_N64() || Subtarget.isABI_N32())
+    ReginfoSection =
+      getContext().getELFSection(".MIPS.options",
+                                 ELF::SHT_MIPS_OPTIONS,
+                                 ELF::SHF_ALLOC |ELF::SHF_MIPS_NOSTRIP,
+                                 SectionKind::getMetadata());
+  else
+    ReginfoSection =
+      getContext().getELFSection(".reginfo",
+                                 ELF::SHT_MIPS_REGINFO,
+                                 ELF::SHF_ALLOC,
+                                 SectionKind::getMetadata());
+
   // @LOCALMOD-BEGIN
   // Without this the linker defined symbols __fini_array_start and
   // __fini_array_end do not have useful values. c.f.:
   // http://code.google.com/p/nativeclient/issues/detail?id=805
-  if (TM.getSubtarget<MipsSubtarget>().isTargetNaCl()) {
+  if (Subtarget.isTargetNaCl()) {
     StaticCtorSection =
       getContext().getELFSection(".init_array", ELF::SHT_INIT_ARRAY,
                                ELF::SHF_WRITE |

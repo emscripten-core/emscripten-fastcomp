@@ -43,14 +43,12 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/InstVisitor.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Local.h"
@@ -411,9 +409,9 @@ static Value *foldSelectInst(SelectInst &SI) {
   // early on.
   if (ConstantInt *CI = dyn_cast<ConstantInt>(SI.getCondition()))
     return SI.getOperand(1+CI->isZero());
-  if (SI.getOperand(1) == SI.getOperand(2)) {
+  if (SI.getOperand(1) == SI.getOperand(2))
     return SI.getOperand(1);
-  }
+
   return 0;
 }
 
@@ -621,7 +619,7 @@ private:
   }
 
   // Disable SRoA for any intrinsics except for lifetime invariants.
-  // FIXME: What about debug instrinsics? This matches old behavior, but
+  // FIXME: What about debug intrinsics? This matches old behavior, but
   // doesn't make sense.
   void visitIntrinsicInst(IntrinsicInst &II) {
     if (!IsOffsetKnown)
@@ -1141,8 +1139,7 @@ void AllocaPartitioning::print(raw_ostream &OS, const_iterator I,
 
 void AllocaPartitioning::printUsers(raw_ostream &OS, const_iterator I,
                                     StringRef Indent) const {
-  for (const_use_iterator UI = use_begin(I), UE = use_end(I);
-       UI != UE; ++UI) {
+  for (const_use_iterator UI = use_begin(I), UE = use_end(I); UI != UE; ++UI) {
     if (!UI->U)
       continue; // Skip dead uses.
     OS << Indent << "  [" << UI->BeginOffset << "," << UI->EndOffset << ") "
@@ -1170,8 +1167,7 @@ void AllocaPartitioning::print(raw_ostream &OS) const {
   }
 
   OS << "Partitioning of alloca: " << AI << "\n";
-  unsigned Num = 0;
-  for (const_iterator I = begin(), E = end(); I != E; ++I, ++Num) {
+  for (const_iterator I = begin(), E = end(); I != E; ++I) {
     print(OS, I);
     printUsers(OS, I);
   }
@@ -1242,7 +1238,7 @@ public:
     for (SmallVector<DbgValueInst *, 4>::const_iterator I = DVIs.begin(),
            E = DVIs.end(); I != E; ++I) {
       DbgValueInst *DVI = *I;
-      Value *Arg = NULL;
+      Value *Arg = 0;
       if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
         // If an argument is zero extended then use argument directly. The ZExt
         // may be zapped by an optimization pass in future.
@@ -1277,7 +1273,7 @@ namespace {
 /// 1) It takes allocations of aggregates and analyzes the ways in which they
 ///    are used to try to split them into smaller allocations, ideally of
 ///    a single scalar data type. It will split up memcpy and memset accesses
-///    as necessary and try to isolate invidual scalar accesses.
+///    as necessary and try to isolate individual scalar accesses.
 /// 2) It will transform accesses into forms which are suitable for SSA value
 ///    promotion. This can be replacing a memset with a scalar store of an
 ///    integer value, or it can involve speculating operations on a PHI or
@@ -1439,8 +1435,7 @@ private:
     // We can only transform this if it is safe to push the loads into the
     // predecessor blocks. The only thing to watch out for is that we can't put
     // a possibly trapping load in the predecessor if it is a critical edge.
-    for (unsigned Idx = 0, Num = PN.getNumIncomingValues(); Idx != Num;
-         ++Idx) {
+    for (unsigned Idx = 0, Num = PN.getNumIncomingValues(); Idx != Num; ++Idx) {
       TerminatorInst *TI = PN.getIncomingBlock(Idx)->getTerminator();
       Value *InVal = PN.getIncomingValue(Idx);
 
@@ -1483,7 +1478,7 @@ private:
                                           PN.getName() + ".sroa.speculated");
 
     // Get the TBAA tag and alignment to use from one of the loads.  It doesn't
-    // matter which one we get and if any differ, it doesn't matter.
+    // matter which one we get and if any differ.
     LoadInst *SomeLoad = cast<LoadInst>(Loads.back());
     MDNode *TBAATag = SomeLoad->getMetadata(LLVMContext::MD_tbaa);
     unsigned Align = SomeLoad->getAlignment();
@@ -1816,7 +1811,7 @@ static Value *getNaturalGEPWithOffset(IRBuilder<> &IRB, const DataLayout &TD,
 /// The strategy for finding the more natural GEPs is to peel off layers of the
 /// pointer, walking back through bit casts and GEPs, searching for a base
 /// pointer from which we can compute a natural GEP with the desired
-/// properities. The algorithm tries to fold as many constant indices into
+/// properties. The algorithm tries to fold as many constant indices into
 /// a single GEP as possible, thus making each GEP more independent of the
 /// surrounding code.
 static Value *getAdjustedPtr(IRBuilder<> &IRB, const DataLayout &TD,
@@ -2062,9 +2057,9 @@ static bool isIntegerWideningViable(const DataLayout &TD,
 
   uint64_t Size = TD.getTypeStoreSize(AllocaTy);
 
-  // Check the uses to ensure the uses are (likely) promoteable integer uses.
+  // Check the uses to ensure the uses are (likely) promotable integer uses.
   // Also ensure that the alloca has a covering load or store. We don't want
-  // to widen the integer operotains only to fail to promote due to some other
+  // to widen the integer operations only to fail to promote due to some other
   // unsplittable entry (which we may make splittable later).
   bool WholeAllocaOp = false;
   for (; I != E; ++I) {
@@ -2283,7 +2278,7 @@ class AllocaPartitionRewriter : public InstVisitor<AllocaPartitionRewriter,
 
   // If we are rewriting an alloca partition which can be written as pure
   // vector operations, we stash extra information here. When VecTy is
-  // non-null, we have some strict guarantees about the rewriten alloca:
+  // non-null, we have some strict guarantees about the rewritten alloca:
   //   - The new alloca is exactly the size of the vector type here.
   //   - The accesses all either map to the entire vector or to a single
   //     element.
@@ -2636,7 +2631,7 @@ private:
   ///
   /// Note that this routine assumes an i8 is a byte. If that isn't true, don't
   /// call this routine.
-  /// FIXME: Heed the abvice above.
+  /// FIXME: Heed the advice above.
   ///
   /// \param V The i8 value to splat.
   /// \param Size The number of bytes in the output (assuming i8 is one byte)
@@ -2971,6 +2966,7 @@ private:
     else
       New = IRB.CreateLifetimeEnd(Ptr, Size);
 
+    (void)New;
     DEBUG(dbgs() << "          to: " << *New << "\n");
     return true;
   }
@@ -3147,9 +3143,8 @@ private:
     void emitFunc(Type *Ty, Value *&Agg, const Twine &Name) {
       assert(Ty->isSingleValueType());
       // Load the single value and insert it using the indices.
-      Value *Load = IRB.CreateLoad(IRB.CreateInBoundsGEP(Ptr, GEPIndices,
-                                                         Name + ".gep"),
-                                   Name + ".load");
+      Value *GEP = IRB.CreateInBoundsGEP(Ptr, GEPIndices, Name + ".gep");
+      Value *Load = IRB.CreateLoad(GEP, Name + ".load");
       Agg = IRB.CreateInsertValue(Agg, Load, Indices, Name + ".insert");
       DEBUG(dbgs() << "          to: " << *Load << "\n");
     }
@@ -3422,7 +3417,7 @@ bool SROA::rewriteAllocaPartition(AllocaInst &AI,
   // Check for the case where we're going to rewrite to a new alloca of the
   // exact same type as the original, and with the same access offsets. In that
   // case, re-use the existing alloca, but still run through the rewriter to
-  // performe phi and select speculation.
+  // perform phi and select speculation.
   AllocaInst *NewAI;
   if (AllocaTy == AI.getAllocatedType()) {
     assert(PI->BeginOffset == 0 &&
@@ -3589,7 +3584,7 @@ void SROA::deleteDeadInstructions(SmallPtrSet<AllocaInst*, 4> &DeletedAllocas) {
 /// If there is a domtree available, we attempt to promote using the full power
 /// of mem2reg. Otherwise, we build and use the AllocaPromoter above which is
 /// based on the SSAUpdater utilities. This function returns whether any
-/// promotion occured.
+/// promotion occurred.
 bool SROA::promoteAllocas(Function &F) {
   if (PromotableAllocas.empty())
     return false;

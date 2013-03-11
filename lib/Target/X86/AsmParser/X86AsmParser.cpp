@@ -57,7 +57,7 @@ private:
   X86Operand *ParseATTOperand();
   X86Operand *ParseIntelOperand();
   X86Operand *ParseIntelOffsetOfOperator(SMLoc StartLoc);
-  X86Operand *ParseIntelTypeOperator(SMLoc StartLoc);
+  X86Operand *ParseIntelOperator(SMLoc StartLoc, unsigned OpKind);
   X86Operand *ParseIntelMemOperand(unsigned SegReg, SMLoc StartLoc);
   X86Operand *ParseIntelBracExpression(unsigned SegReg, unsigned Size);
   X86Operand *ParseMemOperand(unsigned SegReg, SMLoc StartLoc);
@@ -906,12 +906,13 @@ X86Operand *X86AsmParser::ParseIntelBracExpression(unsigned SegReg,
   if (getLexer().is(AsmToken::Identifier)) {
     if (ParseRegister(TmpReg, Start, End)) {
       const MCExpr *Disp;
-      if (getParser().ParseExpression(Disp, End))
+      if (getParser().parseExpression(Disp, End))
         return 0;
 
       if (getLexer().isNot(AsmToken::RBrac))
         return ErrorOperand(Parser.getTok().getLoc(), "Expected ']' token!");
-      End = Parser.getTok().getEndLoc();
+      // Adjust the EndLoc due to the ']'.
+      End = SMLoc::getFromPointer(Parser.getTok().getEndLoc().getPointer()-1);
       Parser.Lex();
       return X86Operand::CreateMem(Disp, Start, End, Size);
     }
@@ -950,7 +951,7 @@ X86Operand *X86AsmParser::ParseIntelBracExpression(unsigned SegReg,
         SM.onRegister(TmpReg);
         UpdateLocLex = false;
         break;
-      } else if (!getParser().ParseExpression(Disp, End)) {
+      } else if (!getParser().parseExpression(Disp, End)) {
         SM.onDispExpr();
         UpdateLocLex = false;
         break;
@@ -1032,7 +1033,7 @@ X86Operand *X86AsmParser::ParseIntelMemOperand(unsigned SegReg, SMLoc Start) {
   }
 
   const MCExpr *Disp = MCConstantExpr::Create(0, getParser().getContext());
-  if (getParser().ParseExpression(Disp, End))
+  if (getParser().parseExpression(Disp, End))
     return 0;
 
   bool NeedSizeDir = false;
@@ -1043,11 +1044,11 @@ X86Operand *X86AsmParser::ParseIntelMemOperand(unsigned SegReg, SMLoc Start) {
       // FIXME: The SemaLookup will fail if the name is anything other then an
       // identifier.
       // FIXME: Pass a valid SMLoc.
-      unsigned tSize;
-      SemaCallback->LookupInlineAsmIdentifier(Sym.getName(), NULL, tSize,
-                                              IsVarDecl);
+      unsigned tLength, tSize, tType;
+      SemaCallback->LookupInlineAsmIdentifier(Sym.getName(), NULL, tLength,
+                                              tSize, tType, IsVarDecl);
       if (!Size)
-        Size = tSize;
+        Size = tType * 8; // Size is in terms of bits in this context.
       NeedSizeDir = Size > 0;
     }
   }
@@ -1134,7 +1135,7 @@ X86Operand *X86AsmParser::ParseIntelOffsetOfOperator(SMLoc Start) {
 
   SMLoc End;
   const MCExpr *Val;
-  if (getParser().ParseExpression(Val, End))
+  if (getParser().parseExpression(Val, End))
     return ErrorOperand(Start, "Unable to parse expression!");
 
   // Don't emit the offset operator.
@@ -1148,10 +1149,19 @@ X86Operand *X86AsmParser::ParseIntelOffsetOfOperator(SMLoc Start) {
                                OffsetOfLoc);
 }
 
-/// Parse the 'TYPE' operator.  The TYPE operator returns the size of a C or
-/// C++ type or variable. If the variable is an array, TYPE returns the size of
-/// a single element of the array.
-X86Operand *X86AsmParser::ParseIntelTypeOperator(SMLoc Start) {
+enum IntelOperatorKind {
+  IOK_LENGTH,
+  IOK_SIZE,
+  IOK_TYPE
+};
+
+/// Parse the 'LENGTH', 'TYPE' and 'SIZE' operators.  The LENGTH operator
+/// returns the number of elements in an array.  It returns the value 1 for
+/// non-array variables.  The SIZE operator returns the size of a C or C++
+/// variable.  A variable's size is the product of its LENGTH and TYPE.  The
+/// TYPE operator returns the size of a C or C++ type or variable. If the
+/// variable is an array, TYPE returns the size of a single element.
+X86Operand *X86AsmParser::ParseIntelOperator(SMLoc Start, unsigned OpKind) {
   SMLoc TypeLoc = Start;
   Parser.Lex(); // Eat offset.
   Start = Parser.getTok().getLoc();
@@ -1159,62 +1169,63 @@ X86Operand *X86AsmParser::ParseIntelTypeOperator(SMLoc Start) {
 
   SMLoc End;
   const MCExpr *Val;
-  if (getParser().ParseExpression(Val, End))
+  if (getParser().parseExpression(Val, End))
     return 0;
 
-  unsigned Size = 0;
+  unsigned Length = 0, Size = 0, Type = 0;
   if (const MCSymbolRefExpr *SymRef = dyn_cast<MCSymbolRefExpr>(Val)) {
     const MCSymbol &Sym = SymRef->getSymbol();
     // FIXME: The SemaLookup will fail if the name is anything other then an
     // identifier.
     // FIXME: Pass a valid SMLoc.
     bool IsVarDecl;
-    if (!SemaCallback->LookupInlineAsmIdentifier(Sym.getName(), NULL, Size,
-                                                 IsVarDecl))
-      return ErrorOperand(Start, "Unable to lookup TYPE of expr!");
-
-    Size /= 8; // Size is in terms of bits, but we want bytes in the context.
+    if (!SemaCallback->LookupInlineAsmIdentifier(Sym.getName(), NULL, Length,
+                                                 Size, Type, IsVarDecl))
+      return ErrorOperand(Start, "Unable to lookup expr!");
+  }
+  unsigned CVal;
+  switch(OpKind) {
+  default: llvm_unreachable("Unexpected operand kind!");
+  case IOK_LENGTH: CVal = Length; break;
+  case IOK_SIZE: CVal = Size; break;
+  case IOK_TYPE: CVal = Type; break;
   }
 
   // Rewrite the type operator and the C or C++ type or variable in terms of an
   // immediate.  E.g. TYPE foo -> $$4
   unsigned Len = End.getPointer() - TypeLoc.getPointer();
-  InstInfo->AsmRewrites->push_back(AsmRewrite(AOK_Imm, TypeLoc, Len, Size));
+  InstInfo->AsmRewrites->push_back(AsmRewrite(AOK_Imm, TypeLoc, Len, CVal));
 
-  const MCExpr *Imm = MCConstantExpr::Create(Size, getContext());
+  const MCExpr *Imm = MCConstantExpr::Create(CVal, getContext());
   return X86Operand::CreateImm(Imm, Start, End, /*NeedAsmRewrite*/false);
 }
 
 X86Operand *X86AsmParser::ParseIntelOperand() {
   SMLoc Start = Parser.getTok().getLoc(), End;
-
-  // offset operator.
   StringRef AsmTokStr = Parser.getTok().getString();
-  if ((AsmTokStr == "offset" || AsmTokStr == "OFFSET") &&
-      isParsingInlineAsm())
-    return ParseIntelOffsetOfOperator(Start);
 
-  // Type directive.
-  if ((AsmTokStr == "type" || AsmTokStr == "TYPE") &&
-      isParsingInlineAsm())
-    return ParseIntelTypeOperator(Start);
+  // Offset, length, type and size operators.
+  if (isParsingInlineAsm()) {
+    if (AsmTokStr == "offset" || AsmTokStr == "OFFSET")
+      return ParseIntelOffsetOfOperator(Start);
+    if (AsmTokStr == "length" || AsmTokStr == "LENGTH")
+      return ParseIntelOperator(Start, IOK_LENGTH);
+    if (AsmTokStr == "size" || AsmTokStr == "SIZE")
+      return ParseIntelOperator(Start, IOK_SIZE);
+    if (AsmTokStr == "type" || AsmTokStr == "TYPE")
+      return ParseIntelOperator(Start, IOK_TYPE);
+  }
 
-  // Unsupported directives.
-  if (isParsingIntelSyntax() &&
-      (AsmTokStr == "size" || AsmTokStr == "SIZE" ||
-       AsmTokStr == "length" || AsmTokStr == "LENGTH"))
-      return ErrorOperand(Start, "Unsupported directive!");
-
-  // immediate.
+  // Immediate.
   if (getLexer().is(AsmToken::Integer) || getLexer().is(AsmToken::Real) ||
       getLexer().is(AsmToken::Minus)) {
     const MCExpr *Val;
-    if (!getParser().ParseExpression(Val, End)) {
+    if (!getParser().parseExpression(Val, End)) {
       return X86Operand::CreateImm(Val, Start, End);
     }
   }
 
-  // register
+  // Register.
   unsigned RegNo = 0;
   if (!ParseRegister(RegNo, Start, End)) {
     // If this is a segment register followed by a ':', then this is the start
@@ -1226,7 +1237,7 @@ X86Operand *X86AsmParser::ParseIntelOperand() {
     return ParseIntelMemOperand(RegNo, Start);
   }
 
-  // mem operand
+  // Memory operand.
   return ParseIntelMemOperand(0, Start);
 }
 
@@ -1260,7 +1271,7 @@ X86Operand *X86AsmParser::ParseATTOperand() {
     SMLoc Start = Parser.getTok().getLoc(), End;
     Parser.Lex();
     const MCExpr *Val;
-    if (getParser().ParseExpression(Val, End))
+    if (getParser().parseExpression(Val, End))
       return 0;
     return X86Operand::CreateImm(Val, Start, End);
   }
@@ -1278,7 +1289,7 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
   const MCExpr *Disp = MCConstantExpr::Create(0, getParser().getContext());
   if (getLexer().isNot(AsmToken::LParen)) {
     SMLoc ExprEnd;
-    if (getParser().ParseExpression(Disp, ExprEnd)) return 0;
+    if (getParser().parseExpression(Disp, ExprEnd)) return 0;
 
     // After parsing the base expression we could either have a parenthesized
     // memory address or not.  If not, return now.  If so, eat the (.
@@ -1304,7 +1315,7 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
       SMLoc ExprEnd;
 
       // It must be an parenthesized expression, parse it now.
-      if (getParser().ParseParenExpression(Disp, ExprEnd))
+      if (getParser().parseParenExpression(Disp, ExprEnd))
         return 0;
 
       // After parsing the base expression we could either have a parenthesized
@@ -1364,7 +1375,7 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
           SMLoc Loc = Parser.getTok().getLoc();
 
           int64_t ScaleVal;
-          if (getParser().ParseAbsoluteExpression(ScaleVal)){
+          if (getParser().parseAbsoluteExpression(ScaleVal)){
             Error(Loc, "expected scale expression");
             return 0;
           }
@@ -1383,7 +1394,7 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
       SMLoc Loc = Parser.getTok().getLoc();
 
       int64_t Value;
-      if (getParser().ParseAbsoluteExpression(Value))
+      if (getParser().parseAbsoluteExpression(Value))
         return 0;
 
       if (Value != 1)
@@ -1524,7 +1535,7 @@ ParseInstruction(ParseInstructionInfo &Info, StringRef Name, SMLoc NameLoc,
     if (X86Operand *Op = ParseOperand())
       Operands.push_back(Op);
     else {
-      Parser.EatToEndOfStatement();
+      Parser.eatToEndOfStatement();
       return true;
     }
 
@@ -1535,14 +1546,14 @@ ParseInstruction(ParseInstructionInfo &Info, StringRef Name, SMLoc NameLoc,
       if (X86Operand *Op = ParseOperand())
         Operands.push_back(Op);
       else {
-        Parser.EatToEndOfStatement();
+        Parser.eatToEndOfStatement();
         return true;
       }
     }
 
     if (getLexer().isNot(AsmToken::EndOfStatement)) {
       SMLoc Loc = getLexer().getLoc();
-      Parser.EatToEndOfStatement();
+      Parser.eatToEndOfStatement();
       return Error(Loc, "unexpected token in argument list");
     }
   }
@@ -2232,7 +2243,7 @@ bool X86AsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     for (;;) {
       const MCExpr *Value;
-      if (getParser().ParseExpression(Value))
+      if (getParser().parseExpression(Value))
         return true;
 
       getParser().getStreamer().EmitValue(Value, Size);

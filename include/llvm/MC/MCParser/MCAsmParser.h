@@ -14,7 +14,6 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/Support/DataTypes.h"
-#include <vector>
 
 namespace llvm {
 class MCAsmInfo;
@@ -24,13 +23,11 @@ class MCContext;
 class MCExpr;
 class MCInstPrinter;
 class MCInstrInfo;
-class MCParsedAsmOperand;
 class MCStreamer;
 class MCTargetAsmParser;
 class SMLoc;
 class SMRange;
 class SourceMgr;
-class StringRef;
 class Twine;
 
 /// MCAsmParserSemaCallback - Generic Sema callback for assembly parser.
@@ -38,36 +35,21 @@ class MCAsmParserSemaCallback {
 public:
   virtual ~MCAsmParserSemaCallback(); 
   virtual void *LookupInlineAsmIdentifier(StringRef Name, void *Loc,
-                                          unsigned &Size, bool &IsVarDecl) = 0;
+                                          unsigned &Length, unsigned &Size, 
+                                          unsigned &Type, bool &IsVarDecl) = 0;
+
   virtual bool LookupInlineAsmField(StringRef Base, StringRef Member,
                                     unsigned &Offset) = 0;
 };
 
-
-/// \brief Helper types for tracking macro definitions.
-typedef std::vector<AsmToken> MCAsmMacroArgument;
-typedef std::vector<MCAsmMacroArgument> MCAsmMacroArguments;
-typedef std::pair<StringRef, MCAsmMacroArgument> MCAsmMacroParameter;
-typedef std::vector<MCAsmMacroParameter> MCAsmMacroParameters;
-
-struct MCAsmMacro {
-  StringRef Name;
-  StringRef Body;
-  MCAsmMacroParameters Parameters;
-
-public:
-  MCAsmMacro(StringRef N, StringRef B, const MCAsmMacroParameters &P) :
-    Name(N), Body(B), Parameters(P) {}
-
-  MCAsmMacro(const MCAsmMacro& Other)
-    : Name(Other.Name), Body(Other.Body), Parameters(Other.Parameters) {}
-};
 
 /// MCAsmParser - Generic assembler parser interface, for use by target specific
 /// assembly parsers.
 class MCAsmParser {
 public:
   typedef bool (*DirectiveHandler)(MCAsmParserExtension*, StringRef, SMLoc);
+  typedef std::pair<MCAsmParserExtension*, DirectiveHandler>
+    ExtensionDirectiveHandler;
 
 private:
   MCAsmParser(const MCAsmParser &) LLVM_DELETED_FUNCTION;
@@ -83,9 +65,8 @@ protected: // Can only create subclasses.
 public:
   virtual ~MCAsmParser();
 
-  virtual void AddDirectiveHandler(MCAsmParserExtension *Object,
-                                   StringRef Directive,
-                                   DirectiveHandler Handler) = 0;
+  virtual void addDirectiveHandler(StringRef Directive,
+                                   ExtensionDirectiveHandler Handler) = 0;
 
   virtual SourceMgr &getSourceManager() = 0;
 
@@ -111,8 +92,8 @@ public:
   virtual void setParsingInlineAsm(bool V) = 0;
   virtual bool isParsingInlineAsm() = 0;
 
-  /// ParseMSInlineAsm - Parse ms-style inline assembly.
-  virtual bool ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
+  /// parseMSInlineAsm - Parse ms-style inline assembly.
+  virtual bool parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
                                 unsigned &NumOutputs, unsigned &NumInputs,
                                 SmallVectorImpl<std::pair<void *, bool> > &OpDecls,
                                 SmallVectorImpl<std::string> &Constraints,
@@ -145,81 +126,50 @@ public:
   bool TokError(const Twine &Msg,
                 ArrayRef<SMRange> Ranges = ArrayRef<SMRange>());
 
-  /// ParseIdentifier - Parse an identifier or string (as a quoted identifier)
+  /// parseIdentifier - Parse an identifier or string (as a quoted identifier)
   /// and set \p Res to the identifier contents.
-  virtual bool ParseIdentifier(StringRef &Res) = 0;
+  virtual bool parseIdentifier(StringRef &Res) = 0;
 
   /// \brief Parse up to the end of statement and return the contents from the
   /// current token until the end of the statement; the current token on exit
   /// will be either the EndOfStatement or EOF.
-  virtual StringRef ParseStringToEndOfStatement() = 0;
+  virtual StringRef parseStringToEndOfStatement() = 0;
 
-  /// EatToEndOfStatement - Skip to the end of the current statement, for error
+  /// parseEscapedString - Parse the current token as a string which may include
+  /// escaped characters and return the string contents.
+  virtual bool parseEscapedString(std::string &Data) = 0;
+
+  /// eatToEndOfStatement - Skip to the end of the current statement, for error
   /// recovery.
-  virtual void EatToEndOfStatement() = 0;
+  virtual void eatToEndOfStatement() = 0;
 
-  /// \brief Are macros enabled in the parser?
-  virtual bool MacrosEnabled() = 0;
-
-  /// \brief Control a flag in the parser that enables or disables macros.
-  virtual void SetMacrosEnabled(bool flag) = 0;
-
-  /// \brief Lookup a previously defined macro.
-  /// \param Name Macro name.
-  /// \returns Pointer to macro. NULL if no such macro was defined.
-  virtual const MCAsmMacro* LookupMacro(StringRef Name) = 0;
-
-  /// \brief Define a new macro with the given name and information.
-  virtual void DefineMacro(StringRef Name, const MCAsmMacro& Macro) = 0;
-
-  /// \brief Undefine a macro. If no such macro was defined, it's a no-op.
-  virtual void UndefineMacro(StringRef Name) = 0;
-
-  /// \brief Are we inside a macro instantiation?
-  virtual bool InsideMacroInstantiation() = 0;
-
-  /// \brief Handle entry to macro instantiation. 
-  ///
-  /// \param M The macro.
-  /// \param NameLoc Instantiation location.
-  virtual bool HandleMacroEntry(const MCAsmMacro *M, SMLoc NameLoc) = 0;
-
-  /// \brief Handle exit from macro instantiation.
-  virtual void HandleMacroExit() = 0;
-
-  /// ParseMacroArgument - Extract AsmTokens for a macro argument. If the
-  /// argument delimiter is initially unknown, set it to AsmToken::Eof. It will
-  /// be set to the correct delimiter by the method.
-  virtual bool ParseMacroArgument(MCAsmMacroArgument &MA,
-                                  AsmToken::TokenKind &ArgumentDelimiter) = 0;
-
-  /// ParseExpression - Parse an arbitrary expression.
+  /// parseExpression - Parse an arbitrary expression.
   ///
   /// @param Res - The value of the expression. The result is undefined
   /// on error.
   /// @result - False on success.
-  virtual bool ParseExpression(const MCExpr *&Res, SMLoc &EndLoc) = 0;
-  bool ParseExpression(const MCExpr *&Res);
+  virtual bool parseExpression(const MCExpr *&Res, SMLoc &EndLoc) = 0;
+  bool parseExpression(const MCExpr *&Res);
 
-  /// ParseParenExpression - Parse an arbitrary expression, assuming that an
+  /// parseParenExpression - Parse an arbitrary expression, assuming that an
   /// initial '(' has already been consumed.
   ///
   /// @param Res - The value of the expression. The result is undefined
   /// on error.
   /// @result - False on success.
-  virtual bool ParseParenExpression(const MCExpr *&Res, SMLoc &EndLoc) = 0;
+  virtual bool parseParenExpression(const MCExpr *&Res, SMLoc &EndLoc) = 0;
 
-  /// ParseAbsoluteExpression - Parse an expression which must evaluate to an
+  /// parseAbsoluteExpression - Parse an expression which must evaluate to an
   /// absolute value.
   ///
   /// @param Res - The value of the absolute expression. The result is undefined
   /// on error.
   /// @result - False on success.
-  virtual bool ParseAbsoluteExpression(int64_t &Res) = 0;
+  virtual bool parseAbsoluteExpression(int64_t &Res) = 0;
 
-  /// CheckForValidSection - Ensure that we have a valid section set in the
-  /// streamer. Otherwise, report and error and switch to .text.
-  virtual void CheckForValidSection() = 0;
+  /// checkForValidSection - Ensure that we have a valid section set in the
+  /// streamer. Otherwise, report an error and switch to .text.
+  virtual void checkForValidSection() = 0;
 };
 
 /// \brief Create an MCAsmParser instance.

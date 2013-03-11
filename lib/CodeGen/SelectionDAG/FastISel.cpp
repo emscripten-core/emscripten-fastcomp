@@ -87,6 +87,27 @@ void FastISel::startNewBlock() {
   LastLocalValue = EmitStartPt;
 }
 
+bool FastISel::LowerArguments() {
+  if (!FuncInfo.CanLowerReturn)
+    // Fallback to SDISel argument lowering code to deal with sret pointer
+    // parameter.
+    return false;
+  
+  if (!FastLowerArguments())
+    return false;
+
+  // Enter non-dead arguments into ValueMap for uses in non-entry BBs.
+  for (Function::const_arg_iterator I = FuncInfo.Fn->arg_begin(),
+         E = FuncInfo.Fn->arg_end(); I != E; ++I) {
+    if (!I->use_empty()) {
+      DenseMap<const Value *, unsigned>::iterator VI = LocalValueMap.find(I);
+      assert(VI != LocalValueMap.end() && "Missed an argument?");
+      FuncInfo.ValueMap[I] = VI->second;
+    }
+  }
+  return true;
+}
+
 void FastISel::flushLocalValueMap() {
   LocalValueMap.clear();
   LastLocalValue = EmitStartPt;
@@ -684,7 +705,7 @@ bool FastISel::SelectCall(const User *I) {
   // all the values which have already been materialized,
   // appear after the call. It also makes sense to skip intrinsics
   // since they tend to be inlined.
-  if (!isa<IntrinsicInst>(F))
+  if (!isa<IntrinsicInst>(Call))
     flushLocalValueMap();
 
   // An arbitrary call. Bail.
@@ -836,7 +857,8 @@ FastISel::SelectInstruction(const Instruction *I) {
 void
 FastISel::FastEmitBranch(MachineBasicBlock *MSucc, DebugLoc DL) {
 
-  if (FuncInfo.MBB->getBasicBlock()->size() > 1 && FuncInfo.MBB->isLayoutSuccessor(MSucc)) {
+  if (FuncInfo.MBB->getBasicBlock()->size() > 1 &&
+      FuncInfo.MBB->isLayoutSuccessor(MSucc)) {
     // For more accurate line information if this is the only instruction
     // in the block then emit it, otherwise we have the unconditional
     // fall-through case, which needs no instructions.
@@ -1066,6 +1088,10 @@ FastISel::FastISel(FunctionLoweringInfo &funcInfo,
 }
 
 FastISel::~FastISel() {}
+
+bool FastISel::FastLowerArguments() {
+  return false;
+}
 
 unsigned FastISel::FastEmit_(MVT, MVT,
                              unsigned) {

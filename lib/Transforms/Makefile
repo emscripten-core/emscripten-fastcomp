@@ -8,7 +8,8 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL = ../..
-PARALLEL_DIRS = Utils Instrumentation Scalar InstCombine IPO Vectorize Hello NaCl
+PARALLEL_DIRS = Utils Instrumentation Scalar InstCombine IPO Vectorize Hello ObjCARC NaCl
+
 
 ifeq ($(NACL_SANDBOX),1)
   PARALLEL_DIRS := $(filter-out Hello, $(PARALLEL_DIRS))

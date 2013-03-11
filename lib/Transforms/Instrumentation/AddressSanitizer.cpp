@@ -16,7 +16,6 @@
 #define DEBUG_TYPE "asan"
 
 #include "llvm/Transforms/Instrumentation.h"
-#include "BlackList.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
@@ -36,6 +35,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/InstVisitor.h"
+#include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/Debug.h"
@@ -43,6 +43,7 @@
 #include "llvm/Support/system_error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/BlackList.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <algorithm>
@@ -53,7 +54,8 @@ using namespace llvm;
 static const uint64_t kDefaultShadowScale = 3;
 static const uint64_t kDefaultShadowOffset32 = 1ULL << 29;
 static const uint64_t kDefaultShadowOffset64 = 1ULL << 44;
-static const uint64_t kDefaultShadowOffsetAndroid = 0;
+static const uint64_t kDefaultShort64bitShadowOffset = 0x7FFF8000;  // < 2G.
+static const uint64_t kPPC64_ShadowOffset64 = 1ULL << 41;
 
 static const size_t kMaxStackMallocSize = 1 << 16;  // 64K
 static const uintptr_t kCurrentStackFrameMagic = 0x41B58AB3;
@@ -63,11 +65,13 @@ static const char *kAsanModuleCtorName = "asan.module_ctor";
 static const char *kAsanModuleDtorName = "asan.module_dtor";
 static const int   kAsanCtorAndCtorPriority = 1;
 static const char *kAsanReportErrorTemplate = "__asan_report_";
+static const char *kAsanReportLoadN = "__asan_report_load_n";
+static const char *kAsanReportStoreN = "__asan_report_store_n";
 static const char *kAsanRegisterGlobalsName = "__asan_register_globals";
 static const char *kAsanUnregisterGlobalsName = "__asan_unregister_globals";
 static const char *kAsanPoisonGlobalsName = "__asan_before_dynamic_init";
 static const char *kAsanUnpoisonGlobalsName = "__asan_after_dynamic_init";
-static const char *kAsanInitName = "__asan_init";
+static const char *kAsanInitName = "__asan_init_v1";
 static const char *kAsanHandleNoReturnName = "__asan_handle_no_return";
 static const char *kAsanMappingOffsetName = "__asan_mapping_offset";
 static const char *kAsanMappingScaleName = "__asan_mapping_scale";
@@ -133,6 +137,9 @@ static cl::opt<int> ClMappingScale("asan-mapping-scale",
        cl::desc("scale of asan shadow mapping"), cl::Hidden, cl::init(0));
 static cl::opt<int> ClMappingOffsetLog("asan-mapping-offset-log",
        cl::desc("offset of asan shadow mapping"), cl::Hidden, cl::init(-1));
+static cl::opt<bool> ClShort64BitOffset("asan-short-64bit-mapping-offset",
+       cl::desc("Use short immediate constant as the mapping offset for 64bit"),
+       cl::Hidden, cl::init(true));
 
 // Optimization flags. Not user visible, used mostly for testing
 // and benchmarking the tool.
@@ -186,14 +193,53 @@ class SetOfDynamicallyInitializedGlobals {
   SmallSet<GlobalValue*, 32> DynInitGlobals;
 };
 
-static int MappingScale() {
-  return ClMappingScale ? ClMappingScale : kDefaultShadowScale;
+/// This struct defines the shadow mapping using the rule:
+///   shadow = (mem >> Scale) ADD-or-OR Offset.
+struct ShadowMapping {
+  int Scale;
+  uint64_t Offset;
+  bool OrShadowOffset;
+};
+
+static ShadowMapping getShadowMapping(const Module &M, int LongSize,
+                                      bool ZeroBaseShadow) {
+  llvm::Triple TargetTriple(M.getTargetTriple());
+  bool IsAndroid = TargetTriple.getEnvironment() == llvm::Triple::Android;
+  bool IsMacOSX = TargetTriple.getOS() == llvm::Triple::MacOSX;
+  bool IsPPC64 = TargetTriple.getArch() == llvm::Triple::ppc64;
+  bool IsX86_64 = TargetTriple.getArch() == llvm::Triple::x86_64;
+
+  ShadowMapping Mapping;
+
+  // OR-ing shadow offset if more efficient (at least on x86),
+  // but on ppc64 we have to use add since the shadow offset is not neccesary
+  // 1/8-th of the address space.
+  Mapping.OrShadowOffset = !IsPPC64 && !ClShort64BitOffset;
+
+  Mapping.Offset = (IsAndroid || ZeroBaseShadow) ? 0 :
+      (LongSize == 32 ? kDefaultShadowOffset32 :
+       IsPPC64 ? kPPC64_ShadowOffset64 : kDefaultShadowOffset64);
+  if (!ZeroBaseShadow && ClShort64BitOffset && IsX86_64 && !IsMacOSX) {
+    assert(LongSize == 64);
+    Mapping.Offset = kDefaultShort64bitShadowOffset;
+  }
+  if (!ZeroBaseShadow && ClMappingOffsetLog >= 0) {
+    // Zero offset log is the special case.
+    Mapping.Offset = (ClMappingOffsetLog == 0) ? 0 : 1ULL << ClMappingOffsetLog;
+  }
+
+  Mapping.Scale = kDefaultShadowScale;
+  if (ClMappingScale) {
+    Mapping.Scale = ClMappingScale;
+  }
+
+  return Mapping;
 }
 
-static size_t RedzoneSize() {
+static size_t RedzoneSizeForScale(int MappingScale) {
   // Redzone used for stack and globals is at least 32 bytes.
   // For scales 6 and 7, the redzone has to be 64 and 128 bytes respectively.
-  return std::max(32U, 1U << MappingScale());
+  return std::max(32U, 1U << MappingScale);
 }
 
 /// AddressSanitizer: instrument the code in module to find memory bugs.
@@ -201,23 +247,27 @@ struct AddressSanitizer : public FunctionPass {
   AddressSanitizer(bool CheckInitOrder = false,
                    bool CheckUseAfterReturn = false,
                    bool CheckLifetime = false,
-                   StringRef BlacklistFile = StringRef())
+                   StringRef BlacklistFile = StringRef(),
+                   bool ZeroBaseShadow = false)
       : FunctionPass(ID),
         CheckInitOrder(CheckInitOrder || ClInitializers),
         CheckUseAfterReturn(CheckUseAfterReturn || ClUseAfterReturn),
         CheckLifetime(CheckLifetime || ClCheckLifetime),
         BlacklistFile(BlacklistFile.empty() ? ClBlacklistFile
-                                            : BlacklistFile) {}
+                                            : BlacklistFile),
+        ZeroBaseShadow(ZeroBaseShadow) {}
   virtual const char *getPassName() const {
     return "AddressSanitizerFunctionPass";
   }
   void instrumentMop(Instruction *I);
-  void instrumentAddress(Instruction *OrigIns, IRBuilder<> &IRB,
-                         Value *Addr, uint32_t TypeSize, bool IsWrite);
+  void instrumentAddress(Instruction *OrigIns, Instruction *InsertBefore,
+                         Value *Addr, uint32_t TypeSize, bool IsWrite,
+                         Value *SizeArgument);
   Value *createSlowPathCmp(IRBuilder<> &IRB, Value *AddrLong,
                            Value *ShadowValue, uint32_t TypeSize);
   Instruction *generateCrashCode(Instruction *InsertBefore, Value *Addr,
-                                 bool IsWrite, size_t AccessSizeIndex);
+                                 bool IsWrite, size_t AccessSizeIndex,
+                                 Value *SizeArgument);
   bool instrumentMemIntrinsic(MemIntrinsic *MI);
   void instrumentMemIntrinsicParam(Instruction *OrigIns, Value *Addr,
                                    Value *Size,
@@ -227,6 +277,7 @@ struct AddressSanitizer : public FunctionPass {
   void createInitializerPoisonCalls(Module &M,
                                     Value *FirstAddr, Value *LastAddr);
   bool maybeInsertAsanInitAtFunctionEntry(Function &F);
+  void emitShadowMapping(Module &M, IRBuilder<> &IRB) const;
   virtual bool doInitialization(Module &M);
   static char ID;  // Pass identification, replacement for typeid
 
@@ -240,18 +291,22 @@ struct AddressSanitizer : public FunctionPass {
   bool CheckInitOrder;
   bool CheckUseAfterReturn;
   bool CheckLifetime;
+  SmallString<64> BlacklistFile;
+  bool ZeroBaseShadow;
+
   LLVMContext *C;
   DataLayout *TD;
-  uint64_t MappingOffset;
   int LongSize;
   Type *IntptrTy;
+  ShadowMapping Mapping;
   Function *AsanCtorFunction;
   Function *AsanInitFunction;
   Function *AsanHandleNoReturnFunc;
-  SmallString<64> BlacklistFile;
   OwningPtr<BlackList> BL;
   // This array is indexed by AccessIsWrite and log2(AccessSize).
   Function *AsanErrorCallback[2][kNumberOfAccessSizes];
+  // This array is indexed by AccessIsWrite.
+  Function *AsanErrorCallbackSized[2];
   InlineAsm *EmptyAsm;
   SetOfDynamicallyInitializedGlobals DynamicallyInitializedGlobals;
 
@@ -261,11 +316,13 @@ struct AddressSanitizer : public FunctionPass {
 class AddressSanitizerModule : public ModulePass {
  public:
   AddressSanitizerModule(bool CheckInitOrder = false,
-                         StringRef BlacklistFile = StringRef())
+                         StringRef BlacklistFile = StringRef(),
+                         bool ZeroBaseShadow = false)
       : ModulePass(ID),
         CheckInitOrder(CheckInitOrder || ClInitializers),
         BlacklistFile(BlacklistFile.empty() ? ClBlacklistFile
-                                            : BlacklistFile) {}
+                                            : BlacklistFile),
+        ZeroBaseShadow(ZeroBaseShadow) {}
   bool runOnModule(Module &M);
   static char ID;  // Pass identification, replacement for typeid
   virtual const char *getPassName() const {
@@ -278,14 +335,20 @@ class AddressSanitizerModule : public ModulePass {
   bool ShouldInstrumentGlobal(GlobalVariable *G);
   void createInitializerPoisonCalls(Module &M, Value *FirstAddr,
                                     Value *LastAddr);
+  size_t RedzoneSize() const {
+    return RedzoneSizeForScale(Mapping.Scale);
+  }
 
   bool CheckInitOrder;
   SmallString<64> BlacklistFile;
+  bool ZeroBaseShadow;
+
   OwningPtr<BlackList> BL;
   SetOfDynamicallyInitializedGlobals DynamicallyInitializedGlobals;
   Type *IntptrTy;
   LLVMContext *C;
   DataLayout *TD;
+  ShadowMapping Mapping;
   Function *AsanPoisonGlobals;
   Function *AsanUnpoisonGlobals;
   Function *AsanRegisterGlobals;
@@ -308,6 +371,7 @@ struct FunctionStackPoisoner : public InstVisitor<FunctionStackPoisoner> {
   LLVMContext *C;
   Type *IntptrTy;
   Type *IntptrPtrTy;
+  ShadowMapping Mapping;
 
   SmallVector<AllocaInst*, 16> AllocaVec;
   SmallVector<Instruction*, 8> RetVec;
@@ -332,7 +396,8 @@ struct FunctionStackPoisoner : public InstVisitor<FunctionStackPoisoner> {
   FunctionStackPoisoner(Function &F, AddressSanitizer &ASan)
       : F(F), ASan(ASan), DIB(*F.getParent()), C(ASan.C),
         IntptrTy(ASan.IntptrTy), IntptrPtrTy(PointerType::get(IntptrTy, 0)),
-        TotalStackSize(0), StackAlignment(1 << MappingScale()) {}
+        Mapping(ASan.Mapping),
+        TotalStackSize(0), StackAlignment(1 << Mapping.Scale) {}
 
   bool runOnFunction() {
     if (!ClStack) return false;
@@ -411,6 +476,9 @@ struct FunctionStackPoisoner : public InstVisitor<FunctionStackPoisoner> {
             AI.getAllocatedType()->isSized());
   }
 
+  size_t RedzoneSize() const {
+    return RedzoneSizeForScale(Mapping.Scale);
+  }
   uint64_t getAllocaSizeInBytes(AllocaInst *AI) {
     Type *Ty = AI->getAllocatedType();
     uint64_t SizeInBytes = ASan.TD->getTypeAllocSize(Ty);
@@ -439,9 +507,9 @@ INITIALIZE_PASS(AddressSanitizer, "asan",
     false, false)
 FunctionPass *llvm::createAddressSanitizerFunctionPass(
     bool CheckInitOrder, bool CheckUseAfterReturn, bool CheckLifetime,
-    StringRef BlacklistFile) {
+    StringRef BlacklistFile, bool ZeroBaseShadow) {
   return new AddressSanitizer(CheckInitOrder, CheckUseAfterReturn,
-                              CheckLifetime, BlacklistFile);
+                              CheckLifetime, BlacklistFile, ZeroBaseShadow);
 }
 
 char AddressSanitizerModule::ID = 0;
@@ -449,8 +517,9 @@ INITIALIZE_PASS(AddressSanitizerModule, "asan-module",
     "AddressSanitizer: detects use-after-free and out-of-bounds bugs."
     "ModulePass", false, false)
 ModulePass *llvm::createAddressSanitizerModulePass(
-    bool CheckInitOrder, StringRef BlacklistFile) {
-  return new AddressSanitizerModule(CheckInitOrder, BlacklistFile);
+    bool CheckInitOrder, StringRef BlacklistFile, bool ZeroBaseShadow) {
+  return new AddressSanitizerModule(CheckInitOrder, BlacklistFile,
+                                    ZeroBaseShadow);
 }
 
 static size_t TypeSizeToSizeIndex(uint32_t TypeSize) {
@@ -473,32 +542,30 @@ static bool GlobalWasGeneratedByAsan(GlobalVariable *G) {
 
 Value *AddressSanitizer::memToShadow(Value *Shadow, IRBuilder<> &IRB) {
   // Shadow >> scale
-  Shadow = IRB.CreateLShr(Shadow, MappingScale());
-  if (MappingOffset == 0)
+  Shadow = IRB.CreateLShr(Shadow, Mapping.Scale);
+  if (Mapping.Offset == 0)
     return Shadow;
   // (Shadow >> scale) | offset
-  return IRB.CreateOr(Shadow, ConstantInt::get(IntptrTy,
-                                               MappingOffset));
+  if (Mapping.OrShadowOffset)
+    return IRB.CreateOr(Shadow, ConstantInt::get(IntptrTy, Mapping.Offset));
+  else
+    return IRB.CreateAdd(Shadow, ConstantInt::get(IntptrTy, Mapping.Offset));
 }
 
 void AddressSanitizer::instrumentMemIntrinsicParam(
     Instruction *OrigIns,
     Value *Addr, Value *Size, Instruction *InsertBefore, bool IsWrite) {
+  IRBuilder<> IRB(InsertBefore);
+  if (Size->getType() != IntptrTy)
+    Size = IRB.CreateIntCast(Size, IntptrTy, false);
   // Check the first byte.
-  {
-    IRBuilder<> IRB(InsertBefore);
-    instrumentAddress(OrigIns, IRB, Addr, 8, IsWrite);
-  }
+  instrumentAddress(OrigIns, InsertBefore, Addr, 8, IsWrite, Size);
   // Check the last byte.
-  {
-    IRBuilder<> IRB(InsertBefore);
-    Value *SizeMinusOne = IRB.CreateSub(
-        Size, ConstantInt::get(Size->getType(), 1));
-    SizeMinusOne = IRB.CreateIntCast(SizeMinusOne, IntptrTy, false);
-    Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
-    Value *AddrPlusSizeMinisOne = IRB.CreateAdd(AddrLong, SizeMinusOne);
-    instrumentAddress(OrigIns, IRB, AddrPlusSizeMinisOne, 8, IsWrite);
-  }
+  IRB.SetInsertPoint(InsertBefore);
+  Value *SizeMinusOne = IRB.CreateSub(Size, ConstantInt::get(IntptrTy, 1));
+  Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
+  Value *AddrLast = IRB.CreateAdd(AddrLong, SizeMinusOne);
+  instrumentAddress(OrigIns, InsertBefore, AddrLast, 8, IsWrite, Size);
 }
 
 // Instrument memset/memmove/memcpy
@@ -577,14 +644,24 @@ void AddressSanitizer::instrumentMop(Instruction *I) {
   assert(OrigTy->isSized());
   uint32_t TypeSize = TD->getTypeStoreSizeInBits(OrigTy);
 
-  if (TypeSize != 8  && TypeSize != 16 &&
-      TypeSize != 32 && TypeSize != 64 && TypeSize != 128) {
-    // Ignore all unusual sizes.
-    return;
-  }
+  assert((TypeSize % 8) == 0);
 
+  // Instrument a 1-, 2-, 4-, 8-, or 16- byte access with one check.
+  if (TypeSize == 8  || TypeSize == 16 ||
+      TypeSize == 32 || TypeSize == 64 || TypeSize == 128)
+    return instrumentAddress(I, I, Addr, TypeSize, IsWrite, 0);
+  // Instrument unusual size (but still multiple of 8).
+  // We can not do it with a single check, so we do 1-byte check for the first
+  // and the last bytes. We call __asan_report_*_n(addr, real_size) to be able
+  // to report the actual access size.
   IRBuilder<> IRB(I);
-  instrumentAddress(I, IRB, Addr, TypeSize, IsWrite);
+  Value *LastByte =  IRB.CreateIntToPtr(
+      IRB.CreateAdd(IRB.CreatePointerCast(Addr, IntptrTy),
+                    ConstantInt::get(IntptrTy, TypeSize / 8 - 1)),
+      OrigPtrTy);
+  Value *Size = ConstantInt::get(IntptrTy, TypeSize / 8);
+  instrumentAddress(I, I, Addr, 8, IsWrite, Size);
+  instrumentAddress(I, I, LastByte, 8, IsWrite, Size);
 }
 
 // Validate the result of Module::getOrInsertFunction called for an interface
@@ -600,10 +677,12 @@ static Function *checkInterfaceFunction(Constant *FuncOrBitcast) {
 
 Instruction *AddressSanitizer::generateCrashCode(
     Instruction *InsertBefore, Value *Addr,
-    bool IsWrite, size_t AccessSizeIndex) {
+    bool IsWrite, size_t AccessSizeIndex, Value *SizeArgument) {
   IRBuilder<> IRB(InsertBefore);
-  CallInst *Call = IRB.CreateCall(AsanErrorCallback[IsWrite][AccessSizeIndex],
-                                  Addr);
+  CallInst *Call = SizeArgument
+    ? IRB.CreateCall2(AsanErrorCallbackSized[IsWrite], Addr, SizeArgument)
+    : IRB.CreateCall(AsanErrorCallback[IsWrite][AccessSizeIndex], Addr);
+
   // We don't do Call->setDoesNotReturn() because the BB already has
   // UnreachableInst at the end.
   // This EmptyAsm is required to avoid callback merge.
@@ -614,7 +693,7 @@ Instruction *AddressSanitizer::generateCrashCode(
 Value *AddressSanitizer::createSlowPathCmp(IRBuilder<> &IRB, Value *AddrLong,
                                             Value *ShadowValue,
                                             uint32_t TypeSize) {
-  size_t Granularity = 1 << MappingScale();
+  size_t Granularity = 1 << Mapping.Scale;
   // Addr & (Granularity - 1)
   Value *LastAccessedByte = IRB.CreateAnd(
       AddrLong, ConstantInt::get(IntptrTy, Granularity - 1));
@@ -630,12 +709,14 @@ Value *AddressSanitizer::createSlowPathCmp(IRBuilder<> &IRB, Value *AddrLong,
 }
 
 void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
-                                         IRBuilder<> &IRB, Value *Addr,
-                                         uint32_t TypeSize, bool IsWrite) {
+                                         Instruction *InsertBefore,
+                                         Value *Addr, uint32_t TypeSize,
+                                         bool IsWrite, Value *SizeArgument) {
+  IRBuilder<> IRB(InsertBefore);
   Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
 
   Type *ShadowTy  = IntegerType::get(
-      *C, std::max(8U, TypeSize >> MappingScale()));
+      *C, std::max(8U, TypeSize >> Mapping.Scale));
   Type *ShadowPtrTy = PointerType::get(ShadowTy, 0);
   Value *ShadowPtr = memToShadow(AddrLong, IRB);
   Value *CmpVal = Constant::getNullValue(ShadowTy);
@@ -644,7 +725,7 @@ void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
 
   Value *Cmp = IRB.CreateICmpNE(ShadowValue, CmpVal);
   size_t AccessSizeIndex = TypeSizeToSizeIndex(TypeSize);
-  size_t Granularity = 1 << MappingScale();
+  size_t Granularity = 1 << Mapping.Scale;
   TerminatorInst *CrashTerm = 0;
 
   if (ClAlwaysSlowPath || (TypeSize < 8 * Granularity)) {
@@ -663,8 +744,8 @@ void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
     CrashTerm = SplitBlockAndInsertIfThen(cast<Instruction>(Cmp), true);
   }
 
-  Instruction *Crash =
-      generateCrashCode(CrashTerm, AddrLong, IsWrite, AccessSizeIndex);
+  Instruction *Crash = generateCrashCode(
+      CrashTerm, AddrLong, IsWrite, AccessSizeIndex, SizeArgument);
   Crash->setDebugLoc(OrigIns->getDebugLoc());
 }
 
@@ -782,7 +863,9 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
   BL.reset(new BlackList(BlacklistFile));
   if (BL->isIn(M)) return false;
   C = &(M.getContext());
-  IntptrTy = Type::getIntNTy(*C, TD->getPointerSizeInBits());
+  int LongSize = TD->getPointerSizeInBits();
+  IntptrTy = Type::getIntNTy(*C, LongSize);
+  Mapping = getShadowMapping(M, LongSize, ZeroBaseShadow);
   initializeCallbacks(M);
   DynamicallyInitializedGlobals.Init(M);
 
@@ -819,12 +902,22 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
   Value *FirstDynamic = 0, *LastDynamic = 0;
 
   for (size_t i = 0; i < n; i++) {
+    static const uint64_t kMaxGlobalRedzone = 1 << 18;
     GlobalVariable *G = GlobalsToChange[i];
     PointerType *PtrTy = cast<PointerType>(G->getType());
     Type *Ty = PtrTy->getElementType();
     uint64_t SizeInBytes = TD->getTypeAllocSize(Ty);
-    size_t RZ = RedzoneSize();
-    uint64_t RightRedzoneSize = RZ + (RZ - (SizeInBytes % RZ));
+    uint64_t MinRZ = RedzoneSize();
+    // MinRZ <= RZ <= kMaxGlobalRedzone
+    // and trying to make RZ to be ~ 1/4 of SizeInBytes.
+    uint64_t RZ = std::max(MinRZ,
+                         std::min(kMaxGlobalRedzone,
+                                  (SizeInBytes / MinRZ / 4) * MinRZ));
+    uint64_t RightRedzoneSize = RZ;
+    // Round up to MinRZ
+    if (SizeInBytes % MinRZ)
+      RightRedzoneSize += MinRZ - (SizeInBytes % MinRZ);
+    assert(((RightRedzoneSize + SizeInBytes) % MinRZ) == 0);
     Type *RightRedZoneTy = ArrayType::get(IRB.getInt8Ty(), RightRedzoneSize);
     // Determine whether this global should be poisoned in initialization.
     bool GlobalHasDynamicInitializer =
@@ -848,7 +941,7 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
         M, NewTy, G->isConstant(), G->getLinkage(),
         NewInitializer, "", G, G->getThreadLocalMode());
     NewGlobal->copyAttributesFrom(G);
-    NewGlobal->setAlignment(RZ);
+    NewGlobal->setAlignment(MinRZ);
 
     Value *Indices2[2];
     Indices2[0] = IRB.getInt32(0);
@@ -921,6 +1014,10 @@ void AddressSanitizer::initializeCallbacks(Module &M) {
               FunctionName, IRB.getVoidTy(), IntptrTy, NULL));
     }
   }
+  AsanErrorCallbackSized[0] = checkInterfaceFunction(M.getOrInsertFunction(
+              kAsanReportLoadN, IRB.getVoidTy(), IntptrTy, IntptrTy, NULL));
+  AsanErrorCallbackSized[1] = checkInterfaceFunction(M.getOrInsertFunction(
+              kAsanReportStoreN, IRB.getVoidTy(), IntptrTy, IntptrTy, NULL));
 
   AsanHandleNoReturnFunc = checkInterfaceFunction(M.getOrInsertFunction(
       kAsanHandleNoReturnName, IRB.getVoidTy(), NULL));
@@ -928,6 +1025,23 @@ void AddressSanitizer::initializeCallbacks(Module &M) {
   EmptyAsm = InlineAsm::get(FunctionType::get(IRB.getVoidTy(), false),
                             StringRef(""), StringRef(""),
                             /*hasSideEffects=*/true);
+}
+
+void AddressSanitizer::emitShadowMapping(Module &M, IRBuilder<> &IRB) const {
+  // Tell the values of mapping offset and scale to the run-time.
+  GlobalValue *asan_mapping_offset =
+      new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
+                     ConstantInt::get(IntptrTy, Mapping.Offset),
+                     kAsanMappingOffsetName);
+  // Read the global, otherwise it may be optimized away.
+  IRB.CreateLoad(asan_mapping_offset, true);
+
+  GlobalValue *asan_mapping_scale =
+      new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
+                         ConstantInt::get(IntptrTy, Mapping.Scale),
+                         kAsanMappingScaleName);
+  // Read the global, otherwise it may be optimized away.
+  IRB.CreateLoad(asan_mapping_scale, true);
 }
 
 // virtual
@@ -955,41 +1069,10 @@ bool AddressSanitizer::doInitialization(Module &M) {
   AsanInitFunction->setLinkage(Function::ExternalLinkage);
   IRB.CreateCall(AsanInitFunction);
 
-  llvm::Triple targetTriple(M.getTargetTriple());
-  bool isAndroid = targetTriple.getEnvironment() == llvm::Triple::Android;
-
-  MappingOffset = isAndroid ? kDefaultShadowOffsetAndroid :
-    (LongSize == 32 ? kDefaultShadowOffset32 : kDefaultShadowOffset64);
-  if (ClMappingOffsetLog >= 0) {
-    if (ClMappingOffsetLog == 0) {
-      // special case
-      MappingOffset = 0;
-    } else {
-      MappingOffset = 1ULL << ClMappingOffsetLog;
-    }
-  }
-
-
-  if (ClMappingOffsetLog >= 0) {
-    // Tell the run-time the current values of mapping offset and scale.
-    GlobalValue *asan_mapping_offset =
-        new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
-                       ConstantInt::get(IntptrTy, MappingOffset),
-                       kAsanMappingOffsetName);
-    // Read the global, otherwise it may be optimized away.
-    IRB.CreateLoad(asan_mapping_offset, true);
-  }
-  if (ClMappingScale) {
-    GlobalValue *asan_mapping_scale =
-        new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
-                           ConstantInt::get(IntptrTy, MappingScale()),
-                           kAsanMappingScaleName);
-    // Read the global, otherwise it may be optimized away.
-    IRB.CreateLoad(asan_mapping_scale, true);
-  }
+  Mapping = getShadowMapping(M, LongSize, ZeroBaseShadow);
+  emitShadowMapping(M, IRB);
 
   appendToGlobalCtors(M, AsanCtorFunction, kAsanCtorAndCtorPriority);
-
   return true;
 }
 
@@ -1015,11 +1098,11 @@ bool AddressSanitizer::runOnFunction(Function &F) {
   DEBUG(dbgs() << "ASAN instrumenting:\n" << F << "\n");
   initializeCallbacks(*F.getParent());
 
-  // If needed, insert __asan_init before checking for AddressSafety attr.
+  // If needed, insert __asan_init before checking for SanitizeAddress attr.
   maybeInsertAsanInitAtFunctionEntry(F);
 
   if (!F.getAttributes().hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::AddressSafety))
+                                      Attribute::SanitizeAddress))
     return false;
 
   if (!ClDebugFunc.empty() && ClDebugFunc != F.getName())
@@ -1048,12 +1131,12 @@ bool AddressSanitizer::runOnFunction(Function &F) {
       } else if (isa<MemIntrinsic>(BI) && ClMemIntrin) {
         // ok, take it.
       } else {
-        if (CallInst *CI = dyn_cast<CallInst>(BI)) {
+        CallSite CS(BI);
+        if (CS) {
           // A call inside BB.
           TempsToInstrument.clear();
-          if (CI->doesNotReturn()) {
-            NoReturnCalls.push_back(CI);
-          }
+          if (CS.doesNotReturn())
+            NoReturnCalls.push_back(CS.getInstruction());
         }
         continue;
       }
@@ -1147,7 +1230,7 @@ void FunctionStackPoisoner::initializeCallbacks(Module &M) {
 void FunctionStackPoisoner::poisonRedZones(
   const ArrayRef<AllocaInst*> &AllocaVec, IRBuilder<> IRB, Value *ShadowBase,
   bool DoPoison) {
-  size_t ShadowRZSize = RedzoneSize() >> MappingScale();
+  size_t ShadowRZSize = RedzoneSize() >> Mapping.Scale;
   assert(ShadowRZSize >= 1 && ShadowRZSize <= 4);
   Type *RZTy = Type::getIntNTy(*C, ShadowRZSize * 8);
   Type *RZPtrTy = PointerType::get(RZTy, 0);
@@ -1178,13 +1261,13 @@ void FunctionStackPoisoner::poisonRedZones(
       // Poison the partial redzone at right
       Ptr = IRB.CreateAdd(
           ShadowBase, ConstantInt::get(IntptrTy,
-                                       (Pos >> MappingScale()) - ShadowRZSize));
+                                       (Pos >> Mapping.Scale) - ShadowRZSize));
       size_t AddressableBytes = RedzoneSize() - (AlignedSize - SizeInBytes);
       uint32_t Poison = 0;
       if (DoPoison) {
         PoisonShadowPartialRightRedzone((uint8_t*)&Poison, AddressableBytes,
                                         RedzoneSize(),
-                                        1ULL << MappingScale(),
+                                        1ULL << Mapping.Scale,
                                         kAsanStackPartialRedzoneMagic);
       }
       Value *PartialPoison = ConstantInt::get(RZTy, Poison);
@@ -1193,7 +1276,7 @@ void FunctionStackPoisoner::poisonRedZones(
 
     // Poison the full redzone at right.
     Ptr = IRB.CreateAdd(ShadowBase,
-                        ConstantInt::get(IntptrTy, Pos >> MappingScale()));
+                        ConstantInt::get(IntptrTy, Pos >> Mapping.Scale));
     bool LastAlloca = (i == AllocaVec.size() - 1);
     Value *Poison = LastAlloca ? PoisonRight : PoisonMid;
     IRB.CreateStore(Poison, IRB.CreateIntToPtr(Ptr, RZPtrTy));

@@ -112,7 +112,7 @@ namespace llvm {
       return lie.getPointer();
     }
 
-    int getIndex() const {
+    unsigned getIndex() const {
       return listEntry()->getIndex() | getSlot();
     }
 
@@ -360,6 +360,11 @@ namespace llvm {
     /// Renumber the index list, providing space for new instructions.
     void renumberIndexes();
 
+    /// Repair indexes after adding and removing instructions.
+    void repairIndexesInRange(MachineBasicBlock *MBB,
+                              MachineBasicBlock::iterator Begin,
+                              MachineBasicBlock::iterator End);
+
     /// Returns the zero index for this analysis.
     SlotIndex getZeroIndex() {
       assert(indexList.front().getIndex() == 0 && "First index is not 0?");
@@ -602,29 +607,35 @@ namespace llvm {
     void insertMBBInMaps(MachineBasicBlock *mbb) {
       MachineFunction::iterator nextMBB =
         llvm::next(MachineFunction::iterator(mbb));
-      IndexListEntry *startEntry = createEntry(0, 0);
-      IndexListEntry *stopEntry = createEntry(0, 0);
-      IndexListEntry *nextEntry = 0;
 
+      IndexListEntry *startEntry = 0;
+      IndexListEntry *endEntry = 0;
+      IndexList::iterator newItr;
       if (nextMBB == mbb->getParent()->end()) {
-        nextEntry = indexList.end();
+        startEntry = &indexList.back();
+        endEntry = createEntry(0, 0);
+        newItr = indexList.insertAfter(startEntry, endEntry);
       } else {
-        nextEntry = getMBBStartIdx(nextMBB).listEntry();
+        startEntry = createEntry(0, 0);
+        endEntry = getMBBStartIdx(nextMBB).listEntry();
+        newItr = indexList.insert(endEntry, startEntry);
       }
 
-      indexList.insert(nextEntry, startEntry);
-      indexList.insert(nextEntry, stopEntry);
-
       SlotIndex startIdx(startEntry, SlotIndex::Slot_Block);
-      SlotIndex endIdx(nextEntry, SlotIndex::Slot_Block);
+      SlotIndex endIdx(endEntry, SlotIndex::Slot_Block);
+
+      MachineFunction::iterator prevMBB(mbb);
+      assert(prevMBB != mbb->getParent()->end() &&
+             "Can't insert a new block at the beginning of a function.");
+      --prevMBB;
+      MBBRanges[prevMBB->getNumber()].second = startIdx;
 
       assert(unsigned(mbb->getNumber()) == MBBRanges.size() &&
              "Blocks must be added in order");
       MBBRanges.push_back(std::make_pair(startIdx, endIdx));
-
       idx2MBBMap.push_back(IdxMBBPair(startIdx, mbb));
 
-      renumberIndexes();
+      renumberIndexes(newItr);
       std::sort(idx2MBBMap.begin(), idx2MBBMap.end(), Idx2MBBCompare());
     }
 

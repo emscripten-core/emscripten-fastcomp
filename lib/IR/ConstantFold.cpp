@@ -168,8 +168,8 @@ static Constant *FoldBitCast(Constant *V, Type *DestTy) {
 
     if (DestTy->isFloatingPointTy())
       return ConstantFP::get(DestTy->getContext(),
-                             APFloat(CI->getValue(),
-                                     !DestTy->isPPC_FP128Ty()));
+                             APFloat(DestTy->getFltSemantics(),
+                                     CI->getValue()));
 
     // Otherwise, can't fold this (vector?)
     return 0;
@@ -647,8 +647,8 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
   case Instruction::SIToFP:
     if (ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
       APInt api = CI->getValue();
-      APFloat apf(APInt::getNullValue(DestTy->getPrimitiveSizeInBits()),
-                  !DestTy->isPPC_FP128Ty() /* isEEEE */);
+      APFloat apf(DestTy->getFltSemantics(),
+                  APInt::getNullValue(DestTy->getPrimitiveSizeInBits()));
       (void)apf.convertFromAPInt(api, 
                                  opc==Instruction::SIToFP,
                                  APFloat::rmNearestTiesToEven);
@@ -846,8 +846,8 @@ Constant *llvm::ConstantFoldInsertValueInstruction(Constant *Agg,
   else if (ArrayType *AT = dyn_cast<ArrayType>(Agg->getType()))
     NumElts = AT->getNumElements();
   else
-    NumElts = AT->getVectorNumElements();
-  
+    NumElts = Agg->getType()->getVectorNumElements();
+
   SmallVector<Constant*, 32> Result;
   for (unsigned i = 0; i != NumElts; ++i) {
     Constant *C = Agg->getAggregateElement(i);
@@ -1495,9 +1495,8 @@ static ICmpInst::Predicate evaluateICmpRelation(Constant *V1, Constant *V2,
                    "Surprising getelementptr!");
             return isSigned ? ICmpInst::ICMP_SGT : ICmpInst::ICMP_UGT;
           } else {
-            // If they are different globals, we don't know what the value is,
-            // but they can't be equal.
-            return ICmpInst::ICMP_NE;
+            // If they are different globals, we don't know what the value is.
+            return ICmpInst::BAD_ICMP_PREDICATE;
           }
         }
       } else {
@@ -1510,10 +1509,10 @@ static ICmpInst::Predicate evaluateICmpRelation(Constant *V1, Constant *V2,
         default: break;
         case Instruction::GetElementPtr:
           // By far the most common case to handle is when the base pointers are
-          // obviously to the same or different globals.
+          // obviously to the same global.
           if (isa<GlobalValue>(CE1Op0) && isa<GlobalValue>(CE2Op0)) {
-            if (CE1Op0 != CE2Op0) // Don't know relative ordering, but not equal
-              return ICmpInst::ICMP_NE;
+            if (CE1Op0 != CE2Op0) // Don't know relative ordering.
+              return ICmpInst::BAD_ICMP_PREDICATE;
             // Ok, we know that both getelementptr instructions are based on the
             // same global.  From this, we can precisely determine the relative
             // ordering of the resultant pointers.
@@ -1972,21 +1971,30 @@ static Constant *ConstantFoldGetElementPtrImpl(Constant *C,
       }
     }
 
-    // Implement folding of:
-    //    i32* getelementptr ([2 x i32]* bitcast ([3 x i32]* %X to [2 x i32]*),
-    //                        i64 0, i64 0)
-    // To: i32* getelementptr ([3 x i32]* %X, i64 0, i64 0)
+    // Attempt to fold casts to the same type away.  For example, folding:
     //
+    //   i32* getelementptr ([2 x i32]* bitcast ([3 x i32]* %X to [2 x i32]*),
+    //                       i64 0, i64 0)
+    // into:
+    //
+    //   i32* getelementptr ([3 x i32]* %X, i64 0, i64 0)
+    //
+    // Don't fold if the cast is changing address spaces.
     if (CE->isCast() && Idxs.size() > 1 && Idx0->isNullValue()) {
-      if (PointerType *SPT =
-          dyn_cast<PointerType>(CE->getOperand(0)->getType()))
-        if (ArrayType *SAT = dyn_cast<ArrayType>(SPT->getElementType()))
-          if (ArrayType *CAT =
-        dyn_cast<ArrayType>(cast<PointerType>(C->getType())->getElementType()))
-            if (CAT->getElementType() == SAT->getElementType())
-              return
-                ConstantExpr::getGetElementPtr((Constant*)CE->getOperand(0),
-                                               Idxs, inBounds);
+      PointerType *SrcPtrTy =
+        dyn_cast<PointerType>(CE->getOperand(0)->getType());
+      PointerType *DstPtrTy = dyn_cast<PointerType>(CE->getType());
+      if (SrcPtrTy && DstPtrTy) {
+        ArrayType *SrcArrayTy =
+          dyn_cast<ArrayType>(SrcPtrTy->getElementType());
+        ArrayType *DstArrayTy =
+          dyn_cast<ArrayType>(DstPtrTy->getElementType());
+        if (SrcArrayTy && DstArrayTy
+            && SrcArrayTy->getElementType() == DstArrayTy->getElementType()
+            && SrcPtrTy->getAddressSpace() == DstPtrTy->getAddressSpace())
+          return ConstantExpr::getGetElementPtr((Constant*)CE->getOperand(0),
+                                                Idxs, inBounds);
+      }
     }
   }
 

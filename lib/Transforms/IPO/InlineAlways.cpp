@@ -30,35 +30,41 @@ using namespace llvm;
 
 namespace {
 
-  // AlwaysInliner only inlines functions that are mark as "always inline".
-  class AlwaysInliner : public Inliner {
-    InlineCostAnalyzer CA;
-  public:
-    // Use extremely low threshold.
-    AlwaysInliner() : Inliner(ID, -2000000000, /*InsertLifetime*/true) {
-      initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
-    }
-    AlwaysInliner(bool InsertLifetime) : Inliner(ID, -2000000000,
-                                                 InsertLifetime) {
-      initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
-    }
-    static char ID; // Pass identification, replacement for typeid
-    virtual InlineCost getInlineCost(CallSite CS);
+/// \brief Inliner pass which only handles "always inline" functions.
+class AlwaysInliner : public Inliner {
+  InlineCostAnalysis *ICA;
 
-    using llvm::Pass::doInitialization;
-    using llvm::Pass::doFinalization;
+public:
+  // Use extremely low threshold.
+  AlwaysInliner() : Inliner(ID, -2000000000, /*InsertLifetime*/ true), ICA(0) {
+    initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
+  }
 
-    virtual bool doFinalization(CallGraph &CG) {
-      return removeDeadFunctions(CG, /*AlwaysInlineOnly=*/true);
-    }
-    virtual bool doInitialization(CallGraph &CG);
-  };
+  AlwaysInliner(bool InsertLifetime)
+      : Inliner(ID, -2000000000, InsertLifetime), ICA(0) {
+    initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
+  }
+
+  static char ID; // Pass identification, replacement for typeid
+
+  virtual InlineCost getInlineCost(CallSite CS);
+
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+  virtual bool runOnSCC(CallGraphSCC &SCC);
+
+  using llvm::Pass::doFinalization;
+  virtual bool doFinalization(CallGraph &CG) {
+    return removeDeadFunctions(CG, /*AlwaysInlineOnly=*/ true);
+  }
+};
+
 }
 
 char AlwaysInliner::ID = 0;
 INITIALIZE_PASS_BEGIN(AlwaysInliner, "always-inline",
                 "Inliner for always_inline functions", false, false)
 INITIALIZE_AG_DEPENDENCY(CallGraph)
+INITIALIZE_PASS_DEPENDENCY(InlineCostAnalysis)
 INITIALIZE_PASS_END(AlwaysInliner, "always-inline",
                 "Inliner for always_inline functions", false, false)
 
@@ -89,15 +95,18 @@ InlineCost AlwaysInliner::getInlineCost(CallSite CS) {
   if (Callee && !Callee->isDeclaration() &&
       Callee->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
                                            Attribute::AlwaysInline) &&
-      CA.isInlineViable(*Callee))
+      ICA->isInlineViable(*Callee))
     return InlineCost::getAlways();
 
   return InlineCost::getNever();
 }
 
-// doInitialization - Initializes the vector of functions that have not
-// been annotated with the "always inline" attribute.
-bool AlwaysInliner::doInitialization(CallGraph &CG) {
-  CA.setDataLayout(getAnalysisIfAvailable<DataLayout>());
-  return false;
+bool AlwaysInliner::runOnSCC(CallGraphSCC &SCC) {
+  ICA = &getAnalysis<InlineCostAnalysis>();
+  return Inliner::runOnSCC(SCC);
+}
+
+void AlwaysInliner::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<InlineCostAnalysis>();
+  Inliner::getAnalysisUsage(AU);
 }

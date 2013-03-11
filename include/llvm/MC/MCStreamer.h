@@ -16,10 +16,12 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCWin64EH.h"
 #include "llvm/Support/DataTypes.h"
+#include <string>
 
 namespace llvm {
   class MCAsmBackend;
@@ -45,6 +47,23 @@ namespace llvm {
   /// a .s file, and implementations that write out .o files of various formats.
   ///
   class MCStreamer {
+  public:
+    enum StreamerKind {
+      SK_AsmStreamer,
+      SK_NullStreamer,
+      SK_RecordStreamer,
+
+      // MCObjectStreamer subclasses.
+      SK_ELFStreamer,
+      SK_ARMELFStreamer,
+      SK_MachOStreamer,
+      SK_PureStreamer,
+      SK_MipsELFStreamer,
+      SK_WinCOFFStreamer
+    };
+
+  private:
+    const StreamerKind Kind;
     MCContext &Context;
 
     MCStreamer(const MCStreamer&) LLVM_DELETED_FUNCTION;
@@ -73,7 +92,7 @@ namespace llvm {
     bool AutoInitSections;
 
   protected:
-    MCStreamer(MCContext &Ctx);
+    MCStreamer(StreamerKind Kind, MCContext &Ctx);
 
     const MCExpr *BuildSymbolDiff(MCContext &Context, const MCSymbol *A,
                                   const MCSymbol *B);
@@ -91,6 +110,8 @@ namespace llvm {
 
   public:
     virtual ~MCStreamer();
+
+    StreamerKind getKind() const { return Kind; }
 
     /// State management
     ///
@@ -255,12 +276,19 @@ namespace llvm {
     /// EmitAssemblerFlag - Note in the output the specified @p Flag.
     virtual void EmitAssemblerFlag(MCAssemblerFlag Flag) = 0;
 
+    /// EmitLinkerOptions - Emit the given list @p Options of strings as linker
+    /// options into the output.
+    virtual void EmitLinkerOptions(ArrayRef<std::string> Kind) {}
+
     /// EmitDataRegion - Note in the output the specified region @p Kind.
     virtual void EmitDataRegion(MCDataRegionType Kind) {}
 
     /// EmitThumbFunc - Note in the output that the specified @p Func is
     /// a Thumb mode function (ARM target only).
     virtual void EmitThumbFunc(MCSymbol *Func) = 0;
+
+    /// getOrCreateSymbolData - Get symbol data for given symbol.
+    virtual MCSymbolData &getOrCreateSymbolData(MCSymbol *Symbol);
 
     /// EmitAssignment - Emit an assignment of @p Value to @p Symbol.
     ///
@@ -404,7 +432,7 @@ namespace llvm {
     /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.
     void EmitULEB128IntValue(uint64_t Value, unsigned Padding = 0,
-			     unsigned AddrSpace = 0);
+                             unsigned AddrSpace = 0);
 
     /// EmitSLEB128Value - Special case of EmitSLEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.

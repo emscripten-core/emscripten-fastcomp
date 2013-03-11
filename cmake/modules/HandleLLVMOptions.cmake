@@ -11,20 +11,6 @@ elseif( "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" )
   set(LLVM_COMPILER_IS_GCC_COMPATIBLE ON)
 endif()
 
-# Run-time build mode; It is used for unittests.
-if(MSVC_IDE)
-  # Expect "$(Configuration)", "$(OutDir)", etc.
-  # It is expanded by msbuild or similar.
-  set(RUNTIME_BUILD_MODE "${CMAKE_CFG_INTDIR}")
-elseif(NOT CMAKE_BUILD_TYPE STREQUAL "")
-  # Expect "Release" "Debug", etc.
-  # Or unittests could not run.
-  set(RUNTIME_BUILD_MODE ${CMAKE_BUILD_TYPE})
-else()
-  # It might be "."
-  set(RUNTIME_BUILD_MODE "${CMAKE_CFG_INTDIR}")
-endif()
-
 if( LLVM_ENABLE_ASSERTIONS )
   # MSVC doesn't like _DEBUG on release builds. See PR 4379.
   if( NOT MSVC )
@@ -169,6 +155,7 @@ if( MSVC )
     -wd4551 # Suppress 'function call missing argument list'
     -wd4624 # Suppress ''derived class' : destructor could not be generated because a base class destructor is inaccessible'
     -wd4715 # Suppress ''function' : not all control paths return a value'
+    -wd4722 # Suppress ''function' : destructor never returns, potential memory leak'
     -wd4800 # Suppress ''type' : forcing value to bool 'true' or 'false' (performance warning)'
 
     # Promoted warnings.
@@ -191,8 +178,25 @@ if( MSVC )
 elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
   if (LLVM_ENABLE_WARNINGS)
     add_llvm_definitions( -Wall -W -Wno-unused-parameter -Wwrite-strings )
+
+    # Turn off missing field initializer warnings for gcc to avoid noise from
+    # false positives with empty {}. Turn them on otherwise (they're off by
+    # default for clang).
+    check_cxx_compiler_flag("-Wmissing-field-initializers" CXX_SUPPORTS_MISSING_FIELD_INITIALIZERS_FLAG)
+    if (CXX_SUPPORTS_MISSING_FIELD_INITIALIZERS_FLAG)
+      if (CMAKE_COMPILER_IS_GNUCXX)
+        add_llvm_definitions( -Wno-missing-field-initializers )
+      else()
+        add_llvm_definitions( -Wmissing-field-initializers )
+      endif()
+    endif()
+
     if (LLVM_ENABLE_PEDANTIC)
       add_llvm_definitions( -pedantic -Wno-long-long )
+      check_cxx_compiler_flag("-Werror -Wnested-anon-types" CXX_SUPPORTS_NO_NESTED_ANON_TYPES_FLAG)
+      if( CXX_SUPPORTS_NO_NESTED_ANON_TYPES_FLAG )
+        set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nested-anon-types" )
+      endif()
     endif (LLVM_ENABLE_PEDANTIC)
     check_cxx_compiler_flag("-Werror -Wcovered-switch-default" CXX_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG)
     if( CXX_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG )
@@ -201,6 +205,12 @@ elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
     check_c_compiler_flag("-Werror -Wcovered-switch-default" C_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG)
     if( C_SUPPORTS_COVERED_SWITCH_DEFAULT_FLAG )
       set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wcovered-switch-default" )
+    endif()
+    if (USE_NO_UNINITIALIZED)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-uninitialized")
+    endif()
+    if (USE_NO_MAYBE_UNINITIALIZED)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-maybe-uninitialized")
     endif()
   endif (LLVM_ENABLE_WARNINGS)
   if (LLVM_ENABLE_WERROR)

@@ -14,6 +14,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -34,7 +35,7 @@ using namespace llvm;
 
 /// InitLibcallNames - Set default libcall names.
 ///
-static void InitLibcallNames(const char **Names) {
+static void InitLibcallNames(const char **Names, const TargetMachine &TM) {
   Names[RTLIB::SHL_I16] = "__ashlhi3";
   Names[RTLIB::SHL_I32] = "__ashlsi3";
   Names[RTLIB::SHL_I64] = "__ashldi3";
@@ -340,6 +341,21 @@ static void InitLibcallNames(const char **Names) {
   Names[RTLIB::SYNC_FETCH_AND_NAND_2] = "__sync_fetch_and_nand_2";
   Names[RTLIB::SYNC_FETCH_AND_NAND_4] = "__sync_fetch_and_nand_4";
   Names[RTLIB::SYNC_FETCH_AND_NAND_8] = "__sync_fetch_and_nand_8";
+  
+  if (Triple(TM.getTargetTriple()).getEnvironment() == Triple::GNU) {
+    Names[RTLIB::SINCOS_F32] = "sincosf";
+    Names[RTLIB::SINCOS_F64] = "sincos";
+    Names[RTLIB::SINCOS_F80] = "sincosl";
+    Names[RTLIB::SINCOS_F128] = "sincosl";
+    Names[RTLIB::SINCOS_PPCF128] = "sincosl";
+  } else {
+    // These are generally not available.
+    Names[RTLIB::SINCOS_F32] = 0;
+    Names[RTLIB::SINCOS_F64] = 0;
+    Names[RTLIB::SINCOS_F80] = 0;
+    Names[RTLIB::SINCOS_F128] = 0;
+    Names[RTLIB::SINCOS_PPCF128] = 0;
+  }
 }
 
 /// InitLibcallCallingConvs - Set default libcall CallingConvs.
@@ -691,17 +707,17 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm,
   PointerTy = MVT::getIntegerVT(8*TD->getPointerSize(0));
   memset(RegClassForVT, 0,MVT::LAST_VALUETYPE*sizeof(TargetRegisterClass*));
   memset(TargetDAGCombineArray, 0, array_lengthof(TargetDAGCombineArray));
-  maxStoresPerMemset = maxStoresPerMemcpy = maxStoresPerMemmove = 8;
-  maxStoresPerMemsetOptSize = maxStoresPerMemcpyOptSize
-    = maxStoresPerMemmoveOptSize = 4;
-  benefitFromCodePlacementOpt = false;
+  MaxStoresPerMemset = MaxStoresPerMemcpy = MaxStoresPerMemmove = 8;
+  MaxStoresPerMemsetOptSize = MaxStoresPerMemcpyOptSize
+    = MaxStoresPerMemmoveOptSize = 4;
+  BenefitFromCodePlacementOpt = false;
   UseUnderscoreSetJmp = false;
   UseUnderscoreLongJmp = false;
   SelectIsExpensive = false;
   IntDivIsCheap = false;
   Pow2DivIsCheap = false;
   JumpIsExpensive = false;
-  predictableSelectIsExpensive = false;
+  PredictableSelectIsExpensive = false;
   StackPointerRegisterToSaveRestore = 0;
   ExceptionPointerRegister = 0;
   ExceptionSelectorRegister = 0;
@@ -719,7 +735,7 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm,
   SupportJumpTables = true;
   MinimumJumpTableEntries = 4;
 
-  InitLibcallNames(LibcallRoutineNames);
+  InitLibcallNames(LibcallRoutineNames, TM);
   InitCmpLibcallCCs(CmpLibcallCCs);
   InitLibcallCallingConvs(LibcallCallingConvs);
 }

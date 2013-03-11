@@ -301,7 +301,7 @@ namespace {
     bool VerifyIntrinsicType(Type *Ty,
                              ArrayRef<Intrinsic::IITDescriptor> &Infos,
                              SmallVectorImpl<Type*> &ArgTys);
-    void VerifyParameterAttrs(Attribute Attrs, Type *Ty,
+    void VerifyParameterAttrs(AttributeSet Attrs, uint64_t Idx, Type *Ty,
                               bool isReturnValue, const Value *V);
     void VerifyFunctionAttrs(FunctionType *FT, const AttributeSet &Attrs,
                              const Value *V);
@@ -571,24 +571,25 @@ void Verifier::visitModuleFlag(MDNode *Op, DenseMap<MDString*, MDNode*>&SeenIDs,
           "invalid behavior operand in module flag (expected constant integer)",
           Op->getOperand(0));
   unsigned BehaviorValue = Behavior->getZExtValue();
-  Assert1((Module::Error <= BehaviorValue &&
-           BehaviorValue <= Module::Override),
-          "invalid behavior operand in module flag (unexpected constant)",
-          Op->getOperand(0));
   Assert1(ID,
           "invalid ID operand in module flag (expected metadata string)",
           Op->getOperand(1));
 
-  // Unless this is a "requires" flag, check the ID is unique.
-  if (BehaviorValue != Module::Require) {
-    bool Inserted = SeenIDs.insert(std::make_pair(ID, Op)).second;
-    Assert1(Inserted,
-            "module flag identifiers must be unique (or of 'require' type)",
-            ID);
-  }
+  // Sanity check the values for behaviors with additional requirements.
+  switch (BehaviorValue) {
+  default:
+    Assert1(false,
+            "invalid behavior operand in module flag (unexpected constant)",
+            Op->getOperand(0));
+    break;
 
-  // If this is a "requires" flag, sanity check the value.
-  if (BehaviorValue == Module::Require) {
+  case Module::Error:
+  case Module::Warning:
+  case Module::Override:
+    // These behavior types accept any value.
+    break;
+
+  case Module::Require: {
     // The value should itself be an MDNode with two operands, a flag ID (an
     // MDString), and a value.
     MDNode *Value = dyn_cast<MDNode>(Op->getOperand(2));
@@ -603,86 +604,108 @@ void Verifier::visitModuleFlag(MDNode *Op, DenseMap<MDString*, MDNode*>&SeenIDs,
     // Append it to the list of requirements, to check once all module flags are
     // scanned.
     Requirements.push_back(Value);
+    break;
+  }
+
+  case Module::Append:
+  case Module::AppendUnique: {
+    // These behavior types require the operand be an MDNode.
+    Assert1(isa<MDNode>(Op->getOperand(2)),
+            "invalid value for 'append'-type module flag "
+            "(expected a metadata node)", Op->getOperand(2));
+    break;
+  }
+  }
+
+  // Unless this is a "requires" flag, check the ID is unique.
+  if (BehaviorValue != Module::Require) {
+    bool Inserted = SeenIDs.insert(std::make_pair(ID, Op)).second;
+    Assert1(Inserted,
+            "module flag identifiers must be unique (or of 'require' type)",
+            ID);
   }
 }
 
 // VerifyParameterAttrs - Check the given attributes for an argument or return
 // value of the specified type.  The value V is printed in error messages.
-void Verifier::VerifyParameterAttrs(Attribute Attrs, Type *Ty,
+void Verifier::VerifyParameterAttrs(AttributeSet Attrs, uint64_t Idx, Type *Ty,
                                     bool isReturnValue, const Value *V) {
-  if (!Attrs.hasAttributes())
+  if (!Attrs.hasAttributes(Idx))
     return;
 
-  Assert1(!Attrs.hasAttribute(Attribute::NoReturn) &&
-          !Attrs.hasAttribute(Attribute::NoUnwind) &&
-          !Attrs.hasAttribute(Attribute::ReadNone) &&
-          !Attrs.hasAttribute(Attribute::ReadOnly) &&
-          !Attrs.hasAttribute(Attribute::NoInline) &&
-          !Attrs.hasAttribute(Attribute::AlwaysInline) &&
-          !Attrs.hasAttribute(Attribute::OptimizeForSize) &&
-          !Attrs.hasAttribute(Attribute::StackProtect) &&
-          !Attrs.hasAttribute(Attribute::StackProtectReq) &&
-          !Attrs.hasAttribute(Attribute::NoRedZone) &&
-          !Attrs.hasAttribute(Attribute::NoImplicitFloat) &&
-          !Attrs.hasAttribute(Attribute::Naked) &&
-          !Attrs.hasAttribute(Attribute::InlineHint) &&
-          !Attrs.hasAttribute(Attribute::StackAlignment) &&
-          !Attrs.hasAttribute(Attribute::UWTable) &&
-          !Attrs.hasAttribute(Attribute::NonLazyBind) &&
-          !Attrs.hasAttribute(Attribute::ReturnsTwice) &&
-          !Attrs.hasAttribute(Attribute::AddressSafety) &&
-          !Attrs.hasAttribute(Attribute::MinSize),
-          "Some attributes in '" + Attrs.getAsString() +
+  Assert1(!Attrs.hasAttribute(Idx, Attribute::NoReturn) &&
+          !Attrs.hasAttribute(Idx, Attribute::NoUnwind) &&
+          !Attrs.hasAttribute(Idx, Attribute::ReadNone) &&
+          !Attrs.hasAttribute(Idx, Attribute::ReadOnly) &&
+          !Attrs.hasAttribute(Idx, Attribute::NoInline) &&
+          !Attrs.hasAttribute(Idx, Attribute::AlwaysInline) &&
+          !Attrs.hasAttribute(Idx, Attribute::OptimizeForSize) &&
+          !Attrs.hasAttribute(Idx, Attribute::StackProtect) &&
+          !Attrs.hasAttribute(Idx, Attribute::StackProtectReq) &&
+          !Attrs.hasAttribute(Idx, Attribute::NoRedZone) &&
+          !Attrs.hasAttribute(Idx, Attribute::NoImplicitFloat) &&
+          !Attrs.hasAttribute(Idx, Attribute::Naked) &&
+          !Attrs.hasAttribute(Idx, Attribute::InlineHint) &&
+          !Attrs.hasAttribute(Idx, Attribute::StackAlignment) &&
+          !Attrs.hasAttribute(Idx, Attribute::UWTable) &&
+          !Attrs.hasAttribute(Idx, Attribute::NonLazyBind) &&
+          !Attrs.hasAttribute(Idx, Attribute::ReturnsTwice) &&
+          !Attrs.hasAttribute(Idx, Attribute::SanitizeAddress) &&
+          !Attrs.hasAttribute(Idx, Attribute::SanitizeThread) &&
+          !Attrs.hasAttribute(Idx, Attribute::SanitizeMemory) &&
+          !Attrs.hasAttribute(Idx, Attribute::MinSize) &&
+          !Attrs.hasAttribute(Idx, Attribute::NoBuiltin),
+          "Some attributes in '" + Attrs.getAsString(Idx) +
           "' only apply to functions!", V);
 
   if (isReturnValue)
-    Assert1(!Attrs.hasAttribute(Attribute::ByVal) &&
-            !Attrs.hasAttribute(Attribute::Nest) &&
-            !Attrs.hasAttribute(Attribute::StructRet) &&
-            !Attrs.hasAttribute(Attribute::NoCapture),
+    Assert1(!Attrs.hasAttribute(Idx, Attribute::ByVal) &&
+            !Attrs.hasAttribute(Idx, Attribute::Nest) &&
+            !Attrs.hasAttribute(Idx, Attribute::StructRet) &&
+            !Attrs.hasAttribute(Idx, Attribute::NoCapture),
             "Attribute 'byval', 'nest', 'sret', and 'nocapture' "
             "do not apply to return values!", V);
 
   // Check for mutually incompatible attributes.
-  Assert1(!((Attrs.hasAttribute(Attribute::ByVal) &&
-             Attrs.hasAttribute(Attribute::Nest)) ||
-            (Attrs.hasAttribute(Attribute::ByVal) &&
-             Attrs.hasAttribute(Attribute::StructRet)) ||
-            (Attrs.hasAttribute(Attribute::Nest) &&
-             Attrs.hasAttribute(Attribute::StructRet))), "Attributes "
+  Assert1(!((Attrs.hasAttribute(Idx, Attribute::ByVal) &&
+             Attrs.hasAttribute(Idx, Attribute::Nest)) ||
+            (Attrs.hasAttribute(Idx, Attribute::ByVal) &&
+             Attrs.hasAttribute(Idx, Attribute::StructRet)) ||
+            (Attrs.hasAttribute(Idx, Attribute::Nest) &&
+             Attrs.hasAttribute(Idx, Attribute::StructRet))), "Attributes "
           "'byval, nest, and sret' are incompatible!", V);
 
-  Assert1(!((Attrs.hasAttribute(Attribute::ByVal) &&
-             Attrs.hasAttribute(Attribute::Nest)) ||
-            (Attrs.hasAttribute(Attribute::ByVal) &&
-             Attrs.hasAttribute(Attribute::InReg)) ||
-            (Attrs.hasAttribute(Attribute::Nest) &&
-             Attrs.hasAttribute(Attribute::InReg))), "Attributes "
+  Assert1(!((Attrs.hasAttribute(Idx, Attribute::ByVal) &&
+             Attrs.hasAttribute(Idx, Attribute::Nest)) ||
+            (Attrs.hasAttribute(Idx, Attribute::ByVal) &&
+             Attrs.hasAttribute(Idx, Attribute::InReg)) ||
+            (Attrs.hasAttribute(Idx, Attribute::Nest) &&
+             Attrs.hasAttribute(Idx, Attribute::InReg))), "Attributes "
           "'byval, nest, and inreg' are incompatible!", V);
 
-  Assert1(!(Attrs.hasAttribute(Attribute::ZExt) &&
-            Attrs.hasAttribute(Attribute::SExt)), "Attributes "
+  Assert1(!(Attrs.hasAttribute(Idx, Attribute::ZExt) &&
+            Attrs.hasAttribute(Idx, Attribute::SExt)), "Attributes "
           "'zeroext and signext' are incompatible!", V);
 
-  Assert1(!(Attrs.hasAttribute(Attribute::ReadNone) &&
-            Attrs.hasAttribute(Attribute::ReadOnly)), "Attributes "
+  Assert1(!(Attrs.hasAttribute(Idx, Attribute::ReadNone) &&
+            Attrs.hasAttribute(Idx, Attribute::ReadOnly)), "Attributes "
           "'readnone and readonly' are incompatible!", V);
 
-  Assert1(!(Attrs.hasAttribute(Attribute::NoInline) &&
-            Attrs.hasAttribute(Attribute::AlwaysInline)), "Attributes "
+  Assert1(!(Attrs.hasAttribute(Idx, Attribute::NoInline) &&
+            Attrs.hasAttribute(Idx, Attribute::AlwaysInline)), "Attributes "
           "'noinline and alwaysinline' are incompatible!", V);
 
-  Assert1(!AttrBuilder(Attrs).
-            hasAttributes(Attribute::typeIncompatible(Ty)),
+  Assert1(!AttrBuilder(Attrs, Idx).
+            hasAttributes(AttributeFuncs::typeIncompatible(Ty, Idx), Idx),
           "Wrong types for attribute: " +
-          Attribute::typeIncompatible(Ty).getAsString(), V);
+          AttributeFuncs::typeIncompatible(Ty, Idx).getAsString(Idx), V);
 
   if (PointerType *PTy = dyn_cast<PointerType>(Ty))
-    Assert1(!Attrs.hasAttribute(Attribute::ByVal) ||
+    Assert1(!Attrs.hasAttribute(Idx, Attribute::ByVal) ||
             PTy->getElementType()->isSized(),
             "Attribute 'byval' does not support unsized types!", V);
   else
-    Assert1(!Attrs.hasAttribute(Attribute::ByVal),
+    Assert1(!Attrs.hasAttribute(Idx, Attribute::ByVal),
             "Attribute 'byval' only applies to parameters with pointer type!",
             V);
 }
@@ -698,75 +721,97 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT,
   bool SawNest = false;
 
   for (unsigned i = 0, e = Attrs.getNumSlots(); i != e; ++i) {
-    const AttributeWithIndex &Attr = Attrs.getSlot(i);
+    unsigned Index = Attrs.getSlotIndex(i);
 
     Type *Ty;
-    if (Attr.Index == 0)
+    if (Index == 0)
       Ty = FT->getReturnType();
-    else if (Attr.Index-1 < FT->getNumParams())
-      Ty = FT->getParamType(Attr.Index-1);
+    else if (Index-1 < FT->getNumParams())
+      Ty = FT->getParamType(Index-1);
     else
       break;  // VarArgs attributes, verified elsewhere.
 
-    VerifyParameterAttrs(Attr.Attrs, Ty, Attr.Index == 0, V);
+    VerifyParameterAttrs(Attrs, Index, Ty, Index == 0, V);
 
-    if (Attr.Attrs.hasAttribute(Attribute::Nest)) {
+    if (Attrs.hasAttribute(i, Attribute::Nest)) {
       Assert1(!SawNest, "More than one parameter has attribute nest!", V);
       SawNest = true;
     }
 
-    if (Attr.Attrs.hasAttribute(Attribute::StructRet))
-      Assert1(Attr.Index == 1, "Attribute sret is not on first parameter!", V);
+    if (Attrs.hasAttribute(Index, Attribute::StructRet))
+      Assert1(Index == 1, "Attribute sret is not on first parameter!", V);
   }
 
-  Attribute FAttrs = Attrs.getFnAttributes();
-  AttrBuilder NotFn(FAttrs);
+  if (!Attrs.hasAttributes(AttributeSet::FunctionIndex))
+    return;
+
+  AttrBuilder NotFn(Attrs, AttributeSet::FunctionIndex);
   NotFn.removeFunctionOnlyAttrs();
-  Assert1(!NotFn.hasAttributes(), "Attribute '" +
-          Attribute::get(V->getContext(), NotFn).getAsString() +
+  Assert1(NotFn.empty(), "Attributes '" +
+          AttributeSet::get(V->getContext(),
+                            AttributeSet::FunctionIndex,
+                            NotFn).getAsString(AttributeSet::FunctionIndex) +
           "' do not apply to the function!", V);
 
   // Check for mutually incompatible attributes.
-  Assert1(!((FAttrs.hasAttribute(Attribute::ByVal) &&
-             FAttrs.hasAttribute(Attribute::Nest)) ||
-            (FAttrs.hasAttribute(Attribute::ByVal) &&
-             FAttrs.hasAttribute(Attribute::StructRet)) ||
-            (FAttrs.hasAttribute(Attribute::Nest) &&
-             FAttrs.hasAttribute(Attribute::StructRet))), "Attributes "
-          "'byval, nest, and sret' are incompatible!", V);
+  Assert1(!((Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::ByVal) &&
+             Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::Nest)) ||
+            (Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::ByVal) &&
+             Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::StructRet)) ||
+            (Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::Nest) &&
+             Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::StructRet))),
+          "Attributes 'byval, nest, and sret' are incompatible!", V);
 
-  Assert1(!((FAttrs.hasAttribute(Attribute::ByVal) &&
-             FAttrs.hasAttribute(Attribute::Nest)) ||
-            (FAttrs.hasAttribute(Attribute::ByVal) &&
-             FAttrs.hasAttribute(Attribute::InReg)) ||
-            (FAttrs.hasAttribute(Attribute::Nest) &&
-             FAttrs.hasAttribute(Attribute::InReg))), "Attributes "
-          "'byval, nest, and inreg' are incompatible!", V);
+  Assert1(!((Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::ByVal) &&
+             Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::Nest)) ||
+            (Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::ByVal) &&
+             Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::InReg)) ||
+            (Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::Nest) &&
+             Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                                Attribute::InReg))),
+          "Attributes 'byval, nest, and inreg' are incompatible!", V);
 
-  Assert1(!(FAttrs.hasAttribute(Attribute::ZExt) &&
-            FAttrs.hasAttribute(Attribute::SExt)), "Attributes "
-          "'zeroext and signext' are incompatible!", V);
+  Assert1(!(Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                               Attribute::ZExt) &&
+            Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                               Attribute::SExt)),
+          "Attributes 'zeroext and signext' are incompatible!", V);
 
-  Assert1(!(FAttrs.hasAttribute(Attribute::ReadNone) &&
-            FAttrs.hasAttribute(Attribute::ReadOnly)), "Attributes "
-          "'readnone and readonly' are incompatible!", V);
+  Assert1(!(Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                               Attribute::ReadNone) &&
+            Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                               Attribute::ReadOnly)),
+          "Attributes 'readnone and readonly' are incompatible!", V);
 
-  Assert1(!(FAttrs.hasAttribute(Attribute::NoInline) &&
-            FAttrs.hasAttribute(Attribute::AlwaysInline)), "Attributes "
-          "'noinline and alwaysinline' are incompatible!", V);
+  Assert1(!(Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                               Attribute::NoInline) &&
+            Attrs.hasAttribute(AttributeSet::FunctionIndex,
+                               Attribute::AlwaysInline)),
+          "Attributes 'noinline and alwaysinline' are incompatible!", V);
 }
 
 static bool VerifyAttributeCount(const AttributeSet &Attrs, unsigned Params) {
-  if (Attrs.isEmpty())
+  if (Attrs.getNumSlots() == 0)
     return true;
 
   unsigned LastSlot = Attrs.getNumSlots() - 1;
-  unsigned LastIndex = Attrs.getSlot(LastSlot).Index;
+  unsigned LastIndex = Attrs.getSlotIndex(LastSlot);
   if (LastIndex <= Params
-      || (LastIndex == (unsigned)~0
-          && (LastSlot == 0 || Attrs.getSlot(LastSlot - 1).Index <= Params)))  
+      || (LastIndex == AttributeSet::FunctionIndex
+          && (LastSlot == 0 || Attrs.getSlotIndex(LastSlot - 1) <= Params)))
     return true;
-
+ 
   return false;
 }
 
@@ -1316,11 +1361,10 @@ void Verifier::VerifyCallSite(CallSite CS) {
   if (FTy->isVarArg())
     // Check attributes on the varargs part.
     for (unsigned Idx = 1 + FTy->getNumParams(); Idx <= CS.arg_size(); ++Idx) {
-      Attribute Attr = Attrs.getParamAttributes(Idx);
+      VerifyParameterAttrs(Attrs, Idx, CS.getArgument(Idx-1)->getType(),
+                           false, I);
 
-      VerifyParameterAttrs(Attr, CS.getArgument(Idx-1)->getType(), false, I);
-
-      Assert1(!Attr.hasAttribute(Attribute::StructRet),
+      Assert1(!Attrs.hasAttribute(Idx, Attribute::StructRet),
               "Attribute 'sret' cannot be used for vararg call arguments!", I);
     }
 

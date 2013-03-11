@@ -26,6 +26,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/raw_ostream.h"
 #include <queue>
 
@@ -55,6 +56,9 @@ static cl::opt<bool> EnableLoadCluster("misched-cluster", cl::Hidden,
 // Experimental heuristics
 static cl::opt<bool> EnableMacroFusion("misched-fusion", cl::Hidden,
   cl::desc("Enable scheduling for macro fusion."), cl::init(true));
+
+// DAG subtrees must have at least this many nodes.
+static const unsigned MinSubtreeSize = 8;
 
 //===----------------------------------------------------------------------===//
 // Machine Instruction Scheduling Pass and Registry
@@ -259,7 +263,8 @@ bool MachineScheduler::runOnMachineFunction(MachineFunction &mf) {
       }
       DEBUG(dbgs() << "********** MI Scheduling **********\n");
       DEBUG(dbgs() << MF->getName()
-            << ":BB#" << MBB->getNumber() << "\n  From: " << *I << "    To: ";
+            << ":BB#" << MBB->getNumber() << " " << MBB->getName()
+            << "\n  From: " << *I << "    To: ";
             if (RegionEnd != MBB->end()) dbgs() << *RegionEnd;
             else dbgs() << "End";
             dbgs() << " Remaining: " << RemainingInstrs << "\n");
@@ -300,6 +305,12 @@ void ReadyQueue::dump() {
 // ScheduleDAGMI - Base class for MachineInstr scheduling with LiveIntervals
 // preservation.
 //===----------------------------------------------------------------------===//
+
+ScheduleDAGMI::~ScheduleDAGMI() {
+  delete DFSResult;
+  DeleteContainerPointers(Mutations);
+  delete SchedImpl;
+}
 
 bool ScheduleDAGMI::addEdge(SUnit *SuccSU, const SDep &PredDep) {
   if (SuccSU != &ExitSU) {
@@ -456,7 +467,8 @@ void ScheduleDAGMI::initRegPressure() {
   // Cache the list of excess pressure sets in this region. This will also track
   // the max pressure in the scheduled code for these sets.
   RegionCriticalPSets.clear();
-  std::vector<unsigned> RegionPressure = RPTracker.getPressure().MaxSetPressure;
+  const std::vector<unsigned> &RegionPressure =
+    RPTracker.getPressure().MaxSetPressure;
   for (unsigned i = 0, e = RegionPressure.size(); i < e; ++i) {
     unsigned Limit = TRI->getRegPressureSetLimit(i);
     DEBUG(dbgs() << TRI->getRegPressureSetName(i)
@@ -475,7 +487,7 @@ void ScheduleDAGMI::initRegPressure() {
 // FIXME: When the pressure tracker deals in pressure differences then we won't
 // iterate over all RegionCriticalPSets[i].
 void ScheduleDAGMI::
-updateScheduledPressure(std::vector<unsigned> NewMaxPressure) {
+updateScheduledPressure(const std::vector<unsigned> &NewMaxPressure) {
   for (unsigned i = 0, e = RegionCriticalPSets.size(); i < e; ++i) {
     unsigned ID = RegionCriticalPSets[i].PSetID;
     int &MaxUnits = RegionCriticalPSets[i].UnitIncrease;
@@ -501,12 +513,19 @@ void ScheduleDAGMI::schedule() {
 
   postprocessDAG();
 
+  SmallVector<SUnit*, 8> TopRoots, BotRoots;
+  findRootsAndBiasEdges(TopRoots, BotRoots);
+
+  // Initialize the strategy before modifying the DAG.
+  // This may initialize a DFSResult to be used for queue priority.
+  SchedImpl->initialize(this);
+
   DEBUG(for (unsigned su = 0, e = SUnits.size(); su != e; ++su)
           SUnits[su].dumpAll(this));
-
   if (ViewMISchedDAGs) viewGraph();
 
-  initQueues();
+  // Initialize ready queues now that the DAG and priority data are finalized.
+  initQueues(TopRoots, BotRoots);
 
   bool IsTopNode = false;
   while (SUnit *SU = SchedImpl->pickNode(IsTopNode)) {
@@ -541,7 +560,6 @@ void ScheduleDAGMI::buildDAGWithRegPressure() {
 
   // Build the DAG, and compute current register pressure.
   buildSchedGraph(AA, &RPTracker);
-  if (ViewMISchedDAGs) viewGraph();
 
   // Initialize top/bottom trackers after computing region pressure.
   initRegPressure();
@@ -554,39 +572,56 @@ void ScheduleDAGMI::postprocessDAG() {
   }
 }
 
-// Release all DAG roots for scheduling.
-//
-// Nodes with unreleased weak edges can still be roots.
-void ScheduleDAGMI::releaseRoots() {
-  SmallVector<SUnit*, 16> BotRoots;
+void ScheduleDAGMI::computeDFSResult() {
+  if (!DFSResult)
+    DFSResult = new SchedDFSResult(/*BottomU*/true, MinSubtreeSize);
+  DFSResult->clear();
+  ScheduledTrees.clear();
+  DFSResult->resize(SUnits.size());
+  DFSResult->compute(SUnits);
+  ScheduledTrees.resize(DFSResult->getNumSubtrees());
+}
 
+void ScheduleDAGMI::findRootsAndBiasEdges(SmallVectorImpl<SUnit*> &TopRoots,
+                                          SmallVectorImpl<SUnit*> &BotRoots) {
   for (std::vector<SUnit>::iterator
          I = SUnits.begin(), E = SUnits.end(); I != E; ++I) {
     SUnit *SU = &(*I);
+    assert(!SU->isBoundaryNode() && "Boundary node should not be in SUnits");
+
+    // Order predecessors so DFSResult follows the critical path.
+    SU->biasCriticalPath();
+
     // A SUnit is ready to top schedule if it has no predecessors.
-    if (!I->NumPredsLeft && SU != &EntrySU)
-      SchedImpl->releaseTopNode(SU);
+    if (!I->NumPredsLeft)
+      TopRoots.push_back(SU);
     // A SUnit is ready to bottom schedule if it has no successors.
-    if (!I->NumSuccsLeft && SU != &ExitSU)
+    if (!I->NumSuccsLeft)
       BotRoots.push_back(SU);
+  }
+  ExitSU.biasCriticalPath();
+}
+
+/// Identify DAG roots and setup scheduler queues.
+void ScheduleDAGMI::initQueues(ArrayRef<SUnit*> TopRoots,
+                               ArrayRef<SUnit*> BotRoots) {
+  NextClusterSucc = NULL;
+  NextClusterPred = NULL;
+
+  // Release all DAG roots for scheduling, not including EntrySU/ExitSU.
+  //
+  // Nodes with unreleased weak edges can still be roots.
+  // Release top roots in forward order.
+  for (SmallVectorImpl<SUnit*>::const_iterator
+         I = TopRoots.begin(), E = TopRoots.end(); I != E; ++I) {
+    SchedImpl->releaseTopNode(*I);
   }
   // Release bottom roots in reverse order so the higher priority nodes appear
   // first. This is more natural and slightly more efficient.
   for (SmallVectorImpl<SUnit*>::const_reverse_iterator
-         I = BotRoots.rbegin(), E = BotRoots.rend(); I != E; ++I)
+         I = BotRoots.rbegin(), E = BotRoots.rend(); I != E; ++I) {
     SchedImpl->releaseBottomNode(*I);
-}
-
-/// Identify DAG roots and setup scheduler queues.
-void ScheduleDAGMI::initQueues() {
-  NextClusterSucc = NULL;
-  NextClusterPred = NULL;
-
-  // Initialize the strategy before modifying the DAG.
-  SchedImpl->initialize(this);
-
-  // Release all DAG roots for scheduling, not including EntrySU/ExitSU.
-  releaseRoots();
+  }
 
   releaseSuccessors(&EntrySU);
   releasePredecessors(&ExitSU);
@@ -650,6 +685,15 @@ void ScheduleDAGMI::updateQueues(SUnit *SU, bool IsTopNode) {
     releasePredecessors(SU);
 
   SU->isScheduled = true;
+
+  if (DFSResult) {
+    unsigned SubtreeID = DFSResult->getSubtreeID(SU);
+    if (!ScheduledTrees.test(SubtreeID)) {
+      ScheduledTrees.set(SubtreeID);
+      DFSResult->scheduleTree(SubtreeID);
+      SchedImpl->scheduleTree(SubtreeID);
+    }
+  }
 
   // Notify the scheduling strategy after updating the DAG.
   SchedImpl->schedNode(SU, IsTopNode);
@@ -1010,6 +1054,9 @@ public:
 #endif
 
     void reset() {
+      // A new HazardRec is created for each DAG and owned by SchedBoundary.
+      delete HazardRec;
+
       Available.clear();
       Pending.clear();
       CheckPending = false;
@@ -1035,7 +1082,8 @@ public:
     /// PendingFlag set.
     SchedBoundary(unsigned ID, const Twine &Name):
       DAG(0), SchedModel(0), Rem(0), Available(ID, Name+".A"),
-      Pending(ID << ConvergingScheduler::LogMaxQID, Name+".P") {
+      Pending(ID << ConvergingScheduler::LogMaxQID, Name+".P"),
+      HazardRec(0) {
       reset();
     }
 
@@ -1179,9 +1227,12 @@ void ConvergingScheduler::initialize(ScheduleDAGMI *dag) {
   DAG = dag;
   SchedModel = DAG->getSchedModel();
   TRI = DAG->TRI;
+
   Rem.init(DAG, SchedModel);
   Top.init(DAG, SchedModel, &Rem);
   Bot.init(DAG, SchedModel, &Rem);
+
+  DAG->computeDFSResult();
 
   // Initialize resource counts.
 
@@ -2052,12 +2103,11 @@ ConvergingSchedRegistry("converge", "Standard converging scheduler.",
 namespace {
 /// \brief Order nodes by the ILP metric.
 struct ILPOrder {
-  SchedDFSResult *DFSResult;
-  BitVector *ScheduledTrees;
+  const SchedDFSResult *DFSResult;
+  const BitVector *ScheduledTrees;
   bool MaximizeILP;
 
-  ILPOrder(SchedDFSResult *dfs, BitVector *schedtrees, bool MaxILP)
-    : DFSResult(dfs), ScheduledTrees(schedtrees), MaximizeILP(MaxILP) {}
+  ILPOrder(bool MaxILP): DFSResult(0), ScheduledTrees(0), MaximizeILP(MaxILP) {}
 
   /// \brief Apply a less-than relation on node priority.
   ///
@@ -2095,26 +2145,22 @@ class ILPScheduler : public MachineSchedStrategy {
   /// (a motivating test case must be found).
   static const unsigned SubtreeLimit = 16;
 
-  SchedDFSResult DFSResult;
-  BitVector ScheduledTrees;
+  ScheduleDAGMI *DAG;
   ILPOrder Cmp;
 
   std::vector<SUnit*> ReadyQ;
 public:
-  ILPScheduler(bool MaximizeILP)
-  : DFSResult(/*BottomUp=*/true, SubtreeLimit),
-    Cmp(&DFSResult, &ScheduledTrees, MaximizeILP) {}
+  ILPScheduler(bool MaximizeILP): DAG(0), Cmp(MaximizeILP) {}
 
-  virtual void initialize(ScheduleDAGMI *DAG) {
+  virtual void initialize(ScheduleDAGMI *dag) {
+    DAG = dag;
+    DAG->computeDFSResult();
+    Cmp.DFSResult = DAG->getDFSResult();
+    Cmp.ScheduledTrees = &DAG->getScheduledTrees();
     ReadyQ.clear();
-    DFSResult.clear();
-    DFSResult.resize(DAG->SUnits.size());
-    ScheduledTrees.clear();
   }
 
   virtual void registerRoots() {
-    DFSResult.compute(ReadyQ);
-    ScheduledTrees.resize(DFSResult.getNumSubtrees());
     // Restore the heap in ReadyQ with the updated DFS results.
     std::make_heap(ReadyQ.begin(), ReadyQ.end(), Cmp);
   }
@@ -2131,21 +2177,22 @@ public:
     IsTopNode = false;
     DEBUG(dbgs() << "*** Scheduling " << "SU(" << SU->NodeNum << "): "
           << *SU->getInstr()
-          << " ILP: " << DFSResult.getILP(SU)
-          << " Tree: " << DFSResult.getSubtreeID(SU) << " @"
-          << DFSResult.getSubtreeLevel(DFSResult.getSubtreeID(SU))<< '\n');
+          << " ILP: " << DAG->getDFSResult()->getILP(SU)
+          << " Tree: " << DAG->getDFSResult()->getSubtreeID(SU) << " @"
+          << DAG->getDFSResult()->getSubtreeLevel(
+            DAG->getDFSResult()->getSubtreeID(SU)) << '\n');
     return SU;
+  }
+
+  /// \brief Scheduler callback to notify that a new subtree is scheduled.
+  virtual void scheduleTree(unsigned SubtreeID) {
+    std::make_heap(ReadyQ.begin(), ReadyQ.end(), Cmp);
   }
 
   /// Callback after a node is scheduled. Mark a newly scheduled tree, notify
   /// DFSResults, and resort the priority Q.
   virtual void schedNode(SUnit *SU, bool IsTopNode) {
     assert(!IsTopNode && "SchedDFSResult needs bottom-up");
-    if (!ScheduledTrees.test(DFSResult.getSubtreeID(SU))) {
-      ScheduledTrees.set(DFSResult.getSubtreeID(SU));
-      DFSResult.scheduleTree(DFSResult.getSubtreeID(SU));
-      std::make_heap(ReadyQ.begin(), ReadyQ.end(), Cmp);
-    }
   }
 
   virtual void releaseTopNode(SUnit *) { /*only called for top roots*/ }
@@ -2256,3 +2303,90 @@ static MachineSchedRegistry ShufflerRegistry(
   "shuffle", "Shuffle machine instructions alternating directions",
   createInstructionShuffler);
 #endif // !NDEBUG
+
+//===----------------------------------------------------------------------===//
+// GraphWriter support for ScheduleDAGMI.
+//===----------------------------------------------------------------------===//
+
+#ifndef NDEBUG
+namespace llvm {
+
+template<> struct GraphTraits<
+  ScheduleDAGMI*> : public GraphTraits<ScheduleDAG*> {};
+
+template<>
+struct DOTGraphTraits<ScheduleDAGMI*> : public DefaultDOTGraphTraits {
+
+  DOTGraphTraits (bool isSimple=false) : DefaultDOTGraphTraits(isSimple) {}
+
+  static std::string getGraphName(const ScheduleDAG *G) {
+    return G->MF.getName();
+  }
+
+  static bool renderGraphFromBottomUp() {
+    return true;
+  }
+
+  static bool isNodeHidden(const SUnit *Node) {
+    return (Node->NumPreds > 10 || Node->NumSuccs > 10);
+  }
+
+  static bool hasNodeAddressLabel(const SUnit *Node,
+                                  const ScheduleDAG *Graph) {
+    return false;
+  }
+
+  /// If you want to override the dot attributes printed for a particular
+  /// edge, override this method.
+  static std::string getEdgeAttributes(const SUnit *Node,
+                                       SUnitIterator EI,
+                                       const ScheduleDAG *Graph) {
+    if (EI.isArtificialDep())
+      return "color=cyan,style=dashed";
+    if (EI.isCtrlDep())
+      return "color=blue,style=dashed";
+    return "";
+  }
+
+  static std::string getNodeLabel(const SUnit *SU, const ScheduleDAG *G) {
+    std::string Str;
+    raw_string_ostream SS(Str);
+    SS << "SU(" << SU->NodeNum << ')';
+    return SS.str();
+  }
+  static std::string getNodeDescription(const SUnit *SU, const ScheduleDAG *G) {
+    return G->getGraphNodeLabel(SU);
+  }
+
+  static std::string getNodeAttributes(const SUnit *N,
+                                       const ScheduleDAG *Graph) {
+    std::string Str("shape=Mrecord");
+    const SchedDFSResult *DFS =
+      static_cast<const ScheduleDAGMI*>(Graph)->getDFSResult();
+    if (DFS) {
+      Str += ",style=filled,fillcolor=\"#";
+      Str += DOT::getColorString(DFS->getSubtreeID(N));
+      Str += '"';
+    }
+    return Str;
+  }
+};
+} // namespace llvm
+#endif // NDEBUG
+
+/// viewGraph - Pop up a ghostview window with the reachable parts of the DAG
+/// rendered using 'dot'.
+///
+void ScheduleDAGMI::viewGraph(const Twine &Name, const Twine &Title) {
+#ifndef NDEBUG
+  ViewGraph(this, Name, false, Title);
+#else
+  errs() << "ScheduleDAGMI::viewGraph is only available in debug builds on "
+         << "systems with Graphviz or gv!\n";
+#endif  // NDEBUG
+}
+
+/// Out-of-line implementation with no arguments is handy for gdb.
+void ScheduleDAGMI::viewGraph() {
+  viewGraph(getDAGName(), "Scheduling-Units Graph for " + getDAGName());
+}

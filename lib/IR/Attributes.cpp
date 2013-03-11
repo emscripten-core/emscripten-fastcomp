@@ -1,4 +1,4 @@
-//===-- Attribute.cpp - Implement AttributesList -------------------------===//
+//===-- Attributes.cpp - Implement AttributesList -------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the Attribute, AttributeImpl, AttrBuilder,
+// \file
+// \brief This file implements the Attribute, AttributeImpl, AttrBuilder,
 // AttributeSetImpl, and AttributeSet classes.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +16,6 @@
 #include "llvm/IR/Attributes.h"
 #include "AttributeImpl.h"
 #include "LLVMContextImpl.h"
-#include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Atomic.h"
@@ -23,29 +23,19 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
-// Attribute Implementation
+// Attribute Construction Methods
 //===----------------------------------------------------------------------===//
 
-Attribute Attribute::get(LLVMContext &Context, ArrayRef<AttrKind> Vals) {
-  AttrBuilder B;
-  for (ArrayRef<AttrKind>::iterator I = Vals.begin(), E = Vals.end();
-       I != E; ++I)
-    B.addAttribute(*I);
-  return Attribute::get(Context, B);
-}
-
-Attribute Attribute::get(LLVMContext &Context, AttrBuilder &B) {
-  // If there are no attributes, return an empty Attribute class.
-  if (!B.hasAttributes())
-    return Attribute();
-
-  // Otherwise, build a key to look up the existing attributes.
+Attribute Attribute::get(LLVMContext &Context, Attribute::AttrKind Kind,
+                         uint64_t Val) {
   LLVMContextImpl *pImpl = Context.pImpl;
   FoldingSetNodeID ID;
-  ID.AddInteger(B.Raw());
+  ID.AddInteger(Kind);
+  if (Val) ID.AddInteger(Val);
 
   void *InsertPoint;
   AttributeImpl *PA = pImpl->AttrsSet.FindNodeOrInsertPos(ID, InsertPoint);
@@ -53,401 +43,320 @@ Attribute Attribute::get(LLVMContext &Context, AttrBuilder &B) {
   if (!PA) {
     // If we didn't find any existing attributes of the same shape then create a
     // new one and insert it.
-    PA = new AttributeImpl(Context, B.Raw());
+    PA = !Val ?
+      new AttributeImpl(Context, Kind) :
+      new AttributeImpl(Context, Kind, Val);
     pImpl->AttrsSet.InsertNode(PA, InsertPoint);
   }
 
-  // Return the AttributesList that we found or created.
+  // Return the Attribute that we found or created.
   return Attribute(PA);
 }
 
-bool Attribute::hasAttribute(AttrKind Val) const {
-  return pImpl && pImpl->hasAttribute(Val);
+Attribute Attribute::get(LLVMContext &Context, StringRef Kind, StringRef Val) {
+  LLVMContextImpl *pImpl = Context.pImpl;
+  FoldingSetNodeID ID;
+  ID.AddString(Kind);
+  if (!Val.empty()) ID.AddString(Val);
+
+  void *InsertPoint;
+  AttributeImpl *PA = pImpl->AttrsSet.FindNodeOrInsertPos(ID, InsertPoint);
+
+  if (!PA) {
+    // If we didn't find any existing attributes of the same shape then create a
+    // new one and insert it.
+    PA = new AttributeImpl(Context, Kind, Val);
+    pImpl->AttrsSet.InsertNode(PA, InsertPoint);
+  }
+
+  // Return the Attribute that we found or created.
+  return Attribute(PA);
 }
 
-bool Attribute::hasAttributes() const {
-  return pImpl && pImpl->hasAttributes();
+Attribute Attribute::getWithAlignment(LLVMContext &Context, uint64_t Align) {
+  assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
+  assert(Align <= 0x40000000 && "Alignment too large.");
+  return get(Context, Alignment, Align);
+}
+
+Attribute Attribute::getWithStackAlignment(LLVMContext &Context,
+                                           uint64_t Align) {
+  assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
+  assert(Align <= 0x100 && "Alignment too large.");
+  return get(Context, StackAlignment, Align);
+}
+
+//===----------------------------------------------------------------------===//
+// Attribute Accessor Methods
+//===----------------------------------------------------------------------===//
+
+bool Attribute::isEnumAttribute() const {
+  return pImpl && pImpl->isEnumAttribute();
+}
+
+bool Attribute::isAlignAttribute() const {
+  return pImpl && pImpl->isAlignAttribute();
+}
+
+bool Attribute::isStringAttribute() const {
+  return pImpl && pImpl->isStringAttribute();
+}
+
+Attribute::AttrKind Attribute::getKindAsEnum() const {
+  assert((isEnumAttribute() || isAlignAttribute()) &&
+         "Invalid attribute type to get the kind as an enum!");
+  return pImpl ? pImpl->getKindAsEnum() : None;
+}
+
+uint64_t Attribute::getValueAsInt() const {
+  assert(isAlignAttribute() &&
+         "Expected the attribute to be an alignment attribute!");
+  return pImpl ? pImpl->getValueAsInt() : 0;
+}
+
+StringRef Attribute::getKindAsString() const {
+  assert(isStringAttribute() &&
+         "Invalid attribute type to get the kind as a string!");
+  return pImpl ? pImpl->getKindAsString() : StringRef();
+}
+
+StringRef Attribute::getValueAsString() const {
+  assert(isStringAttribute() &&
+         "Invalid attribute type to get the value as a string!");
+  return pImpl ? pImpl->getValueAsString() : StringRef();
+}
+
+bool Attribute::hasAttribute(AttrKind Kind) const {
+  return (pImpl && pImpl->hasAttribute(Kind)) || (!pImpl && Kind == None);
+}
+
+bool Attribute::hasAttribute(StringRef Kind) const {
+  if (!isStringAttribute()) return false;
+  return pImpl && pImpl->hasAttribute(Kind);
 }
 
 /// This returns the alignment field of an attribute as a byte alignment value.
 unsigned Attribute::getAlignment() const {
-  if (!hasAttribute(Attribute::Alignment))
-    return 0;
-  return 1U << ((pImpl->getAlignment() >> 16) - 1);
-}
-
-void Attribute::setAlignment(unsigned Align) {
   assert(hasAttribute(Attribute::Alignment) &&
-         "Trying to set the alignment on a non-alignment attribute!");
-  pImpl->setAlignment(Align);
+         "Trying to get alignment from non-alignment attribute!");
+  return pImpl->getValueAsInt();
 }
 
 /// This returns the stack alignment field of an attribute as a byte alignment
 /// value.
 unsigned Attribute::getStackAlignment() const {
-  if (!hasAttribute(Attribute::StackAlignment))
-    return 0;
-  return 1U << ((pImpl->getStackAlignment() >> 26) - 1);
-}
-
-void Attribute::setStackAlignment(unsigned Align) {
   assert(hasAttribute(Attribute::StackAlignment) &&
-         "Trying to set the stack alignment on a non-alignment attribute!");
-  pImpl->setStackAlignment(Align);
+         "Trying to get alignment from non-alignment attribute!");
+  return pImpl->getValueAsInt();
 }
 
-bool Attribute::operator==(AttrKind K) const {
-  return pImpl && *pImpl == K;
-}
-bool Attribute::operator!=(AttrKind K) const {
-  return !(*this == K);
-}
+std::string Attribute::getAsString(bool InAttrGrp) const {
+  if (!pImpl) return "";
 
-uint64_t Attribute::Raw() const {
-  return pImpl ? pImpl->Raw() : 0;
-}
-
-Attribute Attribute::typeIncompatible(Type *Ty) {
-  AttrBuilder Incompatible;
-
-  if (!Ty->isIntegerTy())
-    // Attribute that only apply to integers.
-    Incompatible.addAttribute(Attribute::SExt)
-      .addAttribute(Attribute::ZExt);
-
-  if (!Ty->isPointerTy())
-    // Attribute that only apply to pointers.
-    Incompatible.addAttribute(Attribute::ByVal)
-      .addAttribute(Attribute::Nest)
-      .addAttribute(Attribute::NoAlias)
-      .addAttribute(Attribute::NoCapture)
-      .addAttribute(Attribute::StructRet);
-
-  return Attribute::get(Ty->getContext(), Incompatible);
-}
-
-/// encodeLLVMAttributesForBitcode - This returns an integer containing an
-/// encoding of all the LLVM attributes found in the given attribute bitset.
-/// Any change to this encoding is a breaking change to bitcode compatibility.
-uint64_t Attribute::encodeLLVMAttributesForBitcode(Attribute Attrs) {
-  // FIXME: It doesn't make sense to store the alignment information as an
-  // expanded out value, we should store it as a log2 value.  However, we can't
-  // just change that here without breaking bitcode compatibility.  If this ever
-  // becomes a problem in practice, we should introduce new tag numbers in the
-  // bitcode file and have those tags use a more efficiently encoded alignment
-  // field.
-
-  // Store the alignment in the bitcode as a 16-bit raw value instead of a 5-bit
-  // log2 encoded value. Shift the bits above the alignment up by 11 bits.
-  uint64_t EncodedAttrs = Attrs.Raw() & 0xffff;
-  if (Attrs.hasAttribute(Attribute::Alignment))
-    EncodedAttrs |= Attrs.getAlignment() << 16;
-  EncodedAttrs |= (Attrs.Raw() & (0xffffULL << 21)) << 11;
-  return EncodedAttrs;
-}
-
-/// decodeLLVMAttributesForBitcode - This returns an attribute bitset containing
-/// the LLVM attributes that have been decoded from the given integer.  This
-/// function must stay in sync with 'encodeLLVMAttributesForBitcode'.
-Attribute Attribute::decodeLLVMAttributesForBitcode(LLVMContext &C,
-                                                      uint64_t EncodedAttrs) {
-  // The alignment is stored as a 16-bit raw value from bits 31--16.  We shift
-  // the bits above 31 down by 11 bits.
-  unsigned Alignment = (EncodedAttrs & (0xffffULL << 16)) >> 16;
-  assert((!Alignment || isPowerOf2_32(Alignment)) &&
-         "Alignment must be a power of two.");
-
-  AttrBuilder B(EncodedAttrs & 0xffff);
-  if (Alignment)
-    B.addAlignmentAttr(Alignment);
-  B.addRawValue((EncodedAttrs & (0xffffULL << 32)) >> 11);
-  return Attribute::get(C, B);
-}
-
-std::string Attribute::getAsString() const {
-  std::string Result;
-  if (hasAttribute(Attribute::ZExt))
-    Result += "zeroext ";
-  if (hasAttribute(Attribute::SExt))
-    Result += "signext ";
-  if (hasAttribute(Attribute::NoReturn))
-    Result += "noreturn ";
-  if (hasAttribute(Attribute::NoUnwind))
-    Result += "nounwind ";
-  if (hasAttribute(Attribute::UWTable))
-    Result += "uwtable ";
-  if (hasAttribute(Attribute::ReturnsTwice))
-    Result += "returns_twice ";
-  if (hasAttribute(Attribute::InReg))
-    Result += "inreg ";
-  if (hasAttribute(Attribute::NoAlias))
-    Result += "noalias ";
-  if (hasAttribute(Attribute::NoCapture))
-    Result += "nocapture ";
-  if (hasAttribute(Attribute::StructRet))
-    Result += "sret ";
-  if (hasAttribute(Attribute::ByVal))
-    Result += "byval ";
-  if (hasAttribute(Attribute::Nest))
-    Result += "nest ";
-  if (hasAttribute(Attribute::ReadNone))
-    Result += "readnone ";
-  if (hasAttribute(Attribute::ReadOnly))
-    Result += "readonly ";
-  if (hasAttribute(Attribute::OptimizeForSize))
-    Result += "optsize ";
-  if (hasAttribute(Attribute::NoInline))
-    Result += "noinline ";
-  if (hasAttribute(Attribute::InlineHint))
-    Result += "inlinehint ";
+  if (hasAttribute(Attribute::SanitizeAddress))
+    return "sanitize_address";
   if (hasAttribute(Attribute::AlwaysInline))
-    Result += "alwaysinline ";
-  if (hasAttribute(Attribute::StackProtect))
-    Result += "ssp ";
-  if (hasAttribute(Attribute::StackProtectReq))
-    Result += "sspreq ";
-  if (hasAttribute(Attribute::NoRedZone))
-    Result += "noredzone ";
-  if (hasAttribute(Attribute::NoImplicitFloat))
-    Result += "noimplicitfloat ";
-  if (hasAttribute(Attribute::Naked))
-    Result += "naked ";
-  if (hasAttribute(Attribute::NonLazyBind))
-    Result += "nonlazybind ";
-  if (hasAttribute(Attribute::AddressSafety))
-    Result += "address_safety ";
+    return "alwaysinline";
+  if (hasAttribute(Attribute::ByVal))
+    return "byval";
+  if (hasAttribute(Attribute::InlineHint))
+    return "inlinehint";
+  if (hasAttribute(Attribute::InReg))
+    return "inreg";
   if (hasAttribute(Attribute::MinSize))
-    Result += "minsize ";
-  if (hasAttribute(Attribute::StackAlignment)) {
-    Result += "alignstack(";
-    Result += utostr(getStackAlignment());
-    Result += ") ";
-  }
-  if (hasAttribute(Attribute::Alignment)) {
-    Result += "align ";
-    Result += utostr(getAlignment());
-    Result += " ";
-  }
+    return "minsize";
+  if (hasAttribute(Attribute::Naked))
+    return "naked";
+  if (hasAttribute(Attribute::Nest))
+    return "nest";
+  if (hasAttribute(Attribute::NoAlias))
+    return "noalias";
+  if (hasAttribute(Attribute::NoBuiltin))
+    return "nobuiltin";
+  if (hasAttribute(Attribute::NoCapture))
+    return "nocapture";
   if (hasAttribute(Attribute::NoDuplicate))
-    Result += "noduplicate ";
-  // Trim the trailing space.
-  assert(!Result.empty() && "Unknown attribute!");
-  Result.erase(Result.end()-1);
-  return Result;
-}
+    return "noduplicate";
+  if (hasAttribute(Attribute::NoImplicitFloat))
+    return "noimplicitfloat";
+  if (hasAttribute(Attribute::NoInline))
+    return "noinline";
+  if (hasAttribute(Attribute::NonLazyBind))
+    return "nonlazybind";
+  if (hasAttribute(Attribute::NoRedZone))
+    return "noredzone";
+  if (hasAttribute(Attribute::NoReturn))
+    return "noreturn";
+  if (hasAttribute(Attribute::NoUnwind))
+    return "nounwind";
+  if (hasAttribute(Attribute::OptimizeForSize))
+    return "optsize";
+  if (hasAttribute(Attribute::ReadNone))
+    return "readnone";
+  if (hasAttribute(Attribute::ReadOnly))
+    return "readonly";
+  if (hasAttribute(Attribute::ReturnsTwice))
+    return "returns_twice";
+  if (hasAttribute(Attribute::SExt))
+    return "signext";
+  if (hasAttribute(Attribute::StackProtect))
+    return "ssp";
+  if (hasAttribute(Attribute::StackProtectReq))
+    return "sspreq";
+  if (hasAttribute(Attribute::StackProtectStrong))
+    return "sspstrong";
+  if (hasAttribute(Attribute::StructRet))
+    return "sret";
+  if (hasAttribute(Attribute::SanitizeThread))
+    return "sanitize_thread";
+  if (hasAttribute(Attribute::SanitizeMemory))
+    return "sanitize_memory";
+  if (hasAttribute(Attribute::UWTable))
+    return "uwtable";
+  if (hasAttribute(Attribute::ZExt))
+    return "zeroext";
 
-//===----------------------------------------------------------------------===//
-// AttrBuilder Method Implementations
-//===----------------------------------------------------------------------===//
-
-AttrBuilder::AttrBuilder(AttributeSet AS, unsigned Idx)
-  : Alignment(0), StackAlignment(0) {
-  AttributeSetImpl *pImpl = AS.AttrList;
-  if (!pImpl) return;
-
-  ArrayRef<AttributeWithIndex> AttrList = pImpl->getAttributes();
-  const AttributeWithIndex *AWI = 0;
-  for (unsigned I = 0, E = AttrList.size(); I != E; ++I)
-    if (AttrList[I].Index == Idx) {
-      AWI = &AttrList[I];
-      break;
-    }
-
-  assert(AWI && "Cannot find index in attribute set!");
-
-  /// FIXME: This will be modified in the future. Basically, the
-  /// AttributeWithIndex class will contain the
-
-}
-
-void AttrBuilder::clear() {
-  Attrs.clear();
-  Alignment = StackAlignment = 0;
-}
-
-AttrBuilder &AttrBuilder::addAttribute(Attribute::AttrKind Val) {
-  Attrs.insert(Val);
-  return *this;
-}
-
-AttrBuilder &AttrBuilder::removeAttribute(Attribute::AttrKind Val) {
-  Attrs.erase(Val);
-  if (Val == Attribute::Alignment)
-    Alignment = 0;
-  else if (Val == Attribute::StackAlignment)
-    StackAlignment = 0;
-
-  return *this;
-}
-
-AttrBuilder &AttrBuilder::addAlignmentAttr(unsigned Align) {
-  if (Align == 0) return *this;
-
-  assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
-  assert(Align <= 0x40000000 && "Alignment too large.");
-
-  Attrs.insert(Attribute::Alignment);
-  Alignment = Align;
-  return *this;
-}
-
-AttrBuilder &AttrBuilder::addStackAlignmentAttr(unsigned Align) {
-  // Default alignment, allow the target to define how to align it.
-  if (Align == 0) return *this;
-
-  assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
-  assert(Align <= 0x100 && "Alignment too large.");
-
-  Attrs.insert(Attribute::StackAlignment);
-  StackAlignment = Align;
-  return *this;
-}
-
-AttrBuilder &AttrBuilder::addRawValue(uint64_t Val) {
-  for (Attribute::AttrKind I = Attribute::None; I != Attribute::EndAttrKinds;
-       I = Attribute::AttrKind(I + 1)) {
-    if (uint64_t A = (Val & AttributeImpl::getAttrMask(I))) {
-      Attrs.insert(I);
-
-      if (I == Attribute::Alignment)
-        Alignment = 1ULL << ((A >> 16) - 1);
-      else if (I == Attribute::StackAlignment)
-        StackAlignment = 1ULL << ((A >> 26)-1);
-    }
+  // FIXME: These should be output like this:
+  //
+  //   align=4
+  //   alignstack=8
+  //
+  if (hasAttribute(Attribute::Alignment)) {
+    std::string Result;
+    Result += "align";
+    Result += (InAttrGrp) ? "=" : " ";
+    Result += utostr(getValueAsInt());
+    return Result;
   }
 
-  return *this;
-}
-
-AttrBuilder &AttrBuilder::addAttributes(const Attribute &A) {
-  uint64_t Mask = A.Raw();
-
-  for (Attribute::AttrKind I = Attribute::None; I != Attribute::EndAttrKinds;
-       I = Attribute::AttrKind(I + 1)) {
-    if (uint64_t A = (Mask & AttributeImpl::getAttrMask(I))) {
-      Attrs.insert(I);
-
-      if (I == Attribute::Alignment)
-        Alignment = 1ULL << ((A >> 16) - 1);
-      else if (I == Attribute::StackAlignment)
-        StackAlignment = 1ULL << ((A >> 26)-1);
+  if (hasAttribute(Attribute::StackAlignment)) {
+    std::string Result;
+    Result += "alignstack";
+    if (InAttrGrp) {
+      Result += "=";
+      Result += utostr(getValueAsInt());
+    } else {
+      Result += "(";
+      Result += utostr(getValueAsInt());
+      Result += ")";
     }
+    return Result;
   }
 
-  return *this;
-}
+  // Convert target-dependent attributes to strings of the form:
+  //
+  //   "kind"
+  //   "kind" = "value"
+  //
+  if (isStringAttribute()) {
+    std::string Result;
+    Result += '\"' + getKindAsString().str() + '"';
 
-AttrBuilder &AttrBuilder::removeAttributes(const Attribute &A){
-  uint64_t Mask = A.Raw();
+    StringRef Val = pImpl->getValueAsString();
+    if (Val.empty()) return Result;
 
-  for (Attribute::AttrKind I = Attribute::None; I != Attribute::EndAttrKinds;
-       I = Attribute::AttrKind(I + 1)) {
-    if (Mask & AttributeImpl::getAttrMask(I)) {
-      Attrs.erase(I);
-
-      if (I == Attribute::Alignment)
-        Alignment = 0;
-      else if (I == Attribute::StackAlignment)
-        StackAlignment = 0;
-    }
+    Result += "=\"" + Val.str() + '"';
+    return Result;
   }
 
-  return *this;
+  llvm_unreachable("Unknown attribute");
 }
 
-bool AttrBuilder::contains(Attribute::AttrKind A) const {
-  return Attrs.count(A);
-}
-
-bool AttrBuilder::hasAttributes() const {
-  return !Attrs.empty();
-}
-
-bool AttrBuilder::hasAttributes(const Attribute &A) const {
-  return Raw() & A.Raw();
-}
-
-bool AttrBuilder::hasAlignmentAttr() const {
-  return Alignment != 0;
-}
-
-uint64_t AttrBuilder::Raw() const {
-  uint64_t Mask = 0;
-
-  for (DenseSet<Attribute::AttrKind>::const_iterator I = Attrs.begin(),
-         E = Attrs.end(); I != E; ++I) {
-    Attribute::AttrKind Kind = *I;
-
-    if (Kind == Attribute::Alignment)
-      Mask |= (Log2_32(Alignment) + 1) << 16;
-    else if (Kind == Attribute::StackAlignment)
-      Mask |= (Log2_32(StackAlignment) + 1) << 26;
-    else
-      Mask |= AttributeImpl::getAttrMask(Kind);
-  }
-
-  return Mask;
-}
-
-bool AttrBuilder::operator==(const AttrBuilder &B) {
-  SmallVector<Attribute::AttrKind, 8> This(Attrs.begin(), Attrs.end());
-  SmallVector<Attribute::AttrKind, 8> That(B.Attrs.begin(), B.Attrs.end());
-  return This == That;
+bool Attribute::operator<(Attribute A) const {
+  if (!pImpl && !A.pImpl) return false;
+  if (!pImpl) return true;
+  if (!A.pImpl) return false;
+  return *pImpl < *A.pImpl;
 }
 
 //===----------------------------------------------------------------------===//
 // AttributeImpl Definition
 //===----------------------------------------------------------------------===//
 
-AttributeImpl::AttributeImpl(LLVMContext &C, uint64_t data)
+AttributeImpl::AttributeImpl(LLVMContext &C, Attribute::AttrKind Kind)
+  : Context(C), Entry(new EnumAttributeEntry(Kind)) {}
+
+AttributeImpl::AttributeImpl(LLVMContext &C, Attribute::AttrKind Kind,
+                             unsigned Align)
   : Context(C) {
-  Data = ConstantInt::get(Type::getInt64Ty(C), data);
-}
-AttributeImpl::AttributeImpl(LLVMContext &C, Attribute::AttrKind data)
-  : Context(C) {
-  Data = ConstantInt::get(Type::getInt64Ty(C), data);
-}
-AttributeImpl::AttributeImpl(LLVMContext &C, Attribute::AttrKind data,
-                             ArrayRef<Constant*> values)
-  : Context(C) {
-  Data = ConstantInt::get(Type::getInt64Ty(C), data);
-  Vals.reserve(values.size());
-  Vals.append(values.begin(), values.end());
-}
-AttributeImpl::AttributeImpl(LLVMContext &C, StringRef data)
-  : Context(C) {
-  Data = ConstantDataArray::getString(C, data);
+  assert((Kind == Attribute::Alignment || Kind == Attribute::StackAlignment) &&
+         "Wrong kind for alignment attribute!");
+  Entry = new AlignAttributeEntry(Kind, Align);
 }
 
-bool AttributeImpl::operator==(Attribute::AttrKind Kind) const {
-  if (ConstantInt *CI = dyn_cast<ConstantInt>(Data))
-    return CI->getZExtValue() == Kind;
-  return false;
-}
-bool AttributeImpl::operator!=(Attribute::AttrKind Kind) const {
-  return !(*this == Kind);
+AttributeImpl::AttributeImpl(LLVMContext &C, StringRef Kind, StringRef Val)
+  : Context(C), Entry(new StringAttributeEntry(Kind, Val)) {}
+
+AttributeImpl::~AttributeImpl() {
+  delete Entry;
 }
 
-bool AttributeImpl::operator==(StringRef Kind) const {
-  if (ConstantDataArray *CDA = dyn_cast<ConstantDataArray>(Data))
-    if (CDA->isString())
-      return CDA->getAsString() == Kind;
-  return false;
-}
-bool AttributeImpl::operator!=(StringRef Kind) const {
-  return !(*this == Kind);
+bool AttributeImpl::isEnumAttribute() const {
+  return isa<EnumAttributeEntry>(Entry);
 }
 
-uint64_t AttributeImpl::Raw() const {
-  // FIXME: Remove this.
-  return cast<ConstantInt>(Data)->getZExtValue();
+bool AttributeImpl::isAlignAttribute() const {
+  return isa<AlignAttributeEntry>(Entry);
+}
+
+bool AttributeImpl::isStringAttribute() const {
+  return isa<StringAttributeEntry>(Entry);
+}
+
+bool AttributeImpl::hasAttribute(Attribute::AttrKind A) const {
+  if (isStringAttribute()) return false;
+  return getKindAsEnum() == A;
+}
+
+bool AttributeImpl::hasAttribute(StringRef Kind) const {
+  if (!isStringAttribute()) return false;
+  return getKindAsString() == Kind;
+}
+
+Attribute::AttrKind AttributeImpl::getKindAsEnum() const {
+  if (EnumAttributeEntry *E = dyn_cast<EnumAttributeEntry>(Entry))
+    return E->getEnumKind();
+  return cast<AlignAttributeEntry>(Entry)->getEnumKind();
+}
+
+uint64_t AttributeImpl::getValueAsInt() const {
+  return cast<AlignAttributeEntry>(Entry)->getAlignment();
+}
+
+StringRef AttributeImpl::getKindAsString() const {
+  return cast<StringAttributeEntry>(Entry)->getStringKind();
+}
+
+StringRef AttributeImpl::getValueAsString() const {
+  return cast<StringAttributeEntry>(Entry)->getStringValue();
+}
+
+bool AttributeImpl::operator<(const AttributeImpl &AI) const {
+  // This sorts the attributes with Attribute::AttrKinds coming first (sorted
+  // relative to their enum value) and then strings.
+  if (isEnumAttribute()) {
+    if (AI.isEnumAttribute()) return getKindAsEnum() < AI.getKindAsEnum();
+    if (AI.isAlignAttribute()) return true;
+    if (AI.isStringAttribute()) return true;
+  }
+
+  if (isAlignAttribute()) {
+    if (AI.isEnumAttribute()) return false;
+    if (AI.isAlignAttribute()) return getValueAsInt() < AI.getValueAsInt();
+    if (AI.isStringAttribute()) return true;
+  }
+
+  if (AI.isEnumAttribute()) return false;
+  if (AI.isAlignAttribute()) return false;
+  if (getKindAsString() == AI.getKindAsString())
+    return getValueAsString() < AI.getValueAsString();
+  return getKindAsString() < AI.getKindAsString();
 }
 
 uint64_t AttributeImpl::getAttrMask(Attribute::AttrKind Val) {
+  // FIXME: Remove this.
   switch (Val) {
   case Attribute::EndAttrKinds:
-  case Attribute::AttrKindEmptyKey:
-  case Attribute::AttrKindTombstoneKey:
     llvm_unreachable("Synthetic enumerators which should never get here");
 
   case Attribute::None:            return 0;
@@ -477,68 +386,150 @@ uint64_t AttributeImpl::getAttrMask(Attribute::AttrKind Val) {
   case Attribute::ReturnsTwice:    return 1 << 29;
   case Attribute::UWTable:         return 1 << 30;
   case Attribute::NonLazyBind:     return 1U << 31;
-  case Attribute::AddressSafety:   return 1ULL << 32;
+  case Attribute::SanitizeAddress: return 1ULL << 32;
   case Attribute::MinSize:         return 1ULL << 33;
   case Attribute::NoDuplicate:     return 1ULL << 34;
+  case Attribute::StackProtectStrong: return 1ULL << 35;
+  case Attribute::SanitizeThread:  return 1ULL << 36;
+  case Attribute::SanitizeMemory:  return 1ULL << 37;
+  case Attribute::NoBuiltin:       return 1ULL << 38;
   }
   llvm_unreachable("Unsupported attribute type");
 }
 
-bool AttributeImpl::hasAttribute(Attribute::AttrKind A) const {
-  return (Raw() & getAttrMask(A)) != 0;
+//===----------------------------------------------------------------------===//
+// AttributeSetNode Definition
+//===----------------------------------------------------------------------===//
+
+AttributeSetNode *AttributeSetNode::get(LLVMContext &C,
+                                        ArrayRef<Attribute> Attrs) {
+  if (Attrs.empty())
+    return 0;
+
+  // Otherwise, build a key to look up the existing attributes.
+  LLVMContextImpl *pImpl = C.pImpl;
+  FoldingSetNodeID ID;
+
+  SmallVector<Attribute, 8> SortedAttrs(Attrs.begin(), Attrs.end());
+  array_pod_sort(SortedAttrs.begin(), SortedAttrs.end());
+
+  for (SmallVectorImpl<Attribute>::iterator I = SortedAttrs.begin(),
+         E = SortedAttrs.end(); I != E; ++I)
+    I->Profile(ID);
+
+  void *InsertPoint;
+  AttributeSetNode *PA =
+    pImpl->AttrsSetNodes.FindNodeOrInsertPos(ID, InsertPoint);
+
+  // If we didn't find any existing attributes of the same shape then create a
+  // new one and insert it.
+  if (!PA) {
+    PA = new AttributeSetNode(SortedAttrs);
+    pImpl->AttrsSetNodes.InsertNode(PA, InsertPoint);
+  }
+
+  // Return the AttributesListNode that we found or created.
+  return PA;
 }
 
-bool AttributeImpl::hasAttributes() const {
-  return Raw() != 0;
+bool AttributeSetNode::hasAttribute(Attribute::AttrKind Kind) const {
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ++I)
+    if (I->hasAttribute(Kind))
+      return true;
+  return false;
 }
 
-uint64_t AttributeImpl::getAlignment() const {
-  return Raw() & getAttrMask(Attribute::Alignment);
+bool AttributeSetNode::hasAttribute(StringRef Kind) const {
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ++I)
+    if (I->hasAttribute(Kind))
+      return true;
+  return false;
 }
 
-void AttributeImpl::setAlignment(unsigned Align) {
-  Vals.push_back(ConstantInt::get(Type::getInt64Ty(Context), Align));
+Attribute AttributeSetNode::getAttribute(Attribute::AttrKind Kind) const {
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ++I)
+    if (I->hasAttribute(Kind))
+      return *I;
+  return Attribute();
 }
 
-uint64_t AttributeImpl::getStackAlignment() const {
-  return Raw() & getAttrMask(Attribute::StackAlignment);
+Attribute AttributeSetNode::getAttribute(StringRef Kind) const {
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ++I)
+    if (I->hasAttribute(Kind))
+      return *I;
+  return Attribute();
 }
 
-void AttributeImpl::setStackAlignment(unsigned Align) {
-  Vals.push_back(ConstantInt::get(Type::getInt64Ty(Context), Align));
+unsigned AttributeSetNode::getAlignment() const {
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ++I)
+    if (I->hasAttribute(Attribute::Alignment))
+      return I->getAlignment();
+  return 0;
 }
 
-void AttributeImpl::Profile(FoldingSetNodeID &ID, Constant *Data,
-                            ArrayRef<Constant*> Vals) {
-  ID.AddInteger(cast<ConstantInt>(Data)->getZExtValue());
-#if 0
-  // FIXME: Not yet supported.
-  for (ArrayRef<Constant*>::iterator I = Vals.begin(), E = Vals.end();
-       I != E; ++I)
-    ID.AddPointer(*I);
-#endif
+unsigned AttributeSetNode::getStackAlignment() const {
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ++I)
+    if (I->hasAttribute(Attribute::StackAlignment))
+      return I->getStackAlignment();
+  return 0;
+}
+
+std::string AttributeSetNode::getAsString(bool InAttrGrp) const {
+  std::string Str = "";
+  for (SmallVectorImpl<Attribute>::const_iterator I = AttrList.begin(),
+         E = AttrList.end(); I != E; ) {
+    Str += I->getAsString(InAttrGrp);
+    if (++I != E) Str += " ";
+  }
+  return Str;
 }
 
 //===----------------------------------------------------------------------===//
 // AttributeSetImpl Definition
 //===----------------------------------------------------------------------===//
 
-AttributeSet AttributeSet::get(LLVMContext &C,
-                               ArrayRef<AttributeWithIndex> Attrs) {
-  // If there are no attributes then return a null AttributesList pointer.
-  if (Attrs.empty())
-    return AttributeSet();
+uint64_t AttributeSetImpl::Raw(uint64_t Index) const {
+  for (unsigned I = 0, E = getNumAttributes(); I != E; ++I) {
+    if (getSlotIndex(I) != Index) continue;
+    const AttributeSetNode *ASN = AttrNodes[I].second;
+    uint64_t Mask = 0;
 
-#ifndef NDEBUG
-  for (unsigned i = 0, e = Attrs.size(); i != e; ++i) {
-    assert(Attrs[i].Attrs.hasAttributes() &&
-           "Pointless attribute!");
-    assert((!i || Attrs[i-1].Index < Attrs[i].Index) &&
-           "Misordered AttributesList!");
+    for (AttributeSetNode::const_iterator II = ASN->begin(),
+           IE = ASN->end(); II != IE; ++II) {
+      Attribute Attr = *II;
+
+      // This cannot handle string attributes.
+      if (Attr.isStringAttribute()) continue;
+
+      Attribute::AttrKind Kind = Attr.getKindAsEnum();
+
+      if (Kind == Attribute::Alignment)
+        Mask |= (Log2_32(ASN->getAlignment()) + 1) << 16;
+      else if (Kind == Attribute::StackAlignment)
+        Mask |= (Log2_32(ASN->getStackAlignment()) + 1) << 26;
+      else
+        Mask |= AttributeImpl::getAttrMask(Kind);
+    }
+
+    return Mask;
   }
-#endif
 
-  // Otherwise, build a key to look up the existing attributes.
+  return 0;
+}
+
+//===----------------------------------------------------------------------===//
+// AttributeSet Construction and Mutation Methods
+//===----------------------------------------------------------------------===//
+
+AttributeSet
+AttributeSet::getImpl(LLVMContext &C,
+                      ArrayRef<std::pair<unsigned, AttributeSetNode*> > Attrs) {
   LLVMContextImpl *pImpl = C.pImpl;
   FoldingSetNodeID ID;
   AttributeSetImpl::Profile(ID, Attrs);
@@ -557,185 +548,624 @@ AttributeSet AttributeSet::get(LLVMContext &C,
   return AttributeSet(PA);
 }
 
+AttributeSet AttributeSet::get(LLVMContext &C,
+                               ArrayRef<std::pair<unsigned, Attribute> > Attrs){
+  // If there are no attributes then return a null AttributesList pointer.
+  if (Attrs.empty())
+    return AttributeSet();
+
+#ifndef NDEBUG
+  for (unsigned i = 0, e = Attrs.size(); i != e; ++i) {
+    assert((!i || Attrs[i-1].first <= Attrs[i].first) &&
+           "Misordered Attributes list!");
+    assert(!Attrs[i].second.hasAttribute(Attribute::None) &&
+           "Pointless attribute!");
+  }
+#endif
+
+  // Create a vector if (unsigned, AttributeSetNode*) pairs from the attributes
+  // list.
+  SmallVector<std::pair<unsigned, AttributeSetNode*>, 8> AttrPairVec;
+  for (ArrayRef<std::pair<unsigned, Attribute> >::iterator I = Attrs.begin(),
+         E = Attrs.end(); I != E; ) {
+    unsigned Index = I->first;
+    SmallVector<Attribute, 4> AttrVec;
+    while (I != E && I->first == Index) {
+      AttrVec.push_back(I->second);
+      ++I;
+    }
+
+    AttrPairVec.push_back(std::make_pair(Index,
+                                         AttributeSetNode::get(C, AttrVec)));
+  }
+
+  return getImpl(C, AttrPairVec);
+}
+
+AttributeSet AttributeSet::get(LLVMContext &C,
+                               ArrayRef<std::pair<unsigned,
+                                                  AttributeSetNode*> > Attrs) {
+  // If there are no attributes then return a null AttributesList pointer.
+  if (Attrs.empty())
+    return AttributeSet();
+
+  return getImpl(C, Attrs);
+}
+
 AttributeSet AttributeSet::get(LLVMContext &C, unsigned Idx, AttrBuilder &B) {
-  SmallVector<AttributeWithIndex, 8> Attrs;
-  for (AttrBuilder::iterator I = B.begin(), E = B.end(); I != E; ++I) {
-    Attribute::AttrKind Kind = *I;
-    Attribute A = Attribute::get(C, Kind);
+  if (!B.hasAttributes())
+    return AttributeSet();
+
+  // Add target-independent attributes.
+  SmallVector<std::pair<unsigned, Attribute>, 8> Attrs;
+  for (Attribute::AttrKind Kind = Attribute::None;
+       Kind != Attribute::EndAttrKinds; Kind = Attribute::AttrKind(Kind + 1)) {
+    if (!B.contains(Kind))
+      continue;
 
     if (Kind == Attribute::Alignment)
-      A.setAlignment(B.getAlignment());
+      Attrs.push_back(std::make_pair(Idx, Attribute::
+                                     getWithAlignment(C, B.getAlignment())));
     else if (Kind == Attribute::StackAlignment)
-      A.setStackAlignment(B.getStackAlignment());
-
-    Attrs.push_back(AttributeWithIndex::get(Idx, A));
+      Attrs.push_back(std::make_pair(Idx, Attribute::
+                              getWithStackAlignment(C, B.getStackAlignment())));
+    else
+      Attrs.push_back(std::make_pair(Idx, Attribute::get(C, Kind)));
   }
+
+  // Add target-dependent (string) attributes.
+  for (AttrBuilder::td_iterator I = B.td_begin(), E = B.td_end();
+       I != E; ++I)
+    Attrs.push_back(std::make_pair(Idx, Attribute::get(C, I->first,I->second)));
 
   return get(C, Attrs);
 }
 
-//===----------------------------------------------------------------------===//
-// AttributeSet Method Implementations
-//===----------------------------------------------------------------------===//
-
-const AttributeSet &AttributeSet::operator=(const AttributeSet &RHS) {
-  AttrList = RHS.AttrList;
-  return *this;
+AttributeSet AttributeSet::get(LLVMContext &C, unsigned Idx,
+                               ArrayRef<Attribute::AttrKind> Kind) {
+  SmallVector<std::pair<unsigned, Attribute>, 8> Attrs;
+  for (ArrayRef<Attribute::AttrKind>::iterator I = Kind.begin(),
+         E = Kind.end(); I != E; ++I)
+    Attrs.push_back(std::make_pair(Idx, Attribute::get(C, *I)));
+  return get(C, Attrs);
 }
 
-/// getNumSlots - Return the number of slots used in this attribute list.
-/// This is the number of arguments that have an attribute set on them
-/// (including the function itself).
-unsigned AttributeSet::getNumSlots() const {
-  return AttrList ? AttrList->getNumAttributes() : 0;
+AttributeSet AttributeSet::get(LLVMContext &C, ArrayRef<AttributeSet> Attrs) {
+  if (Attrs.empty()) return AttributeSet();
+
+  SmallVector<std::pair<unsigned, AttributeSetNode*>, 8> AttrNodeVec;
+  for (unsigned I = 0, E = Attrs.size(); I != E; ++I) {
+    AttributeSet AS = Attrs[I];
+    if (!AS.pImpl) continue;
+    AttrNodeVec.append(AS.pImpl->AttrNodes.begin(), AS.pImpl->AttrNodes.end());
+  }
+
+  return getImpl(C, AttrNodeVec);
 }
 
-/// getSlot - Return the AttributeWithIndex at the specified slot.  This
-/// holds a number plus a set of attributes.
-const AttributeWithIndex &AttributeSet::getSlot(unsigned Slot) const {
-  assert(AttrList && Slot < AttrList->getNumAttributes() &&
-         "Slot # out of range!");
-  return AttrList->getAttributes()[Slot];
+AttributeSet AttributeSet::addAttribute(LLVMContext &C, unsigned Idx,
+                                        Attribute::AttrKind Attr) const {
+  return addAttributes(C, Idx, AttributeSet::get(C, Idx, Attr));
 }
 
-bool AttributeSet::hasAttribute(unsigned Index, Attribute::AttrKind Kind) const{
-  return getAttributes(Index).hasAttribute(Kind);
-}
+AttributeSet AttributeSet::addAttributes(LLVMContext &C, unsigned Idx,
+                                         AttributeSet Attrs) const {
+  if (!pImpl) return Attrs;
+  if (!Attrs.pImpl) return *this;
 
-bool AttributeSet::hasAttributes(unsigned Index) const {
-  return getAttributes(Index).hasAttributes();
-}
-
-std::string AttributeSet::getAsString(unsigned Index) const {
-  return getAttributes(Index).getAsString();
-}
-
-unsigned AttributeSet::getStackAlignment(unsigned Index) const {
-  return getAttributes(Index).getStackAlignment();
-}
-
-uint64_t AttributeSet::Raw(unsigned Index) const {
-  // FIXME: Remove this.
-  return getAttributes(Index).Raw();
-}
-
-/// getAttributes - The attributes for the specified index are returned.
-/// Attributes for the result are denoted with Idx = 0.  Function attributes are
-/// denoted with Idx = ~0.
-Attribute AttributeSet::getAttributes(unsigned Idx) const {
-  if (AttrList == 0) return Attribute();
-
-  ArrayRef<AttributeWithIndex> Attrs = AttrList->getAttributes();
-  for (unsigned i = 0, e = Attrs.size(); i != e && Attrs[i].Index <= Idx; ++i)
-    if (Attrs[i].Index == Idx)
-      return Attrs[i].Attrs;
-
-  return Attribute();
-}
-
-/// hasAttrSomewhere - Return true if the specified attribute is set for at
-/// least one parameter or for the return value.
-bool AttributeSet::hasAttrSomewhere(Attribute::AttrKind Attr) const {
-  if (AttrList == 0) return false;
-
-  ArrayRef<AttributeWithIndex> Attrs = AttrList->getAttributes();
-  for (unsigned i = 0, e = Attrs.size(); i != e; ++i)
-    if (Attrs[i].Attrs.hasAttribute(Attr))
-      return true;
-
-  return false;
-}
-
-AttributeSet AttributeSet::addAttr(LLVMContext &C, unsigned Idx,
-                                   Attribute Attrs) const {
-  Attribute OldAttrs = getAttributes(Idx);
 #ifndef NDEBUG
-  // FIXME it is not obvious how this should work for alignment.
-  // For now, say we can't change a known alignment.
-  unsigned OldAlign = OldAttrs.getAlignment();
-  unsigned NewAlign = Attrs.getAlignment();
+  // FIXME it is not obvious how this should work for alignment. For now, say
+  // we can't change a known alignment.
+  unsigned OldAlign = getParamAlignment(Idx);
+  unsigned NewAlign = Attrs.getParamAlignment(Idx);
   assert((!OldAlign || !NewAlign || OldAlign == NewAlign) &&
          "Attempt to change alignment!");
 #endif
 
-  AttrBuilder NewAttrs =
-    AttrBuilder(OldAttrs).addAttributes(Attrs);
-  if (NewAttrs == AttrBuilder(OldAttrs))
-    return *this;
-
-  SmallVector<AttributeWithIndex, 8> NewAttrList;
-  if (AttrList == 0)
-    NewAttrList.push_back(AttributeWithIndex::get(Idx, Attrs));
-  else {
-    ArrayRef<AttributeWithIndex> OldAttrList = AttrList->getAttributes();
-    unsigned i = 0, e = OldAttrList.size();
-    // Copy attributes for arguments before this one.
-    for (; i != e && OldAttrList[i].Index < Idx; ++i)
-      NewAttrList.push_back(OldAttrList[i]);
-
-    // If there are attributes already at this index, merge them in.
-    if (i != e && OldAttrList[i].Index == Idx) {
-      Attrs =
-        Attribute::get(C, AttrBuilder(Attrs).
-                        addAttributes(OldAttrList[i].Attrs));
-      ++i;
+  // Add the attribute slots before the one we're trying to add.
+  SmallVector<AttributeSet, 4> AttrSet;
+  uint64_t NumAttrs = pImpl->getNumAttributes();
+  AttributeSet AS;
+  uint64_t LastIndex = 0;
+  for (unsigned I = 0, E = NumAttrs; I != E; ++I) {
+    if (getSlotIndex(I) >= Idx) {
+      if (getSlotIndex(I) == Idx) AS = getSlotAttributes(LastIndex++);
+      break;
     }
-
-    NewAttrList.push_back(AttributeWithIndex::get(Idx, Attrs));
-
-    // Copy attributes for arguments after this one.
-    NewAttrList.insert(NewAttrList.end(),
-                       OldAttrList.begin()+i, OldAttrList.end());
+    LastIndex = I + 1;
+    AttrSet.push_back(getSlotAttributes(I));
   }
 
-  return get(C, NewAttrList);
+  // Now add the attribute into the correct slot. There may already be an
+  // AttributeSet there.
+  AttrBuilder B(AS, Idx);
+
+  for (unsigned I = 0, E = Attrs.pImpl->getNumAttributes(); I != E; ++I)
+    if (Attrs.getSlotIndex(I) == Idx) {
+      for (AttributeSetImpl::const_iterator II = Attrs.pImpl->begin(I),
+             IE = Attrs.pImpl->end(I); II != IE; ++II)
+        B.addAttribute(*II);
+      break;
+    }
+
+  AttrSet.push_back(AttributeSet::get(C, Idx, B));
+
+  // Add the remaining attribute slots.
+  for (unsigned I = LastIndex, E = NumAttrs; I < E; ++I)
+    AttrSet.push_back(getSlotAttributes(I));
+
+  return get(C, AttrSet);
 }
 
-AttributeSet AttributeSet::removeAttr(LLVMContext &C, unsigned Idx,
-                                      Attribute Attrs) const {
+AttributeSet AttributeSet::removeAttribute(LLVMContext &C, unsigned Idx,
+                                           Attribute::AttrKind Attr) const {
+  return removeAttributes(C, Idx, AttributeSet::get(C, Idx, Attr));
+}
+
+AttributeSet AttributeSet::removeAttributes(LLVMContext &C, unsigned Idx,
+                                            AttributeSet Attrs) const {
+  if (!pImpl) return AttributeSet();
+  if (!Attrs.pImpl) return *this;
+
 #ifndef NDEBUG
   // FIXME it is not obvious how this should work for alignment.
   // For now, say we can't pass in alignment, which no current use does.
-  assert(!Attrs.hasAttribute(Attribute::Alignment) &&
-         "Attempt to exclude alignment!");
+  assert(!Attrs.hasAttribute(Idx, Attribute::Alignment) &&
+         "Attempt to change alignment!");
 #endif
-  if (AttrList == 0) return AttributeSet();
 
-  Attribute OldAttrs = getAttributes(Idx);
-  AttrBuilder NewAttrs =
-    AttrBuilder(OldAttrs).removeAttributes(Attrs);
-  if (NewAttrs == AttrBuilder(OldAttrs))
-    return *this;
+  // Add the attribute slots before the one we're trying to add.
+  SmallVector<AttributeSet, 4> AttrSet;
+  uint64_t NumAttrs = pImpl->getNumAttributes();
+  AttributeSet AS;
+  uint64_t LastIndex = 0;
+  for (unsigned I = 0, E = NumAttrs; I != E; ++I) {
+    if (getSlotIndex(I) >= Idx) {
+      if (getSlotIndex(I) == Idx) AS = getSlotAttributes(LastIndex++);
+      break;
+    }
+    LastIndex = I + 1;
+    AttrSet.push_back(getSlotAttributes(I));
+  }
 
-  SmallVector<AttributeWithIndex, 8> NewAttrList;
-  ArrayRef<AttributeWithIndex> OldAttrList = AttrList->getAttributes();
-  unsigned i = 0, e = OldAttrList.size();
+  // Now remove the attribute from the correct slot. There may already be an
+  // AttributeSet there.
+  AttrBuilder B(AS, Idx);
 
-  // Copy attributes for arguments before this one.
-  for (; i != e && OldAttrList[i].Index < Idx; ++i)
-    NewAttrList.push_back(OldAttrList[i]);
+  for (unsigned I = 0, E = Attrs.pImpl->getNumAttributes(); I != E; ++I)
+    if (Attrs.getSlotIndex(I) == Idx) {
+      B.removeAttributes(Attrs.pImpl->getSlotAttributes(I), Idx);
+      break;
+    }
 
-  // If there are attributes already at this index, merge them in.
-  assert(OldAttrList[i].Index == Idx && "Attribute isn't set?");
-  Attrs = Attribute::get(C, AttrBuilder(OldAttrList[i].Attrs).
-                          removeAttributes(Attrs));
-  ++i;
-  if (Attrs.hasAttributes()) // If any attributes left for this param, add them.
-    NewAttrList.push_back(AttributeWithIndex::get(Idx, Attrs));
+  AttrSet.push_back(AttributeSet::get(C, Idx, B));
 
-  // Copy attributes for arguments after this one.
-  NewAttrList.insert(NewAttrList.end(),
-                     OldAttrList.begin()+i, OldAttrList.end());
+  // Add the remaining attribute slots.
+  for (unsigned I = LastIndex, E = NumAttrs; I < E; ++I)
+    AttrSet.push_back(getSlotAttributes(I));
 
-  return get(C, NewAttrList);
+  return get(C, AttrSet);
+}
+
+//===----------------------------------------------------------------------===//
+// AttributeSet Accessor Methods
+//===----------------------------------------------------------------------===//
+
+LLVMContext &AttributeSet::getContext() const {
+  return pImpl->getContext();
+}
+
+AttributeSet AttributeSet::getParamAttributes(unsigned Idx) const {
+  return pImpl && hasAttributes(Idx) ?
+    AttributeSet::get(pImpl->getContext(),
+                      ArrayRef<std::pair<unsigned, AttributeSetNode*> >(
+                        std::make_pair(Idx, getAttributes(Idx)))) :
+    AttributeSet();
+}
+
+AttributeSet AttributeSet::getRetAttributes() const {
+  return pImpl && hasAttributes(ReturnIndex) ?
+    AttributeSet::get(pImpl->getContext(),
+                      ArrayRef<std::pair<unsigned, AttributeSetNode*> >(
+                        std::make_pair(ReturnIndex,
+                                       getAttributes(ReturnIndex)))) :
+    AttributeSet();
+}
+
+AttributeSet AttributeSet::getFnAttributes() const {
+  return pImpl && hasAttributes(FunctionIndex) ?
+    AttributeSet::get(pImpl->getContext(),
+                      ArrayRef<std::pair<unsigned, AttributeSetNode*> >(
+                        std::make_pair(FunctionIndex,
+                                       getAttributes(FunctionIndex)))) :
+    AttributeSet();
+}
+
+bool AttributeSet::hasAttribute(unsigned Index, Attribute::AttrKind Kind) const{
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->hasAttribute(Kind) : false;
+}
+
+bool AttributeSet::hasAttribute(unsigned Index, StringRef Kind) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->hasAttribute(Kind) : false;
+}
+
+bool AttributeSet::hasAttributes(unsigned Index) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->hasAttributes() : false;
+}
+
+/// \brief Return true if the specified attribute is set for at least one
+/// parameter or for the return value.
+bool AttributeSet::hasAttrSomewhere(Attribute::AttrKind Attr) const {
+  if (pImpl == 0) return false;
+
+  for (unsigned I = 0, E = pImpl->getNumAttributes(); I != E; ++I)
+    for (AttributeSetImpl::const_iterator II = pImpl->begin(I),
+           IE = pImpl->end(I); II != IE; ++II)
+      if (II->hasAttribute(Attr))
+        return true;
+
+  return false;
+}
+
+Attribute AttributeSet::getAttribute(unsigned Index,
+                                     Attribute::AttrKind Kind) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->getAttribute(Kind) : Attribute();
+}
+
+Attribute AttributeSet::getAttribute(unsigned Index,
+                                     StringRef Kind) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->getAttribute(Kind) : Attribute();
+}
+
+unsigned AttributeSet::getParamAlignment(unsigned Index) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->getAlignment() : 0;
+}
+
+unsigned AttributeSet::getStackAlignment(unsigned Index) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->getStackAlignment() : 0;
+}
+
+std::string AttributeSet::getAsString(unsigned Index,
+                                      bool InAttrGrp) const {
+  AttributeSetNode *ASN = getAttributes(Index);
+  return ASN ? ASN->getAsString(InAttrGrp) : std::string("");
+}
+
+/// \brief The attributes for the specified index are returned.
+AttributeSetNode *AttributeSet::getAttributes(unsigned Idx) const {
+  if (!pImpl) return 0;
+
+  // Loop through to find the attribute node we want.
+  for (unsigned I = 0, E = pImpl->getNumAttributes(); I != E; ++I)
+    if (pImpl->getSlotIndex(I) == Idx)
+      return pImpl->getSlotNode(I);
+
+  return 0;
+}
+
+AttributeSet::iterator AttributeSet::begin(unsigned Idx) const {
+  if (!pImpl)
+    return ArrayRef<Attribute>().begin();
+  return pImpl->begin(Idx);
+}
+
+AttributeSet::iterator AttributeSet::end(unsigned Idx) const {
+  if (!pImpl)
+    return ArrayRef<Attribute>().end();
+  return pImpl->end(Idx);
+}
+
+//===----------------------------------------------------------------------===//
+// AttributeSet Introspection Methods
+//===----------------------------------------------------------------------===//
+
+/// \brief Return the number of slots used in this attribute list.  This is the
+/// number of arguments that have an attribute set on them (including the
+/// function itself).
+unsigned AttributeSet::getNumSlots() const {
+  return pImpl ? pImpl->getNumAttributes() : 0;
+}
+
+uint64_t AttributeSet::getSlotIndex(unsigned Slot) const {
+  assert(pImpl && Slot < pImpl->getNumAttributes() &&
+         "Slot # out of range!");
+  return pImpl->getSlotIndex(Slot);
+}
+
+AttributeSet AttributeSet::getSlotAttributes(unsigned Slot) const {
+  assert(pImpl && Slot < pImpl->getNumAttributes() &&
+         "Slot # out of range!");
+  return pImpl->getSlotAttributes(Slot);
+}
+
+uint64_t AttributeSet::Raw(unsigned Index) const {
+  // FIXME: Remove this.
+  return pImpl ? pImpl->Raw(Index) : 0;
 }
 
 void AttributeSet::dump() const {
-  dbgs() << "PAL[ ";
-  for (unsigned i = 0; i < getNumSlots(); ++i) {
-    const AttributeWithIndex &PAWI = getSlot(i);
-    dbgs() << "{ " << PAWI.Index << ", " << PAWI.Attrs.getAsString() << " } ";
+  dbgs() << "PAL[\n";
+
+  for (unsigned i = 0, e = getNumSlots(); i < e; ++i) {
+    uint64_t Index = getSlotIndex(i);
+    dbgs() << "  { ";
+    if (Index == ~0U)
+      dbgs() << "~0U";
+    else
+      dbgs() << Index;
+    dbgs() << " => " << getAsString(Index) << " }\n";
   }
 
   dbgs() << "]\n";
+}
+
+//===----------------------------------------------------------------------===//
+// AttrBuilder Method Implementations
+//===----------------------------------------------------------------------===//
+
+AttrBuilder::AttrBuilder(AttributeSet AS, unsigned Idx)
+  : Attrs(0), Alignment(0), StackAlignment(0) {
+  AttributeSetImpl *pImpl = AS.pImpl;
+  if (!pImpl) return;
+
+  for (unsigned I = 0, E = pImpl->getNumAttributes(); I != E; ++I) {
+    if (pImpl->getSlotIndex(I) != Idx) continue;
+
+    for (AttributeSetImpl::const_iterator II = pImpl->begin(I),
+           IE = pImpl->end(I); II != IE; ++II)
+      addAttribute(*II);
+
+    break;
+  }
+}
+
+void AttrBuilder::clear() {
+  Attrs.reset();
+  Alignment = StackAlignment = 0;
+}
+
+AttrBuilder &AttrBuilder::addAttribute(Attribute::AttrKind Val) {
+  assert((unsigned)Val < Attribute::EndAttrKinds && "Attribute out of range!");
+  assert(Val != Attribute::Alignment && Val != Attribute::StackAlignment &&
+         "Adding alignment attribute without adding alignment value!");
+  Attrs[Val] = true;
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::addAttribute(Attribute Attr) {
+  if (Attr.isStringAttribute()) {
+    addAttribute(Attr.getKindAsString(), Attr.getValueAsString());
+    return *this;
+  }
+
+  Attribute::AttrKind Kind = Attr.getKindAsEnum();
+  Attrs[Kind] = true;
+
+  if (Kind == Attribute::Alignment)
+    Alignment = Attr.getAlignment();
+  else if (Kind == Attribute::StackAlignment)
+    StackAlignment = Attr.getStackAlignment();
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::addAttribute(StringRef A, StringRef V) {
+  TargetDepAttrs[A] = V;
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::removeAttribute(Attribute::AttrKind Val) {
+  assert((unsigned)Val < Attribute::EndAttrKinds && "Attribute out of range!");
+  Attrs[Val] = false;
+
+  if (Val == Attribute::Alignment)
+    Alignment = 0;
+  else if (Val == Attribute::StackAlignment)
+    StackAlignment = 0;
+
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::removeAttributes(AttributeSet A, uint64_t Index) {
+  unsigned Idx = ~0U;
+  for (unsigned I = 0, E = A.getNumSlots(); I != E; ++I)
+    if (A.getSlotIndex(I) == Index) {
+      Idx = I;
+      break;
+    }
+
+  assert(Idx != ~0U && "Couldn't find index in AttributeSet!");
+
+  for (AttributeSet::iterator I = A.begin(Idx), E = A.end(Idx); I != E; ++I) {
+    Attribute Attr = *I;
+    if (Attr.isEnumAttribute() || Attr.isAlignAttribute()) {
+      Attribute::AttrKind Kind = I->getKindAsEnum();
+      Attrs[Kind] = false;
+
+      if (Kind == Attribute::Alignment)
+        Alignment = 0;
+      else if (Kind == Attribute::StackAlignment)
+        StackAlignment = 0;
+    } else {
+      assert(Attr.isStringAttribute() && "Invalid attribute type!");
+      std::map<std::string, std::string>::iterator
+        Iter = TargetDepAttrs.find(Attr.getKindAsString());
+      if (Iter != TargetDepAttrs.end())
+        TargetDepAttrs.erase(Iter);
+    }
+  }
+
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::removeAttribute(StringRef A) {
+  std::map<std::string, std::string>::iterator I = TargetDepAttrs.find(A);
+  if (I != TargetDepAttrs.end())
+    TargetDepAttrs.erase(I);
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::addAlignmentAttr(unsigned Align) {
+  if (Align == 0) return *this;
+
+  assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
+  assert(Align <= 0x40000000 && "Alignment too large.");
+
+  Attrs[Attribute::Alignment] = true;
+  Alignment = Align;
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::addStackAlignmentAttr(unsigned Align) {
+  // Default alignment, allow the target to define how to align it.
+  if (Align == 0) return *this;
+
+  assert(isPowerOf2_32(Align) && "Alignment must be a power of two.");
+  assert(Align <= 0x100 && "Alignment too large.");
+
+  Attrs[Attribute::StackAlignment] = true;
+  StackAlignment = Align;
+  return *this;
+}
+
+AttrBuilder &AttrBuilder::merge(const AttrBuilder &B) {
+  // FIXME: What if both have alignments, but they don't match?!
+  if (!Alignment)
+    Alignment = B.Alignment;
+
+  if (!StackAlignment)
+    StackAlignment = B.StackAlignment;
+
+  Attrs |= B.Attrs;
+
+  for (td_const_iterator I = B.TargetDepAttrs.begin(),
+         E = B.TargetDepAttrs.end(); I != E; ++I)
+    TargetDepAttrs[I->first] = I->second;
+
+  return *this;
+}
+
+bool AttrBuilder::contains(StringRef A) const {
+  return TargetDepAttrs.find(A) != TargetDepAttrs.end();
+}
+
+bool AttrBuilder::hasAttributes() const {
+  return !Attrs.none() || !TargetDepAttrs.empty();
+}
+
+bool AttrBuilder::hasAttributes(AttributeSet A, uint64_t Index) const {
+  unsigned Idx = ~0U;
+  for (unsigned I = 0, E = A.getNumSlots(); I != E; ++I)
+    if (A.getSlotIndex(I) == Index) {
+      Idx = I;
+      break;
+    }
+
+  assert(Idx != ~0U && "Couldn't find the index!");
+
+  for (AttributeSet::iterator I = A.begin(Idx), E = A.end(Idx);
+       I != E; ++I) {
+    Attribute Attr = *I;
+    if (Attr.isEnumAttribute() || Attr.isAlignAttribute()) {
+      if (Attrs[I->getKindAsEnum()])
+        return true;
+    } else {
+      assert(Attr.isStringAttribute() && "Invalid attribute kind!");
+      return TargetDepAttrs.find(Attr.getKindAsString())!=TargetDepAttrs.end();
+    }
+  }
+
+  return false;
+}
+
+bool AttrBuilder::hasAlignmentAttr() const {
+  return Alignment != 0;
+}
+
+bool AttrBuilder::operator==(const AttrBuilder &B) {
+  if (Attrs != B.Attrs)
+    return false;
+
+  for (td_const_iterator I = TargetDepAttrs.begin(),
+         E = TargetDepAttrs.end(); I != E; ++I)
+    if (B.TargetDepAttrs.find(I->first) == B.TargetDepAttrs.end())
+      return false;
+
+  return Alignment == B.Alignment && StackAlignment == B.StackAlignment;
+}
+
+void AttrBuilder::removeFunctionOnlyAttrs() {
+  removeAttribute(Attribute::NoReturn)
+    .removeAttribute(Attribute::NoUnwind)
+    .removeAttribute(Attribute::ReadNone)
+    .removeAttribute(Attribute::ReadOnly)
+    .removeAttribute(Attribute::NoInline)
+    .removeAttribute(Attribute::AlwaysInline)
+    .removeAttribute(Attribute::OptimizeForSize)
+    .removeAttribute(Attribute::StackProtect)
+    .removeAttribute(Attribute::StackProtectReq)
+    .removeAttribute(Attribute::StackProtectStrong)
+    .removeAttribute(Attribute::NoRedZone)
+    .removeAttribute(Attribute::NoImplicitFloat)
+    .removeAttribute(Attribute::Naked)
+    .removeAttribute(Attribute::InlineHint)
+    .removeAttribute(Attribute::StackAlignment)
+    .removeAttribute(Attribute::UWTable)
+    .removeAttribute(Attribute::NonLazyBind)
+    .removeAttribute(Attribute::ReturnsTwice)
+    .removeAttribute(Attribute::SanitizeAddress)
+    .removeAttribute(Attribute::SanitizeThread)
+    .removeAttribute(Attribute::SanitizeMemory)
+    .removeAttribute(Attribute::MinSize)
+    .removeAttribute(Attribute::NoDuplicate)
+    .removeAttribute(Attribute::NoBuiltin);
+}
+
+AttrBuilder &AttrBuilder::addRawValue(uint64_t Val) {
+  // FIXME: Remove this in 4.0.
+  if (!Val) return *this;
+
+  for (Attribute::AttrKind I = Attribute::None; I != Attribute::EndAttrKinds;
+       I = Attribute::AttrKind(I + 1)) {
+    if (uint64_t A = (Val & AttributeImpl::getAttrMask(I))) {
+      Attrs[I] = true;
+ 
+      if (I == Attribute::Alignment)
+        Alignment = 1ULL << ((A >> 16) - 1);
+      else if (I == Attribute::StackAlignment)
+        StackAlignment = 1ULL << ((A >> 26)-1);
+    }
+  }
+ 
+  return *this;
+}
+
+//===----------------------------------------------------------------------===//
+// AttributeFuncs Function Defintions
+//===----------------------------------------------------------------------===//
+
+/// \brief Which attributes cannot be applied to a type.
+AttributeSet AttributeFuncs::typeIncompatible(Type *Ty, uint64_t Index) {
+  AttrBuilder Incompatible;
+
+  if (!Ty->isIntegerTy())
+    // Attribute that only apply to integers.
+    Incompatible.addAttribute(Attribute::SExt)
+      .addAttribute(Attribute::ZExt);
+
+  if (!Ty->isPointerTy())
+    // Attribute that only apply to pointers.
+    Incompatible.addAttribute(Attribute::ByVal)
+      .addAttribute(Attribute::Nest)
+      .addAttribute(Attribute::NoAlias)
+      .addAttribute(Attribute::NoCapture)
+      .addAttribute(Attribute::StructRet);
+
+  return AttributeSet::get(Ty->getContext(), Index, Incompatible);
 }

@@ -236,8 +236,8 @@ public:
   /// will be automatically deleted if this context is deleted.
   SmallPtrSet<Module*, 4> OwnedModules;
   
-  LLVMContext::DiagHandlerTy DiagHandler;
-  void *DiagContext;
+  LLVMContext::InlineAsmDiagHandlerTy InlineAsmDiagHandler;
+  void *InlineAsmDiagContext;
   
   typedef DenseMap<DenseMapAPIntKeyInfo::KeyTy, ConstantInt*, 
                          DenseMapAPIntKeyInfo> IntMapTy;
@@ -249,6 +249,7 @@ public:
 
   FoldingSet<AttributeImpl> AttrsSet;
   FoldingSet<AttributeSetImpl> AttrsLists;
+  FoldingSet<AttributeSetNode> AttrsSetNodes;
 
   StringMap<Value*> MDStringCache;
 

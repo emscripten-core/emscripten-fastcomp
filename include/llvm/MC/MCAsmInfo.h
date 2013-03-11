@@ -48,13 +48,10 @@ namespace llvm {
     ///               Default is 4.
     unsigned PointerSize;
 
-    /// @LOCALMOD-BEGIN
-    /// TODO(pdox): Before upstreaming this, make sure every target backend
-    ///             sets it correctly.
-    /// StackSlotSize - Stack slot size in bytes.
-    ///                 Default is 4.
-    unsigned StackSlotSize;
-    /// @LOCALMOD-END
+    /// CalleeSaveStackSlotSize - Size of the stack slot reserved for
+    ///                           callee-saved registers, in bytes.
+    ///                           Default is same as pointer size.
+    unsigned CalleeSaveStackSlotSize;
 
     /// IsLittleEndian - True if target is little endian.
     ///                  Default is true.
@@ -351,14 +348,13 @@ namespace llvm {
       return PointerSize;
     }
 
-    /// @LOCALMOD-BEGIN
-    /// getStackSlotSize - Get the stack slot size in bytes.
-    unsigned getStackSlotSize() const {
-      return StackSlotSize;
+    /// getCalleeSaveStackSlotSize - Get the callee-saved register stack slot
+    /// size in bytes.
+    unsigned getCalleeSaveStackSlotSize() const {
+      return CalleeSaveStackSlotSize;
     }
-    /// @LOCALMOD-END
 
-    /// islittleendian - True if the target is little endian.
+    /// isLittleEndian - True if the target is little endian.
     bool isLittleEndian() const {
       return IsLittleEndian;
     }

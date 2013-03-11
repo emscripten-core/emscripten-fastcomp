@@ -162,6 +162,11 @@ TEST(InstructionsTest, VectorGep) {
   ICmpInst *ICmp1 = new ICmpInst(ICmpInst::ICMP_ULT, PtrVecA, PtrVecB);
   EXPECT_NE(ICmp0, ICmp1); // suppress warning.
 
+  BasicBlock* BB0 = BasicBlock::Create(C);
+  // Test InsertAtEnd ICmpInst constructor.
+  ICmpInst *ICmp2 = new ICmpInst(*BB0, ICmpInst::ICMP_SGE, PtrVecA, PtrVecB);
+  EXPECT_NE(ICmp0, ICmp2); // suppress warning.
+
   GetElementPtrInst *Gep0 = GetElementPtrInst::Create(PtrVecA, C2xi32a);
   GetElementPtrInst *Gep1 = GetElementPtrInst::Create(PtrVecA, C2xi32b);
   GetElementPtrInst *Gep2 = GetElementPtrInst::Create(PtrVecB, C2xi32a);
@@ -187,10 +192,10 @@ TEST(InstructionsTest, VectorGep) {
                 "2:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80"
                 ":128:128-n8:16:32:64-S128");
   // Make sure we don't crash
-  GetPointerBaseWithConstantOffset(Gep0, Offset, TD);
-  GetPointerBaseWithConstantOffset(Gep1, Offset, TD);
-  GetPointerBaseWithConstantOffset(Gep2, Offset, TD);
-  GetPointerBaseWithConstantOffset(Gep3, Offset, TD);
+  GetPointerBaseWithConstantOffset(Gep0, Offset, &TD);
+  GetPointerBaseWithConstantOffset(Gep1, Offset, &TD);
+  GetPointerBaseWithConstantOffset(Gep2, Offset, &TD);
+  GetPointerBaseWithConstantOffset(Gep3, Offset, &TD);
 
   // Gep of Geps
   GetElementPtrInst *GepII0 = GetElementPtrInst::Create(Gep0, C2xi32b);
@@ -222,6 +227,9 @@ TEST(InstructionsTest, VectorGep) {
   delete Gep1;
   delete Gep2;
   delete Gep3;
+
+  ICmp2->eraseFromParent();
+  delete BB0;
 
   delete ICmp0;
   delete ICmp1;

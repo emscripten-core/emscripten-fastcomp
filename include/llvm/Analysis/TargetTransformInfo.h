@@ -22,6 +22,7 @@
 #ifndef LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 #define LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 
+#include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
@@ -66,6 +67,123 @@ protected:
 public:
   /// This class is intended to be subclassed by real implementations.
   virtual ~TargetTransformInfo() = 0;
+
+  /// \name Generic Target Information
+  /// @{
+
+  /// \brief Underlying constants for 'cost' values in this interface.
+  ///
+  /// Many APIs in this interface return a cost. This enum defines the
+  /// fundamental values that should be used to interpret (and produce) those
+  /// costs. The costs are returned as an unsigned rather than a member of this
+  /// enumeration because it is expected that the cost of one IR instruction
+  /// may have a multiplicative factor to it or otherwise won't fit dircetly
+  /// into the enum. Moreover, it is common to sum or average costs which works
+  /// better as simple integral values. Thus this enum only provides constants.
+  ///
+  /// Note that these costs should usually reflect the intersection of code-size
+  /// cost and execution cost. A free instruction is typically one that folds
+  /// into another instruction. For example, reg-to-reg moves can often be
+  /// skipped by renaming the registers in the CPU, but they still are encoded
+  /// and thus wouldn't be considered 'free' here.
+  enum TargetCostConstants {
+    TCC_Free = 0,       ///< Expected to fold away in lowering.
+    TCC_Basic = 1,      ///< The cost of a typical 'add' instruction.
+    TCC_Expensive = 4   ///< The cost of a 'div' instruction on x86.
+  };
+
+  /// \brief Estimate the cost of a specific operation when lowered.
+  ///
+  /// Note that this is designed to work on an arbitrary synthetic opcode, and
+  /// thus work for hypothetical queries before an instruction has even been
+  /// formed. However, this does *not* work for GEPs, and must not be called
+  /// for a GEP instruction. Instead, use the dedicated getGEPCost interface as
+  /// analyzing a GEP's cost required more information.
+  ///
+  /// Typically only the result type is required, and the operand type can be
+  /// omitted. However, if the opcode is one of the cast instructions, the
+  /// operand type is required.
+  ///
+  /// The returned cost is defined in terms of \c TargetCostConstants, see its
+  /// comments for a detailed explanation of the cost values.
+  virtual unsigned getOperationCost(unsigned Opcode, Type *Ty,
+                                    Type *OpTy = 0) const;
+
+  /// \brief Estimate the cost of a GEP operation when lowered.
+  ///
+  /// The contract for this function is the same as \c getOperationCost except
+  /// that it supports an interface that provides extra information specific to
+  /// the GEP operation.
+  virtual unsigned getGEPCost(const Value *Ptr,
+                              ArrayRef<const Value *> Operands) const;
+
+  /// \brief Estimate the cost of a function call when lowered.
+  ///
+  /// The contract for this is the same as \c getOperationCost except that it
+  /// supports an interface that provides extra information specific to call
+  /// instructions.
+  ///
+  /// This is the most basic query for estimating call cost: it only knows the
+  /// function type and (potentially) the number of arguments at the call site.
+  /// The latter is only interesting for varargs function types.
+  virtual unsigned getCallCost(FunctionType *FTy, int NumArgs = -1) const;
+
+  /// \brief Estimate the cost of calling a specific function when lowered.
+  ///
+  /// This overload adds the ability to reason about the particular function
+  /// being called in the event it is a library call with special lowering.
+  virtual unsigned getCallCost(const Function *F, int NumArgs = -1) const;
+
+  /// \brief Estimate the cost of calling a specific function when lowered.
+  ///
+  /// This overload allows specifying a set of candidate argument values.
+  virtual unsigned getCallCost(const Function *F,
+                               ArrayRef<const Value *> Arguments) const;
+
+  /// \brief Estimate the cost of an intrinsic when lowered.
+  ///
+  /// Mirrors the \c getCallCost method but uses an intrinsic identifier.
+  virtual unsigned getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
+                                    ArrayRef<Type *> ParamTys) const;
+
+  /// \brief Estimate the cost of an intrinsic when lowered.
+  ///
+  /// Mirrors the \c getCallCost method but uses an intrinsic identifier.
+  virtual unsigned getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
+                                    ArrayRef<const Value *> Arguments) const;
+
+  /// \brief Estimate the cost of a given IR user when lowered.
+  ///
+  /// This can estimate the cost of either a ConstantExpr or Instruction when
+  /// lowered. It has two primary advantages over the \c getOperationCost and
+  /// \c getGEPCost above, and one significant disadvantage: it can only be
+  /// used when the IR construct has already been formed.
+  ///
+  /// The advantages are that it can inspect the SSA use graph to reason more
+  /// accurately about the cost. For example, all-constant-GEPs can often be
+  /// folded into a load or other instruction, but if they are used in some
+  /// other context they may not be folded. This routine can distinguish such
+  /// cases.
+  ///
+  /// The returned cost is defined in terms of \c TargetCostConstants, see its
+  /// comments for a detailed explanation of the cost values.
+  virtual unsigned getUserCost(const User *U) const;
+
+  /// \brief Test whether calls to a function lower to actual program function
+  /// calls.
+  ///
+  /// The idea is to test whether the program is likely to require a 'call'
+  /// instruction or equivalent in order to call the given function.
+  ///
+  /// FIXME: It's not clear that this is a good or useful query API. Client's
+  /// should probably move to simpler cost metrics using the above.
+  /// Alternatively, we could split the cost interface into distinct code-size
+  /// and execution-speed costs. This would allow modelling the core of this
+  /// query more accurately as the a call is a single small instruction, but
+  /// incurs significant execution cost.
+  virtual bool isLoweredToCall(const Function *F) const;
+
+  /// @}
 
   /// \name Scalar Target Information
   /// @{
@@ -195,6 +313,12 @@ public:
   /// \returns The number of pieces into which the provided type must be
   /// split during legalization. Zero is returned when the answer is unknown.
   virtual unsigned getNumberOfParts(Type *Tp) const;
+
+  /// \returns The cost of the address computation. For most targets this can be
+  /// merged into the instruction indexing mode. Some targets might want to
+  /// distinguish between address computation for memory operations on vector
+  /// types and scalar types. Such targets should override this function.
+  virtual unsigned getAddressComputationCost(Type *Ty) const;
 
   /// @}
 

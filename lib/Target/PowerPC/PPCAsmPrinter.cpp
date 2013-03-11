@@ -464,12 +464,15 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     // associated TOC entry.  Otherwise reference the symbol directly.
     TmpInst.setOpcode(PPC::LDrs);
     const MachineOperand &MO = MI->getOperand(1);
-    assert((MO.isGlobal() || MO.isJTI()) && "Invalid operand for LDtocL!");
+    assert((MO.isGlobal() || MO.isJTI() || MO.isCPI()) &&
+           "Invalid operand for LDtocL!");
     MCSymbol *MOSymbol = 0;
 
     if (MO.isJTI())
       MOSymbol = lookUpOrCreateTOCEntry(GetJTISymbol(MO.getIndex()));
-    else {
+    else if (MO.isCPI())
+      MOSymbol = GetCPISymbol(MO.getIndex());
+    else if (MO.isGlobal()) {
       const GlobalValue *GValue = MO.getGlobal();
       const GlobalAlias *GAlias = dyn_cast<GlobalAlias>(GValue);
       const GlobalValue *RealGValue = GAlias ?
@@ -821,7 +824,12 @@ void PPCDarwinAsmPrinter::EmitStartOfAsmFile(Module &M) {
     "ppcA2",
     "ppce500mc",
     "ppce5500",
+    "power3",
+    "power4",
+    "power5",
+    "power5x",
     "power6",
+    "power6x",
     "power7",
     "ppc64"
   };
@@ -836,8 +844,11 @@ void PPCDarwinAsmPrinter::EmitStartOfAsmFile(Module &M) {
   assert(Directive <= PPC::DIR_64 && "Directive out of range.");
   
   // FIXME: This is a total hack, finish mc'izing the PPC backend.
-  if (OutStreamer.hasRawTextSupport())
+  if (OutStreamer.hasRawTextSupport()) {
+    assert(Directive < sizeof(CPUDirectives) / sizeof(*CPUDirectives) &&
+           "CPUDirectives[] might not be up-to-date!");
     OutStreamer.EmitRawText("\t.machine " + Twine(CPUDirectives[Directive]));
+  }
 
   // Prime text sections so they are adjacent.  This reduces the likelihood a
   // large data or debug section causes a branch to exceed 16M limit.

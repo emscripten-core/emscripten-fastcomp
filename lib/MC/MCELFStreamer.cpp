@@ -300,7 +300,9 @@ void MCELFStreamer::EmitFileDirective(StringRef Filename) {
 
 void  MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
   switch (expr->getKind()) {
-  case MCExpr::Target: llvm_unreachable("Can't handle target exprs yet!");
+  case MCExpr::Target:
+    cast<MCTargetExpr>(expr)->fixELFSymbolsInTLSFixups(getAssembler());
+    break;
   case MCExpr::Constant:
     break;
 
@@ -332,6 +334,19 @@ void  MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_Mips_GOTTPREL:
     case MCSymbolRefExpr::VK_Mips_TPREL_HI:
     case MCSymbolRefExpr::VK_Mips_TPREL_LO:
+    case MCSymbolRefExpr::VK_PPC_TPREL16_HA:
+    case MCSymbolRefExpr::VK_PPC_TPREL16_LO:
+    case MCSymbolRefExpr::VK_PPC_DTPREL16_HA:
+    case MCSymbolRefExpr::VK_PPC_DTPREL16_LO:
+    case MCSymbolRefExpr::VK_PPC_GOT_TPREL16_HA:
+    case MCSymbolRefExpr::VK_PPC_GOT_TPREL16_LO:
+    case MCSymbolRefExpr::VK_PPC_TLS:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSGD16_HA:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSGD16_LO:
+    case MCSymbolRefExpr::VK_PPC_TLSGD:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSLD16_HA:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSLD16_LO:
+    case MCSymbolRefExpr::VK_PPC_TLSLD:
       break;
     }
     MCSymbolData &SD = getAssembler().getOrCreateSymbolData(symRef.getSymbol());
@@ -500,6 +515,10 @@ MCStreamer *llvm::createELFStreamer(MCContext &Context, MCAsmBackend &MAB,
 
 void MCELFStreamer::EmitThumbFunc(MCSymbol *Func) {
   llvm_unreachable("Generic ELF doesn't support this directive");
+}
+
+MCSymbolData &MCELFStreamer::getOrCreateSymbolData(MCSymbol *Symbol) {
+  return getAssembler().getOrCreateSymbolData(*Symbol);
 }
 
 void MCELFStreamer::EmitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {

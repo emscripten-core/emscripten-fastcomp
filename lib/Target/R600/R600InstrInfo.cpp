@@ -16,8 +16,11 @@
 #include "AMDGPUSubtarget.h"
 #include "AMDGPUTargetMachine.h"
 #include "R600Defines.h"
+#include "R600MachineFunctionInfo.h"
 #include "R600RegisterInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 
 #define GET_INSTRINFO_CTOR
 #include "AMDGPUGenDFAPacketizer.inc"
@@ -104,7 +107,6 @@ bool R600InstrInfo::isPlaceHolderOpcode(unsigned Opcode) const {
   switch (Opcode) {
   default: return false;
   case AMDGPU::RETURN:
-  case AMDGPU::RESERVE_REG:
     return true;
   }
 }
@@ -466,6 +468,124 @@ unsigned int R600InstrInfo::getInstrLatency(const InstrItineraryData *ItinData,
   return 2;
 }
 
+int R600InstrInfo::getIndirectIndexBegin(const MachineFunction &MF) const {
+  const MachineRegisterInfo &MRI = MF.getRegInfo();
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+  int Offset = 0;
+
+  if (MFI->getNumObjects() == 0) {
+    return -1;
+  }
+
+  if (MRI.livein_empty()) {
+    return 0;
+  }
+
+  for (MachineRegisterInfo::livein_iterator LI = MRI.livein_begin(),
+                                            LE = MRI.livein_end();
+                                            LI != LE; ++LI) {
+    Offset = std::max(Offset,
+                      GET_REG_INDEX(RI.getEncodingValue(LI->first)));
+  }
+
+  return Offset + 1;
+}
+
+int R600InstrInfo::getIndirectIndexEnd(const MachineFunction &MF) const {
+  int Offset = 0;
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+
+  // Variable sized objects are not supported
+  assert(!MFI->hasVarSizedObjects());
+
+  if (MFI->getNumObjects() == 0) {
+    return -1;
+  }
+
+  Offset = TM.getFrameLowering()->getFrameIndexOffset(MF, -1);
+
+  return getIndirectIndexBegin(MF) + Offset;
+}
+
+std::vector<unsigned> R600InstrInfo::getIndirectReservedRegs(
+                                             const MachineFunction &MF) const {
+  const AMDGPUFrameLowering *TFL =
+                 static_cast<const AMDGPUFrameLowering*>(TM.getFrameLowering());
+  std::vector<unsigned> Regs;
+
+  unsigned StackWidth = TFL->getStackWidth(MF);
+  int End = getIndirectIndexEnd(MF);
+
+  if (End == -1) {
+    return Regs;
+  }
+
+  for (int Index = getIndirectIndexBegin(MF); Index <= End; ++Index) {
+    unsigned SuperReg = AMDGPU::R600_Reg128RegClass.getRegister(Index);
+    Regs.push_back(SuperReg);
+    for (unsigned Chan = 0; Chan < StackWidth; ++Chan) {
+      unsigned Reg = AMDGPU::R600_TReg32RegClass.getRegister((4 * Index) + Chan);
+      Regs.push_back(Reg);
+    }
+  }
+  return Regs;
+}
+
+unsigned R600InstrInfo::calculateIndirectAddress(unsigned RegIndex,
+                                                 unsigned Channel) const {
+  // XXX: Remove when we support a stack width > 2
+  assert(Channel == 0);
+  return RegIndex;
+}
+
+const TargetRegisterClass * R600InstrInfo::getIndirectAddrStoreRegClass(
+                                                     unsigned SourceReg) const {
+  return &AMDGPU::R600_TReg32RegClass;
+}
+
+const TargetRegisterClass *R600InstrInfo::getIndirectAddrLoadRegClass() const {
+  return &AMDGPU::TRegMemRegClass;
+}
+
+MachineInstrBuilder R600InstrInfo::buildIndirectWrite(MachineBasicBlock *MBB,
+                                       MachineBasicBlock::iterator I,
+                                       unsigned ValueReg, unsigned Address,
+                                       unsigned OffsetReg) const {
+  unsigned AddrReg = AMDGPU::R600_AddrRegClass.getRegister(Address);
+  MachineInstr *MOVA = buildDefaultInstruction(*MBB, I, AMDGPU::MOVA_INT_eg,
+                                               AMDGPU::AR_X, OffsetReg);
+  setImmOperand(MOVA, R600Operands::WRITE, 0);
+
+  MachineInstrBuilder Mov = buildDefaultInstruction(*MBB, I, AMDGPU::MOV,
+                                      AddrReg, ValueReg)
+                                      .addReg(AMDGPU::AR_X, RegState::Implicit);
+  setImmOperand(Mov, R600Operands::DST_REL, 1);
+  return Mov;
+}
+
+MachineInstrBuilder R600InstrInfo::buildIndirectRead(MachineBasicBlock *MBB,
+                                       MachineBasicBlock::iterator I,
+                                       unsigned ValueReg, unsigned Address,
+                                       unsigned OffsetReg) const {
+  unsigned AddrReg = AMDGPU::R600_AddrRegClass.getRegister(Address);
+  MachineInstr *MOVA = buildDefaultInstruction(*MBB, I, AMDGPU::MOVA_INT_eg,
+                                                       AMDGPU::AR_X,
+                                                       OffsetReg);
+  setImmOperand(MOVA, R600Operands::WRITE, 0);
+  MachineInstrBuilder Mov = buildDefaultInstruction(*MBB, I, AMDGPU::MOV,
+                                      ValueReg,
+                                      AddrReg)
+                                      .addReg(AMDGPU::AR_X, RegState::Implicit);
+  setImmOperand(Mov, R600Operands::SRC0_REL, 1);
+
+  return Mov;
+}
+
+const TargetRegisterClass *R600InstrInfo::getSuperIndirectRegClass() const {
+  return &AMDGPU::IndirectRegRegClass;
+}
+
+
 MachineInstrBuilder R600InstrInfo::buildDefaultInstruction(MachineBasicBlock &MBB,
                                                   MachineBasicBlock::iterator I,
                                                   unsigned Opcode,
@@ -486,13 +606,15 @@ MachineInstrBuilder R600InstrInfo::buildDefaultInstruction(MachineBasicBlock &MB
      .addReg(Src0Reg)  // $src0
      .addImm(0)        // $src0_neg
      .addImm(0)        // $src0_rel
-     .addImm(0);       // $src0_abs
+     .addImm(0)        // $src0_abs
+     .addImm(-1);       // $src0_sel
 
   if (Src1Reg) {
     MIB.addReg(Src1Reg) // $src1
        .addImm(0)       // $src1_neg
        .addImm(0)       // $src1_rel
-       .addImm(0);       // $src1_abs
+       .addImm(0)       // $src1_abs
+       .addImm(-1);      // $src1_sel
   }
 
   //XXX: The r600g finalizer expects this to be 1, once we've moved the
@@ -521,16 +643,6 @@ int R600InstrInfo::getOperandIdx(const MachineInstr &MI,
 
 int R600InstrInfo::getOperandIdx(unsigned Opcode,
                                  R600Operands::Ops Op) const {
-  const static int OpTable[3][R600Operands::COUNT] = {
-//            W        C     S  S  S     S  S  S     S  S
-//            R  O  D  L  S  R  R  R  S  R  R  R  S  R  R  L  P
-//   D  U     I  M  R  A  R  C  C  C  C  C  C  C  R  C  C  A  R  I
-//   S  E  U  T  O  E  M  C  0  0  0  C  1  1  1  C  2  2  S  E  M
-//   T  M  P  E  D  L  P  0  N  R  A  1  N  R  A  2  N  R  T  D  M
-    {0,-1,-1, 1, 2, 3, 4, 5, 6, 7, 8,-1,-1,-1,-1,-1,-1,-1, 9,10,11},
-    {0, 1, 2, 3, 4 ,5 ,6 ,7, 8, 9,10,11,12,-1,-1,-1,13,14,15,16,17},
-    {0,-1,-1,-1,-1, 1, 2, 3, 4, 5,-1, 6, 7, 8,-1, 9,10,11,12,13,14}
-  };
   unsigned TargetFlags = get(Opcode).TSFlags;
   unsigned OpTableIdx;
 
@@ -556,7 +668,7 @@ int R600InstrInfo::getOperandIdx(unsigned Opcode,
     OpTableIdx = 2;
   }
 
-  return OpTable[OpTableIdx][Op];
+  return R600Operands::ALUOpTable[OpTableIdx][Op];
 }
 
 void R600InstrInfo::setImmOperand(MachineInstr *MI, R600Operands::Ops Op,

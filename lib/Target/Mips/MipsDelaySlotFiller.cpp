@@ -1,4 +1,4 @@
-//===-- DelaySlotFiller.cpp - Mips Delay Slot Filler ----------------------===//
+//===-- MipsDelaySlotFiller.cpp - Mips Delay Slot Filler ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Simple pass to fills delay slots with useful instructions.
+// Simple pass to fill delay slots with useful instructions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,7 +15,7 @@
 
 #include "Mips.h"
 #include "MipsTargetMachine.h"
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -33,8 +33,7 @@ STATISTIC(UsefulSlots, "Number of delay slots filled with instructions that"
 static cl::opt<bool> DisableDelaySlotFiller(
   "disable-mips-delay-filler",
   cl::init(false),
-  cl::desc("Disable the delay slot filler, which attempts to fill the Mips"
-           "delay slots with useful instructions."),
+  cl::desc("Fill all delay slots with NOPs."),
   cl::Hidden);
 
 // This option can be used to silence complaints by machine verifier passes.
@@ -45,15 +44,25 @@ static cl::opt<bool> SkipDelaySlotFiller(
   cl::Hidden);
 
 namespace {
-  struct Filler : public MachineFunctionPass {
-    typedef MachineBasicBlock::instr_iterator InstrIter;
-    typedef MachineBasicBlock::reverse_instr_iterator ReverseInstrIter;
+  class RegDefsUses {
+  public:
+    RegDefsUses(TargetMachine &TM);
+    void init(const MachineInstr &MI);
+    bool update(const MachineInstr &MI, unsigned Begin, unsigned End);
 
-    TargetMachine &TM;
-    const TargetInstrInfo *TII;
-    InstrIter LastFiller;
+  private:
+    bool checkRegDefsUses(BitVector &NewDefs, BitVector &NewUses, unsigned Reg,
+                          bool IsDef) const;
 
-    static char ID;
+    /// Returns true if Reg or its alias is in RegSet.
+    bool isRegInSet(const BitVector &RegSet, unsigned Reg) const;
+
+    const TargetRegisterInfo &TRI;
+    BitVector Defs, Uses;
+  };
+
+  class Filler : public MachineFunctionPass {
+  public:
     Filler(TargetMachine &tm)
       : MachineFunctionPass(ID), TM(tm), TII(tm.getInstrInfo()) { }
 
@@ -73,64 +82,115 @@ namespace {
       return Changed;
     }
 
-    bool isDelayFiller(MachineBasicBlock &MBB,
-                       InstrIter candidate);
+  private:
+    typedef MachineBasicBlock::iterator Iter;
+    typedef MachineBasicBlock::reverse_iterator ReverseIter;
 
-    void insertCallUses(InstrIter MI,
-                        SmallSet<unsigned, 32> &RegDefs,
-                        SmallSet<unsigned, 32> &RegUses);
+    bool runOnMachineBasicBlock(MachineBasicBlock &MBB);
 
-    void insertDefsUses(InstrIter MI,
-                        SmallSet<unsigned, 32> &RegDefs,
-                        SmallSet<unsigned, 32> &RegUses);
+    /// This function checks if it is valid to move Candidate to the delay slot
+    /// and returns true if it isn't. It also updates load and store flags and
+    /// register defs and uses.
+    bool delayHasHazard(const MachineInstr &Candidate, bool &SawLoad,
+                        bool &SawStore, RegDefsUses &RegDU) const;
 
-    bool IsRegInSet(SmallSet<unsigned, 32> &RegSet,
-                    unsigned Reg);
+    bool findDelayInstr(MachineBasicBlock &MBB, Iter slot, Iter &Filler) const;
 
-    bool delayHasHazard(InstrIter candidate,
-                        bool &sawLoad, bool &sawStore,
-                        SmallSet<unsigned, 32> &RegDefs,
-                        SmallSet<unsigned, 32> &RegUses);
+    bool terminateSearch(const MachineInstr &Candidate) const;
 
-    bool
-    findDelayInstr(MachineBasicBlock &MBB, InstrIter slot,
-                   InstrIter &Filler);
+    TargetMachine &TM;
+    const TargetInstrInfo *TII;
 
-
+    static char ID;
   };
   char Filler::ID = 0;
 } // end of anonymous namespace
 
+RegDefsUses::RegDefsUses(TargetMachine &TM)
+  : TRI(*TM.getRegisterInfo()), Defs(TRI.getNumRegs(), false),
+    Uses(TRI.getNumRegs(), false) {}
+
+void RegDefsUses::init(const MachineInstr &MI) {
+  // Add all register operands which are explicit and non-variadic.
+  update(MI, 0, MI.getDesc().getNumOperands());
+
+  // If MI is a call, add RA to Defs to prevent users of RA from going into
+  // delay slot.
+  if (MI.isCall())
+    Defs.set(Mips::RA);
+
+  // Add all implicit register operands of branch instructions except
+  // register AT.
+  if (MI.isBranch()) {
+    update(MI, MI.getDesc().getNumOperands(), MI.getNumOperands());
+    Defs.reset(Mips::AT);
+  }
+}
+
+bool RegDefsUses::update(const MachineInstr &MI, unsigned Begin, unsigned End) {
+  BitVector NewDefs(TRI.getNumRegs()), NewUses(TRI.getNumRegs());
+  bool HasHazard = false;
+
+  for (unsigned I = Begin; I != End; ++I) {
+    const MachineOperand &MO = MI.getOperand(I);
+
+    if (MO.isReg() && MO.getReg())
+      HasHazard |= checkRegDefsUses(NewDefs, NewUses, MO.getReg(), MO.isDef());
+  }
+
+  Defs |= NewDefs;
+  Uses |= NewUses;
+
+  return HasHazard;
+}
+
+bool RegDefsUses::checkRegDefsUses(BitVector &NewDefs, BitVector &NewUses,
+                                   unsigned Reg, bool IsDef) const {
+  if (IsDef) {
+    NewDefs.set(Reg);
+    // check whether Reg has already been defined or used.
+    return (isRegInSet(Defs, Reg) || isRegInSet(Uses, Reg));
+  }
+
+  NewUses.set(Reg);
+  // check whether Reg has already been defined.
+  return isRegInSet(Defs, Reg);
+}
+
+bool RegDefsUses::isRegInSet(const BitVector &RegSet, unsigned Reg) const {
+  // Check Reg and all aliased Registers.
+  for (MCRegAliasIterator AI(Reg, &TRI, true); AI.isValid(); ++AI)
+    if (RegSet.test(*AI))
+      return true;
+  return false;
+}
+
 /// runOnMachineBasicBlock - Fill in delay slots for the given basic block.
 /// We assume there is only one delay slot per delayed instruction.
-bool Filler::
-runOnMachineBasicBlock(MachineBasicBlock &MBB) {
+bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
   LastFiller = MBB.instr_end();
 
-  for (InstrIter I = MBB.instr_begin(); I != MBB.instr_end(); ++I)
-    if (I->hasDelaySlot()) {
-      ++FilledSlots;
-      Changed = true;
-      InstrIter InstrWithSlot = I;
-      InstrIter D;
+  for (Iter I = MBB.begin(); I != MBB.end(); ++I) {
+    if (!I->hasDelaySlot())
+      continue;
 
-      // Delay slot filling is disabled at -O0.
-      if (!DisableDelaySlotFiller && (TM.getOptLevel() != CodeGenOpt::None) &&
-          findDelayInstr(MBB, I, D)) {
-        MBB.splice(llvm::next(I), &MBB, D);
-        ++UsefulSlots;
-      } else
-        BuildMI(MBB, llvm::next(I), I->getDebugLoc(), TII->get(Mips::NOP));
+    ++FilledSlots;
+    Changed = true;
+    Iter D;
 
-      // Record the filler instruction that filled the delay slot.
-      // The instruction after it will be visited in the next iteration.
-      LastFiller = ++I;
+    // Delay slot filling is disabled at -O0.
+    if (!DisableDelaySlotFiller && (TM.getOptLevel() != CodeGenOpt::None) &&
+        findDelayInstr(MBB, I, D)) {
+      MBB.splice(llvm::next(I), &MBB, D);
+      ++UsefulSlots;
+    } else
+      BuildMI(MBB, llvm::next(I), I->getDebugLoc(), TII->get(Mips::NOP));
 
-      // Bundle the delay slot filler to InstrWithSlot so that the machine
-      // verifier doesn't expect this instruction to be a terminator.
-      MIBundleBuilder(MBB, InstrWithSlot, llvm::next(LastFiller));
-     }
+    // Bundle the delay slot filler to the instruction with the delay slot.
+    MIBundleBuilder(MBB, I, llvm::next(llvm::next(I)));
+  }
+
   return Changed;
 
 }
@@ -152,150 +212,63 @@ bool Filler::findDelayInstr(MachineBasicBlock &MBB,
   SmallSet<unsigned, 32> RegDefs;
   SmallSet<unsigned, 32> RegUses;
 
-  insertDefsUses(slot, RegDefs, RegUses);
+  RegDU.init(*Slot);
 
-  bool sawLoad = false;
-  bool sawStore = false;
+  bool SawLoad = false;
+  bool SawStore = false;
 
-  for (ReverseInstrIter I(slot); I != MBB.instr_rend(); ++I) {
+  for (ReverseIter I(Slot); I != MBB.rend(); ++I) {
     // skip debug value
     if (I->isDebugValue())
       continue;
 
-    // Convert to forward iterator.
-    InstrIter FI(llvm::next(I).base());
-
-    int Dummy; // @LOCALMOD
-    if (I->hasUnmodeledSideEffects()
-        || I->isInlineAsm()
-        || I->isLabel()
-        || FI == LastFiller
-        || I->isPseudo()
-        // @LOCALMOD-START
-        // Don't put in delay slot instructions that could be masked.
-        || (Triple(TM.getTargetTriple()).isOSNaCl() &&
-            (IsDangerousLoad(*FI, &Dummy)
-             || IsDangerousStore(*FI, &Dummy)
-             || FI->modifiesRegister(Mips::SP, TM.getRegisterInfo())
-            )
-           )
-        // @LOCALMOD-END
-        //
-        // Should not allow:
-        // ERET, DERET or WAIT, PAUSE. Need to add these to instruction
-        // list. TBD.
-        )
+    // @LOCALMOD-START - Don't put in delay slot instructions that could be masked.
+    int Dummy;
+    if (terminateSearch(*I) || (Triple(TM.getTargetTriple()).isOSNaCl() &&
+                                (IsDangerousLoad(*FI, &Dummy)
+                                || IsDangerousStore(*FI, &Dummy)
+                                || FI->modifiesRegister(Mips::SP, TM.getRegisterInfo()))))
       break;
+    // @LOCALMOD-END
+    //
+    // Should not allow:
+    // ERET, DERET or WAIT, PAUSE. Need to add these to instruction
+    // list. TBD.
 
-    if (delayHasHazard(FI, sawLoad, sawStore, RegDefs, RegUses)) {
-      insertDefsUses(FI, RegDefs, RegUses);
+    if (delayHasHazard(*I, SawLoad, SawStore, RegDU))
       continue;
-    }
 
-    Filler = FI;
+    Filler = llvm::next(I).base();
     return true;
   }
 
   return false;
 }
 
-bool Filler::delayHasHazard(InstrIter candidate,
-                            bool &sawLoad, bool &sawStore,
-                            SmallSet<unsigned, 32> &RegDefs,
-                            SmallSet<unsigned, 32> &RegUses) {
-  if (candidate->isImplicitDef() || candidate->isKill())
-    return true;
+bool Filler::delayHasHazard(const MachineInstr &Candidate, bool &SawLoad,
+                            bool &SawStore, RegDefsUses &RegDU) const {
+  bool HasHazard = (Candidate.isImplicitDef() || Candidate.isKill());
 
   // Loads or stores cannot be moved past a store to the delay slot
   // and stores cannot be moved past a load.
-  if (candidate->mayLoad()) {
-    if (sawStore)
-      return true;
-    sawLoad = true;
+  if (Candidate.mayStore() || Candidate.hasOrderedMemoryRef()) {
+    HasHazard |= SawStore | SawLoad;
+    SawStore = true;
+  } else if (Candidate.mayLoad()) {
+    HasHazard |= SawStore;
+    SawLoad = true;
   }
 
-  if (candidate->mayStore()) {
-    if (sawStore)
-      return true;
-    sawStore = true;
-    if (sawLoad)
-      return true;
-  }
-
-  assert((!candidate->isCall() && !candidate->isReturn()) &&
+  assert((!Candidate.isCall() && !Candidate.isReturn()) &&
          "Cannot put calls or returns in delay slot.");
 
-  for (unsigned i = 0, e = candidate->getNumOperands(); i!= e; ++i) {
-    const MachineOperand &MO = candidate->getOperand(i);
-    unsigned Reg;
+  HasHazard |= RegDU.update(Candidate, 0, Candidate.getNumOperands());
 
-    if (!MO.isReg() || !(Reg = MO.getReg()))
-      continue; // skip
-
-    if (MO.isDef()) {
-      // check whether Reg is defined or used before delay slot.
-      if (IsRegInSet(RegDefs, Reg) || IsRegInSet(RegUses, Reg))
-        return true;
-    }
-    if (MO.isUse()) {
-      // check whether Reg is defined before delay slot.
-      if (IsRegInSet(RegDefs, Reg))
-        return true;
-    }
-  }
-  return false;
+  return HasHazard;
 }
 
-// Helper function for getting a MachineOperand's register number and adding it
-// to RegDefs or RegUses.
-static void insertDefUse(const MachineOperand &MO,
-                         SmallSet<unsigned, 32> &RegDefs,
-                         SmallSet<unsigned, 32> &RegUses,
-                         unsigned ExcludedReg = 0) {
-  unsigned Reg;
-
-  if (!MO.isReg() || !(Reg = MO.getReg()) || (Reg == ExcludedReg))
-    return;
-
-  if (MO.isDef())
-    RegDefs.insert(Reg);
-  else if (MO.isUse())
-    RegUses.insert(Reg);
-}
-
-// Insert Defs and Uses of MI into the sets RegDefs and RegUses.
-void Filler::insertDefsUses(InstrIter MI,
-                            SmallSet<unsigned, 32> &RegDefs,
-                            SmallSet<unsigned, 32> &RegUses) {
-  unsigned I, E = MI->getDesc().getNumOperands();
-
-  for (I = 0; I != E; ++I)
-    insertDefUse(MI->getOperand(I), RegDefs, RegUses);
-
-  // If MI is a call, add RA to RegDefs to prevent users of RA from going into
-  // delay slot.
-  if (MI->isCall()) {
-    RegDefs.insert(Mips::RA);
-    return;
-  }
-
-  // Return if MI is a return.
-  if (MI->isReturn())
-    return;
-
-  // Examine the implicit operands. Exclude register AT which is in the list of
-  // clobbered registers of branch instructions.
-  E = MI->getNumOperands();
-  for (; I != E; ++I)
-    insertDefUse(MI->getOperand(I), RegDefs, RegUses, Mips::AT);
-}
-
-//returns true if the Reg or its alias is in the RegSet.
-bool Filler::IsRegInSet(SmallSet<unsigned, 32> &RegSet, unsigned Reg) {
-  // Check Reg and all aliased Registers.
-  for (MCRegAliasIterator AI(Reg, TM.getRegisterInfo(), true);
-       AI.isValid(); ++AI)
-    if (RegSet.count(*AI))
-      return true;
-  return false;
+bool Filler::terminateSearch(const MachineInstr &Candidate) const {
+  return (Candidate.isTerminator() || Candidate.isCall() ||
+          Candidate.isLabel() || Candidate.isInlineAsm() ||
+          Candidate.hasUnmodeledSideEffects());
 }

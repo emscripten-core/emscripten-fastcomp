@@ -47,17 +47,19 @@ static void (*InterruptFunction)() = 0;
 static std::vector<std::string> FilesToRemove;
 static std::vector<std::pair<void(*)(void*), void*> > CallBacksToRun;
 
-// IntSigs - Signals that may interrupt the program at any time.
+// IntSigs - Signals that represent requested termination. There's no bug
+// or failure, or if there is, it's not our direct responsibility. For whatever
+// reason, our continued execution is no longer desirable.
 static const int IntSigs[] = {
-  SIGHUP, SIGINT, SIGQUIT, SIGPIPE, SIGTERM, SIGUSR1, SIGUSR2
+  SIGHUP, SIGINT, SIGPIPE, SIGTERM, SIGUSR1, SIGUSR2
 };
 static const int *const IntSigsEnd =
   IntSigs + sizeof(IntSigs) / sizeof(IntSigs[0]);
 
-// KillSigs - Signals that are synchronous with the program that will cause it
-// to die.
+// KillSigs - Signals that represent that we have a bug, and our prompt
+// termination has been ordered.
 static const int KillSigs[] = {
-  SIGILL, SIGTRAP, SIGABRT, SIGFPE, SIGBUS, SIGSEGV
+  SIGILL, SIGTRAP, SIGABRT, SIGFPE, SIGBUS, SIGSEGV, SIGQUIT
 #ifdef SIGSYS
   , SIGSYS
 #endif
@@ -301,7 +303,11 @@ void llvm::sys::PrintStackTrace(FILE *FD) {
       else           fputs(d, FD);
       free(d);
 
-      fprintf(FD, " + %tu",(char*)StackTrace[i]-(char*)dlinfo.dli_saddr);
+      // FIXME: When we move to C++11, use %t length modifier. It's not in
+      // C++03 and causes gcc to issue warnings. Losing the upper 32 bits of
+      // the stack offset for a stack dump isn't likely to cause any problems.
+      fprintf(FD, " + %u",(unsigned)((char*)StackTrace[i]-
+                                     (char*)dlinfo.dli_saddr));
     }
     fputc('\n', FD);
   }

@@ -184,9 +184,9 @@ namespace llvm {
     APFloat(const fltSemantics &, integerPart);
     APFloat(const fltSemantics &, fltCategory, bool negative);
     APFloat(const fltSemantics &, uninitializedTag);
+    APFloat(const fltSemantics &, const APInt &);
     explicit APFloat(double d);
     explicit APFloat(float f);
-    explicit APFloat(const APInt &, bool isIEEE = false);
     APFloat(const APFloat &);
     ~APFloat();
 
@@ -300,7 +300,7 @@ namespace llvm {
     /* The definition of equality is not straightforward for floating point,
        so we won't use operator==.  Use one of the following, or write
        whatever it is you really mean. */
-    // bool operator==(const APFloat &) const;     // DO NOT IMPLEMENT
+    bool operator==(const APFloat &) const LLVM_DELETED_FUNCTION;
 
     /* IEEE comparison with another floating point number (NaNs
        compare unordered, 0==-0). */
@@ -423,7 +423,7 @@ namespace llvm {
     APInt convertQuadrupleAPFloatToAPInt() const;
     APInt convertF80LongDoubleAPFloatToAPInt() const;
     APInt convertPPCDoubleDoubleAPFloatToAPInt() const;
-    void initFromAPInt(const APInt& api, bool isIEEE = false);
+    void initFromAPInt(const fltSemantics *Sem, const APInt& api);
     void initFromHalfAPInt(const APInt& api);
     void initFromFloatAPInt(const APInt& api);
     void initFromDoubleAPInt(const APInt& api);

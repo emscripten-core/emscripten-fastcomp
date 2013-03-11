@@ -89,7 +89,7 @@ PrintMachineInstrs("print-machineinstrs", cl::ValueOptional,
                    cl::desc("Print machine instrs"),
                    cl::value_desc("pass-name"), cl::init("option-unspecified"));
 
-// Experimental option to run live inteerval analysis early.
+// Experimental option to run live interval analysis early.
 static cl::opt<bool> EarlyLiveIntervals("early-live-intervals", cl::Hidden,
     cl::desc("Run live interval analysis earlier in the pipeline"));
 
@@ -237,9 +237,6 @@ TargetPassConfig::TargetPassConfig(TargetMachine *tm, PassManagerBase &pm)
   // Substitute Pseudo Pass IDs for real ones.
   substitutePass(&EarlyTailDuplicateID, &TailDuplicateID);
   substitutePass(&PostRAMachineLICMID, &MachineLICMID);
-
-  // Disable early if-conversion. Targets that are ready can enable it.
-  disablePass(&EarlyIfConverterID);
 
   // Temporarily disable experimental passes.
   const TargetSubtargetInfo &ST = TM->getSubtarget<TargetSubtargetInfo>();
@@ -561,7 +558,12 @@ void TargetPassConfig::addMachineSSAOptimization() {
   addPass(&DeadMachineInstructionElimID);
   printAndVerify("After codegen DCE pass");
 
-  addPass(&EarlyIfConverterID);
+  // Allow targets to insert passes that improve instruction level parallelism,
+  // like if-conversion. Such passes will typically need dominator trees and
+  // loop info, just like LICM and CSE below.
+  if (addILPOpts())
+    printAndVerify("After ILP optimizations");
+
   addPass(&MachineLICMID);
   addPass(&MachineCSEID);
   addPass(&MachineSinkingID);

@@ -124,6 +124,8 @@ LLVM is known to work on the following platforms:
 +-----------------+----------------------+-------------------------+
 |Linux            | amd64                | GCC                     |
 +-----------------+----------------------+-------------------------+
+|Linux            | ARM\ :sup:`13`       | GCC                     |
++-----------------+----------------------+-------------------------+
 |Solaris          | V9 (Ultrasparc)      | GCC                     |
 +-----------------+----------------------+-------------------------+
 |FreeBSD          | x86\ :sup:`1`        | GCC                     |
@@ -159,8 +161,6 @@ LLVM has partial support for the following platforms:
 
 .. note::
 
-  Code generation supported for Pentium processors and up
-
   #. Code generation supported for Pentium processors and up
   #. Code generation supported for 32-bit ABI only
   #. No native code generation
@@ -180,9 +180,9 @@ LLVM has partial support for the following platforms:
      Windows-specifics that will cause the build to fail.
   #. To use LLVM modules on Win32-based system, you may configure LLVM
      with ``--enable-shared``.
-
   #. To compile SPU backend, you need to add ``LDFLAGS=-Wl,--stack,16777216`` to
      configure.
+  #. MCJIT not working well pre-v7, old JIT engine not supported any more.
 
 Note that you will need about 1-3 GB of space for a full LLVM build in Debug
 mode, depending on the system (it is so large because of all the debugging
@@ -217,11 +217,7 @@ uses the package and provides other details.
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
 | `SVN <http://subversion.tigris.org/project_packages.html>`_  | >=1.3           | Subversion access to LLVM\ :sup:`2`         |
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
-| `DejaGnu <http://savannah.gnu.org/projects/dejagnu>`_        | 1.4.2           | Automated test suite\ :sup:`3`              |
-+--------------------------------------------------------------+-----------------+---------------------------------------------+
-| `tcl <http://www.tcl.tk/software/tcltk/>`_                   | 8.3, 8.4        | Automated test suite\ :sup:`3`              |
-+--------------------------------------------------------------+-----------------+---------------------------------------------+
-| `expect <http://expect.nist.gov/>`_                          | 5.38.0          | Automated test suite\ :sup:`3`              |
+| `python <http://www.python.org/>`_                           | >=2.4           | Automated test suite\ :sup:`3`              |
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
 | `perl <http://www.perl.com/download.csp>`_                   | >=5.6.0         | Utilities                                   |
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
@@ -365,6 +361,9 @@ optimizations are turned on. The symptom is an infinite loop in
 **GCC 4.3.5 and GCC 4.4.5 on ARM**: These can miscompile ``value >> 1`` even at
 ``-O0``. A test failure in ``test/Assembler/alignstack.ll`` is one symptom of
 the problem.
+
+**GCC 4.6.3 on ARM**: Miscompiles ``llvm-readobj`` at ``-O3``. A test failure
+in ``test/Object/readobj-shared-object.test`` is one symptom of the problem.
 
 **GNU ld 2.16.X**. Some 2.16.X versions of the ld linker will produce very long
 warning messages complaining that some "``.gnu.linkonce.t.*``" symbol was
@@ -642,6 +641,34 @@ upstream git repo, run:
 This leaves your working directories on their master branches, so you'll need to
 ``checkout`` each working branch individually and ``rebase`` it on top of its
 parent branch.
+
+For those who wish to be able to update an llvm repo in a simpler fashion,
+consider placing the following git script in your path under the name
+``git-svnup``:
+
+.. code-block:: bash
+
+  #!/bin/bash
+
+  STATUS=$(git status -s | grep -v "??")
+
+  if [ ! -z "$STATUS" ]; then
+      STASH="yes"
+      git stash >/dev/null
+  fi
+
+  git fetch
+  OLD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  git checkout master 2> /dev/null
+  git svn rebase -l
+  git checkout $OLD_BRANCH 2> /dev/null
+
+  if [ ! -z $STASH ]; then
+      git stash pop >/dev/null
+  fi
+
+Then to perform the aforementioned update steps go into your source directory
+and just type ``git-svnup`` or ``git svnup`` and everything will just work.
 
 To commit back changes via git-svn, use ``dcommit``:
 

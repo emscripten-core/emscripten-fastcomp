@@ -1052,6 +1052,22 @@ SparseSet is useful for algorithms that need very fast clear/find/insert/erase
 and fast iteration over small sets.  It is not intended for building composite
 data structures.
 
+.. _dss_sparsemultiset:
+
+llvm/ADT/SparseMultiSet.h
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+SparseMultiSet adds multiset behavior to SparseSet, while retaining SparseSet's
+desirable attributes. Like SparseSet, it typically uses a lot of memory, but
+provides operations that are almost as fast as a vector.  Typical keys are
+physical registers, virtual registers, or numbered basic blocks.
+
+SparseMultiSet is useful for algorithms that need very fast
+clear/find/insert/erase of the entire collection, and iteration over sets of
+elements sharing a key. It is often a more efficient choice than using composite
+data structures (e.g. vector-of-vectors, map-of-vectors). It is not intended for
+building composite data structures.
+
 .. _dss_FoldingSet:
 
 llvm/ADT/FoldingSet.h
@@ -2249,13 +2265,13 @@ accomplished by the following scheme:
 A bit-encoding in the 2 LSBits (least significant bits) of the ``Use::Prev``
 allows to find the start of the ``User`` object:
 
-* ``00`` –> binary digit 0
+* ``00`` --- binary digit 0
 
-* ``01`` –> binary digit 1
+* ``01`` --- binary digit 1
 
-* ``10`` –> stop and calculate (``s``)
+* ``10`` --- stop and calculate (``s``)
 
-* ``11`` –> full stop (``S``)
+* ``11`` --- full stop (``S``)
 
 Given a ``Use*``, all we have to do is to walk till we get a stop and we either
 have a ``User`` immediately behind or we have to walk to the next stop picking

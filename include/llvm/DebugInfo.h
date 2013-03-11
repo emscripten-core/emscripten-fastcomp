@@ -62,7 +62,8 @@ namespace llvm {
       FlagPrototyped         = 1 << 8,
       FlagObjcClassComplete  = 1 << 9,
       FlagObjectPointer      = 1 << 10,
-      FlagVector             = 1 << 11
+      FlagVector             = 1 << 11,
+      FlagStaticMember       = 1 << 12
     };
   protected:
     const MDNode *DbgNode;
@@ -186,12 +187,12 @@ namespace llvm {
     /// isMain - Each input file is encoded as a separate compile unit in LLVM
     /// debugging information output. However, many target specific tool chains
     /// prefer to encode only one compile unit in an object file. In this
-    /// situation, the LLVM code generator will include  debugging information
+    /// situation, the LLVM code generator will include debugging information
     /// entities in the compile unit that is marked as main compile unit. The
     /// code generator accepts maximum one main compile unit per module. If a
     /// module does not contain any main compile unit then the code generator
     /// will emit multiple compile units in the output object file.
-
+    // TODO: This can be removed when we remove the legacy debug information.
     bool isMain() const                { return getUnsignedField(6) != 0; }
     bool isOptimized() const           { return getUnsignedField(7) != 0; }
     StringRef getFlags() const       { return getStringField(8);   }
@@ -201,6 +202,8 @@ namespace llvm {
     DIArray getRetainedTypes() const;
     DIArray getSubprograms() const;
     DIArray getGlobalVariables() const;
+
+    StringRef getSplitDebugFilename() const { return getStringField(14); }
 
     /// Verify - Verify that a compile unit is well formed.
     bool Verify() const;
@@ -300,6 +303,9 @@ namespace llvm {
     bool isVector() const {
       return (getFlags() & FlagVector) != 0;
     }
+    bool isStaticMember() const {
+      return (getFlags() & FlagStaticMember) != 0;
+    }
     bool isValid() const {
       return DbgNode && (isBasicType() || isDerivedType() || isCompositeType());
     }
@@ -337,7 +343,8 @@ namespace llvm {
   };
 
   /// DIDerivedType - A simple derived type, like a const qualified type,
-  /// a typedef, a pointer or reference, etc.
+  /// a typedef, a pointer or reference, et cetera.  Or, a data member of
+  /// a class/struct/union.
   class DIDerivedType : public DIType {
     friend class DIDescriptor;
     void printInternal(raw_ostream &OS) const;
@@ -361,6 +368,11 @@ namespace llvm {
     DIType getClassType() const {
       assert(getTag() == dwarf::DW_TAG_ptr_to_member_type);
       return getFieldAs<DIType>(10);
+    }
+
+    Constant *getConstant() const {
+      assert((getTag() == dwarf::DW_TAG_member) && isStaticMember());
+      return getConstantField(10);
     }
 
     StringRef getObjCPropertyName() const {
@@ -512,6 +524,10 @@ namespace llvm {
       return getFieldAs<DICompositeType>(13);
     }
 
+    unsigned getFlags() const {
+      return getUnsignedField(14);
+    }
+
     unsigned isArtificial() const    {
       if (getVersion() <= llvm::LLVMDebugVersion8)
         return getUnsignedField(14);
@@ -558,6 +574,10 @@ namespace llvm {
         return getCompileUnit().getFilename();
 
       return getFieldAs<DIFile>(6).getDirectory();
+    }
+
+    DIFile getFile() const {
+      return getFieldAs<DIFile>(6);
     }
 
     /// getScopeLineNumber - Get the beginning of the scope of the
@@ -620,6 +640,9 @@ namespace llvm {
 
     GlobalVariable *getGlobal() const { return getGlobalVariableField(11); }
     Constant *getConstant() const   { return getConstantField(11); }
+    DIDerivedType getStaticDataMemberDeclaration() const {
+      return getFieldAs<DIDerivedType>(12);
+    }
 
     /// Verify - Verify that a global variable descriptor is well formed.
     bool Verify() const;
@@ -692,7 +715,7 @@ namespace llvm {
       return getType().isBlockByrefStruct();
     }
 
-    /// isInlinedFnArgument - Return trule if this variable provides debugging
+    /// isInlinedFnArgument - Return true if this variable provides debugging
     /// information for an inlined function arguments.
     bool isInlinedFnArgument(const Function *CurFn);
 
@@ -721,7 +744,7 @@ namespace llvm {
   class DILexicalBlockFile : public DIScope {
   public:
     explicit DILexicalBlockFile(const MDNode *N = 0) : DIScope(N) {}
-    DIScope getContext() const { return getScope().getContext(); }
+    DIScope getContext() const { if (getScope().isSubprogram()) return getScope(); return getScope().getContext(); }
     unsigned getLineNumber() const { return getScope().getLineNumber(); }
     unsigned getColumnNumber() const { return getScope().getColumnNumber(); }
     StringRef getDirectory() const {

@@ -93,6 +93,11 @@ static DecodeStatus DecodeCPU64RegsRegisterClass(MCInst &Inst,
                                                  uint64_t Address,
                                                  const void *Decoder);
 
+static DecodeStatus DecodeCPU16RegsRegisterClass(MCInst &Inst,
+                                                 unsigned RegNo,
+                                                 uint64_t Address,
+                                                 const void *Decoder);
+
 static DecodeStatus DecodeCPURegsRegisterClass(MCInst &Inst,
                                                unsigned RegNo,
                                                uint64_t Address,
@@ -127,6 +132,11 @@ static DecodeStatus DecodeAFGR64RegisterClass(MCInst &Inst,
                                               unsigned RegNo,
                                               uint64_t Address,
                                               const void *Decoder);
+
+static DecodeStatus DecodeHWRegs64RegisterClass(MCInst &Inst,
+                                                unsigned Insn,
+                                                uint64_t Address,
+                                                const void *Decoder);
 
 static DecodeStatus DecodeACRegsRegisterClass(MCInst &Inst,
                                               unsigned RegNo,
@@ -317,6 +327,15 @@ static unsigned getReg(const void *D, unsigned RC, unsigned RegNo) {
   return *(Dis->getRegInfo()->getRegClass(RC).begin() + RegNo);
 }
 
+static DecodeStatus DecodeCPU16RegsRegisterClass(MCInst &Inst,
+                                                 unsigned RegNo,
+                                                 uint64_t Address,
+                                                 const void *Decoder) {
+
+  return MCDisassembler::Fail;
+
+}
+
 static DecodeStatus DecodeCPU64RegsRegisterClass(MCInst &Inst,
                                                  unsigned RegNo,
                                                  uint64_t Address,
@@ -451,6 +470,17 @@ static DecodeStatus DecodeAFGR64RegisterClass(MCInst &Inst,
   ;
   unsigned Reg = getReg(Decoder, Mips::AFGR64RegClassID, RegNo /2);
   Inst.addOperand(MCOperand::CreateReg(Reg));
+  return MCDisassembler::Success;
+}
+
+static DecodeStatus DecodeHWRegs64RegisterClass(MCInst &Inst,
+                                                unsigned RegNo,
+                                                uint64_t Address,
+                                                const void *Decoder) {
+  //Currently only hardware register 29 is supported
+  if (RegNo != 29)
+    return  MCDisassembler::Fail;
+  Inst.addOperand(MCOperand::CreateReg(Mips::HWR29_64));
   return MCDisassembler::Success;
 }
 

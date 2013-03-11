@@ -13,6 +13,7 @@
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -50,6 +51,25 @@ MCAsmParserSemaCallback::~MCAsmParserSemaCallback() {}
 
 namespace {
 
+/// \brief Helper types for tracking macro definitions.
+typedef std::vector<AsmToken> MCAsmMacroArgument;
+typedef std::vector<MCAsmMacroArgument> MCAsmMacroArguments;
+typedef std::pair<StringRef, MCAsmMacroArgument> MCAsmMacroParameter;
+typedef std::vector<MCAsmMacroParameter> MCAsmMacroParameters;
+
+struct MCAsmMacro {
+  StringRef Name;
+  StringRef Body;
+  MCAsmMacroParameters Parameters;
+
+public:
+  MCAsmMacro(StringRef N, StringRef B, const MCAsmMacroParameters &P) :
+    Name(N), Body(B), Parameters(P) {}
+
+  MCAsmMacro(const MCAsmMacro& Other)
+    : Name(Other.Name), Body(Other.Body), Parameters(Other.Parameters) {}
+};
+
 /// \brief Helper class for storing information about an active macro
 /// instantiation.
 struct MacroInstantiation {
@@ -73,7 +93,6 @@ public:
                      MemoryBuffer *I);
 };
 
-//struct AsmRewrite;
 struct ParseStatementInfo {
   /// ParsedOperands - The parsed operands from the last parsed statement.
   SmallVector<MCParsedAsmOperand*, 8> ParsedOperands;
@@ -121,9 +140,7 @@ private:
 
   /// ExtensionDirectiveMap - maps directive names to handler methods in parser
   /// extensions. Extensions register themselves in this map by calling
-  /// AddDirectiveHandler.
-  typedef std::pair<MCAsmParserExtension*, DirectiveHandler>
-    ExtensionDirectiveHandler;
+  /// addDirectiveHandler.
   StringMap<ExtensionDirectiveHandler> ExtensionDirectiveMap;
 
   /// MacroMap - Map of currently defined macros.
@@ -160,10 +177,9 @@ public:
 
   virtual bool Run(bool NoInitialTextSection, bool NoFinalize = false);
 
-  virtual void AddDirectiveHandler(MCAsmParserExtension *Object,
-                                   StringRef Directive,
-                                   DirectiveHandler Handler) {
-    ExtensionDirectiveMap[Directive] = std::make_pair(Object, Handler);
+  virtual void addDirectiveHandler(StringRef Directive,
+                                   ExtensionDirectiveHandler Handler) {
+    ExtensionDirectiveMap[Directive] = Handler;
   }
 
 public:
@@ -194,7 +210,7 @@ public:
   void setParsingInlineAsm(bool V) { ParsingInlineAsm = V; }
   bool isParsingInlineAsm() { return ParsingInlineAsm; }
 
-  bool ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
+  bool parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
                         unsigned &NumOutputs, unsigned &NumInputs,
                         SmallVectorImpl<std::pair<void *,bool> > &OpDecls,
                         SmallVectorImpl<std::string> &Constraints,
@@ -203,31 +219,17 @@ public:
                         const MCInstPrinter *IP,
                         MCAsmParserSemaCallback &SI);
 
-  bool ParseExpression(const MCExpr *&Res);
-  virtual bool ParseExpression(const MCExpr *&Res, SMLoc &EndLoc);
-  virtual bool ParseParenExpression(const MCExpr *&Res, SMLoc &EndLoc);
-  virtual bool ParseAbsoluteExpression(int64_t &Res);
+  bool parseExpression(const MCExpr *&Res);
+  virtual bool parseExpression(const MCExpr *&Res, SMLoc &EndLoc);
+  virtual bool parseParenExpression(const MCExpr *&Res, SMLoc &EndLoc);
+  virtual bool parseAbsoluteExpression(int64_t &Res);
 
-  bool ParseMacroArgument(MCAsmMacroArgument &MA,
-                          AsmToken::TokenKind &ArgumentDelimiter);
-
-  /// ParseIdentifier - Parse an identifier or string (as a quoted identifier)
+  /// parseIdentifier - Parse an identifier or string (as a quoted identifier)
   /// and set \p Res to the identifier contents.
-  virtual bool ParseIdentifier(StringRef &Res);
-  virtual void EatToEndOfStatement();
+  virtual bool parseIdentifier(StringRef &Res);
+  virtual void eatToEndOfStatement();
 
-  virtual bool MacrosEnabled() {return MacrosEnabledFlag;}
-  virtual void SetMacrosEnabled(bool flag) {MacrosEnabledFlag = flag;}
-
-  virtual const MCAsmMacro* LookupMacro(StringRef Name);
-  virtual void DefineMacro(StringRef Name, const MCAsmMacro& Macro);
-  virtual void UndefineMacro(StringRef Name);
-
-  virtual bool InsideMacroInstantiation() {return !ActiveMacros.empty();}
-  virtual bool HandleMacroEntry(const MCAsmMacro *M, SMLoc NameLoc);
-  void HandleMacroExit();
-
-  virtual void CheckForValidSection();
+  virtual void checkForValidSection();
   /// }
 
 private:
@@ -236,10 +238,50 @@ private:
   void EatToEndOfLine();
   bool ParseCppHashLineFilenameComment(const SMLoc &L);
 
+  void CheckForBadMacro(SMLoc DirectiveLoc, StringRef Name, StringRef Body,
+                        MCAsmMacroParameters Parameters);
   bool expandMacro(raw_svector_ostream &OS, StringRef Body,
                    const MCAsmMacroParameters &Parameters,
                    const MCAsmMacroArguments &A,
                    const SMLoc &L);
+
+  /// \brief Are macros enabled in the parser?
+  bool MacrosEnabled() {return MacrosEnabledFlag;}
+
+  /// \brief Control a flag in the parser that enables or disables macros.
+  void SetMacrosEnabled(bool Flag) {MacrosEnabledFlag = Flag;}
+
+  /// \brief Lookup a previously defined macro.
+  /// \param Name Macro name.
+  /// \returns Pointer to macro. NULL if no such macro was defined.
+  const MCAsmMacro* LookupMacro(StringRef Name);
+
+  /// \brief Define a new macro with the given name and information.
+  void DefineMacro(StringRef Name, const MCAsmMacro& Macro);
+
+  /// \brief Undefine a macro. If no such macro was defined, it's a no-op.
+  void UndefineMacro(StringRef Name);
+
+  /// \brief Are we inside a macro instantiation?
+  bool InsideMacroInstantiation() {return !ActiveMacros.empty();}
+
+  /// \brief Handle entry to macro instantiation. 
+  ///
+  /// \param M The macro.
+  /// \param NameLoc Instantiation location.
+  bool HandleMacroEntry(const MCAsmMacro *M, SMLoc NameLoc);
+
+  /// \brief Handle exit from macro instantiation.
+  void HandleMacroExit();
+
+  /// \brief Extract AsmTokens for a macro argument. If the argument delimiter
+  /// is initially unknown, set it to AsmToken::Eof. It will be set to the
+  /// correct delimiter by the method.
+  bool ParseMacroArgument(MCAsmMacroArgument &MA,
+                          AsmToken::TokenKind &ArgumentDelimiter);
+
+  /// \brief Parse all macro arguments for a given macro.
+  bool ParseMacroArguments(const MCAsmMacro *M, MCAsmMacroArguments &A);
 
   void PrintMacroInstantiations();
   void PrintMessage(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Msg,
@@ -262,12 +304,10 @@ private:
   /// location.
   void JumpToLoc(SMLoc Loc, int InBuffer=-1);
 
-  bool ParseMacroArguments(const MCAsmMacro *M, MCAsmMacroArguments &A);
-
   /// \brief Parse up to the end of statement and a return the contents from the
   /// current token until the end of the statement; the current token on exit
   /// will be either the EndOfStatement or EOF.
-  virtual StringRef ParseStringToEndOfStatement();
+  virtual StringRef parseStringToEndOfStatement();
 
   /// \brief Parse until the end of a statement or a comma is encountered,
   /// return the contents from the current token up to the end or comma.
@@ -390,10 +430,7 @@ private:
   bool ParseDirectiveElseIf(SMLoc DirectiveLoc); // ".elseif"
   bool ParseDirectiveElse(SMLoc DirectiveLoc); // ".else"
   bool ParseDirectiveEndIf(SMLoc DirectiveLoc); // .endif
-
-  /// ParseEscapedString - Parse the current token as a string which may include
-  /// escaped characters and return the string contents.
-  bool ParseEscapedString(std::string &Data);
+  virtual bool parseEscapedString(std::string &Data);
 
   const MCExpr *ApplyModifierToExpr(const MCExpr *E,
                                     MCSymbolRefExpr::VariantKind Variant);
@@ -407,8 +444,12 @@ private:
   bool ParseDirectiveIrpc(SMLoc DirectiveLoc); // ".irpc"
   bool ParseDirectiveEndr(SMLoc DirectiveLoc); // ".endr"
 
-  // "_emit"
-  bool ParseDirectiveEmit(SMLoc DirectiveLoc, ParseStatementInfo &Info);
+  // "_emit" or "__emit"
+  bool ParseDirectiveMSEmit(SMLoc DirectiveLoc, ParseStatementInfo &Info,
+                            size_t Len);
+
+  // "align"
+  bool ParseDirectiveMSAlign(SMLoc DirectiveLoc, ParseStatementInfo &Info);
 
   void initializeDirectiveKindMap();
 };
@@ -577,7 +618,7 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
     // We had an error, validate that one was emitted and recover by skipping to
     // the next line.
     assert(HadError && "Parse statement returned an error, but none emitted!");
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   }
 
   if (TheCondState.TheCond != StartingCondState.TheCond ||
@@ -624,15 +665,15 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
   return HadError;
 }
 
-void AsmParser::CheckForValidSection() {
+void AsmParser::checkForValidSection() {
   if (!ParsingInlineAsm && !getStreamer().getCurrentSection()) {
     TokError("expected section directive before assembly directive");
     Out.InitToTextSection();
   }
 }
 
-/// EatToEndOfStatement - Throw away the rest of the line for testing purposes.
-void AsmParser::EatToEndOfStatement() {
+/// eatToEndOfStatement - Throw away the rest of the line for testing purposes.
+void AsmParser::eatToEndOfStatement() {
   while (Lexer.isNot(AsmToken::EndOfStatement) &&
          Lexer.isNot(AsmToken::Eof))
     Lex();
@@ -642,7 +683,7 @@ void AsmParser::EatToEndOfStatement() {
     Lex();
 }
 
-StringRef AsmParser::ParseStringToEndOfStatement() {
+StringRef AsmParser::parseStringToEndOfStatement() {
   const char *Start = getTok().getLoc().getPointer();
 
   while (Lexer.isNot(AsmToken::EndOfStatement) &&
@@ -671,7 +712,7 @@ StringRef AsmParser::ParseStringToComma() {
 /// parenexpr ::= expr)
 ///
 bool AsmParser::ParseParenExpr(const MCExpr *&Res, SMLoc &EndLoc) {
-  if (ParseExpression(Res)) return true;
+  if (parseExpression(Res)) return true;
   if (Lexer.isNot(AsmToken::RParen))
     return TokError("expected ')' in parentheses expression");
   EndLoc = Lexer.getTok().getEndLoc();
@@ -685,7 +726,7 @@ bool AsmParser::ParseParenExpr(const MCExpr *&Res, SMLoc &EndLoc) {
 /// bracketexpr ::= expr]
 ///
 bool AsmParser::ParseBracketExpr(const MCExpr *&Res, SMLoc &EndLoc) {
-  if (ParseExpression(Res)) return true;
+  if (parseExpression(Res)) return true;
   if (Lexer.isNot(AsmToken::RBrac))
     return TokError("expected ']' in brackets expression");
   EndLoc = Lexer.getTok().getEndLoc();
@@ -700,7 +741,9 @@ bool AsmParser::ParseBracketExpr(const MCExpr *&Res, SMLoc &EndLoc) {
 ///  primaryexpr ::= '.'
 ///  primaryexpr ::= ~,+,- primaryexpr
 bool AsmParser::ParsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
-  switch (Lexer.getKind()) {
+  SMLoc FirstTokenLoc = getLexer().getLoc();
+  AsmToken::TokenKind FirstTokenKind = Lexer.getKind();
+  switch (FirstTokenKind) {
   default:
     return TokError("unknown token in expression");
   // If we have an error assume that we've already handled it.
@@ -716,8 +759,11 @@ bool AsmParser::ParsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
   case AsmToken::String:
   case AsmToken::Identifier: {
     StringRef Identifier;
-    if (ParseIdentifier(Identifier))
+    if (parseIdentifier(Identifier)) {
+      if (FirstTokenKind == AsmToken::Dollar)
+        return Error(FirstTokenLoc, "invalid token in expression");
       return true;
+    }
 
     EndLoc = SMLoc::getFromPointer(Identifier.end());
 
@@ -818,9 +864,9 @@ bool AsmParser::ParsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
   }
 }
 
-bool AsmParser::ParseExpression(const MCExpr *&Res) {
+bool AsmParser::parseExpression(const MCExpr *&Res) {
   SMLoc EndLoc;
-  return ParseExpression(Res, EndLoc);
+  return parseExpression(Res, EndLoc);
 }
 
 const MCExpr *
@@ -871,7 +917,7 @@ AsmParser::ApplyModifierToExpr(const MCExpr *E,
   llvm_unreachable("Invalid expression kind!");
 }
 
-/// ParseExpression - Parse an expression and return it.
+/// parseExpression - Parse an expression and return it.
 ///
 ///  expr ::= expr &&,|| expr               -> lowest.
 ///  expr ::= expr |,^,&,! expr
@@ -881,7 +927,7 @@ AsmParser::ApplyModifierToExpr(const MCExpr *E,
 ///  expr ::= expr *,/,% expr               -> highest.
 ///  expr ::= primaryexpr
 ///
-bool AsmParser::ParseExpression(const MCExpr *&Res, SMLoc &EndLoc) {
+bool AsmParser::parseExpression(const MCExpr *&Res, SMLoc &EndLoc) {
   // Parse the expression.
   Res = 0;
   if (ParsePrimaryExpr(Res, EndLoc) || ParseBinOpRHS(1, Res, EndLoc))
@@ -919,17 +965,17 @@ bool AsmParser::ParseExpression(const MCExpr *&Res, SMLoc &EndLoc) {
   return false;
 }
 
-bool AsmParser::ParseParenExpression(const MCExpr *&Res, SMLoc &EndLoc) {
+bool AsmParser::parseParenExpression(const MCExpr *&Res, SMLoc &EndLoc) {
   Res = 0;
   return ParseParenExpr(Res, EndLoc) ||
          ParseBinOpRHS(1, Res, EndLoc);
 }
 
-bool AsmParser::ParseAbsoluteExpression(int64_t &Res) {
+bool AsmParser::parseAbsoluteExpression(int64_t &Res) {
   const MCExpr *Expr;
 
   SMLoc StartLoc = Lexer.getLoc();
-  if (ParseExpression(Expr))
+  if (parseExpression(Expr))
     return true;
 
   if (!Expr->EvaluateAsAbsolute(Res))
@@ -1076,8 +1122,7 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
       if (!TheCondState.Ignore)
         return TokError("unexpected token at start of statement");
       IDVal = "";
-    }
-    else {
+    } else {
       IDVal = getTok().getString();
       Lex(); // Consume the integer token to be used as an identifier token.
       if (Lexer.getKind() != AsmToken::Colon) {
@@ -1085,13 +1130,11 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
           return TokError("unexpected token at start of statement");
       }
     }
-
   } else if (Lexer.is(AsmToken::Dot)) {
     // Treat '.' as a valid identifier in this context.
     Lex();
     IDVal = ".";
-
-  } else if (ParseIdentifier(IDVal)) {
+  } else if (parseIdentifier(IDVal)) {
     if (!TheCondState.Ignore)
       return TokError("unexpected token at start of statement");
     IDVal = "";
@@ -1131,9 +1174,10 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
       return ParseDirectiveEndIf(IDLoc);
   }
 
-  // If we are in a ".if 0" block, ignore this statement.
+  // Ignore the statement if in the middle of inactive conditional
+  // (e.g. ".if 0").
   if (TheCondState.Ignore) {
-    EatToEndOfStatement();
+    eatToEndOfStatement();
     return false;
   }
 
@@ -1142,7 +1186,7 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
   // See what kind of statement we have.
   switch (Lexer.getKind()) {
   case AsmToken::Colon: {
-    CheckForValidSection();
+    checkForValidSection();
 
     // identifier ':'   -> Label.
     Lex();
@@ -1288,7 +1332,7 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
       case DK_ZERO:
         return ParseDirectiveZero();
       case DK_EXTERN:
-        EatToEndOfStatement(); // .extern is the default, ignore it.
+        eatToEndOfStatement(); // .extern is the default, ignore it.
         return false;
       case DK_GLOBL:
       case DK_GLOBAL:
@@ -1407,20 +1451,22 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
     return Error(IDLoc, "unknown directive");
   }
 
-  // _emit
-  if (ParsingInlineAsm && IDVal == "_emit")
-    return ParseDirectiveEmit(IDLoc, Info);
+  // __asm _emit or __asm __emit
+  if (ParsingInlineAsm && (IDVal == "_emit" || IDVal == "__emit" ||
+                           IDVal == "_EMIT" || IDVal == "__EMIT"))
+    return ParseDirectiveMSEmit(IDLoc, Info, IDVal.size());
 
-  CheckForValidSection();
+  // __asm align
+  if (ParsingInlineAsm && (IDVal == "align" || IDVal == "ALIGN"))
+    return ParseDirectiveMSAlign(IDLoc, Info);
+
+  checkForValidSection();
 
   // Canonicalize the opcode to lower case.
-  SmallString<128> OpcodeStr;
-  for (unsigned i = 0, e = IDVal.size(); i != e; ++i)
-    OpcodeStr.push_back(tolower(IDVal[i]));
-
+  std::string OpcodeStr = IDVal.lower();
   ParseInstructionInfo IInfo(Info.AsmRewrites);
-  bool HadError = getTargetParser().ParseInstruction(IInfo, OpcodeStr.str(),
-                                                     IDLoc,Info.ParsedOperands);
+  bool HadError = getTargetParser().ParseInstruction(IInfo, OpcodeStr,
+                                                     IDLoc, Info.ParsedOperands);
   Info.ParseError = HadError;
 
   // Dump the parsed representation, if requested.
@@ -1444,22 +1490,22 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
   if (!HadError && getContext().getGenDwarfForAssembly() &&
       getContext().getGenDwarfSection() == getStreamer().getCurrentSection()) {
 
-     unsigned Line = SrcMgr.FindLineNumber(IDLoc, CurBuffer);
+    unsigned Line = SrcMgr.FindLineNumber(IDLoc, CurBuffer);
 
-     // If we previously parsed a cpp hash file line comment then make sure the
-     // current Dwarf File is for the CppHashFilename if not then emit the
-     // Dwarf File table for it and adjust the line number for the .loc.
-     const std::vector<MCDwarfFile *> &MCDwarfFiles =
-       getContext().getMCDwarfFiles();
-     if (CppHashFilename.size() != 0) {
-       if(MCDwarfFiles[getContext().getGenDwarfFileNumber()]->getName() !=
+    // If we previously parsed a cpp hash file line comment then make sure the
+    // current Dwarf File is for the CppHashFilename if not then emit the
+    // Dwarf File table for it and adjust the line number for the .loc.
+    const std::vector<MCDwarfFile *> &MCDwarfFiles = 
+      getContext().getMCDwarfFiles();
+    if (CppHashFilename.size() != 0) {
+      if (MCDwarfFiles[getContext().getGenDwarfFileNumber()]->getName() !=
           CppHashFilename)
-         getStreamer().EmitDwarfFileDirective(
-           getContext().nextGenDwarfFileNumber(), StringRef(), CppHashFilename);
+        getStreamer().EmitDwarfFileDirective(
+          getContext().nextGenDwarfFileNumber(), StringRef(), CppHashFilename);
 
        unsigned CppHashLocLineNo = SrcMgr.FindLineNumber(CppHashLoc,CppHashBuf);
        Line = CppHashLineNumber - 1 + (Line - CppHashLocLineNo);
-     }
+    }
 
     getStreamer().EmitDwarfLocDirective(getContext().getGenDwarfFileNumber(),
                                         Line, 0, DWARF2_LINE_DEFAULT_IS_STMT ?
@@ -1585,7 +1631,8 @@ void AsmParser::DiagHandler(const SMDiagnostic &Diag, void *Context) {
 // we can't do that. AsmLexer.cpp should probably be changed to handle
 // '@' as a special case when needed.
 static bool isIdentifierChar(char c) {
-  return isalnum(c) || c == '_' || c == '$' || c == '.';
+  return isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$' ||
+         c == '.';
 }
 
 bool AsmParser::expandMacro(raw_svector_ostream &OS, StringRef Body,
@@ -1609,7 +1656,8 @@ bool AsmParser::expandMacro(raw_svector_ostream &OS, StringRef Body,
           continue;
 
         char Next = Body[Pos + 1];
-        if (Next == '$' || Next == 'n' || isdigit(Next))
+        if (Next == '$' || Next == 'n' ||
+            isdigit(static_cast<unsigned char>(Next)))
           break;
       } else {
         // This macro has parameters, look for \foo, \bar, etc.
@@ -1954,7 +2002,7 @@ bool AsmParser::ParseAssignment(StringRef Name, bool allow_redef,
   SMLoc EqualLoc = Lexer.getLoc();
 
   const MCExpr *Value;
-  if (ParseExpression(Value))
+  if (parseExpression(Value))
     return true;
 
   // Note: we don't count b as used in "a = b". This is to allow
@@ -2011,10 +2059,10 @@ bool AsmParser::ParseAssignment(StringRef Name, bool allow_redef,
   return false;
 }
 
-/// ParseIdentifier:
+/// parseIdentifier:
 ///   ::= identifier
 ///   ::= string
-bool AsmParser::ParseIdentifier(StringRef &Res) {
+bool AsmParser::parseIdentifier(StringRef &Res) {
   // The assembler has relaxed rules for accepting identifiers, in particular we
   // allow things like '.globl $foo', which would normally be separate
   // tokens. At this level, we have already lexed so we cannot (currently)
@@ -2057,7 +2105,7 @@ bool AsmParser::ParseIdentifier(StringRef &Res) {
 bool AsmParser::ParseDirectiveSet(StringRef IDVal, bool allow_redef) {
   StringRef Name;
 
-  if (ParseIdentifier(Name))
+  if (parseIdentifier(Name))
     return TokError("expected identifier after '" + Twine(IDVal) + "'");
 
   if (getLexer().isNot(AsmToken::Comma))
@@ -2067,7 +2115,7 @@ bool AsmParser::ParseDirectiveSet(StringRef IDVal, bool allow_redef) {
   return ParseAssignment(Name, allow_redef, true);
 }
 
-bool AsmParser::ParseEscapedString(std::string &Data) {
+bool AsmParser::parseEscapedString(std::string &Data) {
   assert(getLexer().is(AsmToken::String) && "Unexpected current token!");
 
   Data = "";
@@ -2129,14 +2177,14 @@ bool AsmParser::ParseEscapedString(std::string &Data) {
 ///   ::= ( .ascii | .asciz | .string ) [ "string" ( , "string" )* ]
 bool AsmParser::ParseDirectiveAscii(StringRef IDVal, bool ZeroTerminated) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
-    CheckForValidSection();
+    checkForValidSection();
 
     for (;;) {
       if (getLexer().isNot(AsmToken::String))
         return TokError("expected string in '" + Twine(IDVal) + "' directive");
 
       std::string Data;
-      if (ParseEscapedString(Data))
+      if (parseEscapedString(Data))
         return true;
 
       getStreamer().EmitBytes(Data, DEFAULT_ADDRSPACE);
@@ -2162,12 +2210,12 @@ bool AsmParser::ParseDirectiveAscii(StringRef IDVal, bool ZeroTerminated) {
 ///  ::= (.byte | .short | ... ) [ expression (, expression)* ]
 bool AsmParser::ParseDirectiveValue(unsigned Size) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
-    CheckForValidSection();
+    checkForValidSection();
 
     for (;;) {
       const MCExpr *Value;
       SMLoc ExprLoc = getLexer().getLoc();
-      if (ParseExpression(Value))
+      if (parseExpression(Value))
         return true;
 
       // Special case constant expressions to match code generator.
@@ -2198,7 +2246,7 @@ bool AsmParser::ParseDirectiveValue(unsigned Size) {
 ///  ::= (.single | .double) [ expression (, expression)* ]
 bool AsmParser::ParseDirectiveRealValue(const fltSemantics &Semantics) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
-    CheckForValidSection();
+    checkForValidSection();
 
     for (;;) {
       // We don't truly support arithmetic on floating point expressions, so we
@@ -2255,16 +2303,16 @@ bool AsmParser::ParseDirectiveRealValue(const fltSemantics &Semantics) {
 /// ParseDirectiveZero
 ///  ::= .zero expression
 bool AsmParser::ParseDirectiveZero() {
-  CheckForValidSection();
+  checkForValidSection();
 
   int64_t NumBytes;
-  if (ParseAbsoluteExpression(NumBytes))
+  if (parseAbsoluteExpression(NumBytes))
     return true;
 
   int64_t Val = 0;
   if (getLexer().is(AsmToken::Comma)) {
     Lex();
-    if (ParseAbsoluteExpression(Val))
+    if (parseAbsoluteExpression(Val))
       return true;
   }
 
@@ -2281,10 +2329,10 @@ bool AsmParser::ParseDirectiveZero() {
 /// ParseDirectiveFill
 ///  ::= .fill expression , expression , expression
 bool AsmParser::ParseDirectiveFill() {
-  CheckForValidSection();
+  checkForValidSection();
 
   int64_t NumValues;
-  if (ParseAbsoluteExpression(NumValues))
+  if (parseAbsoluteExpression(NumValues))
     return true;
 
   if (getLexer().isNot(AsmToken::Comma))
@@ -2292,7 +2340,7 @@ bool AsmParser::ParseDirectiveFill() {
   Lex();
 
   int64_t FillSize;
-  if (ParseAbsoluteExpression(FillSize))
+  if (parseAbsoluteExpression(FillSize))
     return true;
 
   if (getLexer().isNot(AsmToken::Comma))
@@ -2300,7 +2348,7 @@ bool AsmParser::ParseDirectiveFill() {
   Lex();
 
   int64_t FillExpr;
-  if (ParseAbsoluteExpression(FillExpr))
+  if (parseAbsoluteExpression(FillExpr))
     return true;
 
   if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -2320,11 +2368,11 @@ bool AsmParser::ParseDirectiveFill() {
 /// ParseDirectiveOrg
 ///  ::= .org expression [ , expression ]
 bool AsmParser::ParseDirectiveOrg() {
-  CheckForValidSection();
+  checkForValidSection();
 
   const MCExpr *Offset;
   SMLoc Loc = getTok().getLoc();
-  if (ParseExpression(Offset))
+  if (parseExpression(Offset))
     return true;
 
   // Parse optional fill expression.
@@ -2334,7 +2382,7 @@ bool AsmParser::ParseDirectiveOrg() {
       return TokError("unexpected token in '.org' directive");
     Lex();
 
-    if (ParseAbsoluteExpression(FillExpr))
+    if (parseAbsoluteExpression(FillExpr))
       return true;
 
     if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -2355,11 +2403,11 @@ bool AsmParser::ParseDirectiveOrg() {
 /// ParseDirectiveAlign
 ///  ::= {.align, ...} expression [ , expression [ , expression ]]
 bool AsmParser::ParseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
-  CheckForValidSection();
+  checkForValidSection();
 
   SMLoc AlignmentLoc = getLexer().getLoc();
   int64_t Alignment;
-  if (ParseAbsoluteExpression(Alignment))
+  if (parseAbsoluteExpression(Alignment))
     return true;
 
   SMLoc MaxBytesLoc;
@@ -2376,7 +2424,7 @@ bool AsmParser::ParseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
     //  .align 3,,4
     if (getLexer().isNot(AsmToken::Comma)) {
       HasFillExpr = true;
-      if (ParseAbsoluteExpression(FillExpr))
+      if (parseAbsoluteExpression(FillExpr))
         return true;
     }
 
@@ -2386,7 +2434,7 @@ bool AsmParser::ParseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
       Lex();
 
       MaxBytesLoc = getLexer().getLoc();
-      if (ParseAbsoluteExpression(MaxBytesToFill))
+      if (parseAbsoluteExpression(MaxBytesToFill))
         return true;
 
       if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -2408,6 +2456,10 @@ bool AsmParser::ParseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
     }
 
     Alignment = 1ULL << Alignment;
+  } else {
+    // Reject alignments that aren't a power of two, for gas compatibility.
+    if (!isPowerOf2_64(Alignment))
+      Error(AlignmentLoc, "alignment must be a power of 2");
   }
 
   // Diagnose non-sensical max bytes to align.
@@ -2556,7 +2608,7 @@ bool AsmParser::ParseDirectiveLoc() {
 
       StringRef Name;
       SMLoc Loc = getTok().getLoc();
-      if (ParseIdentifier(Name))
+      if (parseIdentifier(Name))
         return TokError("unexpected token in '.loc' directive");
 
       if (Name == "basic_block")
@@ -2568,7 +2620,7 @@ bool AsmParser::ParseDirectiveLoc() {
       else if (Name == "is_stmt") {
         Loc = getTok().getLoc();
         const MCExpr *Value;
-        if (ParseExpression(Value))
+        if (parseExpression(Value))
           return true;
         // The expression must be the constant 0 or 1.
         if (const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(Value)) {
@@ -2587,7 +2639,7 @@ bool AsmParser::ParseDirectiveLoc() {
       else if (Name == "isa") {
         Loc = getTok().getLoc();
         const MCExpr *Value;
-        if (ParseExpression(Value))
+        if (parseExpression(Value))
           return true;
         // The expression must be a constant greater or equal to 0.
         if (const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(Value)) {
@@ -2601,7 +2653,7 @@ bool AsmParser::ParseDirectiveLoc() {
         }
       }
       else if (Name == "discriminator") {
-        if (ParseAbsoluteExpression(Discriminator))
+        if (parseAbsoluteExpression(Discriminator))
           return true;
       }
       else {
@@ -2632,7 +2684,7 @@ bool AsmParser::ParseDirectiveCFISections() {
   bool EH = false;
   bool Debug = false;
 
-  if (ParseIdentifier(Name))
+  if (parseIdentifier(Name))
     return TokError("Expected an identifier");
 
   if (Name == ".eh_frame")
@@ -2643,7 +2695,7 @@ bool AsmParser::ParseDirectiveCFISections() {
   if (getLexer().is(AsmToken::Comma)) {
     Lex();
 
-    if (ParseIdentifier(Name))
+    if (parseIdentifier(Name))
       return TokError("Expected an identifier");
 
     if (Name == ".eh_frame")
@@ -2680,7 +2732,7 @@ bool AsmParser::ParseRegisterOrRegisterNumber(int64_t &Register,
       return true;
     Register = getContext().getRegisterInfo().getDwarfRegNum(RegNo, true);
   } else
-    return ParseAbsoluteExpression(Register);
+    return parseAbsoluteExpression(Register);
 
   return false;
 }
@@ -2697,7 +2749,7 @@ bool AsmParser::ParseDirectiveCFIDefCfa(SMLoc DirectiveLoc) {
   Lex();
 
   int64_t Offset = 0;
-  if (ParseAbsoluteExpression(Offset))
+  if (parseAbsoluteExpression(Offset))
     return true;
 
   getStreamer().EmitCFIDefCfa(Register, Offset);
@@ -2708,7 +2760,7 @@ bool AsmParser::ParseDirectiveCFIDefCfa(SMLoc DirectiveLoc) {
 /// ::= .cfi_def_cfa_offset offset
 bool AsmParser::ParseDirectiveCFIDefCfaOffset() {
   int64_t Offset = 0;
-  if (ParseAbsoluteExpression(Offset))
+  if (parseAbsoluteExpression(Offset))
     return true;
 
   getStreamer().EmitCFIDefCfaOffset(Offset);
@@ -2738,7 +2790,7 @@ bool AsmParser::ParseDirectiveCFIRegister(SMLoc DirectiveLoc) {
 /// ::= .cfi_adjust_cfa_offset adjustment
 bool AsmParser::ParseDirectiveCFIAdjustCfaOffset() {
   int64_t Adjustment = 0;
-  if (ParseAbsoluteExpression(Adjustment))
+  if (parseAbsoluteExpression(Adjustment))
     return true;
 
   getStreamer().EmitCFIAdjustCfaOffset(Adjustment);
@@ -2769,7 +2821,7 @@ bool AsmParser::ParseDirectiveCFIOffset(SMLoc DirectiveLoc) {
     return TokError("unexpected token in directive");
   Lex();
 
-  if (ParseAbsoluteExpression(Offset))
+  if (parseAbsoluteExpression(Offset))
     return true;
 
   getStreamer().EmitCFIOffset(Register, Offset);
@@ -2789,7 +2841,7 @@ bool AsmParser::ParseDirectiveCFIRelOffset(SMLoc DirectiveLoc) {
   Lex();
 
   int64_t Offset = 0;
-  if (ParseAbsoluteExpression(Offset))
+  if (parseAbsoluteExpression(Offset))
     return true;
 
   getStreamer().EmitCFIRelOffset(Register, Offset);
@@ -2824,7 +2876,7 @@ static bool isValidEncoding(int64_t Encoding) {
 /// ::= .cfi_lsda encoding, [symbol_name]
 bool AsmParser::ParseDirectiveCFIPersonalityOrLsda(bool IsPersonality) {
   int64_t Encoding = 0;
-  if (ParseAbsoluteExpression(Encoding))
+  if (parseAbsoluteExpression(Encoding))
     return true;
   if (Encoding == dwarf::DW_EH_PE_omit)
     return false;
@@ -2837,7 +2889,7 @@ bool AsmParser::ParseDirectiveCFIPersonalityOrLsda(bool IsPersonality) {
   Lex();
 
   StringRef Name;
-  if (ParseIdentifier(Name))
+  if (parseIdentifier(Name))
     return TokError("expected identifier in directive");
 
   MCSymbol *Sym = getContext().GetOrCreateSymbol(Name);
@@ -2891,7 +2943,7 @@ bool AsmParser::ParseDirectiveCFIRestore(SMLoc DirectiveLoc) {
 bool AsmParser::ParseDirectiveCFIEscape() {
   std::string Values;
   int64_t CurrValue;
-  if (ParseAbsoluteExpression(CurrValue))
+  if (parseAbsoluteExpression(CurrValue))
     return true;
 
   Values.push_back((uint8_t)CurrValue);
@@ -2899,7 +2951,7 @@ bool AsmParser::ParseDirectiveCFIEscape() {
   while (getLexer().is(AsmToken::Comma)) {
     Lex();
 
-    if (ParseAbsoluteExpression(CurrValue))
+    if (parseAbsoluteExpression(CurrValue))
       return true;
 
     Values.push_back((uint8_t)CurrValue);
@@ -2948,7 +3000,7 @@ bool AsmParser::ParseDirectiveMacrosOnOff(StringRef Directive) {
 /// ::= .macro name [parameters]
 bool AsmParser::ParseDirectiveMacro(SMLoc DirectiveLoc) {
   StringRef Name;
-  if (ParseIdentifier(Name))
+  if (parseIdentifier(Name))
     return TokError("expected identifier in '.macro' directive");
 
   MCAsmMacroParameters Parameters;
@@ -2958,7 +3010,7 @@ bool AsmParser::ParseDirectiveMacro(SMLoc DirectiveLoc) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     for (;;) {
       MCAsmMacroParameter Parameter;
-      if (ParseIdentifier(Parameter.first))
+      if (parseIdentifier(Parameter.first))
         return TokError("expected identifier in '.macro' directive");
 
       if (getLexer().is(AsmToken::Equal)) {
@@ -3000,7 +3052,7 @@ bool AsmParser::ParseDirectiveMacro(SMLoc DirectiveLoc) {
     }
 
     // Otherwise, scan til the end of the statement.
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   }
 
   if (LookupMacro(Name)) {
@@ -3010,8 +3062,111 @@ bool AsmParser::ParseDirectiveMacro(SMLoc DirectiveLoc) {
   const char *BodyStart = StartToken.getLoc().getPointer();
   const char *BodyEnd = EndToken.getLoc().getPointer();
   StringRef Body = StringRef(BodyStart, BodyEnd - BodyStart);
+  CheckForBadMacro(DirectiveLoc, Name, Body, Parameters);
   DefineMacro(Name, MCAsmMacro(Name, Body, Parameters));
   return false;
+}
+
+/// CheckForBadMacro
+///
+/// With the support added for named parameters there may be code out there that
+/// is transitioning from positional parameters.  In versions of gas that did
+/// not support named parameters they would be ignored on the macro defintion.
+/// But to support both styles of parameters this is not possible so if a macro
+/// defintion has named parameters but does not use them and has what appears
+/// to be positional parameters, strings like $1, $2, ... and $n, then issue a
+/// warning that the positional parameter found in body which have no effect.
+/// Hoping the developer will either remove the named parameters from the macro
+/// definiton so the positional parameters get used if that was what was
+/// intended or change the macro to use the named parameters.  It is possible
+/// this warning will trigger when the none of the named parameters are used
+/// and the strings like $1 are infact to simply to be passed trough unchanged.
+void AsmParser::CheckForBadMacro(SMLoc DirectiveLoc, StringRef Name,
+                                 StringRef Body,
+                                 MCAsmMacroParameters Parameters) {
+  // If this macro is not defined with named parameters the warning we are
+  // checking for here doesn't apply.
+  unsigned NParameters = Parameters.size();
+  if (NParameters == 0)
+    return;
+
+  bool NamedParametersFound = false;
+  bool PositionalParametersFound = false;
+
+  // Look at the body of the macro for use of both the named parameters and what
+  // are likely to be positional parameters.  This is what expandMacro() is
+  // doing when it finds the parameters in the body.
+  while (!Body.empty()) {
+    // Scan for the next possible parameter.
+    std::size_t End = Body.size(), Pos = 0;
+    for (; Pos != End; ++Pos) {
+      // Check for a substitution or escape.
+      // This macro is defined with parameters, look for \foo, \bar, etc.
+      if (Body[Pos] == '\\' && Pos + 1 != End)
+        break;
+
+      // This macro should have parameters, but look for $0, $1, ..., $n too.
+      if (Body[Pos] != '$' || Pos + 1 == End)
+        continue;
+      char Next = Body[Pos + 1];
+      if (Next == '$' || Next == 'n' ||
+          isdigit(static_cast<unsigned char>(Next)))
+        break;
+    }
+
+    // Check if we reached the end.
+    if (Pos == End)
+      break;
+
+    if (Body[Pos] == '$') {
+      switch (Body[Pos+1]) {
+        // $$ => $
+      case '$':
+        break;
+
+        // $n => number of arguments
+      case 'n':
+        PositionalParametersFound = true;
+        break;
+
+        // $[0-9] => argument
+      default: {
+        PositionalParametersFound = true;
+        break;
+        }
+      }
+      Pos += 2;
+    } else {
+      unsigned I = Pos + 1;
+      while (isIdentifierChar(Body[I]) && I + 1 != End)
+        ++I;
+
+      const char *Begin = Body.data() + Pos +1;
+      StringRef Argument(Begin, I - (Pos +1));
+      unsigned Index = 0;
+      for (; Index < NParameters; ++Index)
+        if (Parameters[Index].first == Argument)
+          break;
+
+      if (Index == NParameters) {
+          if (Body[Pos+1] == '(' && Body[Pos+2] == ')')
+            Pos += 3;
+          else {
+            Pos = I;
+          }
+      } else {
+        NamedParametersFound = true;
+        Pos += 1 + Argument.size();
+      }
+    }
+    // Update the scan point.
+    Body = Body.substr(Pos);
+  }
+
+  if (!NamedParametersFound && PositionalParametersFound)
+    Warning(DirectiveLoc, "macro defined with named parameters which are not "
+                          "used in macro body, possible positional parameter "
+                          "found in body which will have no effect");
 }
 
 /// ParseDirectiveEndMacro
@@ -3038,7 +3193,7 @@ bool AsmParser::ParseDirectiveEndMacro(StringRef Directive) {
 /// ::= .purgem
 bool AsmParser::ParseDirectivePurgeMacro(SMLoc DirectiveLoc) {
   StringRef Name;
-  if (ParseIdentifier(Name))
+  if (parseIdentifier(Name))
     return TokError("expected identifier in '.purgem' directive");
 
   if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -3054,13 +3209,13 @@ bool AsmParser::ParseDirectivePurgeMacro(SMLoc DirectiveLoc) {
 /// ParseDirectiveBundleAlignMode
 /// ::= {.bundle_align_mode} expression
 bool AsmParser::ParseDirectiveBundleAlignMode() {
-  CheckForValidSection();
+  checkForValidSection();
 
   // Expect a single argument: an expression that evaluates to a constant
   // in the inclusive range 0-30.
   SMLoc ExprLoc = getLexer().getLoc();
   int64_t AlignSizePow2;
-  if (ParseAbsoluteExpression(AlignSizePow2))
+  if (parseAbsoluteExpression(AlignSizePow2))
     return true;
   else if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token after expression in"
@@ -3080,7 +3235,7 @@ bool AsmParser::ParseDirectiveBundleAlignMode() {
 /// ParseDirectiveBundleLock
 /// ::= {.bundle_lock} [align_to_end]
 bool AsmParser::ParseDirectiveBundleLock() {
-  CheckForValidSection();
+  checkForValidSection();
   bool AlignToEnd = false;
 
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
@@ -3089,7 +3244,7 @@ bool AsmParser::ParseDirectiveBundleLock() {
     const char *kInvalidOptionError =
       "invalid option for '.bundle_lock' directive";
 
-    if (ParseIdentifier(Option))
+    if (parseIdentifier(Option))
       return Error(Loc, kInvalidOptionError);
 
     if (Option != "align_to_end")
@@ -3109,7 +3264,7 @@ bool AsmParser::ParseDirectiveBundleLock() {
 /// ParseDirectiveBundleLock
 /// ::= {.bundle_lock}
 bool AsmParser::ParseDirectiveBundleUnlock() {
-  CheckForValidSection();
+  checkForValidSection();
 
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token in '.bundle_unlock' directive");
@@ -3122,10 +3277,10 @@ bool AsmParser::ParseDirectiveBundleUnlock() {
 /// ParseDirectiveSpace
 /// ::= (.skip | .space) expression [ , expression ]
 bool AsmParser::ParseDirectiveSpace(StringRef IDVal) {
-  CheckForValidSection();
+  checkForValidSection();
 
   int64_t NumBytes;
-  if (ParseAbsoluteExpression(NumBytes))
+  if (parseAbsoluteExpression(NumBytes))
     return true;
 
   int64_t FillExpr = 0;
@@ -3134,7 +3289,7 @@ bool AsmParser::ParseDirectiveSpace(StringRef IDVal) {
       return TokError("unexpected token in '" + Twine(IDVal) + "' directive");
     Lex();
 
-    if (ParseAbsoluteExpression(FillExpr))
+    if (parseAbsoluteExpression(FillExpr))
       return true;
 
     if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -3156,10 +3311,10 @@ bool AsmParser::ParseDirectiveSpace(StringRef IDVal) {
 /// ParseDirectiveLEB128
 /// ::= (.sleb128 | .uleb128) expression
 bool AsmParser::ParseDirectiveLEB128(bool Signed) {
-  CheckForValidSection();
+  checkForValidSection();
   const MCExpr *Value;
 
-  if (ParseExpression(Value))
+  if (parseExpression(Value))
     return true;
 
   if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -3181,7 +3336,7 @@ bool AsmParser::ParseDirectiveSymbolAttribute(MCSymbolAttr Attr) {
       StringRef Name;
       SMLoc Loc = getTok().getLoc();
 
-      if (ParseIdentifier(Name))
+      if (parseIdentifier(Name))
         return Error(Loc, "expected identifier in directive");
 
       MCSymbol *Sym = getContext().GetOrCreateSymbol(Name);
@@ -3208,11 +3363,11 @@ bool AsmParser::ParseDirectiveSymbolAttribute(MCSymbolAttr Attr) {
 /// ParseDirectiveComm
 ///  ::= ( .comm | .lcomm ) identifier , size_expression [ , align_expression ]
 bool AsmParser::ParseDirectiveComm(bool IsLocal) {
-  CheckForValidSection();
+  checkForValidSection();
 
   SMLoc IDLoc = getLexer().getLoc();
   StringRef Name;
-  if (ParseIdentifier(Name))
+  if (parseIdentifier(Name))
     return TokError("expected identifier in directive");
 
   // Handle the identifier as the key symbol.
@@ -3224,7 +3379,7 @@ bool AsmParser::ParseDirectiveComm(bool IsLocal) {
 
   int64_t Size;
   SMLoc SizeLoc = getLexer().getLoc();
-  if (ParseAbsoluteExpression(Size))
+  if (parseAbsoluteExpression(Size))
     return true;
 
   int64_t Pow2Alignment = 0;
@@ -3232,7 +3387,7 @@ bool AsmParser::ParseDirectiveComm(bool IsLocal) {
   if (getLexer().is(AsmToken::Comma)) {
     Lex();
     Pow2AlignmentLoc = getLexer().getLoc();
-    if (ParseAbsoluteExpression(Pow2Alignment))
+    if (parseAbsoluteExpression(Pow2Alignment))
       return true;
 
     LCOMM::LCOMMType LCOMM = Lexer.getMAI().getLCOMMDirectiveAlignmentType();
@@ -3285,7 +3440,7 @@ bool AsmParser::ParseDirectiveAbort() {
   // FIXME: Use loc from directive.
   SMLoc Loc = getLexer().getLoc();
 
-  StringRef Str = ParseStringToEndOfStatement();
+  StringRef Str = parseStringToEndOfStatement();
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token in '.abort' directive");
 
@@ -3357,10 +3512,10 @@ bool AsmParser::ParseDirectiveIf(SMLoc DirectiveLoc) {
   TheCondStack.push_back(TheCondState);
   TheCondState.TheCond = AsmCond::IfCond;
   if (TheCondState.Ignore) {
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   } else {
     int64_t ExprValue;
-    if (ParseAbsoluteExpression(ExprValue))
+    if (parseAbsoluteExpression(ExprValue))
       return true;
 
     if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -3382,9 +3537,9 @@ bool AsmParser::ParseDirectiveIfb(SMLoc DirectiveLoc, bool ExpectBlank) {
   TheCondState.TheCond = AsmCond::IfCond;
 
   if (TheCondState.Ignore) {
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   } else {
-    StringRef Str = ParseStringToEndOfStatement();
+    StringRef Str = parseStringToEndOfStatement();
 
     if (getLexer().isNot(AsmToken::EndOfStatement))
       return TokError("unexpected token in '.ifb' directive");
@@ -3405,7 +3560,7 @@ bool AsmParser::ParseDirectiveIfc(SMLoc DirectiveLoc, bool ExpectEqual) {
   TheCondState.TheCond = AsmCond::IfCond;
 
   if (TheCondState.Ignore) {
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   } else {
     StringRef Str1 = ParseStringToComma();
 
@@ -3414,7 +3569,7 @@ bool AsmParser::ParseDirectiveIfc(SMLoc DirectiveLoc, bool ExpectEqual) {
 
     Lex();
 
-    StringRef Str2 = ParseStringToEndOfStatement();
+    StringRef Str2 = parseStringToEndOfStatement();
 
     if (getLexer().isNot(AsmToken::EndOfStatement))
       return TokError("unexpected token in '.ifc' directive");
@@ -3436,9 +3591,9 @@ bool AsmParser::ParseDirectiveIfdef(SMLoc DirectiveLoc, bool expect_defined) {
   TheCondState.TheCond = AsmCond::IfCond;
 
   if (TheCondState.Ignore) {
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   } else {
-    if (ParseIdentifier(Name))
+    if (parseIdentifier(Name))
       return TokError("expected identifier after '.ifdef'");
 
     Lex();
@@ -3469,11 +3624,11 @@ bool AsmParser::ParseDirectiveElseIf(SMLoc DirectiveLoc) {
       LastIgnoreState = TheCondStack.back().Ignore;
   if (LastIgnoreState || TheCondState.CondMet) {
     TheCondState.Ignore = true;
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   }
   else {
     int64_t ExprValue;
-    if (ParseAbsoluteExpression(ExprValue))
+    if (parseAbsoluteExpression(ExprValue))
       return true;
 
     if (getLexer().isNot(AsmToken::EndOfStatement))
@@ -3667,7 +3822,7 @@ MCAsmMacro *AsmParser::ParseMacroLikeBody(SMLoc DirectiveLoc) {
     }
 
     // Otherwise, scan till the end of the statement.
-    EatToEndOfStatement();
+    eatToEndOfStatement();
   }
 
   const char *BodyStart = StartToken.getLoc().getPointer();
@@ -3703,7 +3858,7 @@ void AsmParser::InstantiateMacroLikeBody(MCAsmMacro *M, SMLoc DirectiveLoc,
 
 bool AsmParser::ParseDirectiveRept(SMLoc DirectiveLoc) {
   int64_t Count;
-  if (ParseAbsoluteExpression(Count))
+  if (parseAbsoluteExpression(Count))
     return TokError("unexpected token in '.rept' directive");
 
   if (Count < 0)
@@ -3741,7 +3896,7 @@ bool AsmParser::ParseDirectiveIrp(SMLoc DirectiveLoc) {
   MCAsmMacroParameters Parameters;
   MCAsmMacroParameter Parameter;
 
-  if (ParseIdentifier(Parameter.first))
+  if (parseIdentifier(Parameter.first))
     return TokError("expected identifier in '.irp' directive");
 
   Parameters.push_back(Parameter);
@@ -3787,7 +3942,7 @@ bool AsmParser::ParseDirectiveIrpc(SMLoc DirectiveLoc) {
   MCAsmMacroParameters Parameters;
   MCAsmMacroParameter Parameter;
 
-  if (ParseIdentifier(Parameter.first))
+  if (parseIdentifier(Parameter.first))
     return TokError("expected identifier in '.irpc' directive");
 
   Parameters.push_back(Parameter);
@@ -3847,10 +4002,11 @@ bool AsmParser::ParseDirectiveEndr(SMLoc DirectiveLoc) {
   return false;
 }
 
-bool AsmParser::ParseDirectiveEmit(SMLoc IDLoc, ParseStatementInfo &Info) {
+bool AsmParser::ParseDirectiveMSEmit(SMLoc IDLoc, ParseStatementInfo &Info,
+                                     size_t Len) {
   const MCExpr *Value;
   SMLoc ExprLoc = getLexer().getLoc();
-  if (ParseExpression(Value))
+  if (parseExpression(Value))
     return true;
   const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(Value);
   if (!MCE)
@@ -3859,27 +4015,71 @@ bool AsmParser::ParseDirectiveEmit(SMLoc IDLoc, ParseStatementInfo &Info) {
   if (!isUIntN(8, IntValue) && !isIntN(8, IntValue))
     return Error(ExprLoc, "literal value out of range for directive");
 
-  Info.AsmRewrites->push_back(AsmRewrite(AOK_Emit, IDLoc, 5));
+  Info.AsmRewrites->push_back(AsmRewrite(AOK_Emit, IDLoc, Len));
   return false;
 }
 
-bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
-                                 unsigned &NumOutputs, unsigned &NumInputs,
-                                 SmallVectorImpl<std::pair<void *, bool> > &OpDecls,
-                                 SmallVectorImpl<std::string> &Constraints,
-                                 SmallVectorImpl<std::string> &Clobbers,
-                                 const MCInstrInfo *MII,
-                                 const MCInstPrinter *IP,
-                                 MCAsmParserSemaCallback &SI) {
+bool AsmParser::ParseDirectiveMSAlign(SMLoc IDLoc, ParseStatementInfo &Info) {
+  const MCExpr *Value;
+  SMLoc ExprLoc = getLexer().getLoc();
+  if (parseExpression(Value))
+    return true;
+  const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(Value);
+  if (!MCE)
+    return Error(ExprLoc, "unexpected expression in align");
+  uint64_t IntValue = MCE->getValue();
+  if (!isPowerOf2_64(IntValue))
+    return Error(ExprLoc, "literal value not a power of two greater then zero");
+
+  Info.AsmRewrites->push_back(AsmRewrite(AOK_Align, IDLoc, 5,
+                                         Log2_64(IntValue)));
+  return false;
+}
+
+// We are comparing pointers, but the pointers are relative to a single string.
+// Thus, this should always be deterministic.
+static int RewritesSort(const void *A, const void *B) {
+  const AsmRewrite *AsmRewriteA = static_cast<const AsmRewrite *>(A);
+  const AsmRewrite *AsmRewriteB = static_cast<const AsmRewrite *>(B);
+  if (AsmRewriteA->Loc.getPointer() < AsmRewriteB->Loc.getPointer())
+    return -1;
+  if (AsmRewriteB->Loc.getPointer() < AsmRewriteA->Loc.getPointer())
+    return 1;
+
+  // It's possible to have a SizeDirective rewrite and an Input/Output rewrite
+  // to the same location.  Make sure the SizeDirective rewrite is performed
+  // first.  This also ensure the sort algorithm is stable.
+  if (AsmRewriteA->Kind == AOK_SizeDirective) {
+    assert ((AsmRewriteB->Kind == AOK_Input || AsmRewriteB->Kind == AOK_Output) &&
+            "Expected an Input/Output rewrite!");
+    return -1;
+  }
+  if (AsmRewriteB->Kind == AOK_SizeDirective) {
+    assert ((AsmRewriteA->Kind == AOK_Input || AsmRewriteA->Kind == AOK_Output) &&
+            "Expected an Input/Output rewrite!");
+    return 1;
+  }
+  llvm_unreachable ("Unstable rewrite sort.");
+}
+
+bool
+AsmParser::parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
+                            unsigned &NumOutputs, unsigned &NumInputs,
+                            SmallVectorImpl<std::pair<void *, bool> > &OpDecls,
+                            SmallVectorImpl<std::string> &Constraints,
+                            SmallVectorImpl<std::string> &Clobbers,
+                            const MCInstrInfo *MII,
+                            const MCInstPrinter *IP,
+                            MCAsmParserSemaCallback &SI) {
   SmallVector<void *, 4> InputDecls;
   SmallVector<void *, 4> OutputDecls;
   SmallVector<bool, 4> InputDeclsAddressOf;
   SmallVector<bool, 4> OutputDeclsAddressOf;
   SmallVector<std::string, 4> InputConstraints;
   SmallVector<std::string, 4> OutputConstraints;
-  std::set<std::string> ClobberRegs;
+  SmallVector<unsigned, 4> ClobberRegs;
 
-  SmallVector<struct AsmRewrite, 4> AsmStrRewrites;
+  SmallVector<AsmRewrite, 4> AsmStrRewrites;
 
   // Prime the lexer.
   Lex();
@@ -3895,65 +4095,60 @@ bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
     if (Info.ParseError)
       return true;
 
-    if (Info.Opcode != ~0U) {
-      const MCInstrDesc &Desc = MII->get(Info.Opcode);
+    if (Info.Opcode == ~0U)
+      continue;
 
-      // Build the list of clobbers, outputs and inputs.
-      for (unsigned i = 1, e = Info.ParsedOperands.size(); i != e; ++i) {
-        MCParsedAsmOperand *Operand = Info.ParsedOperands[i];
+    const MCInstrDesc &Desc = MII->get(Info.Opcode);
 
-        // Immediate.
-        if (Operand->isImm()) {
-          if (Operand->needAsmRewrite())
-            AsmStrRewrites.push_back(AsmRewrite(AOK_ImmPrefix,
-                                                Operand->getStartLoc()));
-          continue;
-        }
+    // Build the list of clobbers, outputs and inputs.
+    for (unsigned i = 1, e = Info.ParsedOperands.size(); i != e; ++i) {
+      MCParsedAsmOperand *Operand = Info.ParsedOperands[i];
 
-        // Register operand.
-        if (Operand->isReg() && !Operand->needAddressOf()) {
-          unsigned NumDefs = Desc.getNumDefs();
-          // Clobber.
-          if (NumDefs && Operand->getMCOperandNum() < NumDefs) {
-            std::string Reg;
-            raw_string_ostream OS(Reg);
-            IP->printRegName(OS, Operand->getReg());
-            ClobberRegs.insert(StringRef(OS.str()));
-          }
-          continue;
-        }
+      // Immediate.
+      if (Operand->isImm()) {
+        if (Operand->needAsmRewrite())
+          AsmStrRewrites.push_back(AsmRewrite(AOK_ImmPrefix,
+                                              Operand->getStartLoc()));
+        continue;
+      }
 
-        // Expr/Input or Output.
-        unsigned Size;
-        bool IsVarDecl;
-        void *OpDecl = SI.LookupInlineAsmIdentifier(Operand->getName(), AsmLoc,
-                                                    Size, IsVarDecl);
-        if (OpDecl) {
-          bool isOutput = (i == 1) && Desc.mayStore();
-          if (Operand->isMem() && Operand->needSizeDirective())
-            AsmStrRewrites.push_back(AsmRewrite(AOK_SizeDirective,
-                                                Operand->getStartLoc(),
-                                                /*Len*/0,
-                                                Operand->getMemSize()));
-          if (isOutput) {
-            std::string Constraint = "=";
-            ++InputIdx;
-            OutputDecls.push_back(OpDecl);
-            OutputDeclsAddressOf.push_back(Operand->needAddressOf());
-            Constraint += Operand->getConstraint().str();
-            OutputConstraints.push_back(Constraint);
-            AsmStrRewrites.push_back(AsmRewrite(AOK_Output,
-                                                Operand->getStartLoc(),
-                                                Operand->getNameLen()));
-          } else {
-            InputDecls.push_back(OpDecl);
-            InputDeclsAddressOf.push_back(Operand->needAddressOf());
-            InputConstraints.push_back(Operand->getConstraint().str());
-            AsmStrRewrites.push_back(AsmRewrite(AOK_Input,
-                                                Operand->getStartLoc(),
-                                                Operand->getNameLen()));
-          }
-        }
+      // Register operand.
+      if (Operand->isReg() && !Operand->needAddressOf()) {
+        unsigned NumDefs = Desc.getNumDefs();
+        // Clobber.
+        if (NumDefs && Operand->getMCOperandNum() < NumDefs)
+          ClobberRegs.push_back(Operand->getReg());
+        continue;
+      }
+
+      // Expr/Input or Output.
+      bool IsVarDecl;
+      unsigned Length, Size, Type;
+      void *OpDecl = SI.LookupInlineAsmIdentifier(Operand->getName(), AsmLoc,
+                                                  Length, Size, Type,
+                                                  IsVarDecl);
+      if (!OpDecl)
+        continue;
+
+      bool isOutput = (i == 1) && Desc.mayStore();
+      if (Operand->isMem() && Operand->needSizeDirective())
+        AsmStrRewrites.push_back(AsmRewrite(AOK_SizeDirective,
+                                            Operand->getStartLoc(), /*Len*/0,
+                                            Operand->getMemSize()));
+
+      if (isOutput) {
+        ++InputIdx;
+        OutputDecls.push_back(OpDecl);
+        OutputDeclsAddressOf.push_back(Operand->needAddressOf());
+        OutputConstraints.push_back('=' + Operand->getConstraint().str());
+        AsmStrRewrites.push_back(AsmRewrite(AOK_Output, Operand->getStartLoc(),
+                                            Operand->getNameLen()));
+      } else {
+        InputDecls.push_back(OpDecl);
+        InputDeclsAddressOf.push_back(Operand->needAddressOf());
+        InputConstraints.push_back(Operand->getConstraint().str());
+        AsmStrRewrites.push_back(AsmRewrite(AOK_Input, Operand->getStartLoc(),
+                                            Operand->getNameLen()));
       }
     }
   }
@@ -3963,9 +4158,14 @@ bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
   NumInputs = InputDecls.size();
 
   // Set the unique clobbers.
-  for (std::set<std::string>::iterator I = ClobberRegs.begin(),
-         E = ClobberRegs.end(); I != E; ++I)
-    Clobbers.push_back(*I);
+  array_pod_sort(ClobberRegs.begin(), ClobberRegs.end());
+  ClobberRegs.erase(std::unique(ClobberRegs.begin(), ClobberRegs.end()),
+                    ClobberRegs.end());
+  Clobbers.assign(ClobberRegs.size(), std::string());
+  for (unsigned I = 0, E = ClobberRegs.size(); I != E; ++I) {
+    raw_string_ostream OS(Clobbers[I]);
+    IP->printRegName(OS, ClobberRegs[I]);
+  }
 
   // Merge the various outputs and inputs.  Output are expected first.
   if (NumOutputs || NumInputs) {
@@ -3987,10 +4187,14 @@ bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
   AsmRewriteKind PrevKind = AOK_Imm;
   raw_string_ostream OS(AsmStringIR);
   const char *Start = SrcMgr.getMemoryBuffer(0)->getBufferStart();
-  for (SmallVectorImpl<struct AsmRewrite>::iterator
-         I = AsmStrRewrites.begin(), E = AsmStrRewrites.end(); I != E; ++I) {
+  array_pod_sort(AsmStrRewrites.begin(), AsmStrRewrites.end(), RewritesSort);
+  for (SmallVectorImpl<AsmRewrite>::iterator I = AsmStrRewrites.begin(),
+                                             E = AsmStrRewrites.end();
+       I != E; ++I) {
     const char *Loc = (*I).Loc.getPointer();
+    assert(Loc >= Start && "Expected Loc to be after Start!");
 
+    unsigned AdditionalSkip = 0;
     AsmRewriteKind Kind = (*I).Kind;
 
     // Emit everything up to the immediate/expression.  If the previous rewrite
@@ -4009,22 +4213,19 @@ bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
     switch (Kind) {
     default: break;
     case AOK_Imm:
-      OS << Twine("$$");
-      OS << (*I).Val;
+      OS << "$$" << (*I).Val;
       break;
     case AOK_ImmPrefix:
-      OS << Twine("$$");
+      OS << "$$";
       break;
     case AOK_Input:
-      OS << '$';
-      OS << InputIdx++;
+      OS << '$' << InputIdx++;
       break;
     case AOK_Output:
-      OS << '$';
-      OS << OutputIdx++;
+      OS << '$' << OutputIdx++;
       break;
     case AOK_SizeDirective:
-      switch((*I).Val) {
+      switch ((*I).Val) {
       default: break;
       case 8:  OS << "byte ptr "; break;
       case 16: OS << "word ptr "; break;
@@ -4038,6 +4239,15 @@ bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
     case AOK_Emit:
       OS << ".byte";
       break;
+    case AOK_Align: {
+      unsigned Val = (*I).Val;
+      OS << ".align " << Val;
+
+      // Skip the original immediate.
+      assert(Val < 10 && "Expected alignment less then 2^10.");
+      AdditionalSkip = (Val < 4) ? 2 : Val < 7 ? 3 : 4;
+      break;
+    }
     case AOK_DotOperator:
       OS << (*I).Val;
       break;
@@ -4045,7 +4255,7 @@ bool AsmParser::ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
 
     // Skip the original expression.
     if (Kind != AOK_SizeDirective)
-      Start = Loc + (*I).Len;
+      Start = Loc + (*I).Len + AdditionalSkip;
   }
 
   // Emit the remainder of the asm string.

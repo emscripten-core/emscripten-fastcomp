@@ -81,6 +81,8 @@ public:
   virtual bool TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
                              const LoadInst *LI);
 
+  virtual bool FastLowerArguments();
+
 #include "X86GenFastISel.inc"
 
 private:
@@ -332,81 +334,12 @@ bool X86FastISel::X86FastEmitExtend(ISD::NodeType Opc, EVT DstVT,
                                     unsigned &ResultReg) {
   unsigned RR = FastEmit_r(SrcVT.getSimpleVT(), DstVT.getSimpleVT(), Opc,
                            Src, /*TODO: Kill=*/false);
-
-  if (RR != 0) {
-    ResultReg = RR;
-    return true;
-  } else
+  if (RR == 0)
     return false;
-}
 
-/// @LOCALMOD-BEGIN
-/// isLegalAddressingModeForNaCl - Determine if the addressing mode is
-/// legal for NaCl translation.  If not, the caller is expected to
-/// reject the instruction for fast-ISel code generation.
-///
-/// The logic for the test is translated from the corresponding logic
-/// in X86DAGToDAGISel::LegalizeAddressingModeForNaCl().  It can't be
-/// used directly due to the X86AddressMode vs X86ISelAddressMode
-/// types.  As such, any changes to isLegalAddressingModeForNaCl() and
-/// X86DAGToDAGISel::LegalizeAddressingModeForNaCl() need to be
-/// synchronized.  The original conditions are indicated in comments.
-static bool isLegalAddressingModeForNaCl(const X86Subtarget *Subtarget,
-                                         const X86AddressMode &AM) {
-  if (Subtarget->isTargetNaCl64()) {
-    // Return true (i.e., is legal) if the equivalent of
-    // X86ISelAddressMode::isRIPRelative() is true.
-    if (AM.BaseType == X86AddressMode::RegBase &&
-        AM.Base.Reg == X86::RIP)
-      return true;
-
-    // Check for the equivalent of
-    // (!AM.hasBaseOrIndexReg() &&
-    //  !AM.hasSymbolicDisplacement() &&
-    //  AM.Disp < 0)
-    if (!((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
-          AM.IndexReg) &&
-        !AM.GV &&
-        AM.Disp < 0) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // At this point in the LegalizeAddressingModeForNaCl() code, it
-    // normalizes an addressing mode with a base register and no index
-    // register into an equivalent mode with an index register and no
-    // base register.  Since we don't modify AM, we may have to check
-    // both the base and index register fields in the remainder of the
-    // tests.
-
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::FrameIndexBase || AM.GV || AM.CP) &&
-    //   AM.IndexReg.getNode() &&
-    //   AM.Disp > 0)
-    // Note: X86AddressMode doesn't have a CP analogue
-    if ((AM.BaseType == X86AddressMode::FrameIndexBase || AM.GV) &&
-        ((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
-         AM.IndexReg) &&
-        AM.Disp > 0) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::RegBase) &&
-    //  AM.Base_Reg.getNode() &&
-    //  AM.IndexReg.getNode())
-    if ((AM.BaseType == X86AddressMode::RegBase) &&
-        AM.Base.Reg &&
-        AM.IndexReg) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-  }
-
+  ResultReg = RR;
   return true;
 }
-// @LOCALMOD-END
 
 /// X86SelectAddress - Attempt to fill in an address from the given value.
 ///
@@ -836,7 +769,7 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
 
   // Don't handle popping bytes on return for now.
   if (X86MFInfo->getBytesToPopOnReturn() != 0)
-    return 0;
+    return false;
 
   // fastcc with -tailcallopt is intended to provide a guaranteed
   // tail call optimization. Fastisel doesn't know how to do that.
@@ -846,6 +779,9 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
   // Let SDISel handle vararg functions.
   if (F.isVarArg())
     return false;
+
+  // Build a list of return value registers.
+  SmallVector<unsigned, 4> RetRegs;
 
   if (Ret->getNumOperands() > 0) {
     SmallVector<ISD::OutputArg, 4> Outs;
@@ -914,8 +850,8 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
             DstReg).addReg(SrcReg);
 
-    // Mark the register as live out of the function.
-    MRI.addLiveOut(VA.getLocReg());
+    // Add register to return instruction.
+    RetRegs.push_back(VA.getLocReg());
   }
 
   // The x86-64 ABI for returning structs by value requires that we copy
@@ -939,7 +875,10 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
   }
 
   // Now emit the RET.
-  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(X86::RET));
+  MachineInstrBuilder MIB =
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(X86::RET));
+  for (unsigned i = 0, e = RetRegs.size(); i != e; ++i)
+    MIB.addReg(RetRegs[i], RegState::Implicit);
   return true;
 }
 
@@ -1630,6 +1569,78 @@ bool X86FastISel::X86VisitIntrinsicCall(const IntrinsicInst &I) {
     return true;
   }
   }
+}
+
+bool X86FastISel::FastLowerArguments() {
+  if (!FuncInfo.CanLowerReturn)
+    return false;
+
+  const Function *F = FuncInfo.Fn;
+  if (F->isVarArg())
+    return false;
+
+  CallingConv::ID CC = F->getCallingConv();
+  if (CC != CallingConv::C)
+    return false;
+  
+  if (!Subtarget->is64Bit())
+    return false;
+  
+  // Only handle simple cases. i.e. Up to 6 i32/i64 scalar arguments.
+  unsigned Idx = 1;
+  for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
+       I != E; ++I, ++Idx) {
+    if (Idx > 6)
+      return false;
+
+    if (F->getAttributes().hasAttribute(Idx, Attribute::ByVal) ||
+        F->getAttributes().hasAttribute(Idx, Attribute::InReg) ||
+        F->getAttributes().hasAttribute(Idx, Attribute::StructRet) ||
+        F->getAttributes().hasAttribute(Idx, Attribute::Nest))
+      return false;
+
+    Type *ArgTy = I->getType();
+    if (ArgTy->isStructTy() || ArgTy->isArrayTy() || ArgTy->isVectorTy())
+      return false;
+
+    EVT ArgVT = TLI.getValueType(ArgTy);
+    if (!ArgVT.isSimple()) return false;
+    switch (ArgVT.getSimpleVT().SimpleTy) {
+    case MVT::i32:
+    case MVT::i64:
+      break;
+    default:
+      return false;
+    }
+  }
+
+  static const uint16_t GPR32ArgRegs[] = {
+    X86::EDI, X86::ESI, X86::EDX, X86::ECX, X86::R8D, X86::R9D
+  };
+  static const uint16_t GPR64ArgRegs[] = {
+    X86::RDI, X86::RSI, X86::RDX, X86::RCX, X86::R8 , X86::R9
+  };
+
+  Idx = 0;
+  const TargetRegisterClass *RC32 = TLI.getRegClassFor(MVT::i32);
+  const TargetRegisterClass *RC64 = TLI.getRegClassFor(MVT::i64);
+  for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
+       I != E; ++I, ++Idx) {
+    if (I->use_empty())
+      continue;
+    bool is32Bit = TLI.getValueType(I->getType()) == MVT::i32;
+    const TargetRegisterClass *RC = is32Bit ? RC32 : RC64;
+    unsigned SrcReg = is32Bit ? GPR32ArgRegs[Idx] : GPR64ArgRegs[Idx];
+    unsigned DstReg = FuncInfo.MF->addLiveIn(SrcReg, RC);
+    // FIXME: Unfortunately it's necessary to emit a copy from the livein copy.
+    // Without this, EmitLiveInCopies may eliminate the livein if its only
+    // use is a bitcast (which isn't turned into an instruction).
+    unsigned ResultReg = createResultReg(RC);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
+            ResultReg).addReg(DstReg, getKillRegState(true));
+    UpdateValueMap(I, ResultReg);
+  }
+  return true;
 }
 
 bool X86FastISel::X86SelectCall(const Instruction *I) {

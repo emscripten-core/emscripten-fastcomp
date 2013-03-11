@@ -32,12 +32,11 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Target/Mangler.h"
 #include "llvm/Target/TargetFrameLowering.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
 
-cl::opt<bool>
+static cl::opt<bool>
 EnableARMEHABIDescriptors("arm-enable-ehabi-descriptors", cl::Hidden,
   cl::desc("Generate ARM EHABI tables with unwinding descriptors"),
   cl::init(false));

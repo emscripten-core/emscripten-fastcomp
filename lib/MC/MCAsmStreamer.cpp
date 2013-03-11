@@ -71,7 +71,7 @@ public:
                 MCInstPrinter *printer, MCCodeEmitter *emitter,
                 MCAsmBackend *asmbackend,
                 bool showInst)
-    : MCStreamer(Context), OS(os), MAI(Context.getAsmInfo()),
+    : MCStreamer(SK_AsmStreamer, Context), OS(os), MAI(Context.getAsmInfo()),
       InstPrinter(printer), Emitter(emitter), AsmBackend(asmbackend),
       CommentStream(CommentToEmit), IsVerboseAsm(isVerboseAsm),
       ShowInst(showInst), UseLoc(useLoc), UseCFI(useCFI),
@@ -145,6 +145,7 @@ public:
   virtual void EmitEHSymAttributes(const MCSymbol *Symbol,
                                    MCSymbol *EHSymbol);
   virtual void EmitAssemblerFlag(MCAssemblerFlag Flag);
+  virtual void EmitLinkerOptions(ArrayRef<std::string> Options);
   virtual void EmitDataRegion(MCDataRegionType Kind);
   virtual void EmitThumbFunc(MCSymbol *Func);
 
@@ -276,6 +277,10 @@ public:
   virtual void FinishImpl();
 
   /// @}
+
+  static bool classof(const MCStreamer *S) {
+    return S->getKind() == SK_AsmStreamer;
+  }
 };
 
 } // end anonymous namespace.
@@ -373,6 +378,16 @@ void MCAsmStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
   case MCAF_Code64:                OS << '\t'<< MAI.getCode64Directive(); break;
   }
   EmitEOL();
+}
+
+void MCAsmStreamer::EmitLinkerOptions(ArrayRef<std::string> Options) {
+  assert(!Options.empty() && "At least one option is required!");
+  OS << "\t.linker_option \"" << Options[0] << '"';
+  for (ArrayRef<std::string>::iterator it = Options.begin() + 1,
+         ie = Options.end(); it != ie; ++it) {
+    OS << ", " << '"' << *it << '"';
+  }
+  OS << "\n";
 }
 
 void MCAsmStreamer::EmitDataRegion(MCDataRegionType Kind) {

@@ -305,6 +305,88 @@ unsigned HexagonInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
 }
 
 
+/// \brief For a comparison instruction, return the source registers in
+/// \p SrcReg and \p SrcReg2 if having two register operands, and the value it
+/// compares against in CmpValue. Return true if the comparison instruction
+/// can be analyzed.
+bool HexagonInstrInfo::analyzeCompare(const MachineInstr *MI,
+                                      unsigned &SrcReg, unsigned &SrcReg2,
+                                      int &Mask, int &Value) const {
+  unsigned Opc = MI->getOpcode();
+
+  // Set mask and the first source register.
+  switch (Opc) {
+    case Hexagon::CMPEHexagon4rr:
+    case Hexagon::CMPEQri:
+    case Hexagon::CMPEQrr:
+    case Hexagon::CMPGT64rr:
+    case Hexagon::CMPGTU64rr:
+    case Hexagon::CMPGTUri:
+    case Hexagon::CMPGTUrr:
+    case Hexagon::CMPGTri:
+    case Hexagon::CMPGTrr:
+    case Hexagon::CMPLTUrr:
+    case Hexagon::CMPLTrr:
+      SrcReg = MI->getOperand(1).getReg();
+      Mask = ~0;
+      break;
+    case Hexagon::CMPbEQri_V4:
+    case Hexagon::CMPbEQrr_sbsb_V4:
+    case Hexagon::CMPbEQrr_ubub_V4:
+    case Hexagon::CMPbGTUri_V4:
+    case Hexagon::CMPbGTUrr_V4:
+    case Hexagon::CMPbGTrr_V4:
+      SrcReg = MI->getOperand(1).getReg();
+      Mask = 0xFF;
+      break;
+    case Hexagon::CMPhEQri_V4:
+    case Hexagon::CMPhEQrr_shl_V4:
+    case Hexagon::CMPhEQrr_xor_V4:
+    case Hexagon::CMPhGTUri_V4:
+    case Hexagon::CMPhGTUrr_V4:
+    case Hexagon::CMPhGTrr_shl_V4:
+      SrcReg = MI->getOperand(1).getReg();
+      Mask = 0xFFFF;
+      break;
+  }
+
+  // Set the value/second source register.
+  switch (Opc) {
+    case Hexagon::CMPEHexagon4rr:
+    case Hexagon::CMPEQrr:
+    case Hexagon::CMPGT64rr:
+    case Hexagon::CMPGTU64rr:
+    case Hexagon::CMPGTUrr:
+    case Hexagon::CMPGTrr:
+    case Hexagon::CMPbEQrr_sbsb_V4:
+    case Hexagon::CMPbEQrr_ubub_V4:
+    case Hexagon::CMPbGTUrr_V4:
+    case Hexagon::CMPbGTrr_V4:
+    case Hexagon::CMPhEQrr_shl_V4:
+    case Hexagon::CMPhEQrr_xor_V4:
+    case Hexagon::CMPhGTUrr_V4:
+    case Hexagon::CMPhGTrr_shl_V4:
+    case Hexagon::CMPLTUrr:
+    case Hexagon::CMPLTrr:
+      SrcReg2 = MI->getOperand(2).getReg();
+      return true;
+
+    case Hexagon::CMPEQri:
+    case Hexagon::CMPGTUri:
+    case Hexagon::CMPGTri:
+    case Hexagon::CMPbEQri_V4:
+    case Hexagon::CMPbGTUri_V4:
+    case Hexagon::CMPhEQri_V4:
+    case Hexagon::CMPhGTUri_V4:
+      SrcReg2 = 0;
+      Value = MI->getOperand(2).getImm();
+      return true;
+  }
+
+  return false;
+}
+
+
 void HexagonInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator I, DebugLoc DL,
                                  unsigned DestReg, unsigned SrcReg,
@@ -342,6 +424,18 @@ void HexagonInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   if (Hexagon::CRRegsRegClass.contains(DestReg) &&
       Hexagon::IntRegsRegClass.contains(SrcReg)) {
     BuildMI(MBB, I, DL, get(Hexagon::TFCR), DestReg).addReg(SrcReg);
+    return;
+  }
+  if (Hexagon::PredRegsRegClass.contains(SrcReg) &&
+      Hexagon::IntRegsRegClass.contains(DestReg)) {
+    BuildMI(MBB, I, DL, get(Hexagon::TFR_RsPd), DestReg).
+      addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+  if (Hexagon::IntRegsRegClass.contains(SrcReg) &&
+      Hexagon::PredRegsRegClass.contains(DestReg)) {
+    BuildMI(MBB, I, DL, get(Hexagon::TFR_PdRs), DestReg).
+      addReg(SrcReg, getKillRegState(KillSrc));
     return;
   }
 
@@ -608,30 +702,6 @@ bool HexagonInstrInfo::isExtended(const MachineInstr *MI) const {
     case Hexagon::STriw_abs_setimm_V4:
 
     // V4 global address load.
-    case Hexagon::LDrid_GP_cPt_V4 :
-    case Hexagon::LDrid_GP_cNotPt_V4 :
-    case Hexagon::LDrid_GP_cdnPt_V4 :
-    case Hexagon::LDrid_GP_cdnNotPt_V4 :
-    case Hexagon::LDrib_GP_cPt_V4 :
-    case Hexagon::LDrib_GP_cNotPt_V4 :
-    case Hexagon::LDrib_GP_cdnPt_V4 :
-    case Hexagon::LDrib_GP_cdnNotPt_V4 :
-    case Hexagon::LDriub_GP_cPt_V4 :
-    case Hexagon::LDriub_GP_cNotPt_V4 :
-    case Hexagon::LDriub_GP_cdnPt_V4 :
-    case Hexagon::LDriub_GP_cdnNotPt_V4 :
-    case Hexagon::LDrih_GP_cPt_V4 :
-    case Hexagon::LDrih_GP_cNotPt_V4 :
-    case Hexagon::LDrih_GP_cdnPt_V4 :
-    case Hexagon::LDrih_GP_cdnNotPt_V4 :
-    case Hexagon::LDriuh_GP_cPt_V4 :
-    case Hexagon::LDriuh_GP_cNotPt_V4 :
-    case Hexagon::LDriuh_GP_cdnPt_V4 :
-    case Hexagon::LDriuh_GP_cdnNotPt_V4 :
-    case Hexagon::LDriw_GP_cPt_V4 :
-    case Hexagon::LDriw_GP_cNotPt_V4 :
-    case Hexagon::LDriw_GP_cdnPt_V4 :
-    case Hexagon::LDriw_GP_cdnNotPt_V4 :
     case Hexagon::LDd_GP_cPt_V4 :
     case Hexagon::LDd_GP_cNotPt_V4 :
     case Hexagon::LDd_GP_cdnPt_V4 :
@@ -658,22 +728,6 @@ bool HexagonInstrInfo::isExtended(const MachineInstr *MI) const {
     case Hexagon::LDw_GP_cdnNotPt_V4 :
 
     // V4 global address store.
-    case Hexagon::STrid_GP_cPt_V4 :
-    case Hexagon::STrid_GP_cNotPt_V4 :
-    case Hexagon::STrid_GP_cdnPt_V4 :
-    case Hexagon::STrid_GP_cdnNotPt_V4 :
-    case Hexagon::STrib_GP_cPt_V4 :
-    case Hexagon::STrib_GP_cNotPt_V4 :
-    case Hexagon::STrib_GP_cdnPt_V4 :
-    case Hexagon::STrib_GP_cdnNotPt_V4 :
-    case Hexagon::STrih_GP_cPt_V4 :
-    case Hexagon::STrih_GP_cNotPt_V4 :
-    case Hexagon::STrih_GP_cdnPt_V4 :
-    case Hexagon::STrih_GP_cdnNotPt_V4 :
-    case Hexagon::STriw_GP_cPt_V4 :
-    case Hexagon::STriw_GP_cNotPt_V4 :
-    case Hexagon::STriw_GP_cdnPt_V4 :
-    case Hexagon::STriw_GP_cdnNotPt_V4 :
     case Hexagon::STd_GP_cPt_V4 :
     case Hexagon::STd_GP_cNotPt_V4 :
     case Hexagon::STd_GP_cdnPt_V4 :
@@ -692,18 +746,6 @@ bool HexagonInstrInfo::isExtended(const MachineInstr *MI) const {
     case Hexagon::STw_GP_cdnNotPt_V4 :
 
     // V4 predicated global address new value store.
-    case Hexagon::STrib_GP_cPt_nv_V4 :
-    case Hexagon::STrib_GP_cNotPt_nv_V4 :
-    case Hexagon::STrib_GP_cdnPt_nv_V4 :
-    case Hexagon::STrib_GP_cdnNotPt_nv_V4 :
-    case Hexagon::STrih_GP_cPt_nv_V4 :
-    case Hexagon::STrih_GP_cNotPt_nv_V4 :
-    case Hexagon::STrih_GP_cdnPt_nv_V4 :
-    case Hexagon::STrih_GP_cdnNotPt_nv_V4 :
-    case Hexagon::STriw_GP_cPt_nv_V4 :
-    case Hexagon::STriw_GP_cNotPt_nv_V4 :
-    case Hexagon::STriw_GP_cdnPt_nv_V4 :
-    case Hexagon::STriw_GP_cdnNotPt_nv_V4 :
     case Hexagon::STb_GP_cPt_nv_V4 :
     case Hexagon::STb_GP_cNotPt_nv_V4 :
     case Hexagon::STb_GP_cdnPt_nv_V4 :
@@ -1095,7 +1137,6 @@ bool HexagonInstrInfo::isNewValueStore(const MachineInstr *MI) const {
     case Hexagon::STrib_indexed_nv_V4:
     case Hexagon::STrib_indexed_shl_nv_V4:
     case Hexagon::STrib_shl_nv_V4:
-    case Hexagon::STrib_GP_nv_V4:
     case Hexagon::STb_GP_nv_V4:
     case Hexagon::POST_STbri_nv_V4:
     case Hexagon::STrib_cPt_nv_V4:
@@ -1118,10 +1159,6 @@ bool HexagonInstrInfo::isNewValueStore(const MachineInstr *MI) const {
     case Hexagon::STb_GP_cNotPt_nv_V4:
     case Hexagon::STb_GP_cdnPt_nv_V4:
     case Hexagon::STb_GP_cdnNotPt_nv_V4:
-    case Hexagon::STrib_GP_cPt_nv_V4:
-    case Hexagon::STrib_GP_cNotPt_nv_V4:
-    case Hexagon::STrib_GP_cdnPt_nv_V4:
-    case Hexagon::STrib_GP_cdnNotPt_nv_V4:
     case Hexagon::STrib_abs_nv_V4:
     case Hexagon::STrib_abs_cPt_nv_V4:
     case Hexagon::STrib_abs_cdnPt_nv_V4:
@@ -1138,7 +1175,6 @@ bool HexagonInstrInfo::isNewValueStore(const MachineInstr *MI) const {
     case Hexagon::STrih_indexed_nv_V4:
     case Hexagon::STrih_indexed_shl_nv_V4:
     case Hexagon::STrih_shl_nv_V4:
-    case Hexagon::STrih_GP_nv_V4:
     case Hexagon::STh_GP_nv_V4:
     case Hexagon::POST_SThri_nv_V4:
     case Hexagon::STrih_cPt_nv_V4:
@@ -1161,10 +1197,6 @@ bool HexagonInstrInfo::isNewValueStore(const MachineInstr *MI) const {
     case Hexagon::STh_GP_cNotPt_nv_V4:
     case Hexagon::STh_GP_cdnPt_nv_V4:
     case Hexagon::STh_GP_cdnNotPt_nv_V4:
-    case Hexagon::STrih_GP_cPt_nv_V4:
-    case Hexagon::STrih_GP_cNotPt_nv_V4:
-    case Hexagon::STrih_GP_cdnPt_nv_V4:
-    case Hexagon::STrih_GP_cdnNotPt_nv_V4:
     case Hexagon::STrih_abs_nv_V4:
     case Hexagon::STrih_abs_cPt_nv_V4:
     case Hexagon::STrih_abs_cdnPt_nv_V4:
@@ -1181,7 +1213,6 @@ bool HexagonInstrInfo::isNewValueStore(const MachineInstr *MI) const {
     case Hexagon::STriw_indexed_nv_V4:
     case Hexagon::STriw_indexed_shl_nv_V4:
     case Hexagon::STriw_shl_nv_V4:
-    case Hexagon::STriw_GP_nv_V4:
     case Hexagon::STw_GP_nv_V4:
     case Hexagon::POST_STwri_nv_V4:
     case Hexagon::STriw_cPt_nv_V4:
@@ -1204,10 +1235,6 @@ bool HexagonInstrInfo::isNewValueStore(const MachineInstr *MI) const {
     case Hexagon::STw_GP_cNotPt_nv_V4:
     case Hexagon::STw_GP_cdnPt_nv_V4:
     case Hexagon::STw_GP_cdnNotPt_nv_V4:
-    case Hexagon::STriw_GP_cPt_nv_V4:
-    case Hexagon::STriw_GP_cNotPt_nv_V4:
-    case Hexagon::STriw_GP_cdnPt_nv_V4:
-    case Hexagon::STriw_GP_cdnNotPt_nv_V4:
     case Hexagon::STriw_abs_nv_V4:
     case Hexagon::STriw_abs_cPt_nv_V4:
     case Hexagon::STriw_abs_cdnPt_nv_V4:
@@ -1500,25 +1527,10 @@ unsigned HexagonInstrInfo::getInvertedPredicatedOpcode(const int Opc) const {
       return Hexagon::JMPR_cPt;
 
   // V4 indexed+scaled load.
-    case Hexagon::LDrid_indexed_cPt_V4:
-      return Hexagon::LDrid_indexed_cNotPt_V4;
-    case Hexagon::LDrid_indexed_cNotPt_V4:
-      return Hexagon::LDrid_indexed_cPt_V4;
-
     case Hexagon::LDrid_indexed_shl_cPt_V4:
       return Hexagon::LDrid_indexed_shl_cNotPt_V4;
     case Hexagon::LDrid_indexed_shl_cNotPt_V4:
       return Hexagon::LDrid_indexed_shl_cPt_V4;
-
-    case Hexagon::LDrib_indexed_cPt_V4:
-      return Hexagon::LDrib_indexed_cNotPt_V4;
-    case Hexagon::LDrib_indexed_cNotPt_V4:
-      return Hexagon::LDrib_indexed_cPt_V4;
-
-    case Hexagon::LDriub_indexed_cPt_V4:
-      return Hexagon::LDriub_indexed_cNotPt_V4;
-    case Hexagon::LDriub_indexed_cNotPt_V4:
-      return Hexagon::LDriub_indexed_cPt_V4;
 
     case Hexagon::LDrib_indexed_shl_cPt_V4:
       return Hexagon::LDrib_indexed_shl_cNotPt_V4;
@@ -1530,16 +1542,6 @@ unsigned HexagonInstrInfo::getInvertedPredicatedOpcode(const int Opc) const {
     case Hexagon::LDriub_indexed_shl_cNotPt_V4:
       return Hexagon::LDriub_indexed_shl_cPt_V4;
 
-    case Hexagon::LDrih_indexed_cPt_V4:
-      return Hexagon::LDrih_indexed_cNotPt_V4;
-    case Hexagon::LDrih_indexed_cNotPt_V4:
-      return Hexagon::LDrih_indexed_cPt_V4;
-
-    case Hexagon::LDriuh_indexed_cPt_V4:
-      return Hexagon::LDriuh_indexed_cNotPt_V4;
-    case Hexagon::LDriuh_indexed_cNotPt_V4:
-      return Hexagon::LDriuh_indexed_cPt_V4;
-
     case Hexagon::LDrih_indexed_shl_cPt_V4:
       return Hexagon::LDrih_indexed_shl_cNotPt_V4;
     case Hexagon::LDrih_indexed_shl_cNotPt_V4:
@@ -1549,11 +1551,6 @@ unsigned HexagonInstrInfo::getInvertedPredicatedOpcode(const int Opc) const {
       return Hexagon::LDriuh_indexed_shl_cNotPt_V4;
     case Hexagon::LDriuh_indexed_shl_cNotPt_V4:
       return Hexagon::LDriuh_indexed_shl_cPt_V4;
-
-    case Hexagon::LDriw_indexed_cPt_V4:
-      return Hexagon::LDriw_indexed_cNotPt_V4;
-    case Hexagon::LDriw_indexed_cNotPt_V4:
-      return Hexagon::LDriw_indexed_cPt_V4;
 
     case Hexagon::LDriw_indexed_shl_cPt_V4:
       return Hexagon::LDriw_indexed_shl_cNotPt_V4;
@@ -1679,26 +1676,6 @@ unsigned HexagonInstrInfo::getInvertedPredicatedOpcode(const int Opc) const {
       return Hexagon::STw_GP_cNotPt_V4;
     case Hexagon::STw_GP_cNotPt_V4:
       return Hexagon::STw_GP_cPt_V4;
-
-    case Hexagon::STrid_GP_cPt_V4:
-      return Hexagon::STrid_GP_cNotPt_V4;
-    case Hexagon::STrid_GP_cNotPt_V4:
-      return Hexagon::STrid_GP_cPt_V4;
-
-    case Hexagon::STrib_GP_cPt_V4:
-      return Hexagon::STrib_GP_cNotPt_V4;
-    case Hexagon::STrib_GP_cNotPt_V4:
-      return Hexagon::STrib_GP_cPt_V4;
-
-    case Hexagon::STrih_GP_cPt_V4:
-      return Hexagon::STrih_GP_cNotPt_V4;
-    case Hexagon::STrih_GP_cNotPt_V4:
-      return Hexagon::STrih_GP_cPt_V4;
-
-    case Hexagon::STriw_GP_cPt_V4:
-      return Hexagon::STriw_GP_cNotPt_V4;
-    case Hexagon::STriw_GP_cNotPt_V4:
-      return Hexagon::STriw_GP_cPt_V4;
 
   // Load.
     case Hexagon::LDrid_cPt:
@@ -1965,75 +1942,26 @@ getMatchingCondBranchOpcode(int Opc, bool invertPredicate) const {
                               Hexagon::JMPR_cNotPt;
 
   // V4 indexed+scaled load.
-  case Hexagon::LDrid_indexed_V4:
-    return !invertPredicate ? Hexagon::LDrid_indexed_cPt_V4 :
-                              Hexagon::LDrid_indexed_cNotPt_V4;
   case Hexagon::LDrid_indexed_shl_V4:
     return !invertPredicate ? Hexagon::LDrid_indexed_shl_cPt_V4 :
                               Hexagon::LDrid_indexed_shl_cNotPt_V4;
-  case Hexagon::LDrib_indexed_V4:
-    return !invertPredicate ? Hexagon::LDrib_indexed_cPt_V4 :
-                              Hexagon::LDrib_indexed_cNotPt_V4;
-  case Hexagon::LDriub_indexed_V4:
-    return !invertPredicate ? Hexagon::LDriub_indexed_cPt_V4 :
-                              Hexagon::LDriub_indexed_cNotPt_V4;
-  case Hexagon::LDriub_ae_indexed_V4:
-    return !invertPredicate ? Hexagon::LDriub_indexed_cPt_V4 :
-                              Hexagon::LDriub_indexed_cNotPt_V4;
   case Hexagon::LDrib_indexed_shl_V4:
     return !invertPredicate ? Hexagon::LDrib_indexed_shl_cPt_V4 :
                               Hexagon::LDrib_indexed_shl_cNotPt_V4;
   case Hexagon::LDriub_indexed_shl_V4:
     return !invertPredicate ? Hexagon::LDriub_indexed_shl_cPt_V4 :
                               Hexagon::LDriub_indexed_shl_cNotPt_V4;
-  case Hexagon::LDriub_ae_indexed_shl_V4:
-    return !invertPredicate ? Hexagon::LDriub_indexed_shl_cPt_V4 :
-                              Hexagon::LDriub_indexed_shl_cNotPt_V4;
-  case Hexagon::LDrih_indexed_V4:
-    return !invertPredicate ? Hexagon::LDrih_indexed_cPt_V4 :
-                              Hexagon::LDrih_indexed_cNotPt_V4;
-  case Hexagon::LDriuh_indexed_V4:
-    return !invertPredicate ? Hexagon::LDriuh_indexed_cPt_V4 :
-                              Hexagon::LDriuh_indexed_cNotPt_V4;
-  case Hexagon::LDriuh_ae_indexed_V4:
-    return !invertPredicate ? Hexagon::LDriuh_indexed_cPt_V4 :
-                              Hexagon::LDriuh_indexed_cNotPt_V4;
   case Hexagon::LDrih_indexed_shl_V4:
     return !invertPredicate ? Hexagon::LDrih_indexed_shl_cPt_V4 :
                               Hexagon::LDrih_indexed_shl_cNotPt_V4;
   case Hexagon::LDriuh_indexed_shl_V4:
     return !invertPredicate ? Hexagon::LDriuh_indexed_shl_cPt_V4 :
                               Hexagon::LDriuh_indexed_shl_cNotPt_V4;
-  case Hexagon::LDriuh_ae_indexed_shl_V4:
-    return !invertPredicate ? Hexagon::LDriuh_indexed_shl_cPt_V4 :
-                              Hexagon::LDriuh_indexed_shl_cNotPt_V4;
-  case Hexagon::LDriw_indexed_V4:
-    return !invertPredicate ? Hexagon::LDriw_indexed_cPt_V4 :
-                              Hexagon::LDriw_indexed_cNotPt_V4;
   case Hexagon::LDriw_indexed_shl_V4:
     return !invertPredicate ? Hexagon::LDriw_indexed_shl_cPt_V4 :
                               Hexagon::LDriw_indexed_shl_cNotPt_V4;
 
   // V4 Load from global address
-  case Hexagon::LDrid_GP_V4:
-    return !invertPredicate ? Hexagon::LDrid_GP_cPt_V4 :
-                              Hexagon::LDrid_GP_cNotPt_V4;
-  case Hexagon::LDrib_GP_V4:
-    return !invertPredicate ? Hexagon::LDrib_GP_cPt_V4 :
-                              Hexagon::LDrib_GP_cNotPt_V4;
-  case Hexagon::LDriub_GP_V4:
-    return !invertPredicate ? Hexagon::LDriub_GP_cPt_V4 :
-                              Hexagon::LDriub_GP_cNotPt_V4;
-  case Hexagon::LDrih_GP_V4:
-    return !invertPredicate ? Hexagon::LDrih_GP_cPt_V4 :
-                              Hexagon::LDrih_GP_cNotPt_V4;
-  case Hexagon::LDriuh_GP_V4:
-    return !invertPredicate ? Hexagon::LDriuh_GP_cPt_V4 :
-                              Hexagon::LDriuh_GP_cNotPt_V4;
-  case Hexagon::LDriw_GP_V4:
-    return !invertPredicate ? Hexagon::LDriw_GP_cPt_V4 :
-                              Hexagon::LDriw_GP_cNotPt_V4;
-
   case Hexagon::LDd_GP_V4:
     return !invertPredicate ? Hexagon::LDd_GP_cPt_V4 :
                               Hexagon::LDd_GP_cNotPt_V4;
@@ -2116,19 +2044,6 @@ getMatchingCondBranchOpcode(int Opc, bool invertPredicate) const {
                               Hexagon::STrid_indexed_shl_cNotPt_V4;
 
   // V4 Store to global address
-  case Hexagon::STrid_GP_V4:
-    return !invertPredicate ? Hexagon::STrid_GP_cPt_V4 :
-                              Hexagon::STrid_GP_cNotPt_V4;
-  case Hexagon::STrib_GP_V4:
-    return !invertPredicate ? Hexagon::STrib_GP_cPt_V4 :
-                              Hexagon::STrib_GP_cNotPt_V4;
-  case Hexagon::STrih_GP_V4:
-    return !invertPredicate ? Hexagon::STrih_GP_cPt_V4 :
-                              Hexagon::STrih_GP_cNotPt_V4;
-  case Hexagon::STriw_GP_V4:
-    return !invertPredicate ? Hexagon::STriw_GP_cPt_V4 :
-                              Hexagon::STriw_GP_cNotPt_V4;
-
   case Hexagon::STd_GP_V4:
     return !invertPredicate ? Hexagon::STd_GP_cPt_V4 :
                               Hexagon::STd_GP_cNotPt_V4;
@@ -2215,37 +2130,140 @@ PredicateInstruction(MachineInstr *MI,
   assert (isPredicable(MI) && "Expected predicable instruction");
   bool invertJump = (!Cond.empty() && Cond[0].isImm() &&
                      (Cond[0].getImm() == 0));
-  MI->setDesc(get(getMatchingCondBranchOpcode(Opc, invertJump)));
-  //
-  // This assumes that the predicate is always the first operand
-  // in the set of inputs.
-  //
-  MI->addOperand(MI->getOperand(MI->getNumOperands()-1));
-  int oper;
-  for (oper = MI->getNumOperands() - 3; oper >= 0; --oper) {
-    MachineOperand MO = MI->getOperand(oper);
-    if ((MO.isReg() && !MO.isUse() && !MO.isImplicit())) {
-      break;
-    }
 
-    if (MO.isReg()) {
-      MI->getOperand(oper+1).ChangeToRegister(MO.getReg(), MO.isDef(),
-                                              MO.isImplicit(), MO.isKill(),
-                                              MO.isDead(), MO.isUndef(),
-                                              MO.isDebug());
-    } else if (MO.isImm()) {
-      MI->getOperand(oper+1).ChangeToImmediate(MO.getImm());
-    } else {
-      llvm_unreachable("Unexpected operand type");
+  // This will change MI's opcode to its predicate version.
+  // However, its operand list is still the old one, i.e. the
+  // non-predicate one.
+  MI->setDesc(get(getMatchingCondBranchOpcode(Opc, invertJump)));
+
+  int oper = -1;
+  unsigned int GAIdx = 0;
+
+  // Indicates whether the current MI has a GlobalAddress operand
+  bool hasGAOpnd = false;
+  std::vector<MachineOperand> tmpOpnds;
+
+  // Indicates whether we need to shift operands to right.
+  bool needShift = true;
+
+  // The predicate is ALWAYS the FIRST input operand !!!
+  if (MI->getNumOperands() == 0) {
+    // The non-predicate version of MI does not take any operands,
+    // i.e. no outs and no ins. In this condition, the predicate
+    // operand will be directly placed at Operands[0]. No operand
+    // shift is needed.
+    // Example: BARRIER
+    needShift = false;
+    oper = -1;
+  }
+  else if (   MI->getOperand(MI->getNumOperands()-1).isReg()
+           && MI->getOperand(MI->getNumOperands()-1).isDef()
+           && !MI->getOperand(MI->getNumOperands()-1).isImplicit()) {
+    // The non-predicate version of MI does not have any input operands.
+    // In this condition, we extend the length of Operands[] by one and
+    // copy the original last operand to the newly allocated slot.
+    // At this moment, it is just a place holder. Later, we will put
+    // predicate operand directly into it. No operand shift is needed.
+    // Example: r0=BARRIER (this is a faked insn used here for illustration)
+    MI->addOperand(MI->getOperand(MI->getNumOperands()-1));
+    needShift = false;
+    oper = MI->getNumOperands() - 2;
+  }
+  else {
+    // We need to right shift all input operands by one. Duplicate the
+    // last operand into the newly allocated slot.
+    MI->addOperand(MI->getOperand(MI->getNumOperands()-1));
+  }
+
+  if (needShift)
+  {
+    // Operands[ MI->getNumOperands() - 2 ] has been copied into
+    // Operands[ MI->getNumOperands() - 1 ], so we start from
+    // Operands[ MI->getNumOperands() - 3 ].
+    // oper is a signed int.
+    // It is ok if "MI->getNumOperands()-3" is -3, -2, or -1.
+    for (oper = MI->getNumOperands() - 3; oper >= 0; --oper)
+    {
+      MachineOperand &MO = MI->getOperand(oper);
+
+      // Opnd[0] Opnd[1] Opnd[2] Opnd[3] Opnd[4]   Opnd[5]   Opnd[6]   Opnd[7]
+      // <Def0>  <Def1>  <Use0>  <Use1>  <ImpDef0> <ImpDef1> <ImpUse0> <ImpUse1>
+      //               /\~
+      //              /||\~
+      //               ||
+      //        Predicate Operand here
+      if (MO.isReg() && !MO.isUse() && !MO.isImplicit()) {
+        break;
+      }
+      if (MO.isReg()) {
+        MI->getOperand(oper+1).ChangeToRegister(MO.getReg(), MO.isDef(),
+                                                MO.isImplicit(), MO.isKill(),
+                                                MO.isDead(), MO.isUndef(),
+                                                MO.isDebug());
+      }
+      else if (MO.isImm()) {
+        MI->getOperand(oper+1).ChangeToImmediate(MO.getImm());
+      }
+      else if (MO.isGlobal()) {
+        // MI can not have more than one GlobalAddress operand.
+        assert(hasGAOpnd == false && "MI can only have one GlobalAddress opnd");
+
+        // There is no member function called "ChangeToGlobalAddress" in the
+        // MachineOperand class (not like "ChangeToRegister" and
+        // "ChangeToImmediate"). So we have to remove them from Operands[] list
+        // first, and then add them back after we have inserted the predicate
+        // operand. tmpOpnds[] is to remember these operands before we remove
+        // them.
+        tmpOpnds.push_back(MO);
+
+        // Operands[oper] is a GlobalAddress operand;
+        // Operands[oper+1] has been copied into Operands[oper+2];
+        hasGAOpnd = true;
+        GAIdx = oper;
+        continue;
+      }
+      else {
+        assert(false && "Unexpected operand type");
+      }
     }
   }
 
   int regPos = invertJump ? 1 : 0;
   MachineOperand PredMO = Cond[regPos];
+
+  // [oper] now points to the last explicit Def. Predicate operand must be
+  // located at [oper+1]. See diagram above.
+  // This assumes that the predicate is always the first operand,
+  // i.e. Operands[0+numResults], in the set of inputs
+  // It is better to have an assert here to check this. But I don't know how
+  // to write this assert because findFirstPredOperandIdx() would return -1
+  if (oper < -1) oper = -1;
   MI->getOperand(oper+1).ChangeToRegister(PredMO.getReg(), PredMO.isDef(),
                                           PredMO.isImplicit(), PredMO.isKill(),
                                           PredMO.isDead(), PredMO.isUndef(),
                                           PredMO.isDebug());
+
+  if (hasGAOpnd)
+  {
+    unsigned int i;
+
+    // Operands[GAIdx] is the original GlobalAddress operand, which is
+    // already copied into tmpOpnds[0].
+    // Operands[GAIdx] now stores a copy of Operands[GAIdx-1]
+    // Operands[GAIdx+1] has already been copied into Operands[GAIdx+2],
+    // so we start from [GAIdx+2]
+    for (i = GAIdx + 2; i < MI->getNumOperands(); ++i)
+      tmpOpnds.push_back(MI->getOperand(i));
+
+    // Remove all operands in range [ (GAIdx+1) ... (MI->getNumOperands()-1) ]
+    // It is very important that we always remove from the end of Operands[]
+    // MI->getNumOperands() is at least 2 if program goes to here.
+    for (i = MI->getNumOperands() - 1; i > GAIdx; --i)
+      MI->RemoveOperand(i);
+
+    for (i = 0; i < tmpOpnds.size(); ++i)
+      MI->addOperand(tmpOpnds[i]);
+  }
 
   return true;
 }
@@ -2352,7 +2370,9 @@ isValidOffset(const int Opcode, const int Offset) const {
   switch(Opcode) {
 
   case Hexagon::LDriw:
+  case Hexagon::LDriw_indexed:
   case Hexagon::LDriw_f:
+  case Hexagon::STriw_indexed:
   case Hexagon::STriw:
   case Hexagon::STriw_f:
     assert((Offset % 4 == 0) && "Offset has incorrect alignment");
@@ -2360,8 +2380,10 @@ isValidOffset(const int Opcode, const int Offset) const {
       (Offset <= Hexagon_MEMW_OFFSET_MAX);
 
   case Hexagon::LDrid:
+  case Hexagon::LDrid_indexed:
   case Hexagon::LDrid_f:
   case Hexagon::STrid:
+  case Hexagon::STrid_indexed:
   case Hexagon::STrid_f:
     assert((Offset % 8 == 0) && "Offset has incorrect alignment");
     return (Offset >= Hexagon_MEMD_OFFSET_MIN) &&
@@ -2434,6 +2456,9 @@ isValidOffset(const int Opcode, const int Offset) const {
   case Hexagon::STriw_pred:
   case Hexagon::LDriw_pred:
     return true;
+
+  case Hexagon::LOOP0_i:
+    return isUInt<10>(Offset);
 
   // INLINEASM is very special.
   case Hexagon::INLINEASM:
@@ -2643,28 +2668,16 @@ isConditionalLoad (const MachineInstr* MI) const {
     case Hexagon::POST_LDriub_cPt :
     case Hexagon::POST_LDriub_cNotPt :
       return QRI.Subtarget.hasV4TOps();
-    case Hexagon::LDrid_indexed_cPt_V4 :
-    case Hexagon::LDrid_indexed_cNotPt_V4 :
     case Hexagon::LDrid_indexed_shl_cPt_V4 :
     case Hexagon::LDrid_indexed_shl_cNotPt_V4 :
-    case Hexagon::LDrib_indexed_cPt_V4 :
-    case Hexagon::LDrib_indexed_cNotPt_V4 :
     case Hexagon::LDrib_indexed_shl_cPt_V4 :
     case Hexagon::LDrib_indexed_shl_cNotPt_V4 :
-    case Hexagon::LDriub_indexed_cPt_V4 :
-    case Hexagon::LDriub_indexed_cNotPt_V4 :
     case Hexagon::LDriub_indexed_shl_cPt_V4 :
     case Hexagon::LDriub_indexed_shl_cNotPt_V4 :
-    case Hexagon::LDrih_indexed_cPt_V4 :
-    case Hexagon::LDrih_indexed_cNotPt_V4 :
     case Hexagon::LDrih_indexed_shl_cPt_V4 :
     case Hexagon::LDrih_indexed_shl_cNotPt_V4 :
-    case Hexagon::LDriuh_indexed_cPt_V4 :
-    case Hexagon::LDriuh_indexed_cNotPt_V4 :
     case Hexagon::LDriuh_indexed_shl_cPt_V4 :
     case Hexagon::LDriuh_indexed_shl_cNotPt_V4 :
-    case Hexagon::LDriw_indexed_cPt_V4 :
-    case Hexagon::LDriw_indexed_cNotPt_V4 :
     case Hexagon::LDriw_indexed_shl_cPt_V4 :
     case Hexagon::LDriw_indexed_shl_cNotPt_V4 :
       return QRI.Subtarget.hasV4TOps();
@@ -2747,14 +2760,6 @@ isConditionalStore (const MachineInstr* MI) const {
       return QRI.Subtarget.hasV4TOps();
 
     // V4 global address store before promoting to dot new.
-    case Hexagon::STrid_GP_cPt_V4 :
-    case Hexagon::STrid_GP_cNotPt_V4 :
-    case Hexagon::STrib_GP_cPt_V4 :
-    case Hexagon::STrib_GP_cNotPt_V4 :
-    case Hexagon::STrih_GP_cPt_V4 :
-    case Hexagon::STrih_GP_cNotPt_V4 :
-    case Hexagon::STriw_GP_cPt_V4 :
-    case Hexagon::STriw_GP_cNotPt_V4 :
     case Hexagon::STd_GP_cPt_V4 :
     case Hexagon::STd_GP_cNotPt_V4 :
     case Hexagon::STb_GP_cPt_V4 :

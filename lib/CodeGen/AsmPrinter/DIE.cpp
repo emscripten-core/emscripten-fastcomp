@@ -193,11 +193,13 @@ void DIEInteger::EmitValue(AsmPrinter *Asm, unsigned Form) const {
   case dwarf::DW_FORM_data1: Size = 1; break;
   case dwarf::DW_FORM_ref2:  // Fall thru
   case dwarf::DW_FORM_data2: Size = 2; break;
+  case dwarf::DW_FORM_sec_offset: // Fall thru
   case dwarf::DW_FORM_ref4:  // Fall thru
   case dwarf::DW_FORM_data4: Size = 4; break;
   case dwarf::DW_FORM_ref8:  // Fall thru
   case dwarf::DW_FORM_data8: Size = 8; break;
   case dwarf::DW_FORM_GNU_str_index: Asm->EmitULEB128(Integer); return;
+  case dwarf::DW_FORM_GNU_addr_index: Asm->EmitULEB128(Integer); return;
   case dwarf::DW_FORM_udata: Asm->EmitULEB128(Integer); return;
   case dwarf::DW_FORM_sdata: Asm->EmitSLEB128(Integer); return;
   case dwarf::DW_FORM_addr:
@@ -217,11 +219,13 @@ unsigned DIEInteger::SizeOf(AsmPrinter *AP, unsigned Form) const {
   case dwarf::DW_FORM_data1: return sizeof(int8_t);
   case dwarf::DW_FORM_ref2:  // Fall thru
   case dwarf::DW_FORM_data2: return sizeof(int16_t);
+  case dwarf::DW_FORM_sec_offset: // Fall thru
   case dwarf::DW_FORM_ref4:  // Fall thru
   case dwarf::DW_FORM_data4: return sizeof(int32_t);
   case dwarf::DW_FORM_ref8:  // Fall thru
   case dwarf::DW_FORM_data8: return sizeof(int64_t);
   case dwarf::DW_FORM_GNU_str_index: return MCAsmInfo::getULEB128Size(Integer);
+  case dwarf::DW_FORM_GNU_addr_index: return MCAsmInfo::getULEB128Size(Integer);
   case dwarf::DW_FORM_udata: return MCAsmInfo::getULEB128Size(Integer);
   case dwarf::DW_FORM_sdata: return MCAsmInfo::getSLEB128Size(Integer);
   case dwarf::DW_FORM_addr:  return AP->getDataLayout().getPointerSize();
@@ -250,6 +254,7 @@ void DIELabel::EmitValue(AsmPrinter *AP, unsigned Form) const {
 ///
 unsigned DIELabel::SizeOf(AsmPrinter *AP, unsigned Form) const {
   if (Form == dwarf::DW_FORM_data4) return 4;
+  if (Form == dwarf::DW_FORM_sec_offset) return 4;
   if (Form == dwarf::DW_FORM_strp) return 4;
   return AP->getDataLayout().getPointerSize();
 }

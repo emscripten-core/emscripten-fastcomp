@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm-objdump.h"
-
 #include "llvm/Object/ELF.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/MathExtras.h"
@@ -39,6 +38,18 @@ void printProgramHeaders(
       break;
     case ELF::PT_GNU_EH_FRAME:
       outs() << "EH_FRAME ";
+      break;
+    case ELF::PT_INTERP:
+      outs() << "  INTERP ";
+      break;
+    case ELF::PT_DYNAMIC:
+      outs() << " DYNAMIC ";
+      break;
+    case ELF::PT_PHDR:
+      outs() << "    PHDR ";
+      break;
+    case ELF::PT_TLS:
+      outs() << "    TLS ";
       break;
     default:
       outs() << " UNKNOWN ";

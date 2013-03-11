@@ -47,6 +47,28 @@ MipsRegisterInfo::MipsRegisterInfo(const MipsSubtarget &ST)
 
 unsigned MipsRegisterInfo::getPICCallReg() { return Mips::T9; }
 
+
+unsigned
+MipsRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
+                                      MachineFunction &MF) const {
+  switch (RC->getID()) {
+  default:
+    return 0;
+  case Mips::CPURegsRegClassID:
+  case Mips::CPU64RegsRegClassID:
+  case Mips::DSPRegsRegClassID: {
+    const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+    return 28 - TFI->hasFP(MF);
+  }
+  case Mips::FGR32RegClassID:
+    return 32;
+  case Mips::AFGR64RegClassID:
+    return 16;
+  case Mips::FGR64RegClassID:
+    return 32;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Callee Saved Registers methods
 //===----------------------------------------------------------------------===//
@@ -165,21 +187,14 @@ MipsRegisterInfo::trackLivenessAfterRegAlloc(const MachineFunction &MF) const {
 // direct reference.
 void MipsRegisterInfo::
 eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
-                    RegScavenger *RS) const {
+                    unsigned FIOperandNum, RegScavenger *RS) const {
   MachineInstr &MI = *II;
   MachineFunction &MF = *MI.getParent()->getParent();
-
-  unsigned i = 0;
-  while (!MI.getOperand(i).isFI()) {
-    ++i;
-    assert(i < MI.getNumOperands() &&
-           "Instr doesn't have FrameIndex operand!");
-  }
 
   DEBUG(errs() << "\nFunction : " << MF.getName() << "\n";
         errs() << "<--------->\n" << MI);
 
-  int FrameIndex = MI.getOperand(i).getIndex();
+  int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
   uint64_t stackSize = MF.getFrameInfo()->getStackSize();
   int64_t spOffset = MF.getFrameInfo()->getObjectOffset(FrameIndex);
 
@@ -187,7 +202,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
                << "spOffset   : " << spOffset << "\n"
                << "stackSize  : " << stackSize << "\n");
 
-  eliminateFI(MI, i, FrameIndex, stackSize, spOffset);
+  eliminateFI(MI, FIOperandNum, FrameIndex, stackSize, spOffset);
 }
 
 unsigned MipsRegisterInfo::

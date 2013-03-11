@@ -22,29 +22,100 @@
 #include "llvm/Analysis/RegionPass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/Utils/SSAUpdater.h"
+#include "llvm/Support/PatternMatch.h"
 
 using namespace llvm;
+using namespace llvm::PatternMatch;
 
 namespace {
 
 // Definition of the complex types used in this pass.
 
 typedef std::pair<BasicBlock *, Value *> BBValuePair;
-typedef ArrayRef<BasicBlock*> BBVecRef;
 
 typedef SmallVector<RegionNode*, 8> RNVector;
 typedef SmallVector<BasicBlock*, 8> BBVector;
+typedef SmallVector<BranchInst*, 8> BranchVector;
 typedef SmallVector<BBValuePair, 2> BBValueVector;
 
+typedef SmallPtrSet<BasicBlock *, 8> BBSet;
+
 typedef DenseMap<PHINode *, BBValueVector> PhiMap;
+typedef DenseMap<DomTreeNode *, unsigned> DTN2UnsignedMap;
 typedef DenseMap<BasicBlock *, PhiMap> BBPhiMap;
 typedef DenseMap<BasicBlock *, Value *> BBPredicates;
 typedef DenseMap<BasicBlock *, BBPredicates> PredMap;
-typedef DenseMap<BasicBlock *, unsigned> VisitedMap;
+typedef DenseMap<BasicBlock *, BasicBlock*> BB2BBMap;
+typedef DenseMap<BasicBlock *, BBVector> BB2BBVecMap;
 
 // The name for newly created blocks.
 
 static const char *FlowBlockName = "Flow";
+
+/// @brief Find the nearest common dominator for multiple BasicBlocks
+///
+/// Helper class for AMDGPUStructurizeCFG
+/// TODO: Maybe move into common code
+class NearestCommonDominator {
+
+  DominatorTree *DT;
+
+  DTN2UnsignedMap IndexMap;
+
+  BasicBlock *Result;
+  unsigned ResultIndex;
+  bool ExplicitMentioned;
+
+public:
+  /// \brief Start a new query
+  NearestCommonDominator(DominatorTree *DomTree) {
+    DT = DomTree;
+    Result = 0;
+  }
+
+  /// \brief Add BB to the resulting dominator
+  void addBlock(BasicBlock *BB, bool Remember = true) {
+
+    DomTreeNode *Node = DT->getNode(BB);
+
+    if (Result == 0) {
+      unsigned Numbering = 0;
+      for (;Node;Node = Node->getIDom())
+        IndexMap[Node] = ++Numbering;
+      Result = BB;
+      ResultIndex = 1;
+      ExplicitMentioned = Remember;
+      return;
+    }
+
+    for (;Node;Node = Node->getIDom())
+      if (IndexMap.count(Node))
+        break;
+      else
+        IndexMap[Node] = 0;
+
+    assert(Node && "Dominator tree invalid!");
+
+    unsigned Numbering = IndexMap[Node];
+    if (Numbering > ResultIndex) {
+      Result = Node->getBlock();
+      ResultIndex = Numbering;
+      ExplicitMentioned = Remember && (Result == BB);
+    } else if (Numbering == ResultIndex) {
+      ExplicitMentioned |= Remember;
+    }
+  }
+
+  /// \brief Is "Result" one of the BBs added with "Remember" = True?
+  bool wasResultExplicitMentioned() {
+    return ExplicitMentioned;
+  }
+
+  /// \brief Get the query result
+  BasicBlock *getResult() {
+    return Result;
+  }
+};
 
 /// @brief Transforms the control flow graph on one single entry/exit region
 /// at a time.
@@ -106,45 +177,62 @@ class AMDGPUStructurizeCFG : public RegionPass {
   DominatorTree *DT;
 
   RNVector Order;
-  VisitedMap Visited;
-  PredMap Predicates;
-  BBPhiMap DeletedPhis;
-  BBVector FlowsInserted;
+  BBSet Visited;
 
-  BasicBlock *LoopStart;
-  BasicBlock *LoopEnd;
-  BBPredicates LoopPred;
+  BBPhiMap DeletedPhis;
+  BB2BBVecMap AddedPhis;
+
+  PredMap Predicates;
+  BranchVector Conditions;
+
+  BB2BBMap Loops;
+  PredMap LoopPreds;
+  BranchVector LoopConds;
+
+  RegionNode *PrevNode;
 
   void orderNodes();
 
-  void buildPredicate(BranchInst *Term, unsigned Idx,
-                      BBPredicates &Pred, bool Invert);
+  void analyzeLoops(RegionNode *N);
 
-  void analyzeBlock(BasicBlock *BB);
+  Value *invert(Value *Condition);
 
-  void analyzeLoop(BasicBlock *BB, unsigned &LoopIdx);
+  Value *buildCondition(BranchInst *Term, unsigned Idx, bool Invert);
+
+  void gatherPredicates(RegionNode *N);
 
   void collectInfos();
 
-  bool dominatesPredicates(BasicBlock *A, BasicBlock *B);
-
-  void killTerminator(BasicBlock *BB);
-
-  RegionNode *skipChained(RegionNode *Node);
+  void insertConditions(bool Loops);
 
   void delPhiValues(BasicBlock *From, BasicBlock *To);
 
   void addPhiValues(BasicBlock *From, BasicBlock *To);
 
-  BasicBlock *getNextFlow(BasicBlock *Prev);
+  void setPhiValues();
 
-  bool isPredictableTrue(BasicBlock *Prev, BasicBlock *Node);
+  void killTerminator(BasicBlock *BB);
 
-  BasicBlock *wireFlowBlock(BasicBlock *Prev, RegionNode *Node);
+  void changeExit(RegionNode *Node, BasicBlock *NewExit,
+                  bool IncludeDominator);
+
+  BasicBlock *getNextFlow(BasicBlock *Dominator);
+
+  BasicBlock *needPrefix(bool NeedEmpty);
+
+  BasicBlock *needPostfix(BasicBlock *Flow, bool ExitUseAllowed);
+
+  void setPrevNode(BasicBlock *BB);
+
+  bool dominatesPredicates(BasicBlock *BB, RegionNode *Node);
+
+  bool isPredictableTrue(RegionNode *Node);
+
+  void wireFlow(bool ExitUseAllowed, BasicBlock *LoopEnd);
+
+  void handleLoops(bool ExitUseAllowed, BasicBlock *LoopEnd);
 
   void createFlow();
-
-  void insertConditions();
 
   void rebuildSSA();
 
@@ -198,212 +286,214 @@ void AMDGPUStructurizeCFG::orderNodes() {
   }
 }
 
-/// \brief Build blocks and loop predicates
-void AMDGPUStructurizeCFG::buildPredicate(BranchInst *Term, unsigned Idx,
-                                          BBPredicates &Pred, bool Invert) {
-  Value *True = Invert ? BoolFalse : BoolTrue;
-  Value *False = Invert ? BoolTrue : BoolFalse;
+/// \brief Determine the end of the loops
+void AMDGPUStructurizeCFG::analyzeLoops(RegionNode *N) {
 
-  RegionInfo *RI = ParentRegion->getRegionInfo();
-  BasicBlock *BB = Term->getParent();
-
-  // Handle the case where multiple regions start at the same block
-  Region *R = BB != ParentRegion->getEntry() ?
-              RI->getRegionFor(BB) : ParentRegion;
-
-  if (R == ParentRegion) {
-    // It's a top level block in our region
-    Value *Cond = True;
-    if (Term->isConditional()) {
-      BasicBlock *Other = Term->getSuccessor(!Idx);
-
-      if (Visited.count(Other)) {
-        if (!Pred.count(Other))
-          Pred[Other] = False;
-
-        if (!Pred.count(BB))
-          Pred[BB] = True;
-        return;
-      }
-      Cond = Term->getCondition();
-
-      if (Idx != Invert)
-        Cond = BinaryOperator::CreateNot(Cond, "", Term);
-    }
-
-    Pred[BB] = Cond;
-
-  } else if (ParentRegion->contains(R)) {
-    // It's a block in a sub region
-    while(R->getParent() != ParentRegion)
-      R = R->getParent();
-
-    Pred[R->getEntry()] = True;
+  if (N->isSubRegion()) {
+    // Test for exit as back edge
+    BasicBlock *Exit = N->getNodeAs<Region>()->getExit();
+    if (Visited.count(Exit))
+      Loops[Exit] = N->getEntry();
 
   } else {
-    // It's a branch from outside into our parent region
-    Pred[BB] = True;
-  }
-}
-
-/// \brief Analyze the successors of each block and build up predicates
-void AMDGPUStructurizeCFG::analyzeBlock(BasicBlock *BB) {
-  pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
-  BBPredicates &Pred = Predicates[BB];
-
-  for (; PI != PE; ++PI) {
-    BranchInst *Term = cast<BranchInst>((*PI)->getTerminator());
+    // Test for sucessors as back edge
+    BasicBlock *BB = N->getNodeAs<BasicBlock>();
+    BranchInst *Term = cast<BranchInst>(BB->getTerminator());
 
     for (unsigned i = 0, e = Term->getNumSuccessors(); i != e; ++i) {
       BasicBlock *Succ = Term->getSuccessor(i);
-      if (Succ != BB)
-        continue;
-      buildPredicate(Term, i, Pred, false);
+
+      if (Visited.count(Succ))
+        Loops[Succ] = BB;
     }
   }
 }
 
-/// \brief Analyze the conditions leading to loop to a previous block
-void AMDGPUStructurizeCFG::analyzeLoop(BasicBlock *BB, unsigned &LoopIdx) {
-  BranchInst *Term = cast<BranchInst>(BB->getTerminator());
+/// \brief Invert the given condition
+Value *AMDGPUStructurizeCFG::invert(Value *Condition) {
 
-  for (unsigned i = 0, e = Term->getNumSuccessors(); i != e; ++i) {
-    BasicBlock *Succ = Term->getSuccessor(i);
+  // First: Check if it's a constant
+  if (Condition == BoolTrue)
+    return BoolFalse;
 
-    // Ignore it if it's not a back edge
-    if (!Visited.count(Succ))
+  if (Condition == BoolFalse)
+    return BoolTrue;
+
+  if (Condition == BoolUndef)
+    return BoolUndef;
+
+  // Second: If the condition is already inverted, return the original value
+  if (match(Condition, m_Not(m_Value(Condition))))
+    return Condition;
+
+  // Third: Check all the users for an invert
+  BasicBlock *Parent = cast<Instruction>(Condition)->getParent();
+  for (Value::use_iterator I = Condition->use_begin(),
+       E = Condition->use_end(); I != E; ++I) {
+
+    Instruction *User = dyn_cast<Instruction>(*I);
+    if (!User || User->getParent() != Parent)
       continue;
 
-    buildPredicate(Term, i, LoopPred, true);
+    if (match(*I, m_Not(m_Specific(Condition))))
+      return *I;
+  }
 
-    LoopEnd = BB;
-    if (Visited[Succ] < LoopIdx) {
-      LoopIdx = Visited[Succ];
-      LoopStart = Succ;
+  // Last option: Create a new instruction
+  return BinaryOperator::CreateNot(Condition, "", Parent->getTerminator());
+}
+
+/// \brief Build the condition for one edge
+Value *AMDGPUStructurizeCFG::buildCondition(BranchInst *Term, unsigned Idx,
+                                            bool Invert) {
+  Value *Cond = Invert ? BoolFalse : BoolTrue;
+  if (Term->isConditional()) {
+    Cond = Term->getCondition();
+
+    if (Idx != Invert)
+      Cond = invert(Cond);
+  }
+  return Cond;
+}
+
+/// \brief Analyze the predecessors of each block and build up predicates
+void AMDGPUStructurizeCFG::gatherPredicates(RegionNode *N) {
+
+  RegionInfo *RI = ParentRegion->getRegionInfo();
+  BasicBlock *BB = N->getEntry();
+  BBPredicates &Pred = Predicates[BB];
+  BBPredicates &LPred = LoopPreds[BB];
+
+  for (pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
+       PI != PE; ++PI) {
+
+    // Ignore it if it's a branch from outside into our region entry
+    if (!ParentRegion->contains(*PI))
+      continue;
+
+    Region *R = RI->getRegionFor(*PI);
+    if (R == ParentRegion) {
+
+      // It's a top level block in our region
+      BranchInst *Term = cast<BranchInst>((*PI)->getTerminator());
+      for (unsigned i = 0, e = Term->getNumSuccessors(); i != e; ++i) {
+        BasicBlock *Succ = Term->getSuccessor(i);
+        if (Succ != BB)
+          continue;
+
+        if (Visited.count(*PI)) {
+          // Normal forward edge
+          if (Term->isConditional()) {
+            // Try to treat it like an ELSE block
+            BasicBlock *Other = Term->getSuccessor(!i);
+            if (Visited.count(Other) && !Loops.count(Other) &&
+                !Pred.count(Other) && !Pred.count(*PI)) {
+
+              Pred[Other] = BoolFalse;
+              Pred[*PI] = BoolTrue;
+              continue;
+            }
+          }
+          Pred[*PI] = buildCondition(Term, i, false);
+ 
+        } else {
+          // Back edge
+          LPred[*PI] = buildCondition(Term, i, true);
+        }
+      }
+
+    } else {
+
+      // It's an exit from a sub region
+      while(R->getParent() != ParentRegion)
+        R = R->getParent();
+
+      // Edge from inside a subregion to its entry, ignore it
+      if (R == N)
+        continue;
+
+      BasicBlock *Entry = R->getEntry();
+      if (Visited.count(Entry))
+        Pred[Entry] = BoolTrue;
+      else
+        LPred[Entry] = BoolFalse;
     }
   }
 }
 
 /// \brief Collect various loop and predicate infos
 void AMDGPUStructurizeCFG::collectInfos() {
-  unsigned Number = 0, LoopIdx = ~0;
 
   // Reset predicate
   Predicates.clear();
 
   // and loop infos
-  LoopStart = LoopEnd = 0;
-  LoopPred.clear();
+  Loops.clear();
+  LoopPreds.clear();
 
-  RNVector::reverse_iterator OI = Order.rbegin(), OE = Order.rend();
-  for (Visited.clear(); OI != OE; Visited[(*OI++)->getEntry()] = ++Number) {
+  // Reset the visited nodes
+  Visited.clear();
+
+  for (RNVector::reverse_iterator OI = Order.rbegin(), OE = Order.rend();
+       OI != OE; ++OI) {
 
     // Analyze all the conditions leading to a node
-    analyzeBlock((*OI)->getEntry());
+    gatherPredicates(*OI);
 
-    if ((*OI)->isSubRegion())
-      continue;
+    // Remember that we've seen this node
+    Visited.insert((*OI)->getEntry());
 
-    // Find the first/last loop nodes and loop predicates
-    analyzeLoop((*OI)->getNodeAs<BasicBlock>(), LoopIdx);
+    // Find the last back edges
+    analyzeLoops(*OI);
   }
 }
 
-/// \brief Does A dominate all the predicates of B ?
-bool AMDGPUStructurizeCFG::dominatesPredicates(BasicBlock *A, BasicBlock *B) {
-  BBPredicates &Preds = Predicates[B];
-  for (BBPredicates::iterator PI = Preds.begin(), PE = Preds.end();
-       PI != PE; ++PI) {
+/// \brief Insert the missing branch conditions
+void AMDGPUStructurizeCFG::insertConditions(bool Loops) {
+  BranchVector &Conds = Loops ? LoopConds : Conditions;
+  Value *Default = Loops ? BoolTrue : BoolFalse;
+  SSAUpdater PhiInserter;
 
-    if (!DT->dominates(A, PI->first))
-      return false;
-  }
-  return true;
-}
+  for (BranchVector::iterator I = Conds.begin(),
+       E = Conds.end(); I != E; ++I) {
 
-/// \brief Remove phi values from all successors and the remove the terminator.
-void AMDGPUStructurizeCFG::killTerminator(BasicBlock *BB) {
-  TerminatorInst *Term = BB->getTerminator();
-  if (!Term)
-    return;
+    BranchInst *Term = *I;
+    assert(Term->isConditional());
 
-  for (succ_iterator SI = succ_begin(BB), SE = succ_end(BB);
-       SI != SE; ++SI) {
+    BasicBlock *Parent = Term->getParent();
+    BasicBlock *SuccTrue = Term->getSuccessor(0);
+    BasicBlock *SuccFalse = Term->getSuccessor(1);
 
-    delPhiValues(BB, *SI);
-  }
+    PhiInserter.Initialize(Boolean, "");
+    PhiInserter.AddAvailableValue(&Func->getEntryBlock(), Default);
+    PhiInserter.AddAvailableValue(Loops ? SuccFalse : Parent, Default);
 
-  Term->eraseFromParent();
-}
+    BBPredicates &Preds = Loops ? LoopPreds[SuccFalse] : Predicates[SuccTrue];
 
-/// First: Skip forward to the first region node that either isn't a subregion or not
-/// dominating it's exit, remove all the skipped nodes from the node order.
-///
-/// Second: Handle the first successor directly if the resulting nodes successor
-/// predicates are still dominated by the original entry
-RegionNode *AMDGPUStructurizeCFG::skipChained(RegionNode *Node) {
-  BasicBlock *Entry = Node->getEntry();
+    NearestCommonDominator Dominator(DT);
+    Dominator.addBlock(Parent, false);
 
-  // Skip forward as long as it is just a linear flow
-  while (true) {
-    BasicBlock *Entry = Node->getEntry();
-    BasicBlock *Exit;
+    Value *ParentValue = 0;
+    for (BBPredicates::iterator PI = Preds.begin(), PE = Preds.end();
+         PI != PE; ++PI) {
 
-    if (Node->isSubRegion()) {
-      Exit = Node->getNodeAs<Region>()->getExit();
-    } else {
-      TerminatorInst *Term = Entry->getTerminator();
-      if (Term->getNumSuccessors() != 1)
+      if (PI->first == Parent) {
+        ParentValue = PI->second;
         break;
-      Exit = Term->getSuccessor(0);
+      }
+      PhiInserter.AddAvailableValue(PI->first, PI->second);
+      Dominator.addBlock(PI->first);
     }
 
-    // It's a back edge, break here so we can insert a loop node
-    if (!Visited.count(Exit))
-      return Node;
+    if (ParentValue) {
+      Term->setCondition(ParentValue);
+    } else {
+      if (!Dominator.wasResultExplicitMentioned())
+        PhiInserter.AddAvailableValue(Dominator.getResult(), Default);
 
-    // More than node edges are pointing to exit
-    if (!DT->dominates(Entry, Exit))
-      return Node;
-
-    RegionNode *Next = ParentRegion->getNode(Exit);
-    RNVector::iterator I = std::find(Order.begin(), Order.end(), Next);
-    assert(I != Order.end());
-
-    Visited.erase(Next->getEntry());
-    Order.erase(I);
-    Node = Next;
+      Term->setCondition(PhiInserter.GetValueInMiddleOfBlock(Parent));
+    }
   }
-
-  BasicBlock *BB = Node->getEntry();
-  TerminatorInst *Term = BB->getTerminator();
-  if (Term->getNumSuccessors() != 2)
-    return Node;
-
-  // Our node has exactly two succesors, check if we can handle
-  // any of them directly
-  BasicBlock *Succ = Term->getSuccessor(0);
-  if (!Visited.count(Succ) || !dominatesPredicates(Entry, Succ)) {
-    Succ = Term->getSuccessor(1);
-    if (!Visited.count(Succ) || !dominatesPredicates(Entry, Succ))
-      return Node;
-  } else {
-    BasicBlock *Succ2 = Term->getSuccessor(1);
-    if (Visited.count(Succ2) && Visited[Succ] > Visited[Succ2] &&
-        dominatesPredicates(Entry, Succ2))
-      Succ = Succ2;
-  }
-
-  RegionNode *Next = ParentRegion->getNode(Succ);
-  RNVector::iterator E = Order.end();
-  RNVector::iterator I = std::find(Order.begin(), E, Next);
-  assert(I != E);
-
-  killTerminator(BB);
-  FlowsInserted.push_back(BB);
-  Visited.erase(Succ);
-  Order.erase(I);
-  return ParentRegion->getNode(wireFlowBlock(BB, Next));
 }
 
 /// \brief Remove all PHI values coming from "From" into "To" and remember
@@ -421,60 +511,202 @@ void AMDGPUStructurizeCFG::delPhiValues(BasicBlock *From, BasicBlock *To) {
   }
 }
 
-/// \brief Add the PHI values back once we knew the new predecessor
+/// \brief Add a dummy PHI value as soon as we knew the new predecessor
 void AMDGPUStructurizeCFG::addPhiValues(BasicBlock *From, BasicBlock *To) {
-  if (!DeletedPhis.count(To))
+  for (BasicBlock::iterator I = To->begin(), E = To->end();
+       I != E && isa<PHINode>(*I);) {
+
+    PHINode &Phi = cast<PHINode>(*I++);
+    Value *Undef = UndefValue::get(Phi.getType());
+    Phi.addIncoming(Undef, From);
+  }
+  AddedPhis[To].push_back(From);
+}
+
+/// \brief Add the real PHI value as soon as everything is set up
+void AMDGPUStructurizeCFG::setPhiValues() {
+
+  SSAUpdater Updater;
+  for (BB2BBVecMap::iterator AI = AddedPhis.begin(), AE = AddedPhis.end();
+       AI != AE; ++AI) {
+
+    BasicBlock *To = AI->first;
+    BBVector &From = AI->second;
+
+    if (!DeletedPhis.count(To))
+      continue;
+
+    PhiMap &Map = DeletedPhis[To];
+    for (PhiMap::iterator PI = Map.begin(), PE = Map.end();
+         PI != PE; ++PI) {
+
+      PHINode *Phi = PI->first;
+      Value *Undef = UndefValue::get(Phi->getType());
+      Updater.Initialize(Phi->getType(), "");
+      Updater.AddAvailableValue(&Func->getEntryBlock(), Undef);
+      Updater.AddAvailableValue(To, Undef);
+
+      NearestCommonDominator Dominator(DT);
+      Dominator.addBlock(To, false);
+      for (BBValueVector::iterator VI = PI->second.begin(),
+           VE = PI->second.end(); VI != VE; ++VI) {
+
+        Updater.AddAvailableValue(VI->first, VI->second);
+        Dominator.addBlock(VI->first);
+      }
+
+      if (!Dominator.wasResultExplicitMentioned())
+        Updater.AddAvailableValue(Dominator.getResult(), Undef);
+
+      for (BBVector::iterator FI = From.begin(), FE = From.end();
+           FI != FE; ++FI) {
+
+        int Idx = Phi->getBasicBlockIndex(*FI);
+        assert(Idx != -1);
+        Phi->setIncomingValue(Idx, Updater.GetValueAtEndOfBlock(*FI));
+      }
+    }
+
+    DeletedPhis.erase(To);
+  }
+  assert(DeletedPhis.empty());
+}
+
+/// \brief Remove phi values from all successors and then remove the terminator.
+void AMDGPUStructurizeCFG::killTerminator(BasicBlock *BB) {
+  TerminatorInst *Term = BB->getTerminator();
+  if (!Term)
     return;
 
-  PhiMap &Map = DeletedPhis[To];
-  SSAUpdater Updater;
+  for (succ_iterator SI = succ_begin(BB), SE = succ_end(BB);
+       SI != SE; ++SI) {
 
-  for (PhiMap::iterator I = Map.begin(), E = Map.end(); I != E; ++I) {
-
-    PHINode *Phi = I->first;
-    Updater.Initialize(Phi->getType(), "");
-    BasicBlock *Fallback = To;
-    bool HaveFallback = false;
-
-    for (BBValueVector::iterator VI = I->second.begin(), VE = I->second.end();
-         VI != VE; ++VI) {
-
-      Updater.AddAvailableValue(VI->first, VI->second);
-      BasicBlock *Dom = DT->findNearestCommonDominator(Fallback, VI->first);
-      if (Dom == VI->first)
-        HaveFallback = true;
-      else if (Dom != Fallback)
-        HaveFallback = false;
-      Fallback = Dom;
-    }
-    if (!HaveFallback) {
-      Value *Undef = UndefValue::get(Phi->getType());
-      Updater.AddAvailableValue(Fallback, Undef);
-    }
-
-    Phi->addIncoming(Updater.GetValueAtEndOfBlock(From), From);
+    delPhiValues(BB, *SI);
   }
-  DeletedPhis.erase(To);
+
+  Term->eraseFromParent();
+}
+
+/// \brief Let node exit(s) point to NewExit
+void AMDGPUStructurizeCFG::changeExit(RegionNode *Node, BasicBlock *NewExit,
+                                      bool IncludeDominator) {
+
+  if (Node->isSubRegion()) {
+    Region *SubRegion = Node->getNodeAs<Region>();
+    BasicBlock *OldExit = SubRegion->getExit();
+    BasicBlock *Dominator = 0;
+
+    // Find all the edges from the sub region to the exit
+    for (pred_iterator I = pred_begin(OldExit), E = pred_end(OldExit);
+         I != E;) {
+
+      BasicBlock *BB = *I++;
+      if (!SubRegion->contains(BB))
+        continue;
+
+      // Modify the edges to point to the new exit
+      delPhiValues(BB, OldExit);
+      BB->getTerminator()->replaceUsesOfWith(OldExit, NewExit);
+      addPhiValues(BB, NewExit);
+
+      // Find the new dominator (if requested)
+      if (IncludeDominator) {
+        if (!Dominator)
+          Dominator = BB;
+        else
+          Dominator = DT->findNearestCommonDominator(Dominator, BB);
+      }
+    }
+
+    // Change the dominator (if requested)
+    if (Dominator)
+      DT->changeImmediateDominator(NewExit, Dominator);
+
+    // Update the region info
+    SubRegion->replaceExit(NewExit);
+
+  } else {
+    BasicBlock *BB = Node->getNodeAs<BasicBlock>();
+    killTerminator(BB);
+    BranchInst::Create(NewExit, BB);
+    addPhiValues(BB, NewExit);
+    if (IncludeDominator)
+      DT->changeImmediateDominator(NewExit, BB);
+  }
 }
 
 /// \brief Create a new flow node and update dominator tree and region info
-BasicBlock *AMDGPUStructurizeCFG::getNextFlow(BasicBlock *Prev) {
+BasicBlock *AMDGPUStructurizeCFG::getNextFlow(BasicBlock *Dominator) {
   LLVMContext &Context = Func->getContext();
   BasicBlock *Insert = Order.empty() ? ParentRegion->getExit() :
                        Order.back()->getEntry();
   BasicBlock *Flow = BasicBlock::Create(Context, FlowBlockName,
                                         Func, Insert);
-  DT->addNewBlock(Flow, Prev);
+  DT->addNewBlock(Flow, Dominator);
   ParentRegion->getRegionInfo()->setRegionFor(Flow, ParentRegion);
-  FlowsInserted.push_back(Flow);
   return Flow;
 }
 
+/// \brief Create a new or reuse the previous node as flow node
+BasicBlock *AMDGPUStructurizeCFG::needPrefix(bool NeedEmpty) {
+
+  BasicBlock *Entry = PrevNode->getEntry();
+
+  if (!PrevNode->isSubRegion()) {
+    killTerminator(Entry);
+    if (!NeedEmpty || Entry->getFirstInsertionPt() == Entry->end())
+      return Entry;
+
+  } 
+
+  // create a new flow node
+  BasicBlock *Flow = getNextFlow(Entry);
+
+  // and wire it up
+  changeExit(PrevNode, Flow, true);
+  PrevNode = ParentRegion->getBBNode(Flow);
+  return Flow;
+}
+
+/// \brief Returns the region exit if possible, otherwise just a new flow node
+BasicBlock *AMDGPUStructurizeCFG::needPostfix(BasicBlock *Flow,
+                                              bool ExitUseAllowed) {
+
+  if (Order.empty() && ExitUseAllowed) {
+    BasicBlock *Exit = ParentRegion->getExit();
+    DT->changeImmediateDominator(Exit, Flow);
+    addPhiValues(Flow, Exit);
+    return Exit;
+  }
+  return getNextFlow(Flow);
+}
+
+/// \brief Set the previous node
+void AMDGPUStructurizeCFG::setPrevNode(BasicBlock *BB) {
+  PrevNode =  ParentRegion->contains(BB) ? ParentRegion->getBBNode(BB) : 0;
+}
+
+/// \brief Does BB dominate all the predicates of Node ?
+bool AMDGPUStructurizeCFG::dominatesPredicates(BasicBlock *BB, RegionNode *Node) {
+  BBPredicates &Preds = Predicates[Node->getEntry()];
+  for (BBPredicates::iterator PI = Preds.begin(), PE = Preds.end();
+       PI != PE; ++PI) {
+
+    if (!DT->dominates(BB, PI->first))
+      return false;
+  }
+  return true;
+}
+
 /// \brief Can we predict that this node will always be called?
-bool AMDGPUStructurizeCFG::isPredictableTrue(BasicBlock *Prev,
-                                             BasicBlock *Node) {
-  BBPredicates &Preds = Predicates[Node];
+bool AMDGPUStructurizeCFG::isPredictableTrue(RegionNode *Node) {
+
+  BBPredicates &Preds = Predicates[Node->getEntry()];
   bool Dominated = false;
+
+  // Regionentry is always true
+  if (PrevNode == 0)
+    return true;
 
   for (BBPredicates::iterator I = Preds.begin(), E = Preds.end();
        I != E; ++I) {
@@ -482,163 +714,103 @@ bool AMDGPUStructurizeCFG::isPredictableTrue(BasicBlock *Prev,
     if (I->second != BoolTrue)
       return false;
 
-    if (!Dominated && DT->dominates(I->first, Prev))
+    if (!Dominated && DT->dominates(I->first, PrevNode->getEntry()))
       Dominated = true;
   }
+
+  // TODO: The dominator check is too strict
   return Dominated;
 }
 
-/// \brief Wire up the new control flow by inserting or updating the branch
-/// instructions at node exits
-BasicBlock *AMDGPUStructurizeCFG::wireFlowBlock(BasicBlock *Prev,
-                                                RegionNode *Node) {
-  BasicBlock *Entry = Node->getEntry();
+/// Take one node from the order vector and wire it up
+void AMDGPUStructurizeCFG::wireFlow(bool ExitUseAllowed,
+                                    BasicBlock *LoopEnd) {
 
-  if (LoopStart == Entry) {
-    LoopStart = Prev;
-    LoopPred[Prev] = BoolTrue;
-  }
+  RegionNode *Node = Order.pop_back_val();
+  Visited.insert(Node->getEntry());
 
-  // Wire it up temporary, skipChained may recurse into us
-  BranchInst::Create(Entry, Prev);
-  DT->changeImmediateDominator(Entry, Prev);
-  addPhiValues(Prev, Entry);
-
-  Node = skipChained(Node);
-
-  BasicBlock *Next = getNextFlow(Prev);
-  if (!isPredictableTrue(Prev, Entry)) {
-    // Let Prev point to entry and next block
-    Prev->getTerminator()->eraseFromParent();
-    BranchInst::Create(Entry, Next, BoolUndef, Prev);
-  } else {
-    DT->changeImmediateDominator(Next, Entry);
-  }
-
-  // Let node exit(s) point to next block
-  if (Node->isSubRegion()) {
-    Region *SubRegion = Node->getNodeAs<Region>();
-    BasicBlock *Exit = SubRegion->getExit();
-
-    // Find all the edges from the sub region to the exit
-    BBVector ToDo;
-    for (pred_iterator I = pred_begin(Exit), E = pred_end(Exit); I != E; ++I) {
-      if (SubRegion->contains(*I))
-        ToDo.push_back(*I);
+  if (isPredictableTrue(Node)) {
+    // Just a linear flow
+    if (PrevNode) {
+      changeExit(PrevNode, Node->getEntry(), true);
     }
-
-    // Modify the edges to point to the new flow block
-    for (BBVector::iterator I = ToDo.begin(), E = ToDo.end(); I != E; ++I) {
-      delPhiValues(*I, Exit);
-      TerminatorInst *Term = (*I)->getTerminator();
-      Term->replaceUsesOfWith(Exit, Next);
-    }
-
-    // Update the region info
-    SubRegion->replaceExit(Next);
+    PrevNode = Node;
 
   } else {
-    BasicBlock *BB = Node->getNodeAs<BasicBlock>();
-    killTerminator(BB);
-    BranchInst::Create(Next, BB);
+    // Insert extra prefix node (or reuse last one)
+    BasicBlock *Flow = needPrefix(false);
 
-    if (BB == LoopEnd)
-      LoopEnd = 0;
+    // Insert extra postfix node (or use exit instead)
+    BasicBlock *Entry = Node->getEntry();
+    BasicBlock *Next = needPostfix(Flow, ExitUseAllowed);
+
+    // let it point to entry and next block
+    Conditions.push_back(BranchInst::Create(Entry, Next, BoolUndef, Flow));
+    addPhiValues(Flow, Entry);
+    DT->changeImmediateDominator(Entry, Flow);
+
+    PrevNode = Node;
+    while (!Order.empty() && !Visited.count(LoopEnd) &&
+           dominatesPredicates(Entry, Order.back())) {
+      handleLoops(false, LoopEnd);
+    }
+
+    changeExit(PrevNode, Next, false);
+    setPrevNode(Next);
   }
-
-  return Next;
 }
 
-/// Destroy node order and visited map, build up flow order instead.
+void AMDGPUStructurizeCFG::handleLoops(bool ExitUseAllowed,
+                                       BasicBlock *LoopEnd) {
+  RegionNode *Node = Order.back();
+  BasicBlock *LoopStart = Node->getEntry();
+
+  if (!Loops.count(LoopStart)) {
+    wireFlow(ExitUseAllowed, LoopEnd);
+    return;
+  }
+
+  if (!isPredictableTrue(Node))
+    LoopStart = needPrefix(true);
+
+  LoopEnd = Loops[Node->getEntry()];
+  wireFlow(false, LoopEnd);
+  while (!Visited.count(LoopEnd)) {
+    handleLoops(false, LoopEnd);
+  }
+
+  // Create an extra loop end node
+  LoopEnd = needPrefix(false);
+  BasicBlock *Next = needPostfix(LoopEnd, ExitUseAllowed);
+  LoopConds.push_back(BranchInst::Create(Next, LoopStart,
+                                         BoolUndef, LoopEnd));
+  addPhiValues(LoopEnd, LoopStart);
+  setPrevNode(Next);
+}
+
 /// After this function control flow looks like it should be, but
-/// branches only have undefined conditions.
+/// branches and PHI nodes only have undefined conditions.
 void AMDGPUStructurizeCFG::createFlow() {
-  DeletedPhis.clear();
-
-  BasicBlock *Prev = Order.pop_back_val()->getEntry();
-  assert(Prev == ParentRegion->getEntry() && "Incorrect node order!");
-  Visited.erase(Prev);
-
-  if (LoopStart == Prev) {
-    // Loop starts at entry, split entry so that we can predicate it
-    BasicBlock::iterator Insert = Prev->getFirstInsertionPt();
-    BasicBlock *Split = Prev->splitBasicBlock(Insert, FlowBlockName);
-    DT->addNewBlock(Split, Prev);
-    ParentRegion->getRegionInfo()->setRegionFor(Split, ParentRegion);
-    Predicates[Split] = Predicates[Prev];
-    Order.push_back(ParentRegion->getBBNode(Split));
-    LoopPred[Prev] = BoolTrue;
-
-  } else if (LoopStart == Order.back()->getEntry()) {
-    // Loop starts behind entry, split entry so that we can jump to it
-    Instruction *Term = Prev->getTerminator();
-    BasicBlock *Split = Prev->splitBasicBlock(Term, FlowBlockName);
-    DT->addNewBlock(Split, Prev);
-    ParentRegion->getRegionInfo()->setRegionFor(Split, ParentRegion);
-    Prev = Split;
-  }
-
-  killTerminator(Prev);
-  FlowsInserted.clear();
-  FlowsInserted.push_back(Prev);
-
-  while (!Order.empty()) {
-    RegionNode *Node = Order.pop_back_val();
-    Visited.erase(Node->getEntry());
-    Prev = wireFlowBlock(Prev, Node);
-    if (LoopStart && !LoopEnd) {
-      // Create an extra loop end node
-      LoopEnd = Prev;
-      Prev = getNextFlow(LoopEnd);
-      BranchInst::Create(Prev, LoopStart, BoolUndef, LoopEnd);
-      addPhiValues(LoopEnd, LoopStart);
-    }
-  }
 
   BasicBlock *Exit = ParentRegion->getExit();
-  BranchInst::Create(Exit, Prev);
-  addPhiValues(Prev, Exit);
-  if (DT->dominates(ParentRegion->getEntry(), Exit))
-    DT->changeImmediateDominator(Exit, Prev);
+  bool EntryDominatesExit = DT->dominates(ParentRegion->getEntry(), Exit);
 
-  if (LoopStart && LoopEnd) {
-    BBVector::iterator FI = std::find(FlowsInserted.begin(),
-                                      FlowsInserted.end(),
-                                      LoopStart);
-    for (; *FI != LoopEnd; ++FI) {
-      addPhiValues(*FI, (*FI)->getTerminator()->getSuccessor(0));
-    }
+  DeletedPhis.clear();
+  AddedPhis.clear();
+  Conditions.clear();
+  LoopConds.clear();
+
+  PrevNode = 0;
+  Visited.clear();
+
+  while (!Order.empty()) {
+    handleLoops(EntryDominatesExit, 0);
   }
 
-  assert(Order.empty());
-  assert(Visited.empty());
-  assert(DeletedPhis.empty());
-}
-
-/// \brief Insert the missing branch conditions
-void AMDGPUStructurizeCFG::insertConditions() {
-  SSAUpdater PhiInserter;
-
-  for (BBVector::iterator FI = FlowsInserted.begin(), FE = FlowsInserted.end();
-       FI != FE; ++FI) {
-
-    BranchInst *Term = cast<BranchInst>((*FI)->getTerminator());
-    if (Term->isUnconditional())
-      continue;
-
-    PhiInserter.Initialize(Boolean, "");
-    PhiInserter.AddAvailableValue(&Func->getEntryBlock(), BoolFalse);
-
-    BasicBlock *Succ = Term->getSuccessor(0);
-    BBPredicates &Preds = (*FI == LoopEnd) ? LoopPred : Predicates[Succ];
-    for (BBPredicates::iterator PI = Preds.begin(), PE = Preds.end();
-         PI != PE; ++PI) {
-
-      PhiInserter.AddAvailableValue(PI->first, PI->second);
-    }
-
-    Term->setCondition(PhiInserter.GetValueAtEndOfBlock(*FI));
-  }
+  if (PrevNode)
+    changeExit(PrevNode, Exit, EntryDominatesExit);
+  else
+    assert(EntryDominatesExit);
 }
 
 /// Handle a rare case where the disintegrated nodes instructions
@@ -696,14 +868,21 @@ bool AMDGPUStructurizeCFG::runOnRegion(Region *R, RGPassManager &RGM) {
   orderNodes();
   collectInfos();
   createFlow();
-  insertConditions();
+  insertConditions(false);
+  insertConditions(true);
+  setPhiValues();
   rebuildSSA();
 
+  // Cleanup
   Order.clear();
   Visited.clear();
-  Predicates.clear();
   DeletedPhis.clear();
-  FlowsInserted.clear();
+  AddedPhis.clear();
+  Predicates.clear();
+  Conditions.clear();
+  Loops.clear();
+  LoopPreds.clear();
+  LoopConds.clear();
 
   return true;
 }

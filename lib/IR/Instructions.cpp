@@ -333,13 +333,19 @@ CallInst::CallInst(const CallInst &CI)
 
 void CallInst::addAttribute(unsigned i, Attribute attr) {
   AttributeSet PAL = getAttributes();
-  PAL = PAL.addAttr(getContext(), i, attr);
+  AttrBuilder B(attr);
+  LLVMContext &Context = getContext();
+  PAL = PAL.addAttributes(Context, i,
+                          AttributeSet::get(Context, i, B));
   setAttributes(PAL);
 }
 
 void CallInst::removeAttribute(unsigned i, Attribute attr) {
   AttributeSet PAL = getAttributes();
-  PAL = PAL.removeAttr(getContext(), i, attr);
+  AttrBuilder B(attr);
+  LLVMContext &Context = getContext();
+  PAL = PAL.removeAttributes(Context, i,
+                             AttributeSet::get(Context, i, B));
   setAttributes(PAL);
 }
 
@@ -589,13 +595,17 @@ bool InvokeInst::paramHasAttr(unsigned i, Attribute::AttrKind A) const {
 
 void InvokeInst::addAttribute(unsigned i, Attribute attr) {
   AttributeSet PAL = getAttributes();
-  PAL = PAL.addAttr(getContext(), i, attr);
+  AttrBuilder B(attr);
+  PAL = PAL.addAttributes(getContext(), i,
+                          AttributeSet::get(getContext(), i, B));
   setAttributes(PAL);
 }
 
 void InvokeInst::removeAttribute(unsigned i, Attribute attr) {
   AttributeSet PAL = getAttributes();
-  PAL = PAL.removeAttr(getContext(), i, attr);
+  AttrBuilder B(attr);
+  PAL = PAL.removeAttributes(getContext(), i,
+                             AttributeSet::get(getContext(), i, B));
   setAttributes(PAL);
 }
 

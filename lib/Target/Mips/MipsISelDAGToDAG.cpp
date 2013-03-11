@@ -96,7 +96,14 @@ private:
   SDNode *Select(SDNode *N);
 
   // Complex Pattern.
-  bool SelectAddr(SDNode *Parent, SDValue N, SDValue &Base, SDValue &Offset);
+  /// (reg + imm).
+  bool selectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset) const;
+
+  /// Fall back on this function if all else fails.
+  bool selectAddrDefault(SDValue Addr, SDValue &Base, SDValue &Offset) const;
+
+  /// Match integer address pattern.
+  bool selectIntAddr(SDValue Addr, SDValue &Base, SDValue &Offset) const;
 
   bool SelectAddr16(SDNode *Parent, SDValue N, SDValue &Base, SDValue &Offset,
        SDValue &Alias);
@@ -323,8 +330,8 @@ SDValue MipsDAGToDAGISel::getMips16SPAliasReg() {
 
 /// ComplexPattern used on MipsInstrInfo
 /// Used on Mips Load/Store instructions
-bool MipsDAGToDAGISel::
-SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
+bool MipsDAGToDAGISel::selectAddrRegImm(SDValue Addr, SDValue &Base,
+                                        SDValue &Offset) const {
   EVT ValTy = Addr.getValueType();
 
   // if Address is FI, get the TargetFrameIndex.
@@ -384,19 +391,30 @@ SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
         return true;
       }
     }
-
-    // If an indexed floating point load/store can be emitted, return false.
-    const LSBaseSDNode *LS = dyn_cast<LSBaseSDNode>(Parent);
-
-    if (LS &&
-        (LS->getMemoryVT() == MVT::f32 || LS->getMemoryVT() == MVT::f64) &&
-        Subtarget.hasFPIdx() && !Subtarget.isTargetNaCl()/*@LOCALMOD*/)
-      return false;
   }
+}
 
-  Base   = Addr;
-  Offset = CurDAG->getTargetConstant(0, ValTy);
+bool MipsDAGToDAGISel::selectAddrDefault(SDValue Addr, SDValue &Base,
+                                         SDValue &Offset) const {
+  // @LOCALMOD-START
+  // If an indexed floating point load/store can be emitted, return false.
+  const LSBaseSDNode *LS = dyn_cast<LSBaseSDNode>(Parent);
+
+  if (LS &&
+     (LS->getMemoryVT() == MVT::f32 || LS->getMemoryVT() == MVT::f64) &&
+      Subtarget.hasFPIdx())
+    return false;
+  // @LOCALMOD-END
+
+  Base = Addr;
+  Offset = CurDAG->getTargetConstant(0, Addr.getValueType());
   return true;
+}
+
+bool MipsDAGToDAGISel::selectIntAddr(SDValue Addr, SDValue &Base,
+                                     SDValue &Offset) const {
+  return selectAddrRegImm(Addr, Base, Offset) ||
+    selectAddrDefault(Addr, Base, Offset);
 }
 
 void MipsDAGToDAGISel::getMips16SPRefReg(SDNode *Parent, SDValue &AliasReg) {

@@ -146,6 +146,7 @@ class ARMFastISel : public FastISel {
     virtual unsigned TargetMaterializeAlloca(const AllocaInst *AI);
     virtual bool TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
                                const LoadInst *LI);
+    virtual bool FastLowerArguments();
   private:
   #include "ARMGenFastISel.inc"
 
@@ -2104,6 +2105,9 @@ bool ARMFastISel::SelectRet(const Instruction *I) {
   if (!FuncInfo.CanLowerReturn)
     return false;
 
+  // Build a list of return value registers.
+  SmallVector<unsigned, 4> RetRegs;
+
   CallingConv::ID CC = F.getCallingConv();
   if (Ret->getNumOperands() > 0) {
     SmallVector<ISD::OutputArg, 4> Outs;
@@ -2162,13 +2166,16 @@ bool ARMFastISel::SelectRet(const Instruction *I) {
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
             DstReg).addReg(SrcReg);
 
-    // Mark the register as live out of the function.
-    MRI.addLiveOut(VA.getLocReg());
+    // Add register to return instruction.
+    RetRegs.push_back(VA.getLocReg());
   }
 
   unsigned RetOpc = isThumb2 ? ARM::tBX_RET : ARM::BX_RET;
-  AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                          TII.get(RetOpc)));
+  MachineInstrBuilder MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
+                                    TII.get(RetOpc));
+  AddOptionalDefs(MIB);
+  for (unsigned i = 0, e = RetRegs.size(); i != e; ++i)
+    MIB.addReg(RetRegs[i], RegState::Implicit);
   return true;
 }
 
@@ -2456,7 +2463,6 @@ bool ARMFastISel::ARMTryEmitSmallMemCpy(Address Dest, Address Src,
       if (Len >= 2 && Alignment == 2)
         VT = MVT::i16;
       else {
-        assert (Alignment == 1 && "Expected an alignment of 1!");
         VT = MVT::i8;
       }
     }
@@ -2567,7 +2573,8 @@ bool ARMFastISel::SelectIntrinsicCall(const IntrinsicInst &I) {
     return SelectCall(&I, "memset");
   }
   case Intrinsic::trap: {
-    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(ARM::TRAP));
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(
+      Subtarget->useNaClTrap() ? ARM::TRAPNaCl : ARM::TRAP));
     return true;
   }
   }
@@ -2880,6 +2887,80 @@ unsigned ARMFastISel::ARMLowerPICELF(const GlobalValue *GV,
   AddOptionalDefs(MIB);
 
   return DestReg2;
+}
+
+bool ARMFastISel::FastLowerArguments() {
+  if (!FuncInfo.CanLowerReturn)
+    return false;
+
+  const Function *F = FuncInfo.Fn;
+  if (F->isVarArg())
+    return false;
+
+  CallingConv::ID CC = F->getCallingConv();
+  switch (CC) {
+  default:
+    return false;
+  case CallingConv::Fast:
+  case CallingConv::C:
+  case CallingConv::ARM_AAPCS_VFP:
+  case CallingConv::ARM_AAPCS:
+  case CallingConv::ARM_APCS:
+    break;
+  }
+
+  // Only handle simple cases. i.e. Up to 4 i8/i16/i32 scalar arguments
+  // which are passed in r0 - r3.
+  unsigned Idx = 1;
+  for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
+       I != E; ++I, ++Idx) {
+    if (Idx > 4)
+      return false;
+
+    if (F->getAttributes().hasAttribute(Idx, Attribute::InReg) ||
+        F->getAttributes().hasAttribute(Idx, Attribute::StructRet) ||
+        F->getAttributes().hasAttribute(Idx, Attribute::ByVal))
+      return false;
+
+    Type *ArgTy = I->getType();
+    if (ArgTy->isStructTy() || ArgTy->isArrayTy() || ArgTy->isVectorTy())
+      return false;
+
+    EVT ArgVT = TLI.getValueType(ArgTy);
+    if (!ArgVT.isSimple()) return false;
+    switch (ArgVT.getSimpleVT().SimpleTy) {
+    case MVT::i8:
+    case MVT::i16:
+    case MVT::i32:
+      break;
+    default:
+      return false;
+    }
+  }
+
+
+  static const uint16_t GPRArgRegs[] = {
+    ARM::R0, ARM::R1, ARM::R2, ARM::R3
+  };
+
+  const TargetRegisterClass *RC = TLI.getRegClassFor(MVT::i32);
+  Idx = 0;
+  for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
+       I != E; ++I, ++Idx) {
+    if (I->use_empty())
+      continue;
+    unsigned SrcReg = GPRArgRegs[Idx];
+    unsigned DstReg = FuncInfo.MF->addLiveIn(SrcReg, RC);
+    // FIXME: Unfortunately it's necessary to emit a copy from the livein copy.
+    // Without this, EmitLiveInCopies may eliminate the livein if its only
+    // use is a bitcast (which isn't turned into an instruction).
+    unsigned ResultReg = createResultReg(RC);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
+            ResultReg).addReg(DstReg, getKillRegState(true));
+    UpdateValueMap(I, ResultReg);
+  }
+
+  return true;
 }
 
 namespace llvm {

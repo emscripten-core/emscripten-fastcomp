@@ -805,6 +805,16 @@ def int_nvvm_ldu_global_p : Intrinsic<[llvm_anyptr_ty],
   [LLVMPointerType<LLVMMatchType<0>>], [IntrReadMem, NoCapture<0>],
   "llvm.nvvm.ldu.global.p">;
 
+// Generated within nvvm. Use for ldg on sm_35 or later
+def int_nvvm_ldg_global_i : Intrinsic<[llvm_anyint_ty],
+  [LLVMPointerType<LLVMMatchType<0>>], [IntrReadMem, NoCapture<0>],
+  "llvm.nvvm.ldg.global.i">;
+def int_nvvm_ldg_global_f : Intrinsic<[llvm_anyfloat_ty],
+  [LLVMPointerType<LLVMMatchType<0>>], [IntrReadMem, NoCapture<0>],
+  "llvm.nvvm.ldg.global.f">;
+def int_nvvm_ldg_global_p : Intrinsic<[llvm_anyptr_ty],
+  [LLVMPointerType<LLVMMatchType<0>>], [IntrReadMem, NoCapture<0>],
+  "llvm.nvvm.ldg.global.p">;
 
 // Use for generic pointers
 // - These intrinsics are used to convert address spaces.
@@ -815,36 +825,36 @@ def int_nvvm_ldu_global_p : Intrinsic<[llvm_anyptr_ty],
 //   of pointer to another type of pointer, while the address space remains
 //   the same.
 def int_nvvm_ptr_local_to_gen: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.local.to.gen">;
 def int_nvvm_ptr_shared_to_gen: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.shared.to.gen">;
 def int_nvvm_ptr_global_to_gen: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.global.to.gen">;
 def int_nvvm_ptr_constant_to_gen: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.constant.to.gen">;
 
 def int_nvvm_ptr_gen_to_global: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.gen.to.global">;
 def int_nvvm_ptr_gen_to_shared: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.gen.to.shared">;
 def int_nvvm_ptr_gen_to_local: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.gen.to.local">;
 def int_nvvm_ptr_gen_to_constant: Intrinsic<[llvm_anyptr_ty],
-                 [llvm_anyptr_ty], [IntrNoMem, NoCapture<0>],
+                 [llvm_anyptr_ty], [IntrNoMem],
                  "llvm.nvvm.ptr.gen.to.constant">;
 
 // Used in nvvm internally to help address space opt and ptx code generation
 // This is for params that are passed to kernel functions by pointer by-val.
 def int_nvvm_ptr_gen_to_param: Intrinsic<[llvm_anyptr_ty],
                                      [llvm_anyptr_ty],
-                                   [IntrNoMem, NoCapture<0>],
+                                   [IntrNoMem],
                                    "llvm.nvvm.ptr.gen.to.param">;
 
 // Move intrinsics, used in nvvm internally

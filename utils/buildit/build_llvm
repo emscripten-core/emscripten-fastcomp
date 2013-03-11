@@ -154,6 +154,11 @@ if [ "$ARM_HOSTED_BUILD" = yes ]; then
     --program-prefix="" \
     || exit 1
 
+  if [ -n "$IPHONEOS_DEPLOYMENT_TARGET" ]; then
+    COMMON_MAKEFLAGS="$COMMON_MAKEFLAGS \
+      DEPLOYMENT_TARGET=-mios-version-min=$IPHONEOS_DEPLOYMENT_TARGET"
+  fi
+
   make $JOBS_FLAG $COMMON_MAKEFLAGS SDKROOT= UNIVERSAL_ARCH="$HOSTS" \
     CXXFLAGS="-DLLVM_VERSION_INFO='\" Apple Build #$LLVM_VERSION\"'"
   if [ $? != 0 ] ; then
@@ -164,12 +169,23 @@ if [ "$ARM_HOSTED_BUILD" = yes ]; then
 else
 # not $ARM_HOSTED_BUILD
 
+  export CC=`xcrun -find clang`
+  export CXX=`xcrun -find clang++`
+
   if [ "$IOS_SIM_BUILD" = yes ]; then
     # Use a non-standard "darwin_sim" host triple to trigger a cross-build.
     configure_opts="--enable-targets=x86 --host=i686-apple-darwin_sim \
                     --build=i686-apple-darwin10"
+    if [ -n "$IPHONEOS_DEPLOYMENT_TARGET" ]; then
+      COMMON_MAKEFLAGS="$COMMON_MAKEFLAGS \
+        DEPLOYMENT_TARGET=-mios-simulator-version-min=$IPHONEOS_DEPLOYMENT_TARGET"
+    fi
   else
     configure_opts="--enable-targets=arm,x86"
+    if [ -n "$MACOSX_DEPLOYMENT_TARGET" ]; then
+      COMMON_MAKEFLAGS="$COMMON_MAKEFLAGS \
+        DEPLOYMENT_TARGET=-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+    fi
   fi
 
   if [ $SDKROOT ]; then
@@ -217,6 +233,16 @@ fi
 RC_ProjectSourceSubversion=`printf "%d" $LLVM_MINOR_VERSION`
 echo "#define LLVM_VERSION ${RC_ProjectSourceVersion}" > $DEST_DIR$DEST_ROOT/include/llvm/Version.h
 echo "#define LLVM_MINOR_VERSION ${RC_ProjectSourceSubversion}" >> $DEST_DIR$DEST_ROOT/include/llvm/Version.h
+
+# Run unifdef to preprocess the installed headers to reflect whether this
+# was a debug or release build.
+for file in `find $DEST_DIR$DEST_ROOT/include -type f -print`; do
+  if [ "$LLVM_ASSERTIONS" = yes ]; then
+    unifdef -UNDEBUG -D_DEBUG -o $file $file
+  else
+    unifdef -DNDEBUG -U_DEBUG -ULLVM_ENABLE_DUMP -o $file $file
+  fi
+done
 
 # Find the right version of strip to use.
 STRIP=strip

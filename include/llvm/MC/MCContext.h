@@ -129,6 +129,10 @@ namespace llvm {
     /// non-empty.
     StringRef DwarfDebugFlags;
 
+    /// The string to embed in as the dwarf AT_producer for the compile unit, if
+    /// non-empty.
+    StringRef DwarfDebugProducer;
+
     /// Honor temporary labels, this is useful for debugging semantic
     /// differences between temporary and non-temporary labels (primarily on
     /// Darwin).
@@ -140,6 +144,10 @@ namespace llvm {
     /// We need a deterministic iteration order, so we remember the order
     /// the elements were added.
     std::vector<const MCSection *> MCLineSectionOrder;
+    /// The Compile Unit ID that we are currently processing.
+    unsigned DwarfCompileUnitID;
+    /// The line table start symbol for each Compile Unit.
+    DenseMap<unsigned, MCSymbol *> MCLineTableSymbols;
 
     void *MachOUniquingMap, *ELFUniquingMap, *COFFUniquingMap;
 
@@ -300,6 +308,25 @@ namespace llvm {
       MCLineSections[Sec] = Line;
       MCLineSectionOrder.push_back(Sec);
     }
+    unsigned getDwarfCompileUnitID() {
+      return DwarfCompileUnitID;
+    }
+    void setDwarfCompileUnitID(unsigned CUIndex) {
+      DwarfCompileUnitID = CUIndex;
+    }
+    const DenseMap<unsigned, MCSymbol *> &getMCLineTableSymbols() const {
+      return MCLineTableSymbols;
+    }
+    MCSymbol *getMCLineTableSymbol(unsigned ID) const {
+      DenseMap<unsigned, MCSymbol *>::const_iterator CIter =
+        MCLineTableSymbols.find(ID);
+      if (CIter == MCLineTableSymbols.end())
+        return NULL;
+      return CIter->second;
+    }
+    void setMCLineTableSymbol(MCSymbol *Sym, unsigned ID) {
+      MCLineTableSymbols[ID] = Sym;
+    }
 
     /// setCurrentDwarfLoc - saves the information from the currently parsed
     /// dwarf .loc directive and sets DwarfLocSeen.  When the next instruction
@@ -345,6 +372,9 @@ namespace llvm {
 
     void setDwarfDebugFlags(StringRef S) { DwarfDebugFlags = S; }
     StringRef getDwarfDebugFlags() { return DwarfDebugFlags; }
+
+    void setDwarfDebugProducer(StringRef S) { DwarfDebugProducer = S; }
+    StringRef getDwarfDebugProducer() { return DwarfDebugProducer; }
 
     /// @}
 

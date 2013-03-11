@@ -1671,8 +1671,10 @@ Value *llvm::FindInsertedValue(Value *V, ArrayRef<unsigned> idx_range,
 /// it can be expressed as a base pointer plus a constant offset.  Return the
 /// base and offset to the caller.
 Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
-                                              const DataLayout &TD) {
-  unsigned BitWidth = TD.getPointerSizeInBits();
+                                              const DataLayout *TD) {
+  // Without DataLayout, conservatively assume 64-bit offsets, which is
+  // the widest we support.
+  unsigned BitWidth = TD ? TD->getPointerSizeInBits() : 64;
   APInt ByteOffset(BitWidth, 0);
   while (1) {
     if (Ptr->getType()->isVectorTy())
@@ -1680,7 +1682,7 @@ Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
 
     if (GEPOperator *GEP = dyn_cast<GEPOperator>(Ptr)) {
       APInt GEPOffset(BitWidth, 0);
-      if (!GEP->accumulateConstantOffset(TD, GEPOffset))
+      if (TD && !GEP->accumulateConstantOffset(*TD, GEPOffset))
         break;
       ByteOffset += GEPOffset;
       Ptr = GEP->getPointerOperand();
@@ -2011,4 +2013,20 @@ bool llvm::isSafeToSpeculativelyExecute(const Value *V,
   case Instruction::Resume:
     return false; // Misc instructions which have effects
   }
+}
+
+/// isKnownNonNull - Return true if we know that the specified value is never
+/// null.
+bool llvm::isKnownNonNull(const Value *V) {
+  // Alloca never returns null, malloc might.
+  if (isa<AllocaInst>(V)) return true;
+
+  // A byval argument is never null.
+  if (const Argument *A = dyn_cast<Argument>(V))
+    return A->hasByValAttr();
+
+  // Global values are not null unless extern weak.
+  if (const GlobalValue *GV = dyn_cast<GlobalValue>(V))
+    return !GV->hasExternalWeakLinkage();
+  return false;
 }

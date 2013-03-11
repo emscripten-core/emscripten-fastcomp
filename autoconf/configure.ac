@@ -59,6 +59,11 @@ if test ${srcdir} != "." ; then
   fi
 fi
 
+dnl Default to empty (i.e. assigning the null string to) CFLAGS and CXXFLAGS,
+dnl instead of the autoconf default (for example, '-g -O2' for CC=gcc).
+${CFLAGS=}
+${CXXFLAGS=}
+
 dnl We need to check for the compiler up here to avoid anything else
 dnl starting with a different one.
 AC_PROG_CC(clang llvm-gcc gcc)
@@ -394,6 +399,7 @@ AC_CACHE_CHECK([target architecture],[llvm_cv_target_arch],
   sparc*-*)               llvm_cv_target_arch="Sparc" ;;
   powerpc*-*)             llvm_cv_target_arch="PowerPC" ;;
   arm*-*)                 llvm_cv_target_arch="ARM" ;;
+  aarch64*-*)             llvm_cv_target_arch="AArch64" ;;
   mips-* | mips64-*)      llvm_cv_target_arch="Mips" ;;
   mipsel-* | mips64el-*)  llvm_cv_target_arch="Mips" ;;
   xcore-*)                llvm_cv_target_arch="XCore" ;;
@@ -427,6 +433,7 @@ case $host in
   sparc*-*)               host_arch="Sparc" ;;
   powerpc*-*)             host_arch="PowerPC" ;;
   arm*-*)                 host_arch="ARM" ;;
+  aarch64*-*)             host_arch="AArch64" ;;
   mips-* | mips64-*)      host_arch="Mips" ;;
   mipsel-* | mips64el-*)  host_arch="Mips" ;;
   xcore-*)                host_arch="XCore" ;;
@@ -645,6 +652,7 @@ else
     PowerPC)     AC_SUBST(TARGET_HAS_JIT,1) ;;
     x86_64)      AC_SUBST(TARGET_HAS_JIT,1) ;;
     ARM)         AC_SUBST(TARGET_HAS_JIT,1) ;;
+    AArch64)     AC_SUBST(TARGET_HAS_JIT,0) ;;
     Mips)        AC_SUBST(TARGET_HAS_JIT,1) ;;
     XCore)       AC_SUBST(TARGET_HAS_JIT,0) ;;
     MSP430)      AC_SUBST(TARGET_HAS_JIT,0) ;;
@@ -776,20 +784,21 @@ dnl Allow specific targets to be specified for building (or not)
 TARGETS_TO_BUILD=""
 AC_ARG_ENABLE([targets],AS_HELP_STRING([--enable-targets],
     [Build specific host targets: all or target1,target2,... Valid targets are:
-     host, x86, x86_64, sparc, powerpc, arm, mips, hexagon,
+     host, x86, x86_64, sparc, powerpc, arm, aarch64, mips, hexagon,
      xcore, msp430, nvptx, and cpp (default=all)]),,
     enableval=all)
 if test "$enableval" = host-only ; then
   enableval=host
 fi
 case "$enableval" in
-  all) TARGETS_TO_BUILD="X86 Sparc PowerPC ARM Mips XCore MSP430 CppBackend MBlaze NVPTX Hexagon" ;;
+  all) TARGETS_TO_BUILD="X86 Sparc PowerPC AArch64 ARM Mips XCore MSP430 CppBackend MBlaze NVPTX Hexagon" ;;
   *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
       case "$a_target" in
         x86)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
         x86_64)   TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
         sparc)    TARGETS_TO_BUILD="Sparc $TARGETS_TO_BUILD" ;;
         powerpc)  TARGETS_TO_BUILD="PowerPC $TARGETS_TO_BUILD" ;;
+        aarch64)  TARGETS_TO_BUILD="AArch64 $TARGETS_TO_BUILD" ;;
         arm)      TARGETS_TO_BUILD="ARM $TARGETS_TO_BUILD" ;;
         mips)     TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
         mipsel)   TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
@@ -1242,10 +1251,15 @@ fi
 dnl Verify that GCC is version 3.0 or higher
 if test "$GCC" = "yes"
 then
-  AC_COMPILE_IFELSE([[#if !defined(__GNUC__) || __GNUC__ < 3
-#error Unsupported GCC version
-#endif
-]], [], [AC_MSG_ERROR([gcc 3.x required, but you have a lower version])])
+  AC_COMPILE_IFELSE(
+[
+  AC_LANG_SOURCE([[
+    #if !defined(__GNUC__) || __GNUC__ < 3
+    #error Unsupported GCC version
+    #endif
+  ]])
+],
+[], [AC_MSG_ERROR([gcc 3.x required, but you have a lower version])])
 fi
 
 dnl Check for GNU Make.  We use its extensions, so don't build without it
@@ -1261,43 +1275,55 @@ dnl Check optional compiler flags.
 AC_MSG_CHECKING([optional compiler flags])
 CXX_FLAG_CHECK(NO_VARIADIC_MACROS, [-Wno-variadic-macros])
 CXX_FLAG_CHECK(NO_MISSING_FIELD_INITIALIZERS, [-Wno-missing-field-initializers])
+CXX_FLAG_CHECK(NO_NESTED_ANON_TYPES, [-Wno-nested-anon-types])
 CXX_FLAG_CHECK(COVERED_SWITCH_DEFAULT, [-Wcovered-switch-default])
+
 dnl GCC's potential uninitialized use analysis is weak and presents lots of
 dnl false positives, so disable it.
+NO_UNINITIALIZED=
+NO_MAYBE_UNINITIALIZED=
 if test "$GXX" = "yes"
 then
   CXX_FLAG_CHECK(NO_MAYBE_UNINITIALIZED, [-Wno-maybe-uninitialized])
   dnl gcc 4.7 introduced -Wmaybe-uninitialized to distinguish cases which are
-  dnl known to be uninitialized from cases which might be uninitialized.  We 
+  dnl known to be uninitialized from cases which might be uninitialized.  We
   dnl still want to catch the first kind of errors.
-  if test "$NO_MAYBE_UNINITIALIZED" != "-Wno-maybe-uninitialized"
+  if test -z "$NO_MAYBE_UNINITIALIZED"
   then
     CXX_FLAG_CHECK(NO_UNINITIALIZED, [-Wno-uninitialized])
-  else
-    dnl Some versions of gcc accept unsupported -W flags if there is
-    dnl no warning but stop with an error when a warning is
-    dnl encountered.  If this gcc is earlier than 4.7, just use
-    dnl -Wno-uninitialized.
-    gxx_version=`$CXX -dumpversion`
-    gxx_version_major=`echo $gxx_version | cut -d'.' -f1`
-    gxx_version_minor=`echo $gxx_version | cut -d'.' -f2`
-    gxx_version_patch=`echo $gxx_version | cut -d'.' -f3`
-
-    if    test "$gxx_version_major" -ge "4" \
-       && test "$gxx_version_minor" -ge "7"; then
-      dnl AC_SUBST doesn't work with empty strings.
-      NO_UNINITIALIZED=
-    else
-      NO_MAYBE_UNINITIALIZED=
-      CXX_FLAG_CHECK(NO_UNINITIALIZED, [-Wno-uninitialized])
-    fi
   fi
-else
-  NO_UNINITIALIZED=
-  NO_MAYBE_UNINITIALIZED=
 fi
-AC_MSG_RESULT([$NO_VARIADIC_MACROS $NO_MISSING_FIELD_INITIALIZERS $COVERED_SWITCH_DEFAULT $NO_UNINITIALIZED $NO_MAYBE_UNINITIALIZED])
+AC_MSG_RESULT([$NO_VARIADIC_MACROS $NO_MISSING_FIELD_INITIALIZERS $NO_NESTED_ANON_TYPES $COVERED_SWITCH_DEFAULT $NO_UNINITIALIZED $NO_MAYBE_UNINITIALIZED])
 
+AC_ARG_WITH([python],
+            [AS_HELP_STRING([--with-python], [path to python])],
+            [PYTHON="$withval"])
+
+if test -n "$PYTHON" && test -x "$PYTHON" ; then
+  AC_MSG_CHECKING([for python])
+  AC_MSG_RESULT([user defined: $with_python])
+else
+  if test -n "$PYTHON" ; then
+    AC_MSG_WARN([specified python ($PYTHON) is not usable, searching path])
+  fi
+
+  AC_PATH_PROG([PYTHON], [python python2 python26],
+               [AC_MSG_RESULT([not found])
+                AC_MSG_ERROR([could not find python 2.5 or higher])])
+fi
+
+AC_MSG_CHECKING([for python >= 2.5])
+ac_python_version=`$PYTHON -c 'import sys; print sys.version.split()[[0]]'`
+ac_python_version_major=`echo $ac_python_version | cut -d'.' -f1`
+ac_python_version_minor=`echo $ac_python_version | cut -d'.' -f2`
+ac_python_version_patch=`echo $ac_python_version | cut -d'.' -f3`
+if   test "$ac_python_version_major" -eq "2" \
+   && test "$ac_python_version_minor" -ge "5" ; then
+  AC_MSG_RESULT([$PYTHON ($ac_python_version)])
+else
+  AC_MSG_RESULT([not found])
+  AC_MSG_FAILURE([found python $ac_python_version ($PYTHON); required >= 2.5])
+fi
 
 dnl===-----------------------------------------------------------------------===
 dnl===
@@ -1492,18 +1518,23 @@ AC_CHECK_HEADERS([CrashReporterClient.h])
 dnl Try to find Darwin specific crash reporting global.
 AC_MSG_CHECKING([__crashreporter_info__])
 AC_LINK_IFELSE(
-  AC_LANG_SOURCE(
-    [[extern const char *__crashreporter_info__;
-      int main() {
-        __crashreporter_info__ = "test";
-        return 0;
-      }
-    ]]),
-  AC_MSG_RESULT(yes)
-  AC_DEFINE(HAVE_CRASHREPORTER_INFO, 1, Can use __crashreporter_info__),
-  AC_MSG_RESULT(no)
-  AC_DEFINE(HAVE_CRASHREPORTER_INFO, 0,
-            Define if __crashreporter_info__ exists.))
+[
+  AC_LANG_SOURCE([[
+    extern const char *__crashreporter_info__;
+    int main() {
+      __crashreporter_info__ = "test";
+      return 0;
+    }
+  ]])
+],
+[
+  AC_MSG_RESULT([yes])
+  AC_DEFINE([HAVE_CRASHREPORTER_INFO], [1], [can use __crashreporter_info__])
+],
+[
+  AC_MSG_RESULT([no])
+  AC_DEFINE([HAVE_CRASHREPORTER_INFO], [0], [can use __crashreporter_info__])
+])
 
 dnl===-----------------------------------------------------------------------===
 dnl===
@@ -1529,6 +1560,7 @@ dnl===-----------------------------------------------------------------------===
 
 AC_CHECK_FUNCS([backtrace ceilf floorf roundf rintf nearbyintf getcwd ])
 AC_CHECK_FUNCS([powf fmodf strtof round ])
+AC_CHECK_FUNCS([log log2 log10 exp exp2])
 AC_CHECK_FUNCS([getpagesize getrusage getrlimit setrlimit gettimeofday ])
 AC_CHECK_FUNCS([isatty mkdtemp mkstemp ])
 AC_CHECK_FUNCS([mktemp posix_spawn pread realpath sbrk setrlimit strdup ])
@@ -1566,10 +1598,15 @@ fi
 dnl Check Win32 API EnumerateLoadedModules.
 if test "$llvm_cv_os_type" = "MingW" ; then
   AC_MSG_CHECKING([whether EnumerateLoadedModules() accepts new decl])
-  AC_COMPILE_IFELSE([[#include <windows.h>
-#include <imagehlp.h>
-extern void foo(PENUMLOADED_MODULES_CALLBACK);
-extern void foo(BOOL(CALLBACK*)(PCSTR,ULONG_PTR,ULONG,PVOID));]],
+  AC_COMPILE_IFELSE(
+[
+  AC_LANG_SOURCE([[
+    #include <windows.h>
+    #include <imagehlp.h>
+    extern void foo(PENUMLOADED_MODULES_CALLBACK);
+    extern void foo(BOOL(CALLBACK*)(PCSTR,ULONG_PTR,ULONG,PVOID));
+  ]])
+],
 [
   AC_MSG_RESULT([yes])
   llvm_cv_win32_elmcb_pcstr="PCSTR"
@@ -1610,22 +1647,28 @@ dnl Since we'll be using these atomic builtins in C++ files we should test
 dnl the C++ compiler.
 AC_LANG_PUSH([C++])
 AC_LINK_IFELSE(
-  AC_LANG_SOURCE(
-    [[int main() {
-        volatile unsigned long val = 1;
-        __sync_synchronize();
-        __sync_val_compare_and_swap(&val, 1, 0);
-        __sync_add_and_fetch(&val, 1);
-        __sync_sub_and_fetch(&val, 1);
-        return 0;
-      }
-    ]]),
-  AC_LANG_POP([C++])
-  AC_MSG_RESULT(yes)
-  AC_DEFINE(LLVM_HAS_ATOMICS, 1, Has gcc/MSVC atomic intrinsics),
-  AC_MSG_RESULT(no)
-  AC_DEFINE(LLVM_HAS_ATOMICS, 0, Has gcc/MSVC atomic intrinsics)
-  AC_MSG_WARN([LLVM will be built thread-unsafe because atomic builtins are missing]))
+[
+  AC_LANG_SOURCE([[
+    int main() {
+      volatile unsigned long val = 1;
+      __sync_synchronize();
+      __sync_val_compare_and_swap(&val, 1, 0);
+      __sync_add_and_fetch(&val, 1);
+      __sync_sub_and_fetch(&val, 1);
+      return 0;
+    }
+  ]])
+],
+[
+  AC_MSG_RESULT([yes])
+  AC_DEFINE([LLVM_HAS_ATOMICS], [1], [Has gcc/MSVC atomic intrinsics])
+],
+[
+  AC_MSG_RESULT([no])
+  AC_DEFINE([LLVM_HAS_ATOMICS], [0], [Has gcc/MSVC atomic intrinsics])
+  AC_MSG_WARN([LLVM will be built thread-unsafe because atomic builtins are missing])
+])
+AC_LANG_POP([C++])
 
 dnl===-----------------------------------------------------------------------===
 dnl===

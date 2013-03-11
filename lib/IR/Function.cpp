@@ -123,16 +123,25 @@ bool Argument::hasStructRetAttr() const {
     hasAttribute(1, Attribute::StructRet);
 }
 
-/// addAttr - Add a Attribute to an argument
-void Argument::addAttr(Attribute attr) {
-  getParent()->addAttribute(getArgNo() + 1, attr);
+/// addAttr - Add attributes to an argument.
+void Argument::addAttr(AttributeSet AS) {
+  assert(AS.getNumSlots() <= 1 &&
+         "Trying to add more than one attribute set to an argument!");
+  AttrBuilder B(AS, AS.getSlotIndex(0));
+  getParent()->addAttributes(getArgNo() + 1,
+                             AttributeSet::get(Parent->getContext(),
+                                               getArgNo() + 1, B));
 }
 
-/// removeAttr - Remove a Attribute from an argument
-void Argument::removeAttr(Attribute attr) {
-  getParent()->removeAttribute(getArgNo() + 1, attr);
+/// removeAttr - Remove attributes from an argument.
+void Argument::removeAttr(AttributeSet AS) {
+  assert(AS.getNumSlots() <= 1 &&
+         "Trying to remove more than one attribute set from an argument!");
+  AttrBuilder B(AS, AS.getSlotIndex(0));
+  getParent()->removeAttributes(getArgNo() + 1,
+                                AttributeSet::get(Parent->getContext(),
+                                                  getArgNo() + 1, B));
 }
-
 
 //===----------------------------------------------------------------------===//
 // Helper Methods in Function
@@ -248,15 +257,21 @@ void Function::dropAllReferences() {
     BasicBlocks.begin()->eraseFromParent();
 }
 
-void Function::addAttribute(unsigned i, Attribute attr) {
+void Function::addAttribute(unsigned i, Attribute::AttrKind attr) {
   AttributeSet PAL = getAttributes();
-  PAL = PAL.addAttr(getContext(), i, attr);
+  PAL = PAL.addAttribute(getContext(), i, attr);
   setAttributes(PAL);
 }
 
-void Function::removeAttribute(unsigned i, Attribute attr) {
+void Function::addAttributes(unsigned i, AttributeSet attrs) {
   AttributeSet PAL = getAttributes();
-  PAL = PAL.removeAttr(getContext(), i, attr);
+  PAL = PAL.addAttributes(getContext(), i, attrs);
+  setAttributes(PAL);
+}
+
+void Function::removeAttributes(unsigned i, AttributeSet attrs) {
+  AttributeSet PAL = getAttributes();
+  PAL = PAL.removeAttributes(getContext(), i, attrs);
   setAttributes(PAL);
 }
 

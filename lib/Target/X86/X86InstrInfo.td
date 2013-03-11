@@ -547,6 +547,13 @@ def lea64_32mem : Operand<i32> {
   let ParserMatchClass = X86MemAsmOperand;
 }
 
+// Memory operands that use 64-bit pointers in both ILP32 and LP64.
+def lea64mem : Operand<i64> {
+  let PrintMethod = "printi64mem";
+  let MIOperandInfo = (ops GR64, i8imm, GR64_NOSP, i32imm, i8imm);
+  let ParserMatchClass = X86MemAsmOperand;
+}
+
 
 //===----------------------------------------------------------------------===//
 // X86 Complex Pattern Definitions.
@@ -558,6 +565,12 @@ def lea32addr : ComplexPattern<i32, 5, "SelectLEAAddr",
                                [add, sub, mul, X86mul_imm, shl, or, frameindex,
                                X86WrapperRIP], // @LOCALMOD
                                []>;
+// In 64-bit mode 32-bit LEAs can use RIP-relative addressing.
+def lea64_32addr : ComplexPattern<i32, 5, "SelectLEAAddr",
+                                  [add, sub, mul, X86mul_imm, shl, or,
+                                   frameindex, X86WrapperRIP],
+                                  []>;
+
 def tls32addr : ComplexPattern<i32, 5, "SelectTLSADDRAddr",
                                [tglobaltlsaddr], []>;
 
@@ -613,6 +626,7 @@ def HasLZCNT     : Predicate<"Subtarget->hasLZCNT()">;
 def HasBMI       : Predicate<"Subtarget->hasBMI()">;
 def HasBMI2      : Predicate<"Subtarget->hasBMI2()">;
 def HasRTM       : Predicate<"Subtarget->hasRTM()">;
+def HasADX       : Predicate<"Subtarget->hasADX()">;
 def FPStackf32   : Predicate<"!Subtarget->hasSSE1()">;
 def FPStackf64   : Predicate<"!Subtarget->hasSSE2()">;
 def HasCmpxchg16b: Predicate<"Subtarget->hasCmpxchg16b()">;
@@ -879,16 +893,14 @@ let Defs = [RSP], Uses = [RSP, EFLAGS], mayStore = 1, neverHasSideEffects=1 in
 def PUSHF64    : I<0x9C, RawFrm, (outs), (ins), "pushfq", [], IIC_PUSH_F>,
                  Requires<[In64BitMode]>;
 
-
-
 let Defs = [EDI, ESI, EBP, EBX, EDX, ECX, EAX, ESP], Uses = [ESP],
     mayLoad=1, neverHasSideEffects=1 in {
-def POPA32   : I<0x61, RawFrm, (outs), (ins), "popa{l}", [], IIC_POP_A>,
+def POPA32   : I<0x61, RawFrm, (outs), (ins), "popa{l|d}", [], IIC_POP_A>,
                Requires<[In32BitMode]>;
 }
 let Defs = [ESP], Uses = [EDI, ESI, EBP, EBX, EDX, ECX, EAX, ESP],
     mayStore=1, neverHasSideEffects=1 in {
-def PUSHA32  : I<0x60, RawFrm, (outs), (ins), "pusha{l}", [], IIC_PUSH_A>,
+def PUSHA32  : I<0x60, RawFrm, (outs), (ins), "pusha{l|d}", [], IIC_PUSH_A>,
                Requires<[In32BitMode]>;
 }
 

@@ -733,21 +733,6 @@ public:
     llvm_unreachable("isFrameOffsetLegal does not exist on this target");
   }
 
-  /// eliminateCallFramePseudoInstr - This method is called during prolog/epilog
-  /// code insertion to eliminate call frame setup and destroy pseudo
-  /// instructions (but only if the Target is using them).  It is responsible
-  /// for eliminating these instructions, replacing them with concrete
-  /// instructions.  This method need only be implemented if using call frame
-  /// setup/destroy pseudo instructions.
-  ///
-  virtual void
-  eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                MachineBasicBlock &MBB,
-                                MachineBasicBlock::iterator MI) const {
-    llvm_unreachable("Call Frame Pseudo Instructions do not exist on this "
-                     "target!");
-  }
-
 
   /// saveScavengerRegister - Spill the register so it can be used by the
   /// register scavenger. Return true if the register was spilled, false
@@ -767,10 +752,11 @@ public:
   /// referenced by the iterator contains an MO_FrameIndex operand which must be
   /// eliminated by this method.  This method may modify or replace the
   /// specified instruction, as long as it keeps the iterator pointing at the
-  /// finished product. SPAdj is the SP adjustment due to call frame setup
-  /// instruction.
+  /// finished product.  SPAdj is the SP adjustment due to call frame setup
+  /// instruction.  FIOperandNum is the FI operand number.
   virtual void eliminateFrameIndex(MachineBasicBlock::iterator MI,
-                                   int SPAdj, RegScavenger *RS=NULL) const = 0;
+                                   int SPAdj, unsigned FIOperandNum,
+                                   RegScavenger *RS = NULL) const = 0;
 
   //===--------------------------------------------------------------------===//
   /// Debug information queries.

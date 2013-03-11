@@ -101,7 +101,8 @@ void MCLineEntry::Make(MCStreamer *MCOS, const MCSection *Section) {
   }
 
   // Add the line entry to this section's entries.
-  LineSection->addLineEntry(LineEntry);
+  LineSection->addLineEntry(LineEntry,
+                            MCOS->getContext().getDwarfCompileUnitID());
 }
 
 //
@@ -131,7 +132,12 @@ static inline const MCExpr *MakeStartMinusEndExpr(const MCStreamer &MCOS,
 //
 static inline void EmitDwarfLineTable(MCStreamer *MCOS,
                                       const MCSection *Section,
-                                      const MCLineSection *LineSection) {
+                                      const MCLineSection *LineSection,
+                                      unsigned CUID) {
+  // This LineSection does not contain any LineEntry for the given Compile Unit.
+  if (!LineSection->containEntriesForID(CUID))
+    return;
+
   unsigned FileNum = 1;
   unsigned LastLine = 1;
   unsigned Column = 0;
@@ -141,8 +147,8 @@ static inline void EmitDwarfLineTable(MCStreamer *MCOS,
 
   // Loop through each MCLineEntry and encode the dwarf line number table.
   for (MCLineSection::const_iterator
-         it = LineSection->getMCLineEntries()->begin(),
-         ie = LineSection->getMCLineEntries()->end(); it != ie; ++it) {
+         it = LineSection->getMCLineEntries(CUID).begin(),
+         ie = LineSection->getMCLineEntries(CUID).end(); it != ie; ++it) {
 
     if (FileNum != it->getFileNum()) {
       FileNum = it->getFileNum();
@@ -215,9 +221,36 @@ const MCSymbol *MCDwarfFileTable::Emit(MCStreamer *MCOS) {
   // Switch to the section where the table will be emitted into.
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfLineSection());
 
-  // Create a symbol at the beginning of this section.
-  MCSymbol *LineStartSym = context.CreateTempSymbol();
-  // Set the value of the symbol, as we are at the start of the section.
+  const DenseMap<unsigned, MCSymbol *> &MCLineTableSymbols =
+    MCOS->getContext().getMCLineTableSymbols();
+  // CUID and MCLineTableSymbols are set in DwarfDebug, when DwarfDebug does
+  // not exist, CUID will be 0 and MCLineTableSymbols will be empty.
+  // Handle Compile Unit 0, the line table start symbol is the section symbol.
+  const MCSymbol *LineStartSym = EmitCU(MCOS, 0);
+  // Handle the rest of the Compile Units.
+  for (unsigned Is = 1, Ie = MCLineTableSymbols.size(); Is < Ie; Is++)
+    EmitCU(MCOS, Is);
+
+  // Now delete the MCLineSections that were created in MCLineEntry::Make()
+  // and used to emit the line table.
+  const DenseMap<const MCSection *, MCLineSection *> &MCLineSections =
+    MCOS->getContext().getMCLineSections();
+  for (DenseMap<const MCSection *, MCLineSection *>::const_iterator it =
+       MCLineSections.begin(), ie = MCLineSections.end(); it != ie;
+       ++it)
+    delete it->second;
+
+  return LineStartSym;
+}
+
+const MCSymbol *MCDwarfFileTable::EmitCU(MCStreamer *MCOS, unsigned CUID) {
+  MCContext &context = MCOS->getContext();
+
+  // Create a symbol at the beginning of the line table.
+  MCSymbol *LineStartSym = MCOS->getContext().getMCLineTableSymbol(CUID);
+  if (!LineStartSym)
+    LineStartSym = context.CreateTempSymbol();
+  // Set the value of the symbol, as we are at the start of the line table.
   MCOS->EmitLabel(LineStartSym);
 
   // Create a symbol for the end of the section (to be set when we get there).
@@ -239,8 +272,7 @@ const MCSymbol *MCDwarfFileTable::Emit(MCStreamer *MCOS) {
   // total length, the 2 bytes for the version, and these 4 bytes for the
   // length of the prologue.
   MCOS->EmitAbsValue(MakeStartMinusEndExpr(*MCOS, *LineStartSym, *ProEndSym,
-                                        (4 + 2 + 4)),
-                  4, 0);
+                                           (4 + 2 + 4)), 4, 0);
 
   // Parameters of the state machine, are next.
   MCOS->EmitIntValue(DWARF2_LINE_MIN_INSN_LENGTH, 1);
@@ -301,11 +333,7 @@ const MCSymbol *MCDwarfFileTable::Emit(MCStreamer *MCOS) {
        ++it) {
     const MCSection *Sec = *it;
     const MCLineSection *Line = MCLineSections.lookup(Sec);
-    EmitDwarfLineTable(MCOS, Sec, Line);
-
-    // Now delete the MCLineSections that were created in MCLineEntry::Make()
-    // and used to emit the line table.
-    delete Line;
+    EmitDwarfLineTable(MCOS, Sec, Line, CUID);
   }
 
   if (MCOS->getContext().getAsmInfo().getLinkerRequiresNonEmptyDwarfLines()
@@ -638,9 +666,15 @@ static void EmitGenDwarfInfo(MCStreamer *MCOS,
   }
 
   // AT_producer, the version of the assembler tool.
-  MCOS->EmitBytes(StringRef("llvm-mc (based on LLVM "));
-  MCOS->EmitBytes(StringRef(PACKAGE_VERSION));
-  MCOS->EmitBytes(StringRef(")"));
+  StringRef DwarfDebugProducer = context.getDwarfDebugProducer();
+  if (!DwarfDebugProducer.empty()){
+    MCOS->EmitBytes(DwarfDebugProducer);
+  }
+  else {
+    MCOS->EmitBytes(StringRef("llvm-mc (based on LLVM "));
+    MCOS->EmitBytes(StringRef(PACKAGE_VERSION));
+    MCOS->EmitBytes(StringRef(")"));
+  }
   MCOS->EmitIntValue(0, 1); // NULL byte to terminate the string.
 
   // AT_language, a 4 byte value.  We use DW_LANG_Mips_Assembler as the dwarf2
@@ -786,7 +820,7 @@ void MCGenDwarfLabelEntry::Make(MCSymbol *Symbol, MCStreamer *MCOS,
 static int getDataAlignmentFactor(MCStreamer &streamer) {
   MCContext &context = streamer.getContext();
   const MCAsmInfo &asmInfo = context.getAsmInfo();
-  int size = asmInfo.getStackSlotSize(); // @LOCALMOD
+  int size = asmInfo.getCalleeSaveStackSlotSize();
   if (asmInfo.isStackGrowthDirectionUp())
     return size;
   else

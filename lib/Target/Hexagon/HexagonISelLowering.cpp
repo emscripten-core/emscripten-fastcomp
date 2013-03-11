@@ -304,15 +304,9 @@ HexagonTargetLowering::LowerReturn(SDValue Chain,
   // Analyze return values of ISD::RET
   CCInfo.AnalyzeReturn(Outs, RetCC_Hexagon);
 
-  // If this is the first return lowered for this function, add the regs to the
-  // liveout set for the function.
-  if (DAG.getMachineFunction().getRegInfo().liveout_empty()) {
-    for (unsigned i = 0; i != RVLocs.size(); ++i)
-      if (RVLocs[i].isRegLoc())
-        DAG.getMachineFunction().getRegInfo().addLiveOut(RVLocs[i].getLocReg());
-  }
-
   SDValue Flag;
+  SmallVector<SDValue, 4> RetOps(1, Chain);
+
   // Copy the result values into the output registers.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     CCValAssign &VA = RVLocs[i];
@@ -321,12 +315,17 @@ HexagonTargetLowering::LowerReturn(SDValue Chain,
 
     // Guarantee that all emitted copies are stuck together with flags.
     Flag = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
   }
 
-  if (Flag.getNode())
-    return DAG.getNode(HexagonISD::RET_FLAG, dl, MVT::Other, Chain, Flag);
+  RetOps[0] = Chain;  // Update chain.
 
-  return DAG.getNode(HexagonISD::RET_FLAG, dl, MVT::Other, Chain);
+  // Add the flag if we have it.
+  if (Flag.getNode())
+    RetOps.push_back(Flag);
+
+  return DAG.getNode(HexagonISD::RET_FLAG, dl, MVT::Other,
+                     &RetOps[0], RetOps.size());
 }
 
 
@@ -1053,8 +1052,8 @@ HexagonTargetLowering::HexagonTargetLowering(HexagonTargetMachine
     setPrefLoopAlignment(4);
 
     // Limits for inline expansion of memcpy/memmove
-    maxStoresPerMemcpy = 6;
-    maxStoresPerMemmove = 6;
+    MaxStoresPerMemcpy = 6;
+    MaxStoresPerMemmove = 6;
 
     //
     // Library calls for unsupported operations
@@ -1364,11 +1363,18 @@ HexagonTargetLowering::HexagonTargetLowering(HexagonTargetMachine
     setOperationAction(ISD::FSIN , MVT::f32, Expand);
     setOperationAction(ISD::FCOS , MVT::f32, Expand);
     setOperationAction(ISD::FREM , MVT::f32, Expand);
+    setOperationAction(ISD::FSINCOS, MVT::f64, Expand);
+    setOperationAction(ISD::FSINCOS, MVT::f32, Expand);
     setOperationAction(ISD::CTPOP, MVT::i32, Expand);
+    setOperationAction(ISD::CTPOP, MVT::i64, Expand);
     setOperationAction(ISD::CTTZ , MVT::i32, Expand);
+    setOperationAction(ISD::CTTZ , MVT::i64, Expand);
     setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i32, Expand);
+    setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i64, Expand);
     setOperationAction(ISD::CTLZ , MVT::i32, Expand);
+    setOperationAction(ISD::CTLZ , MVT::i64, Expand);
     setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i32, Expand);
+    setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i64, Expand);
     setOperationAction(ISD::ROTL , MVT::i32, Expand);
     setOperationAction(ISD::ROTR , MVT::i32, Expand);
     setOperationAction(ISD::BSWAP, MVT::i32, Expand);

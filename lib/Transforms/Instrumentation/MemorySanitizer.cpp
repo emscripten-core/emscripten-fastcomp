@@ -71,7 +71,6 @@
 #define DEBUG_TYPE "msan"
 
 #include "llvm/Transforms/Instrumentation.h"
-#include "BlackList.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -91,6 +90,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/BlackList.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
@@ -126,6 +126,10 @@ static cl::opt<int> ClPoisonStackPattern("msan-poison-stack-pattern",
 static cl::opt<bool> ClHandleICmp("msan-handle-icmp",
        cl::desc("propagate shadow through ICmpEQ and ICmpNE"),
        cl::Hidden, cl::init(true));
+
+static cl::opt<bool> ClHandleICmpExact("msan-handle-icmp-exact",
+       cl::desc("exact handling of relational integer ICmp"),
+       cl::Hidden, cl::init(false));
 
 static cl::opt<bool> ClStoreCleanOrigin("msan-store-clean-origin",
        cl::desc("store origin for clean (fully initialized) values"),
@@ -361,6 +365,9 @@ bool MemorySanitizer::doInitialization(Module &M) {
   new GlobalVariable(M, IRB.getInt32Ty(), true, GlobalValue::WeakODRLinkage,
                      IRB.getInt32(TrackOrigins), "__msan_track_origins");
 
+  new GlobalVariable(M, IRB.getInt32Ty(), true, GlobalValue::WeakODRLinkage,
+                     IRB.getInt32(ClKeepGoing), "__msan_keep_going");
+
   return true;
 }
 
@@ -411,12 +418,8 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   SmallVector<PHINode *, 16> ShadowPHINodes, OriginPHINodes;
   ValueMap<Value*, Value*> ShadowMap, OriginMap;
   bool InsertChecks;
+  bool LoadShadow;
   OwningPtr<VarArgHelper> VAHelper;
-
-  // An unfortunate workaround for asymmetric lowering of va_arg stuff.
-  // See a comment in visitCallSite for more details.
-  static const unsigned AMD64GpEndOffset = 48;  // AMD64 ABI Draft 0.99.6 p3.5.7
-  static const unsigned AMD64FpEndOffset = 176;
 
   struct ShadowOriginAndInsertPoint {
     Instruction *Shadow;
@@ -430,11 +433,15 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   SmallVector<Instruction*, 16> StoreList;
 
   MemorySanitizerVisitor(Function &F, MemorySanitizer &MS)
-    : F(F), MS(MS), VAHelper(CreateVarArgHelper(F, MS, *this)) {
-    InsertChecks = !MS.BL->isIn(F);
+      : F(F), MS(MS), VAHelper(CreateVarArgHelper(F, MS, *this)) {
+    LoadShadow = InsertChecks =
+        !MS.BL->isIn(F) &&
+        F.getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                       Attribute::SanitizeMemory);
+
     DEBUG(if (!InsertChecks)
-            dbgs() << "MemorySanitizer is not inserting checks into '"
-                   << F.getName() << "'\n");
+          dbgs() << "MemorySanitizer is not inserting checks into '"
+                 << F.getName() << "'\n");
   }
 
   void materializeStores() {
@@ -451,9 +458,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
         IRB.CreateAlignedStore(Shadow, ShadowPtr, I.getAlignment());
       DEBUG(dbgs() << "  STORE: " << *NewSI << "\n");
       (void)NewSI;
-      // If the store is volatile, add a check.
-      if (I.isVolatile())
-        insertCheck(Val, &I);
+
       if (ClCheckAccessAddress)
         insertCheck(Addr, &I);
 
@@ -831,15 +836,25 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     IRBuilder<> IRB(&I);
     Type *ShadowTy = getShadowTy(&I);
     Value *Addr = I.getPointerOperand();
-    Value *ShadowPtr = getShadowPtr(Addr, ShadowTy, IRB);
-    setShadow(&I, IRB.CreateAlignedLoad(ShadowPtr, I.getAlignment(), "_msld"));
+    if (LoadShadow) {
+      Value *ShadowPtr = getShadowPtr(Addr, ShadowTy, IRB);
+      setShadow(&I,
+                IRB.CreateAlignedLoad(ShadowPtr, I.getAlignment(), "_msld"));
+    } else {
+      setShadow(&I, getCleanShadow(&I));
+    }
 
     if (ClCheckAccessAddress)
       insertCheck(I.getPointerOperand(), &I);
 
     if (MS.TrackOrigins) {
-      unsigned Alignment = std::max(kMinOriginAlignment, I.getAlignment());
-      setOrigin(&I, IRB.CreateAlignedLoad(getOriginPtr(Addr, IRB), Alignment));
+      if (LoadShadow) {
+        unsigned Alignment = std::max(kMinOriginAlignment, I.getAlignment());
+        setOrigin(&I,
+                  IRB.CreateAlignedLoad(getOriginPtr(Addr, IRB), Alignment));
+      } else {
+        setOrigin(&I, getCleanOrigin());
+      }
     }
   }
 
@@ -847,7 +862,6 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   ///
   /// Stores the corresponding shadow and (optionally) origin.
   /// Optionally, checks that the store address is fully defined.
-  /// Volatile stores check that the value being stored is fully defined.
   void visitStoreInst(StoreInst &I) {
     StoreList.push_back(&I);
   }
@@ -1155,6 +1169,73 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     setOriginForNaryOp(I);
   }
 
+  /// \brief Build the lowest possible value of V, taking into account V's
+  ///        uninitialized bits.
+  Value *getLowestPossibleValue(IRBuilder<> &IRB, Value *A, Value *Sa,
+                                bool isSigned) {
+    if (isSigned) {
+      // Split shadow into sign bit and other bits.
+      Value *SaOtherBits = IRB.CreateLShr(IRB.CreateShl(Sa, 1), 1);
+      Value *SaSignBit = IRB.CreateXor(Sa, SaOtherBits);
+      // Maximise the undefined shadow bit, minimize other undefined bits.
+      return
+        IRB.CreateOr(IRB.CreateAnd(A, IRB.CreateNot(SaOtherBits)), SaSignBit);
+    } else {
+      // Minimize undefined bits.
+      return IRB.CreateAnd(A, IRB.CreateNot(Sa));
+    }
+  }
+
+  /// \brief Build the highest possible value of V, taking into account V's
+  ///        uninitialized bits.
+  Value *getHighestPossibleValue(IRBuilder<> &IRB, Value *A, Value *Sa,
+                                bool isSigned) {
+    if (isSigned) {
+      // Split shadow into sign bit and other bits.
+      Value *SaOtherBits = IRB.CreateLShr(IRB.CreateShl(Sa, 1), 1);
+      Value *SaSignBit = IRB.CreateXor(Sa, SaOtherBits);
+      // Minimise the undefined shadow bit, maximise other undefined bits.
+      return
+        IRB.CreateOr(IRB.CreateAnd(A, IRB.CreateNot(SaSignBit)), SaOtherBits);
+    } else {
+      // Maximize undefined bits.
+      return IRB.CreateOr(A, Sa);
+    }
+  }
+
+  /// \brief Instrument relational comparisons.
+  ///
+  /// This function does exact shadow propagation for all relational
+  /// comparisons of integers, pointers and vectors of those.
+  /// FIXME: output seems suboptimal when one of the operands is a constant
+  void handleRelationalComparisonExact(ICmpInst &I) {
+    IRBuilder<> IRB(&I);
+    Value *A = I.getOperand(0);
+    Value *B = I.getOperand(1);
+    Value *Sa = getShadow(A);
+    Value *Sb = getShadow(B);
+
+    // Get rid of pointers and vectors of pointers.
+    // For ints (and vectors of ints), types of A and Sa match,
+    // and this is a no-op.
+    A = IRB.CreatePointerCast(A, Sa->getType());
+    B = IRB.CreatePointerCast(B, Sb->getType());
+
+    // Let [a0, a1] be the interval of possible values of A, taking into account
+    // its undefined bits. Let [b0, b1] be the interval of possible values of B.
+    // Then (A cmp B) is defined iff (a0 cmp b1) == (a1 cmp b0).
+    bool IsSigned = I.isSigned();
+    Value *S1 = IRB.CreateICmp(I.getPredicate(),
+                               getLowestPossibleValue(IRB, A, Sa, IsSigned),
+                               getHighestPossibleValue(IRB, B, Sb, IsSigned));
+    Value *S2 = IRB.CreateICmp(I.getPredicate(),
+                               getHighestPossibleValue(IRB, A, Sa, IsSigned),
+                               getLowestPossibleValue(IRB, B, Sb, IsSigned));
+    Value *Si = IRB.CreateXor(S1, S2);
+    setShadow(&I, Si);
+    setOriginForNaryOp(I);
+  }
+
   /// \brief Instrument signed relational comparisons.
   ///
   /// Handle (x<0) and (x>=0) comparisons (essentially, sign bit tests) by
@@ -1184,12 +1265,32 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
   }
 
   void visitICmpInst(ICmpInst &I) {
-    if (ClHandleICmp && I.isEquality())
-      handleEqualityComparison(I);
-    else if (ClHandleICmp && I.isSigned() && I.isRelational())
-      handleSignedRelationalComparison(I);
-    else
+    if (!ClHandleICmp) {
       handleShadowOr(I);
+      return;
+    }
+    if (I.isEquality()) {
+      handleEqualityComparison(I);
+      return;
+    }
+
+    assert(I.isRelational());
+    if (ClHandleICmpExact) {
+      handleRelationalComparisonExact(I);
+      return;
+    }
+    if (I.isSigned()) {
+      handleSignedRelationalComparison(I);
+      return;
+    }
+
+    assert(I.isUnsigned());
+    if ((isa<Constant>(I.getOperand(0)) || isa<Constant>(I.getOperand(1)))) {
+      handleRelationalComparisonExact(I);
+      return;
+    }
+
+    handleShadowOr(I);
   }
 
   void visitFCmpInst(FCmpInst &I) {
@@ -1319,16 +1420,25 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     Value *Addr = I.getArgOperand(0);
 
     Type *ShadowTy = getShadowTy(&I);
-    Value *ShadowPtr = getShadowPtr(Addr, ShadowTy, IRB);
-    // We don't know the pointer alignment (could be unaligned SSE load!).
-    // Have to assume to worst case.
-    setShadow(&I, IRB.CreateAlignedLoad(ShadowPtr, 1, "_msld"));
+    if (LoadShadow) {
+      Value *ShadowPtr = getShadowPtr(Addr, ShadowTy, IRB);
+      // We don't know the pointer alignment (could be unaligned SSE load!).
+      // Have to assume to worst case.
+      setShadow(&I, IRB.CreateAlignedLoad(ShadowPtr, 1, "_msld"));
+    } else {
+      setShadow(&I, getCleanShadow(&I));
+    }
+
 
     if (ClCheckAccessAddress)
       insertCheck(Addr, &I);
 
-    if (MS.TrackOrigins)
-      setOrigin(&I, IRB.CreateLoad(getOriginPtr(Addr, IRB)));
+    if (MS.TrackOrigins) {
+      if (LoadShadow)
+        setOrigin(&I, IRB.CreateLoad(getOriginPtr(Addr, IRB)));
+      else
+        setOrigin(&I, getCleanOrigin());
+    }
     return true;
   }
 
@@ -1461,8 +1571,10 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
         AttrBuilder B;
         B.addAttribute(Attribute::ReadOnly)
           .addAttribute(Attribute::ReadNone);
-        Func->removeAttribute(AttributeSet::FunctionIndex,
-                              Attribute::get(Func->getContext(), B));
+        Func->removeAttributes(AttributeSet::FunctionIndex,
+                               AttributeSet::get(Func->getContext(),
+                                                 AttributeSet::FunctionIndex,
+                                                 B));
       }
     }
     IRBuilder<> IRB(&I);
@@ -1501,6 +1613,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       if (MS.TrackOrigins)
         IRB.CreateStore(getOrigin(A),
                         getOriginPtrForArgument(A, IRB, ArgOffset));
+      (void)Store;
       assert(Size != 0 && Store != 0);
       DEBUG(dbgs() << "  Param:" << *Store << "\n");
       ArgOffset += DataLayout::RoundUpAlignment(Size, 8);
@@ -1853,8 +1966,9 @@ bool MemorySanitizer::runOnFunction(Function &F) {
   AttrBuilder B;
   B.addAttribute(Attribute::ReadOnly)
     .addAttribute(Attribute::ReadNone);
-  F.removeAttribute(AttributeSet::FunctionIndex,
-                    Attribute::get(F.getContext(), B));
+  F.removeAttributes(AttributeSet::FunctionIndex,
+                     AttributeSet::get(F.getContext(),
+                                       AttributeSet::FunctionIndex, B));
 
   return Visitor.runOnFunction();
 }

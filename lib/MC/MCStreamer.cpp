@@ -21,10 +21,9 @@
 #include <cstdlib>
 using namespace llvm;
 
-MCStreamer::MCStreamer(MCContext &Ctx)
-  : Context(Ctx), EmitEHFrame(true), EmitDebugFrame(false),
-    CurrentW64UnwindInfo(0), LastSymbol(0),
-    AutoInitSections(false) {
+MCStreamer::MCStreamer(StreamerKind Kind, MCContext &Ctx)
+    : Kind(Kind), Context(Ctx), EmitEHFrame(true), EmitDebugFrame(false),
+      CurrentW64UnwindInfo(0), LastSymbol(0), AutoInitSections(false) {
   const MCSection *section = NULL;
   SectionStack.push_back(std::make_pair(section, section));
 }
@@ -43,7 +42,7 @@ void MCStreamer::reset() {
   LastSymbol = 0;
   const MCSection *section = NULL;
   SectionStack.clear();
-  SectionStack.push_back(std::make_pair(section, section));  
+  SectionStack.push_back(std::make_pair(section, section));
 }
 
 const MCExpr *MCStreamer::BuildSymbolDiff(MCContext &Context,
@@ -105,7 +104,7 @@ void MCStreamer::EmitIntValue(uint64_t Value, unsigned Size,
 /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
 /// client having to pass in a MCExpr for constant integers.
 void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned Padding,
-				     unsigned AddrSpace) {
+                                     unsigned AddrSpace) {
   SmallString<128> Tmp;
   raw_svector_ostream OSE(Tmp);
   encodeULEB128(Value, OSE, Padding);
@@ -620,4 +619,9 @@ void MCStreamer::Finish() {
     report_fatal_error("Unfinished frame!");
 
   FinishImpl();
+}
+
+MCSymbolData &MCStreamer::getOrCreateSymbolData(MCSymbol *Symbol) {
+  report_fatal_error("Not supported!");
+  return *(static_cast<MCSymbolData*> (NULL));
 }

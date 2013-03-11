@@ -366,13 +366,8 @@ class LUI_FM {
   let Inst{15-0}  = imm16;
 }
 
-class NOP_FM {
-  bits<32> Inst;
-
-  let Inst{31-0} = 0;
-}
-
 class JALR_FM {
+  bits<5> rd;
   bits<5> rs;
 
   bits<32> Inst;
@@ -380,7 +375,7 @@ class JALR_FM {
   let Inst{31-26} = 0;
   let Inst{25-21} = rs;
   let Inst{20-16} = 0;
-  let Inst{15-11} = 31;
+  let Inst{15-11} = rd;
   let Inst{10-6}  = 0;
   let Inst{5-0}   = 9;
 }

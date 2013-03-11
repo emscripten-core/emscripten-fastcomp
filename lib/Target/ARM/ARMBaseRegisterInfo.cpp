@@ -209,7 +209,8 @@ ARMBaseRegisterInfo::getRegAllocationHints(unsigned VirtReg,
   }
 
   // First prefer the paired physreg.
-  if (PairedPhys)
+  if (PairedPhys &&
+      std::find(Order.begin(), Order.end(), PairedPhys) != Order.end())
     Hints.push_back(PairedPhys);
 
   // Then prefer even or odd registers.
@@ -409,64 +410,6 @@ requiresFrameIndexScavenging(const MachineFunction &MF) const {
 bool ARMBaseRegisterInfo::
 requiresVirtualBaseRegisters(const MachineFunction &MF) const {
   return true;
-}
-
-static void
-emitSPUpdate(bool isARM,
-             MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
-             DebugLoc dl, const ARMBaseInstrInfo &TII,
-             int NumBytes,
-             ARMCC::CondCodes Pred = ARMCC::AL, unsigned PredReg = 0) {
-  if (isARM)
-    emitARMRegPlusImmediate(MBB, MBBI, dl, ARM::SP, ARM::SP, NumBytes,
-                            Pred, PredReg, TII);
-  else
-    emitT2RegPlusImmediate(MBB, MBBI, dl, ARM::SP, ARM::SP, NumBytes,
-                           Pred, PredReg, TII);
-}
-
-
-void ARMBaseRegisterInfo::
-eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator I) const {
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
-  if (!TFI->hasReservedCallFrame(MF)) {
-    // If we have alloca, convert as follows:
-    // ADJCALLSTACKDOWN -> sub, sp, sp, amount
-    // ADJCALLSTACKUP   -> add, sp, sp, amount
-    MachineInstr *Old = I;
-    DebugLoc dl = Old->getDebugLoc();
-    unsigned Amount = Old->getOperand(0).getImm();
-    if (Amount != 0) {
-      // We need to keep the stack aligned properly.  To do this, we round the
-      // amount of space needed for the outgoing arguments up to the next
-      // alignment boundary.
-      unsigned Align = TFI->getStackAlignment();
-      Amount = (Amount+Align-1)/Align*Align;
-
-      ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
-      assert(!AFI->isThumb1OnlyFunction() &&
-             "This eliminateCallFramePseudoInstr does not support Thumb1!");
-      bool isARM = !AFI->isThumbFunction();
-
-      // Replace the pseudo instruction with a new instruction...
-      unsigned Opc = Old->getOpcode();
-      int PIdx = Old->findFirstPredOperandIdx();
-      ARMCC::CondCodes Pred = (PIdx == -1)
-        ? ARMCC::AL : (ARMCC::CondCodes)Old->getOperand(PIdx).getImm();
-      if (Opc == ARM::ADJCALLSTACKDOWN || Opc == ARM::tADJCALLSTACKDOWN) {
-        // Note: PredReg is operand 2 for ADJCALLSTACKDOWN.
-        unsigned PredReg = Old->getOperand(2).getReg();
-        emitSPUpdate(isARM, MBB, I, dl, TII, -Amount, Pred, PredReg);
-      } else {
-        // Note: PredReg is operand 3 for ADJCALLSTACKUP.
-        unsigned PredReg = Old->getOperand(3).getReg();
-        assert(Opc == ARM::ADJCALLSTACKUP || Opc == ARM::tADJCALLSTACKUP);
-        emitSPUpdate(isARM, MBB, I, dl, TII, Amount, Pred, PredReg);
-      }
-    }
-  }
-  MBB.erase(I);
 }
 
 int64_t ARMBaseRegisterInfo::
@@ -728,8 +671,8 @@ bool ARMBaseRegisterInfo::isFrameOffsetLegal(const MachineInstr *MI,
 
 void
 ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
-                                         int SPAdj, RegScavenger *RS) const {
-  unsigned i = 0;
+                                         int SPAdj, unsigned FIOperandNum,
+                                         RegScavenger *RS) const {
   MachineInstr &MI = *II;
   MachineBasicBlock &MBB = *MI.getParent();
   MachineFunction &MF = *MBB.getParent();
@@ -738,13 +681,7 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   assert(!AFI->isThumb1OnlyFunction() &&
          "This eliminateFrameIndex does not support Thumb1!");
-
-  while (!MI.getOperand(i).isFI()) {
-    ++i;
-    assert(i < MI.getNumOperands() && "Instr doesn't have FrameIndex operand!");
-  }
-
-  int FrameIndex = MI.getOperand(i).getIndex();
+  int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
   unsigned FrameReg;
 
   int Offset = TFI->ResolveFrameIndexReference(MF, FrameIndex, FrameReg, SPAdj);
@@ -766,18 +703,18 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   // Special handling of dbg_value instructions.
   if (MI.isDebugValue()) {
-    MI.getOperand(i).  ChangeToRegister(FrameReg, false /*isDef*/);
-    MI.getOperand(i+1).ChangeToImmediate(Offset);
+    MI.getOperand(FIOperandNum).  ChangeToRegister(FrameReg, false /*isDef*/);
+    MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Offset);
     return;
   }
 
   // Modify MI as necessary to handle as much of 'Offset' as possible
   bool Done = false;
   if (!AFI->isThumbFunction())
-    Done = rewriteARMFrameIndex(MI, i, FrameReg, Offset, TII);
+    Done = rewriteARMFrameIndex(MI, FIOperandNum, FrameReg, Offset, TII);
   else {
     assert(AFI->isThumb2Function());
-    Done = rewriteT2FrameIndex(MI, i, FrameReg, Offset, TII);
+    Done = rewriteT2FrameIndex(MI, FIOperandNum, FrameReg, Offset, TII);
   }
   if (Done)
     return;
@@ -797,7 +734,7 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   unsigned PredReg = (PIdx == -1) ? 0 : MI.getOperand(PIdx+1).getReg();
   if (Offset == 0)
     // Must be addrmode4/6.
-    MI.getOperand(i).ChangeToRegister(FrameReg, false, false, false);
+    MI.getOperand(FIOperandNum).ChangeToRegister(FrameReg, false, false, false);
   else {
     ScratchReg = MF.getRegInfo().createVirtualRegister(&ARM::GPRRegClass);
     if (!AFI->isThumbFunction())
@@ -809,6 +746,6 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                              Offset, Pred, PredReg, TII);
     }
     // Update the original instruction to use the scratch register.
-    MI.getOperand(i).ChangeToRegister(ScratchReg, false, false, true);
+    MI.getOperand(FIOperandNum).ChangeToRegister(ScratchReg, false, false,true);
   }
 }

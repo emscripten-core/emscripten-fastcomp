@@ -102,6 +102,12 @@ AMDGPUPassConfig::addPreISel() {
 bool AMDGPUPassConfig::addInstSelector() {
   addPass(createAMDGPUPeepholeOpt(*TM));
   addPass(createAMDGPUISelDag(getAMDGPUTargetMachine()));
+
+  const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>();
+  if (ST.device()->getGeneration() <= AMDGPUDeviceInfo::HD6XXX) {
+    // This callbacks this pass uses are not implemented yet on SI.
+    addPass(createAMDGPUIndirectAddressingPass(*TM));
+  }
   return false;
 }
 
@@ -116,6 +122,11 @@ bool AMDGPUPassConfig::addPreRegAlloc() {
 }
 
 bool AMDGPUPassConfig::addPostRegAlloc() {
+  const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>();
+
+  if (ST.device()->getGeneration() > AMDGPUDeviceInfo::HD6XXX) {
+    addPass(createSIInsertWaits(*TM));
+  }
   return false;
 }
 
@@ -132,8 +143,8 @@ bool AMDGPUPassConfig::addPreEmitPass() {
     addPass(createAMDGPUCFGStructurizerPass(*TM));
     addPass(createR600ExpandSpecialInstrsPass(*TM));
     addPass(&FinalizeMachineBundlesID);
+    addPass(createR600LowerConstCopy(*TM));
   } else {
-    addPass(createSILowerLiteralConstantsPass(*TM));
     addPass(createSILowerControlFlowPass(*TM));
   }
 

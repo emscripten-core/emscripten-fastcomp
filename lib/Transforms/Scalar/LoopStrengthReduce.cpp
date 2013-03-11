@@ -58,6 +58,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/IVUsers.h"
 #include "llvm/Analysis/LoopPass.h"
@@ -237,7 +238,7 @@ struct Formula {
 
   /// BaseRegs - The list of "base" registers for this use. When this is
   /// non-empty,
-  SmallVector<const SCEV *, 2> BaseRegs;
+  SmallVector<const SCEV *, 4> BaseRegs;
 
   /// ScaledReg - The 'scaled' register for this use. This should be non-null
   /// when Scale is not zero.
@@ -1087,19 +1088,19 @@ namespace {
 /// UniquifierDenseMapInfo - A DenseMapInfo implementation for holding
 /// DenseMaps and DenseSets of sorted SmallVectors of const SCEV*.
 struct UniquifierDenseMapInfo {
-  static SmallVector<const SCEV *, 2> getEmptyKey() {
-    SmallVector<const SCEV *, 2> V;
+  static SmallVector<const SCEV *, 4> getEmptyKey() {
+    SmallVector<const SCEV *, 4>  V;
     V.push_back(reinterpret_cast<const SCEV *>(-1));
     return V;
   }
 
-  static SmallVector<const SCEV *, 2> getTombstoneKey() {
-    SmallVector<const SCEV *, 2> V;
+  static SmallVector<const SCEV *, 4> getTombstoneKey() {
+    SmallVector<const SCEV *, 4> V;
     V.push_back(reinterpret_cast<const SCEV *>(-2));
     return V;
   }
 
-  static unsigned getHashValue(const SmallVector<const SCEV *, 2> &V) {
+  static unsigned getHashValue(const SmallVector<const SCEV *, 4> &V) {
     unsigned Result = 0;
     for (SmallVectorImpl<const SCEV *>::const_iterator I = V.begin(),
          E = V.end(); I != E; ++I)
@@ -1107,8 +1108,8 @@ struct UniquifierDenseMapInfo {
     return Result;
   }
 
-  static bool isEqual(const SmallVector<const SCEV *, 2> &LHS,
-                      const SmallVector<const SCEV *, 2> &RHS) {
+  static bool isEqual(const SmallVector<const SCEV *, 4> &LHS,
+                      const SmallVector<const SCEV *, 4> &RHS) {
     return LHS == RHS;
   }
 };
@@ -1119,7 +1120,7 @@ struct UniquifierDenseMapInfo {
 /// the user itself, and information about how the use may be satisfied.
 /// TODO: Represent multiple users of the same expression in common?
 class LSRUse {
-  DenseSet<SmallVector<const SCEV *, 2>, UniquifierDenseMapInfo> Uniquifier;
+  DenseSet<SmallVector<const SCEV *, 4>, UniquifierDenseMapInfo> Uniquifier;
 
 public:
   /// KindType - An enum for a kind of use, indicating what types of
@@ -1178,7 +1179,7 @@ public:
 /// HasFormula - Test whether this use as a formula which has the same
 /// registers as the given formula.
 bool LSRUse::HasFormulaWithSameRegs(const Formula &F) const {
-  SmallVector<const SCEV *, 2> Key = F.BaseRegs;
+  SmallVector<const SCEV *, 4> Key = F.BaseRegs;
   if (F.ScaledReg) Key.push_back(F.ScaledReg);
   // Unstable sort by host order ok, because this is only used for uniquifying.
   std::sort(Key.begin(), Key.end());
@@ -1188,7 +1189,7 @@ bool LSRUse::HasFormulaWithSameRegs(const Formula &F) const {
 /// InsertFormula - If the given formula has not yet been inserted, add it to
 /// the list, and return true. Return false otherwise.
 bool LSRUse::InsertFormula(const Formula &F) {
-  SmallVector<const SCEV *, 2> Key = F.BaseRegs;
+  SmallVector<const SCEV *, 4> Key = F.BaseRegs;
   if (F.ScaledReg) Key.push_back(F.ScaledReg);
   // Unstable sort by host order ok, because this is only used for uniquifying.
   std::sort(Key.begin(), Key.end());
@@ -2536,6 +2537,7 @@ void LSRInstance::ChainInstruction(Instruction *UserInst, Instruction *IVOper,
     // Add this IV user to the end of the chain.
     IVChainVec[ChainIdx].add(IVInc(UserInst, IVOper, LastIncExpr));
   }
+  IVChain &Chain = IVChainVec[ChainIdx];
 
   SmallPtrSet<Instruction*,4> &NearUsers = ChainUsersVec[ChainIdx].NearUsers;
   // This chain's NearUsers become FarUsers.
@@ -2553,8 +2555,19 @@ void LSRInstance::ChainInstruction(Instruction *UserInst, Instruction *IVOper,
   for (Value::use_iterator UseIter = IVOper->use_begin(),
          UseEnd = IVOper->use_end(); UseIter != UseEnd; ++UseIter) {
     Instruction *OtherUse = dyn_cast<Instruction>(*UseIter);
-    if (!OtherUse || OtherUse == UserInst)
+    if (!OtherUse)
       continue;
+    // Uses in the chain will no longer be uses if the chain is formed.
+    // Include the head of the chain in this iteration (not Chain.begin()).
+    IVChain::const_iterator IncIter = Chain.Incs.begin();
+    IVChain::const_iterator IncEnd = Chain.Incs.end();
+    for( ; IncIter != IncEnd; ++IncIter) {
+      if (IncIter->UserInst == OtherUse)
+        break;
+    }
+    if (IncIter != IncEnd)
+      continue;
+
     if (SE.isSCEVable(OtherUse->getType())
         && !isa<SCEVUnknown>(SE.getSCEV(OtherUse))
         && IU.isIVUserOrOperand(OtherUse)) {
@@ -3656,7 +3669,7 @@ void LSRInstance::FilterOutUndesirableDedicatedRegisters() {
 
   // Collect the best formula for each unique set of shared registers. This
   // is reset for each use.
-  typedef DenseMap<SmallVector<const SCEV *, 2>, size_t, UniquifierDenseMapInfo>
+  typedef DenseMap<SmallVector<const SCEV *, 4>, size_t, UniquifierDenseMapInfo>
     BestFormulaeTy;
   BestFormulaeTy BestFormulae;
 
@@ -3691,7 +3704,7 @@ void LSRInstance::FilterOutUndesirableDedicatedRegisters() {
               dbgs() << "\n");
       }
       else {
-        SmallVector<const SCEV *, 2> Key;
+        SmallVector<const SCEV *, 4> Key;
         for (SmallVectorImpl<const SCEV *>::const_iterator J = F.BaseRegs.begin(),
                JE = F.BaseRegs.end(); J != JE; ++J) {
           const SCEV *Reg = *J;
@@ -3837,83 +3850,83 @@ void LSRInstance::NarrowSearchSpaceByDetectingSupersets() {
 /// for expressions like A, A+1, A+2, etc., allocate a single register for
 /// them.
 void LSRInstance::NarrowSearchSpaceByCollapsingUnrolledCode() {
-  if (EstimateSearchSpaceComplexity() >= ComplexityLimit) {
-    DEBUG(dbgs() << "The search space is too complex.\n");
+  if (EstimateSearchSpaceComplexity() < ComplexityLimit)
+    return;
 
-    DEBUG(dbgs() << "Narrowing the search space by assuming that uses "
-                    "separated by a constant offset will use the same "
-                    "registers.\n");
+  DEBUG(dbgs() << "The search space is too complex.\n"
+                  "Narrowing the search space by assuming that uses separated "
+                  "by a constant offset will use the same registers.\n");
 
-    // This is especially useful for unrolled loops.
+  // This is especially useful for unrolled loops.
 
-    for (size_t LUIdx = 0, NumUses = Uses.size(); LUIdx != NumUses; ++LUIdx) {
-      LSRUse &LU = Uses[LUIdx];
-      for (SmallVectorImpl<Formula>::const_iterator I = LU.Formulae.begin(),
-           E = LU.Formulae.end(); I != E; ++I) {
-        const Formula &F = *I;
-        if (F.BaseOffset != 0 && F.Scale == 0) {
-          if (LSRUse *LUThatHas = FindUseWithSimilarFormula(F, LU)) {
-            if (reconcileNewOffset(*LUThatHas, F.BaseOffset,
-                                   /*HasBaseReg=*/false,
-                                   LU.Kind, LU.AccessTy)) {
-              DEBUG(dbgs() << "  Deleting use "; LU.print(dbgs());
-                    dbgs() << '\n');
+  for (size_t LUIdx = 0, NumUses = Uses.size(); LUIdx != NumUses; ++LUIdx) {
+    LSRUse &LU = Uses[LUIdx];
+    for (SmallVectorImpl<Formula>::const_iterator I = LU.Formulae.begin(),
+         E = LU.Formulae.end(); I != E; ++I) {
+      const Formula &F = *I;
+      if (F.BaseOffset == 0 || F.Scale != 0)
+        continue;
 
-              LUThatHas->AllFixupsOutsideLoop &= LU.AllFixupsOutsideLoop;
+      LSRUse *LUThatHas = FindUseWithSimilarFormula(F, LU);
+      if (!LUThatHas)
+        continue;
 
-              // Update the relocs to reference the new use.
-              for (SmallVectorImpl<LSRFixup>::iterator I = Fixups.begin(),
-                   E = Fixups.end(); I != E; ++I) {
-                LSRFixup &Fixup = *I;
-                if (Fixup.LUIdx == LUIdx) {
-                  Fixup.LUIdx = LUThatHas - &Uses.front();
-                  Fixup.Offset += F.BaseOffset;
-                  // Add the new offset to LUThatHas' offset list.
-                  if (LUThatHas->Offsets.back() != Fixup.Offset) {
-                    LUThatHas->Offsets.push_back(Fixup.Offset);
-                    if (Fixup.Offset > LUThatHas->MaxOffset)
-                      LUThatHas->MaxOffset = Fixup.Offset;
-                    if (Fixup.Offset < LUThatHas->MinOffset)
-                      LUThatHas->MinOffset = Fixup.Offset;
-                  }
-                  DEBUG(dbgs() << "New fixup has offset "
-                               << Fixup.Offset << '\n');
-                }
-                if (Fixup.LUIdx == NumUses-1)
-                  Fixup.LUIdx = LUIdx;
-              }
+      if (!reconcileNewOffset(*LUThatHas, F.BaseOffset, /*HasBaseReg=*/ false,
+                              LU.Kind, LU.AccessTy))
+        continue;
 
-              // Delete formulae from the new use which are no longer legal.
-              bool Any = false;
-              for (size_t i = 0, e = LUThatHas->Formulae.size(); i != e; ++i) {
-                Formula &F = LUThatHas->Formulae[i];
-                if (!isLegalUse(TTI, LUThatHas->MinOffset, LUThatHas->MaxOffset,
-                                LUThatHas->Kind, LUThatHas->AccessTy, F)) {
-                  DEBUG(dbgs() << "  Deleting "; F.print(dbgs());
-                        dbgs() << '\n');
-                  LUThatHas->DeleteFormula(F);
-                  --i;
-                  --e;
-                  Any = true;
-                }
-              }
-              if (Any)
-                LUThatHas->RecomputeRegs(LUThatHas - &Uses.front(), RegUses);
+      DEBUG(dbgs() << "  Deleting use "; LU.print(dbgs()); dbgs() << '\n');
 
-              // Delete the old use.
-              DeleteUse(LU, LUIdx);
-              --LUIdx;
-              --NumUses;
-              break;
-            }
+      LUThatHas->AllFixupsOutsideLoop &= LU.AllFixupsOutsideLoop;
+
+      // Update the relocs to reference the new use.
+      for (SmallVectorImpl<LSRFixup>::iterator I = Fixups.begin(),
+           E = Fixups.end(); I != E; ++I) {
+        LSRFixup &Fixup = *I;
+        if (Fixup.LUIdx == LUIdx) {
+          Fixup.LUIdx = LUThatHas - &Uses.front();
+          Fixup.Offset += F.BaseOffset;
+          // Add the new offset to LUThatHas' offset list.
+          if (LUThatHas->Offsets.back() != Fixup.Offset) {
+            LUThatHas->Offsets.push_back(Fixup.Offset);
+            if (Fixup.Offset > LUThatHas->MaxOffset)
+              LUThatHas->MaxOffset = Fixup.Offset;
+            if (Fixup.Offset < LUThatHas->MinOffset)
+              LUThatHas->MinOffset = Fixup.Offset;
           }
+          DEBUG(dbgs() << "New fixup has offset " << Fixup.Offset << '\n');
+        }
+        if (Fixup.LUIdx == NumUses-1)
+          Fixup.LUIdx = LUIdx;
+      }
+
+      // Delete formulae from the new use which are no longer legal.
+      bool Any = false;
+      for (size_t i = 0, e = LUThatHas->Formulae.size(); i != e; ++i) {
+        Formula &F = LUThatHas->Formulae[i];
+        if (!isLegalUse(TTI, LUThatHas->MinOffset, LUThatHas->MaxOffset,
+                        LUThatHas->Kind, LUThatHas->AccessTy, F)) {
+          DEBUG(dbgs() << "  Deleting "; F.print(dbgs());
+                dbgs() << '\n');
+          LUThatHas->DeleteFormula(F);
+          --i;
+          --e;
+          Any = true;
         }
       }
-    }
 
-    DEBUG(dbgs() << "After pre-selection:\n";
-          print_uses(dbgs()));
+      if (Any)
+        LUThatHas->RecomputeRegs(LUThatHas - &Uses.front(), RegUses);
+
+      // Delete the old use.
+      DeleteUse(LU, LUIdx);
+      --LUIdx;
+      --NumUses;
+      break;
+    }
   }
+
+  DEBUG(dbgs() << "After pre-selection:\n"; print_uses(dbgs()));
 }
 
 /// NarrowSearchSpaceByRefilteringUndesirableDedicatedRegisters - Call

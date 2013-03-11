@@ -33,8 +33,13 @@
 #include <unistd.h>
 #else
 #include <io.h>
-#ifndef S_ISFIFO
-#define S_ISFIFO(x) (0)
+// Simplistic definitinos of these macros to allow files to be read with
+// MapInFilePages.
+#ifndef S_ISREG
+#define S_ISREG(x) (1)
+#endif
+#ifndef S_ISBLK
+#define S_ISBLK(x) (0)
 #endif
 #endif
 #include <fcntl.h>
@@ -321,9 +326,10 @@ error_code MemoryBuffer::getOpenFile(int FD, const char *Filename,
         return error_code(errno, posix_category());
       }
 
-      // If this is a named pipe, we can't trust the size. Create the memory
+      // If this not a file or a block device (e.g. it's a named pipe
+      // or character device), we can't trust the size. Create the memory
       // buffer by copying off the stream.
-      if (S_ISFIFO(FileInfo.st_mode)) {
+      if (!S_ISREG(FileInfo.st_mode) && !S_ISBLK(FileInfo.st_mode)) {
         return getMemoryBufferForStream(FD, Filename, result);
       }
 
