@@ -15,6 +15,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Analysis/NaCl.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"  // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
@@ -107,6 +108,14 @@ ReduceMemoryFootprint("reduce-memory-footprint",
   cl::desc("Aggressively reduce memory used by llc"),
   cl::init(false));
 
+static cl::opt<bool>
+PNaClABIVerify("pnaclabi-verify",
+  cl::desc("Verify PNaCl bitcode ABI before translating"),
+  cl::init(false));
+static cl::opt<bool>
+PNaClABIVerifyFatalErrors("pnaclabi-verify-fatal-errors",
+  cl::desc("PNaCl ABI verification errors are fatal"),
+  cl::init(false));
 // @LOCALMOD-END
 
 // Determine optimization level.
@@ -307,6 +316,20 @@ int llc_main(int argc, char **argv) {
   return 0;
 }
 
+// @LOCALMOD-BEGIN
+static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
+                                 const Twine &Name) {
+  if (PNaClABIVerify && Reporter.getErrorCount() > 0) {
+    errs() << (PNaClABIVerifyFatalErrors ? "ERROR:" : "WARNING:");
+    errs() << Name << " is not valid PNaCl bitcode:\n";
+    Reporter.printErrors(errs());
+    if (PNaClABIVerifyFatalErrors)
+      exit(1);
+  }
+  Reporter.reset();
+}
+// @LOCALMOD-END
+
 static int compileModule(char **argv, LLVMContext &Context) {
   // Load the module to be compiled...
   SMDiagnostic Err;
@@ -316,6 +339,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   bool SkipModule = MCPU == "help" ||
                     (!MAttrs.empty() && MAttrs.front() == "help");
+
+  PNaClABIErrorReporter ABIErrorReporter; // @LOCALMOD
 
   // If user just wants to list available options, skip module loading
   if (!SkipModule) {
@@ -346,6 +371,12 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
 
     // @LOCALMOD-BEGIN
+    if (PNaClABIVerify) {
+      // Verify the module (but not the functions yet)
+      ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter);
+      VerifyPass->runOnModule(*mod);
+      CheckABIVerifyErrors(ABIErrorReporter, "Module");
+    }
 #if defined(__native_client__) && defined(NACL_SRPC)
     RecordMetadataForSrpc(*mod);
 
@@ -472,6 +503,13 @@ static int compileModule(char **argv, LLVMContext &Context) {
     PM.reset(new FunctionPassManager(mod));
   else
     PM.reset(new PassManager());
+
+  // Add the ABI verifier pass before the analysis and code emission passes.
+  FunctionPass *FunctionVerifyPass = NULL;
+  if (PNaClABIVerify) {
+    FunctionVerifyPass = createPNaClABIVerifyFunctionsPass(&ABIErrorReporter);
+    PM->add(FunctionVerifyPass);
+  }
   // @LOCALMOD-END
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
@@ -506,6 +544,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     raw_fd_ostream ROS(GetObjectFileFD(), true);
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
+
     // Ask the target to add backend passes as necessary.
     if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
       errs() << argv[0] << ": target does not support generation of this"
@@ -518,6 +557,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
       P->doInitialization();
       for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
         P->run(*I);
+        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
         if (ReduceMemoryFootprint) {
           I->Dematerialize();
         }
@@ -570,6 +610,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
       P->doInitialization();
       for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
         P->run(*I);
+        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
         if (ReduceMemoryFootprint) {
           I->Dematerialize();
         }

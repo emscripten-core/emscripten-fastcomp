@@ -14,8 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Pass.h"
-#include "llvm/Analysis/NaCl.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
@@ -28,13 +28,23 @@ namespace {
 class PNaClABIVerifyModule : public ModulePass {
  public:
   static char ID;
-  PNaClABIVerifyModule();
+  PNaClABIVerifyModule() : ModulePass(ID),
+                           Reporter(new PNaClABIErrorReporter),
+                           ReporterIsOwned(true) {}
+  explicit PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_) :
+      ModulePass(ID),
+      Reporter(Reporter_),
+      ReporterIsOwned(false) {}
+  ~PNaClABIVerifyModule() {
+    if (ReporterIsOwned)
+      delete Reporter;
+  }
   bool runOnModule(Module &M);
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
   PNaClABITypeChecker TC;
-  std::string ErrorsString;
-  raw_string_ostream Errors;
+  PNaClABIErrorReporter *Reporter;
+  bool ReporterIsOwned;
 };
 
 static const char *linkageName(GlobalValue::LinkageTypes LT) {
@@ -65,26 +75,24 @@ static const char *linkageName(GlobalValue::LinkageTypes LT) {
 
 } // end anonymous namespace
 
-PNaClABIVerifyModule::PNaClABIVerifyModule() : ModulePass(ID),
-                                               Errors(ErrorsString) {}
-
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
     // Check types of global variables and their initializers
     if (!TC.isValidType(MI->getType())) {
       // GVs are pointers, so print the pointed-to type for clarity
-      Errors << "Variable " + MI->getName() +
-          " has disallowed type: " +
+      Reporter->addError() << "Variable " << MI->getName() <<
+          " has disallowed type: " <<
           PNaClABITypeChecker::getTypeName(MI->getType()->getContainedType(0))
           + "\n";
     } else if (MI->hasInitializer()) {
       // If the type of the global is bad, no point in checking its initializer
       Type *T = TC.checkTypesInConstant(MI->getInitializer());
-      if (T)
-        Errors << "Initializer for " + MI->getName() +
-            " has disallowed type: " +
-            PNaClABITypeChecker::getTypeName(T) + "\n";
+      if (T) {
+        Reporter->addError() << "Initializer for " << MI->getName() <<
+            " has disallowed type: " <<
+            PNaClABITypeChecker::getTypeName(T) << "\n";
+      }
     }
 
     // Check GV linkage types
@@ -95,28 +103,33 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       case GlobalValue::PrivateLinkage:
         break;
       default:
-        Errors << "Variable " + MI->getName() +
-            " has disallowed linkage type: " +
-            linkageName(MI->getLinkage()) + "\n";
+        Reporter->addError() << "Variable " << MI->getName() <<
+            " has disallowed linkage type: " <<
+            linkageName(MI->getLinkage()) << "\n";
     }
   }
   // No aliases allowed for now.
   for (Module::alias_iterator MI = M.alias_begin(),
-           E = M.alias_end(); MI != E; ++MI)
-    Errors << "Variable " + MI->getName() + " is an alias (disallowed)\n";
+           E = M.alias_end(); MI != E; ++MI) {
+    Reporter->addError() << "Variable " << MI->getName() <<
+        " is an alias (disallowed)\n";
+  }
 
   for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
     // Check types of functions and their arguments
     FunctionType *FT = MI->getFunctionType();
-    if (!TC.isValidType(FT->getReturnType()))
-      Errors << "Function " + MI->getName() + " has disallowed return type: " +
-          PNaClABITypeChecker::getTypeName(FT->getReturnType()) + "\n";
+    if (!TC.isValidType(FT->getReturnType())) {
+      Reporter->addError() << "Function " << MI->getName() <<
+          " has disallowed return type: " <<
+          PNaClABITypeChecker::getTypeName(FT->getReturnType()) << "\n";
+    }
     for (unsigned I = 0, E = FT->getNumParams(); I < E; ++I) {
       Type *PT = FT->getParamType(I);
-      if (!TC.isValidType(PT))
-        Errors << "Function " << MI->getName() << " argument " << I + 1 <<
-            " has disallowed type: " <<
-            PNaClABITypeChecker::getTypeName(PT) + "\n";
+      if (!TC.isValidType(PT)) {
+        Reporter->addError() << "Function " << MI->getName() << " argument " <<
+            I + 1 << " has disallowed type: " <<
+            PNaClABITypeChecker::getTypeName(PT) << "\n";
+      }
     }
   }
 
@@ -124,18 +137,23 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
            E = M.named_metadata_end(); I != E; ++I) {
     for (unsigned i = 0, e = I->getNumOperands(); i != e; i++) {
-      if (Type *T = TC.checkTypesInMDNode(I->getOperand(i)))
-        Errors << "Named metadata node " + I->getName() +
-            " refers to disallowed type: " +
-            PNaClABITypeChecker::getTypeName(T) + "\n";
+      if (Type *T = TC.checkTypesInMDNode(I->getOperand(i))) {
+        Reporter->addError() << "Named metadata node " << I->getName() <<
+            " refers to disallowed type: " <<
+            PNaClABITypeChecker::getTypeName(T) << "\n";
+      }
     }
   }
-  Errors.flush();
   return false;
 }
 
+// This method exists so that the passes can easily be run with opt -analyze.
+// In this case the default constructor is used and we want to reset the error
+// messages after each print (this is more of an issue for the FunctionPass
+// than the ModulePass)
 void PNaClABIVerifyModule::print(llvm::raw_ostream &O, const Module *M) const {
-  O << ErrorsString;
+  Reporter->printErrors(O);
+  Reporter->reset();
 }
 
 char PNaClABIVerifyModule::ID = 0;
@@ -143,6 +161,7 @@ char PNaClABIVerifyModule::ID = 0;
 static RegisterPass<PNaClABIVerifyModule> X("verify-pnaclabi-module",
     "Verify module for PNaCl", false, false);
 
-ModulePass *llvm::createPNaClABIVerifyModulePass() {
-  return new PNaClABIVerifyModule();
+ModulePass *llvm::createPNaClABIVerifyModulePass(
+    PNaClABIErrorReporter *Reporter) {
+  return new PNaClABIVerifyModule(Reporter);
 }
