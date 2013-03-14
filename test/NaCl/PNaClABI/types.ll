@@ -1,4 +1,4 @@
-; RUN: opt -verify-pnaclabi-module -analyze < %s | FileCheck %s
+; RUN: pnacl-abicheck < %s | FileCheck %s
 ; Test types allowed by PNaCl ABI
 
 ; Basic global types

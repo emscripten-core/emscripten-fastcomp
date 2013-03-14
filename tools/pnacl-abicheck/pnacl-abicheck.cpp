@@ -29,8 +29,8 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
                                  const Twine &Name) {
   if (Reporter.getErrorCount() > 0) {
-    errs() << "ERROR: " << Name << " is not valid PNaCl bitcode:\n";
-    Reporter.printErrors(errs());
+    outs() << "ERROR: " << Name << " is not valid PNaCl bitcode:\n";
+    Reporter.printErrors(outs());
   }
   Reporter.reset();
 }
@@ -38,6 +38,8 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
 int main(int argc, char **argv) {
   LLVMContext &Context = getGlobalContext();
   SMDiagnostic Err;
+  cl::ParseCommandLineOptions(argc, argv, "PNaCl Bitcode ABI checker\n");
+
   OwningPtr<Module> Mod(ParseIRFile(InputFilename, Err, Context));
   if (Mod.get() == 0) {
     Err.print(argv[0], errs());
@@ -46,11 +48,11 @@ int main(int argc, char **argv) {
   PNaClABIErrorReporter ABIErrorReporter;
   // Manually run the passes so we can tell the user which function had the
   // error. No need for a pass manager since it's just one pass.
-  ModulePass *ModuleChecker = createPNaClABIVerifyModulePass(&ABIErrorReporter);
+  OwningPtr<ModulePass> ModuleChecker(createPNaClABIVerifyModulePass(&ABIErrorReporter));
   ModuleChecker->runOnModule(*Mod);
   CheckABIVerifyErrors(ABIErrorReporter, "Module");
-  FunctionPass *FunctionChecker =
-      createPNaClABIVerifyFunctionsPass(&ABIErrorReporter);
+  OwningPtr<FunctionPass> FunctionChecker(
+      createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
   for (Module::iterator MI = Mod->begin(), ME = Mod->end(); MI != ME; ++MI) {
     FunctionChecker->runOnFunction(*MI);
     CheckABIVerifyErrors(ABIErrorReporter, "Function " + MI->getName());

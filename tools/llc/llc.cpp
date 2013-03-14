@@ -320,7 +320,7 @@ int llc_main(int argc, char **argv) {
 static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
                                  const Twine &Name) {
   if (PNaClABIVerify && Reporter.getErrorCount() > 0) {
-    errs() << (PNaClABIVerifyFatalErrors ? "ERROR:" : "WARNING:");
+    errs() << (PNaClABIVerifyFatalErrors ? "ERROR: " : "WARNING: ");
     errs() << Name << " is not valid PNaCl bitcode:\n";
     Reporter.printErrors(errs());
     if (PNaClABIVerifyFatalErrors)
