@@ -1,4 +1,4 @@
-set(LLVM_LINK_COMPONENTS ${LLVM_TARGETS_TO_BUILD} bitreader asmparser)
+set(LLVM_LINK_COMPONENTS ${LLVM_TARGETS_TO_BUILD} bitreader asmparser NaClAnalysis)
 
 add_llvm_tool(llc
 # LOCALMOD BEGIN
