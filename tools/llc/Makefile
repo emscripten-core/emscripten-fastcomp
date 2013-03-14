@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := llc
-LINK_COMPONENTS := all-targets bitreader asmparser
+LINK_COMPONENTS := all-targets bitreader asmparser NaClAnalysis
 
 include $(LEVEL)/Makefile.common
 
