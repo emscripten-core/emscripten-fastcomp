@@ -12,8 +12,10 @@
 
 namespace llvm {
 
+class FunctionPass;
 class ModulePass;
 
+FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();

@@ -270,6 +270,7 @@ void initializeFinalizeMachineBundlesPass(PassRegistry&);
 void initializeLoopVectorizePass(PassRegistry&);
 void initializeBBVectorizePass(PassRegistry&);
 void initializeMachineFunctionPrinterPassPass(PassRegistry&);
+void initializeExpandConstantExprPass(PassRegistry&); // @LOCALMOD
 void initializeExpandCtorsPass(PassRegistry&); // @LOCALMOD
 void initializeExpandTlsPass(PassRegistry&); // @LOCALMOD
 void initializeExpandTlsConstantExprPass(PassRegistry&); // @LOCALMOD
