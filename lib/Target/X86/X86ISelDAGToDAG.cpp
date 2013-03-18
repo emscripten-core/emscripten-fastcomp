@@ -614,7 +614,8 @@ bool X86DAGToDAGISel::FoldOffsetIntoAddress(uint64_t Offset,
     // and often results in a negative value in the index register
     // (see also LegalizeAddressModeForNaCl)
     else if (Subtarget->isTargetNaCl64() &&
-             AM.BaseType == X86ISelAddressMode::RegBase &&
+             (AM.BaseType == X86ISelAddressMode::RegBase ||
+              AM.BaseType == X86ISelAddressMode::FrameIndexBase) &&
              (Val > 65535 || Val < -65536) && selectingMemOp)
       return true;
     // LOCALMOD-END

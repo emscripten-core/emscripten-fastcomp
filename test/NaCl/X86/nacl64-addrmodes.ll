@@ -1,4 +1,7 @@
-; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -o - \
+; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -O0 -o - \
+; RUN:   | FileCheck %s
+
+; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -O2 -o - \
 ; RUN:   | FileCheck %s
 
 ; Check that we don't try to fold a negative displacement into a memory
@@ -67,3 +70,62 @@ entry:
   %cmp = icmp eq i64 %conv, %add18
   ret i1 %cmp
 }
+
+
+@main.array = private unnamed_addr constant [1 x i64] [i64 1438933078946427748], align 8
+
+define i1 @largeconst_frameindex() nounwind {
+; CHECK: largeconst_frameindex
+entry:
+  %retval = alloca i32, align 4
+  %r_Ng = alloca i64, align 8
+  %i = alloca i32, align 4
+  %adat = alloca i64*, align 4
+  %array = alloca [1 x i64], align 8
+  store i32 0, i32* %retval
+  store i32 -270770481, i32* %i, align 4
+  %0 = bitcast [1 x i64]* %array to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %0, i8* bitcast ([1 x i64]* @main.array to i8*), i32 8, i32 8, i1 false)
+  store i32 -270770481, i32* %i, align 4
+  %1 = load i32* %i, align 4
+  %mul = mul i32 %1, 947877507
+  %add = add i32 %mul, 1574375955
+  %2 = bitcast [1 x i64]* %array to i64*
+  %arrayidx = getelementptr inbounds i64* %2, i32 %add
+; Ensure the large constant didn't get folded into the load
+; CHECK: nacl:(%r15
+  %3 = load i64* %arrayidx, align 8
+  %add1 = add i64 %3, -5707596139582126917
+  %4 = load i32* %i, align 4
+  %mul2 = mul i32 %4, 947877507
+  %add3 = add i32 %mul2, 1574375955
+  %5 = bitcast [1 x i64]* %array to i64*
+  %arrayidx4 = getelementptr inbounds i64* %5, i32 %add3
+  store i64 %add1, i64* %arrayidx4, align 8
+  %6 = load i32* %i, align 4
+  %mul5 = mul nsw i32 %6, 947877507
+  %add6 = add nsw i32 %mul5, 1574375955
+  %arrayidx7 = getelementptr inbounds [1 x i64]* %array, i32 0, i32 %add6
+; CHECK: nacl:(%r15
+  %7 = load i64* %arrayidx7, align 8
+  %add8 = add i64 %7, -5707596139582126917
+  %8 = load i32* %i, align 4
+  %mul9 = mul nsw i32 %8, 947877507
+  %add10 = add nsw i32 %mul9, 1574375955
+  %arrayidx11 = getelementptr inbounds [1 x i64]* %array, i32 0, i32 %add10
+  store i64 %add8, i64* %arrayidx11, align 8
+  %9 = load i32* %i, align 4
+  %mul12 = mul nsw i32 %9, 947877507
+  %add13 = add nsw i32 %mul12, 1574375955
+  %10 = bitcast [1 x i64]* %array to i64*
+  %arrayidx14 = getelementptr inbounds i64* %10, i32 %add13
+  store i64* %arrayidx14, i64** %adat, align 4
+  %11 = load i64** %adat, align 4
+  %12 = load i64* %11, align 8
+  %mul15 = mul i64 %12, -1731288434922394955
+  %add16 = add i64 %mul15, -7745351015538694962
+  store i64 %add16, i64* %r_Ng, align 8
+  ret i1 0
+}
+
+declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1) nounwind
