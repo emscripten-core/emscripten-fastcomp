@@ -28,13 +28,18 @@ namespace {
 class PNaClABIVerifyModule : public ModulePass {
  public:
   static char ID;
-  PNaClABIVerifyModule() : ModulePass(ID),
-                           Reporter(new PNaClABIErrorReporter),
-                           ReporterIsOwned(true) {}
+  PNaClABIVerifyModule() :
+      ModulePass(ID),
+      Reporter(new PNaClABIErrorReporter),
+      ReporterIsOwned(true) {
+    initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
+  }
   explicit PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_) :
       ModulePass(ID),
       Reporter(Reporter_),
-      ReporterIsOwned(false) {}
+      ReporterIsOwned(false) {
+    initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
+  }
   ~PNaClABIVerifyModule() {
     if (ReporterIsOwned)
       delete Reporter;
@@ -157,9 +162,8 @@ void PNaClABIVerifyModule::print(llvm::raw_ostream &O, const Module *M) const {
 }
 
 char PNaClABIVerifyModule::ID = 0;
-
-static RegisterPass<PNaClABIVerifyModule> X("verify-pnaclabi-module",
-    "Verify module for PNaCl", false, false);
+INITIALIZE_PASS(PNaClABIVerifyModule, "verify-pnaclabi-module",
+                "Verify module for PNaCl", false, true)
 
 ModulePass *llvm::createPNaClABIVerifyModulePass(
     PNaClABIErrorReporter *Reporter) {

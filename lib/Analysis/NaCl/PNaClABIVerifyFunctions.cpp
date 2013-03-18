@@ -30,13 +30,18 @@ namespace {
 class PNaClABIVerifyFunctions : public FunctionPass {
  public:
   static char ID;
-  PNaClABIVerifyFunctions() : FunctionPass(ID),
-                              Reporter(new PNaClABIErrorReporter),
-                              ReporterIsOwned(true) {}
+  PNaClABIVerifyFunctions() :
+      FunctionPass(ID),
+      Reporter(new PNaClABIErrorReporter),
+      ReporterIsOwned(true) {
+    initializePNaClABIVerifyFunctionsPass(*PassRegistry::getPassRegistry());
+  }
   explicit PNaClABIVerifyFunctions(PNaClABIErrorReporter *Reporter_) :
       FunctionPass(ID),
       Reporter(Reporter_),
-      ReporterIsOwned(false) {}
+      ReporterIsOwned(false) {
+    initializePNaClABIVerifyFunctionsPass(*PassRegistry::getPassRegistry());
+  }
   ~PNaClABIVerifyFunctions() {
     if (ReporterIsOwned)
       delete Reporter;
@@ -183,9 +188,8 @@ void PNaClABIVerifyFunctions::print(llvm::raw_ostream &O, const Module *M)
 }
 
 char PNaClABIVerifyFunctions::ID = 0;
-
-static RegisterPass<PNaClABIVerifyFunctions> X("verify-pnaclabi-functions",
-    "Verify functions for PNaCl", false, false);
+INITIALIZE_PASS(PNaClABIVerifyFunctions, "verify-pnaclabi-functions",
+                "Verify functions for PNaCl", false, true)
 
 FunctionPass *llvm::createPNaClABIVerifyFunctionsPass(
     PNaClABIErrorReporter *Reporter) {
