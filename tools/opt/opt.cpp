@@ -576,6 +576,7 @@ int main(int argc, char **argv) {
   initializeInstCombine(Registry);
   initializeInstrumentation(Registry);
   initializeTarget(Registry);
+  initializeExpandConstantExprPass(Registry);
   initializeExpandCtorsPass(Registry);
   initializeExpandTlsPass(Registry);
   initializeExpandTlsConstantExprPass(Registry);

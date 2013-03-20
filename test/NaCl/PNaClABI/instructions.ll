@@ -1,4 +1,4 @@
-; RUN: opt -verify-pnaclabi-functions -analyze < %s | FileCheck %s
+; RUN: pnacl-abicheck < %s | FileCheck %s
 ; Test instruction opcodes allowed by PNaCl ABI
 ; No testing yet of operands, types, attributes, etc
 

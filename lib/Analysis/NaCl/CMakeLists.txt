@@ -1,7 +1,7 @@
-add_llvm_library(LLVMAnalysisNaCl
+add_llvm_library(LLVMNaClAnalysis
   PNaCLABITypeChecker.cpp
   PNaClABIVerifyFunctions.cpp
   PNaClABIVerifyModule.cpp
   )
 
-add_dependencies(LLVMAnalysisNaCl intrinsics_gen)
+add_dependencies(LLVMNaClAnalysis intrinsics_gen)

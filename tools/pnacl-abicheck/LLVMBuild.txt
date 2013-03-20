@@ -1,4 +1,4 @@
-;===- ./tools/llc/LLVMBuild.txt --------------------------------*- Conf -*--===;
+;===- ./tools/pnacl-abicheck/LLVMBuild.txt ---------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -17,6 +17,6 @@
 
 [component_0]
 type = Tool
-name = llc
+name = pnacl-abicheck
 parent = Tools
-required_libraries = AsmParser BitReader all-targets NaClAnalysis
+required_libraries = AsmParser BitReader

@@ -1,4 +1,4 @@
-#===- tools/llc/Makefile -----------------------------------*- Makefile -*-===##
+#===- tools/pnacl-abicheck/Makefile ------------------------*- Makefile -*-===##
 # 
 #                     The LLVM Compiler Infrastructure
 #
@@ -8,8 +8,9 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL := ../..
-TOOLNAME := llc
-LINK_COMPONENTS := all-targets bitreader asmparser NaClAnalysis
+TOOLNAME := pnacl-abicheck
+LINK_COMPONENTS := bitreader asmparser
 
 include $(LEVEL)/Makefile.common
+
 

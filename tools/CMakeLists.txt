@@ -42,6 +42,7 @@ add_subdirectory(llvm-stress)
 add_subdirectory(llvm-mcmarkup)
 
 add_subdirectory(llvm-symbolizer)
+add_subdirectory(pnacl-abicheck)
 
 if( NOT WIN32 )
   add_subdirectory(lto)

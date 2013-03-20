@@ -20,4 +20,4 @@ type = Library
 name = NaClAnalysis
 parent = Analysis
 library_name = NaClAnalysis
-required_libraries = Core
+required_libraries = Analysis Core Support

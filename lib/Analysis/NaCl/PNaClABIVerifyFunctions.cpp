@@ -14,11 +14,11 @@
 
 #include "llvm/Pass.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Analysis/NaCl.h"
 
 #include "PNaClABITypeChecker.h"
 using namespace llvm;
@@ -30,22 +30,34 @@ namespace {
 class PNaClABIVerifyFunctions : public FunctionPass {
  public:
   static char ID;
-  PNaClABIVerifyFunctions() : FunctionPass(ID), Errors(ErrorsString) {}
+  PNaClABIVerifyFunctions() :
+      FunctionPass(ID),
+      Reporter(new PNaClABIErrorReporter),
+      ReporterIsOwned(true) {
+    initializePNaClABIVerifyFunctionsPass(*PassRegistry::getPassRegistry());
+  }
+  explicit PNaClABIVerifyFunctions(PNaClABIErrorReporter *Reporter_) :
+      FunctionPass(ID),
+      Reporter(Reporter_),
+      ReporterIsOwned(false) {
+    initializePNaClABIVerifyFunctionsPass(*PassRegistry::getPassRegistry());
+  }
+  ~PNaClABIVerifyFunctions() {
+    if (ReporterIsOwned)
+      delete Reporter;
+  }
   bool runOnFunction(Function &F);
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
   PNaClABITypeChecker TC;
-  std::string ErrorsString;
-  raw_string_ostream Errors;
+  PNaClABIErrorReporter *Reporter;
+  bool ReporterIsOwned;
 };
 
 } // and anonymous namespace
 
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
-  // For now just start with new errors on each function; this may change
-  // once we want to do something with them other than just calling print()
-  ErrorsString.clear();
-  // TODO: only report one error per instruction
+  // TODO: only report one error per instruction?
   for (Function::const_iterator FI = F.begin(), FE = F.end();
            FI != FE; ++FI) {
     for (BasicBlock::const_iterator BBI = FI->begin(), BBE = FI->end();
@@ -59,9 +71,9 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::ExtractElement:
         case Instruction::InsertElement:
         case Instruction::ShuffleVector:
-          Errors << "Function " + F.getName() +
-              " has disallowed instruction: " +
-              BBI->getOpcodeName() + "\n";
+          Reporter->addError() << "Function " << F.getName() <<
+              " has disallowed instruction: " <<
+              BBI->getOpcodeName() << "\n";
           break;
 
         // Terminator instructions
@@ -126,9 +138,9 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       }
       // Check the types. First check the type of the instruction.
       if (!TC.isValidType(BBI->getType())) {
-        Errors << "Function " + F.getName() +
-            " has instruction with disallowed type: " +
-            PNaClABITypeChecker::getTypeName(BBI->getType()) + "\n";
+        Reporter->addError() << "Function " << F.getName() <<
+            " has instruction with disallowed type: " <<
+            PNaClABITypeChecker::getTypeName(BBI->getType()) << "\n";
       }
 
       // Check the instruction operands. Operands which are Instructions will
@@ -141,10 +153,11 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
              OI != OE; OI++) {
           if (isa<Constant>(OI) && !isa<GlobalValue>(OI)) {
             Type *T = TC.checkTypesInConstant(cast<Constant>(*OI));
-            if (T)
-              Errors << "Function " + F.getName() +
-                  " has instruction operand with disallowed type: " +
-                  PNaClABITypeChecker::getTypeName(T) + "\n";
+            if (T) {
+              Reporter->addError() << "Function " << F.getName() <<
+                  " has instruction operand with disallowed type: " <<
+                  PNaClABITypeChecker::getTypeName(T) << "\n";
+            }
           }
         }
 
@@ -153,28 +166,32 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       BBI->getAllMetadataOtherThanDebugLoc(MDForInst);
       for (unsigned i = 0, e = MDForInst.size(); i != e; i++) {
         Type *T = TC.checkTypesInMDNode(MDForInst[i].second);
-        if (T)
-          Errors << "Function " + F.getName() +
-              " has instruction metadata containing disallowed type: " +
-              PNaClABITypeChecker::getTypeName(T) + "\n";
+        if (T) {
+          Reporter->addError() << "Function " << F.getName() <<
+              " has instruction metadata containing disallowed type: " <<
+              PNaClABITypeChecker::getTypeName(T) << "\n";
+        }
       }
     }
   }
 
-  Errors.flush();
   return false;
 }
 
+// This method exists so that the passes can easily be run with opt -analyze.
+// In this case the default constructor is used and we want to reset the error
+// messages after each print.
 void PNaClABIVerifyFunctions::print(llvm::raw_ostream &O, const Module *M)
     const {
-  O << ErrorsString;
+  Reporter->printErrors(O);
+  Reporter->reset();
 }
 
 char PNaClABIVerifyFunctions::ID = 0;
+INITIALIZE_PASS(PNaClABIVerifyFunctions, "verify-pnaclabi-functions",
+                "Verify functions for PNaCl", false, true)
 
-static RegisterPass<PNaClABIVerifyFunctions> X("verify-pnaclabi-functions",
-    "Verify functions for PNaCl", false, false);
-
-FunctionPass *llvm::createPNaClABIVerifyFunctionsPass() {
-  return new PNaClABIVerifyFunctions();
+FunctionPass *llvm::createPNaClABIVerifyFunctionsPass(
+    PNaClABIErrorReporter *Reporter) {
+  return new PNaClABIVerifyFunctions(Reporter);
 }
