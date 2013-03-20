@@ -69,8 +69,10 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
   // @LOCALMOD-BEGIN:
   // Do any auto-generated pseudo lowerings.
-  if (emitPseudoExpansionLowering(OutStreamer, MI))
+  if (Subtarget->isTargetNaCl() && 
+      emitPseudoExpansionLowering(OutStreamer, MI)) {
     return;
+  }
   // @LOCALMOD-END
 
   MachineBasicBlock::const_instr_iterator I = MI;
