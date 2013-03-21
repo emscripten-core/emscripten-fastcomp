@@ -19,6 +19,7 @@ FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
+ModulePass *createExpandVarArgsPass();
 
 }
 

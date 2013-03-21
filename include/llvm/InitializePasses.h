@@ -281,6 +281,7 @@ void initializeExpandConstantExprPass(PassRegistry&);
 void initializeExpandCtorsPass(PassRegistry&);
 void initializeExpandTlsPass(PassRegistry&);
 void initializeExpandTlsConstantExprPass(PassRegistry&);
+void initializeExpandVarArgsPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
