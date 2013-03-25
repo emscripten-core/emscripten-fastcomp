@@ -46,6 +46,7 @@
 #include <memory>
 
 // @LOCALMOD-BEGIN
+#include "llvm/Support/Timer.h"
 #include "StubMaker.h"
 #include "TextStubWriter.h"
 // @LOCALMOD-END
@@ -69,6 +70,15 @@ DataStreamer* NaClBitcodeStreamer;
 #endif
 // @LOCALMOD-END
 
+// @LOCALMOD-BEGIN
+const char *TimeIRParsingGroupName = "LLVM IR Parsing";
+const char *TimeIRParsingName = "Parse IR";
+
+bool TimeIRParsingIsEnabled = false;
+static cl::opt<bool,true>
+EnableTimeIRParsing("time-ir-parsing", cl::location(TimeIRParsingIsEnabled),
+                    cl::desc("Measure the time IR parsing takes"));
+// @LOCALMOD-END
 
 // General options for llc.  Other pass-specific options are specified
 // within the corresponding llc passes, and target-specific options
@@ -360,7 +370,12 @@ static int compileModule(char **argv, LLVMContext &Context) {
       llvm_unreachable("native client SRPC only supports streaming");
     }
 #else
-    M.reset(ParseIRFile(InputFilename, Err, Context));
+    {
+      // @LOCALMOD: timing is temporary, until it gets properly added upstream
+      NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
+                         TimeIRParsingIsEnabled);
+      M.reset(ParseIRFile(InputFilename, Err, Context));
+    }
 #endif
     // @LOCALMOD-END
 
