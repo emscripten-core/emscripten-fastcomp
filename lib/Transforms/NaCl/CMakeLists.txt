@@ -4,6 +4,7 @@ add_llvm_library(LLVMTransformsNaCl
   ExpandTls.cpp
   ExpandTlsConstantExpr.cpp
   ExpandVarArgs.cpp
+  GlobalCleanup.cpp
   )
 
 add_dependencies(LLVMTransformsNaCl intrinsics_gen)

@@ -279,12 +279,14 @@ void initializeMachineFunctionPrinterPassPass(PassRegistry&);
 // @LOCALMOD-BEGIN
 void initializeExpandConstantExprPass(PassRegistry&);
 void initializeExpandCtorsPass(PassRegistry&);
-void initializeExpandTlsPass(PassRegistry&);
 void initializeExpandTlsConstantExprPass(PassRegistry&);
+void initializeExpandTlsPass(PassRegistry&);
 void initializeExpandVarArgsPass(PassRegistry&);
+void initializeGlobalCleanupPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
+void initializeResolveAliasesPass(PassRegistry&);
 // @LOCALMOD-END
 }
 

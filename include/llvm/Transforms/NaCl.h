@@ -20,6 +20,8 @@ ModulePass *createExpandCtorsPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
+ModulePass *createGlobalCleanupPass();
+ModulePass *createResolveAliasesPass();
 
 }
 
