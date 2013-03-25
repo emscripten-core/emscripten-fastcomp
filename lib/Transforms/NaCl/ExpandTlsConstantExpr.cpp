@@ -95,6 +95,14 @@ static void expandConstExpr(Constant *Expr) {
 }
 
 bool ExpandTlsConstantExpr::runOnModule(Module &M) {
+  for (Module::alias_iterator Iter = M.alias_begin();
+       Iter != M.alias_end(); ) {
+    GlobalAlias *GA = Iter++;
+    if (GA->isThreadDependent()) {
+      GA->replaceAllUsesWith(GA->getAliasee());
+      GA->eraseFromParent();
+    }
+  }
   for (Module::global_iterator Global = M.global_begin();
        Global != M.global_end();
        ++Global) {
