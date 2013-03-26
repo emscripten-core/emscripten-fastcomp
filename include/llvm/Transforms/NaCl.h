@@ -12,11 +12,13 @@
 
 namespace llvm {
 
+class BasicBlockPass;
 class FunctionPass;
 class ModulePass;
 
 FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
+BasicBlockPass *createExpandGetElementPtrPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();

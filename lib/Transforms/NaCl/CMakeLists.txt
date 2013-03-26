@@ -1,6 +1,7 @@
 add_llvm_library(LLVMTransformsNaCl
   ExpandConstantExpr.cpp
   ExpandCtors.cpp
+  ExpandGetElementPtr.cpp
   ExpandTls.cpp
   ExpandTlsConstantExpr.cpp
   ExpandVarArgs.cpp
