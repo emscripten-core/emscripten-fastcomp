@@ -168,13 +168,13 @@ static void LifetimeDecl(Intrinsic::ID id, Value *Ptr, Value *Size,
 
 // CopyCall() uses argument overloading so that it can be used by the
 // template ExpandVarArgCall().
-static Instruction *CopyCall(CallInst *Original, Value *Callee,
-                             ArrayRef<Value*> Args) {
+static CallInst *CopyCall(CallInst *Original, Value *Callee,
+                          ArrayRef<Value*> Args) {
   return CallInst::Create(Callee, Args, "", Original);
 }
 
-static Instruction *CopyCall(InvokeInst *Original, Value *Callee,
-                             ArrayRef<Value*> Args) {
+static InvokeInst *CopyCall(InvokeInst *Original, Value *Callee,
+                            ArrayRef<Value*> Args) {
   return InvokeInst::Create(Callee, Original->getNormalDest(),
                             Original->getUnwindDest(), Args, "", Original);
 }
@@ -190,16 +190,30 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
 
   LLVMContext *Context = &Call->getContext();
 
+  SmallVector<AttributeSet, 8> Attrs;
+  Attrs.push_back(Call->getAttributes().getFnAttributes());
+  Attrs.push_back(Call->getAttributes().getRetAttributes());
+
   // Split argument list into fixed and variable arguments.
   SmallVector<Value *, 8> FixedArgs;
   SmallVector<Value *, 8> VarArgs;
   SmallVector<Type *, 8> VarArgsTypes;
-  for (unsigned I = 0; I < FuncType->getNumParams(); ++I)
+  for (unsigned I = 0; I < FuncType->getNumParams(); ++I) {
     FixedArgs.push_back(Call->getArgOperand(I));
+    // AttributeSets use 1-based indexing.
+    Attrs.push_back(Call->getAttributes().getParamAttributes(I + 1));
+  }
   for (unsigned I = FuncType->getNumParams();
        I < Call->getNumArgOperands(); ++I) {
-    VarArgs.push_back(Call->getArgOperand(I));
-    VarArgsTypes.push_back(Call->getArgOperand(I)->getType());
+    Value *ArgVal = Call->getArgOperand(I);
+    if (Call->getAttributes().hasAttribute(I + 1, Attribute::ByVal)) {
+      // For "byval" arguments we must dereference the pointer and
+      // make a copy of the struct being passed by value.
+      ArgVal = CopyDebug(new LoadInst(ArgVal, "vararg_struct_copy", Call),
+                         Call);
+    }
+    VarArgs.push_back(ArgVal);
+    VarArgsTypes.push_back(ArgVal->getType());
   }
 
   StructType *VarArgsTy;
@@ -262,7 +276,9 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
 
   // Create the converted function call.
   FixedArgs.push_back(ArgToAdd);
-  Value *NewCall = CopyDebug(CopyCall(Call, CastFunc, FixedArgs), Call);
+  InstType *NewCall = CopyCall(Call, CastFunc, FixedArgs);
+  CopyDebug(NewCall, Call);
+  NewCall->setAttributes(AttributeSet::get(Call->getContext(), Attrs));
   NewCall->takeName(Call);
 
   if (BufPtr) {
