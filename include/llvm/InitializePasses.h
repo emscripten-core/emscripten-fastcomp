@@ -288,6 +288,7 @@ void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);
+void initializeStripMetadataPass(PassRegistry&);
 // @LOCALMOD-END
 }
 

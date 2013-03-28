@@ -585,6 +585,7 @@ int main(int argc, char **argv) {
   initializeExpandVarArgsPass(Registry);
   initializeGlobalCleanupPass(Registry);
   initializeResolveAliasesPass(Registry);
+  initializeStripMetadataPass(Registry);
   // @LOCALMOD-END
 
   cl::ParseCommandLineOptions(argc, argv,

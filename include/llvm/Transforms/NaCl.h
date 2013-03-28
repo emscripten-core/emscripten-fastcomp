@@ -24,6 +24,7 @@ ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createResolveAliasesPass();
+ModulePass *createStripMetadataPass();
 
 }
 
