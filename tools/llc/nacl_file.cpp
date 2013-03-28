@@ -143,7 +143,7 @@ bool AddDefaultCPU(string_vector* vec) {
       break;
     }
     case PnaclTargetArchitectureARM_32: {
-      vec->push_back("-mcpu=cortex-a8");
+      vec->push_back("-mcpu=cortex-a9");
       break;
     }
     default:
@@ -156,7 +156,7 @@ bool AddDefaultCPU(string_vector* vec) {
 #elif defined (__x86_64__)
   vec->push_back("-mcpu=core2");
 #elif defined (__arm__)
-  vec->push_back("-mcpu=cortex-a8");
+  vec->push_back("-mcpu=cortex-a9");
 #error "Unknown architecture"
 #endif
   return true;
@@ -195,6 +195,7 @@ string_vector* GetDefaultCommandLine() {
                                         "-sfi-stack",
                                         "-sfi-branch",
                                         "-sfi-data",
+                                        "-mattr=+neon",
                                         "-no-inline-jumptables",
                                         "-float-abi=hard",
                                         NULL };
