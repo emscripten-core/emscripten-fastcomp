@@ -4,6 +4,7 @@ add_llvm_library(LLVMTransformsNaCl
   ExpandGetElementPtr.cpp
   ExpandTls.cpp
   ExpandTlsConstantExpr.cpp
+  ExpandUtils.cpp
   ExpandVarArgs.cpp
   GlobalCleanup.cpp
   StripMetadata.cpp

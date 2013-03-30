@@ -78,18 +78,11 @@ static void expandConstExpr(Constant *Expr) {
 
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Expr)) {
     while (!Expr->use_empty()) {
-      Instruction *U = cast<Instruction>(*Expr->use_begin());
-      Instruction *InsertPt = U;
-      if (PHINode *PN = dyn_cast<PHINode>(InsertPt)) {
-        // We cannot insert instructions before a PHI node, so insert
-        // before the incoming block's terminator.  This could be
-        // suboptimal if the terminator is a conditional.
-        InsertPt = PN->getIncomingBlock(Expr->use_begin())->getTerminator();
-      }
+      Use *U = &Expr->use_begin().getUse();
       Instruction *NewInst = CE->getAsInstruction();
-      NewInst->insertBefore(InsertPt);
+      NewInst->insertBefore(PhiSafeInsertPt(U));
       NewInst->setName("expanded");
-      U->replaceUsesOfWith(CE, NewInst);
+      PhiSafeReplaceUses(U, NewInst);
     }
   }
 }

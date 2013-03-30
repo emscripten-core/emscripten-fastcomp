@@ -114,3 +114,39 @@ return:
 ; CHECK: %expanded = getelementptr inbounds i32* @tvar, i32 1
 ; CHECK: return:
 ; CHECK: %result = phi i32* [ %expanded, %entry ], [ null, %else ]
+
+
+; This tests that ExpandTlsConstantExpr correctly handles a PHI node
+; that contains the same ConstantExpr twice.  Using
+; replaceAllUsesWith() is not correct on a PHI node when the new
+; instruction has to be added to an incoming block.
+define i32 @test_converting_phi_twice(i1 %arg) {
+  br i1 %arg, label %iftrue, label %iffalse
+iftrue:
+  br label %exit
+iffalse:
+  br label %exit
+exit:
+  %result = phi i32 [ ptrtoint (i32* @tvar to i32), %iftrue ],
+                    [ ptrtoint (i32* @tvar to i32), %iffalse ]
+  ret i32 %result
+}
+; CHECK: define i32 @test_converting_phi_twice(i1 %arg)
+; CHECK: iftrue:
+; CHECK: %expanded{{.*}} = ptrtoint i32* @tvar to i32
+; CHECK: iffalse:
+; CHECK: %expanded{{.*}} = ptrtoint i32* @tvar to i32
+; CHECK: exit:
+; CHECK: %result = phi i32 [ %expanded1, %iftrue ], [ %expanded, %iffalse ]
+
+
+define i32 @test_converting_phi_multiple_entry(i1 %arg) {
+entry:
+  br i1 %arg, label %done, label %done
+done:
+  %result = phi i32 [ ptrtoint (i32* @tvar to i32), %entry ],
+                    [ ptrtoint (i32* @tvar to i32), %entry ]
+  ret i32 %result
+}
+; CHECK: define i32 @test_converting_phi_multiple_entry(i1 %arg)
+; CHECK: %result = phi i32 [ %expanded, %entry ], [ %expanded, %entry ]

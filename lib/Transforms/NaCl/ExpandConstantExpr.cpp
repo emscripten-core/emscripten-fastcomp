@@ -63,31 +63,12 @@ static bool expandInstruction(Instruction *Inst) {
     return false;
 
   bool Modified = false;
-  if (PHINode *PN = dyn_cast<PHINode>(Inst)) {
-    // PHI nodes require special treatment.  A incoming block may be
-    // listed twice, but its incoming values must match so they must
-    // be converted only once.
-    std::map<BasicBlock*,Value*> Converted;
-    for (unsigned OpNum = 0; OpNum < Inst->getNumOperands(); OpNum++) {
-      if (ConstantExpr *Expr =
-          dyn_cast<ConstantExpr>(Inst->getOperand(OpNum))) {
-        Modified = true;
-        BasicBlock *Incoming = PN->getIncomingBlock(OpNum);
-        if (Converted.count(Incoming) == 0) {
-          Converted[Incoming] = expandConstantExpr(Incoming->getTerminator(),
-                                                   Expr);
-        }
-        Inst->setOperand(OpNum, Converted[Incoming]);
-      }
-    }
-    return Modified;
-  }
-
   for (unsigned OpNum = 0; OpNum < Inst->getNumOperands(); OpNum++) {
     if (ConstantExpr *Expr =
         dyn_cast<ConstantExpr>(Inst->getOperand(OpNum))) {
       Modified = true;
-      Inst->setOperand(OpNum, expandConstantExpr(Inst, Expr));
+      Use *U = &Inst->getOperandUse(OpNum);
+      PhiSafeReplaceUses(U, expandConstantExpr(PhiSafeInsertPt(U), Expr));
     }
   }
   return Modified;

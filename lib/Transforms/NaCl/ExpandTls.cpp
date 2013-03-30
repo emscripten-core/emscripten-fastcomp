@@ -250,15 +250,8 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
        ++VarInfo) {
     GlobalVariable *Var = VarInfo->TlsVar;
     while (!Var->use_empty()) {
-      Instruction *U = cast<Instruction>(*Var->use_begin());
-      Instruction *InsertPt = U;
-      if (PHINode *PN = dyn_cast<PHINode>(InsertPt)) {
-        // We cannot insert instructions before a PHI node, so insert
-        // before the incoming block's terminator.  Note that if the
-        // terminator is conditional, this could be suboptimal,
-        // because we might be calling ReadTpFunc unnecessarily.
-        InsertPt = PN->getIncomingBlock(Var->use_begin())->getTerminator();
-      }
+      Use *U = &Var->use_begin().getUse();
+      Instruction *InsertPt = PhiSafeInsertPt(U);
       Value *RawThreadPtr = CallInst::Create(ReadTpFunc, "tls_raw", InsertPt);
       Value *TypedThreadPtr = new BitCastInst(RawThreadPtr, TemplatePtrType,
                                               "tls_struct", InsertPt);
@@ -279,7 +272,7 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
           M.getContext(), APInt(32, VarInfo->TemplateIndex)));
       Value *TlsField = GetElementPtrInst::Create(TypedThreadPtr, Indexes,
                                                   "field", InsertPt);
-      U->replaceUsesOfWith(Var, TlsField);
+      PhiSafeReplaceUses(U, TlsField);
     }
     VarInfo->TlsVar->eraseFromParent();
   }

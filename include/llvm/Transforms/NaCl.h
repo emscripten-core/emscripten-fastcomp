@@ -14,7 +14,10 @@ namespace llvm {
 
 class BasicBlockPass;
 class FunctionPass;
+class Instruction;
 class ModulePass;
+class Use;
+class Value;
 
 FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
@@ -25,6 +28,9 @@ ModulePass *createExpandVarArgsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createStripMetadataPass();
+
+Instruction *PhiSafeInsertPt(Use *U);
+void PhiSafeReplaceUses(Use *U, Value *NewVal);
 
 }
 
