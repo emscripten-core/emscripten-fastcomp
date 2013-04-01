@@ -70,5 +70,5 @@ int main(int argc, char **argv) {
                                         "Function " + MI->getName());
   }
 
-  return ErrorsFound;
+  return ErrorsFound ? 1 : 0;
 }
