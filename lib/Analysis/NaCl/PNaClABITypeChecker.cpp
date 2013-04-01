@@ -106,9 +106,8 @@ Type *PNaClABITypeChecker::checkTypesInConstant(const Constant *V) {
   // Operand values must also be valid. Values may be circular, so
   // mark the current value as valid to avoid infinite recursion.
   VisitedConstants[V] = NULL;
-  const User *U = cast<User>(V);
-  for (Constant::const_op_iterator I = U->op_begin(),
-           E = U->op_end(); I != E; ++I) {
+  for (Constant::const_op_iterator I = V->op_begin(),
+           E = V->op_end(); I != E; ++I) {
     Type *Invalid = checkTypesInConstant(cast<Constant>(*I));
     if (Invalid) {
       VisitedConstants[V] = Invalid;
