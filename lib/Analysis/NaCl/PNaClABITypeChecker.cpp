@@ -14,6 +14,7 @@
 
 #include "PNaClABITypeChecker.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Metadata.h"
 
@@ -76,17 +77,22 @@ bool PNaClABITypeChecker::isValidType(const Type *Ty) {
 }
 
 Type *PNaClABITypeChecker::checkTypesInConstant(const Constant *V) {
-  // TODO: blockaddr constexprs cause this code
-  // to assert rather than go off and try to verify the BBs of a function
-  // We may just ban blockaddr constexprs, or maybe just ban them in GVs, which
-  // is really the thing that's streaming-unfriendly. If we end up with more
-  // complex non-type-related rules for constexprs, maybe this could get its
-  // own file.
   if (!V) return NULL;
   if (VisitedConstants.count(V))
     return VisitedConstants[V];
 
   if (!isValidType(V->getType())) {
+    VisitedConstants[V] = V->getType();
+    return V->getType();
+  }
+
+  // Check for BlockAddress because it contains a non-Constant
+  // BasicBlock operand.
+  // TODO(mseaborn): This produces an error which is misleading
+  // because it complains about the type being "i8*".  It should
+  // instead produce an error saying that BlockAddress and computed
+  // gotos are not allowed.
+  if (isa<BlockAddress>(V)) {
     VisitedConstants[V] = V->getType();
     return V->getType();
   }

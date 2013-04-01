@@ -73,6 +73,15 @@
 ; CHECK: Initializer for ce2 has disallowed type: { i32, half }*
 @ce2 = private global i32 * getelementptr ({ i32, half } * @cc2, i32 0, i32 0)
 
+define void @func_with_block() {
+  br label %some_block
+some_block:
+  ret void
+}
+
+@blockaddr = global i8* blockaddress(@func_with_block, %some_block)
+; CHECK: Initializer for blockaddr has disallowed type: i8*
+
 ; Circularities:  here to make sure the verifier doesn't crash or assert.
 
 ; This oddity is perfectly legal according to the IR and ABI verifiers.
