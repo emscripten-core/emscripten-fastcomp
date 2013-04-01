@@ -175,6 +175,7 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
     }
   }
 
+  Reporter->checkForFatalErrors();
   return false;
 }
 

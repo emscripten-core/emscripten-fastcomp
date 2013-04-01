@@ -10,6 +10,7 @@
 #ifndef LLVM_ANALYSIS_NACL_H
 #define LLVM_ANALYSIS_NACL_H
 
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <string>
 
@@ -20,7 +21,8 @@ class ModulePass;
 
 class PNaClABIErrorReporter {
  public:
-  PNaClABIErrorReporter() : ErrorCount(0), Errors(ErrorString) {}
+  PNaClABIErrorReporter() : ErrorCount(0), Errors(ErrorString),
+                            UseFatalErrors(true) {}
   // Return the number of verification errors from the last run.
   int getErrorCount() { return ErrorCount; }
   // Print the error messages to O
@@ -40,10 +42,20 @@ class PNaClABIErrorReporter {
     Errors.flush();
     ErrorString.clear();
   }
+  void setNonFatal() {
+    UseFatalErrors = false;
+  }
+  void checkForFatalErrors() {
+    if (UseFatalErrors && ErrorCount != 0) {
+      printErrors(errs());
+      report_fatal_error("PNaCl ABI verification failed");
+    }
+  }
  private:
   int ErrorCount;
   std::string ErrorString;
   raw_string_ostream Errors;
+  bool UseFatalErrors;
 };
 
 FunctionPass *createPNaClABIVerifyFunctionsPass(PNaClABIErrorReporter * Reporter);

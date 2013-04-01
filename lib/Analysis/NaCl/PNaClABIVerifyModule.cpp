@@ -149,6 +149,8 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       }
     }
   }
+
+  Reporter->checkForFatalErrors();
   return false;
 }
 

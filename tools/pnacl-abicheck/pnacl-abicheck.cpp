@@ -55,6 +55,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   PNaClABIErrorReporter ABIErrorReporter;
+  ABIErrorReporter.setNonFatal();
   bool ErrorsFound = false;
   // Manually run the passes so we can tell the user which function had the
   // error. No need for a pass manager since it's just one pass.

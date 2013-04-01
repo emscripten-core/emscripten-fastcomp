@@ -584,6 +584,8 @@ int main(int argc, char **argv) {
   initializeExpandTlsConstantExprPass(Registry);
   initializeExpandVarArgsPass(Registry);
   initializeGlobalCleanupPass(Registry);
+  initializePNaClABIVerifyFunctionsPass(Registry);
+  initializePNaClABIVerifyModulePass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeStripMetadataPass(Registry);
   // @LOCALMOD-END
