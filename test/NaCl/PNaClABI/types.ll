@@ -2,12 +2,16 @@
 ; Test types allowed by PNaCl ABI
 
 ; Basic global types
-; CHECK: Variable i4 has disallowed type: i4
-@i4 = private global i4 0
-; CHECK: Variable i33 has disallowed type: i33
-@i33 = private global i33 0
-; CHECK: Variable i128 has disallowed type: i128
-@i128 = private global i128 0
+
+; TODO(mseaborn): Re-enable integer size checking.
+; See https://code.google.com/p/nativeclient/issues/detail?id=3360
+; C;HECK: Variable i4 has disallowed type: i4
+;@i4 = private global i4 0
+; C;HECK: Variable i33 has disallowed type: i33
+;@i33 = private global i33 0
+; C;HECK: Variable i128 has disallowed type: i128
+;@i128 = private global i128 0
+
 ; CHECK: Variable hlf has disallowed type: half
 @hlf = private global half 0.0
 ; CHECK: Variable fp80 has disallowed type: x86_fp80
@@ -53,12 +57,13 @@
 ; types in arrays, structs, etc
 ; CHECK: Variable p2 has disallowed type: half*
 @p2 = private global half* undef
-; CHECK: Variable a2 has disallowed type: [2 x i33]
-@a2 = private global [ 2 x i33 ] undef
+; TODO(mseaborn): Re-enable integer size checking.
+; C;HECK: Variable a2 has disallowed type: [2 x i33]
+;@a2 = private global [ 2 x i33 ] undef
 ; CHECK: Variable s2 has disallowed type: { half, i32 }
 @s2 = private global { half, i32 } undef
-; CHECK: Variable s3 has disallowed type: { float, i33 }
-@s3 = private global { float, i33 } undef
+; C;HECK: Variable s3 has disallowed type: { float, i33 }
+;@s3 = private global { float, i33 } undef
 ; CHECK: Variable s4 has disallowed type: { i32, { i32, half }, float }
 @s4 = private global { i32, { i32, half }, float } undef
 ; CHECK-NOT: disallowed
