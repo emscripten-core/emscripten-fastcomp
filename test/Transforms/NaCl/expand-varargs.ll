@@ -12,6 +12,10 @@ declare i32 @outside_func(i32 %arg, %va_list* %args)
 ; Produced by the expansion of @varargs_call1():
 ; CHECK: %vararg_call = type <{ i64, i32 }>
 
+; Produced by the expansion of @call_with_zero_varargs().
+; We have a dummy field to deal with buggy programs:
+; CHECK: %vararg_call.0 = type <{ i32 }>
+
 
 define i32 @varargs_func(i32 %arg, ...) {
   %arglist_alloc = alloca %va_list
@@ -50,13 +54,14 @@ define i32 @varargs_call1() {
 
 
 ; Check that the pass works when there are no variable arguments.
-define i32 @varargs_call2() {
+define i32 @call_with_zero_varargs() {
   %result = call i32 (i32, ...)* @varargs_func(i32 111)
   ret i32 %result
 }
-; CHECK: define i32 @varargs_call2() {
-; CHECK-NEXT: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, {}*)*
-; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, {}* undef)
+; CHECK: define i32 @call_with_zero_varargs() {
+; CHECK-NEXT: %vararg_buffer = alloca %vararg_call.0
+; CHECK: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, %vararg_call.0*)*
+; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, %vararg_call.0* %vararg_buffer)
 
 
 ; Check that "invoke" instructions are expanded out too.
@@ -70,7 +75,7 @@ lpad:
   ret i32 0
 }
 ; CHECK: @varargs_invoke
-; CHECK: %result = invoke i32 %vararg_func(i32 111, %vararg_call.0* %vararg_buffer)
+; CHECK: %result = invoke i32 %vararg_func(i32 111, %vararg_call.1* %vararg_buffer)
 ; CHECK-NEXT: to label %cont unwind label %lpad
 ; CHECK: cont:
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)

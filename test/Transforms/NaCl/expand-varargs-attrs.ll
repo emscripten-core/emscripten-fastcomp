@@ -20,7 +20,7 @@ define void @call_with_arg_attrs(%MyStruct* %s) {
   ret void
 }
 ; CHECK: define void @call_with_arg_attrs(%MyStruct* %s) {
-; CHECK: call void %vararg_func(%MyStruct* byval %s, {}* undef)
+; CHECK: call void %vararg_func(%MyStruct* byval %s, %vararg_call{{.*}} %vararg_buffer)
 
 
 ; The "byval" attribute here should be dropped.

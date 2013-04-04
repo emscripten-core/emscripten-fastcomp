@@ -215,53 +215,51 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
     VarArgs.push_back(ArgVal);
     VarArgsTypes.push_back(ArgVal->getType());
   }
+  if (VarArgsTypes.size() == 0) {
+    // Some buggy code (e.g. 176.gcc in Spec2k) uses va_arg on an
+    // empty argument list, which gives undefined behaviour in C.  To
+    // work around such programs, we create a dummy varargs buffer on
+    // the stack even though there are no arguments to put in it.
+    // This allows va_arg to read an undefined value from the stack
+    // rather than crashing by reading from an uninitialized pointer.
+    // An alternative would be to pass a null pointer to catch the
+    // invalid use of va_arg.
+    VarArgsTypes.push_back(Type::getInt32Ty(*Context));
+  }
 
-  StructType *VarArgsTy;
-  Value *ArgToAdd;
-  Instruction *BufPtr = NULL;
-  Value *BufSize = NULL;
-  if (VarArgs.size() == 0) {
-    // If there are no variable arguments being passed, we still want
-    // to add an extra argument to the function call so that the
-    // number of arguments matches the callee's type.
-    VarArgsTy = StructType::get(*Context);
-    ArgToAdd = UndefValue::get(VarArgsTy->getPointerTo());
-  } else {
-    // Create struct type for packing variable arguments into.  We
-    // create this as packed for now and assume that no alignment
-    // padding is desired.
-    VarArgsTy = StructType::create(VarArgsTypes, "vararg_call", true);
+  // Create struct type for packing variable arguments into.  We
+  // create this as packed for now and assume that no alignment
+  // padding is desired.
+  StructType *VarArgsTy = StructType::create(VarArgsTypes, "vararg_call", true);
 
-    // Allocate space for the variable argument buffer.  Do this at the
-    // start of the function so that we don't leak space if the function
-    // is called in a loop.
-    Function *Func = Call->getParent()->getParent();
-    Instruction *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
-    Func->getEntryBlock().getInstList().push_front(Buf);
-    ArgToAdd = Buf;
+  // Allocate space for the variable argument buffer.  Do this at the
+  // start of the function so that we don't leak space if the function
+  // is called in a loop.
+  Function *Func = Call->getParent()->getParent();
+  Instruction *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
+  Func->getEntryBlock().getInstList().push_front(Buf);
 
-    // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
-    // only used for the duration of the function call, so that the
-    // stack space can be reused elsewhere.
-    Type *I8Ptr = Type::getInt8Ty(*Context)->getPointerTo();
-    BufPtr = new BitCastInst(Buf, I8Ptr, "vararg_lifetime_bitcast");
-    BufPtr->insertAfter(Buf);
-    BufSize = ConstantInt::get(*Context,
-                               APInt(64, DL->getTypeAllocSize(VarArgsTy)));
-    LifetimeDecl(Intrinsic::lifetime_start, BufPtr, BufSize, Call);
+  // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
+  // only used for the duration of the function call, so that the
+  // stack space can be reused elsewhere.
+  Type *I8Ptr = Type::getInt8Ty(*Context)->getPointerTo();
+  Instruction *BufPtr = new BitCastInst(Buf, I8Ptr, "vararg_lifetime_bitcast");
+  BufPtr->insertAfter(Buf);
+  Value *BufSize = ConstantInt::get(*Context,
+                                    APInt(64, DL->getTypeAllocSize(VarArgsTy)));
+  LifetimeDecl(Intrinsic::lifetime_start, BufPtr, BufSize, Call);
 
-    // Copy variable arguments into buffer.
-    int Index = 0;
-    for (SmallVector<Value *, 8>::iterator Iter = VarArgs.begin();
-         Iter != VarArgs.end();
-         ++Iter, ++Index) {
-      SmallVector<Value *, 2> Indexes;
-      Indexes.push_back(ConstantInt::get(*Context, APInt(32, 0)));
-      Indexes.push_back(ConstantInt::get(*Context, APInt(32, Index)));
-      Value *Ptr = CopyDebug(GetElementPtrInst::Create(
-                                 Buf, Indexes, "vararg_ptr", Call), Call);
-      CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
-    }
+  // Copy variable arguments into buffer.
+  int Index = 0;
+  for (SmallVector<Value *, 8>::iterator Iter = VarArgs.begin();
+       Iter != VarArgs.end();
+       ++Iter, ++Index) {
+    SmallVector<Value *, 2> Indexes;
+    Indexes.push_back(ConstantInt::get(*Context, APInt(32, 0)));
+    Indexes.push_back(ConstantInt::get(*Context, APInt(32, Index)));
+    Value *Ptr = CopyDebug(GetElementPtrInst::Create(
+                               Buf, Indexes, "vararg_ptr", Call), Call);
+    CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
   }
 
   // Cast function to new type to add our extra pointer argument.
@@ -275,21 +273,19 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
                               "vararg_func", Call), Call);
 
   // Create the converted function call.
-  FixedArgs.push_back(ArgToAdd);
+  FixedArgs.push_back(Buf);
   InstType *NewCall = CopyCall(Call, CastFunc, FixedArgs);
   CopyDebug(NewCall, Call);
   NewCall->setAttributes(AttributeSet::get(Call->getContext(), Attrs));
   NewCall->takeName(Call);
 
-  if (BufPtr) {
-    if (isa<CallInst>(Call)) {
-      LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize, Call);
-    } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Call)) {
-      LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize,
-                   Invoke->getNormalDest()->getFirstInsertionPt());
-      LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize,
-                   Invoke->getUnwindDest()->getFirstInsertionPt());
-    }
+  if (isa<CallInst>(Call)) {
+    LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize, Call);
+  } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Call)) {
+    LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize,
+                 Invoke->getNormalDest()->getFirstInsertionPt());
+    LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize,
+                 Invoke->getUnwindDest()->getFirstInsertionPt());
   }
 
   Call->replaceAllUsesWith(NewCall);
