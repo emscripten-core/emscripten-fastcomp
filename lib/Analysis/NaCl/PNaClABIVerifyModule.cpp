@@ -112,6 +112,15 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
             " has disallowed linkage type: " <<
             linkageName(MI->getLinkage()) << "\n";
     }
+
+    if (MI->hasSection()) {
+      Reporter->addError() << "Variable " << MI->getName() <<
+          " has disallowed \"section\" attribute\n";
+    }
+    if (MI->isThreadLocal()) {
+      Reporter->addError() << "Variable " << MI->getName() <<
+          " has disallowed \"thread_local\" attribute\n";
+    }
   }
   // No aliases allowed for now.
   for (Module::alias_iterator MI = M.alias_begin(),
@@ -135,6 +144,15 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
             I + 1 << " has disallowed type: " <<
             PNaClABITypeChecker::getTypeName(PT) << "\n";
       }
+    }
+
+    if (MI->hasSection()) {
+      Reporter->addError() << "Function " << MI->getName() <<
+          " has disallowed \"section\" attribute\n";
+    }
+    if (MI->hasGC()) {
+      Reporter->addError() << "Function " << MI->getName() <<
+          " has disallowed \"gc\" attribute\n";
     }
   }
 
