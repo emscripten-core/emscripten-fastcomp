@@ -65,6 +65,8 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       switch (BBI->getOpcode()) {
         // Disallowed instructions. Default is to disallow.
         default:
+        // We expand GetElementPtr out into arithmetic.
+        case Instruction::GetElementPtr:
         // indirectbr may interfere with streaming
         case Instruction::IndirectBr:
         // No vector instructions yet
@@ -112,7 +114,6 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::Fence:
         case Instruction::AtomicCmpXchg:
         case Instruction::AtomicRMW:
-        case Instruction::GetElementPtr:
         // Conversion operations
         case Instruction::Trunc:
         case Instruction::ZExt:

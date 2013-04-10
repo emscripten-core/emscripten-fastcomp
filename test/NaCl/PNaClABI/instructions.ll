@@ -71,6 +71,8 @@ define void @memory() {
   fence acq_rel
   %a3 = cmpxchg i32* undef, i32 undef, i32 undef acq_rel
   %a4 = atomicrmw add i32* undef, i32 1 acquire
+; CHECK-NOT: disallowed
+; CHECK: Function memory has disallowed instruction: getelementptr
   %a5 = getelementptr { i32, i32}* undef
   ret void
 }
