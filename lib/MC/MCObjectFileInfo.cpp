@@ -610,16 +610,9 @@ void MCObjectFileInfo::InitCOFFMCObjectFileInfo(Triple T) {
                         SectionKind::getDataRel());
 }
 
-// @LOCALMOD-START
-// TODO(petarj): HACK! Find a better way to set ELF::EF_MIPS_PIC flag.
-// See also file lib/Target/Mips/MCTargetDesc/MipsELFObjectWriter.cpp.
-Reloc::Model RelocModelOption = Reloc::Default;
-// @LOCALMOD-END
-
 void MCObjectFileInfo::InitMCObjectFileInfo(StringRef TT, Reloc::Model relocm,
                                             CodeModel::Model cm,
                                             MCContext &ctx) {
-  RelocModelOption = relocm;  // @LOCALMOD
   RelocM = relocm;
   CMModel = cm;
   Ctx = &ctx;

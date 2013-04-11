@@ -134,8 +134,8 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
 
   // @LOCALMOD-BEGIN
   if (TheTriple.isOSNaCl()) {
-    MCStreamer *Streamer = createELFStreamer(Ctx, MAB, _OS, _Emitter,
-                                             RelaxAll, NoExecStack);
+    MCStreamer *Streamer = createMipsELFStreamer(Ctx, MAB, _OS, _Emitter,
+                                                 RelaxAll, NoExecStack);
     Streamer->EmitBundleAlignMode(4);
     return Streamer;
   } else {

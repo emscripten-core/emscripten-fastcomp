@@ -2313,7 +2313,25 @@ GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const {
     unsigned PtrSize = PtrVT.getSizeInBits();
     IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
 
-    SDValue TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
+    // We must check whether the __nacl_read_tp is defined in the module because
+    // local and global pic functions are called differently. If the function
+    // is local the address is calculated with %got and %lo relocations.
+    // Otherwise, the address is calculated with %call16 relocation.
+    const Function *NaClReadTp = NULL;
+    const Module *M = DAG.getMachineFunction().getFunction()->getParent();
+    for (Module::const_iterator I = M->getFunctionList().begin(),
+           E = M->getFunctionList().end(); I != E; ++I) {
+      if (I->getName() == "__nacl_read_tp") {
+        NaClReadTp = I;
+        break;
+      }
+    }
+
+    SDValue TlsReadTp;
+    if (NaClReadTp == NULL)
+      TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
+    else
+      TlsReadTp = DAG.getGlobalAddress(NaClReadTp, DL, PtrVT);
 
     ArgListTy Args;
     TargetLowering::CallLoweringInfo CLI(

@@ -18,13 +18,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include <list>
 
-// @LOCALMOD-START
-// TODO(petarj): HACK! Find better way to set ELF::EF_MIPS_PIC flag.
-// See also file lib/MC/MCObjectFileInfo.cpp.
-#include "llvm/Support/CodeGen.h"
-extern llvm::Reloc::Model RelocModelOption;
-// @LOCALMOD-END
-
 using namespace llvm;
 
 namespace {

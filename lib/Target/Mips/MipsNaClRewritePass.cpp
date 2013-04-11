@@ -80,7 +80,7 @@ static bool IsIndirectJump(const MachineInstr &MI) {
 }
 
 static bool IsIndirectCall(const MachineInstr &MI) {
-  return (MI.getOpcode() == Mips::JALR);
+  return (MI.getOpcode() == Mips::JALR) || (MI.getOpcode() == Mips::JALRPseudo);
 }
 
 static bool IsDirectCall(const MachineInstr &MI) {
