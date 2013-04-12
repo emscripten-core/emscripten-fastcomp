@@ -51,6 +51,11 @@ ModulePass *llvm::createStripMetadataPass() {
   return new StripMetadata();
 }
 
+static bool IsWhitelistedMetadata(const NamedMDNode *node) {
+  // Leave debug metadata to the -strip-debug pass.
+  return node->getName().startswith("llvm.dbg.");
+}
+
 static bool DoStripMetadata(Module &M) {
   bool Changed = false;
 
@@ -68,6 +73,16 @@ static bool DoStripMetadata(Module &M) {
       }
     }
   }
+
+  // Strip unsupported named metadata.
+  SmallVector<NamedMDNode*, 8> ToErase;
+  for (Module::NamedMDListType::iterator I = M.named_metadata_begin(),
+           E = M.named_metadata_end(); I != E; ++I) {
+    if (!IsWhitelistedMetadata(I))
+      ToErase.push_back(I);
+  }
+  for (size_t i = 0; i < ToErase.size(); ++i)
+    M.eraseNamedMetadata(ToErase[i]);
 
   return Changed;
 }
