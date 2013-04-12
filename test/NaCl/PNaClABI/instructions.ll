@@ -103,7 +103,6 @@ foo:
 ; phi predecessor labels have to match to appease module verifier
   %a3 = phi i32 [0, %entry], [0, %foo]
   %a4 = select i1 true, i8 undef, i8 undef
-  %a5 = va_arg i8** undef, i32
   call void @conversion()
   br i1 undef, label %foo, label %bar
 bar:
@@ -126,6 +125,13 @@ onerror:
 ; CHECK-NEXT: Function invoke_func has disallowed instruction: landingpad
   ret void
 }
+
+define i32 @va_arg(i8* %va_list) {
+  %val = va_arg i8* %va_list, i32
+  ret i32 %val
+}
+; CHECK-NOT: disallowed
+; CHECK: Function va_arg has disallowed instruction: va_arg
 
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check

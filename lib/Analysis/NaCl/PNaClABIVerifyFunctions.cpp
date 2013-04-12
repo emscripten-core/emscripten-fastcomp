@@ -67,6 +67,8 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         default:
         // We expand GetElementPtr out into arithmetic.
         case Instruction::GetElementPtr:
+        // VAArg is expanded out by ExpandVarArgs.
+        case Instruction::VAArg:
         // Zero-cost C++ exception handling is not supported yet.
         case Instruction::Invoke:
         case Instruction::LandingPad:
@@ -134,8 +136,16 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::FCmp:
         case Instruction::PHI:
         case Instruction::Select:
+          break;
         case Instruction::Call:
-        case Instruction::VAArg:
+          // Pointers to varargs function types are not yet
+          // disallowed, but we do disallow defining or calling
+          // functions of varargs types.
+          if (cast<CallInst>(BBI)->getCalledValue()->getType()
+              ->getPointerElementType()->isFunctionVarArg()) {
+            Reporter->addError() << "Function " << F.getName() <<
+                " contains a disallowed varargs function call\n";
+          }
           break;
       }
       // Check the types. First check the type of the instruction.

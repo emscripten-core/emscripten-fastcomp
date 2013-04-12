@@ -145,6 +145,12 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
             PNaClABITypeChecker::getTypeName(PT) << "\n";
       }
     }
+    // Pointers to varargs function types are not yet disallowed, but
+    // we do disallow defining or calling functions of varargs types.
+    if (MI->isVarArg()) {
+      Reporter->addError() << "Function " << MI->getName() <<
+          " is a variable-argument function (disallowed)\n";
+    }
 
     if (MI->hasSection()) {
       Reporter->addError() << "Function " << MI->getName() <<
