@@ -56,6 +56,10 @@ static bool CleanUpLinkage(GlobalValue *GV) {
       GV->eraseFromParent();
       return true;
     }
+    case GlobalValue::WeakAnyLinkage: {
+      GV->setLinkage(GlobalValue::InternalLinkage);
+      return true;
+    }
     default:
       // default with fall through to avoid compiler warning
       return false;
@@ -79,6 +83,11 @@ bool GlobalCleanup::runOnModule(Module &M) {
        I != E; ) {
     GlobalVariable *GV = I++;
     Modified |= CleanUpLinkage(GV);
+  }
+
+  for (Module::iterator I = M.begin(), E = M.end(); I != E; ) {
+    Function *F = I++;
+    Modified |= CleanUpLinkage(F);
   }
   return Modified;
 }

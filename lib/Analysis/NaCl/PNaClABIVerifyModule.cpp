@@ -47,6 +47,7 @@ class PNaClABIVerifyModule : public ModulePass {
   bool runOnModule(Module &M);
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
+  void CheckGlobalValueCommon(const GlobalValue *GV);
   PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
@@ -80,6 +81,30 @@ static const char *linkageName(GlobalValue::LinkageTypes LT) {
 
 } // end anonymous namespace
 
+// Check linkage type and section attributes, which are the same for
+// GlobalVariables and Functions.
+void PNaClABIVerifyModule::CheckGlobalValueCommon(const GlobalValue *GV) {
+  assert(!isa<GlobalAlias>(GV));
+  const char *GVTypeName = isa<GlobalVariable>(GV) ?
+      "Variable " : "Function ";
+  switch (GV->getLinkage()) {
+    // TODO(dschuff): Disallow external linkage
+    case GlobalValue::ExternalLinkage:
+    case GlobalValue::AvailableExternallyLinkage:
+    case GlobalValue::InternalLinkage:
+    case GlobalValue::PrivateLinkage:
+      break;
+    default:
+      Reporter->addError() << GVTypeName << GV->getName()
+                           << " has disallowed linkage type: "
+                           << linkageName(GV->getLinkage()) << "\n";
+  }
+  if (GV->hasSection()) {
+    Reporter->addError() << GVTypeName << GV->getName() <<
+        " has disallowed \"section\" attribute\n";
+  }
+}
+
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
@@ -100,28 +125,14 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       }
     }
 
-    // Check GV linkage types
-    switch (MI->getLinkage()) {
-      case GlobalValue::ExternalLinkage:
-      case GlobalValue::AvailableExternallyLinkage:
-      case GlobalValue::InternalLinkage:
-      case GlobalValue::PrivateLinkage:
-        break;
-      default:
-        Reporter->addError() << "Variable " << MI->getName() <<
-            " has disallowed linkage type: " <<
-            linkageName(MI->getLinkage()) << "\n";
-    }
+    CheckGlobalValueCommon(MI);
 
-    if (MI->hasSection()) {
-      Reporter->addError() << "Variable " << MI->getName() <<
-          " has disallowed \"section\" attribute\n";
-    }
     if (MI->isThreadLocal()) {
       Reporter->addError() << "Variable " << MI->getName() <<
           " has disallowed \"thread_local\" attribute\n";
     }
   }
+
   // No aliases allowed for now.
   for (Module::alias_iterator MI = M.alias_begin(),
            E = M.alias_end(); MI != E; ++MI) {
@@ -129,7 +140,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
         " is an alias (disallowed)\n";
   }
 
-  for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
+  for (Module::const_iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
     // Check types of functions and their arguments
     FunctionType *FT = MI->getFunctionType();
     if (!TC.isValidType(FT->getReturnType())) {
@@ -152,10 +163,8 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
           " is a variable-argument function (disallowed)\n";
     }
 
-    if (MI->hasSection()) {
-      Reporter->addError() << "Function " << MI->getName() <<
-          " has disallowed \"section\" attribute\n";
-    }
+    CheckGlobalValueCommon(MI);
+
     if (MI->hasGC()) {
       Reporter->addError() << "Function " << MI->getName() <<
           " has disallowed \"gc\" attribute\n";
