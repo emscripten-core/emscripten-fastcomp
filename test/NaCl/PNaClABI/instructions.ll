@@ -109,5 +109,23 @@ foo:
 bar:
   ret void
 }
+
+declare void @external_func()
+declare void @personality_func()
+
+define void @invoke_func() {
+  invoke void @external_func() to label %ok unwind label %onerror
+; CHECK-NOT: disallowed
+; CHECK: Function invoke_func has disallowed instruction: invoke
+ok:
+  ret void
+onerror:
+  %lp = landingpad i32
+      personality i8* bitcast (void ()* @personality_func to i8*)
+      catch i32* null
+; CHECK-NEXT: Function invoke_func has disallowed instruction: landingpad
+  ret void
+}
+
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check

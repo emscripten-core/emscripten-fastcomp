@@ -67,6 +67,9 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         default:
         // We expand GetElementPtr out into arithmetic.
         case Instruction::GetElementPtr:
+        // Zero-cost C++ exception handling is not supported yet.
+        case Instruction::Invoke:
+        case Instruction::LandingPad:
         // indirectbr may interfere with streaming
         case Instruction::IndirectBr:
         // No vector instructions yet
@@ -84,7 +87,6 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::Switch:
         case Instruction::Resume:
         case Instruction::Unreachable:
-        case Instruction::Invoke:
         // Binary operations
         case Instruction::Add:
         case Instruction::FAdd:
@@ -134,7 +136,6 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::Select:
         case Instruction::Call:
         case Instruction::VAArg:
-        case Instruction::LandingPad:
           break;
       }
       // Check the types. First check the type of the instruction.
