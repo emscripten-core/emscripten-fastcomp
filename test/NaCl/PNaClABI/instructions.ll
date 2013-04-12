@@ -123,6 +123,7 @@ onerror:
       personality i8* bitcast (void ()* @personality_func to i8*)
       catch i32* null
 ; CHECK-NEXT: Function invoke_func has disallowed instruction: landingpad
+; CHECK-NEXT: Function invoke_func contains disallowed ConstantExpr
   ret void
 }
 
@@ -132,6 +133,14 @@ define i32 @va_arg(i8* %va_list) {
 }
 ; CHECK-NOT: disallowed
 ; CHECK: Function va_arg has disallowed instruction: va_arg
+
+@global_var = global i32 0
+
+define i32* @constantexpr() {
+  ret i32* getelementptr (i32* @global_var, i32 1)
+}
+; CHECK-NOT: disallowed
+; CHECK: Function constantexpr contains disallowed ConstantExpr
 
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check

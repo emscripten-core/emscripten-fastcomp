@@ -173,6 +173,14 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
           }
         }
 
+      for (User::const_op_iterator OI = BBI->op_begin(), OE = BBI->op_end();
+           OI != OE; OI++) {
+        if (isa<ConstantExpr>(OI)) {
+          Reporter->addError() << "Function " << F.getName() <<
+              " contains disallowed ConstantExpr\n";
+        }
+      }
+
       // Get types hiding in metadata attached to the instruction
       SmallVector<std::pair<unsigned, MDNode*>, 4> MDForInst;
       BBI->getAllMetadataOtherThanDebugLoc(MDForInst);
