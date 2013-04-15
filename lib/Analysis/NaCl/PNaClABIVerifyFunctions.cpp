@@ -72,6 +72,7 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         // Zero-cost C++ exception handling is not supported yet.
         case Instruction::Invoke:
         case Instruction::LandingPad:
+        case Instruction::Resume:
         // indirectbr may interfere with streaming
         case Instruction::IndirectBr:
         // No vector instructions yet
@@ -87,7 +88,6 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::Ret:
         case Instruction::Br:
         case Instruction::Switch:
-        case Instruction::Resume:
         case Instruction::Unreachable:
         // Binary operations
         case Instruction::Add:

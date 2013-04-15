@@ -14,7 +14,6 @@ next:
  switch i32 1, label %next2 [i32 0, label %next]
 next2:
   unreachable
-  resume i8 0
 ; CHECK-NOT: disallowed
 ; CHECK: Function terminators has disallowed instruction: indirectbr
   indirectbr i8* undef, [label %next, label %next2]
@@ -124,7 +123,8 @@ onerror:
       catch i32* null
 ; CHECK-NEXT: Function invoke_func has disallowed instruction: landingpad
 ; CHECK-NEXT: Function invoke_func contains disallowed ConstantExpr
-  ret void
+  resume i32 %lp
+; CHECK-NEXT: Function invoke_func has disallowed instruction: resume
 }
 
 define i32 @va_arg(i8* %va_list) {
