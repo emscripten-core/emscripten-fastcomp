@@ -19,5 +19,5 @@
 type = Library
 name = NaClTransforms
 parent = Transforms
-library_name = NaClTransforms
-required_libraries = Core
+library_name = nacltransforms
+required_libraries = Core Support

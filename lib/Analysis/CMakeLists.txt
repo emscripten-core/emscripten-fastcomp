@@ -64,3 +64,4 @@ add_llvm_library(LLVMAnalysis
 add_dependencies(LLVMAnalysis intrinsics_gen)
 
 add_subdirectory(IPA)
+add_subdirectory(NaCl) # LOCALMOD

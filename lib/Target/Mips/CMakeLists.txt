@@ -30,6 +30,10 @@ add_llvm_target(MipsCodeGen
   MipsLongBranch.cpp
   MipsMCInstLower.cpp
   MipsMachineFunction.cpp
+# LOCALMOD-BEGIN
+  MipsNaClHeaders.cpp
+  MipsNaClRewritePass.cpp
+# LOCALMOD-END
   MipsRegisterInfo.cpp
   MipsSEFrameLowering.cpp
   MipsSEInstrInfo.cpp

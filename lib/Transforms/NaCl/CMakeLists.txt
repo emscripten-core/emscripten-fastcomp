@@ -1,4 +1,4 @@
-add_llvm_library(LLVMTransformsNaCl
+add_llvm_library(LLVMnacltransforms
   ExpandConstantExpr.cpp
   ExpandCtors.cpp
   ExpandGetElementPtr.cpp
@@ -10,4 +10,4 @@ add_llvm_library(LLVMTransformsNaCl
   StripMetadata.cpp
   )
 
-add_dependencies(LLVMTransformsNaCl intrinsics_gen)
+add_dependencies(LLVMnacltransforms intrinsics_gen)
