@@ -283,6 +283,7 @@ void initializeExpandGetElementPtrPass(PassRegistry&);
 void initializeExpandTlsConstantExprPass(PassRegistry&);
 void initializeExpandTlsPass(PassRegistry&);
 void initializeExpandVarArgsPass(PassRegistry&);
+void initializeFlattenGlobalsPass(PassRegistry&);
 void initializeGlobalCleanupPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);

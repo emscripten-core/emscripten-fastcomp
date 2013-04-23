@@ -25,6 +25,7 @@ BasicBlockPass *createExpandGetElementPtrPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
+ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createStripMetadataPass();
