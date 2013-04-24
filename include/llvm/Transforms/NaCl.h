@@ -19,6 +19,7 @@ class ModulePass;
 class Use;
 class Value;
 
+ModulePass *createExpandByValPass();
 FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
 BasicBlockPass *createExpandGetElementPtrPass();
