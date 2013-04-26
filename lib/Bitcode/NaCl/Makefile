@@ -1,4 +1,4 @@
-##===- lib/Bitcode/Makefile --------------------------------*- Makefile -*-===##
+##===- lib/Bitcode/NaCl/Makefile ---------------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,8 +7,8 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../..
-PARALLEL_DIRS = Reader Writer NaCl
+LEVEL = ../../..
+PARALLEL_DIRS = Writer
 
 include $(LEVEL)/Makefile.common
 

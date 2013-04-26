@@ -1,4 +1,4 @@
-;===- ./lib/Bitcode/LLVMBuild.txt ------------------------------*- Conf -*--===;
+;===- ./lib/Bitcode/NaCl/LLVMBuild.txt ------------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -16,9 +16,9 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = Reader Writer NaCl
+subdirectories = Writer
 
 [component_0]
 type = Group
-name = Bitcode
-parent = Libraries
+name = NaClBitcode
+parent = Bitcode

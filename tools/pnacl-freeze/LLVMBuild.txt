@@ -1,10 +1,4 @@
-;===- ./lib/Bitcode/LLVMBuild.txt ------------------------------*- Conf -*--===;
-;
-;                     The LLVM Compiler Infrastructure
-;
-; This file is distributed under the University of Illinois Open Source
-; License. See LICENSE.TXT for details.
-;
+;===- ./tools/pnacl-freeze/LLVMBuild.txt -----------------------*- Conf -*--===;
 ;===------------------------------------------------------------------------===;
 ;
 ; This is an LLVMBuild description file for the components in this subdirectory.
@@ -15,10 +9,8 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = Reader Writer NaCl
-
 [component_0]
-type = Group
-name = Bitcode
-parent = Libraries
+type = Tool
+name = pnacl-freeze
+parent = Tools
+required_libraries = NaClBitWriter BitReader
