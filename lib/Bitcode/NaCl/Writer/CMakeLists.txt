@@ -1,5 +1,5 @@
-add_llvm_library(NaClBitWriter
+add_llvm_library(LLVMNaClBitWriter
   NaClBitcodeWriter.cpp
   NaClValueEnumerator.cpp
   )
-add_dependencies(NaClBitWriter intinsics_gen)
+add_dependencies(LLVMNaClBitWriter intinsics_gen)
