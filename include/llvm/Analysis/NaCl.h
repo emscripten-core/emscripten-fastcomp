@@ -10,6 +10,7 @@
 #ifndef LLVM_ANALYSIS_NACL_H
 #define LLVM_ANALYSIS_NACL_H
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <string>
@@ -18,6 +19,7 @@ namespace llvm {
 
 class FunctionPass;
 class ModulePass;
+extern cl::opt<bool> PNaClABIAllowDebugMetadata;
 
 class PNaClABIErrorReporter {
  public:
@@ -58,8 +60,9 @@ class PNaClABIErrorReporter {
   bool UseFatalErrors;
 };
 
-FunctionPass *createPNaClABIVerifyFunctionsPass(PNaClABIErrorReporter * Reporter);
-ModulePass *createPNaClABIVerifyModulePass(PNaClABIErrorReporter * Reporter);
+FunctionPass *createPNaClABIVerifyFunctionsPass(
+    PNaClABIErrorReporter *Reporter);
+ModulePass *createPNaClABIVerifyModulePass(PNaClABIErrorReporter *Reporter);
 
 }
 

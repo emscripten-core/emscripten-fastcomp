@@ -24,7 +24,7 @@ define void @types() {
 ; C;HECK: Function types has instruction operand with disallowed type: i15
 ;  call void @func(i15 1)
 
-; CHECK: Function types has instruction metadata containing disallowed type: half
+; CHECK: Function types has disallowed instruction metadata: !foo
   ret void, !foo !0
 }
 ; CHECK-NOT: disallowed

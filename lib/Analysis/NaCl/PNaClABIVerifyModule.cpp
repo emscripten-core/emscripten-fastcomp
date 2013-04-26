@@ -23,6 +23,13 @@
 #include "PNaClABITypeChecker.h"
 using namespace llvm;
 
+namespace llvm {
+cl::opt<bool>
+PNaClABIAllowDebugMetadata("pnaclabi-allow-debug-metadata",
+  cl::desc("Allow debug metadata during PNaCl ABI verification."),
+  cl::init(false));
+}
+
 namespace {
 // This pass should not touch function bodies, to stay streaming-friendly
 class PNaClABIVerifyModule : public ModulePass {
@@ -48,6 +55,7 @@ class PNaClABIVerifyModule : public ModulePass {
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
   void CheckGlobalValueCommon(const GlobalValue *GV);
+  bool IsWhitelistedMetadata(const NamedMDNode *MD);
   PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
@@ -103,6 +111,10 @@ void PNaClABIVerifyModule::CheckGlobalValueCommon(const GlobalValue *GV) {
     Reporter->addError() << GVTypeName << GV->getName() <<
         " has disallowed \"section\" attribute\n";
   }
+}
+
+bool PNaClABIVerifyModule::IsWhitelistedMetadata(const NamedMDNode* MD) {
+  return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
 }
 
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
@@ -174,11 +186,17 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   // Check named metadata nodes
   for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
            E = M.named_metadata_end(); I != E; ++I) {
-    for (unsigned i = 0, e = I->getNumOperands(); i != e; i++) {
-      if (Type *T = TC.checkTypesInMDNode(I->getOperand(i))) {
-        Reporter->addError() << "Named metadata node " << I->getName() <<
-            " refers to disallowed type: " <<
-            PNaClABITypeChecker::getTypeName(T) << "\n";
+    if (!IsWhitelistedMetadata(I)) {
+      Reporter->addError() << "Named metadata node " << I->getName()
+                           << " is disallowed\n";
+    } else {
+      // Check the types in the metadata.
+      for (unsigned i = 0, e = I->getNumOperands(); i != e; i++) {
+        if (Type *T = TC.checkTypesInMDNode(I->getOperand(i))) {
+          Reporter->addError() << "Named metadata node " << I->getName()
+                               << " refers to disallowed type: "
+                               << PNaClABITypeChecker::getTypeName(T) << "\n";
+        }
       }
     }
   }

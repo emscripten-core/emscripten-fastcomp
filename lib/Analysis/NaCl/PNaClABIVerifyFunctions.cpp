@@ -17,6 +17,7 @@
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -49,14 +50,36 @@ class PNaClABIVerifyFunctions : public FunctionPass {
   bool runOnFunction(Function &F);
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
+  bool IsWhitelistedMetadata(unsigned MDKind);
   PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
 };
 
+// There's no built-in way to get the name of an MDNode, so use a
+// string ostream to print it.
+std::string getMDNodeString(unsigned Kind,
+                            const SmallVectorImpl<StringRef>& MDNames) {
+  std::string MDName;
+  raw_string_ostream N(MDName);
+  if (Kind < MDNames.size()) {
+    N << "!" << MDNames[Kind];
+  } else {
+    N << "!<unknown kind #" << Kind << ">";
+  }
+  return N.str();
+}
+
 } // and anonymous namespace
 
+bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
+  return MDKind == LLVMContext::MD_dbg && PNaClABIAllowDebugMetadata;
+}
+
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
+  SmallVector<StringRef, 8> MDNames;
+  F.getContext().getMDKindNames(MDNames);
+
   // TODO: only report one error per instruction?
   for (Function::const_iterator FI = F.begin(), FE = F.end();
            FI != FE; ++FI) {
@@ -181,15 +204,25 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         }
       }
 
-      // Get types hiding in metadata attached to the instruction
+      // Check instruction attachment metadata.
       SmallVector<std::pair<unsigned, MDNode*>, 4> MDForInst;
-      BBI->getAllMetadataOtherThanDebugLoc(MDForInst);
+      BBI->getAllMetadata(MDForInst);
+
       for (unsigned i = 0, e = MDForInst.size(); i != e; i++) {
-        Type *T = TC.checkTypesInMDNode(MDForInst[i].second);
-        if (T) {
-          Reporter->addError() << "Function " << F.getName() <<
-              " has instruction metadata containing disallowed type: " <<
-              PNaClABITypeChecker::getTypeName(T) << "\n";
+        if (!IsWhitelistedMetadata(MDForInst[i].first)) {
+          Reporter->addError()
+              << "Function " << F.getName()
+              << " has disallowed instruction metadata: "
+              << getMDNodeString(MDForInst[i].first, MDNames) << "\n";
+        } else {
+          // If allowed, check the types hiding in the metadata.
+          Type *T = TC.checkTypesInMDNode(MDForInst[i].second);
+          if (T) {
+            Reporter->addError()
+                << "Function " << F.getName()
+                << " has instruction metadata containing disallowed type: "
+                << PNaClABITypeChecker::getTypeName(T) << "\n";
+          }
         }
       }
     }

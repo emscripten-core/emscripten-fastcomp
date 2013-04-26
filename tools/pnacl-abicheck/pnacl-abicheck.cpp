@@ -26,7 +26,7 @@ using namespace llvm;
 static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
-static cl::opt<bool, false>
+static cl::opt<bool>
 Quiet("q", cl::desc("Do not print error messages"));
 
 // Print any errors collected by the error reporter. Return true if
@@ -59,7 +59,8 @@ int main(int argc, char **argv) {
   bool ErrorsFound = false;
   // Manually run the passes so we can tell the user which function had the
   // error. No need for a pass manager since it's just one pass.
-  OwningPtr<ModulePass> ModuleChecker(createPNaClABIVerifyModulePass(&ABIErrorReporter));
+  OwningPtr<ModulePass> ModuleChecker(
+      createPNaClABIVerifyModulePass(&ABIErrorReporter));
   ModuleChecker->runOnModule(*Mod);
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
   OwningPtr<FunctionPass> FunctionChecker(
