@@ -8,15 +8,6 @@ declare void @llvm.va_copy(i8*, i8*)
 
 declare i32 @outside_func(i32 %arg, %va_list* %args)
 
-
-; Produced by the expansion of @varargs_call1():
-; CHECK: %vararg_call = type <{ i64, i32 }>
-
-; Produced by the expansion of @call_with_zero_varargs().
-; We have a dummy field to deal with buggy programs:
-; CHECK: %vararg_call.0 = type <{ i32 }>
-
-
 define i32 @varargs_func(i32 %arg, ...) {
   %arglist_alloc = alloca %va_list
   %arglist = bitcast %va_list* %arglist_alloc to i8*
@@ -40,15 +31,15 @@ define i32 @varargs_call1() {
   ret i32 %result
 }
 ; CHECK: define i32 @varargs_call1() {
-; CHECK-NEXT: %vararg_buffer = alloca %vararg_call
-; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast %vararg_call* %vararg_buffer to i8*
+; CHECK-NEXT: %vararg_buffer = alloca <{ i64, i32 }>
+; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast <{ i64, i32 }>* %vararg_buffer to i8*
 ; CHECK-NEXT: call void @llvm.lifetime.start(i64 12, i8* %vararg_lifetime_bitcast)
-; CHECK-NEXT: %vararg_ptr = getelementptr %vararg_call* %vararg_buffer, i32 0, i32 0
+; CHECK-NEXT: %vararg_ptr = getelementptr <{ i64, i32 }>* %vararg_buffer, i32 0, i32 0
 ; CHECK-NEXT: store i64 222, i64* %vararg_ptr
-; CHECK-NEXT: %vararg_ptr1 = getelementptr %vararg_call* %vararg_buffer, i32 0, i32 1
+; CHECK-NEXT: %vararg_ptr1 = getelementptr <{ i64, i32 }>* %vararg_buffer, i32 0, i32 1
 ; CHECK-NEXT: store i32 333, i32* %vararg_ptr1
-; CHECK-NEXT: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, %vararg_call*)*
-; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, %vararg_call* %vararg_buffer)
+; CHECK-NEXT: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, <{ i64, i32 }>*)*
+; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, <{ i64, i32 }>* %vararg_buffer)
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 12, i8* %vararg_lifetime_bitcast)
 ; CHECK-NEXT: ret i32 %result
 
@@ -59,9 +50,10 @@ define i32 @call_with_zero_varargs() {
   ret i32 %result
 }
 ; CHECK: define i32 @call_with_zero_varargs() {
-; CHECK-NEXT: %vararg_buffer = alloca %vararg_call.0
-; CHECK: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, %vararg_call.0*)*
-; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, %vararg_call.0* %vararg_buffer)
+; We have a dummy i32 field to deal with buggy programs:
+; CHECK-NEXT: %vararg_buffer = alloca <{ i32 }>
+; CHECK: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, <{ i32 }>*)*
+; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, <{ i32 }>* %vararg_buffer)
 
 
 ; Check that "invoke" instructions are expanded out too.
@@ -75,7 +67,7 @@ lpad:
   ret i32 0
 }
 ; CHECK: @varargs_invoke
-; CHECK: %result = invoke i32 %vararg_func(i32 111, %vararg_call.1* %vararg_buffer)
+; CHECK: %result = invoke i32 %vararg_func(i32 111, <{ i64 }>* %vararg_buffer)
 ; CHECK-NEXT: to label %cont unwind label %lpad
 ; CHECK: cont:
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)
@@ -90,10 +82,10 @@ define void @varargs_multiple_calls() {
 }
 ; CHECK: @varargs_multiple_calls()
 ; The added allocas should appear at the start of the function.
-; CHECK: %vararg_buffer{{.*}} = alloca %vararg_call{{.*}}
-; CHECK: %vararg_buffer{{.*}} = alloca %vararg_call{{.*}}
-; CHECK: %call1 = call i32 %vararg_func{{.*}}(i32 11, %vararg_call{{.*}}* %vararg_buffer{{.*}})
-; CHECK: %call2 = call i32 %vararg_func{{.*}}(i32 44, %vararg_call{{.*}}* %vararg_buffer{{.*}})
+; CHECK: %vararg_buffer{{.*}} = alloca <{ i64, i32 }>
+; CHECK: %vararg_buffer{{.*}} = alloca <{ i64, i32 }>
+; CHECK: %call1 = call i32 %vararg_func{{.*}}(i32 11, <{ i64, i32 }>* %vararg_buffer{{.*}})
+; CHECK: %call2 = call i32 %vararg_func{{.*}}(i32 44, <{ i64, i32 }>* %vararg_buffer{{.*}})
 
 
 define i32 @va_arg_i32(i8* %arglist) {

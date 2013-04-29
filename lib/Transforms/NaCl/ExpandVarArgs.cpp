@@ -230,7 +230,7 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   // Create struct type for packing variable arguments into.  We
   // create this as packed for now and assume that no alignment
   // padding is desired.
-  StructType *VarArgsTy = StructType::create(VarArgsTypes, "vararg_call", true);
+  StructType *VarArgsTy = StructType::get(*Context, VarArgsTypes, true);
 
   // Allocate space for the variable argument buffer.  Do this at the
   // start of the function so that we don't leak space if the function

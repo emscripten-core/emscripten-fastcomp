@@ -20,7 +20,7 @@ define void @call_with_arg_attrs(%MyStruct* %s) {
   ret void
 }
 ; CHECK: define void @call_with_arg_attrs(%MyStruct* %s) {
-; CHECK: call void %vararg_func(%MyStruct* byval %s, %vararg_call{{.*}} %vararg_buffer)
+; CHECK: call void %vararg_func(%MyStruct* byval %s, <{ i32 }>* %vararg_buffer)
 
 
 ; The "byval" attribute here should be dropped.
@@ -29,7 +29,7 @@ define i32 @pass_struct_via_vararg1(%MyStruct* %s) {
   ret i32 %result
 }
 ; CHECK: define i32 @pass_struct_via_vararg1(%MyStruct* %s) {
-; CHECK: %result = call i32 %vararg_func(i32 111, %{{.*}}* %vararg_buffer)
+; CHECK: %result = call i32 %vararg_func(i32 111, <{ %MyStruct }>* %vararg_buffer)
 
 
 ; The "byval" attribute here should be dropped.
@@ -38,7 +38,7 @@ define i32 @pass_struct_via_vararg2(%MyStruct* %s) {
   ret i32 %result
 }
 ; CHECK: define i32 @pass_struct_via_vararg2(%MyStruct* %s) {
-; CHECK: %result = call i32 %vararg_func(i32 111, %{{.*}}* %vararg_buffer)
+; CHECK: %result = call i32 %vararg_func(i32 111, <{ i32, %MyStruct }>* %vararg_buffer)
 
 
 ; Check that return attributes such as "signext" are preserved.
