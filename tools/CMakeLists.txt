@@ -44,6 +44,7 @@ add_subdirectory(llvm-mcmarkup)
 add_subdirectory(llvm-symbolizer)
 add_subdirectory(pnacl-abicheck)
 add_subdirectory(pnacl-freeze)
+add_subdirectory(bc-wrap)
 
 if( NOT WIN32 )
   add_subdirectory(lto)

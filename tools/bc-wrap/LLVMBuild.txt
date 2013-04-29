@@ -1,4 +1,4 @@
-;===- ./tools/llc/LLVMBuild.txt --------------------------------*- Conf -*--===;
+;===- ./tools/bc-wrap/LLVMBuild.txt ----------------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -19,4 +19,4 @@
 type = Tool
 name = bc-wrap
 parent = Tools
-required_libraries = Wrap all-targets
+required_libraries = Wrap Support
