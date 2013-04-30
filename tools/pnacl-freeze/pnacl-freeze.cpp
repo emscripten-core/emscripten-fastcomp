@@ -12,28 +12,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Assembly/AssemblyAnnotationWriter.h"
 // Note: We need the following to provide the API for calling the NaCl
 // Bitcode Writer to generate the frozen file.
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 // Note: We need the following to provide the API for calling the (LLVM)
 // Bitcode Reader to read in the corresonding pexe file to freeze.
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/DebugInfo.h"
-#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Type.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataStream.h"
-#include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/system_error.h"
-
-// llvm/Bitcode/BitstreamWriter.h
 
 using namespace llvm;
 
