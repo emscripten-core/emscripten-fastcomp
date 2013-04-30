@@ -105,12 +105,6 @@ public:
   ///
   Type *getType() const { return VTy; }
 
-  // @LOCALMOD-START
-  // Currently only used for function type update during
-  // the NaCl calling convention rewrite pass
-  void setType(Type* t) { VTy = t; }
-  // @LOCALMOD-END
-  
   /// All values hold a context through their type.
   LLVMContext &getContext() const;
 
