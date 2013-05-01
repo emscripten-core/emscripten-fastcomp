@@ -16,8 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_BITCODE_NACL_NACLBITCODES_H
-#define LLVM_BITCODE_NACL_NACLBITCODES_H
+#ifndef LLVM_BITCODE_NACL_NACLLLVMBITCODES_H
+#define LLVM_BITCODE_NACL_NACLLLVMBITCODES_H
 
 // TODO(kschimpf) Make a NaCl version of BitCodes.h, so that block id's
 // and abbreviations can be modified.
