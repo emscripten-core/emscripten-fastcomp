@@ -15,7 +15,7 @@
 #include "NaClValueEnumerator.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
-#include "llvm/Bitcode/LLVMBitCodes.h"
+#include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
@@ -63,18 +63,18 @@ enum {
 static unsigned GetEncodedCastOpcode(unsigned Opcode) {
   switch (Opcode) {
   default: llvm_unreachable("Unknown cast instruction!");
-  case Instruction::Trunc   : return bitc::CAST_TRUNC;
-  case Instruction::ZExt    : return bitc::CAST_ZEXT;
-  case Instruction::SExt    : return bitc::CAST_SEXT;
-  case Instruction::FPToUI  : return bitc::CAST_FPTOUI;
-  case Instruction::FPToSI  : return bitc::CAST_FPTOSI;
-  case Instruction::UIToFP  : return bitc::CAST_UITOFP;
-  case Instruction::SIToFP  : return bitc::CAST_SITOFP;
-  case Instruction::FPTrunc : return bitc::CAST_FPTRUNC;
-  case Instruction::FPExt   : return bitc::CAST_FPEXT;
-  case Instruction::PtrToInt: return bitc::CAST_PTRTOINT;
-  case Instruction::IntToPtr: return bitc::CAST_INTTOPTR;
-  case Instruction::BitCast : return bitc::CAST_BITCAST;
+  case Instruction::Trunc   : return naclbitc::CAST_TRUNC;
+  case Instruction::ZExt    : return naclbitc::CAST_ZEXT;
+  case Instruction::SExt    : return naclbitc::CAST_SEXT;
+  case Instruction::FPToUI  : return naclbitc::CAST_FPTOUI;
+  case Instruction::FPToSI  : return naclbitc::CAST_FPTOSI;
+  case Instruction::UIToFP  : return naclbitc::CAST_UITOFP;
+  case Instruction::SIToFP  : return naclbitc::CAST_SITOFP;
+  case Instruction::FPTrunc : return naclbitc::CAST_FPTRUNC;
+  case Instruction::FPExt   : return naclbitc::CAST_FPEXT;
+  case Instruction::PtrToInt: return naclbitc::CAST_PTRTOINT;
+  case Instruction::IntToPtr: return naclbitc::CAST_INTTOPTR;
+  case Instruction::BitCast : return naclbitc::CAST_BITCAST;
   }
 }
 
@@ -82,60 +82,60 @@ static unsigned GetEncodedBinaryOpcode(unsigned Opcode) {
   switch (Opcode) {
   default: llvm_unreachable("Unknown binary instruction!");
   case Instruction::Add:
-  case Instruction::FAdd: return bitc::BINOP_ADD;
+  case Instruction::FAdd: return naclbitc::BINOP_ADD;
   case Instruction::Sub:
-  case Instruction::FSub: return bitc::BINOP_SUB;
+  case Instruction::FSub: return naclbitc::BINOP_SUB;
   case Instruction::Mul:
-  case Instruction::FMul: return bitc::BINOP_MUL;
-  case Instruction::UDiv: return bitc::BINOP_UDIV;
+  case Instruction::FMul: return naclbitc::BINOP_MUL;
+  case Instruction::UDiv: return naclbitc::BINOP_UDIV;
   case Instruction::FDiv:
-  case Instruction::SDiv: return bitc::BINOP_SDIV;
-  case Instruction::URem: return bitc::BINOP_UREM;
+  case Instruction::SDiv: return naclbitc::BINOP_SDIV;
+  case Instruction::URem: return naclbitc::BINOP_UREM;
   case Instruction::FRem:
-  case Instruction::SRem: return bitc::BINOP_SREM;
-  case Instruction::Shl:  return bitc::BINOP_SHL;
-  case Instruction::LShr: return bitc::BINOP_LSHR;
-  case Instruction::AShr: return bitc::BINOP_ASHR;
-  case Instruction::And:  return bitc::BINOP_AND;
-  case Instruction::Or:   return bitc::BINOP_OR;
-  case Instruction::Xor:  return bitc::BINOP_XOR;
+  case Instruction::SRem: return naclbitc::BINOP_SREM;
+  case Instruction::Shl:  return naclbitc::BINOP_SHL;
+  case Instruction::LShr: return naclbitc::BINOP_LSHR;
+  case Instruction::AShr: return naclbitc::BINOP_ASHR;
+  case Instruction::And:  return naclbitc::BINOP_AND;
+  case Instruction::Or:   return naclbitc::BINOP_OR;
+  case Instruction::Xor:  return naclbitc::BINOP_XOR;
   }
 }
 
 static unsigned GetEncodedRMWOperation(AtomicRMWInst::BinOp Op) {
   switch (Op) {
   default: llvm_unreachable("Unknown RMW operation!");
-  case AtomicRMWInst::Xchg: return bitc::RMW_XCHG;
-  case AtomicRMWInst::Add: return bitc::RMW_ADD;
-  case AtomicRMWInst::Sub: return bitc::RMW_SUB;
-  case AtomicRMWInst::And: return bitc::RMW_AND;
-  case AtomicRMWInst::Nand: return bitc::RMW_NAND;
-  case AtomicRMWInst::Or: return bitc::RMW_OR;
-  case AtomicRMWInst::Xor: return bitc::RMW_XOR;
-  case AtomicRMWInst::Max: return bitc::RMW_MAX;
-  case AtomicRMWInst::Min: return bitc::RMW_MIN;
-  case AtomicRMWInst::UMax: return bitc::RMW_UMAX;
-  case AtomicRMWInst::UMin: return bitc::RMW_UMIN;
+  case AtomicRMWInst::Xchg: return naclbitc::RMW_XCHG;
+  case AtomicRMWInst::Add: return naclbitc::RMW_ADD;
+  case AtomicRMWInst::Sub: return naclbitc::RMW_SUB;
+  case AtomicRMWInst::And: return naclbitc::RMW_AND;
+  case AtomicRMWInst::Nand: return naclbitc::RMW_NAND;
+  case AtomicRMWInst::Or: return naclbitc::RMW_OR;
+  case AtomicRMWInst::Xor: return naclbitc::RMW_XOR;
+  case AtomicRMWInst::Max: return naclbitc::RMW_MAX;
+  case AtomicRMWInst::Min: return naclbitc::RMW_MIN;
+  case AtomicRMWInst::UMax: return naclbitc::RMW_UMAX;
+  case AtomicRMWInst::UMin: return naclbitc::RMW_UMIN;
   }
 }
 
 static unsigned GetEncodedOrdering(AtomicOrdering Ordering) {
   switch (Ordering) {
-  case NotAtomic: return bitc::ORDERING_NOTATOMIC;
-  case Unordered: return bitc::ORDERING_UNORDERED;
-  case Monotonic: return bitc::ORDERING_MONOTONIC;
-  case Acquire: return bitc::ORDERING_ACQUIRE;
-  case Release: return bitc::ORDERING_RELEASE;
-  case AcquireRelease: return bitc::ORDERING_ACQREL;
-  case SequentiallyConsistent: return bitc::ORDERING_SEQCST;
+  case NotAtomic: return naclbitc::ORDERING_NOTATOMIC;
+  case Unordered: return naclbitc::ORDERING_UNORDERED;
+  case Monotonic: return naclbitc::ORDERING_MONOTONIC;
+  case Acquire: return naclbitc::ORDERING_ACQUIRE;
+  case Release: return naclbitc::ORDERING_RELEASE;
+  case AcquireRelease: return naclbitc::ORDERING_ACQREL;
+  case SequentiallyConsistent: return naclbitc::ORDERING_SEQCST;
   }
   llvm_unreachable("Invalid ordering");
 }
 
 static unsigned GetEncodedSynchScope(SynchronizationScope SynchScope) {
   switch (SynchScope) {
-  case SingleThread: return bitc::SYNCHSCOPE_SINGLETHREAD;
-  case CrossThread: return bitc::SYNCHSCOPE_CROSSTHREAD;
+  case SingleThread: return naclbitc::SYNCHSCOPE_SINGLETHREAD;
+  case CrossThread: return naclbitc::SYNCHSCOPE_CROSSTHREAD;
   }
   llvm_unreachable("Invalid synch scope");
 }
@@ -160,7 +160,7 @@ static void WriteAttributeGroupTable(const NaClValueEnumerator &VE,
   const std::vector<AttributeSet> &AttrGrps = VE.getAttributeGroups();
   if (AttrGrps.empty()) return;
 
-  Stream.EnterSubblock(bitc::PARAMATTR_GROUP_BLOCK_ID, 3);
+  Stream.EnterSubblock(naclbitc::PARAMATTR_GROUP_BLOCK_ID, 3);
 
   SmallVector<uint64_t, 64> Record;
   for (unsigned i = 0, e = AttrGrps.size(); i != e; ++i) {
@@ -195,7 +195,7 @@ static void WriteAttributeGroupTable(const NaClValueEnumerator &VE,
         }
       }
 
-      Stream.EmitRecord(bitc::PARAMATTR_GRP_CODE_ENTRY, Record);
+      Stream.EmitRecord(naclbitc::PARAMATTR_GRP_CODE_ENTRY, Record);
       Record.clear();
     }
   }
@@ -208,7 +208,7 @@ static void WriteAttributeTable(const NaClValueEnumerator &VE,
   const std::vector<AttributeSet> &Attrs = VE.getAttributes();
   if (Attrs.empty()) return;
 
-  Stream.EnterSubblock(bitc::PARAMATTR_BLOCK_ID, 3);
+  Stream.EnterSubblock(naclbitc::PARAMATTR_BLOCK_ID, 3);
 
   SmallVector<uint64_t, 64> Record;
   for (unsigned i = 0, e = Attrs.size(); i != e; ++i) {
@@ -216,7 +216,7 @@ static void WriteAttributeTable(const NaClValueEnumerator &VE,
     for (unsigned i = 0, e = A.getNumSlots(); i != e; ++i)
       Record.push_back(VE.getAttributeGroupID(A.getSlotAttributes(i)));
 
-    Stream.EmitRecord(bitc::PARAMATTR_CODE_ENTRY, Record);
+    Stream.EmitRecord(naclbitc::PARAMATTR_CODE_ENTRY, Record);
     Record.clear();
   }
 
@@ -228,21 +228,21 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
                            NaClBitstreamWriter &Stream) {
   const NaClValueEnumerator::TypeList &TypeList = VE.getTypes();
 
-  Stream.EnterSubblock(bitc::TYPE_BLOCK_ID_NEW, 4 /*count from # abbrevs */);
+  Stream.EnterSubblock(naclbitc::TYPE_BLOCK_ID_NEW, 4 /*count from # abbrevs */);
   SmallVector<uint64_t, 64> TypeVals;
 
   uint64_t NumBits = Log2_32_Ceil(VE.getTypes().size()+1);
 
   // Abbrev for TYPE_CODE_POINTER.
   BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-  Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_POINTER));
+  Abbv->Add(BitCodeAbbrevOp(naclbitc::TYPE_CODE_POINTER));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
   Abbv->Add(BitCodeAbbrevOp(0));  // Addrspace = 0
   unsigned PtrAbbrev = Stream.EmitAbbrev(Abbv);
 
   // Abbrev for TYPE_CODE_FUNCTION.
   Abbv = new BitCodeAbbrev();
-  Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_FUNCTION));
+  Abbv->Add(BitCodeAbbrevOp(naclbitc::TYPE_CODE_FUNCTION));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));  // isvararg
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
@@ -251,7 +251,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
   // Abbrev for TYPE_CODE_STRUCT_ANON.
   Abbv = new BitCodeAbbrev();
-  Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_STRUCT_ANON));
+  Abbv->Add(BitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_ANON));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));  // ispacked
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
@@ -260,14 +260,14 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
   // Abbrev for TYPE_CODE_STRUCT_NAME.
   Abbv = new BitCodeAbbrev();
-  Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_STRUCT_NAME));
+  Abbv->Add(BitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_NAME));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Char6));
   unsigned StructNameAbbrev = Stream.EmitAbbrev(Abbv);
 
   // Abbrev for TYPE_CODE_STRUCT_NAMED.
   Abbv = new BitCodeAbbrev();
-  Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_STRUCT_NAMED));
+  Abbv->Add(BitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_NAMED));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));  // ispacked
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
@@ -276,7 +276,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
   // Abbrev for TYPE_CODE_ARRAY.
   Abbv = new BitCodeAbbrev();
-  Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_ARRAY));
+  Abbv->Add(BitCodeAbbrevOp(naclbitc::TYPE_CODE_ARRAY));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));   // size
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
 
@@ -284,7 +284,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
   // Emit an entry count so the reader can reserve space.
   TypeVals.push_back(TypeList.size());
-  Stream.EmitRecord(bitc::TYPE_CODE_NUMENTRY, TypeVals);
+  Stream.EmitRecord(naclbitc::TYPE_CODE_NUMENTRY, TypeVals);
   TypeVals.clear();
 
   // Loop over all of the types, emitting each in turn.
@@ -295,25 +295,25 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
     switch (T->getTypeID()) {
     default: llvm_unreachable("Unknown type!");
-    case Type::VoidTyID:      Code = bitc::TYPE_CODE_VOID;      break;
-    case Type::HalfTyID:      Code = bitc::TYPE_CODE_HALF;      break;
-    case Type::FloatTyID:     Code = bitc::TYPE_CODE_FLOAT;     break;
-    case Type::DoubleTyID:    Code = bitc::TYPE_CODE_DOUBLE;    break;
-    case Type::X86_FP80TyID:  Code = bitc::TYPE_CODE_X86_FP80;  break;
-    case Type::FP128TyID:     Code = bitc::TYPE_CODE_FP128;     break;
-    case Type::PPC_FP128TyID: Code = bitc::TYPE_CODE_PPC_FP128; break;
-    case Type::LabelTyID:     Code = bitc::TYPE_CODE_LABEL;     break;
-    case Type::MetadataTyID:  Code = bitc::TYPE_CODE_METADATA;  break;
-    case Type::X86_MMXTyID:   Code = bitc::TYPE_CODE_X86_MMX;   break;
+    case Type::VoidTyID:      Code = naclbitc::TYPE_CODE_VOID;      break;
+    case Type::HalfTyID:      Code = naclbitc::TYPE_CODE_HALF;      break;
+    case Type::FloatTyID:     Code = naclbitc::TYPE_CODE_FLOAT;     break;
+    case Type::DoubleTyID:    Code = naclbitc::TYPE_CODE_DOUBLE;    break;
+    case Type::X86_FP80TyID:  Code = naclbitc::TYPE_CODE_X86_FP80;  break;
+    case Type::FP128TyID:     Code = naclbitc::TYPE_CODE_FP128;     break;
+    case Type::PPC_FP128TyID: Code = naclbitc::TYPE_CODE_PPC_FP128; break;
+    case Type::LabelTyID:     Code = naclbitc::TYPE_CODE_LABEL;     break;
+    case Type::MetadataTyID:  Code = naclbitc::TYPE_CODE_METADATA;  break;
+    case Type::X86_MMXTyID:   Code = naclbitc::TYPE_CODE_X86_MMX;   break;
     case Type::IntegerTyID:
       // INTEGER: [width]
-      Code = bitc::TYPE_CODE_INTEGER;
+      Code = naclbitc::TYPE_CODE_INTEGER;
       TypeVals.push_back(cast<IntegerType>(T)->getBitWidth());
       break;
     case Type::PointerTyID: {
       PointerType *PTy = cast<PointerType>(T);
       // POINTER: [pointee type, address space]
-      Code = bitc::TYPE_CODE_POINTER;
+      Code = naclbitc::TYPE_CODE_POINTER;
       TypeVals.push_back(VE.getTypeID(PTy->getElementType()));
       unsigned AddressSpace = PTy->getAddressSpace();
       TypeVals.push_back(AddressSpace);
@@ -323,7 +323,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     case Type::FunctionTyID: {
       FunctionType *FT = cast<FunctionType>(T);
       // FUNCTION: [isvararg, retty, paramty x N]
-      Code = bitc::TYPE_CODE_FUNCTION;
+      Code = naclbitc::TYPE_CODE_FUNCTION;
       TypeVals.push_back(FT->isVarArg());
       TypeVals.push_back(VE.getTypeID(FT->getReturnType()));
       for (unsigned i = 0, e = FT->getNumParams(); i != e; ++i)
@@ -341,19 +341,19 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
         TypeVals.push_back(VE.getTypeID(*I));
 
       if (ST->isLiteral()) {
-        Code = bitc::TYPE_CODE_STRUCT_ANON;
+        Code = naclbitc::TYPE_CODE_STRUCT_ANON;
         AbbrevToUse = StructAnonAbbrev;
       } else {
         if (ST->isOpaque()) {
-          Code = bitc::TYPE_CODE_OPAQUE;
+          Code = naclbitc::TYPE_CODE_OPAQUE;
         } else {
-          Code = bitc::TYPE_CODE_STRUCT_NAMED;
+          Code = naclbitc::TYPE_CODE_STRUCT_NAMED;
           AbbrevToUse = StructNamedAbbrev;
         }
 
         // Emit the name if it is present.
         if (!ST->getName().empty())
-          WriteStringRecord(bitc::TYPE_CODE_STRUCT_NAME, ST->getName(),
+          WriteStringRecord(naclbitc::TYPE_CODE_STRUCT_NAME, ST->getName(),
                             StructNameAbbrev, Stream);
       }
       break;
@@ -361,7 +361,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     case Type::ArrayTyID: {
       ArrayType *AT = cast<ArrayType>(T);
       // ARRAY: [numelts, eltty]
-      Code = bitc::TYPE_CODE_ARRAY;
+      Code = naclbitc::TYPE_CODE_ARRAY;
       TypeVals.push_back(AT->getNumElements());
       TypeVals.push_back(VE.getTypeID(AT->getElementType()));
       AbbrevToUse = ArrayAbbrev;
@@ -370,7 +370,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     case Type::VectorTyID: {
       VectorType *VT = cast<VectorType>(T);
       // VECTOR [numelts, eltty]
-      Code = bitc::TYPE_CODE_VECTOR;
+      Code = naclbitc::TYPE_CODE_VECTOR;
       TypeVals.push_back(VT->getNumElements());
       TypeVals.push_back(VE.getTypeID(VT->getElementType()));
       break;
@@ -433,13 +433,13 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
                             NaClBitstreamWriter &Stream) {
   // Emit various pieces of data attached to a module.
   if (!M->getTargetTriple().empty())
-    WriteStringRecord(bitc::MODULE_CODE_TRIPLE, M->getTargetTriple(),
+    WriteStringRecord(naclbitc::MODULE_CODE_TRIPLE, M->getTargetTriple(),
                       0/*TODO*/, Stream);
   if (!M->getDataLayout().empty())
-    WriteStringRecord(bitc::MODULE_CODE_DATALAYOUT, M->getDataLayout(),
+    WriteStringRecord(naclbitc::MODULE_CODE_DATALAYOUT, M->getDataLayout(),
                       0/*TODO*/, Stream);
   if (!M->getModuleInlineAsm().empty())
-    WriteStringRecord(bitc::MODULE_CODE_ASM, M->getModuleInlineAsm(),
+    WriteStringRecord(naclbitc::MODULE_CODE_ASM, M->getModuleInlineAsm(),
                       0/*TODO*/, Stream);
 
   // Emit information about sections and GC, computing how many there are. Also
@@ -456,7 +456,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
       // Give section names unique ID's.
       unsigned &Entry = SectionMap[GV->getSection()];
       if (!Entry) {
-        WriteStringRecord(bitc::MODULE_CODE_SECTIONNAME, GV->getSection(),
+        WriteStringRecord(naclbitc::MODULE_CODE_SECTIONNAME, GV->getSection(),
                           0/*TODO*/, Stream);
         Entry = SectionMap.size();
       }
@@ -468,7 +468,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
       // Give section names unique ID's.
       unsigned &Entry = SectionMap[F->getSection()];
       if (!Entry) {
-        WriteStringRecord(bitc::MODULE_CODE_SECTIONNAME, F->getSection(),
+        WriteStringRecord(naclbitc::MODULE_CODE_SECTIONNAME, F->getSection(),
                           0/*TODO*/, Stream);
         Entry = SectionMap.size();
       }
@@ -477,7 +477,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
       // Same for GC names.
       unsigned &Entry = GCMap[F->getGC()];
       if (!Entry) {
-        WriteStringRecord(bitc::MODULE_CODE_GCNAME, F->getGC(),
+        WriteStringRecord(naclbitc::MODULE_CODE_GCNAME, F->getGC(),
                           0/*TODO*/, Stream);
         Entry = GCMap.size();
       }
@@ -489,7 +489,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
   if (!M->global_empty()) {
     // Add an abbrev for common globals with no visibility or thread localness.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::MODULE_CODE_GLOBALVAR));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::MODULE_CODE_GLOBALVAR));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
                               Log2_32_Ceil(MaxGlobalType+1)));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));      // Constant.
@@ -538,7 +538,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
       AbbrevToUse = SimpleGVarAbbrev;
     }
 
-    Stream.EmitRecord(bitc::MODULE_CODE_GLOBALVAR, Vals, AbbrevToUse);
+    Stream.EmitRecord(naclbitc::MODULE_CODE_GLOBALVAR, Vals, AbbrevToUse);
     Vals.clear();
   }
 
@@ -558,7 +558,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
     Vals.push_back(F->hasUnnamedAddr());
 
     unsigned AbbrevToUse = 0;
-    Stream.EmitRecord(bitc::MODULE_CODE_FUNCTION, Vals, AbbrevToUse);
+    Stream.EmitRecord(naclbitc::MODULE_CODE_FUNCTION, Vals, AbbrevToUse);
     Vals.clear();
   }
 
@@ -571,7 +571,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
     Vals.push_back(getEncodedLinkage(AI));
     Vals.push_back(getEncodedVisibility(AI));
     unsigned AbbrevToUse = 0;
-    Stream.EmitRecord(bitc::MODULE_CODE_ALIAS, Vals, AbbrevToUse);
+    Stream.EmitRecord(naclbitc::MODULE_CODE_ALIAS, Vals, AbbrevToUse);
     Vals.clear();
   }
 }
@@ -582,13 +582,13 @@ static uint64_t GetOptimizationFlags(const Value *V) {
   if (const OverflowingBinaryOperator *OBO =
         dyn_cast<OverflowingBinaryOperator>(V)) {
     if (OBO->hasNoSignedWrap())
-      Flags |= 1 << bitc::OBO_NO_SIGNED_WRAP;
+      Flags |= 1 << naclbitc::OBO_NO_SIGNED_WRAP;
     if (OBO->hasNoUnsignedWrap())
-      Flags |= 1 << bitc::OBO_NO_UNSIGNED_WRAP;
+      Flags |= 1 << naclbitc::OBO_NO_UNSIGNED_WRAP;
   } else if (const PossiblyExactOperator *PEO =
                dyn_cast<PossiblyExactOperator>(V)) {
     if (PEO->isExact())
-      Flags |= 1 << bitc::PEO_EXACT;
+      Flags |= 1 << naclbitc::PEO_EXACT;
   } else if (const FPMathOperator *FPMO =
              dyn_cast<const FPMathOperator>(V)) {
     if (FPMO->hasUnsafeAlgebra())
@@ -619,8 +619,8 @@ static void WriteMDNode(const MDNode *N,
       Record.push_back(0);
     }
   }
-  unsigned MDCode = N->isFunctionLocal() ? bitc::METADATA_FN_NODE :
-                                           bitc::METADATA_NODE;
+  unsigned MDCode = N->isFunctionLocal() ? naclbitc::METADATA_FN_NODE :
+                                           naclbitc::METADATA_NODE;
   Stream.EmitRecord(MDCode, Record, 0);
   Record.clear();
 }
@@ -637,18 +637,18 @@ static void WriteModuleMetadata(const Module *M,
     if (const MDNode *N = dyn_cast<MDNode>(Vals[i].first)) {
       if (!N->isFunctionLocal() || !N->getFunction()) {
         if (!StartedMetadataBlock) {
-          Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
+          Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID, 3);
           StartedMetadataBlock = true;
         }
         WriteMDNode(N, VE, Stream, Record);
       }
     } else if (const MDString *MDS = dyn_cast<MDString>(Vals[i].first)) {
       if (!StartedMetadataBlock)  {
-        Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
+        Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID, 3);
 
         // Abbrev for METADATA_STRING.
         BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-        Abbv->Add(BitCodeAbbrevOp(bitc::METADATA_STRING));
+        Abbv->Add(BitCodeAbbrevOp(naclbitc::METADATA_STRING));
         Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
         Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));
         MDSAbbrev = Stream.EmitAbbrev(Abbv);
@@ -659,7 +659,7 @@ static void WriteModuleMetadata(const Module *M,
       Record.append(MDS->begin(), MDS->end());
 
       // Emit the finished record.
-      Stream.EmitRecord(bitc::METADATA_STRING, Record, MDSAbbrev);
+      Stream.EmitRecord(naclbitc::METADATA_STRING, Record, MDSAbbrev);
       Record.clear();
     }
   }
@@ -669,7 +669,7 @@ static void WriteModuleMetadata(const Module *M,
        E = M->named_metadata_end(); I != E; ++I) {
     const NamedMDNode *NMD = I;
     if (!StartedMetadataBlock)  {
-      Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
+      Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID, 3);
       StartedMetadataBlock = true;
     }
 
@@ -677,13 +677,13 @@ static void WriteModuleMetadata(const Module *M,
     StringRef Str = NMD->getName();
     for (unsigned i = 0, e = Str.size(); i != e; ++i)
       Record.push_back(Str[i]);
-    Stream.EmitRecord(bitc::METADATA_NAME, Record, 0/*TODO*/);
+    Stream.EmitRecord(naclbitc::METADATA_NAME, Record, 0/*TODO*/);
     Record.clear();
 
     // Write named metadata operands.
     for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i)
       Record.push_back(VE.getValueID(NMD->getOperand(i)));
-    Stream.EmitRecord(bitc::METADATA_NAMED_NODE, Record, 0);
+    Stream.EmitRecord(naclbitc::METADATA_NAMED_NODE, Record, 0);
     Record.clear();
   }
 
@@ -701,7 +701,7 @@ static void WriteFunctionLocalMetadata(const Function &F,
     if (const MDNode *N = Vals[i])
       if (N->isFunctionLocal() && N->getFunction() == &F) {
         if (!StartedMetadataBlock) {
-          Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
+          Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID, 3);
           StartedMetadataBlock = true;
         }
         WriteMDNode(N, VE, Stream, Record);
@@ -714,7 +714,7 @@ static void WriteFunctionLocalMetadata(const Function &F,
 static void WriteMetadataAttachment(const Function &F,
                                     const NaClValueEnumerator &VE,
                                     NaClBitstreamWriter &Stream) {
-  Stream.EnterSubblock(bitc::METADATA_ATTACHMENT_ID, 3);
+  Stream.EnterSubblock(naclbitc::METADATA_ATTACHMENT_ID, 3);
 
   SmallVector<uint64_t, 64> Record;
 
@@ -737,7 +737,7 @@ static void WriteMetadataAttachment(const Function &F,
         Record.push_back(MDs[i].first);
         Record.push_back(VE.getValueID(MDs[i].second));
       }
-      Stream.EmitRecord(bitc::METADATA_ATTACHMENT, Record, 0);
+      Stream.EmitRecord(naclbitc::METADATA_ATTACHMENT, Record, 0);
       Record.clear();
     }
 
@@ -754,14 +754,14 @@ static void WriteModuleMetadataStore(const Module *M, NaClBitstreamWriter &Strea
 
   if (Names.empty()) return;
 
-  Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
+  Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID, 3);
 
   for (unsigned MDKindID = 0, e = Names.size(); MDKindID != e; ++MDKindID) {
     Record.push_back(MDKindID);
     StringRef KName = Names[MDKindID];
     Record.append(KName.begin(), KName.end());
 
-    Stream.EmitRecord(bitc::METADATA_KIND, Record, 0);
+    Stream.EmitRecord(naclbitc::METADATA_KIND, Record, 0);
     Record.clear();
   }
 
@@ -782,7 +782,7 @@ static void EmitAPInt(SmallVectorImpl<uint64_t> &Vals,
   if (Val.getBitWidth() <= 64) {
     uint64_t V = Val.getSExtValue();
     emitSignedInt64(Vals, V);
-    Code = bitc::CST_CODE_INTEGER;
+    Code = naclbitc::CST_CODE_INTEGER;
     AbbrevToUse = CONSTANTS_INTEGER_ABBREV;
   } else {
     // Wide integers, > 64 bits in size.
@@ -799,7 +799,7 @@ static void EmitAPInt(SmallVectorImpl<uint64_t> &Vals,
     for (unsigned i = 0; i != NWords; ++i) {
       emitSignedInt64(Vals, RawWords[i]);
     }
-    Code = bitc::CST_CODE_WIDE_INTEGER;
+    Code = naclbitc::CST_CODE_WIDE_INTEGER;
   }
 }
 
@@ -808,7 +808,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
                            NaClBitstreamWriter &Stream, bool isGlobal) {
   if (FirstVal == LastVal) return;
 
-  Stream.EnterSubblock(bitc::CONSTANTS_BLOCK_ID, 4);
+  Stream.EnterSubblock(naclbitc::CONSTANTS_BLOCK_ID, 4);
 
   unsigned AggregateAbbrev = 0;
   unsigned String8Abbrev = 0;
@@ -818,26 +818,26 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
   if (isGlobal) {
     // Abbrev for CST_CODE_AGGREGATE.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_AGGREGATE));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_AGGREGATE));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, Log2_32_Ceil(LastVal+1)));
     AggregateAbbrev = Stream.EmitAbbrev(Abbv);
 
     // Abbrev for CST_CODE_STRING.
     Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_STRING));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_STRING));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));
     String8Abbrev = Stream.EmitAbbrev(Abbv);
     // Abbrev for CST_CODE_CSTRING.
     Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_CSTRING));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_CSTRING));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 7));
     CString7Abbrev = Stream.EmitAbbrev(Abbv);
     // Abbrev for CST_CODE_CSTRING.
     Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_CSTRING));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_CSTRING));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Char6));
     CString6Abbrev = Stream.EmitAbbrev(Abbv);
@@ -853,7 +853,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
     if (V->getType() != LastTy) {
       LastTy = V->getType();
       Record.push_back(VE.getTypeID(LastTy));
-      Stream.EmitRecord(bitc::CST_CODE_SETTYPE, Record,
+      Stream.EmitRecord(naclbitc::CST_CODE_SETTYPE, Record,
                         CONSTANTS_SETTYPE_ABBREV);
       Record.clear();
     }
@@ -874,7 +874,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       Record.push_back(ConstraintStr.size());
       for (unsigned i = 0, e = ConstraintStr.size(); i != e; ++i)
         Record.push_back(ConstraintStr[i]);
-      Stream.EmitRecord(bitc::CST_CODE_INLINEASM, Record);
+      Stream.EmitRecord(naclbitc::CST_CODE_INLINEASM, Record);
       Record.clear();
       continue;
     }
@@ -882,13 +882,13 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
     unsigned Code = -1U;
     unsigned AbbrevToUse = 0;
     if (C->isNullValue()) {
-      Code = bitc::CST_CODE_NULL;
+      Code = naclbitc::CST_CODE_NULL;
     } else if (isa<UndefValue>(C)) {
-      Code = bitc::CST_CODE_UNDEF;
+      Code = naclbitc::CST_CODE_UNDEF;
     } else if (const ConstantInt *IV = dyn_cast<ConstantInt>(C)) {
       EmitAPInt(Record, Code, AbbrevToUse, IV->getValue());
     } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(C)) {
-      Code = bitc::CST_CODE_FLOAT;
+      Code = naclbitc::CST_CODE_FLOAT;
       Type *Ty = CFP->getType();
       if (Ty->isHalfTy() || Ty->isFloatTy() || Ty->isDoubleTy()) {
         Record.push_back(CFP->getValueAPF().bitcastToAPInt().getZExtValue());
@@ -914,14 +914,14 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       unsigned NumElts = Str->getNumElements();
       // If this is a null-terminated string, use the denser CSTRING encoding.
       if (Str->isCString()) {
-        Code = bitc::CST_CODE_CSTRING;
+        Code = naclbitc::CST_CODE_CSTRING;
         --NumElts;  // Don't encode the null, which isn't allowed by char6.
       } else {
-        Code = bitc::CST_CODE_STRING;
+        Code = naclbitc::CST_CODE_STRING;
         AbbrevToUse = String8Abbrev;
       }
-      bool isCStr7 = Code == bitc::CST_CODE_CSTRING;
-      bool isCStrChar6 = Code == bitc::CST_CODE_CSTRING;
+      bool isCStr7 = Code == naclbitc::CST_CODE_CSTRING;
+      bool isCStrChar6 = Code == naclbitc::CST_CODE_CSTRING;
       for (unsigned i = 0; i != NumElts; ++i) {
         unsigned char V = Str->getElementAsInteger(i);
         Record.push_back(V);
@@ -936,7 +936,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
         AbbrevToUse = CString7Abbrev;
     } else if (const ConstantDataSequential *CDS =
                   dyn_cast<ConstantDataSequential>(C)) {
-      Code = bitc::CST_CODE_DATA;
+      Code = naclbitc::CST_CODE_DATA;
       Type *EltTy = CDS->getType()->getElementType();
       if (isa<IntegerType>(EltTy)) {
         for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i)
@@ -957,7 +957,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       }
     } else if (isa<ConstantArray>(C) || isa<ConstantStruct>(C) ||
                isa<ConstantVector>(C)) {
-      Code = bitc::CST_CODE_AGGREGATE;
+      Code = naclbitc::CST_CODE_AGGREGATE;
       for (unsigned i = 0, e = C->getNumOperands(); i != e; ++i)
         Record.push_back(VE.getValueID(C->getOperand(i)));
       AbbrevToUse = AggregateAbbrev;
@@ -965,14 +965,14 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       switch (CE->getOpcode()) {
       default:
         if (Instruction::isCast(CE->getOpcode())) {
-          Code = bitc::CST_CODE_CE_CAST;
+          Code = naclbitc::CST_CODE_CE_CAST;
           Record.push_back(GetEncodedCastOpcode(CE->getOpcode()));
           Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
           Record.push_back(VE.getValueID(C->getOperand(0)));
           AbbrevToUse = CONSTANTS_CE_CAST_Abbrev;
         } else {
           assert(CE->getNumOperands() == 2 && "Unknown constant expr!");
-          Code = bitc::CST_CODE_CE_BINOP;
+          Code = naclbitc::CST_CODE_CE_BINOP;
           Record.push_back(GetEncodedBinaryOpcode(CE->getOpcode()));
           Record.push_back(VE.getValueID(C->getOperand(0)));
           Record.push_back(VE.getValueID(C->getOperand(1)));
@@ -982,28 +982,28 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
         }
         break;
       case Instruction::GetElementPtr:
-        Code = bitc::CST_CODE_CE_GEP;
+        Code = naclbitc::CST_CODE_CE_GEP;
         if (cast<GEPOperator>(C)->isInBounds())
-          Code = bitc::CST_CODE_CE_INBOUNDS_GEP;
+          Code = naclbitc::CST_CODE_CE_INBOUNDS_GEP;
         for (unsigned i = 0, e = CE->getNumOperands(); i != e; ++i) {
           Record.push_back(VE.getTypeID(C->getOperand(i)->getType()));
           Record.push_back(VE.getValueID(C->getOperand(i)));
         }
         break;
       case Instruction::Select:
-        Code = bitc::CST_CODE_CE_SELECT;
+        Code = naclbitc::CST_CODE_CE_SELECT;
         Record.push_back(VE.getValueID(C->getOperand(0)));
         Record.push_back(VE.getValueID(C->getOperand(1)));
         Record.push_back(VE.getValueID(C->getOperand(2)));
         break;
       case Instruction::ExtractElement:
-        Code = bitc::CST_CODE_CE_EXTRACTELT;
+        Code = naclbitc::CST_CODE_CE_EXTRACTELT;
         Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
         Record.push_back(VE.getValueID(C->getOperand(0)));
         Record.push_back(VE.getValueID(C->getOperand(1)));
         break;
       case Instruction::InsertElement:
-        Code = bitc::CST_CODE_CE_INSERTELT;
+        Code = naclbitc::CST_CODE_CE_INSERTELT;
         Record.push_back(VE.getValueID(C->getOperand(0)));
         Record.push_back(VE.getValueID(C->getOperand(1)));
         Record.push_back(VE.getValueID(C->getOperand(2)));
@@ -1014,9 +1014,9 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
         // then the shuffle is widening or truncating the input vectors, and
         // the argument type must also be encoded.
         if (C->getType() == C->getOperand(0)->getType()) {
-          Code = bitc::CST_CODE_CE_SHUFFLEVEC;
+          Code = naclbitc::CST_CODE_CE_SHUFFLEVEC;
         } else {
-          Code = bitc::CST_CODE_CE_SHUFVEC_EX;
+          Code = naclbitc::CST_CODE_CE_SHUFVEC_EX;
           Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
         }
         Record.push_back(VE.getValueID(C->getOperand(0)));
@@ -1025,7 +1025,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
         break;
       case Instruction::ICmp:
       case Instruction::FCmp:
-        Code = bitc::CST_CODE_CE_CMP;
+        Code = naclbitc::CST_CODE_CE_CMP;
         Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
         Record.push_back(VE.getValueID(C->getOperand(0)));
         Record.push_back(VE.getValueID(C->getOperand(1)));
@@ -1033,7 +1033,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
         break;
       }
     } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(C)) {
-      Code = bitc::CST_CODE_BLOCKADDRESS;
+      Code = naclbitc::CST_CODE_BLOCKADDRESS;
       Record.push_back(VE.getTypeID(BA->getFunction()->getType()));
       Record.push_back(VE.getValueID(BA->getFunction()));
       Record.push_back(VE.getGlobalBasicBlockID(BA->getBasicBlock()));
@@ -1119,14 +1119,14 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   switch (I.getOpcode()) {
   default:
     if (Instruction::isCast(I.getOpcode())) {
-      Code = bitc::FUNC_CODE_INST_CAST;
+      Code = naclbitc::FUNC_CODE_INST_CAST;
       if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))
         AbbrevToUse = FUNCTION_INST_CAST_ABBREV;
       Vals.push_back(VE.getTypeID(I.getType()));
       Vals.push_back(GetEncodedCastOpcode(I.getOpcode()));
     } else {
       assert(isa<BinaryOperator>(I) && "Unknown instruction!");
-      Code = bitc::FUNC_CODE_INST_BINOP;
+      Code = naclbitc::FUNC_CODE_INST_BINOP;
       if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))
         AbbrevToUse = FUNCTION_INST_BINOP_ABBREV;
       pushValue(I.getOperand(1), InstID, Vals, VE);
@@ -1141,14 +1141,14 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
 
   case Instruction::GetElementPtr:
-    Code = bitc::FUNC_CODE_INST_GEP;
+    Code = naclbitc::FUNC_CODE_INST_GEP;
     if (cast<GEPOperator>(&I)->isInBounds())
-      Code = bitc::FUNC_CODE_INST_INBOUNDS_GEP;
+      Code = naclbitc::FUNC_CODE_INST_INBOUNDS_GEP;
     for (unsigned i = 0, e = I.getNumOperands(); i != e; ++i)
       PushValueAndType(I.getOperand(i), InstID, Vals, VE);
     break;
   case Instruction::ExtractValue: {
-    Code = bitc::FUNC_CODE_INST_EXTRACTVAL;
+    Code = naclbitc::FUNC_CODE_INST_EXTRACTVAL;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     const ExtractValueInst *EVI = cast<ExtractValueInst>(&I);
     for (const unsigned *i = EVI->idx_begin(), *e = EVI->idx_end(); i != e; ++i)
@@ -1156,7 +1156,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   }
   case Instruction::InsertValue: {
-    Code = bitc::FUNC_CODE_INST_INSERTVAL;
+    Code = naclbitc::FUNC_CODE_INST_INSERTVAL;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     PushValueAndType(I.getOperand(1), InstID, Vals, VE);
     const InsertValueInst *IVI = cast<InsertValueInst>(&I);
@@ -1165,24 +1165,24 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   }
   case Instruction::Select:
-    Code = bitc::FUNC_CODE_INST_VSELECT;
+    Code = naclbitc::FUNC_CODE_INST_VSELECT;
     PushValueAndType(I.getOperand(1), InstID, Vals, VE);
     pushValue(I.getOperand(2), InstID, Vals, VE);
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     break;
   case Instruction::ExtractElement:
-    Code = bitc::FUNC_CODE_INST_EXTRACTELT;
+    Code = naclbitc::FUNC_CODE_INST_EXTRACTELT;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     break;
   case Instruction::InsertElement:
-    Code = bitc::FUNC_CODE_INST_INSERTELT;
+    Code = naclbitc::FUNC_CODE_INST_INSERTELT;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     pushValue(I.getOperand(2), InstID, Vals, VE);
     break;
   case Instruction::ShuffleVector:
-    Code = bitc::FUNC_CODE_INST_SHUFFLEVEC;
+    Code = naclbitc::FUNC_CODE_INST_SHUFFLEVEC;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     pushValue(I.getOperand(2), InstID, Vals, VE);
@@ -1190,7 +1190,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   case Instruction::ICmp:
   case Instruction::FCmp:
     // compare returning Int1Ty or vector of Int1Ty
-    Code = bitc::FUNC_CODE_INST_CMP2;
+    Code = naclbitc::FUNC_CODE_INST_CMP2;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     Vals.push_back(cast<CmpInst>(I).getPredicate());
@@ -1198,7 +1198,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
   case Instruction::Ret:
     {
-      Code = bitc::FUNC_CODE_INST_RET;
+      Code = naclbitc::FUNC_CODE_INST_RET;
       unsigned NumOperands = I.getNumOperands();
       if (NumOperands == 0)
         AbbrevToUse = FUNCTION_INST_RET_VOID_ABBREV;
@@ -1213,7 +1213,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::Br:
     {
-      Code = bitc::FUNC_CODE_INST_BR;
+      Code = naclbitc::FUNC_CODE_INST_BR;
       const BranchInst &II = cast<BranchInst>(I);
       Vals.push_back(VE.getValueID(II.getSuccessor(0)));
       if (II.isConditional()) {
@@ -1228,7 +1228,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       // explicitly to store large APInt numbers.
       SmallVector<uint64_t, 128> Vals64;
 
-      Code = bitc::FUNC_CODE_INST_SWITCH;
+      Code = naclbitc::FUNC_CODE_INST_SWITCH;
       const SwitchInst &SI = cast<SwitchInst>(I);
 
       uint32_t SwitchRecordHeader = SI.hash() | (SWITCH_INST_MAGIC << 16);
@@ -1284,7 +1284,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     }
     break;
   case Instruction::IndirectBr:
-    Code = bitc::FUNC_CODE_INST_INDIRECTBR;
+    Code = naclbitc::FUNC_CODE_INST_INDIRECTBR;
     Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));
     // Encode the address operand as relative, but not the basic blocks.
     pushValue(I.getOperand(0), InstID, Vals, VE);
@@ -1297,7 +1297,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     const Value *Callee(II->getCalledValue());
     PointerType *PTy = cast<PointerType>(Callee->getType());
     FunctionType *FTy = cast<FunctionType>(PTy->getElementType());
-    Code = bitc::FUNC_CODE_INST_INVOKE;
+    Code = naclbitc::FUNC_CODE_INST_INVOKE;
 
     Vals.push_back(VE.getAttributeID(II->getAttributes()));
     Vals.push_back(II->getCallingConv());
@@ -1318,17 +1318,17 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   }
   case Instruction::Resume:
-    Code = bitc::FUNC_CODE_INST_RESUME;
+    Code = naclbitc::FUNC_CODE_INST_RESUME;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     break;
   case Instruction::Unreachable:
-    Code = bitc::FUNC_CODE_INST_UNREACHABLE;
+    Code = naclbitc::FUNC_CODE_INST_UNREACHABLE;
     AbbrevToUse = FUNCTION_INST_UNREACHABLE_ABBREV;
     break;
 
   case Instruction::PHI: {
     const PHINode &PN = cast<PHINode>(I);
-    Code = bitc::FUNC_CODE_INST_PHI;
+    Code = naclbitc::FUNC_CODE_INST_PHI;
     // With the newer instruction encoding, forward references could give
     // negative valued IDs.  This is most common for PHIs, so we use
     // signed VBRs.
@@ -1346,7 +1346,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
   case Instruction::LandingPad: {
     const LandingPadInst &LP = cast<LandingPadInst>(I);
-    Code = bitc::FUNC_CODE_INST_LANDINGPAD;
+    Code = naclbitc::FUNC_CODE_INST_LANDINGPAD;
     Vals.push_back(VE.getTypeID(LP.getType()));
     PushValueAndType(LP.getPersonalityFn(), InstID, Vals, VE);
     Vals.push_back(LP.isCleanup());
@@ -1362,7 +1362,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   }
 
   case Instruction::Alloca:
-    Code = bitc::FUNC_CODE_INST_ALLOCA;
+    Code = naclbitc::FUNC_CODE_INST_ALLOCA;
     Vals.push_back(VE.getTypeID(I.getType()));
     Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));
     Vals.push_back(VE.getValueID(I.getOperand(0))); // size.
@@ -1371,10 +1371,10 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
   case Instruction::Load:
     if (cast<LoadInst>(I).isAtomic()) {
-      Code = bitc::FUNC_CODE_INST_LOADATOMIC;
+      Code = naclbitc::FUNC_CODE_INST_LOADATOMIC;
       PushValueAndType(I.getOperand(0), InstID, Vals, VE);
     } else {
-      Code = bitc::FUNC_CODE_INST_LOAD;
+      Code = naclbitc::FUNC_CODE_INST_LOAD;
       if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))  // ptr
         AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
     }
@@ -1387,9 +1387,9 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::Store:
     if (cast<StoreInst>(I).isAtomic())
-      Code = bitc::FUNC_CODE_INST_STOREATOMIC;
+      Code = naclbitc::FUNC_CODE_INST_STOREATOMIC;
     else
-      Code = bitc::FUNC_CODE_INST_STORE;
+      Code = naclbitc::FUNC_CODE_INST_STORE;
     PushValueAndType(I.getOperand(1), InstID, Vals, VE);  // ptrty + ptr
     pushValue(I.getOperand(0), InstID, Vals, VE);         // val.
     Vals.push_back(Log2_32(cast<StoreInst>(I).getAlignment())+1);
@@ -1400,7 +1400,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     }
     break;
   case Instruction::AtomicCmpXchg:
-    Code = bitc::FUNC_CODE_INST_CMPXCHG;
+    Code = naclbitc::FUNC_CODE_INST_CMPXCHG;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);  // ptrty + ptr
     pushValue(I.getOperand(1), InstID, Vals, VE);         // cmp.
     pushValue(I.getOperand(2), InstID, Vals, VE);         // newval.
@@ -1411,7 +1411,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
                      cast<AtomicCmpXchgInst>(I).getSynchScope()));
     break;
   case Instruction::AtomicRMW:
-    Code = bitc::FUNC_CODE_INST_ATOMICRMW;
+    Code = naclbitc::FUNC_CODE_INST_ATOMICRMW;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);  // ptrty + ptr
     pushValue(I.getOperand(1), InstID, Vals, VE);         // val.
     Vals.push_back(GetEncodedRMWOperation(
@@ -1422,7 +1422,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
                      cast<AtomicRMWInst>(I).getSynchScope()));
     break;
   case Instruction::Fence:
-    Code = bitc::FUNC_CODE_INST_FENCE;
+    Code = naclbitc::FUNC_CODE_INST_FENCE;
     Vals.push_back(GetEncodedOrdering(cast<FenceInst>(I).getOrdering()));
     Vals.push_back(GetEncodedSynchScope(cast<FenceInst>(I).getSynchScope()));
     break;
@@ -1431,7 +1431,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     PointerType *PTy = cast<PointerType>(CI.getCalledValue()->getType());
     FunctionType *FTy = cast<FunctionType>(PTy->getElementType());
 
-    Code = bitc::FUNC_CODE_INST_CALL;
+    Code = naclbitc::FUNC_CODE_INST_CALL;
 
     Vals.push_back(VE.getAttributeID(CI.getAttributes()));
     Vals.push_back((CI.getCallingConv() << 1) | unsigned(CI.isTailCall()));
@@ -1455,7 +1455,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   }
   case Instruction::VAArg:
-    Code = bitc::FUNC_CODE_INST_VAARG;
+    Code = naclbitc::FUNC_CODE_INST_VAARG;
     Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));   // valistty
     pushValue(I.getOperand(0), InstID, Vals, VE); // valist.
     Vals.push_back(VE.getTypeID(I.getType())); // restype.
@@ -1471,7 +1471,7 @@ static void WriteValueSymbolTable(const ValueSymbolTable &VST,
                                   const NaClValueEnumerator &VE,
                                   NaClBitstreamWriter &Stream) {
   if (VST.empty()) return;
-  Stream.EnterSubblock(bitc::VALUE_SYMTAB_BLOCK_ID, 4);
+  Stream.EnterSubblock(naclbitc::VALUE_SYMTAB_BLOCK_ID, 4);
 
   // FIXME: Set up the abbrev, we know how many values there are!
   // FIXME: We know if the type names can use 7-bit ascii.
@@ -1501,11 +1501,11 @@ static void WriteValueSymbolTable(const ValueSymbolTable &VST,
     // VST_BBENTRY: [bbid, namechar x N]
     unsigned Code;
     if (isa<BasicBlock>(SI->getValue())) {
-      Code = bitc::VST_CODE_BBENTRY;
+      Code = naclbitc::VST_CODE_BBENTRY;
       if (isChar6)
         AbbrevToUse = VST_BBENTRY_6_ABBREV;
     } else {
-      Code = bitc::VST_CODE_ENTRY;
+      Code = naclbitc::VST_CODE_ENTRY;
       if (isChar6)
         AbbrevToUse = VST_ENTRY_6_ABBREV;
       else if (is7Bit)
@@ -1527,7 +1527,7 @@ static void WriteValueSymbolTable(const ValueSymbolTable &VST,
 /// WriteFunction - Emit a function body to the module stream.
 static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
                           NaClBitstreamWriter &Stream) {
-  Stream.EnterSubblock(bitc::FUNCTION_BLOCK_ID, 4);
+  Stream.EnterSubblock(naclbitc::FUNCTION_BLOCK_ID, 4);
   VE.incorporateFunction(F);
 
   SmallVector<unsigned, 64> Vals;
@@ -1535,7 +1535,7 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
   // Emit the number of basic blocks, so the reader can create them ahead of
   // time.
   Vals.push_back(VE.getBasicBlocks().size());
-  Stream.EmitRecord(bitc::FUNC_CODE_DECLAREBLOCKS, Vals);
+  Stream.EmitRecord(naclbitc::FUNC_CODE_DECLAREBLOCKS, Vals);
   Vals.clear();
 
   // If there are function-local constants, emit them now.
@@ -1571,7 +1571,7 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
         // nothing todo.
       } else if (DL == LastDL) {
         // Just repeat the same debug loc as last time.
-        Stream.EmitRecord(bitc::FUNC_CODE_DEBUG_LOC_AGAIN, Vals);
+        Stream.EmitRecord(naclbitc::FUNC_CODE_DEBUG_LOC_AGAIN, Vals);
       } else {
         MDNode *Scope, *IA;
         DL.getScopeAndInlinedAt(Scope, IA, I->getContext());
@@ -1580,7 +1580,7 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
         Vals.push_back(DL.getCol());
         Vals.push_back(Scope ? VE.getValueID(Scope)+1 : 0);
         Vals.push_back(IA ? VE.getValueID(IA)+1 : 0);
-        Stream.EmitRecord(bitc::FUNC_CODE_DEBUG_LOC, Vals);
+        Stream.EmitRecord(naclbitc::FUNC_CODE_DEBUG_LOC, Vals);
         Vals.clear();
 
         LastDL = DL;
@@ -1609,38 +1609,38 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE, NaClBitstreamWriter &S
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));
-    if (Stream.EmitBlockInfoAbbrev(bitc::VALUE_SYMTAB_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::VALUE_SYMTAB_BLOCK_ID,
                                    Abbv) != VST_ENTRY_8_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
   { // 7-bit fixed width VST_ENTRY strings.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::VST_CODE_ENTRY));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::VST_CODE_ENTRY));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 7));
-    if (Stream.EmitBlockInfoAbbrev(bitc::VALUE_SYMTAB_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::VALUE_SYMTAB_BLOCK_ID,
                                    Abbv) != VST_ENTRY_7_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // 6-bit char6 VST_ENTRY strings.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::VST_CODE_ENTRY));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::VST_CODE_ENTRY));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Char6));
-    if (Stream.EmitBlockInfoAbbrev(bitc::VALUE_SYMTAB_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::VALUE_SYMTAB_BLOCK_ID,
                                    Abbv) != VST_ENTRY_6_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // 6-bit char6 VST_BBENTRY strings.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::VST_CODE_BBENTRY));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::VST_CODE_BBENTRY));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Char6));
-    if (Stream.EmitBlockInfoAbbrev(bitc::VALUE_SYMTAB_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::VALUE_SYMTAB_BLOCK_ID,
                                    Abbv) != VST_BBENTRY_6_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
@@ -1649,39 +1649,39 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE, NaClBitstreamWriter &S
 
   { // SETTYPE abbrev for CONSTANTS_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_SETTYPE));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_SETTYPE));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
                               Log2_32_Ceil(VE.getTypes().size()+1)));
-    if (Stream.EmitBlockInfoAbbrev(bitc::CONSTANTS_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
                                    Abbv) != CONSTANTS_SETTYPE_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
   { // INTEGER abbrev for CONSTANTS_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_INTEGER));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_INTEGER));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
-    if (Stream.EmitBlockInfoAbbrev(bitc::CONSTANTS_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
                                    Abbv) != CONSTANTS_INTEGER_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
   { // CE_CAST abbrev for CONSTANTS_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_CE_CAST));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_CE_CAST));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 4));  // cast opc
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,       // typeid
                               Log2_32_Ceil(VE.getTypes().size()+1)));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));    // value id
 
-    if (Stream.EmitBlockInfoAbbrev(bitc::CONSTANTS_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
                                    Abbv) != CONSTANTS_CE_CAST_Abbrev)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // NULL abbrev for CONSTANTS_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::CST_CODE_NULL));
-    if (Stream.EmitBlockInfoAbbrev(bitc::CONSTANTS_BLOCK_ID,
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::CST_CODE_NULL));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
                                    Abbv) != CONSTANTS_NULL_Abbrev)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
@@ -1690,66 +1690,66 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE, NaClBitstreamWriter &S
 
   { // INST_LOAD abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_LOAD));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_LOAD));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 4)); // Align
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // volatile
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_LOAD_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_BINOP abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_BINOP));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_BINOP));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LHS
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // RHS
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 4)); // opc
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_BINOP_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_BINOP_FLAGS abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_BINOP));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_BINOP));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LHS
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // RHS
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 4)); // opc
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 7)); // flags
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_BINOP_FLAGS_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_CAST abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_CAST));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_CAST));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));    // OpVal
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,       // dest ty
                               Log2_32_Ceil(VE.getTypes().size()+1)));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 4));  // opc
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_CAST_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
   { // INST_RET abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_RET));
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_RET));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_RET_VOID_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_RET abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_RET));
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_RET));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // ValID
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_RET_VAL_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_UNREACHABLE abbrev for FUNCTION_BLOCK.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-    Abbv->Add(BitCodeAbbrevOp(bitc::FUNC_CODE_INST_UNREACHABLE));
-    if (Stream.EmitBlockInfoAbbrev(bitc::FUNCTION_BLOCK_ID,
+    Abbv->Add(BitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_UNREACHABLE));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_UNREACHABLE_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
@@ -1759,12 +1759,12 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE, NaClBitstreamWriter &S
 
 /// WriteModule - Emit the specified module to the bitstream.
 static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
-  Stream.EnterSubblock(bitc::MODULE_BLOCK_ID, 3);
+  Stream.EnterSubblock(naclbitc::MODULE_BLOCK_ID, 3);
 
   SmallVector<unsigned, 1> Vals;
   unsigned CurVersion = 1;
   Vals.push_back(CurVersion);
-  Stream.EmitRecord(bitc::MODULE_CODE_VERSION, Vals);
+  Stream.EmitRecord(naclbitc::MODULE_CODE_VERSION, Vals);
 
   // Analyze the module, enumerating globals, functions, etc.
   NaClValueEnumerator VE(M);
