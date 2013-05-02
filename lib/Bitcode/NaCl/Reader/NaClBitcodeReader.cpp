@@ -1525,7 +1525,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         if (Stream.SkipBlock())
           return Error("Malformed block record");
         break;
-      case bitc::BLOCKINFO_BLOCK_ID:
+      case naclbitc::BLOCKINFO_BLOCK_ID:
         if (Stream.ReadBlockInfoBlock())
           return Error("Malformed BlockInfoBlock");
         break;
@@ -1825,7 +1825,7 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
 
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
-      case bitc::BLOCKINFO_BLOCK_ID:
+      case naclbitc::BLOCKINFO_BLOCK_ID:
         if (Stream.ReadBlockInfoBlock())
           return Error("Malformed BlockInfoBlock");
         break;

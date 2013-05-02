@@ -33,7 +33,7 @@ void NaClBitstreamCursor::operator=(const NaClBitstreamCursor &RHS) {
   // Copy block scope and bump ref counts.
   BlockScope = RHS.BlockScope;
   for (size_t S = 0, e = BlockScope.size(); S != e; ++S) {
-    std::vector<BitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
+    std::vector<NaClBitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
     for (size_t i = 0, e = Abbrevs.size(); i != e; ++i)
       Abbrevs[i]->addRef();
   }
@@ -47,7 +47,7 @@ void NaClBitstreamCursor::freeState() {
 
   // Free all the Abbrevs in the block scope.
   for (size_t S = 0, e = BlockScope.size(); S != e; ++S) {
-    std::vector<BitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
+    std::vector<NaClBitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
     for (size_t i = 0, e = Abbrevs.size(); i != e; ++i)
       Abbrevs[i]->dropRef();
   }
@@ -71,9 +71,9 @@ bool NaClBitstreamCursor::EnterSubBlock(unsigned BlockID, unsigned *NumWordsP) {
   }
 
   // Get the codesize of this block.
-  CurCodeSize = ReadVBR(bitc::CodeLenWidth);
+  CurCodeSize = ReadVBR(naclbitc::CodeLenWidth);
   SkipToFourByteBoundary();
-  unsigned NumWords = Read(bitc::BlockSizeWidth);
+  unsigned NumWords = Read(naclbitc::BlockSizeWidth);
   if (NumWordsP) *NumWordsP = NumWords;
 
   // Validate that this block is sane.
@@ -84,7 +84,7 @@ bool NaClBitstreamCursor::EnterSubBlock(unsigned BlockID, unsigned *NumWordsP) {
 }
 
 void NaClBitstreamCursor::readAbbreviatedLiteral(
-    const BitCodeAbbrevOp &Op,
+    const NaClBitCodeAbbrevOp &Op,
     SmallVectorImpl<uint64_t> &Vals) {
   assert(Op.isLiteral() && "Not a literal");
   // If the abbrev specifies the literal value to use, use it.
@@ -92,42 +92,42 @@ void NaClBitstreamCursor::readAbbreviatedLiteral(
 }
 
 void NaClBitstreamCursor::readAbbreviatedField(
-    const BitCodeAbbrevOp &Op,
+    const NaClBitCodeAbbrevOp &Op,
     SmallVectorImpl<uint64_t> &Vals) {
   assert(!Op.isLiteral() && "Use ReadAbbreviatedLiteral for literals!");
 
   // Decode the value as we are commanded.
   switch (Op.getEncoding()) {
-  case BitCodeAbbrevOp::Array:
-  case BitCodeAbbrevOp::Blob:
+  case NaClBitCodeAbbrevOp::Array:
+  case NaClBitCodeAbbrevOp::Blob:
     assert(0 && "Should not reach here");
-  case BitCodeAbbrevOp::Fixed:
+  case NaClBitCodeAbbrevOp::Fixed:
     Vals.push_back(Read((unsigned)Op.getEncodingData()));
     break;
-  case BitCodeAbbrevOp::VBR:
+  case NaClBitCodeAbbrevOp::VBR:
     Vals.push_back(ReadVBR64((unsigned)Op.getEncodingData()));
     break;
-  case BitCodeAbbrevOp::Char6:
-    Vals.push_back(BitCodeAbbrevOp::DecodeChar6(Read(6)));
+  case NaClBitCodeAbbrevOp::Char6:
+    Vals.push_back(NaClBitCodeAbbrevOp::DecodeChar6(Read(6)));
     break;
   }
 }
 
-void NaClBitstreamCursor::skipAbbreviatedField(const BitCodeAbbrevOp &Op) {
+void NaClBitstreamCursor::skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op) {
   assert(!Op.isLiteral() && "Use ReadAbbreviatedLiteral for literals!");
 
   // Decode the value as we are commanded.
   switch (Op.getEncoding()) {
-  case BitCodeAbbrevOp::Array:
-  case BitCodeAbbrevOp::Blob:
+  case NaClBitCodeAbbrevOp::Array:
+  case NaClBitCodeAbbrevOp::Blob:
     assert(0 && "Should not reach here");
-  case BitCodeAbbrevOp::Fixed:
+  case NaClBitCodeAbbrevOp::Fixed:
     (void)Read((unsigned)Op.getEncodingData());
     break;
-  case BitCodeAbbrevOp::VBR:
+  case NaClBitCodeAbbrevOp::VBR:
     (void)ReadVBR64((unsigned)Op.getEncodingData());
     break;
-  case BitCodeAbbrevOp::Char6:
+  case NaClBitCodeAbbrevOp::Char6:
     (void)Read(6);
     break;
   }
@@ -138,7 +138,7 @@ void NaClBitstreamCursor::skipAbbreviatedField(const BitCodeAbbrevOp &Op) {
 /// skipRecord - Read the current record and discard it.
 void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
   // Skip unabbreviated records by reading past their entries.
-  if (AbbrevID == bitc::UNABBREV_RECORD) {
+  if (AbbrevID == naclbitc::UNABBREV_RECORD) {
     unsigned Code = ReadVBR(6);
     (void)Code;
     unsigned NumElts = ReadVBR(6);
@@ -147,26 +147,26 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
     return;
   }
 
-  const BitCodeAbbrev *Abbv = getAbbrev(AbbrevID);
+  const NaClBitCodeAbbrev *Abbv = getAbbrev(AbbrevID);
 
   for (unsigned i = 0, e = Abbv->getNumOperandInfos(); i != e; ++i) {
-    const BitCodeAbbrevOp &Op = Abbv->getOperandInfo(i);
+    const NaClBitCodeAbbrevOp &Op = Abbv->getOperandInfo(i);
     if (Op.isLiteral())
       continue;
 
-    if (Op.getEncoding() != BitCodeAbbrevOp::Array &&
-        Op.getEncoding() != BitCodeAbbrevOp::Blob) {
+    if (Op.getEncoding() != NaClBitCodeAbbrevOp::Array &&
+        Op.getEncoding() != NaClBitCodeAbbrevOp::Blob) {
       skipAbbreviatedField(Op);
       continue;
     }
 
-    if (Op.getEncoding() == BitCodeAbbrevOp::Array) {
+    if (Op.getEncoding() == NaClBitCodeAbbrevOp::Array) {
       // Array case.  Read the number of elements as a vbr6.
       unsigned NumElts = ReadVBR(6);
 
       // Get the element encoding.
       assert(i+2 == e && "array op not second to last?");
-      const BitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
+      const NaClBitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
 
       // Read all the elements.
       for (; NumElts; --NumElts)
@@ -174,7 +174,7 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
       continue;
     }
 
-    assert(Op.getEncoding() == BitCodeAbbrevOp::Blob);
+    assert(Op.getEncoding() == NaClBitCodeAbbrevOp::Blob);
     // Blob case.  Read the number of bytes as a vbr6.
     unsigned NumElts = ReadVBR(6);
     SkipToFourByteBoundary();  // 32-bit alignment
@@ -197,7 +197,7 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
 unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
                                          SmallVectorImpl<uint64_t> &Vals,
                                          StringRef *Blob) {
-  if (AbbrevID == bitc::UNABBREV_RECORD) {
+  if (AbbrevID == naclbitc::UNABBREV_RECORD) {
     unsigned Code = ReadVBR(6);
     unsigned NumElts = ReadVBR(6);
     for (unsigned i = 0; i != NumElts; ++i)
@@ -205,28 +205,28 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
     return Code;
   }
 
-  const BitCodeAbbrev *Abbv = getAbbrev(AbbrevID);
+  const NaClBitCodeAbbrev *Abbv = getAbbrev(AbbrevID);
 
   for (unsigned i = 0, e = Abbv->getNumOperandInfos(); i != e; ++i) {
-    const BitCodeAbbrevOp &Op = Abbv->getOperandInfo(i);
+    const NaClBitCodeAbbrevOp &Op = Abbv->getOperandInfo(i);
     if (Op.isLiteral()) {
       readAbbreviatedLiteral(Op, Vals);
       continue;
     }
 
-    if (Op.getEncoding() != BitCodeAbbrevOp::Array &&
-        Op.getEncoding() != BitCodeAbbrevOp::Blob) {
+    if (Op.getEncoding() != NaClBitCodeAbbrevOp::Array &&
+        Op.getEncoding() != NaClBitCodeAbbrevOp::Blob) {
       readAbbreviatedField(Op, Vals);
       continue;
     }
 
-    if (Op.getEncoding() == BitCodeAbbrevOp::Array) {
+    if (Op.getEncoding() == NaClBitCodeAbbrevOp::Array) {
       // Array case.  Read the number of elements as a vbr6.
       unsigned NumElts = ReadVBR(6);
 
       // Get the element encoding.
       assert(i+2 == e && "array op not second to last?");
-      const BitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
+      const NaClBitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
 
       // Read all the elements.
       for (; NumElts; --NumElts)
@@ -234,7 +234,7 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
       continue;
     }
 
-    assert(Op.getEncoding() == BitCodeAbbrevOp::Blob);
+    assert(Op.getEncoding() == NaClBitCodeAbbrevOp::Blob);
     // Blob case.  Read the number of bytes as a vbr6.
     unsigned NumElts = ReadVBR(6);
     SkipToFourByteBoundary();  // 32-bit alignment
@@ -274,31 +274,31 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
 
 
 void NaClBitstreamCursor::ReadAbbrevRecord() {
-  BitCodeAbbrev *Abbv = new BitCodeAbbrev();
+  NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
   unsigned NumOpInfo = ReadVBR(5);
   for (unsigned i = 0; i != NumOpInfo; ++i) {
     bool IsLiteral = Read(1) ? true : false;
     if (IsLiteral) {
-      Abbv->Add(BitCodeAbbrevOp(ReadVBR64(8)));
+      Abbv->Add(NaClBitCodeAbbrevOp(ReadVBR64(8)));
       continue;
     }
 
-    BitCodeAbbrevOp::Encoding E = (BitCodeAbbrevOp::Encoding)Read(3);
-    if (BitCodeAbbrevOp::hasEncodingData(E)) {
+    NaClBitCodeAbbrevOp::Encoding E = (NaClBitCodeAbbrevOp::Encoding)Read(3);
+    if (NaClBitCodeAbbrevOp::hasEncodingData(E)) {
       unsigned Data = ReadVBR64(5);
 
       // As a special case, handle fixed(0) (i.e., a fixed field with zero bits)
       // and vbr(0) as a literal zero.  This is decoded the same way, and avoids
       // a slow path in Read() to have to handle reading zero bits.
-      if ((E == BitCodeAbbrevOp::Fixed || E == BitCodeAbbrevOp::VBR) &&
+      if ((E == NaClBitCodeAbbrevOp::Fixed || E == NaClBitCodeAbbrevOp::VBR) &&
           Data == 0) {
-        Abbv->Add(BitCodeAbbrevOp(0));
+        Abbv->Add(NaClBitCodeAbbrevOp(0));
         continue;
       }
       
-      Abbv->Add(BitCodeAbbrevOp(E, Data));
+      Abbv->Add(NaClBitCodeAbbrevOp(E, Data));
     } else
-      Abbv->Add(BitCodeAbbrevOp(E));
+      Abbv->Add(NaClBitCodeAbbrevOp(E));
   }
   CurAbbrevs.push_back(Abbv);
 }
@@ -308,7 +308,7 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
   if (BitStream->hasBlockInfoRecords())
     return SkipBlock();
 
-  if (EnterSubBlock(bitc::BLOCKINFO_BLOCK_ID)) return true;
+  if (EnterSubBlock(naclbitc::BLOCKINFO_BLOCK_ID)) return true;
 
   SmallVector<uint64_t, 64> Record;
   NaClBitstreamReader::BlockInfo *CurBlockInfo = 0;
@@ -329,13 +329,13 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
     }
 
     // Read abbrev records, associate them with CurBID.
-    if (Entry.ID == bitc::DEFINE_ABBREV) {
+    if (Entry.ID == naclbitc::DEFINE_ABBREV) {
       if (!CurBlockInfo) return true;
       ReadAbbrevRecord();
 
       // ReadAbbrevRecord installs the abbrev in CurAbbrevs.  Move it to the
       // appropriate BlockInfo.
-      BitCodeAbbrev *Abbv = CurAbbrevs.back();
+      NaClBitCodeAbbrev *Abbv = CurAbbrevs.back();
       CurAbbrevs.pop_back();
       CurBlockInfo->Abbrevs.push_back(Abbv);
       continue;
@@ -345,11 +345,11 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
     Record.clear();
     switch (readRecord(Entry.ID, Record)) {
       default: break;  // Default behavior, ignore unknown content.
-      case bitc::BLOCKINFO_CODE_SETBID:
+      case naclbitc::BLOCKINFO_CODE_SETBID:
         if (Record.size() < 1) return true;
         CurBlockInfo = &BitStream->getOrCreateBlockInfo((unsigned)Record[0]);
         break;
-      case bitc::BLOCKINFO_CODE_BLOCKNAME: {
+      case naclbitc::BLOCKINFO_CODE_BLOCKNAME: {
         if (!CurBlockInfo) return true;
         if (BitStream->isIgnoringBlockInfoNames()) break;  // Ignore name.
         std::string Name;
@@ -358,7 +358,7 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
         CurBlockInfo->Name = Name;
         break;
       }
-      case bitc::BLOCKINFO_CODE_SETRECORDNAME: {
+      case naclbitc::BLOCKINFO_CODE_SETRECORDNAME: {
         if (!CurBlockInfo) return true;
         if (BitStream->isIgnoringBlockInfoNames()) break;  // Ignore name.
         std::string Name;

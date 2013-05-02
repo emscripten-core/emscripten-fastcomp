@@ -19,16 +19,14 @@
 #ifndef LLVM_BITCODE_NACL_NACLLLVMBITCODES_H
 #define LLVM_BITCODE_NACL_NACLLLVMBITCODES_H
 
-// TODO(kschimpf) Make a NaCl version of BitCodes.h, so that block id's
-// and abbreviations can be modified.
-#include "llvm/Bitcode/BitCodes.h"
+#include "llvm/Bitcode/NaCl/NaClBitCodes.h"
 
 namespace llvm {
 namespace naclbitc {
   // The only top-level block type defined is for a module.
   enum NaClBlockIDs {
     // Blocks
-    MODULE_BLOCK_ID          = bitc::FIRST_APPLICATION_BLOCKID,
+    MODULE_BLOCK_ID          = FIRST_APPLICATION_BLOCKID,
 
     // Module sub-block id's.
     PARAMATTR_BLOCK_ID,

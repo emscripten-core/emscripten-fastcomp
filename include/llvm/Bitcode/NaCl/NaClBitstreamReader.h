@@ -39,7 +39,7 @@ public:
   /// These describe abbreviations that all blocks of the specified ID inherit.
   struct BlockInfo {
     unsigned BlockID;
-    std::vector<BitCodeAbbrev*> Abbrevs;
+    std::vector<NaClBitCodeAbbrev*> Abbrevs;
     std::string Name;
 
     std::vector<std::pair<unsigned, std::string> > RecordNames;
@@ -189,11 +189,11 @@ class NaClBitstreamCursor {
   unsigned CurCodeSize;
 
   /// CurAbbrevs - Abbrevs installed at in this block.
-  std::vector<BitCodeAbbrev*> CurAbbrevs;
+  std::vector<NaClBitCodeAbbrev*> CurAbbrevs;
 
   struct Block {
     unsigned PrevCodeSize;
-    std::vector<BitCodeAbbrev*> PrevAbbrevs;
+    std::vector<NaClBitCodeAbbrev*> PrevAbbrevs;
     explicit Block(unsigned PCS) : PrevCodeSize(PCS) {}
   };
 
@@ -286,17 +286,17 @@ public:
   NaClBitstreamEntry advance(unsigned Flags = 0) {
     while (1) {
       unsigned Code = ReadCode();
-      if (Code == bitc::END_BLOCK) {
+      if (Code == naclbitc::END_BLOCK) {
         // Pop the end of the block unless Flags tells us not to.
         if (!(Flags & AF_DontPopBlockAtEnd) && ReadBlockEnd())
           return NaClBitstreamEntry::getError();
         return NaClBitstreamEntry::getEndBlock();
       }
       
-      if (Code == bitc::ENTER_SUBBLOCK)
+      if (Code == naclbitc::ENTER_SUBBLOCK)
         return NaClBitstreamEntry::getSubBlock(ReadSubBlockID());
       
-      if (Code == bitc::DEFINE_ABBREV &&
+      if (Code == naclbitc::DEFINE_ABBREV &&
           !(Flags & AF_DontAutoprocessAbbrevs)) {
         // We read and accumulate abbrev's, the client can't do anything with
         // them anyway.
@@ -469,7 +469,7 @@ public:
   /// ReadSubBlockID - Having read the ENTER_SUBBLOCK code, read the BlockID for
   /// the block.
   unsigned ReadSubBlockID() {
-    return ReadVBR(bitc::BlockIDWidth);
+    return ReadVBR(naclbitc::BlockIDWidth);
   }
 
   /// SkipBlock - Having read the ENTER_SUBBLOCK abbrevid and a BlockID, skip
@@ -478,9 +478,9 @@ public:
   bool SkipBlock() {
     // Read and ignore the codelen value.  Since we are skipping this block, we
     // don't care what code widths are used inside of it.
-    ReadVBR(bitc::CodeLenWidth);
+    ReadVBR(naclbitc::CodeLenWidth);
     SkipToFourByteBoundary();
-    unsigned NumFourBytes = Read(bitc::BlockSizeWidth);
+    unsigned NumFourBytes = Read(naclbitc::BlockSizeWidth);
 
     // Check that the block wasn't partially defined, and that the offset isn't
     // bogus.
@@ -526,17 +526,17 @@ private:
   //===--------------------------------------------------------------------===//
 
 private:
-  void readAbbreviatedLiteral(const BitCodeAbbrevOp &Op,
+  void readAbbreviatedLiteral(const NaClBitCodeAbbrevOp &Op,
                               SmallVectorImpl<uint64_t> &Vals);
-  void readAbbreviatedField(const BitCodeAbbrevOp &Op,
+  void readAbbreviatedField(const NaClBitCodeAbbrevOp &Op,
                             SmallVectorImpl<uint64_t> &Vals);
-  void skipAbbreviatedField(const BitCodeAbbrevOp &Op);
+  void skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op);
   
 public:
 
   /// getAbbrev - Return the abbreviation for the specified AbbrevId.
-  const BitCodeAbbrev *getAbbrev(unsigned AbbrevID) {
-    unsigned AbbrevNo = AbbrevID-bitc::FIRST_APPLICATION_ABBREV;
+  const NaClBitCodeAbbrev *getAbbrev(unsigned AbbrevID) {
+    unsigned AbbrevNo = AbbrevID-naclbitc::FIRST_APPLICATION_ABBREV;
     assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
     return CurAbbrevs[AbbrevNo];
   }
