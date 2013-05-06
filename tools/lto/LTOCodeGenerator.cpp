@@ -106,7 +106,7 @@ bool LTOCodeGenerator::addModule(LTOModule* mod, std::string& errMsg) {
 // @LOCALMOD-BEGIN
 /// Add a module that will be merged with the final output module.
 /// The merging does not happen until linkGatheredModulesAndDispose().
-bool LTOCodeGenerator::gatherModuleForLinking(LTOModule* mod) {
+void LTOCodeGenerator::gatherModuleForLinking(LTOModule* mod) {
   _gatheredModules.push_back(mod);
 }
 
@@ -205,6 +205,8 @@ void LTOCodeGenerator::setMergedModuleOutputFormat(lto_output_format format)
   case LTO_OUTPUT_FORMAT_EXEC:
     outputFormat = Module::ExecutableOutputFormat;
     break;
+  default:
+    llvm_unreachable("Unexpected output format");
   }
   Module *mergedModule = _linker.getModule();
   mergedModule->setOutputFormat(outputFormat);

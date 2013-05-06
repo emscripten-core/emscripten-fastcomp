@@ -205,8 +205,8 @@ bool lto_codegen_add_module(lto_code_gen_t cg, lto_module_t mod) {
 }
 
 // @LOCALMOD-BEGIN
-bool lto_codegen_gather_module_for_link(lto_code_gen_t cg, lto_module_t mod) {
-  return cg->gatherModuleForLinking(mod);
+void lto_codegen_gather_module_for_link(lto_code_gen_t cg, lto_module_t mod) {
+  cg->gatherModuleForLinking(mod);
 }
 
 bool lto_codegen_link_gathered_modules_and_dispose(lto_code_gen_t cg) {

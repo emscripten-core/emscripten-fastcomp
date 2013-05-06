@@ -44,7 +44,7 @@ struct LTOCodeGenerator {
   // @LOCALMOD-BEGIN
   // Alternative methods of adding modules, which delay merging modules until
   // all modules are available.
-  bool gatherModuleForLinking(struct LTOModule*);
+  void gatherModuleForLinking(struct LTOModule*);
   bool linkGatheredModulesAndDispose(std::string &errMsg);
   // @LOCALMOD-END
   bool setDebugInfo(lto_debug_model, std::string &errMsg);

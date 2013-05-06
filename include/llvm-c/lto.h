@@ -268,7 +268,7 @@ lto_codegen_add_module(lto_code_gen_t cg, lto_module_t mod);
  * should now by owned by the lto_code_gen_t, and will be freed when
  * the link is done.
  */
-extern bool
+extern void
 lto_codegen_gather_module_for_link(lto_code_gen_t cg, lto_module_t mod);
 
 /**
