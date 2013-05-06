@@ -30,19 +30,16 @@ using namespace llvm;
 
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Specify thawed pexe filename"),
-	       cl::value_desc("filename"));
+	       cl::value_desc("filename"), cl::init("-"));
 
 static cl::opt<std::string>
-InputFilename(cl::Positional, cl::desc("<frozen file>"), cl::Required);
+InputFilename(cl::Positional, cl::desc("<frozen file>"), cl::init("-"));
 
 static void WriteOutputFile(const Module *M) {
 
-  std::string ThawedFilename =
-    (OutputFilename.size() == 0 ? (InputFilename + ".thawed") : OutputFilename);
-
   std::string ErrorInfo;
   OwningPtr<tool_output_file> Out
-    (new tool_output_file(ThawedFilename.c_str(), ErrorInfo,
+    (new tool_output_file(OutputFilename.c_str(), ErrorInfo,
 			  raw_fd_ostream::F_Binary));
   if (!ErrorInfo.empty()) {
     errs() << ErrorInfo << '\n';
@@ -72,7 +69,11 @@ int main(int argc, char **argv) {
   // Use the bitcode streaming interface
   DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
   if (streamer) {
-    std::string DisplayFilename = InputFilename;
+    std::string DisplayFilename;
+    if (InputFilename == "-")
+      DisplayFilename = "<stdin>";
+    else
+      DisplayFilename = InputFilename;
     M.reset(getNaClStreamedBitcodeModule(DisplayFilename, streamer, Context,
                                          &ErrorMessage));
     if(M.get() != 0 && M->MaterializeAllPermanently(&ErrorMessage)) {
