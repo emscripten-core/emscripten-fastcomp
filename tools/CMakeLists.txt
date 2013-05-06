@@ -43,6 +43,7 @@ add_subdirectory(llvm-mcmarkup)
 
 add_subdirectory(llvm-symbolizer)
 add_subdirectory(pnacl-abicheck)
+add_subdirectory(pnacl-bcanalyzer)
 add_subdirectory(pnacl-freeze)
 add_subdirectory(pnacl-thaw)
 add_subdirectory(bc-wrap)
