@@ -17,7 +17,9 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "PNaClABITypeChecker.h"
@@ -28,7 +30,13 @@ cl::opt<bool>
 PNaClABIAllowDebugMetadata("pnaclabi-allow-debug-metadata",
   cl::desc("Allow debug metadata during PNaCl ABI verification."),
   cl::init(false));
+
 }
+
+static cl::opt<bool>
+PNaClABIAllowDevIntrinsics("pnaclabi-allow-dev-intrinsics",
+  cl::desc("Allow all LLVM intrinsics during PNaCl ABI verification."),
+  cl::init(true));  // TODO(jvoung): Make this false by default.
 
 namespace {
 // This pass should not touch function bodies, to stay streaming-friendly
@@ -55,6 +63,7 @@ class PNaClABIVerifyModule : public ModulePass {
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
   void CheckGlobalValueCommon(const GlobalValue *GV);
+  bool IsWhitelistedIntrinsic(const Function* F, unsigned ID);
   bool IsWhitelistedMetadata(const NamedMDNode *MD);
   PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
@@ -113,6 +122,76 @@ void PNaClABIVerifyModule::CheckGlobalValueCommon(const GlobalValue *GV) {
   }
 }
 
+bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
+                                                  unsigned ID) {
+  // Keep 3 categories of intrinsics for now.
+  // (1) Allowed always
+  // (2) Never allowed
+  // (3) "Dev" intrinsics, which may or may not be allowed.
+  // "Dev" intrinsics are controlled by the PNaClABIAllowDevIntrinsics flag.
+  // Please keep these sorted within each category.
+  switch(ID) {
+    // Disallow by default.
+    default: return false;
+    // (1) Always allowed.
+    case Intrinsic::invariant_end:
+    case Intrinsic::invariant_start:
+    case Intrinsic::lifetime_end:
+    case Intrinsic::lifetime_start:
+    case Intrinsic::memcpy:
+    case Intrinsic::memmove:
+    case Intrinsic::memset:
+    case Intrinsic::nacl_read_tp:
+    case Intrinsic::trap:
+      return true;
+
+    // (2) Known to be never allowed.
+    case Intrinsic::not_intrinsic:
+    case Intrinsic::adjust_trampoline:
+    case Intrinsic::init_trampoline:
+    case Intrinsic::stackprotector:
+    case Intrinsic::vacopy:
+    case Intrinsic::vaend:
+    case Intrinsic::vastart:
+      return false;
+
+    // (3) Dev intrinsics.
+    case Intrinsic::dbg_declare:
+    case Intrinsic::dbg_value:
+      return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
+    case Intrinsic::bswap: // Support via compiler_rt if arch doesn't have it?
+    case Intrinsic::cos: // Rounding not defined: support with fast-math?
+    case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
+    case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
+    case Intrinsic::cttz: // Support via compiler_rt if arch doesn't have it?
+    case Intrinsic::eh_dwarf_cfa: // For EH tests.
+    case Intrinsic::exp: // Rounding not defined: support with fast-math?
+    case Intrinsic::exp2: // Rounding not defined: support with fast-math?
+    case Intrinsic::expect: // From __builtin_expect.
+    case Intrinsic::flt_rounds:
+    case Intrinsic::frameaddress: // Support for 0-level or not?
+    case Intrinsic::log: // Rounding not defined: support with fast-math?
+    case Intrinsic::log2: // Rounding not defined: support with fast-math?
+    case Intrinsic::log10: // Rounding not defined: support with fast-math?
+    case Intrinsic::nacl_target_arch: // Used by translator self-build.
+    case Intrinsic::pow: // Rounding not defined: support with fast-math?
+    case Intrinsic::prefetch: // Could ignore if target doesn't support?
+    case Intrinsic::returnaddress: // Support for 0-level or not?
+    case Intrinsic::sin: // Rounding not defined: support with fast-math?
+    case Intrinsic::sqrt:
+    case Intrinsic::stackrestore: // Used to support C99 VLAs.
+    case Intrinsic::stacksave:
+    // the *_with_overflow return struct types, so we'll need to fix these.
+    case Intrinsic::sadd_with_overflow: // Introduced by -ftrapv
+    case Intrinsic::ssub_with_overflow:
+    case Intrinsic::uadd_with_overflow:
+    case Intrinsic::usub_with_overflow:
+    case Intrinsic::smul_with_overflow:
+    case Intrinsic::umul_with_overflow: // Introduced by c++ new[x * y].
+      return PNaClABIAllowDevIntrinsics;
+  }
+}
+
 bool PNaClABIVerifyModule::IsWhitelistedMetadata(const NamedMDNode* MD) {
   return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
 }
@@ -153,6 +232,13 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   }
 
   for (Module::const_iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
+    // Check intrinsics.
+    if (MI->isIntrinsic()
+        && !IsWhitelistedIntrinsic(MI, MI->getIntrinsicID())) {
+      Reporter->addError() << "Function " << MI->getName()
+                           << " is a disallowed LLVM intrinsic\n";
+    }
+
     // Check types of functions and their arguments
     FunctionType *FT = MI->getFunctionType();
     if (!TC.isValidType(FT->getReturnType())) {
