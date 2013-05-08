@@ -30,6 +30,7 @@ ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createStripMetadataPass();
+FunctionPass *createInsertDivideCheckPass();
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);

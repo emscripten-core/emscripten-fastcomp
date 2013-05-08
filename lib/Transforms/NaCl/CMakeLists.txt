@@ -7,6 +7,7 @@ add_llvm_library(LLVMNaClTransforms
   ExpandTlsConstantExpr.cpp
   ExpandUtils.cpp
   ExpandVarArgs.cpp
+  InsertDivideCheck.cpp
   FlattenGlobals.cpp
   GlobalCleanup.cpp
   StripMetadata.cpp

@@ -20,6 +20,9 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetOptions.h"
+// @LOCALMOD-START
+#include "llvm/Transforms/NaCl.h"
+// @LOCALMOD-END
 #include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
@@ -141,6 +144,9 @@ public:
   virtual bool addPreRegAlloc();
   virtual bool addPreSched2();
   virtual bool addPreEmitPass();
+// @LOCALMOD-START
+  virtual void addIRPasses();
+// @LOCALMOD-END
 };
 } // namespace
 
@@ -228,6 +234,15 @@ bool ARMPassConfig::addPreEmitPass() {
  
   return true;
 }
+
+// @LOCALMOD-START
+void ARMPassConfig::addIRPasses() {
+  if (getARMSubtarget().isTargetNaCl()) {
+    addPass(createInsertDivideCheckPass());
+  }
+  TargetPassConfig::addIRPasses();
+}
+// @LOCALMOD-END
 
 bool ARMBaseTargetMachine::addCodeEmitter(PassManagerBase &PM,
                                           JITCodeEmitter &JCE) {
