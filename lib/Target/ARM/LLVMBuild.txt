@@ -31,5 +31,6 @@ has_jit = 1
 type = Library
 name = ARMCodeGen
 parent = ARM
-required_libraries = ARMAsmPrinter ARMDesc ARMInfo Analysis AsmPrinter CodeGen Core MC SelectionDAG Support Target
+; @LOCALMOD
+required_libraries = ARMAsmPrinter ARMDesc ARMInfo Analysis AsmPrinter CodeGen Core MC SelectionDAG Support Target NaClTransforms
 add_to_library_groups = ARM
