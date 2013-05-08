@@ -174,7 +174,8 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::log2: // Rounding not defined: support with fast-math?
     case Intrinsic::log10: // Rounding not defined: support with fast-math?
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
-    case Intrinsic::pow: // Rounding not defined: support with fast-math?
+    case Intrinsic::pow: // Rounding is supposed to be the same as libm.
+    case Intrinsic::powi: // Rounding not defined: support with fast-math?
     case Intrinsic::prefetch: // Could ignore if target doesn't support?
     case Intrinsic::returnaddress: // Support for 0-level or not?
     case Intrinsic::sin: // Rounding not defined: support with fast-math?
