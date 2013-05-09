@@ -87,6 +87,11 @@ static void ExpandVarArgFunc(Function *Func) {
   NewFunc->getBasicBlockList().splice(NewFunc->begin(),
                                       Func->getBasicBlockList());
 
+  // Declare the new argument as "noalias".
+  NewFunc->setAttributes(
+      Func->getAttributes().addAttribute(
+          Func->getContext(), FTy->getNumParams() + 1, Attribute::NoAlias));
+
   // Move the arguments across to the new function.
   for (Function::arg_iterator Arg = Func->arg_begin(), E = Func->arg_end(),
          NewArg = NewFunc->arg_begin();

@@ -82,6 +82,14 @@ AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
           Attr->getKindAsEnum() != Attribute::StructRet) {
         AB.addAttribute(*Attr);
       }
+      // IR semantics require that ByVal implies NoAlias.  However, IR
+      // semantics do not require StructRet to imply NoAlias.  For
+      // example, a global variable address can be passed as a
+      // StructRet argument, although Clang does not do so and Clang
+      // explicitly adds NoAlias to StructRet arguments.
+      if (Attr->getKindAsEnum() == Attribute::ByVal) {
+        AB.addAttribute(Attribute::get(Context, Attribute::NoAlias));
+      }
     }
     AttrList.push_back(AttributeSet::get(Context, Index, AB));
   }

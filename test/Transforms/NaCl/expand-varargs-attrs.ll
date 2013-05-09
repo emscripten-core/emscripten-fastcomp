@@ -10,7 +10,7 @@ declare i32 @varargs_func(i32 %arg, ...)
 define void @func_with_arg_attrs(%MyStruct* byval, ...) {
   ret void
 }
-; CHECK: define void @func_with_arg_attrs(%MyStruct* byval, i8* %varargs) {
+; CHECK: define void @func_with_arg_attrs(%MyStruct* byval, i8* noalias %varargs) {
 
 
 declare void @take_struct_arg(%MyStruct* byval %s, ...)

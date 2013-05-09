@@ -17,7 +17,7 @@ define i32 @varargs_func(i32 %arg, ...) {
   call void @llvm.va_end(i8* %arglist)
   ret i32 %result
 }
-; CHECK: define i32 @varargs_func(i32 %arg, i8* %varargs) {
+; CHECK: define i32 @varargs_func(i32 %arg, i8* noalias %varargs) {
 ; CHECK-NEXT: %arglist_alloc = alloca i8*
 ; CHECK-NEXT: %arglist = bitcast i8** %arglist_alloc to i8*
 ; CHECK-NEXT: %arglist1 = bitcast i8* %arglist to i8**

@@ -15,12 +15,12 @@ define void @byval_receiver(%MyStruct* byval align 32 %ptr) {
   ret void
 }
 ; Strip the "byval" and "align" attributes.
-; CHECK: define void @byval_receiver(%MyStruct* %ptr) {
+; CHECK: define void @byval_receiver(%MyStruct* noalias %ptr) {
 ; CHECK-NEXT: call void @ext_func(%MyStruct* %ptr)
 
 
 declare void @ext_byval_func(%MyStruct* byval)
-; CHECK: declare void @ext_byval_func(%MyStruct*)
+; CHECK: declare void @ext_byval_func(%MyStruct* noalias)
 
 define void @byval_caller(%MyStruct* %ptr) {
   call void @ext_byval_func(%MyStruct* byval %ptr)
@@ -30,7 +30,7 @@ define void @byval_caller(%MyStruct* %ptr) {
 ; CHECK-NEXT: %ptr.byval_copy = alloca %MyStruct, align 4
 ; CHECK: call void @llvm.lifetime.start(i64 12, i8* %{{.*}})
 ; CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %{{.*}}, i8* %{{.*}}, i64 12, i32 0, i1 false)
-; CHECK-NEXT: call void @ext_byval_func(%MyStruct* %ptr.byval_copy)
+; CHECK-NEXT: call void @ext_byval_func(%MyStruct* noalias %ptr.byval_copy)
 
 
 define void @byval_tail_caller(%MyStruct* %ptr) {
@@ -38,7 +38,7 @@ define void @byval_tail_caller(%MyStruct* %ptr) {
   ret void
 }
 ; CHECK: define void @byval_tail_caller(%MyStruct* %ptr) {
-; CHECK: {{^}} call void @ext_byval_func(%MyStruct* %ptr.byval_copy)
+; CHECK: {{^}} call void @ext_byval_func(%MyStruct* noalias %ptr.byval_copy)
 
 
 define void @byval_invoke(%MyStruct* %ptr) {
@@ -53,7 +53,7 @@ lpad:
 ; CHECK: define void @byval_invoke(%MyStruct* %ptr) {
 ; CHECK: %ptr.byval_copy = alloca %MyStruct, align 32
 ; CHECK: call void @llvm.lifetime.start(i64 12, i8* %{{.*}})
-; CHECK: invoke void @ext_byval_func(%MyStruct* %ptr.byval_copy)
+; CHECK: invoke void @ext_byval_func(%MyStruct* noalias %ptr.byval_copy)
 ; CHECK: cont:
 ; CHECK: call void @llvm.lifetime.end(i64 12, i8* %{{.*}})
 ; CHECK: lpad:
@@ -64,7 +64,7 @@ lpad:
 
 ; Check that "align" is stripped for declarations too.
 declare void @ext_byval_func_align(%MyStruct* byval align 32)
-; CHECK: declare void @ext_byval_func_align(%MyStruct*)
+; CHECK: declare void @ext_byval_func_align(%MyStruct* noalias)
 
 define void @byval_caller_align_via_attr(%MyStruct* %ptr) {
   call void @ext_byval_func(%MyStruct* byval align 32 %ptr)
