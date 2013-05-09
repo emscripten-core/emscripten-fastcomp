@@ -5215,6 +5215,13 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     setValue(&I, DAG.getNode(ISD::NACL_TARGET_ARCH, dl, DestVT));
     return 0;
   }
+  // Native Client Intrinsics for setjmp/longjmp
+  case Intrinsic::nacl_setjmp: {
+    return "setjmp";
+  }
+  case Intrinsic::nacl_longjmp: {
+    return "longjmp";
+  }
   // @LOCALMOD-END
   }
 }

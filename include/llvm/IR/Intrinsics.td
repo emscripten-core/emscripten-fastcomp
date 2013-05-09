@@ -472,13 +472,11 @@ def int_convertuu  : Intrinsic<[llvm_anyint_ty],
 
 // @LOCALMOD-BEGIN
 //===----------------------- Native Client Intrinsics ---------------------===//
-// TODO(sehr): conditionalize this on IsNaCl64 | IsNaCl32 | IsNaClArm.
-// The expansions of these are in lib/Target/X86/X86InstrNacl.{td, cpp} and
-// lib/Target/ARM/ARMInstrInfo.td.
-def int_nacl_setjmp : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty, llvm_ptr_ty]>,
-                      GCCBuiltin<"__builtin_nacl_setjmp">;
-def int_nacl_longjmp : Intrinsic<[],  [llvm_ptr_ty, llvm_i32_ty]>,
-                       GCCBuiltin<"__builtin_nacl_longjmp">;
+// NaCl-specific setjmp/longjmp intrinsics.
+// See https://code.google.com/p/nativeclient/issues/detail?id=3429
+def int_nacl_setjmp   : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty]>;
+def int_nacl_longjmp  : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty],
+                                  [IntrNoReturn]>;
 
 // Fast built-in version of NaCl's tls_get() IRT interface.
 def int_nacl_read_tp : Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>,
