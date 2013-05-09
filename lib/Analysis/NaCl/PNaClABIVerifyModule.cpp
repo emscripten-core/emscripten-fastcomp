@@ -148,6 +148,16 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     // (2) Known to be never allowed.
     case Intrinsic::not_intrinsic:
     case Intrinsic::adjust_trampoline:
+    case Intrinsic::eh_dwarf_cfa:
+    case Intrinsic::eh_return_i32:
+    case Intrinsic::eh_return_i64:
+    case Intrinsic::eh_sjlj_callsite:
+    case Intrinsic::eh_sjlj_functioncontext:
+    case Intrinsic::eh_sjlj_longjmp:
+    case Intrinsic::eh_sjlj_lsda:
+    case Intrinsic::eh_sjlj_setjmp:
+    case Intrinsic::eh_typeid_for:
+    case Intrinsic::eh_unwind_init:
     case Intrinsic::init_trampoline:
     case Intrinsic::stackprotector:
     case Intrinsic::vacopy:
@@ -164,7 +174,6 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::cttz: // Support via compiler_rt if arch doesn't have it?
-    case Intrinsic::eh_dwarf_cfa: // For EH tests.
     case Intrinsic::exp: // Rounding not defined: support with fast-math?
     case Intrinsic::exp2: // Rounding not defined: support with fast-math?
     case Intrinsic::expect: // From __builtin_expect.
