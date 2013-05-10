@@ -208,13 +208,9 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
   if (TheTriple.isOSWindows()) {
     llvm_unreachable("ARM does not support Windows COFF format");
   }
-  // @LOCALMOD-BEGIN
-  MCStreamer *Streamer = createARMELFStreamer(Ctx, MAB, OS, Emitter, false,
-                           NoExecStack, TheTriple.getArch() == Triple::thumb);
-  if (TheTriple.isOSNaCl())
-    Streamer->EmitBundleAlignMode(4);
-  return Streamer;
-  // @LOCALMOD-END
+
+  return createARMELFStreamer(Ctx, MAB, OS, Emitter, false, NoExecStack,
+                              TheTriple.getArch() == Triple::thumb);
 }
 
 static MCInstPrinter *createARMMCInstPrinter(const Target &T,

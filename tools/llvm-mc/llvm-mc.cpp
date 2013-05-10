@@ -20,6 +20,7 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -453,6 +454,11 @@ int main(int argc, char **argv) {
     Str.reset(TheTarget->createMCObjectStreamer(TripleName, Ctx, *MAB,
                                                 FOS, CE, RelaxAll,
                                                 NoExecStack));
+    // @LOCALMOD-BEGIN
+    Triple T(TripleName);
+    if (T.isOSNaCl())
+      initializeNaClMCStreamer(*Str.get(), Ctx, T);
+    // @LOCALMOD-END
   }
 
   int Res = 1;

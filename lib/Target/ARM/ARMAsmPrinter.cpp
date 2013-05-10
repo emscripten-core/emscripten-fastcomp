@@ -40,6 +40,7 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstBuilder.h"
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCObjectStreamer.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
@@ -733,11 +734,15 @@ void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
     emitAttributes();
 
   // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
-    std::string str;
-    raw_string_ostream OS(str);
-    EmitSFIHeaders(OS);
-    OutStreamer.EmitRawText(StringRef(OS.str()));
+  if (Subtarget->isTargetNaCl()) {
+    if (OutStreamer.hasRawTextSupport()) {
+      std::string str;
+      raw_string_ostream OS(str);
+      EmitSFIHeaders(OS);
+      OutStreamer.EmitRawText(StringRef(OS.str()));
+    }
+    initializeNaClMCStreamer(OutStreamer, OutContext,
+                             Subtarget->getTargetTriple());
   }
   // @LOCALMOD-END
 }

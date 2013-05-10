@@ -31,6 +31,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
@@ -547,6 +548,11 @@ bool X86AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
 void X86AsmPrinter::EmitStartOfAsmFile(Module &M) {
   if (Subtarget->isTargetEnvMacho())
     OutStreamer.SwitchSection(getObjFileLowering().getTextSection());
+  // @LOCALMOD-BEGIN
+  if (Subtarget->isTargetNaCl())
+    initializeNaClMCStreamer(OutStreamer, OutContext,
+                             Subtarget->getTargetTriple());
+  // @LOCALMOD-END
 }
 
 

@@ -132,16 +132,7 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
                                     bool NoExecStack) {
   Triple TheTriple(TT);
 
-  // @LOCALMOD-BEGIN
-  if (TheTriple.isOSNaCl()) {
-    MCStreamer *Streamer = createMipsELFStreamer(Ctx, MAB, _OS, _Emitter,
-                                                 RelaxAll, NoExecStack);
-    Streamer->EmitBundleAlignMode(4);
-    return Streamer;
-  } else {
-    return createMipsELFStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll, NoExecStack);
-  }
-  // @LOCALMOD-END
+  return createMipsELFStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll, NoExecStack);
 }
 
 extern "C" void LLVMInitializeMipsTargetMC() {

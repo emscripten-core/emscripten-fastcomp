@@ -366,14 +366,7 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
   if (TheTriple.isOSWindows() && TheTriple.getEnvironment() != Triple::ELF)
     return createWinCOFFStreamer(Ctx, MAB, *_Emitter, _OS, RelaxAll);
 
-  // @LOCALMOD-BEGIN
-  MCStreamer *Streamer = createELFStreamer(Ctx, MAB, _OS, _Emitter,
-                                           RelaxAll, NoExecStack);
-  if (TheTriple.isOSNaCl())
-    Streamer->EmitBundleAlignMode(5);
-
-  return Streamer;
-  // @LOCALMOD-END
+  return createELFStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll, NoExecStack);
 }
 
 static MCInstPrinter *createX86MCInstPrinter(const Target &T,

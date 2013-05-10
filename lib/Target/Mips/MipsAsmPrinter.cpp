@@ -34,6 +34,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ELF.h"
@@ -568,11 +569,15 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
     OutStreamer.EmitRawText(StringRef("\t.previous"));
 
   // @LOCALMOD-START
-  if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
-    std::string str;
-    raw_string_ostream OS(str);
-    EmitMipsSFIHeaders(OS);
-    OutStreamer.EmitRawText(StringRef(OS.str()));
+  if (Subtarget->isTargetNaCl()) {
+    if (OutStreamer.hasRawTextSupport()) {
+      std::string str;
+      raw_string_ostream OS(str);
+      EmitMipsSFIHeaders(OS);
+      OutStreamer.EmitRawText(StringRef(OS.str()));
+    }
+    initializeNaClMCStreamer(OutStreamer, OutContext,
+                             Triple(Subtarget->getTargetTriple()));
   }
   // @LOCALMOD-END
 }
