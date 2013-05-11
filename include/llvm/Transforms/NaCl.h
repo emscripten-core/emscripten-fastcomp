@@ -28,6 +28,7 @@ ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
+FunctionPass *createPromoteIntegersPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createStripMetadataPass();
 FunctionPass *createInsertDivideCheckPass();

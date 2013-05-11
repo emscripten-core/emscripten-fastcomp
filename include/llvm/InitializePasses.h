@@ -290,6 +290,7 @@ void initializeInsertDivideCheckPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
+void initializePromoteIntegersPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 // @LOCALMOD-END

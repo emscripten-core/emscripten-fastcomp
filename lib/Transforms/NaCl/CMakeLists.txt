@@ -10,6 +10,7 @@ add_llvm_library(LLVMNaClTransforms
   InsertDivideCheck.cpp
   FlattenGlobals.cpp
   GlobalCleanup.cpp
+  PromoteIntegers.cpp
   StripMetadata.cpp
   )
 
