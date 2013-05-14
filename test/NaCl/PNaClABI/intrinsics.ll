@@ -14,11 +14,9 @@
 declare void @llvm.dbg.value(metadata, i64, metadata)
 
 ; CHECK: Function llvm.frameaddress is a disallowed LLVM intrinsic
-; DEV-NOT: Function llvm.frameaddress is a disallowed LLVM intrinsic
 declare i8* @llvm.frameaddress(i32 %level)
 
 ; CHECK: Function llvm.returnaddress is a disallowed LLVM intrinsic
-; DEV-NOT: Function llvm.returnaddress is a disallowed LLVM intrinsic
 declare i8* @llvm.returnaddress(i32 %level)
 
 ; ===================================
