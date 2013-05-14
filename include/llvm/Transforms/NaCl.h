@@ -30,6 +30,7 @@ ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 FunctionPass *createPromoteIntegersPass();
 ModulePass *createResolveAliasesPass();
+ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripMetadataPass();
 FunctionPass *createInsertDivideCheckPass();
 

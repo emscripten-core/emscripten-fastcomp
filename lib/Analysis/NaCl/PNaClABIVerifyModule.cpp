@@ -143,6 +143,8 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::memmove:
     case Intrinsic::memset:
     case Intrinsic::nacl_read_tp:
+    case Intrinsic::nacl_setjmp:
+    case Intrinsic::nacl_longjmp:
     case Intrinsic::trap:
       return true;
 

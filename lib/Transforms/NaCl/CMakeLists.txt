@@ -11,6 +11,7 @@ add_llvm_library(LLVMNaClTransforms
   FlattenGlobals.cpp
   GlobalCleanup.cpp
   PromoteIntegers.cpp
+  RewritePNaClLibraryCalls.cpp
   StripMetadata.cpp
   )
 

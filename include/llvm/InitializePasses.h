@@ -292,6 +292,7 @@ void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
 void initializePromoteIntegersPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);
+void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 // @LOCALMOD-END
 }
