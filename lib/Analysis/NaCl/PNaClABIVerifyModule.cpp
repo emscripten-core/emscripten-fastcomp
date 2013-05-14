@@ -129,7 +129,8 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
   // (2) Never allowed
   // (3) "Dev" intrinsics, which may or may not be allowed.
   // "Dev" intrinsics are controlled by the PNaClABIAllowDevIntrinsics flag.
-  // Please keep these sorted within each category.
+  // Please keep these sorted or grouped in a sensible way, within
+  // each category.
   switch(ID) {
     // Disallow by default.
     default: return false;
@@ -147,7 +148,10 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
 
     // (2) Known to be never allowed.
     case Intrinsic::not_intrinsic:
+    // Trampolines depend on a target-specific-sized/aligned buffer.
     case Intrinsic::adjust_trampoline:
+    case Intrinsic::init_trampoline:
+    // CXX exception handling is not stable.
     case Intrinsic::eh_dwarf_cfa:
     case Intrinsic::eh_return_i32:
     case Intrinsic::eh_return_i64:
@@ -158,8 +162,12 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::eh_sjlj_setjmp:
     case Intrinsic::eh_typeid_for:
     case Intrinsic::eh_unwind_init:
-    case Intrinsic::init_trampoline:
+    // We do not want to expose addresses to the user.
+    case Intrinsic::frameaddress:
+    case Intrinsic::returnaddress:
+    // Not supporting stack protectors.
     case Intrinsic::stackprotector:
+    // Var-args handling is done w/out intrinsics.
     case Intrinsic::vacopy:
     case Intrinsic::vaend:
     case Intrinsic::vastart:
@@ -178,7 +186,6 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::exp2: // Rounding not defined: support with fast-math?
     case Intrinsic::expect: // From __builtin_expect.
     case Intrinsic::flt_rounds:
-    case Intrinsic::frameaddress: // Support for 0-level or not?
     case Intrinsic::log: // Rounding not defined: support with fast-math?
     case Intrinsic::log2: // Rounding not defined: support with fast-math?
     case Intrinsic::log10: // Rounding not defined: support with fast-math?
@@ -186,7 +193,6 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::pow: // Rounding is supposed to be the same as libm.
     case Intrinsic::powi: // Rounding not defined: support with fast-math?
     case Intrinsic::prefetch: // Could ignore if target doesn't support?
-    case Intrinsic::returnaddress: // Support for 0-level or not?
     case Intrinsic::sin: // Rounding not defined: support with fast-math?
     case Intrinsic::sqrt:
     case Intrinsic::stackrestore: // Used to support C99 VLAs.
