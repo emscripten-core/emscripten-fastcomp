@@ -1,8 +1,9 @@
 ; RUN: opt < %s -nacl-expand-tls -S | FileCheck %s
 
 ; All thread-local variables should be removed
-; RUN: opt < %s -nacl-expand-tls -S | not grep thread_local
+; RUN: opt < %s -nacl-expand-tls -S | FileCheck %s -check-prefix=NO_TLS
 
+; NO_TLS-NOT: thread_local
 
 @tvar1 = thread_local global i64 123
 @tvar2 = thread_local global i32 456
@@ -73,7 +74,7 @@ define i32 @test_get_tp_tls_offset(i32 %tls_size) {
 ; Uses of the intrinsic are replaced with uses of a regular function.
 ; CHECK: define i32 @test_get_tp_tls_offset
 ; CHECK: call i32 @nacl_tp_tls_offset
-; RUN: opt < %s -nacl-expand-tls -S | not grep llvm.nacl.tp.tls.offset
+; NO_TLS-NOT: llvm.nacl.tp.tls.offset
 
 define i32 @test_get_tp_tdb_offset(i32 %tdb_size) {
   %offset = call i32 @llvm.nacl.tp.tdb.offset(i32 %tdb_size)
@@ -82,4 +83,4 @@ define i32 @test_get_tp_tdb_offset(i32 %tdb_size) {
 ; Uses of the intrinsic are replaced with uses of a regular function.
 ; CHECK: define i32 @test_get_tp_tdb_offset
 ; CHECK: call i32 @nacl_tp_tdb_offset
-; RUN: opt < %s -nacl-expand-tls -S | not grep llvm.nacl.tp.tdb.offset
+; NO_TLS-NOT: llvm.nacl.tp.tdb.offset

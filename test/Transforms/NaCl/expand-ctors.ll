@@ -1,7 +1,8 @@
 ; We expect these symbol names to be removed:
-; RUN: opt < %s -nacl-expand-ctors -S | not grep llvm.global_ctors
-; RUN: opt < %s -nacl-expand-ctors -S | not grep __init_array_end
-; RUN: opt < %s -nacl-expand-ctors -S | not grep __fini_array_end
+; RUN: opt < %s -nacl-expand-ctors -S | FileCheck %s -check-prefix=NO_CTORS
+; NO_CTORS-NOT: llvm.global.ctors
+; NO_CTORS-NOT: __init_array_end
+; NO_CTORS-NOT: __fini_array_end
 
 ; RUN: opt < %s -nacl-expand-ctors -S | FileCheck %s
 
