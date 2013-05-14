@@ -24,7 +24,7 @@ bool PNaClABITypeChecker::isValidType(const Type *Ty) {
   if (VisitedTypes.count(Ty))
     return VisitedTypes[Ty];
 
-  unsigned Width;
+  // unsigned Width;
   bool Valid = false;
   switch (Ty->getTypeID()) {
     // Allowed primitive types

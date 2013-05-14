@@ -440,7 +440,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     if (shouldConvert(Store->getValueOperand())) {
       splitStore(Store, State);
     }
-  } else if (CallInst *Call = dyn_cast<CallInst>(Inst)) {
+  } else if (isa<CallInst>(Inst)) {
     report_fatal_error("can't convert calls with illegal types");
   } else if (BinaryOperator *Binop = dyn_cast<BinaryOperator>(Inst)) {
     Value *NewInst = NULL;
