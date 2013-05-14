@@ -29,6 +29,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
@@ -233,17 +234,7 @@ static PointerType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
 static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
                            PointerType *TemplatePtrType) {
   // Set up the intrinsic that reads the thread pointer.
-  Type *i8 = Type::getInt8Ty(M.getContext());
-  FunctionType *ReadTpType = FunctionType::get(PointerType::get(i8, 0),
-                                               /*isVarArg=*/false);
-  AttrBuilder B;
-  B.addAttribute(Attribute::ReadOnly);
-  B.addAttribute(Attribute::NoUnwind);
-  AttributeSet ReadTpAttrs = AttributeSet::get(
-      M.getContext(), AttributeSet::FunctionIndex, B);
-  Constant *ReadTpFunc = M.getOrInsertTargetIntrinsic("llvm.nacl.read.tp",
-                                                      ReadTpType,
-                                                      ReadTpAttrs);
+  Function *ReadTpFunc = Intrinsic::getDeclaration(&M, Intrinsic::nacl_read_tp);
 
   for (std::vector<VarInfo>::iterator VarInfo = TlsVars->begin();
        VarInfo != TlsVars->end();
