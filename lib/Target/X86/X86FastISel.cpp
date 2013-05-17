@@ -676,10 +676,11 @@ bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
   // If all else fails, try to materialize the value in a register.
   if (!AM.GV || !Subtarget->isPICStyleRIPRel()) {
     // @LOCALMOD-START
-    if (Subtarget->isTargetNaCl()) {
-      // We can materialize into a memory address only if
-      // no registers have been defined (and hence, we
-      // aren't modifying an existing memory reference).
+    if (Subtarget->isTargetNaCl64()) {
+      // We are about use a register in an addressing mode. However, x86-64
+      // NaCl does not allow arbitrary r+r addressing. One of the regs must
+      // be %r15 (inserted by the NaClRewritePass). Check that we will only
+      // end up with one reg defined after this.
       if ((AM.Base.Reg == 0) && (AM.IndexReg == 0)) {
         // Put into index register so that the NaCl rewrite pass will
         // convert this to a 64-bit address.

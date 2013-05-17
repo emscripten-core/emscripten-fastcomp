@@ -1,6 +1,7 @@
 ; RUN: llc < %s -mtriple=x86_64-linux -O0 | FileCheck %s --check-prefix=X64
 ; RUN: llc < %s -mtriple=x86_64-win32 -O0 | FileCheck %s --check-prefix=X64
 ; RUN: llc < %s -march=x86 -O0 | FileCheck %s --check-prefix=X32
+; RUN: llc < %s -mtriple=i686-nacl -march=x86 -O0 | FileCheck %s --check-prefix=NACL32
 
 ; GEP indices are interpreted as signed integers, so they
 ; should be sign-extended to 64 bits on 64-bit targets.
@@ -18,6 +19,11 @@ define i32 @test1(i32 %t3, i32* %t1) nounwind {
 ; X64:  	movl	(%r[[A1:si|dx]],%rax,4), %eax
 ; X64:  	ret
 
+; NACL32: test1:
+; NACL32:   movl (%e{{.*}},%e{{.*}},4), %eax
+; NACL32:   popl %ecx
+; NACL32:   nacljmp %ecx
+
 }
 define i32 @test2(i64 %t3, i32* %t1) nounwind {
        %t9 = getelementptr i32* %t1, i64 %t3           ; <i32*> [#uses=1]
@@ -30,6 +36,10 @@ define i32 @test2(i64 %t3, i32* %t1) nounwind {
 ; X64: test2:
 ; X64:  	movl	(%r[[A1]],%r[[A0]],4), %eax
 ; X64:  	ret
+
+; NACL32: test2:
+; NACL32:   movl (%e{{.*}},%e{{.*}},4), %e
+
 }
 
 
@@ -51,6 +61,10 @@ entry:
 ; X64:  	movb	-2(%r[[A0]]), %al
 ; X64:  	ret
 
+; NACL32: test3:
+; NACL32:   movl 4(%esp), %[[REG:e..]]
+; NACL32:   movb -2(%{{.*}}[[REG]]), %al
+
 }
 
 define double @test4(i64 %x, double* %p) nounwind {
@@ -70,6 +84,8 @@ entry:
 ; X32: 128(%e{{.*}},%e{{.*}},8)
 ; X64: test4:
 ; X64: 128(%r{{.*}},%r{{.*}},8)
+; NACL32: test4:
+; NACL32: 128(%e{{.*}},%e{{.*}},8)
 }
 
 ; PR8961 - Make sure the sext for the GEP addressing comes before the load that
