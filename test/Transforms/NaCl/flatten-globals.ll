@@ -91,6 +91,26 @@ target datalayout = "p:32:32:32"
 ; CHECK: @aligned_var = global [4 x i8] c"\04\01\00\00", align 8
 
 
+; Check alignment handling
+
+@implicit_alignment_i32 = global i32 zeroinitializer
+; CHECK: @implicit_alignment_i32 = global [4 x i8] zeroinitializer, align 4
+
+@implicit_alignment_double = global double zeroinitializer
+; CHECK: @implicit_alignment_double = global [8 x i8] zeroinitializer, align 8
+
+; FlattenGlobals is not allowed to increase the alignment of the
+; variable when an explicit section is specified (although PNaCl does
+; not support this attribute).
+@lower_alignment_section = global i32 0, section "mysection", align 1
+; CHECK: @lower_alignment_section = global [4 x i8] zeroinitializer, section "mysection", align 1
+
+; FlattenGlobals could increase the alignment when no section is
+; specified, but it does not.
+@lower_alignment = global i32 0, align 1
+; CHECK: @lower_alignment = global [4 x i8] zeroinitializer, align 1
+
+
 ; Check handling of global references
 
 @var1 = external global i32
