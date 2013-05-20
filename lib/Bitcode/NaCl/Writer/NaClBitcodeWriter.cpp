@@ -233,12 +233,22 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
                        4 /*count from # abbrevs */);
   SmallVector<uint64_t, 64> TypeVals;
 
+  // Note: modify to use maximum number of bits if under cutoff. Otherwise,
+  // use VBR to take advantage that frequently referenced types have
+  // small IDs.
+  //
+  // Note: Cutoff chosen based on experiments on pnacl-translate.pexe.
   uint64_t NumBits = Log2_32_Ceil(VE.getTypes().size()+1);
+  static const uint64_t TypeVBRCutoff = 6;
+  uint64_t TypeIdNumBits = (NumBits <= TypeVBRCutoff ? NumBits : TypeVBRCutoff);
+  NaClBitCodeAbbrevOp::Encoding TypeIdEncoding =
+      (NumBits <= TypeVBRCutoff
+       ? NaClBitCodeAbbrevOp::Fixed : NaClBitCodeAbbrevOp::VBR);
 
   // Abbrev for TYPE_CODE_POINTER.
   NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_POINTER));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
   Abbv->Add(NaClBitCodeAbbrevOp(0));  // Addrspace = 0
   unsigned PtrAbbrev = Stream.EmitAbbrev(Abbv);
 
@@ -247,7 +257,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_FUNCTION));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // isvararg
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
 
   unsigned FunctionAbbrev = Stream.EmitAbbrev(Abbv);
 
@@ -256,7 +266,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_ANON));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // ispacked
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
 
   unsigned StructAnonAbbrev = Stream.EmitAbbrev(Abbv);
 
@@ -272,7 +282,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_NAMED));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // ispacked
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
 
   unsigned StructNamedAbbrev = Stream.EmitAbbrev(Abbv);
 
@@ -280,7 +290,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Abbv = new NaClBitCodeAbbrev();
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_ARRAY));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));   // size
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
 
   unsigned ArrayAbbrev = Stream.EmitAbbrev(Abbv);
 

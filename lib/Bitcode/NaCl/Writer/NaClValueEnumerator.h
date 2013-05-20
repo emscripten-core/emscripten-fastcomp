@@ -42,8 +42,17 @@ public:
   // For each value, we remember its Value* and occurrence frequency.
   typedef std::vector<std::pair<const Value*, unsigned> > ValueList;
 private:
+  // Defines unique ID's for each type.
   typedef DenseMap<Type*, unsigned> TypeMapType;
   TypeMapType TypeMap;
+  // Defines the number of references to each type. If defined,
+  // we are in the first pass of collecting types, and reference counts
+  // should be added to the map. If undefined, we are in the second pass
+  // that actually assigns type IDs, based on frequency counts found in
+  // the first pass.
+  typedef TypeMapType TypeCountMapType;
+  TypeCountMapType* TypeCountMap;
+
   TypeList Types;
 
   typedef DenseMap<const Value*, unsigned> ValueMapType;
@@ -152,6 +161,7 @@ public:
   void purgeFunction();
 
 private:
+  void OptimizeTypes(const Module *M);
   void OptimizeConstants(unsigned CstStart, unsigned CstEnd);
 
   void EnumerateMDNodeOperands(const MDNode *N);
@@ -159,7 +169,7 @@ private:
   void EnumerateFunctionLocalMetadata(const MDNode *N);
   void EnumerateNamedMDNode(const NamedMDNode *NMD);
   void EnumerateValue(const Value *V);
-  void EnumerateType(Type *T);
+  void EnumerateType(Type *T, bool InsideOptimizeTypes=false);
   void EnumerateOperandType(const Value *V);
   void EnumerateAttributes(AttributeSet PAL);
 

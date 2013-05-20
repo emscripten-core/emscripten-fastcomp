@@ -23,6 +23,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
+#include <set>
+
 using namespace llvm;
 
 static bool isIntOrIntVectorValue(const std::pair<const Value*, unsigned> &V) {
@@ -31,6 +33,15 @@ static bool isIntOrIntVectorValue(const std::pair<const Value*, unsigned> &V) {
 
 /// NaClValueEnumerator - Enumerate module-level information.
 NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
+  // Create map for counting frequency of types, and set field
+  // TypeCountMap accordingly.  Note: Pointer field TypeCountMap is
+  // used to deal with the fact that types are added through various
+  // method calls in this routine. Rather than pass it as an argument,
+  // we use a field. The field is a pointer so that the memory
+  // footprint of count_map can be garbage collected when this
+  // constructor completes.
+  TypeCountMapType count_map;
+  TypeCountMap = &count_map;
   // Enumerate the global variables.
   for (Module::const_global_iterator I = M->global_begin(),
          E = M->global_end(); I != E; ++I)
@@ -61,7 +72,7 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
        I != E; ++I)
     EnumerateValue(I->getAliasee());
 
-  // Insert constants and metadata that are named at module level into the slot 
+  // Insert constants and metadata that are named at module level into the slot
   // pool so that the module symbol table can refer to them...
   EnumerateValueSymbolTable(M->getValueSymbolTable());
   EnumerateNamedMetadata(M);
@@ -106,8 +117,45 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
       }
   }
 
+  // Optimized type indicies to put "common" expected types in with small
+  // indices.
+  OptimizeTypes(M);
+  TypeCountMap = NULL;
+
   // Optimize constant ordering.
   OptimizeConstants(FirstConstant, Values.size());
+}
+
+void NaClValueEnumerator::OptimizeTypes(const Module *M) {
+
+  // Sort types by count, so that we can index them based on
+  // frequency. Use indices of built TypeMap, so that order of
+  // construction is repeatable.
+  std::set<unsigned> type_counts;
+  typedef std::set<unsigned> TypeSetType;
+  std::map<unsigned, TypeSetType> usage_count_map;
+  TypeList IdType(Types);
+
+  for (TypeCountMapType::iterator iter = TypeCountMap->begin();
+       iter != TypeCountMap->end(); ++ iter) {
+    type_counts.insert(iter->second);
+    usage_count_map[iter->second].insert(TypeMap[iter->first]-1);
+  }
+
+  // Reset type tracking maps, so that we can re-enter based
+  // on fequency ordering.
+  TypeCountMap = NULL;
+  Types.clear();
+  TypeMap.clear();
+
+  // Reinsert types, based on frequency.
+  for (std::set<unsigned>::reverse_iterator count_iter = type_counts.rbegin();
+       count_iter != type_counts.rend(); ++count_iter) {
+    TypeSetType& count_types = usage_count_map[*count_iter];
+    for (TypeSetType::iterator type_iter = count_types.begin();
+         type_iter != count_types.end(); ++type_iter)
+      EnumerateType((IdType[*type_iter]), true);
+  }
 }
 
 unsigned NaClValueEnumerator::getInstructionID(const Instruction *Inst) const {
@@ -351,8 +399,25 @@ void NaClValueEnumerator::EnumerateValue(const Value *V) {
 }
 
 
-void NaClValueEnumerator::EnumerateType(Type *Ty) {
+void NaClValueEnumerator::EnumerateType(Type *Ty, bool InsideOptimizeTypes) {
+  // This function is used to enumerate types referenced by the given
+  // module. This function is called in two phases, based on the value
+  // of TypeCountMap. These phases are:
+  //
+  // (1) In this phase, InsideOptimizeTypes=false. We are collecting types
+  // and all corresponding (implicitly) referenced types. In addition,
+  // we are keeping track of the number of references to each type in
+  // TypeCountMap. These reference counts will be used by method
+  // OptimizeTypes to associate the smallest type ID's with the most
+  // referenced types.
+  //
+  // (2) In this phase, InsideOptimizeTypes=true. We are registering types
+  // based on frequency. To minimize type IDs for frequently used
+  // types, (unlike the other context) we are inserting the minimal
+  // (implicitly) referenced types needed for each type.
   unsigned *TypeID = &TypeMap[Ty];
+
+  if (TypeCountMap) ++((*TypeCountMap)[Ty]);
 
   // We've already seen this type.
   if (*TypeID)
@@ -365,11 +430,24 @@ void NaClValueEnumerator::EnumerateType(Type *Ty) {
     if (!STy->isLiteral())
       *TypeID = ~0U;
 
+  // If in the second phase (i.e. inside optimize types), don't expand
+  // pointers to structures, since we can just generate a forward
+  // reference to it. This way, we don't use up unnecessary (small) ID
+  // values just to define the pointer.
+  bool EnumerateSubtypes = true;
+  if (InsideOptimizeTypes)
+    if (PointerType *PTy = dyn_cast<PointerType>(Ty))
+      if (StructType *STy = dyn_cast<StructType>(PTy->getElementType()))
+        if (!STy->isLiteral())
+          EnumerateSubtypes = false;
+
   // Enumerate all of the subtypes before we enumerate this type.  This ensures
   // that the type will be enumerated in an order that can be directly built.
-  for (Type::subtype_iterator I = Ty->subtype_begin(), E = Ty->subtype_end();
-       I != E; ++I)
-    EnumerateType(*I);
+  if (EnumerateSubtypes) {
+    for (Type::subtype_iterator I = Ty->subtype_begin(), E = Ty->subtype_end();
+         I != E; ++I)
+      EnumerateType(*I, InsideOptimizeTypes);
+  }
 
   // Refresh the TypeID pointer in case the table rehashed.
   TypeID = &TypeMap[Ty];
@@ -538,4 +616,3 @@ unsigned NaClValueEnumerator::getGlobalBasicBlockID(const BasicBlock *BB) const 
   IncorporateFunctionInfoGlobalBBIDs(BB->getParent(), GlobalBasicBlockIDs);
   return getGlobalBasicBlockID(BB);
 }
-
