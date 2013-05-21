@@ -327,6 +327,11 @@ static int compileModule(char **argv, LLVMContext &Context) {
       CheckABIVerifyErrors(ABIErrorReporter, "Module");
     }
 #if defined(__native_client__) && defined(NACL_SRPC)
+    // Record that this isn't a shared library.
+    // TODO(eliben): clean this up more once the pnacl-llc switch-over is
+    // working.
+    NaClRecordObjectInformation(false, mod->getSOName());
+
     // To determine if we should compile PIC or not, we needed to load at
     // least the metadata. Since we've already constructed the commandline,
     // we have to hack this in after commandline processing.
