@@ -62,9 +62,9 @@ class PNaClABIVerifyModule : public ModulePass {
   bool runOnModule(Module &M);
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
-  void CheckGlobalValueCommon(const GlobalValue *GV);
-  bool IsWhitelistedIntrinsic(const Function* F, unsigned ID);
-  bool IsWhitelistedMetadata(const NamedMDNode *MD);
+  void checkGlobalValueCommon(const GlobalValue *GV);
+  bool isWhitelistedIntrinsic(const Function *F, unsigned ID);
+  bool isWhitelistedMetadata(const NamedMDNode *MD);
   PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
@@ -100,7 +100,7 @@ static const char *linkageName(GlobalValue::LinkageTypes LT) {
 
 // Check linkage type and section attributes, which are the same for
 // GlobalVariables and Functions.
-void PNaClABIVerifyModule::CheckGlobalValueCommon(const GlobalValue *GV) {
+void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
   assert(!isa<GlobalAlias>(GV));
   const char *GVTypeName = isa<GlobalVariable>(GV) ?
       "Variable " : "Function ";
@@ -122,7 +122,32 @@ void PNaClABIVerifyModule::CheckGlobalValueCommon(const GlobalValue *GV) {
   }
 }
 
-bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
+static bool TypeAcceptable(const Type *T,
+                           const ArrayRef<Type*> &AcceptableTypes) {
+  for (ArrayRef<Type*>::iterator I = AcceptableTypes.begin(),
+       E = AcceptableTypes.end(); I != E; ++I)
+    if (*I == T)
+      return true;
+  return false;
+}
+
+// We accept bswap for a limited set of types (i16, i32, i64).
+// The various backends are able to generate instructions to
+// implement the intrinsic.  Also, i16 and i64 are easy to
+// implement as along as there is a way to do i32.
+static bool isWhitelistedBswap(const Function *F) {
+  FunctionType *FT = F->getFunctionType();
+  if (FT->getNumParams() != 1)
+    return false;
+  Type *ParamType = FT->getParamType(0);
+  LLVMContext &C = F->getContext();
+  Type *AcceptableTypes[] = { Type::getInt16Ty(C),
+                              Type::getInt32Ty(C),
+                              Type::getInt64Ty(C) };
+  return TypeAcceptable(ParamType, AcceptableTypes);
+}
+
+bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
                                                   unsigned ID) {
   // Keep 3 categories of intrinsics for now.
   // (1) Allowed always
@@ -135,6 +160,7 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     // Disallow by default.
     default: return false;
     // (1) Always allowed.
+    case Intrinsic::bswap: return isWhitelistedBswap(F);
     case Intrinsic::invariant_end:
     case Intrinsic::invariant_start:
     case Intrinsic::lifetime_end:
@@ -179,7 +205,6 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::dbg_declare:
     case Intrinsic::dbg_value:
       return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
-    case Intrinsic::bswap: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::cos: // Rounding not defined: support with fast-math?
     case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
@@ -187,7 +212,9 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::exp: // Rounding not defined: support with fast-math?
     case Intrinsic::exp2: // Rounding not defined: support with fast-math?
     case Intrinsic::expect: // From __builtin_expect.
-    case Intrinsic::flt_rounds:
+    case Intrinsic::flt_rounds: // For FLT_ROUNDS macro from float.h.
+      // We do not have fesetround() in newlib, can we return a
+      // consistent rounding mode though?
     case Intrinsic::log: // Rounding not defined: support with fast-math?
     case Intrinsic::log2: // Rounding not defined: support with fast-math?
     case Intrinsic::log10: // Rounding not defined: support with fast-math?
@@ -196,9 +223,9 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
     case Intrinsic::powi: // Rounding not defined: support with fast-math?
     case Intrinsic::prefetch: // Could ignore if target doesn't support?
     case Intrinsic::sin: // Rounding not defined: support with fast-math?
-    case Intrinsic::sqrt:
+    case Intrinsic::sqrt: // Rounding is defined, but setting errno up to libm.
     case Intrinsic::stackrestore: // Used to support C99 VLAs.
-    case Intrinsic::stacksave:
+    case Intrinsic::stacksave: // Used to support C99 VLAs.
     // the *_with_overflow return struct types, so we'll need to fix these.
     case Intrinsic::sadd_with_overflow: // Introduced by -ftrapv
     case Intrinsic::ssub_with_overflow:
@@ -210,7 +237,7 @@ bool PNaClABIVerifyModule::IsWhitelistedIntrinsic(const Function* F,
   }
 }
 
-bool PNaClABIVerifyModule::IsWhitelistedMetadata(const NamedMDNode* MD) {
+bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) {
   return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
 }
 
@@ -234,7 +261,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       }
     }
 
-    CheckGlobalValueCommon(MI);
+    checkGlobalValueCommon(MI);
 
     if (MI->isThreadLocal()) {
       Reporter->addError() << "Variable " << MI->getName() <<
@@ -252,7 +279,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
     // Check intrinsics.
     if (MI->isIntrinsic()
-        && !IsWhitelistedIntrinsic(MI, MI->getIntrinsicID())) {
+        && !isWhitelistedIntrinsic(MI, MI->getIntrinsicID())) {
       Reporter->addError() << "Function " << MI->getName()
                            << " is a disallowed LLVM intrinsic\n";
     }
@@ -279,7 +306,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
           " is a variable-argument function (disallowed)\n";
     }
 
-    CheckGlobalValueCommon(MI);
+    checkGlobalValueCommon(MI);
 
     if (MI->hasGC()) {
       Reporter->addError() << "Function " << MI->getName() <<
@@ -290,7 +317,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   // Check named metadata nodes
   for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
            E = M.named_metadata_end(); I != E; ++I) {
-    if (!IsWhitelistedMetadata(I)) {
+    if (!isWhitelistedMetadata(I)) {
       Reporter->addError() << "Named metadata node " << I->getName()
                            << " is disallowed\n";
     } else {

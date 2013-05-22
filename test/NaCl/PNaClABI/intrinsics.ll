@@ -28,6 +28,7 @@ declare void @llvm.lifetime.start(i64, i8* nocapture)
 
 ; CHECK-NOT: Function llvm.lifetime.start is a disallowed LLVM intrinsic
 declare void @llvm.lifetime.end(i64, i8* nocapture)
+
 ; CHECK-NOT: Function llvm.memcpy.p0i8.p0i8.i32 is a disallowed LLVM intrinsic
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src,
                                         i32 %len, i32 %align, i1 %isvolatile)
@@ -37,8 +38,18 @@ declare void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src,
 ; CHECK-NOT: Function llvm.nacl.read.tp is a disallowed LLVM intrinsic
 declare i8* @llvm.nacl.read.tp()
 
+; CHECK-NOT: Function llvm.bswap.16 is a disallowed LLVM intrinsic
+declare i16 @llvm.bswap.16(i16)
+
+; CHECK-NOT: Function llvm.bswap.32 is a disallowed LLVM intrinsic
+declare i32 @llvm.bswap.32(i32)
+
+; CHECK-NOT: Function llvm.bswap.64 is a disallowed LLVM intrinsic
+declare i64 @llvm.bswap.64(i64)
+
 ; ===================================
 ; Always disallowed intrinsics.
+
 ; CHECK: Function llvm.adjust.trampoline is a disallowed LLVM intrinsic
 ; DBG: Function llvm.adjust.trampoline is a disallowed LLVM intrinsic
 ; DEV: Function llvm.adjust.trampoline is a disallowed LLVM intrinsic
@@ -58,3 +69,9 @@ declare <2 x i64> @llvm.x86.aesni.aeskeygenassist(<2 x i64>, i8)
 ; DBG: Function llvm.va_copy is a disallowed LLVM intrinsic
 ; DEV: Function llvm.va_copy is a disallowed LLVM intrinsic
 declare void @llvm.va_copy(i8*, i8*)
+
+; CHECK: Function llvm.bswap.1 is a disallowed LLVM intrinsic
+declare i1 @llvm.bswap.1(i1)
+
+; CHECK: Function llvm.bswap.8 is a disallowed LLVM intrinsic
+declare i8 @llvm.bswap.8(i8)
