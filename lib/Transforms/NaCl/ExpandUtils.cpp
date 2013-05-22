@@ -38,3 +38,8 @@ void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
     U->getUser()->replaceUsesOfWith(U->get(), NewVal);
   }
 }
+
+Instruction *llvm::CopyDebug(Instruction *NewInst, Instruction *Original) {
+  NewInst->setDebugLoc(Original->getDebugLoc());
+  return NewInst;
+}

@@ -29,6 +29,7 @@ ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 FunctionPass *createPromoteIntegersPass();
+ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripMetadataPass();
@@ -36,6 +37,9 @@ FunctionPass *createInsertDivideCheckPass();
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);
+
+// Copy debug information from Original to NewInst, and return NewInst.
+Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
 
 }
 

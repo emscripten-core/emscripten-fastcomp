@@ -65,11 +65,6 @@ INITIALIZE_PASS(ExpandVarArgs, "expand-varargs",
                 "Expand out variable argument function definitions and calls",
                 false, false)
 
-static Instruction *CopyDebug(Instruction *NewInst, Instruction *Original) {
-  NewInst->setDebugLoc(Original->getDebugLoc());
-  return NewInst;
-}
-
 static void ExpandVarArgFunc(Function *Func) {
   Type *PtrType = Type::getInt8PtrTy(Func->getContext());
 
