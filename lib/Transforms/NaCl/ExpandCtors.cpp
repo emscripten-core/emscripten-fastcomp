@@ -73,6 +73,39 @@ static bool compareEntries(FuncArrayEntry Entry1, FuncArrayEntry Entry2) {
   return Entry1.priority < Entry2.priority;
 }
 
+static void readFuncList(GlobalVariable *Array, std::vector<Constant*> *Funcs) {
+  if (!Array->hasInitializer())
+    return;
+  Constant *Init = Array->getInitializer();
+  ArrayType *Ty = dyn_cast<ArrayType>(Init->getType());
+  if (!Ty) {
+    errs() << "Initializer: " << *Array->getInitializer() << "\n";
+    report_fatal_error("ExpandCtors: Initializer is not of array type");
+  }
+  if (Ty->getNumElements() == 0)
+    return;
+  ConstantArray *InitList = dyn_cast<ConstantArray>(Init);
+  if (!InitList) {
+    errs() << "Initializer: " << *Array->getInitializer() << "\n";
+    report_fatal_error("ExpandCtors: Unexpected initializer ConstantExpr");
+  }
+  std::vector<FuncArrayEntry> FuncsToSort;
+  for (unsigned Index = 0; Index < InitList->getNumOperands(); ++Index) {
+    ConstantStruct *CS = cast<ConstantStruct>(InitList->getOperand(Index));
+    FuncArrayEntry Entry;
+    Entry.priority = cast<ConstantInt>(CS->getOperand(0))->getZExtValue();
+    Entry.func = CS->getOperand(1);
+    FuncsToSort.push_back(Entry);
+  }
+
+  std::sort(FuncsToSort.begin(), FuncsToSort.end(), compareEntries);
+  for (std::vector<FuncArrayEntry>::iterator Iter = FuncsToSort.begin();
+       Iter != FuncsToSort.end();
+       ++Iter) {
+    Funcs->push_back(Iter->func);
+  }
+}
+
 static void defineFuncArray(Module &M, const char *LlvmArrayName,
                             const char *StartSymbol,
                             const char *EndSymbol) {
@@ -80,24 +113,7 @@ static void defineFuncArray(Module &M, const char *LlvmArrayName,
 
   GlobalVariable *Array = M.getNamedGlobal(LlvmArrayName);
   if (Array) {
-    if (Array->hasInitializer() && !Array->getInitializer()->isNullValue()) {
-      ConstantArray *InitList = cast<ConstantArray>(Array->getInitializer());
-      std::vector<FuncArrayEntry> FuncsToSort;
-      for (unsigned Index = 0; Index < InitList->getNumOperands(); ++Index) {
-        ConstantStruct *CS = cast<ConstantStruct>(InitList->getOperand(Index));
-        FuncArrayEntry Entry;
-        Entry.priority = cast<ConstantInt>(CS->getOperand(0))->getZExtValue();
-        Entry.func = CS->getOperand(1);
-        FuncsToSort.push_back(Entry);
-      }
-
-      std::sort(FuncsToSort.begin(), FuncsToSort.end(), compareEntries);
-      for (std::vector<FuncArrayEntry>::iterator Iter = FuncsToSort.begin();
-           Iter != FuncsToSort.end();
-           ++Iter) {
-        Funcs.push_back(Iter->func);
-      }
-    }
+    readFuncList(Array, &Funcs);
     // No code should be referencing global_ctors/global_dtors,
     // because this symbol is internal to LLVM.
     Array->eraseFromParent();
