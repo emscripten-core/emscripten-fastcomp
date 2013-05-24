@@ -22,6 +22,7 @@
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h" // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/DebugInfo.h"
 #include "llvm/IR/DataLayout.h"
@@ -155,6 +156,13 @@ static cl::opt<std::string>
 DefaultDataLayout("default-data-layout",
           cl::desc("data layout string to use if not specified by module"),
           cl::value_desc("layout-string"), cl::init(""));
+
+// @LOCALMOD-BEGIN
+static cl::opt<bool>
+GeneratePNaClBitcode("pnacl-freeze",
+                     cl::desc("Generate a pnacl-frozen bitcode file"),
+                     cl::init(false));
+// @LOCALMOD-END
 
 // ---------- Define Printers for module and function passes ------------
 namespace {
@@ -831,8 +839,7 @@ int main(int argc, char **argv) {
   if (!NoOutput && !AnalyzeOnly) {
     if (OutputAssembly)
       Passes.add(createPrintModulePass(&Out->os()));
-    else
-      Passes.add(createBitcodeWriterPass(Out->os()));
+    // @LOCALMOD
   }
 
   // Before executing passes, print the final values of the LLVM options.
@@ -840,6 +847,16 @@ int main(int argc, char **argv) {
 
   // Now that we have all of the passes ready, run them.
   Passes.run(*M.get());
+
+// @LOCALMOD-BEGIN
+  // Write bitcode to the output.
+  if (!NoOutput && !AnalyzeOnly && !OutputAssembly) {
+    if (GeneratePNaClBitcode)
+      NaClWriteBitcodeToFile(M.get(), Out->os());
+    else
+      WriteBitcodeToFile(M.get(), Out->os());
+  }
+// @LOCALMOD-END
 
   // Declare success.
   if (!NoOutput || PrintBreakpoints)

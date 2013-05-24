@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := llvm-as
-LINK_COMPONENTS := asmparser bitwriter
+LINK_COMPONENTS := asmparser bitwriter naclbitwriter
 
 # This tool has no plugins, optimize startup time.
 TOOL_NO_EXPORTS := 1

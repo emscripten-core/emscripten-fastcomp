@@ -19,6 +19,9 @@
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/Parser.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+// @LOCALMOD-BEGIN
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
+// @LOCALMOD-END
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -50,6 +53,13 @@ static cl::opt<bool>
 DisableVerify("disable-verify", cl::Hidden,
               cl::desc("Do not run verifier on input LLVM (dangerous!)"));
 
+// @LOCALMOD-BEGIN
+static cl::opt<bool>
+GeneratePNaClBitcode("pnacl-freeze",
+                     cl::desc("Generate a pnacl-frozen bitcode file"),
+                     cl::init(false));
+// @LOCALMOD-END
+
 static void WriteOutputFile(const Module *M) {
   // Infer the output filename if needed.
   if (OutputFilename.empty()) {
@@ -77,8 +87,14 @@ static void WriteOutputFile(const Module *M) {
     exit(1);
   }
 
-  if (Force || !CheckBitcodeOutputToConsole(Out->os(), true))
-    WriteBitcodeToFile(M, Out->os());
+  // @LOCALMOD-BEGIN
+  if (Force || !CheckBitcodeOutputToConsole(Out->os(), true)) {
+    if (GeneratePNaClBitcode)
+      NaClWriteBitcodeToFile(M, Out->os());
+    else
+      WriteBitcodeToFile(M, Out->os());
+  }
+  // @LOCALMOD-END
 
   // Declare success.
   Out->keep();
