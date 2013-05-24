@@ -43,6 +43,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -77,21 +78,16 @@ namespace {
     Type *IntPtrType;
 
     struct RewrittenVal {
-      RewrittenVal(): IsPlaceholder(true), NewIntVal(NULL) {}
-      bool IsPlaceholder;
+      RewrittenVal(): Placeholder(NULL), NewIntVal(NULL) {}
+      Value *Placeholder;
       Value *NewIntVal;
     };
     // Maps from old values (of pointer type) to converted values (of
     // IntPtrType type).
     DenseMap<Value *, RewrittenVal> RewriteMap;
-    // Number of placeholders; used for detecting unhandled cases.
-    int PlaceholderCount;
-    // List of instructions whose deletion has been deferred.
-    SmallVector<Instruction *, 20> ToErase;
 
   public:
-    FunctionConverter(Type *IntPtrType)
-      : IntPtrType(IntPtrType), PlaceholderCount(0) {}
+    FunctionConverter(Type *IntPtrType) : IntPtrType(IntPtrType) {}
 
     // Returns the normalized version of the given type, converting
     // pointer types to IntPtrType.
@@ -106,8 +102,19 @@ namespace {
     void recordConverted(Value *From, Value *To);
     void recordConvertedAndErase(Instruction *From, Value *To);
 
+    // Returns Val with no-op casts (those that convert between
+    // IntPtrType and pointer types) stripped off.
+    Value *stripNoopCasts(Value *Val);
+
     // Returns the normalized version of the given value.
-    Value *convert(Value *Val);
+    //
+    // If the conversion of Val has been deferred, this returns a
+    // placeholder object, which will later be replaceAllUsesWith'd to
+    // the final value.  Since replaceAllUsesWith does not work on
+    // references by metadata nodes, this can be bypassed using
+    // BypassPlaceholder to get the real converted value, assuming it
+    // is available.
+    Value *convert(Value *Val, bool BypassPlaceholder = false);
     // Returns the NormalizedPtr form of the given pointer value.
     // Inserts conversion instructions at InsertPt.
     Value *convertBackToPtr(Value *Val, Instruction *InsertPt);
@@ -119,6 +126,9 @@ namespace {
     void convertInPlace(Instruction *Inst);
 
     void eraseReplacedInstructions();
+
+    // List of instructions whose deletion has been deferred.
+    SmallVector<Instruction *, 20> ToErase;
   };
 }
 
@@ -144,14 +154,7 @@ void FunctionConverter::recordConverted(Value *From, Value *To) {
     return;
   }
   RewrittenVal *RV = &RewriteMap[From];
-  if (RV->NewIntVal) {
-    assert(RV->IsPlaceholder);
-    // Resolve placeholder.
-    RV->NewIntVal->replaceAllUsesWith(To);
-    delete RV->NewIntVal;
-    RV->IsPlaceholder = false;
-    --PlaceholderCount;
-  }
+  assert(!RV->NewIntVal);
   RV->NewIntVal = To;
 }
 
@@ -161,35 +164,56 @@ void FunctionConverter::recordConvertedAndErase(Instruction *From, Value *To) {
   ToErase.push_back(From);
 }
 
-Value *FunctionConverter::convert(Value *Val) {
+Value *FunctionConverter::stripNoopCasts(Value *Val) {
+  SmallPtrSet<Value *, 4> Visited;
+  for (;;) {
+    if (!Visited.insert(Val)) {
+      // It is possible to get a circular reference in unreachable
+      // basic blocks.  Handle this case for completeness.
+      return UndefValue::get(Val->getType());
+    }
+    if (CastInst *Cast = dyn_cast<CastInst>(Val)) {
+      Value *Src = Cast->getOperand(0);
+      if ((isa<BitCastInst>(Cast) && Cast->getType()->isPointerTy()) ||
+          (isa<PtrToIntInst>(Cast) && Cast->getType() == IntPtrType) ||
+          (isa<IntToPtrInst>(Cast) && Src->getType() == IntPtrType)) {
+        Val = Src;
+        continue;
+      }
+    }
+    return Val;
+  }
+}
+
+Value *FunctionConverter::convert(Value *Val, bool BypassPlaceholder) {
+  Val = stripNoopCasts(Val);
   if (!Val->getType()->isPointerTy())
     return Val;
   if (Constant *C = dyn_cast<Constant>(Val))
     return ConstantExpr::getPtrToInt(C, IntPtrType);
   RewrittenVal *RV = &RewriteMap[Val];
-  if (!RV->NewIntVal) {
-    // No converted value available yet, so create a placeholder.
-    Argument *Placeholder = new Argument(convertType(Val->getType()));
-    RV->NewIntVal = Placeholder;
-    ++PlaceholderCount;
+  if (BypassPlaceholder) {
+    assert(RV->NewIntVal);
+    return RV->NewIntVal;
   }
-  return RV->NewIntVal;
+  if (!RV->Placeholder)
+    RV->Placeholder = new Argument(convertType(Val->getType()));
+  return RV->Placeholder;
 }
 
 Value *FunctionConverter::convertBackToPtr(Value *Val, Instruction *InsertPt) {
   Type *NewTy =
     convertType(Val->getType()->getPointerElementType())->getPointerTo();
-  Value *Conv = convert(Val);
-  return new IntToPtrInst(Conv, NewTy, Conv->getName() + ".asptr", InsertPt);
+  return new IntToPtrInst(convert(Val), NewTy, "", InsertPt);
 }
 
 Value *FunctionConverter::convertFunctionPtr(Value *Callee,
                                              Instruction *InsertPt) {
   FunctionType *FuncType = cast<FunctionType>(
       Callee->getType()->getPointerElementType());
-  Value *Conv = convert(Callee);
-  return new IntToPtrInst(Conv, convertFuncType(FuncType)->getPointerTo(),
-                          Conv->getName() + ".asfuncptr", InsertPt);
+  return new IntToPtrInst(convert(Callee),
+                          convertFuncType(FuncType)->getPointerTo(),
+                          "", InsertPt);
 }
 
 static bool ShouldLeaveAlone(Value *V) {
@@ -206,8 +230,7 @@ void FunctionConverter::convertInPlace(Instruction *Inst) {
     Value *Arg = Inst->getOperand(I);
     if (Arg->getType()->isPointerTy() && !ShouldLeaveAlone(Arg)) {
       Value *Conv = convert(Arg);
-      Inst->setOperand(I, new IntToPtrInst(convert(Arg), Arg->getType(),
-                                           Conv->getName() + ".asptr", Inst));
+      Inst->setOperand(I, new IntToPtrInst(Conv, Arg->getType(), "", Inst));
     }
   }
   // Convert result.
@@ -220,14 +243,29 @@ void FunctionConverter::convertInPlace(Instruction *Inst) {
 }
 
 void FunctionConverter::eraseReplacedInstructions() {
-  if (PlaceholderCount) {
-    for (DenseMap<Value *, RewrittenVal>::iterator I = RewriteMap.begin(),
-             E = RewriteMap.end(); I != E; ++I) {
-      if (I->second.IsPlaceholder)
+  bool Error = false;
+  for (DenseMap<Value *, RewrittenVal>::iterator I = RewriteMap.begin(),
+           E = RewriteMap.end(); I != E; ++I) {
+    if (I->second.Placeholder) {
+      if (I->second.NewIntVal) {
+        I->second.Placeholder->replaceAllUsesWith(I->second.NewIntVal);
+      } else {
         errs() << "Not converted: " << *I->first << "\n";
+        Error = true;
+      }
     }
-    report_fatal_error("Case not handled in ReplacePtrsWithInts");
   }
+  if (Error)
+    report_fatal_error("Case not handled in ReplacePtrsWithInts");
+
+  // Delete the placeholders in a separate pass.  This means that if
+  // one placeholder is accidentally rewritten to another, we will get
+  // a useful error message rather than accessing a dangling pointer.
+  for (DenseMap<Value *, RewrittenVal>::iterator I = RewriteMap.begin(),
+           E = RewriteMap.end(); I != E; ++I) {
+    delete I->second.Placeholder;
+  }
+
   // We must do dropAllReferences() before doing eraseFromParent(),
   // otherwise we will try to erase instructions that are still
   // referenced.
@@ -250,7 +288,7 @@ static void ConvertMetadataOperand(FunctionConverter *FC,
     return;
   Value *MDArg = MD->getOperand(0);
   if (MDArg && (isa<Argument>(MDArg) || isa<Instruction>(MDArg))) {
-    MDArg = FC->convert(MDArg);
+    MDArg = FC->convert(MDArg, /* BypassPlaceholder= */ true);
     if (PtrToIntInst *Cast = dyn_cast<PtrToIntInst>(MDArg)) {
       // Unwrapping this is necessary for llvm.dbg.declare to work.
       MDArg = Cast->getPointerOperand();
@@ -325,9 +363,9 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     FC->recordConvertedAndErase(Phi, Phi2);
   } else if (SelectInst *Op = dyn_cast<SelectInst>(Inst)) {
     Instruction *Op2 = SelectInst::Create(Op->getCondition(),
-                                         FC->convert(Op->getTrueValue()),
-                                         FC->convert(Op->getFalseValue()),
-                                         "", Op);
+                                          FC->convert(Op->getTrueValue()),
+                                          FC->convert(Op->getFalseValue()),
+                                          "", Op);
     CopyDebug(Op2, Op);
     Op2->takeName(Op);
     FC->recordConvertedAndErase(Op, Op2);
@@ -342,7 +380,7 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     FC->recordConvertedAndErase(Inst, Result);
   } else if (isa<BitCastInst>(Inst)) {
     if (Inst->getType()->isPointerTy()) {
-      FC->recordConvertedAndErase(Inst, FC->convert(Inst->getOperand(0)));
+      FC->ToErase.push_back(Inst);
     }
   } else if (ICmpInst *Cmp = dyn_cast<ICmpInst>(Inst)) {
     Value *Cmp2 = CopyDebug(new ICmpInst(Inst, Cmp->getPredicate(),
@@ -380,9 +418,6 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
         // https://code.google.com/p/nativeclient/issues/detail?id=3443
         Inst->eraseFromParent();
       } else {
-        if (ICall->getIntrinsicID() == Intrinsic::dbg_declare) {
-          ConvertMetadataOperand(FC, ICall, 0);
-        }
         FC->convertInPlace(Inst);
       }
     } else if (isa<InlineAsm>(Call->getCalledValue())) {
@@ -482,12 +517,18 @@ static void CleanUpFunction(Function *Func, Type *IntPtrType) {
       SimplifyCasts(Iter++, IntPtrType);
     }
   }
-  // Cleanup: Remove ptrtoints that were introduced for allocas but not used.
+  // Cleanup pass.
   for (Function::iterator BB = Func->begin(), E = Func->end();
        BB != E; ++BB) {
     for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
          Iter != E; ) {
       Instruction *Inst = Iter++;
+      // Add names to inttoptrs to make the output more readable.  The
+      // placeholder values get in the way of doing this earlier when
+      // the inttoptrs are created.
+      if (isa<IntToPtrInst>(Inst))
+        Inst->setName(Inst->getOperand(0)->getName() + ".asptr");
+      // Remove ptrtoints that were introduced for allocas but not used.
       if (isa<PtrToIntInst>(Inst) && Inst->use_empty())
         Inst->eraseFromParent();
     }
@@ -537,6 +578,19 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
         ConvertInstruction(&DL, IntPtrType, &FC, Iter++);
+      }
+    }
+    // Now that all the replacement instructions have been created, we
+    // can update the debug intrinsic calls.
+    for (Function::iterator BB = NewFunc->begin(), E = NewFunc->end();
+         BB != E; ++BB) {
+      for (BasicBlock::iterator Inst = BB->begin(), E = BB->end();
+           Inst != E; ++Inst) {
+        if (IntrinsicInst *Call = dyn_cast<IntrinsicInst>(Inst)) {
+          if (Call->getIntrinsicID() == Intrinsic::dbg_declare) {
+            ConvertMetadataOperand(&FC, Call, 0);
+          }
+        }
       }
     }
     FC.eraseReplacedInstructions();

@@ -26,15 +26,78 @@ declare i8* @declared_func(i8*, i64)
 ; CHECK: declare i32 @declared_func(i32, i64)
 
 
-define void @self_reference(i8* %ptr) {
+define void @self_reference_phi(i8* %ptr) {
 entry:
   br label %loop
 loop:
   %x = phi i8* [ %x, %loop ], [ %ptr, %entry ]
   br label %loop
 }
-; CHECK: define void @self_reference(i32 %ptr) {
+; CHECK: define void @self_reference_phi(i32 %ptr) {
 ; CHECK: %x = phi i32 [ %x, %loop ], [ %ptr, %entry ]
+
+; Self-referencing bitcasts are possible in unreachable basic blocks.
+; It is not very likely that we will encounter this, but we handle it
+; for completeness.
+define void @self_reference_bitcast(i8** %dest) {
+  ret void
+unreachable_loop:
+  store i8* %self_ref, i8** %dest
+  %self_ref = bitcast i8* %self_ref to i8*
+  store i8* %self_ref, i8** %dest
+  br label %unreachable_loop
+}
+; CHECK: define void @self_reference_bitcast(i32 %dest) {
+; CHECK: store i32 undef, i32* %dest.asptr
+; CHECK: store i32 undef, i32* %dest.asptr
+
+define void @circular_reference_bitcasts(i8** %dest) {
+  ret void
+unreachable_loop:
+  store i8* %cycle1, i8** %dest
+  %cycle1 = bitcast i8* %cycle2 to i8*
+  %cycle2 = bitcast i8* %cycle1 to i8*
+  br label %unreachable_loop
+}
+; CHECK: define void @circular_reference_bitcasts(i32 %dest) {
+; CHECK: store i32 undef, i32* %dest.asptr
+
+define void @circular_reference_inttoptr(i8** %dest) {
+  ret void
+unreachable_loop:
+  %ptr = inttoptr i32 %int to i8*
+  %int = ptrtoint i8* %ptr to i32
+  store i8* %ptr, i8** %dest
+  br label %unreachable_loop
+}
+; CHECK: define void @circular_reference_inttoptr(i32 %dest) {
+; CHECK: store i32 undef, i32* %dest.asptr
+
+define i8* @forwards_reference(%struct** %ptr) {
+  br label %block1
+block2:
+  ; Forwards reference to %val.
+  %cast = bitcast %struct* %val to i8*
+  br label %block3
+block1:
+  %val = load %struct** %ptr
+  br label %block2
+block3:
+  ; Backwards reference to a forwards reference that has already been
+  ; resolved.
+  ret i8* %cast
+}
+; CHECK: define i32 @forwards_reference(i32 %ptr) {
+; CHECK-NEXT: br label %block1
+; CHECK: block2:
+; CHECK-NEXT: br label %block3
+; CHECK: block1:
+; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
+; CHECK-NEXT: %val = load i32* %ptr.asptr
+; CHECK-NEXT: br label %block2
+; CHECK: block3:
+; CHECK-NEXT: ret i32 %val
+
 
 define i8* @phi_multiple_entry(i1 %arg, i8* %ptr) {
 entry:
@@ -198,8 +261,8 @@ define i8* @indirect_call(i8* (i8*)* %func, i8* %arg) {
   ret i8* %result
 }
 ; CHECK: define i32 @indirect_call(i32 %func, i32 %arg) {
-; CHECK-NEXT: %func.asfuncptr = inttoptr i32 %func to i32 (i32)*
-; CHECK-NEXT: %result = call i32 %func.asfuncptr(i32 %arg)
+; CHECK-NEXT: %func.asptr = inttoptr i32 %func to i32 (i32)*
+; CHECK-NEXT: %result = call i32 %func.asptr(i32 %arg)
 ; CHECK-NEXT: ret i32 %result
 
 
@@ -300,6 +363,23 @@ define void @alloca_lower_alignment() {
 }
 ; CHECK: void @alloca_lower_alignment() {
 ; CHECK-NEXT: alloca [4 x i8], align 1
+
+
+; This tests for a bug in which, when processing the store's %buf2
+; operand, ReplacePtrsWithInts accidentally strips off the ptrtoint
+; cast that it previously introduced for the 'alloca', causing an
+; internal sanity check to fail.
+define void @alloca_cast_stripping() {
+  %buf = alloca i32
+  %buf1 = ptrtoint i32* %buf to i32
+  %buf2 = inttoptr i32 %buf1 to i32*
+  store i32 0, i32* %buf2
+  ret void
+}
+; CHECK: define void @alloca_cast_stripping() {
+; CHECK-NEXT: %buf = alloca [4 x i8]
+; CHECK-NEXT: %buf.bc = bitcast [4 x i8]* %buf to i32*
+; CHECK-NEXT: store i32 0, i32* %buf.bc
 
 
 define i1 @compare(i8* %ptr1, i8* %ptr2) {
