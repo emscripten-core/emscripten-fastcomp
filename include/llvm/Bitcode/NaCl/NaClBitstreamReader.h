@@ -171,7 +171,6 @@ class NaClBitstreamCursor {
   NaClBitstreamReader *BitStream;
   size_t NextChar;
 
-  
   /// CurWord/word_t - This is the current data we have pulled from the stream
   /// but have not returned to the client.  This is specifically and
   /// intentionally defined to follow the word size of the host machine for
@@ -186,21 +185,22 @@ class NaClBitstreamCursor {
 
   // CurCodeSize - This is the declared size of code values used for the current
   // block, in bits.
-  unsigned CurCodeSize;
+  NaClBitcodeSelectorAbbrev CurCodeSize;
 
   /// CurAbbrevs - Abbrevs installed at in this block.
   std::vector<NaClBitCodeAbbrev*> CurAbbrevs;
 
   struct Block {
-    unsigned PrevCodeSize;
+    NaClBitcodeSelectorAbbrev PrevCodeSize;
     std::vector<NaClBitCodeAbbrev*> PrevAbbrevs;
-    explicit Block(unsigned PCS) : PrevCodeSize(PCS) {}
+    explicit Block() : PrevCodeSize() {}
+    explicit Block(const NaClBitcodeSelectorAbbrev& PCS)
+        : PrevCodeSize(PCS) {}
   };
 
   /// BlockScope - This tracks the codesize of parent blocks.
   SmallVector<Block, 8> BlockScope;
 
-  
 public:
   NaClBitstreamCursor() : BitStream(0), NextChar(0) {
   }
@@ -213,7 +213,6 @@ public:
     NextChar = 0;
     CurWord = 0;
     BitsInCurWord = 0;
-    CurCodeSize = 2;
   }
 
   void init(NaClBitstreamReader &R) {
@@ -223,7 +222,6 @@ public:
     NextChar = 0;
     CurWord = 0;
     BitsInCurWord = 0;
-    CurCodeSize = 2;
   }
 
   ~NaClBitstreamCursor() {
@@ -255,7 +253,7 @@ public:
   }
 
   /// getAbbrevIDWidth - Return the number of bits used to encode an abbrev #.
-  unsigned getAbbrevIDWidth() const { return CurCodeSize; }
+  unsigned getAbbrevIDWidth() const { return CurCodeSize.NumBits; }
 
   /// GetCurrentBitNo - Return the bit # of the bit we are reading.
   uint64_t GetCurrentBitNo() const {
@@ -342,7 +340,6 @@ public:
         Read(WordBitNo);
     }
   }
-
 
   uint32_t Read(unsigned NumBits) {
     assert(NumBits && NumBits <= 32 &&
@@ -459,9 +456,10 @@ private:
 public:
 
   unsigned ReadCode() {
-    return Read(CurCodeSize);
+    return CurCodeSize.IsFixed
+        ? Read(CurCodeSize.NumBits)
+        : ReadVBR(CurCodeSize.NumBits);
   }
-
 
   // Block header:
   //    [ENTER_SUBBLOCK, blockid, newcodelen, <align4bytes>, blocklen]

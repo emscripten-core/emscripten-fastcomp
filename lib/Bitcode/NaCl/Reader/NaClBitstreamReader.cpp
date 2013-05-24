@@ -71,13 +71,14 @@ bool NaClBitstreamCursor::EnterSubBlock(unsigned BlockID, unsigned *NumWordsP) {
   }
 
   // Get the codesize of this block.
-  CurCodeSize = ReadVBR(naclbitc::CodeLenWidth);
+  CurCodeSize.IsFixed = true;
+  CurCodeSize.NumBits = ReadVBR(naclbitc::CodeLenWidth);
   SkipToFourByteBoundary();
   unsigned NumWords = Read(naclbitc::BlockSizeWidth);
   if (NumWordsP) *NumWordsP = NumWords;
 
   // Validate that this block is sane.
-  if (CurCodeSize == 0 || AtEndOfStream())
+  if (CurCodeSize.NumBits == 0 || AtEndOfStream())
     return true;
 
   return false;

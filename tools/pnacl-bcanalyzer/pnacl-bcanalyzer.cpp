@@ -28,12 +28,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "pnacl-bcanalyzer"
+
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -325,6 +328,7 @@ static bool Error(const std::string &Err) {
 static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
                        unsigned IndentLevel) {
   std::string Indent(IndentLevel*2, ' ');
+  DEBUG(dbgs() << Indent << "-> ParseBlock(" << BlockID << ")\n");
   uint64_t BlockBitStart = Stream.GetCurrentBitNo();
 
   // Get the statistics for this BlockID.
@@ -339,6 +343,7 @@ static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
       return Error("Malformed BlockInfoBlock");
     uint64_t BlockBitEnd = Stream.GetCurrentBitNo();
     BlockStats.NumBits += BlockBitEnd-BlockBitStart;
+    DEBUG(dbgs() << Indent << "<- ParseBlock\n");
     return false;
   }
 
@@ -386,6 +391,7 @@ static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
         else
           outs() << "UnknownBlock" << BlockID << ">\n";
       }
+      DEBUG(dbgs() << Indent << "<- ParseBlock\n");
       return false;
     }
         
@@ -478,6 +484,7 @@ static void PrintSize(uint64_t Bits) {
 
 /// AnalyzeBitcode - Analyze the bitcode file specified by InputFilename.
 static int AnalyzeBitcode() {
+  DEBUG(dbgs() << "-> AnalyzeBitcode\n");
   // Read the input file.
   OwningPtr<MemoryBuffer> MemBuf;
 
@@ -620,6 +627,7 @@ static int AnalyzeBitcode() {
 
     }
   }
+  DEBUG(dbgs() << "<- AnalyzeBitcode\n");
   return 0;
 }
 

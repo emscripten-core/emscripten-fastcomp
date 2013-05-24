@@ -237,8 +237,6 @@ public:
   /// @returns true if an error occurred.
   bool ParseTriple(std::string &Triple);
 
-  static uint64_t decodeSignRotatedValue(uint64_t V);
-
 private:
   Type *getTypeByID(unsigned ID);
   Value *getFnValueByID(unsigned ID, Type *Ty) {
@@ -315,7 +313,7 @@ private:
   Value *getValueSigned(SmallVector<uint64_t, 64> &Record, unsigned Slot,
                         unsigned InstNum, Type *Ty) {
     if (Slot == Record.size()) return 0;
-    unsigned ValNo = (unsigned)decodeSignRotatedValue(Record[Slot]);
+    unsigned ValNo = (unsigned) NaClDecodeSignRotatedValue(Record[Slot]);
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;

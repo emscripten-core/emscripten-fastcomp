@@ -33,7 +33,7 @@ class NaClBitstreamWriter {
 
   /// CurCodeSize - This is the declared size of code values used for the
   /// current block, in bits.
-  unsigned CurCodeSize;
+  NaClBitcodeSelectorAbbrev CurCodeSize;
 
   /// BlockInfoCurBID - When emitting a BLOCKINFO_BLOCK, this is the currently
   /// selected BLOCK ID.
@@ -43,10 +43,11 @@ class NaClBitstreamWriter {
   std::vector<NaClBitCodeAbbrev*> CurAbbrevs;
 
   struct Block {
-    unsigned PrevCodeSize;
+    NaClBitcodeSelectorAbbrev PrevCodeSize;
     unsigned StartSizeWord;
     std::vector<NaClBitCodeAbbrev*> PrevAbbrevs;
-    Block(unsigned PCS, unsigned SSW) : PrevCodeSize(PCS), StartSizeWord(SSW) {}
+    Block(const NaClBitcodeSelectorAbbrev& PCS, unsigned SSW)
+        : PrevCodeSize(PCS), StartSizeWord(SSW) {}
   };
 
   /// BlockScope - This tracks the current blocks that we have entered.
@@ -94,7 +95,7 @@ class NaClBitstreamWriter {
 
 public:
   explicit NaClBitstreamWriter(SmallVectorImpl<char> &O)
-    : Out(O), CurBit(0), CurValue(0), CurCodeSize(2) {}
+      : Out(O), CurBit(0), CurValue(0), CurCodeSize() {}
 
   ~NaClBitstreamWriter() {
     assert(CurBit == 0 && "Unflused data remaining");
@@ -156,6 +157,7 @@ public:
 
   void EmitVBR(uint32_t Val, unsigned NumBits) {
     assert(NumBits <= 32 && "Too many bits to emit!");
+    assert(NumBits > 1 && "Too few bits to emit!");
     uint32_t Threshold = 1U << (NumBits-1);
 
     // Emit the bits with VBR encoding, NumBits-1 bits at a time.
@@ -169,6 +171,7 @@ public:
 
   void EmitVBR64(uint64_t Val, unsigned NumBits) {
     assert(NumBits <= 32 && "Too many bits to emit!");
+    assert(NumBits > 1 && "Too few bits to emit!");
     if ((uint32_t)Val == Val)
       return EmitVBR((uint32_t)Val, NumBits);
 
@@ -186,7 +189,10 @@ public:
 
   /// EmitCode - Emit the specified code.
   void EmitCode(unsigned Val) {
-    Emit(Val, CurCodeSize);
+    if (CurCodeSize.IsFixed)
+      Emit(Val, CurCodeSize.NumBits);
+    else
+      EmitVBR(Val, CurCodeSize.NumBits);
   }
 
   //===--------------------------------------------------------------------===//
@@ -207,16 +213,22 @@ public:
     return 0;
   }
 
-  void EnterSubblock(unsigned BlockID, unsigned CodeLen) {
+private:
+  // Enter block using CodeLen bits to read the size of the code
+  // selector associated with the block.
+  void EnterSubblock(unsigned BlockID,
+                     const NaClBitcodeSelectorAbbrev& CodeLen,
+                     BlockInfo *Info) {
     // Block header:
     //    [ENTER_SUBBLOCK, blockid, newcodelen, <align4bytes>, blocklen]
     EmitCode(naclbitc::ENTER_SUBBLOCK);
     EmitVBR(BlockID, naclbitc::BlockIDWidth);
-    EmitVBR(CodeLen, naclbitc::CodeLenWidth);
+    assert(CodeLen.IsFixed && "Block codelens must be fixed");
+    EmitVBR(CodeLen.NumBits, naclbitc::CodeLenWidth);
     FlushToWord();
 
     unsigned BlockSizeWordIndex = GetWordIndex();
-    unsigned OldCodeSize = CurCodeSize;
+    NaClBitcodeSelectorAbbrev OldCodeSize(CurCodeSize);
 
     // Emit a placeholder, which will be replaced when the block is popped.
     Emit(0, naclbitc::BlockSizeWidth);
@@ -230,13 +242,38 @@ public:
 
     // If there is a blockinfo for this BlockID, add all the predefined abbrevs
     // to the abbrev list.
-    if (BlockInfo *Info = getBlockInfo(BlockID)) {
+    if (Info) {
       for (unsigned i = 0, e = static_cast<unsigned>(Info->Abbrevs.size());
            i != e; ++i) {
         CurAbbrevs.push_back(Info->Abbrevs[i]);
         Info->Abbrevs[i]->addRef();
       }
     }
+  }
+
+public:
+  /// \brief Enter block using CodeLen bits to read the size of the code
+  /// selector associated with the block.
+  void EnterSubblock(unsigned BlockID,
+                     const NaClBitcodeSelectorAbbrev& CodeLen) {
+    EnterSubblock(BlockID, CodeLen, getBlockInfo(BlockID));
+  }
+
+  /// \brief Enter block, using a code length based on the number of
+  /// (global) BlockInfo entries defined for the block. Note: This
+  /// should be used only if the block doesn't define any local abbreviations.
+  void EnterSubblock(unsigned BlockID) {
+    BlockInfo *Info = getBlockInfo(BlockID);
+    size_t NumAbbrevs = Info ? Info->Abbrevs.size() : 0;
+    NaClBitcodeSelectorAbbrev DefaultCodeLen(
+        naclbitc::DEFAULT_MAX_ABBREV+NumAbbrevs);
+    EnterSubblock(BlockID, DefaultCodeLen, Info);
+  }
+
+  /// \brief Enter block with the given number of abbreviations.
+  void EnterSubblock(unsigned BlockID, unsigned NumAbbrev) {
+    NaClBitcodeSelectorAbbrev CodeLenAbbrev(NumAbbrev);
+    EnterSubblock(BlockID, CodeLenAbbrev);
   }
 
   void ExitBlock() {
@@ -501,8 +538,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// EnterBlockInfoBlock - Start emitting the BLOCKINFO_BLOCK.
-  void EnterBlockInfoBlock(unsigned CodeWidth) {
-    EnterSubblock(naclbitc::BLOCKINFO_BLOCK_ID, CodeWidth);
+  void EnterBlockInfoBlock() {
+    EnterSubblock(naclbitc::BLOCKINFO_BLOCK_ID);
     BlockInfoCurBID = ~0U;
   }
 private:

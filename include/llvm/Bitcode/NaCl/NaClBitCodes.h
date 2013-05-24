@@ -21,6 +21,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MathExtras.h"
 #include <cassert>
 
 namespace llvm {
@@ -49,7 +50,21 @@ namespace naclbitc {
     UNABBREV_RECORD = 3,
 
     // This is not a code, this is a marker for the first abbrev assignment.
-    FIRST_APPLICATION_ABBREV = 4
+    // In addition, we assume up to two additional enumerated constants are
+    // added for each extension. These constants are:
+    //
+    //   PREFIX_MAX_FIXED_ABBREV
+    //   PREFIX_MAX_ABBREV
+    //
+    // PREFIX_MAX_ABBREV defines the maximal enumeration value used for
+    // the code selector of a block. If Both PREFIX_MAX_FIXED_ABBREV
+    // and PREFIX_MAX_ABBREV is defined, then PREFIX_MAX_FIXED_ABBREV
+    // defines the last code selector of the block that must be read using
+    // a single read (i.e. a FIXED read, or the first chunk of a VBR read.
+    FIRST_APPLICATION_ABBREV = 4,
+    // Defines default values for code length, if no additional selectors
+    // are added.
+    DEFAULT_MAX_ABBREV = FIRST_APPLICATION_ABBREV-1
   };
 
   /// StandardBlockIDs - All bitcode files can optionally include a BLOCKINFO
@@ -183,6 +198,59 @@ public:
   void Add(const NaClBitCodeAbbrevOp &OpInfo) {
     OperandList.push_back(OpInfo);
   }
+};
+
+/// \brief Returns number of bits needed to encode
+/// value for dense FIXED encoding.
+inline unsigned NaClBitsNeededForValue(unsigned Value) {
+  // Note: Need to handle case where Value=0xFFFFFFFF as special case,
+  // since we can't add 1 to it.
+  if (Value >= 0x80000000) return 32;
+  return Log2_32_Ceil(Value+1);
+}
+
+/// \brief Encode a signed value by moving the sign to the LSB for dense
+/// VBR encoding.
+inline uint64_t NaClEncodeSignRotatedValue(int64_t V) {
+  return (V >= 0) ? (V << 1) : ((-V << 1) | 1);
+}
+
+/// \brief Decode a signed value stored with the sign bit in
+/// the LSB for dense VBR encoding.
+inline uint64_t NaClDecodeSignRotatedValue(uint64_t V) {
+  if ((V & 1) == 0)
+    return V >> 1;
+  if (V != 1)
+    return -(V >> 1);
+  // There is no such thing as -0 with integers.  "-0" really means MININT.
+  return 1ULL << 63;
+}
+
+/// \brief This class determines whether a FIXED or VBR
+/// abbreviation should be used for the selector, and the number of bits
+/// needed to capture such selectors.
+class NaClBitcodeSelectorAbbrev {
+
+public:
+  // If true, use a FIXED abbreviation. Otherwise, use a VBR abbreviation.
+  bool IsFixed;
+  // Number of bits needed for selector.
+  unsigned NumBits;
+
+  // Creates a selector range for the given values.
+  NaClBitcodeSelectorAbbrev(bool IF, unsigned NB)
+      : IsFixed(IF), NumBits(NB) {}
+
+  // Creates a selector range when no abbreviations are defined.
+  NaClBitcodeSelectorAbbrev()
+      : IsFixed(true),
+        NumBits(NaClBitsNeededForValue(naclbitc::DEFAULT_MAX_ABBREV)) {}
+
+  // Creates a selector range to handle fixed abbrevations up to
+  // the specified value.
+  explicit NaClBitcodeSelectorAbbrev(unsigned MaxAbbrev)
+      : IsFixed(true),
+        NumBits(NaClBitsNeededForValue(MaxAbbrev)) {}
 };
 } // End llvm namespace
 

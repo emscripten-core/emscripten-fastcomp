@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "NaClBitcodeReader"
+
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "NaClBitcodeReader.h"
 #include "llvm/ADT/SmallString.h"
@@ -20,6 +22,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -450,6 +453,7 @@ static void decodeLLVMAttributesForBitcode(AttrBuilder &B,
 }
 
 bool NaClBitcodeReader::ParseAttributeBlock() {
+  DEBUG(dbgs() << "-> ParseAttributeBlock\n");
   if (Stream.EnterSubBlock(naclbitc::PARAMATTR_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -469,6 +473,7 @@ bool NaClBitcodeReader::ParseAttributeBlock() {
     case NaClBitstreamEntry::Error:
       return Error("Error at end of PARAMATTR block");
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseAttributeBlock\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -508,6 +513,7 @@ bool NaClBitcodeReader::ParseAttributeBlock() {
 }
 
 bool NaClBitcodeReader::ParseAttributeGroupBlock() {
+  DEBUG(dbgs() << "-> ParseAttributeGroupBlock\n");
   if (Stream.EnterSubBlock(naclbitc::PARAMATTR_GROUP_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -525,6 +531,7 @@ bool NaClBitcodeReader::ParseAttributeGroupBlock() {
     case NaClBitstreamEntry::Error:
       return Error("Error at end of PARAMATTR_GROUP block");
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseAttributeGroupBlock\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -584,10 +591,14 @@ bool NaClBitcodeReader::ParseAttributeGroupBlock() {
 }
 
 bool NaClBitcodeReader::ParseTypeTable() {
+  DEBUG(dbgs() << "-> ParseTypeTable\n");
   if (Stream.EnterSubBlock(naclbitc::TYPE_BLOCK_ID_NEW))
     return Error("Malformed block record");
 
-  return ParseTypeTableBody();
+  bool result = ParseTypeTableBody();
+  if (!result)
+    DEBUG(dbgs() << "<- ParseTypeTable\n");
+  return result;
 }
 
 bool NaClBitcodeReader::ParseTypeTableBody() {
@@ -810,6 +821,7 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
 }
 
 bool NaClBitcodeReader::ParseValueSymbolTable() {
+  DEBUG(dbgs() << "-> ParseValueSymbolTable\n");
   if (Stream.EnterSubBlock(naclbitc::VALUE_SYMTAB_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -825,6 +837,7 @@ bool NaClBitcodeReader::ParseValueSymbolTable() {
     case NaClBitstreamEntry::Error:
       return Error("malformed value symbol table block");
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseValueSymbolTable\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -866,6 +879,7 @@ bool NaClBitcodeReader::ParseValueSymbolTable() {
 bool NaClBitcodeReader::ParseMetadata() {
   unsigned NextMDValueNo = MDValueList.size();
 
+  DEBUG(dbgs() << "-> ParseMetadata\n");
   if (Stream.EnterSubBlock(naclbitc::METADATA_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -881,6 +895,7 @@ bool NaClBitcodeReader::ParseMetadata() {
       Error("malformed metadata block");
       return true;
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseMetadata\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -961,17 +976,6 @@ bool NaClBitcodeReader::ParseMetadata() {
   }
 }
 
-/// decodeSignRotatedValue - Decode a signed value stored with the sign bit in
-/// the LSB for dense VBR encoding.
-uint64_t NaClBitcodeReader::decodeSignRotatedValue(uint64_t V) {
-  if ((V & 1) == 0)
-    return V >> 1;
-  if (V != 1)
-    return -(V >> 1);
-  // There is no such thing as -0 with integers.  "-0" really means MININT.
-  return 1ULL << 63;
-}
-
 /// ResolveGlobalAndAliasInits - Resolve all of the initializers for global
 /// values and aliases that we can.
 bool NaClBitcodeReader::ResolveGlobalAndAliasInits() {
@@ -1013,12 +1017,13 @@ bool NaClBitcodeReader::ResolveGlobalAndAliasInits() {
 static APInt ReadWideAPInt(ArrayRef<uint64_t> Vals, unsigned TypeBits) {
   SmallVector<uint64_t, 8> Words(Vals.size());
   std::transform(Vals.begin(), Vals.end(), Words.begin(),
-                 NaClBitcodeReader::decodeSignRotatedValue);
+                 NaClDecodeSignRotatedValue);
 
   return APInt(TypeBits, Words);
 }
 
 bool NaClBitcodeReader::ParseConstants() {
+  DEBUG(dbgs() << "-> ParseConstants\n");
   if (Stream.EnterSubBlock(naclbitc::CONSTANTS_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -1041,6 +1046,7 @@ bool NaClBitcodeReader::ParseConstants() {
       // Once all the constants have been read, go through and resolve forward
       // references.
       ValueList.ResolveConstantForwardRefs();
+      DEBUG(dbgs() << "<- ParseConstants\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -1069,7 +1075,7 @@ bool NaClBitcodeReader::ParseConstants() {
     case naclbitc::CST_CODE_INTEGER:   // INTEGER: [intval]
       if (!CurTy->isIntegerTy() || Record.empty())
         return Error("Invalid CST_INTEGER record");
-      V = ConstantInt::get(CurTy, decodeSignRotatedValue(Record[0]));
+      V = ConstantInt::get(CurTy, NaClDecodeSignRotatedValue(Record[0]));
       break;
     case naclbitc::CST_CODE_WIDE_INTEGER: {// WIDE_INTEGER: [n x intval]
       if (!CurTy->isIntegerTy() || Record.empty())
@@ -1415,6 +1421,7 @@ bool NaClBitcodeReader::ParseConstants() {
 }
 
 bool NaClBitcodeReader::ParseUseLists() {
+  DEBUG(dbgs() << "-> ParseUseLists\n");
   if (Stream.EnterSubBlock(naclbitc::USELIST_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -1429,6 +1436,7 @@ bool NaClBitcodeReader::ParseUseLists() {
     case NaClBitstreamEntry::Error:
       return Error("malformed use list block");
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseUseLists\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -1455,6 +1463,7 @@ bool NaClBitcodeReader::ParseUseLists() {
 /// remember where it is and then skip it.  This lets us lazily deserialize the
 /// functions.
 bool NaClBitcodeReader::RememberAndSkipFunctionBody() {
+  DEBUG(dbgs() << "-> RememberAndSkipFunctionBody\n");
   // Get the function we are talking about.
   if (FunctionsWithBodies.empty())
     return Error("Insufficient function protos");
@@ -1469,6 +1478,7 @@ bool NaClBitcodeReader::RememberAndSkipFunctionBody() {
   // Skip over the function block for now.
   if (Stream.SkipBlock())
     return Error("Malformed block record");
+  DEBUG(dbgs() << "<- RememberAndSkipFunctionBody\n");
   return false;
 }
 
@@ -1499,6 +1509,7 @@ bool NaClBitcodeReader::GlobalCleanup() {
 }
 
 bool NaClBitcodeReader::ParseModule(bool Resume) {
+  DEBUG(dbgs() << "-> ParseModule\n");
   if (Resume)
     Stream.JumpToBit(NextUnreadBit);
   else if (Stream.EnterSubBlock(naclbitc::MODULE_BLOCK_ID))
@@ -1517,11 +1528,13 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       Error("malformed module block");
       return true;
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseModule\n");
       return GlobalCleanup();
 
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
       default:  // Skip unknown content.
+        DEBUG(dbgs() << "Skip unknown context\n");
         if (Stream.SkipBlock())
           return Error("Malformed block record");
         break;
@@ -1566,6 +1579,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
 
         if (RememberAndSkipFunctionBody())
           return true;
+
         // For streaming bitcode, suspend parsing when we reach the function
         // bodies. Subsequent materialization calls will resume it when
         // necessary. For streaming, the function bodies must be at the end of
@@ -1574,6 +1588,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         // just finish the parse now.
         if (LazyStreamer && SeenValueSymbolTable) {
           NextUnreadBit = Stream.GetCurrentBitNo();
+          DEBUG(dbgs() << "<- ParseModule\n");
           return false;
         }
         break;
@@ -1861,6 +1876,7 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
 }
 
 bool NaClBitcodeReader::ParseModuleTriple(std::string &Triple) {
+  DEBUG(dbgs() << "-> ParseModuleTriple\n");
   if (Stream.EnterSubBlock(naclbitc::MODULE_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -1875,6 +1891,7 @@ bool NaClBitcodeReader::ParseModuleTriple(std::string &Triple) {
     case NaClBitstreamEntry::Error:
       return Error("malformed module block");
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseModuleTriple\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -1940,6 +1957,7 @@ bool NaClBitcodeReader::ParseTriple(std::string &Triple) {
 
 /// ParseMetadataAttachment - Parse metadata attachments.
 bool NaClBitcodeReader::ParseMetadataAttachment() {
+  DEBUG(dbgs() << "-> ParseMetadataAttachment\n");
   if (Stream.EnterSubBlock(naclbitc::METADATA_ATTACHMENT_ID))
     return Error("Malformed block record");
 
@@ -1952,6 +1970,7 @@ bool NaClBitcodeReader::ParseMetadataAttachment() {
     case NaClBitstreamEntry::Error:
       return Error("malformed metadata block");
     case NaClBitstreamEntry::EndBlock:
+      DEBUG(dbgs() << "<- ParseMetadataAttachment\n");
       return false;
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -1985,6 +2004,7 @@ bool NaClBitcodeReader::ParseMetadataAttachment() {
 
 /// ParseFunctionBody - Lazily parse the specified function body block.
 bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
+  DEBUG(dbgs() << "-> ParseFunctionBody\n");
   if (Stream.EnterSubBlock(naclbitc::FUNCTION_BLOCK_ID))
     return Error("Malformed block record");
 
@@ -2016,21 +2036,26 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
       default:  // Skip unknown content.
+        dbgs() << "default skip block\n";
         if (Stream.SkipBlock())
           return Error("Malformed block record");
         break;
       case naclbitc::CONSTANTS_BLOCK_ID:
-        if (ParseConstants()) return true;
+        if (ParseConstants())
+          return true;
         NextValueNo = ValueList.size();
         break;
       case naclbitc::VALUE_SYMTAB_BLOCK_ID:
-        if (ParseValueSymbolTable()) return true;
+        if (ParseValueSymbolTable())
+          return true;
         break;
       case naclbitc::METADATA_ATTACHMENT_ID:
-        if (ParseMetadataAttachment()) return true;
+        if (ParseMetadataAttachment())
+          return true;
         break;
       case naclbitc::METADATA_BLOCK_ID:
-        if (ParseMetadata()) return true;
+        if (ParseMetadata())
+          return true;
         break;
       }
       continue;
@@ -2862,6 +2887,7 @@ OutOfRecordLoop:
   ValueList.shrinkTo(ModuleValueListSize);
   MDValueList.shrinkTo(ModuleMDValueListSize);
   std::vector<BasicBlock*>().swap(FunctionBBs);
+  DEBUG(dbgs() << "-> ParseFunctionBody\n");
   return false;
 }
 
