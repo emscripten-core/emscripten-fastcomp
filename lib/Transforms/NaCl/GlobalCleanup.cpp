@@ -113,6 +113,6 @@ bool ResolveAliases::runOnModule(Module &M) {
   return Modified;
 }
 
-ModulePass *createResolveAliasesPass() {
+ModulePass *llvm::createResolveAliasesPass() {
   return new ResolveAliases();
 }
