@@ -142,5 +142,12 @@ define i32* @constantexpr() {
 ; CHECK-NOT: disallowed
 ; CHECK: Function constantexpr contains disallowed ConstantExpr
 
+define void @inline_asm() {
+  call void asm "foo", ""()
+  ret void
+}
+; CHECK-NOT: disallowed
+; CHECK: Function inline_asm contains disallowed inline assembly
+
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check

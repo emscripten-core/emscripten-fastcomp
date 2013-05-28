@@ -242,6 +242,11 @@ bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) {
 }
 
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
+  if (!M.getModuleInlineAsm().empty()) {
+    Reporter->addError() <<
+        "Module contains disallowed top-level inline assembly\n";
+  }
+
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
     // Check types of global variables and their initializers

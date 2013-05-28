@@ -161,6 +161,10 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::Select:
           break;
         case Instruction::Call:
+          if (cast<CallInst>(BBI)->isInlineAsm()) {
+            Reporter->addError() << "Function " << F.getName() <<
+                " contains disallowed inline assembly\n";
+          }
           // Pointers to varargs function types are not yet
           // disallowed, but we do disallow defining or calling
           // functions of varargs types.
