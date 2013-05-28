@@ -20,6 +20,7 @@ class PassManager;
 class Use;
 class Value;
 
+ModulePass *createAddPNaClExternalDeclsPass();
 ModulePass *createExpandByValPass();
 FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
@@ -33,6 +34,7 @@ ModulePass *createGlobalCleanupPass();
 FunctionPass *createPromoteIntegersPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
+FunctionPass *createResolvePNaClIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripMetadataPass();
 FunctionPass *createInsertDivideCheckPass();

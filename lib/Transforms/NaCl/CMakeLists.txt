@@ -1,4 +1,7 @@
+set(LLVM_LINK_COMPONENTS ipo)
+
 add_llvm_library(LLVMNaClTransforms
+  AddPNaClExternalDecls.cpp
   ExpandByVal.cpp
   ExpandConstantExpr.cpp
   ExpandCtors.cpp
@@ -14,6 +17,7 @@ add_llvm_library(LLVMNaClTransforms
   PNaClABISimplify.cpp
   PromoteIntegers.cpp
   ReplacePtrsWithInts.cpp
+  ResolvePNaClIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp
   StripMetadata.cpp
   )

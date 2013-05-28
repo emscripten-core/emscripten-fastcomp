@@ -15,7 +15,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/NaCl.h" // @LOCALMOD
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"  // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
@@ -33,6 +33,7 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/IRReader.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Transforms/NaCl.h" // @LOCALMOD
 #if !defined(__native_client__)
 #include "llvm/Support/PluginLoader.h"
 #endif
@@ -392,6 +393,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
       VerifyPass->runOnModule(*mod);
       CheckABIVerifyErrors(ABIErrorReporter, "Module");
     }
+
 #if defined(__native_client__) && defined(NACL_SRPC)
     RecordMetadataForSrpc(*mod);
 
@@ -413,6 +415,19 @@ static int compileModule(char **argv, LLVMContext &Context) {
     if (!TargetTriple.empty())
       mod->setTargetTriple(Triple::normalize(TargetTriple));
     TheTriple = Triple(mod->getTargetTriple());
+
+    // @LOCALMOD-BEGIN
+    // Add declarations for external functions required by PNaCl. The
+    // ResolvePNaClIntrinsics function pass running during streaming
+    // depends on these declarations being in the module.
+    if (TheTriple.isOSNaCl()) {
+      // TODO(eliben): pnacl-llc presumably won't need the isOSNaCl
+      // test.
+      OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+          createAddPNaClExternalDeclsPass());
+      AddPNaClExternalDeclsPass->runOnModule(*mod);
+    }
+    // @LOCALMOD-END
   } else {
     TheTriple = Triple(Triple::normalize(TargetTriple));
   }
@@ -525,6 +540,12 @@ static int compileModule(char **argv, LLVMContext &Context) {
     FunctionVerifyPass = createPNaClABIVerifyFunctionsPass(&ABIErrorReporter);
     PM->add(FunctionVerifyPass);
   }
+
+  if (TheTriple.isOSNaCl()) {
+    // Add the intrinsic resolution pass. It assumes ABI-conformant code.
+    PM->add(createResolvePNaClIntrinsicsPass());
+  }
+
   // @LOCALMOD-END
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.

@@ -277,6 +277,7 @@ void initializeLoopVectorizePass(PassRegistry&);
 void initializeBBVectorizePass(PassRegistry&);
 void initializeMachineFunctionPrinterPassPass(PassRegistry&);
 // @LOCALMOD-BEGIN
+void initializeAddPNaClExternalDeclsPass(PassRegistry&);
 void initializeExpandByValPass(PassRegistry&);
 void initializeExpandConstantExprPass(PassRegistry&);
 void initializeExpandCtorsPass(PassRegistry&);
@@ -294,6 +295,7 @@ void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
 void initializePromoteIntegersPass(PassRegistry&);
 void initializeReplacePtrsWithIntsPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);
+void initializeResolvePNaClIntrinsicsPass(PassRegistry&);
 void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 // @LOCALMOD-END

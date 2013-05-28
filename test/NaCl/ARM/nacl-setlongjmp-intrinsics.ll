@@ -10,7 +10,7 @@ define void @foo(i8* %arg) {
   %num = call i32 @llvm.nacl.setjmp(i8* %arg)
 ; ARM: bl setjmp
 
-  call void @llvm.nacl.longjmp(i8* %arg, i32 %num) 
+  call void @llvm.nacl.longjmp(i8* %arg, i32 %num)
 ; ARM: bl longjmp
 
   ret void

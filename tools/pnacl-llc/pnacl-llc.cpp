@@ -38,6 +38,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/NaCl.h"
 #include <memory>
 
 
@@ -326,6 +327,14 @@ static int compileModule(char **argv, LLVMContext &Context) {
       VerifyPass->runOnModule(*mod);
       CheckABIVerifyErrors(ABIErrorReporter, "Module");
     }
+
+    // Add declarations for external functions required by PNaCl. The
+    // ResolvePNaClIntrinsics function pass running during streaming
+    // depends on these declarations being in the module.
+    OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+        createAddPNaClExternalDeclsPass());
+    AddPNaClExternalDeclsPass->runOnModule(*mod);
+
 #if defined(__native_client__) && defined(NACL_SRPC)
     // Record that this isn't a shared library.
     // TODO(eliben): clean this up more once the pnacl-llc switch-over is
@@ -462,6 +471,10 @@ static int compileModule(char **argv, LLVMContext &Context) {
     FunctionVerifyPass = createPNaClABIVerifyFunctionsPass(&ABIErrorReporter);
     PM->add(FunctionVerifyPass);
   }
+
+  // Add the intrinsic resolution pass. It assumes ABI-conformant code.
+  PM->add(createResolvePNaClIntrinsicsPass());
+
   // @LOCALMOD-END
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
