@@ -57,9 +57,12 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   PM.add(createFlattenGlobalsPass());
 
   // We should not place arbitrary passes after ExpandConstantExpr
-  // because they might reintroduce ConstantExprs.  However,
+  // because they might reintroduce ConstantExprs.
+  PM.add(createExpandConstantExprPass());
   // ExpandGetElementPtr must follow ExpandConstantExpr to expand the
   // getelementptr instructions it creates.
-  PM.add(createExpandConstantExprPass());
   PM.add(createExpandGetElementPtrPass());
+  // ReplacePtrsWithInts assumes that getelementptr instructions and
+  // ConstantExprs have already been expanded out.
+  PM.add(createReplacePtrsWithIntsPass());
 }
