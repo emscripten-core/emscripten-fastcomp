@@ -1,5 +1,3 @@
-set(LLVM_LINK_COMPONENTS ipo)
-
 add_llvm_library(LLVMNaClTransforms
   AddPNaClExternalDecls.cpp
   ExpandArithWithOverflow.cpp

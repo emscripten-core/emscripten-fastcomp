@@ -20,4 +20,4 @@ type = Library
 name = NaClTransforms
 parent = Transforms
 library_name = NaClTransforms
-required_libraries = Core Support
+required_libraries = Core Support IPO
