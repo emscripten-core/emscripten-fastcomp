@@ -108,12 +108,17 @@ define void @icmpsigned(i32 %a) {
   ret void
 }
 
+%struct.ints = type { i32, i32 }
 ; CHECK: @bc1
 ; CHECK: bc1 = bitcast i32* %a to i64*
 ; CHECK-NEXT: bc2 = bitcast i64* %bc1 to i32*
+; CHECK-NEXT: bc3 = bitcast %struct.ints* null to i64*
+; CHECK-NEXT: bc4 = bitcast i64* %bc1 to %struct.ints*
 define i32* @bc1(i32* %a) {
   %bc1 = bitcast i32* %a to i40*
   %bc2 = bitcast i40* %bc1 to i32*
+  %bc3 = bitcast %struct.ints* null to i40*
+  %bc4 = bitcast i40* %bc1 to %struct.ints*
   ret i32* %bc2
 }
 
@@ -238,7 +243,7 @@ define void @select1(i32 %a) {
 }
 
 ; CHECK: @alloca40
-; CHECK: alloca i64, align 8
+; CHECK: %a = alloca i64, align 8
 define void @alloca40() {
   %a = alloca i40, align 8
   %b = bitcast i40* %a to i8*

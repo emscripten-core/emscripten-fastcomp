@@ -74,8 +74,9 @@ static Type *getPromotedIntType(IntegerType *Ty) {
 // Return a legal integer or pointer-to-integer type, promoting to a larger
 // size if necessary.
 static Type *getPromotedType(Type *Ty) {
-  assert((isa<IntegerType>(Ty) || isa<PointerType>(Ty)) &&
-         "Trying to convert a non-integer type");
+  assert((isa<IntegerType>(Ty) ||
+          (isa<PointerType>(Ty) && isa<IntegerType>(Ty->getContainedType(0))))
+         && "Trying to convert a non-integer type");
 
   if (isa<PointerType>(Ty))
     return getPromotedIntType(
@@ -425,13 +426,13 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     State.recordConverted(Alloc, NewInst);
   } else if (BitCastInst *BCInst = dyn_cast<BitCastInst>(Inst)) {
     // Only handle pointers. Ints can't be casted to/from other ints
-    if (shouldConvert(BCInst) || shouldConvert(BCInst->getOperand(0))) {
-      BitCastInst *NewInst = new BitCastInst(
-          State.getConverted(BCInst->getOperand(0)),
-          getPromotedType(BCInst->getDestTy()),
-          "", BCInst);
-      State.recordConverted(BCInst, NewInst);
-    }
+    Type *DestType = shouldConvert(BCInst) ?
+        getPromotedType(BCInst->getDestTy()) : BCInst->getDestTy();
+    BitCastInst *NewInst = new BitCastInst(
+        State.getConverted(BCInst->getOperand(0)),
+        DestType,
+        "", BCInst);
+    State.recordConverted(BCInst, NewInst);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
     if (shouldConvert(Load)) {
       splitLoad(Load, State);
