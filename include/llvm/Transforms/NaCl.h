@@ -21,11 +21,11 @@ class Use;
 class Value;
 
 ModulePass *createAddPNaClExternalDeclsPass();
+ModulePass *createExpandArithWithOverflowPass();
 ModulePass *createExpandByValPass();
 FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
 BasicBlockPass *createExpandGetElementPtrPass();
-ModulePass *createExpandMulWithOverflowPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();

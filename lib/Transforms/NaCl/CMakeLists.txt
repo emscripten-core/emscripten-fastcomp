@@ -2,11 +2,11 @@ set(LLVM_LINK_COMPONENTS ipo)
 
 add_llvm_library(LLVMNaClTransforms
   AddPNaClExternalDecls.cpp
+  ExpandArithWithOverflow.cpp
   ExpandByVal.cpp
   ExpandConstantExpr.cpp
   ExpandCtors.cpp
   ExpandGetElementPtr.cpp
-  ExpandMulWithOverflow.cpp
   ExpandTls.cpp
   ExpandTlsConstantExpr.cpp
   ExpandUtils.cpp

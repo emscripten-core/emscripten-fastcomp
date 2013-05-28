@@ -599,11 +599,11 @@ int main(int argc, char **argv) {
   initializeTarget(Registry);
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
+  initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
   initializeExpandCtorsPass(Registry);
   initializeExpandGetElementPtrPass(Registry);
-  initializeExpandMulWithOverflowPass(Registry);
   initializeExpandTlsPass(Registry);
   initializeExpandTlsConstantExprPass(Registry);
   initializeExpandVarArgsPass(Registry);

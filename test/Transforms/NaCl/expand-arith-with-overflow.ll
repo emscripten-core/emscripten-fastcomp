@@ -1,9 +1,10 @@
-; RUN: opt %s -expand-mul-with-overflow -S | FileCheck %s
+; RUN: opt %s -expand-arith-with-overflow -S | FileCheck %s
 
 declare {i32, i1} @llvm.umul.with.overflow.i32(i32, i32)
 declare {i64, i1} @llvm.umul.with.overflow.i64(i64, i64)
+declare {i16, i1} @llvm.uadd.with.overflow.i16(i16, i16)
 
-; CHECK-NOT: @llvm.umul.with.overflow
+; CHECK-NOT: with.overflow
 
 
 define void @umul32_by_const(i32 %x, i32* %result_val, i1* %result_overflow) {
@@ -18,9 +19,9 @@ define void @umul32_by_const(i32 %x, i32* %result_val, i1* %result_overflow) {
 
 ; The bound is 16777215 == 0xffffff == ((1 << 32) - 1) / 256
 ; CHECK: define void @umul32_by_const(
-; CHECK-NEXT: %pair.mul = mul i32 %x, 256
+; CHECK-NEXT: %pair.arith = mul i32 %x, 256
 ; CHECK-NEXT: %pair.overflow = icmp ugt i32 %x, 16777215
-; CHECK-NEXT: store i32 %pair.mul, i32* %result_val
+; CHECK-NEXT: store i32 %pair.arith, i32* %result_val
 ; CHECK-NEXT: store i1 %pair.overflow, i1* %result_overflow
 
 
@@ -39,9 +40,9 @@ define void @umul32_by_const2(i32 %x, i32* %result_val, i1* %result_overflow) {
 }
 
 ; CHECK: define void @umul32_by_const2(
-; CHECK-NEXT: %pair.mul = mul i32 %x, 65536
+; CHECK-NEXT: %pair.arith = mul i32 %x, 65536
 ; CHECK-NEXT: %pair.overflow = icmp ugt i32 %x, 65535
-; CHECK-NEXT: store i32 %pair.mul, i32* %result_val
+; CHECK-NEXT: store i32 %pair.arith, i32* %result_val
 ; CHECK-NEXT: store i1 %pair.overflow, i1* %result_overflow
 ; CHECK-NEXT: store i1 %pair.overflow, i1* %result_overflow
 
@@ -58,7 +59,23 @@ define void @umul64_by_const(i64 %x, i64* %result_val, i1* %result_overflow) {
 }
 
 ; CHECK: define void @umul64_by_const(i64 %x, i64* %result_val, i1* %result_overflow) {
-; CHECK-NEXT: %pair.mul = mul i64 %x, 36028797018963968
+; CHECK-NEXT: %pair.arith = mul i64 %x, 36028797018963968
 ; CHECK-NEXT: %pair.overflow = icmp ugt i64 %x, 511
-; CHECK-NEXT: store i64 %pair.mul, i64* %result_val
+; CHECK-NEXT: store i64 %pair.arith, i64* %result_val
+; CHECK-NEXT: store i1 %pair.overflow, i1* %result_overflow
+
+
+define void @uadd16_with_const(i16 %x, i16* %result_val, i1* %result_overflow) {
+  %pair = call {i16, i1} @llvm.uadd.with.overflow.i16(i16 %x, i16 35)
+  %val = extractvalue {i16, i1} %pair, 0
+  %overflow = extractvalue {i16, i1} %pair, 1
+
+  store i16 %val, i16* %result_val
+  store i1 %overflow, i1* %result_overflow
+  ret void
+}
+; CHECK: define void @uadd16_with_const(i16 %x, i16* %result_val, i1* %result_overflow) {
+; CHECK-NEXT: %pair.arith = add i16 %x, 35
+; CHECK-NEXT: %pair.overflow = icmp ugt i16 %x, -36
+; CHECK-NEXT: store i16 %pair.arith, i16* %result_val
 ; CHECK-NEXT: store i1 %pair.overflow, i1* %result_overflow

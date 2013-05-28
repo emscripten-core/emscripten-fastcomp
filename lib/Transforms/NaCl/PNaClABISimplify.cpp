@@ -28,6 +28,7 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   // Remove landingpad blocks made unreachable by LowerInvoke.
   PM.add(createCFGSimplificationPass());
 
+  PM.add(createExpandArithWithOverflowPass());
   PM.add(createExpandVarArgsPass());
   PM.add(createExpandCtorsPass());
   PM.add(createResolveAliasesPass());
