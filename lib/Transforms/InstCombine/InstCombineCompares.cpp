@@ -1942,13 +1942,17 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
     //
     // sum = a + b
     // if (sum+128 >u 255)  ...  -> llvm.sadd.with.overflow.i8
-    {
-    ConstantInt *CI2;    // I = icmp ugt (add (add A, B), CI2), CI
-    if (I.getPredicate() == ICmpInst::ICMP_UGT &&
-        match(Op0, m_Add(m_Add(m_Value(A), m_Value(B)), m_ConstantInt(CI2))))
-      if (Instruction *Res = ProcessUGT_ADDCST_ADD(I, A, B, CI2, CI, *this))
-        return Res;
+    // @LOCALMOD-BEGIN
+    // This is disabled for PNaCl, because we don't support the
+    // with.overflow intrinsics in PNaCl's stable ABI.
+    if (0) {
+      ConstantInt *CI2;    // I = icmp ugt (add (add A, B), CI2), CI
+      if (I.getPredicate() == ICmpInst::ICMP_UGT &&
+          match(Op0, m_Add(m_Add(m_Value(A), m_Value(B)), m_ConstantInt(CI2))))
+        if (Instruction *Res = ProcessUGT_ADDCST_ADD(I, A, B, CI2, CI, *this))
+          return Res;
     }
+    // @LOCALMOD-END
 
     // (icmp ne/eq (sub A B) 0) -> (icmp ne/eq A, B)
     if (I.isEquality() && CI->isZero() &&
@@ -2554,21 +2558,27 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
         return new ICmpInst(I.getPredicate(), ConstantExpr::getNot(RHSC), A);
     }
 
-    // (a+b) <u a  --> llvm.uadd.with.overflow.
-    // (a+b) <u b  --> llvm.uadd.with.overflow.
-    if (I.getPredicate() == ICmpInst::ICMP_ULT &&
-        match(Op0, m_Add(m_Value(A), m_Value(B))) &&
-        (Op1 == A || Op1 == B))
-      if (Instruction *R = ProcessUAddIdiom(I, Op0, *this))
-        return R;
+    // @LOCALMOD-BEGIN
+    // This is disabled for PNaCl, because we don't support the
+    // with.overflow intrinsics in PNaCl's stable ABI.
+    if (0) {
+      // (a+b) <u a  --> llvm.uadd.with.overflow.
+      // (a+b) <u b  --> llvm.uadd.with.overflow.
+      if (I.getPredicate() == ICmpInst::ICMP_ULT &&
+          match(Op0, m_Add(m_Value(A), m_Value(B))) &&
+          (Op1 == A || Op1 == B))
+        if (Instruction *R = ProcessUAddIdiom(I, Op0, *this))
+          return R;
 
-    // a >u (a+b)  --> llvm.uadd.with.overflow.
-    // b >u (a+b)  --> llvm.uadd.with.overflow.
-    if (I.getPredicate() == ICmpInst::ICMP_UGT &&
-        match(Op1, m_Add(m_Value(A), m_Value(B))) &&
-        (Op0 == A || Op0 == B))
-      if (Instruction *R = ProcessUAddIdiom(I, Op1, *this))
-        return R;
+      // a >u (a+b)  --> llvm.uadd.with.overflow.
+      // b >u (a+b)  --> llvm.uadd.with.overflow.
+      if (I.getPredicate() == ICmpInst::ICMP_UGT &&
+          match(Op1, m_Add(m_Value(A), m_Value(B))) &&
+          (Op0 == A || Op0 == B))
+        if (Instruction *R = ProcessUAddIdiom(I, Op1, *this))
+          return R;
+    }
+    // @LOCALMOD-END
   }
 
   if (I.isEquality()) {

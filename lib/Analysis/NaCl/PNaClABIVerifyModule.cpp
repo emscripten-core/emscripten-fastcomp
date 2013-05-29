@@ -199,6 +199,17 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::vacopy:
     case Intrinsic::vaend:
     case Intrinsic::vastart:
+    // Disallow the *_with_overflow intrinsics because they return
+    // struct types.  All of them can be introduced by passing -ftrapv
+    // to Clang, which we do not support for now.  umul_with_overflow
+    // and uadd_with_overflow are introduced by Clang for C++'s new[],
+    // but ExpandArithWithOverflow expands out this use.
+    case Intrinsic::sadd_with_overflow:
+    case Intrinsic::ssub_with_overflow:
+    case Intrinsic::uadd_with_overflow:
+    case Intrinsic::usub_with_overflow:
+    case Intrinsic::smul_with_overflow:
+    case Intrinsic::umul_with_overflow:
       return false;
 
     // (3) Dev intrinsics.
@@ -226,13 +237,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::sqrt: // Rounding is defined, but setting errno up to libm.
     case Intrinsic::stackrestore: // Used to support C99 VLAs.
     case Intrinsic::stacksave: // Used to support C99 VLAs.
-    // the *_with_overflow return struct types, so we'll need to fix these.
-    case Intrinsic::sadd_with_overflow: // Introduced by -ftrapv
-    case Intrinsic::ssub_with_overflow:
-    case Intrinsic::uadd_with_overflow:
-    case Intrinsic::usub_with_overflow:
-    case Intrinsic::smul_with_overflow:
-    case Intrinsic::umul_with_overflow: // Introduced by c++ new[x * y].
       return PNaClABIAllowDevIntrinsics;
   }
 }
