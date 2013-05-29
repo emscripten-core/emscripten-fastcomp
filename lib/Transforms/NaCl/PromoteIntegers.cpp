@@ -34,6 +34,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
 
@@ -53,11 +54,12 @@ INITIALIZE_PASS(PromoteIntegers, "nacl-promote-ints",
                 "Promote integer types which are illegal in PNaCl",
                 false, false)
 
-
 // Legal sizes are currently 1, 8, 16, 32, and 64.
 // We can't yet expand types above 64 bit, so don't try to touch them for now.
+// TODO(dschuff): expand >64bit types or disallow >64bit packed bitfields.
+// There are currently none in our tests that use the ABI checker.
+// See https://code.google.com/p/nativeclient/issues/detail?id=3360
 static bool isLegalSize(unsigned Size) {
-  // TODO(dschuff): expand >64bit types or disallow >64bit packed bitfields
   if (Size > 64) return true;
   return Size == 1 || Size == 8 || Size == 16 || Size == 32 || Size == 64;
 }
@@ -611,4 +613,8 @@ bool PromoteIntegers::runOnFunction(Function &F) {
   }
   State.eraseReplacedInstructions();
   return Modified;
+}
+
+FunctionPass* llvm::createPromoteIntegersPass() {
+  return new PromoteIntegers();
 }
