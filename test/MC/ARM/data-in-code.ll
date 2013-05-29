@@ -1,7 +1,9 @@
-;; RUN: llc -O0 -mtriple=armv7-linux-gnueabi -filetype=obj %s -o - | \
+;; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort \
+;; RUN:   -mtriple=armv7-linux-gnueabi -filetype=obj %s -o - | \
 ;; RUN:   elf-dump | FileCheck -check-prefix=ARM %s
 
-;; RUN: llc -O0 -mtriple=thumbv7-linux-gnueabi -filetype=obj %s -o - | \
+;; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort \
+;; RUN:   -mtriple=thumbv7-linux-gnueabi -filetype=obj %s -o - | \
 ;; RUN:   elf-dump --dump-section-data | FileCheck -check-prefix=TMB %s
 
 ;; Ensure that if a jump table is generated that it has Mapping Symbols
@@ -119,7 +121,7 @@ exit:
 
 ;; ARM:         # Symbol 3
 ;; ARM-NEXT:    $a
-;; ARM-NEXT:   'st_value', 0x000000ac
+;; ARM-NEXT:   'st_value', 0x{{[0-9A-F]+}}
 ;; ARM-NEXT:   'st_size', 0x00000000
 ;; ARM-NEXT:   'st_bind', 0x0
 ;; ARM-NEXT:   'st_type', 0x0
@@ -135,7 +137,7 @@ exit:
 
 ;; ARM:         # Symbol 5
 ;; ARM-NEXT:    $d
-;; ARM-NEXT:   'st_value', 0x00000030
+;; ARM-NEXT:   'st_value', 0x{{[0-9A-F]+}}
 ;; ARM-NEXT:   'st_size', 0x00000000
 ;; ARM-NEXT:   'st_bind', 0x0
 ;; ARM-NEXT:   'st_type', 0x0
@@ -146,7 +148,7 @@ exit:
 
 ;; TMB:         # Symbol 3
 ;; TMB-NEXT:    $d
-;; TMB-NEXT:   'st_value', 0x00000016
+;; TMB-NEXT:   'st_value', 0x{{[0-9A-F]+}}
 ;; TMB-NEXT:   'st_size', 0x00000000
 ;; TMB-NEXT:   'st_bind', 0x0
 ;; TMB-NEXT:   'st_type', 0x0
@@ -164,7 +166,7 @@ exit:
 
 ;; TMB:         # Symbol 5
 ;; TMB-NEXT:    $t
-;; TMB-NEXT:   'st_value', 0x00000036
+;; TMB-NEXT:   'st_value', 0x{{[0-9A-F]+}}
 ;; TMB-NEXT:   'st_size', 0x00000000
 ;; TMB-NEXT:   'st_bind', 0x0
 ;; TMB-NEXT:   'st_type', 0x0
