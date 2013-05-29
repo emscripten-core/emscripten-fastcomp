@@ -344,3 +344,12 @@ define void @store56(i8* %a, i8 %b) {
   store i56 %b56, i56* %bc
   ret void
 }
+
+; CHECK: @undefoperand
+; CHECK-NEXT: %a40 = zext i32 %a to i64
+; CHECK-NEXT: %au = and i64 %a40, undef
+define void @undefoperand(i32 %a) {
+  %a40 = zext i32 %a to i40
+  %au = and i40 %a40, undef
+  ret void
+}

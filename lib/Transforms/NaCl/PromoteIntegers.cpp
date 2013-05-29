@@ -103,11 +103,17 @@ static bool shouldConvert(Value *Val) {
 // Return a constant which has been promoted to a legal size.
 static Value *convertConstant(Constant *C, bool SignExt=false) {
   assert(shouldConvert(C));
-  ConstantInt *CInt = cast<ConstantInt>(C);
-  return ConstantInt::get(
-      getPromotedType(cast<IntegerType>(CInt->getType())),
-      SignExt ? CInt->getSExtValue() : CInt->getZExtValue(),
-      /*isSigned=*/SignExt);
+  if (isa<UndefValue>(C)) {
+    return UndefValue::get(getPromotedType(C->getType()));
+  } else if (ConstantInt *CInt = dyn_cast<ConstantInt>(C)) {
+    return ConstantInt::get(
+        getPromotedType(C->getType()),
+        SignExt ? CInt->getSExtValue() : CInt->getZExtValue(),
+        /*isSigned=*/SignExt);
+  } else {
+    errs() << "Value: " << *C << "\n";
+    report_fatal_error("Unexpected constant value");
+  }
 }
 
 // Holds the state for converting/replacing values. Conversion is done in one
