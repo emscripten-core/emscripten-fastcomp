@@ -6,6 +6,7 @@ add_llvm_library(LLVMNaClTransforms
   ExpandCtors.cpp
   ExpandGetElementPtr.cpp
   ExpandSmallArguments.cpp
+  ExpandStructRegs.cpp
   ExpandTls.cpp
   ExpandTlsConstantExpr.cpp
   ExpandUtils.cpp

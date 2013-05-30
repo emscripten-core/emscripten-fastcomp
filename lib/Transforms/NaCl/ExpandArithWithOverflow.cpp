@@ -94,9 +94,10 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
                          "*.with.overflow must be a constant");
     }
 
-    Value *ArithResult = BinaryOperator::Create(
+    SmallVector<Value *, 2> Fields;
+    Fields.push_back(BinaryOperator::Create(
         (Mul ? Instruction::Mul : Instruction::Add), VariableArg, ConstantArg,
-        Call->getName() + ".arith", Call);
+        Call->getName() + ".arith", Call));
 
     uint64_t ArgMax;
     if (Mul) {
@@ -104,32 +105,10 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
     } else {
       ArgMax = UintTypeMax(Bits) - ConstantArg->getZExtValue();
     }
-    Value *Overflow = new ICmpInst(
+    Fields.push_back(new ICmpInst(
         Call, CmpInst::ICMP_UGT, VariableArg, ConstantInt::get(IntTy, ArgMax),
-        Call->getName() + ".overflow");
-
-    for (Value::use_iterator FieldIter = Call->use_begin(),
-           E = Call->use_end(); FieldIter != E; ) {
-      User *U = *FieldIter++;
-      ExtractValueInst *Field = dyn_cast<ExtractValueInst>(U);
-      if (!Field) {
-        errs() << "Use: " << *U << "\n";
-        report_fatal_error(
-            "ExpandArithWithOverflow: Use is not an extractvalue");
-      }
-      if (Field->getNumIndices() != 1) {
-        report_fatal_error("ExpandArithWithOverflow: Unexpected indices");
-      }
-      unsigned Index = Field->getIndices()[0];
-      if (Index == 0) {
-        Field->replaceAllUsesWith(ArithResult);
-      } else if (Index == 1) {
-        Field->replaceAllUsesWith(Overflow);
-      } else {
-        report_fatal_error("ExpandArithWithOverflow: Unexpected index");
-      }
-      Field->eraseFromParent();
-    }
+        Call->getName() + ".overflow"));
+    ReplaceUsesOfStructWithFields(Call, Fields);
     Call->eraseFromParent();
   }
   Intrinsic->eraseFromParent();

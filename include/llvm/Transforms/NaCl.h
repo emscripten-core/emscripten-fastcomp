@@ -29,6 +29,7 @@ FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
 BasicBlockPass *createExpandGetElementPtrPass();
 ModulePass *createExpandSmallArgumentsPass();
+FunctionPass *createExpandStructRegsPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
@@ -57,6 +58,12 @@ Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
 // which the caller must update because the argument types might be
 // different.
 Function *RecreateFunction(Function *Func, FunctionType *NewType);
+
+// Given a value of struct type, StructVal, this replaces all uses of
+// StructVal with the given struct fields.  This involves replacing
+// extractvalue instructions that refer to StructVal.
+void ReplaceUsesOfStructWithFields(Value *StructVal,
+                                   const SmallVectorImpl<Value *> &Fields);
 
 }
 

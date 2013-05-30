@@ -11,6 +11,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
@@ -57,4 +58,28 @@ Function *llvm::RecreateFunction(Function *Func, FunctionType *NewType) {
       ConstantExpr::getBitCast(NewFunc,
                                Func->getFunctionType()->getPointerTo()));
   return NewFunc;
+}
+
+void llvm::ReplaceUsesOfStructWithFields(
+    Value *StructVal, const SmallVectorImpl<Value *> &Fields) {
+  while (!StructVal->use_empty()) {
+    User *U = StructVal->use_back();
+    ExtractValueInst *Field = dyn_cast<ExtractValueInst>(U);
+    if (!Field) {
+      errs() << "Use: " << *U << "\n";
+      report_fatal_error("ReplaceUsesOfStructWithFields: "
+                         "Struct use site is not an extractvalue");
+    }
+    if (Field->getNumIndices() != 1) {
+      // If we wanted to handle this case, we could split the
+      // extractvalue into two extractvalues and run ExpandLoad()
+      // multiple times.
+      errs() << "Use: " << *U << "\n";
+      report_fatal_error("ReplaceUsesOfStructWithFields: Unexpected indices");
+    }
+    unsigned Index = Field->getIndices()[0];
+    assert(Index < Fields.size());
+    Field->replaceAllUsesWith(Fields[Index]);
+    Field->eraseFromParent();
+  }
 }

@@ -28,7 +28,10 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   // Remove landingpad blocks made unreachable by LowerInvoke.
   PM.add(createCFGSimplificationPass());
 
+  // Expand out some uses of struct types.
   PM.add(createExpandArithWithOverflowPass());
+  PM.add(createExpandStructRegsPass());
+
   PM.add(createExpandVarArgsPass());
   PM.add(createExpandCtorsPass());
   PM.add(createResolveAliasesPass());
