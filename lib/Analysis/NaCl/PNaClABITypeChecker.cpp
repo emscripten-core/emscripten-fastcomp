@@ -51,7 +51,7 @@ bool PNaClABITypeChecker::isValidType(const Type *Ty) {
   if (VisitedTypes.count(Ty))
     return VisitedTypes[Ty];
 
-  // unsigned Width;
+  unsigned Width;
   bool Valid = false;
   switch (Ty->getTypeID()) {
     // Allowed primitive types
@@ -75,15 +75,9 @@ bool PNaClABITypeChecker::isValidType(const Type *Ty) {
       Valid = false;
       break;
     case Type::IntegerTyID:
-      // The check for integer sizes below currently does not pass on
-      // all NaCl tests because some LLVM passes introduce unusual
-      // integer sizes.
-      // TODO(mseaborn): Re-enable the check when it passes.
-      // See https://code.google.com/p/nativeclient/issues/detail?id=3360
-      Valid = true;
-      // Width = cast<const IntegerType>(Ty)->getBitWidth();
-      // Valid = (Width == 1 || Width == 8 || Width == 16 ||
-      //          Width == 32 || Width == 64);
+      Width = cast<const IntegerType>(Ty)->getBitWidth();
+      Valid = (Width == 1 || Width == 8 || Width == 16 ||
+               Width == 32 || Width == 64);
       break;
     case Type::FunctionTyID:
       Valid = isValidFunctionType(cast<FunctionType>(Ty));

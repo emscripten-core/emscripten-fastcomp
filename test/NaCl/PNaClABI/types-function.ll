@@ -17,12 +17,10 @@ define void @types() {
 ; see below...
   %h3 = fadd double 0.0, fpext (half 0.0 to double)
 
-; TODO(mseaborn): Re-enable integer size checking.
-; See https://code.google.com/p/nativeclient/issues/detail?id=3360
-; C;HECK: Function types has instruction operand with disallowed type: i17*
-;  store i32 0, i32* bitcast (i17* @a2 to i32*), align 4
-; C;HECK: Function types has instruction operand with disallowed type: i15
-;  call void @func(i15 1)
+; CHECK: Function types has instruction operand with disallowed type: i17*
+  store i32 0, i32* bitcast (i17* @a2 to i32*), align 4
+; CHECK: Function types has instruction operand with disallowed type: i15
+  call void @func(i15 1)
 
 ; CHECK: Function types has disallowed instruction metadata: !foo
   ret void, !foo !0

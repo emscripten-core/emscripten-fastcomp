@@ -4,14 +4,12 @@
 
 ; Basic global types
 
-; TODO(mseaborn): Re-enable integer size checking.
-; See https://code.google.com/p/nativeclient/issues/detail?id=3360
-; C;HECK: Variable i4 has disallowed type: i4
-;@i4 = private global i4 0
-; C;HECK: Variable i33 has disallowed type: i33
-;@i33 = private global i33 0
-; C;HECK: Variable i128 has disallowed type: i128
-;@i128 = private global i128 0
+; CHECK: Variable i4 has disallowed type: i4
+@i4 = private global i4 0
+; CHECK: Variable i33 has disallowed type: i33
+@i33 = private global i33 0
+; CHECK: Variable i128 has disallowed type: i128
+@i128 = private global i128 0
 
 ; CHECK: Variable hlf has disallowed type: half
 @hlf = private global half 0.0
