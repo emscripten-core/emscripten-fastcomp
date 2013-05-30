@@ -21,13 +21,6 @@ declare i8* @llvm.returnaddress(i32 %level)
 
 ; ===================================
 ; Always allowed intrinsics.
-; CHECK-NOT: Function llvm.lifetime.start is a disallowed LLVM intrinsic
-; DBG-NOT: Function llvm.lifetime.start is a disallowed LLVM intrinsic
-; DEV-NOT: Function llvm.lifetime.start is a disallowed LLVM intrinsic
-declare void @llvm.lifetime.start(i64, i8* nocapture)
-
-; CHECK-NOT: Function llvm.lifetime.start is a disallowed LLVM intrinsic
-declare void @llvm.lifetime.end(i64, i8* nocapture)
 
 ; CHECK-NOT: Function llvm.memcpy.p0i8.p0i8.i32 is a disallowed LLVM intrinsic
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src,
@@ -75,3 +68,9 @@ declare i1 @llvm.bswap.1(i1)
 
 ; CHECK: Function llvm.bswap.8 is a disallowed LLVM intrinsic
 declare i8 @llvm.bswap.8(i8)
+
+; CHECK: Function llvm.lifetime.start is a disallowed LLVM intrinsic
+declare void @llvm.lifetime.start(i64, i8* nocapture)
+
+; CHECK: Function llvm.lifetime.end is a disallowed LLVM intrinsic
+declare void @llvm.lifetime.end(i64, i8* nocapture)

@@ -39,9 +39,6 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   // GlobalCleanup needs to run after ExpandTls because
   // __tls_template_start etc. are extern_weak before expansion
   PM.add(createGlobalCleanupPass());
-  // Strip dead prototytes to appease the intrinsic ABI checks
-  // (ExpandVarArgs leaves around var-arg intrinsics).
-  PM.add(createStripDeadPrototypesPass());
 }
 
 void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
@@ -78,4 +75,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
+
+  // Strip dead prototytes to appease the intrinsic ABI checks.
+  // ExpandVarArgs leaves around vararg intrinsics, and
+  // ReplacePtrsWithInts leaves the lifetime.start/end intrinsics.
+  PM.add(createStripDeadPrototypesPass());
 }

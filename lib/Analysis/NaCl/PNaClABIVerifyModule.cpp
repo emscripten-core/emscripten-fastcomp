@@ -163,8 +163,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::bswap: return isWhitelistedBswap(F);
     case Intrinsic::invariant_end:
     case Intrinsic::invariant_start:
-    case Intrinsic::lifetime_end:
-    case Intrinsic::lifetime_start:
     case Intrinsic::memcpy:
     case Intrinsic::memmove:
     case Intrinsic::memset:
@@ -210,6 +208,13 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::usub_with_overflow:
     case Intrinsic::smul_with_overflow:
     case Intrinsic::umul_with_overflow:
+    // Disallow lifetime.start/end because the semantics of what
+    // arguments they accept are not very well defined, and because it
+    // would be better to do merging of stack slots in the user
+    // toolchain than in the PNaCl translator.
+    // See https://code.google.com/p/nativeclient/issues/detail?id=3443
+    case Intrinsic::lifetime_end:
+    case Intrinsic::lifetime_start:
       return false;
 
     // (3) Dev intrinsics.
