@@ -33,6 +33,8 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/IntegersSubset.h"
+#include "llvm/Support/IntegersSubsetMapping.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -580,6 +582,32 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
                           Phi->getIncomingBlock(I));
     }
     State.recordConverted(Phi, NewPhi);
+  } else if (SwitchInst *Switch = dyn_cast<SwitchInst>(Inst)) {
+    SwitchInst *NewInst = SwitchInst::Create(
+        State.getConverted(Switch->getCondition()),
+        Switch->getDefaultDest(),
+        Switch->getNumCases(),
+        Switch);
+    for (SwitchInst::CaseIt I = Switch->case_begin(),
+             E = Switch->case_end();
+         I != E; ++I) {
+      // Build a new case from the ranges that map to the successor BB. Each
+      // range consists of a high and low value which are typed, so the ranges
+      // must be rebuilt and a new case constructed from them.
+      IntegersSubset CaseRanges = I.getCaseValueEx();
+      IntegersSubsetToBB CaseBuilder;
+      for (unsigned RI = 0, RE = CaseRanges.getNumItems(); RI < RE; ++RI) {
+        CaseBuilder.add(
+            IntItem::fromConstantInt(cast<ConstantInt>(convertConstant(
+                CaseRanges.getItem(RI).getLow().toConstantInt()))),
+            IntItem::fromConstantInt(cast<ConstantInt>(convertConstant(
+                CaseRanges.getItem(RI).getHigh().toConstantInt()))));
+      }
+      IntegersSubset Case = CaseBuilder.getCase();
+      NewInst->addCase(Case, I.getCaseSuccessor());
+    }
+    Switch->eraseFromParent();
+    //State.recordConverted(Switch, NewInst);
   } else {
     errs() << *Inst<<"\n";
     llvm_unreachable("unhandled instruction");

@@ -353,3 +353,22 @@ define void @undefoperand(i32 %a) {
   %au = and i40 %a40, undef
   ret void
 }
+
+; CHECK: @switch
+; CHECK-NEXT: %a24 = zext i16 %a to i32
+; CHECK-NEXT: switch i32 %a24, label %end [
+; CHECK-NEXT: i32 0, label %if1
+; CHECK-NEXT: i32 1, label %if2
+define void @switch(i16 %a) {
+  %a24 = zext i16 %a to i24
+  switch i24 %a24, label %end [
+    i24 0, label %if1
+    i24 1, label %if2
+  ]
+if1:
+  ret void
+if2:
+  ret void
+end:
+  ret void
+}
