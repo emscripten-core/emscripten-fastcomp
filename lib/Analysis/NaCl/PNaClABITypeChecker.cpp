@@ -20,6 +20,33 @@
 
 using namespace llvm;
 
+bool PNaClABITypeChecker::isValidParamType(const Type *Ty) {
+  if (!isValidType(Ty))
+    return false;
+  if (const IntegerType *IntTy = dyn_cast<IntegerType>(Ty)) {
+    // PNaCl requires function arguments and return values to be 32
+    // bits or larger.  This avoids exposing architecture
+    // ABI-dependent differences about whether arguments or return
+    // values are zero-extended when calling a function with the wrong
+    // prototype.
+    if (IntTy->getBitWidth() < 32)
+      return false;
+  }
+  return true;
+}
+
+bool PNaClABITypeChecker::isValidFunctionType(const FunctionType *FTy) {
+  if (FTy->isVarArg())
+    return false;
+  if (!isValidParamType(FTy->getReturnType()))
+    return false;
+  for (unsigned I = 0, E = FTy->getNumParams(); I < E; ++I) {
+    if (!isValidParamType(FTy->getParamType(I)))
+      return false;
+  }
+  return true;
+}
+
 bool PNaClABITypeChecker::isValidType(const Type *Ty) {
   if (VisitedTypes.count(Ty))
     return VisitedTypes[Ty];
@@ -59,6 +86,8 @@ bool PNaClABITypeChecker::isValidType(const Type *Ty) {
       //          Width == 32 || Width == 64);
       break;
     case Type::FunctionTyID:
+      Valid = isValidFunctionType(cast<FunctionType>(Ty));
+      break;
     case Type::StructTyID:
     case Type::ArrayTyID:
     case Type::PointerTyID:

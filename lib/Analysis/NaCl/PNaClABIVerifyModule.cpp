@@ -293,26 +293,14 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
                            << " is a disallowed LLVM intrinsic\n";
     }
 
-    // Check types of functions and their arguments
-    FunctionType *FT = MI->getFunctionType();
-    if (!TC.isValidType(FT->getReturnType())) {
-      Reporter->addError() << "Function " << MI->getName() <<
-          " has disallowed return type: " <<
-          PNaClABITypeChecker::getTypeName(FT->getReturnType()) << "\n";
-    }
-    for (unsigned I = 0, E = FT->getNumParams(); I < E; ++I) {
-      Type *PT = FT->getParamType(I);
-      if (!TC.isValidType(PT)) {
-        Reporter->addError() << "Function " << MI->getName() << " argument " <<
-            I + 1 << " has disallowed type: " <<
-            PNaClABITypeChecker::getTypeName(PT) << "\n";
-      }
-    }
-    // Pointers to varargs function types are not yet disallowed, but
-    // we do disallow defining or calling functions of varargs types.
-    if (MI->isVarArg()) {
-      Reporter->addError() << "Function " << MI->getName() <<
-          " is a variable-argument function (disallowed)\n";
+    // Check types of functions and their arguments.  Not necessary
+    // for intrinsics, whose types are fixed anyway, and which have
+    // argument types that we disallow such as i8.
+    if (!MI->isIntrinsic() && !TC.isValidType(MI->getType())) {
+      Reporter->addError() << "Function " << MI->getName()
+          << " has disallowed type: "
+          << PNaClABITypeChecker::getTypeName(MI->getFunctionType())
+          << "\n";
     }
 
     checkGlobalValueCommon(MI);

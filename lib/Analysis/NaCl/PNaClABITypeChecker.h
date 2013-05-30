@@ -21,10 +21,17 @@
 
 namespace llvm {
 class Constant;
+class FunctionType;
 class MDNode;
 class Value;
 
 class PNaClABITypeChecker {
+  // Returns true if Ty is a valid argument or return value type for PNaCl.
+  bool isValidParamType(const Type *Ty);
+
+  // Returns true if Ty is a valid function type for PNaCl.
+  bool isValidFunctionType(const FunctionType *FTy);
+
  public:
   // Returns true if Ty is a valid type for PNaCl.
   bool isValidType(const Type *Ty);

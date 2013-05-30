@@ -105,12 +105,12 @@ some_block:
 ; CHECK: Variable alias1 is an alias (disallowed)
 @alias1 = alias i32* @i32
 
-; CHECK: Function badReturn has disallowed return type
+; CHECK: Function badReturn has disallowed type: half* ()
 declare half* @badReturn()
 
-; CHECK: Function badArgType1 argument 1 has disallowed type
+; CHECK: Function badArgType1 has disallowed type: void (half, i32)
 declare void @badArgType1(half %a, i32 %b)
-; CHECK: Function badArgType2 argument 2 has disallowed type
+; CHECK: Function badArgType2 has disallowed type: void (i32, half)
 declare void @badArgType2(i32 %a, half %b)
 
 ; If the metadata is allowed we want to check for types.
