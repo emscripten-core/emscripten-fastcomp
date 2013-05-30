@@ -60,9 +60,6 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // We should not place arbitrary passes after ExpandConstantExpr
   // because they might reintroduce ConstantExprs.
   PM.add(createExpandConstantExprPass());
-  // PromoteIntegersPass does not handle constexprs and creates GEPs,
-  // so it goes between those passes.
-  PM.add(createPromoteIntegersPass());
   // ExpandGetElementPtr must follow ExpandConstantExpr to expand the
   // getelementptr instructions it creates.
   PM.add(createExpandGetElementPtrPass());
