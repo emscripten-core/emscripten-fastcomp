@@ -8,7 +8,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
@@ -42,4 +44,17 @@ void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
 Instruction *llvm::CopyDebug(Instruction *NewInst, Instruction *Original) {
   NewInst->setDebugLoc(Original->getDebugLoc());
   return NewInst;
+}
+
+Function *llvm::RecreateFunction(Function *Func, FunctionType *NewType) {
+  Function *NewFunc = Function::Create(NewType, Func->getLinkage());
+  NewFunc->copyAttributesFrom(Func);
+  Func->getParent()->getFunctionList().insert(Func, NewFunc);
+  NewFunc->takeName(Func);
+  NewFunc->getBasicBlockList().splice(NewFunc->begin(),
+                                      Func->getBasicBlockList());
+  Func->replaceAllUsesWith(
+      ConstantExpr::getBitCast(NewFunc,
+                               Func->getFunctionType()->getPointerTo()));
+  return NewFunc;
 }

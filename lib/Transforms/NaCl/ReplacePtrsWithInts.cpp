@@ -552,17 +552,9 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
 
     FunctionConverter FC(IntPtrType);
     FunctionType *NFTy = FC.convertFuncType(OldFunc->getFunctionType());
-
-    // In order to change the function's argument types, we have to
-    // recreate the function.
-    Function *NewFunc = Function::Create(NFTy, OldFunc->getLinkage());
-    NewFunc->copyAttributesFrom(OldFunc);
-    NewFunc->setAttributes(RemovePointerAttrs(M.getContext(),
-                                              NewFunc->getAttributes()));
-    M.getFunctionList().insert(OldFunc, NewFunc);
-    NewFunc->takeName(OldFunc);
-    NewFunc->getBasicBlockList().splice(NewFunc->begin(),
-                                        OldFunc->getBasicBlockList());
+    OldFunc->setAttributes(RemovePointerAttrs(M.getContext(),
+                                              OldFunc->getAttributes()));
+    Function *NewFunc = RecreateFunction(OldFunc, NFTy);
 
     // Move the arguments across to the new function.
     for (Function::arg_iterator Arg = OldFunc->arg_begin(),
@@ -594,8 +586,6 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
       }
     }
     FC.eraseReplacedInstructions();
-    OldFunc->replaceAllUsesWith(ConstantExpr::getBitCast(NewFunc,
-                                                         OldFunc->getType()));
     OldFunc->eraseFromParent();
   }
   // Now that all functions have their normalized types, we can remove

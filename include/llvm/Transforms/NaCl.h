@@ -13,7 +13,9 @@
 namespace llvm {
 
 class BasicBlockPass;
+class Function;
 class FunctionPass;
+class FunctionType;
 class Instruction;
 class ModulePass;
 class PassManager;
@@ -26,6 +28,7 @@ ModulePass *createExpandByValPass();
 FunctionPass *createExpandConstantExprPass();
 ModulePass *createExpandCtorsPass();
 BasicBlockPass *createExpandGetElementPtrPass();
+ModulePass *createExpandSmallArgumentsPass();
 ModulePass *createExpandTlsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
@@ -47,6 +50,13 @@ void PhiSafeReplaceUses(Use *U, Value *NewVal);
 
 // Copy debug information from Original to NewInst, and return NewInst.
 Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
+
+// In order to change a function's type, the function must be
+// recreated.  RecreateFunction() recreates Func with type NewType.
+// It copies or moves across everything except the argument values,
+// which the caller must update because the argument types might be
+// different.
+Function *RecreateFunction(Function *Func, FunctionType *NewType);
 
 }
 

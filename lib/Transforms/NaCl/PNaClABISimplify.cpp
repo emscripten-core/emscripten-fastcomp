@@ -49,6 +49,12 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // ExpandByVal expands it to.
   PM.add(createExpandByValPass());
 
+  // We place ExpandSmallArguments after optimization passes because
+  // some optimizations undo its changes.  Note that
+  // ExpandSmallArguments requires that ExpandVarArgs has already been
+  // run.
+  PM.add(createExpandSmallArgumentsPass());
+
   // We place StripMetadata after optimization passes because
   // optimizations depend on the metadata.
   PM.add(createStripMetadataPass());

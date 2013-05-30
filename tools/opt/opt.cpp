@@ -604,6 +604,7 @@ int main(int argc, char **argv) {
   initializeExpandConstantExprPass(Registry);
   initializeExpandCtorsPass(Registry);
   initializeExpandGetElementPtrPass(Registry);
+  initializeExpandSmallArgumentsPass(Registry);
   initializeExpandTlsPass(Registry);
   initializeExpandTlsConstantExprPass(Registry);
   initializeExpandVarArgsPass(Registry);

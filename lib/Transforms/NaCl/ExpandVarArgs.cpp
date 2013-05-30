@@ -72,15 +72,7 @@ static void ExpandVarArgFunc(Function *Func) {
   SmallVector<Type *, 8> Params(FTy->param_begin(), FTy->param_end());
   Params.push_back(PtrType);
   FunctionType *NFTy = FunctionType::get(FTy->getReturnType(), Params, false);
-
-  // In order to change the function's arguments, we have to recreate
-  // the function.
-  Function *NewFunc = Function::Create(NFTy, Func->getLinkage());
-  NewFunc->copyAttributesFrom(Func);
-  Func->getParent()->getFunctionList().insert(Func, NewFunc);
-  NewFunc->takeName(Func);
-  NewFunc->getBasicBlockList().splice(NewFunc->begin(),
-                                      Func->getBasicBlockList());
+  Function *NewFunc = RecreateFunction(Func, NFTy);
 
   // Declare the new argument as "noalias".
   NewFunc->setAttributes(
@@ -95,8 +87,6 @@ static void ExpandVarArgFunc(Function *Func) {
     NewArg->takeName(Arg);
   }
 
-  Func->replaceAllUsesWith(
-      ConstantExpr::getBitCast(NewFunc, FTy->getPointerTo()));
   Func->eraseFromParent();
 
   Value *VarArgsArg = --NewFunc->arg_end();
