@@ -24,12 +24,13 @@
 // 2) A reference to a GlobalValue (a function or global variable)
 //    with an optional 32-bit byte offset added to it (the addend):
 //
-//      i8* bitcast (TYPE* @GLOBAL to i8*)
-//      getelementptr (i8* bitcast (TYPE* @GLOBAL to i8*), i32 0, i32 ADDEND)
+//      ptrtoint (TYPE* @GLOBAL to i32)
+//      add (i32 ptrtoint (TYPE* @GLOBAL to i32), i32 ADDEND)
 //
-//    Note that if @GLOBAL is an i8 array, LLVM will write the latter as:
-//
-//      getelementptr ([SIZE x i8]* @GLOBAL, i32 0, i32 ADDEND)
+//    We use ptrtoint+add rather than bitcast+getelementptr because
+//    the constructor for getelementptr ConstantExprs performs
+//    constant folding which introduces more complex getelementptrs,
+//    and it is hard to check that they follow a normal form.
 //
 //    For completeness, the pass also allows a BlockAddress as well as
 //    a GlobalValue here, although BlockAddresses are currently not
@@ -64,7 +65,7 @@ namespace {
   // has been flattened and may be converted into the normal form.
   class FlattenedConstant {
     LLVMContext *Context;
-    Type *I8Ptr;
+    IntegerType *IntPtrType;
     unsigned PtrSize;
 
     // A flattened global variable initializer is represented as:
@@ -91,7 +92,7 @@ namespace {
   public:
     FlattenedConstant(DataLayout *DL, Constant *Value):
         Context(&Value->getContext()) {
-      I8Ptr = Type::getInt8Ty(*Context)->getPointerTo();
+      IntPtrType = DL->getIntPtrType(*Context);
       PtrSize = DL->getPointerSize();
       BufSize = DL->getTypeAllocSize(Value->getType());
       Buf = new uint8_t[BufSize];
@@ -193,7 +194,7 @@ void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
     uint64_t Offset;
     ExpandConstant(DL, Val, &GV, &Offset);
     if (GV) {
-      Constant *NewVal = ConstantExpr::getBitCast(GV, I8Ptr);
+      Constant *NewVal = ConstantExpr::getPtrToInt(GV, IntPtrType);
       if (Offset) {
         // For simplicity, require addends to be 32-bit.
         if ((int64_t) Offset != (int32_t) (uint32_t) Offset) {
@@ -201,8 +202,8 @@ void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
           report_fatal_error(
               "FlattenGlobals: Offset does not fit into 32 bits");
         }
-        NewVal = ConstantExpr::getGetElementPtr(
-            NewVal, ConstantInt::get(*Context, APInt(32, Offset)));
+        NewVal = ConstantExpr::getAdd(
+            NewVal, ConstantInt::get(IntPtrType, Offset, /* isSigned= */ true));
       }
       Reloc NewRel = { Dest - Buf, NewVal };
       Relocs.push_back(NewRel);
@@ -261,8 +262,8 @@ bool FlattenGlobals::runOnModule(Module &M) {
     Type *NewType;
     if (Global->hasInitializer()) {
       if (Global->getInitializer()->isNullValue()) {
-        // As optimization, for large BSS variables, avoid allocating
-        // a buffer that would only be filled with zeroes.
+        // As an optimization, for large BSS variables, avoid
+        // allocating a buffer that would only be filled with zeroes.
         NewType = ArrayType::get(I8, Size);
         NewInit = ConstantAggregateZero::get(NewType);
       } else {

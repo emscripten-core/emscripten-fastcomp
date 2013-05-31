@@ -118,36 +118,36 @@ target datalayout = "p:32:32:32"
 
 %ptrs1 = type { i32*, i8*, i32 }
 @ptrs1 = global %ptrs1 { i32* @var1, i8* null, i32 259 }
-; CHECK: @ptrs1 = global <{ i8*, [8 x i8] }> <{ i8* getelementptr inbounds ([4 x i8]* @var1, i32 0, i32 0), [8 x i8] c"\00\00\00\00\03\01\00\00" }>
+; CHECK: @ptrs1 = global <{ i32, [8 x i8] }> <{ i32 ptrtoint ([4 x i8]* @var1 to i32), [8 x i8] c"\00\00\00\00\03\01\00\00" }>
 
 %ptrs2 = type { i32, i32*, i8* }
 @ptrs2 = global %ptrs2 { i32 259, i32* @var1, i8* @var2 }
-; CHECK: @ptrs2 = global <{ [4 x i8], i8*, i8* }> <{ [4 x i8] c"\03\01\00\00", i8* getelementptr inbounds ([4 x i8]* @var1, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8]* @var2, i32 0, i32 0) }>
+; CHECK: @ptrs2 = global <{ [4 x i8], i32, i32 }> <{ [4 x i8] c"\03\01\00\00", i32 ptrtoint ([4 x i8]* @var1 to i32), i32 ptrtoint ([1 x i8]* @var2 to i32) }>
 
 %ptrs3 = type { i32*, [3 x i8], i8* }
 @ptrs3 = global %ptrs3 { i32* @var1, [3 x i8] c"foo", i8* @var2 }
-; CHECK: @ptrs3 = global <{ i8*, [4 x i8], i8* }> <{ i8* getelementptr inbounds ([4 x i8]* @var1, i32 0, i32 0), [4 x i8] c"foo\00", i8* getelementptr inbounds ([1 x i8]* @var2, i32 0, i32 0) }>
+; CHECK: @ptrs3 = global <{ i32, [4 x i8], i32 }> <{ i32 ptrtoint ([4 x i8]* @var1 to i32), [4 x i8] c"foo\00", i32 ptrtoint ([1 x i8]* @var2 to i32) }>
 
 @ptr = global i32* @var1
-; CHECK: @ptr = global i8* getelementptr inbounds ([4 x i8]* @var1, i32 0, i32 0)
+; CHECK: @ptr = global i32 ptrtoint ([4 x i8]* @var1 to i32)
 
 @func_ptr = global i32* ()* @get_address
-; CHECK: @func_ptr = global i8* bitcast (i32* ()* @get_address to i8*)
+; CHECK: @func_ptr = global i32 ptrtoint (i32* ()* @get_address to i32)
 
 @block_addr = global i8* blockaddress(@func_with_block, %label)
-; CHECK: @block_addr = global i8* blockaddress(@func_with_block, %label)
+; CHECK: @block_addr = global i32 ptrtoint (i8* blockaddress(@func_with_block, %label) to i32)
 
 @vector_reloc = global <2 x i32*> <i32* @var1, i32* @var1>
-; CHECK: @vector_reloc = global <{ i8*, i8* }> <{ i8* getelementptr inbounds ([4 x i8]* @var1, i32 0, i32 0), i8* getelementptr inbounds ([4 x i8]* @var1, i32 0, i32 0) }>
+; CHECK: global <{ i32, i32 }> <{ i32 ptrtoint ([4 x i8]* @var1 to i32), i32 ptrtoint ([4 x i8]* @var1 to i32) }>
 
 
 ; Global references with addends
 
 @reloc_addend = global i32* getelementptr (%ptrs1* @ptrs1, i32 0, i32 2)
-; CHECK: @reloc_addend = global i8* getelementptr (i8* bitcast (<{ i8*, [8 x i8] }>* @ptrs1 to i8*), i32 8)
+; CHECK: @reloc_addend = global i32 add (i32 ptrtoint (<{ i32, [8 x i8] }>* @ptrs1 to i32), i32 8)
 
 @negative_addend = global %ptrs1* getelementptr (%ptrs1* @ptrs1, i32 -1)
-; CHECK: @negative_addend = global i8* getelementptr (i8* bitcast (<{ i8*, [8 x i8] }>* @ptrs1 to i8*), i32 -12)
+; CHECK: @negative_addend = global i32 add (i32 ptrtoint (<{ i32, [8 x i8] }>* @ptrs1 to i32), i32 -12)
 
 @const_ptr = global i32* getelementptr (%ptrs1* null, i32 0, i32 2)
 ; CHECK: @const_ptr = global [4 x i8] c"\08\00\00\00"
@@ -158,7 +158,7 @@ target datalayout = "p:32:32:32"
 ; Clang allows "(uintptr_t) &var" as a global initializer, so we
 ; handle this case.
 @ptr_to_int = global i32 ptrtoint (i8* @var2 to i32)
-; CHECK: @ptr_to_int = global i8* getelementptr inbounds ([1 x i8]* @var2, i32 0, i32 0)
+; CHECK: @ptr_to_int = global i32 ptrtoint ([1 x i8]* @var2 to i32)
 
 ; This is handled via Constant folding.  The getelementptr is
 ; converted to an undef when it is created, so the pass does not see a
@@ -170,13 +170,13 @@ target datalayout = "p:32:32:32"
 ; the pass handles it anyway.
 @func_addend = global i8* getelementptr (
     i8* bitcast (void ()* @func_with_block to i8*), i32 123)
-; CHECK: @func_addend = global i8* getelementptr (i8* bitcast (void ()* @func_with_block to i8*), i32 123)
+; CHECK: @func_addend = global i32 add (i32 ptrtoint (void ()* @func_with_block to i32), i32 123)
 
 ; Similarly, adding an offset to a label address isn't useful, but
 ; check it anyway.
 @block_addend = global i8* getelementptr (
     i8* blockaddress(@func_with_block, %label), i32 100)
-; CHECK: @block_addend = global i8* getelementptr (i8* blockaddress(@func_with_block, %label), i32 100)
+; CHECK: @block_addend = global i32 add (i32 ptrtoint (i8* blockaddress(@func_with_block, %label) to i32), i32 100)
 
 
 ; Special cases
