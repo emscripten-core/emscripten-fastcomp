@@ -161,8 +161,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     default: return false;
     // (1) Always allowed.
     case Intrinsic::bswap: return isWhitelistedBswap(F);
-    case Intrinsic::invariant_end:
-    case Intrinsic::invariant_start:
     case Intrinsic::memcpy:
     case Intrinsic::memmove:
     case Intrinsic::memset:
@@ -215,6 +213,8 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     // See https://code.google.com/p/nativeclient/issues/detail?id=3443
     case Intrinsic::lifetime_end:
     case Intrinsic::lifetime_start:
+    case Intrinsic::invariant_end:
+    case Intrinsic::invariant_start:
       return false;
 
     // (3) Dev intrinsics.

@@ -38,7 +38,8 @@
 //  * a bitcast of an InherentPtr.
 //
 // This pass currently strips out lifetime markers (that is, calls to
-// the llvm.lifetime.start/end intrinsics).
+// the llvm.lifetime.start/end intrinsics) and invariant markers
+// (calls to llvm.invariant.start/end).
 //
 //===----------------------------------------------------------------------===//
 
@@ -407,7 +408,9 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
   } else if (CallInst *Call = dyn_cast<CallInst>(Inst)) {
     if (IntrinsicInst *ICall = dyn_cast<IntrinsicInst>(Inst)) {
       if (ICall->getIntrinsicID() == Intrinsic::lifetime_start ||
-          ICall->getIntrinsicID() == Intrinsic::lifetime_end) {
+          ICall->getIntrinsicID() == Intrinsic::lifetime_end ||
+          ICall->getIntrinsicID() == Intrinsic::invariant_start ||
+          ICall->getIntrinsicID() == Intrinsic::invariant_end) {
         // Remove alloca lifetime markers for now.  This is because
         // the GVN pass can introduce lifetime markers taking PHI
         // nodes as arguments.  If ReplacePtrsWithInts converts the
@@ -416,6 +419,8 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
         // not safe in general.  So, until LLVM better defines the
         // semantics of lifetime markers, we drop them all.  See:
         // https://code.google.com/p/nativeclient/issues/detail?id=3443
+        // We do the same for invariant.start/end because they work in
+        // a similar way.
         Inst->eraseFromParent();
       } else {
         FC->convertInPlace(Inst);

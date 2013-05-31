@@ -447,6 +447,8 @@ define void @debug_value(i32 %val, i8* %ptr) {
 
 
 declare void @llvm.lifetime.start(i64 %size, i8* %ptr)
+declare void @llvm.invariant.start(i64 %size, i8* %ptr)
+declare void @llvm.invariant.end(i64 %size, i8* %ptr)
 
 ; GVN can introduce the following horrible corner case of a lifetime
 ; marker referencing a PHI node.  But we convert the phi to i32 type,
@@ -484,6 +486,16 @@ define void @alloca_lifetime_via_bitcast() {
 }
 ; CHECK: define void @alloca_lifetime_via_bitcast() {
 ; CHECK-NEXT: %buf = alloca [4 x i8]
+; CHECK-NEXT: ret void
+
+define void @strip_invariant_markers() {
+  %buf = alloca i8
+  call void @llvm.invariant.start(i64 1, i8* %buf)
+  call void @llvm.invariant.end(i64 1, i8* %buf)
+  ret void
+}
+; CHECK: define void @strip_invariant_markers() {
+; CHECK-NEXT: %buf = alloca [1 x i8]
 ; CHECK-NEXT: ret void
 
 
