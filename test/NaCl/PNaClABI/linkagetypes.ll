@@ -5,36 +5,35 @@ target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64
 target triple = "le32-unknown-nacl"
 
 
-@gv_external = external global i8
-@gv_private = private global i8 0
-@gv_linker_private = linker_private global i32 0
+@gv_private = private global [1 x i8] c"x"
+@gv_linker_private = linker_private global [1 x i8] c"x"
 ; CHECK-NOT: disallowed
 ; CHECK: Variable gv_linker_private has disallowed linkage type: linker_private
-@gv_linker_private_weak = linker_private_weak global i32 0
+@gv_linker_private_weak = linker_private_weak global [1 x i8] c"x"
 ; CHECK: gv_linker_private_weak has disallowed linkage type: linker_private_weak
-@gv_internal = internal global i8 0
-@gv_linkonce = linkonce global i8 0
+@gv_internal = internal global [1 x i8] c"x"
+@gv_linkonce = linkonce global [1 x i8] c"x"
 ; CHECK-NOT: disallowed
 ; CHECK: gv_linkonce has disallowed linkage type: linkonce
-@gv_linkonce_odr = linkonce_odr global i8 0
+@gv_linkonce_odr = linkonce_odr global [1 x i8] c"x"
 ; CHECK: gv_linkonce_odr has disallowed linkage type: linkonce_odr
-@gv_linkonce_odr_auto_hide = linkonce_odr_auto_hide global i8 0
+@gv_linkonce_odr_auto_hide = linkonce_odr_auto_hide global [1 x i8] c"x"
 ; CHECK: gv_linkonce_odr_auto_hide has disallowed linkage type: linkonce_odr_auto_hide
-@gv_weak = weak global i8 0
+@gv_weak = weak global [1 x i8] c"x"
 ; CHECK: gv_weak has disallowed linkage type: weak
-@gv_weak_odr = weak_odr global i8 0
+@gv_weak_odr = weak_odr global [1 x i8] c"x"
 ; CHECK: gv_weak_odr has disallowed linkage type: weak_odr
-@gv_common = common global i8 0
+@gv_common = common global [1 x i8] c"x"
 ; CHECK: gv_common has disallowed linkage type: common
 @gv_appending = appending global [1 x i8] zeroinitializer
 ; CHECK: gv_appending has disallowed linkage type: appending
-@gv_dllimport = dllimport global i8
+@gv_dllimport = dllimport global [1 x i8]
 ; CHECK: gv_dllimport has disallowed linkage type: dllimport
-@gv_dllexport = dllexport global i8 0
+@gv_dllexport = dllexport global [1 x i8] c"x"
 ; CHECK: gv_dllexport has disallowed linkage type: dllexport
-@gv_extern_weak = extern_weak global i8
+@gv_extern_weak = extern_weak global [1 x i8]
 ; CHECK: gv_extern_weak has disallowed linkage type: extern_weak
-@gv_avilable_externally = available_externally global i8 0
+@gv_avilable_externally = available_externally global [1 x i8] c"x"
 
 ; CHECK-NOT: private_func
 define private void @private_func() {

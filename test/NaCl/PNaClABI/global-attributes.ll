@@ -3,16 +3,16 @@
 ; Global variable attributes
 
 ; CHECK: Variable var_with_section has disallowed "section" attribute
-@var_with_section = global i32 99, section ".some_section"
+@var_with_section = global [1 x i8] zeroinitializer, section ".some_section"
 
 ; PNaCl programs can depend on data alignments in general, so we allow
 ; "align" on global variables.
 ; CHECK-NOT: var_with_alignment
-@var_with_alignment = global i32 99, align 8
+@var_with_alignment = global [4 x i8] zeroinitializer, align 8
 
 ; TLS variables must be expanded out by ExpandTls.
 ; CHECK-NEXT: Variable tls_var has disallowed "thread_local" attribute
-@tls_var = thread_local global i32 99
+@tls_var = thread_local global [4 x i8] zeroinitializer
 
 
 ; Function attributes

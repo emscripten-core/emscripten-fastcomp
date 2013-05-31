@@ -137,10 +137,10 @@ define i32 @va_arg(i8* %va_list) {
 ; CHECK-NOT: disallowed
 ; CHECK: Function va_arg has disallowed instruction: va_arg
 
-@global_var = global i32 0
+@global_var = global [4 x i8] zeroinitializer
 
-define i32* @constantexpr() {
-  ret i32* getelementptr (i32* @global_var, i32 1)
+define i8* @constantexpr() {
+  ret i8* getelementptr ([4 x i8]* @global_var, i32 1, i32 0)
 }
 ; CHECK-NOT: disallowed
 ; CHECK: Function constantexpr contains disallowed ConstantExpr

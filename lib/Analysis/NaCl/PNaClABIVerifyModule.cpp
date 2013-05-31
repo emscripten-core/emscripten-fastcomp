@@ -16,6 +16,7 @@
 #include "llvm/Pass.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
@@ -65,6 +66,7 @@ class PNaClABIVerifyModule : public ModulePass {
   void checkGlobalValueCommon(const GlobalValue *GV);
   bool isWhitelistedIntrinsic(const Function *F, unsigned ID);
   bool isWhitelistedMetadata(const NamedMDNode *MD);
+  void checkGlobalIsFlattened(const GlobalVariable *GV);
   PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
@@ -250,6 +252,72 @@ bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) {
   return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
 }
 
+static bool isPtrToIntOfGlobal(const Constant *C) {
+  if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+    return CE->getOpcode() == Instruction::PtrToInt &&
+           isa<GlobalValue>(CE->getOperand(0));
+  }
+  return false;
+}
+
+// This checks for part of the normal form produced by FlattenGlobals.
+static bool isSimpleElement(const Constant *C) {
+  // A SimpleElement is one of the following:
+  // 1) An i8 array literal or zeroinitializer:
+  //      [SIZE x i8] c"DATA"
+  //      [SIZE x i8] zeroinitializer
+  if (ArrayType *Ty = dyn_cast<ArrayType>(C->getType())) {
+    return Ty->getElementType()->isIntegerTy(8) &&
+           (isa<ConstantAggregateZero>(C) ||
+            isa<ConstantDataSequential>(C));
+  }
+  // 2) A reference to a GlobalValue (a function or global variable)
+  //    with an optional byte offset added to it (the addend).
+  if (C->getType()->isIntegerTy(32)) {
+    const ConstantExpr *CE = dyn_cast<ConstantExpr>(C);
+    if (!CE)
+      return false;
+    // Without addend:  ptrtoint (TYPE* @GLOBAL to i32)
+    if (isPtrToIntOfGlobal(CE))
+      return true;
+    // With addend:  add (i32 ptrtoint (TYPE* @GLOBAL to i32), i32 ADDEND)
+    if (CE->getOpcode() == Instruction::Add &&
+        isPtrToIntOfGlobal(CE->getOperand(0)) &&
+        isa<ConstantInt>(CE->getOperand(1)))
+      return true;
+  }
+  return false;
+}
+
+// This checks for part of the normal form produced by FlattenGlobals.
+static bool isCompoundElement(const Constant *C) {
+  const ConstantStruct *CS = dyn_cast<ConstantStruct>(C);
+  if (!CS || !CS->getType()->isPacked() || CS->getType()->hasName() ||
+      CS->getNumOperands() <= 1)
+    return false;
+  for (unsigned I = 0; I < CS->getNumOperands(); ++I) {
+    if (!isSimpleElement(CS->getOperand(I)))
+      return false;
+  }
+  return true;
+}
+
+// This checks that the GlobalVariable has the normal form produced by
+// the FlattenGlobals pass.
+void PNaClABIVerifyModule::checkGlobalIsFlattened(const GlobalVariable *GV) {
+  if (!GV->hasInitializer()) {
+    Reporter->addError() << "Global variable " << GV->getName()
+                         << " has no initializer (disallowed)\n";
+    return;
+  }
+  const Constant *InitVal = GV->getInitializer();
+  if (isSimpleElement(InitVal) || isCompoundElement(InitVal))
+    return;
+  Reporter->addError() << "Global variable " << GV->getName()
+                       << " has non-flattened initializer (disallowed): "
+                       << *InitVal << "\n";
+}
+
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
   if (!M.getModuleInlineAsm().empty()) {
     Reporter->addError() <<
@@ -258,23 +326,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
 
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
-    // Check types of global variables and their initializers
-    if (!TC.isValidType(MI->getType())) {
-      // GVs are pointers, so print the pointed-to type for clarity
-      Reporter->addError() << "Variable " << MI->getName() <<
-          " has disallowed type: " <<
-          PNaClABITypeChecker::getTypeName(MI->getType()->getContainedType(0))
-          + "\n";
-    } else if (MI->hasInitializer()) {
-      // If the type of the global is bad, no point in checking its initializer
-      Type *T = TC.checkTypesInConstant(MI->getInitializer());
-      if (T) {
-        Reporter->addError() << "Initializer for " << MI->getName() <<
-            " has disallowed type: " <<
-            PNaClABITypeChecker::getTypeName(T) << "\n";
-      }
-    }
-
+    checkGlobalIsFlattened(MI);
     checkGlobalValueCommon(MI);
 
     if (MI->isThreadLocal()) {
