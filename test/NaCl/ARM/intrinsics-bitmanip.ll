@@ -43,9 +43,10 @@ define i32 @test_bswap_const_32() {
 }
 
 ; CHECK: test_bswap_64
-; CHECK: rev [[REG1:r[0-9]+]], {{r[0-9]+}}
+; O0 spills when swapping r0/r1, whereas O2 uses r2 as a temporary.
 ; CHECK: rev {{r[0-9]+}}, {{r[0-9]+}}
-; CHECK: mov r0, {{.*}}[[REG1]]
+; CHECK: rev r1, {{r[0-9]+}}
+; CHECK: mov r0, {{r[0-9]+}}
 define i64 @test_bswap_64(i64 %a) {
   %b = call i64 @llvm.bswap.i64(i64 %a)
   ret i64 %b

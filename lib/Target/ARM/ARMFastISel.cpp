@@ -537,6 +537,12 @@ unsigned ARMFastISel::ARMMaterializeFP(const ConstantFP *CFP, MVT VT) {
   // Require VFP2 for loading fp constants.
   if (!Subtarget->hasVFP2()) return false;
 
+  // @LOCALMOD-START
+  // Don't use constant pools in NaCl.
+  if (FlagSfiDisableCP)
+    return false;
+  // @LOCALMOD-END
+
   // MachineConstantPool wants an explicit alignment.
   unsigned Align = TD.getPrefTypeAlignment(CFP->getType());
   if (Align == 0) {
@@ -589,6 +595,23 @@ unsigned ARMFastISel::ARMMaterializeInt(const Constant *C, MVT VT) {
     }
   }
 
+  // @LOCALMOD-START
+  // No constant pool, use movw+movt for 32-bit values.
+  if (FlagSfiDisableCP && Subtarget->hasV6T2Ops() && VT == MVT::i32) {
+    unsigned Opc = isThumb2 ? ARM::t2MOVi32imm : ARM::MOVi32imm;
+    const TargetRegisterClass *RC = isThumb2 ?
+        &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+    unsigned ImmReg = createResultReg(RC);
+    AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
+                            ImmReg).addImm(CI->getZExtValue()));
+    return ImmReg;
+  }
+
+  // Don't use constant pools in NaCl.
+  if (FlagSfiDisableCP)
+    return false;
+  // @LOCALMOD-END
+
   // Load from constant pool.  For now 32-bit only.
   if (VT != MVT::i32)
     return false;
@@ -628,6 +651,11 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, MVT VT) {
     (const TargetRegisterClass*)&ARM::GPRRegClass;
   unsigned DestReg = createResultReg(RC);
 
+  // FastISel TLS support on non-Darwin is broken, punt to SelectionDAG.
+  const GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV);
+  bool IsThreadLocal = GVar && GVar->isThreadLocal();
+  if (!Subtarget->isTargetDarwin() && IsThreadLocal) return 0;
+
   // Use movw+movt when possible, it avoids constant pool entries.
   // Darwin targets don't support movt with Reloc::Static, see
   // ARMTargetLowering::LowerGlobalAddressDarwin.  Other targets only support
@@ -649,6 +677,12 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, MVT VT) {
     AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
                             DestReg).addGlobalAddress(GV));
   } else {
+    // @LOCALMOD-START
+    // Don't use constant pools in NaCl.
+    if (FlagSfiDisableCP)
+      return false;
+    // @LOCALMOD-END
+
     // MachineConstantPool wants an explicit alignment.
     unsigned Align = TD.getPrefTypeAlignment(GV->getType());
     if (Align == 0) {
@@ -720,11 +754,6 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, MVT VT) {
 }
 
 unsigned ARMFastISel::TargetMaterializeConstant(const Constant *C) {
-  // @LOCALMOD-START
-  // In the sfi case we do not want to use the ARM custom cp handling.
-  // This assert should help detect some regressions early.
-  assert(!FlagSfiDisableCP && "unexpected call to TargetMaterializeConstant");
-  // @LOCALMOD-END
   EVT CEVT = TLI.getValueType(C->getType(), true);
 
   // Only handle simple types.
@@ -2966,13 +2995,22 @@ bool ARMFastISel::FastLowerArguments() {
 namespace llvm {
   FastISel *ARM::createFastISel(FunctionLoweringInfo &funcInfo,
                                 const TargetLibraryInfo *libInfo) {
-    // Completely untested on non-iOS.
     const TargetMachine &TM = funcInfo.MF->getTarget();
 
-    // Darwin and thumb1 only for now.
     const ARMSubtarget *Subtarget = &TM.getSubtarget<ARMSubtarget>();
-    if (Subtarget->isTargetIOS() && !Subtarget->isThumb1Only())
+    // Thumb2 support on iOS; ARM support on iOS, Linux and NaCl.
+    bool UseFastISel = false;
+    UseFastISel |= Subtarget->isTargetIOS() && !Subtarget->isThumb1Only();
+    UseFastISel |= Subtarget->isTargetLinux() && !Subtarget->isThumb();
+    UseFastISel |= Subtarget->isTargetNaCl() && !Subtarget->isThumb();
+    if (UseFastISel) {
+      // iOS always has a FP for backtracking, force other targets
+      // to keep their FP when doing FastISel. The emitted code is
+      // currently superior, and in cases like test-suite's lencod
+      // FastISel isn't quite correct when FP is eliminated.
+      TM.Options.NoFramePointerElim = true;
       return new ARMFastISel(funcInfo, libInfo);
+    }
     return 0;
   }
 }
