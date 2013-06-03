@@ -102,9 +102,6 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::ExtractElement:
         case Instruction::InsertElement:
         case Instruction::ShuffleVector:
-        // ExtractValue and InsertValue operate on struct values.
-        case Instruction::ExtractValue:
-        case Instruction::InsertValue:
           Reporter->addError() << "Function " << F.getName() <<
               " has disallowed instruction: " <<
               BBI->getOpcodeName() << "\n";
@@ -135,6 +132,8 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
         case Instruction::And:
         case Instruction::Or:
         case Instruction::Xor:
+        case Instruction::ExtractValue:
+        case Instruction::InsertValue:
         // Memory instructions
         case Instruction::Alloca:
         case Instruction::Load:

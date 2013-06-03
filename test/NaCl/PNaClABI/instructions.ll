@@ -58,10 +58,7 @@ define void @vectors() {
 define void @aggregates() {
 ; Aggregate operations
   %a1 = extractvalue { i32, i32 } { i32 0, i32 0 }, 0
-; CHECK-NOT: disallowed
-; CHECK: Function aggregates has disallowed instruction: extractvalue
   %a2 = insertvalue {i32, float} undef, i32 1, 0
-; CHECK-NEXT: Function aggregates has disallowed instruction: insertvalue
   ret void
 }
 
