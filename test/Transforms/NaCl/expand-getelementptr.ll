@@ -4,6 +4,7 @@ target datalayout = "p:32:32:32"
 
 %MyStruct = type { i8, i32, i8 }
 %MyArray = type { [100 x i64] }
+%MyArrayOneByte = type { [100 x i8] }
 
 
 ; Test indexing struct field
@@ -55,6 +56,19 @@ define i64* @test_add_and_index(%MyArray* %ptr, i32 %index) {
 ; CHECK-NEXT: %gep1 = add i32 %gep, %gep_array
 ; CHECK-NEXT: %addr = inttoptr i32 %gep1 to i64*
 ; CHECK-NEXT: ret i64* %addr
+
+
+; Test that we don't multiply by 1 unnecessarily
+define i8* @test_add_and_index_one_byte(%MyArrayOneByte* %ptr, i32 %index) {
+  %addr = getelementptr %MyArrayOneByte* %ptr, i32 1, i32 0, i32 %index
+  ret i8* %addr
+}
+; CHECK: @test_add_and_index
+; CHECK-NEXT: %gep_int = ptrtoint %MyArrayOneByte* %ptr to i32
+; CHECK-NEXT: %gep = add i32 %gep_int, 100
+; CHECK-NEXT: %gep1 = add i32 %gep, %index
+; CHECK-NEXT: %addr = inttoptr i32 %gep1 to i8*
+; CHECK-NEXT: ret i8* %addr
 
 
 ; Test >32-bit array index

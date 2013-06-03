@@ -106,11 +106,15 @@ static void ExpandGEP(GetElementPtrInst *GEP, DataLayout *DL, Type *PtrType) {
       } else {
         FlushOffset(&Ptr, &CurrentOffset, GEP, Debug, PtrType);
         Index = CastToPtrSize(Index, GEP, Debug, PtrType);
-        Instruction *Mul = BinaryOperator::Create(
-            Instruction::Mul, Index, ConstantInt::get(PtrType, ElementSize),
-            "gep_array", GEP);
-        Mul->setDebugLoc(Debug);
-        Ptr = BinaryOperator::Create(Instruction::Add, Ptr, Mul, "gep", GEP);
+        if (ElementSize != 1) {
+          Index = CopyDebug(
+              BinaryOperator::Create(Instruction::Mul, Index,
+                                     ConstantInt::get(PtrType, ElementSize),
+                                     "gep_array", GEP),
+              GEP);
+        }
+        Ptr = BinaryOperator::Create(Instruction::Add, Ptr,
+                                     Index, "gep", GEP);
         Ptr->setDebugLoc(Debug);
       }
     }
