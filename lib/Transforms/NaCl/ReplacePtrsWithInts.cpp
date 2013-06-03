@@ -48,7 +48,6 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
@@ -373,9 +372,22 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
   } else if (isa<PtrToIntInst>(Inst) || isa<IntToPtrInst>(Inst)) {
     Value *Arg = FC->convert(Inst->getOperand(0));
     Type *ResultTy = FC->convertType(Inst->getType());
-    IRBuilder<> Builder(Inst);
-    Builder.SetCurrentDebugLocation(Inst->getDebugLoc());
-    Value *Result = Builder.CreateZExtOrTrunc(Arg, ResultTy, "");
+    unsigned ArgSize = Arg->getType()->getIntegerBitWidth();
+    unsigned ResultSize = ResultTy->getIntegerBitWidth();
+    Value *Result;
+    // We avoid using IRBuilder's CreateZExtOrTrunc() here because it
+    // constant-folds ptrtoint ConstantExprs.  This leads to creating
+    // ptrtoints of non-IntPtrType type, which is not what we want,
+    // because we want truncation/extension to be done explicitly by
+    // separate instructions.
+    if (ArgSize == ResultSize) {
+      Result = Arg;
+    } else {
+      Instruction::CastOps CastType =
+          ArgSize > ResultSize ? Instruction::Trunc : Instruction::ZExt;
+      Result = CopyDebug(CastInst::Create(CastType, Arg, ResultTy, "", Inst),
+                         Inst);
+    }
     if (Result != Arg)
       Result->takeName(Inst);
     FC->recordConvertedAndErase(Inst, Result);

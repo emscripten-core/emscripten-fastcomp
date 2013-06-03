@@ -141,6 +141,21 @@ define i32* @ptrtoint_different_size(i32* %ptr) {
 ; CHECK-NEXT: %c = trunc i64 %b to i32
 ; CHECK-NEXT: ret i32 %c
 
+define i8 @ptrtoint_truncates_var(i32* %ptr) {
+  %a = ptrtoint i32* %ptr to i8
+  ret i8 %a
+}
+; CHECK: define i8 @ptrtoint_truncates_var(i32 %ptr) {
+; CHECK-NEXT: %a = trunc i32 %ptr to i8
+
+define i8 @ptrtoint_truncates_global() {
+  %a = ptrtoint i32* @var to i8
+  ret i8 %a
+}
+; CHECK: define i8 @ptrtoint_truncates_global() {
+; CHECK-NEXT: %expanded = ptrtoint i32* @var to i32
+; CHECK-NEXT: %a = trunc i32 %expanded to i8
+
 
 define i32* @pointer_bitcast(i64* %ptr) {
   %cast = bitcast i64* %ptr to i32*
