@@ -38,6 +38,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
@@ -196,14 +197,13 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   for (unsigned I = FuncType->getNumParams();
        I < Call->getNumArgOperands(); ++I) {
     Value *ArgVal = Call->getArgOperand(I);
-    if (Call->getAttributes().hasAttribute(I + 1, Attribute::ByVal)) {
-      // For "byval" arguments we must dereference the pointer and
-      // make a copy of the struct being passed by value.
-      ArgVal = CopyDebug(new LoadInst(ArgVal, "vararg_struct_copy", Call),
-                         Call);
-    }
     VarArgs.push_back(ArgVal);
-    VarArgsTypes.push_back(ArgVal->getType());
+    if (Call->getAttributes().hasAttribute(I + 1, Attribute::ByVal)) {
+      // For "byval" arguments we must dereference the pointer.
+      VarArgsTypes.push_back(ArgVal->getType()->getPointerElementType());
+    } else {
+      VarArgsTypes.push_back(ArgVal->getType());
+    }
   }
   if (VarArgsTypes.size() == 0) {
     // Some buggy code (e.g. 176.gcc in Spec2k) uses va_arg on an
@@ -249,7 +249,16 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
     Indexes.push_back(ConstantInt::get(*Context, APInt(32, Index)));
     Value *Ptr = CopyDebug(GetElementPtrInst::Create(
                                Buf, Indexes, "vararg_ptr", Call), Call);
-    CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
+    if (Call->getAttributes().hasAttribute(
+            FuncType->getNumParams() + Index + 1, Attribute::ByVal)) {
+      IRBuilder<> Builder(Call);
+      Builder.CreateMemCpy(
+          Ptr, *Iter,
+          DL->getTypeAllocSize((*Iter)->getType()->getPointerElementType()),
+          /* Align= */ 1);
+    } else {
+      CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
+    }
   }
 
   // Cast function to new type to add our extra pointer argument.

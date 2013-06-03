@@ -11,6 +11,7 @@ define i32 @varargs_call_struct(%MyStruct* %ptr) {
   ret i32 %result
 }
 ; CHECK: define i32 @varargs_call_struct(%MyStruct* %ptr) {
-; CHECK: %vararg_struct_copy = load %MyStruct* %ptr
 ; CHECK: %vararg_ptr1 = getelementptr <{ i64, %MyStruct }>* %vararg_buffer, i32 0, i32 1
-; CHECK: store %MyStruct %vararg_struct_copy, %MyStruct* %vararg_ptr1
+; CHECK: %1 = bitcast %MyStruct* %vararg_ptr1 to i8*
+; CHECK: %2 = bitcast %MyStruct* %ptr to i8*
+; CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %1, i8* %2, i64 16, i32 1, i1 false)
