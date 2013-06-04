@@ -2,12 +2,13 @@
 ; RUN: pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | FileCheck %s --check-prefix=DEBUG
 
 
-; If the metadata is allowed we want to check for types.
-; We have a hacky way to test this. The -allow-debug-metadata whitelists debug
-; metadata.  That allows us to check types within debug metadata, even though
-; debug metadata normally does not have illegal types.
+; Metadata is not part of the PNaCl's stable ABI, so normally the ABI
+; checker rejects metadata entirely.  However, for debugging support,
+; pre-finalized pexes may contain metadata.  When checking a
+; pre-finalized pexe, the ABI checker does not check the types in the
+; metadata.
+
 ; DEBUG-NOT: Named metadata node llvm.dbg.cu is disallowed
-; DEBUG: Named metadata node llvm.dbg.cu refers to disallowed type: half
 ; CHECK: Named metadata node llvm.dbg.cu is disallowed
 !llvm.dbg.cu = !{!0}
 !0 = metadata !{ half 0.0}

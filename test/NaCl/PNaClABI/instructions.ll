@@ -1,6 +1,5 @@
 ; RUN: pnacl-abicheck < %s | FileCheck %s
 ; Test instruction opcodes allowed by PNaCl ABI
-; No testing yet of operands, types, attributes, etc
 
 target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:32"
 target triple = "le32-unknown-nacl"
@@ -15,7 +14,7 @@ next:
 next2:
   unreachable
 ; CHECK-NOT: disallowed
-; CHECK: Function terminators has disallowed instruction: indirectbr
+; CHECK: Function terminators disallowed: bad instruction opcode: indirectbr
   indirectbr i8* undef, [label %next, label %next2]
 }
 
@@ -44,37 +43,43 @@ define void @binops() {
 
 define void @vectors() {
 ; CHECK-NOT: disallowed
-; CHECK: Function vectors has disallowed instruction: extractelement
+
+; CHECK: disallowed: bad instruction opcode: {{.*}} extractelement
   %a1 = extractelement <2 x i32> <i32 0, i32 0>, i32 0
-; CHECK: Function vectors has disallowed instruction: shufflevector
+
+; CHECK: disallowed: bad instruction opcode: {{.*}} shufflevector
   %a2 = shufflevector <2 x i32> undef, <2 x i32> undef, <2 x i32> undef
-; CHECK: Function vectors has disallowed instruction: insertelement
-; CHECK: Function vectors has instruction with disallowed type
-; CHECK: Function vectors has instruction operand with disallowed type
+
+; CHECK: disallowed: bad instruction opcode: {{.*}} insertelement
   %a3 = insertelement <2 x i32> undef, i32 1, i32 0
+
   ret void
 }
 
 define void @aggregates() {
+; CHECK-NOT: disallowed
+
 ; Aggregate operations
   %a1 = extractvalue { i32, i32 } { i32 0, i32 0 }, 0
-; CHECK-NOT: disallowed
-; CHECK: Function aggregates has disallowed instruction: extractvalue
+; CHECK: disallowed: bad instruction opcode: {{.*}} extractvalue
+
   %a2 = insertvalue {i32, float} undef, i32 1, 0
-; CHECK-NEXT: Function aggregates has disallowed instruction: insertvalue
+; CHECK-NEXT: disallowed: bad instruction opcode: {{.*}} insertvalue
+
   ret void
 }
 
 define void @memory() {
 ; Memory operations
-  %a1 = alloca i32
-  %a2 = load i32* undef
-  store i32 undef, i32* undef
+  %a1 = alloca [4 x i8]
+  %ptr = inttoptr i32 0 to i32*
+  %a2 = load i32* %ptr
+  store i32 undef, i32* %ptr
   fence acq_rel
-  %a3 = cmpxchg i32* undef, i32 undef, i32 undef acq_rel
-  %a4 = atomicrmw add i32* undef, i32 1 acquire
+  %a3 = cmpxchg i32* %ptr, i32 undef, i32 undef acq_rel
+  %a4 = atomicrmw add i32* %ptr, i32 1 acquire
 ; CHECK-NOT: disallowed
-; CHECK: Function memory has disallowed instruction: getelementptr
+; CHECK: disallowed: bad instruction opcode: {{.*}} getelementptr
   %a5 = getelementptr { i32, i32}* undef
   ret void
 }
@@ -90,9 +95,6 @@ define void @conversion() {
   %a7 = fptosi double undef to i64
   %a8 = uitofp i64 undef to double
   %a9 = sitofp i64 undef to double
-  %a10 = ptrtoint i8* undef to i32
-  %a11 = inttoptr i32 undef to i8*
-  %a12 = bitcast i8* undef to i32*
   ret void
 }
 
@@ -117,40 +119,41 @@ declare void @personality_func()
 define void @invoke_func() {
   invoke void @external_func() to label %ok unwind label %onerror
 ; CHECK-NOT: disallowed
-; CHECK: Function invoke_func has disallowed instruction: invoke
+; CHECK: disallowed: bad instruction opcode: invoke
 ok:
   ret void
 onerror:
   %lp = landingpad i32
       personality i8* bitcast (void ()* @personality_func to i8*)
       catch i32* null
-; CHECK-NEXT: Function invoke_func has disallowed instruction: landingpad
-; CHECK-NEXT: Function invoke_func contains disallowed ConstantExpr
+; CHECK: disallowed: bad instruction opcode: {{.*}} landingpad
   resume i32 %lp
-; CHECK-NEXT: Function invoke_func has disallowed instruction: resume
+; CHECK: disallowed: bad instruction opcode: resume
 }
 
-define i32 @va_arg(i8* %va_list) {
+define i32 @va_arg(i32 %va_list_as_int) {
+  %va_list = inttoptr i32 %va_list_as_int to i8*
   %val = va_arg i8* %va_list, i32
   ret i32 %val
 }
 ; CHECK-NOT: disallowed
-; CHECK: Function va_arg has disallowed instruction: va_arg
+; CHECK: disallowed: bad instruction opcode: {{.*}} va_arg
 
 @global_var = global [4 x i8] zeroinitializer
 
-define i8* @constantexpr() {
-  ret i8* getelementptr ([4 x i8]* @global_var, i32 1, i32 0)
+define void @constantexpr() {
+  ptrtoint i8* getelementptr ([4 x i8]* @global_var, i32 1, i32 0) to i32
+  ret void
 }
 ; CHECK-NOT: disallowed
-; CHECK: Function constantexpr contains disallowed ConstantExpr
+; CHECK: disallowed: operand not InherentPtr: %1 = ptrtoint i8* getelementptr
 
 define void @inline_asm() {
   call void asm "foo", ""()
   ret void
 }
 ; CHECK-NOT: disallowed
-; CHECK: Function inline_asm contains disallowed inline assembly
+; CHECK: disallowed: inline assembly: call void asm "foo", ""()
 
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check

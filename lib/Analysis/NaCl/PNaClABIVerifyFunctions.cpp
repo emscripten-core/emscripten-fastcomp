@@ -1,4 +1,4 @@
-//===- PNaClABIVerifyFunctions.cpp - Verify PNaCl ABI rules --------===//
+//===- PNaClABIVerifyFunctions.cpp - Verify PNaCl ABI rules ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,13 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Pass.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "PNaClABITypeChecker.h"
@@ -51,15 +52,17 @@ class PNaClABIVerifyFunctions : public FunctionPass {
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
   bool IsWhitelistedMetadata(unsigned MDKind);
-  PNaClABITypeChecker TC;
+  const char *checkInstruction(const Instruction *Inst);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
 };
 
+} // and anonymous namespace
+
 // There's no built-in way to get the name of an MDNode, so use a
 // string ostream to print it.
-std::string getMDNodeString(unsigned Kind,
-                            const SmallVectorImpl<StringRef>& MDNames) {
+static std::string getMDNodeString(unsigned Kind,
+                                   const SmallVectorImpl<StringRef> &MDNames) {
   std::string MDName;
   raw_string_ostream N(MDName);
   if (Kind < MDNames.size()) {
@@ -70,135 +73,274 @@ std::string getMDNodeString(unsigned Kind,
   return N.str();
 }
 
-} // and anonymous namespace
-
 bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
   return MDKind == LLVMContext::MD_dbg && PNaClABIAllowDebugMetadata;
+}
+
+// A valid pointer type is either:
+//  * a pointer to a valid PNaCl scalar type, or
+//  * a function pointer (with valid argument and return types).
+static bool isValidPointerType(Type *Ty) {
+  if (PointerType *PtrTy = dyn_cast<PointerType>(Ty)) {
+    if (PNaClABITypeChecker::isValidScalarType(PtrTy->getElementType()))
+      return true;
+    if (FunctionType *FTy = dyn_cast<FunctionType>(PtrTy->getElementType()))
+      return PNaClABITypeChecker::isValidFunctionType(FTy);
+  }
+  return false;
+}
+
+static bool isIntrinsicFunc(const Value *Val) {
+  if (const Function *F = dyn_cast<Function>(Val))
+    return F->isIntrinsic();
+  return false;
+}
+
+// InherentPtrs may be referenced by casts -- PtrToIntInst and
+// BitCastInst -- that produce NormalizedPtrs.
+//
+// InherentPtrs exclude intrinsic functions in order to prevent taking
+// the address of an intrinsic function.  InherentPtrs include
+// intrinsic calls because some intrinsics return pointer types
+// (e.g. nacl.read.tp returns i8*).
+static bool isInherentPtr(const Value *Val) {
+  return isa<AllocaInst>(Val) ||
+         (isa<GlobalValue>(Val) && !isIntrinsicFunc(Val)) ||
+         isa<IntrinsicInst>(Val);
+}
+
+// NormalizedPtrs may be used where pointer types are required -- for
+// loads, stores, etc.  Note that this excludes ConstantExprs,
+// ConstantPointerNull and UndefValue.
+static bool isNormalizedPtr(const Value *Val) {
+  if (!isValidPointerType(Val->getType()))
+    return false;
+  // The bitcast must also be a bitcast of an InherentPtr, but we
+  // check that when visiting the bitcast instruction.
+  return isa<IntToPtrInst>(Val) || isa<BitCastInst>(Val) || isInherentPtr(Val);
+}
+
+static bool isValidScalarOperand(const Value *Val) {
+  // The types of Instructions and Arguments are checked elsewhere
+  // (when visiting the Instruction or the Function).  BasicBlocks are
+  // included here because branch instructions have BasicBlock
+  // operands.
+  if (isa<Instruction>(Val) || isa<Argument>(Val) || isa<BasicBlock>(Val))
+    return true;
+
+  // Allow some Constants.  Note that this excludes ConstantExprs.
+  return PNaClABITypeChecker::isValidScalarType(Val->getType()) &&
+         (isa<ConstantInt>(Val) ||
+          isa<ConstantFP>(Val) ||
+          isa<UndefValue>(Val));
+}
+
+// Check the instruction's opcode and its operands.  The operands may
+// require opcode-specific checking.
+//
+// This returns an error string if the instruction is rejected, or
+// NULL if the instruction is allowed.
+const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
+  // If the instruction has a single pointer operand, PtrOperandIndex is
+  // set to its operand index.
+  unsigned PtrOperandIndex = -1;
+
+  switch (Inst->getOpcode()) {
+    // Disallowed instructions. Default is to disallow.
+    // We expand GetElementPtr out into arithmetic.
+    case Instruction::GetElementPtr:
+    // VAArg is expanded out by ExpandVarArgs.
+    case Instruction::VAArg:
+    // Zero-cost C++ exception handling is not supported yet.
+    case Instruction::Invoke:
+    case Instruction::LandingPad:
+    case Instruction::Resume:
+    // indirectbr may interfere with streaming
+    case Instruction::IndirectBr:
+    // No vector instructions yet
+    case Instruction::ExtractElement:
+    case Instruction::InsertElement:
+    case Instruction::ShuffleVector:
+    // ExtractValue and InsertValue operate on struct values.
+    case Instruction::ExtractValue:
+    case Instruction::InsertValue:
+      return "bad instruction opcode";
+    default:
+      return "unknown instruction opcode";
+
+    // Terminator instructions
+    case Instruction::Ret:
+    case Instruction::Br:
+    case Instruction::Unreachable:
+    // Binary operations
+    case Instruction::Add:
+    case Instruction::FAdd:
+    case Instruction::Sub:
+    case Instruction::FSub:
+    case Instruction::Mul:
+    case Instruction::FMul:
+    case Instruction::UDiv:
+    case Instruction::SDiv:
+    case Instruction::FDiv:
+    case Instruction::URem:
+    case Instruction::SRem:
+    case Instruction::FRem:
+    // Bitwise binary operations
+    case Instruction::Shl:
+    case Instruction::LShr:
+    case Instruction::AShr:
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor:
+    // Memory instructions
+    case Instruction::Fence:
+    // Conversion operations
+    case Instruction::Trunc:
+    case Instruction::ZExt:
+    case Instruction::SExt:
+    case Instruction::FPTrunc:
+    case Instruction::FPExt:
+    case Instruction::FPToUI:
+    case Instruction::FPToSI:
+    case Instruction::UIToFP:
+    case Instruction::SIToFP:
+    // Other operations
+    case Instruction::ICmp:
+    case Instruction::FCmp:
+    case Instruction::PHI:
+    case Instruction::Select:
+      break;
+
+    // Memory accesses.
+    case Instruction::Load:
+    case Instruction::AtomicCmpXchg:
+    case Instruction::AtomicRMW:
+      PtrOperandIndex = 0;
+      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
+        return "bad pointer";
+      break;
+    case Instruction::Store:
+      PtrOperandIndex = 1;
+      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
+        return "bad pointer";
+      break;
+
+    // Casts.
+    case Instruction::BitCast:
+      if (Inst->getType()->isPointerTy()) {
+        PtrOperandIndex = 0;
+        if (!isInherentPtr(Inst->getOperand(PtrOperandIndex)))
+          return "operand not InherentPtr";
+      }
+      break;
+    case Instruction::IntToPtr:
+      if (!cast<IntToPtrInst>(Inst)->getSrcTy()->isIntegerTy(32))
+        return "non-i32 inttoptr";
+      break;
+    case Instruction::PtrToInt:
+      PtrOperandIndex = 0;
+      if (!isInherentPtr(Inst->getOperand(PtrOperandIndex)))
+        return "operand not InherentPtr";
+      if (!Inst->getType()->isIntegerTy(32))
+        return "non-i32 ptrtoint";
+      break;
+
+    case Instruction::Alloca: {
+      ArrayType *Ty = dyn_cast<ArrayType>(cast<AllocaInst>(Inst)
+                                          ->getType()->getElementType());
+      if (!Ty || !Ty->getElementType()->isIntegerTy(8))
+        return "non-i8-array alloca";
+      break;
+    }
+
+    case Instruction::Call:
+      if (cast<CallInst>(Inst)->isInlineAsm())
+        return "inline assembly";
+
+      // Intrinsic calls can have multiple pointer arguments and
+      // metadata arguments, so handle them specially.
+      if (const IntrinsicInst *Call = dyn_cast<IntrinsicInst>(Inst)) {
+        for (unsigned ArgNum = 0, E = Call->getNumArgOperands();
+             ArgNum < E; ++ArgNum) {
+          const Value *Arg = Call->getArgOperand(ArgNum);
+          if (!(isValidScalarOperand(Arg) ||
+                isNormalizedPtr(Arg) ||
+                isa<MDNode>(Arg)))
+            return "bad intrinsic operand";
+        }
+        // Allow the instruction and skip the later checks.
+        return NULL;
+      }
+
+      // The callee is the last operand.
+      PtrOperandIndex = Inst->getNumOperands() - 1;
+      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
+        return "bad function callee operand";
+      break;
+
+    case Instruction::Switch: {
+      // SwitchInst represents switch cases using array and vector
+      // constants, which we normally reject, so we must check
+      // SwitchInst specially here.
+      const SwitchInst *Switch = cast<SwitchInst>(Inst);
+      if (!isValidScalarOperand(Switch->getCondition()))
+        return "bad switch condition";
+
+      // SwitchInst requires the cases to be ConstantInts, but it
+      // doesn't require their types to be the same as the condition
+      // value, so check all the cases too.
+      for (SwitchInst::ConstCaseIt Case = Switch->case_begin(),
+             E = Switch->case_end(); Case != E; ++Case) {
+        IntegersSubset CaseRanges = Case.getCaseValueEx();
+        for (unsigned I = 0, E = CaseRanges.getNumItems(); I < E ; ++I) {
+          if (!isValidScalarOperand(
+                  CaseRanges.getItem(I).getLow().toConstantInt()) ||
+              !isValidScalarOperand(
+                  CaseRanges.getItem(I).getHigh().toConstantInt())) {
+            return "bad switch case";
+          }
+        }
+      }
+
+      // Allow the instruction and skip the later checks.
+      return NULL;
+    }
+  }
+
+  // Check the instruction's operands.  We have already checked any
+  // pointer operands.  Any remaining operands must be scalars.
+  for (unsigned OpNum = 0, E = Inst->getNumOperands(); OpNum < E; ++OpNum) {
+    if (OpNum != PtrOperandIndex &&
+        !isValidScalarOperand(Inst->getOperand(OpNum)))
+      return "bad operand";
+  }
+  // Allow the instruction.
+  return NULL;
 }
 
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
   SmallVector<StringRef, 8> MDNames;
   F.getContext().getMDKindNames(MDNames);
 
-  // TODO: only report one error per instruction?
   for (Function::const_iterator FI = F.begin(), FE = F.end();
            FI != FE; ++FI) {
     for (BasicBlock::const_iterator BBI = FI->begin(), BBE = FI->end();
              BBI != BBE; ++BBI) {
-      switch (BBI->getOpcode()) {
-        // Disallowed instructions. Default is to disallow.
-        default:
-        // We expand GetElementPtr out into arithmetic.
-        case Instruction::GetElementPtr:
-        // VAArg is expanded out by ExpandVarArgs.
-        case Instruction::VAArg:
-        // Zero-cost C++ exception handling is not supported yet.
-        case Instruction::Invoke:
-        case Instruction::LandingPad:
-        case Instruction::Resume:
-        // indirectbr may interfere with streaming
-        case Instruction::IndirectBr:
-        // No vector instructions yet
-        case Instruction::ExtractElement:
-        case Instruction::InsertElement:
-        case Instruction::ShuffleVector:
-        // ExtractValue and InsertValue operate on struct values.
-        case Instruction::ExtractValue:
-        case Instruction::InsertValue:
-          Reporter->addError() << "Function " << F.getName() <<
-              " has disallowed instruction: " <<
-              BBI->getOpcodeName() << "\n";
-          break;
-
-        // Terminator instructions
-        case Instruction::Ret:
-        case Instruction::Br:
-        case Instruction::Switch:
-        case Instruction::Unreachable:
-        // Binary operations
-        case Instruction::Add:
-        case Instruction::FAdd:
-        case Instruction::Sub:
-        case Instruction::FSub:
-        case Instruction::Mul:
-        case Instruction::FMul:
-        case Instruction::UDiv:
-        case Instruction::SDiv:
-        case Instruction::FDiv:
-        case Instruction::URem:
-        case Instruction::SRem:
-        case Instruction::FRem:
-        // Bitwise binary operations
-        case Instruction::Shl:
-        case Instruction::LShr:
-        case Instruction::AShr:
-        case Instruction::And:
-        case Instruction::Or:
-        case Instruction::Xor:
-        // Memory instructions
-        case Instruction::Alloca:
-        case Instruction::Load:
-        case Instruction::Store:
-        case Instruction::Fence:
-        case Instruction::AtomicCmpXchg:
-        case Instruction::AtomicRMW:
-        // Conversion operations
-        case Instruction::Trunc:
-        case Instruction::ZExt:
-        case Instruction::SExt:
-        case Instruction::FPTrunc:
-        case Instruction::FPExt:
-        case Instruction::FPToUI:
-        case Instruction::FPToSI:
-        case Instruction::UIToFP:
-        case Instruction::SIToFP:
-        case Instruction::PtrToInt:
-        case Instruction::IntToPtr:
-        case Instruction::BitCast:
-        // Other operations
-        case Instruction::ICmp:
-        case Instruction::FCmp:
-        case Instruction::PHI:
-        case Instruction::Select:
-          break;
-        case Instruction::Call:
-          if (cast<CallInst>(BBI)->isInlineAsm()) {
-            Reporter->addError() << "Function " << F.getName() <<
-                " contains disallowed inline assembly\n";
-          }
-          break;
+      const Instruction *Inst = BBI;
+      // Check the instruction opcode first.  This simplifies testing,
+      // because some instruction opcodes must be rejected out of hand
+      // (regardless of the instruction's result type) and the tests
+      // check the reason for rejection.
+      const char *Error = checkInstruction(BBI);
+      // Check the instruction's result type.
+      if (!Error && !(PNaClABITypeChecker::isValidScalarType(Inst->getType()) ||
+                      isNormalizedPtr(Inst) ||
+                      isa<AllocaInst>(Inst))) {
+        Error = "bad result type";
       }
-      // Check the types. First check the type of the instruction.
-      if (!TC.isValidType(BBI->getType())) {
+      if (Error) {
         Reporter->addError() << "Function " << F.getName() <<
-            " has instruction with disallowed type: " <<
-            PNaClABITypeChecker::getTypeName(BBI->getType()) << "\n";
-      }
-
-      // Check the instruction operands. Operands which are Instructions will
-      // be checked on their own here, and GlobalValues will be checked by the
-      // Module verifier. That leaves Constants.
-      // Switches are implemented in the in-memory IR with vectors, so don't
-      // check them.
-      if (!isa<SwitchInst>(*BBI))
-        for (User::const_op_iterator OI = BBI->op_begin(), OE = BBI->op_end();
-             OI != OE; OI++) {
-          if (isa<Constant>(OI) && !isa<GlobalValue>(OI)) {
-            Type *T = TC.checkTypesInConstant(cast<Constant>(*OI));
-            if (T) {
-              Reporter->addError() << "Function " << F.getName() <<
-                  " has instruction operand with disallowed type: " <<
-                  PNaClABITypeChecker::getTypeName(T) << "\n";
-            }
-          }
-        }
-
-      for (User::const_op_iterator OI = BBI->op_begin(), OE = BBI->op_end();
-           OI != OE; OI++) {
-        if (isa<ConstantExpr>(OI)) {
-          Reporter->addError() << "Function " << F.getName() <<
-              " contains disallowed ConstantExpr\n";
-        }
+          " disallowed: " << Error << ": " << *BBI << "\n";
       }
 
       // Check instruction attachment metadata.
@@ -211,15 +353,6 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
               << "Function " << F.getName()
               << " has disallowed instruction metadata: "
               << getMDNodeString(MDForInst[i].first, MDNames) << "\n";
-        } else {
-          // If allowed, check the types hiding in the metadata.
-          Type *T = TC.checkTypesInMDNode(MDForInst[i].second);
-          if (T) {
-            Reporter->addError()
-                << "Function " << F.getName()
-                << " has instruction metadata containing disallowed type: "
-                << PNaClABITypeChecker::getTypeName(T) << "\n";
-          }
         }
       }
     }

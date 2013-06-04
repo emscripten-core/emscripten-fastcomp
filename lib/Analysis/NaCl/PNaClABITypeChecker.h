@@ -1,4 +1,4 @@
-//===- CheckTypes.h - Verify PNaCl ABI rules --------===//
+//===- PNaClABITypeChecker.h - Verify PNaCl ABI rules ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -20,29 +20,18 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
-class Constant;
 class FunctionType;
-class MDNode;
-class Value;
 
 class PNaClABITypeChecker {
   // Returns true if Ty is a valid argument or return value type for PNaCl.
-  bool isValidParamType(const Type *Ty);
-
-  // Returns true if Ty is a valid function type for PNaCl.
-  bool isValidFunctionType(const FunctionType *FTy);
+  static bool isValidParamType(const Type *Ty);
 
  public:
-  // Returns true if Ty is a valid type for PNaCl.
-  bool isValidType(const Type *Ty);
+  // Returns true if Ty is a valid function type for PNaCl.
+  static bool isValidFunctionType(const FunctionType *FTy);
 
-  // If the value contains an invalid type, return a pointer to the type.
-  // Return null if there are no invalid types.
-  Type *checkTypesInConstant(const Constant *V);
-
-  // If the Metadata node contains an invalid type, return a pointer to the
-  // type. Return null if there are no invalid types.
-  Type *checkTypesInMDNode(const MDNode *V);
+  // Returns true if Ty is a valid non-derived type for PNaCl.
+  static bool isValidScalarType(const Type *Ty);
 
   // There's no built-in way to get the name of a type, so use a
   // string ostream to print it.
@@ -52,13 +41,6 @@ class PNaClABITypeChecker {
     T->print(N);
     return N.str();
   }
-
- private:
-  // To avoid walking constexprs and types multiple times, keep a cache of
-  // what we have seen. This is also used to prevent infinite recursion e.g.
-  // in case of structures like linked lists with pointers to themselves.
-  DenseMap<const Value*, Type*> VisitedConstants;
-  DenseMap<const Type*, bool> VisitedTypes;
 };
 } // namespace llvm
 

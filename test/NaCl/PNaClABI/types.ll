@@ -34,66 +34,59 @@ block:
   ; Disallowed integer types
 
   phi i4 [ undef, %entry ]
-; CHECK: Function func has instruction with disallowed type: i4
+; CHECK: Function func disallowed: bad operand: {{.*}} i4
 
   phi i33 [ undef, %entry ]
-; CHECK: instruction with disallowed type: i33
+; CHECK-NEXT: disallowed: bad operand: {{.*}} i33
 
   phi i128 [ undef, %entry ]
-; CHECK: instruction with disallowed type: i128
+; CHECK-NEXT: disallowed: bad operand: {{.*}} i128
 
 
   ; Disallowed floating point types
 
   phi half [ undef, %entry ]
-; CHECK: instruction with disallowed type: half
+; CHECK-NEXT: disallowed: bad operand: {{.*}} half
 
   phi x86_fp80 [ undef, %entry ]
-; CHECK: instruction with disallowed type: x86_fp80
+; CHECK-NEXT: disallowed: bad operand: {{.*}} x86_fp80
 
   phi fp128 [ undef, %entry ]
-; CHECK: instruction with disallowed type: fp128
+; CHECK-NEXT: disallowed: bad operand: {{.*}} fp128
 
   phi ppc_fp128 [ undef, %entry ]
-; CHECK: instruction with disallowed type: ppc_fp128
+; CHECK-NEXT: disallowed: bad operand: {{.*}} ppc_fp128
 
   phi x86_mmx [ undef, %entry ]
-; CHECK: instruction with disallowed type: x86_mmx
-; CHECK: instruction operand with disallowed type: x86_mmx
+; CHECK-NEXT: disallowed: bad operand: {{.*}} x86_mmx
 
 
-  ; Derived types
+  ; Derived types are disallowed too
 
-  ; TODO(mseaborn): These are currently allowed but should be disallowed.
   phi i32* [ undef, %entry ]
-  phi [1 x i32] [ undef, %entry ]
-  phi { i32, float } [ undef, %entry ]
-  phi void (i32)* [ undef, %entry ]
-  phi <{ i8, i32 }> [ undef, %entry ]
-  phi { i32, { i32, double }, float } [ undef, %entry ]
-; CHECK-NOT: disallowed
+; CHECK-NEXT: disallowed: bad operand: {{.*}} i32*
 
-  ; Derived types containing disallowed types
-  phi half* [ undef, %entry ]
-; CHECK: instruction with disallowed type: half*
-  phi [2 x i33] [ undef, %entry ]
-; CHECK: instruction with disallowed type: [2 x i33]
-  phi { half, i32 } [ undef, %entry ]
-; CHECK: instruction with disallowed type: { half, i32 }
-  phi { float, i33 } [ undef, %entry ]
-; CHECK: instruction with disallowed type: { float, i33 }
-  phi { i32, { i32, half }, float } [ undef, %entry ]
-; CHECK: instruction with disallowed type: { i32, { i32, half }, float }
+  phi [1 x i32] [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} [1 x i32]
+
+  phi { i32, float } [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} { i32, float }
+
+  phi void (i32)* [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} void (i32)*
+
+  phi <{ i8, i32 }> [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <{ i8, i32 }>
 
   ; Vector types are disallowed
   phi <2 x i32> [ undef, %entry ]
-; CHECK: instruction with disallowed type: <2 x i32>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <2 x i32>
 
   ret void
 }
 
 
-; named types. with the current implementation, bogus named types are legal
+; Named types. With the current implementation, named types are legal
 ; until they are actually attempted to be used. Might want to fix that.
 %struct.s1 = type { half, float}
 %struct.s2 = type { i32, i32}
@@ -104,11 +97,10 @@ entry:
 block:
 
   phi %struct.s1 [ undef, %entry ]
-; CHECK: instruction with disallowed type: %struct.s1 = type { half, float }
-; CHECK: instruction operand with disallowed type: %struct.s1 = type { half, float }
+; CHECK: disallowed: bad operand: {{.*}} %struct.s1
 
   phi %struct.s2 [ undef, %entry ]
-; CHECK-NOT: disallowed
+; CHECK-NEXT: disallowed: bad operand: {{.*}} %struct.s2
 
   ret void
 }
@@ -129,8 +121,10 @@ entry:
 block:
 
   phi %struct.snake [ undef, %entry ]
+; CHECK: disallowed: bad operand: {{.*}} %struct.snake
+
   phi %struct.linked [ undef, %entry ]
-; CHECK-NOT: disallowed
+; CHECK-NEXT: disallowed: bad operand: {{.*}} %struct.linked
 
   ret void
 }

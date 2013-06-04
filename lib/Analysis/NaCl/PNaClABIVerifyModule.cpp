@@ -1,4 +1,4 @@
-//===- PNaClABIVerifyModule.cpp - Verify PNaCl ABI rules --------===//
+//===- PNaClABIVerifyModule.cpp - Verify PNaCl ABI rules ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -67,7 +67,6 @@ class PNaClABIVerifyModule : public ModulePass {
   bool isWhitelistedIntrinsic(const Function *F, unsigned ID);
   bool isWhitelistedMetadata(const NamedMDNode *MD);
   void checkGlobalIsFlattened(const GlobalVariable *GV);
-  PNaClABITypeChecker TC;
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
 };
@@ -353,7 +352,8 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
     // Check types of functions and their arguments.  Not necessary
     // for intrinsics, whose types are fixed anyway, and which have
     // argument types that we disallow such as i8.
-    if (!MI->isIntrinsic() && !TC.isValidType(MI->getType())) {
+    if (!MI->isIntrinsic() &&
+        !PNaClABITypeChecker::isValidFunctionType(MI->getFunctionType())) {
       Reporter->addError() << "Function " << MI->getName()
           << " has disallowed type: "
           << PNaClABITypeChecker::getTypeName(MI->getFunctionType())
@@ -374,15 +374,6 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
     if (!isWhitelistedMetadata(I)) {
       Reporter->addError() << "Named metadata node " << I->getName()
                            << " is disallowed\n";
-    } else {
-      // Check the types in the metadata.
-      for (unsigned i = 0, e = I->getNumOperands(); i != e; i++) {
-        if (Type *T = TC.checkTypesInMDNode(I->getOperand(i))) {
-          Reporter->addError() << "Named metadata node " << I->getName()
-                               << " refers to disallowed type: "
-                               << PNaClABITypeChecker::getTypeName(T) << "\n";
-        }
-      }
     }
   }
 

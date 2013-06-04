@@ -202,6 +202,14 @@ define i16* @constant_pointer_null_load() {
 ; CHECK-NEXT: %.asptr = inttoptr i32 0 to i32*
 ; CHECK-NEXT: %val = load i32* %.asptr
 
+define i16* @constant_pointer_undef_load() {
+  %val = load i16** undef
+  ret i16* %val
+}
+; CHECK: define i32 @constant_pointer_undef_load() {
+; CHECK-NEXT: %.asptr = inttoptr i32 undef to i32*
+; CHECK-NEXT: %val = load i32* %.asptr
+
 
 define i8 @load(i8* %ptr) {
   %x = load i8* %ptr

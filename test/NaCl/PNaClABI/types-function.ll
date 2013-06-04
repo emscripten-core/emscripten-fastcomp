@@ -4,22 +4,27 @@
 ; stashed in various places in function bodies are caught.
 
 @a2 = private global i17 zeroinitializer
+
+; CHECK: Function func has disallowed type: void (i15)
 declare void @func(i15 %arg)
 
 !llvm.foo = !{!0}
 !0 = metadata !{ half 0.0}
 
 define void @types() {
-; CHECK: Function types has instruction with disallowed type: half
+; CHECK: bad result type: {{.*}} fptrunc
   %h1 = fptrunc double undef to half
-; CHECK: Function types has instruction operand with disallowed type: half
+
+; CHECK: bad operand: {{.*}} bitcast half
   %h2 = bitcast half 0.0 to i16
+
 ; see below...
   %h3 = fadd double 0.0, fpext (half 0.0 to double)
 
-; CHECK: Function types has instruction operand with disallowed type: i17*
+; CHECK: bad pointer: store
   store i32 0, i32* bitcast (i17* @a2 to i32*), align 4
-; CHECK: Function types has instruction operand with disallowed type: i15
+
+; CHECK: bad function callee operand: call void @func(i15 1)
   call void @func(i15 1)
 
 ; CHECK: Function types has disallowed instruction metadata: !foo

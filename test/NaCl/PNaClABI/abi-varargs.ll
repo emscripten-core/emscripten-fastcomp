@@ -10,4 +10,4 @@ define void @call_varargs_func(i32 %ptr) {
   call void (i32, ...)* %ptr2(i32 123)
   ret void
 }
-; CHECK: Function call_varargs_func has instruction with disallowed type: void (i32, ...)*
+; CHECK: Function call_varargs_func disallowed: bad function callee operand: call void (i32, ...)*
