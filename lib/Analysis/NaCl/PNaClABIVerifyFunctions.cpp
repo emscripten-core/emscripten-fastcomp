@@ -82,6 +82,8 @@ bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
 //  * a function pointer (with valid argument and return types).
 static bool isValidPointerType(Type *Ty) {
   if (PointerType *PtrTy = dyn_cast<PointerType>(Ty)) {
+    if (PtrTy->getAddressSpace() != 0)
+      return false;
     if (PNaClABITypeChecker::isValidScalarType(PtrTy->getElementType()))
       return true;
     if (FunctionType *FTy = dyn_cast<FunctionType>(PtrTy->getElementType()))

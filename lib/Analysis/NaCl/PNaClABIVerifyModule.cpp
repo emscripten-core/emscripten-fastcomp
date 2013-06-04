@@ -121,6 +121,10 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
     Reporter->addError() << GVTypeName << GV->getName() <<
         " has disallowed \"section\" attribute\n";
   }
+  if (GV->getType()->getAddressSpace() != 0) {
+    Reporter->addError() << GVTypeName << GV->getName()
+                         << " has addrspace attribute (disallowed)\n";
+  }
 }
 
 static bool TypeAcceptable(const Type *T,
