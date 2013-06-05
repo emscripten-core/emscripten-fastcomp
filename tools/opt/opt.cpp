@@ -171,10 +171,20 @@ DefaultDataLayout("default-data-layout",
           cl::value_desc("layout-string"), cl::init(""));
 
 // @LOCALMOD-BEGIN
-static cl::opt<bool>
-GeneratePNaClBitcode("pnacl-freeze",
-                     cl::desc("Generate a pnacl-frozen bitcode file"),
-                     cl::init(false));
+enum BcFormat {
+  LLVMFormat,
+  PNaClFormat
+};
+
+static cl::opt<BcFormat>
+BitcodeFormat(
+    "bitcode-format",
+    cl::desc("Define format of generated bitcode file:"),
+    cl::values(
+        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode (default)"),
+        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode"),
+        clEnumValEnd),
+    cl::init(LLVMFormat));
 // @LOCALMOD-END
 
 // ---------- Define Printers for module and function passes ------------
@@ -891,10 +901,17 @@ int main(int argc, char **argv) {
 // @LOCALMOD-BEGIN
   // Write bitcode to the output.
   if (!NoOutput && !AnalyzeOnly && !OutputAssembly) {
-    if (GeneratePNaClBitcode)
-      NaClWriteBitcodeToFile(M.get(), Out->os());
-    else
-      WriteBitcodeToFile(M.get(), Out->os());
+    switch (BitcodeFormat) {
+      case LLVMFormat:
+        WriteBitcodeToFile(M.get(), Out->os());
+        break;
+      case PNaClFormat:
+        NaClWriteBitcodeToFile(M.get(), Out->os());
+        break;
+      default:
+        errs() << "Don't understand bitcode format for generated bitcode.\n";
+        return 1;
+    }
   }
 // @LOCALMOD-END
 

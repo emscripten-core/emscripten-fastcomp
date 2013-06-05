@@ -18,7 +18,6 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h" // @LOCALMOD
 #include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/Config/config.h"
 #include "llvm/IR/Constants.h"
@@ -55,14 +54,6 @@ DisableInline("disable-inlining", cl::init(false),
 static cl::opt<bool>
 DisableGVNLoadPRE("disable-gvn-loadpre", cl::init(false),
   cl::desc("Do not run the GVN load PRE pass"));
-
-// @LOCALMOD-BEGIN
-static llvm::cl::opt<bool>
-GeneratePNaClBitcode("pnacl-freeze",
-                     llvm::cl::desc("Generate a pnacl-frozen bitcode file"),
-                     llvm::cl::init(false));
-
-// @LOCALMOD-END
 
 const char* LTOCodeGenerator::getVersionString() {
 #ifdef LLVM_VERSION_INFO
@@ -295,13 +286,7 @@ bool LTOCodeGenerator::writeMergedModules(const char *path,
     return true;
   }
 
-  // @LOCALMOD-BEGIN
-  // write bitcode to it
-  if (GeneratePNaClBitcode)
-    NaClWriteBitcodeToFile(_linker.getModule(), Out.os());
-  else
-    WriteBitcodeToFile(_linker.getModule(), Out.os());
-  // @LOCALMOD-END
+  WriteBitcodeToFile(_linker.getModule(), Out.os());
   Out.os().close();
 
   if (Out.os().has_error()) {
