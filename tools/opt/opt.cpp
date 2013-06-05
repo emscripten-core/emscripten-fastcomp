@@ -629,6 +629,7 @@ int main(int argc, char **argv) {
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
+  initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   // @LOCALMOD-END
 

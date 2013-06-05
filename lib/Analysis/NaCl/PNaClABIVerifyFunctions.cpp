@@ -258,6 +258,8 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     case Instruction::Call:
       if (cast<CallInst>(Inst)->isInlineAsm())
         return "inline assembly";
+      if (!cast<CallInst>(Inst)->getAttributes().isEmpty())
+        return "bad call attributes";
 
       // Intrinsic calls can have multiple pointer arguments and
       // metadata arguments, so handle them specially.

@@ -40,6 +40,7 @@ ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
 FunctionPass *createResolvePNaClIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
+FunctionPass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 FunctionPass *createInsertDivideCheckPass();
 

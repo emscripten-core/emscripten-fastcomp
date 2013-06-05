@@ -17,6 +17,16 @@
 
 ; Function attributes
 
+; CHECK-NEXT: Function func_with_attrs has disallowed attributes: noreturn nounwind
+define void @func_with_attrs() noreturn nounwind {
+  ret void
+}
+
+; CHECK-NEXT: Function func_with_arg_attrs has disallowed attributes: inreg zeroext
+define void @func_with_arg_attrs(i32 inreg zeroext) {
+  ret void
+}
+
 ; CHECK-NEXT: Function func_with_section has disallowed "section" attribute
 define void @func_with_section() section ".some_section" {
   ret void

@@ -305,6 +305,18 @@ static bool isCompoundElement(const Constant *C) {
   return true;
 }
 
+static std::string getAttributesAsString(AttributeSet Attrs) {
+  std::string AttrsAsString;
+  for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
+    for (AttributeSet::iterator Attr = Attrs.begin(Slot),
+           E = Attrs.end(Slot); Attr != E; ++Attr) {
+      AttrsAsString += " ";
+      AttrsAsString += Attr->getAsString();
+    }
+  }
+  return AttrsAsString;
+}
+
 // This checks that the GlobalVariable has the normal form produced by
 // the FlattenGlobals pass.
 void PNaClABIVerifyModule::checkGlobalIsFlattened(const GlobalVariable *GV) {
@@ -365,6 +377,11 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       if (MI->isDeclaration()) {
         Reporter->addError() << "Function " << MI->getName()
                              << " is declared but not defined (disallowed)\n";
+      }
+      if (!MI->getAttributes().isEmpty()) {
+        Reporter->addError()
+            << "Function " << MI->getName() << " has disallowed attributes:"
+            << getAttributesAsString(MI->getAttributes()) << "\n";
       }
     }
 

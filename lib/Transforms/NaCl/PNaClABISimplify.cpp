@@ -78,6 +78,12 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
 
+  // We place StripAttributes after optimization passes because many
+  // analyses add attributes to reflect their results.
+  // StripAttributes must come after ExpandByVal and
+  // ExpandSmallArguments.
+  PM.add(createStripAttributesPass());
+
   // Strip dead prototytes to appease the intrinsic ABI checks.
   // ExpandVarArgs leaves around vararg intrinsics, and
   // ReplacePtrsWithInts leaves the lifetime.start/end intrinsics.

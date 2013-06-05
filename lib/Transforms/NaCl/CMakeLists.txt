@@ -19,6 +19,7 @@ add_llvm_library(LLVMNaClTransforms
   ReplacePtrsWithInts.cpp
   ResolvePNaClIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp
+  StripAttributes.cpp
   StripMetadata.cpp
   )
 
