@@ -1,8 +1,12 @@
 ; RUN: opt < %s -rewrite-pnacl-library-calls -S | FileCheck %s
+; RUN: opt < %s -rewrite-pnacl-library-calls -S | FileCheck %s -check-prefix=CLEANED
 ; Test the RewritePNaClLibraryCalls pass
 
 declare i32 @setjmp(i64*)
 declare void @longjmp(i64*, i32)
+
+; No declaration or definition of setjmp() should remain.
+; CLEANED-NOT: @setjmp
 
 ; Since the address of longjmp is being taken here, a body is generated
 ; for it, which does a cast and calls an intrinsic

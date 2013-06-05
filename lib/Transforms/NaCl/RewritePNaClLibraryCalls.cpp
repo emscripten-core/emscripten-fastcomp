@@ -86,6 +86,7 @@ bool RewritePNaClLibraryCalls::runOnModule(Module &M) {
         report_fatal_error("Taking the address of setjmp is invalid");
       }
     }
+    SetjmpFunc->eraseFromParent();
   }
 
   // For longjmp things are a little more complicated, since longjmp's address
@@ -109,7 +110,9 @@ bool RewritePNaClLibraryCalls::runOnModule(Module &M) {
     }
 
     // If additional uses remain, these aren't calls; populate the wrapper.
-    if (!LongjmpFunc->use_empty()) {
+    if (LongjmpFunc->use_empty()) {
+      LongjmpFunc->eraseFromParent();
+    } else {
       populateLongjmpWrapper(LongjmpFunc);
       Changed = true;
     }
