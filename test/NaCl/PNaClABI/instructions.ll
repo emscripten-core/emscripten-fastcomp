@@ -113,11 +113,15 @@ bar:
   ret void
 }
 
-declare void @external_func()
-declare void @personality_func()
+define void @throwing_func() {
+  ret void
+}
+define void @personality_func() {
+  ret void
+}
 
 define void @invoke_func() {
-  invoke void @external_func() to label %ok unwind label %onerror
+  invoke void @throwing_func() to label %ok unwind label %onerror
 ; CHECK-NOT: disallowed
 ; CHECK: disallowed: bad instruction opcode: invoke
 ok:

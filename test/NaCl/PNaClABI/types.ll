@@ -3,12 +3,18 @@
 
 
 ; CHECK: Function badReturn has disallowed type: half* ()
-declare half* @badReturn()
+define half* @badReturn() {
+  unreachable
+}
 
 ; CHECK: Function badArgType1 has disallowed type: void (half, i32)
-declare void @badArgType1(half %a, i32 %b)
+define void @badArgType1(half %a, i32 %b) {
+  ret void
+}
 ; CHECK: Function badArgType2 has disallowed type: void (i32, half)
-declare void @badArgType2(i32 %a, half %b)
+define void @badArgType2(i32 %a, half %b) {
+  ret void
+}
 
 
 define void @func() {

@@ -44,8 +44,7 @@ define private void @private_func() {
 define internal void @internal_func() {
   ret void
 }
-; TODO(dschuff): Disallow external linkage
-; CHECK-NOT: external_func
+; CHECK: Function external_func is declared but not defined (disallowed)
 declare external void @external_func()
 ; CHECK: linkonce_func has disallowed linkage type: linkonce
 define linkonce void @linkonce_func() {
@@ -63,11 +62,13 @@ define weak void @weak_func() {
 define weak_odr void @weak_odr_func() {
   ret void
 }
+; CHECK-NEXT: dllimport_func is declared but not defined (disallowed)
 ; CHECK-NEXT: dllimport_func has disallowed linkage type: dllimport
 declare dllimport void @dllimport_func()
 ; CHECK-NEXT: dllexport_func has disallowed linkage type: dllexport
 define dllexport void @dllexport_func() {
   ret void
 }
+; CHECK-NEXT: Function extern_weak_func is declared but not defined (disallowed)
 ; CHECK-NEXT: Function extern_weak_func has disallowed linkage type: extern_weak
 declare extern_weak void @extern_weak_func()

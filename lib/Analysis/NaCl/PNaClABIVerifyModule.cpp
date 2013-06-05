@@ -346,22 +346,26 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   }
 
   for (Module::const_iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
-    // Check intrinsics.
-    if (MI->isIntrinsic()
-        && !isWhitelistedIntrinsic(MI, MI->getIntrinsicID())) {
-      Reporter->addError() << "Function " << MI->getName()
-                           << " is a disallowed LLVM intrinsic\n";
-    }
-
-    // Check types of functions and their arguments.  Not necessary
-    // for intrinsics, whose types are fixed anyway, and which have
-    // argument types that we disallow such as i8.
-    if (!MI->isIntrinsic() &&
-        !PNaClABITypeChecker::isValidFunctionType(MI->getFunctionType())) {
-      Reporter->addError() << "Function " << MI->getName()
-          << " has disallowed type: "
-          << PNaClABITypeChecker::getTypeName(MI->getFunctionType())
-          << "\n";
+    if (MI->isIntrinsic()) {
+      // Check intrinsics.
+      if (!isWhitelistedIntrinsic(MI, MI->getIntrinsicID())) {
+        Reporter->addError() << "Function " << MI->getName()
+                             << " is a disallowed LLVM intrinsic\n";
+      }
+    } else {
+      // Check types of functions and their arguments.  Not necessary
+      // for intrinsics, whose types are fixed anyway, and which have
+      // argument types that we disallow such as i8.
+      if (!PNaClABITypeChecker::isValidFunctionType(MI->getFunctionType())) {
+        Reporter->addError() << "Function " << MI->getName()
+            << " has disallowed type: "
+            << PNaClABITypeChecker::getTypeName(MI->getFunctionType())
+            << "\n";
+      }
+      if (MI->isDeclaration()) {
+        Reporter->addError() << "Function " << MI->getName()
+                             << " is declared but not defined (disallowed)\n";
+      }
     }
 
     checkGlobalValueCommon(MI);
