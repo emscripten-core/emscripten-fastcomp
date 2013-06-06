@@ -8,12 +8,14 @@
 //===----------------------------------------------------------------------===//
 //
 // This pass strips out attributes that are not supported by PNaCl's
-// stable ABI.  Currently, this strips out attributes from functions
-// and function calls.
+// stable ABI.  Currently, this strips out:
+//
+//  * Function and argument attributes from functions and function
+//    calls.
+//  * Calling conventions from functions and function calls.
 //
 // TODO(mseaborn): Strip out the following too:
 //
-//  * Calling conventions from functions and function calls.
 //  * "nuw" and "nsw" arithmetic attributes.
 //  * "align" attributes from integer memory accesses.
 //
@@ -131,6 +133,7 @@ static void CheckAttributes(AttributeSet Attrs) {
 bool StripAttributes::runOnFunction(Function &Func) {
   CheckAttributes(Func.getAttributes());
   Func.setAttributes(AttributeSet());
+  Func.setCallingConv(CallingConv::C);
 
   for (Function::iterator BB = Func.begin(), E = Func.end();
        BB != E; ++BB) {
@@ -140,6 +143,7 @@ bool StripAttributes::runOnFunction(Function &Func) {
       if (Call) {
         CheckAttributes(Call.getAttributes());
         Call.setAttributes(AttributeSet());
+        Call.setCallingConv(CallingConv::C);
       }
     }
   }

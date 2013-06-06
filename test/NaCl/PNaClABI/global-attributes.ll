@@ -27,6 +27,11 @@ define void @func_with_arg_attrs(i32 inreg zeroext) {
   ret void
 }
 
+; CHECK-NEXT: Function func_with_callingconv has disallowed calling convention: 8
+define fastcc void @func_with_callingconv() {
+  ret void
+}
+
 ; CHECK-NEXT: Function func_with_section has disallowed "section" attribute
 define void @func_with_section() section ".some_section" {
   ret void

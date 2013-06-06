@@ -383,6 +383,12 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
             << "Function " << MI->getName() << " has disallowed attributes:"
             << getAttributesAsString(MI->getAttributes()) << "\n";
       }
+      if (MI->getCallingConv() != CallingConv::C) {
+        Reporter->addError()
+            << "Function " << MI->getName()
+            << " has disallowed calling convention: "
+            << MI->getCallingConv() << "\n";
+      }
     }
 
     checkGlobalValueCommon(MI);

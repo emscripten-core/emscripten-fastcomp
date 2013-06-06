@@ -1,12 +1,12 @@
 ; RUN: opt -S -nacl-strip-attributes %s | FileCheck %s
 
-define void @func_attrs(i32 inreg, i32 zeroext) noreturn nounwind readonly {
+define fastcc void @func_attrs(i32 inreg, i32 zeroext) noreturn nounwind readonly {
   ret void
 }
 ; CHECK: define void @func_attrs(i32, i32) {
 
 define void @call_attrs() {
-  call void @func_attrs(i32 inreg 10, i32 zeroext 20) noreturn nounwind readonly
+  call fastcc void @func_attrs(i32 inreg 10, i32 zeroext 20) noreturn nounwind readonly
   ret void
 }
 ; CHECK: define void @call_attrs()

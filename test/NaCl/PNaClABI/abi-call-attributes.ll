@@ -7,8 +7,13 @@ define void @func(i32 %arg) {
 define void @calls() {
   call void @func(i32 1) noreturn nounwind
 ; CHECK: disallowed: bad call attributes: call void @func(i32 1) #
+
   call void @func(i32 inreg 1)
 ; CHECK-NEXT: disallowed: bad call attributes: call void @func(i32 inreg 1)
+
+  call fastcc void @func(i32 1)
+; CHECK-NEXT: disallowed: bad calling convention: call fastcc void @func(i32 1)
+
   ret void
 }
 

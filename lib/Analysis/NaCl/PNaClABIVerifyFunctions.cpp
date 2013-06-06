@@ -255,11 +255,14 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       break;
     }
 
-    case Instruction::Call:
-      if (cast<CallInst>(Inst)->isInlineAsm())
+    case Instruction::Call: {
+      const CallInst *Call = cast<CallInst>(Inst);
+      if (Call->isInlineAsm())
         return "inline assembly";
-      if (!cast<CallInst>(Inst)->getAttributes().isEmpty())
+      if (!Call->getAttributes().isEmpty())
         return "bad call attributes";
+      if (Call->getCallingConv() != CallingConv::C)
+        return "bad calling convention";
 
       // Intrinsic calls can have multiple pointer arguments and
       // metadata arguments, so handle them specially.
@@ -281,6 +284,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad function callee operand";
       break;
+    }
 
     case Instruction::Switch: {
       // SwitchInst represents switch cases using array and vector
