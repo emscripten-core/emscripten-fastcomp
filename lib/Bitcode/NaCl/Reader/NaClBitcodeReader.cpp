@@ -1813,15 +1813,6 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
 
   if (InitStream()) return true;
 
-  // Sniff for the signature.
-  if (Stream.Read(8) != 'B' ||
-      Stream.Read(8) != 'C' ||
-      Stream.Read(4) != 0x0 ||
-      Stream.Read(4) != 0xC ||
-      Stream.Read(4) != 0xE ||
-      Stream.Read(4) != 0xD)
-    return Error("Invalid bitcode signature");
-
   // We expect a number of well-defined blocks, though we don't necessarily
   // need to understand them all.
   while (1) {
@@ -1910,48 +1901,6 @@ bool NaClBitcodeReader::ParseModuleTriple(std::string &Triple) {
     }
     }
     Record.clear();
-  }
-}
-
-bool NaClBitcodeReader::ParseTriple(std::string &Triple) {
-  if (InitStream()) return true;
-
-  // Sniff for the signature.
-  if (Stream.Read(8) != 'B' ||
-      Stream.Read(8) != 'C' ||
-      Stream.Read(4) != 0x0 ||
-      Stream.Read(4) != 0xC ||
-      Stream.Read(4) != 0xE ||
-      Stream.Read(4) != 0xD)
-    return Error("Invalid bitcode signature");
-
-  // We expect a number of well-defined blocks, though we don't necessarily
-  // need to understand them all.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advance();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::Error:
-      Error("malformed module file");
-      return true;
-    case NaClBitstreamEntry::EndBlock:
-      return false;
-
-    case NaClBitstreamEntry::SubBlock:
-      if (Entry.ID == naclbitc::MODULE_BLOCK_ID)
-        return ParseModuleTriple(Triple);
-
-      // Ignore other sub-blocks.
-      if (Stream.SkipBlock()) {
-        Error("malformed block record in AST file");
-        return true;
-      }
-      continue;
-
-    case NaClBitstreamEntry::Record:
-      Stream.skipRecord(Entry.ID);
-      continue;
-    }
   }
 }
 
@@ -3030,48 +2979,26 @@ bool NaClBitcodeReader::InitStreamFromBuffer() {
   const unsigned char *BufPtr = (const unsigned char*)Buffer->getBufferStart();
   const unsigned char *BufEnd = BufPtr+Buffer->getBufferSize();
 
-  if (Buffer->getBufferSize() & 3) {
-    if (!isNaClRawBitcode(BufPtr, BufEnd) &&
-        !isNaClBitcodeWrapper(BufPtr, BufEnd))
-      return Error("Invalid bitcode signature");
-    else
-      return Error("Bitcode stream should be a multiple of 4 bytes in length");
-  }
+  if (Buffer->getBufferSize() & 3)
+    return Error("Bitcode stream should be a multiple of 4 bytes in length");
 
-  // If we have a wrapper header, parse it and ignore the non-bc file contents.
-  // The magic number is 0x0B17C0DE stored in little endian.
-  if (isNaClBitcodeWrapper(BufPtr, BufEnd))
-    if (SkipNaClBitcodeWrapperHeader(BufPtr, BufEnd, true))
-      return Error("Invalid bitcode wrapper header");
+  if (Header.Read(BufPtr, BufEnd))
+    return Error("Invalid PNaCl bitcode header");
 
   StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd));
   Stream.init(*StreamFile);
 
-  return false;
+  return AcceptHeader();
 }
 
 bool NaClBitcodeReader::InitLazyStream() {
-  // Check and strip off the bitcode wrapper; NaClBitstreamReader expects
-  // never to see it.
   StreamingMemoryObject *Bytes = new StreamingMemoryObject(LazyStreamer);
-  StreamFile.reset(new NaClBitstreamReader(Bytes));
+  if (Header.Read(Bytes))
+    return Error("Invalid PNaCl bitcode header");
+
+  StreamFile.reset(new NaClBitstreamReader(Bytes, Header.getHeaderSize()));
   Stream.init(*StreamFile);
-
-  unsigned char buf[16];
-  if (Bytes->readBytes(0, 16, buf, NULL) == -1)
-    return Error("Bitcode stream must be at least 16 bytes in length");
-
-  if (!isNaClBitcode(buf, buf + 16))
-    return Error("Invalid bitcode signature");
-
-  if (isNaClBitcodeWrapper(buf, buf + 4)) {
-    const unsigned char *bitcodeStart = buf;
-    const unsigned char *bitcodeEnd = buf + 16;
-    SkipNaClBitcodeWrapperHeader(bitcodeStart, bitcodeEnd, false);
-    Bytes->dropLeadingBytes(bitcodeStart - buf);
-    Bytes->setKnownObjectSize(bitcodeEnd - bitcodeStart);
-  }
-  return false;
+  return AcceptHeader();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3082,9 +3009,11 @@ bool NaClBitcodeReader::InitLazyStream() {
 ///
 Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
                                        LLVMContext& Context,
-                                       std::string *ErrMsg) {
+                                       std::string *ErrMsg,
+                                       bool AcceptSupportedOnly) {
   Module *M = new Module(Buffer->getBufferIdentifier(), Context);
-  NaClBitcodeReader *R = new NaClBitcodeReader(Buffer, Context);
+  NaClBitcodeReader *R =
+      new NaClBitcodeReader(Buffer, Context, AcceptSupportedOnly);
   M->setMaterializer(R);
   if (R->ParseBitcodeInto(M)) {
     if (ErrMsg)
@@ -3107,9 +3036,11 @@ Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
 Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
                                            DataStreamer *streamer,
                                            LLVMContext &Context,
-                                           std::string *ErrMsg) {
+                                           std::string *ErrMsg,
+                                           bool AcceptSupportedOnly) {
   Module *M = new Module(name, Context);
-  NaClBitcodeReader *R = new NaClBitcodeReader(streamer, Context);
+  NaClBitcodeReader *R =
+      new NaClBitcodeReader(streamer, Context, AcceptSupportedOnly);
   M->setMaterializer(R);
   if (R->ParseBitcodeInto(M)) {
     if (ErrMsg)
@@ -3129,8 +3060,10 @@ Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
 /// NaClParseBitcodeFile - Read the specified bitcode file, returning the module.
 /// If an error occurs, return null and fill in *ErrMsg if non-null.
 Module *llvm::NaClParseBitcodeFile(MemoryBuffer *Buffer, LLVMContext& Context,
-                                   std::string *ErrMsg){
-  Module *M = getNaClLazyBitcodeModule(Buffer, Context, ErrMsg);
+                                   std::string *ErrMsg,
+                                   bool AcceptSupportedOnly){
+  Module *M = getNaClLazyBitcodeModule(Buffer, Context, ErrMsg,
+                                       AcceptSupportedOnly);
   if (!M) return 0;
 
   // Don't let the NaClBitcodeReader dtor delete 'Buffer', regardless of whether

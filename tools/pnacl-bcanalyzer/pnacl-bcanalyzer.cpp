@@ -32,6 +32,7 @@
 
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/Verifier.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -65,20 +66,6 @@ NonSymbolic("non-symbolic",
             cl::desc("Emit numeric info in dump even if"
                      " symbolic info is available"));
 
-namespace {
-
-/// CurStreamTypeType - A type for CurStreamType
-enum CurStreamTypeType {
-  UnknownBitstream,
-  LLVMIRBitstream
-};
-
-}
-
-/// CurStreamType - If we can sniff the flavor of this stream, we can produce
-/// better dump info.
-static CurStreamTypeType CurStreamType;
-
 
 /// GetBlockName - Return a symbolic block name if known, otherwise return
 /// null.
@@ -97,9 +84,6 @@ static const char *GetBlockName(unsigned BlockID,
     if (!Info->Name.empty())
       return Info->Name.c_str();
   }
-
-
-  if (CurStreamType != LLVMIRBitstream) return 0;
 
   switch (BlockID) {
   default: return 0;
@@ -140,9 +124,6 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       if (Info->RecordNames[i].first == CodeID)
         return Info->RecordNames[i].second.c_str();
   }
-
-
-  if (CurStreamType != LLVMIRBitstream) return 0;
 
   switch (BlockID) {
   default: return 0;
@@ -498,33 +479,27 @@ static int AnalyzeBitcode() {
   const unsigned char *BufPtr = (const unsigned char *)MemBuf->getBufferStart();
   const unsigned char *EndBufPtr = BufPtr+MemBuf->getBufferSize();
 
-  // If we have a wrapper header, parse it and ignore the non-bc file contents.
-  // The magic number is 0x0B17C0DE stored in little endian.
-  if (isNaClBitcodeWrapper(BufPtr, EndBufPtr))
-    if (SkipNaClBitcodeWrapperHeader(BufPtr, EndBufPtr, true))
-      return Error("Invalid bitcode wrapper header");
+  NaClBitcodeHeader Header;
+  if (Header.Read(BufPtr, EndBufPtr))
+    return Error("Invalid PNaCl bitcode header");
+
+  if (!Header.IsSupported())
+    errs() << "Warning: " << Header.Unsupported() << "\n";
+
+  if (!Header.IsReadable())
+    Error("Bitcode file is not readable");
 
   NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
   NaClBitstreamCursor Stream(StreamFile);
   StreamFile.CollectBlockInfoNames();
 
-  // Read the stream signature.
-  char Signature[6];
-  Signature[0] = Stream.Read(8);
-  Signature[1] = Stream.Read(8);
-  Signature[2] = Stream.Read(4);
-  Signature[3] = Stream.Read(4);
-  Signature[4] = Stream.Read(4);
-  Signature[5] = Stream.Read(4);
-
-  // Autodetect the file contents, if it is one we know.
-  CurStreamType = UnknownBitstream;
-  if (Signature[0] == 'B' && Signature[1] == 'C' &&
-      Signature[2] == 0x0 && Signature[3] == 0xC &&
-      Signature[4] == 0xE && Signature[5] == 0xD)
-    CurStreamType = LLVMIRBitstream;
-
   unsigned NumTopBlocks = 0;
+
+  // Print out header information.
+  for (size_t i = 0, limit = Header.NumberFields(); i < limit; ++i) {
+    outs() << Header.GetField(i)->Contents() << "\n";
+  }
+  if (Header.NumberFields()) outs() << "\n";
 
   // Parse the top-level structure.  We only allow blocks at the top-level.
   while (!Stream.AtEndOfStream()) {
@@ -544,14 +519,9 @@ static int AnalyzeBitcode() {
   uint64_t BufferSizeBits = (EndBufPtr-BufPtr)*CHAR_BIT;
   // Print a summary of the read file.
   outs() << "Summary of " << InputFilename << ":\n";
-  outs() << "         Total size: ";
+  outs() << "  Total size: ";
   PrintSize(BufferSizeBits);
   outs() << "\n";
-  outs() << "        Stream type: ";
-  switch (CurStreamType) {
-  case UnknownBitstream: outs() << "unknown\n"; break;
-  case LLVMIRBitstream:  outs() << "LLVM IR\n"; break;
-  }
   outs() << "  # Toplevel Blocks: " << NumTopBlocks << "\n";
   outs() << "\n";
 

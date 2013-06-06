@@ -13,6 +13,7 @@
 
 #define DEBUG_TYPE "NaClBitcodeWriter"
 
+#include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "NaClValueEnumerator.h"
 #include "llvm/ADT/Triple.h"
@@ -1903,24 +1904,6 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
   DEBUG(dbgs() << "<- WriteModule\n");
 }
 
-/// EmitDarwinBCHeader - If generating a bc file on darwin, we have to emit a
-/// header and trailer to make it compatible with the system archiver.  To do
-/// this we emit the following header, and then emit a trailer that pads the
-/// file out to be a multiple of 16 bytes.
-///
-/// struct bc_header {
-///   uint32_t Magic;         // 0x0B17C0DE
-///   uint32_t Version;       // Version, currently always 0.
-///   uint32_t BitcodeOffset; // Offset to traditional bitcode file.
-///   uint32_t BitcodeSize;   // Size of traditional bitcode file.
-///   uint32_t CPUType;       // CPU specifier.
-///   ... potentially more later ...
-/// };
-enum {
-  DarwinBCSizeFieldOffset = 3*4, // Offset to bitcode_size.
-  DarwinBCHeaderSize = 5*4
-};
-
 static void WriteInt32ToBuffer(uint32_t Value, SmallVectorImpl<char> &Buffer,
                                uint32_t &Position) {
   Buffer[Position + 0] = (unsigned char) (Value >>  0);
@@ -1930,51 +1913,48 @@ static void WriteInt32ToBuffer(uint32_t Value, SmallVectorImpl<char> &Buffer,
   Position += 4;
 }
 
-static void EmitDarwinBCHeaderAndTrailer(SmallVectorImpl<char> &Buffer,
-                                         const Triple &TT) {
-  unsigned CPUType = ~0U;
+// Max size for variable fields. Currently only used for writing them
+// out to files (the parsing works for arbitrary sizes).
+static const size_t kMaxVariableFieldSize = 256;
 
-  // Match x86_64-*, i[3-9]86-*, powerpc-*, powerpc64-*, arm-*, thumb-*,
-  // armv[0-9]-*, thumbv[0-9]-*, armv5te-*, or armv6t2-*. The CPUType is a magic
-  // number from /usr/include/mach/machine.h.  It is ok to reproduce the
-  // specific constants here because they are implicitly part of the Darwin ABI.
-  enum {
-    DARWIN_CPU_ARCH_ABI64      = 0x01000000,
-    DARWIN_CPU_TYPE_X86        = 7,
-    DARWIN_CPU_TYPE_ARM        = 12,
-    DARWIN_CPU_TYPE_POWERPC    = 18
-  };
+// Write out the given fields to the bitstream.
+static void WriteHeaderFields(
+    const std::vector<NaClBitcodeHeaderField*> &Fields,
+    NaClBitstreamWriter& Stream) {
+  // Emit placeholder for number of bytes used to hold header fields.
+  // This value is necessary so that the streamable reader can preallocate
+  // a buffer to read the fields.
+  Stream.Emit(0, naclbitc::BlockSizeWidth);
+  unsigned BytesForHeader = 0;
 
-  Triple::ArchType Arch = TT.getArch();
-  if (Arch == Triple::x86_64)
-    CPUType = DARWIN_CPU_TYPE_X86 | DARWIN_CPU_ARCH_ABI64;
-  else if (Arch == Triple::x86)
-    CPUType = DARWIN_CPU_TYPE_X86;
-  else if (Arch == Triple::ppc)
-    CPUType = DARWIN_CPU_TYPE_POWERPC;
-  else if (Arch == Triple::ppc64)
-    CPUType = DARWIN_CPU_TYPE_POWERPC | DARWIN_CPU_ARCH_ABI64;
-  else if (Arch == Triple::arm || Arch == Triple::thumb)
-    CPUType = DARWIN_CPU_TYPE_ARM;
+  unsigned NumberFields = Fields.size();
+  if (NumberFields > 0xFFFF)
+    report_fatal_error("Too many header fields");
 
-  // Traditional Bitcode starts after header.
-  assert(Buffer.size() >= DarwinBCHeaderSize &&
-         "Expected header size to be reserved");
-  unsigned BCOffset = DarwinBCHeaderSize;
-  unsigned BCSize = Buffer.size()-DarwinBCHeaderSize;
+  uint8_t Buffer[kMaxVariableFieldSize];
+  for (std::vector<NaClBitcodeHeaderField*>::const_iterator
+           Iter = Fields.begin(), IterEnd = Fields.end();
+       Iter != IterEnd; ++Iter) {
+    if (!(*Iter)->Write(Buffer, kMaxVariableFieldSize))
+      report_fatal_error("Header field too big to generate");
+    size_t limit = (*Iter)->GetTotalSize();
+    for (size_t i = 0; i < limit; i++) {
+      Stream.Emit(Buffer[i], 8);
+    }
+    BytesForHeader += limit;
+  }
 
-  // Write the magic and version.
-  unsigned Position = 0;
-  WriteInt32ToBuffer(0x0B17C0DE , Buffer, Position);
-  WriteInt32ToBuffer(0          , Buffer, Position); // Version.
-  WriteInt32ToBuffer(BCOffset   , Buffer, Position);
-  WriteInt32ToBuffer(BCSize     , Buffer, Position);
-  WriteInt32ToBuffer(CPUType    , Buffer, Position);
+  if (BytesForHeader > 0xFFFF)
+    report_fatal_error("Header fields to big to save");
 
-  // If the file is not a multiple of 16 bytes, insert dummy padding.
-  while (Buffer.size() & 15)
-    Buffer.push_back(0);
+  // Encode #fields in top two bytes, and #bytes to hold fields in
+  // bottom two bytes. Then backpatch into second word.
+  unsigned Value = NumberFields | (BytesForHeader << 16);
+  Stream.BackpatchWord(NaClBitcodeHeader::WordSize, Value);
 }
+
+// Define the version of PNaCl bitcode we are generating.
+static const uint16_t kPNaClVersion = 1;
 
 /// WriteBitcodeToFile - Write the specified module to the specified output
 /// stream.
@@ -1985,30 +1965,28 @@ void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out) {
   // Convert Deplib info to metadata
   M->convertLibraryListToMetadata(); // @LOCALMOD
 
-  // If this is darwin or another generic macho target, reserve space for the
-  // header.
-  Triple TT(M->getTargetTriple());
-  if (TT.isOSDarwin())
-    Buffer.insert(Buffer.begin(), DarwinBCHeaderSize, 0);
-
   // Emit the module into the buffer.
   {
     NaClBitstreamWriter Stream(Buffer);
 
     // Emit the file header.
-    Stream.Emit((unsigned)'B', 8);
-    Stream.Emit((unsigned)'C', 8);
-    Stream.Emit(0x0, 4);
-    Stream.Emit(0xC, 4);
-    Stream.Emit(0xE, 4);
-    Stream.Emit(0xD, 4);
+    Stream.Emit((unsigned)'P', 8);
+    Stream.Emit((unsigned)'E', 8);
+    Stream.Emit((unsigned)'X', 8);
+    Stream.Emit((unsigned)'E', 8);
+
+    // Collect header fields to add.
+    {
+      std::vector<NaClBitcodeHeaderField*> HeaderFields;
+      HeaderFields.push_back(
+          new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
+                                     kPNaClVersion));
+      WriteHeaderFields(HeaderFields, Stream);
+    }
 
     // Emit the module.
     WriteModule(M, Stream);
   }
-
-  if (TT.isOSDarwin())
-    EmitDarwinBCHeaderAndTrailer(Buffer, TT);
 
   // Write the generated bitstream to "Out".
   Out.write((char*)&Buffer.front(), Buffer.size());

@@ -49,24 +49,30 @@ private:
 
   std::vector<BlockInfo> BlockInfoRecords;
 
-  /// IgnoreBlockInfoNames - This is set to true if we don't care about the
-  /// block/record name information in the BlockInfo block. Only llvm-bcanalyzer
-  /// uses this.
+  /// IgnoreBlockInfoNames - This is set to true if we don't care
+  /// about the block/record name information in the BlockInfo
+  /// block. Only pnacl-bcanalyzer uses this.
   bool IgnoreBlockInfoNames;
+
+  /// \brief Holds the offset of the first byte after the header.
+  size_t InitialAddress;
 
   NaClBitstreamReader(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
 public:
-  NaClBitstreamReader() : IgnoreBlockInfoNames(true) {
-  }
+  NaClBitstreamReader() : IgnoreBlockInfoNames(true), InitialAddress(0) {}
 
   NaClBitstreamReader(const unsigned char *Start, const unsigned char *End) {
     IgnoreBlockInfoNames = true;
+    InitialAddress = 0;
     init(Start, End);
   }
 
-  NaClBitstreamReader(StreamableMemoryObject *bytes) {
-    BitcodeBytes.reset(bytes);
+  NaClBitstreamReader(StreamableMemoryObject *Bytes,
+                      size_t MyInitialAddress=0)
+      : InitialAddress(MyInitialAddress)
+  {
+    BitcodeBytes.reset(Bytes);
   }
 
   void init(const unsigned char *Start, const unsigned char *End) {
@@ -92,6 +98,11 @@ public:
   /// name information.
   void CollectBlockInfoNames() { IgnoreBlockInfoNames = false; }
   bool isIgnoringBlockInfoNames() { return IgnoreBlockInfoNames; }
+
+  /// \brief Returns the initial address (after the header) of the input stream.
+  size_t getInitialAddress() const {
+    return InitialAddress;
+  }
 
   //===--------------------------------------------------------------------===//
   // Block Manipulation
@@ -210,7 +221,7 @@ public:
   }
 
   explicit NaClBitstreamCursor(NaClBitstreamReader &R) : BitStream(&R) {
-    NextChar = 0;
+    NextChar = R.getInitialAddress();
     CurWord = 0;
     BitsInCurWord = 0;
   }
@@ -219,7 +230,7 @@ public:
     freeState();
 
     BitStream = &R;
-    NextChar = 0;
+    NextChar = R.getInitialAddress();
     CurWord = 0;
     BitsInCurWord = 0;
   }
@@ -240,12 +251,6 @@ public:
     // pos can be skipped to if it is a valid address or one byte past the end.
     return pos == 0 || BitStream->getBitcodeBytes().isValidAddress(
         static_cast<uint64_t>(pos - 1));
-  }
-
-  uint32_t getWord(size_t pos) {
-    uint8_t buf[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
-    BitStream->getBitcodeBytes().readBytes(pos, sizeof(buf), buf, NULL);
-    return *reinterpret_cast<support::ulittle32_t *>(buf);
   }
 
   bool AtEndOfStream() {

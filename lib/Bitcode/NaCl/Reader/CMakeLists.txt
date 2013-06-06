@@ -1,4 +1,5 @@
 add_llvm_library(LLVMNaClBitReader
+  NaClBitcodeHeader.cpp
   NaClBitcodeReader.cpp
   NaClBitstreamReader.cpp
   )

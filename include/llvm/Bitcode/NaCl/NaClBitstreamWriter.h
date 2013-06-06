@@ -61,6 +61,7 @@ class NaClBitstreamWriter {
   };
   std::vector<BlockInfo> BlockInfoRecords;
 
+public:
   // BackpatchWord - Backpatch a 32-bit word in the output with the specified
   // value.
   void BackpatchWord(unsigned ByteNo, unsigned NewWord) {
@@ -70,6 +71,7 @@ class NaClBitstreamWriter {
     Out[ByteNo  ] = (unsigned char)(NewWord >> 24);
   }
 
+private:
   void WriteByte(unsigned char Value) {
     Out.push_back(Value);
   }

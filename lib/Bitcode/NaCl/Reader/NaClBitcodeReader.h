@@ -16,6 +16,7 @@
 #define NACL_BITCODE_READER_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/GVMaterializer.h"
@@ -123,6 +124,7 @@ public:
 };
 
 class NaClBitcodeReader : public GVMaterializer {
+  NaClBitcodeHeader Header;  // Header fields of the PNaCl bitcode file.
   LLVMContext &Context;
   Module *TheModule;
   MemoryBuffer *Buffer;
@@ -192,18 +194,25 @@ class NaClBitcodeReader : public GVMaterializer {
   /// not need this flag.
   bool UseRelativeIDs;
 
+  /// \brief True if we should only accept supported bitcode format.
+  bool AcceptSupportedBitcodeOnly;
+
 public:
-  explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C)
+  explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
+                             bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(buffer), BufferOwned(false),
       LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
       ErrorString(0), ValueList(C), MDValueList(C),
-      SeenFirstFunctionBody(false), UseRelativeIDs(false) {
+      SeenFirstFunctionBody(false), UseRelativeIDs(false),
+      AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
   }
-  explicit NaClBitcodeReader(DataStreamer *streamer, LLVMContext &C)
+  explicit NaClBitcodeReader(DataStreamer *streamer, LLVMContext &C,
+                             bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
       ErrorString(0), ValueList(C), MDValueList(C),
-      SeenFirstFunctionBody(false), UseRelativeIDs(false) {
+      SeenFirstFunctionBody(false), UseRelativeIDs(false),
+      AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
   }
   ~NaClBitcodeReader() {
     FreeState();
@@ -233,11 +242,12 @@ public:
   /// @returns true if an error occurred.
   bool ParseBitcodeInto(Module *M);
 
-  /// @brief Cheap mechanism to just extract module triple
-  /// @returns true if an error occurred.
-  bool ParseTriple(std::string &Triple);
-
 private:
+  // Returns false if Header is acceptable.
+  bool AcceptHeader() const {
+    return !(Header.IsSupported() ||
+             (!AcceptSupportedBitcodeOnly && Header.IsReadable()));
+  }
   Type *getTypeByID(unsigned ID);
   Value *getFnValueByID(unsigned ID, Type *Ty) {
     if (Ty && Ty->isMetadataTy())

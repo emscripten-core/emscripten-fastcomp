@@ -74,8 +74,9 @@ int main(int argc, char **argv) {
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
-    M.reset(getNaClStreamedBitcodeModule(DisplayFilename, streamer, Context,
-                                         &ErrorMessage));
+    M.reset(getNaClStreamedBitcodeModule(
+        DisplayFilename, streamer, Context,
+        &ErrorMessage, /*AcceptSupportedOnly=*/false));
     if(M.get() != 0 && M->MaterializeAllPermanently(&ErrorMessage)) {
       M.reset();
     }
