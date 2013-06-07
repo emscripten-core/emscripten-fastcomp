@@ -322,7 +322,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
               NaClBitcodeStreamer, Context, &StrError));
           break;
         default:
-          StrErr = "Don't understand specified bitcode format";
+          StrError = "Don't understand specified bitcode format";
           break;
       }
       if (!StrError.empty()) {
