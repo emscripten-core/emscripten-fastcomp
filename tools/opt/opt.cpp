@@ -27,6 +27,7 @@
 #include "llvm/DebugInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"  // @LOCALMOD
 #include "llvm/LinkAllIR.h"
 #include "llvm/LinkAllPasses.h"
 #include "llvm/MC/SubtargetFeature.h"
@@ -171,18 +172,13 @@ DefaultDataLayout("default-data-layout",
           cl::value_desc("layout-string"), cl::init(""));
 
 // @LOCALMOD-BEGIN
-enum BcFormat {
-  LLVMFormat,
-  PNaClFormat
-};
-
-static cl::opt<BcFormat>
-BitcodeFormat(
+static cl::opt<NaClFileFormat>
+OutputFileFormat(
     "bitcode-format",
     cl::desc("Define format of generated bitcode file:"),
     cl::values(
-        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode (default)"),
-        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode"),
+        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode file (default)"),
+        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
     cl::init(LLVMFormat));
 // @LOCALMOD-END
@@ -902,7 +898,7 @@ int main(int argc, char **argv) {
 // @LOCALMOD-BEGIN
   // Write bitcode to the output.
   if (!NoOutput && !AnalyzeOnly && !OutputAssembly) {
-    switch (BitcodeFormat) {
+    switch (OutputFileFormat) {
       case LLVMFormat:
         WriteBitcodeToFile(M.get(), Out->os());
         break;

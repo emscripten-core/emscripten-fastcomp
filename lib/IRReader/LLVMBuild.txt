@@ -1,4 +1,4 @@
-;===- ./tools/pnacl-llc/LLVMBuild.txt --------------------------*- Conf -*--===;
+;===- ./lib/IRReader/LLVMBuild.txt -----------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [component_0]
-type = Tool
-name = pnacl-llc
-parent = Tools
-required_libraries = AsmParser BitReader NaClBitReader IRReader all-targets NaClAnalysis
+type = Library
+name = IRReader
+parent = Libraries
+required_libraries = AsmParser BitReader NaClBitReader Core Support

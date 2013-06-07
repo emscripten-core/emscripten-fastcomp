@@ -18,12 +18,14 @@
 #include "llvm/Analysis/NaCl.h" // @LOCALMOD
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"  // @LOCALMOD
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"  // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"  // @LOCALMOD
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
@@ -79,6 +81,18 @@ bool TimeIRParsingIsEnabled = false;
 static cl::opt<bool,true>
 EnableTimeIRParsing("time-ir-parsing", cl::location(TimeIRParsingIsEnabled),
                     cl::desc("Measure the time IR parsing takes"));
+// @LOCALMOD-END
+
+// @LOCALMOD-BEGIN
+static cl::opt<NaClFileFormat>
+InputFileFormat(
+    "bitcode-format",
+    cl::desc("Define format of input file:"),
+    cl::values(
+        clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
+        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
+        clEnumValEnd),
+    cl::init(LLVMFormat));
 // @LOCALMOD-END
 
 // General options for llc.  Other pass-specific options are specified
@@ -359,9 +373,24 @@ static int compileModule(char **argv, LLVMContext &Context) {
 #if defined(__native_client__) && defined(NACL_SRPC)
     if (LazyBitcode) {
       std::string StrError;
-      M.reset(getStreamedBitcodeModule(
-          std::string("<SRPC stream>"),
-          NaClBitcodeStreamer, Context, &StrError));
+      switch (InputFileFormat) {
+        case LLVMFormat:
+          // TODO(kschimpf) Remove this case once we have fixed
+          // pnacl-finalize and the NaCl build system to only allow PNaCl
+          // bitcode files.
+          M.reset(getStreamedBitcodeModule(
+              std::string("<SRPC stream>"),
+              NaClBitcodeStreamer, Context, &StrError));
+          break;
+        case PNaClFormat:
+          M.reset(getNaClStreamedBitcodeModule(
+              std::string("<SRPC stream>"),
+              NaClBitcodeStreamer, Context, &StrError));
+          break;
+        default:
+          StrErr = "Don't understand specified bitcode format";
+          break;
+      }
       if (!StrError.empty()) {
         Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
       }
@@ -375,7 +404,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
       // @LOCALMOD: timing is temporary, until it gets properly added upstream
       NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
                          TimeIRParsingIsEnabled);
-      M.reset(ParseIRFile(InputFilename, Err, Context));
+      M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
     }
 #endif
     // @LOCALMOD-END

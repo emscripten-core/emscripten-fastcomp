@@ -9,7 +9,8 @@
 
 LEVEL := ../..
 TOOLNAME := pnacl-llc
-LINK_COMPONENTS := all-targets bitreader asmparser naclanalysis nacltransforms
+LINK_COMPONENTS := all-targets bitreader naclbitreader irreader \
+                   asmparser naclanalysis nacltransforms
 
 include $(LEVEL)/Makefile.common
 
