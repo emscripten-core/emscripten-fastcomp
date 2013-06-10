@@ -30,6 +30,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
 
   // Expand out some uses of struct types.
   PM.add(createExpandArithWithOverflowPass());
+  // ExpandStructRegs must be run after ExpandArithWithOverflow to
+  // expand out the insertvalue instructions that
+  // ExpandArithWithOverflow introduces.
   PM.add(createExpandStructRegsPass());
 
   PM.add(createExpandVarArgsPass());

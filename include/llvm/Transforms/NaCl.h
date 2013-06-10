@@ -60,12 +60,6 @@ Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
 // different.
 Function *RecreateFunction(Function *Func, FunctionType *NewType);
 
-// Given a value of struct type, StructVal, this replaces all uses of
-// StructVal with the given struct fields.  This involves replacing
-// extractvalue instructions that refer to StructVal.
-void ReplaceUsesOfStructWithFields(Value *StructVal,
-                                   const SmallVectorImpl<Value *> &Fields);
-
 }
 
 #endif

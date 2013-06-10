@@ -1,4 +1,9 @@
 ; RUN: opt %s -expand-struct-regs -S | FileCheck %s
+; RUN: opt %s -expand-struct-regs -S | FileCheck %s -check-prefix=CLEANUP
+
+; These two instructions should not appear in the output:
+; CLEANUP-NOT: extractvalue
+; CLEANUP-NOT: insertvalue
 
 %struct = type { i8, i32 }
 
@@ -59,3 +64,52 @@ define void @const_struct_store(%struct* %ptr) {
 ; CHECK: define void @const_struct_store
 ; CHECK: store i8 99
 ; CHECK: store i32 1234
+
+
+define void @struct_phi_node(%struct* %ptr) {
+entry:
+  %val = load %struct* %ptr
+  br label %bb
+bb:
+  %phi = phi %struct [ %val, %entry ]
+  ret void
+}
+; CHECK: bb:
+; CHECK-NEXT: %phi.index{{.*}} = phi i8 [ %val.field{{.*}}, %entry ]
+; CHECK-NEXT: %phi.index{{.*}} = phi i32 [ %val.field{{.*}}, %entry ]
+
+
+define void @struct_phi_node_multiple_entry(i1 %arg, %struct* %ptr) {
+entry:
+  %val = load %struct* %ptr
+  br i1 %arg, label %bb, label %bb
+bb:
+  %phi = phi %struct [ %val, %entry ], [ %val, %entry ]
+  ret void
+}
+; CHECK: bb:
+; CHECK-NEXT: %phi.index{{.*}} = phi i8 [ %val.field{{.*}}, %entry ], [ %val.field{{.*}}, %entry ]
+; CHECK-NEXT: %phi.index{{.*}} = phi i32 [ %val.field{{.*}}, %entry ], [ %val.field{{.*}}, %entry ]
+
+
+define void @insert_and_extract(i8* %out0, i32* %out1) {
+  %temp = insertvalue %struct undef, i8 100, 0
+  %sval = insertvalue %struct %temp, i32 200, 1
+  %field0 = extractvalue %struct %sval, 0
+  %field1 = extractvalue %struct %sval, 1
+  store i8 %field0, i8* %out0
+  store i32 %field1, i32* %out1
+  ret void
+}
+; CHECK: define void @insert_and_extract(i8* %out0, i32* %out1) {
+; CHECK-NEXT: store i8 100, i8* %out0
+; CHECK-NEXT: store i32 200, i32* %out1
+; CHECK-NEXT: ret void
+
+
+define i32 @extract_from_constant() {
+  %ev = extractvalue %struct { i8 99, i32 888 }, 1
+  ret i32 %ev
+}
+; CHECK: define i32 @extract_from_constant() {
+; CHECK-NEXT: ret i32 888

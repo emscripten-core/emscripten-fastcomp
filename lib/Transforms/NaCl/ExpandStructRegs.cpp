@@ -12,17 +12,17 @@
 // structs with separate loads and stores of the structs' fields.  The
 // motivation is to omit struct types from PNaCl's stable ABI.
 //
-// ExpandStructRegs does not handle all possible uses of struct
-// values.  It is only intended to handle the uses that Clang
-// generates.  Clang generates struct loads and stores, along with
+// ExpandStructRegs does not yet handle all possible uses of struct
+// values.  It is intended to handle the uses that Clang and the SROA
+// pass generate.  Clang generates struct loads and stores, along with
 // extractvalue instructions, in its implementation of C++ method
-// pointers.
+// pointers, and the SROA pass sometimes converts this code to using
+// insertvalue instructions too.
 //
 // ExpandStructRegs does not handle:
 //
-//  * The insertvalue instruction, which does not appear to be
-//    generated anywhere.
-//  * PHI nodes of struct type.
+//  * Nested struct types.
+//  * Array types.
 //  * Function types containing arguments or return values of struct
 //    type without the "byval" or "sret" attributes.  Since by-value
 //    struct-passing generally uses "byval"/"sret", this does not
@@ -62,6 +62,41 @@ char ExpandStructRegs::ID = 0;
 INITIALIZE_PASS(ExpandStructRegs, "expand-struct-regs",
                 "Expand out variables with struct types", false, false)
 
+static void SplitUpPHINode(PHINode *Phi) {
+  StructType *STy = cast<StructType>(Phi->getType());
+
+  Value *NewStruct = UndefValue::get(STy);
+  Instruction *NewStructInsertPt = Phi->getParent()->getFirstInsertionPt();
+
+  // Create a separate PHINode for each struct field.
+  for (unsigned Index = 0; Index < STy->getNumElements(); ++Index) {
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+
+    PHINode *NewPhi = PHINode::Create(
+        STy->getElementType(Index), Phi->getNumIncomingValues(),
+        Phi->getName() + ".index", Phi);
+    CopyDebug(NewPhi, Phi);
+    for (unsigned PhiIndex = 0; PhiIndex < Phi->getNumIncomingValues();
+         ++PhiIndex) {
+      BasicBlock *IncomingBB = Phi->getIncomingBlock(PhiIndex);
+      Value *EV = CopyDebug(
+          ExtractValueInst::Create(
+              Phi->getIncomingValue(PhiIndex), EVIndexes,
+              Phi->getName() + ".extract", IncomingBB->getTerminator()), Phi);
+      NewPhi->addIncoming(EV, IncomingBB);
+    }
+
+    // Reconstruct the original struct value.
+    NewStruct = CopyDebug(
+        InsertValueInst::Create(NewStruct, NewPhi, EVIndexes,
+                                Phi->getName() + ".insert", NewStructInsertPt),
+        Phi);
+  }
+  Phi->replaceAllUsesWith(NewStruct);
+  Phi->eraseFromParent();
+}
+
 template <class InstType>
 static void ProcessLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
   CopyDebug(Dest, Src);
@@ -77,7 +112,7 @@ static void ProcessLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
   Dest->setAlignment(1);
 }
 
-static void ExpandStore(StoreInst *Store) {
+static void SplitUpStore(StoreInst *Store) {
   StructType *STy = cast<StructType>(Store->getValueOperand()->getType());
   // Create a separate store instruction for each struct field.
   for (unsigned Index = 0; Index < STy->getNumElements(); ++Index) {
@@ -90,23 +125,19 @@ static void ExpandStore(StoreInst *Store) {
                                Store), Store);
     SmallVector<unsigned, 1> EVIndexes;
     EVIndexes.push_back(Index);
-    Value *Field;
-    if (Constant *C = dyn_cast<Constant>(Store->getValueOperand())) {
-      Field = ConstantExpr::getExtractValue(C, EVIndexes);
-    } else {
-      Field = ExtractValueInst::Create(
-          Store->getValueOperand(), EVIndexes, "", Store);
-    }
+    Value *Field = ExtractValueInst::Create(Store->getValueOperand(),
+                                            EVIndexes, "", Store);
     StoreInst *NewStore = new StoreInst(Field, GEP, Store);
     ProcessLoadOrStoreAttrs(NewStore, Store);
   }
   Store->eraseFromParent();
 }
 
-static void ExpandLoad(LoadInst *Load) {
+static void SplitUpLoad(LoadInst *Load) {
   StructType *STy = cast<StructType>(Load->getType());
+  Value *NewStruct = UndefValue::get(STy);
+
   // Create a separate load instruction for each struct field.
-  SmallVector<Value *, 5> Fields;
   for (unsigned Index = 0; Index < STy->getNumElements(); ++Index) {
     SmallVector<Value *, 2> Indexes;
     Indexes.push_back(ConstantInt::get(Load->getContext(), APInt(32, 0)));
@@ -116,49 +147,109 @@ static void ExpandLoad(LoadInst *Load) {
                                   Load->getName() + ".index", Load), Load);
     LoadInst *NewLoad = new LoadInst(GEP, Load->getName() + ".field", Load);
     ProcessLoadOrStoreAttrs(NewLoad, Load);
-    Fields.push_back(NewLoad);
+
+    // Reconstruct the struct value.
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+    NewStruct = CopyDebug(
+        InsertValueInst::Create(NewStruct, NewLoad, EVIndexes,
+                                Load->getName() + ".insert", Load), Load);
   }
-  ReplaceUsesOfStructWithFields(Load, Fields);
+  Load->replaceAllUsesWith(NewStruct);
   Load->eraseFromParent();
+}
+
+static void ExpandExtractValue(ExtractValueInst *EV) {
+  // Search for the insertvalue instruction that inserts the struct
+  // field referenced by this extractvalue instruction.
+  Value *StructVal = EV->getAggregateOperand();
+  Value *ResultField;
+  for (;;) {
+    if (InsertValueInst *IV = dyn_cast<InsertValueInst>(StructVal)) {
+      if (EV->getNumIndices() != 1 || IV->getNumIndices() != 1) {
+        errs() << "Value: " << *EV << "\n";
+        errs() << "Value: " << *IV << "\n";
+        report_fatal_error("ExpandStructRegs does not handle nested structs");
+      }
+      if (EV->getIndices()[0] == IV->getIndices()[0]) {
+        ResultField = IV->getInsertedValueOperand();
+        break;
+      }
+      // No match.  Try the next struct value in the chain.
+      StructVal = IV->getAggregateOperand();
+    } else if (Constant *C = dyn_cast<Constant>(StructVal)) {
+      ResultField = ConstantExpr::getExtractValue(C, EV->getIndices());
+      break;
+    } else {
+      errs() << "Value: " << *StructVal << "\n";
+      report_fatal_error("Unrecognized struct value");
+    }
+  }
+  EV->replaceAllUsesWith(ResultField);
+  EV->eraseFromParent();
 }
 
 bool ExpandStructRegs::runOnFunction(Function &Func) {
   bool Changed = false;
 
-  // It is not safe to iterate through the basic block while
-  // deleting extractvalue instructions, so make a copy of the
-  // instructions we will operate on first.
-  SmallVector<StoreInst *, 10> Stores;
-  SmallVector<LoadInst *, 10> Loads;
+  // Split up aggregate loads, stores and phi nodes into operations on
+  // scalar types.  This inserts extractvalue and insertvalue
+  // instructions which we will expand out later.
   for (Function::iterator BB = Func.begin(), E = Func.end();
        BB != E; ++BB) {
-    for (BasicBlock::iterator Inst = BB->begin(), E = BB->end();
-         Inst != E; ++Inst) {
+    for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
+         Iter != E; ) {
+      Instruction *Inst = Iter++;
       if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
         if (Store->getValueOperand()->getType()->isStructTy()) {
-          Stores.push_back(Store);
+          SplitUpStore(Store);
+          Changed = true;
         }
       } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
         if (Load->getType()->isStructTy()) {
-          Loads.push_back(Load);
+          SplitUpLoad(Load);
+          Changed = true;
+        }
+      } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
+        if (Phi->getType()->isStructTy()) {
+          SplitUpPHINode(Phi);
+          Changed = true;
         }
       }
     }
   }
 
-  // Expand stores first.  This will introduce extractvalue
-  // instructions.
-  for (SmallVectorImpl<StoreInst *>::iterator Inst = Stores.begin(),
-         E = Stores.end(); Inst != E; ++Inst) {
-    ExpandStore(*Inst);
-    Changed = true;
+  // Expand out all the extractvalue instructions.  Also collect up
+  // the insertvalue instructions for later deletion so that we do not
+  // need to make extra passes across the whole function.
+  SmallVector<Instruction *, 10> ToErase;
+  for (Function::iterator BB = Func.begin(), E = Func.end();
+       BB != E; ++BB) {
+    for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
+         Iter != E; ) {
+      Instruction *Inst = Iter++;
+      if (ExtractValueInst *EV = dyn_cast<ExtractValueInst>(Inst)) {
+        ExpandExtractValue(EV);
+        Changed = true;
+      } else if (isa<InsertValueInst>(Inst)) {
+        ToErase.push_back(Inst);
+        Changed = true;
+      }
+    }
   }
-  // Expanding loads will remove the extractvalue instructions we
-  // previously introduced.
-  for (SmallVectorImpl<LoadInst *>::iterator Inst = Loads.begin(),
-         E = Loads.end(); Inst != E; ++Inst) {
-    ExpandLoad(*Inst);
-    Changed = true;
+  // Delete the insertvalue instructions.  These can reference each
+  // other, so we must do dropAllReferences() before doing
+  // eraseFromParent(), otherwise we will try to erase instructions
+  // that are still referenced.
+  for (SmallVectorImpl<Instruction *>::iterator I = ToErase.begin(),
+           E = ToErase.end();
+       I != E; ++I) {
+    (*I)->dropAllReferences();
+  }
+  for (SmallVectorImpl<Instruction *>::iterator I = ToErase.begin(),
+           E = ToErase.end();
+       I != E; ++I) {
+    (*I)->eraseFromParent();
   }
   return Changed;
 }

@@ -63,6 +63,15 @@ static uint64_t UintTypeMax(unsigned Bits) {
   return (((uint64_t) 1) << Bits) - 1;
 }
 
+static Value *CreateInsertValue(Value *StructVal, unsigned Index,
+                                Value *Field, Instruction *BasedOn) {
+  SmallVector<unsigned, 1> EVIndexes;
+  EVIndexes.push_back(Index);
+  return CopyDebug(InsertValueInst::Create(
+                       StructVal, Field, EVIndexes,
+                       BasedOn->getName() + ".insert", BasedOn), BasedOn);
+}
+
 static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
   IntegerType *IntTy = IntegerType::get(M->getContext(), Bits);
   SmallVector<Type *, 1> Types;
@@ -94,10 +103,9 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
                          "*.with.overflow must be a constant");
     }
 
-    SmallVector<Value *, 2> Fields;
-    Fields.push_back(BinaryOperator::Create(
+    Value *ArithResult = BinaryOperator::Create(
         (Mul ? Instruction::Mul : Instruction::Add), VariableArg, ConstantArg,
-        Call->getName() + ".arith", Call));
+        Call->getName() + ".arith", Call);
 
     uint64_t ArgMax;
     if (Mul) {
@@ -105,10 +113,15 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
     } else {
       ArgMax = UintTypeMax(Bits) - ConstantArg->getZExtValue();
     }
-    Fields.push_back(new ICmpInst(
+    Value *OverflowResult = new ICmpInst(
         Call, CmpInst::ICMP_UGT, VariableArg, ConstantInt::get(IntTy, ArgMax),
-        Call->getName() + ".overflow"));
-    ReplaceUsesOfStructWithFields(Call, Fields);
+        Call->getName() + ".overflow");
+
+    // Construct the struct result.
+    Value *NewStruct = UndefValue::get(Call->getType());
+    NewStruct = CreateInsertValue(NewStruct, 0, ArithResult, Call);
+    NewStruct = CreateInsertValue(NewStruct, 1, OverflowResult, Call);
+    Call->replaceAllUsesWith(NewStruct);
     Call->eraseFromParent();
   }
   Intrinsic->eraseFromParent();

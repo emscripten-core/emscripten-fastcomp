@@ -1,10 +1,14 @@
-; RUN: opt %s -expand-arith-with-overflow -S | FileCheck %s
+; RUN: opt %s -expand-arith-with-overflow -expand-struct-regs -S | FileCheck %s
+; RUN: opt %s -expand-arith-with-overflow -expand-struct-regs -S | \
+; RUN:     FileCheck %s -check-prefix=CLEANUP
 
 declare {i32, i1} @llvm.umul.with.overflow.i32(i32, i32)
 declare {i64, i1} @llvm.umul.with.overflow.i64(i64, i64)
 declare {i16, i1} @llvm.uadd.with.overflow.i16(i16, i16)
 
-; CHECK-NOT: with.overflow
+; CLEANUP-NOT: with.overflow
+; CLEANUP-NOT: extractvalue
+; CLEANUP-NOT: insertvalue
 
 
 define void @umul32_by_const(i32 %x, i32* %result_val, i1* %result_overflow) {
