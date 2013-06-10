@@ -1,5 +1,5 @@
-; RUN: llc -mtriple=armv7-unknown-nacl -filetype=asm %s -o - | FileCheck %s
-; RUN: llc -mtriple=armv7-unknown-nacl -O0 -filetype=asm %s -o - | FileCheck %s
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -filetype=asm %s -o - | FileCheck %s
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -O0 -filetype=asm %s -o - | FileCheck %s
 
 ; Test that various bit manipulation intrinsics are supported by the
 ; NaCl ARM backend.

@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=armv7-unknown-nacl -sfi-branch -filetype=obj %s -o - \
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -sfi-branch -filetype=obj %s -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
 
 define i32 @foobar(i32 %aa, i32 %bb, i32 (i32)* %f) nounwind {

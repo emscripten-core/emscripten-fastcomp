@@ -1,5 +1,5 @@
 ; RUN: opt < %s -insert-divide-check -S | FileCheck -check-prefix=OPT %s
-; RUN: llc -mtriple=armv7-unknown-nacl -sfi-branch -filetype=obj %s -o - \
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -sfi-branch -filetype=obj %s -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 -mattr=+nacl-trap - \
 ; RUN:  | FileCheck -check-prefix=ARM %s
 

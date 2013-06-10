@@ -1,10 +1,10 @@
-; RUN: llc -mtriple=i686-unknown-nacl -O0 -filetype=asm %s -o - | FileCheck %s \
-; RUN:   --check-prefix=NACL32
-; RUN: llc -mtriple=i686-unknown-nacl -filetype=asm %s -o - | FileCheck %s \
-; RUN:   --check-prefix=NACL32
-; RUN: llc -mtriple=x86_64-unknown-nacl -O0 -filetype=asm %s -o - | \
+; RUN: pnacl-llc -mtriple=i686-unknown-nacl -O0 -filetype=asm %s -o - | \
+; RUN:   FileCheck %s --check-prefix=NACL32
+; RUN: pnacl-llc -mtriple=i686-unknown-nacl -filetype=asm %s -o - | \
+; RUN:   FileCheck %s --check-prefix=NACL32
+; RUN: pnacl-llc -mtriple=x86_64-unknown-nacl -O0 -filetype=asm %s -o - | \
 ; RUN:   FileCheck %s --check-prefix=NACL64
-; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -o - | \
+; RUN: pnacl-llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -o - | \
 ; RUN:   FileCheck %s --check-prefix=NACL64
 
 ; Test that various bit manipulation intrinsics are supported by the

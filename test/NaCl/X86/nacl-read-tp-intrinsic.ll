@@ -1,15 +1,14 @@
-
-; RUN: llc -mtriple=i386-unknown-nacl -filetype=asm %s -o - \
+; RUN: pnacl-llc -mtriple=i386-unknown-nacl -filetype=asm %s -o - \
 ; RUN:   | FileCheck -check-prefix=X32 %s
 
-; RUN: llc -mtriple=i386-unknown-nacl -filetype=asm -mtls-use-call %s -o - \
+; RUN: pnacl-llc -mtriple=i386-unknown-nacl -filetype=asm -mtls-use-call %s -o - \
 ; RUN:   | FileCheck -check-prefix=USE_CALL %s
 
-; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -o - \
+; RUN: pnacl-llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -o - \
 ; RUN:   | FileCheck -check-prefix=USE_CALL %s
 
 ; "-mtls-use-call" should not make any difference on x86-64.
-; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm -mtls-use-call %s -o - \
+; RUN: pnacl-llc -mtriple=x86_64-unknown-nacl -filetype=asm -mtls-use-call %s -o - \
 ; RUN:   | FileCheck -check-prefix=USE_CALL %s
 
 

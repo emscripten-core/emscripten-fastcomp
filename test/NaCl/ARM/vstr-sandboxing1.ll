@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=armv7-unknown-nacl -sfi-store -filetype=obj %s -o - \
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -sfi-store -filetype=obj %s -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
 
 define void @test_vstr_sandbox(<8 x i8>* %ptr) nounwind {

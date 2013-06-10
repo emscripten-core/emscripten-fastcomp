@@ -1,7 +1,7 @@
-; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -O0 -o - \
+; RUN: pnacl-llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -O0 -o - \
 ; RUN:   | FileCheck %s
 
-; RUN: llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -O2 -o - \
+; RUN: pnacl-llc -mtriple=x86_64-unknown-nacl -filetype=asm %s -O2 -o - \
 ; RUN:   | FileCheck %s
 
 ; Check that we don't try to fold a negative displacement into a memory

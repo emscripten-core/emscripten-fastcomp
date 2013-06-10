@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=i386-unknown-nacl -filetype=asm %s -o - \
+; RUN: pnacl-llc -mtriple=i386-unknown-nacl -filetype=asm %s -o - \
 ; RUN:  | FileCheck %s --check-prefix=X86
 ; Test that @llvm.nacl.{set|long}jmp intrinsics calls get translated to library
 ; calls as expected.

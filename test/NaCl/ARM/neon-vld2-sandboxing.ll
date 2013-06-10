@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=armv7-unknown-nacl -mattr=+neon -sfi-load -sfi-store -filetype=obj %s -o - \
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -mattr=+neon -sfi-load -sfi-store -filetype=obj %s -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
 
 %struct.__neon_int8x8x2_t = type { <8 x i8>,  <8 x i8> }

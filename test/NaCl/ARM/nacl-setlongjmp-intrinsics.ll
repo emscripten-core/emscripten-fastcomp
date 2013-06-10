@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=arm-unknown-nacl -filetype=asm %s -o - \
+; RUN: pnacl-llc -mtriple=arm-unknown-nacl -filetype=asm %s -o - \
 ; RUN:  | FileCheck %s --check-prefix=ARM
 ; Test that @llvm.nacl.{set|long}jmp intrinsics calls get translated to library
 ; calls as expected.
