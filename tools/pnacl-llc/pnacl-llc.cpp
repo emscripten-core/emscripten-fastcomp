@@ -47,14 +47,10 @@
 using namespace llvm;
 
 // @LOCALMOD-BEGIN
-// NOTE: this tool can be build as a "sandboxed" translator.
-//       There are two ways to build the translator
-//       SRPC-style:  no file operations are allowed
-//                    see nacl_file.cc for support code
-//       non-SRPC-style: some basic file operations are allowed
-//                       This can be useful for debugging but will
-//                       not be deployed.
-#if defined(__native_client__) && defined(NACL_SRPC)
+// NOTE: This tool can be build as a "sandboxed" translator.
+//       It's always built SRPC-style at this point - no file operations
+//       are allowed.
+#if defined(__native_client__)
 int GetObjectFileFD();
 // The following two functions communicate metadata to the SRPC wrapper for LLC.
 void NaClRecordObjectInformation(bool is_shared, const std::string& soname);
@@ -304,7 +300,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   // If user just wants to list available options, skip module loading
   if (!SkipModule) {
     // @LOCALMOD-BEGIN
-#if defined(__native_client__) && defined(NACL_SRPC)
+#if defined(__native_client__)
     if (LazyBitcode) {
       std::string StrError;
       switch (InputFileFormat) {
@@ -364,7 +360,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
         createAddPNaClExternalDeclsPass());
     AddPNaClExternalDeclsPass->runOnModule(*mod);
 
-#if defined(__native_client__) && defined(NACL_SRPC)
+#if defined(__native_client__)
     // Record that this isn't a shared library.
     // TODO(eliben): clean this up more once the pnacl-llc switch-over is
     // working.
@@ -381,7 +377,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     if (mod->lib_size() > 0) {
       RelocModel = Reloc::PIC_;
     }
-#endif  // defined(__native_client__) && defined(NACL_SRPC)
+#endif  // defined(__native_client__)
     // @LOCALMOD-END
 
     // If we are supposed to override the target triple, do so now.
@@ -479,7 +475,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
       TheTriple.isMacOSXVersionLT(10, 6))
     Target.setMCUseLoc(false);
 
-#if !defined(NACL_SRPC)
+#if !defined(__native_client__)
   // Figure out where we are going to send the output.
   OwningPtr<tool_output_file> Out
     (GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
@@ -533,7 +529,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   }
 
 
-#if defined __native_client__ && defined(NACL_SRPC)
+#if defined __native_client__
   {
     raw_fd_ostream ROS(GetObjectFileFD(), true);
     ROS.SetBufferSize(1 << 20);
@@ -622,7 +618,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   return 0;
 }
 
-#if !defined(NACL_SRPC)
+#if !defined(__native_client__)
 int
 main (int argc, char **argv) {
   return llc_main(argc, argv);

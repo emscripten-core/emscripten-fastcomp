@@ -9,7 +9,7 @@
  * into a separate file.
  */
 
-#if defined(__native_client__) && defined(NACL_SRPC)
+#if defined(__native_client__)
 
 #include <argz.h>
 #include <stdio.h>
