@@ -48,15 +48,6 @@ namespace {
 
 typedef std::vector<std::string> string_vector;
 
-// True if the bitcode to be compiled is for a shared library.
-// Used to return to the coordinator.
-bool g_bitcode_is_shared_library;
-// The soname of the current compilation unit, if it is a shared library.
-// Empty string otherwise.
-std::string* g_bitcode_soname = NULL;
-// The newline separated list of libraries that the current bitcode compilation
-// unit depends on.
-std::string* g_bitcode_lib_dependencies = NULL;
 // The filename used internally for looking up the bitcode file.
 char kBitcodeFilename[] = "pnacl.pexe";
 // The filename used internally for looking up the object code file.
@@ -75,22 +66,6 @@ extern int llc_main(int argc, char **argv);
 
 int GetObjectFileFD() {
   return object_file_fd;
-}
-
-void NaClRecordObjectInformation(bool is_shared, const std::string& soname) {
-  // This function is invoked to begin recording library information.
-  // To make it reentrant, we clean up what might be left over from last time.
-  delete g_bitcode_soname;
-  delete g_bitcode_lib_dependencies;
-  // Then remember the module global information.
-  g_bitcode_is_shared_library = is_shared;
-  g_bitcode_soname = new std::string(soname);
-  g_bitcode_lib_dependencies = new std::string();
-}
-
-void NaClRecordSharedLibraryDependency(const std::string& library_name) {
-  const std::string& kDelimiterString("\n");
-  *g_bitcode_lib_dependencies += (library_name + kDelimiterString);
 }
 
 namespace {
@@ -382,11 +357,13 @@ void stream_end(NaClSrpcRpc *rpc,
     out_args[3]->arrays.str = strdup(StrError.c_str());
     return;
   }
-  out_args[0]->u.ival = g_bitcode_is_shared_library;
+  // TODO(eliben): We don't really use shared libraries now. At some
+  // point this should be cleaned up from SRPC as well.
+  out_args[0]->u.ival = false;
   // SRPC deletes the strings returned when the closure is invoked.
   // Therefore we need to use strdup.
-  out_args[1]->arrays.str = strdup(g_bitcode_soname->c_str());
-  out_args[2]->arrays.str = strdup(g_bitcode_lib_dependencies->c_str());
+  out_args[1]->arrays.str = strdup("");
+  out_args[2]->arrays.str = strdup("");
   rpc->result = NACL_SRPC_RESULT_OK;
 }
 
