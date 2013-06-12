@@ -101,19 +101,15 @@ static CallInst *ReplaceCallWith(const char *NewFn, CallInst *CI,
 // * make sure they do not get specialized for a given callsite
 // Both problems are avoided by pretending there are unknown callers.
 // The function: IntrinsicLowering::AddPrototypes() below does just that.
-// TODO(robertm): elaborate some more
+//
+// We are in the process of removing the need for this list.
+// Intrinsics that are truly supported will have versions of these
+// functions exported by native libs, so that they can be found.
+// Bitcode can then internalize symbols.
 static const char *IntrinsicNames[] = {
   "abort",
   "memcpy", "memset", "memmove",
-  "sqrtf", "sqrt", "sqrtl",
-  "sinf", "sin", "sinl",
-  "cosf", "cos", "cosl",
   "powf", "pow", "powl",
-  "logf", "log", "logl",
-  "log2f", "log2", "log2l",
-  "log10f", "log10", "log10l",
-  "expf", "exp", "expl",
-  "exp2f", "exp2", "exp2l",
   NULL
 };
 
