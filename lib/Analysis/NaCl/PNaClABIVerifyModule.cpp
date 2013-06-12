@@ -220,30 +220,33 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::lifetime_start:
     case Intrinsic::invariant_end:
     case Intrinsic::invariant_start:
+    // Some transcendental functions not needed yet.
+    case Intrinsic::cos: // Rounding not defined: support with fast-math?
+    case Intrinsic::exp: // Rounding not defined: support with fast-math?
+    case Intrinsic::exp2: // Rounding not defined: support with fast-math?
+    case Intrinsic::log: // Rounding not defined: support with fast-math?
+    case Intrinsic::log2: // Rounding not defined: support with fast-math?
+    case Intrinsic::log10: // Rounding not defined: support with fast-math?
+    case Intrinsic::sin: // Rounding not defined: support with fast-math?
       return false;
 
     // (3) Dev intrinsics.
     case Intrinsic::dbg_declare:
     case Intrinsic::dbg_value:
       return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
-    case Intrinsic::cos: // Rounding not defined: support with fast-math?
     case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::cttz: // Support via compiler_rt if arch doesn't have it?
-    case Intrinsic::exp: // Rounding not defined: support with fast-math?
-    case Intrinsic::exp2: // Rounding not defined: support with fast-math?
+    // Can run -lower-expect, and consume in the middle-end.
+    // Selection-DAG just treats it as a pass-through.
     case Intrinsic::expect: // From __builtin_expect.
     case Intrinsic::flt_rounds: // For FLT_ROUNDS macro from float.h.
       // We do not have fesetround() in newlib, can we return a
       // consistent rounding mode though?
-    case Intrinsic::log: // Rounding not defined: support with fast-math?
-    case Intrinsic::log2: // Rounding not defined: support with fast-math?
-    case Intrinsic::log10: // Rounding not defined: support with fast-math?
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
     case Intrinsic::pow: // Rounding is supposed to be the same as libm.
     case Intrinsic::powi: // Rounding not defined: support with fast-math?
     case Intrinsic::prefetch: // Could ignore if target doesn't support?
-    case Intrinsic::sin: // Rounding not defined: support with fast-math?
     case Intrinsic::sqrt: // Rounding is defined, but setting errno up to libm.
     case Intrinsic::stackrestore: // Used to support C99 VLAs.
     case Intrinsic::stacksave: // Used to support C99 VLAs.
