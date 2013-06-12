@@ -15,17 +15,12 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/Analysis/NaCl.h" // @LOCALMOD
 #include "llvm/Assembly/PrintModulePass.h"
-#include "llvm/Support/DataStream.h"  // @LOCALMOD
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"  // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
-#include "llvm/CodeGen/IntrinsicLowering.h" // @LOCALMOD
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IRReader/IRReader.h"  // @LOCALMOD
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
@@ -35,10 +30,7 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/IRReader.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Transforms/NaCl.h" // @LOCALMOD
-#if !defined(__native_client__)
 #include "llvm/Support/PluginLoader.h"
-#endif
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -47,53 +39,7 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
-
-// @LOCALMOD-BEGIN
-#include "llvm/Support/Timer.h"
-#include "StubMaker.h"
-#include "TextStubWriter.h"
-// @LOCALMOD-END
-
 using namespace llvm;
-
-// @LOCALMOD-BEGIN
-// NOTE: this tool can be build as a "sandboxed" translator.
-//       There are two ways to build the translator
-//       SRPC-style:  no file operations are allowed
-//                    see nacl_file.cc for support code
-//       non-SRPC-style: some basic file operations are allowed
-//                       This can be useful for debugging but will
-//                       not be deployed.
-#if defined(__native_client__) && defined(NACL_SRPC)
-int GetObjectFileFD();
-// The following two functions communicate metadata to the SRPC wrapper for LLC.
-void NaClRecordObjectInformation(bool is_shared, const std::string& soname);
-void NaClRecordSharedLibraryDependency(const std::string& library_name);
-DataStreamer* NaClBitcodeStreamer;
-#endif
-// @LOCALMOD-END
-
-// @LOCALMOD-BEGIN
-const char *TimeIRParsingGroupName = "LLVM IR Parsing";
-const char *TimeIRParsingName = "Parse IR";
-
-bool TimeIRParsingIsEnabled = false;
-static cl::opt<bool,true>
-EnableTimeIRParsing("time-ir-parsing", cl::location(TimeIRParsingIsEnabled),
-                    cl::desc("Measure the time IR parsing takes"));
-// @LOCALMOD-END
-
-// @LOCALMOD-BEGIN
-static cl::opt<NaClFileFormat>
-InputFileFormat(
-    "bitcode-format",
-    cl::desc("Define format of input file:"),
-    cl::values(
-        clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
-        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
-        clEnumValEnd),
-    cl::init(LLVMFormat));
-// @LOCALMOD-END
 
 // General options for llc.  Other pass-specific options are specified
 // within the corresponding llc passes, and target-specific options
@@ -109,39 +55,6 @@ static cl::opt<unsigned>
 TimeCompilations("time-compilations", cl::Hidden, cl::init(1u),
                  cl::value_desc("N"),
                  cl::desc("Repeat compilation N times for timing"));
-// @LOCALMOD-BEGIN
-static cl::opt<std::string>
-MetadataTextFilename("metadata-text", cl::desc("Metadata as text, out filename"),
-                     cl::value_desc("filename"));
-
-// Using bitcode streaming has a couple of ramifications. Primarily it means
-// that the module in the file will be compiled one function at a time rather
-// than the whole module. This allows earlier functions to be compiled before
-// later functions are read from the bitcode but of course means no whole-module
-// optimizations. For now, streaming is only supported for files and stdin.
-static cl::opt<bool>
-LazyBitcode("streaming-bitcode",
-  cl::desc("Use lazy bitcode streaming for file inputs"),
-  cl::init(false));
-
-// The option below overlaps very much with bitcode streaming.
-// We keep it separate because it is still experimental and we want
-// to use it without changing the outside behavior which is especially
-// relevant for the sandboxed case.
-static cl::opt<bool>
-ReduceMemoryFootprint("reduce-memory-footprint",
-  cl::desc("Aggressively reduce memory used by llc"),
-  cl::init(false));
-
-static cl::opt<bool>
-PNaClABIVerify("pnaclabi-verify",
-  cl::desc("Verify PNaCl bitcode ABI before translating"),
-  cl::init(false));
-static cl::opt<bool>
-PNaClABIVerifyFatalErrors("pnaclabi-verify-fatal-errors",
-  cl::desc("PNaCl ABI verification errors are fatal"),
-  cl::init(false));
-// @LOCALMOD-END
 
 // Determine optimization level.
 static cl::opt<char>
@@ -243,60 +156,9 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   return FDOut;
 }
 
-// @LOCALMOD-BEGIN
-#if defined(__native_client__) && defined(NACL_SRPC)
-void RecordMetadataForSrpc(const Module &mod) {
-  bool is_shared = (mod.getOutputFormat() == Module::SharedOutputFormat);
-  std::string soname = mod.getSOName();
-  NaClRecordObjectInformation(is_shared, soname);
-  for (Module::lib_iterator L = mod.lib_begin(),
-                            E = mod.lib_end();
-       L != E; ++L) {
-    NaClRecordSharedLibraryDependency(*L);
-  }
-}
-#endif  // defined(__native_client__) && defined(NACL_SRPC)
-// @LOCALMOD-END
-
-
-// @LOCALMOD-BEGIN
-
-// Write the ELF Stubs to the metadata file, in text format
-// Returns 0 on success, non-zero on error.
-int WriteTextMetadataFile(const Module &M, const Triple &TheTriple) {
-  // Build the ELF stubs (in high level format)
-  SmallVector<ELFStub*, 8> StubList;
-  // NOTE: The triple is unnecessary for the text version.
-  MakeAllStubs(M, TheTriple, &StubList);
-  // For each stub, write the ELF object to the metadata file.
-  std::string s;
-  for (unsigned i = 0; i < StubList.size(); i++) {
-    WriteTextELFStub(StubList[i], &s);
-  }
-  FreeStubList(&StubList);
-
-#if defined(__native_client__) && defined(NACL_SRPC)
-  llvm_unreachable("Not yet implemented. Need a file handle to write to.");
-#else
-  std::string error;
-  OwningPtr<tool_output_file> MOut(
-      new tool_output_file(MetadataTextFilename.c_str(), error,
-                           raw_fd_ostream::F_Binary));
-  if (!error.empty()) {
-    errs() << error << '\n';
-    return 1;
-  }
-  MOut->os().write(s.data(), s.size());
-  MOut->keep();
-#endif
-  return 0;
-}
-
-// @LOCALMOD-END
-
 // main - Entry point for the llc compiler.
 //
-int llc_main(int argc, char **argv) {
+int main(int argc, char **argv) {
   sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
 
@@ -310,14 +172,7 @@ int llc_main(int argc, char **argv) {
   InitializeAllTargets();
   InitializeAllTargetMCs();
   InitializeAllAsmPrinters();
-// @LOCALMOD-BEGIN
-// Prune asm parsing from sandboxed translator.
-// Do not prune "AsmPrinters" because that includes
-// the direct object emission.
- #if !defined(__native_client__)
-   InitializeAllAsmParsers();
-#endif
-// @LOCALMOD-END
+  InitializeAllAsmParsers();
 
   // Initialize codegen and IR passes used by llc so that the -print-after,
   // -print-before, and -stop-after options work.
@@ -341,20 +196,6 @@ int llc_main(int argc, char **argv) {
   return 0;
 }
 
-// @LOCALMOD-BEGIN
-static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
-                                 const Twine &Name) {
-  if (PNaClABIVerify && Reporter.getErrorCount() > 0) {
-    errs() << (PNaClABIVerifyFatalErrors ? "ERROR: " : "WARNING: ");
-    errs() << Name << " is not valid PNaCl bitcode:\n";
-    Reporter.printErrors(errs());
-    if (PNaClABIVerifyFatalErrors)
-      exit(1);
-  }
-  Reporter.reset();
-}
-// @LOCALMOD-END
-
 static int compileModule(char **argv, LLVMContext &Context) {
   // Load the module to be compiled...
   SMDiagnostic Err;
@@ -365,98 +206,19 @@ static int compileModule(char **argv, LLVMContext &Context) {
   bool SkipModule = MCPU == "help" ||
                     (!MAttrs.empty() && MAttrs.front() == "help");
 
-  PNaClABIErrorReporter ABIErrorReporter; // @LOCALMOD
-
   // If user just wants to list available options, skip module loading
   if (!SkipModule) {
-    // @LOCALMOD-BEGIN
-#if defined(__native_client__) && defined(NACL_SRPC)
-    if (LazyBitcode) {
-      std::string StrError;
-      switch (InputFileFormat) {
-        case LLVMFormat:
-          // TODO(kschimpf) Remove this case once we have fixed
-          // pnacl-finalize and the NaCl build system to only allow PNaCl
-          // bitcode files.
-          M.reset(getStreamedBitcodeModule(
-              std::string("<SRPC stream>"),
-              NaClBitcodeStreamer, Context, &StrError));
-          break;
-        case PNaClFormat:
-          M.reset(getNaClStreamedBitcodeModule(
-              std::string("<SRPC stream>"),
-              NaClBitcodeStreamer, Context, &StrError));
-          break;
-        default:
-          StrError = "Don't understand specified bitcode format";
-          break;
-      }
-      if (!StrError.empty()) {
-        Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
-      }
-    } else {
-      // Avoid using ParseIRFile to avoid pulling in the LLParser.
-      // Only handle binary bitcode.
-      llvm_unreachable("native client SRPC only supports streaming");
-    }
-#else
-    {
-      // @LOCALMOD: timing is temporary, until it gets properly added upstream
-      NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
-                         TimeIRParsingIsEnabled);
-      M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
-    }
-#endif
-    // @LOCALMOD-END
-
+    M.reset(ParseIRFile(InputFilename, Err, Context));
     mod = M.get();
     if (mod == 0) {
       Err.print(argv[0], errs());
       return 1;
     }
 
-    // @LOCALMOD-BEGIN
-    if (PNaClABIVerify) {
-      // Verify the module (but not the functions yet)
-      ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter);
-      VerifyPass->runOnModule(*mod);
-      CheckABIVerifyErrors(ABIErrorReporter, "Module");
-    }
-
-#if defined(__native_client__) && defined(NACL_SRPC)
-    RecordMetadataForSrpc(*mod);
-
-    // To determine if we should compile PIC or not, we needed to load at
-    // least the metadata. Since we've already constructed the commandline,
-    // we have to hack this in after commandline processing.
-    if (mod->getOutputFormat() == Module::SharedOutputFormat) {
-      RelocModel = Reloc::PIC_;
-    }
-    // Also set PIC_ for dynamic executables:
-    // BUG= http://code.google.com/p/nativeclient/issues/detail?id=2351
-    if (mod->lib_size() > 0) {
-      RelocModel = Reloc::PIC_;
-    }
-#endif  // defined(__native_client__) && defined(NACL_SRPC)
-    // @LOCALMOD-END
-
     // If we are supposed to override the target triple, do so now.
     if (!TargetTriple.empty())
       mod->setTargetTriple(Triple::normalize(TargetTriple));
     TheTriple = Triple(mod->getTargetTriple());
-
-    // @LOCALMOD-BEGIN
-    // Add declarations for external functions required by PNaCl. The
-    // ResolvePNaClIntrinsics function pass running during streaming
-    // depends on these declarations being in the module.
-    if (TheTriple.isOSNaCl()) {
-      // TODO(eliben): pnacl-llc presumably won't need the isOSNaCl
-      // test.
-      OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
-          createAddPNaClExternalDeclsPass());
-      AddPNaClExternalDeclsPass->runOnModule(*mod);
-    }
-    // @LOCALMOD-END
   } else {
     TheTriple = Triple(Triple::normalize(TargetTriple));
   }
@@ -477,11 +239,6 @@ static int compileModule(char **argv, LLVMContext &Context) {
   std::string FeaturesStr;
   if (MAttrs.size()) {
     SubtargetFeatures Features;
-    // @LOCALMOD-BEGIN
-    // Use the same default attribute settings as libLTO.
-    // TODO(pdox): Figure out why this isn't done for upstream llc.
-    Features.getDefaultSubtargetFeatures(TheTriple);
-    // @LOCALMOD-END
     for (unsigned i = 0; i != MAttrs.size(); ++i)
       Features.AddFeature(MAttrs[i]);
     FeaturesStr = Features.getString();
@@ -548,49 +305,28 @@ static int compileModule(char **argv, LLVMContext &Context) {
       TheTriple.isMacOSXVersionLT(10, 6))
     Target.setMCUseLoc(false);
 
-#if !defined(NACL_SRPC)
   // Figure out where we are going to send the output.
   OwningPtr<tool_output_file> Out
     (GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
   if (!Out) return 1;
-#endif
 
   // Build up all of the passes that we want to do to the module.
-  // @LOCALMOD-BEGIN
-  OwningPtr<PassManagerBase> PM;
-  if (LazyBitcode || ReduceMemoryFootprint)
-    PM.reset(new FunctionPassManager(mod));
-  else
-    PM.reset(new PassManager());
-
-  // Add the ABI verifier pass before the analysis and code emission passes.
-  FunctionPass *FunctionVerifyPass = NULL;
-  if (PNaClABIVerify) {
-    FunctionVerifyPass = createPNaClABIVerifyFunctionsPass(&ABIErrorReporter);
-    PM->add(FunctionVerifyPass);
-  }
-
-  if (TheTriple.isOSNaCl()) {
-    // Add the intrinsic resolution pass. It assumes ABI-conformant code.
-    PM->add(createResolvePNaClIntrinsicsPass());
-  }
-
-  // @LOCALMOD-END
+  PassManager PM;
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
   if (DisableSimplifyLibCalls)
     TLI->disableAllFunctions();
-  PM->add(TLI);
+  PM.add(TLI);
 
   // Add intenal analysis passes from the target machine.
-  Target.addAnalysisPasses(*PM.get());
+  Target.addAnalysisPasses(PM);
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const DataLayout *TD = Target.getDataLayout())
-    PM->add(new DataLayout(*TD));
+    PM.add(new DataLayout(*TD));
   else
-    PM->add(new DataLayout(mod));
+    PM.add(new DataLayout(mod));
 
   // Override default to generate verbose assembly.
   Target.setAsmVerbosityDefault(true);
@@ -602,39 +338,6 @@ static int compileModule(char **argv, LLVMContext &Context) {
     else
       Target.setMCRelaxAll(true);
   }
-
-
-#if defined __native_client__ && defined(NACL_SRPC)
-  {
-    raw_fd_ostream ROS(GetObjectFileFD(), true);
-    ROS.SetBufferSize(1 << 20);
-    formatted_raw_ostream FOS(ROS);
-
-    // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
-      errs() << argv[0] << ": target does not support generation of this"
-             << " file type!\n";
-      return 1;
-    }
-
-    if (LazyBitcode || ReduceMemoryFootprint) {
-      FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
-      P->doInitialization();
-      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-        P->run(*I);
-        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-        if (ReduceMemoryFootprint) {
-          I->Dematerialize();
-        }
-      }
-      P->doFinalization();
-    } else {
-      static_cast<PassManager*>(PM.get())->run(*mod);
-    }
-    FOS.flush();
-    ROS.flush();
-  }
-#else
 
   {
     formatted_raw_ostream FOS(Out->os());
@@ -660,7 +363,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
 
     // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify,
+    if (Target.addPassesToEmitFile(PM, FOS, FileType, NoVerify,
                                    StartAfterID, StopAfterID)) {
       errs() << argv[0] << ": target does not support generation of this"
              << " file type!\n";
@@ -670,51 +373,11 @@ static int compileModule(char **argv, LLVMContext &Context) {
     // Before executing passes, print the final values of the LLVM options.
     cl::PrintOptionValues();
 
-    if (LazyBitcode || ReduceMemoryFootprint) {
-      FunctionPassManager *P = static_cast<FunctionPassManager*>(PM.get());
-      P->doInitialization();
-      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-        P->run(*I);
-        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-        if (ReduceMemoryFootprint) {
-          I->Dematerialize();
-        }
-      }
-      P->doFinalization();
-    } else {
-      static_cast<PassManager*>(PM.get())->run(*mod);
-    }
+    PM.run(*mod);
   }
 
   // Declare success.
   Out->keep();
-#endif
-
-  // @LOCALMOD-BEGIN
-  // Write out the metadata.
-  //
-  // We need to ensure that intrinsic prototypes are available, in case
-  // we have a NeededRecord for one of them.
-  // They may have been eliminated by the StripDeadPrototypes pass,
-  // or some other pass that is unaware of NeededRecords / IntrinsicLowering.
-  if (!MetadataTextFilename.empty()) {
-    IntrinsicLowering IL(*target->getDataLayout());
-    IL.AddPrototypes(*M);
-
-    int err = WriteTextMetadataFile(*M.get(), TheTriple);
-    if (err != 0)
-      return err;
-  }
-  // @LOCALMOD-END
 
   return 0;
 }
-
-#if !defined(NACL_SRPC)
-int
-main (int argc, char **argv) {
-  return llc_main(argc, argv);
-}
-#else
-// main() is in nacl_file.cpp.
-#endif
