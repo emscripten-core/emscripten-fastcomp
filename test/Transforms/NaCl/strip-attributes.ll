@@ -18,3 +18,14 @@ define void @call_attrs() {
 ; rid of them here.
 declare i8* @llvm.nacl.read.tp()
 ; CHECK: declare i8* @llvm.nacl.read.tp() #{{[0-9]+}}
+
+define void @arithmetic_attrs() {
+  %add = add nsw i32 1, 2
+  %shl = shl nuw i32 3, 4
+  %lshr = lshr exact i32 2, 1
+  ret void
+}
+; CHECK: define void @arithmetic_attrs() {
+; CHECK-NEXT: %add = add i32 1, 2
+; CHECK-NEXT: %shl = shl i32 3, 4
+; CHECK-NEXT: %lshr = lshr i32 2, 1

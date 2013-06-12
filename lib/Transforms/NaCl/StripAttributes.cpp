@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Transforms/NaCl.h"
@@ -144,6 +145,13 @@ bool StripAttributes::runOnFunction(Function &Func) {
         CheckAttributes(Call.getAttributes());
         Call.setAttributes(AttributeSet());
         Call.setCallingConv(CallingConv::C);
+      } else if (OverflowingBinaryOperator *Op =
+                     dyn_cast<OverflowingBinaryOperator>(Inst)) {
+        cast<BinaryOperator>(Op)->setHasNoUnsignedWrap(false);
+        cast<BinaryOperator>(Op)->setHasNoSignedWrap(false);
+      } else if (PossiblyExactOperator *Op =
+                     dyn_cast<PossiblyExactOperator>(Inst)) {
+        cast<BinaryOperator>(Op)->setIsExact(false);
       }
     }
   }

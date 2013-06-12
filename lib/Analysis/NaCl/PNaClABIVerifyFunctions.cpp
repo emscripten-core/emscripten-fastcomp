@@ -19,6 +19,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -322,6 +323,21 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
         !isValidScalarOperand(Inst->getOperand(OpNum)))
       return "bad operand";
   }
+
+  // Check arithmetic attributes.
+  if (const OverflowingBinaryOperator *Op =
+          dyn_cast<OverflowingBinaryOperator>(Inst)) {
+    if (Op->hasNoUnsignedWrap())
+      return "has \"nuw\" attribute";
+    if (Op->hasNoSignedWrap())
+      return "has \"nsw\" attribute";
+  }
+  if (const PossiblyExactOperator *Op =
+          dyn_cast<PossiblyExactOperator>(Inst)) {
+    if (Op->isExact())
+      return "has \"exact\" attribute";
+  }
+
   // Allow the instruction.
   return NULL;
 }
