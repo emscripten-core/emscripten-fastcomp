@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if defined(__native_client__) && defined(NACL_SRPC)
+#if defined(__native_client__)
 #define DEBUG_TYPE "bitcode-stream"
 #include "SRPCStreamer.h"
 #include "llvm/Support/Debug.h"
