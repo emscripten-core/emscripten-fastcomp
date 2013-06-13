@@ -102,7 +102,7 @@ namespace {
     }
 
     ~FlattenedConstant() {
-      delete Buf;
+      delete[] Buf;
     }
 
     Constant *getAsNormalFormConstant();
