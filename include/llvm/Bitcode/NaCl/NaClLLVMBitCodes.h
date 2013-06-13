@@ -248,6 +248,16 @@ namespace naclbitc {
     PEO_EXACT = 0
   };
 
+  /// \brief Flags for serializing floating point binary operators's
+  /// SubclassOptionalData contents.
+  enum NaClFloatingPointBinaryOperatorOptionalFlags {
+    FPO_UNSAFE_ALGEBRA = 0,
+    FPO_NO_NANS = 1,
+    FPO_NO_INFS = 2,
+    FPO_NO_SIGNED_ZEROS = 3,
+    FPO_ALLOW_RECIPROCAL = 4
+  };
+
   /// Encoded AtomicOrdering values.
   enum NaClAtomicOrderingCodes {
     ORDERING_NOTATOMIC = 0,

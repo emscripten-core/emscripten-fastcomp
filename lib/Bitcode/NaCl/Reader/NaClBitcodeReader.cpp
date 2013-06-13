@@ -2099,15 +2099,15 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
             cast<BinaryOperator>(I)->setIsExact(true);
         } else if (isa<FPMathOperator>(I)) {
           FastMathFlags FMF;
-          if (0 != (Record[OpNum] & FastMathFlags::UnsafeAlgebra))
+          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_UNSAFE_ALGEBRA)))
             FMF.setUnsafeAlgebra();
-          if (0 != (Record[OpNum] & FastMathFlags::NoNaNs))
+          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_NANS)))
             FMF.setNoNaNs();
-          if (0 != (Record[OpNum] & FastMathFlags::NoInfs))
+          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_INFS)))
             FMF.setNoInfs();
-          if (0 != (Record[OpNum] & FastMathFlags::NoSignedZeros))
+          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_SIGNED_ZEROS)))
             FMF.setNoSignedZeros();
-          if (0 != (Record[OpNum] & FastMathFlags::AllowReciprocal))
+          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_ALLOW_RECIPROCAL)))
             FMF.setAllowReciprocal();
           if (FMF.any())
             I->setFastMathFlags(FMF);
