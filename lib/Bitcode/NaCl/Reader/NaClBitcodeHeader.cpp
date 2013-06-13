@@ -187,7 +187,7 @@ bool NaClBitcodeHeader::Read(const unsigned char *&BufPtr,
   return false;
 }
 
-bool NaClBitcodeHeader::Read(StreamingMemoryObject *Bytes) {
+bool NaClBitcodeHeader::Read(StreamableMemoryObject *Bytes) {
   unsigned NumFields;
   unsigned NumBytes;
   {
@@ -197,12 +197,14 @@ bool NaClBitcodeHeader::Read(StreamingMemoryObject *Bytes) {
       return true;
   }
   uint8_t *Header = new uint8_t[NumBytes];
-  bool results =
+  bool failed =
       Bytes->readBytes(2 * WordSize, NumBytes, Header, NULL) ||
-      ReadFields(Header, Header + sizeof(Header), NumFields, NumBytes);
+      ReadFields(Header, Header + NumBytes, NumFields, NumBytes);
   delete[] Header;
+  if (failed)
+    return true;
   InstallFields();
-  return results;
+  return false;
 }
 
 NaClBitcodeHeaderField *

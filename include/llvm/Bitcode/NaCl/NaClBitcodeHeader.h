@@ -22,7 +22,7 @@
 #include <vector>
 
 namespace llvm {
-class StreamingMemoryObject;
+class StreamableMemoryObject;
 
 // Class representing a variable-size metadata field in the bitcode header.
 // Also contains the list of known (typed) Tag IDs.
@@ -167,7 +167,7 @@ public:
 
   // \brief Read the PNaCl bitcode header, recording the fields found
   // in the header. Returns false if able to read (all of) the bitcode header.
-  bool Read(StreamingMemoryObject *Bytes);
+  bool Read(StreamableMemoryObject *Bytes);
 
   // \brief Returns the number of bytes read to consume the header.
   size_t getHeaderSize() { return HeaderSize; }
