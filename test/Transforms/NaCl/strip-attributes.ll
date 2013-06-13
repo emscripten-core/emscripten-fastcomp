@@ -1,6 +1,12 @@
 ; RUN: opt -S -nacl-strip-attributes %s | FileCheck %s
 
-define fastcc void @func_attrs(i32 inreg, i32 zeroext) noreturn nounwind readonly {
+
+@var = unnamed_addr global i32 0
+; CHECK: @var = global i32 0
+
+
+define fastcc void @func_attrs(i32 inreg, i32 zeroext)
+    unnamed_addr noreturn nounwind readonly align 8 {
   ret void
 }
 ; CHECK: define void @func_attrs(i32, i32) {

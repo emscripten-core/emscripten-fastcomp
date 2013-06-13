@@ -125,6 +125,13 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
     Reporter->addError() << GVTypeName << GV->getName()
                          << " has addrspace attribute (disallowed)\n";
   }
+  // The "unnamed_addr" attribute can be used to merge duplicate
+  // definitions, but that should be done by user-toolchain
+  // optimization passes, not by the PNaCl translator.
+  if (GV->hasUnnamedAddr()) {
+    Reporter->addError() << GVTypeName << GV->getName()
+                         << " has disallowed \"unnamed_addr\" attribute\n";
+  }
 }
 
 static bool TypeAcceptable(const Type *T,
@@ -399,6 +406,13 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
     if (MI->hasGC()) {
       Reporter->addError() << "Function " << MI->getName() <<
           " has disallowed \"gc\" attribute\n";
+    }
+    // Knowledge of what function alignments are useful is
+    // architecture-specific and sandbox-specific, so PNaCl pexes
+    // should not be able to specify function alignment.
+    if (MI->getAlignment() != 0) {
+      Reporter->addError() << "Function " << MI->getName() <<
+          " has disallowed \"align\" attribute\n";
     }
   }
 

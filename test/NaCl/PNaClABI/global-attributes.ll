@@ -14,6 +14,9 @@
 ; CHECK-NEXT: Variable tls_var has disallowed "thread_local" attribute
 @tls_var = thread_local global [4 x i8] zeroinitializer
 
+; CHECK-NEXT: Variable var_with_unnamed_addr has disallowed "unnamed_addr" attribute
+@var_with_unnamed_addr = internal unnamed_addr constant [1 x i8] c"x"
+
 
 ; Function attributes
 
@@ -37,15 +40,18 @@ define void @func_with_section() section ".some_section" {
   ret void
 }
 
-; TODO(mseaborn): PNaCl programs don't know what alignment is
-; reasonable for a function, so we should disallow this.
-; CHECK-NOT: func_with_alignment
+; CHECK-NEXT: Function func_with_alignment has disallowed "align" attribute
 define void @func_with_alignment() align 1 {
   ret void
 }
 
 ; CHECK-NEXT: Function func_with_gc has disallowed "gc" attribute
 define void @func_with_gc() gc "my_gc_func" {
+  ret void
+}
+
+; CHECK-NEXT: Function func_with_unnamed_addr has disallowed "unnamed_addr" attribute
+define void @func_with_unnamed_addr() unnamed_addr {
   ret void
 }
 

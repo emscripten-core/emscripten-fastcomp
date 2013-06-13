@@ -13,15 +13,17 @@
 //  * Function and argument attributes from functions and function
 //    calls.
 //  * Calling conventions from functions and function calls.
+//  * The "align" attribute on functions.
+//  * The "unnamed_addr" attribute on functions and global variables.
 //
 // TODO(mseaborn): Strip out the following too:
 //
-//  * "nuw" and "nsw" arithmetic attributes.
 //  * "align" attributes from integer memory accesses.
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CallSite.h"
@@ -30,14 +32,16 @@
 using namespace llvm;
 
 namespace {
-  class StripAttributes : public FunctionPass {
+  // This is a ModulePass so that it can modify attributes of global
+  // variables.
+  class StripAttributes : public ModulePass {
   public:
     static char ID; // Pass identification, replacement for typeid
-    StripAttributes() : FunctionPass(ID) {
+    StripAttributes() : ModulePass(ID) {
       initializeStripAttributesPass(*PassRegistry::getPassRegistry());
     }
 
-    virtual bool runOnFunction(Function &Func);
+    virtual bool runOnModule(Module &M);
   };
 }
 
@@ -131,12 +135,14 @@ static void CheckAttributes(AttributeSet Attrs) {
   }
 }
 
-bool StripAttributes::runOnFunction(Function &Func) {
-  CheckAttributes(Func.getAttributes());
-  Func.setAttributes(AttributeSet());
-  Func.setCallingConv(CallingConv::C);
+void stripFunctionAttrs(Function *Func) {
+  CheckAttributes(Func->getAttributes());
+  Func->setAttributes(AttributeSet());
+  Func->setCallingConv(CallingConv::C);
+  Func->setAlignment(0);
+  Func->setUnnamedAddr(false);
 
-  for (Function::iterator BB = Func.begin(), E = Func.end();
+  for (Function::iterator BB = Func->begin(), E = Func->end();
        BB != E; ++BB) {
     for (BasicBlock::iterator Inst = BB->begin(), E = BB->end();
          Inst != E; ++Inst) {
@@ -155,10 +161,24 @@ bool StripAttributes::runOnFunction(Function &Func) {
       }
     }
   }
+}
 
+bool StripAttributes::runOnModule(Module &M) {
+  for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
+    // Avoid stripping attributes from intrinsics because the
+    // constructor for Functions just adds them back again.  It would
+    // be confusing if the attributes were sometimes present on
+    // intrinsics and sometimes not.
+    if (!Func->isIntrinsic())
+      stripFunctionAttrs(Func);
+  }
+  for (Module::global_iterator GV = M.global_begin(), E = M.global_end();
+       GV != E; ++GV) {
+    GV->setUnnamedAddr(false);
+  }
   return true;
 }
 
-FunctionPass *llvm::createStripAttributesPass() {
+ModulePass *llvm::createStripAttributesPass() {
   return new StripAttributes();
 }
