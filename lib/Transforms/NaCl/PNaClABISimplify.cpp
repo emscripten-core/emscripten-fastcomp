@@ -22,6 +22,9 @@
 using namespace llvm;
 
 void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
+  // LowerExpect converts Intrinsic::expect into branch weights,
+  // which can then be removed after BlockPlacement.
+  PM.add(createLowerExpectIntrinsicPass());
   // LowerInvoke prevents use of C++ exception handling, which is not
   // yet supported in the PNaCl ABI.
   PM.add(createLowerInvokePass());

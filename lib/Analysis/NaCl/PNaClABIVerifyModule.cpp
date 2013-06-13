@@ -228,6 +228,9 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::log2: // Rounding not defined: support with fast-math?
     case Intrinsic::log10: // Rounding not defined: support with fast-math?
     case Intrinsic::sin: // Rounding not defined: support with fast-math?
+    // We run -lower-expect to convert Intrinsic::expect into branch weights
+    // and consume in the middle-end. The backend just ignores llvm.expect.
+    case Intrinsic::expect:
       return false;
 
     // (3) Dev intrinsics.
@@ -237,9 +240,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::cttz: // Support via compiler_rt if arch doesn't have it?
-    // Can run -lower-expect, and consume in the middle-end.
-    // Selection-DAG just treats it as a pass-through.
-    case Intrinsic::expect: // From __builtin_expect.
     case Intrinsic::flt_rounds: // For FLT_ROUNDS macro from float.h.
       // We do not have fesetround() in newlib, can we return a
       // consistent rounding mode though?

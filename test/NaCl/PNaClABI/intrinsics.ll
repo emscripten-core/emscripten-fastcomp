@@ -13,12 +13,6 @@
 ; DEV-NOT: Function llvm.dbg.value is a disallowed LLVM intrinsic
 declare void @llvm.dbg.value(metadata, i64, metadata)
 
-; CHECK: Function llvm.frameaddress is a disallowed LLVM intrinsic
-declare i8* @llvm.frameaddress(i32 %level)
-
-; CHECK: Function llvm.returnaddress is a disallowed LLVM intrinsic
-declare i8* @llvm.returnaddress(i32 %level)
-
 ; ===================================
 ; Always allowed intrinsics.
 
@@ -74,3 +68,9 @@ declare void @llvm.lifetime.start(i64, i8* nocapture)
 
 ; CHECK: Function llvm.lifetime.end is a disallowed LLVM intrinsic
 declare void @llvm.lifetime.end(i64, i8* nocapture)
+
+; CHECK: Function llvm.frameaddress is a disallowed LLVM intrinsic
+declare i8* @llvm.frameaddress(i32 %level)
+
+; CHECK: Function llvm.returnaddress is a disallowed LLVM intrinsic
+declare i8* @llvm.returnaddress(i32 %level)
