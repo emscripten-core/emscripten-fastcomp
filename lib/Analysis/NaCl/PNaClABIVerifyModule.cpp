@@ -110,7 +110,6 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
     case GlobalValue::ExternalLinkage:
     case GlobalValue::AvailableExternallyLinkage:
     case GlobalValue::InternalLinkage:
-    case GlobalValue::PrivateLinkage:
       break;
     default:
       Reporter->addError() << GVTypeName << GV->getName()

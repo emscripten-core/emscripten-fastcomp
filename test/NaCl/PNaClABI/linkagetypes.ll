@@ -5,15 +5,16 @@ target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64
 target triple = "le32-unknown-nacl"
 
 
-@gv_private = private global [1 x i8] c"x"
-@gv_linker_private = linker_private global [1 x i8] c"x"
+@gv_internal = internal global [1 x i8] c"x"
 ; CHECK-NOT: disallowed
+
+@gv_private = private global [1 x i8] c"x"
+; CHECK: Variable gv_private has disallowed linkage type: private
+@gv_linker_private = linker_private global [1 x i8] c"x"
 ; CHECK: Variable gv_linker_private has disallowed linkage type: linker_private
 @gv_linker_private_weak = linker_private_weak global [1 x i8] c"x"
 ; CHECK: gv_linker_private_weak has disallowed linkage type: linker_private_weak
-@gv_internal = internal global [1 x i8] c"x"
 @gv_linkonce = linkonce global [1 x i8] c"x"
-; CHECK-NOT: disallowed
 ; CHECK: gv_linkonce has disallowed linkage type: linkonce
 @gv_linkonce_odr = linkonce_odr global [1 x i8] c"x"
 ; CHECK: gv_linkonce_odr has disallowed linkage type: linkonce_odr
@@ -35,13 +36,16 @@ target triple = "le32-unknown-nacl"
 ; CHECK: gv_extern_weak has disallowed linkage type: extern_weak
 @gv_avilable_externally = available_externally global [1 x i8] c"x"
 
-; CHECK-NOT: private_func
-define private void @private_func() {
+
+; CHECK-NOT: disallowed
+; CHECK-NOT: internal_func
+; internal linkage is allowed, and should not appear in error output.
+define internal void @internal_func() {
   ret void
 }
-; internal linkage is allowed, and should not appear in error output.
-; CHECK-NOT: internal_func
-define internal void @internal_func() {
+
+; CHECK: Function private_func has disallowed linkage type: private
+define private void @private_func() {
   ret void
 }
 ; CHECK: Function external_func is declared but not defined (disallowed)

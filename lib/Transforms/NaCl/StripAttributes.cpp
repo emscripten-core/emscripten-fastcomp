@@ -135,12 +135,25 @@ static void CheckAttributes(AttributeSet Attrs) {
   }
 }
 
+void stripGlobalValueAttrs(GlobalValue *GV) {
+  GV->setUnnamedAddr(false);
+
+  // Convert "private" linkage to "internal" to reduce the number of
+  // linkage types that need to be represented in PNaCl's wire format.
+  //
+  // We convert "private" to "internal" rather than vice versa because
+  // "private" symbols are omitted from the nexe's symbol table, which
+  // would get in the way of debugging when an unstripped pexe is
+  // translated offline.
+  if (GV->getLinkage() == GlobalValue::PrivateLinkage)
+    GV->setLinkage(GlobalValue::InternalLinkage);
+}
+
 void stripFunctionAttrs(Function *Func) {
   CheckAttributes(Func->getAttributes());
   Func->setAttributes(AttributeSet());
   Func->setCallingConv(CallingConv::C);
   Func->setAlignment(0);
-  Func->setUnnamedAddr(false);
 
   for (Function::iterator BB = Func->begin(), E = Func->end();
        BB != E; ++BB) {
@@ -169,12 +182,14 @@ bool StripAttributes::runOnModule(Module &M) {
     // constructor for Functions just adds them back again.  It would
     // be confusing if the attributes were sometimes present on
     // intrinsics and sometimes not.
-    if (!Func->isIntrinsic())
+    if (!Func->isIntrinsic()) {
+      stripGlobalValueAttrs(Func);
       stripFunctionAttrs(Func);
+    }
   }
   for (Module::global_iterator GV = M.global_begin(), E = M.global_end();
        GV != E; ++GV) {
-    GV->setUnnamedAddr(false);
+    stripGlobalValueAttrs(GV);
   }
   return true;
 }
