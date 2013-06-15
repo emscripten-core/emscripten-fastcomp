@@ -108,7 +108,6 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
   switch (GV->getLinkage()) {
     // TODO(dschuff): Disallow external linkage
     case GlobalValue::ExternalLinkage:
-    case GlobalValue::AvailableExternallyLinkage:
     case GlobalValue::InternalLinkage:
       break;
     default:

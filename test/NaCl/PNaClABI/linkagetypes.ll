@@ -35,6 +35,7 @@ target triple = "le32-unknown-nacl"
 @gv_extern_weak = extern_weak global [1 x i8]
 ; CHECK: gv_extern_weak has disallowed linkage type: extern_weak
 @gv_avilable_externally = available_externally global [1 x i8] c"x"
+; CHECK: gv_avilable_externally has disallowed linkage type: available_externally
 
 
 ; CHECK-NOT: disallowed
@@ -76,3 +77,8 @@ define dllexport void @dllexport_func() {
 ; CHECK-NEXT: Function extern_weak_func is declared but not defined (disallowed)
 ; CHECK-NEXT: Function extern_weak_func has disallowed linkage type: extern_weak
 declare extern_weak void @extern_weak_func()
+
+; CHECK-NEXT: Function avail_ext_func has disallowed linkage type: available_externally
+define available_externally void @avail_ext_func() {
+  ret void
+}
