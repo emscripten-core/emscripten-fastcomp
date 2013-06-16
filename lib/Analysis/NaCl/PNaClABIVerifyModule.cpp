@@ -115,6 +115,16 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
                            << " has disallowed linkage type: "
                            << linkageName(GV->getLinkage()) << "\n";
   }
+  if (GV->getVisibility() != GlobalValue::DefaultVisibility) {
+    std::string Text = "unknown";
+    if (GV->getVisibility() == GlobalValue::HiddenVisibility) {
+      Text = "hidden";
+    } else if (GV->getVisibility() == GlobalValue::ProtectedVisibility) {
+      Text = "protected";
+    }
+    Reporter->addError() << GVTypeName << GV->getName()
+                         << " has disallowed visibility: " << Text << "\n";
+  }
   if (GV->hasSection()) {
     Reporter->addError() << GVTypeName << GV->getName() <<
         " has disallowed \"section\" attribute\n";

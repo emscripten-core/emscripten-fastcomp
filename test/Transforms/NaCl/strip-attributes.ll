@@ -11,6 +11,16 @@ define fastcc void @func_attrs(i32 inreg, i32 zeroext)
 }
 ; CHECK: define void @func_attrs(i32, i32) {
 
+define hidden void @hidden_visibility() {
+  ret void
+}
+; CHECK: define void @hidden_visibility() {
+
+define protected void @protected_visibility() {
+  ret void
+}
+; CHECK: define void @protected_visibility() {
+
 define void @call_attrs() {
   call fastcc void @func_attrs(i32 inreg 10, i32 zeroext 20) noreturn nounwind readonly
   ret void

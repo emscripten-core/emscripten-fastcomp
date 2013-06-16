@@ -136,6 +136,10 @@ static void CheckAttributes(AttributeSet Attrs) {
 }
 
 void stripGlobalValueAttrs(GlobalValue *GV) {
+  // In case source code uses __attribute__((visibility("hidden"))) or
+  // __attribute__((visibility("protected"))), strip these attributes.
+  GV->setVisibility(GlobalValue::DefaultVisibility);
+
   GV->setUnnamedAddr(false);
 
   // Convert "private" linkage to "internal" to reduce the number of
