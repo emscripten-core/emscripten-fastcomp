@@ -300,27 +300,11 @@ static int compileModule(char **argv, LLVMContext &Context) {
 #if defined(__native_client__)
     if (LazyBitcode) {
       std::string StrError;
-      switch (InputFileFormat) {
-        case LLVMFormat:
-          // TODO(kschimpf) Remove this case once we have fixed
-          // pnacl-finalize and the NaCl build system to only allow PNaCl
-          // bitcode files.
-          M.reset(getStreamedBitcodeModule(
-              std::string("<SRPC stream>"),
-              NaClBitcodeStreamer, Context, &StrError));
-          break;
-        case PNaClFormat:
-          M.reset(getNaClStreamedBitcodeModule(
-              std::string("<SRPC stream>"),
-              NaClBitcodeStreamer, Context, &StrError));
-          break;
-        default:
-          StrError = "Don't understand specified bitcode format";
-          break;
-      }
-      if (!StrError.empty()) {
+      M.reset(getNaClStreamedBitcodeModule(
+          std::string("<SRPC stream>"),
+          NaClBitcodeStreamer, Context, &StrError));
+      if (!StrError.empty())
         Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
-      }
     } else {
       // Avoid using ParseIRFile to avoid pulling in the LLParser.
       // Only handle binary bitcode.
