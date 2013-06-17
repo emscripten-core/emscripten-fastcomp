@@ -258,6 +258,12 @@ int llc_main(int argc, char **argv) {
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
+  // Enable the PNaCl ABI verifier by default in sandboxed mode.
+#if defined(__native_client__)
+  PNaClABIVerify = true;
+  PNaClABIVerifyFatalErrors = true;
+#endif
+
   cl::ParseCommandLineOptions(argc, argv, "llvm system compiler\n");
 
   // Compile the module TimeCompilations times to give better compile time
@@ -329,7 +335,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
     // @LOCALMOD-BEGIN
     if (PNaClABIVerify) {
       // Verify the module (but not the functions yet)
-      ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter);
+      ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter,
+                                                              LazyBitcode);
       VerifyPass->runOnModule(*mod);
       CheckABIVerifyErrors(ABIErrorReporter, "Module");
     }

@@ -50,10 +50,12 @@ class PNaClABIVerifyModule : public ModulePass {
       ReporterIsOwned(true) {
     initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
-  explicit PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_) :
+  explicit PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_,
+                                bool StreamingMode) :
       ModulePass(ID),
       Reporter(Reporter_),
-      ReporterIsOwned(false) {
+      ReporterIsOwned(false),
+      StreamingMode(StreamingMode) {
     initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
   ~PNaClABIVerifyModule() {
@@ -69,6 +71,7 @@ class PNaClABIVerifyModule : public ModulePass {
   void checkGlobalIsFlattened(const GlobalVariable *GV);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
+  bool StreamingMode;
 };
 
 static const char *linkageName(GlobalValue::LinkageTypes LT) {
@@ -392,7 +395,12 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
             << PNaClABITypeChecker::getTypeName(MI->getFunctionType())
             << "\n";
       }
-      if (MI->isDeclaration()) {
+      // This check is disabled in streaming mode because it would
+      // reject a function that is defined but not read in yet.
+      // Unfortunately this means we simply don't check this property
+      // when translating a pexe in the browser.
+      // TODO(mseaborn): Enforce this property in the bitcode reader.
+      if (!StreamingMode && MI->isDeclaration()) {
         Reporter->addError() << "Function " << MI->getName()
                              << " is declared but not defined (disallowed)\n";
       }
@@ -451,6 +459,6 @@ INITIALIZE_PASS(PNaClABIVerifyModule, "verify-pnaclabi-module",
                 "Verify module for PNaCl", false, true)
 
 ModulePass *llvm::createPNaClABIVerifyModulePass(
-    PNaClABIErrorReporter *Reporter) {
-  return new PNaClABIVerifyModule(Reporter);
+    PNaClABIErrorReporter *Reporter, bool StreamingMode) {
+  return new PNaClABIVerifyModule(Reporter, StreamingMode);
 }

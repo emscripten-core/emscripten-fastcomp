@@ -62,7 +62,8 @@ class PNaClABIErrorReporter {
 
 FunctionPass *createPNaClABIVerifyFunctionsPass(
     PNaClABIErrorReporter *Reporter);
-ModulePass *createPNaClABIVerifyModulePass(PNaClABIErrorReporter *Reporter);
+ModulePass *createPNaClABIVerifyModulePass(PNaClABIErrorReporter *Reporter,
+                                           bool StreamingMode = false);
 
 }
 

@@ -155,8 +155,18 @@ TargetPassConfig *ARMBaseTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 bool ARMPassConfig::addPreISel() {
-  if (TM->getOptLevel() != CodeGenOpt::None && EnableGlobalMerge)
+  // @LOCALMOD-START
+  // We disable the GlobalMerge pass for PNaCl because it causes the
+  // PNaCl ABI checker to reject the program when the PNaCl translator
+  // is run in streaming mode.  This is because GlobalMerge replaces
+  // functions' GlobalVariable references with ConstantExprs which the
+  // ABI verifier rejects.
+  // TODO(mseaborn): Make the ABI checks coexist with GlobalMerge to
+  // get back the performance benefits of GlobalMerge.
+  if (TM->getOptLevel() != CodeGenOpt::None && EnableGlobalMerge &&
+      !getARMSubtarget().isTargetNaCl())
     addPass(createGlobalMergePass(TM->getTargetLowering()));
+  // @LOCALMOD-END
 
   return false;
 }
