@@ -39,6 +39,7 @@ FunctionPass *createPromoteIntegersPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
 FunctionPass *createResolvePNaClIntrinsicsPass();
+ModulePass *createRewriteLLVMIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();

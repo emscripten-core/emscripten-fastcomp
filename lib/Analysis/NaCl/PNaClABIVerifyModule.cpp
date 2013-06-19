@@ -249,6 +249,10 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     // We run -lower-expect to convert Intrinsic::expect into branch weights
     // and consume in the middle-end. The backend just ignores llvm.expect.
     case Intrinsic::expect:
+    // For FLT_ROUNDS macro from float.h. It works for ARM and X86
+    // (but not MIPS). Also, wait until we add a set_flt_rounds intrinsic
+    // before we bless this.
+    case Intrinsic::flt_rounds:
       return false;
 
     // (3) Dev intrinsics.
@@ -258,9 +262,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::cttz: // Support via compiler_rt if arch doesn't have it?
-    case Intrinsic::flt_rounds: // For FLT_ROUNDS macro from float.h.
-      // We do not have fesetround() in newlib, can we return a
-      // consistent rounding mode though?
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
     case Intrinsic::pow: // Rounding is supposed to be the same as libm.
     case Intrinsic::powi: // Rounding not defined: support with fast-math?
