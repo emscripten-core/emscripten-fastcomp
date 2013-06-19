@@ -405,6 +405,18 @@ static bool isLegalAddressingModeForNaCl(const X86Subtarget *Subtarget,
       ++NumFastIselNaClFailures;
       return false;
     }
+
+    // See X86DAGToDAGISel::FoldOffsetIntoAddress().
+    // Check for the equivalent of
+    // ((AM.BaseType == X86ISelAddressMode::RegBase ||
+    //   AM.BaseType == X86ISelAddressMode::FrameIndexBase) &&
+    //  (Val > 65535 || Val < -65536))
+    if ((AM.BaseType == X86AddressMode::RegBase ||
+         AM.BaseType == X86AddressMode::FrameIndexBase) &&
+        (AM.Disp > 65535 || AM.Disp < -65536)) {
+      ++NumFastIselNaClFailures;
+      return false;
+    }
   }
 
   return true;
