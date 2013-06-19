@@ -269,6 +269,11 @@ namespace naclbitc {
     ORDERING_SEQCST = 6
   };
 
+  /// Encoded function calling conventions.
+  enum NaClCallingConventions {
+    C_CallingConv = 0
+  };
+
   /// Encoded SynchronizationScope values.
   enum NaClAtomicSynchScopeCodes {
     SYNCHSCOPE_SINGLETHREAD = 0,

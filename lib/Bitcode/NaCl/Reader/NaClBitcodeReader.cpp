@@ -194,6 +194,14 @@ static SynchronizationScope GetDecodedSynchScope(unsigned Val) {
   }
 }
 
+static CallingConv::ID GetDecodedCallingConv(unsigned Val) {
+  switch (Val) {
+  default:
+    report_fatal_error("PNaCl bitcode contains invalid calling conventions.");
+  case naclbitc::C_CallingConv: return CallingConv::C;
+  }
+}
+
 namespace llvm {
 namespace {
   /// @brief A class for maintaining the slot number definition
@@ -1746,7 +1754,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       Function *Func = Function::Create(FTy, GlobalValue::ExternalLinkage,
                                         "", TheModule);
 
-      Func->setCallingConv(static_cast<CallingConv::ID>(Record[1]));
+      Func->setCallingConv(GetDecodedCallingConv(Record[1]));
       bool isProto = Record[2];
       Func->setLinkage(GetDecodedLinkage(Record[3]));
       Func->setAttributes(getAttributes(Record[4]));
@@ -2447,55 +2455,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_INVOKE: {
-      // INVOKE: [attrs, cc, normBB, unwindBB, fnty, op0,op1,op2, ...]
-      if (Record.size() < 4) return Error("Invalid INVOKE record");
-      AttributeSet PAL = getAttributes(Record[0]);
-      unsigned CCInfo = Record[1];
-      BasicBlock *NormalBB = getBasicBlock(Record[2]);
-      BasicBlock *UnwindBB = getBasicBlock(Record[3]);
-
-      unsigned OpNum = 4;
-      Value *Callee;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Callee))
-        return Error("Invalid INVOKE record");
-
-      PointerType *CalleeTy = dyn_cast<PointerType>(Callee->getType());
-      FunctionType *FTy = !CalleeTy ? 0 :
-        dyn_cast<FunctionType>(CalleeTy->getElementType());
-
-      // Check that the right number of fixed parameters are here.
-      if (FTy == 0 || NormalBB == 0 || UnwindBB == 0 ||
-          Record.size() < OpNum+FTy->getNumParams())
-        return Error("Invalid INVOKE record");
-
-      SmallVector<Value*, 16> Ops;
-      for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i, ++OpNum) {
-        Ops.push_back(getValue(Record, OpNum, NextValueNo,
-                               FTy->getParamType(i)));
-        if (Ops.back() == 0) return Error("Invalid INVOKE record");
-      }
-
-      if (!FTy->isVarArg()) {
-        if (Record.size() != OpNum)
-          return Error("Invalid INVOKE record");
-      } else {
-        // Read type/value pairs for varargs params.
-        while (OpNum != Record.size()) {
-          Value *Op;
-          if (getValueTypePair(Record, OpNum, NextValueNo, Op))
-            return Error("Invalid INVOKE record");
-          Ops.push_back(Op);
-        }
-      }
-
-      I = InvokeInst::Create(Callee, NormalBB, UnwindBB, Ops);
-      InstructionList.push_back(I);
-      cast<InvokeInst>(I)->setCallingConv(
-        static_cast<CallingConv::ID>(CCInfo));
-      cast<InvokeInst>(I)->setAttributes(PAL);
+    case naclbitc::FUNC_CODE_INST_INVOKE:
+      return Error("Invoke is not allowed");
       break;
-    }
     case naclbitc::FUNC_CODE_INST_RESUME: { // RESUME: [opval]
       unsigned Idx = 0;
       Value *Val = 0;
@@ -2755,8 +2717,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       I = CallInst::Create(Callee, Args);
       InstructionList.push_back(I);
-      cast<CallInst>(I)->setCallingConv(
-        static_cast<CallingConv::ID>(CCInfo>>1));
+      cast<CallInst>(I)->setCallingConv(GetDecodedCallingConv(CCInfo>>1));
       cast<CallInst>(I)->setTailCall(CCInfo & 1);
       cast<CallInst>(I)->setAttributes(PAL);
       break;

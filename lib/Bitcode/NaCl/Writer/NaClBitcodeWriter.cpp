@@ -181,6 +181,13 @@ static unsigned GetEncodedSynchScope(SynchronizationScope SynchScope) {
   llvm_unreachable("Invalid synch scope");
 }
 
+static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
+  switch (conv) {
+  case CallingConv::C: return naclbitc::C_CallingConv;
+  }
+  report_fatal_error("Calling convention not supported by PNaCL bitcode");
+}
+
 static void WriteStringRecord(unsigned Code, StringRef Str,
                               unsigned AbbrevToUse,
                               NaClBitstreamWriter &Stream) {
@@ -610,7 +617,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
     // FUNCTION:  [type, callingconv, isproto, linkage, paramattrs, alignment,
     //             section, visibility, gc, unnamed_addr]
     Vals.push_back(VE.getTypeID(F->getType()));
-    Vals.push_back(F->getCallingConv());
+    Vals.push_back(GetEncodedCallingConv(F->getCallingConv()));
     Vals.push_back(F->isDeclaration());
     Vals.push_back(getEncodedLinkage(F));
     Vals.push_back(VE.getAttributeID(F->getAttributes()));
@@ -1374,31 +1381,9 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       Vals.push_back(VE.getValueID(I.getOperand(i)));
     break;
 
-  case Instruction::Invoke: {
-    const InvokeInst *II = cast<InvokeInst>(&I);
-    const Value *Callee(II->getCalledValue());
-    PointerType *PTy = cast<PointerType>(Callee->getType());
-    FunctionType *FTy = cast<FunctionType>(PTy->getElementType());
-    Code = naclbitc::FUNC_CODE_INST_INVOKE;
-
-    Vals.push_back(VE.getAttributeID(II->getAttributes()));
-    Vals.push_back(II->getCallingConv());
-    Vals.push_back(VE.getValueID(II->getNormalDest()));
-    Vals.push_back(VE.getValueID(II->getUnwindDest()));
-    PushValueAndType(Callee, InstID, Vals, VE);
-
-    // Emit value #'s for the fixed parameters.
-    for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i)
-      pushValue(I.getOperand(i), InstID, Vals, VE);  // fixed param.
-
-    // Emit type/value pairs for varargs params.
-    if (FTy->isVarArg()) {
-      for (unsigned i = FTy->getNumParams(), e = I.getNumOperands()-3;
-           i != e; ++i)
-        PushValueAndType(I.getOperand(i), InstID, Vals, VE); // vararg
-    }
+  case Instruction::Invoke:
+    report_fatal_error("Invoke is not allowed in PNaCl bitcode");
     break;
-  }
   case Instruction::Resume:
     Code = naclbitc::FUNC_CODE_INST_RESUME;
     PushValueAndType(I.getOperand(0), InstID, Vals, VE);
@@ -1516,7 +1501,8 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     Code = naclbitc::FUNC_CODE_INST_CALL;
 
     Vals.push_back(VE.getAttributeID(CI.getAttributes()));
-    Vals.push_back((CI.getCallingConv() << 1) | unsigned(CI.isTailCall()));
+    Vals.push_back((GetEncodedCallingConv(CI.getCallingConv()) << 1)
+                   | unsigned(CI.isTailCall()));
     PushValueAndType(CI.getCalledValue(), InstID, Vals, VE);  // Callee
 
     // Emit value #'s for the fixed parameters.
