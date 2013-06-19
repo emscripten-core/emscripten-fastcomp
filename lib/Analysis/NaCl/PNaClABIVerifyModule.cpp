@@ -370,6 +370,10 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
       Reporter->addError() << "Variable " << MI->getName() <<
           " has disallowed \"thread_local\" attribute\n";
     }
+    if (MI->isExternallyInitialized()) {
+      Reporter->addError() << "Variable " << MI->getName() <<
+          " has disallowed \"externally_initialized\" attribute\n";
+    }
   }
 
   // No aliases allowed for now.

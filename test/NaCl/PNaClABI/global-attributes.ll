@@ -17,6 +17,9 @@
 ; CHECK-NEXT: Variable var_with_unnamed_addr has disallowed "unnamed_addr" attribute
 @var_with_unnamed_addr = internal unnamed_addr constant [1 x i8] c"x"
 
+; CHECK-NEXT: Variable var_ext_init has disallowed "externally_initialized" attribute
+@var_ext_init = internal externally_initialized global [1 x i8] c"x"
+
 
 ; Function attributes
 
