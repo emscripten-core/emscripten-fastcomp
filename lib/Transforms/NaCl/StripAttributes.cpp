@@ -15,13 +15,15 @@
 //  * Calling conventions from functions and function calls.
 //  * The "align" attribute on functions.
 //  * The "unnamed_addr" attribute on functions and global variables.
-//
-// TODO(mseaborn): Strip out the following too:
-//
-//  * "align" attributes from integer memory accesses.
+//  * The distinction between "internal" and "private" linkage.
+//  * "protected" and "internal" visibility of functions and globals.
+//  * The arithmetic attributes "nsw", "nuw" and "exact".
+//  * It reduces the set of possible "align" attributes on memory
+//    accesses.
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
@@ -153,7 +155,19 @@ void stripGlobalValueAttrs(GlobalValue *GV) {
     GV->setLinkage(GlobalValue::InternalLinkage);
 }
 
-void stripFunctionAttrs(Function *Func) {
+static unsigned normalizeAlignment(DataLayout *DL, unsigned Alignment,
+                                   Type *Ty, bool IsAtomic) {
+  unsigned MaxAllowed = 1;
+  if (Ty->isDoubleTy() || Ty->isFloatTy() || IsAtomic)
+    MaxAllowed = DL->getTypeAllocSize(Ty);
+  // If the alignment is set to 0, this means "use the default
+  // alignment for the target", which we fill in explicitly.
+  if (Alignment == 0 || Alignment >= MaxAllowed)
+    return MaxAllowed;
+  return 1;
+}
+
+void stripFunctionAttrs(DataLayout *DL, Function *Func) {
   CheckAttributes(Func->getAttributes());
   Func->setAttributes(AttributeSet());
   Func->setCallingConv(CallingConv::C);
@@ -175,12 +189,23 @@ void stripFunctionAttrs(Function *Func) {
       } else if (PossiblyExactOperator *Op =
                      dyn_cast<PossiblyExactOperator>(Inst)) {
         cast<BinaryOperator>(Op)->setIsExact(false);
+      } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
+        Load->setAlignment(normalizeAlignment(
+                               DL, Load->getAlignment(),
+                               Load->getType(),
+                               Load->isAtomic()));
+      } else if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
+        Store->setAlignment(normalizeAlignment(
+                                DL, Store->getAlignment(),
+                                Store->getValueOperand()->getType(),
+                                Store->isAtomic()));
       }
     }
   }
 }
 
 bool StripAttributes::runOnModule(Module &M) {
+  DataLayout DL(&M);
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
     // Avoid stripping attributes from intrinsics because the
     // constructor for Functions just adds them back again.  It would
@@ -188,7 +213,7 @@ bool StripAttributes::runOnModule(Module &M) {
     // intrinsics and sometimes not.
     if (!Func->isIntrinsic()) {
       stripGlobalValueAttrs(Func);
-      stripFunctionAttrs(Func);
+      stripFunctionAttrs(&DL, Func);
     }
   }
   for (Module::global_iterator GV = M.global_begin(), E = M.global_end();

@@ -22,7 +22,7 @@ define void @types() {
   %h3 = fadd double 0.0, fpext (half 0.0 to double)
 
 ; CHECK: bad pointer: store
-  store i32 0, i32* bitcast (i17* @a2 to i32*), align 4
+  store i32 0, i32* bitcast (i17* @a2 to i32*), align 1
 
 ; CHECK: bad function callee operand: call void @func(i15 1)
   call void @func(i15 1)

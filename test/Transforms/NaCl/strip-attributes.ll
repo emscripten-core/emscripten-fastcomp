@@ -21,12 +21,14 @@ define protected void @protected_visibility() {
 }
 ; CHECK: define void @protected_visibility() {
 
+
 define void @call_attrs() {
   call fastcc void @func_attrs(i32 inreg 10, i32 zeroext 20) noreturn nounwind readonly
   ret void
 }
 ; CHECK: define void @call_attrs()
 ; CHECK: call void @func_attrs(i32 10, i32 20){{$}}
+
 
 ; We currently don't attempt to strip attributes from intrinsic
 ; declarations because the reader automatically inserts attributes
@@ -45,3 +47,56 @@ define void @arithmetic_attrs() {
 ; CHECK-NEXT: %add = add i32 1, 2
 ; CHECK-NEXT: %shl = shl i32 3, 4
 ; CHECK-NEXT: %lshr = lshr i32 2, 1
+
+
+; Implicit default alignments are changed to explicit alignments.
+define void @default_alignment_attrs(float %f, double %d) {
+  load i8* null
+  load i32* null
+  load float* null
+  load double* null
+
+  store i8 100, i8* null
+  store i32 100, i32* null
+  store float %f, float* null
+  store double %d, double* null
+  ret void
+}
+; CHECK: define void @default_alignment_attrs
+; CHECK-NEXT: load i8* null, align 1
+; CHECK-NEXT: load i32* null, align 1
+; CHECK-NEXT: load float* null, align 4
+; CHECK-NEXT: load double* null, align 8
+; CHECK-NEXT: store i8 100, i8* null, align 1
+; CHECK-NEXT: store i32 100, i32* null, align 1
+; CHECK-NEXT: store float %f, float* null, align 4
+; CHECK-NEXT: store double %d, double* null, align 8
+
+define void @reduce_alignment_assumptions() {
+  load i32* null, align 4
+  load float* null, align 2
+  load float* null, align 4
+  load float* null, align 8
+  load double* null, align 2
+  load double* null, align 8
+  load double* null, align 16
+
+  ; Higher alignment assumptions must be retained for atomics.
+  load atomic i32* null seq_cst, align 4
+  load atomic i32* null seq_cst, align 8
+  store atomic i32 100, i32* null seq_cst, align 4
+  store atomic i32 100, i32* null seq_cst, align 8
+  ret void
+}
+; CHECK: define void @reduce_alignment_assumptions
+; CHECK-NEXT: load i32* null, align 1
+; CHECK-NEXT: load float* null, align 1
+; CHECK-NEXT: load float* null, align 4
+; CHECK-NEXT: load float* null, align 4
+; CHECK-NEXT: load double* null, align 1
+; CHECK-NEXT: load double* null, align 8
+; CHECK-NEXT: load double* null, align 8
+; CHECK-NEXT: load atomic i32* null seq_cst, align 4
+; CHECK-NEXT: load atomic i32* null seq_cst, align 4
+; CHECK-NEXT: store atomic i32 100, i32* null seq_cst, align 4
+; CHECK-NEXT: store atomic i32 100, i32* null seq_cst, align 4

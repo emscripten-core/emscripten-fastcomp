@@ -138,6 +138,31 @@ static bool isValidScalarOperand(const Value *Val) {
           isa<UndefValue>(Val));
 }
 
+static bool isAllowedAlignment(unsigned Alignment, Type *Ty, bool IsAtomic) {
+  if (IsAtomic) {
+    // For atomic operations, the alignment must match the size of the type.
+    if (Ty->isIntegerTy()) {
+      unsigned Bits = Ty->getIntegerBitWidth();
+      return Bits % 8 == 0 && Alignment == Bits / 8;
+    }
+    return (Ty->isDoubleTy() && Alignment == 8) ||
+           (Ty->isFloatTy() && Alignment == 4);
+  }
+  // Non-atomic integer operations must always use "align 1", since we
+  // do not want the backend to generate code with non-portable
+  // undefined behaviour (such as misaligned access faults) if user
+  // code specifies "align 4" but uses a misaligned pointer.  As a
+  // concession to performance, we allow larger alignment values for
+  // floating point types.
+  //
+  // To reduce the set of alignment values that need to be encoded in
+  // pexes, we disallow other alignment values.  We require alignments
+  // to be explicit by disallowing Alignment == 0.
+  return Alignment == 1 ||
+         (Ty->isDoubleTy() && Alignment == 8) ||
+         (Ty->isFloatTy() && Alignment == 4);
+}
+
 // Check the instruction's opcode and its operands.  The operands may
 // require opcode-specific checking.
 //
@@ -215,15 +240,31 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       break;
 
     // Memory accesses.
-    case Instruction::Load:
-    case Instruction::AtomicCmpXchg:
-    case Instruction::AtomicRMW:
+    case Instruction::Load: {
+      const LoadInst *Load = cast<LoadInst>(Inst);
+      if (!isAllowedAlignment(Load->getAlignment(),
+                              Load->getType(),
+                              Load->isAtomic()))
+        return "bad alignment";
       PtrOperandIndex = 0;
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad pointer";
       break;
-    case Instruction::Store:
+    }
+    case Instruction::Store: {
+      const StoreInst *Store = cast<StoreInst>(Inst);
+      if (!isAllowedAlignment(Store->getAlignment(),
+                              Store->getValueOperand()->getType(),
+                              Store->isAtomic()))
+        return "bad alignment";
       PtrOperandIndex = 1;
+      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
+        return "bad pointer";
+      break;
+    }
+    case Instruction::AtomicCmpXchg:
+    case Instruction::AtomicRMW:
+      PtrOperandIndex = 0;
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad pointer";
       break;

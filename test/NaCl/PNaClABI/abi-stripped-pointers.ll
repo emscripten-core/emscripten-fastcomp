@@ -38,18 +38,18 @@ define void @allowed_cases(i32 %arg) {
   ptrtoint [1 x i8]* %alloc to i32
 
   ; These instructions may use a NormalizedPtr, which may be a global.
-  load i32* @ptr
-  store i32 123, i32* @ptr
+  load i32* @ptr, align 1
+  store i32 123, i32* @ptr, align 1
   cmpxchg i32* @ptr, i32 1, i32 2 seq_cst
   atomicrmw add i32* @ptr, i32 3 seq_cst
 
   ; A NormalizedPtr may be a bitcast.
   %ptr_bitcast = bitcast [4 x i8]* @var to i32*
-  load i32* %ptr_bitcast
+  load i32* %ptr_bitcast, align 1
 
   ; A NormalizedPtr may be an inttoptr.
   %ptr_from_int = inttoptr i32 123 to i32*
-  load i32* %ptr_from_int
+  load i32* %ptr_from_int, align 1
 
   ; Check direct and indirect function calls.
   %func_as_int = ptrtoint void ()* @func to i32
@@ -85,15 +85,15 @@ entry:
   %a = alloca i32
 ; CHECK-NEXT: non-i8-array alloca
 
-  store i32 0, i32* null
+  store i32 0, i32* null, align 1
 ; CHECK-NEXT: bad pointer
 
-  store i32 0, i32* undef
+  store i32 0, i32* undef, align 1
 ; CHECK-NEXT: bad pointer
 
   %bc = bitcast i32* @ptr to i31*
 ; CHECK-NEXT: bad result type
-  store i31 0, i31* %bc
+  store i31 0, i31* %bc, align 1
 ; CHECK-NEXT: bad pointer
 
   ; Only one level of bitcasts is allowed.

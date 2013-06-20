@@ -73,8 +73,8 @@ define void @memory() {
 ; Memory operations
   %a1 = alloca [4 x i8]
   %ptr = inttoptr i32 0 to i32*
-  %a2 = load i32* %ptr
-  store i32 undef, i32* %ptr
+  %a2 = load i32* %ptr, align 1
+  store i32 undef, i32* %ptr, align 1
   fence acq_rel
   %a3 = cmpxchg i32* %ptr, i32 undef, i32 undef acq_rel
   %a4 = atomicrmw add i32* %ptr, i32 1 acquire
