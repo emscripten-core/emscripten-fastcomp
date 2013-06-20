@@ -210,15 +210,14 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   std::string error;
   unsigned OpenFlags = 0;
   if (Binary) OpenFlags |= raw_fd_ostream::F_Binary;
-  tool_output_file *FDOut = new tool_output_file(OutputFilename.c_str(), error,
-                                                 OpenFlags);
+  OwningPtr<tool_output_file> FDOut(
+      new tool_output_file(OutputFilename.c_str(), error, OpenFlags));
   if (!error.empty()) {
     errs() << error << '\n';
-    delete FDOut;
     return 0;
   }
 
-  return FDOut;
+  return FDOut.take();
 }
 
 // main - Entry point for the llc compiler.
@@ -264,7 +263,7 @@ int llc_main(int argc, char **argv) {
   PNaClABIVerifyFatalErrors = true;
 #endif
 
-  cl::ParseCommandLineOptions(argc, argv, "llvm system compiler\n");
+  cl::ParseCommandLineOptions(argc, argv, "pnacl-llc\n");
 
   // Compile the module TimeCompilations times to give better compile time
   // metrics.
@@ -295,67 +294,54 @@ static int compileModule(char **argv, LLVMContext &Context) {
   Module *mod = 0;
   Triple TheTriple;
 
-  bool SkipModule = MCPU == "help" ||
-                    (!MAttrs.empty() && MAttrs.front() == "help");
+  PNaClABIErrorReporter ABIErrorReporter;
 
-  PNaClABIErrorReporter ABIErrorReporter; // @LOCALMOD
-
-  // If user just wants to list available options, skip module loading
-  if (!SkipModule) {
-    // @LOCALMOD-BEGIN
 #if defined(__native_client__)
-    if (LazyBitcode) {
-      std::string StrError;
-      M.reset(getNaClStreamedBitcodeModule(
-          std::string("<SRPC stream>"),
-          NaClBitcodeStreamer, Context, &StrError));
-      if (!StrError.empty())
-        Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
-    } else {
-      // Avoid using ParseIRFile to avoid pulling in the LLParser.
-      // Only handle binary bitcode.
-      llvm_unreachable("native client SRPC only supports streaming");
-    }
-#else
-    {
-      // @LOCALMOD: timing is temporary, until it gets properly added upstream
-      NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
-                         TimeIRParsingIsEnabled);
-      M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
-    }
-#endif
-    // @LOCALMOD-END
-
-    mod = M.get();
-    if (mod == 0) {
-      Err.print(argv[0], errs());
-      return 1;
-    }
-
-    // @LOCALMOD-BEGIN
-    if (PNaClABIVerify) {
-      // Verify the module (but not the functions yet)
-      ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter,
-                                                              LazyBitcode);
-      VerifyPass->runOnModule(*mod);
-      CheckABIVerifyErrors(ABIErrorReporter, "Module");
-    }
-
-    // Add declarations for external functions required by PNaCl. The
-    // ResolvePNaClIntrinsics function pass running during streaming
-    // depends on these declarations being in the module.
-    OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
-        createAddPNaClExternalDeclsPass());
-    AddPNaClExternalDeclsPass->runOnModule(*mod);
-    // @LOCALMOD-END
-
-    // If we are supposed to override the target triple, do so now.
-    if (!TargetTriple.empty())
-      mod->setTargetTriple(Triple::normalize(TargetTriple));
-    TheTriple = Triple(mod->getTargetTriple());
+  if (LazyBitcode) {
+    std::string StrError;
+    M.reset(getNaClStreamedBitcodeModule(
+        std::string("<SRPC stream>"),
+        NaClBitcodeStreamer, Context, &StrError));
+    if (!StrError.empty())
+      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
   } else {
-    TheTriple = Triple(Triple::normalize(TargetTriple));
+    llvm_unreachable("native client SRPC only supports streaming");
   }
+#else
+  {
+    // TODO: after the next merge this can be removed.
+    // https://code.google.com/p/nativeclient/issues/detail?id=3349
+    NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
+                       TimeIRParsingIsEnabled);
+    M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
+  }
+#endif
+
+  mod = M.get();
+  if (mod == 0) {
+    Err.print(argv[0], errs());
+    return 1;
+  }
+
+  if (PNaClABIVerify) {
+    // Verify the module (but not the functions yet)
+    ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter,
+                                                            LazyBitcode);
+    VerifyPass->runOnModule(*mod);
+    CheckABIVerifyErrors(ABIErrorReporter, "Module");
+  }
+
+  // Add declarations for external functions required by PNaCl. The
+  // ResolvePNaClIntrinsics function pass running during streaming
+  // depends on these declarations being in the module.
+  OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+      createAddPNaClExternalDeclsPass());
+  AddPNaClExternalDeclsPass->runOnModule(*mod);
+
+  // If we are supposed to override the target triple, do so now.
+  if (!TargetTriple.empty())
+    mod->setTargetTriple(Triple::normalize(TargetTriple));
+  TheTriple = Triple(mod->getTargetTriple());
 
   if (TheTriple.getTriple().empty())
     TheTriple.setTriple(sys::getDefaultTargetTriple());
@@ -496,7 +482,6 @@ static int compileModule(char **argv, LLVMContext &Context) {
     else
       Target.setMCRelaxAll(true);
   }
-
 
 #if defined __native_client__
   {
