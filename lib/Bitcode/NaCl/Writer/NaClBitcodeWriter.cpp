@@ -103,7 +103,7 @@ enum {
 
 static unsigned GetEncodedCastOpcode(unsigned Opcode) {
   switch (Opcode) {
-  default: llvm_unreachable("Unknown cast instruction!");
+  default: report_fatal_error("Unknown cast instruction!");
   case Instruction::Trunc   : return naclbitc::CAST_TRUNC;
   case Instruction::ZExt    : return naclbitc::CAST_ZEXT;
   case Instruction::SExt    : return naclbitc::CAST_SEXT;
@@ -121,7 +121,7 @@ static unsigned GetEncodedCastOpcode(unsigned Opcode) {
 
 static unsigned GetEncodedBinaryOpcode(unsigned Opcode) {
   switch (Opcode) {
-  default: llvm_unreachable("Unknown binary instruction!");
+  default: report_fatal_error("Unknown binary instruction!");
   case Instruction::Add:
   case Instruction::FAdd: return naclbitc::BINOP_ADD;
   case Instruction::Sub:
@@ -145,7 +145,7 @@ static unsigned GetEncodedBinaryOpcode(unsigned Opcode) {
 
 static unsigned GetEncodedRMWOperation(AtomicRMWInst::BinOp Op) {
   switch (Op) {
-  default: llvm_unreachable("Unknown RMW operation!");
+  default: report_fatal_error("Unknown RMW operation!");
   case AtomicRMWInst::Xchg: return naclbitc::RMW_XCHG;
   case AtomicRMWInst::Add: return naclbitc::RMW_ADD;
   case AtomicRMWInst::Sub: return naclbitc::RMW_SUB;
@@ -162,6 +162,7 @@ static unsigned GetEncodedRMWOperation(AtomicRMWInst::BinOp Op) {
 
 static unsigned GetEncodedOrdering(AtomicOrdering Ordering) {
   switch (Ordering) {
+  default: report_fatal_error("Invalid ordering");
   case NotAtomic: return naclbitc::ORDERING_NOTATOMIC;
   case Unordered: return naclbitc::ORDERING_UNORDERED;
   case Monotonic: return naclbitc::ORDERING_MONOTONIC;
@@ -170,22 +171,22 @@ static unsigned GetEncodedOrdering(AtomicOrdering Ordering) {
   case AcquireRelease: return naclbitc::ORDERING_ACQREL;
   case SequentiallyConsistent: return naclbitc::ORDERING_SEQCST;
   }
-  llvm_unreachable("Invalid ordering");
 }
 
 static unsigned GetEncodedSynchScope(SynchronizationScope SynchScope) {
   switch (SynchScope) {
+  default: report_fatal_error("Invalid synch scope");
   case SingleThread: return naclbitc::SYNCHSCOPE_SINGLETHREAD;
   case CrossThread: return naclbitc::SYNCHSCOPE_CROSSTHREAD;
   }
-  llvm_unreachable("Invalid synch scope");
 }
 
 static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
   switch (conv) {
+  default: report_fatal_error(
+      "Calling convention not supported by PNaCL bitcode");
   case CallingConv::C: return naclbitc::C_CallingConv;
   }
-  report_fatal_error("Calling convention not supported by PNaCL bitcode");
 }
 
 static void WriteStringRecord(unsigned Code, StringRef Str,
