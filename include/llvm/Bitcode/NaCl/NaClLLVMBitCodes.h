@@ -62,8 +62,7 @@ namespace naclbitc {
     //             linkage, alignment, section, visibility, threadlocal]
     MODULE_CODE_GLOBALVAR   = 7,
 
-    // FUNCTION:  [type, callingconv, isproto, linkage, paramattrs, alignment,
-    //             section, visibility, gc, unnamed_addr]
+    // FUNCTION:  [type, callingconv, isproto, linkage]
     MODULE_CODE_FUNCTION    = 8,
 
     // ALIAS: [alias type, aliasee val#, linkage, visibility]
@@ -326,7 +325,7 @@ namespace naclbitc {
     // 32 is unused.
     FUNC_CODE_DEBUG_LOC_AGAIN  = 33, // DEBUG_LOC_AGAIN
 
-    FUNC_CODE_INST_CALL        = 34, // CALL:       [attr, fnty, fnid, args...]
+    FUNC_CODE_INST_CALL        = 34, // CALL:       [cc, fnty, fnid, args...]
 
     FUNC_CODE_DEBUG_LOC        = 35, // DEBUG_LOC:  [Line,Col,ScopeVal, IAVal]
     FUNC_CODE_INST_FENCE       = 36, // FENCE: [ordering, synchscope]
