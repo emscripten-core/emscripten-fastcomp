@@ -50,7 +50,6 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
   // Enumerate the functions.
   for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {
     EnumerateValue(I);
-    EnumerateAttributes(cast<Function>(I)->getAttributes());
   }
 
   // Enumerate the aliases.
@@ -97,10 +96,6 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
           EnumerateOperandType(*OI);
         }
         EnumerateType(I->getType());
-        if (const CallInst *CI = dyn_cast<CallInst>(I))
-          EnumerateAttributes(CI->getAttributes());
-        else if (const InvokeInst *II = dyn_cast<InvokeInst>(I))
-          EnumerateAttributes(II->getAttributes());
 
         // Enumerate metadata attached with this instruction.
         MDs.clear();
@@ -497,28 +492,6 @@ void NaClValueEnumerator::EnumerateOperandType(const Value *V) {
     EnumerateMetadata(V);
 }
 
-void NaClValueEnumerator::EnumerateAttributes(AttributeSet PAL) {
-  if (PAL.isEmpty()) return;  // null is always 0.
-
-  // Do a lookup.
-  unsigned &Entry = AttributeMap[PAL];
-  if (Entry == 0) {
-    // Never saw this before, add it.
-    Attribute.push_back(PAL);
-    Entry = Attribute.size();
-  }
-
-  // Do lookups for all attribute groups.
-  for (unsigned i = 0, e = PAL.getNumSlots(); i != e; ++i) {
-    AttributeSet AS = PAL.getSlotAttributes(i);
-    unsigned &Entry = AttributeGroupMap[AS];
-    if (Entry == 0) {
-      AttributeGroups.push_back(AS);
-      Entry = AttributeGroups.size();
-    }
-  }
-}
-
 void NaClValueEnumerator::incorporateFunction(const Function &F) {
   InstructionCount = 0;
   NumModuleValues = Values.size();
@@ -546,10 +519,6 @@ void NaClValueEnumerator::incorporateFunction(const Function &F) {
 
   // Optimize the constant layout.
   OptimizeConstants(FirstFuncConstantID, Values.size());
-
-  // Add the function's parameter attributes so they are available for use in
-  // the function's instruction.
-  EnumerateAttributes(F.getAttributes());
 
   FirstInstID = Values.size();
 

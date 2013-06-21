@@ -205,78 +205,6 @@ static void WriteStringRecord(unsigned Code, StringRef Str,
   Stream.EmitRecord(Code, Vals, AbbrevToUse);
 }
 
-static void WriteAttributeGroupTable(const NaClValueEnumerator &VE,
-                                     NaClBitstreamWriter &Stream) {
-  const std::vector<AttributeSet> &AttrGrps = VE.getAttributeGroups();
-  if (AttrGrps.empty()) return;
-  DEBUG(dbgs() << "-> WriteAbbributeGroupTable\n");
-
-  Stream.EnterSubblock(naclbitc::PARAMATTR_GROUP_BLOCK_ID);
-
-  SmallVector<uint64_t, 64> Record;
-  for (unsigned i = 0, e = AttrGrps.size(); i != e; ++i) {
-    AttributeSet AS = AttrGrps[i];
-    for (unsigned i = 0, e = AS.getNumSlots(); i != e; ++i) {
-      AttributeSet A = AS.getSlotAttributes(i);
-
-      Record.push_back(VE.getAttributeGroupID(A));
-      Record.push_back(AS.getSlotIndex(i));
-
-      for (AttributeSet::iterator I = AS.begin(0), E = AS.end(0);
-           I != E; ++I) {
-        Attribute Attr = *I;
-        if (Attr.isEnumAttribute()) {
-          Record.push_back(0);
-          Record.push_back(Attr.getKindAsEnum());
-        } else if (Attr.isAlignAttribute()) {
-          Record.push_back(1);
-          Record.push_back(Attr.getKindAsEnum());
-          Record.push_back(Attr.getValueAsInt());
-        } else {
-          StringRef Kind = Attr.getKindAsString();
-          StringRef Val = Attr.getValueAsString();
-
-          Record.push_back(Val.empty() ? 3 : 4);
-          Record.append(Kind.begin(), Kind.end());
-          Record.push_back(0);
-          if (!Val.empty()) {
-            Record.append(Val.begin(), Val.end());
-            Record.push_back(0);
-          }
-        }
-      }
-
-      Stream.EmitRecord(naclbitc::PARAMATTR_GRP_CODE_ENTRY, Record);
-      Record.clear();
-    }
-  }
-
-  Stream.ExitBlock();
-  DEBUG(dbgs() << "<- WriteAbbributeGroupTable\n");
-}
-
-static void WriteAttributeTable(const NaClValueEnumerator &VE,
-                                NaClBitstreamWriter &Stream) {
-  const std::vector<AttributeSet> &Attrs = VE.getAttributes();
-  if (Attrs.empty()) return;
-  DEBUG(dbgs() << "-> WriteAttributeTable\n");
-
-  Stream.EnterSubblock(naclbitc::PARAMATTR_BLOCK_ID);
-
-  SmallVector<uint64_t, 64> Record;
-  for (unsigned i = 0, e = Attrs.size(); i != e; ++i) {
-    const AttributeSet &A = Attrs[i];
-    for (unsigned i = 0, e = A.getNumSlots(); i != e; ++i)
-      Record.push_back(VE.getAttributeGroupID(A.getSlotAttributes(i)));
-
-    Stream.EmitRecord(naclbitc::PARAMATTR_CODE_ENTRY, Record);
-    Record.clear();
-  }
-
-  Stream.ExitBlock();
-  DEBUG(dbgs() << "<- WriteAttributeTable\n");
-}
-
 /// WriteTypeTable - Write out the type table for a module.
 static void WriteTypeTable(const NaClValueEnumerator &VE,
                            NaClBitstreamWriter &Stream) {
@@ -615,18 +543,11 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
 
   // Emit the function proto information.
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
-    // FUNCTION:  [type, callingconv, isproto, linkage, paramattrs, alignment,
-    //             section, visibility, gc, unnamed_addr]
+    // FUNCTION:  [type, callingconv, isproto, linkage]
     Vals.push_back(VE.getTypeID(F->getType()));
     Vals.push_back(GetEncodedCallingConv(F->getCallingConv()));
     Vals.push_back(F->isDeclaration());
     Vals.push_back(getEncodedLinkage(F));
-    Vals.push_back(VE.getAttributeID(F->getAttributes()));
-    Vals.push_back(Log2_32(F->getAlignment())+1);
-    Vals.push_back(F->hasSection() ? SectionMap[F->getSection()] : 0);
-    Vals.push_back(getEncodedVisibility(F));
-    Vals.push_back(F->hasGC() ? GCMap[F->getGC()] : 0);
-    Vals.push_back(F->hasUnnamedAddr());
 
     unsigned AbbrevToUse = 0;
     Stream.EmitRecord(naclbitc::MODULE_CODE_FUNCTION, Vals, AbbrevToUse);
@@ -1501,7 +1422,6 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
     Code = naclbitc::FUNC_CODE_INST_CALL;
 
-    Vals.push_back(VE.getAttributeID(CI.getAttributes()));
     Vals.push_back((GetEncodedCallingConv(CI.getCallingConv()) << 1)
                    | unsigned(CI.isTailCall()));
     PushValueAndType(CI.getCalledValue(), InstID, Vals, VE);  // Callee
@@ -1856,12 +1776,6 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 
   // Emit blockinfo, which defines the standard abbreviations etc.
   WriteBlockInfo(VE, Stream);
-
-  // Emit information about attribute groups.
-  WriteAttributeGroupTable(VE, Stream);
-
-  // Emit information about parameter attributes.
-  WriteAttributeTable(VE, Stream);
 
   // Emit information describing all of the types in the module.
   WriteTypeTable(VE, Stream);

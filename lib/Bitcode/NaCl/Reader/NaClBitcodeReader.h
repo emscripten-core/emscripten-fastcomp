@@ -20,7 +20,6 @@
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/GVMaterializer.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ValueHandle.h"
@@ -146,14 +145,6 @@ class NaClBitcodeReader : public GVMaterializer {
   std::vector<std::pair<GlobalVariable*, unsigned> > GlobalInits;
   std::vector<std::pair<GlobalAlias*, unsigned> > AliasInits;
 
-  /// MAttributes - The set of attributes by index.  Index zero in the
-  /// file is for null, and is thus not represented here.  As such all indices
-  /// are off by one.
-  std::vector<AttributeSet> MAttributes;
-
-  /// \brief The set of attribute groups.
-  std::map<unsigned, AttributeSet> MAttributeGroups;
-
   /// FunctionBBs - While parsing a function body, this is a list of the basic
   /// blocks for the function.
   std::vector<BasicBlock*> FunctionBBs;
@@ -258,11 +249,6 @@ private:
     if (ID >= FunctionBBs.size()) return 0; // Invalid ID
     return FunctionBBs[ID];
   }
-  AttributeSet getAttributes(unsigned i) const {
-    if (i-1 < MAttributes.size())
-      return MAttributes[i-1];
-    return AttributeSet();
-  }
 
   /// getValueTypePair - Read a value/type pair out of the specified record from
   /// slot 'Slot'.  Increment Slot past the number of slots used in the record.
@@ -331,8 +317,6 @@ private:
   }
 
   bool ParseModule(bool Resume);
-  bool ParseAttributeBlock();
-  bool ParseAttributeGroupBlock();
   bool ParseTypeTable();
   bool ParseTypeTableBody();
 

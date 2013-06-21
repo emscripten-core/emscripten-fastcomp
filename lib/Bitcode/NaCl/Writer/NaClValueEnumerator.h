@@ -17,7 +17,6 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Attributes.h"
 #include <vector>
 
 namespace llvm {
@@ -30,7 +29,6 @@ class Function;
 class Module;
 class MDNode;
 class NamedMDNode;
-class AttributeSet;
 class ValueSymbolTable;
 class MDSymbolTable;
 class raw_ostream;
@@ -61,14 +59,6 @@ private:
   ValueList MDValues;
   SmallVector<const MDNode *, 8> FunctionLocalMDs;
   ValueMapType MDValueMap;
-
-  typedef DenseMap<AttributeSet, unsigned> AttributeGroupMapType;
-  AttributeGroupMapType AttributeGroupMap;
-  std::vector<AttributeSet> AttributeGroups;
-
-  typedef DenseMap<AttributeSet, unsigned> AttributeMapType;
-  AttributeMapType AttributeMap;
-  std::vector<AttributeSet> Attribute;
 
   /// GlobalBasicBlockIDs - This map memoizes the basic block ID's referenced by
   /// the "getGlobalBasicBlockID" method.
@@ -112,20 +102,6 @@ public:
   unsigned getInstructionID(const Instruction *I) const;
   void setInstructionID(const Instruction *I);
 
-  unsigned getAttributeID(AttributeSet PAL) const {
-    if (PAL.isEmpty()) return 0;  // Null maps to zero.
-    AttributeMapType::const_iterator I = AttributeMap.find(PAL);
-    assert(I != AttributeMap.end() && "Attribute not in NaClValueEnumerator!");
-    return I->second;
-  }
-
-  unsigned getAttributeGroupID(AttributeSet PAL) const {
-    if (PAL.isEmpty()) return 0;  // Null maps to zero.
-    AttributeGroupMapType::const_iterator I = AttributeGroupMap.find(PAL);
-    assert(I != AttributeGroupMap.end() && "Attribute not in NaClValueEnumerator!");
-    return I->second;
-  }
-
   /// getFunctionConstantRange - Return the range of values that corresponds to
   /// function-local constants.
   void getFunctionConstantRange(unsigned &Start, unsigned &End) const {
@@ -141,12 +117,6 @@ public:
   const TypeList &getTypes() const { return Types; }
   const std::vector<const BasicBlock*> &getBasicBlocks() const {
     return BasicBlocks;
-  }
-  const std::vector<AttributeSet> &getAttributes() const {
-    return Attribute;
-  }
-  const std::vector<AttributeSet> &getAttributeGroups() const {
-    return AttributeGroups;
   }
 
   /// getGlobalBasicBlockID - This returns the function-specific ID for the
@@ -171,7 +141,6 @@ private:
   void EnumerateValue(const Value *V);
   void EnumerateType(Type *T, bool InsideOptimizeTypes=false);
   void EnumerateOperandType(const Value *V);
-  void EnumerateAttributes(AttributeSet PAL);
 
   void EnumerateValueSymbolTable(const ValueSymbolTable &ST);
   void EnumerateNamedMetadata(const Module *M);

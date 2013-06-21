@@ -47,7 +47,6 @@ void NaClBitcodeReader::FreeState() {
   ValueList.clear();
   MDValueList.clear();
 
-  std::vector<AttributeSet>().swap(MAttributes);
   std::vector<BasicBlock*>().swap(FunctionBBs);
   std::vector<Function*>().swap(FunctionsWithBodies);
   DeferredFunctionInfo.clear();
@@ -440,163 +439,6 @@ Type *NaClBitcodeReader::getTypeByID(unsigned ID) {
 //  Functions for parsing blocks from the bitcode file
 //===----------------------------------------------------------------------===//
 
-
-/// \brief This fills an AttrBuilder object with the LLVM attributes that have
-/// been decoded from the given integer. This function must stay in sync with
-/// 'encodeLLVMAttributesForBitcode'.
-static void decodeLLVMAttributesForBitcode(AttrBuilder &B,
-                                           uint64_t EncodedAttrs) {
-  // FIXME: Remove in 4.0.
-
-  // The alignment is stored as a 16-bit raw value from bits 31--16.  We shift
-  // the bits above 31 down by 11 bits.
-  unsigned Alignment = (EncodedAttrs & (0xffffULL << 16)) >> 16;
-  assert((!Alignment || isPowerOf2_32(Alignment)) &&
-         "Alignment must be a power of two.");
-
-  if (Alignment)
-    B.addAlignmentAttr(Alignment);
-  B.addRawValue(((EncodedAttrs & (0xfffffULL << 32)) >> 11) |
-                (EncodedAttrs & 0xffff));
-}
-
-bool NaClBitcodeReader::ParseAttributeBlock() {
-  DEBUG(dbgs() << "-> ParseAttributeBlock\n");
-  if (Stream.EnterSubBlock(naclbitc::PARAMATTR_BLOCK_ID))
-    return Error("Malformed block record");
-
-  if (!MAttributes.empty())
-    return Error("Multiple PARAMATTR blocks found!");
-
-  SmallVector<uint64_t, 64> Record;
-
-  SmallVector<AttributeSet, 8> Attrs;
-
-  // Read all the records.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
-    case NaClBitstreamEntry::Error:
-      return Error("Error at end of PARAMATTR block");
-    case NaClBitstreamEntry::EndBlock:
-      DEBUG(dbgs() << "<- ParseAttributeBlock\n");
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    // Read a record.
-    Record.clear();
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default:  // Default behavior: ignore.
-      break;
-    case naclbitc::PARAMATTR_CODE_ENTRY_OLD: { // ENTRY: [paramidx0, attr0, ...]
-      // FIXME: Remove in 4.0.
-      if (Record.size() & 1)
-        return Error("Invalid ENTRY record");
-
-      for (unsigned i = 0, e = Record.size(); i != e; i += 2) {
-        AttrBuilder B;
-        decodeLLVMAttributesForBitcode(B, Record[i+1]);
-        Attrs.push_back(AttributeSet::get(Context, Record[i], B));
-      }
-
-      MAttributes.push_back(AttributeSet::get(Context, Attrs));
-      Attrs.clear();
-      break;
-    }
-    case naclbitc::PARAMATTR_CODE_ENTRY: { // ENTRY: [attrgrp0, attrgrp1, ...]
-      for (unsigned i = 0, e = Record.size(); i != e; ++i)
-        Attrs.push_back(MAttributeGroups[Record[i]]);
-
-      MAttributes.push_back(AttributeSet::get(Context, Attrs));
-      Attrs.clear();
-      break;
-    }
-    }
-  }
-}
-
-bool NaClBitcodeReader::ParseAttributeGroupBlock() {
-  DEBUG(dbgs() << "-> ParseAttributeGroupBlock\n");
-  if (Stream.EnterSubBlock(naclbitc::PARAMATTR_GROUP_BLOCK_ID))
-    return Error("Malformed block record");
-
-  if (!MAttributeGroups.empty())
-    return Error("Multiple PARAMATTR_GROUP blocks found!");
-
-  SmallVector<uint64_t, 64> Record;
-
-  // Read all the records.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
-    case NaClBitstreamEntry::Error:
-      return Error("Error at end of PARAMATTR_GROUP block");
-    case NaClBitstreamEntry::EndBlock:
-      DEBUG(dbgs() << "<- ParseAttributeGroupBlock\n");
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    // Read a record.
-    Record.clear();
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default:  // Default behavior: ignore.
-      break;
-    case naclbitc::PARAMATTR_GRP_CODE_ENTRY: {
-      // ENTRY: [grpid, idx, a0, a1, ...]
-      if (Record.size() < 3)
-        return Error("Invalid ENTRY record");
-
-      uint64_t GrpID = Record[0];
-      uint64_t Idx = Record[1]; // Index of the object this attribute refers to.
-
-      AttrBuilder B;
-      for (unsigned i = 2, e = Record.size(); i != e; ++i) {
-        if (Record[i] == 0) {        // Enum attribute
-          B.addAttribute(Attribute::AttrKind(Record[++i]));
-        } else if (Record[i] == 1) { // Align attribute
-          if (Attribute::AttrKind(Record[++i]) == Attribute::Alignment)
-            B.addAlignmentAttr(Record[++i]);
-          else
-            B.addStackAlignmentAttr(Record[++i]);
-        } else {                     // String attribute
-          assert((Record[i] == 3 || Record[i] == 4) &&
-                 "Invalid attribute group entry");
-          bool HasValue = (Record[i++] == 4);
-          SmallString<64> KindStr;
-          SmallString<64> ValStr;
-
-          while (Record[i] != 0 && i != e)
-            KindStr += Record[i++];
-          assert(Record[i] == 0 && "Kind string not null terminated");
-
-          if (HasValue) {
-            // Has a value associated with it.
-            ++i; // Skip the '0' that terminates the "kind" string.
-            while (Record[i] != 0 && i != e)
-              ValStr += Record[i++];
-            assert(Record[i] == 0 && "Value string not null terminated");
-          }
-
-          B.addAttribute(KindStr.str(), ValStr.str());
-        }
-      }
-
-      MAttributeGroups[GrpID] = AttributeSet::get(Context, Idx, B);
-      break;
-    }
-    }
-  }
-}
 
 bool NaClBitcodeReader::ParseTypeTable() {
   DEBUG(dbgs() << "-> ParseTypeTable\n");
@@ -1550,14 +1392,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         if (Stream.ReadBlockInfoBlock())
           return Error("Malformed BlockInfoBlock");
         break;
-      case naclbitc::PARAMATTR_BLOCK_ID:
-        if (ParseAttributeBlock())
-          return true;
-        break;
-      case naclbitc::PARAMATTR_GROUP_BLOCK_ID:
-        if (ParseAttributeGroupBlock())
-          return true;
-        break;
       case naclbitc::TYPE_BLOCK_ID_NEW:
         if (ParseTypeTable())
           return true;
@@ -1737,10 +1571,9 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         GlobalInits.push_back(std::make_pair(NewGV, InitID-1));
       break;
     }
-    // FUNCTION:  [type, callingconv, isproto, linkage, paramattr,
-    //             alignment, section, visibility, gc, unnamed_addr]
+    // FUNCTION:  [type, callingconv, isproto, linkage]
     case naclbitc::MODULE_CODE_FUNCTION: {
-      if (Record.size() < 8)
+      if (Record.size() < 4)
         return Error("Invalid MODULE_CODE_FUNCTION record");
       Type *Ty = getTypeByID(Record[0]);
       if (!Ty) return Error("Invalid MODULE_CODE_FUNCTION record");
@@ -1757,24 +1590,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       Func->setCallingConv(GetDecodedCallingConv(Record[1]));
       bool isProto = Record[2];
       Func->setLinkage(GetDecodedLinkage(Record[3]));
-      Func->setAttributes(getAttributes(Record[4]));
-
-      Func->setAlignment((1 << Record[5]) >> 1);
-      if (Record[6]) {
-        if (Record[6]-1 >= SectionTable.size())
-          return Error("Invalid section ID");
-        Func->setSection(SectionTable[Record[6]-1]);
-      }
-      Func->setVisibility(GetDecodedVisibility(Record[7]));
-      if (Record.size() > 8 && Record[8]) {
-        if (Record[8]-1 > GCTable.size())
-          return Error("Invalid GC ID");
-        Func->setGC(GCTable[Record[8]-1].c_str());
-      }
-      bool UnnamedAddr = false;
-      if (Record.size() > 9)
-        UnnamedAddr = Record[9];
-      Func->setUnnamedAddr(UnnamedAddr);
       ValueList.push_back(Func);
 
       // If this is a function with a body, remember the prototype we are
@@ -2673,14 +2488,13 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL: {
-      // CALL: [paramattrs, cc, fnty, fnid, arg0, arg1...]
-      if (Record.size() < 3)
+      // CALL: [cc, fnty, fnid, arg0, arg1...]
+      if (Record.size() < 2)
         return Error("Invalid CALL record");
 
-      AttributeSet PAL = getAttributes(Record[0]);
-      unsigned CCInfo = Record[1];
+      unsigned CCInfo = Record[0];
 
-      unsigned OpNum = 2;
+      unsigned OpNum = 1;
       Value *Callee;
       if (getValueTypePair(Record, OpNum, NextValueNo, Callee))
         return Error("Invalid CALL record");
@@ -2719,7 +2533,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       InstructionList.push_back(I);
       cast<CallInst>(I)->setCallingConv(GetDecodedCallingConv(CCInfo>>1));
       cast<CallInst>(I)->setTailCall(CCInfo & 1);
-      cast<CallInst>(I)->setAttributes(PAL);
       break;
     }
     case naclbitc::FUNC_CODE_INST_VAARG: { // VAARG: [valistty, valist, instty]
