@@ -131,7 +131,7 @@ OptLevel("O",
          cl::init(' '));
 
 static cl::opt<std::string>
-TargetTriple("mtriple", cl::desc("Override target triple for module"));
+UserDefinedTriple("mtriple", cl::desc("Set target triple"));
 
 cl::opt<bool> NoVerify("disable-verify", cl::Hidden,
                        cl::desc("Do not verify input module"));
@@ -338,13 +338,12 @@ static int compileModule(char **argv, LLVMContext &Context) {
       createAddPNaClExternalDeclsPass());
   AddPNaClExternalDeclsPass->runOnModule(*mod);
 
-  // If we are supposed to override the target triple, do so now.
-  if (!TargetTriple.empty())
-    mod->setTargetTriple(Triple::normalize(TargetTriple));
-  TheTriple = Triple(mod->getTargetTriple());
-
-  if (TheTriple.getTriple().empty())
-    TheTriple.setTriple(sys::getDefaultTargetTriple());
+  if (UserDefinedTriple.empty()) {
+    report_fatal_error("-mtriple must be set to a target triple for pnacl-llc");
+  } else {
+    mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
+    TheTriple = Triple(mod->getTargetTriple());
+  }
 
   // Get the target specific parser.
   std::string Error;
