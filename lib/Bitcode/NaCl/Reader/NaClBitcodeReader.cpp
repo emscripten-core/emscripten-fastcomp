@@ -1466,21 +1466,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       }
       break;
     }
-    case naclbitc::MODULE_CODE_TRIPLE: {  // TRIPLE: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_TRIPLE record");
-
-      // @LOCALMOD-BEGIN
-      // This hack is needed in order to get Clang compiled binaries
-      // working with the Gold plugin, until PNaCl backend is introduced
-      // in lib/Target/PNaCl.
-      if (S == "le32-unknown-nacl")
-        S = "armv7-none-linux-gnueabi";
-      // @LOCALMOD-END
-      TheModule->setTargetTriple(S);
-      break;
-    }
     case naclbitc::MODULE_CODE_DATALAYOUT: {  // DATALAYOUT: [strchr x N]
       std::string S;
       if (ConvertToString(Record, 0, S))
@@ -1686,44 +1671,6 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
 
       return Error("Invalid record at top-level");
     }
-  }
-}
-
-bool NaClBitcodeReader::ParseModuleTriple(std::string &Triple) {
-  DEBUG(dbgs() << "-> ParseModuleTriple\n");
-  if (Stream.EnterSubBlock(naclbitc::MODULE_BLOCK_ID))
-    return Error("Malformed block record");
-
-  SmallVector<uint64_t, 64> Record;
-
-  // Read all the records for this module.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
-    case NaClBitstreamEntry::Error:
-      return Error("malformed module block");
-    case NaClBitstreamEntry::EndBlock:
-      DEBUG(dbgs() << "<- ParseModuleTriple\n");
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    // Read a record.
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default: break;  // Default behavior, ignore unknown content.
-    case naclbitc::MODULE_CODE_TRIPLE: {  // TRIPLE: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_TRIPLE record");
-      Triple = S;
-      break;
-    }
-    }
-    Record.clear();
   }
 }
 

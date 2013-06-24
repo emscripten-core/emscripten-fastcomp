@@ -16,7 +16,6 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "NaClValueEnumerator.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/IR/Constants.h"
@@ -425,15 +424,12 @@ static unsigned getEncodedThreadLocalMode(const GlobalVariable *GV) {
   llvm_unreachable("Invalid TLS model");
 }
 
-// Emit top-level description of module, including target triple, inline asm,
+// Emit top-level description of module, including inline asm,
 // descriptors for global variables, and function prototype info.
 static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
                             NaClBitstreamWriter &Stream) {
   DEBUG(dbgs() << "-> WriteModuleInfo\n");
   // Emit various pieces of data attached to a module.
-  if (!M->getTargetTriple().empty())
-    WriteStringRecord(naclbitc::MODULE_CODE_TRIPLE, M->getTargetTriple(),
-                      0/*TODO*/, Stream);
   if (!M->getDataLayout().empty())
     WriteStringRecord(naclbitc::MODULE_CODE_DATALAYOUT, M->getDataLayout(),
                       0/*TODO*/, Stream);
@@ -1780,7 +1776,7 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
   // Emit information describing all of the types in the module.
   WriteTypeTable(VE, Stream);
 
-  // Emit top-level description of module, including target triple, inline asm,
+  // Emit top-level description of module, including inline asm,
   // descriptors for global variables, and function prototype info.
   WriteModuleInfo(M, VE, Stream);
 

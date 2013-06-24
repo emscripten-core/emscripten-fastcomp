@@ -328,7 +328,6 @@ private:
   bool ResolveGlobalAndAliasInits();
   bool ParseMetadata();
   bool ParseMetadataAttachment();
-  bool ParseModuleTriple(std::string &Triple);
   bool ParseUseLists();
   bool InitStream();
   bool InitStreamFromBuffer();
