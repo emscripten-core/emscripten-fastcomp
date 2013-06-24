@@ -231,6 +231,7 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
     case naclbitc::FUNC_CODE_DEBUG_LOC_AGAIN:   return "DEBUG_LOC_AGAIN";
     case naclbitc::FUNC_CODE_INST_CALL:         return "INST_CALL";
     case naclbitc::FUNC_CODE_DEBUG_LOC:         return "DEBUG_LOC";
+    case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF: return "FORWARDTYPEREF";
     }
   case naclbitc::VALUE_SYMTAB_BLOCK_ID:
     switch (CodeID) {

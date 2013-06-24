@@ -497,6 +497,9 @@ void NaClValueEnumerator::incorporateFunction(const Function &F) {
   NumModuleValues = Values.size();
   NumModuleMDValues = MDValues.size();
 
+  // Make sure no insertions outside of a function.
+  assert(FnForwardTypeRefs.empty());
+
   // Adding function arguments to the value table.
   for (Function::const_arg_iterator I = F.arg_begin(), E = F.arg_end();
        I != E; ++I)
@@ -565,6 +568,7 @@ void NaClValueEnumerator::purgeFunction() {
   MDValues.resize(NumModuleMDValues);
   BasicBlocks.clear();
   FunctionLocalMDs.clear();
+  FnForwardTypeRefs.clear();
 }
 
 static void IncorporateFunctionInfoGlobalBBIDs(const Function *F,

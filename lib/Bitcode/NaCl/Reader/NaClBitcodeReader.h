@@ -77,8 +77,13 @@ public:
     ValuePtrs.resize(N);
   }
 
+  // Gets or creates the forward reference value for Idx with the given type.
+  Value *getOrCreateValueFwdRef(unsigned Idx, Type *Ty);
+
   Constant *getConstantFwdRef(unsigned Idx, Type *Ty);
-  Value *getValueFwdRef(unsigned Idx, Type *Ty);
+
+  // Gets the forward reference value for Idx.
+  Value *getValueFwdRef(unsigned Idx);
 
   void AssignValue(Value *V, unsigned Idx);
 
@@ -240,37 +245,34 @@ private:
              (!AcceptSupportedBitcodeOnly && Header.IsReadable()));
   }
   Type *getTypeByID(unsigned ID);
-  Value *getFnValueByID(unsigned ID, Type *Ty) {
+  // Gets or creates the (function-level) forward referenced value for
+  // ID with the given type.
+  Value *getOrCreateFnValueByID(unsigned ID, Type *Ty) {
     if (Ty && Ty->isMetadataTy())
       return MDValueList.getValueFwdRef(ID);
-    return ValueList.getValueFwdRef(ID, Ty);
+    return ValueList.getOrCreateValueFwdRef(ID, Ty);
+  }
+  // Returns the value associated with ID. The value must already exist,
+  // or a forward referenced value created by getOrCreateFnVaueByID.
+  Value *getFnValueByID(unsigned ID) {
+    return ValueList.getValueFwdRef(ID);
   }
   BasicBlock *getBasicBlock(unsigned ID) const {
     if (ID >= FunctionBBs.size()) return 0; // Invalid ID
     return FunctionBBs[ID];
   }
 
-  /// getValueTypePair - Read a value/type pair out of the specified record from
-  /// slot 'Slot'.  Increment Slot past the number of slots used in the record.
-  /// Return true on failure.
-  bool getValueTypePair(SmallVector<uint64_t, 64> &Record, unsigned &Slot,
-                        unsigned InstNum, Value *&ResVal) {
+  /// \brief Read a value out of the specified record from slot 'Slot'.
+  /// Increment Slot past the number of slots used by the value in the record.
+  /// Return true if there is an error.
+  bool getValue(SmallVector<uint64_t, 64> &Record, unsigned &Slot,
+                unsigned InstNum, Value *&ResVal) {
     if (Slot == Record.size()) return true;
     unsigned ValNo = (unsigned)Record[Slot++];
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;
-    if (ValNo < InstNum) {
-      // If this is not a forward reference, just return the value we already
-      // have.
-      ResVal = getFnValueByID(ValNo, 0);
-      return ResVal == 0;
-    } else if (Slot == Record.size()) {
-      return true;
-    }
-
-    unsigned TypeNo = (unsigned)Record[Slot++];
-    ResVal = getFnValueByID(ValNo, getTypeByID(TypeNo));
+    ResVal = getFnValueByID(ValNo);
     return ResVal == 0;
   }
 
@@ -302,7 +304,7 @@ private:
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;
-    return getFnValueByID(ValNo, Ty);
+    return getOrCreateFnValueByID(ValNo, Ty);
   }
 
   /// getValueSigned -- Like getValue, but decodes signed VBRs.
@@ -313,7 +315,7 @@ private:
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;
-    return getFnValueByID(ValNo, Ty);
+    return getOrCreateFnValueByID(ValNo, Ty);
   }
 
   bool ParseModule(bool Resume);

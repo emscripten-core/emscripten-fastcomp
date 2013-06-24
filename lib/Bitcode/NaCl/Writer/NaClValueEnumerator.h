@@ -16,6 +16,7 @@
 #define NACL_VALUE_ENUMERATOR_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include <vector>
 
@@ -83,6 +84,11 @@ private:
   unsigned FirstFuncConstantID;
   unsigned FirstInstID;
 
+  /// Holds values that have been forward referenced within a function.
+  /// Used to make sure we don't generate more forward reference declarations
+  /// than necessary.
+  SmallSet<unsigned, 32> FnForwardTypeRefs;
+
   NaClValueEnumerator(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
   void operator=(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
 public:
@@ -107,6 +113,12 @@ public:
   void getFunctionConstantRange(unsigned &Start, unsigned &End) const {
     Start = FirstFuncConstantID;
     End = FirstInstID;
+  }
+
+  /// \brief Inserts the give value into the set of known function forward
+  /// value type refs. Returns true if the value id is added to the set.
+  bool InsertFnForwardTypeRef(unsigned ValID) {
+    return FnForwardTypeRefs.insert(ValID);
   }
 
   const ValueList &getValues() const { return Values; }

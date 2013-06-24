@@ -77,7 +77,8 @@ enum {
   FUNCTION_INST_RET_VOID_ABBREV,
   FUNCTION_INST_RET_VAL_ABBREV,
   FUNCTION_INST_UNREACHABLE_ABBREV,
-  FUNCTION_INST_MAX_ABBREV = FUNCTION_INST_UNREACHABLE_ABBREV,
+  FUNCTION_INST_FORWARDTYPEREF_ABBREV,
+  FUNCTION_INST_MAX_ABBREV = FUNCTION_INST_FORWARDTYPEREF_ABBREV,
 
   // TYPE_BLOCK_ID_NEW abbrev id's.
   TYPE_POINTER_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
@@ -1070,6 +1071,24 @@ static void WriteModuleConstants(const NaClValueEnumerator &VE,
   }
 }
 
+/// \brief Emits a type for the forward value reference. That is, if
+/// the ID for the given value is larger than or equal to the BaseID,
+/// the corresponding forward reference is generated.
+static void EmitFnForwardTypeRef(const Value *V,
+                                 unsigned BaseID,
+                                 NaClValueEnumerator &VE,
+                                 NaClBitstreamWriter &Stream) {
+  unsigned ValID = VE.getValueID(V);
+  if (ValID >= BaseID &&
+      VE.InsertFnForwardTypeRef(ValID)) {
+    SmallVector<unsigned, 2> Vals;
+    Vals.push_back(ValID);
+    Vals.push_back(VE.getTypeID(V->getType()));
+    Stream.EmitRecord(naclbitc::FUNC_CODE_INST_FORWARDTYPEREF, Vals,
+                      FUNCTION_INST_FORWARDTYPEREF_ABBREV);
+  }
+}
+
 /// PushValueAndType - The file has to encode both the value and type id for
 /// many values, because we need to know what type to create for forward
 /// references.  However, most operands are not forward references, so this type
@@ -1078,17 +1097,14 @@ static void WriteModuleConstants(const NaClValueEnumerator &VE,
 /// This function adds V's value ID to Vals.  If the value ID is higher than the
 /// instruction ID, then it is a forward reference, and it also includes the
 /// type ID.  The value ID that is written is encoded relative to the InstID.
-static bool PushValueAndType(const Value *V, unsigned InstID,
+static void PushValueAndType(const Value *V, unsigned InstID,
                              SmallVector<unsigned, 64> &Vals,
-                             NaClValueEnumerator &VE) {
+                             NaClValueEnumerator &VE,
+                             NaClBitstreamWriter &Stream) {
+  EmitFnForwardTypeRef(V, InstID, VE, Stream);
   unsigned ValID = VE.getValueID(V);
   // Make encoding relative to the InstID.
   Vals.push_back(InstID - ValID);
-  if (ValID >= InstID) {
-    Vals.push_back(VE.getTypeID(V->getType()));
-    return true;
-  }
-  return false;
 }
 
 /// pushValue - Like PushValueAndType, but where the type of the value is
@@ -1126,22 +1142,23 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   switch (I.getOpcode()) {
   default:
     if (Instruction::isCast(I.getOpcode())) {
+      // CAST:       [opval, destty, castopc]
       Code = naclbitc::FUNC_CODE_INST_CAST;
-      if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))
-        AbbrevToUse = FUNCTION_INST_CAST_ABBREV;
+      AbbrevToUse = FUNCTION_INST_CAST_ABBREV;
+      PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
       Vals.push_back(VE.getTypeID(I.getType()));
       Vals.push_back(GetEncodedCastOpcode(I.getOpcode()));
     } else {
+      // BINOP:      [opval, opval, opcode[, flags]]
       assert(isa<BinaryOperator>(I) && "Unknown instruction!");
       Code = naclbitc::FUNC_CODE_INST_BINOP;
-      if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))
-        AbbrevToUse = FUNCTION_INST_BINOP_ABBREV;
+      AbbrevToUse = FUNCTION_INST_BINOP_ABBREV;
+      PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
       pushValue(I.getOperand(1), InstID, Vals, VE);
       Vals.push_back(GetEncodedBinaryOpcode(I.getOpcode()));
       uint64_t Flags = GetOptimizationFlags(&I);
       if (Flags != 0) {
-        if (AbbrevToUse == FUNCTION_INST_BINOP_ABBREV)
-          AbbrevToUse = FUNCTION_INST_BINOP_FLAGS_ABBREV;
+        AbbrevToUse = FUNCTION_INST_BINOP_FLAGS_ABBREV;
         Vals.push_back(Flags);
       }
     }
@@ -1152,11 +1169,11 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     if (cast<GEPOperator>(&I)->isInBounds())
       Code = naclbitc::FUNC_CODE_INST_INBOUNDS_GEP;
     for (unsigned i = 0, e = I.getNumOperands(); i != e; ++i)
-      PushValueAndType(I.getOperand(i), InstID, Vals, VE);
+      PushValueAndType(I.getOperand(i), InstID, Vals, VE, Stream);
     break;
   case Instruction::ExtractValue: {
     Code = naclbitc::FUNC_CODE_INST_EXTRACTVAL;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     const ExtractValueInst *EVI = cast<ExtractValueInst>(&I);
     for (const unsigned *i = EVI->idx_begin(), *e = EVI->idx_end(); i != e; ++i)
       Vals.push_back(*i);
@@ -1164,8 +1181,8 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   }
   case Instruction::InsertValue: {
     Code = naclbitc::FUNC_CODE_INST_INSERTVAL;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
-    PushValueAndType(I.getOperand(1), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
+    PushValueAndType(I.getOperand(1), InstID, Vals, VE, Stream);
     const InsertValueInst *IVI = cast<InsertValueInst>(&I);
     for (const unsigned *i = IVI->idx_begin(), *e = IVI->idx_end(); i != e; ++i)
       Vals.push_back(*i);
@@ -1173,24 +1190,24 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   }
   case Instruction::Select:
     Code = naclbitc::FUNC_CODE_INST_VSELECT;
-    PushValueAndType(I.getOperand(1), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(1), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(2), InstID, Vals, VE);
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     break;
   case Instruction::ExtractElement:
     Code = naclbitc::FUNC_CODE_INST_EXTRACTELT;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     break;
   case Instruction::InsertElement:
     Code = naclbitc::FUNC_CODE_INST_INSERTELT;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     pushValue(I.getOperand(2), InstID, Vals, VE);
     break;
   case Instruction::ShuffleVector:
     Code = naclbitc::FUNC_CODE_INST_SHUFFLEVEC;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     pushValue(I.getOperand(2), InstID, Vals, VE);
     break;
@@ -1198,7 +1215,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   case Instruction::FCmp:
     // compare returning Int1Ty or vector of Int1Ty
     Code = naclbitc::FUNC_CODE_INST_CMP2;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(1), InstID, Vals, VE);
     Vals.push_back(cast<CmpInst>(I).getPredicate());
     break;
@@ -1210,11 +1227,11 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       if (NumOperands == 0)
         AbbrevToUse = FUNCTION_INST_RET_VOID_ABBREV;
       else if (NumOperands == 1) {
-        if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))
-          AbbrevToUse = FUNCTION_INST_RET_VAL_ABBREV;
+        PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
+        AbbrevToUse = FUNCTION_INST_RET_VAL_ABBREV;
       } else {
         for (unsigned i = 0, e = NumOperands; i != e; ++i)
-          PushValueAndType(I.getOperand(i), InstID, Vals, VE);
+          PushValueAndType(I.getOperand(i), InstID, Vals, VE, Stream);
       }
     }
     break;
@@ -1304,7 +1321,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::Resume:
     Code = naclbitc::FUNC_CODE_INST_RESUME;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     break;
   case Instruction::Unreachable:
     Code = naclbitc::FUNC_CODE_INST_UNREACHABLE;
@@ -1333,7 +1350,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     const LandingPadInst &LP = cast<LandingPadInst>(I);
     Code = naclbitc::FUNC_CODE_INST_LANDINGPAD;
     Vals.push_back(VE.getTypeID(LP.getType()));
-    PushValueAndType(LP.getPersonalityFn(), InstID, Vals, VE);
+    PushValueAndType(LP.getPersonalityFn(), InstID, Vals, VE, Stream);
     Vals.push_back(LP.isCleanup());
     Vals.push_back(LP.getNumClauses());
     for (unsigned I = 0, E = LP.getNumClauses(); I != E; ++I) {
@@ -1341,7 +1358,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
         Vals.push_back(LandingPadInst::Catch);
       else
         Vals.push_back(LandingPadInst::Filter);
-      PushValueAndType(LP.getClause(I), InstID, Vals, VE);
+      PushValueAndType(LP.getClause(I), InstID, Vals, VE, Stream);
     }
     break;
   }
@@ -1357,11 +1374,11 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   case Instruction::Load:
     if (cast<LoadInst>(I).isAtomic()) {
       Code = naclbitc::FUNC_CODE_INST_LOADATOMIC;
-      PushValueAndType(I.getOperand(0), InstID, Vals, VE);
+      PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);
     } else {
       Code = naclbitc::FUNC_CODE_INST_LOAD;
-      if (!PushValueAndType(I.getOperand(0), InstID, Vals, VE))  // ptr
-        AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
+      PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);  // ptr
+      AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
     }
     Vals.push_back(Log2_32(cast<LoadInst>(I).getAlignment())+1);
     Vals.push_back(cast<LoadInst>(I).isVolatile());
@@ -1375,7 +1392,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       Code = naclbitc::FUNC_CODE_INST_STOREATOMIC;
     else
       Code = naclbitc::FUNC_CODE_INST_STORE;
-    PushValueAndType(I.getOperand(1), InstID, Vals, VE);  // ptrty + ptr
+    PushValueAndType(I.getOperand(1), InstID, Vals, VE, Stream);  // ptrty + ptr
     pushValue(I.getOperand(0), InstID, Vals, VE);         // val.
     Vals.push_back(Log2_32(cast<StoreInst>(I).getAlignment())+1);
     Vals.push_back(cast<StoreInst>(I).isVolatile());
@@ -1386,7 +1403,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::AtomicCmpXchg:
     Code = naclbitc::FUNC_CODE_INST_CMPXCHG;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);  // ptrty + ptr
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);  // ptrty + ptr
     pushValue(I.getOperand(1), InstID, Vals, VE);         // cmp.
     pushValue(I.getOperand(2), InstID, Vals, VE);         // newval.
     Vals.push_back(cast<AtomicCmpXchgInst>(I).isVolatile());
@@ -1397,7 +1414,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::AtomicRMW:
     Code = naclbitc::FUNC_CODE_INST_ATOMICRMW;
-    PushValueAndType(I.getOperand(0), InstID, Vals, VE);  // ptrty + ptr
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream);  // ptrty + ptr
     pushValue(I.getOperand(1), InstID, Vals, VE);         // val.
     Vals.push_back(GetEncodedRMWOperation(
                      cast<AtomicRMWInst>(I).getOperation()));
@@ -1420,7 +1437,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
     Vals.push_back((GetEncodedCallingConv(CI.getCallingConv()) << 1)
                    | unsigned(CI.isTailCall()));
-    PushValueAndType(CI.getCalledValue(), InstID, Vals, VE);  // Callee
+    PushValueAndType(CI.getCalledValue(), InstID, Vals, VE, Stream);  // Callee
 
     // Emit value #'s for the fixed parameters.
     for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i) {
@@ -1435,7 +1452,8 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     if (FTy->isVarArg()) {
       for (unsigned i = FTy->getNumParams(), e = CI.getNumArgOperands();
            i != e; ++i)
-        PushValueAndType(CI.getArgOperand(i), InstID, Vals, VE);  // varargs
+        // varargs
+        PushValueAndType(CI.getArgOperand(i), InstID, Vals, VE, Stream);
     }
     break;
   }
@@ -1741,6 +1759,15 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_UNREACHABLE));
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_UNREACHABLE_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // INST_FORWARDTYPEREF abbrev for FUNCTION_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_FORWARDTYPEREF));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
+                                   Abbv) != FUNCTION_INST_FORWARDTYPEREF_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 

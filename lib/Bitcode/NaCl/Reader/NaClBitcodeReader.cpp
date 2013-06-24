@@ -282,7 +282,18 @@ Constant *NaClBitcodeReaderValueList::getConstantFwdRef(unsigned Idx,
   return C;
 }
 
-Value *NaClBitcodeReaderValueList::getValueFwdRef(unsigned Idx, Type *Ty) {
+Value *NaClBitcodeReaderValueList::getValueFwdRef(unsigned Idx) {
+  if (Idx >= size())
+    return 0;
+
+  if (Value *V = ValuePtrs[Idx])
+    return V;
+
+  return 0;
+}
+
+Value *NaClBitcodeReaderValueList::getOrCreateValueFwdRef(
+    unsigned Idx, Type *Ty) {
   if (Idx >= size())
     resize(Idx + 1);
 
@@ -795,7 +806,7 @@ bool NaClBitcodeReader::ParseMetadata() {
         if (Ty->isMetadataTy())
           Elts.push_back(MDValueList.getValueFwdRef(Record[i+1]));
         else if (!Ty->isVoidTy())
-          Elts.push_back(ValueList.getValueFwdRef(Record[i+1], Ty));
+          Elts.push_back(ValueList.getOrCreateValueFwdRef(Record[i+1], Ty));
         else
           Elts.push_back(NULL);
       }
@@ -1840,10 +1851,11 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       continue;
     }
 
-    case naclbitc::FUNC_CODE_INST_BINOP: {    // BINOP: [opval, ty, opval, opcode]
+    case naclbitc::FUNC_CODE_INST_BINOP: {
+      // BINOP: [opval, opval, opcode[, flags]]
       unsigned OpNum = 0;
       Value *LHS, *RHS;
-      if (getValueTypePair(Record, OpNum, NextValueNo, LHS) ||
+      if (getValue(Record, OpNum, NextValueNo, LHS) ||
           popValue(Record, OpNum, NextValueNo, LHS->getType(), RHS) ||
           OpNum+1 > Record.size())
         return Error("Invalid BINOP record");
@@ -1886,10 +1898,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
       break;
     }
-    case naclbitc::FUNC_CODE_INST_CAST: {    // CAST: [opval, opty, destty, castopc]
+    case naclbitc::FUNC_CODE_INST_CAST: {    // CAST: [opval, destty, castopc]
       unsigned OpNum = 0;
       Value *Op;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Op) ||
+      if (getValue(Record, OpNum, NextValueNo, Op) ||
           OpNum+2 != Record.size())
         return Error("Invalid CAST record");
 
@@ -1905,13 +1917,13 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     case naclbitc::FUNC_CODE_INST_GEP: { // GEP: [n x operands]
       unsigned OpNum = 0;
       Value *BasePtr;
-      if (getValueTypePair(Record, OpNum, NextValueNo, BasePtr))
+      if (getValue(Record, OpNum, NextValueNo, BasePtr))
         return Error("Invalid GEP record");
 
       SmallVector<Value*, 16> GEPIdx;
       while (OpNum != Record.size()) {
         Value *Op;
-        if (getValueTypePair(Record, OpNum, NextValueNo, Op))
+        if (getValue(Record, OpNum, NextValueNo, Op))
           return Error("Invalid GEP record");
         GEPIdx.push_back(Op);
       }
@@ -1924,10 +1936,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     }
 
     case naclbitc::FUNC_CODE_INST_EXTRACTVAL: {
-                                       // EXTRACTVAL: [opty, opval, n x indices]
+                                       // EXTRACTVAL: [opval, n x indices]
       unsigned OpNum = 0;
       Value *Agg;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Agg))
+      if (getValue(Record, OpNum, NextValueNo, Agg))
         return Error("Invalid EXTRACTVAL record");
 
       SmallVector<unsigned, 4> EXTRACTVALIdx;
@@ -1945,13 +1957,13 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     }
 
     case naclbitc::FUNC_CODE_INST_INSERTVAL: {
-                           // INSERTVAL: [opty, opval, opty, opval, n x indices]
+                           // INSERTVAL: [opval, opval, n x indices]
       unsigned OpNum = 0;
       Value *Agg;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Agg))
+      if (getValue(Record, OpNum, NextValueNo, Agg))
         return Error("Invalid INSERTVAL record");
       Value *Val;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Val))
+      if (getValue(Record, OpNum, NextValueNo, Val))
         return Error("Invalid INSERTVAL record");
 
       SmallVector<unsigned, 4> INSERTVALIdx;
@@ -1968,12 +1980,12 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_SELECT: { // SELECT: [opval, ty, opval, opval]
+    case naclbitc::FUNC_CODE_INST_SELECT: { // SELECT: [opval, opval, opval]
       // obsolete form of select
       // handles select i1 ... in old bitcode
       unsigned OpNum = 0;
       Value *TrueVal, *FalseVal, *Cond;
-      if (getValueTypePair(Record, OpNum, NextValueNo, TrueVal) ||
+      if (getValue(Record, OpNum, NextValueNo, TrueVal) ||
           popValue(Record, OpNum, NextValueNo, TrueVal->getType(), FalseVal) ||
           popValue(Record, OpNum, NextValueNo, Type::getInt1Ty(Context), Cond))
         return Error("Invalid SELECT record");
@@ -1983,14 +1995,14 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_VSELECT: {// VSELECT: [ty,opval,opval,predty,pred]
+    case naclbitc::FUNC_CODE_INST_VSELECT: {// VSELECT: [opval, opval, pred]
       // new form of select
       // handles select i1 or select [N x i1]
       unsigned OpNum = 0;
       Value *TrueVal, *FalseVal, *Cond;
-      if (getValueTypePair(Record, OpNum, NextValueNo, TrueVal) ||
+      if (getValue(Record, OpNum, NextValueNo, TrueVal) ||
           popValue(Record, OpNum, NextValueNo, TrueVal->getType(), FalseVal) ||
-          getValueTypePair(Record, OpNum, NextValueNo, Cond))
+          getValue(Record, OpNum, NextValueNo, Cond))
         return Error("Invalid SELECT record");
 
       // select condition can be either i1 or [N x i1]
@@ -2010,10 +2022,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_EXTRACTELT: { // EXTRACTELT: [opty, opval, opval]
+    case naclbitc::FUNC_CODE_INST_EXTRACTELT: { // EXTRACTELT: [opval, opval]
       unsigned OpNum = 0;
       Value *Vec, *Idx;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Vec) ||
+      if (getValue(Record, OpNum, NextValueNo, Vec) ||
           popValue(Record, OpNum, NextValueNo, Type::getInt32Ty(Context), Idx))
         return Error("Invalid EXTRACTELT record");
       I = ExtractElementInst::Create(Vec, Idx);
@@ -2021,10 +2033,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_INSERTELT: { // INSERTELT: [ty, opval,opval,opval]
+    case naclbitc::FUNC_CODE_INST_INSERTELT: { // INSERTELT: [opval, opval, opval]
       unsigned OpNum = 0;
       Value *Vec, *Elt, *Idx;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Vec) ||
+      if (getValue(Record, OpNum, NextValueNo, Vec) ||
           popValue(Record, OpNum, NextValueNo,
                    cast<VectorType>(Vec->getType())->getElementType(), Elt) ||
           popValue(Record, OpNum, NextValueNo, Type::getInt32Ty(Context), Idx))
@@ -2034,30 +2046,30 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_SHUFFLEVEC: {// SHUFFLEVEC: [opval,ty,opval,opval]
+    case naclbitc::FUNC_CODE_INST_SHUFFLEVEC: {// SHUFFLEVEC: [opval, opval, opval]
       unsigned OpNum = 0;
       Value *Vec1, *Vec2, *Mask;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Vec1) ||
+      if (getValue(Record, OpNum, NextValueNo, Vec1) ||
           popValue(Record, OpNum, NextValueNo, Vec1->getType(), Vec2))
         return Error("Invalid SHUFFLEVEC record");
 
-      if (getValueTypePair(Record, OpNum, NextValueNo, Mask))
+      if (getValue(Record, OpNum, NextValueNo, Mask))
         return Error("Invalid SHUFFLEVEC record");
       I = new ShuffleVectorInst(Vec1, Vec2, Mask);
       InstructionList.push_back(I);
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_CMP:   // CMP: [opty, opval, opval, pred]
+    case naclbitc::FUNC_CODE_INST_CMP:   // CMP: [opval, opval, pred]
       // Old form of ICmp/FCmp returning bool
       // Existed to differentiate between icmp/fcmp and vicmp/vfcmp which were
       // both legal on vectors but had different behaviour.
-    case naclbitc::FUNC_CODE_INST_CMP2: { // CMP2: [opty, opval, opval, pred]
+    case naclbitc::FUNC_CODE_INST_CMP2: { // CMP2: [opval, opval, pred]
       // FCmp/ICmp returning bool or vector of bool
 
       unsigned OpNum = 0;
       Value *LHS, *RHS;
-      if (getValueTypePair(Record, OpNum, NextValueNo, LHS) ||
+      if (getValue(Record, OpNum, NextValueNo, LHS) ||
           popValue(Record, OpNum, NextValueNo, LHS->getType(), RHS) ||
           OpNum+1 != Record.size())
         return Error("Invalid CMP record");
@@ -2070,7 +2082,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_RET: // RET: [opty,opval<optional>]
+    case naclbitc::FUNC_CODE_INST_RET: // RET: [opval<optional>]
       {
         unsigned Size = Record.size();
         if (Size == 0) {
@@ -2081,7 +2093,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
         unsigned OpNum = 0;
         Value *Op = NULL;
-        if (getValueTypePair(Record, OpNum, NextValueNo, Op))
+        if (getValue(Record, OpNum, NextValueNo, Op))
           return Error("Invalid RET record");
         if (OpNum != Record.size())
           return Error("Invalid RET record");
@@ -2184,7 +2196,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       InstructionList.push_back(SI);
       for (unsigned i = 0, e = NumCases; i != e; ++i) {
         ConstantInt *CaseVal =
-          dyn_cast_or_null<ConstantInt>(getFnValueByID(Record[3+i*2], OpTy));
+          dyn_cast_or_null<ConstantInt>(
+              getOrCreateFnValueByID(Record[3+i*2], OpTy));
         BasicBlock *DestBB = getBasicBlock(Record[1+3+i*2]);
         if (CaseVal == 0 || DestBB == 0) {
           delete SI;
@@ -2223,7 +2236,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     case naclbitc::FUNC_CODE_INST_RESUME: { // RESUME: [opval]
       unsigned Idx = 0;
       Value *Val = 0;
-      if (getValueTypePair(Record, Idx, NextValueNo, Val))
+      if (getValue(Record, Idx, NextValueNo, Val))
         return Error("Invalid RESUME record");
       I = ResumeInst::Create(Val);
       InstructionList.push_back(I);
@@ -2267,7 +2280,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Type *Ty = getTypeByID(Record[Idx++]);
       if (!Ty) return Error("Invalid LANDINGPAD record");
       Value *PersFn = 0;
-      if (getValueTypePair(Record, Idx, NextValueNo, PersFn))
+      if (getValue(Record, Idx, NextValueNo, PersFn))
         return Error("Invalid LANDINGPAD record");
 
       bool IsCleanup = !!Record[Idx++];
@@ -2279,7 +2292,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           LandingPadInst::ClauseType(Record[Idx++]); (void)CT;
         Value *Val;
 
-        if (getValueTypePair(Record, Idx, NextValueNo, Val)) {
+        if (getValue(Record, Idx, NextValueNo, Val)) {
           delete LP;
           return Error("Invalid LANDINGPAD record");
         }
@@ -2304,17 +2317,17 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       PointerType *Ty =
         dyn_cast_or_null<PointerType>(getTypeByID(Record[0]));
       Type *OpTy = getTypeByID(Record[1]);
-      Value *Size = getFnValueByID(Record[2], OpTy);
+      Value *Size = getOrCreateFnValueByID(Record[2], OpTy);
       unsigned Align = Record[3];
       if (!Ty || !Size) return Error("Invalid ALLOCA record");
       I = new AllocaInst(Ty->getElementType(), Size, (1 << Align) >> 1);
       InstructionList.push_back(I);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_LOAD: { // LOAD: [opty, op, align, vol]
+    case naclbitc::FUNC_CODE_INST_LOAD: { // LOAD: [op, align, vol]
       unsigned OpNum = 0;
       Value *Op;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Op) ||
+      if (getValue(Record, OpNum, NextValueNo, Op) ||
           OpNum+2 != Record.size())
         return Error("Invalid LOAD record");
 
@@ -2323,10 +2336,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_LOADATOMIC: {
-       // LOADATOMIC: [opty, op, align, vol, ordering, synchscope]
+       // LOADATOMIC: [op, align, vol, ordering, synchscope]
       unsigned OpNum = 0;
       Value *Op;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Op) ||
+      if (getValue(Record, OpNum, NextValueNo, Op) ||
           OpNum+4 != Record.size())
         return Error("Invalid LOADATOMIC record");
 
@@ -2344,10 +2357,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       InstructionList.push_back(I);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_STORE: { // STORE2:[ptrty, ptr, val, align, vol]
+    case naclbitc::FUNC_CODE_INST_STORE: { // STORE2:[ptr, val, align, vol]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Ptr) ||
+      if (getValue(Record, OpNum, NextValueNo, Ptr) ||
           popValue(Record, OpNum, NextValueNo,
                     cast<PointerType>(Ptr->getType())->getElementType(), Val) ||
           OpNum+2 != Record.size())
@@ -2358,10 +2371,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_STOREATOMIC: {
-      // STOREATOMIC: [ptrty, ptr, val, align, vol, ordering, synchscope]
+      // STOREATOMIC: [ptr, val, align, vol, ordering, synchscope]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Ptr) ||
+      if (getValue(Record, OpNum, NextValueNo, Ptr) ||
           popValue(Record, OpNum, NextValueNo,
                     cast<PointerType>(Ptr->getType())->getElementType(), Val) ||
           OpNum+4 != Record.size())
@@ -2381,10 +2394,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_CMPXCHG: {
-      // CMPXCHG:[ptrty, ptr, cmp, new, vol, ordering, synchscope]
+      // CMPXCHG:[ptr, cmp, new, vol, ordering, synchscope]
       unsigned OpNum = 0;
       Value *Ptr, *Cmp, *New;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Ptr) ||
+      if (getValue(Record, OpNum, NextValueNo, Ptr) ||
           popValue(Record, OpNum, NextValueNo,
                     cast<PointerType>(Ptr->getType())->getElementType(), Cmp) ||
           popValue(Record, OpNum, NextValueNo,
@@ -2401,10 +2414,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_ATOMICRMW: {
-      // ATOMICRMW:[ptrty, ptr, val, op, vol, ordering, synchscope]
+      // ATOMICRMW:[ptr, val, op, vol, ordering, synchscope]
       unsigned OpNum = 0;
       Value *Ptr, *Val;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Ptr) ||
+      if (getValue(Record, OpNum, NextValueNo, Ptr) ||
           popValue(Record, OpNum, NextValueNo,
                     cast<PointerType>(Ptr->getType())->getElementType(), Val) ||
           OpNum+4 != Record.size())
@@ -2435,7 +2448,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL: {
-      // CALL: [cc, fnty, fnid, arg0, arg1...]
+      // CALL: [cc, fnid, arg0, arg1...]
       if (Record.size() < 2)
         return Error("Invalid CALL record");
 
@@ -2443,7 +2456,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       unsigned OpNum = 1;
       Value *Callee;
-      if (getValueTypePair(Record, OpNum, NextValueNo, Callee))
+      if (getValue(Record, OpNum, NextValueNo, Callee))
         return Error("Invalid CALL record");
 
       PointerType *OpTy = dyn_cast<PointerType>(Callee->getType());
@@ -2470,7 +2483,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       } else {
         while (OpNum != Record.size()) {
           Value *Op;
-          if (getValueTypePair(Record, OpNum, NextValueNo, Op))
+          if (getValue(Record, OpNum, NextValueNo, Op))
             return Error("Invalid CALL record");
           Args.push_back(Op);
         }
@@ -2494,6 +2507,12 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       InstructionList.push_back(I);
       break;
     }
+    case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF:
+      // Build corresponding forward reference.
+      if (Record.size() != 2)
+        return Error("Invald FORWARDTYPEREF record");
+      getOrCreateFnValueByID(Record[0], getTypeByID(Record[1]));
+      continue;
     }
 
     // Add instruction to end of current BB.  If there is no current BB, reject
