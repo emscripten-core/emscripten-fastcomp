@@ -71,7 +71,7 @@ define void @aggregates() {
 
 define void @memory() {
 ; Memory operations
-  %a1 = alloca [4 x i8]
+  %a1 = alloca i8, i32 4
   %ptr = inttoptr i32 0 to i32*
   %a2 = load i32* %ptr, align 1
   store i32 undef, i32* %ptr, align 1

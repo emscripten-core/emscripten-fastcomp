@@ -34,8 +34,9 @@ define void @allowed_cases(i32 %arg) {
 
   ptrtoint [4 x i8]* @var to i32
 
-  %alloc = alloca [1 x i8]
-  ptrtoint [1 x i8]* %alloc to i32
+  %alloc = alloca i8
+  ptrtoint i8* %alloc to i32
+  load i8* %alloc, align 1
 
   ; These instructions may use a NormalizedPtr, which may be a global.
   load i32* @ptr, align 1
@@ -83,7 +84,9 @@ entry:
 ; CHECK-NEXT: non-i32 inttoptr
 
   %a = alloca i32
-; CHECK-NEXT: non-i8-array alloca
+; CHECK-NEXT: non-i8 alloca: %a
+  %a2 = alloca [4 x i8]
+; CHECK-NEXT: non-i8 alloca: %a2
 
   store i32 0, i32* null, align 1
 ; CHECK-NEXT: bad pointer

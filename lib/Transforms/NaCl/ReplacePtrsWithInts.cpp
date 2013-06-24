@@ -17,7 +17,7 @@
 // All inttoptr and ptrtoint instructions use the same integer size
 // (iPTR), so they do not implicitly truncate or zero-extend.
 //
-// alloca always allocates an i8 array type.
+// alloca always has the result type i8*.
 //
 // Pointer types only appear in the following instructions:
 //  * loads and stores:  the pointer operand is a NormalizedPtr.
@@ -470,13 +470,22 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     FC->recordConvertedAndErase(Call, NewCall);
   } else if (AllocaInst *Alloca = dyn_cast<AllocaInst>(Inst)) {
     Type *ElementTy = Inst->getType()->getPointerElementType();
-    Type *ElementTy2 = ArrayType::get(Type::getInt8Ty(Inst->getContext()),
-                                      DL->getTypeAllocSize(ElementTy));
+    Constant *ElementSize = ConstantInt::get(IntPtrType,
+                                             DL->getTypeAllocSize(ElementTy));
+    // Expand out alloca's built-in multiplication.
+    Value *MulSize;
+    if (ConstantInt *C = dyn_cast<ConstantInt>(Alloca->getArraySize())) {
+      MulSize = ConstantExpr::getMul(ElementSize, C);
+    } else {
+      MulSize = BinaryOperator::Create(
+          Instruction::Mul, ElementSize, Alloca->getArraySize(),
+          Alloca->getName() + ".alloca_mul", Alloca);
+    }
     unsigned Alignment = Alloca->getAlignment();
     if (Alignment == 0)
       Alignment = DL->getPrefTypeAlignment(ElementTy);
-    Value *Tmp = CopyDebug(new AllocaInst(ElementTy2, Alloca->getArraySize(),
-                                          Alignment, "", Inst),
+    Value *Tmp = CopyDebug(new AllocaInst(Type::getInt8Ty(Inst->getContext()),
+                                          MulSize, Alignment, "", Inst),
                            Inst);
     Tmp->takeName(Alloca);
     Value *Alloca2 = new PtrToIntInst(Tmp, IntPtrType,

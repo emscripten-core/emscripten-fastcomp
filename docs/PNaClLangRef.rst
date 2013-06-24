@@ -271,12 +271,12 @@ Only the LLVM instructions listed here are supported by PNaCl bitcode.
 * ``frem``
 * ``alloca``
 
-  The only allowed type for ``alloca`` instructions in PNaCl bitcode is an
-  array of i8. For example:
+  The only allowed type for ``alloca`` instructions in PNaCl bitcode
+  is i8. For example:
 
 .. code-block:: llvm
 
-    %buf = alloca [4 x i8], align 1
+    %buf = alloca i8, i32 8, align 4
 
 * ``load``, ``store``
 

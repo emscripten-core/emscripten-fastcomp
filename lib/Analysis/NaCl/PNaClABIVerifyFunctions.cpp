@@ -290,10 +290,8 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       break;
 
     case Instruction::Alloca: {
-      ArrayType *Ty = dyn_cast<ArrayType>(cast<AllocaInst>(Inst)
-                                          ->getType()->getElementType());
-      if (!Ty || !Ty->getElementType()->isIntegerTy(8))
-        return "non-i8-array alloca";
+      if (!cast<AllocaInst>(Inst)->getAllocatedType()->isIntegerTy(8))
+        return "non-i8 alloca";
       break;
     }
 

@@ -352,8 +352,20 @@ define void @alloca_fixed() {
   ret void
 }
 ; CHECK: define void @alloca_fixed() {
-; CHECK-NEXT: %buf = alloca [8 x i8], align 128
-; CHECK-NEXT: %buf.asint = ptrtoint [8 x i8]* %buf to i32
+; CHECK-NEXT: %buf = alloca i8, i32 8, align 128
+; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
+; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
+
+; When the size passed to alloca is a constant, it should be a
+; constant in the output too.
+define void @alloca_fixed_array() {
+  %buf = alloca %struct, i32 100
+  call void @receive_alloca(%struct* %buf)
+  ret void
+}
+; CHECK: define void @alloca_fixed_array() {
+; CHECK-NEXT: %buf = alloca i8, i32 800, align 8
+; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
 ; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
 
 define void @alloca_variable(i32 %size) {
@@ -362,8 +374,9 @@ define void @alloca_variable(i32 %size) {
   ret void
 }
 ; CHECK: define void @alloca_variable(i32 %size) {
-; CHECK-NEXT: %buf = alloca [8 x i8], i32 %size
-; CHECK-NEXT: %buf.asint = ptrtoint [8 x i8]* %buf to i32
+; CHECK-NEXT: %buf.alloca_mul = mul i32 8, %size
+; CHECK-NEXT: %buf = alloca i8, i32 %buf.alloca_mul
+; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
 ; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
 
 define void @alloca_alignment_i32() {
@@ -371,21 +384,21 @@ define void @alloca_alignment_i32() {
   ret void
 }
 ; CHECK: void @alloca_alignment_i32() {
-; CHECK-NEXT: alloca [4 x i8], align 4
+; CHECK-NEXT: alloca i8, i32 4, align 4
 
 define void @alloca_alignment_double() {
   %buf = alloca double
   ret void
 }
 ; CHECK: void @alloca_alignment_double() {
-; CHECK-NEXT: alloca [8 x i8], align 8
+; CHECK-NEXT: alloca i8, i32 8, align 8
 
 define void @alloca_lower_alignment() {
   %buf = alloca i32, align 1
   ret void
 }
 ; CHECK: void @alloca_lower_alignment() {
-; CHECK-NEXT: alloca [4 x i8], align 1
+; CHECK-NEXT: alloca i8, i32 4, align 1
 
 
 ; This tests for a bug in which, when processing the store's %buf2
@@ -400,8 +413,8 @@ define void @alloca_cast_stripping() {
   ret void
 }
 ; CHECK: define void @alloca_cast_stripping() {
-; CHECK-NEXT: %buf = alloca [4 x i8]
-; CHECK-NEXT: %buf.bc = bitcast [4 x i8]* %buf to i32*
+; CHECK-NEXT: %buf = alloca i8, i32 4
+; CHECK-NEXT: %buf.bc = bitcast i8* %buf to i32*
 ; CHECK-NEXT: store i32 0, i32* %buf.bc
 
 
@@ -449,8 +462,8 @@ define void @debug_declare(i32 %val) {
   ret void
 }
 ; CHECK: define void @debug_declare(i32 %val) {
-; CHECK-NEXT: %var = alloca [4 x i8]
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{[4 x i8]* %var}, metadata !0)
+; CHECK-NEXT: %var = alloca i8, i32 4
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !0)
 ; This case is currently not converted.
 ; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !0)
 ; CHECK-NEXT: ret void
@@ -498,7 +511,7 @@ define void @alloca_lifetime() {
   ret void
 }
 ; CHECK: define void @alloca_lifetime() {
-; CHECK-NEXT: %buf = alloca [1 x i8]
+; CHECK-NEXT: %buf = alloca i8
 ; CHECK-NEXT: ret void
 
 define void @alloca_lifetime_via_bitcast() {
@@ -508,7 +521,7 @@ define void @alloca_lifetime_via_bitcast() {
   ret void
 }
 ; CHECK: define void @alloca_lifetime_via_bitcast() {
-; CHECK-NEXT: %buf = alloca [4 x i8]
+; CHECK-NEXT: %buf = alloca i8, i32 4
 ; CHECK-NEXT: ret void
 
 define void @strip_invariant_markers() {
@@ -518,7 +531,7 @@ define void @strip_invariant_markers() {
   ret void
 }
 ; CHECK: define void @strip_invariant_markers() {
-; CHECK-NEXT: %buf = alloca [1 x i8]
+; CHECK-NEXT: %buf = alloca i8
 ; CHECK-NEXT: ret void
 
 
