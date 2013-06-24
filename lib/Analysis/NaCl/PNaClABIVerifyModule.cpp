@@ -170,6 +170,17 @@ static bool isWhitelistedBswap(const Function *F) {
   return TypeAcceptable(ParamType, AcceptableTypes);
 }
 
+// We accept cttz, ctlz, and ctpop for a limited set of types (i32, i64).
+static bool isWhitelistedCountBits(const Function *F, unsigned num_params) {
+  FunctionType *FT = F->getFunctionType();
+  if (FT->getNumParams() != num_params)
+    return false;
+  Type *ParamType = FT->getParamType(0);
+  LLVMContext &C = F->getContext();
+  Type *AcceptableTypes[] = { Type::getInt32Ty(C), Type::getInt64Ty(C) };
+  return TypeAcceptable(ParamType, AcceptableTypes);
+}
+
 bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
                                                   unsigned ID) {
   // Keep 3 categories of intrinsics for now.
@@ -184,6 +195,9 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     default: return false;
     // (1) Always allowed.
     case Intrinsic::bswap: return isWhitelistedBswap(F);
+    case Intrinsic::ctlz:
+    case Intrinsic::cttz: return isWhitelistedCountBits(F, 2);
+    case Intrinsic::ctpop: return isWhitelistedCountBits(F, 1);
     case Intrinsic::memcpy:
     case Intrinsic::memmove:
     case Intrinsic::memset:
@@ -259,9 +273,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::dbg_declare:
     case Intrinsic::dbg_value:
       return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
-    case Intrinsic::ctlz: // Support via compiler_rt if arch doesn't have it?
-    case Intrinsic::ctpop: // Support via compiler_rt if arch doesn't have it?
-    case Intrinsic::cttz: // Support via compiler_rt if arch doesn't have it?
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
     case Intrinsic::pow: // Rounding is supposed to be the same as libm.
     case Intrinsic::powi: // Rounding not defined: support with fast-math?

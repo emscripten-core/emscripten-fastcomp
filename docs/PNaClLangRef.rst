@@ -339,6 +339,13 @@ TODO(jfb): atomics
   The llvm.bswap intrinsic is only supported with the following argument types:
   i16, i32, i64.
 
+* ``llvm.ctlz``
+* ``llvm.cttz``
+* ``llvm.ctpop``
+
+  The llvm.ctlz, llvm.cttz, and llvm.ctpop intrinsics only support
+  i32 and i64 argument types (the types supported by C-style GCC builtins).
+
 * ``llvm.trap``
 * ``llvm.nacl.read.tp``
 

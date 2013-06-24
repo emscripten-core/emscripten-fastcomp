@@ -25,14 +25,35 @@ declare void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src,
 ; CHECK-NOT: Function llvm.nacl.read.tp is a disallowed LLVM intrinsic
 declare i8* @llvm.nacl.read.tp()
 
-; CHECK-NOT: Function llvm.bswap.16 is a disallowed LLVM intrinsic
-declare i16 @llvm.bswap.16(i16)
+; CHECK-NOT: Function llvm.bswap.i16 is a disallowed LLVM intrinsic
+declare i16 @llvm.bswap.i16(i16)
 
-; CHECK-NOT: Function llvm.bswap.32 is a disallowed LLVM intrinsic
-declare i32 @llvm.bswap.32(i32)
+; CHECK-NOT: Function llvm.bswap.i32 is a disallowed LLVM intrinsic
+declare i32 @llvm.bswap.i32(i32)
 
-; CHECK-NOT: Function llvm.bswap.64 is a disallowed LLVM intrinsic
-declare i64 @llvm.bswap.64(i64)
+; CHECK-NOT: Function llvm.bswap.i64 is a disallowed LLVM intrinsic
+declare i64 @llvm.bswap.i64(i64)
+
+; CHECK-NOT: Function llvm.cttz.i32 is a disallowed LLVM intrinsic
+declare i32 @llvm.cttz.i32(i32, i1)
+
+; CHECK-NOT: Function llvm.cttz.i64 is a disallowed LLVM intrinsic
+declare i64 @llvm.cttz.i64(i64, i1)
+
+; CHECK-NOT: Function llvm.ctlz.i32 is a disallowed LLVM intrinsic
+declare i32 @llvm.ctlz.i32(i32, i1)
+
+; CHECK-NOT: Function llvm.ctlz.i64 is a disallowed LLVM intrinsic
+declare i64 @llvm.ctlz.i64(i64, i1)
+
+; CHECK-NOT: Function llvm.ctpop.i32 is a disallowed LLVM intrinsic
+declare i32 @llvm.ctpop.i32(i32)
+
+; CHECK-NOT: Function llvm.ctpop.i64 is a disallowed LLVM intrinsic
+declare i64 @llvm.ctpop.i64(i64)
+
+; CHECK-NOT: Function llvm.trap is a disallowed LLVM intrinsic
+declare void @llvm.trap()
 
 ; ===================================
 ; Always disallowed intrinsics.
@@ -57,11 +78,20 @@ declare <2 x i64> @llvm.x86.aesni.aeskeygenassist(<2 x i64>, i8)
 ; DEV: Function llvm.va_copy is a disallowed LLVM intrinsic
 declare void @llvm.va_copy(i8*, i8*)
 
-; CHECK: Function llvm.bswap.1 is a disallowed LLVM intrinsic
-declare i1 @llvm.bswap.1(i1)
+; CHECK: Function llvm.bswap.i1 is a disallowed LLVM intrinsic
+declare i1 @llvm.bswap.i1(i1)
 
-; CHECK: Function llvm.bswap.8 is a disallowed LLVM intrinsic
-declare i8 @llvm.bswap.8(i8)
+; CHECK: Function llvm.bswap.i8 is a disallowed LLVM intrinsic
+declare i8 @llvm.bswap.i8(i8)
+
+; CHECK: Function llvm.ctlz.i16 is a disallowed LLVM intrinsic
+declare i16 @llvm.ctlz.i16(i16, i1)
+
+; CHECK: Function llvm.cttz.i16 is a disallowed LLVM intrinsic
+declare i16 @llvm.cttz.i16(i16, i1)
+
+; CHECK: Function llvm.ctpop.i16 is a disallowed LLVM intrinsic
+declare i16 @llvm.ctpop.i16(i16)
 
 ; CHECK: Function llvm.lifetime.start is a disallowed LLVM intrinsic
 declare void @llvm.lifetime.start(i64, i8* nocapture)
