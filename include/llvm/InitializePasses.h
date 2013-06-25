@@ -294,6 +294,7 @@ void initializeInsertDivideCheckPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
+void initializePromoteI1OpsPass(PassRegistry&);
 void initializePromoteIntegersPass(PassRegistry&);
 void initializeReplacePtrsWithIntsPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);

@@ -15,6 +15,7 @@ add_llvm_library(LLVMNaClTransforms
   FlattenGlobals.cpp
   GlobalCleanup.cpp
   PNaClABISimplify.cpp
+  PromoteI1Ops.cpp
   PromoteIntegers.cpp
   ReplacePtrsWithInts.cpp
   RewriteLLVMIntrinsics.cpp

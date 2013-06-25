@@ -334,14 +334,6 @@ static AttributeSet RemovePointerAttrs(LLVMContext &Context,
   return AttributeSet::get(Context, AttrList);
 }
 
-template <class InstType>
-static void CopyLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
-  Dest->setVolatile(Src->isVolatile());
-  Dest->setAlignment(Src->getAlignment());
-  Dest->setOrdering(Src->getOrdering());
-  Dest->setSynchScope(Src->getSynchScope());
-}
-
 static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
                                FunctionConverter *FC, Instruction *Inst) {
   if (ReturnInst *Ret = dyn_cast<ReturnInst>(Inst)) {

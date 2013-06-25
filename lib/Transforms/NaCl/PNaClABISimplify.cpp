@@ -65,6 +65,8 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // run.
   PM.add(createExpandSmallArgumentsPass());
 
+  PM.add(createPromoteI1OpsPass());
+
   // We place StripMetadata after optimization passes because
   // optimizations depend on the metadata.
   PM.add(createStripMetadataPass());

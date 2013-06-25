@@ -35,6 +35,7 @@ ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
+BasicBlockPass *createPromoteI1OpsPass();
 FunctionPass *createPromoteIntegersPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
@@ -53,6 +54,14 @@ void PhiSafeReplaceUses(Use *U, Value *NewVal);
 
 // Copy debug information from Original to NewInst, and return NewInst.
 Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
+
+template <class InstType>
+static void CopyLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
+  Dest->setVolatile(Src->isVolatile());
+  Dest->setAlignment(Src->getAlignment());
+  Dest->setOrdering(Src->getOrdering());
+  Dest->setSynchScope(Src->getSynchScope());
+}
 
 // In order to change a function's type, the function must be
 // recreated.  RecreateFunction() recreates Func with type NewType.

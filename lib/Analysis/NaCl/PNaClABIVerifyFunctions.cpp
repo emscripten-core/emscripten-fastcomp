@@ -79,15 +79,21 @@ bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
 }
 
 // A valid pointer type is either:
-//  * a pointer to a valid PNaCl scalar type, or
+//  * a pointer to a valid PNaCl scalar type (except i1), or
 //  * a function pointer (with valid argument and return types).
+//
+// i1 is disallowed so that all loads and stores are a whole number of
+// bytes, and so that we do not need to define whether a store of i1
+// zero-extends.
 static bool isValidPointerType(Type *Ty) {
   if (PointerType *PtrTy = dyn_cast<PointerType>(Ty)) {
     if (PtrTy->getAddressSpace() != 0)
       return false;
-    if (PNaClABITypeChecker::isValidScalarType(PtrTy->getElementType()))
+    Type *EltTy = PtrTy->getElementType();
+    if (PNaClABITypeChecker::isValidScalarType(EltTy) &&
+        !EltTy->isIntegerTy(1))
       return true;
-    if (FunctionType *FTy = dyn_cast<FunctionType>(PtrTy->getElementType()))
+    if (FunctionType *FTy = dyn_cast<FunctionType>(EltTy))
       return PNaClABITypeChecker::isValidFunctionType(FTy);
   }
   return false;
@@ -201,22 +207,12 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     case Instruction::Br:
     case Instruction::Unreachable:
     // Binary operations
-    case Instruction::Add:
     case Instruction::FAdd:
-    case Instruction::Sub:
     case Instruction::FSub:
-    case Instruction::Mul:
     case Instruction::FMul:
-    case Instruction::UDiv:
-    case Instruction::SDiv:
     case Instruction::FDiv:
-    case Instruction::URem:
-    case Instruction::SRem:
     case Instruction::FRem:
     // Bitwise binary operations
-    case Instruction::Shl:
-    case Instruction::LShr:
-    case Instruction::AShr:
     case Instruction::And:
     case Instruction::Or:
     case Instruction::Xor:
@@ -233,10 +229,28 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     case Instruction::UIToFP:
     case Instruction::SIToFP:
     // Other operations
-    case Instruction::ICmp:
     case Instruction::FCmp:
     case Instruction::PHI:
     case Instruction::Select:
+      break;
+
+    // The following operations are of dubious usefulness on 1-bit
+    // values.  Use of the i1 type is disallowed here so that code
+    // generators do not need to support these corner cases.
+    case Instruction::ICmp:
+    // Binary operations
+    case Instruction::Add:
+    case Instruction::Sub:
+    case Instruction::Mul:
+    case Instruction::UDiv:
+    case Instruction::SDiv:
+    case Instruction::URem:
+    case Instruction::SRem:
+    case Instruction::Shl:
+    case Instruction::LShr:
+    case Instruction::AShr:
+      if (Inst->getOperand(0)->getType()->isIntegerTy(1))
+        return "arithmetic on i1";
       break;
 
     // Memory accesses.
@@ -290,8 +304,11 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       break;
 
     case Instruction::Alloca: {
-      if (!cast<AllocaInst>(Inst)->getAllocatedType()->isIntegerTy(8))
+      const AllocaInst *Alloca = cast<AllocaInst>(Inst);
+      if (!Alloca->getAllocatedType()->isIntegerTy(8))
         return "non-i8 alloca";
+      if (!Alloca->getArraySize()->getType()->isIntegerTy(32))
+        return "alloca array size is not i32";
       break;
     }
 
@@ -345,6 +362,8 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       const SwitchInst *Switch = cast<SwitchInst>(Inst);
       if (!isValidScalarOperand(Switch->getCondition()))
         return "bad switch condition";
+      if (Switch->getCondition()->getType()->isIntegerTy(1))
+        return "switch on i1";
 
       // SwitchInst requires the cases to be ConstantInts, but it
       // doesn't require their types to be the same as the condition

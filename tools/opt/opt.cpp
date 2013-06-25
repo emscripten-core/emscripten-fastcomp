@@ -620,6 +620,7 @@ int main(int argc, char **argv) {
   initializeInsertDivideCheckPass(Registry);
   initializePNaClABIVerifyFunctionsPass(Registry);
   initializePNaClABIVerifyModulePass(Registry);
+  initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
