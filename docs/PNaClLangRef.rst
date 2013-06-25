@@ -70,10 +70,11 @@ Functions
 The restrictions on linkage types, calling conventions and visibility styles
 apply to functions. In addition, the following are not supported for functions:
 
-* Function attributes.
+* Function attributes (either for the the function itself, its parameters or its
+  return type).
 * Section specification.
 * Garbage collector name.
-* Parameter attributes for the return type.
+* Functions with a variable number of arguments (*vararg*).
 
 Aliases
 -------
@@ -92,20 +93,6 @@ part of the stable ABI. It exists for tool support and should not appear in
 distributed pexes.
 
 Other kinds of LLVM metadata are not supported.
-
-Parameter Attributes
---------------------
-
-`LLVM LangRef: Parameter Attributes <LangRef.html#paramattrs>`_
-
-TODO: what parameter attributes are supported.
-
-Function Attributes
--------------------
-
-`LLVM LangRef: Function Attributes <LangRef.html#fnattrs>`_
-
-PNaCl bitcode does not support function attributes.
 
 Module-Level Inline Assembly
 ----------------------------
