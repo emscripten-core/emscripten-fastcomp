@@ -20,7 +20,6 @@
 #include "ARMSubtarget.h"
 #include "ARMTargetMachine.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
@@ -1060,7 +1059,7 @@ bool ARMFastISel::ARMEmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
           useAM3 = true;
         }
       }
-      RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+      RC = &ARM::GPRRegClass;
       break;
     case MVT::i16:
       if (Alignment && Alignment < 2 && !Subtarget->allowsUnalignedMem())
@@ -1075,7 +1074,7 @@ bool ARMFastISel::ARMEmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
         Opc = isZExt ? ARM::LDRH : ARM::LDRSH;
         useAM3 = true;
       }
-      RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+      RC = &ARM::GPRRegClass;
       break;
     case MVT::i32:
       if (Alignment && Alignment < 4 && !Subtarget->allowsUnalignedMem())
@@ -1089,7 +1088,7 @@ bool ARMFastISel::ARMEmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
       } else {
         Opc = ARM::LDRi12;
       }
-      RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+      RC = &ARM::GPRRegClass;
       break;
     case MVT::f32:
       if (!Subtarget->hasVFP2()) return false;
@@ -1098,7 +1097,7 @@ bool ARMFastISel::ARMEmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
         needVMOV = true;
         VT = MVT::i32;
         Opc = isThumb2 ? ARM::t2LDRi12 : ARM::LDRi12;
-        RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+        RC = &ARM::GPRRegClass;
       } else {
         Opc = ARM::VLDRS;
         RC = TLI.getRegClassFor(VT);
@@ -2020,7 +2019,7 @@ bool ARMFastISel::ProcessCallArgs(SmallVectorImpl<Value*> &Args,
       case CCValAssign::ZExt: {
         MVT DestVT = VA.getLocVT();
         Arg = ARMEmitIntExt(ArgVT, Arg, DestVT, /*isZExt*/true);
-        assert (Arg != 0 && "Failed to emit a zext");
+        assert (Arg != 0 && "Failed to emit a sext");
         ArgVT = DestVT;
         break;
       }
@@ -2637,114 +2636,47 @@ unsigned ARMFastISel::ARMEmitIntExt(MVT SrcVT, unsigned SrcReg, MVT DestVT,
                                     bool isZExt) {
   if (DestVT != MVT::i32 && DestVT != MVT::i16 && DestVT != MVT::i8)
     return 0;
-  if (SrcVT != MVT::i16 && SrcVT != MVT::i8 && SrcVT != MVT::i1)
-    return 0;
 
-  // Table of which combinations can be emitted as a single instruction,
-  // and which will require two.
-  static const uint8_t isSingleInstrTbl[3][2][2][2] = {
-    //            ARM                     Thumb
-    //           !hasV6Ops  hasV6Ops     !hasV6Ops  hasV6Ops
-    //    ext:     s  z      s  z          s  z      s  z
-    /*  1 */ { { { 0, 1 }, { 0, 1 } }, { { 0, 0 }, { 0, 1 } } },
-    /*  8 */ { { { 0, 1 }, { 1, 1 } }, { { 0, 0 }, { 1, 1 } } },
-    /* 16 */ { { { 0, 0 }, { 1, 1 } }, { { 0, 0 }, { 1, 1 } } }
-  };
-
-  // Target registers for:
-  //  - For ARM can never be PC.
-  //  - For 16-bit Thumb are restricted to lower 8 registers.
-  //  - For 32-bit Thumb are restricted to non-SP and non-PC.
-  static const TargetRegisterClass *RCTbl[2][2] = {
-    // Instructions: Two                     Single
-    /* ARM      */ { &ARM::GPRnopcRegClass, &ARM::GPRnopcRegClass },
-    /* Thumb    */ { &ARM::tGPRRegClass,    &ARM::rGPRRegClass    }
-  };
-
-  // Table governing the instruction(s) to be emitted.
-  static const struct {
-    // First entry for each of the following is sext, second zext.
-    uint16_t Opc[2];
-    uint8_t Imm[2];   // All instructions have either a shift or a mask.
-    uint8_t hasS[2];  // Some instructions have an S bit, always set it to 0.
-  } OpcTbl[2][2][3] = {
-    { // Two instructions (first is left shift, second is in this table).
-      { // ARM
-        /*  1 */ { { ARM::ASRi,   ARM::LSRi    }, {  31,  31 }, { 1, 1 } },
-        /*  8 */ { { ARM::ASRi,   ARM::LSRi    }, {  24,  24 }, { 1, 1 } },
-        /* 16 */ { { ARM::ASRi,   ARM::LSRi    }, {  16,  16 }, { 1, 1 } }
-      },
-      { // Thumb
-        /*  1 */ { { ARM::tASRri, ARM::tLSRri  }, {  31,  31 }, { 0, 0 } },
-        /*  8 */ { { ARM::tASRri, ARM::tLSRri  }, {  24,  24 }, { 0, 0 } },
-        /* 16 */ { { ARM::tASRri, ARM::tLSRri  }, {  16,  16 }, { 0, 0 } }
-      }
-    },
-    { // Single instruction.
-      { // ARM
-        /*  1 */ { { ARM::KILL,   ARM::ANDri   }, {   0,   1 }, { 0, 1 } },
-        /*  8 */ { { ARM::SXTB,   ARM::ANDri   }, {   0, 255 }, { 0, 1 } },
-        /* 16 */ { { ARM::SXTH,   ARM::UXTH    }, {   0,   0 }, { 0, 0 } }
-      },
-      { // Thumb
-        /*  1 */ { { ARM::KILL,   ARM::t2ANDri }, {   0,   1 }, { 0, 1 } },
-        /*  8 */ { { ARM::t2SXTB, ARM::t2ANDri }, {   0, 255 }, { 0, 1 } },
-        /* 16 */ { { ARM::t2SXTH, ARM::t2UXTH  }, {   0,   0 }, { 0, 0 } }
-      }
+  unsigned Opc;
+  bool isBoolZext = false;
+  const TargetRegisterClass *RC = TLI.getRegClassFor(MVT::i32);
+  switch (SrcVT.SimpleTy) {
+  default: return 0;
+  case MVT::i16:
+    if (!Subtarget->hasV6Ops()) return 0;
+    RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+    if (isZExt)
+      Opc = isThumb2 ? ARM::t2UXTH : ARM::UXTH;
+    else
+      Opc = isThumb2 ? ARM::t2SXTH : ARM::SXTH;
+    break;
+  case MVT::i8:
+    if (!Subtarget->hasV6Ops()) return 0;
+    RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
+    if (isZExt)
+      Opc = isThumb2 ? ARM::t2UXTB : ARM::UXTB;
+    else
+      Opc = isThumb2 ? ARM::t2SXTB : ARM::SXTB;
+    break;
+  case MVT::i1:
+    if (isZExt) {
+      RC = isThumb2 ? &ARM::rGPRRegClass : &ARM::GPRRegClass;
+      Opc = isThumb2 ? ARM::t2ANDri : ARM::ANDri;
+      isBoolZext = true;
+      break;
     }
-  };
-
-  unsigned SrcBits = SrcVT.getSizeInBits();
-  unsigned DestBits = DestVT.getSizeInBits();
-  (void) DestBits;
-  assert((SrcBits < DestBits) && "can only extend to larger types");
-  assert((DestBits == 32 || DestBits == 16 || DestBits == 8) &&
-         "other sizes unimplemented");
-  assert((SrcBits == 16 || SrcBits == 8 || SrcBits == 1) &&
-         "other sizes unimplemented");
-
-  bool hasV6Ops = Subtarget->hasV6Ops();
-  // @LOCALMOD-START A further LLVM revision renames to countTrailingZeros.
-  unsigned Bitness = CountTrailingZeros_32(SrcBits) >> 1;  // {1,8,16}=>{0,1,2}
-  // @LOCALMOD-END
-  assert((Bitness < 3) && "sanity-check table bounds");
-
-  bool isSingleInstr = isSingleInstrTbl[Bitness][isThumb2][hasV6Ops][isZExt];
-  const TargetRegisterClass *RC = RCTbl[isThumb2][isSingleInstr];
-  unsigned Opc = OpcTbl[isSingleInstr][isThumb2][Bitness].Opc[isZExt];
-  assert(ARM::KILL != Opc && "Invalid table entry");
-  unsigned Imm = OpcTbl[isSingleInstr][isThumb2][Bitness].Imm[isZExt];
-  unsigned hasS = OpcTbl[isSingleInstr][isThumb2][Bitness].hasS[isZExt];
-
-  // 16-bit Thumb instructions always set CPSR (unless they're in an IT block).
-  bool setsCPSR = &ARM::tGPRRegClass == RC;
-  unsigned LSLOpc = isThumb2 ? ARM::tLSLri : ARM::LSLi;
-  unsigned ResultReg;
-
-  // Either one or two instructions are emitted.
-  // They're always of the form:
-  //   dst = in OP imm
-  // CPSR is set only by 16-bit Thumb instructions.
-  // Predicate, if any, is AL.
-  // S bit, if available, is always 0.
-  // When two are emitted the first's result will feed as the second's input,
-  // that value is then dead.
-  unsigned NumInstrsEmitted = isSingleInstr ? 1 : 2;
-  for (unsigned Instr = 0; Instr != NumInstrsEmitted; ++Instr) {
-    ResultReg = createResultReg(RC);
-    unsigned Opcode = ((0 == Instr) && !isSingleInstr) ? LSLOpc : Opc;
-    bool isKill = 1 == Instr;
-    MachineInstrBuilder MIB = BuildMI(
-        *FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opcode), ResultReg);
-    if (setsCPSR)
-      MIB.addReg(ARM::CPSR, RegState::Define);
-    AddDefaultPred(MIB.addReg(SrcReg, isKill * RegState::Kill).addImm(Imm));
-    if (hasS)
-      AddDefaultCC(MIB);
-    // Second instruction consumes the first's result.
-    SrcReg = ResultReg;
+    return 0;
   }
 
+  unsigned ResultReg = createResultReg(RC);
+  MachineInstrBuilder MIB;
+  MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc), ResultReg)
+        .addReg(SrcReg);
+  if (isBoolZext)
+    MIB.addImm(1);
+  else
+    MIB.addImm(0);
+  AddOptionalDefs(MIB);
   return ResultReg;
 }
 
@@ -2899,33 +2831,12 @@ bool ARMFastISel::TargetSelectInstruction(const Instruction *I) {
   return false;
 }
 
-namespace {
-// This table describes sign- and zero-extend instructions which can be
-// folded into a preceding load. All of these extends have an immediate
-// (sometimes a mask and sometimes a shift) that's applied after
-// extension.
-const struct FoldableLoadExtendsStruct {
-  uint16_t Opc[2];  // ARM, Thumb.
-  uint8_t ExpectedImm;
-  uint8_t isZExt     : 1;
-  uint8_t ExpectedVT : 7;
-} FoldableLoadExtends[] = {
-  { { ARM::SXTH,  ARM::t2SXTH  },   0, 0, MVT::i16 },
-  { { ARM::UXTH,  ARM::t2UXTH  },   0, 1, MVT::i16 },
-  { { ARM::ANDri, ARM::t2ANDri }, 255, 1, MVT::i8  },
-  { { ARM::SXTB,  ARM::t2SXTB  },   0, 0, MVT::i8  },
-  { { ARM::UXTB,  ARM::t2UXTB  },   0, 1, MVT::i8  }
-};
-}
-
-/// \brief The specified machine instr operand is a vreg, and that
+/// TryToFoldLoad - The specified machine instr operand is a vreg, and that
 /// vreg is being provided by the specified load instruction.  If possible,
 /// try to fold the load as an operand to the instruction, returning true if
 /// successful.
-// @LOCALMOD-START Name of this function changed.
 bool ARMFastISel::TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
                                 const LoadInst *LI) {
-// @LOCALMOD-END
   // Verify we have a legal type before going any further.
   MVT VT;
   if (!isLoadTypeLegal(LI->getType(), VT))
@@ -2935,24 +2846,26 @@ bool ARMFastISel::TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
   // ldrb r1, [r0]       ldrb r1, [r0]
   // uxtb r2, r1     =>
   // mov  r3, r2         mov  r3, r1
-  //
-  if (MI->getNumOperands() < 3 || !MI->getOperand(2).isImm())
-    return false;
-  const uint64_t Imm = MI->getOperand(2).getImm();
-
-  bool Found = false;
-  bool isZExt;
-  for (unsigned i = 0, e = array_lengthof(FoldableLoadExtends);
-       i != e; ++i) {
-    if (FoldableLoadExtends[i].Opc[isThumb2] == MI->getOpcode() &&
-        (uint64_t)FoldableLoadExtends[i].ExpectedImm == Imm &&
-        MVT((MVT::SimpleValueType)FoldableLoadExtends[i].ExpectedVT) == VT) {
-      Found = true;
-      isZExt = FoldableLoadExtends[i].isZExt;
-    }
+  bool isZExt = true;
+  switch(MI->getOpcode()) {
+    default: return false;
+    case ARM::SXTH:
+    case ARM::t2SXTH:
+      isZExt = false;
+    case ARM::UXTH:
+    case ARM::t2UXTH:
+      if (VT != MVT::i16)
+        return false;
+    break;
+    case ARM::SXTB:
+    case ARM::t2SXTB:
+      isZExt = false;
+    case ARM::UXTB:
+    case ARM::t2UXTB:
+      if (VT != MVT::i8)
+        return false;
+    break;
   }
-  if (!Found) return false;
-
   // See if we can handle this address.
   Address Addr;
   if (!ARMComputeAddress(LI->getOperand(0), Addr)) return false;
