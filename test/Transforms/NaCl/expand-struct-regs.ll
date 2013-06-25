@@ -92,6 +92,17 @@ bb:
 ; CHECK-NEXT: %phi.index{{.*}} = phi i32 [ %val.field{{.*}}, %entry ], [ %val.field{{.*}}, %entry ]
 
 
+define void @struct_select_inst(i1 %cond, %struct* %ptr1, %struct* %ptr2) {
+  %val1 = load %struct* %ptr1
+  %val2 = load %struct* %ptr2
+  %select = select i1 %cond, %struct %val1, %struct %val2
+  ret void
+}
+; CHECK: define void @struct_select_inst
+; CHECK: %select.index{{.*}} = select i1 %cond, i8 %val1.field{{.*}}, i8 %val2.field{{.*}}
+; CHECK-NEXT: %select.index{{.*}} = select i1 %cond, i32 %val1.field{{.*}}, i32 %val2.field{{.*}}
+
+
 define void @insert_and_extract(i8* %out0, i32* %out1) {
   %temp = insertvalue %struct undef, i8 100, 0
   %sval = insertvalue %struct %temp, i32 200, 1

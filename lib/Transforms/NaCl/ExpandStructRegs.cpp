@@ -97,6 +97,37 @@ static void SplitUpPHINode(PHINode *Phi) {
   Phi->eraseFromParent();
 }
 
+static void SplitUpSelect(SelectInst *Select) {
+  StructType *STy = cast<StructType>(Select->getType());
+  Value *NewStruct = UndefValue::get(STy);
+
+  // Create a separate SelectInst for each struct field.
+  for (unsigned Index = 0; Index < STy->getNumElements(); ++Index) {
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+
+    Value *TrueVal = CopyDebug(
+        ExtractValueInst::Create(Select->getTrueValue(), EVIndexes,
+                                 Select->getName() + ".extract", Select),
+        Select);
+    Value *FalseVal = CopyDebug(
+        ExtractValueInst::Create(Select->getFalseValue(), EVIndexes,
+                                 Select->getName() + ".extract", Select),
+        Select);
+    Value *NewSelect = CopyDebug(
+        SelectInst::Create(Select->getCondition(), TrueVal, FalseVal,
+                           Select->getName() + ".index", Select), Select);
+
+    // Reconstruct the original struct value.
+    NewStruct = CopyDebug(
+        InsertValueInst::Create(NewStruct, NewSelect, EVIndexes,
+                                Select->getName() + ".insert", Select),
+        Select);
+  }
+  Select->replaceAllUsesWith(NewStruct);
+  Select->eraseFromParent();
+}
+
 template <class InstType>
 static void ProcessLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
   CopyDebug(Dest, Src);
@@ -213,6 +244,11 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
       } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
         if (Phi->getType()->isStructTy()) {
           SplitUpPHINode(Phi);
+          Changed = true;
+        }
+      } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
+        if (Select->getType()->isStructTy()) {
+          SplitUpSelect(Select);
           Changed = true;
         }
       }
