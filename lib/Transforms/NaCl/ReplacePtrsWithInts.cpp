@@ -610,6 +610,9 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
   // various casts.
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
     CleanUpFunction(Func, IntPtrType);
+    // Delete the now-unused bitcast ConstantExprs that we created so
+    // that they don't interfere with StripDeadPrototypes.
+    Func->removeDeadConstantUsers();
   }
   return true;
 }
