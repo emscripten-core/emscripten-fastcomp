@@ -1477,13 +1477,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       }
       break;
     }
-    case naclbitc::MODULE_CODE_DATALAYOUT: {  // DATALAYOUT: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_DATALAYOUT record");
-      TheModule->setDataLayout(S);
-      break;
-    }
     case naclbitc::MODULE_CODE_ASM: {  // ASM: [strchr x N]
       std::string S;
       if (ConvertToString(Record, 0, S))
@@ -1629,6 +1622,16 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
 
 bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
   TheModule = 0;
+
+  // PNaCl does not support different DataLayouts in pexes, so we
+  // implicitly set the DataLayout to the following default.
+  //
+  // This is not usually needed by the backend, but it might be used
+  // by IR passes that the PNaCl translator runs.  We set this in the
+  // reader rather than in pnacl-llc so that 'opt' will also use the
+  // correct DataLayout if it is run on a pexe.
+  M->setDataLayout("e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-"
+                   "f32:32:32-f64:64:64-p:32:32:32-v128:32:32");
 
   if (InitStream()) return true;
 

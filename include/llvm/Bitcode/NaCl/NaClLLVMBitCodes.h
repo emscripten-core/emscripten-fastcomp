@@ -51,7 +51,7 @@ namespace naclbitc {
   enum NaClModuleCodes {
     MODULE_CODE_VERSION     = 1,    // VERSION:     [version#]
     MODULE_CODE_TRIPLE      = 2,    // Not used in PNaCl
-    MODULE_CODE_DATALAYOUT  = 3,    // DATALAYOUT:  [strchr x N]
+    MODULE_CODE_DATALAYOUT  = 3,    // Not used in PNaCl
     MODULE_CODE_ASM         = 4,    // ASM:         [strchr x N]
     MODULE_CODE_SECTIONNAME = 5,    // SECTIONNAME: [strchr x N]
 

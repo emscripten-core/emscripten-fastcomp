@@ -431,9 +431,6 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
                             NaClBitstreamWriter &Stream) {
   DEBUG(dbgs() << "-> WriteModuleInfo\n");
   // Emit various pieces of data attached to a module.
-  if (!M->getDataLayout().empty())
-    WriteStringRecord(naclbitc::MODULE_CODE_DATALAYOUT, M->getDataLayout(),
-                      0/*TODO*/, Stream);
   if (!M->getModuleInlineAsm().empty())
     WriteStringRecord(naclbitc::MODULE_CODE_ASM, M->getModuleInlineAsm(),
                       0/*TODO*/, Stream);
