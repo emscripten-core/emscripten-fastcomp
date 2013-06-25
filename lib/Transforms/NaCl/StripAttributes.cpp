@@ -14,6 +14,7 @@
 //    calls.
 //  * Calling conventions from functions and function calls.
 //  * The "align" attribute on functions.
+//  * The alignment argument of memcpy/memmove/memset intrinsic calls.
 //  * The "unnamed_addr" attribute on functions and global variables.
 //  * The distinction between "internal" and "private" linkage.
 //  * "protected" and "internal" visibility of functions and globals.
@@ -25,6 +26,7 @@
 
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
@@ -182,6 +184,13 @@ void stripFunctionAttrs(DataLayout *DL, Function *Func) {
         CheckAttributes(Call.getAttributes());
         Call.setAttributes(AttributeSet());
         Call.setCallingConv(CallingConv::C);
+
+        // Set memcpy(), memmove() and memset() to use pessimistic
+        // alignment assumptions.
+        if (MemIntrinsic *MemOp = dyn_cast<MemIntrinsic>(Inst)) {
+          Type *AlignTy = MemOp->getAlignmentCst()->getType();
+          MemOp->setAlignment(ConstantInt::get(AlignTy, 1));
+        }
       } else if (OverflowingBinaryOperator *Op =
                      dyn_cast<OverflowingBinaryOperator>(Inst)) {
         cast<BinaryOperator>(Op)->setHasNoUnsignedWrap(false);

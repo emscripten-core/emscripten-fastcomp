@@ -315,6 +315,18 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
                 isa<MDNode>(Arg)))
             return "bad intrinsic operand";
         }
+        // Disallow alignments other than 1 on memcpy() etc., for the
+        // same reason that we disallow them on integer loads and
+        // stores.
+        if (const MemIntrinsic *MemOp = dyn_cast<MemIntrinsic>(Call)) {
+          // Avoid the getAlignment() method here because it aborts if
+          // the alignment argument is not a Constant.
+          Value *AlignArg = MemOp->getArgOperand(3);
+          if (!isa<ConstantInt>(AlignArg) ||
+              cast<ConstantInt>(AlignArg)->getZExtValue() != 1) {
+            return "bad alignment";
+          }
+        }
         // Allow the instruction and skip the later checks.
         return NULL;
       }

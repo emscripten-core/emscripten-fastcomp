@@ -5,6 +5,11 @@
 ; "align" attributes, so are not tested here.
 
 
+declare void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)
+declare void @llvm.memmove.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)
+declare void @llvm.memset.p0i8.i32(i8*, i8, i32, i32, i1)
+
+
 define void @allowed_cases(i32 %ptr, float %f, double %d) {
   %ptr.i32 = inttoptr i32 %ptr to i32*
   load i32* %ptr.i32, align 1
@@ -30,12 +35,21 @@ define void @allowed_cases(i32 %ptr, float %f, double %d) {
   load atomic double* %ptr.double seq_cst, align 8
   store atomic double %d, double* %ptr.double seq_cst, align 8
 
+  ; memcpy() et el take an alignment parameter, which is allowed to be 1.
+  %ptr.p = inttoptr i32 %ptr to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %ptr.p, i8* %ptr.p,
+                                       i32 10, i32 1, i1 false)
+  call void @llvm.memmove.p0i8.p0i8.i32(i8* %ptr.p, i8* %ptr.p,
+                                        i32 10, i32 1, i1 false)
+  call void @llvm.memset.p0i8.i32(i8* %ptr.p, i8 99,
+                                  i32 10, i32 1, i1 false)
+
   ret void
 }
 ; CHECK-NOT: disallowed
 
 
-define void @rejected_cases(i32 %ptr, float %f, double %d) {
+define void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) {
   %ptr.i32 = inttoptr i32 %ptr to i32*
   load i32* %ptr.i32, align 4
   store i32 123, i32* %ptr.i32, align 4
@@ -79,5 +93,30 @@ define void @rejected_cases(i32 %ptr, float %f, double %d) {
 ; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic float{{.*}} align 8
 ; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic double{{.*}} align 16
 
+  ; Non-pessimistic alignments for memcpy() et al are rejected.
+  %ptr.p = inttoptr i32 %ptr to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %ptr.p, i8* %ptr.p,
+                                       i32 10, i32 4, i1 false)
+  call void @llvm.memmove.p0i8.p0i8.i32(i8* %ptr.p, i8* %ptr.p,
+                                        i32 10, i32 4, i1 false)
+  call void @llvm.memset.p0i8.i32(i8* %ptr.p, i8 99,
+                                  i32 10, i32 4, i1 false)
+; CHECK-NEXT: bad alignment: call void @llvm.memcpy
+; CHECK-NEXT: bad alignment: call void @llvm.memmove
+; CHECK-NEXT: bad alignment: call void @llvm.memset
+
+  ; Check that the verifier does not crash if the alignment argument
+  ; is not a constant.
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %ptr.p, i8* %ptr.p,
+                                       i32 10, i32 %align, i1 false)
+  call void @llvm.memmove.p0i8.p0i8.i32(i8* %ptr.p, i8* %ptr.p,
+                                        i32 10, i32 %align, i1 false)
+  call void @llvm.memset.p0i8.i32(i8* %ptr.p, i8 99,
+                                  i32 10, i32 %align, i1 false)
+; CHECK-NEXT: bad alignment: call void @llvm.memcpy
+; CHECK-NEXT: bad alignment: call void @llvm.memmove
+; CHECK-NEXT: bad alignment: call void @llvm.memset
+
   ret void
 }
+; CHECK-NOT: disallowed

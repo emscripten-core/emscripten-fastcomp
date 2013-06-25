@@ -100,3 +100,21 @@ define void @reduce_alignment_assumptions() {
 ; CHECK-NEXT: load atomic i32* null seq_cst, align 4
 ; CHECK-NEXT: store atomic i32 100, i32* null seq_cst, align 4
 ; CHECK-NEXT: store atomic i32 100, i32* null seq_cst, align 4
+
+declare void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)
+declare void @llvm.memmove.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)
+declare void @llvm.memset.p0i8.i32(i8*, i8, i32, i32, i1)
+
+define void @reduce_memcpy_alignment_assumptions(i8* %ptr) {
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %ptr, i8* %ptr,
+                                       i32 20, i32 4, i1 false)
+  call void @llvm.memmove.p0i8.p0i8.i32(i8* %ptr, i8* %ptr,
+                                        i32 20, i32 4, i1 false)
+  call void @llvm.memset.p0i8.i32(i8* %ptr, i8 99,
+                                  i32 20, i32 4, i1 false)
+  ret void
+}
+; CHECK: define void @reduce_memcpy_alignment_assumptions
+; CHECK-NEXT: call void @llvm.memcpy.{{.*}}  i32 20, i32 1, i1 false)
+; CHECK-NEXT: call void @llvm.memmove.{{.*}} i32 20, i32 1, i1 false)
+; CHECK-NEXT: call void @llvm.memset.{{.*}}  i32 20, i32 1, i1 false)
