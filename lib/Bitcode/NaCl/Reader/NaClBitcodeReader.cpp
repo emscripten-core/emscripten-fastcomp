@@ -2128,63 +2128,57 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_SWITCH: { // SWITCH: [opty, op0, op1, ...]
-      // Check magic
-      if ((Record[0] >> 16) == SWITCH_INST_MAGIC) {
-        // New SwitchInst format with case ranges.
+      // New SwitchInst format with case ranges.
+      if (Record.size() < 4)
+        return Error("Invalid SWITCH record");
+      Type *OpTy = getTypeByID(Record[0]);
+      unsigned ValueBitWidth = cast<IntegerType>(OpTy)->getBitWidth();
 
-        Type *OpTy = getTypeByID(Record[1]);
-        unsigned ValueBitWidth = cast<IntegerType>(OpTy)->getBitWidth();
+      Value *Cond = getValue(Record, 1, NextValueNo, OpTy);
+      BasicBlock *Default = getBasicBlock(Record[2]);
+      if (OpTy == 0 || Cond == 0 || Default == 0)
+        return Error("Invalid SWITCH record");
 
-        Value *Cond = getValue(Record, 2, NextValueNo, OpTy);
-        BasicBlock *Default = getBasicBlock(Record[3]);
-        if (OpTy == 0 || Cond == 0 || Default == 0)
-          return Error("Invalid SWITCH record");
+      unsigned NumCases = Record[3];
 
-        unsigned NumCases = Record[4];
+      SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
+      InstructionList.push_back(SI);
 
-        SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
-        InstructionList.push_back(SI);
+      unsigned CurIdx = 4;
+      for (unsigned i = 0; i != NumCases; ++i) {
+        IntegersSubsetToBB CaseBuilder;
+        unsigned NumItems = Record[CurIdx++];
+        for (unsigned ci = 0; ci != NumItems; ++ci) {
+          bool isSingleNumber = Record[CurIdx++];
 
-        unsigned CurIdx = 5;
-        for (unsigned i = 0; i != NumCases; ++i) {
-          IntegersSubsetToBB CaseBuilder;
-          unsigned NumItems = Record[CurIdx++];
-          for (unsigned ci = 0; ci != NumItems; ++ci) {
-            bool isSingleNumber = Record[CurIdx++];
+          APInt Low;
+          unsigned ActiveWords = 1;
+          if (ValueBitWidth > 64)
+            ActiveWords = Record[CurIdx++];
+          Low = ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
+                              ValueBitWidth);
+          CurIdx += ActiveWords;
 
-            APInt Low;
-            unsigned ActiveWords = 1;
+          if (!isSingleNumber) {
+            ActiveWords = 1;
             if (ValueBitWidth > 64)
               ActiveWords = Record[CurIdx++];
-            Low = ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                                ValueBitWidth);
+            APInt High =
+                ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
+                              ValueBitWidth);
+
+            CaseBuilder.add(IntItem::fromType(OpTy, Low),
+                            IntItem::fromType(OpTy, High));
             CurIdx += ActiveWords;
-
-            if (!isSingleNumber) {
-              ActiveWords = 1;
-              if (ValueBitWidth > 64)
-                ActiveWords = Record[CurIdx++];
-              APInt High =
-                  ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                                ValueBitWidth);
-
-              CaseBuilder.add(IntItem::fromType(OpTy, Low),
-                              IntItem::fromType(OpTy, High));
-              CurIdx += ActiveWords;
-            } else
-              CaseBuilder.add(IntItem::fromType(OpTy, Low));
-          }
-          BasicBlock *DestBB = getBasicBlock(Record[CurIdx++]);
-          IntegersSubset Case = CaseBuilder.getCase();
-          SI->addCase(Case, DestBB);
+          } else
+            CaseBuilder.add(IntItem::fromType(OpTy, Low));
         }
-        uint16_t Hash = SI->hash();
-        if (Hash != (Record[0] & 0xFFFF))
-          return Error("Invalid SWITCH record");
-        I = SI;
-        break;
+        BasicBlock *DestBB = getBasicBlock(Record[CurIdx++]);
+        IntegersSubset Case = CaseBuilder.getCase();
+        SI->addCase(Case, DestBB);
       }
-      return Error("Old SwitchInst representation not supported");
+      I = SI;
+      break;
     }
     case naclbitc::FUNC_CODE_INST_INDIRECTBR: { // INDIRECTBR: [opty, op0, op1, ...]
       if (Record.size() < 2)

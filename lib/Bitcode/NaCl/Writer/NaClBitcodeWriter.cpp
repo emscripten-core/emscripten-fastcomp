@@ -1252,9 +1252,6 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       Code = naclbitc::FUNC_CODE_INST_SWITCH;
       const SwitchInst &SI = cast<SwitchInst>(I);
 
-      uint32_t SwitchRecordHeader = SI.hash() | (SWITCH_INST_MAGIC << 16);
-      Vals64.push_back(SwitchRecordHeader);
-
       Vals64.push_back(VE.getTypeID(SI.getCondition()->getType()));
       pushValue64(SI.getCondition(), InstID, Vals64, VE);
       Vals64.push_back(VE.getValueID(SI.getDefaultDest()));
