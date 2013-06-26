@@ -45,12 +45,10 @@ void NaClBitcodeReader::FreeState() {
   Buffer = 0;
   std::vector<Type*>().swap(TypeList);
   ValueList.clear();
-  MDValueList.clear();
 
   std::vector<BasicBlock*>().swap(FunctionBBs);
   std::vector<Function*>().swap(FunctionsWithBodies);
   DeferredFunctionInfo.clear();
-  MDKindMap.clear();
 
   assert(BlockAddrFwdRefs.empty() && "Unresolved blockaddress fwd references");
 }
@@ -393,45 +391,6 @@ void NaClBitcodeReaderValueList::ResolveConstantForwardRefs() {
   }
 }
 
-void NaClBitcodeReaderMDValueList::AssignValue(Value *V, unsigned Idx) {
-  if (Idx == size()) {
-    push_back(V);
-    return;
-  }
-
-  if (Idx >= size())
-    resize(Idx+1);
-
-  WeakVH &OldV = MDValuePtrs[Idx];
-  if (OldV == 0) {
-    OldV = V;
-    return;
-  }
-
-  // If there was a forward reference to this value, replace it.
-  MDNode *PrevVal = cast<MDNode>(OldV);
-  OldV->replaceAllUsesWith(V);
-  MDNode::deleteTemporary(PrevVal);
-  // Deleting PrevVal sets Idx value in MDValuePtrs to null. Set new
-  // value for Idx.
-  MDValuePtrs[Idx] = V;
-}
-
-Value *NaClBitcodeReaderMDValueList::getValueFwdRef(unsigned Idx) {
-  if (Idx >= size())
-    resize(Idx + 1);
-
-  if (Value *V = MDValuePtrs[Idx]) {
-    assert(V->getType()->isMetadataTy() && "Type mismatch in value table!");
-    return V;
-  }
-
-  // Create and return a placeholder, which will later be RAUW'd.
-  Value *V = MDNode::getTemporary(Context, ArrayRef<Value*>());
-  MDValuePtrs[Idx] = V;
-  return V;
-}
-
 Type *NaClBitcodeReader::getTypeByID(unsigned ID) {
   // The type table size is always specified correctly.
   if (ID >= TypeList.size())
@@ -524,9 +483,6 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       break;
     case naclbitc::TYPE_CODE_LABEL:     // LABEL
       ResultTy = Type::getLabelTy(Context);
-      break;
-    case naclbitc::TYPE_CODE_METADATA:  // METADATA
-      ResultTy = Type::getMetadataTy(Context);
       break;
     case naclbitc::TYPE_CODE_X86_MMX:   // X86_MMX
       ResultTy = Type::getX86_MMXTy(Context);
@@ -731,106 +687,6 @@ bool NaClBitcodeReader::ParseValueSymbolTable() {
 
       BB->setName(StringRef(ValueName.data(), ValueName.size()));
       ValueName.clear();
-      break;
-    }
-    }
-  }
-}
-
-bool NaClBitcodeReader::ParseMetadata() {
-  unsigned NextMDValueNo = MDValueList.size();
-
-  DEBUG(dbgs() << "-> ParseMetadata\n");
-  if (Stream.EnterSubBlock(naclbitc::METADATA_BLOCK_ID))
-    return Error("Malformed block record");
-
-  SmallVector<uint64_t, 64> Record;
-
-  // Read all the records.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
-    case NaClBitstreamEntry::Error:
-      Error("malformed metadata block");
-      return true;
-    case NaClBitstreamEntry::EndBlock:
-      DEBUG(dbgs() << "<- ParseMetadata\n");
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    bool IsFunctionLocal = false;
-    // Read a record.
-    Record.clear();
-    unsigned Code = Stream.readRecord(Entry.ID, Record);
-    switch (Code) {
-    default:  // Default behavior: ignore.
-      break;
-    case naclbitc::METADATA_NAME: {
-      // Read name of the named metadata.
-      SmallString<8> Name(Record.begin(), Record.end());
-      Record.clear();
-      Code = Stream.ReadCode();
-
-      // METADATA_NAME is always followed by METADATA_NAMED_NODE.
-      unsigned NextBitCode = Stream.readRecord(Code, Record);
-      assert(NextBitCode == naclbitc::METADATA_NAMED_NODE); (void)NextBitCode;
-
-      // Read named metadata elements.
-      unsigned Size = Record.size();
-      NamedMDNode *NMD = TheModule->getOrInsertNamedMetadata(Name);
-      for (unsigned i = 0; i != Size; ++i) {
-        MDNode *MD = dyn_cast<MDNode>(MDValueList.getValueFwdRef(Record[i]));
-        if (MD == 0)
-          return Error("Malformed metadata record");
-        NMD->addOperand(MD);
-      }
-      break;
-    }
-    case naclbitc::METADATA_FN_NODE:
-      IsFunctionLocal = true;
-      // fall-through
-    case naclbitc::METADATA_NODE: {
-      if (Record.size() % 2 == 1)
-        return Error("Invalid METADATA_NODE record");
-
-      unsigned Size = Record.size();
-      SmallVector<Value*, 8> Elts;
-      for (unsigned i = 0; i != Size; i += 2) {
-        Type *Ty = getTypeByID(Record[i]);
-        if (!Ty) return Error("Invalid METADATA_NODE record");
-        if (Ty->isMetadataTy())
-          Elts.push_back(MDValueList.getValueFwdRef(Record[i+1]));
-        else if (!Ty->isVoidTy())
-          Elts.push_back(ValueList.getOrCreateValueFwdRef(Record[i+1], Ty));
-        else
-          Elts.push_back(NULL);
-      }
-      Value *V = MDNode::getWhenValsUnresolved(Context, Elts, IsFunctionLocal);
-      IsFunctionLocal = false;
-      MDValueList.AssignValue(V, NextMDValueNo++);
-      break;
-    }
-    case naclbitc::METADATA_STRING: {
-      SmallString<8> String(Record.begin(), Record.end());
-      Value *V = MDString::get(Context, String);
-      MDValueList.AssignValue(V, NextMDValueNo++);
-      break;
-    }
-    case naclbitc::METADATA_KIND: {
-      if (Record.size() < 2)
-        return Error("Invalid METADATA_KIND record");
-
-      unsigned Kind = Record[0];
-      SmallString<8> Name(Record.begin()+1, Record.end());
-
-      unsigned NewKind = TheModule->getMDKindID(Name.str());
-      if (!MDKindMap.insert(std::make_pair(Kind, NewKind)).second)
-        return Error("Conflicting METADATA_KIND records");
       break;
     }
     }
@@ -1416,10 +1272,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         if (ParseConstants() || ResolveGlobalAndAliasInits())
           return true;
         break;
-      case naclbitc::METADATA_BLOCK_ID:
-        if (ParseMetadata())
-          return true;
-        break;
       case naclbitc::FUNCTION_BLOCK_ID:
         // If this is the first function body we've seen, reverse the
         // FunctionsWithBodies list.
@@ -1688,53 +1540,6 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
   }
 }
 
-/// ParseMetadataAttachment - Parse metadata attachments.
-bool NaClBitcodeReader::ParseMetadataAttachment() {
-  DEBUG(dbgs() << "-> ParseMetadataAttachment\n");
-  if (Stream.EnterSubBlock(naclbitc::METADATA_ATTACHMENT_ID))
-    return Error("Malformed block record");
-
-  SmallVector<uint64_t, 64> Record;
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
-    case NaClBitstreamEntry::Error:
-      return Error("malformed metadata block");
-    case NaClBitstreamEntry::EndBlock:
-      DEBUG(dbgs() << "<- ParseMetadataAttachment\n");
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    // Read a metadata attachment record.
-    Record.clear();
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default:  // Default behavior: ignore.
-      break;
-    case naclbitc::METADATA_ATTACHMENT: {
-      unsigned RecordLength = Record.size();
-      if (Record.empty() || (RecordLength - 1) % 2 == 1)
-        return Error ("Invalid METADATA_ATTACHMENT reader!");
-      Instruction *Inst = InstructionList[Record[0]];
-      for (unsigned i = 1; i != RecordLength; i = i+2) {
-        unsigned Kind = Record[i];
-        DenseMap<unsigned, unsigned>::iterator I =
-          MDKindMap.find(Kind);
-        if (I == MDKindMap.end())
-          return Error("Invalid metadata kind ID");
-        Value *Node = MDValueList.getValueFwdRef(Record[i+1]);
-        Inst->setMetadata(I->second, cast<MDNode>(Node));
-      }
-      break;
-    }
-    }
-  }
-}
-
 /// ParseFunctionBody - Lazily parse the specified function body block.
 bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   DEBUG(dbgs() << "-> ParseFunctionBody\n");
@@ -1743,7 +1548,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
   InstructionList.clear();
   unsigned ModuleValueListSize = ValueList.size();
-  unsigned ModuleMDValueListSize = MDValueList.size();
 
   // Add all the function arguments to the value table.
   for(Function::arg_iterator I = F->arg_begin(), E = F->arg_end(); I != E; ++I)
@@ -1752,8 +1556,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   unsigned NextValueNo = ValueList.size();
   BasicBlock *CurBB = 0;
   unsigned CurBBNo = 0;
-
-  DebugLoc LastLoc;
 
   // Read all the records.
   SmallVector<uint64_t, 64> Record;
@@ -1782,14 +1584,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         if (ParseValueSymbolTable())
           return true;
         break;
-      case naclbitc::METADATA_ATTACHMENT_ID:
-        if (ParseMetadataAttachment())
-          return true;
-        break;
-      case naclbitc::METADATA_BLOCK_ID:
-        if (ParseMetadata())
-          return true;
-        break;
       }
       continue;
 
@@ -1814,45 +1608,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         FunctionBBs[i] = BasicBlock::Create(Context, "", F);
       CurBB = FunctionBBs[0];
       continue;
-
-    case naclbitc::FUNC_CODE_DEBUG_LOC_AGAIN:  // DEBUG_LOC_AGAIN
-      // This record indicates that the last instruction is at the same
-      // location as the previous instruction with a location.
-      I = 0;
-
-      // Get the last instruction emitted.
-      if (CurBB && !CurBB->empty())
-        I = &CurBB->back();
-      else if (CurBBNo && FunctionBBs[CurBBNo-1] &&
-               !FunctionBBs[CurBBNo-1]->empty())
-        I = &FunctionBBs[CurBBNo-1]->back();
-
-      if (I == 0) return Error("Invalid DEBUG_LOC_AGAIN record");
-      I->setDebugLoc(LastLoc);
-      I = 0;
-      continue;
-
-    case naclbitc::FUNC_CODE_DEBUG_LOC: {      // DEBUG_LOC: [line, col, scope, ia]
-      I = 0;     // Get the last instruction emitted.
-      if (CurBB && !CurBB->empty())
-        I = &CurBB->back();
-      else if (CurBBNo && FunctionBBs[CurBBNo-1] &&
-               !FunctionBBs[CurBBNo-1]->empty())
-        I = &FunctionBBs[CurBBNo-1]->back();
-      if (I == 0 || Record.size() < 4)
-        return Error("Invalid FUNC_CODE_DEBUG_LOC record");
-
-      unsigned Line = Record[0], Col = Record[1];
-      unsigned ScopeID = Record[2], IAID = Record[3];
-
-      MDNode *Scope = 0, *IA = 0;
-      if (ScopeID) Scope = cast<MDNode>(MDValueList.getValueFwdRef(ScopeID-1));
-      if (IAID)    IA = cast<MDNode>(MDValueList.getValueFwdRef(IAID-1));
-      LastLoc = DebugLoc::get(Line, Col, Scope, IA);
-      I->setDebugLoc(LastLoc);
-      I = 0;
-      continue;
-    }
 
     case naclbitc::FUNC_CODE_INST_BINOP: {
       // BINOP: [opval, opval, opcode[, flags]]
@@ -2521,9 +2276,6 @@ OutOfRecordLoop:
     }
   }
 
-  // FIXME: Check for unresolved forward-declared metadata references
-  // and clean up leaks.
-
   // See if anything took the address of blocks in this function.  If so,
   // resolve them now.
   DenseMap<Function*, std::vector<BlockAddrRefTy> >::iterator BAFRI =
@@ -2545,7 +2297,6 @@ OutOfRecordLoop:
 
   // Trim the value list down to the size it was before we parsed this function.
   ValueList.shrinkTo(ModuleValueListSize);
-  MDValueList.shrinkTo(ModuleMDValueListSize);
   std::vector<BasicBlock*>().swap(FunctionBBs);
   DEBUG(dbgs() << "-> ParseFunctionBody\n");
   return false;
@@ -2738,8 +2489,6 @@ Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
 
   R->materializeForwardReferencedFunctions();
 
-  M->convertMetadataToLibraryList(); // @LOCALMOD
-
   return M;
 }
 
@@ -2762,8 +2511,6 @@ Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
   R->setBufferOwned(false); // no buffer to delete
 
   R->materializeForwardReferencedFunctions();
-
-  M->convertMetadataToLibraryList(); // @LOCALMOD
 
   return M;
 }

@@ -93,40 +93,6 @@ public:
 };
 
 
-//===----------------------------------------------------------------------===//
-//                          NaClBitcodeReaderMDValueList Class
-//===----------------------------------------------------------------------===//
-
-class NaClBitcodeReaderMDValueList {
-  std::vector<WeakVH> MDValuePtrs;
-
-  LLVMContext &Context;
-public:
-  NaClBitcodeReaderMDValueList(LLVMContext& C) : Context(C) {}
-
-  // vector compatibility methods
-  unsigned size() const       { return MDValuePtrs.size(); }
-  void resize(unsigned N)     { MDValuePtrs.resize(N); }
-  void push_back(Value *V)    { MDValuePtrs.push_back(V);  }
-  void clear()                { MDValuePtrs.clear();  }
-  Value *back() const         { return MDValuePtrs.back(); }
-  void pop_back()             { MDValuePtrs.pop_back(); }
-  bool empty() const          { return MDValuePtrs.empty(); }
-
-  Value *operator[](unsigned i) const {
-    assert(i < MDValuePtrs.size());
-    return MDValuePtrs[i];
-  }
-
-  void shrinkTo(unsigned N) {
-    assert(N <= size() && "Invalid shrinkTo request!");
-    MDValuePtrs.resize(N);
-  }
-
-  Value *getValueFwdRef(unsigned Idx);
-  void AssignValue(Value *V, unsigned Idx);
-};
-
 class NaClBitcodeReader : public GVMaterializer {
   NaClBitcodeHeader Header;  // Header fields of the PNaCl bitcode file.
   LLVMContext &Context;
@@ -143,7 +109,6 @@ class NaClBitcodeReader : public GVMaterializer {
 
   std::vector<Type*> TypeList;
   NaClBitcodeReaderValueList ValueList;
-  NaClBitcodeReaderMDValueList MDValueList;
   SmallVector<Instruction *, 64> InstructionList;
   SmallVector<SmallVector<uint64_t, 64>, 64> UseListRecords;
 
@@ -162,9 +127,6 @@ class NaClBitcodeReader : public GVMaterializer {
   // stored here with their replacement function.
   typedef std::vector<std::pair<Function*, Function*> > UpgradedIntrinsicMap;
   UpgradedIntrinsicMap UpgradedIntrinsics;
-
-  // Map the bitcode's custom MDKind ID to the Module's MDKind ID.
-  DenseMap<unsigned, unsigned> MDKindMap;
 
   // Several operations happen after the module header has been read, but
   // before function bodies are processed. This keeps track of whether
@@ -198,7 +160,7 @@ public:
                              bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(buffer), BufferOwned(false),
       LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ErrorString(0), ValueList(C), MDValueList(C),
+      ErrorString(0), ValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false),
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
   }
@@ -206,7 +168,7 @@ public:
                              bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ErrorString(0), ValueList(C), MDValueList(C),
+      ErrorString(0), ValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false),
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
   }
@@ -248,8 +210,6 @@ private:
   // Gets or creates the (function-level) forward referenced value for
   // ID with the given type.
   Value *getOrCreateFnValueByID(unsigned ID, Type *Ty) {
-    if (Ty && Ty->isMetadataTy())
-      return MDValueList.getValueFwdRef(ID);
     return ValueList.getOrCreateValueFwdRef(ID, Ty);
   }
   // Returns the value associated with ID. The value must already exist,
@@ -330,8 +290,6 @@ private:
   bool ParseFunctionBody(Function *F);
   bool GlobalCleanup();
   bool ResolveGlobalAndAliasInits();
-  bool ParseMetadata();
-  bool ParseMetadataAttachment();
   bool ParseUseLists();
   bool InitStream();
   bool InitStreamFromBuffer();

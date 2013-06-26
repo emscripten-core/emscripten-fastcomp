@@ -28,10 +28,7 @@ class Instruction;
 class BasicBlock;
 class Function;
 class Module;
-class MDNode;
-class NamedMDNode;
 class ValueSymbolTable;
-class MDSymbolTable;
 class raw_ostream;
 
 class NaClValueEnumerator {
@@ -57,9 +54,6 @@ private:
   typedef DenseMap<const Value*, unsigned> ValueMapType;
   ValueMapType ValueMap;
   ValueList Values;
-  ValueList MDValues;
-  SmallVector<const MDNode *, 8> FunctionLocalMDs;
-  ValueMapType MDValueMap;
 
   /// GlobalBasicBlockIDs - This map memoizes the basic block ID's referenced by
   /// the "getGlobalBasicBlockID" method.
@@ -76,10 +70,6 @@ private:
   /// When a function is incorporated, this is the size of the Values list
   /// before incorporation.
   unsigned NumModuleValues;
-
-  /// When a function is incorporated, this is the size of the MDValues list
-  /// before incorporation.
-  unsigned NumModuleMDValues;
 
   unsigned FirstFuncConstantID;
   unsigned FirstInstID;
@@ -122,10 +112,6 @@ public:
   }
 
   const ValueList &getValues() const { return Values; }
-  const ValueList &getMDValues() const { return MDValues; }
-  const SmallVector<const MDNode *, 8> &getFunctionLocalMDValues() const {
-    return FunctionLocalMDs;
-  }
   const TypeList &getTypes() const { return Types; }
   const std::vector<const BasicBlock*> &getBasicBlocks() const {
     return BasicBlocks;
@@ -146,16 +132,11 @@ private:
   void OptimizeTypes(const Module *M);
   void OptimizeConstants(unsigned CstStart, unsigned CstEnd);
 
-  void EnumerateMDNodeOperands(const MDNode *N);
-  void EnumerateMetadata(const Value *MD);
-  void EnumerateFunctionLocalMetadata(const MDNode *N);
-  void EnumerateNamedMDNode(const NamedMDNode *NMD);
   void EnumerateValue(const Value *V);
   void EnumerateType(Type *T, bool InsideOptimizeTypes=false);
   void EnumerateOperandType(const Value *V);
 
   void EnumerateValueSymbolTable(const ValueSymbolTable &ST);
-  void EnumerateNamedMetadata(const Module *M);
 };
 
 } // End llvm namespace

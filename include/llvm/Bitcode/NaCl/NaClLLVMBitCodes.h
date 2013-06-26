@@ -29,8 +29,8 @@ namespace naclbitc {
     MODULE_BLOCK_ID          = FIRST_APPLICATION_BLOCKID,
 
     // Module sub-block id's.
-    PARAMATTR_BLOCK_ID,
-    PARAMATTR_GROUP_BLOCK_ID,
+    PARAMATTR_BLOCK_ID,        // Not used in PNaCl.
+    PARAMATTR_GROUP_BLOCK_ID,  // Not used in PNaCl.
 
     CONSTANTS_BLOCK_ID,
     FUNCTION_BLOCK_ID,
@@ -38,8 +38,8 @@ namespace naclbitc {
     UNUSED_ID1,
 
     VALUE_SYMTAB_BLOCK_ID,
-    METADATA_BLOCK_ID,
-    METADATA_ATTACHMENT_ID,
+    METADATA_BLOCK_ID,         // Not used in PNaCl.
+    METADATA_ATTACHMENT_ID,    // Not used in PNaCl.
 
     TYPE_BLOCK_ID_NEW,
 
@@ -112,7 +112,7 @@ namespace naclbitc {
     TYPE_CODE_FP128    = 14,    // LONG DOUBLE (112 bit mantissa)
     TYPE_CODE_PPC_FP128= 15,    // PPC LONG DOUBLE (2 doubles)
 
-    TYPE_CODE_METADATA = 16,    // METADATA
+    TYPE_CODE_METADATA = 16,    // Not used in PNaCl.
 
     TYPE_CODE_X86_MMX = 17,     // X86 MMX
 
@@ -134,6 +134,7 @@ namespace naclbitc {
     VST_CODE_BBENTRY = 2   // VST_BBENTRY: [bbid, namechar x N]
   };
 
+  // Not used in PNaCl.
   enum NaClMetadataCodes {
     METADATA_STRING        = 1,   // MDSTRING:      [values]
     // 2 is unused.
@@ -324,11 +325,11 @@ namespace naclbitc {
     FUNC_CODE_INST_INBOUNDS_GEP= 30, // INBOUNDS_GEP: [n x operands]
     FUNC_CODE_INST_INDIRECTBR  = 31, // INDIRECTBR: [opty, op0, op1, ...]
     // 32 is unused.
-    FUNC_CODE_DEBUG_LOC_AGAIN  = 33, // DEBUG_LOC_AGAIN
+    FUNC_CODE_DEBUG_LOC_AGAIN  = 33, // Not used in PNaCl.
 
     FUNC_CODE_INST_CALL        = 34, // CALL:       [cc, fnid, args...]
 
-    FUNC_CODE_DEBUG_LOC        = 35, // DEBUG_LOC:  [Line,Col,ScopeVal, IAVal]
+    FUNC_CODE_DEBUG_LOC        = 35, // Not used in PNaCl.
     FUNC_CODE_INST_FENCE       = 36, // FENCE: [ordering, synchscope]
     FUNC_CODE_INST_CMPXCHG     = 37, // CMPXCHG: [ptr, cmp, new, align, vol,
                                      //           ordering, synchscope]

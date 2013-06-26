@@ -89,10 +89,6 @@ enum {
   TYPE_ARRAY_ABBREV,
   TYPE_MAX_ABBREV = TYPE_ARRAY_ABBREV,
 
-  // META_DATA_BLOCK abbrev id's.
-  METADATA_STRING_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
-  METADATA_MAX_ABBREV = METADATA_STRING_ABBREV,
-
   // MODULE_BLOCK abbrev id's.
   MODULE_GLOBALVAR_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   MODULE_MAX_ABBREV = MODULE_GLOBALVAR_ABBREV,
@@ -300,7 +296,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     case Type::FP128TyID:     Code = naclbitc::TYPE_CODE_FP128;     break;
     case Type::PPC_FP128TyID: Code = naclbitc::TYPE_CODE_PPC_FP128; break;
     case Type::LabelTyID:     Code = naclbitc::TYPE_CODE_LABEL;     break;
-    case Type::MetadataTyID:  Code = naclbitc::TYPE_CODE_METADATA;  break;
     case Type::X86_MMXTyID:   Code = naclbitc::TYPE_CODE_X86_MMX;   break;
     case Type::IntegerTyID:
       // INTEGER: [width]
@@ -591,167 +586,6 @@ static uint64_t GetOptimizationFlags(const Value *V) {
   }
 
   return Flags;
-}
-
-static void WriteMDNode(const MDNode *N,
-                        const NaClValueEnumerator &VE,
-                        NaClBitstreamWriter &Stream,
-                        SmallVector<uint64_t, 64> &Record) {
-  for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
-    if (N->getOperand(i)) {
-      Record.push_back(VE.getTypeID(N->getOperand(i)->getType()));
-      Record.push_back(VE.getValueID(N->getOperand(i)));
-    } else {
-      Record.push_back(VE.getTypeID(Type::getVoidTy(N->getContext())));
-      Record.push_back(0);
-    }
-  }
-  unsigned MDCode = N->isFunctionLocal() ? naclbitc::METADATA_FN_NODE :
-                                           naclbitc::METADATA_NODE;
-  Stream.EmitRecord(MDCode, Record, 0);
-  Record.clear();
-}
-
-static void WriteModuleMetadata(const Module *M,
-                                const NaClValueEnumerator &VE,
-                                NaClBitstreamWriter &Stream) {
-  DEBUG(dbgs() << "-> WriteModuleMetadata\n");
-  const NaClValueEnumerator::ValueList &Vals = VE.getMDValues();
-  bool StartedMetadataBlock = false;
-  SmallVector<uint64_t, 64> Record;
-  for (unsigned i = 0, e = Vals.size(); i != e; ++i) {
-
-    if (const MDNode *N = dyn_cast<MDNode>(Vals[i].first)) {
-      if (!N->isFunctionLocal() || !N->getFunction()) {
-        if (!StartedMetadataBlock) {
-          Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID);
-          StartedMetadataBlock = true;
-        }
-        WriteMDNode(N, VE, Stream, Record);
-      }
-    } else if (const MDString *MDS = dyn_cast<MDString>(Vals[i].first)) {
-      if (!StartedMetadataBlock)  {
-        Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID);
-        StartedMetadataBlock = true;
-      }
-
-      // Code: [strchar x N]
-      Record.append(MDS->begin(), MDS->end());
-
-      // Emit the finished record.
-      Stream.EmitRecord(naclbitc::METADATA_STRING, Record,
-                        METADATA_STRING_ABBREV);
-      Record.clear();
-    }
-  }
-
-  // Write named metadata.
-  for (Module::const_named_metadata_iterator I = M->named_metadata_begin(),
-       E = M->named_metadata_end(); I != E; ++I) {
-    const NamedMDNode *NMD = I;
-    if (!StartedMetadataBlock)  {
-      Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID);
-      StartedMetadataBlock = true;
-    }
-
-    // Write name.
-    StringRef Str = NMD->getName();
-    for (unsigned i = 0, e = Str.size(); i != e; ++i)
-      Record.push_back(Str[i]);
-    Stream.EmitRecord(naclbitc::METADATA_NAME, Record, 0/*TODO*/);
-    Record.clear();
-
-    // Write named metadata operands.
-    for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i)
-      Record.push_back(VE.getValueID(NMD->getOperand(i)));
-    Stream.EmitRecord(naclbitc::METADATA_NAMED_NODE, Record, 0);
-    Record.clear();
-  }
-
-  if (StartedMetadataBlock)
-    Stream.ExitBlock();
-
-  DEBUG(dbgs() << "<- WriteModuleMetadata\n");
-}
-
-static void WriteFunctionLocalMetadata(const Function &F,
-                                       const NaClValueEnumerator &VE,
-                                       NaClBitstreamWriter &Stream) {
-  DEBUG(dbgs() << "-> WriteFunctionLocalMetadata\n");
-  bool StartedMetadataBlock = false;
-  SmallVector<uint64_t, 64> Record;
-  const SmallVector<const MDNode *, 8> &Vals = VE.getFunctionLocalMDValues();
-  for (unsigned i = 0, e = Vals.size(); i != e; ++i)
-    if (const MDNode *N = Vals[i])
-      if (N->isFunctionLocal() && N->getFunction() == &F) {
-        if (!StartedMetadataBlock) {
-          Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID);
-          StartedMetadataBlock = true;
-        }
-        WriteMDNode(N, VE, Stream, Record);
-      }
-
-  if (StartedMetadataBlock)
-    Stream.ExitBlock();
-  DEBUG(dbgs() << "<- WriteFunctionLocalMetadata\n");
-}
-
-static void WriteMetadataAttachment(const Function &F,
-                                    const NaClValueEnumerator &VE,
-                                    NaClBitstreamWriter &Stream) {
-  Stream.EnterSubblock(naclbitc::METADATA_ATTACHMENT_ID);
-
-  SmallVector<uint64_t, 64> Record;
-
-  // Write metadata attachments
-  // METADATA_ATTACHMENT - [m x [value, [n x [id, mdnode]]]
-  SmallVector<std::pair<unsigned, MDNode*>, 4> MDs;
-
-  for (Function::const_iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
-    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
-         I != E; ++I) {
-      MDs.clear();
-      I->getAllMetadataOtherThanDebugLoc(MDs);
-
-      // If no metadata, ignore instruction.
-      if (MDs.empty()) continue;
-
-      Record.push_back(VE.getInstructionID(I));
-
-      for (unsigned i = 0, e = MDs.size(); i != e; ++i) {
-        Record.push_back(MDs[i].first);
-        Record.push_back(VE.getValueID(MDs[i].second));
-      }
-      Stream.EmitRecord(naclbitc::METADATA_ATTACHMENT, Record, 0);
-      Record.clear();
-    }
-
-  Stream.ExitBlock();
-}
-
-static void WriteModuleMetadataStore(const Module *M,
-                                     NaClBitstreamWriter &Stream) {
-  SmallVector<uint64_t, 64> Record;
-
-  // Write metadata kinds
-  // METADATA_KIND - [n x [id, name]]
-  SmallVector<StringRef, 8> Names;
-  M->getMDKindNames(Names);
-
-  if (Names.empty()) return;
-
-  Stream.EnterSubblock(naclbitc::METADATA_BLOCK_ID);
-
-  for (unsigned MDKindID = 0, e = Names.size(); MDKindID != e; ++MDKindID) {
-    Record.push_back(MDKindID);
-    StringRef KName = Names[MDKindID];
-    Record.append(KName.begin(), KName.end());
-
-    Stream.EmitRecord(naclbitc::METADATA_KIND, Record, 0);
-    Record.clear();
-  }
-
-  Stream.ExitBlock();
 }
 
 static void emitSignedInt64(SmallVectorImpl<uint64_t> &Vals, uint64_t V) {
@@ -1536,15 +1370,8 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
   VE.getFunctionConstantRange(CstStart, CstEnd);
   WriteConstants(CstStart, CstEnd, VE, Stream, false);
 
-  // If there is function-local metadata, emit it now.
-  WriteFunctionLocalMetadata(F, VE, Stream);
-
   // Keep a running idea of what the instruction ID is.
   unsigned InstID = CstEnd;
-
-  bool NeedsMetadataAttachment = false;
-
-  DebugLoc LastDL;
 
   // Finally, emit all the instructions, in order.
   for (Function::const_iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
@@ -1554,37 +1381,11 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
 
       if (!I->getType()->isVoidTy())
         ++InstID;
-
-      // If the instruction has metadata, write a metadata attachment later.
-      NeedsMetadataAttachment |= I->hasMetadataOtherThanDebugLoc();
-
-      // If the instruction has a debug location, emit it.
-      DebugLoc DL = I->getDebugLoc();
-      if (DL.isUnknown()) {
-        // nothing todo.
-      } else if (DL == LastDL) {
-        // Just repeat the same debug loc as last time.
-        Stream.EmitRecord(naclbitc::FUNC_CODE_DEBUG_LOC_AGAIN, Vals);
-      } else {
-        MDNode *Scope, *IA;
-        DL.getScopeAndInlinedAt(Scope, IA, I->getContext());
-
-        Vals.push_back(DL.getLine());
-        Vals.push_back(DL.getCol());
-        Vals.push_back(Scope ? VE.getValueID(Scope)+1 : 0);
-        Vals.push_back(IA ? VE.getValueID(IA)+1 : 0);
-        Stream.EmitRecord(naclbitc::FUNC_CODE_DEBUG_LOC, Vals);
-        Vals.clear();
-
-        LastDL = DL;
-      }
     }
 
   // Emit names for all the instructions etc.
   WriteValueSymbolTable(F.getValueSymbolTable(), VE, Stream);
 
-  if (NeedsMetadataAttachment)
-    WriteMetadataAttachment(F, VE, Stream);
   VE.purgeFunction();
   Stream.ExitBlock();
 }
@@ -1593,8 +1394,7 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
 static void WriteBlockInfo(const NaClValueEnumerator &VE,
                            NaClBitstreamWriter &Stream) {
   // We only want to emit block info records for blocks that have multiple
-  // instances: CONSTANTS_BLOCK, FUNCTION_BLOCK and VALUE_SYMTAB_BLOCK,
-  // and METADATA_BLOCK_ID.
+  // instances: CONSTANTS_BLOCK, FUNCTION_BLOCK and VALUE_SYMTAB_BLOCK.
   // Other blocks can define their abbrevs inline.
   Stream.EnterBlockInfoBlock();
 
@@ -1761,16 +1561,6 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
-  { // Abbrev for METADATA_STRING.
-    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::METADATA_STRING));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 8));
-    if (Stream.EmitBlockInfoAbbrev(naclbitc::METADATA_BLOCK_ID,
-                                   Abbv) != METADATA_STRING_ABBREV)
-      llvm_unreachable("Unexpected abbrev ordering!");
-  }
-
   Stream.ExitBlock();
 }
 
@@ -1799,12 +1589,6 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 
   // Emit constants.
   WriteModuleConstants(VE, Stream);
-
-  // Emit metadata.
-  WriteModuleMetadata(M, VE, Stream);
-
-  // Emit metadata.
-  WriteModuleMetadataStore(M, Stream);
 
   // Emit names for globals/functions etc.
   WriteValueSymbolTable(M->getValueSymbolTable(), VE, Stream);
@@ -1866,9 +1650,6 @@ static const uint16_t kPNaClVersion = 1;
 void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out) {
   SmallVector<char, 0> Buffer;
   Buffer.reserve(256*1024);
-
-  // Convert Deplib info to metadata
-  M->convertLibraryListToMetadata(); // @LOCALMOD
 
   // Emit the module into the buffer.
   {
