@@ -1990,9 +1990,6 @@ void llvm::WriteBitcodeToFile(const Module *M, raw_ostream &Out) {
   SmallVector<char, 0> Buffer;
   Buffer.reserve(256*1024);
 
-  // Convert Deplib info to metadata
-  M->convertLibraryListToMetadata(); // @LOCALMOD
-
   // If this is darwin or another generic macho target, reserve space for the
   // header.
   Triple TT(M->getTargetTriple());
