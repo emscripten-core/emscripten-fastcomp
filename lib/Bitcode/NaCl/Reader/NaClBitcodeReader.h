@@ -219,44 +219,24 @@ private:
     return FunctionBBs[ID];
   }
 
-  /// \brief Read a value out of the specified record from slot 'Slot'.
-  /// Increment Slot past the number of slots used by the value in the record.
+  /// \brief Read a value out of the specified record from slot '*Slot'.
+  /// Increment *Slot past the number of slots used by the value in the record.
   /// Return true if there is an error.
-  bool getValue(SmallVector<uint64_t, 64> &Record, unsigned &Slot,
-                unsigned InstNum, Value *&ResVal) {
-    if (Slot == Record.size()) return true;
-    unsigned ValNo = (unsigned)Record[Slot++];
+  bool popValue(const SmallVector<uint64_t, 64> &Record, unsigned *Slot,
+                unsigned InstNum, Value **ResVal) {
+    if (*Slot == Record.size()) return true;
+    unsigned ValNo = (unsigned)Record[(*Slot)++];
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;
-    ResVal = getFnValueByID(ValNo);
-    return ResVal == 0;
-  }
-
-  /// popValue - Read a value out of the specified record from slot 'Slot'.
-  /// Increment Slot past the number of slots used by the value in the record.
-  /// Return true if there is an error.
-  bool popValue(SmallVector<uint64_t, 64> &Record, unsigned &Slot,
-                unsigned InstNum, Type *Ty, Value *&ResVal) {
-    if (getValue(Record, Slot, InstNum, Ty, ResVal))
-      return true;
-    // All values currently take a single record slot.
-    ++Slot;
-    return false;
-  }
-
-  /// getValue -- Like popValue, but does not increment the Slot number.
-  bool getValue(SmallVector<uint64_t, 64> &Record, unsigned Slot,
-                unsigned InstNum, Type *Ty, Value *&ResVal) {
-    ResVal = getValue(Record, Slot, InstNum, Ty);
-    return ResVal == 0;
+    *ResVal = getFnValueByID(ValNo);
+    return *ResVal == 0;
   }
 
   /// getValue -- Version of getValue that returns ResVal directly,
   /// or 0 if there is an error.
-  /// TODO(mseaborn): Remove the unused Type argument from this function.
-  Value *getValue(SmallVector<uint64_t, 64> &Record, unsigned Slot,
-                  unsigned InstNum, Type *Ty) {
+  Value *getValue(const SmallVector<uint64_t, 64> &Record, unsigned Slot,
+                  unsigned InstNum) {
     if (Slot == Record.size()) return 0;
     unsigned ValNo = (unsigned)Record[Slot];
     // Adjust the ValNo, if it was encoded relative to the InstNum.
@@ -266,9 +246,8 @@ private:
   }
 
   /// getValueSigned -- Like getValue, but decodes signed VBRs.
-  /// TODO(mseaborn): Remove the unused Type argument from this function.
-  Value *getValueSigned(SmallVector<uint64_t, 64> &Record, unsigned Slot,
-                        unsigned InstNum, Type *Ty) {
+  Value *getValueSigned(const SmallVector<uint64_t, 64> &Record, unsigned Slot,
+                        unsigned InstNum) {
     if (Slot == Record.size()) return 0;
     unsigned ValNo = (unsigned) NaClDecodeSignRotatedValue(Record[Slot]);
     // Adjust the ValNo, if it was encoded relative to the InstNum.
