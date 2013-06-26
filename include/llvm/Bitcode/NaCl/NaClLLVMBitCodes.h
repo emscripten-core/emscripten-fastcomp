@@ -304,7 +304,7 @@ namespace naclbitc {
     FUNC_CODE_INST_PHI         = 16, // PHI:        [ty, val0,bb0, ...]
     // 17 is unused.
     // 18 is unused.
-    FUNC_CODE_INST_ALLOCA      = 19, // ALLOCA:     [instty, op, align]
+    FUNC_CODE_INST_ALLOCA      = 19, // ALLOCA:     [op, align]
     FUNC_CODE_INST_LOAD        = 20, // LOAD:       [op, align, vol]
     // 21 is unused.
     // 22 is unused.

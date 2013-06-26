@@ -2283,16 +2283,15 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_ALLOCA: { // ALLOCA: [instty, opty, op, align]
-      if (Record.size() != 4)
+    case naclbitc::FUNC_CODE_INST_ALLOCA: { // ALLOCA: [op, align]
+      if (Record.size() != 2)
         return Error("Invalid ALLOCA record");
-      PointerType *Ty =
-        dyn_cast_or_null<PointerType>(getTypeByID(Record[0]));
-      Type *OpTy = getTypeByID(Record[1]);
-      Value *Size = getOrCreateFnValueByID(Record[2], OpTy);
-      unsigned Align = Record[3];
-      if (!Ty || !Size) return Error("Invalid ALLOCA record");
-      I = new AllocaInst(Ty->getElementType(), Size, (1 << Align) >> 1);
+      Value *Size;
+      unsigned OpNum = 0;
+      if (getValue(Record, OpNum, NextValueNo, Size))
+        return Error("Invalid ALLOCA record");
+      unsigned Align = Record[1];
+      I = new AllocaInst(Type::getInt8Ty(Context), Size, (1 << Align) >> 1);
       InstructionList.push_back(I);
       break;
     }

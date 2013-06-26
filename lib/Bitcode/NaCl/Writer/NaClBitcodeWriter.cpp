@@ -1358,10 +1358,10 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   }
 
   case Instruction::Alloca:
+    if (!cast<AllocaInst>(&I)->getAllocatedType()->isIntegerTy(8))
+      report_fatal_error("Type of alloca instruction is not i8");
     Code = naclbitc::FUNC_CODE_INST_ALLOCA;
-    Vals.push_back(VE.getTypeID(I.getType()));
-    Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));
-    Vals.push_back(VE.getValueID(I.getOperand(0))); // size.
+    PushValueAndType(I.getOperand(0), InstID, Vals, VE, Stream); // size.
     Vals.push_back(Log2_32(cast<AllocaInst>(I).getAlignment())+1);
     break;
 
