@@ -290,23 +290,21 @@ Value *NaClBitcodeReaderValueList::getValueFwdRef(unsigned Idx) {
   return 0;
 }
 
-Value *NaClBitcodeReaderValueList::getOrCreateValueFwdRef(
-    unsigned Idx, Type *Ty) {
+bool NaClBitcodeReaderValueList::createValueFwdRef(unsigned Idx, Type *Ty) {
   if (Idx >= size())
     resize(Idx + 1);
 
-  if (Value *V = ValuePtrs[Idx]) {
-    assert((Ty == 0 || Ty == V->getType()) && "Type mismatch in value table!");
-    return V;
-  }
+  // Return an error if this a duplicate definition of Idx.
+  if (ValuePtrs[Idx])
+    return true;
 
   // No type specified, must be invalid reference.
-  if (Ty == 0) return 0;
+  if (Ty == 0)
+    return true;
 
-  // Create and return a placeholder, which will later be RAUW'd.
-  Value *V = new Argument(Ty);
-  ValuePtrs[Idx] = V;
-  return V;
+  // Create a placeholder, which will later be RAUW'd.
+  ValuePtrs[Idx] = new Argument(Ty);
+  return false;
 }
 
 /// ResolveConstantForwardRefs - Once all constants are read, this method bulk
@@ -2235,9 +2233,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     }
     case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF:
       // Build corresponding forward reference.
-      if (Record.size() != 2)
-        return Error("Invald FORWARDTYPEREF record");
-      getOrCreateFnValueByID(Record[0], getTypeByID(Record[1]));
+      if (Record.size() != 2 ||
+          ValueList.createValueFwdRef(Record[0], getTypeByID(Record[1])))
+        return Error("Invalid FORWARDTYPEREF record");
       continue;
     }
 

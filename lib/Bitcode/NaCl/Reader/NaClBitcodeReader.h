@@ -77,8 +77,10 @@ public:
     ValuePtrs.resize(N);
   }
 
-  // Gets or creates the forward reference value for Idx with the given type.
-  Value *getOrCreateValueFwdRef(unsigned Idx, Type *Ty);
+  // Declares the type of the forward-referenced value Idx.  Returns
+  // true if an error occurred.  It is an error if Idx's type has
+  // already been declared.
+  bool createValueFwdRef(unsigned Idx, Type *Ty);
 
   Constant *getConstantFwdRef(unsigned Idx, Type *Ty);
 
@@ -207,11 +209,6 @@ private:
              (!AcceptSupportedBitcodeOnly && Header.IsReadable()));
   }
   Type *getTypeByID(unsigned ID);
-  // Gets or creates the (function-level) forward referenced value for
-  // ID with the given type.
-  Value *getOrCreateFnValueByID(unsigned ID, Type *Ty) {
-    return ValueList.getOrCreateValueFwdRef(ID, Ty);
-  }
   // Returns the value associated with ID. The value must already exist,
   // or a forward referenced value created by getOrCreateFnVaueByID.
   Value *getFnValueByID(unsigned ID) {
