@@ -297,6 +297,7 @@ private:
 
   /// getValue -- Version of getValue that returns ResVal directly,
   /// or 0 if there is an error.
+  /// TODO(mseaborn): Remove the unused Type argument from this function.
   Value *getValue(SmallVector<uint64_t, 64> &Record, unsigned Slot,
                   unsigned InstNum, Type *Ty) {
     if (Slot == Record.size()) return 0;
@@ -304,10 +305,11 @@ private:
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;
-    return getOrCreateFnValueByID(ValNo, Ty);
+    return getFnValueByID(ValNo);
   }
 
   /// getValueSigned -- Like getValue, but decodes signed VBRs.
+  /// TODO(mseaborn): Remove the unused Type argument from this function.
   Value *getValueSigned(SmallVector<uint64_t, 64> &Record, unsigned Slot,
                         unsigned InstNum, Type *Ty) {
     if (Slot == Record.size()) return 0;
@@ -315,7 +317,7 @@ private:
     // Adjust the ValNo, if it was encoded relative to the InstNum.
     if (UseRelativeIDs)
       ValNo = InstNum - ValNo;
-    return getOrCreateFnValueByID(ValNo, Ty);
+    return getFnValueByID(ValNo);
   }
 
   bool ParseModule(bool Resume);
