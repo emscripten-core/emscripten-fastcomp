@@ -2184,32 +2184,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         I = SI;
         break;
       }
-
-      // Old SwitchInst format without case ranges.
-
-      if (Record.size() < 3 || (Record.size() & 1) == 0)
-        return Error("Invalid SWITCH record");
-      Type *OpTy = getTypeByID(Record[0]);
-      Value *Cond = getValue(Record, 1, NextValueNo, OpTy);
-      BasicBlock *Default = getBasicBlock(Record[2]);
-      if (OpTy == 0 || Cond == 0 || Default == 0)
-        return Error("Invalid SWITCH record");
-      unsigned NumCases = (Record.size()-3)/2;
-      SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
-      InstructionList.push_back(SI);
-      for (unsigned i = 0, e = NumCases; i != e; ++i) {
-        ConstantInt *CaseVal =
-          dyn_cast_or_null<ConstantInt>(
-              getOrCreateFnValueByID(Record[3+i*2], OpTy));
-        BasicBlock *DestBB = getBasicBlock(Record[1+3+i*2]);
-        if (CaseVal == 0 || DestBB == 0) {
-          delete SI;
-          return Error("Invalid SWITCH record!");
-        }
-        SI->addCase(CaseVal, DestBB);
-      }
-      I = SI;
-      break;
+      return Error("Old SwitchInst representation not supported");
     }
     case naclbitc::FUNC_CODE_INST_INDIRECTBR: { // INDIRECTBR: [opty, op0, op1, ...]
       if (Record.size() < 2)
