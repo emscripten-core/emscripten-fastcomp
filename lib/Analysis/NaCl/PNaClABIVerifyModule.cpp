@@ -204,6 +204,9 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::nacl_read_tp:
     case Intrinsic::nacl_setjmp:
     case Intrinsic::nacl_longjmp:
+    // Stack save and restore are used to support C99 VLAs.
+    case Intrinsic::stackrestore:
+    case Intrinsic::stacksave:
     case Intrinsic::trap:
       return true;
 
@@ -253,13 +256,14 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::invariant_end:
     case Intrinsic::invariant_start:
     // Some transcendental functions not needed yet.
-    case Intrinsic::cos: // Rounding not defined: support with fast-math?
-    case Intrinsic::exp: // Rounding not defined: support with fast-math?
-    case Intrinsic::exp2: // Rounding not defined: support with fast-math?
-    case Intrinsic::log: // Rounding not defined: support with fast-math?
-    case Intrinsic::log2: // Rounding not defined: support with fast-math?
-    case Intrinsic::log10: // Rounding not defined: support with fast-math?
-    case Intrinsic::sin: // Rounding not defined: support with fast-math?
+    case Intrinsic::cos:
+    case Intrinsic::exp:
+    case Intrinsic::exp2:
+    case Intrinsic::log:
+    case Intrinsic::log2:
+    case Intrinsic::log10:
+    case Intrinsic::pow:
+    case Intrinsic::sin:
     // We run -lower-expect to convert Intrinsic::expect into branch weights
     // and consume in the middle-end. The backend just ignores llvm.expect.
     case Intrinsic::expect:
@@ -274,12 +278,9 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::dbg_value:
       return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
-    case Intrinsic::pow: // Rounding is supposed to be the same as libm.
     case Intrinsic::powi: // Rounding not defined: support with fast-math?
-    case Intrinsic::prefetch: // Could ignore if target doesn't support?
+    case Intrinsic::prefetch: // TODO(jfb): Use our own data-prefetch intrinsic instead.
     case Intrinsic::sqrt: // Rounding is defined, but setting errno up to libm.
-    case Intrinsic::stackrestore: // Used to support C99 VLAs.
-    case Intrinsic::stacksave: // Used to support C99 VLAs.
       return PNaClABIAllowDevIntrinsics;
   }
 }

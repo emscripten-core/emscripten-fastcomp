@@ -323,16 +323,19 @@ TODO(jfb): atomics
 * ``llvm.memset``
 * ``llvm.bswap``
 
-  The llvm.bswap intrinsic is only supported with the following argument types:
-  i16, i32, i64.
+  The overloaded llvm.bswap intrinsic is only supported with the following
+  argument types: i16, i32, i64 (the types supported by C-style GCC builtins).
 
 * ``llvm.ctlz``
 * ``llvm.cttz``
 * ``llvm.ctpop``
 
-  The llvm.ctlz, llvm.cttz, and llvm.ctpop intrinsics only support
-  i32 and i64 argument types (the types supported by C-style GCC builtins).
+  The overloaded llvm.ctlz, llvm.cttz, and llvm.ctpop intrinsics are only
+  supported with the i32 and i64 argument types (the types supported by
+  C-style GCC builtins).
 
+* ``llvm.stacksave``
+* ``llvm.stackrestore``
 * ``llvm.trap``
 * ``llvm.nacl.read.tp``
 
