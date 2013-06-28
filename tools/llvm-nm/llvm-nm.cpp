@@ -19,6 +19,8 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Bitcode/Archive.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h" // @LOCALMOD
+#include "llvm/IRReader/IRReader.h"             // @LOCALMOD
 #include "llvm/IR/Module.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/ObjectFile.h"
@@ -122,6 +124,18 @@ namespace {
   bool MultipleFiles = false;
 
   std::string ToolName;
+
+  // @LOCALMOD-BEGIN
+  cl::opt<NaClFileFormat>
+  InputFileFormat(
+      "bitcode-format",
+      cl::desc("Define format of input file:"),
+      cl::values(
+          clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
+          clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
+          clEnumValEnd),
+      cl::init(LLVMFormat));
+  // @LOCALMOD-END
 }
 
 
@@ -345,7 +359,20 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
 
   LLVMContext &Context = getGlobalContext();
   std::string ErrorMessage;
-  if (magic == sys::fs::file_magic::bitcode) {
+  // @LOCALMOD-BEGIN
+  // Support parsing PNaCl bitcode files
+  if (InputFileFormat == PNaClFormat) {
+    Module *Result = NaClParseBitcodeFile(Buffer.get(), Context, &ErrorMessage);
+    if (Result) {
+      DumpSymbolNamesFromModule(Result);
+      delete Result;
+    } else {
+      error(ErrorMessage, Filename);
+      return;
+    }
+  }
+  // @LOCALMOD-END
+  else if (magic == sys::fs::file_magic::bitcode) {
     Module *Result = 0;
     Result = ParseBitcodeFile(Buffer.get(), Context, &ErrorMessage);
     if (Result) {
