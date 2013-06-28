@@ -94,7 +94,7 @@ static CallInst *ReplaceCallWith(const char *NewFn, CallInst *CI,
 
 // @LOCALMOD-BEGIN
 // Calls to these functions may materialize as part of a conversion
-// from an intrinsics, e.g. llvm.memset -> memset
+// from an intrinsic.
 // So if these functions are available in bitcode form we need to:
 // * make sure they do not get discarded -- if there is a chance that
 //   a caller might materialize
@@ -108,7 +108,6 @@ static CallInst *ReplaceCallWith(const char *NewFn, CallInst *CI,
 // Bitcode can then internalize symbols.
 static const char *IntrinsicNames[] = {
   "abort",
-  "powf", "pow", "powl",
   NULL
 };
 
