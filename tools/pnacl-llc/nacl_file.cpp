@@ -19,7 +19,7 @@
 // path in the nacl tree
 #include "native_client/src/shared/srpc/nacl_srpc.h"
 #ifdef __pnacl__
-#include <nacl/pnacl.h>
+#include "native_client/src/untrusted/nacl/pnacl.h"
 #endif
 #include "SRPCStreamer.h"
 
