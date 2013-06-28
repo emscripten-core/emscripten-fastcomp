@@ -107,7 +107,6 @@ static CallInst *ReplaceCallWith(const char *NewFn, CallInst *CI,
 // functions exported by native libs, so that they can be found.
 // Bitcode can then internalize symbols.
 static const char *IntrinsicNames[] = {
-  "abort",
   NULL
 };
 
