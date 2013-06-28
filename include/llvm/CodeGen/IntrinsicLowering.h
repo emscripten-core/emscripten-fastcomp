@@ -16,7 +16,6 @@
 #ifndef LLVM_CODEGEN_INTRINSICLOWERING_H
 #define LLVM_CODEGEN_INTRINSICLOWERING_H
 
-#include "llvm/ADT/StringSet.h" // @LOCALMOD
 #include "llvm/IR/Intrinsics.h"
 
 namespace llvm {
@@ -27,22 +26,11 @@ namespace llvm {
   class IntrinsicLowering {
     const DataLayout& TD;
 
-    static StringSet<> FuncNames; // @LOCALMOD
-
+    
     bool Warned;
   public:
     explicit IntrinsicLowering(const DataLayout &td) :
       TD(td), Warned(false) {}
-
-    /// @LOCALMOD-BEGIN
-    /// GetFuncNames - Get the names of all functions which may
-    /// be called by an intrinsic.
-    static const StringSet<> &GetFuncNames();
-
-    /// IsCalledByIntrinsic - Returns true if a function may be called
-    /// by an intrinsic.
-    static bool IsCalledByIntrinsic(const StringRef &FuncName);
-    /// @LOCALMOD-END
 
     /// AddPrototypes - This method, if called, causes all of the prototypes
     /// that might be needed by an intrinsic lowering implementation to be

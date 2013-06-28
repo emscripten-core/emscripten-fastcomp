@@ -92,39 +92,6 @@ static CallInst *ReplaceCallWith(const char *NewFn, CallInst *CI,
 #  define setjmp_undefined_for_msvc
 #endif
 
-// @LOCALMOD-BEGIN
-// Calls to these functions may materialize as part of a conversion
-// from an intrinsic.
-// So if these functions are available in bitcode form we need to:
-// * make sure they do not get discarded -- if there is a chance that
-//   a caller might materialize
-// * make sure they do not get specialized for a given callsite
-// Both problems are avoided by pretending there are unknown callers.
-// The function: IntrinsicLowering::AddPrototypes() below does just that.
-//
-// We are in the process of removing the need for this list.
-// Intrinsics that are truly supported will have versions of these
-// functions exported by native libs, so that they can be found.
-// Bitcode can then internalize symbols.
-static const char *IntrinsicNames[] = {
-  NULL
-};
-
-StringSet<> IntrinsicLowering::FuncNames;
-
-const StringSet<> &IntrinsicLowering::GetFuncNames() {
-  if (FuncNames.empty()) {
-    for (unsigned i=0; IntrinsicNames[i]; ++i)
-      FuncNames.insert(IntrinsicNames[i]);
-  }
-  return FuncNames;
-}
-
-bool IntrinsicLowering::IsCalledByIntrinsic(const StringRef &FuncName) {
-  return IntrinsicLowering::GetFuncNames().count(FuncName) > 0;
-}
-// @LOCALMOD-END
-
 void IntrinsicLowering::AddPrototypes(Module &M) {
   LLVMContext &Context = M.getContext();
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
