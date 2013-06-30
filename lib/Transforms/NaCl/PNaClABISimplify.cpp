@@ -67,6 +67,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
 
   PM.add(createPromoteI1OpsPass());
 
+  // Optimization passes and ExpandByVal introduce
+  // memset/memcpy/memmove intrinsics with a 64-bit size argument.
+  // This pass converts those arguments to 32-bit.
+  PM.add(createCanonicalizeMemIntrinsicsPass());
+
   // We place StripMetadata after optimization passes because
   // optimizations depend on the metadata.
   PM.add(createStripMetadataPass());

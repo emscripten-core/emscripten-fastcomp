@@ -23,6 +23,7 @@ class Use;
 class Value;
 
 ModulePass *createAddPNaClExternalDeclsPass();
+ModulePass *createCanonicalizeMemIntrinsicsPass();
 ModulePass *createExpandArithWithOverflowPass();
 ModulePass *createExpandByValPass();
 FunctionPass *createExpandConstantExprPass();

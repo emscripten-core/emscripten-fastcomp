@@ -19,9 +19,13 @@ declare void @llvm.dbg.value(metadata, i64, metadata)
 ; CHECK-NOT: Function llvm.memcpy.p0i8.p0i8.i32 is a disallowed LLVM intrinsic
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src,
                                         i32 %len, i32 %align, i1 %isvolatile)
-; CHECK-NOT: Function llvm.memcpy.p0i8.p0i8.i64 is a disallowed LLVM intrinsic
-declare void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src,
-                                        i64 %len, i32 %align, i1 %isvolatile)
+; CHECK-NOT: Function llvm.memmove.p0i8.p0i8.i32 is a disallowed LLVM intrinsic
+declare void @llvm.memmove.p0i8.p0i8.i32(i8* %dest, i8* %src,
+                                         i32 %len, i32 %align, i1 %isvolatile)
+; CHECK-NOT: Function llvm.memset.p0i8.i32 is a disallowed LLVM intrinsic
+declare void @llvm.memset.p0i8.i32(i8* %dest, i8 %val,
+                                    i32 %len, i32 %align, i1 %isvolatile)
+
 ; CHECK-NOT: Function llvm.nacl.read.tp is a disallowed LLVM intrinsic
 declare i8* @llvm.nacl.read.tp()
 
@@ -104,3 +108,14 @@ declare i8* @llvm.frameaddress(i32 %level)
 
 ; CHECK: Function llvm.returnaddress is a disallowed LLVM intrinsic
 declare i8* @llvm.returnaddress(i32 %level)
+
+; The variants with 64-bit %len arguments are disallowed.
+; CHECK: Function llvm.memcpy.p0i8.p0i8.i64 is a disallowed LLVM intrinsic
+declare void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src,
+                                        i64 %len, i32 %align, i1 %isvolatile)
+; CHECK: Function llvm.memmove.p0i8.p0i8.i64 is a disallowed LLVM intrinsic
+declare void @llvm.memmove.p0i8.p0i8.i64(i8* %dest, i8* %src,
+                                         i64 %len, i32 %align, i1 %isvolatile)
+; CHECK: Function llvm.memset.p0i8.i64 is a disallowed LLVM intrinsic
+declare void @llvm.memset.p0i8.i64(i8* %dest, i8 %val,
+                                    i64 %len, i32 %align, i1 %isvolatile)

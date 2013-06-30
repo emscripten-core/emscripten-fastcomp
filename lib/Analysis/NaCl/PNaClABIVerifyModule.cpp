@@ -198,9 +198,6 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::ctlz:
     case Intrinsic::cttz: return isWhitelistedCountBits(F, 2);
     case Intrinsic::ctpop: return isWhitelistedCountBits(F, 1);
-    case Intrinsic::memcpy:
-    case Intrinsic::memmove:
-    case Intrinsic::memset:
     case Intrinsic::nacl_read_tp:
     case Intrinsic::nacl_setjmp:
     case Intrinsic::nacl_longjmp:
@@ -209,6 +206,14 @@ bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
     case Intrinsic::stacksave:
     case Intrinsic::trap:
       return true;
+    case Intrinsic::memcpy:
+    case Intrinsic::memmove:
+    case Intrinsic::memset:
+      // Disallow the variant with the 64-bit "size" argument.
+      // TODO(mseaborn): Check all arguments' types and check the
+      // intrinsics' full names too.
+      // See https://code.google.com/p/nativeclient/issues/detail?id=3530
+      return F->getFunctionType()->getParamType(2)->isIntegerTy(32);
 
     // (2) Known to be never allowed.
     case Intrinsic::not_intrinsic:

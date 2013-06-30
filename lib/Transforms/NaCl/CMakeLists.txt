@@ -1,5 +1,6 @@
 add_llvm_library(LLVMNaClTransforms
   AddPNaClExternalDecls.cpp
+  CanonicalizeMemIntrinsics.cpp
   ExpandArithWithOverflow.cpp
   ExpandByVal.cpp
   ExpandConstantExpr.cpp
