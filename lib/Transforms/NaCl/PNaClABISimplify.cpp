@@ -22,6 +22,11 @@
 using namespace llvm;
 
 void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
+  // Internalize all symbols in the module except _start, which is the only
+  // symbol a stable PNaCl pexe is allowed to export.
+  const char *SymbolsToPreserve[] = { "_start" };
+  PM.add(createInternalizePass(SymbolsToPreserve));
+
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
   PM.add(createLowerExpectIntrinsicPass());
