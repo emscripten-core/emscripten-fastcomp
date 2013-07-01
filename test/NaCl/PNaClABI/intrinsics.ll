@@ -16,48 +16,37 @@ declare void @llvm.dbg.value(metadata, i64, metadata)
 ; ===================================
 ; Always allowed intrinsics.
 
-; CHECK-NOT: Function llvm.memcpy.p0i8.p0i8.i32 is a disallowed LLVM intrinsic
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src,
                                         i32 %len, i32 %align, i1 %isvolatile)
-; CHECK-NOT: Function llvm.memmove.p0i8.p0i8.i32 is a disallowed LLVM intrinsic
 declare void @llvm.memmove.p0i8.p0i8.i32(i8* %dest, i8* %src,
                                          i32 %len, i32 %align, i1 %isvolatile)
-; CHECK-NOT: Function llvm.memset.p0i8.i32 is a disallowed LLVM intrinsic
 declare void @llvm.memset.p0i8.i32(i8* %dest, i8 %val,
                                     i32 %len, i32 %align, i1 %isvolatile)
 
-; CHECK-NOT: Function llvm.nacl.read.tp is a disallowed LLVM intrinsic
 declare i8* @llvm.nacl.read.tp()
 
-; CHECK-NOT: Function llvm.bswap.i16 is a disallowed LLVM intrinsic
 declare i16 @llvm.bswap.i16(i16)
-
-; CHECK-NOT: Function llvm.bswap.i32 is a disallowed LLVM intrinsic
 declare i32 @llvm.bswap.i32(i32)
-
-; CHECK-NOT: Function llvm.bswap.i64 is a disallowed LLVM intrinsic
 declare i64 @llvm.bswap.i64(i64)
 
-; CHECK-NOT: Function llvm.cttz.i32 is a disallowed LLVM intrinsic
 declare i32 @llvm.cttz.i32(i32, i1)
-
-; CHECK-NOT: Function llvm.cttz.i64 is a disallowed LLVM intrinsic
 declare i64 @llvm.cttz.i64(i64, i1)
 
-; CHECK-NOT: Function llvm.ctlz.i32 is a disallowed LLVM intrinsic
 declare i32 @llvm.ctlz.i32(i32, i1)
-
-; CHECK-NOT: Function llvm.ctlz.i64 is a disallowed LLVM intrinsic
 declare i64 @llvm.ctlz.i64(i64, i1)
 
-; CHECK-NOT: Function llvm.ctpop.i32 is a disallowed LLVM intrinsic
 declare i32 @llvm.ctpop.i32(i32)
-
-; CHECK-NOT: Function llvm.ctpop.i64 is a disallowed LLVM intrinsic
 declare i64 @llvm.ctpop.i64(i64)
 
-; CHECK-NOT: Function llvm.trap is a disallowed LLVM intrinsic
 declare void @llvm.trap()
+
+declare i8* @llvm.stacksave()
+declare void @llvm.stackrestore(i8*)
+
+declare void @llvm.nacl.longjmp(i8*, i32)
+declare i32 @llvm.nacl.setjmp(i8*)
+
+; CHECK-NOT: disallowed
 
 ; ===================================
 ; Always disallowed intrinsics.
@@ -119,3 +108,8 @@ declare void @llvm.memmove.p0i8.p0i8.i64(i8* %dest, i8* %src,
 ; CHECK: Function llvm.memset.p0i8.i64 is a disallowed LLVM intrinsic
 declare void @llvm.memset.p0i8.i64(i8* %dest, i8 %val,
                                     i64 %len, i32 %align, i1 %isvolatile)
+
+; Test that the ABI checker checks the full function name.
+; CHECK: Function llvm.memset.foo is a disallowed LLVM intrinsic
+declare void @llvm.memset.foo(i8* %dest, i8 %val,
+                              i64 %len, i32 %align, i1 %isvolatile)

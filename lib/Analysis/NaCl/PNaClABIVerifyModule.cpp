@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Pass.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Constants.h"
@@ -66,12 +67,28 @@ class PNaClABIVerifyModule : public ModulePass {
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
   void checkGlobalValueCommon(const GlobalValue *GV);
-  bool isWhitelistedIntrinsic(const Function *F, unsigned ID);
   bool isWhitelistedMetadata(const NamedMDNode *MD);
   void checkGlobalIsFlattened(const GlobalVariable *GV);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
   bool StreamingMode;
+};
+
+class AllowedIntrinsics {
+  LLVMContext *Context;
+  // Maps from an allowed intrinsic's name to its type.
+  StringMap<FunctionType *> Mapping;
+
+  // Tys is an array of type parameters for the intrinsic.  This
+  // defaults to an empty array.
+  void addIntrinsic(Intrinsic::ID ID,
+                    ArrayRef<Type *> Tys = ArrayRef<Type*>()) {
+    Mapping[Intrinsic::getName(ID, Tys)] =
+        Intrinsic::getType(*Context, ID, Tys);
+  }
+public:
+  AllowedIntrinsics(LLVMContext *Context);
+  bool isAllowed(const Function *Func);
 };
 
 static const char *linkageName(GlobalValue::LinkageTypes LT) {
@@ -145,75 +162,63 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
   }
 }
 
-static bool TypeAcceptable(const Type *T,
-                           const ArrayRef<Type*> &AcceptableTypes) {
-  for (ArrayRef<Type*>::iterator I = AcceptableTypes.begin(),
-       E = AcceptableTypes.end(); I != E; ++I)
-    if (*I == T)
-      return true;
-  return false;
+AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
+  Type *I8Ptr = Type::getInt8PtrTy(*Context);
+  Type *I16 = Type::getInt16Ty(*Context);
+  Type *I32 = Type::getInt32Ty(*Context);
+  Type *I64 = Type::getInt64Ty(*Context);
+
+  // We accept bswap for a limited set of types (i16, i32, i64).  The
+  // various backends are able to generate instructions to implement
+  // the intrinsic.  Also, i16 and i64 are easy to implement as along
+  // as there is a way to do i32.
+  addIntrinsic(Intrinsic::bswap, I16);
+  addIntrinsic(Intrinsic::bswap, I32);
+  addIntrinsic(Intrinsic::bswap, I64);
+
+  // We accept cttz, ctlz, and ctpop for a limited set of types (i32, i64).
+  addIntrinsic(Intrinsic::ctlz, I32);
+  addIntrinsic(Intrinsic::ctlz, I64);
+  addIntrinsic(Intrinsic::cttz, I32);
+  addIntrinsic(Intrinsic::cttz, I64);
+  addIntrinsic(Intrinsic::ctpop, I32);
+  addIntrinsic(Intrinsic::ctpop, I64);
+
+  addIntrinsic(Intrinsic::nacl_read_tp);
+  addIntrinsic(Intrinsic::nacl_longjmp);
+  addIntrinsic(Intrinsic::nacl_setjmp);
+
+  // Stack save and restore are used to support C99 VLAs.
+  addIntrinsic(Intrinsic::stacksave);
+  addIntrinsic(Intrinsic::stackrestore);
+
+  addIntrinsic(Intrinsic::trap);
+
+  // We only allow the variants of memcpy/memmove/memset with an i32
+  // "len" argument, not an i64 argument.
+  Type *MemcpyTypes[] = { I8Ptr, I8Ptr, I32 };
+  addIntrinsic(Intrinsic::memcpy, MemcpyTypes);
+  addIntrinsic(Intrinsic::memmove, MemcpyTypes);
+  Type *MemsetTypes[] = { I8Ptr, I32 };
+  addIntrinsic(Intrinsic::memset, MemsetTypes);
 }
 
-// We accept bswap for a limited set of types (i16, i32, i64).
-// The various backends are able to generate instructions to
-// implement the intrinsic.  Also, i16 and i64 are easy to
-// implement as along as there is a way to do i32.
-static bool isWhitelistedBswap(const Function *F) {
-  FunctionType *FT = F->getFunctionType();
-  if (FT->getNumParams() != 1)
-    return false;
-  Type *ParamType = FT->getParamType(0);
-  LLVMContext &C = F->getContext();
-  Type *AcceptableTypes[] = { Type::getInt16Ty(C),
-                              Type::getInt32Ty(C),
-                              Type::getInt64Ty(C) };
-  return TypeAcceptable(ParamType, AcceptableTypes);
-}
-
-// We accept cttz, ctlz, and ctpop for a limited set of types (i32, i64).
-static bool isWhitelistedCountBits(const Function *F, unsigned num_params) {
-  FunctionType *FT = F->getFunctionType();
-  if (FT->getNumParams() != num_params)
-    return false;
-  Type *ParamType = FT->getParamType(0);
-  LLVMContext &C = F->getContext();
-  Type *AcceptableTypes[] = { Type::getInt32Ty(C), Type::getInt64Ty(C) };
-  return TypeAcceptable(ParamType, AcceptableTypes);
-}
-
-bool PNaClABIVerifyModule::isWhitelistedIntrinsic(const Function *F,
-                                                  unsigned ID) {
+bool AllowedIntrinsics::isAllowed(const Function *Func) {
   // Keep 3 categories of intrinsics for now.
-  // (1) Allowed always
+  // (1) Allowed always, provided the exact name and type match.
   // (2) Never allowed
   // (3) "Dev" intrinsics, which may or may not be allowed.
   // "Dev" intrinsics are controlled by the PNaClABIAllowDevIntrinsics flag.
   // Please keep these sorted or grouped in a sensible way, within
   // each category.
-  switch(ID) {
+
+  // (1) Allowed always, provided the exact name and type match.
+  if (Mapping.count(Func->getName()) == 1)
+    return Func->getFunctionType() == Mapping[Func->getName()];
+
+  switch (Func->getIntrinsicID()) {
     // Disallow by default.
     default: return false;
-    // (1) Always allowed.
-    case Intrinsic::bswap: return isWhitelistedBswap(F);
-    case Intrinsic::ctlz:
-    case Intrinsic::cttz: return isWhitelistedCountBits(F, 2);
-    case Intrinsic::ctpop: return isWhitelistedCountBits(F, 1);
-    case Intrinsic::nacl_read_tp:
-    case Intrinsic::nacl_setjmp:
-    case Intrinsic::nacl_longjmp:
-    // Stack save and restore are used to support C99 VLAs.
-    case Intrinsic::stackrestore:
-    case Intrinsic::stacksave:
-    case Intrinsic::trap:
-      return true;
-    case Intrinsic::memcpy:
-    case Intrinsic::memmove:
-    case Intrinsic::memset:
-      // Disallow the variant with the 64-bit "size" argument.
-      // TODO(mseaborn): Check all arguments' types and check the
-      // intrinsics' full names too.
-      // See https://code.google.com/p/nativeclient/issues/detail?id=3530
-      return F->getFunctionType()->getParamType(2)->isIntegerTy(32);
 
     // (2) Known to be never allowed.
     case Intrinsic::not_intrinsic:
@@ -373,6 +378,8 @@ void PNaClABIVerifyModule::checkGlobalIsFlattened(const GlobalVariable *GV) {
 }
 
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
+  AllowedIntrinsics Intrinsics(&M.getContext());
+
   if (!M.getModuleInlineAsm().empty()) {
     Reporter->addError() <<
         "Module contains disallowed top-level inline assembly\n";
@@ -403,7 +410,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
     if (MI->isIntrinsic()) {
       // Check intrinsics.
-      if (!isWhitelistedIntrinsic(MI, MI->getIntrinsicID())) {
+      if (!Intrinsics.isAllowed(MI)) {
         Reporter->addError() << "Function " << MI->getName()
                              << " is a disallowed LLVM intrinsic\n";
       }
