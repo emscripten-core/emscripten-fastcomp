@@ -15,14 +15,14 @@
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"  // @LOCALMOD
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IRReader/IRReader.h"  // @LOCALMOD
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
@@ -46,17 +46,14 @@
 
 using namespace llvm;
 
-// @LOCALMOD-BEGIN
-// NOTE: This tool can be build as a "sandboxed" translator.
-//       It's always built SRPC-style at this point - no file operations
-//       are allowed.
+// NOTE: When __native_client__ is defined it means pnacl-llc is built as a
+// sandboxed translator (from pnacl-llc.pexe to pnacl-llc.nexe). In this mode
+// it uses SRPC operations instead of direct OS intefaces.
 #if defined(__native_client__)
 int GetObjectFileFD();
 DataStreamer* NaClBitcodeStreamer;
 #endif
-// @LOCALMOD-END
 
-// @LOCALMOD-BEGIN
 const char *TimeIRParsingGroupName = "LLVM IR Parsing";
 const char *TimeIRParsingName = "Parse IR";
 
@@ -64,9 +61,7 @@ bool TimeIRParsingIsEnabled = false;
 static cl::opt<bool,true>
 EnableTimeIRParsing("time-ir-parsing", cl::location(TimeIRParsingIsEnabled),
                     cl::desc("Measure the time IR parsing takes"));
-// @LOCALMOD-END
 
-// @LOCALMOD-BEGIN
 cl::opt<NaClFileFormat>
 InputFileFormat(
     "bitcode-format",
@@ -76,7 +71,6 @@ InputFileFormat(
         clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
     cl::init(LLVMFormat));
-// @LOCALMOD-END
 
 // General options for llc.  Other pass-specific options are specified
 // within the corresponding llc passes, and target-specific options
@@ -236,14 +230,12 @@ int llc_main(int argc, char **argv) {
   InitializeAllTargets();
   InitializeAllTargetMCs();
   InitializeAllAsmPrinters();
-// @LOCALMOD-BEGIN
-// Prune asm parsing from sandboxed translator.
-// Do not prune "AsmPrinters" because that includes
-// the direct object emission.
- #if !defined(__native_client__)
-   InitializeAllAsmParsers();
+#if !defined(__native_client__)
+  // Prune asm parsing from sandboxed translator.
+  // Do not prune "AsmPrinters" because that includes
+  // the direct object emission.
+  InitializeAllAsmParsers();
 #endif
-// @LOCALMOD-END
 
   // Initialize codegen and IR passes used by llc so that the -print-after,
   // -print-before, and -stop-after options work.
@@ -273,7 +265,6 @@ int llc_main(int argc, char **argv) {
   return 0;
 }
 
-// @LOCALMOD-BEGIN
 static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
                                  const Twine &Name) {
   if (PNaClABIVerify && Reporter.getErrorCount() > 0) {
@@ -285,7 +276,6 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
   }
   Reporter.reset();
 }
-// @LOCALMOD-END
 
 static int compileModule(char **argv, LLVMContext &Context) {
   // Load the module to be compiled...
@@ -358,11 +348,6 @@ static int compileModule(char **argv, LLVMContext &Context) {
   std::string FeaturesStr;
   if (MAttrs.size()) {
     SubtargetFeatures Features;
-    // @LOCALMOD-BEGIN
-    // Use the same default attribute settings as libLTO.
-    // TODO(pdox): Figure out why this isn't done for upstream llc.
-    Features.getDefaultSubtargetFeatures(TheTriple);
-    // @LOCALMOD-END
     for (unsigned i = 0; i != MAttrs.size(); ++i)
       Features.AddFeature(MAttrs[i]);
     FeaturesStr = Features.getString();
@@ -437,7 +422,6 @@ static int compileModule(char **argv, LLVMContext &Context) {
 #endif
 
   // Build up all of the passes that we want to do to the module.
-  // @LOCALMOD-BEGIN
   OwningPtr<PassManagerBase> PM;
   if (LazyBitcode || ReduceMemoryFootprint)
     PM.reset(new FunctionPassManager(mod));
@@ -453,8 +437,6 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   // Add the intrinsic resolution pass. It assumes ABI-conformant code.
   PM->add(createResolvePNaClIntrinsicsPass());
-
-  // @LOCALMOD-END
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
