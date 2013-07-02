@@ -202,7 +202,7 @@ namespace naclbitc {
     GLOBALVAR_ZEROFILL   = 2,     // ZEROFILL: [size]
     GLOBALVAR_DATA       = 3,     // DATA: [b0, b1, ...]
     GLOBALVAR_RELOC      = 4,     // RELOC: [val, [addend]]
-    GLOBALVAR_COUNT      = 5,     // COUNT: [n]
+    GLOBALVAR_COUNT      = 5      // COUNT: [n]
   };
 
   /// CastOpcodes - These are values used in the bitcode files to encode which
