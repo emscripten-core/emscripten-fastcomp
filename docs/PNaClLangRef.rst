@@ -344,6 +344,12 @@ TODO(jfb): atomics
   supported with the i32 and i64 argument types (the types supported by
   C-style GCC builtins).
 
+* ``llvm.sqrt``
+
+  The overloaded ``llvm.sqrt`` intrinsic is only supported for float
+  and double arguments types. Unlike the standard LLVM intrinsic,
+  PNaCl guarantees that llvm.sqrt returns a QNaN for values less than -0.0.
+
 * ``llvm.stacksave``
 * ``llvm.stackrestore``
 * ``llvm.trap``

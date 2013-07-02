@@ -40,6 +40,9 @@ declare i64 @llvm.ctpop.i64(i64)
 
 declare void @llvm.trap()
 
+declare float @llvm.sqrt.f32(float)
+declare double @llvm.sqrt.f64(double)
+
 declare i8* @llvm.stacksave()
 declare void @llvm.stackrestore(i8*)
 
@@ -97,6 +100,9 @@ declare i8* @llvm.frameaddress(i32 %level)
 
 ; CHECK: Function llvm.returnaddress is a disallowed LLVM intrinsic
 declare i8* @llvm.returnaddress(i32 %level)
+
+; CHECK: Function llvm.sqrt.fp128 is a disallowed LLVM intrinsic
+declare fp128 @llvm.sqrt.fp128(fp128)
 
 ; The variants with 64-bit %len arguments are disallowed.
 ; CHECK: Function llvm.memcpy.p0i8.p0i8.i64 is a disallowed LLVM intrinsic

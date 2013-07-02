@@ -176,6 +176,8 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   Type *I16 = Type::getInt16Ty(*Context);
   Type *I32 = Type::getInt32Ty(*Context);
   Type *I64 = Type::getInt64Ty(*Context);
+  Type *Float = Type::getFloatTy(*Context);
+  Type *Double = Type::getDoubleTy(*Context);
 
   // We accept bswap for a limited set of types (i16, i32, i64).  The
   // various backends are able to generate instructions to implement
@@ -196,6 +198,10 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   addIntrinsic(Intrinsic::nacl_read_tp);
   addIntrinsic(Intrinsic::nacl_longjmp);
   addIntrinsic(Intrinsic::nacl_setjmp);
+
+  // For native sqrt instructions. Must guarantee when x < -0.0, sqrt(x) = NaN.
+  addIntrinsic(Intrinsic::sqrt, Float);
+  addIntrinsic(Intrinsic::sqrt, Double);
 
   // Stack save and restore are used to support C99 VLAs.
   addIntrinsic(Intrinsic::stacksave);
@@ -299,7 +305,6 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
     case Intrinsic::powi: // Rounding not defined: support with fast-math?
     case Intrinsic::prefetch: // TODO(jfb): Use our own data-prefetch intrinsic instead.
-    case Intrinsic::sqrt: // Rounding is defined, but setting errno up to libm.
       return PNaClABIAllowDevIntrinsics;
   }
 }
