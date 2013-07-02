@@ -43,7 +43,8 @@ namespace naclbitc {
 
     TYPE_BLOCK_ID_NEW,
 
-    USELIST_BLOCK_ID
+    USELIST_BLOCK_ID,
+    GLOBALVAR_BLOCK_ID
   };
 
 
@@ -58,9 +59,7 @@ namespace naclbitc {
     // FIXME: Remove DEPLIB in 4.0.
     MODULE_CODE_DEPLIB      = 6,    // DEPLIB:      [strchr x N]
 
-    // GLOBALVAR: [pointer type, isconst, initid,
-    //             linkage, alignment, section, visibility, threadlocal]
-    MODULE_CODE_GLOBALVAR   = 7,
+    MODULE_CODE_GLOBALVAR   = 7,    // Not used in PNaCl.
 
     // FUNCTION:  [type, callingconv, isproto, linkage]
     MODULE_CODE_FUNCTION    = 8,
@@ -177,6 +176,33 @@ namespace naclbitc {
     CST_CODE_DATA          = 22,  // DATA:          [n x elements]
     CST_CODE_INLINEASM     = 23   // INLINEASM:     [sideeffect|alignstack|
                                   //                 asmdialect,asmstr,conststr]
+  };
+
+  /// GlobalVarOpcodes - These are values used in the bitcode files to
+  /// encode records defining global variables.
+  ///
+  /// The structure of global variables can be summarized as follows:
+  ///
+  /// The global variable block begins with a GLOBALVAR_COUNT, defining
+  /// the number of global variables in the bitcode file. After that,
+  /// each global variable is defined.
+  ///
+  /// Global variables are defined by a GLOBALVAR_VAR record, followed
+  /// by 1 or more records defining its initial value. Simple
+  /// variables have a single initializer. Structured variables are
+  /// defined by an initial GLOBALVAR_COMPOUND record defining the
+  /// number of fields in the structure, followed by an initializer
+  /// for each of its fields. In this context, a field is either data,
+  /// or a relocation.  A data field is defined by a
+  /// GLOBALVAR_ZEROFILL or GLOBALVAR_DATA record.  A relocation field
+  /// is defined by a GLOBALVAR_RELOC record.
+  enum NaClGlobalVarOpcodes {
+    GLOBALVAR_VAR        = 0,     // VAR: [align, isconst]
+    GLOBALVAR_COMPOUND   = 1,     // COMPOUND: [size]
+    GLOBALVAR_ZEROFILL   = 2,     // ZEROFILL: [size]
+    GLOBALVAR_DATA       = 3,     // DATA: [b0, b1, ...]
+    GLOBALVAR_RELOC      = 4,     // RELOC: [val, [addend]]
+    GLOBALVAR_COUNT      = 5,     // COUNT: [n]
   };
 
   /// CastOpcodes - These are values used in the bitcode files to encode which

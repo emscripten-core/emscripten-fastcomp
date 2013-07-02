@@ -82,12 +82,31 @@ public:
   // already been declared.
   bool createValueFwdRef(unsigned Idx, Type *Ty);
 
+  // Declares the type of the forward-referenced constant Idx. Returns
+  // 0 if an error occurred.
+  // TODO(kschimpf) Convert these to be like createValueFwdRef and
+  // getValueFwdRef.
   Constant *getConstantFwdRef(unsigned Idx, Type *Ty);
 
   // Gets the forward reference value for Idx.
   Value *getValueFwdRef(unsigned Idx);
 
+  // Gets the corresponding constant defining the address of the
+  // corresponding global variable defined by Idx, if already defined.
+  // Otherwise, creates a forward reference for Idx, and returns the
+  // placeholder constant for the address of the corresponding global
+  // variable defined by Idx.
+  Constant *getOrCreateGlobalVarRef(unsigned Idx, Module* M);
+
+  // Assigns Idx to the given value (if new), or assigns V to Idx (if Idx
+  // was forward referenced).
   void AssignValue(Value *V, unsigned Idx);
+
+  // Assigns Idx to the given global variable. If the Idx currently has
+  // a forward reference (built by createGlobalVarFwdRef(unsigned Idx)),
+  // replaces uses of the global variable forward reference with the
+  // value GV.
+  void AssignGlobalVar(GlobalVariable *GV, unsigned Idx);
 
   /// ResolveConstantForwardRefs - Once all constants are read, this method bulk
   /// resolves any forward references.
@@ -114,7 +133,6 @@ class NaClBitcodeReader : public GVMaterializer {
   SmallVector<Instruction *, 64> InstructionList;
   SmallVector<SmallVector<uint64_t, 64>, 64> UseListRecords;
 
-  std::vector<std::pair<GlobalVariable*, unsigned> > GlobalInits;
   std::vector<std::pair<GlobalAlias*, unsigned> > AliasInits;
 
   /// FunctionBBs - While parsing a function body, this is a list of the basic
@@ -259,13 +277,13 @@ private:
   bool ParseModule(bool Resume);
   bool ParseTypeTable();
   bool ParseTypeTableBody();
-
+  bool ParseGlobalVars();
   bool ParseValueSymbolTable();
   bool ParseConstants();
   bool RememberAndSkipFunctionBody();
   bool ParseFunctionBody(Function *F);
   bool GlobalCleanup();
-  bool ResolveGlobalAndAliasInits();
+  bool ResolveAliasInits();
   bool ParseUseLists();
   bool InitStream();
   bool InitStreamFromBuffer();

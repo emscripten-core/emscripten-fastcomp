@@ -97,6 +97,7 @@ static const char *GetBlockName(unsigned BlockID,
   case naclbitc::METADATA_BLOCK_ID:        return "METADATA_BLOCK";
   case naclbitc::METADATA_ATTACHMENT_ID:   return "METADATA_ATTACHMENT_BLOCK";
   case naclbitc::USELIST_BLOCK_ID:         return "USELIST_BLOCK_ID";
+  case naclbitc::GLOBALVAR_BLOCK_ID:       return "GLOBALVAR_BLOCK";
   }
 }
 
@@ -258,6 +259,16 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
     switch(CodeID) {
     default:return 0;
     case naclbitc::USELIST_CODE_ENTRY:   return "USELIST_CODE_ENTRY";
+    }
+  case naclbitc::GLOBALVAR_BLOCK_ID:
+    switch (CodeID) {
+    default: return 0;
+    case naclbitc::GLOBALVAR_VAR:        return "VAR";
+    case naclbitc::GLOBALVAR_COMPOUND:   return "COMPOUND";
+    case naclbitc::GLOBALVAR_ZEROFILL:   return "ZEROFILL";
+    case naclbitc::GLOBALVAR_DATA:       return "DATA";
+    case naclbitc::GLOBALVAR_RELOC:      return "RELOC";
+    case naclbitc::GLOBALVAR_COUNT:      return "COUNT";
     }
   }
 }

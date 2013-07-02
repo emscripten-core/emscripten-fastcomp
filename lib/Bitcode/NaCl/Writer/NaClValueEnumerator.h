@@ -79,6 +79,11 @@ private:
   /// than necessary.
   SmallSet<unsigned, 32> FnForwardTypeRefs;
 
+  // The index of the first global variable ID in the bitcode file.
+  unsigned FirstGlobalVarID;
+  // The number of global variable IDs defined in the bitcode file.
+  unsigned NumGlobalVarIDs;
+
   NaClValueEnumerator(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
   void operator=(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
 public:
@@ -86,6 +91,14 @@ public:
 
   void dump() const;
   void print(raw_ostream &OS, const ValueMapType &Map, const char *Name) const;
+
+  unsigned getFirstGlobalVarID() const {
+    return FirstGlobalVarID;
+  }
+
+  unsigned getNumGlobalVarIDs() const {
+    return NumGlobalVarIDs;
+  }
 
   unsigned getValueID(const Value *V) const;
 

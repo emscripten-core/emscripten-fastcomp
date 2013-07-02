@@ -69,6 +69,15 @@ enum {
   CST_CONSTANTS_CSTRING_6_ABBREV,
   CST_CONSTANTS_MAX_ABBREV = CST_CONSTANTS_CSTRING_6_ABBREV,
 
+  // GLOBALVAR BLOCK abbrev id's.
+  GLOBALVAR_VAR_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
+  GLOBALVAR_COMPOUND_ABBREV,
+  GLOBALVAR_ZEROFILL_ABBREV,
+  GLOBALVAR_DATA_ABBREV,
+  GLOBALVAR_RELOC_ABBREV,
+  GLOBALVAR_RELOC_WITH_ADDEND_ABBREV,
+  GLOBALVAR_MAX_ABBREV = GLOBALVAR_RELOC_WITH_ADDEND_ABBREV,
+
   // FUNCTION_BLOCK abbrev id's.
   FUNCTION_INST_LOAD_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   FUNCTION_INST_BINOP_ABBREV,
@@ -88,10 +97,6 @@ enum {
   TYPE_STRUCT_NAMED_ABBREV,
   TYPE_ARRAY_ABBREV,
   TYPE_MAX_ABBREV = TYPE_ARRAY_ABBREV,
-
-  // MODULE_BLOCK abbrev id's.
-  MODULE_GLOBALVAR_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
-  MODULE_MAX_ABBREV = MODULE_GLOBALVAR_ABBREV,
 
   // SwitchInst Magic
   SWITCH_INST_MAGIC = 0x4B5 // May 2012 => 1205 => Hex
@@ -409,15 +414,124 @@ static unsigned getEncodedVisibility(const GlobalValue *GV) {
   llvm_unreachable("Invalid visibility");
 }
 
-static unsigned getEncodedThreadLocalMode(const GlobalVariable *GV) {
-  switch (GV->getThreadLocalMode()) {
-    case GlobalVariable::NotThreadLocal:         return 0;
-    case GlobalVariable::GeneralDynamicTLSModel: return 1;
-    case GlobalVariable::LocalDynamicTLSModel:   return 2;
-    case GlobalVariable::InitialExecTLSModel:    return 3;
-    case GlobalVariable::LocalExecTLSModel:      return 4;
+/// \brief Function to convert constant initializers for global
+/// variables into corresponding bitcode. Takes advantage that these
+/// global variable initializations are normalized (see
+/// lib/Transforms/NaCl/FlattenGlobals.cpp).
+void WriteGlobalInit(const Constant *C, unsigned GlobalVarID,
+                     SmallVectorImpl<uint32_t> &Vals,
+                     const NaClValueEnumerator &VE,
+                     NaClBitstreamWriter &Stream) {
+  if (ArrayType *Ty = dyn_cast<ArrayType>(C->getType())) {
+    if (!Ty->getElementType()->isIntegerTy(8))
+      report_fatal_error("Global array initializer not i8");
+    uint32_t Size = Ty->getNumElements();
+    if (isa<ConstantAggregateZero>(C)) {
+      Vals.push_back(Size);
+      Stream.EmitRecord(naclbitc::GLOBALVAR_ZEROFILL, Vals,
+                        GLOBALVAR_ZEROFILL_ABBREV);
+      Vals.clear();
+    } else {
+      const ConstantDataSequential *CD = cast<ConstantDataSequential>(C);
+      StringRef Data = CD->getRawDataValues();
+      for (size_t i = 0; i < Size; ++i) {
+        Vals.push_back(Data[i] & 0xFF);
+      }
+      Stream.EmitRecord(naclbitc::GLOBALVAR_DATA, Vals,
+                        GLOBALVAR_DATA_ABBREV);
+      Vals.clear();
+    }
+    return;
   }
-  llvm_unreachable("Invalid TLS model");
+  if (C->getType()->isIntegerTy(32)) {
+    // This constant defines a relocation. Start by verifying the
+    // relocation is of the right form.
+    const ConstantExpr *CE = dyn_cast<ConstantExpr>(C);
+    if (CE == 0)
+      report_fatal_error("Global i32 initializer not constant");
+    assert(CE);
+    int32_t Addend = 0;
+    if (CE->getOpcode() == Instruction::Add) {
+      const ConstantInt *AddendConst = dyn_cast<ConstantInt>(CE->getOperand(1));
+      if (AddendConst == 0)
+        report_fatal_error("Malformed addend in global relocation initializer");
+      Addend = AddendConst->getSExtValue();
+      CE = dyn_cast<ConstantExpr>(CE->getOperand(0));
+      if (CE == 0)
+        report_fatal_error(
+            "Base of global relocation initializer not constant");
+    }
+    if (CE->getOpcode() != Instruction::PtrToInt)
+      report_fatal_error("Global relocation base doesn't contain ptrtoint");
+    GlobalValue *GV = dyn_cast<GlobalValue>(CE->getOperand(0));
+    if (GV == 0)
+      report_fatal_error(
+          "Argument of ptrtoint in global relocation no global value");
+
+    // Now generate the corresponding relocation record.
+    unsigned RelocID = VE.getValueID(GV);
+    // This is a value index.
+    unsigned AbbrevToUse = GLOBALVAR_RELOC_ABBREV;
+    Vals.push_back(RelocID);
+    if (Addend) {
+      Vals.push_back(Addend);
+      AbbrevToUse = GLOBALVAR_RELOC_WITH_ADDEND_ABBREV;
+    }
+    Stream.EmitRecord(naclbitc::GLOBALVAR_RELOC, Vals, AbbrevToUse);
+    Vals.clear();
+    return;
+  }
+  report_fatal_error("Global initializer is not a SimpleElement");
+}
+
+// Emit global variables.
+static void WriteGlobalVars(const Module *M,
+                            const NaClValueEnumerator &VE,
+                            NaClBitstreamWriter &Stream) {
+  Stream.EnterSubblock(naclbitc::GLOBALVAR_BLOCK_ID);
+  SmallVector<uint32_t, 32> Vals;
+  unsigned GlobalVarID = VE.getFirstGlobalVarID();
+
+  // Emit the number of global variables.
+
+  Vals.push_back(M->getGlobalList().size());
+  Stream.EmitRecord(naclbitc::GLOBALVAR_COUNT, Vals);
+  Vals.clear();
+
+  // Now emit each global variable.
+  for (Module::const_global_iterator
+           GV = M->global_begin(), E = M->global_end();
+       GV != E; ++GV, ++GlobalVarID) {
+    // Define the global variable.
+    Vals.push_back(Log2_32(GV->getAlignment()) + 1);
+    Vals.push_back(GV->isConstant());
+    Stream.EmitRecord(naclbitc::GLOBALVAR_VAR, Vals, GLOBALVAR_VAR_ABBREV);
+    Vals.clear();
+
+    // Add the field(s).
+    const Constant *C = GV->getInitializer();
+    if (C == 0)
+      report_fatal_error("Global variable initializer not a constant");
+    if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(C)) {
+      if (!CS->getType()->isPacked())
+        report_fatal_error("Global variable type not packed");
+      if (CS->getType()->hasName())
+        report_fatal_error("Global variable type is named");
+      Vals.push_back(CS->getNumOperands());
+      Stream.EmitRecord(naclbitc::GLOBALVAR_COMPOUND, Vals,
+                        GLOBALVAR_COMPOUND_ABBREV);
+      Vals.clear();
+      for (unsigned I = 0; I < CS->getNumOperands(); ++I) {
+        WriteGlobalInit(dyn_cast<Constant>(CS->getOperand(I)), GlobalVarID,
+                        Vals, VE, Stream);
+      }
+    } else {
+      WriteGlobalInit(C, GlobalVarID, Vals, VE, Stream);
+    }
+  }
+
+  assert(GlobalVarID == VE.getFirstGlobalVarID() + VE.getNumGlobalVarIDs());
+  Stream.ExitBlock();
 }
 
 // Emit top-level description of module, including inline asm,
@@ -472,65 +586,10 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
     }
   }
 
-  // Emit abbrev for globals, now that we know # sections and max alignment.
-  // Add an abbrev for common globals with no visibility or thread localness.
-  // Don't bother emitting vis + thread local abbreviation.
-  {
-    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::MODULE_CODE_GLOBALVAR));
-    Abbv->Add(NaClBitCodeAbbrevOp(
-        NaClBitCodeAbbrevOp::Fixed, NaClBitsNeededForValue(MaxGlobalType)));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1)); // Constant.
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));   // Initializer.
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4)); // Linkage.
-    if (MaxAlignment == 0)                                         // Alignment.
-      Abbv->Add(NaClBitCodeAbbrevOp(0));
-    else {
-      unsigned MaxEncAlignment = Log2_32(MaxAlignment)+1;
-      Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                    NaClBitsNeededForValue(MaxEncAlignment)));
-    }
-    if (SectionMap.empty())                                    // Section.
-      Abbv->Add(NaClBitCodeAbbrevOp(0));
-    else
-      Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                    NaClBitsNeededForValue(SectionMap.size())));
-    if (MODULE_GLOBALVAR_ABBREV != Stream.EmitAbbrev(Abbv))
-      llvm_unreachable("Unexpected abbrev ordering!");
-  }
-
-  // Emit the global variable information.
+  // Emit the function proto information. Note: We do this before
+  // global variables, so that global variable initializations can
+  // refer to the functions without a forward reference.
   SmallVector<unsigned, 64> Vals;
-  for (Module::const_global_iterator GV = M->global_begin(),E = M->global_end();
-       GV != E; ++GV) {
-    unsigned AbbrevToUse = 0;
-
-    // GLOBALVAR: [type, isconst, initid,
-    //             linkage, alignment, section, visibility, threadlocal,
-    //             unnamed_addr]
-    Vals.push_back(VE.getTypeID(GV->getType()));
-    Vals.push_back(GV->isConstant());
-    Vals.push_back(GV->isDeclaration() ? 0 :
-                   (VE.getValueID(GV->getInitializer()) + 1));
-    Vals.push_back(getEncodedLinkage(GV));
-    Vals.push_back(Log2_32(GV->getAlignment())+1);
-    Vals.push_back(GV->hasSection() ? SectionMap[GV->getSection()] : 0);
-    if (GV->isThreadLocal() ||
-        GV->getVisibility() != GlobalValue::DefaultVisibility ||
-        GV->hasUnnamedAddr() || GV->isExternallyInitialized()) {
-      Vals.push_back(getEncodedVisibility(GV));
-      Vals.push_back(getEncodedThreadLocalMode(GV));
-      Vals.push_back(GV->hasUnnamedAddr());
-      Vals.push_back(GV->isExternallyInitialized());
-    } else {
-      AbbrevToUse = MODULE_GLOBALVAR_ABBREV;
-    }
-
-    Stream.EmitRecord(naclbitc::MODULE_CODE_GLOBALVAR, Vals, AbbrevToUse);
-    Vals.clear();
-  }
-
-  // Emit the function proto information.
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
     // FUNCTION:  [type, callingconv, isproto, linkage]
     Vals.push_back(VE.getTypeID(F->getType()));
@@ -542,6 +601,9 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
     Stream.EmitRecord(naclbitc::MODULE_CODE_FUNCTION, Vals, AbbrevToUse);
     Vals.clear();
   }
+
+  // Emit the global variable information.
+  WriteGlobalVars(M, VE, Stream);
 
   // Emit the alias information.
   for (Module::const_alias_iterator AI = M->alias_begin(), E = M->alias_end();
@@ -1561,13 +1623,66 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
+  { // VAR abbrev for GLOBALVAR_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::GLOBALVAR_VAR));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::GLOBALVAR_BLOCK_ID,
+                                   Abbv) != GLOBALVAR_VAR_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // COMPOUND abbrev for GLOBALVAR_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::GLOBALVAR_COMPOUND));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::GLOBALVAR_BLOCK_ID,
+                                   Abbv) != GLOBALVAR_COMPOUND_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // ZEROFILL abbrev for GLOBALVAR_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::GLOBALVAR_ZEROFILL));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::GLOBALVAR_BLOCK_ID,
+                                   Abbv) != GLOBALVAR_ZEROFILL_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // DATA abbrev for GLOBALVAR_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::GLOBALVAR_DATA));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 8));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::GLOBALVAR_BLOCK_ID,
+                                   Abbv) != GLOBALVAR_DATA_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // RELOC abbrev for GLOBALVAR_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::GLOBALVAR_RELOC));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::GLOBALVAR_BLOCK_ID,
+                                   Abbv) != GLOBALVAR_RELOC_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // RELOC_WITH_ADDEND_ABBREV abbrev for GLOBALVAR_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::GLOBALVAR_RELOC));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    if (Stream.EmitBlockInfoAbbrev(
+            naclbitc::GLOBALVAR_BLOCK_ID,
+            Abbv) != GLOBALVAR_RELOC_WITH_ADDEND_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+
   Stream.ExitBlock();
 }
 
 /// WriteModule - Emit the specified module to the bitstream.
 static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
   DEBUG(dbgs() << "-> WriteModule\n");
-  Stream.EnterSubblock(naclbitc::MODULE_BLOCK_ID, MODULE_MAX_ABBREV);
+  Stream.EnterSubblock(naclbitc::MODULE_BLOCK_ID);
 
   SmallVector<unsigned, 1> Vals;
   unsigned CurVersion = 1;

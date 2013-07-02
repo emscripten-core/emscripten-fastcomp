@@ -42,15 +42,20 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
   // constructor completes.
   TypeCountMapType count_map;
   TypeCountMap = &count_map;
-  // Enumerate the global variables.
-  for (Module::const_global_iterator I = M->global_begin(),
-         E = M->global_end(); I != E; ++I)
-    EnumerateValue(I);
 
-  // Enumerate the functions.
+  // Enumerate the functions. Note: We do this before global
+  // variables, so that global variable initializations can refer to
+  // the functions without a forward reference.
   for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {
     EnumerateValue(I);
   }
+
+  // Enumerate the global variables.
+  FirstGlobalVarID = Values.size();
+  for (Module::const_global_iterator I = M->global_begin(),
+         E = M->global_end(); I != E; ++I)
+    EnumerateValue(I);
+  NumGlobalVarIDs = Values.size() - FirstGlobalVarID;
 
   // Enumerate the aliases.
   for (Module::const_alias_iterator I = M->alias_begin(), E = M->alias_end();
@@ -60,11 +65,8 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
   // Remember what is the cutoff between globalvalue's and other constants.
   unsigned FirstConstant = Values.size();
 
-  // Enumerate the global variable initializers.
-  for (Module::const_global_iterator I = M->global_begin(),
-         E = M->global_end(); I != E; ++I)
-    if (I->hasInitializer())
-      EnumerateValue(I->getInitializer());
+  // Skip global variable initializers since they are handled within
+  // WriteGlobalVars of file NaClBitcodeWriter.cpp.
 
   // Enumerate the aliasees.
   for (Module::const_alias_iterator I = M->alias_begin(), E = M->alias_end();
