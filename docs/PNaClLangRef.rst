@@ -29,6 +29,8 @@ High Level Structure
 
 A PNaCl portable executable ("pexe" in short) is a single LLVM IR module.
 
+.. _linkagetypes:
+
 Linkage Types
 -------------
 
@@ -36,7 +38,8 @@ Linkage Types
 
 The linkage types supported by PNaCl bitcode are ``internal`` and ``external``.
 A single function in the pexe, named ``_start``, has the linkage type
-``external``. All the other functions have the linkage type ``internal``.
+``external``. All the other functions and globals have the linkage type
+``internal``.
 
 Calling Conventions
 -------------------
@@ -58,7 +61,10 @@ Global Variables
 
 `LLVM LangRef: Global Variables <LangRef.html#globalvars>`_
 
-PNaCl bitcode does not support TLS models.
+Restrictions on global variables:
+
+* PNaCl bitcode does not support TLS models.
+* Restrictions on :ref:`linkage types <linkagetypes>`.
 
 TODO: describe other restrictions on global variables
 
@@ -67,8 +73,9 @@ Functions
 
 `LLVM LangRef: Functions <LangRef.html#functionstructure>`_
 
-The restrictions on linkage types, calling conventions and visibility styles
-apply to functions. In addition, the following are not supported for functions:
+The restrictions on :ref:`linkage types <linkagetypes>`, calling conventions
+and visibility styles apply to functions. In addition, the following are
+not supported for functions:
 
 * Function attributes (either for the the function itself, its parameters or its
   return type).
@@ -321,9 +328,12 @@ TODO(jfb): atomics
 * ``llvm.memcpy``
 * ``llvm.memmove``
 * ``llvm.memset``
+
+  These intrinsics are only supported with an i32 ``len`` argument.
+
 * ``llvm.bswap``
 
-  The overloaded llvm.bswap intrinsic is only supported with the following
+  The overloaded ``llvm.bswap`` intrinsic is only supported with the following
   argument types: i16, i32, i64 (the types supported by C-style GCC builtins).
 
 * ``llvm.ctlz``
