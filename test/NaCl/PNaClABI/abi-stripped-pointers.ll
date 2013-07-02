@@ -10,26 +10,26 @@
 declare i8* @llvm.nacl.read.tp()
 
 
-define void @pointer_arg(i8* %arg) {
+define internal void @pointer_arg(i8* %arg) {
   ret void
 }
 ; CHECK: Function pointer_arg has disallowed type
 
-define i8* @pointer_return() {
+define internal i8* @pointer_return() {
   unreachable
 }
 ; CHECK-NEXT: Function pointer_return has disallowed type
 
-define void @func() {
+define internal void @func() {
   ret void
 }
 
-define void @func_with_arg(i32 %arg) {
+define internal void @func_with_arg(i32 %arg) {
   ret void
 }
 
 
-define void @allowed_cases(i32 %arg) {
+define internal void @allowed_cases(i32 %arg) {
   inttoptr i32 123 to i8*
 
   ptrtoint [4 x i8]* @var to i32
@@ -75,7 +75,7 @@ define void @allowed_cases(i32 %arg) {
 ; CHECK-NOT: disallowed
 
 
-define void @bad_cases() {
+define internal void @bad_cases() {
 entry:
   ptrtoint [4 x i8]* @var to i16
 ; CHECK: Function bad_cases disallowed: non-i32 ptrtoint

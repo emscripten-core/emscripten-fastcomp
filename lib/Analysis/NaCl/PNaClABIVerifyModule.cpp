@@ -68,6 +68,10 @@ class PNaClABIVerifyModule : public ModulePass {
  private:
   void checkGlobalValueCommon(const GlobalValue *GV);
   bool isWhitelistedMetadata(const NamedMDNode *MD);
+
+  /// Returns whether \p GV is an allowed external symbol in stable bitcode.
+  bool isWhitelistedExternal(const GlobalValue *GV);
+
   void checkGlobalIsFlattened(const GlobalVariable *GV);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
@@ -126,8 +130,13 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
   const char *GVTypeName = isa<GlobalVariable>(GV) ?
       "Variable " : "Function ";
   switch (GV->getLinkage()) {
-    // TODO(dschuff): Disallow external linkage
     case GlobalValue::ExternalLinkage:
+      if (!isWhitelistedExternal(GV)) {
+        Reporter->addError()
+          << GV->getName()
+          << " is not a valid external symbol (disallowed)\n";
+      }
+      break;
     case GlobalValue::InternalLinkage:
       break;
     default:
@@ -297,6 +306,15 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
 
 bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) {
   return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
+}
+
+bool PNaClABIVerifyModule::isWhitelistedExternal(const GlobalValue *GV) {
+  if (const Function *Func = dyn_cast<const Function>(GV)) {
+    if (Func->getName().equals("_start") || Func->isIntrinsic()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static bool isPtrToIntOfGlobal(const Constant *C) {

@@ -15,7 +15,7 @@ declare void @llvm.dbg.value(metadata, i64, metadata)
 ; CHECK: Function llvm.dbg.value is a disallowed LLVM intrinsic
 
 
-define void @debug_declare(i32 %val) {
+define internal void @debug_declare(i32 %val) {
   ; We normally expect llvm.dbg.declare to be used on an alloca.
   %var = alloca [4 x i8]
   tail call void @llvm.dbg.declare(metadata !{[4 x i8]* %var}, metadata !{})
@@ -23,7 +23,7 @@ define void @debug_declare(i32 %val) {
   ret void
 }
 
-define void @debug_value(i32 %ptr_as_int, i32 %val) {
+define internal void @debug_value(i32 %ptr_as_int, i32 %val) {
   %ptr = inttoptr i32 %ptr_as_int to i8*
   tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !{})
   tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !{})

@@ -10,7 +10,7 @@ declare void @llvm.memmove.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)
 declare void @llvm.memset.p0i8.i32(i8*, i8, i32, i32, i1)
 
 
-define void @allowed_cases(i32 %ptr, float %f, double %d) {
+define internal void @allowed_cases(i32 %ptr, float %f, double %d) {
   %ptr.i32 = inttoptr i32 %ptr to i32*
   load i32* %ptr.i32, align 1
   store i32 123, i32* %ptr.i32, align 1
@@ -49,7 +49,7 @@ define void @allowed_cases(i32 %ptr, float %f, double %d) {
 ; CHECK-NOT: disallowed
 
 
-define void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) {
+define internal void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) {
   %ptr.i32 = inttoptr i32 %ptr to i32*
   load i32* %ptr.i32, align 4
   store i32 123, i32* %ptr.i32, align 4

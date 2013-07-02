@@ -3,21 +3,21 @@
 
 
 ; CHECK: Function badReturn has disallowed type: half* ()
-define half* @badReturn() {
+define internal half* @badReturn() {
   unreachable
 }
 
 ; CHECK: Function badArgType1 has disallowed type: void (half, i32)
-define void @badArgType1(half %a, i32 %b) {
+define internal void @badArgType1(half %a, i32 %b) {
   ret void
 }
 ; CHECK: Function badArgType2 has disallowed type: void (i32, half)
-define void @badArgType2(i32 %a, half %b) {
+define internal void @badArgType2(i32 %a, half %b) {
   ret void
 }
 
 
-define void @func() {
+define internal void @func() {
 entry:
   br label %block
 block:
@@ -97,7 +97,7 @@ block:
 %struct.s1 = type { half, float}
 %struct.s2 = type { i32, i32}
 
-define void @func2() {
+define internal void @func2() {
 entry:
   br label %block
 block:
@@ -121,7 +121,7 @@ block:
 
 %struct.linked = type { i32, %struct.linked * }
 
-define void @func3() {
+define internal void @func3() {
 entry:
   br label %block
 block:

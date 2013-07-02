@@ -1,11 +1,11 @@
 ; RUN: pnacl-abicheck < %s | FileCheck %s
 
-@var = global [4 x i8] c"xxxx"
+@var = internal global [4 x i8] c"xxxx"
 
 
 ; CHECK-NOT: disallowed
 
-define void @bad_cases() {
+define internal void @bad_cases() {
   ; ConstantExprs should be rejected here.
   switch i32 ptrtoint ([4 x i8]* @var to i32), label %next [i32 0, label %next]
 ; CHECK: disallowed: bad switch condition

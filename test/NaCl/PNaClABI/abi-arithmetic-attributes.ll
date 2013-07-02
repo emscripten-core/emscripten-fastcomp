@@ -4,7 +4,7 @@
 ; unsigned wrap" and "no signed wrap") and "exact" are disallowed by
 ; the PNaCl ABI verifier.
 
-define void @allowed_cases() {
+define internal void @allowed_cases() {
   %add = add i32 1, 2
   %shl = shl i32 3, 4
   %udiv = udiv i32 4, 2
@@ -15,7 +15,7 @@ define void @allowed_cases() {
 ; CHECK-NOT: disallowed
 
 
-define void @rejected_cases() {
+define internal void @rejected_cases() {
   %add = add nsw i32 1, 2
 ; CHECK: disallowed: has "nsw" attribute: %add
   %shl1 = shl nuw i32 3, 4

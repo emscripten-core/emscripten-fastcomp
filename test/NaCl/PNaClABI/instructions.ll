@@ -4,7 +4,7 @@
 target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:32"
 target triple = "le32-unknown-nacl"
 
-define void @terminators() {
+define internal void @terminators() {
 ; Terminator instructions
 terminators:
  ret void
@@ -18,7 +18,7 @@ next2:
   indirectbr i8* undef, [label %next, label %next2]
 }
 
-define void @binops() {
+define internal void @binops() {
 ; Binary operations
   %a1 = add i32 0, 0
   %a2 = sub i32 0, 0
@@ -41,7 +41,7 @@ define void @binops() {
   ret void
 }
 
-define void @vectors() {
+define internal void @vectors() {
 ; CHECK-NOT: disallowed
 
 ; CHECK: disallowed: bad instruction opcode: {{.*}} extractelement
@@ -56,7 +56,7 @@ define void @vectors() {
   ret void
 }
 
-define void @aggregates() {
+define internal void @aggregates() {
 ; CHECK-NOT: disallowed
 
 ; Aggregate operations
@@ -69,7 +69,7 @@ define void @aggregates() {
   ret void
 }
 
-define void @memory() {
+define internal void @memory() {
 ; Memory operations
   %a1 = alloca i8, i32 4
   %ptr = inttoptr i32 0 to i32*
@@ -84,7 +84,7 @@ define void @memory() {
   ret void
 }
 
-define void @conversion() {
+define internal void @conversion() {
 ; Conversion operations
   %a1 = trunc i32 undef to i8
   %a2 = zext i8 undef to i32
@@ -98,7 +98,7 @@ define void @conversion() {
   ret void
 }
 
-define void @other() {
+define internal void @other() {
 entry:
   %a1 = icmp eq i32 undef, undef
   %a2 = fcmp oeq float undef, undef
@@ -113,14 +113,14 @@ bar:
   ret void
 }
 
-define void @throwing_func() {
+define internal void @throwing_func() {
   ret void
 }
-define void @personality_func() {
+define internal void @personality_func() {
   ret void
 }
 
-define void @invoke_func() {
+define internal void @invoke_func() {
   invoke void @throwing_func() to label %ok unwind label %onerror
 ; CHECK-NOT: disallowed
 ; CHECK: disallowed: bad instruction opcode: invoke
@@ -135,7 +135,7 @@ onerror:
 ; CHECK: disallowed: bad instruction opcode: resume
 }
 
-define i32 @va_arg(i32 %va_list_as_int) {
+define internal i32 @va_arg(i32 %va_list_as_int) {
   %va_list = inttoptr i32 %va_list_as_int to i8*
   %val = va_arg i8* %va_list, i32
   ret i32 %val
@@ -143,16 +143,16 @@ define i32 @va_arg(i32 %va_list_as_int) {
 ; CHECK-NOT: disallowed
 ; CHECK: disallowed: bad instruction opcode: {{.*}} va_arg
 
-@global_var = global [4 x i8] zeroinitializer
+@global_var = internal global [4 x i8] zeroinitializer
 
-define void @constantexpr() {
+define internal void @constantexpr() {
   ptrtoint i8* getelementptr ([4 x i8]* @global_var, i32 1, i32 0) to i32
   ret void
 }
 ; CHECK-NOT: disallowed
 ; CHECK: disallowed: operand not InherentPtr: %1 = ptrtoint i8* getelementptr
 
-define void @inline_asm() {
+define internal void @inline_asm() {
   call void asm "foo", ""()
   ret void
 }
