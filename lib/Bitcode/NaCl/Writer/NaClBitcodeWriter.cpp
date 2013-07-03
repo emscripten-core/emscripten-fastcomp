@@ -546,14 +546,11 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
 
   // Emit information about sections and GC, computing how many there are. Also
   // compute the maximum alignment value.
+  // TODO(kschimpf): Remove code for SectionMap and GCMap.
   std::map<std::string, unsigned> SectionMap;
   std::map<std::string, unsigned> GCMap;
-  unsigned MaxAlignment = 0;
-  unsigned MaxGlobalType = 0;
   for (Module::const_global_iterator GV = M->global_begin(),E = M->global_end();
        GV != E; ++GV) {
-    MaxAlignment = std::max(MaxAlignment, GV->getAlignment());
-    MaxGlobalType = std::max(MaxGlobalType, VE.getTypeID(GV->getType()));
     if (GV->hasSection()) {
       // Give section names unique ID's.
       unsigned &Entry = SectionMap[GV->getSection()];
@@ -565,7 +562,6 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
     }
   }
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
-    MaxAlignment = std::max(MaxAlignment, F->getAlignment());
     if (F->hasSection()) {
       // Give section names unique ID's.
       unsigned &Entry = SectionMap[F->getSection()];

@@ -243,8 +243,10 @@ void NaClValueEnumerator::EnumerateValue(const Value *V) {
     return;
   }
 
-  // Enumerate the type of this value.
-  EnumerateType(V->getType());
+  // Enumerate the type of this value. Skip global values since no
+  // types are dumped for global variables.
+  if (!isa<GlobalVariable>(V))
+    EnumerateType(V->getType());
 
   if (const Constant *C = dyn_cast<Constant>(V)) {
     if (isa<GlobalValue>(C)) {
