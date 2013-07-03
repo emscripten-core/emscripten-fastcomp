@@ -54,6 +54,12 @@ static cl::opt<std::string>
 
 static cl::opt<bool> Dump("dump", cl::desc("Dump low level bitcode trace"));
 
+static cl::opt<unsigned> OpsPerLine(
+    "operands-per-line",
+    cl::desc("Number of operands to print per dump line. 0 implies "
+             "all operands will be printed on the same line (default)"),
+    cl::init(0));
+
 //===----------------------------------------------------------------------===//
 // Bitcode specific analysis.
 //===----------------------------------------------------------------------===//
@@ -430,19 +436,29 @@ static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
 
     if (Dump) {
       outs() << Indent << "  <";
-      if (const char *CodeName =
-            GetCodeName(Code, BlockID, *Stream.getBitStreamReader()))
+      const char *CodeName =
+          GetCodeName(Code, BlockID, *Stream.getBitStreamReader());
+      if (CodeName)
         outs() << CodeName;
       else
         outs() << "UnknownCode" << Code;
-      if (NonSymbolic &&
-          GetCodeName(Code, BlockID, *Stream.getBitStreamReader()))
+      if (NonSymbolic && CodeName)
         outs() << " codeid=" << Code;
       if (Entry.ID != naclbitc::UNABBREV_RECORD)
         outs() << " abbrevid=" << Entry.ID;
 
-      for (unsigned i = 0, e = Record.size(); i != e; ++i)
+      for (unsigned i = 0, e = Record.size(); i != e; ++i) {
+        if (OpsPerLine && (i % OpsPerLine) == 0 && i > 0) {
+          outs() << "\n" << Indent << "   ";
+          if (CodeName) {
+            for (unsigned j = 0; j < strlen(CodeName); ++j)
+              outs() << " ";
+          } else {
+            outs() << "   ";
+          }
+        }
         outs() << " op" << i << "=" << (int64_t)Record[i];
+      }
 
       outs() << "/>";
 
@@ -584,7 +600,7 @@ static int AnalyzeBitcode() {
       std::reverse(FreqPairs.begin(), FreqPairs.end());
 
       outs() << "\tRecord Histogram:\n";
-      outs() << "\t\t  Count    # Bits   %% Abv  Record Kind\n";
+      outs() << "\t\t  Count    # Bits %% Abv  Record Kind\n";
       for (unsigned i = 0, e = FreqPairs.size(); i != e; ++i) {
         const PerRecordStats &RecStats = Stats.CodeFreq[FreqPairs[i].second];
 
