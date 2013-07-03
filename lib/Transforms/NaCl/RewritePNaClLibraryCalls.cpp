@@ -28,17 +28,16 @@ namespace {
   public:
     static char ID;
     RewritePNaClLibraryCalls() :
-        ModulePass(ID), TheModule(NULL), Context(NULL),
+        ModulePass(ID), TheModule(NULL), Context(NULL), SetjmpIntrinsic(NULL),
         LongjmpIntrinsic(NULL), MemcpyIntrinsic(NULL),
         MemmoveIntrinsic(NULL), MemsetIntrinsic(NULL) {
       // This is a module pass because it may have to introduce
-      // intrinsic declarations into the module and modify a global function.
+      // intrinsic declarations into the module and modify globals.
       initializeRewritePNaClLibraryCallsPass(*PassRegistry::getPassRegistry());
     }
 
     virtual bool runOnModule(Module &M);
   private:
-    typedef void (RewritePNaClLibraryCalls::*SanityCheckFunc)(Function *);
     typedef void (RewritePNaClLibraryCalls::*RewriteCallFunc)(CallInst *);
     typedef void (RewritePNaClLibraryCalls::*PopulateWrapperFunc)(Function *);
 
@@ -46,32 +45,28 @@ namespace {
     /// Currently all library functions this pass knows how to rewrite fall into
     /// this pattern.
     /// RewriteLibraryCall performs the rewrite for a single library function
-    /// and is customized by a number of method pointers that collectively
-    /// handle one of the supported library functions.
+    /// and is customized by its arguments.
     ///
     /// \p LibraryFunctionName Name of the library function to look for.
-    /// \p SanityChecker Method that makes sure the library function has the
-    ///    signature we expect it to have.
+    /// \p CorrectFunctionType is the correct type of this library function.
     /// \p CallRewriter Method that rewrites the library function call into an
     ///    intrinsic call.
-    /// \p OnlyCallsAllowed True iff only calls are allowed to this library
-    ///    function.
-    /// \p WrapperPopulator If not only calls are allowed, this method is
-    ///    called to populate the body of the library function with a wrapped
-    ///    intrinsic call. If only calls are allowed, this parameter may be set
-    ///    to NULL.
+    /// \p OnlyCallsAllowed Only calls to this library function are allowed.
+    /// \p WrapperPopulator called to populate the body of the library function
+    ///    with a wrapped intrinsic call.
     bool RewriteLibraryCall(
         const char *LibraryFunctionName,
-        SanityCheckFunc SanityChecker,
+        FunctionType *CorrectFunctionType,
         RewriteCallFunc CallRewriter,
         bool OnlyCallsAllowed,
         PopulateWrapperFunc WrapperPopulator);
 
-    void sanityCheckSetjmpFunc(Function *SetjmpFunc);
-    void sanityCheckLongjmpFunc(Function *LongjmpFunc);
-    void sanityCheckMemcpyFunc(Function *MemcpyFunc);
-    void sanityCheckMemmoveFunc(Function *MemmoveFunc);
-    void sanityCheckMemsetFunc(Function *MemsetFunc);
+    /// Two function types are compatible if they have compatible return types
+    /// and the same number of compatible parameters. Return types and
+    /// parameters are compatible if they are exactly the same type or both are
+    /// pointer types.
+    static bool compatibleFunctionTypes(FunctionType *FTy1, FunctionType *FTy2);
+    static bool compatibleParamOrRetTypes(Type *Ty1, Type *Ty2);
 
     void rewriteSetjmpCall(CallInst *Call);
     void rewriteLongjmpCall(CallInst *Call);
@@ -79,6 +74,7 @@ namespace {
     void rewriteMemmoveCall(CallInst *Call);
     void rewriteMemsetCall(CallInst *Call);
 
+    void populateSetjmpWrapper(Function *SetjmpFunc);
     void populateLongjmpWrapper(Function *LongjmpFunc);
     void populateMemcpyWrapper(Function *MemcpyFunc);
     void populateMemmoveWrapper(Function *MemmoveFunc);
@@ -97,6 +93,7 @@ namespace {
         ...);
 
     /// Find and cache known intrinsics.
+    Function *findSetjmpIntrinsic();
     Function *findLongjmpIntrinsic();
     Function *findMemcpyIntrinsic();
     Function *findMemmoveIntrinsic();
@@ -107,6 +104,7 @@ namespace {
     LLVMContext *Context;
 
     /// These are cached but computed lazily.
+    Function *SetjmpIntrinsic;
     Function *LongjmpIntrinsic;
     Function *MemcpyIntrinsic;
     Function *MemmoveIntrinsic;
@@ -121,7 +119,7 @@ INITIALIZE_PASS(RewritePNaClLibraryCalls, "rewrite-pnacl-library-calls",
 
 bool RewritePNaClLibraryCalls::RewriteLibraryCall(
     const char *LibraryFunctionName,
-    SanityCheckFunc SanityChecker,
+    FunctionType *CorrectFunctionType,
     RewriteCallFunc CallRewriter,
     bool OnlyCallsAllowed,
     PopulateWrapperFunc WrapperPopulator) {
@@ -134,8 +132,39 @@ bool RewritePNaClLibraryCalls::RewriteLibraryCall(
   // come from code that defines its own private function with the same name
   // and doesn't actually include the standard libc header declaring it.
   // In such a case we leave the code as it is.
+  //
+  // Another case we need to handle here is this function having the wrong
+  // prototype (incompatible with the C library function prototype, and hence
+  // incompatible with the intrinsic). In general, this is undefined behavior,
+  // but we can't fail compilation because some workflows rely on it
+  // compiling correctly (for example, autoconf). The solution is:
+  // When the declared type of the function in the module is not correct, we
+  // re-create the function with the correct prototype and replace all calls
+  // to this new function (casted to the old function type). Effectively this
+  // delays the undefined behavior until run-time.
   if (LibFunc && LibFunc->hasExternalLinkage()) {
-    (this->*(SanityChecker))(LibFunc);
+    if (!compatibleFunctionTypes(LibFunc->getFunctionType(),
+                                 CorrectFunctionType)) {
+      // Use the RecreateFunction utility to create a new function with the
+      // correct prototype. RecreateFunction also RAUWs the function with
+      // proper bitcasts.
+      //
+      // One interesting case that may arise is when the original module had
+      // calls to both a correct and an incorrect version of the library
+      // function. Depending on the linking order, either version could be
+      // selected as the global declaration in the module, so even valid calls
+      // could end up being bitcast-ed from the incorrect to the correct
+      // function type. The RecreateFunction call below will eliminate such
+      // bitcasts (because the new type matches the call type), but dead
+      // constant expressions may be left behind.
+      // These are cleaned up with removeDeadConstantUsers.
+      Function *NewFunc = RecreateFunction(LibFunc, CorrectFunctionType);
+      LibFunc->eraseFromParent();
+      NewFunc->setLinkage(Function::InternalLinkage);
+      Changed = true;
+      NewFunc->removeDeadConstantUsers();
+      LibFunc = NewFunc;
+    }
 
     // Handle all uses that are calls. These are simply replaced with
     // equivalent intrinsic calls.
@@ -171,33 +200,58 @@ bool RewritePNaClLibraryCalls::runOnModule(Module &M) {
   Context = &TheModule->getContext();
   bool Changed = false;
 
+  Type *Int8PtrTy = Type::getInt8PtrTy(*Context);
+  Type *Int64PtrTy = Type::getInt64PtrTy(*Context);
+  Type *Int32Ty = Type::getInt32Ty(*Context);
+  Type *VoidTy = Type::getVoidTy(*Context);
+
+  Type *SetjmpParams[] = { Int64PtrTy };
+  FunctionType *SetjmpFunctionType = FunctionType::get(Int32Ty, SetjmpParams,
+                                                       false);
   Changed |= RewriteLibraryCall(
       "setjmp",
-      &RewritePNaClLibraryCalls::sanityCheckSetjmpFunc,
+      SetjmpFunctionType,
       &RewritePNaClLibraryCalls::rewriteSetjmpCall,
       true,
-      NULL);
+      &RewritePNaClLibraryCalls::populateSetjmpWrapper);
+
+  Type *LongjmpParams[] = { Int64PtrTy, Int32Ty };
+  FunctionType *LongjmpFunctionType = FunctionType::get(VoidTy, LongjmpParams,
+                                                        false);
   Changed |= RewriteLibraryCall(
       "longjmp",
-      &RewritePNaClLibraryCalls::sanityCheckLongjmpFunc,
+      LongjmpFunctionType,
       &RewritePNaClLibraryCalls::rewriteLongjmpCall,
       false,
       &RewritePNaClLibraryCalls::populateLongjmpWrapper);
+
+  Type *MemsetParams[] = { Int8PtrTy, Int32Ty, Int32Ty };
+  FunctionType *MemsetFunctionType = FunctionType::get(Int8PtrTy, MemsetParams,
+                                                       false);
   Changed |= RewriteLibraryCall(
       "memset",
-      &RewritePNaClLibraryCalls::sanityCheckMemsetFunc,
+      MemsetFunctionType,
       &RewritePNaClLibraryCalls::rewriteMemsetCall,
       false,
       &RewritePNaClLibraryCalls::populateMemsetWrapper);
+
+  Type *MemcpyParams[] = { Int8PtrTy, Int8PtrTy, Int32Ty };
+  FunctionType *MemcpyFunctionType = FunctionType::get(Int8PtrTy, MemcpyParams,
+                                                       false);
   Changed |= RewriteLibraryCall(
       "memcpy",
-      &RewritePNaClLibraryCalls::sanityCheckMemcpyFunc,
+      MemcpyFunctionType,
       &RewritePNaClLibraryCalls::rewriteMemcpyCall,
       false,
       &RewritePNaClLibraryCalls::populateMemcpyWrapper);
+
+  Type *MemmoveParams[] = { Int8PtrTy, Int8PtrTy, Int32Ty };
+  FunctionType *MemmoveFunctionType = FunctionType::get(Int8PtrTy,
+                                                        MemmoveParams,
+                                                        false);
   Changed |= RewriteLibraryCall(
       "memmove",
-      &RewritePNaClLibraryCalls::sanityCheckMemmoveFunc,
+      MemmoveFunctionType,
       &RewritePNaClLibraryCalls::rewriteMemmoveCall,
       false,
       &RewritePNaClLibraryCalls::populateMemmoveWrapper);
@@ -205,62 +259,35 @@ bool RewritePNaClLibraryCalls::runOnModule(Module &M) {
   return Changed;
 }
 
-void RewritePNaClLibraryCalls::sanityCheckLongjmpFunc(Function *LongjmpFunc) {
-  FunctionType *FTy = LongjmpFunc->getFunctionType();
-  if (!(FTy->getNumParams() == 2 &&
-        FTy->getReturnType()->isVoidTy() &&
-        FTy->getParamType(0)->isPointerTy() &&
-        FTy->getParamType(1)->isIntegerTy())) {
-    report_fatal_error("Wrong signature of longjmp");
+bool RewritePNaClLibraryCalls::compatibleFunctionTypes(FunctionType *FTy1,
+                                                       FunctionType *FTy2) {
+  if (FTy1->getNumParams() != FTy2->getNumParams()) {
+    return false;
   }
+
+  if (!compatibleParamOrRetTypes(FTy1->getReturnType(),
+                                 FTy2->getReturnType())) {
+    return false;
+  }
+
+  for (unsigned I = 0, End = FTy1->getNumParams(); I != End; ++I) {
+    if (!compatibleParamOrRetTypes(FTy1->getParamType(I), 
+                                   FTy2->getParamType(I))) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
-void RewritePNaClLibraryCalls::sanityCheckSetjmpFunc(Function *SetjmpFunc) {
-  FunctionType *FTy = SetjmpFunc->getFunctionType();
-  if (!(FTy->getNumParams() == 1 &&
-        FTy->getReturnType()->isIntegerTy() &&
-        FTy->getParamType(0)->isPointerTy())) {
-    report_fatal_error("Wrong signature of setjmp");
-  }
-}
-
-void RewritePNaClLibraryCalls::sanityCheckMemsetFunc(Function *MemsetFunc) {
-  FunctionType *FTy = MemsetFunc->getFunctionType();
-  if (!(FTy->getNumParams() == 3 &&
-        FTy->getReturnType()->isPointerTy() &&
-        FTy->getParamType(0)->isPointerTy() &&
-        FTy->getParamType(1)->isIntegerTy() &&
-        FTy->getParamType(2)->isIntegerTy())) {
-    report_fatal_error("Wrong signature of memset");
-  }
-}
-
-void RewritePNaClLibraryCalls::sanityCheckMemcpyFunc(Function *MemcpyFunc) {
-  FunctionType *FTy = MemcpyFunc->getFunctionType();
-  if (!(FTy->getNumParams() == 3 &&
-        FTy->getReturnType()->isPointerTy() &&
-        FTy->getParamType(0)->isPointerTy() &&
-        FTy->getParamType(1)->isPointerTy() &&
-        FTy->getParamType(2)->isIntegerTy())) {
-    report_fatal_error("Wrong signature of memcpy");
-  }
-}
-
-void RewritePNaClLibraryCalls::sanityCheckMemmoveFunc(Function *MemmoveFunc) {
-  FunctionType *FTy = MemmoveFunc->getFunctionType();
-  if (!(FTy->getNumParams() == 3 &&
-        FTy->getReturnType()->isPointerTy() &&
-        FTy->getParamType(0)->isPointerTy() &&
-        FTy->getParamType(1)->isPointerTy() &&
-        FTy->getParamType(2)->isIntegerTy())) {
-    report_fatal_error("Wrong signature of memmove");
-  }
+bool RewritePNaClLibraryCalls::compatibleParamOrRetTypes(Type *Ty1,
+                                                         Type *Ty2) {
+  return (Ty1 == Ty2 || (Ty1->isPointerTy() && Ty2->isPointerTy()));
 }
 
 void RewritePNaClLibraryCalls::rewriteSetjmpCall(CallInst *Call) {
   // Find the intrinsic function.
-  Function *NaClSetjmpFunc = Intrinsic::getDeclaration(TheModule,
-                                                       Intrinsic::nacl_setjmp);
+  Function *NaClSetjmpFunc = findSetjmpIntrinsic();
   // Cast the jmp_buf argument to the type NaClSetjmpCall expects.
   Type *PtrTy = NaClSetjmpFunc->getFunctionType()->getParamType(0);
   BitCastInst *JmpBufCast = new BitCastInst(Call->getArgOperand(0), PtrTy,
@@ -413,6 +440,15 @@ void RewritePNaClLibraryCalls::populateWrapperCommon(
   (this->*(CallRewriter))(SelfCall);
 }
 
+void RewritePNaClLibraryCalls::populateSetjmpWrapper(Function *SetjmpFunc) {
+  populateWrapperCommon(
+      /* Func             */ SetjmpFunc,
+      /* FuncName         */ "setjmp",
+      /* CallRewriter     */ &RewritePNaClLibraryCalls::rewriteSetjmpCall,
+      /* CallCannotReturn */ false,
+      /* ...              */ "env", NULL);
+}
+
 void RewritePNaClLibraryCalls::populateLongjmpWrapper(Function *LongjmpFunc) {
   populateWrapperCommon(
       /* Func             */ LongjmpFunc,
@@ -447,6 +483,14 @@ void RewritePNaClLibraryCalls::populateMemsetWrapper(Function *MemsetFunc) {
       /* CallRewriter     */ &RewritePNaClLibraryCalls::rewriteMemsetCall,
       /* CallCannotReturn */ false,
       /* ...              */ "dest", "val", "len", NULL);
+}
+
+Function *RewritePNaClLibraryCalls::findSetjmpIntrinsic() {
+  if (!SetjmpIntrinsic) {
+    SetjmpIntrinsic = Intrinsic::getDeclaration(
+        TheModule, Intrinsic::nacl_setjmp);
+  }
+  return SetjmpIntrinsic;
 }
 
 Function *RewritePNaClLibraryCalls::findLongjmpIntrinsic() {
