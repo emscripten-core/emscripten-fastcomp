@@ -1,4 +1,8 @@
 ; RUN: opt -S -globalopt < %s | FileCheck %s
+; LOCALMOD: We've changed the heuristic used to detect "main" for the GlobalOpt
+; optimization of replacing globals with allocas. Revert this when fixed
+; properly upstream (http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-July/063580.html)
+; XFAIL: *
 
 ; PR6112 - When globalopt does RAUW(@G, %G), the metadata reference should drop
 ; to null.  Function local metadata that references @G from a different function

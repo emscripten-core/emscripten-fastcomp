@@ -83,6 +83,9 @@ namespace {
                                const GlobalStatus &GS);
     bool OptimizeEmptyGlobalCXXDtors(Function *CXAAtExitFn);
 
+    // @LOCALMOD: see usage below
+    bool IsUserEntryPointMain(const Function *Func);
+
     DataLayout *TD;
     TargetLibraryInfo *TLI;
   };
@@ -1933,6 +1936,17 @@ bool GlobalOpt::ProcessGlobal(GlobalVariable *GV,
   return ProcessInternalGlobal(GV, GVI, PHIUsers, GS);
 }
 
+bool GlobalOpt::IsUserEntryPointMain(const Function *Func) {    // @LOCALMOD
+  if (Func->hasOneUse() && Func->getName() == "main") {
+    const User *FuncUser = Func->use_back();
+    if (const CallInst *CallUser = dyn_cast<CallInst>(FuncUser)) {
+      const Function *Caller = CallUser->getParent()->getParent();
+      return Caller->getName() == "_start";
+    }
+  }
+  return false;
+}
+
 /// ProcessInternalGlobal - Analyze the specified global variable and optimize
 /// it if possible.  If we make a change, return true.
 bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
@@ -1951,9 +1965,16 @@ bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
   if (!GS.HasMultipleAccessingFunctions &&
       GS.AccessingFunction && !GS.HasNonInstructionUser &&
       GV->getType()->getElementType()->isSingleValueType() &&
-      GS.AccessingFunction->getName() == "main" &&
-      GS.AccessingFunction->hasExternalLinkage() &&
+      // @LOCALMOD-BEGIN
+      // The upstream LLVM is looking for an external "main" here. Since in
+      // stable PNaCl bitcode, "main" is internal, we're using a different
+      // heuristic. We're looking for a "main" that is only used in a single
+      // place -- a call from "_start".
+      // TODO: figure out a more proper solution upstream and merge that in.
+      IsUserEntryPointMain(GS.AccessingFunction) &&
+      // @LOCALMOD-END
       GV->getType()->getAddressSpace() == 0) {
+
     DEBUG(dbgs() << "LOCALIZING GLOBAL: " << *GV);
     Instruction &FirstI = const_cast<Instruction&>(*GS.AccessingFunction
                                                    ->getEntryBlock().begin());
