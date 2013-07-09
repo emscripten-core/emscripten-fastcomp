@@ -99,12 +99,19 @@ public:
     assert(Fixup.getOffset() + Size <= DataSize &&
            "Invalid fixup offset!");
 
+    // @LOCALMOD-BEGIN
+    // This check breaks negative addends on x86-32.  It makes x86-32
+    // behaviour inconsistent with x86-64 and ARM.
+    // See: https://code.google.com/p/nativeclient/issues/detail?id=3548
+#if 0
     // Check that uppper bits are either all zeros or all ones.
     // Specifically ignore overflow/underflow as long as the leakage is
     // limited to the lower bits. This is to remain compatible with
     // other assemblers.
     assert(isIntN(Size * 8 + 1, Value) &&
            "Value does not fit in the Fixup field");
+#endif
+    // @LOCALMOD-END
 
     for (unsigned i = 0; i != Size; ++i)
       Data[Fixup.getOffset() + i] = uint8_t(Value >> (i * 8));
