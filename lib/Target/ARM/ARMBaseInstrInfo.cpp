@@ -978,7 +978,9 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
       unsigned LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA : ARM::LDMIA;
       MachineInstrBuilder MIB =
         AddDefaultPred(BuildMI(MBB, I, DL, get(LdmOpc))
-                    .addFrameIndex(FI).addImm(0).addMemOperand(MMO));
+// @LOCALMOD-START Fixed in LLVM 3.3 by 179977. This will merge conflict.
+                    .addFrameIndex(FI).addMemOperand(MMO));
+// @LOCALMOD-END
       MIB = AddDReg(MIB, DestReg, ARM::gsub_0, RegState::DefineNoRead, TRI);
       MIB = AddDReg(MIB, DestReg, ARM::gsub_1, RegState::DefineNoRead, TRI);
       if (TargetRegisterInfo::isPhysicalRegister(DestReg))
