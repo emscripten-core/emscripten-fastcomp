@@ -16,8 +16,9 @@
 
 namespace llvm {
 
-class LLVM_Context;
+class LLVMContext;
 class MemoryBuffer;
+class Module;
 class SMDiagnostic;
 
 // \brief Define the expected format of the file.

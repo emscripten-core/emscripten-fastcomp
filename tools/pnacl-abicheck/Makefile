@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := pnacl-abicheck
-LINK_COMPONENTS := bitreader asmparser naclanalysis
+LINK_COMPONENTS := bitreader asmparser naclbitreader irreader naclanalysis
 
 include $(LEVEL)/Makefile.common
 

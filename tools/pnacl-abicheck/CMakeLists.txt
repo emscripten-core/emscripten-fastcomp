@@ -1,4 +1,4 @@
-set(LLVM_LINK_COMPONENTS bitreader asmparser naclanalysis)
+set(LLVM_LINK_COMPONENTS bitreader naclbitreader irreader asmparser naclanalysis)
 
 add_llvm_tool(pnacl-abicheck
   pnacl-abicheck.cpp

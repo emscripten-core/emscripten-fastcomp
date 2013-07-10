@@ -19,4 +19,4 @@
 type = Tool
 name = pnacl-abicheck
 parent = Tools
-required_libraries = AsmParser BitReader NaClAnalysis
+required_libraries = AsmParser BitReader NaClBitReader IRReader NaClAnalysis

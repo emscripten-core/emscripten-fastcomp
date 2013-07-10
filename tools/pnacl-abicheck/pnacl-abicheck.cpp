@@ -13,6 +13,7 @@
 
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/NaCl.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
@@ -28,6 +29,16 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
 static cl::opt<bool>
 Quiet("q", cl::desc("Do not print error messages"));
+
+static cl::opt<NaClFileFormat>
+InputFileFormat(
+    "bitcode-format",
+    cl::desc("Define format of input file:"),
+    cl::values(
+        clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
+        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
+        clEnumValEnd),
+    cl::init(LLVMFormat));
 
 // Print any errors collected by the error reporter. Return true if
 // there were any.
@@ -49,7 +60,8 @@ int main(int argc, char **argv) {
   SMDiagnostic Err;
   cl::ParseCommandLineOptions(argc, argv, "PNaCl Bitcode ABI checker\n");
 
-  OwningPtr<Module> Mod(ParseIRFile(InputFilename, Err, Context));
+  OwningPtr<Module> Mod(
+      NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
   if (Mod.get() == 0) {
     Err.print(argv[0], errs());
     return 1;
