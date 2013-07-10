@@ -288,6 +288,7 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
     case Intrinsic::log2:
     case Intrinsic::log10:
     case Intrinsic::pow:
+    case Intrinsic::powi:
     case Intrinsic::sin:
     // We run -lower-expect to convert Intrinsic::expect into branch weights
     // and consume in the middle-end. The backend just ignores llvm.expect.
@@ -303,7 +304,6 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
     case Intrinsic::dbg_value:
       return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
-    case Intrinsic::powi: // Rounding not defined: support with fast-math?
     case Intrinsic::prefetch: // TODO(jfb): Use our own data-prefetch intrinsic instead.
       return PNaClABIAllowDevIntrinsics;
   }
