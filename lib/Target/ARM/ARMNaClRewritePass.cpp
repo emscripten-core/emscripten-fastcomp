@@ -461,6 +461,7 @@ static bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx) {
   case ARM::LDREX:
   case ARM::LDREXB:
   case ARM::LDREXH:
+  case ARM::LDREXD:
     *AddrIdx = 1;
     break;
 
@@ -1040,6 +1041,7 @@ static bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx) {
   case ARM::STREX:
   case ARM::STREXB:
   case ARM::STREXH:
+  case ARM::STREXD:
     *AddrIdx = 2;
     break;
   }
