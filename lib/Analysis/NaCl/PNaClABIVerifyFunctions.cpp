@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Function.h"
@@ -19,6 +20,8 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/NaClAtomicIntrinsics.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
@@ -49,6 +52,10 @@ class PNaClABIVerifyFunctions : public FunctionPass {
     if (ReporterIsOwned)
       delete Reporter;
   }
+  virtual bool doInitialization(Module &M) {
+    AtomicIntrinsics.reset(new NaCl::AtomicIntrinsics(M.getContext()));
+    return false;
+  }
   bool runOnFunction(Function &F);
   virtual void print(raw_ostream &O, const Module *M) const;
  private:
@@ -56,6 +63,7 @@ class PNaClABIVerifyFunctions : public FunctionPass {
   const char *checkInstruction(const Instruction *Inst);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
+  OwningPtr<NaCl::AtomicIntrinsics> AtomicIntrinsics;
 };
 
 } // and anonymous namespace
@@ -144,16 +152,7 @@ static bool isValidScalarOperand(const Value *Val) {
           isa<UndefValue>(Val));
 }
 
-static bool isAllowedAlignment(unsigned Alignment, Type *Ty, bool IsAtomic) {
-  if (IsAtomic) {
-    // For atomic operations, the alignment must match the size of the type.
-    if (Ty->isIntegerTy()) {
-      unsigned Bits = Ty->getIntegerBitWidth();
-      return Bits % 8 == 0 && Alignment == Bits / 8;
-    }
-    return (Ty->isDoubleTy() && Alignment == 8) ||
-           (Ty->isFloatTy() && Alignment == 4);
-  }
+static bool isAllowedAlignment(unsigned Alignment, Type *Ty) {
   // Non-atomic integer operations must always use "align 1", since we
   // do not want the backend to generate code with non-portable
   // undefined behaviour (such as misaligned access faults) if user
@@ -167,6 +166,51 @@ static bool isAllowedAlignment(unsigned Alignment, Type *Ty, bool IsAtomic) {
   return Alignment == 1 ||
          (Ty->isDoubleTy() && Alignment == 8) ||
          (Ty->isFloatTy() && Alignment == 4);
+}
+
+static bool hasAllowedAtomicRMWOperation(
+    const NaCl::AtomicIntrinsics::AtomicIntrinsic *I, const CallInst *Call) {
+  for (size_t P = 0; P != I->NumParams; ++P) {
+    if (I->ParamType[P] != NaCl::AtomicIntrinsics::RMW)
+      continue;
+
+    const Value *Operation = Call->getOperand(P);
+    if (!Operation)
+      return false;
+    const Constant *C = dyn_cast<Constant>(Operation);
+    if (!C)
+      return false;
+    const APInt &I = C->getUniqueInteger();
+    if (I.ule(NaCl::AtomicInvalid) || I.uge(NaCl::AtomicNum))
+      return false;
+  }
+  return true;
+}
+
+static bool hasAllowedAtomicMemoryOrder(
+    const NaCl::AtomicIntrinsics::AtomicIntrinsic *I, const CallInst *Call) {
+  for (size_t P = 0; P != I->NumParams; ++P) {
+    if (I->ParamType[P] != NaCl::AtomicIntrinsics::Mem)
+      continue;
+
+    const Value *MemoryOrder = Call->getOperand(P);
+    if (!MemoryOrder)
+      return false;
+    const Constant *C = dyn_cast<Constant>(MemoryOrder);
+    if (!C)
+      return false;
+    const APInt &I = C->getUniqueInteger();
+    if (I.ule(NaCl::MemoryOrderInvalid) || I.uge(NaCl::MemoryOrderNum))
+      return false;
+    // TODO For now only sequential consistency is allowed. When more
+    //      are allowed we need to validate that the memory order is
+    //      allowed on the specific atomic operation (e.g. no store
+    //      acquire, and relationship between success/failure memory
+    //      order on compare exchange).
+    if (I != NaCl::MemoryOrderSequentiallyConsistent)
+      return false;
+  }
+  return true;
 }
 
 // Check the instruction's opcode and its operands.  The operands may
@@ -198,6 +242,10 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     // ExtractValue and InsertValue operate on struct values.
     case Instruction::ExtractValue:
     case Instruction::InsertValue:
+    // Atomics should become NaCl intrinsics.
+    case Instruction::AtomicCmpXchg:
+    case Instruction::AtomicRMW:
+    case Instruction::Fence:
       return "bad instruction opcode";
     default:
       return "unknown instruction opcode";
@@ -216,8 +264,6 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     case Instruction::And:
     case Instruction::Or:
     case Instruction::Xor:
-    // Memory instructions
-    case Instruction::Fence:
     // Conversion operations
     case Instruction::Trunc:
     case Instruction::ZExt:
@@ -256,32 +302,32 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     // Memory accesses.
     case Instruction::Load: {
       const LoadInst *Load = cast<LoadInst>(Inst);
+      PtrOperandIndex = Load->getPointerOperandIndex();
+      if (Load->isAtomic())
+        return "atomic load";
+      if (Load->isVolatile())
+        return "volatile load";
       if (!isAllowedAlignment(Load->getAlignment(),
-                              Load->getType(),
-                              Load->isAtomic()))
+                              Load->getType()))
         return "bad alignment";
-      PtrOperandIndex = 0;
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad pointer";
       break;
     }
     case Instruction::Store: {
       const StoreInst *Store = cast<StoreInst>(Inst);
+      PtrOperandIndex = Store->getPointerOperandIndex();
+      if (Store->isAtomic())
+        return "atomic store";
+      if (Store->isVolatile())
+        return "volatile store";
       if (!isAllowedAlignment(Store->getAlignment(),
-                              Store->getValueOperand()->getType(),
-                              Store->isAtomic()))
+                              Store->getValueOperand()->getType()))
         return "bad alignment";
-      PtrOperandIndex = 1;
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad pointer";
       break;
     }
-    case Instruction::AtomicCmpXchg:
-    case Instruction::AtomicRMW:
-      PtrOperandIndex = 0;
-      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
-        return "bad pointer";
-      break;
 
     // Casts.
     case Instruction::BitCast:
@@ -332,6 +378,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
                 isa<MDNode>(Arg)))
             return "bad intrinsic operand";
         }
+
         // Disallow alignments other than 1 on memcpy() etc., for the
         // same reason that we disallow them on integer loads and
         // stores.
@@ -344,6 +391,30 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
             return "bad alignment";
           }
         }
+
+        // Disallow NaCl atomic intrinsics which don't have valid
+        // constant NaCl::AtomicOperation and NaCl::MemoryOrder
+        // parameters.
+        switch (Call->getIntrinsicID()) {
+          default: break;  // Non-atomic intrinsic.
+          case Intrinsic::nacl_atomic_load:
+          case Intrinsic::nacl_atomic_store:
+          case Intrinsic::nacl_atomic_rmw:
+          case Intrinsic::nacl_atomic_cmpxchg:
+          case Intrinsic::nacl_atomic_fence: {
+            // All overloads have memory order and RMW operation in the
+            // same parameter, arbitrarily use the I32 overload.
+            Type *T = Type::getInt32Ty(
+                Inst->getParent()->getParent()->getContext());
+            const NaCl::AtomicIntrinsics::AtomicIntrinsic *I =
+                AtomicIntrinsics->find(Call->getIntrinsicID(), T);
+            if (!hasAllowedAtomicMemoryOrder(I, Call))
+              return "invalid memory order";
+            if (!hasAllowedAtomicRMWOperation(I, Call))
+              return "invalid atomicRMW operation";
+          } break;
+        }
+
         // Allow the instruction and skip the later checks.
         return NULL;
       }

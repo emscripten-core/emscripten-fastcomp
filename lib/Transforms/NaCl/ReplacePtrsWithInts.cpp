@@ -483,19 +483,19 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     Value *Alloca2 = new PtrToIntInst(Tmp, IntPtrType,
                                       Tmp->getName() + ".asint", Inst);
     FC->recordConvertedAndErase(Alloca, Alloca2);
-  } else if (// These atomics only operate on integer pointers, not
-             // other pointers, so we don't need to recreate the
-             // instruction.
-             isa<AtomicCmpXchgInst>(Inst) ||
-             isa<AtomicRMWInst>(Inst) ||
-             // Handle these instructions as a convenience to allow
+  } else if (// Handle these instructions as a convenience to allow
              // the pass to be used in more situations, even though we
              // don't expect them in PNaCl's stable ABI.
              isa<GetElementPtrInst>(Inst) ||
              isa<VAArgInst>(Inst) ||
              isa<IndirectBrInst>(Inst) ||
              isa<ExtractValueInst>(Inst) ||
-             isa<InsertValueInst>(Inst)) {
+             isa<InsertValueInst>(Inst) ||
+             // These atomics only operate on integer pointers, not
+             // other pointers, so we don't need to recreate the
+             // instruction.
+             isa<AtomicCmpXchgInst>(Inst) ||
+             isa<AtomicRMWInst>(Inst)) {
     FC->convertInPlace(Inst);
   }
 }
