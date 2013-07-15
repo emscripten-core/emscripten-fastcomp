@@ -15,7 +15,6 @@
 #ifndef LLVM_TARGET_POWERPC_H
 #define LLVM_TARGET_POWERPC_H
 
-#include "MCTargetDesc/PPCBaseInfo.h"
 #include "MCTargetDesc/PPCMCTargetDesc.h"
 #include <string>
 
@@ -32,6 +31,7 @@ namespace llvm {
   class MCInst;
 
   FunctionPass *createPPCCTRLoops();
+  FunctionPass *createPPCEarlyReturnPass();
   FunctionPass *createPPCBranchSelectionPass();
   FunctionPass *createPPCISelDag(PPCTargetMachine &TM);
   FunctionPass *createPPCJITCodeEmitterPass(PPCTargetMachine &TM,
@@ -41,7 +41,7 @@ namespace llvm {
 
   /// \brief Creates an PPC-specific Target Transformation Info pass.
   ImmutablePass *createPPCTargetTransformInfoPass(const PPCTargetMachine *TM);
-  
+
   namespace PPCII {
     
   /// Target Operand Flag enum.

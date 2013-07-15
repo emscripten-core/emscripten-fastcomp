@@ -196,14 +196,14 @@ template <> struct isPodLike<SDValue> { static const bool value = true; };
 /// SDValues as if they were SDNode*'s.
 template<> struct simplify_type<SDValue> {
   typedef SDNode* SimpleType;
-  static SimpleType getSimplifiedValue(const SDValue &Val) {
-    return static_cast<SimpleType>(Val.getNode());
+  static SimpleType getSimplifiedValue(SDValue &Val) {
+    return Val.getNode();
   }
 };
 template<> struct simplify_type<const SDValue> {
-  typedef SDNode* SimpleType;
+  typedef /*const*/ SDNode* SimpleType;
   static SimpleType getSimplifiedValue(const SDValue &Val) {
-    return static_cast<SimpleType>(Val.getNode());
+    return Val.getNode();
   }
 };
 
@@ -295,14 +295,8 @@ private:
 /// SDValues as if they were SDNode*'s.
 template<> struct simplify_type<SDUse> {
   typedef SDNode* SimpleType;
-  static SimpleType getSimplifiedValue(const SDUse &Val) {
-    return static_cast<SimpleType>(Val.getNode());
-  }
-};
-template<> struct simplify_type<const SDUse> {
-  typedef SDNode* SimpleType;
-  static SimpleType getSimplifiedValue(const SDUse &Val) {
-    return static_cast<SimpleType>(Val.getNode());
+  static SimpleType getSimplifiedValue(SDUse &Val) {
+    return Val.getNode();
   }
 };
 
@@ -1298,7 +1292,7 @@ class ConstantPoolSDNode : public SDNode {
     : SDNode(isTarget ? ISD::TargetConstantPool : ISD::ConstantPool,
              DebugLoc(),
              getSDVTList(VT)), Offset(o), Alignment(Align), TargetFlags(TF) {
-    assert((int)Offset >= 0 && "Offset is too large");
+    assert(Offset >= 0 && "Offset is too large");
     Val.ConstVal = c;
   }
   ConstantPoolSDNode(bool isTarget, MachineConstantPoolValue *v,
@@ -1306,7 +1300,7 @@ class ConstantPoolSDNode : public SDNode {
     : SDNode(isTarget ? ISD::TargetConstantPool : ISD::ConstantPool,
              DebugLoc(),
              getSDVTList(VT)), Offset(o), Alignment(Align), TargetFlags(TF) {
-    assert((int)Offset >= 0 && "Offset is too large");
+    assert(Offset >= 0 && "Offset is too large");
     Val.MachineCPVal = v;
     Offset |= 1 << (sizeof(unsigned)*CHAR_BIT-1);
   }
@@ -1314,7 +1308,7 @@ public:
   
 
   bool isMachineConstantPoolEntry() const {
-    return (int)Offset < 0;
+    return Offset < 0;
   }
 
   const Constant *getConstVal() const {

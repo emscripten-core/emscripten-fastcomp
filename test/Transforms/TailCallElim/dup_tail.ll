@@ -1,3 +1,4 @@
+; REQUIRES: asserts
 ; Duplicate the return into if.end to enable TCE.
 ; RUN: opt -tailcallelim -stats -disable-output < %s 2>&1 | FileCheck %s
 

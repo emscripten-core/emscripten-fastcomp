@@ -41,7 +41,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetOptions.h"
 #include <queue>
 
 using namespace llvm;
@@ -79,7 +78,7 @@ class RAGreedy : public MachineFunctionPass,
   LiveDebugVariables *DebugVars;
 
   // state
-  std::auto_ptr<Spiller> SpillerInstance;
+  OwningPtr<Spiller> SpillerInstance;
   std::priority_queue<std::pair<unsigned, unsigned> > Queue;
   unsigned NextCascade;
 
@@ -167,8 +166,8 @@ class RAGreedy : public MachineFunctionPass,
   };
 
   // splitting state.
-  std::auto_ptr<SplitAnalysis> SA;
-  std::auto_ptr<SplitEditor> SE;
+  OwningPtr<SplitAnalysis> SA;
+  OwningPtr<SplitEditor> SE;
 
   /// Cached per-block interference maps
   InterferenceCache IntfCache;

@@ -274,6 +274,10 @@ public:
 
   /// \brief Returns the address pool.
   AddrPool *getAddrPool() { return &AddressPool; }
+
+  /// \brief for a given compile unit DIE, returns offset from beginning of
+  /// debug info.
+  unsigned getCUOffset(DIE *Die);
 };
 
 /// \brief Collects and handles dwarf debug information.
@@ -305,7 +309,9 @@ class DwarfDebug {
   // A list of all the unique abbreviations in use.
   std::vector<DIEAbbrev *> Abbreviations;
 
-  // Source id map, i.e. pair of source filename and directory,
+  // Stores the current file ID for a given compile unit.
+  DenseMap <unsigned, unsigned> FileIDCUMap;
+  // Source id map, i.e. CUID, source filename and directory,
   // separated by a zero byte, mapped to a unique id.
   StringMap<unsigned, BumpPtrAllocator&> SourceIdMap;
 
@@ -386,7 +392,7 @@ class DwarfDebug {
   // section offsets and are created by EmitSectionLabels.
   MCSymbol *DwarfInfoSectionSym, *DwarfAbbrevSectionSym;
   MCSymbol *DwarfStrSectionSym, *TextSectionSym, *DwarfDebugRangeSectionSym;
-  MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym;
+  MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym, *DwarfAddrSectionSym;
   MCSymbol *FunctionBeginSym, *FunctionEndSym;
   MCSymbol *DwarfAbbrevDWOSectionSym, *DwarfStrDWOSectionSym;
 
@@ -426,6 +432,10 @@ class DwarfDebug {
 
   // Holder for the skeleton information.
   DwarfUnits SkeletonHolder;
+
+  typedef SmallVector<std::pair<const MDNode *, const MDNode *>, 32>
+    ImportedEntityMap;
+  ImportedEntityMap ScopesWithImportedEntities;
 
 private:
 
@@ -549,6 +559,18 @@ private:
   /// \brief Construct subprogram DIE.
   void constructSubprogramDIE(CompileUnit *TheCU, const MDNode *N);
 
+  /// \brief Construct import_module DIE.
+  void constructImportedModuleDIE(CompileUnit *TheCU, const MDNode *N);
+
+  /// \brief Construct import_module DIE.
+  void constructImportedModuleDIE(CompileUnit *TheCU, const MDNode *N,
+                                  DIE *Context);
+
+  /// \brief Construct import_module DIE.
+  void constructImportedModuleDIE(CompileUnit *TheCU,
+                                  const DIImportedModule &Module,
+                                  DIE *Context);
+
   /// \brief Register a source line with debug info. Returns the unique
   /// label that was emitted and which provides correspondence to the
   /// source line list.
@@ -596,14 +618,6 @@ public:
   DwarfDebug(AsmPrinter *A, Module *M);
   ~DwarfDebug();
 
-  /// \brief Collect debug info from named mdnodes such as llvm.dbg.enum
-  /// and llvm.dbg.ty
-  void collectInfoFromNamedMDNodes(const Module *M);
-
-  /// \brief Collect debug info using DebugInfoFinder.
-  /// FIXME - Remove this when DragonEgg switches to DIBuilder.
-  bool collectLegacyDebugInfo(const Module *M);
-
   /// \brief Emit all Dwarf sections that should come prior to the
   /// content.
   void beginModule();
@@ -626,7 +640,8 @@ public:
   /// \brief Look up the source id with the given directory and source file
   /// names. If none currently exists, create a new id and insert it in the
   /// SourceIds map.
-  unsigned getOrCreateSourceID(StringRef DirName, StringRef FullName);
+  unsigned getOrCreateSourceID(StringRef DirName, StringRef FullName,
+                               unsigned CUID);
 
   /// \brief Recursively Emits a debug information entry.
   void emitDIE(DIE *Die, std::vector<DIEAbbrev *> *Abbrevs);

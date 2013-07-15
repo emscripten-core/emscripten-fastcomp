@@ -329,8 +329,8 @@ void SUnit::dumpAll(const ScheduleDAG *G) const {
     dbgs() << "  # weak succs left  : " << WeakSuccsLeft << "\n";
   dbgs() << "  # rdefs left       : " << NumRegDefsLeft << "\n";
   dbgs() << "  Latency            : " << Latency << "\n";
-  dbgs() << "  Depth              : " << Depth << "\n";
-  dbgs() << "  Height             : " << Height << "\n";
+  dbgs() << "  Depth              : " << getDepth() << "\n";
+  dbgs() << "  Height             : " << getHeight() << "\n";
 
   if (Preds.size() != 0) {
     dbgs() << "  Predecessors:\n";
@@ -367,6 +367,8 @@ void SUnit::dumpAll(const ScheduleDAG *G) const {
       if (I->isArtificial())
         dbgs() << " *";
       dbgs() << ": Latency=" << I->getLatency();
+      if (I->isAssignedRegDep())
+        dbgs() << " Reg=" << PrintReg(I->getReg(), G->TRI);
       dbgs() << "\n";
     }
   }

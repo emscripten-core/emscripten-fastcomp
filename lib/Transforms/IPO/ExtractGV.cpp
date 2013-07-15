@@ -69,7 +69,7 @@ namespace {
           // @LOCALMOD-END
         }
 
-        bool Local = I->hasLocalLinkage();
+        bool Local = I->isDiscardableIfUnused();
         if (Local)
           I->setVisibility(GlobalValue::HiddenVisibility);
 
@@ -95,8 +95,8 @@ namespace {
 	    continue;
           // @LOCALMOD-END
         }
- 
-        bool Local = I->hasLocalLinkage();
+
+        bool Local = I->isDiscardableIfUnused();
         if (Local)
           I->setVisibility(GlobalValue::HiddenVisibility);
 
@@ -113,7 +113,7 @@ namespace {
         Module::alias_iterator CurI = I;
         ++I;
 
-        if (CurI->hasLocalLinkage()) {
+        if (CurI->isDiscardableIfUnused()) {
           CurI->setVisibility(GlobalValue::HiddenVisibility);
           CurI->setLinkage(GlobalValue::ExternalLinkage);
         }

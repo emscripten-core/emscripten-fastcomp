@@ -19,6 +19,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetOptions.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
@@ -26,7 +27,7 @@
 
 using namespace llvm;
 
-cl::opt<bool> // @LOCALMOD
+static cl::opt<bool>
 ReserveR9("arm-reserve-r9", cl::Hidden,
           cl::desc("Reserve R9, making it unavailable as GPR"));
 
@@ -46,32 +47,18 @@ static cl::opt<bool>
 UseFusedMulOps("arm-use-mulops",
                cl::init(true), cl::Hidden);
 
-enum AlignMode {
-  DefaultAlign,
-  StrictAlign,
-  NoStrictAlign
-};
-
-static cl::opt<AlignMode>
-Align(cl::desc("Load/store alignment support"),
-      cl::Hidden, cl::init(DefaultAlign),
-      cl::values(
-          clEnumValN(DefaultAlign,  "arm-default-align",
-                     "Generate unaligned accesses only on hardware/OS "
-                     "combinations that are known to support them"),
-          clEnumValN(StrictAlign,   "arm-strict-align",
-                     "Disallow all unaligned memory accesses"),
-          clEnumValN(NoStrictAlign, "arm-no-strict-align",
-                     "Allow unaligned memory accesses"),
-          clEnumValEnd));
+static cl::opt<bool>
+StrictAlign("arm-strict-align", cl::Hidden,
+            cl::desc("Disallow all unaligned memory accesses"));
 
 ARMSubtarget::ARMSubtarget(const std::string &TT, const std::string &CPU,
-                           const std::string &FS)
+                           const std::string &FS, const TargetOptions &Options)
   : ARMGenSubtargetInfo(TT, CPU, FS)
   , ARMProcFamily(Others)
   , stackAlignment(4)
   , CPUString(CPU)
   , TargetTriple(TT)
+  , Options(Options)
   , TargetABI(ARM_ABI_APCS) {
   initializeEnvironment();
   resetSubtargetFeatures(CPU, FS);
@@ -114,9 +101,11 @@ void ARMSubtarget::initializeEnvironment() {
   HasRAS = false;
   HasMPExtension = false;
   FPOnlySP = false;
+  HasTrustZone = false;
   AllowsUnalignedMem = false;
   Thumb2DSP = false;
   UseNaClTrap = false;
+  UnsafeFPMath = false;
 }
 
 void ARMSubtarget::resetSubtargetFeatures(const MachineFunction *MF) {
@@ -195,32 +184,16 @@ void ARMSubtarget::resetSubtargetFeatures(StringRef CPU, StringRef FS) {
   if (!isThumb() || hasThumb2())
     PostRAScheduler = true;
 
-  switch (Align) {
-    case DefaultAlign:
-      // Assume pre-ARMv6 doesn't support unaligned accesses.
-      //
-      // ARMv6 may or may not support unaligned accesses depending on the
-      // SCTLR.U bit, which is architecture-specific. We assume ARMv6
-      // Darwin targets support unaligned accesses, and others don't.
-      //
-      // ARMv7 always has SCTLR.U set to 1, but it has a new SCTLR.A bit
-      // which raises an alignment fault on unaligned accesses. Linux
-      // defaults this bit to 0 and handles it as a system-wide (not
-      // per-process) setting. It is therefore safe to assume that ARMv7+
-      // Linux targets support unaligned accesses. The same goes for NaCl.
-      //
-      // The above behavior is consistent with GCC.
-      AllowsUnalignedMem = (
-          (hasV7Ops() && (isTargetLinux() || isTargetNaCl())) ||
-          (hasV6Ops() && isTargetDarwin()));
-      break;
-    case StrictAlign:
-      AllowsUnalignedMem = false;
-      break;
-    case NoStrictAlign:
-      AllowsUnalignedMem = true;
-      break;
-  }
+  // v6+ may or may not support unaligned mem access depending on the system
+  // configuration.
+  if (!StrictAlign && hasV6Ops() && isTargetDarwin())
+    AllowsUnalignedMem = true;
+
+  // NEON f32 ops are non-IEEE 754 compliant. Darwin is ok with it by default.
+  uint64_t Bits = getFeatureBits();
+  if ((Bits & ARM::ProcA5 || Bits & ARM::ProcA8) && // Where this matters
+      (Options.UnsafeFPMath || isTargetDarwin()))
+    UseNEONForSinglePrecisionFP = true;
 }
 
 /// GVIsIndirectSymbol - true if the GV will be accessed via an indirect symbol.

@@ -22,14 +22,16 @@
 #ifndef LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 #define LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 
-#include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/Type.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
+
+class GlobalValue;
+class Type;
+class User;
+class Value;
 
 /// TargetTransformInfo - This pass provides access to the codegen
 /// interfaces that are needed for IR-level transformations.
@@ -77,7 +79,7 @@ public:
   /// fundamental values that should be used to interpret (and produce) those
   /// costs. The costs are returned as an unsigned rather than a member of this
   /// enumeration because it is expected that the cost of one IR instruction
-  /// may have a multiplicative factor to it or otherwise won't fit dircetly
+  /// may have a multiplicative factor to it or otherwise won't fit directly
   /// into the enum. Moreover, it is common to sum or average costs which works
   /// better as simple integral values. Thus this enum only provides constants.
   ///
@@ -194,7 +196,7 @@ public:
   /// significantly boost the performance when the population is dense, and it
   /// may or may not degrade performance if the population is sparse. A HW
   /// support is considered as "Fast" if it can outperform, or is on a par
-  /// with, SW implementaion when the population is sparse; otherwise, it is
+  /// with, SW implementation when the population is sparse; otherwise, it is
   /// considered as "Slow".
   enum PopcntSupportKind {
     PSK_Software,
@@ -261,6 +263,13 @@ public:
     SK_ExtractSubvector ///< ExtractSubvector Index indicates start offset.
   };
 
+  /// \brief Additonal information about an operand's possible values.
+  enum OperandValueKind {
+    OK_AnyValue,            // Operand can have any value.
+    OK_UniformValue,        // Operand is uniform (splat of a value).
+    OK_UniformConstantValue // Operand is uniform constant.
+  };
+
   /// \return The number of scalar or vector registers that the target has.
   /// If 'Vectors' is true, it returns the number of vector registers. If it is
   /// set to false, it returns the number of scalar registers.
@@ -275,7 +284,9 @@ public:
   virtual unsigned getMaximumUnrollFactor() const;
 
   /// \return The expected cost of arithmetic ops, such as mul, xor, fsub, etc.
-  virtual unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty) const;
+  virtual unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
+                                  OperandValueKind Opd1Info = OK_AnyValue,
+                                  OperandValueKind Opd2Info = OK_AnyValue) const;
 
   /// \return The cost of a shuffle instruction of kind Kind and of type Tp.
   /// The index and subtype parameters are used by the subvector insertion and
@@ -288,7 +299,7 @@ public:
   virtual unsigned getCastInstrCost(unsigned Opcode, Type *Dst,
                                     Type *Src) const;
 
-  /// \return The expected cost of control-flow related instrutctions such as
+  /// \return The expected cost of control-flow related instructions such as
   /// Phi, Ret, Br.
   virtual unsigned getCFInstrCost(unsigned Opcode) const;
 
@@ -328,7 +339,7 @@ public:
 
 /// \brief Create the base case instance of a pass in the TTI analysis group.
 ///
-/// This class provides the base case for the stack of TTI analyses. It doesn't
+/// This class provides the base case for the stack of TTI analyzes. It doesn't
 /// delegate to anything and uses the STTI and VTTI objects passed in to
 /// satisfy the queries.
 ImmutablePass *createNoTargetTransformInfoPass();

@@ -21,6 +21,8 @@
 #include "MipsSelectionDAGInfo.h"
 #include "MipsSubtarget.h"
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
@@ -34,7 +36,13 @@ class MipsTargetMachine : public LLVMTargetMachine {
   const DataLayout    DL; // Calculates type size & alignment
   OwningPtr<const MipsInstrInfo> InstrInfo;
   OwningPtr<const MipsFrameLowering> FrameLowering;
-  MipsTargetLowering  TLInfo;
+  OwningPtr<const MipsTargetLowering> TLInfo;
+  OwningPtr<const MipsInstrInfo> InstrInfo16;
+  OwningPtr<const MipsFrameLowering> FrameLowering16;
+  OwningPtr<const MipsTargetLowering> TLInfo16;
+  OwningPtr<const MipsInstrInfo> InstrInfoSE;
+  OwningPtr<const MipsFrameLowering> FrameLoweringSE;
+  OwningPtr<const MipsTargetLowering> TLInfoSE;
   MipsSelectionDAGInfo TSInfo;
   MipsJITInfo JITInfo;
 
@@ -46,6 +54,8 @@ public:
                     bool isLittle);
 
   virtual ~MipsTargetMachine() {}
+
+  virtual void addAnalysisPasses(PassManagerBase &PM);
 
   virtual const MipsInstrInfo *getInstrInfo() const
   { return InstrInfo.get(); }
@@ -63,7 +73,7 @@ public:
   }
 
   virtual const MipsTargetLowering *getTargetLowering() const {
-    return &TLInfo;
+    return TLInfo.get();
   }
 
   virtual const MipsSelectionDAGInfo* getSelectionDAGInfo() const {
@@ -73,6 +83,13 @@ public:
   // Pass Pipeline Configuration
   virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
   virtual bool addCodeEmitter(PassManagerBase &PM, JITCodeEmitter &JCE);
+
+  // Set helper classes
+  void setHelperClassesMips16();
+
+  void setHelperClassesMipsSE();
+
+
 };
 
 /// MipsebTargetMachine - Mips32/64 big endian target machine.

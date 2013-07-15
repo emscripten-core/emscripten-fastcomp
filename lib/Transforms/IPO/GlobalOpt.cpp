@@ -473,8 +473,9 @@ static bool CleanupPointerRootUsers(GlobalVariable *GV,
 static bool CleanupConstantGlobalUsers(Value *V, Constant *Init,
                                        DataLayout *TD, TargetLibraryInfo *TLI) {
   bool Changed = false;
-  for (Value::use_iterator UI = V->use_begin(), E = V->use_end(); UI != E;) {
-    User *U = *UI++;
+  SmallVector<User*, 8> WorkList(V->use_begin(), V->use_end());
+  while (!WorkList.empty()) {
+    User *U = WorkList.pop_back_val();
 
     if (LoadInst *LI = dyn_cast<LoadInst>(U)) {
       if (Init) {
@@ -537,7 +538,6 @@ static bool CleanupConstantGlobalUsers(Value *V, Constant *Init,
       // us, and if they are all dead, nuke them without remorse.
       if (SafeToDestroyConstant(C)) {
         C->destroyConstant();
-        // This could have invalidated UI, start over from scratch.
         CleanupConstantGlobalUsers(V, Init, TD, TLI);
         return true;
       }
@@ -3062,6 +3062,105 @@ bool GlobalOpt::OptimizeGlobalCtorsList(GlobalVariable *&GCL) {
   return true;
 }
 
+static Value::use_iterator getFirst(Value *V, SmallPtrSet<Use*, 8> &Tried) {
+  for (Value::use_iterator I = V->use_begin(), E = V->use_end(); I != E; ++I) {
+    Use *U = &I.getUse();
+    if (Tried.count(U))
+      continue;
+
+    User *Usr = *I;
+    GlobalVariable *GV = dyn_cast<GlobalVariable>(Usr);
+    if (!GV || !GV->hasName()) {
+      Tried.insert(U);
+      return I;
+    }
+
+    StringRef Name = GV->getName();
+    if (Name != "llvm.used" && Name != "llvm.compiler_used") {
+      Tried.insert(U);
+      return I;
+    }
+  }
+  return V->use_end();
+}
+
+static bool replaceAllNonLLVMUsedUsesWith(Constant *Old, Constant *New);
+
+static bool replaceUsesOfWithOnConstant(ConstantArray *CA, Value *From,
+                                        Value *ToV, Use *U) {
+  Constant *To = cast<Constant>(ToV);
+
+  SmallVector<Constant*, 8> NewOps;
+  for (unsigned i = 0, e = CA->getNumOperands(); i != e; ++i) {
+    Constant *Op = CA->getOperand(i);
+    NewOps.push_back(Op == From ? To : Op);
+  }
+
+  Constant *Replacement = ConstantArray::get(CA->getType(), NewOps);
+  assert(Replacement != CA && "CA didn't contain From!");
+
+  bool Ret = replaceAllNonLLVMUsedUsesWith(CA, Replacement);
+  if (Replacement->use_empty())
+    Replacement->destroyConstant();
+  if (CA->use_empty())
+    CA->destroyConstant();
+  return Ret;
+}
+
+static bool replaceUsesOfWithOnConstant(ConstantExpr *CE, Value *From,
+                                        Value *ToV, Use *U) {
+  Constant *To = cast<Constant>(ToV);
+  SmallVector<Constant*, 8> NewOps;
+  for (unsigned i = 0, e = CE->getNumOperands(); i != e; ++i) {
+    Constant *Op = CE->getOperand(i);
+    NewOps.push_back(Op == From ? To : Op);
+  }
+
+  Constant *Replacement = CE->getWithOperands(NewOps);
+  assert(Replacement != CE && "CE didn't contain From!");
+
+  bool Ret = replaceAllNonLLVMUsedUsesWith(CE, Replacement);
+  if (Replacement->use_empty())
+    Replacement->destroyConstant();
+  if (CE->use_empty())
+    CE->destroyConstant();
+  return Ret;
+}
+
+static bool replaceUsesOfWithOnConstant(Constant *C, Value *From, Value *To,
+                                        Use *U) {
+  if (ConstantArray *CA = dyn_cast<ConstantArray>(C))
+    return replaceUsesOfWithOnConstant(CA, From, To, U);
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C))
+    return replaceUsesOfWithOnConstant(CE, From, To, U);
+  C->replaceUsesOfWithOnConstant(From, To, U);
+  return true;
+}
+
+static bool replaceAllNonLLVMUsedUsesWith(Constant *Old, Constant *New) {
+  SmallPtrSet<Use*, 8> Tried;
+  bool Ret = false;
+  for (;;) {
+    Value::use_iterator I = getFirst(Old, Tried);
+    if (I == Old->use_end())
+      break;
+    Use &U = I.getUse();
+
+    // Must handle Constants specially, we cannot call replaceUsesOfWith on a
+    // constant because they are uniqued.
+    if (Constant *C = dyn_cast<Constant>(U.getUser())) {
+      if (!isa<GlobalValue>(C)) {
+        Ret |= replaceUsesOfWithOnConstant(C, Old, New, &U);
+        continue;
+      }
+    }
+
+    U.set(New);
+    Ret = true;
+  }
+  return Ret;
+}
+
 bool GlobalOpt::OptimizeGlobalAliases(Module &M) {
   bool Changed = false;
 
@@ -3081,11 +3180,12 @@ bool GlobalOpt::OptimizeGlobalAliases(Module &M) {
     bool hasOneUse = Target->hasOneUse() && Aliasee->hasOneUse();
 
     // Make all users of the alias use the aliasee instead.
-    if (!J->use_empty()) {
-      J->replaceAllUsesWith(Aliasee);
+    if (replaceAllNonLLVMUsedUsesWith(J, Aliasee)) {
       ++NumAliasesResolved;
       Changed = true;
     }
+    if (!J->use_empty())
+      continue;
 
     // If the alias is externally visible, we may still be able to simplify it.
     if (!J->hasLocalLinkage()) {

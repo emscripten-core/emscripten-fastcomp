@@ -53,6 +53,20 @@ namespace llvm {
       this->index = index;
     }
 
+#ifdef EXPENSIVE_CHECKS
+    // When EXPENSIVE_CHECKS is defined, "erased" index list entries will
+    // actually be moved to a "graveyard" list, and have their pointers
+    // poisoned, so that dangling SlotIndex access can be reliably detected.
+    void setPoison() {
+      intptr_t tmp = reinterpret_cast<intptr_t>(mi);
+      assert(((tmp & 0x1) == 0x0) && "Pointer already poisoned?");  
+      tmp |= 0x1;
+      mi = reinterpret_cast<MachineInstr*>(tmp);
+    }
+
+    bool isPoisoned() const { return (reinterpret_cast<intptr_t>(mi) & 0x1) == 0x1; }
+#endif // EXPENSIVE_CHECKS
+
   };
 
   template <>
@@ -109,6 +123,10 @@ namespace llvm {
 
     IndexListEntry* listEntry() const {
       assert(isValid() && "Attempt to compare reserved index.");
+#ifdef EXPENSIVE_CHECKS
+      assert(!lie.getPointer()->isPoisoned() &&
+             "Attempt to access deleted list-entry.");
+#endif // EXPENSIVE_CHECKS
       return lie.getPointer();
     }
 
@@ -282,7 +300,6 @@ namespace llvm {
 
   template <> struct isPodLike<SlotIndex> { static const bool value = true; };
 
-
   inline raw_ostream& operator<<(raw_ostream &os, SlotIndex li) {
     li.print(os);
     return os;
@@ -312,6 +329,10 @@ namespace llvm {
 
     typedef ilist<IndexListEntry> IndexList;
     IndexList indexList;
+
+#ifdef EXPENSIVE_CHECKS
+    IndexList graveyardList;
+#endif // EXPENSIVE_CHECKS
 
     MachineFunction *mf;
 
@@ -396,12 +417,16 @@ namespace llvm {
       return index.isValid() ? index.listEntry()->getInstr() : 0;
     }
 
-    /// Returns the next non-null index.
-    SlotIndex getNextNonNullIndex(SlotIndex index) {
-      IndexList::iterator itr(index.listEntry());
-      ++itr;
-      while (itr != indexList.end() && itr->getInstr() == 0) { ++itr; }
-      return SlotIndex(itr, index.getSlot());
+    /// Returns the next non-null index, if one exists.
+    /// Otherwise returns getLastIndex().
+    SlotIndex getNextNonNullIndex(SlotIndex Index) {
+      IndexList::iterator I = Index.listEntry();
+      IndexList::iterator E = indexList.end();
+      while (++I != E)
+        if (I->getInstr())
+          return SlotIndex(I, Index.getSlot());
+      // We reached the end of the function.
+      return getLastIndex();
     }
 
     /// getIndexBefore - Returns the index of the last indexed instruction
@@ -637,6 +662,32 @@ namespace llvm {
 
       renumberIndexes(newItr);
       std::sort(idx2MBBMap.begin(), idx2MBBMap.end(), Idx2MBBCompare());
+    }
+
+    /// \brief Free the resources that were required to maintain a SlotIndex.
+    ///
+    /// Once an index is no longer needed (for instance because the instruction
+    /// at that index has been moved), the resources required to maintain the
+    /// index can be relinquished to reduce memory use and improve renumbering
+    /// performance. Any remaining SlotIndex objects that point to the same
+    /// index are left 'dangling' (much the same as a dangling pointer to a
+    /// freed object) and should not be accessed, except to destruct them.
+    /// 
+    /// Like dangling pointers, access to dangling SlotIndexes can cause
+    /// painful-to-track-down bugs, especially if the memory for the index
+    /// previously pointed to has been re-used. To detect dangling SlotIndex
+    /// bugs, build with EXPENSIVE_CHECKS=1. This will cause "erased" indexes to
+    /// be retained in a graveyard instead of being freed. Operations on indexes
+    /// in the graveyard will trigger an assertion.
+    void eraseIndex(SlotIndex index) {
+      IndexListEntry *entry = index.listEntry();
+#ifdef EXPENSIVE_CHECKS
+      indexList.remove(entry);
+      graveyardList.push_back(entry);
+      entry->setPoison();
+#else
+      indexList.erase(entry);
+#endif
     }
 
   };

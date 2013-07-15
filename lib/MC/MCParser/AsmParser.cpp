@@ -201,9 +201,9 @@ public:
   }
 
   virtual bool Warning(SMLoc L, const Twine &Msg,
-                       ArrayRef<SMRange> Ranges = ArrayRef<SMRange>());
+                       ArrayRef<SMRange> Ranges = None);
   virtual bool Error(SMLoc L, const Twine &Msg,
-                     ArrayRef<SMRange> Ranges = ArrayRef<SMRange>());
+                     ArrayRef<SMRange> Ranges = None);
 
   virtual const AsmToken &Lex();
 
@@ -221,6 +221,7 @@ public:
 
   bool parseExpression(const MCExpr *&Res);
   virtual bool parseExpression(const MCExpr *&Res, SMLoc &EndLoc);
+  virtual bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc);
   virtual bool parseParenExpression(const MCExpr *&Res, SMLoc &EndLoc);
   virtual bool parseAbsoluteExpression(int64_t &Res);
 
@@ -285,7 +286,7 @@ private:
 
   void PrintMacroInstantiations();
   void PrintMessage(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Msg,
-                    ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) const {
+                    ArrayRef<SMRange> Ranges = None) const {
     SrcMgr.PrintMessage(Loc, Kind, Msg, Ranges);
   }
   static void DiagHandler(const SMDiagnostic &Diag, void *Context);
@@ -601,7 +602,7 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
   // If we are generating dwarf for assembly source files save the initial text
   // section and generate a .file directive.
   if (getContext().getGenDwarfForAssembly()) {
-    getContext().setGenDwarfSection(getStreamer().getCurrentSection());
+    getContext().setGenDwarfSection(getStreamer().getCurrentSection().first);
     MCSymbol *SectionStartSym = getContext().CreateTempSymbol();
     getStreamer().EmitLabel(SectionStartSym);
     getContext().setGenDwarfSectionStartSym(SectionStartSym);
@@ -626,7 +627,7 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
     return TokError("unmatched .ifs or .elses");
 
   // Check to see there are no empty DwarfFile slots.
-  const std::vector<MCDwarfFile *> &MCDwarfFiles =
+  const SmallVectorImpl<MCDwarfFile *> &MCDwarfFiles =
     getContext().getMCDwarfFiles();
   for (unsigned i = 1; i < MCDwarfFiles.size(); i++) {
     if (!MCDwarfFiles[i])
@@ -666,7 +667,7 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
 }
 
 void AsmParser::checkForValidSection() {
-  if (!ParsingInlineAsm && !getStreamer().getCurrentSection()) {
+  if (!ParsingInlineAsm && !getStreamer().getCurrentSection().first) {
     TokError("expected section directive before assembly directive");
     Out.InitToTextSection();
   }
@@ -867,6 +868,10 @@ bool AsmParser::ParsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
 bool AsmParser::parseExpression(const MCExpr *&Res) {
   SMLoc EndLoc;
   return parseExpression(Res, EndLoc);
+}
+
+bool AsmParser::parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
+  return ParsePrimaryExpr(Res, EndLoc);
 }
 
 const MCExpr *
@@ -1087,7 +1092,7 @@ bool AsmParser::ParseBinOpRHS(unsigned Precedence, const MCExpr *&Res,
     MCBinaryExpr::Opcode Dummy;
     unsigned NextTokPrec = getBinOpPrecedence(Lexer.getKind(), Dummy);
     if (TokPrec < NextTokPrec) {
-      if (ParseBinOpRHS(Precedence+1, RHS, EndLoc)) return true;
+      if (ParseBinOpRHS(TokPrec+1, RHS, EndLoc)) return true;
     }
 
     // Merge LHS and RHS according to operator.
@@ -1488,14 +1493,15 @@ bool AsmParser::ParseStatement(ParseStatementInfo &Info) {
   // section is the initial text section then generate a .loc directive for
   // the instruction.
   if (!HadError && getContext().getGenDwarfForAssembly() &&
-      getContext().getGenDwarfSection() == getStreamer().getCurrentSection()) {
+      getContext().getGenDwarfSection() ==
+      getStreamer().getCurrentSection().first) {
 
     unsigned Line = SrcMgr.FindLineNumber(IDLoc, CurBuffer);
 
     // If we previously parsed a cpp hash file line comment then make sure the
     // current Dwarf File is for the CppHashFilename if not then emit the
     // Dwarf File table for it and adjust the line number for the .loc.
-    const std::vector<MCDwarfFile *> &MCDwarfFiles = 
+    const SmallVectorImpl<MCDwarfFile *> &MCDwarfFiles = 
       getContext().getMCDwarfFiles();
     if (CppHashFilename.size() != 0) {
       if (MCDwarfFiles[getContext().getGenDwarfFileNumber()]->getName() !=
@@ -1978,7 +1984,6 @@ static bool IsUsedIn(const MCSymbol *Sym, const MCExpr *Value) {
   case MCExpr::Binary: {
     const MCBinaryExpr *BE = static_cast<const MCBinaryExpr*>(Value);
     return IsUsedIn(Sym, BE->getLHS()) || IsUsedIn(Sym, BE->getRHS());
-    break;
   }
   case MCExpr::Target:
   case MCExpr::Constant:
@@ -2479,7 +2484,7 @@ bool AsmParser::ParseDirectiveAlign(bool IsPow2, unsigned ValueSize) {
 
   // Check whether we should use optimal code alignment for this .align
   // directive.
-  bool UseCodeAlign = getStreamer().getCurrentSection()->UseCodeAlign();
+  bool UseCodeAlign = getStreamer().getCurrentSection().first->UseCodeAlign();
   if ((!HasFillExpr || Lexer.getMAI().getTextAlignFillValue() == FillExpr) &&
       ValueSize == 1 && UseCodeAlign) {
     getStreamer().EmitCodeAlignment(Alignment, MaxBytesToFill);
@@ -2631,12 +2636,10 @@ bool AsmParser::ParseDirectiveLoc() {
             Flags |= DWARF2_FLAG_IS_STMT;
           else
             return Error(Loc, "is_stmt value not 0 or 1");
-        }
-        else {
+        } else {
           return Error(Loc, "is_stmt value not the constant value of 0 or 1");
         }
-      }
-      else if (Name == "isa") {
+      } else if (Name == "isa") {
         Loc = getTok().getLoc();
         const MCExpr *Value;
         if (parseExpression(Value))
@@ -2647,16 +2650,13 @@ bool AsmParser::ParseDirectiveLoc() {
           if (Value < 0)
             return Error(Loc, "isa number less than zero");
           Isa = Value;
-        }
-        else {
+        } else {
           return Error(Loc, "isa number not a constant value");
         }
-      }
-      else if (Name == "discriminator") {
+      } else if (Name == "discriminator") {
         if (parseAbsoluteExpression(Discriminator))
           return true;
-      }
-      else {
+      } else {
         return Error(Loc, "unknown sub-directive in '.loc' directive");
       }
 
@@ -3615,18 +3615,17 @@ bool AsmParser::ParseDirectiveIfdef(SMLoc DirectiveLoc, bool expect_defined) {
 bool AsmParser::ParseDirectiveElseIf(SMLoc DirectiveLoc) {
   if (TheCondState.TheCond != AsmCond::IfCond &&
       TheCondState.TheCond != AsmCond::ElseIfCond)
-      Error(DirectiveLoc, "Encountered a .elseif that doesn't follow a .if or "
-                          " an .elseif");
+    Error(DirectiveLoc, "Encountered a .elseif that doesn't follow a .if or "
+                        " an .elseif");
   TheCondState.TheCond = AsmCond::ElseIfCond;
 
   bool LastIgnoreState = false;
   if (!TheCondStack.empty())
-      LastIgnoreState = TheCondStack.back().Ignore;
+    LastIgnoreState = TheCondStack.back().Ignore;
   if (LastIgnoreState || TheCondState.CondMet) {
     TheCondState.Ignore = true;
     eatToEndOfStatement();
-  }
-  else {
+  } else {
     int64_t ExprValue;
     if (parseAbsoluteExpression(ExprValue))
       return true;
@@ -3652,8 +3651,8 @@ bool AsmParser::ParseDirectiveElse(SMLoc DirectiveLoc) {
 
   if (TheCondState.TheCond != AsmCond::IfCond &&
       TheCondState.TheCond != AsmCond::ElseIfCond)
-      Error(DirectiveLoc, "Encountered a .else that doesn't follow a .if or an "
-                          ".elseif");
+    Error(DirectiveLoc, "Encountered a .else that doesn't follow a .if or an "
+                        ".elseif");
   TheCondState.TheCond = AsmCond::ElseCond;
   bool LastIgnoreState = false;
   if (!TheCondStack.empty())
@@ -4046,19 +4045,17 @@ static int RewritesSort(const void *A, const void *B) {
   if (AsmRewriteB->Loc.getPointer() < AsmRewriteA->Loc.getPointer())
     return 1;
 
-  // It's possible to have a SizeDirective rewrite and an Input/Output rewrite
-  // to the same location.  Make sure the SizeDirective rewrite is performed
-  // first.  This also ensure the sort algorithm is stable.
-  if (AsmRewriteA->Kind == AOK_SizeDirective) {
-    assert ((AsmRewriteB->Kind == AOK_Input || AsmRewriteB->Kind == AOK_Output) &&
-            "Expected an Input/Output rewrite!");
+  // It's possible to have a SizeDirective, Imm/ImmPrefix and an Input/Output
+  // rewrite to the same location.  Make sure the SizeDirective rewrite is
+  // performed first, then the Imm/ImmPrefix and finally the Input/Output.  This
+  // ensures the sort algorithm is stable.
+  if (AsmRewritePrecedence [AsmRewriteA->Kind] >
+      AsmRewritePrecedence [AsmRewriteB->Kind])
     return -1;
-  }
-  if (AsmRewriteB->Kind == AOK_SizeDirective) {
-    assert ((AsmRewriteA->Kind == AOK_Input || AsmRewriteA->Kind == AOK_Output) &&
-            "Expected an Input/Output rewrite!");
+
+  if (AsmRewritePrecedence [AsmRewriteA->Kind] <
+      AsmRewritePrecedence [AsmRewriteB->Kind])
     return 1;
-  }
   llvm_unreachable ("Unstable rewrite sort.");
 }
 
@@ -4105,12 +4102,8 @@ AsmParser::parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
       MCParsedAsmOperand *Operand = Info.ParsedOperands[i];
 
       // Immediate.
-      if (Operand->isImm()) {
-        if (Operand->needAsmRewrite())
-          AsmStrRewrites.push_back(AsmRewrite(AOK_ImmPrefix,
-                                              Operand->getStartLoc()));
+      if (Operand->isImm())
         continue;
-      }
 
       // Register operand.
       if (Operand->isReg() && !Operand->needAddressOf()) {
@@ -4122,33 +4115,27 @@ AsmParser::parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
       }
 
       // Expr/Input or Output.
-      bool IsVarDecl;
-      unsigned Length, Size, Type;
-      void *OpDecl = SI.LookupInlineAsmIdentifier(Operand->getName(), AsmLoc,
-                                                  Length, Size, Type,
-                                                  IsVarDecl);
+      StringRef SymName = Operand->getSymName();
+      if (SymName.empty())
+        continue;
+
+      void *OpDecl = Operand->getOpDecl();
       if (!OpDecl)
         continue;
 
       bool isOutput = (i == 1) && Desc.mayStore();
-      if (Operand->isMem() && Operand->needSizeDirective())
-        AsmStrRewrites.push_back(AsmRewrite(AOK_SizeDirective,
-                                            Operand->getStartLoc(), /*Len*/0,
-                                            Operand->getMemSize()));
-
+      SMLoc Start = SMLoc::getFromPointer(SymName.data());
       if (isOutput) {
         ++InputIdx;
         OutputDecls.push_back(OpDecl);
         OutputDeclsAddressOf.push_back(Operand->needAddressOf());
         OutputConstraints.push_back('=' + Operand->getConstraint().str());
-        AsmStrRewrites.push_back(AsmRewrite(AOK_Output, Operand->getStartLoc(),
-                                            Operand->getNameLen()));
+        AsmStrRewrites.push_back(AsmRewrite(AOK_Output, Start, SymName.size()));
       } else {
         InputDecls.push_back(OpDecl);
         InputDeclsAddressOf.push_back(Operand->needAddressOf());
         InputConstraints.push_back(Operand->getConstraint().str());
-        AsmStrRewrites.push_back(AsmRewrite(AOK_Input, Operand->getStartLoc(),
-                                            Operand->getNameLen()));
+        AsmStrRewrites.push_back(AsmRewrite(AOK_Input, Start, SymName.size()));
       }
     }
   }
@@ -4184,31 +4171,32 @@ AsmParser::parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
 
   // Build the IR assembly string.
   std::string AsmStringIR;
-  AsmRewriteKind PrevKind = AOK_Imm;
   raw_string_ostream OS(AsmStringIR);
-  const char *Start = SrcMgr.getMemoryBuffer(0)->getBufferStart();
+  const char *AsmStart = SrcMgr.getMemoryBuffer(0)->getBufferStart();
+  const char *AsmEnd = SrcMgr.getMemoryBuffer(0)->getBufferEnd();
   array_pod_sort(AsmStrRewrites.begin(), AsmStrRewrites.end(), RewritesSort);
   for (SmallVectorImpl<AsmRewrite>::iterator I = AsmStrRewrites.begin(),
                                              E = AsmStrRewrites.end();
        I != E; ++I) {
-    const char *Loc = (*I).Loc.getPointer();
-    assert(Loc >= Start && "Expected Loc to be after Start!");
-
-    unsigned AdditionalSkip = 0;
     AsmRewriteKind Kind = (*I).Kind;
+    if (Kind == AOK_Delete)
+      continue;
 
-    // Emit everything up to the immediate/expression.  If the previous rewrite
-    // was a size directive, then this has already been done.
-    if (PrevKind != AOK_SizeDirective)
-      OS << StringRef(Start, Loc - Start);
-    PrevKind = Kind;
+    const char *Loc = (*I).Loc.getPointer();
+    assert(Loc >= AsmStart && "Expected Loc to be at or after Start!");
+
+    // Emit everything up to the immediate/expression.
+    unsigned Len = Loc - AsmStart;
+    if (Len)
+      OS << StringRef(AsmStart, Len);
 
     // Skip the original expression.
     if (Kind == AOK_Skip) {
-      Start = Loc + (*I).Len;
+      AsmStart = Loc + (*I).Len;
       continue;
     }
 
+    unsigned AdditionalSkip = 0;
     // Rewrite expressions in $N notation.
     switch (Kind) {
     default: break;
@@ -4254,14 +4242,12 @@ AsmParser::parseMSInlineAsm(void *AsmLoc, std::string &AsmString,
     }
 
     // Skip the original expression.
-    if (Kind != AOK_SizeDirective)
-      Start = Loc + (*I).Len + AdditionalSkip;
+    AsmStart = Loc + (*I).Len + AdditionalSkip;
   }
 
   // Emit the remainder of the asm string.
-  const char *AsmEnd = SrcMgr.getMemoryBuffer(0)->getBufferEnd();
-  if (Start != AsmEnd)
-    OS << StringRef(Start, AsmEnd - Start);
+  if (AsmStart != AsmEnd)
+    OS << StringRef(AsmStart, AsmEnd - AsmStart);
 
   AsmString = OS.str();
   return false;

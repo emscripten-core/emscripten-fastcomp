@@ -17,49 +17,63 @@
 //
 //===----------------------------------------------------------------------===//
 #define DEBUG_TYPE "packets"
-#include "Hexagon.h"
-#include "HexagonMachineFunctionInfo.h"
-#include "HexagonRegisterInfo.h"
-#include "HexagonSubtarget.h"
-#include "HexagonTargetMachine.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/DFAPacketizer.h"
-#include "llvm/CodeGen/LatencyPriorityQueue.h"
-#include "llvm/CodeGen/MachineDominators.h"
-#include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineFunctionAnalysis.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineLoopInfo.h"
-#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/MachineDominators.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/ScheduleDAG.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
-#include "llvm/CodeGen/ScheduleHazardRecognizer.h"
+#include "llvm/CodeGen/LatencyPriorityQueue.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
-#include "llvm/MC/MCInstrItineraries.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/MathExtras.h"
-#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/MachineFunctionAnalysis.h"
+#include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/Support/MathExtras.h"
+#include "llvm/MC/MCInstrItineraries.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "Hexagon.h"
+#include "HexagonTargetMachine.h"
+#include "HexagonRegisterInfo.h"
+#include "HexagonSubtarget.h"
+#include "HexagonMachineFunctionInfo.h"
+
 #include <map>
+#include <vector>
 
 using namespace llvm;
+
+static cl::opt<bool> PacketizeVolatiles("hexagon-packetize-volatiles",
+      cl::ZeroOrMore, cl::Hidden, cl::init(true),
+      cl::desc("Allow non-solo packetization of volatile memory references"));
+
+namespace llvm {
+  void initializeHexagonPacketizerPass(PassRegistry&);
+}
+
 
 namespace {
   class HexagonPacketizer : public MachineFunctionPass {
 
   public:
     static char ID;
-    HexagonPacketizer() : MachineFunctionPass(ID) {}
+    HexagonPacketizer() : MachineFunctionPass(ID) {
+      initializeHexagonPacketizerPass(*PassRegistry::getPassRegistry());
+    }
 
     void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesCFG();
       AU.addRequired<MachineDominatorTree>();
+      AU.addRequired<MachineBranchProbabilityInfo>();
       AU.addPreserved<MachineDominatorTree>();
       AU.addRequired<MachineLoopInfo>();
       AU.addPreserved<MachineLoopInfo>();
@@ -95,10 +109,17 @@ namespace {
     // schedule this instruction.
     bool FoundSequentialDependence;
 
+    /// \brief A handle to the branch probability pass.
+   const MachineBranchProbabilityInfo *MBPI;
+
+   // Track MIs with ignored dependece.
+   std::vector<MachineInstr*> IgnoreDepMIs;
+
   public:
     // Ctor.
     HexagonPacketizerList(MachineFunction &MF, MachineLoopInfo &MLI,
-                          MachineDominatorTree &MDT);
+                          MachineDominatorTree &MDT,
+                          const MachineBranchProbabilityInfo *MBPI);
 
     // initPacketizerState - initialize some internal flags.
     void initPacketizerState();
@@ -122,20 +143,20 @@ namespace {
   private:
     bool IsCallDependent(MachineInstr* MI, SDep::Kind DepType, unsigned DepReg);
     bool PromoteToDotNew(MachineInstr* MI, SDep::Kind DepType,
-                    MachineBasicBlock::iterator &MII,
-                    const TargetRegisterClass* RC);
+                         MachineBasicBlock::iterator &MII,
+                         const TargetRegisterClass* RC);
     bool CanPromoteToDotNew(MachineInstr* MI, SUnit* PacketSU,
-                    unsigned DepReg,
-                    std::map <MachineInstr*, SUnit*> MIToSUnit,
-                    MachineBasicBlock::iterator &MII,
-                    const TargetRegisterClass* RC);
+                            unsigned DepReg,
+                            std::map <MachineInstr*, SUnit*> MIToSUnit,
+                            MachineBasicBlock::iterator &MII,
+                            const TargetRegisterClass* RC);
     bool CanPromoteToNewValue(MachineInstr* MI, SUnit* PacketSU,
-                    unsigned DepReg,
-                    std::map <MachineInstr*, SUnit*> MIToSUnit,
-                    MachineBasicBlock::iterator &MII);
+                              unsigned DepReg,
+                              std::map <MachineInstr*, SUnit*> MIToSUnit,
+                              MachineBasicBlock::iterator &MII);
     bool CanPromoteToNewValueStore(MachineInstr* MI, MachineInstr* PacketMI,
-                    unsigned DepReg,
-                    std::map <MachineInstr*, SUnit*> MIToSUnit);
+                                   unsigned DepReg,
+                                   std::map <MachineInstr*, SUnit*> MIToSUnit);
     bool DemoteToDotOld(MachineInstr* MI);
     bool ArePredicatesComplements(MachineInstr* MI1, MachineInstr* MI2,
                     std::map <MachineInstr*, SUnit*> MIToSUnit);
@@ -148,23 +169,35 @@ namespace {
     bool canReserveResourcesForConstExt(MachineInstr *MI);
     void reserveResourcesForConstExt(MachineInstr* MI);
     bool isNewValueInst(MachineInstr* MI);
-    bool isDotNewInst(MachineInstr* MI);
   };
 }
 
+INITIALIZE_PASS_BEGIN(HexagonPacketizer, "packets", "Hexagon Packetizer",
+                      false, false)
+INITIALIZE_PASS_DEPENDENCY(MachineDominatorTree)
+INITIALIZE_PASS_DEPENDENCY(MachineBranchProbabilityInfo)
+INITIALIZE_PASS_DEPENDENCY(MachineLoopInfo)
+INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
+INITIALIZE_PASS_END(HexagonPacketizer, "packets", "Hexagon Packetizer",
+                    false, false)
+
+
 // HexagonPacketizerList Ctor.
 HexagonPacketizerList::HexagonPacketizerList(
-  MachineFunction &MF, MachineLoopInfo &MLI,MachineDominatorTree &MDT)
+  MachineFunction &MF, MachineLoopInfo &MLI,MachineDominatorTree &MDT,
+  const MachineBranchProbabilityInfo *MBPI)
   : VLIWPacketizerList(MF, MLI, MDT, true){
+  this->MBPI = MBPI;
 }
 
 bool HexagonPacketizer::runOnMachineFunction(MachineFunction &Fn) {
   const TargetInstrInfo *TII = Fn.getTarget().getInstrInfo();
   MachineLoopInfo &MLI = getAnalysis<MachineLoopInfo>();
   MachineDominatorTree &MDT = getAnalysis<MachineDominatorTree>();
-
+  const MachineBranchProbabilityInfo *MBPI =
+    &getAnalysis<MachineBranchProbabilityInfo>();
   // Instantiate the packetizer.
-  HexagonPacketizerList Packetizer(Fn, MLI, MDT);
+  HexagonPacketizerList Packetizer(Fn, MLI, MDT, MBPI);
 
   // DFA state table should not be empty.
   assert(Packetizer.getResourceTracker() && "Empty DFA table!");
@@ -257,7 +290,7 @@ void HexagonPacketizerList::reserveResourcesForConstExt(MachineInstr* MI) {
 
 bool HexagonPacketizerList::canReserveResourcesForConstExt(MachineInstr *MI) {
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
-  assert(QII->isExtended(MI) &&
+  assert((QII->isExtended(MI) || QII->isConstExtended(MI)) &&
          "Should only be called for constant extended instructions");
   MachineFunction *MF = MI->getParent()->getParent();
   MachineInstr *PseudoMI = MF->CreateMachineInstr(QII->get(Hexagon::IMMEXT_i),
@@ -348,17 +381,6 @@ static bool IsSchedBarrier(MachineInstr* MI) {
 
 static bool IsControlFlow(MachineInstr* MI) {
   return (MI->getDesc().isTerminator() || MI->getDesc().isCall());
-}
-
-bool HexagonPacketizerList::isNewValueInst(MachineInstr* MI) {
-  const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
-  if (QII->isNewValueJump(MI))
-    return true;
-
-  if (QII->isNewValueStore(MI))
-    return true;
-
-  return false;
 }
 
 // Function returns true if an instruction can be promoted to the new-value
@@ -721,8 +743,10 @@ static int GetDotNewOp(const int opc) {
 }
 
 // Return .new predicate version for an instruction
-static int GetDotNewPredOp(const int opc) {
-  switch (opc) {
+static int GetDotNewPredOp(MachineInstr *MI,
+                           const MachineBranchProbabilityInfo *MBPI,
+                           const HexagonInstrInfo *QII) {
+  switch (MI->getOpcode()) {
   default: llvm_unreachable("Unknown .new type");
   // Conditional stores
   // Store byte conditionally
@@ -868,17 +892,15 @@ static int GetDotNewPredOp(const int opc) {
     return Hexagon::STw_GP_cdnNotPt_V4;
 
   // Condtional Jumps
-  case Hexagon::JMP_c:
-    return Hexagon::JMP_cdnPt;
+  case Hexagon::JMP_t:
+  case Hexagon::JMP_f:
+    return QII->getDotNewPredJumpOp(MI, MBPI);
 
-  case Hexagon::JMP_cNot:
-    return Hexagon::JMP_cdnNotPt;
+  case Hexagon::JMPR_t:
+    return Hexagon::JMPR_tnew_tV3;
 
-  case Hexagon::JMPR_cPt:
-    return Hexagon::JMPR_cdnPt_V3;
-
-  case Hexagon::JMPR_cNotPt:
-    return Hexagon::JMPR_cdnNotPt_V3;
+  case Hexagon::JMPR_f:
+    return Hexagon::JMPR_fnew_tV3;
 
   // Conditional Transfers
   case Hexagon::TFR_cPt:
@@ -1272,7 +1294,7 @@ bool HexagonPacketizerList::PromoteToDotNew(MachineInstr* MI,
 
   int NewOpcode;
   if (RC == &Hexagon::PredRegsRegClass)
-    NewOpcode = GetDotNewPredOp(MI->getOpcode());
+    NewOpcode = GetDotNewPredOp(MI, MBPI, QII);
   else
     NewOpcode = GetDotNewOp(MI->getOpcode());
   MI->setDesc(QII->get(NewOpcode));
@@ -1317,17 +1339,17 @@ static int GetDotOldOp(const int opc) {
   case Hexagon::TFRI_cdnNotPt:
     return Hexagon::TFRI_cNotPt;
 
-  case Hexagon::JMP_cdnPt:
-    return Hexagon::JMP_c;
+  case Hexagon::JMP_tnew_t:
+    return Hexagon::JMP_t;
 
-  case Hexagon::JMP_cdnNotPt:
-    return Hexagon::JMP_cNot;
+  case Hexagon::JMP_fnew_t:
+    return Hexagon::JMP_f;
 
-  case Hexagon::JMPR_cdnPt_V3:
-    return Hexagon::JMPR_cPt;
+  case Hexagon::JMPR_tnew_tV3:
+    return Hexagon::JMPR_t;
 
-  case Hexagon::JMPR_cdnNotPt_V3:
-    return Hexagon::JMPR_cNotPt;
+  case Hexagon::JMPR_fnew_tV3:
+    return Hexagon::JMPR_f;
 
   // Load double word
 
@@ -1923,7 +1945,7 @@ static bool GetPredicateSense(MachineInstr* MI,
   case Hexagon::STrih_imm_cdnPt_V4 :
   case Hexagon::STriw_imm_cPt_V4 :
   case Hexagon::STriw_imm_cdnPt_V4 :
-  case Hexagon::JMP_cdnPt :
+  case Hexagon::JMP_tnew_t :
   case Hexagon::LDrid_cPt :
   case Hexagon::LDrid_cdnPt :
   case Hexagon::LDrid_indexed_cPt :
@@ -2062,7 +2084,7 @@ static bool GetPredicateSense(MachineInstr* MI,
   case Hexagon::STrih_imm_cdnNotPt_V4 :
   case Hexagon::STriw_imm_cNotPt_V4 :
   case Hexagon::STriw_imm_cdnNotPt_V4 :
-  case Hexagon::JMP_cdnNotPt :
+  case Hexagon::JMP_fnew_t :
   case Hexagon::LDrid_cNotPt :
   case Hexagon::LDrid_cdnNotPt :
   case Hexagon::LDrid_indexed_cNotPt :
@@ -2161,171 +2183,6 @@ static bool GetPredicateSense(MachineInstr* MI,
     return false;
   }
   // return *some value* to avoid compiler warning
-  return false;
-}
-
-bool HexagonPacketizerList::isDotNewInst(MachineInstr* MI) {
-  if (isNewValueInst(MI))
-    return true;
-
-  switch (MI->getOpcode()) {
-  case Hexagon::TFR_cdnNotPt:
-  case Hexagon::TFR_cdnPt:
-  case Hexagon::TFRI_cdnNotPt:
-  case Hexagon::TFRI_cdnPt:
-  case Hexagon::LDrid_cdnPt :
-  case Hexagon::LDrid_cdnNotPt :
-  case Hexagon::LDrid_indexed_cdnPt :
-  case Hexagon::LDrid_indexed_cdnNotPt :
-  case Hexagon::POST_LDrid_cdnPt_V4 :
-  case Hexagon::POST_LDrid_cdnNotPt_V4 :
-  case Hexagon::LDriw_cdnPt :
-  case Hexagon::LDriw_cdnNotPt :
-  case Hexagon::LDriw_indexed_cdnPt :
-  case Hexagon::LDriw_indexed_cdnNotPt :
-  case Hexagon::POST_LDriw_cdnPt_V4 :
-  case Hexagon::POST_LDriw_cdnNotPt_V4 :
-  case Hexagon::LDrih_cdnPt :
-  case Hexagon::LDrih_cdnNotPt :
-  case Hexagon::LDrih_indexed_cdnPt :
-  case Hexagon::LDrih_indexed_cdnNotPt :
-  case Hexagon::POST_LDrih_cdnPt_V4 :
-  case Hexagon::POST_LDrih_cdnNotPt_V4 :
-  case Hexagon::LDrib_cdnPt :
-  case Hexagon::LDrib_cdnNotPt :
-  case Hexagon::LDrib_indexed_cdnPt :
-  case Hexagon::LDrib_indexed_cdnNotPt :
-  case Hexagon::POST_LDrib_cdnPt_V4 :
-  case Hexagon::POST_LDrib_cdnNotPt_V4 :
-  case Hexagon::LDriuh_cdnPt :
-  case Hexagon::LDriuh_cdnNotPt :
-  case Hexagon::LDriuh_indexed_cdnPt :
-  case Hexagon::LDriuh_indexed_cdnNotPt :
-  case Hexagon::POST_LDriuh_cdnPt_V4 :
-  case Hexagon::POST_LDriuh_cdnNotPt_V4 :
-  case Hexagon::LDriub_cdnPt :
-  case Hexagon::LDriub_cdnNotPt :
-  case Hexagon::LDriub_indexed_cdnPt :
-  case Hexagon::LDriub_indexed_cdnNotPt :
-  case Hexagon::POST_LDriub_cdnPt_V4 :
-  case Hexagon::POST_LDriub_cdnNotPt_V4 :
-
-  case Hexagon::LDrid_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDrid_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDrib_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDrib_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDriub_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDriub_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDrih_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDrih_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDriuh_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDriuh_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDriw_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDriw_indexed_shl_cdnNotPt_V4 :
-
-// Coditional add
-  case Hexagon::ADD_ri_cdnPt:
-  case Hexagon::ADD_ri_cdnNotPt:
-  case Hexagon::ADD_rr_cdnPt:
-  case Hexagon::ADD_rr_cdnNotPt:
-
-  // Conditional logical operations
-  case Hexagon::XOR_rr_cdnPt :
-  case Hexagon::XOR_rr_cdnNotPt :
-  case Hexagon::AND_rr_cdnPt :
-  case Hexagon::AND_rr_cdnNotPt :
-  case Hexagon::OR_rr_cdnPt :
-  case Hexagon::OR_rr_cdnNotPt :
-
-  // Conditonal subtract
-  case Hexagon::SUB_rr_cdnPt :
-  case Hexagon::SUB_rr_cdnNotPt :
-
-  // Conditional combine
-  case Hexagon::COMBINE_rr_cdnPt :
-  case Hexagon::COMBINE_rr_cdnNotPt :
-
-  // Conditional shift operations
-  case Hexagon::ASLH_cdnPt_V4:
-  case Hexagon::ASLH_cdnNotPt_V4:
-  case Hexagon::ASRH_cdnPt_V4:
-  case Hexagon::ASRH_cdnNotPt_V4:
-  case Hexagon::SXTB_cdnPt_V4:
-  case Hexagon::SXTB_cdnNotPt_V4:
-  case Hexagon::SXTH_cdnPt_V4:
-  case Hexagon::SXTH_cdnNotPt_V4:
-  case Hexagon::ZXTB_cdnPt_V4:
-  case Hexagon::ZXTB_cdnNotPt_V4:
-  case Hexagon::ZXTH_cdnPt_V4:
-  case Hexagon::ZXTH_cdnNotPt_V4:
-
-  // Conditional stores
-  case Hexagon::STrib_imm_cdnPt_V4 :
-  case Hexagon::STrib_imm_cdnNotPt_V4 :
-  case Hexagon::STrib_cdnPt_V4 :
-  case Hexagon::STrib_cdnNotPt_V4 :
-  case Hexagon::STrib_indexed_cdnPt_V4 :
-  case Hexagon::STrib_indexed_cdnNotPt_V4 :
-  case Hexagon::POST_STbri_cdnPt_V4 :
-  case Hexagon::POST_STbri_cdnNotPt_V4 :
-  case Hexagon::STrib_indexed_shl_cdnPt_V4 :
-  case Hexagon::STrib_indexed_shl_cdnNotPt_V4 :
-
-  // Store doubleword conditionally
-  case Hexagon::STrid_indexed_cdnPt_V4 :
-  case Hexagon::STrid_indexed_cdnNotPt_V4 :
-  case Hexagon::STrid_indexed_shl_cdnPt_V4 :
-  case Hexagon::STrid_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::POST_STdri_cdnPt_V4 :
-  case Hexagon::POST_STdri_cdnNotPt_V4 :
-
-  // Store halfword conditionally
-  case Hexagon::STrih_cdnPt_V4 :
-  case Hexagon::STrih_cdnNotPt_V4 :
-  case Hexagon::STrih_indexed_cdnPt_V4 :
-  case Hexagon::STrih_indexed_cdnNotPt_V4 :
-  case Hexagon::STrih_imm_cdnPt_V4 :
-  case Hexagon::STrih_imm_cdnNotPt_V4 :
-  case Hexagon::STrih_indexed_shl_cdnPt_V4 :
-  case Hexagon::STrih_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::POST_SThri_cdnPt_V4 :
-  case Hexagon::POST_SThri_cdnNotPt_V4 :
-
-  // Store word conditionally
-  case Hexagon::STriw_cdnPt_V4 :
-  case Hexagon::STriw_cdnNotPt_V4 :
-  case Hexagon::STriw_indexed_cdnPt_V4 :
-  case Hexagon::STriw_indexed_cdnNotPt_V4 :
-  case Hexagon::STriw_imm_cdnPt_V4 :
-  case Hexagon::STriw_imm_cdnNotPt_V4 :
-  case Hexagon::STriw_indexed_shl_cdnPt_V4 :
-  case Hexagon::STriw_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::POST_STwri_cdnPt_V4 :
-  case Hexagon::POST_STwri_cdnNotPt_V4 :
-
-  case Hexagon::LDd_GP_cdnPt_V4:
-  case Hexagon::LDd_GP_cdnNotPt_V4:
-  case Hexagon::LDb_GP_cdnPt_V4:
-  case Hexagon::LDb_GP_cdnNotPt_V4:
-  case Hexagon::LDub_GP_cdnPt_V4:
-  case Hexagon::LDub_GP_cdnNotPt_V4:
-  case Hexagon::LDh_GP_cdnPt_V4:
-  case Hexagon::LDh_GP_cdnNotPt_V4:
-  case Hexagon::LDuh_GP_cdnPt_V4:
-  case Hexagon::LDuh_GP_cdnNotPt_V4:
-  case Hexagon::LDw_GP_cdnPt_V4:
-  case Hexagon::LDw_GP_cdnNotPt_V4:
-
-  case Hexagon::STd_GP_cdnPt_V4:
-  case Hexagon::STd_GP_cdnNotPt_V4:
-  case Hexagon::STb_GP_cdnPt_V4:
-  case Hexagon::STb_GP_cdnNotPt_V4:
-  case Hexagon::STh_GP_cdnPt_V4:
-  case Hexagon::STh_GP_cdnNotPt_V4:
-  case Hexagon::STw_GP_cdnPt_V4:
-  case Hexagon::STw_GP_cdnNotPt_V4:
-    return true;
-  }
   return false;
 }
 
@@ -2499,7 +2356,7 @@ bool HexagonPacketizerList::CanPromoteToNewValueStore( MachineInstr *MI,
     // sense, i.e, either both should be negated or both should be none negated.
 
     if (( predRegNumDst != predRegNumSrc) ||
-          isDotNewInst(PacketMI) != isDotNewInst(MI)  ||
+          QII->isDotNewInst(PacketMI) != QII->isDotNewInst(MI)  ||
           GetPredicateSense(MI, QII) != GetPredicateSense(PacketMI, QII)) {
       return false;
     }
@@ -2609,8 +2466,9 @@ bool HexagonPacketizerList::CanPromoteToDotNew( MachineInstr *MI,
                               MachineBasicBlock::iterator &MII,
                               const TargetRegisterClass* RC )
 {
-  // already a dot new instruction
-  if (isDotNewInst(MI) && !IsNewifyStore(MI))
+  const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
+  // Already a dot new instruction.
+  if (QII->isDotNewInst(MI) && !IsNewifyStore(MI))
     return false;
 
   if (!isNewifiable(MI))
@@ -2625,7 +2483,6 @@ bool HexagonPacketizerList::CanPromoteToDotNew( MachineInstr *MI,
   else {
     // Create a dot new machine instruction to see if resources can be
     // allocated. If not, bail out now.
-    const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
     int NewOpcode = GetDotNewOp(MI->getOpcode());
     const MCInstrDesc &desc = QII->get(NewOpcode);
     DebugLoc dl;
@@ -2768,7 +2625,7 @@ bool HexagonPacketizerList::ArePredicatesComplements (MachineInstr* MI1,
   // !p0 is not complimentary to p0.new
   return ((MI1->getOperand(1).getReg() == MI2->getOperand(1).getReg()) &&
           (GetPredicateSense(MI1, QII) != GetPredicateSense(MI2, QII)) &&
-          (isDotNewInst(MI1) == isDotNewInst(MI2)));
+          (QII->isDotNewInst(MI1) == QII->isDotNewInst(MI2)));
 }
 
 // initPacketizerState - Initialize packetizer flags
@@ -2893,13 +2750,13 @@ bool HexagonPacketizerList::isLegalToPacketizeTogether(SUnit *SUI, SUnit *SUJ) {
   // dealloc_return and memop always take SLOT0.
   // Arch spec 3.4.4.2
   if (QRI->Subtarget.hasV4TOps()) {
-
-    if (MCIDI.mayStore() && MCIDJ.mayStore() && isNewValueInst(J)) {
+    if (MCIDI.mayStore() && MCIDJ.mayStore() &&
+       (QII->isNewValueInst(J) || QII->isMemOp(J) || QII->isMemOp(I))) {
       Dependence = true;
       return false;
     }
 
-    if (   (QII->isMemOp(J) && MCIDI.mayStore())
+    if ((QII->isMemOp(J) && MCIDI.mayStore())
         || (MCIDJ.mayStore() && QII->isMemOp(I))
         || (QII->isMemOp(J) && QII->isMemOp(I))) {
       Dependence = true;
@@ -2915,9 +2772,8 @@ bool HexagonPacketizerList::isLegalToPacketizeTogether(SUnit *SUI, SUnit *SUJ) {
     // If an instruction feeds new value jump, glue it.
     MachineBasicBlock::iterator NextMII = I;
     ++NextMII;
-    MachineInstr *NextMI = NextMII;
-
-    if (QII->isNewValueJump(NextMI)) {
+    if (NextMII != I->getParent()->end() && QII->isNewValueJump(NextMII)) {
+      MachineInstr *NextMI = NextMII;
 
       bool secondRegMatch = false;
       bool maintainNewValueJump = false;
@@ -3196,7 +3052,7 @@ HexagonPacketizerList::addToPacket(MachineInstr *MI) {
       MachineInstr *nvjMI = MII;
       assert(ResourceTracker->canReserveResources(MI));
       ResourceTracker->reserveResources(MI);
-      if (QII->isExtended(MI) &&
+      if ((QII->isExtended(MI) || QII->isConstExtended(MI)) &&
           !tryAllocateResourcesForConstExt(MI)) {
         endPacket(MBB, MI);
         ResourceTracker->reserveResources(MI);
@@ -3216,7 +3072,7 @@ HexagonPacketizerList::addToPacket(MachineInstr *MI) {
             && (!tryAllocateResourcesForConstExt(nvjMI)
                 || !ResourceTracker->canReserveResources(nvjMI)))
         || // For non-extended instruction, no need to allocate extra 4 bytes.
-        (!QII->isExtended(nvjMI) && 
+        (!QII->isExtended(nvjMI) &&
               !ResourceTracker->canReserveResources(nvjMI)))
       {
         endPacket(MBB, MI);
@@ -3232,7 +3088,7 @@ HexagonPacketizerList::addToPacket(MachineInstr *MI) {
       CurrentPacketMIs.push_back(MI);
       CurrentPacketMIs.push_back(nvjMI);
     } else {
-      if (   QII->isExtended(MI)
+      if (   (QII->isExtended(MI) || QII->isConstExtended(MI))
           && (   !tryAllocateResourcesForConstExt(MI)
               || !ResourceTracker->canReserveResources(MI)))
       {

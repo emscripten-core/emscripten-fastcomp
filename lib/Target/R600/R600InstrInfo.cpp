@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "R600InstrInfo.h"
+#include "AMDGPU.h"
 #include "AMDGPUSubtarget.h"
 #include "AMDGPUTargetMachine.h"
 #include "R600Defines.h"
@@ -29,7 +30,8 @@ using namespace llvm;
 
 R600InstrInfo::R600InstrInfo(AMDGPUTargetMachine &tm)
   : AMDGPUInstrInfo(tm),
-    RI(tm, *this)
+    RI(tm, *this),
+    ST(tm.getSubtarget<AMDGPUSubtarget>())
   { }
 
 const R600RegisterInfo &R600InstrInfo::getRegisterInfo() const {
@@ -139,6 +141,96 @@ bool R600InstrInfo::isALUInstr(unsigned Opcode) const {
           (TargetFlags & R600_InstFlag::OP3));
 }
 
+bool R600InstrInfo::isTransOnly(unsigned Opcode) const {
+  return (get(Opcode).TSFlags & R600_InstFlag::TRANS_ONLY);
+}
+
+bool R600InstrInfo::isTransOnly(const MachineInstr *MI) const {
+  return isTransOnly(MI->getOpcode());
+}
+
+bool R600InstrInfo::usesVertexCache(unsigned Opcode) const {
+  return ST.hasVertexCache() && IS_VTX(get(Opcode));
+}
+
+bool R600InstrInfo::usesVertexCache(const MachineInstr *MI) const {
+  const R600MachineFunctionInfo *MFI = MI->getParent()->getParent()->getInfo<R600MachineFunctionInfo>();
+  return MFI->ShaderType != ShaderType::COMPUTE && usesVertexCache(MI->getOpcode());
+}
+
+bool R600InstrInfo::usesTextureCache(unsigned Opcode) const {
+  return (!ST.hasVertexCache() && IS_VTX(get(Opcode))) || IS_TEX(get(Opcode));
+}
+
+bool R600InstrInfo::usesTextureCache(const MachineInstr *MI) const {
+  const R600MachineFunctionInfo *MFI = MI->getParent()->getParent()->getInfo<R600MachineFunctionInfo>();
+  return (MFI->ShaderType == ShaderType::COMPUTE && usesVertexCache(MI->getOpcode())) ||
+         usesTextureCache(MI->getOpcode());
+}
+
+bool
+R600InstrInfo::fitsConstReadLimitations(const std::vector<unsigned> &Consts)
+    const {
+  assert (Consts.size() <= 12 && "Too many operands in instructions group");
+  unsigned Pair1 = 0, Pair2 = 0;
+  for (unsigned i = 0, n = Consts.size(); i < n; ++i) {
+    unsigned ReadConstHalf = Consts[i] & 2;
+    unsigned ReadConstIndex = Consts[i] & (~3);
+    unsigned ReadHalfConst = ReadConstIndex | ReadConstHalf;
+    if (!Pair1) {
+      Pair1 = ReadHalfConst;
+      continue;
+    }
+    if (Pair1 == ReadHalfConst)
+      continue;
+    if (!Pair2) {
+      Pair2 = ReadHalfConst;
+      continue;
+    }
+    if (Pair2 != ReadHalfConst)
+      return false;
+  }
+  return true;
+}
+
+bool
+R600InstrInfo::canBundle(const std::vector<MachineInstr *> &MIs) const {
+  std::vector<unsigned> Consts;
+  for (unsigned i = 0, n = MIs.size(); i < n; i++) {
+    const MachineInstr *MI = MIs[i];
+
+    const R600Operands::Ops OpTable[3][2] = {
+      {R600Operands::SRC0, R600Operands::SRC0_SEL},
+      {R600Operands::SRC1, R600Operands::SRC1_SEL},
+      {R600Operands::SRC2, R600Operands::SRC2_SEL},
+    };
+
+    if (!isALUInstr(MI->getOpcode()))
+      continue;
+
+    for (unsigned j = 0; j < 3; j++) {
+      int SrcIdx = getOperandIdx(MI->getOpcode(), OpTable[j][0]);
+      if (SrcIdx < 0)
+        break;
+      unsigned Reg = MI->getOperand(SrcIdx).getReg();
+      if (Reg == AMDGPU::ALU_CONST) {
+        unsigned Const = MI->getOperand(
+            getOperandIdx(MI->getOpcode(), OpTable[j][1])).getImm();
+        Consts.push_back(Const);
+        continue;
+      }
+      if (AMDGPU::R600_KC0RegClass.contains(Reg) ||
+          AMDGPU::R600_KC1RegClass.contains(Reg)) {
+        unsigned Index = RI.getEncodingValue(Reg) & 0xff;
+        unsigned Chan = RI.getHWRegChan(Reg);
+        Consts.push_back((Index << 2) | Chan);
+        continue;
+      }
+    }
+  }
+  return fitsConstReadLimitations(Consts);
+}
+
 DFAPacketizer *R600InstrInfo::CreateTargetScheduleState(const TargetMachine *TM,
     const ScheduleDAG *DAG) const {
   const InstrItineraryData *II = TM->getInstrItineraryData();
@@ -168,6 +260,11 @@ findFirstPredicateSetterFrom(MachineBasicBlock &MBB,
   return NULL;
 }
 
+static
+bool isJump(unsigned Opcode) {
+  return Opcode == AMDGPU::JUMP || Opcode == AMDGPU::JUMP_COND;
+}
+
 bool
 R600InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
                              MachineBasicBlock *&TBB,
@@ -186,7 +283,7 @@ R600InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
       return false;
     --I;
   }
-  if (static_cast<MachineInstr *>(I)->getOpcode() != AMDGPU::JUMP) {
+  if (!isJump(static_cast<MachineInstr *>(I)->getOpcode())) {
     return false;
   }
 
@@ -196,22 +293,20 @@ R600InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   // If there is only one terminator instruction, process it.
   unsigned LastOpc = LastInst->getOpcode();
   if (I == MBB.begin() ||
-      static_cast<MachineInstr *>(--I)->getOpcode() != AMDGPU::JUMP) {
+          !isJump(static_cast<MachineInstr *>(--I)->getOpcode())) {
     if (LastOpc == AMDGPU::JUMP) {
-      if(!isPredicated(LastInst)) {
-        TBB = LastInst->getOperand(0).getMBB();
-        return false;
-      } else {
-        MachineInstr *predSet = I;
-        while (!isPredicateSetter(predSet->getOpcode())) {
-          predSet = --I;
-        }
-        TBB = LastInst->getOperand(0).getMBB();
-        Cond.push_back(predSet->getOperand(1));
-        Cond.push_back(predSet->getOperand(2));
-        Cond.push_back(MachineOperand::CreateReg(AMDGPU::PRED_SEL_ONE, false));
-        return false;
+      TBB = LastInst->getOperand(0).getMBB();
+      return false;
+    } else if (LastOpc == AMDGPU::JUMP_COND) {
+      MachineInstr *predSet = I;
+      while (!isPredicateSetter(predSet->getOpcode())) {
+        predSet = --I;
       }
+      TBB = LastInst->getOperand(0).getMBB();
+      Cond.push_back(predSet->getOperand(1));
+      Cond.push_back(predSet->getOperand(2));
+      Cond.push_back(MachineOperand::CreateReg(AMDGPU::PRED_SEL_ONE, false));
+      return false;
     }
     return true;  // Can't handle indirect branch.
   }
@@ -221,10 +316,7 @@ R600InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   unsigned SecondLastOpc = SecondLastInst->getOpcode();
 
   // If the block ends with a B and a Bcc, handle it.
-  if (SecondLastOpc == AMDGPU::JUMP &&
-      isPredicated(SecondLastInst) &&
-      LastOpc == AMDGPU::JUMP &&
-      !isPredicated(LastInst)) {
+  if (SecondLastOpc == AMDGPU::JUMP_COND && LastOpc == AMDGPU::JUMP) {
     MachineInstr *predSet = --I;
     while (!isPredicateSetter(predSet->getOpcode())) {
       predSet = --I;
@@ -261,7 +353,7 @@ R600InstrInfo::InsertBranch(MachineBasicBlock &MBB,
 
   if (FBB == 0) {
     if (Cond.empty()) {
-      BuildMI(&MBB, DL, get(AMDGPU::JUMP)).addMBB(TBB).addReg(0);
+      BuildMI(&MBB, DL, get(AMDGPU::JUMP)).addMBB(TBB);
       return 1;
     } else {
       MachineInstr *PredSet = findFirstPredicateSetterFrom(MBB, MBB.end());
@@ -269,7 +361,7 @@ R600InstrInfo::InsertBranch(MachineBasicBlock &MBB,
       addFlag(PredSet, 0, MO_FLAG_PUSH);
       PredSet->getOperand(2).setImm(Cond[1].getImm());
 
-      BuildMI(&MBB, DL, get(AMDGPU::JUMP))
+      BuildMI(&MBB, DL, get(AMDGPU::JUMP_COND))
              .addMBB(TBB)
              .addReg(AMDGPU::PREDICATE_BIT, RegState::Kill);
       return 1;
@@ -279,10 +371,10 @@ R600InstrInfo::InsertBranch(MachineBasicBlock &MBB,
     assert(PredSet && "No previous predicate !");
     addFlag(PredSet, 0, MO_FLAG_PUSH);
     PredSet->getOperand(2).setImm(Cond[1].getImm());
-    BuildMI(&MBB, DL, get(AMDGPU::JUMP))
+    BuildMI(&MBB, DL, get(AMDGPU::JUMP_COND))
             .addMBB(TBB)
             .addReg(AMDGPU::PREDICATE_BIT, RegState::Kill);
-    BuildMI(&MBB, DL, get(AMDGPU::JUMP)).addMBB(FBB).addReg(0);
+    BuildMI(&MBB, DL, get(AMDGPU::JUMP)).addMBB(FBB);
     return 2;
   }
 }
@@ -302,11 +394,13 @@ R600InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
   switch (I->getOpcode()) {
   default:
     return 0;
+  case AMDGPU::JUMP_COND: {
+    MachineInstr *predSet = findFirstPredicateSetterFrom(MBB, I);
+    clearFlag(predSet, 0, MO_FLAG_PUSH);
+    I->eraseFromParent();
+    break;
+  }
   case AMDGPU::JUMP:
-    if (isPredicated(I)) {
-      MachineInstr *predSet = findFirstPredicateSetterFrom(MBB, I);
-      clearFlag(predSet, 0, MO_FLAG_PUSH);
-    }
     I->eraseFromParent();
     break;
   }
@@ -320,11 +414,13 @@ R600InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
     // FIXME: only one case??
   default:
     return 1;
+  case AMDGPU::JUMP_COND: {
+    MachineInstr *predSet = findFirstPredicateSetterFrom(MBB, I);
+    clearFlag(predSet, 0, MO_FLAG_PUSH);
+    I->eraseFromParent();
+    break;
+  }
   case AMDGPU::JUMP:
-    if (isPredicated(I)) {
-      MachineInstr *predSet = findFirstPredicateSetterFrom(MBB, I);
-      clearFlag(predSet, 0, MO_FLAG_PUSH);
-    }
     I->eraseFromParent();
     break;
   }
@@ -355,6 +451,8 @@ R600InstrInfo::isPredicable(MachineInstr *MI) const {
   // backend, we will mark KILL* instructions as unpredicable.
 
   if (MI->getOpcode() == AMDGPU::KILLGT) {
+    return false;
+  } else if (isVector(*MI)) {
     return false;
   } else {
     return AMDGPUInstrInfo::isPredicable(MI);
@@ -585,6 +683,9 @@ const TargetRegisterClass *R600InstrInfo::getSuperIndirectRegClass() const {
   return &AMDGPU::IndirectRegRegClass;
 }
 
+unsigned R600InstrInfo::getMaxAlusPerClause() const {
+  return 115;
+}
 
 MachineInstrBuilder R600InstrInfo::buildDefaultInstruction(MachineBasicBlock &MBB,
                                                   MachineBasicBlock::iterator I,
@@ -621,7 +722,8 @@ MachineInstrBuilder R600InstrInfo::buildDefaultInstruction(MachineBasicBlock &MB
   //scheduling to the backend, we can change the default to 0.
   MIB.addImm(1)        // $last
       .addReg(AMDGPU::PRED_SEL_OFF) // $pred_sel
-      .addImm(0);        // $literal
+      .addImm(0)         // $literal
+      .addImm(0);        // $bank_swizzle
 
   return MIB;
 }

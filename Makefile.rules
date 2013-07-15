@@ -280,12 +280,6 @@ ifeq ($(ENABLE_OPTIMIZED),1)
   endif
   endif
 
-  # Darwin requires -fstrict-aliasing to be explicitly enabled.
-  # Avoid -fstrict-aliasing on Darwin for now, there are unresolved issues
-  # with -fstrict-aliasing and ipa-type-escape radr://6756684
-  #ifeq ($(HOST_OS),Darwin)
-  #  EXTRA_OPTIONS += -fstrict-aliasing -Wstrict-aliasing
-  #endif
   CXX.Flags += $(OPTIMIZE_OPTION) $(OmitFramePointer)
   C.Flags   += $(OPTIMIZE_OPTION) $(OmitFramePointer)
   LD.Flags  += $(OPTIMIZE_OPTION)
@@ -690,7 +684,7 @@ LD.Flags += $(EXTRA_LD_OPTIONS)
 endif
 
 ifndef NO_PEDANTIC
-CompileCommonOpts += -pedantic -Wno-long-long $(NO_NESTED_ANON_TYPES)
+CompileCommonOpts += -pedantic -Wno-long-long
 endif
 CompileCommonOpts += -Wall -W -Wno-unused-parameter -Wwrite-strings \
                      $(EXTRA_OPTIONS) $(COVERED_SWITCH_DEFAULT) \
@@ -1540,6 +1534,8 @@ $(ToolBuildPath): $(ToolDir)/.dir
 endif
 
 ifdef CODESIGN_TOOLS
+TOOL_CODESIGN_IDENTITY ?= -
+
 $(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
 	$(Echo) Linking $(BuildMode) executable $(TOOLNAME) $(StripWarnMsg)
 	$(Verb) $(Link) -o $@ $(TOOLLINKOPTS) $(ObjectsO) $(ProjLibsOptions) \
@@ -1547,7 +1543,7 @@ $(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
 	$(Echo) ======= Finished Linking $(BuildMode) Executable $(TOOLNAME) \
           $(StripWarnMsg)
 	$(Echo) ======= Code-Signing $(BuildMode) Executable $(TOOLNAME)
-	$(Verb) codesign -s - $@
+	$(Verb) codesign -s $(TOOL_CODESIGN_IDENTITY) $@
 else
 $(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
 	$(Echo) Linking $(BuildMode) executable $(TOOLNAME) $(StripWarnMsg)
@@ -1992,7 +1988,7 @@ endif
 # CHECK: Running the test suite
 ###############################################################################
 
-check::
+check:: all
 	$(Verb) if test -d "$(PROJ_OBJ_ROOT)/test" ; then \
 	  if test -f "$(PROJ_OBJ_ROOT)/test/Makefile" ; then \
 	    $(EchoCmd) Running test suite ; \

@@ -77,24 +77,14 @@ LLVMPassManagerBuilderPopulateModulePassManager(LLVMPassManagerBuilderRef PMB,
 /** See llvm::PassManagerBuilder::populateLTOPassManager. */
 void LLVMPassManagerBuilderPopulateLTOPassManager(LLVMPassManagerBuilderRef PMB,
                                                   LLVMPassManagerRef PM,
-                                                  bool Internalize,
-                                                  bool RunInliner);
+                                                  LLVMBool Internalize,
+                                                  LLVMBool RunInliner);
 
 /**
  * @}
  */
 
 #ifdef __cplusplus
-}
-
-namespace llvm {
-  inline PassManagerBuilder *unwrap(LLVMPassManagerBuilderRef P) {
-    return reinterpret_cast<PassManagerBuilder*>(P);
-  }
-
-  inline LLVMPassManagerBuilderRef wrap(PassManagerBuilder *P) {
-    return reinterpret_cast<LLVMPassManagerBuilderRef>(P);
-  }
 }
 #endif
 

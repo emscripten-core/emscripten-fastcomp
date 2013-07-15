@@ -28,6 +28,7 @@ Basic Commands
    llvm-diff
    llvm-cov
    llvm-stress
+   llvm-symbolizer
 
 Debugging Tools
 ~~~~~~~~~~~~~~~
@@ -49,3 +50,4 @@ Developer Tools
    tblgen
    lit
    llvm-build
+   llvm-readobj

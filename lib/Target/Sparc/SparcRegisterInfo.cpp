@@ -56,6 +56,12 @@ BitVector SparcRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   return Reserved;
 }
 
+const TargetRegisterClass*
+SparcRegisterInfo::getPointerRegClass(const MachineFunction &MF,
+                                      unsigned Kind) const {
+  return Subtarget.is64Bit() ? &SP::I64RegsRegClass : &SP::IntRegsRegClass;
+}
+
 void
 SparcRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                        int SPAdj, unsigned FIOperandNum,
@@ -68,8 +74,9 @@ SparcRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   // Addressable stack objects are accessed using neg. offsets from %fp
   MachineFunction &MF = *MI.getParent()->getParent();
-  int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex) +
-               MI.getOperand(FIOperandNum + 1).getImm();
+  int64_t Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex) +
+                   MI.getOperand(FIOperandNum + 1).getImm() +
+                   Subtarget.getStackPointerBias();
 
   // Replace frame index with a frame pointer reference.
   if (Offset >= -4096 && Offset <= 4095) {

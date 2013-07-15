@@ -107,6 +107,13 @@ public:
   /// Get the fixed resource information about MBB. Compute it on demand.
   const FixedBlockInfo *getResources(const MachineBasicBlock*);
 
+  /// Get the scaled number of cycles used per processor resource in MBB.
+  /// This is an array with SchedModel.getNumProcResourceKinds() entries.
+  /// The getResources() function above must have been called first.
+  ///
+  /// These numbers have already been scaled by SchedModel.getResourceFactor().
+  ArrayRef<unsigned> getProcResourceCycles(unsigned MBBNum) const;
+
   /// A virtual register or regunit required by a basic block or its trace
   /// successors.
   struct LiveInReg {
@@ -165,12 +172,25 @@ public:
     /// Invalidate height resources when a block below this one has changed.
     void invalidateHeight() { InstrHeight = ~0u; HasValidInstrHeights = false; }
 
-    /// Determine if this block belongs to the same trace as TBI and comes
-    /// before it in the trace.
+    /// Assuming that this is a dominator of TBI, determine if it contains
+    /// useful instruction depths. A dominating block can be above the current
+    /// trace head, and any dependencies from such a far away dominator are not
+    /// expected to affect the critical path.
+    ///
     /// Also returns true when TBI == this.
-    bool isEarlierInSameTrace(const TraceBlockInfo &TBI) const {
-      return hasValidDepth() && TBI.hasValidDepth() &&
-        Head == TBI.Head && InstrDepth <= TBI.InstrDepth;
+    bool isUsefulDominator(const TraceBlockInfo &TBI) const {
+      // The trace for TBI may not even be calculated yet.
+      if (!hasValidDepth() || !TBI.hasValidDepth())
+        return false;
+      // Instruction depths are only comparable if the traces share a head.
+      if (Head != TBI.Head)
+        return false;
+      // It is almost always the case that TBI belongs to the same trace as
+      // this block, but rare convoluted cases involving irreducible control
+      // flow, a dominator may share a trace head without actually being on the
+      // same trace as TBI. This is not a big problem as long as it doesn't
+      // increase the instruction depth.
+      return HasValidInstrDepths && InstrDepth <= TBI.InstrDepth;
     }
 
     // Data-dependency-related information. Per-instruction depth and height
@@ -240,9 +260,12 @@ public:
     /// independent, exposing the maximum instruction-level parallelism.
     ///
     /// Any blocks in Extrablocks are included as if they were part of the
-    /// trace.
-    unsigned getResourceLength(ArrayRef<const MachineBasicBlock*> Extrablocks =
-                               ArrayRef<const MachineBasicBlock*>()) const;
+    /// trace. Likewise, extra resources required by the specified scheduling
+    /// classes are included. For the caller to account for extra machine
+    /// instructions, it must first resolve each instruction's scheduling class.
+    unsigned getResourceLength(
+                ArrayRef<const MachineBasicBlock*> Extrablocks = None,
+                ArrayRef<const MCSchedClassDesc*> ExtraInstrs = None) const;
 
     /// Return the length of the (data dependency) critical path through the
     /// trace.
@@ -271,6 +294,8 @@ public:
   class Ensemble {
     SmallVector<TraceBlockInfo, 4> BlockInfo;
     DenseMap<const MachineInstr*, InstrCycles> Cycles;
+    SmallVector<unsigned, 0> ProcResourceDepths;
+    SmallVector<unsigned, 0> ProcResourceHeights;
     friend class Trace;
 
     void computeTrace(const MachineBasicBlock*);
@@ -290,6 +315,8 @@ public:
     const MachineLoop *getLoopFor(const MachineBasicBlock*) const;
     const TraceBlockInfo *getDepthResources(const MachineBasicBlock*) const;
     const TraceBlockInfo *getHeightResources(const MachineBasicBlock*) const;
+    ArrayRef<unsigned> getProcResourceDepths(unsigned MBBNum) const;
+    ArrayRef<unsigned> getProcResourceHeights(unsigned MBBNum) const;
 
   public:
     virtual ~Ensemble();
@@ -330,8 +357,22 @@ private:
   // One entry per basic block, indexed by block number.
   SmallVector<FixedBlockInfo, 4> BlockInfo;
 
+  // Cycles consumed on each processor resource per block.
+  // The number of processor resource kinds is constant for a given subtarget,
+  // but it is not known at compile time. The number of cycles consumed by
+  // block B on processor resource R is at ProcResourceCycles[B*Kinds + R]
+  // where Kinds = SchedModel.getNumProcResourceKinds().
+  SmallVector<unsigned, 0> ProcResourceCycles;
+
   // One ensemble per strategy.
   Ensemble* Ensembles[TS_NumStrategies];
+
+  // Convert scaled resource usage to a cycle count that can be compared with
+  // latencies.
+  unsigned getCycles(unsigned Scaled) {
+    unsigned Factor = SchedModel.getLatencyFactor();
+    return (Scaled + Factor - 1) / Factor;
+  }
 };
 
 inline raw_ostream &operator<<(raw_ostream &OS,

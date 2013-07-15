@@ -125,6 +125,10 @@ public:
   unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) const;
 
   unsigned getAddressComputationCost(Type *Val) const;
+
+  unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
+                                  OperandValueKind Op1Info = OK_AnyValue,
+                                  OperandValueKind Op2Info = OK_AnyValue) const;
   /// @}
 };
 
@@ -177,6 +181,23 @@ unsigned ARMTTI::getCastInstrCost(unsigned Opcode, Type *Dst,
   int ISD = TLI->InstructionOpcodeToISD(Opcode);
   assert(ISD && "Invalid opcode");
 
+  // Single to/from double precision conversions.
+  static const CostTblEntry<MVT> NEONFltDblTbl[] = {
+    // Vector fptrunc/fpext conversions.
+    { ISD::FP_ROUND,   MVT::v2f64, 2 },
+    { ISD::FP_EXTEND,  MVT::v2f32, 2 },
+    { ISD::FP_EXTEND,  MVT::v4f32, 4 }
+  };
+
+  if (Src->isVectorTy() && ST->hasNEON() && (ISD == ISD::FP_ROUND ||
+                                          ISD == ISD::FP_EXTEND)) {
+    std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(Src);
+    int Idx = CostTableLookup<MVT>(NEONFltDblTbl, array_lengthof(NEONFltDblTbl),
+                                ISD, LT.second);
+    if (Idx != -1)
+      return LT.first * NEONFltDblTbl[Idx].Cost;
+  }
+
   EVT SrcTy = TLI->getValueType(Src);
   EVT DstTy = TLI->getValueType(Dst);
 
@@ -194,17 +215,71 @@ unsigned ARMTTI::getCastInstrCost(unsigned Opcode, Type *Dst,
     { ISD::TRUNCATE,    MVT::v4i32, MVT::v4i64, 0 },
     { ISD::TRUNCATE,    MVT::v4i16, MVT::v4i32, 1 },
 
+    // The number of vmovl instructions for the extension.
+    { ISD::SIGN_EXTEND, MVT::v4i64, MVT::v4i16, 3 },
+    { ISD::ZERO_EXTEND, MVT::v4i64, MVT::v4i16, 3 },
+    { ISD::SIGN_EXTEND, MVT::v8i32, MVT::v8i8, 3 },
+    { ISD::ZERO_EXTEND, MVT::v8i32, MVT::v8i8, 3 },
+    { ISD::SIGN_EXTEND, MVT::v8i64, MVT::v8i8, 7 },
+    { ISD::ZERO_EXTEND, MVT::v8i64, MVT::v8i8, 7 },
+    { ISD::SIGN_EXTEND, MVT::v8i64, MVT::v8i16, 6 },
+    { ISD::ZERO_EXTEND, MVT::v8i64, MVT::v8i16, 6 },
+    { ISD::SIGN_EXTEND, MVT::v16i32, MVT::v16i8, 6 },
+    { ISD::ZERO_EXTEND, MVT::v16i32, MVT::v16i8, 6 },
+
+    // Operations that we legalize using splitting.
+    { ISD::TRUNCATE,    MVT::v16i8, MVT::v16i32, 6 },
+    { ISD::TRUNCATE,    MVT::v8i8, MVT::v8i32, 3 },
+
     // Vector float <-> i32 conversions.
     { ISD::SINT_TO_FP,  MVT::v4f32, MVT::v4i32, 1 },
     { ISD::UINT_TO_FP,  MVT::v4f32, MVT::v4i32, 1 },
+
+    { ISD::SINT_TO_FP,  MVT::v2f32, MVT::v2i8, 3 },
+    { ISD::UINT_TO_FP,  MVT::v2f32, MVT::v2i8, 3 },
+    { ISD::SINT_TO_FP,  MVT::v2f32, MVT::v2i16, 2 },
+    { ISD::UINT_TO_FP,  MVT::v2f32, MVT::v2i16, 2 },
+    { ISD::SINT_TO_FP,  MVT::v2f32, MVT::v2i32, 1 },
+    { ISD::UINT_TO_FP,  MVT::v2f32, MVT::v2i32, 1 },
+    { ISD::SINT_TO_FP,  MVT::v4f32, MVT::v4i1, 3 },
+    { ISD::UINT_TO_FP,  MVT::v4f32, MVT::v4i1, 3 },
+    { ISD::SINT_TO_FP,  MVT::v4f32, MVT::v4i8, 3 },
+    { ISD::UINT_TO_FP,  MVT::v4f32, MVT::v4i8, 3 },
+    { ISD::SINT_TO_FP,  MVT::v4f32, MVT::v4i16, 2 },
+    { ISD::UINT_TO_FP,  MVT::v4f32, MVT::v4i16, 2 },
+    { ISD::SINT_TO_FP,  MVT::v8f32, MVT::v8i16, 4 },
+    { ISD::UINT_TO_FP,  MVT::v8f32, MVT::v8i16, 4 },
+    { ISD::SINT_TO_FP,  MVT::v8f32, MVT::v8i32, 2 },
+    { ISD::UINT_TO_FP,  MVT::v8f32, MVT::v8i32, 2 },
+    { ISD::SINT_TO_FP,  MVT::v16f32, MVT::v16i16, 8 },
+    { ISD::UINT_TO_FP,  MVT::v16f32, MVT::v16i16, 8 },
+    { ISD::SINT_TO_FP,  MVT::v16f32, MVT::v16i32, 4 },
+    { ISD::UINT_TO_FP,  MVT::v16f32, MVT::v16i32, 4 },
+
     { ISD::FP_TO_SINT,  MVT::v4i32, MVT::v4f32, 1 },
     { ISD::FP_TO_UINT,  MVT::v4i32, MVT::v4f32, 1 },
+    { ISD::FP_TO_SINT,  MVT::v4i8, MVT::v4f32, 3 },
+    { ISD::FP_TO_UINT,  MVT::v4i8, MVT::v4f32, 3 },
+    { ISD::FP_TO_SINT,  MVT::v4i16, MVT::v4f32, 2 },
+    { ISD::FP_TO_UINT,  MVT::v4i16, MVT::v4f32, 2 },
 
     // Vector double <-> i32 conversions.
     { ISD::SINT_TO_FP,  MVT::v2f64, MVT::v2i32, 2 },
     { ISD::UINT_TO_FP,  MVT::v2f64, MVT::v2i32, 2 },
+
+    { ISD::SINT_TO_FP,  MVT::v2f64, MVT::v2i8, 4 },
+    { ISD::UINT_TO_FP,  MVT::v2f64, MVT::v2i8, 4 },
+    { ISD::SINT_TO_FP,  MVT::v2f64, MVT::v2i16, 3 },
+    { ISD::UINT_TO_FP,  MVT::v2f64, MVT::v2i16, 3 },
+    { ISD::SINT_TO_FP,  MVT::v2f64, MVT::v2i32, 2 },
+    { ISD::UINT_TO_FP,  MVT::v2f64, MVT::v2i32, 2 },
+
     { ISD::FP_TO_SINT,  MVT::v2i32, MVT::v2f64, 2 },
-    { ISD::FP_TO_UINT,  MVT::v2i32, MVT::v2f64, 2 }
+    { ISD::FP_TO_UINT,  MVT::v2i32, MVT::v2f64, 2 },
+    { ISD::FP_TO_SINT,  MVT::v8i16, MVT::v8f32, 4 },
+    { ISD::FP_TO_UINT,  MVT::v8i16, MVT::v8f32, 4 },
+    { ISD::FP_TO_SINT,  MVT::v16i16, MVT::v16f32, 8 },
+    { ISD::FP_TO_UINT,  MVT::v16i16, MVT::v16f32, 8 }
   };
 
   if (SrcTy.isVector() && ST->hasNEON()) {
@@ -246,7 +321,6 @@ unsigned ARMTTI::getCastInstrCost(unsigned Opcode, Type *Dst,
     if (Idx != -1)
         return NEONFloatConversionTbl[Idx].Cost;
   }
-
 
   // Scalar integer to float conversions.
   static const TypeConversionCostTblEntry<MVT> NEONIntegerConversionTbl[] = {
@@ -303,7 +377,6 @@ unsigned ARMTTI::getCastInstrCost(unsigned Opcode, Type *Dst,
       return ARMIntegerConversionTbl[Idx].Cost;
   }
 
-
   return TargetTransformInfo::getCastInstrCost(Opcode, Dst, Src);
 }
 
@@ -326,6 +399,25 @@ unsigned ARMTTI::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
   int ISD = TLI->InstructionOpcodeToISD(Opcode);
   // On NEON a a vector select gets lowered to vbsl.
   if (ST->hasNEON() && ValTy->isVectorTy() && ISD == ISD::SELECT) {
+    // Lowering of some vector selects is currently far from perfect.
+    static const TypeConversionCostTblEntry<MVT> NEONVectorSelectTbl[] = {
+      { ISD::SELECT, MVT::v16i1, MVT::v16i16, 2*16 + 1 + 3*1 + 4*1 },
+      { ISD::SELECT, MVT::v8i1, MVT::v8i32, 4*8 + 1*3 + 1*4 + 1*2 },
+      { ISD::SELECT, MVT::v16i1, MVT::v16i32, 4*16 + 1*6 + 1*8 + 1*4 },
+      { ISD::SELECT, MVT::v4i1, MVT::v4i64, 4*4 + 1*2 + 1 },
+      { ISD::SELECT, MVT::v8i1, MVT::v8i64, 50 },
+      { ISD::SELECT, MVT::v16i1, MVT::v16i64, 100 }
+    };
+
+    EVT SelCondTy = TLI->getValueType(CondTy);
+    EVT SelValTy = TLI->getValueType(ValTy);
+    int Idx = ConvertCostTableLookup<MVT>(NEONVectorSelectTbl,
+                                          array_lengthof(NEONVectorSelectTbl),
+                                          ISD, SelCondTy.getSimpleVT(),
+                                          SelValTy.getSimpleVT());
+    if (Idx != -1)
+      return NEONVectorSelectTbl[Idx].Cost;
+
     std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(ValTy);
     return LT.first;
   }
@@ -368,3 +460,67 @@ unsigned ARMTTI::getShuffleCost(ShuffleKind Kind, Type *Tp, int Index,
 
   return LT.first * NEONShuffleTbl[Idx].Cost;
 }
+
+unsigned ARMTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty, OperandValueKind Op1Info,
+                                        OperandValueKind Op2Info) const {
+
+  int ISDOpcode = TLI->InstructionOpcodeToISD(Opcode);
+  std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(Ty);
+
+  const unsigned FunctionCallDivCost = 20;
+  const unsigned ReciprocalDivCost = 10;
+  static const CostTblEntry<MVT> CostTbl[] = {
+    // Division.
+    // These costs are somewhat random. Choose a cost of 20 to indicate that
+    // vectorizing devision (added function call) is going to be very expensive.
+    // Double registers types.
+    { ISD::SDIV, MVT::v1i64, 1 * FunctionCallDivCost},
+    { ISD::UDIV, MVT::v1i64, 1 * FunctionCallDivCost},
+    { ISD::SREM, MVT::v1i64, 1 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v1i64, 1 * FunctionCallDivCost},
+    { ISD::SDIV, MVT::v2i32, 2 * FunctionCallDivCost},
+    { ISD::UDIV, MVT::v2i32, 2 * FunctionCallDivCost},
+    { ISD::SREM, MVT::v2i32, 2 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v2i32, 2 * FunctionCallDivCost},
+    { ISD::SDIV, MVT::v4i16,     ReciprocalDivCost},
+    { ISD::UDIV, MVT::v4i16,     ReciprocalDivCost},
+    { ISD::SREM, MVT::v4i16, 4 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v4i16, 4 * FunctionCallDivCost},
+    { ISD::SDIV, MVT::v8i8,      ReciprocalDivCost},
+    { ISD::UDIV, MVT::v8i8,      ReciprocalDivCost},
+    { ISD::SREM, MVT::v8i8,  8 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v8i8,  8 * FunctionCallDivCost},
+    // Quad register types.
+    { ISD::SDIV, MVT::v2i64, 2 * FunctionCallDivCost},
+    { ISD::UDIV, MVT::v2i64, 2 * FunctionCallDivCost},
+    { ISD::SREM, MVT::v2i64, 2 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v2i64, 2 * FunctionCallDivCost},
+    { ISD::SDIV, MVT::v4i32, 4 * FunctionCallDivCost},
+    { ISD::UDIV, MVT::v4i32, 4 * FunctionCallDivCost},
+    { ISD::SREM, MVT::v4i32, 4 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v4i32, 4 * FunctionCallDivCost},
+    { ISD::SDIV, MVT::v8i16, 8 * FunctionCallDivCost},
+    { ISD::UDIV, MVT::v8i16, 8 * FunctionCallDivCost},
+    { ISD::SREM, MVT::v8i16, 8 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v8i16, 8 * FunctionCallDivCost},
+    { ISD::SDIV, MVT::v16i8, 16 * FunctionCallDivCost},
+    { ISD::UDIV, MVT::v16i8, 16 * FunctionCallDivCost},
+    { ISD::SREM, MVT::v16i8, 16 * FunctionCallDivCost},
+    { ISD::UREM, MVT::v16i8, 16 * FunctionCallDivCost},
+    // Multiplication.
+  };
+
+  int Idx = -1;
+
+  if (ST->hasNEON())
+    Idx = CostTableLookup<MVT>(CostTbl, array_lengthof(CostTbl), ISDOpcode,
+                               LT.second);
+
+  if (Idx != -1)
+    return LT.first * CostTbl[Idx].Cost;
+
+
+  return TargetTransformInfo::getArithmeticInstrCost(Opcode, Ty, Op1Info,
+                                                     Op2Info);
+}
+

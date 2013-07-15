@@ -783,7 +783,7 @@ namespace {
           AddValueSymbols(Inst.getOperand(i).getExpr());
     }
     virtual void EmitLabel(MCSymbol *Symbol) {
-      Symbol->setSection(*getCurrentSection());
+      Symbol->setSection(*getCurrentSection().first);
       markDefined(*Symbol);
     }
     virtual void EmitDebugLabel(MCSymbol *Symbol) {
@@ -811,7 +811,8 @@ namespace {
     virtual void EmitBundleUnlock() {}
 
     // Noop calls.
-    virtual void ChangeSection(const MCSection *Section) {}
+    virtual void ChangeSection(const MCSection *Section,
+                               const MCExpr *Subsection) {}
     virtual void InitToTextSection() {}
     virtual void InitSections() {}
     virtual void EmitAssemblerFlag(MCAssemblerFlag Flag) {}

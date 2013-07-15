@@ -29,11 +29,13 @@ static RTLIB::Libcall GetFPLibCall(EVT VT,
                                    RTLIB::Libcall Call_F32,
                                    RTLIB::Libcall Call_F64,
                                    RTLIB::Libcall Call_F80,
+                                   RTLIB::Libcall Call_F128,
                                    RTLIB::Libcall Call_PPCF128) {
   return
     VT == MVT::f32 ? Call_F32 :
     VT == MVT::f64 ? Call_F64 :
     VT == MVT::f80 ? Call_F80 :
+    VT == MVT::f128 ? Call_F128 :
     VT == MVT::ppcf128 ? Call_PPCF128 :
     RTLIB::UNKNOWN_LIBCALL;
 }
@@ -156,6 +158,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FADD(SDNode *N) {
                                            RTLIB::ADD_F32,
                                            RTLIB::ADD_F64,
                                            RTLIB::ADD_F80,
+                                           RTLIB::ADD_F128,
                                            RTLIB::ADD_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -167,6 +170,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FCEIL(SDNode *N) {
                                            RTLIB::CEIL_F32,
                                            RTLIB::CEIL_F64,
                                            RTLIB::CEIL_F80,
+                                           RTLIB::CEIL_F128,
                                            RTLIB::CEIL_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -220,6 +224,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FCOS(SDNode *N) {
                                            RTLIB::COS_F32,
                                            RTLIB::COS_F64,
                                            RTLIB::COS_F80,
+                                           RTLIB::COS_F128,
                                            RTLIB::COS_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -232,6 +237,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FDIV(SDNode *N) {
                                            RTLIB::DIV_F32,
                                            RTLIB::DIV_F64,
                                            RTLIB::DIV_F80,
+                                           RTLIB::DIV_F128,
                                            RTLIB::DIV_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -243,6 +249,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FEXP(SDNode *N) {
                                            RTLIB::EXP_F32,
                                            RTLIB::EXP_F64,
                                            RTLIB::EXP_F80,
+                                           RTLIB::EXP_F128,
                                            RTLIB::EXP_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -254,6 +261,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FEXP2(SDNode *N) {
                                            RTLIB::EXP2_F32,
                                            RTLIB::EXP2_F64,
                                            RTLIB::EXP2_F80,
+                                           RTLIB::EXP2_F128,
                                            RTLIB::EXP2_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -265,6 +273,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FFLOOR(SDNode *N) {
                                            RTLIB::FLOOR_F32,
                                            RTLIB::FLOOR_F64,
                                            RTLIB::FLOOR_F80,
+                                           RTLIB::FLOOR_F128,
                                            RTLIB::FLOOR_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -276,6 +285,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FLOG(SDNode *N) {
                                            RTLIB::LOG_F32,
                                            RTLIB::LOG_F64,
                                            RTLIB::LOG_F80,
+                                           RTLIB::LOG_F128,
                                            RTLIB::LOG_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -287,6 +297,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FLOG2(SDNode *N) {
                                            RTLIB::LOG2_F32,
                                            RTLIB::LOG2_F64,
                                            RTLIB::LOG2_F80,
+                                           RTLIB::LOG2_F128,
                                            RTLIB::LOG2_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -298,6 +309,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FLOG10(SDNode *N) {
                                            RTLIB::LOG10_F32,
                                            RTLIB::LOG10_F64,
                                            RTLIB::LOG10_F80,
+                                           RTLIB::LOG10_F128,
                                            RTLIB::LOG10_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -311,6 +323,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FMA(SDNode *N) {
                                            RTLIB::FMA_F32,
                                            RTLIB::FMA_F64,
                                            RTLIB::FMA_F80,
+                                           RTLIB::FMA_F128,
                                            RTLIB::FMA_PPCF128),
                          NVT, Ops, 3, false, N->getDebugLoc());
 }
@@ -323,6 +336,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FMUL(SDNode *N) {
                                            RTLIB::MUL_F32,
                                            RTLIB::MUL_F64,
                                            RTLIB::MUL_F80,
+                                           RTLIB::MUL_F128,
                                            RTLIB::MUL_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -334,6 +348,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FNEARBYINT(SDNode *N) {
                                            RTLIB::NEARBYINT_F32,
                                            RTLIB::NEARBYINT_F64,
                                            RTLIB::NEARBYINT_F80,
+                                           RTLIB::NEARBYINT_F128,
                                            RTLIB::NEARBYINT_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -347,6 +362,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FNEG(SDNode *N) {
                                            RTLIB::SUB_F32,
                                            RTLIB::SUB_F64,
                                            RTLIB::SUB_F80,
+                                           RTLIB::SUB_F128,
                                            RTLIB::SUB_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -384,6 +400,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FPOW(SDNode *N) {
                                            RTLIB::POW_F32,
                                            RTLIB::POW_F64,
                                            RTLIB::POW_F80,
+                                           RTLIB::POW_F128,
                                            RTLIB::POW_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -397,6 +414,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FPOWI(SDNode *N) {
                                            RTLIB::POWI_F32,
                                            RTLIB::POWI_F64,
                                            RTLIB::POWI_F80,
+                                           RTLIB::POWI_F128,
                                            RTLIB::POWI_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -409,6 +427,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FREM(SDNode *N) {
                                            RTLIB::REM_F32,
                                            RTLIB::REM_F64,
                                            RTLIB::REM_F80,
+                                           RTLIB::REM_F128,
                                            RTLIB::REM_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -420,6 +439,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FRINT(SDNode *N) {
                                            RTLIB::RINT_F32,
                                            RTLIB::RINT_F64,
                                            RTLIB::RINT_F80,
+                                           RTLIB::RINT_F128,
                                            RTLIB::RINT_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -431,6 +451,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FSIN(SDNode *N) {
                                            RTLIB::SIN_F32,
                                            RTLIB::SIN_F64,
                                            RTLIB::SIN_F80,
+                                           RTLIB::SIN_F128,
                                            RTLIB::SIN_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -442,6 +463,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FSQRT(SDNode *N) {
                                            RTLIB::SQRT_F32,
                                            RTLIB::SQRT_F64,
                                            RTLIB::SQRT_F80,
+                                           RTLIB::SQRT_F128,
                                            RTLIB::SQRT_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -454,6 +476,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FSUB(SDNode *N) {
                                            RTLIB::SUB_F32,
                                            RTLIB::SUB_F64,
                                            RTLIB::SUB_F80,
+                                           RTLIB::SUB_F128,
                                            RTLIB::SUB_PPCF128),
                          NVT, Ops, 2, false, N->getDebugLoc());
 }
@@ -465,6 +488,7 @@ SDValue DAGTypeLegalizer::SoftenFloatRes_FTRUNC(SDNode *N) {
                                            RTLIB::TRUNC_F32,
                                            RTLIB::TRUNC_F64,
                                            RTLIB::TRUNC_F80,
+                                           RTLIB::TRUNC_F128,
                                            RTLIB::TRUNC_PPCF128),
                          NVT, &Op, 1, false, N->getDebugLoc());
 }
@@ -800,6 +824,7 @@ void DAGTypeLegalizer::ExpandFloatResult(SDNode *N, unsigned ResNo) {
   case ISD::LOAD:       ExpandFloatRes_LOAD(N, Lo, Hi); break;
   case ISD::SINT_TO_FP:
   case ISD::UINT_TO_FP: ExpandFloatRes_XINT_TO_FP(N, Lo, Hi); break;
+  case ISD::FREM:       ExpandFloatRes_FREM(N, Lo, Hi); break;
   }
 
   // If Lo/Hi is null, the sub-method took care of registering results etc.
@@ -839,7 +864,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FADD(SDNode *N, SDValue &Lo,
                                            SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::ADD_F32, RTLIB::ADD_F64,
-                                         RTLIB::ADD_F80, RTLIB::ADD_PPCF128),
+                                         RTLIB::ADD_F80, RTLIB::ADD_F128,
+                                         RTLIB::ADD_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -848,7 +874,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FCEIL(SDNode *N,
                                             SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::CEIL_F32, RTLIB::CEIL_F64,
-                                         RTLIB::CEIL_F80, RTLIB::CEIL_PPCF128),
+                                         RTLIB::CEIL_F80, RTLIB::CEIL_F128,
+                                         RTLIB::CEIL_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -859,6 +886,7 @@ void DAGTypeLegalizer::ExpandFloatRes_FCOPYSIGN(SDNode *N,
                                          RTLIB::COPYSIGN_F32,
                                          RTLIB::COPYSIGN_F64,
                                          RTLIB::COPYSIGN_F80,
+                                         RTLIB::COPYSIGN_F128,
                                          RTLIB::COPYSIGN_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
@@ -868,7 +896,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FCOS(SDNode *N,
                                            SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::COS_F32, RTLIB::COS_F64,
-                                         RTLIB::COS_F80, RTLIB::COS_PPCF128),
+                                         RTLIB::COS_F80, RTLIB::COS_F128,
+                                         RTLIB::COS_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -880,6 +909,7 @@ void DAGTypeLegalizer::ExpandFloatRes_FDIV(SDNode *N, SDValue &Lo,
                                                    RTLIB::DIV_F32,
                                                    RTLIB::DIV_F64,
                                                    RTLIB::DIV_F80,
+                                                   RTLIB::DIV_F128,
                                                    RTLIB::DIV_PPCF128),
                                  N->getValueType(0), Ops, 2, false,
                                  N->getDebugLoc());
@@ -890,7 +920,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FEXP(SDNode *N,
                                            SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::EXP_F32, RTLIB::EXP_F64,
-                                         RTLIB::EXP_F80, RTLIB::EXP_PPCF128),
+                                         RTLIB::EXP_F80, RTLIB::EXP_F128,
+                                         RTLIB::EXP_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -899,7 +930,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FEXP2(SDNode *N,
                                             SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::EXP2_F32, RTLIB::EXP2_F64,
-                                         RTLIB::EXP2_F80, RTLIB::EXP2_PPCF128),
+                                         RTLIB::EXP2_F80, RTLIB::EXP2_F128,
+                                         RTLIB::EXP2_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -907,8 +939,9 @@ void DAGTypeLegalizer::ExpandFloatRes_FEXP2(SDNode *N,
 void DAGTypeLegalizer::ExpandFloatRes_FFLOOR(SDNode *N,
                                              SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
-                                         RTLIB::FLOOR_F32,RTLIB::FLOOR_F64,
-                                         RTLIB::FLOOR_F80,RTLIB::FLOOR_PPCF128),
+                                         RTLIB::FLOOR_F32, RTLIB::FLOOR_F64,
+                                         RTLIB::FLOOR_F80, RTLIB::FLOOR_F128,
+                                         RTLIB::FLOOR_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -917,7 +950,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FLOG(SDNode *N,
                                            SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::LOG_F32, RTLIB::LOG_F64,
-                                         RTLIB::LOG_F80, RTLIB::LOG_PPCF128),
+                                         RTLIB::LOG_F80, RTLIB::LOG_F128,
+                                         RTLIB::LOG_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -926,7 +960,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FLOG2(SDNode *N,
                                             SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::LOG2_F32, RTLIB::LOG2_F64,
-                                         RTLIB::LOG2_F80, RTLIB::LOG2_PPCF128),
+                                         RTLIB::LOG2_F80, RTLIB::LOG2_F128,
+                                         RTLIB::LOG2_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -934,8 +969,9 @@ void DAGTypeLegalizer::ExpandFloatRes_FLOG2(SDNode *N,
 void DAGTypeLegalizer::ExpandFloatRes_FLOG10(SDNode *N,
                                              SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
-                                         RTLIB::LOG10_F32,RTLIB::LOG10_F64,
-                                         RTLIB::LOG10_F80,RTLIB::LOG10_PPCF128),
+                                         RTLIB::LOG10_F32, RTLIB::LOG10_F64,
+                                         RTLIB::LOG10_F80, RTLIB::LOG10_F128,
+                                         RTLIB::LOG10_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -947,6 +983,7 @@ void DAGTypeLegalizer::ExpandFloatRes_FMA(SDNode *N, SDValue &Lo,
                                                    RTLIB::FMA_F32,
                                                    RTLIB::FMA_F64,
                                                    RTLIB::FMA_F80,
+                                                   RTLIB::FMA_F128,
                                                    RTLIB::FMA_PPCF128),
                                  N->getValueType(0), Ops, 3, false,
                                  N->getDebugLoc());
@@ -960,6 +997,7 @@ void DAGTypeLegalizer::ExpandFloatRes_FMUL(SDNode *N, SDValue &Lo,
                                                    RTLIB::MUL_F32,
                                                    RTLIB::MUL_F64,
                                                    RTLIB::MUL_F80,
+                                                   RTLIB::MUL_F128,
                                                    RTLIB::MUL_PPCF128),
                                  N->getValueType(0), Ops, 2, false,
                                  N->getDebugLoc());
@@ -972,6 +1010,7 @@ void DAGTypeLegalizer::ExpandFloatRes_FNEARBYINT(SDNode *N,
                                          RTLIB::NEARBYINT_F32,
                                          RTLIB::NEARBYINT_F64,
                                          RTLIB::NEARBYINT_F80,
+                                         RTLIB::NEARBYINT_F128,
                                          RTLIB::NEARBYINT_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
@@ -997,7 +1036,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FPOW(SDNode *N,
                                            SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::POW_F32, RTLIB::POW_F64,
-                                         RTLIB::POW_F80, RTLIB::POW_PPCF128),
+                                         RTLIB::POW_F80, RTLIB::POW_F128,
+                                         RTLIB::POW_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -1006,7 +1046,18 @@ void DAGTypeLegalizer::ExpandFloatRes_FPOWI(SDNode *N,
                                             SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::POWI_F32, RTLIB::POWI_F64,
-                                         RTLIB::POWI_F80, RTLIB::POWI_PPCF128),
+                                         RTLIB::POWI_F80, RTLIB::POWI_F128,
+                                         RTLIB::POWI_PPCF128),
+                            N, false);
+  GetPairElements(Call, Lo, Hi);
+}
+
+void DAGTypeLegalizer::ExpandFloatRes_FREM(SDNode *N,
+                                           SDValue &Lo, SDValue &Hi) {
+  SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
+                                         RTLIB::REM_F32, RTLIB::REM_F64,
+                                         RTLIB::REM_F80, RTLIB::REM_F128,
+                                         RTLIB::REM_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -1015,7 +1066,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FRINT(SDNode *N,
                                             SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::RINT_F32, RTLIB::RINT_F64,
-                                         RTLIB::RINT_F80, RTLIB::RINT_PPCF128),
+                                         RTLIB::RINT_F80, RTLIB::RINT_F128,
+                                         RTLIB::RINT_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -1024,7 +1076,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FSIN(SDNode *N,
                                            SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::SIN_F32, RTLIB::SIN_F64,
-                                         RTLIB::SIN_F80, RTLIB::SIN_PPCF128),
+                                         RTLIB::SIN_F80, RTLIB::SIN_F128,
+                                         RTLIB::SIN_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -1033,7 +1086,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FSQRT(SDNode *N,
                                             SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::SQRT_F32, RTLIB::SQRT_F64,
-                                         RTLIB::SQRT_F80, RTLIB::SQRT_PPCF128),
+                                         RTLIB::SQRT_F80, RTLIB::SQRT_F128,
+                                         RTLIB::SQRT_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }
@@ -1045,6 +1099,7 @@ void DAGTypeLegalizer::ExpandFloatRes_FSUB(SDNode *N, SDValue &Lo,
                                                    RTLIB::SUB_F32,
                                                    RTLIB::SUB_F64,
                                                    RTLIB::SUB_F80,
+                                                   RTLIB::SUB_F128,
                                                    RTLIB::SUB_PPCF128),
                                  N->getValueType(0), Ops, 2, false,
                                  N->getDebugLoc());
@@ -1055,7 +1110,8 @@ void DAGTypeLegalizer::ExpandFloatRes_FTRUNC(SDNode *N,
                                              SDValue &Lo, SDValue &Hi) {
   SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
                                          RTLIB::TRUNC_F32, RTLIB::TRUNC_F64,
-                                         RTLIB::TRUNC_F80, RTLIB::TRUNC_PPCF128),
+                                         RTLIB::TRUNC_F80, RTLIB::TRUNC_F128,
+                                         RTLIB::TRUNC_PPCF128),
                             N, false);
   GetPairElements(Call, Lo, Hi);
 }

@@ -904,9 +904,6 @@ void ScheduleDAGRRList::BacktrackBottomUp(SUnit *SU, SUnit *BtSU) {
   SUnit *OldSU = Sequence.back();
   while (true) {
     Sequence.pop_back();
-    if (SU->isSucc(OldSU))
-      // Don't try to remove SU from AvailableQueue.
-      SU->isAvailable = false;
     // FIXME: use ready cycle instead of height
     CurCycle = OldSU->getHeight();
     UnscheduleNodeBottomUp(OldSU);
@@ -1363,8 +1360,10 @@ SUnit *ScheduleDAGRRList::PickNodeToScheduleBottomUp() {
     SmallVector<unsigned, 4> LRegs;
     if (!DelayForLiveRegsBottomUp(CurSU, LRegs))
       break;
-    DEBUG(dbgs() << "    Interfering reg " << TRI->getName(LRegs[0])
-          << " SU #" << CurSU->NodeNum << '\n');
+    DEBUG(dbgs() << "    Interfering reg " <<
+          (LRegs[0] == TRI->getNumRegs() ? "CallResource"
+           : TRI->getName(LRegs[0]))
+           << " SU #" << CurSU->NodeNum << '\n');
     std::pair<LRegsMapT::iterator, bool> LRegsPair =
       LRegsMap.insert(std::make_pair(CurSU, LRegs));
     if (LRegsPair.second) {

@@ -33,6 +33,7 @@ namespace llvm {
   class R600InstrInfo : public AMDGPUInstrInfo {
   private:
   const R600RegisterInfo RI;
+  const AMDGPUSubtarget &ST;
 
   int getBranchInstr(const MachineOperand &op) const;
 
@@ -52,6 +53,17 @@ namespace llvm {
 
   /// \returns true if this \p Opcode represents an ALU instruction.
   bool isALUInstr(unsigned Opcode) const;
+
+  bool isTransOnly(unsigned Opcode) const;
+  bool isTransOnly(const MachineInstr *MI) const;
+
+  bool usesVertexCache(unsigned Opcode) const;
+  bool usesVertexCache(const MachineInstr *MI) const;
+  bool usesTextureCache(unsigned Opcode) const;
+  bool usesTextureCache(const MachineInstr *MI) const;
+
+  bool fitsConstReadLimitations(const std::vector<unsigned>&) const;
+  bool canBundle(const std::vector<MachineInstr *> &) const;
 
   /// \breif Vector instructions are instructions that must fill all
   /// instruction slots within an instruction group.
@@ -142,6 +154,7 @@ namespace llvm {
 
   virtual const TargetRegisterClass *getSuperIndirectRegClass() const;
 
+  unsigned getMaxAlusPerClause() const;
 
   ///buildDefaultInstruction - This function returns a MachineInstr with
   /// all the instruction modifiers initialized to their default values.

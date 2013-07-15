@@ -32,6 +32,7 @@ class MCContext;
 class PassManagerBase;
 class Target;
 class DataLayout;
+class TargetLibraryInfo;
 class TargetFrameLowering;
 class TargetInstrInfo;
 class TargetIntrinsicInfo;
@@ -96,6 +97,9 @@ public:
   virtual const TargetSubtargetInfo *getSubtargetImpl() const { return 0; }
 
   mutable TargetOptions Options;
+
+  /// \brief Reset the target options based on the function's attributes.
+  void resetTargetOptions(const MachineFunction *MF) const;
 
   // Interfaces to the major aspects of target machine information:
   // -- Instruction opcode and operand information

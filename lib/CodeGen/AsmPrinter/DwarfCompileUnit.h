@@ -87,12 +87,12 @@ class CompileUnit {
   /// corresponds to the MDNode mapped with the subprogram DIE.
   DenseMap<DIE *, const MDNode *> ContainingTypeMap;
 
+  /// Offset of the CUDie from beginning of debug info section.
+  unsigned DebugInfoOffset;
+
   /// getLowerBoundDefault - Return the default lower bound for an array. If the
   /// DWARF version doesn't handle the language, return -1.
   int64_t getDefaultLowerBound() const;
-
-  /// getOrCreateContextDIE - Get context owner's DIE.
-  DIE *getOrCreateContextDIE(DIDescriptor Context);
 
 public:
   CompileUnit(unsigned UID, unsigned L, DIE *D, AsmPrinter *A, DwarfDebug *DW,
@@ -103,6 +103,7 @@ public:
   unsigned getUniqueID()            const { return UniqueID; }
   unsigned getLanguage()            const { return Language; }
   DIE* getCUDie()                   const { return CUDie.get(); }
+  unsigned getDebugInfoOffset()     const { return DebugInfoOffset; }
   const StringMap<DIE*> &getGlobalNames() const { return GlobalNames; }
   const StringMap<DIE*> &getGlobalTypes() const { return GlobalTypes; }
 
@@ -120,6 +121,7 @@ public:
     return AccelTypes;
   }
 
+  void setDebugInfoOffset(unsigned DbgInfoOff) { DebugInfoOffset = DbgInfoOff; }
   /// hasContent - Return true if this compile unit has something to write out.
   ///
   bool hasContent() const { return !CUDie->getChildren().empty(); }
@@ -366,6 +368,9 @@ public:
 
   /// createStaticMemberDIE - Create new static data member DIE.
   DIE *createStaticMemberDIE(DIDerivedType DT);
+
+  /// getOrCreateContextDIE - Get context owner's DIE.
+  DIE *getOrCreateContextDIE(DIDescriptor Context);
 
 private:
 

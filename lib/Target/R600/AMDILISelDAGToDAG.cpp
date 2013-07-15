@@ -162,6 +162,58 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
   }
   switch (Opc) {
   default: break;
+  case ISD::BUILD_VECTOR: {
+    const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();
+    if (ST.device()->getGeneration() > AMDGPUDeviceInfo::HD6XXX) {
+      break;
+    }
+    // BUILD_VECTOR is usually lowered into an IMPLICIT_DEF + 4 INSERT_SUBREG
+    // that adds a 128 bits reg copy when going through TwoAddressInstructions
+    // pass. We want to avoid 128 bits copies as much as possible because they
+    // can't be bundled by our scheduler.
+    SDValue RegSeqArgs[9] = {
+      CurDAG->getTargetConstant(AMDGPU::R600_Reg128RegClassID, MVT::i32),
+      SDValue(), CurDAG->getTargetConstant(AMDGPU::sub0, MVT::i32),
+      SDValue(), CurDAG->getTargetConstant(AMDGPU::sub1, MVT::i32),
+      SDValue(), CurDAG->getTargetConstant(AMDGPU::sub2, MVT::i32),
+      SDValue(), CurDAG->getTargetConstant(AMDGPU::sub3, MVT::i32)
+    };
+    bool IsRegSeq = true;
+    for (unsigned i = 0; i < N->getNumOperands(); i++) {
+      if (dyn_cast<RegisterSDNode>(N->getOperand(i))) {
+        IsRegSeq = false;
+        break;
+      }
+      RegSeqArgs[2 * i + 1] = N->getOperand(i);
+    }
+    if (!IsRegSeq)
+      break;
+    return CurDAG->SelectNodeTo(N, AMDGPU::REG_SEQUENCE, N->getVTList(),
+        RegSeqArgs, 2 * N->getNumOperands() + 1);
+  }
+  case ISD::BUILD_PAIR: {
+    SDValue RC, SubReg0, SubReg1;
+    const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();
+    if (ST.device()->getGeneration() <= AMDGPUDeviceInfo::HD6XXX) {
+      break;
+    }
+    if (N->getValueType(0) == MVT::i128) {
+      RC = CurDAG->getTargetConstant(AMDGPU::SReg_128RegClassID, MVT::i32);
+      SubReg0 = CurDAG->getTargetConstant(AMDGPU::sub0_sub1, MVT::i32);
+      SubReg1 = CurDAG->getTargetConstant(AMDGPU::sub2_sub3, MVT::i32);
+    } else if (N->getValueType(0) == MVT::i64) {
+      RC = CurDAG->getTargetConstant(AMDGPU::SReg_64RegClassID, MVT::i32);
+      SubReg0 = CurDAG->getTargetConstant(AMDGPU::sub0, MVT::i32);
+      SubReg1 = CurDAG->getTargetConstant(AMDGPU::sub1, MVT::i32);
+    } else {
+      llvm_unreachable("Unhandled value type for BUILD_PAIR");
+    }
+    const SDValue Ops[] = { RC, N->getOperand(0), SubReg0,
+                            N->getOperand(1), SubReg1 };
+    return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE,
+                                  N->getDebugLoc(), N->getValueType(0), Ops);
+  }
+
   case ISD::ConstantFP:
   case ISD::Constant: {
     const AMDGPUSubtarget &ST = TM.getSubtarget<AMDGPUSubtarget>();
@@ -336,17 +388,34 @@ bool AMDGPUDAGToDAGISel::FoldOperands(unsigned Opcode,
     SDValue Operand = Ops[OperandIdx[i] - 1];
     switch (Operand.getOpcode()) {
     case AMDGPUISD::CONST_ADDRESS: {
-      if (i == 2)
-        break;
       SDValue CstOffset;
-      if (!Operand.getValueType().isVector() &&
-          SelectGlobalValueConstantOffset(Operand.getOperand(0), CstOffset)) {
-        Ops[OperandIdx[i] - 1] = CurDAG->getRegister(AMDGPU::ALU_CONST, MVT::f32);
-        Ops[SelIdx[i] - 1] = CstOffset;
-        return true;
+      if (Operand.getValueType().isVector() ||
+          !SelectGlobalValueConstantOffset(Operand.getOperand(0), CstOffset))
+        break;
+
+      // Gather others constants values
+      std::vector<unsigned> Consts;
+      for (unsigned j = 0; j < 3; j++) {
+        int SrcIdx = OperandIdx[j];
+        if (SrcIdx < 0)
+          break;
+        if (RegisterSDNode *Reg = dyn_cast<RegisterSDNode>(Ops[SrcIdx - 1])) {
+          if (Reg->getReg() == AMDGPU::ALU_CONST) {
+            ConstantSDNode *Cst = dyn_cast<ConstantSDNode>(Ops[SelIdx[j] - 1]);
+            Consts.push_back(Cst->getZExtValue());
+          }
+        }
       }
+
+      ConstantSDNode *Cst = dyn_cast<ConstantSDNode>(CstOffset);
+      Consts.push_back(Cst->getZExtValue());
+      if (!TII->fitsConstReadLimitations(Consts))
+        break;
+
+      Ops[OperandIdx[i] - 1] = CurDAG->getRegister(AMDGPU::ALU_CONST, MVT::f32);
+      Ops[SelIdx[i] - 1] = CstOffset;
+      return true;
       }
-      break;
     case ISD::FNEG:
       if (NegIdx[i] < 0)
         break;

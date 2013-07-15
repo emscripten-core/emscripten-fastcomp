@@ -74,12 +74,12 @@ public:
 
   virtual bool TargetSelectInstruction(const Instruction *I);
 
-  /// TryToFoldLoad - The specified machine instr operand is a vreg, and that
+  /// \brief The specified machine instr operand is a vreg, and that
   /// vreg is being provided by the specified load instruction.  If possible,
   /// try to fold the load as an operand to the instruction, returning true if
   /// possible.
-  virtual bool TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
-                             const LoadInst *LI);
+  virtual bool tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
+                                   const LoadInst *LI);
 
   virtual bool FastLowerArguments();
 
@@ -343,86 +343,6 @@ bool X86FastISel::X86FastEmitExtend(ISD::NodeType Opc, EVT DstVT,
   return true;
 }
 
-/// @LOCALMOD-BEGIN
-/// isLegalAddressingModeForNaCl - Determine if the addressing mode is
-/// legal for NaCl translation.  If not, the caller is expected to
-/// reject the instruction for fast-ISel code generation.
-///
-/// The logic for the test is translated from the corresponding logic
-/// in X86DAGToDAGISel::LegalizeAddressingModeForNaCl().  It can't be
-/// used directly due to the X86AddressMode vs X86ISelAddressMode
-/// types.  As such, any changes to isLegalAddressingModeForNaCl() and
-/// X86DAGToDAGISel::LegalizeAddressingModeForNaCl() need to be
-/// synchronized.  The original conditions are indicated in comments.
-static bool isLegalAddressingModeForNaCl(const X86Subtarget *Subtarget,
-                                         const X86AddressMode &AM) {
-  if (Subtarget->isTargetNaCl64()) {
-    // Return true (i.e., is legal) if the equivalent of
-    // X86ISelAddressMode::isRIPRelative() is true.
-    if (AM.BaseType == X86AddressMode::RegBase &&
-        AM.Base.Reg == X86::RIP)
-      return true;
-
-    // Check for the equivalent of
-    // (!AM.hasBaseOrIndexReg() &&
-    //  !AM.hasSymbolicDisplacement() &&
-    //  AM.Disp < 0)
-    if (!((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
-          AM.IndexReg) &&
-        !AM.GV &&
-        AM.Disp < 0) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // At this point in the LegalizeAddressingModeForNaCl() code, it
-    // normalizes an addressing mode with a base register and no index
-    // register into an equivalent mode with an index register and no
-    // base register.  Since we don't modify AM, we may have to check
-    // both the base and index register fields in the remainder of the
-    // tests.
-
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::FrameIndexBase || AM.GV || AM.CP) &&
-    //   AM.IndexReg.getNode() &&
-    //   AM.Disp > 0)
-    // Note: X86AddressMode doesn't have a CP analogue
-    if ((AM.BaseType == X86AddressMode::FrameIndexBase || AM.GV) &&
-        ((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
-         AM.IndexReg) &&
-        AM.Disp > 0) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::RegBase) &&
-    //  AM.Base_Reg.getNode() &&
-    //  AM.IndexReg.getNode())
-    if ((AM.BaseType == X86AddressMode::RegBase) &&
-        AM.Base.Reg &&
-        AM.IndexReg) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // See X86DAGToDAGISel::FoldOffsetIntoAddress().
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::RegBase ||
-    //   AM.BaseType == X86ISelAddressMode::FrameIndexBase) &&
-    //  (Val > 65535 || Val < -65536))
-    if ((AM.BaseType == X86AddressMode::RegBase ||
-         AM.BaseType == X86AddressMode::FrameIndexBase) &&
-        (AM.Disp > 65535 || AM.Disp < -65536)) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// @LOCALMOD-END
 /// X86SelectAddress - Attempt to fill in an address from the given value.
 ///
 /// @LOCALMOD-BEGIN
@@ -935,8 +855,9 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
   // The x86-64 ABI for returning structs by value requires that we copy
   // the sret argument into %rax for the return. We saved the argument into
   // a virtual register in the entry block, so now we copy the value out
-  // and into %rax.
-  if (Subtarget->is64Bit() && F.hasStructRetAttr()) {
+  // and into %rax. We also do the same with %eax for Win32.
+  if (F.hasStructRetAttr() &&
+      (Subtarget->is64Bit() || Subtarget->isTargetWindows())) {
     unsigned Reg = X86MFInfo->getSRetReturnReg();
     assert(Reg &&
            "SRetReturnReg should have been set in LowerFormalArguments()!");
@@ -1770,6 +1691,9 @@ bool X86FastISel::FastLowerArguments() {
   if (!FuncInfo.CanLowerReturn)
     return false;
 
+  if (Subtarget->isTargetWin64())
+    return false;
+
   const Function *F = FuncInfo.Fn;
   if (F->isVarArg())
     return false;
@@ -2541,12 +2465,8 @@ unsigned X86FastISel::TargetMaterializeFloatZero(const ConstantFP *CF) {
 }
 
 
-/// TryToFoldLoad - The specified machine instr operand is a vreg, and that
-/// vreg is being provided by the specified load instruction.  If possible,
-/// try to fold the load as an operand to the instruction, returning true if
-/// possible.
-bool X86FastISel::TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
-                                const LoadInst *LI) {
+bool X86FastISel::tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
+                                      const LoadInst *LI) {
   X86AddressMode AM;
   if (!X86SelectAddress(LI->getOperand(0), AM))
     return false;

@@ -15,17 +15,16 @@
 #ifndef SIMACHINEFUNCTIONINFO_H_
 #define SIMACHINEFUNCTIONINFO_H_
 
-#include "llvm/CodeGen/MachineFunction.h"
+#include "AMDGPUMachineFunction.h"
 
 namespace llvm {
 
 /// This class keeps track of the SPI_SP_INPUT_ADDR config register, which
 /// tells the hardware which interpolation parameters to load.
-class SIMachineFunctionInfo : public MachineFunctionInfo {
+class SIMachineFunctionInfo : public AMDGPUMachineFunction {
 public:
   SIMachineFunctionInfo(const MachineFunction &MF);
-  unsigned SPIPSInputAddr;
-  unsigned ShaderType;
+  unsigned PSInputAddr;
 };
 
 } // End namespace llvm

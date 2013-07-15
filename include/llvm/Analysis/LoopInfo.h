@@ -36,7 +36,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 
 namespace llvm {
@@ -52,6 +51,7 @@ class DominatorTree;
 class LoopInfo;
 class Loop;
 class PHINode;
+class raw_ostream;
 template<class N, class M> class LoopInfoBase;
 template<class N, class M> class LoopBase;
 
@@ -147,10 +147,10 @@ public:
   /// block that is outside of the current loop.
   ///
   bool isLoopExiting(const BlockT *BB) const {
-    typedef GraphTraits<BlockT*> BlockTraits;
+    typedef GraphTraits<const BlockT*> BlockTraits;
     for (typename BlockTraits::ChildIteratorType SI =
-         BlockTraits::child_begin(const_cast<BlockT*>(BB)),
-         SE = BlockTraits::child_end(const_cast<BlockT*>(BB)); SI != SE; ++SI) {
+         BlockTraits::child_begin(BB),
+         SE = BlockTraits::child_end(BB); SI != SE; ++SI) {
       if (!contains(*SI))
         return true;
     }
@@ -165,8 +165,8 @@ public:
 
     typedef GraphTraits<Inverse<BlockT*> > InvBlockTraits;
     for (typename InvBlockTraits::ChildIteratorType I =
-         InvBlockTraits::child_begin(const_cast<BlockT*>(H)),
-         E = InvBlockTraits::child_end(const_cast<BlockT*>(H)); I != E; ++I)
+         InvBlockTraits::child_begin(H),
+         E = InvBlockTraits::child_end(H); I != E; ++I)
       if (contains(*I))
         ++NumBackEdges;
 

@@ -1,3 +1,4 @@
+; REQUIRES: asserts
 ; RUN: opt -loop-unswitch -loop-unswitch-threshold 13 -disable-output -stats -info-output-file - < %s | FileCheck --check-prefix=STATS %s
 ; RUN: opt -S -loop-unswitch -loop-unswitch-threshold 13 -verify-loop-info -verify-dom-info < %s | FileCheck %s
 

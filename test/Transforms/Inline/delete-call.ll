@@ -1,3 +1,4 @@
+; REQUIRES: asserts
 ; RUN: opt -S -inline -stats < %s 2>&1 | FileCheck %s
 ; CHECK: Number of functions inlined
 

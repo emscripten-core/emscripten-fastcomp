@@ -11,6 +11,8 @@
 #include "llvm-c/Initialization.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/IR/Module.h"
+#include "llvm/PassRegistry.h"
 #include <cstring>
 
 using namespace llvm;
@@ -31,7 +33,6 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeCFGPrinterPass(Registry);
   initializeCFGOnlyViewerPass(Registry);
   initializeCFGOnlyPrinterPass(Registry);
-  initializePrintDbgInfoPass(Registry);
   initializeDependenceAnalysisPass(Registry);
   initializeDominanceFrontierPass(Registry);
   initializeDomViewerPass(Registry);

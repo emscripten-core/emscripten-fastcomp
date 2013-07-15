@@ -25,10 +25,11 @@ set(LLVM_TEST_DEPENDS UnitTests
           llvm-objdump
           llvm-readobj
           llvm-rtdyld
+          llvm-symbolizer
           macho-dump opt
           profile_rt-shared
           FileCheck count not
-          yaml2obj)
+          yaml2obj obj2yaml)
 
 # If Intel JIT events are supported, depend on a tool that tests the listener.
 if( LLVM_USE_INTEL_JITEVENTS )

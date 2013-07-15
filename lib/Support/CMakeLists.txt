@@ -7,6 +7,7 @@ add_llvm_library(LLVMSupport
   BranchProbability.cpp
   circular_raw_ostream.cpp
   CommandLine.cpp
+  Compression.cpp
   ConstantRange.cpp
   ConvertUTF.c
   ConvertUTFWrapper.cpp
@@ -83,6 +84,7 @@ add_llvm_library(LLVMSupport
   Threading.cpp
   TimeValue.cpp
   Valgrind.cpp
+  Watchdog.cpp
   Unix/Host.inc
   Unix/Memory.inc
   Unix/Mutex.inc
@@ -95,6 +97,7 @@ add_llvm_library(LLVMSupport
   Unix/system_error.inc
   Unix/ThreadLocal.inc
   Unix/TimeValue.inc
+  Unix/Watchdog.inc
   Windows/DynamicLibrary.inc
   Windows/Host.inc
   Windows/Memory.inc
@@ -108,4 +111,5 @@ add_llvm_library(LLVMSupport
   Windows/system_error.inc
   Windows/ThreadLocal.inc
   Windows/TimeValue.inc
+  Windows/Watchdog.inc
   )

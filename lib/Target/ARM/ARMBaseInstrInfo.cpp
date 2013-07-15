@@ -283,14 +283,20 @@ ARMBaseInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,MachineBasicBlock *&TBB,
       return false;
     --I;
   }
-  if (!isUnpredicatedTerminator(I))
-    return false;
 
   // Get the last instruction in the block.
   MachineInstr *LastInst = I;
+  unsigned LastOpc = LastInst->getOpcode();
+
+  // Check if it's an indirect branch first, this should return 'unanalyzable'
+  // even if it's predicated.
+  if (isIndirectBranchOpcode(LastOpc))
+    return true;
+
+  if (!isUnpredicatedTerminator(I))
+    return false;
 
   // If there is only one terminator instruction, process it.
-  unsigned LastOpc = LastInst->getOpcode();
   if (I == MBB.begin() || !isUnpredicatedTerminator(--I)) {
     if (isUncondBranchOpcode(LastOpc)) {
       TBB = LastInst->getOperand(0).getMBB();
@@ -750,10 +756,10 @@ void ARMBaseInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     Mov->addRegisterKilled(SrcReg, TRI);
 }
 
-static const
-MachineInstrBuilder &AddDReg(MachineInstrBuilder &MIB,
-                             unsigned Reg, unsigned SubIdx, unsigned State,
-                             const TargetRegisterInfo *TRI) {
+const MachineInstrBuilder &
+ARMBaseInstrInfo::AddDReg(MachineInstrBuilder &MIB, unsigned Reg,
+                          unsigned SubIdx, unsigned State,
+                          const TargetRegisterInfo *TRI) const {
   if (!SubIdx)
     return MIB.addReg(Reg, State);
 
@@ -798,12 +804,22 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                    .addReg(SrcReg, getKillRegState(isKill))
                    .addFrameIndex(FI).addImm(0).addMemOperand(MMO));
       } else if (ARM::GPRPairRegClass.hasSubClassEq(RC)) {
-        MachineInstrBuilder MIB =
-          AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::STMIA))
-                       .addFrameIndex(FI))
-                       .addMemOperand(MMO);
-          MIB = AddDReg(MIB, SrcReg, ARM::gsub_0, getKillRegState(isKill), TRI);
-                AddDReg(MIB, SrcReg, ARM::gsub_1, 0, TRI);
+        if (Subtarget.hasV5TEOps()) {
+          MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::STRD));
+          AddDReg(MIB, SrcReg, ARM::gsub_0, getKillRegState(isKill), TRI);
+          AddDReg(MIB, SrcReg, ARM::gsub_1, 0, TRI);
+          MIB.addFrameIndex(FI).addReg(0).addImm(0).addMemOperand(MMO);
+
+          AddDefaultPred(MIB);
+        } else {
+          // Fallback to STM instruction, which has existed since the dawn of
+          // time.
+          MachineInstrBuilder MIB =
+            AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::STMIA))
+                             .addFrameIndex(FI).addMemOperand(MMO));
+          AddDReg(MIB, SrcReg, ARM::gsub_0, getKillRegState(isKill), TRI);
+          AddDReg(MIB, SrcReg, ARM::gsub_1, 0, TRI);
+        }
       } else
         llvm_unreachable("Unknown reg class!");
       break;
@@ -951,7 +967,6 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   DebugLoc DL;
   if (I != MBB.end()) DL = I->getDebugLoc();
   MachineFunction &MF = *MBB.getParent();
-  ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   MachineFrameInfo &MFI = *MF.getFrameInfo();
   unsigned Align = MFI.getObjectAlignment(FI);
   MachineMemOperand *MMO =
@@ -978,14 +993,24 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
       AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::VLDRD), DestReg)
                    .addFrameIndex(FI).addImm(0).addMemOperand(MMO));
     } else if (ARM::GPRPairRegClass.hasSubClassEq(RC)) {
-      unsigned LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA : ARM::LDMIA;
-      MachineInstrBuilder MIB =
-        AddDefaultPred(BuildMI(MBB, I, DL, get(LdmOpc))
-// @LOCALMOD-START Fixed in LLVM 3.3 by 179977. This will merge conflict.
-                    .addFrameIndex(FI).addMemOperand(MMO));
-// @LOCALMOD-END
-      MIB = AddDReg(MIB, DestReg, ARM::gsub_0, RegState::DefineNoRead, TRI);
-      MIB = AddDReg(MIB, DestReg, ARM::gsub_1, RegState::DefineNoRead, TRI);
+      MachineInstrBuilder MIB;
+
+      if (Subtarget.hasV5TEOps()) {
+        MIB = BuildMI(MBB, I, DL, get(ARM::LDRD));
+        AddDReg(MIB, DestReg, ARM::gsub_0, RegState::DefineNoRead, TRI);
+        AddDReg(MIB, DestReg, ARM::gsub_1, RegState::DefineNoRead, TRI);
+        MIB.addFrameIndex(FI).addReg(0).addImm(0).addMemOperand(MMO);
+
+        AddDefaultPred(MIB);
+      } else {
+        // Fallback to LDM instruction, which has existed since the dawn of
+        // time.
+        MIB = AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::LDMIA))
+                                 .addFrameIndex(FI).addMemOperand(MMO));
+        MIB = AddDReg(MIB, DestReg, ARM::gsub_0, RegState::DefineNoRead, TRI);
+        MIB = AddDReg(MIB, DestReg, ARM::gsub_1, RegState::DefineNoRead, TRI);
+      }
+
       if (TargetRegisterInfo::isPhysicalRegister(DestReg))
         MIB.addReg(DestReg, RegState::ImplicitDefine);
     } else
@@ -1130,7 +1155,7 @@ bool ARMBaseInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const{
   // copyPhysReg() calls.  Look for VMOVS instructions that can legally be
   // widened to VMOVD.  We prefer the VMOVD when possible because it may be
   // changed into a VORR that can go down the NEON pipeline.
-  if (!WidenVMOVS || !MI->isCopy())
+  if (!WidenVMOVS || !MI->isCopy() || Subtarget.isCortexA15())
     return false;
 
   // Look for a copy between even S-registers.  That is where we keep floats
@@ -1796,7 +1821,6 @@ void llvm::emitARMRegPlusImmediate(MachineBasicBlock &MBB,
 
     // Build the new ADD / SUB.
     unsigned Opc = isSub ? ARM::SUBri : ARM::ADDri;
-
     BuildMI(MBB, MBBI, dl, TII.get(Opc), DestReg)
       .addReg(BaseReg, RegState::Kill).addImm(ThisVal)
       .addImm((unsigned)Pred).addReg(PredReg).addReg(0)
@@ -2264,7 +2288,6 @@ optimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg, unsigned SrcReg2,
     // be changed from r2 > r1 to r1 < r2, from r2 < r1 to r1 > r2, etc.
     for (unsigned i = 0, e = OperandsToUpdate.size(); i < e; i++)
       OperandsToUpdate[i].first->setImm(OperandsToUpdate[i].second);
-
     return true;
   }
   }
@@ -3741,9 +3764,9 @@ ARMBaseInstrInfo::getExecutionDomain(const MachineInstr *MI) const {
   if (MI->getOpcode() == ARM::VMOVD && !isPredicated(MI))
     return std::make_pair(ExeVFP, (1<<ExeVFP) | (1<<ExeNEON));
 
-  // A9-like cores are particularly picky about mixing the two and want these
+  // CortexA9 is particularly picky about mixing the two and wants these
   // converted.
-  if (Subtarget.isLikeA9() && !isPredicated(MI) &&
+  if (Subtarget.isCortexA9() && !isPredicated(MI) &&
       (MI->getOpcode() == ARM::VMOVRS ||
        MI->getOpcode() == ARM::VMOVSR ||
        MI->getOpcode() == ARM::VMOVS))
@@ -4030,14 +4053,12 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
 // VLD1DUPd32 - Writes all D-regs, no partial reg update, 2 uops.
 //
 // FCONSTD can be used as a dependency-breaking instruction.
-
-
 unsigned ARMBaseInstrInfo::
 getPartialRegUpdateClearance(const MachineInstr *MI,
                              unsigned OpNum,
                              const TargetRegisterInfo *TRI) const {
-  // Only Swift has partial register update problems.
-  if (!SwiftPartialUpdateClearance || !Subtarget.isSwift())
+  if (!SwiftPartialUpdateClearance ||
+      !(Subtarget.isSwift() || Subtarget.isCortexA15()))
     return 0;
 
   assert(TRI && "Need TRI instance");
@@ -4063,7 +4084,7 @@ getPartialRegUpdateClearance(const MachineInstr *MI,
 
     // Explicitly reads the dependency.
   case ARM::VLD1LNd32:
-    UseOp = 1;
+    UseOp = 3;
     break;
   default:
     return 0;
@@ -4131,4 +4152,16 @@ breakPartialRegDependency(MachineBasicBlock::iterator MI,
 
 bool ARMBaseInstrInfo::hasNOP() const {
   return (Subtarget.getFeatureBits() & ARM::HasV6T2Ops) != 0;
+}
+
+bool ARMBaseInstrInfo::isSwiftFastImmShift(const MachineInstr *MI) const {
+  unsigned ShOpVal = MI->getOperand(3).getImm();
+  unsigned ShImm = ARM_AM::getSORegOffset(ShOpVal);
+  // Swift supports faster shifts for: lsl 2, lsl 1, and lsr 1.
+  if ((ShImm == 1 && ARM_AM::getSORegShOp(ShOpVal) == ARM_AM::lsr) ||
+      ((ShImm == 1 || ShImm == 2) &&
+       ARM_AM::getSORegShOp(ShOpVal) == ARM_AM::lsl))
+    return true;
+
+  return false;
 }

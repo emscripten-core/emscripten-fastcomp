@@ -19,4 +19,4 @@
 type = Tool
 name = opt
 parent = Tools
-required_libraries = AsmParser BitReader BitWriter NaClBitWriter IPO Instrumentation Scalar ObjCARC all-targets NaClTransforms NaClAnalysis
+required_libraries = AsmParser BitReader BitWriter IRReader NaClBitWriter IPO Instrumentation Scalar ObjCARC all-targets NaClTransforms NaClAnalysis

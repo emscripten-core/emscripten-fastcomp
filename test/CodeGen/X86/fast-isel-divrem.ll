@@ -120,4 +120,3 @@ entry:
 ; CHECK: test_urem32:
 ; CHECK: xorl
 ; CHECK: divl
-

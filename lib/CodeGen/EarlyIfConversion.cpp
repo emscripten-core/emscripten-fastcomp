@@ -459,7 +459,6 @@ void SSAIfConv::replacePHIInstrs() {
   for (unsigned i = 0, e = PHIs.size(); i != e; ++i) {
     PHIInfo &PI = PHIs[i];
     DEBUG(dbgs() << "If-converting " << *PI.PHI);
-    assert(PI.PHI->getNumOperands() == 5 && "Unexpected PHI operands.");
     unsigned DstReg = PI.PHI->getOperand(0).getReg();
     TII->insertSelect(*Head, FirstTerm, HeadDL, DstReg, Cond, PI.TReg, PI.FReg);
     DEBUG(dbgs() << "          --> " << *llvm::prior(FirstTerm));
@@ -593,6 +592,7 @@ public:
   EarlyIfConverter() : MachineFunctionPass(ID) {}
   void getAnalysisUsage(AnalysisUsage &AU) const;
   bool runOnMachineFunction(MachineFunction &MF);
+  const char *getPassName() const { return "Early If-Conversion"; }
 
 private:
   bool tryConvertIf(MachineBasicBlock*);

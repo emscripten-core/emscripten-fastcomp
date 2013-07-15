@@ -86,11 +86,11 @@ class ARMAsmParser : public MCTargetAsmParser {
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
 
   bool Warning(SMLoc L, const Twine &Msg,
-               ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) {
+               ArrayRef<SMRange> Ranges = None) {
     return Parser.Warning(L, Msg, Ranges);
   }
   bool Error(SMLoc L, const Twine &Msg,
-             ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) {
+             ArrayRef<SMRange> Ranges = None) {
     return Parser.Error(L, Msg, Ranges);
   }
 
@@ -316,103 +316,127 @@ class ARMOperand : public MCParsedAsmOperand {
   SMLoc StartLoc, EndLoc;
   SmallVector<unsigned, 8> Registers;
 
+  struct CCOp {
+    ARMCC::CondCodes Val;
+  };
+
+  struct CopOp {
+    unsigned Val;
+  };
+
+  struct CoprocOptionOp {
+    unsigned Val;
+  };
+
+  struct ITMaskOp {
+    unsigned Mask:4;
+  };
+
+  struct MBOptOp {
+    ARM_MB::MemBOpt Val;
+  };
+
+  struct IFlagsOp {
+    ARM_PROC::IFlags Val;
+  };
+
+  struct MMaskOp {
+    unsigned Val;
+  };
+
+  struct TokOp {
+    const char *Data;
+    unsigned Length;
+  };
+
+  struct RegOp {
+    unsigned RegNum;
+  };
+
+  // A vector register list is a sequential list of 1 to 4 registers.
+  struct VectorListOp {
+    unsigned RegNum;
+    unsigned Count;
+    unsigned LaneIndex;
+    bool isDoubleSpaced;
+  };
+
+  struct VectorIndexOp {
+    unsigned Val;
+  };
+
+  struct ImmOp {
+    const MCExpr *Val;
+  };
+
+  /// Combined record for all forms of ARM address expressions.
+  struct MemoryOp {
+    unsigned BaseRegNum;
+    // Offset is in OffsetReg or OffsetImm. If both are zero, no offset
+    // was specified.
+    const MCConstantExpr *OffsetImm;  // Offset immediate value
+    unsigned OffsetRegNum;    // Offset register num, when OffsetImm == NULL
+    ARM_AM::ShiftOpc ShiftType; // Shift type for OffsetReg
+    unsigned ShiftImm;        // shift for OffsetReg.
+    unsigned Alignment;       // 0 = no alignment specified
+    // n = alignment in bytes (2, 4, 8, 16, or 32)
+    unsigned isNegative : 1;  // Negated OffsetReg? (~'U' bit)
+  };
+
+  struct PostIdxRegOp {
+    unsigned RegNum;
+    bool isAdd;
+    ARM_AM::ShiftOpc ShiftTy;
+    unsigned ShiftImm;
+  };
+
+  struct ShifterImmOp {
+    bool isASR;
+    unsigned Imm;
+  };
+
+  struct RegShiftedRegOp {
+    ARM_AM::ShiftOpc ShiftTy;
+    unsigned SrcReg;
+    unsigned ShiftReg;
+    unsigned ShiftImm;
+  };
+
+  struct RegShiftedImmOp {
+    ARM_AM::ShiftOpc ShiftTy;
+    unsigned SrcReg;
+    unsigned ShiftImm;
+  };
+
+  struct RotImmOp {
+    unsigned Imm;
+  };
+
+  struct BitfieldOp {
+    unsigned LSB;
+    unsigned Width;
+  };
+
   union {
-    struct {
-      ARMCC::CondCodes Val;
-    } CC;
-
-    struct {
-      unsigned Val;
-    } Cop;
-
-    struct {
-      unsigned Val;
-    } CoprocOption;
-
-    struct {
-      unsigned Mask:4;
-    } ITMask;
-
-    struct {
-      ARM_MB::MemBOpt Val;
-    } MBOpt;
-
-    struct {
-      ARM_PROC::IFlags Val;
-    } IFlags;
-
-    struct {
-      unsigned Val;
-    } MMask;
-
-    struct {
-      const char *Data;
-      unsigned Length;
-    } Tok;
-
-    struct {
-      unsigned RegNum;
-    } Reg;
-
-    // A vector register list is a sequential list of 1 to 4 registers.
-    struct {
-      unsigned RegNum;
-      unsigned Count;
-      unsigned LaneIndex;
-      bool isDoubleSpaced;
-    } VectorList;
-
-    struct {
-      unsigned Val;
-    } VectorIndex;
-
-    struct {
-      const MCExpr *Val;
-    } Imm;
-
-    /// Combined record for all forms of ARM address expressions.
-    struct {
-      unsigned BaseRegNum;
-      // Offset is in OffsetReg or OffsetImm. If both are zero, no offset
-      // was specified.
-      const MCConstantExpr *OffsetImm;  // Offset immediate value
-      unsigned OffsetRegNum;    // Offset register num, when OffsetImm == NULL
-      ARM_AM::ShiftOpc ShiftType; // Shift type for OffsetReg
-      unsigned ShiftImm;        // shift for OffsetReg.
-      unsigned Alignment;       // 0 = no alignment specified
-                                // n = alignment in bytes (2, 4, 8, 16, or 32)
-      unsigned isNegative : 1;  // Negated OffsetReg? (~'U' bit)
-    } Memory;
-
-    struct {
-      unsigned RegNum;
-      bool isAdd;
-      ARM_AM::ShiftOpc ShiftTy;
-      unsigned ShiftImm;
-    } PostIdxReg;
-
-    struct {
-      bool isASR;
-      unsigned Imm;
-    } ShifterImm;
-    struct {
-      ARM_AM::ShiftOpc ShiftTy;
-      unsigned SrcReg;
-      unsigned ShiftReg;
-      unsigned ShiftImm;
-    } RegShiftedReg;
-    struct {
-      ARM_AM::ShiftOpc ShiftTy;
-      unsigned SrcReg;
-      unsigned ShiftImm;
-    } RegShiftedImm;
-    struct {
-      unsigned Imm;
-    } RotImm;
-    struct {
-      unsigned LSB;
-      unsigned Width;
-    } Bitfield;
+    struct CCOp CC;
+    struct CopOp Cop;
+    struct CoprocOptionOp CoprocOption;
+    struct MBOptOp MBOpt;
+    struct ITMaskOp ITMask;
+    struct IFlagsOp IFlags;
+    struct MMaskOp MMask;
+    struct TokOp Tok;
+    struct RegOp Reg;
+    struct VectorListOp VectorList;
+    struct VectorIndexOp VectorIndex;
+    struct ImmOp Imm;
+    struct MemoryOp Memory;
+    struct PostIdxRegOp PostIdxReg;
+    struct ShifterImmOp ShifterImm;
+    struct RegShiftedRegOp RegShiftedReg;
+    struct RegShiftedImmOp RegShiftedImm;
+    struct RotImmOp RotImm;
+    struct BitfieldOp Bitfield;
   };
 
   ARMOperand(KindTy K) : MCParsedAsmOperand(), Kind(K) {}
@@ -585,6 +609,13 @@ public:
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ((Value & 3) == 0) && Value >= -1020 && Value <= 1020;
+  }
+  bool isImm0_4() const {
+    if (!isImm()) return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value >= 0 && Value < 5;
   }
   bool isImm0_1020s4() const {
     if (!isImm()) return false;
@@ -4569,20 +4600,26 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
     Error(Parser.getTok().getLoc(), "unexpected token in operand");
     return true;
   case AsmToken::Identifier: {
-    if (!tryParseRegisterWithWriteBack(Operands))
-      return false;
-    int Res = tryParseShiftRegister(Operands);
-    if (Res == 0) // success
-      return false;
-    else if (Res == -1) // irrecoverable error
-      return true;
-    // If this is VMRS, check for the apsr_nzcv operand.
-    if (Mnemonic == "vmrs" &&
-        Parser.getTok().getString().equals_lower("apsr_nzcv")) {
-      S = Parser.getTok().getLoc();
-      Parser.Lex();
-      Operands.push_back(ARMOperand::CreateToken("APSR_nzcv", S));
-      return false;
+    // If we've seen a branch mnemonic, the next operand must be a label.  This
+    // is true even if the label is a register name.  So "br r1" means branch to
+    // label "r1".
+    bool ExpectLabel = Mnemonic == "b" || Mnemonic == "bl";
+    if (!ExpectLabel) {
+      if (!tryParseRegisterWithWriteBack(Operands))
+        return false;
+      int Res = tryParseShiftRegister(Operands);
+      if (Res == 0) // success
+        return false;
+      else if (Res == -1) // irrecoverable error
+        return true;
+      // If this is VMRS, check for the apsr_nzcv operand.
+      if (Mnemonic == "vmrs" &&
+          Parser.getTok().getString().equals_lower("apsr_nzcv")) {
+        S = Parser.getTok().getLoc();
+        Parser.Lex();
+        Operands.push_back(ARMOperand::CreateToken("APSR_nzcv", S));
+        return false;
+      }
     }
 
     // Fall though for the Identifier case that is not a register or a
@@ -4715,6 +4752,7 @@ StringRef ARMAsmParser::splitMnemonic(StringRef Mnemonic,
       Mnemonic == "mls"   || Mnemonic == "smmls"  || Mnemonic == "vcls"  ||
       Mnemonic == "vmls"  || Mnemonic == "vnmls"  || Mnemonic == "vacge" ||
       Mnemonic == "vcge"  || Mnemonic == "vclt"   || Mnemonic == "vacgt" ||
+      Mnemonic == "vaclt" || Mnemonic == "vacle"  ||
       Mnemonic == "vcgt"  || Mnemonic == "vcle"   || Mnemonic == "smlal" ||
       Mnemonic == "umaal" || Mnemonic == "umlal"  || Mnemonic == "vabal" ||
       Mnemonic == "vmlal" || Mnemonic == "vpadal" || Mnemonic == "vqdmlal" ||
@@ -4984,8 +5022,8 @@ static bool isDataTypeToken(StringRef Tok) {
 static bool doesIgnoreDataTypeSuffix(StringRef Mnemonic, StringRef DT) {
   return Mnemonic.startswith("vldm") || Mnemonic.startswith("vstm");
 }
-
-static void applyMnemonicAliases(StringRef &Mnemonic, unsigned Features);
+static void applyMnemonicAliases(StringRef &Mnemonic, unsigned Features,
+                                 unsigned VariantID);
 /// Parse an arm instruction mnemonic followed by its operands.
 bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
                                     SMLoc NameLoc,
@@ -4996,7 +5034,8 @@ bool ARMAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   // MatchInstructionImpl(), but that's too late for aliases that include
   // any sort of suffix.
   unsigned AvailableFeatures = getAvailableFeatures();
-  applyMnemonicAliases(Name, AvailableFeatures);
+  unsigned AssemblerDialect = getParser().getAssemblerDialect();
+  applyMnemonicAliases(Name, AvailableFeatures, AssemblerDialect);
 
   // First check for the ARM-specific .req directive.
   if (Parser.getTok().is(AsmToken::Identifier) &&
@@ -7583,6 +7622,11 @@ MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     return Error(IDLoc, "instruction variant requires ARMv6 or later");
   case Match_RequiresThumb2:
     return Error(IDLoc, "instruction variant requires Thumb2");
+  case Match_ImmRange0_4: {
+    SMLoc ErrorLoc = ((ARMOperand*)Operands[ErrorInfo])->getStartLoc();
+    if (ErrorLoc == SMLoc()) ErrorLoc = IDLoc;
+    return Error(ErrorLoc, "immediate operand must be in the range [0,4]");
+  }
   case Match_ImmRange0_15: {
     SMLoc ErrorLoc = ((ARMOperand*)Operands[ErrorInfo])->getStartLoc();
     if (ErrorLoc == SMLoc()) ErrorLoc = IDLoc;

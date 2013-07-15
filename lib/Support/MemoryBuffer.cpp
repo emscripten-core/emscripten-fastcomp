@@ -72,13 +72,17 @@ static void CopyStringRef(char *Memory, StringRef Data) {
   Memory[Data.size()] = 0; // Null terminate string.
 }
 
-/// GetNamedBuffer - Allocates a new MemoryBuffer with Name copied after it.
-template <typename T>
-static T *GetNamedBuffer(StringRef Buffer, StringRef Name,
-                         bool RequiresNullTerminator) {
-  char *Mem = static_cast<char*>(operator new(sizeof(T) + Name.size() + 1));
-  CopyStringRef(Mem + sizeof(T), Name);
-  return new (Mem) T(Buffer, RequiresNullTerminator);
+namespace {
+struct NamedBufferAlloc {
+  StringRef Name;
+  NamedBufferAlloc(StringRef Name) : Name(Name) {}
+};
+}
+
+void *operator new(size_t N, const NamedBufferAlloc &Alloc) {
+  char *Mem = static_cast<char *>(operator new(N + Alloc.Name.size() + 1));
+  CopyStringRef(Mem + N, Alloc.Name);
+  return Mem;
 }
 
 namespace {
@@ -105,8 +109,8 @@ public:
 MemoryBuffer *MemoryBuffer::getMemBuffer(StringRef InputData,
                                          StringRef BufferName,
                                          bool RequiresNullTerminator) {
-  return GetNamedBuffer<MemoryBufferMem>(InputData, BufferName,
-                                         RequiresNullTerminator);
+  return new (NamedBufferAlloc(BufferName))
+      MemoryBufferMem(InputData, RequiresNullTerminator);
 }
 
 /// getMemBufferCopy - Open the specified memory range as a MemoryBuffer,
@@ -183,24 +187,38 @@ error_code MemoryBuffer::getFileOrSTDIN(const char *Filename,
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// MemoryBufferMMapFile - This represents a file that was mapped in with the
-/// sys::Path::MapInFilePages method.  When destroyed, it calls the
-/// sys::Path::UnMapFilePages method.
-class MemoryBufferMMapFile : public MemoryBufferMem {
+/// \brief Memorry maps a file descriptor using sys::fs::mapped_file_region.
+///
+/// This handles converting the offset into a legal offset on the platform.
+class MemoryBufferMMapFile : public MemoryBuffer {
+  sys::fs::mapped_file_region MFR;
+
+  static uint64_t getLegalMapOffset(uint64_t Offset) {
+    return Offset & ~(sys::fs::mapped_file_region::alignment() - 1);
+  }
+
+  static uint64_t getLegalMapSize(uint64_t Len, uint64_t Offset) {
+    return Len + (Offset - getLegalMapOffset(Offset));
+  }
+
+  const char *getStart(uint64_t Len, uint64_t Offset) {
+    return MFR.const_data() + (Offset - getLegalMapOffset(Offset));
+  }
+
 public:
-  MemoryBufferMMapFile(StringRef Buffer, bool RequiresNullTerminator)
-    : MemoryBufferMem(Buffer, RequiresNullTerminator) { }
+  MemoryBufferMMapFile(bool RequiresNullTerminator, int FD, uint64_t Len,
+                       uint64_t Offset, error_code EC)
+      : MFR(FD, false, sys::fs::mapped_file_region::readonly,
+            getLegalMapSize(Len, Offset), getLegalMapOffset(Offset), EC) {
+    if (!EC) {
+      const char *Start = getStart(Len, Offset);
+      init(Start, Start + Len, RequiresNullTerminator);
+    }
+  }
 
-  ~MemoryBufferMMapFile() {
-    static int PageSize = sys::process::get_self()->page_size();
-
-    uintptr_t Start = reinterpret_cast<uintptr_t>(getBufferStart());
-    size_t Size = getBufferSize();
-    uintptr_t RealStart = Start & ~(PageSize - 1);
-    size_t RealSize = Size + (Start - RealStart);
-
-    sys::Path::UnMapFilePages(reinterpret_cast<const char*>(RealStart),
-                              RealSize);
+  virtual const char *getBufferIdentifier() const LLVM_OVERRIDE {
+    // The name is stored after the class itself.
+    return reinterpret_cast<const char *>(this + 1);
   }
 
   virtual BufferKind getBufferKind() const LLVM_OVERRIDE {
@@ -244,6 +262,8 @@ error_code MemoryBuffer::getFile(const char *Filename,
                                  OwningPtr<MemoryBuffer> &result,
                                  int64_t FileSize,
                                  bool RequiresNullTerminator) {
+  // FIXME: Review if this check is unnecessary on windows as well.
+#ifdef LLVM_ON_WIN32
   // First check that the "file" is not a directory
   bool is_dir = false;
   error_code err = sys::fs::is_directory(Filename, is_dir);
@@ -251,6 +271,7 @@ error_code MemoryBuffer::getFile(const char *Filename,
     return err;
   if (is_dir)
     return make_error_code(errc::is_a_directory);
+#endif
 
   int OpenFlags = O_RDONLY;
 #ifdef O_BINARY
@@ -269,7 +290,7 @@ error_code MemoryBuffer::getFile(const char *Filename,
 static bool shouldUseMmap(int FD,
                           size_t FileSize,
                           size_t MapSize,
-                          int64_t Offset,
+                          int64_t Offset,   // @LOCALMOD (?)
                           bool RequiresNullTerminator,
                           int PageSize) {
   // We don't use mmap for small files because this can severely fragment our
@@ -279,6 +300,7 @@ static bool shouldUseMmap(int FD,
 
   if (!RequiresNullTerminator)
     return true;
+
 
   // If we don't know the file size, use fstat to find out.  fstat on an open
   // file descriptor is cheaper than stat on a random path.
@@ -340,17 +362,11 @@ error_code MemoryBuffer::getOpenFile(int FD, const char *Filename,
 
   if (shouldUseMmap(FD, FileSize, MapSize, Offset, RequiresNullTerminator,
                     PageSize)) {
-    int64_t RealMapOffset = Offset & ~(PageSize - 1);
-    int64_t Delta = Offset - RealMapOffset;
-    size_t RealMapSize = MapSize + Delta;
-
-    if (const char *Pages = sys::Path::MapInFilePages(FD,
-                                                      RealMapSize,
-                                                      RealMapOffset)) {
-      result.reset(GetNamedBuffer<MemoryBufferMMapFile>(
-          StringRef(Pages + Delta, MapSize), Filename, RequiresNullTerminator));
+    error_code EC;
+    result.reset(new (NamedBufferAlloc(Filename)) MemoryBufferMMapFile(
+        RequiresNullTerminator, FD, MapSize, Offset, EC));
+    if (!EC)
       return error_code::success();
-    }
   }
 
   MemoryBuffer *Buf = MemoryBuffer::getNewUninitMemBuffer(MapSize, Filename);

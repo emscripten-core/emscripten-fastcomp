@@ -104,6 +104,12 @@ Instruction *InstCombiner::PromoteCastOfAllocation(BitCastInst &CI,
   uint64_t CastElTySize = TD->getTypeAllocSize(CastElTy);
   if (CastElTySize == 0 || AllocElTySize == 0) return 0;
 
+  // If the allocation has multiple uses, only promote it if we're not
+  // shrinking the amount of memory being allocated.
+  uint64_t AllocElTyStoreSize = TD->getTypeStoreSize(AllocElTy);
+  uint64_t CastElTyStoreSize = TD->getTypeStoreSize(CastElTy);
+  if (!AI.hasOneUse() && CastElTyStoreSize < AllocElTyStoreSize) return 0;
+
   // See if we can satisfy the modulus by pulling a scale out of the array
   // size argument.
   unsigned ArraySizeScale;
@@ -1604,6 +1610,9 @@ static Value *OptimizeIntegerToVectorInsertions(BitCastInst &CI,
 /// OptimizeIntToFloatBitCast - See if we can optimize an integer->float/double
 /// bitcast.  The various long double bitcasts can't get in here.
 static Instruction *OptimizeIntToFloatBitCast(BitCastInst &CI,InstCombiner &IC){
+  // We need to know the target byte order to perform this optimization.
+  if (!IC.getDataLayout()) return 0;
+
   Value *Src = CI.getOperand(0);
   Type *DestTy = CI.getType();
 
@@ -1625,7 +1634,10 @@ static Instruction *OptimizeIntToFloatBitCast(BitCastInst &CI,InstCombiner &IC){
         VecInput = IC.Builder->CreateBitCast(VecInput, VecTy);
       }
 
-      return ExtractElementInst::Create(VecInput, IC.Builder->getInt32(0));
+      unsigned Elt = 0;
+      if (IC.getDataLayout()->isBigEndian())
+        Elt = VecTy->getPrimitiveSizeInBits() / DestWidth - 1;
+      return ExtractElementInst::Create(VecInput, IC.Builder->getInt32(Elt));
     }
   }
 
@@ -1647,6 +1659,8 @@ static Instruction *OptimizeIntToFloatBitCast(BitCastInst &CI,InstCombiner &IC){
       }
 
       unsigned Elt = ShAmt->getZExtValue() / DestWidth;
+      if (IC.getDataLayout()->isBigEndian())
+        Elt = VecTy->getPrimitiveSizeInBits() / DestWidth - 1 - Elt;
       return ExtractElementInst::Create(VecInput, IC.Builder->getInt32(Elt));
     }
   }
