@@ -118,13 +118,13 @@ protected:
   // Relocation Model
   Reloc::Model RM;
 
-  Triple TargetTriple;  // @LOCALMOD
-
   // We can override the determination of whether we are in mips16 mode
   // as from the command line
   enum {NoOverride, Mips16Override, NoMips16Override} OverrideMode;
 
   MipsTargetMachine *TM;
+
+  Triple TargetTriple;  // @LOCALMOD
 public:
   virtual bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
                                      AntiDepBreakMode& Mode,

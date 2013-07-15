@@ -1573,21 +1573,21 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
   // @LOCALMOD-BEGIN
   if (Subtarget->isTargetNaCl()) {
     SDVTList VTs = DAG.getVTList(MVT::i32);
-    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
                                                  MipsII::MO_TPREL_HI);
-    SDValue TGALo = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+    SDValue TGALo = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
                                                  MipsII::MO_TPREL_LO);
-    SDValue Hi = DAG.getNode(MipsISD::Hi, dl, VTs, &TGAHi, 1);
-    SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, TGALo);
-    SDValue Offset = DAG.getNode(ISD::ADD, dl, MVT::i32, Hi, Lo);
+    SDValue Hi = DAG.getNode(MipsISD::Hi, DL, VTs, &TGAHi, 1);
+    SDValue Lo = DAG.getNode(MipsISD::Lo, DL, MVT::i32, TGALo);
+    SDValue Offset = DAG.getNode(ISD::ADD, DL, MVT::i32, Hi, Lo);
 
-    SDValue ThreadPointer = GetNaClThreadPointer(DAG, dl);
+    SDValue ThreadPointer = GetNaClThreadPointer(DAG, DL);
     // tprel_hi and tprel_lo relocations expect that thread pointer is offset
     // by 0x7000 from the start of the TLS data area.
     SDValue TPOffset = DAG.getConstant(0x7000, MVT::i32);
-    SDValue ThreadPointer2 = DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer,
+    SDValue ThreadPointer2 = DAG.getNode(ISD::ADD, DL, PtrVT, ThreadPointer,
                                          TPOffset);
-    return DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer2, Offset);
+    return DAG.getNode(ISD::ADD, DL, PtrVT, ThreadPointer2, Offset);
   }
   // @LOCALMOD-END
 

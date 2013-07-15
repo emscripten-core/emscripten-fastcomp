@@ -1806,7 +1806,9 @@ ARMTargetLowering::HandleByVal(
   // handle var-args reg-save area.
   // PR11018.
   if (Subtarget->isTargetNaCl()) {
-    if ((!State->isFirstByValRegValid()) &&
+    unsigned ByValArgsCount = State->getInRegsParamsCount();
+    unsigned CurByValIndex = State->getInRegsParamsProceed();
+    if ((CurByValIndex >= ByValArgsCount) &&
         (ARM::R0 <= reg) && (reg <= ARM::R3)) {
       State->setHasByValInRegPosition();
     }
@@ -2868,7 +2870,7 @@ ARMTargetLowering::computeRegArea(CCState &CCInfo, MachineFunction &MF,
     CCInfo.getInRegsParamInfo(InRegsParamRecordIdx, RBegin, REnd);
     NumGPRs = REnd - RBegin;
     // @LOCALMOD-BEGIN
-  } else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition())
+  } else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition()) {
     NumGPRs = 0;
     // @LOCALMOD-END
   } else {
@@ -2922,7 +2924,7 @@ ARMTargetLowering::StoreByValRegs(CCState &CCInfo, SelectionDAG &DAG,
     firstRegToSaveIndex = RBegin - ARM::R0;
     lastRegToSaveIndex = REnd - ARM::R0;
   // @LOCALMOD-BEGIN
-  } else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition())
+  } else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition()) {
     firstRegToSaveIndex = 4; // Nothing to save.
   // @LOCALMOD-END
   } else {

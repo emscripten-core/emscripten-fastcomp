@@ -271,7 +271,6 @@ namespace llvm {
       /// reservedArgArea - The size of the area the caller reserves for
       /// register arguments. This is 16-byte if ABI is O32.
       unsigned reservedArgArea() const;
-
       /// Return pointer to array of integer argument registers.
       const uint16_t *intArgRegs() const;
 
@@ -331,6 +330,7 @@ namespace llvm {
                             const SDNode *CallNode, const Type *RetTy) const;
 
     // Lower Operand specifics
+    SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const; // @LOCALMOD
     SDValue lowerBR_JT(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerConstantPool(SDValue Op, SelectionDAG &DAG) const;

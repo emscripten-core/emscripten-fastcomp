@@ -184,9 +184,6 @@ namespace {
     }
 
     bool runOnMachineFunction(MachineFunction &F) {
-      if (SkipDelaySlotFiller)
-        return false;
-
       bool Changed = false;
       for (MachineFunction::iterator FI = F.begin(), FE = F.end();
            FI != FE; ++FI)
