@@ -13,6 +13,7 @@
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -428,6 +429,13 @@ static int compileModule(char **argv, LLVMContext &Context) {
   else
     PM.reset(new PassManager());
 
+  // For conformance with llc, we let the user disable LLVM IR verification with
+  // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
+  // run it once, before PNaCl ABI verification.
+  if (!NoVerify) {
+    PM->add(createVerifierPass());
+  }
+
   // Add the ABI verifier pass before the analysis and code emission passes.
   FunctionPass *FunctionVerifyPass = NULL;
   if (PNaClABIVerify) {
@@ -470,8 +478,10 @@ static int compileModule(char **argv, LLVMContext &Context) {
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
 
-    // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
+    // Ask the target to add backend passes as necessary. We explicitly ask it
+    // not to add the verifier pass because we added it earlier.
+    if (Target.addPassesToEmitFile(*PM, FOS, FileType,
+                                   /* DisableVerify */ true)) {
       errs() << argv[0] << ": target does not support generation of this"
              << " file type!\n";
       return 1;
@@ -520,7 +530,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
     }
 
     // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify,
+    // TODO: decrease the amount of code duplication with __native_client__
+    if (Target.addPassesToEmitFile(*PM, FOS, FileType,
+                                   /* DisableVerify */ true,
                                    StartAfterID, StopAfterID)) {
       errs() << argv[0] << ": target does not support generation of this"
              << " file type!\n";
