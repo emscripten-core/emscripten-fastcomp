@@ -1709,9 +1709,6 @@ X86TargetLowering::LowerReturn(SDValue Chain,
            "SRetReturnReg should have been set in LowerFormalArguments().");
     SDValue Val = DAG.getCopyFromReg(Chain, dl, Reg, getPointerTy());
 
-    unsigned RetValReg
-        = (Subtarget->is64Bit() && !Subtarget->isTarget64BitILP32()) ?
-          X86::RAX : X86::EAX;
     unsigned RetValReg = Subtarget->isTarget64BitILP32() ? X86::EAX : X86::RAX;
     // @LOCALMOD-BEGIN
     if (Subtarget->isTargetNaCl()) {

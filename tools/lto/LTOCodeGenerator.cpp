@@ -150,7 +150,7 @@ bool LTOCodeGenerator::linkGatheredModulesAndDispose(std::string& errMsg) {
   }
 
   // Finally, link Node 0 with the Dest and delete Node 0.
-  if (_linker.LinkInModule(_gatheredModules[0]->getLLVVMModule(), &errMsg)) {
+  if (_linker.linkInModule(_gatheredModules[0]->getLLVVMModule(), &errMsg)) {
     errs() << "LinkModules Dst w/ _gatheredModules[0] failed...\n";
     return true;
   }

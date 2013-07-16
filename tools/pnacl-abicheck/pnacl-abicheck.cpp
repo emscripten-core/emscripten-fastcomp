@@ -19,7 +19,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Support/IRReader.h"
+#include "llvm/Support/SourceMgr.h"
 #include <string>
 
 using namespace llvm;

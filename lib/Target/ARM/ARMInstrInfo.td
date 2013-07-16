@@ -1654,6 +1654,41 @@ multiclass AI_str1nopc<bit isByte, string opc, InstrItinClass iii,
 // Instructions
 //===----------------------------------------------------------------------===//
 
+// @LOCALMOD-START
+
+def SFI_GUARD_LOADSTORE :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
+
+let Defs = [CPSR] in
+def SFI_GUARD_LOADSTORE_TST :
+PseudoInst<(outs), (ins GPR:$a), NoItinerary, []>;
+
+// Like SFI_GUARD_LOADSTORE, but reserved for loads into SP.
+def SFI_GUARD_SP_LOAD :
+PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
+
+def SFI_GUARD_INDIRECT_CALL :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
+
+def SFI_GUARD_INDIRECT_JMP :
+PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
+
+def SFI_GUARD_CALL :
+PseudoInst<(outs), (ins pred:$p), NoItinerary, []>;
+
+// NOTE: the BX_RET instruction hardcodes lr as well
+def SFI_GUARD_RETURN :
+PseudoInst<(outs), (ins pred:$p), NoItinerary, []>;
+
+def SFI_NOP_IF_AT_BUNDLE_END :
+PseudoInst<(outs), (ins), NoItinerary, []>;
+
+// Note: intention is that $src and $dst are the same register.
+def SFI_DATA_MASK :
+PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
+
+// @LOCALMOD-END
+
 //===----------------------------------------------------------------------===//
 //  Miscellaneous Instructions.
 //

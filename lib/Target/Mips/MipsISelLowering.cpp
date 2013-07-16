@@ -356,7 +356,6 @@ MipsTargetLowering(MipsTargetMachine &TM)
   else
     setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
   // @LOCALMOD-END
-  setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::i64, Custom);
 
   // Use the default for now
   setOperationAction(ISD::STACKSAVE,         MVT::Other, Expand);
@@ -1557,7 +1556,7 @@ GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const {
 // @LOCALMOD-END
 
 SDValue MipsTargetLowering::
-LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
+lowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
 {
   // If the relocation model is PIC, use the General Dynamic TLS Model or
   // Local Dynamic TLS model, otherwise use the Initial Exec or
