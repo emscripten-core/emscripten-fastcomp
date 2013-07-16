@@ -37,6 +37,8 @@ entry:
 ; boundary
 ; CHECK:      nop
 ; CHECK-NEXT: nop
+; CHECK-NOT:  :
+; CHECK: bar:
 ; CHECK-NEXT: push
 
   %aa.addr = alloca i32, align 4
