@@ -250,7 +250,7 @@ def IsARM            : Predicate<"!Subtarget->isThumb()">,
 def IsIOS            : Predicate<"Subtarget->isTargetIOS()">;
 def IsNotIOS         : Predicate<"!Subtarget->isTargetIOS()">;
 def IsNaCl           : Predicate<"Subtarget->isTargetNaCl()">;
-def IsNotNaCl        : Predicate<"!Subtarget->isTargetNaCl()">;
+def IsNotNaCl        : Predicate<"!Subtarget->isTargetNaCl()">; // @LOCALMOD
 def UseNaClTrap      : Predicate<"Subtarget->useNaClTrap()">,
                                  AssemblerPredicate<"FeatureNaClTrap", "NaCl">;
 def DontUseNaClTrap  : Predicate<"!Subtarget->useNaClTrap()">;
@@ -1826,25 +1826,62 @@ let imod = 0, iflags = 0, M = 1 in
   def CPS1p : CPS<(ins imm0_31:$mode), "\t$mode">;
 }
 
+// @LOCALMOD-START NaCl wants to forbid the 'rs' variant, but Requires<>
+//                 can't be concatenated, the multiclass therefore needs
+//                 to be split up.
 // Preload signals the memory system of possible future data/instruction access.
+def PLDi12 : AXI<(outs), (ins addrmode_imm12:$addr), MiscFrm, IIC_Preload,
+              !strconcat("pld", "\t$addr"),
+              [(ARMPreload addrmode_imm12:$addr, (i32 1), (i32 1))]>,
+	      Requires<[IsARM]> {
+  bits<4> Rt;
+  bits<17> addr;
+  let Inst{31-26} = 0b111101;
+  let Inst{25} = 0; // 0 for immediate form
+  let Inst{24} = 1; // 1 for data
+  let Inst{23} = addr{12};        // U (add = ('U' == 1))
+  let Inst{22} = 1; // 1 for read
+  let Inst{21-20} = 0b01;
+  let Inst{19-16} = addr{16-13};  // Rn
+  let Inst{15-12} = 0b1111;
+  let Inst{11-0}  = addr{11-0};   // imm12
+}
+
+def PLDWi12 : AXI<(outs), (ins addrmode_imm12:$addr), MiscFrm, IIC_Preload,
+              !strconcat("pldw", "\t$addr"),
+              [(ARMPreload addrmode_imm12:$addr, (i32 0), (i32 1))]>,
+	      Requires<[IsARM,HasV7,HasMP]> {
+  bits<4> Rt;
+  bits<17> addr;
+  let Inst{31-26} = 0b111101;
+  let Inst{25} = 0; // 0 for immediate form
+  let Inst{24} = 1; // 1 for data
+  let Inst{23} = addr{12};        // U (add = ('U' == 1))
+  let Inst{22} = 0; // 0 for write
+  let Inst{21-20} = 0b01;
+  let Inst{19-16} = addr{16-13};  // Rn
+  let Inst{15-12} = 0b1111;
+  let Inst{11-0}  = addr{11-0};   // imm12
+}
+
+def PLIi12 : AXI<(outs), (ins addrmode_imm12:$addr), MiscFrm, IIC_Preload,
+              !strconcat("pli", "\t$addr"),
+              [(ARMPreload addrmode_imm12:$addr, (i32 1), (i32 0))]>,
+	      Requires<[IsARM,HasV7]> {
+  bits<4> Rt;
+  bits<17> addr;
+  let Inst{31-26} = 0b111101;
+  let Inst{25} = 0; // 0 for immediate form
+  let Inst{24} = 0; // 0 for instruction cache
+  let Inst{23} = addr{12};        // U (add = ('U' == 1))
+  let Inst{22} = 1; // 1 for read
+  let Inst{21-20} = 0b01;
+  let Inst{19-16} = addr{16-13};  // Rn
+  let Inst{15-12} = 0b1111;
+  let Inst{11-0}  = addr{11-0};   // imm12
+}
+
 multiclass APreLoad<bits<1> read, bits<1> data, string opc> {
-
-  def i12 : AXI<(outs), (ins addrmode_imm12:$addr), MiscFrm, IIC_Preload,
-                !strconcat(opc, "\t$addr"),
-                [(ARMPreload addrmode_imm12:$addr, (i32 read), (i32 data))]> {
-    bits<4> Rt;
-    bits<17> addr;
-    let Inst{31-26} = 0b111101;
-    let Inst{25} = 0; // 0 for immediate form
-    let Inst{24} = data;
-    let Inst{23} = addr{12};        // U (add = ('U' == 1))
-    let Inst{22} = read;
-    let Inst{21-20} = 0b01;
-    let Inst{19-16} = addr{16-13};  // Rn
-    let Inst{15-12} = 0b1111;
-    let Inst{11-0}  = addr{11-0};   // imm12
-  }
-
   def rs : AXI<(outs), (ins ldst_so_reg:$shift), MiscFrm, IIC_Preload,
                !strconcat(opc, "\t$shift"),
                [(ARMPreload ldst_so_reg:$shift, (i32 read), (i32 data))]> {
@@ -1862,9 +1899,10 @@ multiclass APreLoad<bits<1> read, bits<1> data, string opc> {
   }
 }
 
-defm PLD  : APreLoad<1, 1, "pld">,  Requires<[IsARM]>;
-defm PLDW : APreLoad<0, 1, "pldw">, Requires<[IsARM,HasV7,HasMP]>;
-defm PLI  : APreLoad<1, 0, "pli">,  Requires<[IsARM,HasV7]>;
+defm PLD  : APreLoad<1, 1, "pld">, Requires<[IsARM,IsNotNaCl]>;
+defm PLDW : APreLoad<0, 1, "pldw">, Requires<[IsARM,HasV7,HasMP,IsNotNaCl]>;
+defm PLI  : APreLoad<1, 0, "pli">, Requires<[IsARM,HasV7,IsNotNaCl]>;
+// @LOCALMOD-END
 
 def SETEND : AXI<(outs), (ins setend_op:$end), MiscFrm, NoItinerary,
                  "setend\t$end", []>, Requires<[IsARM]> {
@@ -5063,9 +5101,20 @@ def MOV_ga_pcrel_ldr : PseudoInst<(outs GPR:$dst), (ins i32imm:$addr),
 // ConstantPool, GlobalAddress, and JumpTable
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (LEApcrel tglobaladdr :$dst)>,
             Requires<[IsARM, DontUseMovt]>;
-def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>;
+// @LOCALMOD-START
+def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>,
+            Requires<[IsARM, DontUseMovt]>;
+// @LOCALMOD-END
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (MOVi32imm tglobaladdr :$dst)>,
             Requires<[IsARM, UseMovt]>;
+// @LOCALMOD-START
+def : ARMPat<(ARMWrapper  tconstpool :$dst), (MOVi32imm tconstpool :$dst)>,
+            Requires<[IsARM, UseMovt, DontUseConstPool]>;
+def : ARMPat<(ARMWrapper  tconstpool :$dst), (LEApcrel tconstpool :$dst)>,
+            Requires<[IsARM, UseMovt, UseConstPool]>;
+def : ARMPat<(ARMWrapperJT2  tjumptable :$dst), (MOVi32imm tjumptable :$dst)>,
+            Requires<[IsARM, UseMovt]>;
+// @LOCALMOD-END
 def : ARMPat<(ARMWrapperJT tjumptable:$dst, imm:$id),
              (LEApcrelJT tjumptable:$dst, imm:$id)>;
 
