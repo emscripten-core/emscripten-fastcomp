@@ -1795,7 +1795,6 @@ ARMTargetLowering::HandleByVal(
           State->getCallOrPrologue() == Call) &&
          "unhandled ParmContext");
 
-
   // @LOCALMOD-BEGIN
   // The original mechanism tries to split a byval argument between registers
   // and the stack.  It doesn't work correctly yet, so disable it.
@@ -1810,6 +1809,7 @@ ARMTargetLowering::HandleByVal(
     unsigned CurByValIndex = State->getInRegsParamsProceed();
     if ((CurByValIndex >= ByValArgsCount) &&
         (ARM::R0 <= reg) && (reg <= ARM::R3)) {
+      errs() << "setting setHasByValInRegPosition\n";
       State->setHasByValInRegPosition();
     }
     // Confiscate any remaining parameter registers to preclude their
