@@ -576,7 +576,7 @@ void X86TargetLowering::resetOperationActions() {
   setOperationAction(ISD::EHSELECTION,   MVT::i64, Expand);
   setOperationAction(ISD::EXCEPTIONADDR, MVT::i32, Expand);
   setOperationAction(ISD::EHSELECTION,   MVT::i32, Expand);
-  if (Subtarget->has64BitPointers()) {
+  if (Subtarget->has64BitPointers()) {     // @LOCALMOD
     setExceptionPointerRegister(X86::RAX);
     setExceptionSelectorRegister(X86::RDX);
   } else {
@@ -1712,8 +1712,10 @@ X86TargetLowering::LowerReturn(SDValue Chain,
     unsigned RetValReg
         = (Subtarget->is64Bit() && !Subtarget->isTarget64BitILP32()) ?
           X86::RAX : X86::EAX;
+
     // @LOCALMOD-BEGIN
     if (Subtarget->isTargetNaCl()) {
+      RetValReg = Subtarget->isTarget64BitILP32() ? X86::EAX : X86::RAX;
       // NaCl 64 uses 32-bit pointers, so there might be some zero-ext needed.
       SDValue Zext = DAG.getZExtOrTrunc(Val, dl, MVT::i64);
       Chain = DAG.getCopyToReg(Chain, dl, X86::RAX, Zext, Flag);
@@ -11222,7 +11224,13 @@ SDValue X86TargetLowering::LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
   EVT VT = Op.getValueType();
   DebugLoc dl = Op.getDebugLoc();  // FIXME probably not meaningful
   unsigned Depth = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
-  unsigned FrameReg = RegInfo->getFrameRegister(DAG.getMachineFunction());
+  unsigned FrameReg;
+  // @LOCALMOD
+  if (Subtarget->isTargetNaCl()) {
+    FrameReg = Subtarget->has64BitPointers() ? X86::RBP : X86::EBP;
+  } else {
+    FrameReg = RegInfo->getFrameRegister(DAG.getMachineFunction());
+  }
   assert(((FrameReg == X86::RBP && VT == MVT::i64) ||
           (FrameReg == X86::EBP && VT == MVT::i32)) &&
          "Invalid Frame Register!");
@@ -11249,12 +11257,18 @@ SDValue X86TargetLowering::LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const {
   // @LOCALMOD-START
   bool Has64BitPointers = Subtarget->has64BitPointers();
   EVT PtrVT = getPointerTy();
-  unsigned FrameReg = RegInfo->getFrameRegister(DAG.getMachineFunction());
+  unsigned FrameReg;
+  if (Subtarget->isTargetNaCl()) {
+    FrameReg = Subtarget->has64BitPointers() ? X86::RBP : X86::EBP;
+  } else {
+    FrameReg = RegInfo->getFrameRegister(DAG.getMachineFunction());
+  }
   assert(((FrameReg == X86::RBP && PtrVT == MVT::i64) ||
           (FrameReg == X86::EBP && PtrVT == MVT::i32)) &&
          "Invalid Frame Register!");
   SDValue Frame = DAG.getCopyFromReg(DAG.getEntryNode(), dl, FrameReg, PtrVT);
-  unsigned StoreAddrReg = (PtrVT == MVT::i64 && Has64BitPointers) ? X86::RCX : X86::ECX;
+  unsigned StoreAddrReg = Has64BitPointers ? X86::RCX : X86::ECX;
+  // @LOCALMOD-END
 
   SDValue StoreAddr = DAG.getNode(ISD::ADD, dl, PtrVT, Frame,
                                  DAG.getIntPtrConstant(RegInfo->getSlotSize()));
@@ -15129,7 +15143,7 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     return EmitVAStartSaveXMMRegsWithCustomInserter(MI, BB);
 
   case X86::VAARG_64:
-  case X86::NACL_CG_VAARG_64:
+  case X86::NACL_CG_VAARG_64: // @LOCALMOD
     return EmitVAARG64WithCustomInserter(MI, BB);
 
   case X86::EH_SjLj_SetJmp32:
