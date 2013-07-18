@@ -78,6 +78,7 @@ AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
     for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
          Attr != E; ++Attr) {
       if (!Attr->isAlignAttribute() &&
+          Attr->isEnumAttribute() &&
           Attr->getKindAsEnum() != Attribute::ByVal &&
           Attr->getKindAsEnum() != Attribute::StructRet) {
         AB.addAttribute(*Attr);
@@ -87,7 +88,8 @@ AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
       // example, a global variable address can be passed as a
       // StructRet argument, although Clang does not do so and Clang
       // explicitly adds NoAlias to StructRet arguments.
-      if (Attr->getKindAsEnum() == Attribute::ByVal) {
+      if (Attr->isEnumAttribute() &&
+          Attr->getKindAsEnum() == Attribute::ByVal) {
         AB.addAttribute(Attribute::get(Context, Attribute::NoAlias));
       }
     }
