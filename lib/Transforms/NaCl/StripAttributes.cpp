@@ -61,6 +61,9 @@ static void CheckAttributes(AttributeSet Attrs) {
   for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
     for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
          Attr != E; ++Attr) {
+      if (!Attr->isEnumAttribute()) {
+        continue;
+      }
       switch (Attr->getKindAsEnum()) {
         // The following attributes can affect calling conventions.
         // Rather than complaining, we just strip these out.
