@@ -15,10 +15,6 @@
 
 define void @__register_frame_info(i8* %begin, %struct.object* %ob) {
 entry:
-  %begin.addr = alloca i8*, align 4
-  %ob.addr = alloca %struct.object*, align 4
-  store i8* %begin, i8** %begin.addr, align 4
-  store %struct.object* %ob, %struct.object** %ob.addr, align 4
   ret void
 }
 
