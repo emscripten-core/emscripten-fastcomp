@@ -90,11 +90,12 @@ Module *llvm::ParseIRFile(const std::string &Filename, SMDiagnostic &Err,
 }
 
 // @LOCALMOD-BEGIN
-// Note: Code below based on ParseIR and ParseIRFile in llvm/Support/IRReader.h
 Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
                           NaClFileFormat Format,
                           SMDiagnostic &Err,
                           LLVMContext &Context) {
+  NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
+                     TimePassesIsEnabled);
   if ((Format == PNaClFormat) &&
       isNaClBitcode((const unsigned char *)Buffer->getBufferStart(),
                     (const unsigned char *)Buffer->getBufferEnd())) {

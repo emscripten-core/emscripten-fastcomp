@@ -55,14 +55,6 @@ int GetObjectFileFD();
 DataStreamer* NaClBitcodeStreamer;
 #endif
 
-const char *TimeIRParsingGroupName = "LLVM IR Parsing";
-const char *TimeIRParsingName = "Parse IR";
-
-bool TimeIRParsingIsEnabled = false;
-static cl::opt<bool,true>
-EnableTimeIRParsing("time-ir-parsing", cl::location(TimeIRParsingIsEnabled),
-                    cl::desc("Measure the time IR parsing takes"));
-
 cl::opt<NaClFileFormat>
 InputFileFormat(
     "bitcode-format",
@@ -299,13 +291,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     llvm_unreachable("native client SRPC only supports streaming");
   }
 #else
-  {
-    // TODO: after the next merge this can be removed.
-    // https://code.google.com/p/nativeclient/issues/detail?id=3349
-    NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
-                       TimeIRParsingIsEnabled);
-    M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
-  }
+  M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
 #endif // __native_client__
 
   mod = M.get();
