@@ -1809,7 +1809,6 @@ ARMTargetLowering::HandleByVal(
     unsigned CurByValIndex = State->getInRegsParamsProceed();
     if ((CurByValIndex >= ByValArgsCount) &&
         (ARM::R0 <= reg) && (reg <= ARM::R3)) {
-      errs() << "setting setHasByValInRegPosition\n";
       State->setHasByValInRegPosition();
     }
     // Confiscate any remaining parameter registers to preclude their
