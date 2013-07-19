@@ -435,7 +435,11 @@ error_code Program::ChangeStderrToBinary(){
 }
 
 bool llvm::sys::argumentsFitWithinSystemLimits(ArrayRef<const char*> Args) {
+#if defined(__native_client__)
+  static long ArgMax = -1;
+#else // !__native_client__
   static long ArgMax = sysconf(_SC_ARG_MAX);
+#endif // __native_client__
 
   // System says no practical limit.
   if (ArgMax == -1)

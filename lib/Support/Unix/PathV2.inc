@@ -417,6 +417,9 @@ error_code permissions(const Twine &path, perms prms) {
 error_code unique_file(const Twine &model, int &result_fd,
                        SmallVectorImpl<char> &result_path,
                        bool makeAbsolute, unsigned mode) {
+#ifdef __native_client__
+  llvm_unreachable("unique_file() not implemented for Native Client");
+#else
   SmallString<128> Model;
   model.toVector(Model);
   // Null terminate.
@@ -498,6 +501,7 @@ rety_open_create:
 
   result_fd = RandomFD;
   return error_code::success();
+#endif // __native_client__
 }
 
 error_code mapped_file_region::init(int FD, bool CloseFD, uint64_t Offset) {
