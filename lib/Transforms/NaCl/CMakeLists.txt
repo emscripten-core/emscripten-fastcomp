@@ -12,15 +12,16 @@ add_llvm_library(LLVMNaClTransforms
   ExpandTlsConstantExpr.cpp
   ExpandUtils.cpp
   ExpandVarArgs.cpp
-  InsertDivideCheck.cpp
   FlattenGlobals.cpp
   GlobalCleanup.cpp
+  InsertDivideCheck.cpp
   PNaClABISimplify.cpp
   PromoteI1Ops.cpp
   PromoteIntegers.cpp
   ReplacePtrsWithInts.cpp
-  RewriteLLVMIntrinsics.cpp
   ResolvePNaClIntrinsics.cpp
+  RewriteAtomics.cpp
+  RewriteLLVMIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp
   StripAttributes.cpp
   StripMetadata.cpp

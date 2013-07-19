@@ -1657,7 +1657,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   if (Stream.EnterSubBlock(naclbitc::FUNCTION_BLOCK_ID))
     return Error("Malformed block record");
 
-  InstructionList.clear();
   unsigned ModuleValueListSize = ValueList.size();
 
   // Add all the function arguments to the value table.
@@ -1732,7 +1731,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       int Opc = GetDecodedBinaryOpcode(Record[OpNum++], LHS->getType());
       if (Opc == -1) return Error("Invalid BINOP record");
       I = BinaryOperator::Create((Instruction::BinaryOps)Opc, LHS, RHS);
-      InstructionList.push_back(I);
       if (OpNum < Record.size()) {
         if (Opc == Instruction::Add ||
             Opc == Instruction::Sub ||
@@ -1779,7 +1777,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (Opc == -1 || ResTy == 0)
         return Error("Invalid CAST record");
       I = CastInst::Create((Instruction::CastOps)Opc, Op, ResTy);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_INBOUNDS_GEP:
@@ -1798,7 +1795,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = GetElementPtrInst::Create(BasePtr, GEPIdx);
-      InstructionList.push_back(I);
       if (BitCode == naclbitc::FUNC_CODE_INST_INBOUNDS_GEP)
         cast<GetElementPtrInst>(I)->setIsInBounds(true);
       break;
@@ -1821,7 +1817,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = ExtractValueInst::Create(Agg, EXTRACTVALIdx);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1845,7 +1840,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = InsertValueInst::Create(Agg, Val, INSERTVALIdx);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1860,7 +1854,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid SELECT record");
 
       I = SelectInst::Create(Cond, TrueVal, FalseVal);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1887,7 +1880,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = SelectInst::Create(Cond, TrueVal, FalseVal);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1898,7 +1890,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           popValue(Record, &OpNum, NextValueNo, &Idx))
         return Error("Invalid EXTRACTELT record");
       I = ExtractElementInst::Create(Vec, Idx);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1910,7 +1901,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           popValue(Record, &OpNum, NextValueNo, &Idx))
         return Error("Invalid INSERTELT record");
       I = InsertElementInst::Create(Vec, Elt, Idx);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1924,7 +1914,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (popValue(Record, &OpNum, NextValueNo, &Mask))
         return Error("Invalid SHUFFLEVEC record");
       I = new ShuffleVectorInst(Vec1, Vec2, Mask);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1946,7 +1935,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         I = new FCmpInst((FCmpInst::Predicate)Record[OpNum], LHS, RHS);
       else
         I = new ICmpInst((ICmpInst::Predicate)Record[OpNum], LHS, RHS);
-      InstructionList.push_back(I);
       break;
     }
 
@@ -1955,7 +1943,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         unsigned Size = Record.size();
         if (Size == 0) {
           I = ReturnInst::Create(Context);
-          InstructionList.push_back(I);
           break;
         }
 
@@ -1967,7 +1954,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           return Error("Invalid RET record");
 
         I = ReturnInst::Create(Context, Op);
-        InstructionList.push_back(I);
         break;
       }
     case naclbitc::FUNC_CODE_INST_BR: { // BR: [bb#, bb#, opval] or [bb#]
@@ -1979,7 +1965,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       if (Record.size() == 1) {
         I = BranchInst::Create(TrueDest);
-        InstructionList.push_back(I);
       }
       else {
         BasicBlock *FalseDest = getBasicBlock(Record[1]);
@@ -1987,7 +1972,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         if (FalseDest == 0 || Cond == 0)
           return Error("Invalid BR record");
         I = BranchInst::Create(TrueDest, FalseDest, Cond);
-        InstructionList.push_back(I);
       }
       break;
     }
@@ -2006,7 +1990,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       unsigned NumCases = Record[3];
 
       SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
-      InstructionList.push_back(SI);
 
       unsigned CurIdx = 4;
       for (unsigned i = 0; i != NumCases; ++i) {
@@ -2053,7 +2036,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid INDIRECTBR record");
       unsigned NumDests = Record.size()-2;
       IndirectBrInst *IBI = IndirectBrInst::Create(Address, NumDests);
-      InstructionList.push_back(IBI);
       for (unsigned i = 0, e = NumDests; i != e; ++i) {
         if (BasicBlock *DestBB = getBasicBlock(Record[2+i])) {
           IBI->addDestination(DestBB);
@@ -2075,12 +2057,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (popValue(Record, &Idx, NextValueNo, &Val))
         return Error("Invalid RESUME record");
       I = ResumeInst::Create(Val);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_UNREACHABLE: // UNREACHABLE
       I = new UnreachableInst(Context);
-      InstructionList.push_back(I);
       break;
     case naclbitc::FUNC_CODE_INST_PHI: { // PHI: [ty, val0,bb0, ...]
       if (Record.size() < 1 || ((Record.size()-1)&1))
@@ -2089,7 +2069,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (!Ty) return Error("Invalid PHI record");
 
       PHINode *PN = PHINode::Create(Ty, (Record.size()-1)/2);
-      InstructionList.push_back(PN);
 
       for (unsigned i = 0, e = Record.size()-1; i != e; i += 2) {
         Value *V;
@@ -2143,7 +2122,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = LP;
-      InstructionList.push_back(I);
       break;
     }
 
@@ -2156,7 +2134,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid ALLOCA record");
       unsigned Align = Record[1];
       I = new AllocaInst(Type::getInt8Ty(Context), Size, (1 << Align) >> 1);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_LOAD: { // LOAD: [op, align, vol]
@@ -2167,7 +2144,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid LOAD record");
 
       I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_LOADATOMIC: {
@@ -2189,7 +2165,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1,
                        Ordering, SynchScope);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_STORE: { // STORE2:[ptr, val, align, vol]
@@ -2201,7 +2176,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid STORE record");
 
       I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_STOREATOMIC: {
@@ -2223,7 +2197,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1,
                         Ordering, SynchScope);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_CMPXCHG: {
@@ -2241,7 +2214,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+2]);
       I = new AtomicCmpXchgInst(Ptr, Cmp, New, Ordering, SynchScope);
       cast<AtomicCmpXchgInst>(I)->setVolatile(Record[OpNum]);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_ATOMICRMW: {
@@ -2262,7 +2234,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+3]);
       I = new AtomicRMWInst(Operation, Ptr, Val, Ordering, SynchScope);
       cast<AtomicRMWInst>(I)->setVolatile(Record[OpNum+1]);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_FENCE: { // FENCE:[ordering, synchscope]
@@ -2274,7 +2245,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid FENCE record");
       SynchronizationScope SynchScope = GetDecodedSynchScope(Record[1]);
       I = new FenceInst(Context, Ordering, SynchScope);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL: {
@@ -2319,7 +2289,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = CallInst::Create(Callee, Args);
-      InstructionList.push_back(I);
       cast<CallInst>(I)->setCallingConv(GetDecodedCallingConv(CCInfo>>1));
       cast<CallInst>(I)->setTailCall(CCInfo & 1);
       break;
@@ -2333,7 +2302,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (!OpTy || !Op || !ResTy)
         return Error("Invalid VAARG record");
       I = new VAArgInst(Op, ResTy);
-      InstructionList.push_back(I);
       break;
     }
     case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF:

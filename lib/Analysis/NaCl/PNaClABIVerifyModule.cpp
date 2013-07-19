@@ -13,14 +13,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Pass.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -173,6 +175,7 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
 
 AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   Type *I8Ptr = Type::getInt8PtrTy(*Context);
+  Type *I8 = Type::getInt8Ty(*Context);
   Type *I16 = Type::getInt16Ty(*Context);
   Type *I32 = Type::getInt32Ty(*Context);
   Type *I64 = Type::getInt64Ty(*Context);
@@ -203,6 +206,15 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   addIntrinsic(Intrinsic::sqrt, Float);
   addIntrinsic(Intrinsic::sqrt, Double);
 
+  Type *AtomicTypes[] = { I8, I16, I32, I64 };
+  for (size_t T = 0, E = array_lengthof(AtomicTypes); T != E; ++T) {
+    addIntrinsic(Intrinsic::nacl_atomic_load, AtomicTypes[T]);
+    addIntrinsic(Intrinsic::nacl_atomic_store, AtomicTypes[T]);
+    addIntrinsic(Intrinsic::nacl_atomic_rmw, AtomicTypes[T]);
+    addIntrinsic(Intrinsic::nacl_atomic_cmpxchg, AtomicTypes[T]);
+  }
+  addIntrinsic(Intrinsic::nacl_atomic_fence);
+
   // Stack save and restore are used to support C99 VLAs.
   addIntrinsic(Intrinsic::stacksave);
   addIntrinsic(Intrinsic::stackrestore);
@@ -221,7 +233,7 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
 bool AllowedIntrinsics::isAllowed(const Function *Func) {
   // Keep 3 categories of intrinsics for now.
   // (1) Allowed always, provided the exact name and type match.
-  // (2) Never allowed
+  // (2) Never allowed.
   // (3) "Dev" intrinsics, which may or may not be allowed.
   // "Dev" intrinsics are controlled by the PNaClABIAllowDevIntrinsics flag.
   // Please keep these sorted or grouped in a sensible way, within

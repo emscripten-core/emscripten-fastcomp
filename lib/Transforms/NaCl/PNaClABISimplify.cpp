@@ -94,6 +94,8 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // ExpandGetElementPtr must follow ExpandConstantExpr to expand the
   // getelementptr instructions it creates.
   PM.add(createExpandGetElementPtrPass());
+  // Rewrite atomic and volatile instructions with intrinsic calls.
+  PM.add(createRewriteAtomicsPass());
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());

@@ -41,8 +41,6 @@ define internal void @allowed_cases(i32 %arg) {
   ; These instructions may use a NormalizedPtr, which may be a global.
   load i32* @ptr, align 1
   store i32 123, i32* @ptr, align 1
-  cmpxchg i32* @ptr, i32 1, i32 2 seq_cst
-  atomicrmw add i32* @ptr, i32 3 seq_cst
 
   ; A NormalizedPtr may be a bitcast.
   %ptr_bitcast = bitcast [4 x i8]* @var to i32*

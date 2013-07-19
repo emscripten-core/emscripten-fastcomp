@@ -1,8 +1,7 @@
 ; RUN: pnacl-abicheck < %s | FileCheck %s
 
 ; Test the "align" attributes that are allowed on load and store
-; instructions.  Note that "cmpxchg" and "atomicrmw" do not take
-; "align" attributes, so are not tested here.
+; instructions.
 
 
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8*, i8*, i32, i32, i1)
@@ -26,14 +25,6 @@ define internal void @allowed_cases(i32 %ptr, float %f, double %d) {
   load double* %ptr.double, align 8
   store double %d, double* %ptr.double, align 1
   store double %d, double* %ptr.double, align 8
-
-  ; Stricter alignments are required for atomics.
-  load atomic i32* %ptr.i32 seq_cst, align 4
-  store atomic i32 123, i32* %ptr.i32 seq_cst, align 4
-  load atomic float* %ptr.float seq_cst, align 4
-  store atomic float %f, float* %ptr.float seq_cst, align 4
-  load atomic double* %ptr.double seq_cst, align 8
-  store atomic double %d, double* %ptr.double seq_cst, align 8
 
   ; memcpy() et el take an alignment parameter, which is allowed to be 1.
   %ptr.p = inttoptr i32 %ptr to i8*
@@ -76,22 +67,6 @@ define internal void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) 
 ; CHECK-NEXT: disallowed: bad alignment: {{.*}} load double{{.*}} align 4
 ; CHECK-NEXT: disallowed: bad alignment: store double{{.*}} align 2
 ; CHECK-NEXT: disallowed: bad alignment: store double{{.*}} align 4
-
-  ; Too-small alignments for atomics are rejected.
-  load atomic i32* %ptr.i32 seq_cst, align 2
-  load atomic float* %ptr.float seq_cst, align 2
-  load atomic double* %ptr.double seq_cst, align 4
-; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic i32{{.*}} align 2
-; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic float{{.*}} align 2
-; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic double{{.*}} align 4
-
-  ; Too-large alignments for atomics are also rejected.
-  load atomic i32* %ptr.i32 seq_cst, align 8
-  load atomic float* %ptr.float seq_cst, align 8
-  load atomic double* %ptr.double seq_cst, align 16
-; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic i32{{.*}} align 8
-; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic float{{.*}} align 8
-; CHECK-NEXT: disallowed: bad alignment: {{.*}} load atomic double{{.*}} align 16
 
   ; Non-pessimistic alignments for memcpy() et al are rejected.
   %ptr.p = inttoptr i32 %ptr to i8*

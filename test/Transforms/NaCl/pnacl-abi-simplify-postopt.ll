@@ -6,6 +6,7 @@
 ; thoroughly in other *.ll files.  This file is a smoke test to check
 ; that the passes work together OK.
 
+target datalayout = "p:32:32:32"
 
 @var = global i32 256
 ; CHECK: @var = global [4 x i8]

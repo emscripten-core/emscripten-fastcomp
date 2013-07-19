@@ -75,12 +75,29 @@ define internal void @memory() {
   %ptr = inttoptr i32 0 to i32*
   %a2 = load i32* %ptr, align 1
   store i32 undef, i32* %ptr, align 1
-  fence acq_rel
-  %a3 = cmpxchg i32* %ptr, i32 undef, i32 undef acq_rel
-  %a4 = atomicrmw add i32* %ptr, i32 1 acquire
 ; CHECK-NOT: disallowed
 ; CHECK: disallowed: bad instruction opcode: {{.*}} getelementptr
-  %a5 = getelementptr { i32, i32}* undef
+  %a3 = getelementptr { i32, i32}* undef
+  ret void
+}
+
+define internal void @atomic() {
+  %a1 = alloca i8, i32 4
+  %ptr = inttoptr i32 0 to i32*
+ ; CHECK: disallowed: atomic load: {{.*}} load atomic
+  %a2 = load atomic i32* %ptr seq_cst, align 4
+; CHECK: disallowed: volatile load: {{.*}} load volatile
+  %a3 = load volatile i32* %ptr, align 4
+; CHECK: disallowed: atomic store: store atomic
+  store atomic i32 undef, i32* %ptr seq_cst, align 4
+; CHECK: disallowed: volatile store: store volatile
+  store volatile i32 undef, i32* %ptr, align 4
+; CHECK: disallowed: bad instruction opcode: fence
+  fence acq_rel
+; CHECK: disallowed: bad instruction opcode: {{.*}} cmpxchg
+  %a4 = cmpxchg i32* %ptr, i32 undef, i32 undef acq_rel
+; CHECK: disallowed: bad instruction opcode: {{.*}} atomicrmw
+  %a5 = atomicrmw add i32* %ptr, i32 1 acquire
   ret void
 }
 

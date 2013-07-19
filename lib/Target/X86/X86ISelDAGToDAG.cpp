@@ -78,6 +78,24 @@ namespace {
       return GV != 0 || CP != 0 || ES != 0 || JT != -1 || BlockAddr != 0;
     }
 
+    // @LOCALMOD-BEGIN
+    /// clearSymbolicDisplacement - Remove all sources of symbolic
+    /// constant displacement from the addressing mode.  This is
+    /// needed when the symbolic constant is pulled out of the address
+    /// computation, e.g. when
+    ///   ... DISP(%r15,%rax,1) ...
+    /// is replaced with
+    ///   lea DISP(%rax),%tmp
+    ///   ... (%r15,%tmp,1) ...
+    void clearSymbolicDisplacement() {
+      GV = 0;
+      CP = 0;
+      BlockAddr = 0;
+      ES = 0;
+      JT = -1;
+    }
+    // @LOCALMOD-END
+
     bool hasBaseOrIndexReg() const {
       return IndexReg.getNode() != 0 || Base_Reg.getNode() != 0;
     }
@@ -1646,16 +1664,31 @@ void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
 
   // Case 2 above comprises two sub-cases:
   // sub-case 1: Prevent negative indexes
-  bool NeedsFixing1 =
-       (AM.BaseType == X86ISelAddressMode::FrameIndexBase || AM.GV || AM.CP) &&
-       AM.IndexReg.getNode() &&
-       AM.Disp > 0;
 
-  // sub-case 2: Both index and base registers are being used
+  // This is relevant only if there is an index register involved.
+  if (!AM.IndexReg.getNode())
+    return;
+
+  // There are two situations to deal with.  The first is as described
+  // above, which is essentially a potentially negative index into an
+  // interior pointer to a stack-allocated structure.  The second is a
+  // potentially negative index into an interior pointer to a global
+  // array.  In this case, the global array will be a symbolic
+  // displacement.  In theory, we could recognize that it is an
+  // interior pointer only when the concrete displacement AM.Disp is
+  // nonzero, but there is at least one test case (aha.c in the LLVM
+  // test suite) that incorrectly uses a negative index to dereference
+  // a global array, so we conservatively apply the translation to all
+  // global dereferences.
+  bool HasSymbolic = AM.hasSymbolicDisplacement();
+  bool NeedsFixing1 = HasSymbolic ||
+    (AM.BaseType == X86ISelAddressMode::FrameIndexBase && AM.Disp > 0);
+
+  // sub-case 2: Both index and base registers are being used.  The
+  // test for index register being used is done above, so we only need
+  // to test for a base register being used.
   bool NeedsFixing2 =
-       (AM.BaseType == X86ISelAddressMode::RegBase) &&
-       AM.Base_Reg.getNode() &&
-       AM.IndexReg.getNode();
+    (AM.BaseType == X86ISelAddressMode::RegBase) && AM.Base_Reg.getNode();
 
   if (!NeedsFixing1 && !NeedsFixing2)
     return;
@@ -1675,8 +1708,18 @@ void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
     NewNodes.push_back(ShlNode.getNode());
     NewIndex = ShlNode;
   }
-  if (AM.Disp > 0) {
-    SDValue DispNode = CurDAG->getConstant(AM.Disp, N.getValueType());
+  if (AM.Disp > 0 || HasSymbolic) {
+    // If the addressing mode has a potentially problematic
+    // displacement, we pull it out into a new instruction node.  If
+    // it contains a symbolic displacement, we need to express it as a
+    // Wrapper node to make LLVM work.
+    SDValue Base, Scale, Index, Disp, Segment;
+    getAddressOperands(AM, Base, Scale, Index, Disp, Segment);
+    SDValue DispNode;
+    if (HasSymbolic)
+      DispNode = CurDAG->getNode(X86ISD::Wrapper, dl, N.getValueType(), Disp);
+    else
+      DispNode = CurDAG->getConstant(AM.Disp, N.getValueType());
     NewNodes.push_back(DispNode.getNode());
 
     SDValue AddNode = CurDAG->getNode(ISD::ADD, dl, N.getValueType(),
@@ -1693,6 +1736,7 @@ void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
     AM.setBaseReg(SDValue());
   }
   AM.Disp = 0;
+  AM.clearSymbolicDisplacement();
   AM.Scale = 1;
   AM.IndexReg = NewIndex;
 

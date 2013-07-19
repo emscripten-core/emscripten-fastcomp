@@ -613,8 +613,8 @@ int main(int argc, char **argv) {
   initializeExpandGetElementPtrPass(Registry);
   initializeExpandSmallArgumentsPass(Registry);
   initializeExpandStructRegsPass(Registry);
-  initializeExpandTlsPass(Registry);
   initializeExpandTlsConstantExprPass(Registry);
+  initializeExpandTlsPass(Registry);
   initializeExpandVarArgsPass(Registry);
   initializeFlattenGlobalsPass(Registry);
   initializeGlobalCleanupPass(Registry);
@@ -626,6 +626,7 @@ int main(int argc, char **argv) {
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
+  initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
   initializeStripAttributesPass(Registry);

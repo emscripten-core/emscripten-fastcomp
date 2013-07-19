@@ -13,6 +13,7 @@
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -305,7 +306,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
                        TimeIRParsingIsEnabled);
     M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
   }
-#endif
+#endif // __native_client__
 
   mod = M.get();
   if (mod == 0) {
@@ -428,6 +429,13 @@ static int compileModule(char **argv, LLVMContext &Context) {
   else
     PM.reset(new PassManager());
 
+  // For conformance with llc, we let the user disable LLVM IR verification with
+  // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
+  // run it once, before PNaCl ABI verification.
+  if (!NoVerify) {
+    PM->add(createVerifierPass());
+  }
+
   // Add the ABI verifier pass before the analysis and code emission passes.
   FunctionPass *FunctionVerifyPass = NULL;
   if (PNaClABIVerify) {
@@ -464,16 +472,21 @@ static int compileModule(char **argv, LLVMContext &Context) {
       Target.setMCRelaxAll(true);
   }
 
-#if defined __native_client__
   {
+#if defined(__native_client__)
     raw_fd_ostream ROS(GetObjectFileFD(), true);
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
+#else
+    formatted_raw_ostream FOS(Out->os());
+#endif // __native_client__
 
-    // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify)) {
-      errs() << argv[0] << ": target does not support generation of this"
-             << " file type!\n";
+    // Ask the target to add backend passes as necessary. We explicitly ask it
+    // not to add the verifier pass because we added it earlier.
+    if (Target.addPassesToEmitFile(*PM, FOS, FileType,
+                                   /* DisableVerify */ true)) {
+      errs() << argv[0]
+             << ": target does not support generation of this file type!\n";
       return 1;
     }
 
@@ -491,64 +504,14 @@ static int compileModule(char **argv, LLVMContext &Context) {
     } else {
       static_cast<PassManager*>(PM.get())->run(*mod);
     }
+#if defined(__native_client__)
     FOS.flush();
     ROS.flush();
-  }
 #else
-
-  {
-    formatted_raw_ostream FOS(Out->os());
-
-    AnalysisID StartAfterID = 0;
-    AnalysisID StopAfterID = 0;
-    const PassRegistry *PR = PassRegistry::getPassRegistry();
-    if (!StartAfter.empty()) {
-      const PassInfo *PI = PR->getPassInfo(StartAfter);
-      if (!PI) {
-        errs() << argv[0] << ": start-after pass is not registered.\n";
-        return 1;
-      }
-      StartAfterID = PI->getTypeInfo();
-    }
-    if (!StopAfter.empty()) {
-      const PassInfo *PI = PR->getPassInfo(StopAfter);
-      if (!PI) {
-        errs() << argv[0] << ": stop-after pass is not registered.\n";
-        return 1;
-      }
-      StopAfterID = PI->getTypeInfo();
-    }
-
-    // Ask the target to add backend passes as necessary.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType, NoVerify,
-                                   StartAfterID, StopAfterID)) {
-      errs() << argv[0] << ": target does not support generation of this"
-             << " file type!\n";
-      return 1;
-    }
-
-    // Before executing passes, print the final values of the LLVM options.
-    cl::PrintOptionValues();
-
-    if (LazyBitcode || ReduceMemoryFootprint) {
-      FunctionPassManager *P = static_cast<FunctionPassManager*>(PM.get());
-      P->doInitialization();
-      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-        P->run(*I);
-        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-        if (ReduceMemoryFootprint) {
-          I->Dematerialize();
-        }
-      }
-      P->doFinalization();
-    } else {
-      static_cast<PassManager*>(PM.get())->run(*mod);
-    }
+    // Declare success.
+    Out->keep();
+#endif // __native_client__
   }
-
-  // Declare success.
-  Out->keep();
-#endif
 
   return 0;
 }
@@ -560,4 +523,4 @@ main (int argc, char **argv) {
 }
 #else
 // main() is in nacl_file.cpp.
-#endif
+#endif // __native_client__
