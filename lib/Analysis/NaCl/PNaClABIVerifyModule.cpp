@@ -316,7 +316,6 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
     case Intrinsic::dbg_value:
       return PNaClABIAllowDevIntrinsics || PNaClABIAllowDebugMetadata;
     case Intrinsic::nacl_target_arch: // Used by translator self-build.
-    case Intrinsic::prefetch: // TODO(jfb): Use our own data-prefetch intrinsic instead.
       return PNaClABIAllowDevIntrinsics;
   }
 }

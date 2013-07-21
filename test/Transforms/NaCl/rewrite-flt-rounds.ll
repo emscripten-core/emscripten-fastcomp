@@ -1,6 +1,6 @@
 ; RUN: opt < %s -rewrite-llvm-intrinsic-calls -S | FileCheck %s
 ; RUN: opt < %s -rewrite-llvm-intrinsic-calls -S | FileCheck %s -check-prefix=CLEANED
-; Test the RewriteLLVMIntrinsics pass
+; Test the @llvm.flt.rounds part of the RewriteLLVMIntrinsics pass
 
 declare i32 @llvm.flt.rounds()
 
