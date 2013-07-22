@@ -53,24 +53,15 @@ namespace naclbitc {
     MODULE_CODE_VERSION     = 1,    // VERSION:     [version#]
     MODULE_CODE_TRIPLE      = 2,    // Not used in PNaCl
     MODULE_CODE_DATALAYOUT  = 3,    // Not used in PNaCl
-    MODULE_CODE_ASM         = 4,    // ASM:         [strchr x N]
-    MODULE_CODE_SECTIONNAME = 5,    // SECTIONNAME: [strchr x N]
-
-    // FIXME: Remove DEPLIB in 4.0.
-    MODULE_CODE_DEPLIB      = 6,    // DEPLIB:      [strchr x N]
-
-    MODULE_CODE_GLOBALVAR   = 7,    // Not used in PNaCl.
-
+    MODULE_CODE_ASM         = 4,    // Not used in PNaCl
+    MODULE_CODE_SECTIONNAME = 5,    // Not used in PNaCl
+    MODULE_CODE_DEPLIB      = 6,    // Not used in PNaCl
+    MODULE_CODE_GLOBALVAR   = 7,    // Not used in PNaCl
     // FUNCTION:  [type, callingconv, isproto, linkage]
     MODULE_CODE_FUNCTION    = 8,
-
-    // ALIAS: [alias type, aliasee val#, linkage, visibility]
-    MODULE_CODE_ALIAS       = 9,
-
-    // MODULE_CODE_PURGEVALS: [numvals]
-    MODULE_CODE_PURGEVALS   = 10,
-
-    MODULE_CODE_GCNAME      = 11   // GCNAME: [strchr x N]
+    MODULE_CODE_ALIAS       = 9,    // Not used in PNaCl
+    MODULE_CODE_PURGEVALS   = 10,   // Not used in PNaCl
+    MODULE_CODE_GCNAME      = 11    // Not used in PNaCl
   };
 
   /// PARAMATTR blocks have code for defining a parameter attribute set.

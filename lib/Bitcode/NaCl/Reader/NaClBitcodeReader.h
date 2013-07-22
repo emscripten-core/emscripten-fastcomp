@@ -126,13 +126,11 @@ class NaClBitcodeReader : public GVMaterializer {
   uint64_t NextUnreadBit;
   bool SeenValueSymbolTable;
 
-  const char *ErrorString;
+  std::string ErrorString;
 
   std::vector<Type*> TypeList;
   NaClBitcodeReaderValueList ValueList;
   SmallVector<SmallVector<uint64_t, 64>, 64> UseListRecords;
-
-  std::vector<std::pair<GlobalAlias*, unsigned> > AliasInits;
 
   /// FunctionBBs - While parsing a function body, this is a list of the basic
   /// blocks for the function.
@@ -179,7 +177,7 @@ public:
                              bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(buffer), BufferOwned(false),
       LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ErrorString(0), ValueList(C),
+      ValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false),
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
   }
@@ -187,7 +185,7 @@ public:
                              bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ErrorString(0), ValueList(C),
+      ValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false),
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
   }
@@ -213,7 +211,11 @@ public:
     ErrorString = Str;
     return true;
   }
-  const char *getErrorString() const { return ErrorString; }
+  bool Error(const std::string &Str) {
+    ErrorString = Str;
+    return true;
+  }
+  const char *getErrorString() const { return ErrorString.c_str(); }
 
   /// @brief Main interface to parsing a bitcode buffer.
   /// @returns true if an error occurred.
@@ -282,7 +284,6 @@ private:
   bool RememberAndSkipFunctionBody();
   bool ParseFunctionBody(Function *F);
   bool GlobalCleanup();
-  bool ResolveAliasInits();
   bool ParseUseLists();
   bool InitStream();
   bool InitStreamFromBuffer();

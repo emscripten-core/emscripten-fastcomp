@@ -26,6 +26,7 @@
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
 enum {
@@ -89,15 +90,6 @@ static GlobalValue::LinkageTypes GetDecodedLinkage(unsigned Val) {
   case 13: return GlobalValue::LinkerPrivateLinkage;
   case 14: return GlobalValue::LinkerPrivateWeakLinkage;
   case 15: return GlobalValue::LinkOnceODRAutoHideLinkage;
-  }
-}
-
-static GlobalValue::VisibilityTypes GetDecodedVisibility(unsigned Val) {
-  switch (Val) {
-  default: // Map unknown visibilities to default.
-  case 0: return GlobalValue::DefaultVisibility;
-  case 1: return GlobalValue::HiddenVisibility;
-  case 2: return GlobalValue::ProtectedVisibility;
   }
 }
 
@@ -868,27 +860,6 @@ bool NaClBitcodeReader::ParseValueSymbolTable() {
   }
 }
 
-/// ResolveAliasInits - Resolve all of the initializers for aliases that we can.
-bool NaClBitcodeReader::ResolveAliasInits() {
-  std::vector<std::pair<GlobalAlias*, unsigned> > AliasInitWorklist;
-
-  AliasInitWorklist.swap(AliasInits);
-
-  while (!AliasInitWorklist.empty()) {
-    unsigned ValID = AliasInitWorklist.back().second;
-    if (ValID >= ValueList.size()) {
-      AliasInits.push_back(AliasInitWorklist.back());
-    } else {
-      if (Constant *C = dyn_cast<Constant>(ValueList[ValID]))
-        AliasInitWorklist.back().first->setAliasee(C);
-      else
-        return Error("Alias initializer is not a constant!");
-    }
-    AliasInitWorklist.pop_back();
-  }
-  return false;
-}
-
 static APInt ReadWideAPInt(ArrayRef<uint64_t> Vals, unsigned TypeBits) {
   SmallVector<uint64_t, 8> Words(Vals.size());
   std::transform(Vals.begin(), Vals.end(), Words.begin(),
@@ -1358,12 +1329,6 @@ bool NaClBitcodeReader::RememberAndSkipFunctionBody() {
 }
 
 bool NaClBitcodeReader::GlobalCleanup() {
-  // Patch the initializers for globals and aliases up.
-  ResolveAliasInits();
-
-  if (!AliasInits.empty())
-    return Error("Malformed Alias Initializer");
-
   // Look for intrinsic functions which need to be upgraded at some point
   for (Module::iterator FI = TheModule->begin(), FE = TheModule->end();
        FI != FE; ++FI) {
@@ -1377,7 +1342,6 @@ bool NaClBitcodeReader::GlobalCleanup() {
          GI = TheModule->global_begin(), GE = TheModule->global_end();
        GI != GE; ++GI)
     UpgradeGlobalVariable(GI);
-  std::vector<std::pair<GlobalAlias*, unsigned> >().swap(AliasInits);
   return false;
 }
 
@@ -1389,8 +1353,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
     return Error("Malformed block record");
 
   SmallVector<uint64_t, 64> Record;
-  std::vector<std::string> SectionTable;
-  std::vector<std::string> GCTable;
 
   // Read all the records for this module.
   while (1) {
@@ -1429,7 +1391,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         SeenValueSymbolTable = true;
         break;
       case naclbitc::CONSTANTS_BLOCK_ID:
-        if (ParseConstants() || ResolveAliasInits())
+        if (ParseConstants())
           return true;
         break;
       case naclbitc::FUNCTION_BLOCK_ID:
@@ -1469,10 +1431,16 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       break;
     }
 
-
     // Read a record.
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default: break;  // Default behavior, ignore unknown content.
+    unsigned Selector = Stream.readRecord(Entry.ID, Record);
+    switch (Selector) {
+    default: {
+      std::string Message;
+      raw_string_ostream StrM(Message);
+      StrM << "Invalid MODULE_CODE: " << Selector;
+      StrM.flush();
+      return Error(Message);
+    }
     case naclbitc::MODULE_CODE_VERSION: {  // VERSION: [version#]
       if (Record.size() < 1)
         return Error("Malformed MODULE_CODE_VERSION");
@@ -1489,40 +1457,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       }
       break;
     }
-    case naclbitc::MODULE_CODE_ASM: {  // ASM: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_ASM record");
-      TheModule->setModuleInlineAsm(S);
-      break;
-    }
-    case naclbitc::MODULE_CODE_DEPLIB: {  // DEPLIB: [strchr x N]
-      // FIXME: Remove in 4.0.
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_DEPLIB record");
-      // Ignore value.
-      break;
-    }
-    case naclbitc::MODULE_CODE_SECTIONNAME: {  // SECTIONNAME: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_SECTIONNAME record");
-      SectionTable.push_back(S);
-      break;
-    }
-    case naclbitc::MODULE_CODE_GCNAME: {  // SECTIONNAME: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_GCNAME record");
-      GCTable.push_back(S);
-      break;
-    }
-    // GLOBALVAR: [pointer type, isconst, initid,
-    //             linkage, alignment, section, visibility, threadlocal,
-    //             unnamed_addr]
-    case naclbitc::MODULE_CODE_GLOBALVAR:
-      return Error("Invalid MODULE_CODE_GLOBALVAR record");
     // FUNCTION:  [type, callingconv, isproto, linkage]
     case naclbitc::MODULE_CODE_FUNCTION: {
       if (Record.size() < 4)
@@ -1552,32 +1486,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       }
       break;
     }
-    // ALIAS: [alias type, aliasee val#, linkage]
-    // ALIAS: [alias type, aliasee val#, linkage, visibility]
-    case naclbitc::MODULE_CODE_ALIAS: {
-      if (Record.size() < 3)
-        return Error("Invalid MODULE_ALIAS record");
-      Type *Ty = getTypeByID(Record[0]);
-      if (!Ty) return Error("Invalid MODULE_ALIAS record");
-      if (!Ty->isPointerTy())
-        return Error("Function not a pointer type!");
-
-      GlobalAlias *NewGA = new GlobalAlias(Ty, GetDecodedLinkage(Record[2]),
-                                           "", 0, TheModule);
-      // Old bitcode files didn't have visibility field.
-      if (Record.size() > 3)
-        NewGA->setVisibility(GetDecodedVisibility(Record[3]));
-      ValueList.push_back(NewGA);
-      AliasInits.push_back(std::make_pair(NewGA, Record[1]));
-      break;
-    }
-    /// MODULE_CODE_PURGEVALS: [numvals]
-    case naclbitc::MODULE_CODE_PURGEVALS:
-      // Trim down the value list to the specified size.
-      if (Record.size() < 1 || Record[0] > ValueList.size())
-        return Error("Invalid MODULE_PURGEVALS record");
-      ValueList.shrinkTo(Record[0]);
-      break;
     }
     Record.clear();
   }

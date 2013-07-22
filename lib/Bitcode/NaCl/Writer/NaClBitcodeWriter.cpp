@@ -405,15 +405,6 @@ static unsigned getEncodedLinkage(const GlobalValue *GV) {
   llvm_unreachable("Invalid linkage");
 }
 
-static unsigned getEncodedVisibility(const GlobalValue *GV) {
-  switch (GV->getVisibility()) {
-  case GlobalValue::DefaultVisibility:   return 0;
-  case GlobalValue::HiddenVisibility:    return 1;
-  case GlobalValue::ProtectedVisibility: return 2;
-  }
-  llvm_unreachable("Invalid visibility");
-}
-
 /// \brief Function to convert constant initializers for global
 /// variables into corresponding bitcode. Takes advantage that these
 /// global variable initializations are normalized (see
@@ -539,48 +530,6 @@ static void WriteGlobalVars(const Module *M,
 static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
                             NaClBitstreamWriter &Stream) {
   DEBUG(dbgs() << "-> WriteModuleInfo\n");
-  // Emit various pieces of data attached to a module.
-  if (!M->getModuleInlineAsm().empty())
-    WriteStringRecord(naclbitc::MODULE_CODE_ASM, M->getModuleInlineAsm(),
-                      0/*TODO*/, Stream);
-
-  // Emit information about sections and GC, computing how many there are. Also
-  // compute the maximum alignment value.
-  // TODO(kschimpf): Remove code for SectionMap and GCMap.
-  std::map<std::string, unsigned> SectionMap;
-  std::map<std::string, unsigned> GCMap;
-  for (Module::const_global_iterator GV = M->global_begin(),E = M->global_end();
-       GV != E; ++GV) {
-    if (GV->hasSection()) {
-      // Give section names unique ID's.
-      unsigned &Entry = SectionMap[GV->getSection()];
-      if (!Entry) {
-        WriteStringRecord(naclbitc::MODULE_CODE_SECTIONNAME, GV->getSection(),
-                          0/*TODO*/, Stream);
-        Entry = SectionMap.size();
-      }
-    }
-  }
-  for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
-    if (F->hasSection()) {
-      // Give section names unique ID's.
-      unsigned &Entry = SectionMap[F->getSection()];
-      if (!Entry) {
-        WriteStringRecord(naclbitc::MODULE_CODE_SECTIONNAME, F->getSection(),
-                          0/*TODO*/, Stream);
-        Entry = SectionMap.size();
-      }
-    }
-    if (F->hasGC()) {
-      // Same for GC names.
-      unsigned &Entry = GCMap[F->getGC()];
-      if (!Entry) {
-        WriteStringRecord(naclbitc::MODULE_CODE_GCNAME, F->getGC(),
-                          0/*TODO*/, Stream);
-        Entry = GCMap.size();
-      }
-    }
-  }
 
   // Emit the function proto information. Note: We do this before
   // global variables, so that global variable initializations can
@@ -600,19 +549,6 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
 
   // Emit the global variable information.
   WriteGlobalVars(M, VE, Stream);
-
-  // Emit the alias information.
-  for (Module::const_alias_iterator AI = M->alias_begin(), E = M->alias_end();
-       AI != E; ++AI) {
-    // ALIAS: [alias type, aliasee val#, linkage, visibility]
-    Vals.push_back(VE.getTypeID(AI->getType()));
-    Vals.push_back(VE.getValueID(AI->getAliasee()));
-    Vals.push_back(getEncodedLinkage(AI));
-    Vals.push_back(getEncodedVisibility(AI));
-    unsigned AbbrevToUse = 0;
-    Stream.EmitRecord(naclbitc::MODULE_CODE_ALIAS, Vals, AbbrevToUse);
-    Vals.clear();
-  }
   DEBUG(dbgs() << "<- WriteModuleInfo\n");
 }
 
