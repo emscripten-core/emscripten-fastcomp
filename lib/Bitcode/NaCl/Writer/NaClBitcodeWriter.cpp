@@ -102,9 +102,21 @@ enum {
   SWITCH_INST_MAGIC = 0x4B5 // May 2012 => 1205 => Hex
 };
 
-static unsigned GetEncodedCastOpcode(unsigned Opcode) {
+LLVM_ATTRIBUTE_NORETURN
+static void ReportIllegalValue(const char *ValueMessage,
+                               const Value &Value) {
+  std::string Message;
+  raw_string_ostream StrM(Message);
+  StrM << "Illegal ";
+  if (ValueMessage != 0)
+    StrM << ValueMessage << " ";
+  StrM << ": " << Value;
+  report_fatal_error(StrM.str());
+}
+
+static unsigned GetEncodedCastOpcode(unsigned Opcode, const Value &V) {
   switch (Opcode) {
-  default: report_fatal_error("Unknown cast instruction!");
+  default: ReportIllegalValue("cast", V);
   case Instruction::Trunc   : return naclbitc::CAST_TRUNC;
   case Instruction::ZExt    : return naclbitc::CAST_ZEXT;
   case Instruction::SExt    : return naclbitc::CAST_SEXT;
@@ -120,9 +132,9 @@ static unsigned GetEncodedCastOpcode(unsigned Opcode) {
   }
 }
 
-static unsigned GetEncodedBinaryOpcode(unsigned Opcode) {
+static unsigned GetEncodedBinaryOpcode(unsigned Opcode, const Value &V) {
   switch (Opcode) {
-  default: report_fatal_error("Unknown binary instruction!");
+  default: ReportIllegalValue("binary opcode", V);
   case Instruction::Add:
   case Instruction::FAdd: return naclbitc::BINOP_ADD;
   case Instruction::Sub:
@@ -797,14 +809,14 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       default:
         if (Instruction::isCast(CE->getOpcode())) {
           Code = naclbitc::CST_CODE_CE_CAST;
-          Record.push_back(GetEncodedCastOpcode(CE->getOpcode()));
+          Record.push_back(GetEncodedCastOpcode(CE->getOpcode(), *CE));
           Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
           Record.push_back(VE.getValueID(C->getOperand(0)));
           AbbrevToUse = CONSTANTS_CE_CAST_Abbrev;
         } else {
           assert(CE->getNumOperands() == 2 && "Unknown constant expr!");
           Code = naclbitc::CST_CODE_CE_BINOP;
-          Record.push_back(GetEncodedBinaryOpcode(CE->getOpcode()));
+          Record.push_back(GetEncodedBinaryOpcode(CE->getOpcode(), *CE));
           Record.push_back(VE.getValueID(C->getOperand(0)));
           Record.push_back(VE.getValueID(C->getOperand(1)));
           uint64_t Flags = GetOptimizationFlags(CE);
@@ -967,20 +979,21 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       AbbrevToUse = FUNCTION_INST_CAST_ABBREV;
       pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
       Vals.push_back(VE.getTypeID(I.getType()));
-      Vals.push_back(GetEncodedCastOpcode(I.getOpcode()));
-    } else {
+      Vals.push_back(GetEncodedCastOpcode(I.getOpcode(), I));
+    } else if (isa<BinaryOperator>(I)) {
       // BINOP:      [opval, opval, opcode[, flags]]
-      assert(isa<BinaryOperator>(I) && "Unknown instruction!");
       Code = naclbitc::FUNC_CODE_INST_BINOP;
       AbbrevToUse = FUNCTION_INST_BINOP_ABBREV;
       pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
       pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-      Vals.push_back(GetEncodedBinaryOpcode(I.getOpcode()));
+      Vals.push_back(GetEncodedBinaryOpcode(I.getOpcode(), I));
       uint64_t Flags = GetOptimizationFlags(&I);
       if (Flags != 0) {
         AbbrevToUse = FUNCTION_INST_BINOP_FLAGS_ABBREV;
         Vals.push_back(Flags);
       }
+    } else {
+      ReportIllegalValue("instruction", I);
     }
     break;
 
