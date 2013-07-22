@@ -1,9 +1,6 @@
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics=0 < %s | FileCheck %s
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics=0 \
-; RUN:   -pnaclabi-allow-debug-metadata < %s | FileCheck %s --check-prefix=DBG
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics=1 < %s | \
+; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
 ; RUN:   FileCheck %s --check-prefix=DBG
-
 
 ; DBG-NOT: disallowed
 

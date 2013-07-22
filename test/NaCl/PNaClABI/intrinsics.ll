@@ -1,17 +1,29 @@
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics=0 < %s | FileCheck %s
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics=0 \
-; RUN:   -pnaclabi-allow-debug-metadata < %s | FileCheck %s --check-prefix=DBG
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics=1 < %s | \
+; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
+; RUN:   FileCheck %s --check-prefix=DBG
+; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics < %s | \
 ; RUN:   FileCheck %s --check-prefix=DEV
 
 ; Test that only white-listed intrinsics are allowed.
 
 ; ===================================
-; Some disallowed "Dev" intrinsics.
+; Some "Dev" intrinsics which are disallowed by default.
+
+; CHECK: Function llvm.nacl.target.arch is a disallowed LLVM intrinsic
+; DEV-NOT: Function llvm.nacl.target.arch is a disallowed LLVM intrinsic
+declare i32 @llvm.nacl.target.arch()
+
+
+; ===================================
+; Debug info intrinsics, which are disallowed by default.
+
 ; CHECK: Function llvm.dbg.value is a disallowed LLVM intrinsic
 ; DBG-NOT: Function llvm.dbg.value is a disallowed LLVM intrinsic
-; DEV-NOT: Function llvm.dbg.value is a disallowed LLVM intrinsic
 declare void @llvm.dbg.value(metadata, i64, metadata)
+; CHECK: Function llvm.dbg.declare is a disallowed LLVM intrinsic
+; DBG-NOT: Function llvm.dbg.declare is a disallowed LLVM intrinsic
+declare void @llvm.dbg.declare(metadata, metadata)
+
 
 ; ===================================
 ; Always allowed intrinsics.
