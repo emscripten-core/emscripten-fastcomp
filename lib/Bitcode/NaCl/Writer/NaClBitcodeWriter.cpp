@@ -35,6 +35,11 @@
 #include <map>
 using namespace llvm;
 
+static cl::opt<unsigned>
+PNaClVersion("pnacl-version",
+             cl::desc("Specify PNaCl bitcode version to write"),
+             cl::init(1));
+
 /// These are manifest constants used by the bitcode writer. They do
 /// not need to be kept in sync with the reader, but need to be
 /// consistent within this file.
@@ -1635,7 +1640,7 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
   Stream.EmitRecord(naclbitc::MODULE_CODE_VERSION, Vals);
 
   // Analyze the module, enumerating globals, functions, etc.
-  NaClValueEnumerator VE(M);
+  NaClValueEnumerator VE(M, PNaClVersion);
 
   // Emit blockinfo, which defines the standard abbreviations etc.
   WriteBlockInfo(VE, Stream);
@@ -1666,9 +1671,9 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 // out to files (the parsing works for arbitrary sizes).
 static const size_t kMaxVariableFieldSize = 256;
 
-// Write out the given fields to the bitstream.
-static void WriteHeaderFields(
-    const std::vector<NaClBitcodeHeaderField*> &Fields,
+// Write out the given Header to the bitstream.
+static void WriteHeader(
+    const NaClBitcodeHeader &Header,
     NaClBitstreamWriter& Stream) {
   // Emit placeholder for number of bytes used to hold header fields.
   // This value is necessary so that the streamable reader can preallocate
@@ -1676,17 +1681,16 @@ static void WriteHeaderFields(
   Stream.Emit(0, naclbitc::BlockSizeWidth);
   unsigned BytesForHeader = 0;
 
-  unsigned NumberFields = Fields.size();
+  unsigned NumberFields = Header.NumberFields();
   if (NumberFields > 0xFFFF)
     report_fatal_error("Too many header fields");
 
   uint8_t Buffer[kMaxVariableFieldSize];
-  for (std::vector<NaClBitcodeHeaderField*>::const_iterator
-           Iter = Fields.begin(), IterEnd = Fields.end();
-       Iter != IterEnd; ++Iter) {
-    if (!(*Iter)->Write(Buffer, kMaxVariableFieldSize))
+  for (unsigned F = 0; F < NumberFields; ++F) {
+    NaClBitcodeHeaderField *Field = Header.GetField(F);
+    if (!Field->Write(Buffer, kMaxVariableFieldSize))
       report_fatal_error("Header field too big to generate");
-    size_t limit = (*Iter)->GetTotalSize();
+    size_t limit = Field->GetTotalSize();
     for (size_t i = 0; i < limit; i++) {
       Stream.Emit(Buffer[i], 8);
     }
@@ -1702,12 +1706,10 @@ static void WriteHeaderFields(
   Stream.BackpatchWord(NaClBitcodeHeader::WordSize, Value);
 }
 
-// Define the version of PNaCl bitcode we are generating.
-static const uint16_t kPNaClVersion = 1;
-
 /// WriteBitcodeToFile - Write the specified module to the specified output
 /// stream.
-void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out) {
+void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out,
+                                  bool AcceptSupportedOnly) {
   SmallVector<char, 0> Buffer;
   Buffer.reserve(256*1024);
 
@@ -1721,13 +1723,18 @@ void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out) {
     Stream.Emit((unsigned)'X', 8);
     Stream.Emit((unsigned)'E', 8);
 
-    // Collect header fields to add.
+    // Define header and install into stream.
     {
-      std::vector<NaClBitcodeHeaderField*> HeaderFields;
-      HeaderFields.push_back(
+      NaClBitcodeHeader Header;
+      Header.push_back(
           new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
-                                     kPNaClVersion));
-      WriteHeaderFields(HeaderFields, Stream);
+                                     PNaClVersion));
+      Header.InstallFields();
+      if (!(Header.IsSupported() ||
+            (!AcceptSupportedOnly && Header.IsReadable()))) {
+        report_fatal_error(Header.Unsupported());
+      }
+      WriteHeader(Header, Stream);
     }
 
     // Emit the module.

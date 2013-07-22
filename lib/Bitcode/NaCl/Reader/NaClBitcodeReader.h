@@ -207,15 +207,11 @@ public:
   virtual bool MaterializeModule(Module *M, std::string *ErrInfo = 0);
   virtual void Dematerialize(GlobalValue *GV);
 
-  bool Error(const char *Str) {
-    ErrorString = Str;
-    return true;
-  }
   bool Error(const std::string &Str) {
     ErrorString = Str;
     return true;
   }
-  const char *getErrorString() const { return ErrorString.c_str(); }
+  const std::string &getErrorString() const { return ErrorString; }
 
   /// @brief Main interface to parsing a bitcode buffer.
   /// @returns true if an error occurred.
@@ -226,6 +222,9 @@ private:
   bool AcceptHeader() const {
     return !(Header.IsSupported() ||
              (!AcceptSupportedBitcodeOnly && Header.IsReadable()));
+  }
+  uint32_t GetPNaClVersion() const {
+    return Header.GetPNaClVersion();
   }
   Type *getTypeByID(unsigned ID);
   // Returns the value associated with ID. The value must already exist,

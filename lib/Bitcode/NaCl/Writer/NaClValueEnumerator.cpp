@@ -32,7 +32,8 @@ static bool isIntOrIntVectorValue(const std::pair<const Value*, unsigned> &V) {
 }
 
 /// NaClValueEnumerator - Enumerate module-level information.
-NaClValueEnumerator::NaClValueEnumerator(const Module *M) {
+NaClValueEnumerator::NaClValueEnumerator(const Module *M, uint32_t PNaClVersion)
+    : PNaClVersion(PNaClVersion) {
   // Create map for counting frequency of types, and set field
   // TypeCountMap accordingly.  Note: Pointer field TypeCountMap is
   // used to deal with the fact that types are added through various

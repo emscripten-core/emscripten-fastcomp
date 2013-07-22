@@ -249,8 +249,12 @@ void NaClBitcodeHeader::InstallFields() {
   if (PNaClVersion != 1) {
     IsSupportedFlag = false;
     IsReadableFlag = false;
-    UnsupportedMessage = "Unsupported Version";
     UpdatedUnsupportedMessage = true;
+    UnsupportedMessage.clear();
+    raw_string_ostream UnsupportedStream(UnsupportedMessage);
+    UnsupportedStream << "Unsupported PNaCl bitcode version: "
+                      << PNaClVersion << "\n";
+    UnsupportedStream.flush();
   }
   if (Fields.size() != 1) {
     IsSupportedFlag = false;

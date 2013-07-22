@@ -151,6 +151,12 @@ public:
   /// is readable and supported.
   void InstallFields();
 
+  /// \brief Adds a field to the list of fields in a header. Takes ownership
+  /// of fields added.
+  void push_back(NaClBitcodeHeaderField *Field) {
+    Fields.push_back(Field);
+  }
+
   /// \brief Read the PNaCl bitcode header, The format of the header is:
   ///
   ///    1) 'PEXE' - The four character sequence defining the magic number.
@@ -172,9 +178,9 @@ public:
   // \brief Returns the number of bytes read to consume the header.
   size_t getHeaderSize() { return HeaderSize; }
 
-  /// \brief Returns C string describing why the header describes
-  /// an unsupported PNaCl Bitcode file. Returns 0 if supported.
-  const std::string Unsupported() const { return UnsupportedMessage; }
+  /// \brief Returns string describing why the header describes
+  /// an unsupported PNaCl Bitcode file.
+  const std::string &Unsupported() const { return UnsupportedMessage; }
 
   /// \brief Returns true if supported. That is, it can be run in the
   /// browser.
