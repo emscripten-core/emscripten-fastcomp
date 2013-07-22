@@ -293,6 +293,15 @@ static bool shouldUseMmap(int FD,
                           int64_t Offset,   // @LOCALMOD (?)
                           bool RequiresNullTerminator,
                           int PageSize) {
+  // @LOCALMOD-BEGIN
+  // Post 3.3-merge there seems to be a problem using mmap on cygwin. In the
+  // meantime, as a LOCALMOD, we disable usage of mmap in MemoryBuffer. The
+  // effect of this on the Windows/Cygwin toolchain can be a slightly slower
+  // developer-side linkage time.
+#if defined(__CYGWIN__)
+  return false;
+#endif
+  // @LOCALMOD-END
   // We don't use mmap for small files because this can severely fragment our
   // address space.
   if (MapSize < 4096*4)
