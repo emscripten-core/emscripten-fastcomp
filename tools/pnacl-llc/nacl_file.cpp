@@ -28,19 +28,13 @@
 #include <vector>
 
 #include "llvm/ADT/OwningPtr.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/system_error.h"
 
 
-using llvm::MemoryBuffer;
-using llvm::StringRef;
 using std::string;
 using std::map;
 
 #define printerr(...)  fprintf(stderr, __VA_ARGS__)
-// printdbg is currently disabled to reduce spew.
-#define printdbg(...)
 
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 

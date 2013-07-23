@@ -15,7 +15,6 @@
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/PrintModulePass.h"
-#include "llvm/Support/DataStream.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
@@ -37,7 +36,6 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/Timer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
@@ -75,11 +73,6 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
 
-static cl::opt<unsigned>
-TimeCompilations("time-compilations", cl::Hidden, cl::init(1u),
-                 cl::value_desc("N"),
-                 cl::desc("Repeat compilation N times for timing"));
-
 // Using bitcode streaming has a couple of ramifications. Primarily it means
 // that the module in the file will be compiled one function at a time rather
 // than the whole module. This allows earlier functions to be compiled before
@@ -96,7 +89,7 @@ LazyBitcode("streaming-bitcode",
 // relevant for the sandboxed case.
 static cl::opt<bool>
 ReduceMemoryFootprint("reduce-memory-footprint",
-  cl::desc("Aggressively reduce memory used by llc"),
+  cl::desc("Aggressively reduce memory used by pnacl-llc"),
   cl::init(false));
 
 static cl::opt<bool>
@@ -128,11 +121,14 @@ DisableSimplifyLibCalls("disable-simplify-libcalls",
                         cl::desc("Disable simplify-libcalls"),
                         cl::init(false));
 
-static int compileModule(char**, LLVMContext&);
+/// Compile the module provided to pnacl-llc. The file name for reading the
+/// module and other options are taken from globals populated by command-line
+/// option parsing.
+static int compileModule(StringRef ProgramName, LLVMContext &Context);
 
 // GetFileNameRoot - Helper function to get the basename of a filename.
-static inline std::string
-GetFileNameRoot(const std::string &InputFilename) {
+static std::string
+GetFileNameRoot(StringRef InputFilename) {
   std::string IFN = InputFilename;
   std::string outputFilename;
   int Len = IFN.length();
@@ -148,8 +144,7 @@ GetFileNameRoot(const std::string &InputFilename) {
 }
 
 static tool_output_file *GetOutputStream(const char *TargetName,
-                                         Triple::OSType OS,
-                                         const char *ProgName) {
+                                         Triple::OSType OS) {
   // If we don't yet have an output filename, make one.
   if (OutputFilename.empty()) {
     if (InputFilename == "-")
@@ -230,7 +225,7 @@ int llc_main(int argc, char **argv) {
   InitializeAllAsmParsers();
 #endif
 
-  // Initialize codegen and IR passes used by llc so that the -print-after,
+  // Initialize codegen and IR passes used by pnacl-llc so that the -print-after,
   // -print-before, and -stop-after options work.
   PassRegistry *Registry = PassRegistry::getPassRegistry();
   initializeCore(*Registry);
@@ -250,12 +245,7 @@ int llc_main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "pnacl-llc\n");
 
-  // Compile the module TimeCompilations times to give better compile time
-  // metrics.
-  for (unsigned I = TimeCompilations; I; --I)
-    if (int RetVal = compileModule(argv, Context))
-      return RetVal;
-  return 0;
+  return compileModule(argv[0], Context);
 }
 
 static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
@@ -270,7 +260,7 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
   Reporter.reset();
 }
 
-static int compileModule(char **argv, LLVMContext &Context) {
+static int compileModule(StringRef ProgramName, LLVMContext &Context) {
   // Load the module to be compiled...
   SMDiagnostic Err;
   std::auto_ptr<Module> M;
@@ -296,7 +286,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   mod = M.get();
   if (mod == 0) {
-    Err.print(argv[0], errs());
+    Err.print(ProgramName.data(), errs());
     return 1;
   }
 
@@ -327,7 +317,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   const Target *TheTarget = TargetRegistry::lookupTarget(MArch, TheTriple,
                                                          Error);
   if (!TheTarget) {
-    errs() << argv[0] << ": " << Error;
+    errs() << ProgramName << ": " << Error;
     return 1;
   }
 
@@ -343,7 +333,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   CodeGenOpt::Level OLvl = CodeGenOpt::Default;
   switch (OptLevel) {
   default:
-    errs() << argv[0] << ": invalid optimization level.\n";
+    errs() << ProgramName << ": invalid optimization level.\n";
     return 1;
   case ' ': break;
   case '0': OLvl = CodeGenOpt::None; break;
@@ -384,27 +374,13 @@ static int compileModule(char **argv, LLVMContext &Context) {
   assert(mod && "Should have exited after outputting help!");
   TargetMachine &Target = *target.get();
 
-  if (DisableDotLoc)
-    Target.setMCUseLoc(false);
-
-  if (DisableCFI)
-    Target.setMCUseCFI(false);
-
-  if (EnableDwarfDirectory)
-    Target.setMCUseDwarfDirectory(true);
-
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;
-
-  // Disable .loc support for older OS X versions.
-  if (TheTriple.isMacOSX() &&
-      TheTriple.isMacOSXVersionLT(10, 6))
-    Target.setMCUseLoc(false);
 
 #if !defined(__native_client__)
   // Figure out where we are going to send the output.
   OwningPtr<tool_output_file> Out
-    (GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
+    (GetOutputStream(TheTarget->getName(), TheTriple.getOS()));
   if (!Out) return 1;
 #endif
 
@@ -423,10 +399,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
   }
 
   // Add the ABI verifier pass before the analysis and code emission passes.
-  FunctionPass *FunctionVerifyPass = NULL;
   if (PNaClABIVerify) {
-    FunctionVerifyPass = createPNaClABIVerifyFunctionsPass(&ABIErrorReporter);
-    PM->add(FunctionVerifyPass);
+    PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
   }
 
   // Add the intrinsic resolution pass. It assumes ABI-conformant code.
@@ -452,7 +426,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   if (RelaxAll) {
     if (FileType != TargetMachine::CGFT_ObjectFile)
-      errs() << argv[0]
+      errs() << ProgramName
              << ": warning: ignoring -mc-relax-all because filetype != obj";
     else
       Target.setMCRelaxAll(true);
@@ -471,7 +445,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     // not to add the verifier pass because we added it earlier.
     if (Target.addPassesToEmitFile(*PM, FOS, FileType,
                                    /* DisableVerify */ true)) {
-      errs() << argv[0]
+      errs() << ProgramName
              << ": target does not support generation of this file type!\n";
       return 1;
     }
