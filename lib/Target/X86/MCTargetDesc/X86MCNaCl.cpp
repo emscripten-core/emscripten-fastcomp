@@ -13,6 +13,8 @@
 #include "MCTargetDesc/X86MCTargetDesc.h"
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "MCTargetDesc/X86MCNaCl.h"
+#include "X86NaClDecls.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -28,12 +30,22 @@ using namespace llvm;
 // This option makes it possible to overwrite the x86 jmp mask immediate.
 // Setting it to -1 will effectively turn masking into a nop which will
 // help with linking this code with non-sandboxed libs (at least for x86-32).
-cl::opt<int> FlagSfiX86JmpMask("sfi-x86-jmp-mask", cl::init(-32));
+cl::opt<int> FlagSfiX86JmpMask("sfi-x86-jmp-mask",
+                               cl::init(-kNaClX86InstructionBundleSize));
 
 cl::opt<bool> FlagUseZeroBasedSandbox("sfi-zero-based-sandbox",
                                       cl::desc("Use a zero-based sandbox model"
                                                " for the NaCl SFI."),
                                       cl::init(false));
+// This flag can be set to false to test the performance impact of
+// hiding the sandbox base.
+cl::opt<bool> FlagHideSandboxBase("sfi-hide-sandbox-base",
+                                  cl::desc("Prevent 64-bit NaCl sandbox"
+                                           " pointers from being written to"
+                                           " the stack. [default=true]"),
+                                  cl::init(true));
+
+const int kNaClX86InstructionBundleSize = 32;
 
 static unsigned PrefixSaved = 0;
 static bool PrefixPass = false;
@@ -44,25 +56,134 @@ unsigned getX86SubSuperRegister_(unsigned Reg, EVT VT, bool High=false);
 unsigned DemoteRegTo32_(unsigned RegIn);
 } // namespace
 
+static MCSymbol *CreateTempLabel(MCContext &Context, const char *Prefix) {
+  SmallString<128> NameSV;
+  raw_svector_ostream(NameSV)
+    << Context.getAsmInfo().getPrivateGlobalPrefix() // get internal label
+    << Prefix << Context.getUniqueSymbolID();
+  return Context.GetOrCreateSymbol(NameSV);
+}
+
 static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
                            MCStreamer &Out) {
-  Out.EmitBundleLock(true);
+  const bool HideSandboxBase = (FlagHideSandboxBase &&
+                                Is64Bit && !FlagUseZeroBasedSandbox);
+  if (HideSandboxBase) {
+    // For NaCl64, the sequence
+    //   call target
+    //   return_addr:
+    // is changed to
+    //   push return_addr
+    //   jmp target
+    //   .align 32
+    //   return_addr:
+    // This avoids exposing the sandbox base address via the return
+    // address on the stack.
 
-  MCInst CALLInst;
-  CALLInst.setOpcode(Is64Bit ? X86::CALL64pcrel32 : X86::CALLpcrel32);
-  CALLInst.addOperand(Op);
-  Out.EmitInstruction(CALLInst);
-  Out.EmitBundleUnlock();
+    MCContext &Context = Out.getContext();
+
+    // Generate a label for the return address.
+    MCSymbol *RetTarget = CreateTempLabel(Context, "DirectCallRetAddr");
+    const MCExpr *RetTargetExpr = MCSymbolRefExpr::Create(RetTarget, Context);
+
+    // push return_addr
+    MCInst PUSHInst;
+    PUSHInst.setOpcode(X86::PUSH64i32);
+    PUSHInst.addOperand(MCOperand::CreateExpr(RetTargetExpr));
+    Out.EmitInstruction(PUSHInst);
+
+    // jmp target
+    MCInst JMPInst;
+    JMPInst.setOpcode(X86::JMP_4);
+    JMPInst.addOperand(Op);
+    Out.EmitInstruction(JMPInst);
+
+    Out.EmitCodeAlignment(kNaClX86InstructionBundleSize);
+    Out.EmitLabel(RetTarget);
+  } else {
+    Out.EmitBundleLock(true);
+
+    MCInst CALLInst;
+    CALLInst.setOpcode(Is64Bit ? X86::CALL64pcrel32 : X86::CALLpcrel32);
+    CALLInst.addOperand(Op);
+    Out.EmitInstruction(CALLInst);
+    Out.EmitBundleUnlock();
+  }
 }
 
 static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
                                MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
+  const bool HideSandboxBase = (FlagHideSandboxBase &&
+                                Is64Bit && !FlagUseZeroBasedSandbox);
   const int JmpMask = FlagSfiX86JmpMask;
-  const unsigned Reg32 = Op.getReg();
+  unsigned Reg32 = Op.getReg();
+
+  // For NaCl64, the sequence
+  //   jmp *%rXX
+  // is changed to
+  //   mov %rXX,%r11d
+  //   and $0xffffffe0,%r11d
+  //   add %r15,%r11
+  //   jmpq *%r11
+  //
+  // And the sequence
+  //   call *%rXX
+  //   return_addr:
+  // is changed to
+  //   mov %rXX,%r11d
+  //   push return_addr
+  //   and $0xffffffe0,%r11d
+  //   add %r15,%r11
+  //   jmpq *%r11
+  //   .align 32
+  //   return_addr:
+  //
+  // This avoids exposing the sandbox base address via the return
+  // address on the stack.
+
+  // For NaCl64, force an assignment of the branch target into r11,
+  // and subsequently use r11 as the ultimate branch target, so that
+  // only r11 (which will never be written to memory) exposes the
+  // sandbox base address.  But avoid a redundant assignment if the
+  // original branch target is already r11 or r11d.
+  const unsigned SafeReg32 = X86::R11D;
+  const unsigned SafeReg64 = X86::R11;
+  if (HideSandboxBase) {
+    // In some cases, EmitIndirectBranch() is called with a 32-bit
+    // register Op (e.g. r11d), and in other cases a 64-bit register
+    // (e.g. r11), so we need to test both variants to avoid a
+    // redundant assignment.  TODO(stichnot): Make callers consistent
+    // on 32 vs 64 bit register.
+    if ((Reg32 != SafeReg32) && (Reg32 != SafeReg64)) {
+      MCInst MOVInst;
+      MOVInst.setOpcode(X86::MOV32rr);
+      MOVInst.addOperand(MCOperand::CreateReg(SafeReg32));
+      MOVInst.addOperand(MCOperand::CreateReg(Reg32));
+      Out.EmitInstruction(MOVInst);
+      Reg32 = SafeReg32;
+    }
+  }
   const unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
 
-  Out.EmitBundleLock(IsCall);
+  // Explicitly push the (32-bit) return address for a NaCl64 call
+  // instruction.
+  MCSymbol *RetTarget = NULL;
+  if (IsCall && HideSandboxBase) {
+    MCContext &Context = Out.getContext();
+
+    // Generate a label for the return address.
+    RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
+    const MCExpr *RetTargetExpr = MCSymbolRefExpr::Create(RetTarget, Context);
+
+    // push return_addr
+    MCInst PUSHInst;
+    PUSHInst.setOpcode(X86::PUSH64i32);
+    PUSHInst.addOperand(MCOperand::CreateExpr(RetTargetExpr));
+    Out.EmitInstruction(PUSHInst);
+  }
+
+  const bool WillEmitCallInst = IsCall && !HideSandboxBase;
+  Out.EmitBundleLock(WillEmitCallInst);
 
   MCInst ANDInst;
   ANDInst.setOpcode(X86::AND32ri8);
@@ -71,7 +192,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   ANDInst.addOperand(MCOperand::CreateImm(JmpMask));
   Out.EmitInstruction(ANDInst);
 
-  if (Is64Bit && !UseZeroBasedSandbox) {
+  if (Is64Bit && !FlagUseZeroBasedSandbox) {
     MCInst InstADD;
     InstADD.setOpcode(X86::ADD64rr);
     InstADD.addOperand(MCOperand::CreateReg(Reg64));
@@ -80,24 +201,40 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
     Out.EmitInstruction(InstADD);
   }
 
-  if (IsCall) {
+  if (WillEmitCallInst) {
+    // callq *%rXX
     MCInst CALLInst;
     CALLInst.setOpcode(Is64Bit ? X86::CALL64r : X86::CALL32r);
     CALLInst.addOperand(MCOperand::CreateReg(Is64Bit ? Reg64 : Reg32));
     Out.EmitInstruction(CALLInst);
   } else {
+    // jmpq *%rXX   -or-   jmpq *%r11
     MCInst JMPInst;
     JMPInst.setOpcode(Is64Bit ? X86::JMP64r : X86::JMP32r);
     JMPInst.addOperand(MCOperand::CreateReg(Is64Bit ? Reg64 : Reg32));
     Out.EmitInstruction(JMPInst);
   }
   Out.EmitBundleUnlock();
+  if (RetTarget) {
+    Out.EmitCodeAlignment(kNaClX86InstructionBundleSize);
+    Out.EmitLabel(RetTarget);
+  }
 }
 
 static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
+  // For NaCl64 returns, follow the convention of using r11 to hold
+  // the target of an indirect jump to avoid potentially leaking the
+  // sandbox base address.
+  const bool HideSandboxBase = (FlagHideSandboxBase &&
+                                Is64Bit && !FlagUseZeroBasedSandbox);
+  // For NaCl64 sandbox hiding, use r11 to hold the branch target.
+  // Otherwise, use rcx/ecx for fewer instruction bytes (no REX
+  // prefix).
+  const unsigned RegTarget = HideSandboxBase ? X86::R11 :
+    (Is64Bit ? X86::RCX : X86::ECX);
   MCInst POPInst;
   POPInst.setOpcode(Is64Bit ? X86::POP64r : X86::POP32r);
-  POPInst.addOperand(MCOperand::CreateReg(Is64Bit ? X86::RCX : X86::ECX));
+  POPInst.addOperand(MCOperand::CreateReg(RegTarget));
   Out.EmitInstruction(POPInst);
 
   if (AmtOp) {
@@ -113,7 +250,7 @@ static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
 
   MCInst JMPInst;
   JMPInst.setOpcode(Is64Bit ? X86::NACL_JMP64r : X86::NACL_JMP32r);
-  JMPInst.addOperand(MCOperand::CreateReg(X86::ECX));
+  JMPInst.addOperand(MCOperand::CreateReg(RegTarget));
   Out.EmitInstruction(JMPInst);
 }
 
@@ -121,8 +258,7 @@ static void EmitTrap(bool Is64Bit, MCStreamer &Out) {
   // Rewrite to:
   //    X86-32:  mov $0, 0
   //    X86-64:  mov $0, (%r15)
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
-  unsigned BaseReg = Is64Bit && !UseZeroBasedSandbox ? X86::R15 : 0;
+  unsigned BaseReg = Is64Bit && !FlagUseZeroBasedSandbox ? X86::R15 : 0;
 
   MCInst Tmp;
   Tmp.setOpcode(X86::MOV32mi);
@@ -140,8 +276,7 @@ static void EmitTrap(bool Is64Bit, MCStreamer &Out) {
 static void EmitRegFix(unsigned Reg64, MCStreamer &Out) {
   // lea (%rsp, %r15, 1), %rsp
   // We do not need to add the R15 base for the zero-based sandbox model
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
-  if (!UseZeroBasedSandbox) {
+  if (!FlagUseZeroBasedSandbox) {
     MCInst Tmp;
     Tmp.setOpcode(X86::LEA64r);
     Tmp.addOperand(MCOperand::CreateReg(Reg64));    // DestReg
@@ -215,9 +350,8 @@ static void EmitRegTruncate(unsigned Reg64, MCStreamer &Out) {
 
 static void HandleMemoryRefTruncation(MCInst *Inst, unsigned IndexOpPosition,
                                       MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   unsigned IndexReg = Inst->getOperand(IndexOpPosition).getReg();
-  if (UseZeroBasedSandbox) {
+  if (FlagUseZeroBasedSandbox) {
     // With the zero-based sandbox, we use a 32-bit register on the index
     Inst->getOperand(IndexOpPosition).setReg(DemoteRegTo32_(IndexReg));
   } else {
@@ -352,7 +486,6 @@ namespace llvm {
 //   these instead of combined instructions. At this time, having only
 //   one explicit prefix is supported.
 bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   // If we are emitting to .s, just emit all pseudo-instructions directly.
   if (Out.hasRawTextSupport()) {
     return false;
@@ -473,7 +606,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     unsigned PrefixLocal = PrefixSaved;
     PrefixSaved = 0;
 
-    if (PrefixLocal || !UseZeroBasedSandbox)
+    if (PrefixLocal || !FlagUseZeroBasedSandbox)
       Out.EmitBundleLock(false);
 
     HandleMemoryRefTruncation(&SandboxedInst, IndexOpPosition, Out);
@@ -483,7 +616,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
       EmitPrefix(PrefixLocal, Out);
     Out.EmitInstruction(SandboxedInst);
 
-    if (PrefixLocal || !UseZeroBasedSandbox)
+    if (PrefixLocal || !FlagUseZeroBasedSandbox)
       Out.EmitBundleUnlock();
     return true;
   }

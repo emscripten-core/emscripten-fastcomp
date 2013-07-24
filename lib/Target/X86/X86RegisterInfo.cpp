@@ -17,6 +17,7 @@
 #include "X86.h"
 #include "X86InstrBuilder.h"
 #include "X86MachineFunctionInfo.h"
+#include "X86NaClDecls.h" // @LOCALMOD
 #include "X86Subtarget.h"
 #include "X86TargetMachine.h"
 #include "llvm/ADT/BitVector.h"
@@ -53,11 +54,6 @@ ForceStackAlign("force-align-stack",
 static cl::opt<bool>
 EnableBasePointer("x86-use-base-pointer", cl::Hidden, cl::init(true),
           cl::desc("Enable use of a base pointer for complex stack frames"));
-
-// @LOCALMOD-BEGIN
-extern cl::opt<bool> FlagUseZeroBasedSandbox;
-extern cl::opt<bool> FlagRestrictR15;
-// @LOCALMOD-END
 
 X86RegisterInfo::X86RegisterInfo(X86TargetMachine &tm,
                                  const TargetInstrInfo &tii)
@@ -394,9 +390,8 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   // @LOCALMOD-START
   const X86Subtarget& Subtarget = MF.getTarget().getSubtarget<X86Subtarget>();
-  const bool UseZeroBasedSandbox = FlagUseZeroBasedSandbox;
   const bool RestrictR15 = FlagRestrictR15;
-  assert(UseZeroBasedSandbox || RestrictR15);
+  assert(FlagUseZeroBasedSandbox || RestrictR15);
   if (Subtarget.isTargetNaCl64()) {
     if (RestrictR15) {
       Reserved.set(X86::R15);
@@ -408,6 +403,16 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     Reserved.set(X86::EBP);
     Reserved.set(X86::BP);
     Reserved.set(X86::BPL);
+    const bool RestrictR11 = FlagHideSandboxBase && !FlagUseZeroBasedSandbox;
+    if (RestrictR11) {
+      // Restrict r11 so that it can be used for indirect jump
+      // sequences that don't leak the sandbox base address onto the
+      // stack.
+      Reserved.set(X86::R11);
+      Reserved.set(X86::R11D);
+      Reserved.set(X86::R11W);
+      Reserved.set(X86::R11B);
+    }
   }
   // @LOCALMOD-END
 

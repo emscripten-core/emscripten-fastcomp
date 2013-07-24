@@ -15,6 +15,7 @@
 #include "X86InstrBuilder.h"
 #include "X86InstrInfo.h"
 #include "X86MachineFunctionInfo.h"
+#include "X86NaClDecls.h" // @LOCALMOD
 #include "X86Subtarget.h"
 #include "X86TargetMachine.h"
 #include "llvm/ADT/SmallSet.h"
@@ -756,8 +757,52 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
     MFI->setOffsetAdjustment(-NumBytes);
 
     // Save EBP/RBP into the appropriate stack slot.
+    // @LOCALMOD-BEGIN
+    unsigned RegToPush = FramePtr;
+    const X86Subtarget *Subtarget = &TM.getSubtarget<X86Subtarget>();
+    const bool HideSandboxBase = (FlagHideSandboxBase &&
+                                  Subtarget->isTargetNaCl64() &&
+                                  !FlagUseZeroBasedSandbox);
+    if (HideSandboxBase) {
+      // Hide the sandbox base address by masking off the upper 32
+      // bits of the pushed/saved RBP on the stack, using:
+      //   mov %ebp, %r10d
+      //   push %r10
+      // instead of:
+      //   push %rbp
+      // Additionally, we can use rax instead of r10 when it is not a
+      // varargs function and therefore rax is available, saving one
+      // byte of REX prefix per instruction.
+      // Note that the epilog already adds R15 when restoring RBP.
+
+      // mov %ebp, %r10d
+      unsigned RegToPushLower;
+      if (Fn->isVarArg()) {
+        // Note: This use of r10 in the prolog can't be used with the
+        // gcc "nest" attribute, due to its use of r10.  Example:
+        // target triple = "x86_64-pc-linux-gnu"
+        // define i64 @func(i64 nest %arg) {
+        //   ret i64 %arg
+        // }
+        //
+        // $ clang -m64 llvm_nest_attr.ll -S -o -
+        // ...
+        // func:
+        //     movq    %r10, %rax
+        //     ret
+        RegToPush = X86::R10;
+        RegToPushLower = X86::R10D;
+      } else {
+        RegToPush = X86::RAX;
+        RegToPushLower = X86::EAX;
+      }
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32rr), RegToPushLower)
+        .addReg(FramePtr)
+        .setMIFlag(MachineInstr::FrameSetup);
+    }
+    // @LOCALMOD-END
     BuildMI(MBB, MBBI, DL, TII.get(Is64Bit ? X86::PUSH64r : X86::PUSH32r))
-      .addReg(FramePtr, RegState::Kill)
+      .addReg(RegToPush, RegState::Kill) // @LOCALMOD
       .setMIFlag(MachineInstr::FrameSetup);
 
     if (needsFrameMoves) {

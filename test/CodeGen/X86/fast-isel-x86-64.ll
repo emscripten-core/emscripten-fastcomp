@@ -55,8 +55,8 @@ define i32 @test3_nacl64() nounwind {
 
 ; NACL64_PIC: test3_nacl64:
 ; NACL64_PIC: movl G@GOTPCREL(%rip), %eax
-; NACL64_PIC-NEXT: popq    %rcx
-; NACL64_PIC-NEXT: nacljmp %ecx, %r15
+; NACL64_PIC-NEXT: popq    %r11
+; NACL64_PIC-NEXT: nacljmp %r11, %r15
 }
 
 
@@ -316,8 +316,8 @@ define void @test23(i8* noalias sret %result) {
 ; NACL64: test23:
 ; NACL64: call
 ; NACL64: movl  %edi, %eax
-; NACL64: popq %rcx
-; NACL64: nacljmp %ecx, %r15
+; NACL64: popq %r11
+; NACL64: nacljmp %r11, %r15
 }
 
 declare i8* @foo23()
