@@ -527,6 +527,11 @@ FunctionPass *llvm::createMipsDelaySlotFillerPass(MipsTargetMachine &tm) {
   return new Filler(tm);
 }
 
+// @LOCALMOD-START
+extern bool IsDangerousLoad(const MachineInstr &MI, int *AddrIdx);
+extern bool IsDangerousStore(const MachineInstr &MI, int *AddrIdx);
+// @LOCALMOD-END
+
 template<typename IterTy>
 bool Filler::searchRange(MachineBasicBlock &MBB, IterTy Begin, IterTy End,
                          RegDefsUses &RegDU, InspectMemInstr& IM,
@@ -536,8 +541,23 @@ bool Filler::searchRange(MachineBasicBlock &MBB, IterTy Begin, IterTy End,
     if (I->isDebugValue())
       continue;
 
-    if (terminateSearch(*I))
-      break;
+    // @LOCALMOD-START
+    // Don't put in delay slot instructions that could be masked.
+    // Should not allow:
+    // ERET, DERET or WAIT, PAUSE. Need to add these to instruction
+    // list. TBD.
+    if (Triple(TM.getTargetTriple()).isOSNaCl()) {
+      int Dummy;
+      if (terminateSearch(*I) || (IsDangerousLoad(*I, &Dummy)
+                              || IsDangerousStore(*I, &Dummy)
+                              || I->modifiesRegister(Mips::SP,
+                                                     TM.getRegisterInfo())))
+        break;
+    } else {
+      if (terminateSearch(*I))
+        break;
+    }
+    // @LOCALMOD-END
 
     assert((!I->isCall() && !I->isReturn() && !I->isBranch()) &&
            "Cannot put calls, returns or branches in delay slot.");

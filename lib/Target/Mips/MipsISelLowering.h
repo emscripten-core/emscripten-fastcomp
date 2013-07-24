@@ -320,6 +320,10 @@ namespace llvm {
 
     bool HasMips64, IsN64, IsO32;
 
+    // @LOCALMOD-BEGIN
+    SDValue GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const;
+    // @LOCALMOD-END
+
   private:
     // Lower Operand helpers
     SDValue LowerCallResult(SDValue Chain, SDValue InFlag,
@@ -388,7 +392,6 @@ namespace llvm {
     // @LOCALMOD-BEGIN
     SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
-    SDValue GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const;
     // @LOCALMOD-END
 
     virtual SDValue

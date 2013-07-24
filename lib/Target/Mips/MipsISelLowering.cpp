@@ -759,6 +759,10 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
   case ISD::LOAD:               return lowerLOAD(Op, DAG);
   case ISD::STORE:              return lowerSTORE(Op, DAG);
   case ISD::ADD:                return lowerADD(Op, DAG);
+  // @LOCALMOD-BEGIN
+  case ISD::NACL_TP_TLS_OFFSET: return LowerNaClTpTlsOffset(Op, DAG);
+  case ISD::NACL_TP_TDB_OFFSET: return LowerNaClTpTdbOffset(Op, DAG);
+  // @LOCALMOD-END
   }
   return SDValue();
 }
