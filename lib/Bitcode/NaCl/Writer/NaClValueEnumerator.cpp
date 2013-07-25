@@ -423,22 +423,3 @@ void NaClValueEnumerator::purgeFunction() {
   BasicBlocks.clear();
   FnForwardTypeRefs.clear();
 }
-
-static void IncorporateFunctionInfoGlobalBBIDs(const Function *F,
-                                 DenseMap<const BasicBlock*, unsigned> &IDMap) {
-  unsigned Counter = 0;
-  for (Function::const_iterator BB = F->begin(), E = F->end(); BB != E; ++BB)
-    IDMap[BB] = ++Counter;
-}
-
-/// getGlobalBasicBlockID - This returns the function-specific ID for the
-/// specified basic block.  This is relatively expensive information, so it
-/// should only be used by rare constructs such as address-of-label.
-unsigned NaClValueEnumerator::getGlobalBasicBlockID(const BasicBlock *BB) const {
-  unsigned &Idx = GlobalBasicBlockIDs[BB];
-  if (Idx != 0)
-    return Idx-1;
-
-  IncorporateFunctionInfoGlobalBBIDs(BB->getParent(), GlobalBasicBlockIDs);
-  return getGlobalBasicBlockID(BB);
-}

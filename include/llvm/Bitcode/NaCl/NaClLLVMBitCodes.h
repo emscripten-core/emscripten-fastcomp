@@ -162,7 +162,7 @@ namespace naclbitc {
     CST_CODE_INLINEASM_OLD = 18,  // No longer used.
     CST_CODE_CE_SHUFVEC_EX = 19,  // Not used in PNaCl.
     CST_CODE_CE_INBOUNDS_GEP = 20,// Not used in PNaCl.
-    CST_CODE_BLOCKADDRESS  = 21,  // CST_CODE_BLOCKADDRESS [fnty, fnval, bb#]
+    CST_CODE_BLOCKADDRESS  = 21,  // Not used in PNaCl.
     CST_CODE_DATA          = 22,  // DATA:          [n x elements]
     CST_CODE_INLINEASM     = 23   // Not used in PNaCl.
   };

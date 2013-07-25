@@ -33,13 +33,6 @@ enum {
   SWITCH_INST_MAGIC = 0x4B5 // May 2012 => 1205 => Hex
 };
 
-void NaClBitcodeReader::materializeForwardReferencedFunctions() {
-  while (!BlockAddrFwdRefs.empty()) {
-    Function *F = BlockAddrFwdRefs.begin()->first;
-    F->Materialize();
-  }
-}
-
 void NaClBitcodeReader::FreeState() {
   if (BufferOwned)
     delete Buffer;
@@ -50,8 +43,6 @@ void NaClBitcodeReader::FreeState() {
   std::vector<BasicBlock*>().swap(FunctionBBs);
   std::vector<Function*>().swap(FunctionsWithBodies);
   DeferredFunctionInfo.clear();
-
-  assert(BlockAddrFwdRefs.empty() && "Unresolved blockaddress fwd references");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1014,37 +1005,6 @@ bool NaClBitcodeReader::ParseConstants() {
       }
       break;
     }
-
-    case naclbitc::CST_CODE_BLOCKADDRESS:{
-      if (Record.size() < 3) return Error("Invalid CE_BLOCKADDRESS record");
-      Type *FnTy = getTypeByID(Record[0]);
-      if (FnTy == 0) return Error("Invalid CE_BLOCKADDRESS record");
-      Function *Fn =
-        dyn_cast_or_null<Function>(ValueList.getConstantFwdRef(Record[1],FnTy));
-      if (Fn == 0) return Error("Invalid CE_BLOCKADDRESS record");
-
-      // If the function is already parsed we can insert the block address right
-      // away.
-      if (!Fn->empty()) {
-        Function::iterator BBI = Fn->begin(), BBE = Fn->end();
-        for (size_t I = 0, E = Record[2]; I != E; ++I) {
-          if (BBI == BBE)
-            return Error("Invalid blockaddress block #");
-          ++BBI;
-        }
-        V = BlockAddress::get(Fn, BBI);
-      } else {
-        // Otherwise insert a placeholder and remember it so it can be inserted
-        // when the function is parsed.
-        GlobalVariable *FwdRef = new GlobalVariable(*Fn->getParent(),
-                                                    Type::getInt8Ty(Context),
-                                            false, GlobalValue::InternalLinkage,
-                                                    0, "");
-        BlockAddrFwdRefs[Fn].push_back(std::make_pair(Record[2], FwdRef));
-        V = FwdRef;
-      }
-      break;
-    }
     }
 
     ValueList.AssignValue(V, NextCstNo);
@@ -1782,25 +1742,6 @@ OutOfRecordLoop:
     }
   }
 
-  // See if anything took the address of blocks in this function.  If so,
-  // resolve them now.
-  DenseMap<Function*, std::vector<BlockAddrRefTy> >::iterator BAFRI =
-    BlockAddrFwdRefs.find(F);
-  if (BAFRI != BlockAddrFwdRefs.end()) {
-    std::vector<BlockAddrRefTy> &RefList = BAFRI->second;
-    for (unsigned i = 0, e = RefList.size(); i != e; ++i) {
-      unsigned BlockIdx = RefList[i].first;
-      if (BlockIdx >= FunctionBBs.size())
-        return Error("Invalid blockaddress block #");
-
-      GlobalVariable *FwdRef = RefList[i].second;
-      FwdRef->replaceAllUsesWith(BlockAddress::get(F, FunctionBBs[BlockIdx]));
-      FwdRef->eraseFromParent();
-    }
-
-    BlockAddrFwdRefs.erase(BAFRI);
-  }
-
   // Trim the value list down to the size it was before we parsed this function.
   ValueList.shrinkTo(ModuleValueListSize);
   std::vector<BasicBlock*>().swap(FunctionBBs);
@@ -1873,16 +1814,6 @@ bool NaClBitcodeReader::isDematerializable(const GlobalValue *GV) const {
   const Function *F = dyn_cast<Function>(GV);
   if (!F || F->isDeclaration())
     return false;
-  // @LOCALMOD-START
-  // Don't dematerialize functions with BBs which have their address taken;
-  // it will cause any referencing blockAddress constants to also be destroyed,
-  // but because they are GVs, they need to stay around until PassManager
-  // finalization.
-  for (Function::const_iterator BB = F->begin(); BB != F->end(); ++BB) {
-    if (BB->hasAddressTaken())
-      return false;
-  }
-  // @LOCALMOD-END
   return DeferredFunctionInfo.count(const_cast<Function*>(F));
 }
 
@@ -1993,8 +1924,6 @@ Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
   // Have the NaClBitcodeReader dtor delete 'Buffer'.
   R->setBufferOwned(true);
 
-  R->materializeForwardReferencedFunctions();
-
   return M;
 }
 
@@ -2015,8 +1944,6 @@ Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
     return 0;
   }
   R->setBufferOwned(false); // no buffer to delete
-
-  R->materializeForwardReferencedFunctions();
 
   return M;
 }

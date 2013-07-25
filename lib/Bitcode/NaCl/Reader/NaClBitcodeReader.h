@@ -155,11 +155,6 @@ class NaClBitcodeReader : public GVMaterializer {
   /// stream.
   DenseMap<Function*, uint64_t> DeferredFunctionInfo;
 
-  /// BlockAddrFwdRefs - These are blockaddr references to basic blocks.  These
-  /// are resolved lazily when functions are loaded.
-  typedef std::pair<unsigned, GlobalVariable*> BlockAddrRefTy;
-  DenseMap<Function*, std::vector<BlockAddrRefTy> > BlockAddrFwdRefs;
-
   /// UseRelativeIDs - Indicates that we are using a new encoding for
   /// instruction operands where most operands in the current
   /// FUNCTION_BLOCK are encoded relative to the instruction number,
@@ -192,8 +187,6 @@ public:
   ~NaClBitcodeReader() {
     FreeState();
   }
-
-  void materializeForwardReferencedFunctions();
 
   void FreeState();
 

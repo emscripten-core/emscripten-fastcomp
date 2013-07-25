@@ -753,11 +753,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       for (unsigned i = 0, e = C->getNumOperands(); i != e; ++i)
         Record.push_back(VE.getValueID(C->getOperand(i)));
       AbbrevToUse = AggregateAbbrev;
-    } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(C)) {
-      Code = naclbitc::CST_CODE_BLOCKADDRESS;
-      Record.push_back(VE.getTypeID(BA->getFunction()->getType()));
-      Record.push_back(VE.getValueID(BA->getFunction()));
-      Record.push_back(VE.getGlobalBasicBlockID(BA->getBasicBlock()));
     } else {
 #ifndef NDEBUG
       C->dump();
