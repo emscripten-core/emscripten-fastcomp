@@ -160,44 +160,6 @@ static unsigned GetEncodedBinaryOpcode(unsigned Opcode, const Value &V) {
   }
 }
 
-static unsigned GetEncodedRMWOperation(AtomicRMWInst::BinOp Op) {
-  switch (Op) {
-  default: report_fatal_error("Unknown RMW operation!");
-  case AtomicRMWInst::Xchg: return naclbitc::RMW_XCHG;
-  case AtomicRMWInst::Add: return naclbitc::RMW_ADD;
-  case AtomicRMWInst::Sub: return naclbitc::RMW_SUB;
-  case AtomicRMWInst::And: return naclbitc::RMW_AND;
-  case AtomicRMWInst::Nand: return naclbitc::RMW_NAND;
-  case AtomicRMWInst::Or: return naclbitc::RMW_OR;
-  case AtomicRMWInst::Xor: return naclbitc::RMW_XOR;
-  case AtomicRMWInst::Max: return naclbitc::RMW_MAX;
-  case AtomicRMWInst::Min: return naclbitc::RMW_MIN;
-  case AtomicRMWInst::UMax: return naclbitc::RMW_UMAX;
-  case AtomicRMWInst::UMin: return naclbitc::RMW_UMIN;
-  }
-}
-
-static unsigned GetEncodedOrdering(AtomicOrdering Ordering) {
-  switch (Ordering) {
-  default: report_fatal_error("Invalid ordering");
-  case NotAtomic: return naclbitc::ORDERING_NOTATOMIC;
-  case Unordered: return naclbitc::ORDERING_UNORDERED;
-  case Monotonic: return naclbitc::ORDERING_MONOTONIC;
-  case Acquire: return naclbitc::ORDERING_ACQUIRE;
-  case Release: return naclbitc::ORDERING_RELEASE;
-  case AcquireRelease: return naclbitc::ORDERING_ACQREL;
-  case SequentiallyConsistent: return naclbitc::ORDERING_SEQCST;
-  }
-}
-
-static unsigned GetEncodedSynchScope(SynchronizationScope SynchScope) {
-  switch (SynchScope) {
-  default: report_fatal_error("Invalid synch scope");
-  case SingleThread: return naclbitc::SYNCHSCOPE_SINGLETHREAD;
-  case CrossThread: return naclbitc::SYNCHSCOPE_CROSSTHREAD;
-  }
-}
-
 static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
   switch (conv) {
   default: report_fatal_error(
@@ -912,53 +874,11 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       ReportIllegalValue("instruction", I);
     }
     break;
-
-  case Instruction::GetElementPtr:
-    Code = naclbitc::FUNC_CODE_INST_GEP;
-    if (cast<GEPOperator>(&I)->isInBounds())
-      Code = naclbitc::FUNC_CODE_INST_INBOUNDS_GEP;
-    for (unsigned i = 0, e = I.getNumOperands(); i != e; ++i)
-      pushValue(I.getOperand(i), InstID, Vals, VE, Stream);
-    break;
-  case Instruction::ExtractValue: {
-    Code = naclbitc::FUNC_CODE_INST_EXTRACTVAL;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    const ExtractValueInst *EVI = cast<ExtractValueInst>(&I);
-    for (const unsigned *i = EVI->idx_begin(), *e = EVI->idx_end(); i != e; ++i)
-      Vals.push_back(*i);
-    break;
-  }
-  case Instruction::InsertValue: {
-    Code = naclbitc::FUNC_CODE_INST_INSERTVAL;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-    const InsertValueInst *IVI = cast<InsertValueInst>(&I);
-    for (const unsigned *i = IVI->idx_begin(), *e = IVI->idx_end(); i != e; ++i)
-      Vals.push_back(*i);
-    break;
-  }
   case Instruction::Select:
     Code = naclbitc::FUNC_CODE_INST_VSELECT;
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    break;
-  case Instruction::ExtractElement:
-    Code = naclbitc::FUNC_CODE_INST_EXTRACTELT;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-    break;
-  case Instruction::InsertElement:
-    Code = naclbitc::FUNC_CODE_INST_INSERTELT;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-    pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
-    break;
-  case Instruction::ShuffleVector:
-    Code = naclbitc::FUNC_CODE_INST_SHUFFLEVEC;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-    pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
     break;
   case Instruction::ICmp:
   case Instruction::FCmp:
@@ -1053,22 +973,6 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       return;
     }
     break;
-  case Instruction::IndirectBr:
-    Code = naclbitc::FUNC_CODE_INST_INDIRECTBR;
-    Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));
-    // Encode the address operand as relative, but not the basic blocks.
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    for (unsigned i = 1, e = I.getNumOperands(); i != e; ++i)
-      Vals.push_back(VE.getValueID(I.getOperand(i)));
-    break;
-
-  case Instruction::Invoke:
-    report_fatal_error("Invoke is not allowed in PNaCl bitcode");
-    break;
-  case Instruction::Resume:
-    Code = naclbitc::FUNC_CODE_INST_RESUME;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    break;
   case Instruction::Unreachable:
     Code = naclbitc::FUNC_CODE_INST_UNREACHABLE;
     AbbrevToUse = FUNCTION_INST_UNREACHABLE_ABBREV;
@@ -1092,23 +996,6 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     return;
   }
 
-  case Instruction::LandingPad: {
-    const LandingPadInst &LP = cast<LandingPadInst>(I);
-    Code = naclbitc::FUNC_CODE_INST_LANDINGPAD;
-    Vals.push_back(VE.getTypeID(LP.getType()));
-    pushValue(LP.getPersonalityFn(), InstID, Vals, VE, Stream);
-    Vals.push_back(LP.isCleanup());
-    Vals.push_back(LP.getNumClauses());
-    for (unsigned I = 0, E = LP.getNumClauses(); I != E; ++I) {
-      if (LP.isCatch(I))
-        Vals.push_back(LandingPadInst::Catch);
-      else
-        Vals.push_back(LandingPadInst::Filter);
-      pushValue(LP.getClause(I), InstID, Vals, VE, Stream);
-    }
-    break;
-  }
-
   case Instruction::Alloca:
     if (!cast<AllocaInst>(&I)->getAllocatedType()->isIntegerTy(8))
       report_fatal_error("Type of alloca instruction is not i8");
@@ -1118,61 +1005,18 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     break;
 
   case Instruction::Load:
-    if (cast<LoadInst>(I).isAtomic()) {
-      Code = naclbitc::FUNC_CODE_INST_LOADATOMIC;
-      pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
-    } else {
-      Code = naclbitc::FUNC_CODE_INST_LOAD;
-      pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // ptr
-      AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
-    }
+    Code = naclbitc::FUNC_CODE_INST_LOAD;
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // ptr
+    AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
     Vals.push_back(Log2_32(cast<LoadInst>(I).getAlignment())+1);
     Vals.push_back(cast<LoadInst>(I).isVolatile());
-    if (cast<LoadInst>(I).isAtomic()) {
-      Vals.push_back(GetEncodedOrdering(cast<LoadInst>(I).getOrdering()));
-      Vals.push_back(GetEncodedSynchScope(cast<LoadInst>(I).getSynchScope()));
-    }
     break;
   case Instruction::Store:
-    if (cast<StoreInst>(I).isAtomic())
-      Code = naclbitc::FUNC_CODE_INST_STOREATOMIC;
-    else
-      Code = naclbitc::FUNC_CODE_INST_STORE;
+    Code = naclbitc::FUNC_CODE_INST_STORE;
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);  // ptrty + ptr
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // val.
     Vals.push_back(Log2_32(cast<StoreInst>(I).getAlignment())+1);
     Vals.push_back(cast<StoreInst>(I).isVolatile());
-    if (cast<StoreInst>(I).isAtomic()) {
-      Vals.push_back(GetEncodedOrdering(cast<StoreInst>(I).getOrdering()));
-      Vals.push_back(GetEncodedSynchScope(cast<StoreInst>(I).getSynchScope()));
-    }
-    break;
-  case Instruction::AtomicCmpXchg:
-    Code = naclbitc::FUNC_CODE_INST_CMPXCHG;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // ptrty + ptr
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);  // cmp.
-    pushValue(I.getOperand(2), InstID, Vals, VE, Stream);  // newval.
-    Vals.push_back(cast<AtomicCmpXchgInst>(I).isVolatile());
-    Vals.push_back(GetEncodedOrdering(
-                     cast<AtomicCmpXchgInst>(I).getOrdering()));
-    Vals.push_back(GetEncodedSynchScope(
-                     cast<AtomicCmpXchgInst>(I).getSynchScope()));
-    break;
-  case Instruction::AtomicRMW:
-    Code = naclbitc::FUNC_CODE_INST_ATOMICRMW;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // ptrty + ptr
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);  // val.
-    Vals.push_back(GetEncodedRMWOperation(
-                     cast<AtomicRMWInst>(I).getOperation()));
-    Vals.push_back(cast<AtomicRMWInst>(I).isVolatile());
-    Vals.push_back(GetEncodedOrdering(cast<AtomicRMWInst>(I).getOrdering()));
-    Vals.push_back(GetEncodedSynchScope(
-                     cast<AtomicRMWInst>(I).getSynchScope()));
-    break;
-  case Instruction::Fence:
-    Code = naclbitc::FUNC_CODE_INST_FENCE;
-    Vals.push_back(GetEncodedOrdering(cast<FenceInst>(I).getOrdering()));
-    Vals.push_back(GetEncodedSynchScope(cast<FenceInst>(I).getSynchScope()));
     break;
   case Instruction::Call: {
     const CallInst &CI = cast<CallInst>(I);
@@ -1204,12 +1048,6 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     }
     break;
   }
-  case Instruction::VAArg:
-    Code = naclbitc::FUNC_CODE_INST_VAARG;
-    Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));   // valistty
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream); // valist.
-    Vals.push_back(VE.getTypeID(I.getType())); // restype.
-    break;
   }
 
   Stream.EmitRecord(Code, Vals, AbbrevToUse);

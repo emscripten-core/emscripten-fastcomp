@@ -233,23 +233,6 @@ namespace naclbitc {
     BINOP_XOR  = 12
   };
 
-  /// These are values used in the bitcode files to encode AtomicRMW operations.
-  /// The values of these enums have no fixed relation to the LLVM IR enum
-  /// values.  Changing these will break compatibility with old files.
-  enum NaClRMWOperations {
-    RMW_XCHG = 0,
-    RMW_ADD = 1,
-    RMW_SUB = 2,
-    RMW_AND = 3,
-    RMW_NAND = 4,
-    RMW_OR = 5,
-    RMW_XOR = 6,
-    RMW_MAX = 7,
-    RMW_MIN = 8,
-    RMW_UMAX = 9,
-    RMW_UMIN = 10
-  };
-
   /// OverflowingBinaryOperatorOptionalFlags - Flags for serializing
   /// OverflowingBinaryOperator's SubclassOptionalData contents.
   enum NaClOverflowingBinaryOperatorOptionalFlags {
@@ -273,26 +256,9 @@ namespace naclbitc {
     FPO_ALLOW_RECIPROCAL = 4
   };
 
-  /// Encoded AtomicOrdering values.
-  enum NaClAtomicOrderingCodes {
-    ORDERING_NOTATOMIC = 0,
-    ORDERING_UNORDERED = 1,
-    ORDERING_MONOTONIC = 2,
-    ORDERING_ACQUIRE = 3,
-    ORDERING_RELEASE = 4,
-    ORDERING_ACQREL = 5,
-    ORDERING_SEQCST = 6
-  };
-
   /// Encoded function calling conventions.
   enum NaClCallingConventions {
     C_CallingConv = 0
-  };
-
-  /// Encoded SynchronizationScope values.
-  enum NaClAtomicSynchScopeCodes {
-    SYNCHSCOPE_SINGLETHREAD = 0,
-    SYNCHSCOPE_CROSSTHREAD = 1
   };
 
   // The function body block (FUNCTION_BLOCK_ID) describes function bodies.  It
@@ -303,17 +269,17 @@ namespace naclbitc {
     FUNC_CODE_INST_BINOP       =  2, // BINOP:      [opval, opval, opcode
                                      //              [, flags]]
     FUNC_CODE_INST_CAST        =  3, // CAST:       [opval, destty, castopc]
-    FUNC_CODE_INST_GEP         =  4, // GEP:        [n x operands]
+    FUNC_CODE_INST_GEP         =  4, // Not used in PNaCl.
     FUNC_CODE_INST_SELECT      =  5, // SELECT:     [opval, opval, opval]
-    FUNC_CODE_INST_EXTRACTELT  =  6, // EXTRACTELT: [opval, opval]
-    FUNC_CODE_INST_INSERTELT   =  7, // INSERTELT:  [opval, opval, opval]
-    FUNC_CODE_INST_SHUFFLEVEC  =  8, // SHUFFLEVEC: [opval, opval, opval]
+    FUNC_CODE_INST_EXTRACTELT  =  6, // Not used in PNaCl.
+    FUNC_CODE_INST_INSERTELT   =  7, // Not used in PNaCl.
+    FUNC_CODE_INST_SHUFFLEVEC  =  8, // Not used in PNaCl.
     FUNC_CODE_INST_CMP         =  9, // CMP:        [opval, opval, pred]
 
     FUNC_CODE_INST_RET         = 10, // RET:        [opval<optional>]
     FUNC_CODE_INST_BR          = 11, // BR:         [bb#, bb#, cond] or [bb#]
     FUNC_CODE_INST_SWITCH      = 12, // SWITCH:     [opty, op0, op1, ...]
-    FUNC_CODE_INST_INVOKE      = 13, // No longer allowed.
+    FUNC_CODE_INST_INVOKE      = 13, // Not used in PNaCl.
     // 14 is unused.
     FUNC_CODE_INST_UNREACHABLE = 15, // UNREACHABLE
 
@@ -324,39 +290,34 @@ namespace naclbitc {
     FUNC_CODE_INST_LOAD        = 20, // LOAD:       [op, align, vol]
     // 21 is unused.
     // 22 is unused.
-    FUNC_CODE_INST_VAARG       = 23, // VAARG:      [valistty, valist, instty]
+    FUNC_CODE_INST_VAARG       = 23, // Not used in PNaCl.
     // This store code encodes the pointer type, rather than the value type
     // this is so information only available in the pointer type (e.g. address
     // spaces) is retained.
     FUNC_CODE_INST_STORE       = 24, // STORE:      [ptr, val, align, vol]
     // 25 is unused.
-    FUNC_CODE_INST_EXTRACTVAL  = 26, // EXTRACTVAL: [opval, n x indices]
-    FUNC_CODE_INST_INSERTVAL   = 27, // INSERTVAL:  [opval, opval, n x indices]
+    FUNC_CODE_INST_EXTRACTVAL  = 26, // Not used in PNaCl.
+    FUNC_CODE_INST_INSERTVAL   = 27, // Not used in PNaCl.
     // fcmp/icmp returning Int1TY or vector of Int1Ty. Same as CMP, exists to
     // support legacy vicmp/vfcmp instructions.
     FUNC_CODE_INST_CMP2        = 28, // CMP2:       [opval, opval, pred]
     // new select on i1 or [N x i1]
     FUNC_CODE_INST_VSELECT     = 29, // VSELECT:    [opval, opval, pred]
-    FUNC_CODE_INST_INBOUNDS_GEP= 30, // INBOUNDS_GEP: [n x operands]
-    FUNC_CODE_INST_INDIRECTBR  = 31, // INDIRECTBR: [opty, op0, op1, ...]
+    FUNC_CODE_INST_INBOUNDS_GEP= 30, // Not used in PNaCl.
+    FUNC_CODE_INST_INDIRECTBR  = 31, // Not used in PNaCl.
     // 32 is unused.
     FUNC_CODE_DEBUG_LOC_AGAIN  = 33, // Not used in PNaCl.
 
     FUNC_CODE_INST_CALL        = 34, // CALL:       [cc, fnid, args...]
 
     FUNC_CODE_DEBUG_LOC        = 35, // Not used in PNaCl.
-    FUNC_CODE_INST_FENCE       = 36, // FENCE: [ordering, synchscope]
-    FUNC_CODE_INST_CMPXCHG     = 37, // CMPXCHG: [ptr, cmp, new, align, vol,
-                                     //           ordering, synchscope]
-    FUNC_CODE_INST_ATOMICRMW   = 38, // ATOMICRMW: [ptr,val, operation,
-                                     //             align, vol,
-                                     //             ordering, synchscope]
-    FUNC_CODE_INST_RESUME      = 39, // RESUME:     [opval]
-    FUNC_CODE_INST_LANDINGPAD  = 40, // LANDINGPAD: [ty,val,val,num,id0,val0...]
-    FUNC_CODE_INST_LOADATOMIC  = 41, // LOAD: [op, align, vol,
-                                     //        ordering, synchscope]
-    FUNC_CODE_INST_STOREATOMIC = 42, // STORE: [ptr, val, align, vol
-                                     //         ordering, synchscope]
+    FUNC_CODE_INST_FENCE       = 36, // Not used in PNaCl.
+    FUNC_CODE_INST_CMPXCHG     = 37, // Not used in PNaCl.
+    FUNC_CODE_INST_ATOMICRMW   = 38, // Not used in PNaCl.
+    FUNC_CODE_INST_RESUME      = 39, // Not used in PNaCl.
+    FUNC_CODE_INST_LANDINGPAD  = 40, // Not used in PNaCl.
+    FUNC_CODE_INST_LOADATOMIC  = 41, // Not used in PNaCl.
+    FUNC_CODE_INST_STOREATOMIC = 42, // Not used in PNaCl.
     FUNC_CODE_INST_FORWARDTYPEREF = 43 // TYPE: [opval, ty]
   };
 

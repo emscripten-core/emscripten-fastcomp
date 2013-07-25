@@ -134,44 +134,6 @@ static int GetDecodedBinaryOpcode(unsigned Val, Type *Ty) {
   }
 }
 
-static AtomicRMWInst::BinOp GetDecodedRMWOperation(unsigned Val) {
-  switch (Val) {
-  default: return AtomicRMWInst::BAD_BINOP;
-  case naclbitc::RMW_XCHG: return AtomicRMWInst::Xchg;
-  case naclbitc::RMW_ADD: return AtomicRMWInst::Add;
-  case naclbitc::RMW_SUB: return AtomicRMWInst::Sub;
-  case naclbitc::RMW_AND: return AtomicRMWInst::And;
-  case naclbitc::RMW_NAND: return AtomicRMWInst::Nand;
-  case naclbitc::RMW_OR: return AtomicRMWInst::Or;
-  case naclbitc::RMW_XOR: return AtomicRMWInst::Xor;
-  case naclbitc::RMW_MAX: return AtomicRMWInst::Max;
-  case naclbitc::RMW_MIN: return AtomicRMWInst::Min;
-  case naclbitc::RMW_UMAX: return AtomicRMWInst::UMax;
-  case naclbitc::RMW_UMIN: return AtomicRMWInst::UMin;
-  }
-}
-
-static AtomicOrdering GetDecodedOrdering(unsigned Val) {
-  switch (Val) {
-  case naclbitc::ORDERING_NOTATOMIC: return NotAtomic;
-  case naclbitc::ORDERING_UNORDERED: return Unordered;
-  case naclbitc::ORDERING_MONOTONIC: return Monotonic;
-  case naclbitc::ORDERING_ACQUIRE: return Acquire;
-  case naclbitc::ORDERING_RELEASE: return Release;
-  case naclbitc::ORDERING_ACQREL: return AcquireRelease;
-  default: // Map unknown orderings to sequentially-consistent.
-  case naclbitc::ORDERING_SEQCST: return SequentiallyConsistent;
-  }
-}
-
-static SynchronizationScope GetDecodedSynchScope(unsigned Val) {
-  switch (Val) {
-  case naclbitc::SYNCHSCOPE_SINGLETHREAD: return SingleThread;
-  default: // Map unknown scopes to cross-thread.
-  case naclbitc::SYNCHSCOPE_CROSSTHREAD: return CrossThread;
-  }
-}
-
 static CallingConv::ID GetDecodedCallingConv(unsigned Val) {
   switch (Val) {
   default:
@@ -1439,8 +1401,17 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     Instruction *I = 0;
     unsigned BitCode = Stream.readRecord(Entry.ID, Record);
     switch (BitCode) {
-    default: // Default behavior: reject
-      return Error("Unknown instruction");
+    default: {// Default behavior: reject
+      std::string Message;
+      raw_string_ostream StrM(Message);
+      StrM << "Unknown instruction record: <" << BitCode;
+      for (unsigned I = 0, E = Record.size(); I != E; ++I) {
+        StrM << " " << Record[I];
+      }
+      StrM << ">";
+      return Error(StrM.str());
+    }
+
     case naclbitc::FUNC_CODE_DECLAREBLOCKS:     // DECLAREBLOCKS: [nblocks]
       if (Record.size() < 1 || Record[0] == 0)
         return Error("Invalid DECLAREBLOCKS record");
@@ -1511,69 +1482,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       I = CastInst::Create((Instruction::CastOps)Opc, Op, ResTy);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_INBOUNDS_GEP:
-    case naclbitc::FUNC_CODE_INST_GEP: { // GEP: [n x operands]
-      unsigned OpNum = 0;
-      Value *BasePtr;
-      if (popValue(Record, &OpNum, NextValueNo, &BasePtr))
-        return Error("Invalid GEP record");
-
-      SmallVector<Value*, 16> GEPIdx;
-      while (OpNum != Record.size()) {
-        Value *Op;
-        if (popValue(Record, &OpNum, NextValueNo, &Op))
-          return Error("Invalid GEP record");
-        GEPIdx.push_back(Op);
-      }
-
-      I = GetElementPtrInst::Create(BasePtr, GEPIdx);
-      if (BitCode == naclbitc::FUNC_CODE_INST_INBOUNDS_GEP)
-        cast<GetElementPtrInst>(I)->setIsInBounds(true);
-      break;
-    }
-
-    case naclbitc::FUNC_CODE_INST_EXTRACTVAL: {
-                                       // EXTRACTVAL: [opval, n x indices]
-      unsigned OpNum = 0;
-      Value *Agg;
-      if (popValue(Record, &OpNum, NextValueNo, &Agg))
-        return Error("Invalid EXTRACTVAL record");
-
-      SmallVector<unsigned, 4> EXTRACTVALIdx;
-      for (unsigned RecSize = Record.size();
-           OpNum != RecSize; ++OpNum) {
-        uint64_t Index = Record[OpNum];
-        if ((unsigned)Index != Index)
-          return Error("Invalid EXTRACTVAL index");
-        EXTRACTVALIdx.push_back((unsigned)Index);
-      }
-
-      I = ExtractValueInst::Create(Agg, EXTRACTVALIdx);
-      break;
-    }
-
-    case naclbitc::FUNC_CODE_INST_INSERTVAL: {
-                           // INSERTVAL: [opval, opval, n x indices]
-      unsigned OpNum = 0;
-      Value *Agg;
-      if (popValue(Record, &OpNum, NextValueNo, &Agg))
-        return Error("Invalid INSERTVAL record");
-      Value *Val;
-      if (popValue(Record, &OpNum, NextValueNo, &Val))
-        return Error("Invalid INSERTVAL record");
-
-      SmallVector<unsigned, 4> INSERTVALIdx;
-      for (unsigned RecSize = Record.size();
-           OpNum != RecSize; ++OpNum) {
-        uint64_t Index = Record[OpNum];
-        if ((unsigned)Index != Index)
-          return Error("Invalid INSERTVAL index");
-        INSERTVALIdx.push_back((unsigned)Index);
-      }
-
-      I = InsertValueInst::Create(Agg, Val, INSERTVALIdx);
-      break;
-    }
 
     case naclbitc::FUNC_CODE_INST_SELECT: { // SELECT: [opval, opval, opval]
       // obsolete form of select
@@ -1612,40 +1520,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = SelectInst::Create(Cond, TrueVal, FalseVal);
-      break;
-    }
-
-    case naclbitc::FUNC_CODE_INST_EXTRACTELT: { // EXTRACTELT: [opval, opval]
-      unsigned OpNum = 0;
-      Value *Vec, *Idx;
-      if (popValue(Record, &OpNum, NextValueNo, &Vec) ||
-          popValue(Record, &OpNum, NextValueNo, &Idx))
-        return Error("Invalid EXTRACTELT record");
-      I = ExtractElementInst::Create(Vec, Idx);
-      break;
-    }
-
-    case naclbitc::FUNC_CODE_INST_INSERTELT: { // INSERTELT: [opval, opval, opval]
-      unsigned OpNum = 0;
-      Value *Vec, *Elt, *Idx;
-      if (popValue(Record, &OpNum, NextValueNo, &Vec) ||
-          popValue(Record, &OpNum, NextValueNo, &Elt) ||
-          popValue(Record, &OpNum, NextValueNo, &Idx))
-        return Error("Invalid INSERTELT record");
-      I = InsertElementInst::Create(Vec, Elt, Idx);
-      break;
-    }
-
-    case naclbitc::FUNC_CODE_INST_SHUFFLEVEC: {// SHUFFLEVEC: [opval, opval, opval]
-      unsigned OpNum = 0;
-      Value *Vec1, *Vec2, *Mask;
-      if (popValue(Record, &OpNum, NextValueNo, &Vec1) ||
-          popValue(Record, &OpNum, NextValueNo, &Vec2))
-        return Error("Invalid SHUFFLEVEC record");
-
-      if (popValue(Record, &OpNum, NextValueNo, &Mask))
-        return Error("Invalid SHUFFLEVEC record");
-      I = new ShuffleVectorInst(Vec1, Vec2, Mask);
       break;
     }
 
@@ -1759,38 +1633,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       I = SI;
       break;
     }
-    case naclbitc::FUNC_CODE_INST_INDIRECTBR: { // INDIRECTBR: [opty, op0, op1, ...]
-      if (Record.size() < 2)
-        return Error("Invalid INDIRECTBR record");
-      Type *OpTy = getTypeByID(Record[0]);
-      Value *Address = getValue(Record, 1, NextValueNo);
-      if (OpTy == 0 || Address == 0)
-        return Error("Invalid INDIRECTBR record");
-      unsigned NumDests = Record.size()-2;
-      IndirectBrInst *IBI = IndirectBrInst::Create(Address, NumDests);
-      for (unsigned i = 0, e = NumDests; i != e; ++i) {
-        if (BasicBlock *DestBB = getBasicBlock(Record[2+i])) {
-          IBI->addDestination(DestBB);
-        } else {
-          delete IBI;
-          return Error("Invalid INDIRECTBR record!");
-        }
-      }
-      I = IBI;
-      break;
-    }
-
-    case naclbitc::FUNC_CODE_INST_INVOKE:
-      return Error("Invoke is not allowed");
-      break;
-    case naclbitc::FUNC_CODE_INST_RESUME: { // RESUME: [opval]
-      unsigned Idx = 0;
-      Value *Val = 0;
-      if (popValue(Record, &Idx, NextValueNo, &Val))
-        return Error("Invalid RESUME record");
-      I = ResumeInst::Create(Val);
-      break;
-    }
     case naclbitc::FUNC_CODE_INST_UNREACHABLE: // UNREACHABLE
       I = new UnreachableInst(Context);
       break;
@@ -1819,44 +1661,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_LANDINGPAD: {
-      // LANDINGPAD: [ty, val, val, num, (id0,val0 ...)?]
-      unsigned Idx = 0;
-      if (Record.size() < 4)
-        return Error("Invalid LANDINGPAD record");
-      Type *Ty = getTypeByID(Record[Idx++]);
-      if (!Ty) return Error("Invalid LANDINGPAD record");
-      Value *PersFn = 0;
-      if (popValue(Record, &Idx, NextValueNo, &PersFn))
-        return Error("Invalid LANDINGPAD record");
-
-      bool IsCleanup = !!Record[Idx++];
-      unsigned NumClauses = Record[Idx++];
-      LandingPadInst *LP = LandingPadInst::Create(Ty, PersFn, NumClauses);
-      LP->setCleanup(IsCleanup);
-      for (unsigned J = 0; J != NumClauses; ++J) {
-        LandingPadInst::ClauseType CT =
-          LandingPadInst::ClauseType(Record[Idx++]); (void)CT;
-        Value *Val;
-
-        if (popValue(Record, &Idx, NextValueNo, &Val)) {
-          delete LP;
-          return Error("Invalid LANDINGPAD record");
-        }
-
-        assert((CT != LandingPadInst::Catch ||
-                !isa<ArrayType>(Val->getType())) &&
-               "Catch clause has a invalid type!");
-        assert((CT != LandingPadInst::Filter ||
-                isa<ArrayType>(Val->getType())) &&
-               "Filter clause has invalid type!");
-        LP->addClause(Val);
-      }
-
-      I = LP;
-      break;
-    }
-
     case naclbitc::FUNC_CODE_INST_ALLOCA: { // ALLOCA: [op, align]
       if (Record.size() != 2)
         return Error("Invalid ALLOCA record");
@@ -1878,27 +1682,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_LOADATOMIC: {
-       // LOADATOMIC: [op, align, vol, ordering, synchscope]
-      unsigned OpNum = 0;
-      Value *Op;
-      if (popValue(Record, &OpNum, NextValueNo, &Op) ||
-          OpNum+4 != Record.size())
-        return Error("Invalid LOADATOMIC record");
-
-
-      AtomicOrdering Ordering = GetDecodedOrdering(Record[OpNum+2]);
-      if (Ordering == NotAtomic || Ordering == Release ||
-          Ordering == AcquireRelease)
-        return Error("Invalid LOADATOMIC record");
-      if (Ordering != NotAtomic && Record[OpNum] == 0)
-        return Error("Invalid LOADATOMIC record");
-      SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+3]);
-
-      I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1,
-                       Ordering, SynchScope);
-      break;
-    }
     case naclbitc::FUNC_CODE_INST_STORE: { // STORE2:[ptr, val, align, vol]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
@@ -1908,75 +1691,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid STORE record");
 
       I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-      break;
-    }
-    case naclbitc::FUNC_CODE_INST_STOREATOMIC: {
-      // STOREATOMIC: [ptr, val, align, vol, ordering, synchscope]
-      unsigned OpNum = 0;
-      Value *Val, *Ptr;
-      if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
-          popValue(Record, &OpNum, NextValueNo, &Val) ||
-          OpNum+4 != Record.size())
-        return Error("Invalid STOREATOMIC record");
-
-      AtomicOrdering Ordering = GetDecodedOrdering(Record[OpNum+2]);
-      if (Ordering == NotAtomic || Ordering == Acquire ||
-          Ordering == AcquireRelease)
-        return Error("Invalid STOREATOMIC record");
-      SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+3]);
-      if (Ordering != NotAtomic && Record[OpNum] == 0)
-        return Error("Invalid STOREATOMIC record");
-
-      I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1,
-                        Ordering, SynchScope);
-      break;
-    }
-    case naclbitc::FUNC_CODE_INST_CMPXCHG: {
-      // CMPXCHG:[ptr, cmp, new, vol, ordering, synchscope]
-      unsigned OpNum = 0;
-      Value *Ptr, *Cmp, *New;
-      if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
-          popValue(Record, &OpNum, NextValueNo, &Cmp) ||
-          popValue(Record, &OpNum, NextValueNo, &New) ||
-          OpNum+3 != Record.size())
-        return Error("Invalid CMPXCHG record");
-      AtomicOrdering Ordering = GetDecodedOrdering(Record[OpNum+1]);
-      if (Ordering == NotAtomic || Ordering == Unordered)
-        return Error("Invalid CMPXCHG record");
-      SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+2]);
-      I = new AtomicCmpXchgInst(Ptr, Cmp, New, Ordering, SynchScope);
-      cast<AtomicCmpXchgInst>(I)->setVolatile(Record[OpNum]);
-      break;
-    }
-    case naclbitc::FUNC_CODE_INST_ATOMICRMW: {
-      // ATOMICRMW:[ptr, val, op, vol, ordering, synchscope]
-      unsigned OpNum = 0;
-      Value *Ptr, *Val;
-      if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
-          popValue(Record, &OpNum, NextValueNo, &Val) ||
-          OpNum+4 != Record.size())
-        return Error("Invalid ATOMICRMW record");
-      AtomicRMWInst::BinOp Operation = GetDecodedRMWOperation(Record[OpNum]);
-      if (Operation < AtomicRMWInst::FIRST_BINOP ||
-          Operation > AtomicRMWInst::LAST_BINOP)
-        return Error("Invalid ATOMICRMW record");
-      AtomicOrdering Ordering = GetDecodedOrdering(Record[OpNum+2]);
-      if (Ordering == NotAtomic || Ordering == Unordered)
-        return Error("Invalid ATOMICRMW record");
-      SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+3]);
-      I = new AtomicRMWInst(Operation, Ptr, Val, Ordering, SynchScope);
-      cast<AtomicRMWInst>(I)->setVolatile(Record[OpNum+1]);
-      break;
-    }
-    case naclbitc::FUNC_CODE_INST_FENCE: { // FENCE:[ordering, synchscope]
-      if (2 != Record.size())
-        return Error("Invalid FENCE record");
-      AtomicOrdering Ordering = GetDecodedOrdering(Record[0]);
-      if (Ordering == NotAtomic || Ordering == Unordered ||
-          Ordering == Monotonic)
-        return Error("Invalid FENCE record");
-      SynchronizationScope SynchScope = GetDecodedSynchScope(Record[1]);
-      I = new FenceInst(Context, Ordering, SynchScope);
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL: {
@@ -2023,17 +1737,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       I = CallInst::Create(Callee, Args);
       cast<CallInst>(I)->setCallingConv(GetDecodedCallingConv(CCInfo>>1));
       cast<CallInst>(I)->setTailCall(CCInfo & 1);
-      break;
-    }
-    case naclbitc::FUNC_CODE_INST_VAARG: { // VAARG: [valistty, valist, instty]
-      if (Record.size() < 3)
-        return Error("Invalid VAARG record");
-      Type *OpTy = getTypeByID(Record[0]);
-      Value *Op = getValue(Record, 1, NextValueNo);
-      Type *ResTy = getTypeByID(Record[2]);
-      if (!OpTy || !Op || !ResTy)
-        return Error("Invalid VAARG record");
-      I = new VAArgInst(Op, ResTy);
       break;
     }
     case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF:
