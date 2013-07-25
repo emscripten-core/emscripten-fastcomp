@@ -63,7 +63,6 @@ enum {
   // CONSTANTS_BLOCK abbrev id's.
   CONSTANTS_SETTYPE_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   CONSTANTS_INTEGER_ABBREV,
-  CONSTANTS_CE_CAST_Abbrev,
   CONSTANTS_NULL_Abbrev,
   CONSTANTS_MAX_ABBREV = CONSTANTS_NULL_Abbrev,
 
@@ -706,25 +705,8 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       Record.clear();
     }
 
-    if (const InlineAsm *IA = dyn_cast<InlineAsm>(V)) {
-      Record.push_back(unsigned(IA->hasSideEffects()) |
-                       unsigned(IA->isAlignStack()) << 1 |
-                       unsigned(IA->getDialect()&1) << 2);
-
-      // Add the asm string.
-      const std::string &AsmStr = IA->getAsmString();
-      Record.push_back(AsmStr.size());
-      for (unsigned i = 0, e = AsmStr.size(); i != e; ++i)
-        Record.push_back(AsmStr[i]);
-
-      // Add the constraint string.
-      const std::string &ConstraintStr = IA->getConstraintString();
-      Record.push_back(ConstraintStr.size());
-      for (unsigned i = 0, e = ConstraintStr.size(); i != e; ++i)
-        Record.push_back(ConstraintStr[i]);
-      Stream.EmitRecord(naclbitc::CST_CODE_INLINEASM, Record);
-      Record.clear();
-      continue;
+    if (isa<InlineAsm>(V)) {
+      ReportIllegalValue("inline assembly", *V);
     }
     const Constant *C = cast<Constant>(V);
     unsigned Code = -1U;
@@ -809,77 +791,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       for (unsigned i = 0, e = C->getNumOperands(); i != e; ++i)
         Record.push_back(VE.getValueID(C->getOperand(i)));
       AbbrevToUse = AggregateAbbrev;
-    } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
-      switch (CE->getOpcode()) {
-      default:
-        if (Instruction::isCast(CE->getOpcode())) {
-          Code = naclbitc::CST_CODE_CE_CAST;
-          Record.push_back(GetEncodedCastOpcode(CE->getOpcode(), *CE));
-          Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
-          Record.push_back(VE.getValueID(C->getOperand(0)));
-          AbbrevToUse = CONSTANTS_CE_CAST_Abbrev;
-        } else {
-          assert(CE->getNumOperands() == 2 && "Unknown constant expr!");
-          Code = naclbitc::CST_CODE_CE_BINOP;
-          Record.push_back(GetEncodedBinaryOpcode(CE->getOpcode(), *CE));
-          Record.push_back(VE.getValueID(C->getOperand(0)));
-          Record.push_back(VE.getValueID(C->getOperand(1)));
-          uint64_t Flags = GetOptimizationFlags(CE);
-          if (Flags != 0)
-            Record.push_back(Flags);
-        }
-        break;
-      case Instruction::GetElementPtr:
-        Code = naclbitc::CST_CODE_CE_GEP;
-        if (cast<GEPOperator>(C)->isInBounds())
-          Code = naclbitc::CST_CODE_CE_INBOUNDS_GEP;
-        for (unsigned i = 0, e = CE->getNumOperands(); i != e; ++i) {
-          Record.push_back(VE.getTypeID(C->getOperand(i)->getType()));
-          Record.push_back(VE.getValueID(C->getOperand(i)));
-        }
-        break;
-      case Instruction::Select:
-        Code = naclbitc::CST_CODE_CE_SELECT;
-        Record.push_back(VE.getValueID(C->getOperand(0)));
-        Record.push_back(VE.getValueID(C->getOperand(1)));
-        Record.push_back(VE.getValueID(C->getOperand(2)));
-        break;
-      case Instruction::ExtractElement:
-        Code = naclbitc::CST_CODE_CE_EXTRACTELT;
-        Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
-        Record.push_back(VE.getValueID(C->getOperand(0)));
-        Record.push_back(VE.getValueID(C->getOperand(1)));
-        break;
-      case Instruction::InsertElement:
-        Code = naclbitc::CST_CODE_CE_INSERTELT;
-        Record.push_back(VE.getValueID(C->getOperand(0)));
-        Record.push_back(VE.getValueID(C->getOperand(1)));
-        Record.push_back(VE.getValueID(C->getOperand(2)));
-        break;
-      case Instruction::ShuffleVector:
-        // If the return type and argument types are the same, this is a
-        // standard shufflevector instruction.  If the types are different,
-        // then the shuffle is widening or truncating the input vectors, and
-        // the argument type must also be encoded.
-        if (C->getType() == C->getOperand(0)->getType()) {
-          Code = naclbitc::CST_CODE_CE_SHUFFLEVEC;
-        } else {
-          Code = naclbitc::CST_CODE_CE_SHUFVEC_EX;
-          Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
-        }
-        Record.push_back(VE.getValueID(C->getOperand(0)));
-        Record.push_back(VE.getValueID(C->getOperand(1)));
-        Record.push_back(VE.getValueID(C->getOperand(2)));
-        break;
-      case Instruction::ICmp:
-      case Instruction::FCmp:
-        Code = naclbitc::CST_CODE_CE_CMP;
-        Record.push_back(VE.getTypeID(C->getOperand(0)->getType()));
-        Record.push_back(VE.getValueID(C->getOperand(0)));
-        Record.push_back(VE.getValueID(C->getOperand(1)));
-        Record.push_back(CE->getPredicate());
-        break;
-      }
     } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(C)) {
       Code = naclbitc::CST_CODE_BLOCKADDRESS;
       Record.push_back(VE.getTypeID(BA->getFunction()->getType()));
@@ -889,7 +800,7 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
 #ifndef NDEBUG
       C->dump();
 #endif
-      llvm_unreachable("Unknown constant!");
+      ReportIllegalValue("constant", *C);
     }
     Stream.EmitRecord(Code, Record, AbbrevToUse);
     Record.clear();
@@ -1471,20 +1382,6 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));
     if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
                                    Abbv) != CONSTANTS_INTEGER_ABBREV)
-      llvm_unreachable("Unexpected abbrev ordering!");
-  }
-
-  { // CE_CAST abbrev for CONSTANTS_BLOCK.
-    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_CE_CAST));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4));  // cast opc
-    Abbv->Add(NaClBitCodeAbbrevOp(
-        NaClBitCodeAbbrevOp::Fixed,                                 // typeid
-        NaClBitsNeededForValue(VE.getTypes().size())));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));    // value id
-
-    if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
-                                   Abbv) != CONSTANTS_CE_CAST_Abbrev)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // NULL abbrev for CONSTANTS_BLOCK.
