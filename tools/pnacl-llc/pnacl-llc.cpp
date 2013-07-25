@@ -49,8 +49,9 @@ using namespace llvm;
 // sandboxed translator (from pnacl-llc.pexe to pnacl-llc.nexe). In this mode
 // it uses SRPC operations instead of direct OS intefaces.
 #if defined(__native_client__)
-int GetObjectFileFD();
-DataStreamer* NaClBitcodeStreamer;
+int srpc_main(int argc, char **argv);
+int getObjectFileFD();
+DataStreamer *getNaClBitcodeStreamer();
 #endif
 
 cl::opt<NaClFileFormat>
@@ -274,7 +275,7 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
     std::string StrError;
     M.reset(getNaClStreamedBitcodeModule(
         std::string("<SRPC stream>"),
-        NaClBitcodeStreamer, Context, &StrError));
+        getNaClBitcodeStreamer(), Context, &StrError));
     if (!StrError.empty())
       Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
   } else {
@@ -434,7 +435,7 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
 
   {
 #if defined(__native_client__)
-    raw_fd_ostream ROS(GetObjectFileFD(), true);
+    raw_fd_ostream ROS(getObjectFileFD(), true);
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
 #else
@@ -476,11 +477,10 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
   return 0;
 }
 
-#if !defined(__native_client__)
-int
-main (int argc, char **argv) {
-  return llc_main(argc, argv);
-}
+int main(int argc, char **argv) {
+#if defined(__native_client__)
+  return srpc_main(argc, argv);
 #else
-// main() is in nacl_file.cpp.
+  return llc_main(argc, argv);
 #endif // __native_client__
+}

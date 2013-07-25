@@ -1,4 +1,4 @@
-//===-- SRPCStreamer.cpp - Stream bitcode over SRPC  ----------------------===//
+//===-- SRPCStreamer.h - Stream bitcode over SRPC  ------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,11 +6,6 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
-//
-//
-//===----------------------------------------------------------------------===//
-
 #ifndef SRPCSTREAMER_H
 #define SRPCSTREAMER_H
 

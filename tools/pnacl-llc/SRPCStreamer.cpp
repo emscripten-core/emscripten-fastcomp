@@ -6,11 +6,6 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
-//
-//
-//===----------------------------------------------------------------------===//
-
 #if defined(__native_client__)
 #define DEBUG_TYPE "bitcode-stream"
 #include "SRPCStreamer.h"
@@ -139,4 +134,4 @@ int SRPCStreamer::streamEnd(std::string *ErrMsg) {
   return Error;
 }
 
-#endif
+#endif // __native_client__
