@@ -7,6 +7,7 @@
 
 ; RUN: opt -S -instcombine < %s | FileCheck %s -check-prefix=PNACL
 ; PNACL-NOT: with.overflow
+; @LOCALMOD-END
 
 declare void @throwAnExceptionOrWhatever()
 
