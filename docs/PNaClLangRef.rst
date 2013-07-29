@@ -56,6 +56,17 @@ Visibility Styles
 
 PNaCl bitcode does not support visibility styles.
 
+Global Values
+-------------
+
+The following restrictions apply to both global variables and functions.
+
+These attributes are disallowed:
+
+* ``addrspace``, ``section``, ``unnamed_addr``.
+
+.. _globalvariables:
+
 Global Variables
 ----------------
 
@@ -65,8 +76,27 @@ Restrictions on global variables:
 
 * PNaCl bitcode does not support TLS models.
 * Restrictions on :ref:`linkage types <linkagetypes>`.
+* ``externally_initialized``.
 
-TODO: describe other restrictions on global variables
+Every global variable must have an initializer. Each initializer must be
+either a *SimpleElement* or a *CompoundElement*, defined as follows.
+
+A *SimpleElement* is one of the following:
+
+1) An i8 array literal or ``zeroinitializer``:
+
+     [SIZE x i8] c"DATA"
+     [SIZE x i8] zeroinitializer
+
+2) A reference to a *GlobalValue* (a function or global variable) with an
+   optional 32-bit byte offset added to it (the addend, which may be
+   negative):
+
+     ptrtoint (TYPE* @GLOBAL to i32)
+     add (i32 ptrtoint (TYPE* @GLOBAL to i32), i32 ADDEND)
+
+A *CompoundElement* is a unnamed, packed struct containing more than one
+*SimpleElement*.
 
 Functions
 ---------
@@ -79,9 +109,9 @@ not supported for functions:
 
 * Function attributes (either for the the function itself, its parameters or its
   return type).
-* Section specification.
-* Garbage collector name.
+* Garbage collector name (``gc``).
 * Functions with a variable number of arguments (*vararg*).
+* Alignment (``align``).
 
 Aliases
 -------
@@ -113,7 +143,8 @@ Volatile Memory Accesses
 
 `LLVM LangRef: Volatile Memory Accesses <LangRef.html#volatile>`_
 
-PNaCl bitcode does not support volatile memory accesses.
+PNaCl bitcode does not support volatile memory accesses. The ``volatile``
+attribute on loads and stores is not supported.
 
 .. note::
 
@@ -267,20 +298,26 @@ Scalar types
 * The only scalar types allowed are integer, float, double and void.
 
   * The only integer sizes allowed are i1, i8, i16, i32 and i64.
-  * The only integer sizes allowed for function arguments are i32 and i64.
+  * The only integer sizes allowed for function arguments and function return
+    values are i32 and i64.
 
-Arrays and structs are only allowed in TODO.
+Array and struct types
+----------------------
+
+Array and struct types are only allowed in
+:ref:`global variable initializers <globalvariables>`.
 
 .. _pointertypes:
 
 Pointer types
 -------------
 
-Pointer types are allowed with the following restrictions:
+Only the following pointer types are allowed:
 
 * Pointers to valid PNaCl bitcode scalar types, as specified above.
-* Pointers to functions (but not intrinsics).
-* The address space for all pointers must be 0.
+* Pointers to functions.
+
+In addition, the address space for all pointers must be 0.
 
 A pointer is *inherent* when it represents the return value of an ``alloca``
 instruction, or is an address of a global value.
@@ -293,30 +330,20 @@ A pointer is *normalized* if it's either:
 
 Note: the size of a pointer in PNaCl is 32 bits.
 
-Global Variable and Function Addresses
---------------------------------------
-
 Undefined Values
 ----------------
 
 `LLVM LangRef: Undefined Values <LangRef.html#undefvalues>`_
 
-Poison Values
--------------
-
-`LLVM LangRef: Poison Values <LangRef.html#poisonvalues>`_
-
-PNaCl bitcode does not support poison values; consequently, the ``nsw`` and
-``nuw`` are not supported.
+``undef`` is only allowed within functions, not in global variable initializers.
 
 Constant Expressions
 --------------------
 
 `LLVM LangRef: Constant Expressions <LangRef.html#constantexprs>`_
 
-In the general sense, PNaCl bitcode does not support constant expressions.
-There is a single, restricted, use case permitted in global initializers,
-where the ``add`` and ``ptrtoint`` constant expressions are allowed.
+Constant expressions are only allowed in
+:ref:`global variable initializers <globalvariables>`.
 
 Other Values
 ============
@@ -345,34 +372,27 @@ Instruction Reference
 This is a list of LLVM instructions supported by PNaCl bitcode. Where
 applicable, PNaCl-specific restrictions are provided.
 
+The following attributes are disallowed for all instructions:
+
+* ``nsw`` and ``nuw``
+* ``exact``
+
 Only the LLVM instructions listed here are supported by PNaCl bitcode.
 
 * ``ret``
 * ``br``
 * ``switch``
-* ``add``
 
-  The ``nsw`` and ``nuw`` modes are not supported.
+  i1 values are disallowed for ``switch``.
 
-* ``sub``
+* ``add``, ``sub``, ``mul``, ``shl``,  ``udiv``, ``sdiv``, ``urem``, ``srem``,
+  ``lshr``, ``ashr``
 
-  The ``nsw`` and ``nuw`` modes are not supported.
+  These arithmetic operations are disallowed i1.
 
-* ``mul``
+  Integer division (``udiv``, ``sdiv``, ``urem``, ``srem``) by zero is
+  guaranteed to trap in PNaCl bitcode.
 
-  The ``nsw`` and ``nuw`` modes are not supported.
-
-* ``shl``
-
-  The ``nsw`` and ``nuw`` modes are not supported.
-
-* ``udiv``, ``sdiv``, ``urem``, ``srem``
-
-  Integer division is guaranteed to trap in PNaCl bitcode. This trap can
-  not be intercepted.
-
-* ``lshr``
-* ``ashr``
 * ``and``
 * ``or``
 * ``xor``
@@ -384,7 +404,7 @@ Only the LLVM instructions listed here are supported by PNaCl bitcode.
 * ``alloca``
 
   The only allowed type for ``alloca`` instructions in PNaCl bitcode
-  is i8. For example:
+  is i8. The size argument must be an i32. For example:
 
 .. code-block:: llvm
 
@@ -393,7 +413,11 @@ Only the LLVM instructions listed here are supported by PNaCl bitcode.
 * ``load``, ``store``
 
   The pointer argument of these instructions must be a *normalized* pointer
-  (see :ref:`pointer types <pointertypes>`).
+  (see :ref:`pointer types <pointertypes>`). The ``volatile`` and ``atomic``
+  attributes are not supported. Loads and stores of the type ``i1`` are not
+  supported.
+
+  These instructions must use ``align 1`` on integer memory accesses.
 
 * ``trunc``
 * ``zext``
@@ -491,7 +515,7 @@ The only intrinsics supported by PNaCl bitcode are the following.
             i32 <computation>, iN* <object>, iN <operand>, i32 <memory_order>)
     declare iN @llvm.nacl.atomic.cmpxchg.<size>(
             iN* <object>, iN <expected>, iN <desired>,
-	    i32 <memory_order_success>, i32 <memory_order_failure>)
+            i32 <memory_order_success>, i32 <memory_order_failure>)
     declare void @llvm.nacl.atomic.fence(i32 <memory_order>)
 
   Each of these intrinsics is overloaded on the ``iN`` argument, which
