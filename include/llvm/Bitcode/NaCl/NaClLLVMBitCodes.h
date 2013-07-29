@@ -270,12 +270,11 @@ namespace naclbitc {
                                      //              [, flags]]
     FUNC_CODE_INST_CAST        =  3, // CAST:       [opval, destty, castopc]
     FUNC_CODE_INST_GEP         =  4, // Not used in PNaCl.
-    FUNC_CODE_INST_SELECT      =  5, // SELECT:     [opval, opval, opval]
+    FUNC_CODE_INST_SELECT      =  5, // Not used in PNaCl. Replaced by VSELECT.
     FUNC_CODE_INST_EXTRACTELT  =  6, // Not used in PNaCl.
     FUNC_CODE_INST_INSERTELT   =  7, // Not used in PNaCl.
     FUNC_CODE_INST_SHUFFLEVEC  =  8, // Not used in PNaCl.
-    FUNC_CODE_INST_CMP         =  9, // CMP:        [opval, opval, pred]
-
+    FUNC_CODE_INST_CMP         =  9, // Not used in PNaCl. Replaced by CMP2.
     FUNC_CODE_INST_RET         = 10, // RET:        [opval<optional>]
     FUNC_CODE_INST_BR          = 11, // BR:         [bb#, bb#, cond] or [bb#]
     FUNC_CODE_INST_SWITCH      = 12, // SWITCH:     [opty, op0, op1, ...]

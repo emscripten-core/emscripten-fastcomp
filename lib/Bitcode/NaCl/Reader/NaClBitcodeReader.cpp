@@ -29,10 +29,6 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
-enum {
-  SWITCH_INST_MAGIC = 0x4B5 // May 2012 => 1205 => Hex
-};
-
 void NaClBitcodeReader::FreeState() {
   if (BufferOwned)
     delete Buffer;
@@ -1443,20 +1439,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_SELECT: { // SELECT: [opval, opval, opval]
-      // obsolete form of select
-      // handles select i1 ... in old bitcode
-      unsigned OpNum = 0;
-      Value *TrueVal, *FalseVal, *Cond;
-      if (popValue(Record, &OpNum, NextValueNo, &TrueVal) ||
-          popValue(Record, &OpNum, NextValueNo, &FalseVal) ||
-          popValue(Record, &OpNum, NextValueNo, &Cond))
-        return Error("Invalid SELECT record");
-
-      I = SelectInst::Create(Cond, TrueVal, FalseVal);
-      break;
-    }
-
     case naclbitc::FUNC_CODE_INST_VSELECT: {// VSELECT: [opval, opval, pred]
       // new form of select
       // handles select i1 or select [N x i1]
@@ -1467,26 +1449,14 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           popValue(Record, &OpNum, NextValueNo, &Cond))
         return Error("Invalid SELECT record");
 
-      // select condition can be either i1 or [N x i1]
-      if (VectorType* vector_type =
-          dyn_cast<VectorType>(Cond->getType())) {
-        // expect <n x i1>
-        if (vector_type->getElementType() != Type::getInt1Ty(Context))
-          return Error("Invalid SELECT condition type");
-      } else {
-        // expect i1
-        if (Cond->getType() != Type::getInt1Ty(Context))
-          return Error("Invalid SELECT condition type");
-      }
+      // expect i1
+      if (Cond->getType() != Type::getInt1Ty(Context))
+        return Error("Invalid SELECT condition type");
 
       I = SelectInst::Create(Cond, TrueVal, FalseVal);
       break;
     }
 
-    case naclbitc::FUNC_CODE_INST_CMP:   // CMP: [opval, opval, pred]
-      // Old form of ICmp/FCmp returning bool
-      // Existed to differentiate between icmp/fcmp and vicmp/vfcmp which were
-      // both legal on vectors but had different behaviour.
     case naclbitc::FUNC_CODE_INST_CMP2: { // CMP2: [opval, opval, pred]
       // FCmp/ICmp returning bool or vector of bool
 
