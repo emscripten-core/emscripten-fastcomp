@@ -20,10 +20,6 @@ manual. Only the changes, restrictions and variations specific to PNaCl are
 described - full semantic descriptions are not duplicated from the LLVM
 reference manual.
 
-*[TODO(eliben): this may gradually change in the future, as we move more
-contents into this document; also, the physical encoding will also be described
-here in the future, once we know what it's going to be]*
-
 High Level Structure
 ====================
 
@@ -85,12 +81,16 @@ A *SimpleElement* is one of the following:
 
 1) An i8 array literal or ``zeroinitializer``:
 
+.. code-block:: llvm
+
      [SIZE x i8] c"DATA"
      [SIZE x i8] zeroinitializer
 
 2) A reference to a *GlobalValue* (a function or global variable) with an
    optional 32-bit byte offset added to it (the addend, which may be
    negative):
+
+.. code-block:: llvm
 
      ptrtoint (TYPE* @GLOBAL to i32)
      add (i32 ptrtoint (TYPE* @GLOBAL to i32), i32 ADDEND)
@@ -455,6 +455,9 @@ Intrinsic Functions
 
 `LLVM LangRef: Intrinsic Functions <LangRef.html#intrinsics>`_
 
+List of allowed intrinsics
+--------------------------
+
 The only intrinsics supported by PNaCl bitcode are the following.
 
 * ``llvm.memcpy``
@@ -505,7 +508,14 @@ The only intrinsics supported by PNaCl bitcode are the following.
 * ``llvm.nacl.atomic.cmpxchg``
 * ``llvm.nacl.atomic.fence``
 
-  .. code-block:: llvm
+  See :ref:`atomic intrinsics <atomicintrinsics>`.
+
+.. _atomicintrinsics:
+
+Atomic intrinsics
+-----------------
+
+.. code-block:: llvm
 
     declare iN @llvm.nacl.atomic.load.<size>(
             iN* <source>, i32 <memory_order>)
@@ -518,35 +528,35 @@ The only intrinsics supported by PNaCl bitcode are the following.
             i32 <memory_order_success>, i32 <memory_order_failure>)
     declare void @llvm.nacl.atomic.fence(i32 <memory_order>)
 
-  Each of these intrinsics is overloaded on the ``iN`` argument, which
-  is reflected through ``<size>`` in the overload's name. Integral types
-  of 8, 16, 32 and 64-bit width are supported for these arguments.
+Each of these intrinsics is overloaded on the ``iN`` argument, which
+is reflected through ``<size>`` in the overload's name. Integral types
+of 8, 16, 32 and 64-bit width are supported for these arguments.
 
-  The ``@llvm.nacl.atomic.rmw`` intrinsic implements the following
-  read-modify-write operations, from the general and arithmetic sections
-  of the C11/C++11 standards:
+The ``@llvm.nacl.atomic.rmw`` intrinsic implements the following
+read-modify-write operations, from the general and arithmetic sections
+of the C11/C++11 standards:
 
-   - ``add``
-   - ``sub``
-   - ``or``
-   - ``and``
-   - ``xor``
-   - ``exchange``
+ - ``add``
+ - ``sub``
+ - ``or``
+ - ``and``
+ - ``xor``
+ - ``exchange``
 
-  For all of these read-modify-write operations, the returned value is
-  that at ``object`` before the computation. The ``computation``
-  argument must be a compile-time constant.
+For all of these read-modify-write operations, the returned value is
+that at ``object`` before the computation. The ``computation``
+argument must be a compile-time constant.
 
-  All atomic intrinsics also support C11/C++11 memory orderings, which
-  must be compile-time constants. Those are detailed in `Atomic Memory
-  Ordering Constraints`_.
+All atomic intrinsics also support C11/C++11 memory orderings, which
+must be compile-time constants. Those are detailed in `Atomic Memory
+Ordering Constraints`_.
 
-  Integer values for these computations and memory orderings are defined
-  in ``"llvm/IR/NaClAtomicIntrinsics.h"``.
+Integer values for these computations and memory orderings are defined
+in ``"llvm/IR/NaClAtomicIntrinsics.h"``.
 
-  .. note::
+.. note::
 
-      These intrinsics allow PNaCl to support C11/C++11 style atomic
-      operations as well as some legacy GCC-style ``__sync_*`` builtins
-      while remaining stable as the LLVM codebase changes. The user
-      isn't expected to use these intrinsics directly.
+    These intrinsics allow PNaCl to support C11/C++11 style atomic
+    operations as well as some legacy GCC-style ``__sync_*`` builtins
+    while remaining stable as the LLVM codebase changes. The user
+    isn't expected to use these intrinsics directly.
