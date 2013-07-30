@@ -372,18 +372,26 @@ The only intrinsics supported by PNaCl bitcode are the following.
 
 * ``llvm.stacksave``
 * ``llvm.stackrestore``
+
+  These intrinsics are used to implement language features like scoped automatic
+  variable sized arrays in C99. ``llvm.stacksave`` returns a value that
+  represents the current state of the stack. This value may only be used as the
+  argument to ``llvm.stackrestore``, which restores the stack to the given
+  state.
+
 * ``llvm.trap``
+
+  This intrinsic is lowered to a target dependent trap instruction, which aborts
+  execution.
+
 * ``llvm.nacl.read.tp``
 
-  TODO: describe
+  See :ref:`thread pointer related intrinsics <threadpointerintrinsics>`.
 
 * ``llvm.nacl.longjmp``
-
-  TODO: describe
-
 * ``llvm.nacl.setjmp``
 
-  TODO: describe
+  See :ref:`Setjmp and Longjmp <setjmplongjmp>`.
 
 .. _atomic intrinsics:
 
@@ -394,6 +402,31 @@ The only intrinsics supported by PNaCl bitcode are the following.
 * ``llvm.nacl.atomic.fence``
 
   See :ref:`atomic intrinsics <atomicintrinsics>`.
+
+.. _threadpointerintrinsics:
+
+Thread pointer related intrinsics
+---------------------------------
+
+.. code-block:: llvm
+
+    declare i8* @llvm.nacl.read.tp()
+
+Returns the thread pointer, which can be set by the embedding sandbox's runtime.
+
+.. _setjmplongjmp:
+
+Setjmp and Longjmp
+------------------
+
+.. code-block:: llvm
+
+    declare void @llvm.nacl.longjmp(i8* %jmpbuf, i32)
+    declare i32 @llvm.nacl.setjmp(i8* %jmpbuf)
+
+These intrinsics implement the semantics of C11 ``setjmp`` and ``longjmp``. The
+``jmpbuf`` pointer must be 64-bit aligned and point to at least 1024 bytes of
+allocated memory.
 
 .. _atomicintrinsics:
 
