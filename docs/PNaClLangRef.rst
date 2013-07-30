@@ -254,6 +254,9 @@ PNaCl bitcode does not support intrinsic global variables.
 Instruction Reference
 =====================
 
+List of allowed instructions
+----------------------------
+
 This is a list of LLVM instructions supported by PNaCl bitcode. Where
 applicable, PNaCl-specific restrictions are provided.
 
@@ -288,12 +291,7 @@ Only the LLVM instructions listed here are supported by PNaCl bitcode.
 * ``frem``
 * ``alloca``
 
-  The only allowed type for ``alloca`` instructions in PNaCl bitcode
-  is i8. The size argument must be an i32. For example:
-
-.. code-block:: llvm
-
-    %buf = alloca i8, i32 8, align 4
+  See :ref:`alloca instructions <allocainst>`.
 
 * ``load``, ``store``
 
@@ -334,6 +332,18 @@ Only the LLVM instructions listed here are supported by PNaCl bitcode.
 * ``phi``
 * ``select``
 * ``call``
+
+.. _allocainst:
+
+``alloca``
+----------
+
+The only allowed type for ``alloca`` instructions in PNaCl bitcode is i8. The
+size argument must be an i32. For example:
+
+.. code-block:: llvm
+
+    %buf = alloca i8, i32 8, align 4
 
 Intrinsic Functions
 ===================
