@@ -30,8 +30,10 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
   PM.add(createLowerExpectIntrinsicPass());
-  // Rewrite unsupported intrinsics to simpler constructs.
+  // Rewrite unsupported intrinsics and inline assembly directives to
+  // simpler and portable constructs.
   PM.add(createRewriteLLVMIntrinsicsPass());
+  PM.add(createRewriteAsmDirectivesPass());
   // LowerInvoke prevents use of C++ exception handling, which is not
   // yet supported in the PNaCl ABI.
   PM.add(createLowerInvokePass());

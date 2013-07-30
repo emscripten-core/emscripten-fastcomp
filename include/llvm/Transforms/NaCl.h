@@ -29,6 +29,7 @@ FunctionPass *createExpandStructRegsPass();
 FunctionPass *createInsertDivideCheckPass();
 FunctionPass *createPromoteIntegersPass();
 FunctionPass *createResolvePNaClIntrinsicsPass();
+FunctionPass *createRewriteAsmDirectivesPass();
 ModulePass *createAddPNaClExternalDeclsPass();
 ModulePass *createCanonicalizeMemIntrinsicsPass();
 ModulePass *createExpandArithWithOverflowPass();

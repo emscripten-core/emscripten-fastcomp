@@ -298,6 +298,7 @@ void initializePromoteIntegersPass(PassRegistry&);
 void initializeReplacePtrsWithIntsPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);
 void initializeResolvePNaClIntrinsicsPass(PassRegistry&);
+void initializeRewriteAsmDirectivesPass(PassRegistry&);
 void initializeRewriteAtomicsPass(PassRegistry&);
 void initializeRewriteLLVMIntrinsicsPass(PassRegistry&);
 void initializeRewritePNaClLibraryCallsPass(PassRegistry&);

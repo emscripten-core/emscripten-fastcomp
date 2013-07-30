@@ -130,3 +130,10 @@ As in C11/C++11:
   these primitives must always be of the same bit size for that location.
 - Not all memory orderings are valid for all atomic operations.
 
+Inline Assembly
+===============
+
+Inline assembly isn't supported by PNaCl because it isn't portable. The
+one current exception is the common compiler barrier idiom
+``asm("":::"memory")``, which gets transformed to a sequentially
+consistent memory barrier (equivalent to ``__sync_synchronize()``).

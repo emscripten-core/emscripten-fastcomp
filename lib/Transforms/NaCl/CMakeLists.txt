@@ -20,6 +20,7 @@ add_llvm_library(LLVMNaClTransforms
   PromoteIntegers.cpp
   ReplacePtrsWithInts.cpp
   ResolvePNaClIntrinsics.cpp
+  RewriteAsmDirectives.cpp
   RewriteAtomics.cpp
   RewriteLLVMIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp

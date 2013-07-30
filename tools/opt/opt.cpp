@@ -626,6 +626,7 @@ int main(int argc, char **argv) {
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
+  initializeRewriteAsmDirectivesPass(Registry);
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
