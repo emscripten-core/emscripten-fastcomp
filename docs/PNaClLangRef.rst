@@ -72,7 +72,7 @@ Restrictions on global variables:
 
 * PNaCl bitcode does not support TLS models.
 * Restrictions on :ref:`linkage types <linkagetypes>`.
-* The ``externally_initialized`` attribute.
+* The ``externally_initialized`` attribute is not supported.
 
 Every global variable must have an initializer. Each initializer must be
 either a *SimpleElement* or a *CompoundElement*, defined as follows.
