@@ -61,7 +61,7 @@ int DoTranslate(ArgStringList *CmdLineArgs, int object_fd) {
   object_file_fd = object_fd;
   // Make an argv array from the input vector.
   size_t argc = CmdLineArgs->size();
-  char **argv = new char *[argc];
+  char **argv = new char *[argc + 1];
   for (size_t i = 0; i < argc; ++i) {
     // llc_main will not mutate the command line, so this is safe.
     argv[i] = const_cast<char *>((*CmdLineArgs)[i]);
@@ -75,7 +75,9 @@ ArgStringList *CommandLineFromArgz(char *str, size_t str_len) {
   char *entry = str;
   ArgStringList *CmdLineArgs = new ArgStringList;
   while (entry != NULL) {
-    CmdLineArgs->push_back(entry);
+    // Call strdup(entry) since the str argument will ultimately be
+    // freed by the SRPC message sender.
+    CmdLineArgs->push_back(strdup(entry));
     entry = argz_next(str, str_len, entry);
   }
   return CmdLineArgs;
