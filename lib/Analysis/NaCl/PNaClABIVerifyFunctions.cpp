@@ -213,6 +213,24 @@ static bool hasAllowedAtomicMemoryOrder(
   return true;
 }
 
+static bool hasAllowedLockFreeByteSize(const CallInst *Call) {
+  if (!Call->getType()->isIntegerTy())
+    return false;
+  const Value *Operation = Call->getOperand(0);
+  if (!Operation)
+    return false;
+  const Constant *C = dyn_cast<Constant>(Operation);
+  if (!C)
+    return false;
+  const APInt &I = C->getUniqueInteger();
+  // PNaCl currently only supports atomics of byte size {1,2,4,8} (which
+  // may or may not be lock-free). These values coincide with
+  // C11/C++11's supported atomic types.
+  if (I == 1 || I == 2 || I == 4 || I == 8)
+    return true;
+  return false;
+}
+
 // Check the instruction's opcode and its operands.  The operands may
 // require opcode-specific checking.
 //
@@ -392,11 +410,11 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
           }
         }
 
-        // Disallow NaCl atomic intrinsics which don't have valid
-        // constant NaCl::AtomicOperation and NaCl::MemoryOrder
-        // parameters.
         switch (Call->getIntrinsicID()) {
-          default: break;  // Non-atomic intrinsic.
+          default: break;  // Other intrinsics don't require checks.
+          // Disallow NaCl atomic intrinsics which don't have valid
+          // constant NaCl::AtomicOperation and NaCl::MemoryOrder
+          // parameters.
           case Intrinsic::nacl_atomic_load:
           case Intrinsic::nacl_atomic_store:
           case Intrinsic::nacl_atomic_rmw:
@@ -413,6 +431,12 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
             if (!hasAllowedAtomicRMWOperation(I, Call))
               return "invalid atomicRMW operation";
           } break;
+          // Disallow NaCl atomic_is_lock_free intrinsics which don't
+          // have valid constant size type.
+          case Intrinsic::nacl_atomic_is_lock_free:
+            if (!hasAllowedLockFreeByteSize(Call))
+              return "invalid atomic lock-free byte size";
+            break;
         }
 
         // Allow the instruction and skip the later checks.

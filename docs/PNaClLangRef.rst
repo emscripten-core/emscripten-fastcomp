@@ -488,3 +488,15 @@ in ``"llvm/IR/NaClAtomicIntrinsics.h"``.
     operations as well as some legacy GCC-style ``__sync_*`` builtins
     while remaining stable as the LLVM codebase changes. The user
     isn't expected to use these intrinsics directly.
+
+.. code-block:: llvm
+
+  declare i1 @llvm.nacl.atomic.is.lock.free(i32 <byte_size>, i8* <address>)
+
+  The ``llvm.nacl.atomic.is.lock.free`` intrinsic is designed to
+  determine at translation time whether atomic operations of a certain
+  ``byte_size`` (a compile-time constant), at a particular ``address``,
+  are lock-free or not. This reflects the C11 ``atomic_is_lock_free``
+  function from header ``<stdatomic.h>`` and the C++11 ``is_lock_free``
+  member function in header ``<atomic>``. It can be used through the
+  ``__nacl_atomic_is_lock_free`` builtin.

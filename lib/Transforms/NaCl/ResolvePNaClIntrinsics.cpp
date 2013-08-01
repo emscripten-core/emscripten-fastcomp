@@ -85,26 +85,28 @@ private:
 };
 
 /// Rewrite intrinsic calls to another function.
-class SimpleCallResolver : public ResolvePNaClIntrinsics::CallResolver {
+class IntrinsicCallToFunctionCall :
+    public ResolvePNaClIntrinsics::CallResolver {
 public:
-  SimpleCallResolver(Function &F, Intrinsic::ID IntrinsicID,
-                     const char *TargetFunctionName)
+  IntrinsicCallToFunctionCall(Function &F, Intrinsic::ID IntrinsicID,
+                              const char *TargetFunctionName,
+                              ArrayRef<Type *> Tys = None)
       : CallResolver(F, IntrinsicID),
-        TargetFunction(M->getFunction(TargetFunctionName)) {
+        TargetFunction(M->getFunction(TargetFunctionName)), Tys(Tys) {
     // Expect to find the target function for this intrinsic already
     // declared, even if it is never used.
     if (!TargetFunction)
-      report_fatal_error(
-          std::string("Expected to find external declaration of ") +
-          TargetFunctionName);
+      report_fatal_error(std::string(
+          "Expected to find external declaration of ") + TargetFunctionName);
   }
-  virtual ~SimpleCallResolver() {}
+  virtual ~IntrinsicCallToFunctionCall() {}
 
 private:
   Function *TargetFunction;
+  ArrayRef<Type *> Tys;
 
   virtual Function *doGetDeclaration() const {
-    return Intrinsic::getDeclaration(M, IntrinsicID);
+    return Intrinsic::getDeclaration(M, IntrinsicID, Tys);
   }
 
   virtual bool doResolve(IntrinsicInst *Call) {
@@ -112,9 +114,74 @@ private:
     return true;
   }
 
-  SimpleCallResolver(const SimpleCallResolver &) LLVM_DELETED_FUNCTION;
-  SimpleCallResolver &operator=(
-      const SimpleCallResolver &) LLVM_DELETED_FUNCTION;
+  IntrinsicCallToFunctionCall(const IntrinsicCallToFunctionCall &)
+      LLVM_DELETED_FUNCTION;
+  IntrinsicCallToFunctionCall &operator=(const IntrinsicCallToFunctionCall &)
+      LLVM_DELETED_FUNCTION;
+};
+
+/// Rewrite intrinsic calls to a constant whose value is determined by a
+/// functor. This functor is called once per Call, and returns a
+/// Constant that should replace the Call.
+template <class Callable>
+class ConstantCallResolver : public ResolvePNaClIntrinsics::CallResolver {
+public:
+  ConstantCallResolver(Function &F, Intrinsic::ID IntrinsicID, Callable Functor,
+                       ArrayRef<Type *> Tys = None)
+      : CallResolver(F, IntrinsicID), Functor(Functor) {}
+  virtual ~ConstantCallResolver() {}
+
+private:
+  Callable Functor;
+  ArrayRef<Type *> Tys;
+
+  virtual Function *doGetDeclaration() const {
+    return Intrinsic::getDeclaration(M, IntrinsicID, Tys);
+  }
+
+  virtual bool doResolve(IntrinsicInst *Call) {
+    Constant *C = Functor(Call);
+    Call->replaceAllUsesWith(C);
+    Call->eraseFromParent();
+    return true;
+  }
+
+  ConstantCallResolver(const ConstantCallResolver &) LLVM_DELETED_FUNCTION;
+  ConstantCallResolver &operator=(const ConstantCallResolver &)
+      LLVM_DELETED_FUNCTION;
+};
+
+/// Resolve __nacl_atomic_is_lock_free to true/false at translation
+/// time. PNaCl's currently supported platforms all support lock-free
+/// atomics at byte sizes {1,2,4,8}, and the alignment of the pointer is
+/// always expected to be natural (as guaranteed by C11 and
+/// C++11). PNaCl's Module-level ABI verification checks that the byte
+/// size is constant and in {1,2,4,8}.
+struct IsLockFreeToConstant {
+  Constant *operator()(CallInst *Call) {
+    const uint64_t MaxLockFreeByteSize = 8;
+    const APInt &ByteSize =
+        cast<Constant>(Call->getOperand(0))->getUniqueInteger();
+
+#   if defined(__pnacl__)
+    switch (__builtin_nacl_target_arch()) {
+    case PnaclTargetArchitectureX86_32:
+    case PnaclTargetArchitectureX86_64:
+    case PnaclTargetArchitectureARM_32:
+      break;
+    default:
+      return false;
+    }
+#   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__)
+    // Continue.
+#   else
+#     error "Unknown architecture"
+#   endif
+
+    bool IsLockFree = ByteSize.ule(MaxLockFreeByteSize);
+    Constant *C = ConstantInt::get(Call->getType(), IsLockFree);
+    return C;
+  }
 };
 
 /// Rewrite atomic intrinsics to LLVM IR instructions.
@@ -188,8 +255,8 @@ private:
   }
 
   AtomicOrdering thawMemoryOrder(const Value *MemoryOrder) const {
-    NaCl::MemoryOrder MO = (NaCl::MemoryOrder)cast<Constant>(MemoryOrder)
-        ->getUniqueInteger().getLimitedValue();
+    NaCl::MemoryOrder MO = (NaCl::MemoryOrder)
+        cast<Constant>(MemoryOrder)->getUniqueInteger().getLimitedValue();
     switch (MO) {
     // Only valid values should pass validation.
     default: llvm_unreachable("unknown memory order");
@@ -204,9 +271,8 @@ private:
   }
 
   AtomicRMWInst::BinOp thawRMWOperation(const Value *Operation) const {
-    NaCl::AtomicRMWOperation Op =
-        (NaCl::AtomicRMWOperation)cast<Constant>(Operation)->getUniqueInteger()
-            .getLimitedValue();
+    NaCl::AtomicRMWOperation Op = (NaCl::AtomicRMWOperation)
+        cast<Constant>(Operation)->getUniqueInteger().getLimitedValue();
     switch (Op) {
     // Only valid values should pass validation.
     default: llvm_unreachable("unknown atomic RMW operation");
@@ -248,20 +314,27 @@ bool ResolvePNaClIntrinsics::visitCalls(
 }
 
 bool ResolvePNaClIntrinsics::runOnFunction(Function &F) {
+  LLVMContext &C = F.getParent()->getContext();
   bool Changed = false;
 
-  SimpleCallResolver SetJmpResolver(F, Intrinsic::nacl_setjmp, "setjmp");
-  SimpleCallResolver LongJmpResolver(F, Intrinsic::nacl_longjmp, "longjmp");
+  IntrinsicCallToFunctionCall SetJmpResolver(F, Intrinsic::nacl_setjmp,
+                                             "setjmp");
+  IntrinsicCallToFunctionCall LongJmpResolver(F, Intrinsic::nacl_longjmp,
+                                              "longjmp");
   Changed |= visitCalls(SetJmpResolver);
   Changed |= visitCalls(LongJmpResolver);
 
-  NaCl::AtomicIntrinsics AI(F.getParent()->getContext());
+  NaCl::AtomicIntrinsics AI(C);
   NaCl::AtomicIntrinsics::View V = AI.allIntrinsicsAndOverloads();
   for (NaCl::AtomicIntrinsics::View::iterator I = V.begin(), E = V.end();
        I != E; ++I) {
     AtomicCallResolver AtomicResolver(F, I);
     Changed |= visitCalls(AtomicResolver);
   }
+
+  ConstantCallResolver<IsLockFreeToConstant> IsLockFreeResolver(
+      F, Intrinsic::nacl_atomic_is_lock_free, IsLockFreeToConstant());
+  Changed |= visitCalls(IsLockFreeResolver);
 
   return Changed;
 }

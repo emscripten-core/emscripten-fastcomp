@@ -53,7 +53,7 @@ relates memory locations to each other as the C11/C++11 standards do.
 As in C11/C++11 some atomic accesses may be implemented with locks on certain
 platforms. The ``ATOMIC_*_LOCK_FREE`` macros will always be ``1``, signifying
 that all types are sometimes lock-free. The ``is_lock_free`` methods will return
-the current platform's implementation at runtime.
+the current platform's implementation at translation time.
 
 The PNaCl toolchain supports concurrent memory accesses through legacy GCC-style
 ``__sync_*`` builtins, as well as through C11/C++11 atomic primitives.

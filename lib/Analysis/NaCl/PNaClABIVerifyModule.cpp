@@ -215,6 +215,8 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   }
   addIntrinsic(Intrinsic::nacl_atomic_fence);
 
+  addIntrinsic(Intrinsic::nacl_atomic_is_lock_free);
+
   // Stack save and restore are used to support C99 VLAs.
   addIntrinsic(Intrinsic::stacksave);
   addIntrinsic(Intrinsic::stackrestore);
