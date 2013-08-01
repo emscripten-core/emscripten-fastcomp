@@ -1301,6 +1301,46 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
   }
 }
 
+// Returns true if error occured installing I into BB.
+bool NaClBitcodeReader::InstallInstruction(
+    BasicBlock *BB, Instruction *I) {
+  // Add instruction to end of current BB.  If there is no current BB, reject
+  // this file.
+  if (BB == 0) {
+    delete I;
+    return Error("Invalid instruction with no BB");
+  }
+  BB->getInstList().push_back(I);
+  return false;
+}
+
+Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T, BasicBlock *BB) {
+  // Note: Currently only knows how to add inttoptr type conversion, since
+  // this is the only elided instruction in the bitcode writer.
+  // TODO(kschimpf): Generalize this as we expand elided conversions.
+  Value *Conversion = 0;
+  Type *OpTy = Op->getType();
+  if (OpTy == T) return Op;
+
+  // Following while loop is only run once. It is used to break on
+  // erroneous conditions.
+  while (true) {
+    if (!OpTy->isIntegerTy()) break;
+    if (!T->isPointerTy()) break;
+    Instruction *I = CastInst::Create(Instruction::IntToPtr, Op, T);
+    if (InstallInstruction(BB, I)) break;
+    Conversion = I;
+    break;
+  }
+  if (Conversion == 0) {
+    std::string Message;
+    raw_string_ostream StrM(Message);
+    StrM << "Can't convert " << *Op << " to type " << *T << "\n";
+    Error(StrM.str());
+  }
+  return Conversion;
+}
+
 /// ParseFunctionBody - Lazily parse the specified function body block.
 bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   DEBUG(dbgs() << "-> ParseFunctionBody\n");
@@ -1602,13 +1642,29 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       I = new AllocaInst(Type::getInt8Ty(Context), Size, (1 << Align) >> 1);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_LOAD: { // LOAD: [op, align, vol]
+    case naclbitc::FUNC_CODE_INST_LOAD: {
+      // PNaCl version 1: LOAD: [op, align, vol]
+      // PNaCl version 2: LOAD: [op, align, vol, ty]
       unsigned OpNum = 0;
       Value *Op;
-      if (popValue(Record, &OpNum, NextValueNo, &Op) ||
-          OpNum+2 != Record.size())
+      if (popValue(Record, &OpNum, NextValueNo, &Op))
         return Error("Invalid LOAD record");
-
+      switch (GetPNaClVersion()) {
+        case 1:
+          if (Record.size() != 3)
+            return Error("Invalid LOAD record");
+          break;
+        case 2: {
+          if (Record.size() != 4)
+            return Error("Invalid LOAD record");
+          // Add pointer cast to op.
+          Type *T = getTypeByID(Record[3]);
+          if (T == 0)
+            return Error("Invalid type for load instruction");
+          Op = ConvertOpToType(Op, T->getPointerTo(), CurBB);
+          if (Op == 0) return true;
+        }
+      }
       I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
       break;
     }
@@ -1677,13 +1733,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       continue;
     }
 
-    // Add instruction to end of current BB.  If there is no current BB, reject
-    // this file.
-    if (CurBB == 0) {
-      delete I;
-      return Error("Invalid instruction with no BB");
-    }
-    CurBB->getInstList().push_back(I);
+    if (InstallInstruction(CurBB, I))
+      return true;
 
     // If this was a terminator instruction, move to the next block.
     if (isa<TerminatorInst>(I)) {

@@ -135,6 +135,15 @@ public:
   void incorporateFunction(const Function &F);
   void purgeFunction();
 
+  /// \brief Returns the value after elided (cast) operations have been
+  /// removed. Returns V if unable to elide the cast.
+  const Value *ElideCasts(const Value *V);
+
+  /// \brief Returns true if value V is an elided (cast) operation.
+  bool IsElidedCast(const Value *V) {
+    return V != ElideCasts(V);
+  }
+
 private:
   void OptimizeTypes(const Module *M);
   void OptimizeConstants(unsigned CstStart, unsigned CstEnd);

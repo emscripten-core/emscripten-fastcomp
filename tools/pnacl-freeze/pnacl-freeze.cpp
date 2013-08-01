@@ -47,7 +47,7 @@ static void WriteOutputFile(const Module *M) {
     exit(1);
   }
 
-  NaClWriteBitcodeToFile(M, Out->os());
+  NaClWriteBitcodeToFile(M, Out->os(), /* AcceptSupportedOnly = */ false);
 
   // Declare success.
   Out->keep();

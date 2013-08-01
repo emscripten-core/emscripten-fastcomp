@@ -267,6 +267,17 @@ private:
     return getFnValueByID(ValNo);
   }
 
+  /// \brief Add instructions to cast Op to the given type T into block BB.
+  /// Follows rules for pointer conversion as defined in
+  /// llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
+  ///
+  /// Returns 0 if unable to generate conversion value (also generates
+  /// an appropriate error message and calls Error).
+  Value *ConvertOpToType(Value *Op, Type *T, BasicBlock *BB);
+
+  /// \brief Install instruction I into basic block BB.
+  bool InstallInstruction(BasicBlock *BB, Instruction *I);
+
   bool ParseModule(bool Resume);
   bool ParseTypeTable();
   bool ParseTypeTableBody();

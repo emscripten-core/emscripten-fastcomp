@@ -231,7 +231,11 @@ void NaClValueEnumerator::EnumerateValueSymbolTable(const ValueSymbolTable &VST)
     EnumerateValue(VI->getValue());
 }
 
-void NaClValueEnumerator::EnumerateValue(const Value *V) {
+void NaClValueEnumerator::EnumerateValue(const Value *VIn) {
+  // Skip over elided values.
+  const Value *V = ElideCasts(VIn);
+  if (V != VIn) return;
+
   assert(!V->getType()->isVoidTy() && "Can't insert void values!");
   assert(!isa<MDNode>(V) && !isa<MDString>(V) &&
          "EnumerateValue doesn't handle Metadata!");
@@ -422,4 +426,55 @@ void NaClValueEnumerator::purgeFunction() {
   Values.resize(NumModuleValues);
   BasicBlocks.clear();
   FnForwardTypeRefs.clear();
+}
+
+// Returns true if the bitcode writer can assume that the given
+// argument of the given operation can accept a normalized pointer.
+// Note: This function is based on the concept of NormalizedPtr as
+// defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
+static bool AllowsNormalizedPtr(const Value *V, const Instruction *Arg) {
+  const Instruction *I = dyn_cast<Instruction>(V);
+  if (I == 0) return false;
+
+  // TODO(kschimpf) Expand this list to any operation that can handle
+  // normalized pointers. That is loads and stores, function calls, and
+  // instrinsic calls.
+  switch (I->getOpcode()) {
+  default:
+    return false;
+  case Instruction::Load:
+    return I->getOperand(0) == Arg;
+  }
+}
+
+// Returns true if the bitcode reader and writer can assume that the
+// uses of the given inttotpr I2P allow normalized pointers (as
+// defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
+static bool IntToPtrUsesAllowEliding(const Instruction *I2P) {
+  for (Value::const_use_iterator u = I2P->use_begin(), e = I2P->use_end();
+       u != e; ++u) {
+    if (!AllowsNormalizedPtr(cast<Value>(*u), I2P)) return false;
+  }
+  // If reached, either all uses have a normalized pointer (and hence
+  // we know how to automatically add it back), or there were no uses (and
+  // hence represents dead code).
+  return true;
+}
+
+// Note: This function is based on the comments in
+// llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
+const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
+  if (PNaClVersion == 1) return V;
+  // TODO(kschimpf): Expand this out to cover all cases.
+  if (const Instruction *I = dyn_cast<Instruction>(V)) {
+    switch (I->getOpcode()) {
+    default:
+      break;
+    case Instruction::IntToPtr:
+      if (IntToPtrUsesAllowEliding(I)) {
+        return ElideCasts(I->getOperand(0));
+      }
+    }
+  }
+  return V;
 }

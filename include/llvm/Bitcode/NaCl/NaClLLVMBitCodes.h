@@ -286,7 +286,10 @@ namespace naclbitc {
     // 17 is unused.
     // 18 is unused.
     FUNC_CODE_INST_ALLOCA      = 19, // ALLOCA:     [op, align]
-    FUNC_CODE_INST_LOAD        = 20, // LOAD:       [op, align, vol]
+    FUNC_CODE_INST_LOAD        = 20, // PNaCl version 1:
+                                     //    LOAD: [op, align, vol]
+                                     // PNaCl version 2:
+                                     //    LOAD: [op, align, vol, ty]
     // 21 is unused.
     // 22 is unused.
     FUNC_CODE_INST_VAARG       = 23, // Not used in PNaCl.

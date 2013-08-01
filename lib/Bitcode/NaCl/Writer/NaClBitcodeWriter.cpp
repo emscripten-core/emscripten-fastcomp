@@ -811,8 +811,9 @@ static void pushValue(const Value *V, unsigned InstID,
                       SmallVector<unsigned, 64> &Vals,
                       NaClValueEnumerator &VE,
                       NaClBitstreamWriter &Stream) {
-  EmitFnForwardTypeRef(V, InstID, VE, Stream);
-  unsigned ValID = VE.getValueID(V);
+  const Value *VElided = VE.ElideCasts(V);
+  EmitFnForwardTypeRef(VElided, InstID, VE, Stream);
+  unsigned ValID = VE.getValueID(VElided);
   // Make encoding relative to the InstID.
   Vals.push_back(InstID - ValID);
 }
@@ -821,8 +822,9 @@ static void pushValue64(const Value *V, unsigned InstID,
                         SmallVector<uint64_t, 128> &Vals,
                         NaClValueEnumerator &VE,
                         NaClBitstreamWriter &Stream) {
-  EmitFnForwardTypeRef(V, InstID, VE, Stream);
-  uint64_t ValID = VE.getValueID(V);
+  const Value *VElided = VE.ElideCasts(V);
+  EmitFnForwardTypeRef(VElided, InstID, VE, Stream);
+  uint64_t ValID = VE.getValueID(VElided);
   Vals.push_back(InstID - ValID);
 }
 
@@ -830,14 +832,16 @@ static void pushValueSigned(const Value *V, unsigned InstID,
                             SmallVector<uint64_t, 128> &Vals,
                             NaClValueEnumerator &VE,
                             NaClBitstreamWriter &Stream) {
-  EmitFnForwardTypeRef(V, InstID, VE, Stream);
-  unsigned ValID = VE.getValueID(V);
+  const Value *VElided = VE.ElideCasts(V);
+  EmitFnForwardTypeRef(VElided, InstID, VE, Stream);
+  unsigned ValID = VE.getValueID(VElided);
   int64_t diff = ((int32_t)InstID - (int32_t)ValID);
   emitSignedInt64(Vals, diff);
 }
 
 /// WriteInstruction - Emit an instruction to the specified stream.
-static void WriteInstruction(const Instruction &I, unsigned InstID,
+/// Returns true if instruction actually emitted.
+static bool WriteInstruction(const Instruction &I, unsigned InstID,
                              NaClValueEnumerator &VE,
                              NaClBitstreamWriter &Stream,
                              SmallVector<unsigned, 64> &Vals) {
@@ -848,6 +852,8 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   default:
     if (Instruction::isCast(I.getOpcode())) {
       // CAST:       [opval, destty, castopc]
+      if (VE.IsElidedCast(&I))
+        return false;
       Code = naclbitc::FUNC_CODE_INST_CAST;
       AbbrevToUse = FUNCTION_INST_CAST_ABBREV;
       pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
@@ -965,7 +971,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
       // Also do expected action - clear external Vals collection:
       Vals.clear();
-      return;
+      return true;
     }
     break;
   case Instruction::Unreachable:
@@ -988,7 +994,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     // Emit a Vals64 vector and exit.
     Stream.EmitRecord(Code, Vals64, AbbrevToUse);
     Vals64.clear();
-    return;
+    return true;
   }
 
   case Instruction::Alloca:
@@ -998,13 +1004,17 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream); // size.
     Vals.push_back(Log2_32(cast<AllocaInst>(I).getAlignment())+1);
     break;
-
   case Instruction::Load:
+    // PNaCl Version 1: LOAD: [op, align, vol]
+    // PNaCl Version 2: LOAD: [op, align, vol, ty]
     Code = naclbitc::FUNC_CODE_INST_LOAD;
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // ptr
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
     Vals.push_back(Log2_32(cast<LoadInst>(I).getAlignment())+1);
     Vals.push_back(cast<LoadInst>(I).isVolatile());
+    if (PNaClVersion == 2) {
+      Vals.push_back(VE.getTypeID(I.getType()));
+    }
     break;
   case Instruction::Store:
     Code = naclbitc::FUNC_CODE_INST_STORE;
@@ -1047,6 +1057,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
 
   Stream.EmitRecord(Code, Vals, AbbrevToUse);
   Vals.clear();
+  return true;
 }
 
 // Emit names for globals/functions etc.
@@ -1133,9 +1144,8 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
   for (Function::const_iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
     for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
          I != E; ++I) {
-      WriteInstruction(*I, InstID, VE, Stream, Vals);
-
-      if (!I->getType()->isVoidTy())
+      if (WriteInstruction(*I, InstID, VE, Stream, Vals) &&
+          !I->getType()->isVoidTy())
         ++InstID;
     }
 
@@ -1233,6 +1243,9 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1)); // volatile
+    if (PNaClVersion == 2) {
+      Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Typecast
+    }
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_LOAD_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
