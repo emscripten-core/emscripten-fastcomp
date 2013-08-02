@@ -450,7 +450,7 @@ static bool AllowsNormalizedPtr(const Value *V, const Instruction *Arg) {
 // Returns true if the bitcode reader and writer can assume that the
 // uses of the given inttotpr I2P allow normalized pointers (as
 // defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
-static bool IntToPtrUsesAllowEliding(const Instruction *I2P) {
+static bool AllUsesAllowNormalizedPtr(const Instruction *I2P) {
   for (Value::const_use_iterator u = I2P->use_begin(), e = I2P->use_end();
        u != e; ++u) {
     if (!AllowsNormalizedPtr(cast<Value>(*u), I2P)) return false;
@@ -459,6 +459,12 @@ static bool IntToPtrUsesAllowEliding(const Instruction *I2P) {
   // we know how to automatically add it back), or there were no uses (and
   // hence represents dead code).
   return true;
+}
+
+// Returns true if the value is an InherentPtr (as defined in
+// llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
+static inline bool IsInherentPtr(const Value *V) {
+  return isa<AllocaInst>(V) || isa<GlobalValue>(V);
 }
 
 // Note: This function is based on the comments in
@@ -470,10 +476,18 @@ const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
     switch (I->getOpcode()) {
     default:
       break;
+    case Instruction::BitCast:
+      if (I->getType()->isPointerTy() &&
+	  AllUsesAllowNormalizedPtr(I) &&
+	  IsInherentPtr(I->getOperand(0))) {
+	return ElideCasts(I->getOperand(0));
+      }
+      break;
     case Instruction::IntToPtr:
-      if (IntToPtrUsesAllowEliding(I)) {
+      if (AllUsesAllowNormalizedPtr(I)) {
         return ElideCasts(I->getOperand(0));
       }
+      break;
     }
   }
   return V;

@@ -1315,28 +1315,28 @@ bool NaClBitcodeReader::InstallInstruction(
 }
 
 Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T, BasicBlock *BB) {
-  // Note: Currently only knows how to add inttoptr type conversion, since
-  // this is the only elided instruction in the bitcode writer.
+  // Note: Currently only knows how to add inttoptr and bitcast type
+  // conversions for non-phi nodes, since these are the only elided
+  // instructions in the bitcode writer.
+  //
   // TODO(kschimpf): Generalize this as we expand elided conversions.
-  Value *Conversion = 0;
+  Instruction *Conversion = 0;
   Type *OpTy = Op->getType();
   if (OpTy == T) return Op;
 
-  // Following while loop is only run once. It is used to break on
-  // erroneous conditions.
-  while (true) {
-    if (!OpTy->isIntegerTy()) break;
-    if (!T->isPointerTy()) break;
-    Instruction *I = CastInst::Create(Instruction::IntToPtr, Op, T);
-    if (InstallInstruction(BB, I)) break;
-    Conversion = I;
-    break;
+  if (OpTy->isPointerTy()) {
+    Conversion = new BitCastInst(Op, T);
+  } else if (OpTy->isIntegerTy()) {
+    Conversion = new IntToPtrInst(Op, T);
   }
+
   if (Conversion == 0) {
     std::string Message;
     raw_string_ostream StrM(Message);
     StrM << "Can't convert " << *Op << " to type " << *T << "\n";
     Error(StrM.str());
+  } else {
+    InstallInstruction(BB, Conversion);
   }
   return Conversion;
 }
