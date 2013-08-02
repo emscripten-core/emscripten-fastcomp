@@ -91,7 +91,8 @@ enum {
   FUNCTION_INST_RET_VAL_ABBREV,
   FUNCTION_INST_UNREACHABLE_ABBREV,
   FUNCTION_INST_FORWARDTYPEREF_ABBREV,
-  FUNCTION_INST_MAX_ABBREV = FUNCTION_INST_FORWARDTYPEREF_ABBREV,
+  FUNCTION_INST_STORE_ABBREV,
+  FUNCTION_INST_MAX_ABBREV = FUNCTION_INST_STORE_ABBREV,
 
   // TYPE_BLOCK_ID_NEW abbrev id's.
   TYPE_POINTER_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
@@ -1016,10 +1017,11 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       Vals.push_back(VE.getTypeID(I.getType()));
     }
     break;
-  case Instruction::Store:
+  case Instruction::Store: // STORE: [ptr, val, align, vol]
     Code = naclbitc::FUNC_CODE_INST_STORE;
-    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);  // ptrty + ptr
-    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);  // val.
+    AbbrevToUse = FUNCTION_INST_STORE_ABBREV;
+    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     Vals.push_back(Log2_32(cast<StoreInst>(I).getAlignment())+1);
     Vals.push_back(cast<StoreInst>(I).isVolatile());
     break;
@@ -1313,6 +1315,17 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_FORWARDTYPEREF_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // INST_STORE abbrev for FUNCTION_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_STORE));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Value
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1)); // volatile
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
+                                   Abbv) != FUNCTION_INST_STORE_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 

@@ -443,7 +443,12 @@ static bool AllowsNormalizedPtr(const Value *V, const Instruction *Arg) {
   default:
     return false;
   case Instruction::Load:
+    // Verify it is the ptr argument of the load.  Note: This check is
+    // not really necessary in that a load only has one argument.
     return I->getOperand(0) == Arg;
+  case Instruction::Store:
+    // Verify it is the ptr argument of the store.
+    return I->getOperand(1) == Arg;
   }
 }
 

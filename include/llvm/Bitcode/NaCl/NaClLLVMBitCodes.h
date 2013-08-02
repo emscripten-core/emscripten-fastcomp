@@ -293,10 +293,7 @@ namespace naclbitc {
     // 21 is unused.
     // 22 is unused.
     FUNC_CODE_INST_VAARG       = 23, // Not used in PNaCl.
-    // This store code encodes the pointer type, rather than the value type
-    // this is so information only available in the pointer type (e.g. address
-    // spaces) is retained.
-    FUNC_CODE_INST_STORE       = 24, // STORE:      [ptr, val, align, vol]
+    FUNC_CODE_INST_STORE       = 24, // STORE: [ptr, val, align, vol]
     // 25 is unused.
     FUNC_CODE_INST_EXTRACTVAL  = 26, // Not used in PNaCl.
     FUNC_CODE_INST_INSERTVAL   = 27, // Not used in PNaCl.

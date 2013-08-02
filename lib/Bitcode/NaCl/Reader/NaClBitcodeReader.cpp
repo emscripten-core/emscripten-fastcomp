@@ -1663,19 +1663,21 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
             return Error("Invalid type for load instruction");
           Op = ConvertOpToType(Op, T->getPointerTo(), CurBB);
           if (Op == 0) return true;
+	  break;
         }
       }
       I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_STORE: { // STORE2:[ptr, val, align, vol]
+    case naclbitc::FUNC_CODE_INST_STORE: { // STORE: [ptr, val, align, vol]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
       if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
           popValue(Record, &OpNum, NextValueNo, &Val) ||
           OpNum+2 != Record.size())
         return Error("Invalid STORE record");
-
+      // Note: In version 1, the following statement is a noop.
+      Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBB);
       I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
       break;
     }
