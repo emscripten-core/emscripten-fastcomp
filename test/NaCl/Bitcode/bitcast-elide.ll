@@ -169,7 +169,7 @@ define i32 @TwoLoads(i32 %i) {
 ; PF2-NEXT:    <INST_RET abbrevid=9 op0=1/>
 ; PF2:       </FUNCTION_BLOCK>
 
-; Test how we we duplicate bitcasts, even if optimized in the input file.
+; Test how we duplicate bitcasts, even if optimized in the input file.
 define i32 @TwoLoadOpt(i32 %i) {
   %1 = bitcast [7 x i8]* @bytes to i32*       
   %2 = load i32* %1, align 4
