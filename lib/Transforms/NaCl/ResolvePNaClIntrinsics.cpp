@@ -27,6 +27,9 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Transforms/NaCl.h"
+#if defined(__pnacl__)
+#include "native_client/src/untrusted/nacl/pnacl.h"
+#endif
 
 using namespace llvm;
 
