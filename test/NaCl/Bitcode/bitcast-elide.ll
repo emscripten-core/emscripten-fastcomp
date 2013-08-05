@@ -45,7 +45,7 @@ define void @SimpleLoad() {
 
 ; PF2:       <FUNCTION_BLOCK NumWords=2 BlockCodeSize=4>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0 op3=0/>
+; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_RET abbrevid=8/>
 ; PF2-NEXT:  </FUNCTION_BLOCK>
 
@@ -86,7 +86,7 @@ define void @SimpleLoadAlloca() {
 ; PF2-NEXT:     <CONSTANTS_BLOCK
 ; PF2:          </CONSTANTS_BLOCK>
 ; PF2-NEXT:     <INST_ALLOCA op0=1 op1=3/>
-; PF2-NEXT:     <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0 op3=0/>
+; PF2-NEXT:     <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
 ; PF2-NEXT:     <INST_RET abbrevid=8/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 
@@ -119,7 +119,7 @@ define i32* @NonsimpleLoad(i32 %i) {
 ; PF2:       <FUNCTION_BLOCK NumWords=6 BlockCodeSize=4>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:    <INST_CAST abbrevid=7 op0=2 op1=1 op2=11/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0 op3=0/>
+; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_RET abbrevid=9 op0=2/>
 ; PF2:       </FUNCTION_BLOCK>
 
@@ -163,8 +163,8 @@ define i32 @TwoLoads(i32 %i) {
 
 ; PF2:       <FUNCTION_BLOCK NumWords=7 BlockCodeSize=4>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0 op3=0/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=3 op1=3 op2=0 op3=0/>
+; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0/>
+; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=3 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_BINOP abbrevid=5 op0=2 op1=1 op2=0/>
 ; PF2-NEXT:    <INST_RET abbrevid=9 op0=1/>
 ; PF2:       </FUNCTION_BLOCK>
@@ -206,8 +206,8 @@ define i32 @TwoLoadOpt(i32 %i) {
 
 ; PF2:       <FUNCTION_BLOCK NumWords=7 BlockCodeSize=4>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0 op3=0/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=3 op1=3 op2=0 op3=0/>
+; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0/>
+; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=3 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_BINOP abbrevid=5 op0=2 op1=1 op2=0/>
 ; PF2-NEXT:    <INST_RET abbrevid=9 op0=1/>
 ; PF2:       </FUNCTION_BLOCK>
@@ -240,6 +240,6 @@ define void @SimpleStore(i32 %i) {
 
 ; PF2:        <FUNCTION_BLOCK NumWords=5 BlockCodeSize=4>
 ; PF2-NEXT:     <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:     <INST_STORE abbrevid=12 op0=2 op1=1 op2=3 op3=0/>
+; PF2-NEXT:     <INST_STORE abbrevid=12 op0=2 op1=1 op2=3/>
 ; PF2-NEXT:     <INST_RET abbrevid=8/>
 ; PF2:        </FUNCTION_BLOCK>

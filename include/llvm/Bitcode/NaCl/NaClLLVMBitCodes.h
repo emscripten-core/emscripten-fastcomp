@@ -289,11 +289,14 @@ namespace naclbitc {
     FUNC_CODE_INST_LOAD        = 20, // PNaCl version 1:
                                      //    LOAD: [op, align, vol]
                                      // PNaCl version 2:
-                                     //    LOAD: [op, align, vol, ty]
+                                     //    LOAD: [op, align, ty]
     // 21 is unused.
     // 22 is unused.
     FUNC_CODE_INST_VAARG       = 23, // Not used in PNaCl.
-    FUNC_CODE_INST_STORE       = 24, // STORE: [ptr, val, align, vol]
+    FUNC_CODE_INST_STORE       = 24, // PNaCl version 1:
+                                     //    STORE: [ptr, val, align, vol]
+                                     // PNaCl version 2:
+                                     //    Store: [ptr, val, align]
     // 25 is unused.
     FUNC_CODE_INST_EXTRACTVAL  = 26, // Not used in PNaCl.
     FUNC_CODE_INST_INSERTVAL   = 27, // Not used in PNaCl.

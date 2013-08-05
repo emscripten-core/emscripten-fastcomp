@@ -1007,23 +1007,35 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::Load:
     // PNaCl Version 1: LOAD: [op, align, vol]
-    // PNaCl Version 2: LOAD: [op, align, vol, ty]
+    // PNaCl Version 2: LOAD: [op, align, ty]
     Code = naclbitc::FUNC_CODE_INST_LOAD;
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
     Vals.push_back(Log2_32(cast<LoadInst>(I).getAlignment())+1);
-    Vals.push_back(cast<LoadInst>(I).isVolatile());
+    if (PNaClVersion == 1) {
+      // Note: Even though volatile values are not part of the ABI,
+      // we must add a value to the record for version 1, since the
+      // reader for version 1 has already been released.
+      Vals.push_back(0);
+    }
     if (PNaClVersion == 2) {
       Vals.push_back(VE.getTypeID(I.getType()));
     }
     break;
-  case Instruction::Store: // STORE: [ptr, val, align, vol]
+  case Instruction::Store:
+    // PNaCl version 1: STORE: [ptr, val, align, vol]
+    // PNaCl version 2: STORE: [ptr, val, align]
     Code = naclbitc::FUNC_CODE_INST_STORE;
     AbbrevToUse = FUNCTION_INST_STORE_ABBREV;
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     Vals.push_back(Log2_32(cast<StoreInst>(I).getAlignment())+1);
-    Vals.push_back(cast<StoreInst>(I).isVolatile());
+    if (PNaClVersion == 1) {
+      // Note: Even though volatile values are not part of the ABI,
+      // we must add a value to the record for version 1, since the
+      // reader for version 1 has already been released.
+      Vals.push_back(0);
+    }
     break;
   case Instruction::Call: {
     const CallInst &CI = cast<CallInst>(I);
@@ -1244,7 +1256,13 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_LOAD));
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1)); // volatile
+    if (PNaClVersion == 1) {
+      // Note: Even though volatile values are not part of the ABI,
+      // we must add a value to the record for version 1, since the
+      // reader for version 1 has already been released. By using a constant,
+      // we at least avoid wasting space in the bitcode file.
+      Abbv->Add(NaClBitCodeAbbrevOp(0));
+    }
     if (PNaClVersion == 2) {
       Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Typecast
     }
@@ -1323,7 +1341,13 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Value
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1)); // volatile
+    if (PNaClVersion == 1) {
+      // Note: Even though volatile values are not part of the ABI,
+      // we must add a value to the record for version 1, since the
+      // reader for version 1 has already been released. By using a constant,
+      // we at least avoid wasting space in the bitcode file.
+      Abbv->Add(NaClBitCodeAbbrevOp(0));
+    }
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_STORE_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");

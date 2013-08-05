@@ -1644,41 +1644,50 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     }
     case naclbitc::FUNC_CODE_INST_LOAD: {
       // PNaCl version 1: LOAD: [op, align, vol]
-      // PNaCl version 2: LOAD: [op, align, vol, ty]
+      // PNaCl version 2: LOAD: [op, align, ty]
       unsigned OpNum = 0;
       Value *Op;
-      if (popValue(Record, &OpNum, NextValueNo, &Op))
+      if (popValue(Record, &OpNum, NextValueNo, &Op) ||
+          Record.size() != 3)
         return Error("Invalid LOAD record");
       switch (GetPNaClVersion()) {
         case 1:
-          if (Record.size() != 3)
-            return Error("Invalid LOAD record");
+	  I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
           break;
         case 2: {
-          if (Record.size() != 4)
-            return Error("Invalid LOAD record");
           // Add pointer cast to op.
-          Type *T = getTypeByID(Record[3]);
+          Type *T = getTypeByID(Record[2]);
           if (T == 0)
             return Error("Invalid type for load instruction");
           Op = ConvertOpToType(Op, T->getPointerTo(), CurBB);
           if (Op == 0) return true;
+	  I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
 	  break;
         }
       }
-      I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
       break;
     }
-    case naclbitc::FUNC_CODE_INST_STORE: { // STORE: [ptr, val, align, vol]
+    case naclbitc::FUNC_CODE_INST_STORE: {
+      // PNaCl version 1: STORE: [ptr, val, align, vol]
+      // PNaCl version 2: STORE: [ptr, val, align]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
       if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
-          popValue(Record, &OpNum, NextValueNo, &Val) ||
-          OpNum+2 != Record.size())
+          popValue(Record, &OpNum, NextValueNo, &Val))
         return Error("Invalid STORE record");
-      // Note: In version 1, the following statement is a noop.
-      Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBB);
-      I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
+      switch (GetPNaClVersion()) {
+      case 1:
+	if (OpNum+2 != Record.size())
+	  return Error("Invalid STORE record");
+	I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
+	break;
+      case 2:
+	if (OpNum+1 != Record.size())
+	  return Error("Invalid STORE record");
+	Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBB);
+	I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
+	break;
+      }
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL: {
