@@ -526,6 +526,8 @@ def int_nacl_atomic_cmpxchg : Intrinsic<[llvm_anyint_ty],
     [IntrReadWriteArgMem]>;
 def int_nacl_atomic_fence : Intrinsic<[], [llvm_i32_ty],
     [IntrReadWriteArgMem]>;
+def int_nacl_atomic_fence_all : Intrinsic<[], [],
+    [IntrReadWriteArgMem]>;
 def int_nacl_atomic_is_lock_free : Intrinsic<[llvm_i1_ty],
     [llvm_i32_ty, llvm_ptr_ty], [IntrNoMem]>,
     GCCBuiltin<"__nacl_atomic_is_lock_free">;

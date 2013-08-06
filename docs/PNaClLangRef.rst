@@ -143,25 +143,30 @@ Volatile Memory Accesses
 
 `LLVM LangRef: Volatile Memory Accesses <LangRef.html#volatile>`_
 
-PNaCl bitcode does not support volatile memory accesses. The ``volatile``
-attribute on loads and stores is not supported. See the
+PNaCl bitcode does not support volatile memory accesses. The
+``volatile`` attribute on loads and stores is not supported. See the
 `PNaCl Developer's Guide <PNaClDeveloperGuide.html>`_ for more details.
 
 Memory Model for Concurrent Operations
 --------------------------------------
 
-`LLVM LangRef: Memory Model for Concurrent Operations <LangRef.html#memmodel>`_
+`LLVM LangRef: Memory Model for Concurrent Operations
+<LangRef.html#memmodel>`_
 
-See the `PNaCl Developer's Guide <PNaClDeveloperGuide.html>`_ for more details.
+See the `PNaCl Developer's Guide <PNaClDeveloperGuide.html>`_ for more
+details.
 
 Atomic Memory Ordering Constraints
 ----------------------------------
 
 `LLVM LangRef: Atomic Memory Ordering Constraints <LangRef.html#ordering>`_
 
-PNaCl bitcode currently supports sequential consistency only, through its
-`atomic intrinsics`_. See the
-`PNaCl Developer's Guide <PNaClDeveloperGuide.html>`_ for more details.
+PNaCl bitcode currently supports sequential consistency only, through
+its `atomic intrinsics`_. See the `PNaCl Developer's Guide
+<PNaClDeveloperGuide.html>`_ for more details.
+
+The integer values for memory ordering constraints are in
+``"llvm/IR/NaClAtomicIntrinsics.h"``.
 
 Fast-Math Flags
 ---------------
@@ -410,6 +415,8 @@ The only intrinsics supported by PNaCl bitcode are the following.
 * ``llvm.nacl.atomic.rmw``
 * ``llvm.nacl.atomic.cmpxchg``
 * ``llvm.nacl.atomic.fence``
+* ``llvm.nacl.atomic.fence.all``
+* ``llvm.nacl.atomic.is.lock.free``
 
   See :ref:`atomic intrinsics <atomicintrinsics>`.
 
@@ -434,9 +441,9 @@ Setjmp and Longjmp
     declare void @llvm.nacl.longjmp(i8* %jmpbuf, i32)
     declare i32 @llvm.nacl.setjmp(i8* %jmpbuf)
 
-These intrinsics implement the semantics of C11 ``setjmp`` and ``longjmp``. The
-``jmpbuf`` pointer must be 64-bit aligned and point to at least 1024 bytes of
-allocated memory.
+These intrinsics implement the semantics of C11 ``setjmp`` and
+``longjmp``. The ``jmpbuf`` pointer must be 64-bit aligned and point to
+at least 1024 bytes of allocated memory.
 
 .. _atomicintrinsics:
 
@@ -455,10 +462,11 @@ Atomic intrinsics
             iN* <object>, iN <expected>, iN <desired>,
             i32 <memory_order_success>, i32 <memory_order_failure>)
     declare void @llvm.nacl.atomic.fence(i32 <memory_order>)
+    declare void @llvm.nacl.atomic.fence.all()
 
-Each of these intrinsics is overloaded on the ``iN`` argument, which
-is reflected through ``<size>`` in the overload's name. Integral types
-of 8, 16, 32 and 64-bit width are supported for these arguments.
+Each of these intrinsics is overloaded on the ``iN`` argument, which is
+reflected through ``<size>`` in the overload's name. Integral types of
+8, 16, 32 and 64-bit width are supported for these arguments.
 
 The ``@llvm.nacl.atomic.rmw`` intrinsic implements the following
 read-modify-write operations, from the general and arithmetic sections
@@ -472,8 +480,8 @@ of the C11/C++11 standards:
  - ``exchange``
 
 For all of these read-modify-write operations, the returned value is
-that at ``object`` before the computation. The ``computation``
-argument must be a compile-time constant.
+that at ``object`` before the computation. The ``computation`` argument
+must be a compile-time constant.
 
 All atomic intrinsics also support C11/C++11 memory orderings, which
 must be compile-time constants. Those are detailed in `Atomic Memory
@@ -482,12 +490,17 @@ Ordering Constraints`_.
 Integer values for these computations and memory orderings are defined
 in ``"llvm/IR/NaClAtomicIntrinsics.h"``.
 
+The ``@llvm.nacl.atomic.fence.all`` intrinsic is equivalent to the
+``@llvm.nacl.atomic.fence`` intrinsic with sequentially consistent
+ordering and compiler barriers preventing most non-atomic memory
+accesses from reordering around it.
+
 .. note::
 
     These intrinsics allow PNaCl to support C11/C++11 style atomic
     operations as well as some legacy GCC-style ``__sync_*`` builtins
-    while remaining stable as the LLVM codebase changes. The user
-    isn't expected to use these intrinsics directly.
+    while remaining stable as the LLVM codebase changes. The user isn't
+    expected to use these intrinsics directly.
 
 .. code-block:: llvm
 
