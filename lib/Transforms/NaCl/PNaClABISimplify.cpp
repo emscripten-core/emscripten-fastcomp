@@ -30,10 +30,8 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
   PM.add(createLowerExpectIntrinsicPass());
-  // Rewrite unsupported intrinsics and inline assembly directives to
-  // simpler and portable constructs.
+  // Rewrite unsupported intrinsics to simpler and portable constructs.
   PM.add(createRewriteLLVMIntrinsicsPass());
-  PM.add(createRewriteAsmDirectivesPass());
   // LowerInvoke prevents use of C++ exception handling, which is not
   // yet supported in the PNaCl ABI.
   PM.add(createLowerInvokePass());
@@ -98,6 +96,10 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   PM.add(createExpandGetElementPtrPass());
   // Rewrite atomic and volatile instructions with intrinsic calls.
   PM.add(createRewriteAtomicsPass());
+  // Remove ``asm("":::"memory")``. This must occur after rewriting
+  // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
+  // has special meaning and is translated differently.
+  PM.add(createRemoveAsmMemoryPass());
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());

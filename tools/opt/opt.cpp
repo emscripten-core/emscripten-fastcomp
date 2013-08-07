@@ -623,10 +623,10 @@ int main(int argc, char **argv) {
   initializePNaClABIVerifyModulePass(Registry);
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
+  initializeRemoveAsmMemoryPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
-  initializeRewriteAsmDirectivesPass(Registry);
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);

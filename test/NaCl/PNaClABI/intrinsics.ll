@@ -54,6 +54,7 @@ declare i16 @llvm.nacl.atomic.cmpxchg.i16(i16*, i16, i16, i32, i32)
 declare i32 @llvm.nacl.atomic.cmpxchg.i32(i32*, i32, i32, i32, i32)
 declare i64 @llvm.nacl.atomic.cmpxchg.i64(i64*, i64, i64, i32, i32)
 declare void @llvm.nacl.atomic.fence(i32)
+declare void @llvm.nacl.atomic.fence.all()
 declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
 
 declare i16 @llvm.bswap.i16(i16)

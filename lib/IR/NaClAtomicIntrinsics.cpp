@@ -55,6 +55,7 @@ AtomicIntrinsics::AtomicIntrinsics(LLVMContext &C) {
   INIT(RMW, Ptr, Int, Mem, NoP, rmw);
   INIT(Ptr, Int, Int, Mem, Mem, cmpxchg);
   INIT(Mem, NoP, NoP, NoP, NoP, fence);
+  INIT(NoP, NoP, NoP, NoP, NoP, fence_all);
 }
 
 AtomicIntrinsics::View AtomicIntrinsics::allIntrinsicsAndOverloads() const {

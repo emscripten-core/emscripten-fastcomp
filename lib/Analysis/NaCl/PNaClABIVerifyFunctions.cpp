@@ -419,7 +419,8 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
           case Intrinsic::nacl_atomic_store:
           case Intrinsic::nacl_atomic_rmw:
           case Intrinsic::nacl_atomic_cmpxchg:
-          case Intrinsic::nacl_atomic_fence: {
+          case Intrinsic::nacl_atomic_fence:
+          case Intrinsic::nacl_atomic_fence_all: {
             // All overloads have memory order and RMW operation in the
             // same parameter, arbitrarily use the I32 overload.
             Type *T = Type::getInt32Ty(

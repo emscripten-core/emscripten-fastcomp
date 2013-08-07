@@ -1,4 +1,4 @@
-; RUN: opt -nacl-rewrite-atomics -S < %s | FileCheck %s
+; RUN: opt -nacl-rewrite-atomics -remove-asm-memory -S < %s | FileCheck %s
 
 ; Each of these tests validates that the corresponding legacy GCC-style
 ; builtins are properly rewritten to NaCl atomic builtins. Only the
@@ -210,11 +210,44 @@ define i64 @test_val_compare_and_swap_i64(i64* %ptr, i64 %oldval, i64 %newval) {
   ret i64 %res
 }
 
-; CHECK: @test_synchronize
-define void @test_synchronize() {
+; This patterns gets emitted by C11/C++11 atomic thread fences.
+;
+; CHECK: @test_c11_fence
+define void @test_c11_fence() {
   ; CHECK-NEXT: call void @llvm.nacl.atomic.fence(i32 6)
   ; CHECK-NEXT: ret void
   fence seq_cst
+  ret void
+}
+
+; This pattern gets emitted for ``__sync_synchronize`` and
+; ``asm("":::"memory")`` when Clang is configured for NaCl.
+;
+; CHECK: @test_synchronize
+define void @test_synchronize() {
+  ; CHECK-NEXT: call void @llvm.nacl.atomic.fence.all()
+  ; CHECK-NEXT: ret void
+  call void asm sideeffect "", "~{memory}"()
+  fence seq_cst
+  call void asm sideeffect "", "~{memory}"()
+  ret void
+}
+
+; Make sure the above pattern is respected and not partially-matched.
+;
+; CHECK: @test_synchronize_bad1
+define void @test_synchronize_bad1() {
+  ; CHECK-NOT: call void @llvm.nacl.atomic.fence.all()
+  call void asm sideeffect "", "~{memory}"()
+  fence seq_cst
+  ret void
+}
+
+; CHECK: @test_synchronize_bad2
+define void @test_synchronize_bad2() {
+  ; CHECK-NOT: call void @llvm.nacl.atomic.fence.all()
+  fence seq_cst
+  call void asm sideeffect "", "~{memory}"()
   ret void
 }
 

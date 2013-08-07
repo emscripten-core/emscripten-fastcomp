@@ -18,6 +18,8 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
@@ -242,6 +244,20 @@ private:
       I = new FenceInst(M->getContext(),
                         thawMemoryOrder(Call->getArgOperand(0)), SS, Call);
       break;
+    case Intrinsic::nacl_atomic_fence_all: {
+      FunctionType *FTy =
+          FunctionType::get(Type::getVoidTy(M->getContext()), false);
+      std::string AsmString; // Empty.
+      std::string Constraints("~{memory}");
+      bool HasSideEffect = true;
+      CallInst *Asm = CallInst::Create(
+          InlineAsm::get(FTy, AsmString, Constraints, HasSideEffect), "", Call);
+      Asm->setDebugLoc(Call->getDebugLoc());
+      I = new FenceInst(M->getContext(), SequentiallyConsistent, SS, Asm);
+      Asm = CallInst::Create(
+          InlineAsm::get(FTy, AsmString, Constraints, HasSideEffect), "", I);
+      Asm->setDebugLoc(Call->getDebugLoc());
+    } break;
     }
     I->setName(Call->getName());
     I->setDebugLoc(Call->getDebugLoc());

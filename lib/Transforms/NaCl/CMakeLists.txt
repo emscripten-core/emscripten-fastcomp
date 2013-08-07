@@ -18,9 +18,9 @@ add_llvm_library(LLVMNaClTransforms
   PNaClABISimplify.cpp
   PromoteI1Ops.cpp
   PromoteIntegers.cpp
+  RemoveAsmMemory.cpp
   ReplacePtrsWithInts.cpp
   ResolvePNaClIntrinsics.cpp
-  RewriteAsmDirectives.cpp
   RewriteAtomics.cpp
   RewriteLLVMIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp

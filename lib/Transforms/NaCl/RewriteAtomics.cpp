@@ -18,6 +18,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
@@ -241,9 +242,9 @@ void AtomicVisitor::replaceInstructionWithIntrinsicCall(
   ModifiedModule = true;
 }
 
-/// %res = load {atomic|volatile} T* %ptr memory_order, align sizeof(T)
+///   %res = load {atomic|volatile} T* %ptr memory_order, align sizeof(T)
 /// becomes:
-/// %res = call T @llvm.nacl.atomic.load.i<size>(%ptr, memory_order)
+///   %res = call T @llvm.nacl.atomic.load.i<size>(%ptr, memory_order)
 void AtomicVisitor::visitLoadInst(LoadInst &I) {
   if (I.isSimple())
     return;
@@ -254,9 +255,9 @@ void AtomicVisitor::visitLoadInst(LoadInst &I) {
                                       PH.OriginalPET, PH.PET, Args);
 }
 
-/// store {atomic|volatile} T %val, T* %ptr memory_order, align sizeof(T)
+///   store {atomic|volatile} T %val, T* %ptr memory_order, align sizeof(T)
 /// becomes:
-/// call void @llvm.nacl.atomic.store.i<size>(%val, %ptr, memory_order)
+///   call void @llvm.nacl.atomic.store.i<size>(%val, %ptr, memory_order)
 void AtomicVisitor::visitStoreInst(StoreInst &I) {
   if (I.isSimple())
     return;
@@ -278,9 +279,9 @@ void AtomicVisitor::visitStoreInst(StoreInst &I) {
                                       PH.OriginalPET, PH.PET, Args);
 }
 
-/// %res = atomicrmw OP T* %ptr, T %val memory_order
+///   %res = atomicrmw OP T* %ptr, T %val memory_order
 /// becomes:
-/// %res = call T @llvm.nacl.atomic.rmw.i<size>(OP, %ptr, %val, memory_order)
+///   %res = call T @llvm.nacl.atomic.rmw.i<size>(OP, %ptr, %val, memory_order)
 void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
   NaCl::AtomicRMWOperation Op;
   switch (I.getOperation()) {
@@ -300,11 +301,11 @@ void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
                                       PH.OriginalPET, PH.PET, Args);
 }
 
-/// %res = cmpxchg T* %ptr, T %old, T %new memory_order
+///   %res = cmpxchg T* %ptr, T %old, T %new memory_order
 /// becomes:
-/// %res = call T @llvm.nacl.atomic.cmpxchg.i<size>(
-///     %object, %expected, %desired, memory_order_success,
-///     memory_order_failure)
+///   %res = call T @llvm.nacl.atomic.cmpxchg.i<size>(
+///       %object, %expected, %desired, memory_order_success,
+///       memory_order_failure)
 void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
   PointerHelper<AtomicCmpXchgInst> PH(*this, I);
   checkSizeMatchesType(I, PH.BitSize, I.getCompareOperand()->getType());
@@ -319,14 +320,38 @@ void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
                                       PH.OriginalPET, PH.PET, Args);
 }
 
-/// fence memory_order
+///   fence memory_order
 /// becomes:
-/// call void @llvm.nacl.atomic.fence(memory_order)
+///   call void @llvm.nacl.atomic.fence(memory_order)
+/// and
+///   call void asm sideeffect "", "~{memory}"()
+///   fence seq_cst
+///   call void asm sideeffect "", "~{memory}"()
+/// becomes:
+///   call void asm sideeffect "", "~{memory}"()
+///   call void @llvm.nacl.atomic.fence.all()
+///   call void asm sideeffect "", "~{memory}"()
+/// Note that the assembly gets eliminated by the -remove-asm-memory pass.
 void AtomicVisitor::visitFenceInst(FenceInst &I) {
   Type *T = Type::getInt32Ty(C); // Fences aren't overloaded on type.
-  Value *Args[] = { freezeMemoryOrder(I) };
-  replaceInstructionWithIntrinsicCall(I, Intrinsic::nacl_atomic_fence, T, T,
-                                      Args);
+  BasicBlock::InstListType &IL(I.getParent()->getInstList());
+  bool isFirst = IL.empty() || &*I.getParent()->getInstList().begin() == &I;
+  bool isLast = IL.empty() || &*I.getParent()->getInstList().rbegin() == &I;
+  CallInst *PrevC = isFirst ? 0 : dyn_cast<CallInst>(I.getPrevNode());
+  CallInst *NextC = isLast ? 0 : dyn_cast<CallInst>(I.getNextNode());
+
+  if ((PrevC && PrevC->isInlineAsm() &&
+       cast<InlineAsm>(PrevC->getCalledValue())->isAsmMemory()) &&
+      (NextC && NextC->isInlineAsm() &&
+       cast<InlineAsm>(NextC->getCalledValue())->isAsmMemory()) &&
+      I.getOrdering() == SequentiallyConsistent) {
+    replaceInstructionWithIntrinsicCall(I, Intrinsic::nacl_atomic_fence_all, T,
+                                        T, ArrayRef<Value *>());
+  } else {
+    Value *Args[] = { freezeMemoryOrder(I) };
+    replaceInstructionWithIntrinsicCall(I, Intrinsic::nacl_atomic_fence, T, T,
+                                        Args);
+  }
 }
 
 ModulePass *llvm::createRewriteAtomicsPass() { return new RewriteAtomics(); }

@@ -214,6 +214,7 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
     addIntrinsic(Intrinsic::nacl_atomic_cmpxchg, AtomicTypes[T]);
   }
   addIntrinsic(Intrinsic::nacl_atomic_fence);
+  addIntrinsic(Intrinsic::nacl_atomic_fence_all);
 
   addIntrinsic(Intrinsic::nacl_atomic_is_lock_free);
 

@@ -22,7 +22,7 @@ namespace llvm {
 
 namespace NaCl {
 
-static const size_t NumAtomicIntrinsics = 5;
+static const size_t NumAtomicIntrinsics = 6;
 static const size_t NumAtomicIntrinsicOverloadTypes = 4;
 static const size_t MaxAtomicIntrinsicsParameters = 5;
 

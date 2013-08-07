@@ -29,6 +29,7 @@ declare i16 @llvm.nacl.atomic.cmpxchg.i16(i16*, i16, i16, i32, i32)
 declare i32 @llvm.nacl.atomic.cmpxchg.i32(i32*, i32, i32, i32, i32)
 declare i64 @llvm.nacl.atomic.cmpxchg.i64(i64*, i64, i64, i32, i32)
 declare void @llvm.nacl.atomic.fence(i32)
+declare void @llvm.nacl.atomic.fence.all()
 declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
 
 ; These declarations must be here because the function pass expects
@@ -93,10 +94,19 @@ define i32 @test_val_compare_and_swap_i32(i32* %ptr, i32 %oldval, i32 %newval) {
   ret i32 %1
 }
 
-; CHECK: @test_synchronize
-define void @test_synchronize() {
+; CHECK: @test_c11_fence
+define void @test_c11_fence() {
   ; CHECK: fence seq_cst
   call void @llvm.nacl.atomic.fence(i32 6)
+  ret void
+}
+
+; CHECK: @test_synchronize
+define void @test_synchronize() {
+  ; CHECK: call void asm sideeffect "", "~{memory}"()
+  ; CHECK: fence seq_cst
+  ; CHECK: call void asm sideeffect "", "~{memory}"()
+  call void @llvm.nacl.atomic.fence.all()
   ret void
 }
 
