@@ -96,7 +96,6 @@ namespace {
 namespace options {
   enum generate_bc { BC_NO, BC_ALSO, BC_ONLY };
   static bool generate_api_file = false;
-  static bool gather_then_link = true; // @LOCALMOD
   static generate_bc generate_bc_file = BC_NO;
   static std::string bc_path;
   static std::string obj_path;
@@ -126,10 +125,6 @@ namespace options {
       triple = opt.substr(strlen("mtriple="));
     } else if (opt.startswith("obj-path=")) {
       obj_path = opt.substr(strlen("obj-path="));
-      // @LOCALMOD-BEGIN
-    } else if (opt == "no-gather-then-link") {
-      gather_then_link = false;
-      // @LOCALMOD-END
     } else if (opt == "emit-llvm") {
       generate_bc_file = BC_ONLY;
     } else if (opt == "also-emit-llvm") {
@@ -463,19 +458,12 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
         DepLibs.push_back(soname);
       }
     } else {
-      if (options::gather_then_link) {
-        lto_codegen_gather_module_for_link(code_gen, M);
-      } else {
-        lto_codegen_add_module(code_gen, M);
-      }
+      lto_codegen_add_module(code_gen, M);
       cf.is_linked_in = true;
     }
   }
 
-  // With gather_then_link, the modules are disposed when linking.
-  if (!options::gather_then_link)
-    lto_module_dispose(M);
-  // @LOCALMOD-END
+  lto_module_dispose(M);
 
   return LDPS_OK;
 }
@@ -487,12 +475,6 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
 static ld_plugin_status all_symbols_read_hook(void) {
   std::ofstream api_file;
   assert(code_gen);
-
-  // @LOCALMOD-BEGIN
-  if (options::gather_then_link) {
-    lto_codegen_link_gathered_modules_and_dispose(code_gen);
-  }
-  // @LOCALMOD-END
 
   if (options::generate_api_file) {
     api_file.open("apifile.txt", std::ofstream::out | std::ofstream::trunc);

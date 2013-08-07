@@ -204,16 +204,6 @@ bool lto_codegen_add_module(lto_code_gen_t cg, lto_module_t mod) {
   return cg->addModule(mod, sLastErrorString);
 }
 
-// @LOCALMOD-BEGIN
-void lto_codegen_gather_module_for_link(lto_code_gen_t cg, lto_module_t mod) {
-  cg->gatherModuleForLinking(mod);
-}
-
-bool lto_codegen_link_gathered_modules_and_dispose(lto_code_gen_t cg) {
-  return cg->linkGatheredModulesAndDispose(sLastErrorString);
-}
-// @LOCALMOD-END
-
 /// lto_codegen_set_debug_model - Sets what if any format of debug info should
 /// be generated. Returns true on error (check lto_get_error_message() for
 /// details).
