@@ -13,4 +13,4 @@
 type = Tool
 name = pnacl-freeze
 parent = Tools
-required_libraries = NaClBitWriter BitReader
+required_libraries = NaClBitWriter NaClBitReader BitReader

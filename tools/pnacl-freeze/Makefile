@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := pnacl-freeze
-LINK_COMPONENTS := naclbitwriter bitreader
+LINK_COMPONENTS := naclbitwriter naclbitreader bitreader
 
 # This tool has no plugins, optimize startup time.
 TOOL_NO_EXPORTS := 1
