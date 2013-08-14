@@ -15,6 +15,11 @@
 //  Options:
 //      --help      - Output information about command line switches
 //      --dump      - Dump low-level bitcode structure in readable format
+//      --dump-records - Dump a neutral form of the low-level bitcode structure
+//                    in a readable form. This form doesn't print out summary
+//                    statistics. Also, unlike --dump, no bitstream file
+//                    encoding information is printed. Only the high-level
+//                    record data is dumped.
 //
 // This tool provides analytical information about a bitcode file. It is
 // intended as an aid to developers of bitcode reading and writing software. It
@@ -53,6 +58,12 @@ static cl::opt<std::string>
   InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
 static cl::opt<bool> Dump("dump", cl::desc("Dump low level bitcode trace"));
+
+static cl::opt<bool>
+ Records("dump-records",
+         cl::desc("Dump contents of records in bitcode, leaving out"
+                  " all bitstreaming information (including abbreviations)"),
+         cl::init(false));
 
 static cl::opt<unsigned> OpsPerLine(
     "operands-per-line",
@@ -361,8 +372,11 @@ static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
     if (NonSymbolic && BlockName)
       outs() << " BlockID=" << BlockID;
 
-    outs() << " NumWords=" << NumWords
-           << " BlockCodeSize=" << Stream.getAbbrevIDWidth() << ">\n";
+    if (!Records) {
+      outs() << " NumWords=" << NumWords
+             << " BlockCodeSize=" << Stream.getAbbrevIDWidth();
+    }
+    outs() << ">\n";
   }
 
   SmallVector<uint64_t, 64> Record;
@@ -444,7 +458,7 @@ static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
         outs() << "UnknownCode" << Code;
       if (NonSymbolic && CodeName)
         outs() << " codeid=" << Code;
-      if (Entry.ID != naclbitc::UNABBREV_RECORD)
+      if (!Records && Entry.ID != naclbitc::UNABBREV_RECORD)
         outs() << " abbrevid=" << Entry.ID;
 
       for (unsigned i = 0, e = Record.size(); i != e; ++i) {
@@ -544,6 +558,8 @@ static int AnalyzeBitcode() {
 
   if (Dump) outs() << "\n\n";
 
+  if (Records) return 0;
+
   uint64_t BufferSizeBits = (EndBufPtr-BufPtr)*CHAR_BIT;
   // Print a summary of the read file.
   outs() << "Summary of " << InputFilename << ":\n";
@@ -636,6 +652,8 @@ int main(int argc, char **argv) {
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
   cl::ParseCommandLineOptions(argc, argv, "pnacl-bcanalyzer file analyzer\n");
+
+  if (Records) Dump = true;
 
   return AnalyzeBitcode();
 }

@@ -1,13 +1,15 @@
 ; Test how we handle eliding inttoptr instructions.
 ; TODO(kschimpf) Expand these tests as further CL's are added for issue 3544.
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 | pnacl-bcanalyzer -dump \
+; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
+; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF1
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 | pnacl-thaw \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD1
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 | pnacl-bcanalyzer -dump \
+; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 \
+; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF2
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 | pnacl-thaw \
@@ -28,11 +30,11 @@ define void @SimpleLoad(i32 %i) {
 ; TD1-NEXT:   ret void
 ; TD1-NEXT: }
 
-; PF1:       <FUNCTION_BLOCK NumWords=6 BlockCodeSize=4>
+; PF1:       <FUNCTION_BLOCK>
 ; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST abbrevid=7 op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_RET abbrevid=8/>
+; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
+; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF1-NEXT:    <INST_RET/>
 ; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define void @SimpleLoad(i32 %i) {
@@ -41,10 +43,10 @@ define void @SimpleLoad(i32 %i) {
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
-; PF2:       <FUNCTION_BLOCK NumWords=5 BlockCodeSize=4>
+; PF2:       <FUNCTION_BLOCK>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF2-NEXT:    <INST_RET abbrevid=8/>
+; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF2-NEXT:    <INST_RET/>
 ; PF2:       </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
@@ -62,11 +64,11 @@ define i32* @NonsimpleLoad(i32 %i) {
 ; TD1-NEXT:   ret i32* %1
 ; TD1-NEXT: }
 
-; PF1:       <FUNCTION_BLOCK NumWords=6 BlockCodeSize=4>
+; PF1:       <FUNCTION_BLOCK>
 ; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST abbrevid=7 op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_RET abbrevid=9 op0=2/>
+; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
+; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF1-NEXT:    <INST_RET op0=2/>
 ; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32* @NonsimpleLoad(i32 %i) {
@@ -75,11 +77,11 @@ define i32* @NonsimpleLoad(i32 %i) {
 ; TD2-NEXT:   ret i32* %1
 ; TD2-NEXT: }
 
-; PF2:       <FUNCTION_BLOCK NumWords=6 BlockCodeSize=4>
+; PF2:       <FUNCTION_BLOCK>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_CAST abbrevid=7 op0=1 op1=1 op2=10/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF2-NEXT:    <INST_RET abbrevid=9 op0=2/>
+; PF2-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
+; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF2-NEXT:    <INST_RET op0=2/>
 ; PF2:       </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
@@ -103,14 +105,14 @@ define i32 @TwoLoads(i32 %i) {
 ; TD1-NEXT:   ret i32 %5
 ; TD1-NEXT: }
 
-; PF1:       <FUNCTION_BLOCK NumWords=8 BlockCodeSize=4>
+; PF1:       <FUNCTION_BLOCK>
 ; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST abbrevid=7 op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_CAST abbrevid=7 op0=3 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_BINOP abbrevid=5 op0=3 op1=1 op2=0/>
-; PF1-NEXT:    <INST_RET abbrevid=9 op0=1/>
+; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
+; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF1-NEXT:    <INST_CAST op0=3 op1=1 op2=10/>
+; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF1-NEXT:    <INST_BINOP op0=3 op1=1 op2=0/>
+; PF1-NEXT:    <INST_RET op0=1/>
 ; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32 @TwoLoads(i32 %i) {
@@ -123,12 +125,12 @@ define i32 @TwoLoads(i32 %i) {
 ; TD2-NEXT: }
 
 
-; PF2:       <FUNCTION_BLOCK NumWords=7 BlockCodeSize=4>
+; PF2:       <FUNCTION_BLOCK>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0/>
-; PF2-NEXT:    <INST_BINOP abbrevid=5 op0=2 op1=1 op2=0/>
-; PF2-NEXT:    <INST_RET abbrevid=9 op0=1/>
+; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF2-NEXT:    <INST_LOAD op0=2 op1=3 op2=0/>
+; PF2-NEXT:    <INST_BINOP op0=2 op1=1 op2=0/>
+; PF2-NEXT:    <INST_RET op0=1/>
 ; PF2:      </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
@@ -150,13 +152,13 @@ define i32 @TwoLoadOpt(i32 %i) {
 ; TD1-NEXT:   ret i32 %4
 ; TD1-NEXT: }
 
-; PF1:       <FUNCTION_BLOCK NumWords=7 BlockCodeSize=4>
+; PF1:       <FUNCTION_BLOCK>
 ; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST abbrevid=7 op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0/>
-; PF1-NEXT:    <INST_BINOP abbrevid=5 op0=2 op1=1 op2=0/>
-; PF1-NEXT:    <INST_RET abbrevid=9 op0=1/>
+; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
+; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF1-NEXT:    <INST_LOAD op0=2 op1=3 op2=0/>
+; PF1-NEXT:    <INST_BINOP op0=2 op1=1 op2=0/>
+; PF1-NEXT:    <INST_RET op0=1/>
 ; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32 @TwoLoadOpt(i32 %i) {
@@ -168,12 +170,12 @@ define i32 @TwoLoadOpt(i32 %i) {
 ; TD2-NEXT:   ret i32 %5
 ; TD2-NEXT: }
 
-; PF2:       <FUNCTION_BLOCK NumWords=7 BlockCodeSize=4>
+; PF2:       <FUNCTION_BLOCK>
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=1 op1=3 op2=0/>
-; PF2-NEXT:    <INST_LOAD abbrevid=4 op0=2 op1=3 op2=0/>
-; PF2-NEXT:    <INST_BINOP abbrevid=5 op0=2 op1=1 op2=0/>
-; PF2-NEXT:    <INST_RET abbrevid=9 op0=1/>
+; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
+; PF2-NEXT:    <INST_LOAD op0=2 op1=3 op2=0/>
+; PF2-NEXT:    <INST_BINOP op0=2 op1=1 op2=0/>
+; PF2-NEXT:    <INST_RET op0=1/>
 ; PF2:       </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
@@ -191,11 +193,11 @@ define void @SimpleStore(i32 %i) {
 ; TD1-NEXT:   ret void
 ; TD1-NEXT: }
 
-; PF1:      <FUNCTION_BLOCK NumWords=6 BlockCodeSize=4>
+; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST abbrevid=7 op0=1 op1=1 op2=10/>
-; PF1-NEXT:   <INST_STORE abbrevid=12 op0=1 op1=2 op2=3 op3=0/>
-; PF1-NEXT:   <INST_RET abbrevid=8/>
+; PF1-NEXT:   <INST_CAST op0=1 op1=1 op2=10/>
+; PF1-NEXT:   <INST_STORE op0=1 op1=2 op2=3 op3=0/>
+; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
 ; TD2:      define void @SimpleStore(i32 %i) {
@@ -204,8 +206,8 @@ define void @SimpleStore(i32 %i) {
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
-; PF2:      <FUNCTION_BLOCK NumWords=5 BlockCodeSize=4>
+; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_STORE abbrevid=12 op0=1 op1=1 op2=3/>
-; PF2-NEXT:   <INST_RET abbrevid=8/>
+; PF2-NEXT:   <INST_STORE op0=1 op1=1 op2=3/>
+; PF2-NEXT:   <INST_RET/>
 ; PF2T:     </FUNCTION_BLOCK>

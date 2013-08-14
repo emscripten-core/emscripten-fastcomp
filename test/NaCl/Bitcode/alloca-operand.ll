@@ -1,4 +1,5 @@
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-bcanalyzer -dump | FileCheck %s
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-bcanalyzer -dump-records \
+; RUN:              | FileCheck %s
 
 ; Test that alloca's size operand is represented with a relative value
 ; ID, the same as other instructions' operands.
@@ -24,5 +25,5 @@ define external void @_start(i32 %arg) {
 ; CHECK-NEXT: <INST_ALLOCA op0=5
 
   ret void
-; CHECK-NEXT: <INST_RET
+; CHECK-NEXT: <INST_RET/>
 }

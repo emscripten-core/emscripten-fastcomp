@@ -1,4 +1,5 @@
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-bcanalyzer -dump | FileCheck %s
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-bcanalyzer -dump-records \
+; RUN:              | FileCheck %s
 
 ; Test that FORWARDTYPEREF declarations are emitted in the correct
 ; places.  These are emitted for forward value references inside
@@ -14,18 +15,18 @@ bb2:
   ; This instruction contains two forward references, because %x and
   ; %y are defined later in the function.
   add i32 %forward1, %forward2
-; CHECK-NEXT: <FORWARDTYPEREF abbrevid=
-; CHECK-NEXT: <FORWARDTYPEREF abbrevid=
-; CHECK-NEXT: <INST_BINOP abbrevid=
+; CHECK-NEXT: <FORWARDTYPEREF
+; CHECK-NEXT: <FORWARDTYPEREF
+; CHECK-NEXT: <INST_BINOP
 
   ; The FORWARDTYPEREF declaration should only be emitted once per
   ; value, so the following references will not emit more of them.
   add i32 %forward1, %forward2
-; CHECK-NEXT: <INST_BINOP abbrevid=
+; CHECK-NEXT: <INST_BINOP
 
   ; Test another case of a forward reference.
   call void @_start(i32 %forward3)
-; CHECK-NEXT: <FORWARDTYPEREF abbrevid=
+; CHECK-NEXT: <FORWARDTYPEREF
 ; CHECK-NEXT: <INST_CALL
 
   ; Test that FORWARDTYPEREF is generated for phi nodes (since phi
@@ -34,7 +35,7 @@ bb2:
 bb3:
   phi i32 [ %forward4, %bb2 ]
 ; CHECK-NEXT: <INST_BR
-; CHECK-NEXT: <FORWARDTYPEREF abbrevid=
+; CHECK-NEXT: <FORWARDTYPEREF
 ; CHECK-NEXT: <INST_PHI
 
   ; Test that FORWARDTYPEREF is generated for switch instructions
@@ -42,11 +43,11 @@ bb3:
   ; writer).
   switch i32 %forward5, label %bb4 [i32 0, label %bb4]
 bb4:
-; CHECK-NEXT: <FORWARDTYPEREF abbrevid=
+; CHECK-NEXT: <FORWARDTYPEREF
 ; CHECK-NEXT: <INST_SWITCH
 
   ret void
-; CHECK-NEXT: <INST_RET
+; CHECK-NEXT: <INST_RET/>
 
 bb1:
   %forward1 = add i32 %arg, 100
