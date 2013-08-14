@@ -18,6 +18,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include <vector>
 
 namespace llvm {
@@ -83,6 +84,9 @@ private:
   // The version of PNaCl bitcode to generate.
   uint32_t PNaClVersion;
 
+  /// \brief Integer type use for PNaCl conversion of pointers.
+  Type *IntPtrType;
+
   NaClValueEnumerator(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
   void operator=(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
 public:
@@ -142,6 +146,12 @@ public:
   /// \brief Returns true if value V is an elided (cast) operation.
   bool IsElidedCast(const Value *V) {
     return V != ElideCasts(V);
+  }
+
+  /// \brief Returns true if the type of V is the integer used to
+  /// model pointers in PNaCl.
+  bool IsIntPtrType(Type *T) const {
+    return T == IntPtrType;
   }
 
 private:

@@ -20,6 +20,7 @@
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/GVMaterializer.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ValueHandle.h"
@@ -167,6 +168,9 @@ class NaClBitcodeReader : public GVMaterializer {
   /// \brief True if we should only accept supported bitcode format.
   bool AcceptSupportedBitcodeOnly;
 
+  /// \brief Integer type use for PNaCl conversion of pointers.
+  Type *IntPtrType;
+
 public:
   explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
                              bool AcceptSupportedOnly = true)
@@ -174,7 +178,8 @@ public:
       LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
       ValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false),
-      AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
+      AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
+      IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
   explicit NaClBitcodeReader(DataStreamer *streamer, LLVMContext &C,
                              bool AcceptSupportedOnly = true)
@@ -182,7 +187,8 @@ public:
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
       ValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false),
-      AcceptSupportedBitcodeOnly(AcceptSupportedOnly) {
+      AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
+      IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
   ~NaClBitcodeReader() {
     FreeState();
@@ -274,6 +280,15 @@ private:
   /// Returns 0 if unable to generate conversion value (also generates
   /// an appropriate error message and calls Error).
   Value *ConvertOpToType(Value *Op, Type *T, BasicBlock *BB);
+
+  /// \brief If Op is a scalar value, this is a nop. If Op is a
+  /// pointer value, a PtrToInt instruction is inserted (in BB) to
+  /// convert Op to an integer.
+  Value *ConvertOpToScalar(Value *Op, BasicBlock *BB);
+
+  /// \brief Returns the corresponding, PNaCl non-pointer equivalent
+  /// for the given type.
+  Type *ConvertTypeToScalarType(Type *T);
 
   /// \brief Install instruction I into basic block BB.
   bool InstallInstruction(BasicBlock *BB, Instruction *I);

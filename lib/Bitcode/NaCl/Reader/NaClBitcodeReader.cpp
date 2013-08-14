@@ -1314,6 +1314,15 @@ bool NaClBitcodeReader::InstallInstruction(
   return false;
 }
 
+Value *NaClBitcodeReader::ConvertOpToScalar(Value *Op, BasicBlock *BB) {
+  if (Op->getType()->isPointerTy()) {
+    Instruction *Conversion = new PtrToIntInst(Op, IntPtrType);
+    InstallInstruction(BB, Conversion);
+    return Conversion;
+  }
+  return Op;
+}
+
 Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T, BasicBlock *BB) {
   // Note: Currently only knows how to add inttoptr and bitcast type
   // conversions for non-phi nodes, since these are the only elided
@@ -1326,7 +1335,7 @@ Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T, BasicBlock *BB) {
 
   if (OpTy->isPointerTy()) {
     Conversion = new BitCastInst(Op, T);
-  } else if (OpTy->isIntegerTy()) {
+  } else if (OpTy == IntPtrType) {
     Conversion = new IntToPtrInst(Op, T);
   }
 
@@ -1339,6 +1348,10 @@ Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T, BasicBlock *BB) {
     InstallInstruction(BB, Conversion);
   }
   return Conversion;
+}
+
+Type *NaClBitcodeReader::ConvertTypeToScalarType(Type *T) {
+  return T->isPointerTy() ? IntPtrType : T;
 }
 
 /// ParseFunctionBody - Lazily parse the specified function body block.
@@ -1427,6 +1440,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           OpNum+1 > Record.size())
         return Error("Invalid BINOP record");
 
+      LHS = ConvertOpToScalar(LHS, CurBB);
+      RHS = ConvertOpToScalar(RHS, CurBB);
+
       int Opc = GetDecodedBinaryOpcode(Record[OpNum++], LHS->getType());
       if (Opc == -1) return Error("Invalid BINOP record");
       I = BinaryOperator::Create((Instruction::BinaryOps)Opc, LHS, RHS);
@@ -1475,6 +1491,24 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       int Opc = GetDecodedCastOpcode(Record[OpNum+1]);
       if (Opc == -1 || ResTy == 0)
         return Error("Invalid CAST record");
+
+      if (GetPNaClVersion() == 2) {
+        // If a ptrtoint cast was elided on the argument of the cast,
+        // add it back. Note: The casts allowed here should match the
+        // casts in NaClValueEnumerator::ExpectsScalarValue.
+        switch (Opc) {
+        case Instruction::Trunc:
+        case Instruction::ZExt:
+        case Instruction::SExt:
+        case Instruction::UIToFP:
+        case Instruction::SIToFP:
+          Op = ConvertOpToScalar(Op, CurBB);
+          break;
+        default:
+          break;
+        }
+      }
+
       I = CastInst::Create((Instruction::CastOps)Opc, Op, ResTy);
       break;
     }
@@ -1488,6 +1522,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           popValue(Record, &OpNum, NextValueNo, &FalseVal) ||
           popValue(Record, &OpNum, NextValueNo, &Cond))
         return Error("Invalid SELECT record");
+
+      TrueVal = ConvertOpToScalar(TrueVal, CurBB);
+      FalseVal = ConvertOpToScalar(FalseVal, CurBB);
 
       // expect i1
       if (Cond->getType() != Type::getInt1Ty(Context))
@@ -1506,6 +1543,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           popValue(Record, &OpNum, NextValueNo, &RHS) ||
           OpNum+1 != Record.size())
         return Error("Invalid CMP record");
+
+      LHS = ConvertOpToScalar(LHS, CurBB);
+      RHS = ConvertOpToScalar(RHS, CurBB);
 
       if (LHS->getType()->isFPOrFPVectorTy())
         I = new FCmpInst((FCmpInst::Predicate)Record[OpNum], LHS, RHS);
@@ -1612,6 +1652,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Type *Ty = getTypeByID(Record[0]);
       if (!Ty) return Error("Invalid PHI record");
 
+      // TODO(kschimpf): Fix handling of converting types for values,
+      // to handle elided casts, once the bitcode writer knows how.
+
       PHINode *PN = PHINode::Create(Ty, (Record.size()-1)/2);
 
       for (unsigned i = 0, e = Record.size()-1; i != e; i += 2) {
@@ -1684,6 +1727,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       case 2:
 	if (OpNum+1 != Record.size())
 	  return Error("Invalid STORE record");
+	Val = ConvertOpToScalar(Val, CurBB);
 	Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBB);
 	I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
 	break;
@@ -1694,6 +1738,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       // CALL: [cc, fnid, arg0, arg1...]
       if (Record.size() < 2)
         return Error("Invalid CALL record");
+
+      // TODO(kschimpf): Fix handling of type conversion to arguments for PNaCl,
+      // to handle elided casts, once the bitcode writer knows how.
 
       unsigned CCInfo = Record[0];
 

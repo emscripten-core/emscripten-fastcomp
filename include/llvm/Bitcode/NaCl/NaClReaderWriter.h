@@ -25,6 +25,9 @@ namespace llvm {
   class Module;
   class raw_ostream;
 
+  /// \brief Defines the integer bit size used to model pointers in PNaCl.
+  static const unsigned PNaClIntPtrTypeBitSize = 32;
+
   /// getNaClLazyBitcodeModule - Read the header of the specified bitcode buffer
   /// and prepare for lazy deserialization of function bodies.  If successful,
   /// this takes ownership of 'buffer' and returns a non-null pointer.  On

@@ -413,7 +413,7 @@ void WriteGlobalInit(const Constant *C, unsigned GlobalVarID,
     }
     return;
   }
-  if (C->getType()->isIntegerTy(32)) {
+  if (VE.IsIntPtrType(C->getType())) {
     // This constant defines a relocation. Start by verifying the
     // relocation is of the right form.
     const ConstantExpr *CE = dyn_cast<ConstantExpr>(C);

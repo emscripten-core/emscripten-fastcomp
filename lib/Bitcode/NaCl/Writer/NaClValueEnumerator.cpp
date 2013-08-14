@@ -44,6 +44,8 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M, uint32_t PNaClVersion)
   TypeCountMapType count_map;
   TypeCountMap = &count_map;
 
+  IntPtrType = IntegerType::get(M->getContext(), PNaClIntPtrTypeBitSize);
+
   // Enumerate the functions. Note: We do this before global
   // variables, so that global variable initializations can refer to
   // the functions without a forward reference.
@@ -429,10 +431,10 @@ void NaClValueEnumerator::purgeFunction() {
 }
 
 // Returns true if the bitcode writer can assume that the given
-// argument of the given operation can accept a normalized pointer.
+// argument of the given operation expects a normalized pointer in PNaCl.
 // Note: This function is based on the concept of NormalizedPtr as
 // defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
-static bool AllowsNormalizedPtr(const Value *V, const Instruction *Arg) {
+static bool ExpectsNormalizedPtr(const Value *V, const Instruction *Arg) {
   const Instruction *I = dyn_cast<Instruction>(V);
   if (I == 0) return false;
 
@@ -443,26 +445,74 @@ static bool AllowsNormalizedPtr(const Value *V, const Instruction *Arg) {
   default:
     return false;
   case Instruction::Load:
-    // Verify it is the ptr argument of the load.  Note: This check is
-    // not really necessary in that a load only has one argument.
     return I->getOperand(0) == Arg;
   case Instruction::Store:
-    // Verify it is the ptr argument of the store.
     return I->getOperand(1) == Arg;
   }
 }
 
 // Returns true if the bitcode reader and writer can assume that the
-// uses of the given inttotpr I2P allow normalized pointers (as
+// uses of the given inttotpr I2P expect normalized pointers (as
 // defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
-static bool AllUsesAllowNormalizedPtr(const Instruction *I2P) {
+static bool AllUsesExpectsNormalizedPtr(const Instruction *I2P) {
   for (Value::const_use_iterator u = I2P->use_begin(), e = I2P->use_end();
        u != e; ++u) {
-    if (!AllowsNormalizedPtr(cast<Value>(*u), I2P)) return false;
+    if (!ExpectsNormalizedPtr(cast<Value>(*u), I2P)) return false;
   }
   // If reached, either all uses have a normalized pointer (and hence
   // we know how to automatically add it back), or there were no uses (and
   // hence represents dead code).
+  return true;
+}
+
+// Given Value that uses scalar value Arg, returns true if the bitcode
+// writer can assume that Value always expects Arg to be scalar.  This
+// function is used to infer cases where PtrToInt casts can be
+// removed.
+static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
+  const Instruction *I = dyn_cast<Instruction>(V);
+  if (I == 0) return false;
+
+  if (I->isBinaryOp())
+    return true;
+  else {
+    switch (I->getOpcode()) {
+    default:
+      return false;
+    case Instruction::Trunc:
+    case Instruction::ZExt:
+    case Instruction::SExt:
+    case Instruction::UIToFP:
+    case Instruction::SIToFP:
+    case Instruction::ICmp:
+      return true;
+    case Instruction::Store:
+      return Arg == I->getOperand(0);
+    case Instruction::Select: {
+      const SelectInst *Op = dyn_cast<SelectInst>(I);
+      return Arg == Op->getTrueValue() || Arg == Op->getFalseValue();
+    }
+    }
+    // TODO(kschimpf): Need to think more about how to handle following
+    // instructions:
+    // case Instruction::IntToPtr:
+    // case Instruction::BitCast:
+    // case Instruction::PHI:
+    // case Instruction::Call:
+  }
+}
+
+// Returns true if the bitcode reader and writer can assume that the
+// uses of the given PtrToInt expect scalar values (i.e. non-pointer),
+// and hence, we can elide the PtrToInt cast.
+static bool AllUsesExpectsScalarValue(const Instruction *I) {
+  for (Value::const_use_iterator Use = I->use_begin(), UseEnd = I->use_end();
+       Use != UseEnd; ++Use) {
+    if (!ExpectsScalarValue(*Use, I)) return false;
+  }
+  // If reached, all uses expect a scalar value (and hence we know how
+  // to automatically add it back), or there were no uses (and hence
+  // represents dead code).
   return true;
 }
 
@@ -483,14 +533,21 @@ const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
       break;
     case Instruction::BitCast:
       if (I->getType()->isPointerTy() &&
-	  AllUsesAllowNormalizedPtr(I) &&
-	  IsInherentPtr(I->getOperand(0))) {
-	return ElideCasts(I->getOperand(0));
+          IsInherentPtr(I->getOperand(0)) &&
+          AllUsesExpectsNormalizedPtr(I)) {
+        V = I->getOperand(0);
       }
       break;
     case Instruction::IntToPtr:
-      if (AllUsesAllowNormalizedPtr(I)) {
-        return ElideCasts(I->getOperand(0));
+      if (AllUsesExpectsNormalizedPtr(I)) {
+        V = ElideCasts(I->getOperand(0));
+      }
+      break;
+    case Instruction::PtrToInt:
+      if (IsIntPtrType(I->getType()) &&
+          IsInherentPtr(I->getOperand(0)) &&
+          AllUsesExpectsScalarValue(I)) {
+        V = I->getOperand(0);
       }
       break;
     }
