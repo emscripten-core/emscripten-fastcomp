@@ -9,7 +9,57 @@ PNaCl Developer's Guide
 Introduction
 ============
 
-TODO
+PNaCl (pronounced "pinnacle") is a suite of tools for building, testing and
+distributing Native Client programs in a platform-independent format. PNaCl
+supports client-side translation to the client's native instruction set, thus
+enabling support of new instruction sets without recompilation from source. As
+PNaCl is layered cleanly on top of current ISA-specific NaCl implementations,
+NaCl's small trusted code base, source language neutrality and safety properties
+are preserved.
+
+Nomenclature
+------------
+
+Throughout this document, we will use the term **Developer** for the person
+responsible for the design, implementation and testing of the portable
+executable and **User** for the person interacting with it. The **Server** is
+the machine from which the PNaCl-based web application is served and the
+**Client** is the user's machine, on which the browser runs. The **PNaCl
+toolchain** is a set of tools (compiler, linker, client-side translator, etc.)
+and supporting libraries that facilitate developing NaCl applications that can
+be run by the browser from the web.
+
+Source language support
+=======================
+
+The currently supported languages are C and C++. The PNaCl toolchain is based on
+Clang 3.3, which fully supports C++11 and most of C11. A detailed status of the
+language support is available `here <http://clang.llvm.org/cxx_status.html>`_.
+
+As for the standard libraries, the PNaCl toolchain is currently based on
+``libstdc++`` version 4.6.1, and ``newlib`` version 1.20; we plan to upgrade to
+the more standard-compliant `libc++ <http://libcxx.llvm.org/>`_ in a future
+release.
+
+Preprocessor definitions
+------------------------
+
+When compiling C/C++ code, the PNaCl toolchain defines the ``__pnacl__`` macro.
+In addition, ``__native_client__`` is defined for compatibility with other NaCl
+toolchains.
+
+High-level development flow
+===========================
+
+TODO: this needs a nice diagram!!
+
+The developer write his (or ports an existing) application in C/C++, using the
+Pepper APIs to interface with the browser, as usual in NaCl. The PNaCl toolchain
+acts similarly to familiar C/C++ development toolchains, with one important
+difference: the final output produced by the developer is not a native-code
+executable, but a "portable executable" (**pexe**) that the browser can load
+and execute from the web. The intermediate products of compilation are portable
+object files.
 
 Memory Model and Atomics
 ========================
