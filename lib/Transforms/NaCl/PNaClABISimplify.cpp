@@ -116,7 +116,7 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   PM.add(createStripDeadPrototypesPass());
 
   // Eliminate simple dead code that the post-opt passes could have
-  // create. These are fairly simple passes that won't break the ABI.
+  // created.
   PM.add(createDeadInstEliminationPass());
   PM.add(createDeadCodeEliminationPass());
 }
