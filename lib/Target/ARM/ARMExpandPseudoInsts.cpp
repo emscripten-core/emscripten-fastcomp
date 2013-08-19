@@ -935,31 +935,22 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       if (!STI->isTargetNaCl() || llvm::TLSUseCall) {
         // Don't add implicit uses/defs for this call, otherwise
         // liveness analysis passes get confused.
-      MachineInstrBuilder MIB =
-          BuildMI_NoImp(MBB, MBBI, MI.getDebugLoc(), // @LOCALMOD
-                TII->get(Opcode == ARM::tTPsoft ? ARM::tBL : ARM::BL))
-          .addExternalSymbol("__aeabi_read_tp", 0);
-
-      MIB->setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
+        MachineInstrBuilder MIB =
+            BuildMI_NoImp(MBB, MBBI, MI.getDebugLoc(), // @LOCALMOD
+                          TII->get(Opcode == ARM::tTPsoft ? ARM::tBL : ARM::BL))
+            .addExternalSymbol("__aeabi_read_tp", 0);
+        MIB->setMemRefs(MI.memoperands_begin(), MI.memoperands_end());
         TransferImpOps(MI, MIB, MIB);
       } else {
         // Inline version for native client.
         // See native_client/src/untrusted/nacl/aeabi_read_tp.S
         // .nexe builds use this version, while irt builds use a call to
         // __aeabi_read_tp.
-        if (FlagNaClUseM23ArmAbi) {
-          // mov r0, r9
-          AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(),
-                                 TII->get(ARM::MOVr), ARM::R0)
-                         .addReg(ARM::R9))
-              .addReg(0); // Doesn't use/modify CPSR.
-        } else {
-          // ldr r0, [r9, #0]
-          AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(),
-                                 TII->get(ARM::LDRi12), ARM::R0)
-                         .addReg(ARM::R9)
-                         .addImm(0));
-        }
+        // ldr r0, [r9, #0]
+        AddDefaultPred(BuildMI(MBB, MBBI, MI.getDebugLoc(),
+                               TII->get(ARM::LDRi12), ARM::R0)
+                       .addReg(ARM::R9)
+                       .addImm(0));
       }
       // @LOCALMOD-END
       MI.eraseFromParent();

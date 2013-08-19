@@ -27,7 +27,6 @@
 #include "llvm/Support/CommandLine.h"
 namespace llvm {
   extern cl::opt<bool> FlagSfiDisableCP;
-  extern cl::opt<bool> FlagNaClUseM23ArmAbi;
 }
 // @LOCALMOD-END
 
