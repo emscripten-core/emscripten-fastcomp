@@ -149,8 +149,8 @@ namespace naclbitc {
     CST_CODE_WIDE_INTEGER  =  5,  // WIDE_INTEGER:  [n x intval]
     CST_CODE_FLOAT         =  6,  // FLOAT:         [fpval]
     CST_CODE_AGGREGATE     =  7,  // AGGREGATE:     [n x value number]
-    CST_CODE_STRING        =  8,  // STRING:        [values]
-    CST_CODE_CSTRING       =  9,  // CSTRING:       [values]
+    CST_CODE_STRING        =  8,  // Not used in PNaCl.
+    CST_CODE_CSTRING       =  9,  // Not used in PNaCl.
     CST_CODE_CE_BINOP      = 10,  // Not used in PNaCl.
     CST_CODE_CE_CAST       = 11,  // Not used in PNaCl.
     CST_CODE_CE_GEP        = 12,  // Not used in PNaCl.

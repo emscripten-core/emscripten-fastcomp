@@ -68,10 +68,7 @@ enum {
 
   // CONSTANTS_BLOCK abbrev id's when global (extends list above).
   CST_CONSTANTS_AGGREGATE_ABBREV = CONSTANTS_MAX_ABBREV+1,
-  CST_CONSTANTS_STRING_ABBREV,
-  CST_CONSTANTS_CSTRING_7_ABBREV,
-  CST_CONSTANTS_CSTRING_6_ABBREV,
-  CST_CONSTANTS_MAX_ABBREV = CST_CONSTANTS_CSTRING_6_ABBREV,
+  CST_CONSTANTS_MAX_ABBREV = CST_CONSTANTS_AGGREGATE_ABBREV,
 
   // GLOBALVAR BLOCK abbrev id's.
   GLOBALVAR_VAR_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
@@ -604,9 +601,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
                         : CONSTANTS_MAX_ABBREV));
 
   unsigned AggregateAbbrev = 0;
-  unsigned String8Abbrev = 0;
-  unsigned CString7Abbrev = 0;
-  unsigned CString6Abbrev = 0;
   // If this is a constant pool for the module, emit module-specific abbrevs.
   // Note: These abbreviations are size specific (to LastVal), and hence,
   // can be more efficient if LastVal is known (rather then generating
@@ -620,33 +614,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
                                   NaClBitsNeededForValue(LastVal)));
     AggregateAbbrev = Stream.EmitAbbrev(Abbv);
     if (CST_CONSTANTS_AGGREGATE_ABBREV != AggregateAbbrev)
-      llvm_unreachable("Unexpected abbrev ordering!");
-
-    // Abbrev for CST_CODE_STRING.
-    Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_STRING));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 8));
-    String8Abbrev = Stream.EmitAbbrev(Abbv);
-    if (CST_CONSTANTS_STRING_ABBREV != String8Abbrev)
-      llvm_unreachable("Unexpected abbrev ordering!");
-
-    // Abbrev for CST_CODE_CSTRING.
-    Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_CSTRING));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 7));
-    CString7Abbrev = Stream.EmitAbbrev(Abbv);
-    if (CST_CONSTANTS_CSTRING_7_ABBREV != CString7Abbrev)
-      llvm_unreachable("Unexpected abbrev ordering!");
-
-    // Abbrev for CST_CODE_CSTRING.
-    Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_CSTRING));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Char6));
-    CString6Abbrev = Stream.EmitAbbrev(Abbv);
-    if (CST_CONSTANTS_CSTRING_6_ABBREV != CString6Abbrev)
       llvm_unreachable("Unexpected abbrev ordering!");
 
     DEBUG(dbgs() << "-- emitted abbreviations\n");
@@ -700,33 +667,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
       } else {
         assert (0 && "Unknown FP type!");
       }
-    } else if (isa<ConstantDataSequential>(C) &&
-               cast<ConstantDataSequential>(C)->isString()) {
-      const ConstantDataSequential *Str = cast<ConstantDataSequential>(C);
-      // Emit constant strings specially.
-      unsigned NumElts = Str->getNumElements();
-      // If this is a null-terminated string, use the denser CSTRING encoding.
-      if (Str->isCString()) {
-        Code = naclbitc::CST_CODE_CSTRING;
-        --NumElts;  // Don't encode the null, which isn't allowed by char6.
-      } else {
-        Code = naclbitc::CST_CODE_STRING;
-        AbbrevToUse = String8Abbrev;
-      }
-      bool isCStr7 = Code == naclbitc::CST_CODE_CSTRING;
-      bool isCStrChar6 = Code == naclbitc::CST_CODE_CSTRING;
-      for (unsigned i = 0; i != NumElts; ++i) {
-        unsigned char V = Str->getElementAsInteger(i);
-        Record.push_back(V);
-        isCStr7 &= (V & 128) == 0;
-        if (isCStrChar6)
-          isCStrChar6 = NaClBitCodeAbbrevOp::isChar6(V);
-      }
-
-      if (isCStrChar6)
-        AbbrevToUse = CString6Abbrev;
-      else if (isCStr7)
-        AbbrevToUse = CString7Abbrev;
     } else if (const ConstantDataSequential *CDS =
                   dyn_cast<ConstantDataSequential>(C)) {
       Code = naclbitc::CST_CODE_DATA;

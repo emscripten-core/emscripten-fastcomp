@@ -940,16 +940,6 @@ bool NaClBitcodeReader::ParseConstants() {
       }
       break;
     }
-    case naclbitc::CST_CODE_STRING:    // STRING: [values]
-    case naclbitc::CST_CODE_CSTRING: { // CSTRING: [values]
-      if (Record.empty())
-        return Error("Invalid CST_STRING record");
-
-      SmallString<16> Elts(Record.begin(), Record.end());
-      V = ConstantDataArray::getString(Context, Elts,
-                                       BitCode == naclbitc::CST_CODE_CSTRING);
-      break;
-    }
     case naclbitc::CST_CODE_DATA: {// DATA: [n x value]
       if (Record.empty())
         return Error("Invalid CST_DATA record");
