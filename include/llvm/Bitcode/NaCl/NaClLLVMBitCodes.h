@@ -87,8 +87,7 @@ namespace naclbitc {
     TYPE_CODE_INTEGER  =  7,    // INTEGER: [width]
     TYPE_CODE_POINTER  =  8,    // POINTER: [pointee type]
 
-    TYPE_CODE_FUNCTION_OLD = 9, // FUNCTION: [vararg, attrid, retty,
-                                //            paramty x N]
+    TYPE_CODE_FUNCTION_OLD = 9, // Not used in PNaCl.
 
     TYPE_CODE_HALF     =  10,   // HALF
 
