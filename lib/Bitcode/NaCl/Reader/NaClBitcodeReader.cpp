@@ -36,7 +36,6 @@ void NaClBitcodeReader::FreeState() {
   std::vector<Type*>().swap(TypeList);
   ValueList.clear();
 
-  std::vector<BasicBlock*>().swap(FunctionBBs);
   std::vector<Function*>().swap(FunctionsWithBodies);
   DeferredFunctionInfo.clear();
 }
@@ -1284,40 +1283,56 @@ bool NaClBitcodeReader::InstallInstruction(
   return false;
 }
 
-Value *NaClBitcodeReader::ConvertOpToScalar(Value *Op, BasicBlock *BB) {
+CastInst *
+NaClBitcodeReader::CreateCast(unsigned BBIndex, Instruction::CastOps Op,
+                              Type *CT, Value *V, bool DeferInsertion) {
+  if (BBIndex >= FunctionBBs.size())
+    report_fatal_error("CreateCast on unknown basic block");
+  BasicBlockInfo &BBInfo = FunctionBBs[BBIndex];
+  NaClBitcodeReaderCast ModeledCast(Op, CT, V);
+  CastInst *Cast = BBInfo.CastMap[ModeledCast];
+  if (Cast == NULL) {
+    Cast = CastInst::Create(Op, V, CT);
+    BBInfo.CastMap[ModeledCast] = Cast;
+    if (DeferInsertion) {
+      BBInfo.PhiCasts.push_back(Cast);
+    }
+  }
+  if (!DeferInsertion && Cast->getParent() == 0) {
+    InstallInstruction(BBInfo.BB, Cast);
+  }
+  return Cast;
+}
+
+Value *NaClBitcodeReader::ConvertOpToScalar(Value *Op, unsigned BBIndex,
+                                            bool DeferInsertion) {
   if (Op->getType()->isPointerTy()) {
-    Instruction *Conversion = new PtrToIntInst(Op, IntPtrType);
-    InstallInstruction(BB, Conversion);
-    return Conversion;
+    return CreateCast(BBIndex, Instruction::PtrToInt, IntPtrType, Op,
+                      DeferInsertion);
   }
   return Op;
 }
 
-Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T, BasicBlock *BB) {
+Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T,
+                                          unsigned BBIndex) {
   // Note: Currently only knows how to add inttoptr and bitcast type
   // conversions for non-phi nodes, since these are the only elided
   // instructions in the bitcode writer.
   //
   // TODO(kschimpf): Generalize this as we expand elided conversions.
-  Instruction *Conversion = 0;
   Type *OpTy = Op->getType();
   if (OpTy == T) return Op;
 
   if (OpTy->isPointerTy()) {
-    Conversion = new BitCastInst(Op, T);
+    return CreateCast(BBIndex, Instruction::BitCast, T, Op);
   } else if (OpTy == IntPtrType) {
-    Conversion = new IntToPtrInst(Op, T);
+    return CreateCast(BBIndex, Instruction::IntToPtr, T, Op);
   }
 
-  if (Conversion == 0) {
-    std::string Message;
-    raw_string_ostream StrM(Message);
-    StrM << "Can't convert " << *Op << " to type " << *T << "\n";
-    Error(StrM.str());
-  } else {
-    InstallInstruction(BB, Conversion);
-  }
-  return Conversion;
+  std::string Message;
+  raw_string_ostream StrM(Message);
+  StrM << "Can't convert " << *Op << " to type " << *T << "\n";
+  report_fatal_error(StrM.str());
 }
 
 Type *NaClBitcodeReader::ConvertTypeToScalarType(Type *T) {
@@ -1396,9 +1411,11 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid DECLAREBLOCKS record");
       // Create all the basic blocks for the function.
       FunctionBBs.resize(Record[0]);
-      for (unsigned i = 0, e = FunctionBBs.size(); i != e; ++i)
-        FunctionBBs[i] = BasicBlock::Create(Context, "", F);
-      CurBB = FunctionBBs[0];
+      for (unsigned i = 0, e = FunctionBBs.size(); i != e; ++i) {
+        BasicBlockInfo &BBInfo = FunctionBBs[i];
+        BBInfo.BB = BasicBlock::Create(Context, "", F);
+      }
+      CurBB = FunctionBBs.at(0).BB;
       continue;
 
     case naclbitc::FUNC_CODE_INST_BINOP: {
@@ -1410,8 +1427,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           OpNum+1 > Record.size())
         return Error("Invalid BINOP record");
 
-      LHS = ConvertOpToScalar(LHS, CurBB);
-      RHS = ConvertOpToScalar(RHS, CurBB);
+      LHS = ConvertOpToScalar(LHS, CurBBNo);
+      RHS = ConvertOpToScalar(RHS, CurBBNo);
 
       int Opc = GetDecodedBinaryOpcode(Record[OpNum++], LHS->getType());
       if (Opc == -1) return Error("Invalid BINOP record");
@@ -1472,7 +1489,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         case Instruction::SExt:
         case Instruction::UIToFP:
         case Instruction::SIToFP:
-          Op = ConvertOpToScalar(Op, CurBB);
+          Op = ConvertOpToScalar(Op, CurBBNo);
           break;
         default:
           break;
@@ -1493,8 +1510,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           popValue(Record, &OpNum, NextValueNo, &Cond))
         return Error("Invalid SELECT record");
 
-      TrueVal = ConvertOpToScalar(TrueVal, CurBB);
-      FalseVal = ConvertOpToScalar(FalseVal, CurBB);
+      TrueVal = ConvertOpToScalar(TrueVal, CurBBNo);
+      FalseVal = ConvertOpToScalar(FalseVal, CurBBNo);
 
       // expect i1
       if (Cond->getType() != Type::getInt1Ty(Context))
@@ -1514,8 +1531,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           OpNum+1 != Record.size())
         return Error("Invalid CMP record");
 
-      LHS = ConvertOpToScalar(LHS, CurBB);
-      RHS = ConvertOpToScalar(RHS, CurBB);
+      LHS = ConvertOpToScalar(LHS, CurBBNo);
+      RHS = ConvertOpToScalar(RHS, CurBBNo);
 
       if (LHS->getType()->isFPOrFPVectorTy())
         I = new FCmpInst((FCmpInst::Predicate)Record[OpNum], LHS, RHS);
@@ -1622,9 +1639,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Type *Ty = getTypeByID(Record[0]);
       if (!Ty) return Error("Invalid PHI record");
 
-      // TODO(kschimpf): Fix handling of converting types for values,
-      // to handle elided casts, once the bitcode writer knows how.
-
       PHINode *PN = PHINode::Create(Ty, (Record.size()-1)/2);
 
       for (unsigned i = 0, e = Record.size()-1; i != e; i += 2) {
@@ -1636,8 +1650,16 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           V = getValueSigned(Record, 1+i, NextValueNo);
         else
           V = getValue(Record, 1+i, NextValueNo);
-        BasicBlock *BB = getBasicBlock(Record[2+i]);
+        unsigned BBIndex = Record[2+i];
+        BasicBlock *BB = getBasicBlock(BBIndex);
         if (!V || !BB) return Error("Invalid PHI record");
+        if (GetPNaClVersion() == 2 && Ty == IntPtrType) {
+          // Delay installing scalar casts until all instructions of
+          // the function are rendered. This guarantees that we insert
+          // the conversion just before the incoming edge (or use an
+          // existing conversion if already installed).
+          V = ConvertOpToScalar(V, BBIndex, /* DeferInsertion = */ true);
+        }
         PN->addIncoming(V, BB);
       }
       I = PN;
@@ -1672,7 +1694,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
           Type *T = getTypeByID(Record[2]);
           if (T == 0)
             return Error("Invalid type for load instruction");
-          Op = ConvertOpToType(Op, T->getPointerTo(), CurBB);
+          Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
           if (Op == 0) return true;
 	  I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
 	  break;
@@ -1697,8 +1719,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       case 2:
 	if (OpNum+1 != Record.size())
 	  return Error("Invalid STORE record");
-	Val = ConvertOpToScalar(Val, CurBB);
-	Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBB);
+        Val = ConvertOpToScalar(Val, CurBBNo);
+        Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
 	I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
 	break;
       }
@@ -1767,7 +1789,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     // If this was a terminator instruction, move to the next block.
     if (isa<TerminatorInst>(I)) {
       ++CurBBNo;
-      CurBB = CurBBNo < FunctionBBs.size() ? FunctionBBs[CurBBNo] : 0;
+      CurBB = getBasicBlock(CurBBNo);
     }
 
     // Non-void values get registered in the value table for future use.
@@ -1776,6 +1798,24 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   }
 
 OutOfRecordLoop:
+
+  // Add PHI conversions to corresponding incoming block, if not
+  // already in the block. Also clear all conversions after fixing
+  // PHI conversions.
+  for (unsigned I = 0, NumBBs = FunctionBBs.size(); I < NumBBs; ++I) {
+    BasicBlockInfo &BBInfo = FunctionBBs[I];
+    std::vector<CastInst*> &PhiCasts = BBInfo.PhiCasts;
+    for (std::vector<CastInst*>::iterator Iter = PhiCasts.begin(),
+           IterEnd = PhiCasts.end(); Iter != IterEnd; ++Iter) {
+      CastInst *Cast = *Iter;
+      if (Cast->getParent() == 0) {
+        BasicBlock *BB = BBInfo.BB;
+        BB->getInstList().insert(BB->getTerminator(), Cast);
+      }
+    }
+    PhiCasts.clear();
+    BBInfo.CastMap.clear();
+  }
 
   // Check the function list for unresolved values.
   if (Argument *A = dyn_cast<Argument>(ValueList.back())) {
@@ -1793,7 +1833,7 @@ OutOfRecordLoop:
 
   // Trim the value list down to the size it was before we parsed this function.
   ValueList.shrinkTo(ModuleValueListSize);
-  std::vector<BasicBlock*>().swap(FunctionBBs);
+  FunctionBBs.clear();
   DEBUG(dbgs() << "-> ParseFunctionBody\n");
   return false;
 }

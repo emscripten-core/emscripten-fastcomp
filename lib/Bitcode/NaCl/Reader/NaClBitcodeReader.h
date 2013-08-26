@@ -21,6 +21,7 @@
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/GVMaterializer.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ValueHandle.h"
@@ -29,6 +30,46 @@
 namespace llvm {
   class MemoryBuffer;
   class LLVMContext;
+  class CastInst;
+
+// Models a Cast.  Used to cache casts created in a basic block by the
+// PNaCl bitcode reader.
+struct NaClBitcodeReaderCast {
+  // Fields of the conversion.
+  Instruction::CastOps Op;
+  Type *Ty;
+  Value *Val;
+
+  NaClBitcodeReaderCast(Instruction::CastOps Op, Type *Ty, Value *Val)
+    : Op(Op), Ty(Ty), Val(Val) {}
+};
+
+// Models the data structure used to hash/compare Casts in a DenseMap.
+template<>
+struct DenseMapInfo<NaClBitcodeReaderCast> {
+public:
+  static NaClBitcodeReaderCast getEmptyKey() {
+    return NaClBitcodeReaderCast(Instruction::CastOpsEnd,
+                                 DenseMapInfo<Type*>::getEmptyKey(),
+                                 DenseMapInfo<Value*>::getEmptyKey());
+  }
+  static NaClBitcodeReaderCast getTombstoneKey() {
+    return NaClBitcodeReaderCast(Instruction::CastOpsEnd,
+                                 DenseMapInfo<Type*>::getTombstoneKey(),
+                                 DenseMapInfo<Value*>::getTombstoneKey());
+  }
+  static unsigned getHashValue(const NaClBitcodeReaderCast &C) {
+    std::pair<int, std::pair<Type*, Value*> > Tuple;
+    Tuple.first = C.Op;
+    Tuple.second.first = C.Ty;
+    Tuple.second.second = C.Val;
+    return DenseMapInfo<std::pair<int, std::pair<Type*, Value*> > >::getHashValue(Tuple);
+  }
+  static bool isEqual(const NaClBitcodeReaderCast &LHS,
+                      const NaClBitcodeReaderCast &RHS) {
+    return LHS.Op == RHS.Op && LHS.Ty == RHS.Ty && LHS.Val == RHS.Val;
+  }
+};
 
 //===----------------------------------------------------------------------===//
 //                          NaClBitcodeReaderValueList Class
@@ -83,8 +124,8 @@ public:
   // already been declared.
   bool createValueFwdRef(unsigned Idx, Type *Ty);
 
-  // Declares the type of the forward-referenced constant Idx. Returns
-  // 0 if an error occurred.
+  // Declares the type of the forward-referenced constant Idx.
+  // Returns 0 if an error occurred.
   // TODO(kschimpf) Convert these to be like createValueFwdRef and
   // getValueFwdRef.
   Constant *getConstantFwdRef(unsigned Idx, Type *Ty);
@@ -103,7 +144,7 @@ public:
   // was forward referenced).
   void AssignValue(Value *V, unsigned Idx);
 
-  // Assigns Idx to the given global variable. If the Idx currently has
+  // Assigns Idx to the given global variable.  If the Idx currently has
   // a forward reference (built by createGlobalVarFwdRef(unsigned Idx)),
   // replaces uses of the global variable forward reference with the
   // value GV.
@@ -133,9 +174,20 @@ class NaClBitcodeReader : public GVMaterializer {
   NaClBitcodeReaderValueList ValueList;
   SmallVector<SmallVector<uint64_t, 64>, 64> UseListRecords;
 
+  // Holds information about each BasicBlock in the function being read.
+  struct BasicBlockInfo {
+    // A basic block within the function being modeled.
+    BasicBlock *BB;
+    // The set of generated conversions.
+    DenseMap<NaClBitcodeReaderCast, CastInst*> CastMap;
+    // The set of generated conversions that were added for phi nodes,
+    // and may need thier parent basic block defined.
+    std::vector<CastInst*> PhiCasts;
+  };
+
   /// FunctionBBs - While parsing a function body, this is a list of the basic
   /// blocks for the function.
-  std::vector<BasicBlock*> FunctionBBs;
+  std::vector<BasicBlockInfo> FunctionBBs;
 
   // When reading the module header, this list is populated with functions that
   // have bodies later in the file.
@@ -147,7 +199,7 @@ class NaClBitcodeReader : public GVMaterializer {
   UpgradedIntrinsicMap UpgradedIntrinsics;
 
   // Several operations happen after the module header has been read, but
-  // before function bodies are processed. This keeps track of whether
+  // before function bodies are processed.  This keeps track of whether
   // we've done this yet.
   bool SeenFirstFunctionBody;
 
@@ -226,14 +278,14 @@ private:
     return Header.GetPNaClVersion();
   }
   Type *getTypeByID(unsigned ID);
-  // Returns the value associated with ID. The value must already exist,
+  // Returns the value associated with ID.  The value must already exist,
   // or a forward referenced value created by getOrCreateFnVaueByID.
   Value *getFnValueByID(unsigned ID) {
     return ValueList.getValueFwdRef(ID);
   }
   BasicBlock *getBasicBlock(unsigned ID) const {
     if (ID >= FunctionBBs.size()) return 0; // Invalid ID
-    return FunctionBBs[ID];
+    return FunctionBBs[ID].BB;
   }
 
   /// \brief Read a value out of the specified record from slot '*Slot'.
@@ -273,18 +325,30 @@ private:
     return getFnValueByID(ValNo);
   }
 
-  /// \brief Add instructions to cast Op to the given type T into block BB.
-  /// Follows rules for pointer conversion as defined in
-  /// llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
+  /// \brief Create an (elided) cast instruction for basic block
+  /// BBIndex.  Op is the type of cast.  V is the value to cast.  CT
+  /// is the type to convert V to.  DeferInsertion defines whether the
+  /// generated conversion should also be installed into basic block
+  /// BBIndex.  Note: For PHI nodes, we don't insert when created
+  /// (i.e. DeferInsertion=true), since they must be inserted at the end
+  /// of the corresponding incoming basic block.
+  CastInst *CreateCast(unsigned BBIndex, Instruction::CastOps Op,
+                       Type *CT, Value *V, bool DeferInsertion = false);
+
+  /// \brief Add instructions to cast Op to the given type T into
+  /// block BBIndex.  Follows rules for pointer conversion as defined
+  /// in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
   ///
   /// Returns 0 if unable to generate conversion value (also generates
   /// an appropriate error message and calls Error).
-  Value *ConvertOpToType(Value *Op, Type *T, BasicBlock *BB);
+  Value *ConvertOpToType(Value *Op, Type *T, unsigned BBIndex);
 
-  /// \brief If Op is a scalar value, this is a nop. If Op is a
-  /// pointer value, a PtrToInt instruction is inserted (in BB) to
-  /// convert Op to an integer.
-  Value *ConvertOpToScalar(Value *Op, BasicBlock *BB);
+  /// \brief If Op is a scalar value, this is a nop.  If Op is a
+  /// pointer value, a PtrToInt instruction is inserted (in BBIndex)
+  /// to convert Op to an integer.  For defaults on DeferInsertion,
+  /// see comments for method CreateCast.
+  Value *ConvertOpToScalar(Value *Op, unsigned BBIndex,
+                           bool DeferInsertion = false);
 
   /// \brief Returns the corresponding, PNaCl non-pointer equivalent
   /// for the given type.

@@ -479,6 +479,7 @@ static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
     switch (I->getOpcode()) {
     default:
       return false;
+    case Instruction::PHI:
     case Instruction::Trunc:
     case Instruction::ZExt:
     case Instruction::SExt:
@@ -497,7 +498,6 @@ static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
     // instructions:
     // case Instruction::IntToPtr:
     // case Instruction::BitCast:
-    // case Instruction::PHI:
     // case Instruction::Call:
   }
 }

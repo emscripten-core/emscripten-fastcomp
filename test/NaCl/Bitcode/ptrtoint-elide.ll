@@ -153,8 +153,8 @@ define void @AllocCastDelete() {
 ; ------------------------------------------------------
 
 ; Show case where we have optimized the ptrtoint (and bitcast) into a
-; single instruction, but will get duplicated after reading back the
-; bitcode file, since we insert elided casts immediately before each use.
+; single instruction, and will only be inserted before the first use
+; in the block.
 define void @AllocCastOpt() {
   %1 = alloca i8, i32 4, align 8
   %2 = bitcast [4 x i8]* @bytes to i32*
@@ -177,7 +177,7 @@ define void @AllocCastOpt() {
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
 ; PF1-NEXT:     <INST_CAST op0=3 op1=4 op2=11/>
-; PF1-NEXT:     <INST_CAST  op0=2 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=2 op1=0 op2=9/>
 ; PF1-NEXT:     <INST_STORE op0=2 op1=1 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_STORE op0=2 op1=1 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
@@ -188,9 +188,7 @@ define void @AllocCastOpt() {
 ; TD2-NEXT:   %2 = ptrtoint i8* %1 to i32
 ; TD2-NEXT:   %3 = bitcast [4 x i8]* @bytes to i32*
 ; TD2-NEXT:   store i32 %2, i32* %3, align 1
-; TD2-NEXT:   %4 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %5 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   store i32 %4, i32* %5, align 1
+; TD2-NEXT:   store i32 %2, i32* %3, align 1
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -366,7 +364,6 @@ define i32 @StoreGlobalMovePtr2Int() {
 ; PF1-NEXT:     <INST_RET op0=4/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
 
-
 ; TD2:      define i32 @StoreGlobalMovePtr2Int() {
 ; TD2-NEXT:   %1 = alloca i8, i32 4, align 8
 ; TD2-NEXT:   %2 = ptrtoint [4 x i8]* @bytes to i32
@@ -430,11 +427,8 @@ define void @CastAddAlloca() {
 ; TD2-NEXT:   %2 = add i32 1, 2
 ; TD2-NEXT:   %3 = ptrtoint i8* %1 to i32
 ; TD2-NEXT:   %4 = add i32 %3, 2
-; TD2-NEXT:   %5 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %6 = add i32 1, %5
-; TD2-NEXT:   %7 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %8 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %9 = add i32 %7, %8
+; TD2-NEXT:   %5 = add i32 1, %3
+; TD2-NEXT:   %6 = add i32 %3, %3
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -491,11 +485,8 @@ define void @CastAddGlobal() {
 ; TD2-NEXT:   %1 = add i32 1, 2
 ; TD2-NEXT:   %2 = ptrtoint [4 x i8]* @bytes to i32
 ; TD2-NEXT:   %3 = add i32 %2, 2
-; TD2-NEXT:   %4 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %5 = add i32 1, %4
-; TD2-NEXT:   %6 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %7 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %8 = add i32 %6, %7
+; TD2-NEXT:   %4 = add i32 1, %2
+; TD2-NEXT:   %5 = add i32 %2, %2
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -571,36 +562,16 @@ define void @CastBinop() {
 ; TD2-NEXT:   %2 = ptrtoint i8* %1 to i32
 ; TD2-NEXT:   %3 = ptrtoint [4 x i8]* @bytes to i32
 ; TD2-NEXT:   %4 = sub i32 %2, %3
-; TD2-NEXT:   %5 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %6 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %7 = mul i32 %5, %6
-; TD2-NEXT:   %8 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %9 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %10 = udiv i32 %8, %9
-; TD2-NEXT:   %11 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %12 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %13 = urem i32 %11, %12
-; TD2-NEXT:   %14 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %15 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %16 = srem i32 %14, %15
-; TD2-NEXT:   %17 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %18 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %19 = shl i32 %17, %18
-; TD2-NEXT:   %20 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %21 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %22 = lshr i32 %20, %21
-; TD2-NEXT:   %23 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %24 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %25 = ashr i32 %23, %24
-; TD2-NEXT:   %26 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %27 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %28 = and i32 %26, %27
-; TD2-NEXT:   %29 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %30 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %31 = or i32 %29, %30
-; TD2-NEXT:   %32 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %33 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %34 = xor i32 %32, %33
+; TD2-NEXT:   %5 = mul i32 %2, %3
+; TD2-NEXT:   %6 = udiv i32 %2, %3
+; TD2-NEXT:   %7 = urem i32 %2, %3
+; TD2-NEXT:   %8 = srem i32 %2, %3
+; TD2-NEXT:   %9 = shl i32 %2, %3
+; TD2-NEXT:   %10 = lshr i32 %2, %3
+; TD2-NEXT:   %11 = ashr i32 %2, %3
+; TD2-NEXT:   %12 = and i32 %2, %3
+; TD2-NEXT:   %13 = or i32 %2, %3
+; TD2-NEXT:   %14 = xor i32 %2, %3
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -666,16 +637,16 @@ define void @TestCasts() {
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=2 op1=4/>
 ; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=6 op1=1 op2=0/>
-; PF1-NEXT:     <INST_CAST op0=2 op1=1 op2=0/>
-; PF1-NEXT:     <INST_CAST op0=8 op1=10 op2=1/>
-; PF1-NEXT:     <INST_CAST op0=4 op1=10 op2=1/>
-; PF1-NEXT:     <INST_CAST op0=9 op1=10 op2=2/>
-; PF1-NEXT:     <INST_CAST op0=6 op1=10 op2=2/>
-; PF1-NEXT:     <INST_CAST op0=9 op1=11 op2=5/>
-; PF1-NEXT:     <INST_CAST op0=8 op1=11 op2=5/>
-; PF1-NEXT:     <INST_CAST op0=13 op1=11 op2=6/>
-; PF1-NEXT:     <INST_CAST op0=10 op1=11 op2=6/>
+; PF1-NEXT:     <INST_CAST op0=6 op1=2 op2=0/>
+; PF1-NEXT:     <INST_CAST op0=2 op1=2 op2=0/>
+; PF1-NEXT:     <INST_CAST op0=8 op1=13 op2=1/>
+; PF1-NEXT:     <INST_CAST op0=4 op1=13 op2=1/>
+; PF1-NEXT:     <INST_CAST op0=9 op1=13 op2=2/>
+; PF1-NEXT:     <INST_CAST op0=6 op1=13 op2=2/>
+; PF1-NEXT:     <INST_CAST op0=9 op1=14 op2=5/>
+; PF1-NEXT:     <INST_CAST op0=8 op1=14 op2=5/>
+; PF1-NEXT:     <INST_CAST op0=13 op1=14 op2=6/>
+; PF1-NEXT:     <INST_CAST op0=10 op1=14 op2=6/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
 
@@ -685,33 +656,29 @@ define void @TestCasts() {
 ; TD2-NEXT:   %3 = ptrtoint i8* %1 to i32
 ; TD2-NEXT:   %4 = trunc i32 %3 to i8
 ; TD2-NEXT:   %5 = zext i32 257 to i64
-; TD2-NEXT:   %6 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %7 = zext i32 %6 to i64
-; TD2-NEXT:   %8 = sext i32 -1 to i64
-; TD2-NEXT:   %9 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %10 = sext i32 %9 to i64
-; TD2-NEXT:   %11 = uitofp i32 1 to float
-; TD2-NEXT:   %12 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %13 = uitofp i32 %12 to float
-; TD2-NEXT:   %14 = sitofp i32 -1 to float
-; TD2-NEXT:   %15 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %16 = sitofp i32 %15 to float
+; TD2-NEXT:   %6 = zext i32 %3 to i64
+; TD2-NEXT:   %7 = sext i32 -1 to i64
+; TD2-NEXT:   %8 = sext i32 %3 to i64
+; TD2-NEXT:   %9 = uitofp i32 1 to float
+; TD2-NEXT:   %10 = uitofp i32 %3 to float
+; TD2-NEXT:   %11 = sitofp i32 -1 to float
+; TD2-NEXT:   %12 = sitofp i32 %3 to float
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
 ; PF2:        <FUNCTION_BLOCK>
 ; PF2:          </CONSTANTS_BLOCK>
 ; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF2-NEXT:     <INST_CAST op0=5 op1=1 op2=0/>
-; PF2-NEXT:     <INST_CAST op0=2 op1=1 op2=0/>
-; PF2-NEXT:     <INST_CAST op0=7 op1=10 op2=1/>
-; PF2-NEXT:     <INST_CAST op0=4 op1=10 op2=1/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=10 op2=2/>
-; PF2-NEXT:     <INST_CAST op0=6 op1=10 op2=2/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=11 op2=5/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=11 op2=5/>
-; PF2-NEXT:     <INST_CAST op0=12 op1=11 op2=6/>
-; PF2-NEXT:     <INST_CAST op0=10 op1=11 op2=6/>
+; PF2-NEXT:     <INST_CAST op0=5 op1=2 op2=0/>
+; PF2-NEXT:     <INST_CAST op0=2 op1=2 op2=0/>
+; PF2-NEXT:     <INST_CAST op0=7 op1=13 op2=1/>
+; PF2-NEXT:     <INST_CAST op0=4 op1=13 op2=1/>
+; PF2-NEXT:     <INST_CAST op0=8 op1=13 op2=2/>
+; PF2-NEXT:     <INST_CAST op0=6 op1=13 op2=2/>
+; PF2-NEXT:     <INST_CAST op0=8 op1=14 op2=5/>
+; PF2-NEXT:     <INST_CAST op0=8 op1=14 op2=5/>
+; PF2-NEXT:     <INST_CAST op0=12 op1=14 op2=6/>
+; PF2-NEXT:     <INST_CAST op0=10 op1=14 op2=6/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 
@@ -741,7 +708,7 @@ define void @TestSavedPtrToInt() {
 ; PF1-NEXT:     <INST_ALLOCA op0=2 op1=4/>
 ; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=1 op1=3 op2=0/>
-; PF1-NEXT:     <INST_CALL op0=0 op1=22 op2=2/>
+; PF1-NEXT:     <INST_CALL op0=0 op1=26 op2=2/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
 
@@ -758,7 +725,7 @@ define void @TestSavedPtrToInt() {
 ; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
 ; PF2-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
 ; PF2-NEXT:     <INST_BINOP op0=1 op1=3 op2=0/>
-; PF2-NEXT:     <INST_CALL op0=0 op1=22 op2=2/>
+; PF2-NEXT:     <INST_CALL op0=0 op1=26 op2=2/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 
@@ -809,12 +776,8 @@ define void @CastIcmp() {
 ; TD2-NEXT:   %4 = icmp eq i32 %3, 2
 ; TD2-NEXT:   %5 = ptrtoint [4 x i8]* @bytes to i32
 ; TD2-NEXT:   %6 = icmp eq i32 1, %5
-; TD2-NEXT:   %7 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %8 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %9 = icmp eq i32 %7, %8
-; TD2-NEXT:   %10 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %11 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %12 = icmp eq i32 %10, %11
+; TD2-NEXT:   %7 = icmp eq i32 %3, %5
+; TD2-NEXT:   %8 = icmp eq i32 %5, %3
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -876,12 +839,8 @@ define void @CastSelect() {
 ; TD2-NEXT:   %4 = select i1 true, i32 %3, i32 2
 ; TD2-NEXT:   %5 = ptrtoint [4 x i8]* @bytes to i32
 ; TD2-NEXT:   %6 = select i1 true, i32 1, i32 %5
-; TD2-NEXT:   %7 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %8 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %9 = select i1 true, i32 %7, i32 %8
-; TD2-NEXT:   %10 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   %11 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   %12 = select i1 true, i32 %10, i32 %11
+; TD2-NEXT:   %7 = select i1 true, i32 %3, i32 %5
+; TD2-NEXT:   %8 = select i1 true, i32 %5, i32 %3
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -895,3 +854,447 @@ define void @CastSelect() {
 ; PF2-NEXT:     <INST_VSELECT op0=10 op1=5 op2=6/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
+
+; Show that if a phi node refers to a pointer cast, we add
+; them at the end of the incoming block.
+define void @PhiBackwardRefs(i1) {
+  %2 = alloca i8, i32 4, align 8
+  %3 = bitcast i8* %2 to i32*
+  %4 = alloca i8, i32 4, align 8
+  %5 = ptrtoint i8* %4 to i32
+  br i1 %0, label %true, label %false
+
+true:
+  %6 = load i32* %3
+  br label %merge
+
+false:
+  %7 = load i32* %3
+  br label %merge
+
+merge:
+  %8 = phi i32 [%5, %true], [%5, %false]
+  %9 = phi i32 [%6, %true], [%7, %false]
+  ret void
+}
+
+; TD1:      define void @PhiBackwardRefs(i1) {
+; TD1-NEXT:   %2 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %3 = bitcast i8* %2 to i32*
+; TD1-NEXT:   %4 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %5 = ptrtoint i8* %4 to i32
+; TD1-NEXT:   br i1 %0, label %true, label %false
+; TD1: true:
+; TD1-NEXT:   %6 = load i32* %3
+; TD1-NEXT:   br label %merge
+; TD1:      false:
+; TD1-NEXT:   %7 = load i32* %3
+; TD1-NEXT:   br label %merge
+; TD1:      merge:
+; TD1-NEXT:   %8 = phi i32 [ %5, %true ], [ %5, %false ]
+; TD1-NEXT:   %9 = phi i32 [ %6, %true ], [ %7, %false ]
+; TD1-NEXT:   ret void
+; TD1-NEXT: }
+
+; PF1:        <FUNCTION_BLOCK>
+; PF1:          </CONSTANTS_BLOCK>
+; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_ALLOCA op0=3 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_BR op0=1 op1=2 op2=6/>
+; PF1-NEXT:     <INST_LOAD op0=3 op1=0 op2=0/>
+; PF1-NEXT:     <INST_BR op0=3/>
+; PF1-NEXT:     <INST_LOAD op0=4 op1=0 op2=0/>
+; PF1-NEXT:     <INST_BR op0=3/>
+; PF1-NEXT:     <INST_PHI op0=0 op1=6 op2=1 op3=6 op4=2/>
+; PF1-NEXT:     <INST_PHI op0=0 op1=6 op2=1 op3=4 op4=2/>
+; PF1-NEXT:     <INST_RET/>
+; PF1:        </FUNCTION_BLOCK>
+
+; TD2:      define void @PhiBackwardRefs(i1) {
+; TD2-NEXT:   %2 = alloca i8, i32 4, align 8
+; TD2-NEXT:   %3 = alloca i8, i32 4, align 8
+; TD2-NEXT:   br i1 %0, label %true, label %false
+; TD2:      true:
+; TD2-NEXT:   %4 = bitcast i8* %2 to i32*
+; TD2-NEXT:   %5 = load i32* %4
+; TD2-NEXT:   %6 = ptrtoint i8* %3 to i32
+; TD2-NEXT:   br label %merge
+; TD2:      false:
+; TD2-NEXT:   %7 = bitcast i8* %2 to i32*
+; TD2-NEXT:   %8 = load i32* %7
+; TD2-NEXT:   %9 = ptrtoint i8* %3 to i32
+; TD2-NEXT:   br label %merge
+; TD2:      merge:
+; TD2-NEXT:   %10 = phi i32 [ %6, %true ], [ %9, %false ]
+; TD2-NEXT:   %11 = phi i32 [ %5, %true ], [ %8, %false ]
+; TD2-NEXT:   ret void
+; TD2-NEXT: }
+
+; PF2:        <FUNCTION_BLOCK>
+; PF2:          </CONSTANTS_BLOCK>
+; PF2-NEXT:     <INST_ALLOCA op0=1 op1=4/>
+; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
+; PF2-NEXT:     <INST_BR op0=1 op1=2 op2=4/>
+; PF2-NEXT:     <INST_LOAD op0=2 op1=0 op2=0/>
+; PF2-NEXT:     <INST_BR op0=3/>
+; PF2-NEXT:     <INST_LOAD op0=3 op1=0 op2=0/>
+; PF2-NEXT:     <INST_BR op0=3/>
+; PF2-NEXT:     <INST_PHI op0=0 op1=6 op2=1 op3=6 op4=2/>
+; PF2-NEXT:     <INST_PHI op0=0 op1=6 op2=1 op3=4 op4=2/>
+; PF2-NEXT:     <INST_RET/>
+; PF2:        </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
+
+; Like PhiBackwardRefs except the phi nodes forward reference
+; instructions instead of backwards references.
+define void @PhiForwardRefs(i1) {
+  br label %start
+
+merge:
+  %2 = phi i32 [%9, %true], [%9, %false]
+  %3 = phi i32 [%4, %true], [%5, %false]
+  ret void
+
+true:
+  %4 = load i32* %7
+  br label %merge
+
+false:
+  %5 = load i32* %7
+  br label %merge
+
+start:
+  %6 = alloca i8, i32 4, align 8
+  %7 = bitcast i8* %6 to i32*
+  %8 = alloca i8, i32 4, align 8
+  %9 = ptrtoint i8* %8 to i32
+  br i1 %0, label %true, label %false
+}
+
+; TD1:      define void @PhiForwardRefs(i1) {
+; TD1-NEXT:   br label %start
+; TD1:      merge:
+; TD1-NEXT:   %2 = phi i32 [ %9, %true ], [ %9, %false ]
+; TD1-NEXT:   %3 = phi i32 [ %4, %true ], [ %5, %false ]
+; TD1-NEXT:   ret void
+; TD1:      true:
+; TD1-NEXT:   %4 = load i32* %7
+; TD1-NEXT:   br label %merge
+; TD1:      false:
+; TD1-NEXT:   %5 = load i32* %7
+; TD1-NEXT:   br label %merge
+; TD1:      start:
+; TD1-NEXT:   %6 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %7 = bitcast i8* %6 to i32*
+; TD1-NEXT:   %8 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %9 = ptrtoint i8* %8 to i32
+; TD1-NEXT:   br i1 %0, label %true, label %false
+; TD1-NEXT: }
+
+; PF1:        <FUNCTION_BLOCK>
+; PF1:          </CONSTANTS_BLOCK>
+; PF1-NEXT:     <INST_BR op0=4/>
+; PF1-NEXT:     <FORWARDTYPEREF op0=30 op1=0/>
+; PF1-NEXT:     <INST_PHI op0=0 op1=15 op2=2 op3=15 op4=3/>
+; PF1-NEXT:     <FORWARDTYPEREF op0=25 op1=0/>
+; PF1-NEXT:     <FORWARDTYPEREF op0=26 op1=0/>
+; PF1-NEXT:     <INST_PHI op0=0 op1=3 op2=2 op3=5 op4=3/>
+; PF1-NEXT:     <INST_RET/>
+; PF1-NEXT:     <FORWARDTYPEREF op0=28 op1=4/>
+; PF1-NEXT:     <INST_LOAD op0=4294967293 op1=0 op2=0/>
+; PF1-NEXT:     <INST_BR op0=1/>
+; PF1-NEXT:     <INST_LOAD op0=4294967294 op1=0 op2=0/>
+; PF1-NEXT:     <INST_BR op0=1/>
+; PF1-NEXT:     <INST_ALLOCA op0=5 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_ALLOCA op0=7 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_BR op0=2 op1=3 op2=10/>
+; PF1:        </FUNCTION_BLOCK>
+
+; TD2:      define void @PhiForwardRefs(i1) {
+; TD2-NEXT:   br label %start
+; TD2:      merge
+; TD2-NEXT:   %2 = phi i32 [ %6, %true ], [ %9, %false ]
+; TD2-NEXT:   %3 = phi i32 [ %5, %true ], [ %8, %false ]
+; TD2-NEXT:   ret void
+; TD2:      true:
+; TD2-NEXT:   %4 = bitcast i8* %10 to i32*
+; TD2-NEXT:   %5 = load i32* %4
+; TD2-NEXT:   %6 = ptrtoint i8* %11 to i32
+; TD2-NEXT:   br label %merge
+; TD2:      false:
+; TD2-NEXT:   %7 = bitcast i8* %10 to i32*
+; TD2-NEXT:   %8 = load i32* %7
+; TD2-NEXT:   %9 = ptrtoint i8* %11 to i32
+; TD2-NEXT:   br label %merge
+; TD2:      start:
+; TD2-NEXT:   %10 = alloca i8, i32 4, align 8
+; TD2-NEXT:   %11 = alloca i8, i32 4, align 8
+; TD2-NEXT:   br i1 %0, label %true, label %false
+; TD2-NEXT: }
+
+; PF2:        <FUNCTION_BLOCK>
+; PF2:          </CONSTANTS_BLOCK>
+; PF2-NEXT:     <INST_BR op0=4/>
+; PF2-NEXT:     <FORWARDTYPEREF op0=28 op1=3/>
+; PF2-NEXT:     <INST_PHI op0=0 op1=11 op2=2 op3=11 op4=3/>
+; PF2-NEXT:     <FORWARDTYPEREF op0=25 op1=0/>
+; PF2-NEXT:     <FORWARDTYPEREF op0=26 op1=0/>
+; PF2-NEXT:     <INST_PHI op0=0 op1=3 op2=2 op3=5 op4=3/>
+; PF2-NEXT:     <INST_RET/>
+; PF2-NEXT:     <FORWARDTYPEREF op0=27 op1=3/>
+; PF2-NEXT:     <INST_LOAD op0=4294967294 op1=0 op2=0/>
+; PF2-NEXT:     <INST_BR op0=1/>
+; PF2-NEXT:     <INST_LOAD op0=4294967295 op1=0 op2=0/>
+; PF2-NEXT:     <INST_BR op0=1/>
+; PF2-NEXT:     <INST_ALLOCA op0=5 op1=4/>
+; PF2-NEXT:     <INST_ALLOCA op0=6 op1=4/>
+; PF2-NEXT:     <INST_BR op0=2 op1=3 op2=8/>
+; PF2:        </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
+
+; Show that if a phi node incoming block already has a pointer cast,
+; we use it instead of adding one at the end of the block. In this
+; example, we reuse instruction %7 in block true for phi node %10.
+define void @PhiMergeCast(i1) {
+  %2 = alloca i8, i32 4, align 8
+  %3 = bitcast i8* %2 to i32*
+  %4 = alloca i8, i32 4, align 8
+  %5 = ptrtoint i8* %4 to i32
+  br i1 %0, label %true, label %false
+
+true:
+  %6 = load i32* %3
+  %7 = ptrtoint i8* %4 to i32
+  %8 = add i32 %6, %7
+  br label %merge
+
+false:
+  %9 = load i32* %3
+  br label %merge
+
+merge:
+  %10 = phi i32 [%5, %true], [%5, %false]
+  %11 = phi i32 [%6, %true], [%9, %false]
+  ret void
+}
+
+; TD1:      define void @PhiMergeCast(i1) {
+; TD1-NEXT:   %2 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %3 = bitcast i8* %2 to i32*
+; TD1-NEXT:   %4 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %5 = ptrtoint i8* %4 to i32
+; TD1-NEXT:   br i1 %0, label %true, label %false
+; TD1:      true:
+; TD1-NEXT:   %6 = load i32* %3
+; TD1-NEXT:   %7 = ptrtoint i8* %4 to i32
+; TD1-NEXT:   %8 = add i32 %6, %7
+; TD1-NEXT:   br label %merge
+; TD1:      false:
+; TD1-NEXT:   %9 = load i32* %3
+; TD1-NEXT:   br label %merge
+; TD1:      merge:
+; TD1-NEXT:   %10 = phi i32 [ %5, %true ], [ %5, %false ]
+; TD1-NEXT:   %11 = phi i32 [ %6, %true ], [ %9, %false ]
+; TD1-NEXT:   ret void
+; TD1-NEXT: }
+
+; PF1:        <FUNCTION_BLOCK>
+; PF1:          </CONSTANTS_BLOCK>
+; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_ALLOCA op0=3 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_BR op0=1 op1=2 op2=6/>
+; PF1-NEXT:     <INST_LOAD op0=3 op1=0 op2=0/>
+; PF1-NEXT:     <INST_CAST op0=3 op1=0 op2=9/>
+; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
+; PF1-NEXT:     <INST_BR op0=3/>
+; PF1-NEXT:     <INST_LOAD op0=6 op1=0 op2=0/>
+; PF1-NEXT:     <INST_BR op0=3/>
+; PF1-NEXT:     <INST_PHI op0=0 op1=10 op2=1 op3=10 op4=2/>
+; PF1-NEXT:     <INST_PHI op0=0 op1=10 op2=1 op3=4 op4=2/>
+; PF1-NEXT:     <INST_RET/>
+; PF1:        </FUNCTION_BLOCK>
+
+; TD2:      define void @PhiMergeCast(i1) {
+; TD2-NEXT:   %2 = alloca i8, i32 4, align 8
+; TD2-NEXT:   %3 = alloca i8, i32 4, align 8
+; TD2-NEXT:   br i1 %0, label %true, label %false
+; TD2:      true:
+; TD2-NEXT:   %4 = bitcast i8* %2 to i32*
+; TD2-NEXT:   %5 = load i32* %4
+; TD2-NEXT:   %6 = ptrtoint i8* %3 to i32
+; TD2-NEXT:   %7 = add i32 %5, %6
+; TD2-NEXT:   br label %merge
+; TD2:      false:
+; TD2-NEXT:   %8 = bitcast i8* %2 to i32*
+; TD2-NEXT:   %9 = load i32* %8
+; TD2-NEXT:   %10 = ptrtoint i8* %3 to i32
+; TD2-NEXT:   br label %merge
+; TD2:      merge:
+; TD2-NEXT:   %11 = phi i32 [ %6, %true ], [ %10, %false ]
+; TD2-NEXT:   %12 = phi i32 [ %5, %true ], [ %9, %false ]
+; TD2-NEXT:   ret void
+; TD2-NEXT: }
+
+; PF2:        <FUNCTION_BLOCK>
+; PF2:          </CONSTANTS_BLOCK>
+; PF2-NEXT:     <INST_ALLOCA op0=1 op1=4/>
+; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
+; PF2-NEXT:     <INST_BR op0=1 op1=2 op2=4/>
+; PF2-NEXT:     <INST_LOAD op0=2 op1=0 op2=0/>
+; PF2-NEXT:     <INST_BINOP op0=1 op1=2 op2=0/>
+; PF2-NEXT:     <INST_BR op0=3/>
+; PF2-NEXT:     <INST_LOAD op0=4 op1=0 op2=0/>
+; PF2-NEXT:     <INST_BR op0=3/>
+; PF2-NEXT:     <INST_PHI op0=0 op1=8 op2=1 op3=8 op4=2/>
+; PF2-NEXT:     <INST_PHI op0=0 op1=8 op2=1 op3=4 op4=2/>
+; PF2-NEXT:     <INST_RET/>
+; PF2:        </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
+
+; Show that we must introduce a cast reference for each
+; reachable block, but one is sufficient.
+define void @LongReachingCasts(i1) {
+  %2 = alloca i8, i32 4, align 8
+  %3 = ptrtoint i8* %2 to i32
+  %4 = bitcast [4 x i8]* @bytes to i32*
+  br i1 %0, label %Split1, label %Split2
+
+Split1:
+  br i1 %0, label %b1, label %b2
+
+Split2:
+  br i1 %0, label %b3, label %b4
+
+b1:
+  store i32 %3, i32* %4, align 1
+  store i32 %3, i32* %4, align 1
+  ret void
+
+b2:
+  store i32 %3, i32* %4, align 1
+  store i32 %3, i32* %4, align 1
+  ret void
+
+b3:
+  store i32 %3, i32* %4, align 1
+  store i32 %3, i32* %4, align 1
+  ret void
+
+b4:
+  store i32 %3, i32* %4, align 1
+  store i32 %3, i32* %4, align 1
+  ret void
+}
+
+; TD1:      define void @LongReachingCasts(i1) {
+; TD1-NEXT:   %2 = alloca i8, i32 4, align 8
+; TD1-NEXT:   %3 = ptrtoint i8* %2 to i32
+; TD1-NEXT:   %4 = bitcast [4 x i8]* @bytes to i32*
+; TD1-NEXT:   br i1 %0, label %Split1, label %Split2
+; TD1:      Split1:
+; TD1-NEXT:   br i1 %0, label %b1, label %b2
+; TD1:      Split2:
+; TD1-NEXT:   br i1 %0, label %b3, label %b4
+; TD1:      b1:
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   ret void
+; TD1:      b2:
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   ret void
+; TD1:      b3:
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   ret void
+; TD1:      b4:
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   store i32 %3, i32* %4, align 1
+; TD1-NEXT:   ret void
+; TD1-NEXT: }
+
+; PF1:        <FUNCTION_BLOCK>
+; PF1:          </CONSTANTS_BLOCK>
+; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
+; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=5 op1=4 op2=11/>
+; PF1-NEXT:     <INST_BR op0=1 op1=2 op2=5/>
+; PF1-NEXT:     <INST_BR op0=3 op1=4 op2=5/>
+; PF1-NEXT:     <INST_BR op0=5 op1=6 op2=5/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_RET/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_RET/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_RET/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
+; PF1-NEXT:     <INST_RET/>
+; PF1:        </FUNCTION_BLOCK>
+
+; TD2:      define void @LongReachingCasts(i1) {
+; TD2-NEXT:   %2 = alloca i8, i32 4, align 8
+; TD2-NEXT:   br i1 %0, label %Split1, label %Split2
+; TD2:      Split1:
+; TD2-NEXT:   br i1 %0, label %b1, label %b2
+; TD2:      Split2:
+; TD2-NEXT:   br i1 %0, label %b3, label %b4
+; TD2:      b1:
+; TD2-NEXT:   %3 = ptrtoint i8* %2 to i32
+; TD2-NEXT:   %4 = bitcast [4 x i8]* @bytes to i32*
+; TD2-NEXT:   store i32 %3, i32* %4, align 1
+; TD2-NEXT:   store i32 %3, i32* %4, align 1
+; TD2-NEXT:   ret void
+; TD2:      b2:
+; TD2-NEXT:   %5 = ptrtoint i8* %2 to i32
+; TD2-NEXT:   %6 = bitcast [4 x i8]* @bytes to i32*
+; TD2-NEXT:   store i32 %5, i32* %6, align 1
+; TD2-NEXT:   store i32 %5, i32* %6, align 1
+; TD2-NEXT:   ret void
+; TD2:      b3:
+; TD2-NEXT:   %7 = ptrtoint i8* %2 to i32
+; TD2-NEXT:   %8 = bitcast [4 x i8]* @bytes to i32*
+; TD2-NEXT:   store i32 %7, i32* %8, align 1
+; TD2-NEXT:   store i32 %7, i32* %8, align 1
+; TD2-NEXT:   ret void
+; TD2:      b4:
+; TD2-NEXT:   %9 = ptrtoint i8* %2 to i32
+; TD2-NEXT:   %10 = bitcast [4 x i8]* @bytes to i32*
+; TD2-NEXT:   store i32 %9, i32* %10, align 1
+; TD2-NEXT:   store i32 %9, i32* %10, align 1
+; TD2-NEXT:   ret void
+; TD2-NEXT: }
+
+; PF2:        <FUNCTION_BLOCK>
+; PF2:          </CONSTANTS_BLOCK>
+; PF2-NEXT:     <INST_ALLOCA op0=1 op1=4/>
+; PF2-NEXT:     <INST_BR op0=1 op1=2 op2=3/>
+; PF2-NEXT:     <INST_BR op0=3 op1=4 op2=3/>
+; PF2-NEXT:     <INST_BR op0=5 op1=6 op2=3/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_RET/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_RET/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_RET/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_STORE op0=4 op1=1 op2=1/>
+; PF2-NEXT:     <INST_RET/>
+; PF2:        </FUNCTION_BLOCK>

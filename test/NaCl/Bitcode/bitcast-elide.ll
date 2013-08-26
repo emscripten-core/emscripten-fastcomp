@@ -17,17 +17,19 @@
 
 ; ------------------------------------------------------
 
-@bytes = internal global [7 x i8] c"abcdefg"
+@bytes = internal global [4 x i8] c"abcd"
+
+; ------------------------------------------------------
 
 ; Test that we elide the simple case of global.
 define void @SimpleLoad() {
-  %1 = bitcast [7 x i8]* @bytes to i32*
+  %1 = bitcast [4 x i8]* @bytes to i32*
   %2 = load i32* %1, align 4
   ret void
 }
 
 ; TD1:      define void @SimpleLoad() {
-; TD1-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD1-NEXT:   %2 = load i32* %1, align 4
 ; TD1-NEXT:   ret void
 ; TD1-NEXT: }
@@ -40,7 +42,7 @@ define void @SimpleLoad() {
 ; PF1-NEXT:  </FUNCTION_BLOCK>
 
 ; TD2:      define void @SimpleLoad() {
-; TD2-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD2-NEXT:   %2 = load i32* %1, align 4
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
@@ -50,6 +52,8 @@ define void @SimpleLoad() {
 ; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_RET/>
 ; PF2-NEXT:  </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
 
 ; Test that we elide the simple case of an alloca.
 define void @SimpleLoadAlloca() {
@@ -67,8 +71,6 @@ define void @SimpleLoadAlloca() {
 ; TD1-NEXT: }
 
 ; PF1:        <FUNCTION_BLOCK>
-; PF1-NEXT:     <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:     <CONSTANTS_BLOCK
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=3/>
 ; PF1-NEXT:     <INST_CAST op0=1 op1=1 op2=11/>
@@ -84,23 +86,23 @@ define void @SimpleLoadAlloca() {
 ; TD2-NEXT: }
 
 ; PF2:        <FUNCTION_BLOCK>
-; PF2-NEXT:     <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:     <CONSTANTS_BLOCK
 ; PF2:          </CONSTANTS_BLOCK>
 ; PF2-NEXT:     <INST_ALLOCA op0=1 op1=3/>
 ; PF2-NEXT:     <INST_LOAD op0=1 op1=3 op2=0/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 
+; ------------------------------------------------------
+
 ; Test that we don't elide an bitcast if one of its uses is not a load.
 define i32* @NonsimpleLoad(i32 %i) {
-  %1 = bitcast [7 x i8]* @bytes to i32*       
+  %1 = bitcast [4 x i8]* @bytes to i32*       
   %2 = load i32* %1, align 4
   ret i32* %1
 }
 
 ; TD1:      define i32* @NonsimpleLoad(i32 %i) {
-; TD1-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD1-NEXT:   %2 = load i32* %1, align 4
 ; TD1-NEXT:   ret i32* %1
 ; TD1-NEXT: }
@@ -113,7 +115,7 @@ define i32* @NonsimpleLoad(i32 %i) {
 ; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32* @NonsimpleLoad(i32 %i) {
-; TD2-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD2-NEXT:   %2 = load i32* %1, align 4
 ; TD2-NEXT:   ret i32* %1
 ; TD2-NEXT: }
@@ -125,20 +127,22 @@ define i32* @NonsimpleLoad(i32 %i) {
 ; PF2-NEXT:    <INST_RET op0=2/>
 ; PF2:       </FUNCTION_BLOCK>
 
+; ------------------------------------------------------
+
 ; Test that we can handle multiple bitcasts.
 define i32 @TwoLoads(i32 %i) {
-  %1 = bitcast [7 x i8]* @bytes to i32*       
+  %1 = bitcast [4 x i8]* @bytes to i32*       
   %2 = load i32* %1, align 4
-  %3 = bitcast [7 x i8]* @bytes to i32*       
+  %3 = bitcast [4 x i8]* @bytes to i32*       
   %4 = load i32* %3, align 4
   %5 = add i32 %2, %4
   ret i32 %5
 }
 
 ; TD1:      define i32 @TwoLoads(i32 %i) {
-; TD1-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD1-NEXT:   %2 = load i32* %1, align 4
-; TD1-NEXT:   %3 = bitcast [7 x i8]* @bytes to i32*
+; TD1-NEXT:   %3 = bitcast [4 x i8]* @bytes to i32*
 ; TD1-NEXT:   %4 = load i32* %3, align 4
 ; TD1-NEXT:   %5 = add i32 %2, %4
 ; TD1-NEXT:   ret i32 %5
@@ -155,12 +159,11 @@ define i32 @TwoLoads(i32 %i) {
 ; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32 @TwoLoads(i32 %i) {
-; TD2-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD2-NEXT:   %2 = load i32* %1, align 4
-; TD2-NEXT:   %3 = bitcast [7 x i8]* @bytes to i32*
-; TD2-NEXT:   %4 = load i32* %3, align 4
-; TD2-NEXT:   %5 = add i32 %2, %4
-; TD2-NEXT:   ret i32 %5
+; TD2-NEXT:   %3 = load i32* %1, align 4
+; TD2-NEXT:   %4 = add i32 %2, %3
+; TD2-NEXT:   ret i32 %4
 ; TD2-NEXT: }
 
 ; PF2:       <FUNCTION_BLOCK>
@@ -171,17 +174,20 @@ define i32 @TwoLoads(i32 %i) {
 ; PF2-NEXT:    <INST_RET op0=1/>
 ; PF2:       </FUNCTION_BLOCK>
 
-; Test how we duplicate bitcasts, even if optimized in the input file.
-define i32 @TwoLoadOpt(i32 %i) {
-  %1 = bitcast [7 x i8]* @bytes to i32*       
+; ------------------------------------------------------
+
+; Test how we handle bitcasts if optimized in the input file.  This
+; case tests within a single block.
+define i32 @TwoLoadOptOneBlock(i32 %i) {
+  %1 = bitcast [4 x i8]* @bytes to i32*       
   %2 = load i32* %1, align 4
   %3 = load i32* %1, align 4
   %4 = add i32 %2, %3
   ret i32 %4
 }
 
-; TD1:      define i32 @TwoLoadOpt(i32 %i) {
-; TD1-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD1:      define i32 @TwoLoadOptOneBlock(i32 %i) {
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD1-NEXT:   %2 = load i32* %1, align 4
 ; TD1-NEXT:   %3 = load i32* %1, align 4
 ; TD1-NEXT:   %4 = add i32 %2, %3
@@ -197,13 +203,12 @@ define i32 @TwoLoadOpt(i32 %i) {
 ; PF1-NEXT:    <INST_RET op0=1/>
 ; PF1:       </FUNCTION_BLOCK>
 
-; TD2:      define i32 @TwoLoadOpt(i32 %i) {
-; TD2-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD2:      define i32 @TwoLoadOptOneBlock(i32 %i) {
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD2-NEXT:   %2 = load i32* %1, align 4
-; TD2-NEXT:   %3 = bitcast [7 x i8]* @bytes to i32*
-; TD2-NEXT:   %4 = load i32* %3, align 4
-; TD2-NEXT:   %5 = add i32 %2, %4
-; TD2-NEXT:   ret i32 %5
+; TD2-NEXT:   %3 = load i32* %1, align 4
+; TD2-NEXT:   %4 = add i32 %2, %3
+; TD2-NEXT:   ret i32 %4
 ; TD2-NEXT: }
 
 ; PF2:       <FUNCTION_BLOCK>
@@ -214,15 +219,87 @@ define i32 @TwoLoadOpt(i32 %i) {
 ; PF2-NEXT:    <INST_RET op0=1/>
 ; PF2:       </FUNCTION_BLOCK>
 
+; ------------------------------------------------------
+
+; Test how we handle bitcasts if optimized in the input file.  This
+; case tests accross blocks.
+define i32 @TwoLoadOptTwoBlocks(i32 %i) {
+  %1 = bitcast [4 x i8]* @bytes to i32*       
+  %2 = load i32* %1, align 4
+  %3 = load i32* %1, align 4
+  %4 = add i32 %2, %3
+  br label %BB
+
+BB:
+  %5 = load i32* %1, align 4
+  %6 = load i32* %1, align 4
+  %7 = add i32 %5, %6
+  ret i32 %4
+}
+
+; TD1:      define i32 @TwoLoadOptTwoBlocks(i32 %i) {
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
+; TD1-NEXT:   %2 = load i32* %1, align 4
+; TD1-NEXT:   %3 = load i32* %1, align 4
+; TD1-NEXT:   %4 = add i32 %2, %3
+; TD1-NEXT:   br label %BB
+; TD1:      BB:
+; TD1-NEXT:   %5 = load i32* %1, align 4
+; TD1-NEXT:   %6 = load i32* %1, align 4
+; TD1-NEXT:   %7 = add i32 %5, %6
+; TD1-NEXT:   ret i32 %4
+; TD1-NEXT: }
+
+; PF1:        <FUNCTION_BLOCK>
+; PF1-NEXT:     <DECLAREBLOCKS op0=2/>
+; PF1-NEXT:     <INST_CAST op0=2 op1=1 op2=11/>
+; PF1-NEXT:     <INST_LOAD op0=1 op1=3 op2=0/>
+; PF1-NEXT:     <INST_LOAD op0=2 op1=3 op2=0/>
+; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
+; PF1-NEXT:     <INST_BR op0=1/>
+; PF1-NEXT:     <INST_LOAD op0=4 op1=3 op2=0/>
+; PF1-NEXT:     <INST_LOAD op0=5 op1=3 op2=0/>
+; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
+; PF1-NEXT:     <INST_RET op0=4/>
+; PF1:        </FUNCTION_BLOCK>
+
+; TD2:      define i32 @TwoLoadOptTwoBlocks(i32 %i) {
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
+; TD2-NEXT:   %2 = load i32* %1, align 4
+; TD2-NEXT:   %3 = load i32* %1, align 4
+; TD2-NEXT:   %4 = add i32 %2, %3
+; TD2-NEXT:   br label %BB
+; TD2:      BB:
+; TD2-NEXT:   %5 = bitcast [4 x i8]* @bytes to i32*
+; TD2-NEXT:   %6 = load i32* %5, align 4
+; TD2-NEXT:   %7 = load i32* %5, align 4
+; TD2-NEXT:   %8 = add i32 %6, %7
+; TD2-NEXT:   ret i32 %4
+; TD2-NEXT: }
+
+; PF2:        <FUNCTION_BLOCK>
+; PF2-NEXT:     <DECLAREBLOCKS op0=2/>
+; PF2-NEXT:     <INST_LOAD op0=2 op1=3 op2=0/>
+; PF2-NEXT:     <INST_LOAD op0=3 op1=3 op2=0/>
+; PF2-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
+; PF2-NEXT:     <INST_BR op0=1/>
+; PF2-NEXT:     <INST_LOAD op0=5 op1=3 op2=0/>
+; PF2-NEXT:     <INST_LOAD op0=6 op1=3 op2=0/>
+; PF2-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
+; PF2-NEXT:     <INST_RET op0=4/>
+; PF2:        </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
+
 ; Test that we elide the simple case of bitcast for a store.
 define void @SimpleStore(i32 %i) {
-  %1 = bitcast [7 x i8]* @bytes to i32*
+  %1 = bitcast [4 x i8]* @bytes to i32*
   store i32 %i, i32* %1, align 4
   ret void
 }
 
 ; TD1:      define void @SimpleStore(i32 %i) {
-; TD1-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD1-NEXT:   store i32 %i, i32* %1, align 4
 ; TD1-NEXT:   ret void
 ; TD1-NEXT: }
@@ -235,7 +312,7 @@ define void @SimpleStore(i32 %i) {
 ; PF1:        </FUNCTION_BLOCK>
 
 ; TD2:      define void @SimpleStore(i32 %i) {
-; TD2-NEXT:   %1 = bitcast [7 x i8]* @bytes to i32*
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
 ; TD2-NEXT:   store i32 %i, i32* %1, align 4
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
