@@ -305,7 +305,6 @@ LTOModule *LTOModule::makeLTOModule(MemoryBuffer *buffer,
   getTargetOptions(Options);
   TargetMachine *target = march->createTargetMachine(TripleStr, CPU, FeatureStr,
                                                      Options);
-
   LTOModule *Ret = new LTOModule(m.take(), target);
   if (Ret->parseSymbols(errMsg)) {
     delete Ret;
@@ -320,36 +319,6 @@ MemoryBuffer *LTOModule::makeBuffer(const void *mem, size_t length) {
   const char *startPtr = (const char*)mem;
   return MemoryBuffer::getMemBuffer(StringRef(startPtr, length), "", false);
 }
-
-// @LOCALMOD-BEGIN
-lto_output_format LTOModule::getOutputFormat() {
-  Module::OutputFormat format = _module->getOutputFormat();
-  switch (format) {
-  case Module::ObjectOutputFormat: return LTO_OUTPUT_FORMAT_OBJECT;
-  case Module::SharedOutputFormat: return LTO_OUTPUT_FORMAT_SHARED;
-  case Module::ExecutableOutputFormat: return LTO_OUTPUT_FORMAT_EXEC;
-  }
-  llvm_unreachable("Unknown output format in LTOModule");
-}
-
-const char *LTOModule::getSOName() {
-  return _module->getSOName().c_str();
-}
-
-const char* LTOModule::getLibraryDep(uint32_t index) {
-  /* make it compile until we bring back deplibs
-  const Module::LibraryListType &Libs = _module->getLibraries();
-  if (index < Libs.size())
-    return Libs[index].c_str();
-  */
-  return NULL;
-}
-
-uint32_t LTOModule::getNumLibraryDeps() {
-  //return _module->getLibraries().size();
-  return 0;
-}
-// @LOCALMOD-END
 
 /// objcClassNameFromExpression - Get string that the data pointer points to.
 bool
@@ -840,7 +809,6 @@ namespace {
                                    unsigned MaxBytesToEmit) {}
     virtual bool EmitValueToOffset(const MCExpr *Offset,
                                    unsigned char Value ) { return false; }
-
     virtual void EmitFileDirective(StringRef Filename) {}
     virtual void EmitDwarfAdvanceLineAddr(int64_t LineDelta,
                                           const MCSymbol *LastLabel,
