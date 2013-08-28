@@ -438,9 +438,6 @@ static bool ExpectsNormalizedPtr(const Value *V, const Instruction *Arg) {
   const Instruction *I = dyn_cast<Instruction>(V);
   if (I == 0) return false;
 
-  // TODO(kschimpf) Expand this list to any operation that can handle
-  // normalized pointers. That is loads and stores, function calls, and
-  // instrinsic calls.
   switch (I->getOpcode()) {
   default:
     return false;
@@ -448,6 +445,10 @@ static bool ExpectsNormalizedPtr(const Value *V, const Instruction *Arg) {
     return I->getOperand(0) == Arg;
   case Instruction::Store:
     return I->getOperand(1) == Arg;
+  case Instruction::Call:
+    // For function calls, the function operand is normalized, and for
+    // intrinsic calls, all pointer arguments are normalized.
+    return true;
   }
 }
 
@@ -493,12 +494,13 @@ static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
       const SelectInst *Op = dyn_cast<SelectInst>(I);
       return Arg == Op->getTrueValue() || Arg == Op->getFalseValue();
     }
+    case Instruction::Call: {
+      // All operands (except the first, which must be a function pointer),
+      // can be scalar values.
+      const CallInst *Call = cast<CallInst>(I);
+      return Call->getCalledValue() != Arg;
     }
-    // TODO(kschimpf): Need to think more about how to handle following
-    // instructions:
-    // case Instruction::IntToPtr:
-    // case Instruction::BitCast:
-    // case Instruction::Call:
+    }
   }
 }
 
@@ -526,7 +528,6 @@ static inline bool IsInherentPtr(const Value *V) {
 // llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
 const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
   if (PNaClVersion == 1) return V;
-  // TODO(kschimpf): Expand this out to cover all cases.
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
     switch (I->getOpcode()) {
     default:

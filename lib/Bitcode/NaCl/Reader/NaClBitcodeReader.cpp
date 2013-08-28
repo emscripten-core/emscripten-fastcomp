@@ -1315,16 +1315,15 @@ Value *NaClBitcodeReader::ConvertOpToScalar(Value *Op, unsigned BBIndex,
 
 Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T,
                                           unsigned BBIndex) {
-  // Note: Currently only knows how to add inttoptr and bitcast type
-  // conversions for non-phi nodes, since these are the only elided
-  // instructions in the bitcode writer.
-  //
-  // TODO(kschimpf): Generalize this as we expand elided conversions.
   Type *OpTy = Op->getType();
   if (OpTy == T) return Op;
 
   if (OpTy->isPointerTy()) {
-    return CreateCast(BBIndex, Instruction::BitCast, T, Op);
+    if (T == IntPtrType) {
+      return ConvertOpToScalar(Op, BBIndex);
+    } else {
+      return CreateCast(BBIndex, Instruction::BitCast, T, Op);
+    }
   } else if (OpTy == IntPtrType) {
     return CreateCast(BBIndex, Instruction::IntToPtr, T, Op);
   }
@@ -1687,7 +1686,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid LOAD record");
       switch (GetPNaClVersion()) {
         case 1:
-	  I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
+          I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
           break;
         case 2: {
           // Add pointer cast to op.
@@ -1696,8 +1695,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
             return Error("Invalid type for load instruction");
           Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
           if (Op == 0) return true;
-	  I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
-	  break;
+          I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
+          break;
         }
       }
       break;
@@ -1712,27 +1711,28 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid STORE record");
       switch (GetPNaClVersion()) {
       case 1:
-	if (OpNum+2 != Record.size())
-	  return Error("Invalid STORE record");
-	I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-	break;
+        if (OpNum+2 != Record.size())
+          return Error("Invalid STORE record");
+        I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
+        break;
       case 2:
-	if (OpNum+1 != Record.size())
-	  return Error("Invalid STORE record");
+        if (OpNum+1 != Record.size())
+          return Error("Invalid STORE record");
         Val = ConvertOpToScalar(Val, CurBBNo);
         Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
-	I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
-	break;
+        I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
+        break;
       }
       break;
     }
-    case naclbitc::FUNC_CODE_INST_CALL: {
+    case naclbitc::FUNC_CODE_INST_CALL:
+    case naclbitc::FUNC_CODE_INST_CALL_INDIRECT: {
       // CALL: [cc, fnid, arg0, arg1...]
-      if (Record.size() < 2)
+      // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
+      if ((Record.size() < 2) ||
+          (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT &&
+           Record.size() < 3))
         return Error("Invalid CALL record");
-
-      // TODO(kschimpf): Fix handling of type conversion to arguments for PNaCl,
-      // to handle elided casts, once the bitcode writer knows how.
 
       unsigned CCInfo = Record[0];
 
@@ -1741,35 +1741,42 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (popValue(Record, &OpNum, NextValueNo, &Callee))
         return Error("Invalid CALL record");
 
-      PointerType *OpTy = dyn_cast<PointerType>(Callee->getType());
+      // Build function type for call.
       FunctionType *FTy = 0;
-      if (OpTy) FTy = dyn_cast<FunctionType>(OpTy->getElementType());
-      if (!FTy || Record.size() < FTy->getNumParams()+OpNum)
+      if (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT) {
+        // Callee type has been elided, add back in.
+        Type *Type = getTypeByID(Record[2]);
+        ++OpNum;
+        if (FunctionType *FcnType = dyn_cast<FunctionType>(Type)) {
+          FTy = FcnType;
+          Callee = ConvertOpToType(Callee, FcnType->getPointerTo(), CurBBNo);
+        } else {
+          return Error("Invalid type for CALL_INDIRECT record");
+        }
+      } else {
+        // Get type signature from callee.
+        if (PointerType *OpTy = dyn_cast<PointerType>(Callee->getType())) {
+          FTy = dyn_cast<FunctionType>(OpTy->getElementType());
+        }
+        if (FTy == 0)
+          return Error("Invalid type for CALL record");
+      }
+
+      unsigned NumParams = Record.size() - OpNum;
+      if (NumParams != FTy->getNumParams())
         return Error("Invalid CALL record");
 
-      SmallVector<Value*, 16> Args;
-      // Read the fixed params.
-      for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i, ++OpNum) {
-        if (FTy->getParamType(i)->isLabelTy())
-          Args.push_back(getBasicBlock(Record[OpNum]));
-        else
-          Args.push_back(getValue(Record, OpNum, NextValueNo));
-        if (Args.back() == 0) return Error("Invalid CALL record");
+      // Process call arguments.
+      SmallVector<Value*, 6> Args;
+      for (unsigned Index = 0; Index < NumParams; ++Index) {
+        Value *Arg;
+        if (popValue(Record, &OpNum, NextValueNo, &Arg))
+          Error("Invalid argument in CALL record");
+        Arg = ConvertOpToType(Arg, FTy->getParamType(Index), CurBBNo);
+        Args.push_back(Arg);
       }
 
-      // Read type/value pairs for varargs params.
-      if (!FTy->isVarArg()) {
-        if (OpNum != Record.size())
-          return Error("Invalid CALL record");
-      } else {
-        while (OpNum != Record.size()) {
-          Value *Op;
-          if (popValue(Record, &OpNum, NextValueNo, &Op))
-            return Error("Invalid CALL record");
-          Args.push_back(Op);
-        }
-      }
-
+      // Construct call.
       I = CallInst::Create(Callee, Args);
       cast<CallInst>(I)->setCallingConv(GetDecodedCallingConv(CCInfo>>1));
       cast<CallInst>(I)->setTailCall(CCInfo & 1);

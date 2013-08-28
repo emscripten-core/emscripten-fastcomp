@@ -248,6 +248,7 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
     case naclbitc::FUNC_CODE_INST_VSELECT:      return "INST_VSELECT";
     case naclbitc::FUNC_CODE_DEBUG_LOC_AGAIN:   return "DEBUG_LOC_AGAIN";
     case naclbitc::FUNC_CODE_INST_CALL:         return "INST_CALL";
+    case naclbitc::FUNC_CODE_INST_CALL_INDIRECT: return "INST_CALL_INDIRECT";
     case naclbitc::FUNC_CODE_DEBUG_LOC:         return "DEBUG_LOC";
     case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF: return "FORWARDTYPEREF";
     }

@@ -1,5 +1,4 @@
 ; Test how we handle eliding (pointer) bitcast instructions.
-; TODO(kschimpf) Expand these tests as further CL's are added for issue 3544.
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
 ; RUN:              | pnacl-bcanalyzer -dump-records \

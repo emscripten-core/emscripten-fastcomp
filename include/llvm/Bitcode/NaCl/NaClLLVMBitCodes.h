@@ -309,8 +309,8 @@ namespace naclbitc {
     // 32 is unused.
     FUNC_CODE_DEBUG_LOC_AGAIN  = 33, // Not used in PNaCl.
 
-    FUNC_CODE_INST_CALL        = 34, // CALL:       [cc, fnid, args...]
-
+    FUNC_CODE_INST_CALL        = 34, // CALL: [cc, fnid, args...]
+                                     // See FUNC_CODE_INST_CALL_INDIRECT below.
     FUNC_CODE_DEBUG_LOC        = 35, // Not used in PNaCl.
     FUNC_CODE_INST_FENCE       = 36, // Not used in PNaCl.
     FUNC_CODE_INST_CMPXCHG     = 37, // Not used in PNaCl.
@@ -319,7 +319,9 @@ namespace naclbitc {
     FUNC_CODE_INST_LANDINGPAD  = 40, // Not used in PNaCl.
     FUNC_CODE_INST_LOADATOMIC  = 41, // Not used in PNaCl.
     FUNC_CODE_INST_STOREATOMIC = 42, // Not used in PNaCl.
-    FUNC_CODE_INST_FORWARDTYPEREF = 43 // TYPE: [opval, ty]
+    FUNC_CODE_INST_FORWARDTYPEREF = 43, // TYPE: [opval, ty]
+    // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
+    FUNC_CODE_INST_CALL_INDIRECT = 44
   };
 
   enum NaClUseListCodes {

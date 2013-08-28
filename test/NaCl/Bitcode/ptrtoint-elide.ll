@@ -1,5 +1,4 @@
 ; Test how we handle eliding ptrtoint instructions.
-; TODO(kschimpf) Expand these tests as further CL's are added for issue 3544.
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
@@ -684,9 +683,7 @@ define void @TestCasts() {
 
 ; ------------------------------------------------------
 
-; Show that if a ptrtoint is used in something other than known scalar operations,
-; it gets copied to the bitcode file
-; TODO(kschimpf): Remove this once all scalar operations have been handled.
+; Show that we elide a ptrtoint cast for a call.
 define void @TestSavedPtrToInt() {
   %1 = alloca i8, i32 4, align 8
   %2 = ptrtoint i8* %1 to i32
@@ -723,9 +720,8 @@ define void @TestSavedPtrToInt() {
 ; PF2:        <FUNCTION_BLOCK>
 ; PF2:          </CONSTANTS_BLOCK>
 ; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF2-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF2-NEXT:     <INST_BINOP op0=1 op1=3 op2=0/>
-; PF2-NEXT:     <INST_CALL op0=0 op1=26 op2=2/>
+; PF2-NEXT:     <INST_BINOP op0=1 op1=2 op2=0/>
+; PF2-NEXT:     <INST_CALL op0=0 op1=25 op2=2/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 

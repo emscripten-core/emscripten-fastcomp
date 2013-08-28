@@ -975,32 +975,47 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     }
     break;
   case Instruction::Call: {
-    const CallInst &CI = cast<CallInst>(I);
-    PointerType *PTy = cast<PointerType>(CI.getCalledValue()->getType());
-    FunctionType *FTy = cast<FunctionType>(PTy->getElementType());
+    // CALL: [cc, fnid, args...]
+    // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
 
-    Code = naclbitc::FUNC_CODE_INST_CALL;
+    const CallInst &Call = cast<CallInst>(I);
+    const Value* Callee = Call.getCalledValue();
+    Vals.push_back((GetEncodedCallingConv(Call.getCallingConv()) << 1)
+                   | unsigned(Call.isTailCall()));
 
-    Vals.push_back((GetEncodedCallingConv(CI.getCallingConv()) << 1)
-                   | unsigned(CI.isTailCall()));
-    pushValue(CI.getCalledValue(), InstID, Vals, VE, Stream);  // Callee
+    pushValue(Callee, InstID, Vals, VE, Stream);
 
-    // Emit value #'s for the fixed parameters.
-    for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i) {
-      // Check for labels (can happen with asm labels).
-      if (FTy->getParamType(i)->isLabelTy())
-        Vals.push_back(VE.getValueID(CI.getArgOperand(i)));
-      else
-        // fixed param.
-        pushValue(CI.getArgOperand(i), InstID, Vals, VE, Stream);
+    switch (PNaClVersion) {
+    case 1:
+      Code = naclbitc::FUNC_CODE_INST_CALL;
+      break;
+    case 2:
+      if (Callee == VE.ElideCasts(Callee)) {
+        // Since the call pointer has not been elided, we know that
+        // the call pointer has the type signature of the called
+        // function.  This implies that the reader can use the type
+        // signature of the callee to figure out how to add casts to
+        // the arguments.
+        Code = naclbitc::FUNC_CODE_INST_CALL;
+      } else {
+        // If the cast was elided, a pointer conversion to a pointer
+        // was applied, meaning that this is an indirect call. For the
+        // reader, this implies that we can't use the type signature
+        // of the callee to resolve elided call arguments, since it is
+        // not known. Hence, we must send the type signature to the
+        // reader.
+        Code = naclbitc::FUNC_CODE_INST_CALL_INDIRECT;
+        PointerType *FcnPtrType =
+          cast<PointerType>(Callee->getType());
+        FunctionType *FcnType =
+          cast<FunctionType>(FcnPtrType->getElementType());
+        Vals.push_back(VE.getTypeID(FcnType));
+      }
+      break;
     }
 
-    // Emit type/value pairs for varargs params.
-    if (FTy->isVarArg()) {
-      for (unsigned i = FTy->getNumParams(), e = CI.getNumArgOperands();
-           i != e; ++i)
-        // varargs
-        pushValue(CI.getArgOperand(i), InstID, Vals, VE, Stream);
+    for (unsigned I = 0, E = Call.getNumArgOperands(); I < E; ++I) {
+      pushValue(Call.getArgOperand(I), InstID, Vals, VE, Stream);
     }
     break;
   }
