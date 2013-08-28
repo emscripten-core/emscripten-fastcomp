@@ -168,17 +168,33 @@ public:
   /// getVendor - Get the parsed vendor type of this triple.
   VendorType getVendor() const { return Vendor; }
 
+  // @LOCALMOD-BEGIN -- hardcode NaCl for NaCl builds, to help
+  // prune OS-specific code that is litered all over and not
+  // cleanly separated.
+#if defined(__native_client__)
+  OSType getOS() const { return NaCl; }
+  EnvironmentType getEnvironment() const {
+    // The X86 backend checks OS || Environment == MachO, so we need to hack
+    // the environment as well to make MachO impossible.
+    if (Environment == MachO) {
+      report_fatal_error("NaCl-specific build doesn't handle MachO");
+    }
+    return Environment;
+  }
+#else
   /// getOS - Get the parsed operating system type of this triple.
   OSType getOS() const { return OS; }
+
+  /// getEnvironment - Get the parsed environment type of this triple.
+  EnvironmentType getEnvironment() const { return Environment; }
+#endif
+  // @LOCALMOD-END
 
   /// hasEnvironment - Does this triple have the optional environment
   /// (fourth) component?
   bool hasEnvironment() const {
     return getEnvironmentName() != "";
   }
-
-  /// getEnvironment - Get the parsed environment type of this triple.
-  EnvironmentType getEnvironment() const { return Environment; }
 
   /// getOSVersion - Parse the version number from the OS name component of the
   /// triple, if present.
@@ -292,6 +308,20 @@ public:
     return isOSVersionLT(Minor + 4, Micro, 0);
   }
 
+  // @LOCALMOD-BEGIN: Hardcode OS predicates to help prune code
+  // that is OS-specific, but not cleanly separated.
+  // Perhaps this would be cleaner if Triple.h was partly Table-gen'ed.
+#if defined(__native_client__)
+  bool isMacOSX() const { return false; }
+  bool isiOS() const { return false; }
+  bool isOSDarwin() const { return false; }
+  bool isOSCygMing() const { return false; }
+  bool isOSWindows() const { return false; }
+  bool isOSNaCl() const { return true; }
+  bool isOSBinFormatELF() const { return true; }
+  bool isOSBinFormatCOFF() const { return false; }
+  bool isEnvironmentMachO() const { return false; }
+#else
   /// isMacOSX - Is this a Mac OS X triple. For legacy reasons, we support both
   /// "darwin" and "osx" as OS X triples.
   bool isMacOSX() const {
@@ -338,6 +368,8 @@ public:
   bool isEnvironmentMachO() const {
     return getEnvironment() == Triple::MachO || isOSDarwin();
   }
+#endif
+  // @LOCALMOD-END
 
   /// @}
   /// @name Mutators
