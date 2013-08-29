@@ -89,7 +89,7 @@ namespace naclbitc {
 
     TYPE_CODE_FUNCTION_OLD = 9, // Not used in PNaCl.
 
-    TYPE_CODE_HALF     =  10,   // HALF
+    TYPE_CODE_HALF     =  10,   // Not used in PNaCl.
 
     TYPE_CODE_ARRAY    = 11,    // ARRAY: [numelts, eltty]
     TYPE_CODE_VECTOR   = 12,    // VECTOR: [numelts, eltty]
@@ -97,13 +97,13 @@ namespace naclbitc {
     // These are not with the other floating point types because they're
     // a late addition, and putting them in the right place breaks
     // binary compatibility.
-    TYPE_CODE_X86_FP80 = 13,    // X86 LONG DOUBLE
-    TYPE_CODE_FP128    = 14,    // LONG DOUBLE (112 bit mantissa)
-    TYPE_CODE_PPC_FP128= 15,    // PPC LONG DOUBLE (2 doubles)
+    TYPE_CODE_X86_FP80 = 13,    // Not used in PNaCl.
+    TYPE_CODE_FP128    = 14,    // Not used in PNaCl.
+    TYPE_CODE_PPC_FP128= 15,    // Not used in PNaCl.
 
     TYPE_CODE_METADATA = 16,    // Not used in PNaCl.
 
-    TYPE_CODE_X86_MMX = 17,     // X86 MMX
+    TYPE_CODE_X86_MMX = 17,     // Not used in PNaCl.
 
     TYPE_CODE_STRUCT_ANON = 18, // STRUCT_ANON: [ispacked, eltty x N]
     TYPE_CODE_STRUCT_NAME = 19, // STRUCT_NAME: [strchr x N]

@@ -267,14 +267,9 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     switch (T->getTypeID()) {
     default: llvm_unreachable("Unknown type!");
     case Type::VoidTyID:      Code = naclbitc::TYPE_CODE_VOID;      break;
-    case Type::HalfTyID:      Code = naclbitc::TYPE_CODE_HALF;      break;
     case Type::FloatTyID:     Code = naclbitc::TYPE_CODE_FLOAT;     break;
     case Type::DoubleTyID:    Code = naclbitc::TYPE_CODE_DOUBLE;    break;
-    case Type::X86_FP80TyID:  Code = naclbitc::TYPE_CODE_X86_FP80;  break;
-    case Type::FP128TyID:     Code = naclbitc::TYPE_CODE_FP128;     break;
-    case Type::PPC_FP128TyID: Code = naclbitc::TYPE_CODE_PPC_FP128; break;
     case Type::LabelTyID:     Code = naclbitc::TYPE_CODE_LABEL;     break;
-    case Type::X86_MMXTyID:   Code = naclbitc::TYPE_CODE_X86_MMX;   break;
     case Type::IntegerTyID:
       // INTEGER: [width]
       Code = naclbitc::TYPE_CODE_INTEGER;
@@ -631,22 +626,10 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
     } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(C)) {
       Code = naclbitc::CST_CODE_FLOAT;
       Type *Ty = CFP->getType();
-      if (Ty->isHalfTy() || Ty->isFloatTy() || Ty->isDoubleTy()) {
+      if (Ty->isFloatTy() || Ty->isDoubleTy()) {
         Record.push_back(CFP->getValueAPF().bitcastToAPInt().getZExtValue());
-      } else if (Ty->isX86_FP80Ty()) {
-        // api needed to prevent premature destruction
-        // bits are not in the same order as a normal i80 APInt, compensate.
-        APInt api = CFP->getValueAPF().bitcastToAPInt();
-        const uint64_t *p = api.getRawData();
-        Record.push_back((p[1] << 48) | (p[0] >> 16));
-        Record.push_back(p[0] & 0xffffLL);
-      } else if (Ty->isFP128Ty() || Ty->isPPC_FP128Ty()) {
-        APInt api = CFP->getValueAPF().bitcastToAPInt();
-        const uint64_t *p = api.getRawData();
-        Record.push_back(p[0]);
-        Record.push_back(p[1]);
       } else {
-        assert (0 && "Unknown FP type!");
+        report_fatal_error("Unknown FP type");
       }
     } else if (const ConstantDataSequential *CDS =
                   dyn_cast<ConstantDataSequential>(C)) {

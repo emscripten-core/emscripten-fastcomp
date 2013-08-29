@@ -425,8 +425,15 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
     // Read a record.
     Record.clear();
     Type *ResultTy = 0;
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default: return Error("unknown type in type table");
+    unsigned TypeCode = Stream.readRecord(Entry.ID, Record);
+    switch (TypeCode) {
+    default: {
+      std::string Message;
+      raw_string_ostream StrM(Message);
+      StrM << "Unknown type code in type table: " << TypeCode;
+      StrM.flush();
+      return Error(Message);
+    }
     case naclbitc::TYPE_CODE_NUMENTRY: // TYPE_CODE_NUMENTRY: [numentries]
       // TYPE_CODE_NUMENTRY contains a count of the number of types in the
       // type list.  This allows us to reserve space.
@@ -437,29 +444,14 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
     case naclbitc::TYPE_CODE_VOID:      // VOID
       ResultTy = Type::getVoidTy(Context);
       break;
-    case naclbitc::TYPE_CODE_HALF:     // HALF
-      ResultTy = Type::getHalfTy(Context);
-      break;
     case naclbitc::TYPE_CODE_FLOAT:     // FLOAT
       ResultTy = Type::getFloatTy(Context);
       break;
     case naclbitc::TYPE_CODE_DOUBLE:    // DOUBLE
       ResultTy = Type::getDoubleTy(Context);
       break;
-    case naclbitc::TYPE_CODE_X86_FP80:  // X86_FP80
-      ResultTy = Type::getX86_FP80Ty(Context);
-      break;
-    case naclbitc::TYPE_CODE_FP128:     // FP128
-      ResultTy = Type::getFP128Ty(Context);
-      break;
-    case naclbitc::TYPE_CODE_PPC_FP128: // PPC_FP128
-      ResultTy = Type::getPPC_FP128Ty(Context);
-      break;
     case naclbitc::TYPE_CODE_LABEL:     // LABEL
       ResultTy = Type::getLabelTy(Context);
-      break;
-    case naclbitc::TYPE_CODE_X86_MMX:   // X86_MMX
-      ResultTy = Type::getX86_MMXTy(Context);
       break;
     case naclbitc::TYPE_CODE_INTEGER:   // INTEGER: [width]
       if (Record.size() < 1)
@@ -860,30 +852,14 @@ bool NaClBitcodeReader::ParseConstants() {
     case naclbitc::CST_CODE_FLOAT: {    // FLOAT: [fpval]
       if (Record.empty())
         return Error("Invalid FLOAT record");
-      if (CurTy->isHalfTy())
-        V = ConstantFP::get(Context, APFloat(APFloat::IEEEhalf,
-                                             APInt(16, (uint16_t)Record[0])));
-      else if (CurTy->isFloatTy())
+      if (CurTy->isFloatTy())
         V = ConstantFP::get(Context, APFloat(APFloat::IEEEsingle,
                                              APInt(32, (uint32_t)Record[0])));
       else if (CurTy->isDoubleTy())
         V = ConstantFP::get(Context, APFloat(APFloat::IEEEdouble,
                                              APInt(64, Record[0])));
-      else if (CurTy->isX86_FP80Ty()) {
-        // Bits are not stored the same way as a normal i80 APInt, compensate.
-        uint64_t Rearrange[2];
-        Rearrange[0] = (Record[1] & 0xffffLL) | (Record[0] << 16);
-        Rearrange[1] = Record[0] >> 48;
-        V = ConstantFP::get(Context, APFloat(APFloat::x87DoubleExtended,
-                                             APInt(80, Rearrange)));
-      } else if (CurTy->isFP128Ty())
-        V = ConstantFP::get(Context, APFloat(APFloat::IEEEquad,
-                                             APInt(128, Record)));
-      else if (CurTy->isPPC_FP128Ty())
-        V = ConstantFP::get(Context, APFloat(APFloat::PPCDoubleDouble,
-                                             APInt(128, Record)));
       else
-        V = UndefValue::get(CurTy);
+        return Error("Unknown type for FLOAT record");
       break;
     }
 
