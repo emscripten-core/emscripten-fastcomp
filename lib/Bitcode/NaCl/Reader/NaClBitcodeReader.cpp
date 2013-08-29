@@ -402,8 +402,6 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
   SmallVector<uint64_t, 64> Record;
   unsigned NumRecords = 0;
 
-  SmallString<64> TypeName;
-
   // Read all the records for this type table.
   while (1) {
     NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
@@ -503,40 +501,6 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       if (EltTys.size() != Record.size()-1)
         return Error("invalid type in struct type");
       ResultTy = StructType::get(Context, EltTys, Record[0]);
-      break;
-    }
-    case naclbitc::TYPE_CODE_STRUCT_NAME:   // STRUCT_NAME: [strchr x N]
-      if (ConvertToString(Record, 0, TypeName))
-        return Error("Invalid STRUCT_NAME record");
-      continue;
-
-    case naclbitc::TYPE_CODE_STRUCT_NAMED: { // STRUCT: [ispacked, eltty x N]
-      if (Record.size() < 1)
-        return Error("Invalid STRUCT type record");
-
-      if (NumRecords >= TypeList.size())
-        return Error("invalid TYPE table");
-
-      // Check to see if this was forward referenced, if so fill in the temp.
-      StructType *Res = cast_or_null<StructType>(TypeList[NumRecords]);
-      if (Res) {
-        Res->setName(TypeName);
-        TypeList[NumRecords] = 0;
-      } else  // Otherwise, create a new struct.
-        Res = StructType::create(Context, TypeName);
-      TypeName.clear();
-
-      SmallVector<Type*, 8> EltTys;
-      for (unsigned i = 1, e = Record.size(); i != e; ++i) {
-        if (Type *T = getTypeByID(Record[i]))
-          EltTys.push_back(T);
-        else
-          break;
-      }
-      if (EltTys.size() != Record.size()-1)
-        return Error("invalid STRUCT type record");
-      Res->setBody(EltTys, Record[0]);
-      ResultTy = Res;
       break;
     }
     case naclbitc::TYPE_CODE_ARRAY:     // ARRAY: [numelts, eltty]

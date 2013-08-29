@@ -95,8 +95,6 @@ enum {
   TYPE_POINTER_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   TYPE_FUNCTION_ABBREV,
   TYPE_STRUCT_ANON_ABBREV,
-  TYPE_STRUCT_NAME_ABBREV,
-  TYPE_STRUCT_NAMED_ABBREV,
   TYPE_ARRAY_ABBREV,
   TYPE_MAX_ABBREV = TYPE_ARRAY_ABBREV
 };
@@ -163,22 +161,6 @@ static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
   }
 }
 
-static void WriteStringRecord(unsigned Code, StringRef Str,
-                              unsigned AbbrevToUse,
-                              NaClBitstreamWriter &Stream) {
-  SmallVector<unsigned, 64> Vals;
-
-  // Code: [strchar x N]
-  for (unsigned i = 0, e = Str.size(); i != e; ++i) {
-    if (AbbrevToUse && !NaClBitCodeAbbrevOp::isChar6(Str[i]))
-      AbbrevToUse = 0;
-    Vals.push_back(Str[i]);
-  }
-
-  // Emit the finished record.
-  Stream.EmitRecord(Code, Vals, AbbrevToUse);
-}
-
 /// WriteTypeTable - Write out the type table for a module.
 static void WriteTypeTable(const NaClValueEnumerator &VE,
                            NaClBitstreamWriter &Stream) {
@@ -226,23 +208,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
   if (TYPE_STRUCT_ANON_ABBREV != Stream.EmitAbbrev(Abbv))
-    llvm_unreachable("Unexpected abbrev ordering!");
-
-  // Abbrev for TYPE_CODE_STRUCT_NAME.
-  Abbv = new NaClBitCodeAbbrev();
-  Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_NAME));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Char6));
-  if (TYPE_STRUCT_NAME_ABBREV != Stream.EmitAbbrev(Abbv))
-    llvm_unreachable("Unexpected abbrev ordering!");
-
-  // Abbrev for TYPE_CODE_STRUCT_NAMED.
-  Abbv = new NaClBitCodeAbbrev();
-  Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_NAMED));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // ispacked
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
-  if (TYPE_STRUCT_NAMED_ABBREV != Stream.EmitAbbrev(Abbv))
     llvm_unreachable("Unexpected abbrev ordering!");
 
   // Abbrev for TYPE_CODE_ARRAY.
@@ -309,17 +274,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
         Code = naclbitc::TYPE_CODE_STRUCT_ANON;
         AbbrevToUse = TYPE_STRUCT_ANON_ABBREV;
       } else {
-        if (ST->isOpaque()) {
-          report_fatal_error("Opaque structs not supported in PNaCl bitcode");
-        } else {
-          Code = naclbitc::TYPE_CODE_STRUCT_NAMED;
-          AbbrevToUse = TYPE_STRUCT_NAMED_ABBREV;
-        }
-
-        // Emit the name if it is present.
-        if (!ST->getName().empty())
-          WriteStringRecord(naclbitc::TYPE_CODE_STRUCT_NAME, ST->getName(),
-                            TYPE_STRUCT_NAME_ABBREV, Stream);
+        report_fatal_error("Non-anon structs not supported in PNaCl bitcode");
       }
       break;
     }
