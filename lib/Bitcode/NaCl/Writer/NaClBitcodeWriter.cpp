@@ -560,30 +560,14 @@ static void emitSignedInt64(SmallVectorImpl<uint64_t> &Vals, uint64_t V) {
 }
 
 static void EmitAPInt(SmallVectorImpl<uint64_t> &Vals,
-                      unsigned &Code, unsigned &AbbrevToUse, const APInt &Val,
-                      bool EmitSizeForWideNumbers = false
-                      ) {
+                      unsigned &Code, unsigned &AbbrevToUse, const APInt &Val) {
   if (Val.getBitWidth() <= 64) {
     uint64_t V = Val.getSExtValue();
     emitSignedInt64(Vals, V);
     Code = naclbitc::CST_CODE_INTEGER;
     AbbrevToUse = CONSTANTS_INTEGER_ABBREV;
   } else {
-    // Wide integers, > 64 bits in size.
-    // We have an arbitrary precision integer value to write whose
-    // bit width is > 64. However, in canonical unsigned integer
-    // format it is likely that the high bits are going to be zero.
-    // So, we only write the number of active words.
-    unsigned NWords = Val.getActiveWords();
-
-    if (EmitSizeForWideNumbers)
-      Vals.push_back(NWords);
-
-    const uint64_t *RawWords = Val.getRawData();
-    for (unsigned i = 0; i != NWords; ++i) {
-      emitSignedInt64(Vals, RawWords[i]);
-    }
-    Code = naclbitc::CST_CODE_WIDE_INTEGER;
+    report_fatal_error("Wide integers are not supported");
   }
 }
 
@@ -875,7 +859,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
         if (CaseRanges.isSingleNumber()) {
           Vals64.push_back(1/*NumItems = 1*/);
           Vals64.push_back(true/*IsSingleNumber = true*/);
-          EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(0), true);
+          EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(0));
         } else {
 
           Vals64.push_back(CaseRanges.getNumItems());
@@ -886,8 +870,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
 
               Vals64.push_back(true/*IsSingleNumber = true*/);
 
-              EmitAPInt(Vals64, Code, Abbrev,
-                        CaseRanges.getSingleNumber(ri), true);
+              EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(ri));
             }
           } else
             for (unsigned ri = 0, rn = CaseRanges.getNumItems();
@@ -897,9 +880,9 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
 
               Vals64.push_back(IsSingleNumber);
 
-              EmitAPInt(Vals64, Code, Abbrev, r.getLow(), true);
+              EmitAPInt(Vals64, Code, Abbrev, r.getLow());
               if (!IsSingleNumber)
-                EmitAPInt(Vals64, Code, Abbrev, r.getHigh(), true);
+                EmitAPInt(Vals64, Code, Abbrev, r.getHigh());
             }
         }
         Vals64.push_back(VE.getValueID(i.getCaseSuccessor()));

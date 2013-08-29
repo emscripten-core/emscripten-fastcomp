@@ -832,8 +832,13 @@ bool NaClBitcodeReader::ParseConstants() {
     Value *V = 0;
     unsigned BitCode = Stream.readRecord(Entry.ID, Record);
     switch (BitCode) {
-    default:
-      return Error("Unknown Constant");
+    default: {
+      std::string Message;
+      raw_string_ostream StrM(Message);
+      StrM << "Invalid Constant code: " << BitCode;
+      StrM.flush();
+      return Error(Message);
+    }
     case naclbitc::CST_CODE_UNDEF:     // UNDEF
       V = UndefValue::get(CurTy);
       break;
@@ -852,16 +857,6 @@ bool NaClBitcodeReader::ParseConstants() {
         return Error("Invalid CST_INTEGER record");
       V = ConstantInt::get(CurTy, NaClDecodeSignRotatedValue(Record[0]));
       break;
-    case naclbitc::CST_CODE_WIDE_INTEGER: {// WIDE_INTEGER: [n x intval]
-      if (!CurTy->isIntegerTy() || Record.empty())
-        return Error("Invalid WIDE_INTEGER record");
-
-      APInt VInt = ReadWideAPInt(Record,
-                                 cast<IntegerType>(CurTy)->getBitWidth());
-      V = ConstantInt::get(Context, VInt);
-
-      break;
-    }
     case naclbitc::CST_CODE_FLOAT: {    // FLOAT: [fpval]
       if (Record.empty())
         return Error("Invalid FLOAT record");
