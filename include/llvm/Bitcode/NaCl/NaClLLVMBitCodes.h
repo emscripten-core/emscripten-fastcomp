@@ -83,7 +83,7 @@ namespace naclbitc {
     TYPE_CODE_FLOAT    =  3,    // FLOAT
     TYPE_CODE_DOUBLE   =  4,    // DOUBLE
     TYPE_CODE_LABEL    =  5,    // LABEL
-    TYPE_CODE_OPAQUE   =  6,    // OPAQUE
+    TYPE_CODE_OPAQUE   =  6,    // Not used in PNaCl.
     TYPE_CODE_INTEGER  =  7,    // INTEGER: [width]
     TYPE_CODE_POINTER  =  8,    // POINTER: [pointee type]
 

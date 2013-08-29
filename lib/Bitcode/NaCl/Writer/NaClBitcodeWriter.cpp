@@ -310,7 +310,7 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
         AbbrevToUse = TYPE_STRUCT_ANON_ABBREV;
       } else {
         if (ST->isOpaque()) {
-          Code = naclbitc::TYPE_CODE_OPAQUE;
+          report_fatal_error("Opaque structs not supported in PNaCl bitcode");
         } else {
           Code = naclbitc::TYPE_CODE_STRUCT_NAMED;
           AbbrevToUse = TYPE_STRUCT_NAMED_ABBREV;
