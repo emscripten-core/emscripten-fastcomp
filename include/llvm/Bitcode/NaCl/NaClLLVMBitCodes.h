@@ -105,7 +105,10 @@ namespace naclbitc {
 
     TYPE_CODE_X86_MMX = 17,     // Not used in PNaCl.
 
-    TYPE_CODE_STRUCT_ANON = 18, // STRUCT_ANON: [ispacked, eltty x N]
+    TYPE_CODE_STRUCT_ANON = 18, // PNaCl version 1 (early versions only)
+                                // STRUCT_ANON: [ispacked, eltty x N]
+                                // Not used in PNaCl otherwise (i.e.
+                                // PNaCl versions 1+).
     TYPE_CODE_STRUCT_NAME = 19, // Not used in PNaCl.
     TYPE_CODE_STRUCT_NAMED = 20,// Not used in PNaCl.
 
