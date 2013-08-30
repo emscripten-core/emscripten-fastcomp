@@ -638,14 +638,14 @@ define void @TestCasts() {
 ; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
 ; PF1-NEXT:     <INST_CAST op0=6 op1=2 op2=0/>
 ; PF1-NEXT:     <INST_CAST op0=2 op1=2 op2=0/>
-; PF1-NEXT:     <INST_CAST op0=8 op1=11 op2=1/>
-; PF1-NEXT:     <INST_CAST op0=4 op1=11 op2=1/>
-; PF1-NEXT:     <INST_CAST op0=9 op1=11 op2=2/>
-; PF1-NEXT:     <INST_CAST op0=6 op1=11 op2=2/>
-; PF1-NEXT:     <INST_CAST op0=9 op1=12 op2=5/>
-; PF1-NEXT:     <INST_CAST op0=8 op1=12 op2=5/>
-; PF1-NEXT:     <INST_CAST op0=13 op1=12 op2=6/>
-; PF1-NEXT:     <INST_CAST op0=10 op1=12 op2=6/>
+; PF1-NEXT:     <INST_CAST op0=8 op1=13 op2=1/>
+; PF1-NEXT:     <INST_CAST op0=4 op1=13 op2=1/>
+; PF1-NEXT:     <INST_CAST op0=9 op1=13 op2=2/>
+; PF1-NEXT:     <INST_CAST op0=6 op1=13 op2=2/>
+; PF1-NEXT:     <INST_CAST op0=9 op1=14 op2=5/>
+; PF1-NEXT:     <INST_CAST op0=8 op1=14 op2=5/>
+; PF1-NEXT:     <INST_CAST op0=13 op1=14 op2=6/>
+; PF1-NEXT:     <INST_CAST op0=10 op1=14 op2=6/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
 
@@ -670,14 +670,14 @@ define void @TestCasts() {
 ; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
 ; PF2-NEXT:     <INST_CAST op0=5 op1=2 op2=0/>
 ; PF2-NEXT:     <INST_CAST op0=2 op1=2 op2=0/>
-; PF2-NEXT:     <INST_CAST op0=7 op1=11 op2=1/>
-; PF2-NEXT:     <INST_CAST op0=4 op1=11 op2=1/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=11 op2=2/>
-; PF2-NEXT:     <INST_CAST op0=6 op1=11 op2=2/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=12 op2=5/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=12 op2=5/>
-; PF2-NEXT:     <INST_CAST op0=12 op1=12 op2=6/>
-; PF2-NEXT:     <INST_CAST op0=10 op1=12 op2=6/>
+; PF2-NEXT:     <INST_CAST op0=7 op1=13 op2=1/>
+; PF2-NEXT:     <INST_CAST op0=4 op1=13 op2=1/>
+; PF2-NEXT:     <INST_CAST op0=8 op1=13 op2=2/>
+; PF2-NEXT:     <INST_CAST op0=6 op1=13 op2=2/>
+; PF2-NEXT:     <INST_CAST op0=8 op1=14 op2=5/>
+; PF2-NEXT:     <INST_CAST op0=8 op1=14 op2=5/>
+; PF2-NEXT:     <INST_CAST op0=12 op1=14 op2=6/>
+; PF2-NEXT:     <INST_CAST op0=10 op1=14 op2=6/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 

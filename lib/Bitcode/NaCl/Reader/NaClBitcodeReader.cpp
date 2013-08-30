@@ -489,10 +489,6 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       break;
     }
     case naclbitc::TYPE_CODE_STRUCT_ANON: {  // STRUCT: [ispacked, eltty x N]
-      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
-      // TODO(kschimpf) Remove this as soon as is feasible.
-      if (GetPNaClVersion() >= 2)
-        return Error("Struct types not supported in PNaCl bitcode");
       if (Record.size() < 1)
         return Error("Invalid STRUCT type record");
       SmallVector<Type*, 8> EltTys;

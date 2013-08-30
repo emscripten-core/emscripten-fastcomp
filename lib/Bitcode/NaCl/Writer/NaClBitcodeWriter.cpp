@@ -94,6 +94,7 @@ enum {
   // TYPE_BLOCK_ID_NEW abbrev id's.
   TYPE_POINTER_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   TYPE_FUNCTION_ABBREV,
+  TYPE_STRUCT_ANON_ABBREV,
   TYPE_ARRAY_ABBREV,
   TYPE_MAX_ABBREV = TYPE_ARRAY_ABBREV
 };
@@ -200,6 +201,15 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   if (TYPE_FUNCTION_ABBREV != Stream.EmitAbbrev(Abbv))
     llvm_unreachable("Unexpected abbrev ordering!");
 
+  // Abbrev for TYPE_CODE_STRUCT_ANON.
+  Abbv = new NaClBitCodeAbbrev();
+  Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_STRUCT_ANON));
+  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // ispacked
+  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
+  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  if (TYPE_STRUCT_ANON_ABBREV != Stream.EmitAbbrev(Abbv))
+    llvm_unreachable("Unexpected abbrev ordering!");
+
   // Abbrev for TYPE_CODE_ARRAY.
   Abbv = new NaClBitCodeAbbrev();
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_ARRAY));
@@ -251,8 +261,23 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       AbbrevToUse = TYPE_FUNCTION_ABBREV;
       break;
     }
-    case Type::StructTyID:
-      report_fatal_error("Struct types are not supported in PNaCl bitcode");
+    case Type::StructTyID: {
+      StructType *ST = cast<StructType>(T);
+      // STRUCT: [ispacked, eltty x N]
+      TypeVals.push_back(ST->isPacked());
+      // Output all of the element types.
+      for (StructType::element_iterator I = ST->element_begin(),
+           E = ST->element_end(); I != E; ++I)
+        TypeVals.push_back(VE.getTypeID(*I));
+
+      if (ST->isLiteral()) {
+        Code = naclbitc::TYPE_CODE_STRUCT_ANON;
+        AbbrevToUse = TYPE_STRUCT_ANON_ABBREV;
+      } else {
+        report_fatal_error("Non-anon structs not supported in PNaCl bitcode");
+      }
+      break;
+    }
     case Type::ArrayTyID: {
       ArrayType *AT = cast<ArrayType>(T);
       // ARRAY: [numelts, eltty]
