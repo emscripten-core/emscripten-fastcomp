@@ -213,7 +213,6 @@ private:
   // InRegsParamsProceed - shows how many instances of ByValRegs was proceed
   // during argument analysis.
   unsigned InRegsParamsProceed;
-  bool HasByValInRegPosition;  // @LOCALMOD -- ARM only: see comment below.
 
 protected:
   ParmContext CallOrPrologue;
@@ -394,19 +393,6 @@ public:
     InRegsParamsProceed = 0;
     ByValRegs.clear();
   }
-
-  // @LOCALMOD-BEGIN
-  // We disabled the splitting of byval between registers and memory.
-  // This separate flag indicates that a byval existed.  We cannot reuse
-  // isFirstByValRegValid() because that is already used by the broken
-  // mechanism of splitting between stack and regs.  We should check
-  // again if this mechanism is still broken later, or try to fix that
-  // mechanism.
-  // NOTE: this is only for ARM, so should be refactored.
-  bool hasByValInRegPosition() const { return HasByValInRegPosition; }
-  void setHasByValInRegPosition() { HasByValInRegPosition = true; }
-  void clearHasByValInRegPosition() { HasByValInRegPosition = false; }
-  // @LOCALMOD-END
 
   ParmContext getCallOrPrologue() const { return CallOrPrologue; }
 

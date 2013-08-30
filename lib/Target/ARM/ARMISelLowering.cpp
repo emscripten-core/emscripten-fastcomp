@@ -1795,30 +1795,6 @@ ARMTargetLowering::HandleByVal(
           State->getCallOrPrologue() == Call) &&
          "unhandled ParmContext");
 
-  // @LOCALMOD-BEGIN
-  // The original mechanism tries to split a byval argument between registers
-  // and the stack.  It doesn't work correctly yet, so disable it.
-  // This leaves the entire byval argument on the stack, and the rest
-  // of the parameters will need to be on the stack as well, to have
-  // the correct order for var-args.  We remember the fact that there was
-  // a byval param that forced this, so that we know not to use the
-  // handle var-args reg-save area.
-  // PR11018.
-  if (Subtarget->isTargetNaCl()) {
-    unsigned ByValArgsCount = State->getInRegsParamsCount();
-    unsigned CurByValIndex = State->getInRegsParamsProceed();
-    if ((CurByValIndex >= ByValArgsCount) &&
-        (ARM::R0 <= reg) && (reg <= ARM::R3)) {
-      State->setHasByValInRegPosition();
-    }
-    // Confiscate any remaining parameter registers to preclude their
-    // assignment to subsequent parameters.
-    while (State->AllocateReg(GPRArgRegs, 4))
-      ;
-    return;
-  }
-  // @LOCALMOD-END
-
   // For in-prologue parameters handling, we also introduce stack offset
   // for byval registers: see CallingConvLower.cpp, CCState::HandleByVal.
   // This behaviour outsides AAPCS rules (5.5 Parameters Passing) of how
@@ -2868,10 +2844,6 @@ ARMTargetLowering::computeRegArea(CCState &CCInfo, MachineFunction &MF,
     unsigned RBegin, REnd;
     CCInfo.getInRegsParamInfo(InRegsParamRecordIdx, RBegin, REnd);
     NumGPRs = REnd - RBegin;
-    // @LOCALMOD-BEGIN
-  } else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition()) {
-    NumGPRs = 0;
-    // @LOCALMOD-END
   } else {
     unsigned int firstUnalloced;
     firstUnalloced = CCInfo.getFirstUnallocated(GPRArgRegs,
@@ -2922,10 +2894,6 @@ ARMTargetLowering::StoreByValRegs(CCState &CCInfo, SelectionDAG &DAG,
     CCInfo.getInRegsParamInfo(InRegsParamRecordIdx, RBegin, REnd);
     firstRegToSaveIndex = RBegin - ARM::R0;
     lastRegToSaveIndex = REnd - ARM::R0;
-  // @LOCALMOD-BEGIN
-  } else if (Subtarget->isTargetNaCl() && CCInfo.hasByValInRegPosition()) {
-    firstRegToSaveIndex = 4; // Nothing to save.
-  // @LOCALMOD-END
   } else {
     firstRegToSaveIndex = CCInfo.getFirstUnallocated
       (GPRArgRegs, sizeof(GPRArgRegs) / sizeof(GPRArgRegs[0]));

@@ -105,10 +105,6 @@ def CC_ARM_APCS_GHC : CallingConv<[
 
 def CC_ARM_AAPCS_Common : CallingConv<[
 
-  // @LOCALMOD-BEGIN (PR11018)
-  CCIfByVal<CCPassByVal<4, 4>>,
-  // @LOCALMOD-END
-
   CCIfType<[i1, i8, i16], CCPromoteToType<i32>>,
 
   // i64/f64 is passed in even pairs of GPRs
