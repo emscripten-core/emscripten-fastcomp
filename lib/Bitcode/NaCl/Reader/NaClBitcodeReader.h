@@ -172,7 +172,6 @@ class NaClBitcodeReader : public GVMaterializer {
 
   std::vector<Type*> TypeList;
   NaClBitcodeReaderValueList ValueList;
-  SmallVector<SmallVector<uint64_t, 64>, 64> UseListRecords;
 
   // Holds information about each BasicBlock in the function being read.
   struct BasicBlockInfo {
@@ -366,7 +365,6 @@ private:
   bool RememberAndSkipFunctionBody();
   bool ParseFunctionBody(Function *F);
   bool GlobalCleanup();
-  bool ParseUseLists();
   bool InitStream();
   bool InitStreamFromBuffer();
   bool InitLazyStream();

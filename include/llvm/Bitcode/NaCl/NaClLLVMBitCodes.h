@@ -43,7 +43,7 @@ namespace naclbitc {
 
     TYPE_BLOCK_ID_NEW,
 
-    USELIST_BLOCK_ID,
+    USELIST_BLOCK_ID,          // Not used in PNaCl.
     GLOBALVAR_BLOCK_ID
   };
 
@@ -322,10 +322,6 @@ namespace naclbitc {
     FUNC_CODE_INST_FORWARDTYPEREF = 43, // TYPE: [opval, ty]
     // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
     FUNC_CODE_INST_CALL_INDIRECT = 44
-  };
-
-  enum NaClUseListCodes {
-    USELIST_CODE_ENTRY = 1   // USELIST_CODE_ENTRY: TBD.
   };
 } // End naclbitc namespace
 } // End llvm namespace

@@ -894,45 +894,6 @@ bool NaClBitcodeReader::ParseConstants() {
   }
 }
 
-bool NaClBitcodeReader::ParseUseLists() {
-  DEBUG(dbgs() << "-> ParseUseLists\n");
-  if (Stream.EnterSubBlock(naclbitc::USELIST_BLOCK_ID))
-    return Error("Malformed block record");
-
-  SmallVector<uint64_t, 64> Record;
-
-  // Read all the records.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
-    case NaClBitstreamEntry::Error:
-      return Error("malformed use list block");
-    case NaClBitstreamEntry::EndBlock:
-      DEBUG(dbgs() << "<- ParseUseLists\n");
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    // Read a use list record.
-    Record.clear();
-    switch (Stream.readRecord(Entry.ID, Record)) {
-    default:  // Default behavior: unknown type.
-      break;
-    case naclbitc::USELIST_CODE_ENTRY: { // USELIST_CODE_ENTRY: TBD.
-      unsigned RecordLength = Record.size();
-      if (RecordLength < 1)
-        return Error ("Invalid UseList reader!");
-      UseListRecords.push_back(Record);
-      break;
-    }
-    }
-  }
-}
-
 /// RememberAndSkipFunctionBody - When we see the block for a function body,
 /// remember where it is and then skip it.  This lets us lazily deserialize the
 /// functions.
@@ -1046,10 +1007,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
           DEBUG(dbgs() << "<- ParseModule\n");
           return false;
         }
-        break;
-      case naclbitc::USELIST_BLOCK_ID:
-        if (ParseUseLists())
-          return true;
         break;
       }
       continue;

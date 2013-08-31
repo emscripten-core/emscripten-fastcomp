@@ -273,11 +273,6 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
     case naclbitc::METADATA_FN_NODE:     return "METADATA_FN_NODE";
     case naclbitc::METADATA_NAMED_NODE:  return "METADATA_NAMED_NODE";
     }
-  case naclbitc::USELIST_BLOCK_ID:
-    switch(CodeID) {
-    default:return 0;
-    case naclbitc::USELIST_CODE_ENTRY:   return "USELIST_CODE_ENTRY";
-    }
   case naclbitc::GLOBALVAR_BLOCK_ID:
     switch (CodeID) {
     default: return 0;
