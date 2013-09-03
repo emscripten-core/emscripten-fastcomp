@@ -287,14 +287,14 @@ namespace naclbitc {
     FUNC_CODE_INST_ALLOCA      = 19, // ALLOCA:     [op, align]
     FUNC_CODE_INST_LOAD        = 20, // PNaCl version 1:
                                      //    LOAD: [op, align, vol]
-                                     // PNaCl version 2:
+                                     // PNaCl version 2+:
                                      //    LOAD: [op, align, ty]
     // 21 is unused.
     // 22 is unused.
     FUNC_CODE_INST_VAARG       = 23, // Not used in PNaCl.
     FUNC_CODE_INST_STORE       = 24, // PNaCl version 1:
                                      //    STORE: [ptr, val, align, vol]
-                                     // PNaCl version 2:
+                                     // PNaCl version 2+:
                                      //    Store: [ptr, val, align]
     // 25 is unused.
     FUNC_CODE_INST_EXTRACTVAL  = 26, // Not used in PNaCl.
@@ -320,7 +320,7 @@ namespace naclbitc {
     FUNC_CODE_INST_LOADATOMIC  = 41, // Not used in PNaCl.
     FUNC_CODE_INST_STOREATOMIC = 42, // Not used in PNaCl.
     FUNC_CODE_INST_FORWARDTYPEREF = 43, // TYPE: [opval, ty]
-    // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
+    // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, fnty, args...]
     FUNC_CODE_INST_CALL_INDIRECT = 44
   };
 } // End naclbitc namespace

@@ -865,7 +865,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::Load:
     // PNaCl Version 1: LOAD: [op, align, vol]
-    // PNaCl Version 2: LOAD: [op, align, ty]
+    // PNaCl Version 2+: LOAD: [op, align, ty]
     Code = naclbitc::FUNC_CODE_INST_LOAD;
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
@@ -875,14 +875,13 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       // we must add a value to the record for version 1, since the
       // reader for version 1 has already been released.
       Vals.push_back(0);
-    }
-    if (PNaClVersion == 2) {
+    } else {
       Vals.push_back(VE.getTypeID(I.getType()));
     }
     break;
   case Instruction::Store:
     // PNaCl version 1: STORE: [ptr, val, align, vol]
-    // PNaCl version 2: STORE: [ptr, val, align]
+    // PNaCl version 2+: STORE: [ptr, val, align]
     Code = naclbitc::FUNC_CODE_INST_STORE;
     AbbrevToUse = FUNCTION_INST_STORE_ABBREV;
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
@@ -897,7 +896,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     break;
   case Instruction::Call: {
     // CALL: [cc, fnid, args...]
-    // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
+    // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, fnty, args...]
 
     const CallInst &Call = cast<CallInst>(I);
     const Value* Callee = Call.getCalledValue();
@@ -906,11 +905,9 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
 
     pushValue(Callee, InstID, Vals, VE, Stream);
 
-    switch (PNaClVersion) {
-    case 1:
+    if (PNaClVersion == 1) {
       Code = naclbitc::FUNC_CODE_INST_CALL;
-      break;
-    case 2:
+    } else {
       if (Callee == VE.ElideCasts(Callee)) {
         // Since the call pointer has not been elided, we know that
         // the call pointer has the type signature of the called
@@ -932,7 +929,6 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
           cast<FunctionType>(FcnPtrType->getElementType());
         Vals.push_back(VE.getTypeID(FcnType));
       }
-      break;
     }
 
     for (unsigned I = 0, E = Call.getNumArgOperands(); I < E; ++I) {
@@ -1135,8 +1131,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
       // reader for version 1 has already been released. By using a constant,
       // we at least avoid wasting space in the bitcode file.
       Abbv->Add(NaClBitCodeAbbrevOp(0));
-    }
-    if (PNaClVersion == 2) {
+    } else {
       Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Typecast
     }
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,

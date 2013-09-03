@@ -1352,7 +1352,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (Opc == -1 || ResTy == 0)
         return Error("Invalid CAST record");
 
-      if (GetPNaClVersion() == 2) {
+      if (GetPNaClVersion() >= 2) {
         // If a ptrtoint cast was elided on the argument of the cast,
         // add it back. Note: The casts allowed here should match the
         // casts in NaClValueEnumerator::ExpectsScalarValue.
@@ -1526,7 +1526,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         unsigned BBIndex = Record[2+i];
         BasicBlock *BB = getBasicBlock(BBIndex);
         if (!V || !BB) return Error("Invalid PHI record");
-        if (GetPNaClVersion() == 2 && Ty == IntPtrType) {
+        if (GetPNaClVersion() >= 2 && Ty == IntPtrType) {
           // Delay installing scalar casts until all instructions of
           // the function are rendered. This guarantees that we insert
           // the conversion just before the incoming edge (or use an
@@ -1558,51 +1558,44 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (popValue(Record, &OpNum, NextValueNo, &Op) ||
           Record.size() != 3)
         return Error("Invalid LOAD record");
-      switch (GetPNaClVersion()) {
-        case 1:
-          I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-          break;
-        case 2: {
-          // Add pointer cast to op.
-          Type *T = getTypeByID(Record[2]);
-          if (T == 0)
-            return Error("Invalid type for load instruction");
-          Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
-          if (Op == 0) return true;
-          I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
-          break;
-        }
+      if (GetPNaClVersion() == 1) {
+        I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
+      } else {
+        // Add pointer cast to op.
+        Type *T = getTypeByID(Record[2]);
+        if (T == 0)
+          return Error("Invalid type for load instruction");
+        Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
+        if (Op == 0) return true;
+        I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
       }
       break;
     }
     case naclbitc::FUNC_CODE_INST_STORE: {
       // PNaCl version 1: STORE: [ptr, val, align, vol]
-      // PNaCl version 2: STORE: [ptr, val, align]
+      // PNaCl version 2+: STORE: [ptr, val, align]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
       if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
           popValue(Record, &OpNum, NextValueNo, &Val))
         return Error("Invalid STORE record");
-      switch (GetPNaClVersion()) {
-      case 1:
+      if (GetPNaClVersion() == 1) {
         if (OpNum+2 != Record.size())
           return Error("Invalid STORE record");
         I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-        break;
-      case 2:
+      } else {
         if (OpNum+1 != Record.size())
           return Error("Invalid STORE record");
         Val = ConvertOpToScalar(Val, CurBBNo);
         Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
         I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
-        break;
       }
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL:
     case naclbitc::FUNC_CODE_INST_CALL_INDIRECT: {
       // CALL: [cc, fnid, arg0, arg1...]
-      // PNaCl version 2: CALL_INDIRECT: [cc, fnid, fnty, args...]
+      // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, fnty, args...]
       if ((Record.size() < 2) ||
           (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT &&
            Record.size() < 3))
