@@ -718,7 +718,16 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       AbbrevToUse = FUNCTION_INST_CAST_ABBREV;
       pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
       Vals.push_back(VE.getTypeID(I.getType()));
-      Vals.push_back(GetEncodedCastOpcode(I.getOpcode(), I));
+      unsigned Opcode = I.getOpcode();
+      Vals.push_back(GetEncodedCastOpcode(Opcode, I));
+      if (PNaClVersion >= 2 &&
+          (Opcode == Instruction::PtrToInt ||
+           Opcode == Instruction::IntToPtr ||
+           (Opcode == Instruction::BitCast &&
+            (I.getOperand(0)->getType()->isPointerTy() ||
+             I.getType()->isPointerTy())))) {
+        ReportIllegalValue("(PNaCl ABI) pointer cast", I);
+      }
     } else if (isa<BinaryOperator>(I)) {
       // BINOP:      [opval, opval, opcode[, flags]]
       Code = naclbitc::FUNC_CODE_INST_BINOP;

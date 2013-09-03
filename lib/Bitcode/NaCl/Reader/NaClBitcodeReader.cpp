@@ -1429,7 +1429,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         if (OpNum != Record.size())
           return Error("Invalid RET record");
 
-        I = ReturnInst::Create(Context, Op);
+        I = ReturnInst::Create(Context, ConvertOpToScalar(Op, CurBBNo));
         break;
       }
     case naclbitc::FUNC_CODE_INST_BR: { // BR: [bb#, bb#, opval] or [bb#]

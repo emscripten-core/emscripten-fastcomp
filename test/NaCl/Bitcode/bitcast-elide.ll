@@ -93,41 +93,6 @@ define void @SimpleLoadAlloca() {
 
 ; ------------------------------------------------------
 
-; Test that we don't elide an bitcast if one of its uses is not a load.
-define i32* @NonsimpleLoad(i32 %i) {
-  %1 = bitcast [4 x i8]* @bytes to i32*       
-  %2 = load i32* %1, align 4
-  ret i32* %1
-}
-
-; TD1:      define i32* @NonsimpleLoad(i32 %i) {
-; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD1-NEXT:   %2 = load i32* %1, align 4
-; TD1-NEXT:   ret i32* %1
-; TD1-NEXT: }
-
-; PF1:       <FUNCTION_BLOCK>
-; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST op0=2 op1=1 op2=11/>
-; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_RET op0=2/>
-; PF1:       </FUNCTION_BLOCK>
-
-; TD2:      define i32* @NonsimpleLoad(i32 %i) {
-; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %2 = load i32* %1, align 4
-; TD2-NEXT:   ret i32* %1
-; TD2-NEXT: }
-
-; PF2:       <FUNCTION_BLOCK>
-; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:    <INST_CAST op0=2 op1=1 op2=11/>
-; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
-; PF2-NEXT:    <INST_RET op0=2/>
-; PF2:       </FUNCTION_BLOCK>
-
-; ------------------------------------------------------
-
 ; Test that we can handle multiple bitcasts.
 define i32 @TwoLoads(i32 %i) {
   %1 = bitcast [4 x i8]* @bytes to i32*       

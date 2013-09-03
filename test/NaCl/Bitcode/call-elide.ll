@@ -37,7 +37,7 @@ define void @DirectCall() {
 
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1:        </CONSTANTS_BLOCK>
-; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1-NEXT: </FUNCTION_BLOCK>
 
@@ -48,7 +48,7 @@ define void @DirectCall() {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2:        </CONSTANTS_BLOCK>
-; PF2-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2-NEXT: </FUNCTION_BLOCK>
 
@@ -73,7 +73,7 @@ define void @DirectCallIntToPtrArg(i32 %i) {
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF1-NEXT:   <INST_CAST op0=1 op1=4 op2=10/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
@@ -85,7 +85,7 @@ define void @DirectCallIntToPtrArg(i32 %i) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -110,7 +110,7 @@ define void @DirectCallPtrToIntArg() {
 ; PF1:        </CONSTANTS_BLOCK>
 ; PF1-NEXT:   <INST_ALLOCA op0=1 op1=4/>
 ; PF1-NEXT:   <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=18 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1-NEXT: </FUNCTION_BLOCK>
 
@@ -124,7 +124,7 @@ define void @DirectCallPtrToIntArg() {
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2:        </CONSTANTS_BLOCK>
 ; PF2-NEXT:   <INST_ALLOCA op0=1 op1=4/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=17 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2-NEXT: </FUNCTION_BLOCK>
 
@@ -146,7 +146,7 @@ define void @DirectCallBitcastArg(i32 %i) {
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF1-NEXT:   <INST_CAST op0=2 op1=4 op2=11/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
@@ -158,7 +158,7 @@ define void @DirectCallBitcastArg(i32 %i) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=2/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=15 op2=2/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -180,7 +180,7 @@ define void @DirectCallScalarArg(i32* %ptr) {
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF1-NEXT:   <INST_CAST op0=2 op1=0 op2=9/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=17 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
@@ -192,7 +192,7 @@ define void @DirectCallScalarArg(i32* %ptr) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=14 op2=2/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=16 op2=2/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -389,3 +389,40 @@ define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
 ; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=2 op2=2 op3=3/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
+
+; ------------------------------------------------------
+; Test how we handle intrinsics that can return (inherent) pointers, and
+; return statements that expect scalar values.
+
+declare i8* @llvm.nacl.read.tp()
+
+define i32 @ReturnPtrIntrinsic() {
+  %1 = call i8* @llvm.nacl.read.tp()
+  %2 = ptrtoint i8* %1 to i32
+  ret i32 %2
+}
+
+; TD1:      define i32 @ReturnPtrIntrinsic() {
+; TD1-NEXT:   %1 = call i8* @llvm.nacl.read.tp()
+; TD1-NEXT:   %2 = ptrtoint i8* %1 to i32
+; TD1-NEXT:   ret i32 %2
+; TD1-NEXT: }
+
+; PF1:      <FUNCTION_BLOCK>
+; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=3/>
+; PF1-NEXT:   <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:   <INST_RET op0=1/>
+; PF1-NEXT: </FUNCTION_BLOCK>
+
+; TD2:      define i32 @ReturnPtrIntrinsic() {
+; TD2-NEXT:   %1 = call i8* @llvm.nacl.read.tp()
+; TD2-NEXT:   %2 = ptrtoint i8* %1 to i32
+; TD2-NEXT:   ret i32 %2
+; TD2-NEXT: }
+
+; PF2:      <FUNCTION_BLOCK>
+; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=3/>
+; PF2-NEXT:   <INST_RET op0=1/>
+; PF2-NEXT: </FUNCTION_BLOCK>

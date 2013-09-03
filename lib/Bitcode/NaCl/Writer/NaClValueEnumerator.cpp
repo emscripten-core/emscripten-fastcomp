@@ -18,6 +18,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/Support/Debug.h"
@@ -466,11 +467,13 @@ static bool AllUsesExpectsNormalizedPtr(const Instruction *I2P) {
   return true;
 }
 
-// Given Value that uses scalar value Arg, returns true if the bitcode
-// writer can assume that Value always expects Arg to be scalar.  This
-// function is used to infer cases where PtrToInt casts can be
-// removed.
-static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
+// Given Value V that uses argument Arg, returns true if the bitcode
+// writer can assume that V always expects Arg to be scalar.
+// Assumes that the type of Arg is the integer type used to model
+// pointers. Hence, this function determines if the reader would
+// have to convert pointers to integer. This function
+// is used to infer cases where PtrToInt casts can be removed.
+static bool ExpectsIntPtrType(const Value *V, const Instruction *Arg) {
   const Instruction *I = dyn_cast<Instruction>(V);
   if (I == 0) return false;
 
@@ -487,6 +490,7 @@ static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
     case Instruction::UIToFP:
     case Instruction::SIToFP:
     case Instruction::ICmp:
+    case Instruction::Ret:
       return true;
     case Instruction::Store:
       return Arg == I->getOperand(0);
@@ -495,8 +499,12 @@ static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
       return Arg == Op->getTrueValue() || Arg == Op->getFalseValue();
     }
     case Instruction::Call: {
-      // All operands (except the first, which must be a function pointer),
-      // can be scalar values.
+      // All operands (except the first, which must be a function
+      // pointer), must be scalar values. Note: For non-intrinsic
+      // calls, this is a requirement of the PNaCl ABI. For intrinsic
+      // calls, the condition that Arg's type is an integer type,
+      // implies that the intrinsic (for that argument) requires a
+      // scalar value at that position.
       const CallInst *Call = cast<CallInst>(I);
       return Call->getCalledValue() != Arg;
     }
@@ -504,13 +512,12 @@ static bool ExpectsScalarValue(const Value *V, const Instruction *Arg) {
   }
 }
 
-// Returns true if the bitcode reader and writer can assume that the
-// uses of the given PtrToInt expect scalar values (i.e. non-pointer),
-// and hence, we can elide the PtrToInt cast.
-static bool AllUsesExpectsScalarValue(const Instruction *I) {
+// Returns true if all uses of I expect I to be scalar, given that
+// the type of I is the integer type used to represent pointers.
+static bool AllUsesExpectsIntPtrType(const Instruction *I) {
   for (Value::const_use_iterator Use = I->use_begin(), UseEnd = I->use_end();
        Use != UseEnd; ++Use) {
-    if (!ExpectsScalarValue(*Use, I)) return false;
+    if (!ExpectsIntPtrType(*Use, I)) return false;
   }
   // If reached, all uses expect a scalar value (and hence we know how
   // to automatically add it back), or there were no uses (and hence
@@ -518,10 +525,20 @@ static bool AllUsesExpectsScalarValue(const Instruction *I) {
   return true;
 }
 
+// Returns true if the value is an intrinsic instruction returns
+// a pointer value.
+static inline bool IsIntrinsicReturningPtr(const Value *V) {
+  if (const IntrinsicInst *ICall = dyn_cast<IntrinsicInst>(V)) {
+    return V->getType()->isPointerTy();
+  }
+  return false;
+}
+
 // Returns true if the value is an InherentPtr (as defined in
 // llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
 static inline bool IsInherentPtr(const Value *V) {
-  return isa<AllocaInst>(V) || isa<GlobalValue>(V);
+  return isa<AllocaInst>(V) || isa<GlobalValue>(V) ||
+         IsIntrinsicReturningPtr(V);
 }
 
 // Note: This function is based on the comments in
@@ -547,7 +564,7 @@ const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
     case Instruction::PtrToInt:
       if (IsIntPtrType(I->getType()) &&
           IsInherentPtr(I->getOperand(0)) &&
-          AllUsesExpectsScalarValue(I)) {
+          AllUsesExpectsIntPtrType(I)) {
         V = I->getOperand(0);
       }
       break;
