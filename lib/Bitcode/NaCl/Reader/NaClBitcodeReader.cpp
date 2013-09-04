@@ -1643,6 +1643,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         Value *Arg;
         if (popValue(Record, &OpNum, NextValueNo, &Arg))
           Error("Invalid argument in CALL record");
+        if (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT &&
+            FTy->getParamType(Index)->isPointerTy()) {
+          return Error("Pointer arguments not allowed for indirect calls");
+        }
         Arg = ConvertOpToType(Arg, FTy->getParamType(Index), CurBBNo);
         Args.push_back(Arg);
       }

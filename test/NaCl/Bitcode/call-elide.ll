@@ -37,7 +37,7 @@ define void @DirectCall() {
 
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1:        </CONSTANTS_BLOCK>
-; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1-NEXT: </FUNCTION_BLOCK>
 
@@ -48,7 +48,7 @@ define void @DirectCall() {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2:        </CONSTANTS_BLOCK>
-; PF2-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2-NEXT: </FUNCTION_BLOCK>
 
@@ -73,7 +73,7 @@ define void @DirectCallIntToPtrArg(i32 %i) {
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF1-NEXT:   <INST_CAST op0=1 op1=4 op2=10/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
@@ -85,7 +85,7 @@ define void @DirectCallIntToPtrArg(i32 %i) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -110,7 +110,7 @@ define void @DirectCallPtrToIntArg() {
 ; PF1:        </CONSTANTS_BLOCK>
 ; PF1-NEXT:   <INST_ALLOCA op0=1 op1=4/>
 ; PF1-NEXT:   <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=18 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1-NEXT: </FUNCTION_BLOCK>
 
@@ -124,7 +124,7 @@ define void @DirectCallPtrToIntArg() {
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2:        </CONSTANTS_BLOCK>
 ; PF2-NEXT:   <INST_ALLOCA op0=1 op1=4/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=17 op2=1/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2-NEXT: </FUNCTION_BLOCK>
 
@@ -146,7 +146,7 @@ define void @DirectCallBitcastArg(i32 %i) {
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF1-NEXT:   <INST_CAST op0=2 op1=4 op2=11/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=16 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
@@ -158,7 +158,7 @@ define void @DirectCallBitcastArg(i32 %i) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=15 op2=2/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=2/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -180,7 +180,7 @@ define void @DirectCallScalarArg(i32* %ptr) {
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF1-NEXT:   <INST_CAST op0=2 op1=0 op2=9/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=17 op2=1/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
@@ -192,7 +192,7 @@ define void @DirectCallScalarArg(i32* %ptr) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=16 op2=2/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=14 op2=2/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -270,85 +270,6 @@ define void @IndirectCallPtrToIntArg(i32 %i) {
 ; PF2:        </CONSTANTS_BLOCK>
 ; PF2-NEXT:   <INST_ALLOCA op0=1 op1=4/>
 ; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=3 op2=2 op3=1/>
-; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
-
-; ------------------------------------------------------
-; Test how we handle a direct call with a normalized inttoptr argument.
-; Note: This code doesn't follow the PNaCl ABI in that function
-; calls can't get pointer arguments. However, intrinsic calls can, and
-; this code is a placeholder for such a test.
-
-define void @IndirectCallIntToPtrArg(i32 %i) {
-  %1 = inttoptr i32 %i to i32 (i32*)*
-  %2 = inttoptr i32 %i to i32*
-  %3 = call i32 %1(i32* %2)
-  ret void
-}
-
-; TD1:      define void @IndirectCallIntToPtrArg(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32 (i32*)*
-; TD1-NEXT:   %2 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %3 = call i32 %1(i32* %2)
-; TD1-NEXT:   ret void
-; TD1-NEXT: }
-
-; PF1:      <FUNCTION_BLOCK>
-; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=1 op1=6 op2=10/>
-; PF1-NEXT:   <INST_CAST op0=2 op1=4 op2=10/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=2 op2=1/>
-; PF1-NEXT:   <INST_RET/>
-; PF1:      </FUNCTION_BLOCK>
-
-; TD2:      define void @IndirectCallIntToPtrArg(i32 %i) {
-; TD2-NEXT:   %1 = inttoptr i32 %i to i32 (i32*)*
-; TD2-NEXT:   %2 = inttoptr i32 %i to i32*
-; TD2-NEXT:   %3 = call i32 %1(i32* %2)
-; TD2-NEXT:   ret void
-; TD2-NEXT: }
-
-; PF2:      <FUNCTION_BLOCK>
-; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=5 op3=1/>
-; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
-
-; ------------------------------------------------------
-; Test how we handle an indirect call with a normalized bitcast argument.
-
-define void @IndirectCallBitcastArg(i32 %i) {
-  %1 = inttoptr i32 %i to i32 (i32*)*
-  %2 = bitcast [4 x i8]* @bytes to i32*
-  %3 = call i32 %1(i32* %2)
-  ret void
-}
-
-; TD1:      define void @IndirectCallBitcastArg(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32 (i32*)*
-; TD1-NEXT:   %2 = bitcast [4 x i8]* @bytes to i32*
-; TD1-NEXT:   %3 = call i32 %1(i32* %2)
-; TD1-NEXT:   ret void
-; TD1-NEXT: }
-
-; PF1:      <FUNCTION_BLOCK>
-; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=1 op1=6 op2=10/>
-; PF1-NEXT:   <INST_CAST op0=3 op1=4 op2=11/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=2 op2=1/>
-; PF1-NEXT:   <INST_RET/>
-; PF1:      </FUNCTION_BLOCK>
-
-; TD2:      define void @IndirectCallBitcastArg(i32 %i) {
-; TD2-NEXT:   %1 = inttoptr i32 %i to i32 (i32*)*
-; TD2-NEXT:   %2 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %3 = call i32 %1(i32* %2)
-; TD2-NEXT:   ret void
-; TD2-NEXT: }
-
-; PF2:      <FUNCTION_BLOCK>
-; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=5 op3=2/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
