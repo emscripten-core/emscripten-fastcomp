@@ -508,6 +508,10 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       break;
     }
     case naclbitc::TYPE_CODE_ARRAY:     // ARRAY: [numelts, eltty]
+      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
+      // TODO(kschimpf) Remove this as soon as is feasible.
+      if (GetPNaClVersion() >= 2)
+        return Error("Array types not supported in PNaCl bitcode");
       if (Record.size() < 2)
         return Error("Invalid ARRAY type record");
       if ((ResultTy = getTypeByID(Record[1])))
@@ -516,6 +520,10 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
         return Error("Invalid ARRAY type element");
       break;
     case naclbitc::TYPE_CODE_VECTOR:    // VECTOR: [numelts, eltty]
+      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
+      // TODO(kschimpf) Remove this as soon as is feasible.
+      if (GetPNaClVersion() >= 2)
+        return Error("Vector types not supported in PNaCl bitcode");
       if (Record.size() < 2)
         return Error("Invalid VECTOR type record");
       if ((ResultTy = getTypeByID(Record[1])))

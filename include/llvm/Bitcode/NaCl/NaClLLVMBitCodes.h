@@ -91,8 +91,14 @@ namespace naclbitc {
 
     TYPE_CODE_HALF     =  10,   // Not used in PNaCl.
 
-    TYPE_CODE_ARRAY    = 11,    // ARRAY: [numelts, eltty]
-    TYPE_CODE_VECTOR   = 12,    // VECTOR: [numelts, eltty]
+    TYPE_CODE_ARRAY    = 11,    // PNaCl version 1 (early versions only)
+                                // ARRAY: [numelts, eltty]
+                                // Not used in PNaCl otherwise (i.e.
+                                // PNaCl versions 1+).
+    TYPE_CODE_VECTOR   = 12,    // PNaCl version 1 (early versions only)
+                                // VECTOR: [numelts, eltty]
+                                // Not used in PNaCl otherwise (i.e.
+                                // PNaCl versions 1+).
 
     // These are not with the other floating point types because they're
     // a late addition, and putting them in the right place breaks

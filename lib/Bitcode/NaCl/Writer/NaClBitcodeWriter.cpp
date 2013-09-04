@@ -253,23 +253,10 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     }
     case Type::StructTyID:
       report_fatal_error("Struct types are not supported in PNaCl bitcode");
-    case Type::ArrayTyID: {
-      ArrayType *AT = cast<ArrayType>(T);
-      // ARRAY: [numelts, eltty]
-      Code = naclbitc::TYPE_CODE_ARRAY;
-      TypeVals.push_back(AT->getNumElements());
-      TypeVals.push_back(VE.getTypeID(AT->getElementType()));
-      AbbrevToUse = TYPE_ARRAY_ABBREV;
-      break;
-    }
-    case Type::VectorTyID: {
-      VectorType *VT = cast<VectorType>(T);
-      // VECTOR [numelts, eltty]
-      Code = naclbitc::TYPE_CODE_VECTOR;
-      TypeVals.push_back(VT->getNumElements());
-      TypeVals.push_back(VE.getTypeID(VT->getElementType()));
-      break;
-    }
+    case Type::ArrayTyID:
+      report_fatal_error("Array types are not supported in PNaCl bitcode");
+    case Type::VectorTyID:
+      report_fatal_error("Vector types are not supported in PNaCl bitcode");
     }
 
     // Emit the finished record.

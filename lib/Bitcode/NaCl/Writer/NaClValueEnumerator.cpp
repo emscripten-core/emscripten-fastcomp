@@ -94,9 +94,16 @@ NaClValueEnumerator::NaClValueEnumerator(const Module *M, uint32_t PNaClVersion)
         if (IsElidedCast(I))
           continue;
 
-        for (User::const_op_iterator OI = I->op_begin(), E = I->op_end();
-             OI != E; ++OI) {
-          EnumerateOperandType(*OI);
+        if (const SwitchInst *SI = dyn_cast<SwitchInst>(I)) {
+          // Handle switch instruction specially, so that we don't
+          // write out unnecessary vector/array types used to model case
+          // selectors.
+          EnumerateOperandType(SI->getCondition());
+        } else {
+          for (User::const_op_iterator OI = I->op_begin(), E = I->op_end();
+               OI != E; ++OI) {
+            EnumerateOperandType(*OI);
+          }
         }
         EnumerateType(I->getType());
       }
@@ -403,13 +410,22 @@ void NaClValueEnumerator::incorporateFunction(const Function &F) {
 
   // Add all function-level constants to the value table.
   for (Function::const_iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
-    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E; ++I)
-      for (User::const_op_iterator OI = I->op_begin(), E = I->op_end();
-           OI != E; ++OI) {
-        if ((isa<Constant>(*OI) && !isa<GlobalValue>(*OI)) ||
-            isa<InlineAsm>(*OI))
-          EnumerateValue(*OI);
+    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E; ++I) {
+      if (const SwitchInst *SI = dyn_cast<SwitchInst>(I)) {
+        // Handle switch instruction specially, so that we don't write
+        // out unnecessary vector/array constants used to model case selectors.
+        if (isa<Constant>(SI->getCondition())) {
+          EnumerateValue(SI->getCondition());
+        }
+      } else {
+        for (User::const_op_iterator OI = I->op_begin(), E = I->op_end();
+             OI != E; ++OI) {
+          if ((isa<Constant>(*OI) && !isa<GlobalValue>(*OI)) ||
+              isa<InlineAsm>(*OI))
+            EnumerateValue(*OI);
+        }
       }
+    }
     BasicBlocks.push_back(BB);
     ValueMap[BB] = BasicBlocks.size();
   }
