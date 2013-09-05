@@ -331,7 +331,7 @@ namespace naclbitc {
     FUNC_CODE_INST_LOADATOMIC  = 41, // Not used in PNaCl.
     FUNC_CODE_INST_STOREATOMIC = 42, // Not used in PNaCl.
     FUNC_CODE_INST_FORWARDTYPEREF = 43, // TYPE: [opval, ty]
-    // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, fnty, args...]
+    // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, returnty, args...]
     FUNC_CODE_INST_CALL_INDIRECT = 44
   };
 } // End naclbitc namespace

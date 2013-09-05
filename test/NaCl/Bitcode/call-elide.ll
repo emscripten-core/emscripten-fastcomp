@@ -226,7 +226,7 @@ define void @IndirectCall(i32 %i) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=2 op3=1/>
+; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=1 op3=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -260,16 +260,16 @@ define void @IndirectCallPtrToIntArg(i32 %i) {
 
 ; TD2:      define void @IndirectCallPtrToIntArg(i32 %i) {
 ; TD2-NEXT:   %1 = alloca i8, i32 4, align 8
-; TD2-NEXT:   %2 = inttoptr i32 %i to void (i32)*
-; TD2-NEXT:   %3 = ptrtoint i8* %1 to i32
-; TD2-NEXT:   call void %2(i32 %3)
+; TD2-NEXT:   %2 = ptrtoint i8* %1 to i32
+; TD2-NEXT:   %3 = inttoptr i32 %i to void (i32)*
+; TD2-NEXT:   call void %3(i32 %2)
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2:        </CONSTANTS_BLOCK>
 ; PF2-NEXT:   <INST_ALLOCA op0=1 op1=4/>
-; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=3 op2=2 op3=1/>
+; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=3 op2=1 op3=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -299,15 +299,15 @@ define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
 ; PF1:      </FUNCTION_BLOCK>
 
 ; TD2:      define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
-; TD2-NEXT:   %1 = inttoptr i32 %i to void (i32)*
-; TD2-NEXT:   %2 = ptrtoint [4 x i8]* @bytes to i32
-; TD2-NEXT:   call void %1(i32 %2)
+; TD2-NEXT:   %1 = ptrtoint [4 x i8]* @bytes to i32
+; TD2-NEXT:   %2 = inttoptr i32 %i to void (i32)*
+; TD2-NEXT:   call void %2(i32 %1)
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=2 op2=2 op3=3/>
+; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=2 op2=1 op3=3/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 

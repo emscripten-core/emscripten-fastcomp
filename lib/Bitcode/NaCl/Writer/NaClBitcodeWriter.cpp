@@ -893,11 +893,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
         // not known. Hence, we must send the type signature to the
         // reader.
         Code = naclbitc::FUNC_CODE_INST_CALL_INDIRECT;
-        PointerType *FcnPtrType =
-          cast<PointerType>(Callee->getType());
-        FunctionType *FcnType =
-          cast<FunctionType>(FcnPtrType->getElementType());
-        Vals.push_back(VE.getTypeID(FcnType));
+        Vals.push_back(VE.getTypeID(I.getType()));
       }
     }
 

@@ -1626,16 +1626,11 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       // Build function type for call.
       FunctionType *FTy = 0;
+      Type *ReturnType = 0;
       if (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT) {
         // Callee type has been elided, add back in.
-        Type *Type = getTypeByID(Record[2]);
+        ReturnType = getTypeByID(Record[2]);
         ++OpNum;
-        if (FunctionType *FcnType = dyn_cast<FunctionType>(Type)) {
-          FTy = FcnType;
-          Callee = ConvertOpToType(Callee, FcnType->getPointerTo(), CurBBNo);
-        } else {
-          return Error("Invalid type for CALL_INDIRECT record");
-        }
       } else {
         // Get type signature from callee.
         if (PointerType *OpTy = dyn_cast<PointerType>(Callee->getType())) {
@@ -1646,7 +1641,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       unsigned NumParams = Record.size() - OpNum;
-      if (NumParams != FTy->getNumParams())
+      if (FTy && NumParams != FTy->getNumParams())
         return Error("Invalid CALL record");
 
       // Process call arguments.
@@ -1655,12 +1650,24 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         Value *Arg;
         if (popValue(Record, &OpNum, NextValueNo, &Arg))
           Error("Invalid argument in CALL record");
-        if (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT &&
-            FTy->getParamType(Index)->isPointerTy()) {
-          return Error("Pointer arguments not allowed for indirect calls");
+        if (FTy) {
+          // Add a cast, to a pointer type if necessary, in case this
+          // is an intrinsic call that takes a pointer argument.
+          Arg = ConvertOpToType(Arg, FTy->getParamType(Index), CurBBNo);
+        } else {
+          Arg = ConvertOpToScalar(Arg, CurBBNo);
         }
-        Arg = ConvertOpToType(Arg, FTy->getParamType(Index), CurBBNo);
         Args.push_back(Arg);
+      }
+
+      if (FTy == 0) {
+        // Reconstruct the function type and cast the function pointer
+        // to it.
+        SmallVector<Type*, 6> ArgTypes;
+        for (unsigned Index = 0; Index < NumParams; ++Index)
+          ArgTypes.push_back(Args[Index]->getType());
+        FTy = FunctionType::get(ReturnType, ArgTypes, false);
+        Callee = ConvertOpToType(Callee, FTy->getPointerTo(), CurBBNo);
       }
 
       // Construct call.
