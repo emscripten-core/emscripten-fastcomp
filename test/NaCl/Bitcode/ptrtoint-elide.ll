@@ -42,8 +42,8 @@ define void @AllocCastSimple() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=4 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=4 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
@@ -87,8 +87,8 @@ define void @AllocCastSimpleReversed() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=3 op1=4 op2=11/>
-; PF1-NEXT:     <INST_CAST op0=2 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=3 op1={{.*}} op2=11/>
+; PF1-NEXT:     <INST_CAST op0=2 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_STORE op0=2 op1=1 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
@@ -130,9 +130,9 @@ define void @AllocCastDelete() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_ALLOCA op0=3 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
 
@@ -175,8 +175,8 @@ define void @AllocCastOpt() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=3 op1=4 op2=11/>
-; PF1-NEXT:     <INST_CAST op0=2 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=3 op1={{.*}} op2=11/>
+; PF1-NEXT:     <INST_CAST op0=2 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_STORE op0=2 op1=1 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_STORE op0=2 op1=1 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
@@ -224,8 +224,8 @@ define void @AllocCastMove(i32) {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=5 op1=4 op2=11/>
-; PF1-NEXT:     <INST_CAST op0=2 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=5 op1={{.*}} op2=11/>
+; PF1-NEXT:     <INST_CAST op0=2 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=6 op1=4 op2=0/>
 ; PF1-NEXT:     <INST_STORE op0=3 op1=2 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
@@ -271,8 +271,8 @@ define void @StoreGlobal() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=3 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=2 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=3 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=2 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_STORE op0=1 op1=2 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
@@ -314,8 +314,8 @@ define void @StoreGlobalCastsReversed() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
-; PF1-NEXT:     <INST_CAST op0=4 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=11/>
+; PF1-NEXT:     <INST_CAST op0=4 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_STORE op0=2 op1=1 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
@@ -356,9 +356,9 @@ define i32 @StoreGlobalMovePtr2Int() {
 
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
-; PF1-NEXT:     <INST_CAST op0=3 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=3 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_ALLOCA op0=3 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_STORE op0=1 op1=3 op2=1 op3=0/>
 ; PF1-NEXT:     <INST_RET op0=4/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
@@ -413,7 +413,7 @@ define void @CastAddAlloca() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=5 op1=4 op2=0/>
 ; PF1-NEXT:     <INST_BINOP op0=2 op1=5 op2=0/>
 ; PF1-NEXT:     <INST_BINOP op0=7 op1=3 op2=0/>
@@ -472,7 +472,7 @@ define void @CastAddGlobal() {
 
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
-; PF1-NEXT:     <INST_CAST op0=3 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=3 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=3 op1=2 op2=0/>
 ; PF1-NEXT:     <INST_BINOP op0=2 op1=3 op2=0/>
 ; PF1-NEXT:     <INST_BINOP op0=5 op1=3 op2=0/>
@@ -540,8 +540,8 @@ define void @CastBinop() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=4 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=4 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=1/>
 ; PF1-NEXT:     <INST_BINOP op0=3 op1=2 op2=2/>
 ; PF1-NEXT:     <INST_BINOP op0=4 op1=3 op2=3/>
@@ -635,17 +635,17 @@ define void @TestCasts() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=6 op1=2 op2=0/>
-; PF1-NEXT:     <INST_CAST op0=2 op1=2 op2=0/>
-; PF1-NEXT:     <INST_CAST op0=8 op1=11 op2=1/>
-; PF1-NEXT:     <INST_CAST op0=4 op1=11 op2=1/>
-; PF1-NEXT:     <INST_CAST op0=9 op1=11 op2=2/>
-; PF1-NEXT:     <INST_CAST op0=6 op1=11 op2=2/>
-; PF1-NEXT:     <INST_CAST op0=9 op1=12 op2=5/>
-; PF1-NEXT:     <INST_CAST op0=8 op1=12 op2=5/>
-; PF1-NEXT:     <INST_CAST op0=13 op1=12 op2=6/>
-; PF1-NEXT:     <INST_CAST op0=10 op1=12 op2=6/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=6 op1={{.*}} op2=0/>
+; PF1-NEXT:     <INST_CAST op0=2 op1={{.*}} op2=0/>
+; PF1-NEXT:     <INST_CAST op0=8 op1={{.*}} op2=1/>
+; PF1-NEXT:     <INST_CAST op0=4 op1={{.*}} op2=1/>
+; PF1-NEXT:     <INST_CAST op0=9 op1={{.*}} op2=2/>
+; PF1-NEXT:     <INST_CAST op0=6 op1={{.*}} op2=2/>
+; PF1-NEXT:     <INST_CAST op0=9 op1={{.*}} op2=5/>
+; PF1-NEXT:     <INST_CAST op0=8 op1={{.*}} op2=5/>
+; PF1-NEXT:     <INST_CAST op0=13 op1={{.*}} op2=6/>
+; PF1-NEXT:     <INST_CAST op0=10 op1={{.*}} op2=6/>
 ; PF1-NEXT:     <INST_RET/>
 ; PF1-NEXT:   </FUNCTION_BLOCK>
 
@@ -668,16 +668,16 @@ define void @TestCasts() {
 ; PF2:        <FUNCTION_BLOCK>
 ; PF2:          </CONSTANTS_BLOCK>
 ; PF2-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF2-NEXT:     <INST_CAST op0=5 op1=2 op2=0/>
-; PF2-NEXT:     <INST_CAST op0=2 op1=2 op2=0/>
-; PF2-NEXT:     <INST_CAST op0=7 op1=11 op2=1/>
-; PF2-NEXT:     <INST_CAST op0=4 op1=11 op2=1/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=11 op2=2/>
-; PF2-NEXT:     <INST_CAST op0=6 op1=11 op2=2/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=12 op2=5/>
-; PF2-NEXT:     <INST_CAST op0=8 op1=12 op2=5/>
-; PF2-NEXT:     <INST_CAST op0=12 op1=12 op2=6/>
-; PF2-NEXT:     <INST_CAST op0=10 op1=12 op2=6/>
+; PF2-NEXT:     <INST_CAST op0=5 op1={{.*}} op2=0/>
+; PF2-NEXT:     <INST_CAST op0=2 op1={{.*}} op2=0/>
+; PF2-NEXT:     <INST_CAST op0=7 op1={{.*}} op2=1/>
+; PF2-NEXT:     <INST_CAST op0=4 op1={{.*}} op2=1/>
+; PF2-NEXT:     <INST_CAST op0=8 op1={{.*}} op2=2/>
+; PF2-NEXT:     <INST_CAST op0=6 op1={{.*}} op2=2/>
+; PF2-NEXT:     <INST_CAST op0=8 op1={{.*}} op2=5/>
+; PF2-NEXT:     <INST_CAST op0=8 op1={{.*}} op2=5/>
+; PF2-NEXT:     <INST_CAST op0=12 op1={{.*}} op2=6/>
+; PF2-NEXT:     <INST_CAST op0=10 op1={{.*}} op2=6/>
 ; PF2-NEXT:     <INST_RET/>
 ; PF2-NEXT:   </FUNCTION_BLOCK>
 
@@ -703,7 +703,7 @@ define void @TestSavedPtrToInt() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=1 op1=3 op2=0/>
 ; PF1-NEXT:     <INST_CALL op0=0 op1=26 op2=2/>
 ; PF1-NEXT:     <INST_RET/>
@@ -755,8 +755,8 @@ define void @CastIcmp() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=6 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=6 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_CMP2 op0=6 op1=5 op2=32/>
 ; PF1-NEXT:     <INST_CMP2 op0=3 op1=6 op2=32/>
 ; PF1-NEXT:     <INST_CMP2 op0=8 op1=3 op2=32/>
@@ -818,8 +818,8 @@ define void @CastSelect() {
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=2 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=7 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=7 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_VSELECT op0=7 op1=6 op2=4/>
 ; PF1-NEXT:     <INST_VSELECT op0=3 op1=7 op2=5/>
 ; PF1-NEXT:     <INST_VSELECT op0=9 op1=3 op2=6/>
@@ -897,9 +897,9 @@ merge:
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_ALLOCA op0=3 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BR op0=1 op1=2 op2=6/>
 ; PF1-NEXT:     <INST_LOAD op0=3 op1=0 op2=0/>
 ; PF1-NEXT:     <INST_BR op0=3/>
@@ -1007,9 +1007,9 @@ start:
 ; PF1-NEXT:     <INST_LOAD op0=4294967294 op1=0 op2=0/>
 ; PF1-NEXT:     <INST_BR op0=1/>
 ; PF1-NEXT:     <INST_ALLOCA op0=5 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_ALLOCA op0=7 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BR op0=2 op1=3 op2=10/>
 ; PF1:        </FUNCTION_BLOCK>
 
@@ -1105,12 +1105,12 @@ merge:
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_ALLOCA op0=3 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BR op0=1 op1=2 op2=6/>
 ; PF1-NEXT:     <INST_LOAD op0=3 op1=0 op2=0/>
-; PF1-NEXT:     <INST_CAST op0=3 op1=0 op2=9/>
+; PF1-NEXT:     <INST_CAST op0=3 op1={{.*}} op2=9/>
 ; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
 ; PF1-NEXT:     <INST_BR op0=3/>
 ; PF1-NEXT:     <INST_LOAD op0=6 op1=0 op2=0/>
@@ -1223,8 +1223,8 @@ b4:
 ; PF1:        <FUNCTION_BLOCK>
 ; PF1:          </CONSTANTS_BLOCK>
 ; PF1-NEXT:     <INST_ALLOCA op0=1 op1=4/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=0 op2=9/>
-; PF1-NEXT:     <INST_CAST op0=5 op1=4 op2=11/>
+; PF1-NEXT:     <INST_CAST op0=1 op1={{.*}} op2=9/>
+; PF1-NEXT:     <INST_CAST op0=5 op1={{.*}} op2=11/>
 ; PF1-NEXT:     <INST_BR op0=1 op1=2 op2=5/>
 ; PF1-NEXT:     <INST_BR op0=3 op1=4 op2=5/>
 ; PF1-NEXT:     <INST_BR op0=5 op1=6 op2=5/>

@@ -82,6 +82,8 @@ namespace naclbitc {
     TYPE_CODE_VOID     =  2,    // VOID
     TYPE_CODE_FLOAT    =  3,    // FLOAT
     TYPE_CODE_DOUBLE   =  4,    // DOUBLE
+    // TODO(mseaborn): Remove LABEL when we drop support for v1 of the
+    // PNaCl bitcode format.  The writer no longer generates it.
     TYPE_CODE_LABEL    =  5,    // LABEL
     TYPE_CODE_OPAQUE   =  6,    // Not used in PNaCl.
     TYPE_CODE_INTEGER  =  7,    // INTEGER: [width]

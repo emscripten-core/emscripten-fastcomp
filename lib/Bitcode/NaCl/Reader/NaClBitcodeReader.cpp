@@ -449,6 +449,10 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       ResultTy = Type::getDoubleTy(Context);
       break;
     case naclbitc::TYPE_CODE_LABEL:     // LABEL
+      // TODO(mseaborn): Remove this case when we drop support for v1
+      // of the PNaCl bitcode format.
+      if (GetPNaClVersion() >= 2)
+        return Error("Label type not supported in PNaCl bitcode");
       ResultTy = Type::getLabelTy(Context);
       break;
     case naclbitc::TYPE_CODE_INTEGER:   // INTEGER: [width]

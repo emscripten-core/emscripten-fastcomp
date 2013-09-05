@@ -299,6 +299,10 @@ void NaClValueEnumerator::EnumerateValue(const Value *VIn) {
 
 
 void NaClValueEnumerator::EnumerateType(Type *Ty, bool InsideOptimizeTypes) {
+  // The label type does not need to be given a type ID.
+  if (Ty->isLabelTy())
+    return;
+
   // This function is used to enumerate types referenced by the given
   // module. This function is called in two phases, based on the value
   // of TypeCountMap. These phases are:

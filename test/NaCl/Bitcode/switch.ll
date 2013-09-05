@@ -48,11 +48,10 @@ end:
 }
 
 ; CHECK:      <TYPE_BLOCK_ID>
-; CHECK-NEXT:   <NUMENTRY op0=5/>
+; CHECK-NEXT:   <NUMENTRY op0=4/>
 ; CHECK-NEXT:   <VOID/>
-; CHECK-NEXT:   <LABEL/>
 ; CHECK-NEXT:   <INTEGER op0=32/>
-; CHECK-NEXT:   <FUNCTION op0=0 op1=0 op2=2/>
-; CHECK-NEXT:   <POINTER op0=3 op1=0/>
+; CHECK-NEXT:   <FUNCTION op0={{.*}} op1={{.*}} op2={{.*}}/>
+; CHECK-NEXT:   <POINTER op0={{.*}} op1={{.*}}/>
 ; CHECK-NEXT: </TYPE_BLOCK_ID>
 

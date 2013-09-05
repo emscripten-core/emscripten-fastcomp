@@ -224,7 +224,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
     case Type::VoidTyID:      Code = naclbitc::TYPE_CODE_VOID;      break;
     case Type::FloatTyID:     Code = naclbitc::TYPE_CODE_FLOAT;     break;
     case Type::DoubleTyID:    Code = naclbitc::TYPE_CODE_DOUBLE;    break;
-    case Type::LabelTyID:     Code = naclbitc::TYPE_CODE_LABEL;     break;
     case Type::IntegerTyID:
       // INTEGER: [width]
       Code = naclbitc::TYPE_CODE_INTEGER;
