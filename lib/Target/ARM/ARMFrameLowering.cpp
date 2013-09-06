@@ -225,6 +225,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (GPRCS1Size > 0) MBBI++;
 
   // @LOCALMOD-START
+  unsigned TotalCfaAdjust = GPRCS1Size;
   if (needsFrameMoves && GPRCS1Size > 0) {
     // we just skipped the initial callee save reg instructions, e.g.
     // push {r4, r5, r6, lr}
@@ -234,7 +235,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     BuildMI(MBB, MBBI, dl, TII.get(ARM::PROLOG_LABEL)).addSym(AfterRegSave);
     // record the fact that the stack has moved
     MachineLocation dst(MachineLocation::VirtualFP);
-    MachineLocation src(MachineLocation::VirtualFP, -GPRCS1Size);
+    MachineLocation src(MachineLocation::VirtualFP, -TotalCfaAdjust);
     MMI.getFrameMoves().push_back(MachineMove(AfterRegSave, dst, src));
     // for each callee saved register record where it has been saved
     int offset = 0;
@@ -317,6 +318,41 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     // instructions in the prologue.
     while (MBBI->getOpcode() == ARM::VSTMDDB_UPD)
       MBBI++;
+
+    // @LOCALMOD-BEGIN
+    if(needsFrameMoves) {
+      MCSymbol *AfterRegSave = MMI.getContext().CreateTempSymbol();
+      BuildMI(MBB, MBBI, dl, TII.get(ARM::PROLOG_LABEL)).addSym(AfterRegSave);
+      if (!HasFP) {
+        // CFA offset needs to be updated if it is relative to the SP (which as
+        // just moved). Otherwise it is relative to FP, which has not changed.
+        TotalCfaAdjust += DPRCSSize;
+        MachineLocation dst(MachineLocation::VirtualFP);
+        MachineLocation src(MachineLocation::VirtualFP, -TotalCfaAdjust);
+        MMI.getFrameMoves().push_back(MachineMove(AfterRegSave, dst, src));
+      }
+      // for each callee saved register record where it has been saved
+      int offset = -GPRCS1Size;
+      for (unsigned i = 0, e = CSI.size(); i != e; ++i) {
+        unsigned Reg = CSI[i].getReg();
+        switch (Reg) {
+          case ARM::D8:
+          case ARM::D9:
+          case ARM::D10:
+          case ARM::D11:
+          case ARM::D12:
+          case ARM::D13:
+          case ARM::D14:
+          case ARM::D15:
+            offset -= 8;
+            MachineLocation dst(MachineLocation::VirtualFP, offset);
+            MachineLocation src(Reg);
+            MMI.getFrameMoves().push_back(MachineMove(AfterRegSave, dst, src));
+            break;
+        }
+      }
+    }
+    // @LOCALMOD-END
   }
 
   // Move past the aligned DPRCS2 area.
@@ -346,14 +382,15 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
       AFI->setShouldRestoreSPFromFP(true);
 
     // @LOCALMOD-START
-    // we only track sp changes if do not have the fp to figure out where
-    // stack frame lives
+    // CFA offset needs to be updated if it is relative to the SP (which as
+    // just moved). Otherwise it is relative to FP, which has not changed.
     if (needsFrameMoves && !HasFP) {
+      TotalCfaAdjust += NumBytes;
       MCSymbol *AfterStackUpdate = MMI.getContext().CreateTempSymbol();
       BuildMI(MBB, MBBI, dl,
               TII.get(ARM::PROLOG_LABEL)).addSym(AfterStackUpdate);
       MachineLocation dst(MachineLocation::VirtualFP);
-      MachineLocation src(MachineLocation::VirtualFP, - NumBytes - GPRCS1Size);
+      MachineLocation src(MachineLocation::VirtualFP, -TotalCfaAdjust);
       MMI.getFrameMoves().push_back(MachineMove(AfterStackUpdate, dst, src));
     }
     // @LOCALMOD-END
@@ -1510,4 +1547,3 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
   }
   MBB.erase(I);
 }
-
