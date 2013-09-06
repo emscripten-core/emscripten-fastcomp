@@ -20,7 +20,7 @@
 
 @bytes = internal global [4 x i8] c"abcd"
 declare void @foo(i32 %i)
-declare i32 @bar(i32* %i)
+declare i32 @llvm.nacl.setjmp(i8* %i)
 
 ; ------------------------------------------------------
 ; Test how we handle a direct call.
@@ -54,32 +54,30 @@ define void @DirectCall() {
 
 ; ------------------------------------------------------
 ; Test how we handle a direct call with a normalized inttoptr argument.
-; Note: This code doesn't follow the PNaCl ABI in that function
-; calls can't get pointer arguments. However, intrinsic calls can, and
-; this code is a placeholder for such a test.
+; Pointer arguments are only allowed for intrinsic calls.
 
 define void @DirectCallIntToPtrArg(i32 %i) {
-  %1 = inttoptr i32 %i to i32*
-  %2 = call i32 @bar(i32* %1)
+  %1 = inttoptr i32 %i to i8*
+  %2 = call i32 @llvm.nacl.setjmp(i8* %1)
   ret void
 }
 
 ; TD1:      define void @DirectCallIntToPtrArg(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %2 = call i32 @bar(i32* %1)
+; TD1-NEXT:   %1 = inttoptr i32 %i to i8*
+; TD1-NEXT:   %2 = call i32 @llvm.nacl.setjmp(i8* %1)
 ; TD1-NEXT:   ret void
 ; TD1-NEXT: }
 
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=1 op1=4 op2=10/>
+; PF1-NEXT:   <INST_CAST op0=1 op1={{.*}} op2=10/>
 ; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
 ; TD2:      define void @DirectCallIntToPtrArg(i32 %i) {
-; TD2-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD2-NEXT:   %2 = call i32 @bar(i32* %1)
+; TD2-NEXT:   %1 = inttoptr i32 %i to i8*
+; TD2-NEXT:   %2 = call i32 @llvm.nacl.setjmp(i8* %1)
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -91,6 +89,7 @@ define void @DirectCallIntToPtrArg(i32 %i) {
 
 ; ------------------------------------------------------
 ; Test how we handle a direct call with a normalized ptroint argument.
+; Pointer arguments are only allowed for intrinsic calls.
 
 define void @DirectCallPtrToIntArg() {
   %1 = alloca i8, i32 4, align 8
@@ -132,27 +131,27 @@ define void @DirectCallPtrToIntArg() {
 ; Test how we handle a direct call with a normalized bitcast argument.
 
 define void @DirectCallBitcastArg(i32 %i) {
-  %1 = bitcast [4 x i8]* @bytes to i32*
-  %2 = call i32 @bar(i32* %1)
+  %1 = bitcast [4 x i8]* @bytes to i8*
+  %2 = call i32 @llvm.nacl.setjmp(i8* %1)
   ret void
 }
 
 ; TD1:      define void @DirectCallBitcastArg(i32 %i) {
-; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD1-NEXT:   %2 = call i32 @bar(i32* %1)
+; TD1-NEXT:   %1 = bitcast [4 x i8]* @bytes to i8*
+; TD1-NEXT:   %2 = call i32 @llvm.nacl.setjmp(i8* %1)
 ; TD1-NEXT:   ret void
 ; TD1-NEXT: }
 
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=2 op1=4 op2=11/>
+; PF1-NEXT:   <INST_CAST op0=2 op1={{.*}} op2=11/>
 ; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
 ; TD2:      define void @DirectCallBitcastArg(i32 %i) {
-; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %2 = call i32 @bar(i32* %1)
+; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i8*
+; TD2-NEXT:   %2 = call i32 @llvm.nacl.setjmp(i8* %1)
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
