@@ -130,6 +130,10 @@ public:
   // replaces uses of the global variable forward reference with the
   // value GV.
   void AssignGlobalVar(GlobalVariable *GV, unsigned Idx);
+
+  // Assigns Idx to the given value, overwriting the existing entry
+  // and possibly modifying the type of the entry.
+  void OverwriteValue(Value *V, unsigned Idx);
 };
 
 
@@ -333,6 +337,9 @@ private:
   /// \brief Install instruction I into basic block BB.
   bool InstallInstruction(BasicBlock *BB, Instruction *I);
 
+  FunctionType *AddPointerTypesToIntrinsicType(StringRef Name,
+                                               FunctionType *FTy);
+  void AddPointerTypesToIntrinsicParams();
   bool ParseModule(bool Resume);
   bool ParseTypeTable();
   bool ParseTypeTableBody();

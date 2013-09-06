@@ -174,6 +174,11 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
 }
 
 AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
+  // Note that new intrinsics added here may also need to be added to
+  // NaClBitcodeReader.cpp if they contain pointer-typed parameters.
+  // TODO(mseaborn): Change NaClBitcodeReader.cpp to reuse the list
+  // below.
+
   Type *I8Ptr = Type::getInt8PtrTy(*Context);
   Type *I8 = Type::getInt8Ty(*Context);
   Type *I16 = Type::getInt16Ty(*Context);

@@ -177,6 +177,10 @@ void NaClBitcodeReaderValueList::AssignGlobalVar(GlobalVariable *GV,
   ValuePtrs[Idx] = GV;
 }
 
+void NaClBitcodeReaderValueList::OverwriteValue(Value *V, unsigned Idx) {
+  ValuePtrs[Idx] = V;
+}
+
 Value *NaClBitcodeReaderValueList::getValueFwdRef(unsigned Idx) {
   if (Idx >= size())
     return 0;
@@ -771,6 +775,60 @@ bool NaClBitcodeReader::GlobalCleanup() {
   return false;
 }
 
+FunctionType *NaClBitcodeReader::AddPointerTypesToIntrinsicType(
+    StringRef Name, FunctionType *FTy) {
+  Type *ReturnTy = FTy->getReturnType();
+  SmallVector<Type *, 8> ArgTypes(FTy->param_begin(), FTy->param_end());
+
+  // Ideally we wouldn't need a list of supported intrinsics here, but
+  // Intrinsic::* doesn't provide a function for recovering the
+  // expected type of an intrinsic given its full name.
+  // TODO(mseaborn): We could reuse the intrinsic list from
+  // PNaClABIVerifyModule.cpp here.
+  if (Name == "llvm.nacl.read.tp" ||
+      Name == "llvm.stacksave") {
+    ReturnTy = Type::getInt8PtrTy(Context);
+  } else if (Name == "llvm.nacl.setjmp" ||
+             Name == "llvm.nacl.longjmp" ||
+             Name == "llvm.stackrestore" ||
+             Name.startswith("llvm.memset.")) {
+    assert(ArgTypes.size() >= 1);
+    ArgTypes[0] = Type::getInt8PtrTy(Context);
+  } else if (Name.startswith("llvm.memcpy.") ||
+             Name.startswith("llvm.memmove.")) {
+    assert(ArgTypes.size() >= 2);
+    ArgTypes[0] = Type::getInt8PtrTy(Context);
+    ArgTypes[1] = Type::getInt8PtrTy(Context);
+  } else if (Name.startswith("llvm.nacl.atomic.load.") ||
+             Name.startswith("llvm.nacl.atomic.cmpxchg.")) {
+    assert(ArgTypes.size() >= 1);
+    ArgTypes[0] = ReturnTy->getPointerTo();
+  } else if (Name.startswith("llvm.nacl.atomic.store.")) {
+    assert(ArgTypes.size() >= 2);
+    ArgTypes[1] = ArgTypes[0]->getPointerTo();
+  } else if (Name.startswith("llvm.nacl.atomic.rmw.")) {
+    assert(ArgTypes.size() >= 3);
+    ArgTypes[1] = ArgTypes[2]->getPointerTo();
+  }
+  return FunctionType::get(ReturnTy, ArgTypes, false);
+}
+
+void NaClBitcodeReader::AddPointerTypesToIntrinsicParams() {
+  for (unsigned Index = 0, E = ValueList.size(); Index < E; ++Index) {
+    if (Function *Func = dyn_cast<Function>(ValueList[Index])) {
+      if (Func->isIntrinsic()) {
+        FunctionType *FTy = AddPointerTypesToIntrinsicType(
+            Func->getName(), Func->getFunctionType());
+        Function *NewIntrinsic = Function::Create(
+            FTy, GlobalValue::ExternalLinkage, "", TheModule);
+        NewIntrinsic->takeName(Func);
+        ValueList.OverwriteValue(NewIntrinsic, Index);
+        Func->eraseFromParent();
+      }
+    }
+  }
+}
+
 bool NaClBitcodeReader::ParseModule(bool Resume) {
   DEBUG(dbgs() << "-> ParseModule\n");
   if (Resume)
@@ -816,6 +874,11 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         if (ParseValueSymbolTable())
           return true;
         SeenValueSymbolTable = true;
+        if (GetPNaClVersion() >= 2) {
+          // Now that we know the names of the intrinsics, we can add
+          // pointer types to the intrinsic declarations' types.
+          AddPointerTypesToIntrinsicParams();
+        }
         break;
       case naclbitc::FUNCTION_BLOCK_ID:
         // If this is the first function body we've seen, reverse the

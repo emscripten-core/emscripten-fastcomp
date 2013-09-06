@@ -106,7 +106,7 @@ public:
   unsigned getValueID(const Value *V) const;
 
   unsigned getTypeID(Type *T) const {
-    TypeMapType::const_iterator I = TypeMap.find(T);
+    TypeMapType::const_iterator I = TypeMap.find(NormalizeType(T));
     assert(I != TypeMap.end() && "Type not in NaClValueEnumerator!");
     return I->second-1;
   }
@@ -157,6 +157,9 @@ public:
 private:
   void OptimizeTypes(const Module *M);
   void OptimizeConstants(unsigned CstStart, unsigned CstEnd);
+
+  Type *NormalizeParamType(Type *Ty) const;
+  Type *NormalizeType(Type *Ty) const;
 
   void EnumerateValue(const Value *V);
   void EnumerateType(Type *T, bool InsideOptimizeTypes=false);
