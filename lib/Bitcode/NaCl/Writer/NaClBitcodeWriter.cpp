@@ -418,7 +418,10 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
   SmallVector<unsigned, 64> Vals;
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
     // FUNCTION:  [type, callingconv, isproto, linkage]
-    Vals.push_back(VE.getTypeID(F->getType()));
+    Type *Ty = F->getType();
+    if (PNaClVersion >= 2)
+      Ty = Ty->getPointerElementType();
+    Vals.push_back(VE.getTypeID(Ty));
     Vals.push_back(GetEncodedCallingConv(F->getCallingConv()));
     Vals.push_back(F->isDeclaration());
     Vals.push_back(getEncodedLinkage(F));

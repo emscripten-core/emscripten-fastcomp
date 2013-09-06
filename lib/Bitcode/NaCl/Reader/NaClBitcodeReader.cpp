@@ -945,12 +945,16 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         return Error("Invalid MODULE_CODE_FUNCTION record");
       Type *Ty = getTypeByID(Record[0]);
       if (!Ty) return Error("Invalid MODULE_CODE_FUNCTION record");
-      if (!Ty->isPointerTy())
-        return Error("Function not a pointer type!");
-      FunctionType *FTy =
-        dyn_cast<FunctionType>(cast<PointerType>(Ty)->getElementType());
+      FunctionType *FTy;
+      if (GetPNaClVersion() == 1) {
+        if (!Ty->isPointerTy())
+          return Error("Function not a pointer type!");
+        FTy = dyn_cast<FunctionType>(cast<PointerType>(Ty)->getElementType());
+      } else {
+        FTy = dyn_cast<FunctionType>(Ty);
+      }
       if (!FTy)
-        return Error("Function not a pointer to function type!");
+        return Error("Function not declared with a function type!");
 
       Function *Func = Function::Create(FTy, GlobalValue::ExternalLinkage,
                                         "", TheModule);
