@@ -577,7 +577,7 @@ static bool AllUsesExpectsIntPtrType(const Instruction *I) {
 // Returns true if the value is an intrinsic instruction returns
 // a pointer value.
 static inline bool IsIntrinsicReturningPtr(const Value *V) {
-  if (const IntrinsicInst *ICall = dyn_cast<IntrinsicInst>(V)) {
+  if (isa<IntrinsicInst>(V)) {
     return V->getType()->isPointerTy();
   }
   return false;

@@ -490,8 +490,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
 
   Stream.EnterSubblock(naclbitc::CONSTANTS_BLOCK_ID, CONSTANTS_MAX_ABBREV);
 
-  unsigned AggregateAbbrev = 0;
-
   SmallVector<uint64_t, 64> Record;
 
   const NaClValueEnumerator::ValueList &Vals = VE.getValues();
