@@ -128,42 +128,6 @@ static CallingConv::ID GetDecodedCallingConv(unsigned Val) {
   }
 }
 
-namespace llvm {
-namespace {
-  /// @brief A class for maintaining the slot number definition
-  /// as a placeholder for the actual definition for forward constants defs.
-  class ConstantPlaceHolder : public ConstantExpr {
-    void operator=(const ConstantPlaceHolder &) LLVM_DELETED_FUNCTION;
-  public:
-    // allocate space for exactly one operand
-    void *operator new(size_t s) {
-      return User::operator new(s, 1);
-    }
-    explicit ConstantPlaceHolder(Type *Ty, LLVMContext& Context)
-      : ConstantExpr(Ty, Instruction::UserOp1, &Op<0>(), 1) {
-      Op<0>() = UndefValue::get(Type::getInt32Ty(Context));
-    }
-
-    /// @brief Methods to support type inquiry through isa, cast, and dyn_cast.
-    static bool classof(const Value *V) {
-      return isa<ConstantExpr>(V) &&
-             cast<ConstantExpr>(V)->getOpcode() == Instruction::UserOp1;
-    }
-
-
-    /// Provide fast operand accessors
-    //DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
-  };
-}
-
-// FIXME: can we inherit this from ConstantExpr?
-template <>
-struct OperandTraits<ConstantPlaceHolder> :
-  public FixedNumOperandTraits<ConstantPlaceHolder, 1> {
-};
-}
-
-
 void NaClBitcodeReaderValueList::AssignValue(Value *V, unsigned Idx) {
   assert(V);
   if (Idx == size()) {
@@ -180,17 +144,10 @@ void NaClBitcodeReaderValueList::AssignValue(Value *V, unsigned Idx) {
     return;
   }
 
-  // Handle constants and non-constants (e.g. instrs) differently for
-  // efficiency.
-  if (Constant *PHC = dyn_cast<Constant>(&*OldV)) {
-    ResolveConstants.push_back(std::make_pair(PHC, Idx));
-    OldV = V;
-  } else {
-    // If there was a forward reference to this value, replace it.
-    Value *PrevVal = OldV;
-    OldV->replaceAllUsesWith(V);
-    delete PrevVal;
-  }
+  // If there was a forward reference to this value, replace it.
+  Value *PrevVal = OldV;
+  OldV->replaceAllUsesWith(V);
+  delete PrevVal;
 }
 
 void NaClBitcodeReaderValueList::AssignGlobalVar(GlobalVariable *GV,
@@ -218,22 +175,6 @@ void NaClBitcodeReaderValueList::AssignGlobalVar(GlobalVariable *GV,
       ConstantExpr::getBitCast(GV, Placeholder->getType()));
   Placeholder->eraseFromParent();
   ValuePtrs[Idx] = GV;
-}
-
-Constant *NaClBitcodeReaderValueList::getConstantFwdRef(unsigned Idx,
-                                                        Type *Ty) {
-  if (Idx >= size())
-    resize(Idx + 1);
-
-  if (Value *V = ValuePtrs[Idx]) {
-    assert(Ty == V->getType() && "Type mismatch in constant table!");
-    return cast<Constant>(V);
-  }
-
-  // Create and return a placeholder, which will later be RAUW'd.
-  Constant *C = new ConstantPlaceHolder(Ty, Context);
-  ValuePtrs[Idx] = C;
-  return C;
 }
 
 Value *NaClBitcodeReaderValueList::getValueFwdRef(unsigned Idx) {
@@ -281,88 +222,6 @@ Constant *NaClBitcodeReaderValueList::getOrCreateGlobalVarRef(
                          GlobalValue::ExternalLinkage, 0);
   ValuePtrs[Idx] = C;
   return C;
-}
-
-/// ResolveConstantForwardRefs - Once all constants are read, this method bulk
-/// resolves any forward references.  The idea behind this is that we sometimes
-/// get constants (such as large arrays) which reference *many* forward ref
-/// constants.  Replacing each of these causes a lot of thrashing when
-/// building/reuniquing the constant.  Instead of doing this, we look at all the
-/// uses and rewrite all the place holders at once for any constant that uses
-/// a placeholder.
-void NaClBitcodeReaderValueList::ResolveConstantForwardRefs() {
-  // Sort the values by-pointer so that they are efficient to look up with a
-  // binary search.
-  std::sort(ResolveConstants.begin(), ResolveConstants.end());
-
-  SmallVector<Constant*, 64> NewOps;
-
-  while (!ResolveConstants.empty()) {
-    Value *RealVal = operator[](ResolveConstants.back().second);
-    Constant *Placeholder = ResolveConstants.back().first;
-    ResolveConstants.pop_back();
-
-    // Loop over all users of the placeholder, updating them to reference the
-    // new value.  If they reference more than one placeholder, update them all
-    // at once.
-    while (!Placeholder->use_empty()) {
-      Value::use_iterator UI = Placeholder->use_begin();
-      User *U = *UI;
-
-      // If the using object isn't uniqued, just update the operands.  This
-      // handles instructions and initializers for global variables.
-      if (!isa<Constant>(U) || isa<GlobalValue>(U)) {
-        UI.getUse().set(RealVal);
-        continue;
-      }
-
-      // Otherwise, we have a constant that uses the placeholder.  Replace that
-      // constant with a new constant that has *all* placeholder uses updated.
-      Constant *UserC = cast<Constant>(U);
-      for (User::op_iterator I = UserC->op_begin(), E = UserC->op_end();
-           I != E; ++I) {
-        Value *NewOp;
-        if (!isa<ConstantPlaceHolder>(*I)) {
-          // Not a placeholder reference.
-          NewOp = *I;
-        } else if (*I == Placeholder) {
-          // Common case is that it just references this one placeholder.
-          NewOp = RealVal;
-        } else {
-          // Otherwise, look up the placeholder in ResolveConstants.
-          ResolveConstantsTy::iterator It =
-            std::lower_bound(ResolveConstants.begin(), ResolveConstants.end(),
-                             std::pair<Constant*, unsigned>(cast<Constant>(*I),
-                                                            0));
-          assert(It != ResolveConstants.end() && It->first == *I);
-          NewOp = operator[](It->second);
-        }
-
-        NewOps.push_back(cast<Constant>(NewOp));
-      }
-
-      // Make the new constant.
-      Constant *NewC;
-      if (ConstantArray *UserCA = dyn_cast<ConstantArray>(UserC)) {
-        NewC = ConstantArray::get(UserCA->getType(), NewOps);
-      } else if (ConstantStruct *UserCS = dyn_cast<ConstantStruct>(UserC)) {
-        NewC = ConstantStruct::get(UserCS->getType(), NewOps);
-      } else if (isa<ConstantVector>(UserC)) {
-        NewC = ConstantVector::get(NewOps);
-      } else {
-        assert(isa<ConstantExpr>(UserC) && "Must be a ConstantExpr.");
-        NewC = cast<ConstantExpr>(UserC)->getWithOperands(NewOps);
-      }
-
-      UserC->replaceAllUsesWith(NewC);
-      UserC->destroyConstant();
-      NewOps.clear();
-    }
-
-    // Update all ValueHandles, they should be the only users at this point.
-    Placeholder->replaceAllUsesWith(RealVal);
-    delete Placeholder;
-  }
 }
 
 Type *NaClBitcodeReader::getTypeByID(unsigned ID) {
@@ -770,10 +629,6 @@ bool NaClBitcodeReader::ParseConstants() {
     case NaClBitstreamEntry::EndBlock:
       if (NextCstNo != ValueList.size())
         return Error("Invalid constant reference!");
-
-      // Once all the constants have been read, go through and resolve forward
-      // references.
-      ValueList.ResolveConstantForwardRefs();
       DEBUG(dbgs() << "<- ParseConstants\n");
       return false;
     case NaClBitstreamEntry::Record:
@@ -804,6 +659,10 @@ bool NaClBitcodeReader::ParseConstants() {
       CurTy = TypeList[Record[0]];
       continue;  // Skip the ValueList manipulation.
     case naclbitc::CST_CODE_NULL:      // NULL
+      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
+      // TODO(kschimpf) Remove this as soon as is feasible.
+      if (GetPNaClVersion() >= 2)
+        return Error("null constants not supported in PNaCl bitcode");
       V = Constant::getNullValue(CurTy);
       break;
     case naclbitc::CST_CODE_INTEGER:   // INTEGER: [intval]
@@ -826,81 +685,43 @@ bool NaClBitcodeReader::ParseConstants() {
     }
 
     case naclbitc::CST_CODE_AGGREGATE: {// AGGREGATE: [n x value number]
+      if (GetPNaClVersion() >= 2)
+        return Error("Aggregate constants not supported in PNaCl bitcode");
       if (Record.empty())
         return Error("Invalid CST_AGGREGATE record");
 
-      unsigned Size = Record.size();
-      SmallVector<Constant*, 16> Elts;
+      // Note: The only structured types in early PNaCl version 1 bitcode files
+      // are those used to define selection lists in the switch instruction.
+      // However, these selection lists are not encoded as part of the switch
+      // instruction. Hence, the corresponding aggregate constants are not
+      // used. Hence, using undefined is sufficient.
+      //
+      // This has been fixed in PNaCl version 1+. We only need to handle
+      // old PNaCl version 1 bitcode files.
+      //
+      // TODO(kschimpf): Remove this as soon as feasible.
 
-      if (StructType *STy = dyn_cast<StructType>(CurTy)) {
-        for (unsigned i = 0; i != Size; ++i)
-          Elts.push_back(ValueList.getConstantFwdRef(Record[i],
-                                                     STy->getElementType(i)));
-        V = ConstantStruct::get(STy, Elts);
-      } else if (ArrayType *ATy = dyn_cast<ArrayType>(CurTy)) {
-        Type *EltTy = ATy->getElementType();
-        for (unsigned i = 0; i != Size; ++i)
-          Elts.push_back(ValueList.getConstantFwdRef(Record[i], EltTy));
-        V = ConstantArray::get(ATy, Elts);
-      } else if (VectorType *VTy = dyn_cast<VectorType>(CurTy)) {
-        Type *EltTy = VTy->getElementType();
-        for (unsigned i = 0; i != Size; ++i)
-          Elts.push_back(ValueList.getConstantFwdRef(Record[i], EltTy));
-        V = ConstantVector::get(Elts);
-      } else {
-        V = UndefValue::get(CurTy);
-      }
+      V = UndefValue::get(CurTy);
       break;
     }
     case naclbitc::CST_CODE_DATA: {// DATA: [n x value]
+      if (GetPNaClVersion() >= 2)
+        return Error("Data constants not supported in PNaCl bitcode");
       if (Record.empty())
         return Error("Invalid CST_DATA record");
 
-      Type *EltTy = cast<SequentialType>(CurTy)->getElementType();
-      unsigned Size = Record.size();
+      // Note: The only structured types in early PNaCl version 1 bitcode files
+      // are those used to define selection lists in switch instruction
+      // However, these selection lists are not encoded as part of the switch
+      // instruction. Hence, the corresponding data constants are not
+      // used. Hence, using undefined is sufficient.
+      //
+      // This has been fixed in PNaCl version 1+. We only need to handle
+      // old PNaCl version 1 bitcode files.
+      //
+      // TODO(kschimpf): Remove this as soon as feasible.
 
-      if (EltTy->isIntegerTy(8)) {
-        SmallVector<uint8_t, 16> Elts(Record.begin(), Record.end());
-        if (isa<VectorType>(CurTy))
-          V = ConstantDataVector::get(Context, Elts);
-        else
-          V = ConstantDataArray::get(Context, Elts);
-      } else if (EltTy->isIntegerTy(16)) {
-        SmallVector<uint16_t, 16> Elts(Record.begin(), Record.end());
-        if (isa<VectorType>(CurTy))
-          V = ConstantDataVector::get(Context, Elts);
-        else
-          V = ConstantDataArray::get(Context, Elts);
-      } else if (EltTy->isIntegerTy(32)) {
-        SmallVector<uint32_t, 16> Elts(Record.begin(), Record.end());
-        if (isa<VectorType>(CurTy))
-          V = ConstantDataVector::get(Context, Elts);
-        else
-          V = ConstantDataArray::get(Context, Elts);
-      } else if (EltTy->isIntegerTy(64)) {
-        SmallVector<uint64_t, 16> Elts(Record.begin(), Record.end());
-        if (isa<VectorType>(CurTy))
-          V = ConstantDataVector::get(Context, Elts);
-        else
-          V = ConstantDataArray::get(Context, Elts);
-      } else if (EltTy->isFloatTy()) {
-        SmallVector<float, 16> Elts(Size);
-        std::transform(Record.begin(), Record.end(), Elts.begin(), BitsToFloat);
-        if (isa<VectorType>(CurTy))
-          V = ConstantDataVector::get(Context, Elts);
-        else
-          V = ConstantDataArray::get(Context, Elts);
-      } else if (EltTy->isDoubleTy()) {
-        SmallVector<double, 16> Elts(Size);
-        std::transform(Record.begin(), Record.end(), Elts.begin(),
-                       BitsToDouble);
-        if (isa<VectorType>(CurTy))
-          V = ConstantDataVector::get(Context, Elts);
-        else
-          V = ConstantDataArray::get(Context, Elts);
-      } else {
-        return Error("Unknown element type in CE_DATA");
-      }
+      V = UndefValue::get(CurTy);
       break;
     }
     }
@@ -973,11 +794,12 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
 
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
-      default:  // Skip unknown content.
-        DEBUG(dbgs() << "Skip unknown context\n");
-        if (Stream.SkipBlock())
-          return Error("Malformed block record");
-        break;
+      default: {
+        std::string Message;
+        raw_string_ostream StrM(Message);
+        StrM << "Unknown block ID: " << Entry.ID;
+        return Error(StrM.str());
+      }
       case naclbitc::BLOCKINFO_BLOCK_ID:
         if (Stream.ReadBlockInfoBlock())
           return Error("Malformed BlockInfoBlock");
@@ -994,10 +816,6 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         if (ParseValueSymbolTable())
           return true;
         SeenValueSymbolTable = true;
-        break;
-      case naclbitc::CONSTANTS_BLOCK_ID:
-        if (ParseConstants())
-          return true;
         break;
       case naclbitc::FUNCTION_BLOCK_ID:
         // If this is the first function body we've seen, reverse the

@@ -63,12 +63,9 @@ enum {
   // CONSTANTS_BLOCK abbrev id's.
   CONSTANTS_SETTYPE_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   CONSTANTS_INTEGER_ABBREV,
-  CONSTANTS_NULL_Abbrev,
-  CONSTANTS_MAX_ABBREV = CONSTANTS_NULL_Abbrev,
-
-  // CONSTANTS_BLOCK abbrev id's when global (extends list above).
-  CST_CONSTANTS_AGGREGATE_ABBREV = CONSTANTS_MAX_ABBREV+1,
-  CST_CONSTANTS_MAX_ABBREV = CST_CONSTANTS_AGGREGATE_ABBREV,
+  CONSTANTS_INTEGER_ZERO_ABBREV,
+  CONSTANTS_FLOAT_ABBREV,
+  CONSTANTS_MAX_ABBREV = CONSTANTS_FLOAT_ABBREV,
 
   // GLOBALVAR BLOCK abbrev id's.
   GLOBALVAR_VAR_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
@@ -476,7 +473,8 @@ static void EmitAPInt(SmallVectorImpl<uint64_t> &Vals,
     uint64_t V = Val.getSExtValue();
     emitSignedInt64(Vals, V);
     Code = naclbitc::CST_CODE_INTEGER;
-    AbbrevToUse = CONSTANTS_INTEGER_ABBREV;
+    AbbrevToUse =
+        Val == 0 ? CONSTANTS_INTEGER_ZERO_ABBREV : CONSTANTS_INTEGER_ABBREV;
   } else {
     report_fatal_error("Wide integers are not supported");
   }
@@ -484,33 +482,12 @@ static void EmitAPInt(SmallVectorImpl<uint64_t> &Vals,
 
 static void WriteConstants(unsigned FirstVal, unsigned LastVal,
                            const NaClValueEnumerator &VE,
-                           NaClBitstreamWriter &Stream, bool isGlobal) {
+                           NaClBitstreamWriter &Stream) {
   if (FirstVal == LastVal) return;
 
-  Stream.EnterSubblock(naclbitc::CONSTANTS_BLOCK_ID,
-                       (isGlobal
-                        ? CST_CONSTANTS_MAX_ABBREV
-                        : CONSTANTS_MAX_ABBREV));
+  Stream.EnterSubblock(naclbitc::CONSTANTS_BLOCK_ID, CONSTANTS_MAX_ABBREV);
 
   unsigned AggregateAbbrev = 0;
-  // If this is a constant pool for the module, emit module-specific abbrevs.
-  // Note: These abbreviations are size specific (to LastVal), and hence,
-  // can be more efficient if LastVal is known (rather then generating
-  // up-front for all constant sections).
-  if (isGlobal) {
-    // Abbrev for CST_CODE_AGGREGATE.
-    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_AGGREGATE));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                  NaClBitsNeededForValue(LastVal)));
-    AggregateAbbrev = Stream.EmitAbbrev(Abbv);
-    if (CST_CONSTANTS_AGGREGATE_ABBREV != AggregateAbbrev)
-      llvm_unreachable("Unexpected abbrev ordering!");
-
-    DEBUG(dbgs() << "-- emitted abbreviations\n");
-  }
-
 
   SmallVector<uint64_t, 64> Record;
 
@@ -533,47 +510,19 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
     const Constant *C = cast<Constant>(V);
     unsigned Code = -1U;
     unsigned AbbrevToUse = 0;
-    if (C->isNullValue()) {
-      Code = naclbitc::CST_CODE_NULL;
-    } else if (isa<UndefValue>(C)) {
+    if (isa<UndefValue>(C)) {
       Code = naclbitc::CST_CODE_UNDEF;
     } else if (const ConstantInt *IV = dyn_cast<ConstantInt>(C)) {
       EmitAPInt(Record, Code, AbbrevToUse, IV->getValue());
     } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(C)) {
       Code = naclbitc::CST_CODE_FLOAT;
+      AbbrevToUse = CONSTANTS_FLOAT_ABBREV;
       Type *Ty = CFP->getType();
       if (Ty->isFloatTy() || Ty->isDoubleTy()) {
         Record.push_back(CFP->getValueAPF().bitcastToAPInt().getZExtValue());
       } else {
         report_fatal_error("Unknown FP type");
       }
-    } else if (const ConstantDataSequential *CDS =
-                  dyn_cast<ConstantDataSequential>(C)) {
-      Code = naclbitc::CST_CODE_DATA;
-      Type *EltTy = CDS->getType()->getElementType();
-      if (isa<IntegerType>(EltTy)) {
-        for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i)
-          Record.push_back(CDS->getElementAsInteger(i));
-      } else if (EltTy->isFloatTy()) {
-        for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
-          union { float F; uint32_t I; };
-          F = CDS->getElementAsFloat(i);
-          Record.push_back(I);
-        }
-      } else {
-        assert(EltTy->isDoubleTy() && "Unknown ConstantData element type");
-        for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
-          union { double F; uint64_t I; };
-          F = CDS->getElementAsDouble(i);
-          Record.push_back(I);
-        }
-      }
-    } else if (isa<ConstantArray>(C) || isa<ConstantStruct>(C) ||
-               isa<ConstantVector>(C)) {
-      Code = naclbitc::CST_CODE_AGGREGATE;
-      for (unsigned i = 0, e = C->getNumOperands(); i != e; ++i)
-        Record.push_back(VE.getValueID(C->getOperand(i)));
-      AbbrevToUse = AggregateAbbrev;
     } else {
 #ifndef NDEBUG
       C->dump();
@@ -586,20 +535,6 @@ static void WriteConstants(unsigned FirstVal, unsigned LastVal,
 
   Stream.ExitBlock();
   DEBUG(dbgs() << "<- WriteConstants\n");
-}
-
-static void WriteModuleConstants(const NaClValueEnumerator &VE,
-                                 NaClBitstreamWriter &Stream) {
-  const NaClValueEnumerator::ValueList &Vals = VE.getValues();
-
-  // Find the first constant to emit, which is the first non-globalvalue value.
-  // We know globalvalues have been emitted by WriteModuleInfo.
-  for (unsigned i = 0, e = Vals.size(); i != e; ++i) {
-    if (!isa<GlobalValue>(Vals[i].first)) {
-      WriteConstants(i, Vals.size(), VE, Stream, true);
-      return;
-    }
-  }
 }
 
 /// \brief Emits a type for the forward value reference. That is, if
@@ -984,7 +919,7 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
   // If there are function-local constants, emit them now.
   unsigned CstStart, CstEnd;
   VE.getFunctionConstantRange(CstStart, CstEnd);
-  WriteConstants(CstStart, CstEnd, VE, Stream, false);
+  WriteConstants(CstStart, CstEnd, VE, Stream);
 
   // Keep a running idea of what the instruction ID is.
   unsigned InstID = CstEnd;
@@ -1076,11 +1011,20 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
                                    Abbv) != CONSTANTS_INTEGER_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
-  { // NULL abbrev for CONSTANTS_BLOCK.
+  { // INTEGER_ZERO abbrev for CONSTANTS_BLOCK.
     NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_NULL));
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_INTEGER));
+    Abbv->Add(NaClBitCodeAbbrevOp(0));
     if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
-                                   Abbv) != CONSTANTS_NULL_Abbrev)
+                                   Abbv) != CONSTANTS_INTEGER_ZERO_ABBREV)
+      llvm_unreachable("Unexpected abbrev ordering!");
+  }
+  { // FLOAT abbrev for CONSTANTS_BLOCK.
+    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
+    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_FLOAT));
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));
+    if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
+                                   Abbv) != CONSTANTS_FLOAT_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
 
@@ -1265,9 +1209,6 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
   // Emit top-level description of module, including inline asm,
   // descriptors for global variables, and function prototype info.
   WriteModuleInfo(M, VE, Stream);
-
-  // Emit constants.
-  WriteModuleConstants(VE, Stream);
 
   // Emit names for globals/functions etc.
   WriteValueSymbolTable(M->getValueSymbolTable(), VE, Stream);

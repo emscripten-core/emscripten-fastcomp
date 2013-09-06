@@ -77,22 +77,10 @@ public:
 
 class NaClBitcodeReaderValueList {
   std::vector<WeakVH> ValuePtrs;
-
-  /// ResolveConstants - As we resolve forward-referenced constants, we add
-  /// information about them to this vector.  This allows us to resolve them in
-  /// bulk instead of resolving each reference at a time.  See the code in
-  /// ResolveConstantForwardRefs for more information about this.
-  ///
-  /// The key of this vector is the placeholder constant, the value is the slot
-  /// number that holds the resolved value.
-  typedef std::vector<std::pair<Constant*, unsigned> > ResolveConstantsTy;
-  ResolveConstantsTy ResolveConstants;
   LLVMContext &Context;
 public:
   NaClBitcodeReaderValueList(LLVMContext &C) : Context(C) {}
-  ~NaClBitcodeReaderValueList() {
-    assert(ResolveConstants.empty() && "Constants not resolved?");
-  }
+  ~NaClBitcodeReaderValueList() {}
 
   // vector compatibility methods
   unsigned size() const { return ValuePtrs.size(); }
@@ -102,7 +90,6 @@ public:
   }
 
   void clear() {
-    assert(ResolveConstants.empty() && "Constants not resolved?");
     ValuePtrs.clear();
   }
 
@@ -124,12 +111,6 @@ public:
   // already been declared.
   bool createValueFwdRef(unsigned Idx, Type *Ty);
 
-  // Declares the type of the forward-referenced constant Idx.
-  // Returns 0 if an error occurred.
-  // TODO(kschimpf) Convert these to be like createValueFwdRef and
-  // getValueFwdRef.
-  Constant *getConstantFwdRef(unsigned Idx, Type *Ty);
-
   // Gets the forward reference value for Idx.
   Value *getValueFwdRef(unsigned Idx);
 
@@ -149,10 +130,6 @@ public:
   // replaces uses of the global variable forward reference with the
   // value GV.
   void AssignGlobalVar(GlobalVariable *GV, unsigned Idx);
-
-  /// ResolveConstantForwardRefs - Once all constants are read, this method bulk
-  /// resolves any forward references.
-  void ResolveConstantForwardRefs();
 };
 
 

@@ -153,12 +153,18 @@ namespace naclbitc {
   // constant and maintains an implicit current type value.
   enum NaClConstantsCodes {
     CST_CODE_SETTYPE       =  1,  // SETTYPE:       [typeid]
-    CST_CODE_NULL          =  2,  // NULL
+    CST_CODE_NULL          =  2,  // PNaCl version 1 (early versions only).
+                                  //    NULL
+                                  // Not used in PNaCl otherwise (i.e.
+                                  // PNaCl versions 1+).
     CST_CODE_UNDEF         =  3,  // UNDEF
     CST_CODE_INTEGER       =  4,  // INTEGER:       [intval]
     CST_CODE_WIDE_INTEGER  =  5,  // Not used in PNaCl.
     CST_CODE_FLOAT         =  6,  // FLOAT:         [fpval]
-    CST_CODE_AGGREGATE     =  7,  // AGGREGATE:     [n x value number]
+    CST_CODE_AGGREGATE     =  7,  // PNaCl version 1 (early versions only).
+                                  // AGGREGATE:     [n x value number]
+                                  // Not used in PNaCl otherwise (i.e.
+                                  // PNaCl versions 1+).
     CST_CODE_STRING        =  8,  // Not used in PNaCl.
     CST_CODE_CSTRING       =  9,  // Not used in PNaCl.
     CST_CODE_CE_BINOP      = 10,  // Not used in PNaCl.
@@ -173,7 +179,10 @@ namespace naclbitc {
     CST_CODE_CE_SHUFVEC_EX = 19,  // Not used in PNaCl.
     CST_CODE_CE_INBOUNDS_GEP = 20,// Not used in PNaCl.
     CST_CODE_BLOCKADDRESS  = 21,  // Not used in PNaCl.
-    CST_CODE_DATA          = 22,  // DATA:          [n x elements]
+    CST_CODE_DATA          = 22,  // PNaCl version 1 (early versions only).
+                                  // DATA:          [n x elements]
+                                  // Not used in PNaCl otherwise (i.e.
+                                  // PNaCl versions 1+).
     CST_CODE_INLINEASM     = 23   // Not used in PNaCl.
   };
 
