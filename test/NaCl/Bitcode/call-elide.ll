@@ -164,13 +164,13 @@ define void @DirectCallBitcastArg(i32 %i) {
 ; ------------------------------------------------------
 ; Test how we handle a direct call with a pointer to scalar conversion.
 
-define void @DirectCallScalarArg(i32* %ptr) {
+define void @DirectCallScalarArg() {
   %1 = ptrtoint [4 x i8]* @bytes to i32
   call void @foo(i32 %1)
   ret void
 }
 
-; TD1:      define void @DirectCallScalarArg(i32* %ptr) {
+; TD1:      define void @DirectCallScalarArg() {
 ; TD1-NEXT:   %1 = ptrtoint [4 x i8]* @bytes to i32
 ; TD1-NEXT:   call void @foo(i32 %1)
 ; TD1-NEXT:   ret void
@@ -178,12 +178,12 @@ define void @DirectCallScalarArg(i32* %ptr) {
 
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=2 op1=0 op2=9/>
-; PF1-NEXT:   <INST_CALL op0=0 op1=15 op2=1/>
+; PF1-NEXT:   <INST_CAST op0=1 op1=0 op2=9/>
+; PF1-NEXT:   <INST_CALL op0=0 op1=14 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
-; TD2:      define void @DirectCallScalarArg(i32* %ptr) {
+; TD2:      define void @DirectCallScalarArg() {
 ; TD2-NEXT:   %1 = ptrtoint [4 x i8]* @bytes to i32
 ; TD2-NEXT:   call void @foo(i32 %1)
 ; TD2-NEXT:   ret void
@@ -191,7 +191,7 @@ define void @DirectCallScalarArg(i32* %ptr) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL op0=0 op1=14 op2=2/>
+; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
@@ -275,14 +275,14 @@ define void @IndirectCallPtrToIntArg(i32 %i) {
 ; ------------------------------------------------------
 ; Test how we handle an indirect call with a pointer to scalar conversion.
 
-define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
+define void @IndirectCallScalarArg(i32 %i) {
   %1 = inttoptr i32 %i to void (i32)*
   %2 = ptrtoint [4 x i8]* @bytes to i32
   call void %1(i32 %2)
   ret void
 }
 
-; TD1:      define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
+; TD1:      define void @IndirectCallScalarArg(i32 %i) {
 ; TD1-NEXT:   %1 = inttoptr i32 %i to void (i32)*
 ; TD1-NEXT:   %2 = ptrtoint [4 x i8]* @bytes to i32
 ; TD1-NEXT:   call void %1(i32 %2)
@@ -291,13 +291,13 @@ define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
 
 ; PF1:      <FUNCTION_BLOCK>
 ; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=2 op1=3 op2=10/>
-; PF1-NEXT:   <INST_CAST op0=4 op1=0 op2=9/>
+; PF1-NEXT:   <INST_CAST op0=1 op1=3 op2=10/>
+; PF1-NEXT:   <INST_CAST op0=3 op1=0 op2=9/>
 ; PF1-NEXT:   <INST_CALL op0=0 op1=2 op2=1/>
 ; PF1-NEXT:   <INST_RET/>
 ; PF1:      </FUNCTION_BLOCK>
 
-; TD2:      define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
+; TD2:      define void @IndirectCallScalarArg(i32 %i) {
 ; TD2-NEXT:   %1 = ptrtoint [4 x i8]* @bytes to i32
 ; TD2-NEXT:   %2 = inttoptr i32 %i to void (i32)*
 ; TD2-NEXT:   call void %2(i32 %1)
@@ -306,7 +306,7 @@ define void @IndirectCallScalarArg(i32 %i, i32* %ptr) {
 
 ; PF2:      <FUNCTION_BLOCK>
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=2 op2=1 op3=3/>
+; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=1 op3=2/>
 ; PF2-NEXT:   <INST_RET/>
 ; PF2:      </FUNCTION_BLOCK>
 
