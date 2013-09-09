@@ -3,11 +3,11 @@
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s
+; RUN:              | FileCheck %s -check-prefix=PF1
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s
+; RUN:              | FileCheck %s -check-prefix=PF2
 
 ; Test case where we switch on a variable.
 define void @SwitchVariable(i32) {
@@ -47,11 +47,17 @@ end:
   ret void
 }
 
-; CHECK:      <TYPE_BLOCK_ID>
-; CHECK-NEXT:   <NUMENTRY op0=4/>
-; CHECK-NEXT:   <VOID/>
-; CHECK-NEXT:   <INTEGER op0=32/>
-; CHECK-NEXT:   <FUNCTION op0={{.*}} op1={{.*}} op2={{.*}}/>
-; CHECK-NEXT:   <POINTER op0={{.*}} op1={{.*}}/>
-; CHECK-NEXT: </TYPE_BLOCK_ID>
+; PF1:      <TYPE_BLOCK_ID>
+; PF1-NEXT:   <NUMENTRY op0=4/>
+; PF1-NEXT:   <VOID/>
+; PF1-NEXT:   <INTEGER op0=32/>
+; PF1-NEXT:   <FUNCTION op0={{.*}} op1={{.*}} op2={{.*}}/>
+; PF1-NEXT:   <POINTER op0={{.*}} op1={{.*}}/>
+; PF1-NEXT: </TYPE_BLOCK_ID>
 
+; PF2:      <TYPE_BLOCK_ID>
+; PF2-NEXT:   <NUMENTRY op0=3/>
+; PF2-NEXT:   <VOID/>
+; PF2-NEXT:   <INTEGER op0=32/>
+; PF2-NEXT:   <FUNCTION op0={{.*}} op1={{.*}} op2={{.*}}/>
+; PF2-NEXT: </TYPE_BLOCK_ID>

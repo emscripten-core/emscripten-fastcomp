@@ -227,6 +227,8 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       TypeVals.push_back(cast<IntegerType>(T)->getBitWidth());
       break;
     case Type::PointerTyID: {
+      if (PNaClVersion >= 2)
+        report_fatal_error("Pointer types are not supported in PNaCl bitcode");
       PointerType *PTy = cast<PointerType>(T);
       // POINTER: [pointee type, address space]
       Code = naclbitc::TYPE_CODE_POINTER;
@@ -550,7 +552,7 @@ static void EmitFnForwardTypeRef(const Value *V,
       VE.InsertFnForwardTypeRef(ValID)) {
     SmallVector<unsigned, 2> Vals;
     Vals.push_back(ValID);
-    Vals.push_back(VE.getTypeID(VE.NormalizeScalarType(V->getType())));
+    Vals.push_back(VE.getTypeID(VE.NormalizeType(V->getType())));
     Stream.EmitRecord(naclbitc::FUNC_CODE_INST_FORWARDTYPEREF, Vals,
                       FUNCTION_INST_FORWARDTYPEREF_ABBREV);
   }

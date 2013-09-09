@@ -154,13 +154,11 @@ public:
     return T == IntPtrType;
   }
 
-  Type *NormalizeScalarType(Type *Ty) const;
+  Type *NormalizeType(Type *Ty) const;
 
 private:
   void OptimizeTypes(const Module *M);
   void OptimizeConstants(unsigned CstStart, unsigned CstEnd);
-
-  Type *NormalizeType(Type *Ty) const;
 
   void EnumerateValue(const Value *V);
   void EnumerateType(Type *T, bool InsideOptimizeTypes=false);

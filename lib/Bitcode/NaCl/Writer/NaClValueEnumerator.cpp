@@ -298,25 +298,27 @@ void NaClValueEnumerator::EnumerateValue(const Value *VIn) {
 }
 
 
-Type *NaClValueEnumerator::NormalizeScalarType(Type *Ty) const {
-  // Strip pointer types.
-  if (Ty->isPointerTy() && PNaClVersion >= 2)
-    Ty = IntPtrType;
-  return Ty;
-}
-
 Type *NaClValueEnumerator::NormalizeType(Type *Ty) const {
+  if (PNaClVersion == 1)
+    return Ty;
+
+  if (Ty->isPointerTy())
+    return IntPtrType;
   if (FunctionType *FTy = dyn_cast<FunctionType>(Ty)) {
     SmallVector<Type *, 8> ArgTypes;
     for (unsigned I = 0, E = FTy->getNumParams(); I < E; ++I)
-      ArgTypes.push_back(NormalizeScalarType(FTy->getParamType(I)));
-    Ty = FunctionType::get(NormalizeScalarType(FTy->getReturnType()),
-                           ArgTypes, false);
+      ArgTypes.push_back(NormalizeType(FTy->getParamType(I)));
+    return FunctionType::get(NormalizeType(FTy->getReturnType()),
+                             ArgTypes, false);
   }
   return Ty;
 }
 
 void NaClValueEnumerator::EnumerateType(Type *Ty, bool InsideOptimizeTypes) {
+  // Pointer types do not need to be given type IDs.
+  if (Ty->isPointerTy() && PNaClVersion >= 2)
+    Ty = Ty->getPointerElementType();
+
   Ty = NormalizeType(Ty);
 
   // The label type does not need to be given a type ID.

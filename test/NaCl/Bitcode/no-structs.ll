@@ -3,11 +3,11 @@
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s 
+; RUN:              | FileCheck %s -check-prefix=PF1
 
 ; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s 
+; RUN:              | FileCheck %s -check-prefix=PF2
 
 declare void @func()
 
@@ -28,11 +28,18 @@ define void @CheckPtrToIntGlobal() {
 
 ; Note that neither pnacl-version defines a struct type.
 
-; CHECK:      <TYPE_BLOCK_ID>
-; CHECK-NEXT:   <NUMENTRY op0=5/>
-; CHECK-NEXT:   <INTEGER op0=32/>
-; CHECK-NEXT:   <VOID/>
-; CHECK-NEXT:   <FUNCTION op0=0 op1=1/>
-; CHECK-NEXT:   <POINTER op0=2 op1=0/>
-; CHECK-NEXT:   <POINTER op0=0 op1=0/>
-; CHECK-NEXT: </TYPE_BLOCK_ID>
+; PF1:      <TYPE_BLOCK_ID>
+; PF1-NEXT:   <NUMENTRY op0=5/>
+; PF1-NEXT:   <INTEGER op0=32/>
+; PF1-NEXT:   <VOID/>
+; PF1-NEXT:   <FUNCTION op0=0 op1=1/>
+; PF1-NEXT:   <POINTER op0=2 op1=0/>
+; PF1-NEXT:   <POINTER op0=0 op1=0/>
+; PF1-NEXT: </TYPE_BLOCK_ID>
+
+; PF2:      <TYPE_BLOCK_ID>
+; PF2-NEXT:   <NUMENTRY op0=3/>
+; PF2-NEXT:   <INTEGER op0=32/>
+; PF2-NEXT:   <VOID/>
+; PF2-NEXT:   <FUNCTION op0=0 op1=1/>
+; PF2-NEXT: </TYPE_BLOCK_ID>
