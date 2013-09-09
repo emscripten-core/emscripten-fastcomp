@@ -1016,35 +1016,35 @@ start:
 ; TD2:      define void @PhiForwardRefs(i1) {
 ; TD2-NEXT:   br label %start
 ; TD2:      merge
-; TD2-NEXT:   %2 = phi i32 [ %6, %true ], [ %9, %false ]
-; TD2-NEXT:   %3 = phi i32 [ %5, %true ], [ %8, %false ]
+; TD2-NEXT:   %2 = phi i32 [ %11, %true ], [ %11, %false ]
+; TD2-NEXT:   %3 = phi i32 [ %5, %true ], [ %7, %false ]
 ; TD2-NEXT:   ret void
 ; TD2:      true:
-; TD2-NEXT:   %4 = bitcast i8* %10 to i32*
+; TD2-NEXT:   %4 = inttoptr i32 %9 to i32*
 ; TD2-NEXT:   %5 = load i32* %4
-; TD2-NEXT:   %6 = ptrtoint i8* %11 to i32
 ; TD2-NEXT:   br label %merge
 ; TD2:      false:
-; TD2-NEXT:   %7 = bitcast i8* %10 to i32*
-; TD2-NEXT:   %8 = load i32* %7
-; TD2-NEXT:   %9 = ptrtoint i8* %11 to i32
+; TD2-NEXT:   %6 = inttoptr i32 %9 to i32*
+; TD2-NEXT:   %7 = load i32* %6
 ; TD2-NEXT:   br label %merge
 ; TD2:      start:
+; TD2-NEXT:   %8 = alloca i8, i32 4, align 8
+; TD2-NEXT:   %9 = ptrtoint i8* %8 to i32
 ; TD2-NEXT:   %10 = alloca i8, i32 4, align 8
-; TD2-NEXT:   %11 = alloca i8, i32 4, align 8
+; TD2-NEXT:   %11 = ptrtoint i8* %10 to i32
 ; TD2-NEXT:   br i1 %0, label %true, label %false
 ; TD2-NEXT: }
 
 ; PF2:        <FUNCTION_BLOCK>
 ; PF2:          </CONSTANTS_BLOCK>
 ; PF2-NEXT:     <INST_BR op0=4/>
-; PF2-NEXT:     <FORWARDTYPEREF op0=28 op1=3/>
+; PF2-NEXT:     <FORWARDTYPEREF op0=28 op1=0/>
 ; PF2-NEXT:     <INST_PHI op0=0 op1=11 op2=2 op3=11 op4=3/>
 ; PF2-NEXT:     <FORWARDTYPEREF op0=25 op1=0/>
 ; PF2-NEXT:     <FORWARDTYPEREF op0=26 op1=0/>
 ; PF2-NEXT:     <INST_PHI op0=0 op1=3 op2=2 op3=5 op4=3/>
 ; PF2-NEXT:     <INST_RET/>
-; PF2-NEXT:     <FORWARDTYPEREF op0=27 op1=3/>
+; PF2-NEXT:     <FORWARDTYPEREF op0=27 op1=0/>
 ; PF2-NEXT:     <INST_LOAD op0=4294967294 op1=0 op2=0/>
 ; PF2-NEXT:     <INST_BR op0=1/>
 ; PF2-NEXT:     <INST_LOAD op0=4294967295 op1=0 op2=0/>

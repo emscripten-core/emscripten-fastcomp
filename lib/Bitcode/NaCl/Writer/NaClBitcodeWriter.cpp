@@ -550,7 +550,7 @@ static void EmitFnForwardTypeRef(const Value *V,
       VE.InsertFnForwardTypeRef(ValID)) {
     SmallVector<unsigned, 2> Vals;
     Vals.push_back(ValID);
-    Vals.push_back(VE.getTypeID(V->getType()));
+    Vals.push_back(VE.getTypeID(VE.NormalizeScalarType(V->getType())));
     Stream.EmitRecord(naclbitc::FUNC_CODE_INST_FORWARDTYPEREF, Vals,
                       FUNCTION_INST_FORWARDTYPEREF_ABBREV);
   }

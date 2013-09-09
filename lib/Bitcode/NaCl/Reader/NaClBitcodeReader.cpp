@@ -1579,8 +1579,16 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     }
 
     // Non-void values get registered in the value table for future use.
-    if (I && !I->getType()->isVoidTy())
-      ValueList.AssignValue(I, NextValueNo++);
+    if (I && !I->getType()->isVoidTy()) {
+      Value *NewVal = I;
+      if (GetPNaClVersion() >= 2 &&
+          NewVal->getType()->isPointerTy() &&
+          ValueList.getValueFwdRef(NextValueNo)) {
+        // Forward-referenced values cannot have pointer type.
+        NewVal = ConvertOpToScalar(NewVal, CurBBNo);
+      }
+      ValueList.AssignValue(NewVal, NextValueNo++);
+    }
   }
 
 OutOfRecordLoop:
