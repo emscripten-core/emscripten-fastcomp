@@ -30,6 +30,8 @@ declare void @llvm.nacl.atomic.store.i64(i64, i64*, i32)
 declare i32 @llvm.nacl.atomic.rmw.i32(i32, i32*, i32, i32)
 declare i64 @llvm.nacl.atomic.rmw.i64(i32, i64*, i64, i32)
 
+declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
+
 
 ; TD: declare i8* @llvm.stacksave()
 ; TD: declare void @llvm.stackrestore(i8*)
@@ -53,3 +55,5 @@ declare i64 @llvm.nacl.atomic.rmw.i64(i32, i64*, i64, i32)
 
 ; TD: declare i32 @llvm.nacl.atomic.rmw.i32(i32, i32*, i32, i32)
 ; TD: declare i64 @llvm.nacl.atomic.rmw.i64(i32, i64*, i64, i32)
+
+; TD: declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)

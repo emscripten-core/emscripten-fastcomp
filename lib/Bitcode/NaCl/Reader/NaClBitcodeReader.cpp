@@ -809,6 +809,9 @@ FunctionType *NaClBitcodeReader::AddPointerTypesToIntrinsicType(
   } else if (Name.startswith("llvm.nacl.atomic.rmw.")) {
     assert(ArgTypes.size() >= 3);
     ArgTypes[1] = ArgTypes[2]->getPointerTo();
+  } else if (Name == "llvm.nacl.atomic.is.lock.free") {
+    assert(ArgTypes.size() >= 2);
+    ArgTypes[1] = Type::getInt8PtrTy(Context);
   }
   return FunctionType::get(ReturnTy, ArgTypes, false);
 }
