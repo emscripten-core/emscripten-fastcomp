@@ -326,6 +326,10 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       break;
     case naclbitc::TYPE_CODE_POINTER: { // POINTER: [pointee type] or
                                     //          [pointee type, address space]
+      // TODO(mseaborn): Remove this case when we drop support for v1
+      // of the PNaCl bitcode format.
+      if (GetPNaClVersion() >= 2)
+        return Error("Pointer types not supported in PNaCl bitcode");
       if (Record.size() < 1)
         return Error("Invalid POINTER type record");
       unsigned AddressSpace = 0;
