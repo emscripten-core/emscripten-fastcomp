@@ -10,6 +10,7 @@
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
@@ -118,7 +119,7 @@ std::string NaClBitcodeHeaderField::Contents() const {
     ss << "]";
     break;
   default:
-    report_fatal_error("PNaCL bitcode file contains unknown field type");
+    report_fatal_error("PNaCl bitcode file contains unknown field type");
   }
   return ss.str();
 }
@@ -140,13 +141,19 @@ bool NaClBitcodeHeader::ReadPrefix(const unsigned char *BufPtr,
                                    const unsigned char *BufEnd,
                                    unsigned &NumFields, unsigned &NumBytes) {
   // Must contain PEXE.
-  if (!isNaClBitcode(BufPtr, BufEnd))
+  if (!isNaClBitcode(BufPtr, BufEnd)) {
+    UnsupportedMessage = "Invalid PNaCl bitcode header";
+    if (isBitcode(BufPtr, BufEnd)) {
+      UnsupportedMessage += " (to run in Chrome, bitcode files must be "
+          "finalized using pnacl-finalize)";
+    }
     return true;
+  }
   BufPtr += WordSize;
 
   // Read #Fields and number of bytes needed for the header.
   if (BufPtr + WordSize > BufEnd)
-    return true;
+    return UnsupportedError("Bitcode read failure");
   NumFields = static_cast<unsigned>(BufPtr[0]) |
       (static_cast<unsigned>(BufPtr[1]) << 8);
   NumBytes = static_cast<unsigned>(BufPtr[2]) |
@@ -165,7 +172,7 @@ bool NaClBitcodeHeader::ReadFields(const unsigned char *BufPtr,
     NaClBitcodeHeaderField *Field = new NaClBitcodeHeaderField();
     Fields.push_back(Field);
     if (!Field->Read(BufPtr, BufEnd - BufPtr))
-      return true;
+      return UnsupportedError("Bitcode read failure");
     size_t FieldSize = Field->GetTotalSize();
     BufPtr += FieldSize;
   }
@@ -177,11 +184,11 @@ bool NaClBitcodeHeader::Read(const unsigned char *&BufPtr,
   unsigned NumFields;
   unsigned NumBytes;
   if (ReadPrefix(BufPtr, BufEnd, NumFields, NumBytes))
-    return true;
+    return true; // ReadPrefix sets UnsupportedMessage
   BufPtr += 2 * WordSize;
 
   if (ReadFields(BufPtr, BufEnd, NumFields, NumBytes))
-    return true;
+    return true; // ReadFields sets UnsupportedMessage
   BufPtr += NumBytes;
   InstallFields();
   return false;
@@ -192,9 +199,10 @@ bool NaClBitcodeHeader::Read(StreamableMemoryObject *Bytes) {
   unsigned NumBytes;
   {
     unsigned char Buffer[2 * WordSize];
-    if (Bytes->readBytes(0, sizeof(Buffer), Buffer, NULL) ||
-        ReadPrefix(Buffer, Buffer + sizeof(Buffer), NumFields, NumBytes))
-      return true;
+    if (Bytes->readBytes(0, sizeof(Buffer), Buffer, NULL))
+      return UnsupportedError("Bitcode read failure");
+    if (ReadPrefix(Buffer, Buffer + sizeof(Buffer), NumFields, NumBytes))
+      return true; // ReadPrefix sets UnsupportedMessage
   }
   uint8_t *Header = new uint8_t[NumBytes];
   bool failed =
@@ -202,7 +210,7 @@ bool NaClBitcodeHeader::Read(StreamableMemoryObject *Bytes) {
       ReadFields(Header, Header + NumBytes, NumFields, NumBytes);
   delete[] Header;
   if (failed)
-    return true;
+    return UnsupportedError("Bitcode read failure");
   InstallFields();
   return false;
 }

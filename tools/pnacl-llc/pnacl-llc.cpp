@@ -28,6 +28,7 @@
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -52,6 +53,7 @@ using namespace llvm;
 int srpc_main(int argc, char **argv);
 int getObjectFileFD();
 DataStreamer *getNaClBitcodeStreamer();
+fatal_error_handler_t getSRPCErrorHandler();
 #endif
 
 cl::opt<NaClFileFormat>
@@ -215,6 +217,10 @@ int llc_main(int argc, char **argv) {
   LLVMContext &Context = getGlobalContext();
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
+#if defined(__native_client__)
+  install_fatal_error_handler(getSRPCErrorHandler(), NULL);
+#endif
+
   // Initialize targets first, so that --version shows registered targets.
   InitializeAllTargets();
   InitializeAllTargetMCs();
@@ -252,11 +258,15 @@ int llc_main(int argc, char **argv) {
 static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
                                  const Twine &Name) {
   if (PNaClABIVerify && Reporter.getErrorCount() > 0) {
-    errs() << (PNaClABIVerifyFatalErrors ? "ERROR: " : "WARNING: ");
-    errs() << Name << " is not valid PNaCl bitcode:\n";
-    Reporter.printErrors(errs());
-    if (PNaClABIVerifyFatalErrors)
-      exit(1);
+    std::string errors;
+    raw_string_ostream os(errors);
+    os << (PNaClABIVerifyFatalErrors ? "ERROR: " : "WARNING: ");
+    os << Name << " is not valid PNaCl bitcode:\n";
+    Reporter.printErrors(os);
+    if (PNaClABIVerifyFatalErrors) {
+      report_fatal_error(os.str());
+    }
+    errs() << os.str();
   }
   Reporter.reset();
 }
@@ -273,11 +283,12 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
 #if defined(__native_client__)
   if (LazyBitcode) {
     std::string StrError;
+    std::string DisplayFilename("<PNaCl-translated pexe>");
     M.reset(getNaClStreamedBitcodeModule(
-        std::string("<SRPC stream>"),
+        DisplayFilename,
         getNaClBitcodeStreamer(), Context, &StrError));
     if (!StrError.empty())
-      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
+      Err = SMDiagnostic(DisplayFilename, SourceMgr::DK_Error, StrError);
   } else {
     llvm_unreachable("native client SRPC only supports streaming");
   }
@@ -287,8 +298,13 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
 
   mod = M.get();
   if (mod == 0) {
+#if defined(__native_client__)
+    report_fatal_error(Err.getMessage());
+#else
+    // Err.print is prettier, so use it for the non-sandboxed translator.
     Err.print(ProgramName.data(), errs());
     return 1;
+#endif
   }
 
   if (PNaClABIVerify) {

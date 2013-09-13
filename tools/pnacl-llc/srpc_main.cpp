@@ -32,6 +32,7 @@
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Option/Option.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/system_error.h"
 
 using namespace llvm;
@@ -202,8 +203,10 @@ void *run_streamed(void *arg) {
   StreamingThreadData *data = reinterpret_cast<StreamingThreadData *>(arg);
   data->CmdLineVec()->push_back("-streaming-bitcode");
   if (DoTranslate(data->CmdLineVec(), data->ObjectFD()) != 0) {
-    fprintf(stderr, "DoTranslate failed.\n");
-    srpc_streamer->setError();
+    // llc_main only returns 1 (as opposed to calling report_fatal_error)
+    // in conditions we never expect to see in the browser (e.g. bad
+    // command-line flags).
+    srpc_streamer->setFatalError("llc_main unspecified failure");
     return NULL;
   }
   delete data;
@@ -350,6 +353,14 @@ const struct NaClSrpcHandlerDesc srpc_methods[] = {
 int getObjectFileFD() { return object_file_fd; }
 
 DataStreamer *getNaClBitcodeStreamer() { return NaClBitcodeStreamer; }
+
+// Called from the compilation thread
+void FatalErrorHandler(void *user_data, const std::string& reason,
+                       bool gen_crash_diag) {
+  srpc_streamer->setFatalError(reason);
+}
+
+fatal_error_handler_t getSRPCErrorHandler() { return FatalErrorHandler; }
 
 int srpc_main(int argc, char **argv) {
   if (!NaClSrpcModuleInit()) {

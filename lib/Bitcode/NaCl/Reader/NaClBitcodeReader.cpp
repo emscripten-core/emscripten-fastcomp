@@ -997,7 +997,7 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
   M->setDataLayout("e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-"
                    "f32:32:32-f64:64:64-p:32:32:32-v128:32:32");
 
-  if (InitStream()) return Error(Header.Unsupported());
+  if (InitStream()) return true; // InitSream will set the error string.
 
   // We expect a number of well-defined blocks, though we don't necessarily
   // need to understand them all.
@@ -1772,22 +1772,26 @@ bool NaClBitcodeReader::InitStreamFromBuffer() {
     return Error("Bitcode stream should be a multiple of 4 bytes in length");
 
   if (Header.Read(BufPtr, BufEnd))
-    return Error("Invalid PNaCl bitcode header");
+    return Error(Header.Unsupported());
 
   StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd));
   Stream.init(*StreamFile);
 
-  return AcceptHeader();
+  if (AcceptHeader())
+    return Error(Header.Unsupported());
+  return false;
 }
 
 bool NaClBitcodeReader::InitLazyStream() {
   StreamingMemoryObject *Bytes = new StreamingMemoryObject(LazyStreamer);
   if (Header.Read(Bytes))
-    return Error("Invalid PNaCl bitcode header");
+    return Error(Header.Unsupported());
 
   StreamFile.reset(new NaClBitstreamReader(Bytes, Header.getHeaderSize()));
   Stream.init(*StreamFile);
-  return AcceptHeader();
+  if (AcceptHeader())
+    return Error(Header.Unsupported());
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

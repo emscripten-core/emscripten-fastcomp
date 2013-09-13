@@ -98,11 +98,12 @@ public:
   size_t gotChunk(unsigned char *bytes, size_t len);
   // Called by the RPC thread. Wait for the compilation thread to finish.
   int streamEnd(std::string *ErrMsg);
-  // Called by the compilation thread. Signal that there was a compilation
-  // error so the RPC thread can abort the stream.
-  void setError() { Error = true; }
+  // Called by the compilation thread. Set the error condition and also
+  // terminate the thread.
+  void setFatalError(const std::string& message);
 private:
-  bool Error;
+  int Error;
+  std::string ErrorMessage;
   QueueStreamer Q;
   pthread_t CompileThread;
 };

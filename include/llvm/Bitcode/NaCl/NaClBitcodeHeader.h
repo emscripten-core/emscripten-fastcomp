@@ -16,6 +16,7 @@
 #ifndef LLVM_BITCODE_NACL_NACLBITCODEHEADER_H
 #define LLVM_BITCODE_NACL_NACLBITCODEHEADER_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/DataTypes.h"
 #include <string>
@@ -148,7 +149,7 @@ public:
   ~NaClBitcodeHeader();
 
   /// \brief Installs the fields of the header, defining if the header
-  /// is readable and supported.
+  /// is readable and supported. Sets UnsupportedMessage on failure.
   void InstallFields();
 
   /// \brief Adds a field to the list of fields in a header. Takes ownership
@@ -209,14 +210,20 @@ private:
   // Reads and verifies the first 8 bytes of the header, consisting
   // of the magic number 'PEXE', and the value defining the number
   // of fields and number of bytes used to hold fields.
-  // Returns false if successful.
+  // Returns false if successful, sets UnsupportedMessage otherwise.
   bool ReadPrefix(const unsigned char *BufPtr, const unsigned char *BufEnd,
                   unsigned &NumFields, unsigned &NumBytes);
 
   // Reads and verifies the fields in the header.
-  // Returns false if successful.
+  // Returns false if successful, sets UnsupportedMessage otherwise.
   bool ReadFields(const unsigned char *BufPtr, const unsigned char *BufEnd,
                   unsigned NumFields, unsigned NumBytes);
+
+  // Sets the Unsupported error message and returns true.
+  bool UnsupportedError(StringRef Message) {
+    UnsupportedMessage = Message.str();
+    return true;
+  }
 
 };
 
