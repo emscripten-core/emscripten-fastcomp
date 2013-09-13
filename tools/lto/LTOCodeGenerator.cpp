@@ -225,6 +225,13 @@ bool LTOCodeGenerator::determineTarget(std::string& errMsg) {
     return false;
 
   std::string TripleStr = _linker.getModule()->getTargetTriple();
+  // @LOCALMOD-BEGIN
+  // Pretend that we are ARM for name mangling and assembly conventions.
+  // https://code.google.com/p/nativeclient/issues/detail?id=2554
+  if (TripleStr == "le32-unknown-nacl") {
+    TripleStr = "armv7a-none-nacl-gnueabi";
+  }
+  // @LOCALMOD-END
   if (TripleStr.empty())
     TripleStr = sys::getDefaultTargetTriple();
   llvm::Triple Triple(TripleStr);
