@@ -552,6 +552,14 @@ CodeGenOpt::Level GetCodeGenOptLevel() {
 // Returns the TargetMachine instance or zero if no triple is provided.
 static TargetMachine* GetTargetMachine(Triple TheTriple) {
   std::string Error;
+  // @LOCALMOD-BEGIN: Some optimization passes like SimplifyCFG do nice
+  // things for code size, but only do it if the TTI says it is okay.
+  // For now, use the ARM TTI for LE32 until we have an LE32 TTI.
+  // https://code.google.com/p/nativeclient/issues/detail?id=2554
+  if (TheTriple.getArch() == Triple::le32) {
+    TheTriple.setArchName("armv7a");
+  }
+  // @LOCALMOD-END
   const Target *TheTarget = TargetRegistry::lookupTarget(MArch, TheTriple,
                                                          Error);
   // Some modules don't specify a triple, and this is okay.
