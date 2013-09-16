@@ -38,7 +38,7 @@ using namespace llvm;
 static cl::opt<unsigned>
 PNaClVersion("pnacl-version",
              cl::desc("Specify PNaCl bitcode version to write"),
-             cl::init(1));
+             cl::init(2));
 
 /// These are manifest constants used by the bitcode writer. They do
 /// not need to be kept in sync with the reader, but need to be
