@@ -226,18 +226,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       Code = naclbitc::TYPE_CODE_INTEGER;
       TypeVals.push_back(cast<IntegerType>(T)->getBitWidth());
       break;
-    case Type::PointerTyID: {
-      if (PNaClVersion >= 2)
-        report_fatal_error("Pointer types are not supported in PNaCl bitcode");
-      PointerType *PTy = cast<PointerType>(T);
-      // POINTER: [pointee type, address space]
-      Code = naclbitc::TYPE_CODE_POINTER;
-      TypeVals.push_back(VE.getTypeID(PTy->getElementType()));
-      unsigned AddressSpace = PTy->getAddressSpace();
-      TypeVals.push_back(AddressSpace);
-      if (AddressSpace == 0) AbbrevToUse = TYPE_POINTER_ABBREV;
-      break;
-    }
     case Type::FunctionTyID: {
       FunctionType *FT = cast<FunctionType>(T);
       // FUNCTION: [isvararg, retty, paramty x N]
@@ -420,9 +408,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
   SmallVector<unsigned, 64> Vals;
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
     // FUNCTION:  [type, callingconv, isproto, linkage]
-    Type *Ty = F->getType();
-    if (PNaClVersion >= 2)
-      Ty = Ty->getPointerElementType();
+    Type *Ty = F->getType()->getPointerElementType();
     Vals.push_back(VE.getTypeID(Ty));
     Vals.push_back(GetEncodedCallingConv(F->getCallingConv()));
     Vals.push_back(F->isDeclaration());
@@ -619,12 +605,11 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       Vals.push_back(VE.getTypeID(I.getType()));
       unsigned Opcode = I.getOpcode();
       Vals.push_back(GetEncodedCastOpcode(Opcode, I));
-      if (PNaClVersion >= 2 &&
-          (Opcode == Instruction::PtrToInt ||
-           Opcode == Instruction::IntToPtr ||
-           (Opcode == Instruction::BitCast &&
-            (I.getOperand(0)->getType()->isPointerTy() ||
-             I.getType()->isPointerTy())))) {
+      if (Opcode == Instruction::PtrToInt ||
+          Opcode == Instruction::IntToPtr ||
+          (Opcode == Instruction::BitCast &&
+           (I.getOperand(0)->getType()->isPointerTy() ||
+            I.getType()->isPointerTy()))) {
         ReportIllegalValue("(PNaCl ABI) pointer cast", I);
       }
     } else if (isa<BinaryOperator>(I)) {
@@ -772,39 +757,24 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     Vals.push_back(Log2_32(cast<AllocaInst>(I).getAlignment())+1);
     break;
   case Instruction::Load:
-    // PNaCl Version 1: LOAD: [op, align, vol]
-    // PNaCl Version 2+: LOAD: [op, align, ty]
+    // LOAD: [op, align, ty]
     Code = naclbitc::FUNC_CODE_INST_LOAD;
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     AbbrevToUse = FUNCTION_INST_LOAD_ABBREV;
     Vals.push_back(Log2_32(cast<LoadInst>(I).getAlignment())+1);
-    if (PNaClVersion == 1) {
-      // Note: Even though volatile values are not part of the ABI,
-      // we must add a value to the record for version 1, since the
-      // reader for version 1 has already been released.
-      Vals.push_back(0);
-    } else {
-      Vals.push_back(VE.getTypeID(I.getType()));
-    }
+    Vals.push_back(VE.getTypeID(I.getType()));
     break;
   case Instruction::Store:
-    // PNaCl version 1: STORE: [ptr, val, align, vol]
-    // PNaCl version 2+: STORE: [ptr, val, align]
+    // STORE: [ptr, val, align]
     Code = naclbitc::FUNC_CODE_INST_STORE;
     AbbrevToUse = FUNCTION_INST_STORE_ABBREV;
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     Vals.push_back(Log2_32(cast<StoreInst>(I).getAlignment())+1);
-    if (PNaClVersion == 1) {
-      // Note: Even though volatile values are not part of the ABI,
-      // we must add a value to the record for version 1, since the
-      // reader for version 1 has already been released.
-      Vals.push_back(0);
-    }
     break;
   case Instruction::Call: {
     // CALL: [cc, fnid, args...]
-    // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, fnty, args...]
+    // CALL_INDIRECT: [cc, fnid, fnty, args...]
 
     const CallInst &Call = cast<CallInst>(I);
     const Value* Callee = Call.getCalledValue();
@@ -813,26 +783,22 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
 
     pushValue(Callee, InstID, Vals, VE, Stream);
 
-    if (PNaClVersion == 1) {
+    if (Callee == VE.ElideCasts(Callee)) {
+      // Since the call pointer has not been elided, we know that
+      // the call pointer has the type signature of the called
+      // function.  This implies that the reader can use the type
+      // signature of the callee to figure out how to add casts to
+      // the arguments.
       Code = naclbitc::FUNC_CODE_INST_CALL;
     } else {
-      if (Callee == VE.ElideCasts(Callee)) {
-        // Since the call pointer has not been elided, we know that
-        // the call pointer has the type signature of the called
-        // function.  This implies that the reader can use the type
-        // signature of the callee to figure out how to add casts to
-        // the arguments.
-        Code = naclbitc::FUNC_CODE_INST_CALL;
-      } else {
-        // If the cast was elided, a pointer conversion to a pointer
-        // was applied, meaning that this is an indirect call. For the
-        // reader, this implies that we can't use the type signature
-        // of the callee to resolve elided call arguments, since it is
-        // not known. Hence, we must send the type signature to the
-        // reader.
-        Code = naclbitc::FUNC_CODE_INST_CALL_INDIRECT;
-        Vals.push_back(VE.getTypeID(I.getType()));
-      }
+      // If the cast was elided, a pointer conversion to a pointer
+      // was applied, meaning that this is an indirect call. For the
+      // reader, this implies that we can't use the type signature
+      // of the callee to resolve elided call arguments, since it is
+      // not known. Hence, we must send the type signature to the
+      // reader.
+      Code = naclbitc::FUNC_CODE_INST_CALL_INDIRECT;
+      Vals.push_back(VE.getTypeID(I.getType()));
     }
 
     for (unsigned I = 0, E = Call.getNumArgOperands(); I < E; ++I) {
@@ -1038,15 +1004,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_LOAD));
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
-    if (PNaClVersion == 1) {
-      // Note: Even though volatile values are not part of the ABI,
-      // we must add a value to the record for version 1, since the
-      // reader for version 1 has already been released. By using a constant,
-      // we at least avoid wasting space in the bitcode file.
-      Abbv->Add(NaClBitCodeAbbrevOp(0));
-    } else {
-      Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Typecast
-    }
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Typecast
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_LOAD_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
@@ -1122,13 +1080,6 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Value
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
-    if (PNaClVersion == 1) {
-      // Note: Even though volatile values are not part of the ABI,
-      // we must add a value to the record for version 1, since the
-      // reader for version 1 has already been released. By using a constant,
-      // we at least avoid wasting space in the bitcode file.
-      Abbv->Add(NaClBitCodeAbbrevOp(0));
-    }
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_STORE_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");

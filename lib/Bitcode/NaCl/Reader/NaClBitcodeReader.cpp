@@ -311,35 +311,12 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
     case naclbitc::TYPE_CODE_DOUBLE:    // DOUBLE
       ResultTy = Type::getDoubleTy(Context);
       break;
-    case naclbitc::TYPE_CODE_LABEL:     // LABEL
-      // TODO(mseaborn): Remove this case when we drop support for v1
-      // of the PNaCl bitcode format.
-      if (GetPNaClVersion() >= 2)
-        return Error("Label type not supported in PNaCl bitcode");
-      ResultTy = Type::getLabelTy(Context);
-      break;
     case naclbitc::TYPE_CODE_INTEGER:   // INTEGER: [width]
       if (Record.size() < 1)
         return Error("Invalid Integer type record");
 
       ResultTy = IntegerType::get(Context, Record[0]);
       break;
-    case naclbitc::TYPE_CODE_POINTER: { // POINTER: [pointee type] or
-                                    //          [pointee type, address space]
-      // TODO(mseaborn): Remove this case when we drop support for v1
-      // of the PNaCl bitcode format.
-      if (GetPNaClVersion() >= 2)
-        return Error("Pointer types not supported in PNaCl bitcode");
-      if (Record.size() < 1)
-        return Error("Invalid POINTER type record");
-      unsigned AddressSpace = 0;
-      if (Record.size() == 2)
-        AddressSpace = Record[1];
-      ResultTy = getTypeByID(Record[0]);
-      if (ResultTy == 0) return Error("invalid element type in pointer type");
-      ResultTy = PointerType::get(ResultTy, AddressSpace);
-      break;
-    }
     case naclbitc::TYPE_CODE_FUNCTION: {
       // FUNCTION: [vararg, retty, paramty x N]
       if (Record.size() < 2)
@@ -359,49 +336,6 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       ResultTy = FunctionType::get(ResultTy, ArgTys, Record[0]);
       break;
     }
-    case naclbitc::TYPE_CODE_STRUCT_ANON: {  // STRUCT: [ispacked, eltty x N]
-      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
-      // TODO(kschimpf) Remove this as soon as is feasible.
-      if (GetPNaClVersion() >= 2)
-        return Error("Struct types not supported in PNaCl bitcode");
-      if (Record.size() < 1)
-        return Error("Invalid STRUCT type record");
-      SmallVector<Type*, 8> EltTys;
-      for (unsigned i = 1, e = Record.size(); i != e; ++i) {
-        if (Type *T = getTypeByID(Record[i]))
-          EltTys.push_back(T);
-        else
-          break;
-      }
-      if (EltTys.size() != Record.size()-1)
-        return Error("invalid type in struct type");
-      ResultTy = StructType::get(Context, EltTys, Record[0]);
-      break;
-    }
-    case naclbitc::TYPE_CODE_ARRAY:     // ARRAY: [numelts, eltty]
-      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
-      // TODO(kschimpf) Remove this as soon as is feasible.
-      if (GetPNaClVersion() >= 2)
-        return Error("Array types not supported in PNaCl bitcode");
-      if (Record.size() < 2)
-        return Error("Invalid ARRAY type record");
-      if ((ResultTy = getTypeByID(Record[1])))
-        ResultTy = ArrayType::get(ResultTy, Record[0]);
-      else
-        return Error("Invalid ARRAY type element");
-      break;
-    case naclbitc::TYPE_CODE_VECTOR:    // VECTOR: [numelts, eltty]
-      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
-      // TODO(kschimpf) Remove this as soon as is feasible.
-      if (GetPNaClVersion() >= 2)
-        return Error("Vector types not supported in PNaCl bitcode");
-      if (Record.size() < 2)
-        return Error("Invalid VECTOR type record");
-      if ((ResultTy = getTypeByID(Record[1])))
-        ResultTy = VectorType::get(ResultTy, Record[0]);
-      else
-        return Error("Invalid ARRAY type element");
-      break;
     }
 
     if (NumRecords >= TypeList.size())
@@ -666,13 +600,6 @@ bool NaClBitcodeReader::ParseConstants() {
         return Error("Invalid Type ID in CST_SETTYPE record");
       CurTy = TypeList[Record[0]];
       continue;  // Skip the ValueList manipulation.
-    case naclbitc::CST_CODE_NULL:      // NULL
-      // Deprecated. Only exists in early PNaCl version 1 bitcode files.
-      // TODO(kschimpf) Remove this as soon as is feasible.
-      if (GetPNaClVersion() >= 2)
-        return Error("null constants not supported in PNaCl bitcode");
-      V = Constant::getNullValue(CurTy);
-      break;
     case naclbitc::CST_CODE_INTEGER:   // INTEGER: [intval]
       if (!CurTy->isIntegerTy() || Record.empty())
         return Error("Invalid CST_INTEGER record");
@@ -689,47 +616,6 @@ bool NaClBitcodeReader::ParseConstants() {
                                              APInt(64, Record[0])));
       else
         return Error("Unknown type for FLOAT record");
-      break;
-    }
-
-    case naclbitc::CST_CODE_AGGREGATE: {// AGGREGATE: [n x value number]
-      if (GetPNaClVersion() >= 2)
-        return Error("Aggregate constants not supported in PNaCl bitcode");
-      if (Record.empty())
-        return Error("Invalid CST_AGGREGATE record");
-
-      // Note: The only structured types in early PNaCl version 1 bitcode files
-      // are those used to define selection lists in the switch instruction.
-      // However, these selection lists are not encoded as part of the switch
-      // instruction. Hence, the corresponding aggregate constants are not
-      // used. Hence, using undefined is sufficient.
-      //
-      // This has been fixed in PNaCl version 1+. We only need to handle
-      // old PNaCl version 1 bitcode files.
-      //
-      // TODO(kschimpf): Remove this as soon as feasible.
-
-      V = UndefValue::get(CurTy);
-      break;
-    }
-    case naclbitc::CST_CODE_DATA: {// DATA: [n x value]
-      if (GetPNaClVersion() >= 2)
-        return Error("Data constants not supported in PNaCl bitcode");
-      if (Record.empty())
-        return Error("Invalid CST_DATA record");
-
-      // Note: The only structured types in early PNaCl version 1 bitcode files
-      // are those used to define selection lists in switch instruction
-      // However, these selection lists are not encoded as part of the switch
-      // instruction. Hence, the corresponding data constants are not
-      // used. Hence, using undefined is sufficient.
-      //
-      // This has been fixed in PNaCl version 1+. We only need to handle
-      // old PNaCl version 1 bitcode files.
-      //
-      // TODO(kschimpf): Remove this as soon as feasible.
-
-      V = UndefValue::get(CurTy);
       break;
     }
     }
@@ -881,11 +767,9 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         if (ParseValueSymbolTable())
           return true;
         SeenValueSymbolTable = true;
-        if (GetPNaClVersion() >= 2) {
-          // Now that we know the names of the intrinsics, we can add
-          // pointer types to the intrinsic declarations' types.
-          AddPointerTypesToIntrinsicParams();
-        }
+        // Now that we know the names of the intrinsics, we can add
+        // pointer types to the intrinsic declarations' types.
+        AddPointerTypesToIntrinsicParams();
         break;
       case naclbitc::FUNCTION_BLOCK_ID:
         // If this is the first function body we've seen, reverse the
@@ -952,14 +836,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         return Error("Invalid MODULE_CODE_FUNCTION record");
       Type *Ty = getTypeByID(Record[0]);
       if (!Ty) return Error("Invalid MODULE_CODE_FUNCTION record");
-      FunctionType *FTy;
-      if (GetPNaClVersion() == 1) {
-        if (!Ty->isPointerTy())
-          return Error("Function not a pointer type!");
-        FTy = dyn_cast<FunctionType>(cast<PointerType>(Ty)->getElementType());
-      } else {
-        FTy = dyn_cast<FunctionType>(Ty);
-      }
+      FunctionType *FTy = dyn_cast<FunctionType>(Ty);
       if (!FTy)
         return Error("Function not declared with a function type!");
 
@@ -1260,21 +1137,19 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (Opc == -1 || ResTy == 0)
         return Error("Invalid CAST record");
 
-      if (GetPNaClVersion() >= 2) {
-        // If a ptrtoint cast was elided on the argument of the cast,
-        // add it back. Note: The casts allowed here should match the
-        // casts in NaClValueEnumerator::ExpectsScalarValue.
-        switch (Opc) {
-        case Instruction::Trunc:
-        case Instruction::ZExt:
-        case Instruction::SExt:
-        case Instruction::UIToFP:
-        case Instruction::SIToFP:
-          Op = ConvertOpToScalar(Op, CurBBNo);
-          break;
-        default:
-          break;
-        }
+      // If a ptrtoint cast was elided on the argument of the cast,
+      // add it back. Note: The casts allowed here should match the
+      // casts in NaClValueEnumerator::ExpectsScalarValue.
+      switch (Opc) {
+      case Instruction::Trunc:
+      case Instruction::ZExt:
+      case Instruction::SExt:
+      case Instruction::UIToFP:
+      case Instruction::SIToFP:
+        Op = ConvertOpToScalar(Op, CurBBNo);
+        break;
+      default:
+        break;
       }
 
       I = CastInst::Create((Instruction::CastOps)Opc, Op, ResTy);
@@ -1434,7 +1309,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         unsigned BBIndex = Record[2+i];
         BasicBlock *BB = getBasicBlock(BBIndex);
         if (!V || !BB) return Error("Invalid PHI record");
-        if (GetPNaClVersion() >= 2 && Ty == IntPtrType) {
+        if (Ty == IntPtrType) {
           // Delay installing scalar casts until all instructions of
           // the function are rendered. This guarantees that we insert
           // the conversion just before the incoming edge (or use an
@@ -1459,51 +1334,40 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_LOAD: {
-      // PNaCl version 1: LOAD: [op, align, vol]
-      // PNaCl version 2: LOAD: [op, align, ty]
+      // LOAD: [op, align, ty]
       unsigned OpNum = 0;
       Value *Op;
       if (popValue(Record, &OpNum, NextValueNo, &Op) ||
           Record.size() != 3)
         return Error("Invalid LOAD record");
-      if (GetPNaClVersion() == 1) {
-        I = new LoadInst(Op, "", Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-      } else {
-        // Add pointer cast to op.
-        Type *T = getTypeByID(Record[2]);
-        if (T == 0)
-          return Error("Invalid type for load instruction");
-        Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
-        if (Op == 0) return true;
-        I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
-      }
+
+      // Add pointer cast to op.
+      Type *T = getTypeByID(Record[2]);
+      if (T == 0)
+        return Error("Invalid type for load instruction");
+      Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
+      if (Op == 0) return true;
+      I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
       break;
     }
     case naclbitc::FUNC_CODE_INST_STORE: {
-      // PNaCl version 1: STORE: [ptr, val, align, vol]
-      // PNaCl version 2+: STORE: [ptr, val, align]
+      // STORE: [ptr, val, align]
       unsigned OpNum = 0;
       Value *Val, *Ptr;
       if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
           popValue(Record, &OpNum, NextValueNo, &Val))
         return Error("Invalid STORE record");
-      if (GetPNaClVersion() == 1) {
-        if (OpNum+2 != Record.size())
-          return Error("Invalid STORE record");
-        I = new StoreInst(Val, Ptr, Record[OpNum+1], (1 << Record[OpNum]) >> 1);
-      } else {
-        if (OpNum+1 != Record.size())
-          return Error("Invalid STORE record");
-        Val = ConvertOpToScalar(Val, CurBBNo);
-        Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
-        I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
-      }
+      if (OpNum+1 != Record.size())
+        return Error("Invalid STORE record");
+      Val = ConvertOpToScalar(Val, CurBBNo);
+      Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
+      I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL:
     case naclbitc::FUNC_CODE_INST_CALL_INDIRECT: {
       // CALL: [cc, fnid, arg0, arg1...]
-      // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, fnty, args...]
+      // CALL_INDIRECT: [cc, fnid, fnty, args...]
       if ((Record.size() < 2) ||
           (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT &&
            Record.size() < 3))
@@ -1588,8 +1452,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     // Non-void values get registered in the value table for future use.
     if (I && !I->getType()->isVoidTy()) {
       Value *NewVal = I;
-      if (GetPNaClVersion() >= 2 &&
-          NewVal->getType()->isPointerTy() &&
+      if (NewVal->getType()->isPointerTy() &&
           ValueList.getValueFwdRef(NextValueNo)) {
         // Forward-referenced values cannot have pointer type.
         NewVal = ConvertOpToScalar(NewVal, CurBBNo);

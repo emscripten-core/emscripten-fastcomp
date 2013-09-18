@@ -299,9 +299,6 @@ void NaClValueEnumerator::EnumerateValue(const Value *VIn) {
 
 
 Type *NaClValueEnumerator::NormalizeType(Type *Ty) const {
-  if (PNaClVersion == 1)
-    return Ty;
-
   if (Ty->isPointerTy())
     return IntPtrType;
   if (FunctionType *FTy = dyn_cast<FunctionType>(Ty)) {
@@ -316,7 +313,7 @@ Type *NaClValueEnumerator::NormalizeType(Type *Ty) const {
 
 void NaClValueEnumerator::EnumerateType(Type *Ty, bool InsideOptimizeTypes) {
   // Pointer types do not need to be given type IDs.
-  if (Ty->isPointerTy() && PNaClVersion >= 2)
+  if (Ty->isPointerTy())
     Ty = Ty->getPointerElementType();
 
   Ty = NormalizeType(Ty);
@@ -595,7 +592,6 @@ static inline bool IsInherentPtr(const Value *V) {
 // Note: This function is based on the comments in
 // llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
 const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
-  if (PNaClVersion == 1) return V;
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
     switch (I->getOpcode()) {
     default:

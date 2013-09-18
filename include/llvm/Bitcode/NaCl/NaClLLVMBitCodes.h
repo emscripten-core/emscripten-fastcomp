@@ -14,6 +14,9 @@
 // new features are added, they should have values added at the end of the
 // respective lists.
 //
+// Note: PNaCl version 1 is no longer supported, and has been removed from
+// comments.
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_BITCODE_NACL_NACLLLVMBITCODES_H
@@ -93,14 +96,8 @@ namespace naclbitc {
 
     TYPE_CODE_HALF     =  10,   // Not used in PNaCl.
 
-    TYPE_CODE_ARRAY    = 11,    // PNaCl version 1 (early versions only)
-                                // ARRAY: [numelts, eltty]
-                                // Not used in PNaCl otherwise (i.e.
-                                // PNaCl versions 1+).
-    TYPE_CODE_VECTOR   = 12,    // PNaCl version 1 (early versions only)
-                                // VECTOR: [numelts, eltty]
-                                // Not used in PNaCl otherwise (i.e.
-                                // PNaCl versions 1+).
+    TYPE_CODE_ARRAY    = 11,    // Not used in PNaCl.
+    TYPE_CODE_VECTOR   = 12,    // Not used in PNaCl.
 
     // These are not with the other floating point types because they're
     // a late addition, and putting them in the right place breaks
@@ -113,10 +110,7 @@ namespace naclbitc {
 
     TYPE_CODE_X86_MMX = 17,     // Not used in PNaCl.
 
-    TYPE_CODE_STRUCT_ANON = 18, // PNaCl version 1 (early versions only)
-                                // STRUCT_ANON: [ispacked, eltty x N]
-                                // Not used in PNaCl otherwise (i.e.
-                                // PNaCl versions 1+).
+    TYPE_CODE_STRUCT_ANON = 18, // Not used in PNaCl.
     TYPE_CODE_STRUCT_NAME = 19, // Not used in PNaCl.
     TYPE_CODE_STRUCT_NAMED = 20,// Not used in PNaCl.
 
@@ -153,18 +147,12 @@ namespace naclbitc {
   // constant and maintains an implicit current type value.
   enum NaClConstantsCodes {
     CST_CODE_SETTYPE       =  1,  // SETTYPE:       [typeid]
-    CST_CODE_NULL          =  2,  // PNaCl version 1 (early versions only).
-                                  //    NULL
-                                  // Not used in PNaCl otherwise (i.e.
-                                  // PNaCl versions 1+).
+    CST_CODE_NULL          =  2,  // Not used in PNaCl.
     CST_CODE_UNDEF         =  3,  // UNDEF
     CST_CODE_INTEGER       =  4,  // INTEGER:       [intval]
     CST_CODE_WIDE_INTEGER  =  5,  // Not used in PNaCl.
     CST_CODE_FLOAT         =  6,  // FLOAT:         [fpval]
-    CST_CODE_AGGREGATE     =  7,  // PNaCl version 1 (early versions only).
-                                  // AGGREGATE:     [n x value number]
-                                  // Not used in PNaCl otherwise (i.e.
-                                  // PNaCl versions 1+).
+    CST_CODE_AGGREGATE     =  7,  // Not used in PNaCl.
     CST_CODE_STRING        =  8,  // Not used in PNaCl.
     CST_CODE_CSTRING       =  9,  // Not used in PNaCl.
     CST_CODE_CE_BINOP      = 10,  // Not used in PNaCl.
@@ -179,10 +167,7 @@ namespace naclbitc {
     CST_CODE_CE_SHUFVEC_EX = 19,  // Not used in PNaCl.
     CST_CODE_CE_INBOUNDS_GEP = 20,// Not used in PNaCl.
     CST_CODE_BLOCKADDRESS  = 21,  // Not used in PNaCl.
-    CST_CODE_DATA          = 22,  // PNaCl version 1 (early versions only).
-                                  // DATA:          [n x elements]
-                                  // Not used in PNaCl otherwise (i.e.
-                                  // PNaCl versions 1+).
+    CST_CODE_DATA          = 22,  // Not used in PNaCl.
     CST_CODE_INLINEASM     = 23   // Not used in PNaCl.
   };
 
@@ -305,17 +290,11 @@ namespace naclbitc {
     // 17 is unused.
     // 18 is unused.
     FUNC_CODE_INST_ALLOCA      = 19, // ALLOCA:     [op, align]
-    FUNC_CODE_INST_LOAD        = 20, // PNaCl version 1:
-                                     //    LOAD: [op, align, vol]
-                                     // PNaCl version 2+:
-                                     //    LOAD: [op, align, ty]
+    FUNC_CODE_INST_LOAD        = 20, // LOAD: [op, align, ty]
     // 21 is unused.
     // 22 is unused.
     FUNC_CODE_INST_VAARG       = 23, // Not used in PNaCl.
-    FUNC_CODE_INST_STORE       = 24, // PNaCl version 1:
-                                     //    STORE: [ptr, val, align, vol]
-                                     // PNaCl version 2+:
-                                     //    Store: [ptr, val, align]
+    FUNC_CODE_INST_STORE       = 24, // STORE: [ptr, val, align]
     // 25 is unused.
     FUNC_CODE_INST_EXTRACTVAL  = 26, // Not used in PNaCl.
     FUNC_CODE_INST_INSERTVAL   = 27, // Not used in PNaCl.
@@ -340,7 +319,7 @@ namespace naclbitc {
     FUNC_CODE_INST_LOADATOMIC  = 41, // Not used in PNaCl.
     FUNC_CODE_INST_STOREATOMIC = 42, // Not used in PNaCl.
     FUNC_CODE_INST_FORWARDTYPEREF = 43, // TYPE: [opval, ty]
-    // PNaCl version 2+: CALL_INDIRECT: [cc, fnid, returnty, args...]
+    // CALL_INDIRECT: [cc, fnid, returnty, args...]
     FUNC_CODE_INST_CALL_INDIRECT = 44
   };
 } // End naclbitc namespace
