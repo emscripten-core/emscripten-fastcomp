@@ -1,17 +1,10 @@
 ; Test how we handle eliding inttoptr instructions.
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
-; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s -check-prefix=PF1
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 | pnacl-thaw \
-; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD1
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 \
+; RUN: llvm-as < %s | pnacl-freeze \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF2
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD2
 
 ; ------------------------------------------------------
@@ -22,19 +15,6 @@ define void @SimpleLoad(i32 %i) {
   %2 = load i32* %1, align 4
   ret void
 }
-
-; TD1:      define void @SimpleLoad(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %2 = load i32* %1, align 4
-; TD1-NEXT:   ret void
-; TD1-NEXT: }
-
-; PF1:       <FUNCTION_BLOCK>
-; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_RET/>
-; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define void @SimpleLoad(i32 %i) {
 ; TD2-NEXT:   %1 = inttoptr i32 %i to i32*
@@ -59,25 +39,6 @@ define i32 @TwoLoads(i32 %i) {
   %5 = add i32 %2, %4
   ret i32 %5
 }
-
-; TD1:      define i32 @TwoLoads(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %2 = load i32* %1, align 4
-; TD1-NEXT:   %3 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %4 = load i32* %3, align 4
-; TD1-NEXT:   %5 = add i32 %2, %4
-; TD1-NEXT:   ret i32 %5
-; TD1-NEXT: }
-
-; PF1:       <FUNCTION_BLOCK>
-; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_CAST op0=3 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_BINOP op0=3 op1=1 op2=0/>
-; PF1-NEXT:    <INST_RET op0=1/>
-; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32 @TwoLoads(i32 %i) {
 ; TD2-NEXT:   %1 = inttoptr i32 %i to i32*
@@ -106,23 +67,6 @@ define i32 @TwoLoadOptOneBlock(i32 %i) {
   %4 = add i32 %2, %3
   ret i32 %4
 }
-
-; TD1:      define i32 @TwoLoadOptOneBlock(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %2 = load i32* %1, align 4
-; TD1-NEXT:   %3 = load i32* %1, align 4
-; TD1-NEXT:   %4 = add i32 %2, %3
-; TD1-NEXT:   ret i32 %4
-; TD1-NEXT: }
-
-; PF1:       <FUNCTION_BLOCK>
-; PF1-NEXT:    <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:    <INST_CAST op0=1 op1=1 op2=10/>
-; PF1-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
-; PF1-NEXT:    <INST_LOAD op0=2 op1=3 op2=0/>
-; PF1-NEXT:    <INST_BINOP op0=2 op1=1 op2=0/>
-; PF1-NEXT:    <INST_RET op0=1/>
-; PF1:       </FUNCTION_BLOCK>
 
 ; TD2:      define i32 @TwoLoadOptOneBlock(i32 %i) {
 ; TD2-NEXT:   %1 = inttoptr i32 %i to i32*
@@ -158,32 +102,6 @@ BB:
   ret i32 %7
 }
 
-; TD1:      define i32 @TwoLoadOptTwoBlocks(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD1-NEXT:   %2 = load i32* %1, align 4
-; TD1-NEXT:   %3 = load i32* %1, align 4
-; TD1-NEXT:   %4 = add i32 %2, %3
-; TD1-NEXT:   br label %BB
-; TD1:      BB:
-; TD1-NEXT:   %5 = load i32* %1, align 4
-; TD1-NEXT:   %6 = load i32* %1, align 4
-; TD1-NEXT:   %7 = add i32 %5, %6
-; TD1-NEXT:   ret i32 %7
-; TD1-NEXT: }
-
-; PF1:        <FUNCTION_BLOCK>
-; PF1-NEXT:     <DECLAREBLOCKS op0=2/>
-; PF1-NEXT:     <INST_CAST op0=1 op1=1 op2=10/>
-; PF1-NEXT:     <INST_LOAD op0=1 op1=3 op2=0/>
-; PF1-NEXT:     <INST_LOAD op0=2 op1=3 op2=0/>
-; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
-; PF1-NEXT:     <INST_BR op0=1/>
-; PF1-NEXT:     <INST_LOAD op0=4 op1=3 op2=0/>
-; PF1-NEXT:     <INST_LOAD op0=5 op1=3 op2=0/>
-; PF1-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
-; PF1-NEXT:     <INST_RET op0=1/>
-; PF1:        </FUNCTION_BLOCK>
-
 ; TD2:      define i32 @TwoLoadOptTwoBlocks(i32 %i) {
 ; TD2-NEXT:   %1 = inttoptr i32 %i to i32*
 ; TD2-NEXT:   %2 = load i32* %1, align 4
@@ -218,19 +136,6 @@ define void @SimpleStore(i32 %i) {
   store i32 %i, i32* %1, align 4
   ret void
 }
-
-; TD1:      define void @SimpleStore(i32 %i) {
-; TD1-NEXT:   %1 = inttoptr i32 %i to i32*
-; TD1-NEXT:   store i32 %i, i32* %1, align 4
-; TD1-NEXT:   ret void
-; TD1-NEXT: }
-
-; PF1:      <FUNCTION_BLOCK>
-; PF1-NEXT:   <DECLAREBLOCKS op0=1/>
-; PF1-NEXT:   <INST_CAST op0=1 op1=1 op2=10/>
-; PF1-NEXT:   <INST_STORE op0=1 op1=2 op2=3 op3=0/>
-; PF1-NEXT:   <INST_RET/>
-; PF1:      </FUNCTION_BLOCK>
 
 ; TD2:      define void @SimpleStore(i32 %i) {
 ; TD2-NEXT:   %1 = inttoptr i32 %i to i32*

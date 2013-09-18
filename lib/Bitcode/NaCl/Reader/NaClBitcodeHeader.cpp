@@ -254,7 +254,7 @@ void NaClBitcodeHeader::InstallFields() {
   if (NaClBitcodeHeaderField *Version = GetPNaClVersionPtr(this)) {
     PNaClVersion = Version->GetUInt32Value();
   }
-  if (PNaClVersion > 2) {
+  if (PNaClVersion != 2) {
     IsSupportedFlag = false;
     IsReadableFlag = false;
     UpdatedUnsupportedMessage = true;

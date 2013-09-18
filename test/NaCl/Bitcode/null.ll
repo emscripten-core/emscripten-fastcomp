@@ -1,17 +1,10 @@
 ; Test that we no longer generate NULL for numeric constants.
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
+; RUN: llvm-as < %s | pnacl-freeze  \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 | pnacl-thaw \
-; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 \
-; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s -check-prefix=PF
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD
 
 ; ------------------------------------------------------

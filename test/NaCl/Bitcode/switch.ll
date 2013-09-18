@@ -1,11 +1,7 @@
 ; Test that we no longer put VECTOR/ARRAY type entries, associated with
 ; switch instructions, into the bitcode file.
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 \
-; RUN:              | pnacl-bcanalyzer -dump-records \
-; RUN:              | FileCheck %s -check-prefix=PF1
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 \
+; RUN: llvm-as < %s | pnacl-freeze \
 ; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF2
 
@@ -46,14 +42,6 @@ l3:
 end:
   ret void
 }
-
-; PF1:      <TYPE_BLOCK_ID>
-; PF1-NEXT:   <NUMENTRY op0=4/>
-; PF1-NEXT:   <VOID/>
-; PF1-NEXT:   <INTEGER op0=32/>
-; PF1-NEXT:   <FUNCTION op0={{.*}} op1={{.*}} op2={{.*}}/>
-; PF1-NEXT:   <POINTER op0={{.*}} op1={{.*}}/>
-; PF1-NEXT: </TYPE_BLOCK_ID>
 
 ; PF2:      <TYPE_BLOCK_ID>
 ; PF2-NEXT:   <NUMENTRY op0=3/>

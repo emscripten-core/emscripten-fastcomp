@@ -1,11 +1,7 @@
 ; Test forward reference of a pointer-typed intrinsic result.
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 | pnacl-thaw \
-; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD1
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD2
-
 
 declare i8* @llvm.nacl.read.tp()
 
@@ -21,17 +17,6 @@ block1:
   %3 = call i8* @llvm.nacl.read.tp()
   br label %block2
 }
-
-; TD1:      define i32 @forward_ref() {
-; TD1-NEXT:   br label %block1
-; TD1:      block2:
-; TD1-NEXT:   %1 = load i8* %3
-; TD1-NEXT:   %2 = ptrtoint i8* %3 to i32
-; TD1-NEXT:   ret i32 %2
-; TD1:      block1:
-; TD1-NEXT:   %3 = call i8* @llvm.nacl.read.tp()
-; TD1-NEXT:   br label %block2
-; TD1-NEXT: }
 
 ; TD2:      define i32 @forward_ref() {
 ; TD2-NEXT:   br label %block1

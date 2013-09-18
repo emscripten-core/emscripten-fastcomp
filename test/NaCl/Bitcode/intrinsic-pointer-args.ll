@@ -1,11 +1,7 @@
 ; Test that intrinsic declarations are read back correctly.
 
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=1 | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD
-
-; RUN: llvm-as < %s | pnacl-freeze --pnacl-version=2 | pnacl-thaw \
-; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD
-
 
 declare i8* @llvm.stacksave()
 declare void @llvm.stackrestore(i8*)
