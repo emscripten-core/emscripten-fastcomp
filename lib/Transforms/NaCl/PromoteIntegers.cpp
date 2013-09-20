@@ -19,7 +19,7 @@
 // Limitations:
 // 1) It can't change function signatures or global variables
 // 2) It won't promote (and can't expand) types larger than i64
-// 3) Doesn't support mul/div operators
+// 3) Doesn't support div operators
 // 4) Doesn't handle arrays or structs (or GEPs) with illegal types
 // 5) Doesn't handle constant expressions
 //
@@ -517,6 +517,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
         // overflow. So clear them now.
       case Instruction::Add:
       case Instruction::Sub:
+      case Instruction::Mul:
         if (!(Binop->hasNoUnsignedWrap() && Binop->hasNoSignedWrap()))
           NewInst = getClearUpper(NewInst, Binop->getType(), Binop);
         break;
@@ -529,10 +530,9 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
         NewInst = getClearUpper(NewInst, Binop->getType(), Binop);
         break;
         // We should not see FP operators here.
-        // We don't handle mul/div.
+        // We don't handle div.
       case Instruction::FAdd:
       case Instruction::FSub:
-      case Instruction::Mul:
       case Instruction::FMul:
       case Instruction::UDiv:
       case Instruction::SDiv:

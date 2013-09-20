@@ -168,6 +168,23 @@ define void @add1(i16 %a) {
   ret void
 }
 
+; CHECK: @mul1
+define void @mul1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33.sext = sext i32 %a to i64
+; CHECK-NEXT: %a33 = and i64 %a33.sext, 8589934591
+  %a33 = sext i32 %a to i33
+; CHECK-NEXT: %b33.sext = sext i32 %b to i64
+; CHECK-NEXT: %b33 = and i64 %b33.sext, 8589934591
+  %b33 = sext i32 %b to i33
+; CHECK-NEXT: %product.result = mul i64 %a33, %b33
+; CHECK-NEXT: %product = and i64 %product.result, 8589934591
+  %product = mul i33 %a33, %b33
+; CHECK-NEXT: %prodnw = mul nuw nsw i64 %a33, %b33
+; CHECK-NOT: and
+  %prodnw = mul nuw nsw i33 %a33, %b33
+  ret void
+}
+
 ; CHECK: @shl1
 define void @shl1(i16 %a) {
   %a24 = zext i16 %a to i24
