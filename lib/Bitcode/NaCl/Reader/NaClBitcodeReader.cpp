@@ -91,8 +91,6 @@ static int GetDecodedCastOpcode(unsigned Val) {
   case naclbitc::CAST_SITOFP  : return Instruction::SIToFP;
   case naclbitc::CAST_FPTRUNC : return Instruction::FPTrunc;
   case naclbitc::CAST_FPEXT   : return Instruction::FPExt;
-  case naclbitc::CAST_PTRTOINT: return Instruction::PtrToInt;
-  case naclbitc::CAST_INTTOPTR: return Instruction::IntToPtr;
   case naclbitc::CAST_BITCAST : return Instruction::BitCast;
   }
 }
@@ -1117,12 +1115,14 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Value *Op;
       if (popValue(Record, &OpNum, NextValueNo, &Op) ||
           OpNum+2 != Record.size())
-        return Error("Invalid CAST record");
+        return Error("Invalid CAST record: bad record size");
 
       Type *ResTy = getTypeByID(Record[OpNum]);
+      if (ResTy == 0)
+        return Error("Invalid CAST record: bad type ID");
       int Opc = GetDecodedCastOpcode(Record[OpNum+1]);
-      if (Opc == -1 || ResTy == 0)
-        return Error("Invalid CAST record");
+      if (Opc == -1)
+        return Error("Invalid CAST record: bad opcode");
 
       // If a ptrtoint cast was elided on the argument of the cast,
       // add it back. Note: The casts allowed here should match the

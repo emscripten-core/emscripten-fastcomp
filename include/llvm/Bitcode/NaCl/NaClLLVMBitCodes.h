@@ -212,8 +212,8 @@ namespace naclbitc {
     CAST_SITOFP   =  6,
     CAST_FPTRUNC  =  7,
     CAST_FPEXT    =  8,
-    CAST_PTRTOINT =  9,
-    CAST_INTTOPTR = 10,
+    // 9 was CAST_PTRTOINT; not used in PNaCl.
+    // 10 was CAST_INTTOPTR; not used in PNaCl.
     CAST_BITCAST  = 11
   };
 

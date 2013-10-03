@@ -119,8 +119,6 @@ static unsigned GetEncodedCastOpcode(unsigned Opcode, const Value &V) {
   case Instruction::SIToFP  : return naclbitc::CAST_SITOFP;
   case Instruction::FPTrunc : return naclbitc::CAST_FPTRUNC;
   case Instruction::FPExt   : return naclbitc::CAST_FPEXT;
-  case Instruction::PtrToInt: return naclbitc::CAST_PTRTOINT;
-  case Instruction::IntToPtr: return naclbitc::CAST_INTTOPTR;
   case Instruction::BitCast : return naclbitc::CAST_BITCAST;
   }
 }
