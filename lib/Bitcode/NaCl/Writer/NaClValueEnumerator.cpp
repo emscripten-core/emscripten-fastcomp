@@ -479,139 +479,24 @@ void NaClValueEnumerator::purgeFunction() {
   FnForwardTypeRefs.clear();
 }
 
-// Returns true if the bitcode writer can assume that the given
-// argument of the given operation expects a normalized pointer in PNaCl.
-// Note: This function is based on the concept of NormalizedPtr as
-// defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
-static bool ExpectsNormalizedPtr(const Value *V, const Instruction *Arg) {
-  const Instruction *I = dyn_cast<Instruction>(V);
-  if (I == 0) return false;
-
-  switch (I->getOpcode()) {
-  default:
-    return false;
-  case Instruction::Load:
-    return I->getOperand(0) == Arg;
-  case Instruction::Store:
-    return I->getOperand(1) == Arg;
-  case Instruction::Call:
-    // For function calls, the function operand is normalized, and for
-    // intrinsic calls, all pointer arguments are normalized.
-    return true;
-  }
-}
-
-// Returns true if the bitcode reader and writer can assume that the
-// uses of the given inttotpr I2P expect normalized pointers (as
-// defined in llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
-static bool AllUsesExpectsNormalizedPtr(const Instruction *I2P) {
-  for (Value::const_use_iterator u = I2P->use_begin(), e = I2P->use_end();
-       u != e; ++u) {
-    if (!ExpectsNormalizedPtr(cast<Value>(*u), I2P)) return false;
-  }
-  // If reached, either all uses have a normalized pointer (and hence
-  // we know how to automatically add it back), or there were no uses (and
-  // hence represents dead code).
-  return true;
-}
-
-// Given Value V that uses argument Arg, returns true if the bitcode
-// writer can assume that V always expects Arg to be scalar.
-// Assumes that the type of Arg is the integer type used to model
-// pointers. Hence, this function determines if the reader would
-// have to convert pointers to integer. This function
-// is used to infer cases where PtrToInt casts can be removed.
-static bool ExpectsIntPtrType(const Value *V, const Instruction *Arg) {
-  const Instruction *I = dyn_cast<Instruction>(V);
-  if (I == 0) return false;
-
-  if (I->isBinaryOp())
-    return true;
-  else {
-    switch (I->getOpcode()) {
-    default:
-      return false;
-    case Instruction::PHI:
-    case Instruction::Trunc:
-    case Instruction::ZExt:
-    case Instruction::SExt:
-    case Instruction::UIToFP:
-    case Instruction::SIToFP:
-    case Instruction::ICmp:
-    case Instruction::Ret:
-      return true;
-    case Instruction::Store:
-      return Arg == I->getOperand(0);
-    case Instruction::Select: {
-      const SelectInst *Op = dyn_cast<SelectInst>(I);
-      return Arg == Op->getTrueValue() || Arg == Op->getFalseValue();
-    }
-    case Instruction::Call: {
-      // All operands (except the first, which must be a function
-      // pointer), must be scalar values. Note: For non-intrinsic
-      // calls, this is a requirement of the PNaCl ABI. For intrinsic
-      // calls, the condition that Arg's type is an integer type,
-      // implies that the intrinsic (for that argument) requires a
-      // scalar value at that position.
-      const CallInst *Call = cast<CallInst>(I);
-      return Call->getCalledValue() != Arg;
-    }
-    }
-  }
-}
-
-// Returns true if all uses of I expect I to be scalar, given that
-// the type of I is the integer type used to represent pointers.
-static bool AllUsesExpectsIntPtrType(const Instruction *I) {
-  for (Value::const_use_iterator Use = I->use_begin(), UseEnd = I->use_end();
-       Use != UseEnd; ++Use) {
-    if (!ExpectsIntPtrType(*Use, I)) return false;
-  }
-  // If reached, all uses expect a scalar value (and hence we know how
-  // to automatically add it back), or there were no uses (and hence
-  // represents dead code).
-  return true;
-}
-
-// Returns true if the value is an intrinsic instruction returns
-// a pointer value.
-static inline bool IsIntrinsicReturningPtr(const Value *V) {
-  if (isa<IntrinsicInst>(V)) {
-    return V->getType()->isPointerTy();
-  }
-  return false;
-}
-
-// Returns true if the value is an InherentPtr (as defined in
-// llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp).
-static inline bool IsInherentPtr(const Value *V) {
-  return isa<AllocaInst>(V) || isa<GlobalValue>(V) ||
-         IsIntrinsicReturningPtr(V);
-}
-
-// Note: This function is based on the comments in
-// llvm/lib/Transforms/NaCl/ReplacePtrsWithInts.cpp.
+// The normal form required by the PNaCl ABI verifier (documented in
+// ReplacePtrsWithInts.cpp) allows us to omit the following pointer
+// casts from the bitcode file.
 const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
     switch (I->getOpcode()) {
     default:
       break;
     case Instruction::BitCast:
-      if (I->getType()->isPointerTy() &&
-          IsInherentPtr(I->getOperand(0)) &&
-          AllUsesExpectsNormalizedPtr(I)) {
+      if (I->getType()->isPointerTy()) {
         V = I->getOperand(0);
       }
       break;
     case Instruction::IntToPtr:
-      if (AllUsesExpectsNormalizedPtr(I)) {
-        V = ElideCasts(I->getOperand(0));
-      }
+      V = ElideCasts(I->getOperand(0));
       break;
     case Instruction::PtrToInt:
-      if (IsIntPtrType(I->getType()) &&
-          IsInherentPtr(I->getOperand(0)) &&
-          AllUsesExpectsIntPtrType(I)) {
+      if (IsIntPtrType(I->getType())) {
         V = I->getOperand(0);
       }
       break;
