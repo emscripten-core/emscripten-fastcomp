@@ -993,10 +993,6 @@ Value *NaClBitcodeReader::ConvertOpToType(Value *Op, Type *T,
   report_fatal_error(StrM.str());
 }
 
-Type *NaClBitcodeReader::ConvertTypeToScalarType(Type *T) {
-  return T->isPointerTy() ? IntPtrType : T;
-}
-
 /// ParseFunctionBody - Lazily parse the specified function body block.
 bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   DEBUG(dbgs() << "-> ParseFunctionBody\n");

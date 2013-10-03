@@ -330,10 +330,6 @@ private:
   Value *ConvertOpToScalar(Value *Op, unsigned BBIndex,
                            bool DeferInsertion = false);
 
-  /// \brief Returns the corresponding, PNaCl non-pointer equivalent
-  /// for the given type.
-  Type *ConvertTypeToScalarType(Type *T);
-
   /// \brief Install instruction I into basic block BB.
   bool InstallInstruction(BasicBlock *BB, Instruction *I);
 
