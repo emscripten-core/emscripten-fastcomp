@@ -392,6 +392,7 @@ namespace llvm {
     // @LOCALMOD-BEGIN
     SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const;
     // @LOCALMOD-END
 
     virtual SDValue

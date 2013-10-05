@@ -160,13 +160,14 @@ private:
 
 /// Resolve __nacl_atomic_is_lock_free to true/false at translation
 /// time. PNaCl's currently supported platforms all support lock-free
-/// atomics at byte sizes {1,2,4,8}, and the alignment of the pointer is
-/// always expected to be natural (as guaranteed by C11 and
+/// atomics at byte sizes {1,2,4,8} except for MIPS arch that supports
+/// lock-free atomics at byte sizes {1,2,4}, and the alignment of the
+/// pointer is always expected to be natural (as guaranteed by C11 and
 /// C++11). PNaCl's Module-level ABI verification checks that the byte
 /// size is constant and in {1,2,4,8}.
 struct IsLockFreeToConstant {
   Constant *operator()(CallInst *Call) {
-    const uint64_t MaxLockFreeByteSize = 8;
+    uint64_t MaxLockFreeByteSize = 8;
     const APInt &ByteSize =
         cast<Constant>(Call->getOperand(0))->getUniqueInteger();
 
@@ -176,11 +177,16 @@ struct IsLockFreeToConstant {
     case PnaclTargetArchitectureX86_64:
     case PnaclTargetArchitectureARM_32:
       break;
+    case PnaclTargetArchitectureMips_32:
+      MaxLockFreeByteSize = 4;
+      break;
     default:
       return false;
     }
 #   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__)
     // Continue.
+#   elif defined(__mips__)
+    MaxLockFreeByteSize = 4;
 #   else
 #     error "Unknown architecture"
 #   endif
