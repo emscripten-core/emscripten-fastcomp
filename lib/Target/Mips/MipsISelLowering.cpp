@@ -404,6 +404,8 @@ MipsTargetLowering(MipsTargetMachine &TM)
   // @LOCALMOD-END
 
 
+  setOperationAction(ISD::TRAP, MVT::Other, Legal);
+
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
   setTargetDAGCombine(ISD::SELECT);
