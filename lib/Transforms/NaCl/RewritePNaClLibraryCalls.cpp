@@ -171,9 +171,14 @@ bool RewritePNaClLibraryCalls::RewriteLibraryCall(
     for (Value::use_iterator UI = LibFunc->use_begin(),
                              UE = LibFunc->use_end(); UI != UE;) {
       Value *Use = *UI++;
+      // use_iterator will also provide call instructions in which the used
+      // value is an argument, and not the value being called. Make sure we
+      // rewrite only actual calls to LibFunc here.
       if (CallInst *Call = dyn_cast<CallInst>(Use)) {
-        (this->*(CallRewriter))(Call);
-        Changed = true;
+        if (Call->getCalledValue() == LibFunc) {
+          (this->*(CallRewriter))(Call);
+          Changed = true;
+        }
       }
     }
 
