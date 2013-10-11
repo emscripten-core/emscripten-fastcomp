@@ -182,6 +182,10 @@ public:
 
   bool hasStandardEncoding() const { return !inMips16Mode(); }
 
+  bool enableLongBranchPass() const {
+    return hasStandardEncoding() || allowMixed16_32();
+  }
+
   /// Features related to the presence of specific instructions.
   bool hasSEInReg()   const { return HasSEInReg; }
   bool hasCondMov()   const { return HasCondMov; }
