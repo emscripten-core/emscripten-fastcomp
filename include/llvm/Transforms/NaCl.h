@@ -41,6 +41,7 @@ ModulePass *createExpandTlsPass();
 ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
+ModulePass *createPNaClSjLjEHPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createRewriteAtomicsPass();

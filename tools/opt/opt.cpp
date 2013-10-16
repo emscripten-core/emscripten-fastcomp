@@ -629,6 +629,7 @@ int main(int argc, char **argv) {
   initializeInsertDivideCheckPass(Registry);
   initializePNaClABIVerifyFunctionsPass(Registry);
   initializePNaClABIVerifyModulePass(Registry);
+  initializePNaClSjLjEHPass(Registry);
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);

@@ -1,6 +1,7 @@
 add_llvm_library(LLVMNaClTransforms
   AddPNaClExternalDecls.cpp
   CanonicalizeMemIntrinsics.cpp
+  ExceptionInfoWriter.cpp
   ExpandArithWithOverflow.cpp
   ExpandByVal.cpp
   ExpandConstantExpr.cpp
@@ -16,6 +17,7 @@ add_llvm_library(LLVMNaClTransforms
   GlobalCleanup.cpp
   InsertDivideCheck.cpp
   PNaClABISimplify.cpp
+  PNaClSjLjEH.cpp
   PromoteI1Ops.cpp
   PromoteIntegers.cpp
   RemoveAsmMemory.cpp
