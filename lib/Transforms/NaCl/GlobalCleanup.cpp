@@ -44,7 +44,9 @@ namespace {
 
 char GlobalCleanup::ID = 0;
 INITIALIZE_PASS(GlobalCleanup, "nacl-global-cleanup",
-                "GlobalValue cleanup for PNaCl", false, false)
+                "GlobalValue cleanup for PNaCl "
+                "(assumes all of the binary is linked statically)",
+                false, false)
 
 static bool CleanUpLinkage(GlobalValue *GV) {
   // TODO(dschuff): handle the rest of the linkage types as necessary without
@@ -82,7 +84,12 @@ bool GlobalCleanup::runOnModule(Module &M) {
   for (Module::global_iterator I = M.global_begin(), E = M.global_end();
        I != E; ) {
     GlobalVariable *GV = I++;
-    Modified |= CleanUpLinkage(GV);
+    if (GV->use_empty()) {
+      GV->eraseFromParent();
+      Modified = true;
+    } else {
+      Modified |= CleanUpLinkage(GV);
+    }
   }
 
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ) {

@@ -16,6 +16,14 @@
 ; CHECK: @weak_gv = internal global
 @weak_gv = weak global i32 0
 
+; Libc++'s declarations of iostream values are purely ``extern`` and
+; unused otherwise which led to a bug when used as ``(void)std::clog``:
+; the global would survive as ``external global`` post-link but without
+; a proper definition. Global cleanup should take care of it.
+; GV-NOT: ostream
+%"class.fake_ostream" = type { i32 }
+@ostream = external global %"class.fake_ostream"
+
 ; CHECK: define void @_start
 define void @_start() {
   ret void
@@ -33,6 +41,12 @@ define i32* @ewc() {
   %bc = getelementptr i8* bitcast (i32* @extern_weak_const to i8*), i32 0
 ; CHECK: ret i32* null
   ret i32* @extern_weak_gv
+}
+
+; Make sure @weak_gv is actually used.
+define i32* @wgv() {
+; CHECK: ret i32* @weak_gv
+  ret i32* @weak_gv
 }
 
 ; GV-NOT: @extern_weak_func
