@@ -286,8 +286,9 @@ bool FlattenGlobals::runOnModule(Module &M) {
       NewGlobal->setAlignment(DL.getPrefTypeAlignment(GlobalType));
     NewGlobal->setExternallyInitialized(Global->isExternallyInitialized());
     NewGlobal->takeName(Global);
-    Global->replaceAllUsesWith(
-        ConstantExpr::getBitCast(NewGlobal, Global->getType()));
+    if (!Global->use_empty())
+      Global->replaceAllUsesWith(
+          ConstantExpr::getBitCast(NewGlobal, Global->getType()));
     Global->eraseFromParent();
   }
   return Modified;

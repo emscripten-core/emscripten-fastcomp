@@ -16,14 +16,6 @@
 ; CHECK: @weak_gv = internal global
 @weak_gv = weak global i32 0
 
-; Libc++'s declarations of iostream values are purely ``extern`` and
-; unused otherwise which led to a bug when used as ``(void)std::clog``:
-; the global would survive as ``external global`` post-link but without
-; a proper definition. Global cleanup should take care of it.
-; GV-NOT: ostream
-%"class.fake_ostream" = type { i32 }
-@ostream = external global %"class.fake_ostream"
-
 ; CHECK: define void @_start
 define void @_start() {
   ret void

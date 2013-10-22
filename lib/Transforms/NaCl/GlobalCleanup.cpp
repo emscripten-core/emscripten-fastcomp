@@ -84,12 +84,7 @@ bool GlobalCleanup::runOnModule(Module &M) {
   for (Module::global_iterator I = M.global_begin(), E = M.global_end();
        I != E; ) {
     GlobalVariable *GV = I++;
-    if (GV->use_empty()) {
-      GV->eraseFromParent();
-      Modified = true;
-    } else {
-      Modified |= CleanUpLinkage(GV);
-    }
+    Modified |= CleanUpLinkage(GV);
   }
 
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ) {
