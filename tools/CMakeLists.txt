@@ -47,7 +47,6 @@ add_subdirectory(pnacl-abicheck)
 add_subdirectory(pnacl-bcanalyzer)
 add_subdirectory(pnacl-freeze)
 add_subdirectory(pnacl-thaw)
-add_subdirectory(bc-wrap)
 
 add_subdirectory(obj2yaml)
 add_subdirectory(yaml2obj)

@@ -11,7 +11,7 @@ LEVEL = ..
 include $(LEVEL)/Makefile.config
 
 PARALLEL_DIRS := IR IRReader AsmParser Bitcode Archive Analysis Transforms CodeGen \
-                Target ExecutionEngine Linker MC Object Option Wrap DebugInfo
+                Target ExecutionEngine Linker MC Object Option DebugInfo
 
 ifeq ($(NACL_SANDBOX),1)
   PARALLEL_DIRS := $(filter-out Archive Linker, \
