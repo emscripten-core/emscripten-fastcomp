@@ -21,7 +21,27 @@
 
 using namespace llvm;
 
+static cl::opt<bool>
+EnableSjLjEH("enable-pnacl-sjlj-eh",
+             cl::desc("Enable use of SJLJ-based C++ exception handling "
+                      "as part of the pnacl-abi-simplify passes"),
+             cl::init(false));
+
 void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
+  if (EnableSjLjEH) {
+    // This comes before ExpandTls because it introduces references to
+    // a TLS variable, __pnacl_eh_stack.  This comes before
+    // InternalizePass because it assumes various variables (including
+    // __pnacl_eh_stack) have not been internalized yet.
+    PM.add(createPNaClSjLjEHPass());
+  } else {
+    // LowerInvoke prevents use of C++ exception handling by removing
+    // references to BasicBlocks which handle exceptions.
+    PM.add(createLowerInvokePass());
+    // Remove landingpad blocks made unreachable by LowerInvoke.
+    PM.add(createCFGSimplificationPass());
+  }
+
   // Internalize all symbols in the module except _start, which is the only
   // symbol a stable PNaCl pexe is allowed to export.
   const char *SymbolsToPreserve[] = { "_start" };
@@ -32,11 +52,6 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   PM.add(createLowerExpectIntrinsicPass());
   // Rewrite unsupported intrinsics to simpler and portable constructs.
   PM.add(createRewriteLLVMIntrinsicsPass());
-  // LowerInvoke prevents use of C++ exception handling, which is not
-  // yet supported in the PNaCl ABI.
-  PM.add(createLowerInvokePass());
-  // Remove landingpad blocks made unreachable by LowerInvoke.
-  PM.add(createCFGSimplificationPass());
 
   // Expand out some uses of struct types.
   PM.add(createExpandArithWithOverflowPass());
