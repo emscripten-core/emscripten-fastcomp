@@ -10,18 +10,9 @@
 #ifndef TARGET_ARMNACLREWRITEPASS_H
 #define TARGET_ARMNACLREWRITEPASS_H
 
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/Support/CommandLine.h"
-
-namespace llvm {
-  extern cl::opt<bool> FlagSfiZeroMask;
-  extern cl::opt<bool> FlagSfiData;
-  extern cl::opt<bool> FlagSfiLoad;
-  extern cl::opt<bool> FlagSfiStore;
-  extern cl::opt<bool> FlagSfiStack;
-  extern cl::opt<bool> FlagSfiBranch;
-}
 
 namespace ARM_SFI {
 

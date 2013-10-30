@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/Support/raw_ostream.h"
-#include "MipsNaClRewritePass.h"
 #include <string>
 
 using namespace llvm;

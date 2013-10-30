@@ -12,11 +12,28 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ELF.h"
 
 static const char NoteNamespace[] = "NaCl";
 
 namespace llvm {
+
+cl::opt<bool>
+FlagSfiData("sfi-data", cl::desc("use illegal at data bundle beginning"));
+
+cl::opt<bool>
+FlagSfiLoad("sfi-load", cl::desc("enable sandboxing for load"));
+
+cl::opt<bool>
+FlagSfiStore("sfi-store", cl::desc("enable sandboxing for stores"));
+
+cl::opt<bool>
+FlagSfiStack("sfi-stack", cl::desc("enable sandboxing for stack changes"));
+
+cl::opt<bool>
+FlagSfiBranch("sfi-branch", cl::desc("enable sandboxing for branches"));
+
 void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
                               const Triple &TheTriple) {
   assert(TheTriple.isOSNaCl());
@@ -71,4 +88,5 @@ void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
   Streamer.EmitIntValue(0, 1); // NUL terminator
   Streamer.EmitValueToAlignment(4);
 }
+
 } // namespace llvm
