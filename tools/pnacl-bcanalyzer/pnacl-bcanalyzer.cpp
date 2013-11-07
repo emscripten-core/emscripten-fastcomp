@@ -38,6 +38,7 @@
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -330,134 +331,131 @@ static bool Error(const std::string &Err) {
   return true;
 }
 
-/// ParseBlock - Read a block, updating statistics, etc.
-static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
-                       unsigned IndentLevel) {
-  std::string Indent(IndentLevel*2, ' ');
-  DEBUG(dbgs() << Indent << "-> ParseBlock(" << BlockID << ")\n");
-  uint64_t BlockBitStart = Stream.GetCurrentBitNo();
-
-  // Get the statistics for this BlockID.
-  PerBlockIDStats &BlockStats = BlockIDStats[BlockID];
-
-  BlockStats.NumInstances++;
-
-  // BLOCKINFO is a special part of the stream.
-  if (BlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
-    if (Dump) outs() << Indent << "<BLOCKINFO_BLOCK/>\n";
-    if (Stream.ReadBlockInfoBlock())
-      return Error("Malformed BlockInfoBlock");
-    uint64_t BlockBitEnd = Stream.GetCurrentBitNo();
-    BlockStats.NumBits += BlockBitEnd-BlockBitStart;
-    DEBUG(dbgs() << Indent << "<- ParseBlock\n");
-    return false;
-  }
-
-  unsigned NumWords = 0;
-  if (Stream.EnterSubBlock(BlockID, &NumWords))
-    return Error("Malformed block record");
-
-  const char *BlockName = 0;
-  if (Dump) {
-    outs() << Indent << "<";
-    if ((BlockName = GetBlockName(BlockID, *Stream.getBitStreamReader())))
-      outs() << BlockName;
-    else
-      outs() << "UnknownBlock" << BlockID;
-
-    if (NonSymbolic && BlockName)
-      outs() << " BlockID=" << BlockID;
-
-    if (!Records) {
-      outs() << " NumWords=" << NumWords
-             << " BlockCodeSize=" << Stream.getAbbrevIDWidth();
+// Returns (a cached) string to indent N levels.
+static const std::string &IndentString(unsigned N) {
+  static std::vector<std::string*> IndentLevel;
+  if (N >= IndentLevel.size())
+    IndentLevel.resize(N+1);
+  std::string* Str = IndentLevel[N];
+  if (Str == 0) {
+    Str = new std::string();
+    for (unsigned i = 0; i < N; ++i) {
+      Str->append("  ");
     }
-    outs() << ">\n";
+    IndentLevel[N] = Str;
+  }
+  return *Str;
+}
+
+// Parses bitcode blocks, and collects distribution of records in each block.
+// Also dumps bitcode structure if specified (via global variables).
+class PNaClBcanalyzerParser : public NaClBitcodeParser {
+public:
+  explicit PNaClBcanalyzerParser(NaClBitstreamCursor &Cursor)
+    : NaClBitcodeParser(Cursor),
+      IndentLevel(-1),
+      Indent(""),
+      NumWords(0),
+      BlockName(0),
+      BlockStats(0) {
   }
 
-  SmallVector<uint64_t, 64> Record;
+  PNaClBcanalyzerParser(unsigned BlockID,
+                        PNaClBcanalyzerParser *EnclosingBlock)
+      : NaClBitcodeParser(BlockID, EnclosingBlock),
+        IndentLevel(EnclosingBlock->IndentLevel+1),
+        Indent(IndentString(EnclosingBlock->IndentLevel+1)),
+        NumWords(0),
+        BlockName(0),
+        BlockStats(&BlockIDStats[BlockID])
+  {
+    BlockStats->NumInstances++;
+  }
 
-  // Read all the records for this block.
-  while (1) {
-    if (Stream.AtEndOfStream())
-      return Error("Premature end of bitstream");
+  virtual ~PNaClBcanalyzerParser() {}
 
-    uint64_t RecordStartBit = Stream.GetCurrentBitNo();
+  virtual bool Error(const std::string Message) {
+    // Use local error routine so that all errors are treated uniformly.
+    return ::Error(Message);
+  }
 
-    NaClBitstreamEntry Entry =
-      Stream.advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs);
-    
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::Error:
-      return Error("malformed bitcode file");
-    case NaClBitstreamEntry::EndBlock: {
-      uint64_t BlockBitEnd = Stream.GetCurrentBitNo();
-      BlockStats.NumBits += BlockBitEnd-BlockBitStart;
-      if (Dump) {
-        outs() << Indent << "</";
-        if (BlockName)
-          outs() << BlockName << ">\n";
-        else
-          outs() << "UnknownBlock" << BlockID << ">\n";
+  // Called once the block has been entered by the bitstream reader.
+  // Argument NumWords is set to the number of words in the
+  // corresponding block.
+  virtual void EnterBlock(unsigned NumberWords) {
+    NumWords = NumberWords;
+    IncrementCallingBlock();
+    BlockName = 0;
+    if (Dump) {
+      unsigned BlockID = GetBlockID();
+      outs() << Indent << "<";
+      if ((BlockName = GetBlockName(BlockID, Record.GetReader())))
+        outs() << BlockName;
+      else
+        outs() << "UnknownBlock" << BlockID;
+
+      if (NonSymbolic && BlockName)
+        outs() << " BlockID=" << BlockID;
+
+      if (!Records) {
+        outs() << " NumWords=" << NumberWords
+               << " BlockCodeSize="
+               << Record.GetCursor().getAbbrevIDWidth();
       }
-      DEBUG(dbgs() << Indent << "<- ParseBlock\n");
-      return false;
+      outs() << ">\n";
     }
-        
-    case NaClBitstreamEntry::SubBlock: {
-      uint64_t SubBlockBitStart = Stream.GetCurrentBitNo();
-      if (ParseBlock(Stream, Entry.ID, IndentLevel+1))
-        return true;
-      ++BlockStats.NumSubBlocks;
-      uint64_t SubBlockBitEnd = Stream.GetCurrentBitNo();
-      
-      // Don't include subblock sizes in the size of this block.
-      BlockBitStart += SubBlockBitEnd-SubBlockBitStart;
-      continue;
-    }
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
+  }
 
-    if (Entry.ID == naclbitc::DEFINE_ABBREV) {
-      Stream.ReadAbbrevRecord();
-      ++BlockStats.NumAbbrevs;
-      continue;
+  // Called when the corresponding EndBlock of the block being parsed
+  // is found.
+  virtual void ExitBlock() {
+    BlockStats->NumBits += GetLocalNumBits();
+    if (Dump) {
+      outs() << Indent << "</";
+      if (BlockName)
+        outs() << BlockName << ">\n";
+      else
+        outs() << "UnknownBlock" << GetBlockID() << ">\n";
     }
-    
-    Record.clear();
+  }
 
-    ++BlockStats.NumRecords;
+  // Called after a BlockInfo block is parsed.
+  virtual void ExitBlockInfo() {
+    BlockStats->NumBits += GetLocalNumBits();
+    if (Dump) outs() << Indent << "<BLOCKINFO_BLOCK/>\n";
+    IncrementCallingBlock();
+  }
 
-    StringRef Blob;
-    unsigned Code = Stream.readRecord(Entry.ID, Record, &Blob);
+  // Process the last read record in the block.
+  virtual void ProcessRecord() {
+    ++BlockStats->NumRecords;
+    unsigned Code = Record.GetCode();
 
     // Increment the # occurrences of this code.
-    if (BlockStats.CodeFreq.size() <= Code)
-      BlockStats.CodeFreq.resize(Code+1);
-    BlockStats.CodeFreq[Code].NumInstances++;
-    BlockStats.CodeFreq[Code].TotalBits +=
-      Stream.GetCurrentBitNo()-RecordStartBit;
-    if (Entry.ID != naclbitc::UNABBREV_RECORD) {
-      BlockStats.CodeFreq[Code].NumAbbrev++;
-      ++BlockStats.NumAbbreviatedRecords;
+    if (BlockStats->CodeFreq.size() <= Code)
+      BlockStats->CodeFreq.resize(Code+1);
+    BlockStats->CodeFreq[Code].NumInstances++;
+    BlockStats->CodeFreq[Code].TotalBits += Record.GetNumBits();
+    if (Record.GetEntryID() != naclbitc::UNABBREV_RECORD) {
+      BlockStats->CodeFreq[Code].NumAbbrev++;
+      ++BlockStats->NumAbbreviatedRecords;
     }
 
     if (Dump) {
       outs() << Indent << "  <";
       const char *CodeName =
-          GetCodeName(Code, BlockID, *Stream.getBitStreamReader());
+          GetCodeName(Code, GetBlockID(), Record.GetReader());
       if (CodeName)
         outs() << CodeName;
       else
         outs() << "UnknownCode" << Code;
       if (NonSymbolic && CodeName)
         outs() << " codeid=" << Code;
-      if (!Records && Entry.ID != naclbitc::UNABBREV_RECORD)
-        outs() << " abbrevid=" << Entry.ID;
+      if (!Records && Record.GetEntryID() != naclbitc::UNABBREV_RECORD)
+        outs() << " abbrevid=" << Record.GetEntryID();
 
-      for (unsigned i = 0, e = Record.size(); i != e; ++i) {
+      const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
+      for (unsigned i = 0, e = Values.size(); i != e; ++i) {
         if (OpsPerLine && (i % OpsPerLine) == 0 && i > 0) {
           outs() << "\n" << Indent << "   ";
           if (CodeName) {
@@ -467,30 +465,32 @@ static bool ParseBlock(NaClBitstreamCursor &Stream, unsigned BlockID,
             outs() << "   ";
           }
         }
-        outs() << " op" << i << "=" << (int64_t)Record[i];
+        outs() << " op" << i << "=" << (int64_t)Values[i];
       }
 
-      outs() << "/>";
-
-      if (Blob.data()) {
-        outs() << " blob data = ";
-        bool BlobIsPrintable = true;
-        for (unsigned i = 0, e = Blob.size(); i != e; ++i)
-          if (!isprint(static_cast<unsigned char>(Blob[i]))) {
-            BlobIsPrintable = false;
-            break;
-          }
-
-        if (BlobIsPrintable)
-          outs() << "'" << Blob << "'";
-        else
-          outs() << "unprintable, " << Blob.size() << " bytes.";
-      }
-
-      outs() << "\n";
+      outs() << "/>\n";
     }
   }
-}
+
+  virtual bool ParseBlock(unsigned BlockID) {
+    PNaClBcanalyzerParser Parser(BlockID, this);
+    return Parser.ParseThisBlock();
+  }
+
+  int IndentLevel;
+  std::string Indent;
+  unsigned NumWords;
+  const char *BlockName;
+  PerBlockIDStats *BlockStats;
+protected:
+  void IncrementCallingBlock() {
+    if (NaClBitcodeParser *Parser = GetEnclosingParser()) {
+      PNaClBcanalyzerParser *PNaClBlock =
+          static_cast<PNaClBcanalyzerParser*>(Parser);
+      ++PNaClBlock->BlockStats->NumSubBlocks;
+    }
+  }
+};
 
 static void PrintSize(double Bits) {
   outs() << format("%.2f/%.2fB/%luW", Bits, Bits/8,(unsigned long)(Bits/32));
@@ -539,17 +539,11 @@ static int AnalyzeBitcode() {
   }
   if (Header.NumberFields()) outs() << "\n";
 
+  PNaClBcanalyzerParser Parser(Stream);
   // Parse the top-level structure.  We only allow blocks at the top-level.
   while (!Stream.AtEndOfStream()) {
-    unsigned Code = Stream.ReadCode();
-    if (Code != naclbitc::ENTER_SUBBLOCK)
-      return Error("Invalid record at top-level");
-
-    unsigned BlockID = Stream.ReadSubBlockID();
-
-    if (ParseBlock(Stream, BlockID, 0))
-      return true;
     ++NumTopBlocks;
+    if (Parser.Parse()) return 1;
   }
 
   if (Dump) outs() << "\n\n";
