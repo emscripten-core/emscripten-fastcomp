@@ -169,11 +169,70 @@ public:
     llvm_unreachable("Not a value Char6 character!");
   }
 
+  /// \brief Compares this to Op. Returns <0 if this is less than Op,
+  /// Returns 0 if they are equal, and >0 if this is greater than Op.
+  int Compare(const NaClBitCodeAbbrevOp &Op) const {
+    // Assume literals are smallest in comparisons.
+    if (IsLiteral) {
+      if (!Op.IsLiteral)
+        return -1;
+      return ValCompare(Op);
+    } else if (Op.IsLiteral)
+      return 1;
+
+    // Neither is a literal, so now order on encoding.
+    int EncodingDiff = static_cast<int>(Enc) - static_cast<int>(Op.Enc);
+    if (EncodingDiff != 0) return EncodingDiff;
+
+    // Encodings don't differ, so now base on data associated with the
+    // encoding.
+    return ValCompare(Op);
+  }
+
+private:
+  int ValCompare(const NaClBitCodeAbbrevOp &Op) const {
+    if (Val < Op.Val)
+      return -1;
+    else if (Val > Op.Val)
+      return 1;
+    else
+      return 0;
+  }
 };
 
 template <> struct isPodLike<NaClBitCodeAbbrevOp> {
   static const bool value=true;
 };
+
+static inline bool operator<(const NaClBitCodeAbbrevOp &Op1,
+                             const NaClBitCodeAbbrevOp &Op2) {
+  return Op1.Compare(Op2) < 0;
+}
+
+static inline bool operator<=(const NaClBitCodeAbbrevOp &Op1,
+                              const NaClBitCodeAbbrevOp &Op2) {
+  return Op1.Compare(Op2) <= 0;
+}
+
+static inline bool operator==(const NaClBitCodeAbbrevOp &Op1,
+                              const NaClBitCodeAbbrevOp &Op2) {
+  return Op1.Compare(Op2) == 0;
+}
+
+static inline bool operator!=(const NaClBitCodeAbbrevOp &Op1,
+                              const NaClBitCodeAbbrevOp &Op2) {
+  return Op1.Compare(Op2) != 0;
+}
+
+static inline bool operator>=(const NaClBitCodeAbbrevOp &Op1,
+                              const NaClBitCodeAbbrevOp &Op2) {
+  return Op1.Compare(Op2) >= 0;
+}
+
+static inline bool operator>(const NaClBitCodeAbbrevOp &Op1,
+                             const NaClBitCodeAbbrevOp &Op2) {
+  return Op1.Compare(Op2) > 0;
+}
 
 /// NaClBitCodeAbbrev - This class represents an abbreviation record.  An
 /// abbreviation allows a complex record that has redundancy to be stored in a
@@ -198,7 +257,54 @@ public:
   void Add(const NaClBitCodeAbbrevOp &OpInfo) {
     OperandList.push_back(OpInfo);
   }
+
+  int Compare(const NaClBitCodeAbbrev &Abbrev) const {
+    // First order based on number of operands.
+    size_t OperandListSize = OperandList.size();
+    size_t AbbrevOperandListSize = Abbrev.OperandList.size();
+    if (OperandListSize < AbbrevOperandListSize)
+      return -1;
+    else if (OperandListSize > AbbrevOperandListSize)
+      return 1;
+    else
+      return 0;
+
+    // Same number of operands, so compare element by element.
+    for (size_t I = 0; I < OperandListSize; ++I) {
+      if (int Diff = OperandList[I].Compare(Abbrev.OperandList[I]))
+        return Diff;
+    }
+    return 0;
+  }
 };
+
+static inline bool operator<(const NaClBitCodeAbbrev &A1,
+                             const NaClBitCodeAbbrev &A2) {
+  return A1.Compare(A2) < 0;
+}
+
+static inline bool operator<=(const NaClBitCodeAbbrev &A1,
+                              const NaClBitCodeAbbrev &A2) {
+  return A1.Compare(A2) <= 0;
+}
+static inline bool operator==(const NaClBitCodeAbbrev &A1,
+                              const NaClBitCodeAbbrev &A2) {
+  return A1.Compare(A2) == 0;
+}
+
+static inline bool operator!=(const NaClBitCodeAbbrev &A1,
+                              const NaClBitCodeAbbrev &A2) {
+  return A1.Compare(A2) != 0;
+}
+static inline bool operator>=(const NaClBitCodeAbbrev &A1,
+                              const NaClBitCodeAbbrev &A2) {
+  return A1.Compare(A2) >= 0;
+}
+
+static inline bool operator>(const NaClBitCodeAbbrev &A1,
+                             const NaClBitCodeAbbrev &A2) {
+  return A1.Compare(A2) > 0;
+}
 
 /// \brief Returns number of bits needed to encode
 /// value for dense FIXED encoding.
