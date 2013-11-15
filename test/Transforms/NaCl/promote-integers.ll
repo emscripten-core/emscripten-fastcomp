@@ -3,8 +3,7 @@
 declare void @consume_i16(i16 %a)
 
 ; CHECK: @sext_to_illegal
-; CHECK-NEXT: %a40.sext = sext i32 %a to i64
-; CHECK-NEXT: %a40 = and i64 %a40.sext, 1099511627775
+; CHECK-NEXT: %a40 = sext i32 %a to i64
 ; (0xFFFFFFFFFF)
 define void @sext_to_illegal(i32 %a) {
   %a40 = sext i32 %a to i40
@@ -16,21 +15,18 @@ define void @sext_from_illegal(i8 %a) {
 ; CHECK: call void @consume_i16(i16 -2)
   %c12 = sext i12 -2 to i16
   call void @consume_i16(i16 %c12)
-; CHECK: %a12.sext = sext i8 %a to i16
-; CHECK-NEXT: %a12 = and i16 %a12.sext, 4095
+; CHECK: %a12 = sext i8 %a to i16
   %a12 = sext i8 %a to i12
 ; CHECK: %a12.getsign = shl i16 %a12, 4
 ; CHECK-NEXT: %a16 = ashr i16 %a12.getsign, 4
   %a16 = sext i12 %a12 to i16
 ; CHECK: %a12.getsign1 = shl i16 %a12, 4
-; CHECK-NEXT: %a12.signed = ashr i16 %a12.getsign1, 4
-; CHECK-NEXT: %a14 = and i16 %a12.signed, 16383
+; CHECK-NEXT: %a14 = ashr i16 %a12.getsign1, 4
 ; (0x3FFF)
   %a14 = sext i12 %a12 to i14
 ; CHECK-NEXT: %a12.getsign2 = shl i16 %a12, 4
-; CHECK-NEXT: %a12.signed3 = ashr i16 %a12.getsign2, 4
-; CHECK-NEXT: %a24.sext = sext i16 %a12.signed3 to i32
-; CHECK-NEXT: %a24 = and i32 %a24.sext, 16777215
+; CHECK-NEXT: %a12.signed = ashr i16 %a12.getsign2, 4
+; CHECK-NEXT: %a24 = sext i16 %a12.signed to i32
 ; (0xFFFFFF)
   %a24 = sext i12 %a12 to i24
 
@@ -56,7 +52,6 @@ define void @zext_from_illegal(i8 %a) {
   %a40 = zext i8 %a to i40
   %a18 = zext i8 %a to i18
 
-; TODO(dschuff): the ANDs can be no-ops when we zext from an illegal type.
 ; CHECK: %a32 = and i32 %a24, 16777215
 ; (0xFFFFFF)
   %a32 = zext i24 %a24 to i32
@@ -79,6 +74,7 @@ define void @zext_from_illegal(i8 %a) {
   ret void
 }
 
+; CHECK: @trunc_from_illegal
 define void @trunc_from_illegal(i8 %a) {
   %a24 = zext i8 %a to i24
 ; CHECK: %a16 = trunc i32 %a24 to i16
@@ -86,14 +82,15 @@ define void @trunc_from_illegal(i8 %a) {
   ret void
 }
 
-define void @trunc_to_illegal(i32 %a) {
-; CHECK: %a24 = and i32 %a, 16777215
-; (0xFFFFFF)
+; CHECK: @trunc_to_illegal
+define void @trunc_to_illegal(i8 %a8) {
+  %a = zext i8 %a8 to i32
+; CHECK-NOT: trunc i32 %a
+; CHECK-NOT: and
   %a24 = trunc i32 %a to i24
 
-; CHECK: %a24.trunc = trunc i32 %a24 to i16
-; CHECK-NEXT: %a12 = and i16 %a24.trunc, 4095
-; (0xFFF)
+; CHECK: %a12 = trunc i32 %a24 to i16
+; CHECK-NOT: and
   %a12 = trunc i24 %a24 to i12
   ret void
 }
@@ -132,9 +129,8 @@ define void @and1(i32 %a) {
 
 ; CHECK: @andi3
 define void @andi3(i8 %a) {
-; CHECK-NEXT: and i8 %a, 7
   %a3 = trunc i8 %a to i3
-; CHECK-NEXT: and i8 %a3, 2
+; CHECK: and i8 %a3, 2
   %and = and i3 %a3, 2
   ret void
 }
@@ -150,37 +146,28 @@ define void @ori7(i8 %a, i8 %b) {
 
 ; CHECK: @add1
 define void @add1(i16 %a) {
-; CHECK-NEXT: %a24.sext = sext i16 %a to i32
-; CHECK-NEXT: %a24 = and i32 %a24.sext, 16777215
+; CHECK-NEXT: %a24 = sext i16 %a to i32
   %a24 = sext i16 %a to i24
-; CHECK-NEXT: %sum.result = add i32 %a24, 16777214
-; CHECK-NEXT: %sum = and i32 %sum.result, 16777215
+; CHECK-NEXT: %sum = add i32 %a24, 16777214
   %sum = add i24 %a24, -2
-; CHECK-NEXT: %sumnsw.result = add nsw i32 %a24, 16777214
-; CHECK-NEXT: %sumnsw = and i32 %sumnsw.result, 16777215
+; CHECK-NEXT: %sumnsw = add nsw i32 %a24, 16777214
   %sumnsw = add nsw i24 %a24, -2
-; CHECK-NEXT: %sumnuw.result = add nuw i32 %a24, 16777214
-; CHECK-NEXT: %sumnuw = and i32 %sumnuw.result, 16777215
+; CHECK-NEXT: %sumnuw = add nuw i32 %a24, 16777214
   %sumnuw = add nuw i24 %a24, -2
 ; CHECK-NEXT: %sumnw = add nuw nsw i32 %a24, 16777214
-; CHECK-NOT: and
   %sumnw = add nuw nsw i24 %a24, -2
   ret void
 }
 
 ; CHECK: @mul1
 define void @mul1(i32 %a, i32 %b) {
-; CHECK-NEXT: %a33.sext = sext i32 %a to i64
-; CHECK-NEXT: %a33 = and i64 %a33.sext, 8589934591
+; CHECK-NEXT: %a33 = sext i32 %a to i64
   %a33 = sext i32 %a to i33
-; CHECK-NEXT: %b33.sext = sext i32 %b to i64
-; CHECK-NEXT: %b33 = and i64 %b33.sext, 8589934591
+; CHECK-NEXT: %b33 = sext i32 %b to i64
   %b33 = sext i32 %b to i33
-; CHECK-NEXT: %product.result = mul i64 %a33, %b33
-; CHECK-NEXT: %product = and i64 %product.result, 8589934591
+; CHECK-NEXT: %product = mul i64 %a33, %b33
   %product = mul i33 %a33, %b33
 ; CHECK-NEXT: %prodnw = mul nuw nsw i64 %a33, %b33
-; CHECK-NOT: and
   %prodnw = mul nuw nsw i33 %a33, %b33
   ret void
 }
@@ -188,9 +175,16 @@ define void @mul1(i32 %a, i32 %b) {
 ; CHECK: @shl1
 define void @shl1(i16 %a) {
   %a24 = zext i16 %a to i24
-; CHECK: %ashl.result = shl i32 %a24, 5
-; CHECK: %ashl = and i32 %ashl.result, 16777215
+; CHECK: %ashl = shl i32 %a24, 5
   %ashl = shl i24 %a24, 5
+
+; CHECK-NEXT: %ashl2 = shl i32 %a24, 1
+  %ashl2 = shl i24 %a24, 4278190081 ;0xFF000001
+
+  %b24 = zext i16 %a to i24
+; CHECK: %b24.clear = and i32 %b24, 16777215
+; CHECK-NEXT: %bshl = shl i32 %a24, %b24.clear
+  %bshl = shl i24 %a24, %b24
   ret void
 }
 
@@ -198,7 +192,6 @@ define void @shl1(i16 %a) {
 define void @shlnuw(i16 %a) {
   %a12 = trunc i16 %a to i12
 ; CHECK: %ashl = shl nuw i16 %a12, 5
-; CHECK-NOT: and
   %ashl = shl nuw i12 %a12, 5
   ret void
 }
@@ -206,10 +199,18 @@ define void @shlnuw(i16 %a) {
 ; CHECK: @lshr1
 define void @lshr1(i16 %a) {
   %a24 = zext i16 %a to i24
-; CHECK: %b = lshr i32 %a24, 20
+; CHECK: %a24.clear = and i32 %a24, 16777215
+; CHECK-NEXT: %b = lshr i32 %a24.clear, 20
   %b = lshr i24 %a24, 20
-; CHECK: %c = lshr i32 %a24, 5
+; CHECK-NEXT: %a24.clear1 = and i32 %a24, 16777215
+; CHECK-NEXT: %c = lshr i32 %a24.clear1, 5
   %c = lshr i24 %a24, 5
+
+  %b24 = zext i16 %a to i24
+  %d = lshr i24 %a24, %b24
+; CHECK: %a24.clear2 = and i32 %a24, 16777215
+; CHECK-NEXT: %b24.clear = and i32 %b24, 16777215
+; CHECK-NEXT: %d = lshr i32 %a24.clear2, %b24.clear
   ret void
 }
 
@@ -217,13 +218,12 @@ define void @lshr1(i16 %a) {
 define void @ashr1(i16 %a) {
   %a24 = sext i16 %a to i24
 ; CHECK: %a24.getsign = shl i32 %a24, 8
-; CHECK-NEXT: %b24.result = ashr i32 %a24.getsign, 19
-; CHECK-NEXT: %b24 = and i32 %b24.result, 16777215
+; CHECK-NEXT: %b24 = ashr i32 %a24.getsign, 19
   %b24 = ashr i24 %a24, 11
 ; CHECK-NEXT: %a24.getsign1 = shl i32 %a24, 8
-; CHECK-NEXT: %a24.shamt = add i32 %b24, 8
-; CHECK-NEXT: %c.result = ashr i32 %a24.getsign1, %a24.shamt
-; CHECK-NEXT: %c = and i32 %c.result, 16777215
+; CHECK-NEXT: %b24.clear = and i32 %b24, 16777215
+; CHECK-NEXT: %a24.shamt = add i32 %b24.clear, 8
+; CHECK-NEXT: %c = ashr i32 %a24.getsign1, %a24.shamt
   %c = ashr i24 %a24, %b24
   ret void
 }
@@ -235,7 +235,8 @@ entry:
 loop:
 ; CHECK: %phi40 = phi i64 [ 1099511627774, %entry ], [ %phi40, %loop ]
   %phi40 = phi i40 [ -2, %entry ],  [ %phi40, %loop ]
-; CHECK-NEXT: %b = icmp eq i64 %phi40, 1099511627775
+; CHECK-NEXT: %phi40.clear = and i64 %phi40, 1099511627775
+; CHECK-NEXT: %b = icmp eq i64 %phi40.clear, 1099511627775
   %b = icmp eq i40 %phi40, -1
 ; CHECK-NEXT: br i1 %b, label %loop, label %end
   br i1 %b, label %loop, label %end
@@ -246,8 +247,15 @@ end:
 ; CHECK: @icmp_ult
 define void @icmp_ult(i32 %a) {
   %a40 = zext i32 %a to i40
-; CHECK: %b = icmp ult i64 %a40, 1099511627774
+; CHECK: %a40.clear = and i64 %a40, 1099511627775
+; CHECK-NEXT: %b = icmp ult i64 %a40.clear, 1099511627774
   %b = icmp ult i40 %a40, -2
+
+; CHECK: %a40.clear1 = and i64 %a40, 1099511627775
+; CHECK-NEXT: %b40.clear = and i64 %b40, 1099511627775
+; CHECK-NEXT: %c = icmp ult i64 %a40.clear1, %b40.clear
+  %b40 = zext i32 %a to i40
+  %c = icmp ult i40 %a40, %b40
   ret void
 }
 
@@ -373,7 +381,8 @@ define void @undefoperand(i32 %a) {
 
 ; CHECK: @switch
 ; CHECK-NEXT: %a24 = zext i16 %a to i32
-; CHECK-NEXT: switch i32 %a24, label %end [
+; CHECK-NEXT: %a24.clear = and i32 %a24, 16777215
+; CHECK-NEXT: switch i32 %a24.clear, label %end [
 ; CHECK-NEXT: i32 0, label %if1
 ; CHECK-NEXT: i32 1, label %if2
 define void @switch(i16 %a) {

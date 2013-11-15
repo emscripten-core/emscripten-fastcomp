@@ -12,16 +12,18 @@
 // Legal sizes are currently 1, 8, 16, 32, 64 (and higher, see note below)
 // Operations on illegal integers and int pointers are be changed to operate
 // on the next-higher legal size.
-// It always maintains the invariant that the upper bits (above the size of the
-// original type) are zero; therefore after operations which can overwrite these
-// bits (e.g. add, shl, sext), the bits are cleared.
+// It maintains no invariants about the upper bits (above the size of the
+// original type); therefore before operations which can be affected by the
+// value of these bits (e.g. cmp, select, lshr), the upper bits of the operands
+// are cleared.
 //
 // Limitations:
 // 1) It can't change function signatures or global variables
 // 2) It won't promote (and can't expand) types larger than i64
 // 3) Doesn't support div operators
 // 4) Doesn't handle arrays or structs (or GEPs) with illegal types
-// 5) Doesn't handle constant expressions
+// 5) Doesn't handle constant expressions (it also doesn't produce them, so it
+//    can run after ExpandConstantExpr)
 //
 //===----------------------------------------------------------------------===//
 
@@ -303,10 +305,12 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
   return StoreHi;
 }
 
-// Return a value with the bits of the operand above the size of the original
-// type cleared. The operand is assumed to have been legalized already.
-static Value *getClearUpper(Value *Operand, Type *OrigType,
-                            Instruction *InsertPt) {
+// Return a converted value with the bits of the operand above the size of the
+// original type cleared.
+static Value *getClearConverted(Value *Operand, Instruction *InsertPt,
+                                ConversionState &State) {
+  Type *OrigType = Operand->getType();
+  Operand = State.getConverted(Operand);
   // If the operand is a constant, it will have been created by
   // ConversionState.getConverted, which zero-extends by default.
   if (isa<Constant>(Operand))
@@ -358,7 +362,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     Value *Op = Sext->getOperand(0);
     Value *NewInst = NULL;
     // If the operand to be extended is illegal, we first need to fill its
-    // upper bits (which are zero) with its sign bit.
+    // upper bits with its sign bit.
     if (shouldConvert(Op)) {
       NewInst = getSignExtend(State.getConverted(Op), Op, Sext);
     }
@@ -372,21 +376,13 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
           getPromotedType(cast<IntegerType>(Sext->getType())),
           Sext->getName() + ".sext", Sext);
     }
-    // Now all the bits of the result are correct, but we need to restore
-    // the bits above its type to zero.
-    if (shouldConvert(Sext)) {
-      NewInst = getClearUpper(NewInst, Sext->getType(), Sext);
-    }
     assert(NewInst && "Failed to convert sign extension");
     State.recordConverted(Sext, NewInst);
   } else if (ZExtInst *Zext = dyn_cast<ZExtInst>(Inst)) {
     Value *Op = Zext->getOperand(0);
     Value *NewInst = NULL;
-    // TODO(dschuff): Some of these zexts could be no-ops.
     if (shouldConvert(Op)) {
-      NewInst = getClearUpper(State.getConverted(Op),
-                              Op->getType(),
-                              Zext);
+      NewInst = getClearConverted(Op, Zext, State);
     }
     // If the converted type of the operand is the same as the converted
     // type of the result, we won't actually be changing the type of the
@@ -402,10 +398,11 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     State.recordConverted(Zext, NewInst);
   } else if (TruncInst *Trunc = dyn_cast<TruncInst>(Inst)) {
     Value *Op = Trunc->getOperand(0);
-    Value *NewInst = NULL;
+    Value *NewInst;
     // If the converted type of the operand is the same as the converted
-    // type of the result, we won't actually be changing the type of the
-    // variable, just its value.
+    // type of the result, we don't actually need to change the type of the
+    // variable, just its value. However, because we don't care about the values
+    // of the upper bits until they are consumed, truncation can be a no-op.
     if (getPromotedType(Op->getType()) !=
         getPromotedType(Trunc->getType())) {
       NewInst = new TruncInst(
@@ -413,15 +410,9 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
           getPromotedType(cast<IntegerType>(Trunc->getType())),
           State.getConverted(Op)->getName() + ".trunc",
           Trunc);
+    } else {
+      NewInst = State.getConverted(Op);
     }
-    // Restoring the upper-bits-are-zero invariant effectively truncates the
-    // value.
-    if (shouldConvert(Trunc)) {
-      NewInst = getClearUpper(NewInst ? NewInst : Op,
-                              Trunc->getType(),
-                              Trunc);
-    }
-    assert(NewInst);
     State.recordConverted(Trunc, NewInst);
   } else if (AllocaInst *Alloc = dyn_cast<AllocaInst>(Inst)) {
     // Don't handle arrays of illegal types, but we could handle an array
@@ -455,82 +446,74 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     report_fatal_error("can't convert calls with illegal types");
   } else if (BinaryOperator *Binop = dyn_cast<BinaryOperator>(Inst)) {
     Value *NewInst = NULL;
-    if (Binop->getOpcode() == Instruction::AShr) {
-      // The AShr operand needs to be sign-extended to the promoted size
-      // before shifting. Because the sign-extension is implemented with
-      // with AShr, it can be combined with the original operation.
-      Value *Op = Binop->getOperand(0);
-      Value *ShiftAmount = NULL;
-      APInt SignShiftAmt = APInt(
-          getPromotedType(Op->getType())->getIntegerBitWidth(),
-          getPromotedType(Op->getType())->getIntegerBitWidth() -
-          Op->getType()->getIntegerBitWidth());
-      NewInst = BinaryOperator::Create(
-          Instruction::Shl,
-          State.getConverted(Op),
-          ConstantInt::get(getPromotedType(Op->getType()), SignShiftAmt),
-          State.getConverted(Op)->getName() + ".getsign",
-          Binop);
-      if (ConstantInt *C = dyn_cast<ConstantInt>(
-              State.getConverted(Binop->getOperand(1)))) {
-        ShiftAmount = ConstantInt::get(getPromotedType(Op->getType()),
-                                       SignShiftAmt + C->getValue());
-      } else {
-        ShiftAmount = BinaryOperator::Create(
-            Instruction::Add,
-            State.getConverted(Binop->getOperand(1)),
-            ConstantInt::get(
-                getPromotedType(Binop->getOperand(1)->getType()),
-                SignShiftAmt),
-            State.getConverted(Op)->getName() + ".shamt", Binop);
-      }
-      NewInst = BinaryOperator::Create(
-          Instruction::AShr,
-          NewInst,
-          ShiftAmount,
-          Binop->getName() + ".result", Binop);
-    } else {
-      // If the original operation is not AShr, just recreate it as usual.
-      NewInst = BinaryOperator::Create(
-          Binop->getOpcode(),
-          State.getConverted(Binop->getOperand(0)),
-          State.getConverted(Binop->getOperand(1)),
-          Binop->getName() + ".result", Binop);
-      if (isa<OverflowingBinaryOperator>(NewInst)) {
-        cast<BinaryOperator>(NewInst)->setHasNoUnsignedWrap
-            (Binop->hasNoUnsignedWrap());
-        cast<BinaryOperator>(NewInst)->setHasNoSignedWrap(
-            Binop->hasNoSignedWrap());
-      }
-    }
-
-    // Now restore the invariant if necessary.
-    // This switch also sanity-checks the operation.
     switch (Binop->getOpcode()) {
-      case Instruction::And:
-      case Instruction::Or:
-      case Instruction::Xor:
-      case Instruction::LShr:
-        // These won't change the upper bits.
+      case Instruction::AShr: {
+        // The AShr operand needs to be sign-extended to the promoted size
+        // before shifting. Because the sign-extension is implemented with
+        // with AShr, it can be combined with the original operation.
+        Value *Op = Binop->getOperand(0);
+        Value *ShiftAmount = NULL;
+        APInt SignShiftAmt = APInt(
+            getPromotedType(Op->getType())->getIntegerBitWidth(),
+            getPromotedType(Op->getType())->getIntegerBitWidth() -
+            Op->getType()->getIntegerBitWidth());
+        NewInst = BinaryOperator::Create(
+            Instruction::Shl,
+            State.getConverted(Op),
+            ConstantInt::get(getPromotedType(Op->getType()), SignShiftAmt),
+            State.getConverted(Op)->getName() + ".getsign",
+            Binop);
+        if (ConstantInt *C = dyn_cast<ConstantInt>(
+                State.getConverted(Binop->getOperand(1)))) {
+          ShiftAmount = ConstantInt::get(getPromotedType(Op->getType()),
+                                         SignShiftAmt + C->getValue());
+        } else {
+          // Clear the upper bits of the original shift amount, and add back the
+          // amount we shifted to get the sign bit.
+          ShiftAmount = getClearConverted(Binop->getOperand(1), Binop, State);
+          ShiftAmount = BinaryOperator::Create(
+              Instruction::Add,
+              ShiftAmount,
+              ConstantInt::get(
+                  getPromotedType(Binop->getOperand(1)->getType()),
+                  SignShiftAmt),
+              State.getConverted(Op)->getName() + ".shamt", Binop);
+        }
+        NewInst = BinaryOperator::Create(
+            Instruction::AShr,
+            NewInst,
+            ShiftAmount,
+            Binop->getName() + ".result", Binop);
         break;
-        // These can change the upper bits, unless we are sure they never
-        // overflow. So clear them now.
+      }
+
+      case Instruction::LShr:
+      case Instruction::Shl: {
+        // For LShr, clear the upper bits of the operand before shifting them
+        // down into the valid part of the value.
+        Value *Op = Binop->getOpcode() == Instruction::LShr
+                        ? getClearConverted(Binop->getOperand(0), Binop, State)
+                        : State.getConverted(Binop->getOperand(0));
+        NewInst = BinaryOperator::Create(
+            Binop->getOpcode(), Op,
+            // Clear the upper bits of the shift amount.
+            getClearConverted(Binop->getOperand(1), Binop, State),
+            Binop->getName() + ".result", Binop);
+        break;
+      }
       case Instruction::Add:
       case Instruction::Sub:
       case Instruction::Mul:
-        if (!(Binop->hasNoUnsignedWrap() && Binop->hasNoSignedWrap()))
-          NewInst = getClearUpper(NewInst, Binop->getType(), Binop);
+      case Instruction::And:
+      case Instruction::Or:
+      case Instruction::Xor:
+        // These operations don't care about the state of the upper bits.
+        NewInst = BinaryOperator::Create(
+            Binop->getOpcode(),
+            State.getConverted(Binop->getOperand(0)),
+            State.getConverted(Binop->getOperand(1)),
+            Binop->getName() + ".result", Binop);
         break;
-      case Instruction::Shl:
-        if (!Binop->hasNoUnsignedWrap())
-          NewInst = getClearUpper(NewInst, Binop->getType(), Binop);
-        break;
-        // We modified the upper bits ourselves when implementing AShr
-      case Instruction::AShr:
-        NewInst = getClearUpper(NewInst, Binop->getType(), Binop);
-        break;
-        // We should not see FP operators here.
-        // We don't handle div.
       case Instruction::FAdd:
       case Instruction::FSub:
       case Instruction::FMul:
@@ -541,18 +524,25 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
       case Instruction::SRem:
       case Instruction::FRem:
       case Instruction::BinaryOpsEnd:
+        // We should not see FP operators here.
+        // We don't handle div.
         errs() << *Inst << "\n";
         llvm_unreachable("Cannot handle binary operator");
         break;
     }
 
+    if (isa<OverflowingBinaryOperator>(NewInst)) {
+      cast<BinaryOperator>(NewInst)->setHasNoUnsignedWrap(
+          Binop->hasNoUnsignedWrap());
+      cast<BinaryOperator>(NewInst)->setHasNoSignedWrap(
+          Binop->hasNoSignedWrap());
+    }
     State.recordConverted(Binop, NewInst);
   } else if (ICmpInst *Cmp = dyn_cast<ICmpInst>(Inst)) {
     Value *Op0, *Op1;
     // For signed compares, operands are sign-extended to their
-    // promoted type. For unsigned or equality compares, the comparison
-    // is equivalent with the larger type because they are already
-    // zero-extended.
+    // promoted type. For unsigned or equality compares, the upper bits are
+    // cleared.
     if (Cmp->isSigned()) {
       Op0 = getSignExtend(State.getConverted(Cmp->getOperand(0)),
                           Cmp->getOperand(0),
@@ -561,8 +551,8 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
                           Cmp->getOperand(1),
                           Cmp);
     } else {
-      Op0 = State.getConverted(Cmp->getOperand(0));
-      Op1 = State.getConverted(Cmp->getOperand(1));
+      Op0 = getClearConverted(Cmp->getOperand(0), Cmp, State);
+      Op1 = getClearConverted(Cmp->getOperand(1), Cmp, State);
     }
     ICmpInst *NewInst = new ICmpInst(
         Cmp, Cmp->getPredicate(), Op0, Op1, "");
@@ -585,8 +575,9 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     }
     State.recordConverted(Phi, NewPhi);
   } else if (SwitchInst *Switch = dyn_cast<SwitchInst>(Inst)) {
+    Value *Condition = getClearConverted(Switch->getCondition(), Switch, State);
     SwitchInst *NewInst = SwitchInst::Create(
-        State.getConverted(Switch->getCondition()),
+        Condition,
         Switch->getDefaultDest(),
         Switch->getNumCases(),
         Switch);
