@@ -21,9 +21,9 @@ declare void @external_func()
 
 ; CHECK: @__pnacl_eh_type_table = internal constant [4 x i8*] [i8* @exc_typeid1, i8* @exc_typeid2, i8* @exc_typeid3, i8* null]
 
-; CHECK: @__pnacl_eh_action_table = internal constant [6 x %action_table_entry] [%action_table_entry { i32 2, i32 0 }, %action_table_entry { i32 1, i32 1 }, %action_table_entry { i32 0, i32 2 }, %action_table_entry { i32 -1, i32 0 }, %action_table_entry { i32 -2, i32 0 }, %action_table_entry { i32 3, i32 0 }]
+; CHECK: @__pnacl_eh_action_table = internal constant [7 x %action_table_entry] [%action_table_entry { i32 3, i32 0 }, %action_table_entry { i32 2, i32 1 }, %action_table_entry { i32 1, i32 2 }, %action_table_entry { i32 -1, i32 0 }, %action_table_entry { i32 -2, i32 0 }, %action_table_entry { i32 4, i32 0 }, %action_table_entry zeroinitializer]
 
-; CHECK: @__pnacl_eh_filter_table = internal constant [5 x i32] [i32 -1, i32 1, i32 2, i32 0, i32 -1]
+; CHECK: @__pnacl_eh_filter_table = internal constant [5 x i32] [i32 0, i32 2, i32 3, i32 1, i32 0]
 
 
 ; Exception type pointers are allocated IDs which specify the index
@@ -38,9 +38,9 @@ define void @test_eh_typeid(i32 %arg) {
   ret void
 }
 ; CHECK: define void @test_eh_typeid
-; CHECK-NEXT: %cmp1 = icmp eq i32 %arg, 0
-; CHECK-NEXT: %cmp2 = icmp eq i32 %arg, 1
-; CHECK-NEXT: %cmp3 = icmp eq i32 %arg, 2
+; CHECK-NEXT: %cmp1 = icmp eq i32 %arg, 1
+; CHECK-NEXT: %cmp2 = icmp eq i32 %arg, 2
+; CHECK-NEXT: %cmp3 = icmp eq i32 %arg, 3
 ; CHECK-NEXT: ret void
 
 
@@ -114,7 +114,6 @@ lpad:
 ; CHECK: store i32 6, i32* %exc_info_ptr
 
 
-; "cleanup" is treated the same as "catch i8* null".
 define void @test_cleanup_clause() {
   invoke void @external_func() to label %cont unwind label %lpad
 cont:
@@ -125,4 +124,4 @@ lpad:
   ret void
 }
 ; CHECK: define void @test_cleanup_clause
-; CHECK: store i32 6, i32* %exc_info_ptr
+; CHECK: store i32 7, i32* %exc_info_ptr

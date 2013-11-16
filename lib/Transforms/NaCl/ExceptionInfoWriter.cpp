@@ -34,8 +34,8 @@
 //       type.
 //     * Clang generates this for a "catch" block in the C++ source.
 //     * @ExcType is NULL for "catch (...)" (catch-all) blocks.
-//     * This is encoded as the integer "type ID" @ExcType, X,
-//       such that: __pnacl_eh_type_table[X] == @ExcType, and X >= 0.
+//     * This is encoded as the "type ID" for @ExcType, defined below,
+//       which is a positive integer.
 //
 //  2) "filter [i8* @ExcType1, ..., i8* @ExcTypeN]"
 //     * This clause means that the landingpad should be entered if
@@ -45,14 +45,24 @@
 //     * Clang uses this to implement C++ exception specifications, e.g.
 //          void foo() throw(ExcType1, ..., ExcTypeN) { ... }
 //     * This is encoded as the filter ID, X, where X < 0, and
-//       &__pnacl_eh_filter_table[-X-1] points to a -1-terminated
+//       &__pnacl_eh_filter_table[-X-1] points to a 0-terminated
 //       array of integer "type IDs".
 //
 //  3) "cleanup"
 //     * This means that the landingpad should always be entered.
 //     * Clang uses this for calling objects' destructors.
-//     * ExceptionInfoWriter encodes this the same as "catch i8* null"
-//       (which is a catch-all).
+//     * This is encoded as 0.
+//     * The runtime may treat "cleanup" differently from "catch i8*
+//       null" (a catch-all).  In C++, if an unhandled exception
+//       occurs, the language runtime may abort execution without
+//       running any destructors.  The runtime may implement this by
+//       searching for a matching non-"cleanup" clause, and aborting
+//       if it does not find one, before entering any landingpad
+//       blocks.
+//
+// The "type ID" for a type @ExcType is a 1-based index into the array
+// __pnacl_eh_type_table[].  That is, the type ID is a value X such
+// that __pnacl_eh_type_table[X-1] == @ExcType, and X >= 1.
 //
 // ExceptionInfoWriter generates the following data structures:
 //
@@ -68,7 +78,7 @@
 //   extern std::type_info *const __pnacl_eh_type_table[];
 //
 //   // Used to represent type arrays for "filter" clauses.
-//   extern const int32_t __pnacl_eh_filter_table[];
+//   extern const uint32_t __pnacl_eh_filter_table[];
 //
 // A "clause list ID" is either:
 //  * 0, representing the empty list; or
@@ -78,20 +88,20 @@
 // Example:
 //
 //   std::type_info *const __pnacl_eh_type_table[] = {
-//     // defines type ID 0 == ExcA and clause ID 0 == "catch ExcA"
+//     // defines type ID 1 == ExcA and clause ID 1 == "catch ExcA"
 //     &typeinfo(ExcA),
-//     // defines type ID 1 == ExcB and clause ID 1 == "catch ExcB"
+//     // defines type ID 2 == ExcB and clause ID 2 == "catch ExcB"
 //     &typeinfo(ExcB),
-//     // defines type ID 2 == ExcC and clause ID 2 == "catch ExcC"
+//     // defines type ID 3 == ExcC and clause ID 3 == "catch ExcC"
 //     &typeinfo(ExcC),
 //   };
 //
-//   const int32_t __pnacl_eh_filter_table[] = {
-//     0,   // refers to ExcA;  defines clause ID -1 as "filter [ExcA, ExcB]"
-//     1,   // refers to ExcB;  defines clause ID -2 as "filter [ExcB]"
-//     -1,  // list terminator; defines clause ID -3 as "filter []"
-//     2,   // refers to ExcC;  defines clause ID -4 as "filter [ExcC]"
-//     -1,  // list terminator; defines clause ID -5 as "filter []"
+//   const uint32_t __pnacl_eh_filter_table[] = {
+//     1,  // refers to ExcA;  defines clause ID -1 as "filter [ExcA, ExcB]"
+//     2,  // refers to ExcB;  defines clause ID -2 as "filter [ExcB]"
+//     0,  // list terminator; defines clause ID -3 as "filter []"
+//     3,  // refers to ExcC;  defines clause ID -4 as "filter [ExcC]"
+//     0,  // list terminator; defines clause ID -5 as "filter []"
 //   };
 //
 //   const struct action_table_entry __pnacl_eh_action_table[] = {
@@ -107,12 +117,12 @@
 //     },
 //     // defines clause list ID 3:
 //     {
-//       1,  // "catch ExcB"
+//       2,  // "catch ExcB"
 //       2,  // else go to clause list ID 2
 //     },
 //     // defines clause list ID 4:
 //     {
-//       0,  // "catch ExcA"
+//       1,  // "catch ExcA"
 //       3,  // else go to clause list ID 3
 //     },
 //   };
@@ -165,7 +175,7 @@ unsigned ExceptionInfoWriter::getIDForExceptionType(Value *ExcTy) {
   if (Iter != TypeTableIDMap.end())
     return Iter->second;
 
-  unsigned Index = TypeTableData.size();
+  unsigned Index = TypeTableData.size() + 1;
   TypeTableIDMap[ExcTyConst] = Index;
   TypeTableData.push_back(ExcTyConst);
   return Index;
@@ -206,11 +216,12 @@ unsigned ExceptionInfoWriter::getIDForFilterClause(Value *Filter) {
       report_fatal_error("Landingpad filter clause is not a ConstantArray");
     for (unsigned I = 0; I < FilterLength; ++I) {
       unsigned TypeID = getIDForExceptionType(Array->getOperand(I));
+      assert(TypeID > 0);
       FilterTableData.push_back(ConstantInt::get(I32, TypeID));
     }
   }
   // Add array terminator.
-  FilterTableData.push_back(ConstantInt::get(I32, -1));
+  FilterTableData.push_back(ConstantInt::get(I32, 0));
   return FilterClauseID;
 }
 
@@ -218,11 +229,8 @@ unsigned ExceptionInfoWriter::getIDForLandingPadClauseList(LandingPadInst *LP) {
   unsigned NextClauseListID = 0;  // ID for empty list.
 
   if (LP->isCleanup()) {
-    // Add catch-all entry.  There doesn't appear to be any need to
-    // treat "cleanup" differently from a catch-all.
-    unsigned TypeID = getIDForExceptionType(
-        ConstantPointerNull::get(Type::getInt8PtrTy(*Context)));
-    NextClauseListID = getIDForClauseListNode(TypeID, NextClauseListID);
+    // Add cleanup clause at the end of the list.
+    NextClauseListID = getIDForClauseListNode(0, NextClauseListID);
   }
 
   for (int I = (int) LP->getNumClauses() - 1; I >= 0; --I) {
@@ -234,6 +242,7 @@ unsigned ExceptionInfoWriter::getIDForLandingPadClauseList(LandingPadInst *LP) {
     } else {
       report_fatal_error("Unknown kind of landingpad clause");
     }
+    assert(ClauseID > 0);
     NextClauseListID = getIDForClauseListNode(ClauseID, NextClauseListID);
   }
 
