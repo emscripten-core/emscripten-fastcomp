@@ -815,17 +815,10 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
     case naclbitc::MODULE_CODE_VERSION: {  // VERSION: [version#]
       if (Record.size() < 1)
         return Error("Malformed MODULE_CODE_VERSION");
-      // Only version #0 and #1 are supported so far.
+      // Only version #1 is supported for PNaCl. Version #0 is not supported.
       unsigned module_version = Record[0];
-      switch (module_version) {
-        default: return Error("Unknown bitstream version!");
-        case 0:
-          UseRelativeIDs = false;
-          break;
-        case 1:
-          UseRelativeIDs = true;
-          break;
-      }
+      if (module_version != 1)
+        return Error("Unknown bitstream version!");
       break;
     }
     // FUNCTION:  [type, callingconv, isproto, linkage]
@@ -1286,13 +1279,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       for (unsigned i = 0, e = Record.size()-1; i != e; i += 2) {
         Value *V;
-        // With the new function encoding, it is possible that operands have
+        // With relative value IDs, it is possible that operands have
         // negative IDs (for forward references).  Use a signed VBR
         // representation to keep the encoding small.
-        if (UseRelativeIDs)
-          V = getValueSigned(Record, 1+i, NextValueNo);
-        else
-          V = getValue(Record, 1+i, NextValueNo);
+        V = getValueSigned(Record, 1+i, NextValueNo);
         unsigned BBIndex = Record[2+i];
         BasicBlock *BB = getBasicBlock(BBIndex);
         if (!V || !BB) return Error("Invalid PHI record");

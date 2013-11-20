@@ -188,15 +188,6 @@ class NaClBitcodeReader : public GVMaterializer {
   /// stream.
   DenseMap<Function*, uint64_t> DeferredFunctionInfo;
 
-  /// UseRelativeIDs - Indicates that we are using a new encoding for
-  /// instruction operands where most operands in the current
-  /// FUNCTION_BLOCK are encoded relative to the instruction number,
-  /// for a more compact encoding.  Some instruction operands are not
-  /// relative to the instruction ID: basic block numbers, and types.
-  /// Once the old style function blocks have been phased out, we would
-  /// not need this flag.
-  bool UseRelativeIDs;
-
   /// \brief True if we should only accept supported bitcode format.
   bool AcceptSupportedBitcodeOnly;
 
@@ -209,7 +200,7 @@ public:
     : Context(C), TheModule(0), Buffer(buffer), BufferOwned(false),
       LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
       ValueList(C),
-      SeenFirstFunctionBody(false), UseRelativeIDs(false),
+      SeenFirstFunctionBody(false),
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
       IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
@@ -218,7 +209,7 @@ public:
     : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
       ValueList(C),
-      SeenFirstFunctionBody(false), UseRelativeIDs(false),
+      SeenFirstFunctionBody(false),
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
       IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
@@ -274,10 +265,8 @@ private:
   bool popValue(const SmallVector<uint64_t, 64> &Record, unsigned *Slot,
                 unsigned InstNum, Value **ResVal) {
     if (*Slot == Record.size()) return true;
-    unsigned ValNo = (unsigned)Record[(*Slot)++];
-    // Adjust the ValNo, if it was encoded relative to the InstNum.
-    if (UseRelativeIDs)
-      ValNo = InstNum - ValNo;
+    // ValNo is encoded relative to the InstNum.
+    unsigned ValNo = InstNum - (unsigned)Record[(*Slot)++];
     *ResVal = getFnValueByID(ValNo);
     return *ResVal == 0;
   }
@@ -287,10 +276,8 @@ private:
   Value *getValue(const SmallVector<uint64_t, 64> &Record, unsigned Slot,
                   unsigned InstNum) {
     if (Slot == Record.size()) return 0;
-    unsigned ValNo = (unsigned)Record[Slot];
-    // Adjust the ValNo, if it was encoded relative to the InstNum.
-    if (UseRelativeIDs)
-      ValNo = InstNum - ValNo;
+    // ValNo is encoded relative to the InstNum.
+    unsigned ValNo = InstNum - (unsigned)Record[Slot];
     return getFnValueByID(ValNo);
   }
 
@@ -298,10 +285,9 @@ private:
   Value *getValueSigned(const SmallVector<uint64_t, 64> &Record, unsigned Slot,
                         unsigned InstNum) {
     if (Slot == Record.size()) return 0;
-    unsigned ValNo = (unsigned) NaClDecodeSignRotatedValue(Record[Slot]);
-    // Adjust the ValNo, if it was encoded relative to the InstNum.
-    if (UseRelativeIDs)
-      ValNo = InstNum - ValNo;
+    // ValNo is encoded relative to the InstNum.
+    unsigned ValNo = InstNum -
+        (unsigned) NaClDecodeSignRotatedValue(Record[Slot]);
     return getFnValueByID(ValNo);
   }
 
