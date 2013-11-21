@@ -7,4 +7,4 @@ TRY_ON_UPLOAD: False
 TRYSERVER_PROJECT: nacl
 TRYSERVER_SVN_URL: svn://svn.chromium.org/chrome-try/try-nacl
 PUSH_URL_CONFIG: url.ssh://gerrit.chromium.org.pushinsteadof
-ORIGIN_URL_CONFIG: http://git.chromium.org
+ORIGIN_URL_CONFIG: https://chromium.googlesource.com
