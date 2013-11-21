@@ -42,10 +42,12 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
     PM.add(createCFGSimplificationPass());
   }
 
+#if 0 // EMSCRIPTEN: we allow arbitrary symbols to be preserved
   // Internalize all symbols in the module except _start, which is the only
   // symbol a stable PNaCl pexe is allowed to export.
   const char *SymbolsToPreserve[] = { "_start" };
   PM.add(createInternalizePass(SymbolsToPreserve));
+#endif
 
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
