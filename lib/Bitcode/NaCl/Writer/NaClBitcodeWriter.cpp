@@ -1183,9 +1183,14 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 static const size_t kMaxVariableFieldSize = 256;
 
 // Write out the given Header to the bitstream.
-static void WriteHeader(
-    const NaClBitcodeHeader &Header,
-    NaClBitstreamWriter& Stream) {
+void llvm::NaClWriteHeader(const NaClBitcodeHeader &Header,
+                           NaClBitstreamWriter &Stream) {
+  // Emit the file magic number;
+  Stream.Emit((unsigned)'P', 8);
+  Stream.Emit((unsigned)'E', 8);
+  Stream.Emit((unsigned)'X', 8);
+  Stream.Emit((unsigned)'E', 8);
+
   // Emit placeholder for number of bytes used to hold header fields.
   // This value is necessary so that the streamable reader can preallocate
   // a buffer to read the fields.
@@ -1228,12 +1233,6 @@ void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out,
   {
     NaClBitstreamWriter Stream(Buffer);
 
-    // Emit the file header.
-    Stream.Emit((unsigned)'P', 8);
-    Stream.Emit((unsigned)'E', 8);
-    Stream.Emit((unsigned)'X', 8);
-    Stream.Emit((unsigned)'E', 8);
-
     // Define header and install into stream.
     {
       NaClBitcodeHeader Header;
@@ -1245,7 +1244,7 @@ void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out,
             (!AcceptSupportedOnly && Header.IsReadable()))) {
         report_fatal_error(Header.Unsupported());
       }
-      WriteHeader(Header, Stream);
+      NaClWriteHeader(Header, Stream);
     }
 
     // Emit the module.

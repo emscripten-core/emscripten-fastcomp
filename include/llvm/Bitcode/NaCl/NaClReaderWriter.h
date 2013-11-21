@@ -24,6 +24,8 @@ namespace llvm {
   class LLVMContext;
   class Module;
   class raw_ostream;
+  class NaClBitcodeHeader;
+  class NaClBitstreamWriter;
 
   /// \brief Defines the integer bit size used to model pointers in PNaCl.
   static const unsigned PNaClIntPtrTypeBitSize = 32;
@@ -97,6 +99,11 @@ namespace llvm {
         BufPtr[2] == 'X' &&
         BufPtr[3] == 'E';
   }
+
+  // NaClWriteHeader - Write the contents of the bitcode header to the
+  // corresponding bitcode stream.
+  void NaClWriteHeader(const NaClBitcodeHeader &Header,
+                       NaClBitstreamWriter &Stream);
 
 } // end llvm namespace
 #endif
