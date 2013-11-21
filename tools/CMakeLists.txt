@@ -15,6 +15,7 @@ add_subdirectory(llvm-mc)
 
 add_subdirectory(llc)
 add_subdirectory(pnacl-llc)
+add_subdirectory(pnacl-benchmark)
 add_subdirectory(llvm-ranlib)
 add_subdirectory(llvm-ar)
 add_subdirectory(llvm-nm)
