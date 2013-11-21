@@ -155,6 +155,28 @@ static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
   }
 }
 
+// The type of encoding to use for type ids.
+static NaClBitCodeAbbrevOp::Encoding TypeIdEncoding = NaClBitCodeAbbrevOp::VBR;
+
+// The cutoff (in number of bits) from Fixed to VBR.
+static const unsigned TypeIdVBRCutoff = 6;
+
+// The number of bits to use in the encoding of type ids.
+static unsigned TypeIdNumBits = TypeIdVBRCutoff;
+
+// Optimizes the value for TypeIdEncoding and TypeIdNumBits based
+// the actual number of types.
+static inline void OptimizeTypeIdEncoding(const NaClValueEnumerator &VE) {
+  // Note: modify to use maximum number of bits if under cutoff. Otherwise,
+  // use VBR to take advantage that frequently referenced types have
+  // small IDs.
+  unsigned NumBits = NaClBitsNeededForValue(VE.getTypes().size());
+  TypeIdNumBits = (NumBits < TypeIdVBRCutoff ? NumBits : TypeIdVBRCutoff);
+  TypeIdEncoding = NaClBitCodeAbbrevOp::Encoding(
+      NumBits <= TypeIdVBRCutoff
+      ? NaClBitCodeAbbrevOp::Fixed : NaClBitCodeAbbrevOp::VBR);
+}
+
 /// WriteTypeTable - Write out the type table for a module.
 static void WriteTypeTable(const NaClValueEnumerator &VE,
                            NaClBitstreamWriter &Stream) {
@@ -164,19 +186,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Stream.EnterSubblock(naclbitc::TYPE_BLOCK_ID_NEW, TYPE_MAX_ABBREV);
 
   SmallVector<uint64_t, 64> TypeVals;
-
-
-  // Note: modify to use maximum number of bits if under cutoff. Otherwise,
-  // use VBR to take advantage that frequently referenced types have
-  // small IDs.
-  //
-  // Note: Cutoff chosen based on experiments on pnacl-translate.pexe.
-  uint64_t NumBits = NaClBitsNeededForValue(VE.getTypes().size());
-  static const uint64_t TypeVBRCutoff = 6;
-  uint64_t TypeIdNumBits = (NumBits <= TypeVBRCutoff ? NumBits : TypeVBRCutoff);
-  NaClBitCodeAbbrevOp::Encoding TypeIdEncoding =
-      (NumBits <= TypeVBRCutoff
-       ? NaClBitCodeAbbrevOp::Fixed : NaClBitCodeAbbrevOp::VBR);
 
   // Abbrev for TYPE_CODE_POINTER.
   NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
@@ -191,16 +200,8 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_FUNCTION));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // isvararg
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
+  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
   if (TYPE_FUNCTION_ABBREV != Stream.EmitAbbrev(Abbv))
-    llvm_unreachable("Unexpected abbrev ordering!");
-
-  // Abbrev for TYPE_CODE_ARRAY.
-  Abbv = new NaClBitCodeAbbrev();
-  Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_ARRAY));
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 8));   // size
-  Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, NumBits));
-  if (TYPE_ARRAY_ABBREV != Stream.EmitAbbrev(Abbv))
     llvm_unreachable("Unexpected abbrev ordering!");
 
   // Emit an entry count so the reader can reserve space.
@@ -962,9 +963,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
   { // SETTYPE abbrev for CONSTANTS_BLOCK.
     NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::CST_CODE_SETTYPE));
-    Abbv->Add(NaClBitCodeAbbrevOp(
-        NaClBitCodeAbbrevOp::Fixed,
-        NaClBitsNeededForValue(VE.getTypes().size())));
+    Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
     if (Stream.EmitBlockInfoAbbrev(naclbitc::CONSTANTS_BLOCK_ID,
                                    Abbv) != CONSTANTS_SETTYPE_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
@@ -1002,7 +1001,13 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_LOAD));
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // Ptr
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Align
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // Typecast
+    // Note: The vast majority of load operations are only on integers
+    // and floats. In addition, no function types are allowed. In
+    // addition, the type IDs have been sorted based on usage, moving
+    // type IDs associated integers and floats to very low
+    // indices. Hence, we assume that we can use a smaller width for
+    // the typecast.
+    Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, 4));           // TypeCast
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_LOAD_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
@@ -1032,9 +1037,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_CAST));
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));    // OpVal
-    Abbv->Add(NaClBitCodeAbbrevOp(
-        NaClBitCodeAbbrevOp::Fixed,                                 // dest ty
-        NaClBitsNeededForValue(VE.getTypes().size())));
+    Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));  // dest ty
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4));  // opc
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_CAST_ABBREV)
@@ -1067,7 +1070,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
     Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_FORWARDTYPEREF));
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_FORWARDTYPEREF_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
@@ -1151,6 +1154,7 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 
   // Analyze the module, enumerating globals, functions, etc.
   NaClValueEnumerator VE(M, PNaClVersion);
+  OptimizeTypeIdEncoding(VE);
 
   // Emit blockinfo, which defines the standard abbreviations etc.
   WriteBlockInfo(VE, Stream);
