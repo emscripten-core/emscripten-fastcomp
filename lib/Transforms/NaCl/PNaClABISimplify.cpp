@@ -65,7 +65,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   PM.add(createExpandVarArgsPass());
   PM.add(createExpandCtorsPass());
   PM.add(createResolveAliasesPass());
+#if 0 // EMSCRIPTEN: no need for tls
   PM.add(createExpandTlsPass());
+#endif
   // GlobalCleanup needs to run after ExpandTls because
   // __tls_template_start etc. are extern_weak before expansion
   PM.add(createGlobalCleanupPass());
