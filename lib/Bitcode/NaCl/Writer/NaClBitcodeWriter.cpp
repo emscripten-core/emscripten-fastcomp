@@ -1007,7 +1007,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     // type IDs associated integers and floats to very low
     // indices. Hence, we assume that we can use a smaller width for
     // the typecast.
-    Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, 4));           // TypeCast
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // TypeCast
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_LOAD_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
