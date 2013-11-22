@@ -38,6 +38,8 @@
 #include <set>
 using namespace llvm;
 
+#include <Relooper.h>
+
 #if 0
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
@@ -48,8 +50,6 @@ using namespace llvm;
 
 #define dumpfail(x) { fprintf(stderr, x "\n"); report_fatal_error("fail"); }
 #define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); report_fatal_error("fail"); }
-
-#include <Relooper.h>
 
 static cl::opt<std::string>
 FuncName("cppfname", cl::desc("Specify the name of the generated function"),
@@ -184,6 +184,8 @@ namespace {
     std::string getCppName(const Value* val);
     inline void printCppName(const Value* val);
 
+    std::string getPhiCode(const BasicBlock *From, const BasicBlock *To);
+
     void printAttributes(const AttributeSet &PAL, const std::string &name);
     void printType(Type* Ty);
     void printTypes(const Module* M);
@@ -208,7 +210,7 @@ namespace {
 
     void printModuleBody();
 
-    unsigned stackAlign(unsigned x) {
+    unsigned stackAlign(unsigned x) { // XXX need 8-byte, for doubles
       return x + (x%4 != 0 ? 4 - x%4 : 0);
     }
   };
@@ -465,6 +467,10 @@ std::string CppWriter::getCppName(Type* Ty) {
 
 void CppWriter::printCppName(Type* Ty) {
   printEscapedString(getCppName(Ty));
+}
+
+std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
+  return std::string("//phi yo");
 }
 
 std::string CppWriter::getCppName(const Value* val) {
@@ -1156,7 +1162,7 @@ std::string CppWriter::getValueAsParenStr(const Value* V) {
 
 // generateInstruction - This member is called for each Instruction in a function.
 std::string CppWriter::generateInstruction(const Instruction *I) {
-  std::string text = "NYI: " + std::string(I->getOpcodeName());
+  std::string text = "";
   std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
 
@@ -1769,12 +1775,14 @@ void CppWriter::printFunctionBody(const Function *F) {
       if (br->getNumOperands() == 3) {
         BasicBlock *S0 = br->getSuccessor(0);
         BasicBlock *S1 = br->getSuccessor(1);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], NULL);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1],
-            getOpName(TI->getOperand(0)).c_str());
+        std::string P0 = getPhiCode(&*BI, S0);
+        std::string P1 = getPhiCode(&*BI, S1);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], NULL,                                 P0.size() > 0 ? P0.c_str() : NULL);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], getOpName(TI->getOperand(0)).c_str(), P1.size() > 0 ? P1.c_str() : NULL);
       } else if (br->getNumOperands() == 1) {
         BasicBlock *S = br->getSuccessor(0);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], NULL);
+        std::string P = getPhiCode(&*BI, S);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], NULL, P.size() > 0 ? P.c_str() : NULL);
       } else {
         error("Branch with 2 operands?");
       }
