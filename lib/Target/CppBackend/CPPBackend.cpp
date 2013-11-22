@@ -1387,20 +1387,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::PHI: {
-    const PHINode* phi = cast<PHINode>(I);
-
-    Out << "PHINode* " << iName << " = PHINode::Create("
-        << getCppName(phi->getType()) << ", "
-        << phi->getNumIncomingValues() << ", \"";
-    printEscapedString(phi->getName());
-    Out << "\", " << bbname << ");";
-    nl(Out);
-    for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
-      Out << iName << "->addIncoming("
-          << opNames[PHINode::getOperandNumForIncomingValue(i)] << ", "
-          << getOpName(phi->getIncomingBlock(i)) << ");";
-      nl(Out);
-    }
+    // handled separately - we push them back into the relooper branchings
     break;
   }
   case Instruction::PtrToInt:
