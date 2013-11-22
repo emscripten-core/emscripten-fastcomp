@@ -38,7 +38,8 @@
 #include <set>
 using namespace llvm;
 
-#define dump(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
+#define dump(x) fprintf(stderr, x "\n")
+#define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
 #define dumpfail(x) { fprintf(stderr, x "\n"); report_fatal_error("fail"); }
 #define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); report_fatal_error("fail"); }
 
@@ -1153,8 +1154,6 @@ std::string CppWriter::getValueAsParenStr(const Value* V) {
 
 // generateInstruction - This member is called for each Instruction in a function.
 std::string CppWriter::generateInstruction(const Instruction *I) {
-  dump("generating instruction %s\n", std::string(I->getOpcodeName()).c_str());
-
   std::string text = "NYI: " + std::string(I->getOpcodeName());
   std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
@@ -1163,8 +1162,12 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   // forward references. So, we get the names of all the operands in advance
   const unsigned Ops(I->getNumOperands());
   std::string* opNames = new std::string[Ops];
-  for (unsigned i = 0; i < Ops; i++)
+  dumpv("Generating instruction %s = %s (%d operands)", iName.c_str(), std::string(I->getOpcodeName()).c_str(), Ops);
+
+  for (unsigned i = 0; i < Ops; i++) {
     opNames[i] = getOpName(I->getOperand(i));
+    dumpv("  op %d: %s", i, opNames[i].c_str());
+  }
 
   switch (I->getOpcode()) {
   default:
