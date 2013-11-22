@@ -191,6 +191,7 @@ namespace {
     std::string getAssign(const StringRef &, const Type *);
     std::string getCast(const StringRef &, const Type *);
     std::string getParenCast(const StringRef &, const Type *);
+    std::string getDoubleToInt(const StringRef &);
 
     void printConstant(const Constant *CPV);
     void printConstants(const Module* M);
@@ -786,6 +787,10 @@ std::string CppWriter::getParenCast(const StringRef &s, const Type *t) {
   return getCast(("(" + s + ")").str(), t);
 }
 
+std::string CppWriter::getDoubleToInt(const StringRef &s) {
+  return ("~~(" + s + ")").str();
+}
+
 // printConstant - Print out a constant pool entry...
 void CppWriter::printConstant(const Constant *CV) {
   // First, if the constant is actually a GlobalValue (variable or function)
@@ -1273,24 +1278,24 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     //Out << "BinaryOperator* " << iName << " = BinaryOperator::Create(";
     text = getAssign(iName, I->getType());
     switch (I->getOpcode()) {
-    case Instruction::Add: text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " + " + getValueAsParenStr(I->getOperand(1)), Type::getInt32Ty(I->getContext())) + ";"; break;
+    case Instruction::Add:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " + " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
+    case Instruction::Sub:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " - " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
+    case Instruction::Mul:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " * " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
+    case Instruction::SRem: text += getDoubleToInt(getValueAsParenStr(I->getOperand(0)) + " % " + getValueAsParenStr(I->getOperand(1))) + ";"; break;
+    case Instruction::SDiv: text += getDoubleToInt(getValueAsParenStr(I->getOperand(0)) + " / " + getValueAsParenStr(I->getOperand(1))) + ";"; break;
+    case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()) + ";"; break; // TODO: not cast, but ensurefloat here
     case Instruction::FAdd: Out << "Instruction::FAdd"; break;
-    case Instruction::Sub: text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " - " + getValueAsParenStr(I->getOperand(1)), Type::getInt32Ty(I->getContext())) + ";"; break;
     case Instruction::FSub: Out << "Instruction::FSub"; break;
-    case Instruction::Mul: Out << "Instruction::Mul"; break;
-    case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()) + ";"; break;
-    case Instruction::UDiv:Out << "Instruction::UDiv"; break;
-    case Instruction::SDiv:Out << "Instruction::SDiv"; break;
-    case Instruction::FDiv:Out << "Instruction::FDiv"; break;
-    case Instruction::URem:Out << "Instruction::URem"; break;
-    case Instruction::SRem:Out << "Instruction::SRem"; break;
-    case Instruction::FRem:Out << "Instruction::FRem"; break;
-    case Instruction::And: Out << "Instruction::And"; break;
-    case Instruction::Or:  Out << "Instruction::Or";  break;
-    case Instruction::Xor: Out << "Instruction::Xor"; break;
-    case Instruction::Shl: Out << "Instruction::Shl"; break;
-    case Instruction::LShr:Out << "Instruction::LShr"; break;
-    case Instruction::AShr:Out << "Instruction::AShr"; break;
+    case Instruction::UDiv: Out << "Instruction::UDiv"; break;
+    case Instruction::FDiv: Out << "Instruction::FDiv"; break;
+    case Instruction::URem: Out << "Instruction::URem"; break;
+    case Instruction::FRem: Out << "Instruction::FRem"; break;
+    case Instruction::And:  Out << "Instruction::And"; break;
+    case Instruction::Or:   Out << "Instruction::Or";  break;
+    case Instruction::Xor:  Out << "Instruction::Xor"; break;
+    case Instruction::Shl:  Out << "Instruction::Shl"; break;
+    case Instruction::LShr: Out << "Instruction::LShr"; break;
+    case Instruction::AShr: Out << "Instruction::AShr"; break;
     default: Out << "Instruction::BadOpCode"; break;
     }
     //Out << ", " << opNames[0] << ", " << opNames[1] << ", \"";
