@@ -39,6 +39,7 @@
 using namespace llvm;
 
 #define dump(x, ...) fprintf(stderr, x, __VA_ARGS__)
+#define dumpfail(x, ...) { fprintf(stderr, x, __VA_ARGS__); assert(0); }
 
 #include <Relooper.h>
 
@@ -1761,7 +1762,7 @@ void CppWriter::printFunctionBody(const Function *F) {
     const TerminatorInst *TI = BI->getTerminator();
     switch (TI->getOpcode()) {
     default: {
-      //error("Invalid branch instruction");
+      dumpfail("invalid branch instr %s\n", TI->getOpcodeName());
       break;
     }
     case Instruction::Br: {
@@ -1780,6 +1781,7 @@ void CppWriter::printFunctionBody(const Function *F) {
       }
       break;
     }
+    case Instruction::Ret: break;
     }
   }
 
