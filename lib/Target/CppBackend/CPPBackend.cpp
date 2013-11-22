@@ -1153,6 +1153,8 @@ std::string CppWriter::getValueAsParenStr(const Value* V) {
 
 // generateInstruction - This member is called for each Instruction in a function.
 std::string CppWriter::generateInstruction(const Instruction *I) {
+  dump("generating instruction %s\n", std::string(I->getOpcodeName()).c_str());
+
   std::string text = "NYI: " + std::string(I->getOpcodeName());
   std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
