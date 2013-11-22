@@ -257,7 +257,9 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
           DL->getTypeAllocSize((*Iter)->getType()->getPointerElementType()),
           /* Align= */ 1);
     } else {
-      CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
+      StoreInst *S = new StoreInst(*Iter, Ptr, Call);
+      CopyDebug(S, Call);
+      S->setAlignment(4); // EMSCRIPTEN: pnacl stack is only 4-byte aligned
     }
   }
 
