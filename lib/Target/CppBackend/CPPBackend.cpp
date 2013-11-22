@@ -1436,7 +1436,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case Instruction::UIToFP:   Out << "UIToFPInst"; break;
     case Instruction::PtrToInt: Out << "PtrToIntInst"; break;
     case Instruction::IntToPtr: Out << "IntToPtrInst"; break;
-    case Instruction::SIToFP:
+    case Instruction::SIToFP:   text = getAssign(iName, I->getOperand(0)->getType()) + getCast(getValueAsParenStr(I->getOperand(0)), I->getType()) + ";"; break;
     case Instruction::BitCast:  text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsStr(I->getOperand(0)) + ";"; break;
     default: llvm_unreachable("Unreachable");
     }
