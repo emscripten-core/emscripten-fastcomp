@@ -194,6 +194,7 @@ namespace {
     std::string getCast(const StringRef &, const Type *);
     std::string getParenCast(const StringRef &, const Type *);
     std::string getDoubleToInt(const StringRef &);
+    std::string getIMul(const Value *, const Value *);
 
     void printConstant(const Constant *CPV);
     void printConstants(const Module* M);
@@ -810,6 +811,11 @@ std::string CppWriter::getDoubleToInt(const StringRef &s) {
   return ("~~(" + s + ")").str();
 }
 
+std::string CppWriter::getIMul(const Value *V1, const Value *V2) {
+  // TODO: if small enough, emit direct multiply
+  return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")";
+}
+
 // printConstant - Print out a constant pool entry...
 void CppWriter::printConstant(const Constant *CV) {
   // First, if the constant is actually a GlobalValue (variable or function)
@@ -1299,7 +1305,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     switch (I->getOpcode()) {
     case Instruction::Add:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " + " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
     case Instruction::Sub:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " - " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
-    case Instruction::Mul:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " * " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
+    case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)) + ";"; break;
     case Instruction::SRem: text += getDoubleToInt(getValueAsParenStr(I->getOperand(0)) + " % " + getValueAsParenStr(I->getOperand(1))) + ";"; break;
     case Instruction::SDiv: text += getDoubleToInt(getValueAsParenStr(I->getOperand(0)) + " / " + getValueAsParenStr(I->getOperand(1))) + ";"; break;
     case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()) + ";"; break; // TODO: not cast, but ensurefloat here
