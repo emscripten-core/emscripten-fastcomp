@@ -470,7 +470,20 @@ void CppWriter::printCppName(Type* Ty) {
 }
 
 std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
-  return std::string("//phi yo");
+  // XXX ignore dependencies and cycles for now
+  // FIXME this is all quite inefficient, and also done once per incoming to each phi
+  std::string ret = "";
+  for (BasicBlock::const_iterator I = To->begin(), E = To->end();
+       I != E; ++I) {
+    const PHINode* P = dyn_cast<PHINode>(I);
+    if (!P) break;
+    int index = P->getBasicBlockIndex(From);
+    if (index < 0) continue;
+    // we found it
+    Value *V = P->getIncomingValue(index);
+    ret += getAssign(getCppName(P), P->getType()) + getValueAsStr(V) + ";";
+  }
+  return ret;
 }
 
 std::string CppWriter::getCppName(const Value* val) {
