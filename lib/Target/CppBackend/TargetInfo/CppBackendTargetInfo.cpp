@@ -20,8 +20,8 @@ static unsigned CppBackend_TripleMatchQuality(const std::string &TT) {
 }
 
 extern "C" void LLVMInitializeCppBackendTargetInfo() { 
-  TargetRegistry::RegisterTarget(TheCppBackendTarget, "cpp",    
-                                  "C++ backend",
+  TargetRegistry::RegisterTarget(TheCppBackendTarget, "js",
+                                  "JavaScript backend",
                                   &CppBackend_TripleMatchQuality);
 }
 
