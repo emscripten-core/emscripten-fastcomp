@@ -38,8 +38,14 @@
 #include <set>
 using namespace llvm;
 
+#if 0
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
+#else
+#define dump(x)
+#define dumpv(x, ...)
+#endif
+
 #define dumpfail(x) { fprintf(stderr, x "\n"); report_fatal_error("fail"); }
 #define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); report_fatal_error("fail"); }
 
@@ -1030,17 +1036,8 @@ void CppWriter::printVariableBody(const GlobalVariable *GV) {
   }
 }
 
-std::string CppWriter::getOpName(const Value* V) {
-  if (!isa<Instruction>(V) || DefinedValues.find(V) != DefinedValues.end())
-    return getCppName(V);
-
-  // See if its alread in the map of forward references, if so just return the
-  // name we already set up for it
-  ForwardRefMap::const_iterator I = ForwardRefs.find(V);
-  if (I != ForwardRefs.end())
-    return I->second;
-
-  dumpfail("invalid value in getOpName");
+std::string CppWriter::getOpName(const Value* V) { // TODO: remove this
+  return getCppName(V);
 }
 
 static StringRef ConvertAtomicOrdering(AtomicOrdering Ordering) {
