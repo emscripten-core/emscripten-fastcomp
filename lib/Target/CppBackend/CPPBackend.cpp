@@ -1745,7 +1745,8 @@ void CppWriter::printFunctionBody(const Function *F) {
     std::string contents = "";
     for (BasicBlock::const_iterator I = BI->begin(), E = BI->end();
          I != E; ++I) {
-      contents += " " + generateInstruction(I) + "\n";
+      std::string curr = generateInstruction(I);
+      if (curr.size() > 0) contents += curr + "\n";
     }
     Block *Curr = new Block(contents.c_str(), NULL); // TODO: use branch vars so we get switches
     const BasicBlock *BB = &*BI;
