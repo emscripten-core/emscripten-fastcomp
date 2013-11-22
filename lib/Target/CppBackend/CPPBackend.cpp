@@ -1277,7 +1277,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::LShr:
   case Instruction::AShr:{
     //Out << "BinaryOperator* " << iName << " = BinaryOperator::Create(";
-    text = getAssign(iName, Type::getInt32Ty(I->getContext()));
+    text = getAssign(iName, I->getType());
     switch (I->getOpcode()) {
     case Instruction::Add: text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " + " + getValueAsParenStr(I->getOperand(1)), Type::getInt32Ty(I->getContext())) + ";"; break;
     case Instruction::FAdd: Out << "Instruction::FAdd"; break;
