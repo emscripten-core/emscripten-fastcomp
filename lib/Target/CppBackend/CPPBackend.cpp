@@ -38,8 +38,9 @@
 #include <set>
 using namespace llvm;
 
-#define dump(x, ...) fprintf(stderr, x, __VA_ARGS__)
-#define dumpfail(x, ...) { fprintf(stderr, x, __VA_ARGS__); assert(0); }
+#define dump(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
+#define dumpfail(x) { fprintf(stderr, x "\n"); report_fatal_error("fail"); }
+#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); report_fatal_error("fail"); }
 
 #include <Relooper.h>
 
@@ -1038,17 +1039,7 @@ std::string CppWriter::getOpName(const Value* V) {
   if (I != ForwardRefs.end())
     return I->second;
 
-  // This is a new forward reference. Generate a unique name for it
-  std::string result(std::string("fwdref_") + utostr(uniqueNum++));
-
-  // Yes, this is a hack. An Argument is the smallest instantiable value that
-  // we can make as a placeholder for the real value. We'll replace these
-  // Argument instances later.
-  Out << "Argument* " << result << " = new Argument("
-      << getCppName(V->getType()) << ");";
-  nl(Out);
-  ForwardRefs[V] = result;
-  return result;
+  dumpfail("invalid value in getOpName");
 }
 
 static StringRef ConvertAtomicOrdering(AtomicOrdering Ordering) {
@@ -1762,7 +1753,7 @@ void CppWriter::printFunctionBody(const Function *F) {
     const TerminatorInst *TI = BI->getTerminator();
     switch (TI->getOpcode()) {
     default: {
-      dumpfail("invalid branch instr %s\n", TI->getOpcodeName());
+      dumpfailv("invalid branch instr %s\n", TI->getOpcodeName());
       break;
     }
     case Instruction::Br: {
