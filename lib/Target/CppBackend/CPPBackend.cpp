@@ -502,7 +502,7 @@ std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) 
     assigns[name] = getAssign(name, P->getType());
     Value *V = P->getIncomingValue(index);
     values[name] = V;
-    std::string vname = getCppName(V);
+    std::string vname = getValueAsStr(V);
     if (!dyn_cast<Constant>(V)) {
       deps[name] = vname;
       undeps[vname] = name;
@@ -516,7 +516,7 @@ std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) 
       StringMap::iterator last = I;
       std::string curr = last->first;
       Value *V = values[curr];
-      std::string CV = getCppName(V);
+      std::string CV = getValueAsStr(V);
       I++; // advance now, as we may erase
       // if we have no dependencies, or we found none to emit and are at the end (so there is a cycle), emit
       StringMap::iterator dep = deps.find(curr);
