@@ -48,8 +48,11 @@ using namespace llvm;
 #define dumpv(x, ...)
 #endif
 
-#define dumpfail(x) { fprintf(stderr, x "\n"); report_fatal_error("fail"); }
-#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); report_fatal_error("fail"); }
+#define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
+#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
+
+#undef assert
+#define assert(x) { if (!x) dumpfail(#x); }
 
 static cl::opt<std::string>
 FuncName("cppfname", cl::desc("Specify the name of the generated function"),
