@@ -187,7 +187,9 @@ namespace {
     std::string getPtr(const Value* Ptr);
     std::string getConstant(const Constant*);
     std::string getValueAsStr(const Value*);
+    std::string getValueAsCastStr(const Value*);
     std::string getValueAsParenStr(const Value*);
+    std::string getValueAsCastParenStr(const Value*);
     std::string getCppName(Type* val);
     inline void printCppName(Type* val);
 
@@ -1181,12 +1183,24 @@ std::string CppWriter::getValueAsStr(const Value* V) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
   } else {
+    return getCppName(V);
+  }
+}
+
+std::string CppWriter::getValueAsCastStr(const Value* V) {
+  if (const Constant *CV = dyn_cast<Constant>(V)) {
+    return getConstant(CV);
+  } else {
     return getCast(getCppName(V), V->getType());
   }
 }
 
 std::string CppWriter::getValueAsParenStr(const Value* V) {
   return "(" + getValueAsStr(V) + ")";
+}
+
+std::string CppWriter::getValueAsCastParenStr(const Value* V) {
+  return "(" + getValueAsCastStr(V) + ")";
 }
 
 // generateInstruction - This member is called for each Instruction in a function.
@@ -1219,7 +1233,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     if (RV == NULL) {
       text += ";";
     } else {
-      text += " " + getValueAsStr(RV) + ";";
+      text += " " + getValueAsCastStr(RV) + ";";
     }
     break;
   }
@@ -1365,7 +1379,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::ICmp: {
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" + getValueAsStr(I->getOperand(0)) + ")";
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" + getValueAsCastStr(I->getOperand(0)) + ")";
     switch (cast<ICmpInst>(I)->getPredicate()) {
     case ICmpInst::ICMP_EQ:  text += "==";  break;
     case ICmpInst::ICMP_NE:  text += "!=";  break;
@@ -1380,7 +1394,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case ICmpInst::ICMP_SGT: text += ">"; break;
     default: text += "ICmpInst::BAD_ICMP_PREDICATE"; break;
     }
-    text += "(" + getValueAsStr(I->getOperand(1)) + ")";
+    text += "(" + getValueAsCastStr(I->getOperand(1)) + ")";
     break;
   }
   case Instruction::Alloca: {
@@ -1453,10 +1467,10 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       unsigned outBits = I->getType()->getIntegerBitWidth();
       text = getAssign(iName, I->getType()) + getCppName(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1) + ";"; break;
     }
-    case Instruction::SExt:     text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsStr(I->getOperand(0)) + ";"; break;
+    case Instruction::SExt:     text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsCastStr(I->getOperand(0)) + ";"; break;
     case Instruction::FPExt:    text = getAssign(iName, Type::getFloatTy(I->getContext())) + opNames[0] + ";"; break;
     case Instruction::SIToFP:   text = getAssign(iName, I->getType()) + getCast(getValueAsParenStr(I->getOperand(0)), I->getType()) + ";"; break;
-    case Instruction::BitCast:  text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsStr(I->getOperand(0)) + ";"; break;
+    case Instruction::BitCast:  text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsCastStr(I->getOperand(0)) + ";"; break;
     case Instruction::FPTrunc:  Out << "FPTruncInst"; break;
     case Instruction::ZExt:     Out << "ZExtInst"; break;
     case Instruction::FPToUI:   Out << "FPToUIInst"; break;
@@ -1480,7 +1494,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       if (t && (GV = dyn_cast<GlobalVariable>(Arg))) {
         text += utostr(getGlobalAddress(GV->getName().str()));
       } else {
-        text += getValueAsStr(call->getArgOperand(i));
+        text += getValueAsCastStr(call->getArgOperand(i)); // FIXME: differentiate ffi calls
       }
       if (i < numArgs - 1) text += ", ";
     }
