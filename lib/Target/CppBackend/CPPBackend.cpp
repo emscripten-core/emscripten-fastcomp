@@ -51,6 +51,13 @@ using namespace llvm;
 #define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
 #define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
 
+#define dumpIR(value) { \
+  std::string temp; \
+  raw_string_ostream stream(temp); \
+  stream << *value; \
+  std::cout << temp << "\n"; \
+}
+
 #undef assert
 #define assert(x) { if (!x) dumpfail(#x); }
 
@@ -2026,6 +2033,7 @@ void CppWriter::allocateConstant(const Constant* CV) {
         GlobalData = &GlobalData64;
         break;
       default:
+        dumpIR(CV);
         assert(false);
     }
     // assuming compiler is little endian
