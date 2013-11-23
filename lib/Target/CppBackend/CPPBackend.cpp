@@ -221,8 +221,8 @@ namespace {
 
     void printModuleBody();
 
-    unsigned stackAlign(unsigned x) { // XXX need 8-byte, for doubles
-      return x + (x%4 != 0 ? 4 - x%4 : 0);
+    unsigned stackAlign(unsigned x) {
+      return x + (x%8 != 0 ? 8 - x%8 : 0);
     }
   };
 } // end anonymous namespace.
