@@ -40,7 +40,7 @@ using namespace llvm;
 
 #include <Relooper.h>
 
-#if 0
+#if 1
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
 #else
@@ -54,8 +54,8 @@ using namespace llvm;
 #define dumpIR(value) { \
   std::string temp; \
   raw_string_ostream stream(temp); \
-  stream << *value; \
-  std::cout << temp << "\n"; \
+  stream << *(value); \
+  fprintf(stderr, "%s\n", temp.c_str()); \
 }
 
 #undef assert
@@ -1447,7 +1447,12 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::SIToFP:
   case Instruction::BitCast: {
     switch (I->getOpcode()) {
-    case Instruction::Trunc:    Out << "TruncInst"; break;
+    case Instruction::Trunc: {
+      Value *V = I->getOperand(0);
+      //unsigned inBits = V->getType()->getIntegerBitWidth();
+      unsigned outBits = I->getType()->getIntegerBitWidth();
+      text = getAssign(iName, I->getType()) + getCppName(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1) + ";"; break;
+    }
     case Instruction::ZExt:     Out << "ZExtInst"; break;
     case Instruction::SExt:     Out << "SExtInst"; break;
     case Instruction::FPTrunc:  Out << "FPTruncInst"; break;
