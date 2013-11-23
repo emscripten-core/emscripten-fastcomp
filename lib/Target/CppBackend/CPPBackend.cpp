@@ -1797,8 +1797,8 @@ void CppWriter::printFunctionBody(const Function *F) {
         BasicBlock *S1 = br->getSuccessor(1);
         std::string P0 = getPhiCode(&*BI, S0);
         std::string P1 = getPhiCode(&*BI, S1);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], NULL,                                 P0.size() > 0 ? P0.c_str() : NULL);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], getOpName(TI->getOperand(0)).c_str(), P1.size() > 0 ? P1.c_str() : NULL);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], getOpName(TI->getOperand(0)).c_str(), P0.size() > 0 ? P0.c_str() : NULL);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], NULL,                                 P1.size() > 0 ? P1.c_str() : NULL);
       } else if (br->getNumOperands() == 1) {
         BasicBlock *S = br->getSuccessor(0);
         std::string P = getPhiCode(&*BI, S);
