@@ -102,6 +102,11 @@ extern "C" void LLVMInitializeCppBackendTarget() {
 }
 
 namespace {
+  enum Signedness {
+    ASM_SIGNED = 0,
+    ASM_UNSIGNED = 1
+  };
+
   typedef std::vector<Type*> TypeList;
   typedef std::map<Type*,std::string> TypeMap;
   typedef std::map<const Value*,std::string> ValueMap;
@@ -203,8 +208,8 @@ namespace {
     void printTypes(const Module* M);
 
     std::string getAssign(const StringRef &, const Type *);
-    std::string getCast(const StringRef &, const Type *);
-    std::string getParenCast(const StringRef &, const Type *);
+    std::string getCast(const StringRef &, const Type *, Signedness sign=ASM_SIGNED);
+    std::string getParenCast(const StringRef &, const Type *, Signedness sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
 
@@ -841,7 +846,7 @@ std::string CppWriter::getAssign(const StringRef &s, const Type *t) {
   return (s + " = ").str();
 }
 
-std::string CppWriter::getCast(const StringRef &s, const Type *t) {
+std::string CppWriter::getCast(const StringRef &s, const Type *t, Signedness sign) {
   switch (t->getTypeID()) {
   default:
     assert(false && "Unsupported type");
@@ -851,12 +856,13 @@ std::string CppWriter::getCast(const StringRef &s, const Type *t) {
     return ("+" + s).str();
   case Type::IntegerTyID:
   case Type::PointerTyID:
-    return (s + "|0").str();
+    assert(t->getIntegerBitWidth() == 32);
+    return (sign == ASM_SIGNED ? s + "|0" : s + ">>>0").str();
   }
 }
 
-std::string CppWriter::getParenCast(const StringRef &s, const Type *t) {
-  return getCast(("(" + s + ")").str(), t);
+std::string CppWriter::getParenCast(const StringRef &s, const Type *t, Signedness sign) {
+  return getCast(("(" + s + ")").str(), t, sign);
 }
 
 std::string CppWriter::getDoubleToInt(const StringRef &s) {
@@ -1370,8 +1376,16 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case Instruction::Add:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " + " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
     case Instruction::Sub:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " - " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
     case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)) + ";"; break;
-    case Instruction::SRem: text += getDoubleToInt(getValueAsParenStr(I->getOperand(0)) + " % " + getValueAsParenStr(I->getOperand(1))) + ";"; break;
-    case Instruction::SDiv: text += getDoubleToInt(getValueAsParenStr(I->getOperand(0)) + " / " + getValueAsParenStr(I->getOperand(1))) + ";"; break;
+    case Instruction::SRem: text += getDoubleToInt(
+                                      getParenCast(getValueAsParenStr(I->getOperand(0)), I->getType(), ASM_SIGNED) +
+                                      " % " +
+                                      getParenCast(getValueAsParenStr(I->getOperand(1)), I->getType(), ASM_SIGNED)
+                                    ) + ";"; break;
+    case Instruction::SDiv: text += getDoubleToInt( // XXX is this the right cast, here and srem?
+                                      getParenCast(getValueAsParenStr(I->getOperand(0)), I->getType(), ASM_SIGNED) +
+                                      " / " +
+                                      getParenCast(getValueAsParenStr(I->getOperand(1)), I->getType(), ASM_SIGNED)
+                                    ) + ";"; break;
     case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()) + ";"; break; // TODO: not cast, but ensurefloat here
     case Instruction::FAdd: Out << "Instruction::FAdd"; break;
     case Instruction::FSub: Out << "Instruction::FSub"; break;
