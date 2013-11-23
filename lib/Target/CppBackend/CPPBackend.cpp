@@ -40,7 +40,7 @@ using namespace llvm;
 
 #include <Relooper.h>
 
-#if 1
+#if 0
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
 #else
@@ -1453,17 +1453,17 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       unsigned outBits = I->getType()->getIntegerBitWidth();
       text = getAssign(iName, I->getType()) + getCppName(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1) + ";"; break;
     }
-    case Instruction::ZExt:     Out << "ZExtInst"; break;
-    case Instruction::SExt:     Out << "SExtInst"; break;
-    case Instruction::FPTrunc:  Out << "FPTruncInst"; break;
+    case Instruction::SExt:     text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsStr(I->getOperand(0)) + ";"; break;
     case Instruction::FPExt:    text = getAssign(iName, Type::getFloatTy(I->getContext())) + opNames[0] + ";"; break;
+    case Instruction::SIToFP:   text = getAssign(iName, I->getType()) + getCast(getValueAsParenStr(I->getOperand(0)), I->getType()) + ";"; break;
+    case Instruction::BitCast:  text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsStr(I->getOperand(0)) + ";"; break;
+    case Instruction::FPTrunc:  Out << "FPTruncInst"; break;
+    case Instruction::ZExt:     Out << "ZExtInst"; break;
     case Instruction::FPToUI:   Out << "FPToUIInst"; break;
     case Instruction::FPToSI:   Out << "FPToSIInst"; break;
     case Instruction::UIToFP:   Out << "UIToFPInst"; break;
     case Instruction::PtrToInt: Out << "PtrToIntInst"; break;
     case Instruction::IntToPtr: Out << "IntToPtrInst"; break;
-    case Instruction::SIToFP:   text = getAssign(iName, I->getType()) + getCast(getValueAsParenStr(I->getOperand(0)), I->getType()) + ";"; break;
-    case Instruction::BitCast:  text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsStr(I->getOperand(0)) + ";"; break;
     default: llvm_unreachable("Unreachable");
     }
     break;
