@@ -483,9 +483,14 @@ void CppWriter::printCppName(Type* Ty) {
 }
 
 std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
-  // XXX ignore dependencies and cycles for now
   // FIXME this is all quite inefficient, and also done once per incoming to each phi
-  std::string ret = "";
+
+  // Find the phis, and generate assignments and dependencies
+  typedef std::map<std::string, std::string> StringMap;
+  StringMap assigns; // variable -> assign statement
+  std::map<std::string, Value*> values; // variable -> Value
+  StringMap deps; // variable -> dependency
+  StringMap undeps; // reverse: dependency -> variable
   for (BasicBlock::const_iterator I = To->begin(), E = To->end();
        I != E; ++I) {
     const PHINode* P = dyn_cast<PHINode>(I);
@@ -493,10 +498,45 @@ std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) 
     int index = P->getBasicBlockIndex(From);
     if (index < 0) continue;
     // we found it
+    std::string name = getCppName(P);
+    assigns[name] = getAssign(name, P->getType());
     Value *V = P->getIncomingValue(index);
-    ret += getAssign(getCppName(P), P->getType()) + getValueAsStr(V) + ";";
+    values[name] = V;
+    std::string vname = getCppName(V);
+    if (!dyn_cast<Constant>(V)) {
+      deps[name] = vname;
+      undeps[vname] = name;
+    }
   }
-  return ret;
+  // Emit assignments+values, taking into account dependencies, and breaking cycles
+  std::string pre = "", post = "";
+  while (assigns.size() > 0) {
+    bool emitted = false;
+    for (StringMap::iterator I = assigns.begin(); I != assigns.end();) {
+      StringMap::iterator last = I;
+      std::string curr = last->first;
+      Value *V = values[curr];
+      std::string CV = getCppName(V);
+      I++; // advance now, as we may erase
+      // if we have no dependencies, or we found none to emit and are at the end (so there is a cycle), emit
+      StringMap::iterator dep = deps.find(curr);
+      if (dep == deps.end() || (!emitted && I == assigns.end())) {
+        if (dep != deps.end()) {
+          // break a cycle
+          std::string depString = dep->second;
+          std::string temp = curr + "$phi";
+          pre  += getAssign(temp, V->getType()) + CV + ';';
+          CV = temp;
+          deps.erase(curr);
+          undeps.erase(depString);
+        }
+        post += assigns[curr] + CV + ';';
+        assigns.erase(last);
+        emitted = true;
+      }
+    }
+  }
+  return pre + post;
 }
 
 std::string CppWriter::getCppName(const Value* val) {
