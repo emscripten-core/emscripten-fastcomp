@@ -2026,6 +2026,9 @@ void CppWriter::allocateConstant(const Constant* CV) {
     assert(BitWidth == 32 || BitWidth == 64);
     HeapData *GlobalData = NULL;
     switch (BitWidth) {
+      case 8:
+        GlobalData = &GlobalData8;
+        break;
       case 32:
         GlobalData = &GlobalData32;
         break;
