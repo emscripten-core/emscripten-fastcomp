@@ -1761,6 +1761,7 @@ void CppWriter::printFunctionBody(const Function *F) {
   static char *buffer = new char[RELOOPER_BUFFER];
   Relooper::SetOutputBuffer(buffer, RELOOPER_BUFFER);
   Relooper R;
+  R.SetAsmJSMode(1);
   Block *Entry = NULL;
   std::map<const BasicBlock*, Block*> LLVMToRelooper;
 
@@ -1817,6 +1818,7 @@ void CppWriter::printFunctionBody(const Function *F) {
 
   // Emit local variables
   UsedVars["sp"] = Type::getInt32Ty(F->getContext())->getTypeID();
+  UsedVars["label"] = Type::getInt32Ty(F->getContext())->getTypeID();
   if (!UsedVars.empty()) {
     Out << " var ";
     for (VarMap::iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
