@@ -1281,25 +1281,8 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     }
     break;
   }
-  case Instruction::Br: break; // handled while relooping
-  case Instruction::Switch: {
-    const SwitchInst *SI = cast<SwitchInst>(I);
-    Out << "SwitchInst* " << iName << " = SwitchInst::Create("
-        << getOpName(SI->getCondition()) << ", "
-        << getOpName(SI->getDefaultDest()) << ", "
-        << SI->getNumCases() << ", " << bbname << ");";
-    nl(Out);
-    for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end();
-         i != e; ++i) {
-      const IntegersSubset CaseVal = i.getCaseValueEx();
-      const BasicBlock *BB = i.getCaseSuccessor();
-      Out << iName << "->addCase("
-          << getOpName(CaseVal) << ", "
-          << getOpName(BB) << ");";
-      nl(Out);
-    }
-    break;
-  }
+  case Instruction::Br:
+  case Instruction::Switch: break; // handled while relooping
   case Instruction::IndirectBr: {
     const IndirectBrInst *IBI = cast<IndirectBrInst>(I);
     Out << "IndirectBrInst *" << iName << " = IndirectBrInst::Create("
@@ -2038,7 +2021,9 @@ void CppWriter::printFunctionBody(const Function *F) {
       std::string curr = generateInstruction(I);
       if (curr.size() > 0) contents += curr + "\n";
     }
-    Block *Curr = new Block(contents.c_str(), NULL); // TODO: use branch vars so we get switches
+    // TODO: if chains for small/sparse switches
+    const SwitchInst* SI = dyn_cast<SwitchInst>(BI->getTerminator());
+    Block *Curr = new Block(contents.c_str(), SI ? getValueAsCastStr(SI->getCondition()).c_str() : NULL);
     const BasicBlock *BB = &*BI;
     LLVMToRelooper[BB] = Curr;
     R.AddBlock(Curr);
@@ -2069,6 +2054,24 @@ void CppWriter::printFunctionBody(const Function *F) {
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], NULL, P.size() > 0 ? P.c_str() : NULL);
         } else {
           error("Branch with 2 operands?");
+        }
+        break;
+      }
+      case Instruction::Switch: {
+        const SwitchInst* SI = cast<SwitchInst>(TI);
+        BasicBlock *DD = SI->getDefaultDest();
+        std::string P = getPhiCode(&*BI, DD);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], NULL, P.size() > 0 ? P.c_str() : NULL);
+        for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
+          const BasicBlock *BB = i.getCaseSuccessor();
+          const IntegersSubset CaseVal = i.getCaseValueEx();
+          assert(CaseVal.isSingleNumbersOnly());
+          std::string Condition = "";
+          for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
+            Condition += "case " + utostr(*(CaseVal.getSingleNumber(Index).toConstantInt()->getValue().getRawData())) + ':';
+          }
+          std::string P = getPhiCode(&*BI, BB);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], Condition.c_str(), P.size() > 0 ? P.c_str() : NULL);
         }
         break;
       }
