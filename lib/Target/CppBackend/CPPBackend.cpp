@@ -1396,7 +1396,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
                                       getValueAsParenStr(I->getOperand(1)),
                                       I->getType()
                                     ) + ";"; break;
-    case Instruction::Add:  text += getParenCast(
+    case Instruction::Sub:  text += getParenCast(
                                       getValueAsParenStr(I->getOperand(0)) +
                                       " - " +
                                       getValueAsParenStr(I->getOperand(1)),
@@ -1541,17 +1541,22 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::UIToFP:
   case Instruction::SIToFP:
   case Instruction::BitCast: {
+    text = getAssign(iName, I->getType());
     switch (I->getOpcode()) {
     case Instruction::Trunc: {
-      Value *V = I->getOperand(0);
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
-      text = getAssign(iName, I->getType()) + getCppName(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1) + ";"; break;
+      text += getCppName(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
+      break;
     }
-    case Instruction::SExt:     text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsCastStr(I->getOperand(0)) + ";"; break;
-    case Instruction::FPExt:    text = getAssign(iName, Type::getFloatTy(I->getContext())) + opNames[0] + ";"; break;
-    case Instruction::SIToFP:   text = getAssign(iName, I->getType()) + getCast(getValueAsParenStr(I->getOperand(0)), I->getType()) + ";"; break;
-    case Instruction::BitCast:  text = getAssign(iName, I->getOperand(0)->getType()) + getValueAsCastStr(I->getOperand(0)) + ";"; break;
+    case Instruction::SExt: {
+      std::string bits = utostr(32 - I->getOperand(0)->getType()->getIntegerBitWidth());
+      text += getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
+      break;
+    }
+    case Instruction::FPExt:    text += opNames[0]; break;
+    case Instruction::SIToFP:   text += getCast(getValueAsParenStr(I->getOperand(0)), I->getType()); break;
+    case Instruction::BitCast:  text += getValueAsCastStr(I->getOperand(0)); break;
     case Instruction::FPTrunc:  Out << "FPTruncInst"; break;
     case Instruction::ZExt:     Out << "ZExtInst"; break;
     case Instruction::FPToUI:   Out << "FPToUIInst"; break;
@@ -1561,6 +1566,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case Instruction::IntToPtr: Out << "IntToPtrInst"; break;
     default: llvm_unreachable("Unreachable");
     }
+    text += ";";
     break;
   }
   case Instruction::Call: {
