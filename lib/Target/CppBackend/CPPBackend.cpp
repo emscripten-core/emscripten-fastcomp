@@ -2194,7 +2194,7 @@ void CppWriter::printModuleBody() {
   // TODO fix commas
   Out << "/* memory initializer */ allocate([";
   printCommaSeparated(GlobalData64);
-  if (GlobalData64.size() > 0 && GlobalData32.size() > 0) {
+  if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
     Out << ",";
   }
   printCommaSeparated(GlobalData32);
