@@ -1539,8 +1539,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::FPToUI:
   case Instruction::FPToSI:
   case Instruction::UIToFP:
-  case Instruction::SIToFP:
-  case Instruction::BitCast: {
+  case Instruction::SIToFP: {
     text = getAssign(iName, I->getType());
     switch (I->getOpcode()) {
     case Instruction::Trunc: {
@@ -1554,19 +1553,35 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       text += getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
       break;
     }
-    case Instruction::FPExt:    text += opNames[0]; break;
-    case Instruction::SIToFP:   text += getCast(getValueAsParenStr(I->getOperand(0)), I->getType()); break;
-    case Instruction::BitCast:  text += getValueAsCastStr(I->getOperand(0)); break;
-    case Instruction::FPTrunc:  Out << "FPTruncInst"; break;
     case Instruction::ZExt:     Out << "ZExtInst"; break;
+    case Instruction::FPExt:    text += opNames[0]; break; // TODO: fround
+    case Instruction::FPTrunc:  text += opNames[0]; break; // TODO: fround
+    case Instruction::SIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
+    case Instruction::UIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()); break;
     case Instruction::FPToUI:   Out << "FPToUIInst"; break;
     case Instruction::FPToSI:   Out << "FPToSIInst"; break;
-    case Instruction::UIToFP:   Out << "UIToFPInst"; break;
     case Instruction::PtrToInt: Out << "PtrToIntInst"; break;
     case Instruction::IntToPtr: Out << "IntToPtrInst"; break;
     default: llvm_unreachable("Unreachable");
     }
     text += ";";
+    break;
+  }
+  case Instruction::BitCast: {
+    text = getAssign(iName, I->getType());
+    // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
+    Type *InType = I->getOperand(0)->getType();
+    Type *OutType = I->getType();
+    std::string V = getValueAsStr(I->getOperand(0));
+    if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
+      assert(InType->getIntegerBitWidth() == 32);
+      text = "HEAP32[tempDoublePtr>>2]=" + V + ";" + text + "HEAPF32[tempDoublePtr>>2];";
+    } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
+      assert(OutType->getIntegerBitWidth() == 32);
+      text = "HEAPF32[tempDoublePtr>>2]=" + V + ";" + text + "HEAP32[tempDoublePtr>>2];";
+    } else {
+      text += V + ";";
+    }
     break;
   }
   case Instruction::Call: {
