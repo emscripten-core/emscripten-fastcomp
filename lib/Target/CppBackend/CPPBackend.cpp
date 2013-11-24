@@ -1478,7 +1478,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
     if (Bytes <= Alignment || Alignment == 0) {
-      text = Assign + getPtrUse(P) + ';';
+      text = Assign + getPtrLoad(P) + ';';
     } else {
       // unaligned in some manner
       std::string PS = getOpName(P);
