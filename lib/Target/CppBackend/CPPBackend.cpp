@@ -856,8 +856,17 @@ std::string CppWriter::getCast(const StringRef &s, const Type *t, Signedness sig
     return ("+" + s).str();
   case Type::IntegerTyID:
   case Type::PointerTyID:
-    assert(t->getIntegerBitWidth() == 32);
-    return (sign == ASM_SIGNED ? s + "|0" : s + ">>>0").str();
+    switch (t->getIntegerBitWidth()) {
+    case 1:
+      return (s + "&1").str();
+    case 8:
+      return (s + "&255").str();
+    case 16:
+      return (s + "&65535").str();
+    case 32:
+    default:
+      return (sign == ASM_SIGNED ? s + "|0" : s + ">>>0").str();
+    }
   }
 }
 
@@ -1381,8 +1390,18 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     //Out << "BinaryOperator* " << iName << " = BinaryOperator::Create(";
     text = getAssign(iName, I->getType());
     switch (I->getOpcode()) {
-    case Instruction::Add:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " + " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
-    case Instruction::Sub:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " - " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
+    case Instruction::Add:  text += getParenCast(
+                                      getValueAsParenStr(I->getOperand(0)) +
+                                      " + " +
+                                      getValueAsParenStr(I->getOperand(1)),
+                                      I->getType()
+                                    ) + ";"; break;
+    case Instruction::Add:  text += getParenCast(
+                                      getValueAsParenStr(I->getOperand(0)) +
+                                      " - " +
+                                      getValueAsParenStr(I->getOperand(1)),
+                                      I->getType()
+                                    ) + ";"; break;
     case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)) + ";"; break;
     case Instruction::SRem: text += getDoubleToInt(
                                       getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED) +
