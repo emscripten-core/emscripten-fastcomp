@@ -554,7 +554,7 @@ std::string CppWriter::getCppName(const Value* val) {
     return I->second;
 
   if (val->hasName()) {
-    if (dyn_cast<Function>(val)) {
+    if (isa<Function>(val)) {
       name = std::string("_") + val->getName().str();
     } else {
       name = std::string("$") + val->getName().str();
@@ -1199,7 +1199,7 @@ std::string CppWriter::getPtr(const Value* Ptr) {
 }
 
 std::string CppWriter::getConstant(const Constant* CV) {
-  if (/* const PointerType *Ptr = */ dyn_cast<PointerType>(CV->getType())) {
+  if (isa<PointerType>(CV->getType())) {
     return getPtr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
@@ -2298,9 +2298,9 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
     for (unsigned i = 0; i < BitWidth / 8; ++i) {
       GlobalData->push_back(integer.b[i]);
     }
-  } else if (/* const ConstantPointerNull *CPN = */ dyn_cast<ConstantPointerNull>(CV)) {
+  } else if (isa<ConstantPointerNull>(CV)) {
     assert(false);
-  } else if (/* const ConstantAggregateZero *CAZ = */ dyn_cast<ConstantAggregateZero>(CV)) {
+  } else if (isa<ConstantAggregateZero>(CV)) {
     DataLayout DL(TheModule);
     unsigned Bytes = DL.getTypeStoreSize(CV->getType());
     // FIXME: assume full 64-bit alignment for now
@@ -2310,13 +2310,13 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
       GlobalData64.push_back(0);
     }
     // FIXME: create a zero section at the end, avoid filling meminit with zeros
-  } else if (/* const ConstantArray *CA = */ dyn_cast<ConstantArray>(CV)) {
+  } else if (isa<ConstantArray>(CV)) {
     assert(false);
-  } else if (/* const ConstantStruct *CS = */ dyn_cast<ConstantStruct>(CV)) {
+  } else if (isa<ConstantStruct>(CV)) {
     assert(false);
-  } else if (/* const ConstantVector *CVec = */ dyn_cast<ConstantVector>(CV)) {
+  } else if (isa<ConstantVector>(CV)) {
     assert(false);
-  } else if (/* const BlockAddress *BA = */ dyn_cast<BlockAddress>(CV)) {
+  } else if (isa<BlockAddress>(CV)) {
     assert(false);
   } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
     if (CE->getOpcode() == Instruction::GetElementPtr) {
@@ -2326,7 +2326,7 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
     } else {
         assert(false);
     }
-  } else if (/* const UndefValue *UV = */ dyn_cast<UndefValue>(CV)) {
+  } else if (isa<UndefValue>(CV)) {
     assert(false);
   } else {
     std::cout << getCppName(CV) << std::endl;
