@@ -2306,7 +2306,7 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
     unsigned Bytes = DL.getTypeStoreSize(CV->getType());
     // FIXME: assume full 64-bit alignment for now
     Bytes = memAlign(Bytes);
-    GlobalAddresses[name] = Address(Bytes, MEM_ALIGN_BITS);
+    GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
     for (unsigned i = 0; i < Bytes; ++i) {
       GlobalData64.push_back(0);
     }
