@@ -1725,7 +1725,9 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   }
   case Instruction::Select: {
     const SelectInst* SI = cast<SelectInst>(I);
-    text = getValueAsStr(SI->getCondition()) + " ? " + getValueAsStr(SI->getTrueValue()) + " : " + getValueAsStr(SI->getFalseValue()) + ';';
+    text = getAssign(iName, I->getType()) + getValueAsStr(SI->getCondition()) + " ? " +
+                                            getValueAsStr(SI->getTrueValue()) + " : " +
+                                            getValueAsStr(SI->getFalseValue()) + ';';
     break;
   }
   case Instruction::UserOp1:
