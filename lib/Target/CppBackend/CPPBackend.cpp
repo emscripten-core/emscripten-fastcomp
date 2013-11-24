@@ -1194,26 +1194,10 @@ std::string CppWriter::getPtrUse(const Value* Ptr) {
 }
 
 std::string CppWriter::getPtr(const Value* Ptr) {
-  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
-    std::string text = "";
-    unsigned Addr = getGlobalAddress(CV->getName().str());
-    switch (t->getTypeID()) {
-    default:
-      assert(false && "Unsupported type");
-    case Type::DoubleTyID:
-      return utostr(Addr >> 3);
-    case Type::FloatTyID:
-      return utostr(Addr >> 2);
-    case Type::ArrayTyID:
-    case Type::StructTyID:
-    case Type::PointerTyID:
-    case Type::VectorTyID:
-    case Type::IntegerTyID:
-      return utostr(Addr >> 2);
-    }
+    return utostr(getGlobalAddress(CV->getName().str()));
   } else {
-    return getOpName(Ptr) + "|0";
+    return getOpName(Ptr);
   }
 }
 
