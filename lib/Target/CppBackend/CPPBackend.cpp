@@ -194,7 +194,7 @@ namespace {
     std::string getValueAsStr(const Value*);
     std::string getValueAsCastStr(const Value*);
     std::string getValueAsParenStr(const Value*);
-    std::string getValueAsCastParenStr(const Value*);
+    std::string getValueAsCastParenStr(const Value*, Signedness sign=ASM_SIGNED);
     std::string getCppName(Type* val);
     inline void printCppName(Type* val);
 
@@ -1242,11 +1242,19 @@ std::string CppWriter::getValueAsCastStr(const Value* V) {
 }
 
 std::string CppWriter::getValueAsParenStr(const Value* V) {
-  return "(" + getValueAsStr(V) + ")";
+  if (const Constant *CV = dyn_cast<Constant>(V)) {
+    return getConstant(CV);
+  } else {
+    return "(" + getCppName(V) + ")";
+  }
 }
 
-std::string CppWriter::getValueAsCastParenStr(const Value* V) {
-  return "(" + getValueAsCastStr(V) + ")";
+std::string CppWriter::getValueAsCastParenStr(const Value* V, Signedness sign) {
+  if (const Constant *CV = dyn_cast<Constant>(V)) {
+    return getConstant(CV);
+  } else {
+    return "(" + getCast(getCppName(V), V->getType(), sign) + ")";
+  }
 }
 
 // generateInstruction - This member is called for each Instruction in a function.
@@ -1377,14 +1385,14 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case Instruction::Sub:  text += getParenCast(getValueAsParenStr(I->getOperand(0)) + " - " + getValueAsParenStr(I->getOperand(1)), I->getType()) + ";"; break;
     case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)) + ";"; break;
     case Instruction::SRem: text += getDoubleToInt(
-                                      getParenCast(getValueAsParenStr(I->getOperand(0)), I->getType(), ASM_SIGNED) +
+                                      getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED) +
                                       " % " +
-                                      getParenCast(getValueAsParenStr(I->getOperand(1)), I->getType(), ASM_SIGNED)
+                                      getValueAsCastParenStr(I->getOperand(1), ASM_SIGNED)
                                     ) + ";"; break;
     case Instruction::SDiv: text += getDoubleToInt( // XXX is this the right cast, here and srem?
-                                      getParenCast(getValueAsParenStr(I->getOperand(0)), I->getType(), ASM_SIGNED) +
+                                      getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED) +
                                       " / " +
-                                      getParenCast(getValueAsParenStr(I->getOperand(1)), I->getType(), ASM_SIGNED)
+                                      getValueAsCastParenStr(I->getOperand(1), ASM_SIGNED)
                                     ) + ";"; break;
     case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()) + ";"; break; // TODO: not cast, but ensurefloat here
     case Instruction::FAdd: Out << "Instruction::FAdd"; break;
