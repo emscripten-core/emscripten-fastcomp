@@ -188,7 +188,7 @@ namespace {
       }
     }
     std::string getPtrLoad(const Value* Ptr);
-    std::string getPtrUse(const Value* Ptr);
+    std::string getPtrUse(const Value* Ptr, unsigned Offset=0, unsigned Bytes=0);
     std::string getPtr(const Value* Ptr);
     std::string getConstant(const Constant*);
     std::string getValueAsStr(const Value*);
@@ -1163,32 +1163,43 @@ std::string CppWriter::getPtrLoad(const Value* Ptr) {
   return getCast(getPtrUse(Ptr), t);
 }
 
-std::string CppWriter::getPtrUse(const Value* Ptr) {
+std::string CppWriter::getPtrUse(const Value* Ptr, unsigned Offset, unsigned Bytes) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
+  if (Bytes == 0) Bytes = t->getPrimitiveSizeInBits()/8;
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
     std::string text = "";
-    unsigned Addr = getGlobalAddress(GV->getName().str());
-    switch (t->getTypeID()) {
-    default:
-      assert(false && "Unsupported type");
-    case Type::DoubleTyID:
-      return "HEAPF64[" + utostr(Addr >> 3) + "]";
-    case Type::FloatTyID:
-      return "HEAPF32[" + utostr(Addr >> 2) + "]";
-    case Type::IntegerTyID:
-      return "HEAP32[" + utostr(Addr >> 2) + "]";
+    unsigned Addr = getGlobalAddress(GV->getName().str()) + Offset;
+    switch (Bytes) {
+    default: assert(false && "Unsupported type");
+    case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
+    case 4: {
+      if (t->isIntegerTy()) {
+        return "HEAP32[" + utostr(Addr >> 2) + "]";
+      } else {
+        return "HEAPF32[" + utostr(Addr >> 2) + "]";
+      }
+    }
+    case 2: return "HEAP16[" + utostr(Addr >> 1) + "]";
+    case 1: return "HEAP8[" + utostr(Addr) + "]";
     }
   } else {
-    switch (t->getTypeID()) {
-    default:
-      assert(false && "Unsupported type");
-    case Type::DoubleTyID:
-      return "HEAPF64[" + getOpName(Ptr) + ">>3]";
-    case Type::FloatTyID:
-      return "HEAPF32[" + getOpName(Ptr) + ">>2]";
-    case Type::IntegerTyID:
-    case Type::PointerTyID:
-      return "HEAP32[" + getOpName(Ptr) + ">>2]";
+    std::string Name = getOpName(Ptr);
+    if (Offset) {
+      Name += "+" + Offset;
+      if (Bytes == 1) Name = "(" + Name + ")|0";
+    }
+    switch (Bytes) {
+    default: assert(false && "Unsupported type");
+    case 8: return "HEAPF64[" + Name + ">>3]";
+    case 4: {
+      if (t->isIntegerTy()) {
+        return "HEAP32[" + Name + ">>2]";
+      } else {
+        return "HEAPF32[" + Name + ">>2]";
+      }
+    }
+    case 2: return "HEAP16[" + Name + ">>1]";
+    case 1: return "HEAP8[" + Name + "]";
     }
   }
 }
