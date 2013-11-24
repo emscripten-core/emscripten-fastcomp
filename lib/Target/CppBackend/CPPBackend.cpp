@@ -1300,10 +1300,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     }
     break;
   }
-  case Instruction::Br: {
-    text = "";
-    break;
-  }
+  case Instruction::Br: break; // handled while relooping
   case Instruction::Switch: {
     const SwitchInst *SI = cast<SwitchInst>(I);
     Out << "SwitchInst* " << iName << " = SwitchInst::Create("
