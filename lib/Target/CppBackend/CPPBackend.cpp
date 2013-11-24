@@ -1342,9 +1342,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::Unreachable: {
-    Out << "new UnreachableInst("
-        << "mod->getContext(), "
-        << bbname << ");";
+    text += "abort();";
     break;
   }
   case Instruction::Add:
@@ -2052,29 +2050,30 @@ void CppWriter::printFunctionBody(const Function *F) {
        BI != BE; ++BI) {
     const TerminatorInst *TI = BI->getTerminator();
     switch (TI->getOpcode()) {
-    default: {
-      dumpfailv("invalid branch instr %s\n", TI->getOpcodeName());
-      break;
-    }
-    case Instruction::Br: {
-      const BranchInst* br = cast<BranchInst>(TI);
-      if (br->getNumOperands() == 3) {
-        BasicBlock *S0 = br->getSuccessor(0);
-        BasicBlock *S1 = br->getSuccessor(1);
-        std::string P0 = getPhiCode(&*BI, S0);
-        std::string P1 = getPhiCode(&*BI, S1);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], getOpName(TI->getOperand(0)).c_str(), P0.size() > 0 ? P0.c_str() : NULL);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], NULL,                                 P1.size() > 0 ? P1.c_str() : NULL);
-      } else if (br->getNumOperands() == 1) {
-        BasicBlock *S = br->getSuccessor(0);
-        std::string P = getPhiCode(&*BI, S);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], NULL, P.size() > 0 ? P.c_str() : NULL);
-      } else {
-        error("Branch with 2 operands?");
+      default: {
+        dumpfailv("invalid branch instr %s\n", TI->getOpcodeName());
+        break;
       }
-      break;
-    }
-    case Instruction::Ret: break;
+      case Instruction::Br: {
+        const BranchInst* br = cast<BranchInst>(TI);
+        if (br->getNumOperands() == 3) {
+          BasicBlock *S0 = br->getSuccessor(0);
+          BasicBlock *S1 = br->getSuccessor(1);
+          std::string P0 = getPhiCode(&*BI, S0);
+          std::string P1 = getPhiCode(&*BI, S1);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], getOpName(TI->getOperand(0)).c_str(), P0.size() > 0 ? P0.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], NULL,                                 P1.size() > 0 ? P1.c_str() : NULL);
+        } else if (br->getNumOperands() == 1) {
+          BasicBlock *S = br->getSuccessor(0);
+          std::string P = getPhiCode(&*BI, S);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], NULL, P.size() > 0 ? P.c_str() : NULL);
+        } else {
+          error("Branch with 2 operands?");
+        }
+        break;
+      }
+      case Instruction::Ret:
+      case Instruction::Unreachable: break;
     }
   }
 
