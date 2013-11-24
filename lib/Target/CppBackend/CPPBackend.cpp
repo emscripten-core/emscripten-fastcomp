@@ -1389,36 +1389,33 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::AShr:{
     //Out << "BinaryOperator* " << iName << " = BinaryOperator::Create(";
     text = getAssign(iName, I->getType());
-    switch (I->getOpcode()) {
+    unsigned opcode = I->getOpcode();
+    switch (opcode) {
     case Instruction::Add:  text += getParenCast(
                                       getValueAsParenStr(I->getOperand(0)) +
                                       " + " +
                                       getValueAsParenStr(I->getOperand(1)),
                                       I->getType()
-                                    ) + ";"; break;
+                                    ); break;
     case Instruction::Sub:  text += getParenCast(
                                       getValueAsParenStr(I->getOperand(0)) +
                                       " - " +
                                       getValueAsParenStr(I->getOperand(1)),
                                       I->getType()
-                                    ) + ";"; break;
-    case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)) + ";"; break;
-    case Instruction::SRem: text += getDoubleToInt(
-                                      getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED) +
-                                      " % " +
-                                      getValueAsCastParenStr(I->getOperand(1), ASM_SIGNED)
-                                    ) + ";"; break;
-    case Instruction::SDiv: text += getDoubleToInt( // XXX is this the right cast, here and srem?
-                                      getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED) +
-                                      " / " +
-                                      getValueAsCastParenStr(I->getOperand(1), ASM_SIGNED)
-                                    ) + ";"; break;
-    case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()) + ";"; break; // TODO: not cast, but ensurefloat here
+                                    ); break;
+    case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)); break;
+    case Instruction::UDiv:
+    case Instruction::SDiv:
+    case Instruction::URem:
+    case Instruction::SRem: text += "(" +
+                                    getValueAsCastParenStr(I->getOperand(0), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
+                                    ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") +
+                                    getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
+                                    ")&-1"; break;
+    case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()); break; // TODO: not cast, but ensurefloat here
     case Instruction::FAdd: Out << "Instruction::FAdd"; break;
     case Instruction::FSub: Out << "Instruction::FSub"; break;
-    case Instruction::UDiv: Out << "Instruction::UDiv"; break;
     case Instruction::FDiv: Out << "Instruction::FDiv"; break;
-    case Instruction::URem: Out << "Instruction::URem"; break;
     case Instruction::FRem: Out << "Instruction::FRem"; break;
     case Instruction::And:  Out << "Instruction::And"; break;
     case Instruction::Or:   Out << "Instruction::Or";  break;
@@ -1428,9 +1425,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case Instruction::AShr: Out << "Instruction::AShr"; break;
     default: Out << "Instruction::BadOpCode"; break;
     }
-    //Out << ", " << opNames[0] << ", " << opNames[1] << ", \"";
-    //printEscapedString(I->getName());
-    //Out << "\", " << bbname << ");";
+    text += ';';
     break;
   }
   case Instruction::FCmp: {
