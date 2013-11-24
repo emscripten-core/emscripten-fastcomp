@@ -192,7 +192,7 @@ namespace {
     std::string getPtr(const Value* Ptr);
     std::string getConstant(const Constant*);
     std::string getValueAsStr(const Value*);
-    std::string getValueAsCastStr(const Value*);
+    std::string getValueAsCastStr(const Value*, Signedness sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
     std::string getValueAsCastParenStr(const Value*, Signedness sign=ASM_SIGNED);
     std::string getCppName(Type* val);
@@ -1242,11 +1242,11 @@ std::string CppWriter::getValueAsStr(const Value* V) {
   }
 }
 
-std::string CppWriter::getValueAsCastStr(const Value* V) {
+std::string CppWriter::getValueAsCastStr(const Value* V, Signedness sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
   } else {
-    return getCast(getCppName(V), V->getType());
+    return getCast(getCppName(V), V->getType(), sign);
   }
 }
 
@@ -1452,11 +1452,17 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::ICmp: {
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" + getValueAsCastStr(I->getOperand(0)) + ")";
-    switch (cast<ICmpInst>(I)->getPredicate()) {
+    unsigned predicate = cast<ICmpInst>(I)->getPredicate();
+    Signedness sign = (predicate == ICmpInst::ICMP_ULE ||
+                       predicate == ICmpInst::ICMP_UGE ||
+                       predicate == ICmpInst::ICMP_ULT ||
+                       predicate == ICmpInst::ICMP_UGT) ? ASM_UNSIGNED : ASM_SIGNED;
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" +
+      getValueAsCastStr(I->getOperand(0), sign) +
+    ")";
+    switch (predicate) {
     case ICmpInst::ICMP_EQ:  text += "==";  break;
     case ICmpInst::ICMP_NE:  text += "!=";  break;
-    // TODO: handle signed and unsigned
     case ICmpInst::ICMP_ULE: text += "<="; break;
     case ICmpInst::ICMP_SLE: text += "<="; break;
     case ICmpInst::ICMP_UGE: text += ">="; break;
@@ -1467,7 +1473,9 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case ICmpInst::ICMP_SGT: text += ">"; break;
     default: text += "ICmpInst::BAD_ICMP_PREDICATE"; break;
     }
-    text += "(" + getValueAsCastStr(I->getOperand(1)) + ")";
+    text += "(" +
+      getValueAsCastStr(I->getOperand(1), sign) +
+    ")";
     break;
   }
   case Instruction::Alloca: {
