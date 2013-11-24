@@ -1506,9 +1506,29 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       std::string PS = getOpName(P);
       switch (Bytes) {
         case 8: {
+          text = "HEAPF64[tempDoublePtr>>3]=" + VS + ';';
           switch (Alignment) {
             case 4: {
-              text = "HEAPF64[tempDoublePtr>>3]=" + VS + ";HEAP32[" + PS + ">>2]=HEAP32[tempDoublePtr>>2];HEAP32[" + PS + "+4>>2]=HEAP32[tempDoublePtr+4>>2];";
+              text = "HEAP32[" + PS + ">>2]=HEAP32[tempDoublePtr>>2];" +
+                     "HEAP32[" + PS + "+4>>2]=HEAP32[tempDoublePtr+4>>2];";
+              break;
+            }
+            case 2: {
+              text = "HEAP16[" + PS + ">>1]=HEAP32[tempDoublePtr>>1];" +
+                     "HEAP16[" + PS + "+2>>1]=HEAP32[tempDoublePtr+2>>1];" +
+                     "HEAP16[" + PS + "+4>>1]=HEAP32[tempDoublePtr+4>>1];" +
+                     "HEAP16[" + PS + "+6>>1]=HEAP32[tempDoublePtr+6>>1];";
+              break;
+            }
+            case 1: {
+              text = "HEAP8[" + PS + "]=HEAP32[tempDoublePtr];" +
+                     "HEAP8[" + PS + "+1]=HEAP32[tempDoublePtr+1];" +
+                     "HEAP8[" + PS + "+2]=HEAP32[tempDoublePtr+2];" +
+                     "HEAP8[" + PS + "+3]=HEAP32[tempDoublePtr+3];" +
+                     "HEAP8[" + PS + "+4]=HEAP32[tempDoublePtr+4];" +
+                     "HEAP8[" + PS + "+5]=HEAP32[tempDoublePtr+5];" +
+                     "HEAP8[" + PS + "+6]=HEAP32[tempDoublePtr+6];" +
+                     "HEAP8[" + PS + "+7]=HEAP32[tempDoublePtr+7];";
               break;
             }
             default: assert(0 && "bad 8 store");
