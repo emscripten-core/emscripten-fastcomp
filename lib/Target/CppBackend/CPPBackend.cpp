@@ -1497,12 +1497,66 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     const Value *P = SI->getPointerOperand();
     const Value *V = SI->getValueOperand();
     std::string VS = getValueAsStr(V);
-    if (V->getType()->isDoubleTy() && SI->getAlignment() == 4) {
-      // only 4-byte aligned, copy carefully
-      std::string PS = getOpName(P);
-      text = "HEAPF64[tempDoublePtr>>3]=" + VS + ";HEAPF32[" + PS + ">>2]=HEAPF32[tempDoublePtr>>2];HEAPF32[" + PS + "+4>>2]=HEAPF32[tempDoublePtr+4>>2];";
-    } else {
+    unsigned Bytes = V->getType()->getIntegerBitWidth()/8;
+    unsigned Alignment = SI->getAlignment();
+    if (Bytes <= Alignment) {
       text = getPtrUse(P) + " = " + VS + ";";
+    } else {
+      // unaligned in some manner
+      std::string PS = getOpName(P);
+      switch (Bytes) {
+        case 8: {
+          switch (Alignment) {
+            case 4: {
+              text = "HEAPF64[tempDoublePtr>>3]=" + VS + ";HEAP32[" + PS + ">>2]=HEAP32[tempDoublePtr>>2];HEAP32[" + PS + "+4>>2]=HEAP32[tempDoublePtr+4>>2];";
+              break;
+            }
+            default: assert(0 && "bad 8 store");
+          }
+          break;
+        }
+        case 4: {
+          if (V->getType()->isIntegerTy()) {
+            switch (Alignment) {
+              case 2: {
+                text = "HEAP16[" + PS + ">>1]=" + VS + "&65535;" +
+                       "HEAP16[" + PS + "+2>>1]=" + VS + ">>2;";
+                break;
+              }
+              case 1: {
+                text = "HEAP8[" + PS + "]=" + VS + "&255;" +
+                       "HEAP8[" + PS + "+1]=(" + VS + ">>8)&255;" +
+                       "HEAP8[" + PS + "+2]=(" + VS + ">>16)&255;" +
+                       "HEAP8[" + PS + "+3]=" + VS + ">>24;";
+              }
+              default: assert(0 && "bad 4i store");
+            }
+          } else { // float
+            text = "HEAPF32[tempDoublePtr>>2]=" + VS + ';';
+            switch (Alignment) {
+              case 2: {
+                text = "HEAP16[" + PS + ">>1]=HEAP16[tempDoublePtr>>1];" +
+                       "HEAP16[" + PS + "+2>>1]=HEAP16[tempDoublePtr+2>>1];";
+                break;
+              }
+              case 1: {
+                text = "HEAP8[" + PS + "]=HEAP8[tempDoublePtr];" +
+                       "HEAP8[" + PS + "+1]=HEAP8[tempDoublePtr+1];" +
+                       "HEAP8[" + PS + "+2]=HEAP8[tempDoublePtr+2];" +
+                       "HEAP8[" + PS + "+3]=HEAP8[tempDoublePtr+3];";
+              }
+              default: assert(0 && "bad 4f store");
+            }
+          }
+          break;
+        }
+        case 2: {
+          text = "HEAP8[" + PS + "]=" + VS + "&255;" +
+                 "HEAP8[" + PS + "+1]=" + VS + ">>8;";
+          break;
+        }
+        default: assert(0 && "bad store");
+      }
     }
     break;
   }
