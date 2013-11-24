@@ -1524,12 +1524,12 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     if (const Constant *CV = dyn_cast<Constant>(I->getOperand(0))) {
       text += utostr(getGlobalAddress(CV->getName().str()));
     } else {
-      text += getCast(opNames[0], Type::getInt32Ty(I->getContext()));
+      text += getCast(getValueAsStr(I->getOperand(0)), Type::getInt32Ty(I->getContext()));
     }
     text += ";";
     break;
   case Instruction::IntToPtr:
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + opNames[0] + ";";
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getValueAsStr(I->getOperand(0)) + ";";
     break;
   case Instruction::Trunc:
   case Instruction::ZExt:
@@ -1553,15 +1553,15 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       text += getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
       break;
     }
-    case Instruction::ZExt:     Out << "ZExtInst"; break;
-    case Instruction::FPExt:    text += opNames[0]; break; // TODO: fround
-    case Instruction::FPTrunc:  text += opNames[0]; break; // TODO: fround
+    case Instruction::ZExt:     text += getValueAsStr(I->getOperand(0)); break;
+    case Instruction::FPExt:    text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
+    case Instruction::FPTrunc:  text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
     case Instruction::SIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
     case Instruction::UIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()); break;
-    case Instruction::FPToUI:   Out << "FPToUIInst"; break;
-    case Instruction::FPToSI:   Out << "FPToSIInst"; break;
-    case Instruction::PtrToInt: Out << "PtrToIntInst"; break;
-    case Instruction::IntToPtr: Out << "IntToPtrInst"; break;
+    case Instruction::FPToSI:   text += getDoubleToInt(getValueAsParenStr(I->getOperand(0))); break;
+    case Instruction::FPToUI:   text += getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED); break;
+    case Instruction::PtrToInt: text += getValueAsStr(I->getOperand(0)); break;
+    case Instruction::IntToPtr: text += getValueAsStr(I->getOperand(0)); break;
     default: llvm_unreachable("Unreachable");
     }
     text += ";";
