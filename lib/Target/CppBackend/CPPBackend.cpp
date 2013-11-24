@@ -1456,7 +1456,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     }
     text += "(" +
       getValueAsCastStr(I->getOperand(1), sign) +
-    ")";
+    ");";
     break;
   }
   case Instruction::Alloca: {
@@ -1478,7 +1478,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
     if (Bytes <= Alignment || Alignment == 0) {
-      text = Assign + getPtrUse(P);
+      text = Assign + getPtrUse(P) + ';';
     } else {
       // unaligned in some manner
       std::string PS = getOpName(P);
