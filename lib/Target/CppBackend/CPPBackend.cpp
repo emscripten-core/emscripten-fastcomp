@@ -1412,17 +1412,17 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
                                     ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") +
                                     getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
                                     ")&-1"; break;
-    case Instruction::FMul: text += getParenCast(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()); break; // TODO: not cast, but ensurefloat here
-    case Instruction::FAdd: Out << "Instruction::FAdd"; break;
-    case Instruction::FSub: Out << "Instruction::FSub"; break;
-    case Instruction::FDiv: Out << "Instruction::FDiv"; break;
-    case Instruction::FRem: Out << "Instruction::FRem"; break;
-    case Instruction::And:  Out << "Instruction::And"; break;
-    case Instruction::Or:   Out << "Instruction::Or";  break;
-    case Instruction::Xor:  Out << "Instruction::Xor"; break;
-    case Instruction::Shl:  Out << "Instruction::Shl"; break;
-    case Instruction::LShr: Out << "Instruction::LShr"; break;
-    case Instruction::AShr: Out << "Instruction::AShr"; break;
+    case Instruction::And:  text += getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
+    case Instruction::Or:   text += getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
+    case Instruction::Xor:  text += getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
+    case Instruction::Shl:  text += getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1)); break;
+    case Instruction::AShr: text += getValueAsStr(I->getOperand(0)) + " >> " +  getValueAsStr(I->getOperand(1)); break;
+    case Instruction::LShr: text += getValueAsStr(I->getOperand(0)) + " >>> " + getValueAsStr(I->getOperand(1)); break;
+    case Instruction::FAdd: text += getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
+    case Instruction::FSub: text += getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
+    case Instruction::FMul: text += getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
+    case Instruction::FDiv: text += getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
+    case Instruction::FRem: text += getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
     default: Out << "Instruction::BadOpCode"; break;
     }
     text += ';';
