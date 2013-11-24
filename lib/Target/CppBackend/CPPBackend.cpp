@@ -1724,11 +1724,8 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::Select: {
-    const SelectInst* sel = cast<SelectInst>(I);
-    Out << "SelectInst* " << getCppName(sel) << " = SelectInst::Create(";
-    Out << opNames[0] << ", " << opNames[1] << ", " << opNames[2] << ", \"";
-    printEscapedString(sel->getName());
-    Out << "\", " << bbname << ");";
+    const SelectInst* SI = cast<SelectInst>(I);
+    text = getValueAsStr(SI->getCondition()) + " ? " + getValueAsStr(SI->getTrueValue()) + " : " + getValueAsStr(SI->getFalseValue()) + ';';
     break;
   }
   case Instruction::UserOp1:
