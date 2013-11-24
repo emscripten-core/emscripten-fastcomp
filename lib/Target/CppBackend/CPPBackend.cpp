@@ -1497,9 +1497,9 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     const Value *P = SI->getPointerOperand();
     const Value *V = SI->getValueOperand();
     std::string VS = getValueAsStr(V);
-    unsigned Bytes = V->getType()->getIntegerBitWidth()/8;
+    unsigned Bytes = V->getType()->getPrimitiveSizeInBits()/8;
     unsigned Alignment = SI->getAlignment();
-    if (Bytes <= Alignment) {
+    if (Bytes <= Alignment || Alignment == 0) {
       text = getPtrUse(P) + " = " + VS + ";";
     } else {
       // unaligned in some manner
