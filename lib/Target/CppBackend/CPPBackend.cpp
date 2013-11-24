@@ -173,8 +173,9 @@ namespace {
     void printCFP(const ConstantFP* CFP);
     void printCommaSeparated(const HeapData v);
 
-    void allocateConstant(const Constant* CV);
+    void allocateConstant(std::string name, const Constant* CV);
     unsigned getGlobalAddress(const std::string &s) {
+      if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
       Address a = GlobalAddresses[s];
       switch (a.second) {
         case 64:
@@ -184,7 +185,7 @@ namespace {
         case 8:
           return a.first + 8 + GlobalData64.size() + GlobalData32.size();
         default:
-          assert(false);
+          dumpfailv("bad global address %s %d %d\n", s.c_str(), a.first, a.second);
       }
     }
     std::string getPtrLoad(const Value* Ptr);
@@ -228,8 +229,10 @@ namespace {
 
     void printModuleBody();
 
-    unsigned stackAlign(unsigned x) {
-      return x + (x%8 != 0 ? 8 - x%8 : 0);
+    #define MEM_ALIGN 8
+    #define MEM_ALIGN_BITS 64
+    unsigned memAlign(unsigned x) {
+      return x + (x%MEM_ALIGN != 0 ? MEM_ALIGN - x%MEM_ALIGN : 0);
     }
   };
 } // end anonymous namespace.
@@ -1090,27 +1093,10 @@ void CppWriter::printConstant(const Constant *CV) {
 void CppWriter::printConstants(const Module* M) {
   // Traverse all the global variables looking for constant initializers
   for (Module::const_global_iterator I = TheModule->global_begin(),
-         E = TheModule->global_end(); I != E; ++I)
+         E = TheModule->global_end(); I != E; ++I) {
     if (I->hasInitializer()) {
       const Constant *CV = I->getInitializer();
-      allocateConstant(CV);
-      GlobalAddresses[I->getName().str()] = GlobalAddresses[getCppName(CV)];
-    }
-
-  // Traverse the LLVM functions looking for constants
-  for (Module::const_iterator FI = TheModule->begin(), FE = TheModule->end();
-       FI != FE; ++FI) {
-    // Add all of the basic blocks and instructions
-    for (Function::const_iterator BB = FI->begin(),
-           E = FI->end(); BB != E; ++BB) {
-      for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E;
-           ++I) {
-        for (unsigned i = 0; i < I->getNumOperands(); ++i) {
-          if (Constant* C = dyn_cast<Constant>(I->getOperand(i))) {
-            allocateConstant(C);
-          }
-        }
-      }
+      allocateConstant(I->getName().str(), CV);
     }
   }
 }
@@ -1482,7 +1468,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     } else {
       size = t->getScalarSizeInBits()/8;
     }
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Twine(stackAlign(size)).str() + "|0;";
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Twine(memAlign(size)).str() + "|0;";
     break;
   }
   case Instruction::Load: {
@@ -2256,11 +2242,10 @@ void CppWriter::printModuleBody() {
 
 #include <iostream>
 
-void CppWriter::allocateConstant(const Constant* CV) {
+void CppWriter::allocateConstant(std::string name, const Constant* CV) {
   if (isa<GlobalValue>(CV))
     return;
 
-  std::string name = getCppName(CV);
   if (const ConstantDataSequential *CDS =
          dyn_cast<ConstantDataSequential>(CV)) {
     if (CDS->isString()) {
@@ -2317,8 +2302,15 @@ void CppWriter::allocateConstant(const Constant* CV) {
   } else if (/* const ConstantPointerNull *CPN = */ dyn_cast<ConstantPointerNull>(CV)) {
     assert(false);
   } else if (/* const ConstantAggregateZero *CAZ = */ dyn_cast<ConstantAggregateZero>(CV)) {
-    printf("Warning: ignoring CAZ\n");
-    //Constant *C = CAZ->getSequentialElement();
+    DataLayout DL(TheModule);
+    unsigned Bytes = DL.getTypeStoreSize(CV->getType());
+    // FIXME: assume full 64-bit alignment for now
+    Bytes = memAlign(Bytes);
+    GlobalAddresses[name] = Address(Bytes, MEM_ALIGN_BITS);
+    for (unsigned i = 0; i < Bytes; ++i) {
+      GlobalData64.push_back(0);
+    }
+    // FIXME: create a zero section at the end, avoid filling meminit with zeros
   } else if (/* const ConstantArray *CA = */ dyn_cast<ConstantArray>(CV)) {
     assert(false);
   } else if (/* const ConstantStruct *CS = */ dyn_cast<ConstantStruct>(CV)) {
