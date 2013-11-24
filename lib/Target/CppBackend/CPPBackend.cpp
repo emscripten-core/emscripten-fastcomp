@@ -1325,7 +1325,8 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::Unreachable: {
-    text += "abort();";
+    // No need to emit anything, as there should be an abort right before these
+    // text += "abort();";
     break;
   }
   case Instruction::Add:
