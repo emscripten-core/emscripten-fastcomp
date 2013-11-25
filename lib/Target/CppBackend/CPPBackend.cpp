@@ -1705,7 +1705,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   }
   case Instruction::Call: {
     const CallInst *CI = cast<CallInst>(I);
-    text = handleCall(CI);
+    text = handleCall(CI) + ';';
     break;
   }
   case Instruction::Select: {
