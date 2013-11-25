@@ -33,6 +33,10 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
   return CH___default__(CI, "_memcpy", 3) + "|0";
 })
 
+DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
+  return CH___default__(CI, "_memset", 2) + "|0";
+})
+
 // Setups
 
 void setupCallHandlers() {
@@ -43,6 +47,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_store_i32);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
+  SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
 }
 
 std::string handleCall(const CallInst *CI) {
