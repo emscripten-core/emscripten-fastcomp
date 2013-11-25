@@ -138,6 +138,8 @@ namespace {
     HeapData GlobalData64;
     std::map<std::string, Address> GlobalAddresses;
 
+    #include "CallHandlers.h"
+
   public:
     static char ID;
     explicit CppWriter(formatted_raw_ostream &o) :
@@ -1702,26 +1704,8 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::Call: {
-    const CallInst* call = cast<CallInst>(I);
-    const int numArgs = call->getNumArgOperands();
-    Type *RT = call->getCalledFunction()->getReturnType();
-    text = opNames[numArgs] + "(";
-    for (int i = 0; i < numArgs; i++) {
-      Value *Arg = call->getArgOperand(i);
-      Type *t = dyn_cast<PointerType>(Arg->getType());
-      const GlobalVariable *GV;
-      if (t && (GV = dyn_cast<GlobalVariable>(Arg))) {
-        text += utostr(getGlobalAddress(GV->getName().str()));
-      } else {
-        text += getValueAsCastStr(call->getArgOperand(i)); // FIXME: differentiate ffi calls
-      }
-      if (i < numArgs - 1) text += ", ";
-    }
-    text += ")";
-    if (!RT->isVoidTy()) {
-      text = getAssign(iName, RT) + getCast(text, RT);
-    }
-    text += ";";
+    const CallInst *CI = cast<CallInst>(I);
+    text = handleCall(CI);
     break;
   }
   case Instruction::Select: {
@@ -2429,6 +2413,8 @@ void CppWriter::printType(const std::string &fname,
 
 bool CppWriter::runOnModule(Module &M) {
   TheModule = &M;
+
+  setupCallHandlers();
 
   // Emit a header
   Out << "//========================================\n\n";
