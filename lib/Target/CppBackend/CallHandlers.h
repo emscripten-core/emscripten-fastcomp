@@ -27,7 +27,7 @@ DEF_CALL_HANDLER(__default__, {
 })
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
-  return "throw 'atomic store!';";
+  return "HEAP32[" + getValueAsStr(CI->getArgOperand(0)) + ">>2]=" + getValueAsStr(CI->getArgOperand(1)) + ";";
 })
 
 
