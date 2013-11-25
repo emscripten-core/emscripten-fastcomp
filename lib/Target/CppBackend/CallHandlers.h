@@ -3,7 +3,7 @@
 // Each handler needs DEF_CALL_HANDLER and SETUP_CALL_HANDLER
 
 typedef std::string (CppWriter::*CallHandler)(const CallInst*);
-typedef std::map<const char *, CallHandler> CallHandlerMap;
+typedef std::map<std::string, CallHandler> CallHandlerMap;
 CallHandlerMap *CallHandlers;
 
 // Definitions
@@ -36,15 +36,15 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
 void setupCallHandlers() {
   CallHandlers = new CallHandlerMap;
   #define SETUP_CALL_HANDLER(Ident) \
-    (*CallHandlers)[#Ident] = &CppWriter::CH_##Ident;
+    (*CallHandlers)[std::string("_") + #Ident] = &CppWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_store_i32);
 }
 
 std::string handleCall(const CallInst *CI) {
-  CallHandlerMap::iterator CH = CallHandlers->find(getCppName(CI->getCalledValue()).c_str());
-  if (CH == CallHandlers->end()) CH = CallHandlers->find("__default__");
+  CallHandlerMap::iterator CH = CallHandlers->find(getCppName(CI->getCalledValue()));
+  if (CH == CallHandlers->end()) CH = CallHandlers->find("___default__");
   return (this->*(CH->second))(CI);
 }
 

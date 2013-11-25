@@ -40,7 +40,7 @@ using namespace llvm;
 
 #include <Relooper.h>
 
-#if 0
+#if 1
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
 #else
@@ -1259,11 +1259,11 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   // forward references. So, we get the names of all the operands in advance
   const unsigned Ops(I->getNumOperands());
   std::string* opNames = new std::string[Ops];
-  dumpv("Generating instruction %s = %s (%d operands)", iName.c_str(), std::string(I->getOpcodeName()).c_str(), Ops);
+  //dumpv("Generating instruction %s = %s (%d operands)", iName.c_str(), std::string(I->getOpcodeName()).c_str(), Ops);
 
   for (unsigned i = 0; i < Ops; i++) {
     opNames[i] = getOpName(I->getOperand(i));
-    dumpv("  op %d: %s", i, opNames[i].c_str());
+    //dumpv("  op %d: %s", i, opNames[i].c_str());
   }
 
   switch (I->getOpcode()) {
