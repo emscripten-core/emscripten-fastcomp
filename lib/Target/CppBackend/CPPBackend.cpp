@@ -175,7 +175,8 @@ namespace {
     void printCFP(const ConstantFP* CFP);
     void printCommaSeparated(const HeapData v);
 
-    void allocateConstant(std::string name, const Constant* CV);
+    // parsing of constants has two phases: calculate, and then emit
+    void parseConstant(std::string name, const Constant* CV, bool calculate);
     unsigned getGlobalAddress(const std::string &s) {
       if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
       Address a = GlobalAddresses[s];
@@ -1093,12 +1094,18 @@ void CppWriter::printConstant(const Constant *CV) {
 }
 
 void CppWriter::printConstants(const Module* M) {
-  // Traverse all the global variables looking for constant initializers
+  // First, calculate the address of each constant
   for (Module::const_global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
     if (I->hasInitializer()) {
-      const Constant *CV = I->getInitializer();
-      allocateConstant(I->getName().str(), CV);
+      parseConstant(I->getName().str(), I->getInitializer(), true);
+    }
+  }
+  // Second, allocate their contents
+  for (Module::const_global_iterator I = TheModule->global_begin(),
+         E = TheModule->global_end(); I != E; ++I) {
+    if (I->hasInitializer()) {
+      parseConstant(I->getName().str(), I->getInitializer(), false);
     }
   }
 }
@@ -2244,16 +2251,14 @@ void CppWriter::printModuleBody() {
   Out << "\n}\n";
 }
 
-#include <iostream>
-
-void CppWriter::allocateConstant(std::string name, const Constant* CV) {
+void CppWriter::parseConstant(std::string name, const Constant* CV, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
-
+  // TODO: we repeat some work in both calculate and emit phases here
   if (const ConstantDataSequential *CDS =
          dyn_cast<ConstantDataSequential>(CV)) {
     if (CDS->isString()) {
-      GlobalAddresses[name] = Address(GlobalData8.size(), 8);
+      if (calculate) GlobalAddresses[name] = Address(GlobalData8.size(), 8);
       StringRef Str = CDS->getAsString();
       for (unsigned int i = 0; i < Str.size(); i++) {
         GlobalData8.push_back(Str.data()[i]);
@@ -2264,13 +2269,13 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
   } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
     APFloat APF = CFP->getValueAPF();
     if (CFP->getType() == Type::getFloatTy(CFP->getContext())) {
-      GlobalAddresses[name] = Address(GlobalData32.size(), 32);
+      if (calculate) GlobalAddresses[name] = Address(GlobalData32.size(), 32);
       union flt { float f; unsigned char b[sizeof(float)]; } flt;
       flt.f = APF.convertToFloat();
       for (unsigned i = 0; i < sizeof(float); ++i)
         GlobalData32.push_back(flt.b[i]);
     } else if (CFP->getType() == Type::getDoubleTy(CFP->getContext())) {
-      GlobalAddresses[name] = Address(GlobalData64.size(), 64);
+      if (calculate) GlobalAddresses[name] = Address(GlobalData64.size(), 64);
       union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
       dbl.d = APF.convertToDouble();
       for (unsigned i = 0; i < sizeof(double); ++i)
@@ -2299,7 +2304,7 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
         assert(false);
     }
     // assuming compiler is little endian
-    GlobalAddresses[name] = Address(GlobalData->size(), BitWidth);
+    if (calculate) GlobalAddresses[name] = Address(GlobalData->size(), BitWidth);
     for (unsigned i = 0; i < BitWidth / 8; ++i) {
       GlobalData->push_back(integer.b[i]);
     }
@@ -2310,7 +2315,7 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
     unsigned Bytes = DL.getTypeStoreSize(CV->getType());
     // FIXME: assume full 64-bit alignment for now
     Bytes = memAlign(Bytes);
-    GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
+    if (calculate) GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
     for (unsigned i = 0; i < Bytes; ++i) {
       GlobalData64.push_back(0);
     }
@@ -2318,23 +2323,41 @@ void CppWriter::allocateConstant(std::string name, const Constant* CV) {
   } else if (isa<ConstantArray>(CV)) {
     assert(false);
   } else if (isa<ConstantStruct>(CV)) {
-    assert(false);
+    if (calculate) {
+      GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
+      DataLayout DL(TheModule);
+      unsigned Bytes = DL.getTypeStoreSize(CV->getType());
+      for (unsigned i = 0; i < Bytes; ++i) {
+        GlobalData64.push_back(0);
+      }
+    } else {
+      dumpv("constant struct in phase calculate? %d\n", calculate);
+      dumpIR(CV);
+      assert(false);
+    }
   } else if (isa<ConstantVector>(CV)) {
     assert(false);
   } else if (isa<BlockAddress>(CV)) {
     assert(false);
   } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
     if (CE->getOpcode() == Instruction::GetElementPtr) {
-        assert(false && "Unhandled CE GEP");
+      assert(false && "Unhandled CE GEP");
     } else if (CE->isCast()) {
-        assert(false && "Unhandled cast");
-    } else {
+      // a global equal to a ptrtoint of some function, so a 32-bit integer for us
+      if (calculate) {
+        GlobalAddresses[name] = Address(GlobalData32.size(), 32);
+        for (unsigned i = 0; i < 4; ++i) {
+          GlobalData32.push_back(0);
+        }
+      } else {
         assert(false);
+      }
+    } else {
+      assert(false);
     }
   } else if (isa<UndefValue>(CV)) {
     assert(false);
   } else {
-    std::cout << getCppName(CV) << std::endl;
     assert(false);
   }
 }
