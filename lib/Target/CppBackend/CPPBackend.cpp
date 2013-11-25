@@ -1349,71 +1349,70 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::Shl:
   case Instruction::LShr:
   case Instruction::AShr:{
-    //Out << "BinaryOperator* " << iName << " = BinaryOperator::Create(";
     text = getAssign(iName, I->getType());
     unsigned opcode = I->getOpcode();
     switch (opcode) {
-    case Instruction::Add:  text += getParenCast(
-                                      getValueAsParenStr(I->getOperand(0)) +
-                                      " + " +
-                                      getValueAsParenStr(I->getOperand(1)),
-                                      I->getType()
-                                    ); break;
-    case Instruction::Sub:  text += getParenCast(
-                                      getValueAsParenStr(I->getOperand(0)) +
-                                      " - " +
-                                      getValueAsParenStr(I->getOperand(1)),
-                                      I->getType()
-                                    ); break;
-    case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)); break;
-    case Instruction::UDiv:
-    case Instruction::SDiv:
-    case Instruction::URem:
-    case Instruction::SRem: text += "(" +
-                                    getValueAsCastParenStr(I->getOperand(0), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
-                                    ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") +
-                                    getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
-                                    ")&-1"; break;
-    case Instruction::And:  text += getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
-    case Instruction::Or:   text += getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
-    case Instruction::Xor:  text += getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
-    case Instruction::Shl:  text += getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1)); break;
-    case Instruction::AShr: text += getValueAsStr(I->getOperand(0)) + " >> " +  getValueAsStr(I->getOperand(1)); break;
-    case Instruction::LShr: text += getValueAsStr(I->getOperand(0)) + " >>> " + getValueAsStr(I->getOperand(1)); break;
-    case Instruction::FAdd: text += getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
-    case Instruction::FSub: text += getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
-    case Instruction::FMul: text += getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
-    case Instruction::FDiv: text += getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
-    case Instruction::FRem: text += getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
-    default: Out << "Instruction::BadOpCode"; break;
+      case Instruction::Add:  text += getParenCast(
+                                        getValueAsParenStr(I->getOperand(0)) +
+                                        " + " +
+                                        getValueAsParenStr(I->getOperand(1)),
+                                        I->getType()
+                                      ); break;
+      case Instruction::Sub:  text += getParenCast(
+                                        getValueAsParenStr(I->getOperand(0)) +
+                                        " - " +
+                                        getValueAsParenStr(I->getOperand(1)),
+                                        I->getType()
+                                      ); break;
+      case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)); break;
+      case Instruction::UDiv:
+      case Instruction::SDiv:
+      case Instruction::URem:
+      case Instruction::SRem: text += "(" +
+                                      getValueAsCastParenStr(I->getOperand(0), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
+                                      ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") +
+                                      getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
+                                      ")&-1"; break;
+      case Instruction::And:  text += getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Or:   text += getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Xor:  text += getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Shl:  text += getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1)); break;
+      case Instruction::AShr: text += getValueAsStr(I->getOperand(0)) + " >> " +  getValueAsStr(I->getOperand(1)); break;
+      case Instruction::LShr: text += getValueAsStr(I->getOperand(0)) + " >>> " + getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FAdd: text += getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
+      case Instruction::FSub: text += getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FMul: text += getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FDiv: text += getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FRem: text += getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
+      default: error("bad icmp"); break;
     }
     text += ';';
     break;
   }
   case Instruction::FCmp: {
-    Out << "FCmpInst* " << iName << " = new FCmpInst(*" << bbname << ", ";
+    text = getAssign(iName, I->getType());
     switch (cast<FCmpInst>(I)->getPredicate()) {
-    case FCmpInst::FCMP_FALSE: Out << "FCmpInst::FCMP_FALSE"; break;
-    case FCmpInst::FCMP_OEQ  : Out << "FCmpInst::FCMP_OEQ"; break;
-    case FCmpInst::FCMP_OGT  : Out << "FCmpInst::FCMP_OGT"; break;
-    case FCmpInst::FCMP_OGE  : Out << "FCmpInst::FCMP_OGE"; break;
-    case FCmpInst::FCMP_OLT  : Out << "FCmpInst::FCMP_OLT"; break;
-    case FCmpInst::FCMP_OLE  : Out << "FCmpInst::FCMP_OLE"; break;
-    case FCmpInst::FCMP_ONE  : Out << "FCmpInst::FCMP_ONE"; break;
-    case FCmpInst::FCMP_ORD  : Out << "FCmpInst::FCMP_ORD"; break;
-    case FCmpInst::FCMP_UNO  : Out << "FCmpInst::FCMP_UNO"; break;
-    case FCmpInst::FCMP_UEQ  : Out << "FCmpInst::FCMP_UEQ"; break;
-    case FCmpInst::FCMP_UGT  : Out << "FCmpInst::FCMP_UGT"; break;
-    case FCmpInst::FCMP_UGE  : Out << "FCmpInst::FCMP_UGE"; break;
-    case FCmpInst::FCMP_ULT  : Out << "FCmpInst::FCMP_ULT"; break;
-    case FCmpInst::FCMP_ULE  : Out << "FCmpInst::FCMP_ULE"; break;
-    case FCmpInst::FCMP_UNE  : Out << "FCmpInst::FCMP_UNE"; break;
-    case FCmpInst::FCMP_TRUE : Out << "FCmpInst::FCMP_TRUE"; break;
-    default: Out << "FCmpInst::BAD_ICMP_PREDICATE"; break;
+      case FCmpInst::FCMP_OEQ:
+      case FCmpInst::FCMP_UEQ:   text += getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_ONE:
+      case FCmpInst::FCMP_UNE:   text += getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OGT:
+      case FCmpInst::FCMP_UGT:   text += getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OGE:
+      case FCmpInst::FCMP_UGE:   text += getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OLT:
+      case FCmpInst::FCMP_ULT:   text += getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OLE:
+      case FCmpInst::FCMP_ULE:   text += getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_ORD:   text += "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & (" +
+                                         "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ")";
+      case FCmpInst::FCMP_UNO:   text += "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | (" +
+                                         "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ")";
+      case FCmpInst::FCMP_FALSE: text += "0"; break;
+      case FCmpInst::FCMP_TRUE : text += "1"; break;
+      default: error("bad fcmp"); break;
     }
-    Out << ", " << opNames[0] << ", " << opNames[1] << ", \"";
-    printEscapedString(I->getName());
-    Out << "\");";
+    text += ";";
     break;
   }
   case Instruction::ICmp: {
