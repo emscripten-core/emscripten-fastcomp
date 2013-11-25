@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Bitcode/NaCl/NaClBitcodeAnalyzer.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
@@ -121,7 +122,8 @@ void BenchmarkIRParsing() {
   }
 
   // Bitcode parsing without any additional operations. This is the minimum
-  // required to actually extract information from PNaCl bitcode.
+  // required to actually extract information from PNaCl bitcode (without
+  // reading function bodies).
   {
     TimingOperationBlock T("Bitcode block parsing", BufSize);
     NaClBitcodeHeader Header;
@@ -147,6 +149,17 @@ void BenchmarkIRParsing() {
         report_fatal_error("Parsing failed");
       }
     }
+  }
+
+  // Running bitcode analysis, which simulates quite well parsing bitcode and
+  // gathering basic information about it.
+  {
+    TimingOperationBlock T("Running bitcode analysis", BufSize);
+
+    AnalysisDumpOptions DumpOptions;
+    DumpOptions.DoDump = true;
+    DumpOptions.DumpOnlyRecords = false;
+    AnalyzeBitcodeInBuffer(*FileBuf, nulls(), DumpOptions);
   }
 
   // Actual LLVM IR parsing and formation from the bitcode
