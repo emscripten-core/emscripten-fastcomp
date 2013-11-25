@@ -2156,6 +2156,25 @@ void CppWriter::printModuleBody() {
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
     if (!I->isDeclaration()) {
+      // Ensure all arguments and locals are named (we assume used values need names, which might be false if the optimizer did not run)
+      unsigned Next = 1;
+      for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
+           AI != AE; ++AI) {
+        if (!AI->hasName() && AI->hasNUsesOrMore(1)) {
+          ValueNames[AI] = "$" + utostr(Next++);
+        }
+      }
+      for (Function::const_iterator BI = I->begin(), BE = I->end();
+           BI != BE; ++BI) {
+        for (BasicBlock::const_iterator II = BI->begin(), E = BI->end();
+             II != E; ++II) {
+          if (!II->hasName() && II->hasNUsesOrMore(1)) {
+            ValueNames[II] = "$" + utostr(Next++);
+          }
+        }
+      }
+
+      // Emit the function
       Out << "function _" << I->getName() << "(";
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
            AI != AE; ++AI) {
