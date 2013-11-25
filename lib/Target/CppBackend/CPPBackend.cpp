@@ -885,7 +885,7 @@ std::string CppWriter::getDoubleToInt(const StringRef &s) {
 
 std::string CppWriter::getIMul(const Value *V1, const Value *V2) {
   // TODO: if small enough, emit direct multiply
-  return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")";
+  return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0";
 }
 
 // printConstant - Print out a constant pool entry...
