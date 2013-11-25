@@ -193,7 +193,7 @@ namespace {
     std::string getPtrLoad(const Value* Ptr);
     std::string getPtrUse(const Value* Ptr, unsigned Offset=0, unsigned Bytes=0);
     std::string getPtr(const Value* Ptr);
-    std::string getConstant(const Constant*);
+    std::string getConstant(const Constant*, Signedness sign=ASM_SIGNED);
     std::string getValueAsStr(const Value*);
     std::string getValueAsCastStr(const Value*, Signedness sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
@@ -1200,7 +1200,7 @@ std::string CppWriter::getPtr(const Value* Ptr) {
   }
 }
 
-std::string CppWriter::getConstant(const Constant* CV) {
+std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
   if (isa<PointerType>(CV->getType())) {
     return getPtr(CV);
   } else {
@@ -1210,7 +1210,7 @@ std::string CppWriter::getConstant(const Constant* CV) {
 //      if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-      return CI->getValue().toString(10, true);
+      return CI->getValue().toString(10, sign == ASM_SIGNED);
     } else {
       assert(false);
     }
@@ -1227,7 +1227,7 @@ std::string CppWriter::getValueAsStr(const Value* V) {
 
 std::string CppWriter::getValueAsCastStr(const Value* V, Signedness sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
-    return getConstant(CV);
+    return getConstant(CV, sign);
   } else {
     return getCast(getCppName(V), V->getType(), sign);
   }
@@ -1243,7 +1243,7 @@ std::string CppWriter::getValueAsParenStr(const Value* V) {
 
 std::string CppWriter::getValueAsCastParenStr(const Value* V, Signedness sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
-    return getConstant(CV);
+    return getConstant(CV, sign);
   } else {
     return "(" + getCast(getCppName(V), V->getType(), sign) + ")";
   }
