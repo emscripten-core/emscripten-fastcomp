@@ -202,7 +202,7 @@ namespace {
       Address a = GlobalAddresses[s];
       return a.first;
     }
-    unsigned getConstAsOffset(Value *V) {
+    unsigned getConstAsOffset(const Value *V) {
       if (isa<Function>(V)) {
         dump("TODO: function indexing");
         return 0;
@@ -1667,7 +1667,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::PtrToInt:
     text = getAssign(iName, Type::getInt32Ty(I->getContext()));
     if (const Constant *CV = dyn_cast<Constant>(I->getOperand(0))) {
-      text += utostr(getGlobalAddress(CV->getName().str()));
+      text += utostr(getConstAsOffset(CV));
     } else {
       text += getCast(getValueAsStr(I->getOperand(0)), Type::getInt32Ty(I->getContext()));
     }
