@@ -2274,6 +2274,7 @@ void CppWriter::printModuleBody() {
 void CppWriter::parseConstant(std::string name, const Constant* CV, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
+  //dumpv("parsing constant %s\n", name.c_str());
   // TODO: we repeat some work in both calculate and emit phases here
   if (const ConstantDataSequential *CDS =
          dyn_cast<ConstantDataSequential>(CV)) {
