@@ -12,7 +12,7 @@ CallHandlerMap *CallHandlers;
   std::string CH_##Ident(const CallInst *CI, std::string Name, unsigned NumArgs) { Code }
 
 DEF_CALL_HANDLER(__default__, {
-  Type *RT = CI->getCalledFunction()->getReturnType();
+  Type *RT = CI->getType();
   std::string text = Name + "(";
   for (unsigned i = 0; i < NumArgs; i++) {
     text += getValueAsCastStr(CI->getArgOperand(i)); // FIXME: differentiate ffi calls
