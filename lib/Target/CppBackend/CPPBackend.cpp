@@ -59,7 +59,7 @@ using namespace llvm;
 }
 
 #undef assert
-#define assert(x) { if (!x) dumpfail(#x); }
+#define assert(x) { if (!(x)) dumpfail(#x); }
 
 static cl::opt<std::string>
 FuncName("cppfname", cl::desc("Specify the name of the generated function"),
@@ -117,6 +117,7 @@ namespace {
   typedef std::map<const Value*,std::string> ForwardRefMap;
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
+  typedef std::map<std::string, Address> GlobalAddressMap;
 
   /// CppWriter - This class is the main chunk of code that converts an LLVM
   /// module to a C++ translation unit.
@@ -136,7 +137,7 @@ namespace {
     HeapData GlobalData8;
     HeapData GlobalData32;
     HeapData GlobalData64;
-    std::map<std::string, Address> GlobalAddresses;
+    GlobalAddressMap GlobalAddresses;
 
     #include "CallHandlers.h"
 
@@ -177,20 +178,39 @@ namespace {
 
     // parsing of constants has two phases: calculate, and then emit
     void parseConstant(std::string name, const Constant* CV, bool calculate);
+
+    #define GLOBAL_BASE 8
+
+    // return the absolute offset of a global
     unsigned getGlobalAddress(const std::string &s) {
       if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
       Address a = GlobalAddresses[s];
       switch (a.second) {
         case 64:
-          return a.first + 8;
+          return a.first + GLOBAL_BASE;
         case 32:
-          return a.first + 8 + GlobalData64.size();
+          return a.first + GLOBAL_BASE + GlobalData64.size();
         case 8:
-          return a.first + 8 + GlobalData64.size() + GlobalData32.size();
+          return a.first + GLOBAL_BASE + GlobalData64.size() + GlobalData32.size();
         default:
           dumpfailv("bad global address %s %d %d\n", s.c_str(), a.first, a.second);
       }
     }
+    // returns the internal offset inside the proper block: GlobalData8, 32, 64
+    unsigned getRelativeGlobalAddress(const std::string &s) {
+      if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
+      Address a = GlobalAddresses[s];
+      return a.first;
+    }
+    unsigned getConstAsOffset(Value *V) {
+      if (isa<Function>(V)) {
+        dump("TODO: function indexing");
+        return 0;
+      } else {
+        return getGlobalAddress(V->getName().str());
+      }
+    }
+
     std::string getPtrLoad(const Value* Ptr);
     std::string getPtrUse(const Value* Ptr, unsigned Offset=0, unsigned Bytes=0);
     std::string getPtr(const Value* Ptr);
@@ -557,7 +577,7 @@ std::string CppWriter::getCppName(const Value* val) {
     return I->second;
 
   if (val->hasName()) {
-    if (isa<Function>(val)) {
+    if (isa<Function>(val) || isa<Constant>(val)) {
       name = std::string("_") + val->getName().str();
     } else {
       name = std::string("$") + val->getName().str();
@@ -2257,72 +2277,73 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
   // TODO: we repeat some work in both calculate and emit phases here
   if (const ConstantDataSequential *CDS =
          dyn_cast<ConstantDataSequential>(CV)) {
-    if (CDS->isString()) {
-      if (calculate) GlobalAddresses[name] = Address(GlobalData8.size(), 8);
+    assert(CDS->isString());
+    if (calculate) {
+      GlobalAddresses[name] = Address(GlobalData8.size(), 8);
       StringRef Str = CDS->getAsString();
       for (unsigned int i = 0; i < Str.size(); i++) {
         GlobalData8.push_back(Str.data()[i]);
       }
-    } else {
-      assert(false);
     }
   } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
     APFloat APF = CFP->getValueAPF();
     if (CFP->getType() == Type::getFloatTy(CFP->getContext())) {
-      if (calculate) GlobalAddresses[name] = Address(GlobalData32.size(), 32);
-      union flt { float f; unsigned char b[sizeof(float)]; } flt;
-      flt.f = APF.convertToFloat();
-      for (unsigned i = 0; i < sizeof(float); ++i)
-        GlobalData32.push_back(flt.b[i]);
+      if (calculate) {
+        GlobalAddresses[name] = Address(GlobalData32.size(), 32);
+        union flt { float f; unsigned char b[sizeof(float)]; } flt;
+        flt.f = APF.convertToFloat();
+        for (unsigned i = 0; i < sizeof(float); ++i) {
+          GlobalData32.push_back(flt.b[i]);
+        }
+      }
     } else if (CFP->getType() == Type::getDoubleTy(CFP->getContext())) {
-      if (calculate) GlobalAddresses[name] = Address(GlobalData64.size(), 64);
-      union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
-      dbl.d = APF.convertToDouble();
-      for (unsigned i = 0; i < sizeof(double); ++i)
-        GlobalData64.push_back(dbl.b[i]);
+      if (calculate) {
+        GlobalAddresses[name] = Address(GlobalData64.size(), 64);
+        union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
+        dbl.d = APF.convertToDouble();
+        for (unsigned i = 0; i < sizeof(double); ++i) {
+          GlobalData64.push_back(dbl.b[i]);
+        }
+      }
     } else {
       assert(false);
     }
   } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-    union { uint64_t i; unsigned char b[sizeof(uint64_t)]; } integer;
-    integer.i = *CI->getValue().getRawData();
-    unsigned BitWidth = CI->getValue().getBitWidth();
-    assert(BitWidth == 32 || BitWidth == 64);
-    HeapData *GlobalData = NULL;
-    switch (BitWidth) {
-      case 8:
-        GlobalData = &GlobalData8;
-        break;
-      case 32:
-        GlobalData = &GlobalData32;
-        break;
-      case 64:
-        GlobalData = &GlobalData64;
-        break;
-      default:
-        dumpIR(CV);
-        assert(false);
-    }
-    // assuming compiler is little endian
-    if (calculate) GlobalAddresses[name] = Address(GlobalData->size(), BitWidth);
-    for (unsigned i = 0; i < BitWidth / 8; ++i) {
-      GlobalData->push_back(integer.b[i]);
+    if (calculate) {
+      union { uint64_t i; unsigned char b[sizeof(uint64_t)]; } integer;
+      integer.i = *CI->getValue().getRawData();
+      unsigned BitWidth = CI->getValue().getBitWidth();
+      assert(BitWidth == 32 || BitWidth == 64);
+      HeapData *GlobalData = NULL;
+      switch (BitWidth) {
+        case 8:  GlobalData = &GlobalData8;  break;
+        case 32: GlobalData = &GlobalData32; break;
+        case 64: GlobalData = &GlobalData64; break;
+        default: dumpIR(CV); assert(false);
+      }
+      // assuming compiler is little endian
+      GlobalAddresses[name] = Address(GlobalData->size(), BitWidth);
+      for (unsigned i = 0; i < BitWidth / 8; ++i) {
+        GlobalData->push_back(integer.b[i]);
+      }
     }
   } else if (isa<ConstantPointerNull>(CV)) {
     assert(false);
   } else if (isa<ConstantAggregateZero>(CV)) {
-    DataLayout DL(TheModule);
-    unsigned Bytes = DL.getTypeStoreSize(CV->getType());
-    // FIXME: assume full 64-bit alignment for now
-    Bytes = memAlign(Bytes);
-    if (calculate) GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
-    for (unsigned i = 0; i < Bytes; ++i) {
-      GlobalData64.push_back(0);
+    if (calculate) {
+      DataLayout DL(TheModule);
+      unsigned Bytes = DL.getTypeStoreSize(CV->getType());
+      // FIXME: assume full 64-bit alignment for now
+      Bytes = memAlign(Bytes);
+      GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
+      for (unsigned i = 0; i < Bytes; ++i) {
+        GlobalData64.push_back(0);
+      }
+      // FIXME: create a zero section at the end, avoid filling meminit with zeros
     }
-    // FIXME: create a zero section at the end, avoid filling meminit with zeros
   } else if (isa<ConstantArray>(CV)) {
     assert(false);
-  } else if (isa<ConstantStruct>(CV)) {
+  } else if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(CV)) {
     if (calculate) {
       GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
       DataLayout DL(TheModule);
@@ -2331,9 +2352,56 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
         GlobalData64.push_back(0);
       }
     } else {
-      dumpv("constant struct in phase calculate? %d\n", calculate);
-      dumpIR(CV);
-      assert(false);
+      // Per the PNaCl abi, this must be a packed struct of a very specific type
+      // https://chromium.googlesource.com/native_client/pnacl-llvm/+/7287c45c13dc887cebe3db6abfa2f1080186bb97/lib/Transforms/NaCl/FlattenGlobals.cpp
+      assert(CS->getType()->isPacked());
+      // This is the only constant where we cannot just emit everything during the first phase, 'calculate', as we may refer to other globals
+      unsigned Num = CS->getNumOperands();
+      unsigned Offset = getRelativeGlobalAddress(name);
+      dumpv("%s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
+      for (unsigned i = 0; i < Num; i++) {
+        const Constant* C = CS->getOperand(i);
+        if (isa<ConstantAggregateZero>(C)) {
+          DataLayout DL(TheModule);
+          unsigned Bytes = DL.getTypeStoreSize(C->getType());
+          Offset += Bytes; // zeros, so just skip
+dumpv("now aat %d\n", Offset);
+        } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+          Value *V = CE->getOperand(0);
+          unsigned Data = 0;
+          if (CE->getOpcode() == Instruction::PtrToInt) {
+            Data = getConstAsOffset(V);
+          } else if (CE->getOpcode() == Instruction::Add) {
+            V = dyn_cast<ConstantExpr>(V)->getOperand(0);
+            Data = getConstAsOffset(V);
+            ConstantInt *CI = dyn_cast<ConstantInt>(CE->getOperand(1));
+            Data += *CI->getValue().getRawData();
+          } else {
+            dumpIR(CE);
+            assert(0);
+          }
+          union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
+          integer.i = Data;
+dumpv("now bat %d / %d\n", Offset, GlobalData64.size());
+          assert(Offset+4 <= GlobalData64.size());
+          for (unsigned i = 0; i < 4; ++i) {
+            GlobalData64[Offset++] = integer.b[i];
+          }
+        } else if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
+          assert(0);
+          assert(CDS->isString());
+          StringRef Str = CDS->getAsString();
+          assert(Offset+Str.size() <= GlobalData64.size());
+dumpv("now cat %d\n", Offset);
+          for (unsigned int i = 0; i < Str.size(); i++) {
+            GlobalData64[Offset++] = Str.data()[i];
+          }
+        } else {
+          dumpIR(C);
+          assert(0);
+        }
+      }
+      dumpv("done with %s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
     }
   } else if (isa<ConstantVector>(CV)) {
     assert(false);
@@ -2350,7 +2418,17 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
           GlobalData32.push_back(0);
         }
       } else {
-        assert(false);
+        unsigned Offset = getRelativeGlobalAddress(name);
+        Value *V = CE->getOperand(0);
+        unsigned Data = getConstAsOffset(V);
+        union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
+        integer.i = Data;
+dumpv("2 %s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
+        assert(Offset+4 <= GlobalData32.size());
+        for (unsigned i = 0; i < 4; ++i) {
+          GlobalData32[Offset++] = integer.b[i];
+        }
+        dumpv("2 done with %s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
       }
     } else {
       assert(false);
