@@ -262,10 +262,6 @@ struct PerBlockIDStats {
       NumSubBlocks(0), NumAbbrevs(0), NumRecords(0), NumAbbreviatedRecords(0) {}
 };
 
-static std::map<unsigned, PerBlockIDStats> BlockIDStats;
-
-
-
 /// Error - All bitcode analysis errors go through this function, making this a
 /// good place to breakpoint if debugging.
 static bool Error(const Twine &Err) {
@@ -273,55 +269,104 @@ static bool Error(const Twine &Err) {
   return true;
 }
 
-// Returns (a cached) string to indent N levels.
-static const std::string &IndentString(unsigned N) {
-  static std::vector<std::string*> IndentLevel;
-  if (N >= IndentLevel.size())
-    IndentLevel.resize(N+1);
-  std::string* Str = IndentLevel[N];
-  if (Str == 0) {
-    Str = new std::string();
-    for (unsigned i = 0; i < N; ++i) {
-      Str->append("  ");
-    }
-    IndentLevel[N] = Str;
-  }
-  return *Str;
-}
-
-// Parses bitcode blocks, and collects distribution of records in each block.
-// Also dumps bitcode structure if specified (via global variables).
+// Parses all bitcode blocks, and collects distribution of records in
+// each block.  Also dumps bitcode structure if specified (via global
+// variables).
 class PNaClBitcodeAnalyzerParser : public NaClBitcodeParser {
 public:
-  explicit PNaClBitcodeAnalyzerParser(NaClBitstreamCursor &Cursor,
-                                      raw_ostream &OS,
-                                      const AnalysisDumpOptions &DumpOptions)
+  PNaClBitcodeAnalyzerParser(NaClBitstreamCursor &Cursor,
+                             raw_ostream &OS,
+                             const AnalysisDumpOptions &DumpOptions)
     : NaClBitcodeParser(Cursor),
-      IndentLevel(-1),
-      Indent(""),
-      NumWords(0),
-      BlockName(0),
-      BlockStats(0),
+      IndentLevel(0),
       OS(OS),
       DumpOptions(DumpOptions) {
   }
 
-  PNaClBitcodeAnalyzerParser(unsigned BlockID,
-                             PNaClBitcodeAnalyzerParser *EnclosingBlock,
-                             raw_ostream& OS,
-                             const AnalysisDumpOptions &DumpOptions)
+  virtual ~PNaClBitcodeAnalyzerParser() {}
+
+  virtual bool Error(const std::string Message) {
+    // Use local error routine so that all errors are treated uniformly.
+    return ::Error(Message);
+  }
+
+  virtual bool ParseBlock(unsigned BlockID);
+
+  // Returns the string defining the indentation to use with respect
+  // to the current indent level.
+  const std::string &GetIndentation() {
+    size_t Size = IndentationCache.size();
+    if (IndentLevel >= Size) {
+      IndentationCache.resize(IndentLevel+1);
+      for (size_t i = Size; i <= IndentLevel; ++i) {
+        IndentationCache[i] = std::string(i*2, ' ');
+      }
+    }
+    return IndentationCache[IndentLevel];
+  }
+
+  // Keeps track of current indentation level based on block nesting.
+  unsigned IndentLevel;
+  // The output stream to print to.
+  raw_ostream &OS;
+  // The dump options to use.
+  const AnalysisDumpOptions &DumpOptions;
+  // The statistics collected for each block ID.
+  std::map<unsigned, PerBlockIDStats> BlockIDStats;
+
+private:
+  // The set of cached, indentation strings. Used for indenting
+  // records when dumping.
+  std::vector<std::string> IndentationCache;
+};
+
+// Parses a bitcode block, and collects distribution of records in that block.
+// Also dumps bitcode structure if specified (via global variables).
+class PNaClBitcodeAnalyzerBlockParser : public NaClBitcodeParser {
+public:
+  // Parses top-level block.
+  PNaClBitcodeAnalyzerBlockParser(
+      unsigned BlockID,
+      PNaClBitcodeAnalyzerParser *Parser)
+      : NaClBitcodeParser(BlockID, Parser) {
+    Initialize(BlockID, Parser);
+  }
+
+  virtual ~PNaClBitcodeAnalyzerBlockParser() {}
+
+protected:
+  // Parses nested blocks.
+  PNaClBitcodeAnalyzerBlockParser(
+      unsigned BlockID,
+      PNaClBitcodeAnalyzerBlockParser *EnclosingBlock)
       : NaClBitcodeParser(BlockID, EnclosingBlock),
-        IndentLevel(EnclosingBlock->IndentLevel+1),
-        Indent(IndentString(EnclosingBlock->IndentLevel+1)),
-        NumWords(0),
-        BlockName(0),
-        BlockStats(&BlockIDStats[BlockID]),
-        OS(OS),
-        DumpOptions(DumpOptions) {
+        Context(EnclosingBlock->Context) {
+    Initialize(BlockID, EnclosingBlock->Context);
+  }
+
+  // Initialize data associated with a block.
+  void Initialize(unsigned BlockID, PNaClBitcodeAnalyzerParser *Parser) {
+    Context = Parser;
+    if (Context->DumpOptions.DoDump) {
+      Indent = Parser->GetIndentation();
+    }
+    NumWords = 0;
+    BlockName = 0;
+    BlockStats = &Context->BlockIDStats[BlockID];
     BlockStats->NumInstances++;
   }
 
-  virtual ~PNaClBitcodeAnalyzerParser() {}
+  // Increment the indentation level for dumping.
+  void IncrementIndent() {
+    Context->IndentLevel++;
+    Indent = Context->GetIndentation();
+  }
+
+  // Increment the indentation level for dumping.
+  void DecrementIndent() {
+    Context->IndentLevel--;
+    Indent = Context->GetIndentation();
+  }
 
   virtual bool Error(const std::string Message) {
     // Use local error routine so that all errors are treated uniformly.
@@ -335,7 +380,8 @@ public:
     NumWords = NumberWords;
     IncrementCallingBlock();
     BlockName = 0;
-    if (DumpOptions.DoDump) {
+    if (Context->DumpOptions.DoDump) {
+      raw_ostream &OS = Context->OS;
       unsigned BlockID = GetBlockID();
       OS << Indent << "<";
       if ((BlockName = GetBlockName(BlockID, Record.GetReader())))
@@ -343,15 +389,16 @@ public:
       else
         OS << "UnknownBlock" << BlockID;
 
-      if (DumpOptions.NonSymbolic && BlockName)
+      if (Context->DumpOptions.NonSymbolic && BlockName)
         OS << " BlockID=" << BlockID;
 
-      if (!DumpOptions.DumpOnlyRecords) {
+      if (!Context->DumpOptions.DumpOnlyRecords) {
         OS << " NumWords=" << NumberWords
            << " BlockCodeSize="
            << Record.GetCursor().getAbbrevIDWidth();
       }
       OS << ">\n";
+      IncrementIndent();
     }
   }
 
@@ -359,7 +406,9 @@ public:
   // is found.
   virtual void ExitBlock() {
     BlockStats->NumBits += GetLocalNumBits();
-    if (DumpOptions.DoDump) {
+    if (Context->DumpOptions.DoDump) {
+      DecrementIndent();
+      raw_ostream &OS = Context->OS;
       OS << Indent << "</";
       if (BlockName)
         OS << BlockName << ">\n";
@@ -371,7 +420,8 @@ public:
   // Called after a BlockInfo block is parsed.
   virtual void ExitBlockInfo() {
     BlockStats->NumBits += GetLocalNumBits();
-    if (DumpOptions.DoDump) OS << Indent << "<BLOCKINFO_BLOCK/>\n";
+    if (Context->DumpOptions.DoDump)
+      Context->OS << Indent << "<BLOCKINFO_BLOCK/>\n";
     IncrementCallingBlock();
   }
 
@@ -390,23 +440,25 @@ public:
       ++BlockStats->NumAbbreviatedRecords;
     }
 
-    if (DumpOptions.DoDump) {
-      OS << Indent << "  <";
+    if (Context->DumpOptions.DoDump) {
+      raw_ostream &OS = Context->OS;
+      OS << Indent << "<";
       const char *CodeName =
           GetCodeName(Code, GetBlockID(), Record.GetReader());
       if (CodeName)
         OS << CodeName;
       else
         OS << "UnknownCode" << Code;
-      if (DumpOptions.NonSymbolic && CodeName)
+      if (Context->DumpOptions.NonSymbolic && CodeName)
         OS << " codeid=" << Code;
-      if (!DumpOptions.DumpOnlyRecords &&
+      if (!Context->DumpOptions.DumpOnlyRecords &&
           Record.GetEntryID() != naclbitc::UNABBREV_RECORD)
         OS << " abbrevid=" << Record.GetEntryID();
 
       const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
       for (unsigned i = 0, e = Values.size(); i != e; ++i) {
-        if (DumpOptions.OpsPerLine && (i % DumpOptions.OpsPerLine) == 0
+        if (Context->DumpOptions.OpsPerLine
+            && (i % Context->DumpOptions.OpsPerLine) == 0
             && i > 0) {
           OS << "\n" << Indent << "   ";
           if (CodeName) {
@@ -424,26 +476,29 @@ public:
   }
 
   virtual bool ParseBlock(unsigned BlockID) {
-    PNaClBitcodeAnalyzerParser Parser(BlockID, this, OS, DumpOptions);
+    PNaClBitcodeAnalyzerBlockParser Parser(BlockID, this);
     return Parser.ParseThisBlock();
   }
 
-  int IndentLevel;
   std::string Indent;
   unsigned NumWords;
   const char *BlockName;
   PerBlockIDStats *BlockStats;
-  raw_ostream &OS;
-  const AnalysisDumpOptions &DumpOptions;
-protected:
+  PNaClBitcodeAnalyzerParser *Context;
+
   void IncrementCallingBlock() {
     if (NaClBitcodeParser *Parser = GetEnclosingParser()) {
-      PNaClBitcodeAnalyzerParser *PNaClBlock =
-          static_cast<PNaClBitcodeAnalyzerParser*>(Parser);
+      PNaClBitcodeAnalyzerBlockParser *PNaClBlock =
+          static_cast<PNaClBitcodeAnalyzerBlockParser*>(Parser);
       ++PNaClBlock->BlockStats->NumSubBlocks;
     }
   }
 };
+
+bool PNaClBitcodeAnalyzerParser::ParseBlock(unsigned BlockID) {
+  PNaClBitcodeAnalyzerBlockParser Parser(BlockID, this);
+  return Parser.ParseThisBlock();
+}
 
 static void PrintSize(double Bits, raw_ostream &OS) {
   OS << format("%.2f/%.2fB/%luW", Bits, Bits/8,(unsigned long)(Bits/32));
@@ -506,8 +561,10 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
 
   // Emit per-block stats.
   OS << "Per-block Summary:\n";
-  for (std::map<unsigned, PerBlockIDStats>::iterator I = BlockIDStats.begin(),
-       E = BlockIDStats.end(); I != E; ++I) {
+  for (std::map<unsigned, PerBlockIDStats>::iterator
+           I = Parser.BlockIDStats.begin(),
+           E = Parser.BlockIDStats.end();
+       I != E; ++I) {
     OS << "  Block ID #" << I->first;
     if (const char *BlockName = GetBlockName(I->first, StreamFile))
       OS << " (" << BlockName << ")";

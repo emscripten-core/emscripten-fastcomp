@@ -41,7 +41,6 @@ struct AnalysisDumpOptions {
 };
 
 /// Run analysis on the given file. Output goes to OS.
-/// Note: these analysis runs are not currently thread-safe.
 int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
                          const AnalysisDumpOptions &DumpOptions);
 

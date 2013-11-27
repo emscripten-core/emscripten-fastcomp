@@ -299,6 +299,12 @@ public:
     return EnclosingParser->EnclosingParser ? EnclosingParser : 0;
   }
 
+  // Parses the block using the parser defined by
+  // ParseBlock(unsigned).  Returns true if unable to parse the
+  // block. Note: Should only be called by virtual
+  // ParseBlock(unsigned).
+  bool ParseThisBlock();
+
 protected:
   // The containing parser.
   NaClBitcodeParser *EnclosingParser;
@@ -316,12 +322,6 @@ protected:
         StartBit(EnclosingParser->Record.GetStartBit()) {
     BlockStart = StartBit;
   }
-
-  // Parses the block using the parser defined by
-  // ParseBlock(unsigned).  Returns true if unable to parse the
-  // block. Note: Should only be called by virtual
-  // ParseBlock(unsigned).
-  bool ParseThisBlock();
 
 private:
   // Special constant identifying the top-level instance.
