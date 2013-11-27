@@ -212,7 +212,7 @@ namespace {
     }
 
     std::string getPtrLoad(const Value* Ptr);
-    std::string getPtrUse(const Value* Ptr, unsigned Offset=0, unsigned Bytes=0);
+    std::string getPtrUse(const Value* Ptr);
     std::string getPtr(const Value* Ptr);
     std::string getConstant(const Constant*, Signedness sign=ASM_SIGNED);
     std::string getValueAsStr(const Value*);
@@ -1178,12 +1178,12 @@ std::string CppWriter::getPtrLoad(const Value* Ptr) {
   return getCast(getPtrUse(Ptr), t);
 }
 
-std::string CppWriter::getPtrUse(const Value* Ptr, unsigned Offset, unsigned Bytes) {
+std::string CppWriter::getPtrUse(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  if (Bytes == 0) Bytes = t->getPrimitiveSizeInBits()/8;
+  unsigned Bytes = t->getPrimitiveSizeInBits()/8;
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
     std::string text = "";
-    unsigned Addr = getGlobalAddress(GV->getName().str()) + Offset;
+    unsigned Addr = getGlobalAddress(GV->getName().str());
     switch (Bytes) {
     default: assert(false && "Unsupported type");
     case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
@@ -1199,10 +1199,6 @@ std::string CppWriter::getPtrUse(const Value* Ptr, unsigned Offset, unsigned Byt
     }
   } else {
     std::string Name = getOpName(Ptr);
-    if (Offset) {
-      Name += "+" + Offset;
-      if (Bytes == 1) Name = "(" + Name + ")|0";
-    }
     switch (Bytes) {
     default: assert(false && "Unsupported type");
     case 8: return "HEAPF64[" + Name + ">>3]";
