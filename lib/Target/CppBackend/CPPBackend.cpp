@@ -1234,11 +1234,14 @@ std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
       std::string S = ftostr(CFP->getValueAPF());
       S = '+' + S;
-//      if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
+      //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
       return CI->getValue().toString(10, sign == ASM_SIGNED);
+    } else if (isa<UndefValue>(CV)) {
+      return "0";
     } else {
+      dumpIR(CV);
       assert(false);
     }
   }
