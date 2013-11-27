@@ -2359,14 +2359,12 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
       // This is the only constant where we cannot just emit everything during the first phase, 'calculate', as we may refer to other globals
       unsigned Num = CS->getNumOperands();
       unsigned Offset = getRelativeGlobalAddress(name);
-      dumpv("%s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
       for (unsigned i = 0; i < Num; i++) {
         const Constant* C = CS->getOperand(i);
         if (isa<ConstantAggregateZero>(C)) {
           DataLayout DL(TheModule);
           unsigned Bytes = DL.getTypeStoreSize(C->getType());
           Offset += Bytes; // zeros, so just skip
-dumpv("now aat %d\n", Offset);
         } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
           Value *V = CE->getOperand(0);
           unsigned Data = 0;
@@ -2383,17 +2381,14 @@ dumpv("now aat %d\n", Offset);
           }
           union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
           integer.i = Data;
-dumpv("now bat %d / %d\n", Offset, GlobalData64.size());
           assert(Offset+4 <= GlobalData64.size());
           for (unsigned i = 0; i < 4; ++i) {
             GlobalData64[Offset++] = integer.b[i];
           }
         } else if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
-          assert(0);
           assert(CDS->isString());
           StringRef Str = CDS->getAsString();
           assert(Offset+Str.size() <= GlobalData64.size());
-dumpv("now cat %d\n", Offset);
           for (unsigned int i = 0; i < Str.size(); i++) {
             GlobalData64[Offset++] = Str.data()[i];
           }
@@ -2402,7 +2397,6 @@ dumpv("now cat %d\n", Offset);
           assert(0);
         }
       }
-      dumpv("done with %s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
     }
   } else if (isa<ConstantVector>(CV)) {
     assert(false);
@@ -2424,12 +2418,10 @@ dumpv("now cat %d\n", Offset);
         unsigned Data = getConstAsOffset(V);
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;
-dumpv("2 %s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
         assert(Offset+4 <= GlobalData32.size());
         for (unsigned i = 0; i < 4; ++i) {
           GlobalData32[Offset++] = integer.b[i];
         }
-        dumpv("2 done with %s : %d, %d / %d, %d, %d\n", name.c_str(), getGlobalAddress(name), Offset, GlobalData64.size(), GlobalData32.size(), GlobalData8.size());
       }
     } else {
       assert(false);
