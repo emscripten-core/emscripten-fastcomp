@@ -74,12 +74,58 @@ private:
   size_t InputSize;
 };
 
-/// A do-nothing bitcode parser.
+/// Simple parsing of bitcode with some basic bookkeeping that simulates doing
+/// "something" with it.
 class DummyBitcodeParser : public NaClBitcodeParser {
 public:
-  explicit DummyBitcodeParser(NaClBitstreamCursor &Cursor)
+  DummyBitcodeParser(NaClBitstreamCursor &Cursor)
     : NaClBitcodeParser(Cursor) {
+    resetCounters();
   }
+
+  DummyBitcodeParser(unsigned BlockID, DummyBitcodeParser *EnclosingBlock)
+    : NaClBitcodeParser(BlockID, EnclosingBlock) {
+    resetCounters();
+  }
+
+  virtual bool ParseBlock(unsigned BlockID) {
+    DummyBitcodeParser Parser(BlockID, this);
+    return Parser.ParseThisBlock();
+  }
+
+  virtual void EnterBlock(unsigned NumberWords) {
+    NumBlocks++;
+    if (const NaClBitstreamReader::BlockInfo *Info =
+          Record.GetReader().getBlockInfo(GetBlockID())) {
+      BlockNames.push_back(Info->Name);
+    } else {
+      BlockNames.push_back("<unknown>");
+    }
+  }
+
+  virtual void ProcessRecord() {
+    NumRecords++;
+    RecordCodes.push_back(Record.GetCode());
+
+    const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
+    for (unsigned i = 0, e = Values.size(); i != e; ++i) {
+      RecordValues.push_back((int64_t) Values[i]);
+    }
+  }
+
+private:
+  void resetCounters() {
+    NumBlocks = NumRecords = 0;
+    BlockNames.clear();
+    RecordCodes.clear();
+    RecordValues.clear();
+  }
+
+  uint64_t NumBlocks, NumRecords;
+  std::vector<StringRef> BlockNames;
+  std::vector<unsigned> RecordCodes;
+  std::vector<StringRef> RecordCodeNames;
+  std::vector<int64_t> RecordValues;
 };
 
 void BenchmarkIRParsing() {
@@ -121,9 +167,7 @@ void BenchmarkIRParsing() {
     delete[] OutBuf;
   }
 
-  // Bitcode parsing without any additional operations. This is the minimum
-  // required to actually extract information from PNaCl bitcode (without
-  // reading function bodies).
+  // Simulate simple bitcode parsing. See DummyBitcodeParser for more details.
   {
     TimingOperationBlock T("Bitcode block parsing", BufSize);
     NaClBitcodeHeader Header;
@@ -151,8 +195,8 @@ void BenchmarkIRParsing() {
     }
   }
 
-  // Running bitcode analysis, which simulates quite well parsing bitcode and
-  // gathering basic information about it.
+  // Running bitcode analysis (what bcanalyzer does).
+  // Note that quite a bit of time here is spent on emitting I/O into nulls().
   {
     TimingOperationBlock T("Running bitcode analysis", BufSize);
 
