@@ -114,7 +114,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // getelementptr instructions it creates.
   PM.add(createExpandGetElementPtrPass());
   // Rewrite atomic and volatile instructions with intrinsic calls.
+#if 0 // EMSCRIPTEN: we don't need to fix volatiles etc, and can use llvm intrinsics
   PM.add(createRewriteAtomicsPass());
+#endif
   // Remove ``asm("":::"memory")``. This must occur after rewriting
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
