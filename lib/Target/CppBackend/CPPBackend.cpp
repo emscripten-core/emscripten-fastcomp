@@ -138,6 +138,7 @@ namespace {
     HeapData GlobalData32;
     HeapData GlobalData64;
     GlobalAddressMap GlobalAddresses;
+    NameSet Externals;
 
     #include "CallHandlers.h"
 
@@ -1217,6 +1218,13 @@ std::string CppWriter::getPtrUse(const Value* Ptr) {
 
 std::string CppWriter::getPtr(const Value* Ptr) {
   if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
+    if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
+      if (GV->hasExternalLinkage()) {
+        std::string Name = getOpName(Ptr);
+        Externals.insert(Name);
+        return Name;
+      }
+    }
     return utostr(getGlobalAddress(CV->getName().str()));
   } else {
     return getOpName(Ptr);
@@ -1225,6 +1233,7 @@ std::string CppWriter::getPtr(const Value* Ptr) {
 
 std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
   if (isa<PointerType>(CV->getType())) {
+
     return getPtr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
@@ -2255,6 +2264,18 @@ void CppWriter::printModuleBody() {
       }
       Out << "\"" + I->getName() + "\"";
     }
+  }
+  Out << "],";
+  Out << "\"externs\": [";
+  first = true;
+  for (NameSet::iterator I = Externals.begin(), E = Externals.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" + *I + "\"";
   }
   Out << "],";
   Out << "\"implementedFunctions\": [";
