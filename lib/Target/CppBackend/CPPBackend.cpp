@@ -1491,15 +1491,18 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::Alloca: {
-    const AllocaInst* allocaI = cast<AllocaInst>(I);
-    Type *t = allocaI->getAllocatedType();
-    unsigned size;
-    if (ArrayType *AT = dyn_cast<ArrayType>(t)) {
-      size = AT->getElementType()->getScalarSizeInBits()/8 * AT->getNumElements();
+    const AllocaInst* AI = cast<AllocaInst>(I);
+    Type *T = AI->getAllocatedType();
+    assert(!isa<ArrayType>(T));
+    const Value *AS = AI->getArraySize();
+    unsigned Size = T->getScalarSizeInBits()/8;
+    if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
+      Size *= CI->getZExtValue();
     } else {
-      size = t->getScalarSizeInBits()/8;
+      dumpIR(I);
+      assert(0);
     }
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Twine(memAlign(size)).str() + "|0;";
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Twine(memAlign(Size)).str() + "|0;";
     break;
   }
   case Instruction::Load: {
