@@ -203,10 +203,13 @@ namespace {
       Address a = GlobalAddresses[s];
       return a.first;
     }
+    unsigned getFunctionIndex(const Function *F) {
+      dump("TODO: function indexing");
+      return 0;
+    }
     unsigned getConstAsOffset(const Value *V) {
-      if (isa<Function>(V)) {
-        dump("TODO: function indexing");
-        return 0;
+      if (const Function *F = dyn_cast<const Function>(V)) {
+        return getFunctionIndex(F);
       } else {
         return getGlobalAddress(V->getName().str());
       }
@@ -1217,7 +1220,9 @@ std::string CppWriter::getPtrUse(const Value* Ptr) {
 }
 
 std::string CppWriter::getPtr(const Value* Ptr) {
-  if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
+  if (const Function *F = dyn_cast<Function>(Ptr)) {
+    return utostr(getFunctionIndex(F));
+  } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
     if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
       if (GV->hasExternalLinkage()) {
         std::string Name = getOpName(Ptr);
