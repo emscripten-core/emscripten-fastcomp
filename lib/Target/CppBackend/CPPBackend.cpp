@@ -1673,13 +1673,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::PtrToInt:
-    text = getAssign(iName, Type::getInt32Ty(I->getContext()));
-    if (const Constant *CV = dyn_cast<Constant>(I->getOperand(0))) {
-      text += utostr(getConstAsOffset(CV));
-    } else {
-      text += getCast(getValueAsStr(I->getOperand(0)), Type::getInt32Ty(I->getContext()));
-    }
-    text += ";";
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getPtr(I->getOperand(0)) + ';';
     break;
   case Instruction::IntToPtr:
     text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getValueAsStr(I->getOperand(0)) + ";";
