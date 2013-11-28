@@ -1236,13 +1236,21 @@ std::string CppWriter::getPtr(const Value* Ptr) {
   }
 }
 
+// ftostr normally limits output to %20.6e, so some digits can get dropped. We need all the information
+static inline std::string ftostr_precise(double V) {
+  char Buffer[1000];
+  sprintf(Buffer, "%f", V);
+  char *B = Buffer;
+  while (*B == ' ') ++B;
+  return B;
+}
+
 std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
   if (isa<PointerType>(CV->getType())) {
-
     return getPtr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-      std::string S = ftostr(CFP->getValueAPF());
+      std::string S = ftostr_precise(CFP->getValueAPF().convertToDouble());
       S = '+' + S;
       //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
