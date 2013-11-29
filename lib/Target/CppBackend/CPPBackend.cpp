@@ -241,7 +241,7 @@ namespace {
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
     std::string getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
-    std::string getStore(const Value *P, const Type *T, const Value *V, unsigned Alignment, char sep=';');
+    std::string getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep=';');
 
     void printConstant(const Constant *CPV);
     void printConstants(const Module* M);
@@ -1000,10 +1000,9 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
   return text;
 }
 
-std::string CppWriter::getStore(const Value *P, const Type *T, const Value *V, unsigned Alignment, char sep) {
+std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
-  std::string VS = getValueAsStr(V);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = getPtrUse(P) + " = " + VS;
@@ -1042,7 +1041,7 @@ std::string CppWriter::getStore(const Value *P, const Type *T, const Value *V, u
         break;
       }
       case 4: {
-        if (V->getType()->isIntegerTy()) {
+        if (T->isIntegerTy()) {
           switch (Alignment) {
             case 2: {
               text = "HEAP16[" + PS + ">>1]=" + VS + "&65535;" +
@@ -1692,7 +1691,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     const Value *P = SI->getPointerOperand();
     const Value *V = SI->getValueOperand();
     unsigned Alignment = SI->getAlignment();
-    text = getStore(P, V->getType(), V, Alignment) + ';';
+    text = getStore(P, V->getType(), getValueAsStr(V), Alignment) + ';';
     break;
   }
   case Instruction::GetElementPtr: {
@@ -1878,23 +1877,20 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     const Value *P = rmwi->getOperand(0);
     const Value *V = rmwi->getOperand(1);
     std::string Assign = getAssign(iName, I->getType());
+    std::string VS = getValueAsStr(V);
     text = getLoad(Assign, P, I->getType(), 0) + ';';
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
-      case AtomicRMWInst::Xchg: text += getStore(P, I->getType(), V, 0); break;
-      case AtomicRMWInst::Add:  "AtomicRMWInst::Add"; break;
-      case AtomicRMWInst::Sub:  "AtomicRMWInst::Sub"; break;
-      case AtomicRMWInst::And:  "AtomicRMWInst::And"; break;
-      case AtomicRMWInst::Nand: "AtomicRMWInst::Nand"; break;
-      case AtomicRMWInst::Or:   "AtomicRMWInst::Or"; break;
-      case AtomicRMWInst::Xor:  "AtomicRMWInst::Xor"; break;
-      case AtomicRMWInst::Max:  "AtomicRMWInst::Max"; break;
-      case AtomicRMWInst::Min:  "AtomicRMWInst::Min"; break;
-      case AtomicRMWInst::UMax: "AtomicRMWInst::UMax"; break;
-      case AtomicRMWInst::UMin: "AtomicRMWInst::UMin"; break;
+      case AtomicRMWInst::Xchg: text += getStore(P, I->getType(), VS, 0); break;
+      case AtomicRMWInst::Add:  text += getStore(P, I->getType(), "((" + VS + '+' + iName + ")|0)", 0); break;
+      case AtomicRMWInst::Sub:  text += getStore(P, I->getType(), "((" + VS + '-' + iName + ")|0)", 0); break;
+      case AtomicRMWInst::And:  text += getStore(P, I->getType(), "(" + VS + '&' + iName + ")", 0); break;
+      case AtomicRMWInst::Nand: text += getStore(P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
+      case AtomicRMWInst::Or:   text += getStore(P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
+      case AtomicRMWInst::Xor:  text += getStore(P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
       case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
     }
-    text += ");";
+    text += ";";
     break;
   }
   }
