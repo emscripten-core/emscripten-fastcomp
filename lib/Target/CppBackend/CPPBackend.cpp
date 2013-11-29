@@ -2022,20 +2022,6 @@ void CppWriter::printFunctionBody(const Function *F) {
 
   UsedVars.clear();
 
-  // Create all the argument values
-  if (!is_inline) {
-    for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
-         AI != AE; ++AI) {
-      if (AI->hasName()) {
-        //Out << getCppName(AI) << "->setName(\"";
-        //printEscapedString(AI->getName());
-        //Out << "\");";
-        //nl(Out);
-      } else {
-      }
-    }
-  }
-
   // Prepare relooper TODO: resize buffer as needed
   #define RELOOPER_BUFFER 10*1024*1024
   static char *buffer = new char[RELOOPER_BUFFER];
@@ -2156,19 +2142,15 @@ void CppWriter::printFunctionBody(const Function *F) {
   // Emit (relooped) code
   nl(Out) << buffer;
 
-  // Loop over the ForwardRefs and resolve them now that all instructions
-  // are generated.
-  if (!ForwardRefs.empty()) {
-    nl(Out) << "// Resolve Forward References";
-    nl(Out);
-  }
-
-  while (!ForwardRefs.empty()) {
-    ForwardRefMap::iterator I = ForwardRefs.begin();
-    Out << I->second << "->replaceAllUsesWith("
-        << getCppName(I->first) << "); delete " << I->second << ";";
-    nl(Out);
-    ForwardRefs.erase(I);
+  // Ensure a final return if necessary
+  Type *RT = F->getFunctionType()->getReturnType();
+  if (!RT->isVoidTy()) {
+    char *LastCurly = strrchr(buffer, '}');
+    if (!LastCurly) LastCurly = buffer;
+    char *FinalReturn = strstr(LastCurly, "return ");
+    if (!FinalReturn) {
+      Out << " return " + getCast("0", RT) + ";\n";
+    }
   }
 }
 
