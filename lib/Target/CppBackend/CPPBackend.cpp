@@ -211,13 +211,35 @@ namespace {
       if (const Function *F = dyn_cast<const Function>(V)) {
         return getFunctionIndex(F);
       } else {
+        if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
+          if (GV->hasExternalLinkage()) {
+            std::string Name = getOpName(V);
+            Externals.insert(Name);
+            return 0;
+          }
+        }
         return getGlobalAddress(V->getName().str());
+      }
+    }
+    std::string getPtrAsStr(const Value* Ptr) {
+      if (const Function *F = dyn_cast<Function>(Ptr)) {
+        return utostr(getFunctionIndex(F));
+      } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
+        if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
+          if (GV->hasExternalLinkage()) {
+            std::string Name = getOpName(Ptr);
+            Externals.insert(Name);
+            return Name;
+          }
+        }
+        return utostr(getGlobalAddress(CV->getName().str()));
+      } else {
+        return getOpName(Ptr);
       }
     }
 
     std::string getPtrLoad(const Value* Ptr);
     std::string getPtrUse(const Value* Ptr);
-    std::string getPtr(const Value* Ptr);
     std::string getConstant(const Constant*, Signedness sign=ASM_SIGNED);
     std::string getValueAsStr(const Value*);
     std::string getValueAsCastStr(const Value*, Signedness sign=ASM_SIGNED);
@@ -1392,23 +1414,6 @@ std::string CppWriter::getPtrUse(const Value* Ptr) {
   }
 }
 
-std::string CppWriter::getPtr(const Value* Ptr) {
-  if (const Function *F = dyn_cast<Function>(Ptr)) {
-    return utostr(getFunctionIndex(F));
-  } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
-    if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
-      if (GV->hasExternalLinkage()) {
-        std::string Name = getOpName(Ptr);
-        Externals.insert(Name);
-        return Name;
-      }
-    }
-    return utostr(getGlobalAddress(CV->getName().str()));
-  } else {
-    return getOpName(Ptr);
-  }
-}
-
 // ftostr normally limits output to %20.6e, so some digits can get dropped. We need all the information
 static inline std::string ftostr_precise(double V) {
   char Buffer[1000];
@@ -1420,7 +1425,7 @@ static inline std::string ftostr_precise(double V) {
 
 std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
   if (isa<PointerType>(CV->getType())) {
-    return getPtr(CV);
+    return getPtrAsStr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
       std::string S = ftostr_precise(CFP->getValueAPF().convertToDouble());
@@ -1703,7 +1708,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::PtrToInt:
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getPtr(I->getOperand(0)) + ';';
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getPtrAsStr(I->getOperand(0)) + ';';
     break;
   case Instruction::IntToPtr:
     text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getValueAsStr(I->getOperand(0)) + ";";
