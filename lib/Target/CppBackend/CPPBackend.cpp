@@ -1668,14 +1668,14 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     Type *T = AI->getAllocatedType();
     assert(!isa<ArrayType>(T));
     const Value *AS = AI->getArraySize();
-    unsigned Size = T->getScalarSizeInBits()/8;
+    unsigned BaseSize = T->getScalarSizeInBits()/8;
+    std::string Size;
     if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
-      Size *= CI->getZExtValue();
+      Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
     } else {
-      dumpIR(I);
-      assert(0);
+      Size = '(' + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0";
     }
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Twine(memAlign(Size)).str() + "|0;";
+    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
     break;
   }
   case Instruction::Load: {
