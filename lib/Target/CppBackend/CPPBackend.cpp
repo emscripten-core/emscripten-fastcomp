@@ -240,6 +240,7 @@ namespace {
     std::string getParenCast(const StringRef &, const Type *, Signedness sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
+    std::string getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
 
     void printConstant(const Constant *CPV);
     void printConstants(const Module* M);
@@ -913,6 +914,91 @@ std::string CppWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0";
 }
 
+std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
+  unsigned Bytes = T->getPrimitiveSizeInBits()/8;
+  std::string text;
+  if (Bytes <= Alignment || Alignment == 0) {
+    text = Assign + getPtrLoad(P);
+  } else {
+    // unaligned in some manner
+    std::string PS = getOpName(P);
+    switch (Bytes) {
+      case 8: {
+        switch (Alignment) {
+          case 4: {
+            text = "HEAP32[tempDoublePtr>>2]=HEAP32[" + PS + ">>2]" + sep +
+                    "HEAP32[tempDoublePtr+4>>2]=HEAP32[" + PS + "+4>>2]";
+            break;
+          }
+          case 2: {
+            text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1]" + sep +
+                   "HEAP16[tempDoublePtr+2>>1]=HEAP16[" + PS + "+2>>1]" + sep +
+                   "HEAP16[tempDoublePtr+4>>1]=HEAP16[" + PS + "+4>>1]" + sep +
+                   "HEAP16[tempDoublePtr+6>>1]=HEAP16[" + PS + "+6>>1]";
+            break;
+          }
+          case 1: {
+            text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "]" + sep +
+                   "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1]" + sep +
+                   "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2]" + sep +
+                   "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3]" + sep +
+                   "HEAP8[tempDoublePtr+4]=HEAP8[" + PS + "+4]" + sep +
+                   "HEAP8[tempDoublePtr+5]=HEAP8[" + PS + "+5]" + sep +
+                   "HEAP8[tempDoublePtr+6]=HEAP8[" + PS + "+6]" + sep +
+                   "HEAP8[tempDoublePtr+7]=HEAP8[" + PS + "+7]";
+            break;
+          }
+          default: assert(0 && "bad 8 store");
+        }
+        text += Assign + "HEAPF64[tempDoublePtr>>3]";
+        break;
+      }
+      case 4: {
+        if (T->isIntegerTy()) {
+          switch (Alignment) {
+            case 2: {
+              text = Assign + "HEAP16[" + PS + ">>1]+" + sep +
+                             "(HEAP16[" + PS + "+2>>1]<<2)";
+              break;
+            }
+            case 1: {
+              text = Assign + "HEAP8[" + PS + "]+" + sep +
+                             "(HEAP8[" + PS + "+1]<<1)+" + sep +
+                             "(HEAP8[" + PS + "+2]<<2)+" + sep +
+                             "(HEAP8[" + PS + "+3]<<3)";
+            }
+            default: assert(0 && "bad 4i store");
+          }
+        } else { // float
+          switch (Alignment) {
+            case 2: {
+              text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1]" + sep +
+                     "HEAP16[tempDoublePtr+2>>1]=HEAP16[" + PS + "+2>>1]";
+              break;
+            }
+            case 1: {
+              text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "]" + sep +
+                     "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1]" + sep +
+                     "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2]=" + sep +
+                     "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3]";
+            }
+            default: assert(0 && "bad 4f store");
+          }
+          text += Assign + "HEAPF32[tempDoublePtr>>2]";
+        }
+        break;
+      }
+      case 2: {
+        text = Assign + "HEAP8[" + PS + "]+" + sep +
+                       "(HEAP8[" + PS + "+1]<<1)";
+        break;
+      }
+      default: assert(0 && "bad store");
+    }
+  }
+  return text;
+}
+
 // printConstant - Print out a constant pool entry...
 void CppWriter::printConstant(const Constant *CV) {
   // First, if the constant is actually a GlobalValue (variable or function)
@@ -1508,88 +1594,9 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   case Instruction::Load: {
     const LoadInst *LI = cast<LoadInst>(I);
     const Value *P = LI->getPointerOperand();
-    unsigned Bytes = LI->getType()->getPrimitiveSizeInBits()/8;
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
-    if (Bytes <= Alignment || Alignment == 0) {
-      text = Assign + getPtrLoad(P) + ';';
-    } else {
-      // unaligned in some manner
-      std::string PS = getOpName(P);
-      switch (Bytes) {
-        case 8: {
-          switch (Alignment) {
-            case 4: {
-              text = "HEAP32[tempDoublePtr>>2]=HEAP32[" + PS + ">>2];" +
-                      "HEAP32[tempDoublePtr+4>>2]=HEAP32[" + PS + "+4>>2];";
-              break;
-            }
-            case 2: {
-              text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1];" +
-                     "HEAP16[tempDoublePtr+2>>1]=HEAP16[" + PS + "+2>>1];" +
-                     "HEAP16[tempDoublePtr+4>>1]=HEAP16[" + PS + "+4>>1];" +
-                     "HEAP16[tempDoublePtr+6>>1]=HEAP16[" + PS + "+6>>1];";
-              break;
-            }
-            case 1: {
-              text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "];" +
-                     "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1];" +
-                     "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2];" +
-                     "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3];" +
-                     "HEAP8[tempDoublePtr+4]=HEAP8[" + PS + "+4];" +
-                     "HEAP8[tempDoublePtr+5]=HEAP8[" + PS + "+5];" +
-                     "HEAP8[tempDoublePtr+6]=HEAP8[" + PS + "+6];" +
-                     "HEAP8[tempDoublePtr+7]=HEAP8[" + PS + "+7];";
-              break;
-            }
-            default: assert(0 && "bad 8 store");
-          }
-          text += Assign + "HEAPF64[tempDoublePtr>>3];";
-          break;
-        }
-        case 4: {
-          if (LI->getType()->isIntegerTy()) {
-            switch (Alignment) {
-              case 2: {
-                text = Assign + "HEAP16[" + PS + ">>1]+" +
-                               "(HEAP16[" + PS + "+2>>1]<<2);";
-                break;
-              }
-              case 1: {
-                text = Assign + "HEAP8[" + PS + "]+" +
-                               "(HEAP8[" + PS + "+1]<<1)+" +
-                               "(HEAP8[" + PS + "+2]<<2)+" +
-                               "(HEAP8[" + PS + "+3]<<3)";
-              }
-              default: assert(0 && "bad 4i store");
-            }
-          } else { // float
-            switch (Alignment) {
-              case 2: {
-                text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1];" +
-                       "HEAP16[tempDoublePtr+2>>1]=HEAP16[" + PS + "+2>>1];";
-                break;
-              }
-              case 1: {
-                text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "];" +
-                       "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1];" +
-                       "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2]=;" +
-                       "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3];";
-              }
-              default: assert(0 && "bad 4f store");
-            }
-            text += Assign + "HEAPF32[tempDoublePtr>>2];";
-          }
-          break;
-        }
-        case 2: {
-          text = Assign + "HEAP8[" + PS + "]+" +
-                         "(HEAP8[" + PS + "+1]<<1);";
-          break;
-        }
-        default: assert(0 && "bad store");
-      }
-    }
+    text = Assign + getLoad(Assign, P, LI->getType(), Alignment) + ';';
     break;
   }
   case Instruction::Store: {
@@ -1860,32 +1867,25 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   }
   case Instruction::AtomicRMW: {
     const AtomicRMWInst *rmwi = cast<AtomicRMWInst>(I);
-    StringRef Ordering = ConvertAtomicOrdering(rmwi->getOrdering());
-    StringRef CrossThread = ConvertAtomicSynchScope(rmwi->getSynchScope());
-    StringRef Operation;
+    const Value *P = rmwi->getOperand(0);
+    std::string Assign = getAssign(iName, I->getType());
+    text = getLoad(Assign, P, I->getType(), 0) + ';';
+    // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
-      case AtomicRMWInst::Xchg: Operation = "AtomicRMWInst::Xchg"; break;
-      case AtomicRMWInst::Add:  Operation = "AtomicRMWInst::Add"; break;
-      case AtomicRMWInst::Sub:  Operation = "AtomicRMWInst::Sub"; break;
-      case AtomicRMWInst::And:  Operation = "AtomicRMWInst::And"; break;
-      case AtomicRMWInst::Nand: Operation = "AtomicRMWInst::Nand"; break;
-      case AtomicRMWInst::Or:   Operation = "AtomicRMWInst::Or"; break;
-      case AtomicRMWInst::Xor:  Operation = "AtomicRMWInst::Xor"; break;
-      case AtomicRMWInst::Max:  Operation = "AtomicRMWInst::Max"; break;
-      case AtomicRMWInst::Min:  Operation = "AtomicRMWInst::Min"; break;
-      case AtomicRMWInst::UMax: Operation = "AtomicRMWInst::UMax"; break;
-      case AtomicRMWInst::UMin: Operation = "AtomicRMWInst::UMin"; break;
+      case AtomicRMWInst::Xchg: text += "xchng"; break;
+      case AtomicRMWInst::Add:  "AtomicRMWInst::Add"; break;
+      case AtomicRMWInst::Sub:  "AtomicRMWInst::Sub"; break;
+      case AtomicRMWInst::And:  "AtomicRMWInst::And"; break;
+      case AtomicRMWInst::Nand: "AtomicRMWInst::Nand"; break;
+      case AtomicRMWInst::Or:   "AtomicRMWInst::Or"; break;
+      case AtomicRMWInst::Xor:  "AtomicRMWInst::Xor"; break;
+      case AtomicRMWInst::Max:  "AtomicRMWInst::Max"; break;
+      case AtomicRMWInst::Min:  "AtomicRMWInst::Min"; break;
+      case AtomicRMWInst::UMax: "AtomicRMWInst::UMax"; break;
+      case AtomicRMWInst::UMin: "AtomicRMWInst::UMin"; break;
       case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
     }
-    Out << "AtomicRMWInst* " << iName
-        << " = new AtomicRMWInst("
-        << Operation << ", "
-        << opNames[0] << ", " << opNames[1] << ", "
-        << Ordering << ", " << CrossThread << ", " << bbname
-        << ");";
-    nl(Out) << iName << "->setName(\"";
-    printEscapedString(rmwi->getName());
-    Out << "\");";
+    text += ");";
     break;
   }
   }
