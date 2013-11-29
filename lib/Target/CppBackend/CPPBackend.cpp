@@ -139,6 +139,7 @@ namespace {
     HeapData GlobalData64;
     GlobalAddressMap GlobalAddresses;
     NameSet Externals;
+    std::string PostSets;
 
     #include "CallHandlers.h"
 
@@ -207,15 +208,20 @@ namespace {
       dump("TODO: function indexing");
       return 0;
     }
-    unsigned getConstAsOffset(const Value *V) {
+    // Return a constant we are about to write into a global as a numeric offset. If the
+    // value is not known at compile time, emit a postSet to that location.
+    unsigned getConstAsOffset(const Value *V, unsigned AbsoluteTarget) {
       if (const Function *F = dyn_cast<const Function>(V)) {
         return getFunctionIndex(F);
       } else {
         if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
           if (GV->hasExternalLinkage()) {
+            // We don't have a constant to emit here, so we must emit a postSet
+            // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
             Externals.insert(Name);
-            return 0;
+            PostSets += "HEAP32[" + utostr(AbsoluteTarget>>2) + "] = " + Name + ';';
+            return 0; // emit zero in there for now, until the postSet
           }
         }
         return getGlobalAddress(V->getName().str());
@@ -2235,6 +2241,10 @@ void CppWriter::printModuleBody() {
       nl(Out);
     }
   }
+  Out << " function runPostSets() {\n";
+  Out << "  " + PostSets + "\n";
+  Out << " }\n";
+  PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
   // TODO fix commas
@@ -2386,6 +2396,8 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
       // This is the only constant where we cannot just emit everything during the first phase, 'calculate', as we may refer to other globals
       unsigned Num = CS->getNumOperands();
       unsigned Offset = getRelativeGlobalAddress(name);
+      unsigned OffsetStart = Offset;
+      unsigned Absolute = getGlobalAddress(name);
       for (unsigned i = 0; i < Num; i++) {
         const Constant* C = CS->getOperand(i);
         if (isa<ConstantAggregateZero>(C)) {
@@ -2396,10 +2408,10 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
           Value *V = CE->getOperand(0);
           unsigned Data = 0;
           if (CE->getOpcode() == Instruction::PtrToInt) {
-            Data = getConstAsOffset(V);
+            Data = getConstAsOffset(V, Absolute + Offset - OffsetStart);
           } else if (CE->getOpcode() == Instruction::Add) {
             V = dyn_cast<ConstantExpr>(V)->getOperand(0);
-            Data = getConstAsOffset(V);
+            Data = getConstAsOffset(V, Absolute + Offset - OffsetStart);
             ConstantInt *CI = dyn_cast<ConstantInt>(CE->getOperand(1));
             Data += *CI->getValue().getRawData();
           } else {
@@ -2442,7 +2454,7 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
       } else {
         unsigned Offset = getRelativeGlobalAddress(name);
         Value *V = CE->getOperand(0);
-        unsigned Data = getConstAsOffset(V);
+        unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;
         assert(Offset+4 <= GlobalData32.size());
