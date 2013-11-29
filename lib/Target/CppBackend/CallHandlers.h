@@ -34,7 +34,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
-  return CH___default__(CI, "_memset", 2) + "|0";
+  return CH___default__(CI, "_memset", 3) + "|0";
 })
 
 // Setups
