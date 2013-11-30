@@ -182,16 +182,40 @@ namespace {
     // parsing of constants has two phases: calculate, and then emit
     void parseConstant(std::string name, const Constant* CV, bool calculate);
 
+    #define MEM_ALIGN 8
+    #define MEM_ALIGN_BITS 64
+
+    unsigned memAlign(unsigned x) {
+      return x + (x%MEM_ALIGN != 0 ? MEM_ALIGN - x%MEM_ALIGN : 0);
+    }
+
+    HeapData *allocateAddress(std::string Name, unsigned Bits = MEM_ALIGN_BITS) {
+      assert(Bits == 64); // FIXME when we use optimal alignments
+      HeapData *GlobalData = NULL;
+      switch (Bits) {
+        case 8:  GlobalData = &GlobalData8;  break;
+        case 32: GlobalData = &GlobalData32; break;
+        case 64: GlobalData = &GlobalData64; break;
+        default: assert(false);
+      }
+      while (GlobalData->size() % (Bits/8) != 0) GlobalData->push_back(0);
+      GlobalAddresses[Name] = Address(GlobalData->size(), Bits);
+      return GlobalData;
+    }
+
     #define GLOBAL_BASE 8
 
     // return the absolute offset of a global
     unsigned getGlobalAddress(const std::string &s) {
       if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
       Address a = GlobalAddresses[s];
+      assert(a.second == 64); // FIXME when we use optimal alignments
       switch (a.second) {
         case 64:
+          assert((a.first + GLOBAL_BASE)%8 == 0);
           return a.first + GLOBAL_BASE;
         case 32:
+          assert((a.first + GLOBAL_BASE)%4 == 0);
           return a.first + GLOBAL_BASE + GlobalData64.size();
         case 8:
           return a.first + GLOBAL_BASE + GlobalData64.size() + GlobalData32.size();
@@ -286,12 +310,6 @@ namespace {
     std::string getOpName(const Value*);
 
     void printModuleBody();
-
-    #define MEM_ALIGN 8
-    #define MEM_ALIGN_BITS 64
-    unsigned memAlign(unsigned x) {
-      return x + (x%MEM_ALIGN != 0 ? MEM_ALIGN - x%MEM_ALIGN : 0);
-    }
   };
 } // end anonymous namespace.
 
@@ -2253,6 +2271,8 @@ void CppWriter::printModuleBody() {
   PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
+  assert(GlobalData32.size() == 0 && GlobalData8.size() == 0); // FIXME when we use optimal constant alignments
+
   // TODO fix commas
   Out << "/* memory initializer */ allocate([";
   printCommaSeparated(GlobalData64);
@@ -2328,34 +2348,35 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
     return;
   //dumpv("parsing constant %s\n", name.c_str());
   // TODO: we repeat some work in both calculate and emit phases here
+  // FIXME: use the proper optimal alignments
   if (const ConstantDataSequential *CDS =
          dyn_cast<ConstantDataSequential>(CV)) {
     assert(CDS->isString());
     if (calculate) {
-      GlobalAddresses[name] = Address(GlobalData8.size(), 8);
+      HeapData *GlobalData = allocateAddress(name);
       StringRef Str = CDS->getAsString();
       for (unsigned int i = 0; i < Str.size(); i++) {
-        GlobalData8.push_back(Str.data()[i]);
+        GlobalData->push_back(Str.data()[i]);
       }
     }
   } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
     APFloat APF = CFP->getValueAPF();
     if (CFP->getType() == Type::getFloatTy(CFP->getContext())) {
       if (calculate) {
-        GlobalAddresses[name] = Address(GlobalData32.size(), 32);
+        HeapData *GlobalData = allocateAddress(name);
         union flt { float f; unsigned char b[sizeof(float)]; } flt;
         flt.f = APF.convertToFloat();
         for (unsigned i = 0; i < sizeof(float); ++i) {
-          GlobalData32.push_back(flt.b[i]);
+          GlobalData->push_back(flt.b[i]);
         }
       }
     } else if (CFP->getType() == Type::getDoubleTy(CFP->getContext())) {
       if (calculate) {
-        GlobalAddresses[name] = Address(GlobalData64.size(), 64);
+        HeapData *GlobalData = allocateAddress(name);
         union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
         dbl.d = APF.convertToDouble();
         for (unsigned i = 0; i < sizeof(double); ++i) {
-          GlobalData64.push_back(dbl.b[i]);
+          GlobalData->push_back(dbl.b[i]);
         }
       }
     } else {
@@ -2365,17 +2386,10 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
     if (calculate) {
       union { uint64_t i; unsigned char b[sizeof(uint64_t)]; } integer;
       integer.i = *CI->getValue().getRawData();
-      unsigned BitWidth = CI->getValue().getBitWidth();
+      unsigned BitWidth = 64; // CI->getValue().getBitWidth();
       assert(BitWidth == 32 || BitWidth == 64);
-      HeapData *GlobalData = NULL;
-      switch (BitWidth) {
-        case 8:  GlobalData = &GlobalData8;  break;
-        case 32: GlobalData = &GlobalData32; break;
-        case 64: GlobalData = &GlobalData64; break;
-        default: dumpIR(CV); assert(false);
-      }
+      HeapData *GlobalData = allocateAddress(name);
       // assuming compiler is little endian
-      GlobalAddresses[name] = Address(GlobalData->size(), BitWidth);
       for (unsigned i = 0; i < BitWidth / 8; ++i) {
         GlobalData->push_back(integer.b[i]);
       }
@@ -2388,9 +2402,9 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
       unsigned Bytes = DL.getTypeStoreSize(CV->getType());
       // FIXME: assume full 64-bit alignment for now
       Bytes = memAlign(Bytes);
-      GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
+      HeapData *GlobalData = allocateAddress(name);
       for (unsigned i = 0; i < Bytes; ++i) {
-        GlobalData64.push_back(0);
+        GlobalData->push_back(0);
       }
       // FIXME: create a zero section at the end, avoid filling meminit with zeros
     }
@@ -2398,11 +2412,11 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
     assert(false);
   } else if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(CV)) {
     if (calculate) {
-      GlobalAddresses[name] = Address(GlobalData64.size(), MEM_ALIGN_BITS);
+      HeapData *GlobalData = allocateAddress(name);
       DataLayout DL(TheModule);
       unsigned Bytes = DL.getTypeStoreSize(CV->getType());
       for (unsigned i = 0; i < Bytes; ++i) {
-        GlobalData64.push_back(0);
+        GlobalData->push_back(0);
       }
     } else {
       // Per the PNaCl abi, this must be a packed struct of a very specific type
@@ -2462,9 +2476,9 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
     } else if (CE->isCast()) {
       // a global equal to a ptrtoint of some function, so a 32-bit integer for us
       if (calculate) {
-        GlobalAddresses[name] = Address(GlobalData32.size(), 32);
+        HeapData *GlobalData = allocateAddress(name);
         for (unsigned i = 0; i < 4; ++i) {
-          GlobalData32.push_back(0);
+          GlobalData->push_back(0);
         }
       } else {
         unsigned Offset = getRelativeGlobalAddress(name);
@@ -2472,9 +2486,9 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
         unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;
-        assert(Offset+4 <= GlobalData32.size());
+        assert(Offset+4 <= GlobalData64.size());
         for (unsigned i = 0; i < 4; ++i) {
-          GlobalData32[Offset++] = integer.b[i];
+          GlobalData64[Offset++] = integer.b[i];
         }
       }
     } else {
