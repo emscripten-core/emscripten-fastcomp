@@ -1434,7 +1434,12 @@ std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
     return getPtrAsStr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-      std::string S = ftostr_precise(CFP->getValueAPF().convertToDouble());
+      std::string S;
+      if (CFP->getType()->isFloatTy()) {
+        S = ftostr_precise(CFP->getValueAPF().convertToFloat());
+      } else {
+        S = ftostr_precise(CFP->getValueAPF().convertToDouble());
+      }
       S = '+' + S;
       //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
