@@ -87,8 +87,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // some optimizations undo its changes.  Note that
   // ExpandSmallArguments requires that ExpandVarArgs has already been
   // run.
+#if 0 // EMSCRIPTEN: we don't need to worry about the issue this works around
   PM.add(createExpandSmallArgumentsPass());
-
+#endif
   PM.add(createPromoteI1OpsPass());
 
   // Optimization passes and ExpandByVal introduce
@@ -129,7 +130,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // analyses add attributes to reflect their results.
   // StripAttributes must come after ExpandByVal and
   // ExpandSmallArguments.
+#if 0 // EMSCRIPTEN: we don't need to worry about the issue this works around
   PM.add(createStripAttributesPass());
+#endif
 
   // Strip dead prototytes to appease the intrinsic ABI checks.
   // ExpandVarArgs leaves around vararg intrinsics, and

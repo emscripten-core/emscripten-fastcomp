@@ -66,6 +66,11 @@ INITIALIZE_PASS(ExpandVarArgs, "expand-varargs",
                 "Expand out variable argument function definitions and calls",
                 false, false)
 
+static bool isEmscriptenJSArgsFunc(StringRef Name) {
+  return Name.equals("emscripten_asm_const_int") ||
+         Name.equals("emscripten_asm_const_double");
+}
+
 static void ExpandVarArgFunc(Function *Func) {
   Type *PtrType = Type::getInt8PtrTy(Func->getContext());
 
@@ -178,6 +183,13 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
       Call->getCalledValue()->getType()->getPointerElementType());
   if (!FuncType->isFunctionVarArg())
     return false;
+
+
+  // EMSCRIPTEN: use js varargs for special instrinsics
+  const Value *CV = Call->getCalledValue();
+  if (isa<Function>(CV) && isEmscriptenJSArgsFunc(CV->getName())) {
+    return false;
+  }
 
   LLVMContext *Context = &Call->getContext();
 
@@ -326,7 +338,8 @@ bool ExpandVarArgs::runOnModule(Module &M) {
       }
     }
 
-    if (Func->isVarArg()) {
+    // EMSCRIPTEN: use js varargs for special instrinsics
+    if (Func->isVarArg() && !isEmscriptenJSArgsFunc(Func->getName())) {
       Changed = true;
       ExpandVarArgFunc(Func);
     }
