@@ -1708,7 +1708,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
       Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
     } else {
-      Size = '(' + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0";
+      Size = "((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)";
     }
     text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
     break;
