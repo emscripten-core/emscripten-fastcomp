@@ -139,6 +139,7 @@ namespace {
     HeapData GlobalData64;
     GlobalAddressMap GlobalAddresses;
     NameSet Externals;
+    NameSet Declares;
     std::string PostSets;
 
     #include "CallHandlers.h"
@@ -2281,6 +2282,15 @@ void CppWriter::printModuleBody() {
       }
       Out << "\"" + I->getName() + "\"";
     }
+  }
+  for (NameSet::iterator I = Declares.begin(), E = Declares.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" + *I + "\"";
   }
   Out << "],";
   Out << "\"externs\": [";
