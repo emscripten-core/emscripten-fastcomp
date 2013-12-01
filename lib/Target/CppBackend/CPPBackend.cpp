@@ -1448,17 +1448,44 @@ static inline std::string ftostr_precise(double V) {
   return B;
 }
 
+static int hexToInt(char x) {
+  if (x <= '9') {
+    assert(x >= '0');
+    return x - '0';
+  } else {
+    assert('A' <= x && x <= 'F');
+    return x - 'A' + 10;
+  }
+}
+
+static inline std::string ftostr_exact(const ConstantFP *CFP) {
+  std::string temp;
+  raw_string_ostream stream(temp);
+  stream << *CFP; // bitcast on APF produces odd results, so do it this horrible way
+  const char *raw = temp.c_str();
+  if (CFP->getType()->isFloatTy()) {
+    raw += 6; // skip "float "
+  } else {
+    raw += 7; // skip "double "
+  }
+  if (raw[1] != 'x') return raw; // number has already been printed out
+  raw += 2; // skip "0x"
+  union dbl { double d; float f[2]; int i[2]; unsigned char b[sizeof(double)]; } dbl;
+  for (unsigned i = 0; i < 8; i++) {
+    dbl.b[7-i] = (hexToInt(raw[2*i]) << 4) |
+                  hexToInt(raw[2*i+1]);
+  }
+  char buffer[100];
+  sprintf(buffer, "%30.30f", dbl.d);
+  return buffer;
+}
+
 std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
   if (isa<PointerType>(CV->getType())) {
     return getPtrAsStr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-      std::string S;
-      if (CFP->getType()->isFloatTy()) {
-        S = ftostr_precise(CFP->getValueAPF().convertToFloat());
-      } else {
-        S = ftostr_precise(CFP->getValueAPF().convertToDouble());
-      }
+      std::string S = ftostr_exact(CFP);
       S = '+' + S;
       //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
