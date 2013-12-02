@@ -998,7 +998,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
           }
           default: assert(0 && "bad 8 store");
         }
-        text += Assign + "HEAPF64[tempDoublePtr>>3]";
+        text += sep + Assign + "HEAPF64[tempDoublePtr>>3]";
         break;
       }
       case 4: {
@@ -1010,9 +1010,9 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
               break;
             }
             case 1: {
-              text = Assign + "HEAP8[" + PS + "]+" + sep +
-                             "(HEAP8[" + PS + "+1]<<1)+" + sep +
-                             "(HEAP8[" + PS + "+2]<<2)+" + sep +
+              text = Assign + "HEAP8[" + PS + "]+" +
+                             "(HEAP8[" + PS + "+1]<<1)+" +
+                             "(HEAP8[" + PS + "+2]<<2)+" +
                              "(HEAP8[" + PS + "+3]<<3)";
               break;
             }
