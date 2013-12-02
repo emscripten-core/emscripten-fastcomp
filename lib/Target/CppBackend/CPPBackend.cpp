@@ -1014,6 +1014,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
                              "(HEAP8[" + PS + "+1]<<1)+" + sep +
                              "(HEAP8[" + PS + "+2]<<2)+" + sep +
                              "(HEAP8[" + PS + "+3]<<3)";
+              break;
             }
             default: assert(0 && "bad 4i store");
           }
@@ -1029,6 +1030,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
                      "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1]" + sep +
                      "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2]=" + sep +
                      "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3]";
+              break;
             }
             default: assert(0 && "bad 4f store");
           }
