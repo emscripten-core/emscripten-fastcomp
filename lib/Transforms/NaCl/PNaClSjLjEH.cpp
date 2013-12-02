@@ -45,21 +45,45 @@
 //
 //   int catcher_func() {
 //     struct ExceptionFrame frame;
+//     frame.next = __pnacl_eh_stack;
+//     frame.clause_list_id = 123;
+//     __pnacl_eh_stack = &frame;  // Add frame to stack
 //     int result;
-//     if (!setjmp(&frame.jmpbuf)) {  // Save context
-//       frame.next = __pnacl_eh_stack;
-//       frame.clause_list_id = 123;
-//       __pnacl_eh_stack = &frame;  // Add frame to stack
-//       result = external_func();
+//     if (!catcher_func_setjmp_caller(external_func, &frame.jmpbuf, &result)) {
 //       __pnacl_eh_stack = frame.next;  // Remove frame from stack
+//       return result + 100;
 //     } else {
 //       // Handle exception.  This is a simplification.  Real code would
 //       // call __cxa_begin_catch() to extract the thrown object.
 //       MyException &exc = *(MyException *) frame.result.exception_obj;
 //       return exc.value + 200;
 //     }
-//     return result + 100;
 //   }
+//
+//   // Helper function
+//   static int catcher_func_setjmp_caller(int (*func)(void), jmp_buf jmpbuf,
+//                                         int *result) {
+//     if (!setjmp(jmpbuf)) {
+//       *result = func();
+//       return 0;
+//     }
+//     return 1;
+//   }
+//
+// We use a helper function so that setjmp() is not called directly
+// from catcher_func(), due to a quirk of how setjmp() and longjmp()
+// are specified in C.
+//
+// func() might modify variables (allocas) that are local to
+// catcher_func() (if the variables' addresses are taken).  The C
+// standard says that these variables' values would become undefined
+// after longjmp() returned if setjmp() were called from
+// catcher_func().  Specifically, LLVM's GVN pass can optimize away
+// stores to allocas between setjmp() and longjmp() (see
+// pnacl-sjlj-eh-bug.ll for an example).  But this only applies to
+// allocas inside the caller of setjmp(), not to allocas inside the
+// caller of the caller of setjmp(), so doing the setjmp() call inside
+// a helper function that catcher_func() calls avoids the problem.
 //
 // The pass makes the following changes to IR:
 //
@@ -126,6 +150,7 @@ namespace {
         Frame(NULL), FrameJmpBuf(NULL), FrameNextPtr(NULL), FrameExcInfo(NULL),
         EHResumeFunc(NULL) {}
 
+    Value *createSetjmpWrappedCall(InvokeInst *Invoke);
     void expandInvokeInst(InvokeInst *Invoke);
     void expandResumeInst(ResumeInst *Resume);
     void expandFunc();
@@ -184,21 +209,135 @@ void FuncRewriter::initializeFrame() {
   FrameExcInfo->insertAfter(Frame);
 }
 
-static void updateEdge(BasicBlock *Dest,
-                       BasicBlock *OldIncoming,
-                       BasicBlock *NewIncoming) {
-  for (BasicBlock::iterator Inst = Dest->begin(); Inst != Dest->end(); ++Inst) {
-    PHINode *Phi = dyn_cast<PHINode>(Inst);
-    if (!Phi)
-      break;
-    for (unsigned I = 0, E = Phi->getNumIncomingValues(); I < E; ++I) {
-      if (Phi->getIncomingBlock(I) == OldIncoming)
-        Phi->setIncomingBlock(I, NewIncoming);
-    }
+// Creates the helper function that will do the setjmp() call and
+// function call for implementing Invoke.  Creates the call to the
+// helper function.  Returns a Value which is zero on the normal
+// execution path and non-zero if the landingpad block should be
+// entered.
+Value *FuncRewriter::createSetjmpWrappedCall(InvokeInst *Invoke) {
+  Type *I32 = Type::getInt32Ty(Func->getContext());
+
+  // Allocate space for storing the invoke's result temporarily (so
+  // that the helper function can return multiple values).  We don't
+  // need to do this if the result is unused, and we can't if its type
+  // is void.
+  Instruction *ResultAlloca = NULL;
+  if (!Invoke->use_empty()) {
+    ResultAlloca = new AllocaInst(Invoke->getType(), "invoke_result_ptr");
+    Func->getEntryBlock().getInstList().push_front(ResultAlloca);
   }
+
+  // Create type for the helper function.
+  SmallVector<Type *, 10> ArgTypes;
+  for (unsigned I = 0, E = Invoke->getNumArgOperands(); I < E; ++I)
+    ArgTypes.push_back(Invoke->getArgOperand(I)->getType());
+  ArgTypes.push_back(Invoke->getCalledValue()->getType());
+  ArgTypes.push_back(FrameJmpBuf->getType());
+  if (ResultAlloca)
+    ArgTypes.push_back(Invoke->getType()->getPointerTo());
+  FunctionType *FTy = FunctionType::get(I32, ArgTypes, false);
+
+  // Create the helper function.
+  Function *HelperFunc = Function::Create(
+      FTy, GlobalValue::InternalLinkage, Func->getName() + "_setjmp_caller");
+  Func->getParent()->getFunctionList().insertAfter(Func, HelperFunc);
+  BasicBlock *EntryBB = BasicBlock::Create(Func->getContext(), "", HelperFunc);
+  BasicBlock *NormalBB = BasicBlock::Create(Func->getContext(), "normal",
+                                            HelperFunc);
+  BasicBlock *ExceptionBB = BasicBlock::Create(Func->getContext(), "exception",
+                                               HelperFunc);
+
+  // Unpack the helper function's arguments.
+  Function::arg_iterator ArgIter = HelperFunc->arg_begin();
+  SmallVector<Value *, 10> InnerCallArgs;
+  for (unsigned I = 0, E = Invoke->getNumArgOperands(); I < E; ++I) {
+    ArgIter->setName("arg");
+    InnerCallArgs.push_back(ArgIter++);
+  }
+  Argument *CalleeArg = ArgIter++;
+  Argument *JmpBufArg = ArgIter++;
+  CalleeArg->setName("func_ptr");
+  JmpBufArg->setName("jmp_buf");
+
+  // Create setjmp() call.
+  Value *SetjmpArgs[] = { JmpBufArg };
+  CallInst *SetjmpCall = CallInst::Create(SetjmpIntrinsic, SetjmpArgs,
+                                          "invoke_sj", EntryBB);
+  CopyDebug(SetjmpCall, Invoke);
+  // Setting the "returns_twice" attribute here prevents optimization
+  // passes from inlining HelperFunc into its caller.
+  SetjmpCall->setCanReturnTwice();
+  // Check setjmp()'s result.
+  Value *IsZero = CopyDebug(new ICmpInst(*EntryBB, CmpInst::ICMP_EQ, SetjmpCall,
+                                         ConstantInt::get(I32, 0),
+                                         "invoke_sj_is_zero"), Invoke);
+  CopyDebug(BranchInst::Create(NormalBB, ExceptionBB, IsZero, EntryBB), Invoke);
+  // Handle the normal, non-exceptional code path.
+  CallInst *InnerCall = CallInst::Create(CalleeArg, InnerCallArgs, "",
+                                         NormalBB);
+  CopyDebug(InnerCall, Invoke);
+  InnerCall->setAttributes(Invoke->getAttributes());
+  InnerCall->setCallingConv(Invoke->getCallingConv());
+  if (ResultAlloca) {
+    InnerCall->setName("result");
+    Argument *ResultArg = ArgIter++;
+    ResultArg->setName("result_ptr");
+    CopyDebug(new StoreInst(InnerCall, ResultArg, NormalBB), Invoke);
+  }
+  ReturnInst::Create(Func->getContext(), ConstantInt::get(I32, 0), NormalBB);
+  // Handle the exceptional code path.
+  ReturnInst::Create(Func->getContext(), ConstantInt::get(I32, 1), ExceptionBB);
+
+  // Create the outer call to the helper function.
+  SmallVector<Value *, 10> OuterCallArgs;
+  for (unsigned I = 0, E = Invoke->getNumArgOperands(); I < E; ++I)
+    OuterCallArgs.push_back(Invoke->getArgOperand(I));
+  OuterCallArgs.push_back(Invoke->getCalledValue());
+  OuterCallArgs.push_back(FrameJmpBuf);
+  if (ResultAlloca)
+    OuterCallArgs.push_back(ResultAlloca);
+  CallInst *OuterCall = CallInst::Create(HelperFunc, OuterCallArgs,
+                                         "invoke_is_exc", Invoke);
+  CopyDebug(OuterCall, Invoke);
+
+  // Retrieve the function return value stored in the alloca.  We only
+  // need to do this on the non-exceptional path, but we currently do
+  // it unconditionally because that is simpler.
+  if (ResultAlloca) {
+    Value *Result = new LoadInst(ResultAlloca, "", Invoke);
+    Result->takeName(Invoke);
+    Invoke->replaceAllUsesWith(Result);
+  }
+  return OuterCall;
+}
+
+static void convertInvokeToCall(InvokeInst *Invoke) {
+  SmallVector<Value*, 16> CallArgs(Invoke->op_begin(), Invoke->op_end() - 3);
+  // Insert a normal call instruction.
+  CallInst *NewCall = CallInst::Create(Invoke->getCalledValue(),
+                                       CallArgs, "", Invoke);
+  CopyDebug(NewCall, Invoke);
+  NewCall->takeName(Invoke);
+  NewCall->setCallingConv(Invoke->getCallingConv());
+  NewCall->setAttributes(Invoke->getAttributes());
+  Invoke->replaceAllUsesWith(NewCall);
+
+  // Insert an unconditional branch to the normal destination.
+  BranchInst::Create(Invoke->getNormalDest(), Invoke);
+  // Remove any PHI node entries from the exception destination.
+  Invoke->getUnwindDest()->removePredecessor(Invoke->getParent());
+  Invoke->eraseFromParent();
 }
 
 void FuncRewriter::expandInvokeInst(InvokeInst *Invoke) {
+  // Calls to ReturnsTwice functions, i.e. setjmp(), can't be moved
+  // into a helper function.  setjmp() can't throw an exception
+  // anyway, so convert the invoke to a call.
+  if (Invoke->hasFnAttr(Attribute::ReturnsTwice)) {
+    convertInvokeToCall(Invoke);
+    return;
+  }
+
   initializeFrame();
 
   LandingPadInst *LP = Invoke->getLandingPadInst();
@@ -206,47 +345,27 @@ void FuncRewriter::expandInvokeInst(InvokeInst *Invoke) {
   Value *ExcInfo = ConstantInt::get(
       I32, ExcInfoWriter->getIDForLandingPadClauseList(LP));
 
-  // Create setjmp() call.
-  Value *SetjmpArgs[] = { FrameJmpBuf };
-  Value *SetjmpCall = CopyDebug(CallInst::Create(SetjmpIntrinsic, SetjmpArgs,
-                                                 "invoke_sj", Invoke), Invoke);
-  // Check setjmp()'s result.
-  Value *IsZero = CopyDebug(new ICmpInst(Invoke, CmpInst::ICMP_EQ, SetjmpCall,
-                                         ConstantInt::get(I32, 0),
-                                         "invoke_sj_is_zero"), Invoke);
-
-  BasicBlock *CallBB = BasicBlock::Create(Func->getContext(), "invoke_do_call",
-                                          Func);
-  CallBB->moveAfter(Invoke->getParent());
-
   // Append the new frame to the list.
   Value *OldList = CopyDebug(
-      new LoadInst(EHStackTlsVar, "old_eh_stack", CallBB), Invoke);
-  CopyDebug(new StoreInst(OldList, FrameNextPtr, CallBB), Invoke);
-  CopyDebug(new StoreInst(ExcInfo, FrameExcInfo, CallBB), Invoke);
-  CopyDebug(new StoreInst(Frame, EHStackTlsVar, CallBB), Invoke);
-
-  SmallVector<Value *, 10> CallArgs;
-  for (unsigned I = 0, E = Invoke->getNumArgOperands(); I < E; ++I)
-    CallArgs.push_back(Invoke->getArgOperand(I));
-  CallInst *NewCall = CallInst::Create(Invoke->getCalledValue(), CallArgs, "",
-                                       CallBB);
-  CopyDebug(NewCall, Invoke);
-  NewCall->takeName(Invoke);
-  NewCall->setAttributes(Invoke->getAttributes());
-  NewCall->setCallingConv(Invoke->getCallingConv());
+      new LoadInst(EHStackTlsVar, "old_eh_stack", Invoke), Invoke);
+  CopyDebug(new StoreInst(OldList, FrameNextPtr, Invoke), Invoke);
+  CopyDebug(new StoreInst(ExcInfo, FrameExcInfo, Invoke), Invoke);
+  CopyDebug(new StoreInst(Frame, EHStackTlsVar, Invoke), Invoke);
+  Value *IsException = createSetjmpWrappedCall(Invoke);
   // Restore the old frame list.  We only need to do this on the
-  // non-exception code path.  If an exception is raised, the frame
-  // list state will be restored for us.
-  CopyDebug(new StoreInst(OldList, EHStackTlsVar, CallBB), Invoke);
+  // non-exception code path, but we currently do it unconditionally
+  // because that is simpler.  (The PNaCl C++ runtime library restores
+  // the old frame list on the exceptional path; doing it again here
+  // redundantly is OK.)
+  CopyDebug(new StoreInst(OldList, EHStackTlsVar, Invoke), Invoke);
 
-  CopyDebug(BranchInst::Create(CallBB, Invoke->getUnwindDest(), IsZero, Invoke),
+  Value *IsZero = CopyDebug(new ICmpInst(Invoke, CmpInst::ICMP_EQ, IsException,
+                                         ConstantInt::get(I32, 0),
+                                         "invoke_sj_is_zero"), Invoke);
+  CopyDebug(BranchInst::Create(Invoke->getNormalDest(), Invoke->getUnwindDest(),
+                               IsZero, Invoke),
             Invoke);
-  CopyDebug(BranchInst::Create(Invoke->getNormalDest(), CallBB), Invoke);
 
-  updateEdge(Invoke->getNormalDest(), Invoke->getParent(), CallBB);
-
-  Invoke->replaceAllUsesWith(NewCall);
   Invoke->eraseFromParent();
 }
 

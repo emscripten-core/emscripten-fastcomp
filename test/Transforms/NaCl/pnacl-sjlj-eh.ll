@@ -7,6 +7,8 @@
 declare void @__pnacl_eh_resume(i32* %exception)
 
 declare i32 @external_func(i64 %arg)
+declare void @external_func_void()
+declare i32 @my_setjmp()
 
 
 ; CHECK: %ExceptionFrame = type { [1024 x i8], %ExceptionFrame*, i32 }
@@ -21,28 +23,39 @@ lpad:
   ret i32 999
 }
 ; CHECK: define i32 @invoke_test
+; CHECK-NEXT: %invoke_result_ptr = alloca i32
 ; CHECK-NEXT: %invoke_frame = alloca %ExceptionFrame, align 8
 ; CHECK-NEXT: %exc_info_ptr = getelementptr %ExceptionFrame* %invoke_frame, i32 0, i32 2
 ; CHECK-NEXT: %invoke_next = getelementptr %ExceptionFrame* %invoke_frame, i32 0, i32 1
 ; CHECK-NEXT: %invoke_jmp_buf = getelementptr %ExceptionFrame* %invoke_frame, i32 0, i32 0, i32 0
 ; CHECK-NEXT: %pnacl_eh_stack = bitcast i8** @__pnacl_eh_stack to %ExceptionFrame**
-; CHECK-NEXT: %invoke_sj = call i32 @llvm.nacl.setjmp(i8* %invoke_jmp_buf)
-; CHECK-NEXT: %invoke_sj_is_zero = icmp eq i32 %invoke_sj, 0
-; CHECK-NEXT: br i1 %invoke_sj_is_zero, label %invoke_do_call, label %lpad
-; CHECK: invoke_do_call:
 ; CHECK-NEXT: %old_eh_stack = load %ExceptionFrame** %pnacl_eh_stack
 ; CHECK-NEXT: store %ExceptionFrame* %old_eh_stack, %ExceptionFrame** %invoke_next
 ; CHECK-NEXT: store i32 {{[0-9]+}}, i32* %exc_info_ptr
 ; CHECK-NEXT: store %ExceptionFrame* %invoke_frame, %ExceptionFrame** %pnacl_eh_stack
-; CHECK-NEXT: %result = call i32 @external_func(i64 %arg)
+; CHECK-NEXT: %invoke_is_exc = call i32 @invoke_test_setjmp_caller(i64 %arg, i32 (i64)* @external_func, i8* %invoke_jmp_buf, i32* %invoke_result_ptr)
+; CHECK-NEXT: %result = load i32* %invoke_result_ptr
 ; CHECK-NEXT: store %ExceptionFrame* %old_eh_stack, %ExceptionFrame** %pnacl_eh_stack
-; CHECK-NEXT: br label %cont
+; CHECK-NEXT: %invoke_sj_is_zero = icmp eq i32 %invoke_is_exc, 0
+; CHECK-NEXT: br i1 %invoke_sj_is_zero, label %cont, label %lpad
 ; CHECK: cont:
 ; CHECK-NEXT: ret i32 %result
 ; CHECK: lpad:
 ; CHECK-NEXT: %landingpad_ptr = bitcast i8* %invoke_jmp_buf to { i8*, i32 }*
 ; CHECK-NEXT: %lp = load { i8*, i32 }* %landingpad_ptr
 ; CHECK-NEXT: ret i32 999
+
+; Check definition of helper function:
+; CHECK: define internal i32 @invoke_test_setjmp_caller(i64 %arg, i32 (i64)* %func_ptr, i8* %jmp_buf, i32* %result_ptr) {
+; CHECK-NEXT: %invoke_sj = call i32 @llvm.nacl.setjmp(i8* %jmp_buf) [[RETURNS_TWICE:#[0-9]+]]
+; CHECK-NEXT: %invoke_sj_is_zero = icmp eq i32 %invoke_sj, 0
+; CHECK-NEXT: br i1 %invoke_sj_is_zero, label %normal, label %exception
+; CHECK: normal:
+; CHECK-NEXT: %result = call i32 %func_ptr(i64 %arg)
+; CHECK-NEXT: store i32 %result, i32* %result_ptr
+; CHECK-NEXT: ret i32 0
+; CHECK: exception:
+; CHECK-NEXT: ret i32 1
 
 
 ; A landingpad block may be used by multiple "invoke" instructions.
@@ -59,8 +72,8 @@ lpad:
   ret i32 999
 }
 ; CHECK: define i32 @shared_landingpad
-; CHECK: br i1 %invoke_sj_is_zero, label %invoke_do_call, label %lpad
-; CHECK: br i1 %invoke_sj_is_zero2, label %invoke_do_call3, label %lpad
+; CHECK: br i1 %invoke_sj_is_zero{{[0-9]*}}, label %cont1, label %lpad
+; CHECK: br i1 %invoke_sj_is_zero{{[0-9]*}}, label %cont2, label %lpad
 
 
 ; Check that the pass can handle a landingpad appearing before an invoke.
@@ -97,11 +110,13 @@ lpad:
   ret i32 999
 }
 ; CHECK: define i32 @call_attrs
-; CHECK: %result = call fastcc i32 @external_func(i64 inreg %arg) [[NORETURN:#[0-9]+]]
+; CHECK: %result = call fastcc i32 %func_ptr(i64 inreg %arg) [[NORETURN:#[0-9]+]]
 
 
-; Check that any PHI nodes referring to the result of an "invoke" are
-; updated to refer to the correct basic block.
+; If the PNaClSjLjEH pass needs to insert any instructions into the
+; non-exceptional path, check that PHI nodes are updated correctly.
+; (An earlier version needed to do this, but the current version
+; doesn't.)
 define i32 @invoke_with_phi_nodes(i64 %arg) {
 entry:
   %result = invoke i32 @external_func(i64 %arg)
@@ -115,13 +130,44 @@ lpad:
   ret i32 %lpad_phi
 }
 ; CHECK: define i32 @invoke_with_phi_nodes
-; CHECK: %result = call i32 @external_func(i64 %arg)
 ; CHECK: cont:
-; CHECK-NEXT: %cont_phi = phi i32 [ 100, %invoke_do_call ]
+; CHECK-NEXT: %cont_phi = phi i32 [ 100, %entry ]
 ; CHECK-NEXT: ret i32 %cont_phi
 ; CHECK: lpad:
 ; CHECK-NEXT: %lpad_phi = phi i32 [ 200, %entry ]
 ; CHECK: ret i32 %lpad_phi
 
 
+; Test "void" result type from "invoke".  This requires special
+; handling because void* is not a valid type.
+define void @invoke_void_result() {
+  invoke void @external_func_void() to label %cont unwind label %lpad
+cont:
+  ret void
+lpad:
+  landingpad i32 personality i8* null cleanup
+  ret void
+}
+; CHECK: define void @invoke_void_result()
+; "%result_ptr" argument is omitted from the helper function:
+; CHECK: define internal i32 @invoke_void_result_setjmp_caller(void ()* %func_ptr, i8* %jmp_buf)
+
+
+; A call to setjmp() cannot be moved into a helper function, so test
+; that it isn't moved.
+define void @invoke_setjmp() {
+  %x = invoke i32 @my_setjmp() returns_twice to label %cont unwind label %lpad
+cont:
+  ret void
+lpad:
+  landingpad i32 personality i8* null cleanup
+  ret void
+}
+; CHECK: define void @invoke_setjmp()
+; CHECK-NOT: call
+; CHECK: %x = call i32 @my_setjmp() [[RETURNS_TWICE]]
+; CHECK-NEXT: br label %cont
+
+
+; CHECK: attributes [[RETURNS_TWICE]] = { returns_twice }
 ; CHECK: attributes [[NORETURN]] = { noreturn }
