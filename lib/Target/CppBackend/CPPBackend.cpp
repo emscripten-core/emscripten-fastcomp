@@ -138,7 +138,7 @@ namespace {
     HeapData GlobalData32;
     HeapData GlobalData64;
     GlobalAddressMap GlobalAddresses;
-    NameSet Externals;
+    NameSet ExternalVars, ExternalFuncs;
     NameSet Declares;
     std::string PostSets;
 
@@ -244,7 +244,7 @@ namespace {
             // We don't have a constant to emit here, so we must emit a postSet
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
-            Externals.insert(Name);
+            ExternalVars.insert(Name);
             PostSets += "HEAP32[" + utostr(AbsoluteTarget>>2) + "] = " + Name + ';';
             return 0; // emit zero in there for now, until the postSet
           }
@@ -259,7 +259,7 @@ namespace {
         if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
           if (GV->hasExternalLinkage()) {
             std::string Name = getOpName(Ptr);
-            Externals.insert(Name);
+            ExternalVars.insert(Name);
             return Name;
           }
         }
@@ -2340,9 +2340,21 @@ void CppWriter::printModuleBody() {
     Out << "\"" + *I + "\"";
   }
   Out << "],";
-  Out << "\"externs\": [";
+  Out << "\"externVars\": [";
   first = true;
-  for (NameSet::iterator I = Externals.begin(), E = Externals.end();
+  for (NameSet::iterator I = ExternalVars.begin(), E = ExternalVars.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" + *I + "\"";
+  }
+  Out << "],";
+  Out << "\"externFuncs\": [";
+  first = true;
+  for (NameSet::iterator I = ExternalFuncs.begin(), E = ExternalFuncs.end();
        I != E; ++I) {
     if (first) {
       first = false;
