@@ -47,10 +47,12 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
 
 #define DEF_REDIRECT_HANDLER_i(name, to) \
 DEF_CALL_HANDLER(name, { \
+  /* FIXME: do not redirect if this is implemented and not just a declare! */ \
   Declares.insert(#to); \
   return CH___default__(CI, "_" #to) + "|0"; \
 })
 
+// Various simple redirects for our js libc, see library.js
 DEF_REDIRECT_HANDLER_i(putc, fputc);
 
 // Setups
