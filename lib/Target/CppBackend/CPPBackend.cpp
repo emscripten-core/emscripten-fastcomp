@@ -1100,6 +1100,7 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
                      "HEAP8[" + PS + "+1]=(" + VS + ">>8)&255;" +
                      "HEAP8[" + PS + "+2]=(" + VS + ">>16)&255;" +
                      "HEAP8[" + PS + "+3]=" + VS + ">>24";
+              break;
             }
             default: assert(0 && "bad 4i store");
           }
@@ -1116,6 +1117,7 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
                       "HEAP8[" + PS + "+1]=HEAP8[tempDoublePtr+1];" +
                       "HEAP8[" + PS + "+2]=HEAP8[tempDoublePtr+2];" +
                       "HEAP8[" + PS + "+3]=HEAP8[tempDoublePtr+3]";
+              break;
             }
             default: assert(0 && "bad 4f store");
           }
