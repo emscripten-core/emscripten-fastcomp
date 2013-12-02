@@ -2,19 +2,20 @@
 //
 // Each handler needs DEF_CALL_HANDLER and SETUP_CALL_HANDLER
 
-typedef std::string (CppWriter::*CallHandler)(const CallInst*, std::string Name, unsigned NumArgs);
+typedef std::string (CppWriter::*CallHandler)(const CallInst*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
 CallHandlerMap *CallHandlers;
 
 // Definitions
 
 #define DEF_CALL_HANDLER(Ident, Code) \
-  std::string CH_##Ident(const CallInst *CI, std::string Name, unsigned NumArgs) { Code }
+  std::string CH_##Ident(const CallInst *CI, std::string Name, int NumArgs=-1) { Code }
 
 DEF_CALL_HANDLER(__default__, {
   Type *RT = CI->getType();
   std::string text = Name + "(";
-  for (unsigned i = 0; i < NumArgs; i++) {
+  if (NumArgs == -1) NumArgs = CI->getNumOperands();
+  for (int i = 0; i < NumArgs; i++) {
     text += getValueAsCastStr(CI->getArgOperand(i)); // FIXME: differentiate ffi calls
     if (i < NumArgs - 1) text += ", ";
   }
@@ -35,7 +36,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
-  Declares.insert("memmset");
+  Declares.insert("memset");
   return CH___default__(CI, "_memset", 3) + "|0";
 })
 
@@ -43,6 +44,14 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
   Declares.insert("memmove");
   return CH___default__(CI, "_memmove", 3) + "|0";
 })
+
+#define DEF_REDIRECT_HANDLER_i(name, to) \
+DEF_CALL_HANDLER(name, { \
+  Declares.insert(#to); \
+  return CH___default__(CI, "_" #to) + "|0"; \
+})
+
+DEF_REDIRECT_HANDLER_i(putc, fputc);
 
 // Setups
 
@@ -56,6 +65,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
+  SETUP_CALL_HANDLER(putc);
 }
 
 std::string handleCall(const CallInst *CI) {
