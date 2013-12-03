@@ -95,12 +95,7 @@ public:
 
   virtual void EnterBlock(unsigned NumberWords) {
     NumBlocks++;
-    if (const NaClBitstreamReader::BlockInfo *Info =
-          Record.GetReader().getBlockInfo(GetBlockID())) {
-      BlockNames.push_back(Info->Name);
-    } else {
-      BlockNames.push_back("<unknown>");
-    }
+    BlockNames.push_back("<unknown>");
   }
 
   virtual void ProcessRecord() {
@@ -186,7 +181,6 @@ void BenchmarkIRParsing() {
 
     NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
     NaClBitstreamCursor Stream(StreamFile);
-    StreamFile.CollectBlockInfoNames();
     DummyBitcodeParser Parser(Stream);
     while (!Stream.AtEndOfStream()) {
       if (Parser.Parse()) {

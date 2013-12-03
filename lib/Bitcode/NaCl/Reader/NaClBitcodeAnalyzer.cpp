@@ -29,20 +29,12 @@ namespace llvm {
 
 /// GetBlockName - Return a symbolic block name if known, otherwise return
 /// null.
-static const char *GetBlockName(unsigned BlockID,
-                                const NaClBitstreamReader &StreamFile) {
+static const char *GetBlockName(unsigned BlockID) {
   // Standard blocks for all bitcode files.
   if (BlockID < naclbitc::FIRST_APPLICATION_BLOCKID) {
     if (BlockID == naclbitc::BLOCKINFO_BLOCK_ID)
       return "BLOCKINFO_BLOCK";
     return 0;
-  }
-
-  // Check to see if we have a blockinfo record for this block, with a name.
-  if (const NaClBitstreamReader::BlockInfo *Info =
-        StreamFile.getBlockInfo(BlockID)) {
-    if (!Info->Name.empty())
-      return Info->Name.c_str();
   }
 
   switch (BlockID) {
@@ -63,27 +55,16 @@ static const char *GetBlockName(unsigned BlockID,
 
 /// GetCodeName - Return a symbolic code name if known, otherwise return
 /// null.
-static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
-                               const NaClBitstreamReader &StreamFile) {
+static const char *GetCodeName(unsigned CodeID, unsigned BlockID) {
   // Standard blocks for all bitcode files.
   if (BlockID < naclbitc::FIRST_APPLICATION_BLOCKID) {
     if (BlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
       switch (CodeID) {
       default: return 0;
       case naclbitc::BLOCKINFO_CODE_SETBID:        return "SETBID";
-      case naclbitc::BLOCKINFO_CODE_BLOCKNAME:     return "BLOCKNAME";
-      case naclbitc::BLOCKINFO_CODE_SETRECORDNAME: return "SETRECORDNAME";
       }
     }
     return 0;
-  }
-
-  // Check to see if we have a blockinfo record for this record, with a name.
-  if (const NaClBitstreamReader::BlockInfo *Info =
-        StreamFile.getBlockInfo(BlockID)) {
-    for (unsigned i = 0, e = Info->RecordNames.size(); i != e; ++i)
-      if (Info->RecordNames[i].first == CodeID)
-        return Info->RecordNames[i].second.c_str();
   }
 
   switch (BlockID) {
@@ -384,7 +365,7 @@ protected:
       raw_ostream &OS = Context->OS;
       unsigned BlockID = GetBlockID();
       OS << Indent << "<";
-      if ((BlockName = GetBlockName(BlockID, Record.GetReader())))
+      if ((BlockName = GetBlockName(BlockID)))
         OS << BlockName;
       else
         OS << "UnknownBlock" << BlockID;
@@ -443,8 +424,7 @@ protected:
     if (Context->DumpOptions.DoDump) {
       raw_ostream &OS = Context->OS;
       OS << Indent << "<";
-      const char *CodeName =
-          GetCodeName(Code, GetBlockID(), Record.GetReader());
+      const char *CodeName = GetCodeName(Code, GetBlockID());
       if (CodeName)
         OS << CodeName;
       else
@@ -530,7 +510,6 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
 
   NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
   NaClBitstreamCursor Stream(StreamFile);
-  StreamFile.CollectBlockInfoNames();
 
   unsigned NumTopBlocks = 0;
 
@@ -566,7 +545,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
            E = Parser.BlockIDStats.end();
        I != E; ++I) {
     OS << "  Block ID #" << I->first;
-    if (const char *BlockName = GetBlockName(I->first, StreamFile))
+    if (const char *BlockName = GetBlockName(I->first))
       OS << " (" << BlockName << ")";
     OS << ":\n";
 
@@ -621,8 +600,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
         else
           OS << "         ";
 
-        if (const char *CodeName =
-              GetCodeName(FreqPairs[i].second, I->first, StreamFile))
+        if (const char *CodeName = GetCodeName(FreqPairs[i].second, I->first))
           OS << CodeName << "\n";
         else
           OS << "UnknownCode" << FreqPairs[i].second << "\n";

@@ -40,19 +40,11 @@ public:
   struct BlockInfo {
     unsigned BlockID;
     std::vector<NaClBitCodeAbbrev*> Abbrevs;
-    std::string Name;
-
-    std::vector<std::pair<unsigned, std::string> > RecordNames;
   };
 private:
   OwningPtr<StreamableMemoryObject> BitcodeBytes;
 
   std::vector<BlockInfo> BlockInfoRecords;
-
-  /// IgnoreBlockInfoNames - This is set to true if we don't care
-  /// about the block/record name information in the BlockInfo
-  /// block. Only pnacl-bcanalyzer uses this.
-  bool IgnoreBlockInfoNames;
 
   /// \brief Holds the offset of the first byte after the header.
   size_t InitialAddress;
@@ -60,10 +52,9 @@ private:
   NaClBitstreamReader(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
 public:
-  NaClBitstreamReader() : IgnoreBlockInfoNames(true), InitialAddress(0) {}
+  NaClBitstreamReader() : InitialAddress(0) {}
 
   NaClBitstreamReader(const unsigned char *Start, const unsigned char *End) {
-    IgnoreBlockInfoNames = true;
     InitialAddress = 0;
     init(Start, End);
   }
@@ -93,11 +84,6 @@ public:
       BlockInfoRecords.pop_back();
     }
   }
-
-  /// CollectBlockInfoNames - This is called by clients that want block/record
-  /// name information.
-  void CollectBlockInfoNames() { IgnoreBlockInfoNames = false; }
-  bool isIgnoringBlockInfoNames() { return IgnoreBlockInfoNames; }
 
   /// \brief Returns the initial address (after the header) of the input stream.
   size_t getInitialAddress() const {

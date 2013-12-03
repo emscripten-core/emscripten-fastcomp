@@ -301,25 +301,6 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
         if (Record.size() < 1) return true;
         CurBlockInfo = &BitStream->getOrCreateBlockInfo((unsigned)Record[0]);
         break;
-      case naclbitc::BLOCKINFO_CODE_BLOCKNAME: {
-        if (!CurBlockInfo) return true;
-        if (BitStream->isIgnoringBlockInfoNames()) break;  // Ignore name.
-        std::string Name;
-        for (unsigned i = 0, e = Record.size(); i != e; ++i)
-          Name += (char)Record[i];
-        CurBlockInfo->Name = Name;
-        break;
-      }
-      case naclbitc::BLOCKINFO_CODE_SETRECORDNAME: {
-        if (!CurBlockInfo) return true;
-        if (BitStream->isIgnoringBlockInfoNames()) break;  // Ignore name.
-        std::string Name;
-        for (unsigned i = 1, e = Record.size(); i != e; ++i)
-          Name += (char)Record[i];
-        CurBlockInfo->RecordNames.push_back(std::make_pair((unsigned)Record[0],
-                                                           Name));
-        break;
-      }
     }
   }
 }
