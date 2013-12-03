@@ -1070,21 +1070,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (Opc == -1) return Error("Invalid BINOP record");
       I = BinaryOperator::Create((Instruction::BinaryOps)Opc, LHS, RHS);
       if (OpNum < Record.size()) {
-        if (Opc == Instruction::Add ||
-            Opc == Instruction::Sub ||
-            Opc == Instruction::Mul ||
-            Opc == Instruction::Shl) {
-          if (Record[OpNum] & (1 << naclbitc::OBO_NO_SIGNED_WRAP))
-            cast<BinaryOperator>(I)->setHasNoSignedWrap(true);
-          if (Record[OpNum] & (1 << naclbitc::OBO_NO_UNSIGNED_WRAP))
-            cast<BinaryOperator>(I)->setHasNoUnsignedWrap(true);
-        } else if (Opc == Instruction::SDiv ||
-                   Opc == Instruction::UDiv ||
-                   Opc == Instruction::LShr ||
-                   Opc == Instruction::AShr) {
-          if (Record[OpNum] & (1 << naclbitc::PEO_EXACT))
-            cast<BinaryOperator>(I)->setIsExact(true);
-        } else if (isa<FPMathOperator>(I)) {
+        if (isa<FPMathOperator>(I)) {
           FastMathFlags FMF;
           if (0 != (Record[OpNum] & (1 << naclbitc::FPO_UNSAFE_ALGEBRA)))
             FMF.setUnsafeAlgebra();

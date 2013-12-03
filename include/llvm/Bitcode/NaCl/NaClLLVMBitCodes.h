@@ -239,6 +239,8 @@ namespace naclbitc {
 
   /// OverflowingBinaryOperatorOptionalFlags - Flags for serializing
   /// OverflowingBinaryOperator's SubclassOptionalData contents.
+  /// Note: This enum is no longer used in PNaCl, because these
+  /// flags can't exist in files that meet the PNaCl ABI.
   enum NaClOverflowingBinaryOperatorOptionalFlags {
     OBO_NO_UNSIGNED_WRAP = 0,
     OBO_NO_SIGNED_WRAP = 1
@@ -246,6 +248,8 @@ namespace naclbitc {
 
   /// PossiblyExactOperatorOptionalFlags - Flags for serializing
   /// PossiblyExactOperator's SubclassOptionalData contents.
+  /// Note: This enum is no longer used in PNaCl, because these
+  /// flags can't exist in files that meet the PNaCl ABI.
   enum NaClPossiblyExactOperatorOptionalFlags {
     PEO_EXACT = 0
   };

@@ -426,18 +426,7 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
 static uint64_t GetOptimizationFlags(const Value *V) {
   uint64_t Flags = 0;
 
-  if (const OverflowingBinaryOperator *OBO =
-        dyn_cast<OverflowingBinaryOperator>(V)) {
-    if (OBO->hasNoSignedWrap())
-      Flags |= 1 << naclbitc::OBO_NO_SIGNED_WRAP;
-    if (OBO->hasNoUnsignedWrap())
-      Flags |= 1 << naclbitc::OBO_NO_UNSIGNED_WRAP;
-  } else if (const PossiblyExactOperator *PEO =
-               dyn_cast<PossiblyExactOperator>(V)) {
-    if (PEO->isExact())
-      Flags |= 1 << naclbitc::PEO_EXACT;
-  } else if (const FPMathOperator *FPMO =
-             dyn_cast<const FPMathOperator>(V)) {
+  if (const FPMathOperator *FPMO = dyn_cast<const FPMathOperator>(V)) {
     if (FPMO->hasUnsafeAlgebra())
       Flags |= 1 << naclbitc::FPO_UNSAFE_ALGEBRA;
     if (FPMO->hasNoNaNs())
