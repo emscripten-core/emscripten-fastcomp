@@ -118,6 +118,8 @@ namespace {
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
   typedef std::map<std::string, Address> GlobalAddressMap;
+  typedef std::vector<std::string> FunctionTable;
+  typedef std::map<std::string, FunctionTable> FunctionTableMap;
 
   /// CppWriter - This class is the main chunk of code that converts an LLVM
   /// module to a C++ translation unit.
@@ -141,6 +143,8 @@ namespace {
     NameSet Externals; // vars
     NameSet Declares; // funcs
     std::string PostSets;
+    std::map<std::string, unsigned> IndexedFunctions; // name -> index
+    FunctionTableMap FunctionTables; // sig => list of functions
 
     #include "CallHandlers.h"
 
@@ -229,9 +233,30 @@ namespace {
       Address a = GlobalAddresses[s];
       return a.first;
     }
+    char getFunctionSignatureLetter(Type *T) {
+      if (T->isVoidTy()) return 'v';
+      else if (T->isFloatTy() || T->isDoubleTy()) return 'd'; // TODO: float
+      else return 'i';
+    }
+    std::string getFunctionSignature(const Function *F) {
+      std::string Ret;
+      Ret += getFunctionSignatureLetter(F->getReturnType());
+      for (Function::const_arg_iterator AI = F->arg_begin(),
+             AE = F->arg_end(); AI != AE; ++AI) {
+        Ret += getFunctionSignatureLetter(AI->getType());
+      }
+      return Ret;
+    }
     unsigned getFunctionIndex(const Function *F) {
-      dump("TODO: function indexing");
-      return 0;
+      std::string Name = getCppName(F);
+      if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
+      std::string Sig = getFunctionSignature(F);
+      FunctionTable &Table = FunctionTables[Sig];
+      while (Table.size() == 0 || Table.size() % 2 == 1) Table.push_back("0"); // TODO: optimize this, fill in holes, see test_polymorph
+      unsigned Index = Table.size();
+      Table.push_back(Name);
+      IndexedFunctions[Name] = Index;
+      return Index;
     }
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
@@ -2371,6 +2396,7 @@ void CppWriter::printModuleBody() {
     Out << "\"" + *I + "\"";
   }
   Out << "],";
+
   Out << "\"externs\": [";
   first = true;
   for (NameSet::iterator I = Externals.begin(), E = Externals.end();
@@ -2383,6 +2409,7 @@ void CppWriter::printModuleBody() {
     Out << "\"" + *I + "\"";
   }
   Out << "],";
+
   Out << "\"implementedFunctions\": [";
   first = true;
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
@@ -2396,7 +2423,22 @@ void CppWriter::printModuleBody() {
       Out << "\"_" << I->getName() << '"';
     }
   }
-  Out << "]";
+  Out << "],";
+
+  Out << "\"tables\": {";
+  unsigned Num = FunctionTables.size();
+  for (FunctionTableMap::iterator I = FunctionTables.begin(), E = FunctionTables.end(); I != E; ++I) {
+    Out << "  \"" + I->first + "\": \"var FUNCTION_TABLE_" + I->first + " = [";
+    FunctionTable &Table = I->second;
+    for (unsigned i = 0; i < Table.size(); i++) {
+      Out << Table[i];
+      if (i < Table.size()-1) Out << ",";
+    }
+    Out << "];\"";
+    if (--Num > 0) Out << ",";
+    Out << "\n";
+  }
+  Out << "}";
 
   Out << "\n}\n";
 }
