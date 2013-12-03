@@ -2078,6 +2078,26 @@ void CppWriter::printFunctionHead(const Function* F) {
   nl(Out);
 }
 
+static const SwitchInst *considerSwitch(const Instruction *I) {
+  const SwitchInst *SI = dyn_cast<SwitchInst>(I);
+  if (!SI) return NULL;
+  // use a switch if the range is not too big or sparse
+  int Minn = INT_MAX, Maxx = INT_MIN, Num = 0;
+  for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
+    const IntegersSubset CaseVal = i.getCaseValueEx();
+    assert(CaseVal.isSingleNumbersOnly());
+    std::string Condition = "";
+    for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
+      int Curr = CaseVal.getSingleNumber(Index).toConstantInt()->getZExtValue();
+      if (Curr < Minn) Minn = Curr;
+      if (Curr > Maxx) Maxx = Curr;
+    }
+    Num++;
+  }
+  int Range = Maxx - Minn;
+  return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI; // heuristics
+}
+
 void CppWriter::printFunctionBody(const Function *F) {
   assert(!F->isDeclaration());
 
@@ -2107,7 +2127,7 @@ void CppWriter::printFunctionBody(const Function *F) {
       if (curr.size() > 0) contents += curr + "\n";
     }
     // TODO: if chains for small/sparse switches
-    const SwitchInst* SI = dyn_cast<SwitchInst>(BI->getTerminator());
+    const SwitchInst* SI = considerSwitch(BI->getTerminator());
     Block *Curr = new Block(contents.c_str(), SI ? getValueAsCastStr(SI->getCondition()).c_str() : NULL);
     const BasicBlock *BB = &*BI;
     LLVMToRelooper[BB] = Curr;
@@ -2144,6 +2164,7 @@ void CppWriter::printFunctionBody(const Function *F) {
       }
       case Instruction::Switch: {
         const SwitchInst* SI = cast<SwitchInst>(TI);
+        bool UseSwitch = !!considerSwitch(SI);
         BasicBlock *DD = SI->getDefaultDest();
         std::string P = getPhiCode(&*BI, DD);
         LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], NULL, P.size() > 0 ? P.c_str() : NULL);
@@ -2154,9 +2175,15 @@ void CppWriter::printFunctionBody(const Function *F) {
           assert(CaseVal.isSingleNumbersOnly());
           std::string Condition = "";
           for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
-            Condition += "case " + CaseVal.getSingleNumber(Index).toConstantInt()->getValue().toString(10, true) + ": ";
+            std::string Curr = CaseVal.getSingleNumber(Index).toConstantInt()->getValue().toString(10, true);
+            if (UseSwitch) {
+              Condition += "case " + Curr + ": ";
+            } else {
+              if (Condition.size() > 0) Condition += " | ";
+              Condition += "(" + getValueAsCastParenStr(SI->getCondition()) + " == " + Curr + ")";
+            }
           }
-          BlocksToConditions[BB] = Condition + BlocksToConditions[BB];
+          BlocksToConditions[BB] = Condition + (!UseSwitch && BlocksToConditions[BB].size() > 0 ? " | " : "") + BlocksToConditions[BB];
         }
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
           const BasicBlock *BB = i.getCaseSuccessor();
