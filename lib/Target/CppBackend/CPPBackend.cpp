@@ -1567,6 +1567,12 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
 
+  // FIXME: add i64 legalization
+  Type *T = I->getType();
+  if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+    assert(0 && "FIXME: add i64 legalization");
+  }
+
   // Before we emit this instruction, we need to take care of generating any
   // forward references. So, we get the names of all the operands in advance
   const unsigned Ops(I->getNumOperands());
