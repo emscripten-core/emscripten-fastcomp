@@ -346,14 +346,10 @@ private:
   }
 
   /// EmitRecordWithAbbrevImpl - This is the core implementation of the record
-  /// emission code.  If BlobData is non-null, then it specifies an array of
-  /// data that should be emitted as part of the Blob or Array operand that is
-  /// known to exist at the end of the record.
+  /// emission code.
   template<typename uintty>
-  void EmitRecordWithAbbrevImpl(unsigned Abbrev, SmallVectorImpl<uintty> &Vals,
-                                StringRef Blob) {
-    const char *BlobData = Blob.data();
-    unsigned BlobLen = (unsigned) Blob.size();
+  void EmitRecordWithAbbrevImpl(unsigned Abbrev,
+                                SmallVectorImpl<uintty> &Vals) {
     unsigned AbbrevNo = Abbrev-naclbitc::FIRST_APPLICATION_ABBREV;
     assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
     NaClBitCodeAbbrev *Abbv = CurAbbrevs[AbbrevNo];
@@ -373,61 +369,14 @@ private:
         assert(i+2 == e && "array op not second to last?");
         const NaClBitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
 
-        // If this record has blob data, emit it, otherwise we must have record
-        // entries to encode this way.
-        if (BlobData) {
-          assert(RecordIdx == Vals.size() &&
-                 "Blob data and record entries specified for array!");
-          // Emit a vbr6 to indicate the number of elements present.
-          EmitVBR(static_cast<uint32_t>(BlobLen), 6);
-
-          // Emit each field.
-          for (unsigned i = 0; i != BlobLen; ++i)
-            EmitAbbreviatedField(EltEnc, (unsigned char)BlobData[i]);
-
-          // Know that blob data is consumed for assertion below.
-          BlobData = 0;
-        } else {
-          // Emit a vbr6 to indicate the number of elements present.
-          EmitVBR(static_cast<uint32_t>(Vals.size()-RecordIdx), 6);
-
-          // Emit each field.
-          for (unsigned e = Vals.size(); RecordIdx != e; ++RecordIdx)
-            EmitAbbreviatedField(EltEnc, Vals[RecordIdx]);
-        }
-      } else if (Op.getEncoding() == NaClBitCodeAbbrevOp::Blob) {
-        // If this record has blob data, emit it, otherwise we must have record
-        // entries to encode this way.
-
         // Emit a vbr6 to indicate the number of elements present.
-        if (BlobData) {
-          EmitVBR(static_cast<uint32_t>(BlobLen), 6);
-          assert(RecordIdx == Vals.size() &&
-                 "Blob data and record entries specified for blob operand!");
-        } else {
-          EmitVBR(static_cast<uint32_t>(Vals.size()-RecordIdx), 6);
-        }
+        EmitVBR(static_cast<uint32_t>(Vals.size()-RecordIdx), 6);
 
-        // Flush to a 32-bit alignment boundary.
-        FlushToWord();
-
-        // Emit each field as a literal byte.
-        if (BlobData) {
-          for (unsigned i = 0; i != BlobLen; ++i)
-            WriteByte((unsigned char)BlobData[i]);
-
-          // Know that blob data is consumed for assertion below.
-          BlobData = 0;
-        } else {
-          for (unsigned e = Vals.size(); RecordIdx != e; ++RecordIdx) {
-            assert(Vals[RecordIdx] < 256 && "Value too large to emit as blob");
-            WriteByte((unsigned char)Vals[RecordIdx]);
-          }
-        }
-
-        // Align end to 32-bits.
-        while (GetBufferOffset() & 3)
-          WriteByte(0);
+        // Emit each field.
+        for (unsigned e = Vals.size(); RecordIdx != e; ++RecordIdx)
+          EmitAbbreviatedField(EltEnc, Vals[RecordIdx]);
+      } else if (Op.getEncoding() == NaClBitCodeAbbrevOp::Blob) {
+        report_fatal_error("Blob not allowed");
       } else {  // Single scalar field.
         assert(RecordIdx < Vals.size() && "Invalid abbrev/record");
         EmitAbbreviatedField(Op, Vals[RecordIdx]);
@@ -435,8 +384,6 @@ private:
       }
     }
     assert(RecordIdx == Vals.size() && "Not all record operands emitted!");
-    assert(BlobData == 0 &&
-           "Blob data specified for record that doesn't use it!");
   }
 
 public:
@@ -468,37 +415,7 @@ public:
   /// the first entry.
   template<typename uintty>
   void EmitRecordWithAbbrev(unsigned Abbrev, SmallVectorImpl<uintty> &Vals) {
-    EmitRecordWithAbbrevImpl(Abbrev, Vals, StringRef());
-  }
-
-  /// EmitRecordWithBlob - Emit the specified record to the stream, using an
-  /// abbrev that includes a blob at the end.  The blob data to emit is
-  /// specified by the pointer and length specified at the end.  In contrast to
-  /// EmitRecord, this routine expects that the first entry in Vals is the code
-  /// of the record.
-  template<typename uintty>
-  void EmitRecordWithBlob(unsigned Abbrev, SmallVectorImpl<uintty> &Vals,
-                          StringRef Blob) {
-    EmitRecordWithAbbrevImpl(Abbrev, Vals, Blob);
-  }
-  template<typename uintty>
-  void EmitRecordWithBlob(unsigned Abbrev, SmallVectorImpl<uintty> &Vals,
-                          const char *BlobData, unsigned BlobLen) {
-    return EmitRecordWithAbbrevImpl(Abbrev, Vals, StringRef(BlobData, BlobLen));
-  }
-
-  /// EmitRecordWithArray - Just like EmitRecordWithBlob, works with records
-  /// that end with an array.
-  template<typename uintty>
-  void EmitRecordWithArray(unsigned Abbrev, SmallVectorImpl<uintty> &Vals,
-                          StringRef Array) {
-    EmitRecordWithAbbrevImpl(Abbrev, Vals, Array);
-  }
-  template<typename uintty>
-  void EmitRecordWithArray(unsigned Abbrev, SmallVectorImpl<uintty> &Vals,
-                          const char *ArrayData, unsigned ArrayLen) {
-    return EmitRecordWithAbbrevImpl(Abbrev, Vals, StringRef(ArrayData, 
-                                                            ArrayLen));
+    EmitRecordWithAbbrevImpl(Abbrev, Vals);
   }
 
   //===--------------------------------------------------------------------===//

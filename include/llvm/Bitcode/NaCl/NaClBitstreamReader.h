@@ -547,8 +547,7 @@ public:
   /// skipRecord - Read the current record and discard it.
   void skipRecord(unsigned AbbrevID);
   
-  unsigned readRecord(unsigned AbbrevID, SmallVectorImpl<uint64_t> &Vals,
-                      StringRef *Blob = 0);
+  unsigned readRecord(unsigned AbbrevID, SmallVectorImpl<uint64_t> &Vals);
 
   //===--------------------------------------------------------------------===//
   // Abbrev Processing
