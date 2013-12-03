@@ -14,7 +14,7 @@ CallHandlerMap *CallHandlers;
 DEF_CALL_HANDLER(__default__, {
   Type *RT = CI->getType();
   std::string text = Name + "(";
-  if (NumArgs == -1) NumArgs = CI->getNumOperands();
+  if (NumArgs == -1) NumArgs = CI->getNumOperands()-1; // last operand is the function itself
   for (int i = 0; i < NumArgs; i++) {
     text += getValueAsCastStr(CI->getArgOperand(i)); // FIXME: differentiate ffi calls
     if (i < NumArgs - 1) text += ", ";
