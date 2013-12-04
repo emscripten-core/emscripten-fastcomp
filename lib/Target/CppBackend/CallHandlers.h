@@ -62,6 +62,7 @@ DEF_CALL_HANDLER(name, { \
 
 // Various simple redirects for our js libc, see library.js
 DEF_REDIRECT_HANDLER_i(putc, fputc);
+DEF_REDIRECT_HANDLER_i(__cxa_atexit, atexit);
 
 // Setups
 
@@ -76,6 +77,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(putc);
+  SETUP_CALL_HANDLER(__cxa_atexit);
 }
 
 std::string handleCall(const CallInst *CI) {
