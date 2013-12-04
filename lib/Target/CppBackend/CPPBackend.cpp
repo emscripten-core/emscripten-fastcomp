@@ -1796,6 +1796,13 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     const Value *V = SI->getValueOperand();
     unsigned Alignment = SI->getAlignment();
     text = getStore(P, V->getType(), getValueAsStr(V), Alignment) + ';';
+
+    // FIXME: add i64 legalization
+    Type *T = V->getType();
+    if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+      assert(0 && "FIXME: add i64 legalization");
+    }
+
     break;
   }
   case Instruction::GetElementPtr: {
