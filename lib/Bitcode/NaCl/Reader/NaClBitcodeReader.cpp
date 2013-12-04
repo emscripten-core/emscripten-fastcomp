@@ -126,6 +126,48 @@ static CallingConv::ID GetDecodedCallingConv(unsigned Val) {
   }
 }
 
+static FCmpInst::Predicate GetDecodedFCmpPredicate(unsigned Val) {
+  switch (Val) {
+  default:
+    report_fatal_error(
+        "PNaCl bitcode contains invalid floating comparison predicate");
+  case naclbitc::FCMP_FALSE: return FCmpInst::FCMP_FALSE;
+  case naclbitc::FCMP_OEQ:   return FCmpInst::FCMP_OEQ;
+  case naclbitc::FCMP_OGT:   return FCmpInst::FCMP_OGT;
+  case naclbitc::FCMP_OGE:   return FCmpInst::FCMP_OGE;
+  case naclbitc::FCMP_OLT:   return FCmpInst::FCMP_OLT;
+  case naclbitc::FCMP_OLE:   return FCmpInst::FCMP_OLE;
+  case naclbitc::FCMP_ONE:   return FCmpInst::FCMP_ONE;
+  case naclbitc::FCMP_ORD:   return FCmpInst::FCMP_ORD;
+  case naclbitc::FCMP_UNO:   return FCmpInst::FCMP_UNO;
+  case naclbitc::FCMP_UEQ:   return FCmpInst::FCMP_UEQ;
+  case naclbitc::FCMP_UGT:   return FCmpInst::FCMP_UGT;
+  case naclbitc::FCMP_UGE:   return FCmpInst::FCMP_UGE;
+  case naclbitc::FCMP_ULT:   return FCmpInst::FCMP_ULT;
+  case naclbitc::FCMP_ULE:   return FCmpInst::FCMP_ULE;
+  case naclbitc::FCMP_UNE:   return FCmpInst::FCMP_UNE;
+  case naclbitc::FCMP_TRUE:  return FCmpInst::FCMP_TRUE;
+  }
+}
+
+static ICmpInst::Predicate GetDecodedICmpPredicate(unsigned Val) {
+  switch (Val) {
+  default:
+    report_fatal_error(
+        "PNaCl bitcode contains invalid integer comparison predicate");
+    case naclbitc::ICMP_EQ:  return ICmpInst::ICMP_EQ;
+    case naclbitc::ICMP_NE:  return ICmpInst::ICMP_NE;
+    case naclbitc::ICMP_UGT: return ICmpInst::ICMP_UGT;
+    case naclbitc::ICMP_UGE: return ICmpInst::ICMP_UGE;
+    case naclbitc::ICMP_ULT: return ICmpInst::ICMP_ULT;
+    case naclbitc::ICMP_ULE: return ICmpInst::ICMP_ULE;
+    case naclbitc::ICMP_SGT: return ICmpInst::ICMP_SGT;
+    case naclbitc::ICMP_SGE: return ICmpInst::ICMP_SGE;
+    case naclbitc::ICMP_SLT: return ICmpInst::ICMP_SLT;
+    case naclbitc::ICMP_SLE: return ICmpInst::ICMP_SLE;
+  }
+}
+
 void NaClBitcodeReaderValueList::AssignValue(Value *V, unsigned Idx) {
   assert(V);
   if (Idx == size()) {
@@ -1157,9 +1199,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       RHS = ConvertOpToScalar(RHS, CurBBNo);
 
       if (LHS->getType()->isFPOrFPVectorTy())
-        I = new FCmpInst((FCmpInst::Predicate)Record[OpNum], LHS, RHS);
+        I = new FCmpInst(GetDecodedFCmpPredicate(Record[OpNum]), LHS, RHS);
       else
-        I = new ICmpInst((ICmpInst::Predicate)Record[OpNum], LHS, RHS);
+        I = new ICmpInst(GetDecodedICmpPredicate(Record[OpNum]), LHS, RHS);
       break;
     }
 
