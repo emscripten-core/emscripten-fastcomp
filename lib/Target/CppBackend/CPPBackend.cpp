@@ -238,19 +238,19 @@ namespace {
       else if (T->isFloatTy() || T->isDoubleTy()) return 'd'; // TODO: float
       else return 'i';
     }
-    std::string getFunctionSignature(const Function *F) {
+    std::string getFunctionSignature(const FunctionType *F) {
       std::string Ret;
       Ret += getFunctionSignatureLetter(F->getReturnType());
-      for (Function::const_arg_iterator AI = F->arg_begin(),
-             AE = F->arg_end(); AI != AE; ++AI) {
-        Ret += getFunctionSignatureLetter(AI->getType());
+      for (FunctionType::param_iterator AI = F->param_begin(),
+             AE = F->param_end(); AI != AE; ++AI) {
+        Ret += getFunctionSignatureLetter(*AI);
       }
       return Ret;
     }
     unsigned getFunctionIndex(const Function *F) {
       std::string Name = getCppName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
-      std::string Sig = getFunctionSignature(F);
+      std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable &Table = FunctionTables[Sig];
       while (Table.size() == 0 || Table.size() % 2 == 1) Table.push_back("0"); // TODO: optimize this, fill in holes, see test_polymorph
       unsigned Index = Table.size();
