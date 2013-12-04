@@ -155,6 +155,67 @@ static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
   }
 }
 
+// Converts LLVM encoding of comparison predicates to the
+// corresponding bitcode versions.
+static unsigned GetEncodedCmpPredicate(const CmpInst &Cmp) {
+  switch (Cmp.getPredicate()) {
+  default: report_fatal_error(
+      "Comparison predicate not supported by PNaCl bitcode");
+  case CmpInst::FCMP_FALSE:
+    return naclbitc::FCMP_FALSE;
+  case CmpInst::FCMP_OEQ:
+    return naclbitc::FCMP_OEQ;
+  case CmpInst::FCMP_OGT:
+    return naclbitc::FCMP_OGT;
+  case CmpInst::FCMP_OGE:
+    return naclbitc::FCMP_OGE;
+  case CmpInst::FCMP_OLT:
+    return naclbitc::FCMP_OLT;
+  case CmpInst::FCMP_OLE:
+    return naclbitc::FCMP_OLE;
+  case CmpInst::FCMP_ONE:
+    return naclbitc::FCMP_ONE;
+  case CmpInst::FCMP_ORD:
+    return naclbitc::FCMP_ORD;
+  case CmpInst::FCMP_UNO:
+    return naclbitc::FCMP_UNO;
+  case CmpInst::FCMP_UEQ:
+    return naclbitc::FCMP_UEQ;
+  case CmpInst::FCMP_UGT:
+    return naclbitc::FCMP_UGT;
+  case CmpInst::FCMP_UGE:
+    return naclbitc::FCMP_UGE;
+  case CmpInst::FCMP_ULT:
+    return naclbitc::FCMP_ULT;
+  case CmpInst::FCMP_ULE:
+    return naclbitc::FCMP_ULE;
+  case CmpInst::FCMP_UNE:
+    return naclbitc::FCMP_UNE;
+  case CmpInst::FCMP_TRUE:
+    return naclbitc::FCMP_TRUE;
+  case CmpInst::ICMP_EQ:
+    return naclbitc::ICMP_EQ;
+  case CmpInst::ICMP_NE:
+    return naclbitc::ICMP_NE;
+  case CmpInst::ICMP_UGT:
+    return naclbitc::ICMP_UGT;
+  case CmpInst::ICMP_UGE:
+    return naclbitc::ICMP_UGE;
+  case CmpInst::ICMP_ULT:
+    return naclbitc::ICMP_ULT;
+  case CmpInst::ICMP_ULE:
+    return naclbitc::ICMP_ULE;
+  case CmpInst::ICMP_SGT:
+    return naclbitc::ICMP_SGT;
+  case CmpInst::ICMP_SGE:
+    return naclbitc::ICMP_SGE;
+  case CmpInst::ICMP_SLT:
+    return naclbitc::ICMP_SLT;
+  case CmpInst::ICMP_SLE:
+    return naclbitc::ICMP_SLE;
+  }
+}
+
 // The type of encoding to use for type ids.
 static NaClBitCodeAbbrevOp::Encoding TypeIdEncoding = NaClBitCodeAbbrevOp::VBR;
 
@@ -628,7 +689,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     Code = naclbitc::FUNC_CODE_INST_CMP2;
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-    Vals.push_back(cast<CmpInst>(I).getPredicate());
+    Vals.push_back(GetEncodedCmpPredicate(cast<CmpInst>(I)));
     break;
 
   case Instruction::Ret:
