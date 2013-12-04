@@ -258,6 +258,10 @@ namespace {
       IndexedFunctions[Name] = Index;
       return Index;
     }
+    void ensureFunctionTable(const FunctionType *F) {
+      std::string Sig = getFunctionSignature(F);
+      FunctionTables[Sig];
+    }
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
     unsigned getConstAsOffset(const Value *V, unsigned AbsoluteTarget) {

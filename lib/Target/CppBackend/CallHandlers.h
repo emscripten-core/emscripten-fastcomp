@@ -18,6 +18,7 @@ DEF_CALL_HANDLER(__default__, {
     FunctionType *FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
     std::string Sig = getFunctionSignature(FT);
     Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+    ensureFunctionTable(FT);
   }
   Type *RT = CI->getType();
   std::string text = Name + "(";
