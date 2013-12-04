@@ -146,6 +146,7 @@ namespace {
     std::string PostSets;
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
+    std::vector<std::string> GlobalInitializers;
 
     #include "CallHandlers.h"
 
@@ -2458,7 +2459,19 @@ void CppWriter::printModuleBody() {
     if (--Num > 0) Out << ",";
     Out << "\n";
   }
-  Out << "}";
+  Out << "},";
+
+  Out << "\"initializers\": [";
+  first = true;
+  for (unsigned i = 0; i < GlobalInitializers.size(); i++) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" + GlobalInitializers[i] + "\"";
+  }
+  Out << "]";
 
   Out << "\n}\n";
 }
@@ -2591,24 +2604,33 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
   } else if (isa<BlockAddress>(CV)) {
     assert(false);
   } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
-    if (CE->getOpcode() == Instruction::GetElementPtr) {
-      assert(false && "Unhandled CE GEP");
-    } else if (CE->isCast()) {
-      // a global equal to a ptrtoint of some function, so a 32-bit integer for us
-      if (calculate) {
-        HeapData *GlobalData = allocateAddress(name);
-        for (unsigned i = 0; i < 4; ++i) {
-          GlobalData->push_back(0);
+    if (CE->isCast()) {
+      if (name == "__init_array_start") {
+        // this is the global static initializer
+        if (calculate) {
+          Value *V = CE->getOperand(0);
+          GlobalInitializers.push_back(getCppName(V));
+          // is the func waka
         }
+      } else if (name == "__fini_array_start") {
+        // nothing to do
       } else {
-        unsigned Offset = getRelativeGlobalAddress(name);
-        Value *V = CE->getOperand(0);
-        unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
-        union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
-        integer.i = Data;
-        assert(Offset+4 <= GlobalData64.size());
-        for (unsigned i = 0; i < 4; ++i) {
-          GlobalData64[Offset++] = integer.b[i];
+        // a global equal to a ptrtoint of some function, so a 32-bit integer for us
+        if (calculate) {
+          HeapData *GlobalData = allocateAddress(name);
+          for (unsigned i = 0; i < 4; ++i) {
+            GlobalData->push_back(0);
+          }
+        } else {
+          unsigned Offset = getRelativeGlobalAddress(name);
+          Value *V = CE->getOperand(0);
+          unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
+          union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
+          integer.i = Data;
+          assert(Offset+4 <= GlobalData64.size());
+          for (unsigned i = 0; i < 4; ++i) {
+            GlobalData64[Offset++] = integer.b[i];
+          }
         }
       }
     } else {
