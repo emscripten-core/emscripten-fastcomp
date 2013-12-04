@@ -12,6 +12,13 @@ CallHandlerMap *CallHandlers;
   std::string CH_##Ident(const CallInst *CI, std::string Name, int NumArgs=-1) { Code }
 
 DEF_CALL_HANDLER(__default__, {
+  const Value *CV = CI->getCalledValue();
+  if (!isa<Function>(CV)) {
+    // function pointer call
+    FunctionType *FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
+    std::string Sig = getFunctionSignature(FT);
+    Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+  }
   Type *RT = CI->getType();
   std::string text = Name + "(";
   if (NumArgs == -1) NumArgs = CI->getNumOperands()-1; // last operand is the function itself
