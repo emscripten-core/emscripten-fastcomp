@@ -1989,6 +1989,10 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       case AtomicRMWInst::Nand: text += getStore(P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
       case AtomicRMWInst::Or:   text += getStore(P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
       case AtomicRMWInst::Xor:  text += getStore(P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
+      case AtomicRMWInst::Max:
+      case AtomicRMWInst::Min:
+      case AtomicRMWInst::UMax:
+      case AtomicRMWInst::UMin:
       case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
     }
     text += ";";
