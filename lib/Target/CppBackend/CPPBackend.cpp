@@ -1603,7 +1603,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     if (RV == NULL) {
       text += ";";
     } else {
-      text += " " + getValueAsCastStr(RV) + ";";
+      text += " " + getValueAsCastStr(RV, ASM_NONSPECIFIC) + ";";
     }
     break;
   }
