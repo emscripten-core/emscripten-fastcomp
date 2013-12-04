@@ -71,10 +71,14 @@ void setupCallHandlers() {
 }
 
 std::string handleCall(const CallInst *CI) {
-  std::string Name = getCppName(CI->getCalledValue());
+  const Value *CV = CI->getCalledValue();
+  std::string Name = getCppName(CV);
   unsigned NumArgs = CI->getNumArgOperands();
-  CallHandlerMap::iterator CH = CallHandlers->find(Name);
-  if (CH == CallHandlers->end()) CH = CallHandlers->find("___default__");
+  CallHandlerMap::iterator CH = CallHandlers->find("___default__");
+  if (isa<Function>(CV)) {
+    CallHandlerMap::iterator Custom = CallHandlers->find(Name);
+    if (Custom != CallHandlers->end()) CH = Custom;
+  }
   return (this->*(CH->second))(CI, Name, NumArgs);
 }
 
