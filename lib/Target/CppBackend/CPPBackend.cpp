@@ -1018,13 +1018,13 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
           }
           case 1: {
             text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "]" + sep +
-                   "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1]" + sep +
-                   "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2]" + sep +
-                   "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3]" + sep +
-                   "HEAP8[tempDoublePtr+4]=HEAP8[" + PS + "+4]" + sep +
-                   "HEAP8[tempDoublePtr+5]=HEAP8[" + PS + "+5]" + sep +
-                   "HEAP8[tempDoublePtr+6]=HEAP8[" + PS + "+6]" + sep +
-                   "HEAP8[tempDoublePtr+7]=HEAP8[" + PS + "+7]";
+                   "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1|0]" + sep +
+                   "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2|0]" + sep +
+                   "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3|0]" + sep +
+                   "HEAP8[tempDoublePtr+4]=HEAP8[" + PS + "+4|0]" + sep +
+                   "HEAP8[tempDoublePtr+5]=HEAP8[" + PS + "+5|0]" + sep +
+                   "HEAP8[tempDoublePtr+6]=HEAP8[" + PS + "+6|0]" + sep +
+                   "HEAP8[tempDoublePtr+7]=HEAP8[" + PS + "+7|0]";
             break;
           }
           default: assert(0 && "bad 8 store");
@@ -1042,9 +1042,9 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
             }
             case 1: {
               text = Assign + "HEAP8[" + PS + "]+" +
-                             "(HEAP8[" + PS + "+1]<<1)+" +
-                             "(HEAP8[" + PS + "+2]<<2)+" +
-                             "(HEAP8[" + PS + "+3]<<3)";
+                             "(HEAP8[" + PS + "+1|0]<<1)+" +
+                             "(HEAP8[" + PS + "+2|0]<<2)+" +
+                             "(HEAP8[" + PS + "+3|0]<<3)";
               break;
             }
             default: assert(0 && "bad 4i store");
@@ -1058,9 +1058,9 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
             }
             case 1: {
               text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "]" + sep +
-                     "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1]" + sep +
-                     "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2]=" + sep +
-                     "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3]";
+                     "HEAP8[tempDoublePtr+1|0]=HEAP8[" + PS + "+1|0]" + sep +
+                     "HEAP8[tempDoublePtr+2|0]=HEAP8[" + PS + "+2|0]=" + sep +
+                     "HEAP8[tempDoublePtr+3|0]=HEAP8[" + PS + "+3|0]";
               break;
             }
             default: assert(0 && "bad 4f store");
@@ -1071,7 +1071,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
       }
       case 2: {
         text = Assign + "HEAP8[" + PS + "]+" + sep +
-                       "(HEAP8[" + PS + "+1]<<1)";
+                       "(HEAP8[" + PS + "+1|0]<<1)";
         break;
       }
       default: assert(0 && "bad store");
@@ -1107,13 +1107,13 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
           }
           case 1: {
             text += "HEAP8[" + PS + "]=HEAP8[tempDoublePtr];" +
-                    "HEAP8[" + PS + "+1]=HEAP8[tempDoublePtr+1];" +
-                    "HEAP8[" + PS + "+2]=HEAP8[tempDoublePtr+2];" +
-                    "HEAP8[" + PS + "+3]=HEAP8[tempDoublePtr+3];" +
-                    "HEAP8[" + PS + "+4]=HEAP8[tempDoublePtr+4];" +
-                    "HEAP8[" + PS + "+5]=HEAP8[tempDoublePtr+5];" +
-                    "HEAP8[" + PS + "+6]=HEAP8[tempDoublePtr+6];" +
-                    "HEAP8[" + PS + "+7]=HEAP8[tempDoublePtr+7]";
+                    "HEAP8[" + PS + "+1|0]=HEAP8[tempDoublePtr+1|0];" +
+                    "HEAP8[" + PS + "+2|0]=HEAP8[tempDoublePtr+2|0];" +
+                    "HEAP8[" + PS + "+3|0]=HEAP8[tempDoublePtr+3|0];" +
+                    "HEAP8[" + PS + "+4|0]=HEAP8[tempDoublePtr+4|0];" +
+                    "HEAP8[" + PS + "+5|0]=HEAP8[tempDoublePtr+5|0];" +
+                    "HEAP8[" + PS + "+6|0]=HEAP8[tempDoublePtr+6|0];" +
+                    "HEAP8[" + PS + "+7|0]=HEAP8[tempDoublePtr+7|0]";
             break;
           }
           default: assert(0 && "bad 8 store");
@@ -1130,9 +1130,9 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
             }
             case 1: {
               text = "HEAP8[" + PS + "]=" + VS + "&255;" +
-                     "HEAP8[" + PS + "+1]=(" + VS + ">>8)&255;" +
-                     "HEAP8[" + PS + "+2]=(" + VS + ">>16)&255;" +
-                     "HEAP8[" + PS + "+3]=" + VS + ">>24";
+                     "HEAP8[" + PS + "+1|0]=(" + VS + ">>8)&255;" +
+                     "HEAP8[" + PS + "+2|0]=(" + VS + ">>16)&255;" +
+                     "HEAP8[" + PS + "+3|0]=" + VS + ">>24";
               break;
             }
             default: assert(0 && "bad 4i store");
@@ -1147,9 +1147,9 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
             }
             case 1: {
               text += "HEAP8[" + PS + "]=HEAP8[tempDoublePtr];" +
-                      "HEAP8[" + PS + "+1]=HEAP8[tempDoublePtr+1];" +
-                      "HEAP8[" + PS + "+2]=HEAP8[tempDoublePtr+2];" +
-                      "HEAP8[" + PS + "+3]=HEAP8[tempDoublePtr+3]";
+                      "HEAP8[" + PS + "+1|0]=HEAP8[tempDoublePtr+1|0];" +
+                      "HEAP8[" + PS + "+2|0]=HEAP8[tempDoublePtr+2|0];" +
+                      "HEAP8[" + PS + "+3|0]=HEAP8[tempDoublePtr+3|0]";
               break;
             }
             default: assert(0 && "bad 4f store");
@@ -1159,7 +1159,7 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
       }
       case 2: {
         text = "HEAP8[" + PS + "]=" + VS + "&255;" +
-               "HEAP8[" + PS + "+1]=" + VS + ">>8";
+               "HEAP8[" + PS + "+1|0]=" + VS + ">>8";
         break;
       }
       default: assert(0 && "bad store");
