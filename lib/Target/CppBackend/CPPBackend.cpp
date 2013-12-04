@@ -2436,6 +2436,10 @@ void CppWriter::printModuleBody() {
   for (FunctionTableMap::iterator I = FunctionTables.begin(), E = FunctionTables.end(); I != E; ++I) {
     Out << "  \"" + I->first + "\": \"var FUNCTION_TABLE_" + I->first + " = [";
     FunctionTable &Table = I->second;
+    // ensure power of two
+    unsigned Size = 1;
+    while (Size < Table.size()) Size <<= 1;
+    while (Table.size() < Size) Table.push_back("0");
     for (unsigned i = 0; i < Table.size(); i++) {
       Out << Table[i];
       if (i < Table.size()-1) Out << ",";
