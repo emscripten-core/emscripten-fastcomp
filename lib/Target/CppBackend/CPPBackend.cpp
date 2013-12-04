@@ -102,9 +102,10 @@ extern "C" void LLVMInitializeCppBackendTarget() {
 }
 
 namespace {
-  enum Signedness {
+  enum AsmCast {
     ASM_SIGNED = 0,
-    ASM_UNSIGNED = 1
+    ASM_UNSIGNED = 1,
+    ASM_NONSPECIFIC = 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
   };
 
   typedef std::vector<Type*> TypeList;
@@ -300,11 +301,11 @@ namespace {
 
     std::string getPtrLoad(const Value* Ptr);
     std::string getPtrUse(const Value* Ptr);
-    std::string getConstant(const Constant*, Signedness sign=ASM_SIGNED);
+    std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsStr(const Value*);
-    std::string getValueAsCastStr(const Value*, Signedness sign=ASM_SIGNED);
+    std::string getValueAsCastStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
-    std::string getValueAsCastParenStr(const Value*, Signedness sign=ASM_SIGNED);
+    std::string getValueAsCastParenStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getCppName(Type* val);
     inline void printCppName(Type* val);
 
@@ -318,8 +319,8 @@ namespace {
     void printTypes(const Module* M);
 
     std::string getAssign(const StringRef &, const Type *);
-    std::string getCast(const StringRef &, const Type *, Signedness sign=ASM_SIGNED);
-    std::string getParenCast(const StringRef &, const Type *, Signedness sign=ASM_SIGNED);
+    std::string getCast(const StringRef &, const Type *, AsmCast sign=ASM_SIGNED);
+    std::string getParenCast(const StringRef &, const Type *, AsmCast sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
     std::string getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
@@ -954,31 +955,32 @@ std::string CppWriter::getAssign(const StringRef &s, const Type *t) {
   return (s + " = ").str();
 }
 
-std::string CppWriter::getCast(const StringRef &s, const Type *t, Signedness sign) {
+std::string CppWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
-  default:
-    assert(false && "Unsupported type");
-  case Type::FloatTyID:
-    // TODO return ("Math_fround(" + s + ")").str();
-  case Type::DoubleTyID:
-    return ("+" + s).str();
-  case Type::IntegerTyID:
-  case Type::PointerTyID:
-    switch (t->getIntegerBitWidth()) {
-    case 1:
-      return (s + "&1").str();
-    case 8:
-      return (s + "&255").str();
-    case 16:
-      return (s + "&65535").str();
-    case 32:
     default:
-      return (sign == ASM_SIGNED ? s + "|0" : s + ">>>0").str();
-    }
+      assert(false && "Unsupported type");
+    case Type::FloatTyID:
+      // TODO return ("Math_fround(" + s + ")").str();
+    case Type::DoubleTyID:
+      return ("+" + s).str();
+    case Type::IntegerTyID:
+    case Type::PointerTyID:
+      // fall through to the end for nonspecific
+      switch (t->getIntegerBitWidth()) {
+        case 1:
+          if (sign != ASM_NONSPECIFIC) return (s + "&1").str();
+        case 8:
+          if (sign != ASM_NONSPECIFIC) return (s + "&255").str();
+        case 16:
+          if (sign != ASM_NONSPECIFIC) return (s + "&65535").str();
+        case 32:
+        default:
+          return (sign == ASM_SIGNED || sign == ASM_NONSPECIFIC ? s + "|0" : s + ">>>0").str();
+      }
   }
 }
 
-std::string CppWriter::getParenCast(const StringRef &s, const Type *t, Signedness sign) {
+std::string CppWriter::getParenCast(const StringRef &s, const Type *t, AsmCast sign) {
   return getCast(("(" + s + ")").str(), t, sign);
 }
 
@@ -1513,7 +1515,7 @@ static inline std::string ftostr_exact(const ConstantFP *CFP) {
   return buffer;
 }
 
-std::string CppWriter::getConstant(const Constant* CV, Signedness sign) {
+std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<PointerType>(CV->getType())) {
     return getPtrAsStr(CV);
   } else {
@@ -1541,7 +1543,7 @@ std::string CppWriter::getValueAsStr(const Value* V) {
   }
 }
 
-std::string CppWriter::getValueAsCastStr(const Value* V, Signedness sign) {
+std::string CppWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
@@ -1557,7 +1559,7 @@ std::string CppWriter::getValueAsParenStr(const Value* V) {
   }
 }
 
-std::string CppWriter::getValueAsCastParenStr(const Value* V, Signedness sign) {
+std::string CppWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
@@ -1739,10 +1741,10 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   }
   case Instruction::ICmp: {
     unsigned predicate = cast<ICmpInst>(I)->getPredicate();
-    Signedness sign = (predicate == ICmpInst::ICMP_ULE ||
-                       predicate == ICmpInst::ICMP_UGE ||
-                       predicate == ICmpInst::ICMP_ULT ||
-                       predicate == ICmpInst::ICMP_UGT) ? ASM_UNSIGNED : ASM_SIGNED;
+    AsmCast sign = (predicate == ICmpInst::ICMP_ULE ||
+                    predicate == ICmpInst::ICMP_UGE ||
+                    predicate == ICmpInst::ICMP_ULT ||
+                    predicate == ICmpInst::ICMP_UGT) ? ASM_UNSIGNED : ASM_SIGNED;
     text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" +
       getValueAsCastStr(I->getOperand(0), sign) +
     ")";

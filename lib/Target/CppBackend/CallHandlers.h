@@ -24,12 +24,12 @@ DEF_CALL_HANDLER(__default__, {
   std::string text = Name + "(";
   if (NumArgs == -1) NumArgs = CI->getNumOperands()-1; // last operand is the function itself
   for (int i = 0; i < NumArgs; i++) {
-    text += getValueAsCastStr(CI->getArgOperand(i)); // FIXME: differentiate ffi calls
+    text += getValueAsCastStr(CI->getArgOperand(i), ASM_NONSPECIFIC); // FIXME: differentiate ffi calls
     if (i < NumArgs - 1) text += ", ";
   }
   text += ")";
   if (!RT->isVoidTy()) {
-    text = getAssign(getCppName(CI), RT) + getCast(text, RT);
+    text = getAssign(getCppName(CI), RT) + getCast(text, RT, ASM_NONSPECIFIC);
   }
   return text;
 })
