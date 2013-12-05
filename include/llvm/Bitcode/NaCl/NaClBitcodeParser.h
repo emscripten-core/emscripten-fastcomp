@@ -102,7 +102,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <vector>
 
-using namespace llvm;
+namespace llvm {
 
 class NaClBitcodeParser;
 
@@ -343,5 +343,6 @@ private:
   NaClBitcodeParser(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
 };
 
+}  // namespace llvm
 
 #endif

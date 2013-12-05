@@ -25,6 +25,13 @@
 #include <algorithm>
 #include <map>
 
+/// Error - All bitcode analysis errors go through this function, making this a
+/// good place to breakpoint if debugging.
+static bool Error(const llvm::Twine &Err) {
+  llvm::errs() << Err << "\n";
+  return true;
+}
+
 namespace llvm {
 
 /// GetBlockName - Return a symbolic block name if known, otherwise return
@@ -242,13 +249,6 @@ struct PerBlockIDStats {
     : NumInstances(0), NumBits(0),
       NumSubBlocks(0), NumAbbrevs(0), NumRecords(0), NumAbbreviatedRecords(0) {}
 };
-
-/// Error - All bitcode analysis errors go through this function, making this a
-/// good place to breakpoint if debugging.
-static bool Error(const Twine &Err) {
-  errs() << Err << "\n";
-  return true;
-}
 
 // Parses all bitcode blocks, and collects distribution of records in
 // each block.  Also dumps bitcode structure if specified (via global

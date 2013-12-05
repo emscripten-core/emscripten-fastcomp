@@ -13,6 +13,8 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Support/Debug.h"
 
+using namespace llvm;
+
 void NaClBitcodeRecord::Print(raw_ostream& os) const {
   DEBUG(os << "Block " << GetBlockID() << ", Code " << Code
         << ", EntryID " << Entry.ID << ", <";
