@@ -120,8 +120,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Instruction *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(I32, 4), "", I), I);
       Instruction *LP = CopyDebug(new IntToPtrInst(AI, I32P, "", I), I);
       Instruction *HP = CopyDebug(new IntToPtrInst(P4, I32P, "", I), I);
-      Instruction *SL = CopyDebug(new StoreInst(Zero, LP, I), I); // will be fixed
-      Instruction *SH = CopyDebug(new StoreInst(Zero, HP, I), I); // will be fixed
+      StoreInst *SL = new StoreInst(Zero, LP, I); CopyDebug(SL, I); // will be fixed
+      StoreInst *SH = new StoreInst(Zero, HP, I); CopyDebug(SH, I); // will be fixed
       SplitParts &Split = Splits[I];
       Split.push_back(AI);
       Split.push_back(P4);
@@ -129,6 +129,9 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.push_back(HP);
       Split.push_back(SL);
       Split.push_back(SH);
+
+      SL->setAlignment(SI->getAlignment());
+      SH->setAlignment(SI->getAlignment());
       break;
     }
     //default: // FIXME: abort if we hit something we don't support
@@ -137,12 +140,14 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
 
 LowHigh ExpandI64::getLowHigh(Value *V) {
   LowHigh LH;
-
-  Type *I32 = Type::getInt32Ty(V->getContext());
-  Value *Zero = Constant::getNullValue(I32);
-
-  LH.Low = Zero;
-  LH.High = Zero;
+  if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
+    uint64_t C = CI->getZExtValue();
+    Type *I32 = Type::getInt32Ty(V->getContext());
+    LH.Low = ConstantInt::get(I32, (uint32_t)C);
+    LH.High = ConstantInt::get(I32, (uint32_t)(C >> 32));
+  } else {
+    assert(0);
+  }
   return LH;
 }
 
