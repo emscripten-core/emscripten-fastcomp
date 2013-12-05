@@ -56,7 +56,7 @@ namespace {
     // splits a 64-bit instruction into 32-bit chunks. We do
     // not yet have the values yet, as they depend on other
     // splits, so store the parts in Splits, for FinalizeInst.
-    void SplitInst(Instruction *I);
+    void SplitInst(Instruction *I, DataLayout& DL);
 
     void FinalizeInst(Instruction *I);
 
@@ -78,15 +78,13 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 //static void ExpandI64Func(Function *Func) {
 //}
 
-void ExpandI64::SplitInst(Instruction *I) {
-dumpv("si1 %d %d", I->getOpcode(), Instruction::SExt);
+void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
   switch (I->getOpcode()) {
     case Instruction::SExt: {
+      // x = sext i32 to i64  ==>  xl = x ; test = x < 0 ; xh = test ? -1 : 0
       Value *Input = I->getOperand(0);
       Type *T = Input->getType();
       assert(T->getIntegerBitWidth() == 32); // FIXME: sext from smaller
-      // x = sext i32 to i64  ==>
-      // xl = x ; test = x < 0 ; xh = test ? -1 : 0
       Value *Zero  = Constant::getNullValue(T);
       Value *Ones  = Constant::getAllOnesValue(T);
 
@@ -95,7 +93,28 @@ dumpv("si1 %d %d", I->getOpcode(), Instruction::SExt);
       SplitParts &Split = Splits[I];
       Split.push_back(Check);
       Split.push_back(High);
+      break;
+    }
+    case Instruction::Store: {
+      // store i64 A, i64* P  =>  ai = P ; P4 = ai+4 ; lp = P to i32* ; hp = P4 to i32* ; store l, lp ; store h, hp
+      StoreInst *SI = dyn_cast<StoreInst>(I);
+      Type *I32 = Type::getInt32Ty(I->getContext());
+      Type *I32P = I32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
+      Value *Zero  = Constant::getNullValue(I32);
 
+      Value *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), I32, "", I), I);
+      Value *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(I32, 4), "", I), I);
+      Value *LP = CopyDebug(new IntToPtrInst(AI, I32P, "", I), I);
+      Value *HP = CopyDebug(new IntToPtrInst(P4, I32P, "", I), I);
+      Value *SL = CopyDebug(new StoreInst(Zero, LP, I), I); // will be fixed
+      Value *SH = CopyDebug(new StoreInst(Zero, HP, I), I); // will be fixed
+      SplitParts &Split = Splits[I];
+      Split.push_back(AI);
+      Split.push_back(P4);
+      Split.push_back(LP);
+      Split.push_back(HP);
+      Split.push_back(SL);
+      Split.push_back(SH);
       break;
     }
     //default: // FIXME: abort if we hit something we don't support
@@ -116,7 +135,16 @@ bool ExpandI64::runOnModule(Module &M) {
         Type *T = I->getType();
         if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
           Changed = true;
-          SplitInst(I);
+          SplitInst(I, DL);
+          continue;
+        }
+        if (I->getNumOperands() >= 1) {
+          T = I->getOperand(0)->getType();
+          if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
+            Changed = true;
+            SplitInst(I, DL);
+            continue;
+          }
         }
       }
     }
