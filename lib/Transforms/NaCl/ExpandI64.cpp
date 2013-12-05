@@ -36,12 +36,16 @@
 #include <stdio.h>
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
+#define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
+#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
 #define dumpIR(value) { \
   std::string temp; \
   raw_string_ostream stream(temp); \
   stream << *(value); \
-  dumpv("%s\n", temp.c_str()); \
+  fprintf(stderr, "%s\n", temp.c_str()); \
 }
+#undef assert
+#define assert(x) { if (!(x)) dumpfail(#x); }
 
 using namespace llvm;
 
@@ -93,18 +97,21 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 //}
 
 void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
+  Type *I32 = Type::getInt32Ty(I->getContext());
+  Type *I32P = I32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
+
   switch (I->getOpcode()) {
     case Instruction::SExt: {
-      // x = sext i32 to i64  ==>  xl = x ; test = x < 0 ; xh = test ? -1 : 0
       Value *Input = I->getOperand(0);
       Type *T = Input->getType();
-      assert(T->getIntegerBitWidth() == 32); // FIXME: sext from smaller
       Value *Zero  = Constant::getNullValue(T);
       Value *Ones  = Constant::getAllOnesValue(T);
 
-      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Input, Zero), I);
+      Instruction *Low   = CopyDebug(new SExtInst(Input, I32, "", I), I);
+      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Low, Zero), I);
       Instruction *High  = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
       SplitParts &Split = Splits[I];
+      Split.push_back(Low);
       Split.push_back(Check);
       Split.push_back(High);
       break;
@@ -112,8 +119,6 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::Store: {
       // store i64 A, i64* P  =>  ai = P ; P4 = ai+4 ; lp = P to i32* ; hp = P4 to i32* ; store l, lp ; store h, hp
       StoreInst *SI = dyn_cast<StoreInst>(I);
-      Type *I32 = Type::getInt32Ty(I->getContext());
-      Type *I32P = I32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
       Value *Zero  = Constant::getNullValue(I32);
 
       Instruction *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), I32, "", I), I);
