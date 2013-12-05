@@ -46,9 +46,15 @@
 using namespace llvm;
 
 namespace {
+
+  struct LowHigh {
+    Value *Low, *High;
+  };
+
   // This is a ModulePass because the pass recreates functions in
   // order to expand i64 arguments to pairs of i32s.
   class ExpandI64 : public ModulePass {
+
     typedef std::vector<Instruction*> SplitParts;
     typedef std::map<Instruction*, SplitParts> SplitsMap;
 
@@ -57,9 +63,16 @@ namespace {
     // splits a 64-bit instruction into 32-bit chunks. We do
     // not yet have the values yet, as they depend on other
     // splits, so store the parts in Splits, for FinalizeInst.
-    void SplitInst(Instruction *I, DataLayout& DL);
+    void splitInst(Instruction *I, DataLayout& DL);
 
-    void FinalizeInst(Instruction *I);
+    // For a 64-bit value, returns the split out chunks
+    // representing the low and high parts, that splitInst
+    // generated.
+    // The value can also be a constant, in which case we just
+    // split it.
+    LowHigh getLowHigh(Value *V);
+
+    void finalizeInst(Instruction *I);
 
   public:
     static char ID;
@@ -79,7 +92,7 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 //static void ExpandI64Func(Function *Func) {
 //}
 
-void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
+void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
   switch (I->getOpcode()) {
     case Instruction::SExt: {
       // x = sext i32 to i64  ==>  xl = x ; test = x < 0 ; xh = test ? -1 : 0
@@ -122,21 +135,27 @@ void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
   }
 }
 
-void ExpandI64::FinalizeInst(Instruction *I) {
+LowHigh ExpandI64::getLowHigh(Value *V) {
+  LowHigh LH;
+
+  Type *I32 = Type::getInt32Ty(V->getContext());
+  Value *Zero = Constant::getNullValue(I32);
+
+  LH.Low = Zero;
+  LH.High = Zero;
+  return LH;
+}
+
+void ExpandI64::finalizeInst(Instruction *I) {
   SplitParts &Split = Splits[I];
   switch (I->getOpcode()) {
     case Instruction::SExt: {
       break;
     }
     case Instruction::Store: {
-      Instruction *SL = Split[4];
-      Instruction *SH = Split[5];
-
-      Type *I32 = Type::getInt32Ty(I->getContext());
-      Value *Ones  = Constant::getAllOnesValue(I32);
-
-      SL->setOperand(0, Ones);
-      SH->setOperand(0, Ones);
+      LowHigh LH = getLowHigh(I->getOperand(0));
+      Split[4]->setOperand(0, LH.Low);
+      Split[5]->setOperand(0, LH.High);
       break;
     }
   }
@@ -157,14 +176,14 @@ bool ExpandI64::runOnModule(Module &M) {
         Type *T = I->getType();
         if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
           Changed = true;
-          SplitInst(I, DL);
+          splitInst(I, DL);
           continue;
         }
         if (I->getNumOperands() >= 1) {
           T = I->getOperand(0)->getType();
           if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
             Changed = true;
-            SplitInst(I, DL);
+            splitInst(I, DL);
             continue;
           }
         }
@@ -175,7 +194,7 @@ bool ExpandI64::runOnModule(Module &M) {
   if (Changed) {
     // Finalize each element
     for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
-      FinalizeInst(I->first);
+      finalizeInst(I->first);
     }
 
     // Remove original illegal values
