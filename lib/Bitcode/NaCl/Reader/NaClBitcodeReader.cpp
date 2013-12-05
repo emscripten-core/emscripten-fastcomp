@@ -1098,6 +1098,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
     case naclbitc::FUNC_CODE_INST_BINOP: {
       // BINOP: [opval, opval, opcode[, flags]]
+      // Note: Only old PNaCl bitcode files may contain flags. If
+      // they are found, we ignore them.
       unsigned OpNum = 0;
       Value *LHS, *RHS;
       if (popValue(Record, &OpNum, NextValueNo, &LHS) ||
@@ -1111,24 +1113,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       int Opc = GetDecodedBinaryOpcode(Record[OpNum++], LHS->getType());
       if (Opc == -1) return Error("Invalid BINOP record");
       I = BinaryOperator::Create((Instruction::BinaryOps)Opc, LHS, RHS);
-      if (OpNum < Record.size()) {
-        if (isa<FPMathOperator>(I)) {
-          FastMathFlags FMF;
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_UNSAFE_ALGEBRA)))
-            FMF.setUnsafeAlgebra();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_NANS)))
-            FMF.setNoNaNs();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_INFS)))
-            FMF.setNoInfs();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_SIGNED_ZEROS)))
-            FMF.setNoSignedZeros();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_ALLOW_RECIPROCAL)))
-            FMF.setAllowReciprocal();
-          if (FMF.any())
-            I->setFastMathFlags(FMF);
-        }
-
-      }
       break;
     }
     case naclbitc::FUNC_CODE_INST_CAST: {    // CAST: [opval, destty, castopc]

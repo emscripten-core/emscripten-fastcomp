@@ -256,6 +256,9 @@ namespace naclbitc {
 
   /// \brief Flags for serializing floating point binary operators's
   /// SubclassOptionalData contents.
+  /// Note: This enum is no longer used in PNaCl, because these
+  /// flags shouldn't exist in files that meet the PNaCl ABI, unless
+  /// they are old. In the latter case, they are ignored by the reader.
   enum NaClFloatingPointBinaryOperatorOptionalFlags {
     FPO_UNSAFE_ALGEBRA = 0,
     FPO_NO_NANS = 1,
@@ -305,8 +308,11 @@ namespace naclbitc {
   enum NaClFunctionCodes {
     FUNC_CODE_DECLAREBLOCKS    =  1, // DECLAREBLOCKS: [n]
 
-    FUNC_CODE_INST_BINOP       =  2, // BINOP:      [opval, opval, opcode
-                                     //              [, flags]]
+    FUNC_CODE_INST_BINOP       =  2, // BINOP:      [opval, opval, opcode]
+                                     // Note: because old PNaCl bitcode files
+                                     // may contain flags (which we now ignore),
+                                     // the reader must also support:
+                                     // BINOP: [opval, opval, opcode, flags]
     FUNC_CODE_INST_CAST        =  3, // CAST:       [opval, destty, castopc]
     FUNC_CODE_INST_GEP         =  4, // Not used in PNaCl.
     FUNC_CODE_INST_SELECT      =  5, // Not used in PNaCl. Replaced by VSELECT.
