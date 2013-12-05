@@ -159,9 +159,7 @@ LowHigh ExpandI64::getLowHigh(Value *V) {
 void ExpandI64::finalizeInst(Instruction *I) {
   SplitParts &Split = Splits[I];
   switch (I->getOpcode()) {
-    case Instruction::SExt: {
-      break;
-    }
+    case Instruction::SExt: break; // input was legal
     case Instruction::Store: {
       LowHigh LH = getLowHigh(I->getOperand(0));
       Split[4]->setOperand(0, LH.Low);
