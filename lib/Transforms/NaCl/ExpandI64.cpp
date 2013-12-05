@@ -49,7 +49,7 @@ namespace {
   // This is a ModulePass because the pass recreates functions in
   // order to expand i64 arguments to pairs of i32s.
   class ExpandI64 : public ModulePass {
-    typedef std::vector<Value*> SplitParts;
+    typedef std::vector<Instruction*> SplitParts;
     typedef std::map<Instruction*, SplitParts> SplitsMap;
 
     SplitsMap Splits; // old i64 value to new insts
@@ -89,8 +89,8 @@ void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
       Value *Zero  = Constant::getNullValue(T);
       Value *Ones  = Constant::getAllOnesValue(T);
 
-      Value *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Input, Zero), I);
-      Value *High  = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
+      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Input, Zero), I);
+      Instruction *High  = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
       SplitParts &Split = Splits[I];
       Split.push_back(Check);
       Split.push_back(High);
@@ -103,12 +103,12 @@ void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
       Type *I32P = I32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
       Value *Zero  = Constant::getNullValue(I32);
 
-      Value *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), I32, "", I), I);
-      Value *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(I32, 4), "", I), I);
-      Value *LP = CopyDebug(new IntToPtrInst(AI, I32P, "", I), I);
-      Value *HP = CopyDebug(new IntToPtrInst(P4, I32P, "", I), I);
-      Value *SL = CopyDebug(new StoreInst(Zero, LP, I), I); // will be fixed
-      Value *SH = CopyDebug(new StoreInst(Zero, HP, I), I); // will be fixed
+      Instruction *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), I32, "", I), I);
+      Instruction *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(I32, 4), "", I), I);
+      Instruction *LP = CopyDebug(new IntToPtrInst(AI, I32P, "", I), I);
+      Instruction *HP = CopyDebug(new IntToPtrInst(P4, I32P, "", I), I);
+      Instruction *SL = CopyDebug(new StoreInst(Zero, LP, I), I); // will be fixed
+      Instruction *SH = CopyDebug(new StoreInst(Zero, HP, I), I); // will be fixed
       SplitParts &Split = Splits[I];
       Split.push_back(AI);
       Split.push_back(P4);
@@ -119,6 +119,26 @@ void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     //default: // FIXME: abort if we hit something we don't support
+  }
+}
+
+void ExpandI64::FinalizeInst(Instruction *I) {
+  SplitParts &Split = Splits[I];
+  switch (I->getOpcode()) {
+    case Instruction::SExt: {
+      break;
+    }
+    case Instruction::Store: {
+      Instruction *SL = Split[4];
+      Instruction *SH = Split[5];
+
+      Type *I32 = Type::getInt32Ty(I->getContext());
+      Value *Ones  = Constant::getAllOnesValue(I32);
+
+      SL->setOperand(0, Ones);
+      SH->setOperand(0, Ones);
+      break;
+    }
   }
 }
 
@@ -154,6 +174,9 @@ bool ExpandI64::runOnModule(Module &M) {
   // second pass pass - finalize and connect
   if (Changed) {
     // Finalize each element
+    for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
+      FinalizeInst(I->first);
+    }
 
     // Remove original illegal values
     for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
