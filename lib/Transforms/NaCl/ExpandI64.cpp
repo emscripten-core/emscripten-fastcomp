@@ -99,13 +99,13 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
   Type *I32 = Type::getInt32Ty(I->getContext());
   Type *I32P = I32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
+  Value *Zero  = Constant::getNullValue(I32);
+  Value *Ones  = Constant::getAllOnesValue(I32);
 
   switch (I->getOpcode()) {
     case Instruction::SExt: {
       Value *Input = I->getOperand(0);
       Type *T = Input->getType();
-      Value *Zero  = Constant::getNullValue(T);
-      Value *Ones  = Constant::getAllOnesValue(T);
 
       Instruction *Low   = CopyDebug(new SExtInst(Input, I32, "", I), I);
       Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Low, Zero), I);
@@ -119,7 +119,6 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::Store: {
       // store i64 A, i64* P  =>  ai = P ; P4 = ai+4 ; lp = P to i32* ; hp = P4 to i32* ; store l, lp ; store h, hp
       StoreInst *SI = dyn_cast<StoreInst>(I);
-      Value *Zero  = Constant::getNullValue(I32);
 
       Instruction *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), I32, "", I), I);
       Instruction *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(I32, 4), "", I), I);
@@ -137,6 +136,9 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
 
       SL->setAlignment(SI->getAlignment());
       SH->setAlignment(SI->getAlignment());
+      break;
+    }
+    case Instruction::Add: {
       break;
     }
     //default: // FIXME: abort if we hit something we don't support
