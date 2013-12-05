@@ -50,8 +50,9 @@ namespace {
   // order to expand i64 arguments to pairs of i32s.
   class ExpandI64 : public ModulePass {
     typedef std::vector<Value*> SplitParts;
+    typedef std::map<Instruction*, SplitParts> SplitsMap;
 
-    std::map<Value*, SplitParts> Splits; // old i64 value to new insts
+    SplitsMap Splits; // old i64 value to new insts
 
     // splits a 64-bit instruction into 32-bit chunks. We do
     // not yet have the values yet, as they depend on other
@@ -124,6 +125,7 @@ void ExpandI64::SplitInst(Instruction *I, DataLayout& DL) {
 bool ExpandI64::runOnModule(Module &M) {
   bool Changed = false;
   DataLayout DL(&M);
+  // first pass - split
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
     Function *Func = Iter++;
     for (Function::iterator BB = Func->begin(), E = Func->end();
@@ -147,6 +149,15 @@ bool ExpandI64::runOnModule(Module &M) {
           }
         }
       }
+    }
+  }
+  // second pass pass - finalize and connect
+  if (Changed) {
+    // Finalize each element
+
+    // Remove original illegal values
+    for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
+      I->first->eraseFromParent();
     }
   }
   return Changed;
