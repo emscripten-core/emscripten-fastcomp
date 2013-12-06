@@ -83,7 +83,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Mul, *GetHigh;
+    Function *Add, *Mul, *LShr, *GetHigh;
 
     void ensureFuncs();
 
@@ -94,7 +94,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = Mul = GetHigh = NULL;
+      Add = Mul = LShr = GetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -156,16 +156,19 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Add:
-    case Instruction::Mul: {
-      SmallVector<Value *, 4> Args;
-      for (int i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
+    case Instruction::Mul:
+    case Instruction::LShr: {
       ensureFuncs();
       Function *F;
+      SmallVector<Value *, 4> Args;
+      unsigned NumArgs;
       switch (I->getOpcode()) {
-        case Instruction::Add: F = Add; break;
-        case Instruction::Mul: F = Mul; break;
+        case Instruction::Add:  F = Add;  NumArgs = 4; break;
+        case Instruction::Mul:  F = Mul;  NumArgs = 4; break;
+        case Instruction::LShr: F = LShr; NumArgs = 3; break;
         default: assert(0);
       }
+      for (unsigned i = 0; i < NumArgs; i++) Args.push_back(Zero); // will be fixed 
       Instruction *Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
       Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
       SplitInfo &Split = Splits[I];
@@ -217,8 +220,10 @@ void ExpandI64::finalizeInst(Instruction *I) {
       Split.ToFix[1]->setOperand(0, LowHigh.High);
       break;
     }
-    case Instruction::Add: {
-      // TODO fix the arguments to the i64Add call
+    case Instruction::Add:
+    case Instruction::Mul:
+    case Instruction::LShr: {
+      // TODO fix the arguments to the call
       break;
     }
   }
@@ -226,18 +231,28 @@ void ExpandI64::finalizeInst(Instruction *I) {
 
 void ExpandI64::ensureFuncs() {
   if (Add != NULL) return;
-  SmallVector<Type*, 4> BinaryArgTypes;
-  Type *i32 = Type::getInt32Ty(TheModule->getContext());
-  BinaryArgTypes.push_back(i32);
-  BinaryArgTypes.push_back(i32);
-  BinaryArgTypes.push_back(i32);
-  BinaryArgTypes.push_back(i32);
-  FunctionType *BinaryFunc = FunctionType::get(i32, BinaryArgTypes, false);
 
-  Add = Function::Create(BinaryFunc, GlobalValue::ExternalLinkage,
+  Type *i32 = Type::getInt32Ty(TheModule->getContext());
+
+  SmallVector<Type*, 4> FourArgTypes;
+  FourArgTypes.push_back(i32);
+  FourArgTypes.push_back(i32);
+  FourArgTypes.push_back(i32);
+  FourArgTypes.push_back(i32);
+  FunctionType *FourFunc = FunctionType::get(i32, FourArgTypes, false);
+
+  SmallVector<Type*, 3> ThreeArgTypes;
+  ThreeArgTypes.push_back(i32);
+  ThreeArgTypes.push_back(i32);
+  ThreeArgTypes.push_back(i32);
+  FunctionType *ThreeFunc = FunctionType::get(i32, ThreeArgTypes, false);
+
+  Add = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "i64Add", TheModule);
-  Mul = Function::Create(BinaryFunc, GlobalValue::ExternalLinkage,
+  Mul = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "__muldsi3", TheModule);
+  LShr = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+                          "bitshift64Lshr", TheModule);
 
   SmallVector<Type*, 0> GetHighArgTypes;
   FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
