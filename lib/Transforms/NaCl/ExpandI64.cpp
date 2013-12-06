@@ -83,7 +83,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *GetHigh;
+    Function *Add, *Mul, *GetHigh;
 
     void ensureFuncs();
 
@@ -94,7 +94,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = GetHigh = NULL;
+      Add = Mul = GetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -150,11 +150,18 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       SH->setAlignment(SI->getAlignment());
       break;
     }
-    case Instruction::Add: {
+    case Instruction::Add:
+    case Instruction::Mul: {
       SmallVector<Value *, 4> Args;
       for (int i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
       ensureFuncs();
-      Instruction *Low = CopyDebug(CallInst::Create(Add, Args, "", I), I);
+      Function *F;
+      switch (I->getOpcode()) {
+        case Instruction::Add: F = Add; break;
+        case Instruction::Mul: F = Mul; break;
+        default: assert(0);
+      }
+      Instruction *Low = CopyDebug(CallInst::Create(F, Args, "", I), I); break;
       Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
       SplitInfo &Split = Splits[I];
       Split.ToFix.push_back(Low);
@@ -218,6 +225,8 @@ void ExpandI64::ensureFuncs() {
 
   Add = Function::Create(BinaryFunc, GlobalValue::ExternalLinkage,
                          "i64Add", TheModule);
+  Mul = Function::Create(BinaryFunc, GlobalValue::ExternalLinkage,
+                         "__muldsi3", TheModule);
 
   SmallVector<Type*, 0> GetHighArgTypes;
   FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
