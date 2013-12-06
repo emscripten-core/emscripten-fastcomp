@@ -79,7 +79,6 @@ enum {
   // FUNCTION_BLOCK abbrev id's.
   FUNCTION_INST_LOAD_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   FUNCTION_INST_BINOP_ABBREV,
-  FUNCTION_INST_BINOP_FLAGS_ABBREV,
   FUNCTION_INST_CAST_ABBREV,
   FUNCTION_INST_RET_VOID_ABBREV,
   FUNCTION_INST_RET_VAL_ABBREV,
@@ -484,25 +483,6 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
   DEBUG(dbgs() << "<- WriteModuleInfo\n");
 }
 
-static uint64_t GetOptimizationFlags(const Value *V) {
-  uint64_t Flags = 0;
-
-  if (const FPMathOperator *FPMO = dyn_cast<const FPMathOperator>(V)) {
-    if (FPMO->hasUnsafeAlgebra())
-      Flags |= 1 << naclbitc::FPO_UNSAFE_ALGEBRA;
-    if (FPMO->hasNoNaNs())
-      Flags |= 1 << naclbitc::FPO_NO_NANS;
-    if (FPMO->hasNoInfs())
-      Flags |= 1 << naclbitc::FPO_NO_INFS;
-    if (FPMO->hasNoSignedZeros())
-      Flags |= 1 << naclbitc::FPO_NO_SIGNED_ZEROS;
-    if (FPMO->hasAllowReciprocal())
-      Flags |= 1 << naclbitc::FPO_ALLOW_RECIPROCAL;
-  }
-
-  return Flags;
-}
-
 static void emitSignedInt64(SmallVectorImpl<uint64_t> &Vals, uint64_t V) {
   Vals.push_back(NaClEncodeSignRotatedValue((int64_t)V));
 }
@@ -662,17 +642,12 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
         ReportIllegalValue("(PNaCl ABI) pointer cast", I);
       }
     } else if (isa<BinaryOperator>(I)) {
-      // BINOP:      [opval, opval, opcode[, flags]]
+      // BINOP:      [opval, opval, opcode]
       Code = naclbitc::FUNC_CODE_INST_BINOP;
       AbbrevToUse = FUNCTION_INST_BINOP_ABBREV;
       pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
       pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
       Vals.push_back(GetEncodedBinaryOpcode(I.getOpcode(), I));
-      uint64_t Flags = GetOptimizationFlags(&I);
-      if (Flags != 0) {
-        AbbrevToUse = FUNCTION_INST_BINOP_FLAGS_ABBREV;
-        Vals.push_back(Flags);
-      }
     } else {
       ReportIllegalValue("instruction", I);
     }
@@ -1070,17 +1045,6 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4)); // opc
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_BINOP_ABBREV)
-      llvm_unreachable("Unexpected abbrev ordering!");
-  }
-  { // INST_BINOP_FLAGS abbrev for FUNCTION_BLOCK.
-    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_BINOP));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // LHS
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // RHS
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4)); // opc
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 7)); // flags
-    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
-                                   Abbv) != FUNCTION_INST_BINOP_FLAGS_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_CAST abbrev for FUNCTION_BLOCK.
