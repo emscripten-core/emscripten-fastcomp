@@ -151,15 +151,15 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Add: {
-      break; // XXX XXX XXX
       SmallVector<Value *, 4> Args;
       for (int i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
       ensureFuncs();
-      //Instruction *Low = CopyDebug(CallInst::Create(Add, Args, "", I), I);
-      //Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
-      //SplitInfo &Split = Splits[I];
-      //Split.push_back(Low);
-      //Split.push_back(High);
+      Instruction *Low = CopyDebug(CallInst::Create(Add, Args, "", I), I);
+      Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(Low);
+      Split.LowHigh.Low = Low;
+      Split.LowHigh.High = High;
       break;
     }
     //default: // FIXME: abort if we hit something we don't support
@@ -197,6 +197,10 @@ void ExpandI64::finalizeInst(Instruction *I) {
       assert(LowHigh.Low && LowHigh.High);
       Split.ToFix[0]->setOperand(0, LowHigh.Low);
       Split.ToFix[1]->setOperand(0, LowHigh.High);
+      break;
+    }
+    case Instruction::Add: {
+      // TODO fix the arguments to the i64Add call
       break;
     }
   }
