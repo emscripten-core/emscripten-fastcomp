@@ -132,6 +132,11 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = High;
       break;
     }
+    case Instruction::Trunc: {
+      assert(I->getType()->getIntegerBitWidth() == 32);
+      Splits[I];
+      break;
+    }
     case Instruction::Store: {
       // store i64 A, i64* P  =>  ai = P ; P4 = ai+4 ; lp = P to i32* ; hp = P4 to i32* ; store l, lp ; store h, hp
       StoreInst *SI = dyn_cast<StoreInst>(I);
@@ -199,6 +204,12 @@ void ExpandI64::finalizeInst(Instruction *I) {
   SplitInfo &Split = Splits[I];
   switch (I->getOpcode()) {
     case Instruction::SExt: break; // input was legal
+    case Instruction::Trunc: {
+      assert(I->getType()->getIntegerBitWidth() == 32);
+      LowHighPair LowHigh = getLowHigh(I->getOperand(0));
+      I->replaceAllUsesWith(LowHigh.Low);
+      break;
+    }
     case Instruction::Store: {
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
       assert(LowHigh.Low && LowHigh.High);
