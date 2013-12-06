@@ -51,17 +51,22 @@ using namespace llvm;
 
 namespace {
 
-  struct LowHigh {
+  struct LowHighPair {
     Value *Low, *High;
   };
+
+  typedef std::vector<Instruction*> SplitInstrs;
+
+  struct SplitInfo {
+    SplitInstrs ToFix;  // new instrs, which we fix up later with proper legalized input (if they received illegal input)
+    LowHighPair LowHigh; // low and high parts of the legalized output, if the output was illegal
+  };
+
+  typedef std::map<Instruction*, SplitInfo> SplitsMap;
 
   // This is a ModulePass because the pass recreates functions in
   // order to expand i64 arguments to pairs of i32s.
   class ExpandI64 : public ModulePass {
-
-    typedef std::vector<Instruction*> SplitParts;
-    typedef std::map<Instruction*, SplitParts> SplitsMap;
-
     SplitsMap Splits; // old i64 value to new insts
 
     // splits a 64-bit instruction into 32-bit chunks. We do
@@ -74,14 +79,22 @@ namespace {
     // generated.
     // The value can also be a constant, in which case we just
     // split it.
-    LowHigh getLowHigh(Value *V);
+    LowHighPair getLowHigh(Value *V);
 
     void finalizeInst(Instruction *I);
+
+    Function *Add, *GetHigh;
+
+    void ensureFuncs();
+
+    Module *TheModule;
 
   public:
     static char ID;
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
+
+      Add = GetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -97,42 +110,41 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 //}
 
 void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
-  Type *I32 = Type::getInt32Ty(I->getContext());
-  Type *I32P = I32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
-  Value *Zero  = Constant::getNullValue(I32);
-  Value *Ones  = Constant::getAllOnesValue(I32);
+  Type *i32 = Type::getInt32Ty(I->getContext());
+  Type *i32P = i32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
+  Value *Zero  = Constant::getNullValue(i32);
+  Value *Ones  = Constant::getAllOnesValue(i32);
 
   switch (I->getOpcode()) {
     case Instruction::SExt: {
       Value *Input = I->getOperand(0);
       Type *T = Input->getType();
-
-      Instruction *Low   = CopyDebug(new SExtInst(Input, I32, "", I), I);
+      Value *Low;
+      if (T->getIntegerBitWidth() < 32) {
+        Low = CopyDebug(new SExtInst(Input, i32, "", I), I);
+      } else {
+        Low = Input;
+      }
       Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Low, Zero), I);
       Instruction *High  = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
-      SplitParts &Split = Splits[I];
-      Split.push_back(Low);
-      Split.push_back(Check);
-      Split.push_back(High);
+      SplitInfo &Split = Splits[I];
+      Split.LowHigh.Low = Low;
+      Split.LowHigh.High = High;
       break;
     }
     case Instruction::Store: {
       // store i64 A, i64* P  =>  ai = P ; P4 = ai+4 ; lp = P to i32* ; hp = P4 to i32* ; store l, lp ; store h, hp
       StoreInst *SI = dyn_cast<StoreInst>(I);
 
-      Instruction *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), I32, "", I), I);
-      Instruction *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(I32, 4), "", I), I);
-      Instruction *LP = CopyDebug(new IntToPtrInst(AI, I32P, "", I), I);
-      Instruction *HP = CopyDebug(new IntToPtrInst(P4, I32P, "", I), I);
+      Instruction *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), i32, "", I), I);
+      Instruction *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(i32, 4), "", I), I);
+      Instruction *LP = CopyDebug(new IntToPtrInst(AI, i32P, "", I), I);
+      Instruction *HP = CopyDebug(new IntToPtrInst(P4, i32P, "", I), I);
       StoreInst *SL = new StoreInst(Zero, LP, I); CopyDebug(SL, I); // will be fixed
       StoreInst *SH = new StoreInst(Zero, HP, I); CopyDebug(SH, I); // will be fixed
-      SplitParts &Split = Splits[I];
-      Split.push_back(AI);
-      Split.push_back(P4);
-      Split.push_back(LP);
-      Split.push_back(HP);
-      Split.push_back(SL);
-      Split.push_back(SH);
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(SL);
+      Split.ToFix.push_back(SH);
 
       SL->setAlignment(SI->getAlignment());
       SH->setAlignment(SI->getAlignment());
@@ -145,33 +157,55 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
   }
 }
 
-LowHigh ExpandI64::getLowHigh(Value *V) {
-  LowHigh LH;
+LowHighPair ExpandI64::getLowHigh(Value *V) {
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
     uint64_t C = CI->getZExtValue();
-    Type *I32 = Type::getInt32Ty(V->getContext());
-    LH.Low = ConstantInt::get(I32, (uint32_t)C);
-    LH.High = ConstantInt::get(I32, (uint32_t)(C >> 32));
+    Type *i32 = Type::getInt32Ty(V->getContext());
+    LowHighPair LH;
+    LH.Low = ConstantInt::get(i32, (uint32_t)C);
+    LH.High = ConstantInt::get(i32, (uint32_t)(C >> 32));
+    return LH;
   } else {
-    assert(0);
+    Instruction *I = dyn_cast<Instruction>(V);
+    return Splits[I].LowHigh;
   }
-  return LH;
 }
 
 void ExpandI64::finalizeInst(Instruction *I) {
-  SplitParts &Split = Splits[I];
+  SplitInfo &Split = Splits[I];
   switch (I->getOpcode()) {
     case Instruction::SExt: break; // input was legal
     case Instruction::Store: {
-      LowHigh LH = getLowHigh(I->getOperand(0));
-      Split[4]->setOperand(0, LH.Low);
-      Split[5]->setOperand(0, LH.High);
+      LowHighPair LH = getLowHigh(I->getOperand(0));
+      Split.ToFix[0]->setOperand(0, LH.Low);
+      Split.ToFix[1]->setOperand(0, LH.High);
       break;
     }
   }
 }
 
+void ExpandI64::ensureFuncs() {
+  if (Add != NULL) return;
+  SmallVector<Type*, 4> BinaryArgTypes;
+  Type *i32 = Type::getInt32Ty(TheModule->getContext());
+  BinaryArgTypes.push_back(i32);
+  BinaryArgTypes.push_back(i32);
+  BinaryArgTypes.push_back(i32);
+  BinaryArgTypes.push_back(i32);
+  FunctionType *BinaryFunc = FunctionType::get(i32, BinaryArgTypes, false);
+
+  Add = Function::Create(BinaryFunc, GlobalValue::ExternalLinkage,
+                         "i64Add", TheModule);
+
+  SmallVector<Type*, 0> GetHighArgTypes;
+  FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
+  GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
+                             "getHigh", TheModule);
+}
+
 bool ExpandI64::runOnModule(Module &M) {
+  TheModule = &M;
+
   bool Changed = false;
   DataLayout DL(&M);
   // first pass - split
