@@ -151,6 +151,15 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Add: {
+      break; // XXX XXX XXX
+      SmallVector<Value *, 4> Args;
+      for (int i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
+      ensureFuncs();
+      //Instruction *Low = CopyDebug(CallInst::Create(Add, Args, "", I), I);
+      //Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+      //SplitInfo &Split = Splits[I];
+      //Split.push_back(Low);
+      //Split.push_back(High);
       break;
     }
     //default: // FIXME: abort if we hit something we don't support
@@ -161,12 +170,20 @@ LowHighPair ExpandI64::getLowHigh(Value *V) {
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
     uint64_t C = CI->getZExtValue();
     Type *i32 = Type::getInt32Ty(V->getContext());
-    LowHighPair LH;
-    LH.Low = ConstantInt::get(i32, (uint32_t)C);
-    LH.High = ConstantInt::get(i32, (uint32_t)(C >> 32));
-    return LH;
+    LowHighPair LowHigh;
+    LowHigh.Low = ConstantInt::get(i32, (uint32_t)C);
+    LowHigh.High = ConstantInt::get(i32, (uint32_t)(C >> 32));
+    return LowHigh;
   } else {
     Instruction *I = dyn_cast<Instruction>(V);
+    // TODO assert(Splits.find(I) != Splits.end());
+    if (Splits.find(I) == Splits.end()) { // debugging tool, for now FIXME remove
+      Type *i32 = Type::getInt32Ty(V->getContext());
+      LowHighPair LowHigh;
+      LowHigh.Low = ConstantInt::get(i32, 13);
+      LowHigh.High = ConstantInt::get(i32, 37);
+      return LowHigh;
+    }
     return Splits[I].LowHigh;
   }
 }
@@ -176,9 +193,10 @@ void ExpandI64::finalizeInst(Instruction *I) {
   switch (I->getOpcode()) {
     case Instruction::SExt: break; // input was legal
     case Instruction::Store: {
-      LowHighPair LH = getLowHigh(I->getOperand(0));
-      Split.ToFix[0]->setOperand(0, LH.Low);
-      Split.ToFix[1]->setOperand(0, LH.High);
+      LowHighPair LowHigh = getLowHigh(I->getOperand(0));
+      assert(LowHigh.Low && LowHigh.High);
+      Split.ToFix[0]->setOperand(0, LowHigh.Low);
+      Split.ToFix[1]->setOperand(0, LowHigh.High);
       break;
     }
   }
