@@ -83,7 +83,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Mul, *LShr, *GetHigh;
+    Function *Add, *Mul, *LShr, *AShr, *GetHigh;
 
     void ensureFuncs();
 
@@ -94,7 +94,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = Mul = LShr = GetHigh = NULL;
+      Add = Mul = LShr = AShr = GetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -132,6 +132,20 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = High;
       break;
     }
+    case Instruction::ZExt: {
+      Value *Input = I->getOperand(0);
+      Type *T = Input->getType();
+      Value *Low;
+      if (T->getIntegerBitWidth() < 32) {
+        Low = CopyDebug(new SExtInst(Input, i32, "", I), I);
+      } else {
+        Low = Input;
+      }
+      SplitInfo &Split = Splits[I];
+      Split.LowHigh.Low = Low;
+      Split.LowHigh.High = Zero;
+      break;
+    }
     case Instruction::Trunc: {
       assert(I->getType()->getIntegerBitWidth() == 32);
       Splits[I];
@@ -157,15 +171,17 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     }
     case Instruction::Add:
     case Instruction::Mul:
-    case Instruction::LShr: {
+    case Instruction::LShr:
+    case Instruction::AShr: {
       ensureFuncs();
       Function *F;
       SmallVector<Value *, 4> Args;
-      unsigned NumArgs;
+      unsigned NumArgs = 4;
       switch (I->getOpcode()) {
-        case Instruction::Add:  F = Add;  NumArgs = 4; break;
-        case Instruction::Mul:  F = Mul;  NumArgs = 4; break;
-        case Instruction::LShr: F = LShr; NumArgs = 3; break;
+        case Instruction::Add:  F = Add;  break;
+        case Instruction::Mul:  F = Mul;  break;
+        case Instruction::LShr: F = LShr; break;
+        case Instruction::AShr: F = AShr; break;
         default: assert(0);
       }
       for (unsigned i = 0; i < NumArgs; i++) Args.push_back(Zero); // will be fixed 
@@ -206,7 +222,8 @@ LowHighPair ExpandI64::getLowHigh(Value *V) {
 void ExpandI64::finalizeInst(Instruction *I) {
   SplitInfo &Split = Splits[I];
   switch (I->getOpcode()) {
-    case Instruction::SExt: break; // input was legal
+    case Instruction::SExt:
+    case Instruction::ZExt: break; // input was legal
     case Instruction::Trunc: {
       assert(I->getType()->getIntegerBitWidth() == 32);
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
@@ -222,7 +239,8 @@ void ExpandI64::finalizeInst(Instruction *I) {
     }
     case Instruction::Add:
     case Instruction::Mul:
-    case Instruction::LShr: {
+    case Instruction::LShr:
+    case Instruction::AShr: {
       // TODO fix the arguments to the call
       break;
     }
@@ -241,18 +259,14 @@ void ExpandI64::ensureFuncs() {
   FourArgTypes.push_back(i32);
   FunctionType *FourFunc = FunctionType::get(i32, FourArgTypes, false);
 
-  SmallVector<Type*, 3> ThreeArgTypes;
-  ThreeArgTypes.push_back(i32);
-  ThreeArgTypes.push_back(i32);
-  ThreeArgTypes.push_back(i32);
-  FunctionType *ThreeFunc = FunctionType::get(i32, ThreeArgTypes, false);
-
   Add = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "i64Add", TheModule);
   Mul = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "__muldsi3", TheModule);
-  LShr = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+  LShr = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                           "bitshift64Lshr", TheModule);
+  AShr = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                          "bitshift64Ashr", TheModule);
 
   SmallVector<Type*, 0> GetHighArgTypes;
   FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
