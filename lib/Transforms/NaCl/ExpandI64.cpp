@@ -166,7 +166,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         case Instruction::Mul: F = Mul; break;
         default: assert(0);
       }
-      Instruction *Low = CopyDebug(CallInst::Create(F, Args, "", I), I); break;
+      Instruction *Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
       Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
       SplitInfo &Split = Splits[I];
       Split.ToFix.push_back(Low);
