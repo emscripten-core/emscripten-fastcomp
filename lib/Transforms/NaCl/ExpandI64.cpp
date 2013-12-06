@@ -285,7 +285,7 @@ bool ExpandI64::runOnModule(Module &M) {
 
     // Remove original illegal values
     for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
-      I->first->eraseFromParent(); // XXX must be commented out during development, to allow partial legalization
+      if (!getenv("I64DEV")) I->first->eraseFromParent(); // XXX during development
     }
   }
   return Changed;
