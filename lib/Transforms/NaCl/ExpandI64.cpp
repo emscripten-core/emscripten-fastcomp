@@ -322,7 +322,7 @@ void ExpandI64::ensureFuncs() {
   Sub = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "i64Subtract", TheModule);
   Mul = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
-                         "__muldsi3", TheModule);
+                         "__muldi3", TheModule);
   SDiv = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "__divdi3", TheModule);
   UDiv = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
