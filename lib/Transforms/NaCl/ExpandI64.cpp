@@ -57,6 +57,10 @@ namespace {
 
   typedef std::vector<Instruction*> SplitInstrs;
 
+  // The tricky part in all this pass is that we legalize many instructions that interdepend on each
+  // other. So we do one pass where we create the new legal instructions but leave the illegal ones
+  // in place, then a second where we hook up the legal ones to the other legal ones, and only
+  // then do we remove the illegal ones.
   struct SplitInfo {
     SplitInstrs ToFix;  // new instrs, which we fix up later with proper legalized input (if they received illegal input)
     LowHighPair LowHigh; // low and high parts of the legalized output, if the output was illegal
@@ -83,7 +87,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *GetHigh;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *GetHigh, *SetHigh;
 
     void ensureFuncs();
 
@@ -94,7 +98,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = GetHigh = NULL;
+      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = GetHigh = SetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -186,6 +190,17 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       SH->setAlignment(SI->getAlignment());
       break;
     }
+    case Instruction::Ret: {
+      ensureFuncs();
+      SmallVector<Value *, 1> Args;
+      Args.push_back(Zero); // will be fixed 
+      Instruction *Low = CopyDebug(CallInst::Create(SetHigh, Args, "", I), I);
+      Instruction *High = CopyDebug(ReturnInst::Create(I->getContext(), Zero, I), I); // will be fixed
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(Low);
+      Split.ToFix.push_back(High);
+      break;
+    }
     case Instruction::Add:
     case Instruction::Sub:
     case Instruction::Mul:
@@ -260,7 +275,9 @@ void ExpandI64::finalizeInst(Instruction *I) {
       I->replaceAllUsesWith(LowHigh.Low);
       break;
     }
-    case Instruction::Store: {
+    case Instruction::Store:
+    case Instruction::Ret: {
+      // generic fix of an instruction with one 64-bit input, and consisting of two legal instructions, for low and high
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
       Split.ToFix[0]->setOperand(0, LowHigh.Low);
       Split.ToFix[1]->setOperand(0, LowHigh.High);
@@ -323,6 +340,12 @@ void ExpandI64::ensureFuncs() {
   FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
   GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
                              "getHigh32", TheModule);
+
+  SmallVector<Type*, 1> SetHighArgTypes;
+  SetHighArgTypes.push_back(i32);
+  FunctionType *SetHighFunc = FunctionType::get(i32, SetHighArgTypes, false);
+  SetHigh = Function::Create(SetHighFunc, GlobalValue::ExternalLinkage,
+                             "setHigh32", TheModule);
 }
 
 bool ExpandI64::runOnModule(Module &M) {
