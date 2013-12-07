@@ -62,11 +62,11 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
 })
 
 DEF_CALL_HANDLER(bitshift64Lshr, {
-  return CH___default__(CI, "_bitShift64LShr", 3) + "|0";
+  return CH___default__(CI, "_bitshift64Lshr", 3) + "|0";
 })
 
 DEF_CALL_HANDLER(bitshift64Ashr, {
-  return CH___default__(CI, "_bitShift64Ashr", 3) + "|0";
+  return CH___default__(CI, "_bitshift64Ashr", 3) + "|0";
 })
 
 #define DEF_REDIRECT_HANDLER_i(name, to) \
