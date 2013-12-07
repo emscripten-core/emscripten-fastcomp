@@ -235,6 +235,18 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = High;
       break;
     }
+    case Instruction::Select: {
+      Value *Cond = I->getOperand(0);
+
+      Instruction *L = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
+      Instruction *H = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(L);
+      Split.ToFix.push_back(H);
+      Split.LowHigh.Low = L;
+      Split.LowHigh.High = H;
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -305,6 +317,16 @@ void ExpandI64::finalizeInst(Instruction *I) {
       // TODO fix the arguments to the call
       break;
     }
+    case Instruction::Select: {
+      LowHighPair TrueLH = getLowHigh(I->getOperand(1));
+      LowHighPair FalseLH = getLowHigh(I->getOperand(2));
+      Instruction *L = Split.ToFix[0];
+      Instruction *H = Split.ToFix[1];
+      L->setOperand(1, TrueLH.Low);  L->setOperand(2, FalseLH.Low);
+      H->setOperand(1, TrueLH.High); H->setOperand(2, FalseLH.High);
+      break;
+    }
+    default: assert(0);
   }
 }
 
