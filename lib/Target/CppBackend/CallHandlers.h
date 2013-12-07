@@ -35,7 +35,7 @@ DEF_CALL_HANDLER(__default__, {
 })
 
 DEF_CALL_HANDLER(getHigh32, {
-  return "tempRet0";
+  return getAssign(getCppName(CI), CI->getType()) + "tempRet0";
 })
 
 DEF_CALL_HANDLER(setHigh32, {
