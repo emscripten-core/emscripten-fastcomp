@@ -341,9 +341,11 @@ void ExpandI64::ensureFuncs() {
   GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
                              "getHigh32", TheModule);
 
+  Type *V = Type::getVoidTy(TheModule->getContext());
+
   SmallVector<Type*, 1> SetHighArgTypes;
   SetHighArgTypes.push_back(i32);
-  FunctionType *SetHighFunc = FunctionType::get(i32, SetHighArgTypes, false);
+  FunctionType *SetHighFunc = FunctionType::get(V, SetHighArgTypes, false);
   SetHigh = Function::Create(SetHighFunc, GlobalValue::ExternalLinkage,
                              "setHigh32", TheModule);
 }
