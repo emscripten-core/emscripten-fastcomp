@@ -204,6 +204,7 @@ LowHighPair ExpandI64::getLowHigh(Value *V) {
     LowHighPair LowHigh;
     LowHigh.Low = ConstantInt::get(i32, (uint32_t)C);
     LowHigh.High = ConstantInt::get(i32, (uint32_t)(C >> 32));
+    assert(LowHigh.Low && LowHigh.High);
     return LowHigh;
   } else {
     Instruction *I = dyn_cast<Instruction>(V);
@@ -213,6 +214,7 @@ LowHighPair ExpandI64::getLowHigh(Value *V) {
       LowHighPair LowHigh;
       LowHigh.Low = ConstantInt::get(i32, 13);
       LowHigh.High = ConstantInt::get(i32, 37);
+      assert(LowHigh.Low && LowHigh.High);
       return LowHigh;
     }
     return Splits[I].LowHigh;
@@ -232,7 +234,6 @@ void ExpandI64::finalizeInst(Instruction *I) {
     }
     case Instruction::Store: {
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
-      assert(LowHigh.Low && LowHigh.High);
       Split.ToFix[0]->setOperand(0, LowHigh.Low);
       Split.ToFix[1]->setOperand(0, LowHigh.High);
       break;
@@ -241,6 +242,13 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::Mul:
     case Instruction::LShr:
     case Instruction::AShr: {
+      LowHighPair LeftLH = getLowHigh(I->getOperand(0));
+      LowHighPair RightLH = getLowHigh(I->getOperand(1));
+      Instruction *Call = Split.ToFix[0];
+      Call->setOperand(0, LeftLH.Low);
+      Call->setOperand(1, LeftLH.High);
+      Call->setOperand(2, RightLH.Low);
+      Call->setOperand(3, RightLH.High);
       // TODO fix the arguments to the call
       break;
     }
