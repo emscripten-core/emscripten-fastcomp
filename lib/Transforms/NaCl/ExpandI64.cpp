@@ -111,7 +111,7 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 
 void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
   Type *i32 = Type::getInt32Ty(I->getContext());
-  Type *i32P = i32->getPointerTo(); // XXX DL->getIntPtrType(I->getContext())
+  Type *i32P = i32->getPointerTo();
   Value *Zero  = Constant::getNullValue(i32);
   Value *Ones  = Constant::getAllOnesValue(i32);
 
@@ -193,7 +193,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = High;
       break;
     }
-    //default: // FIXME: abort if we hit something we don't support
+    default: assert(0 && "some i64 thing we can't legalize yet");
   }
 }
 
