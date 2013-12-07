@@ -151,6 +151,23 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Splits[I];
       break;
     }
+    case Instruction::Load: {
+      LoadInst *LI = dyn_cast<LoadInst>(I);
+
+      Instruction *AI = CopyDebug(new PtrToIntInst(LI->getPointerOperand(), i32, "", I), I);
+      Instruction *P4 = CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(i32, 4), "", I), I);
+      Instruction *LP = CopyDebug(new IntToPtrInst(AI, i32P, "", I), I);
+      Instruction *HP = CopyDebug(new IntToPtrInst(P4, i32P, "", I), I);
+      LoadInst *LL = new LoadInst(LP, "", I); CopyDebug(LL, I);
+      LoadInst *LH = new LoadInst(HP, "", I); CopyDebug(LH, I);
+      SplitInfo &Split = Splits[I];
+      Split.LowHigh.Low = LL;
+      Split.LowHigh.High = LH;
+
+      LL->setAlignment(LI->getAlignment());
+      LH->setAlignment(LI->getAlignment());
+      break;
+    }
     case Instruction::Store: {
       // store i64 A, i64* P  =>  ai = P ; P4 = ai+4 ; lp = P to i32* ; hp = P4 to i32* ; store l, lp ; store h, hp
       StoreInst *SI = dyn_cast<StoreInst>(I);
@@ -234,6 +251,7 @@ LowHighPair ExpandI64::getLowHigh(Value *V) {
 void ExpandI64::finalizeInst(Instruction *I) {
   SplitInfo &Split = Splits[I];
   switch (I->getOpcode()) {
+    case Instruction::Load:
     case Instruction::SExt:
     case Instruction::ZExt: break; // input was legal
     case Instruction::Trunc: {
