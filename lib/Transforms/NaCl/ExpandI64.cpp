@@ -235,7 +235,10 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = High;
       break;
     }
-    default: assert(0 && "some i64 thing we can't legalize yet");
+    default: {
+      dumpIR(I);
+      assert(0 && "some i64 thing we can't legalize yet");
+    }
   }
 }
 
@@ -364,18 +367,14 @@ bool ExpandI64::runOnModule(Module &M) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
         Instruction *I = Iter++;
-        Type *T = I->getType();
-        if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
-          Changed = true;
-          splitInst(I, DL);
-          continue;
-        }
-        if (I->getNumOperands() >= 1) {
-          T = I->getOperand(0)->getType();
+        // FIXME: this could be optimized, we don't need all Num for all instructions
+        int Num = I->getNumOperands();
+        for (int i = -1; i < Num; i++) { // -1 is the type of I itself
+          Type *T = i == -1 ? I->getType() : I->getOperand(i)->getType();
           if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
             Changed = true;
             splitInst(I, DL);
-            continue;
+            break;
           }
         }
       }
