@@ -34,6 +34,14 @@ DEF_CALL_HANDLER(__default__, {
   return text;
 })
 
+DEF_CALL_HANDLER(getHigh32, {
+  return "tempRet0";
+})
+
+DEF_CALL_HANDLER(setHigh32, {
+  return "tempRet0 = " + getValueAsStr(CI->getArgOperand(0));
+})
+
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
   return "HEAP32[" + getValueAsStr(CI->getArgOperand(0)) + ">>2]=" + getValueAsStr(CI->getArgOperand(1));
 })
@@ -72,6 +80,8 @@ void setupCallHandlers() {
     (*CallHandlers)[std::string("_") + #Ident] = &CppWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
+  SETUP_CALL_HANDLER(getHigh32);
+  SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_store_i32);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
