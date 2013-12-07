@@ -83,7 +83,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Mul, *LShr, *AShr, *GetHigh;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *GetHigh;
 
     void ensureFuncs();
 
@@ -94,7 +94,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = Mul = LShr = AShr = GetHigh = NULL;
+      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = GetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -170,7 +170,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Add:
+    case Instruction::Sub:
     case Instruction::Mul:
+    case Instruction::SDiv:
+    case Instruction::UDiv:
+    case Instruction::SRem:
+    case Instruction::URem:
     case Instruction::LShr:
     case Instruction::AShr: {
       ensureFuncs();
@@ -179,7 +184,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       unsigned NumArgs = 4;
       switch (I->getOpcode()) {
         case Instruction::Add:  F = Add;  break;
+        case Instruction::Sub:  F = Sub;  break;
         case Instruction::Mul:  F = Mul;  break;
+        case Instruction::SDiv: F = SDiv;  break;
+        case Instruction::UDiv: F = UDiv;  break;
+        case Instruction::SRem: F = SRem;  break;
+        case Instruction::URem: F = URem;  break;
         case Instruction::LShr: F = LShr; break;
         case Instruction::AShr: F = AShr; break;
         default: assert(0);
@@ -239,7 +249,12 @@ void ExpandI64::finalizeInst(Instruction *I) {
       break;
     }
     case Instruction::Add:
+    case Instruction::Sub:
     case Instruction::Mul:
+    case Instruction::SDiv:
+    case Instruction::UDiv:
+    case Instruction::SRem:
+    case Instruction::URem:
     case Instruction::LShr:
     case Instruction::AShr: {
       LowHighPair LeftLH = getLowHigh(I->getOperand(0));
@@ -269,8 +284,18 @@ void ExpandI64::ensureFuncs() {
 
   Add = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "i64Add", TheModule);
+  Sub = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                         "i64Sub", TheModule);
   Mul = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                          "__muldsi3", TheModule);
+  SDiv = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                         "__divdi3", TheModule);
+  UDiv = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                         "__udivdi3", TheModule);
+  SRem = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                         "__remdi3", TheModule);
+  URem = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                         "__uremdi3", TheModule);
   LShr = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                           "bitshift64Lshr", TheModule);
   AShr = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
