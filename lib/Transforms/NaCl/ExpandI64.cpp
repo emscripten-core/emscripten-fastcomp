@@ -247,6 +247,23 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = H;
       break;
     }
+    case Instruction::PHI: {
+      PHINode *P = dyn_cast<PHINode>(I);
+      int Num = P->getNumIncomingValues();
+
+      PHINode *L = PHINode::Create(i32, Num, "", I); CopyDebug(L, I);
+      PHINode *H = PHINode::Create(i32, Num, "", I); CopyDebug(H, I);
+      for (int i = 0; i < Num; i++) {
+        L->addIncoming(Zero, P->getIncomingBlock(i)); // will be fixed
+        H->addIncoming(Zero, P->getIncomingBlock(i)); // will be fixed
+      }
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(L);
+      Split.ToFix.push_back(H);
+      Split.LowHigh.Low = L;
+      Split.LowHigh.High = H;
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -324,6 +341,18 @@ void ExpandI64::finalizeInst(Instruction *I) {
       Instruction *H = Split.ToFix[1];
       L->setOperand(1, TrueLH.Low);  L->setOperand(2, FalseLH.Low);
       H->setOperand(1, TrueLH.High); H->setOperand(2, FalseLH.High);
+      break;
+    }
+    case Instruction::PHI: {
+      PHINode *P = dyn_cast<PHINode>(I);
+      int Num = P->getNumIncomingValues();
+      PHINode *L = dyn_cast<PHINode>(Split.ToFix[0]);
+      PHINode *H = dyn_cast<PHINode>(Split.ToFix[1]);
+      for (int i = 0; i < Num; i++) {
+        LowHighPair LH = getLowHigh(P->getIncomingValue(i));
+        L->setIncomingValue(i, LH.Low);
+        H->setIncomingValue(i, LH.High);
+      }
       break;
     }
     default: assert(0);
