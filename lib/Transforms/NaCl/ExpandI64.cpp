@@ -497,6 +497,22 @@ bool ExpandI64::runOnModule(Module &M) {
 
     // Remove original illegal values
     if (!getenv("I64DEV")) { // XXX during development
+      // First, unlink them
+      Type *i64 = Type::getInt64Ty(TheModule->getContext());
+      Value *Zero  = Constant::getNullValue(i64);
+      for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
+        //dump("unlink"); dumpIR(I->first);
+        int Num = I->first->getNumOperands();
+        for (int i = 0; i < Num; i++) { // -1 is the type of I itself
+          Value *V = I->first->getOperand(i);
+          Type *T = V->getType();
+          if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
+            I->first->setOperand(i, Zero);
+          }
+        }
+      }
+
+      // Now actually remove them
       for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
         //dump("delete"); dumpIR(I->first);
         I->first->eraseFromParent();
