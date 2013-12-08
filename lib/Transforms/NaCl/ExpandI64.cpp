@@ -212,21 +212,20 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::AShr: {
       ensureFuncs();
       Function *F;
-      SmallVector<Value *, 4> Args;
-      unsigned NumArgs = 4;
       switch (I->getOpcode()) {
         case Instruction::Add:  F = Add;  break;
         case Instruction::Sub:  F = Sub;  break;
         case Instruction::Mul:  F = Mul;  break;
-        case Instruction::SDiv: F = SDiv;  break;
-        case Instruction::UDiv: F = UDiv;  break;
-        case Instruction::SRem: F = SRem;  break;
-        case Instruction::URem: F = URem;  break;
+        case Instruction::SDiv: F = SDiv; break;
+        case Instruction::UDiv: F = UDiv; break;
+        case Instruction::SRem: F = SRem; break;
+        case Instruction::URem: F = URem; break;
         case Instruction::LShr: F = LShr; break;
         case Instruction::AShr: F = AShr; break;
         default: assert(0);
       }
-      for (unsigned i = 0; i < NumArgs; i++) Args.push_back(Zero); // will be fixed 
+      SmallVector<Value *, 4> Args;
+      for (unsigned i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
       Instruction *Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
       Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
       SplitInfo &Split = Splits[I];
@@ -235,16 +234,22 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = High;
       break;
     }
+    case Instruction::ICmp: {
+      Instruction *L = CopyDebug(new ICmpInst(I, dyn_cast<ICmpInst>(I)->getPredicate(), Zero, Zero), I);
+      Instruction *H = CopyDebug(new ICmpInst(I, dyn_cast<ICmpInst>(I)->getPredicate(), Zero, Zero), I);
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(L);
+      Split.ToFix.push_back(H);
+      break;
+    }
     case Instruction::Select: {
       Value *Cond = I->getOperand(0);
 
       Instruction *L = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
       Instruction *H = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
       SplitInfo &Split = Splits[I];
-      Split.ToFix.push_back(L);
-      Split.ToFix.push_back(H);
-      Split.LowHigh.Low = L;
-      Split.LowHigh.High = H;
+      Split.ToFix.push_back(L); Split.LowHigh.Low  = L;
+      Split.ToFix.push_back(H); Split.LowHigh.High = H;
       break;
     }
     case Instruction::PHI: {
@@ -258,10 +263,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         H->addIncoming(Zero, P->getIncomingBlock(i)); // will be fixed
       }
       SplitInfo &Split = Splits[I];
-      Split.ToFix.push_back(L);
-      Split.ToFix.push_back(H);
-      Split.LowHigh.Low = L;
-      Split.LowHigh.High = H;
+      Split.ToFix.push_back(L); Split.LowHigh.Low  = L;
+      Split.ToFix.push_back(H); Split.LowHigh.High = H;
       break;
     }
     default: {
@@ -331,7 +334,15 @@ void ExpandI64::finalizeInst(Instruction *I) {
       Call->setOperand(1, LeftLH.High);
       Call->setOperand(2, RightLH.Low);
       Call->setOperand(3, RightLH.High);
-      // TODO fix the arguments to the call
+      break;
+    }
+    case Instruction::ICmp: {
+      LowHighPair LeftLH = getLowHigh(I->getOperand(0));
+      LowHighPair RightLH = getLowHigh(I->getOperand(1));
+      Instruction *L = Split.ToFix[0];
+      Instruction *H = Split.ToFix[1];
+      L->setOperand(0, LeftLH.Low);  L->setOperand(1, RightLH.Low);
+      H->setOperand(0, LeftLH.High); H->setOperand(1, RightLH.High);
       break;
     }
     case Instruction::Select: {
