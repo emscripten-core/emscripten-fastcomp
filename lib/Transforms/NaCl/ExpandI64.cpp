@@ -376,7 +376,7 @@ void ExpandI64::finalizeInst(Instruction *I) {
       Instruction *A = Split.ToFix[0];
       Instruction *B = Split.ToFix[1];
       Instruction *C = Split.ToFix[2];
-      Instruction *Final = Split.ToFix[4];
+      Instruction *Final = Split.ToFix[3];
       if (!C) { // EQ, NE
         A->setOperand(0, LeftLH.Low);  A->setOperand(1, RightLH.Low);
         B->setOperand(0, LeftLH.High); B->setOperand(1, RightLH.High);
