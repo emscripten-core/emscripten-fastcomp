@@ -237,9 +237,11 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::ICmp: {
       Instruction *L = CopyDebug(new ICmpInst(I, dyn_cast<ICmpInst>(I)->getPredicate(), Zero, Zero), I);
       Instruction *H = CopyDebug(new ICmpInst(I, dyn_cast<ICmpInst>(I)->getPredicate(), Zero, Zero), I);
+      Instruction *Combine = CopyDebug(BinaryOperator::Create(Instruction::Xor, L, H, "", I), I);
       SplitInfo &Split = Splits[I];
       Split.ToFix.push_back(L);
       Split.ToFix.push_back(H);
+      Split.ToFix.push_back(Combine);
       break;
     }
     case Instruction::Select: {
@@ -343,6 +345,7 @@ void ExpandI64::finalizeInst(Instruction *I) {
       Instruction *H = Split.ToFix[1];
       L->setOperand(0, LeftLH.Low);  L->setOperand(1, RightLH.Low);
       H->setOperand(0, LeftLH.High); H->setOperand(1, RightLH.High);
+      I->replaceAllUsesWith(Split.ToFix[2]);
       break;
     }
     case Instruction::Select: {
@@ -429,12 +432,14 @@ bool ExpandI64::runOnModule(Module &M) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
         Instruction *I = Iter++;
+        //dump("consider"); dumpIR(I);
         // FIXME: this could be optimized, we don't need all Num for all instructions
         int Num = I->getNumOperands();
         for (int i = -1; i < Num; i++) { // -1 is the type of I itself
           Type *T = i == -1 ? I->getType() : I->getOperand(i)->getType();
           if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
             Changed = true;
+            //dump("split"); dumpIR(I);
             splitInst(I, DL);
             break;
           }
@@ -446,12 +451,16 @@ bool ExpandI64::runOnModule(Module &M) {
   if (Changed) {
     // Finalize each element
     for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
+      //dump("finalize"); dumpIR(I->first);
       finalizeInst(I->first);
     }
 
     // Remove original illegal values
-    for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
-      if (!getenv("I64DEV")) I->first->eraseFromParent(); // XXX during development
+    if (!getenv("I64DEV")) { // XXX during development
+      for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
+        //dump("delete"); dumpIR(I->first);
+        I->first->eraseFromParent();
+      }
     }
   }
   return Changed;
