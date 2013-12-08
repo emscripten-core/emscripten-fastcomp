@@ -87,7 +87,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *GetHigh, *SetHigh;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh;
 
     void ensureFuncs();
 
@@ -98,7 +98,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = GetHigh = SetHigh = NULL;
+      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = Shl = GetHigh = SetHigh = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -209,7 +209,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::SRem:
     case Instruction::URem:
     case Instruction::LShr:
-    case Instruction::AShr: {
+    case Instruction::AShr:
+    case Instruction::Shl: {
       ensureFuncs();
       Function *F;
       switch (I->getOpcode()) {
@@ -222,6 +223,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         case Instruction::URem: F = URem; break;
         case Instruction::LShr: F = LShr; break;
         case Instruction::AShr: F = AShr; break;
+        case Instruction::Shl:  F = Shl; break;
         default: assert(0);
       }
       SmallVector<Value *, 4> Args;
@@ -360,7 +362,8 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::SRem:
     case Instruction::URem:
     case Instruction::LShr:
-    case Instruction::AShr: {
+    case Instruction::AShr:
+    case Instruction::Shl: {
       LowHighPair LeftLH = getLowHigh(I->getOperand(0));
       LowHighPair RightLH = getLowHigh(I->getOperand(1));
       Instruction *Call = Split.ToFix[0];
@@ -443,6 +446,8 @@ void ExpandI64::ensureFuncs() {
                           "bitshift64Lshr", TheModule);
   AShr = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                           "bitshift64Ashr", TheModule);
+  Shl = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
+                          "bitshift64Shl", TheModule);
 
   SmallVector<Type*, 0> GetHighArgTypes;
   FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
