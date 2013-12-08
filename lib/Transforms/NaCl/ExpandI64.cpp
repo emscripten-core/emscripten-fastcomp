@@ -235,13 +235,45 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::ICmp: {
-      Instruction *L = CopyDebug(new ICmpInst(I, dyn_cast<ICmpInst>(I)->getPredicate(), Zero, Zero), I);
-      Instruction *H = CopyDebug(new ICmpInst(I, dyn_cast<ICmpInst>(I)->getPredicate(), Zero, Zero), I);
-      Instruction *Combine = CopyDebug(BinaryOperator::Create(Instruction::Xor, L, H, "", I), I);
+      Instruction *A, *B, *C = NULL, *D = NULL, *Final;
+      ICmpInst *CE = dyn_cast<ICmpInst>(I);
+      ICmpInst::Predicate Pred = CE->getPredicate();
+      switch (Pred) {
+        case ICmpInst::ICMP_EQ: {
+          A = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
+          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
+          Final = CopyDebug(BinaryOperator::Create(Instruction::And, A, B, "", I), I);
+          break;
+        }
+        case ICmpInst::ICMP_NE: {
+          A = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_NE, Zero, Zero), I);
+          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_NE, Zero, Zero), I);
+          Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, B, "", I), I);
+          break;
+        }
+        case ICmpInst::ICMP_ULT:
+        case ICmpInst::ICMP_SLT:
+        case ICmpInst::ICMP_UGT:
+        case ICmpInst::ICMP_SGT:
+        case ICmpInst::ICMP_ULE:
+        case ICmpInst::ICMP_SLE:
+        case ICmpInst::ICMP_UGE:
+        case ICmpInst::ICMP_SGE: {
+          A = CopyDebug(new ICmpInst(I, Pred, Zero, Zero), I);
+          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
+          C = CopyDebug(new ICmpInst(I, Pred, Zero, Zero), I);
+          D = CopyDebug(BinaryOperator::Create(Instruction::And, B, C, "", I), I);
+          Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, D, "", I), I);
+          break;
+        }
+        default: assert(0);
+      }
       SplitInfo &Split = Splits[I];
-      Split.ToFix.push_back(L);
-      Split.ToFix.push_back(H);
-      Split.ToFix.push_back(Combine);
+      Split.ToFix.push_back(A);
+      Split.ToFix.push_back(B);
+      Split.ToFix.push_back(C);
+      // D is NULL or a logical operator, no need to fix it
+      Split.ToFix.push_back(Final);
       break;
     }
     case Instruction::Select: {
@@ -341,11 +373,19 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::ICmp: {
       LowHighPair LeftLH = getLowHigh(I->getOperand(0));
       LowHighPair RightLH = getLowHigh(I->getOperand(1));
-      Instruction *L = Split.ToFix[0];
-      Instruction *H = Split.ToFix[1];
-      L->setOperand(0, LeftLH.Low);  L->setOperand(1, RightLH.Low);
-      H->setOperand(0, LeftLH.High); H->setOperand(1, RightLH.High);
-      I->replaceAllUsesWith(Split.ToFix[2]);
+      Instruction *A = Split.ToFix[0];
+      Instruction *B = Split.ToFix[1];
+      Instruction *C = Split.ToFix[2];
+      Instruction *Final = Split.ToFix[4];
+      if (!C) { // EQ, NE
+        A->setOperand(0, LeftLH.Low);  A->setOperand(1, RightLH.Low);
+        B->setOperand(0, LeftLH.High); B->setOperand(1, RightLH.High);
+      } else {
+        A->setOperand(0, LeftLH.Low);  A->setOperand(1, RightLH.Low);
+        B->setOperand(0, LeftLH.Low);  B->setOperand(1, RightLH.Low);
+        C->setOperand(0, LeftLH.High); C->setOperand(1, RightLH.High);
+      }
+      I->replaceAllUsesWith(Final);
       break;
     }
     case Instruction::Select: {
