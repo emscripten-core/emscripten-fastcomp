@@ -303,6 +303,22 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.ToFix.push_back(H); Split.LowHigh.High = H;
       break;
     }
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor: {
+      Instruction::BinaryOps Op;
+      switch (I->getOpcode()) { // XXX why does llvm make us do this?
+        case Instruction::And: Op = Instruction::And; break;
+        case Instruction::Or:  Op = Instruction::Or;  break;
+        case Instruction::Xor: Op = Instruction::Xor; break;
+      }
+      Instruction *L = CopyDebug(BinaryOperator::Create(Op, Zero, Zero, "", I), I);
+      Instruction *H = CopyDebug(BinaryOperator::Create(Op, Zero, Zero, "", I), I);
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(L); Split.LowHigh.Low  = L;
+      Split.ToFix.push_back(H); Split.LowHigh.High = H;
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -410,6 +426,17 @@ void ExpandI64::finalizeInst(Instruction *I) {
         L->setIncomingValue(i, LH.Low);
         H->setIncomingValue(i, LH.High);
       }
+      break;
+    }
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor: {
+      LowHighPair LeftLH = getLowHigh(I->getOperand(0));
+      LowHighPair RightLH = getLowHigh(I->getOperand(1));
+      Instruction *L = Split.ToFix[0];
+      Instruction *H = Split.ToFix[1];
+      L->setOperand(0, LeftLH.Low);  L->setOperand(1, RightLH.Low);
+      H->setOperand(0, LeftLH.High); H->setOperand(1, RightLH.High);
       break;
     }
     default: assert(0);
