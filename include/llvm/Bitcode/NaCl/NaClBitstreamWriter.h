@@ -61,6 +61,29 @@ class NaClBitstreamWriter {
   };
   std::vector<BlockInfo> BlockInfoRecords;
 
+  /// AbbrevValues - Wrapper class that allows the bitstream writer to
+  /// prefix a code to the set of values, associated with a record to
+  /// emit, without having to destructively change the contents of
+  /// values.
+  template<typename uintty>
+  struct AbbrevValues {
+    AbbrevValues(uintty Code, const SmallVectorImpl<uintty> &Values)
+        : Code(Code), Values(Values) {}
+
+    size_t size() const {
+      return Values.size() + 1;
+    }
+
+    uintty operator[](size_t Index) const {
+      return Index == 0 ? Code : Values[Index-1];
+    }
+
+  private:
+    // The code to use (if not DONT_USE_CODE).
+    uintty Code;
+    const SmallVectorImpl<uintty> &Values;
+  };
+
 public:
   // BackpatchWord - Backpatch a 32-bit word in the output with the specified
   // value.
@@ -349,7 +372,7 @@ private:
   /// emission code.
   template<typename uintty>
   void EmitRecordWithAbbrevImpl(unsigned Abbrev,
-                                SmallVectorImpl<uintty> &Vals) {
+                                const AbbrevValues<uintty> &Vals) {
     unsigned AbbrevNo = Abbrev-naclbitc::FIRST_APPLICATION_ABBREV;
     assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
     NaClBitCodeAbbrev *Abbv = CurAbbrevs[AbbrevNo];
@@ -391,7 +414,7 @@ public:
   /// EmitRecord - Emit the specified record to the stream, using an abbrev if
   /// we have one to compress the output.
   template<typename uintty>
-  void EmitRecord(unsigned Code, SmallVectorImpl<uintty> &Vals,
+  void EmitRecord(unsigned Code, const SmallVectorImpl<uintty> &Vals,
                   unsigned Abbrev = 0) {
     if (!Abbrev) {
       // If we don't have an abbrev to use, emit this in its fully unabbreviated
@@ -404,18 +427,9 @@ public:
       return;
     }
 
-    // Insert the code into Vals to treat it uniformly.
-    Vals.insert(Vals.begin(), Code);
-
-    EmitRecordWithAbbrev(Abbrev, Vals);
-  }
-
-  /// EmitRecordWithAbbrev - Emit a record with the specified abbreviation.
-  /// Unlike EmitRecord, the code for the record should be included in Vals as
-  /// the first entry.
-  template<typename uintty>
-  void EmitRecordWithAbbrev(unsigned Abbrev, SmallVectorImpl<uintty> &Vals) {
-    EmitRecordWithAbbrevImpl(Abbrev, Vals);
+    // combine code and values, and then emit.
+    AbbrevValues<uintty> AbbrevVals(Code, Vals);
+    EmitRecordWithAbbrevImpl(Abbrev, AbbrevVals);
   }
 
   //===--------------------------------------------------------------------===//
