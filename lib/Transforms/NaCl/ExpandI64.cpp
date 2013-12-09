@@ -90,7 +90,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh;
 
     void ensureFuncs();
 
@@ -394,6 +394,17 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.ToFix.push_back(H); Split.LowHigh.High = H;
       break;
     }
+    case Instruction::FPToSI: {
+      ensureFuncs();
+      SmallVector<Value *, 1> Args;
+      Args.push_back(I->getOperand(0));
+      Instruction *L = CopyDebug(CallInst::Create(FPtoILow, Args, "", I), I);
+      Instruction *H = CopyDebug(CallInst::Create(FPtoIHigh, Args, "", I), I);
+      SplitInfo &Split = Splits[I];
+      Split.LowHigh.Low  = L;
+      Split.LowHigh.High = H;
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -430,7 +441,10 @@ void ExpandI64::finalizeInst(Instruction *I) {
   switch (I->getOpcode()) {
     case Instruction::Load:
     case Instruction::SExt:
-    case Instruction::ZExt: break; // input was legal
+    case Instruction::ZExt:
+    case Instruction::FPToSI: {
+      break; // input was legal
+    }
     case Instruction::Trunc: {
       assert(I->getType()->getIntegerBitWidth() == 32);
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
@@ -563,6 +577,14 @@ void ExpandI64::ensureFuncs() {
   FunctionType *SetHighFunc = FunctionType::get(V, SetHighArgTypes, false);
   SetHigh = Function::Create(SetHighFunc, GlobalValue::ExternalLinkage,
                              "setHigh32", TheModule);
+
+  SmallVector<Type*, 1> FPtoITypes;
+  SetHighArgTypes.push_back(Type::getDoubleTy(TheModule->getContext()));
+  FunctionType *FPtoIFunc = FunctionType::get(i32, FPtoITypes, false);
+  FPtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
+                              "FPtoILow", TheModule);
+  FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
+                               "FPtoIHigh", TheModule);
 }
 
 bool ExpandI64::runOnModule(Module &M) {
