@@ -73,6 +73,9 @@ namespace {
   class ExpandI64 : public ModulePass {
     SplitsMap Splits; // old i64 value to new insts
 
+    // If the function has an illegal return or argument, create a legal version
+    void ensureLegalFunc(Function *F);
+
     // splits a 64-bit instruction into 32-bit chunks. We do
     // not yet have the values yet, as they depend on other
     // splits, so store the parts in Splits, for FinalizeInst.
@@ -110,8 +113,48 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
                 "Expand and lower i64 operations into 32-bit chunks",
                 false, false)
 
-//static void ExpandI64Func(Function *Func) {
-//}
+// Utilities
+
+static bool isIllegal(Type *T) {
+  return T->isIntegerTy() && T->getIntegerBitWidth() == 64;
+}
+
+static FunctionType *getLegalizedFunctionType(FunctionType *FT) {
+  SmallVector<Type*, 0> ArgTypes; // XXX
+  int Num = FT->getNumParams();
+  for (int i = 0; i < Num; i++) {
+    Type *T = FT->getParamType(i);
+    if (!isIllegal(T)) {
+      ArgTypes.push_back(T);
+    } else {
+      Type *i32 = Type::getInt32Ty(FT->getContext());
+      ArgTypes.push_back(i32);
+      ArgTypes.push_back(i32);
+    }
+  }
+  Type *RT = FT->getReturnType();
+  Type *NewRT;
+  if (!isIllegal(RT)) {
+    NewRT = RT;
+  } else {
+    NewRT = Type::getInt32Ty(FT->getContext());
+  }
+  return FunctionType::get(NewRT, ArgTypes, false);
+}
+
+// Implementation of ExpandI64
+
+void ExpandI64::ensureLegalFunc(Function *F) {
+  FunctionType *FT = F->getFunctionType();
+  int Num = FT->getNumParams();
+  for (int i = -1; i < Num; i++) {
+    Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
+    if (isIllegal(T)) {
+      RecreateFunction(F, getLegalizedFunctionType(FT));
+      break;
+    }
+  }
+}
 
 void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
   Type *i32 = Type::getInt32Ty(I->getContext());
@@ -319,6 +362,38 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.ToFix.push_back(H); Split.LowHigh.High = H;
       break;
     }
+    case Instruction::Call: {
+      CallInst *CI = dyn_cast<CallInst>(I);
+      Function *F = CI->getCalledFunction();
+      dumpIR(CI);
+      dumpIR(F);
+      assert(F); // TODO: handle indirect i64-returning functions, varargs i64 functions, etc.
+      FunctionType *FT = dyn_cast<FunctionType>(F->getType());
+
+      // create a call with space for legal args
+      SmallVector<Value *, 0> Args; // XXX
+      int Num = FT->getNumParams();
+      for (int i = 0; i < Num; i++) {
+        Type *T = FT->getParamType(i);
+        if (!isIllegal(T)) {
+          Args.push_back(CI->getArgOperand(i));
+        } else {
+          Args.push_back(Zero); // will be fixed
+          Args.push_back(Zero);
+        }
+      }
+      Instruction *L = CopyDebug(CallInst::Create(F, Args, "", I), I);
+      Instruction *H = NULL;
+      // legalize return value as well, if necessary
+      if (isIllegal(I->getType())) {
+        H = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+      }
+
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(L); Split.LowHigh.Low  = L;
+      Split.ToFix.push_back(H); Split.LowHigh.High = H;
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -495,6 +570,12 @@ bool ExpandI64::runOnModule(Module &M) {
 
   bool Changed = false;
   DataLayout DL(&M);
+  // pre pass - legalize functions
+  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
+    Function *Func = Iter++;
+    ensureLegalFunc(Func);
+  }
+
   // first pass - split
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
     Function *Func = Iter++;
@@ -509,7 +590,7 @@ bool ExpandI64::runOnModule(Module &M) {
         int Num = I->getNumOperands();
         for (int i = -1; i < Num; i++) { // -1 is the type of I itself
           Type *T = i == -1 ? I->getType() : I->getOperand(i)->getType();
-          if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
+          if (isIllegal(T)) {
             Changed = true;
             //dump("split"); dumpIR(I);
             splitInst(I, DL);
@@ -538,7 +619,7 @@ bool ExpandI64::runOnModule(Module &M) {
         for (int i = 0; i < Num; i++) { // -1 is the type of I itself
           Value *V = I->first->getOperand(i);
           Type *T = V->getType();
-          if (T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
+          if (isIllegal(T)) {
             I->first->setOperand(i, Zero);
           }
         }
