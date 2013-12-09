@@ -151,6 +151,7 @@ void ExpandI64::ensureLegalFunc(Function *F) {
     Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
     if (isIllegal(T)) {
       RecreateFunction(F, getLegalizedFunctionType(FT));
+      // XXX need to legalize the params in the new function, so that they are used and not the old ones we replace
       break;
     }
   }
@@ -364,11 +365,23 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     }
     case Instruction::Call: {
       CallInst *CI = dyn_cast<CallInst>(I);
-      Function *F = CI->getCalledFunction();
-      dumpIR(CI);
-      dumpIR(F);
-      assert(F); // TODO: handle indirect i64-returning functions, varargs i64 functions, etc.
-      FunctionType *FT = dyn_cast<FunctionType>(F->getType());
+      Value *CV = CI->getCalledValue();
+dump("CE1");
+      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
+        assert(CE->getOpcode() == Instruction::BitCast);
+dump("CE"); dumpIR(CE);
+        CV = CE->getOperand(0); // we are legalizing the arguments now, so no need to bitcast any more
+dump("CV"); dumpIR(CV);
+      }
+dump("CE2");
+      Function *F = dyn_cast<Function>(CV);
+      if (!F) {
+        dump("CI"); dumpIR(CI);
+        dump("V"); dumpIR(CI->getCalledValue());
+        dump("CV"); dumpIR(CV);
+        assert(0); // TODO: handle indirect i64-returning functions, varargs i64 functions, etc.
+      }
+      FunctionType *FT = F->getFunctionType();
 
       // create a call with space for legal args
       SmallVector<Value *, 0> Args; // XXX
@@ -382,6 +395,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           Args.push_back(Zero);
         }
       }
+dumpv("calling with %d args, to something hasing %d args", Args.size(), F->getFunctionType()->getNumParams());
       Instruction *L = CopyDebug(CallInst::Create(F, Args, "", I), I);
       Instruction *H = NULL;
       // legalize return value as well, if necessary
@@ -398,6 +412,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       ensureFuncs();
       SmallVector<Value *, 1> Args;
       Args.push_back(I->getOperand(0));
+dumpv("argnums %d %d", Args.size(), FPtoILow->getFunctionType()->getNumParams());
       Instruction *L = CopyDebug(CallInst::Create(FPtoILow, Args, "", I), I);
       Instruction *H = CopyDebug(CallInst::Create(FPtoIHigh, Args, "", I), I);
       SplitInfo &Split = Splits[I];
@@ -528,7 +543,25 @@ void ExpandI64::finalizeInst(Instruction *I) {
       H->setOperand(0, LeftLH.High); H->setOperand(1, RightLH.High);
       break;
     }
-    default: assert(0);
+    case Instruction::Call: {
+      Instruction *L = Split.ToFix[0];
+      // H doesn't need to be fixed, it's just a call to getHigh
+
+      // fill in split parts of illegals
+      CallInst *CI = dyn_cast<CallInst>(L);
+      CallInst *OCI = dyn_cast<CallInst>(I);
+      int Num = OCI->getNumArgOperands();
+      for (int i = 0, j = 0; i < Num; i++, j++) {
+        if (isIllegal(OCI->getArgOperand(i)->getType())) {
+          LowHighPair LH = getLowHigh(OCI->getArgOperand(i));
+          CI->setArgOperand(j, LH.Low);
+          CI->setArgOperand(j + 1, LH.High);
+          j++;
+        }
+      }
+      break;
+    }
+    default: dumpIR(I); assert(0);
   }
 }
 
@@ -579,10 +612,11 @@ void ExpandI64::ensureFuncs() {
                              "setHigh32", TheModule);
 
   SmallVector<Type*, 1> FPtoITypes;
-  SetHighArgTypes.push_back(Type::getDoubleTy(TheModule->getContext()));
+  FPtoITypes.push_back(Type::getDoubleTy(TheModule->getContext()));
   FunctionType *FPtoIFunc = FunctionType::get(i32, FPtoITypes, false);
   FPtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                               "FPtoILow", TheModule);
+dumpv("argnums for fptoilow %d, %d", FPtoITypes.size(), FPtoILow->getFunctionType()->getNumParams());
   FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                                "FPtoIHigh", TheModule);
 }
