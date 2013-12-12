@@ -388,24 +388,31 @@ dump("CE2");
       int Num = FT->getNumParams();
       for (int i = 0; i < Num; i++) {
         Type *T = FT->getParamType(i);
+dump("argg");
         if (!isIllegal(T)) {
+dump(" legal");
           Args.push_back(CI->getArgOperand(i));
         } else {
+dump(" illegal!");
           Args.push_back(Zero); // will be fixed
           Args.push_back(Zero);
         }
       }
 dumpv("calling with %d args, to something hasing %d args", Args.size(), F->getFunctionType()->getNumParams());
       Instruction *L = CopyDebug(CallInst::Create(F, Args, "", I), I);
+dump("CE3");
       Instruction *H = NULL;
       // legalize return value as well, if necessary
       if (isIllegal(I->getType())) {
+        ensureFuncs();
         H = CopyDebug(CallInst::Create(GetHigh, "", I), I);
       }
+dump("CE4");
 
       SplitInfo &Split = Splits[I];
-      Split.ToFix.push_back(L); Split.LowHigh.Low  = L;
-      Split.ToFix.push_back(H); Split.LowHigh.High = H;
+      Split.ToFix.push_back(L);
+      Split.LowHigh.Low  = L;
+      Split.LowHigh.High = H;
       break;
     }
     case Instruction::FPToSI: {
