@@ -92,6 +92,8 @@ DEF_CALL_HANDLER(name, { \
 // Various simple redirects for our js libc, see library.js
 DEF_REDIRECT_HANDLER_i(putc, fputc);
 DEF_REDIRECT_HANDLER_i(__cxa_atexit, atexit);
+DEF_REDIRECT_HANDLER_i(ntohl, htonl);
+DEF_REDIRECT_HANDLER_i(ntohs, htons);
 
 // Setups
 
@@ -114,6 +116,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Shl);
   SETUP_CALL_HANDLER(putc);
   SETUP_CALL_HANDLER(__cxa_atexit);
+  SETUP_CALL_HANDLER(ntohl);
+  SETUP_CALL_HANDLER(ntohs);
 }
 
 std::string handleCall(const CallInst *CI) {
