@@ -94,6 +94,7 @@ DEF_REDIRECT_HANDLER_i(putc, fputc);
 DEF_REDIRECT_HANDLER_i(__cxa_atexit, atexit);
 DEF_REDIRECT_HANDLER_i(ntohl, htonl);
 DEF_REDIRECT_HANDLER_i(ntohs, htons);
+DEF_REDIRECT_HANDLER_i(atol, atoi);
 
 // Setups
 
@@ -118,6 +119,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(__cxa_atexit);
   SETUP_CALL_HANDLER(ntohl);
   SETUP_CALL_HANDLER(ntohs);
+  SETUP_CALL_HANDLER(atol);
 }
 
 std::string handleCall(const CallInst *CI) {
