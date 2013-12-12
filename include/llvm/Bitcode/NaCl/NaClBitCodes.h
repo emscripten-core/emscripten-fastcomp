@@ -243,7 +243,7 @@ static inline bool operator>(const NaClBitCodeAbbrevOp &Op1,
 /// abbreviation allows a complex record that has redundancy to be stored in a
 /// specialized format instead of the fully-general, fully-vbr, format.
 class NaClBitCodeAbbrev {
-  SmallVector<NaClBitCodeAbbrevOp, 32> OperandList;
+  SmallVector<NaClBitCodeAbbrevOp, 8> OperandList;
   unsigned char RefCount; // Number of things using this.
   ~NaClBitCodeAbbrev() {}
 public:
@@ -271,8 +271,6 @@ public:
       return -1;
     else if (OperandListSize > AbbrevOperandListSize)
       return 1;
-    else
-      return 0;
 
     // Same number of operands, so compare element by element.
     for (size_t I = 0; I < OperandListSize; ++I) {

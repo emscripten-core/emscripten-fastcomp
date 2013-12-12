@@ -271,7 +271,7 @@ public:
 
   // Called when error occurs. Message is the error to report. Always
   // returns true (the error return value of Parse).
-  virtual bool Error(const std::string Message) {
+  virtual bool Error(const std::string &Message) {
     errs() << "Error: " << Message << "\n";
     return true;
   }

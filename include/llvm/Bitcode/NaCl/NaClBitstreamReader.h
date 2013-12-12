@@ -17,11 +17,11 @@
 #define LLVM_BITCODE_NACL_NACLBITSTREAMREADER_H
 
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/StreamableMemoryObject.h"
 #include <climits>
-#include <string>
 #include <vector>
 
 namespace llvm {
@@ -98,6 +98,13 @@ public:
   /// block info block for this Bitstream.  We only process it for the first
   /// cursor that walks over it.
   bool hasBlockInfoRecords() const { return !BlockInfoRecords.empty(); }
+
+  /// Gets the set of blocks defined in the block info records structure.
+  void GetBlockInfoBlockIDs(SmallVectorImpl<unsigned> &Out) {
+    for (size_t i = 0, e = BlockInfoRecords.size(); i != e; ++i) {
+      Out.push_back(BlockInfoRecords[i].BlockID);
+    }
+  }
 
   /// getBlockInfo - If there is block info for the specified ID, return it,
   /// otherwise return null.
@@ -528,6 +535,13 @@ public:
     unsigned AbbrevNo = AbbrevID-naclbitc::FIRST_APPLICATION_ABBREV;
     assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
     return CurAbbrevs[AbbrevNo];
+  }
+
+  /// Returns the last (i.e. newest) abbreviation added to the current
+  /// block.
+  const NaClBitCodeAbbrev *GetNewestAbbrev() {
+    assert(CurAbbrevs.size() && "No newest abbrev!");
+    return CurAbbrevs.back();
   }
 
   /// skipRecord - Read the current record and discard it.
