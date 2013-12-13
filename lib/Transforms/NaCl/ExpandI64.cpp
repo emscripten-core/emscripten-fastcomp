@@ -78,6 +78,9 @@ namespace {
     // If the function has an illegal return or argument, create a legal version
     void ensureLegalFunc(Function *F);
 
+    // If a function is illegal, remove it
+    void removeIllegalFunc(Function *F);
+
     // splits a 64-bit instruction into 32-bit chunks. We do
     // not yet have the values yet, as they depend on other
     // splits, so store the parts in Splits, for FinalizeInst.
@@ -181,7 +184,18 @@ dumpv("rename %s => %s", CName, NewName);
           if (NewArg->hasName()) LH.High->setName(NewArg->getName() + "_high");
         }
       }
-      // TODO: F->eraseFromParent();
+      break;
+    }
+  }
+}
+
+void ExpandI64::removeIllegalFunc(Function *F) {
+  FunctionType *FT = F->getFunctionType();
+  int Num = FT->getNumParams();
+  for (int i = -1; i < Num; i++) {
+    Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
+    if (isIllegal(T)) {
+      F->eraseFromParent();
       break;
     }
   }
@@ -754,6 +768,13 @@ bool ExpandI64::runOnModule(Module &M) {
       }
     }
   }
+
+  // post pass - clean up illegal functions that were legalized
+  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
+    Function *Func = Iter++;
+    removeIllegalFunc(Func);
+  }
+
   return Changed;
 }
 
