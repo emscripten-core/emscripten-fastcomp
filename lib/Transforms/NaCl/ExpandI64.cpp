@@ -67,11 +67,13 @@ namespace {
   };
 
   typedef std::map<Instruction*, SplitInfo> SplitsMap;
+  typedef std::map<Value*, LowHighPair> ArgsMap;
 
   // This is a ModulePass because the pass recreates functions in
   // order to expand i64 arguments to pairs of i32s.
   class ExpandI64 : public ModulePass {
     SplitsMap Splits; // old i64 value to new insts
+    ArgsMap SplitArgs; // old i64 function arguments, to split parts
 
     // If the function has an illegal return or argument, create a legal version
     void ensureLegalFunc(Function *F);
@@ -85,7 +87,8 @@ namespace {
     // representing the low and high parts, that splitInst
     // generated.
     // The value can also be a constant, in which case we just
-    // split it.
+    // split it, or a function argument, in which case we
+    // map to the proper legalized new arguments
     LowHighPair getLowHigh(Value *V);
 
     void finalizeInst(Instruction *I);
@@ -150,8 +153,23 @@ void ExpandI64::ensureLegalFunc(Function *F) {
   for (int i = -1; i < Num; i++) {
     Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
     if (isIllegal(T)) {
-      RecreateFunction(F, getLegalizedFunctionType(FT));
-      // XXX need to legalize the params in the new function, so that they are used and not the old ones we replace
+      Function *NF = RecreateFunction(F, getLegalizedFunctionType(FT));
+      // Move and update arguments
+      for (Function::arg_iterator Arg = F->arg_begin(), E = F->arg_end(), NewArg = NF->arg_begin();
+           Arg != E; ++Arg, ++NewArg) {
+        if (Arg->getType() == NewArg->getType()) {
+          NewArg->takeName(Arg);
+          Arg->replaceAllUsesWith(NewArg);
+        } else {
+          // This was legalized
+          LowHighPair &LH = SplitArgs[&*Arg];
+          LH.Low = &*NewArg;
+          if (NewArg->hasName()) LH.Low->setName(NewArg->getName() + "_low");
+          NewArg++;
+          LH.High = &*NewArg;
+          if (NewArg->hasName()) LH.High->setName(NewArg->getName() + "_high");
+        }
+      }
       break;
     }
   }
@@ -451,18 +469,12 @@ LowHighPair ExpandI64::getLowHigh(Value *V) {
     LowHigh.High = ConstantInt::get(i32, (uint32_t)(C >> 32));
     assert(LowHigh.Low && LowHigh.High);
     return LowHigh;
-  } else {
-    Instruction *I = dyn_cast<Instruction>(V);
-    // TODO assert(Splits.find(I) != Splits.end());
-    if (Splits.find(I) == Splits.end()) { // debugging tool, for now FIXME remove
-      Type *i32 = Type::getInt32Ty(V->getContext());
-      LowHighPair LowHigh;
-      LowHigh.Low = ConstantInt::get(i32, 13);
-      LowHigh.High = ConstantInt::get(i32, 37);
-      assert(LowHigh.Low && LowHigh.High);
-      return LowHigh;
-    }
+  } else if (Instruction *I = dyn_cast<Instruction>(V)) {
+    assert(Splits.find(I) != Splits.end());
     return Splits[I].LowHigh;
+  } else {
+    assert(SplitArgs.find(V) != SplitArgs.end());
+    return SplitArgs[V];
   }
 }
 
