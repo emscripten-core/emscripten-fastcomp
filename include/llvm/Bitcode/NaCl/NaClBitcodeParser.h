@@ -149,7 +149,7 @@ public:
   }
 
   /// Returns the EntryID (e.g. abbreviation if !=
-  /// naclbitcod::UNABBREV_RECORD) associated with the record. Note:
+  /// naclbitc::UNABBREV_RECORD) associated with the record. Note:
   /// for block-enter, block-exit, and define-abbreviation, EntryID is
   /// not the corresponding abbreviation.
   unsigned GetEntryID() const {
@@ -164,6 +164,19 @@ public:
   /// Returns the number of bits in this record.
   unsigned GetNumBits() const {
     return GetCursor().GetCurrentBitNo() - StartBit;
+  }
+
+  /// Returns true if the record was read using an abbreviation.
+  bool UsedAnAbbreviation() const {
+    return GetEntryKind() == NaClBitstreamEntry::Record &&
+        GetEntryID() != naclbitc::UNABBREV_RECORD;
+  }
+
+  /// Returns the abbrevation index used to read the record.
+  /// Returns naclbitc::UNABBREV_RECORD if not applicable.
+  unsigned GetAbbreviationIndex() const {
+    return UsedAnAbbreviation()
+        ? GetEntryID() : static_cast<unsigned>(naclbitc::UNABBREV_RECORD);
   }
 
 protected:

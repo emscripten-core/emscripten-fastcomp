@@ -4,6 +4,7 @@ add_llvm_library(LLVMNaClBitReader
   NaClBitstreamReader.cpp
   NaClBitcodeParser.cpp
   NaClBitcodeAnalyzer.cpp
+  NaClCommonBitcodeRecordDists.cpp
   )
 
 add_dependencies(LLVMNaClBitReader intrinsics_gen)
