@@ -2197,7 +2197,8 @@ void CppWriter::printFunctionBody(const Function *F) {
         BasicBlock *DD = SI->getDefaultDest();
         std::string P = getPhiCode(&*BI, DD);
         LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], NULL, P.size() > 0 ? P.c_str() : NULL);
-        std::map<const BasicBlock*, std::string> BlocksToConditions;
+        typedef std::map<const BasicBlock*, std::string> BlockCondMap;
+        BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
           const BasicBlock *BB = i.getCaseSuccessor();
           const IntegersSubset CaseVal = i.getCaseValueEx();
@@ -2214,10 +2215,10 @@ void CppWriter::printFunctionBody(const Function *F) {
           }
           BlocksToConditions[BB] = Condition + (!UseSwitch && BlocksToConditions[BB].size() > 0 ? " | " : "") + BlocksToConditions[BB];
         }
-        for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-          const BasicBlock *BB = i.getCaseSuccessor();
+        for (BlockCondMap::iterator I = BlocksToConditions.begin(), E = BlocksToConditions.end(); I != E; ++I) {
+          const BasicBlock *BB = I->first;
           std::string P = getPhiCode(&*BI, BB);
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], BlocksToConditions[BB].c_str(), P.size() > 0 ? P.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], I->second.c_str(), P.size() > 0 ? P.c_str() : NULL);
         }
         break;
       }
