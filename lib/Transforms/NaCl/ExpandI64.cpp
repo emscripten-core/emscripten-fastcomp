@@ -389,14 +389,27 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::Call: {
       CallInst *CI = dyn_cast<CallInst>(I);
       Value *CV = CI->getCalledValue();
+dump("========I========");
+dumpIR(I);
 dump("CE1");
+dumpIR(CV);
+      FunctionType *OFT = NULL;
       if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
+        assert(CE);
         assert(CE->getOpcode() == Instruction::BitCast);
-dump("CE"); dumpIR(CE);
+        OFT = cast<FunctionType>(cast<PointerType>(CE->getType())->getElementType());
         CV = CE->getOperand(0); // we are legalizing the arguments now, so no need to bitcast any more
 dump("CV"); dumpIR(CV);
-      }
 dump("CE2");
+      } else {
+        // this is a function pointer call
+dump("FP call1");
+        OFT = cast<FunctionType>(cast<PointerType>(CV->getType())->getElementType());
+dump("FP call2");
+        // we need to add a bitcast
+        CV = new BitCastInst(CV, getLegalizedFunctionType(OFT)->getPointerTo(), "", I);
+dumpIR(CV);
+      }
       FunctionType *FT = NULL;
       if (Function *F = dyn_cast<Function>(CV)) {
         FT = F->getFunctionType();
@@ -412,20 +425,24 @@ dump("CE2");
 
       // create a call with space for legal args
       SmallVector<Value *, 0> Args; // XXX
-      int Num = FT->getNumParams();
+      int Num = OFT->getNumParams();
       for (int i = 0; i < Num; i++) {
-        Type *T = FT->getParamType(i);
-dump("argg");
+        Type *T = OFT->getParamType(i);
+dumpv("argg %d illegal? %d,%d", i, isIllegal(T), isIllegal(CI->getArgOperand(i)->getType()));
         if (!isIllegal(T)) {
 dump(" legal");
           Args.push_back(CI->getArgOperand(i));
+dumpIR(CI->getArgOperand(i));
         } else {
 dump(" illegal!");
           Args.push_back(Zero); // will be fixed
           Args.push_back(Zero);
+dumpIR(Zero);
+dumpIR(Zero);
         }
       }
 dumpv("calling with %d args, to something hasing %d args", Args.size(), FT->getNumParams());
+dumpIR(CV);
       Instruction *L = CopyDebug(CallInst::Create(CV, Args, "", I), I);
 dump("CE3");
       Instruction *H = NULL;
