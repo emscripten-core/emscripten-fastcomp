@@ -295,7 +295,7 @@ namespace {
     std::string getPtrLoad(const Value* Ptr);
     std::string getPtrUse(const Value* Ptr);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
-    std::string getValueAsStr(const Value*);
+    std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsCastStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
     std::string getValueAsCastParenStr(const Value*, AsmCast sign=ASM_SIGNED);
@@ -1522,9 +1522,9 @@ std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 }
 
-std::string CppWriter::getValueAsStr(const Value* V) {
+std::string CppWriter::getValueAsStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
-    return getConstant(CV);
+    return getConstant(CV, sign);
   } else {
     return getCppName(V);
   }
@@ -1827,7 +1827,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       text += getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
       break;
     }
-    case Instruction::ZExt:     text += getValueAsStr(I->getOperand(0)); break;
+    case Instruction::ZExt:     text += getValueAsStr(I->getOperand(0), ASM_UNSIGNED); break;
     case Instruction::FPExt:    text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
     case Instruction::FPTrunc:  text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
     case Instruction::SIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
