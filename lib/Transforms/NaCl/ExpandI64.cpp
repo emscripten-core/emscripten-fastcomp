@@ -165,7 +165,6 @@ void ExpandI64::ensureLegalFunc(Function *F) {
         for (unsigned i = 0; i < Name.size()+1; i++) {
           NewName[i] = CName[i] != '.' ? CName[i] : '_';
         }
-dumpv("rename %s => %s", CName, NewName);
         NF->setName(NewName);
       }
       // Move and update arguments
@@ -414,26 +413,17 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::Call: {
       CallInst *CI = dyn_cast<CallInst>(I);
       Value *CV = CI->getCalledValue();
-dump("========I========");
-dumpIR(I);
-dump("CE1");
-dumpIR(CV);
       FunctionType *OFT = NULL;
       if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
         assert(CE);
         assert(CE->getOpcode() == Instruction::BitCast);
         OFT = cast<FunctionType>(cast<PointerType>(CE->getType())->getElementType());
         CV = CE->getOperand(0); // we are legalizing the arguments now, so no need to bitcast any more
-dump("CV"); dumpIR(CV);
-dump("CE2");
       } else {
         // this is a function pointer call
-dump("FP call1");
         OFT = cast<FunctionType>(cast<PointerType>(CV->getType())->getElementType());
-dump("FP call2");
         // we need to add a bitcast
         CV = new BitCastInst(CV, getLegalizedFunctionType(OFT)->getPointerTo(), "", I);
-dumpIR(CV);
       }
       FunctionType *FT = NULL;
       if (Function *F = dyn_cast<Function>(CV)) {
@@ -441,10 +431,6 @@ dumpIR(CV);
       } else if (PointerType *PT = dyn_cast<PointerType>(CV->getType())) {
         FT = cast<FunctionType>(PT->getElementType());
       } else {
-        dump("CI"); dumpIR(CI);
-        dump("V"); dumpIR(CI->getCalledValue());
-        dump("CV"); dumpIR(CV);
-        dump("CV T"); dumpIR(CV->getType());
         assert(0); // TODO: handle varargs i64 functions, etc.
       }
 
@@ -453,31 +439,20 @@ dumpIR(CV);
       int Num = OFT->getNumParams();
       for (int i = 0; i < Num; i++) {
         Type *T = OFT->getParamType(i);
-dumpv("argg %d illegal? %d,%d", i, isIllegal(T), isIllegal(CI->getArgOperand(i)->getType()));
         if (!isIllegal(T)) {
-dump(" legal");
           Args.push_back(CI->getArgOperand(i));
-dumpIR(CI->getArgOperand(i));
         } else {
-dump(" illegal!");
           Args.push_back(Zero); // will be fixed
           Args.push_back(Zero);
-dumpIR(Zero);
-dumpIR(Zero);
         }
       }
-dumpv("calling with %d args, to something hasing %d args", Args.size(), FT->getNumParams());
-dumpIR(CV);
       Instruction *L = CopyDebug(CallInst::Create(CV, Args, "", I), I);
-dump("CE3");
       Instruction *H = NULL;
       // legalize return value as well, if necessary
       if (isIllegal(I->getType())) {
         ensureFuncs();
         H = CopyDebug(CallInst::Create(GetHigh, "", I), I);
       }
-dump("CE4");
-
       SplitInfo &Split = Splits[I];
       Split.ToFix.push_back(L);
       Split.LowHigh.Low  = L;
@@ -488,7 +463,6 @@ dump("CE4");
       ensureFuncs();
       SmallVector<Value *, 1> Args;
       Args.push_back(I->getOperand(0));
-dumpv("argnums %d %d", Args.size(), FPtoILow->getFunctionType()->getNumParams());
       Instruction *L = CopyDebug(CallInst::Create(FPtoILow, Args, "", I), I);
       Instruction *H = CopyDebug(CallInst::Create(FPtoIHigh, Args, "", I), I);
       SplitInfo &Split = Splits[I];
@@ -696,7 +670,6 @@ void ExpandI64::ensureFuncs() {
   FunctionType *FPtoIFunc = FunctionType::get(i32, FPtoITypes, false);
   FPtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                               "FPtoILow", TheModule);
-dumpv("argnums for fptoilow %d, %d", FPtoITypes.size(), FPtoILow->getFunctionType()->getNumParams());
   FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                                "FPtoIHigh", TheModule);
 }
