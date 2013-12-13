@@ -610,6 +610,10 @@ void ExpandI64::finalizeInst(Instruction *I) {
           j++;
         }
       }
+      if (!isIllegal(I->getType())) {
+        // legal return value, so just replace the old call with the new call
+        I->replaceAllUsesWith(L);
+      }
       break;
     }
     default: dumpIR(I); assert(0);
