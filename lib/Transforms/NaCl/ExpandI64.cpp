@@ -154,6 +154,17 @@ void ExpandI64::ensureLegalFunc(Function *F) {
     Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
     if (isIllegal(T)) {
       Function *NF = RecreateFunction(F, getLegalizedFunctionType(FT));
+      std::string Name = NF->getName();
+      if (strncmp(Name.c_str(), "llvm.", 5) == 0) {
+        // this is an intrinsic, and we are changing its signature, which will annoy LLVM, so rename
+        char NewName[Name.size()+1];
+        const char *CName = Name.c_str();
+        for (unsigned i = 0; i < Name.size()+1; i++) {
+          NewName[i] = CName[i] != '.' ? CName[i] : '_';
+        }
+dumpv("rename %s => %s", CName, NewName);
+        NF->setName(NewName);
+      }
       // Move and update arguments
       for (Function::arg_iterator Arg = F->arg_begin(), E = F->arg_end(), NewArg = NF->arg_begin();
            Arg != E; ++Arg, ++NewArg) {
