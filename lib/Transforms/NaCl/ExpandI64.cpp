@@ -195,8 +195,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Trunc: {
-      assert(I->getType()->getIntegerBitWidth() == 32);
-      Splits[I];
+      SplitInfo &Split = Splits[I];
+      if (I->getType()->getIntegerBitWidth() < 32) {
+        // we need to add a trunc of the low 32 bits
+        Instruction *L = CopyDebug(new TruncInst(Zero, I->getType(), "", I), I);
+        Split.ToFix.push_back(L);
+      }
       break;
     }
     case Instruction::Load: {
@@ -472,9 +476,15 @@ void ExpandI64::finalizeInst(Instruction *I) {
       break; // input was legal
     }
     case Instruction::Trunc: {
-      assert(I->getType()->getIntegerBitWidth() == 32);
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
-      I->replaceAllUsesWith(LowHigh.Low);
+      if (I->getType()->getIntegerBitWidth() == 32) {
+        I->replaceAllUsesWith(LowHigh.Low); // just use the lower 32 bits and you're set
+      } else {
+        assert(I->getType()->getIntegerBitWidth() < 32);
+        Instruction *L = Split.ToFix[0];
+        L->setOperand(0, LowHigh.Low);
+        I->replaceAllUsesWith(L);
+      }
       break;
     }
     case Instruction::Store:
