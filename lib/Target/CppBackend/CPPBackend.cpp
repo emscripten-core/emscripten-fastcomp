@@ -1962,17 +1962,11 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::AtomicCmpXchg: {
-    const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
-    StringRef Ordering = ConvertAtomicOrdering(cxi->getOrdering());
-    StringRef CrossThread = ConvertAtomicSynchScope(cxi->getSynchScope());
-    Out << "AtomicCmpXchgInst* " << iName
-        << " = new AtomicCmpXchgInst("
-        << opNames[0] << ", " << opNames[1] << ", " << opNames[2] << ", "
-        << Ordering << ", " << CrossThread << ", " << bbname
-        << ");";
-    nl(Out) << iName << "->setName(\"";
-    printEscapedString(cxi->getName());
-    Out << "\");";
+    std::string Assign = getAssign(iName, I->getType());
+    const Value *P = I->getOperand(0);
+    text = getLoad(Assign, P, I->getType(), 0) + ';' +
+           "if ((" + getCast(iName, I->getType()) + ") == " + getValueAsCastParenStr(I->getOperand(1)) + ") " +
+              getStore(P, I->getType(), getValueAsStr(I->getOperand(2)), 0) + ";";
     break;
   }
   case Instruction::AtomicRMW: {
