@@ -170,6 +170,7 @@ void ExpandI64::ensureLegalFunc(Function *F) {
           if (NewArg->hasName()) LH.High->setName(NewArg->getName() + "_high");
         }
       }
+      // TODO: F->eraseFromParent();
       break;
     }
   }
