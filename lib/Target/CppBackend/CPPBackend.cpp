@@ -950,26 +950,20 @@ std::string CppWriter::getAssign(const StringRef &s, const Type *t) {
 
 std::string CppWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
-    default:
-      assert(false && "Unsupported type");
-    case Type::FloatTyID:
-      // TODO return ("Math_fround(" + s + ")").str();
-    case Type::DoubleTyID:
-      return ("+" + s).str();
-    case Type::IntegerTyID:
-    case Type::PointerTyID:
+    default: assert(false && "Unsupported type");
+    case Type::FloatTyID: // TODO return ("Math_fround(" + s + ")").str();
+    case Type::DoubleTyID: return ("+" + s).str();
+    case Type::IntegerTyID: {
       // fall through to the end for nonspecific
       switch (t->getIntegerBitWidth()) {
-        case 1:
-          if (sign != ASM_NONSPECIFIC) return (s + "&1").str();
-        case 8:
-          if (sign != ASM_NONSPECIFIC) return (s + "&255").str();
-        case 16:
-          if (sign != ASM_NONSPECIFIC) return (s + "&65535").str();
-        case 32:
-        default:
-          return (sign == ASM_SIGNED || sign == ASM_NONSPECIFIC ? s + "|0" : s + ">>>0").str();
+        case 1:  if (sign != ASM_NONSPECIFIC) return (s + "&1").str();
+        case 8:  if (sign != ASM_NONSPECIFIC) return (s + "&255").str();
+        case 16: if (sign != ASM_NONSPECIFIC) return (s + "&65535").str();
+        case 32: return (sign == ASM_SIGNED || sign == ASM_NONSPECIFIC ? s + "|0" : s + ">>>0").str();
+        default: assert(0);
       }
+    }
+    case Type::PointerTyID: return (s + "|0").str();
   }
 }
 
