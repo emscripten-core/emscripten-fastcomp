@@ -425,15 +425,6 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         // we need to add a bitcast
         CV = new BitCastInst(CV, getLegalizedFunctionType(OFT)->getPointerTo(), "", I);
       }
-      FunctionType *FT = NULL;
-      if (Function *F = dyn_cast<Function>(CV)) {
-        FT = F->getFunctionType();
-      } else if (PointerType *PT = dyn_cast<PointerType>(CV->getType())) {
-        FT = cast<FunctionType>(PT->getElementType());
-      } else {
-        assert(0); // TODO: handle varargs i64 functions, etc.
-      }
-
       // create a call with space for legal args
       SmallVector<Value *, 0> Args; // XXX
       int Num = OFT->getNumParams();
