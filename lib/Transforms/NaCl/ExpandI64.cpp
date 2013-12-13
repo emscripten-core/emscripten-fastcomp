@@ -374,14 +374,18 @@ dump("CE"); dumpIR(CE);
 dump("CV"); dumpIR(CV);
       }
 dump("CE2");
-      Function *F = dyn_cast<Function>(CV);
-      if (!F) {
+      FunctionType *FT = NULL;
+      if (Function *F = dyn_cast<Function>(CV)) {
+        FT = F->getFunctionType();
+      } else if (PointerType *PT = dyn_cast<PointerType>(CV->getType())) {
+        FT = cast<FunctionType>(PT->getElementType());
+      } else {
         dump("CI"); dumpIR(CI);
         dump("V"); dumpIR(CI->getCalledValue());
         dump("CV"); dumpIR(CV);
-        assert(0); // TODO: handle indirect i64-returning functions, varargs i64 functions, etc.
+        dump("CV T"); dumpIR(CV->getType());
+        assert(0); // TODO: handle varargs i64 functions, etc.
       }
-      FunctionType *FT = F->getFunctionType();
 
       // create a call with space for legal args
       SmallVector<Value *, 0> Args; // XXX
@@ -398,8 +402,8 @@ dump(" illegal!");
           Args.push_back(Zero);
         }
       }
-dumpv("calling with %d args, to something hasing %d args", Args.size(), F->getFunctionType()->getNumParams());
-      Instruction *L = CopyDebug(CallInst::Create(F, Args, "", I), I);
+dumpv("calling with %d args, to something hasing %d args", Args.size(), FT->getNumParams());
+      Instruction *L = CopyDebug(CallInst::Create(CV, Args, "", I), I);
 dump("CE3");
       Instruction *H = NULL;
       // legalize return value as well, if necessary
