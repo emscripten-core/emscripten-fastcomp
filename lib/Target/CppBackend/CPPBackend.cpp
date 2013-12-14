@@ -1023,14 +1023,14 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
         if (T->isIntegerTy()) {
           switch (Alignment) {
             case 2: {
-              text = Assign + "HEAP16[" + PS + ">>1]&" +
+              text = Assign + "HEAP16[" + PS + ">>1]|" +
                              "(HEAP16[" + PS + "+2>>1]<<2)";
               break;
             }
             case 1: {
-              text = Assign + "HEAP8[" + PS + "]&" +
-                             "(HEAP8[" + PS + "+1|0]<<1)&" +
-                             "(HEAP8[" + PS + "+2|0]<<2)&" +
+              text = Assign + "HEAP8[" + PS + "]|" +
+                             "(HEAP8[" + PS + "+1|0]<<1)|" +
+                             "(HEAP8[" + PS + "+2|0]<<2)|" +
                              "(HEAP8[" + PS + "+3|0]<<3)";
               break;
             }
