@@ -985,6 +985,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = Assign + getPtrLoad(P);
+    if (Alignment == 536870912) text += "; abort() /* segfault */";
   } else {
     // unaligned in some manner
     std::string PS = getOpName(P);
@@ -1073,6 +1074,7 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = getPtrUse(P) + " = " + VS;
+    if (Alignment == 536870912) text += "; abort() /* segfault */";
   } else {
     // unaligned in some manner
     std::string PS = getOpName(P);
