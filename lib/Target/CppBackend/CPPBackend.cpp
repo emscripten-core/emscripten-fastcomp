@@ -2604,37 +2604,39 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
   } else if (isa<BlockAddress>(CV)) {
     assert(false);
   } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
-    if (CE->isCast()) {
-      if (name == "__init_array_start") {
-        // this is the global static initializer
-        if (calculate) {
-          Value *V = CE->getOperand(0);
-          GlobalInitializers.push_back(getCppName(V));
-          // is the func waka
+    if (name == "__init_array_start") {
+      // this is the global static initializer
+      if (calculate) {
+        Value *V = CE->getOperand(0);
+        GlobalInitializers.push_back(getCppName(V));
+        // is the func waka
+      }
+    } else if (name == "__fini_array_start") {
+      // nothing to do
+    } else {
+      // a global equal to a ptrtoint of some function, so a 32-bit integer for us
+      if (calculate) {
+        HeapData *GlobalData = allocateAddress(name);
+        for (unsigned i = 0; i < 4; ++i) {
+          GlobalData->push_back(0);
         }
-      } else if (name == "__fini_array_start") {
-        // nothing to do
       } else {
-        // a global equal to a ptrtoint of some function, so a 32-bit integer for us
-        if (calculate) {
-          HeapData *GlobalData = allocateAddress(name);
-          for (unsigned i = 0; i < 4; ++i) {
-            GlobalData->push_back(0);
-          }
-        } else {
-          unsigned Offset = getRelativeGlobalAddress(name);
-          Value *V = CE->getOperand(0);
-          unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
-          union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
-          integer.i = Data;
-          assert(Offset+4 <= GlobalData64.size());
-          for (unsigned i = 0; i < 4; ++i) {
-            GlobalData64[Offset++] = integer.b[i];
-          }
+        unsigned Offset = 0;
+        if (CE->getOpcode() == Instruction::Add) {
+          Offset = cast<ConstantInt>(CE->getOperand(1))->getZExtValue();
+          CE = dyn_cast<ConstantExpr>(CE->getOperand(0));
+        }
+        assert(CE->isCast());
+        Offset += getRelativeGlobalAddress(name);
+        Value *V = CE->getOperand(0);
+        unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
+        union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
+        integer.i = Data;
+        assert(Offset+4 <= GlobalData64.size());
+        for (unsigned i = 0; i < 4; ++i) {
+          GlobalData64[Offset++] = integer.b[i];
         }
       }
-    } else {
-      assert(false);
     }
   } else if (isa<UndefValue>(CV)) {
     assert(false);
