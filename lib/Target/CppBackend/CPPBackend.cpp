@@ -1512,7 +1512,7 @@ std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
       //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-      return CI->getValue().toString(10, sign == ASM_SIGNED);
+      return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
       return "0";
     } else {
