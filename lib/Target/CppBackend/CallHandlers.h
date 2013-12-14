@@ -51,6 +51,16 @@ DEF_CALL_HANDLER(FPtoIHigh, {
   return getAssign(getCppName(CI), CI->getType()) + "Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0";
 })
 
+DEF_CALL_HANDLER(SItoFP, {
+  return getAssign(getCppName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
+                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getArgOperand(1), ASM_SIGNED) +   "))";
+})
+
+DEF_CALL_HANDLER(UItoFP, {
+  return getAssign(getCppName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
+                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getArgOperand(1), ASM_UNSIGNED) + "))";
+})
+
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
   return "HEAP32[" + getValueAsStr(CI->getArgOperand(0)) + ">>2]=" + getValueAsStr(CI->getArgOperand(1));
 })
@@ -369,6 +379,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FPtoILow);
   SETUP_CALL_HANDLER(FPtoIHigh);
+  SETUP_CALL_HANDLER(SItoFP);
+  SETUP_CALL_HANDLER(UItoFP);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_store_i32);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);

@@ -96,7 +96,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoFP, *UItoFP;
 
     void ensureFuncs();
 
@@ -461,6 +461,23 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = H;
       break;
     }
+    case Instruction::SIToFP:
+    case Instruction::UIToFP: {
+      ensureFuncs();
+      SmallVector<Value *, 2> Args;
+      Args.push_back(Zero);
+      Args.push_back(Zero);
+      Function *F;
+      switch (I->getOpcode()) {
+        case Instruction::SIToFP: F = SItoFP; break;
+        case Instruction::UIToFP: F = UItoFP; break;
+        default: assert(0);
+      }
+      Instruction *D = CopyDebug(CallInst::Create(F, Args, "", I), I);
+      SplitInfo &Split = Splits[I];
+      Split.ToFix.push_back(D);
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -513,6 +530,16 @@ void ExpandI64::finalizeInst(Instruction *I) {
       LowHighPair LowHigh = getLowHigh(I->getOperand(0));
       Split.ToFix[0]->setOperand(0, LowHigh.Low);
       Split.ToFix[1]->setOperand(0, LowHigh.High);
+      break;
+    }
+    case Instruction::SIToFP:
+    case Instruction::UIToFP: {
+      // generic fix of an instruction with one 64-bit input, and a legal output
+      LowHighPair LowHigh = getLowHigh(I->getOperand(0));
+      Instruction *D = Split.ToFix[0];
+      D->setOperand(0, LowHigh.Low);
+      D->setOperand(1, LowHigh.High);
+      I->replaceAllUsesWith(D);
       break;
     }
     case Instruction::Add:
@@ -656,13 +683,23 @@ void ExpandI64::ensureFuncs() {
   SetHigh = Function::Create(SetHighFunc, GlobalValue::ExternalLinkage,
                              "setHigh32", TheModule);
 
+  Type *Double = Type::getDoubleTy(TheModule->getContext());
   SmallVector<Type*, 1> FPtoITypes;
-  FPtoITypes.push_back(Type::getDoubleTy(TheModule->getContext()));
+  FPtoITypes.push_back(Double);
   FunctionType *FPtoIFunc = FunctionType::get(i32, FPtoITypes, false);
   FPtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                               "FPtoILow", TheModule);
   FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                                "FPtoIHigh", TheModule);
+
+  SmallVector<Type*, 2> ItoFPTypes;
+  ItoFPTypes.push_back(i32);
+  ItoFPTypes.push_back(i32);
+  FunctionType *ItoFPFunc = FunctionType::get(Double, ItoFPTypes, false);
+  SItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
+                            "SItoFP", TheModule);
+  UItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
+                            "UItoFP", TheModule);
 }
 
 bool ExpandI64::runOnModule(Module &M) {
