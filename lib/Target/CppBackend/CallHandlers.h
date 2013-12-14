@@ -86,6 +86,8 @@ DEF_CALL_HANDLER(bitshift64Shl, {
 DEF_CALL_HANDLER(name, { \
   /* FIXME: do not redirect if this is implemented and not just a declare! */ \
   Declares.insert(#to); \
+  Redirects[#name] = #to; \
+  if (!CI) return ""; \
   return CH___default__(CI, "_" #to); \
 })
 

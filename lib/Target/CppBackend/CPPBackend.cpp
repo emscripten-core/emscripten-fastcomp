@@ -113,6 +113,7 @@ namespace {
   typedef std::map<std::string, Address> GlobalAddressMap;
   typedef std::vector<std::string> FunctionTable;
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
+  typedef std::map<std::string, std::string> StringMap;
 
   /// CppWriter - This class is the main chunk of code that converts an LLVM
   /// module to a C++ translation unit.
@@ -135,6 +136,7 @@ namespace {
     GlobalAddressMap GlobalAddresses;
     NameSet Externals; // vars
     NameSet Declares; // funcs
+    StringMap Redirects; // library function redirects actually used, needed for wrapper funcs in tables
     std::string PostSets;
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
@@ -250,6 +252,13 @@ namespace {
       unsigned Index = Table.size();
       Table.push_back(Name);
       IndexedFunctions[Name] = Index;
+
+      // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, we need to catch it in the handler
+      CallHandlerMap::iterator CH = CallHandlers->find(Name);
+      if (CH != CallHandlers->end()) {
+        (this->*(CH->second))(NULL, Name, -1);
+      }
+
       return Index;
     }
     void ensureFunctionTable(const FunctionType *F) {
@@ -2403,6 +2412,19 @@ void CppWriter::printModuleBody() {
     Out << "\"" + *I + "\"";
   }
   Out << "],";
+
+  Out << "\"redirects\": {";
+  first = true;
+  for (StringMap::iterator I = Redirects.begin(), E = Redirects.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"_" << I->first << "\": \"" + I->second + "\"";
+  }
+  Out << "},";
 
   Out << "\"externs\": [";
   first = true;
