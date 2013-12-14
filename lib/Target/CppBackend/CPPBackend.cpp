@@ -1819,7 +1819,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
-      text += getCppName(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
+      text += getValueAsStr(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
       break;
     }
     case Instruction::SExt: {
