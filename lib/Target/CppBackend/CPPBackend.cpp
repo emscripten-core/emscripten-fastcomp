@@ -2532,7 +2532,19 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
   } else if (isa<ConstantArray>(CV)) {
     assert(false);
   } else if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(CV)) {
-    if (calculate) {
+    if (name == "__init_array_start") {
+      // this is the global static initializer
+      if (calculate) {
+        unsigned Num = CS->getNumOperands();
+        for (unsigned i = 0; i < Num; i++) {
+          const Value* C = CS->getOperand(i);
+          if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+            C = CE->getOperand(0); // ignore bitcasts
+          }
+          GlobalInitializers.push_back(getCppName(C));
+        }
+      }
+    } else if (calculate) {
       HeapData *GlobalData = allocateAddress(name);
       DataLayout DL(TheModule);
       unsigned Bytes = DL.getTypeStoreSize(CV->getType());
