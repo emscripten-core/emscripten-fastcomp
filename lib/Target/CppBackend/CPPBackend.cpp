@@ -280,7 +280,7 @@ namespace {
         return utostr(getFunctionIndex(F));
       } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
         if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
-          if (GV->hasExternalLinkage()) {
+          if (GV->isDeclaration()) {
             std::string Name = getOpName(Ptr);
             Externals.insert(Name);
             return Name;
