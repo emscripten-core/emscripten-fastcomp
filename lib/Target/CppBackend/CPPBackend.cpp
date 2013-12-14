@@ -1726,10 +1726,10 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       case FCmpInst::FCMP_ULT:   text += getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_OLE:
       case FCmpInst::FCMP_ULE:   text += getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_ORD:   text += "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & (" +
-                                         "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ")";
-      case FCmpInst::FCMP_UNO:   text += "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | (" +
-                                         "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ")";
+      case FCmpInst::FCMP_ORD:   text += "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
+                                         "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case FCmpInst::FCMP_UNO:   text += "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
+                                         "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ")"; break;
       case FCmpInst::FCMP_FALSE: text += "0"; break;
       case FCmpInst::FCMP_TRUE : text += "1"; break;
       default: error("bad fcmp"); break;
