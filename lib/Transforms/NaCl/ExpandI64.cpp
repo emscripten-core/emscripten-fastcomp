@@ -96,7 +96,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoFP, *UItoFP;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoFP, *UItoFP, *BItoFP;
 
     void ensureFuncs();
 
@@ -461,6 +461,14 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = H;
       break;
     }
+    case Instruction::BitCast: {
+      if (I->getType() == Type::getDoubleTy(TheModule->getContext())) {
+        // fall through to itofp
+      } else {
+        assert(0); // TODO: support the opposite bitcast
+        break;
+      }
+    }
     case Instruction::SIToFP:
     case Instruction::UIToFP: {
       ensureFuncs();
@@ -471,6 +479,11 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       switch (I->getOpcode()) {
         case Instruction::SIToFP: F = SItoFP; break;
         case Instruction::UIToFP: F = UItoFP; break;
+        case Instruction::BitCast: {
+          assert(I->getType() == Type::getDoubleTy(TheModule->getContext()));
+          F = BItoFP;
+          break;
+        }
         default: assert(0);
       }
       Instruction *D = CopyDebug(CallInst::Create(F, Args, "", I), I);
@@ -531,6 +544,13 @@ void ExpandI64::finalizeInst(Instruction *I) {
       Split.ToFix[0]->setOperand(0, LowHigh.Low);
       Split.ToFix[1]->setOperand(0, LowHigh.High);
       break;
+    }
+    case Instruction::BitCast: {
+      if (I->getType() == Type::getDoubleTy(TheModule->getContext())) {
+        // fall through to itofp
+      } else {
+        assert(0); // TODO: support the opposite bitcast
+      }
     }
     case Instruction::SIToFP:
     case Instruction::UIToFP: {
@@ -700,6 +720,8 @@ void ExpandI64::ensureFuncs() {
                             "SItoFP", TheModule);
   UItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
                             "UItoFP", TheModule);
+  BItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
+                            "BItoFP", TheModule);
 }
 
 bool ExpandI64::runOnModule(Module &M) {
