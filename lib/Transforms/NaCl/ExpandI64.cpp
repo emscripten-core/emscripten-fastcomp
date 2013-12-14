@@ -285,8 +285,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       ensureFuncs();
       SmallVector<Value *, 1> Args;
       Args.push_back(Zero); // will be fixed 
-      Instruction *Low = CopyDebug(CallInst::Create(SetHigh, Args, "", I), I);
-      Instruction *High = CopyDebug(ReturnInst::Create(I->getContext(), Zero, I), I); // will be fixed
+      Instruction *High = CopyDebug(CallInst::Create(SetHigh, Args, "", I), I);
+      Instruction *Low  = CopyDebug(ReturnInst::Create(I->getContext(), Zero, I), I); // will be fixed
       SplitInfo &Split = Splits[I];
       Split.ToFix.push_back(Low);
       Split.ToFix.push_back(High);
