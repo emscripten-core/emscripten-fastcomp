@@ -20,7 +20,6 @@ DEF_CALL_HANDLER(__default__, {
     Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
     ensureFunctionTable(FT);
   }
-  Type *RT = CI->getType();
   std::string text = Name + "(";
   if (NumArgs == -1) NumArgs = CI->getNumOperands()-1; // last operand is the function itself
   for (int i = 0; i < NumArgs; i++) {
@@ -28,6 +27,7 @@ DEF_CALL_HANDLER(__default__, {
     if (i < NumArgs - 1) text += ", ";
   }
   text += ")";
+  Type *RT = CI->getType();
   if (!RT->isVoidTy()) {
     text = getAssign(getCppName(CI), RT) + getCast(text, RT, ASM_NONSPECIFIC);
   }
@@ -82,19 +82,19 @@ DEF_CALL_HANDLER(bitshift64Shl, {
   return CH___default__(CI, "_bitshift64Shl", 3) + "|0";
 })
 
-#define DEF_REDIRECT_HANDLER_i(name, to) \
+#define DEF_REDIRECT_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   /* FIXME: do not redirect if this is implemented and not just a declare! */ \
   Declares.insert(#to); \
-  return CH___default__(CI, "_" #to) + "|0"; \
+  return CH___default__(CI, "_" #to); \
 })
 
 // Various simple redirects for our js libc, see library.js
-DEF_REDIRECT_HANDLER_i(putc, fputc);
-DEF_REDIRECT_HANDLER_i(__cxa_atexit, atexit);
-DEF_REDIRECT_HANDLER_i(ntohl, htonl);
-DEF_REDIRECT_HANDLER_i(ntohs, htons);
-DEF_REDIRECT_HANDLER_i(atol, atoi);
+DEF_REDIRECT_HANDLER(putc, fputc);
+DEF_REDIRECT_HANDLER(__cxa_atexit, atexit);
+DEF_REDIRECT_HANDLER(ntohl, htonl);
+DEF_REDIRECT_HANDLER(ntohs, htons);
+DEF_REDIRECT_HANDLER(atol, atoi);
 
 // Setups
 
