@@ -48,7 +48,7 @@ DEF_CALL_HANDLER(FPtoILow, {
 
 DEF_CALL_HANDLER(FPtoIHigh, {
   std::string Input = getValueAsStr(CI->getArgOperand(0));
-  return getAssign(getCppName(CI), CI->getType()) + "Math_abs(" + Input + ") >= 1.0 ? " + Input + " > 0.0 ? (Math_min(+Math_floor(" + Input + " / 4294967296.0), 4294967295.0) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / 4294967296.0) >>> 0 : 0)";
+  return getAssign(getCppName(CI), CI->getType()) + "Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0";
 })
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
