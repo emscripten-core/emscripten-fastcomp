@@ -1450,10 +1450,14 @@ static inline std::string ftostr_exact(const ConstantFP *CFP) {
   }
   if (raw[1] != 'x') return raw; // number has already been printed out
   raw += 2; // skip "0x"
-  union dbl { double d; float f[2]; int i[2]; unsigned char b[sizeof(double)]; } dbl;
-  for (unsigned i = 0; i < 8; i++) {
-    dbl.b[7-i] = (hexToInt(raw[2*i]) << 4) |
-                  hexToInt(raw[2*i+1]);
+  unsigned len = strlen(raw);
+  assert((len&1) == 0); // must be complete bytes, so an even number of chars
+  unsigned missing = 8 - len/2;
+  union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
+  dbl.d = 0;
+  for (unsigned i = 0; i < 8 - missing; i++) {
+    dbl.b[7-i+missing] = (hexToInt(raw[2*i]) << 4) |
+                          hexToInt(raw[2*i+1]);
   }
   char buffer[100];
   snprintf(buffer, 100, "%.30g", dbl.d);
