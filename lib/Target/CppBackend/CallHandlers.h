@@ -91,15 +91,15 @@ DEF_CALL_HANDLER(llvm_expect_i32, {
 })
 
 DEF_CALL_HANDLER(bitshift64Lshr, {
-  return CH___default__(CI, "_bitshift64Lshr", 3) + "|0";
+  return CH___default__(CI, "_bitshift64Lshr", 3);
 })
 
 DEF_CALL_HANDLER(bitshift64Ashr, {
-  return CH___default__(CI, "_bitshift64Ashr", 3) + "|0";
+  return CH___default__(CI, "_bitshift64Ashr", 3);
 })
 
 DEF_CALL_HANDLER(bitshift64Shl, {
-  return CH___default__(CI, "_bitshift64Shl", 3) + "|0";
+  return CH___default__(CI, "_bitshift64Shl", 3);
 })
 
 #define DEF_REDIRECT_HANDLER(name, to) \
