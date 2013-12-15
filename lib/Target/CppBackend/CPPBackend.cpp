@@ -2247,7 +2247,7 @@ void CppWriter::printFunctionBody(const Function *F) {
     if (!LastCurly) LastCurly = buffer;
     char *FinalReturn = strstr(LastCurly, "return ");
     if (!FinalReturn) {
-      Out << " return " + getCast("0", RT) + ";\n";
+      Out << " return " + getCast("0", RT, ASM_NONSPECIFIC) + ";\n";
     }
   }
 }
