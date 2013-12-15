@@ -2596,17 +2596,17 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
           GlobalData->push_back(0);
         }
       } else {
-        unsigned Offset = 0;
+        unsigned Data = 0;
         if (CE->getOpcode() == Instruction::Add) {
-          Offset = cast<ConstantInt>(CE->getOperand(1))->getZExtValue();
+          Data = cast<ConstantInt>(CE->getOperand(1))->getZExtValue();
           CE = dyn_cast<ConstantExpr>(CE->getOperand(0));
         }
         assert(CE->isCast());
-        Offset += getRelativeGlobalAddress(name);
         Value *V = CE->getOperand(0);
-        unsigned Data = getConstAsOffset(V, getGlobalAddress(name));
+        Data += getConstAsOffset(V, getGlobalAddress(name));
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;
+        unsigned Offset = getRelativeGlobalAddress(name);
         assert(Offset+4 <= GlobalData64.size());
         for (unsigned i = 0; i < 4; ++i) {
           GlobalData64[Offset++] = integer.b[i];
