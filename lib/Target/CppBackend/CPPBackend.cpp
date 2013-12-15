@@ -922,8 +922,8 @@ std::string CppWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) 
       // fall through to the end for nonspecific
       switch (t->getIntegerBitWidth()) {
         case 1:  if (sign != ASM_NONSPECIFIC) return (s + "&1").str();
-        case 8:  if (sign != ASM_NONSPECIFIC) return (s + "&255").str();
-        case 16: if (sign != ASM_NONSPECIFIC) return (s + "&65535").str();
+        case 8:  if (sign != ASM_NONSPECIFIC) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
+        case 16: if (sign != ASM_NONSPECIFIC) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
         case 32: return (sign == ASM_SIGNED || sign == ASM_NONSPECIFIC ? s + "|0" : s + ">>>0").str();
         default: assert(0);
       }
@@ -1388,7 +1388,7 @@ static StringRef ConvertAtomicSynchScope(SynchronizationScope SynchScope) {
 
 std::string CppWriter::getPtrLoad(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  return getCast(getPtrUse(Ptr), t);
+  return getCast(getPtrUse(Ptr), t, ASM_NONSPECIFIC);
 }
 
 std::string CppWriter::getPtrUse(const Value* Ptr) {
@@ -1789,7 +1789,7 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       text += getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
       break;
     }
-    case Instruction::ZExt:     text += getValueAsStr(I->getOperand(0), ASM_UNSIGNED); break;
+    case Instruction::ZExt:     text += getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
     case Instruction::FPExt:    text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
     case Instruction::FPTrunc:  text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
     case Instruction::SIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
@@ -2307,7 +2307,7 @@ void CppWriter::printModuleBody() {
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
            AI != AE; ++AI) {
         std::string name = getCppName(AI);
-        Out << " " << name << " = " << getCast(name, AI->getType()) << ";";
+        Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
         nl(Out);
       }
       printFunctionBody(I);
