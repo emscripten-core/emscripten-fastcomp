@@ -228,7 +228,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Type *T = Input->getType();
       Value *Low;
       if (T->getIntegerBitWidth() < 32) {
-        Low = CopyDebug(new SExtInst(Input, i32, "", I), I);
+        Low = CopyDebug(new ZExtInst(Input, i32, "", I), I);
       } else {
         Low = Input;
       }
