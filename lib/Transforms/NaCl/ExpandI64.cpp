@@ -216,7 +216,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       } else {
         Low = Input;
       }
-      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, Low, Zero), I);
+      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLT, Low, Zero), I);
       Instruction *High  = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
       SplitInfo &Split = Splits[I];
       Split.LowHigh.Low = Low;
