@@ -689,6 +689,7 @@ void setupCallHandlers() {
 
 std::string handleCall(const CallInst *CI) {
   const Value *CV = CI->getCalledValue();
+  assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
   std::string Name = getCppName(CV);
   unsigned NumArgs = CI->getNumArgOperands();
   CallHandlerMap::iterator CH = CallHandlers->find("___default__");
