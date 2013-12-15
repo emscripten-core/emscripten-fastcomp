@@ -86,6 +86,10 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
   return CH___default__(CI, "_memmove", 3) + "|0";
 })
 
+DEF_CALL_HANDLER(llvm_expect_i32, {
+  return getAssign(getCppName(CI), CI->getType()) + getValueAsStr(CI->getArgOperand(0));
+})
+
 DEF_CALL_HANDLER(bitshift64Lshr, {
   return CH___default__(CI, "_bitshift64Lshr", 3) + "|0";
 })
@@ -392,6 +396,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
+  SETUP_CALL_HANDLER(llvm_expect_i32);
   SETUP_CALL_HANDLER(bitshift64Lshr);
   SETUP_CALL_HANDLER(bitshift64Ashr);
   SETUP_CALL_HANDLER(bitshift64Shl);
