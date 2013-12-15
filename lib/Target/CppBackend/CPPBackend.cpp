@@ -1023,7 +1023,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
         break;
       }
       case 2: {
-        text = Assign + "HEAPU8[" + PS + "]|" + sep +
+        text = Assign + "HEAPU8[" + PS + "]|" +
                        "(HEAPU8[" + PS + "+1|0]<<8)";
         break;
       }
