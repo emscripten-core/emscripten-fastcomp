@@ -96,7 +96,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoFP, *UItoFP, *BItoFP;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD;
 
     void ensureFuncs();
 
@@ -477,11 +477,11 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Args.push_back(Zero);
       Function *F;
       switch (I->getOpcode()) {
-        case Instruction::SIToFP: F = SItoFP; break;
-        case Instruction::UIToFP: F = UItoFP; break;
+        case Instruction::SIToFP: F = I->getType() == Type::getDoubleTy(TheModule->getContext()) ? SItoD : SItoF; break;
+        case Instruction::UIToFP: F = I->getType() == Type::getDoubleTy(TheModule->getContext()) ? UItoD : UItoF; break;
         case Instruction::BitCast: {
           assert(I->getType() == Type::getDoubleTy(TheModule->getContext()));
-          F = BItoFP;
+          F = BItoD;
           break;
         }
         default: assert(0);
@@ -704,6 +704,8 @@ void ExpandI64::ensureFuncs() {
                              "setHigh32", TheModule);
 
   Type *Double = Type::getDoubleTy(TheModule->getContext());
+  Type *Float  = Type::getFloatTy(TheModule->getContext());
+
   SmallVector<Type*, 1> FPtoITypes;
   FPtoITypes.push_back(Double);
   FunctionType *FPtoIFunc = FunctionType::get(i32, FPtoITypes, false);
@@ -712,16 +714,24 @@ void ExpandI64::ensureFuncs() {
   FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                                "FPtoIHigh", TheModule);
 
-  SmallVector<Type*, 2> ItoFPTypes;
-  ItoFPTypes.push_back(i32);
-  ItoFPTypes.push_back(i32);
-  FunctionType *ItoFPFunc = FunctionType::get(Double, ItoFPTypes, false);
-  SItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
-                            "SItoFP", TheModule);
-  UItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
-                            "UItoFP", TheModule);
-  BItoFP = Function::Create(ItoFPFunc, GlobalValue::ExternalLinkage,
-                            "BItoFP", TheModule);
+  SmallVector<Type*, 2> ItoTypes;
+  ItoTypes.push_back(i32);
+  ItoTypes.push_back(i32);
+
+  FunctionType *ItoFFunc = FunctionType::get(Float, ItoTypes, false);
+  SItoF = Function::Create(ItoFFunc, GlobalValue::ExternalLinkage,
+                           "SItoF", TheModule);
+  UItoF = Function::Create(ItoFFunc, GlobalValue::ExternalLinkage,
+                           "UItoF", TheModule);
+
+  FunctionType *ItoDFunc = FunctionType::get(Double, ItoTypes, false);
+  SItoD = Function::Create(ItoDFunc, GlobalValue::ExternalLinkage,
+                           "SItoD", TheModule);
+  UItoD = Function::Create(ItoDFunc, GlobalValue::ExternalLinkage,
+                           "UItoD", TheModule);
+
+  BItoD = Function::Create(ItoDFunc, GlobalValue::ExternalLinkage,
+                           "BItoD", TheModule);
 }
 
 bool ExpandI64::runOnModule(Module &M) {
