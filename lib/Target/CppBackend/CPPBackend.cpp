@@ -1026,22 +1026,22 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
           }
           default: assert(0 && "bad 8 store");
         }
-        text += sep + Assign + "HEAPF64[tempDoublePtr>>3]";
+        text += sep + Assign + "+HEAPF64[tempDoublePtr>>3]";
         break;
       }
       case 4: {
         if (T->isIntegerTy()) {
           switch (Alignment) {
             case 2: {
-              text = Assign + "HEAP16[" + PS + ">>1]|" +
-                             "(HEAP16[" + PS + "+2>>1]<<2)";
+              text = Assign + "HEAPU16[" + PS + ">>1]|" +
+                             "(HEAPU16[" + PS + "+2>>1]<<2)";
               break;
             }
             case 1: {
-              text = Assign + "HEAP8[" + PS + "]|" +
-                             "(HEAP8[" + PS + "+1|0]<<1)|" +
-                             "(HEAP8[" + PS + "+2|0]<<2)|" +
-                             "(HEAP8[" + PS + "+3|0]<<3)";
+              text = Assign + "HEAPU8[" + PS + "]|" +
+                             "(HEAPU8[" + PS + "+1|0]<<8)|" +
+                             "(HEAPU8[" + PS + "+2|0]<<16)|" +
+                             "(HEAPU8[" + PS + "+3|0]<<24)";
               break;
             }
             default: assert(0 && "bad 4i store");
@@ -1056,19 +1056,19 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
             case 1: {
               text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "]" + sep +
                      "HEAP8[tempDoublePtr+1|0]=HEAP8[" + PS + "+1|0]" + sep +
-                     "HEAP8[tempDoublePtr+2|0]=HEAP8[" + PS + "+2|0]=" + sep +
+                     "HEAP8[tempDoublePtr+2|0]=HEAP8[" + PS + "+2|0]" + sep +
                      "HEAP8[tempDoublePtr+3|0]=HEAP8[" + PS + "+3|0]";
               break;
             }
             default: assert(0 && "bad 4f store");
           }
-          text += Assign + "HEAPF32[tempDoublePtr>>2]";
+          text += Assign + "+HEAPF32[tempDoublePtr>>2]";
         }
         break;
       }
       case 2: {
-        text = Assign + "HEAP8[" + PS + "]+" + sep +
-                       "(HEAP8[" + PS + "+1|0]<<1)";
+        text = Assign + "HEAPU8[" + PS + "]|" + sep +
+                       "(HEAPU8[" + PS + "+1|0]<<8)";
         break;
       }
       default: assert(0 && "bad store");
