@@ -1649,8 +1649,21 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
       case Instruction::And:  text += getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::Or:   text += getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::Xor:  text += getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::Shl:  text += getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1)); break;
-      case Instruction::AShr: text += getValueAsStr(I->getOperand(0)) + " >> " +  getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Shl:  {
+        std::string Shifted = getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1));
+        if (I->getType()->getIntegerBitWidth() < 32) {
+          Shifted = getParenCast(Shifted, I->getType(), ASM_UNSIGNED); // remove bits that are shifted beyond the size of this value
+        }
+        text += Shifted;
+        break;
+      }
+      case Instruction::AShr: {
+        std::string Input = getValueAsStr(I->getOperand(0));
+        if (I->getType()->getIntegerBitWidth() < 32) {
+          Input = getParenCast(Input, I->getType(), ASM_SIGNED); // fill in high bits, as shift needs those and is done in 32-bit
+        }
+        text += Input + " >> " +  getValueAsStr(I->getOperand(1)); break;
+      }
       case Instruction::LShr: text += getValueAsStr(I->getOperand(0)) + " >>> " + getValueAsStr(I->getOperand(1)); break;
       case Instruction::FAdd: text += getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
       case Instruction::FSub: text += getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
