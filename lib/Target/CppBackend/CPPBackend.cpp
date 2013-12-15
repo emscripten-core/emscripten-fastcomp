@@ -396,51 +396,7 @@ static inline std::string ftostr(const APFloat& V) {
 // This makes sure that conversion to/from floating yields the same binary
 // result so that we don't lose precision.
 void CppWriter::printCFP(const ConstantFP *CFP) {
-  bool ignored;
-  APFloat APF = APFloat(CFP->getValueAPF());  // copy
-  if (CFP->getType() == Type::getFloatTy(CFP->getContext()))
-    APF.convert(APFloat::IEEEdouble, APFloat::rmNearestTiesToEven, &ignored);
-#if HAVE_PRINTF_A
-  char Buffer[100];
-  sprintf(Buffer, "%A", APF.convertToDouble());
-  if ((!strncmp(Buffer, "0x", 2) ||
-       !strncmp(Buffer, "-0x", 3) ||
-       !strncmp(Buffer, "+0x", 3)) &&
-      APF.bitwiseIsEqual(APFloat(atof(Buffer)))) {
-    if (CFP->getType() == Type::getDoubleTy(CFP->getContext()))
-      Out << "BitsToDouble(" << Buffer << ")";
-    else
-      Out << "BitsToFloat((float)" << Buffer << ")";
-    Out << ")";
-  } else {
-#endif
-    std::string StrVal = ftostr(CFP->getValueAPF());
-
-    while (StrVal[0] == ' ')
-      StrVal.erase(StrVal.begin());
-
-    // Check to make sure that the stringized number is not some string like
-    // "Inf" or NaN.  Check that the string matches the "[-+]?[0-9]" regex.
-    if (((StrVal[0] >= '0' && StrVal[0] <= '9') ||
-         ((StrVal[0] == '-' || StrVal[0] == '+') &&
-          (StrVal[1] >= '0' && StrVal[1] <= '9'))) &&
-        (CFP->isExactlyValue(atof(StrVal.c_str())))) {
-      if (CFP->getType() == Type::getDoubleTy(CFP->getContext()))
-        Out <<  StrVal;
-      else
-        Out << StrVal << "f";
-    } else if (CFP->getType() == Type::getDoubleTy(CFP->getContext()))
-      Out << "BitsToDouble(0x"
-          << utohexstr(CFP->getValueAPF().bitcastToAPInt().getZExtValue())
-          << "ULL) /* " << StrVal << " */";
-    else
-      Out << "BitsToFloat(0x"
-          << utohexstr((uint32_t)CFP->getValueAPF().
-                                      bitcastToAPInt().getZExtValue())
-          << "U) /* " << StrVal << " */";
-#if HAVE_PRINTF_A
-  }
-#endif
+  assert(0);
 }
 
 void CppWriter::printCallingConv(CallingConv::ID cc){
@@ -1472,15 +1428,6 @@ std::string CppWriter::getPtrUse(const Value* Ptr) {
   }
 }
 
-// ftostr normally limits output to %20.6e, so some digits can get dropped. We need all the information
-static inline std::string ftostr_precise(double V) {
-  char Buffer[1000];
-  sprintf(Buffer, "%f", V);
-  char *B = Buffer;
-  while (*B == ' ') ++B;
-  return B;
-}
-
 static int hexToInt(char x) {
   if (x <= '9') {
     assert(x >= '0');
@@ -1509,7 +1456,7 @@ static inline std::string ftostr_exact(const ConstantFP *CFP) {
                   hexToInt(raw[2*i+1]);
   }
   char buffer[100];
-  sprintf(buffer, "%30.30f", dbl.d);
+  snprintf(buffer, 100, "%.30g", dbl.d);
   return buffer;
 }
 
