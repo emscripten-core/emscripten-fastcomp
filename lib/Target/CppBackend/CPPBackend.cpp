@@ -1476,7 +1476,7 @@ std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
-      return "0";
+      return CV->getType()->isIntegerTy() ? "0" : "+0"; // XXX fround, refactor this
     } else {
       dumpIR(CV);
       assert(false);
