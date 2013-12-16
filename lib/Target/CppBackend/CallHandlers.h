@@ -51,6 +51,14 @@ DEF_CALL_HANDLER(FPtoIHigh, {
   return getAssign(getCppName(CI), CI->getType()) + "Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0";
 })
 
+DEF_CALL_HANDLER(BDtoILow, {
+  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getArgOperand(0)) + ";" + getAssign(getCppName(CI), CI->getType()) + "HEAP32[tempDoublePtr>>2]|0";
+})
+
+DEF_CALL_HANDLER(BDtoIHigh, {
+  return getAssign(getCppName(CI), CI->getType()) + "HEAP32[tempDoublePtr+4>>2]|0";
+})
+
 DEF_CALL_HANDLER(SItoF, {
   // TODO: fround
   return getAssign(getCppName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
@@ -76,7 +84,7 @@ DEF_CALL_HANDLER(UItoD, {
 DEF_CALL_HANDLER(BItoD, {
   return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getArgOperand(0)) + ";" +
          "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getArgOperand(1)) + ";" +
-         getAssign(getCppName(CI), CI->getType()) + "HEAPF64[tempDoublePtr>>3]";
+         getAssign(getCppName(CI), CI->getType()) + "+HEAPF64[tempDoublePtr>>3]";
 })
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
@@ -407,6 +415,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FPtoILow);
   SETUP_CALL_HANDLER(FPtoIHigh);
+  SETUP_CALL_HANDLER(BDtoILow);
+  SETUP_CALL_HANDLER(BDtoIHigh);
   SETUP_CALL_HANDLER(SItoF);
   SETUP_CALL_HANDLER(UItoF);
   SETUP_CALL_HANDLER(SItoD);

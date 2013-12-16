@@ -96,7 +96,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD, *BDtoILow, *BDtoIHigh;
 
     void ensureFuncs();
 
@@ -465,7 +465,15 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       if (I->getType() == Type::getDoubleTy(TheModule->getContext())) {
         // fall through to itofp
       } else {
-        assert(0); // TODO: support the opposite bitcast
+        // double to i64
+        ensureFuncs();
+        SmallVector<Value *, 1> Args;
+        Args.push_back(I->getOperand(0));
+        Instruction *L = CopyDebug(CallInst::Create(BDtoILow, Args, "", I), I);
+        Instruction *H = CopyDebug(CallInst::Create(BDtoIHigh, Args, "", I), I);
+        SplitInfo &Split = Splits[I];
+        Split.LowHigh.Low  = L;
+        Split.LowHigh.High = H;
         break;
       }
     }
@@ -549,7 +557,7 @@ void ExpandI64::finalizeInst(Instruction *I) {
       if (I->getType() == Type::getDoubleTy(TheModule->getContext())) {
         // fall through to itofp
       } else {
-        assert(0); // TODO: support the opposite bitcast
+        break; // input was legal
       }
     }
     case Instruction::SIToFP:
@@ -713,6 +721,10 @@ void ExpandI64::ensureFuncs() {
                               "FPtoILow", TheModule);
   FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
                                "FPtoIHigh", TheModule);
+  BDtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
+                              "BDtoILow", TheModule);
+  BDtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
+                               "BDtoIHigh", TheModule);
 
   SmallVector<Type*, 2> ItoTypes;
   ItoTypes.push_back(i32);
