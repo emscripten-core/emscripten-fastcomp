@@ -1474,6 +1474,7 @@ std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
       //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
+      if (sign == ASM_SIGNED && CI->getValue().getBitWidth() == 1) sign = ASM_UNSIGNED; // booleans cannot be signed in a meaningful way
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
       return CV->getType()->isIntegerTy() ? "0" : "+0"; // XXX fround, refactor this
