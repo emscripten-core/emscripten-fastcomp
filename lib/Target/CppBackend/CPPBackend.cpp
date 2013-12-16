@@ -1825,10 +1825,10 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
       assert(InType->getIntegerBitWidth() == 32);
-      text = "HEAP32[tempDoublePtr>>2]=" + V + ";" + text + "HEAPF32[tempDoublePtr>>2];";
+      text = "HEAP32[tempDoublePtr>>2]=" + V + ";" + text + "+HEAPF32[tempDoublePtr>>2];";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
       assert(OutType->getIntegerBitWidth() == 32);
-      text = "HEAPF32[tempDoublePtr>>2]=" + V + ";" + text + "HEAP32[tempDoublePtr>>2];";
+      text = "HEAPF32[tempDoublePtr>>2]=" + V + ";" + text + "HEAP32[tempDoublePtr>>2]|0;";
     } else {
       text += V + ";";
     }
