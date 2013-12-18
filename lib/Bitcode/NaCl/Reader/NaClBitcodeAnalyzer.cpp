@@ -10,6 +10,7 @@
 #define DEBUG_TYPE "nacl-bitcode-analyzer"
 
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeAnalyzer.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
@@ -25,6 +26,10 @@
 #include "llvm/Support/system_error.h"
 #include <algorithm>
 #include <map>
+
+// TODO(kschimpf): Separate out into two bitcode parsers, one for
+// dumping records, and one for collecting distribution stats for
+// printing. This should simplify the code.
 
 /// Error - All bitcode analysis errors go through this function, making this a
 /// good place to breakpoint if debugging.
@@ -59,6 +64,17 @@ static const char *GetBlockName(unsigned BlockID) {
   case naclbitc::USELIST_BLOCK_ID:         return "USELIST_BLOCK_ID";
   case naclbitc::GLOBALVAR_BLOCK_ID:       return "GLOBALVAR_BLOCK";
   }
+}
+
+static std::string GetBlockStrName(unsigned BlockID) {
+  if (const char *BlockName = GetBlockName(BlockID)) {
+    return BlockName;
+  }
+
+  std::string Str;
+  raw_string_ostream StrStrm(Str);
+  StrStrm << "UnknownBlock" << BlockID;
+  return StrStrm.str();
 }
 
 struct PerBlockIDStats {
@@ -146,6 +162,27 @@ private:
   std::vector<std::string> IndentationCache;
 };
 
+// Define the encodings for abbreviation operands that we recognize,
+// based on the NaClBitCodeAbbrevOp::Encoding value.
+static const char *AbbrevEncodings[] = {
+  0,        // No encoding defined for 0.
+  "FIXED",
+  "VBR",
+  "ARRAY",
+  "CHAR6"
+};
+
+static std::string GetAbbrevEncoding(unsigned Encoding) {
+  if (Encoding < array_lengthof(AbbrevEncodings) && AbbrevEncodings[Encoding]) {
+    return AbbrevEncodings[Encoding];
+  } else {
+    std::string Str;
+    raw_string_ostream StrStrm(Str);
+    StrStrm << "UnknownEncoding" << Encoding;
+    return StrStrm.str();
+  }
+}
+
 // Parses a bitcode block, and collects distribution of records in that block.
 // Also dumps bitcode structure if specified (via global variables).
 class PNaClBitcodeAnalyzerBlockParser : public NaClBitcodeParser {
@@ -160,7 +197,109 @@ public:
 
   virtual ~PNaClBitcodeAnalyzerBlockParser() {}
 
+  // *****************************************************
+  // This subsection Defines an XML generator for the dump.
+  // Tag. TagName, Attribute
+  // *****************************************************
+
+private:
+  // The tag name for an element.
+  std::string TagName;
+  // The number of attributes associated with a tag.
+  unsigned NumTagAttributes;
+  // The number of (indexed attribute) operands associated with a tag.
+  unsigned NumTagOperands;
+
 protected:
+
+  /// Initializes internal data used to emit an XML tag.
+  void InitializeEmitTag() {
+    TagName.clear();
+    NumTagAttributes = 0;
+    NumTagOperands = 0;
+  }
+
+  /// Emits the start of an XML start tag.
+  void EmitBeginStartTag() {
+    InitializeEmitTag();
+    Context->OS << Indent << "<";
+  }
+
+  /// Emit the start of an XML end tag.
+  void EmitBeginEndTag() {
+    InitializeEmitTag();
+    Context->OS << Indent << "</";
+  }
+
+  /// Emits the end of an empty-element XML tag.
+  void EmitEndTag() {
+    Context->OS << "/>\n";
+  }
+
+  /// Emits the End of a start/end tag for an XML element.
+  void EmitEndElementTag() {
+    Context->OS << ">\n";
+  }
+
+  /// Emits the tag name for an XML tag.
+  void EmitTagName(const std::string &ElmtName) {
+    TagName = ElmtName;
+    Context->OS << ElmtName;
+  }
+
+  /// Emits the "name=" portion of an XML tag attribute.
+  raw_ostream &EmitAttributePrefix(const std::string &AttributeName) {
+    WrapOperandsLine();
+    Context->OS << " " << AttributeName << "=";
+    ++NumTagAttributes;
+    return Context->OS;
+  }
+
+  /// Emits a string-valued XML attribute of an XML tag.
+  void EmitStringAttribute(const char *AttributeName, const std::string &Str) {
+    EmitAttributePrefix(AttributeName) << "'" << Str << "'";
+  }
+
+  /// Emits a string-valued XML attribute of an XML tag.
+  void EmitStringAttribute(const char *AttributeName, const char*Str) {
+    std::string StrStr(Str);
+    EmitStringAttribute(AttributeName, StrStr);
+  }
+
+  /// Emits an unsigned integer-valued XML attribute of an XML tag.
+  void EmitAttribute(const char *AttributeName, uint64_t Value) {
+    EmitAttributePrefix(AttributeName) << Value;
+  }
+
+  /// Emits the "opN=" portion of an XML tag (indexable) operand attribute.
+  raw_ostream &EmitOperandPrefix() {
+    std::string OpName;
+    raw_string_ostream OpNameStrm(OpName);
+    OpNameStrm << "op" << NumTagOperands;
+    ++NumTagOperands;
+    return EmitAttributePrefix(OpNameStrm.str());
+  }
+
+  /// Adds line wrap if more than "OpsPerLine" XML tag attributes are
+  /// emitted on the current line.
+  void WrapOperandsLine() {
+    if (Context->DumpOptions.OpsPerLine) {
+      if (NumTagAttributes &&
+          (NumTagAttributes % Context->DumpOptions.OpsPerLine) == 0) {
+        raw_ostream &OS = Context->OS;
+        // Last operand crossed width boundary, add newline and indent.
+        OS << "\n" << Indent << " ";
+        for (unsigned J = 0, SZ = TagName.size(); J < SZ; ++J)
+          OS << " ";
+      }
+    }
+  }
+
+  // ********************************************************
+  // This section defines how to parse the block and generate
+  // the corresponding XML.
+  // ********************************************************
+
   // Parses nested blocks.
   PNaClBitcodeAnalyzerBlockParser(
       unsigned BlockID,
@@ -172,12 +311,12 @@ protected:
 
   // Initialize data associated with a block.
   void Initialize(unsigned BlockID, PNaClBitcodeAnalyzerParser *Parser) {
+    InitializeEmitTag();
     Context = Parser;
-    if (Context->DumpOptions.DoDump) {
+    if (Context->DumpOptions.DumpRecords) {
       Indent = Parser->GetIndentation();
     }
     NumWords = 0;
-    BlockName = 0;
     BlockStats = Context->BlockIDStats[BlockID];
     if (BlockStats == 0) {
       BlockStats = new PerBlockIDStats(BlockID);
@@ -209,25 +348,15 @@ protected:
   virtual void EnterBlock(unsigned NumberWords) {
     NumWords = NumberWords;
     IncrementCallingBlock();
-    BlockName = 0;
-    if (Context->DumpOptions.DoDump) {
-      raw_ostream &OS = Context->OS;
+    if (Context->DumpOptions.DumpRecords) {
       unsigned BlockID = GetBlockID();
-      OS << Indent << "<";
-      if ((BlockName = GetBlockName(BlockID)))
-        OS << BlockName;
-      else
-        OS << "UnknownBlock" << BlockID;
-
-      if (Context->DumpOptions.NonSymbolic && BlockName)
-        OS << " BlockID=" << BlockID;
-
-      if (!Context->DumpOptions.DumpOnlyRecords) {
-        OS << " NumWords=" << NumberWords
-           << " BlockCodeSize="
-           << Record.GetCursor().getAbbrevIDWidth();
+      EmitBeginStartTag();
+      EmitEnterBlockTagName(BlockID);
+      if (Context->DumpOptions.DumpDetails) {
+        EmitAttribute("NumWords", NumWords);
+        EmitAttribute("BlockCodeSize", Record.GetCursor().getAbbrevIDWidth());
       }
-      OS << ">\n";
+      EmitEndElementTag();
       IncrementIndent();
     }
   }
@@ -236,58 +365,57 @@ protected:
   // is found.
   virtual void ExitBlock() {
     BlockStats->NumBits += GetLocalNumBits();
-    if (Context->DumpOptions.DoDump) {
+    if (Context->DumpOptions.DumpRecords) {
       DecrementIndent();
-      raw_ostream &OS = Context->OS;
-      OS << Indent << "</";
-      if (BlockName)
-        OS << BlockName << ">\n";
-      else
-        OS << "UnknownBlock" << GetBlockID() << ">\n";
+      EmitBeginEndTag();
+      EmitExitBlockTagName(Record.GetBlockID());
+      EmitEndElementTag();
     }
   }
 
   // Called after a BlockInfo block is parsed.
   virtual void ExitBlockInfo() {
     BlockStats->NumBits += GetLocalNumBits();
-    if (Context->DumpOptions.DoDump)
-      Context->OS << Indent << "<BLOCKINFO_BLOCK/>\n";
+    if (Context->DumpOptions.DumpRecords) {
+      EmitBeginStartTag();
+      EmitEnterBlockTagName(naclbitc::BLOCKINFO_BLOCK_ID);
+      if (Context->DumpOptions.DumpDetails) {
+        /// Long form. Fill out block with abbreviations read.
+        EmitEndElementTag();
+        IncrementIndent();
+        EmitBlockInfoAbbreviations();
+        DecrementIndent();
+        EmitBeginEndTag();
+        EmitExitBlockTagName(naclbitc::BLOCKINFO_BLOCK_ID);
+        EmitEndTag();
+      } else {
+        EmitEndTag();
+      }
+    }
     IncrementCallingBlock();
+  }
+
+  // Process the abbreviation just read.
+  virtual void ProcessRecordAbbrev() {
+    if (Context->DumpOptions.DumpDetails) {
+      EmitAbbreviation(Record.GetCursor().GetNewestAbbrev());
+    }
   }
 
   // Process the last read record in the block.
   virtual void ProcessRecord() {
-    ++BlockStats->NumRecords;
-    unsigned Code = Record.GetCode();
-
     // Increment the # occurrences of this code.
+    ++BlockStats->NumRecords;
     BlockStats->RecordCodeDist.Add(Record);
 
-    if (Context->DumpOptions.DoDump) {
-      raw_ostream &OS = Context->OS;
-      std::string CodeName =
-          NaClBitcodeRecordCodeDist::GetCodeName(Code, GetBlockID());
-      OS << Indent << "<" << CodeName;
-      if (Context->DumpOptions.NonSymbolic &&
-          !NaClBitcodeRecordCodeDist::HasKnownCodeName(Code, GetBlockID()))
-        OS << " codeid=" << Code;
-      if (!Context->DumpOptions.DumpOnlyRecords &&
-          Record.GetEntryID() != naclbitc::UNABBREV_RECORD)
-        OS << " abbrevid=" << Record.GetEntryID();
-
+    if (Context->DumpOptions.DumpRecords) {
+      EmitBeginStartTag();
+      EmitCodeTagName(Record.GetCode(), GetBlockID(), Record.GetEntryID());
       const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
       for (unsigned i = 0, e = Values.size(); i != e; ++i) {
-        if (Context->DumpOptions.OpsPerLine
-            && (i % Context->DumpOptions.OpsPerLine) == 0
-            && i > 0) {
-          OS << "\n" << Indent << " ";
-          for (unsigned j = 0; j < CodeName.size(); ++j)
-            OS << " ";
-        }
-        OS << " op" << i << "=" << (int64_t)Values[i];
+        EmitOperandPrefix() << (int64_t)Values[i];
       }
-
-      OS << "/>\n";
+      EmitEndTag();
     }
   }
 
@@ -296,12 +424,99 @@ protected:
     return Parser.ParseThisBlock();
   }
 
+private:
+  /// Defines the indent level of the block being parsed.
   std::string Indent;
+  /// Defines the number of (32-bit) words the block occupies in
+  /// the bitstream.
   unsigned NumWords;
-  const char *BlockName;
+  /// Holds the distribution of records within the block.
   PerBlockIDStats *BlockStats;
+  /// Refers to global parsing context.
   PNaClBitcodeAnalyzerParser *Context;
 
+protected:
+
+  /// Emit the given abbreviation as an XML tag.
+  void EmitAbbreviation(const NaClBitCodeAbbrev *Abbrev) {
+    EmitBeginStartTag();
+    EmitTagName("DEFINE_ABBREV");
+    if (Context->DumpOptions.DumpDetails) {
+      EmitStringAttribute("abbrev", "DEFINE_ABBREV");
+    }
+    for (unsigned I = 0, IEnd = Abbrev->getNumOperandInfos(); I != IEnd; ++I) {
+      EmitAbbreviationOp(Abbrev->getOperandInfo(I));
+    }
+    EmitEndTag();
+  }
+
+  /// Emit the given abbreviation operand as an XML tag attribute.
+  void EmitAbbreviationOp(const NaClBitCodeAbbrevOp &Op) {
+    if (Op.isLiteral()) {
+      EmitOperandPrefix() << "'LIT(" << Op.getLiteralValue() << ")'";
+    } else {
+      EmitOperandPrefix() << "'" << GetAbbrevEncoding(Op.getEncoding());
+      if (Op.hasEncodingData()) {
+        Context->OS << "(" << Op.getEncodingData() << ")";
+      }
+      Context->OS << "'";
+    }
+  }
+
+  /// Emit the abbreviations that were read when the BlockInfo block
+  /// was parsed.
+  void EmitBlockInfoAbbreviations() {
+    SmallVector<unsigned, 10> BlockIDs;
+    NaClBitstreamReader &Reader = Record.GetReader();
+    Reader.GetBlockInfoBlockIDs(BlockIDs);
+    for (size_t I=0, IEnd = BlockIDs.size(); I < IEnd; ++I) {
+      unsigned BlockID = BlockIDs[I];
+      if (const NaClBitstreamReader::BlockInfo *Info =
+          Reader.getBlockInfo(BlockID)) {
+        EmitBeginStartTag();
+        EmitCodeTagName(naclbitc::BLOCKINFO_CODE_SETBID,
+                        naclbitc::BLOCKINFO_BLOCK_ID);
+        EmitStringAttribute("block", GetBlockStrName(Info->BlockID));
+        EmitEndTag();
+        for (std::vector<NaClBitCodeAbbrev*>::const_iterator
+                 AbbrevIter = Info->Abbrevs.begin(),
+                 AbbrevIterEnd = Info->Abbrevs.end();
+             AbbrevIter != AbbrevIterEnd; ++AbbrevIter) {
+          EmitAbbreviation(*AbbrevIter);
+        }
+      }
+    }
+  }
+
+  /// Emits the symbolic name of the record code as the XML tag name.
+  void EmitCodeTagName(
+      unsigned CodeID, unsigned BlockID,
+      unsigned AbbreviationID = naclbitc::UNABBREV_RECORD) {
+    EmitTagName(NaClBitcodeRecordCodeDist::GetCodeName(CodeID, BlockID));
+    if (Context->DumpOptions.DumpDetails) {
+      if (AbbreviationID == naclbitc::UNABBREV_RECORD) {
+        EmitStringAttribute("abbrev", "UNABBREVIATED");
+      } else {
+        EmitAttribute("abbrev", AbbreviationID);
+      }
+    }
+  }
+
+  /// Emits the symbolic name of the block as the XML tag name.
+  void EmitEnterBlockTagName(unsigned BlockID) {
+    EmitTagName(GetBlockStrName(BlockID));
+    if (Context->DumpOptions.DumpDetails)
+      EmitStringAttribute("abbrev", "ENTER_SUBBLOCK");
+  }
+
+  /// Emits the symbolic name of the block as the the XML tag name.
+  void EmitExitBlockTagName(unsigned BlockID) {
+    EmitTagName(GetBlockStrName(BlockID));
+    if (Context->DumpOptions.DumpDetails)
+      EmitStringAttribute("abbrev", "END_BLOCK");
+  }
+
+  /// Increment the counter the number of blocks in the enclosing block.
   void IncrementCallingBlock() {
     if (NaClBitcodeParser *Parser = GetEnclosingParser()) {
       PNaClBitcodeAnalyzerBlockParser *PNaClBlock =
@@ -362,9 +577,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
     if (Parser.Parse()) return 1;
   }
 
-  if (DumpOptions.DoDump) OS << "\n\n";
-
-  if (DumpOptions.DumpOnlyRecords) return 0;
+  if (DumpOptions.DumpRecords) return 0;
 
   uint64_t BufferSizeBits = (EndBufPtr-BufPtr)*CHAR_BIT;
   // Print a summary
@@ -414,7 +627,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
     OS << "\n";
 
     // Print a histogram of the codes we see.
-    if (!DumpOptions.NoHistogram && !Stats.RecordCodeDist.empty()) {
+    if (!Stats.RecordCodeDist.empty()) {
       Stats.RecordCodeDist.Print(OS, "    ");
       OS << "\n";
     }

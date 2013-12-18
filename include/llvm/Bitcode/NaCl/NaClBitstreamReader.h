@@ -531,7 +531,7 @@ private:
 public:
 
   /// getAbbrev - Return the abbreviation for the specified AbbrevId.
-  const NaClBitCodeAbbrev *getAbbrev(unsigned AbbrevID) {
+  const NaClBitCodeAbbrev *getAbbrev(unsigned AbbrevID) const {
     unsigned AbbrevNo = AbbrevID-naclbitc::FIRST_APPLICATION_ABBREV;
     assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
     return CurAbbrevs[AbbrevNo];
@@ -539,7 +539,7 @@ public:
 
   /// Returns the last (i.e. newest) abbreviation added to the current
   /// block.
-  const NaClBitCodeAbbrev *GetNewestAbbrev() {
+  const NaClBitCodeAbbrev *GetNewestAbbrev() const {
     assert(CurAbbrevs.size() && "No newest abbrev!");
     return CurAbbrevs.back();
   }

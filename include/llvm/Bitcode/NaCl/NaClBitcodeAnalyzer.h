@@ -29,15 +29,19 @@ class raw_ostream;
 // for a description.
 struct AnalysisDumpOptions {
   AnalysisDumpOptions()
-    : DoDump(false), DumpOnlyRecords(false), OpsPerLine(0),
-      NoHistogram(false), NonSymbolic(false)
+      : DumpRecords(false), DumpDetails(false), OpsPerLine(0)
   {}
 
-  bool DoDump;
-  bool DumpOnlyRecords;
+  // When true, dump the records. When false, print out distribution
+  // statistics.
+  bool DumpRecords;
+
+  // When true, print out abbreviations, abbreviation ID's, and
+  // other (non-record specific) details when dumping records.
+  bool DumpDetails;
+
+  // The number of record operands to be dumped per text line.
   unsigned OpsPerLine;
-  bool NoHistogram;
-  bool NonSymbolic;
 };
 
 /// Run analysis on the given file. Output goes to OS.

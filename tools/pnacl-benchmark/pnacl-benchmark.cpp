@@ -195,8 +195,7 @@ void BenchmarkIRParsing() {
     TimingOperationBlock T("Running bitcode analysis", BufSize);
 
     AnalysisDumpOptions DumpOptions;
-    DumpOptions.DoDump = true;
-    DumpOptions.DumpOnlyRecords = false;
+    DumpOptions.DumpRecords = true;
     AnalyzeBitcodeInBuffer(*FileBuf, nulls(), DumpOptions);
   }
 

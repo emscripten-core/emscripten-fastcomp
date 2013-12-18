@@ -34,27 +34,24 @@ using namespace llvm;
 static cl::opt<std::string>
   InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
-static cl::opt<bool> OptDump("dump", cl::desc("Dump low level bitcode trace"));
+static cl::opt<bool>
+ OptDumpRecords(
+     "dump-records",
+     cl::desc("Dump contents of records in bitcode, leaving out details, "
+              "instead of displaying record distributions."),
+     cl::init(false));
 
 static cl::opt<bool>
- OptDumpRecords("dump-records",
-         cl::desc("Dump contents of records in bitcode, leaving out"
-                  " all bitstreaming information (including abbreviations)"),
-         cl::init(false));
+OptDumpDetails(
+    "dump-details",
+    cl::desc("Include details when dumping contents of records in bitcode."),
+    cl::init(false));
 
 static cl::opt<unsigned> OpsPerLine(
     "operands-per-line",
     cl::desc("Number of operands to print per dump line. 0 implies "
              "all operands will be printed on the same line (default)"),
     cl::init(0));
-
-static cl::opt<bool> NoHistogram("disable-histogram",
-                                 cl::desc("Do not print per-code histogram"));
-
-static cl::opt<bool>
-NonSymbolic("non-symbolic",
-            cl::desc("Emit numeric info in dump even if"
-                     " symbolic info is available"));
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
@@ -63,12 +60,15 @@ int main(int argc, char **argv) {
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
   cl::ParseCommandLineOptions(argc, argv, "pnacl-bcanalyzer file analyzer\n");
 
+  if (OptDumpDetails && !OptDumpRecords) {
+    errs() << "Can't dump details unless records are dumped!\n";
+    return 1;
+  }
+
   AnalysisDumpOptions DumpOptions;
-  DumpOptions.DoDump = OptDumpRecords || OptDump;
-  DumpOptions.DumpOnlyRecords = OptDumpRecords;
+  DumpOptions.DumpRecords = OptDumpRecords;
+  DumpOptions.DumpDetails = OptDumpDetails;
   DumpOptions.OpsPerLine = OpsPerLine;
-  DumpOptions.NoHistogram = NoHistogram;
-  DumpOptions.NonSymbolic = NonSymbolic;
 
   return AnalyzeBitcodeInFile(InputFilename, outs(), DumpOptions);
 }
