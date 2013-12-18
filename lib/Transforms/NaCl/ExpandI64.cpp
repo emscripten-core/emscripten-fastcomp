@@ -347,12 +347,27 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         case ICmpInst::ICMP_ULT:
         case ICmpInst::ICMP_SLT:
         case ICmpInst::ICMP_UGT:
-        case ICmpInst::ICMP_SGT:
+        case ICmpInst::ICMP_SGT: {
+          A = CopyDebug(new ICmpInst(I, Pred, Zero, Zero), I);
+          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
+          C = CopyDebug(new ICmpInst(I, Pred, Zero, Zero), I);
+          D = CopyDebug(BinaryOperator::Create(Instruction::And, B, C, "", I), I);
+          Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, D, "", I), I);
+          break;
+        }
         case ICmpInst::ICMP_ULE:
         case ICmpInst::ICMP_SLE:
         case ICmpInst::ICMP_UGE:
         case ICmpInst::ICMP_SGE: {
-          A = CopyDebug(new ICmpInst(I, Pred, Zero, Zero), I);
+          ICmpInst::Predicate StrictPred;
+          switch (Pred) {
+            case ICmpInst::ICMP_ULE: StrictPred = ICmpInst::ICMP_ULT; break;
+            case ICmpInst::ICMP_UGE: StrictPred = ICmpInst::ICMP_UGT; break;
+            case ICmpInst::ICMP_SLE: StrictPred = ICmpInst::ICMP_SLT; break;
+            case ICmpInst::ICMP_SGE: StrictPred = ICmpInst::ICMP_SGT; break;
+            default: assert(0);
+          }
+          A = CopyDebug(new ICmpInst(I, StrictPred, Zero, Zero), I);
           B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
           C = CopyDebug(new ICmpInst(I, Pred, Zero, Zero), I);
           D = CopyDebug(BinaryOperator::Create(Instruction::And, B, C, "", I), I);
@@ -602,9 +617,9 @@ void ExpandI64::finalizeInst(Instruction *I) {
         A->setOperand(0, LeftLH.Low);  A->setOperand(1, RightLH.Low);
         B->setOperand(0, LeftLH.High); B->setOperand(1, RightLH.High);
       } else {
-        A->setOperand(0, LeftLH.Low);  A->setOperand(1, RightLH.Low);
-        B->setOperand(0, LeftLH.Low);  B->setOperand(1, RightLH.Low);
-        C->setOperand(0, LeftLH.High); C->setOperand(1, RightLH.High);
+        A->setOperand(0, LeftLH.High);  A->setOperand(1, RightLH.High);
+        B->setOperand(0, LeftLH.High);  B->setOperand(1, RightLH.High);
+        C->setOperand(0, LeftLH.Low); C->setOperand(1, RightLH.Low);
       }
       I->replaceAllUsesWith(Final);
       break;
