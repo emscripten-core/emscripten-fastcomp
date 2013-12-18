@@ -450,6 +450,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = H;
       break;
     }
+    case Instruction::FPToUI:
     case Instruction::FPToSI: {
       ensureFuncs();
       SmallVector<Value *, 1> Args;
@@ -530,6 +531,7 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::Load:
     case Instruction::SExt:
     case Instruction::ZExt:
+    case Instruction::FPToUI:
     case Instruction::FPToSI: {
       break; // input was legal
     }
