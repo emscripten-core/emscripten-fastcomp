@@ -23,6 +23,7 @@
 //===------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -528,6 +529,46 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.ToFix.push_back(D);
       break;
     }
+    case Instruction::Switch: {
+      // do a switch on the lower 32 bits, into a different basic block for each target, then do a branch in each of those on the high 32 bits
+      SwitchInst* SI = cast<SwitchInst>(I);
+      BasicBlock *DD = SI->getDefaultDest();
+      BasicBlock *SwitchBB = I->getParent();
+      Function *F = SwitchBB->getParent();
+      SplitInfo &Split = Splits[I];
+
+      unsigned NumItems = 0;
+      for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
+        NumItems += i.getCaseValueEx().getNumItems();
+      }
+      SwitchInst *LowSI = SwitchInst::Create(Zero, DD, NumItems, I); // same default destination: if lower bits do not match, go straight to default
+      CopyDebug(LowSI, I);
+      Split.ToFix.push_back(LowSI);
+
+      unsigned Counter = 0;
+      BasicBlock *InsertPoint = SwitchBB;
+
+      for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
+        BasicBlock *BB = i.getCaseSuccessor();
+        const IntegersSubset CaseVal = i.getCaseValueEx();
+        assert(CaseVal.isSingleNumbersOnly());
+        for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
+          uint64_t Bits = CaseVal.getSingleNumber(Index).toConstantInt()->getZExtValue();
+          uint32_t LowBits = (uint32_t)Bits;
+          uint32_t HighBits = (uint32_t)(Bits >> 32);
+
+          BasicBlock *NewBB = BasicBlock::Create(F->getContext(), "switch64_" + utostr(Counter++), F);
+          NewBB->moveAfter(InsertPoint);
+          InsertPoint = NewBB;
+          Instruction *CheckHigh = CopyDebug(new ICmpInst(*NewBB, ICmpInst::ICMP_EQ, Zero, ConstantInt::get(i32, HighBits)), I);
+          Split.ToFix.push_back(CheckHigh);
+          CopyDebug(BranchInst::Create(BB, DD, CheckHigh, NewBB), I);
+
+          LowSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, LowBits)), NewBB);
+        }
+      }
+      break;
+    }
     default: {
       dumpIR(I);
       assert(0 && "some i64 thing we can't legalize yet");
@@ -688,6 +729,17 @@ void ExpandI64::finalizeInst(Instruction *I) {
       if (!isIllegal(I->getType())) {
         // legal return value, so just replace the old call with the new call
         I->replaceAllUsesWith(L);
+      }
+      break;
+    }
+    case Instruction::Switch: {
+      SwitchInst *SI = dyn_cast<SwitchInst>(I);
+      LowHighPair LH = getLowHigh(SI->getCondition());
+      SwitchInst *NewSI = dyn_cast<SwitchInst>(Split.ToFix[0]);
+      NewSI->setCondition(LH.Low);
+      unsigned Num = Split.ToFix.size();
+      for (unsigned i = 1; i < Num; i++) {
+        Split.ToFix[i]->setOperand(0, LH.High);
       }
       break;
     }
