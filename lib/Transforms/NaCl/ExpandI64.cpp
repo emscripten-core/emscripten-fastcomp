@@ -150,7 +150,15 @@ static FunctionType *getLegalizedFunctionType(FunctionType *FT) {
 
 // Implementation of ExpandI64
 
+bool okToRemainIllegal(Function *F) {
+  const char *Name = F->getName().str().c_str();
+  if (strcmp(Name, "llvm.dbg.value") == 0) return true;
+  return false;
+}
+
 void ExpandI64::ensureLegalFunc(Function *F) {
+  if (okToRemainIllegal(F)) return;
+
   FunctionType *FT = F->getFunctionType();
   int Num = FT->getNumParams();
   for (int i = -1; i < Num; i++) {
@@ -189,6 +197,8 @@ void ExpandI64::ensureLegalFunc(Function *F) {
 }
 
 void ExpandI64::removeIllegalFunc(Function *F) {
+  if (okToRemainIllegal(F)) return;
+
   FunctionType *FT = F->getFunctionType();
   int Num = FT->getNumParams();
   for (int i = -1; i < Num; i++) {
@@ -425,6 +435,11 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     }
     case Instruction::Call: {
       CallInst *CI = dyn_cast<CallInst>(I);
+      Function *F = CI->getCalledFunction();
+      if (F) {
+        assert(okToRemainIllegal(F));
+        break;
+      }
       Value *CV = CI->getCalledValue();
       FunctionType *OFT = NULL;
       if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {

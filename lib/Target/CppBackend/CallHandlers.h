@@ -706,6 +706,7 @@ std::string handleCall(const CallInst *CI) {
   const Value *CV = CI->getCalledValue();
   assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
   std::string Name = getCppName(CV);
+  if (strcmp(Name.c_str(), "_llvm_dbg_value") == 0) return ""; // ignore this
   unsigned NumArgs = CI->getNumArgOperands();
   CallHandlerMap::iterator CH = CallHandlers->find("___default__");
   if (isa<Function>(CV)) {
