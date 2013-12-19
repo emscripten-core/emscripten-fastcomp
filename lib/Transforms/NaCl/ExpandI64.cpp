@@ -850,6 +850,27 @@ bool ExpandI64::runOnModule(Module &M) {
     removeIllegalFunc(Func);
   }
 
+  // remove bitcasts that were introduced while legalizing functions
+  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
+    Function *Func = Iter++;
+    for (Function::iterator BB = Func->begin(), E = Func->end();
+         BB != E;
+         ++BB) {
+      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
+           Iter != E; ) {
+        Instruction *I = Iter++;
+        unsigned Opcode = I->getOpcode();
+        if (Opcode == Instruction::BitCast || Opcode == Instruction::PtrToInt) {
+          if (ConstantExpr *CE = dyn_cast<ConstantExpr>(I->getOperand(0))) {
+            assert(CE->getOpcode() == Instruction::BitCast);
+            assert(isa<FunctionType>(cast<PointerType>(CE->getType())->getElementType()));
+            I->setOperand(0, CE->getOperand(0));
+          }
+        }
+      }
+    }
+  }
+
   return Changed;
 }
 
