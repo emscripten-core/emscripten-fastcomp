@@ -224,7 +224,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       if (T->getIntegerBitWidth() < 32) {
         Low = CopyDebug(new SExtInst(Input, i32, "", I), I);
       } else {
-        Low = Input;
+        Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Input, Zero, "", I), I); // copy the input, hackishly XXX
       }
       Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLT, Low, Zero), I);
       Instruction *High  = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
@@ -240,7 +240,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       if (T->getIntegerBitWidth() < 32) {
         Low = CopyDebug(new ZExtInst(Input, i32, "", I), I);
       } else {
-        Low = Input;
+        Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Input, Zero, "", I), I); // copy the input, hackishly XXX
       }
       SplitInfo &Split = Splits[I];
       Split.LowHigh.Low = Low;
