@@ -1456,10 +1456,10 @@ static inline std::string ftostr_exact(const ConstantFP *CFP) {
   union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
   dbl.d = 0;
   for (unsigned i = 0; i < 8 - missing; i++) {
-    dbl.b[7-i+missing] = (hexToInt(raw[2*i]) << 4) |
-                          hexToInt(raw[2*i+1]);
+    dbl.b[7-i] = (hexToInt(raw[2*i]) << 4) |
+                  hexToInt(raw[2*i+1]);
   }
-  char buffer[100];
+  char buffer[101];
   snprintf(buffer, 100, "%.30g", dbl.d);
   return buffer;
 }
