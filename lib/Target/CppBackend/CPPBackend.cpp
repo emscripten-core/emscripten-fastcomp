@@ -120,7 +120,7 @@ namespace {
   class CppWriter : public ModulePass {
     formatted_raw_ostream &Out;
     const Module *TheModule;
-    uint64_t uniqueNum;
+    unsigned UniqueNum;
     TypeMap TypeNames;
     ValueMap ValueNames;
     NameSet UsedNames;
@@ -147,7 +147,7 @@ namespace {
   public:
     static char ID;
     explicit CppWriter(formatted_raw_ostream &o) :
-      ModulePass(ID), Out(o), uniqueNum(0), is_inline(false), indent_level(0){
+      ModulePass(ID), Out(o), UniqueNum(0), is_inline(false), indent_level(0){
     }
 
     virtual const char *getPassName() const { return "C++ backend"; }
@@ -497,57 +497,7 @@ void CppWriter::printEscapedString(const std::string &Str) {
 }
 
 std::string CppWriter::getCppName(Type* Ty) {
-  // First, handle the primitive types .. easy
-  if (Ty->isPrimitiveType() || Ty->isIntegerTy()) {
-    switch (Ty->getTypeID()) {
-    case Type::VoidTyID:   return "Type::getVoidTy(mod->getContext())";
-    case Type::IntegerTyID: {
-      unsigned BitWidth = cast<IntegerType>(Ty)->getBitWidth();
-      return "IntegerType::get(mod->getContext(), " + utostr(BitWidth) + ")";
-    }
-    case Type::X86_FP80TyID: return "Type::getX86_FP80Ty(mod->getContext())";
-    case Type::FloatTyID:    return "Type::getFloatTy(mod->getContext())";
-    case Type::DoubleTyID:   return "Type::getDoubleTy(mod->getContext())";
-    case Type::LabelTyID:    return "Type::getLabelTy(mod->getContext())";
-    case Type::X86_MMXTyID:  return "Type::getX86_MMXTy(mod->getContext())";
-    default:
-      error("Invalid primitive type");
-      break;
-    }
-    // shouldn't be returned, but make it sensible
-    return "Type::getVoidTy(mod->getContext())";
-  }
-
-  // Now, see if we've seen the type before and return that
-  TypeMap::iterator I = TypeNames.find(Ty);
-  if (I != TypeNames.end())
-    return I->second;
-
-  // Okay, let's build a new name for this type. Start with a prefix
-  const char* prefix = 0;
-  switch (Ty->getTypeID()) {
-  case Type::FunctionTyID:    prefix = "FuncTy_"; break;
-  case Type::StructTyID:      prefix = "StructTy_"; break;
-  case Type::ArrayTyID:       prefix = "ArrayTy_"; break;
-  case Type::PointerTyID:     prefix = "PointerTy_"; break;
-  case Type::VectorTyID:      prefix = "VectorTy_"; break;
-  default:                    prefix = "OtherTy_"; break; // prevent breakage
-  }
-
-  // See if the type has a name in the symboltable and build accordingly
-  std::string name;
-  if (StructType *STy = dyn_cast<StructType>(Ty))
-    if (STy->hasName())
-      name = STy->getName();
-  
-  if (name.empty())
-    name = utostr(uniqueNum++);
-  
-  name = std::string(prefix) + name;
-  sanitize(name);
-
-  // Save the name
-  return TypeNames[Ty] = name;
+  assert(0);
 }
 
 void CppWriter::printCppName(Type* Ty) {
@@ -625,8 +575,7 @@ std::string CppWriter::getCppName(const Value* val) {
     }
     sanitize(name);
   } else {
-    // XXX any time we get here is totally wasted effort
-    name = "waka";
+    name = "unique$" + utostr(UniqueNum++);
   }
   return ValueNames[val] = name;
 }
@@ -2084,8 +2033,6 @@ void CppWriter::printFunctionBody(const Function *F) {
   ForwardRefs.clear();
   DefinedValues.clear();
 
-  UsedVars.clear();
-
   // Prepare relooper TODO: resize buffer as needed
   #define RELOOPER_BUFFER 10*1024*1024
   static char *buffer = new char[RELOOPER_BUFFER];
@@ -2283,6 +2230,10 @@ void CppWriter::printModuleBody() {
       }
 
       // Emit the function
+
+      UsedVars.clear();
+      UniqueNum = 0;
+
       Out << "function _" << I->getName() << "(";
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
            AI != AE; ++AI) {
@@ -2571,7 +2522,7 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
       if (calculate) {
         Value *V = CE->getOperand(0);
         GlobalInitializers.push_back(getCppName(V));
-        // is the func waka
+        // is the func
       }
     } else if (name == "__fini_array_start") {
       // nothing to do
