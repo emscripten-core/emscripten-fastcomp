@@ -361,6 +361,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
             case ICmpInst::ICMP_SGE: StrictPred = ICmpInst::ICMP_SGT; UnsignedPred = ICmpInst::ICMP_UGE; break;
             case ICmpInst::ICMP_SLT:                                  UnsignedPred = ICmpInst::ICMP_ULT; break;
             case ICmpInst::ICMP_SGT:                                  UnsignedPred = ICmpInst::ICMP_UGT; break;
+            case ICmpInst::ICMP_ULT: break;
+            case ICmpInst::ICMP_UGT: break;
             default: assert(0);
           }
           A = CopyDebug(new ICmpInst(I, StrictPred, Zero, Zero), I);
