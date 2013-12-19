@@ -271,7 +271,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.LowHigh.High = LH;
 
       LL->setAlignment(LI->getAlignment());
-      LH->setAlignment(LI->getAlignment());
+      LH->setAlignment(std::min(4U, LI->getAlignment()));
       break;
     }
     case Instruction::Store: {
@@ -289,7 +289,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       Split.ToFix.push_back(SH);
 
       SL->setAlignment(SI->getAlignment());
-      SH->setAlignment(SI->getAlignment());
+      SH->setAlignment(std::min(4U, SI->getAlignment()));
       break;
     }
     case Instruction::Ret: {
