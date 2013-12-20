@@ -837,7 +837,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
       case Instruction::LShr: {
         std::string Input = getValueAsStr(I->getOperand(0));
         if (I->getType()->getIntegerBitWidth() < 32) {
-          Input = getParenCast(Input, I->getType(), opcode == Instruction::AShr ? ASM_SIGNED : ASM_UNSIGNED); // fill in high bits, as shift needs those and is done in 32-bit
+          Input = '(' + getCast(Input, I->getType(), opcode == Instruction::AShr ? ASM_SIGNED : ASM_UNSIGNED) + ')'; // fill in high bits, as shift needs those and is done in 32-bit
         }
         text += Input + (opcode == Instruction::AShr ? " >> " : " >>> ") +  getValueAsStr(I->getOperand(1));
         break;
