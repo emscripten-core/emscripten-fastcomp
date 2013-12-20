@@ -122,20 +122,6 @@ INITIALIZE_PASS(ExpandI64, "expand-i64",
 
 // Utilities
 
-static void updateEdge(BasicBlock *Dest, // from PNaClSjLjEH.cpp
-                       BasicBlock *OldIncoming,
-                       BasicBlock *NewIncoming) {
-  for (BasicBlock::iterator Inst = Dest->begin(); Inst != Dest->end(); ++Inst) {
-    PHINode *Phi = dyn_cast<PHINode>(Inst);
-    if (!Phi)
-      break;
-    for (unsigned I = 0, E = Phi->getNumIncomingValues(); I < E; ++I) {
-      if (Phi->getIncomingBlock(I) == OldIncoming)
-        Phi->setIncomingBlock(I, NewIncoming);
-    }
-  }
-}
-
 static bool isIllegal(Type *T) {
   return T->isIntegerTy() && T->getIntegerBitWidth() == 64;
 }
@@ -579,8 +565,15 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           CopyDebug(BranchInst::Create(BB, DD, CheckHigh, NewBB), I);
 
           LowSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, LowBits)), NewBB);
-
-          updateEdge(BB, SwitchBB, NewBB); // make sure phis work properly
+          // We used to go SwitchBB->BB, but now go SwitchBB->NewBB->BB, so make phis think we arrived from SwitchBB. Ditto for DD
+          for (unsigned Which = 0; Which < 2; Which++) {
+            BasicBlock *Target = Which == 0 ? BB : DD;
+            for (BasicBlock::iterator I = Target->begin(); I != Target->end(); ++I) {
+              PHINode *Phi = dyn_cast<PHINode>(I);
+              if (!Phi) break;
+              Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
+            }
+          }
         }
       }
       break;
