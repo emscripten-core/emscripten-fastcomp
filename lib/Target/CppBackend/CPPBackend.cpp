@@ -833,14 +833,15 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
         text += Shifted;
         break;
       }
-      case Instruction::AShr: {
+      case Instruction::AShr:
+      case Instruction::LShr: {
         std::string Input = getValueAsStr(I->getOperand(0));
         if (I->getType()->getIntegerBitWidth() < 32) {
-          Input = getParenCast(Input, I->getType(), ASM_SIGNED); // fill in high bits, as shift needs those and is done in 32-bit
+          Input = getParenCast(Input, I->getType(), opcode == Instruction::AShr ? ASM_SIGNED : ASM_UNSIGNED); // fill in high bits, as shift needs those and is done in 32-bit
         }
-        text += Input + " >> " +  getValueAsStr(I->getOperand(1)); break;
+        text += Input + (opcode == Instruction::AShr ? " >> " : " >>> ") +  getValueAsStr(I->getOperand(1));
+        break;
       }
-      case Instruction::LShr: text += getValueAsStr(I->getOperand(0)) + " >>> " + getValueAsStr(I->getOperand(1)); break;
       case Instruction::FAdd: text += getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
       case Instruction::FSub: text += getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::FMul: text += getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
