@@ -53,41 +53,6 @@ using namespace llvm;
 #undef assert
 #define assert(x) { if (!(x)) dumpfail(#x); }
 
-static cl::opt<std::string>
-FuncName("cppfname", cl::desc("Specify the name of the generated function"),
-         cl::value_desc("function name"));
-
-enum WhatToGenerate {
-  GenProgram,
-  GenModule,
-  GenContents,
-  GenFunction,
-  GenFunctions,
-  GenInline,
-  GenVariable,
-  GenType
-};
-
-static cl::opt<WhatToGenerate> GenerationType("cppgen", cl::Optional,
-  cl::desc("Choose what kind of output to generate"),
-  cl::init(GenProgram),
-  cl::values(
-    clEnumValN(GenProgram,  "program",   "Generate a complete program"),
-    clEnumValN(GenModule,   "module",    "Generate a module definition"),
-    clEnumValN(GenContents, "contents",  "Generate contents of a module"),
-    clEnumValN(GenFunction, "function",  "Generate a function definition"),
-    clEnumValN(GenFunctions,"functions", "Generate all function definitions"),
-    clEnumValN(GenInline,   "inline",    "Generate an inline function"),
-    clEnumValN(GenVariable, "variable",  "Generate a variable definition"),
-    clEnumValN(GenType,     "type",      "Generate a type definition"),
-    clEnumValEnd
-  )
-);
-
-static cl::opt<std::string> NameToGenerate("cppfor", cl::Optional,
-  cl::desc("Specify the name of the thing to generate"),
-  cl::init("!bad!"));
-
 extern "C" void LLVMInitializeCppBackendTarget() {
   // Register the target.
   RegisterTargetMachine<CPPTargetMachine> X(TheCppBackendTarget);
@@ -100,16 +65,11 @@ namespace {
     ASM_NONSPECIFIC = 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
   };
 
-  typedef std::vector<Type*> TypeList;
-  typedef std::map<Type*,std::string> TypeMap;
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
-  typedef std::set<Type*> TypeSet;
-  typedef std::set<const Value*> ValueSet;
-  typedef std::map<std::string, Type::TypeID> VarMap;
-  typedef std::map<const Value*,std::string> ForwardRefMap;
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
+  typedef std::map<std::string, Type::TypeID> VarMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
   typedef std::vector<std::string> FunctionTable;
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
@@ -121,15 +81,9 @@ namespace {
     formatted_raw_ostream &Out;
     const Module *TheModule;
     unsigned UniqueNum;
-    TypeMap TypeNames;
     ValueMap ValueNames;
     NameSet UsedNames;
-    TypeSet DefinedTypes;
-    ValueSet DefinedValues;
     VarMap UsedVars;
-    ForwardRefMap ForwardRefs;
-    bool is_inline;
-    unsigned indent_level;
     HeapData GlobalData8;
     HeapData GlobalData32;
     HeapData GlobalData64;
@@ -147,8 +101,7 @@ namespace {
   public:
     static char ID;
     explicit CppWriter(formatted_raw_ostream &o) :
-      ModulePass(ID), Out(o), UniqueNum(0), is_inline(false), indent_level(0){
-    }
+      ModulePass(ID), Out(o), UniqueNum(0) {}
 
     virtual const char *getPassName() const { return "C++ backend"; }
 
@@ -161,22 +114,12 @@ namespace {
     void printFunctions();
     void printInline(const std::string& fname, const std::string& funcName );
     void printVariable(const std::string& fname, const std::string& varName );
-    void printType(const std::string& fname, const std::string& typeName );
 
     void error(const std::string& msg);
-
     
     formatted_raw_ostream& nl(formatted_raw_ostream &Out, int delta = 0);
-    inline void in() { indent_level++; }
-    inline void out() { if (indent_level >0) indent_level--; }
     
   private:
-    void printLinkageType(GlobalValue::LinkageTypes LT);
-    void printVisibilityType(GlobalValue::VisibilityTypes VisTypes);
-    void printThreadLocalMode(GlobalVariable::ThreadLocalMode TLM);
-    void printCallingConv(CallingConv::ID cc);
-    void printEscapedString(const std::string& str);
-    void printCFP(const ConstantFP* CFP);
     void printCommaSeparated(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
@@ -309,10 +252,8 @@ namespace {
     std::string getValueAsParenStr(const Value*);
     std::string getValueAsCastParenStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getCppName(Type* val);
-    inline void printCppName(Type* val);
 
     std::string getCppName(const Value* val);
-    inline void printCppName(const Value* val);
 
     std::string getPhiCode(const BasicBlock *From, const BasicBlock *To);
 
@@ -328,18 +269,11 @@ namespace {
     std::string getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
     std::string getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep=';');
 
-    void printConstant(const Constant *CPV);
-    void printConstants(const Module* M);
-
-    void printVariableUses(const GlobalVariable *GV);
-    void printVariableHead(const GlobalVariable *GV);
-    void printVariableBody(const GlobalVariable *GV);
-
-    void printFunctionUses(const Function *F);
-    void printFunctionHead(const Function *F);
     void printFunctionBody(const Function *F);
     std::string generateInstruction(const Instruction *I);
     std::string getOpName(const Value*);
+
+    void processConstants();
 
     void printModuleBody();
   };
@@ -347,9 +281,6 @@ namespace {
 
 formatted_raw_ostream &CppWriter::nl(formatted_raw_ostream &Out, int delta) {
   Out << '\n';
-  if (delta >= 0 || indent_level >= unsigned(-delta))
-    indent_level += delta;
-  Out.indent(indent_level);
   return Out;
 }
 
@@ -359,149 +290,8 @@ static inline void sanitize(std::string &str) {
       str[i] = '_';
 }
 
-static std::string getTypePrefix(Type *Ty) {
-  switch (Ty->getTypeID()) {
-  case Type::VoidTyID:     return "void_";
-  case Type::IntegerTyID:
-    return "int" + utostr(cast<IntegerType>(Ty)->getBitWidth()) + "_";
-  case Type::FloatTyID:    return "float_";
-  case Type::DoubleTyID:   return "double_";
-  case Type::LabelTyID:    return "label_";
-  case Type::FunctionTyID: return "func_";
-  case Type::StructTyID:   return "struct_";
-  case Type::ArrayTyID:    return "array_";
-  case Type::PointerTyID:  return "ptr_";
-  case Type::VectorTyID:   return "packed_";
-  default:                 return "other_";
-  }
-}
-
 void CppWriter::error(const std::string& msg) {
   report_fatal_error(msg);
-}
-
-static inline std::string ftostr(const APFloat& V) {
-  std::string Buf;
-  if (&V.getSemantics() == &APFloat::IEEEdouble) {
-    raw_string_ostream(Buf) << V.convertToDouble();
-    return Buf;
-  } else if (&V.getSemantics() == &APFloat::IEEEsingle) {
-    raw_string_ostream(Buf) << (double)V.convertToFloat();
-    return Buf;
-  }
-  return "<unknown format in ftostr>"; // error
-}
-
-// printCFP - Print a floating point constant .. very carefully :)
-// This makes sure that conversion to/from floating yields the same binary
-// result so that we don't lose precision.
-void CppWriter::printCFP(const ConstantFP *CFP) {
-  assert(0);
-}
-
-void CppWriter::printCallingConv(CallingConv::ID cc){
-  // Print the calling convention.
-  switch (cc) {
-  case CallingConv::C:     Out << "CallingConv::C"; break;
-  case CallingConv::Fast:  Out << "CallingConv::Fast"; break;
-  case CallingConv::Cold:  Out << "CallingConv::Cold"; break;
-  case CallingConv::FirstTargetCC: Out << "CallingConv::FirstTargetCC"; break;
-  default:                 Out << cc; break;
-  }
-}
-
-void CppWriter::printLinkageType(GlobalValue::LinkageTypes LT) {
-  switch (LT) {
-  case GlobalValue::InternalLinkage:
-    Out << "GlobalValue::InternalLinkage"; break;
-  case GlobalValue::PrivateLinkage:
-    Out << "GlobalValue::PrivateLinkage"; break;
-  case GlobalValue::LinkerPrivateLinkage:
-    Out << "GlobalValue::LinkerPrivateLinkage"; break;
-  case GlobalValue::LinkerPrivateWeakLinkage:
-    Out << "GlobalValue::LinkerPrivateWeakLinkage"; break;
-  case GlobalValue::AvailableExternallyLinkage:
-    Out << "GlobalValue::AvailableExternallyLinkage "; break;
-  case GlobalValue::LinkOnceAnyLinkage:
-    Out << "GlobalValue::LinkOnceAnyLinkage "; break;
-  case GlobalValue::LinkOnceODRLinkage:
-    Out << "GlobalValue::LinkOnceODRLinkage "; break;
-  case GlobalValue::LinkOnceODRAutoHideLinkage:
-    Out << "GlobalValue::LinkOnceODRAutoHideLinkage"; break;
-  case GlobalValue::WeakAnyLinkage:
-    Out << "GlobalValue::WeakAnyLinkage"; break;
-  case GlobalValue::WeakODRLinkage:
-    Out << "GlobalValue::WeakODRLinkage"; break;
-  case GlobalValue::AppendingLinkage:
-    Out << "GlobalValue::AppendingLinkage"; break;
-  case GlobalValue::ExternalLinkage:
-    Out << "GlobalValue::ExternalLinkage"; break;
-  case GlobalValue::DLLImportLinkage:
-    Out << "GlobalValue::DLLImportLinkage"; break;
-  case GlobalValue::DLLExportLinkage:
-    Out << "GlobalValue::DLLExportLinkage"; break;
-  case GlobalValue::ExternalWeakLinkage:
-    Out << "GlobalValue::ExternalWeakLinkage"; break;
-  case GlobalValue::CommonLinkage:
-    Out << "GlobalValue::CommonLinkage"; break;
-  }
-}
-
-void CppWriter::printVisibilityType(GlobalValue::VisibilityTypes VisType) {
-  switch (VisType) {
-  case GlobalValue::DefaultVisibility:
-    Out << "GlobalValue::DefaultVisibility";
-    break;
-  case GlobalValue::HiddenVisibility:
-    Out << "GlobalValue::HiddenVisibility";
-    break;
-  case GlobalValue::ProtectedVisibility:
-    Out << "GlobalValue::ProtectedVisibility";
-    break;
-  }
-}
-
-void CppWriter::printThreadLocalMode(GlobalVariable::ThreadLocalMode TLM) {
-  switch (TLM) {
-    case GlobalVariable::NotThreadLocal:
-      Out << "GlobalVariable::NotThreadLocal";
-      break;
-    case GlobalVariable::GeneralDynamicTLSModel:
-      Out << "GlobalVariable::GeneralDynamicTLSModel";
-      break;
-    case GlobalVariable::LocalDynamicTLSModel:
-      Out << "GlobalVariable::LocalDynamicTLSModel";
-      break;
-    case GlobalVariable::InitialExecTLSModel:
-      Out << "GlobalVariable::InitialExecTLSModel";
-      break;
-    case GlobalVariable::LocalExecTLSModel:
-      Out << "GlobalVariable::LocalExecTLSModel";
-      break;
-  }
-}
-
-// printEscapedString - Print each character of the specified string, escaping
-// it if it is not printable or if it is an escape char.
-void CppWriter::printEscapedString(const std::string &Str) {
-  for (unsigned i = 0, e = Str.size(); i != e; ++i) {
-    unsigned char C = Str[i];
-    if (isprint(C) && C != '"' && C != '\\') {
-      Out << C;
-    } else {
-      Out << "\\x"
-          << (char) ((C/16  < 10) ? ( C/16 +'0') : ( C/16 -10+'A'))
-          << (char)(((C&15) < 10) ? ((C&15)+'0') : ((C&15)-10+'A'));
-    }
-  }
-}
-
-std::string CppWriter::getCppName(Type* Ty) {
-  assert(0);
-}
-
-void CppWriter::printCppName(Type* Ty) {
-  printEscapedString(getCppName(Ty));
 }
 
 std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
@@ -579,256 +369,6 @@ std::string CppWriter::getCppName(const Value* val) {
   }
   return ValueNames[val] = name;
 }
-
-void CppWriter::printCppName(const Value* val) {
-  printEscapedString(getCppName(val));
-}
-
-void CppWriter::printAttributes(const AttributeSet &PAL,
-                                const std::string &name) {
-  Out << "AttributeSet " << name << "_PAL;";
-  nl(Out);
-  if (!PAL.isEmpty()) {
-    Out << '{'; in(); nl(Out);
-    Out << "SmallVector<AttributeSet, 4> Attrs;"; nl(Out);
-    Out << "AttributeSet PAS;"; in(); nl(Out);
-    for (unsigned i = 0; i < PAL.getNumSlots(); ++i) {
-      unsigned index = PAL.getSlotIndex(i);
-      AttrBuilder attrs(PAL.getSlotAttributes(i), index);
-      Out << "{"; in(); nl(Out);
-      Out << "AttrBuilder B;"; nl(Out);
-
-#define HANDLE_ATTR(X)                                                  \
-      if (attrs.contains(Attribute::X)) {                               \
-        Out << "B.addAttribute(Attribute::" #X ");"; nl(Out);           \
-        attrs.removeAttribute(Attribute::X);                            \
-      }
-
-      HANDLE_ATTR(SExt);
-      HANDLE_ATTR(ZExt);
-      HANDLE_ATTR(NoReturn);
-      HANDLE_ATTR(InReg);
-      HANDLE_ATTR(StructRet);
-      HANDLE_ATTR(NoUnwind);
-      HANDLE_ATTR(NoAlias);
-      HANDLE_ATTR(ByVal);
-      HANDLE_ATTR(Nest);
-      HANDLE_ATTR(ReadNone);
-      HANDLE_ATTR(ReadOnly);
-      HANDLE_ATTR(NoInline);
-      HANDLE_ATTR(AlwaysInline);
-      HANDLE_ATTR(OptimizeForSize);
-      HANDLE_ATTR(StackProtect);
-      HANDLE_ATTR(StackProtectReq);
-      HANDLE_ATTR(StackProtectStrong);
-      HANDLE_ATTR(NoCapture);
-      HANDLE_ATTR(NoRedZone);
-      HANDLE_ATTR(NoImplicitFloat);
-      HANDLE_ATTR(Naked);
-      HANDLE_ATTR(InlineHint);
-      HANDLE_ATTR(ReturnsTwice);
-      HANDLE_ATTR(UWTable);
-      HANDLE_ATTR(NonLazyBind);
-      HANDLE_ATTR(MinSize);
-#undef HANDLE_ATTR
-
-      if (attrs.contains(Attribute::StackAlignment)) {
-        Out << "B.addStackAlignmentAttr(" << attrs.getStackAlignment()<<')';
-        nl(Out);
-        attrs.removeAttribute(Attribute::StackAlignment);
-      }
-
-      Out << "PAS = AttributeSet::get(mod->getContext(), ";
-      if (index == ~0U)
-        Out << "~0U,";
-      else
-        Out << index << "U,";
-      Out << " B);"; out(); nl(Out);
-      Out << "}"; out(); nl(Out);
-      nl(Out);
-      Out << "Attrs.push_back(PAS);"; nl(Out);
-    }
-    Out << name << "_PAL = AttributeSet::get(mod->getContext(), Attrs);";
-    nl(Out);
-    out(); nl(Out);
-    Out << '}'; nl(Out);
-  }
-}
-
-void CppWriter::printType(Type* Ty) {
-  // We don't print definitions for primitive types
-  if (Ty->isPrimitiveType() || Ty->isIntegerTy())
-    return;
-
-  // If we already defined this type, we don't need to define it again.
-  if (DefinedTypes.find(Ty) != DefinedTypes.end())
-    return;
-
-  // Everything below needs the name for the type so get it now.
-  std::string typeName(getCppName(Ty));
-
-  // Print the type definition
-  switch (Ty->getTypeID()) {
-  case Type::FunctionTyID:  {
-    FunctionType* FT = cast<FunctionType>(Ty);
-    Out << "std::vector<Type*>" << typeName << "_args;";
-    nl(Out);
-    FunctionType::param_iterator PI = FT->param_begin();
-    FunctionType::param_iterator PE = FT->param_end();
-    for (; PI != PE; ++PI) {
-      Type* argTy = static_cast<Type*>(*PI);
-      printType(argTy);
-      std::string argName(getCppName(argTy));
-      Out << typeName << "_args.push_back(" << argName;
-      Out << ");";
-      nl(Out);
-    }
-    printType(FT->getReturnType());
-    std::string retTypeName(getCppName(FT->getReturnType()));
-    Out << "FunctionType* " << typeName << " = FunctionType::get(";
-    in(); nl(Out) << "/*Result=*/" << retTypeName;
-    Out << ",";
-    nl(Out) << "/*Params=*/" << typeName << "_args,";
-    nl(Out) << "/*isVarArg=*/" << (FT->isVarArg() ? "true" : "false") << ");";
-    out();
-    nl(Out);
-    break;
-  }
-  case Type::StructTyID: {
-    StructType* ST = cast<StructType>(Ty);
-    if (!ST->isLiteral()) {
-      Out << "StructType *" << typeName << " = mod->getTypeByName(\"";
-      printEscapedString(ST->getName());
-      Out << "\");";
-      nl(Out);
-      Out << "if (!" << typeName << ") {";
-      nl(Out);
-      Out << typeName << " = ";
-      Out << "StructType::create(mod->getContext(), \"";
-      printEscapedString(ST->getName());
-      Out << "\");";
-      nl(Out);
-      Out << "}";
-      nl(Out);
-      // Indicate that this type is now defined.
-      DefinedTypes.insert(Ty);
-    }
-
-    Out << "std::vector<Type*>" << typeName << "_fields;";
-    nl(Out);
-    StructType::element_iterator EI = ST->element_begin();
-    StructType::element_iterator EE = ST->element_end();
-    for (; EI != EE; ++EI) {
-      Type* fieldTy = static_cast<Type*>(*EI);
-      printType(fieldTy);
-      std::string fieldName(getCppName(fieldTy));
-      Out << typeName << "_fields.push_back(" << fieldName;
-      Out << ");";
-      nl(Out);
-    }
-
-    if (ST->isLiteral()) {
-      Out << "StructType *" << typeName << " = ";
-      Out << "StructType::get(" << "mod->getContext(), ";
-    } else {
-      Out << "if (" << typeName << "->isOpaque()) {";
-      nl(Out);
-      Out << typeName << "->setBody(";
-    }
-
-    Out << typeName << "_fields, /*isPacked=*/"
-        << (ST->isPacked() ? "true" : "false") << ");";
-    nl(Out);
-    if (!ST->isLiteral()) {
-      Out << "}";
-      nl(Out);
-    }
-    break;
-  }
-  case Type::ArrayTyID: {
-    ArrayType* AT = cast<ArrayType>(Ty);
-    Type* ET = AT->getElementType();
-    printType(ET);
-    if (DefinedTypes.find(Ty) == DefinedTypes.end()) {
-      std::string elemName(getCppName(ET));
-      Out << "ArrayType* " << typeName << " = ArrayType::get("
-          << elemName
-          << ", " << utostr(AT->getNumElements()) << ");";
-      nl(Out);
-    }
-    break;
-  }
-  case Type::PointerTyID: {
-    PointerType* PT = cast<PointerType>(Ty);
-    Type* ET = PT->getElementType();
-    printType(ET);
-    if (DefinedTypes.find(Ty) == DefinedTypes.end()) {
-      std::string elemName(getCppName(ET));
-      Out << "PointerType* " << typeName << " = PointerType::get("
-          << elemName
-          << ", " << utostr(PT->getAddressSpace()) << ");";
-      nl(Out);
-    }
-    break;
-  }
-  case Type::VectorTyID: {
-    VectorType* PT = cast<VectorType>(Ty);
-    Type* ET = PT->getElementType();
-    printType(ET);
-    if (DefinedTypes.find(Ty) == DefinedTypes.end()) {
-      std::string elemName(getCppName(ET));
-      Out << "VectorType* " << typeName << " = VectorType::get("
-          << elemName
-          << ", " << utostr(PT->getNumElements()) << ");";
-      nl(Out);
-    }
-    break;
-  }
-  default:
-    error("Invalid TypeID");
-  }
-
-  // Indicate that this type is now defined.
-  DefinedTypes.insert(Ty);
-
-  // Finally, separate the type definition from other with a newline.
-  nl(Out);
-}
-
-void CppWriter::printTypes(const Module* M) {
-  // Add all of the global variables to the value table.
-  for (Module::const_global_iterator I = TheModule->global_begin(),
-         E = TheModule->global_end(); I != E; ++I) {
-    if (I->hasInitializer())
-      printType(I->getInitializer()->getType());
-    printType(I->getType());
-  }
-
-  // Add all the functions to the table
-  for (Module::const_iterator FI = TheModule->begin(), FE = TheModule->end();
-       FI != FE; ++FI) {
-    printType(FI->getReturnType());
-    printType(FI->getFunctionType());
-    // Add all the function arguments
-    for (Function::const_arg_iterator AI = FI->arg_begin(),
-           AE = FI->arg_end(); AI != AE; ++AI) {
-      printType(AI->getType());
-    }
-
-    // Add all of the basic blocks and instructions
-    for (Function::const_iterator BB = FI->begin(),
-           E = FI->end(); BB != E; ++BB) {
-      printType(BB->getType());
-      for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E;
-           ++I) {
-        printType(I->getType());
-        for (unsigned i = 0; i < I->getNumOperands(); ++i)
-          printType(I->getOperand(i)->getType());
-      }
-    }
-  }
-}
-
 
 std::string CppWriter::getAssign(const StringRef &s, const Type *t) {
   UsedVars[s] = t->getTypeID();
@@ -1044,268 +584,8 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
   return text;
 }
 
-// printConstant - Print out a constant pool entry...
-void CppWriter::printConstant(const Constant *CV) {
-  // First, if the constant is actually a GlobalValue (variable or function)
-  // or its already in the constant list then we've printed it already and we
-  // can just return.
-  if (isa<GlobalValue>(CV) || ValueNames.find(CV) != ValueNames.end())
-    return;
-
-  std::string constName(getCppName(CV));
-  std::string typeName(getCppName(CV->getType()));
-
-  //Out << "var " << constName << " = ";
-
-  if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-    std::string constValue = CI->getValue().toString(10, true);
-    Out << constValue << ";";
-  } else if (isa<ConstantAggregateZero>(CV)) {
-    Out << "ConstantAggregateZero::get(" << typeName << ");";
-  } else if (isa<ConstantPointerNull>(CV)) {
-    Out << "ConstantPointerNull::get(" << typeName << ");";
-  } else if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-    printCFP(CFP);
-    Out << ";";
-  } else if (const ConstantArray *CA = dyn_cast<ConstantArray>(CV)) {
-    Out << "std::vector<Constant*> " << constName << "_elems;";
-    nl(Out);
-    unsigned N = CA->getNumOperands();
-    for (unsigned i = 0; i < N; ++i) {
-      printConstant(CA->getOperand(i)); // recurse to print operands
-      Out << constName << "_elems.push_back("
-          << getCppName(CA->getOperand(i)) << ");";
-      nl(Out);
-    }
-    Out << "Constant* " << constName << " = ConstantArray::get("
-        << typeName << ", " << constName << "_elems);";
-  } else if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(CV)) {
-    Out << "std::vector<Constant*> " << constName << "_fields;";
-    nl(Out);
-    unsigned N = CS->getNumOperands();
-    for (unsigned i = 0; i < N; i++) {
-      printConstant(CS->getOperand(i));
-      Out << constName << "_fields.push_back("
-          << getCppName(CS->getOperand(i)) << ");";
-      nl(Out);
-    }
-    Out << "Constant* " << constName << " = ConstantStruct::get("
-        << typeName << ", " << constName << "_fields);";
-  } else if (const ConstantVector *CVec = dyn_cast<ConstantVector>(CV)) {
-    Out << "std::vector<Constant*> " << constName << "_elems;";
-    nl(Out);
-    unsigned N = CVec->getNumOperands();
-    for (unsigned i = 0; i < N; ++i) {
-      printConstant(CVec->getOperand(i));
-      Out << constName << "_elems.push_back("
-          << getCppName(CVec->getOperand(i)) << ");";
-      nl(Out);
-    }
-    Out << "Constant* " << constName << " = ConstantVector::get("
-        << typeName << ", " << constName << "_elems);";
-  } else if (isa<UndefValue>(CV)) {
-    Out << "UndefValue* " << constName << " = UndefValue::get("
-        << typeName << ");";
-  } else if (const ConstantDataSequential *CDS =
-               dyn_cast<ConstantDataSequential>(CV)) {
-    if (CDS->isString()) {
-      Out << "allocate([";
-      StringRef Str = CDS->getAsString();
-      for (unsigned int i = 0; i < Str.size(); i++) {
-        Out << (unsigned int)(Str.data()[i]);
-        if (i < Str.size()-1) Out << ",";
-      }
-      Out << "], 'i8', ALLOC_STATIC);";
-    } else {
-      // TODO: Could generate more efficient code generating CDS calls instead.
-      Out << "std::vector<Constant*> " << constName << "_elems;";
-      nl(Out);
-      for (unsigned i = 0; i != CDS->getNumElements(); ++i) {
-        Constant *Elt = CDS->getElementAsConstant(i);
-        printConstant(Elt);
-        Out << constName << "_elems.push_back(" << getCppName(Elt) << ");";
-        nl(Out);
-      }
-      Out << "Constant* " << constName;
-      
-      if (isa<ArrayType>(CDS->getType()))
-        Out << " = ConstantArray::get(";
-      else
-        Out << " = ConstantVector::get(";
-      Out << typeName << ", " << constName << "_elems);";
-    }
-  } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
-    if (CE->getOpcode() == Instruction::GetElementPtr) {
-      Out << "allocate([";
-      for (unsigned i = 0; i < CE->getNumOperands(); ++i ) {
-        Out << getCppName(CE->getOperand(i));
-        if (i < CE->getNumOperands()-1) Out << ",";
-      }
-      Out << "], 'i32', ALLOC_STATIC);";
-    } else if (CE->isCast()) {
-      printConstant(CE->getOperand(0));
-      Out << "Constant* " << constName << " = ConstantExpr::getCast(";
-      switch (CE->getOpcode()) {
-      default: llvm_unreachable("Invalid cast opcode");
-      case Instruction::Trunc: Out << "Instruction::Trunc"; break;
-      case Instruction::ZExt:  Out << "Instruction::ZExt"; break;
-      case Instruction::SExt:  Out << "Instruction::SExt"; break;
-      case Instruction::FPTrunc:  Out << "Instruction::FPTrunc"; break;
-      case Instruction::FPExt:  Out << "Instruction::FPExt"; break;
-      case Instruction::FPToUI:  Out << "Instruction::FPToUI"; break;
-      case Instruction::FPToSI:  Out << "Instruction::FPToSI"; break;
-      case Instruction::UIToFP:  Out << "Instruction::UIToFP"; break;
-      case Instruction::SIToFP:  Out << "Instruction::SIToFP"; break;
-      case Instruction::PtrToInt:  Out << "Instruction::PtrToInt"; break;
-      case Instruction::IntToPtr:  Out << "Instruction::IntToPtr"; break;
-      case Instruction::BitCast:  Out << "Instruction::BitCast"; break;
-      }
-      Out << ", " << getCppName(CE->getOperand(0)) << ", "
-          << getCppName(CE->getType()) << ");";
-    } else {
-      unsigned N = CE->getNumOperands();
-      for (unsigned i = 0; i < N; ++i ) {
-        printConstant(CE->getOperand(i));
-      }
-      Out << "Constant* " << constName << " = ConstantExpr::";
-      switch (CE->getOpcode()) {
-      case Instruction::Add:    Out << "getAdd(";  break;
-      case Instruction::FAdd:   Out << "getFAdd(";  break;
-      case Instruction::Sub:    Out << "getSub("; break;
-      case Instruction::FSub:   Out << "getFSub("; break;
-      case Instruction::Mul:    Out << "getMul("; break;
-      case Instruction::FMul:   Out << "getFMul("; break;
-      case Instruction::UDiv:   Out << "getUDiv("; break;
-      case Instruction::SDiv:   Out << "getSDiv("; break;
-      case Instruction::FDiv:   Out << "getFDiv("; break;
-      case Instruction::URem:   Out << "getURem("; break;
-      case Instruction::SRem:   Out << "getSRem("; break;
-      case Instruction::FRem:   Out << "getFRem("; break;
-      case Instruction::And:    Out << "getAnd("; break;
-      case Instruction::Or:     Out << "getOr("; break;
-      case Instruction::Xor:    Out << "getXor("; break;
-      case Instruction::ICmp:
-        Out << "getICmp(ICmpInst::ICMP_";
-        switch (CE->getPredicate()) {
-        case ICmpInst::ICMP_EQ:  Out << "EQ"; break;
-        case ICmpInst::ICMP_NE:  Out << "NE"; break;
-        case ICmpInst::ICMP_SLT: Out << "SLT"; break;
-        case ICmpInst::ICMP_ULT: Out << "ULT"; break;
-        case ICmpInst::ICMP_SGT: Out << "SGT"; break;
-        case ICmpInst::ICMP_UGT: Out << "UGT"; break;
-        case ICmpInst::ICMP_SLE: Out << "SLE"; break;
-        case ICmpInst::ICMP_ULE: Out << "ULE"; break;
-        case ICmpInst::ICMP_SGE: Out << "SGE"; break;
-        case ICmpInst::ICMP_UGE: Out << "UGE"; break;
-        default: error("Invalid ICmp Predicate");
-        }
-        break;
-      case Instruction::FCmp:
-        Out << "getFCmp(FCmpInst::FCMP_";
-        switch (CE->getPredicate()) {
-        case FCmpInst::FCMP_FALSE: Out << "FALSE"; break;
-        case FCmpInst::FCMP_ORD:   Out << "ORD"; break;
-        case FCmpInst::FCMP_UNO:   Out << "UNO"; break;
-        case FCmpInst::FCMP_OEQ:   Out << "OEQ"; break;
-        case FCmpInst::FCMP_UEQ:   Out << "UEQ"; break;
-        case FCmpInst::FCMP_ONE:   Out << "ONE"; break;
-        case FCmpInst::FCMP_UNE:   Out << "UNE"; break;
-        case FCmpInst::FCMP_OLT:   Out << "OLT"; break;
-        case FCmpInst::FCMP_ULT:   Out << "ULT"; break;
-        case FCmpInst::FCMP_OGT:   Out << "OGT"; break;
-        case FCmpInst::FCMP_UGT:   Out << "UGT"; break;
-        case FCmpInst::FCMP_OLE:   Out << "OLE"; break;
-        case FCmpInst::FCMP_ULE:   Out << "ULE"; break;
-        case FCmpInst::FCMP_OGE:   Out << "OGE"; break;
-        case FCmpInst::FCMP_UGE:   Out << "UGE"; break;
-        case FCmpInst::FCMP_TRUE:  Out << "TRUE"; break;
-        default: error("Invalid FCmp Predicate");
-        }
-        break;
-      case Instruction::Shl:     Out << "getShl("; break;
-      case Instruction::LShr:    Out << "getLShr("; break;
-      case Instruction::AShr:    Out << "getAShr("; break;
-      case Instruction::Select:  Out << "getSelect("; break;
-      case Instruction::ExtractElement: Out << "getExtractElement("; break;
-      case Instruction::InsertElement:  Out << "getInsertElement("; break;
-      case Instruction::ShuffleVector:  Out << "getShuffleVector("; break;
-      default:
-        error("Invalid constant expression");
-        break;
-      }
-      Out << getCppName(CE->getOperand(0));
-      for (unsigned i = 1; i < CE->getNumOperands(); ++i)
-        Out << ", " << getCppName(CE->getOperand(i));
-      Out << ");";
-    }
-  } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(CV)) {
-    Out << "Constant* " << constName << " = ";
-    Out << "BlockAddress::get(" << getOpName(BA->getBasicBlock()) << ");";
-  } else {
-    error("Bad Constant");
-    Out << "Constant* " << constName << " = 0; ";
-  }
-  nl(Out);
-}
-
-void CppWriter::printConstants(const Module* M) {
-  // First, calculate the address of each constant
-  for (Module::const_global_iterator I = TheModule->global_begin(),
-         E = TheModule->global_end(); I != E; ++I) {
-    if (I->hasInitializer()) {
-      parseConstant(I->getName().str(), I->getInitializer(), true);
-    }
-  }
-  // Second, allocate their contents
-  for (Module::const_global_iterator I = TheModule->global_begin(),
-         E = TheModule->global_end(); I != E; ++I) {
-    if (I->hasInitializer()) {
-      parseConstant(I->getName().str(), I->getInitializer(), false);
-    }
-  }
-}
-
-void CppWriter::printVariableUses(const GlobalVariable *GV) {
-}
-
-void CppWriter::printVariableHead(const GlobalVariable *GV) {
-  Out << "var ";
-  printCppName(GV);
-  Out << ";\n";
-}
-
-void CppWriter::printVariableBody(const GlobalVariable *GV) {
-  if (GV->hasInitializer()) {
-    printCppName(GV);
-    Out << " = ";
-    Out << getCppName(GV->getInitializer()) << ";";
-    nl(Out);
-  }
-}
-
 std::string CppWriter::getOpName(const Value* V) { // TODO: remove this
   return getCppName(V);
-}
-
-static StringRef ConvertAtomicOrdering(AtomicOrdering Ordering) {
-  switch (Ordering) {
-    case NotAtomic: return "NotAtomic";
-    case Unordered: return "Unordered";
-    case Monotonic: return "Monotonic";
-    case Acquire: return "Acquire";
-    case Release: return "Release";
-    case AcquireRelease: return "AcquireRelease";
-    case SequentiallyConsistent: return "SequentiallyConsistent";
-  }
-  llvm_unreachable("Unknown ordering");
-}
-
-static StringRef ConvertAtomicSynchScope(SynchronizationScope SynchScope) {
-  switch (SynchScope) {
-    case SingleThread: return "SingleThread";
-    case CrossThread: return "CrossThread";
-  }
-  llvm_unreachable("Unknown synch scope");
 }
 
 std::string CppWriter::getPtrLoad(const Value* Ptr) {
@@ -1359,6 +639,18 @@ static int hexToInt(char x) {
     return x - 'A' + 10;
   }
 }
+
+/* static inline std::string ftostr(const APFloat& V) {
+  std::string Buf;
+  if (&V.getSemantics() == &APFloat::IEEEdouble) {
+    raw_string_ostream(Buf) << V.convertToDouble();
+    return Buf;
+  } else if (&V.getSemantics() == &APFloat::IEEEsingle) {
+    raw_string_ostream(Buf) << (double)V.convertToFloat();
+    return Buf;
+  }
+  return "<unknown format in ftostr>"; // error
+} */
 
 static inline std::string ftostr_exact(const ConstantFP *CFP) {
   std::string temp;
@@ -1481,47 +773,6 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
   }
   case Instruction::Br:
   case Instruction::Switch: break; // handled while relooping
-  case Instruction::IndirectBr: {
-    const IndirectBrInst *IBI = cast<IndirectBrInst>(I);
-    Out << "IndirectBrInst *" << iName << " = IndirectBrInst::Create("
-        << opNames[0] << ", " << IBI->getNumDestinations() << ");";
-    nl(Out);
-    for (unsigned i = 1; i != IBI->getNumOperands(); ++i) {
-      Out << iName << "->addDestination(" << opNames[i] << ");";
-      nl(Out);
-    }
-    break;
-  }
-  case Instruction::Resume: {
-    Out << "ResumeInst::Create(mod->getContext(), " << opNames[0]
-        << ", " << bbname << ");";
-    break;
-  }
-  case Instruction::Invoke: {
-    const InvokeInst* inv = cast<InvokeInst>(I);
-    Out << "std::vector<Value*> " << iName << "_params;";
-    nl(Out);
-    for (unsigned i = 0; i < inv->getNumArgOperands(); ++i) {
-      Out << iName << "_params.push_back("
-          << getOpName(inv->getArgOperand(i)) << ");";
-      nl(Out);
-    }
-    // FIXME: This shouldn't use magic numbers -3, -2, and -1.
-    Out << "InvokeInst *" << iName << " = InvokeInst::Create("
-        << getOpName(inv->getCalledFunction()) << ", "
-        << getOpName(inv->getNormalDest()) << ", "
-        << getOpName(inv->getUnwindDest()) << ", "
-        << iName << "_params, \"";
-    printEscapedString(inv->getName());
-    Out << "\", " << bbname << ");";
-    nl(Out) << iName << "->setCallingConv(";
-    printCallingConv(inv->getCallingConv());
-    Out << ");";
-    printAttributes(inv->getAttributes(), iName);
-    Out << iName << "->setAttributes(" << iName << "_PAL);";
-    nl(Out);
-    break;
-  }
   case Instruction::Unreachable: {
     // No need to emit anything, as there should be an abort right before these
     // text += "abort();";
@@ -1686,7 +937,6 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
       assert(0 && "FIXME: add i64 legalization");
     }
-
     break;
   }
   case Instruction::GetElementPtr: {
@@ -1768,91 +1018,6 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
                                             getValueAsStr(SI->getFalseValue()) + ';';
     break;
   }
-  case Instruction::UserOp1:
-    /// FALL THROUGH
-  case Instruction::UserOp2: {
-    /// FIXME: What should be done here?
-    break;
-  }
-  case Instruction::VAArg: {
-    const VAArgInst* va = cast<VAArgInst>(I);
-    Out << "VAArgInst* " << getCppName(va) << " = new VAArgInst("
-        << opNames[0] << ", " << getCppName(va->getType()) << ", \"";
-    printEscapedString(va->getName());
-    Out << "\", " << bbname << ");";
-    break;
-  }
-  case Instruction::ExtractElement: {
-    const ExtractElementInst* eei = cast<ExtractElementInst>(I);
-    Out << "ExtractElementInst* " << getCppName(eei)
-        << " = new ExtractElementInst(" << opNames[0]
-        << ", " << opNames[1] << ", \"";
-    printEscapedString(eei->getName());
-    Out << "\", " << bbname << ");";
-    break;
-  }
-  case Instruction::InsertElement: {
-    const InsertElementInst* iei = cast<InsertElementInst>(I);
-    Out << "InsertElementInst* " << getCppName(iei)
-        << " = InsertElementInst::Create(" << opNames[0]
-        << ", " << opNames[1] << ", " << opNames[2] << ", \"";
-    printEscapedString(iei->getName());
-    Out << "\", " << bbname << ");";
-    break;
-  }
-  case Instruction::ShuffleVector: {
-    const ShuffleVectorInst* svi = cast<ShuffleVectorInst>(I);
-    Out << "ShuffleVectorInst* " << getCppName(svi)
-        << " = new ShuffleVectorInst(" << opNames[0]
-        << ", " << opNames[1] << ", " << opNames[2] << ", \"";
-    printEscapedString(svi->getName());
-    Out << "\", " << bbname << ");";
-    break;
-  }
-  case Instruction::ExtractValue: {
-    const ExtractValueInst *evi = cast<ExtractValueInst>(I);
-    Out << "std::vector<unsigned> " << iName << "_indices;";
-    nl(Out);
-    for (unsigned i = 0; i < evi->getNumIndices(); ++i) {
-      Out << iName << "_indices.push_back("
-          << evi->idx_begin()[i] << ");";
-      nl(Out);
-    }
-    Out << "ExtractValueInst* " << getCppName(evi)
-        << " = ExtractValueInst::Create(" << opNames[0]
-        << ", "
-        << iName << "_indices, \"";
-    printEscapedString(evi->getName());
-    Out << "\", " << bbname << ");";
-    break;
-  }
-  case Instruction::InsertValue: {
-    const InsertValueInst *ivi = cast<InsertValueInst>(I);
-    Out << "std::vector<unsigned> " << iName << "_indices;";
-    nl(Out);
-    for (unsigned i = 0; i < ivi->getNumIndices(); ++i) {
-      Out << iName << "_indices.push_back("
-          << ivi->idx_begin()[i] << ");";
-      nl(Out);
-    }
-    Out << "InsertValueInst* " << getCppName(ivi)
-        << " = InsertValueInst::Create(" << opNames[0]
-        << ", " << opNames[1] << ", "
-        << iName << "_indices, \"";
-    printEscapedString(ivi->getName());
-    Out << "\", " << bbname << ");";
-    break;
-  }
-  case Instruction::Fence: {
-    const FenceInst *fi = cast<FenceInst>(I);
-    StringRef Ordering = ConvertAtomicOrdering(fi->getOrdering());
-    StringRef CrossThread = ConvertAtomicSynchScope(fi->getSynchScope());
-    Out << "FenceInst* " << iName
-        << " = new FenceInst(mod->getContext(), "
-        << Ordering << ", " << CrossThread << ", " << bbname
-        << ");";
-    break;
-  }
   case Instruction::AtomicCmpXchg: {
     std::string Assign = getAssign(iName, I->getType());
     const Value *P = I->getOperand(0);
@@ -1887,122 +1052,8 @@ std::string CppWriter::generateInstruction(const Instruction *I) {
     break;
   }
   }
-  DefinedValues.insert(I);
   delete [] opNames;
   return text;
-}
-
-// Print out the types, constants and declarations needed by one function
-void CppWriter::printFunctionUses(const Function* F) {
-  nl(Out) << "// Type Definitions"; nl(Out);
-  if (!is_inline) {
-    // Print the function's return type
-    printType(F->getReturnType());
-
-    // Print the function's function type
-    printType(F->getFunctionType());
-
-    // Print the types of each of the function's arguments
-    for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
-         AI != AE; ++AI) {
-      printType(AI->getType());
-    }
-  }
-
-  // Print type definitions for every type referenced by an instruction and
-  // make a note of any global values or constants that are referenced
-  SmallPtrSet<GlobalValue*,64> gvs;
-  SmallPtrSet<Constant*,64> consts;
-  for (Function::const_iterator BB = F->begin(), BE = F->end();
-       BB != BE; ++BB){
-    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
-         I != E; ++I) {
-      // Print the type of the instruction itself
-      printType(I->getType());
-
-      // Print the type of each of the instruction's operands
-      for (unsigned i = 0; i < I->getNumOperands(); ++i) {
-        Value* operand = I->getOperand(i);
-        printType(operand->getType());
-
-        // If the operand references a GVal or Constant, make a note of it
-        if (GlobalValue* GV = dyn_cast<GlobalValue>(operand)) {
-          gvs.insert(GV);
-          if (GenerationType != GenFunction)
-            if (GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV))
-              if (GVar->hasInitializer())
-                consts.insert(GVar->getInitializer());
-        } else if (Constant* C = dyn_cast<Constant>(operand)) {
-          consts.insert(C);
-          for (unsigned j = 0; j < C->getNumOperands(); ++j) {
-            // If the operand references a GVal or Constant, make a note of it
-            Value* operand = C->getOperand(j);
-            printType(operand->getType());
-            if (GlobalValue* GV = dyn_cast<GlobalValue>(operand)) {
-              gvs.insert(GV);
-              if (GenerationType != GenFunction)
-                if (GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV))
-                  if (GVar->hasInitializer())
-                    consts.insert(GVar->getInitializer());
-            }
-          }
-        }
-      }
-    }
-  }
-
-}
-
-void CppWriter::printFunctionHead(const Function* F) {
-  nl(Out) << "Function* " << getCppName(F);
-  Out << " = mod->getFunction(\"";
-  printEscapedString(F->getName());
-  Out << "\");";
-  nl(Out) << "if (!" << getCppName(F) << ") {";
-  nl(Out) << getCppName(F);
-
-  Out<< " = Function::Create(";
-  nl(Out,1) << "/*Type=*/" << getCppName(F->getFunctionType()) << ",";
-  nl(Out) << "/*Linkage=*/";
-  printLinkageType(F->getLinkage());
-  Out << ",";
-  nl(Out) << "/*Name=*/\"";
-  printEscapedString(F->getName());
-  Out << "\", mod); " << (F->isDeclaration()? "// (external, no body)" : "");
-  nl(Out,-1);
-  printCppName(F);
-  Out << "->setCallingConv(";
-  printCallingConv(F->getCallingConv());
-  Out << ");";
-  nl(Out);
-  if (F->hasSection()) {
-    printCppName(F);
-    Out << "->setSection(\"" << F->getSection() << "\");";
-    nl(Out);
-  }
-  if (F->getAlignment()) {
-    printCppName(F);
-    Out << "->setAlignment(" << F->getAlignment() << ");";
-    nl(Out);
-  }
-  if (F->getVisibility() != GlobalValue::DefaultVisibility) {
-    printCppName(F);
-    Out << "->setVisibility(";
-    printVisibilityType(F->getVisibility());
-    Out << ");";
-    nl(Out);
-  }
-  if (F->hasGC()) {
-    printCppName(F);
-    Out << "->setGC(\"" << F->getGC() << "\");";
-    nl(Out);
-  }
-  Out << "}";
-  nl(Out);
-  printAttributes(F->getAttributes(), getCppName(F));
-  printCppName(F);
-  Out << "->setAttributes(" << getCppName(F) << "_PAL);";
-  nl(Out);
 }
 
 static const SwitchInst *considerSwitch(const Instruction *I) {
@@ -2027,11 +1078,6 @@ static const SwitchInst *considerSwitch(const Instruction *I) {
 
 void CppWriter::printFunctionBody(const Function *F) {
   assert(!F->isDeclaration());
-
-  // Clear the DefinedValues and ForwardRefs maps because we can't have
-  // cross-function forward refs
-  ForwardRefs.clear();
-  DefinedValues.clear();
 
   // Prepare relooper TODO: resize buffer as needed
   #define RELOOPER_BUFFER 10*1024*1024
@@ -2173,38 +1219,25 @@ void CppWriter::printFunctionBody(const Function *F) {
   }
 }
 
-void CppWriter::printInline(const std::string& fname,
-                            const std::string& func) {
-  const Function* F = TheModule->getFunction(func);
-  if (!F) {
-    error(std::string("Function '") + func + "' not found in input module");
-    return;
+void CppWriter::processConstants() {
+  // First, calculate the address of each constant
+  for (Module::const_global_iterator I = TheModule->global_begin(),
+         E = TheModule->global_end(); I != E; ++I) {
+    if (I->hasInitializer()) {
+      parseConstant(I->getName().str(), I->getInitializer(), true);
+    }
   }
-  if (F->isDeclaration()) {
-    error(std::string("Function '") + func + "' is external!");
-    return;
+  // Second, allocate their contents
+  for (Module::const_global_iterator I = TheModule->global_begin(),
+         E = TheModule->global_end(); I != E; ++I) {
+    if (I->hasInitializer()) {
+      parseConstant(I->getName().str(), I->getInitializer(), false);
+    }
   }
-  nl(Out) << "BasicBlock* " << fname << "(Module* mod, Function *"
-          << getCppName(F);
-  unsigned arg_count = 1;
-  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
-       AI != AE; ++AI) {
-    Out << ", Value* arg_" << arg_count;
-  }
-  Out << ") {";
-  nl(Out);
-  is_inline = true;
-  printFunctionUses(F);
-  printFunctionBody(F);
-  is_inline = false;
-  Out << "return " << getCppName(F->begin()) << ";";
-  nl(Out) << "}";
-  nl(Out);
 }
 
 void CppWriter::printModuleBody() {
-  // Calculate the constants definitions.
-  printConstants(TheModule);
+  processConstants();
 
   // Emit function bodies.
   nl(Out) << "// EMSCRIPTEN_START_FUNCTIONS"; nl(Out);
@@ -2578,142 +1611,12 @@ void CppWriter::printModule(const std::string& fname,
   printModuleBody();
 }
 
-void CppWriter::printContents(const std::string& fname,
-                              const std::string& mName) {
-  Out << "\nModule* " << fname << "(Module *mod) {\n";
-  Out << "\nmod->setModuleIdentifier(\"";
-  printEscapedString(mName);
-  Out << "\");\n";
-  printModuleBody();
-  Out << "\nreturn mod;\n";
-  Out << "\n}\n";
-}
-
-void CppWriter::printFunction(const std::string& fname,
-                              const std::string& funcName) {
-  const Function* F = TheModule->getFunction(funcName);
-  if (!F) {
-    error(std::string("Function '") + funcName + "' not found in input module");
-    return;
-  }
-  Out << "\nFunction* " << fname << "(Module *mod) {\n";
-  printFunctionUses(F);
-  printFunctionHead(F);
-  printFunctionBody(F);
-  Out << "return " << getCppName(F) << ";\n";
-  Out << "}\n";
-}
-
-void CppWriter::printFunctions() {
-  const Module::FunctionListType &funcs = TheModule->getFunctionList();
-  Module::const_iterator I  = funcs.begin();
-  Module::const_iterator IE = funcs.end();
-
-  for (; I != IE; ++I) {
-    const Function &func = *I;
-    if (!func.isDeclaration()) {
-      std::string name("define_");
-      name += func.getName();
-      printFunction(name, func.getName());
-    }
-  }
-}
-
-void CppWriter::printVariable(const std::string& fname,
-                              const std::string& varName) {
-  const GlobalVariable* GV = TheModule->getNamedGlobal(varName);
-
-  if (!GV) {
-    error(std::string("Variable '") + varName + "' not found in input module");
-    return;
-  }
-  Out << "\nGlobalVariable* " << fname << "(Module *mod) {\n";
-  printVariableUses(GV);
-  printVariableHead(GV);
-  printVariableBody(GV);
-  Out << "return " << getCppName(GV) << ";\n";
-  Out << "}\n";
-}
-
-void CppWriter::printType(const std::string &fname,
-                          const std::string &typeName) {
-  Type* Ty = TheModule->getTypeByName(typeName);
-  if (!Ty) {
-    error(std::string("Type '") + typeName + "' not found in input module");
-    return;
-  }
-  Out << "\nType* " << fname << "(Module *mod) {\n";
-  printType(Ty);
-  Out << "return " << getCppName(Ty) << ";\n";
-  Out << "}\n";
-}
-
 bool CppWriter::runOnModule(Module &M) {
   TheModule = &M;
 
   setupCallHandlers();
 
-  // Emit a header
-  Out << "//========================================\n\n";
-
-  // Get the name of the function we're supposed to generate
-  std::string fname = FuncName.getValue();
-
-  // Get the name of the thing we are to generate
-  std::string tgtname = NameToGenerate.getValue();
-  if (GenerationType == GenModule ||
-      GenerationType == GenContents ||
-      GenerationType == GenProgram ||
-      GenerationType == GenFunctions) {
-    if (tgtname == "!bad!") {
-      if (M.getModuleIdentifier() == "-")
-        tgtname = "<stdin>";
-      else
-        tgtname = M.getModuleIdentifier();
-    }
-  } else if (tgtname == "!bad!")
-    error("You must use the -for option with -gen-{function,variable,type}");
-
-  switch (WhatToGenerate(GenerationType)) {
-   case GenProgram:
-    if (fname.empty())
-      fname = "makeLLVMModule";
-    printProgram(fname,tgtname);
-    break;
-   case GenModule:
-    if (fname.empty())
-      fname = "makeLLVMModule";
-    printModule(fname,tgtname);
-    break;
-   case GenContents:
-    if (fname.empty())
-      fname = "makeLLVMModuleContents";
-    printContents(fname,tgtname);
-    break;
-   case GenFunction:
-    if (fname.empty())
-      fname = "makeLLVMFunction";
-    printFunction(fname,tgtname);
-    break;
-   case GenFunctions:
-    printFunctions();
-    break;
-   case GenInline:
-    if (fname.empty())
-      fname = "makeLLVMInline";
-    printInline(fname,tgtname);
-    break;
-   case GenVariable:
-    if (fname.empty())
-      fname = "makeLLVMVariable";
-    printVariable(fname,tgtname);
-    break;
-   case GenType:
-    if (fname.empty())
-      fname = "makeLLVMType";
-    printType(fname,tgtname);
-    break;
-  }
+  printProgram("", "");
 
   return false;
 }
