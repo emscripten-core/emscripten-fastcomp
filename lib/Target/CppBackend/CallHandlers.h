@@ -2,7 +2,7 @@
 //
 // Each handler needs DEF_CALL_HANDLER and SETUP_CALL_HANDLER
 
-typedef std::string (CppWriter::*CallHandler)(const CallInst*, std::string Name, int NumArgs);
+typedef std::string (JSWriter::*CallHandler)(const CallInst*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
 CallHandlerMap *CallHandlers;
 
@@ -412,7 +412,7 @@ DEF_REDIRECT_HANDLER(SDL_RWFromMem, SDL_RWFromConstMem);
 void setupCallHandlers() {
   CallHandlers = new CallHandlerMap;
   #define SETUP_CALL_HANDLER(Ident) \
-    (*CallHandlers)[std::string("_") + #Ident] = &CppWriter::CH_##Ident;
+    (*CallHandlers)[std::string("_") + #Ident] = &JSWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(getHigh32);

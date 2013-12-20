@@ -1,4 +1,4 @@
-//===-- CPPBackend.cpp - Library for converting LLVM code to C++ code -----===//
+//===-- CPPBackend.cpp - Library for converting LLVM code to JS       -----===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,8 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the writing of the LLVM IR as a set of C++ calls to the
-// LLVM IR interface. The input module is assumed to be verified.
+// This file implements compiling of LLVM IR, which is assumed to have been
+// simplified using the PNaCl passes, i64 legalization, and other necessary
+// transformations, into JavaScript in asm.js format, suitable for passing
+// to emscripten for final processing.
 //
 //===----------------------------------------------------------------------===//
 
@@ -75,9 +77,9 @@ namespace {
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
   typedef std::map<std::string, std::string> StringMap;
 
-  /// CppWriter - This class is the main chunk of code that converts an LLVM
-  /// module to a C++ translation unit.
-  class CppWriter : public ModulePass {
+  /// JSWriter - This class is the main chunk of code that converts an LLVM
+  /// module to JavaScript.
+  class JSWriter : public ModulePass {
     formatted_raw_ostream &Out;
     const Module *TheModule;
     unsigned UniqueNum;
@@ -100,7 +102,7 @@ namespace {
 
   public:
     static char ID;
-    explicit CppWriter(formatted_raw_ostream &o) :
+    explicit JSWriter(formatted_raw_ostream &o) :
       ModulePass(ID), Out(o), UniqueNum(0) {}
 
     virtual const char *getPassName() const { return "C++ backend"; }
@@ -279,7 +281,7 @@ namespace {
   };
 } // end anonymous namespace.
 
-formatted_raw_ostream &CppWriter::nl(formatted_raw_ostream &Out, int delta) {
+formatted_raw_ostream &JSWriter::nl(formatted_raw_ostream &Out, int delta) {
   Out << '\n';
   return Out;
 }
@@ -290,11 +292,11 @@ static inline void sanitize(std::string &str) {
       str[i] = '_';
 }
 
-void CppWriter::error(const std::string& msg) {
+void JSWriter::error(const std::string& msg) {
   report_fatal_error(msg);
 }
 
-std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
+std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   // FIXME this is all quite inefficient, and also done once per incoming to each phi
 
   // Find the phis, and generate assignments and dependencies
@@ -351,7 +353,7 @@ std::string CppWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) 
   return pre + post;
 }
 
-std::string CppWriter::getCppName(const Value* val) {
+std::string JSWriter::getCppName(const Value* val) {
   std::string name;
   ValueMap::iterator I = ValueNames.find(val);
   if (I != ValueNames.end() && I->first == val)
@@ -370,12 +372,12 @@ std::string CppWriter::getCppName(const Value* val) {
   return ValueNames[val] = name;
 }
 
-std::string CppWriter::getAssign(const StringRef &s, const Type *t) {
+std::string JSWriter::getAssign(const StringRef &s, const Type *t) {
   UsedVars[s] = t->getTypeID();
   return (s + " = ").str();
 }
 
-std::string CppWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
+std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: assert(false && "Unsupported type");
     case Type::FloatTyID: // TODO return ("Math_fround(" + s + ")").str();
@@ -394,20 +396,20 @@ std::string CppWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) 
   }
 }
 
-std::string CppWriter::getParenCast(const StringRef &s, const Type *t, AsmCast sign) {
+std::string JSWriter::getParenCast(const StringRef &s, const Type *t, AsmCast sign) {
   return getCast(("(" + s + ")").str(), t, sign);
 }
 
-std::string CppWriter::getDoubleToInt(const StringRef &s) {
+std::string JSWriter::getDoubleToInt(const StringRef &s) {
   return ("~~(" + s + ")").str();
 }
 
-std::string CppWriter::getIMul(const Value *V1, const Value *V2) {
+std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   // TODO: if small enough, emit direct multiply
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0";
 }
 
-std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
+std::string JSWriter::getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
@@ -495,7 +497,7 @@ std::string CppWriter::getLoad(std::string Assign, const Value *P, const Type *T
   return text;
 }
 
-std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep) {
+std::string JSWriter::getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
@@ -584,16 +586,16 @@ std::string CppWriter::getStore(const Value *P, const Type *T, std::string VS, u
   return text;
 }
 
-std::string CppWriter::getOpName(const Value* V) { // TODO: remove this
+std::string JSWriter::getOpName(const Value* V) { // TODO: remove this
   return getCppName(V);
 }
 
-std::string CppWriter::getPtrLoad(const Value* Ptr) {
+std::string JSWriter::getPtrLoad(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   return getCast(getPtrUse(Ptr), t, ASM_NONSPECIFIC);
 }
 
-std::string CppWriter::getPtrUse(const Value* Ptr) {
+std::string JSWriter::getPtrUse(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   unsigned Bytes = t->getPrimitiveSizeInBits()/8;
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
@@ -678,7 +680,7 @@ static inline std::string ftostr_exact(const ConstantFP *CFP) {
   return buffer;
 }
 
-std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
+std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<PointerType>(CV->getType())) {
     return getPtrAsStr(CV);
   } else {
@@ -699,7 +701,7 @@ std::string CppWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 }
 
-std::string CppWriter::getValueAsStr(const Value* V, AsmCast sign) {
+std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
@@ -707,7 +709,7 @@ std::string CppWriter::getValueAsStr(const Value* V, AsmCast sign) {
   }
 }
 
-std::string CppWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
+std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
@@ -715,7 +717,7 @@ std::string CppWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   }
 }
 
-std::string CppWriter::getValueAsParenStr(const Value* V) {
+std::string JSWriter::getValueAsParenStr(const Value* V) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
   } else {
@@ -723,7 +725,7 @@ std::string CppWriter::getValueAsParenStr(const Value* V) {
   }
 }
 
-std::string CppWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
+std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
@@ -732,7 +734,7 @@ std::string CppWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 }
 
 // generateInstruction - This member is called for each Instruction in a function.
-std::string CppWriter::generateInstruction(const Instruction *I) {
+std::string JSWriter::generateInstruction(const Instruction *I) {
   std::string text = "";
   std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
@@ -1076,7 +1078,7 @@ static const SwitchInst *considerSwitch(const Instruction *I) {
   return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI; // heuristics
 }
 
-void CppWriter::printFunctionBody(const Function *F) {
+void JSWriter::printFunctionBody(const Function *F) {
   assert(!F->isDeclaration());
 
   // Prepare relooper TODO: resize buffer as needed
@@ -1219,7 +1221,7 @@ void CppWriter::printFunctionBody(const Function *F) {
   }
 }
 
-void CppWriter::processConstants() {
+void JSWriter::processConstants() {
   // First, calculate the address of each constant
   for (Module::const_global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
@@ -1236,7 +1238,7 @@ void CppWriter::processConstants() {
   }
 }
 
-void CppWriter::printModuleBody() {
+void JSWriter::printModuleBody() {
   processConstants();
 
   // Emit function bodies.
@@ -1410,7 +1412,7 @@ void CppWriter::printModuleBody() {
   Out << "\n}\n";
 }
 
-void CppWriter::parseConstant(std::string name, const Constant* CV, bool calculate) {
+void JSWriter::parseConstant(std::string name, const Constant* CV, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
   //dumpv("parsing constant %s\n", name.c_str());
@@ -1591,7 +1593,7 @@ void CppWriter::parseConstant(std::string name, const Constant* CV, bool calcula
   }
 }
 
-void CppWriter::printCommaSeparated(const HeapData data) {
+void JSWriter::printCommaSeparated(const HeapData data) {
   for (HeapData::const_iterator I = data.begin();
        I != data.end(); ++I) {
     if (I != data.begin()) {
@@ -1601,17 +1603,17 @@ void CppWriter::printCommaSeparated(const HeapData data) {
   }
 }
 
-void CppWriter::printProgram(const std::string& fname,
+void JSWriter::printProgram(const std::string& fname,
                              const std::string& mName) {
   printModule(fname,mName);
 }
 
-void CppWriter::printModule(const std::string& fname,
+void JSWriter::printModule(const std::string& fname,
                             const std::string& mName) {
   printModuleBody();
 }
 
-bool CppWriter::runOnModule(Module &M) {
+bool JSWriter::runOnModule(Module &M) {
   TheModule = &M;
 
   setupCallHandlers();
@@ -1621,7 +1623,7 @@ bool CppWriter::runOnModule(Module &M) {
   return false;
 }
 
-char CppWriter::ID = 0;
+char JSWriter::ID = 0;
 
 //===----------------------------------------------------------------------===//
 //                       External Interface declaration
@@ -1634,6 +1636,6 @@ bool CPPTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                            AnalysisID StartAfter,
                                            AnalysisID StopAfter) {
   if (FileType != TargetMachine::CGFT_AssemblyFile) return true;
-  PM.add(new CppWriter(o));
+  PM.add(new JSWriter(o));
   return false;
 }
