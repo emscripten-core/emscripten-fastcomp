@@ -925,7 +925,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     const Value *P = LI->getPointerOperand();
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
-    text = Assign + getLoad(Assign, P, LI->getType(), Alignment) + ';';
+    text = getLoad(Assign, P, LI->getType(), Alignment) + ';';
     break;
   }
   case Instruction::Store: {
