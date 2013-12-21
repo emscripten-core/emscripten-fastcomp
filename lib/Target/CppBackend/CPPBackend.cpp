@@ -34,6 +34,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/DebugInfo.h"
 #include <algorithm>
 #include <cstdio>
 #include <map>
@@ -1056,6 +1057,13 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   }
   }
   delete [] opNames;
+  // append debug info
+  if (MDNode *N = I->getMetadata("dbg")) {
+    DILocation Loc(N);
+    unsigned Line = Loc.getLineNumber();
+    StringRef File = Loc.getFilename();
+    text += " //@line " + utostr(Line) + " \"" + File.str() + "\"";
+  }
   return text;
 }
 
