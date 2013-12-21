@@ -453,7 +453,7 @@ std::string JSWriter::getLoad(std::string Assign, const Value *P, const Type *T,
           switch (Alignment) {
             case 2: {
               text = Assign + "HEAPU16[" + PS + ">>1]|" +
-                             "(HEAPU16[" + PS + "+2>>1]<<2)";
+                             "(HEAPU16[" + PS + "+2>>1]<<16)";
               break;
             }
             case 1: {
@@ -542,7 +542,7 @@ std::string JSWriter::getStore(const Value *P, const Type *T, std::string VS, un
           switch (Alignment) {
             case 2: {
               text = "HEAP16[" + PS + ">>1]=" + VS + "&65535;" +
-                     "HEAP16[" + PS + "+2>>1]=" + VS + ">>2";
+                     "HEAP16[" + PS + "+2>>1]=" + VS + ">>>16";
               break;
             }
             case 1: {
