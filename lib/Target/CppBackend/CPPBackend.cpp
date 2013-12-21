@@ -43,6 +43,10 @@ using namespace llvm;
 
 #include <Relooper.h>
 
+#ifdef _MSC_VER
+#define snprintf _snprintf
+#endif
+
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
 #define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
@@ -733,6 +737,10 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   }
 }
 
+uint64_t LSBMask(unsigned numBits) {
+  return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits);
+}
+
 // generateInstruction - This member is called for each Instruction in a function.
 std::string JSWriter::generateInstruction(const Instruction *I) {
   std::string text = "";
@@ -971,7 +979,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
-      text += getValueAsStr(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
+      text += getValueAsStr(I->getOperand(0)) + "&" + utostr(LSBMask(outBits));
       break;
     }
     case Instruction::SExt: {
