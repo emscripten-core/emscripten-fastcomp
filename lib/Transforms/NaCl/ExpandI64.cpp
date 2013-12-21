@@ -162,6 +162,12 @@ void ExpandI64::ensureLegalFunc(Function *F) {
 
   FunctionType *FT = F->getFunctionType();
   int Num = FT->getNumParams();
+
+  // Allocate small names on stack, large ones on heap.
+  const int StackSize = 256;
+  char StackArray[StackSize];
+  char *AllocArray = 0;
+
   for (int i = -1; i < Num; i++) {
     Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
     if (isIllegal(T)) {
@@ -169,12 +175,19 @@ void ExpandI64::ensureLegalFunc(Function *F) {
       std::string Name = NF->getName();
       if (strncmp(Name.c_str(), "llvm.", 5) == 0) {
         // this is an intrinsic, and we are changing its signature, which will annoy LLVM, so rename
-        char NewName[Name.size()+1];
+        const size_t len = Name.size()+1;
+        char *NewName;
+        if (len > StackSize)
+          NewName = AllocArray = new char[len];
+        else
+          NewName = StackArray;
         const char *CName = Name.c_str();
-        for (unsigned i = 0; i < Name.size()+1; i++) {
+        for (unsigned i = 0; i < len; i++) {
           NewName[i] = CName[i] != '.' ? CName[i] : '_';
         }
         NF->setName(NewName);
+        delete[] AllocArray;
+        AllocArray = 0;
       }
       // Move and update arguments
       for (Function::arg_iterator Arg = F->arg_begin(), E = F->arg_end(), NewArg = NF->arg_begin();
