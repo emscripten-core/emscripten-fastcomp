@@ -405,8 +405,29 @@ std::string JSWriter::getDoubleToInt(const StringRef &s) {
 }
 
 std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
-  // TODO: if small enough, emit direct multiply
-  return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0";
+  const ConstantInt *CI = NULL;
+  const Value *Other = NULL;
+  if ((CI = dyn_cast<ConstantInt>(V1))) {
+    Other = V2;
+  } else if ((CI = dyn_cast<ConstantInt>(V2))) {
+    Other = V1;
+  }
+  // we ignore optimizing the case of multiplying two constants - optimizer would have removed those
+  if (CI) {
+    std::string OtherStr = getValueAsStr(Other);
+    unsigned C = CI->getZExtValue();
+    if (C == 0) return "0";
+    if (C == 1) return OtherStr;
+    unsigned Orig = C, Shifts = 0;
+    while (C) {
+      if ((C & 1) && (C != 1)) break; // not power of 2
+      C >>= 1;
+      Shifts++;
+      if (C == 0) return OtherStr + "<<" + utostr(Shifts-1); // power of 2, emit shift
+    }
+    if (Orig < (1<<20)) return "(" + OtherStr + "*" + utostr(Orig) + ")|0"; // small enough, avoid imul
+  }
+  return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
 std::string JSWriter::getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
