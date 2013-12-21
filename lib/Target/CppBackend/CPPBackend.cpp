@@ -738,7 +738,7 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 }
 
 uint64_t LSBMask(unsigned numBits) {
-  return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits);
+  return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits) - 1;
 }
 
 // generateInstruction - This member is called for each Instruction in a function.
