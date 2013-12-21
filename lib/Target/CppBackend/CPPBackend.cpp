@@ -655,29 +655,22 @@ static int hexToInt(char x) {
 } */
 
 static inline std::string ftostr_exact(const ConstantFP *CFP) {
-  std::string temp;
-  raw_string_ostream stream(temp);
-  stream << *CFP; // bitcast on APF produces odd results, so do it this horrible way
-  const char *raw = temp.c_str();
-  if (CFP->getType()->isFloatTy()) {
-    raw += 6; // skip "float "
-  } else {
-    raw += 7; // skip "double "
+  const APFloat &flt = CFP->getValueAPF();
+  switch(flt.getCategory()) {
+    case APFloat::fcInfinity:
+      return flt.isNegative() ? "-Infinity" : "Infinity";
+    case APFloat::fcNaN:
+      return "NaN";
+    case APFloat::fcZero:
+      return flt.isNegative() ? "-.0" : ".0";
+    case APFloat::fcNormal:
+    {
+      SmallVector<char, 32> str;
+      flt.toString(str);
+      str.push_back('\0');
+      return str.begin();
+    }
   }
-  if (raw[1] != 'x') return raw; // number has already been printed out
-  raw += 2; // skip "0x"
-  unsigned len = strlen(raw);
-  assert((len&1) == 0); // must be complete bytes, so an even number of chars
-  unsigned missing = 8 - len/2;
-  union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
-  dbl.d = 0;
-  for (unsigned i = 0; i < 8 - missing; i++) {
-    dbl.b[7-i] = (hexToInt(raw[2*i]) << 4) |
-                  hexToInt(raw[2*i+1]);
-  }
-  char buffer[101];
-  snprintf(buffer, 100, "%.30g", dbl.d);
-  return buffer;
 }
 
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
@@ -685,10 +678,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     return getPtrAsStr(CV);
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-      std::string S = ftostr_exact(CFP);
-      S = '+' + S;
-      //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
-      return S;
+      return ftostr_exact(CFP);
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
       if (sign == ASM_SIGNED && CI->getValue().getBitWidth() == 1) sign = ASM_UNSIGNED; // booleans cannot be signed in a meaningful way
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
