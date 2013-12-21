@@ -741,6 +741,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   // FIXME: add i64 legalization
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+    dumpIR(I);
     assert(0 && "FIXME: add i64 legalization");
   }
 
