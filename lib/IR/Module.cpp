@@ -24,6 +24,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/LeakDetector.h"
 #include "llvm/Support/ErrorHandling.h" // @LOCALMOD
+#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
