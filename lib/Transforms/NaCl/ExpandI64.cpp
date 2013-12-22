@@ -314,7 +314,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::AShr:
     case Instruction::Shl: {
       ensureFuncs();
-      Function *F;
+      Value *Low = NULL, *High = NULL;
+      Function *F = NULL;
       switch (I->getOpcode()) {
         case Instruction::Add:  F = Add;  break;
         case Instruction::Sub:  F = Sub;  break;
@@ -325,15 +326,28 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         case Instruction::URem: F = URem; break;
         case Instruction::LShr: F = LShr; break;
         case Instruction::AShr: F = AShr; break;
-        case Instruction::Shl:  F = Shl; break;
+        case Instruction::Shl: {
+          if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
+            unsigned Shifts = CI->getZExtValue();
+            if (Shifts == 32) {
+              Low = Zero;
+              High = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+              break;
+            }
+          }
+          F = Shl;
+          break;
+        }
         default: assert(0);
       }
-      SmallVector<Value *, 4> Args;
-      for (unsigned i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
-      Instruction *Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
-      Instruction *High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+      if (F) {
+        // use a library call, no special optimization was found
+        SmallVector<Value *, 4> Args;
+        for (unsigned i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
+        Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
+        High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+      }
       SplitInfo &Split = Splits[I];
-      Split.ToFix.push_back(Low);
       Split.LowHigh.Low = Low;
       Split.LowHigh.High = High;
       break;
@@ -662,11 +676,23 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::Shl: {
       LowHighPair LeftLH = getLowHigh(I->getOperand(0));
       LowHighPair RightLH = getLowHigh(I->getOperand(1));
-      Instruction *Call = Split.ToFix[0];
-      Call->setOperand(0, LeftLH.Low);
-      Call->setOperand(1, LeftLH.High);
-      Call->setOperand(2, RightLH.Low);
-      Call->setOperand(3, RightLH.High);
+      CallInst *Call = dyn_cast<CallInst>(Split.LowHigh.Low);
+      if (Call) {
+        Call->setOperand(0, LeftLH.Low);
+        Call->setOperand(1, LeftLH.High);
+        Call->setOperand(2, RightLH.Low);
+        Call->setOperand(3, RightLH.High);
+      } else {
+        // optimized case
+        switch (I->getOpcode()) {
+          case Instruction::Shl: {
+            // 32-bit shift
+            cast<Instruction>(Split.LowHigh.High)->setOperand(0, LeftLH.Low);
+            break;
+          }
+          default: assert(0);
+        }
+      }
       break;
     }
     case Instruction::ICmp: {
