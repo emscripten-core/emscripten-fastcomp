@@ -102,9 +102,6 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
         }
       }
       if (!Fail && Aliases.size() > 0) {
-dump("win!");
-dumpv("%s", Func.getName().str().c_str());
-dumpIR(AI);
         // success, replace the alloca and the bitcast aliases with a single simple alloca
         AllocaInst *NA = new AllocaInst(ActualType, ConstantInt::get(i32, 1), "", I);
         NA->takeName(AI);
@@ -121,7 +118,7 @@ dumpIR(AI);
     }
   }
   for (unsigned i = 0; i < ToRemove.size(); i++) {
-    ToRemove[i]->removeFromParent();
+    ToRemove[i]->eraseFromParent();
   }
   return Changed;
 }
