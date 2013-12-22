@@ -41,6 +41,7 @@
 #include <set> // TODO: unordered_set?
 using namespace llvm;
 
+#include <OptPasses.h>
 #include <Relooper.h>
 
 #define dump(x) fprintf(stderr, x "\n")
@@ -1230,11 +1231,17 @@ void JSWriter::printFunctionBody(const Function *F) {
   UsedVars["sp"] = Type::getInt32Ty(F->getContext())->getTypeID();
   UsedVars["label"] = Type::getInt32Ty(F->getContext())->getTypeID();
   if (!UsedVars.empty()) {
-    Out << " var ";
+    unsigned Count = 0;
     for (VarMap::iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
-      if (VI != UsedVars.begin()) {
+      if (Count == 20) {
+        Out << ";\n";
+        Count = 0;
+      }
+      if (Count == 0) Out << " var ";
+      if (Count > 0) {
         Out << ", ";
       }
+      Count++;
       Out << VI->first << " = ";
       switch (VI->second) {
         default:
@@ -1720,7 +1727,10 @@ bool CPPTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                            bool DisableVerify,
                                            AnalysisID StartAfter,
                                            AnalysisID StopAfter) {
-  if (FileType != TargetMachine::CGFT_AssemblyFile) return true;
+  assert(FileType == TargetMachine::CGFT_AssemblyFile);
+
   PM.add(new JSWriter(o));
+
   return false;
 }
+
