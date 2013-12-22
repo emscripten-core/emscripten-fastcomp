@@ -38,7 +38,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <map>
-#include <set>
+#include <set> // TODO: unordered_set?
 using namespace llvm;
 
 #include <Relooper.h>
@@ -276,6 +276,15 @@ namespace {
     std::string getOpName(const Value*);
 
     void processConstants();
+
+    // nativization
+
+    typedef std::set<const Value*> NativizedVarsMap;
+    NativizedVarsMap NativizedVars;
+
+    void calculateNativizedVars(const Function *F);
+
+    // main entry point
 
     void printModuleBody();
   };
@@ -760,11 +769,10 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
 
-  // FIXME: add i64 legalization
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
     dumpIR(I);
-    assert(0 && "FIXME: add i64 legalization");
+    assert(0 && "FIXME: finish legalization"); // FIXME
   }
 
   // Before we emit this instruction, we need to take care of generating any
@@ -928,6 +936,11 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::Alloca: {
+    if (NativizedVars.count(I)) {
+      // nativized stack variable, we just need a 'var' definition
+      UsedVars[iName] = I->getType()->getTypeID();
+      break;
+    }
     const AllocaInst* AI = cast<AllocaInst>(I);
     Type *T = AI->getAllocatedType();
     assert(!isa<ArrayType>(T));
@@ -947,7 +960,11 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     const Value *P = LI->getPointerOperand();
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
-    text = getLoad(Assign, P, LI->getType(), Alignment) + ';';
+    if (NativizedVars.count(P)) {
+      text = Assign + getValueAsStr(P) + ';';
+    } else {
+      text = getLoad(Assign, P, LI->getType(), Alignment) + ';';
+    }
     break;
   }
   case Instruction::Store: {
@@ -955,12 +972,16 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     const Value *P = SI->getPointerOperand();
     const Value *V = SI->getValueOperand();
     unsigned Alignment = SI->getAlignment();
-    text = getStore(P, V->getType(), getValueAsStr(V), Alignment) + ';';
+    std::string VS = getValueAsStr(V);
+    if (NativizedVars.count(P)) {
+      text = getValueAsStr(P) + " = " + VS + ';';
+    } else {
+      text = getStore(P, V->getType(), VS, Alignment) + ';';
+    }
 
-    // FIXME: add i64 legalization
     Type *T = V->getType();
     if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
-      assert(0 && "FIXME: add i64 legalization");
+      assert(0 && "FIXME: finish legalization"); // FIXME
     }
     break;
   }
@@ -1294,10 +1315,13 @@ void JSWriter::printModuleBody() {
         }
       }
 
-      // Emit the function
+      // Prepare and analyze function
 
       UsedVars.clear();
       UniqueNum = 0;
+      calculateNativizedVars(I);
+
+      // Emit the function
 
       Out << "function _" << I->getName() << "(";
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
@@ -1622,6 +1646,37 @@ void JSWriter::parseConstant(std::string name, const Constant* CV, bool calculat
     assert(false);
   }
 }
+
+// nativization
+
+void JSWriter::calculateNativizedVars(const Function *F) {
+  NativizedVars.clear();
+
+  for (Function::const_iterator BI = F->begin(), BE = F->end(); BI != BE; ++BI) {
+    for (BasicBlock::const_iterator II = BI->begin(), E = BI->end(); II != E; ++II) {
+      const Instruction *I = &*II;
+      if (I->getOpcode() == Instruction::Alloca) {
+        // this is on the stack. if its address is never used nor escaped, we can nativize it
+        bool Fail = false;
+        for (Instruction::const_use_iterator UI = I->use_begin(), UE = I->use_end(); UI != UE && !Fail; ++UI) {
+          const Instruction *U = dyn_cast<Instruction>(*UI);
+          if (!U) { Fail = true; break; } // not an instruction, not cool
+          switch (U->getOpcode()) {
+            case Instruction::Load: break; // load is cool
+            case Instruction::Store: {
+              if (U->getOperand(0) == I) Fail = true; // store *of* it is not cool; store *to* it is fine
+              break;
+            }
+            default: { Fail = true; break; } // anything that is "not" "cool", is "not cool"
+          }
+        }
+        if (!Fail) NativizedVars.insert(I);
+      }
+    }
+  }
+}
+
+// main entry
 
 void JSWriter::printCommaSeparated(const HeapData data) {
   for (HeapData::const_iterator I = data.begin();
