@@ -195,7 +195,10 @@ namespace {
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable &Table = FunctionTables[Sig];
-      while (Table.size() == 0 || Table.size() % 2 == 1) Table.push_back("0"); // TODO: optimize this, fill in holes, see test_polymorph
+      // use alignment info to avoid unnecessary holes. This is not optimal though,
+      // (1) depends on order of appearance, and (2) really just need align for &class::method, see test_polymorph
+      unsigned Alignment = F->getAlignment() || 1;
+      while (Table.size() == 0 || Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
       Table.push_back(Name);
       IndexedFunctions[Name] = Index;
