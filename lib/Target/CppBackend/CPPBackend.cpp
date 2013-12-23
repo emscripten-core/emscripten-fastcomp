@@ -939,7 +939,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   case Instruction::Alloca: {
     if (NativizedVars.count(I)) {
       // nativized stack variable, we just need a 'var' definition
-      UsedVars[iName] = I->getType()->getTypeID();
+      UsedVars[iName] = cast<PointerType>(I->getType())->getElementType()->getTypeID();
       break;
     }
     const AllocaInst* AI = cast<AllocaInst>(I);
