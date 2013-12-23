@@ -324,7 +324,18 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         case Instruction::UDiv: F = UDiv; break;
         case Instruction::SRem: F = SRem; break;
         case Instruction::URem: F = URem; break;
-        case Instruction::LShr: F = LShr; break;
+        case Instruction::LShr: {
+          if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
+            unsigned Shifts = CI->getZExtValue();
+            if (Shifts == 32) {
+              Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+              High = Zero;
+              break;
+            }
+          }
+          F = LShr;
+          break;
+        }
         case Instruction::AShr: F = AShr; break;
         case Instruction::Shl: {
           if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
@@ -683,10 +694,13 @@ void ExpandI64::finalizeInst(Instruction *I) {
         Call->setOperand(2, RightLH.Low);
         Call->setOperand(3, RightLH.High);
       } else {
-        // optimized case
+        // optimized case, 32-bit shifts
         switch (I->getOpcode()) {
+          case Instruction::LShr: {
+            cast<Instruction>(Split.LowHigh.Low)->setOperand(0, LeftLH.High);
+            break;
+          }
           case Instruction::Shl: {
-            // 32-bit shift
             cast<Instruction>(Split.LowHigh.High)->setOperand(0, LeftLH.Low);
             break;
           }
