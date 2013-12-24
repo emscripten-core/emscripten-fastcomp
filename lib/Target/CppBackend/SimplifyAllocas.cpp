@@ -44,6 +44,8 @@ struct SimplifyAllocas : public FunctionPass {
     // XXX initialize..(*PassRegistry::getPassRegistry()); }
 
   virtual bool runOnFunction(Function &Func);
+
+  virtual const char *getPassName() const { return "SimplifyAllocas"; }
 };
 
 char SimplifyAllocas::ID = 0;

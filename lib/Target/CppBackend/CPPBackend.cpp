@@ -107,7 +107,7 @@ namespace {
     explicit JSWriter(formatted_raw_ostream &o) :
       ModulePass(ID), Out(o), UniqueNum(0) {}
 
-    virtual const char *getPassName() const { return "C++ backend"; }
+    virtual const char *getPassName() const { return "JavaScript backend"; }
 
     bool runOnModule(Module &M);
 
