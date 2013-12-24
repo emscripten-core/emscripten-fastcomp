@@ -330,9 +330,11 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     Value *V = P->getIncomingValue(index);
     values[name] = V;
     std::string vname = getValueAsStr(V);
-    if (!dyn_cast<Constant>(V)) {
-      deps[name] = vname;
-      undeps[vname] = name;
+    if (const Instruction *VI = dyn_cast<const Instruction>(V)) {
+      if (VI->getParent() == To) {
+        deps[name] = vname;
+        undeps[vname] = name;
+      }
     }
   }
   // Emit assignments+values, taking into account dependencies, and breaking cycles
