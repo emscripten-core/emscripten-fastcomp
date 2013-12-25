@@ -13,17 +13,25 @@ CallHandlerMap *CallHandlers;
 
 DEF_CALL_HANDLER(__default__, {
   const Value *CV = CI->getCalledValue();
-  if (!isa<Function>(CV)) {
+  bool NeedCasts;
+  if (const Function *F = dyn_cast<const Function>(CV)) {
+    NeedCasts = F->isDeclaration(); // if ffi call, need casts
+  } else {
     // function pointer call
     FunctionType *FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
     std::string Sig = getFunctionSignature(FT);
     Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
     ensureFunctionTable(FT);
+    NeedCasts = false; // function table call, so stays in asm module
   }
   std::string text = Name + "(";
   if (NumArgs == -1) NumArgs = CI->getNumOperands()-1; // last operand is the function itself
   for (int i = 0; i < NumArgs; i++) {
-    text += getValueAsCastStr(CI->getArgOperand(i), ASM_NONSPECIFIC); // FIXME: differentiate ffi calls
+    if (!NeedCasts) {
+      text += getValueAsStr(CI->getArgOperand(i));
+    } else {
+      text += getValueAsCastStr(CI->getArgOperand(i), ASM_NONSPECIFIC);
+    }
     if (i < NumArgs - 1) text += ", ";
   }
   text += ")";
