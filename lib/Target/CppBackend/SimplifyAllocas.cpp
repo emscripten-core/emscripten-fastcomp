@@ -35,7 +35,7 @@ namespace llvm {
 /*
  * Find cases where an alloca is used only to load and store a single value,
  * even though it is bitcast. Then replace it with a direct alloca of that
- * simple type.
+ * simple type, and avoid the bitcasts.
  */
 
 struct SimplifyAllocas : public FunctionPass {
@@ -73,35 +73,20 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
       std::vector<Instruction*> Aliases; // the bitcasts of this alloca
       for (Instruction::use_iterator UI = AI->use_begin(), UE = AI->use_end(); UI != UE && !Fail; ++UI) {
         Instruction *U = dyn_cast<Instruction>(*UI);
-        if (!U) { Fail = true; break; }
-        switch (U->getOpcode()) {
-          case Instruction::Load: {
-            CHECK_TYPE(U->getType());
+        if (!U || U->getOpcode() != Instruction::BitCast) { Fail = true; break; }
+        // bitcasting just to do loads and stores is ok
+        for (Instruction::use_iterator BUI = U->use_begin(), BUE = U->use_end(); BUI != BUE && !Fail; ++BUI) {
+          Instruction *BU = dyn_cast<Instruction>(*BUI);
+          if (!BU) { Fail = true; break; }
+          if (BU->getOpcode() == Instruction::Load) {
+            CHECK_TYPE(BU->getType());
             break;
           }
-          case Instruction::Store: {
-            CHECK_TYPE(U->getOperand(0)->getType());
-            if (U->getOperand(0) == AI) Fail = true;
-            break;
-          }
-          case Instruction::BitCast: {
-            // bitcasting just to do loads and stores is ok
-            for (Instruction::use_iterator BUI = U->use_begin(), BUE = U->use_end(); BUI != BUE && !Fail; ++BUI) {
-              Instruction *BU = dyn_cast<Instruction>(*BUI);
-              if (!BU) { Fail = true; break; }
-              if (BU->getOpcode() == Instruction::Load) {
-                CHECK_TYPE(BU->getType());
-                break;
-              }
-              if (BU->getOpcode() != Instruction::Store) { Fail = true; break; }
-              CHECK_TYPE(BU->getOperand(0)->getType());
-              if (BU->getOperand(0) == U) { Fail = true; break; }
-            }
-            if (!Fail) Aliases.push_back(U);
-            break;
-          }
-          default: { Fail = true; break; }
+          if (BU->getOpcode() != Instruction::Store) { Fail = true; break; }
+          CHECK_TYPE(BU->getOperand(0)->getType());
+          if (BU->getOperand(0) == U) { Fail = true; break; }
         }
+        if (!Fail) Aliases.push_back(U);
       }
       if (!Fail && Aliases.size() > 0) {
         // success, replace the alloca and the bitcast aliases with a single simple alloca
@@ -109,7 +94,6 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
         NA->takeName(AI);
         NA->setAlignment(AI->getAlignment());
         NA->setDebugLoc(AI->getDebugLoc());
-        AI->replaceAllUsesWith(NA);
         ToRemove.push_back(AI);
         for (unsigned i = 0; i < Aliases.size(); i++) {
           Aliases[i]->replaceAllUsesWith(NA);
