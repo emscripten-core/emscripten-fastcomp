@@ -94,11 +94,11 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
         NA->takeName(AI);
         NA->setAlignment(AI->getAlignment());
         NA->setDebugLoc(AI->getDebugLoc());
-        ToRemove.push_back(AI);
         for (unsigned i = 0; i < Aliases.size(); i++) {
           Aliases[i]->replaceAllUsesWith(NA);
           ToRemove.push_back(Aliases[i]);
         }
+        ToRemove.push_back(AI);
         Changed = true;
       }
     }
