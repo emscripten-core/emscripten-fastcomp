@@ -127,7 +127,7 @@ namespace {
     void printCommaSeparated(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
-    void parseConstant(std::string name, const Constant* CV, bool calculate);
+    void parseConstant(const std::string& name, const Constant* CV, bool calculate);
 
     #define MEM_ALIGN 8
     #define MEM_ALIGN_BITS 64
@@ -136,7 +136,7 @@ namespace {
       return x + (x%MEM_ALIGN != 0 ? MEM_ALIGN - x%MEM_ALIGN : 0);
     }
 
-    HeapData *allocateAddress(std::string Name, unsigned Bits = MEM_ALIGN_BITS) {
+    HeapData *allocateAddress(const std::string& Name, unsigned Bits = MEM_ALIGN_BITS) {
       assert(Bits == 64); // FIXME when we use optimal alignments
       HeapData *GlobalData = NULL;
       switch (Bits) {
@@ -212,8 +212,7 @@ namespace {
       return Index;
     }
     void ensureFunctionTable(const FunctionType *F) {
-      std::string Sig = getFunctionSignature(F);
-      FunctionTables[Sig];
+      FunctionTables[getFunctionSignature(F)];
     }
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
@@ -272,8 +271,8 @@ namespace {
     std::string getParenCast(const StringRef &, const Type *, AsmCast sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
-    std::string getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
-    std::string getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep=';');
+    std::string getLoad(const std::string& Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
+    std::string getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep=';');
 
     void printFunctionBody(const Function *F);
     std::string generateInstruction(const Instruction *I);
@@ -303,7 +302,7 @@ formatted_raw_ostream &JSWriter::nl(formatted_raw_ostream &Out, int delta) {
   return Out;
 }
 
-static inline void sanitize(std::string &str) {
+static inline void sanitize(std::string& str) {
   for (size_t i = 1; i < str.length(); ++i)
     if (!isalnum(str[i]) && str[i] != '_' && str[i] != '$')
       str[i] = '_';
@@ -449,7 +448,7 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
-std::string JSWriter::getLoad(std::string Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
+std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
@@ -537,7 +536,7 @@ std::string JSWriter::getLoad(std::string Assign, const Value *P, const Type *T,
   return text;
 }
 
-std::string JSWriter::getStore(const Value *P, const Type *T, std::string VS, unsigned Alignment, char sep) {
+std::string JSWriter::getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
@@ -1483,7 +1482,7 @@ void JSWriter::printModuleBody() {
   Out << "\n}\n";
 }
 
-void JSWriter::parseConstant(std::string name, const Constant* CV, bool calculate) {
+void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
   //dumpv("parsing constant %s\n", name.c_str());
