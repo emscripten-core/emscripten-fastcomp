@@ -127,7 +127,7 @@ public:
 
   virtual ~PNaClBitcodeAnalyzerParser() {}
 
-  virtual bool Error(const std::string Message) {
+  virtual bool Error(const std::string &Message) {
     // Use local error routine so that all errors are treated uniformly.
     return ::Error(Message);
   }
@@ -337,7 +337,7 @@ protected:
     Indent = Context->GetIndentation();
   }
 
-  virtual bool Error(const std::string Message) {
+  virtual bool Error(const std::string &Message) {
     // Use local error routine so that all errors are treated uniformly.
     return ::Error(Message);
   }
