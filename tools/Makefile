@@ -34,7 +34,7 @@ PARALLEL_DIRS := opt llvm-as llvm-dis \
                  bugpoint llvm-bcanalyzer \
                  llvm-diff macho-dump llvm-objdump llvm-readobj \
                  llvm-rtdyld llvm-dwarfdump llvm-cov \
-                 llvm-size llvm-stress llvm-mcmarkup pso-stub \
+                 llvm-size llvm-stress llvm-mcmarkup \
                  llvm-symbolizer pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
                  pnacl-benchmark pnacl-thaw pnacl-bccompress obj2yaml yaml2obj
 
