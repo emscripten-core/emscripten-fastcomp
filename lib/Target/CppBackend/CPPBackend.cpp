@@ -288,6 +288,10 @@ namespace {
 
     void calculateNativizedVars(const Function *F);
 
+    // special analyses
+
+    bool canReloop(const Function *F);
+
     // main entry point
 
     void printModuleBody();
@@ -1143,6 +1147,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   static char *buffer = new char[RELOOPER_BUFFER];
   Relooper::SetOutputBuffer(buffer, RELOOPER_BUFFER);
   Relooper R;
+  //if (!canReloop(F)) R.SetEmulate(true);
   R.SetAsmJSMode(1);
   Block *Entry = NULL;
   std::map<const BasicBlock*, Block*> LLVMToRelooper;
@@ -1686,6 +1691,12 @@ void JSWriter::calculateNativizedVars(const Function *F) {
       }
     }
   }
+}
+
+// special analyses
+
+bool JSWriter::canReloop(const Function *F) {
+  return true;
 }
 
 // main entry
