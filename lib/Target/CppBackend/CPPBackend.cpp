@@ -275,7 +275,7 @@ namespace {
     std::string getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep=';');
 
     void printFunctionBody(const Function *F);
-    std::string generateInstruction(const Instruction *I);
+    void generateInstruction(const Instruction *I, raw_string_ostream& Code);
     std::string getOpName(const Value*);
 
     void processConstants();
@@ -773,8 +773,7 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 }
 
 // generateInstruction - This member is called for each Instruction in a function.
-std::string JSWriter::generateInstruction(const Instruction *I) {
-  std::string text = "";
+void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Code) {
   std::string iName(getCppName(I));
 
   Type *T = I->getType();
@@ -791,12 +790,12 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   case Instruction::Ret: {
     const ReturnInst* ret =  cast<ReturnInst>(I);
     Value *RV = ret->getReturnValue();
-    text = "STACKTOP = sp;";
-    text += "return";
+    Code << "STACKTOP = sp;";
+    Code << "return";
     if (RV == NULL) {
-      text += ";";
+      Code << ";";
     } else {
-      text += " " + getValueAsCastStr(RV, ASM_NONSPECIFIC) + ";";
+      Code << " " + getValueAsCastStr(RV, ASM_NONSPECIFIC) + ";";
     }
     break;
   }
@@ -804,7 +803,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   case Instruction::Switch: break; // handled while relooping
   case Instruction::Unreachable: {
     // No need to emit anything, as there should be an abort right before these
-    // text += "abort();";
+    // Code << "abort();";
     break;
   }
   case Instruction::Add:
@@ -825,39 +824,39 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   case Instruction::Shl:
   case Instruction::LShr:
   case Instruction::AShr:{
-    text = getAssign(iName, I->getType());
+    Code << getAssign(iName, I->getType());
     unsigned opcode = I->getOpcode();
     switch (opcode) {
-      case Instruction::Add:  text += getParenCast(
+      case Instruction::Add:  Code << getParenCast(
                                         getValueAsParenStr(I->getOperand(0)) +
                                         " + " +
                                         getValueAsParenStr(I->getOperand(1)),
                                         I->getType()
                                       ); break;
-      case Instruction::Sub:  text += getParenCast(
+      case Instruction::Sub:  Code << getParenCast(
                                         getValueAsParenStr(I->getOperand(0)) +
                                         " - " +
                                         getValueAsParenStr(I->getOperand(1)),
                                         I->getType()
                                       ); break;
-      case Instruction::Mul:  text += getIMul(I->getOperand(0), I->getOperand(1)); break;
+      case Instruction::Mul:  Code << getIMul(I->getOperand(0), I->getOperand(1)); break;
       case Instruction::UDiv:
       case Instruction::SDiv:
       case Instruction::URem:
-      case Instruction::SRem: text += "(" +
+      case Instruction::SRem: Code << "(" +
                                       getValueAsCastParenStr(I->getOperand(0), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
                                       ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") +
                                       getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
                                       ")&-1"; break;
-      case Instruction::And:  text += getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::Or:   text += getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::Xor:  text += getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::And:  Code << getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Or:   Code << getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Xor:  Code << getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::Shl:  {
         std::string Shifted = getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1));
         if (I->getType()->getIntegerBitWidth() < 32) {
           Shifted = getParenCast(Shifted, I->getType(), ASM_UNSIGNED); // remove bits that are shifted beyond the size of this value
         }
-        text += Shifted;
+        Code << Shifted;
         break;
       }
       case Instruction::AShr:
@@ -866,43 +865,43 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
         if (I->getType()->getIntegerBitWidth() < 32) {
           Input = '(' + getCast(Input, I->getType(), opcode == Instruction::AShr ? ASM_SIGNED : ASM_UNSIGNED) + ')'; // fill in high bits, as shift needs those and is done in 32-bit
         }
-        text += Input + (opcode == Instruction::AShr ? " >> " : " >>> ") +  getValueAsStr(I->getOperand(1));
+        Code << Input + (opcode == Instruction::AShr ? " >> " : " >>> ") +  getValueAsStr(I->getOperand(1));
         break;
       }
-      case Instruction::FAdd: text += getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
-      case Instruction::FSub: text += getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FMul: text += getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FDiv: text += getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FRem: text += getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FAdd: Code << getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
+      case Instruction::FSub: Code << getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FMul: Code << getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FDiv: Code << getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FRem: Code << getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
       default: error("bad icmp"); break;
     }
-    text += ';';
+    Code << ';';
     break;
   }
   case Instruction::FCmp: {
-    text = getAssign(iName, I->getType());
+    Code << getAssign(iName, I->getType());
     switch (cast<FCmpInst>(I)->getPredicate()) {
       case FCmpInst::FCMP_OEQ:
-      case FCmpInst::FCMP_UEQ:   text += getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_UEQ:   Code << getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_ONE:
-      case FCmpInst::FCMP_UNE:   text += getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_UNE:   Code << getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_OGT:
-      case FCmpInst::FCMP_UGT:   text += getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_UGT:   Code << getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_OGE:
-      case FCmpInst::FCMP_UGE:   text += getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_UGE:   Code << getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_OLT:
-      case FCmpInst::FCMP_ULT:   text += getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_ULT:   Code << getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_OLE:
-      case FCmpInst::FCMP_ULE:   text += getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_ORD:   text += "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
+      case FCmpInst::FCMP_ULE:   Code << getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_ORD:   Code << "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
                                          "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case FCmpInst::FCMP_UNO:   text += "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
+      case FCmpInst::FCMP_UNO:   Code << "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
                                          "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case FCmpInst::FCMP_FALSE: text += "0"; break;
-      case FCmpInst::FCMP_TRUE : text += "1"; break;
+      case FCmpInst::FCMP_FALSE: Code << "0"; break;
+      case FCmpInst::FCMP_TRUE : Code << "1"; break;
       default: error("bad fcmp"); break;
     }
-    text += ";";
+    Code << ";";
     break;
   }
   case Instruction::ICmp: {
@@ -911,23 +910,23 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
                     predicate == ICmpInst::ICMP_UGE ||
                     predicate == ICmpInst::ICMP_ULT ||
                     predicate == ICmpInst::ICMP_UGT) ? ASM_UNSIGNED : ASM_SIGNED;
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" +
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" +
       getValueAsCastStr(I->getOperand(0), sign) +
     ")";
     switch (predicate) {
-    case ICmpInst::ICMP_EQ:  text += "==";  break;
-    case ICmpInst::ICMP_NE:  text += "!=";  break;
-    case ICmpInst::ICMP_ULE: text += "<="; break;
-    case ICmpInst::ICMP_SLE: text += "<="; break;
-    case ICmpInst::ICMP_UGE: text += ">="; break;
-    case ICmpInst::ICMP_SGE: text += ">="; break;
-    case ICmpInst::ICMP_ULT: text += "<"; break;
-    case ICmpInst::ICMP_SLT: text += "<"; break;
-    case ICmpInst::ICMP_UGT: text += ">"; break;
-    case ICmpInst::ICMP_SGT: text += ">"; break;
-    default: text += "ICmpInst::BAD_ICMP_PREDICATE"; break;
+    case ICmpInst::ICMP_EQ:  Code << "==";  break;
+    case ICmpInst::ICMP_NE:  Code << "!=";  break;
+    case ICmpInst::ICMP_ULE: Code << "<="; break;
+    case ICmpInst::ICMP_SLE: Code << "<="; break;
+    case ICmpInst::ICMP_UGE: Code << ">="; break;
+    case ICmpInst::ICMP_SGE: Code << ">="; break;
+    case ICmpInst::ICMP_ULT: Code << "<"; break;
+    case ICmpInst::ICMP_SLT: Code << "<"; break;
+    case ICmpInst::ICMP_UGT: Code << ">"; break;
+    case ICmpInst::ICMP_SGT: Code << ">"; break;
+    default: assert(0);
     }
-    text += "(" +
+    Code << "(" +
       getValueAsCastStr(I->getOperand(1), sign) +
     ");";
     break;
@@ -949,7 +948,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     } else {
       Size = "((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)";
     }
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
     break;
   }
   case Instruction::Load: {
@@ -958,9 +957,9 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
     if (NativizedVars.count(P)) {
-      text = Assign + getValueAsStr(P) + ';';
+      Code << Assign + getValueAsStr(P) + ';';
     } else {
-      text = getLoad(Assign, P, LI->getType(), Alignment) + ';';
+      Code << getLoad(Assign, P, LI->getType(), Alignment) + ';';
     }
     break;
   }
@@ -971,9 +970,9 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     unsigned Alignment = SI->getAlignment();
     std::string VS = getValueAsStr(V);
     if (NativizedVars.count(P)) {
-      text = getValueAsStr(P) + " = " + VS + ';';
+      Code << getValueAsStr(P) + " = " + VS + ';';
     } else {
-      text = getStore(P, V->getType(), VS, Alignment) + ';';
+      Code << getStore(P, V->getType(), VS, Alignment) + ';';
     }
 
     Type *T = V->getType();
@@ -991,10 +990,10 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     break;
   }
   case Instruction::PtrToInt:
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getPtrAsStr(I->getOperand(0)) + ';';
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + getPtrAsStr(I->getOperand(0)) + ';';
     break;
   case Instruction::IntToPtr:
-    text = getAssign(iName, Type::getInt32Ty(I->getContext())) + getValueAsStr(I->getOperand(0)) + ";";
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + getValueAsStr(I->getOperand(0)) + ";";
     break;
   case Instruction::Trunc:
   case Instruction::ZExt:
@@ -1005,58 +1004,58 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   case Instruction::FPToSI:
   case Instruction::UIToFP:
   case Instruction::SIToFP: {
-    text = getAssign(iName, I->getType());
+    Code << getAssign(iName, I->getType());
     switch (I->getOpcode()) {
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
-      text += getValueAsStr(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
+      Code << getValueAsStr(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
       break;
     }
     case Instruction::SExt: {
       std::string bits = utostr(32 - I->getOperand(0)->getType()->getIntegerBitWidth());
-      text += getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
+      Code << getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
       break;
     }
-    case Instruction::ZExt:     text += getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
-    case Instruction::FPExt:    text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
-    case Instruction::FPTrunc:  text += getValueAsStr(I->getOperand(0)); break; // TODO: fround
-    case Instruction::SIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
-    case Instruction::UIToFP:   text += getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()); break;
-    case Instruction::FPToSI:   text += getDoubleToInt(getValueAsParenStr(I->getOperand(0))); break;
-    case Instruction::FPToUI:   text += getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED); break;
-    case Instruction::PtrToInt: text += getValueAsStr(I->getOperand(0)); break;
-    case Instruction::IntToPtr: text += getValueAsStr(I->getOperand(0)); break;
+    case Instruction::ZExt:     Code << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
+    case Instruction::FPExt:    Code << getValueAsStr(I->getOperand(0)); break; // TODO: fround
+    case Instruction::FPTrunc:  Code << getValueAsStr(I->getOperand(0)); break; // TODO: fround
+    case Instruction::SIToFP:   Code << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
+    case Instruction::UIToFP:   Code << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()); break;
+    case Instruction::FPToSI:   Code << getDoubleToInt(getValueAsParenStr(I->getOperand(0))); break;
+    case Instruction::FPToUI:   Code << getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED); break;
+    case Instruction::PtrToInt: Code << getValueAsStr(I->getOperand(0)); break;
+    case Instruction::IntToPtr: Code << getValueAsStr(I->getOperand(0)); break;
     default: llvm_unreachable("Unreachable");
     }
-    text += ";";
+    Code << ";";
     break;
   }
   case Instruction::BitCast: {
-    text = getAssign(iName, I->getType());
+    Code << getAssign(iName, I->getType());
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     Type *InType = I->getOperand(0)->getType();
     Type *OutType = I->getType();
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
       assert(InType->getIntegerBitWidth() == 32);
-      text += "(HEAP32[tempDoublePtr>>2]=" + V + "," + "+HEAPF32[tempDoublePtr>>2]);";
+      Code << "(HEAP32[tempDoublePtr>>2]=" + V + "," + "+HEAPF32[tempDoublePtr>>2]);";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
       assert(OutType->getIntegerBitWidth() == 32);
-      text += "(HEAPF32[tempDoublePtr>>2]=" + V + "," + "HEAP32[tempDoublePtr>>2]|0);";
+      Code << "(HEAPF32[tempDoublePtr>>2]=" + V + "," + "HEAP32[tempDoublePtr>>2]|0);";
     } else {
-      text += V + ";";
+      Code << V + ";";
     }
     break;
   }
   case Instruction::Call: {
     const CallInst *CI = cast<CallInst>(I);
-    text = handleCall(CI) + ';';
+    Code << handleCall(CI) + ';';
     break;
   }
   case Instruction::Select: {
     const SelectInst* SI = cast<SelectInst>(I);
-    text = getAssign(iName, I->getType()) + getValueAsStr(SI->getCondition()) + " ? " +
+    Code << getAssign(iName, I->getType()) + getValueAsStr(SI->getCondition()) + " ? " +
                                             getValueAsStr(SI->getTrueValue()) + " : " +
                                             getValueAsStr(SI->getFalseValue()) + ';';
     break;
@@ -1064,7 +1063,7 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
   case Instruction::AtomicCmpXchg: {
     std::string Assign = getAssign(iName, I->getType());
     const Value *P = I->getOperand(0);
-    text = getLoad(Assign, P, I->getType(), 0) + ';' +
+    Code << getLoad(Assign, P, I->getType(), 0) + ';' +
            "if ((" + getCast(iName, I->getType()) + ") == " + getValueAsCastParenStr(I->getOperand(1)) + ") " +
               getStore(P, I->getType(), getValueAsStr(I->getOperand(2)), 0) + ";";
     break;
@@ -1075,23 +1074,23 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     const Value *V = rmwi->getOperand(1);
     std::string Assign = getAssign(iName, I->getType());
     std::string VS = getValueAsStr(V);
-    text = getLoad(Assign, P, I->getType(), 0) + ';';
+    Code << getLoad(Assign, P, I->getType(), 0) + ';';
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
-      case AtomicRMWInst::Xchg: text += getStore(P, I->getType(), VS, 0); break;
-      case AtomicRMWInst::Add:  text += getStore(P, I->getType(), "((" + VS + '+' + iName + ")|0)", 0); break;
-      case AtomicRMWInst::Sub:  text += getStore(P, I->getType(), "((" + VS + '-' + iName + ")|0)", 0); break;
-      case AtomicRMWInst::And:  text += getStore(P, I->getType(), "(" + VS + '&' + iName + ")", 0); break;
-      case AtomicRMWInst::Nand: text += getStore(P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
-      case AtomicRMWInst::Or:   text += getStore(P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
-      case AtomicRMWInst::Xor:  text += getStore(P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
+      case AtomicRMWInst::Xchg: Code << getStore(P, I->getType(), VS, 0); break;
+      case AtomicRMWInst::Add:  Code << getStore(P, I->getType(), "((" + VS + '+' + iName + ")|0)", 0); break;
+      case AtomicRMWInst::Sub:  Code << getStore(P, I->getType(), "((" + VS + '-' + iName + ")|0)", 0); break;
+      case AtomicRMWInst::And:  Code << getStore(P, I->getType(), "(" + VS + '&' + iName + ")", 0); break;
+      case AtomicRMWInst::Nand: Code << getStore(P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
+      case AtomicRMWInst::Or:   Code << getStore(P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
+      case AtomicRMWInst::Xor:  Code << getStore(P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
       case AtomicRMWInst::Max:
       case AtomicRMWInst::Min:
       case AtomicRMWInst::UMax:
       case AtomicRMWInst::UMin:
       case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
     }
-    text += ";";
+    Code << ";";
     break;
   }
   }
@@ -1100,9 +1099,8 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     DILocation Loc(N);
     unsigned Line = Loc.getLineNumber();
     StringRef File = Loc.getFilename();
-    text += " //@line " + utostr(Line) + " \"" + File.str() + "\"";
+    Code << " //@line " + utostr(Line) + " \"" + File.str() + "\"";
   }
-  return text;
 }
 
 static const SwitchInst *considerSwitch(const Instruction *I) {
@@ -1141,15 +1139,16 @@ void JSWriter::printFunctionBody(const Function *F) {
   // Create relooper blocks with their contents
   for (Function::const_iterator BI = F->begin(), BE = F->end();
        BI != BE; ++BI) {
-    std::string contents = "";
+    std::string Code;
+    raw_string_ostream CodeStream(Code);
     for (BasicBlock::const_iterator I = BI->begin(), E = BI->end();
          I != E; ++I) {
-      std::string curr = generateInstruction(I);
-      if (curr.size() > 0) contents += curr + "\n";
+      generateInstruction(I, CodeStream);
+      CodeStream << '\n';
     }
-    // TODO: if chains for small/sparse switches
+    CodeStream.flush();
     const SwitchInst* SI = considerSwitch(BI->getTerminator());
-    Block *Curr = new Block(contents.c_str(), SI ? getValueAsCastStr(SI->getCondition()).c_str() : NULL);
+    Block *Curr = new Block(Code.c_str(), SI ? getValueAsCastStr(SI->getCondition()).c_str() : NULL);
     const BasicBlock *BB = &*BI;
     LLVMToRelooper[BB] = Curr;
     R.AddBlock(Curr);
