@@ -775,24 +775,12 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 // generateInstruction - This member is called for each Instruction in a function.
 std::string JSWriter::generateInstruction(const Instruction *I) {
   std::string text = "";
-  std::string bbname = "NO_BBNAME";
   std::string iName(getCppName(I));
 
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
     dumpIR(I);
     assert(0 && "FIXME: finish legalization"); // FIXME
-  }
-
-  // Before we emit this instruction, we need to take care of generating any
-  // forward references. So, we get the names of all the operands in advance
-  const unsigned Ops(I->getNumOperands());
-  std::string* opNames = new std::string[Ops];
-  //dumpv("Generating instruction %s = %s (%d operands)", iName.c_str(), std::string(I->getOpcodeName()).c_str(), Ops);
-
-  for (unsigned i = 0; i < Ops; i++) {
-    opNames[i] = getOpName(I->getOperand(i));
-    //dumpv("  op %d: %s", i, opNames[i].c_str());
   }
 
   switch (I->getOpcode()) {
@@ -1107,7 +1095,6 @@ std::string JSWriter::generateInstruction(const Instruction *I) {
     break;
   }
   }
-  delete [] opNames;
   // append debug info
   if (MDNode *N = I->getMetadata("dbg")) {
     DILocation Loc(N);
