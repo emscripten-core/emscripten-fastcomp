@@ -1,4 +1,4 @@
-//===-- CPPBackend.cpp - Library for converting LLVM code to JS       -----===//
+//===-- JSBackend.cpp - Library for converting LLVM code to JS       -----===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CPPTargetMachine.h"
+#include "JSTargetMachine.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/config.h"
@@ -57,9 +57,9 @@ using namespace llvm;
 #undef assert
 #define assert(x) { if (!(x)) dumpfail(#x); }
 
-extern "C" void LLVMInitializeCppBackendTarget() {
+extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
-  RegisterTargetMachine<CPPTargetMachine> X(TheCppBackendTarget);
+  RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
 }
 
 namespace {
@@ -191,7 +191,7 @@ namespace {
       return Ret;
     }
     unsigned getFunctionIndex(const Function *F) {
-      std::string Name = getCppName(F);
+      std::string Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable &Table = FunctionTables[Sig];
@@ -258,7 +258,7 @@ namespace {
     std::string getValueAsParenStr(const Value*);
     std::string getValueAsCastParenStr(const Value*, AsmCast sign=ASM_SIGNED);
 
-    std::string getCppName(const Value* val);
+    std::string getJSName(const Value* val);
 
     std::string getPhiCode(const BasicBlock *From, const BasicBlock *To);
 
@@ -328,7 +328,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     int index = P->getBasicBlockIndex(From);
     if (index < 0) continue;
     // we found it
-    std::string name = getCppName(P);
+    std::string name = getJSName(P);
     assigns[name] = getAssign(name, P->getType());
     Value *V = P->getIncomingValue(index);
     values[name] = V;
@@ -371,7 +371,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   return pre + post;
 }
 
-std::string JSWriter::getCppName(const Value* val) {
+std::string JSWriter::getJSName(const Value* val) {
   std::string name;
   ValueMap::iterator I = ValueNames.find(val);
   if (I != ValueNames.end() && I->first == val)
@@ -626,7 +626,7 @@ std::string JSWriter::getStore(const Value *P, const Type *T, const std::string&
 }
 
 std::string JSWriter::getOpName(const Value* V) { // TODO: remove this
-  return getCppName(V);
+  return getJSName(V);
 }
 
 std::string JSWriter::getPtrLoad(const Value* Ptr) {
@@ -744,7 +744,7 @@ std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
-    return getCppName(V);
+    return getJSName(V);
   }
 }
 
@@ -752,7 +752,7 @@ std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
-    return getCast(getCppName(V), V->getType(), sign);
+    return getCast(getJSName(V), V->getType(), sign);
   }
 }
 
@@ -760,7 +760,7 @@ std::string JSWriter::getValueAsParenStr(const Value* V) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
   } else {
-    return "(" + getCppName(V) + ")";
+    return "(" + getJSName(V) + ")";
   }
 }
 
@@ -768,13 +768,13 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
-    return "(" + getCast(getCppName(V), V->getType(), sign) + ")";
+    return "(" + getCast(getJSName(V), V->getType(), sign) + ")";
   }
 }
 
 // generateInstruction - This member is called for each Instruction in a function.
 void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Code) {
-  std::string iName(getCppName(I));
+  std::string iName(getJSName(I));
 
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
@@ -1329,13 +1329,13 @@ void JSWriter::printModuleBody() {
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
            AI != AE; ++AI) {
         if (AI != I->arg_begin()) Out << ",";
-        Out << getCppName(AI);
+        Out << getJSName(AI);
       }
       Out << ") {";
       nl(Out);
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
            AI != AE; ++AI) {
-        std::string name = getCppName(AI);
+        std::string name = getJSName(AI);
         Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
         nl(Out);
       }
@@ -1545,7 +1545,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
           if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
             C = CE->getOperand(0); // ignore bitcasts
           }
-          GlobalInitializers.push_back(getCppName(C));
+          GlobalInitializers.push_back(getJSName(C));
         }
       }
     } else if (calculate) {
@@ -1612,7 +1612,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       // this is the global static initializer
       if (calculate) {
         Value *V = CE->getOperand(0);
-        GlobalInitializers.push_back(getCppName(V));
+        GlobalInitializers.push_back(getJSName(V));
         // is the func
       }
     } else if (name == "__fini_array_start") {
@@ -1722,12 +1722,12 @@ char JSWriter::ID = 0;
 //                       External Interface declaration
 //===----------------------------------------------------------------------===//
 
-bool CPPTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
-                                           formatted_raw_ostream &o,
-                                           CodeGenFileType FileType,
-                                           bool DisableVerify,
-                                           AnalysisID StartAfter,
-                                           AnalysisID StopAfter) {
+bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
+                                          formatted_raw_ostream &o,
+                                          CodeGenFileType FileType,
+                                          bool DisableVerify,
+                                          AnalysisID StartAfter,
+                                          AnalysisID StopAfter) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
   PM.add(createSimplifyAllocasPass());

@@ -1,11 +1,11 @@
-//===-- CPPTargetMachine.h - TargetMachine for the C++ backend --*- C++ -*-===//
+//===-- SimplifyAllocas.cpp - TargetMachine for the C++ backend --*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
 //
-//===----------------------------------------------------------------------===//
+//===-----------------------------------------------------------------------===//
 
 #include <OptPasses.h>
 

@@ -78,6 +78,7 @@ set(LLVM_ALL_TARGETS
   ARM
   CppBackend
   Hexagon
+  JSBackend
   Mips
   MBlaze
   MSP430
