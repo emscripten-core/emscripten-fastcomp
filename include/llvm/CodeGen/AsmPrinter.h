@@ -95,12 +95,6 @@ namespace llvm {
     /// default, this is equal to CurrentFnSym.
     MCSymbol *CurrentFnSymForSize;
 
-    /// @LOCALMOD-BEGIN
-    /// Is the bitcode module a plain object? This is false
-    /// for shared (pso) and executable (pexe) files.
-    bool IsPlainObject;
-    /// @LOCALMOD-END
-
   private:
     // GCMetadataPrinters - The garbage collection metadata printer table.
     void *GCMetadataPrinters;  // Really a DenseMap.
