@@ -117,9 +117,7 @@ error_code current_path(SmallVectorImpl<char> &result) {
 // For GNU Hurd
   result.reserve(1024);
 #endif
-#ifdef __native_client__
-  llvm_unreachable("current_path() not implemented for Native Client");
-#else
+
   while (true) {
     if (::getcwd(result.data(), result.capacity()) == 0) {
       // See if there was a real error.
@@ -132,7 +130,6 @@ error_code current_path(SmallVectorImpl<char> &result) {
   }
 
   result.set_size(strlen(result.data()));
-#endif
   return error_code::success();
 }
 
@@ -196,9 +193,6 @@ error_code copy_file(const Twine &from, const Twine &to, copy_option copt) {
 }
 
 error_code create_directory(const Twine &path, bool &existed) {
-#ifdef __native_client__
-  llvm_unreachable("create_directory() not implemented for Native Client");
-#else
   SmallString<128> path_storage;
   StringRef p = path.toNullTerminatedStringRef(path_storage);
 
@@ -210,13 +204,9 @@ error_code create_directory(const Twine &path, bool &existed) {
     existed = false;
 
   return error_code::success();
-#endif
 }
 
 error_code create_hard_link(const Twine &to, const Twine &from) {
-#ifdef __native_client__
-  llvm_unreachable("create_hard_link() not implemented for Native Client");
-#else
   // Get arguments.
   SmallString<128> from_storage;
   SmallString<128> to_storage;
@@ -227,13 +217,9 @@ error_code create_hard_link(const Twine &to, const Twine &from) {
     return error_code(errno, system_category());
 
   return error_code::success();
-#endif
 }
 
 error_code create_symlink(const Twine &to, const Twine &from) {
-#ifdef __native_client__
-  llvm_unreachable("create_symlink() not implemented for Native Client");
-#else
   // Get arguments.
   SmallString<128> from_storage;
   SmallString<128> to_storage;
@@ -244,13 +230,9 @@ error_code create_symlink(const Twine &to, const Twine &from) {
     return error_code(errno, system_category());
 
   return error_code::success();
-#endif
 }
 
 error_code remove(const Twine &path, bool &existed) {
-#ifdef __native_client__
-  llvm_unreachable("remove() not implemented for Native Client");
-#else
   SmallString<128> path_storage;
   StringRef p = path.toNullTerminatedStringRef(path_storage);
 
@@ -262,13 +244,9 @@ error_code remove(const Twine &path, bool &existed) {
     existed = true;
 
   return error_code::success();
-#endif
 }
 
 error_code rename(const Twine &from, const Twine &to) {
-#ifdef __native_client__
-  llvm_unreachable("rename() not implemented for Native Client");
-#else
   // Get arguments.
   SmallString<128> from_storage;
   SmallString<128> to_storage;
@@ -288,13 +266,9 @@ error_code rename(const Twine &from, const Twine &to) {
   }
 
   return error_code::success();
-#endif
 }
 
 error_code resize_file(const Twine &path, uint64_t size) {
-#ifdef __native_client__
-  llvm_unreachable("resize_file() not implemented for Native Client");
-#else
   SmallString<128> path_storage;
   StringRef p = path.toNullTerminatedStringRef(path_storage);
 
@@ -302,7 +276,6 @@ error_code resize_file(const Twine &path, uint64_t size) {
     return error_code(errno, system_category());
 
   return error_code::success();
-#endif
 }
 
 error_code exists(const Twine &path, bool &result) {
@@ -505,10 +478,6 @@ rety_open_create:
 }
 
 error_code mapped_file_region::init(int FD, bool CloseFD, uint64_t Offset) {
-#ifdef __native_client__
-  // Newlib does not have ftruncate.
-  llvm_unreachable("mapped_file_region not implemented for native client");
-#else
   AutoFD ScopedFD(FD);
   if (!CloseFD)
     ScopedFD.take();
@@ -536,7 +505,6 @@ error_code mapped_file_region::init(int FD, bool CloseFD, uint64_t Offset) {
   if (Mapping == MAP_FAILED)
     return error_code(errno, system_category());
   return error_code::success();
-#endif // __native_client__
 }
 
 mapped_file_region::mapped_file_region(const Twine &path,
@@ -547,9 +515,6 @@ mapped_file_region::mapped_file_region(const Twine &path,
   : Mode(mode)
   , Size(length)
   , Mapping() {
-#ifdef __native_client__
-  llvm_unreachable("mapped_file_region not implemented for native client");
-#endif
   // Make sure that the requested size fits within SIZE_T.
   if (length > std::numeric_limits<size_t>::max()) {
     ec = make_error_code(errc::invalid_argument);
@@ -579,9 +544,6 @@ mapped_file_region::mapped_file_region(int fd,
   : Mode(mode)
   , Size(length)
   , Mapping() {
-#ifdef __native_client__
-  llvm_unreachable("mapped_file_region not implemented for native client");
-#endif
   // Make sure that the requested size fits within SIZE_T.
   if (length > std::numeric_limits<size_t>::max()) {
     ec = make_error_code(errc::invalid_argument);

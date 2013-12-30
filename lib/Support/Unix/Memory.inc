@@ -156,12 +156,8 @@ Memory::protectMappedMemory(const MemoryBlock &M, unsigned Flags) {
     return error_code(EINVAL, generic_category());
 
   int Protect = getPosixProtectionFlags(Flags);
-#ifndef __native_client__
+
   int Result = ::mprotect(M.Address, M.Size, Protect);
-#else
-  int Result = -1;
-  llvm_unreachable("Native client does not support mprotect");
-#endif
   if (Result != 0)
     return error_code(errno, system_category());
 

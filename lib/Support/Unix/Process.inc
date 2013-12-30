@@ -36,8 +36,6 @@
 #  include <termios.h>
 #endif
 
-#include <sys/unistd.h>
-
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only generic UNIX code that
 //===          is guaranteed to work on *all* UNIX variants.
@@ -96,10 +94,9 @@ static unsigned getPageSize() {
   const int page_size = 0x1000;
 #elif defined(HAVE_GETPAGESIZE)
   const int page_size = ::getpagesize();
-#elif defined(HAVE_SYSCONF)  && !defined(__native_client__)
+#elif defined(HAVE_SYSCONF)
   long page_size = ::sysconf(_SC_PAGE_SIZE);
 #else
-  const int page_size = 0;
 #warning Cannot get the page size on this machine
 #endif
   return static_cast<unsigned>(page_size);
@@ -142,23 +139,11 @@ void Process::GetTimeUsage(TimeValue &elapsed, TimeValue &user_time,
 }
 
 int Process::GetCurrentUserId() {
-#if !defined(__native_client__)
   return getuid();
-#else // (__native_client__)
-// TODO(abetul): What the proper return value should be for this function?
-// What about having a reserved user_id or the user "nobody" for PNACL?
-  return -1;
-#endif // (__native_client__)
 }
 
 int Process::GetCurrentGroupId() {
-#if !defined(__native_client__)
   return getgid();
-#else // (__native_client__)
-// TODO(abetul): What the proper return value should be for this function?
-// What about having a reserved/unused group_id?  
-  return -1;
-#endif // (__native_client__)
 }
 
 #if defined(HAVE_MACH_MACH_H) && !defined(__GNU__)

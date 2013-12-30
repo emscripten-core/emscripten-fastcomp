@@ -102,10 +102,6 @@ Program::FindProgramByName(const std::string& progName) {
 }
 
 static bool RedirectIO(const Path *Path, int FD, std::string* ErrMsg) {
-#if defined(__native_client__)
-  MakeErrMsg(ErrMsg, "Cannot redirect I/O in NaCl");
-  return true;
-#else // (__native_client__)
   if (Path == 0) // Noop
     return false;
   const char *File;
@@ -122,6 +118,7 @@ static bool RedirectIO(const Path *Path, int FD, std::string* ErrMsg) {
               + (FD == 0 ? "input" : "output"));
     return true;
   }
+
   // Install it as the requested FD
   if (dup2(InFD, FD) == -1) {
     MakeErrMsg(ErrMsg, "Cannot dup2");
@@ -130,7 +127,6 @@ static bool RedirectIO(const Path *Path, int FD, std::string* ErrMsg) {
   }
   close(InFD);      // Close the original FD
   return false;
-#endif // (__native_client__)
 }
 
 #ifdef HAVE_POSIX_SPAWN
@@ -240,7 +236,6 @@ Program::Execute(const Path &path, const char **args, const char **envp,
   }
 #endif
 
-#if !defined(__native_client__)
   // Create a child process.
   int child = fork();
   switch (child) {
@@ -301,10 +296,6 @@ Program::Execute(const Path &path, const char **args, const char **envp,
   Data_ = reinterpret_cast<void*>(child);
 
   return true;
-#else // (__native_client__)
-  MakeErrMsg(ErrMsg, "PNACL does not know how to execute child processes!");
-  return false;
-#endif // (__native_client__)
 }
 
 int
