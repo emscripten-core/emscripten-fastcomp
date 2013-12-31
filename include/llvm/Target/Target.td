@@ -770,40 +770,6 @@ def LIFETIME_END : Instruction {
   let AsmString = "LIFETIME_END";
   let neverHasSideEffects = 1;
 }
-// @LOCALMOD-BEGIN
-def BUNDLE_ALIGN_START : Instruction {
-  let OutOperandList = (outs);
-  let InOperandList = (ins);
-  let AsmString = "";
-  let neverHasSideEffects = 1;
-  let isAsCheapAsAMove = 1;
-  let isNotDuplicable = 1;
-}
-def BUNDLE_ALIGN_END : Instruction {
-  let OutOperandList = (outs);
-  let InOperandList = (ins);
-  let AsmString = "";
-  let neverHasSideEffects = 1;
-  let isAsCheapAsAMove = 1;
-  let isNotDuplicable = 1;
-}
-def BUNDLE_LOCK : Instruction {
-  let OutOperandList = (outs);
-  let InOperandList = (ins);
-  let AsmString = "";
-  let neverHasSideEffects = 1;
-  let isAsCheapAsAMove = 1;
-  let isNotDuplicable = 1;
-}
-def BUNDLE_UNLOCK : Instruction {
-  let OutOperandList = (outs);
-  let InOperandList = (ins);
-  let AsmString = "";
-  let neverHasSideEffects = 1;
-  let isAsCheapAsAMove = 1;
-  let isNotDuplicable = 1;
-}
-// @LOCALMOD-END
 }
 
 //===----------------------------------------------------------------------===//

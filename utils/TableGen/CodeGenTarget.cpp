@@ -316,12 +316,6 @@ void CodeGenTarget::ComputeInstrsByEnum() const {
     "BUNDLE",
     "LIFETIME_START",
     "LIFETIME_END",
-    // @LOCALMOD-BEGIN
-    "BUNDLE_ALIGN_START",
-    "BUNDLE_ALIGN_END",
-    "BUNDLE_LOCK",
-    "BUNDLE_UNLOCK",
-    // @LOCALMOD-END
     0
   };
   const DenseMap<const Record*, CodeGenInstruction*> &Insts = getInstructions();

@@ -91,14 +91,7 @@ namespace TargetOpcode {
 
     /// Lifetime markers.
     LIFETIME_START = 15,
-    LIFETIME_END = 16,
-
-    // @LOCALMOD-BEGIN
-    BUNDLE_ALIGN_START = 14,
-    BUNDLE_ALIGN_END = 15,
-    BUNDLE_LOCK = 16,
-    BUNDLE_UNLOCK = 17
-    // @LOCALMOD-END
+    LIFETIME_END = 16
   };
 } // end namespace TargetOpcode
 } // end namespace llvm
