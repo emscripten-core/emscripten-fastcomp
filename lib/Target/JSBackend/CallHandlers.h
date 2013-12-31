@@ -134,6 +134,14 @@ DEF_CALL_HANDLER(bitshift64Shl, {
   return CH___default__(CI, "_bitshift64Shl", 3);
 })
 
+DEF_CALL_HANDLER(llvm_ctlz_i32, {
+  return CH___default__(CI, "_llvm_ctlz_i32", 1);
+})
+
+DEF_CALL_HANDLER(llvm_cttz_i32, {
+  return CH___default__(CI, "_llvm_cttz_i32", 1);
+})
+
 #define DEF_REDIRECT_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   /* FIXME: do not redirect if this is implemented and not just a declare! */ \
@@ -443,6 +451,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Lshr);
   SETUP_CALL_HANDLER(bitshift64Ashr);
   SETUP_CALL_HANDLER(bitshift64Shl);
+  SETUP_CALL_HANDLER(llvm_ctlz_i32);
+  SETUP_CALL_HANDLER(llvm_cttz_i32);
 
   SETUP_CALL_HANDLER(__01readdir64_);
   SETUP_CALL_HANDLER(__xpg_basename);
