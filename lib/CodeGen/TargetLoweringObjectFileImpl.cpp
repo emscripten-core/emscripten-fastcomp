@@ -54,16 +54,8 @@ TargetLoweringObjectFileELF::getCFIPersonalitySymbol(const GlobalValue *GV,
   case dwarf::DW_EH_PE_absptr:
     return  Mang->getSymbol(GV);
   case dwarf::DW_EH_PE_pcrel: {
-    // @LOCALMOD-BEGIN
-    // The dwarf section label should not include the version suffix.
-    // Strip it off here.
-    StringRef Name = Mang->getSymbol(GV)->getName();
-    size_t atpos = Name.find("@");
-    if (atpos != StringRef::npos)
-      Name = Name.substr(0, atpos);
-    // @LOCALMOD-END
     return getContext().GetOrCreateSymbol(StringRef("DW.ref.") +
-                                          Name); // @LOCALMOD
+                                          Mang->getSymbol(GV)->getName());
   }
   }
 }
@@ -72,15 +64,7 @@ void TargetLoweringObjectFileELF::emitPersonalityValue(MCStreamer &Streamer,
                                                        const TargetMachine &TM,
                                                        const MCSymbol *Sym) const {
   SmallString<64> NameData("DW.ref.");
-  // @LOCALMOD-BEGIN
-  // The dwarf section label should not include the version suffix.
-  // Strip it off here.
-  StringRef Name = Sym->getName();
-  size_t atpos = Name.find("@");
-  if (atpos != StringRef::npos)
-    Name = Name.substr(0, atpos);
-  // @LOCALMOD-END
-  NameData += Name; // @LOCALMOD
+  NameData += Sym->getName();
   MCSymbol *Label = getContext().GetOrCreateSymbol(NameData);
   Streamer.EmitSymbolAttribute(Label, MCSA_Hidden);
   Streamer.EmitSymbolAttribute(Label, MCSA_Weak);
