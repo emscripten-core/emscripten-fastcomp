@@ -54,11 +54,6 @@ ShowAnnotations("show-annotations",
                 cl::desc("Add informational comments to the .ll file"));
 
 // @LOCALMOD-BEGIN
-// Print bitcode metadata only, in text format.
-// (includes output format, soname, and dependencies).
-static cl::opt<bool>
-DumpMetadata("dump-metadata", cl::desc("Dump bitcode metadata"));
-
 static cl::opt<NaClFileFormat>
 InputFileFormat(
     "bitcode-format",
@@ -187,7 +182,7 @@ int main(int argc, char **argv) {
     OutputFilename = "-";
 
   if (OutputFilename.empty()) { // Unspecified output, infer it.
-    if (InputFilename == "-" || DumpMetadata) { // @LOCALMOD
+    if (InputFilename == "-") {
       OutputFilename = "-";
     } else {
       const std::string &IFN = InputFilename;
@@ -208,14 +203,6 @@ int main(int argc, char **argv) {
     errs() << ErrorInfo << '\n';
     return 1;
   }
-
-  // @LOCALMOD-BEGIN
-  if (DumpMetadata) {
-    M->dumpMeta(Out->os());
-    Out->keep();
-    return 0;
-  }
-  // @LOCALMOD-END
 
   OwningPtr<AssemblyAnnotationWriter> Annotator;
   if (ShowAnnotations)

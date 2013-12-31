@@ -37,11 +37,7 @@ Module *llvm::CloneModule(const Module *M, ValueToValueMapTy &VMap) {
   New->setDataLayout(M->getDataLayout());
   New->setTargetTriple(M->getTargetTriple());
   New->setModuleInlineAsm(M->getModuleInlineAsm());
-  // @LOCALMOD-BEGIN
-  // Copy all of the dependent libraries over.
-  for (Module::lib_iterator I = M->lib_begin(), E = M->lib_end(); I != E; ++I)
-    New->addLibrary(*I);
-  // @LOCALMOD-END
+   
   // Loop over all of the global variables, making corresponding globals in the
   // new module.  Here we add them to the VMap and to the new Module.  We
   // don't worry about attributes or initializers, they will come later.

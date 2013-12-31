@@ -31,21 +31,12 @@ Module *llvm::ParseAssembly(MemoryBuffer *F,
 
   // If we are parsing into an existing module, do it.
   if (M)
-    // @LOCALMOD-BEGIN
-    if (LLParser(F, SM, Err, M).Run()) {
-      return 0;
-    }
-    else {
-      M->convertMetadataToLibraryList();
-      return M;
-    }
-  // @LOCALMOD-END
+    return LLParser(F, SM, Err, M).Run() ? 0 : M;
 
   // Otherwise create a new module.
   OwningPtr<Module> M2(new Module(F->getBufferIdentifier(), Context));
   if (LLParser(F, SM, Err, M2.get()).Run())
     return 0;
-  M2->convertMetadataToLibraryList(); // @LOCALMOD
   return M2.take();
 }
 
