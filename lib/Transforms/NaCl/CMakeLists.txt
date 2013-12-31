@@ -28,6 +28,7 @@ add_llvm_library(LLVMNaClTransforms
   RewritePNaClLibraryCalls.cpp
   StripAttributes.cpp
   StripMetadata.cpp
+  ExpandI64.cpp
   )
 
 add_dependencies(LLVMNaClTransforms intrinsics_gen)
