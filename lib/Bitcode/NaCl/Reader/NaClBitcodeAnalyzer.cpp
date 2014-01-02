@@ -195,7 +195,12 @@ public:
     Initialize(BlockID, Parser);
   }
 
-  virtual ~PNaClBitcodeAnalyzerBlockParser() {}
+  virtual ~PNaClBitcodeAnalyzerBlockParser() {
+    // Before exitting, increment subblock count for calling block.
+    if (NaClBitcodeParser *Parser = GetEnclosingParser()) {
+      ++Context->BlockIDStats[Parser->GetBlockID()]->NumSubBlocks;
+    }
+  }
 
   // *****************************************************
   // This subsection Defines an XML generator for the dump.
@@ -347,7 +352,6 @@ protected:
   // corresponding block.
   virtual void EnterBlock(unsigned NumberWords) {
     NumWords = NumberWords;
-    IncrementCallingBlock();
     if (Context->DumpOptions.DumpRecords) {
       unsigned BlockID = GetBlockID();
       EmitBeginStartTag();
@@ -364,7 +368,7 @@ protected:
   // Called when the corresponding EndBlock of the block being parsed
   // is found.
   virtual void ExitBlock() {
-    BlockStats->NumBits += GetLocalNumBits();
+    BlockStats->NumBits += GetBlockLocalNumBits();
     if (Context->DumpOptions.DumpRecords) {
       DecrementIndent();
       EmitBeginEndTag();
@@ -375,7 +379,7 @@ protected:
 
   // Called after a BlockInfo block is parsed.
   virtual void ExitBlockInfo() {
-    BlockStats->NumBits += GetLocalNumBits();
+    BlockStats->NumBits += GetBlockLocalNumBits();
     if (Context->DumpOptions.DumpRecords) {
       EmitBeginStartTag();
       EmitEnterBlockTagName(naclbitc::BLOCKINFO_BLOCK_ID);
@@ -392,7 +396,6 @@ protected:
         EmitEndTag();
       }
     }
-    IncrementCallingBlock();
   }
 
   // Process the abbreviation just read.
@@ -514,15 +517,6 @@ protected:
     EmitTagName(GetBlockStrName(BlockID));
     if (Context->DumpOptions.DumpDetails)
       EmitStringAttribute("abbrev", "END_BLOCK");
-  }
-
-  /// Increment the counter the number of blocks in the enclosing block.
-  void IncrementCallingBlock() {
-    if (NaClBitcodeParser *Parser = GetEnclosingParser()) {
-      PNaClBitcodeAnalyzerBlockParser *PNaClBlock =
-          static_cast<PNaClBitcodeAnalyzerBlockParser*>(Parser);
-      ++PNaClBlock->BlockStats->NumSubBlocks;
-    }
   }
 };
 
