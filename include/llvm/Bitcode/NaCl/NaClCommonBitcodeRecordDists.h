@@ -33,42 +33,42 @@
 
 namespace llvm {
 
-// Collects the distribution of record codes/number of bits used for
-// a particular blockID.
-class NaClBitcodeRecordCodeDist
-    : public NaClBitcodeRecordBitsDist<NaClBitcodeRecordBitsDistElement> {
+// Collects the distribution of record codes/number of bits used for a
+// particular blockID. Assumes distribution elements are instances of
+// NaClBitcodeRecordBitsDistElement.
+class NaClBitcodeRecordCodeDist : public NaClBitcodeRecordBitsDist {
   NaClBitcodeRecordCodeDist(const NaClBitcodeRecordCodeDist&)
       LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitcodeRecordCodeDist&)
       LLVM_DELETED_FUNCTION;
 
 public:
-  NaClBitcodeRecordCodeDist(unsigned BlockID) : BlockID(BlockID) {}
 
-  virtual ~NaClBitcodeRecordCodeDist() {}
+  bool classof(const NaClBitcodeRecordDist *Dist) {
+    return Dist->getKind() >= RD_RecordCodeDist
+        && Dist->getKind() < RD_RecordCodeDist_Last;
+  }
 
+  NaClBitcodeRecordCodeDist(unsigned BlockID,
+                            NaClBitcodeRecordDistKind Kind=RD_RecordCodeDist)
+      : NaClBitcodeRecordBitsDist(Kind), BlockID(BlockID)
+  {}
+
+  virtual ~NaClBitcodeRecordCodeDist();
+
+protected:
   virtual void GetValueList(const NaClBitcodeRecord &Record,
-                            ValueListType &ValueList) const {
-    if (Record.GetEntryKind() == NaClBitstreamEntry::Record) {
-      ValueList.push_back(Record.GetCode());
-    }
-  }
+                            ValueListType &ValueList) const;
 
-  virtual const char *GetTitle() const {
-    return "Record Histogram:";
-  }
+  virtual const char *GetTitle() const;
 
-  virtual const char *GetValueHeader() const {
-    return "Record Kind";
-  }
+  virtual const char *GetValueHeader() const;
 
   virtual void PrintRowValue(raw_ostream &Stream,
-                             std::string Indent,
-                             NaClBitcodeRecordDistValue Value) const {
-    Stream << GetCodeName(Value, BlockID);
-    // TODO(kschimpf) handle nested distribution maps if defined.
-  }
+                             const std::string &Indent,
+                             NaClBitcodeRecordDistValue Value) const;
 
+public:
   // Returns true if there is a known printable name for record code
   // CodeID in block associated with BlockID.
   static bool HasKnownCodeName(unsigned CodeID, unsigned BlockID);

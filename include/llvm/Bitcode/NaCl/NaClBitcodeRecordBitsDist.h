@@ -1,6 +1,6 @@
 //===- NaClBitcodeRecordBitsDist.h -----------------------------*- C++ -*-===//
 //     Maps distributions of values and corresponding number of
-//     bits in PNaCl bitcode records.
+//     bits in PNaCl bitcode record distributions.
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -33,21 +33,22 @@ class NaClBitcodeRecordBitsDistElement : public NaClBitcodeRecordDistElement {
       LLVM_DELETED_FUNCTION;
 
 public:
+  static bool classof(const NaClBitcodeRecordDistElement *Dist) {
+    return Dist->getKind() >= RDE_BitsDist
+        && Dist->getKind() < RDE_BitsDist_Last;
+  }
+
   // Create an element with no instances.
   NaClBitcodeRecordBitsDistElement(
-      NaClBitcodeRecordDist<NaClBitcodeRecordDistElement>* NestedDist)
-      : NaClBitcodeRecordDistElement(NestedDist), TotalBits(0), NumAbbrevs(0)
+      NaClBitcodeRecordDist* NestedDist = 0,
+      NaClBitcodeRecordDistElementKind Kind=RDE_BitsDist)
+      : NaClBitcodeRecordDistElement(NestedDist, Kind),
+        TotalBits(0), NumAbbrevs(0)
   {}
 
-  virtual ~NaClBitcodeRecordBitsDistElement() {}
+  virtual ~NaClBitcodeRecordBitsDistElement();
 
-  virtual void Add(const NaClBitcodeRecord &Record) {
-    NaClBitcodeRecordDistElement::Add(Record);
-    TotalBits += Record.GetNumBits();
-    if (Record.UsedAnAbbreviation()) {
-      ++NumAbbrevs;
-    }
-  }
+  virtual void Add(const NaClBitcodeRecord &Record);
 
   // Returns the total number of bits used to represent all instances
   // of this value.
@@ -70,51 +71,38 @@ private:
 
 /// Defines a PNaCl bitcode distribution map when we want to count
 /// both the number of instances, and the number of bits used by each
-/// record.
-///
-/// ElementType is assumed to be a derived class of
+/// record. Assumes distribution elements are instances of
 /// NaClBitcodeRecordBitsDistElement.
-template<class ElementType>
-class NaClBitcodeRecordBitsDist : public NaClBitcodeRecordDist<ElementType> {
+class NaClBitcodeRecordBitsDist : public NaClBitcodeRecordDist {
   NaClBitcodeRecordBitsDist(const NaClBitcodeRecordBitsDist&)
       LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitcodeRecordBitsDist&)
       LLVM_DELETED_FUNCTION;
 
 public:
-  NaClBitcodeRecordBitsDist()
-      : NaClBitcodeRecordDist<ElementType>() {}
 
-  virtual ~NaClBitcodeRecordBitsDist() {}
+  static bool classof(const NaClBitcodeRecordDist *Dist) {
+    return Dist->getKind() >= RD_BitsDist
+        && Dist->getKind() < RD_BitsDist_Last;
+  }
+
+  NaClBitcodeRecordBitsDist(NaClBitcodeRecordDistKind Kind=RD_BitsDist)
+      : NaClBitcodeRecordDist(Kind)
+  {}
+
+  virtual ~NaClBitcodeRecordBitsDist();
+
 
 protected:
+  virtual NaClBitcodeRecordDistElement *
+  CreateElement(NaClBitcodeRecordDistValue Value);
+
   virtual void PrintRowStats(raw_ostream &Stream,
-                             std::string Indent,
-                             NaClBitcodeRecordDistValue Value) const {
+                             const std::string &Indent,
+                             NaClBitcodeRecordDistValue Value) const;
 
-    ElementType *Element = this->at(Value);
-    Stream << Indent
-           << format("%7d %6.2f %9lu ",
-                     Element->GetNumInstances(),
-                     (double) Element->GetNumInstances()/
-                     this->GetTotal()*100.0,
-                     (unsigned long) Element->GetTotalBits())
-           << format("%9.2f",
-                     (double) Element->GetTotalBits()/
-                     Element->GetNumInstances());
-    if (Element->GetNumAbbrevs())
-      Stream << format(" %7.2f  ",
-                       (double) Element->GetNumAbbrevs()/
-                       Element->GetNumInstances()*100.0);
-    else
-      Stream << "          ";
-  }
-
-  virtual void PrintHeader(raw_ostream &Stream, std::string Indent) const {
-    Stream << Indent
-           << "  Count %Total    # Bits Bits/Elmt   % Abv  "
-           << this->GetValueHeader() << "\n";
-  }
+  virtual void PrintHeader(raw_ostream &Stream,
+                           const std::string &Indent) const;
 };
 
 }

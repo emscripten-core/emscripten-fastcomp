@@ -56,7 +56,7 @@
 // the same NaClBitcodeRecord (i.e. method GetValueList defines more
 // than one value), things are not so simple.
 
-// However, for some distributions (such as value index distributions)
+// For example, for some distributions (such as value index distributions)
 // the numbers of instances isn't sufficient. In such cases, you may
 // have to look at nested distributions to find important cases.
 //
@@ -125,6 +125,7 @@
 #define LLVM_BITCODE_NACL_NACLBITCODERECORDDIST_H
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -151,23 +152,40 @@ typedef ValueListType::const_iterator ValueListIterator;
 
 /// Defines a PNaCl bitcode record distribution map. The distribution
 /// map is a map from a (record) value, to the corresponding data
-/// associated with that value.
-///
-/// ElementType is assumed to be a derived class of
-/// NaClBitcodeRecordDistElement.
-template<class ElementType>
+/// associated with that value. Assumes distributions elements are
+/// instances of NaClBitcodeRecordDistElement.
 class NaClBitcodeRecordDist {
-  NaClBitcodeRecordDist(const NaClBitcodeRecordDist<ElementType>&)
-      LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecordDist<ElementType>&)
-      LLVM_DELETED_FUNCTION;
+  NaClBitcodeRecordDist(const NaClBitcodeRecordDist&) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClBitcodeRecordDist&) LLVM_DELETED_FUNCTION;
+  friend class NaClBitcodeRecordDistElement;
+
+public:
+  /// Define kinds for isa, dyn_cast, etc. support (see
+  /// llvm/Support/Casting.h). Only defined for concrete classes.
+  enum NaClBitcodeRecordDistKind {
+    RD_Dist,                 // class NaClBitcodeRecordDist.
+      RD_BitsDist,           // class NaClBitcodeRecordBitsDist.
+        RD_RecordCodeDist,   // class NaClBitcodeRecordCodeDist.
+        RD_RecordCodeDist_Last,
+      RD_BitsDist_Last,
+    RD_Dist_Last
+  };
+
+  NaClBitcodeRecordDistKind getKind() const { return Kind; }
+
+private:
+  const NaClBitcodeRecordDistKind Kind;
+
+  static bool classof(const NaClBitcodeRecordDist *Dist) {
+    return Dist->getKind() >= RD_Dist && Dist->getKind() < RD_Dist_Last;
+  }
 
 public:
   /// Type defining the mapping used to define the distribution.
-  typedef typename
-  std::map<NaClBitcodeRecordDistValue, ElementType*> MappedElement;
+  typedef std::map<NaClBitcodeRecordDistValue,
+                   NaClBitcodeRecordDistElement*> MappedElement;
 
-  typedef typename MappedElement::const_iterator const_iterator;
+  typedef MappedElement::const_iterator const_iterator;
 
   /// Type defining a pair of values used to sort the
   /// distribution. The first element is defined by method
@@ -179,17 +197,11 @@ public:
   /// corresponding distribution map.
   typedef std::vector<DistPair> Distribution;
 
-  NaClBitcodeRecordDist()
-      : TableMap(), CachedDistribution(0), Total(0) {
+  NaClBitcodeRecordDist(NaClBitcodeRecordDistKind Kind=RD_Dist)
+      : Kind(Kind), TableMap(), CachedDistribution(0), Total(0) {
   }
 
-  virtual ~NaClBitcodeRecordDist() {
-    RemoveCachedDistribution();
-    for (const_iterator Iter = begin(), IterEnd = end();
-         Iter != IterEnd; ++Iter) {
-      delete Iter->second;
-    }
-  }
+  virtual ~NaClBitcodeRecordDist();
 
   /// Number of elements in the distribution map.
   size_t size() const {
@@ -213,7 +225,7 @@ public:
 
   /// Returns the element associated with the given distribution
   /// value.  Creates the element if needed.
-  ElementType *GetElement(NaClBitcodeRecordDistValue Value) {
+  NaClBitcodeRecordDistElement *GetElement(NaClBitcodeRecordDistValue Value) {
     if (TableMap.find(Value) == TableMap.end()) {
       TableMap[Value] = CreateElement(Value);
     }
@@ -222,7 +234,7 @@ public:
 
   /// Returns the element associated with the given distribution
   /// value.
-  ElementType *at(NaClBitcodeRecordDistValue Value) const {
+  NaClBitcodeRecordDistElement *at(NaClBitcodeRecordDistValue Value) const {
     return TableMap.at(Value);
   }
 
@@ -234,20 +246,7 @@ public:
 
   /// Adds the value(s) in the given bitcode record to the
   /// distribution map.  The value(s) based on method GetValueList.
-  virtual void Add(const NaClBitcodeRecord &Record) {
-    ValueListType ValueList;
-    this->GetValueList(Record, ValueList);
-    if (!ValueList.empty()) {
-      RemoveCachedDistribution();
-      ++Total;
-      for (ValueListIterator
-               Iter = ValueList.begin(),
-               IterEnd = ValueList.end();
-           Iter != IterEnd; ++Iter) {
-        GetElement(*Iter)->Add(Record);
-      }
-    }
-  }
+  virtual void Add(const NaClBitcodeRecord &Record);
 
   /// Builds the distribution associated with the distribution map.
   /// Warning: The distribution is cached, and hence, only valid while
@@ -258,29 +257,22 @@ public:
   }
 
   /// Prints out the contents of the distribution map to Stream.
-  void Print(raw_ostream &Stream, std::string Indent="") const {
-    Distribution *Dist = this->GetDistribution();
-    PrintTitle(Stream, Indent);
-    PrintHeader(Stream, Indent);
-    for (size_t I = 0, E = Dist->size(); I != E; ++I) {
-      const DistPair &Pair = Dist->at(I);
-      PrintRow(Stream, Indent, Pair.second);
-    }
+  void Print(raw_ostream &Stream, const std::string &Indent) const;
+
+  void Print(raw_ostream &Stream) const {
+    std::string Indent;
+    Print(Stream, Indent);
   }
 
 protected:
   /// Creates a distribution element for the given value.
-  virtual ElementType *CreateElement(NaClBitcodeRecordDistValue Value) {
-    return new ElementType(CreateNestedDistributionMap());
-  }
+  virtual NaClBitcodeRecordDistElement *
+  CreateElement(NaClBitcodeRecordDistValue Value);
 
   /// Returns the (optional) nested distribution map to be associated
   // with the element. Returning 0 implies that no nested distribution map
   // will be added to the element.
-  virtual NaClBitcodeRecordDist<NaClBitcodeRecordDistElement>*
-  CreateNestedDistributionMap() {
-    return 0;
-  }
+  virtual NaClBitcodeRecordDist* CreateNestedDistributionMap();
 
   /// If the distribution is cached, remove it. Should be called
   /// whenever the distribution map is changed.
@@ -298,75 +290,39 @@ protected:
                             ValueListType &ValueList) const = 0;
 
   /// Returns the title to use when printing the distribution map.
-  virtual const char *GetTitle() const {
-    return "Distribution";
-  }
+  virtual const char *GetTitle() const;
 
   /// Returns the header to use when printing the value in the
   /// distribution map.
-  virtual const char *GetValueHeader() const {
-    return "Value";
-  }
+  virtual const char *GetValueHeader() const;
 
   /// Prints out the title of the distribution map.
-  virtual void PrintTitle(raw_ostream &Stream, std::string Indent) const {
-    Stream << Indent << GetTitle() << " (" << size() << " elements):\n\n";
-  }
+  virtual void PrintTitle(raw_ostream &Stream, const std::string &Indent) const;
 
   /// Prints out statistics for the row with the given value.
   virtual void PrintRowStats(raw_ostream &Stream,
-                             std::string Indent,
-                             NaClBitcodeRecordDistValue Value) const {
-    Stream << Indent << format("%7d ", at(Value)->GetNumInstances()) << "    ";
-  }
+                             const std::string &Indent,
+                             NaClBitcodeRecordDistValue Value) const;
 
   /// Prints out Value (in a row) to Stream. If the element contains a
   /// nested distribution, that nested distribution will use the given
   /// Indent for this distribution to properly indent the nested
   /// distribution.
   virtual void PrintRowValue(raw_ostream &Stream,
-                             std::string Indent,
-                             NaClBitcodeRecordDistValue Value) const {
-    std::string ValueFormat;
-    raw_string_ostream StrStream(ValueFormat);
-    StrStream << "%" << strlen(GetValueHeader()) << "d";
-    StrStream.flush();
-    Stream << format(ValueFormat.c_str(), (int) Value);
-    // TODO(kschimpf): Print nested distribution here if applicable.
-    // Note: Indent would be used in this context.
-  }
+                             const std::string &Indent,
+                             NaClBitcodeRecordDistValue Value) const;
 
   // Prints out the header to the printed distribution map.
-  virtual void PrintHeader(raw_ostream &Stream, std::string Indent) const {
-    Stream << Indent << "  Count     " << GetValueHeader() << "\n";
-  }
+  virtual void PrintHeader(raw_ostream &Stream,
+                           const std::string &Indent) const;
 
   // Prints out a row in the printed distribution map.
   virtual void PrintRow(raw_ostream &Stream,
-                        std::string Indent,
-                        NaClBitcodeRecordDistValue Value) const {
-    PrintRowStats(Stream, Indent, Value);
-    PrintRowValue(Stream, Indent, Value);
-    Stream << "\n";
-  }
+                        const std::string &Indent,
+                        NaClBitcodeRecordDistValue Value) const;
 
   /// Sorts the distribution, based on the importance of each element.
-  void Sort() const {
-    RemoveCachedDistribution();
-    CachedDistribution = new Distribution();
-    for (const_iterator Iter = begin(), IterEnd = end();
-         Iter != IterEnd; ++Iter) {
-      const ElementType *Elmt = Iter->second;
-      if (double Importance = Elmt->GetImportance())
-        CachedDistribution->push_back(std::make_pair(Importance, Iter->first));
-    }
-    // Sort in ascending order, based on importance.
-    std::stable_sort(CachedDistribution->begin(),
-                     CachedDistribution->end());
-    // Reverse so most important appear first.
-    std::reverse(CachedDistribution->begin(),
-                 CachedDistribution->end());
-  }
+  void Sort() const;
 
 private:
   // Map from the distribution value to the corresponding distribution
@@ -389,21 +345,36 @@ class NaClBitcodeRecordDistElement {
       LLVM_DELETED_FUNCTION;
 
 public:
-  // Create an element with no instances.
+  /// Define kinds for isa, dyn_cast, etc. support. Only defined
+  /// for concrete classes.
+  enum NaClBitcodeRecordDistElementKind {
+    RDE_Dist,              // class NaClBitcodeRecordDistElement.
+      RDE_BitsDist,        // class NaClBitcodeRecordBitsDistElement.
+      RDE_BitsDist_Last,
+    RDE_Dist_Last
+  };
+
+  NaClBitcodeRecordDistElementKind getKind() const { return Kind; }
+
+  static bool classof(const NaClBitcodeRecordDistElement *Element) {
+    return Element->getKind() >= RDE_Dist && Element->getKind() < RDE_Dist_Last;
+  }
+
+private:
+  const NaClBitcodeRecordDistElementKind Kind;
+
+public:
+  // Constructor to use in derived classes.
   NaClBitcodeRecordDistElement(
-      NaClBitcodeRecordDist<NaClBitcodeRecordDistElement>* NestedDist)
-      : NestedDist(NestedDist), NumInstances(0)
+      NaClBitcodeRecordDist *NestedDist,
+      NaClBitcodeRecordDistElementKind Kind=RDE_Dist)
+      : Kind(Kind), NestedDist(NestedDist), NumInstances(0)
   {}
 
-  virtual ~NaClBitcodeRecordDistElement() {
-    delete NestedDist;
-  }
+  virtual ~NaClBitcodeRecordDistElement();
 
   // Adds an instance of the given record to this instance.
-  virtual void Add(const NaClBitcodeRecord &Record) {
-    if (NestedDist) NestedDist->Add(Record);
-    ++NumInstances;
-  }
+  virtual void Add(const NaClBitcodeRecord &Record);
 
   // Returns the number of instances associated with this element.
   unsigned GetNumInstances() const {
@@ -413,13 +384,11 @@ public:
   // Returns the importance of this element, and the number of
   // instances associated with it. Used to sort the distribution map,
   // where values with larger importance appear first.
-  virtual double GetImportance() const {
-    return static_cast<double>(NumInstances);
-  }
+  virtual double GetImportance() const;
 
 protected:
   // The (optional) nested distribution.
-  NaClBitcodeRecordDist<NaClBitcodeRecordDistElement> *NestedDist;
+  NaClBitcodeRecordDist *NestedDist;
 
 private:
   // The number of instances associated with this element.

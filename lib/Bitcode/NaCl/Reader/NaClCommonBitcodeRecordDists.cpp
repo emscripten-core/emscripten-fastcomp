@@ -176,6 +176,32 @@ bool NaClBitcodeRecordCodeDist::HasKnownCodeName(unsigned CodeID,
   return ::GetCodeName(CodeID, BlockID) != 0;
 }
 
+NaClBitcodeRecordCodeDist::~NaClBitcodeRecordCodeDist() {}
+
+void NaClBitcodeRecordCodeDist::
+GetValueList(const NaClBitcodeRecord &Record,
+             ValueListType &ValueList) const {
+  if (Record.GetEntryKind() == NaClBitstreamEntry::Record) {
+    ValueList.push_back(Record.GetCode());
+  }
+}
+
+const char *NaClBitcodeRecordCodeDist::GetTitle() const {
+  return "Record Histogram:";
+}
+
+const char *NaClBitcodeRecordCodeDist::GetValueHeader() const {
+  return "Record Kind";
+}
+
+void NaClBitcodeRecordCodeDist::
+PrintRowValue(raw_ostream &Stream,
+              const std::string &Indent,
+              NaClBitcodeRecordDistValue Value) const {
+  Stream << GetCodeName(Value, BlockID);
+  // TODO(kschimpf) handle nested distribution maps if defined.
+}
+
 std::string NaClBitcodeRecordCodeDist::GetCodeName(unsigned CodeID,
                                                    unsigned BlockID) {
   if (const char *CodeName = ::GetCodeName(CodeID, BlockID))
