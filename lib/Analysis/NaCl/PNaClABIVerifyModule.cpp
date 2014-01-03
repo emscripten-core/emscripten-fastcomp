@@ -107,8 +107,6 @@ static const char *linkageName(GlobalValue::LinkageTypes LT) {
     case GlobalValue::InternalLinkage:      return "internal ";
     case GlobalValue::LinkOnceAnyLinkage:   return "linkonce ";
     case GlobalValue::LinkOnceODRLinkage:   return "linkonce_odr ";
-    case GlobalValue::LinkOnceODRAutoHideLinkage:
-      return "linkonce_odr_auto_hide ";
     case GlobalValue::WeakAnyLinkage:       return "weak ";
     case GlobalValue::WeakODRLinkage:       return "weak_odr ";
     case GlobalValue::CommonLinkage:        return "common ";
