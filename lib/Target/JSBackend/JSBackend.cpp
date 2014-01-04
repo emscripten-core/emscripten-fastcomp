@@ -1099,7 +1099,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     DILocation Loc(N);
     unsigned Line = Loc.getLineNumber();
     StringRef File = Loc.getFilename();
-    Code << " //@line " + utostr(Line) + " \"" + File.str() + "\"";
+    Code << " //@line " + utostr(Line) + " \"" + (File.size() > 0 ? File.str() : "?") + "\"";
   }
 }
 
