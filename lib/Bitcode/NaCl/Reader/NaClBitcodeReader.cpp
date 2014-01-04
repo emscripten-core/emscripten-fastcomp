@@ -1214,7 +1214,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_SWITCH: { // SWITCH: [opty, op0, op1, ...]
-      // New SwitchInst format with case ranges.
       if (Record.size() < 4)
         return Error("Invalid SWITCH record");
       Type *OpTy = getTypeByID(Record[0]);
@@ -1231,36 +1230,25 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       unsigned CurIdx = 4;
       for (unsigned i = 0; i != NumCases; ++i) {
-        IntegersSubsetToBB CaseBuilder;
+        // The PNaCl bitcode format has vestigial support for case
+        // ranges, but we no longer support reading them because
+        // no-one produced them.
+        // See https://code.google.com/p/nativeclient/issues/detail?id=3758
         unsigned NumItems = Record[CurIdx++];
-        for (unsigned ci = 0; ci != NumItems; ++ci) {
-          bool isSingleNumber = Record[CurIdx++];
+        bool isSingleNumber = Record[CurIdx++];
+        if (NumItems != 1 || !isSingleNumber)
+          return Error("Case ranges are not supported in PNaCl bitcode");
 
-          APInt Low;
-          unsigned ActiveWords = 1;
-          if (ValueBitWidth > 64)
-            ActiveWords = Record[CurIdx++];
-          Low = ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                              ValueBitWidth);
-          CurIdx += ActiveWords;
+        APInt CaseValue;
+        unsigned ActiveWords = 1;
+        if (ValueBitWidth > 64)
+          ActiveWords = Record[CurIdx++];
+        CaseValue = ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
+                                  ValueBitWidth);
+        CurIdx += ActiveWords;
 
-          if (!isSingleNumber) {
-            ActiveWords = 1;
-            if (ValueBitWidth > 64)
-              ActiveWords = Record[CurIdx++];
-            APInt High =
-                ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                              ValueBitWidth);
-
-            CaseBuilder.add(IntItem::fromType(OpTy, Low),
-                            IntItem::fromType(OpTy, High));
-            CurIdx += ActiveWords;
-          } else
-            CaseBuilder.add(IntItem::fromType(OpTy, Low));
-        }
         BasicBlock *DestBB = getBasicBlock(Record[CurIdx++]);
-        IntegersSubset Case = CaseBuilder.getCase();
-        SI->addCase(Case, DestBB);
+        SI->addCase(ConstantInt::get(Context, CaseValue), DestBB);
       }
       I = SI;
       break;

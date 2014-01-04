@@ -695,38 +695,19 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       Vals64.push_back(SI.getNumCases());
       for (SwitchInst::ConstCaseIt i = SI.case_begin(), e = SI.case_end();
            i != e; ++i) {
-        const IntegersSubset& CaseRanges = i.getCaseValueEx();
-        unsigned Code, Abbrev; // will unused.
+        // This check will go away when we merge upstream's r190328,
+        // which removes all case range support.
+        if (!i.getCaseValueEx().isSingleNumber())
+          report_fatal_error("Case ranges are not supported in PNaCl bitcode");
 
-        if (CaseRanges.isSingleNumber()) {
-          Vals64.push_back(1/*NumItems = 1*/);
-          Vals64.push_back(true/*IsSingleNumber = true*/);
-          EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(0));
-        } else {
+        // The PNaCl bitcode format has vestigial support for case
+        // ranges, but we no longer support reading or writing them,
+        // so the next two fields always have the same values.
+        // See https://code.google.com/p/nativeclient/issues/detail?id=3758
+        Vals64.push_back(1/*NumItems = 1*/);
+        Vals64.push_back(true/*IsSingleNumber = true*/);
 
-          Vals64.push_back(CaseRanges.getNumItems());
-
-          if (CaseRanges.isSingleNumbersOnly()) {
-            for (unsigned ri = 0, rn = CaseRanges.getNumItems();
-                 ri != rn; ++ri) {
-
-              Vals64.push_back(true/*IsSingleNumber = true*/);
-
-              EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(ri));
-            }
-          } else
-            for (unsigned ri = 0, rn = CaseRanges.getNumItems();
-                 ri != rn; ++ri) {
-              IntegersSubset::Range r = CaseRanges.getItem(ri);
-              bool IsSingleNumber = CaseRanges.isSingleNumber(ri);
-
-              Vals64.push_back(IsSingleNumber);
-
-              EmitAPInt(Vals64, Code, Abbrev, r.getLow());
-              if (!IsSingleNumber)
-                EmitAPInt(Vals64, Code, Abbrev, r.getHigh());
-            }
-        }
+        emitSignedInt64(Vals64, i.getCaseValue()->getSExtValue());
         Vals64.push_back(VE.getValueID(i.getCaseSuccessor()));
       }
 
