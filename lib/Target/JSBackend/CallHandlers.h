@@ -8,11 +8,25 @@ CallHandlerMap *CallHandlers;
 
 // Definitions
 
+const Value *getActuallyCalledValue(const CallInst *CI) {
+  const Value *CV = CI->getCalledValue();
+  if (const BitCastInst *B = dyn_cast<const BitCastInst>(CV)) {
+    // if the called value is a bitcast of a function, then we just call it directly, properly
+    // for example, extern void x() in C will turn into void x(...) in LLVM IR, then the IR bitcasts
+    // it to the proper form right before the call. this both causes an unnecessary indirect
+    // call, and it is done with the wrong type. TODO: don't even put it into the function table
+    if (const Function *F = dyn_cast<const Function>(B->getOperand(0))) {
+      CV = F;
+    }
+  }
+  return CV;
+}
+
 #define DEF_CALL_HANDLER(Ident, Code) \
   std::string CH_##Ident(const CallInst *CI, std::string Name, int NumArgs=-1) { Code }
 
 DEF_CALL_HANDLER(__default__, {
-  const Value *CV = CI->getCalledValue();
+  const Value *CV = getActuallyCalledValue(CI);
   bool NeedCasts;
   if (const Function *F = dyn_cast<const Function>(CV)) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
@@ -721,7 +735,7 @@ void setupCallHandlers() {
 }
 
 std::string handleCall(const CallInst *CI) {
-  const Value *CV = CI->getCalledValue();
+  const Value *CV = getActuallyCalledValue(CI);
   assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
   std::string Name = getJSName(CV);
   if (strcmp(Name.c_str(), "_llvm_dbg_value") == 0) return ""; // ignore this
