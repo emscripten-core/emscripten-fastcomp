@@ -28,11 +28,13 @@ const Value *getActuallyCalledValue(const CallInst *CI) {
 DEF_CALL_HANDLER(__default__, {
   const Value *CV = getActuallyCalledValue(CI);
   bool NeedCasts;
+  FunctionType *FT;
   if (const Function *F = dyn_cast<const Function>(CV)) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
+    FT = F->getFunctionType();
   } else {
     // function pointer call
-    FunctionType *FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
+    FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
     std::string Sig = getFunctionSignature(FT);
     Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
     ensureFunctionTable(FT);
@@ -49,9 +51,16 @@ DEF_CALL_HANDLER(__default__, {
     if (i < NumArgs - 1) text += ", ";
   }
   text += ")";
-  Type *RT = CI->getType();
-  if (!RT->isVoidTy()) {
-    text = getAssign(getJSName(CI), RT) + getCast(text, RT, ASM_NONSPECIFIC);
+  // handle return value
+  Type *InstRT = CI->getType();
+  Type *ActualRT = FT->getReturnType();
+  if (!InstRT->isVoidTy() && ActualRT->isVoidTy()) {
+    // the function we are calling was cast to something returning a value, but it really
+    // does not return a value
+    getAssign(getJSName(CI), InstRT); // ensure the variable is defined, but do not emit it here
+                                      // it should have 0 uses, but just to be safe
+  } else if (!ActualRT->isVoidTy()) {
+    text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC);
   }
   return text;
 })
