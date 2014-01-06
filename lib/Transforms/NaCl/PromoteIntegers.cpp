@@ -9,9 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Legal sizes are currently 1, 8, 16, 32, 64 (and higher, see note below)
-// Operations on illegal integers and int pointers are be changed to operate
-// on the next-higher legal size.
+// Legal sizes are currently 1, 8, 16, 32, 64 (and higher, see note below).
+// Operations on illegal integers are changed to operate on the next-higher
+// legal size.
 // It maintains no invariants about the upper bits (above the size of the
 // original type); therefore before operations which can be affected by the
 // value of these bits (e.g. cmp, select, lshr), the upper bits of the operands
@@ -21,7 +21,7 @@
 // 1) It can't change function signatures or global variables
 // 2) It won't promote (and can't expand) types larger than i64
 // 3) Doesn't support div operators
-// 4) Doesn't handle arrays or structs (or GEPs) with illegal types
+// 4) Doesn't handle arrays or structs with illegal types
 // 5) Doesn't handle constant expressions (it also doesn't produce them, so it
 //    can run after ExpandConstantExpr)
 //
@@ -75,26 +75,15 @@ static Type *getPromotedIntType(IntegerType *Ty) {
                           Width < 8 ? 8 : NextPowerOf2(Width));
 }
 
-// Return a legal integer or pointer-to-integer type, promoting to a larger
-// size if necessary.
+// Return a legal integer type, promoting to a larger size if necessary.
 static Type *getPromotedType(Type *Ty) {
-  assert((isa<IntegerType>(Ty) ||
-          (isa<PointerType>(Ty) && isa<IntegerType>(Ty->getContainedType(0))))
-         && "Trying to convert a non-integer type");
-
-  if (isa<PointerType>(Ty))
-    return getPromotedIntType(
-        cast<IntegerType>(Ty->getContainedType(0)))->getPointerTo();
-
+  assert(isa<IntegerType>(Ty) && "Trying to convert a non-integer type");
   return getPromotedIntType(cast<IntegerType>(Ty));
 }
 
-// Return true if Val is an int or pointer-to-int which should be converted.
+// Return true if Val is an int which should be converted.
 static bool shouldConvert(Value *Val) {
-  Type *Ty = Val->getType();
-  if (PointerType *Pty = dyn_cast<PointerType>(Ty))
-    Ty = Pty->getContainedType(0);
-  if (IntegerType *ITy = dyn_cast<IntegerType>(Ty)) {
+  if (IntegerType *ITy = dyn_cast<IntegerType>(Val->getType())) {
     if (!isLegalSize(ITy->getBitWidth())) {
       return true;
     }
@@ -232,10 +221,6 @@ static Value *splitLoad(LoadInst *Inst, ConversionState &State) {
   Value *LoadHi = IRB.CreateLoad(BCHi, Inst->getName() + ".hi");
   if (!isLegalSize(Width - LoWidth)) {
     LoadHi = splitLoad(cast<LoadInst>(LoadHi), State);
-    // BCHi was still illegal, and has been replaced with a placeholder in the
-    // recursive call. Since it is redundant with BCLo in the recursive call,
-    // just splice it out entirely.
-    State.recordConverted(cast<Instruction>(BCHi), GEPHi, /*TakeName=*/false);
   }
 
   Value *HiExt = IRB.CreateZExt(LoadHi, NewType, LoadHi->getName() + ".ext");
@@ -294,10 +279,6 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
     State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
                           /*TakeName=*/false);
     StoreHi = splitStore(cast<StoreInst>(StoreHi), State);
-    // BCHi was still illegal, and has been replaced with a placeholder in the
-    // recursive call. Since it is redundant with BCLo in the recursive call,
-    // just splice it out entirely.
-    State.recordConverted(cast<Instruction>(BCHi), GEPHi, /*TakeName=*/false);
   }
   State.recordConverted(Inst, StoreHi, /*TakeName=*/false);
   return StoreHi;
@@ -418,27 +399,6 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
       NewInst = State.getConverted(Op);
     }
     State.recordConverted(Trunc, NewInst);
-  } else if (AllocaInst *Alloc = dyn_cast<AllocaInst>(Inst)) {
-    // Don't handle arrays of illegal types, but we could handle an array
-    // with size specified as an illegal type, as unlikely as that seems.
-    if (shouldConvert(Alloc) && Alloc->isArrayAllocation())
-      report_fatal_error("Can't convert arrays of illegal type");
-    AllocaInst *NewInst = new AllocaInst(
-        getPromotedType(Alloc->getAllocatedType()),
-        State.getConverted(Alloc->getArraySize()),
-        "", Alloc);
-    CopyDebug(NewInst, Alloc);
-    NewInst->setAlignment(Alloc->getAlignment());
-    State.recordConverted(Alloc, NewInst);
-  } else if (BitCastInst *BCInst = dyn_cast<BitCastInst>(Inst)) {
-    // Only handle pointers. Ints can't be casted to/from other ints
-    Type *DestType = shouldConvert(BCInst) ?
-        getPromotedType(BCInst->getDestTy()) : BCInst->getDestTy();
-    Instruction *NewInst = CopyDebug(new BitCastInst(
-        State.getConverted(BCInst->getOperand(0)),
-        DestType,
-        "", BCInst), BCInst);
-    State.recordConverted(BCInst, NewInst);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
     if (shouldConvert(Load)) {
       splitLoad(Load, State);
