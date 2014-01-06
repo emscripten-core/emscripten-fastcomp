@@ -570,14 +570,6 @@ bool NaClBitcodeReader::ParseValueSymbolTable() {
   }
 }
 
-static APInt ReadWideAPInt(ArrayRef<uint64_t> Vals, unsigned TypeBits) {
-  SmallVector<uint64_t, 8> Words(Vals.size());
-  std::transform(Vals.begin(), Vals.end(), Words.begin(),
-                 NaClDecodeSignRotatedValue);
-
-  return APInt(TypeBits, Words);
-}
-
 bool NaClBitcodeReader::ParseConstants() {
   DEBUG(dbgs() << "-> ParseConstants\n");
   if (Stream.EnterSubBlock(naclbitc::CONSTANTS_BLOCK_ID))
@@ -1218,6 +1210,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid SWITCH record");
       Type *OpTy = getTypeByID(Record[0]);
       unsigned ValueBitWidth = cast<IntegerType>(OpTy)->getBitWidth();
+      if (ValueBitWidth > 64)
+        return Error("Wide integers are not supported in PNaCl bitcode");
 
       Value *Cond = getValue(Record, 1, NextValueNo);
       BasicBlock *Default = getBasicBlock(Record[2]);
@@ -1239,14 +1233,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         if (NumItems != 1 || !isSingleNumber)
           return Error("Case ranges are not supported in PNaCl bitcode");
 
-        APInt CaseValue;
-        unsigned ActiveWords = 1;
-        if (ValueBitWidth > 64)
-          ActiveWords = Record[CurIdx++];
-        CaseValue = ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                                  ValueBitWidth);
-        CurIdx += ActiveWords;
-
+        APInt CaseValue(ValueBitWidth,
+                        NaClDecodeSignRotatedValue(Record[CurIdx++]));
         BasicBlock *DestBB = getBasicBlock(Record[CurIdx++]);
         SI->addCase(ConstantInt::get(Context, CaseValue), DestBB);
       }
