@@ -171,14 +171,14 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID) {
   }
 }
 
-bool NaClBitcodeRecordCodeDist::HasKnownCodeName(unsigned CodeID,
-                                                 unsigned BlockID) {
-  return ::GetCodeName(CodeID, BlockID) != 0;
+NaClBitcodeCodeDistElement::~NaClBitcodeCodeDistElement() {}
+
+NaClBitcodeDistElement *NaClBitcodeCodeDistElement::CreateElement(
+    NaClBitcodeDistValue Value) const {
+  return new NaClBitcodeCodeDistElement();
 }
 
-NaClBitcodeRecordCodeDist::~NaClBitcodeRecordCodeDist() {}
-
-void NaClBitcodeRecordCodeDist::
+void NaClBitcodeCodeDistElement::
 GetValueList(const NaClBitcodeRecord &Record,
              ValueListType &ValueList) const {
   if (Record.GetEntryKind() == NaClBitstreamEntry::Record) {
@@ -186,23 +186,33 @@ GetValueList(const NaClBitcodeRecord &Record,
   }
 }
 
-const char *NaClBitcodeRecordCodeDist::GetTitle() const {
+const char *NaClBitcodeCodeDistElement::GetTitle() const {
   return "Record Histogram:";
 }
 
-const char *NaClBitcodeRecordCodeDist::GetValueHeader() const {
+const char *NaClBitcodeCodeDistElement::GetValueHeader() const {
   return "Record Kind";
 }
 
-void NaClBitcodeRecordCodeDist::
+void NaClBitcodeCodeDistElement::
 PrintRowValue(raw_ostream &Stream,
-              const std::string &Indent,
-              NaClBitcodeRecordDistValue Value) const {
-  Stream << GetCodeName(Value, BlockID);
-  // TODO(kschimpf) handle nested distribution maps if defined.
+              NaClBitcodeDistValue Value,
+              const NaClBitcodeDist *Distribution) const {
+  Stream <<
+      GetCodeName(Value,
+                  cast<NaClBitcodeCodeDist>(Distribution)->GetBlockID());
 }
 
-std::string NaClBitcodeRecordCodeDist::GetCodeName(unsigned CodeID,
+bool NaClBitcodeCodeDist::HasKnownCodeName(unsigned CodeID,
+                                                 unsigned BlockID) {
+  return ::GetCodeName(CodeID, BlockID) != 0;
+}
+
+NaClBitcodeCodeDistElement NaClBitcodeCodeDist::DefaultSentinal;
+
+NaClBitcodeCodeDist::~NaClBitcodeCodeDist() {}
+
+std::string NaClBitcodeCodeDist::GetCodeName(unsigned CodeID,
                                                    unsigned BlockID) {
   if (const char *CodeName = ::GetCodeName(CodeID, BlockID))
     return CodeName;

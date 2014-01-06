@@ -11,9 +11,7 @@
 //
 // Creates a (nestable) distribution map of values, and the correspdonding
 // bits, in PNaCl bitcode records. These distributions are built directly
-// on top of NaClBitcodeRecordDist and NaClBitcodeRecordDistElement classes.
-// See (included) file NaClBitcodeRecordDist.h for more details on these
-// classes, and how you should use them.
+// on top of the NaClBitcodeDistElement class.
 
 #ifndef LLVM_BITCODE_NACL_NACLBITCODERECORDBITSDIST_H
 #define LLVM_BITCODE_NACL_NACLBITCODERECORDBITSDIST_H
@@ -26,29 +24,30 @@ namespace llvm {
 /// we want to count both the number of instances, and the number of
 /// bits used by each record. Also tracks the number to times an
 /// abbreviation was used to parse the corresponding record.
-class NaClBitcodeRecordBitsDistElement : public NaClBitcodeRecordDistElement {
-  NaClBitcodeRecordBitsDistElement(const NaClBitcodeRecordBitsDistElement&)
+class NaClBitcodeBitsDistElement : public NaClBitcodeDistElement {
+  NaClBitcodeBitsDistElement(const NaClBitcodeBitsDistElement&)
       LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecordBitsDistElement&)
+  void operator=(const NaClBitcodeBitsDistElement&)
       LLVM_DELETED_FUNCTION;
 
 public:
-  static bool classof(const NaClBitcodeRecordDistElement *Dist) {
+  static bool classof(const NaClBitcodeDistElement *Dist) {
     return Dist->getKind() >= RDE_BitsDist
         && Dist->getKind() < RDE_BitsDist_Last;
   }
 
   // Create an element with no instances.
-  NaClBitcodeRecordBitsDistElement(
-      NaClBitcodeRecordDist* NestedDist = 0,
-      NaClBitcodeRecordDistElementKind Kind=RDE_BitsDist)
-      : NaClBitcodeRecordDistElement(NestedDist, Kind),
+  NaClBitcodeBitsDistElement(
+      NaClBitcodeDistElementKind Kind=RDE_BitsDist)
+      : NaClBitcodeDistElement(Kind),
         TotalBits(0), NumAbbrevs(0)
   {}
 
-  virtual ~NaClBitcodeRecordBitsDistElement();
+  virtual ~NaClBitcodeBitsDistElement();
 
-  virtual void Add(const NaClBitcodeRecord &Record);
+  virtual void AddRecord(const NaClBitcodeRecord &Record);
+
+  virtual void AddBlock(const NaClBitcodeBlock &Block);
 
   // Returns the total number of bits used to represent all instances
   // of this value.
@@ -62,47 +61,16 @@ public:
     return NumAbbrevs;
   }
 
+  virtual void PrintStatsHeader(raw_ostream &Stream) const;
+
+  virtual void PrintRowStats(raw_ostream &Stream,
+                             const NaClBitcodeDist *Distribution) const;
+
 private:
   // Number of bits used to represent all instances of the value.
   uint64_t TotalBits;
   // Number of times an abbreviation is used for the value.
   unsigned NumAbbrevs;
-};
-
-/// Defines a PNaCl bitcode distribution map when we want to count
-/// both the number of instances, and the number of bits used by each
-/// record. Assumes distribution elements are instances of
-/// NaClBitcodeRecordBitsDistElement.
-class NaClBitcodeRecordBitsDist : public NaClBitcodeRecordDist {
-  NaClBitcodeRecordBitsDist(const NaClBitcodeRecordBitsDist&)
-      LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecordBitsDist&)
-      LLVM_DELETED_FUNCTION;
-
-public:
-
-  static bool classof(const NaClBitcodeRecordDist *Dist) {
-    return Dist->getKind() >= RD_BitsDist
-        && Dist->getKind() < RD_BitsDist_Last;
-  }
-
-  NaClBitcodeRecordBitsDist(NaClBitcodeRecordDistKind Kind=RD_BitsDist)
-      : NaClBitcodeRecordDist(Kind)
-  {}
-
-  virtual ~NaClBitcodeRecordBitsDist();
-
-
-protected:
-  virtual NaClBitcodeRecordDistElement *
-  CreateElement(NaClBitcodeRecordDistValue Value);
-
-  virtual void PrintRowStats(raw_ostream &Stream,
-                             const std::string &Indent,
-                             NaClBitcodeRecordDistValue Value) const;
-
-  virtual void PrintHeader(raw_ostream &Stream,
-                           const std::string &Indent) const;
 };
 
 }

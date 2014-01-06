@@ -102,7 +102,7 @@ public:
 
   /// RecordCodeDist - Distribution of each record code for this
   /// block.
-  NaClBitcodeRecordCodeDist RecordCodeDist;
+  NaClBitcodeCodeDist RecordCodeDist;
 
   explicit PerBlockIDStats(unsigned BlockID)
     : NumInstances(0), NumBits(0),
@@ -409,7 +409,7 @@ protected:
   virtual void ProcessRecord() {
     // Increment the # occurrences of this code.
     ++BlockStats->NumRecords;
-    BlockStats->RecordCodeDist.Add(Record);
+    BlockStats->RecordCodeDist.AddRecord(Record);
 
     if (Context->DumpOptions.DumpRecords) {
       EmitBeginStartTag();
@@ -495,7 +495,7 @@ protected:
   void EmitCodeTagName(
       unsigned CodeID, unsigned BlockID,
       unsigned AbbreviationID = naclbitc::UNABBREV_RECORD) {
-    EmitTagName(NaClBitcodeRecordCodeDist::GetCodeName(CodeID, BlockID));
+    EmitTagName(NaClBitcodeCodeDist::GetCodeName(CodeID, BlockID));
     if (Context->DumpOptions.DumpDetails) {
       if (AbbreviationID == naclbitc::UNABBREV_RECORD) {
         EmitStringAttribute("abbrev", "UNABBREVIATED");

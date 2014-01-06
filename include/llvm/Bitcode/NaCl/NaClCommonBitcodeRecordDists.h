@@ -34,29 +34,30 @@
 namespace llvm {
 
 // Collects the distribution of record codes/number of bits used for a
-// particular blockID. Assumes distribution elements are instances of
-// NaClBitcodeRecordBitsDistElement.
-class NaClBitcodeRecordCodeDist : public NaClBitcodeRecordBitsDist {
-  NaClBitcodeRecordCodeDist(const NaClBitcodeRecordCodeDist&)
+// particular blockID and Code ID.
+class NaClBitcodeCodeDistElement
+    : public NaClBitcodeBitsDistElement {
+  NaClBitcodeCodeDistElement(const NaClBitcodeCodeDistElement&)
       LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecordCodeDist&)
+  void operator=(const NaClBitcodeCodeDistElement&)
       LLVM_DELETED_FUNCTION;
 
 public:
-
-  bool classof(const NaClBitcodeRecordDist *Dist) {
-    return Dist->getKind() >= RD_RecordCodeDist
-        && Dist->getKind() < RD_RecordCodeDist_Last;
+  static bool classof(const NaClBitcodeDistElement *Element) {
+    return Element->getKind() >= RDE_CodeDist
+        && Element->getKind() < RDE_CodeDist_Last;
   }
 
-  NaClBitcodeRecordCodeDist(unsigned BlockID,
-                            NaClBitcodeRecordDistKind Kind=RD_RecordCodeDist)
-      : NaClBitcodeRecordBitsDist(Kind), BlockID(BlockID)
+  NaClBitcodeCodeDistElement(
+      NaClBitcodeDistElementKind Kind=RDE_CodeDist)
+      : NaClBitcodeBitsDistElement(Kind)
   {}
 
-  virtual ~NaClBitcodeRecordCodeDist();
+  virtual ~NaClBitcodeCodeDistElement();
 
-protected:
+  virtual NaClBitcodeDistElement *CreateElement(
+      NaClBitcodeDistValue Value) const;
+
   virtual void GetValueList(const NaClBitcodeRecord &Record,
                             ValueListType &ValueList) const;
 
@@ -65,10 +66,46 @@ protected:
   virtual const char *GetValueHeader() const;
 
   virtual void PrintRowValue(raw_ostream &Stream,
-                             const std::string &Indent,
-                             NaClBitcodeRecordDistValue Value) const;
+                             NaClBitcodeDistValue Value,
+                             const NaClBitcodeDist *Distribution) const;
+};
+
+// Collects the distribution of record codes/number of bits used for a
+// particular blockID. Assumes distribution elements are instances of
+// NaClBitcodeCodeDistElement.
+class NaClBitcodeCodeDist : public NaClBitcodeDist {
+  NaClBitcodeCodeDist(const NaClBitcodeCodeDist&)
+      LLVM_DELETED_FUNCTION;
+  void operator=(const NaClBitcodeCodeDist&)
+      LLVM_DELETED_FUNCTION;
 
 public:
+  static bool classof(const NaClBitcodeDist *Dist) {
+    return Dist->getKind() >= RD_CodeDist
+        && Dist->getKind() < RD_CodeDist_Last;
+  }
+
+protected:
+  NaClBitcodeCodeDist(NaClBitcodeDistElement *Sentinal,
+                      unsigned BlockID,
+                      NaClBitcodeDistKind Kind=RD_CodeDist)
+      : NaClBitcodeDist(RecordStorage, Sentinal, Kind), BlockID(BlockID)
+  {}
+
+  static NaClBitcodeCodeDistElement DefaultSentinal;
+
+public:
+  NaClBitcodeCodeDist(unsigned BlockID)
+      : NaClBitcodeDist(RecordStorage, &DefaultSentinal, RD_CodeDist),
+        BlockID(BlockID)
+  {}
+
+  virtual ~NaClBitcodeCodeDist();
+
+  unsigned GetBlockID() const {
+    return BlockID;
+  }
+
   // Returns true if there is a known printable name for record code
   // CodeID in block associated with BlockID.
   static bool HasKnownCodeName(unsigned CodeID, unsigned BlockID);

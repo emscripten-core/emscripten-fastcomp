@@ -12,7 +12,7 @@
 
 using namespace llvm;
 
-NaClBitcodeRecordDist::~NaClBitcodeRecordDist() {
+NaClBitcodeDist::~NaClBitcodeDist() {
   RemoveCachedDistribution();
   for (const_iterator Iter = begin(), IterEnd = end();
        Iter != IterEnd; ++Iter) {
@@ -20,9 +20,11 @@ NaClBitcodeRecordDist::~NaClBitcodeRecordDist() {
   }
 }
 
-void NaClBitcodeRecordDist::Add(const NaClBitcodeRecord &Record) {
+void NaClBitcodeDist::AddRecord(const NaClBitcodeRecord &Record) {
+  if (StorageKind != NaClBitcodeDist::RecordStorage)
+    return;
   ValueListType ValueList;
-  this->GetValueList(Record, ValueList);
+  Sentinel->GetValueList(Record, ValueList);
   if (!ValueList.empty()) {
     RemoveCachedDistribution();
     ++Total;
@@ -30,84 +32,53 @@ void NaClBitcodeRecordDist::Add(const NaClBitcodeRecord &Record) {
              Iter = ValueList.begin(),
              IterEnd = ValueList.end();
          Iter != IterEnd; ++Iter) {
-      GetElement(*Iter)->Add(Record);
+      NaClBitcodeDistElement *Element = GetElement(*Iter);
+      Element->AddRecord(Record);
     }
   }
 }
 
-void NaClBitcodeRecordDist::Print(raw_ostream &Stream,
+void NaClBitcodeDist::AddBlock(const NaClBitcodeBlock &Block) {
+  if (StorageKind != NaClBitcodeDist::BlockStorage)
+    return;
+  RemoveCachedDistribution();
+  ++Total;
+  unsigned BlockID = Block.GetBlockID();
+  NaClBitcodeDistElement *Element = GetElement(BlockID);
+  Element->AddBlock(Block);
+}
+
+void NaClBitcodeDist::Print(raw_ostream &Stream,
                                   const std::string &Indent) const {
-  Distribution *Dist = this->GetDistribution();
-  PrintTitle(Stream, Indent);
-  PrintHeader(Stream, Indent);
+  Distribution *Dist = GetDistribution();
+  Stream << Indent;
+  Sentinel->PrintTitle(Stream, this);
+  Stream << Indent;
+  Sentinel->PrintHeader(Stream);
+  Stream << "\n";
+  bool NeedsHeader = false;
   for (size_t I = 0, E = Dist->size(); I != E; ++I) {
+    if (NeedsHeader) {
+      // Reprint the header so that rows are more readable.
+      Stream << Indent << "  " << Sentinel->GetTitle() << " (continued)\n";
+      Stream << Indent;
+      Sentinel->PrintHeader(Stream);
+      Stream << "\n";
+    }
     const DistPair &Pair = Dist->at(I);
-    PrintRow(Stream, Indent, Pair.second);
+    Stream << Indent;
+    NaClBitcodeDistElement *Element = at(Pair.second);
+    Element->PrintRow(Stream, Pair.second, this);
+    NeedsHeader = Element->PrintNestedDistIfApplicable(Stream, Indent);
   }
 }
 
-NaClBitcodeRecordDistElement *NaClBitcodeRecordDist::
-CreateElement(NaClBitcodeRecordDistValue Value) {
-  return new NaClBitcodeRecordDistElement(CreateNestedDistributionMap());
-}
-
-NaClBitcodeRecordDist* NaClBitcodeRecordDist::CreateNestedDistributionMap() {
-  return 0;
-}
-
-const char *NaClBitcodeRecordDist::GetTitle() const {
-  return "Distribution";
-}
-
-const char *NaClBitcodeRecordDist::GetValueHeader() const {
-  return "Value";
-}
-
-void NaClBitcodeRecordDist::PrintTitle(raw_ostream &Stream,
-                                       const std::string &Indent) const {
-  Stream << Indent << GetTitle() << " (" << size() << " elements):\n\n";
-}
-
-void NaClBitcodeRecordDist::
-PrintRowStats(raw_ostream &Stream,
-              const std::string &Indent,
-              NaClBitcodeRecordDistValue Value) const {
-  Stream << Indent << format("%7d ", at(Value)->GetNumInstances()) << "    ";
-}
-
-void NaClBitcodeRecordDist::
-PrintRowValue(raw_ostream &Stream,
-              const std::string &Indent,
-              NaClBitcodeRecordDistValue Value) const {
-  std::string ValueFormat;
-  raw_string_ostream StrStream(ValueFormat);
-  StrStream << "%" << strlen(GetValueHeader()) << "d";
-  StrStream.flush();
-  Stream << format(ValueFormat.c_str(), (int) Value);
-  // TODO(kschimpf): Print nested distribution here if applicable.
-  // Note: Indent would be used in this context.
-}
-
-void NaClBitcodeRecordDist::
-PrintHeader(raw_ostream &Stream, const std::string &Indent) const {
-  Stream << Indent << "  Count     " << GetValueHeader() << "\n";
-}
-
-void NaClBitcodeRecordDist::
-PrintRow(raw_ostream &Stream,
-         const std::string &Indent,
-         NaClBitcodeRecordDistValue Value) const {
-  PrintRowStats(Stream, Indent, Value);
-  PrintRowValue(Stream, Indent, Value);
-  Stream << "\n";
-}
-
-void NaClBitcodeRecordDist::Sort() const {
+void NaClBitcodeDist::Sort() const {
   RemoveCachedDistribution();
   CachedDistribution = new Distribution();
   for (const_iterator Iter = begin(), IterEnd = end();
        Iter != IterEnd; ++Iter) {
-    const NaClBitcodeRecordDistElement *Elmt = Iter->second;
+    const NaClBitcodeDistElement *Elmt = Iter->second;
     if (double Importance = Elmt->GetImportance())
       CachedDistribution->push_back(std::make_pair(Importance, Iter->first));
   }
@@ -119,15 +90,102 @@ void NaClBitcodeRecordDist::Sort() const {
                CachedDistribution->end());
 }
 
-NaClBitcodeRecordDistElement::~NaClBitcodeRecordDistElement() {
-  delete NestedDist;
-}
+NaClBitcodeDistElement::~NaClBitcodeDistElement() {}
 
-void NaClBitcodeRecordDistElement::Add(const NaClBitcodeRecord &Record) {
-  if (NestedDist) NestedDist->Add(Record);
+void NaClBitcodeDistElement::AddRecord(const NaClBitcodeRecord &Record) {
   ++NumInstances;
 }
 
-double NaClBitcodeRecordDistElement::GetImportance() const {
+void NaClBitcodeDistElement::AddBlock(const NaClBitcodeBlock &Block) {
+  ++NumInstances;
+}
+
+void NaClBitcodeDistElement::GetValueList(const NaClBitcodeRecord &Record,
+                                          ValueListType &ValueList) const {
+  // By default, assume no record values are defined.
+}
+
+double NaClBitcodeDistElement::GetImportance() const {
   return static_cast<double>(NumInstances);
+}
+
+const char *NaClBitcodeDistElement::GetTitle() const {
+  return "Distribution";
+}
+
+void NaClBitcodeDistElement::
+PrintTitle(raw_ostream &Stream, const NaClBitcodeDist *Distribution) const {
+  Stream << GetTitle() << " (" << Distribution->size() << " elements):\n\n";
+}
+
+const char *NaClBitcodeDistElement::GetValueHeader() const {
+  return "Value";
+}
+
+void NaClBitcodeDistElement::PrintStatsHeader(raw_ostream &Stream) const {
+  Stream << "  Count %Count";
+}
+
+void NaClBitcodeDistElement::
+PrintHeader(raw_ostream &Stream) const {
+  PrintStatsHeader(Stream);
+  Stream << " " << GetValueHeader();
+}
+
+void NaClBitcodeDistElement::
+PrintRowStats(raw_ostream &Stream,
+              const NaClBitcodeDist *Distribution) const {
+  unsigned Count = GetNumInstances();
+  Stream << format("%7d %6.2f",
+                   Count,
+                   (double) Count/Distribution->GetTotal()*100.0);
+}
+
+void NaClBitcodeDistElement::
+PrintRowValue(raw_ostream &Stream,
+              NaClBitcodeDistValue Value,
+              const NaClBitcodeDist *Distribution) const {
+  std::string ValueFormat;
+  raw_string_ostream StrStream(ValueFormat);
+  StrStream << "%" << strlen(GetValueHeader()) << "d";
+  StrStream.flush();
+  Stream << format(ValueFormat.c_str(), (int) Value);
+}
+
+void NaClBitcodeDistElement::
+PrintRow(raw_ostream &Stream,
+         NaClBitcodeDistValue Value,
+         const NaClBitcodeDist *Distribution) const {
+  PrintRowStats(Stream, Distribution);
+  Stream << " ";
+  PrintRowValue(Stream, Value, Distribution);
+  Stream << "\n";
+}
+
+const SmallVectorImpl<NaClBitcodeDist*> *NaClBitcodeDistElement::
+GetNestedDistributions() const {
+  return 0;
+}
+
+bool NaClBitcodeDistElement::
+PrintNestedDistIfApplicable(raw_ostream &Stream,
+                            const std::string &Indent) const {
+  bool PrintedNestedDists = false;
+  if (const SmallVectorImpl<NaClBitcodeDist*> *Dists =
+      GetNestedDistributions()) {
+    for (SmallVectorImpl<NaClBitcodeDist*>::const_iterator
+             Iter = Dists->begin(), IterEnd = Dists->end();
+         Iter != IterEnd; ++Iter) {
+      NaClBitcodeDist *Dist = *Iter;
+      if (!Dist->empty()) {
+        if (!PrintedNestedDists) {
+          PrintedNestedDists = true;
+          Stream << "\n";
+        }
+        Dist->Print(Stream, Indent + "           ");
+        Stream << "\n";
+      }
+    }
+  }
+  return PrintedNestedDists;
 }

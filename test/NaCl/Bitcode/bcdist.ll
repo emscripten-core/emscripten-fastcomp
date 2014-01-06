@@ -304,7 +304,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:         Record Histogram: (2 elements):
 
-; CHECK:           Count %Total    # Bits Bits/Elmt   % Abv  Record Kind
+; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
 ; CHECK-NEXT:         20  95.24 {{ *[^ ]* *[^ ]* *[^ ]* *}}  FUNCTION
 ; CHECK-NEXT:          1   4.76 {{ *[^ ]* *[^ ]* *[^ ]* *}}  VERSION
 
@@ -313,7 +313,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:         Record Histogram: (2 elements):
 
-; CHECK:           Count %Total    # Bits Bits/Elmt   % Abv  Record Kind
+; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
 ; CHECK-NEXT:         26  59.09 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INTEGER
 ; CHECK-NEXT:         18  40.91 {{ *[^ ]* *[^ ]* *[^ ]* *}}  SETTYPE
 
@@ -322,7 +322,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:         Record Histogram: (12 elements):
 
-; CHECK:           Count %Total    # Bits Bits/Elmt   % Abv  Record Kind
+; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
 ; CHECK-NEXT:         22  15.83 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_RET
 ; CHECK-NEXT:         22  15.83 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_BINOP
 ; CHECK-NEXT:         20  14.39 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_ALLOCA
@@ -341,7 +341,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:        Record Histogram: (4 elements):
 
-; CHECK:           Count %Total    # Bits Bits/Elmt   % Abv  Record Kind
+; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
 ; CHECK-NEXT:          5  50.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  FUNCTION
 ; CHECK-NEXT:          3  30.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INTEGER
 ; CHECK-NEXT:          1  10.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  VOID
@@ -352,7 +352,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:         Record Histogram: (6 elements):
 
-; CHECK:           Count %Total    # Bits Bits/Elmt   % Abv  Record Kind
+; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
 ; CHECK-NEXT:         16  45.71 {{ *[^ ]* *[^ ]* *[^ ]* *}}  VAR
 ; CHECK-NEXT:         12  34.29 {{ *[^ ]* *[^ ]* *[^ ]* *}}  RELOC
 ; CHECK-NEXT:          4  11.43 {{ *[^ ]* *[^ ]* *[^ ]* *}}  DATA

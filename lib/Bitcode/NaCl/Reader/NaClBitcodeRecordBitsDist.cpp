@@ -13,50 +13,37 @@
 
 using namespace llvm;
 
-NaClBitcodeRecordBitsDistElement::~NaClBitcodeRecordBitsDistElement() {}
+NaClBitcodeBitsDistElement::~NaClBitcodeBitsDistElement() {}
 
-void NaClBitcodeRecordBitsDistElement::Add(const NaClBitcodeRecord &Record) {
-  NaClBitcodeRecordDistElement::Add(Record);
+void NaClBitcodeBitsDistElement::
+AddRecord(const NaClBitcodeRecord &Record) {
+  NaClBitcodeDistElement::AddRecord(Record);
   TotalBits += Record.GetNumBits();
   if (Record.UsedAnAbbreviation()) {
     ++NumAbbrevs;
   }
 }
 
-NaClBitcodeRecordBitsDist::~NaClBitcodeRecordBitsDist() {}
-
-NaClBitcodeRecordDistElement *NaClBitcodeRecordBitsDist::
-CreateElement(NaClBitcodeRecordDistValue Value) {
-  return new NaClBitcodeRecordBitsDistElement();
+void NaClBitcodeBitsDistElement::AddBlock(const NaClBitcodeBlock &Block) {
+  NaClBitcodeDistElement::AddBlock(Block);
+  TotalBits += Block.GetNumBits();
 }
 
+void NaClBitcodeBitsDistElement::PrintStatsHeader(raw_ostream &Stream) const {
+  NaClBitcodeDistElement::PrintStatsHeader(Stream);
+  Stream << "    # Bits    Bits/Elmt   % Abv";
+}
 
-void NaClBitcodeRecordBitsDist::
+void NaClBitcodeBitsDistElement::
 PrintRowStats(raw_ostream &Stream,
-              const std::string &Indent,
-              NaClBitcodeRecordDistValue Value) const {
-  NaClBitcodeRecordBitsDistElement *Element =
-      cast<NaClBitcodeRecordBitsDistElement>(this->at(Value));
-  Stream << Indent
-         << format("%7d %6.2f %9lu ",
-                   Element->GetNumInstances(),
-                   (double) Element->GetNumInstances()/
-                   this->GetTotal()*100.0,
-                   (unsigned long) Element->GetTotalBits())
-         << format("%9.2f",
-                   (double) Element->GetTotalBits()/
-                   Element->GetNumInstances());
-  if (Element->GetNumAbbrevs())
-    Stream << format(" %7.2f  ",
-                     (double) Element->GetNumAbbrevs()/
-                     Element->GetNumInstances()*100.0);
+              const NaClBitcodeDist *Distribution) const {
+  NaClBitcodeDistElement::PrintRowStats(Stream, Distribution);
+  Stream << format(" %9lu %12.2f",
+                   (unsigned long) GetTotalBits(),
+                   (double) GetTotalBits()/GetNumInstances());
+  if (GetNumAbbrevs())
+    Stream << format(" %7.2f",
+                     (double) GetNumAbbrevs()/GetNumInstances()*100.0);
   else
-    Stream << "          ";
-}
-
-void NaClBitcodeRecordBitsDist::
-PrintHeader(raw_ostream &Stream, const std::string &Indent) const {
-  Stream << Indent
-         << "  Count %Total    # Bits Bits/Elmt   % Abv  "
-         << this->GetValueHeader() << "\n";
+    Stream << "        ";
 }

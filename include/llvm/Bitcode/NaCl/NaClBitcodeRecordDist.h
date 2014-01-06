@@ -16,29 +16,84 @@
 // distribution map.
 //
 // The goal of distribution maps is to build a (histogram)
-// distribution of values in bitcode records, of a PNaCl bitcode
-// file. From appropriately built distribution maps, one can infer
-// possible new abbreviations that can be used in the PNaCl bitcode
-// file.  Hence, one of the primary goals of distribution maps is to
-// support tools pnacl-bcanalyzer and pnacl-bccompress.
+// distribution of values in bitcode records and blocks, of a PNaCl
+// bitcode file. From appropriately built distribution maps, one can
+// infer possible new abbreviations that can be used in the PNaCl
+// bitcode file.  Hence, one of the primary goals of distribution maps
+// is to support tools pnacl-bcanalyzer and pnacl-bccompress.
 //
-// To make the API uniform, distribution maps are updated using
-// NaClBitcodeRecords (in NaClBitcodeParser.h). The values from the
-// record are defined by the extract method GetValueList, and added
-// via Method Add.  This same API makes handling of nested
-// distribution maps easy by allowing the nested map to extract the
-// values it needs, for the distribution it is modeling, independent
-// of the distribution map it appears in.
+// Distribution maps are constructed either from NaClBitcodeBlock's or
+// NaClBitcodeRecord's (in NaClBitcodeParser.h), but not both. It is
+// assumed that only blocks, or records (but not both) are added to a
+// distribution map. To add data to the distribution map, one calls
+// AddRecord and/or AddBlock. If the distribution map contains record
+// values, you must call AddRecord for each record to be put into the
+// distribution map. If the distribution map contains block values (i.e.
+// block ID's), you must call AddBlock for each block to be put into
+// the distribution map.
 //
-// In addition, there is the virtual method CreateElement that
-// creates a new range element in the distribution map. This
-// allows the distribution map to do two things:
+// While it may counterintuitive, one can call both AddRecord and
+// AddBlock, for each corresponding record and block processed. The
+// reason for this is that an internal flag StorageKind is kept within
+// distribution maps.  If the flag value doesn't correspond to the
+// type of called add method, no update is done. This behaviour is
+// done so that nested distribution maps can be updated via blind
+// calls in NaClBitcodeAnalyzer.cpp.
 //
-// 1) Add any additional information needed by the element, based
-//    on the distribution map.
+// Via inheritance, and overwriting the (virtual) AddRecord
+// method for a distribution map, we can redirect the add to look up
+// the distribution element associated with the block of the record,
+// and then update the corresponding record distribution map. In general,
+// it only makes sense (for nested distribution maps) to be able to
+// redirect record additions. Redirecting blocks within a record (since
+// a record is only associated with one block) does not make sense. Hence,
+// we have not made AddBlock virtual.
 //
-// 2) Add a nested distribution map to the created element if
-// appropriate.
+// When updating a block distribution map, the domain value is the
+// BlockID of the corresponding block being added.
+//
+// On the other hand, values associated with record distribution maps
+// are many possible values (the code, the abbreviation, the values
+// etc). To make the API uniform, record distribution maps are updated
+// using NaClBitcodeRecords (in NaClBitcodeParser.h). The values from
+// the record are defined by the extract method GetValueList, and
+// added via method AddRecord.
+//
+// Distribution maps are implemented using two classes:
+//
+//  NaClBitcodeDist
+//     A generic distribution map.
+//
+//  NaClBitcodeDistElement
+//     The implementation of elements in the range of the distribution
+//     map.
+//
+// The code has been written to put the (virtual) logic of
+// distribution maps into derived classes of
+// NaClBitcodeDistElement. This is intentional, in that it keeps all
+// knowledge of how to handle/print elements in one class.
+//
+// To do this, an NaClBitcodeDist requires a "sentinel" (derived)
+// instance of NaClBitcodeDistElement. This sentinel is used to define
+// behaviour needed by distribution maps.
+//
+// By having control passed to the (derived) instances of
+// NaClBitcodeDistElement, it also makes handling nested distributions
+// relatively easy. One just extends the methods AddRecord and/or
+// AddBlock to also update the corresponding nested distribution.
+//
+// The exception to this rule is printing, since header information is
+// dependent on properties of any possible nested distribution maps
+// (for example, we copy column headers after each nested distribution
+// map so that it is easier to read the output). To fix this, we let
+// virtual method NaClBitcodeDistElement::GetNestedDistributions
+// return the array of nested distribution pointers for the nested
+// distributions of that map. The order in the array is the order the
+// nested distributions will be printed. Typically, this is
+// implemented as a field of the distribution element, and is
+// initialized to contain the pointers of all nested distributions in
+// the element. This field can then be returned from method
+// GetNestedDistributions.
 //
 // Distribution maps are sortable (via method GetDistribution). The
 // purpose of sorting is to find interesting elements. This is done by
@@ -80,46 +135,19 @@
 // updated, so that a new sorted distribuition will be generated.
 //
 // Printing of distribution maps are stylized, so that virtuals can
-// easily fill in the necessary data. Each distribution map (nested
-// or top-level) has a title, that is retrieved from method GetTitle,
-// and is printed first.
+// easily fill in the necessary data.
 //
-// Then, a header (showing what each column in the printed histogram
-// includes) is printed. This header is generated by method
-// PrintHeader.  In addition, the (domain) value of the histogram is
-// always printed as the last element in a row, and the header
-// descriptor for this value is provided by method GetValueHeader.
+// For concrete instances of NaClBitcodeDistElement, the following
+// virtual method must be defined:
 //
-// After the header, rows of the (sorted) distribution map are
-// printed.  Each row contains a value and a sequence of statistics
-// based on the corresponding range element. To allow the printing of
-// (optional) nested distributions, The statistics are printed first,
-// followed by the value. Method PrintRowStats prints the statistics
-// of the range element, and PrintRowValue prints the corresponding
-// (domain) value. Unless PrintRowValue is overridden, this method
-// uses a format string that will right justify the value based on the
-// length of the header name (the value returned by GetValueHeader).
+//    CreateElement
+//       Creates a new instance of the distribution element, to
+//       be put into the corresponding distribution map when a new
+//       value is added to the distribution map.
 //
-// If the range element contains a nested distribution map, it is then
-// printed below that row, indented further than the current
-// distribution map.
-//
-// Distribution maps are implemented as subclasses of the class
-// NaClBitcodeRecordDist, whose domain type is
-// NaClBitcodeRecordDistValue, and range elements are subclasses of
-// the class NaClBitcodeRecordDistElement.
-//
-// Simple (non-nested) distribution maps must, at a minimum define
-// method GetValueList, to extract values out of the bitcode record.
-// In addition, only if the range element needs a non-default
-// constructor, one must override the method CreateElement to call the
-// appropriate constructor with the appropriate arguments.
-//
-// Nested distribution maps are created by defining a derived class of
-// another distribution map. This derived class must implement
-// CreateNestedDistributionMap, which returns the corresponding
-// (dynamically) allocated nested distribution map to be associated
-// with the element created by CreateElement.
+// In addition, if the distribution element is based on record values,
+// the virtual method GetValueList must be defined, to extract values
+// out of the bitcode record.
 
 #ifndef LLVM_BITCODE_NACL_NACLBITCODERECORDDIST_H
 #define LLVM_BITCODE_NACL_NACLBITCODERECORDDIST_H
@@ -135,55 +163,52 @@
 namespace llvm {
 
 /// The domain type of PNaCl bitcode record distribution maps.
-typedef uint64_t NaClBitcodeRecordDistValue;
+typedef uint64_t NaClBitcodeDistValue;
 
 /// Base class of the range type of PNaCl bitcode record distribution
 /// maps.
-class NaClBitcodeRecordDistElement;
+class NaClBitcodeDistElement;
 
 /// Type defining the list of values extracted from the corresponding
 /// bitcode record. Typically, the list size is one. However, there
 /// are cases where a record defines more than one value (i.e. value
 /// indices). Hence, this type defines the more generic API for
 /// values.
-typedef std::vector<NaClBitcodeRecordDistValue> ValueListType;
+typedef std::vector<NaClBitcodeDistValue> ValueListType;
 
 typedef ValueListType::const_iterator ValueListIterator;
 
 /// Defines a PNaCl bitcode record distribution map. The distribution
 /// map is a map from a (record) value, to the corresponding data
 /// associated with that value. Assumes distributions elements are
-/// instances of NaClBitcodeRecordDistElement.
-class NaClBitcodeRecordDist {
-  NaClBitcodeRecordDist(const NaClBitcodeRecordDist&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecordDist&) LLVM_DELETED_FUNCTION;
-  friend class NaClBitcodeRecordDistElement;
+/// instances of NaClBitcodeDistElement.
+class NaClBitcodeDist {
+  NaClBitcodeDist(const NaClBitcodeDist&) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClBitcodeDist&) LLVM_DELETED_FUNCTION;
+  friend class NaClBitcodeDistElement;
 
 public:
   /// Define kinds for isa, dyn_cast, etc. support (see
   /// llvm/Support/Casting.h). Only defined for concrete classes.
-  enum NaClBitcodeRecordDistKind {
-    RD_Dist,                 // class NaClBitcodeRecordDist.
-      RD_BitsDist,           // class NaClBitcodeRecordBitsDist.
-        RD_RecordCodeDist,   // class NaClBitcodeRecordCodeDist.
-        RD_RecordCodeDist_Last,
-      RD_BitsDist_Last,
+  enum NaClBitcodeDistKind {
+    RD_Dist,                 // class NaClBitcodeDist.
+      RD_CodeDist,           // class NaClBitcodeCodeDist.
+      RD_CodeDist_Last,
     RD_Dist_Last
   };
 
-  NaClBitcodeRecordDistKind getKind() const { return Kind; }
+  NaClBitcodeDistKind getKind() const { return Kind; }
 
 private:
-  const NaClBitcodeRecordDistKind Kind;
+  const NaClBitcodeDistKind Kind;
 
-  static bool classof(const NaClBitcodeRecordDist *Dist) {
+  static bool classof(const NaClBitcodeDist *Dist) {
     return Dist->getKind() >= RD_Dist && Dist->getKind() < RD_Dist_Last;
   }
 
 public:
   /// Type defining the mapping used to define the distribution.
-  typedef std::map<NaClBitcodeRecordDistValue,
-                   NaClBitcodeRecordDistElement*> MappedElement;
+  typedef std::map<NaClBitcodeDistValue, NaClBitcodeDistElement*> MappedElement;
 
   typedef MappedElement::const_iterator const_iterator;
 
@@ -191,17 +216,27 @@ public:
   /// distribution. The first element is defined by method
   /// GetImportance, and the second is the distribution value
   /// associated with that importance.
-  typedef std::pair<double, NaClBitcodeRecordDistValue> DistPair;
+  typedef std::pair<double, NaClBitcodeDistValue> DistPair;
 
   /// Type defining the sorted list of (domain) values in the
   /// corresponding distribution map.
   typedef std::vector<DistPair> Distribution;
 
-  NaClBitcodeRecordDist(NaClBitcodeRecordDistKind Kind=RD_Dist)
-      : Kind(Kind), TableMap(), CachedDistribution(0), Total(0) {
+  /// Defines whether blocks or records are stored in the distribution map.
+  /// Used to decide if AddRecord/AddBlock methods should fire.
+  enum StorageSelector {
+    BlockStorage,
+    RecordStorage
+  };
+
+  NaClBitcodeDist(StorageSelector StorageKind,
+                  const NaClBitcodeDistElement *Sentinel,
+                  NaClBitcodeDistKind Kind=RD_Dist)
+      : Kind(Kind), StorageKind(StorageKind), Sentinel(Sentinel),
+        TableMap(), CachedDistribution(0), Total(0) {
   }
 
-  virtual ~NaClBitcodeRecordDist();
+  ~NaClBitcodeDist();
 
   /// Number of elements in the distribution map.
   size_t size() const {
@@ -225,16 +260,11 @@ public:
 
   /// Returns the element associated with the given distribution
   /// value.  Creates the element if needed.
-  NaClBitcodeRecordDistElement *GetElement(NaClBitcodeRecordDistValue Value) {
-    if (TableMap.find(Value) == TableMap.end()) {
-      TableMap[Value] = CreateElement(Value);
-    }
-    return TableMap[Value];
-  }
+  inline NaClBitcodeDistElement *GetElement(NaClBitcodeDistValue Value);
 
   /// Returns the element associated with the given distribution
   /// value.
-  NaClBitcodeRecordDistElement *at(NaClBitcodeRecordDistValue Value) const {
+  NaClBitcodeDistElement *at(NaClBitcodeDistValue Value) const {
     return TableMap.at(Value);
   }
 
@@ -246,7 +276,15 @@ public:
 
   /// Adds the value(s) in the given bitcode record to the
   /// distribution map.  The value(s) based on method GetValueList.
-  virtual void Add(const NaClBitcodeRecord &Record);
+  /// Note: Default requires that GetStorageKind() == RecordStorage.
+  /// Override if you want special handling for nested distributions
+  /// in a block distribution map.
+  virtual void AddRecord(const NaClBitcodeRecord &Record);
+
+  /// Adds the BlockID of the given bitcode block to the distribution
+  /// map, if applicable (based on the value of method UseBlockID).
+  /// Note: Requires that GetStorageKind() == BlockStorage.
+  void AddBlock(const NaClBitcodeBlock &Block);
 
   /// Builds the distribution associated with the distribution map.
   /// Warning: The distribution is cached, and hence, only valid while
@@ -265,15 +303,6 @@ public:
   }
 
 protected:
-  /// Creates a distribution element for the given value.
-  virtual NaClBitcodeRecordDistElement *
-  CreateElement(NaClBitcodeRecordDistValue Value);
-
-  /// Returns the (optional) nested distribution map to be associated
-  // with the element. Returning 0 implies that no nested distribution map
-  // will be added to the element.
-  virtual NaClBitcodeRecordDist* CreateNestedDistributionMap();
-
   /// If the distribution is cached, remove it. Should be called
   /// whenever the distribution map is changed.
   void RemoveCachedDistribution() const {
@@ -283,48 +312,14 @@ protected:
     }
   }
 
-  /// Interrogates the block record, and returns the corresponding
-  /// values that are being tracked by the distribution map. Must be
-  /// defined in derived classes.
-  virtual void GetValueList(const NaClBitcodeRecord &Record,
-                            ValueListType &ValueList) const = 0;
-
-  /// Returns the title to use when printing the distribution map.
-  virtual const char *GetTitle() const;
-
-  /// Returns the header to use when printing the value in the
-  /// distribution map.
-  virtual const char *GetValueHeader() const;
-
-  /// Prints out the title of the distribution map.
-  virtual void PrintTitle(raw_ostream &Stream, const std::string &Indent) const;
-
-  /// Prints out statistics for the row with the given value.
-  virtual void PrintRowStats(raw_ostream &Stream,
-                             const std::string &Indent,
-                             NaClBitcodeRecordDistValue Value) const;
-
-  /// Prints out Value (in a row) to Stream. If the element contains a
-  /// nested distribution, that nested distribution will use the given
-  /// Indent for this distribution to properly indent the nested
-  /// distribution.
-  virtual void PrintRowValue(raw_ostream &Stream,
-                             const std::string &Indent,
-                             NaClBitcodeRecordDistValue Value) const;
-
-  // Prints out the header to the printed distribution map.
-  virtual void PrintHeader(raw_ostream &Stream,
-                           const std::string &Indent) const;
-
-  // Prints out a row in the printed distribution map.
-  virtual void PrintRow(raw_ostream &Stream,
-                        const std::string &Indent,
-                        NaClBitcodeRecordDistValue Value) const;
-
   /// Sorts the distribution, based on the importance of each element.
   void Sort() const;
 
 private:
+  // Defines whether values in distribution map are from blocks or records.
+  const StorageSelector StorageKind;
+  // Sentinel element used to do generic operations for distribution.
+  const NaClBitcodeDistElement *Sentinel;
   // Map from the distribution value to the corresponding distribution
   // element.
   MappedElement TableMap;
@@ -336,64 +331,130 @@ private:
 
 /// Defines the element type of a PNaCl bitcode distribution map.
 /// This is the base class for all element types used in
-/// NaClBitcodeRecordDist.  By default, only the number of instances
+/// NaClBitcodeDist.  By default, only the number of instances
 /// of the corresponding distribution values is recorded.
-class NaClBitcodeRecordDistElement {
-  NaClBitcodeRecordDistElement(const NaClBitcodeRecordDistElement &)
+class NaClBitcodeDistElement {
+  NaClBitcodeDistElement(const NaClBitcodeDistElement &)
       LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecordDistElement &)
+  void operator=(const NaClBitcodeDistElement &)
       LLVM_DELETED_FUNCTION;
 
 public:
   /// Define kinds for isa, dyn_cast, etc. support. Only defined
   /// for concrete classes.
-  enum NaClBitcodeRecordDistElementKind {
-    RDE_Dist,              // class NaClBitcodeRecordDistElement.
-      RDE_BitsDist,        // class NaClBitcodeRecordBitsDistElement.
+  enum NaClBitcodeDistElementKind {
+    RDE_Dist,                // class NaClBitcodeDistElement.
+      RDE_BitsDist,          // class NaClBitcodeBitsDistElement.
+        RDE_CodeDist,        // class NaClBitcodeCodeDistElement.
+        RDE_CodeDist_Last,
       RDE_BitsDist_Last,
     RDE_Dist_Last
   };
 
-  NaClBitcodeRecordDistElementKind getKind() const { return Kind; }
+  NaClBitcodeDistElementKind getKind() const { return Kind; }
 
-  static bool classof(const NaClBitcodeRecordDistElement *Element) {
+  static bool classof(const NaClBitcodeDistElement *Element) {
     return Element->getKind() >= RDE_Dist && Element->getKind() < RDE_Dist_Last;
   }
 
 private:
-  const NaClBitcodeRecordDistElementKind Kind;
+  const NaClBitcodeDistElementKind Kind;
 
 public:
+
   // Constructor to use in derived classes.
-  NaClBitcodeRecordDistElement(
-      NaClBitcodeRecordDist *NestedDist,
-      NaClBitcodeRecordDistElementKind Kind=RDE_Dist)
-      : Kind(Kind), NestedDist(NestedDist), NumInstances(0)
+  NaClBitcodeDistElement(
+      NaClBitcodeDistElementKind Kind=RDE_Dist)
+      : Kind(Kind), NumInstances(0)
   {}
 
-  virtual ~NaClBitcodeRecordDistElement();
+  virtual ~NaClBitcodeDistElement();
 
-  // Adds an instance of the given record to this instance.
-  virtual void Add(const NaClBitcodeRecord &Record);
+  // Adds an instance of the given record to this element.
+  virtual void AddRecord(const NaClBitcodeRecord &Record);
+
+  // Adds an instance of the given block to this element.
+  virtual void AddBlock(const NaClBitcodeBlock &Block);
 
   // Returns the number of instances associated with this element.
   unsigned GetNumInstances() const {
     return NumInstances;
   }
 
+  // Creates a new instance of this element for the given value. Used
+  // by class NaClBitcodeDist to create instances.
+  virtual NaClBitcodeDistElement *CreateElement(
+      NaClBitcodeDistValue Value) const = 0;
+
+  /// Interrogates the block record, and returns the corresponding
+  /// values that are being tracked by the distribution map. Must be
+  /// defined in derived classes.
+  virtual void GetValueList(const NaClBitcodeRecord &Record,
+                            ValueListType &ValueList) const;
+
   // Returns the importance of this element, and the number of
   // instances associated with it. Used to sort the distribution map,
   // where values with larger importance appear first.
   virtual double GetImportance() const;
 
-protected:
-  // The (optional) nested distribution.
-  NaClBitcodeRecordDist *NestedDist;
+  /// Returns the title to use when printing the title associated
+  /// with instances of this distribution element.
+  virtual const char *GetTitle() const;
+
+  /// Prints out the title of the distribution map associated with
+  /// instances of this distribution element.
+  virtual void PrintTitle(raw_ostream &Stream,
+                          const NaClBitcodeDist *Distribution) const;
+
+  /// Returns the header to use when printing the value associated
+  /// with instances of this distribution element.
+  virtual const char *GetValueHeader() const;
+
+  /// Prints out header for row of statistics associated with instances
+  /// of this distribution element.
+  virtual void PrintStatsHeader(raw_ostream &Stream) const;
+
+  /// Prints out the header to the printed distribution map associated
+  /// with instances of this distribution element.
+  void PrintHeader(raw_ostream &Stream) const;
+
+  /// Prints out statistics for the row with the given value.
+  virtual void PrintRowStats(raw_ostream &Stream,
+                             const NaClBitcodeDist *Distribution) const;
+
+  /// Prints out Value (in a row) to Stream.
+  virtual void PrintRowValue(raw_ostream &Stream,
+                             NaClBitcodeDistValue Value,
+                             const NaClBitcodeDist *Distribution) const;
+
+  /// Prints out a row in the printed distribution map.
+  virtual void PrintRow(raw_ostream &Stream,
+                        NaClBitcodeDistValue Value,
+                        const NaClBitcodeDist *Distribution) const;
+
+  /// Returns a pointer to the list of nested distributions that
+  /// should be printed when this element is printed. Return 0 if no
+  /// nested distributions should be printed.
+  virtual const SmallVectorImpl<NaClBitcodeDist*> *
+  GetNestedDistributions() const;
+
+  /// Prints out any nested distributions, if defined for the element.
+  /// Returns true if a nested distribution was printed.
+  bool PrintNestedDistIfApplicable(
+      raw_ostream &Stream, const std::string &Indent) const;
 
 private:
   // The number of instances associated with this element.
   unsigned NumInstances;
 };
+
+inline NaClBitcodeDistElement *NaClBitcodeDist::
+GetElement(NaClBitcodeDistValue Value) {
+  if (TableMap.find(Value) == TableMap.end()) {
+    TableMap[Value] = Sentinel->CreateElement(Value);
+  }
+  return TableMap[Value];
+}
 
 }
 
