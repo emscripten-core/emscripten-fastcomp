@@ -35,8 +35,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/IntegersSubset.h"
-#include "llvm/Support/IntegersSubsetMapping.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 
@@ -593,20 +591,14 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     for (SwitchInst::CaseIt I = Switch->case_begin(),
              E = Switch->case_end();
          I != E; ++I) {
-      // Build a new case from the ranges that map to the successor BB. Each
-      // range consists of a high and low value which are typed, so the ranges
-      // must be rebuilt and a new case constructed from them.
-      IntegersSubset CaseRanges = I.getCaseValueEx();
-      IntegersSubsetToBB CaseBuilder;
-      for (unsigned RI = 0, RE = CaseRanges.getNumItems(); RI < RE; ++RI) {
-        CaseBuilder.add(
-            IntItem::fromConstantInt(cast<ConstantInt>(convertConstant(
-                CaseRanges.getItem(RI).getLow().toConstantInt()))),
-            IntItem::fromConstantInt(cast<ConstantInt>(convertConstant(
-                CaseRanges.getItem(RI).getHigh().toConstantInt()))));
-      }
-      IntegersSubset Case = CaseBuilder.getCase();
-      NewInst->addCase(Case, I.getCaseSuccessor());
+      // This sanity check should never trigger because no-one
+      // generates case ranges.  It will go away when we merge
+      // upstream's r190328, which removes all case range support.
+      if (!I.getCaseValueEx().isSingleNumber())
+        report_fatal_error("Case ranges are not supported in PNaCl");
+
+      NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue())),
+                       I.getCaseSuccessor());
     }
     Switch->eraseFromParent();
   } else {
