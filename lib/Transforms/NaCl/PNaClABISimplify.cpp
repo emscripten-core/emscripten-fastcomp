@@ -47,6 +47,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   const char *SymbolsToPreserve[] = { "_start" };
   PM.add(createInternalizePass(SymbolsToPreserve));
 
+  // Expand out computed gotos (indirectbr and blockaddresses) into switches.
+  PM.add(createExpandIndirectBrPass());
+
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
   PM.add(createLowerExpectIntrinsicPass());
