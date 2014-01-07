@@ -269,6 +269,17 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
   }
 }
 
+static void replaceFunction(Module &M, const char *Name, Value *NewFunc) {
+  if (Function *Func = M.getFunction(Name)) {
+    if (Func->hasLocalLinkage())
+      return;
+    if (!Func->isDeclaration())
+      report_fatal_error(std::string("Function already defined: ") + Name);
+    Func->replaceAllUsesWith(NewFunc);
+    Func->eraseFromParent();
+  }
+}
+
 // Provide fixed definitions for PNaCl's TLS layout intrinsics.  We
 // adopt the x86-style layout: ExpandTls will output a program that
 // uses the x86-style layout wherever it runs.  This overrides any
@@ -292,10 +303,8 @@ static void defineTlsLayoutIntrinsics(Module &M) {
   BB = BasicBlock::Create(M.getContext(), "entry", NewFunc);
   ReturnInst::Create(M.getContext(),
                      ConstantInt::get(M.getContext(), APInt(32, 0)), BB);
-  if (Function *Intrinsic = M.getFunction("llvm.nacl.tp.tdb.offset")) {
-    Intrinsic->replaceAllUsesWith(NewFunc);
-    Intrinsic->eraseFromParent();
-  }
+  replaceFunction(M, "llvm.nacl.tp.tdb.offset", NewFunc);
+  replaceFunction(M, "__nacl_tp_tdb_offset", NewFunc);
 
   // Define the intrinsic as follows:
   //   uint32_t __nacl_tp_tls_offset(uint32_t tls_size) {
@@ -309,10 +318,8 @@ static void defineTlsLayoutIntrinsics(Module &M) {
   Arg->setName("size");
   Value *Result = BinaryOperator::CreateNeg(Arg, "result", BB);
   ReturnInst::Create(M.getContext(), Result, BB);
-  if (Function *Intrinsic = M.getFunction("llvm.nacl.tp.tls.offset")) {
-    Intrinsic->replaceAllUsesWith(NewFunc);
-    Intrinsic->eraseFromParent();
-  }
+  replaceFunction(M, "llvm.nacl.tp.tls.offset", NewFunc);
+  replaceFunction(M, "__nacl_tp_tls_offset", NewFunc);
 }
 
 bool ExpandTls::runOnModule(Module &M) {
