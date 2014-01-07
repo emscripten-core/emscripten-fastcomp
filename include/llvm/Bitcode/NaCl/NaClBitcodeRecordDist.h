@@ -236,7 +236,7 @@ public:
         TableMap(), CachedDistribution(0), Total(0) {
   }
 
-  ~NaClBitcodeDist();
+  virtual ~NaClBitcodeDist();
 
   /// Number of elements in the distribution map.
   size_t size() const {
