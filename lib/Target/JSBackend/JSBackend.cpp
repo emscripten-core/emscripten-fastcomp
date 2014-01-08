@@ -253,6 +253,13 @@ namespace {
       }
     }
 
+    void checkVectorType(Type *T) {
+      VectorType *VT = cast<VectorType>(T);
+      assert(VT->getElementType()->getPrimitiveSizeInBits() == 32);
+      assert(VT->getNumElements() == 4);
+      UsesSIMD = true;
+    }
+
     std::string getPtrLoad(const Value* Ptr);
     std::string getPtrUse(const Value* Ptr);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
@@ -800,15 +807,10 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 }
 
 bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code) {
-  #define CHECK_VECTOR(VT) \
-    assert(VT->getElementType()->getPrimitiveSizeInBits() == 32); \
-    assert(VT->getNumElements() == 4); \
-    UsesSIMD = true;
-
   VectorType *VT;
   if ((VT = dyn_cast<VectorType>(I->getType()))) {
     // vector-producing instructions
-    CHECK_VECTOR(VT);
+    checkVectorType(VT);
 
     Code << getAssign(iName, I->getType());
 
@@ -860,7 +862,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
   } else {
     // vector-consuming instructions
     if (I->getOpcode() == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
-      CHECK_VECTOR(VT);
+      checkVectorType(VT);
       std::string PS = getOpName(I->getOperand(1));
       std::string VS = getValueAsStr(I->getOperand(0));
       if (VT->getElementType()->isIntegerTy()) {
@@ -872,7 +874,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     } else if (I->getOpcode() == Instruction::ExtractElement) {
       const ExtractElementInst *EEI = cast<ExtractElementInst>(I);
       VT = cast<VectorType>(EEI->getVectorOperand()->getType());
-      CHECK_VECTOR(VT);
+      checkVectorType(VT);
       const ConstantInt *IndexInt = cast<const ConstantInt>(EEI->getIndexOperand());
       unsigned Index = IndexInt->getZExtValue();
       assert(Index <= 3);
@@ -1052,14 +1054,19 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     }
     const AllocaInst* AI = cast<AllocaInst>(I);
     Type *T = AI->getAllocatedType();
-    assert(!isa<ArrayType>(T));
-    const Value *AS = AI->getArraySize();
-    unsigned BaseSize = T->getScalarSizeInBits()/8;
     std::string Size;
-    if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
-      Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
+    if (T->isVectorTy()) {
+      checkVectorType(T);
+      Size = "16";
     } else {
-      Size = "((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)";
+      assert(!isa<ArrayType>(T));
+      const Value *AS = AI->getArraySize();
+      unsigned BaseSize = T->getScalarSizeInBits()/8;
+      if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
+        Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
+      } else {
+        Size = "((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)";
+      }
     }
     Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
     break;
