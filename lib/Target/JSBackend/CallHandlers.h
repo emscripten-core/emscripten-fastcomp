@@ -167,7 +167,7 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
 
 // vector ops
 DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
-  return CH___default__(CI, "SIMD.float32x4.bitsToInt32x4") + ".signMask";
+  return getAssign(getJSName(CI), CI->getType()) + "SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(0)) + ").signMask";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_min, {
   return CH___default__(CI, "SIMD.float32x4.min");
