@@ -858,12 +858,12 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     return true;
   } else {
     // vector-consuming instructions
-    VectorType *VT;
-    if (I->getOpcode() == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
-      CHECK_VECTOR(VT);
+    VectorType *VTI;
+    if (I->getOpcode() == Instruction::Store && (VTI = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VTI->isVectorTy()) {
+      CHECK_VECTOR(VTI);
       std::string PS = getOpName(I->getOperand(1));
       std::string VS = getValueAsStr(I->getOperand(0));
-      if (VT->getElementType()->isIntegerTy()) {
+      if (VTI->getElementType()->isIntegerTy()) {
         Code << "HEAPU32[" + PS + ">>2]=" + VS + ".x;HEAPU32[" + PS + "+4>>2]=" + VS + ".y;HEAPU32[" + PS + "+8>>2]=" + VS + ".z;HEAPU32[" + PS + "+12>>2]=" + VS + ".w";
       } else {
         Code << "HEAPF32[" + PS + ">>2]=" + VS + ".x;HEAPF32[" + PS + "+4>>2]=" + VS + ".y;HEAPF32[" + PS + "+8>>2]=" + VS + ".z;HEAPF32[" + PS + "+12>>2]=" + VS + ".w";
@@ -871,8 +871,8 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
       return true;
     } else if (I->getOpcode() == Instruction::ExtractElement) {
       const ExtractElementInst *EEI = cast<ExtractElementInst>(I);
-      VT = cast<VectorType>(EEI->getVectorOperand()->getType());
-      CHECK_VECTOR(VT);
+      VTI = cast<VectorType>(EEI->getVectorOperand()->getType());
+      CHECK_VECTOR(VTI);
       const ConstantInt *IndexInt = cast<const ConstantInt>(EEI->getIndexOperand());
       unsigned Index = IndexInt->getZExtValue();
       assert(Index <= 3);
