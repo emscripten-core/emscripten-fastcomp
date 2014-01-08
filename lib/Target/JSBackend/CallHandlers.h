@@ -165,6 +165,63 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
 
+// vector ops
+DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
+  return CH___default__(CI, "SIMD.float32x4.bitsToInt32x4") + ".signMask";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_min, {
+  return CH___default__(CI, "SIMD.float32x4.min");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_max, {
+  return CH___default__(CI, "SIMD.float32x4.max");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_sqrt, {
+  return CH___default__(CI, "SIMD.float32x4.sqrt");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_lessThan, {
+  return CH___default__(CI, "SIMD.float32x4.lessThan");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_lessThanOrEqual, {
+  return CH___default__(CI, "SIMD.float32x4.lessThanOrEqual");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_equal, {
+  return CH___default__(CI, "SIMD.float32x4.equal");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_greaterThanOrEqual, {
+  return CH___default__(CI, "SIMD.float32x4.greaterThanOrEqual");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_greaterThan, {
+  return CH___default__(CI, "SIMD.float32x4.greaterThan");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_and, {
+  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.and(SIMD.float32x4.bitsToInt32x4(" +
+                                                      getValueAsStr(CI->getOperand(0)) + "),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_andNot, {
+  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.and(SIMD.int32x4.not(SIMD.float32x4.bitsToInt32x4(" +
+                                                      getValueAsStr(CI->getOperand(0)) + ")),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_or, {
+  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.or(SIMD.float32x4.bitsToInt32x4(" +
+                                                      getValueAsStr(CI->getOperand(0)) + "),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_xor, {
+  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.xor(SIMD.float32x4.bitsToInt32x4(" +
+                                                      getValueAsStr(CI->getOperand(0)) + "),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
+})
+DEF_CALL_HANDLER(emscripten_int32x4_bitsToFloat32x4, {
+  return CH___default__(CI, "SIMD.int32x4.bitsToFloat32x4");
+})
+DEF_CALL_HANDLER(emscripten_int32x4_toFloat32x4, {
+  return CH___default__(CI, "SIMD.int32x4.toFloat32x4");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_bitsToInt32x4, {
+  return CH___default__(CI, "SIMD.float32x4.bitsToInt32x4");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_toInt32x4, {
+  return CH___default__(CI, "SIMD.float32x4.toInt32x4");
+})
+
 #define DEF_REDIRECT_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   /* FIXME: do not redirect if this is implemented and not just a declare! */ \
@@ -476,6 +533,23 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Shl);
   SETUP_CALL_HANDLER(llvm_ctlz_i32);
   SETUP_CALL_HANDLER(llvm_cttz_i32);
+  SETUP_CALL_HANDLER(emscripten_float32x4_signmask);
+  SETUP_CALL_HANDLER(emscripten_float32x4_min);
+  SETUP_CALL_HANDLER(emscripten_float32x4_max);
+  SETUP_CALL_HANDLER(emscripten_float32x4_sqrt);
+  SETUP_CALL_HANDLER(emscripten_float32x4_lessThan);
+  SETUP_CALL_HANDLER(emscripten_float32x4_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_float32x4_equal);
+  SETUP_CALL_HANDLER(emscripten_float32x4_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_float32x4_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_float32x4_and);
+  SETUP_CALL_HANDLER(emscripten_float32x4_andNot);
+  SETUP_CALL_HANDLER(emscripten_float32x4_or);
+  SETUP_CALL_HANDLER(emscripten_float32x4_xor);
+  SETUP_CALL_HANDLER(emscripten_int32x4_bitsToFloat32x4);
+  SETUP_CALL_HANDLER(emscripten_int32x4_toFloat32x4);
+  SETUP_CALL_HANDLER(emscripten_float32x4_bitsToInt32x4);
+  SETUP_CALL_HANDLER(emscripten_float32x4_toInt32x4);
 
   SETUP_CALL_HANDLER(__01readdir64_);
   SETUP_CALL_HANDLER(__xpg_basename);
