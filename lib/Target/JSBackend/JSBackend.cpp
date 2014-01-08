@@ -69,6 +69,9 @@ namespace {
     ASM_NONSPECIFIC = 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
   };
 
+  const char *SIMDLane = "XYZW";
+  const char *simdLane = "xyzw";
+
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
   typedef std::vector<unsigned char> HeapData;
@@ -275,6 +278,7 @@ namespace {
     std::string getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep=';');
 
     void printFunctionBody(const Function *F);
+    bool generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code);
     void generateInstruction(const Instruction *I, raw_string_ostream& Code);
     std::string getOpName(const Value*);
 
@@ -397,7 +401,10 @@ std::string JSWriter::getAssign(const StringRef &s, const Type *t) {
 
 std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
-    default: assert(false && "Unsupported type");
+    default: {
+      // some types we cannot cast, like vectors - ignore
+      if (!t->isVectorTy()) assert(false && "Unsupported type");
+    }
     case Type::FloatTyID: // TODO return ("Math_fround(" + s + ")").str();
     case Type::DoubleTyID: return ("+" + s).str();
     case Type::IntegerTyID: {
@@ -733,6 +740,26 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
       return CV->getType()->isIntegerTy() ? "0" : "+0"; // XXX fround, refactor this
+    } else if (isa<ConstantAggregateZero>(CV)) {
+      const VectorType *VT = cast<VectorType>(CV->getType());
+      if (VT->getElementType()->isIntegerTy()) {
+        return "int32x4.splat(0)";
+      } else {
+        return "float32x4.splat(0)";
+      }
+    } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
+      const VectorType *VT = cast<VectorType>(CV->getType());
+      if (VT->getElementType()->isIntegerTy()) {
+        return "int32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
+                            getConstant(DV->getElementAsConstant(1)) + ',' +
+                            getConstant(DV->getElementAsConstant(2)) + ',' +
+                            getConstant(DV->getElementAsConstant(3)) + ')';
+      } else {
+        return "float32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
+                              getConstant(DV->getElementAsConstant(1)) + ',' +
+                              getConstant(DV->getElementAsConstant(2)) + ',' +
+                              getConstant(DV->getElementAsConstant(3)) + ')';
+      }
     } else {
       dumpIR(CV);
       assert(false);
@@ -772,6 +799,90 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   }
 }
 
+bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code) {
+  #define CHECK_VECTOR(VT) \
+    assert(VT->getElementType()->getPrimitiveSizeInBits() == 32); \
+    assert(VT->getNumElements() == 4);
+
+  if (VectorType *VT = dyn_cast<VectorType>(I->getType())) {
+    // vector-producing instructions
+    CHECK_VECTOR(VT);
+
+    Code << getAssign(iName, I->getType());
+
+    switch (I->getOpcode()) {
+      default: dumpIR(I); error("invalid vector instr"); break;
+      case Instruction::FAdd: Code << "SIMD.float32x4.add(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::FSub: Code << "SIMD.float32x4.sub(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::FMul: Code << "SIMD.float32x4.mul(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::FDiv: Code << "SIMD.float32x4.div(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::Add: Code << "SIMD.int32x4.add(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::Sub: Code << "SIMD.int32x4.sub(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::Mul: Code << "SIMD.int32x4.mul(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::And: Code << "SIMD.int32x4.and(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::Or:  Code << "SIMD.int32x4.or(" +  getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::Xor: Code << "SIMD.int32x4.xor(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::BitCast: {
+        if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
+          Code << "SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(I->getOperand(0)) + ')';
+        } else {
+          Code << "SIMD.int32x4.bitsToInt32x4(" + getValueAsStr(I->getOperand(0)) + ')';
+        }
+        break;
+      }
+      case Instruction::Load: {
+        std::string PS = getOpName(I->getOperand(0));
+        if (VT->getElementType()->isIntegerTy()) {
+          Code << "int32x4(HEAPU32[" + PS + ">>2],HEAPU32[" + PS + "+4>>2],HEAPU32[" + PS + "+8>>2],HEAPU32[" + PS + "+12>>2])";
+        } else {
+          Code << "float32x4(HEAPF32[" + PS + ">>2],HEAPF32[" + PS + "+4>>2],HEAPF32[" + PS + "+8>>2],HEAPF32[" + PS + "+12>>2])";
+        }
+        break;
+      }
+      case Instruction::InsertElement: {
+        const InsertElementInst *III = cast<InsertElementInst>(I);
+        const ConstantInt *IndexInt = cast<const ConstantInt>(III->getOperand(2));
+        unsigned Index = IndexInt->getZExtValue();
+        assert(Index <= 3);
+        if (VT->getElementType()->isIntegerTy()) {
+          Code << "SIMD.int32x4.with";
+        } else {
+          Code << "SIMD.float32x4.with";
+        }
+        Code << SIMDLane[Index];
+        Code << "(" + getValueAsStr(III->getOperand(0)) + ',' + getValueAsStr(III->getOperand(1)) + ')';
+        break;
+      }
+    }
+    return true;
+  } else {
+    // vector-consuming instructions
+    VectorType *VT;
+    if (I->getOpcode() == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
+      CHECK_VECTOR(VT);
+      std::string PS = getOpName(I->getOperand(1));
+      std::string VS = getValueAsStr(I->getOperand(0));
+      if (VT->getElementType()->isIntegerTy()) {
+        Code << "HEAPU32[" + PS + ">>2]=" + VS + ".x;HEAPU32[" + PS + "+4>>2]=" + VS + ".y;HEAPU32[" + PS + "+8>>2]=" + VS + ".z;HEAPU32[" + PS + "+12>>2]=" + VS + ".w";
+      } else {
+        Code << "HEAPF32[" + PS + ">>2]=" + VS + ".x;HEAPF32[" + PS + "+4>>2]=" + VS + ".y;HEAPF32[" + PS + "+8>>2]=" + VS + ".z;HEAPF32[" + PS + "+12>>2]=" + VS + ".w";
+      }
+      return true;
+    } else if (I->getOpcode() == Instruction::ExtractElement) {
+      const ExtractElementInst *EEI = cast<ExtractElementInst>(I);
+      VT = cast<VectorType>(EEI->getVectorOperand()->getType());
+      CHECK_VECTOR(VT);
+      const ConstantInt *IndexInt = cast<const ConstantInt>(EEI->getIndexOperand());
+      unsigned Index = IndexInt->getZExtValue();
+      assert(Index <= 3);
+      Code << getAssign(iName, I->getType());
+      Code << getValueAsStr(EEI->getVectorOperand()) + '.' + simdLane[Index];
+      return true;
+    }
+  }
+  return false;
+}
+
 // generateInstruction - This member is called for each Instruction in a function.
 void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Code) {
   std::string iName(getJSName(I));
@@ -782,11 +893,12 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     assert(0 && "FIXME: finish legalization"); // FIXME
   }
 
-  switch (I->getOpcode()) {
-  default:
+  if (!generateSIMDInstruction(iName, I, Code)) switch (I->getOpcode()) {
+  default: {
+    dumpIR(I);
     error("Invalid instruction");
     break;
-
+  }
   case Instruction::Ret: {
     const ReturnInst* ret =  cast<ReturnInst>(I);
     Value *RV = ret->getReturnValue();
@@ -1249,6 +1361,9 @@ void JSWriter::printFunctionBody(const Function *F) {
           // TODO Out << "Math_fround(0)";
         case Type::DoubleTyID:
           Out << "+0"; // FIXME
+          break;
+        case Type::VectorTyID:
+          Out << "null"; // best we can do for now
           break;
       }
     }
