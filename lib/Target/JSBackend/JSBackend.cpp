@@ -102,13 +102,13 @@ namespace {
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
     std::vector<std::string> GlobalInitializers;
+    bool UsesSIMD;
 
     #include "CallHandlers.h"
 
   public:
     static char ID;
-    explicit JSWriter(formatted_raw_ostream &o) :
-      ModulePass(ID), Out(o), UniqueNum(0) {}
+    explicit JSWriter(formatted_raw_ostream &o) : ModulePass(ID), Out(o), UniqueNum(0), UsesSIMD(false) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
 
@@ -802,7 +802,8 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code) {
   #define CHECK_VECTOR(VT) \
     assert(VT->getElementType()->getPrimitiveSizeInBits() == 32); \
-    assert(VT->getNumElements() == 4);
+    assert(VT->getNumElements() == 4); \
+    UsesSIMD = true;
 
   if (VectorType *VT = dyn_cast<VectorType>(I->getType())) {
     // vector-producing instructions
@@ -1578,7 +1579,10 @@ void JSWriter::printModuleBody() {
     }
     Out << "\"" + GlobalInitializers[i] + "\"";
   }
-  Out << "]";
+  Out << "],";
+
+  Out << "\"simd\": ";
+  Out << (UsesSIMD ? "1" : "0");
 
   Out << "\n}\n";
 }
