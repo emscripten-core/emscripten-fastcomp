@@ -805,7 +805,8 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     assert(VT->getNumElements() == 4); \
     UsesSIMD = true;
 
-  if (VectorType *VT = dyn_cast<VectorType>(I->getType())) {
+  VectorType *VT;
+  if ((VT = dyn_cast<VectorType>(I->getType()))) {
     // vector-producing instructions
     CHECK_VECTOR(VT);
 
@@ -858,7 +859,6 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     return true;
   } else {
     // vector-consuming instructions
-    VectorType *VT;
     if (I->getOpcode() == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
       CHECK_VECTOR(VT);
       std::string PS = getOpName(I->getOperand(1));
