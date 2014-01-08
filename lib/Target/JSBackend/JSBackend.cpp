@@ -1776,7 +1776,8 @@ void JSWriter::calculateNativizedVars(const Function *F) {
   for (Function::const_iterator BI = F->begin(), BE = F->end(); BI != BE; ++BI) {
     for (BasicBlock::const_iterator II = BI->begin(), E = BI->end(); II != E; ++II) {
       const Instruction *I = &*II;
-      if (I->getOpcode() == Instruction::Alloca) {
+      if (const AllocaInst *AI = dyn_cast<const AllocaInst>(I)) {
+        if (AI->getAllocatedType()->isVectorTy()) continue; // we do not nativize vectors, we rely on the LLVM optimizer to avoid load/stores on them
         // this is on the stack. if its address is never used nor escaped, we can nativize it
         bool Fail = false;
         for (Instruction::const_use_iterator UI = I->use_begin(), UE = I->use_end(); UI != UE && !Fail; ++UI) {
