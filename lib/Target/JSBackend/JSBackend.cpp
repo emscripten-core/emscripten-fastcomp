@@ -1364,7 +1364,7 @@ void JSWriter::printFunctionBody(const Function *F) {
           Out << "+0"; // FIXME
           break;
         case Type::VectorTyID:
-          Out << "null"; // best we can do for now
+          Out << "0"; // best we can do for now
           break;
       }
     }
