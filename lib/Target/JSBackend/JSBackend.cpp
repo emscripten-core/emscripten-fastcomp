@@ -857,6 +857,30 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
         Code << "(" + getValueAsStr(III->getOperand(0)) + ',' + getValueAsStr(III->getOperand(1)) + ')';
         break;
       }
+      case Instruction::ShuffleVector: {
+        if (VT->getElementType()->isIntegerTy()) {
+          Code << "int32x4(";
+        } else {
+          Code << "float32x4(";
+        }
+        const ShuffleVectorInst *SVI = cast<ShuffleVectorInst>(I);
+        std::string A = getValueAsStr(I->getOperand(0));
+        std::string B = getValueAsStr(I->getOperand(1));
+        for (unsigned int i = 0; i < 4; i++) {
+          int Mask = SVI->getMaskValue(i);
+          if (Mask < 0) {
+            Code << "0";
+          } else if (Mask < 4) {
+            Code << A + "." + simdLane[Mask];
+          } else {
+            assert(Mask < 8);
+            Code << B + "." + simdLane[Mask-4];
+          }
+          if (i < 3) Code << ",";
+        }
+        Code << ')';
+        break;
+      }
     }
     return true;
   } else {
