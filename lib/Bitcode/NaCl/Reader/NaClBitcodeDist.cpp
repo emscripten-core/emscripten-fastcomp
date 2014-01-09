@@ -1,5 +1,5 @@
-//===- NaClBitcodeRecordDist.cpp --------------------------------*- C++ -*-===//
-//     Internal implementation of PNaCl bitcode record distributions.
+//===- NaClBitcodeDist.cpp --------------------------------------*- C++ -*-===//
+//     Internal implementation of PNaCl bitcode distributions.
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Bitcode/NaCl/NaClBitcodeRecordDist.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeDist.h"
 
 using namespace llvm;
 

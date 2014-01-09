@@ -1,5 +1,6 @@
-//===-- NaClCommonBitcodeRecordDists.cpp - Bitcode Analyzer ---------------===//
-//      Defines distribution maps for various values in bitcode records.
+//===-- NaClBitcodeCodeDist.cpp -------------------------------------------===//
+//      Implements distribution maps for record codes within a PNaCl bitcode
+//      file.
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Bitcode/NaCl/NaClCommonBitcodeRecordDists.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeCodeDist.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Support/raw_ostream.h"
 

@@ -1,4 +1,4 @@
-//===-- NaClCommonBitcodeRecordDists.cpp - Bitcode Analyzer ---------------===//
+//===-- NaClBitcodeCodeDist.cpp -------------------------------------------===//
 //      Defines distribution maps for various values in bitcode records.
 //
 //                     The LLVM Compiler Infrastructure
@@ -8,28 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Defines simple (non-nested) distribution maps for (common) values
+// Defines simple (non-nested) distribution maps for record codes
 // appearing in bitcode records (instances of class NaClBitcodeRecord
-// in NaClBitcodeParser.h). This includes records for tracking:
-//
-// 1) BlockID's appearing in the bitcode file.
-//
-// 2) Record Code's appearing in blocks with a given BlockID.
-//
-// 3) Record abbreviations used for records in blocks with a given
-// BlockID.
-//
-// 4) Value indicies defined in records, in blocks with a given
-// BlockID.
-//
-// 5) Values in records, in blocks with a given BlockID.
-//
-// TODO(kschimpf) Define records 1, 3, 4, and 5.
+// in NaClBitcodeParser.h).
 
-#ifndef LLVM_BITCODE_NACL_NACLCOMMONBITCODERECORDDISTS_H
-#define LLVM_BITCODE_NACL_NACLCOMMONBITCODERECORDDISTS_H
+#ifndef LLVM_BITCODE_NACL_NACLBITCODECODEDISTS_H
+#define LLVM_BITCODE_NACL_NACLBITCODECODEDISTS_H
 
-#include "llvm/Bitcode/NaCl/NaClBitcodeRecordBitsDist.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeBitsDist.h"
 
 namespace llvm {
 

@@ -1,5 +1,5 @@
-//===- NaClBitcodeRecordDist.h -----------------------------------*- C++ -*-===//
-//     Maps distributions of values in PNaCl bitcode records.
+//===- NaClBitcodeDist.h ---------------------------------------*- C++ -*-===//
+//     Maps distributions of values in PNaCl bitcode files.
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,10 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Creates a (nestable) distribution map of values in PNaCl bitcode
-// records. The domain of these maps is the set of record values being
-// tracked. The range is the information associated with each record
-// value, including the number of instances of that value. The
+// Creates a (nestable) distribution map of values in PNaCl bitcode.
+// The domain of these maps is the set of record values being
+// tracked. The range is the information associated with each block
+// and/or record value, including the number of instances of that value. The
 // distribution map is nested if the range element contains another
 // distribution map.
 //
@@ -149,8 +149,8 @@
 // the virtual method GetValueList must be defined, to extract values
 // out of the bitcode record.
 
-#ifndef LLVM_BITCODE_NACL_NACLBITCODERECORDDIST_H
-#define LLVM_BITCODE_NACL_NACLBITCODERECORDDIST_H
+#ifndef LLVM_BITCODE_NACL_NACLBITCODEDIST_H
+#define LLVM_BITCODE_NACL_NACLBITCODEDIST_H
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Support/Casting.h"

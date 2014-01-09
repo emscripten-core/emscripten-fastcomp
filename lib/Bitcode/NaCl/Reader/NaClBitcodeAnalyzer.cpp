@@ -15,7 +15,7 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeAnalyzer.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
-#include "llvm/Bitcode/NaCl/NaClCommonBitcodeRecordDists.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeCodeDist.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"

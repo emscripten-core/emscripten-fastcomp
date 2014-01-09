@@ -1,6 +1,6 @@
-//===- NaClBitcodeRecordBitsDist.h -----------------------------*- C++ -*-===//
+//===- NaClBitcodeBitsDist.h ------------------------------------*- C++ -*-===//
 //     Maps distributions of values and corresponding number of
-//     bits in PNaCl bitcode record distributions.
+//     bits in PNaCl bitcode records.
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,10 +13,10 @@
 // bits, in PNaCl bitcode records. These distributions are built directly
 // on top of the NaClBitcodeDistElement class.
 
-#ifndef LLVM_BITCODE_NACL_NACLBITCODERECORDBITSDIST_H
-#define LLVM_BITCODE_NACL_NACLBITCODERECORDBITSDIST_H
+#ifndef LLVM_BITCODE_NACL_NACLBITCODEBITSDIST_H
+#define LLVM_BITCODE_NACL_NACLBITCODEBITSDIST_H
 
-#include "llvm/Bitcode/NaCl/NaClBitcodeRecordDist.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeDist.h"
 
 namespace llvm {
 
