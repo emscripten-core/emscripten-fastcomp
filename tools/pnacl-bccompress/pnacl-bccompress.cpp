@@ -72,6 +72,12 @@ namespace {
 
 using namespace llvm;
 
+static cl::opt<bool>
+TraceGeneratedAbbreviations(
+    "abbreviations",
+    cl::desc("Trace abbreviations added to compressed file"),
+    cl::init(false));
+
 static cl::opt<std::string>
   InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
@@ -87,46 +93,45 @@ static bool Error(const std::string &Err) {
   return true;
 }
 
-// For debugging. Prints out the abbreviation in readable form to outs().
-static void PrintAbbrev(const NaClBitCodeAbbrev *Abbrev) {
-  outs() << "Abbrev [";
+// For debugging. Prints out the abbreviation in readable form to errs().
+static void PrintAbbrev(unsigned BlockID, const NaClBitCodeAbbrev *Abbrev) {
+  errs() << "Abbrev(block " << BlockID << "): [";
   // ContinuationCount>0 implies that the current operand is a
   // continuation of previous operand(s).
   unsigned ContinuationCount = 0;
   for (unsigned i = 0; i < Abbrev->getNumOperandInfos(); ++i) {
-    if (i > 0 && ContinuationCount == 0) outs() << ", ";
-    outs() << "(" << i << ") ";
+    if (i > 0 && ContinuationCount == 0) errs() << ", ";
     const NaClBitCodeAbbrevOp &Op = Abbrev->getOperandInfo(i);
     if (Op.isLiteral()) {
-      outs() << Op.getLiteralValue();
+      errs() << Op.getLiteralValue();
     } else if (Op.isEncoding()) {
       switch (Op.getEncoding()) {
       case NaClBitCodeAbbrevOp::Fixed:
-        outs() << "Fixed(" << Op.getEncodingData() << ")";
+        errs() << "Fixed(" << Op.getEncodingData() << ")";
         break;
       case NaClBitCodeAbbrevOp::VBR:
-        outs() << "VBR(" << Op.getEncodingData() << ")";
+        errs() << "VBR(" << Op.getEncodingData() << ")";
         break;
       case NaClBitCodeAbbrevOp::Array:
-        outs() << "Array:";
+        errs() << "Array:";
         ++ContinuationCount;
         continue;
       case NaClBitCodeAbbrevOp::Char6:
-        outs() << "Char6";
+        errs() << "Char6";
         break;
       case NaClBitCodeAbbrevOp::Blob:
-        outs() << "Blob";
+        errs() << "Blob";
         break;
       default:
-        outs() << "??";
+        errs() << "??";
         break;
       }
     } else {
-      outs() << "??";
+      errs() << "??";
     }
     if (ContinuationCount) --ContinuationCount;
   }
-  outs() << "]\n";
+  errs() << "]\n";
 }
 
 // Reads the input file into the given buffer.
@@ -174,17 +179,18 @@ public:
   /// Adds the given abbreviation to the set of global abbreviations
   /// defined for the block. Guarantees that duplicate abbreviations
   /// are not added to the block. Note: Code takes ownership of
-  /// the given abbreviation.
-  void AddAbbreviation(NaClBitCodeAbbrev *Abbrev) {
+  /// the given abbreviation. Returns true if new abbreviation.
+  bool AddAbbreviation(NaClBitCodeAbbrev *Abbrev) {
     int Index = FindAbbreviation(Abbrev);
     if (Index != NO_SUCH_ABBREVIATION) {
       // Already defined, don't install.
       Abbrev->dropRef();
-      return;
+      return false;
     }
 
     // New abbreviation. Add.
     Abbrevs.push_back(Abbrev);
+    return true;
   }
 
   /// The block ID associated with the block.
@@ -374,7 +380,9 @@ protected:
       Context->BlockAbbrevsMap[BlockID] = Abbrevs;
     }
     // Read abbreviation and add as a global abbreviation.
-    Abbrevs->AddAbbreviation(Abbrev);
+    if (Abbrevs->AddAbbreviation(Abbrev) && TraceGeneratedAbbreviations) {
+      PrintAbbrev(BlockID, Abbrev);
+    }
   }
 
 };
