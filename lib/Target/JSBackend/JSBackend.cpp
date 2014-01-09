@@ -237,6 +237,7 @@ namespace {
       }
     }
     std::string getPtrAsStr(const Value* Ptr) {
+      if (isa<const ConstantPointerNull>(Ptr)) return "0";
       if (const Function *F = dyn_cast<Function>(Ptr)) {
         return utostr(getFunctionIndex(F));
       } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
@@ -941,8 +942,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::Br:
   case Instruction::Switch: break; // handled while relooping
   case Instruction::Unreachable: {
-    // No need to emit anything, as there should be an abort right before these
-    // Code << "abort();";
+    // Typically there should be an abort right before these, so we don't emit any code // TODO: when ASSERTIONS are on, emit abort(0)
+    Code << "// unreachable";
     break;
   }
   case Instruction::Add:
@@ -1237,6 +1238,24 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     Code << ";";
     break;
   }
+  case Instruction::Invoke: {
+    Code << "__THREW__ = 0;";
+    const InvokeInst *II = cast<InvokeInst>(I);
+    Code << handleCall(II) + ';';
+    // the check and branch and done in the relooper setup code
+    break;
+  }
+  case Instruction::LandingPad: {
+    const LandingPadInst *LP = cast<const LandingPadInst>(I);
+    Code << getAssign(iName, I->getType());
+    Code << "___cxa_find_matching_catch(-1,-1";
+    unsigned n = LP->getNumClauses();
+    for (unsigned i = 0; i < n; i++) {
+      Code << "," + getValueAsStr(LP->getClause(i));
+    }
+    Code << ")|0;";
+    break;
+  }
   }
   // append debug info
   if (MDNode *N = I->getMetadata("dbg")) {
@@ -1355,6 +1374,16 @@ void JSWriter::printFunctionBody(const Function *F) {
           std::string P = getPhiCode(&*BI, BB);
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], I->second.c_str(), P.size() > 0 ? P.c_str() : NULL);
         }
+        break;
+      }
+      case Instruction::Invoke: {
+        const InvokeInst* II = cast<InvokeInst>(TI);
+        BasicBlock *S0 = II->getNormalDest();
+        BasicBlock *S1 = II->getUnwindDest();
+        std::string P0 = getPhiCode(&*BI, S0);
+        std::string P1 = getPhiCode(&*BI, S1);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], "!__THREW__", P0.size() > 0 ? P0.c_str() : NULL);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], NULL,         P1.size() > 0 ? P1.c_str() : NULL);
         break;
       }
       case Instruction::Ret:

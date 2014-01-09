@@ -27,6 +27,11 @@ EnableSjLjEH("enable-pnacl-sjlj-eh",
                       "as part of the pnacl-abi-simplify passes"),
              cl::init(false));
 
+static cl::opt<bool> // XXX EMSCRIPTEN
+EnableEmCxxExceptions("enable-emscripten-cxx-exceptions",
+                      cl::desc("Enables C++ exceptions in emscripten"),
+                      cl::init(false));
+
 void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   if (EnableSjLjEH) {
     // This comes before ExpandTls because it introduces references to
@@ -34,6 +39,8 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
     // InternalizePass because it assumes various variables (including
     // __pnacl_eh_stack) have not been internalized yet.
     PM.add(createPNaClSjLjEHPass());
+  } else if (EnableEmCxxExceptions) { // XXX EMSCRIPTEN
+    PM.add(createLowerEmExceptionsPass());
   } else {
     // LowerInvoke prevents use of C++ exception handling by removing
     // references to BasicBlocks which handle exceptions.

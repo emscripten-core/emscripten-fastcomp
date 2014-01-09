@@ -305,7 +305,8 @@ void initializeRewriteLLVMIntrinsicsPass(PassRegistry&);
 void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
-void initializeExpandI64Pass(PassRegistry&); // EMSCRIPTEN
+void initializeExpandI64Pass(PassRegistry&); // XXX EMSCRIPTEN
+void initializeLowerEmExceptionsPass(PassRegistry&); // XXX EMSCRIPTEN
 // @LOCALMOD-END
 }
 

@@ -2,14 +2,27 @@
 //
 // Each handler needs DEF_CALL_HANDLER and SETUP_CALL_HANDLER
 
-typedef std::string (JSWriter::*CallHandler)(const CallInst*, std::string Name, int NumArgs);
+typedef std::string (JSWriter::*CallHandler)(const Instruction*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
 CallHandlerMap *CallHandlers;
 
 // Definitions
 
-const Value *getActuallyCalledValue(const CallInst *CI) {
-  const Value *CV = CI->getCalledValue();
+unsigned getNumArgOperands(const Instruction *I) {
+  if (const CallInst *CI = dyn_cast<const CallInst>(I)) {
+    return CI->getNumArgOperands();
+  } else {
+    return cast<const InvokeInst>(I)->getNumArgOperands();
+  }
+}
+
+const Value *getActuallyCalledValue(const Instruction *I) {
+  const Value *CV = NULL;
+  if (const CallInst *CI = dyn_cast<const CallInst>(I)) {
+    CV = CI->getCalledValue();
+  } else {
+    CV = cast<const InvokeInst>(I)->getCalledValue();
+  }
   if (const BitCastInst *B = dyn_cast<const BitCastInst>(CV)) {
     // if the called value is a bitcast of a function, then we just call it directly, properly
     // for example, extern void x() in C will turn into void x(...) in LLVM IR, then the IR bitcasts
@@ -23,32 +36,55 @@ const Value *getActuallyCalledValue(const CallInst *CI) {
 }
 
 #define DEF_CALL_HANDLER(Ident, Code) \
-  std::string CH_##Ident(const CallInst *CI, std::string Name, int NumArgs=-1) { Code }
+  std::string CH_##Ident(const Instruction *CI, std::string Name, int NumArgs=-1) { Code }
 
 DEF_CALL_HANDLER(__default__, {
   const Value *CV = getActuallyCalledValue(CI);
   bool NeedCasts;
   FunctionType *FT;
-  if (const Function *F = dyn_cast<const Function>(CV)) {
+  bool Invoke = false;
+  if (isa<const InvokeInst>(CI)) {
+    // invoke of f(a, b) turns into invoke_sig(index-of-f, a, b)
+    Invoke = true;
+  }
+  std::string Sig;
+  const Function *F = dyn_cast<const Function>(CV);
+  if (F) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
     FT = F->getFunctionType();
   } else {
     // function pointer call
     FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
-    std::string Sig = getFunctionSignature(FT);
-    Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
     ensureFunctionTable(FT);
-    NeedCasts = false; // function table call, so stays in asm module
+    if (!Invoke) {
+      Sig = getFunctionSignature(FT);
+      Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+      NeedCasts = false; // function table call, so stays in asm module
+    }
+  }
+  if (Invoke) {
+    Sig = getFunctionSignature(FT);
+    Name = "invoke_" + Sig;
+    NeedCasts = true;
   }
   std::string text = Name + "(";
-  if (NumArgs == -1) NumArgs = CI->getNumOperands()-1; // last operand is the function itself
+  if (NumArgs == -1) NumArgs = getNumArgOperands(CI);
+  if (Invoke) {
+    // add first param
+    if (F) {
+      text += utostr(getFunctionIndex(F)); // convert to function pointer
+    } else {
+      text += getValueAsStr(CV); // already a function pointer
+    }
+    if (NumArgs > 0) text += ",";
+  }
   for (int i = 0; i < NumArgs; i++) {
     if (!NeedCasts) {
-      text += getValueAsStr(CI->getArgOperand(i));
+      text += getValueAsStr(CI->getOperand(i));
     } else {
-      text += getValueAsCastStr(CI->getArgOperand(i), ASM_NONSPECIFIC);
+      text += getValueAsCastStr(CI->getOperand(i), ASM_NONSPECIFIC);
     }
-    if (i < NumArgs - 1) text += ", ";
+    if (i < NumArgs - 1) text += ",";
   }
   text += ")";
   // handle return value
@@ -70,20 +106,20 @@ DEF_CALL_HANDLER(getHigh32, {
 })
 
 DEF_CALL_HANDLER(setHigh32, {
-  return "tempRet0 = " + getValueAsStr(CI->getArgOperand(0));
+  return "tempRet0 = " + getValueAsStr(CI->getOperand(0));
 })
 
 DEF_CALL_HANDLER(FPtoILow, {
-  return getAssign(getJSName(CI), CI->getType()) + "(~~" + getValueAsStr(CI->getArgOperand(0)) + ")>>>0";
+  return getAssign(getJSName(CI), CI->getType()) + "(~~" + getValueAsStr(CI->getOperand(0)) + ")>>>0";
 })
 
 DEF_CALL_HANDLER(FPtoIHigh, {
-  std::string Input = getValueAsStr(CI->getArgOperand(0));
+  std::string Input = getValueAsStr(CI->getOperand(0));
   return getAssign(getJSName(CI), CI->getType()) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0";
 })
 
 DEF_CALL_HANDLER(BDtoILow, {
-  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getArgOperand(0)) + ";" + getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr>>2]|0";
+  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ";" + getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr>>2]|0";
 })
 
 DEF_CALL_HANDLER(BDtoIHigh, {
@@ -92,34 +128,34 @@ DEF_CALL_HANDLER(BDtoIHigh, {
 
 DEF_CALL_HANDLER(SItoF, {
   // TODO: fround
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
-                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getArgOperand(1), ASM_SIGNED) +   "))";
+  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
 })
 
 DEF_CALL_HANDLER(UItoF, {
   // TODO: fround
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
-                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getArgOperand(1), ASM_UNSIGNED) + "))";
+  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
 
 DEF_CALL_HANDLER(SItoD, {
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
-                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getArgOperand(1), ASM_SIGNED) +   "))";
+  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
 })
 
 DEF_CALL_HANDLER(UItoD, {
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getArgOperand(0), ASM_UNSIGNED) + ") + " +
-                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getArgOperand(1), ASM_UNSIGNED) + "))";
+  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+                                       "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
 
 DEF_CALL_HANDLER(BItoD, {
-  return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getArgOperand(0)) + ";" +
-         "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getArgOperand(1)) + ";" +
+  return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getOperand(0)) + ";" +
+         "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ";" +
          getAssign(getJSName(CI), CI->getType()) + "+HEAPF64[tempDoublePtr>>3]";
 })
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
-  return "HEAP32[" + getValueAsStr(CI->getArgOperand(0)) + ">>2]=" + getValueAsStr(CI->getArgOperand(1));
+  return "HEAP32[" + getValueAsStr(CI->getOperand(0)) + ">>2]=" + getValueAsStr(CI->getOperand(1));
 })
 
 DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
@@ -138,7 +174,7 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_expect_i32, {
-  return getAssign(getJSName(CI), CI->getType()) + getValueAsStr(CI->getArgOperand(0));
+  return getAssign(getJSName(CI), CI->getType()) + getValueAsStr(CI->getOperand(0));
 })
 
 DEF_CALL_HANDLER(llvm_dbg_declare, {
@@ -817,12 +853,12 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(SDL_RWFromMem);
 }
 
-std::string handleCall(const CallInst *CI) {
+std::string handleCall(const Instruction *CI) {
   const Value *CV = getActuallyCalledValue(CI);
   assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
   std::string Name = getJSName(CV);
   if (strcmp(Name.c_str(), "_llvm_dbg_value") == 0) return ""; // ignore this
-  unsigned NumArgs = CI->getNumArgOperands();
+  unsigned NumArgs = getNumArgOperands(CI);
   CallHandlerMap::iterator CH = CallHandlers->find("___default__");
   if (isa<Function>(CV)) {
     CallHandlerMap::iterator Custom = CallHandlers->find(Name);
