@@ -829,10 +829,12 @@ void ExpandI64::ensureFuncs() {
   Shl = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                           "bitshift64Shl", TheModule);
 
-  SmallVector<Type*, 0> GetHighArgTypes;
-  FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
-  GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
-                             "getHigh32", TheModule);
+  if (!TheModule->getFunction("getHigh32")) {
+    SmallVector<Type*, 0> GetHighArgTypes;
+    FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
+    GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
+                               "getHigh32", TheModule);
+  }
 
   Type *V = Type::getVoidTy(TheModule->getContext());
 

@@ -1256,6 +1256,10 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     Code << ")|0;";
     break;
   }
+  case Instruction::Resume: {
+    Code << "___resumeException(" + getValueAsStr(I->getOperand(0)) + "|0);";
+    break;
+  }
   }
   // append debug info
   if (MDNode *N = I->getMetadata("dbg")) {
