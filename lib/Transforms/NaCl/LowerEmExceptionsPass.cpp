@@ -102,7 +102,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   FunctionType *Int1Func = FunctionType::get(i1, false);
   PostInvoke = Function::Create(Int1Func, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
 
-  FunctionType *LandingPadFunc = FunctionType::get(i32, true);
+  FunctionType *LandingPadFunc = FunctionType::get(i8P, true);
   LandingPad = Function::Create(LandingPadFunc, GlobalValue::ExternalLinkage, "emscripten_landingpad", TheModule);
 
   // Process
@@ -145,12 +145,8 @@ bool LowerEmExceptions::runOnModule(Module &M) {
         Instruction *High = CallInst::Create(GetHigh, "", LP);
 
         // New recreate an aggregate for them, which will be all simplified later (simplification cannot handle landingpad, hence all this)
-        SmallVector<unsigned, 1> IVArgsA;
-        IVArgsA.push_back(0);
-        InsertValueInst *IVA = InsertValueInst::Create(UndefValue::get(LP->getType()), NewLP, IVArgsA, "", LP);
-        SmallVector<unsigned, 1> IVArgsB;
-        IVArgsB.push_back(1);
-        InsertValueInst *IVB = InsertValueInst::Create(IVA, High, IVArgsB, "", LP);
+        InsertValueInst *IVA = InsertValueInst::Create(UndefValue::get(LP->getType()), NewLP, 0, "", LP);
+        InsertValueInst *IVB = InsertValueInst::Create(IVA, High, 1, "", LP);
 
         LP->replaceAllUsesWith(IVB);
         ToErase.push_back(LP);
