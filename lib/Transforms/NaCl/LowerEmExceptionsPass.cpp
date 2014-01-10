@@ -42,6 +42,7 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/NaCl.h"
 #include <vector>
+#include <set>
 
 #include "llvm/Support/raw_ostream.h"
 #include <stdio.h>
@@ -109,10 +110,12 @@ bool LowerEmExceptions::runOnModule(Module &M) {
 
   bool Changed = false;
 
-  std::vector<Instruction*> ToErase;
-
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
     Function *F = Iter++;
+
+    std::vector<Instruction*> ToErase;
+    std::set<LandingPadInst*> LandingPads;
+
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
         // Insert a normal call instruction folded in between pre- and post-invoke
@@ -133,30 +136,36 @@ bool LowerEmExceptions::runOnModule(Module &M) {
         // Insert a branch based on the postInvoke
         BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post, II);
 
-        // Replace the landingpad with a landingpad call to get the low part, and a getHigh for the high
-        LandingPadInst *LP = II->getLandingPadInst();
-        unsigned Num = LP->getNumClauses();
-        SmallVector<Value*,16> NewLPArgs;
-        NewLPArgs.push_back(LP->getPersonalityFn());
-        for (unsigned i = 0; i < Num; i++) NewLPArgs.push_back(LP->getClause(i));
-        NewLPArgs.push_back(LP->isCleanup() ? ConstantInt::getTrue(i1) : ConstantInt::getFalse(i1));
-        CallInst *NewLP = CallInst::Create(LandingPad, NewLPArgs, "", LP);
-
-        Instruction *High = CallInst::Create(GetHigh, "", LP);
-
-        // New recreate an aggregate for them, which will be all simplified later (simplification cannot handle landingpad, hence all this)
-        InsertValueInst *IVA = InsertValueInst::Create(UndefValue::get(LP->getType()), NewLP, 0, "", LP);
-        InsertValueInst *IVB = InsertValueInst::Create(IVA, High, 1, "", LP);
-
-        LP->replaceAllUsesWith(IVB);
-        ToErase.push_back(LP);
+        LandingPads.insert(II->getLandingPadInst());
 
         Changed = true;
       }
     }
-  }
 
-  for (unsigned i = 0; i < ToErase.size(); i++) ToErase[i]->eraseFromParent();
+    // Handle all the landingpad for this function together, as multiple invokes may share a single lp
+    for (std::set<LandingPadInst*>::iterator I = LandingPads.begin(); I != LandingPads.end(); I++) {
+      // Replace the landingpad with a landingpad call to get the low part, and a getHigh for the high
+      LandingPadInst *LP = *I;
+      unsigned Num = LP->getNumClauses();
+      SmallVector<Value*,16> NewLPArgs;
+      NewLPArgs.push_back(LP->getPersonalityFn());
+      for (unsigned i = 0; i < Num; i++) NewLPArgs.push_back(LP->getClause(i));
+      NewLPArgs.push_back(LP->isCleanup() ? ConstantInt::getTrue(i1) : ConstantInt::getFalse(i1));
+      CallInst *NewLP = CallInst::Create(LandingPad, NewLPArgs, "", LP);
+
+      Instruction *High = CallInst::Create(GetHigh, "", LP);
+
+      // New recreate an aggregate for them, which will be all simplified later (simplification cannot handle landingpad, hence all this)
+      InsertValueInst *IVA = InsertValueInst::Create(UndefValue::get(LP->getType()), NewLP, 0, "", LP);
+      InsertValueInst *IVB = InsertValueInst::Create(IVA, High, 1, "", LP);
+
+      LP->replaceAllUsesWith(IVB);
+      ToErase.push_back(LP);
+    }
+
+    // erase everything we no longer need in this function
+    for (unsigned i = 0; i < ToErase.size(); i++) ToErase[i]->eraseFromParent();
+  }
 
   return Changed;
 }
