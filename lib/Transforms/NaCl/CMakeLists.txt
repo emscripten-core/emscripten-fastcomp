@@ -29,7 +29,7 @@ add_llvm_library(LLVMNaClTransforms
   StripAttributes.cpp
   StripMetadata.cpp
   ExpandI64.cpp
-  LowerEmExceptions.cpp
+  LowerEmExceptionsPass.cpp
   )
 
 add_dependencies(LLVMNaClTransforms intrinsics_gen)
