@@ -343,10 +343,12 @@ public:
   /// Define kinds for isa, dyn_cast, etc. support. Only defined
   /// for concrete classes.
   enum NaClBitcodeDistElementKind {
-    RDE_Dist,                // class NaClBitcodeDistElement.
-      RDE_BitsDist,          // class NaClBitcodeBitsDistElement.
-        RDE_CodeDist,        // class NaClBitcodeCodeDistElement.
-        RDE_CodeDist_Last,
+    RDE_Dist,                    // class NaClBitcodeDistElement.
+      RDE_BitsDist,              // class NaClBitcodeBitsDistElement.
+        RDE_BitsAndAbbrevsDist,  // class NaClBitcodeBitsAndAbbrevsDistElement.
+          RDE_CodeDist,          // class NaClBitcodeCodeDistElement.
+          RDE_CodeDist_Last,
+        RDE_BitsAndAbbrevsDist_Last,
       RDE_BitsDist_Last,
     RDE_Dist_Last
   };

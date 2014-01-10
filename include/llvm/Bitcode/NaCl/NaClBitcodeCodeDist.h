@@ -15,14 +15,14 @@
 #ifndef LLVM_BITCODE_NACL_NACLBITCODECODEDISTS_H
 #define LLVM_BITCODE_NACL_NACLBITCODECODEDISTS_H
 
-#include "llvm/Bitcode/NaCl/NaClBitcodeBitsDist.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeBitsAndAbbrevsDist.h"
 
 namespace llvm {
 
 // Collects the distribution of record codes/number of bits used for a
 // particular blockID and Code ID.
 class NaClBitcodeCodeDistElement
-    : public NaClBitcodeBitsDistElement {
+    : public NaClBitcodeBitsAndAbbrevsDistElement {
   NaClBitcodeCodeDistElement(const NaClBitcodeCodeDistElement&)
       LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitcodeCodeDistElement&)
@@ -34,9 +34,9 @@ public:
         && Element->getKind() < RDE_CodeDist_Last;
   }
 
-  NaClBitcodeCodeDistElement(
+  explicit NaClBitcodeCodeDistElement(
       NaClBitcodeDistElementKind Kind=RDE_CodeDist)
-      : NaClBitcodeBitsDistElement(Kind)
+      : NaClBitcodeBitsAndAbbrevsDistElement(Kind)
   {}
 
   virtual ~NaClBitcodeCodeDistElement();

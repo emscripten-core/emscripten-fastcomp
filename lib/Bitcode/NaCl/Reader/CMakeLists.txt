@@ -6,6 +6,7 @@ add_llvm_library(LLVMNaClBitReader
   NaClBitcodeAnalyzer.cpp
   NaClBitcodeDist.cpp
   NaClBitcodeBitsDist.cpp
+  NaClBitcodeBitsAndAbbrevsDist.cpp
   NaClBitcodeCodeDist.cpp
   )
 

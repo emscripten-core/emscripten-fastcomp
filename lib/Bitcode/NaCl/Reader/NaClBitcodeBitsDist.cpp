@@ -15,13 +15,9 @@ using namespace llvm;
 
 NaClBitcodeBitsDistElement::~NaClBitcodeBitsDistElement() {}
 
-void NaClBitcodeBitsDistElement::
-AddRecord(const NaClBitcodeRecord &Record) {
+void NaClBitcodeBitsDistElement::AddRecord(const NaClBitcodeRecord &Record) {
   NaClBitcodeDistElement::AddRecord(Record);
   TotalBits += Record.GetNumBits();
-  if (Record.UsedAnAbbreviation()) {
-    ++NumAbbrevs;
-  }
 }
 
 void NaClBitcodeBitsDistElement::AddBlock(const NaClBitcodeBlock &Block) {
@@ -31,7 +27,7 @@ void NaClBitcodeBitsDistElement::AddBlock(const NaClBitcodeBlock &Block) {
 
 void NaClBitcodeBitsDistElement::PrintStatsHeader(raw_ostream &Stream) const {
   NaClBitcodeDistElement::PrintStatsHeader(Stream);
-  Stream << "    # Bits    Bits/Elmt   % Abv";
+  Stream << "    # Bits    Bits/Elmt";
 }
 
 void NaClBitcodeBitsDistElement::
@@ -41,9 +37,4 @@ PrintRowStats(raw_ostream &Stream,
   Stream << format(" %9lu %12.2f",
                    (unsigned long) GetTotalBits(),
                    (double) GetTotalBits()/GetNumInstances());
-  if (GetNumAbbrevs())
-    Stream << format(" %7.2f",
-                     (double) GetNumAbbrevs()/GetNumInstances()*100.0);
-  else
-    Stream << "        ";
 }

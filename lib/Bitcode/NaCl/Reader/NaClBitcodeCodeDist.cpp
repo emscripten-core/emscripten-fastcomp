@@ -205,7 +205,7 @@ PrintRowValue(raw_ostream &Stream,
 }
 
 bool NaClBitcodeCodeDist::HasKnownCodeName(unsigned CodeID,
-                                                 unsigned BlockID) {
+                                           unsigned BlockID) {
   return ::GetCodeName(CodeID, BlockID) != 0;
 }
 
@@ -214,7 +214,7 @@ NaClBitcodeCodeDistElement NaClBitcodeCodeDist::DefaultSentinal;
 NaClBitcodeCodeDist::~NaClBitcodeCodeDist() {}
 
 std::string NaClBitcodeCodeDist::GetCodeName(unsigned CodeID,
-                                                   unsigned BlockID) {
+                                             unsigned BlockID) {
   if (const char *CodeName = ::GetCodeName(CodeID, BlockID))
     return CodeName;
 

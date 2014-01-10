@@ -37,10 +37,10 @@ public:
   }
 
   // Create an element with no instances.
-  NaClBitcodeBitsDistElement(
+  explicit NaClBitcodeBitsDistElement(
       NaClBitcodeDistElementKind Kind=RDE_BitsDist)
       : NaClBitcodeDistElement(Kind),
-        TotalBits(0), NumAbbrevs(0)
+        TotalBits(0)
   {}
 
   virtual ~NaClBitcodeBitsDistElement();
@@ -55,12 +55,6 @@ public:
     return TotalBits;
   }
 
-  // Returns the number of times an abbreviation was used to represent
-  // the value.
-  unsigned GetNumAbbrevs() const {
-    return NumAbbrevs;
-  }
-
   virtual void PrintStatsHeader(raw_ostream &Stream) const;
 
   virtual void PrintRowStats(raw_ostream &Stream,
@@ -69,8 +63,6 @@ public:
 private:
   // Number of bits used to represent all instances of the value.
   uint64_t TotalBits;
-  // Number of times an abbreviation is used for the value.
-  unsigned NumAbbrevs;
 };
 
 }
