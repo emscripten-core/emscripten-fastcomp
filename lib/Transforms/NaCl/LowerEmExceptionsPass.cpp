@@ -17,6 +17,10 @@
 //         threw = postinvoke(); (check __THREW__)
 //         br threw, l1, l2
 //
+//     We do this to avoid introducing a new LLVM IR type, or to try to reuse
+//     invoke-landingpad for our special purposes (as they are checked very
+//     carefully by llvm)
+//
 //  2) Lower landingpads to return a single i8*, avoid the structural type
 //     which is unneeded anyhow.
 //
@@ -127,7 +131,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
         CallInst *Post = CallInst::Create(PostInvoke, "", II);
 
         // Insert a branch based on the postInvoke
-        BranchInst::Create(II->getNormalDest(), II->getUnwindDest(), Post, II);
+        BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post, II);
 
         // Replace the landingpad with a landingpad call to get the low part, and a getHigh for the high
         LandingPadInst *LP = II->getLandingPadInst();

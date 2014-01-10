@@ -43,8 +43,8 @@ DEF_CALL_HANDLER(__default__, {
   bool NeedCasts;
   FunctionType *FT;
   bool Invoke = false;
-  if (isa<const InvokeInst>(CI)) {
-    // invoke of f(a, b) turns into invoke_sig(index-of-f, a, b)
+  if (InvokeState == 1) {
+    InvokeState = 2;
     Invoke = true;
   }
   std::string Sig;
@@ -99,6 +99,28 @@ DEF_CALL_HANDLER(__default__, {
     text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC);
   }
   return text;
+})
+
+// exceptions support
+DEF_CALL_HANDLER(emscripten_preinvoke, {
+  assert(InvokeState == 0);
+  InvokeState = 1;
+  return "__THREW__ = 0";
+})
+DEF_CALL_HANDLER(emscripten_postinvoke, {
+  assert(InvokeState == 2);
+  InvokeState = 0;
+  return getAssign(getJSName(CI), CI->getType()) + "__THREW__";
+})
+DEF_CALL_HANDLER(emscripten_landingpad, {
+  std::string Ret = getAssign(getJSName(CI), CI->getType()) + "___cxa_find_matching_catch(-1,-1";
+  unsigned Num = getNumArgOperands(CI);
+  for (unsigned i = 1; i < Num-1; i++) { // ignore personality and cleanup XXX - we probably should not be doing that!
+    Ret += ",";
+    Ret += getValueAsStr(CI->getOperand(i));
+  }
+  Ret += ")|0";
+  return Ret;
 })
 
 DEF_CALL_HANDLER(getHigh32, {
@@ -547,6 +569,9 @@ void setupCallHandlers() {
     (*CallHandlers)[std::string("_") + #Ident] = &JSWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
+  SETUP_CALL_HANDLER(emscripten_preinvoke);
+  SETUP_CALL_HANDLER(emscripten_postinvoke);
+  SETUP_CALL_HANDLER(emscripten_landingpad);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FPtoILow);

@@ -103,12 +103,13 @@ namespace {
     FunctionTableMap FunctionTables; // sig => list of functions
     std::vector<std::string> GlobalInitializers;
     bool UsesSIMD;
+    int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
 
     #include "CallHandlers.h"
 
   public:
     static char ID;
-    explicit JSWriter(formatted_raw_ostream &o) : ModulePass(ID), Out(o), UniqueNum(0), UsesSIMD(false) {}
+    explicit JSWriter(formatted_raw_ostream &o) : ModulePass(ID), Out(o), UniqueNum(0), UsesSIMD(false), InvokeState(0) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
 
@@ -1238,24 +1239,6 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     Code << ";";
     break;
   }
-  case Instruction::Invoke: {
-    Code << "__THREW__ = 0;";
-    const InvokeInst *II = cast<InvokeInst>(I);
-    Code << handleCall(II) + ';';
-    // the check and branch and done in the relooper setup code
-    break;
-  }
-  case Instruction::LandingPad: {
-    const LandingPadInst *LP = cast<const LandingPadInst>(I);
-    Code << getAssign(iName, I->getType());
-    Code << "___cxa_find_matching_catch(-1,-1";
-    unsigned n = LP->getNumClauses();
-    for (unsigned i = 0; i < n; i++) {
-      Code << "," + getValueAsStr(LP->getClause(i));
-    }
-    Code << ")|0;";
-    break;
-  }
   case Instruction::Resume: {
     Code << "___resumeException(" + getValueAsStr(I->getOperand(0)) + "|0);";
     break;
@@ -1378,16 +1361,6 @@ void JSWriter::printFunctionBody(const Function *F) {
           std::string P = getPhiCode(&*BI, BB);
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], I->second.c_str(), P.size() > 0 ? P.c_str() : NULL);
         }
-        break;
-      }
-      case Instruction::Invoke: {
-        const InvokeInst* II = cast<InvokeInst>(TI);
-        BasicBlock *S0 = II->getNormalDest();
-        BasicBlock *S1 = II->getUnwindDest();
-        std::string P0 = getPhiCode(&*BI, S0);
-        std::string P1 = getPhiCode(&*BI, S1);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], "!__THREW__", P0.size() > 0 ? P0.c_str() : NULL);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], NULL,         P1.size() > 0 ? P1.c_str() : NULL);
         break;
       }
       case Instruction::Ret:
