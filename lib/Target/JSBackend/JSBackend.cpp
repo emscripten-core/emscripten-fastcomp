@@ -769,6 +769,14 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
                               getConstant(DV->getElementAsConstant(2)) + ',' +
                               getConstant(DV->getElementAsConstant(3)) + ')';
       }
+    } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
+      // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
+      assert(CA->getNumOperands() == 1);
+      CV = CA->getOperand(0);
+      if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
+        CV = CE->getOperand(0); // ignore bitcasts
+      }
+      return getConstant(CV, sign);
     } else {
       dumpIR(CV);
       assert(false);
