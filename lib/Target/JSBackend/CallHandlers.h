@@ -124,6 +124,9 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
   Ret += ")|0";
   return Ret;
 })
+DEF_CALL_HANDLER(emscripten_resume, {
+  return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
+})
 
 DEF_CALL_HANDLER(getHigh32, {
   return getAssign(getJSName(CI), CI->getType()) + "tempRet0";
@@ -577,6 +580,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_preinvoke);
   SETUP_CALL_HANDLER(emscripten_postinvoke);
   SETUP_CALL_HANDLER(emscripten_landingpad);
+  SETUP_CALL_HANDLER(emscripten_resume);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FPtoILow);
