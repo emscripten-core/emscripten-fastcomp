@@ -750,11 +750,15 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     } else if (isa<UndefValue>(CV)) {
       return CV->getType()->isIntegerTy() ? "0" : "+0"; // XXX fround, refactor this
     } else if (isa<ConstantAggregateZero>(CV)) {
-      const VectorType *VT = cast<VectorType>(CV->getType());
-      if (VT->getElementType()->isIntegerTy()) {
-        return "int32x4.splat(0)";
+      if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
+        if (VT->getElementType()->isIntegerTy()) {
+          return "int32x4.splat(0)";
+        } else {
+          return "float32x4.splat(0)";
+        }
       } else {
-        return "float32x4.splat(0)";
+        // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
+        return "0";
       }
     } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
       const VectorType *VT = cast<VectorType>(CV->getType());
@@ -773,10 +777,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
       assert(CA->getNumOperands() == 1);
       CV = CA->getOperand(0);
-      if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
-        CV = CE->getOperand(0); // ignore bitcasts
-      }
-      return getConstant(CV, sign);
+      const ConstantExpr *CE = cast<ConstantExpr>(CV);
+      CV = CE->getOperand(0); // ignore bitcast
+      return getPtrAsStr(CV);
     } else {
       dumpIR(CV);
       assert(false);
