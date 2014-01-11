@@ -185,7 +185,15 @@ namespace {
       else if (T->isFloatTy() || T->isDoubleTy()) return 'd'; // TODO: float
       else return 'i';
     }
-    std::string getFunctionSignature(const FunctionType *F) {
+    std::string getFunctionSignature(const FunctionType *F, std::string *Name=NULL) {
+      if (Name) {
+        // special-case some function signatures, because of how we emit code for them FIXME this is hackish
+        if (*Name == "_llvm_memcpy_p0i8_p0i8_i32"  || *Name == "_memcpy" ||
+            *Name == "_llvm_memset_p0i8_i32"       || *Name == "_memset" ||
+            *Name == "_llvm_memmove_p0i8_p0i8_i32" || *Name == "_memmove") {
+          return "iiii";
+        }
+      }
       std::string Ret;
       Ret += getFunctionSignatureLetter(F->getReturnType());
       for (FunctionType::param_iterator AI = F->param_begin(),
@@ -197,7 +205,7 @@ namespace {
     unsigned getFunctionIndex(const Function *F) {
       std::string Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
-      std::string Sig = getFunctionSignature(F->getFunctionType());
+      std::string Sig = getFunctionSignature(F->getFunctionType(), &Name);
       FunctionTable &Table = FunctionTables[Sig];
       // use alignment info to avoid unnecessary holes. This is not optimal though,
       // (1) depends on order of appearance, and (2) really just need align for &class::method, see test_polymorph
