@@ -75,7 +75,7 @@ DEF_CALL_HANDLER(__default__, {
     if (F) {
       text += utostr(getFunctionIndex(F)); // convert to function pointer
     } else {
-      text += getValueAsStr(CV); // already a function pointer
+      text += getValueAsCastStr(CV); // already a function pointer
     }
     if (NumArgs > 0) text += ",";
   }
