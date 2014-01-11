@@ -126,7 +126,8 @@ static bool convertFunction(Function *Func) {
 
   // If there are any blockaddresses that are never used by an
   // indirectbr, replace them with dummy values.
-  for (Value::use_iterator UI = Func->use_begin(), E = Func->use_end();
+  SmallVector<Value *, 20> Uses(Func->use_begin(), Func->use_end());
+  for (SmallVectorImpl<Value *>::iterator UI = Uses.begin(), E = Uses.end();
        UI != E; ++UI) {
     if (BlockAddress *BA = dyn_cast<BlockAddress>(*UI)) {
       Changed = true;
