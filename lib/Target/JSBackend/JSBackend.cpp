@@ -207,7 +207,7 @@ namespace {
       Table.push_back(Name);
       IndexedFunctions[Name] = Index;
 
-      // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, we need to catch it in the handler
+      // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, and we may need to do things in the handler
       CallHandlerMap::iterator CH = CallHandlers->find(Name);
       if (CH != CallHandlers->end()) {
         (this->*(CH->second))(NULL, Name, -1);

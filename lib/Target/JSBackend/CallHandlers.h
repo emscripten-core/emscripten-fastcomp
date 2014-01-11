@@ -39,6 +39,7 @@ const Value *getActuallyCalledValue(const Instruction *I) {
   std::string CH_##Ident(const Instruction *CI, std::string Name, int NumArgs=-1) { Code }
 
 DEF_CALL_HANDLER(__default__, {
+  if (!CI) return ""; // we are just called from a handler that was called from getFunctionIndex, only to ensure the handler was run at least once
   const Value *CV = getActuallyCalledValue(CI);
   bool NeedCasts;
   FunctionType *FT;
