@@ -119,7 +119,7 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
   unsigned Num = getNumArgOperands(CI);
   for (unsigned i = 1; i < Num-1; i++) { // ignore personality and cleanup XXX - we probably should not be doing that!
     Ret += ",";
-    Ret += getValueAsStr(CI->getOperand(i));
+    Ret += getValueAsCastStr(CI->getOperand(i));
   }
   Ret += ")|0";
   return Ret;
