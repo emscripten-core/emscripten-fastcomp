@@ -618,6 +618,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           for (BasicBlock::iterator I = BB->begin(); I != BB->end(); ++I) {
             PHINode *Phi = dyn_cast<PHINode>(I);
             if (!Phi) break;
+            // XXX note that we add a new i64 thing here. now the phi was already an i64 operation, and is being legalized anyhow, but we only notice the original inputs!
+            //     we seem to be safe for now due to order of operation (phis show up after switches, but FIXME
             Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
           }
         }
