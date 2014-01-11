@@ -21,8 +21,9 @@
 //     invoke-landingpad for our special purposes (as they are checked very
 //     carefully by llvm)
 //
-//  2) Lower landingpads to return a single i8*, avoid the structural type
-//     which is unneeded anyhow.
+//  2) Lower landingpads to a call to emscripten_landingpad
+//
+//  3) Lower resume to emscripten_resume which receives non-aggregate inputs
 //
 //===----------------------------------------------------------------------===//
 
@@ -63,12 +64,12 @@ using namespace llvm;
 
 namespace {
   class LowerEmExceptions : public ModulePass {
-    Function *GetHigh, *PreInvoke, *PostInvoke, *LandingPad;
+    Function *GetHigh, *PreInvoke, *PostInvoke, *LandingPad, *Resume;
     Module *TheModule;
 
   public:
     static char ID; // Pass identification, replacement for typeid
-    explicit LowerEmExceptions() : ModulePass(ID), GetHigh(NULL), PreInvoke(NULL), PostInvoke(NULL), LandingPad(NULL), TheModule(NULL) {
+    explicit LowerEmExceptions() : ModulePass(ID), GetHigh(NULL), PreInvoke(NULL), PostInvoke(NULL), LandingPad(NULL), Resume(NULL), TheModule(NULL) {
       initializeLowerEmExceptionsPass(*PassRegistry::getPassRegistry());
     }
     bool runOnModule(Module &M);
@@ -106,6 +107,9 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   FunctionType *LandingPadFunc = FunctionType::get(i8P, true);
   LandingPad = Function::Create(LandingPadFunc, GlobalValue::ExternalLinkage, "emscripten_landingpad", TheModule);
 
+  FunctionType *ResumeFunc = FunctionType::get(Void, true);
+  Resume = Function::Create(ResumeFunc, GlobalValue::ExternalLinkage, "emscripten_resume", TheModule);
+  
   // Process
 
   bool Changed = false;
@@ -117,6 +121,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     std::set<LandingPadInst*> LandingPads;
 
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
+      // check terminator for invokes
       if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
         // Insert a normal call instruction folded in between pre- and post-invoke
         CallInst *Pre = CallInst::Create(PreInvoke, "", II);
@@ -139,6 +144,27 @@ bool LowerEmExceptions::runOnModule(Module &M) {
         LandingPads.insert(II->getLandingPadInst());
 
         Changed = true;
+      }
+      // scan the body of the basic block for resumes
+      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
+           Iter != E; ) {
+        Instruction *I = Iter++;
+        if (ResumeInst *R = dyn_cast<ResumeInst>(I)) {
+          // split the input into legal values
+          Value *Input = R->getValue();
+          ExtractValueInst *Low = ExtractValueInst::Create(Input, 0, "", R);
+          ExtractValueInst *High = ExtractValueInst::Create(Input, 1, "", R);
+
+          // create a resume call
+          SmallVector<Value*,2> CallArgs;
+          CallArgs.push_back(Low);
+          CallArgs.push_back(High);
+          CallInst *NewR = CallInst::Create(Resume, CallArgs, "", R);
+
+          UnreachableInst *U = new UnreachableInst(TheModule->getContext(), R); // add a terminator to the block
+
+          ToErase.push_back(R);
+        }
       }
     }
 

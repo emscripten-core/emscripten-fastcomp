@@ -69,7 +69,8 @@ INITIALIZE_PASS(ExpandVarArgs, "expand-varargs",
 static bool isEmscriptenJSArgsFunc(StringRef Name) {
   return Name.equals("emscripten_asm_const_int") ||
          Name.equals("emscripten_asm_const_double") ||
-         Name.equals("emscripten_landingpad");
+         Name.equals("emscripten_landingpad") ||
+         Name.equals("emscripten_resume");
 }
 
 static void ExpandVarArgFunc(Function *Func) {
