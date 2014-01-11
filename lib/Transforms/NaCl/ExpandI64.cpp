@@ -614,21 +614,24 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         for (unsigned i = 0; i < V.size(); i++) {
           BasicBlock *BB = V[i].second;
           HighSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, V[i].first)), BB);
-          // fix phis, we used to go SwitchBB->BB, but now go SwitchBB->NewBB->BB, so we look like we arrived from NewBB. Fix that to SwitchBB.
+          // fix phis, we used to go SwitchBB->BB, but now go SwitchBB->NewBB->BB, so we look like we arrived from NewBB. Replace the phi from the
+          // now unneeded SwitchBB to the new BB
           for (BasicBlock::iterator I = BB->begin(); I != BB->end(); ++I) {
             PHINode *Phi = dyn_cast<PHINode>(I);
             if (!Phi) break;
-            // XXX note that we add a new i64 thing here. now the phi was already an i64 operation, and is being legalized anyhow, but we only notice the original inputs!
-            //     we seem to be safe for now due to order of operation (phis show up after switches, but FIXME
-            Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
+            Phi->setIncomingBlock(Phi->getBasicBlockIndex(SwitchBB), NewBB);
           }
         }
 
-        // We used to go SwitchBB->DD, but now go SwitchBB->NewBB->DD, fix that like with BB above
+        // We used to go SwitchBB->DD, but now go SwitchBB->NewBB->DD, fix that like with BB above. However here we do not replace,
+        // as the switch BB is still possible to arrive from - we can arrive at the default if either the lower bits were wrong (we
+        // arrive from the switchBB) or from the NewBB if the high bits were wrong.
         for (BasicBlock::iterator I = DD->begin(); I != DD->end(); ++I) {
           PHINode *Phi = dyn_cast<PHINode>(I);
           if (!Phi) break;
           Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
+          // XXX note that we add a new i64 thing here. now the phi was already an i64 operation, and is being legalized anyhow, but we only notice the original inputs!
+          //     we seem to be safe for now due to order of operation (phis show up after switches, but FIXME
         }
       }
       break;
