@@ -32,6 +32,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/NaCl.h"
+#include <map>
 
 #include "llvm/Support/raw_ostream.h"
 #include <stdio.h>
@@ -570,8 +571,10 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       CopyDebug(LowSI, I);
       Split.ToFix.push_back(LowSI);
 
-      unsigned Counter = 0;
-      BasicBlock *InsertPoint = SwitchBB;
+      typedef std::pair<uint32_t, BasicBlock*> Pair;
+      typedef std::vector<Pair> Vec; // vector of pairs of high 32 bits, basic block
+      typedef std::map<uint32_t, Vec> Map; // maps low 32 bits to their Vec info
+      Map Groups;                          // (as two 64-bit values in the switch may share their lower bits)
 
       for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
         BasicBlock *BB = i.getCaseSuccessor();
@@ -581,24 +584,49 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           uint64_t Bits = CaseVal.getSingleNumber(Index).toConstantInt()->getZExtValue();
           uint32_t LowBits = (uint32_t)Bits;
           uint32_t HighBits = (uint32_t)(Bits >> 32);
+          Vec& V = Groups[LowBits];
+          V.push_back(Pair(HighBits, BB));
+        }
+      }
 
-          BasicBlock *NewBB = BasicBlock::Create(F->getContext(), "switch64_" + utostr(Counter++), F);
-          NewBB->moveAfter(InsertPoint);
-          InsertPoint = NewBB;
-          Instruction *CheckHigh = CopyDebug(new ICmpInst(*NewBB, ICmpInst::ICMP_EQ, Zero, ConstantInt::get(i32, HighBits)), I);
+      unsigned Counter = 0;
+      BasicBlock *InsertPoint = SwitchBB;
+
+      for (Map::iterator GI = Groups.begin(); GI != Groups.end(); GI++) {
+        uint32_t LowBits = GI->first;
+        Vec &V = GI->second;
+
+        BasicBlock *NewBB = BasicBlock::Create(F->getContext(), "switch64_" + utostr(Counter++), F);
+        NewBB->moveAfter(InsertPoint);
+        InsertPoint = NewBB;
+        LowSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, LowBits)), NewBB);
+
+        /*if (V.size() == 1) {
+          // just one option, create a branch
+          Instruction *CheckHigh = CopyDebug(new ICmpInst(*NewBB, ICmpInst::ICMP_EQ, Zero, ConstantInt::get(i32, V[0]->first)), I);
           Split.ToFix.push_back(CheckHigh);
-          CopyDebug(BranchInst::Create(BB, DD, CheckHigh, NewBB), I);
+          CopyDebug(BranchInst::Create(V[0]->second, DD, CheckHigh, NewBB), I);
+        } else {*/
 
-          LowSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, LowBits)), NewBB);
-          // We used to go SwitchBB->BB, but now go SwitchBB->NewBB->BB, so make phis think we arrived from SwitchBB. Ditto for DD
-          for (unsigned Which = 0; Which < 2; Which++) {
-            BasicBlock *Target = Which == 0 ? BB : DD;
-            for (BasicBlock::iterator I = Target->begin(); I != Target->end(); ++I) {
-              PHINode *Phi = dyn_cast<PHINode>(I);
-              if (!Phi) break;
-              Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
-            }
+        // multiple options, create a switch - we could also optimize and make an icmp/branch if just one, as in commented code above
+        SwitchInst *HighSI = SwitchInst::Create(Zero, DD, V.size(), NewBB); // same default destination: if lower bits do not match, go straight to default
+        Split.ToFix.push_back(HighSI);
+        for (unsigned i = 0; i < V.size(); i++) {
+          BasicBlock *BB = V[i].second;
+          HighSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, V[i].first)), BB);
+          // fix phis, we used to go SwitchBB->BB, but now go SwitchBB->NewBB->BB, so we look like we arrived from NewBB. Fix that to SwitchBB.
+          for (BasicBlock::iterator I = BB->begin(); I != BB->end(); ++I) {
+            PHINode *Phi = dyn_cast<PHINode>(I);
+            if (!Phi) break;
+            Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
           }
+        }
+
+        // We used to go SwitchBB->DD, but now go SwitchBB->NewBB->DD, fix that like with BB above
+        for (BasicBlock::iterator I = DD->begin(); I != DD->end(); ++I) {
+          PHINode *Phi = dyn_cast<PHINode>(I);
+          if (!Phi) break;
+          Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
         }
       }
       break;
@@ -792,7 +820,13 @@ void ExpandI64::finalizeInst(Instruction *I) {
       NewSI->setCondition(LH.Low);
       unsigned Num = Split.ToFix.size();
       for (unsigned i = 1; i < Num; i++) {
-        Split.ToFix[i]->setOperand(0, LH.High);
+        Instruction *Curr = Split.ToFix[i];
+        if (SwitchInst *SI = dyn_cast<SwitchInst>(Curr)) {
+          SI->setCondition(LH.High);
+        } else {
+          assert(0);
+          Split.ToFix[i]->setOperand(0, LH.High);
+        }
       }
       break;
     }
