@@ -611,17 +611,21 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
 }
 
 LowHighPair ExpandI64::getLowHigh(Value *V) {
+  Type *i32 = Type::getInt32Ty(V->getContext());
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
     uint64_t C = CI->getZExtValue();
-    Type *i32 = Type::getInt32Ty(V->getContext());
     LowHighPair LowHigh;
     LowHigh.Low = ConstantInt::get(i32, (uint32_t)C);
     LowHigh.High = ConstantInt::get(i32, (uint32_t)(C >> 32));
-    assert(LowHigh.Low && LowHigh.High);
     return LowHigh;
   } else if (Instruction *I = dyn_cast<Instruction>(V)) {
     assert(Splits.find(I) != Splits.end());
     return Splits[I].LowHigh;
+  } else if (isa<UndefValue>(V)) {
+    LowHighPair LowHigh;
+    LowHigh.Low = ConstantInt::get(i32, 0);
+    LowHigh.High = ConstantInt::get(i32, 0);
+    return LowHigh;
   } else {
     assert(SplitArgs.find(V) != SplitArgs.end());
     return SplitArgs[V];
