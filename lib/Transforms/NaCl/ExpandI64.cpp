@@ -829,7 +829,7 @@ void ExpandI64::ensureFuncs() {
   Shl = Function::Create(FourFunc, GlobalValue::ExternalLinkage,
                           "bitshift64Shl", TheModule);
 
-  if (!TheModule->getFunction("getHigh32")) {
+  if (!(GetHigh = TheModule->getFunction("getHigh32"))) {
     SmallVector<Type*, 0> GetHighArgTypes;
     FunctionType *GetHighFunc = FunctionType::get(i32, GetHighArgTypes, false);
     GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
@@ -906,7 +906,6 @@ bool ExpandI64::runOnModule(Module &M) {
           Type *T = i == -1 ? I->getType() : I->getOperand(i)->getType();
           if (isIllegal(T)) {
             Changed = true;
-            //dump("split"); dumpIR(I);
             splitInst(I, DL);
             break;
           }
