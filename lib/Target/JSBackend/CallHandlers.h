@@ -110,7 +110,7 @@ DEF_CALL_HANDLER(emscripten_preinvoke, {
   return "__THREW__ = 0";
 })
 DEF_CALL_HANDLER(emscripten_postinvoke, {
-  assert(InvokeState == 2);
+  assert(InvokeState == 1 || InvokeState == 2); // normally 2, but can be 1 if the call in between was optimized out
   InvokeState = 0;
   return getAssign(getJSName(CI), CI->getType()) + "__THREW__; __THREW__ = 0";
 })
