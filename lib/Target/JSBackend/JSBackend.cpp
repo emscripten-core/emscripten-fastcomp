@@ -81,6 +81,7 @@ namespace {
   typedef std::vector<std::string> FunctionTable;
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
   typedef std::map<std::string, std::string> StringMap;
+  typedef std::map<std::string, unsigned> NameIntMap;
 
   /// JSWriter - This class is the main chunk of code that converts an LLVM
   /// module to JavaScript.
@@ -99,6 +100,7 @@ namespace {
     NameSet Declares; // funcs
     StringMap Redirects; // library function redirects actually used, needed for wrapper funcs in tables
     std::string PostSets;
+    NameIntMap NamedGlobals; // globals that we export as metadata to JS, so it can access them by name
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
     std::vector<std::string> GlobalInitializers;
@@ -161,18 +163,42 @@ namespace {
       if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
       Address a = GlobalAddresses[s];
       assert(a.second == 64); // FIXME when we use optimal alignments
+      unsigned Ret;
       switch (a.second) {
         case 64:
           assert((a.first + GLOBAL_BASE)%8 == 0);
-          return a.first + GLOBAL_BASE;
+          Ret = a.first + GLOBAL_BASE;
+          break;
         case 32:
           assert((a.first + GLOBAL_BASE)%4 == 0);
-          return a.first + GLOBAL_BASE + GlobalData64.size();
+          Ret = a.first + GLOBAL_BASE + GlobalData64.size();
+          break;
         case 8:
-          return a.first + GLOBAL_BASE + GlobalData64.size() + GlobalData32.size();
+          Ret = a.first + GLOBAL_BASE + GlobalData64.size() + GlobalData32.size();
+          break;
         default:
           dumpfailv("bad global address %s %d %d\n", s.c_str(), a.first, a.second);
       }
+      if (s == "_ZTVN10__cxxabiv119__pointer_type_infoE" ||
+          s == "_ZTVN10__cxxabiv117__class_type_infoE" ||
+          s == "_ZTVN10__cxxabiv120__si_class_type_infoE" ||
+          s == "__ZTIi" ||
+          s == "__ZTIj" ||
+          s == "__ZTIl" ||
+          s == "__ZTIm" ||
+          s == "__ZTIx" ||
+          s == "__ZTIy" ||
+          s == "__ZTIf" ||
+          s == "__ZTId" ||
+          s == "__ZTIe" ||
+          s == "__ZTIc" ||
+          s == "__ZTIa" ||
+          s == "__ZTIh" ||
+          s == "__ZTIs" ||
+          s == "__ZTIt") {
+        NamedGlobals[s] = Ret;
+      }
+      return Ret;
     }
     // returns the internal offset inside the proper block: GlobalData8, 32, 64
     unsigned getRelativeGlobalAddress(const std::string &s) {
@@ -1635,6 +1661,19 @@ void JSWriter::printModuleBody() {
 
   Out << "\"simd\": ";
   Out << (UsesSIMD ? "1" : "0");
+  Out << ",";
+
+  Out << "\"namedGlobals\": {";
+  first = true;
+  for (NameIntMap::iterator I = NamedGlobals.begin(), E = NamedGlobals.end(); I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"_" << I->first << "\": \"" + utostr(I->second) + "\"";
+  }
+  Out << "}";
 
   Out << "\n}\n";
 }
