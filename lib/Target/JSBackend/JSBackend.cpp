@@ -1317,10 +1317,8 @@ static const SwitchInst *considerSwitch(const Instruction *I) {
 void JSWriter::printFunctionBody(const Function *F) {
   assert(!F->isDeclaration());
 
-  // Prepare relooper TODO: resize buffer as needed
-  #define RELOOPER_BUFFER 10*1024*1024
-  static char *buffer = new char[RELOOPER_BUFFER];
-  Relooper::SetOutputBuffer(buffer, RELOOPER_BUFFER);
+  // Prepare relooper
+  Relooper::MakeOutputBuffer(1024*1024);
   Relooper R;
   //if (!canReloop(F)) R.SetEmulate(true);
   R.SetAsmJSMode(1);
@@ -1454,6 +1452,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   Out << " " + getAssign("sp", Type::getInt32Ty(F->getContext())) + "STACKTOP;";
 
   // Emit (relooped) code
+  char *buffer = Relooper::GetOutputBuffer();
   nl(Out) << buffer;
 
   // Ensure a final return if necessary
