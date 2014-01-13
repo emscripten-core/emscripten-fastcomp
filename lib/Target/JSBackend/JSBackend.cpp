@@ -182,20 +182,20 @@ namespace {
       if (s == "_ZTVN10__cxxabiv119__pointer_type_infoE" ||
           s == "_ZTVN10__cxxabiv117__class_type_infoE" ||
           s == "_ZTVN10__cxxabiv120__si_class_type_infoE" ||
-          s == "__ZTIi" ||
-          s == "__ZTIj" ||
-          s == "__ZTIl" ||
-          s == "__ZTIm" ||
-          s == "__ZTIx" ||
-          s == "__ZTIy" ||
-          s == "__ZTIf" ||
-          s == "__ZTId" ||
-          s == "__ZTIe" ||
-          s == "__ZTIc" ||
-          s == "__ZTIa" ||
-          s == "__ZTIh" ||
-          s == "__ZTIs" ||
-          s == "__ZTIt") {
+          s == "_ZTIi" ||
+          s == "_ZTIj" ||
+          s == "_ZTIl" ||
+          s == "_ZTIm" ||
+          s == "_ZTIx" ||
+          s == "_ZTIy" ||
+          s == "_ZTIf" ||
+          s == "_ZTId" ||
+          s == "_ZTIe" ||
+          s == "_ZTIc" ||
+          s == "_ZTIa" ||
+          s == "_ZTIh" ||
+          s == "_ZTIs" ||
+          s == "_ZTIt") {
         NamedGlobals[s] = Ret;
       }
       return Ret;
