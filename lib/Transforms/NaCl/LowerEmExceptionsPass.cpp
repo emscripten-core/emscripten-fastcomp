@@ -168,6 +168,14 @@ bool LowerEmExceptions::runOnModule(Module &M) {
       }
     }
 
+    // Look for orphan landingpads, can occur in blocks with no predecesors
+    for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
+      Instruction *I = BB->getFirstNonPHI();
+      if (LandingPadInst *LP = dyn_cast<LandingPadInst>(I)) {
+        LandingPads.insert(LP);
+      }
+    }
+
     // Handle all the landingpad for this function together, as multiple invokes may share a single lp
     for (std::set<LandingPadInst*>::iterator I = LandingPads.begin(); I != LandingPads.end(); I++) {
       // Replace the landingpad with a landingpad call to get the low part, and a getHigh for the high
