@@ -566,6 +566,13 @@ define void @fastcc_call() {
 ; CHECK: define void @fastcc_call() {
 ; CHECK-NEXT: call fastcc void @fastcc_func()
 
+define void @tail_call() {
+  tail call void @tail_call()
+  ret void
+}
+; CHECK: define void @tail_call()
+; CHECK-NEXT: tail call void @tail_call()
+
 
 ; Just check that the pass does not crash on getelementptr.  (The pass
 ; should not depend unnecessarily on ExpandGetElementPtr having been

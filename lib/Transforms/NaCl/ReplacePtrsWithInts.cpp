@@ -445,6 +445,7 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
       NewCall->setAttributes(RemovePointerAttrs(Call->getContext(),
                                                 Call->getAttributes()));
       NewCall->setCallingConv(Call->getCallingConv());
+      NewCall->setTailCall(Call->isTailCall());
       NewCall->takeName(Call);
       FC->recordConvertedAndErase(Call, NewCall);
     }
