@@ -192,8 +192,12 @@ public:
   /// llvm/Support/Casting.h). Only defined for concrete classes.
   enum NaClBitcodeDistKind {
     RD_Dist,                 // class NaClBitcodeDist.
+      RD_BlockDist,          // class NaClBitcodeBlockDist.
+      RD_BlockDistLast,
       RD_CodeDist,           // class NaClBitcodeCodeDist.
       RD_CodeDist_Last,
+      RD_SubblockDist,       // class NaClBlockSubblockDist.
+      RD_SubblockDistLast,
     RD_Dist_Last
   };
 
@@ -284,7 +288,7 @@ public:
   /// Adds the BlockID of the given bitcode block to the distribution
   /// map, if applicable (based on the value of method UseBlockID).
   /// Note: Requires that GetStorageKind() == BlockStorage.
-  void AddBlock(const NaClBitcodeBlock &Block);
+  virtual void AddBlock(const NaClBitcodeBlock &Block);
 
   /// Builds the distribution associated with the distribution map.
   /// Warning: The distribution is cached, and hence, only valid while
@@ -350,6 +354,12 @@ public:
           RDE_CodeDist_Last,
         RDE_BitsAndAbbrevsDist_Last,
       RDE_BitsDist_Last,
+      RDE_BlockDist,             // class NaClBitcodeBlockDistElement.
+        RDE_PNaClAnalBlockDist,  // class PNaClAnalyzerBlockDistElement.
+        RDE_PNaClAnalBlockDist_Last,
+      RDE_BlockDistLast,
+      RDE_SubblockDist,          // class NaClBitcodeSubblockDistElement
+      RDE_SubblockDistLast,
     RDE_Dist_Last
   };
 

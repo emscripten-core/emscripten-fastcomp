@@ -14,8 +14,10 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeAnalyzer.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeBlockDist.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeCodeDist.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeSubblockDist.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -40,77 +42,6 @@ static bool Error(const llvm::Twine &Err) {
 
 namespace llvm {
 
-/// GetBlockName - Return a symbolic block name if known, otherwise return
-/// null.
-static const char *GetBlockName(unsigned BlockID) {
-  // Standard blocks for all bitcode files.
-  if (BlockID < naclbitc::FIRST_APPLICATION_BLOCKID) {
-    if (BlockID == naclbitc::BLOCKINFO_BLOCK_ID)
-      return "BLOCKINFO_BLOCK";
-    return 0;
-  }
-
-  switch (BlockID) {
-  default: return 0;
-  case naclbitc::MODULE_BLOCK_ID:          return "MODULE_BLOCK";
-  case naclbitc::PARAMATTR_BLOCK_ID:       return "PARAMATTR_BLOCK";
-  case naclbitc::PARAMATTR_GROUP_BLOCK_ID: return "PARAMATTR_GROUP_BLOCK_ID";
-  case naclbitc::TYPE_BLOCK_ID_NEW:        return "TYPE_BLOCK_ID";
-  case naclbitc::CONSTANTS_BLOCK_ID:       return "CONSTANTS_BLOCK";
-  case naclbitc::FUNCTION_BLOCK_ID:        return "FUNCTION_BLOCK";
-  case naclbitc::VALUE_SYMTAB_BLOCK_ID:    return "VALUE_SYMTAB";
-  case naclbitc::METADATA_BLOCK_ID:        return "METADATA_BLOCK";
-  case naclbitc::METADATA_ATTACHMENT_ID:   return "METADATA_ATTACHMENT_BLOCK";
-  case naclbitc::USELIST_BLOCK_ID:         return "USELIST_BLOCK_ID";
-  case naclbitc::GLOBALVAR_BLOCK_ID:       return "GLOBALVAR_BLOCK";
-  }
-}
-
-static std::string GetBlockStrName(unsigned BlockID) {
-  if (const char *BlockName = GetBlockName(BlockID)) {
-    return BlockName;
-  }
-
-  std::string Str;
-  raw_string_ostream StrStrm(Str);
-  StrStrm << "UnknownBlock" << BlockID;
-  return StrStrm.str();
-}
-
-struct PerBlockIDStats {
-private:
-  PerBlockIDStats(const PerBlockIDStats&) LLVM_DELETED_FUNCTION;
-  void operator=(const PerBlockIDStats&) LLVM_DELETED_FUNCTION;
-
-public:
-  /// NumInstances - This the number of times this block ID has been
-  /// seen.
-  unsigned NumInstances;
-
-  /// NumBits - The total size in bits of all of these blocks.
-  uint64_t NumBits;
-
-  /// NumSubBlocks - The total number of blocks these blocks contain.
-  unsigned NumSubBlocks;
-
-  /// NumAbbrevs - The total number of abbreviations.
-  unsigned NumAbbrevs;
-
-  /// NumRecords - The total number of records these blocks contain,
-  /// and the number that are abbreviated.
-  unsigned NumRecords, NumAbbreviatedRecords;
-
-  /// RecordCodeDist - Distribution of each record code for this
-  /// block.
-  NaClBitcodeCodeDist RecordCodeDist;
-
-  explicit PerBlockIDStats(unsigned BlockID)
-    : NumInstances(0), NumBits(0),
-      NumSubBlocks(0), NumAbbrevs(0), NumRecords(0), NumAbbreviatedRecords(0),
-      RecordCodeDist(BlockID)
-  {}
-};
-
 // Parses all bitcode blocks, and collects distribution of records in
 // each block.  Also dumps bitcode structure if specified (via global
 // variables).
@@ -118,11 +49,14 @@ class PNaClBitcodeAnalyzerParser : public NaClBitcodeParser {
 public:
   PNaClBitcodeAnalyzerParser(NaClBitstreamCursor &Cursor,
                              raw_ostream &OS,
-                             const AnalysisDumpOptions &DumpOptions)
+                             const AnalysisDumpOptions &DumpOptions,
+                             NaClBitcodeDist *Dist)
     : NaClBitcodeParser(Cursor),
       IndentLevel(0),
       OS(OS),
-      DumpOptions(DumpOptions) {
+      DumpOptions(DumpOptions),
+      Dist(Dist)
+  {
   }
 
   virtual ~PNaClBitcodeAnalyzerParser() {}
@@ -153,8 +87,8 @@ public:
   raw_ostream &OS;
   // The dump options to use.
   const AnalysisDumpOptions &DumpOptions;
-  // The statistics collected for each block ID.
-  std::map<unsigned, PerBlockIDStats*> BlockIDStats;
+  // The bitcode distribution map (if defined) to update.
+  NaClBitcodeDist *Dist;
 
 private:
   // The set of cached, indentation strings. Used for indenting
@@ -196,10 +130,7 @@ public:
   }
 
   virtual ~PNaClBitcodeAnalyzerBlockParser() {
-    // Before exitting, increment subblock count for calling block.
-    if (NaClBitcodeParser *Parser = GetEnclosingParser()) {
-      ++Context->BlockIDStats[Parser->GetBlockID()]->NumSubBlocks;
-    }
+    if (Context->Dist) Context->Dist->AddBlock(GetBlock());
   }
 
   // *****************************************************
@@ -322,12 +253,6 @@ protected:
       Indent = Parser->GetIndentation();
     }
     NumWords = 0;
-    BlockStats = Context->BlockIDStats[BlockID];
-    if (BlockStats == 0) {
-      BlockStats = new PerBlockIDStats(BlockID);
-      Context->BlockIDStats[BlockID] = BlockStats;
-    }
-    BlockStats->NumInstances++;
   }
 
   // Increment the indentation level for dumping.
@@ -368,7 +293,6 @@ protected:
   // Called when the corresponding EndBlock of the block being parsed
   // is found.
   virtual void ExitBlock() {
-    BlockStats->NumBits += GetBlockLocalNumBits();
     if (Context->DumpOptions.DumpRecords) {
       DecrementIndent();
       EmitBeginEndTag();
@@ -379,7 +303,6 @@ protected:
 
   // Called after a BlockInfo block is parsed.
   virtual void ExitBlockInfo() {
-    BlockStats->NumBits += GetBlockLocalNumBits();
     if (Context->DumpOptions.DumpRecords) {
       EmitBeginStartTag();
       EmitEnterBlockTagName(naclbitc::BLOCKINFO_BLOCK_ID);
@@ -408,8 +331,7 @@ protected:
   // Process the last read record in the block.
   virtual void ProcessRecord() {
     // Increment the # occurrences of this code.
-    ++BlockStats->NumRecords;
-    BlockStats->RecordCodeDist.AddRecord(Record);
+    if (Context->Dist) Context->Dist->AddRecord(Record);
 
     if (Context->DumpOptions.DumpRecords) {
       EmitBeginStartTag();
@@ -433,8 +355,6 @@ private:
   /// Defines the number of (32-bit) words the block occupies in
   /// the bitstream.
   unsigned NumWords;
-  /// Holds the distribution of records within the block.
-  PerBlockIDStats *BlockStats;
   /// Refers to global parsing context.
   PNaClBitcodeAnalyzerParser *Context;
 
@@ -479,7 +399,8 @@ protected:
         EmitBeginStartTag();
         EmitCodeTagName(naclbitc::BLOCKINFO_CODE_SETBID,
                         naclbitc::BLOCKINFO_BLOCK_ID);
-        EmitStringAttribute("block", GetBlockStrName(Info->BlockID));
+        EmitStringAttribute("block",
+                            NaClBitcodeBlockDist::GetName(Info->BlockID));
         EmitEndTag();
         for (std::vector<NaClBitCodeAbbrev*>::const_iterator
                  AbbrevIter = Info->Abbrevs.begin(),
@@ -507,14 +428,14 @@ protected:
 
   /// Emits the symbolic name of the block as the XML tag name.
   void EmitEnterBlockTagName(unsigned BlockID) {
-    EmitTagName(GetBlockStrName(BlockID));
+    EmitTagName(NaClBitcodeBlockDist::GetName(BlockID));
     if (Context->DumpOptions.DumpDetails)
       EmitStringAttribute("abbrev", "ENTER_SUBBLOCK");
   }
 
   /// Emits the symbolic name of the block as the the XML tag name.
   void EmitExitBlockTagName(unsigned BlockID) {
-    EmitTagName(GetBlockStrName(BlockID));
+    EmitTagName(NaClBitcodeBlockDist::GetName(BlockID));
     if (Context->DumpOptions.DumpDetails)
       EmitStringAttribute("abbrev", "END_BLOCK");
   }
@@ -534,7 +455,8 @@ static void PrintSize(uint64_t Bits, raw_ostream &OS) {
 }
 
 int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
-                           const AnalysisDumpOptions &DumpOptions) {
+                           const AnalysisDumpOptions &DumpOptions,
+                           NaClBitcodeDist *Dist) {
   DEBUG(dbgs() << "-> AnalyzeBitcodeInBuffer\n");
 
   if (Buf.getBufferSize() & 3)
@@ -564,7 +486,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
   }
   if (Header.NumberFields()) OS << "\n";
 
-  PNaClBitcodeAnalyzerParser Parser(Stream, OS, DumpOptions);
+  PNaClBitcodeAnalyzerParser Parser(Stream, OS, DumpOptions, Dist);
   // Parse the top-level structure.  We only allow blocks at the top-level.
   while (!Stream.AtEndOfStream()) {
     ++NumTopBlocks;
@@ -575,63 +497,21 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
 
   uint64_t BufferSizeBits = (EndBufPtr-BufPtr)*CHAR_BIT;
   // Print a summary
-  OS << "  Total size: ";
+  OS << "Total size: ";
   PrintSize(BufferSizeBits, OS);
   OS << "\n";
-  OS << "  # Toplevel Blocks: " << NumTopBlocks << "\n";
+  OS << "# Toplevel Blocks: " << NumTopBlocks << "\n";
   OS << "\n";
 
-  // Emit per-block stats.
-  OS << "Per-block Summary:\n";
-  for (std::map<unsigned, PerBlockIDStats*>::iterator
-           I = Parser.BlockIDStats.begin(),
-           E = Parser.BlockIDStats.end();
-       I != E; ++I) {
-    OS << "  Block ID #" << I->first;
-    if (const char *BlockName = GetBlockName(I->first))
-      OS << " (" << BlockName << ")";
-    OS << ":\n";
+  if (Parser.Dist) Parser.Dist->Print(OS);
 
-    const PerBlockIDStats &Stats = *I->second;
-    OS << "      Num Instances: " << Stats.NumInstances << "\n";
-    OS << "         Total Size: ";
-    PrintSize(Stats.NumBits, OS);
-    OS << "\n";
-    double pct = (Stats.NumBits * 100.0) / BufferSizeBits;
-    OS << "    Percent of file: " << format("%2.4f%%", pct) << "\n";
-    if (Stats.NumInstances > 1) {
-      OS << "       Average Size: ";
-      PrintSize(Stats.NumBits/(double)Stats.NumInstances, OS);
-      OS << "\n";
-      OS << "  Tot/Avg SubBlocks: " << Stats.NumSubBlocks << "/"
-         << Stats.NumSubBlocks/(double)Stats.NumInstances << "\n";
-      OS << "    Tot/Avg Abbrevs: " << Stats.NumAbbrevs << "/"
-         << Stats.NumAbbrevs/(double)Stats.NumInstances << "\n";
-      OS << "    Tot/Avg Records: " << Stats.NumRecords << "/"
-         << Stats.NumRecords/(double)Stats.NumInstances << "\n";
-    } else {
-      OS << "      Num SubBlocks: " << Stats.NumSubBlocks << "\n";
-      OS << "        Num Abbrevs: " << Stats.NumAbbrevs << "\n";
-      OS << "        Num Records: " << Stats.NumRecords << "\n";
-    }
-    if (Stats.NumRecords) {
-      double pct = (Stats.NumAbbreviatedRecords * 100.0) / Stats.NumRecords;
-      OS << "    Percent Abbrevs: " << format("%2.4f%%", pct) << "\n";
-    }
-    OS << "\n";
-
-    // Print a histogram of the codes we see.
-    if (!Stats.RecordCodeDist.empty()) {
-      Stats.RecordCodeDist.Print(OS, "    ");
-      OS << "\n";
-    }
-  }
   DEBUG(dbgs() << "<- AnalyzeBitcode\n");
   return 0;
 }
 
 int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
-                         const AnalysisDumpOptions &DumpOptions) {
+                         const AnalysisDumpOptions &DumpOptions,
+                         NaClBitcodeDist *Dist) {
   // Read the input file.
   OwningPtr<MemoryBuffer> MemBuf;
 
@@ -640,7 +520,7 @@ int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
     return Error(Twine("Error reading '") + InputFilename + "': " +
                  ec.message());
 
-  return AnalyzeBitcodeInBuffer(*MemBuf, OS, DumpOptions);
+  return AnalyzeBitcodeInBuffer(*MemBuf, OS, DumpOptions, Dist);
 }
 
 } // namespace llvm

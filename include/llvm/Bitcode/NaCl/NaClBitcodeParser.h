@@ -171,13 +171,19 @@ public:
   /// Create block data for block BlockID, using the input cursor.
   NaClBitcodeBlock(unsigned BlockID, NaClBitstreamCursor &Cursor)
       : NaClBitcodeData(Cursor),
-        BlockID(BlockID)
+        BlockID(BlockID),
+        EnclosingBlock(0)
   {
     LocalStartBit = GetStartBit();
   }
 
   /// Print the contents out to the given stream.
   void Print(raw_ostream& os) const;
+
+  /// Returns pointer to the enclosing block.
+  const NaClBitcodeBlock *GetEnclosingBlock() const {
+    return EnclosingBlock;
+  }
 
   /// Returns the block ID of the block.
   unsigned GetBlockID() const {
@@ -193,6 +199,8 @@ public:
 protected:
   // The block ID associated with this record.
   unsigned BlockID;
+  // The enclosing block, if defined.
+  const NaClBitcodeBlock *EnclosingBlock;
   // Start bit for the block, updated to skip nested blocks.
   uint64_t LocalStartBit;
 
@@ -217,6 +225,11 @@ public:
 
   /// Print the contents out to the given stream.
   void Print(raw_ostream& os) const;
+
+  /// The block the record appears in.
+  const NaClBitcodeBlock &GetBlock() const {
+    return Block;
+  }
 
   /// Returns the block ID associated with the record.
   unsigned GetBlockID() const {

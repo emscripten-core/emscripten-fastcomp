@@ -204,11 +204,6 @@ PrintRowValue(raw_ostream &Stream,
                   cast<NaClBitcodeCodeDist>(Distribution)->GetBlockID());
 }
 
-bool NaClBitcodeCodeDist::HasKnownCodeName(unsigned CodeID,
-                                           unsigned BlockID) {
-  return ::GetCodeName(CodeID, BlockID) != 0;
-}
-
 NaClBitcodeCodeDistElement NaClBitcodeCodeDist::DefaultSentinal;
 
 NaClBitcodeCodeDist::~NaClBitcodeCodeDist() {}

@@ -26,6 +26,7 @@ NaClBitcodeBlock::NaClBitcodeBlock(unsigned BlockID,
                                    const NaClBitcodeRecord &Record)
     : NaClBitcodeData(Record),
       BlockID(BlockID),
+      EnclosingBlock(&Record.GetBlock()),
       LocalStartBit(Record.GetStartBit())
 {}
 

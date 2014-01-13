@@ -1,6 +1,7 @@
 ; Simple test to show that we don't break distribution counts.
 
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-bcanalyzer | FileCheck %s
+; RUN: llvm-as < %s | pnacl-freeze | pnacl-bcanalyzer --order-blocks-by-id \
+; RUN:              | FileCheck %s
 
 @bytes7 = internal global [7 x i8] c"abcdefg"
 
@@ -296,66 +297,98 @@ end:                                              ; preds = %l3, %l2, %l1, %2
   ret void
 }
 
-; CHECK:       Block ID #0 (BLOCKINFO_BLOCK):
-; CHECK-NEXT:      Num Instances: 1
 
-; CHECK:       Block ID #8 (MODULE_BLOCK):
-; CHECK-NEXT:      Num Instances: 1
+; CHECK:      # Toplevel Blocks: 1
 
-; CHECK:         Record Histogram: (2 elements):
+; CHECK:      Block Histogram (8 elements):
 
-; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
-; CHECK-NEXT:         20  95.24 {{ *[^ ]* *[^ ]* *[^ ]* *}}  FUNCTION
-; CHECK-NEXT:          1   4.76 {{ *[^ ]* *[^ ]* *[^ ]* *}}  VERSION
+; CHECK:        %File   Count %Count    # Bits    Bits/Elmt Block
+; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} BLOCKINFO_BLOCK
+; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} MODULE_BLOCK
 
-; CHECK:       Block ID #11 (CONSTANTS_BLOCK):
-; CHECK-NEXT:      Num Instances: 17
+; CHECK:          Subblocks (5 elements):
 
-; CHECK:         Record Histogram: (2 elements):
+; CHECK:             Count %Count Subblock
+; CHECK-NEXT:           19  82.61 FUNCTION_BLOCK
+; CHECK-NEXT:            1   4.35 GLOBALVAR_BLOCK
+; CHECK-NEXT:            1   4.35 TYPE_BLOCK_ID
+; CHECK-NEXT:            1   4.35 VALUE_SYMTAB
+; CHECK-NEXT:            1   4.35 BLOCKINFO_BLOCK
 
-; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
-; CHECK-NEXT:         26  59.09 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INTEGER
-; CHECK-NEXT:         18  40.91 {{ *[^ ]* *[^ ]* *[^ ]* *}}  SETTYPE
+; CHECK:          Record Histogram: (2 elements):
 
-; CHECK:       Block ID #12 (FUNCTION_BLOCK):
-; CHECK-NEXT:      Num Instances: 19
+; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
+; CHECK-NEXT:           20  95.24    {{.*}}       {{.*}}         FUNCTION
+; CHECK-NEXT:            1   4.76    {{.*}}       {{.*}}         VERSION
 
-; CHECK:         Record Histogram: (12 elements):
+; CHECK:        Block Histogram (continued)
+; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
+; CHECK-NEXT:  {{.*}}      17  36.96    {{.*}}       {{.*}} CONSTANTS_BLOCK
 
-; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
-; CHECK-NEXT:         22  15.83 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_RET
-; CHECK-NEXT:         22  15.83 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_BINOP
-; CHECK-NEXT:         20  14.39 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_ALLOCA
-; CHECK-NEXT:         19  13.67 {{ *[^ ]* *[^ ]* *[^ ]* *}}  DECLAREBLOCKS
-; CHECK-NEXT:         17  12.23 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_BR
-; CHECK-NEXT:         16  11.51 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_STORE
-; CHECK-NEXT:          6   4.32 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_LOAD
-; CHECK-NEXT:          6   4.32 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_PHI
-; CHECK-NEXT:          5   3.60 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_VSELECT
-; CHECK-NEXT:          4   2.88 {{ *[^ ]* *[^ ]* *[^ ]* *}}  FORWARDTYPEREF
-; CHECK-NEXT:          1   0.72 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_CALL
-; CHECK-NEXT:          1   0.72 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INST_SWITCH
+; CHECK:          Record Histogram: (2 elements):
 
-; CHECK:       Block ID #17 (TYPE_BLOCK_ID):
-; CHECK-NEXT:      Num Instances: 1
+; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
+; CHECK-NEXT:           26  59.09    {{.*}}       {{.*}}  {{.*}} INTEGER
+; CHECK-NEXT:           18  40.91    {{.*}}       {{.*}}  {{.*}} SETTYPE
 
-; CHECK:        Record Histogram: (4 elements):
+; CHECK:        Block Histogram (continued)
+; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
+; CHECK-NEXT:  {{.*}}      19  41.30    {{.*}}       {{.*}} FUNCTION_BLOCK
 
-; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
-; CHECK-NEXT:          5  50.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  FUNCTION
-; CHECK-NEXT:          3  30.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  INTEGER
-; CHECK-NEXT:          1  10.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  VOID
-; CHECK-NEXT:          1  10.00 {{ *[^ ]* *[^ ]* *[^ ]* *}}  NUMENTRY
+; CHECK:          Subblocks (2 elements):
 
-; CHECK:       Block ID #19 (GLOBALVAR_BLOCK):
-; CHECK-NEXT:      Num Instances: 1
+; CHECK:             Count %Count Subblock
+; CHECK-NEXT:           17  77.27 CONSTANTS_BLOCK
+; CHECK-NEXT:            5  22.73 VALUE_SYMTAB
 
-; CHECK:         Record Histogram: (6 elements):
+; CHECK:          Record Histogram: (12 elements):
 
-; CHECK:           Count %Count    # Bits Bits/Elmt   % Abv  Record Kind
-; CHECK-NEXT:         16  45.71 {{ *[^ ]* *[^ ]* *[^ ]* *}}  VAR
-; CHECK-NEXT:         12  34.29 {{ *[^ ]* *[^ ]* *[^ ]* *}}  RELOC
-; CHECK-NEXT:          4  11.43 {{ *[^ ]* *[^ ]* *[^ ]* *}}  DATA
-; CHECK-NEXT:          1   2.86 {{ *[^ ]* *[^ ]* *[^ ]* *}}  COUNT
-; CHECK-NEXT:          1   2.86 {{ *[^ ]* *[^ ]* *[^ ]* *}}  ZEROFILL
-; CHECK-NEXT:          1   2.86 {{ *[^ ]* *[^ ]* *[^ ]* *}}  COMPOUND
+; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
+; CHECK-NEXT:           22  15.83    {{.*}}       {{.*}}  {{.*}} INST_RET
+; CHECK-NEXT:           22  15.83    {{.*}}       {{.*}}  {{.*}} INST_BINOP
+; CHECK-NEXT:           20  14.39    {{.*}}       {{.*}}         INST_ALLOCA
+; CHECK-NEXT:           19  13.67    {{.*}}       {{.*}}         DECLAREBLOCKS
+; CHECK-NEXT:           17  12.23    {{.*}}       {{.*}}         INST_BR
+; CHECK-NEXT:           16  11.51    {{.*}}       {{.*}}  {{.*}} INST_STORE
+; CHECK-NEXT:            6   4.32    {{.*}}       {{.*}}  {{.*}} INST_LOAD
+; CHECK-NEXT:            6   4.32    {{.*}}       {{.*}}         INST_PHI
+; CHECK-NEXT:            5   3.60    {{.*}}       {{.*}}         INST_VSELECT
+; CHECK-NEXT:            4   2.88    {{.*}}       {{.*}}  {{.*}} FORWARDTYPEREF
+; CHECK-NEXT:            1   0.72    {{.*}}       {{.*}}         INST_CALL
+; CHECK-NEXT:            1   0.72    {{.*}}       {{.*}}         INST_SWITCH
+
+; CHECK:        Block Histogram (continued)
+; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
+; CHECK-NEXT:  {{.*}}       6  13.04    {{.*}}       {{.*}} VALUE_SYMTAB
+
+; CHECK:          Record Histogram: (2 elements):
+
+; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
+; CHECK-NEXT:           36  64.29    {{.*}}       {{.*}}  {{.*}} ENTRY
+; CHECK-NEXT:           20  35.71    {{.*}}       {{.*}}  {{.*}} BBENTRY
+
+; CHECK:        Block Histogram (continued)
+; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
+; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} TYPE_BLOCK_ID
+
+; CHECK:          Record Histogram: (4 elements):
+
+; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
+; CHECK-NEXT:            5  50.00    {{.*}}       {{.*}}  {{.*}} FUNCTION
+; CHECK-NEXT:            3  30.00    {{.*}}       {{.*}}         INTEGER
+; CHECK-NEXT:            1  10.00    {{.*}}       {{.*}}         VOID
+; CHECK-NEXT:            1  10.00    {{.*}}       {{.*}}         NUMENTRY
+
+; CHECK:        Block Histogram (continued)
+; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
+; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} GLOBALVAR_BLOCK
+
+; CHECK:          Record Histogram: (6 elements):
+
+; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
+; CHECK-NEXT:           16  45.71    {{.*}}       {{.*}}  {{.*}} VAR
+; CHECK-NEXT:           12  34.29    {{.*}}       {{.*}}  {{.*}} RELOC
+; CHECK-NEXT:            4  11.43    {{.*}}       {{.*}}  {{.*}} DATA
+; CHECK-NEXT:            1   2.86    {{.*}}       {{.*}}         COUNT
+; CHECK-NEXT:            1   2.86    {{.*}}       {{.*}}  {{.*}} ZEROFILL
+; CHECK-NEXT:            1   2.86    {{.*}}       {{.*}}  {{.*}} COMPOUND

@@ -1,4 +1,4 @@
-//===-- NaClBitcodeCodeDist.cpp -------------------------------------------===//
+//===-- NaClBitcodeCodeDist.h ---------------------------------------------===//
 //      Defines distribution maps for various values in bitcode records.
 //
 //                     The LLVM Compiler Infrastructure
@@ -12,8 +12,8 @@
 // appearing in bitcode records (instances of class NaClBitcodeRecord
 // in NaClBitcodeParser.h).
 
-#ifndef LLVM_BITCODE_NACL_NACLBITCODECODEDISTS_H
-#define LLVM_BITCODE_NACL_NACLBITCODECODEDISTS_H
+#ifndef LLVM_BITCODE_NACL_NACLBITCODECODEDIST_H
+#define LLVM_BITCODE_NACL_NACLBITCODECODEDIST_H
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeBitsAndAbbrevsDist.h"
 
@@ -91,10 +91,6 @@ public:
   unsigned GetBlockID() const {
     return BlockID;
   }
-
-  // Returns true if there is a known printable name for record code
-  // CodeID in block associated with BlockID.
-  static bool HasKnownCodeName(unsigned CodeID, unsigned BlockID);
 
   // Returns the printable name for record code CodeID in blocks
   // associated with BlockID.

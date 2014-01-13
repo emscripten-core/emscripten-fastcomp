@@ -49,7 +49,7 @@ void NaClBitcodeDist::AddBlock(const NaClBitcodeBlock &Block) {
 }
 
 void NaClBitcodeDist::Print(raw_ostream &Stream,
-                                  const std::string &Indent) const {
+                            const std::string &Indent) const {
   Distribution *Dist = GetDistribution();
   Stream << Indent;
   Sentinel->PrintTitle(Stream, this);
@@ -57,7 +57,7 @@ void NaClBitcodeDist::Print(raw_ostream &Stream,
   Sentinel->PrintHeader(Stream);
   Stream << "\n";
   bool NeedsHeader = false;
-  for (size_t I = 0, E = Dist->size(); I != E; ++I) {
+  for (size_t I = 0, E = Dist->size(); I < E; ++I) {
     if (NeedsHeader) {
       // Reprint the header so that rows are more readable.
       Stream << Indent << "  " << Sentinel->GetTitle() << " (continued)\n";
@@ -79,8 +79,11 @@ void NaClBitcodeDist::Sort() const {
   for (const_iterator Iter = begin(), IterEnd = end();
        Iter != IterEnd; ++Iter) {
     const NaClBitcodeDistElement *Elmt = Iter->second;
-    if (double Importance = Elmt->GetImportance())
+    // Only add if histogram element is non-empty.
+    if (Elmt->GetNumInstances()) {
+      double Importance = Elmt->GetImportance();
       CachedDistribution->push_back(std::make_pair(Importance, Iter->first));
+    }
   }
   // Sort in ascending order, based on importance.
   std::stable_sort(CachedDistribution->begin(),
@@ -123,7 +126,7 @@ const char *NaClBitcodeDistElement::GetValueHeader() const {
 }
 
 void NaClBitcodeDistElement::PrintStatsHeader(raw_ostream &Stream) const {
-  Stream << "  Count %Count";
+  Stream << "   Count %Count";
 }
 
 void NaClBitcodeDistElement::
@@ -136,7 +139,7 @@ void NaClBitcodeDistElement::
 PrintRowStats(raw_ostream &Stream,
               const NaClBitcodeDist *Distribution) const {
   unsigned Count = GetNumInstances();
-  Stream << format("%7d %6.2f",
+  Stream << format("%8d %6.2f",
                    Count,
                    (double) Count/Distribution->GetTotal()*100.0);
 }
@@ -182,7 +185,7 @@ PrintNestedDistIfApplicable(raw_ostream &Stream,
           PrintedNestedDists = true;
           Stream << "\n";
         }
-        Dist->Print(Stream, Indent + "           ");
+        Dist->Print(Stream, Indent + "    ");
         Stream << "\n";
       }
     }

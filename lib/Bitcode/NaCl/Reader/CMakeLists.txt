@@ -8,6 +8,8 @@ add_llvm_library(LLVMNaClBitReader
   NaClBitcodeBitsDist.cpp
   NaClBitcodeBitsAndAbbrevsDist.cpp
   NaClBitcodeCodeDist.cpp
+  NaClBitcodeBlockDist.cpp  
+  NaClBitcodeSubblockDist.cpp
   )
 
 add_dependencies(LLVMNaClBitReader intrinsics_gen)

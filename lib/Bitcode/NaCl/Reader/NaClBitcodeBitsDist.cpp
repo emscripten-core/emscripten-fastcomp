@@ -22,7 +22,7 @@ void NaClBitcodeBitsDistElement::AddRecord(const NaClBitcodeRecord &Record) {
 
 void NaClBitcodeBitsDistElement::AddBlock(const NaClBitcodeBlock &Block) {
   NaClBitcodeDistElement::AddBlock(Block);
-  TotalBits += Block.GetNumBits();
+  TotalBits += Block.GetLocalNumBits();
 }
 
 void NaClBitcodeBitsDistElement::PrintStatsHeader(raw_ostream &Stream) const {
