@@ -112,7 +112,7 @@ DEF_CALL_HANDLER(emscripten_preinvoke, {
 DEF_CALL_HANDLER(emscripten_postinvoke, {
   assert(InvokeState == 2);
   InvokeState = 0;
-  return getAssign(getJSName(CI), CI->getType()) + "__THREW__";
+  return getAssign(getJSName(CI), CI->getType()) + "__THREW__; __THREW__ = 0";
 })
 DEF_CALL_HANDLER(emscripten_landingpad, {
   std::string Ret = getAssign(getJSName(CI), CI->getType()) + "___cxa_find_matching_catch(-1,-1";
