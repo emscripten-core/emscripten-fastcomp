@@ -12,12 +12,10 @@
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Bitcode/NaCl/NaClAnalyzerBlockDist.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeAnalyzer.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeBlockDist.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeCodeDist.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeSubblockDist.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -455,8 +453,7 @@ static void PrintSize(uint64_t Bits, raw_ostream &OS) {
 }
 
 int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
-                           const AnalysisDumpOptions &DumpOptions,
-                           NaClBitcodeDist *Dist) {
+                           const AnalysisDumpOptions &DumpOptions) {
   DEBUG(dbgs() << "-> AnalyzeBitcodeInBuffer\n");
 
   if (Buf.getBufferSize() & 3)
@@ -486,8 +483,10 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
   }
   if (Header.NumberFields()) OS << "\n";
 
-  PNaClBitcodeAnalyzerParser Parser(Stream, OS, DumpOptions, Dist);
   // Parse the top-level structure.  We only allow blocks at the top-level.
+  NaClAnalyzerBlockDistElement DistSentinel(DumpOptions.OrderBlocksByID);
+  NaClAnalyzerBlockDist Dist(DistSentinel);
+  PNaClBitcodeAnalyzerParser Parser(Stream, OS, DumpOptions, &Dist);
   while (!Stream.AtEndOfStream()) {
     ++NumTopBlocks;
     if (Parser.Parse()) return 1;
@@ -510,8 +509,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
 }
 
 int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
-                         const AnalysisDumpOptions &DumpOptions,
-                         NaClBitcodeDist *Dist) {
+                         const AnalysisDumpOptions &DumpOptions) {
   // Read the input file.
   OwningPtr<MemoryBuffer> MemBuf;
 
@@ -520,7 +518,7 @@ int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
     return Error(Twine("Error reading '") + InputFilename + "': " +
                  ec.message());
 
-  return AnalyzeBitcodeInBuffer(*MemBuf, OS, DumpOptions, Dist);
+  return AnalyzeBitcodeInBuffer(*MemBuf, OS, DumpOptions);
 }
 
 } // namespace llvm

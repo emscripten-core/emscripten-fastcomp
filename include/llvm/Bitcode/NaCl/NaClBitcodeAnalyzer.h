@@ -24,7 +24,6 @@ namespace llvm {
 class MemoryBuffer;
 class StringRef;
 class raw_ostream;
-class NaClBitcodeDist;
 
 // Analysis options. See the command-line documentation in pnacl-bcanalyzer
 // for a description.
@@ -43,20 +42,21 @@ struct AnalysisDumpOptions {
 
   // The number of record operands to be dumped per text line.
   unsigned OpsPerLine;
+
+  // When true, prints block statistics based on block ID rather than
+  // size. When false, prints block statistics base on percentage of
+  // file.
+  bool OrderBlocksByID;
 };
 
-/// Run analysis on the given file, putting results into the given
-/// distribution (if non-zero). Output goes to OS.
+/// Run analysis on the given file. Output goes to OS.
 int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
-                         const AnalysisDumpOptions &DumpOptions,
-                         NaClBitcodeDist *Dist=0);
+                         const AnalysisDumpOptions &DumpOptions);
 
-/// Run analysis on a memory buffer with bitcode, putting results into
-/// the given distribution (if non-zero). Output goes to OS. The
-/// buffer is owned by the caller.
+/// Run analysis on a memory buffer with bitcode.  Output goes to
+/// OS. The buffer is owned by the caller.
 int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
-                           const AnalysisDumpOptions &DumpOptions,
-                           NaClBitcodeDist *Dist=0);
+                           const AnalysisDumpOptions &DumpOptions);
 
 } // namespace llvm
 
