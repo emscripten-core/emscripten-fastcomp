@@ -395,15 +395,6 @@ MipsTargetLowering(MipsTargetMachine &TM)
     setTruncStoreAction(MVT::i64, MVT::i32, Custom);
   }
 
-  // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl()) {
-    setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
-    setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
-    setOperationAction(ISD::NACL_TARGET_ARCH,          MVT::i32, Custom);
-  }
-  // @LOCALMOD-END
-
-
   setOperationAction(ISD::TRAP, MVT::Other, Legal);
 
   setTargetDAGCombine(ISD::SDIVREM);
@@ -767,11 +758,6 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
   case ISD::LOAD:               return lowerLOAD(Op, DAG);
   case ISD::STORE:              return lowerSTORE(Op, DAG);
   case ISD::ADD:                return lowerADD(Op, DAG);
-  // @LOCALMOD-BEGIN
-  case ISD::NACL_TP_TLS_OFFSET: return LowerNaClTpTlsOffset(Op, DAG);
-  case ISD::NACL_TP_TDB_OFFSET: return LowerNaClTpTdbOffset(Op, DAG);
-  case ISD::NACL_TARGET_ARCH:   return LowerNaClTargetArch(Op, DAG);
-  // @LOCALMOD-END
   }
   return SDValue();
 }
@@ -1535,30 +1521,6 @@ SDValue MipsTargetLowering::lowerBlockAddress(SDValue Op,
 }
 
 // @LOCALMOD-BEGIN
-
-// NaCl TLS setup / layout intrinsics.
-// See: native_client/src/untrusted/nacl/tls_params.h
-SDValue MipsTargetLowering::LowerNaClTpTlsOffset(SDValue Op,
-                                                 SelectionDAG &DAG) const {
-  return DAG.getConstant(0, Op.getValueType().getSimpleVT());
-}
-
-SDValue MipsTargetLowering::LowerNaClTpTdbOffset(SDValue Op,
-                                                 SelectionDAG &DAG) const {
-  DebugLoc dl = Op.getDebugLoc();
-  return DAG.getNode(ISD::SUB, dl, Op.getValueType().getSimpleVT(),
-                     DAG.getConstant(0, Op.getValueType().getSimpleVT()),
-		     Op.getOperand(0));
-}
-
-SDValue
-MipsTargetLowering::LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const {
-  // size_t __nacl_target_arch () {
-  //   return PnaclTargetArchitectureMips_32;
-  // }
-  return DAG.getConstant(PnaclTargetArchitectureMips_32,
-                         Op.getValueType().getSimpleVT());
-}
 
 SDValue MipsTargetLowering::
 GetNaClThreadPointer(SelectionDAG &DAG, DebugLoc DL) const {

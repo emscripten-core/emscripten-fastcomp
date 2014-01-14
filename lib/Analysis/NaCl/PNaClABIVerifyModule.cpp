@@ -37,6 +37,8 @@ PNaClABIAllowDebugMetadata("pnaclabi-allow-debug-metadata",
 
 }
 
+// TODO(mseaborn): This option no longer has any effect, so remove it
+// after its uses have been removed.
 static cl::opt<bool>
 PNaClABIAllowDevIntrinsics("pnaclabi-allow-dev-intrinsics",
   cl::desc("Allow dev LLVM intrinsics during PNaCl ABI verification."),
@@ -240,9 +242,7 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
   // Keep 3 categories of intrinsics for now.
   // (1) Allowed always, provided the exact name and type match.
   // (2) Never allowed.
-  // (3) "Dev": intrinsics in the development or prototype stage,
-  // or private intrinsics used for building special programs.
-  // (4) Debug info intrinsics.
+  // (3) Debug info intrinsics.
   //
   // Please keep these sorted or grouped in a sensible way, within
   // each category.
@@ -319,11 +319,7 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
     case Intrinsic::flt_rounds:
       return false;
 
-    // (3) Dev intrinsics.
-    case Intrinsic::nacl_target_arch: // Used by translator self-build.
-      return PNaClABIAllowDevIntrinsics;
-
-    // (4) Debug info intrinsics.
+    // (3) Debug info intrinsics.
     case Intrinsic::dbg_declare:
     case Intrinsic::dbg_value:
       return PNaClABIAllowDebugMetadata;

@@ -875,14 +875,6 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     }
   }
 
-  // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl()) {
-    setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
-    setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
-    setOperationAction(ISD::NACL_TARGET_ARCH,          MVT::i32, Custom);
-  }
-  // @LOCALMOD-END
-
   // We have target-specific dag combine patterns for the following nodes:
   // ARMISD::VMOVRRD  - No need to call setTargetDAGCombine
   setTargetDAGCombine(ISD::ADD);
@@ -2294,40 +2286,6 @@ SDValue ARMTargetLowering::LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
   SDValue JTI = DAG.getTargetJumpTable(JT->getIndex(), PTy);
   return DAG.getNode(ARMISD::WrapperJT2, dl, MVT::i32, JTI);
 }
-
-//////////////////////////////////////////////////////////////////////
-// NaCl TLS setup / layout intrinsics.
-// See: native_client/src/untrusted/stubs/tls_params.h
-SDValue ARMTargetLowering::LowerNaClTpTlsOffset(SDValue Op,
-                                                SelectionDAG &DAG) const {
-  // ssize_t __nacl_tp_tls_offset (size_t tls_size) {
-  //   return 8;
-  // }
-  return DAG.getConstant(8, Op.getValueType().getSimpleVT());
-}
-
-SDValue ARMTargetLowering::LowerNaClTpTdbOffset(SDValue Op,
-                                                SelectionDAG &DAG) const {
-  // ssize_t __nacl_tp_tdb_offset (size_t tdb_size) {
-  //   return -tdb_size;
-  // }
-  DebugLoc dl = Op.getDebugLoc();
-  return DAG.getNode(ISD::SUB, dl, Op.getValueType().getSimpleVT(),
-                     DAG.getConstant(0, Op.getValueType().getSimpleVT()),
-                     Op.getOperand(0));
-}
-
-SDValue
-ARMTargetLowering::LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const {
-  // size_t __nacl_target_arch () {
-  //   return PnaclTargetArchitectureARM_32;
-  // }
-  return DAG.getConstant(PnaclTargetArchitectureARM_32,
-                         Op.getValueType().getSimpleVT());
-}
-
-//////////////////////////////////////////////////////////////////////
-
 // @LOCALMOD-END
 
 // Lower ISD::GlobalTLSAddress using the "general dynamic" model
@@ -6003,11 +5961,6 @@ SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::SUBE:          return LowerADDC_ADDE_SUBC_SUBE(Op, DAG);
   case ISD::ATOMIC_LOAD:
   case ISD::ATOMIC_STORE:  return LowerAtomicLoadStore(Op, DAG);
-  // @LOCALMOD-BEGIN
-  case ISD::NACL_TP_TLS_OFFSET:    return LowerNaClTpTlsOffset(Op, DAG);
-  case ISD::NACL_TP_TDB_OFFSET:    return LowerNaClTpTdbOffset(Op, DAG);
-  case ISD::NACL_TARGET_ARCH:      return LowerNaClTargetArch(Op, DAG);
-  // @LOCALMOD-END
   }
 }
 

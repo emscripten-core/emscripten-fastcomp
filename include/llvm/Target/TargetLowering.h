@@ -115,19 +115,6 @@ public:
                           // mask (ex: x86 blends).
   };
 
-  // @LOCALMOD-START
-  // This needs to be kept in sync with
-  // native_client/src/untrusted/nacl/pnacl.h.
-  enum PnaclTargetArchitecture {
-    PnaclTargetArchitectureInvalid = 0,
-    PnaclTargetArchitectureX86_32,
-    PnaclTargetArchitectureX86_64,
-    PnaclTargetArchitectureARM_32,
-    PnaclTargetArchitectureARM_32_Thumb,
-    PnaclTargetArchitectureMips_32
-  };
-  // @LOCALMOD-END
-
   static ISD::NodeType getExtendForContent(BooleanContent Content) {
     switch (Content) {
     case UndefinedBooleanContent:

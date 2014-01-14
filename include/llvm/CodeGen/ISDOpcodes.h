@@ -643,12 +643,6 @@ namespace ISD {
     // NACL_READ_TP is a fast built-in version of NaCl's tls_get() IRT
     // interface.
     NACL_READ_TP,
-    // These correspond to functions in:
-    // native_client/src/untrusted/nacl/tls_params.h
-    NACL_TP_TLS_OFFSET,
-    NACL_TP_TDB_OFFSET,
-    // Expands to the target architecture enumeration value.
-    NACL_TARGET_ARCH,
     // @LOCALMOD-END
 
     /// BUILTIN_OP_END - This must be the last enum value in this list.

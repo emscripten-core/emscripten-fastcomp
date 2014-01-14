@@ -1356,14 +1356,6 @@ void X86TargetLowering::resetOperationActions() {
     setTargetDAGCombine(ISD::MUL);
   setTargetDAGCombine(ISD::XOR);
 
-  // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl()) {
-    setOperationAction(ISD::NACL_TP_TLS_OFFSET,        MVT::i32, Custom);
-    setOperationAction(ISD::NACL_TP_TDB_OFFSET,        MVT::i32, Custom);
-    setOperationAction(ISD::NACL_TARGET_ARCH,          MVT::i32, Custom);
-  }
-  // @LOCALMOD-END
-
   computeRegisterProperties();
 
   // On Darwin, -Os means optimize for size without hurting performance,
@@ -10389,43 +10381,6 @@ static SDValue LowerVACOPY(SDValue Op, const X86Subtarget *Subtarget,
                        MachinePointerInfo(DstSV), MachinePointerInfo(SrcSV));
 }
 
-//////////////////////////////////////////////////////////////////////
-// NaCl TLS setup / layout intrinsics.
-// See: native_client/src/untrusted/stubs/tls_params.h
-SDValue X86TargetLowering::LowerNaClTpTlsOffset(SDValue Op,
-                                                SelectionDAG &DAG) const {
-  // ssize_t __nacl_tp_tls_offset (size_t tls_size) {
-  //   return -tls_size;
-  // }
-  DebugLoc dl = Op.getDebugLoc();
-  return DAG.getNode(ISD::SUB, dl, Op.getValueType().getSimpleVT(),
-                     DAG.getConstant(0, Op.getValueType().getSimpleVT()),
-                     Op.getOperand(0));
-}
-
-SDValue X86TargetLowering::LowerNaClTpTdbOffset(SDValue Op,
-                                                SelectionDAG &DAG) const {
-  // ssize_t __nacl_tp_tdb_offset (size_t tdb_size) {
-  //   return 0;
-  // }
-  return DAG.getConstant(0, Op.getValueType().getSimpleVT());
-}
-
-SDValue
-X86TargetLowering::LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const {
-  // int __nacl_target_arch () {
-  //   return (is_64_bit ?
-  //           PnaclTargetArchitectureX86_64 :
-  //           PnaclTargetArchitectureX86_32);
-  // }
-  return DAG.getConstant((Subtarget->is64Bit() ?
-                          PnaclTargetArchitectureX86_64 :
-                          PnaclTargetArchitectureX86_32),
-                         Op.getValueType().getSimpleVT());
-}
-
-//////////////////////////////////////////////////////////////////////
-
 // getTargetVShiftNOde - Handle vector element shifts where the shift amount
 // may or may not be a constant. Takes immediate version of shift as input.
 static SDValue getTargetVShiftNode(unsigned Opc, DebugLoc dl, EVT VT,
@@ -12637,11 +12592,6 @@ SDValue X86TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::SUB:                return LowerSUB(Op, DAG);
   case ISD::SDIV:               return LowerSDIV(Op, DAG);
   case ISD::FSINCOS:            return LowerFSINCOS(Op, DAG);
-  // @LOCALMOD-BEGIN
-  case ISD::NACL_TP_TLS_OFFSET:    return LowerNaClTpTlsOffset(Op, DAG);
-  case ISD::NACL_TP_TDB_OFFSET:    return LowerNaClTpTdbOffset(Op, DAG);
-  case ISD::NACL_TARGET_ARCH:      return LowerNaClTargetArch(Op, DAG);
-  // @LOCALMOD-END
   }
 }
 
