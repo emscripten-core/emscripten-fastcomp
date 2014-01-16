@@ -141,6 +141,9 @@ namespace {
     unsigned memAlign(unsigned x) {
       return x + (x%MEM_ALIGN != 0 ? MEM_ALIGN - x%MEM_ALIGN : 0);
     }
+    std::string memAlignStr(std::string x) {
+      return "((" + x + "+" + utostr(MEM_ALIGN-1) + ")&-" + utostr(MEM_ALIGN) + ")";
+    }
 
     HeapData *allocateAddress(const std::string& Name, unsigned Bits = MEM_ALIGN_BITS) {
       assert(Bits == 64); // FIXME when we use optimal alignments
@@ -1136,7 +1139,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
       if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
         Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
       } else {
-        Size = "((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)";
+        Size = memAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
       }
     }
     Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
