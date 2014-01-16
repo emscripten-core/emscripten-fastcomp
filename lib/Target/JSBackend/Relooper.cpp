@@ -322,12 +322,26 @@ void MultipleShape::RenderLoopPostfix() {
 
 void MultipleShape::Render(bool InLoop) {
   RenderLoopPrefix();
-  bool First = true;
+
+  // We know that blocks with the same Id were split from the same source, so their contents are identical and they are logically the same, so re-merge them here
+  typedef std::map<int, Shape*> IdShapeMap;
+  IdShapeMap IdMap;
   for (BlockShapeMap::iterator iter = InnerMap.begin(); iter != InnerMap.end(); iter++) {
+    int Id = iter->first->Id;
+    IdShapeMap::iterator Test = IdMap.find(Id);
+    if (Test != IdMap.end()) {
+      assert(Shape::IsSimple(iter->second) && Shape::IsSimple(Test->second)); // we can only merge simple blocks, something horrible has gone wrong if we see anything else
+      continue;
+    }
+    IdMap[iter->first->Id] = iter->second;
+  }
+
+  bool First = true;
+  for (IdShapeMap::iterator iter = IdMap.begin(); iter != IdMap.end(); iter++) {
     if (AsmJS) {
-      PrintIndented("%sif ((label|0) == %d) {\n", First ? "" : "else ", iter->first->Id);
+      PrintIndented("%sif ((label|0) == %d) {\n", First ? "" : "else ", iter->first);
     } else {
-      PrintIndented("%sif (label == %d) {\n", First ? "" : "else ", iter->first->Id);
+      PrintIndented("%sif (label == %d) {\n", First ? "" : "else ", iter->first);
     }
     First = false;
     Indenter::Indent();
@@ -391,8 +405,8 @@ Relooper::~Relooper() {
   for (unsigned i = 0; i < Shapes.size(); i++) delete Shapes[i];
 }
 
-void Relooper::AddBlock(Block *New) {
-  New->Id = BlockIdCounter++;
+void Relooper::AddBlock(Block *New, int Id) {
+  New->Id = Id == -1 ? BlockIdCounter++ : Id;
   Blocks.push_back(New);
 }
 
@@ -446,8 +460,7 @@ void Relooper::Calculate(Block *Entry) {
         for (BlockSet::iterator iter = Original->BranchesIn.begin(); iter != Original->BranchesIn.end(); iter++) {
           Block *Prior = *iter;
           Block *Split = new Block(Original->Code, Original->BranchVar);
-          Parent->AddBlock(Split);
-          PrintDebug("  to %d\n", Split->Id);
+          Parent->AddBlock(Split, Original->Id);
           Split->BranchesIn.insert(Prior);
           Branch *Details = Prior->BranchesOut[Original];
           Prior->BranchesOut[Split] = new Branch(Details->Condition, Details->Code);
