@@ -200,11 +200,12 @@ PrintRowValue(raw_ostream &Stream,
               NaClBitcodeDistValue Value,
               const NaClBitcodeDist *Distribution) const {
   Stream <<
+      NaClBitcodeCodeDist::
       GetCodeName(Value,
                   cast<NaClBitcodeCodeDist>(Distribution)->GetBlockID());
 }
 
-NaClBitcodeCodeDistElement NaClBitcodeCodeDist::DefaultSentinal;
+NaClBitcodeCodeDistElement NaClBitcodeCodeDist::DefaultSentinel;
 
 NaClBitcodeCodeDist::~NaClBitcodeCodeDist() {}
 

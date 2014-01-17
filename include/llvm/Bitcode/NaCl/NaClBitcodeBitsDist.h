@@ -33,7 +33,7 @@ class NaClBitcodeBitsDistElement : public NaClBitcodeDistElement {
 public:
   static bool classof(const NaClBitcodeDistElement *Dist) {
     return Dist->getKind() >= RDE_BitsDist
-        && Dist->getKind() < RDE_BitsDist_Last;
+        && Dist->getKind() < RDE_BitsDistLast;
   }
 
   // Create an element with no instances.

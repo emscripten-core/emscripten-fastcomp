@@ -24,21 +24,24 @@ namespace llvm {
 /// Holds block distribution, and nested subblock and record code distributions,
 /// to be collected during analysis.
 class NaClAnalyzerBlockDistElement : public NaClBitcodeBlockDistElement {
+  NaClAnalyzerBlockDistElement(const NaClAnalyzerBlockDistElement&)
+  LLVM_DELETED_FUNCTION;
+  void operator=(const NaClAnalyzerBlockDistElement&) LLVM_DELETED_FUNCTION;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {
-    return Element->getKind() >= RDE_PNaClAnalBlockDist &&
-        Element->getKind() < RDE_PNaClAnalBlockDist_Last;
+    return Element->getKind() >= RDE_NaClAnalBlockDist &&
+        Element->getKind() < RDE_NaClAnalBlockDistLast;
   }
 
-  /// Creates the sentinel distribution map element for
-  /// class NaClAnalyzerBlockDist.
-  explicit NaClAnalyzerBlockDistElement(bool OrderBlocksByID=false)
-      : NaClBitcodeBlockDistElement(RDE_PNaClAnalBlockDist),
-        RecordDist(0),
-        BlockID(0),
+  explicit NaClAnalyzerBlockDistElement(unsigned BlockID=0,
+                                        bool OrderBlocksByID=false)
+      : NaClBitcodeBlockDistElement(RDE_NaClAnalBlockDist),
+        BlockID(BlockID),
+        RecordDist(BlockID),
         OrderBlocksByID(OrderBlocksByID) {
-    Init();
+    NestedDists.push_back(&SubblockDist);
+    NestedDists.push_back(&RecordDist);
   }
 
   virtual ~NaClAnalyzerBlockDistElement();
@@ -51,27 +54,23 @@ public:
   virtual const SmallVectorImpl<NaClBitcodeDist*> *
   GetNestedDistributions() const;
 
-  // Subblocks that appear in this block.
-  NaClBitcodeSubblockDist SubblockDist;
+  NaClBitcodeDist &GetSubblockDist() {
+    return SubblockDist;
+  }
 
-  // Records that appear in this block.
-  NaClBitcodeCodeDist RecordDist;
-
-protected:
-  // Creates instance to put in distribution map. Called by
-  // method CreateInstance.
-  NaClAnalyzerBlockDistElement(unsigned BlockID,
-                               bool OrderBlocksByID)
-      : NaClBitcodeBlockDistElement(RDE_PNaClAnalBlockDist),
-        RecordDist(BlockID),
-        BlockID(BlockID),
-        OrderBlocksByID(OrderBlocksByID) {
-    Init();
+  NaClBitcodeCodeDist &GetRecordDist() {
+    return RecordDist;
   }
 
 private:
   // The block ID of the distribution.
   unsigned BlockID;
+
+  // Subblocks that appear in this block.
+  NaClBitcodeSubblockDist SubblockDist;
+
+  // Records that appear in this block.
+  NaClBitcodeCodeDist RecordDist;
 
   // Nested blocks used by GetNestedDistributions.
   SmallVector<NaClBitcodeDist*, 2> NestedDists;
@@ -79,16 +78,13 @@ private:
   // If true, order (top-level) blocks by block ID instead of file
   // size.
   bool OrderBlocksByID;
-
-  void Init() {
-    NestedDists.push_back(&SubblockDist);
-    NestedDists.push_back(&RecordDist);
-  }
 };
 
 /// Holds block distribution, and nested subblock and record code distributions,
 /// to be collected during analysis.
 class NaClAnalyzerBlockDist : public NaClBitcodeBlockDist {
+  NaClAnalyzerBlockDist(const NaClAnalyzerBlockDist&) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClAnalyzerBlockDist&) LLVM_DELETED_FUNCTION;
 public:
   NaClAnalyzerBlockDist(NaClAnalyzerBlockDistElement &Sentinel)
       : NaClBitcodeBlockDist(&Sentinel)

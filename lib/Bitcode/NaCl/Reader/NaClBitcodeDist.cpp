@@ -20,11 +20,21 @@ NaClBitcodeDist::~NaClBitcodeDist() {
   }
 }
 
+NaClBitcodeDistElement *NaClBitcodeDist::CreateElement(
+    NaClBitcodeDistValue Value) const {
+  return Sentinel->CreateElement(Value);
+}
+
+void NaClBitcodeDist::GetValueList(const NaClBitcodeRecord &Record,
+                                   ValueListType &ValueList) const {
+  Sentinel->GetValueList(Record, ValueList);
+}
+
 void NaClBitcodeDist::AddRecord(const NaClBitcodeRecord &Record) {
   if (StorageKind != NaClBitcodeDist::RecordStorage)
     return;
   ValueListType ValueList;
-  Sentinel->GetValueList(Record, ValueList);
+  GetValueList(Record, ValueList);
   if (!ValueList.empty()) {
     RemoveCachedDistribution();
     ++Total;

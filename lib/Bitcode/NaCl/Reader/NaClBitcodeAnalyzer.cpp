@@ -484,7 +484,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
   if (Header.NumberFields()) OS << "\n";
 
   // Parse the top-level structure.  We only allow blocks at the top-level.
-  NaClAnalyzerBlockDistElement DistSentinel(DumpOptions.OrderBlocksByID);
+  NaClAnalyzerBlockDistElement DistSentinel(0, DumpOptions.OrderBlocksByID);
   NaClAnalyzerBlockDist Dist(DistSentinel);
   PNaClBitcodeAnalyzerParser Parser(Stream, OS, DumpOptions, &Dist);
   while (!Stream.AtEndOfStream()) {

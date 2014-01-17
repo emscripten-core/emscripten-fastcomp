@@ -40,7 +40,7 @@
 // done so that nested distribution maps can be updated via blind
 // calls in NaClBitcodeAnalyzer.cpp.
 //
-// Via inheritance, and overwriting the (virtual) AddRecord
+// Via inheritance, and overriding the (virtual) AddRecord
 // method for a distribution map, we can redirect the add to look up
 // the distribution element associated with the block of the record,
 // and then update the corresponding record distribution map. In general,
@@ -69,9 +69,12 @@
 //     map.
 //
 // The code has been written to put the (virtual) logic of
-// distribution maps into derived classes of
-// NaClBitcodeDistElement. This is intentional, in that it keeps all
-// knowledge of how to handle/print elements in one class.
+// distribution maps into derived classes of NaClBitcodeDistElement
+// whenever possible. This is intentional, in that it keeps all
+// knowledge of how to handle/print elements in one class. However,
+// because some distributions have external data that is needed by all
+// elements, the virtual methods of class NaClBitcodeDist can be
+// overridden, and not delegate to NaClBitcodeDistElement.
 //
 // To do this, an NaClBitcodeDist requires a "sentinel" (derived)
 // instance of NaClBitcodeDistElement. This sentinel is used to define
@@ -195,10 +198,14 @@ public:
       RD_BlockDist,          // class NaClBitcodeBlockDist.
       RD_BlockDistLast,
       RD_CodeDist,           // class NaClBitcodeCodeDist.
-      RD_CodeDist_Last,
+      RD_CodeDistLast,
+      RD_AbbrevDist,         // class NaClBitcodeAbbrevDist.
+      RD_AbbrevDistLast,
       RD_SubblockDist,       // class NaClBlockSubblockDist.
       RD_SubblockDistLast,
-    RD_Dist_Last
+      RD_ValueDist,          // class NaClBitcodeValueDist.
+      RD_ValueDistLast,
+    RD_DistLast
   };
 
   NaClBitcodeDistKind getKind() const { return Kind; }
@@ -207,7 +214,7 @@ private:
   const NaClBitcodeDistKind Kind;
 
   static bool classof(const NaClBitcodeDist *Dist) {
-    return Dist->getKind() >= RD_Dist && Dist->getKind() < RD_Dist_Last;
+    return Dist->getKind() >= RD_Dist && Dist->getKind() < RD_DistLast;
   }
 
 public:
@@ -271,6 +278,18 @@ public:
   NaClBitcodeDistElement *at(NaClBitcodeDistValue Value) const {
     return TableMap.at(Value);
   }
+
+  // Creates a new instance of this element for the given value. Used
+  // by class NaClBitcodeDist to create instances. Default method
+  // simply dispatches to the CreateElement method of the sentinel.
+  virtual NaClBitcodeDistElement *CreateElement(
+      NaClBitcodeDistValue Value) const;
+
+  /// Interrogates the block record, and returns the corresponding
+  /// values that are being tracked by the distribution map.  Default
+  /// method simply dispatches to the GetValueList of the sentinel.
+  virtual void GetValueList(const NaClBitcodeRecord &Record,
+                            ValueListType &ValueList) const;
 
   /// Returns the total number of instances held in the distribution
   /// map.
@@ -348,25 +367,37 @@ public:
   /// for concrete classes.
   enum NaClBitcodeDistElementKind {
     RDE_Dist,                    // class NaClBitcodeDistElement.
+      RDE_AbbrevDist,            // class NaClBitcodeAbbrevDistElement.
+      RDE_AbbrevDistLast,
       RDE_BitsDist,              // class NaClBitcodeBitsDistElement.
         RDE_BitsAndAbbrevsDist,  // class NaClBitcodeBitsAndAbbrevsDistElement.
           RDE_CodeDist,          // class NaClBitcodeCodeDistElement.
-          RDE_CodeDist_Last,
-        RDE_BitsAndAbbrevsDist_Last,
-      RDE_BitsDist_Last,
+            RDE_CompressCodeDist, // class NaClCompressCodeDistElement.
+            RDE_CompressCodeDistLast,
+          RDE_CodeDistLast,
+        RDE_BitsAndAbbrevsDistLast,
+      RDE_BitsDistLast,
       RDE_BlockDist,             // class NaClBitcodeBlockDistElement.
-        RDE_PNaClAnalBlockDist,  // class PNaClAnalyzerBlockDistElement.
-        RDE_PNaClAnalBlockDist_Last,
+        RDE_NaClAnalBlockDist,   // class NaClAnalyzerBlockDistElement.
+        RDE_NaClAnalBlockDistLast,
+        RDE_PNaClCompressBlockDist, // class NaClCompressBlockDistElement.
+        RDE_PNaClCompressBlockDistLast,
       RDE_BlockDistLast,
+      RDE_SizeDist,              // class NaClBitcodeSizeDistElement.
+      RDE_SizeDistLast,
       RDE_SubblockDist,          // class NaClBitcodeSubblockDistElement
       RDE_SubblockDistLast,
-    RDE_Dist_Last
+      RDE_ValueDist,             // class NaClBitcodeValueDistElement.
+      RDE_ValueDistLast,
+      RDE_ValueIndexDist,        // class NaClBitcodeValueIndexDistElement.
+      RDE_ValueIndexDistLast,
+    RDE_DistLast
   };
 
   NaClBitcodeDistElementKind getKind() const { return Kind; }
 
   static bool classof(const NaClBitcodeDistElement *Element) {
-    return Element->getKind() >= RDE_Dist && Element->getKind() < RDE_Dist_Last;
+    return Element->getKind() >= RDE_Dist && Element->getKind() < RDE_DistLast;
   }
 
 private:
@@ -463,7 +494,7 @@ private:
 inline NaClBitcodeDistElement *NaClBitcodeDist::
 GetElement(NaClBitcodeDistValue Value) {
   if (TableMap.find(Value) == TableMap.end()) {
-    TableMap[Value] = Sentinel->CreateElement(Value);
+    TableMap[Value] = CreateElement(Value);
   }
   return TableMap[Value];
 }

@@ -56,6 +56,7 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
+#include "llvm/Bitcode/NaCl/NaClCompressBlockDist.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -85,6 +86,12 @@ static cl::opt<std::string>
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Specify output filename"),
                cl::value_desc("filename"), cl::init("-"));
+
+static cl::opt<bool>
+ShowValueDistributions(
+    "show-distributions",
+    cl::desc("Show collected value distributions in bitcode records."),
+    cl::init(false));
 
 /// Error - All bitcode analysis errors go through this function,
 /// making this a good place to breakpoint if debugging.
@@ -250,9 +257,10 @@ public:
   // BlockAbbrevsMap with appropriate abbreviations, after
   // analyzing the bitcode file defined by Cursor.
   NaClAnalyzeParser(NaClBitstreamCursor &Cursor,
-                               BlockAbbrevsMapType &BlockAbbrevsMap)
+                    BlockAbbrevsMapType &BlockAbbrevsMap)
       : NaClBitcodeParser(Cursor),
-        BlockAbbrevsMap(BlockAbbrevsMap)
+        BlockAbbrevsMap(BlockAbbrevsMap),
+        BlockDist(&NaClCompressBlockDistElement::Sentinel)
   {}
 
   virtual ~NaClAnalyzeParser() {}
@@ -267,6 +275,9 @@ public:
   // Mapping from block ID's to the corresponding list of abbreviations
   // associated with that block.
   BlockAbbrevsMapType &BlockAbbrevsMap;
+
+  // Nested distribution capturing distribution of records in bitcode file.
+  NaClBitcodeBlockDist BlockDist;
 };
 
 class NaClBlockAnalyzeParser : public NaClBitcodeParser {
@@ -283,7 +294,9 @@ public:
       : NaClBitcodeParser(BlockID, Context), Context(Context)
   {}
 
-  virtual ~NaClBlockAnalyzeParser() {}
+  virtual ~NaClBlockAnalyzeParser() {
+    Context->BlockDist.AddBlock(GetBlock());
+  }
 
 protected:
   /// Nested constructor to parse a block within a block.  Creates a
@@ -315,6 +328,12 @@ public:
       Abbrevs = new BlockAbbrevs(BlockID);
       Context->BlockAbbrevsMap[BlockID] = Abbrevs;
     }
+  }
+
+  virtual void ProcessRecord() {
+    cast<NaClCompressBlockDistElement>(
+        Context->BlockDist.GetElement(Record.GetBlockID()))
+        ->GetAbbrevDist().AddRecord(Record);
   }
 
   virtual void ProcessRecordAbbrev() {
@@ -417,6 +436,13 @@ static bool AnalyzeBitcode(OwningPtr<MemoryBuffer> &MemBuf,
   NaClAnalyzeParser Parser(Stream, BlockAbbrevsMap);
   while (!Stream.AtEndOfStream()) {
     if (Parser.Parse()) return true;
+  }
+
+  if (ShowValueDistributions) {
+    // To make shell redirection of this trace easier, print it to
+    // stdout unless stdout is being used to contain the compressed
+    // bitcode file. In the latter case, use stderr.
+    Parser.BlockDist.Print(OutputFilename == "-" ? errs() : outs());
   }
 
   return false;

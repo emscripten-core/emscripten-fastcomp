@@ -35,13 +35,13 @@ GetNestedDistributions() const {
 
 void NaClAnalyzerBlockDist::AddRecord(const NaClBitcodeRecord &Record) {
   cast<NaClAnalyzerBlockDistElement>(GetElement(Record.GetBlockID()))
-      ->RecordDist.AddRecord(Record);
+      ->GetRecordDist().AddRecord(Record);
 }
 
 void NaClAnalyzerBlockDist::AddBlock(const NaClBitcodeBlock &Block) {
   NaClBitcodeBlockDist::AddBlock(Block);
   if (const NaClBitcodeBlock *EncBlock = Block.GetEnclosingBlock()) {
     cast<NaClAnalyzerBlockDistElement>(GetElement(EncBlock->GetBlockID()))
-        ->SubblockDist.AddBlock(Block);
+        ->GetSubblockDist().AddBlock(Block);
   }
 }

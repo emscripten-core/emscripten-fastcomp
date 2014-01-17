@@ -31,7 +31,7 @@ class NaClBitcodeCodeDistElement
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {
     return Element->getKind() >= RDE_CodeDist
-        && Element->getKind() < RDE_CodeDist_Last;
+        && Element->getKind() < RDE_CodeDistLast;
   }
 
   explicit NaClBitcodeCodeDistElement(
@@ -68,7 +68,7 @@ class NaClBitcodeCodeDist : public NaClBitcodeDist {
 public:
   static bool classof(const NaClBitcodeDist *Dist) {
     return Dist->getKind() >= RD_CodeDist
-        && Dist->getKind() < RD_CodeDist_Last;
+        && Dist->getKind() < RD_CodeDistLast;
   }
 
 protected:
@@ -78,11 +78,14 @@ protected:
       : NaClBitcodeDist(RecordStorage, Sentinal, Kind), BlockID(BlockID)
   {}
 
-  static NaClBitcodeCodeDistElement DefaultSentinal;
+  static NaClBitcodeCodeDistElement DefaultSentinel;
 
 public:
-  NaClBitcodeCodeDist(unsigned BlockID)
-      : NaClBitcodeDist(RecordStorage, &DefaultSentinal, RD_CodeDist),
+  explicit NaClBitcodeCodeDist(
+      unsigned BlockID,
+      NaClBitcodeCodeDistElement *Sentinel = &DefaultSentinel,
+      NaClBitcodeDistKind Kind=RD_CodeDist)
+      : NaClBitcodeDist(RecordStorage, Sentinel, Kind),
         BlockID(BlockID)
   {}
 
