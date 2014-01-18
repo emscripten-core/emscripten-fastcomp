@@ -90,7 +90,6 @@ namespace {
     const Module *TheModule;
     unsigned UniqueNum;
     ValueMap ValueNames;
-    NameSet UsedNames;
     VarMap UsedVars;
     HeapData GlobalData8;
     HeapData GlobalData32;
@@ -435,7 +434,7 @@ std::string JSWriter::getJSName(const Value* val) {
     }
     sanitize(name);
   } else {
-    name = "unique$" + utostr(UniqueNum++);
+    name = "u$" + utostr(UniqueNum++);
   }
   return ValueNames[val] = name;
 }
@@ -1495,6 +1494,9 @@ void JSWriter::printModuleBody() {
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
     if (!I->isDeclaration()) {
+
+      ValueNames.clear();
+
       // Ensure all arguments and locals are named (we assume used values need names, which might be false if the optimizer did not run)
       unsigned Next = 1;
       for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
