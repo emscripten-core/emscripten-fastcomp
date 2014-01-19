@@ -52,6 +52,7 @@ ModulePass *createStripMetadataPass();
 
 ModulePass *createExpandI64Pass(); // XXX EMSCRIPTEN
 ModulePass *createLowerEmExceptionsPass(); // XXX EMSCRIPTEN
+ModulePass *createLowerEmSetjmpPass(); // XXX EMSCRIPTEN
 
 void PNaClABISimplifyAddPreOptPasses(PassManager &PM);
 void PNaClABISimplifyAddPostOptPasses(PassManager &PM);

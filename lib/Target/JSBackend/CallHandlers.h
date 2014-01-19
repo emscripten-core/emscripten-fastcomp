@@ -128,6 +128,23 @@ DEF_CALL_HANDLER(emscripten_resume, {
   return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
 })
 
+// setjmp support
+
+DEF_CALL_HANDLER(emscripten_setjmp, {
+  return CH___default__(CI, "_saveSetjmp");
+})
+DEF_CALL_HANDLER(emscripten_longjmp, {
+  return CH___default__(CI, "longjmp");
+})
+DEF_CALL_HANDLER(emscripten_check_longjmp, {
+  return "checkyourself";
+})
+DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
+  return "getyourresult";
+})
+
+// i64 support
+
 DEF_CALL_HANDLER(getHigh32, {
   return getAssign(getJSName(CI), CI->getType()) + "tempRet0";
 })
@@ -180,6 +197,8 @@ DEF_CALL_HANDLER(BItoD, {
          "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ";" +
          getAssign(getJSName(CI), CI->getType()) + "+HEAPF64[tempDoublePtr>>3]";
 })
+
+// misc
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
   return "HEAP32[" + getValueAsStr(CI->getOperand(0)) + ">>2]=" + getValueAsStr(CI->getOperand(1));
