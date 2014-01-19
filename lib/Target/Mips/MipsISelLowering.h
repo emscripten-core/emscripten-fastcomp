@@ -389,12 +389,6 @@ namespace llvm {
     void writeVarArgRegs(std::vector<SDValue> &OutChains, const MipsCC &CC,
                          SDValue Chain, DebugLoc DL, SelectionDAG &DAG) const;
 
-    // @LOCALMOD-BEGIN
-    SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const;
-    // @LOCALMOD-END
-
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
                            CallingConv::ID CallConv, bool isVarArg,
