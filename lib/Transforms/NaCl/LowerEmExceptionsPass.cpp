@@ -84,6 +84,15 @@ INITIALIZE_PASS(LowerEmExceptions, "loweremexceptions",
 bool LowerEmExceptions::runOnModule(Module &M) {
   TheModule = &M;
 
+  // Checks
+
+  Function *Setjmp = TheModule->getFunction("setjmp");
+  if (Setjmp) {
+    for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
+      assert(0 && "emscripten fastcomp does not support c++ exceptions and setjmp/longjmp together yet. disable exceptions (-s DISABLE_EXCEPTION_CATCHING=1) or remove setjmp from your code, for now, or use the original emscripten compiler instead of fastcomp.");
+    }
+  }
+
   // Add functions
 
   Type *i32 = Type::getInt32Ty(M.getContext());
