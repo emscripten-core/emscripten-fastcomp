@@ -159,7 +159,12 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
     // Add a basic block to "rethrow" a longjmp, that we caught but is not for us
     // XXX we should call longjmp here, with proper params! return only works if the caller checks for longjmping
     BasicBlock *Rejump = BasicBlock::Create(F->getContext(), "relongjump", F);
-    ReturnInst::Create(F->getContext(), Constant::getNullValue(F->getReturnType()), Rejump);
+    Type *RT = F->getReturnType();
+    if (RT->isVoidTy()) {
+      ReturnInst::Create(F->getContext(), Rejump);
+    } else {
+      ReturnInst::Create(F->getContext(), Constant::getNullValue(RT), Rejump);
+    }
 
     // Update each call that can longjmp so it can return to a setjmp where relevant
 
