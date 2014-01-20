@@ -156,16 +156,6 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
     CallInst::Create(PrepSetjmp, "", F->begin()->begin()); // FIXME: adding after other allocas might be better
 
-    // Add a basic block to "rethrow" a longjmp, that we caught but is not for us
-    // XXX we should call longjmp here, with proper params! return only works if the caller checks for longjmping
-    BasicBlock *Rejump = BasicBlock::Create(F->getContext(), "relongjump", F);
-    Type *RT = F->getReturnType();
-    if (RT->isVoidTy()) {
-      ReturnInst::Create(F->getContext(), Rejump);
-    } else {
-      ReturnInst::Create(F->getContext(), Constant::getNullValue(RT), Rejump);
-    }
-
     // Update each call that can longjmp so it can return to a setjmp where relevant
 
     for (Function::iterator BBI = F->begin(), E = F->end(); BBI != E; ) {
@@ -191,10 +181,9 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           Args.push_back(Check);
           Instruction *LongjmpCheck = CallInst::Create(CheckLongjmp, Args, "", BB);
           Instruction *LongjmpResult = CallInst::Create(GetLongjmpResult, Args, "", BB);
-          SwitchInst *SI = SwitchInst::Create(LongjmpCheck, Rejump, 2, BB);
-          // -1 means no longjmp happened, continue normally. 0 means a longjmp that is not ours to handle, needs a rethrow. Otherwise
+          SwitchInst *SI = SwitchInst::Create(LongjmpCheck, Tail, 2, BB);
+          // -1 means no longjmp happened, continue normally (will hit the default switch case). 0 means a longjmp that is not ours to handle, needs a rethrow. Otherwise
           // the index mean is the same as the index in P+1 (to avoid 0).
-          SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, -1)), Tail);
           for (unsigned i = 0; i < P.size(); i++) {
             SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, i+1)), P[i]->getParent());
             P[i]->addIncoming(LongjmpResult, BB);
