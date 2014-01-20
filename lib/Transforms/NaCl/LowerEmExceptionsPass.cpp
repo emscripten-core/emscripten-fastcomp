@@ -99,10 +99,14 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   }
 
   FunctionType *VoidFunc = FunctionType::get(Void, false);
-  PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
+  if (!TheModule->getFunction("emscripten_preinvoke")) {
+    PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
+  }
 
   FunctionType *Int1Func = FunctionType::get(i1, false);
-  PostInvoke = Function::Create(Int1Func, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
+  if (!TheModule->getFunction("emscripten_postinvoke")) {
+    PostInvoke = Function::Create(Int1Func, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
+  }
 
   FunctionType *LandingPadFunc = FunctionType::get(i8P, true);
   LandingPad = Function::Create(LandingPadFunc, GlobalValue::ExternalLinkage, "emscripten_landingpad", TheModule);

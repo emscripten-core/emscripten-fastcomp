@@ -76,6 +76,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   if (!Setjmp && !Longjmp) return false;
   assert(Setjmp && Longjmp); // must see setjmp *and* longjmp if one of them is present
 
+  Type *i1 = Type::getInt1Ty(M.getContext());
   Type *i32 = Type::getInt32Ty(M.getContext());
   Type *Void = Type::getVoidTy(M.getContext());
 
@@ -95,6 +96,13 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
   FunctionType *VoidFunc = FunctionType::get(Void, false);
   Function *PrepSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_prep_setjmp", TheModule);
+
+  Function *PreInvoke = TheModule->getFunction("emscripten_preinvoke");
+  if (!PreInvoke) PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
+
+  FunctionType *Int1Func = FunctionType::get(i1, false);
+  Function *PostInvoke = TheModule->getFunction("emscripten_postinvoke");
+  if (!PostInvoke) PostInvoke = Function::Create(Int1Func, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
 
   // Process all callers of setjmp and longjmp. Start with setjmp.
 
@@ -158,15 +166,20 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         CallInst *CI;
         if ((CI = dyn_cast<CallInst>(I))) {
           Value *V = CI->getCalledValue();
-          if (V == PrepSetjmp || V == EmSetjmp || V == CheckLongjmp || V == GetLongjmpResult) continue;
+          if (V == PrepSetjmp || V == EmSetjmp || V == CheckLongjmp || V == GetLongjmpResult || V == PreInvoke || V == PostInvoke) continue;
           if (Function *CF = dyn_cast<Function>(V)) if (CF->isIntrinsic()) continue;
           // TODO: proper analysis of what can actually longjmp. Currently we assume anything but setjmp can.
           // This may longjmp, so we need to check if it did. Split at that point.
           BasicBlock *Tail = SplitBlock(BB, Iter, this); // Iter already points to the next instruction, as we need
+          // envelop the call in pre/post invoke
+          CallInst::Create(PreInvoke, "", CI);
+          TerminatorInst *TI = BB->getTerminator();
+          CallInst *DidThrow = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
+
           // We need to replace the terminator in Tail - SplitBlock makes BB go straight to Tail, we need to check if a longjmp occurred, and
           // go to the right setjmp-tail if so
-          TerminatorInst *TI = BB->getTerminator();
           Instruction *Check = CallInst::Create(CheckLongjmp, "", BB);
+          //Instruction *Check = BinaryOperator::Create(Instruction::And, DidThrow, DidLongjmp, "", BB);
           Instruction *LongjmpResult = CallInst::Create(GetLongjmpResult, "", BB);
           SwitchInst *SI = SwitchInst::Create(Check, Rejump, 2, BB);
           // -1 means no longjmp happened, continue normally. 0-N mean a specific setjmp, same as the index in P. anything else means
