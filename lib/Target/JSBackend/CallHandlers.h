@@ -131,7 +131,7 @@ DEF_CALL_HANDLER(emscripten_resume, {
 // setjmp support
 
 DEF_CALL_HANDLER(emscripten_prep_setjmp, {
-  return getAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; STACKTOP=(STACKTOP+168)|0";
+  return getAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; STACKTOP=(STACKTOP+168)|0"; // XXX FIXME
 })
 DEF_CALL_HANDLER(emscripten_setjmp, {
   // env, label, table
