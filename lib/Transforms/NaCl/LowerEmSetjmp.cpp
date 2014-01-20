@@ -77,6 +77,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   assert(Setjmp && Longjmp); // must see setjmp *and* longjmp if one of them is present
 
   Type *i32 = Type::getInt32Ty(M.getContext());
+  Type *Void = Type::getVoidTy(M.getContext());
 
   // Add functions
 
@@ -91,6 +92,9 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   FunctionType *IntFunc = FunctionType::get(i32, false);
   Function *CheckLongjmp = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_check_longjmp", TheModule);
   Function *GetLongjmpResult = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_get_longjmp_result", TheModule);
+
+  FunctionType *VoidFunc = FunctionType::get(Void, false);
+  Function *PrepSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_prep_setjmp", TheModule);
 
   // Process all callers of setjmp and longjmp. Start with setjmp.
 
@@ -138,7 +142,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
     Function *F = I->first;
     Phis& P = I->second;
 
-    // FIXME: add prelude
+    CallInst::Create(PrepSetjmp, "", F->begin()->begin()); // FIXME: adding after other allocas might be better
 
     // Add a basic block to "rethrow" a longjmp, that we caught but is not for us
     // XXX we should call longjmp here, with proper params! return only works if the caller checks for longjmping
@@ -154,7 +158,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         CallInst *CI;
         if ((CI = dyn_cast<CallInst>(I))) {
           Value *V = CI->getCalledValue();
-          if (V == EmSetjmp || V == CheckLongjmp || V == GetLongjmpResult) continue;
+          if (V == PrepSetjmp || V == EmSetjmp || V == CheckLongjmp || V == GetLongjmpResult) continue;
           if (Function *CF = dyn_cast<Function>(V)) if (CF->isIntrinsic()) continue;
           // TODO: proper analysis of what can actually longjmp. Currently we assume anything but setjmp can.
           // This may longjmp, so we need to check if it did. Split at that point.

@@ -130,11 +130,17 @@ DEF_CALL_HANDLER(emscripten_resume, {
 
 // setjmp support
 
+DEF_CALL_HANDLER(emscripten_prep_setjmp, {
+  return getAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; STACKTOP=(STACKTOP+168)|0";
+})
 DEF_CALL_HANDLER(emscripten_setjmp, {
-  return CH___default__(CI, "_saveSetjmp");
+  // env, label, table
+  Declares.insert("_saveSetjmp");
+  return "_saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0)|0";
 })
 DEF_CALL_HANDLER(emscripten_longjmp, {
-  return CH___default__(CI, "longjmp");
+  Declares.insert("longjmp");
+  return CH___default__(CI, "_longjmp");
 })
 DEF_CALL_HANDLER(emscripten_check_longjmp, {
   return "checkyourself";
@@ -594,6 +600,11 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_postinvoke);
   SETUP_CALL_HANDLER(emscripten_landingpad);
   SETUP_CALL_HANDLER(emscripten_resume);
+  SETUP_CALL_HANDLER(emscripten_prep_setjmp);
+  SETUP_CALL_HANDLER(emscripten_setjmp);
+  SETUP_CALL_HANDLER(emscripten_longjmp);
+  SETUP_CALL_HANDLER(emscripten_check_longjmp);
+  SETUP_CALL_HANDLER(emscripten_get_longjmp_result);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FPtoILow);
