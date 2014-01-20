@@ -143,11 +143,16 @@ DEF_CALL_HANDLER(emscripten_longjmp, {
   return CH___default__(CI, "_longjmp");
 })
 DEF_CALL_HANDLER(emscripten_check_longjmp, {
-  return "checkyourself";
+  std::string Threw = getValueAsStr(CI->getOperand(0));
+  std::string Assign = getAssign(getJSName(CI), CI->getType());
+  return "if (((" + Threw + "|0) != 0) & ((threwValue|0) != 0)) { " +
+           Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable)|0; " +
+           "tempRet0 = threwValue; " +
+         "} else { " + Assign + "-1; }";
 })
 DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
   std::string Threw = getValueAsStr(CI->getOperand(0));
-  return getAssign(getJSName(CI), CI->getType()) + "((" + Threw + ") & ((threwValue|0) != 0)) ? " + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, setjmpTable)|0" + " : -1";
+  return getAssign(getJSName(CI), CI->getType()) + "tempRet0";
 })
 
 // i64 support

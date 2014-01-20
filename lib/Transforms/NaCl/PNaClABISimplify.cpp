@@ -48,7 +48,7 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
     // Remove landingpad blocks made unreachable by LowerInvoke.
     PM.add(createCFGSimplificationPass());
 
-    //PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN . Note, only if no exceptions
+    PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN . Note, only if no exceptions
   }
 
 #if 0 // EMSCRIPTEN: we allow arbitrary symbols to be preserved

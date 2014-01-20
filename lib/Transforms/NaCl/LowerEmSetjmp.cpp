@@ -90,13 +90,13 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
   Function *EmLongjmp = Function::Create(Longjmp->getFunctionType(), GlobalValue::ExternalLinkage, "emscripten_longjmp", TheModule);
 
-  FunctionType *IntFunc = FunctionType::get(i32, false);
-  Function *CheckLongjmp = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_check_longjmp", TheModule);
-
   SmallVector<Type*, 1> IntArgTypes;
   IntArgTypes.push_back(i32);
   FunctionType *IntIntFunc = FunctionType::get(i32, IntArgTypes, false);
-  Function *GetLongjmpResult = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_get_longjmp_result", TheModule);
+
+  Function *CheckLongjmp = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_check_longjmp", TheModule); // gets control flow
+
+  Function *GetLongjmpResult = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_get_longjmp_result", TheModule); // gets int value longjmp'd
 
   FunctionType *VoidFunc = FunctionType::get(Void, false);
   Function *PrepSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_prep_setjmp", TheModule);
@@ -104,6 +104,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   Function *PreInvoke = TheModule->getFunction("emscripten_preinvoke");
   if (!PreInvoke) PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
 
+  FunctionType *IntFunc = FunctionType::get(i32, false);
   Function *PostInvoke = TheModule->getFunction("emscripten_postinvoke");
   if (!PostInvoke) PostInvoke = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
 
@@ -132,7 +133,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
       // fix call target
       SmallVector<Value *, 2> Args;
       Args.push_back(CI->getArgOperand(0));
-      Args.push_back(ConstantInt::get(i32, P.size()-1)); // our index in the function is our place in the array
+      Args.push_back(ConstantInt::get(i32, P.size())); // our index in the function is our place in the array + 1
       CallInst::Create(EmSetjmp, Args, "", CI);
       CI->eraseFromParent();
     } else if (InvokeInst *CI = dyn_cast<InvokeInst>(U)) {
@@ -183,13 +184,14 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           // go to the right setjmp-tail if so
           SmallVector<Value *, 1> Args;
           Args.push_back(Check);
+          Instruction *LongjmpCheck = CallInst::Create(CheckLongjmp, Args, "", BB);
           Instruction *LongjmpResult = CallInst::Create(GetLongjmpResult, Args, "", BB);
-          SwitchInst *SI = SwitchInst::Create(LongjmpResult, Rejump, 2, BB);
-          // -1 means no longjmp happened, continue normally. 0-N mean a specific setjmp, same as the index in P. anything else means
-          // that a longjmp occurred but it is not one of ours, so re-longjmp
+          SwitchInst *SI = SwitchInst::Create(LongjmpCheck, Rejump, 2, BB);
+          // -1 means no longjmp happened, continue normally. 0 means a longjmp that is not ours to handle, needs a rethrow. Otherwise
+          // the index mean is the same as the index in P+1 (to avoid 0).
           SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, -1)), Tail);
           for (unsigned i = 0; i < P.size(); i++) {
-            SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, i)), P[i]->getParent());
+            SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, i+1)), P[i]->getParent());
             P[i]->addIncoming(LongjmpResult, BB);
           }
           TI->eraseFromParent(); // new terminator is now the switch
