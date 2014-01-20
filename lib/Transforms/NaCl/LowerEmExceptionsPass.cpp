@@ -112,9 +112,9 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
   }
 
-  FunctionType *Int1Func = FunctionType::get(i1, false);
+  FunctionType *IntFunc = FunctionType::get(i32, false);
   if (!TheModule->getFunction("emscripten_postinvoke")) {
-    PostInvoke = Function::Create(Int1Func, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
+    PostInvoke = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
   }
 
   FunctionType *LandingPadFunc = FunctionType::get(i8P, true);
@@ -150,9 +150,10 @@ bool LowerEmExceptions::runOnModule(Module &M) {
         ToErase.push_back(II);
 
         CallInst *Post = CallInst::Create(PostInvoke, "", II);
+        Instruction *Post1 = new TruncInst(Post, i1, "", II);
 
         // Insert a branch based on the postInvoke
-        BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post, II);
+        BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post1, II);
 
         LandingPads.insert(II->getLandingPadInst());
 

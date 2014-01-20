@@ -146,7 +146,8 @@ DEF_CALL_HANDLER(emscripten_check_longjmp, {
   return "checkyourself";
 })
 DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
-  return "getyourresult";
+  std::string Threw = getValueAsStr(CI->getOperand(0));
+  return getAssign(getJSName(CI), CI->getType()) + "((" + Threw + ") & ((threwValue|0) != 0)) ? " + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, setjmpTable)|0" + " : -1";
 })
 
 // i64 support

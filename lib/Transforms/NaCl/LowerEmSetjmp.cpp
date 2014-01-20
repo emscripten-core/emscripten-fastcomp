@@ -92,7 +92,11 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
   FunctionType *IntFunc = FunctionType::get(i32, false);
   Function *CheckLongjmp = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_check_longjmp", TheModule);
-  Function *GetLongjmpResult = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_get_longjmp_result", TheModule);
+
+  SmallVector<Type*, 1> IntArgTypes;
+  IntArgTypes.push_back(i32);
+  FunctionType *IntIntFunc = FunctionType::get(i32, IntArgTypes, false);
+  Function *GetLongjmpResult = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_get_longjmp_result", TheModule);
 
   FunctionType *VoidFunc = FunctionType::get(Void, false);
   Function *PrepSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_prep_setjmp", TheModule);
@@ -100,9 +104,8 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   Function *PreInvoke = TheModule->getFunction("emscripten_preinvoke");
   if (!PreInvoke) PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
 
-  FunctionType *Int1Func = FunctionType::get(i1, false);
   Function *PostInvoke = TheModule->getFunction("emscripten_postinvoke");
-  if (!PostInvoke) PostInvoke = Function::Create(Int1Func, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
+  if (!PostInvoke) PostInvoke = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
 
   // Process all callers of setjmp and longjmp. Start with setjmp.
 
@@ -174,14 +177,14 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           // envelop the call in pre/post invoke
           CallInst::Create(PreInvoke, "", CI);
           TerminatorInst *TI = BB->getTerminator();
-          CallInst *DidThrow = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
+          CallInst *Check = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
 
           // We need to replace the terminator in Tail - SplitBlock makes BB go straight to Tail, we need to check if a longjmp occurred, and
           // go to the right setjmp-tail if so
-          Instruction *Check = CallInst::Create(CheckLongjmp, "", BB);
-          //Instruction *Check = BinaryOperator::Create(Instruction::And, DidThrow, DidLongjmp, "", BB);
-          Instruction *LongjmpResult = CallInst::Create(GetLongjmpResult, "", BB);
-          SwitchInst *SI = SwitchInst::Create(Check, Rejump, 2, BB);
+          SmallVector<Value *, 1> Args;
+          Args.push_back(Check);
+          Instruction *LongjmpResult = CallInst::Create(GetLongjmpResult, Args, "", BB);
+          SwitchInst *SI = SwitchInst::Create(LongjmpResult, Rejump, 2, BB);
           // -1 means no longjmp happened, continue normally. 0-N mean a specific setjmp, same as the index in P. anything else means
           // that a longjmp occurred but it is not one of ours, so re-longjmp
           SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, -1)), Tail);
