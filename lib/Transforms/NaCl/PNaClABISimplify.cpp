@@ -27,7 +27,7 @@ EnableSjLjEH("enable-pnacl-sjlj-eh",
                       "as part of the pnacl-abi-simplify passes"),
              cl::init(false));
 
-void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
+void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   if (EnableSjLjEH) {
     // This comes before ExpandTls because it introduces references to
     // a TLS variable, __pnacl_eh_stack.  This comes before
@@ -74,7 +74,7 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   PM.add(createGlobalCleanupPass());
 }
 
-void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
+void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createRewritePNaClLibraryCallsPass());
 
   // We place ExpandByVal after optimization passes because some byval
