@@ -84,7 +84,10 @@ INITIALIZE_PASS(LowerEmExceptions, "loweremexceptions",
 bool canThrow(Value *V) {
   if (Function *F = dyn_cast<Function>(V)) {
     // intrinsics and some emscripten builtins cannot throw
-    if (F->isIntrinsic() || F->getName().startswith("emscripten_asm_")) return false;
+    if (F->isIntrinsic()) return false;
+    StringRef Name = F->getName();
+    if (Name.startswith("emscripten_asm_")) return false;
+    if (Name == "setjmp" || Name == "longjmp") return false; // leave setjmp and longjmp (mostly) alone, we process them properly later
     return true;
   }
   return true; // not a function, so an indirect call - can throw, we can't tell
@@ -92,15 +95,6 @@ bool canThrow(Value *V) {
 
 bool LowerEmExceptions::runOnModule(Module &M) {
   TheModule = &M;
-
-  // Checks
-
-  Function *Setjmp = TheModule->getFunction("setjmp");
-  if (Setjmp) {
-    for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
-      assert(0 && "emscripten fastcomp does not support c++ exceptions and setjmp/longjmp together yet. disable exceptions (-s DISABLE_EXCEPTION_CATCHING=1) or remove setjmp from your code, for now, or use the original emscripten compiler instead of fastcomp.");
-    }
-  }
 
   // Add functions
 
@@ -145,6 +139,8 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       // check terminator for invokes
       if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
+        LandingPads.insert(II->getLandingPadInst());
+
         bool NeedInvoke = canThrow(II->getCalledValue());
 
         if (NeedInvoke) {
@@ -166,8 +162,6 @@ bool LowerEmExceptions::runOnModule(Module &M) {
 
           // Insert a branch based on the postInvoke
           BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post1, II);
-
-          LandingPads.insert(II->getLandingPadInst());
         } else {
           // This can't throw, and we don't need this invoke, just replace it with a call+branch
           SmallVector<Value*,16> CallArgs(II->op_begin(), II->op_end() - 3);
@@ -184,8 +178,6 @@ bool LowerEmExceptions::runOnModule(Module &M) {
 
           // Remove any PHI node entries from the exception destination.
           II->getUnwindDest()->removePredecessor(BB);
-
-          LandingPads.insert(II->getLandingPadInst());
         }
 
         Changed = true;
