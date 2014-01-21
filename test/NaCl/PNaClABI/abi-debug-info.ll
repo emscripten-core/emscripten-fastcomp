@@ -1,5 +1,5 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
-; RUN: pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
+; RUN: not pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
 ; RUN:   FileCheck %s --check-prefix=DBG
 
 ; DBG-NOT: disallowed

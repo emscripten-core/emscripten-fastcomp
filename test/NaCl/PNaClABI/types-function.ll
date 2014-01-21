@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 ; Test type-checking in function bodies. This test is not intended to verify
 ; all the rules about the various types, but instead to make sure that types
 ; stashed in various places in function bodies are caught.

@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 
 ; This test checks that the PNaCl ABI verifier enforces the normal
 ; form introduced by the ReplacePtrsWithInts pass.

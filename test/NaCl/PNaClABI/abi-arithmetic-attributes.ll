@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 
 ; This tests that the arithmetic attributes "nuw" and "nsw" ("no
 ; unsigned wrap" and "no signed wrap") and "exact" are disallowed by

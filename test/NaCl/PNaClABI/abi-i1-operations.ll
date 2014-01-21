@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 
 ; Most arithmetic operations are not very useful on i1, so use of i1
 ; is restricted to a subset of operations.

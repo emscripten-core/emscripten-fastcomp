@@ -1,4 +1,4 @@
-; RUN: opt < %s -rewrite-pnacl-library-calls -S 2>&1 | FileCheck %s
+; RUN: not opt < %s -rewrite-pnacl-library-calls -S 2>&1 | FileCheck %s
 ; Test that the pass enforces not being able to store the address
 ; of setjmp.
 
