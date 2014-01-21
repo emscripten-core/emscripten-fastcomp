@@ -81,6 +81,15 @@ INITIALIZE_PASS(LowerEmExceptions, "loweremexceptions",
                 "Lower invoke and unwind for js/emscripten",
                 false, false)
 
+bool canThrow(Value *V) {
+  if (Function *F = dyn_cast<Function>(V)) {
+    // intrinsics and some emscripten builtins cannot throw
+    if (F->isIntrinsic() || F->getName().startswith("emscripten_asm_")) return false;
+    return true;
+  }
+  return true; // not a function, so an indirect call - can throw, we can't tell
+}
+
 bool LowerEmExceptions::runOnModule(Module &M) {
   TheModule = &M;
 
@@ -136,26 +145,48 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       // check terminator for invokes
       if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
-        // Insert a normal call instruction folded in between pre- and post-invoke
-        CallInst *Pre = CallInst::Create(PreInvoke, "", II);
+        bool NeedInvoke = canThrow(II->getCalledValue());
 
-        SmallVector<Value*,16> CallArgs(II->op_begin(), II->op_end() - 3);
-        CallInst *NewCall = CallInst::Create(II->getCalledValue(),
-                                             CallArgs, "", II);
-        NewCall->takeName(II);
-        NewCall->setCallingConv(II->getCallingConv());
-        NewCall->setAttributes(II->getAttributes());
-        NewCall->setDebugLoc(II->getDebugLoc());
-        II->replaceAllUsesWith(NewCall);
-        ToErase.push_back(II);
+        if (NeedInvoke) {
+          // Insert a normal call instruction folded in between pre- and post-invoke
+          CallInst *Pre = CallInst::Create(PreInvoke, "", II);
 
-        CallInst *Post = CallInst::Create(PostInvoke, "", II);
-        Instruction *Post1 = new TruncInst(Post, i1, "", II);
+          SmallVector<Value*,16> CallArgs(II->op_begin(), II->op_end() - 3);
+          CallInst *NewCall = CallInst::Create(II->getCalledValue(),
+                                               CallArgs, "", II);
+          NewCall->takeName(II);
+          NewCall->setCallingConv(II->getCallingConv());
+          NewCall->setAttributes(II->getAttributes());
+          NewCall->setDebugLoc(II->getDebugLoc());
+          II->replaceAllUsesWith(NewCall);
+          ToErase.push_back(II);
 
-        // Insert a branch based on the postInvoke
-        BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post1, II);
+          CallInst *Post = CallInst::Create(PostInvoke, "", II);
+          Instruction *Post1 = new TruncInst(Post, i1, "", II);
 
-        LandingPads.insert(II->getLandingPadInst());
+          // Insert a branch based on the postInvoke
+          BranchInst::Create(II->getUnwindDest(), II->getNormalDest(), Post1, II);
+
+          LandingPads.insert(II->getLandingPadInst());
+        } else {
+          // This can't throw, and we don't need this invoke, just replace it with a call+branch
+          SmallVector<Value*,16> CallArgs(II->op_begin(), II->op_end() - 3);
+          CallInst *NewCall = CallInst::Create(II->getCalledValue(),
+                                               CallArgs, "", II);
+          NewCall->takeName(II);
+          NewCall->setCallingConv(II->getCallingConv());
+          NewCall->setAttributes(II->getAttributes());
+          NewCall->setDebugLoc(II->getDebugLoc());
+          II->replaceAllUsesWith(NewCall);
+          ToErase.push_back(II);
+
+          BranchInst::Create(II->getNormalDest(), II);
+
+          // Remove any PHI node entries from the exception destination.
+          II->getUnwindDest()->removePredecessor(BB);
+
+          LandingPads.insert(II->getLandingPadInst());
+        }
 
         Changed = true;
       }
