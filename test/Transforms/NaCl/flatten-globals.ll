@@ -8,7 +8,7 @@ target datalayout = "p:32:32:32"
 
 @var_i32 = global i32 258
 ; CHECK: @var_i32 = global [4 x i8] c"\02\01\00\00"
-; CHECK-CLEANED-NOT: global i32 258
+; CLEANED-NOT: global i32 258
 
 @external_var = external global i32
 ; CHECK: @external_var = external global [4 x i8]
