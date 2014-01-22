@@ -136,7 +136,7 @@ DEF_CALL_HANDLER(emscripten_prep_setjmp, {
 })
 DEF_CALL_HANDLER(emscripten_setjmp, {
   // env, label, table
-  Declares.insert("_saveSetjmp");
+  Declares.insert("saveSetjmp");
   return "_saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0)|0";
 })
 DEF_CALL_HANDLER(emscripten_longjmp, {
