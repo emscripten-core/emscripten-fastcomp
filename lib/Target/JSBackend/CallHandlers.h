@@ -163,50 +163,43 @@ DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
 DEF_CALL_HANDLER(getHigh32, {
   return getAssign(getJSName(CI), CI->getType()) + "tempRet0";
 })
-
 DEF_CALL_HANDLER(setHigh32, {
   return "tempRet0 = " + getValueAsStr(CI->getOperand(0));
 })
-
-DEF_CALL_HANDLER(FPtoILow, {
-  return getAssign(getJSName(CI), CI->getType()) + "(~~" + getValueAsStr(CI->getOperand(0)) + ")>>>0";
+#define TO_I(low, high) \
+DEF_CALL_HANDLER(low, { \
+  return getAssign(getJSName(CI), CI->getType()) + "(~~" + getValueAsStr(CI->getOperand(0)) + ")>>>0"; \
+}) \
+DEF_CALL_HANDLER(high, { \
+  std::string Input = getValueAsStr(CI->getOperand(0)); \
+  return getAssign(getJSName(CI), CI->getType()) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
 })
-
-DEF_CALL_HANDLER(FPtoIHigh, {
-  std::string Input = getValueAsStr(CI->getOperand(0));
-  return getAssign(getJSName(CI), CI->getType()) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0";
-})
-
+TO_I(FtoILow, FtoIHigh);
+TO_I(DtoILow, DtoIHigh);
 DEF_CALL_HANDLER(BDtoILow, {
   return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ";" + getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr>>2]|0";
 })
-
 DEF_CALL_HANDLER(BDtoIHigh, {
   return getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr+4>>2]|0";
 })
-
 DEF_CALL_HANDLER(SItoF, {
   // TODO: fround
   return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
 })
-
 DEF_CALL_HANDLER(UItoF, {
   // TODO: fround
   return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
-
 DEF_CALL_HANDLER(SItoD, {
   return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
 })
-
 DEF_CALL_HANDLER(UItoD, {
   return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
-
 DEF_CALL_HANDLER(BItoD, {
   return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getOperand(0)) + ";" +
          "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ";" +
@@ -616,8 +609,10 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_get_longjmp_result);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
-  SETUP_CALL_HANDLER(FPtoILow);
-  SETUP_CALL_HANDLER(FPtoIHigh);
+  SETUP_CALL_HANDLER(FtoILow);
+  SETUP_CALL_HANDLER(FtoIHigh);
+  SETUP_CALL_HANDLER(DtoILow);
+  SETUP_CALL_HANDLER(DtoIHigh);
   SETUP_CALL_HANDLER(BDtoILow);
   SETUP_CALL_HANDLER(BDtoIHigh);
   SETUP_CALL_HANDLER(SItoF);

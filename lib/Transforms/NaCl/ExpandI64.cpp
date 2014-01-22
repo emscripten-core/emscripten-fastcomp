@@ -98,7 +98,7 @@ namespace {
 
     void finalizeInst(Instruction *I);
 
-    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FPtoILow, *FPtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD, *BDtoILow, *BDtoIHigh;
+    Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FtoILow, *FtoIHigh, *DtoILow, *DtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD, *BDtoILow, *BDtoIHigh;
 
     void ensureFuncs();
 
@@ -509,9 +509,16 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::FPToSI: {
       ensureFuncs();
       SmallVector<Value *, 1> Args;
-      Args.push_back(I->getOperand(0));
-      Instruction *L = CopyDebug(CallInst::Create(FPtoILow, Args, "", I), I);
-      Instruction *H = CopyDebug(CallInst::Create(FPtoIHigh, Args, "", I), I);
+      Value *Input = I->getOperand(0);
+      Args.push_back(Input);
+      Instruction *L, *H;
+      if (Input->getType()->isFloatTy()) {
+        L = CopyDebug(CallInst::Create(FtoILow, Args, "", I), I);
+        H = CopyDebug(CallInst::Create(FtoIHigh, Args, "", I), I);
+      } else {
+        L = CopyDebug(CallInst::Create(DtoILow, Args, "", I), I);
+        H = CopyDebug(CallInst::Create(DtoIHigh, Args, "", I), I);
+      }
       SplitInfo &Split = Splits[I];
       Split.LowHigh.Low  = L;
       Split.LowHigh.High = H;
@@ -890,16 +897,25 @@ void ExpandI64::ensureFuncs() {
   Type *Double = Type::getDoubleTy(TheModule->getContext());
   Type *Float  = Type::getFloatTy(TheModule->getContext());
 
-  SmallVector<Type*, 1> FPtoITypes;
-  FPtoITypes.push_back(Double);
-  FunctionType *FPtoIFunc = FunctionType::get(i32, FPtoITypes, false);
-  FPtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
-                              "FPtoILow", TheModule);
-  FPtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
-                               "FPtoIHigh", TheModule);
-  BDtoILow = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
+  SmallVector<Type*, 1> FtoITypes;
+  FtoITypes.push_back(Float);
+  FunctionType *FtoIFunc = FunctionType::get(i32, FtoITypes, false);
+
+  SmallVector<Type*, 1> DtoITypes;
+  DtoITypes.push_back(Double);
+  FunctionType *DtoIFunc = FunctionType::get(i32, DtoITypes, false);
+
+  FtoILow = Function::Create(FtoIFunc, GlobalValue::ExternalLinkage,
+                             "FtoILow", TheModule);
+  FtoIHigh = Function::Create(FtoIFunc, GlobalValue::ExternalLinkage,
+                              "FtoIHigh", TheModule);
+  DtoILow = Function::Create(DtoIFunc, GlobalValue::ExternalLinkage,
+                             "DtoILow", TheModule);
+  DtoIHigh = Function::Create(DtoIFunc, GlobalValue::ExternalLinkage,
+                              "DtoIHigh", TheModule);
+  BDtoILow = Function::Create(DtoIFunc, GlobalValue::ExternalLinkage,
                               "BDtoILow", TheModule);
-  BDtoIHigh = Function::Create(FPtoIFunc, GlobalValue::ExternalLinkage,
+  BDtoIHigh = Function::Create(DtoIFunc, GlobalValue::ExternalLinkage,
                                "BDtoIHigh", TheModule);
 
   SmallVector<Type*, 2> ItoTypes;
