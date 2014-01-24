@@ -746,6 +746,10 @@ static int hexToInt(char x) {
 } */
 
 static inline std::string ftostr_exact(const ConstantFP *CFP) {
+  const APFloat &flt = CFP->getValueAPF();
+  if (flt.getCategory() == APFloat::fcInfinity) return flt.isNegative() ? "-inf" : "inf";
+  else if (flt.getCategory() == APFloat::fcNaN) return "nan";
+
   std::string temp;
   raw_string_ostream stream(temp);
   stream << *CFP; // bitcast on APF produces odd results, so do it this horrible way
@@ -777,7 +781,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
       std::string S = ftostr_exact(CFP);
-      S = '+' + S;
+      if (S[0] != '+') {
+        S = '+' + S;
+      }
       //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
