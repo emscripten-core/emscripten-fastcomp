@@ -963,6 +963,10 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
   return false;
 }
 
+uint64_t LSBMask(unsigned numBits) {
+  return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits) - 1;
+}
+
 // generateInstruction - This member is called for each Instruction in a function.
 void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Code) {
   std::string iName(getJSName(I));
@@ -1206,7 +1210,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
-      Code << getValueAsStr(I->getOperand(0)) + "&" + utostr(pow(2, outBits)-1);
+      Code << getValueAsStr(I->getOperand(0)) + "&" + utostr(LSBMask(outBits));
       break;
     }
     case Instruction::SExt: {
