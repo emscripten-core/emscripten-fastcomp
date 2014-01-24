@@ -44,6 +44,10 @@ using namespace llvm;
 #include <OptPasses.h>
 #include <Relooper.h>
 
+#ifdef _MSC_VER
+#define snprintf _snprintf
+#endif
+
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
 #define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
