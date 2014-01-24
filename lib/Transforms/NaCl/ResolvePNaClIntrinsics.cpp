@@ -185,7 +185,7 @@ struct IsLockFreeToConstant {
     }
 #   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__)
     // Continue.
-#   elif defined(__mips__)
+#   elif defined(__mips__) || defined(_M_IX86) // XXX Emscripten TODO: Move this fix to PNacl upstream.
     MaxLockFreeByteSize = 4;
 #   else
 #     error "Unknown architecture"
