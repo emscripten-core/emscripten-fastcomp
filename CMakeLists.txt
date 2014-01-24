@@ -73,12 +73,12 @@ set(LLVM_TOOLS_BINARY_DIR ${LLVM_BINARY_DIR}/bin)
 set(LLVM_EXAMPLES_BINARY_DIR ${LLVM_BINARY_DIR}/examples)
 set(LLVM_LIBDIR_SUFFIX "" CACHE STRING "Define suffix of library directory name (32/64)" )
 
+# TODO Add CppBackend back once it's restored. XXX Emscripten
 set(LLVM_ALL_TARGETS
   AArch64
   ARM
-  CppBackend
-  Hexagon
   JSBackend
+  Hexagon
   Mips
   MBlaze
   MSP430
