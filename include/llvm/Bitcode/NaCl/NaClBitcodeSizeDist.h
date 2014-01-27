@@ -35,8 +35,10 @@ public:
   NaClBitcodeSizeDistElement()
       : NaClBitcodeDistElement(RDE_SizeDist),
         ValueIndexDist(NaClBitcodeDist::RecordStorage,
-                       &NaClBitcodeValueIndexDistElement::Sentinel) {
+                       &NaClBitcodeValueIndexDistElement::Sentinel),
+        UntrackedValues(NaClValueIndexCutoff, true) {
     NestedDists.push_back(&ValueIndexDist);
+    NestedDists.push_back(&UntrackedValues);
   }
 
   static NaClBitcodeSizeDistElement Sentinel;
@@ -66,12 +68,19 @@ public:
     return ValueIndexDist;
   }
 
+  NaClBitcodeValueDist &GetUntrackedValues() {
+    return UntrackedValues;
+  }
+
 private:
   // Nested blocks used by GetNestedDistributions.
-  SmallVector<NaClBitcodeDist*, 1> NestedDists;
+  SmallVector<NaClBitcodeDist*, 2> NestedDists;
 
   // The value distributions associated with records of the given size.
   NaClBitcodeDist ValueIndexDist;
+
+  // The value distributions for values not tracked in ValueIndexDist.
+  NaClBitcodeValueDist UntrackedValues;
 };
 
 }

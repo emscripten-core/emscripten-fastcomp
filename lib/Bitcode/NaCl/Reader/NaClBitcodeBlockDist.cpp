@@ -48,7 +48,8 @@ CreateElement(NaClBitcodeDistValue Value) const {
   return new NaClBitcodeBlockDistElement();
 }
 
-double NaClBitcodeBlockDistElement::GetImportance() const {
+double NaClBitcodeBlockDistElement::
+GetImportance(NaClBitcodeDistValue Value) const {
   return static_cast<double>(GetTotalBits());
 }
 

@@ -16,8 +16,34 @@
 
 namespace llvm {
 
-/// Defines the distribution element of values for a given index in
-/// the values of a bitcode record.
+/// Defines the value index cutoff where we no longer track values associated
+/// with specific value indices of bitcode records.
+static const unsigned NaClValueIndexCutoff = 6;
+
+/// Defines an (inclusive) range of values in a bitcode record,
+/// defined by the given pair of values. Note that values are stored
+/// as ranges. For small values, each value is in a separate range, so
+/// that potential constants for abbreviations can be found. For
+/// larger values, values are coalesced together into multiple element
+/// ranges, since we don't look for constants and are only interested
+/// in the overall distribution of values.
+typedef std::pair<NaClBitcodeDistValue,
+                  NaClBitcodeDistValue> NaClValueRangeType;
+
+/// Models a range index. Ranges are encoded as a consecutive sequence
+/// of indices, starting at zero. The actual ranges chosen to
+/// represent bitcode records are internal, and is defined by function
+/// GetValueRange index below.
+typedef NaClBitcodeDistValue NaClValueRangeIndexType;
+
+/// Converts a bitcode record value to the corresponding range index that
+/// contains the value.
+NaClValueRangeIndexType GetNaClValueRangeIndex(NaClBitcodeDistValue Value);
+
+/// Converts a range index into the corresponding range of values.
+NaClValueRangeType GetNaClValueRange(NaClValueRangeIndexType RangeIndex);
+
+/// Defines the distribution of range indices.
 class NaClBitcodeValueDistElement : public NaClBitcodeDistElement {
   NaClBitcodeValueDistElement(const NaClBitcodeValueDistElement&)
   LLVM_DELETED_FUNCTION;
@@ -40,6 +66,10 @@ public:
   virtual NaClBitcodeDistElement *CreateElement(
       NaClBitcodeDistValue Value) const;
 
+  /// Returns the number of instances, normalized over the
+  /// range of values, using a uniform distribution.
+  virtual double GetImportance(NaClBitcodeDistValue Value) const;
+
   virtual const char *GetTitle() const;
 
   virtual const char *GetValueHeader() const;
@@ -49,8 +79,8 @@ public:
                              const NaClBitcodeDist *Distribution) const;
 };
 
-/// Defines the distribution of values for a given index in
-/// the values of a bitcode record.
+/// Defines the distribution of values for a set of value indices for
+/// bitcode records.
 class NaClBitcodeValueDist : public NaClBitcodeDist {
   NaClBitcodeValueDist(const NaClBitcodeValueDist&) LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitcodeValueDist&) LLVM_DELETED_FUNCTION;
@@ -61,12 +91,12 @@ public:
         Dist->getKind() < RD_ValueDistLast;
   }
 
-  explicit NaClBitcodeValueDist(unsigned Index)
-      : NaClBitcodeDist(RecordStorage,
-                        &NaClBitcodeValueDistElement::Sentinel,
-                        RD_ValueDist),
-        Index(Index) {
-  }
+  /// Builds a value distribution for the given set of value indices.
+  /// If AllRemainingIndices is false, only value Index is considered.
+  /// Otherwise, builds a value distribution for all values stored in
+  /// record value indices >= Index.
+  explicit NaClBitcodeValueDist(unsigned Index,
+                                bool AllRemainingIndices=false);
 
   virtual ~NaClBitcodeValueDist();
 
@@ -74,11 +104,19 @@ public:
     return Index;
   }
 
+  bool HoldsAllRemainingIndices() const {
+    return AllRemainingIndices;
+  }
+
   virtual void GetValueList(const NaClBitcodeRecord &Record,
                             ValueListType &ValueList) const;
 
 private:
+  // The range index being tracked.
   unsigned Index;
+
+  // If true, then tracks all indices >= Index. Otherwise only Index.
+  bool AllRemainingIndices;
 };
 
 /// Defines the value distribution for each value index in corresponding
@@ -113,7 +151,7 @@ public:
   virtual void GetValueList(const NaClBitcodeRecord &Record,
                             ValueListType &ValueList) const;
 
-  virtual double GetImportance() const;
+  virtual double GetImportance(NaClBitcodeDistValue Value) const;
 
   virtual void AddRecord(const NaClBitcodeRecord &Record);
 
@@ -138,7 +176,6 @@ private:
 
   // The value distribution associated with the given index.
   NaClBitcodeValueDist ValueDist;
-
 };
 
 }

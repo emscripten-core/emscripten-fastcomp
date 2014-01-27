@@ -49,7 +49,7 @@ public:
   virtual NaClBitcodeDistElement*
   CreateElement(NaClBitcodeDistValue Value) const;
 
-  virtual double GetImportance() const;
+  virtual double GetImportance(NaClBitcodeDistValue Value) const;
 
   virtual const SmallVectorImpl<NaClBitcodeDist*> *
   GetNestedDistributions() const;

@@ -23,12 +23,16 @@ NaClBitcodeDistElement *NaClBitcodeSizeDistElement::CreateElement(
 void NaClBitcodeSizeDistElement::
 GetValueList(const NaClBitcodeRecord &Record,
              ValueListType &ValueList) const {
-  ValueList.push_back(Record.GetValues().size());
+  unsigned Size = Record.GetValues().size();
+  // Map all sizes greater than the max value index into the same bucket.
+  if (Size > NaClValueIndexCutoff) Size = NaClValueIndexCutoff;
+  ValueList.push_back(Size);
 }
 
 void NaClBitcodeSizeDistElement::AddRecord(const NaClBitcodeRecord &Record) {
   NaClBitcodeDistElement::AddRecord(Record);
   ValueIndexDist.AddRecord(Record);
+  UntrackedValues.AddRecord(Record);
 }
 
 const SmallVectorImpl<NaClBitcodeDist*> *NaClBitcodeSizeDistElement::
@@ -49,6 +53,8 @@ PrintRowValue(raw_ostream &Stream,
               NaClBitcodeDistValue Value,
               const NaClBitcodeDist *Distribution) const {
   Stream << format("%7u", Value);
+  // Report if we merged in GetValueList.
+  if (Value >= NaClValueIndexCutoff) Stream << "+";
 }
 
 NaClBitcodeSizeDistElement NaClBitcodeSizeDistElement::Sentinel;

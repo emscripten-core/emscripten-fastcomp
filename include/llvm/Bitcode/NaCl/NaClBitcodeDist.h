@@ -435,10 +435,13 @@ public:
   virtual void GetValueList(const NaClBitcodeRecord &Record,
                             ValueListType &ValueList) const;
 
-  // Returns the importance of this element, and the number of
-  // instances associated with it. Used to sort the distribution map,
-  // where values with larger importance appear first.
-  virtual double GetImportance() const;
+  // Returns the importance of this element. In many cases, it will be
+  // the number of instances associated with it. However, it need not
+  // be correlated to the number of instance. Used to sort the
+  // distribution map, where values with larger importance appear
+  // first. Value is the domain value associated with the element in
+  // the distribution map.
+  virtual double GetImportance(NaClBitcodeDistValue Value) const;
 
   /// Returns the title to use when printing the title associated
   /// with instances of this distribution element.

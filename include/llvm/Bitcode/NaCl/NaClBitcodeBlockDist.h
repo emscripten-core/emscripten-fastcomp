@@ -42,7 +42,7 @@ public:
       NaClBitcodeDistValue Value) const;
 
   // Sorts by %file, rather than number of instances.
-  virtual double GetImportance() const;
+  virtual double GetImportance(NaClBitcodeDistValue value) const;
 
   virtual const char *GetTitle() const;
 

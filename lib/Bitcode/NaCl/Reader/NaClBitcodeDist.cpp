@@ -37,13 +37,13 @@ void NaClBitcodeDist::AddRecord(const NaClBitcodeRecord &Record) {
   GetValueList(Record, ValueList);
   if (!ValueList.empty()) {
     RemoveCachedDistribution();
-    ++Total;
     for (ValueListIterator
              Iter = ValueList.begin(),
              IterEnd = ValueList.end();
          Iter != IterEnd; ++Iter) {
       NaClBitcodeDistElement *Element = GetElement(*Iter);
       Element->AddRecord(Record);
+      ++Total;
     }
   }
 }
@@ -91,7 +91,7 @@ void NaClBitcodeDist::Sort() const {
     const NaClBitcodeDistElement *Elmt = Iter->second;
     // Only add if histogram element is non-empty.
     if (Elmt->GetNumInstances()) {
-      double Importance = Elmt->GetImportance();
+      double Importance = Elmt->GetImportance(Iter->first);
       CachedDistribution->push_back(std::make_pair(Importance, Iter->first));
     }
   }
@@ -118,7 +118,7 @@ void NaClBitcodeDistElement::GetValueList(const NaClBitcodeRecord &Record,
   // By default, assume no record values are defined.
 }
 
-double NaClBitcodeDistElement::GetImportance() const {
+double NaClBitcodeDistElement::GetImportance(NaClBitcodeDistValue Value) const {
   return static_cast<double>(NumInstances);
 }
 
