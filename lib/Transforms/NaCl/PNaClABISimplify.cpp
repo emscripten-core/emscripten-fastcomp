@@ -49,7 +49,7 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
     PM.add(createCFGSimplificationPass());
   }
 
-  PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN . Note, only if no exceptions
+  PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN
 
 #if 0 // EMSCRIPTEN: we allow arbitrary symbols to be preserved
   // Internalize all symbols in the module except _start, which is the only

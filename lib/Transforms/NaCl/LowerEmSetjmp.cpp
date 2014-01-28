@@ -168,12 +168,21 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           if (V == PrepSetjmp || V == EmSetjmp || V == CheckLongjmp || V == GetLongjmpResult || V == PreInvoke || V == PostInvoke) continue;
           if (Function *CF = dyn_cast<Function>(V)) if (CF->isIntrinsic()) continue;
           // TODO: proper analysis of what can actually longjmp. Currently we assume anything but setjmp can.
-          // This may longjmp, so we need to check if it did. Split at that point.
+          // This may longjmp, so we need to check if it did. Split at that point, and
+          // envelop the call in pre/post invoke, if we need to
+          CallInst *After;
+          Instruction *Check = NULL;
+          if (Iter != E && (After = dyn_cast<CallInst>(Iter)) && After->getCalledValue() == PostInvoke) {
+            // use the pre|postinvoke that exceptions lowering already made
+            Check = Iter++;
+          }
           BasicBlock *Tail = SplitBlock(BB, Iter, this); // Iter already points to the next instruction, as we need
-          // envelop the call in pre/post invoke
-          CallInst::Create(PreInvoke, "", CI);
           TerminatorInst *TI = BB->getTerminator();
-          CallInst *Check = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
+          if (!Check) {
+            // no existing pre|postinvoke, create our own
+            CallInst::Create(PreInvoke, "", CI);
+            Check = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
+          }
 
           // We need to replace the terminator in Tail - SplitBlock makes BB go straight to Tail, we need to check if a longjmp occurred, and
           // go to the right setjmp-tail if so
