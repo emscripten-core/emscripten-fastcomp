@@ -577,7 +577,7 @@ std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const T
             }
             default: assert(0 && "bad 4f store");
           }
-          text += Assign + "+HEAPF32[tempDoublePtr>>2]";
+          text += sep + Assign + "+HEAPF32[tempDoublePtr>>2]";
         }
         break;
       }
