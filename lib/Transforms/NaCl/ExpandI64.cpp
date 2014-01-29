@@ -269,28 +269,30 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     }
     case Instruction::ZExt: {
       Value *Input = I->getOperand(0);
-      Type *T = Input->getType();
-      Value *Low;
-      if (T->getIntegerBitWidth() < 32) {
-        Low = CopyDebug(new ZExtInst(Input, i32, "", I), I);
+      unsigned InputBits = Input->getType()->getIntegerBitWidth();
+      if (InputBits < 32) {
+        I->setOperand(0, CopyDebug(new ZExtInst(Input, i32, "", I), I)); // add a zext to 32-bit size
       } else {
-        assert(T->getIntegerBitWidth() == 32);
-        Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Input, Zero, "", I), I); // copy the input, hackishly XXX
+        if (InputBits % 32 != 0) assert(0);
       }
-      Split.Chunks.push_back(Low);
       int Num = getNumChunks(I->getType());
-      for (int i = 1; i < Num; i++) {
-        Split.Chunks.push_back(Zero);
+      for (int i = 0; i < Num; i++) {
+        Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy the input, hackishly XXX
       }
       break;
     }
     case Instruction::Trunc: {
-      if (I->getType()->getIntegerBitWidth() < 32) {
+      unsigned Bits = I->getType()->getIntegerBitWidth();
+      if (Bits < 32) {
         // we need to add a trunc of the low 32 bits
         Instruction *L = CopyDebug(new TruncInst(Zero, I->getType(), "", I), I);
         Split.ToFix.push_back(L);
-      } else {
-        assert(I->getType()->getIntegerBitWidth() == 32);
+      } else if (Bits > 32) {
+        if (Bits % 32 != 0) assert(0);
+        int Num = getNumChunks(I->getType());
+        for (int i = 0; i < Num; i++) {
+          Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy the input, hackishly XXX
+        }
       }
       break;
     }
@@ -764,20 +766,43 @@ void ExpandI64::finalizeInst(Instruction *I) {
   switch (I->getOpcode()) {
     case Instruction::Load:
     case Instruction::SExt:
-    case Instruction::ZExt:
     case Instruction::FPToUI:
     case Instruction::FPToSI: {
       break; // input was legal
     }
+    case Instruction::ZExt: {
+      Value *Input = I->getOperand(0);
+      unsigned InputBits = Input->getType()->getIntegerBitWidth();
+      unsigned Num = getNumChunks(I->getOperand(0)->getType());
+      Type *i32 = Type::getInt32Ty(TheModule->getContext());
+      Constant *Zero = Constant::getNullValue(i32);
+      if (InputBits <= 32) {
+        cast<Instruction>(Split.Chunks[0])->setOperand(0, I->getOperand(0));
+        for (unsigned i = 1; i < Num; i++) {
+          cast<Instruction>(Split.Chunks[i])->setOperand(0, Zero);
+        }
+      } else {
+        ChunksVec Chunks = getChunks(I->getOperand(0));
+        for (unsigned i = 0; i < Num; i++) {
+          cast<Instruction>(Split.Chunks[i])->setOperand(0, i < Chunks.size() ? Chunks[i] : Zero);
+        }
+      }
+      break;
+    }
     case Instruction::Trunc: {
       ChunksVec Chunks = getChunks(I->getOperand(0));
-      if (I->getType()->getIntegerBitWidth() == 32) {
-        I->replaceAllUsesWith(Chunks[0]); // just use the lower 32 bits and you're set
-      } else {
-        assert(I->getType()->getIntegerBitWidth() < 32);
+      unsigned Bits = I->getType()->getIntegerBitWidth();
+      if (Bits < 32) {
         Instruction *L = Split.ToFix[0];
         L->setOperand(0, Chunks[0]);
         I->replaceAllUsesWith(L);
+      } else if (Bits == 32) {
+        I->replaceAllUsesWith(Chunks[0]); // just use the lower 32 bits and you're set
+      } else {
+        int Num = getNumChunks(I->getType());
+        for (int i = 0; i < Num; i++) {
+          cast<Instruction>(Split.Chunks[i])->setOperand(0, Chunks[i]);
+        }
       }
       break;
     }
