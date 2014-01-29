@@ -391,12 +391,47 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         Split.Chunks.push_back(Low);
         Split.Chunks.push_back(High);
       } else {
-        // more than 32 bits. handle simple constant multiple-of-32-bit shifts for lshr and shl
+        // more than 32 bits. handle simple shifts for lshr and shl
         ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
-        unsigned Shifts = CI->getZExtValue();
-        if (Shifts % 32 != 0) assert(0);
-        for (int i = 0; i < Num; i++) {
-          Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+        int Shifts = CI->getSExtValue();
+        if (Shifts % 32 == 0) {
+          for (int i = 0; i < Num; i++) {
+            Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+          }
+        } else {
+          // not a simple multiple of 32.
+          Constant *Frac = ConstantInt::get(i32, Shifts % 32);
+          Constant *Comp = ConstantInt::get(i32, 32 - (Shifts % 32));
+          Instruction::BinaryOps Opcode, Reverse;
+          int ShiftChunks, Dir;
+          if (I->getOpcode() == Instruction::Shl) {
+            Opcode = Instruction::Shl;
+            Reverse = Instruction::LShr;
+            ShiftChunks = -Shifts/32;
+            Dir = -1;
+          } else if (I->getOpcode() == Instruction::LShr) {
+            Opcode = Instruction::LShr;
+            Reverse = Instruction::Shl;
+            ShiftChunks = Shifts/32;
+            Dir = 1;
+          } else {
+            errs() << *I << "\n";
+            assert(0);
+          }
+          for (int i = 0; i < Num; i++) {
+            Split.ToFix.push_back(BinaryOperator::Create(Opcode, Zero, Frac, "", I)); // shifted the fractional amount
+          }
+          for (int i = 0; i < Num; i++) {
+            Split.ToFix.push_back(BinaryOperator::Create(Reverse, Zero, Comp, "", I)); // shifted the complement-fractional amount to the other side
+          }
+          for (int i = 0; i < Num; i++) {
+            int j = i + ShiftChunks;
+            int k = i + ShiftChunks + Dir;
+            Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or,
+              0 <= j && j < Num ? Split.ToFix[    j] : Zero,
+              0 <= k && k < Num ? Split.ToFix[Num+k] : Zero,
+            "", I)); // shifted the complement-fractional amount to the other side
+          }
         }
       }
       break;
@@ -808,22 +843,30 @@ void ExpandI64::finalizeInst(Instruction *I) {
           }
         }
       } else {
-        // more than 32 bits. handle simple constant multiple-of-32-bit shifts for lshr and shl
+        // more than 32 bits. handle simple shifts for lshr and shl
         ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
         unsigned Shifts = CI->getZExtValue();
-        unsigned ChunkShifts = Shifts/32;
-        int Move;
-        switch (I->getOpcode()) {
-          case Instruction::LShr: Move =  ChunkShifts; break; // XXX verify this is not off-by-one
-          case Instruction::Shl:  Move = -ChunkShifts; break;
-          default: assert(0);
-        }
-        for (int i = 0; i < Num; i++) {
-          int j = i + Move;
-          if (0 <= j && j < Num) {
-            cast<Instruction>(Split.Chunks[i])->setOperand(0, Left[j]);
+        if (Shifts % 32 == 0) {
+          unsigned ChunkShifts = Shifts/32;
+          int Move;
+          switch (I->getOpcode()) {
+            case Instruction::LShr: Move =  ChunkShifts; break; // XXX verify this is not off-by-one
+            case Instruction::Shl:  Move = -ChunkShifts; break;
+            default: assert(0);
           }
-          // otherwise it was already zero, which is correct
+          for (int i = 0; i < Num; i++) {
+            int j = i + Move;
+            if (0 <= j && j < Num) {
+              cast<Instruction>(Split.Chunks[i])->setOperand(0, Left[j]);
+            }
+            // otherwise it was already zero, which is correct
+          }
+        } else {
+          // not a simple multiple of 32.
+          for (int i = 0; i < Num; i++) {
+            cast<Instruction>(Split.ToFix[i])->setOperand(0, Left[i]);
+            cast<Instruction>(Split.ToFix[Num+i])->setOperand(0, Left[i]);
+          }
         }
       }
       break;
