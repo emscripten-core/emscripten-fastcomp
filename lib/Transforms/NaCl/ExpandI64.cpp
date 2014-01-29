@@ -472,17 +472,16 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::And:
     case Instruction::Or:
     case Instruction::Xor: {
-      assert(I->getOperand(0)->getType() == i64);
       Instruction::BinaryOps Op;
       switch (I->getOpcode()) { // XXX why does llvm make us do this?
         case Instruction::And: Op = Instruction::And; break;
         case Instruction::Or:  Op = Instruction::Or;  break;
         case Instruction::Xor: Op = Instruction::Xor; break;
       }
-      Instruction *L = CopyDebug(BinaryOperator::Create(Op, Zero, Zero, "", I), I);
-      Instruction *H = CopyDebug(BinaryOperator::Create(Op, Zero, Zero, "", I), I);
-      Split.Chunks.push_back(L);
-      Split.Chunks.push_back(H);
+      int Num = getNumChunks(I->getType());
+      for (int i = 0; i < Num; i++) {
+        Split.Chunks.push_back(CopyDebug(BinaryOperator::Create(Op, Zero, Zero, "", I), I));
+      }
       break;
     }
     case Instruction::Call: {
@@ -822,10 +821,12 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::Xor: {
       ChunksVec Left = getChunks(I->getOperand(0));
       ChunksVec Right = getChunks(I->getOperand(1));
-      Instruction *L = cast<Instruction>(Split.Chunks[0]);
-      Instruction *H = cast<Instruction>(Split.Chunks[1]);
-      L->setOperand(0, Left[0]);  L->setOperand(1, Right[0]);
-      H->setOperand(0, Left[1]); H->setOperand(1, Right[1]);
+      int Num = getNumChunks(I->getType());
+      for (int i = 0; i < Num; i++) {
+        Instruction *Chunk = cast<Instruction>(Split.Chunks[i]);
+        Chunk->setOperand(0, Left[i]);
+        Chunk->setOperand(1, Right[i]);
+      }
       break;
     }
     case Instruction::Call: {
