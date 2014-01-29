@@ -513,17 +513,16 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::PHI: {
-      assert(I->getOperand(0)->getType() == i64);
-      PHINode *P = dyn_cast<PHINode>(I);
-      int Num = P->getNumIncomingValues();
-      PHINode *L = PHINode::Create(i32, Num, "", I); CopyDebug(L, I);
-      PHINode *H = PHINode::Create(i32, Num, "", I); CopyDebug(H, I);
+      int Num = getNumChunks(I->getType());
+      PHINode *Parent = dyn_cast<PHINode>(I);
+      int PhiNum = Parent->getNumIncomingValues();
       for (int i = 0; i < Num; i++) {
-        L->addIncoming(Zero, P->getIncomingBlock(i)); // will be fixed
-        H->addIncoming(Zero, P->getIncomingBlock(i)); // will be fixed
+        PHINode *P = PHINode::Create(i32, PhiNum, "", I); CopyDebug(P, I);
+        for (int j = 0; j < PhiNum; j++) {
+          P->addIncoming(Zero, Parent->getIncomingBlock(j)); // will be fixed
+        }
+        Split.Chunks.push_back(P);
       }
-      Split.Chunks.push_back(L);
-      Split.Chunks.push_back(H);
       break;
     }
     case Instruction::And:
@@ -936,14 +935,15 @@ void ExpandI64::finalizeInst(Instruction *I) {
       break;
     }
     case Instruction::PHI: {
-      PHINode *P = dyn_cast<PHINode>(I);
-      int Num = P->getNumIncomingValues();
-      PHINode *L = dyn_cast<PHINode>(Split.Chunks[0]);
-      PHINode *H = dyn_cast<PHINode>(Split.Chunks[1]);
+      int Num = getNumChunks(I->getType());
+      PHINode *Parent = dyn_cast<PHINode>(I);
+      int PhiNum = Parent->getNumIncomingValues();
       for (int i = 0; i < Num; i++) {
-        ChunksVec Chunks = getChunks(P->getIncomingValue(i));
-        L->setIncomingValue(i, Chunks[0]);
-        H->setIncomingValue(i, Chunks[1]);
+        PHINode *P = cast<PHINode>(Split.Chunks[i]);
+        for (int j = 0; j < PhiNum; j++) {
+          ChunksVec Chunks = getChunks(Parent->getIncomingValue(j));
+          P->setIncomingValue(j, Chunks[i]);
+        }
       }
       break;
     }
