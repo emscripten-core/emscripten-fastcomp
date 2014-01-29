@@ -27,6 +27,7 @@
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/DataStream.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
@@ -124,6 +125,10 @@ DisableSimplifyLibCalls("disable-simplify-libcalls",
                         cl::desc("Disable simplify-libcalls"),
                         cl::init(false));
 
+cl::opt<int>
+SplitModuleCount("split-module",
+                 cl::desc("Split PNaCl module"), cl::init(0));
+
 /// Compile the module provided to pnacl-llc. The file name for reading the
 /// module and other options are taken from globals populated by command-line
 /// option parsing.
@@ -147,34 +152,35 @@ GetFileNameRoot(StringRef InputFilename) {
 }
 
 static tool_output_file *GetOutputStream(const char *TargetName,
-                                         Triple::OSType OS) {
+                                         Triple::OSType OS,
+                                         std::string Filename) {
   // If we don't yet have an output filename, make one.
-  if (OutputFilename.empty()) {
+  if (Filename.empty()) {
     if (InputFilename == "-")
-      OutputFilename = "-";
+      Filename = "-";
     else {
-      OutputFilename = GetFileNameRoot(InputFilename);
+      Filename = GetFileNameRoot(InputFilename);
 
       switch (FileType) {
       case TargetMachine::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
-            OutputFilename += ".cbe.c";
+            Filename += ".cbe.c";
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
-            OutputFilename += ".cpp";
+            Filename += ".cpp";
           else
-            OutputFilename += ".s";
+            Filename += ".s";
         } else
-          OutputFilename += ".s";
+          Filename += ".s";
         break;
       case TargetMachine::CGFT_ObjectFile:
         if (OS == Triple::Win32)
-          OutputFilename += ".obj";
+          Filename += ".obj";
         else
-          OutputFilename += ".o";
+          Filename += ".o";
         break;
       case TargetMachine::CGFT_Null:
-        OutputFilename += ".null";
+        Filename += ".null";
         break;
       }
     }
@@ -196,7 +202,7 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   unsigned OpenFlags = 0;
   if (Binary) OpenFlags |= raw_fd_ostream::F_Binary;
   OwningPtr<tool_output_file> FDOut(
-      new tool_output_file(OutputFilename.c_str(), error, OpenFlags));
+      new tool_output_file(Filename.c_str(), error, OpenFlags));
   if (!error.empty()) {
     errs() << error << '\n';
     return 0;
@@ -252,6 +258,11 @@ int llc_main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "pnacl-llc\n");
 
+  if (SplitModuleCount == 0) {
+    // 0 module splitting means use a single module
+    SplitModuleCount = 1;
+  }
+
   return compileModule(argv[0], Context);
 }
 
@@ -271,41 +282,175 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
   Reporter.reset();
 }
 
-static int compileModule(StringRef ProgramName, LLVMContext &Context) {
-  // Load the module to be compiled...
+static Module* getModule(StringRef ProgramName, LLVMContext &Context) {
+  Module *M;
   SMDiagnostic Err;
-  std::auto_ptr<Module> M;
-  Module *mod = 0;
-  Triple TheTriple;
-
-  PNaClABIErrorReporter ABIErrorReporter;
-
 #if defined(__native_client__)
   if (LazyBitcode) {
     std::string StrError;
     std::string DisplayFilename("<PNaCl-translated pexe>");
-    M.reset(getNaClStreamedBitcodeModule(
+    M = getNaClStreamedBitcodeModule(
         DisplayFilename,
-        getNaClBitcodeStreamer(), Context, &StrError));
+        getNaClBitcodeStreamer(), Context, &StrError);
     if (!StrError.empty())
       Err = SMDiagnostic(DisplayFilename, SourceMgr::DK_Error, StrError);
   } else {
     llvm_unreachable("native client SRPC only supports streaming");
   }
 #else
-  M.reset(NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
+  DataStreamer *FileStreamer;
+  if (LazyBitcode) {
+    std::string StrError;
+    FileStreamer = getDataFileStreamer(InputFilename, &StrError);
+    if (FileStreamer) {
+      M = getNaClStreamedBitcodeModule(
+        InputFilename,
+        FileStreamer, Context, &StrError);
+    }
+    if (!StrError.empty())
+      Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
+  } else {
+    M = NaClParseIRFile(InputFilename, InputFileFormat, Err, Context);
+  }
 #endif // __native_client__
-
-  mod = M.get();
-  if (mod == 0) {
+  if (M == 0) {
 #if defined(__native_client__)
     report_fatal_error(Err.getMessage());
 #else
     // Err.print is prettier, so use it for the non-sandboxed translator.
     Err.print(ProgramName.data(), errs());
-    return 1;
+    return NULL;
 #endif
   }
+  return M;
+}
+
+static int runCompilePasses(Module *mod,
+                            int ModuleIndex, 
+                            const Triple &TheTriple,
+                            TargetMachine &Target,
+                            StringRef ProgramName,
+                            formatted_raw_ostream &FOS){
+  // Add declarations for external functions required by PNaCl. The
+  // ResolvePNaClIntrinsics function pass running during streaming
+  // depends on these declarations being in the module.
+  OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+    createAddPNaClExternalDeclsPass());
+  AddPNaClExternalDeclsPass->runOnModule(*mod);
+  AddPNaClExternalDeclsPass.reset();
+
+  PNaClABIErrorReporter ABIErrorReporter;
+
+  if (SplitModuleCount > 1) {
+    // Add function and global names, and give them external linkage.
+    // This relies on LLVM's consistent auto-generation of names, we could
+    // maybe do our own in case something changes there.
+    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
+      if (!I->hasName())
+        I->setName("Function");
+      if (I->hasInternalLinkage())
+        I->setLinkage(GlobalValue::ExternalLinkage);
+    }
+    for (Module::global_iterator GI = mod->global_begin(),
+         GE = mod->global_end();
+         GI != GE; ++GI) {
+      if (!GI->hasName())
+        GI->setName("Global");
+      if (GI->hasInternalLinkage())
+        GI->setLinkage(GlobalValue::ExternalLinkage);
+    }
+    if (ModuleIndex > 0) {
+      // Remove the initializers for all global variables, turning them into
+      // declarations.
+      for (Module::global_iterator GI = mod->global_begin(),
+          GE = mod->global_end();
+          GI != GE; ++GI) {
+        assert(GI->hasInitializer() && "Global variable missing initializer");
+        Constant *Init = GI->getInitializer();
+        GI->setInitializer(NULL);
+        if (Init->getNumUses() == 0)
+          Init->destroyConstant();
+      }
+    }
+  }
+
+  // Build up all of the passes that we want to do to the module.
+  OwningPtr<PassManagerBase> PM;
+  if (LazyBitcode || ReduceMemoryFootprint)
+    PM.reset(new FunctionPassManager(mod));
+  else
+    PM.reset(new PassManager());
+
+  // For conformance with llc, we let the user disable LLVM IR verification with
+  // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
+  // run it once, before PNaCl ABI verification.
+  if (!NoVerify) {
+    PM->add(createVerifierPass());
+  }
+
+  // Add the ABI verifier pass before the analysis and code emission passes.
+  if (PNaClABIVerify) {
+    PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
+  }
+
+  // Add the intrinsic resolution pass. It assumes ABI-conformant code.
+  PM->add(createResolvePNaClIntrinsicsPass());
+
+  // Add an appropriate TargetLibraryInfo pass for the module's triple.
+  TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
+  if (DisableSimplifyLibCalls)
+    TLI->disableAllFunctions();
+  PM->add(TLI);
+
+  // Add intenal analysis passes from the target machine.
+  Target.addAnalysisPasses(*PM.get());
+
+  // Add the target data from the target machine, if it exists, or the module.
+  if (const DataLayout *TD = Target.getDataLayout())
+    PM->add(new DataLayout(*TD));
+  else
+    PM->add(new DataLayout(mod));
+
+  // Ask the target to add backend passes as necessary. We explicitly ask it
+  // not to add the verifier pass because we added it earlier.
+  if (Target.addPassesToEmitFile(*PM, FOS, FileType,
+                                 /* DisableVerify */ true)) {
+    errs() << ProgramName
+    << ": target does not support generation of this file type!\n";
+    return 1;
+  }
+
+  if (LazyBitcode || ReduceMemoryFootprint) {
+    FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
+    P->doInitialization();
+    int FuncIndex = 0;
+    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
+      if (FuncIndex++ % SplitModuleCount == ModuleIndex) {
+        P->run(*I);
+        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
+        if (ReduceMemoryFootprint) {
+          I->Dematerialize();
+        }
+      }
+    }
+    P->doFinalization();
+  } else {
+    static_cast<PassManager*>(PM.get())->run(*mod);
+  }
+  return 0;
+}
+
+static int compileModule(StringRef ProgramName, LLVMContext &Context) {
+  // Load the module to be compiled...
+  SmallVector<Module*, 4> Modules;
+  Module *mod = 0;
+  Triple TheTriple;
+
+  PNaClABIErrorReporter ABIErrorReporter;
+
+  mod = getModule(ProgramName, Context);
+
+  if (!mod) return 1;
 
   if (PNaClABIVerify) {
     // Verify the module (but not the functions yet)
@@ -314,13 +459,6 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
     VerifyPass->runOnModule(*mod);
     CheckABIVerifyErrors(ABIErrorReporter, "Module");
   }
-
-  // Add declarations for external functions required by PNaCl. The
-  // ResolvePNaClIntrinsics function pass running during streaming
-  // depends on these declarations being in the module.
-  OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
-      createAddPNaClExternalDeclsPass());
-  AddPNaClExternalDeclsPass->runOnModule(*mod);
 
   if (UserDefinedTriple.empty()) {
     report_fatal_error("-mtriple must be set to a target triple for pnacl-llc");
@@ -391,56 +529,8 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
   assert(mod && "Should have exited after outputting help!");
   TargetMachine &Target = *target.get();
 
-  if (GenerateSoftFloatCalls)
-    FloatABIForCalls = FloatABI::Soft;
-
-#if !defined(__native_client__)
-  // Figure out where we are going to send the output.
-  OwningPtr<tool_output_file> Out
-    (GetOutputStream(TheTarget->getName(), TheTriple.getOS()));
-  if (!Out) return 1;
-#endif
-
-  // Build up all of the passes that we want to do to the module.
-  OwningPtr<PassManagerBase> PM;
-  if (LazyBitcode || ReduceMemoryFootprint)
-    PM.reset(new FunctionPassManager(mod));
-  else
-    PM.reset(new PassManager());
-
-  // For conformance with llc, we let the user disable LLVM IR verification with
-  // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
-  // run it once, before PNaCl ABI verification.
-  if (!NoVerify) {
-    PM->add(createVerifierPass());
-  }
-
-  // Add the ABI verifier pass before the analysis and code emission passes.
-  if (PNaClABIVerify) {
-    PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
-  }
-
-  // Add the intrinsic resolution pass. It assumes ABI-conformant code.
-  PM->add(createResolvePNaClIntrinsicsPass());
-
-  // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
-  if (DisableSimplifyLibCalls)
-    TLI->disableAllFunctions();
-  PM->add(TLI);
-
-  // Add intenal analysis passes from the target machine.
-  Target.addAnalysisPasses(*PM.get());
-
-  // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *TD = Target.getDataLayout())
-    PM->add(new DataLayout(*TD));
-  else
-    PM->add(new DataLayout(mod));
-
   // Override default to generate verbose assembly.
   Target.setAsmVerbosityDefault(true);
-
   if (RelaxAll) {
     if (FileType != TargetMachine::CGFT_ObjectFile)
       errs() << ProgramName
@@ -449,47 +539,59 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
       Target.setMCRelaxAll(true);
   }
 
-  {
-#if defined(__native_client__)
-    raw_fd_ostream ROS(getObjectFileFD(), true);
-    ROS.SetBufferSize(1 << 20);
-    formatted_raw_ostream FOS(ROS);
-#else
-    formatted_raw_ostream FOS(Out->os());
-#endif // __native_client__
+  if (GenerateSoftFloatCalls)
+    FloatABIForCalls = FloatABI::Soft;
 
-    // Ask the target to add backend passes as necessary. We explicitly ask it
-    // not to add the verifier pass because we added it earlier.
-    if (Target.addPassesToEmitFile(*PM, FOS, FileType,
-                                   /* DisableVerify */ true)) {
-      errs() << ProgramName
-             << ": target does not support generation of this file type!\n";
-      return 1;
-    }
-
-    if (LazyBitcode || ReduceMemoryFootprint) {
-      FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
-      P->doInitialization();
-      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-        P->run(*I);
-        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-        if (ReduceMemoryFootprint) {
-          I->Dematerialize();
-        }
-      }
-      P->doFinalization();
+  Modules.push_back(mod);
+  SmallVector<LLVMContext*, 4> Contexts;
+  SmallVector<tool_output_file*, 4> OutputFiles;
+  for(int ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
+    if (ModuleIndex == 0) {
+      Contexts.push_back(&getGlobalContext());
     } else {
-      static_cast<PassManager*>(PM.get())->run(*mod);
+      Contexts.push_back(new LLVMContext());
+      mod = getModule(ProgramName, *Contexts[ModuleIndex]);
+      if (!mod)
+        return 1;
+      Modules.push_back(mod);
     }
-#if defined(__native_client__)
-    FOS.flush();
-    ROS.flush();
-#else
-    // Declare success.
-    Out->keep();
-#endif // __native_client__
-  }
 
+    mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
+    {
+#if !defined(__native_client__)
+      // Figure out where we are going to send the output.
+      std::string N(OutputFilename);
+      raw_string_ostream OutFileName(N);
+      if (ModuleIndex > 0)
+        OutFileName << ".module" << ModuleIndex;
+      OwningPtr<tool_output_file> Out
+      (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
+       OutFileName.str()));
+      if (!Out) return 1;
+      OutputFiles.push_back(Out.take());
+      formatted_raw_ostream FOS(OutputFiles[ModuleIndex]->os());
+#else
+      raw_fd_ostream ROS(getObjectFileFD(), true);
+      ROS.SetBufferSize(1 << 20);
+      formatted_raw_ostream FOS(ROS);
+#endif
+      int ret = runCompilePasses(mod, ModuleIndex,
+                                 TheTriple, Target, ProgramName, FOS);
+      if (ret)
+        return ret;
+#if defined (__native_client__)
+      FOS.flush();
+      ROS.flush();
+#else
+      // Declare success.
+      OutputFiles[ModuleIndex]->keep();
+#endif // __native_client__
+    }
+#if !defined(__native_client__)
+    delete OutputFiles[ModuleIndex];
+    delete Modules[ModuleIndex];
+#endif
+  }
   return 0;
 }
 
