@@ -341,54 +341,64 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::LShr:
     case Instruction::AShr:
     case Instruction::Shl: {
-      assert(I->getOperand(0)->getType() == i64); // FIXME; we need to support shifts on >64 bits
-      ensureFuncs();
-      Value *Low = NULL, *High = NULL;
-      Function *F = NULL;
-      switch (I->getOpcode()) {
-        case Instruction::Add:  F = Add;  break;
-        case Instruction::Sub:  F = Sub;  break;
-        case Instruction::Mul:  F = Mul;  break;
-        case Instruction::SDiv: F = SDiv; break;
-        case Instruction::UDiv: F = UDiv; break;
-        case Instruction::SRem: F = SRem; break;
-        case Instruction::URem: F = URem; break;
-        case Instruction::LShr: {
-          if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
-            unsigned Shifts = CI->getZExtValue();
-            if (Shifts == 32) {
-              Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
-              High = Zero;
-              break;
+      int Num = getNumChunks(I->getOperand(0)->getType());
+      if (Num == 2) {
+        ensureFuncs();
+        Value *Low = NULL, *High = NULL;
+        Function *F = NULL;
+        switch (I->getOpcode()) {
+          case Instruction::Add:  F = Add;  break;
+          case Instruction::Sub:  F = Sub;  break;
+          case Instruction::Mul:  F = Mul;  break;
+          case Instruction::SDiv: F = SDiv; break;
+          case Instruction::UDiv: F = UDiv; break;
+          case Instruction::SRem: F = SRem; break;
+          case Instruction::URem: F = URem; break;
+          case Instruction::LShr: {
+            if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
+              unsigned Shifts = CI->getZExtValue();
+              if (Shifts == 32) {
+                Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+                High = Zero;
+                break;
+              }
             }
+            F = LShr;
+            break;
           }
-          F = LShr;
-          break;
-        }
-        case Instruction::AShr: F = AShr; break;
-        case Instruction::Shl: {
-          if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
-            unsigned Shifts = CI->getZExtValue();
-            if (Shifts == 32) {
-              Low = Zero;
-              High = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
-              break;
+          case Instruction::AShr: F = AShr; break;
+          case Instruction::Shl: {
+            if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
+              unsigned Shifts = CI->getZExtValue();
+              if (Shifts == 32) {
+                Low = Zero;
+                High = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+                break;
+              }
             }
+            F = Shl;
+            break;
           }
-          F = Shl;
-          break;
+          default: assert(0);
         }
-        default: assert(0);
+        if (F) {
+          // use a library call, no special optimization was found
+          SmallVector<Value *, 4> Args;
+          for (unsigned i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
+          Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
+          High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+        }
+        Split.Chunks.push_back(Low);
+        Split.Chunks.push_back(High);
+      } else {
+        // more than 32 bits. handle simple constant multiple-of-32-bit shifts for lshr and shl
+        ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
+        unsigned Shifts = CI->getZExtValue();
+        if (Shifts % 32 != 0) assert(0);
+        for (int i = 0; i < Num; i++) {
+          Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+        }
       }
-      if (F) {
-        // use a library call, no special optimization was found
-        SmallVector<Value *, 4> Args;
-        for (unsigned i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
-        Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
-        High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
-      }
-      Split.Chunks.push_back(Low);
-      Split.Chunks.push_back(High);
       break;
     }
     case Instruction::ICmp: {
@@ -765,24 +775,45 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::Shl: {
       ChunksVec Left = getChunks(I->getOperand(0));
       ChunksVec Right = getChunks(I->getOperand(1));
-      CallInst *Call = dyn_cast<CallInst>(Split.Chunks[0]);
-      if (Call) {
-        Call->setOperand(0, Left[0]);
-        Call->setOperand(1, Left[1]);
-        Call->setOperand(2, Right[0]);
-        Call->setOperand(3, Right[1]);
+      int Num = getNumChunks(I->getOperand(0)->getType());
+      if (Num == 2) {
+        CallInst *Call = dyn_cast<CallInst>(Split.Chunks[0]);
+        if (Call) {
+          Call->setOperand(0, Left[0]);
+          Call->setOperand(1, Left[1]);
+          Call->setOperand(2, Right[0]);
+          Call->setOperand(3, Right[1]);
+        } else {
+          // optimized case, 32-bit shifts
+          switch (I->getOpcode()) {
+            case Instruction::LShr: {
+              cast<Instruction>(Split.Chunks[0])->setOperand(0, Left[1]);
+              break;
+            }
+            case Instruction::Shl: {
+              cast<Instruction>(Split.Chunks[1])->setOperand(0, Left[0]);
+              break;
+            }
+            default: assert(0);
+          }
+        }
       } else {
-        // optimized case, 32-bit shifts
+        // more than 32 bits. handle simple constant multiple-of-32-bit shifts for lshr and shl
+        ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
+        unsigned Shifts = CI->getZExtValue();
+        unsigned ChunkShifts = Shifts/32;
+        int Move;
         switch (I->getOpcode()) {
-          case Instruction::LShr: {
-            cast<Instruction>(Split.Chunks[0])->setOperand(0, Left[1]);
-            break;
-          }
-          case Instruction::Shl: {
-            cast<Instruction>(Split.Chunks[1])->setOperand(0, Left[0]);
-            break;
-          }
+          case Instruction::LShr: Move =  ChunkShifts; break; // XXX verify this is not off-by-one
+          case Instruction::Shl:  Move = -ChunkShifts; break;
           default: assert(0);
+        }
+        for (int i = 0; i < Num; i++) {
+          int j = i + Move;
+          if (0 <= j && j < Num) {
+            cast<Instruction>(Split.Chunks[i])->setOperand(0, Left[j]);
+          }
+          // otherwise it was already zero, which is correct
         }
       }
       break;
