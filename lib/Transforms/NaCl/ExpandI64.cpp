@@ -748,10 +748,12 @@ void ExpandI64::finalizeInst(Instruction *I) {
     }
     case Instruction::Store:
     case Instruction::Ret: {
-      // generic fix of an instruction with one 64-bit input, and consisting of two legal instructions, for low and high
+      // generic fix of an instruction with one illegal input in operand 0, and consisting of legal instructions
       ChunksVec Chunks = getChunks(I->getOperand(0));
-      Split.ToFix[0]->setOperand(0, Chunks[0]);
-      Split.ToFix[1]->setOperand(0, Chunks[1]);
+      int Num = getNumChunks(I->getOperand(0)->getType());
+      for (int i = 0; i < Num; i++) {
+        Split.ToFix[i]->setOperand(0, Chunks[i]);
+      }
       break;
     }
     case Instruction::BitCast: {
