@@ -392,21 +392,29 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::ICmp: {
-      assert(I->getOperand(0)->getType() == i64); // FIXME
-      Instruction *A, *B, *C = NULL, *D = NULL, *Final;
       ICmpInst *CE = dyn_cast<ICmpInst>(I);
       ICmpInst::Predicate Pred = CE->getPredicate();
       switch (Pred) {
-        case ICmpInst::ICMP_EQ: {
-          A = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
-          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
-          Final = CopyDebug(BinaryOperator::Create(Instruction::And, A, B, "", I), I);
-          break;
-        }
+        case ICmpInst::ICMP_EQ:
         case ICmpInst::ICMP_NE: {
-          A = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_NE, Zero, Zero), I);
-          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_NE, Zero, Zero), I);
-          Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, B, "", I), I);
+          ICmpInst::Predicate PartPred; // the predicate to use on each of the parts
+          llvm::Instruction::BinaryOps CombineOp; // the predicate to use to combine the subcomparisons
+          int Num = getNumChunks(I->getOperand(0)->getType());
+          if (Pred == ICmpInst::ICMP_EQ) {
+            PartPred = ICmpInst::ICMP_EQ;
+            CombineOp = Instruction::And;
+          } else {
+            PartPred = ICmpInst::ICMP_NE;
+            CombineOp = Instruction::Or;
+          }
+          for (int i = 0; i < Num; i++) {
+            Split.ToFix.push_back(CopyDebug(new ICmpInst(I, PartPred, Zero, Zero), I));
+          }
+          // first combine 0 and 1. then combine that with 2, etc.
+          Split.ToFix.push_back(CopyDebug(BinaryOperator::Create(CombineOp, Split.ToFix[0], Split.ToFix[1], "", I), I));
+          for (int i = 2; i < Num; i++) {
+            Split.ToFix.push_back(CopyDebug(BinaryOperator::Create(CombineOp, Split.ToFix[i], Split.ToFix[Split.ToFix.size()-1], "", I), I));
+          }
           break;
         }
         case ICmpInst::ICMP_ULT:
@@ -417,6 +425,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         case ICmpInst::ICMP_SLE:
         case ICmpInst::ICMP_UGE:
         case ICmpInst::ICMP_SGE: {
+          assert(I->getOperand(0)->getType() == i64);
+          Instruction *A, *B, *C, *D, *Final;
           ICmpInst::Predicate StrictPred = Pred;
           ICmpInst::Predicate UnsignedPred = Pred;
           switch (Pred) {
@@ -435,15 +445,15 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           C = CopyDebug(new ICmpInst(I, UnsignedPred, Zero, Zero), I);
           D = CopyDebug(BinaryOperator::Create(Instruction::And, B, C, "", I), I);
           Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, D, "", I), I);
+          Split.ToFix.push_back(A);
+          Split.ToFix.push_back(B);
+          Split.ToFix.push_back(C);
+          // D is NULL or a logical operator, no need to fix it
+          Split.ToFix.push_back(Final);
           break;
         }
         default: assert(0);
       }
-      Split.ToFix.push_back(A);
-      Split.ToFix.push_back(B);
-      Split.ToFix.push_back(C);
-      // D is NULL or a logical operator, no need to fix it
-      Split.ToFix.push_back(Final);
       break;
     }
     case Instruction::Select: {
@@ -780,19 +790,31 @@ void ExpandI64::finalizeInst(Instruction *I) {
     case Instruction::ICmp: {
       ChunksVec Left = getChunks(I->getOperand(0));
       ChunksVec Right = getChunks(I->getOperand(1));
-      Instruction *A = Split.ToFix[0];
-      Instruction *B = Split.ToFix[1];
-      Instruction *C = Split.ToFix[2];
-      Instruction *Final = Split.ToFix[3];
-      if (!C) { // EQ, NE
-        A->setOperand(0, Left[0]);  A->setOperand(1, Right[0]);
-        B->setOperand(0, Left[1]); B->setOperand(1, Right[1]);
-      } else {
-        A->setOperand(0, Left[1]);  A->setOperand(1, Right[1]);
-        B->setOperand(0, Left[1]);  B->setOperand(1, Right[1]);
-        C->setOperand(0, Left[0]); C->setOperand(1, Right[0]);
+      ICmpInst *CE = dyn_cast<ICmpInst>(I);
+      ICmpInst::Predicate Pred = CE->getPredicate();
+      switch (Pred) {
+        case ICmpInst::ICMP_EQ:
+        case ICmpInst::ICMP_NE: {
+          int Num = getNumChunks(I->getOperand(0)->getType());
+          for (int i = 0; i < Num; i++) {
+            Split.ToFix[i]->setOperand(0, Left[i]);
+            Split.ToFix[i]->setOperand(1, Right[i]);
+          }
+          I->replaceAllUsesWith(Split.ToFix[Split.ToFix.size()-1]);
+          break;
+        }
+        default: {
+          Instruction *A = Split.ToFix[0];
+          Instruction *B = Split.ToFix[1];
+          Instruction *C = Split.ToFix[2];
+          Instruction *Final = Split.ToFix[3];
+          A->setOperand(0, Left[1]);  A->setOperand(1, Right[1]);
+          B->setOperand(0, Left[1]);  B->setOperand(1, Right[1]);
+          C->setOperand(0, Left[0]); C->setOperand(1, Right[0]);
+          I->replaceAllUsesWith(Final);
+          break;
+        }
       }
-      I->replaceAllUsesWith(Final);
       break;
     }
     case Instruction::Select: {
