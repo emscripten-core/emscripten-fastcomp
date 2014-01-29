@@ -696,19 +696,27 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
 
 ChunksVec ExpandI64::getChunks(Value *V) {
   Type *i32 = Type::getInt32Ty(V->getContext());
+  Value *Zero = ConstantInt::get(i32, 0);
+
+  int Num = getNumChunks(V->getType());
+
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
     uint64_t C = CI->getZExtValue();
     ChunksVec Chunks;
     Chunks.push_back(ConstantInt::get(i32, (uint32_t)C));
     Chunks.push_back(ConstantInt::get(i32, (uint32_t)(C >> 32)));
+    for (int i = 2; i < Num; i++) {
+      Chunks.push_back(Zero);
+    }
     return Chunks;
   } else if (Instruction *I = dyn_cast<Instruction>(V)) {
     assert(Splits.find(I) != Splits.end());
     return Splits[I].Chunks;
   } else if (isa<UndefValue>(V)) {
     ChunksVec Chunks;
-    Chunks.push_back(ConstantInt::get(i32, 0));
-    Chunks.push_back(ConstantInt::get(i32, 0));
+    for (int i = 0; i < Num; i++) {
+      Chunks.push_back(Zero);
+    }
     return Chunks;
   } else {
     assert(SplitArgs.find(V) != SplitArgs.end());
