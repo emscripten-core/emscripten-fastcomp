@@ -50,7 +50,7 @@ using namespace llvm;
 
 #define dump(x) fprintf(stderr, x "\n")
 #define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
-#define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
+#define dumpfail(x)       { fputs(x "\n", stderr);                fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
 #define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
 #define dumpIR(value) { \
   std::string temp; \
