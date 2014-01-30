@@ -961,6 +961,8 @@ void ExpandI64::finalizeInst(Instruction *I) {
       break;
     }
     case Instruction::Call: {
+      if (Split.Chunks.size() == 0) break; // was not legalized
+
       Instruction *L = cast<Instruction>(Split.Chunks[0]);
       // H doesn't need to be fixed, it's just a call to getHigh
 
