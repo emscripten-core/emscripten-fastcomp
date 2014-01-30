@@ -1148,10 +1148,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   }
   case Instruction::ICmp: {
     unsigned predicate = cast<ICmpInst>(I)->getPredicate();
-    AsmCast sign = (predicate == ICmpInst::ICMP_ULE ||
-                    predicate == ICmpInst::ICMP_UGE ||
-                    predicate == ICmpInst::ICMP_ULT ||
-                    predicate == ICmpInst::ICMP_UGT) ? ASM_UNSIGNED : ASM_SIGNED;
+    AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
     Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" +
       getValueAsCastStr(I->getOperand(0), sign) +
     ")";
