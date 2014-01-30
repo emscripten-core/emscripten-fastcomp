@@ -53,7 +53,7 @@ static void setGlobalVariableValue(Module &M, const char *Name,
     // and so does not call the functions in __init_array_start or
     // __fini_array_end.  Such a program might be linked with
     // "-nostdlib".
-    errs() << "Warning: Variable " << Name << " not referenced\n";
+    // XXX EMSCRIPTEN: not surprising for us when this happens  errs() << "Warning: Variable " << Name << " not referenced\n";
   } else {
     if (Var->hasInitializer()) {
       report_fatal_error(std::string("Variable ") + Name +
