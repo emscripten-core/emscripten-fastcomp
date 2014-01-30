@@ -1321,13 +1321,13 @@ static const SwitchInst *considerSwitch(const Instruction *I) {
     assert(CaseVal.isSingleNumbersOnly());
     std::string Condition = "";
     for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
-      int Curr = CaseVal.getSingleNumber(Index).toConstantInt()->getZExtValue();
+      int Curr = CaseVal.getSingleNumber(Index).toConstantInt()->getSExtValue();
       if (Curr < Minn) Minn = Curr;
       if (Curr > Maxx) Maxx = Curr;
     }
     Num++;
   }
-  int Range = Maxx - Minn;
+  int64_t Range = (int64_t)Maxx - (int64_t)Minn;
   return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI; // heuristics
 }
 
