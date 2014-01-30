@@ -504,12 +504,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Select: {
-      assert(I->getType() == i64);
       Value *Cond = I->getOperand(0);
-      Instruction *L = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
-      Instruction *H = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
-      Split.Chunks.push_back(L);
-      Split.Chunks.push_back(H);
+      int Num = getNumChunks(I->getOperand(1)->getType());
+      for (int i = 0; i < Num; i++) {
+        Instruction *C = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
+        Split.Chunks.push_back(C);
+      }
       break;
     }
     case Instruction::PHI: {
@@ -926,12 +926,13 @@ void ExpandI64::finalizeInst(Instruction *I) {
       break;
     }
     case Instruction::Select: {
+      int Num = getNumChunks(I->getOperand(1)->getType());
       ChunksVec True = getChunks(I->getOperand(1));
       ChunksVec False = getChunks(I->getOperand(2));
-      Instruction *L = cast<Instruction>(Split.Chunks[0]);
-      Instruction *H = cast<Instruction>(Split.Chunks[1]);
-      L->setOperand(1, True[0]); L->setOperand(2, False[0]);
-      H->setOperand(1, True[1]); H->setOperand(2, False[1]);
+      for (int i = 0; i < Num; i++) {
+        cast<Instruction>(Split.Chunks[i])->setOperand(1, True[i]);
+        cast<Instruction>(Split.Chunks[i])->setOperand(2, False[i]);
+      }
       break;
     }
     case Instruction::PHI: {
