@@ -875,37 +875,37 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
 
     switch (I->getOpcode()) {
       default: dumpIR(I); error("invalid vector instr"); break;
-      case Instruction::FAdd: Code << "SIMD.float32x4.add(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::FMul: Code << "SIMD.float32x4.mul(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::FDiv: Code << "SIMD.float32x4.div(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::Add: Code << "SIMD.int32x4.add(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::Sub: Code << "SIMD.int32x4.sub(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::Mul: Code << "SIMD.int32x4.mul(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::And: Code << "SIMD.int32x4.and(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::Or:  Code << "SIMD.int32x4.or(" +  getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::Xor: Code << "SIMD.int32x4.xor(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::FAdd: Code << "SIMD.float32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FMul: Code << "SIMD.float32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FDiv: Code << "SIMD.float32x4.div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Add: Code << "SIMD.int32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Sub: Code << "SIMD.int32x4.sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Mul: Code << "SIMD.int32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::And: Code << "SIMD.int32x4.and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Or:  Code << "SIMD.int32x4.or(" <<  getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Xor: Code << "SIMD.int32x4.xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
         if (BinaryOperator::isFNeg(I)) {
-          Code << "SIMD.float32x4.neg(" + getValueAsStr(BinaryOperator::getFNegArgument(I)) + ")";
+          Code << "SIMD.float32x4.neg(" << getValueAsStr(BinaryOperator::getFNegArgument(I)) << ")";
         } else {
-          Code << "SIMD.float32x4.sub(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")";
+          Code << "SIMD.float32x4.sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")";
         }
         break;
       case Instruction::BitCast: {
         if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-          Code << "SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(I->getOperand(0)) + ')';
+          Code << "SIMD.float32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
         } else {
-          Code << "SIMD.int32x4.bitsToInt32x4(" + getValueAsStr(I->getOperand(0)) + ')';
+          Code << "SIMD.int32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
         }
         break;
       }
       case Instruction::Load: {
         std::string PS = getOpName(I->getOperand(0));
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "int32x4(HEAPU32[" + PS + ">>2],HEAPU32[" + PS + "+4>>2],HEAPU32[" + PS + "+8>>2],HEAPU32[" + PS + "+12>>2])";
+          Code << "int32x4(HEAPU32[" << PS << ">>2],HEAPU32[" << PS << "+4>>2],HEAPU32[" << PS << "+8>>2],HEAPU32[" << PS << "+12>>2])";
         } else {
-          Code << "float32x4(HEAPF32[" + PS + ">>2],HEAPF32[" + PS + "+4>>2],HEAPF32[" + PS + "+8>>2],HEAPF32[" + PS + "+12>>2])";
+          Code << "float32x4(HEAPF32[" << PS << ">>2],HEAPF32[" << PS << "+4>>2],HEAPF32[" << PS << "+8>>2],HEAPF32[" << PS << "+12>>2])";
         }
         break;
       }
@@ -920,7 +920,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
           Code << "SIMD.float32x4.with";
         }
         Code << SIMDLane[Index];
-        Code << "(" + getValueAsStr(III->getOperand(0)) + ',' + getValueAsStr(III->getOperand(1)) + ')';
+        Code << "(" << getValueAsStr(III->getOperand(0)) << ',' << getValueAsStr(III->getOperand(1)) << ')';
         break;
       }
       case Instruction::ShuffleVector: {
@@ -937,10 +937,10 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
           if (Mask < 0) {
             Code << "0";
           } else if (Mask < 4) {
-            Code << A + "." + simdLane[Mask];
+            Code << A << "." << simdLane[Mask];
           } else {
             assert(Mask < 8);
-            Code << B + "." + simdLane[Mask-4];
+            Code << B << "." << simdLane[Mask-4];
           }
           if (i < 3) Code << ",";
         }
@@ -956,9 +956,9 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
       std::string PS = getOpName(I->getOperand(1));
       std::string VS = getValueAsStr(I->getOperand(0));
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "HEAPU32[" + PS + ">>2]=" + VS + ".x;HEAPU32[" + PS + "+4>>2]=" + VS + ".y;HEAPU32[" + PS + "+8>>2]=" + VS + ".z;HEAPU32[" + PS + "+12>>2]=" + VS + ".w";
+        Code << "HEAPU32[" << PS << ">>2]=" << VS << ".x;HEAPU32[" << PS << "+4>>2]=" << VS << ".y;HEAPU32[" << PS << "+8>>2]=" << VS << ".z;HEAPU32[" << PS << "+12>>2]=" << VS << ".w";
       } else {
-        Code << "HEAPF32[" + PS + ">>2]=" + VS + ".x;HEAPF32[" + PS + "+4>>2]=" + VS + ".y;HEAPF32[" + PS + "+8>>2]=" + VS + ".z;HEAPF32[" + PS + "+12>>2]=" + VS + ".w";
+        Code << "HEAPF32[" << PS << ">>2]=" << VS << ".x;HEAPF32[" << PS << "+4>>2]=" << VS << ".y;HEAPF32[" << PS << "+8>>2]=" << VS << ".z;HEAPF32[" << PS << "+12>>2]=" << VS << ".w";
       }
       return true;
     } else if (I->getOpcode() == Instruction::ExtractElement) {
@@ -969,7 +969,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
       unsigned Index = IndexInt->getZExtValue();
       assert(Index <= 3);
       Code << getAssign(iName, I->getType());
-      Code << getValueAsStr(EEI->getVectorOperand()) + '.' + simdLane[Index];
+      Code << getValueAsStr(EEI->getVectorOperand()) << '.' << simdLane[Index];
       return true;
     }
   }
@@ -1004,7 +1004,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     if (RV == NULL) {
       Code << ";";
     } else {
-      Code << " " + getValueAsCastStr(RV, ASM_NONSPECIFIC) + ";";
+      Code << " " << getValueAsCastStr(RV, ASM_NONSPECIFIC) << ";";
     }
     break;
   }
@@ -1052,14 +1052,14 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
       case Instruction::UDiv:
       case Instruction::SDiv:
       case Instruction::URem:
-      case Instruction::SRem: Code << "(" +
-                                      getValueAsCastParenStr(I->getOperand(0), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
-                                      ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") +
-                                      getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) +
+      case Instruction::SRem: Code << "(" <<
+                                      getValueAsCastParenStr(I->getOperand(0), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) <<
+                                      ((opcode == Instruction::UDiv || opcode == Instruction::SDiv) ? " / " : " % ") <<
+                                      getValueAsCastParenStr(I->getOperand(1), (opcode == Instruction::SDiv || opcode == Instruction::SRem) ? ASM_SIGNED : ASM_UNSIGNED) <<
                                       ")&-1"; break;
-      case Instruction::And:  Code << getValueAsStr(I->getOperand(0)) + " & " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::Or:   Code << getValueAsStr(I->getOperand(0)) + " | " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::Xor:  Code << getValueAsStr(I->getOperand(0)) + " ^ " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::And:  Code << getValueAsStr(I->getOperand(0)) << " & " <<   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Or:   Code << getValueAsStr(I->getOperand(0)) << " | " <<   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::Xor:  Code << getValueAsStr(I->getOperand(0)) << " ^ " <<   getValueAsStr(I->getOperand(1)); break;
       case Instruction::Shl:  {
         std::string Shifted = getValueAsStr(I->getOperand(0)) + " << " +  getValueAsStr(I->getOperand(1));
         if (I->getType()->getIntegerBitWidth() < 32) {
@@ -1074,19 +1074,19 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
         if (I->getType()->getIntegerBitWidth() < 32) {
           Input = '(' + getCast(Input, I->getType(), opcode == Instruction::AShr ? ASM_SIGNED : ASM_UNSIGNED) + ')'; // fill in high bits, as shift needs those and is done in 32-bit
         }
-        Code << Input + (opcode == Instruction::AShr ? " >> " : " >>> ") +  getValueAsStr(I->getOperand(1));
+        Code << Input << (opcode == Instruction::AShr ? " >> " : " >>> ") <<  getValueAsStr(I->getOperand(1));
         break;
       }
-      case Instruction::FAdd: Code << getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
-      case Instruction::FMul: Code << getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FDiv: Code << getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FRem: Code << getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FAdd: Code << getValueAsStr(I->getOperand(0)) << " + " <<   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
+      case Instruction::FMul: Code << getValueAsStr(I->getOperand(0)) << " * " <<   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FDiv: Code << getValueAsStr(I->getOperand(0)) << " / " <<   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FRem: Code << getValueAsStr(I->getOperand(0)) << " % " <<   getValueAsStr(I->getOperand(1)); break;
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
         if (BinaryOperator::isFNeg(I)) {
-          Code << "-" + getValueAsStr(BinaryOperator::getFNegArgument(I));
+          Code << "-" << getValueAsStr(BinaryOperator::getFNegArgument(I));
         } else {
-          Code << getValueAsStr(I->getOperand(0)) + " - " + getValueAsStr(I->getOperand(1));
+          Code << getValueAsStr(I->getOperand(0)) << " - " << getValueAsStr(I->getOperand(1));
         }
         break;
       default: error("bad icmp"); break;
@@ -1098,44 +1098,44 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     Code << getAssign(iName, I->getType());
     switch (cast<FCmpInst>(I)->getPredicate()) {
       // Comparisons which are simple JS operators.
-      case FCmpInst::FCMP_OEQ:   Code << getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_UNE:   Code << getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OGT:   Code << getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OGE:   Code << getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OLT:   Code << getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OLE:   Code << getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OEQ:   Code << getValueAsStr(I->getOperand(0)) << " == " << getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_UNE:   Code << getValueAsStr(I->getOperand(0)) << " != " << getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OGT:   Code << getValueAsStr(I->getOperand(0)) << " > "  << getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OGE:   Code << getValueAsStr(I->getOperand(0)) << " >= " << getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OLT:   Code << getValueAsStr(I->getOperand(0)) << " < "  << getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OLE:   Code << getValueAsStr(I->getOperand(0)) << " <= " << getValueAsStr(I->getOperand(1)); break;
 
       // Comparisons which are inverses of JS operators.
       case FCmpInst::FCMP_UGT:
-        Code << "!(" + getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)) + ")";
+        Code << "!(" << getValueAsStr(I->getOperand(0)) << " <= " << getValueAsStr(I->getOperand(1)) << ")";
         break;
       case FCmpInst::FCMP_UGE:
-        Code << "!(" + getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)) + ")";
+        Code << "!(" << getValueAsStr(I->getOperand(0)) << " < "  << getValueAsStr(I->getOperand(1)) << ")";
         break;
       case FCmpInst::FCMP_ULT:
-        Code << "!(" + getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)) + ")";
+        Code << "!(" << getValueAsStr(I->getOperand(0)) << " >= " << getValueAsStr(I->getOperand(1)) << ")";
         break;
       case FCmpInst::FCMP_ULE:
-        Code << "!(" + getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)) + ")";
+        Code << "!(" << getValueAsStr(I->getOperand(0)) << " > "  << getValueAsStr(I->getOperand(1)) << ")";
         break;
 
       // Comparisons which require explicit NaN checks.
       case FCmpInst::FCMP_UEQ:
-        Code << "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
-                "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ") |" +
-                "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)) + ")";
+        Code << "(" << getValueAsStr(I->getOperand(0)) << " != " << getValueAsStr(I->getOperand(0)) << ") | " <<
+                "(" << getValueAsStr(I->getOperand(1)) << " != " << getValueAsStr(I->getOperand(1)) << ") |" <<
+                "(" << getValueAsStr(I->getOperand(0)) << " == " << getValueAsStr(I->getOperand(1)) << ")";
         break;
       case FCmpInst::FCMP_ONE:
-        Code << "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
-                "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ") &" +
-                "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)) + ")";
+        Code << "(" << getValueAsStr(I->getOperand(0)) << " == " << getValueAsStr(I->getOperand(0)) << ") & " <<
+                "(" << getValueAsStr(I->getOperand(1)) << " == " << getValueAsStr(I->getOperand(1)) << ") &" <<
+                "(" << getValueAsStr(I->getOperand(0)) << " != " << getValueAsStr(I->getOperand(1)) << ")";
         break;
 
       // Simple NaN checks.
-      case FCmpInst::FCMP_ORD:   Code << "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
-                                         "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case FCmpInst::FCMP_UNO:   Code << "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
-                                         "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case FCmpInst::FCMP_ORD:   Code << "(" << getValueAsStr(I->getOperand(0)) << " == " << getValueAsStr(I->getOperand(0)) << ") & " <<
+                                         "(" << getValueAsStr(I->getOperand(1)) << " == " << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case FCmpInst::FCMP_UNO:   Code << "(" << getValueAsStr(I->getOperand(0)) << " != " << getValueAsStr(I->getOperand(0)) << ") | " <<
+                                         "(" << getValueAsStr(I->getOperand(1)) << " != " << getValueAsStr(I->getOperand(1)) << ")"; break;
 
       // Simple constants.
       case FCmpInst::FCMP_FALSE: Code << "0"; break;
@@ -1149,8 +1149,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::ICmp: {
     unsigned predicate = cast<ICmpInst>(I)->getPredicate();
     AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "(" +
-      getValueAsCastStr(I->getOperand(0), sign) +
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "(" <<
+      getValueAsCastStr(I->getOperand(0), sign) <<
     ")";
     switch (predicate) {
     case ICmpInst::ICMP_EQ:  Code << "==";  break;
@@ -1165,8 +1165,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     case ICmpInst::ICMP_SGT: Code << ">"; break;
     default: assert(0);
     }
-    Code << "(" +
-      getValueAsCastStr(I->getOperand(1), sign) +
+    Code << "(" <<
+      getValueAsCastStr(I->getOperand(1), sign) <<
     ");";
     break;
   }
@@ -1192,7 +1192,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
         Size = memAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
       }
     }
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + "STACKTOP; STACKTOP = STACKTOP + " + Size + "|0;";
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "STACKTOP; STACKTOP = STACKTOP + " << Size << "|0;";
     break;
   }
   case Instruction::Load: {
@@ -1201,9 +1201,9 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     unsigned Alignment = LI->getAlignment();
     std::string Assign = getAssign(iName, LI->getType());
     if (NativizedVars.count(P)) {
-      Code << Assign + getValueAsStr(P) + ';';
+      Code << Assign << getValueAsStr(P) << ';';
     } else {
-      Code << getLoad(Assign, P, LI->getType(), Alignment) + ';';
+      Code << getLoad(Assign, P, LI->getType(), Alignment) << ';';
     }
     break;
   }
@@ -1214,9 +1214,9 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     unsigned Alignment = SI->getAlignment();
     std::string VS = getValueAsStr(V);
     if (NativizedVars.count(P)) {
-      Code << getValueAsStr(P) + " = " + VS + ';';
+      Code << getValueAsStr(P) << " = " << VS << ';';
     } else {
-      Code << getStore(P, V->getType(), VS, Alignment) + ';';
+      Code << getStore(P, V->getType(), VS, Alignment) << ';';
     }
 
     Type *T = V->getType();
@@ -1235,10 +1235,10 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     break;
   }
   case Instruction::PtrToInt:
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + getPtrAsStr(I->getOperand(0)) + ';';
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << getPtrAsStr(I->getOperand(0)) << ';';
     break;
   case Instruction::IntToPtr:
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) + getValueAsStr(I->getOperand(0)) + ";";
+    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << getValueAsStr(I->getOperand(0)) << ";";
     break;
   case Instruction::Trunc:
   case Instruction::ZExt:
@@ -1254,12 +1254,12 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
-      Code << getValueAsStr(I->getOperand(0)) + "&" + utostr(LSBMask(outBits));
+      Code << getValueAsStr(I->getOperand(0)) << "&" << utostr(LSBMask(outBits));
       break;
     }
     case Instruction::SExt: {
       std::string bits = utostr(32 - I->getOperand(0)->getType()->getIntegerBitWidth());
-      Code << getValueAsStr(I->getOperand(0)) + " << " + bits + " >> " + bits;
+      Code << getValueAsStr(I->getOperand(0)) << " << " << bits << " >> " << bits;
       break;
     }
     case Instruction::ZExt:     Code << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
@@ -1284,33 +1284,33 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
       assert(InType->getIntegerBitWidth() == 32);
-      Code << "(HEAP32[tempDoublePtr>>2]=" + V + "," + "+HEAPF32[tempDoublePtr>>2]);";
+      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << "+HEAPF32[tempDoublePtr>>2]);";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
       assert(OutType->getIntegerBitWidth() == 32);
-      Code << "(HEAPF32[tempDoublePtr>>2]=" + V + "," + "HEAP32[tempDoublePtr>>2]|0);";
+      Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," << "HEAP32[tempDoublePtr>>2]|0);";
     } else {
-      Code << V + ";";
+      Code << V << ";";
     }
     break;
   }
   case Instruction::Call: {
     const CallInst *CI = cast<CallInst>(I);
-    Code << handleCall(CI) + ';';
+    Code << handleCall(CI) << ';';
     break;
   }
   case Instruction::Select: {
     const SelectInst* SI = cast<SelectInst>(I);
-    Code << getAssign(iName, I->getType()) + getValueAsStr(SI->getCondition()) + " ? " +
-                                            getValueAsStr(SI->getTrueValue()) + " : " +
-                                            getValueAsStr(SI->getFalseValue()) + ';';
+    Code << getAssign(iName, I->getType()) << getValueAsStr(SI->getCondition()) << " ? " <<
+                                              getValueAsStr(SI->getTrueValue()) << " : " <<
+                                              getValueAsStr(SI->getFalseValue()) << ';';
     break;
   }
   case Instruction::AtomicCmpXchg: {
     std::string Assign = getAssign(iName, I->getType());
     const Value *P = I->getOperand(0);
-    Code << getLoad(Assign, P, I->getType(), 0) + ';' +
-           "if ((" + getCast(iName, I->getType()) + ") == " + getValueAsCastParenStr(I->getOperand(1)) + ") " +
-              getStore(P, I->getType(), getValueAsStr(I->getOperand(2)), 0) + ";";
+    Code << getLoad(Assign, P, I->getType(), 0) << ';' <<
+           "if ((" << getCast(iName, I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
+              getStore(P, I->getType(), getValueAsStr(I->getOperand(2)), 0) << ";";
     break;
   }
   case Instruction::AtomicRMW: {
@@ -1319,7 +1319,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const Value *V = rmwi->getOperand(1);
     std::string Assign = getAssign(iName, I->getType());
     std::string VS = getValueAsStr(V);
-    Code << getLoad(Assign, P, I->getType(), 0) + ';';
+    Code << getLoad(Assign, P, I->getType(), 0) << ';';
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
       case AtomicRMWInst::Xchg: Code << getStore(P, I->getType(), VS, 0); break;
@@ -1344,7 +1344,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     DILocation Loc(N);
     unsigned Line = Loc.getLineNumber();
     StringRef File = Loc.getFilename();
-    Code << " //@line " + utostr(Line) + " \"" + (File.size() > 0 ? File.str() : "?") + "\"";
+    Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
   }
 }
 
@@ -1503,7 +1503,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   }
 
   // Emit stack entry
-  Out << " " + getAssign("sp", Type::getInt32Ty(F->getContext())) + "STACKTOP;";
+  Out << " " << getAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
 
   // Emit (relooped) code
   char *buffer = Relooper::GetOutputBuffer();
@@ -1516,7 +1516,7 @@ void JSWriter::printFunctionBody(const Function *F) {
     if (!LastCurly) LastCurly = buffer;
     char *FinalReturn = strstr(LastCurly, "return ");
     if (!FinalReturn) {
-      Out << " return " + getCast("0", RT, ASM_NONSPECIFIC) + ";\n";
+      Out << " return " << getCast("0", RT, ASM_NONSPECIFIC) << ";\n";
     }
   }
 }
@@ -1595,7 +1595,7 @@ void JSWriter::printModuleBody() {
     }
   }
   Out << " function runPostSets() {\n";
-  Out << "  " + PostSets + "\n";
+  Out << "  " << PostSets << "\n";
   Out << " }\n";
   PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
@@ -1629,7 +1629,7 @@ void JSWriter::printModuleBody() {
       } else {
         Out << ", ";
       }
-      Out << "\"" + I->getName() + "\"";
+      Out << "\"" << I->getName() << "\"";
     }
   }
   for (NameSet::iterator I = Declares.begin(), E = Declares.end();
@@ -1639,7 +1639,7 @@ void JSWriter::printModuleBody() {
     } else {
       Out << ", ";
     }
-    Out << "\"" + *I + "\"";
+    Out << "\"" << *I << "\"";
   }
   Out << "],";
 
@@ -1652,7 +1652,7 @@ void JSWriter::printModuleBody() {
     } else {
       Out << ", ";
     }
-    Out << "\"_" << I->first << "\": \"" + I->second + "\"";
+    Out << "\"_" << I->first << "\": \"" << I->second << "\"";
   }
   Out << "},";
 
@@ -1665,7 +1665,7 @@ void JSWriter::printModuleBody() {
     } else {
       Out << ", ";
     }
-    Out << "\"" + *I + "\"";
+    Out << "\"" << *I << "\"";
   }
   Out << "],";
 
@@ -1687,7 +1687,7 @@ void JSWriter::printModuleBody() {
   Out << "\"tables\": {";
   unsigned Num = FunctionTables.size();
   for (FunctionTableMap::iterator I = FunctionTables.begin(), E = FunctionTables.end(); I != E; ++I) {
-    Out << "  \"" + I->first + "\": \"var FUNCTION_TABLE_" + I->first + " = [";
+    Out << "  \"" << I->first << "\": \"var FUNCTION_TABLE_" << I->first << " = [";
     FunctionTable &Table = I->second;
     // ensure power of two
     unsigned Size = 1;
@@ -1711,7 +1711,7 @@ void JSWriter::printModuleBody() {
     } else {
       Out << ", ";
     }
-    Out << "\"" + GlobalInitializers[i] + "\"";
+    Out << "\"" << GlobalInitializers[i] << "\"";
   }
   Out << "],";
 
@@ -1727,7 +1727,7 @@ void JSWriter::printModuleBody() {
     } else {
       Out << ", ";
     }
-    Out << "\"_" << I->first << "\": \"" + utostr(I->second) + "\"";
+    Out << "\"_" << I->first << "\": \"" << utostr(I->second) << "\"";
   }
   Out << "}";
 
