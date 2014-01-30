@@ -238,6 +238,10 @@ DEF_CALL_HANDLER(llvm_dbg_declare, {
   return "";
 })
 
+DEF_CALL_HANDLER(llvm_dbg_value, {
+  return "";
+})
+
 DEF_CALL_HANDLER(bitshift64Lshr, {
   return CH___default__(CI, "_bitshift64Lshr", 3);
 })
@@ -626,6 +630,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_expect_i32);
   SETUP_CALL_HANDLER(llvm_dbg_declare);
+  SETUP_CALL_HANDLER(llvm_dbg_value);
   SETUP_CALL_HANDLER(bitshift64Lshr);
   SETUP_CALL_HANDLER(bitshift64Ashr);
   SETUP_CALL_HANDLER(bitshift64Shl);
@@ -912,8 +917,7 @@ void setupCallHandlers() {
 std::string handleCall(const Instruction *CI) {
   const Value *CV = getActuallyCalledValue(CI);
   assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
-  std::string Name = getJSName(CV);
-  if (strcmp(Name.c_str(), "_llvm_dbg_value") == 0) return ""; // ignore this
+  const std::string &Name = getJSName(CV);
   unsigned NumArgs = getNumArgOperands(CI);
   CallHandlerMap::iterator CH = CallHandlers->find("___default__");
   if (isa<Function>(CV)) {
