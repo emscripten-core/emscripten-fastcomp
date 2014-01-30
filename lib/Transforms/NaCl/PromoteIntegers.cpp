@@ -231,7 +231,7 @@ static Value *splitLoad(LoadInst *Inst, ConversionState &State) {
         HiType->getPointerTo(),
         OrigPtr->getName() + ".hity");
 
-  Value *LoadHi = IRB.CreateLoad(BCHi, Inst->getName() + ".hi");
+  Value *LoadHi = IRB.CreateAlignedLoad(BCHi, 1, Inst->getName() + ".hi"); // XXX EMSCRIPTEN: worst-case alignment assumption
   if (!isLegalSize(Width - LoWidth)) {
     LoadHi = splitLoad(cast<LoadInst>(LoadHi), State);
     // BCHi was still illegal, and has been replaced with a placeholder in the
@@ -288,7 +288,7 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
         HiType->getPointerTo(),
         OrigPtr->getName() + ".hity");
 
-  Value *StoreHi = IRB.CreateStore(HiTrunc, BCHi);
+  Value *StoreHi = IRB.CreateAlignedStore(HiTrunc, BCHi, 1); // XXX EMSCRIPTEN: worst-case alignment assumption
 
   if (!isLegalSize(Width - LoWidth)) {
     // HiTrunc is still illegal, and is redundant with the truncate in the
