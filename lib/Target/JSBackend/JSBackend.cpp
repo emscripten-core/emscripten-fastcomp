@@ -976,7 +976,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
   return false;
 }
 
-uint64_t LSBMask(unsigned numBits) {
+static uint64_t LSBMask(unsigned numBits) {
   return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits) - 1;
 }
 
