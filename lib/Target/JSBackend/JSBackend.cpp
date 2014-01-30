@@ -876,7 +876,6 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     switch (I->getOpcode()) {
       default: dumpIR(I); error("invalid vector instr"); break;
       case Instruction::FAdd: Code << "SIMD.float32x4.add(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
-      case Instruction::FSub: Code << "SIMD.float32x4.sub(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
       case Instruction::FMul: Code << "SIMD.float32x4.mul(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
       case Instruction::FDiv: Code << "SIMD.float32x4.div(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
       case Instruction::Add: Code << "SIMD.int32x4.add(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
@@ -885,6 +884,14 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
       case Instruction::And: Code << "SIMD.int32x4.and(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
       case Instruction::Or:  Code << "SIMD.int32x4.or(" +  getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
       case Instruction::Xor: Code << "SIMD.int32x4.xor(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")"; break;
+      case Instruction::FSub:
+        // LLVM represents an fneg(x) as -0.0 - x.
+        if (BinaryOperator::isFNeg(I)) {
+          Code << "SIMD.float32x4.neg(" + getValueAsStr(BinaryOperator::getFNegArgument(I)) + ")";
+        } else {
+          Code << "SIMD.float32x4.sub(" + getValueAsStr(I->getOperand(0)) + "," + getValueAsStr(I->getOperand(1)) + ")";
+        }
+        break;
       case Instruction::BitCast: {
         if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
           Code << "SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(I->getOperand(0)) + ')';
@@ -1071,10 +1078,17 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
         break;
       }
       case Instruction::FAdd: Code << getValueAsStr(I->getOperand(0)) + " + " +   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
-      case Instruction::FSub: Code << getValueAsStr(I->getOperand(0)) + " - " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::FMul: Code << getValueAsStr(I->getOperand(0)) + " * " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::FDiv: Code << getValueAsStr(I->getOperand(0)) + " / " +   getValueAsStr(I->getOperand(1)); break;
       case Instruction::FRem: Code << getValueAsStr(I->getOperand(0)) + " % " +   getValueAsStr(I->getOperand(1)); break;
+      case Instruction::FSub:
+        // LLVM represents an fneg(x) as -0.0 - x.
+        if (BinaryOperator::isFNeg(I)) {
+          Code << "-" + getValueAsStr(BinaryOperator::getFNegArgument(I));
+        } else {
+          Code << getValueAsStr(I->getOperand(0)) + " - " + getValueAsStr(I->getOperand(1));
+        }
+        break;
       default: error("bad icmp"); break;
     }
     Code << ';';
