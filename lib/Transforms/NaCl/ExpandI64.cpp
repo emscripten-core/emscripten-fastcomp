@@ -171,11 +171,10 @@ void ExpandI64::ensureLegalFunc(Function *F) {
   FunctionType *FT = F->getFunctionType();
   int Num = FT->getNumParams();
 
-  // XXX Emscripten TODO: Move this fix to PNacl upstream.
   // Allocate small names on stack, large ones on heap.
   // This is because on VS2010, arrays on the stack must
   // be compile-time constant sized. (no C99 dynamic-length array support)
-  const int StackSize = 256;
+  const size_t StackSize = 256;
   char StackArray[StackSize];
   char *AllocArray = 0;
 
