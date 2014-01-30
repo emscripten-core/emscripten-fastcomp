@@ -217,7 +217,7 @@ namespace {
       else if (T->isFloatTy() || T->isDoubleTy()) return 'd'; // TODO: float
       else return 'i';
     }
-    std::string getFunctionSignature(const FunctionType *F, std::string *Name=NULL) {
+    std::string getFunctionSignature(const FunctionType *F, const std::string *Name=NULL) {
       if (Name) {
         // special-case some function signatures, because of how we emit code for them FIXME this is hackish
         if (*Name == "_llvm_memcpy_p0i8_p0i8_i32"  || *Name == "_memcpy" ||
@@ -235,7 +235,7 @@ namespace {
       return Ret;
     }
     unsigned getFunctionIndex(const Function *F) {
-      std::string Name = getJSName(F);
+      const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType(), &Name);
       FunctionTable &Table = FunctionTables[Sig];
@@ -310,7 +310,7 @@ namespace {
     std::string getValueAsParenStr(const Value*);
     std::string getValueAsCastParenStr(const Value*, AsmCast sign=ASM_SIGNED);
 
-    std::string getJSName(const Value* val);
+    const std::string &getJSName(const Value* val);
 
     std::string getPhiCode(const BasicBlock *From, const BasicBlock *To);
 
@@ -381,7 +381,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     int index = P->getBasicBlockIndex(From);
     if (index < 0) continue;
     // we found it
-    std::string name = getJSName(P);
+    const std::string &name = getJSName(P);
     assigns[name] = getAssign(name, P->getType());
     Value *V = P->getIncomingValue(index);
     values[name] = V;
@@ -424,12 +424,12 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   return pre + post;
 }
 
-std::string JSWriter::getJSName(const Value* val) {
-  std::string name;
+const std::string &JSWriter::getJSName(const Value* val) {
   ValueMap::iterator I = ValueNames.find(val);
   if (I != ValueNames.end() && I->first == val)
     return I->second;
 
+  std::string name;
   if (val->hasName()) {
     if (isa<Function>(val) || isa<Constant>(val)) {
       name = std::string("_") + val->getName().str();
@@ -982,7 +982,7 @@ static uint64_t LSBMask(unsigned numBits) {
 
 // generateInstruction - This member is called for each Instruction in a function.
 void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Code) {
-  std::string iName(getJSName(I));
+  const std::string &iName(getJSName(I));
 
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
