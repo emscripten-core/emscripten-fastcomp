@@ -1097,24 +1097,50 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::FCmp: {
     Code << getAssign(iName, I->getType());
     switch (cast<FCmpInst>(I)->getPredicate()) {
-      case FCmpInst::FCMP_OEQ:
-      case FCmpInst::FCMP_UEQ:   Code << getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_ONE:
+      // Comparisons which are simple JS operators.
+      case FCmpInst::FCMP_OEQ:   Code << getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_UNE:   Code << getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OGT:
-      case FCmpInst::FCMP_UGT:   Code << getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OGE:
-      case FCmpInst::FCMP_UGE:   Code << getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OLT:
-      case FCmpInst::FCMP_ULT:   Code << getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
-      case FCmpInst::FCMP_OLE:
-      case FCmpInst::FCMP_ULE:   Code << getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OGT:   Code << getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OGE:   Code << getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OLT:   Code << getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)); break;
+      case FCmpInst::FCMP_OLE:   Code << getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)); break;
+
+      // Comparisons which are inverses of JS operators.
+      case FCmpInst::FCMP_UGT:
+        Code << "!(" + getValueAsStr(I->getOperand(0)) + " <= " + getValueAsStr(I->getOperand(1)) + ")";
+        break;
+      case FCmpInst::FCMP_UGE:
+        Code << "!(" + getValueAsStr(I->getOperand(0)) + " < "  + getValueAsStr(I->getOperand(1)) + ")";
+        break;
+      case FCmpInst::FCMP_ULT:
+        Code << "!(" + getValueAsStr(I->getOperand(0)) + " >= " + getValueAsStr(I->getOperand(1)) + ")";
+        break;
+      case FCmpInst::FCMP_ULE:
+        Code << "!(" + getValueAsStr(I->getOperand(0)) + " > "  + getValueAsStr(I->getOperand(1)) + ")";
+        break;
+
+      // Comparisons which require explicit NaN checks.
+      case FCmpInst::FCMP_UEQ:
+        Code << "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
+                "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ") |" +
+                "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(1)) + ")";
+        break;
+      case FCmpInst::FCMP_ONE:
+        Code << "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
+                "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ") &" +
+                "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(1)) + ")";
+        break;
+
+      // Simple NaN checks.
       case FCmpInst::FCMP_ORD:   Code << "(" + getValueAsStr(I->getOperand(0)) + " == " + getValueAsStr(I->getOperand(0)) + ") & " +
                                          "(" + getValueAsStr(I->getOperand(1)) + " == " + getValueAsStr(I->getOperand(1)) + ")"; break;
       case FCmpInst::FCMP_UNO:   Code << "(" + getValueAsStr(I->getOperand(0)) + " != " + getValueAsStr(I->getOperand(0)) + ") | " +
                                          "(" + getValueAsStr(I->getOperand(1)) + " != " + getValueAsStr(I->getOperand(1)) + ")"; break;
+
+      // Simple constants.
       case FCmpInst::FCMP_FALSE: Code << "0"; break;
       case FCmpInst::FCMP_TRUE : Code << "1"; break;
+
       default: error("bad fcmp"); break;
     }
     Code << ";";
