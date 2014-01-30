@@ -979,8 +979,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
 
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
-    dumpIR(I);
-    assert(0 && "FIXME: finish legalization"); // FIXME
+    errs() << *I << "\n";
+    report_fatal_error("legalization problem");
   }
 
   if (!generateSIMDInstruction(iName, I, Code)) switch (I->getOpcode()) {
@@ -1184,7 +1184,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
 
     Type *T = V->getType();
     if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
-      assert(0 && "FIXME: finish legalization"); // FIXME
+      errs() << *I << "\n";
+      report_fatal_error("legalization problem");
     }
     break;
   }
