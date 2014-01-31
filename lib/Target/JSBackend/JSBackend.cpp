@@ -270,7 +270,7 @@ namespace {
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
             Externals.insert(Name);
-            PostSets += "HEAP32[" + utostr(AbsoluteTarget>>2) + "] = " + Name + ';';
+            PostSets += " HEAP32[" + utostr(AbsoluteTarget>>2) + "] = " + Name + ";\n";
             return 0; // emit zero in there for now, until the postSet
           }
         }
@@ -999,7 +999,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::Ret: {
     const ReturnInst* ret =  cast<ReturnInst>(I);
     Value *RV = ret->getReturnValue();
-    Code << "STACKTOP = sp;";
+    Code << "STACKTOP = sp;\n";
     Code << "return";
     if (RV == NULL) {
       Code << ";";
@@ -1594,9 +1594,9 @@ void JSWriter::printModuleBody() {
       nl(Out);
     }
   }
-  Out << " function runPostSets() {\n";
-  Out << "  " << PostSets << "\n";
-  Out << " }\n";
+  Out << "function runPostSets() {\n";
+  Out << PostSets;
+  Out << "}\n";
   PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
