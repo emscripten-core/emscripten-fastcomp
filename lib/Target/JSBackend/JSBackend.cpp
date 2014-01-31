@@ -455,11 +455,12 @@ std::string JSWriter::getAssign(const StringRef &s, Type *t) {
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
-    default: {
-      // some types we cannot cast, like vectors - ignore
-      if (!t->isVectorTy()) assert(false && "Unsupported type");
-    }
+    default:
+      t->dump();
+      llvm_unreachable("Unsupported type");
+    // some types we cannot cast, like vectors - ignore
     case Type::FloatTyID: // TODO return ("Math_fround(" + s + ")").str();
+    case Type::VectorTyID:
     case Type::DoubleTyID: return ("+" + s).str();
     case Type::IntegerTyID: {
       // fall through to the end for nonspecific
