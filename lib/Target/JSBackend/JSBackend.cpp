@@ -101,6 +101,7 @@ namespace {
     std::vector<std::string> GlobalInitializers;
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
+    DataLayout *DL;
 
     #include "CallHandlers.h"
 
@@ -110,7 +111,13 @@ namespace {
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
 
-    bool runOnModule(Module &M);
+    virtual bool runOnModule(Module &M);
+
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+      AU.setPreservesAll();
+      AU.addRequired<DataLayout>();
+      ModulePass::getAnalysisUsage(AU);
+    }
 
     void printProgram(const std::string& fname, const std::string& modName );
     void printModule(const std::string& fname, const std::string& modName );
@@ -1177,8 +1184,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const AllocaInst* AI = cast<AllocaInst>(I);
     Type *T = AI->getAllocatedType();
     std::string Size;
-    DataLayout DL(TheModule);
-    uint64_t BaseSize = DL.getTypeAllocSize(T);
+    uint64_t BaseSize = DL->getTypeAllocSize(T);
     const Value *AS = AI->getArraySize();
     if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
       Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
@@ -1782,8 +1788,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
     assert(false && "Unlowered ConstantPointerNull");
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (calculate) {
-      DataLayout DL(TheModule);
-      unsigned Bytes = DL.getTypeStoreSize(CV->getType());
+      unsigned Bytes = DL->getTypeStoreSize(CV->getType());
       // FIXME: assume full 64-bit alignment for now
       Bytes = memAlign(Bytes);
       HeapData *GlobalData = allocateAddress(name);
@@ -1809,8 +1814,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       }
     } else if (calculate) {
       HeapData *GlobalData = allocateAddress(name);
-      DataLayout DL(TheModule);
-      unsigned Bytes = DL.getTypeStoreSize(CV->getType());
+      unsigned Bytes = DL->getTypeStoreSize(CV->getType());
       for (unsigned i = 0; i < Bytes; ++i) {
         GlobalData->push_back(0);
       }
@@ -1826,8 +1830,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       for (unsigned i = 0; i < Num; i++) {
         const Constant* C = CS->getOperand(i);
         if (isa<ConstantAggregateZero>(C)) {
-          DataLayout DL(TheModule);
-          unsigned Bytes = DL.getTypeStoreSize(C->getType());
+          unsigned Bytes = DL->getTypeStoreSize(C->getType());
           Offset += Bytes; // zeros, so just skip
         } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
           Value *V = CE->getOperand(0);
@@ -1969,6 +1972,7 @@ void JSWriter::printModule(const std::string& fname,
 
 bool JSWriter::runOnModule(Module &M) {
   TheModule = &M;
+  DL = &getAnalysis<DataLayout>();
 
   setupCallHandlers();
 
