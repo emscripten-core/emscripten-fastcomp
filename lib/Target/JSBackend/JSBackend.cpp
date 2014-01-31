@@ -316,13 +316,13 @@ namespace {
     void printType(Type* Ty);
     void printTypes(const Module* M);
 
-    std::string getAssign(const StringRef &, const Type *);
-    std::string getCast(const StringRef &, const Type *, AsmCast sign=ASM_SIGNED);
-    std::string getParenCast(const StringRef &, const Type *, AsmCast sign=ASM_SIGNED);
+    std::string getAssign(const StringRef &, Type *);
+    std::string getCast(const StringRef &, Type *, AsmCast sign=ASM_SIGNED);
+    std::string getParenCast(const StringRef &, Type *, AsmCast sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
-    std::string getLoad(const std::string& Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
-    std::string getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep=';');
+    std::string getLoad(const std::string& Assign, const Value *P, Type *T, unsigned Alignment, char sep=';');
+    std::string getStore(const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep=';');
 
     void printFunctionBody(const Function *F);
     bool generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code);
@@ -441,12 +441,12 @@ const std::string &JSWriter::getJSName(const Value* val) {
   return ValueNames[val] = name;
 }
 
-std::string JSWriter::getAssign(const StringRef &s, const Type *t) {
+std::string JSWriter::getAssign(const StringRef &s, Type *t) {
   UsedVars[s] = t->getTypeID();
   return (s + " = ").str();
 }
 
-std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
+std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: {
       // some types we cannot cast, like vectors - ignore
@@ -468,7 +468,7 @@ std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
   }
 }
 
-std::string JSWriter::getParenCast(const StringRef &s, const Type *t, AsmCast sign) {
+std::string JSWriter::getParenCast(const StringRef &s, Type *t, AsmCast sign) {
   return getCast(("(" + s + ")").str(), t, sign);
 }
 
@@ -502,8 +502,8 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
-std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
-  unsigned Bytes = T->getPrimitiveSizeInBits()/8;
+std::string JSWriter::getLoad(const std::string& Assign, const Value *P, Type *T, unsigned Alignment, char sep) {
+  unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = Assign + getPtrLoad(P);
@@ -590,9 +590,9 @@ std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const T
   return text;
 }
 
-std::string JSWriter::getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep) {
+std::string JSWriter::getStore(const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
-  unsigned Bytes = T->getPrimitiveSizeInBits()/8;
+  unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = getPtrUse(P) + " = " + VS;
@@ -690,7 +690,7 @@ std::string JSWriter::getPtrLoad(const Value* Ptr) {
 
 std::string JSWriter::getPtrUse(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  unsigned Bytes = t->getPrimitiveSizeInBits()/8;
+  unsigned Bytes = DL->getTypeAllocSize(t);
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
     std::string text = "";
     unsigned Addr = getGlobalAddress(GV->getName().str());
@@ -1177,18 +1177,13 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const AllocaInst* AI = cast<AllocaInst>(I);
     Type *T = AI->getAllocatedType();
     std::string Size;
-    if (T->isVectorTy()) {
-      checkVectorType(T);
-      Size = "16";
+    DataLayout DL(TheModule);
+    uint64_t BaseSize = DL.getTypeAllocSize(T);
+    const Value *AS = AI->getArraySize();
+    if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
+      Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
     } else {
-      assert(!isa<ArrayType>(T));
-      const Value *AS = AI->getArraySize();
-      unsigned BaseSize = T->getScalarSizeInBits()/8;
-      if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
-        Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
-      } else {
-        Size = memAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
-      }
+      Size = memAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
     }
     Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "STACKTOP; STACKTOP = STACKTOP + " << Size << "|0;";
     break;

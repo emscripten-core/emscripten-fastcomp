@@ -106,9 +106,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // This pass converts those arguments to 32-bit.
   PM.add(createCanonicalizeMemIntrinsicsPass());
 
+#if 0 // EMSCRIPTEN: PNaCl strips metadata to avoid making it ABI-exposed; empscripten doesn't need this.
   // We place StripMetadata after optimization passes because
   // optimizations depend on the metadata.
   PM.add(createStripMetadataPass());
+#endif
 
   // FlattenGlobals introduces ConstantExpr bitcasts of globals which
   // are expanded out later.
@@ -131,9 +133,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
   PM.add(createRemoveAsmMemoryPass());
+#if 0 // EMSCRIPTEN: PNaCl replaces pointers with ints to simplify their ABI; empscripten doesn't need this.
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
+#endif
 
   // We place StripAttributes after optimization passes because many
   // analyses add attributes to reflect their results.
@@ -143,10 +147,12 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   PM.add(createStripAttributesPass());
 #endif
 
+#if 0 // EMSCRIPTEN: we don't need to worry about the issue this works around
   // Strip dead prototytes to appease the intrinsic ABI checks.
   // ExpandVarArgs leaves around vararg intrinsics, and
   // ReplacePtrsWithInts leaves the lifetime.start/end intrinsics.
   PM.add(createStripDeadPrototypesPass());
+#endif
 
   // Eliminate simple dead code that the post-opt passes could have
   // created.
