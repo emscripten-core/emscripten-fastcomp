@@ -68,7 +68,7 @@ namespace {
   const char *SIMDLane = "XYZW";
   const char *simdLane = "xyzw";
 
-  typedef std::map<const Value*,std::string> ValueMap;
+  typedef DenseMap<const Value*, std::string> ValueMap;
   typedef std::set<std::string> NameSet;
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
@@ -158,9 +158,10 @@ namespace {
 
     // return the absolute offset of a global
     unsigned getGlobalAddress(const std::string &s) {
-      if (GlobalAddresses.find(s) == GlobalAddresses.end()) 
+      GlobalAddressMap::iterator I = GlobalAddresses.find(s);
+      if (I == GlobalAddresses.end()) 
         report_fatal_error("cannot find global address " + Twine(s));
-      Address a = GlobalAddresses[s];
+      Address a = I->second;
       assert(a.second == 64); // FIXME when we use optimal alignments
       unsigned Ret;
       switch (a.second) {
@@ -203,9 +204,10 @@ namespace {
     }
     // returns the internal offset inside the proper block: GlobalData8, 32, 64
     unsigned getRelativeGlobalAddress(const std::string &s) {
-      if (GlobalAddresses.find(s) == GlobalAddresses.end())
+      GlobalAddressMap::iterator I = GlobalAddresses.find(s);
+      if (I == GlobalAddresses.end())
         report_fatal_error("cannot find global address " + Twine(s));
-      Address a = GlobalAddresses[s];
+      Address a = I->second;
       return a.first;
     }
     char getFunctionSignatureLetter(Type *T) {
