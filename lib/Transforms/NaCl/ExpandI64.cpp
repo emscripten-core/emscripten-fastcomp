@@ -155,6 +155,12 @@ static FunctionType *getLegalizedFunctionType(FunctionType *FT) {
 bool okToRemainIllegal(Function *F) {
   const char *Name = F->getName().str().c_str();
   if (strcmp(Name, "llvm.dbg.value") == 0) return true;
+
+  // Emscripten: These take an i64 immediate argument; since they're not real
+  // instructions, we don't need to legalize them.
+  if (strcmp(Name, "llvm.lifetime.start") == 0) return true;
+  if (strcmp(Name, "llvm.lifetime.end") == 0) return true;
+
   return false;
 }
 

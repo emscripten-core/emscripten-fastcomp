@@ -14,8 +14,6 @@
 
 namespace llvm {
 
-  extern FunctionPass *createSimplifyAllocasPass();
-
 } // End llvm namespace
 
 #endif
