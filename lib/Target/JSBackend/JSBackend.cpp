@@ -1226,10 +1226,6 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     }
     break;
   }
-  case Instruction::GetElementPtr: {
-    assert(false && "Unhandled instruction");
-    break;
-  }
   case Instruction::PHI: {
     // handled separately - we push them back into the relooper branchings
     break;
@@ -1338,6 +1334,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     Code << ";";
     break;
   }
+  case Instruction::Fence: break; // no threads, so nothing to do here
   }
   // append debug info
   if (MDNode *N = I->getMetadata("dbg")) {
