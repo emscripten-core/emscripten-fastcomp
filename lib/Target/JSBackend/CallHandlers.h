@@ -98,7 +98,7 @@ DEF_CALL_HANDLER(__default__, {
     getAssign(getJSName(CI), InstRT); // ensure the variable is defined, but do not emit it here
                                       // it should have 0 uses, but just to be safe
   } else if (!ActualRT->isVoidTy()) {
-    text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC);
+    text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC | ASM_FFI);
   }
   return text;
 })

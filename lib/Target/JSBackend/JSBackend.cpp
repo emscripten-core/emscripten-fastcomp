@@ -72,11 +72,11 @@ extern "C" void LLVMInitializeJSBackendTarget() {
 }
 
 namespace {
-  enum AsmCast {
-    ASM_SIGNED = 0,
-    ASM_UNSIGNED = 1,
-    ASM_NONSPECIFIC = 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
-  };
+  #define ASM_SIGNED 0
+  #define ASM_UNSIGNED 1
+  #define ASM_NONSPECIFIC 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
+  #define ASM_FFI 4 // FFI values are limited to things that work in ffis
+  typedef unsigned AsmCast;
 
   const char *SIMDLane = "XYZW";
   const char *simdLane = "xyzw";
@@ -469,17 +469,23 @@ std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
       if (!t->isVectorTy()) assert(false && "Unsupported type");
     }
     case Type::FloatTyID: {
-      if (PreciseF32) return ("Math_fround(" + s + ")").str();
+      if (PreciseF32) {
+        if (sign & ASM_FFI) {
+          return ("Math_fround(+(" + s + "))").str();
+        } else {
+          return ("Math_fround(" + s + ")").str();
+        }
+      }
       // otherwise fall through to double
     }
     case Type::DoubleTyID: return ("+" + s).str();
     case Type::IntegerTyID: {
       // fall through to the end for nonspecific
       switch (t->getIntegerBitWidth()) {
-        case 1:  if (sign != ASM_NONSPECIFIC) return (s + "&1").str();
-        case 8:  if (sign != ASM_NONSPECIFIC) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
-        case 16: if (sign != ASM_NONSPECIFIC) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
-        case 32: return (sign == ASM_SIGNED || sign == ASM_NONSPECIFIC ? s + "|0" : s + ">>>0").str();
+        case 1:  if (!(sign & ASM_NONSPECIFIC)) return (s + "&1").str();
+        case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
+        case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
+        case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
         default: assert(0);
       }
     }
