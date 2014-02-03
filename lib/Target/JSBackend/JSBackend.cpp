@@ -221,8 +221,13 @@ namespace {
     }
     char getFunctionSignatureLetter(Type *T) {
       if (T->isVoidTy()) return 'v';
-      else if (T->isFloatTy() || T->isDoubleTy()) return 'd'; // TODO: float
-      else return 'i';
+      else if (T->isFloatingPointTy()) {
+        if (PreciseF32 && T->isFloatTy()) {
+          return 'f';
+        } else {
+          return 'd';
+        }
+      } else return 'i';
     }
     std::string getFunctionSignature(const FunctionType *F, const std::string *Name=NULL) {
       if (Name) {
