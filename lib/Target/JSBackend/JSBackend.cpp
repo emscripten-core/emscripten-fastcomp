@@ -75,7 +75,8 @@ namespace {
   #define ASM_SIGNED 0
   #define ASM_UNSIGNED 1
   #define ASM_NONSPECIFIC 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
-  #define ASM_FFI 4 // FFI values are limited to things that work in ffis
+  #define ASM_FFI_IN 4 // FFI return values are limited to things that work in ffis
+  #define ASM_FFI_OUT 8 // params to FFIs are limited to things that work in ffis
   typedef unsigned AsmCast;
 
   const char *SIMDLane = "XYZW";
@@ -474,8 +475,8 @@ std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
       if (!t->isVectorTy()) assert(false && "Unsupported type");
     }
     case Type::FloatTyID: {
-      if (PreciseF32) {
-        if (sign & ASM_FFI) {
+      if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
+        if (sign & ASM_FFI_IN) {
           return ("Math_fround(+(" + s + "))").str();
         } else {
           return ("Math_fround(" + s + ")").str();
@@ -816,7 +817,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
       std::string S = ftostr_exact(CFP);
-      if (PreciseF32 && CV->getType()->isFloatTy()) {
+      if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
         S = "Math_fround(" + S + ")";
       } else if (S[0] != '+') {
         S = '+' + S;

@@ -80,11 +80,14 @@ DEF_CALL_HANDLER(__default__, {
     }
     if (NumArgs > 0) text += ",";
   }
+  // this is an ffi call if we need casts, and it is not a Math_ builtin
+  bool FFI = NeedCasts && Name.find("Math_") != 0;
+  unsigned FFI_OUT = FFI ? ASM_FFI_OUT : 0;
   for (int i = 0; i < NumArgs; i++) {
     if (!NeedCasts) {
       text += getValueAsStr(CI->getOperand(i));
     } else {
-      text += getValueAsCastStr(CI->getOperand(i), ASM_NONSPECIFIC);
+      text += getValueAsCastStr(CI->getOperand(i), ASM_NONSPECIFIC | FFI_OUT);
     }
     if (i < NumArgs - 1) text += ",";
   }
@@ -98,9 +101,8 @@ DEF_CALL_HANDLER(__default__, {
     getAssign(getJSName(CI), InstRT); // ensure the variable is defined, but do not emit it here
                                       // it should have 0 uses, but just to be safe
   } else if (!ActualRT->isVoidTy()) {
-    // this is an ffi call if we need casts, and it is not a Math_ builtin
-    unsigned FFI = NeedCasts && text.find("Math_") != 0 ? ASM_FFI : 0;
-    text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI);
+    unsigned FFI_IN = FFI ? ASM_FFI_IN : 0;
+    text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN);
   }
   return text;
 })
