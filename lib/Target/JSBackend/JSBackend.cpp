@@ -1596,9 +1596,9 @@ void JSWriter::printModuleBody() {
       nl(Out);
     }
   }
-  Out << " function runPostSets() {\n";
-  Out << "  " << PostSets << "\n";
-  Out << " }\n";
+  Out << "function runPostSets() {\n";
+  Out << " " << PostSets << "\n";
+  Out << "}\n";
   PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
