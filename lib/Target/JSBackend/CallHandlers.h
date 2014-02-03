@@ -168,12 +168,16 @@ DEF_CALL_HANDLER(getHigh32, {
 DEF_CALL_HANDLER(setHigh32, {
   return "tempRet0 = " + getValueAsStr(CI->getOperand(0));
 })
+// XXX float handling here is not optimal
 #define TO_I(low, high) \
 DEF_CALL_HANDLER(low, { \
-  return getAssign(getJSName(CI), CI->getType()) + "(~~" + getValueAsStr(CI->getOperand(0)) + ")>>>0"; \
+  std::string Input = getValueAsStr(CI->getOperand(0)); \
+  if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
+  return getAssign(getJSName(CI), CI->getType()) + "(~~" + Input + ")>>>0"; \
 }) \
 DEF_CALL_HANDLER(high, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
+  if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
   return getAssign(getJSName(CI), CI->getType()) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
 })
 TO_I(FtoILow, FtoIHigh);
