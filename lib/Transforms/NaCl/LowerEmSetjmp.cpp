@@ -74,7 +74,6 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   Function *Setjmp = TheModule->getFunction("setjmp");
   Function *Longjmp = TheModule->getFunction("longjmp");
   if (!Setjmp && !Longjmp) return false;
-  assert(Setjmp && Longjmp); // must see setjmp *and* longjmp if one of them is present
 
   Type *i1 = Type::getInt1Ty(M.getContext());
   Type *i32 = Type::getInt32Ty(M.getContext());
@@ -82,13 +81,17 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
   // Add functions
 
-  SmallVector<Type*, 2> EmSetjmpTypes;
-  EmSetjmpTypes.push_back(Setjmp->getFunctionType()->getParamType(0));
-  EmSetjmpTypes.push_back(i32); // extra param that says which setjmp in the function it is
-  FunctionType *EmSetjmpFunc = FunctionType::get(i32, EmSetjmpTypes, false);
-  Function *EmSetjmp = Function::Create(EmSetjmpFunc, GlobalValue::ExternalLinkage, "emscripten_setjmp", TheModule);
+  Function *EmSetjmp = NULL;
 
-  Function *EmLongjmp = Function::Create(Longjmp->getFunctionType(), GlobalValue::ExternalLinkage, "emscripten_longjmp", TheModule);
+  if (Setjmp) {
+    SmallVector<Type*, 2> EmSetjmpTypes;
+    EmSetjmpTypes.push_back(Setjmp->getFunctionType()->getParamType(0));
+    EmSetjmpTypes.push_back(i32); // extra param that says which setjmp in the function it is
+    FunctionType *EmSetjmpFunc = FunctionType::get(i32, EmSetjmpTypes, false);
+    EmSetjmp = Function::Create(EmSetjmpFunc, GlobalValue::ExternalLinkage, "emscripten_setjmp", TheModule);
+  }
+
+  Function *EmLongjmp = Longjmp ? Function::Create(Longjmp->getFunctionType(), GlobalValue::ExternalLinkage, "emscripten_longjmp", TheModule) : NULL;
 
   SmallVector<Type*, 1> IntArgTypes;
   IntArgTypes.push_back(i32);
@@ -114,39 +117,41 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   typedef std::map<Function*, Phis> FunctionPhisMap;
   FunctionPhisMap SetjmpOutputPhis;
 
-  for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
-    Instruction *U = dyn_cast<Instruction>(*UI);
-    if (CallInst *CI = dyn_cast<CallInst>(U)) {
-      BasicBlock *SJBB = CI->getParent();
-      // The tail is everything right after the call, and will be reached once when setjmp is
-      // called, and later when longjmp returns to the setjmp
-      BasicBlock *Tail = SplitBlock(SJBB, CI->getNextNode(), this);
-      // Add a phi to the tail, which will be the output of setjmp, which indicates if this is the
-      // first call or a longjmp back. The phi directly uses the right value based on where we
-      // arrive from
-      PHINode *SetjmpOutput = PHINode::Create(i32, 2, "", Tail->getFirstNonPHI());
-      SetjmpOutput->addIncoming(ConstantInt::get(i32, 0), SJBB); // setjmp initial call returns 0
-      CI->replaceAllUsesWith(SetjmpOutput); // The proper output is now this, not the setjmp call itself
-      // longjmp returns to the setjmp will add themselves to this phi
-      Phis& P = SetjmpOutputPhis[SJBB->getParent()];
-      P.push_back(SetjmpOutput);
-      // fix call target
-      SmallVector<Value *, 2> Args;
-      Args.push_back(CI->getArgOperand(0));
-      Args.push_back(ConstantInt::get(i32, P.size())); // our index in the function is our place in the array + 1
-      CallInst::Create(EmSetjmp, Args, "", CI);
-      CI->eraseFromParent();
-    } else if (InvokeInst *CI = dyn_cast<InvokeInst>(U)) {
-      assert("TODO: invoke a setjmp");
-    } else {
-      dumpIR(U);
-      assert("bad use of setjmp, should only call it");
+  if (Setjmp) {
+    for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
+      Instruction *U = dyn_cast<Instruction>(*UI);
+      if (CallInst *CI = dyn_cast<CallInst>(U)) {
+        BasicBlock *SJBB = CI->getParent();
+        // The tail is everything right after the call, and will be reached once when setjmp is
+        // called, and later when longjmp returns to the setjmp
+        BasicBlock *Tail = SplitBlock(SJBB, CI->getNextNode(), this);
+        // Add a phi to the tail, which will be the output of setjmp, which indicates if this is the
+        // first call or a longjmp back. The phi directly uses the right value based on where we
+        // arrive from
+        PHINode *SetjmpOutput = PHINode::Create(i32, 2, "", Tail->getFirstNonPHI());
+        SetjmpOutput->addIncoming(ConstantInt::get(i32, 0), SJBB); // setjmp initial call returns 0
+        CI->replaceAllUsesWith(SetjmpOutput); // The proper output is now this, not the setjmp call itself
+        // longjmp returns to the setjmp will add themselves to this phi
+        Phis& P = SetjmpOutputPhis[SJBB->getParent()];
+        P.push_back(SetjmpOutput);
+        // fix call target
+        SmallVector<Value *, 2> Args;
+        Args.push_back(CI->getArgOperand(0));
+        Args.push_back(ConstantInt::get(i32, P.size())); // our index in the function is our place in the array + 1
+        CallInst::Create(EmSetjmp, Args, "", CI);
+        CI->eraseFromParent();
+      } else if (InvokeInst *CI = dyn_cast<InvokeInst>(U)) {
+        assert("TODO: invoke a setjmp");
+      } else {
+        dumpIR(U);
+        assert("bad use of setjmp, should only call it");
+      }
     }
   }
 
   // Update longjmp FIXME: we could avoid throwing in longjmp as an optimization when longjmping back into the current function perhaps?
 
-  Longjmp->replaceAllUsesWith(EmLongjmp);
+  if (Longjmp) Longjmp->replaceAllUsesWith(EmLongjmp);
 
   // Update all setjmping functions
 
