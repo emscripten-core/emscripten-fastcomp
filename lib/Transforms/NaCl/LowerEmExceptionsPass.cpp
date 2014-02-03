@@ -62,6 +62,11 @@
 
 using namespace llvm;
 
+static cl::opt<std::string>
+Whitelist("emscripten-cxx-exceptions-whitelist",
+          cl::desc("Enables C++ exceptions in emscripten (see emscripten EXCEPTION_CATCHING_WHITELIST option)"),
+          cl::init(""));
+
 namespace {
   class LowerEmExceptions : public ModulePass {
     Function *GetHigh, *PreInvoke, *PostInvoke, *LandingPad, *Resume;
@@ -128,6 +133,10 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   
   // Process
 
+  bool HasWhitelist = Whitelist.size() > 0;
+  std::string WhitelistChecker;
+  if (HasWhitelist) WhitelistChecker = "," + Whitelist + ",";
+
   bool Changed = false;
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
@@ -136,16 +145,18 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     std::vector<Instruction*> ToErase;
     std::set<LandingPadInst*> LandingPads;
 
+    bool AllowExceptionsInFunc = !HasWhitelist || int(WhitelistChecker.find(F->getName())) > 0;
+
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       // check terminator for invokes
       if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
         LandingPads.insert(II->getLandingPadInst());
 
-        bool NeedInvoke = canThrow(II->getCalledValue());
+        bool NeedInvoke = AllowExceptionsInFunc && canThrow(II->getCalledValue());
 
         if (NeedInvoke) {
           // Insert a normal call instruction folded in between pre- and post-invoke
-          CallInst *Pre = CallInst::Create(PreInvoke, "", II);
+          CallInst::Create(PreInvoke, "", II);
 
           SmallVector<Value*,16> CallArgs(II->op_begin(), II->op_end() - 3);
           CallInst *NewCall = CallInst::Create(II->getCalledValue(),
@@ -196,9 +207,9 @@ bool LowerEmExceptions::runOnModule(Module &M) {
           SmallVector<Value*,2> CallArgs;
           CallArgs.push_back(Low);
           CallArgs.push_back(High);
-          CallInst *NewR = CallInst::Create(Resume, CallArgs, "", R);
+          CallInst::Create(Resume, CallArgs, "", R);
 
-          UnreachableInst *U = new UnreachableInst(TheModule->getContext(), R); // add a terminator to the block
+          new UnreachableInst(TheModule->getContext(), R); // add a terminator to the block
 
           ToErase.push_back(R);
         }
