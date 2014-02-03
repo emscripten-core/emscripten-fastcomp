@@ -608,7 +608,7 @@ std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const T
             }
             default: assert(0 && "bad 4f store");
           }
-          text += sep + Assign + "+HEAPF32[tempDoublePtr>>2]";
+          text += sep + Assign + getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext()));
         }
         break;
       }
@@ -1323,7 +1323,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
       assert(InType->getIntegerBitWidth() == 32);
-      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << "+HEAPF32[tempDoublePtr>>2]);";
+      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) + ");";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
       assert(OutType->getIntegerBitWidth() == 32);
       Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," << "HEAP32[tempDoublePtr>>2]|0);";
