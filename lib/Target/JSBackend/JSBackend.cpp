@@ -511,7 +511,10 @@ std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const T
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = Assign + getPtrLoad(P);
-    if (Alignment == 536870912) text += "; abort() /* segfault */";
+    if (const IntToPtrInst *ITP = dyn_cast<IntToPtrInst>(P)) {
+      // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
+      if (isa<ConstantInt>(ITP->getOperand(0))) text += "; abort() /* segfault, load from absolute addr */";
+    }
   } else {
     // unaligned in some manner
     std::string PS = getOpName(P);
