@@ -98,7 +98,8 @@ DEF_CALL_HANDLER(__default__, {
     getAssign(getJSName(CI), InstRT); // ensure the variable is defined, but do not emit it here
                                       // it should have 0 uses, but just to be safe
   } else if (!ActualRT->isVoidTy()) {
-    unsigned FFI = NeedCasts ? ASM_FFI : 0;
+    // this is an ffi call if we need casts, and it is not a Math_ builtin
+    unsigned FFI = NeedCasts && text.find("Math_") != 0 ? ASM_FFI : 0;
     text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI);
   }
   return text;
