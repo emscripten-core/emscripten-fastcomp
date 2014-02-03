@@ -61,6 +61,11 @@ using namespace llvm;
 #undef assert
 #define assert(x) { if (!(x)) dumpfail(#x); }
 
+static cl::opt<bool>
+PreciseF32("emscripten-precise-f32",
+           cl::desc("Enables Math.fround usage to implement precise float32 semantics and performance (see emscripten PRECISE_F32 option)"),
+           cl::init(false));
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
@@ -363,6 +368,13 @@ static inline void sanitize(std::string& str) {
       str[i] = '_';
 }
 
+static inline std::string ensureFloat(const std::string &S, Type *T) {
+  if (PreciseF32 && T->isFloatTy()) {
+    return "Math_fround(" + S + ")";
+  }
+  return S;
+}
+
 void JSWriter::error(const std::string& msg) {
   report_fatal_error(msg);
 }
@@ -456,7 +468,10 @@ std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
       // some types we cannot cast, like vectors - ignore
       if (!t->isVectorTy()) assert(false && "Unsupported type");
     }
-    case Type::FloatTyID: // TODO return ("Math_fround(" + s + ")").str();
+    case Type::FloatTyID: {
+      if (PreciseF32) return ("Math_fround(" + s + ")").str();
+      // otherwise fall through to double
+    }
     case Type::DoubleTyID: return ("+" + s).str();
     case Type::IntegerTyID: {
       // fall through to the end for nonspecific
@@ -790,16 +805,17 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
       std::string S = ftostr_exact(CFP);
-      if (S[0] != '+') {
+      if (PreciseF32 && CV->getType()->isFloatTy()) {
+        S = "Math_fround(" + S + ")";
+      } else if (S[0] != '+') {
         S = '+' + S;
       }
-      //if (S.find('.') == S.npos) { TODO: do this when necessary, but it is necessary even for 0.0001
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
       if (sign == ASM_SIGNED && CI->getValue().getBitWidth() == 1) sign = ASM_UNSIGNED; // booleans cannot be signed in a meaningful way
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
-      return CV->getType()->isIntegerTy() ? "0" : "+0"; // XXX fround, refactor this
+      return CV->getType()->isIntegerTy() ? "0" : getCast("0", CV->getType());
     } else if (isa<ConstantAggregateZero>(CV)) {
       if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
         if (VT->getElementType()->isIntegerTy()) {
@@ -1082,16 +1098,17 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
         Code << Input << (opcode == Instruction::AShr ? " >> " : " >>> ") <<  getValueAsStr(I->getOperand(1));
         break;
       }
-      case Instruction::FAdd: Code << getValueAsStr(I->getOperand(0)) << " + " <<   getValueAsStr(I->getOperand(1)); break; // TODO: ensurefloat here
-      case Instruction::FMul: Code << getValueAsStr(I->getOperand(0)) << " * " <<   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FDiv: Code << getValueAsStr(I->getOperand(0)) << " / " <<   getValueAsStr(I->getOperand(1)); break;
-      case Instruction::FRem: Code << getValueAsStr(I->getOperand(0)) << " % " <<   getValueAsStr(I->getOperand(1)); break;
+
+      case Instruction::FAdd: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " + " + getValueAsStr(I->getOperand(1)), I->getType()); break;
+      case Instruction::FMul: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()); break;
+      case Instruction::FDiv: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " / " + getValueAsStr(I->getOperand(1)), I->getType()); break;
+      case Instruction::FRem: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " % " + getValueAsStr(I->getOperand(1)), I->getType()); break;
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
         if (BinaryOperator::isFNeg(I)) {
-          Code << "-" << getValueAsStr(BinaryOperator::getFNegArgument(I));
+          Code << ensureFloat("-" + getValueAsStr(BinaryOperator::getFNegArgument(I)), I->getType());
         } else {
-          Code << getValueAsStr(I->getOperand(0)) << " - " << getValueAsStr(I->getOperand(1));
+          Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " - " + getValueAsStr(I->getOperand(1)), I->getType());
         }
         break;
       default: error("bad icmp"); break;
@@ -1264,8 +1281,18 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
       break;
     }
     case Instruction::ZExt:     Code << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
-    case Instruction::FPExt:    Code << getValueAsStr(I->getOperand(0)); break; // TODO: fround
-    case Instruction::FPTrunc:  Code << getValueAsStr(I->getOperand(0)); break; // TODO: fround
+    case Instruction::FPExt: {
+      if (PreciseF32) {
+        Code << "+" + getValueAsStr(I->getOperand(0)); break;
+      } else {
+        Code << getValueAsStr(I->getOperand(0)); break;
+      }
+      break;
+    }
+    case Instruction::FPTrunc: {
+      Code << ensureFloat(getValueAsStr(I->getOperand(0)), I->getType());
+      break;
+    }
     case Instruction::SIToFP:   Code << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
     case Instruction::UIToFP:   Code << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()); break;
     case Instruction::FPToSI:   Code << getDoubleToInt(getValueAsParenStr(I->getOperand(0))); break;
@@ -1491,9 +1518,13 @@ void JSWriter::printFunctionBody(const Function *F) {
           Out << "0";
           break;
         case Type::FloatTyID:
-          // TODO Out << "Math_fround(0)";
+          if (PreciseF32) {
+            Out << "Math_fround(0)";
+            break;
+          }
+          // otherwise fall through to double
         case Type::DoubleTyID:
-          Out << "+0"; // FIXME
+          Out << "+0";
           break;
         case Type::VectorTyID:
           Out << "0"; // best we can do for now
