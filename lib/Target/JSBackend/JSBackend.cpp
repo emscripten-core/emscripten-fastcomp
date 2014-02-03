@@ -107,6 +107,8 @@ namespace {
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
     std::vector<std::string> GlobalInitializers;
+    std::vector<std::string> Exports; // additional exports
+
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
 
@@ -1712,6 +1714,18 @@ void JSWriter::printModuleBody() {
   }
   Out << "],";
 
+  Out << "\"exports\": [";
+  first = true;
+  for (unsigned i = 0; i < Exports.size(); i++) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" << Exports[i] << "\"";
+  }
+  Out << "],";
+
   Out << "\"simd\": ";
   Out << (UsesSIMD ? "1" : "0");
   Out << ",";
@@ -1796,8 +1810,20 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       }
       // FIXME: create a zero section at the end, avoid filling meminit with zeros
     }
-  } else if (isa<ConstantArray>(CV)) {
-    assert(false);
+  } else if (const ConstantArray *CA = dyn_cast<ConstantArray>(CV)) {
+    if (calculate) {
+      for (Constant::const_use_iterator UI = CV->use_begin(), UE = CV->use_end(); UI != UE; ++UI) {
+        assert((*UI)->getName() == "llvm.used"); // llvm.used is acceptable (and can be ignored)
+      }
+      // export the kept-alives
+      for (unsigned i = 0; i < CA->getNumOperands(); i++) {
+        const Constant *C = CA->getOperand(i);
+        if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+          C = CE->getOperand(0); // ignore bitcasts
+        }
+        Exports.push_back(getJSName(C));
+      }
+    }
   } else if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(CV)) {
     if (name == "__init_array_start") {
       // this is the global static initializer
