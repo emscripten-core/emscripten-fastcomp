@@ -4,7 +4,8 @@
 ; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF2
 
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
+; RUN:              | pnacl-thaw -allow-local-symbol-tables \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD2
 
 ; ------------------------------------------------------

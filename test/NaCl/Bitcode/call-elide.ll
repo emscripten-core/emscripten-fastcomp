@@ -4,7 +4,8 @@
 ; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF2
 
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
+; RUN:              | pnacl-thaw -allow-local-symbol-tables \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD2
 
 ; ------------------------------------------------------
@@ -54,7 +55,7 @@ define void @DirectCallIntToPtrArg(i32 %i) {
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT: </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 ; Test how we handle a direct call with a normalized ptroint argument.
@@ -100,7 +101,7 @@ define void @DirectCallBitcastArg(i32 %i) {
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=2/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT: </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 ; Test how we handle a direct call with a pointer to scalar conversion.
@@ -121,7 +122,7 @@ define void @DirectCallScalarArg() {
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:   <INST_CALL op0=0 op1=13 op2=1/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT: </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 ; Test how we handle an indirect call.
@@ -142,7 +143,7 @@ define void @IndirectCall(i32 %i) {
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=1 op3=1/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT: </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 ; Test how we handle an indirect call with a normalized ptrtoint argument.
@@ -168,7 +169,7 @@ define void @IndirectCallPtrToIntArg(i32 %i) {
 ; PF2-NEXT:   <INST_ALLOCA op0=1 op1=4/>
 ; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=3 op2=1 op3=1/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT:      </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 ; Test how we handle an indirect call with a pointer to scalar conversion.
@@ -191,7 +192,7 @@ define void @IndirectCallScalarArg(i32 %i) {
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:   <INST_CALL_INDIRECT op0=0 op1=1 op2=1 op3=2/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT: </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 ; Test how we handle intrinsics that can return (inherent) pointers, and

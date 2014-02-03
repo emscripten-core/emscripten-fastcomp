@@ -16,6 +16,8 @@
 #ifndef LLVM_BITCODE_NACL_NACLREADERWRITER_H
 #define LLVM_BITCODE_NACL_NACLREADERWRITER_H
 
+#include "llvm/Support/CommandLine.h"
+
 #include <string>
 
 namespace llvm {
@@ -26,6 +28,10 @@ namespace llvm {
   class raw_ostream;
   class NaClBitcodeHeader;
   class NaClBitstreamWriter;
+
+  /// Allows (function) local symbol tables (unsupported) in PNaCl bitcode
+  /// files.
+  extern cl::opt<bool> PNaClAllowLocalSymbolTables;
 
   /// \brief Defines the integer bit size used to model pointers in PNaCl.
   static const unsigned PNaClIntPtrTypeBitSize = 32;

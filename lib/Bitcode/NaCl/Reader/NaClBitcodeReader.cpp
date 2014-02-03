@@ -29,6 +29,12 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
+cl::opt<bool>
+llvm::PNaClAllowLocalSymbolTables(
+    "allow-local-symbol-tables",
+    cl::desc("Allow (function) local symbol tables in PNaCl bitcode files"),
+    cl::init(false));
+
 void NaClBitcodeReader::FreeState() {
   if (BufferOwned)
     delete Buffer;
@@ -1036,8 +1042,12 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         NextValueNo = ValueList.size();
         break;
       case naclbitc::VALUE_SYMTAB_BLOCK_ID:
-        if (ParseValueSymbolTable())
-          return true;
+        if (PNaClAllowLocalSymbolTables) {
+          if (ParseValueSymbolTable())
+            return true;
+        } else {
+          return Error("Local value symbol tables not allowed");
+        }
         break;
       }
       continue;

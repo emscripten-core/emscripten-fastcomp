@@ -1,9 +1,10 @@
 ; Simple test to see if pnacl-bccompress maintains bitcode.
 
 ; Test 1: Show that we generate the same disassembled code.
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-bccompress \
-; RUN:              | pnacl-thaw | llvm-dis - | FileCheck %s
-; ModuleID = 'bccompress.thaw'
+; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
+; RUN:              | pnacl-bccompress \
+; RUN:              | pnacl-thaw -allow-local-symbol-tables \
+; RUN:              | llvm-dis - | FileCheck %s
 
 ; Test 2: Show that both the precompressed, and the compressed versions
 ; of the bitcode contain the same records.
@@ -916,11 +917,6 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 ; DUMP-NEXT:    <INST_PHI op0=0 op1=6 op2=1 op3=6 op4=2/>
 ; DUMP-NEXT:    <INST_PHI op0=0 op1=6 op2=1 op3=4 op4=2/>
 ; DUMP-NEXT:    <INST_RET/>
-; DUMP-NEXT:    <VALUE_SYMTAB>
-; DUMP-NEXT:      <BBENTRY op0=1 op1=116 op2=114 op3=117 op4=101/>
-; DUMP-NEXT:      <BBENTRY op0=3 op1=109 op2=101 op3=114 op4=103 op5=101/>
-; DUMP-NEXT:      <BBENTRY op0=2 op1=102 op2=97 op3=108 op4=115 op5=101/>
-; DUMP-NEXT:    </VALUE_SYMTAB>
 ; DUMP-NEXT:  </FUNCTION_BLOCK>
 ; DUMP-NEXT:  <FUNCTION_BLOCK>
 ; DUMP-NEXT:    <DECLAREBLOCKS op0=5/>
@@ -943,12 +939,6 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 ; DUMP-NEXT:    <INST_ALLOCA op0=5 op1=4/>
 ; DUMP-NEXT:    <INST_ALLOCA op0=6 op1=4/>
 ; DUMP-NEXT:    <INST_BR op0=2 op1=3 op2=8/>
-; DUMP-NEXT:    <VALUE_SYMTAB>
-; DUMP-NEXT:      <BBENTRY op0=1 op1=109 op2=101 op3=114 op4=103 op5=101/>
-; DUMP-NEXT:      <BBENTRY op0=2 op1=116 op2=114 op3=117 op4=101/>
-; DUMP-NEXT:      <BBENTRY op0=3 op1=102 op2=97 op3=108 op4=115 op5=101/>
-; DUMP-NEXT:      <BBENTRY op0=4 op1=115 op2=116 op3=97 op4=114 op5=116/>
-; DUMP-NEXT:    </VALUE_SYMTAB>
 ; DUMP-NEXT:  </FUNCTION_BLOCK>
 ; DUMP-NEXT:  <FUNCTION_BLOCK>
 ; DUMP-NEXT:    <DECLAREBLOCKS op0=4/>
@@ -967,11 +957,6 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 ; DUMP-NEXT:    <INST_PHI op0=0 op1=8 op2=1 op3=8 op4=2/>
 ; DUMP-NEXT:    <INST_PHI op0=0 op1=8 op2=1 op3=4 op4=2/>
 ; DUMP-NEXT:    <INST_RET/>
-; DUMP-NEXT:    <VALUE_SYMTAB>
-; DUMP-NEXT:      <BBENTRY op0=1 op1=116 op2=114 op3=117 op4=101/>
-; DUMP-NEXT:      <BBENTRY op0=3 op1=109 op2=101 op3=114 op4=103 op5=101/>
-; DUMP-NEXT:      <BBENTRY op0=2 op1=102 op2=97 op3=108 op4=115 op5=101/>
-; DUMP-NEXT:    </VALUE_SYMTAB>
 ; DUMP-NEXT:  </FUNCTION_BLOCK>
 ; DUMP-NEXT:  <FUNCTION_BLOCK>
 ; DUMP-NEXT:    <DECLAREBLOCKS op0=7/>
@@ -995,16 +980,6 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 ; DUMP-NEXT:    <INST_STORE op0=4 op1=1 op2=1/>
 ; DUMP-NEXT:    <INST_STORE op0=4 op1=1 op2=1/>
 ; DUMP-NEXT:    <INST_RET/>
-; DUMP-NEXT:    <VALUE_SYMTAB>
-; DUMP-NEXT:      <BBENTRY op0=3 op1=98 op2=49/>
-; DUMP-NEXT:      <BBENTRY op0=4 op1=98 op2=50/>
-; DUMP-NEXT:      <BBENTRY op0=5 op1=98 op2=51/>
-; DUMP-NEXT:      <BBENTRY op0=6 op1=98 op2=52/>
-; DUMP-NEXT:      <BBENTRY op0=1 op1=83 op2=112 op3=108 op4=105 op5=116
-; DUMP-NEXT:                 op6=49/>
-; DUMP-NEXT:      <BBENTRY op0=2 op1=83 op2=112 op3=108 op4=105 op5=116
-; DUMP-NEXT:                 op6=50/>
-; DUMP-NEXT:    </VALUE_SYMTAB>
 ; DUMP-NEXT:  </FUNCTION_BLOCK>
 ; DUMP-NEXT:  <FUNCTION_BLOCK>
 ; DUMP-NEXT:    <DECLAREBLOCKS op0=6/>
@@ -1017,12 +992,6 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 ; DUMP-NEXT:    <INST_BR op0=5/>
 ; DUMP-NEXT:    <INST_BR op0=5/>
 ; DUMP-NEXT:    <INST_RET/>
-; DUMP-NEXT:    <VALUE_SYMTAB>
-; DUMP-NEXT:      <BBENTRY op0=5 op1=101 op2=110 op3=100/>
-; DUMP-NEXT:      <BBENTRY op0=2 op1=108 op2=49/>
-; DUMP-NEXT:      <BBENTRY op0=3 op1=108 op2=50/>
-; DUMP-NEXT:      <BBENTRY op0=4 op1=108 op2=51/>
-; DUMP-NEXT:    </VALUE_SYMTAB>
 ; DUMP-NEXT:  </FUNCTION_BLOCK>
 ; DUMP-NEXT:</MODULE_BLOCK>
 

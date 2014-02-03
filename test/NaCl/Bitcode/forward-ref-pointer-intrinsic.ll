@@ -1,6 +1,7 @@
 ; Test forward reference of a pointer-typed intrinsic result.
 
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
+; RUN:              | pnacl-thaw -allow-local-symbol-tables \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD2
 
 declare i8* @llvm.nacl.read.tp()

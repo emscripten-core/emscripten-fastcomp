@@ -117,14 +117,6 @@ merge:                                            ; preds = %false, %true
 ; DR:     <INST_PHI op0=0 op1=6 op2=1 op3=4
 ; DR:               op4=2/>
 ; DR:     <INST_RET/>
-; DR:     <VALUE_SYMTAB>
-; DR:       <BBENTRY op0=1 op1=116 op2=114 op3=117
-; DR:                op4=101/>
-; DR:       <BBENTRY op0=3 op1=109 op2=101 op3=114
-; DR:                op4=103 op5=101/>
-; DR:       <BBENTRY op0=2 op1=102 op2=97 op3=108
-; DR:                op4=115 op5=101/>
-; DR:     </VALUE_SYMTAB>
 ; DR:   </FUNCTION_BLOCK>
 ; DR: </MODULE_BLOCK>
 
@@ -136,7 +128,7 @@ merge:                                            ; preds = %false, %true
 ; RUN:                   --dump-records --dump-details \
 ; RUN:              | FileCheck %s -check-prefix=DRWD
 
-; DRWD: <MODULE_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=92 BlockCodeSize=2>
+; DRWD: <MODULE_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=2>
 ; DRWD:   <VERSION abbrev='UNABBREVIATED' op0=1/>
 ; DRWD:   <BLOCKINFO_BLOCK abbrev='ENTER_SUBBLOCK'>
 ; DRWD:     <SETBID abbrev='UNABBREVIATED' block='VALUE_SYMTAB'/>
@@ -174,7 +166,7 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)' op2='VBR(6)'/>
 ; DRWD:   </BLOCKINFO_BLOCK abbrev='END_BLOCK'/>
-; DRWD:   <TYPE_BLOCK_ID abbrev='ENTER_SUBBLOCK' NumWords=8 BlockCodeSize=3>
+; DRWD:   <TYPE_BLOCK_ID abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(8)' op1='FIXED(3)' op2='LIT(0)'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(21)' op1='FIXED(1)' op2='ARRAY'
 ; DRWD:                    op3='FIXED(3)'/>
@@ -193,7 +185,7 @@ merge:                                            ; preds = %false, %true
 ; DRWD:             op3=0/>
 ; DRWD:   <FUNCTION abbrev='UNABBREVIATED' op0=6 op1=0 op2=0
 ; DRWD:             op3=0/>
-; DRWD:   <GLOBALVAR_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=4 BlockCodeSize=4>
+; DRWD:   <GLOBALVAR_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=4>
 ; DRWD:     <COUNT abbrev='UNABBREVIATED' op0=3/>
 ; DRWD:     <VAR abbrev=4 op0=0 op1=0/>
 ; DRWD:     <DATA abbrev=7 op0=97 op1=98 op2=99
@@ -203,7 +195,7 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <VAR abbrev=4 op0=0 op1=0/>
 ; DRWD:     <RELOC abbrev=8 op0=3/>
 ; DRWD:   </GLOBALVAR_BLOCK abbrev='END_BLOCK'>
-; DRWD:   <VALUE_SYMTAB abbrev='ENTER_SUBBLOCK' NumWords=13 BlockCodeSize=3>
+; DRWD:   <VALUE_SYMTAB abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
 ; DRWD:     <ENTRY abbrev=6 op0=1 op1=65 op2=108
 ; DRWD:            op3=108 op4=111 op5=99 op6=67
 ; DRWD:            op7=97 op8=115 op9=116 op10=83
@@ -224,9 +216,9 @@ merge:                                            ; preds = %false, %true
 ; DRWD:            op3=114 op4=95 op5=116 op6=111
 ; DRWD:            op7=95 op8=112 op9=116 op10=114/>
 ; DRWD:   </VALUE_SYMTAB abbrev='END_BLOCK'>
-; DRWD:   <FUNCTION_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=6 BlockCodeSize=4>
+; DRWD:   <FUNCTION_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=4>
 ; DRWD:     <DECLAREBLOCKS abbrev='UNABBREVIATED' op0=1/>
-; DRWD:     <CONSTANTS_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=1 BlockCodeSize=3>
+; DRWD:     <CONSTANTS_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
 ; DRWD:       <SETTYPE abbrev=4 op0=0/>
 ; DRWD:       <INTEGER abbrev=5 op0=8/>
 ; DRWD:     </CONSTANTS_BLOCK abbrev='END_BLOCK'>
@@ -234,9 +226,9 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <INST_STORE abbrev=11 op0=5 op1=1 op2=1/>
 ; DRWD:     <INST_RET abbrev=7/>
 ; DRWD:   </FUNCTION_BLOCK abbrev='END_BLOCK'>
-; DRWD:   <FUNCTION_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=20 BlockCodeSize=4>
+; DRWD:   <FUNCTION_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=4>
 ; DRWD:     <DECLAREBLOCKS abbrev='UNABBREVIATED' op0=4/>
-; DRWD:     <CONSTANTS_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=1 BlockCodeSize=3>
+; DRWD:     <CONSTANTS_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
 ; DRWD:       <SETTYPE abbrev=4 op0=0/>
 ; DRWD:       <INTEGER abbrev=5 op0=8/>
 ; DRWD:     </CONSTANTS_BLOCK abbrev='END_BLOCK'>
@@ -252,13 +244,5 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <INST_PHI abbrev='UNABBREVIATED' op0=0 op1=6 op2=1
 ; DRWD:               op3=4 op4=2/>
 ; DRWD:     <INST_RET abbrev=7/>
-; DRWD:     <VALUE_SYMTAB abbrev='ENTER_SUBBLOCK' NumWords=5 BlockCodeSize=3>
-; DRWD:       <BBENTRY abbrev=7 op0=1 op1=116 op2=114
-; DRWD:                op3=117 op4=101/>
-; DRWD:       <BBENTRY abbrev=7 op0=3 op1=109 op2=101
-; DRWD:                op3=114 op4=103 op5=101/>
-; DRWD:       <BBENTRY abbrev=7 op0=2 op1=102 op2=97
-; DRWD:                op3=108 op4=115 op5=101/>
-; DRWD:     </VALUE_SYMTAB abbrev='END_BLOCK'>
 ; DRWD:   </FUNCTION_BLOCK abbrev='END_BLOCK'>
 ; DRWD: </MODULE_BLOCK abbrev='END_BLOCK'>

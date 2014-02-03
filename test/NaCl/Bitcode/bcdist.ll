@@ -303,8 +303,8 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 ; CHECK:      Block Histogram (8 elements):
 
 ; CHECK:        %File   Count %Count    # Bits    Bits/Elmt Block
-; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} BLOCKINFO_BLOCK
-; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} MODULE_BLOCK
+; CHECK-NEXT:  {{.*}}       1  {{.*}}   {{.*}}       {{.*}} BLOCKINFO_BLOCK
+; CHECK-NEXT:  {{.*}}       1  {{.*}}   {{.*}}       {{.*}} MODULE_BLOCK
 
 ; CHECK:          Subblocks (5 elements):
 
@@ -323,7 +323,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:        Block Histogram (continued)
 ; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
-; CHECK-NEXT:  {{.*}}      17  36.96    {{.*}}       {{.*}} CONSTANTS_BLOCK
+; CHECK-NEXT:  {{.*}}      17 {{.*}}    {{.*}}       {{.*}} CONSTANTS_BLOCK
 
 ; CHECK:          Record Histogram: (2 elements):
 
@@ -333,13 +333,12 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:        Block Histogram (continued)
 ; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
-; CHECK-NEXT:  {{.*}}      19  41.30    {{.*}}       {{.*}} FUNCTION_BLOCK
+; CHECK-NEXT:  {{.*}}      19 {{.*}}    {{.*}}       {{.*}} FUNCTION_BLOCK
 
-; CHECK:          Subblocks (2 elements):
+; CHECK:          Subblocks (1 elements):
 
 ; CHECK:             Count %Count Subblock
-; CHECK-NEXT:           17  77.27 CONSTANTS_BLOCK
-; CHECK-NEXT:            5  22.73 VALUE_SYMTAB
+; CHECK-NEXT:           17 100.00 CONSTANTS_BLOCK
 
 ; CHECK:          Record Histogram: (12 elements):
 
@@ -359,17 +358,16 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:        Block Histogram (continued)
 ; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
-; CHECK-NEXT:  {{.*}}       6  13.04    {{.*}}       {{.*}} VALUE_SYMTAB
+; CHECK-NEXT:  {{.*}}       1 {{.*}}    {{.*}}       {{.*}} VALUE_SYMTAB
 
-; CHECK:          Record Histogram: (2 elements):
+; CHECK:          Record Histogram: (1 elements):
 
 ; CHECK:             Count %Count    # Bits    Bits/Elmt   % Abv Record Kind
-; CHECK-NEXT:           36  64.29    {{.*}}       {{.*}}  {{.*}} ENTRY
-; CHECK-NEXT:           20  35.71    {{.*}}       {{.*}}  {{.*}} BBENTRY
+; CHECK-NEXT:           36 100.00    {{.*}}       {{.*}}  {{.*}} ENTRY
 
 ; CHECK:        Block Histogram (continued)
 ; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
-; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} TYPE_BLOCK_ID
+; CHECK-NEXT:  {{.*}}       1 {{.*}}    {{.*}}       {{.*}} TYPE_BLOCK_ID
 
 ; CHECK:          Record Histogram: (4 elements):
 
@@ -381,7 +379,7 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; CHECK:        Block Histogram (continued)
 ; CHECK-NEXT:   %File   Count %Count    # Bits    Bits/Elmt Block
-; CHECK-NEXT:  {{.*}}       1   2.17    {{.*}}       {{.*}} GLOBALVAR_BLOCK
+; CHECK-NEXT:  {{.*}}       1 {{.*}}    {{.*}}       {{.*}} GLOBALVAR_BLOCK
 
 ; CHECK:          Record Histogram: (6 elements):
 

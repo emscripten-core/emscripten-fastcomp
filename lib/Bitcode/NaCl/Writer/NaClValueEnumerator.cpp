@@ -482,7 +482,7 @@ void NaClValueEnumerator::purgeFunction() {
 // The normal form required by the PNaCl ABI verifier (documented in
 // ReplacePtrsWithInts.cpp) allows us to omit the following pointer
 // casts from the bitcode file.
-const Value *NaClValueEnumerator::ElideCasts(const Value *V) {
+const Value *NaClValueEnumerator::ElideCasts(const Value *V) const {
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
     switch (I->getOpcode()) {
     default:
