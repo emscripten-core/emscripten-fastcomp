@@ -279,6 +279,15 @@ public:
     }
     return 0;
   }
+
+  NaClBitCodeAbbrev *Copy() const {
+    NaClBitCodeAbbrev *AbbrevCopy = new NaClBitCodeAbbrev();
+    for (unsigned I = 0, IEnd = getNumOperandInfos();
+         I != IEnd; ++I) {
+      AbbrevCopy->Add(NaClBitCodeAbbrevOp(getOperandInfo(I)));
+    }
+    return AbbrevCopy;
+  }
 };
 
 static inline bool operator<(const NaClBitCodeAbbrev &A1,

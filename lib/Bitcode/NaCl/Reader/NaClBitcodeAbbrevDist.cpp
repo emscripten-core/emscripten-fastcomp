@@ -43,7 +43,7 @@ void NaClBitcodeAbbrevDistElement::
 PrintRowValue(raw_ostream &Stream,
               NaClBitcodeDistValue Value,
               const NaClBitcodeDist *Distribution) const {
-  Stream << format("%7d", Value);
+  Stream << format("%7u", Value);
 }
 
 const SmallVectorImpl<NaClBitcodeDist*> *NaClBitcodeAbbrevDistElement::

@@ -273,11 +273,14 @@ public:
         ? GetEntryID() : static_cast<unsigned>(naclbitc::UNABBREV_RECORD);
   }
 
+  /// Destructively change the abbreviation ID to the given value.
+  void SetAbbreviationIndex(unsigned Index) {
+    Entry.ID = Index;
+  }
+
 protected:
   // The block associated with the record.
   const NaClBitcodeBlock &Block;
-  // The entry ID associated with the record.
-  unsigned EntryID;
   // The selector code associated with the record.
   unsigned Code;
   // The sequence of values defining the parsed record.
