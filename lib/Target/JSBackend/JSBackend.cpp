@@ -336,8 +336,8 @@ namespace {
     std::string getParenCast(const StringRef &, const Type *, AsmCast sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
     std::string getIMul(const Value *, const Value *);
-    std::string getLoad(const std::string& Assign, const Value *P, const Type *T, unsigned Alignment, char sep=';');
-    std::string getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep=';');
+    std::string getLoad(const Instruction *I, const Value *P, const Type *T, unsigned Alignment, char sep=';');
+    std::string getStore(const Instruction *I, const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep=';');
 
     void printFunctionBody(const Function *F);
     bool generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code);
@@ -533,7 +533,8 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
-std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const Type *T, unsigned Alignment, char sep) {
+std::string JSWriter::getLoad(const Instruction *I, const Value *P, const Type *T, unsigned Alignment, char sep) {
+  std::string Assign = getAssign(getJSName(I), I->getType());
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
@@ -624,7 +625,7 @@ std::string JSWriter::getLoad(const std::string& Assign, const Value *P, const T
   return text;
 }
 
-std::string JSWriter::getStore(const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep) {
+std::string JSWriter::getStore(const Instruction *I, const Value *P, const Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
@@ -1233,11 +1234,10 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const LoadInst *LI = cast<LoadInst>(I);
     const Value *P = LI->getPointerOperand();
     unsigned Alignment = LI->getAlignment();
-    std::string Assign = getAssign(iName, LI->getType());
     if (NativizedVars.count(P)) {
-      Code << Assign << getValueAsStr(P) << ';';
+      Code << getAssign(iName, LI->getType()) << getValueAsStr(P) << ';';
     } else {
-      Code << getLoad(Assign, P, LI->getType(), Alignment) << ';';
+      Code << getLoad(I, P, LI->getType(), Alignment) << ';';
     }
     break;
   }
@@ -1250,7 +1250,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     if (NativizedVars.count(P)) {
       Code << getValueAsStr(P) << " = " << VS << ';';
     } else {
-      Code << getStore(P, V->getType(), VS, Alignment) << ';';
+      Code << getStore(I, P, V->getType(), VS, Alignment) << ';';
     }
 
     Type *T = V->getType();
@@ -1346,29 +1346,27 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     break;
   }
   case Instruction::AtomicCmpXchg: {
-    std::string Assign = getAssign(iName, I->getType());
     const Value *P = I->getOperand(0);
-    Code << getLoad(Assign, P, I->getType(), 0) << ';' <<
+    Code << getLoad(I, P, I->getType(), 0) << ';' <<
            "if ((" << getCast(iName, I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
-              getStore(P, I->getType(), getValueAsStr(I->getOperand(2)), 0) << ";";
+              getStore(I, P, I->getType(), getValueAsStr(I->getOperand(2)), 0) << ";";
     break;
   }
   case Instruction::AtomicRMW: {
     const AtomicRMWInst *rmwi = cast<AtomicRMWInst>(I);
     const Value *P = rmwi->getOperand(0);
     const Value *V = rmwi->getOperand(1);
-    std::string Assign = getAssign(iName, I->getType());
     std::string VS = getValueAsStr(V);
-    Code << getLoad(Assign, P, I->getType(), 0) << ';';
+    Code << getLoad(I, P, I->getType(), 0) << ';';
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
-      case AtomicRMWInst::Xchg: Code << getStore(P, I->getType(), VS, 0); break;
-      case AtomicRMWInst::Add:  Code << getStore(P, I->getType(), "((" + VS + '+' + iName + ")|0)", 0); break;
-      case AtomicRMWInst::Sub:  Code << getStore(P, I->getType(), "((" + VS + '-' + iName + ")|0)", 0); break;
-      case AtomicRMWInst::And:  Code << getStore(P, I->getType(), "(" + VS + '&' + iName + ")", 0); break;
-      case AtomicRMWInst::Nand: Code << getStore(P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
-      case AtomicRMWInst::Or:   Code << getStore(P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
-      case AtomicRMWInst::Xor:  Code << getStore(P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
+      case AtomicRMWInst::Xchg: Code << getStore(I, P, I->getType(), VS, 0); break;
+      case AtomicRMWInst::Add:  Code << getStore(I, P, I->getType(), "((" + VS + '+' + iName + ")|0)", 0); break;
+      case AtomicRMWInst::Sub:  Code << getStore(I, P, I->getType(), "((" + VS + '-' + iName + ")|0)", 0); break;
+      case AtomicRMWInst::And:  Code << getStore(I, P, I->getType(), "(" + VS + '&' + iName + ")", 0); break;
+      case AtomicRMWInst::Nand: Code << getStore(I, P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
+      case AtomicRMWInst::Or:   Code << getStore(I, P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
+      case AtomicRMWInst::Xor:  Code << getStore(I, P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
       case AtomicRMWInst::Max:
       case AtomicRMWInst::Min:
       case AtomicRMWInst::UMax:
