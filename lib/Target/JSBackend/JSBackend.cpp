@@ -48,18 +48,10 @@ using namespace llvm;
 #define snprintf _snprintf
 #endif
 
-#define dump(x) fprintf(stderr, x "\n")
-#define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
-#define dumpfail(x)       { fputs(x "\n", stderr);                fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpIR(value) { \
-  std::string temp; \
-  raw_string_ostream stream(temp); \
-  stream << *(value); \
-  fprintf(stderr, "%s\n", temp.c_str()); \
-}
+#ifdef NDEBUG
 #undef assert
-#define assert(x) { if (!(x)) dumpfail(#x); }
+#define assert(x) { if (!(x)) report_fatal_error(#x); }
+#endif
 
 static cl::opt<bool>
 PreciseF32("emscripten-precise-f32",
@@ -167,7 +159,7 @@ namespace {
         case 8:  GlobalData = &GlobalData8;  break;
         case 32: GlobalData = &GlobalData32; break;
         case 64: GlobalData = &GlobalData64; break;
-        default: assert(false);
+        default: llvm_unreachable("Unsupported data element size");
       }
       while (GlobalData->size() % (Bits/8) != 0) GlobalData->push_back(0);
       GlobalAddresses[Name] = Address(GlobalData->size(), Bits);
@@ -178,7 +170,8 @@ namespace {
 
     // return the absolute offset of a global
     unsigned getGlobalAddress(const std::string &s) {
-      if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
+      if (GlobalAddresses.find(s) == GlobalAddresses.end()) 
+        report_fatal_error("cannot find global address " + Twine(s));
       Address a = GlobalAddresses[s];
       assert(a.second == 64); // FIXME when we use optimal alignments
       unsigned Ret;
@@ -195,7 +188,9 @@ namespace {
           Ret = a.first + GLOBAL_BASE + GlobalData64.size() + GlobalData32.size();
           break;
         default:
-          dumpfailv("bad global address %s %d %d\n", s.c_str(), a.first, a.second);
+          report_fatal_error("bad global address " + Twine(s) + ": "
+                             "count=" + Twine(a.first) + " "
+                             "elementsize=" + Twine(a.second));
       }
       if (s == "_ZTVN10__cxxabiv119__pointer_type_infoE" ||
           s == "_ZTVN10__cxxabiv117__class_type_infoE" ||
@@ -220,7 +215,8 @@ namespace {
     }
     // returns the internal offset inside the proper block: GlobalData8, 32, 64
     unsigned getRelativeGlobalAddress(const std::string &s) {
-      if (GlobalAddresses.find(s) == GlobalAddresses.end()) dumpfailv("cannot find global address %s", s.c_str());
+      if (GlobalAddresses.find(s) == GlobalAddresses.end())
+        report_fatal_error("cannot find global address " + Twine(s));
       Address a = GlobalAddresses[s];
       return a.first;
     }
@@ -506,7 +502,7 @@ std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
         case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
         case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
         case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
-        default: assert(0);
+        default: llvm_unreachable("Unsupported integer cast bitwidth");
       }
     }
     case Type::PointerTyID: return (s + "|0").str();
@@ -749,7 +745,7 @@ std::string JSWriter::getPtrLoad(const Value* Ptr) {
 
 std::string JSWriter::getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer) {
   switch (Bytes) {
-  default: assert(false && "Unsupported type");
+  default: llvm_unreachable("Unsupported type");
   case 8: return "HEAPF64[" + Name + ">>3]";
   case 4: {
     if (Integer) {
@@ -770,7 +766,7 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     std::string text = "";
     unsigned Addr = getGlobalAddress(GV->getName().str());
     switch (Bytes) {
-    default: assert(false && "Unsupported type");
+    default: llvm_unreachable("Unsupported type");
     case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
     case 4: {
       if (t->isIntegerTy()) {
@@ -893,8 +889,8 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       CV = CE->getOperand(0); // ignore bitcast
       return getPtrAsStr(CV);
     } else {
-      dumpIR(CV);
-      assert(false);
+      CV->dump();
+      llvm_unreachable("Unsupported constant kind");
     }
   }
 }
@@ -940,7 +936,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     Code << getAssign(iName, I->getType());
 
     switch (I->getOpcode()) {
-      default: dumpIR(I); error("invalid vector instr"); break;
+      default: I->dump(); error("invalid vector instr"); break;
       case Instruction::FAdd: Code << "SIMD.float32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FMul: Code << "SIMD.float32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FDiv: Code << "SIMD.float32x4.div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
@@ -1058,7 +1054,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
 
   if (!generateSIMDInstruction(iName, I, Code)) switch (I->getOpcode()) {
   default: {
-    dumpIR(I);
+    I->dump();
     error("Invalid instruction");
     break;
   }
@@ -1230,7 +1226,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     case ICmpInst::ICMP_SLT: Code << "<"; break;
     case ICmpInst::ICMP_UGT: Code << ">"; break;
     case ICmpInst::ICMP_SGT: Code << ">"; break;
-    default: assert(0);
+    default: llvm_unreachable("Invalid ICmp predicate");
     }
     Code << "(" <<
       getValueAsCastStr(I->getOperand(1), sign) <<
@@ -1300,6 +1296,10 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
       errs() << *I << "\n";
       report_fatal_error("legalization problem");
     }
+    break;
+  }
+  case Instruction::GetElementPtr: {
+    report_fatal_error("Unlowered getelementptr");
     break;
   }
   case Instruction::PHI: {
@@ -1480,7 +1480,7 @@ void JSWriter::printFunctionBody(const Function *F) {
     const TerminatorInst *TI = BI->getTerminator();
     switch (TI->getOpcode()) {
       default: {
-        dumpfailv("invalid branch instr %s\n", TI->getOpcodeName());
+        report_fatal_error("invalid branch instr " + Twine(TI->getOpcodeName()));
         break;
       }
       case Instruction::Br: {
@@ -1559,7 +1559,7 @@ void JSWriter::printFunctionBody(const Function *F) {
       Out << VI->first << " = ";
       switch (VI->second) {
         default:
-          assert(false);
+          llvm_unreachable("unsupported variable initializer type");
         case Type::PointerTyID:
         case Type::IntegerTyID:
           Out << "0";
@@ -1860,7 +1860,7 @@ void JSWriter::printModuleBody() {
 void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
-  //dumpv("parsing constant %s\n", name.c_str());
+  //errs() << "parsing constant " << name << "\n";
   // TODO: we repeat some work in both calculate and emit phases here
   // FIXME: use the proper optimal alignments
   if (const ConstantDataSequential *CDS =
@@ -1894,7 +1894,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
         }
       }
     } else {
-      assert(false);
+      assert(false && "Unsupported floating-point type");
     }
   } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
     if (calculate) {
@@ -1909,7 +1909,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       }
     }
   } else if (isa<ConstantPointerNull>(CV)) {
-    assert(false);
+    assert(false && "Unlowered ConstantPointerNull");
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (calculate) {
       DataLayout DL(TheModule);
@@ -1982,8 +1982,8 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
             ConstantInt *CI = cast<ConstantInt>(CE->getOperand(1));
             Data += *CI->getValue().getRawData();
           } else {
-            dumpIR(CE);
-            assert(0);
+            CE->dump();
+            llvm_unreachable("Unexpected constant expr kind");
           }
           union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
           integer.i = Data;
@@ -1999,15 +1999,15 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
             GlobalData64[Offset++] = Str.data()[i];
           }
         } else {
-          dumpIR(C);
-          assert(0);
+          C->dump();
+          llvm_unreachable("Unexpected constant kind");
         }
       }
     }
   } else if (isa<ConstantVector>(CV)) {
-    assert(false);
+    assert(false && "Unlowered ConstantVector");
   } else if (isa<BlockAddress>(CV)) {
-    assert(false);
+    assert(false && "Unlowered BlockAddress");
   } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
     if (name == "__init_array_start") {
       // this is the global static initializer
@@ -2044,9 +2044,10 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       }
     }
   } else if (isa<UndefValue>(CV)) {
-    assert(false);
+    assert(false && "Unlowered UndefValue");
   } else {
-    assert(false);
+    CV->dump();
+    assert(false && "Unsupported constant kind");
   }
 }
 
