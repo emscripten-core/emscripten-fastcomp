@@ -80,8 +80,8 @@ DEF_CALL_HANDLER(__default__, {
     }
     if (NumArgs > 0) text += ",";
   }
-  // this is an ffi call if we need casts, and it is not a Math_ builtin
-  bool FFI = NeedCasts; // XXX FIXME && Name.find("Math_") != 0;
+  // this is an ffi call if we need casts, and it is not a Math_ builtin (with just 1 arg - Math with more args is different XXX)
+  bool FFI = NeedCasts; // && (NumArgs > 1 || Name.find("Math_") != 0);
   unsigned FFI_OUT = FFI ? ASM_FFI_OUT : 0;
   for (int i = 0; i < NumArgs; i++) {
     if (!NeedCasts) {
