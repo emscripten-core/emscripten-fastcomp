@@ -66,6 +66,11 @@ PreciseF32("emscripten-precise-f32",
            cl::desc("Enables Math.fround usage to implement precise float32 semantics and performance (see emscripten PRECISE_F32 option)"),
            cl::init(false));
 
+static cl::opt<bool>
+WarnOnUnaligned("emscripten-warn-unaligned",
+                cl::desc("Warns about unaligned loads and stores (which can negatively affect performance)"),
+                cl::init(false));
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
@@ -381,6 +386,15 @@ static inline std::string ensureFloat(const std::string &S, Type *T) {
   return S;
 }
 
+static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
+  if (MDNode *N = I->getMetadata("dbg")) {
+    DILocation Loc(N);
+    unsigned Line = Loc.getLineNumber();
+    StringRef File = Loc.getFilename();
+    Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+  }
+}
+
 void JSWriter::error(const std::string& msg) {
   report_fatal_error(msg);
 }
@@ -545,6 +559,11 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, const Type *
     }
   } else {
     // unaligned in some manner
+    if (WarnOnUnaligned) {
+      errs() << "emcc: warning: unaligned load |" << *I << "|";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
+    }
     std::string PS = getOpName(P);
     switch (Bytes) {
       case 8: {
@@ -634,6 +653,11 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, const Type 
     if (Alignment == 536870912) text += "; abort() /* segfault */";
   } else {
     // unaligned in some manner
+    if (WarnOnUnaligned) {
+      errs() << "emcc: warning: unaligned store |" << *I << "|";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
+    }
     std::string PS = getOpName(P);
     switch (Bytes) {
       case 8: {
@@ -1379,12 +1403,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::Fence: break; // no threads, so nothing to do here
   }
   // append debug info
-  if (MDNode *N = I->getMetadata("dbg")) {
-    DILocation Loc(N);
-    unsigned Line = Loc.getLineNumber();
-    StringRef File = Loc.getFilename();
-    Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
-  }
+  emitDebugInfo(Code, I);
 }
 
 static const SwitchInst *considerSwitch(const Instruction *I) {
