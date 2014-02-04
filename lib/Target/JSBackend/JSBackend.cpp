@@ -818,7 +818,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
       std::string S = ftostr_exact(CFP);
       if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
-        S = "Math_fround(" + S + ")";
+        S = "Math_fround(+" + S + ")"; // FIXME: can avoid "+" for small enough constants
       } else if (S[0] != '+') {
         S = '+' + S;
       }
