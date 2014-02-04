@@ -42,6 +42,7 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/NaCl.h"
+#include <pthread.h>
 #include <memory>
 
 
@@ -125,14 +126,14 @@ DisableSimplifyLibCalls("disable-simplify-libcalls",
                         cl::desc("Disable simplify-libcalls"),
                         cl::init(false));
 
-cl::opt<int>
+cl::opt<unsigned>
 SplitModuleCount("split-module",
-                 cl::desc("Split PNaCl module"), cl::init(0));
+                 cl::desc("Split PNaCl module"), cl::init(1U));
 
 /// Compile the module provided to pnacl-llc. The file name for reading the
 /// module and other options are taken from globals populated by command-line
 /// option parsing.
-static int compileModule(StringRef ProgramName, LLVMContext &Context);
+static int compileModule(StringRef ProgramName);
 
 // GetFileNameRoot - Helper function to get the basename of a filename.
 static std::string
@@ -220,7 +221,6 @@ int llc_main(int argc, char **argv) {
   // Enable debug stream buffering.
   EnableDebugBuffering = true;
 
-  LLVMContext &Context = getGlobalContext();
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
 #if defined(__native_client__)
@@ -258,12 +258,10 @@ int llc_main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "pnacl-llc\n");
 
-  if (SplitModuleCount == 0) {
-    // 0 module splitting means use a single module
-    SplitModuleCount = 1;
-  }
+  if (SplitModuleCount > 1)
+    LLVMStartMultithreaded();
 
-  return compileModule(argv[0], Context);
+  return compileModule(argv[0]);
 }
 
 static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
@@ -326,7 +324,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context) {
 }
 
 static int runCompilePasses(Module *mod,
-                            int ModuleIndex, 
+                            int ModuleIndex,
                             const Triple &TheTriple,
                             TargetMachine &Target,
                             StringRef ProgramName,
@@ -440,15 +438,112 @@ static int runCompilePasses(Module *mod,
   return 0;
 }
 
-static int compileModule(StringRef ProgramName, LLVMContext &Context) {
+
+static int compileSplitModule(const TargetOptions &Options,
+                            const Triple &TheTriple,
+                            const Target *TheTarget,
+                            const std::string &FeaturesStr,
+                            CodeGenOpt::Level OLvl,
+                            const StringRef &ProgramName,
+                            Module *GlobalModule,
+                            int ModuleIndex) {
+  std::auto_ptr<TargetMachine>
+    target(TheTarget->createTargetMachine(TheTriple.getTriple(),
+                                          MCPU, FeaturesStr, Options,
+                                          RelocModel, CMModel, OLvl));
+  assert(target.get() && "Could not allocate target machine!");
+  TargetMachine &Target = *target.get();
+
+  // Override default to generate verbose assembly.
+  Target.setAsmVerbosityDefault(true);
+  if (RelaxAll) {
+    if (FileType != TargetMachine::CGFT_ObjectFile)
+      errs() << ProgramName
+             << ": warning: ignoring -mc-relax-all because filetype != obj";
+    else
+      Target.setMCRelaxAll(true);
+  }
+  // The OwningPtrs are only used if we are not the primary module.
+  OwningPtr<LLVMContext> C;
+  OwningPtr<Module> M;
+  Module *mod(NULL);
+
+  if (ModuleIndex == 0) {
+    mod = GlobalModule;
+  } else {
+    C.reset(new LLVMContext());
+    mod = getModule(ProgramName, *C);
+    if (!mod)
+      return 1;
+    M.reset(mod);
+  }
+
+  mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
+  {
+#if !defined(__native_client__)
+      // Figure out where we are going to send the output.
+    std::string N(OutputFilename);
+    raw_string_ostream OutFileName(N);
+    if (ModuleIndex > 0)
+      OutFileName << ".module" << ModuleIndex;
+    OwningPtr<tool_output_file> Out
+    (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
+     OutFileName.str()));
+    if (!Out) return 1;
+    formatted_raw_ostream FOS(Out->os());
+#else
+    raw_fd_ostream ROS(getObjectFileFD(), true);
+    ROS.SetBufferSize(1 << 20);
+    formatted_raw_ostream FOS(ROS);
+#endif
+    int ret = runCompilePasses(mod, ModuleIndex, TheTriple, Target, ProgramName,
+                               FOS);
+    if (ret)
+      return ret;
+#if defined (__native_client__)
+    FOS.flush();
+    ROS.flush();
+#else
+    // Declare success.
+    Out->keep();
+#endif // __native_client__
+  }
+  return 0;
+}
+
+struct ThreadData {
+  const TargetOptions *Options;
+  const Triple *TheTriple;
+  const Target *TheTarget;
+  std::string FeaturesStr;
+  CodeGenOpt::Level OLvl;
+  std::string ProgramName;
+  Module *GlobalModule;
+  int ModuleIndex;
+};
+
+
+static void *runCompileThread(void *arg) {
+  struct ThreadData *Data = static_cast<ThreadData *>(arg);
+  int ret = compileSplitModule(*Data->Options,
+                             *Data->TheTriple,
+                             Data->TheTarget,
+                             Data->FeaturesStr,
+                             Data->OLvl,
+                             Data->ProgramName,
+                             Data->GlobalModule,
+                             Data->ModuleIndex);
+  return reinterpret_cast<void *>(static_cast<intptr_t>(ret));
+}
+
+static int compileModule(StringRef ProgramName) {
   // Load the module to be compiled...
-  SmallVector<Module*, 4> Modules;
-  Module *mod = 0;
+  OwningPtr<Module> mod;
   Triple TheTriple;
 
   PNaClABIErrorReporter ABIErrorReporter;
 
-  mod = getModule(ProgramName, Context);
+  mod.reset(getModule(ProgramName, getGlobalContext()));
 
   if (!mod) return 1;
 
@@ -476,27 +571,6 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
     return 1;
   }
 
-  // Package up features to be passed to target/subtarget
-  std::string FeaturesStr;
-  if (MAttrs.size()) {
-    SubtargetFeatures Features;
-    for (unsigned i = 0; i != MAttrs.size(); ++i)
-      Features.AddFeature(MAttrs[i]);
-    FeaturesStr = Features.getString();
-  }
-
-  CodeGenOpt::Level OLvl = CodeGenOpt::Default;
-  switch (OptLevel) {
-  default:
-    errs() << ProgramName << ": invalid optimization level.\n";
-    return 1;
-  case ' ': break;
-  case '0': OLvl = CodeGenOpt::None; break;
-  case '1': OLvl = CodeGenOpt::Less; break;
-  case '2': OLvl = CodeGenOpt::Default; break;
-  case '3': OLvl = CodeGenOpt::Aggressive; break;
-  }
-
   TargetOptions Options;
   Options.LessPreciseFPMADOption = EnableFPMAD;
   Options.NoFramePointerElim = DisableFPElim;
@@ -521,76 +595,59 @@ static int compileModule(StringRef ProgramName, LLVMContext &Context) {
   Options.UseInitArray = UseInitArray;
   Options.SSPBufferSize = SSPBufferSize;
 
-  std::auto_ptr<TargetMachine>
-    target(TheTarget->createTargetMachine(TheTriple.getTriple(),
-                                          MCPU, FeaturesStr, Options,
-                                          RelocModel, CMModel, OLvl));
-  assert(target.get() && "Could not allocate target machine!");
-  assert(mod && "Should have exited after outputting help!");
-  TargetMachine &Target = *target.get();
-
-  // Override default to generate verbose assembly.
-  Target.setAsmVerbosityDefault(true);
-  if (RelaxAll) {
-    if (FileType != TargetMachine::CGFT_ObjectFile)
-      errs() << ProgramName
-             << ": warning: ignoring -mc-relax-all because filetype != obj";
-    else
-      Target.setMCRelaxAll(true);
-  }
-
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;
 
-  Modules.push_back(mod);
-  SmallVector<LLVMContext*, 4> Contexts;
-  SmallVector<tool_output_file*, 4> OutputFiles;
-  for(int ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
-    if (ModuleIndex == 0) {
-      Contexts.push_back(&getGlobalContext());
-    } else {
-      Contexts.push_back(new LLVMContext());
-      mod = getModule(ProgramName, *Contexts[ModuleIndex]);
-      if (!mod)
-        return 1;
-      Modules.push_back(mod);
-    }
+  // Package up features to be passed to target/subtarget
+  std::string FeaturesStr;
+  if (MAttrs.size()) {
+    SubtargetFeatures Features;
+    for (unsigned i = 0; i != MAttrs.size(); ++i)
+      Features.AddFeature(MAttrs[i]);
+    FeaturesStr = Features.getString();
+  }
 
-    mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
-    {
-#if !defined(__native_client__)
-      // Figure out where we are going to send the output.
-      std::string N(OutputFilename);
-      raw_string_ostream OutFileName(N);
-      if (ModuleIndex > 0)
-        OutFileName << ".module" << ModuleIndex;
-      OwningPtr<tool_output_file> Out
-      (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
-       OutFileName.str()));
-      if (!Out) return 1;
-      OutputFiles.push_back(Out.take());
-      formatted_raw_ostream FOS(OutputFiles[ModuleIndex]->os());
-#else
-      raw_fd_ostream ROS(getObjectFileFD(), true);
-      ROS.SetBufferSize(1 << 20);
-      formatted_raw_ostream FOS(ROS);
-#endif
-      int ret = runCompilePasses(mod, ModuleIndex,
-                                 TheTriple, Target, ProgramName, FOS);
-      if (ret)
-        return ret;
-#if defined (__native_client__)
-      FOS.flush();
-      ROS.flush();
-#else
-      // Declare success.
-      OutputFiles[ModuleIndex]->keep();
-#endif // __native_client__
+  CodeGenOpt::Level OLvl = CodeGenOpt::Default;
+  switch (OptLevel) {
+  default:
+    errs() << ProgramName << ": invalid optimization level.\n";
+    return 1;
+  case ' ': break;
+  case '0': OLvl = CodeGenOpt::None; break;
+  case '1': OLvl = CodeGenOpt::Less; break;
+  case '2': OLvl = CodeGenOpt::Default; break;
+  case '3': OLvl = CodeGenOpt::Aggressive; break;
+  }
+
+  SmallVector<pthread_t, 4> Pthreads(SplitModuleCount);
+  SmallVector<ThreadData, 4> ThreadDatas(SplitModuleCount);
+
+  if (SplitModuleCount == 1) {
+    return compileSplitModule(Options, TheTriple, TheTarget, FeaturesStr,
+                              OLvl, ProgramName, mod.get(), 0);
+  }
+
+  for(int ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
+    ThreadDatas[ModuleIndex].Options = &Options;
+    ThreadDatas[ModuleIndex].TheTriple = &TheTriple;
+    ThreadDatas[ModuleIndex].TheTarget = TheTarget;
+    ThreadDatas[ModuleIndex].FeaturesStr = FeaturesStr;
+    ThreadDatas[ModuleIndex].OLvl = OLvl;
+    ThreadDatas[ModuleIndex].ProgramName = ProgramName.str();
+    ThreadDatas[ModuleIndex].GlobalModule = mod.get();
+    ThreadDatas[ModuleIndex].ModuleIndex = ModuleIndex;
+    if (pthread_create(&Pthreads[ModuleIndex], NULL, runCompileThread,
+                        &ThreadDatas[ModuleIndex])) {
+      report_fatal_error("Failed to create thread");
     }
-#if !defined(__native_client__)
-    delete OutputFiles[ModuleIndex];
-    delete Modules[ModuleIndex];
-#endif
+  }
+  for(int ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
+    void *retval;
+    if (pthread_join(Pthreads[ModuleIndex], &retval))
+      report_fatal_error("Failed to join thread");
+    intptr_t ret = reinterpret_cast<intptr_t>(retval);
+    if (ret != 0)
+      report_fatal_error("Thread returned nonzero");
   }
   return 0;
 }
