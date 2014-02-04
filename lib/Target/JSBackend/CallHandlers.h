@@ -191,14 +191,20 @@ DEF_CALL_HANDLER(BDtoIHigh, {
   return getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr+4>>2]|0";
 })
 DEF_CALL_HANDLER(SItoF, {
-  // TODO: fround
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+  std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
+  if (PreciseF32 && CI->getType()->isFloatTy()) {
+    Ret = "Math_fround(" + Ret + ")";
+  }
+  return getAssign(getJSName(CI), CI->getType()) + Ret;
 })
 DEF_CALL_HANDLER(UItoF, {
-  // TODO: fround
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+  std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
+  if (PreciseF32 && CI->getType()->isFloatTy()) {
+    Ret = "Math_fround(" + Ret + ")";
+  }
+  return getAssign(getJSName(CI), CI->getType()) + Ret;
 })
 DEF_CALL_HANDLER(SItoD, {
   return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
