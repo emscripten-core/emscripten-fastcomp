@@ -75,7 +75,6 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   Function *Longjmp = TheModule->getFunction("longjmp");
   if (!Setjmp && !Longjmp) return false;
 
-  Type *i1 = Type::getInt1Ty(M.getContext());
   Type *i32 = Type::getInt32Ty(M.getContext());
   Type *Void = Type::getVoidTy(M.getContext());
 
@@ -119,8 +118,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
   if (Setjmp) {
     for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
-      Instruction *U = dyn_cast<Instruction>(*UI);
-      if (CallInst *CI = dyn_cast<CallInst>(U)) {
+      if (CallInst *CI = dyn_cast<CallInst>(*UI)) {
         BasicBlock *SJBB = CI->getParent();
         // The tail is everything right after the call, and will be reached once when setjmp is
         // called, and later when longjmp returns to the setjmp
@@ -140,11 +138,9 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         Args.push_back(ConstantInt::get(i32, P.size())); // our index in the function is our place in the array + 1
         CallInst::Create(EmSetjmp, Args, "", CI);
         CI->eraseFromParent();
-      } else if (InvokeInst *CI = dyn_cast<InvokeInst>(U)) {
-        assert("TODO: invoke a setjmp");
       } else {
-        dumpIR(U);
-        assert("bad use of setjmp, should only call it");
+        errs() << **UI << "\n";
+        report_fatal_error("bad use of setjmp, should only call it");
       }
     }
   }
