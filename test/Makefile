@@ -78,6 +78,9 @@ else # !SunOS
 ifeq ($(HOST_OS),AuroraUX)
 ULIMIT=ulimit -t 600 ; ulimit -d 512000 ; ulimit -v 512000 ;
 else # !AuroraUX
+ifeq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW)) # @LOCALMOD
+ULIMIT=
+else
 # Newer versions of python try to allocate an insane amount of address space for
 # its thread-local storage, don't set a limit here.
 # When -v is not used, then -s has to be used to limit the stack size.
@@ -85,6 +88,7 @@ else # !AuroraUX
 ULIMIT=ulimit -t 600 ; ulimit -d 512000 ; ulimit -m 512000 ; ulimit -s 8192 ;
 endif # AuroraUX
 endif # SunOS
+endif # MinGW
 
 check-local:: lit.site.cfg Unit/lit.site.cfg
 	( $(ULIMIT) \

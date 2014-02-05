@@ -6,6 +6,18 @@ class TestingConfig:
     TestingConfig - Information on the tests inside a suite.
     """
 
+    # @LOCALMOD-START
+    # Msys tools like make and bash output paths like /c/dir/path. We need
+    # Windows drive letters. Makefile.rules has $(ECHOPATH) to try to get
+    # Windows paths but it doesn't work with autoconf substitutions like
+    # @FOO@=$(path)
+    @staticmethod
+    def FixMsysPath(path):
+        if sys.platform == 'win32' and path and path.startswith('/'):
+            return path[1] + ':' + path[2:]
+        return path
+    # @LOCALMOD-END
+
     @staticmethod
     def frompath(path, parent, litConfig, mustExist, config = None):
         if config is None:
@@ -49,6 +61,7 @@ class TestingConfig:
                                    excludes = [],
                                    available_features = available_features)
 
+        path = TestingConfig.FixMsysPath(path) # @LOCALMOD
         if os.path.exists(path):
             # FIXME: Improve detection and error reporting of errors in the
             # config file.
@@ -88,8 +101,9 @@ class TestingConfig:
         self.substitutions = list(substitutions)
         self.unsupported = unsupported
         self.on_clone = on_clone
-        self.test_exec_root = test_exec_root
-        self.test_source_root = test_source_root
+        # @LOCALMOD
+        self.test_exec_root = TestingConfig.FixMsysPath(test_exec_root)
+        self.test_source_root = TestingConfig.FixMsysPath(test_source_root)
         self.excludes = set(excludes)
         self.available_features = set(available_features)
 
