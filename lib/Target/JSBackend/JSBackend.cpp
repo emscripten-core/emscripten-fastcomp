@@ -560,7 +560,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, const Type *
   } else {
     // unaligned in some manner
     if (WarnOnUnaligned) {
-      errs() << "emcc: warning: unaligned load |" << *I << "|";
+      errs() << "emcc: warning: unaligned load in  " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
       emitDebugInfo(errs(), I);
       errs() << "\n";
     }
@@ -654,7 +654,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, const Type 
   } else {
     // unaligned in some manner
     if (WarnOnUnaligned) {
-      errs() << "emcc: warning: unaligned store |" << *I << "|";
+      errs() << "emcc: warning: unaligned store in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
       emitDebugInfo(errs(), I);
       errs() << "\n";
     }
