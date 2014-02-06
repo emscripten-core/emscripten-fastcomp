@@ -278,35 +278,40 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
       if (LenInt) {
         ConstantInt *ValInt = dyn_cast<ConstantInt>(CI->getOperand(1));
         if (ValInt) {
+          // we can emit inline code for this
           unsigned Len = LenInt->getZExtValue();
-          if (Len == 0) return ""; // after here, we can assume Len>1
-          unsigned Align = AlignInt->getZExtValue();
-          unsigned Val = ValInt->getZExtValue();
-          while (Align > 0 && Len % Align != 0) Align /= 2; // a very unaligned small number of bytes can still be unrolled in some cases
-          if (Align > 4) Align = 4;
-          if (Align > 0 && Len % Align == 0) {
-            // we can emit inline code for this
+          if (Len <= WRITE_LOOP_MAX) {
+            unsigned Align = AlignInt->getZExtValue();
+            unsigned Val = ValInt->getZExtValue();
+            if (Align > 4) Align = 4;
+            unsigned Pos = 0;
             std::string Ret;
-            std::string Dest = getValueAsStr(CI->getOperand(0));
-            unsigned FullVal = 0;
-            for (unsigned i = 0; i < Align; i++) {
-              FullVal <<= 8;
-              FullVal |= Val;
-            }
-            unsigned Factor = Len/Align;
-            if (Factor <= UNROLL_LOOP_MAX) {
-              // unroll
-              Ret += getHeapAccess(Dest, Align) + "=" + utostr(FullVal) + "|0";
-              for (unsigned Offset = Align; Offset < Len; Offset += Align) {
-                std::string Add = "+" + utostr(Offset) + (Align == 1 ? "|0" : "");
-                Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
+            while (Len > 0) {
+              // handle as much as we can in the current alignment
+              unsigned CurrLen = Align*(Len/Align);
+              std::string Dest = getValueAsStr(CI->getOperand(0));
+              unsigned FullVal = 0;
+              for (unsigned i = 0; i < Align; i++) {
+                FullVal <<= 8;
+                FullVal |= Val;
               }
-              return Ret;
-            } else if (Len <= WRITE_LOOP_MAX) {
-              // emit a loop
-              UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
-              return "dest=" + Dest + "; stop=" + Dest + "+" + utostr(Len) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0));";
+              unsigned Factor = CurrLen/Align;
+              if (Factor <= UNROLL_LOOP_MAX) {
+                // unroll
+                for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
+                  std::string Add = "+" + utostr(Pos + Offset) + (Align == 1 ? "|0" : "");
+                  Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
+                }
+              } else {
+                // emit a loop
+                UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
+                Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0));";
+              }
+              Pos += CurrLen;
+              Len -= CurrLen;
+              Align /= 2;
             }
+            return Ret;
           }
         }
       }
