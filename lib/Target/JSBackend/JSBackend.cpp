@@ -823,7 +823,12 @@ static inline std::string ftostr_exact(const ConstantFP *CFP) {
   if (raw[1] != 'x') return raw; // number has already been printed out
   raw += 2; // skip "0x"
   unsigned len = strlen(raw);
-  assert((len&1) == 0); // must be complete bytes, so an even number of chars
+  if (len&1) {
+    // uneven, need to add a 0 to make it be entire bytes
+    temp = std::string("0") + raw;
+    raw = temp.c_str();
+    len++;
+  }
   unsigned missing = 8 - len/2;
   union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
   dbl.d = 0;
