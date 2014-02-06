@@ -241,7 +241,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
         unsigned Len = LenInt->getZExtValue();
         if (Len <= WRITE_LOOP_MAX) {
           unsigned Align = AlignInt->getZExtValue();
-          if (Align > 4) Align = 4;
+          if (Align > 4 || Align == 0) Align = 4;
           unsigned Pos = 0;
           std::string Ret;
           std::string Dest = getValueAsStr(CI->getOperand(0));
@@ -288,7 +288,7 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
           if (Len <= WRITE_LOOP_MAX) {
             unsigned Align = AlignInt->getZExtValue();
             unsigned Val = ValInt->getZExtValue();
-            if (Align > 4) Align = 4;
+            if (Align > 4 || Align == 0) Align = 4;
             unsigned Pos = 0;
             std::string Ret;
             std::string Dest = getValueAsStr(CI->getOperand(0));
