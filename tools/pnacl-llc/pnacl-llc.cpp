@@ -281,7 +281,7 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
 }
 
 static Module* getModule(StringRef ProgramName, LLVMContext &Context) {
-  Module *M;
+  Module *M = 0;
   SMDiagnostic Err;
 #if defined(__native_client__)
   if (LazyBitcode) {
@@ -324,7 +324,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context) {
 }
 
 static int runCompilePasses(Module *mod,
-                            int ModuleIndex,
+                            unsigned ModuleIndex,
                             const Triple &TheTriple,
                             TargetMachine &Target,
                             StringRef ProgramName,
@@ -421,7 +421,7 @@ static int runCompilePasses(Module *mod,
   if (LazyBitcode || ReduceMemoryFootprint) {
     FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
     P->doInitialization();
-    int FuncIndex = 0;
+    unsigned FuncIndex = 0;
     for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
       if (FuncIndex++ % SplitModuleCount == ModuleIndex) {
         P->run(*I);
@@ -446,7 +446,7 @@ static int compileSplitModule(const TargetOptions &Options,
                             CodeGenOpt::Level OLvl,
                             const StringRef &ProgramName,
                             Module *GlobalModule,
-                            int ModuleIndex) {
+                            unsigned ModuleIndex) {
   std::auto_ptr<TargetMachine>
     target(TheTarget->createTargetMachine(TheTriple.getTriple(),
                                           MCPU, FeaturesStr, Options,
@@ -519,7 +519,7 @@ struct ThreadData {
   CodeGenOpt::Level OLvl;
   std::string ProgramName;
   Module *GlobalModule;
-  int ModuleIndex;
+  unsigned ModuleIndex;
 };
 
 
@@ -537,13 +537,22 @@ static void *runCompileThread(void *arg) {
 }
 
 static int compileModule(StringRef ProgramName) {
-  // Load the module to be compiled...
+  // Use a new context instead of the global context for the main module. It must
+  // outlive the module object, declared below. We do this because
+  // lib/CodeGen/PseudoSourceValue.cpp gets a type from the global context and
+  // races with any other use of the context. Rather than doing an invasive
+  // plumbing change to fix it, we work around it by using a new context here
+  // and leaving PseudoSourceValue as the only user of the global context.
+  OwningPtr<LLVMContext> MainContext(new LLVMContext());
   OwningPtr<Module> mod;
   Triple TheTriple;
-
   PNaClABIErrorReporter ABIErrorReporter;
 
-  mod.reset(getModule(ProgramName, getGlobalContext()));
+
+
+  if (!MainContext) return 1;
+
+  mod.reset(getModule(ProgramName, *MainContext.get()));
 
   if (!mod) return 1;
 
@@ -627,7 +636,7 @@ static int compileModule(StringRef ProgramName) {
                               OLvl, ProgramName, mod.get(), 0);
   }
 
-  for(int ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
+  for(unsigned ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
     ThreadDatas[ModuleIndex].Options = &Options;
     ThreadDatas[ModuleIndex].TheTriple = &TheTriple;
     ThreadDatas[ModuleIndex].TheTarget = TheTarget;
@@ -641,7 +650,7 @@ static int compileModule(StringRef ProgramName) {
       report_fatal_error("Failed to create thread");
     }
   }
-  for(int ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
+  for(unsigned ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
     void *retval;
     if (pthread_join(Pthreads[ModuleIndex], &retval))
       report_fatal_error("Failed to join thread");
