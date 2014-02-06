@@ -321,6 +321,7 @@ namespace {
     }
 
     std::string getPtrLoad(const Value* Ptr);
+    std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
     std::string getPtrUse(const Value* Ptr);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
@@ -747,6 +748,22 @@ std::string JSWriter::getPtrLoad(const Value* Ptr) {
   return getCast(getPtrUse(Ptr), t, ASM_NONSPECIFIC);
 }
 
+std::string JSWriter::getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer) {
+  switch (Bytes) {
+  default: assert(false && "Unsupported type");
+  case 8: return "HEAPF64[" + Name + ">>3]";
+  case 4: {
+    if (Integer) {
+      return "HEAP32[" + Name + ">>2]";
+    } else {
+      return "HEAPF32[" + Name + ">>2]";
+    }
+  }
+  case 2: return "HEAP16[" + Name + ">>1]";
+  case 1: return "HEAP8[" + Name + "]";
+  }
+}
+
 std::string JSWriter::getPtrUse(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   unsigned Bytes = t->getPrimitiveSizeInBits()/8;
@@ -767,20 +784,7 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     case 1: return "HEAP8[" + utostr(Addr) + "]";
     }
   } else {
-    std::string Name = getOpName(Ptr);
-    switch (Bytes) {
-    default: assert(false && "Unsupported type");
-    case 8: return "HEAPF64[" + Name + ">>3]";
-    case 4: {
-      if (t->isIntegerTy()) {
-        return "HEAP32[" + Name + ">>2]";
-      } else {
-        return "HEAPF32[" + Name + ">>2]";
-      }
-    }
-    case 2: return "HEAP16[" + Name + ">>1]";
-    case 1: return "HEAP8[" + Name + "]";
-    }
+    return getHeapAccess(getOpName(Ptr), Bytes, t->isIntegerTy());
   }
 }
 
