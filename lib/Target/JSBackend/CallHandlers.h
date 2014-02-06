@@ -236,6 +236,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
       ConstantInt *LenInt = dyn_cast<ConstantInt>(CI->getOperand(2));
       if (LenInt) {
         unsigned Len = LenInt->getZExtValue();
+        if (Len == 0) return ""; // after here, we can assume Len>1
         unsigned Align = AlignInt->getZExtValue();
         while (Align > 0 && Len % Align != 0) Align /= 2; // a very unaligned small number of bytes can still be unrolled in some cases
         if (Align > 4) Align = 4;
@@ -256,7 +257,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
           } else if (Len <= WRITE_LOOP_MAX) {
             // emit a loop
             UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
-            return "for (dest=" + Dest + ", src=" + Src + ", stop=(" + Dest + "+" + utostr(Len) + ")|0; (dest|0) < (stop|0); dest=(dest+" + utostr(Align) + ")|0, src=(src+" + utostr(Align) + ")|0) { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; }";
+            return "dest=" + Dest + "; src=" + Src + "; stop=" + Dest + "+" + utostr(Len) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0));";
           }
         }
       }
