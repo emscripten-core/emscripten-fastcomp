@@ -230,6 +230,8 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
 #define WRITE_LOOP_MAX 128
 
 DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
+  Declares.insert("memcpy");
+  Redirects["llvm_memcpy_p0i8_p0i8_i32"] = "memcpy";
   if (CI) {
     ConstantInt *AlignInt = dyn_cast<ConstantInt>(CI->getOperand(3));
     if (AlignInt) {
@@ -263,14 +265,53 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
       }
     }
   }
-  Declares.insert("memcpy");
-  Redirects["llvm_memcpy_p0i8_p0i8_i32"] = "memcpy";
   return CH___default__(CI, "_memcpy", 3) + "|0";
 })
 
 DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
   Declares.insert("memset");
   Redirects["llvm_memset_p0i8_i32"] = "memset";
+  if (CI) {
+    ConstantInt *AlignInt = dyn_cast<ConstantInt>(CI->getOperand(3));
+    if (AlignInt) {
+      ConstantInt *LenInt = dyn_cast<ConstantInt>(CI->getOperand(2));
+      if (LenInt) {
+        ConstantInt *ValInt = dyn_cast<ConstantInt>(CI->getOperand(1));
+        if (ValInt) {
+          unsigned Len = LenInt->getZExtValue();
+          if (Len == 0) return ""; // after here, we can assume Len>1
+          unsigned Align = AlignInt->getZExtValue();
+          unsigned Val = ValInt->getZExtValue();
+          while (Align > 0 && Len % Align != 0) Align /= 2; // a very unaligned small number of bytes can still be unrolled in some cases
+          if (Align > 4) Align = 4;
+          if (Align > 0 && Len % Align == 0) {
+            // we can emit inline code for this
+            std::string Ret;
+            std::string Dest = getValueAsStr(CI->getOperand(0));
+            unsigned FullVal = 0;
+            for (unsigned i = 0; i < Align; i++) {
+              FullVal <<= 8;
+              FullVal |= Val;
+            }
+            unsigned Factor = Len/Align;
+            if (Factor <= UNROLL_LOOP_MAX) {
+              // unroll
+              Ret += getHeapAccess(Dest, Align) + "=" + utostr(FullVal) + "|0";
+              for (unsigned Offset = Align; Offset < Len; Offset += Align) {
+                std::string Add = "+" + utostr(Offset) + (Align == 1 ? "|0" : "");
+                Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
+              }
+              return Ret;
+            } else if (Len <= WRITE_LOOP_MAX) {
+              // emit a loop
+              UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
+              return "dest=" + Dest + "; stop=" + Dest + "+" + utostr(Len) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0));";
+            }
+          }
+        }
+      }
+    }
+  }
   return CH___default__(CI, "_memset", 3) + "|0";
 })
 
