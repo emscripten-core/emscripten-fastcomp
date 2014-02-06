@@ -9,11 +9,20 @@
 
 #ifndef ARMMCNACL_H
 #define ARMMCNACL_H
+#include "llvm/MC/MCInst.h"
 
 namespace llvm {
-  class MCInst;
-  class MCStreamer;
-  bool CustomExpandInstNaClARM(const MCInst &Inst, MCStreamer &Out);
+class MCStreamer;
+class ARMMCNaClSFIState {
+ public:
+  static const int MaxSaved = 4;
+  MCInst Saved[MaxSaved];
+  int SaveCount;
+  int I;
+  bool RecursiveCall;
+};
+bool CustomExpandInstNaClARM(const MCInst &Inst, MCStreamer &Out,
+                             ARMMCNaClSFIState &State);
 }
 
 #endif

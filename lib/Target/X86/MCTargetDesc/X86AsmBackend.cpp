@@ -381,21 +381,31 @@ public:
 class NaClX86_32AsmBackend : public ELFX86_32AsmBackend {
 public:
   NaClX86_32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
-    : ELFX86_32AsmBackend(T, OSABI, CPU) {}
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    return CustomExpandInstNaClX86(Inst, Out);
+    : ELFX86_32AsmBackend(T, OSABI, CPU) {
+    State.PrefixSaved = 0;
+    State.PrefixPass = false;
   }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+    return CustomExpandInstNaClX86(Inst, Out, State);
+  }
+ private:
+  X86MCNaClSFIState State;
 };
 
 class NaClX86_64AsmBackend : public ELFX86_64AsmBackend {
 public:
   NaClX86_64AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
-    : ELFX86_64AsmBackend(T, OSABI, CPU) {}
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    return CustomExpandInstNaClX86(Inst, Out);
+    : ELFX86_64AsmBackend(T, OSABI, CPU) {
+    State.PrefixSaved = 0;
+    State.PrefixPass = false;
   }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+    return CustomExpandInstNaClX86(Inst, Out, State);
+  }
+ private:
+  X86MCNaClSFIState State;
 };
 // @LOCALMOD-END
 

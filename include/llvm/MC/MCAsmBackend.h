@@ -167,7 +167,7 @@ public:
   ///   If the MCInst instruction has a custom expansion, write it to the
   /// MCStreamer 'Out'. This can be used to perform "last minute" rewrites of
   /// MCInst instructions for emission.
-  virtual bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
+  virtual bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
     return false;
   }
   // @LOCALMOD-END

@@ -642,12 +642,19 @@ public:
 class NaClARMAsmBackend : public ELFARMAsmBackend {
 public:
   NaClARMAsmBackend(const Target &T, const StringRef TT, uint8_t _OSABI)
-    : ELFARMAsmBackend(T, TT, _OSABI) { }
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    return CustomExpandInstNaClARM(Inst, Out);
+      : ELFARMAsmBackend(T, TT, _OSABI) {
+    State.SaveCount = 0;
+    State.I = 0;
+    State.RecursiveCall = false;
   }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+    return CustomExpandInstNaClARM(Inst, Out, State);
+  }
+ private:
+  ARMMCNaClSFIState State;
 };
+
 // @LOCALMOD-END
 
 // FIXME: This should be in a separate file.

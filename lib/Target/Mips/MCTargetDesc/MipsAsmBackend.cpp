@@ -255,11 +255,17 @@ public:
 class NaClMipsAsmBackend : public MipsAsmBackend {
 public:
   NaClMipsAsmBackend(const Target &T, bool _is64Bit)
-    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {}
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    return CustomExpandInstNaClMips(Inst, Out);
+    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {
+    State.SaveCount = 0;
+    State.I = 0;
+    State.RecursiveCall = false;
   }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+    return CustomExpandInstNaClMips(Inst, Out, State);
+  }
+ private:
+  MipsMCNaClSFIState State;
 }; // class NaClMipsAsmBackend
 // @LOCALMOD-END
 
