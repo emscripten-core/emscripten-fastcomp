@@ -253,20 +253,6 @@ void stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
   do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
 }
 
-// Invoked by StreamInitWithCommandLine RPC. Same as stream_init, but
-// provides a command line to use instead of the default.
-void stream_init_with_command_line(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                                   NaClSrpcArg **out_args,
-                                   NaClSrpcClosure *done) {
-  char *command_line = in_args[1]->arrays.carr;
-  size_t command_line_len = in_args[1]->u.count;
-  ArgStringList *cmd_line_vec =
-      CommandLineFromArgz(command_line, command_line_len);
-  AddFixedArguments(cmd_line_vec);
-  // cmd_line_vec is freed by the translation thread in run_streamed
-  do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
-}
-
 // Invoked by StreamInitWithOverrides RPC. Same as stream_init, but
 // provides commandline flag overrides (appended to the default).
 void stream_init_with_overrides(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
@@ -338,11 +324,10 @@ void stream_end(NaClSrpcRpc *rpc, NaClSrpcArg **in_args, NaClSrpcArg **out_args,
 const struct NaClSrpcHandlerDesc srpc_methods[] = {
   // Protocol for streaming:
   // (StreamInit(obj_fd) -> error_str |
-  //    StreamInitWIthCommandLine(obj_fd, escaped_cmdline) -> error_str)
+  //    StreamInitWIthOverrides(obj_fd, escaped_cmdline_flags) -> error_str)
   // StreamChunk(data) +
   // StreamEnd() -> (is_shared_lib,soname,dependencies,error_str)
   { "StreamInit:h:s", stream_init },
-  { "StreamInitWithCommandLine:hC:s:", stream_init_with_command_line },
   { "StreamInitWithOverrides:hC:s:", stream_init_with_overrides },
   { "StreamChunk:C:", stream_chunk }, { "StreamEnd::isss", stream_end },
   { NULL, NULL },
