@@ -313,10 +313,14 @@ else()
   set(ENABLE_PIC 0)
 endif()
 
-find_package(LibXml2)
-if (LIBXML2_FOUND)
-  set(CLANG_HAVE_LIBXML 1)
+# @LOCALMOD-BEGIN (allow disabling libxml because we don't have 32-bit libxml)
+if (LLVM_ENABLE_LIBXML)
+  find_package(LibXml2)
+  if (LIBXML2_FOUND)
+    set(CLANG_HAVE_LIBXML 1)
+  endif ()
 endif ()
+# @LOCALMOD-END
 
 include(CheckCXXCompilerFlag)
 
