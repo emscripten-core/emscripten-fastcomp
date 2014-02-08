@@ -92,6 +92,7 @@ namespace {
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
   typedef std::map<std::string, Type::TypeID> VarMap;
+  typedef std::map<const AllocaInst*, unsigned> AllocaIntMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
   typedef std::vector<std::string> FunctionTable;
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
@@ -106,6 +107,8 @@ namespace {
     unsigned UniqueNum;
     ValueMap ValueNames;
     VarMap UsedVars;
+    AllocaIntMap StackAllocs;
+    unsigned TotalStackAllocs;
     HeapData GlobalData8;
     HeapData GlobalData32;
     HeapData GlobalData64;
@@ -1241,6 +1244,16 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
       break;
     }
     const AllocaInst* AI = cast<AllocaInst>(I);
+    AllocaIntMap::iterator AIMI = StackAllocs.find(AI);
+    if (AIMI != StackAllocs.end()) {
+      // fixed-size allocation that is already taken into account in the big initial allocation
+      if (AIMI->second) {
+        Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "sp + " << utostr(AIMI->second) << "|0;";     
+      } else {
+        Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "sp;";
+      }
+      break;
+    }
     Type *T = AI->getAllocatedType();
     std::string Size;
     if (T->isVectorTy()) {
@@ -1571,6 +1584,9 @@ void JSWriter::printFunctionBody(const Function *F) {
 
   // Emit stack entry
   Out << " " << getAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
+  if (TotalStackAllocs) {
+    Out << "\n " << "STACKTOP = STACKTOP + " + utostr(TotalStackAllocs) + "|0;";
+  }
 
   // Emit (relooped) code
   char *buffer = Relooper::GetOutputBuffer();
@@ -1631,6 +1647,33 @@ void JSWriter::printFunction(const Function *F) {
   UsedVars.clear();
   UniqueNum = 0;
   calculateNativizedVars(F);
+
+  StackAllocs.clear();
+  TotalStackAllocs = 0;
+
+  for (Function::const_iterator BI = F->begin(), BE = F->end(); BI != BE; ++BI) {
+    for (BasicBlock::const_iterator II = BI->begin(), E = BI->end(); II != E; ++II) {
+      if (const AllocaInst* AI = dyn_cast<AllocaInst>(II)) {
+        Type *T = AI->getAllocatedType();
+        if (!T->isVectorTy()) {
+          assert(!isa<ArrayType>(T));
+          const Value *AS = AI->getArraySize();
+          unsigned BaseSize = T->getScalarSizeInBits()/8;
+          if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
+            // TODO: group by alignment to avoid unnecessary padding
+            unsigned Size = memAlign(BaseSize * CI->getZExtValue());
+            StackAllocs[AI] = TotalStackAllocs;
+            TotalStackAllocs += Size;
+          }
+        }
+      } else {
+        // stop after the first non-alloca - could alter the stack
+        // however, ptrtoints are ok, and the legalizaton passes introduce them
+        if (!isa<PtrToIntInst>(II)) break;
+      }
+    }
+    break;
+  }
 
   // Emit the function
 
