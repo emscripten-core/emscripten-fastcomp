@@ -135,11 +135,7 @@ namespace {
 
     void printProgram(const std::string& fname, const std::string& modName );
     void printModule(const std::string& fname, const std::string& modName );
-    void printContents(const std::string& fname, const std::string& modName );
-    void printFunction(const std::string& fname, const std::string& funcName );
-    void printFunctions();
-    void printInline(const std::string& fname, const std::string& funcName );
-    void printVariable(const std::string& fname, const std::string& varName );
+    void printFunction(const Function *F);
 
     void error(const std::string& msg);
     
@@ -1609,6 +1605,54 @@ void JSWriter::processConstants() {
   }
 }
 
+void JSWriter::printFunction(const Function *F) {
+  ValueNames.clear();
+
+  // Ensure all arguments and locals are named (we assume used values need names, which might be false if the optimizer did not run)
+  unsigned Next = 1;
+  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
+       AI != AE; ++AI) {
+    if (!AI->hasName() && AI->hasNUsesOrMore(1)) {
+      ValueNames[AI] = "$" + utostr(Next++);
+    }
+  }
+  for (Function::const_iterator BI = F->begin(), BE = F->end();
+       BI != BE; ++BI) {
+    for (BasicBlock::const_iterator II = BI->begin(), E = BI->end();
+         II != E; ++II) {
+      if (!II->hasName() && II->hasNUsesOrMore(1)) {
+        ValueNames[II] = "$" + utostr(Next++);
+      }
+    }
+  }
+
+  // Prepare and analyze function
+
+  UsedVars.clear();
+  UniqueNum = 0;
+  calculateNativizedVars(F);
+
+  // Emit the function
+
+  Out << "function _" << F->getName() << "(";
+  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
+       AI != AE; ++AI) {
+    if (AI != F->arg_begin()) Out << ",";
+    Out << getJSName(AI);
+  }
+  Out << ") {";
+  nl(Out);
+  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
+       AI != AE; ++AI) {
+    std::string name = getJSName(AI);
+    Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
+    nl(Out);
+  }
+  printFunctionBody(F);
+  Out << "}";
+  nl(Out);
+}
+
 void JSWriter::printModuleBody() {
   processConstants();
 
@@ -1616,54 +1660,7 @@ void JSWriter::printModuleBody() {
   nl(Out) << "// EMSCRIPTEN_START_FUNCTIONS"; nl(Out);
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
-    if (!I->isDeclaration()) {
-
-      ValueNames.clear();
-
-      // Ensure all arguments and locals are named (we assume used values need names, which might be false if the optimizer did not run)
-      unsigned Next = 1;
-      for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
-           AI != AE; ++AI) {
-        if (!AI->hasName() && AI->hasNUsesOrMore(1)) {
-          ValueNames[AI] = "$" + utostr(Next++);
-        }
-      }
-      for (Function::const_iterator BI = I->begin(), BE = I->end();
-           BI != BE; ++BI) {
-        for (BasicBlock::const_iterator II = BI->begin(), E = BI->end();
-             II != E; ++II) {
-          if (!II->hasName() && II->hasNUsesOrMore(1)) {
-            ValueNames[II] = "$" + utostr(Next++);
-          }
-        }
-      }
-
-      // Prepare and analyze function
-
-      UsedVars.clear();
-      UniqueNum = 0;
-      calculateNativizedVars(I);
-
-      // Emit the function
-
-      Out << "function _" << I->getName() << "(";
-      for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
-           AI != AE; ++AI) {
-        if (AI != I->arg_begin()) Out << ",";
-        Out << getJSName(AI);
-      }
-      Out << ") {";
-      nl(Out);
-      for (Function::const_arg_iterator AI = I->arg_begin(), AE = I->arg_end();
-           AI != AE; ++AI) {
-        std::string name = getJSName(AI);
-        Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
-        nl(Out);
-      }
-      printFunctionBody(I);
-      Out << "}";
-      nl(Out);
-    }
+    if (!I->isDeclaration()) printFunction(I);
   }
   Out << "function runPostSets() {\n";
   Out << " " << PostSets << "\n";
