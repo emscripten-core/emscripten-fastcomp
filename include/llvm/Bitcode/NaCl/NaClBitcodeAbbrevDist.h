@@ -65,8 +65,8 @@ public:
   virtual const SmallVectorImpl<NaClBitcodeDist*> *
   GetNestedDistributions() const;
 
-  NaClBitcodeDist *GetCodeDist() {
-    return &CodeDist;
+  NaClBitcodeDist &GetCodeDist() {
+    return CodeDist;
   }
 
 private:

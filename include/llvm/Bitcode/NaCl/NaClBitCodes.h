@@ -25,6 +25,8 @@
 #include <cassert>
 
 namespace llvm {
+class raw_ostream;
+
 namespace naclbitc {
   enum StandardWidths {
     BlockIDWidth   = 8,  // We use VBR-8 for block IDs.
@@ -147,6 +149,21 @@ public:
     report_fatal_error("Invalid encoding");
   }
 
+  bool isArrayOp() const {
+    return isEncoding() && Enc == Array;
+  }
+
+  /// Returns the number of arguments expected by this abbrevation operator.
+  unsigned NumArguments() const {
+    if (isArrayOp())
+      return 1;
+    else
+      return 0;
+  }
+
+  /// Prints out the abbreviation operator to the given stream.
+  void Print(raw_ostream &Stream) const;
+
   /// isChar6 - Return true if this character is legal in the Char6 encoding.
   static bool isChar6(char C) {
     if (C >= 'a' && C <= 'z') return true;
@@ -263,6 +280,10 @@ public:
     OperandList.push_back(OpInfo);
   }
 
+  // Returns a simplified version of the abbreviation. Used
+  // to recognize equivalent abbrevations.
+  NaClBitCodeAbbrev *Simplify() const;
+
   int Compare(const NaClBitCodeAbbrev &Abbrev) const {
     // First order based on number of operands.
     size_t OperandListSize = OperandList.size();
@@ -279,6 +300,8 @@ public:
     }
     return 0;
   }
+
+  void Print(raw_ostream &Stream) const;
 
   NaClBitCodeAbbrev *Copy() const {
     NaClBitCodeAbbrev *AbbrevCopy = new NaClBitCodeAbbrev();

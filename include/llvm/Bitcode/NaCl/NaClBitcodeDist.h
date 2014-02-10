@@ -312,7 +312,7 @@ public:
   /// Builds the distribution associated with the distribution map.
   /// Warning: The distribution is cached, and hence, only valid while
   /// it's contents is not changed.
-  Distribution *GetDistribution() const {
+  const Distribution *GetDistribution() const {
     if (CachedDistribution == 0) Sort();
     return CachedDistribution;
   }

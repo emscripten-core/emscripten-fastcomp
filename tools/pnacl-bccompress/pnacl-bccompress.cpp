@@ -100,45 +100,11 @@ static bool Error(const std::string &Err) {
   return true;
 }
 
-// For debugging. Prints out the abbreviation in readable form to errs().
-static void PrintAbbrev(unsigned BlockID, const NaClBitCodeAbbrev *Abbrev) {
-  errs() << "Abbrev(block " << BlockID << "): [";
-  // ContinuationCount>0 implies that the current operand is a
-  // continuation of previous operand(s).
-  unsigned ContinuationCount = 0;
-  for (unsigned i = 0; i < Abbrev->getNumOperandInfos(); ++i) {
-    if (i > 0 && ContinuationCount == 0) errs() << ", ";
-    const NaClBitCodeAbbrevOp &Op = Abbrev->getOperandInfo(i);
-    if (Op.isLiteral()) {
-      errs() << Op.getLiteralValue();
-    } else if (Op.isEncoding()) {
-      switch (Op.getEncoding()) {
-      case NaClBitCodeAbbrevOp::Fixed:
-        errs() << "Fixed(" << Op.getEncodingData() << ")";
-        break;
-      case NaClBitCodeAbbrevOp::VBR:
-        errs() << "VBR(" << Op.getEncodingData() << ")";
-        break;
-      case NaClBitCodeAbbrevOp::Array:
-        errs() << "Array:";
-        ++ContinuationCount;
-        continue;
-      case NaClBitCodeAbbrevOp::Char6:
-        errs() << "Char6";
-        break;
-      case NaClBitCodeAbbrevOp::Blob:
-        errs() << "Blob";
-        break;
-      default:
-        errs() << "??";
-        break;
-      }
-    } else {
-      errs() << "??";
-    }
-    if (ContinuationCount) --ContinuationCount;
-  }
-  errs() << "]\n";
+// Prints out the abbreviation in readable form to the given Stream.
+static void PrintAbbrev(raw_ostream &Stream,
+                        unsigned BlockID, const NaClBitCodeAbbrev *Abbrev) {
+  Stream << "Abbrev(block " << BlockID << "): ";
+  Abbrev->Print(Stream);
 }
 
 // Reads the input file into the given buffer.
@@ -215,7 +181,12 @@ public:
     // application abbreviations, so that added abbreviations have
     // valid abbreviation indices.
     for (unsigned i = 0; i < naclbitc::FIRST_APPLICATION_ABBREV; ++i) {
-      Abbrevs.push_back(new NaClBitCodeAbbrev());
+      // Make all non-application abbreviations look like the default
+      // abbreviation.
+      NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
+      Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
+      Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6));
+      Abbrevs.push_back(Abbrev);
     }
     GlobalAbbrevBitstreamToInternalMap.
         SetNextBitstreamAbbrevIndex(Abbrevs.size());
@@ -261,6 +232,15 @@ public:
     Index = Abbrevs.size();
     Abbrevs.push_back(Abbrev);
     return true;
+  }
+
+  /// Adds the given abbreviation to the set of global abbreviations
+  /// defined for the block. Guarantees that duplicate abbreviations
+  /// are not added to the block. Note: Code takes ownership of
+  /// the given abbreviation. Returns true if new abbreviation.
+  bool AddAbbreviation(NaClBitCodeAbbrev *Abbrev) {
+    int Index;
+    return AddAbbreviation(Abbrev, Index);
   }
 
   /// The block ID associated with the block.
@@ -417,7 +397,7 @@ public:
     // abbreviation.
     const NaClBitCodeAbbrev *Abbrev = Record.GetCursor().GetNewestAbbrev();
     int Index;
-    AddAbbreviation(GetBlockID(), Abbrev->Copy(), Index);
+    AddAbbreviation(GetBlockID(), Abbrev->Simplify(), Index);
     LocalAbbrevBitstreamToInternalMap.InstallNewBitstreamAbbrevIndex(Index);
   }
 
@@ -442,7 +422,7 @@ public:
              ++AbbrevIter) {
           NaClBitCodeAbbrev *Abbrev = *AbbrevIter;
           int Index;
-          AddAbbreviation(BlockID, Abbrev->Copy(), Index);
+          AddAbbreviation(BlockID, Abbrev->Simplify(), Index);
           BlkAbbrevs->GetGlobalAbbrevBitstreamToInternalMap().
               InstallNewBitstreamAbbrevIndex(Index);
         }
@@ -485,11 +465,11 @@ protected:
     // Read abbreviation and add as a global abbreviation.
     if (Abbrevs->AddAbbreviation(Abbrev, Index)
         && TraceGeneratedAbbreviations) {
-      PrintAbbrev(BlockID, Abbrev);
+      PrintAbbrev(errs(), BlockID, Abbrev);
     }
   }
 
-  /// Finds the index to the corresponding internal block abbrevation
+  /// Finds the index to the corresponding internal block abbreviation
   /// for the given abbreviation.
   int FindAbbreviation(unsigned BlockID, const NaClBitCodeAbbrev *Abbrev) {
     return GetGlobalAbbrevs(BlockID)->FindAbbreviation(Abbrev);
@@ -506,6 +486,488 @@ protected:
 bool NaClAnalyzeParser::ParseBlock(unsigned BlockID) {
   NaClBlockAnalyzeParser Parser(BlockID, this);
   return Parser.ParseThisBlock();
+}
+
+/// Models the unrolling of an abbreviation into its sequence of
+/// individual operators. That is, unrolling arrays to match the width
+/// of the abbreviation.
+///
+/// For example, consider the abbreviation [Array(VBR(6))]. If the
+/// distribution map has data for records of size 3, and the
+/// distribution map suggests that a constant 4 appears as the second
+/// element in the record, it is nontrivial to figure out how to
+/// encorporate this into this abbrevation. Hence, we unroll the array
+/// (3 times) to get [VBR(6), VBR(6), VBR(6), Array(VBR(6))]. To
+/// update the second element to match the literal 4, we only need to
+/// replace the second element in the unrolled abbreviation resulting
+/// in [VBR(6), Lit(4), VBR(6), Array(VBR(6))].
+///
+/// After we have done appropriate substitutions, we can simplify the
+/// unrolled abbreviation by calling method Restore.
+///
+/// Note: We unroll in the form that best matches the distribution
+/// map. Hence, the code is stored as a separate operator. We also
+/// keep the array abbreviation op, for untracked elements within the
+/// distribution maps.
+class UnrolledAbbreviation {
+  void operator=(const UnrolledAbbreviation&) LLVM_DELETED_FUNCTION;
+public:
+  /// Unroll the given abbreviation, assuming it has the given size
+  /// (as specified in the distribution maps).
+  ///
+  /// If argument CanBeBigger is true, then we do not assume that we
+  /// can remove the trailing array when expanding, because the
+  /// actual size of the corresponding record using this abbreviation
+  /// may be bigger.
+  UnrolledAbbreviation(NaClBitCodeAbbrev *Abbrev, unsigned Size,
+                       bool CanBeBigger = false)
+      : CodeOp(0) {
+    unsigned NextOp = 0;
+    UnrollAbbrevOp(CodeOp, Abbrev, NextOp);
+    --Size;
+    for (unsigned i = 0; i < Size; ++i) {
+      // Create slot and then fill with appropriate operator.
+      AbbrevOps.push_back(CodeOp);
+      UnrollAbbrevOp(AbbrevOps[i], Abbrev, NextOp);
+    }
+    if (CanBeBigger) {
+      for (; NextOp < Abbrev->getNumOperandInfos(); ++NextOp) {
+        MoreOps.push_back(Abbrev->getOperandInfo(NextOp));
+      }
+    } else if (NextOp < Abbrev->getNumOperandInfos() &&
+               !Abbrev->getOperandInfo(NextOp).isArrayOp()) {
+      errs() << (Size+1) << ": ";
+      Abbrev->Print(errs());
+      llvm_unreachable("Malformed abbreviation/size pair");
+    }
+  }
+
+  explicit UnrolledAbbreviation(const UnrolledAbbreviation &Abbrev)
+      : CodeOp(Abbrev.CodeOp),
+        AbbrevOps(Abbrev.AbbrevOps),
+        MoreOps(Abbrev.MoreOps) {
+  }
+
+  /// Prints out the abbreviation modeled by the unrolled
+  /// abbreviation.
+  void Print(raw_ostream &Stream) const {
+    NaClBitCodeAbbrev *Abbrev = Restore(false);
+    Abbrev->Print(Stream);
+    Abbrev->dropRef();
+  }
+
+  /// Converts the unrolled abbreviation back into a regular
+  /// abbreviation. If Simplify is true, we simplify the
+  /// unrolled abbreviation as well.
+  NaClBitCodeAbbrev *Restore(bool Simplify=true) const {
+    NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
+    Abbrev->Add(CodeOp);
+    for (std::vector<NaClBitCodeAbbrevOp>::const_iterator
+             Iter = AbbrevOps.begin(), IterEnd = AbbrevOps.end();
+         Iter != IterEnd; ++Iter) {
+      Abbrev->Add(*Iter);
+    }
+    for (std::vector<NaClBitCodeAbbrevOp>::const_iterator
+             Iter = MoreOps.begin(), IterEnd = MoreOps.end();
+         Iter != IterEnd; ++Iter) {
+      Abbrev->Add(*Iter);
+    }
+    if (Simplify) {
+      NaClBitCodeAbbrev *SimpAbbrev = Abbrev->Simplify();
+      Abbrev->dropRef();
+      return SimpAbbrev;
+    } else {
+      return Abbrev;
+    }
+  }
+
+  // The abbreviation used for the record code.
+  NaClBitCodeAbbrevOp CodeOp;
+
+  // The abbreviations used for each tracked value index.
+  std::vector<NaClBitCodeAbbrevOp> AbbrevOps;
+
+private:
+  // Any remaining abbreviation operators not part of the unrolling.
+  std::vector<NaClBitCodeAbbrevOp> MoreOps;
+
+  // Extracts out the next abbreviation operator from the abbreviation
+  // Abbrev, given the index NextOp, and assigns it to AbbrevOp
+  void UnrollAbbrevOp(NaClBitCodeAbbrevOp &AbbrevOp,
+                      NaClBitCodeAbbrev *Abbrev,
+                      unsigned &NextOp) {
+    assert(NextOp < Abbrev->getNumOperandInfos());
+    const NaClBitCodeAbbrevOp &Op = Abbrev->getOperandInfo(NextOp);
+    if (Op.isEncoding() && Op.getEncoding() == NaClBitCodeAbbrevOp::Array) {
+      // Do not advance. The array operator assumes that all remaining
+      // elements should match its argument.
+      AbbrevOp = Abbrev->getOperandInfo(NextOp+1);
+    } else {
+      AbbrevOp = Op;
+      NextOp++;
+    }
+  }
+};
+
+/// Models a candidate block abbreviation, which is a blockID, and the
+/// corresponding abbreviation to be considered for addition.  Note:
+/// Constructors and assignment take ownership of the abbreviation.
+class CandBlockAbbrev {
+public:
+  CandBlockAbbrev(unsigned BlockID, NaClBitCodeAbbrev *Abbrev)
+      : BlockID(BlockID), Abbrev(Abbrev) {
+  }
+
+  CandBlockAbbrev(const CandBlockAbbrev &BlockAbbrev)
+      : BlockID(BlockAbbrev.BlockID),
+        Abbrev(BlockAbbrev.Abbrev) {
+    Abbrev->addRef();
+  }
+
+  void operator=(const CandBlockAbbrev &BlockAbbrev) {
+    Abbrev->dropRef();
+    BlockID = BlockAbbrev.BlockID;
+    Abbrev = BlockAbbrev.Abbrev;
+    Abbrev->addRef();
+  }
+
+  ~CandBlockAbbrev() {
+    Abbrev->dropRef();
+  }
+
+  /// The block ID of the candidate abbreviation.
+  unsigned GetBlockID() const {
+    return BlockID;
+  }
+
+  /// The abbreviation of the candidate abbreviation.
+  const NaClBitCodeAbbrev *GetAbbrev() const {
+    return Abbrev;
+  }
+
+  /// orders this against the candidate abbreviation.
+  int Compare(const CandBlockAbbrev &CandAbbrev) const {
+    unsigned diff = BlockID - CandAbbrev.BlockID;
+    if (diff) return diff;
+    return Abbrev->Compare(*CandAbbrev.Abbrev);
+  }
+
+  /// Prints the candidate abbreviation to the given stream.
+  void Print(raw_ostream &Stream) const {
+    PrintAbbrev(Stream, BlockID, Abbrev);
+  }
+
+private:
+  // The block the abbreviation applies to.
+  unsigned BlockID;
+  // The candidate abbreviation.
+  NaClBitCodeAbbrev *Abbrev;
+};
+
+static inline bool operator<(const CandBlockAbbrev &A1,
+                             const CandBlockAbbrev &A2) {
+  return A1.Compare(A2) < 0;
+}
+
+/// Models the minimum number of instances for a candidate abbreviation
+/// before we will even consider it a potential candidate abbreviation.
+static unsigned MinNumInstancesForNewAbbrevs = 100;
+
+/// Models the set of candidate abbreviations being considered, and
+/// the number of abbreviations associated with each candidate
+/// Abbreviation.
+///
+/// Note: Because we may have abbreviation refinements of A->B->C and
+/// A->D->C, we need to accumulate instance counts in such cases.
+class CandidateAbbrevs {
+public:
+  // Map from candidate abbreviations to the corresponding number of
+  // instances.
+  typedef std::map<CandBlockAbbrev, unsigned> AbbrevCountMap;
+  typedef AbbrevCountMap::const_iterator const_iterator;
+
+  /// Creates an empty set of candidate abbreviations, to be
+  /// (potentially) added to the given set of block abbreviations.
+  /// Argument is the (global) block abbreviations map, which is
+  /// used to determine if it already exists.
+  CandidateAbbrevs(BlockAbbrevsMapType &BlockAbbrevsMap)
+      : BlockAbbrevsMap(BlockAbbrevsMap)
+  {}
+
+  /// Adds the given (unrolled) abbreviation as a candidate
+  /// abbreviation to the given block. NumInstances is the number of
+  /// instances expected to use this candidate abbreviation. Returns
+  /// true if the corresponding candidate abbreviation is added to this
+  /// set of candidate abbreviations.
+  bool Add(unsigned BlockID,
+           UnrolledAbbreviation &UnrolledAbbrev,
+           unsigned NumInstances);
+
+  /// Returns the list of candidate abbreviations in this set.
+  const AbbrevCountMap &GetAbbrevsMap() const {
+    return AbbrevsMap;
+  }
+
+  /// Prints out the current contents of this set.
+  void Print(raw_ostream &Stream, const char *Title = "Candidates") const {
+    Stream << "-- " << Title << ": \n";
+    for (const_iterator Iter = AbbrevsMap.begin(), IterEnd = AbbrevsMap.end();
+         Iter != IterEnd; ++Iter) {
+      Stream << format("%12u", Iter->second) << ": ";
+      Iter->first.Print(Stream);
+    }
+    Stream << "--\n";
+  }
+
+private:
+  // The set of abbreviations and corresponding number instances.
+  AbbrevCountMap AbbrevsMap;
+
+  // The map of (global) abbreviations already associated with each block.
+  BlockAbbrevsMapType &BlockAbbrevsMap;
+};
+
+bool CandidateAbbrevs::Add(unsigned BlockID,
+                           UnrolledAbbreviation &UnrolledAbbrev,
+                           unsigned NumInstances) {
+  // Drop if it corresponds to an existing global abbreviation.
+  NaClBitCodeAbbrev *Abbrev = UnrolledAbbrev.Restore();
+  if (BlockAbbrevs* Abbrevs = BlockAbbrevsMap[BlockID]) {
+    if (Abbrevs->FindAbbreviation(Abbrev) !=
+        BlockAbbrevs::NO_SUCH_ABBREVIATION) {
+      Abbrev->dropRef();
+      return false;
+    }
+  }
+
+  CandBlockAbbrev CandAbbrev(BlockID, Abbrev);
+  AbbrevCountMap::iterator Pos = AbbrevsMap.find(CandAbbrev);
+  if (Pos == AbbrevsMap.end()) {
+    AbbrevsMap[CandAbbrev] = NumInstances;
+  } else {
+    Pos->second += NumInstances;
+  }
+  return true;
+}
+
+// Look for new abbreviations in block BlockID, considering it was
+// read with the given abbreviation Abbrev, and considering changing
+// the abbreviation opererator for value Index. ValueDist is how
+// values at Index are distributed. Any found abbreviations are added
+// to the candidate abbreviations CandAbbrevs. Returns true only if we
+// have added new candidate abbreviations to CandAbbrevs.
+static bool AddNewAbbreviations(unsigned BlockID,
+                                const UnrolledAbbreviation &Abbrev,
+                                unsigned Index,
+                                NaClBitcodeValueDist &ValueDist,
+                                CandidateAbbrevs &CandAbbrevs) {
+  // TODO(kschimpf): Add code to try and find a better encoding for
+  // the values, based on the distribution.
+
+  // If this index is already a literal abbreviation, no improvements can
+  // be made.
+  const NaClBitCodeAbbrevOp Op = Abbrev.AbbrevOps[Index];
+  if (Op.isLiteral()) return false;
+
+  // Search based on sorted distribution, which sorts by number of
+  // instances.  Start by trying to find possible constants to use.
+  const NaClBitcodeDist::Distribution *
+      Distribution = ValueDist.GetDistribution();
+  for (NaClBitcodeDist::Distribution::const_iterator
+           Iter = Distribution->begin(), IterEnd = Distribution->end();
+       Iter != IterEnd; ++Iter) {
+    NaClValueRangeType Range = GetNaClValueRange(Iter->second);
+    if (Range.first != Range.second) continue;  // not a constant.
+
+    // Defines a constant. Try as new candidate range.  In addition,
+    // don't try any more constant values, since this is the one with
+    // the greatest number of instances.
+    NaClBitcodeDistElement *Elmt = ValueDist.at(Range.first);
+    UnrolledAbbreviation CandAbbrev(Abbrev);
+    CandAbbrev.AbbrevOps[Index] = NaClBitCodeAbbrevOp(Range.first);
+    return CandAbbrevs.Add(BlockID, CandAbbrev, Elmt->GetNumInstances());
+  }
+  return false;
+}
+
+// Look for new abbreviations in block BlockID, considering it was
+// read with the given abbreviation Abbrev. IndexDist is the
+// corresponding distribution of value indices associated with the
+// abbreviation.  Any found abbreviations are added to the candidate
+// abbreviations CandAbbrevs.
+static void AddNewAbbreviations(unsigned BlockID,
+                                const UnrolledAbbreviation &Abbrev,
+                                NaClBitcodeDist &IndexDist,
+                                CandidateAbbrevs &CandAbbrevs) {
+  // Search based on sorted distribution, which sorts based on heuristic
+  // of best index to fix first.
+  const NaClBitcodeDist::Distribution *
+      IndexDistribution = IndexDist.GetDistribution();
+  for (NaClBitcodeDist::Distribution::const_iterator
+           IndexIter = IndexDistribution->begin(),
+           IndexIterEnd = IndexDistribution->end();
+       IndexIter != IndexIterEnd; ++IndexIter) {
+    unsigned Index = static_cast<unsigned>(IndexIter->second);
+    if (AddNewAbbreviations(
+            BlockID, Abbrev, Index,
+            cast<NaClBitcodeValueIndexDistElement>(IndexDist.at(Index))
+            ->GetValueDist(),
+            CandAbbrevs)) {
+      return;
+    }
+  }
+}
+
+// Look for new abbreviations in block BlockID, considering it was
+// read with the given abbreviation Abbrev, and the given record Code.
+// SizeDist is the corresponding distribution of sizes associated with
+// the abbreviation. Any found abbreviations are added to the
+// candidate abbreviations CandAbbrevs.
+static void AddNewAbbreviations(unsigned BlockID,
+                                NaClBitCodeAbbrev *Abbrev,
+                                unsigned Code,
+                                NaClBitcodeDist &SizeDist,
+                                CandidateAbbrevs &CandAbbrevs) {
+  const NaClBitcodeDist::Distribution *
+      SizeDistribution = SizeDist.GetDistribution();
+  for (NaClBitcodeDist::Distribution::const_iterator
+           SizeIter = SizeDistribution->begin(),
+           SizeIterEnd = SizeDistribution->end();
+       SizeIter != SizeIterEnd; ++SizeIter) {
+    unsigned Size = static_cast<unsigned>(SizeIter->second);
+    UnrolledAbbreviation UnrolledAbbrev(Abbrev, Size+1 /* Add code! */,
+                                        Size >= NaClValueIndexCutoff);
+    if (!UnrolledAbbrev.CodeOp.isLiteral()) {
+      // Try making the code a literal.
+      UnrolledAbbreviation CandAbbrev(UnrolledAbbrev);
+      CandAbbrev.CodeOp = NaClBitCodeAbbrevOp(Code);
+      CandAbbrevs.Add(BlockID, CandAbbrev,
+                      SizeDist.at(Size)->GetNumInstances());
+    }
+    // Now process value indices to find candidate abbreviations.
+    AddNewAbbreviations(
+        BlockID, UnrolledAbbrev,
+        cast<NaClBitcodeSizeDistElement>(SizeDist.at(Size))
+        ->GetValueIndexDist(),
+        CandAbbrevs);
+  }
+}
+
+// Look for new abbreviations in block BlockID. Abbrevs is the map of
+// read (globally defined) abbreviations associated with the
+// BlockID. AbbrevDist is the distribution map of abbreviations
+// associated with BlockID. Any found abbreviations are added to the
+// candidate abbreviations CandAbbrevs.
+static void AddNewAbbreviations(unsigned BlockID,
+                                BlockAbbrevs *Abbrevs,
+                                NaClBitcodeDist &AbbrevDist,
+                                CandidateAbbrevs &CandAbbrevs) {
+  const NaClBitcodeDist::Distribution *
+      AbbrevDistribution = AbbrevDist.GetDistribution();
+  for (NaClBitcodeDist::Distribution::const_iterator
+           AbbrevIter = AbbrevDistribution->begin(),
+           AbbrevIterEnd = AbbrevDistribution->end();
+       AbbrevIter != AbbrevIterEnd; ++AbbrevIter) {
+    NaClBitcodeDistValue AbbrevIndex = AbbrevIter->second;
+    NaClBitCodeAbbrev *Abbrev = Abbrevs->GetIndexedAbbrev(AbbrevIndex);
+    NaClBitcodeAbbrevDistElement *AbbrevElmt =
+        cast<NaClBitcodeAbbrevDistElement>(AbbrevDist.at(AbbrevIndex));
+    NaClBitcodeDist &CodeDist = AbbrevElmt->GetCodeDist();
+
+    const NaClBitcodeDist::Distribution *
+        CodeDistribution = CodeDist.GetDistribution();
+    for (NaClBitcodeDist::Distribution::const_iterator
+             CodeIter = CodeDistribution->begin(),
+             CodeIterEnd = CodeDistribution->end();
+         CodeIter != CodeIterEnd; ++CodeIter) {
+      unsigned Code = static_cast<unsigned>(CodeIter->second);
+      AddNewAbbreviations(
+          BlockID,
+          Abbrev,
+          Code,
+          cast<NaClCompressCodeDistElement>(CodeDist.at(CodeIter->second))
+          ->GetSizeDist(),
+          CandAbbrevs);
+    }
+  }
+}
+
+typedef std::pair<unsigned, CandBlockAbbrev> CountedAbbrevType;
+
+// Look for new abbreviations in the given block distribution map
+// BlockDist.  BlockAbbrevsMap contains the set of read global
+// abbreviations. Adds found candidate abbreviations to the set of
+// known global abbreviations.
+static void AddNewAbbreviations(NaClBitcodeBlockDist &BlockDist,
+                                BlockAbbrevsMapType &BlockAbbrevsMap) {
+  CandidateAbbrevs CandAbbrevs(BlockAbbrevsMap);
+  // Start by collecting candidate abbreviations.
+  const NaClBitcodeDist::Distribution *
+      Distribution = BlockDist.GetDistribution();
+  for (NaClBitcodeDist::Distribution::const_iterator
+           Iter = Distribution->begin(), IterEnd = Distribution->end();
+       Iter != IterEnd; ++Iter) {
+    unsigned BlockID = static_cast<unsigned>(Iter->second);
+    AddNewAbbreviations(
+        BlockID,
+        BlockAbbrevsMap[BlockID],
+        cast<NaClCompressBlockDistElement>(BlockDist.at(BlockID))
+        ->GetAbbrevDist(),
+        CandAbbrevs);
+  }
+  // Install candidate abbreviations.
+  //
+  // Sort the candidate abbreviations by number of instances, so that
+  // if multiple abbreviations apply, the one with the largest number
+  // of instances will be chosen when compressing a file.
+  //
+  // For example, we may have just generated two abbreviations. The
+  // first has replaced the 3rd element with the constant 4 while the
+  // second replaced the 4th element with the constant 5. The first
+  // abbreviation can apply to 300 records while the second can apply
+  // to 1000 records.  Assuming that both abbreviations shrink the
+  // record by the same number of bits, we clearly want the tool to
+  // choose the second abbreviation when selecting the abbreviation
+  // index to choose (via method GetRecordAbbrevIndex).
+  //
+  // Selecting the second is important in that abbreviation are
+  // refined by successive calls to this tool. We do not want to
+  // restrict downstream refinements prematurely.  Hence, we want the
+  // tool to choose the abbreviation with the most candidates first.
+  //
+  // Since method GetRecordAbbrevIndex chooses the first abbreviation
+  // that generates the least number of bits, we clearly want to make
+  // sure that the second abbreviation occurs before the first.
+  std::vector<CountedAbbrevType> Candidates;
+  for (CandidateAbbrevs::const_iterator
+           Iter = CandAbbrevs.GetAbbrevsMap().begin(),
+           IterEnd = CandAbbrevs.GetAbbrevsMap().end();
+       Iter != IterEnd; ++Iter) {
+    Candidates.push_back(CountedAbbrevType(Iter->second,Iter->first));
+  }
+  std::sort(Candidates.begin(), Candidates.end());
+  std::vector<CountedAbbrevType>::const_reverse_iterator
+      Iter = Candidates.rbegin(), IterEnd = Candidates.rend();
+  if (Iter == IterEnd) return;
+
+  if (TraceGeneratedAbbreviations) {
+    errs() << "-- New abbrevations:\n";
+  }
+  unsigned Min = (Iter->first >> 2);
+  for (; Iter != IterEnd; ++Iter) {
+    if (Iter->first < Min) break;
+    unsigned BlockID = Iter->second.GetBlockID();
+    BlockAbbrevs *Abbrevs = BlockAbbrevsMap[BlockID];
+    NaClBitCodeAbbrev *Abbrev = Iter->second.GetAbbrev()->Copy();
+    if (TraceGeneratedAbbreviations) {
+      errs() <<format("%12u", Iter->first) << ": ";
+      PrintAbbrev(errs(), BlockID, Abbrev);
+    }
+    Abbrevs->AddAbbreviation(Abbrev);
+  }
+  if (TraceGeneratedAbbreviations) {
+    errs() << "--\n";
+  }
 }
 
 // Read in bitcode, analyze data, and figure out set of abbreviations
@@ -542,6 +1004,7 @@ static bool AnalyzeBitcode(OwningPtr<MemoryBuffer> &MemBuf,
     Parser.BlockDist.Print(OutputFilename == "-" ? errs() : outs());
   }
 
+  AddNewAbbreviations(Parser.BlockDist, BlockAbbrevsMap);
   return false;
 }
 
@@ -623,6 +1086,17 @@ protected:
     return ::Error(Message);
   }
 
+  /// Returns the set of (global) block abbreviations defined for the
+  /// given block ID.
+  BlockAbbrevs *GetGlobalAbbrevs(unsigned BlockID) {
+    BlockAbbrevs *Abbrevs = Context->BlockAbbrevsMap[BlockID];
+    if (Abbrevs == 0) {
+      Abbrevs = new BlockAbbrevs(BlockID);
+      Context->BlockAbbrevsMap[BlockID] = Abbrevs;
+    }
+    return Abbrevs;
+  }
+
   virtual bool ParseBlock(unsigned BlockID) {
     NaClBlockCopyParser Parser(BlockID, this);
     return Parser.ParseThisBlock();
@@ -630,12 +1104,22 @@ protected:
 
   virtual void EnterBlock(unsigned NumWords) {
     unsigned BlockID = GetBlockID();
-    BlockAbbreviations = Context->BlockAbbrevsMap[BlockID];
+    BlockAbbreviations = GetGlobalAbbrevs(BlockID);
 
     // Enter the subblock.
     NaClBitcodeSelectorAbbrev
         Selector(BlockAbbreviations->GetNumberAbbreviations()-1);
     Context->Writer.EnterSubblock(BlockID, Selector);
+
+    // Note: We must dump module abbreviations as local
+    // abbreviations, because they are in a yet to be
+    // dumped BlockInfoBlock.
+    if (BlockID == naclbitc::MODULE_BLOCK_ID) {
+      BlockAbbrevs* Abbrevs = GetGlobalAbbrevs(naclbitc::MODULE_BLOCK_ID);
+      for (unsigned i = 0; i < Abbrevs->GetNumberAbbreviations(); ++i) {
+        Context->Writer.EmitAbbrev(Abbrevs->GetIndexedAbbrev(i)->Copy());
+      }
+    }
   }
 
   virtual void ExitBlock() {
@@ -654,6 +1138,10 @@ protected:
              IterEnd = Context->BlockAbbrevsMap.end();
          Iter != IterEnd; ++Iter) {
       unsigned BlockID = Iter->first;
+      // Don't emit module abbreviations, since they have been
+      // emitted as local abbreviations.
+      if (BlockID == naclbitc::MODULE_BLOCK_ID) continue;
+
       BlockAbbrevs *Abbrevs = Iter->second;
       if (Abbrevs == 0) continue;
       for (unsigned i = Abbrevs->GetFirstApplicationAbbreviation();

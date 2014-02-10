@@ -60,7 +60,7 @@ void NaClBitcodeDist::AddBlock(const NaClBitcodeBlock &Block) {
 
 void NaClBitcodeDist::Print(raw_ostream &Stream,
                             const std::string &Indent) const {
-  Distribution *Dist = GetDistribution();
+  const Distribution *Dist = GetDistribution();
   Stream << Indent;
   Sentinel->PrintTitle(Stream, this);
   Stream << Indent;

@@ -42,8 +42,8 @@ public:
   virtual const SmallVectorImpl<NaClBitcodeDist*> *
   GetNestedDistributions() const;
 
-  NaClBitcodeDist *GetSizeDist() {
-    return &SizeDist;
+  NaClBitcodeDist &GetSizeDist() {
+    return SizeDist;
   }
 
   /// The sentinel used to generate instances of this in
