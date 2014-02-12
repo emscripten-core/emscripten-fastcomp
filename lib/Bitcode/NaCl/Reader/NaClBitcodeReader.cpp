@@ -1608,11 +1608,10 @@ bool NaClBitcodeReader::InitStreamFromBuffer() {
 }
 
 bool NaClBitcodeReader::InitLazyStream() {
-  StreamingMemoryObject *Bytes = new StreamingMemoryObject(LazyStreamer);
-  if (Header.Read(Bytes))
+  if (Header.Read(LazyStreamer))
     return Error(Header.Unsupported());
 
-  StreamFile.reset(new NaClBitstreamReader(Bytes, Header.getHeaderSize()));
+  StreamFile.reset(new NaClBitstreamReader(LazyStreamer, Header.getHeaderSize()));
   Stream.init(*StreamFile);
   if (AcceptHeader())
     return Error(Header.Unsupported());
@@ -1648,13 +1647,13 @@ Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
 
 
 Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
-                                           DataStreamer *streamer,
+                                           StreamableMemoryObject *Streamer,
                                            LLVMContext &Context,
                                            std::string *ErrMsg,
                                            bool AcceptSupportedOnly) {
   Module *M = new Module(name, Context);
   NaClBitcodeReader *R =
-      new NaClBitcodeReader(streamer, Context, AcceptSupportedOnly);
+      new NaClBitcodeReader(Streamer, Context, AcceptSupportedOnly);
   M->setMaterializer(R);
   if (R->ParseBitcodeInto(M)) {
     if (ErrMsg)

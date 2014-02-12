@@ -145,7 +145,7 @@ class NaClBitcodeReader : public GVMaterializer {
   bool BufferOwned;
   OwningPtr<NaClBitstreamReader> StreamFile;
   NaClBitstreamCursor Stream;
-  DataStreamer *LazyStreamer;
+  StreamableMemoryObject *LazyStreamer;
   uint64_t NextUnreadBit;
   bool SeenValueSymbolTable;
 
@@ -204,7 +204,7 @@ public:
       AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
       IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
-  explicit NaClBitcodeReader(DataStreamer *streamer, LLVMContext &C,
+  explicit NaClBitcodeReader(StreamableMemoryObject *streamer, LLVMContext &C,
                              bool AcceptSupportedOnly = true)
     : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),

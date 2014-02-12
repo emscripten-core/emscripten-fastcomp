@@ -19,7 +19,8 @@ if( LLVM_ENABLE_ASSERTIONS )
   endif()
   # On Release builds cmake automatically defines NDEBUG, so we
   # explicitly undefine it:
-  if( uppercase_CMAKE_BUILD_TYPE STREQUAL "RELEASE" )
+  # @LOCALMOD TODO(dschuff): upstream this.
+  if( uppercase_CMAKE_BUILD_TYPE STREQUAL "RELEASE" OR uppercase_CMAKE_BUILD_TYPE STREQUAL "RELWITHDEBINFO")
     add_definitions( -UNDEBUG )
     # Also remove /D NDEBUG to avoid MSVC warnings about conflicting defines.
     string (REGEX REPLACE "(^| )[/-]D *NDEBUG($| )" " "

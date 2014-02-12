@@ -5,4 +5,5 @@ add_llvm_tool(pnacl-llc
   srpc_main.cpp
   SRPCStreamer.cpp
   pnacl-llc.cpp
+  ThreadedStreamingCache.cpp
   )

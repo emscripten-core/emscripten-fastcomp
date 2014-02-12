@@ -32,6 +32,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/StreamableMemoryObject.h" // @LOCALMOD
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/system_error.h"
 using namespace llvm;
@@ -140,7 +141,8 @@ int main(int argc, char **argv) {
   OwningPtr<Module> M;
 
   // Use the bitcode streaming interface
-  DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
+  DataStreamer *streamer(getDataFileStreamer(InputFilename, &ErrorMessage));
+  OwningPtr<StreamingMemoryObject> Buffer;  // @LOCALMOD
   if (streamer) {
     std::string DisplayFilename;
     if (InputFilename == "-")
@@ -151,12 +153,13 @@ int main(int argc, char **argv) {
     // @LOCALMOD-BEGIN
     switch (InputFileFormat) {
       case LLVMFormat:
-        M.reset(getStreamedBitcodeModule(DisplayFilename, streamer, Context,
-                                         &ErrorMessage));
+        M.reset(getStreamedBitcodeModule(
+            DisplayFilename, streamer, Context, &ErrorMessage));
         break;
       case PNaClFormat:
-        M.reset(getNaClStreamedBitcodeModule(DisplayFilename, streamer, Context,
-                                             &ErrorMessage));
+        Buffer.reset(new StreamingMemoryObject(streamer));
+        M.reset(getNaClStreamedBitcodeModule(
+            DisplayFilename, Buffer.get(), Context, &ErrorMessage));
         break;
       default:
         ErrorMessage = "Don't understand specified bitcode format";
