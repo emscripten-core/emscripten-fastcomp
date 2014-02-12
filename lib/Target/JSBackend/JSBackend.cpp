@@ -300,6 +300,7 @@ namespace {
       }
     }
     std::string getPtrAsStr(const Value* Ptr) {
+      Ptr = Ptr->stripPointerCasts();
       if (isa<const ConstantPointerNull>(Ptr)) return "0";
       if (const Function *F = dyn_cast<Function>(Ptr)) {
         return utostr(getFunctionIndex(F));
