@@ -64,13 +64,19 @@ INITIALIZE_PASS(PromoteIntegers, "nacl-promote-ints",
 // There are currently none in our tests that use the ABI checker.
 // See https://code.google.com/p/nativeclient/issues/detail?id=3360
 static bool isLegalSize(unsigned Size) {
+#if 0 // XXX EMSCRIPTEN: Generalize this code to work on any bit width.
   if (Size > 64) return true;
   return Size == 1 || Size == 8 || Size == 16 || Size == 32 || Size == 64;
+#else
+  return Size == 1 || (Size >= 8 && isPowerOf2_32(Size));
+#endif
 }
 
 static Type *getPromotedIntType(IntegerType *Ty) {
   unsigned Width = Ty->getBitWidth();
+#if 0 // XXX EMSCRIPTEN: We support promoting these types to power-of-2 sizes.
   assert(Width <= 64 && "Don't know how to legalize >64 bit types yet");
+#endif
   if (isLegalSize(Width))
     return Ty;
   return IntegerType::get(Ty->getContext(),
@@ -110,10 +116,17 @@ static Value *convertConstant(Constant *C, bool SignExt=false) {
   if (isa<UndefValue>(C)) {
     return UndefValue::get(getPromotedType(C->getType()));
   } else if (ConstantInt *CInt = dyn_cast<ConstantInt>(C)) {
+#if 0 // XXX EMSCRIPTEN: Generalize this code to work on any bit width.
     return ConstantInt::get(
         getPromotedType(C->getType()),
         SignExt ? CInt->getSExtValue() : CInt->getZExtValue(),
         /*isSigned=*/SignExt);
+#else
+    unsigned BitWidth = getPromotedType(C->getType())->getIntegerBitWidth();
+    const APInt &Value = CInt->getValue();
+    return ConstantInt::get(C->getContext(),
+                            SignExt ? Value.sext(BitWidth) : Value.zext(BitWidth));
+#endif
   } else {
     errs() << "Value: " << *C << "\n";
     report_fatal_error("Unexpected constant value");
@@ -293,13 +306,24 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
   if (!isLegalSize(Width - LoWidth)) {
     // HiTrunc is still illegal, and is redundant with the truncate in the
     // recursive call, so just get rid of it.
+#if 0 /// XXX EMSCRIPTEN: Allow these to be ConstantExprs
     State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
                           /*TakeName=*/false);
+#else
+    if (Instruction *HiTruncInst = dyn_cast<Instruction>(HiTrunc))
+      State.recordConverted(HiTruncInst, HiLShr,
+                            /*TakeName=*/false);
+#endif
     StoreHi = splitStore(cast<StoreInst>(StoreHi), State);
     // BCHi was still illegal, and has been replaced with a placeholder in the
     // recursive call. Since it is redundant with BCLo in the recursive call,
     // just splice it out entirely.
+#if 0 /// XXX EMSCRIPTEN: Allow these to be ConstantExprs
     State.recordConverted(cast<Instruction>(BCHi), GEPHi, /*TakeName=*/false);
+#else
+    if (Instruction *BCHiInst = dyn_cast<Instruction>(BCHi))
+      State.recordConverted(BCHiInst, GEPHi, /*TakeName=*/false);
+#endif
   }
   State.recordConverted(Inst, StoreHi, /*TakeName=*/false);
   return StoreHi;
