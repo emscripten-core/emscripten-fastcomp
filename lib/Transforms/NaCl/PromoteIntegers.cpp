@@ -100,8 +100,10 @@ static Type *getPromotedType(Type *Ty) {
 // Return true if Val is an int or pointer-to-int which should be converted.
 static bool shouldConvert(Value *Val) {
   Type *Ty = Val->getType();
+#if 0 // XXX EMSCRIPTEN: We don't need to convert pointers.
   if (PointerType *Pty = dyn_cast<PointerType>(Ty))
     Ty = Pty->getContainedType(0);
+#endif
   if (IntegerType *ITy = dyn_cast<IntegerType>(Ty)) {
     if (!isLegalSize(ITy->getBitWidth())) {
       return true;
@@ -247,10 +249,12 @@ static Value *splitLoad(LoadInst *Inst, ConversionState &State) {
   Value *LoadHi = IRB.CreateAlignedLoad(BCHi, 1, Inst->getName() + ".hi"); // XXX EMSCRIPTEN: worst-case alignment assumption
   if (!isLegalSize(Width - LoWidth)) {
     LoadHi = splitLoad(cast<LoadInst>(LoadHi), State);
+#if 0 /// XXX EMSCRIPTEN: We don't need to convert pointers.
     // BCHi was still illegal, and has been replaced with a placeholder in the
     // recursive call. Since it is redundant with BCLo in the recursive call,
     // just splice it out entirely.
     State.recordConverted(cast<Instruction>(BCHi), GEPHi, /*TakeName=*/false);
+#endif
   }
 
   Value *HiExt = IRB.CreateZExt(LoadHi, NewType, LoadHi->getName() + ".ext");
@@ -319,12 +323,8 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
     // BCHi was still illegal, and has been replaced with a placeholder in the
     // recursive call. Since it is redundant with BCLo in the recursive call,
     // just splice it out entirely.
-#if 0 /// XXX EMSCRIPTEN: Allow these to be ConstantExprs
+#if 0 /// XXX EMSCRIPTEN: We don't need to convert pointers.
     State.recordConverted(cast<Instruction>(BCHi), GEPHi, /*TakeName=*/false);
-#else
-    if (Instruction *BCHiInst = dyn_cast<Instruction>(BCHi)) {
-      State.recordConverted(BCHiInst, GEPHi, /*TakeName=*/false);
-    }
 #endif
   }
   State.recordConverted(Inst, StoreHi, /*TakeName=*/false);
