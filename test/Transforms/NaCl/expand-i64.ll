@@ -270,3 +270,16 @@ define i64 @sext(i32 %x) {
   %y = sext i32 %x to i64
   ret i64 %y
 }
+
+; CHECK:      define void @unreachable_blocks(i64* %p) {
+; CHECK-NEXT:   ret void
+; CHECK-NEXT: }
+define void @unreachable_blocks(i64* %p) {
+  ret void
+
+dead:
+  %t = load i64* %p
+  %s = add i64 %t, 1
+  store i64 %s, i64* %p
+  ret void
+}
