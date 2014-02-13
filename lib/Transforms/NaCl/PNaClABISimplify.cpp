@@ -49,7 +49,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
     PM.add(createCFGSimplificationPass());
   }
 
+  PM.add(createDemoteRegisterToMemoryPass()); // XXX EMSCRIPTEN we just need this for functions with setjmp in them...
   PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN
+  PM.add(createPromoteMemoryToRegisterPass()); // XXX EMSCRIPTEN we just need this for functions with setjmp in them...
 
 #if 0 // EMSCRIPTEN: we allow arbitrary symbols to be preserved
   // Internalize all symbols in the module except _start, which is the only
@@ -150,7 +152,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
 
   // Eliminate simple dead code that the post-opt passes could have
   // created.
+#if 0 // EMSCRIPTEN: There's no point in running this since we're running DeadCodeElimination right after.
   PM.add(createDeadInstEliminationPass());
+#endif
   PM.add(createDeadCodeEliminationPass());
 
   PM.add(createExpandI64Pass()); // EMSCRIPTEN // FIXME: move this before the dce stuff here
