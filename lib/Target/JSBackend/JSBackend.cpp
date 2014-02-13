@@ -76,8 +76,8 @@ namespace {
   #define ASM_FFI_OUT 8 // params to FFIs are limited to things that work in ffis
   typedef unsigned AsmCast;
 
-  const char *SIMDLane = "XYZW";
-  const char *simdLane = "xyzw";
+  const char *const SIMDLane = "XYZW";
+  const char *const simdLane = "xyzw";
 
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
@@ -177,7 +177,7 @@ namespace {
 
     // return the absolute offset of a global
     unsigned getGlobalAddress(const std::string &s) {
-      GlobalAddressMap::iterator I = GlobalAddresses.find(s);
+      GlobalAddressMap::const_iterator I = GlobalAddresses.find(s);
       if (I == GlobalAddresses.end()) {
         report_fatal_error("cannot find global address " + Twine(s));
       }
@@ -224,7 +224,7 @@ namespace {
     }
     // returns the internal offset inside the proper block: GlobalData8, 32, 64
     unsigned getRelativeGlobalAddress(const std::string &s) {
-      GlobalAddressMap::iterator I = GlobalAddresses.find(s);
+      GlobalAddressMap::const_iterator I = GlobalAddresses.find(s);
       if (I == GlobalAddresses.end()) {
         report_fatal_error("cannot find global address " + Twine(s));
       }
@@ -272,7 +272,7 @@ namespace {
       IndexedFunctions[Name] = Index;
 
       // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, and we may need to do things in the handler
-      CallHandlerMap::iterator CH = CallHandlers->find(Name);
+      CallHandlerMap::const_iterator CH = CallHandlers->find(Name);
       if (CH != CallHandlers->end()) {
         (this->*(CH->second))(NULL, Name, -1);
       }
@@ -412,7 +412,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   // Find the phis, and generate assignments and dependencies
   typedef std::map<std::string, std::string> StringMap;
   StringMap assigns; // variable -> assign statement
-  std::map<std::string, Value*> values; // variable -> Value
+  std::map<std::string, const Value*> values; // variable -> Value
   StringMap deps; // variable -> dependency
   StringMap undeps; // reverse: dependency -> variable
   for (BasicBlock::const_iterator I = To->begin(), E = To->end();
@@ -424,7 +424,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     // we found it
     const std::string &name = getJSName(P);
     assigns[name] = getAssign(name, P->getType());
-    Value *V = P->getIncomingValue(index);
+    const Value *V = P->getIncomingValue(index);
     values[name] = V;
     std::string vname = getValueAsStr(V);
     if (const Instruction *VI = dyn_cast<const Instruction>(V)) {
@@ -441,11 +441,11 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     for (StringMap::iterator I = assigns.begin(); I != assigns.end();) {
       StringMap::iterator last = I;
       std::string curr = last->first;
-      Value *V = values[curr];
+      const Value *V = values[curr];
       std::string CV = getValueAsStr(V);
       I++; // advance now, as we may erase
       // if we have no dependencies, or we found none to emit and are at the end (so there is a cycle), emit
-      StringMap::iterator dep = deps.find(curr);
+      StringMap::const_iterator dep = deps.find(curr);
       if (dep == deps.end() || (!emitted && I == assigns.end())) {
         if (dep != deps.end()) {
           // break a cycle
@@ -466,7 +466,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
 }
 
 const std::string &JSWriter::getJSName(const Value* val) {
-  ValueMap::iterator I = ValueNames.find(val);
+  ValueMap::const_iterator I = ValueNames.find(val);
   if (I != ValueNames.end() && I->first == val)
     return I->second;
 
@@ -1071,7 +1071,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   }
   case Instruction::Ret: {
     const ReturnInst* ret =  cast<ReturnInst>(I);
-    Value *RV = ret->getReturnValue();
+    const Value *RV = ret->getReturnValue();
     Code << "STACKTOP = sp;";
     Code << "return";
     if (RV == NULL) {
@@ -1536,7 +1536,7 @@ void JSWriter::printFunctionBody(const Function *F) {
           }
           BlocksToConditions[BB] = Condition + (!UseSwitch && BlocksToConditions[BB].size() > 0 ? " | " : "") + BlocksToConditions[BB];
         }
-        for (BlockCondMap::iterator I = BlocksToConditions.begin(), E = BlocksToConditions.end(); I != E; ++I) {
+        for (BlockCondMap::const_iterator I = BlocksToConditions.begin(), E = BlocksToConditions.end(); I != E; ++I) {
           const BasicBlock *BB = I->first;
           std::string P = getPhiCode(&*BI, BB);
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], I->second.c_str(), P.size() > 0 ? P.c_str() : NULL);
@@ -1557,7 +1557,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   UsedVars["label"] = Type::getInt32Ty(F->getContext())->getTypeID();
   if (!UsedVars.empty()) {
     unsigned Count = 0;
-    for (VarMap::iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
+    for (VarMap::const_iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
       if (Count == 20) {
         Out << ";\n";
         Count = 0;
@@ -1754,7 +1754,7 @@ void JSWriter::printModuleBody() {
       Out << "\"" << I->getName() << "\"";
     }
   }
-  for (NameSet::iterator I = Declares.begin(), E = Declares.end();
+  for (NameSet::const_iterator I = Declares.begin(), E = Declares.end();
        I != E; ++I) {
     if (first) {
       first = false;
@@ -1767,7 +1767,7 @@ void JSWriter::printModuleBody() {
 
   Out << "\"redirects\": {";
   first = true;
-  for (StringMap::iterator I = Redirects.begin(), E = Redirects.end();
+  for (StringMap::const_iterator I = Redirects.begin(), E = Redirects.end();
        I != E; ++I) {
     if (first) {
       first = false;
@@ -1780,7 +1780,7 @@ void JSWriter::printModuleBody() {
 
   Out << "\"externs\": [";
   first = true;
-  for (NameSet::iterator I = Externals.begin(), E = Externals.end();
+  for (NameSet::const_iterator I = Externals.begin(), E = Externals.end();
        I != E; ++I) {
     if (first) {
       first = false;
@@ -1855,7 +1855,7 @@ void JSWriter::printModuleBody() {
 
   Out << "\"namedGlobals\": {";
   first = true;
-  for (NameIntMap::iterator I = NamedGlobals.begin(), E = NamedGlobals.end(); I != E; ++I) {
+  for (NameIntMap::const_iterator I = NamedGlobals.begin(), E = NamedGlobals.end(); I != E; ++I) {
     if (first) {
       first = false;
     } else {
@@ -1980,7 +1980,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
           unsigned Bytes = DL->getTypeStoreSize(C->getType());
           Offset += Bytes; // zeros, so just skip
         } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
-          Value *V = CE->getOperand(0);
+          const Value *V = CE->getOperand(0);
           unsigned Data = 0;
           if (CE->getOpcode() == Instruction::PtrToInt) {
             Data = getConstAsOffset(V, Absolute + Offset - OffsetStart);
@@ -2020,7 +2020,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
     if (name == "__init_array_start") {
       // this is the global static initializer
       if (calculate) {
-        Value *V = CE->getOperand(0);
+        const Value *V = CE->getOperand(0);
         GlobalInitializers.push_back(getJSName(V));
         // is the func
       }
@@ -2040,7 +2040,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
           CE = cast<ConstantExpr>(CE->getOperand(0));
         }
         assert(CE->isCast());
-        Value *V = CE->getOperand(0);
+        const Value *V = CE->getOperand(0);
         Data += getConstAsOffset(V, getGlobalAddress(name));
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;
