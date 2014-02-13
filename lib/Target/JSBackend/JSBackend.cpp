@@ -582,13 +582,13 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, const Type *
           }
           case 1: {
             text = "HEAP8[tempDoublePtr]=HEAP8[" + PS + "]" + sep +
-                   "HEAP8[tempDoublePtr+1]=HEAP8[" + PS + "+1|0]" + sep +
-                   "HEAP8[tempDoublePtr+2]=HEAP8[" + PS + "+2|0]" + sep +
-                   "HEAP8[tempDoublePtr+3]=HEAP8[" + PS + "+3|0]" + sep +
-                   "HEAP8[tempDoublePtr+4]=HEAP8[" + PS + "+4|0]" + sep +
-                   "HEAP8[tempDoublePtr+5]=HEAP8[" + PS + "+5|0]" + sep +
-                   "HEAP8[tempDoublePtr+6]=HEAP8[" + PS + "+6|0]" + sep +
-                   "HEAP8[tempDoublePtr+7]=HEAP8[" + PS + "+7|0]";
+                   "HEAP8[tempDoublePtr+1|0]=HEAP8[" + PS + "+1|0]" + sep +
+                   "HEAP8[tempDoublePtr+2|0]=HEAP8[" + PS + "+2|0]" + sep +
+                   "HEAP8[tempDoublePtr+3|0]=HEAP8[" + PS + "+3|0]" + sep +
+                   "HEAP8[tempDoublePtr+4|0]=HEAP8[" + PS + "+4|0]" + sep +
+                   "HEAP8[tempDoublePtr+5|0]=HEAP8[" + PS + "+5|0]" + sep +
+                   "HEAP8[tempDoublePtr+6|0]=HEAP8[" + PS + "+6|0]" + sep +
+                   "HEAP8[tempDoublePtr+7|0]=HEAP8[" + PS + "+7|0]";
             break;
           }
           default: assert(0 && "bad 8 store");
