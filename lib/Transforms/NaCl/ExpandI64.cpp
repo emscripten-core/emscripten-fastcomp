@@ -38,6 +38,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Transforms/NaCl.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <map>
 
 #include "llvm/Support/raw_ostream.h"
@@ -1031,6 +1032,11 @@ bool ExpandI64::runOnModule(Module &M) {
       Instruction *D = Dead.pop_back_val();
       D->eraseFromParent();
     }
+
+    // We only visited blocks found by a DFS walk from the entry, so we haven't
+    // visited any unreachable blocks, and they may still contain illegal
+    // instructions at this point. Being unreachable, they can simply be deleted.
+    removeUnreachableBlocks(*Func);
   }
 
   // post pass - clean up illegal functions that were legalized. We do this
