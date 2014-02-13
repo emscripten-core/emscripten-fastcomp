@@ -1,4 +1,4 @@
-//===- ExpandI64.cpp - Expand out variable argument function calls-----===//
+//===- ExpandI64.cpp - Expand i64 and wider integer types -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,7 @@
 //
 //===------------------------------------------------------------------===//
 //
-// This pass expands and lowers all operations on integers larger than i64
+// This pass expands and lowers all operations on integers i64 and wider
 // into 32-bit operations that can be handled by JS in a natural way.
 //
 // 64-bit variables become pairs of 2 32-bit variables, for the low and
@@ -24,8 +24,11 @@
 //
 //===------------------------------------------------------------------===//
 
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -33,49 +36,36 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CFG.h"
 #include "llvm/Transforms/NaCl.h"
 #include <map>
 
 #include "llvm/Support/raw_ostream.h"
-#include <stdio.h>
-#define dump(x) fprintf(stderr, x "\n")
-#define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
-#define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpIR(value) { \
-  std::string temp; \
-  raw_string_ostream stream(temp); \
-  stream << *(value); \
-  fprintf(stderr, "%s\n", temp.c_str()); \
-}
+
+#ifdef NDEBUG
 #undef assert
-#define assert(x) { if (!(x)) dumpfail(#x); }
+#define assert(x) { if (!(x)) report_fatal_error(#x); }
+#endif
 
 using namespace llvm;
 
 namespace {
 
   typedef SmallVector<Value*, 2> ChunksVec;
+  typedef std::map<Value*, ChunksVec> SplitsMap;
 
-  typedef std::vector<Instruction*> SplitInstrs;
-
-  // The tricky part in all this pass is that we legalize many instructions that interdepend on each
-  // other. So we do one pass where we create the new legal instructions but leave the illegal ones
-  // in place, then a second where we hook up the legal ones to the other legal ones, and only
-  // then do we remove the illegal ones.
-  struct SplitInfo {
-    SplitInstrs ToFix; // new instrs, which we fix up later with proper legalized input (if they received illegal input)
-    ChunksVec Chunks;  // 32-bit chunks of the legalized output, if the output was illegal
-  };
-
-  typedef std::map<Instruction*, SplitInfo> SplitsMap;
-  typedef std::map<Value*, ChunksVec> ArgsMap;
+  typedef SmallVector<PHINode *, 8> PHIVec;
+  typedef SmallVector<Instruction *, 8> DeadVec;
 
   // This is a ModulePass because the pass recreates functions in
   // order to expand i64 arguments to pairs of i32s.
   class ExpandI64 : public ModulePass {
+    bool Changed;
+    DataLayout *DL;
+    Module *TheModule;
+
     SplitsMap Splits; // old illegal value to new insts
-    ArgsMap SplitArgs; // old illegal function arguments, to split parts
+    PHIVec Phis;
 
     // If the function has an illegal return or argument, create a legal version
     void ensureLegalFunc(Function *F);
@@ -86,7 +76,7 @@ namespace {
     // splits an illegal instruction into 32-bit chunks. We do
     // not yet have the values yet, as they depend on other
     // splits, so store the parts in Splits, for FinalizeInst.
-    void splitInst(Instruction *I, DataLayout& DL);
+    bool splitInst(Instruction *I);
 
     // For an illegal value, returns the split out chunks
     // representing the low and high parts, that splitInst
@@ -96,13 +86,10 @@ namespace {
     // map to the proper legalized new arguments
     ChunksVec getChunks(Value *V);
 
-    void finalizeInst(Instruction *I);
-
     Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FtoILow, *FtoIHigh, *DtoILow, *DtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD, *BDtoILow, *BDtoIHigh;
 
     void ensureFuncs();
-
-    Module *TheModule;
+    unsigned getNumChunks(Type *T);
 
   public:
     static char ID;
@@ -113,6 +100,7 @@ namespace {
     }
 
     virtual bool runOnModule(Module &M);
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
   };
 }
 
@@ -152,73 +140,133 @@ static FunctionType *getLegalizedFunctionType(FunctionType *FT) {
 
 // Implementation of ExpandI64
 
-bool okToRemainIllegal(Function *F) {
-  const char *Name = F->getName().str().c_str();
-  if (strcmp(Name, "llvm.dbg.value") == 0) return true;
+static bool okToRemainIllegal(Function *F) {
+  StringRef Name = F->getName();
+  if (Name == "llvm.dbg.value") return true;
+
+  // XXX EMSCRIPTEN: These take an i64 immediate argument; since they're not
+  // real instructions, we don't need to legalize them.
+  if (Name == "llvm.lifetime.start") return true;
+  if (Name == "llvm.lifetime.end") return true;
+  if (Name == "llvm.invariant.start") return true;
+  if (Name == "llvm.invariant.end") return true;
+
   return false;
 }
 
-int getNumChunks(Type *T) {
-  IntegerType *IT = cast<IntegerType>(T);
-  int Num = IT->getBitWidth();
-  if (Num%32 != 0) assert(0);
-  return Num/32;
+unsigned ExpandI64::getNumChunks(Type *T) {
+  unsigned Num = DL->getTypeSizeInBits(T);
+  return (Num + 31) / 32;
+}
+
+static bool isLegalFunctionType(FunctionType *FT) {
+  if (isIllegal(FT->getReturnType())) {
+    return false;
+  }
+
+  int Num = FT->getNumParams();
+  for (int i = 0; i < Num; i++) {
+    if (isIllegal(FT->getParamType(i))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool isLegalInstruction(const Instruction *I) {
+  if (isIllegal(I->getType())) {
+    return false;
+  }
+
+  for (unsigned i = 0, e = I->getNumOperands(); i != e; ++i) {
+    if (isIllegal(I->getOperand(i)->getType())) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// We can't use RecreateFunction because we need to handle
+// function and argument attributes specially.
+static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
+  Function *NewFunc = Function::Create(NewType, F->getLinkage());
+
+  AttributeSet Attrs = F->getAttributes();
+  AttributeSet FnAttrs = Attrs.getFnAttributes();
+
+  // Legalizing the return value is done by storing part of the value into
+  // static storage. Subsequent analysis will see this as a memory access,
+  // so we can no longer claim to be readonly or readnone.
+  if (isIllegal(F->getReturnType())) {
+    FnAttrs = FnAttrs.removeAttribute(F->getContext(),
+                                      AttributeSet::FunctionIndex,
+                                      Attribute::ReadOnly);
+    FnAttrs = FnAttrs.removeAttribute(F->getContext(),
+                                      AttributeSet::FunctionIndex,
+                                      Attribute::ReadNone);
+  }
+
+  NewFunc->addAttributes(AttributeSet::FunctionIndex, FnAttrs);
+  NewFunc->addAttributes(AttributeSet::ReturnIndex, Attrs.getRetAttributes());
+  Function::arg_iterator AI = F->arg_begin();
+  for (unsigned i = 0, e = F->arg_size(), j = 0; i != e; ++i, ++j, ++AI) {
+    AttributeSet ArgAttrs = Attrs.getParamAttributes(i);
+    if (isIllegal(AI->getType())) {
+      ++j;
+    } else {
+      NewFunc->addAttributes(j + 1, ArgAttrs);
+    }
+  }
+
+  F->getParent()->getFunctionList().insert(F, NewFunc);
+  NewFunc->takeName(F);
+  NewFunc->getBasicBlockList().splice(NewFunc->begin(),
+                                      F->getBasicBlockList());
+  F->replaceAllUsesWith(
+      ConstantExpr::getBitCast(NewFunc,
+                               F->getFunctionType()->getPointerTo()));
+  return NewFunc;
 }
 
 void ExpandI64::ensureLegalFunc(Function *F) {
   if (okToRemainIllegal(F)) return;
 
   FunctionType *FT = F->getFunctionType();
-  int Num = FT->getNumParams();
+  if (isLegalFunctionType(FT)) return;
 
-  // Allocate small names on stack, large ones on heap.
-  // This is because on VS2010, arrays on the stack must
-  // be compile-time constant sized. (no C99 dynamic-length array support)
-  const size_t StackSize = 256;
-  char StackArray[StackSize];
-  char *AllocArray = 0;
+  Changed = true;
+  Function *NF = RecreateFunctionLegalized(F, getLegalizedFunctionType(FT));
+  std::string Name = NF->getName();
+  if (strncmp(Name.c_str(), "llvm.", 5) == 0) {
+    // this is an intrinsic, and we are changing its signature, which will annoy LLVM, so rename
+    const size_t len = Name.size();
+    SmallString<256> NewName;
+    NewName.resize(len);
+    for (unsigned i = 0; i < len; i++) {
+      NewName[i] = Name[i] != '.' ? Name[i] : '_';
+    }
+    NF->setName(Twine(NewName));
+  }
 
-  for (int i = -1; i < Num; i++) {
-    Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
-    if (isIllegal(T)) {
-      Function *NF = RecreateFunction(F, getLegalizedFunctionType(FT));
-      std::string Name = NF->getName();
-      if (strncmp(Name.c_str(), "llvm.", 5) == 0) {
-        // this is an intrinsic, and we are changing its signature, which will annoy LLVM, so rename
-        const size_t len = Name.size()+1;
-        char *NewName;
-        if (len > StackSize)
-          NewName = AllocArray = new char[len];
-        else
-          NewName = StackArray;
-        const char *CName = Name.c_str();
-        for (unsigned i = 0; i < len; i++) {
-          NewName[i] = CName[i] != '.' ? CName[i] : '_';
-        }
-        NF->setName(NewName);
-        delete[] AllocArray;
-        AllocArray = 0;
+  // Move and update arguments
+  for (Function::arg_iterator Arg = F->arg_begin(), E = F->arg_end(), NewArg = NF->arg_begin();
+       Arg != E; ++Arg) {
+    if (Arg->getType() == NewArg->getType()) {
+      NewArg->takeName(Arg);
+      Arg->replaceAllUsesWith(NewArg);
+      NewArg++;
+    } else {
+      // This was legalized
+      ChunksVec &Chunks = Splits[&*Arg];
+      int Num = getNumChunks(Arg->getType());
+      assert(Num == 2);
+      for (int i = 0; i < Num; i++) {
+        Chunks.push_back(&*NewArg);
+        if (NewArg->hasName()) Chunks[i]->setName(NewArg->getName() + "$" + utostr(i));
+        NewArg++;
       }
-      // Move and update arguments
-      for (Function::arg_iterator Arg = F->arg_begin(), E = F->arg_end(), NewArg = NF->arg_begin();
-           Arg != E; ++Arg) {
-        if (Arg->getType() == NewArg->getType()) {
-          NewArg->takeName(Arg);
-          Arg->replaceAllUsesWith(NewArg);
-          NewArg++;
-        } else {
-          // This was legalized
-          ChunksVec &Chunks = SplitArgs[&*Arg];
-          int Num = getNumChunks(Arg->getType());
-          assert(Num == 2);
-          for (int i = 0; i < Num; i++) {
-            Chunks.push_back(&*NewArg);
-            if (NewArg->hasName()) Chunks[i]->setName(NewArg->getName() + "$" + utostr(i));
-            NewArg++;
-          }
-        }
-      }
-      break;
     }
   }
 }
@@ -227,76 +275,113 @@ void ExpandI64::removeIllegalFunc(Function *F) {
   if (okToRemainIllegal(F)) return;
 
   FunctionType *FT = F->getFunctionType();
-  int Num = FT->getNumParams();
-  for (int i = -1; i < Num; i++) {
-    Type *T = i == -1 ? FT->getReturnType() : FT->getParamType(i);
-    if (isIllegal(T)) {
-      F->eraseFromParent();
-      break;
-    }
+  if (!isLegalFunctionType(FT)) {
+    F->eraseFromParent();
   }
 }
 
-void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
+bool ExpandI64::splitInst(Instruction *I) {
   Type *i32 = Type::getInt32Ty(I->getContext());
   Type *i32P = i32->getPointerTo();
   Type *i64 = Type::getInt64Ty(I->getContext());
   Value *Zero  = Constant::getNullValue(i32);
-  Value *Ones  = Constant::getAllOnesValue(i32);
 
-  SplitInfo &Split = Splits[I];
+  ChunksVec &Chunks = Splits[I];
 
   switch (I->getOpcode()) {
     case Instruction::SExt: {
-      Value *Input = I->getOperand(0);
-      Type *T = Input->getType();
-      Value *Low;
-      if (T->getIntegerBitWidth() < 32) {
-        Low = CopyDebug(new SExtInst(Input, i32, "", I), I);
+      ChunksVec InputChunks;
+      Value *Op = I->getOperand(0);
+      if (isIllegal(Op->getType())) {
+        InputChunks = getChunks(Op);
       } else {
-        assert(T->getIntegerBitWidth() == 32);
-        Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Input, Zero, "", I), I); // copy the input, hackishly XXX
+        InputChunks.push_back(Op);
       }
-      Split.Chunks.push_back(Low);
-      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLT, Low, Zero), I);
-      int Num = getNumChunks(I->getType());
-      for (int i = 1; i < Num; i++) {
-        Instruction *High = CopyDebug(SelectInst::Create(Check, Ones, Zero, "", I), I);
-        Split.Chunks.push_back(High);
-      }
-      break;
-    }
-    case Instruction::ZExt: {
-      Value *Input = I->getOperand(0);
-      unsigned InputBits = Input->getType()->getIntegerBitWidth();
-      if (InputBits < 32) {
-        I->setOperand(0, CopyDebug(new ZExtInst(Input, i32, "", I), I)); // add a zext to 32-bit size
-      } else {
-        if (InputBits % 32 != 0) assert(0);
-      }
-      int Num = getNumChunks(I->getType());
-      for (int i = 0; i < Num; i++) {
-        Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy the input, hackishly XXX
-      }
-      break;
-    }
-    case Instruction::Trunc: {
-      unsigned Bits = I->getType()->getIntegerBitWidth();
-      if (Bits < 32) {
-        // we need to add a trunc of the low 32 bits
-        Instruction *L = CopyDebug(new TruncInst(Zero, I->getType(), "", I), I);
-        Split.ToFix.push_back(L);
-      } else if (Bits > 32) {
-        if (Bits % 32 != 0) assert(0);
-        int Num = getNumChunks(I->getType());
-        for (int i = 0; i < Num; i++) {
-          Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy the input, hackishly XXX
+
+      for (unsigned i = 0, e = InputChunks.size(); i != e; ++i) {
+        Value *Input = InputChunks[i];
+
+        Type *T = Input->getType();
+        Value *Chunk;
+        if (T->getIntegerBitWidth() < 32) {
+          Chunk = CopyDebug(new SExtInst(Input, i32, "", I), I);
+        } else {
+          assert(T->getIntegerBitWidth() == 32);
+          Chunk = Input;
         }
+        Chunks.push_back(Chunk);
+      }
+
+      Instruction *Check = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLT, Chunks.back(), Zero), I);
+      int Num = getNumChunks(I->getType());
+      for (int i = Chunks.size(); i < Num; i++) {
+        Instruction *High = CopyDebug(new SExtInst(Check, i32, "", I), I);
+        Chunks.push_back(High);
+      }
+      break;
+    }
+    case Instruction::PtrToInt: 
+    case Instruction::ZExt: {
+      Value *Op = I->getOperand(0);
+      ChunksVec InputChunks;
+      if (I->getOpcode() == Instruction::PtrToInt) {
+        InputChunks.push_back(CopyDebug(new PtrToIntInst(Op, i32, "", I), I));
+      } else if (isIllegal(Op->getType())) {
+        InputChunks = getChunks(Op);
+      } else {
+        InputChunks.push_back(Op);
+      }
+
+      for (unsigned i = 0, e = InputChunks.size(); i != e; ++i) {
+        Value *Input = InputChunks[i];
+        Type *T = Input->getType();
+
+        Value *Chunk;
+        if (T->getIntegerBitWidth() < 32) {
+          Chunk = CopyDebug(new ZExtInst(Input, i32, "", I), I);
+        } else {
+          assert(T->getIntegerBitWidth() == 32);
+          Chunk = Input;
+        }
+        Chunks.push_back(Chunk);
+      }
+
+      int Num = getNumChunks(I->getType());
+      for (int i = Chunks.size(); i < Num; i++) {
+        Chunks.push_back(Zero);
+      }
+      break;
+    }
+    case Instruction::IntToPtr:
+    case Instruction::Trunc: {
+      unsigned Num = getNumChunks(I->getType());
+      unsigned NumBits = DL->getTypeSizeInBits(I->getType());
+      ChunksVec InputChunks = getChunks(I->getOperand(0));
+      for (unsigned i = 0; i < Num; i++) {
+        Value *Input = InputChunks[i];
+
+        Value *Chunk;
+        if (NumBits < 32) {
+          Chunk = CopyDebug(new TruncInst(Input, IntegerType::get(I->getContext(), NumBits), "", I), I);
+          NumBits = 0;
+        } else {
+          Chunk = Input;
+          NumBits -= 32;
+        }
+        if (I->getOpcode() == Instruction::IntToPtr) {
+          assert(i == 0);
+          Chunk = CopyDebug(new IntToPtrInst(Chunk, I->getType(), "", I), I);
+        }
+        Chunks.push_back(Chunk);
+      }
+      if (!isIllegal(I->getType())) {
+        assert(Chunks.size() == 1);
+        I->replaceAllUsesWith(Chunks[0]);
       }
       break;
     }
     case Instruction::Load: {
-      LoadInst *LI = dyn_cast<LoadInst>(I);
+      LoadInst *LI = cast<LoadInst>(I);
       Instruction *AI = CopyDebug(new PtrToIntInst(LI->getPointerOperand(), i32, "", I), I);
       int Num = getNumChunks(I->getType());
       for (int i = 0; i < Num; i++) {
@@ -304,32 +389,38 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         Instruction *Ptr = CopyDebug(new IntToPtrInst(Add, i32P, "", I), I);
         LoadInst *Chunk = new LoadInst(Ptr, "", I); CopyDebug(Chunk, I);
         Chunk->setAlignment(std::min(4U, LI->getAlignment()));
-        Split.Chunks.push_back(Chunk);
+        Chunk->setVolatile(LI->isVolatile());
+        Chunk->setOrdering(LI->getOrdering());
+        Chunk->setSynchScope(LI->getSynchScope());
+        Chunks.push_back(Chunk);
       }
       break;
     }
     case Instruction::Store: {
-      StoreInst *SI = dyn_cast<StoreInst>(I);
+      StoreInst *SI = cast<StoreInst>(I);
       Instruction *AI = CopyDebug(new PtrToIntInst(SI->getPointerOperand(), i32, "", I), I);
-      int Num = getNumChunks(SI->getValueOperand()->getType());
+      ChunksVec InputChunks = getChunks(SI->getValueOperand());
+      int Num = InputChunks.size();
       for (int i = 0; i < Num; i++) {
         Instruction *Add = i == 0 ? AI : CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(i32, 4*i), "", I), I);
         Instruction *Ptr = CopyDebug(new IntToPtrInst(Add, i32P, "", I), I);
-        StoreInst *Chunk = new StoreInst(Zero, Ptr, "", I); CopyDebug(Chunk, I);
+        StoreInst *Chunk = new StoreInst(InputChunks[i], Ptr, I);
         Chunk->setAlignment(std::min(4U, SI->getAlignment()));
-        Split.ToFix.push_back(Chunk);
+        Chunk->setVolatile(SI->isVolatile());
+        Chunk->setOrdering(SI->getOrdering());
+        Chunk->setSynchScope(SI->getSynchScope());
+        CopyDebug(Chunk, I);
       }
       break;
     }
     case Instruction::Ret: {
       assert(I->getOperand(0)->getType() == i64);
+      ChunksVec InputChunks = getChunks(I->getOperand(0));
       ensureFuncs();
       SmallVector<Value *, 1> Args;
-      Args.push_back(Zero); // will be fixed 
-      Instruction *High = CopyDebug(CallInst::Create(SetHigh, Args, "", I), I);
-      Instruction *Low  = CopyDebug(ReturnInst::Create(I->getContext(), Zero, I), I); // will be fixed
-      Split.ToFix.push_back(Low);
-      Split.ToFix.push_back(High);
+      Args.push_back(InputChunks[1]);
+      CopyDebug(CallInst::Create(SetHigh, Args, "", I), I);
+      CopyDebug(ReturnInst::Create(I->getContext(), InputChunks[0], I), I);
       break;
     }
     case Instruction::Add:
@@ -342,7 +433,9 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::LShr:
     case Instruction::AShr:
     case Instruction::Shl: {
-      int Num = getNumChunks(I->getOperand(0)->getType());
+      ChunksVec LeftChunks = getChunks(I->getOperand(0));
+      ChunksVec RightChunks = getChunks(I->getOperand(1));
+      unsigned Num = getNumChunks(I->getType());
       if (Num == 2) {
         ensureFuncs();
         Value *Low = NULL, *High = NULL;
@@ -355,11 +448,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           case Instruction::UDiv: F = UDiv; break;
           case Instruction::SRem: F = SRem; break;
           case Instruction::URem: F = URem; break;
+          case Instruction::AShr: F = AShr; break;
           case Instruction::LShr: {
             if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
               unsigned Shifts = CI->getZExtValue();
               if (Shifts == 32) {
-                Low = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+                Low = LeftChunks[1];
                 High = Zero;
                 break;
               }
@@ -367,13 +461,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
             F = LShr;
             break;
           }
-          case Instruction::AShr: F = AShr; break;
           case Instruction::Shl: {
             if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
-              unsigned Shifts = CI->getZExtValue();
+              const APInt &Shifts = CI->getValue();
               if (Shifts == 32) {
                 Low = Zero;
-                High = CopyDebug(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I), I); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
+                High = LeftChunks[0];
                 break;
               }
             }
@@ -385,67 +478,83 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         if (F) {
           // use a library call, no special optimization was found
           SmallVector<Value *, 4> Args;
-          for (unsigned i = 0; i < 4; i++) Args.push_back(Zero); // will be fixed 
+          Args.push_back(LeftChunks[0]);
+          Args.push_back(LeftChunks[1]);
+          Args.push_back(RightChunks[0]);
+          Args.push_back(RightChunks[1]);
           Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
           High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
         }
-        Split.Chunks.push_back(Low);
-        Split.Chunks.push_back(High);
+        Chunks.push_back(Low);
+        Chunks.push_back(High);
       } else {
-        // more than 32 bits. handle simple shifts for lshr and shl
+        // more than 64 bits. handle simple shifts for lshr and shl
+        assert(I->getOpcode() == Instruction::LShr || I->getOpcode() == Instruction::Shl);
         ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
-        int Shifts = CI->getSExtValue();
-        if (Shifts % 32 == 0) {
-          for (int i = 0; i < Num; i++) {
-            Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or, Zero, Zero, "", I)); // copy hackishly XXX TODO: eliminate x|0 to x in post-pass
-          }
+        unsigned Shifts = CI->getZExtValue();
+        Constant *Frac = ConstantInt::get(i32, Shifts % 32);
+        Constant *Comp = ConstantInt::get(i32, 32 - (Shifts % 32));
+        Instruction::BinaryOps Opcode, Reverse;
+        unsigned ShiftChunks, Dir;
+        if (I->getOpcode() == Instruction::Shl) {
+          Opcode = Instruction::Shl;
+          Reverse = Instruction::LShr;
+          ShiftChunks = -(Shifts/32);
+          Dir = -1;
+        } else if (I->getOpcode() == Instruction::LShr) {
+          Opcode = Instruction::LShr;
+          Reverse = Instruction::Shl;
+          ShiftChunks = Shifts/32;
+          Dir = 1;
         } else {
-          // not a simple multiple of 32.
-          Constant *Frac = ConstantInt::get(i32, Shifts % 32);
-          Constant *Comp = ConstantInt::get(i32, 32 - (Shifts % 32));
-          Instruction::BinaryOps Opcode, Reverse;
-          int ShiftChunks, Dir;
-          if (I->getOpcode() == Instruction::Shl) {
-            Opcode = Instruction::Shl;
-            Reverse = Instruction::LShr;
-            ShiftChunks = -Shifts/32;
-            Dir = -1;
-          } else if (I->getOpcode() == Instruction::LShr) {
-            Opcode = Instruction::LShr;
-            Reverse = Instruction::Shl;
-            ShiftChunks = Shifts/32;
-            Dir = 1;
+          errs() << *I << "\n";
+          assert(0);
+        }
+        for (unsigned i = 0; i < Num; i++) {
+          Value *L;
+          if (i + ShiftChunks < LeftChunks.size()) {
+            L = LeftChunks[i + ShiftChunks];
           } else {
-            errs() << *I << "\n";
-            assert(0);
+            L = Zero;
           }
-          for (int i = 0; i < Num; i++) {
-            Split.ToFix.push_back(BinaryOperator::Create(Opcode, Zero, Frac, "", I)); // shifted the fractional amount
+
+          Value *H;
+          if (i + ShiftChunks + Dir < LeftChunks.size()) {
+            H = LeftChunks[i + ShiftChunks + Dir];
+          } else {
+            H = Zero;
           }
-          for (int i = 0; i < Num; i++) {
-            Split.ToFix.push_back(BinaryOperator::Create(Reverse, Zero, Comp, "", I)); // shifted the complement-fractional amount to the other side
+
+          // shifted the fractional amount
+          if (Frac != Zero && L != Zero) {
+            L = CopyDebug(BinaryOperator::Create(Opcode, L, Frac, "", I), I);
           }
-          for (int i = 0; i < Num; i++) {
-            int j = i + ShiftChunks;
-            int k = i + ShiftChunks + Dir;
-            Split.Chunks.push_back(BinaryOperator::Create(Instruction::Or,
-              0 <= j && j < Num ? Split.ToFix[    j] : Zero,
-              0 <= k && k < Num ? Split.ToFix[Num+k] : Zero,
-            "", I)); // shifted the complement-fractional amount to the other side
+          // shifted the complement-fractional amount to the other side
+          if (Comp != Zero && H != Zero) {
+            H = CopyDebug(BinaryOperator::Create(Reverse, H, Comp, "", I), I);
+          }
+
+          // Or the parts together. Since we may have zero, try to fold it away.
+          if (Value *V = SimplifyBinOp(Instruction::Or, L, H, DL)) {
+            Chunks.push_back(V);
+          } else {
+            Chunks.push_back(CopyDebug(BinaryOperator::Create(Instruction::Or, L, H, "", I), I));
           }
         }
       }
       break;
     }
     case Instruction::ICmp: {
-      ICmpInst *CE = dyn_cast<ICmpInst>(I);
+      ICmpInst *CE = cast<ICmpInst>(I);
       ICmpInst::Predicate Pred = CE->getPredicate();
+      ChunksVec LeftChunks = getChunks(I->getOperand(0));
+      ChunksVec RightChunks = getChunks(I->getOperand(1));
       switch (Pred) {
         case ICmpInst::ICMP_EQ:
         case ICmpInst::ICMP_NE: {
           ICmpInst::Predicate PartPred; // the predicate to use on each of the parts
           llvm::Instruction::BinaryOps CombineOp; // the predicate to use to combine the subcomparisons
-          int Num = getNumChunks(I->getOperand(0)->getType());
+          int Num = LeftChunks.size();
           if (Pred == ICmpInst::ICMP_EQ) {
             PartPred = ICmpInst::ICMP_EQ;
             CombineOp = Instruction::And;
@@ -453,14 +562,13 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
             PartPred = ICmpInst::ICMP_NE;
             CombineOp = Instruction::Or;
           }
-          for (int i = 0; i < Num; i++) {
-            Split.ToFix.push_back(CopyDebug(new ICmpInst(I, PartPred, Zero, Zero), I));
-          }
           // first combine 0 and 1. then combine that with 2, etc.
-          Split.ToFix.push_back(CopyDebug(BinaryOperator::Create(CombineOp, Split.ToFix[0], Split.ToFix[1], "", I), I));
-          for (int i = 2; i < Num; i++) {
-            Split.ToFix.push_back(CopyDebug(BinaryOperator::Create(CombineOp, Split.ToFix[i], Split.ToFix[Split.ToFix.size()-1], "", I), I));
+          Value *Combined = NULL;
+          for (int i = 0; i < Num; i++) {
+            Value *Cmp = CopyDebug(new ICmpInst(I, PartPred, LeftChunks[i], RightChunks[i]), I);
+            Combined = !Combined ? Cmp : CopyDebug(BinaryOperator::Create(CombineOp, Combined, Cmp, "", I), I);
           }
+          I->replaceAllUsesWith(Combined);
           break;
         }
         case ICmpInst::ICMP_ULT:
@@ -486,16 +594,12 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
             case ICmpInst::ICMP_UGT: break;
             default: assert(0);
           }
-          A = CopyDebug(new ICmpInst(I, StrictPred, Zero, Zero), I);
-          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, Zero, Zero), I);
-          C = CopyDebug(new ICmpInst(I, UnsignedPred, Zero, Zero), I);
+          A = CopyDebug(new ICmpInst(I, StrictPred, LeftChunks[1], RightChunks[1]), I);
+          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, LeftChunks[1], RightChunks[1]), I);
+          C = CopyDebug(new ICmpInst(I, UnsignedPred, LeftChunks[0], RightChunks[0]), I);
           D = CopyDebug(BinaryOperator::Create(Instruction::And, B, C, "", I), I);
           Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, D, "", I), I);
-          Split.ToFix.push_back(A);
-          Split.ToFix.push_back(B);
-          Split.ToFix.push_back(C);
-          // D is NULL or a logical operator, no need to fix it
-          Split.ToFix.push_back(Final);
+          I->replaceAllUsesWith(Final);
           break;
         }
         default: assert(0);
@@ -503,48 +607,54 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     case Instruction::Select: {
-      Value *Cond = I->getOperand(0);
-      int Num = getNumChunks(I->getOperand(1)->getType());
-      for (int i = 0; i < Num; i++) {
-        Instruction *C = CopyDebug(SelectInst::Create(Cond, Zero, Zero, "", I), I); // will be fixed
-        Split.Chunks.push_back(C);
+      SelectInst *SI = cast<SelectInst>(I);
+      Value *Cond = SI->getCondition();
+      ChunksVec TrueChunks = getChunks(SI->getTrueValue());
+      ChunksVec FalseChunks = getChunks(SI->getFalseValue());
+      unsigned Num = getNumChunks(I->getType());
+      for (unsigned i = 0; i < Num; i++) {
+        Instruction *Part = CopyDebug(SelectInst::Create(Cond, TrueChunks[i], FalseChunks[i], "", I), I);
+        Chunks.push_back(Part);
       }
       break;
     }
     case Instruction::PHI: {
+      PHINode *Parent = cast<PHINode>(I);
       int Num = getNumChunks(I->getType());
-      PHINode *Parent = dyn_cast<PHINode>(I);
       int PhiNum = Parent->getNumIncomingValues();
       for (int i = 0; i < Num; i++) {
-        PHINode *P = PHINode::Create(i32, PhiNum, "", I); CopyDebug(P, I);
-        for (int j = 0; j < PhiNum; j++) {
-          P->addIncoming(Zero, Parent->getIncomingBlock(j)); // will be fixed
-        }
-        Split.Chunks.push_back(P);
+        Instruction *P = CopyDebug(PHINode::Create(i32, PhiNum, "", I), I);
+        Chunks.push_back(P);
       }
+      // PHI node operands may not be translated yet; we'll handle them at the end.
+      Phis.push_back(Parent);
       break;
     }
     case Instruction::And:
     case Instruction::Or:
     case Instruction::Xor: {
-      Instruction::BinaryOps Op;
-      switch (I->getOpcode()) { // XXX why does llvm make us do this?
-        case Instruction::And: Op = Instruction::And; break;
-        case Instruction::Or:  Op = Instruction::Or;  break;
-        case Instruction::Xor: Op = Instruction::Xor; break;
-      }
-      int Num = getNumChunks(I->getType());
+      BinaryOperator *BO = cast<BinaryOperator>(I);
+      ChunksVec LeftChunks = getChunks(BO->getOperand(0));
+      ChunksVec RightChunks = getChunks(BO->getOperand(1));
+      int Num = getNumChunks(BO->getType());
       for (int i = 0; i < Num; i++) {
-        Split.Chunks.push_back(CopyDebug(BinaryOperator::Create(Op, Zero, Zero, "", I), I));
+        // If there's a constant operand, it's likely enough that one of the
+        // chunks will be a trivial operation, so it's worth calling
+        // SimplifyBinOp here.
+        if (Value *V = SimplifyBinOp(BO->getOpcode(), LeftChunks[i], RightChunks[i], DL)) {
+          Chunks.push_back(V);
+        } else {
+          Chunks.push_back(CopyDebug(BinaryOperator::Create(BO->getOpcode(), LeftChunks[i], RightChunks[i], "", BO), BO));
+        }
       }
       break;
     }
     case Instruction::Call: {
-      CallInst *CI = dyn_cast<CallInst>(I);
+      CallInst *CI = cast<CallInst>(I);
       Function *F = CI->getCalledFunction();
       if (F) {
         assert(okToRemainIllegal(F));
-        break;
+        return false;
       }
       Value *CV = CI->getCalledValue();
       FunctionType *OFT = NULL;
@@ -552,7 +662,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         assert(CE);
         assert(CE->getOpcode() == Instruction::BitCast);
         OFT = cast<FunctionType>(cast<PointerType>(CE->getType())->getElementType());
-        CV = CE->getOperand(0); // we are legalizing the arguments now, so no need to bitcast any more
+        Constant *C = CE->getOperand(0);
+        CV = ConstantExpr::getBitCast(C, getLegalizedFunctionType(OFT)->getPointerTo());
       } else {
         // this is a function pointer call
         OFT = cast<FunctionType>(cast<PointerType>(CV->getType())->getElementType());
@@ -568,8 +679,9 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
           Args.push_back(CI->getArgOperand(i));
         } else {
           assert(T == i64);
-          Args.push_back(Zero); // will be fixed
-          Args.push_back(Zero);
+          ChunksVec ArgChunks = getChunks(CI->getArgOperand(i));
+          Args.push_back(ArgChunks[0]);
+          Args.push_back(ArgChunks[1]);
         }
       }
       Instruction *L = CopyDebug(CallInst::Create(CV, Args, "", I), I);
@@ -579,9 +691,11 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         assert(I->getType() == i64);
         ensureFuncs();
         H = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+        Chunks.push_back(L);
+        Chunks.push_back(H);
+      } else {
+        I->replaceAllUsesWith(L);
       }
-      Split.Chunks.push_back(L);
-      Split.Chunks.push_back(H);
       break;
     }
     case Instruction::FPToUI:
@@ -599,14 +713,14 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         L = CopyDebug(CallInst::Create(DtoILow, Args, "", I), I);
         H = CopyDebug(CallInst::Create(DtoIHigh, Args, "", I), I);
       }
-      Split.Chunks.push_back(L);
-      Split.Chunks.push_back(H);
+      Chunks.push_back(L);
+      Chunks.push_back(H);
       break;
     }
     case Instruction::BitCast: {
       if (I->getType() == Type::getDoubleTy(TheModule->getContext())) {
         // fall through to itofp
-      } else {
+      } else if (I->getOperand(0)->getType() == Type::getDoubleTy(TheModule->getContext())) {
         // double to i64
         assert(I->getType() == i64);
         ensureFuncs();
@@ -614,8 +728,13 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         Args.push_back(I->getOperand(0));
         Instruction *L = CopyDebug(CallInst::Create(BDtoILow, Args, "", I), I);
         Instruction *H = CopyDebug(CallInst::Create(BDtoIHigh, Args, "", I), I);
-        Split.Chunks.push_back(L);
-        Split.Chunks.push_back(H);
+        Chunks.push_back(L);
+        Chunks.push_back(H);
+        break;
+      } else {
+        // no-op bitcast
+        assert(I->getType() == I->getOperand(0)->getType());
+        Chunks = getChunks(I->getOperand(0));
         break;
       }
     }
@@ -623,9 +742,7 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
     case Instruction::UIToFP: {
       assert(I->getOperand(0)->getType() == i64);
       ensureFuncs();
-      SmallVector<Value *, 2> Args;
-      Args.push_back(Zero);
-      Args.push_back(Zero);
+      ChunksVec InputChunks = getChunks(I->getOperand(0));
       Function *F;
       switch (I->getOpcode()) {
         case Instruction::SIToFP: F = I->getType() == Type::getDoubleTy(TheModule->getContext()) ? SItoD : SItoF; break;
@@ -637,12 +754,14 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
         }
         default: assert(0);
       }
-      Instruction *D = CopyDebug(CallInst::Create(F, Args, "", I), I);
-      Split.ToFix.push_back(D);
+      Instruction *D = CopyDebug(CallInst::Create(F, InputChunks, "", I), I);
+      I->replaceAllUsesWith(D);
       break;
     }
     case Instruction::Switch: {
       assert(I->getOperand(0)->getType() == i64);
+      ChunksVec InputChunks = getChunks(I->getOperand(0));
+
       // do a switch on the lower 32 bits, into a different basic block for each target, then do a branch in each of those on the high 32 bits
       SwitchInst* SI = cast<SwitchInst>(I);
       BasicBlock *DD = SI->getDefaultDest();
@@ -653,9 +772,8 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
         NumItems += i.getCaseValueEx().getNumItems();
       }
-      SwitchInst *LowSI = SwitchInst::Create(Zero, DD, NumItems, I); // same default destination: if lower bits do not match, go straight to default
+      SwitchInst *LowSI = SwitchInst::Create(InputChunks[0], DD, NumItems, I); // same default destination: if lower bits do not match, go straight to default
       CopyDebug(LowSI, I);
-      Split.ToFix.push_back(LowSI);
 
       typedef std::pair<uint32_t, BasicBlock*> Pair;
       typedef std::vector<Pair> Vec; // vector of pairs of high 32 bits, basic block
@@ -689,14 +807,13 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
 
         /*if (V.size() == 1) {
           // just one option, create a branch
-          Instruction *CheckHigh = CopyDebug(new ICmpInst(*NewBB, ICmpInst::ICMP_EQ, Zero, ConstantInt::get(i32, V[0]->first)), I);
+          Instruction *CheckHigh = CopyDebug(new ICmpInst(*NewBB, ICmpInst::ICMP_EQ, InputChunks[1], ConstantInt::get(i32, V[0]->first)), I);
           Split.ToFix.push_back(CheckHigh);
           CopyDebug(BranchInst::Create(V[0]->second, DD, CheckHigh, NewBB), I);
         } else {*/
 
         // multiple options, create a switch - we could also optimize and make an icmp/branch if just one, as in commented code above
-        SwitchInst *HighSI = SwitchInst::Create(Zero, DD, V.size(), NewBB); // same default destination: if lower bits do not match, go straight to default
-        Split.ToFix.push_back(HighSI);
+        SwitchInst *HighSI = SwitchInst::Create(InputChunks[1], DD, V.size(), NewBB); // same default destination: if lower bits do not match, go straight to default
         for (unsigned i = 0; i < V.size(); i++) {
           BasicBlock *BB = V[i].second;
           HighSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, V[i].first)), BB);
@@ -723,285 +840,42 @@ void ExpandI64::splitInst(Instruction *I, DataLayout& DL) {
       break;
     }
     default: {
-      dumpIR(I);
+      I->dump();
       assert(0 && "some i64 thing we can't legalize yet");
     }
   }
+
+  return true;
 }
 
 ChunksVec ExpandI64::getChunks(Value *V) {
+  assert(isIllegal(V->getType()));
+
   Type *i32 = Type::getInt32Ty(V->getContext());
   Value *Zero = ConstantInt::get(i32, 0);
 
-  int Num = getNumChunks(V->getType());
+  unsigned Num = getNumChunks(V->getType());
 
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
-    uint64_t C = CI->getZExtValue();
+    APInt C = CI->getValue();
     ChunksVec Chunks;
-    Chunks.push_back(ConstantInt::get(i32, (uint32_t)C));
-    Chunks.push_back(ConstantInt::get(i32, (uint32_t)(C >> 32)));
-    for (int i = 2; i < Num; i++) {
-      Chunks.push_back(Zero);
+    for (unsigned i = 0; i < Num; i++) {
+      Chunks.push_back(ConstantInt::get(i32, C.trunc(32)));
+      C = C.lshr(32);
     }
     return Chunks;
   } else if (Instruction *I = dyn_cast<Instruction>(V)) {
     assert(Splits.find(I) != Splits.end());
-    return Splits[I].Chunks;
+    return Splits[I];
   } else if (isa<UndefValue>(V)) {
     ChunksVec Chunks;
-    for (int i = 0; i < Num; i++) {
+    for (unsigned i = 0; i < Num; i++) {
       Chunks.push_back(Zero);
     }
     return Chunks;
   } else {
-    assert(SplitArgs.find(V) != SplitArgs.end());
-    return SplitArgs[V];
-  }
-}
-
-void ExpandI64::finalizeInst(Instruction *I) {
-  SplitInfo &Split = Splits[I];
-  switch (I->getOpcode()) {
-    case Instruction::Load:
-    case Instruction::SExt:
-    case Instruction::FPToUI:
-    case Instruction::FPToSI: {
-      break; // input was legal
-    }
-    case Instruction::ZExt: {
-      Value *Input = I->getOperand(0);
-      unsigned InputBits = Input->getType()->getIntegerBitWidth();
-      unsigned Num = getNumChunks(I->getOperand(0)->getType());
-      Type *i32 = Type::getInt32Ty(TheModule->getContext());
-      Constant *Zero = Constant::getNullValue(i32);
-      if (InputBits <= 32) {
-        cast<Instruction>(Split.Chunks[0])->setOperand(0, I->getOperand(0));
-        for (unsigned i = 1; i < Num; i++) {
-          cast<Instruction>(Split.Chunks[i])->setOperand(0, Zero);
-        }
-      } else {
-        ChunksVec Chunks = getChunks(I->getOperand(0));
-        for (unsigned i = 0; i < Num; i++) {
-          cast<Instruction>(Split.Chunks[i])->setOperand(0, i < Chunks.size() ? Chunks[i] : Zero);
-        }
-      }
-      break;
-    }
-    case Instruction::Trunc: {
-      ChunksVec Chunks = getChunks(I->getOperand(0));
-      unsigned Bits = I->getType()->getIntegerBitWidth();
-      if (Bits < 32) {
-        Instruction *L = Split.ToFix[0];
-        L->setOperand(0, Chunks[0]);
-        I->replaceAllUsesWith(L);
-      } else if (Bits == 32) {
-        I->replaceAllUsesWith(Chunks[0]); // just use the lower 32 bits and you're set
-      } else {
-        int Num = getNumChunks(I->getType());
-        for (int i = 0; i < Num; i++) {
-          cast<Instruction>(Split.Chunks[i])->setOperand(0, Chunks[i]);
-        }
-      }
-      break;
-    }
-    case Instruction::Store:
-    case Instruction::Ret: {
-      // generic fix of an instruction with one illegal input in operand 0, and consisting of legal instructions
-      ChunksVec Chunks = getChunks(I->getOperand(0));
-      int Num = getNumChunks(I->getOperand(0)->getType());
-      for (int i = 0; i < Num; i++) {
-        Split.ToFix[i]->setOperand(0, Chunks[i]);
-      }
-      break;
-    }
-    case Instruction::BitCast: {
-      if (I->getType() == Type::getDoubleTy(TheModule->getContext())) {
-        // fall through to itofp
-      } else {
-        break; // input was legal
-      }
-    }
-    case Instruction::SIToFP:
-    case Instruction::UIToFP: {
-      // generic fix of an instruction with one 64-bit input, and a legal output
-      ChunksVec Chunks = getChunks(I->getOperand(0));
-      Instruction *D = Split.ToFix[0];
-      D->setOperand(0, Chunks[0]);
-      D->setOperand(1, Chunks[1]);
-      I->replaceAllUsesWith(D);
-      break;
-    }
-    case Instruction::Add:
-    case Instruction::Sub:
-    case Instruction::Mul:
-    case Instruction::SDiv:
-    case Instruction::UDiv:
-    case Instruction::SRem:
-    case Instruction::URem:
-    case Instruction::LShr:
-    case Instruction::AShr:
-    case Instruction::Shl: {
-      ChunksVec Left = getChunks(I->getOperand(0));
-      ChunksVec Right = getChunks(I->getOperand(1));
-      int Num = getNumChunks(I->getOperand(0)->getType());
-      if (Num == 2) {
-        CallInst *Call = dyn_cast<CallInst>(Split.Chunks[0]);
-        if (Call) {
-          Call->setOperand(0, Left[0]);
-          Call->setOperand(1, Left[1]);
-          Call->setOperand(2, Right[0]);
-          Call->setOperand(3, Right[1]);
-        } else {
-          // optimized case, 32-bit shifts
-          switch (I->getOpcode()) {
-            case Instruction::LShr: {
-              cast<Instruction>(Split.Chunks[0])->setOperand(0, Left[1]);
-              break;
-            }
-            case Instruction::Shl: {
-              cast<Instruction>(Split.Chunks[1])->setOperand(0, Left[0]);
-              break;
-            }
-            default: assert(0);
-          }
-        }
-      } else {
-        // more than 32 bits. handle simple shifts for lshr and shl
-        ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
-        unsigned Shifts = CI->getZExtValue();
-        if (Shifts % 32 == 0) {
-          unsigned ChunkShifts = Shifts/32;
-          int Move;
-          switch (I->getOpcode()) {
-            case Instruction::LShr: Move =  ChunkShifts; break; // XXX verify this is not off-by-one
-            case Instruction::Shl:  Move = -ChunkShifts; break;
-            default: assert(0);
-          }
-          for (int i = 0; i < Num; i++) {
-            int j = i + Move;
-            if (0 <= j && j < Num) {
-              cast<Instruction>(Split.Chunks[i])->setOperand(0, Left[j]);
-            }
-            // otherwise it was already zero, which is correct
-          }
-        } else {
-          // not a simple multiple of 32.
-          for (int i = 0; i < Num; i++) {
-            cast<Instruction>(Split.ToFix[i])->setOperand(0, Left[i]);
-            cast<Instruction>(Split.ToFix[Num+i])->setOperand(0, Left[i]);
-          }
-        }
-      }
-      break;
-    }
-    case Instruction::ICmp: {
-      ChunksVec Left = getChunks(I->getOperand(0));
-      ChunksVec Right = getChunks(I->getOperand(1));
-      ICmpInst *CE = dyn_cast<ICmpInst>(I);
-      ICmpInst::Predicate Pred = CE->getPredicate();
-      switch (Pred) {
-        case ICmpInst::ICMP_EQ:
-        case ICmpInst::ICMP_NE: {
-          int Num = getNumChunks(I->getOperand(0)->getType());
-          for (int i = 0; i < Num; i++) {
-            Split.ToFix[i]->setOperand(0, Left[i]);
-            Split.ToFix[i]->setOperand(1, Right[i]);
-          }
-          I->replaceAllUsesWith(Split.ToFix[Split.ToFix.size()-1]);
-          break;
-        }
-        default: {
-          Instruction *A = Split.ToFix[0];
-          Instruction *B = Split.ToFix[1];
-          Instruction *C = Split.ToFix[2];
-          Instruction *Final = Split.ToFix[3];
-          A->setOperand(0, Left[1]);  A->setOperand(1, Right[1]);
-          B->setOperand(0, Left[1]);  B->setOperand(1, Right[1]);
-          C->setOperand(0, Left[0]); C->setOperand(1, Right[0]);
-          I->replaceAllUsesWith(Final);
-          break;
-        }
-      }
-      break;
-    }
-    case Instruction::Select: {
-      int Num = getNumChunks(I->getOperand(1)->getType());
-      ChunksVec True = getChunks(I->getOperand(1));
-      ChunksVec False = getChunks(I->getOperand(2));
-      for (int i = 0; i < Num; i++) {
-        cast<Instruction>(Split.Chunks[i])->setOperand(1, True[i]);
-        cast<Instruction>(Split.Chunks[i])->setOperand(2, False[i]);
-      }
-      break;
-    }
-    case Instruction::PHI: {
-      int Num = getNumChunks(I->getType());
-      PHINode *Parent = dyn_cast<PHINode>(I);
-      int PhiNum = Parent->getNumIncomingValues();
-      for (int i = 0; i < Num; i++) {
-        PHINode *P = cast<PHINode>(Split.Chunks[i]);
-        for (int j = 0; j < PhiNum; j++) {
-          ChunksVec Chunks = getChunks(Parent->getIncomingValue(j));
-          P->setIncomingValue(j, Chunks[i]);
-        }
-      }
-      break;
-    }
-    case Instruction::And:
-    case Instruction::Or:
-    case Instruction::Xor: {
-      ChunksVec Left = getChunks(I->getOperand(0));
-      ChunksVec Right = getChunks(I->getOperand(1));
-      int Num = getNumChunks(I->getType());
-      for (int i = 0; i < Num; i++) {
-        Instruction *Chunk = cast<Instruction>(Split.Chunks[i]);
-        Chunk->setOperand(0, Left[i]);
-        Chunk->setOperand(1, Right[i]);
-      }
-      break;
-    }
-    case Instruction::Call: {
-      if (Split.Chunks.size() == 0) break; // was not legalized
-
-      Instruction *L = cast<Instruction>(Split.Chunks[0]);
-      // H doesn't need to be fixed, it's just a call to getHigh
-
-      // fill in split parts of illegals
-      CallInst *CI = dyn_cast<CallInst>(L);
-      CallInst *OCI = dyn_cast<CallInst>(I);
-      int Num = OCI->getNumArgOperands();
-      for (int i = 0, j = 0; i < Num; i++, j++) {
-        if (isIllegal(OCI->getArgOperand(i)->getType())) {
-          ChunksVec Chunks = getChunks(OCI->getArgOperand(i));
-          CI->setArgOperand(j, Chunks[0]);
-          CI->setArgOperand(j + 1, Chunks[1]);
-          j++;
-        }
-      }
-      if (!isIllegal(I->getType())) {
-        // legal return value, so just replace the old call with the new call
-        I->replaceAllUsesWith(L);
-      }
-      break;
-    }
-    case Instruction::Switch: {
-      SwitchInst *SI = dyn_cast<SwitchInst>(I);
-      ChunksVec Chunks = getChunks(SI->getCondition());
-      SwitchInst *NewSI = dyn_cast<SwitchInst>(Split.ToFix[0]);
-      NewSI->setCondition(Chunks[0]);
-      unsigned Num = Split.ToFix.size();
-      for (unsigned i = 1; i < Num; i++) {
-        Instruction *Curr = Split.ToFix[i];
-        if (SwitchInst *SI = dyn_cast<SwitchInst>(Curr)) {
-          SI->setCondition(Chunks[1]);
-        } else {
-          assert(0);
-          Split.ToFix[i]->setOperand(0, Chunks[1]);
-        }
-      }
-      break;
-    }
-    default: dumpIR(I); assert(0);
+    assert(Splits.find(V) != Splits.end());
+    return Splits[V];
   }
 }
 
@@ -1099,9 +973,10 @@ void ExpandI64::ensureFuncs() {
 
 bool ExpandI64::runOnModule(Module &M) {
   TheModule = &M;
+  DL = &getAnalysis<DataLayout>();
+  Splits.clear();
+  Changed = false;
 
-  bool Changed = false;
-  DataLayout DL(&M);
   // pre pass - legalize functions
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
     Function *Func = Iter++;
@@ -1109,92 +984,70 @@ bool ExpandI64::runOnModule(Module &M) {
   }
 
   // first pass - split
-  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *Func = Iter++;
-    for (Function::iterator BB = Func->begin(), E = Func->end();
-         BB != E;
-         ++BB) {
+  DeadVec Dead;
+  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ++Iter) {
+    Function *Func = Iter;
+    if (Func->isDeclaration()) {
+      continue;
+    }
+
+    // Walk the body of the function. We use reverse postorder so that we visit
+    // all operands of an instruction before the instruction itself. The
+    // exception to this is PHI nodes, which we put on a list and handle below.
+    ReversePostOrderTraversal<Function*> RPOT(Func);
+    for (ReversePostOrderTraversal<Function*>::rpo_iterator RI = RPOT.begin(),
+         RE = RPOT.end(); RI != RE; ++RI) {
+      BasicBlock *BB = *RI;
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
         Instruction *I = Iter++;
-        //dump("consider"); dumpIR(I);
-        // FIXME: this could be optimized, we don't need all Num for all instructions
-        int Num = I->getNumOperands();
-        for (int i = -1; i < Num; i++) { // -1 is the type of I itself
-          Type *T = i == -1 ? I->getType() : I->getOperand(i)->getType();
-          if (isIllegal(T)) {
+        if (!isLegalInstruction(I)) {
+          if (splitInst(I)) {
             Changed = true;
-            splitInst(I, DL);
-            break;
+            Dead.push_back(I);
           }
         }
       }
     }
-  }
-  // second pass pass - finalize and connect
-  if (Changed) {
-    // Finalize each element
-    for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
-      //dump("finalize"); dumpIR(I->first);
-      finalizeInst(I->first);
-    }
 
-    // Remove original illegal values
-    if (!getenv("I64DEV")) { // XXX during development
-      // First, unlink them
-      Type *i64 = Type::getInt64Ty(TheModule->getContext());
-      Value *Zero  = Constant::getNullValue(i64);
-      for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
-        //dump("unlink"); dumpIR(I->first);
-        int Num = I->first->getNumOperands();
-        for (int i = 0; i < Num; i++) { // -1 is the type of I itself
-          Value *V = I->first->getOperand(i);
-          Type *T = V->getType();
-          if (isIllegal(T)) {
-            I->first->setOperand(i, Zero);
-          }
+    // Fix up PHI node operands.
+    while (!Phis.empty()) {
+      PHINode *PN = Phis.pop_back_val();
+      ChunksVec OutputChunks = getChunks(PN);
+      for (unsigned j = 0, je = PN->getNumIncomingValues(); j != je; ++j) {
+        Value *Op = PN->getIncomingValue(j);
+        ChunksVec InputChunks = getChunks(Op);
+        for (unsigned k = 0, ke = OutputChunks.size(); k != ke; ++k) {
+          PHINode *NewPN = cast<PHINode>(OutputChunks[k]);
+          NewPN->addIncoming(InputChunks[k], PN->getIncomingBlock(j));
         }
       }
+      PN->dropAllReferences();
+    }
 
-      // Now actually remove them
-      for (SplitsMap::iterator I = Splits.begin(); I != Splits.end(); I++) {
-        //dump("delete"); dumpIR(I->first);
-        I->first->eraseFromParent();
-      }
+    // Delete instructions which were replaced. We do this after the full walk
+    // of the instructions so that all uses are replaced first.
+    while (!Dead.empty()) {
+      Instruction *D = Dead.pop_back_val();
+      D->eraseFromParent();
     }
   }
 
-  // post pass - clean up illegal functions that were legalized
+  // post pass - clean up illegal functions that were legalized. We do this
+  // after the full walk of the functions so that all uses are replaced first.
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
     Function *Func = Iter++;
     removeIllegalFunc(Func);
   }
 
-  // remove bitcasts that were introduced while legalizing functions
-  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *Func = Iter++;
-    for (Function::iterator BB = Func->begin(), E = Func->end();
-         BB != E;
-         ++BB) {
-      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
-           Iter != E; ) {
-        Instruction *I = Iter++;
-        unsigned Opcode = I->getOpcode();
-        if (Opcode == Instruction::BitCast || Opcode == Instruction::PtrToInt) {
-          if (ConstantExpr *CE = dyn_cast<ConstantExpr>(I->getOperand(0))) {
-            assert(CE->getOpcode() == Instruction::BitCast);
-            assert(isa<FunctionType>(cast<PointerType>(CE->getType())->getElementType()));
-            I->setOperand(0, CE->getOperand(0));
-          }
-        }
-      }
-    }
-  }
-
   return Changed;
+}
+
+void ExpandI64::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<DataLayout>();
+  ModulePass::getAnalysisUsage(AU);
 }
 
 ModulePass *llvm::createExpandI64Pass() {
   return new ExpandI64();
 }
-
