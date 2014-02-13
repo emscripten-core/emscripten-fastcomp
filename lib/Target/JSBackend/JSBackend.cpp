@@ -1977,9 +1977,9 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
           if (CE->getOpcode() == Instruction::PtrToInt) {
             Data = getConstAsOffset(V, Absolute + Offset - OffsetStart);
           } else if (CE->getOpcode() == Instruction::Add) {
-            V = dyn_cast<ConstantExpr>(V)->getOperand(0);
+            V = cast<ConstantExpr>(V)->getOperand(0);
             Data = getConstAsOffset(V, Absolute + Offset - OffsetStart);
-            ConstantInt *CI = dyn_cast<ConstantInt>(CE->getOperand(1));
+            ConstantInt *CI = cast<ConstantInt>(CE->getOperand(1));
             Data += *CI->getValue().getRawData();
           } else {
             dumpIR(CE);
@@ -2029,7 +2029,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
         unsigned Data = 0;
         if (CE->getOpcode() == Instruction::Add) {
           Data = cast<ConstantInt>(CE->getOperand(1))->getZExtValue();
-          CE = dyn_cast<ConstantExpr>(CE->getOperand(0));
+          CE = cast<ConstantExpr>(CE->getOperand(0));
         }
         assert(CE->isCast());
         Value *V = CE->getOperand(0);
