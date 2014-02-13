@@ -490,26 +490,28 @@ bool ExpandI64::splitInst(Instruction *I) {
         Chunks.push_back(High);
       } else {
         // more than 64 bits. handle simple shifts for lshr and shl
-        assert(I->getOpcode() == Instruction::LShr || I->getOpcode() == Instruction::Shl);
+        assert(I->getOpcode() == Instruction::LShr || I->getOpcode() == Instruction::AShr || I->getOpcode() == Instruction::Shl);
         ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
         unsigned Shifts = CI->getZExtValue();
         Constant *Frac = ConstantInt::get(i32, Shifts % 32);
         Constant *Comp = ConstantInt::get(i32, 32 - (Shifts % 32));
         Instruction::BinaryOps Opcode, Reverse;
         unsigned ShiftChunks, Dir;
+        Value *TopFiller = Zero;
         if (I->getOpcode() == Instruction::Shl) {
           Opcode = Instruction::Shl;
           Reverse = Instruction::LShr;
           ShiftChunks = -(Shifts/32);
           Dir = -1;
-        } else if (I->getOpcode() == Instruction::LShr) {
+        } else {
           Opcode = Instruction::LShr;
           Reverse = Instruction::Shl;
           ShiftChunks = Shifts/32;
           Dir = 1;
-        } else {
-          errs() << *I << "\n";
-          assert(0);
+          if (I->getOpcode() == Instruction::AShr) {
+            Value *Cond = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, LeftChunks[LeftChunks.size()-1], Zero), I);
+            TopFiller = CopyDebug(SelectInst::Create(Cond, ConstantInt::get(i32, -1), Zero, "", I), I);
+          }
         }
         for (unsigned i = 0; i < Num; i++) {
           Value *L;
@@ -523,7 +525,7 @@ bool ExpandI64::splitInst(Instruction *I) {
           if (i + ShiftChunks + Dir < LeftChunks.size()) {
             H = LeftChunks[i + ShiftChunks + Dir];
           } else {
-            H = Zero;
+            H = TopFiller;
           }
 
           // shifted the fractional amount
