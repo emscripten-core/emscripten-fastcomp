@@ -517,7 +517,8 @@ std::string JSWriter::getCast(const StringRef &s, const Type *t, AsmCast sign) {
         default: llvm_unreachable("Unsupported integer cast bitwidth");
       }
     }
-    case Type::PointerTyID: return (s + "|0").str();
+    case Type::PointerTyID:
+      return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
   }
 }
 
