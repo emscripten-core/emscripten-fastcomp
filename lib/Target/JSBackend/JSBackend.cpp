@@ -2083,6 +2083,7 @@ void JSWriter::calculateNativizedVars(const Function *F) {
       const Instruction *I = &*II;
       if (const AllocaInst *AI = dyn_cast<const AllocaInst>(I)) {
         if (AI->getAllocatedType()->isVectorTy()) continue; // we do not nativize vectors, we rely on the LLVM optimizer to avoid load/stores on them
+        if (AI->getAllocatedType()->isAggregateType()) continue; // we do not nativize aggregates either
         // this is on the stack. if its address is never used nor escaped, we can nativize it
         bool Fail = false;
         for (Instruction::const_use_iterator UI = I->use_begin(), UE = I->use_end(); UI != UE && !Fail; ++UI) {
