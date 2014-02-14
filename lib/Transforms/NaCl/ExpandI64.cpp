@@ -493,8 +493,9 @@ bool ExpandI64::splitInst(Instruction *I) {
         assert(I->getOpcode() == Instruction::LShr || I->getOpcode() == Instruction::AShr || I->getOpcode() == Instruction::Shl);
         ConstantInt *CI = cast<ConstantInt>(I->getOperand(1));
         unsigned Shifts = CI->getZExtValue();
-        Constant *Frac = ConstantInt::get(i32, Shifts % 32);
-        Constant *Comp = ConstantInt::get(i32, 32 - (Shifts % 32));
+        unsigned Fraction = Shifts % 32;
+        Constant *Frac = ConstantInt::get(i32, Fraction);
+        Constant *Comp = ConstantInt::get(i32, 32 - Fraction);
         Instruction::BinaryOps Opcode, Reverse;
         unsigned ShiftChunks, Dir;
         Value *TopFiller = Zero;
@@ -530,11 +531,19 @@ bool ExpandI64::splitInst(Instruction *I) {
 
           // shifted the fractional amount
           if (Frac != Zero && L != Zero) {
-            L = CopyDebug(BinaryOperator::Create(Opcode, L, Frac, "", I), I);
+            if (Fraction == 32) {
+              L = Zero;
+            } else {
+              L = CopyDebug(BinaryOperator::Create(Opcode, L, Frac, "", I), I);
+            }
           }
           // shifted the complement-fractional amount to the other side
           if (Comp != Zero && H != Zero) {
-            H = CopyDebug(BinaryOperator::Create(Reverse, H, Comp, "", I), I);
+            if (Fraction == 0) {
+              H = TopFiller;
+            } else {
+              H = CopyDebug(BinaryOperator::Create(Reverse, H, Comp, "", I), I);
+            }
           }
 
           // Or the parts together. Since we may have zero, try to fold it away.
