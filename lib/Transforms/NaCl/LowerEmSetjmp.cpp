@@ -199,6 +199,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   typedef std::vector<PHINode*> Phis;
   typedef std::map<Function*, Phis> FunctionPhisMap;
   FunctionPhisMap SetjmpOutputPhis;
+  std::vector<Instruction*> ToErase;
 
   if (Setjmp) {
     for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
@@ -221,7 +222,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         Args.push_back(CI->getArgOperand(0));
         Args.push_back(ConstantInt::get(i32, P.size())); // our index in the function is our place in the array + 1
         CallInst::Create(EmSetjmp, Args, "", CI);
-        CI->eraseFromParent();
+        ToErase.push_back(CI);
       } else {
         errs() << **UI << "\n";
         report_fatal_error("bad use of setjmp, should only call it");
@@ -282,7 +283,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
             SI->addCase(cast<ConstantInt>(ConstantInt::get(i32, i+1)), P[i]->getParent());
             P[i]->addIncoming(LongjmpResult, BB);
           }
-          TI->eraseFromParent(); // new terminator is now the switch
+          ToErase.push_back(TI); // new terminator is now the switch
 
           // we are splitting the block here, and must continue to find other calls in the block - which is now split. so continue
           // to traverse in the Tail
@@ -294,6 +295,10 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         }
       }
     }
+  }
+
+  for (int i = 0; i < ToErase.size(); i++) {
+    ToErase[i]->eraseFromParent();
   }
 
   // Finally, our modifications to the cfg can break dominance of SSA variables. For example,
