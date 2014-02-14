@@ -217,6 +217,21 @@ define i64 @load(i64 *%a) {
   ret i64 %c
 }
 
+; CHECK: define i32 @aligned_load(i64* %a) {
+; CHECK:   %1 = ptrtoint i64* %a to i32
+; CHECK:   %2 = inttoptr i32 %1 to i32*
+; CHECK:   %3 = load i32* %2, align 16
+; CHECK:   %4 = add i32 %1, 4
+; CHECK:   %5 = inttoptr i32 %4 to i32*
+; CHECK:   %6 = load i32* %5, align 4
+; CHECK:   call void @setHigh32(i32 %6)
+; CHECK:   ret i32 %3
+; CHECK: }
+define i64 @aligned_load(i64 *%a) {
+  %c = load i64* %a, align 16
+  ret i64 %c
+}
+
 ; CHECK: define void @store(i64* %a, i32, i32) {
 ; CHECK:   %3 = ptrtoint i64* %a to i32
 ; CHECK:   %4 = inttoptr i32 %3 to i32*
@@ -228,6 +243,20 @@ define i64 @load(i64 *%a) {
 ; CHECK: }
 define void @store(i64 *%a, i64 %b) {
   store i64 %b, i64* %a
+  ret void
+}
+
+; CHECK: define void @aligned_store(i64* %a, i32, i32) {
+; CHECK:   %3 = ptrtoint i64* %a to i32
+; CHECK:   %4 = inttoptr i32 %3 to i32*
+; CHECK:   store i32 %0, i32* %4, align 16
+; CHECK:   %5 = add i32 %3, 4
+; CHECK:   %6 = inttoptr i32 %5 to i32*
+; CHECK:   store i32 %1, i32* %6, align 4
+; CHECK:   ret void
+; CHECK: }
+define void @aligned_store(i64 *%a, i64 %b) {
+  store i64 %b, i64* %a, align 16
   ret void
 }
 
