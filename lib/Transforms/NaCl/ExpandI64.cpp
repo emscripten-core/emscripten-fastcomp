@@ -516,7 +516,7 @@ bool ExpandI64::splitInst(Instruction *I) {
           ShiftChunks = Shifts/32;
           Dir = 1;
           if (I->getOpcode() == Instruction::AShr) {
-            Value *Cond = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLE, LeftChunks[LeftChunks.size()-1], Zero), I);
+            Value *Cond = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_SLT, LeftChunks[LeftChunks.size()-1], Zero), I);
             TopFiller = CopyDebug(SelectInst::Create(Cond, ConstantInt::get(i32, -1), Zero, "", I), I);
           }
         }
