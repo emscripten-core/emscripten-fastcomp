@@ -555,15 +555,28 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
+// Test whether the given value is known to be a null pointer.
+static bool isAbsolute(const Value *P) {
+  if (const IntToPtrInst *ITP = dyn_cast<IntToPtrInst>(P)) {
+    return isa<ConstantInt>(ITP->getOperand(0));
+  }
+
+  if (isa<ConstantPointerNull>(P)) {
+    return true;
+  }
+
+  return false;
+}
+
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, const Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(getJSName(I), I->getType());
   unsigned Bytes = T->getPrimitiveSizeInBits()/8;
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = Assign + getPtrLoad(P);
-    if (const IntToPtrInst *ITP = dyn_cast<IntToPtrInst>(P)) {
+    if (isAbsolute(P)) {
       // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
-      if (isa<ConstantInt>(ITP->getOperand(0))) text += "; abort() /* segfault, load from absolute addr */";
+      text += "; abort() /* segfault, load from absolute addr */";
     }
   } else {
     // unaligned in some manner
@@ -791,7 +804,7 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     case 1: return "HEAP8[" + utostr(Addr) + "]";
     }
   } else {
-    return getHeapAccess(getOpName(Ptr), Bytes, t->isIntegerTy());
+    return getHeapAccess(getPtrAsStr(Ptr), Bytes, t->isIntegerTy());
   }
 }
 
