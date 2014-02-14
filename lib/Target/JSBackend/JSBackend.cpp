@@ -1568,8 +1568,8 @@ void JSWriter::printFunctionBody(const Function *F) {
   R.Render();
 
   // Emit local variables
-  UsedVars["sp"] = Type::getInt32Ty(F->getContext())->getTypeID();
-  UsedVars["label"] = Type::getInt32Ty(F->getContext())->getTypeID();
+  UsedVars["sp"] = Type::IntegerTyID;
+  UsedVars["label"] = Type::IntegerTyID;
   if (!UsedVars.empty()) {
     unsigned Count = 0;
     for (VarMap::const_iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
