@@ -389,7 +389,10 @@ bool ExpandI64::splitInst(Instruction *I) {
         Instruction *Add = i == 0 ? AI : CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(i32, 4*i), "", I), I);
         Instruction *Ptr = CopyDebug(new IntToPtrInst(Add, i32P, "", I), I);
         LoadInst *Chunk = new LoadInst(Ptr, "", I); CopyDebug(Chunk, I);
-        Chunk->setAlignment(std::min(4U, LI->getAlignment()));
+        Chunk->setAlignment(MinAlign(LI->getAlignment() == 0 ?
+                                         DL->getABITypeAlignment(LI->getType()) :
+                                         LI->getAlignment(),
+                                     4*i));
         Chunk->setVolatile(LI->isVolatile());
         Chunk->setOrdering(LI->getOrdering());
         Chunk->setSynchScope(LI->getSynchScope());
@@ -406,7 +409,10 @@ bool ExpandI64::splitInst(Instruction *I) {
         Instruction *Add = i == 0 ? AI : CopyDebug(BinaryOperator::Create(Instruction::Add, AI, ConstantInt::get(i32, 4*i), "", I), I);
         Instruction *Ptr = CopyDebug(new IntToPtrInst(Add, i32P, "", I), I);
         StoreInst *Chunk = new StoreInst(InputChunks[i], Ptr, I);
-        Chunk->setAlignment(std::min(4U, SI->getAlignment()));
+        Chunk->setAlignment(MinAlign(SI->getAlignment() == 0 ?
+                                         DL->getABITypeAlignment(SI->getValueOperand()->getType()) :
+                                         SI->getAlignment(),
+                                     4*i));
         Chunk->setVolatile(SI->isVolatile());
         Chunk->setOrdering(SI->getOrdering());
         Chunk->setSynchScope(SI->getSynchScope());
