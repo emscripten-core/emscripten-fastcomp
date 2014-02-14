@@ -10,28 +10,18 @@ CallHandlerMap *CallHandlers;
 // Definitions
 
 unsigned getNumArgOperands(const Instruction *I) {
-  if (const CallInst *CI = dyn_cast<const CallInst>(I)) {
-    return CI->getNumArgOperands();
-  } else {
-    return cast<const InvokeInst>(I)->getNumArgOperands();
-  }
+  return ImmutableCallSite(I).arg_size();
 }
 
 const Value *getActuallyCalledValue(const Instruction *I) {
-  const Value *CV = NULL;
-  if (const CallInst *CI = dyn_cast<const CallInst>(I)) {
-    CV = CI->getCalledValue();
-  } else {
-    CV = cast<const InvokeInst>(I)->getCalledValue();
-  }
-  if (const BitCastInst *B = dyn_cast<const BitCastInst>(CV)) {
-    // if the called value is a bitcast of a function, then we just call it directly, properly
-    // for example, extern void x() in C will turn into void x(...) in LLVM IR, then the IR bitcasts
-    // it to the proper form right before the call. this both causes an unnecessary indirect
-    // call, and it is done with the wrong type. TODO: don't even put it into the function table
-    if (const Function *F = dyn_cast<const Function>(B->getOperand(0))) {
-      CV = F;
-    }
+  const Value *CV = ImmutableCallSite(I).getCalledValue();
+
+  // if the called value is a bitcast of a function, then we just call it directly, properly
+  // for example, extern void x() in C will turn into void x(...) in LLVM IR, then the IR bitcasts
+  // it to the proper form right before the call. this both causes an unnecessary indirect
+  // call, and it is done with the wrong type. TODO: don't even put it into the function table
+  if (const Function *F = dyn_cast<const Function>(CV->stripPointerCasts())) {
+    CV = F;
   }
   return CV;
 }

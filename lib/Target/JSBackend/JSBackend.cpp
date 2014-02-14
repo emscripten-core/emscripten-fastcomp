@@ -30,6 +30,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
+#include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
@@ -303,7 +304,7 @@ namespace {
     }
     std::string getPtrAsStr(const Value* Ptr) {
       Ptr = Ptr->stripPointerCasts();
-      if (isa<const ConstantPointerNull>(Ptr)) return "0";
+      if (isa<const ConstantPointerNull>(Ptr) || isa<UndefValue>(Ptr)) return "0";
       if (const Function *F = dyn_cast<Function>(Ptr)) {
         return utostr(getFunctionIndex(F));
       } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
@@ -619,7 +620,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
         break;
       }
       case 4: {
-        if (T->isIntegerTy()) {
+        if (T->isIntegerTy() || T->isPointerTy()) {
           switch (Alignment) {
             case 2: {
               text = Assign + "HEAPU16[" + PS + ">>1]|" +
@@ -636,6 +637,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
             default: assert(0 && "bad 4i store");
           }
         } else { // float
+          assert(T->isFloatingPointTy());
           switch (Alignment) {
             case 2: {
               text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1]" + sep +
@@ -713,7 +715,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         break;
       }
       case 4: {
-        if (T->isIntegerTy()) {
+        if (T->isIntegerTy() || T->isPointerTy()) {
           switch (Alignment) {
             case 2: {
               text = "HEAP16[" + PS + ">>1]=" + VS + "&65535;" +
@@ -730,6 +732,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
             default: assert(0 && "bad 4i store");
           }
         } else { // float
+          assert(T->isFloatingPointTy());
           text = "HEAPF32[tempDoublePtr>>2]=" + VS + ';';
           switch (Alignment) {
             case 2: {
@@ -795,9 +798,10 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     default: llvm_unreachable("Unsupported type");
     case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
     case 4: {
-      if (t->isIntegerTy()) {
+      if (t->isIntegerTy() || t->isPointerTy()) {
         return "HEAP32[" + utostr(Addr >> 2) + "]";
       } else {
+        assert(t->isFloatingPointTy());
         return "HEAPF32[" + utostr(Addr >> 2) + "]";
       }
     }
@@ -805,7 +809,7 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     case 1: return "HEAP8[" + utostr(Addr) + "]";
     }
   } else {
-    return getHeapAccess(getPtrAsStr(Ptr), Bytes, t->isIntegerTy());
+    return getHeapAccess(getPtrAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
   }
 }
 
@@ -884,7 +888,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       }
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
-      return CV->getType()->isIntegerTy() ? "0" : getCast("0", CV->getType());
+      return CV->getType()->isIntegerTy() || CV->getType()->isPointerTy() ? "0" : getCast("0", CV->getType());
     } else if (isa<ConstantAggregateZero>(CV)) {
       if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
         if (VT->getElementType()->isIntegerTy()) {
