@@ -865,7 +865,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       }
       return S;
     } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-      if (sign == ASM_SIGNED && CI->getValue().getBitWidth() == 1) sign = ASM_UNSIGNED; // booleans cannot be signed in a meaningful way
+      if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
+        sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
+      }
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else if (isa<UndefValue>(CV)) {
       return CV->getType()->isIntegerTy() ? "0" : getCast("0", CV->getType());
