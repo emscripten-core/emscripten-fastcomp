@@ -106,7 +106,7 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // This pass converts those arguments to 32-bit.
   PM.add(createCanonicalizeMemIntrinsicsPass());
 
-#if 0 // XXX EMSCRIPTEN: PNaCl strips metadata to avoid making it ABI-exposed; empscripten doesn't need this.
+#if 0 // XXX EMSCRIPTEN: PNaCl strips metadata to avoid making it ABI-exposed; emscripten doesn't need this.
   // We place StripMetadata after optimization passes because
   // optimizations depend on the metadata.
   PM.add(createStripMetadataPass());
