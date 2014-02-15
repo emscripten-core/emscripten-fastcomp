@@ -45,6 +45,7 @@ DEF_CALL_HANDLER(__default__, {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
     FT = F->getFunctionType();
   } else {
+    if (isAbsolute(CV)) return "abort(); /* segfault, call an absolute addr */";
     // function pointer call
     FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
     ensureFunctionTable(FT);

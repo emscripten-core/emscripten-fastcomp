@@ -302,6 +302,18 @@ namespace {
         return getGlobalAddress(V->getName().str());
       }
     }
+
+    // Test whether the given value is known to be an absolute value or one we turn into an absolute value
+    bool isAbsolute(const Value *P) {
+      if (const IntToPtrInst *ITP = dyn_cast<IntToPtrInst>(P)) {
+        return isa<ConstantInt>(ITP->getOperand(0));
+      }
+      if (isa<ConstantPointerNull>(P) || isa<UndefValue>(P)) {
+        return true;
+      }
+      return false;
+    }
+
     std::string getPtrAsStr(const Value* Ptr) {
       Ptr = Ptr->stripPointerCasts();
       if (isa<const ConstantPointerNull>(Ptr) || isa<UndefValue>(Ptr)) return "0";
@@ -555,19 +567,6 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
     if (Orig < (1<<20)) return "(" + OtherStr + "*" + utostr(Orig) + ")|0"; // small enough, avoid imul
   }
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
-}
-
-// Test whether the given value is known to be a null pointer.
-static bool isAbsolute(const Value *P) {
-  if (const IntToPtrInst *ITP = dyn_cast<IntToPtrInst>(P)) {
-    return isa<ConstantInt>(ITP->getOperand(0));
-  }
-
-  if (isa<ConstantPointerNull>(P)) {
-    return true;
-  }
-
-  return false;
 }
 
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
