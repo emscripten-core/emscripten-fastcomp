@@ -15,5 +15,5 @@
 @negative_offset = internal global i32 add
     (i32 ptrtoint (i32* @var to i32), i32 -8)
 
-; ARM: RELOCATION RECORDS FOR [.data.rel.local]:
+; ARM: RELOCATION RECORDS
 ; ARM-NEXT: 0 R_ARM_ABS32 .bss

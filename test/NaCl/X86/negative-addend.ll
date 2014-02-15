@@ -20,8 +20,8 @@
 ; Note that the addend 4294971384 below equals 0x100000ff8, where
 ; 0xff8 comes from subtracting 8 from the offset of @var.
 
-; X8632: RELOCATION RECORDS FOR [.data]:
+; X8632: RELOCATION RECORDS
 ; X8632-NEXT: 0 R_386_32 Unknown
 
-; X8664: RELOCATION RECORDS FOR [.data]:
+; X8664: RELOCATION RECORDS
 ; X8664-NEXT: 0 R_X86_64_32 .bss+4294971384
