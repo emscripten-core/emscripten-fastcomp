@@ -334,6 +334,14 @@ DEF_CALL_HANDLER(llvm_dbg_value, {
   return "";
 })
 
+DEF_CALL_HANDLER(llvm_lifetime_start, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_lifetime_end, {
+  return "";
+})
+
 DEF_CALL_HANDLER(bitshift64Lshr, {
   return CH___default__(CI, "_bitshift64Lshr", 3);
 })
@@ -723,6 +731,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_expect_i32);
   SETUP_CALL_HANDLER(llvm_dbg_declare);
   SETUP_CALL_HANDLER(llvm_dbg_value);
+  SETUP_CALL_HANDLER(llvm_lifetime_start);
+  SETUP_CALL_HANDLER(llvm_lifetime_end);
   SETUP_CALL_HANDLER(bitshift64Lshr);
   SETUP_CALL_HANDLER(bitshift64Ashr);
   SETUP_CALL_HANDLER(bitshift64Shl);
