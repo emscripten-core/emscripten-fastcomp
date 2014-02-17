@@ -1758,7 +1758,7 @@ void JSWriter::printModuleBody() {
   bool first = true;
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
-    if (I->isDeclaration()) {
+    if (I->isDeclaration() && I->hasNUsesOrMore(1)) {
       if (first) {
         first = false;
       } else {
