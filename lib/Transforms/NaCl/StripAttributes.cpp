@@ -54,9 +54,6 @@ INITIALIZE_PASS(StripAttributes, "nacl-strip-attributes",
                 "Strip out attributes that are not part of PNaCl's ABI",
                 false, false)
 
-// Most attributes are just hints which can safely be removed.  A few
-// attributes can break programs if removed, so check all attributes
-// before removing them, in case LLVM adds new attributes.
 static void CheckAttributes(AttributeSet Attrs) {
   for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
     for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
@@ -65,6 +62,11 @@ static void CheckAttributes(AttributeSet Attrs) {
         continue;
       }
       switch (Attr->getKindAsEnum()) {
+        // The vast majority of attributes are hints that can safely
+        // be removed, so don't complain if we see attributes we don't
+        // recognize.
+        default:
+
         // The following attributes can affect calling conventions.
         // Rather than complaining, we just strip these out.
         // ExpandSmallArguments should have rendered SExt/ZExt
@@ -122,6 +124,8 @@ static void CheckAttributes(AttributeSet Attrs) {
         case Attribute::UWTable:
           break;
 
+        // A few attributes can change program behaviour if removed,
+        // so check for these.
         case Attribute::ByVal:
         case Attribute::StructRet:
         case Attribute::Alignment:
@@ -133,10 +137,6 @@ static void CheckAttributes(AttributeSet Attrs) {
         case Attribute::Nest:
           Attrs.dump();
           report_fatal_error("Unsupported attribute");
-
-        default:
-          Attrs.dump();
-          report_fatal_error("Unrecognized attribute");
       }
     }
   }
