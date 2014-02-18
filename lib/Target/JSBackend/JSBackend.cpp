@@ -64,6 +64,11 @@ WarnOnUnaligned("emscripten-warn-unaligned",
                 cl::desc("Warns about unaligned loads and stores (which can negatively affect performance)"),
                 cl::init(false));
 
+static cl::opt<int>
+ReservedFunctionPointers("emscripten-reserved-function-pointers",
+                         cl::desc("Number of reserved slots in function tables for functions to be added at runtime (see emscripten RESERVED_FUNCTION_POINTERS option)"),
+                         cl::init(0));
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
@@ -259,15 +264,21 @@ namespace {
       }
       return Ret;
     }
+    FunctionTable& ensureFunctionTable(const FunctionType *FT) {
+      FunctionTable &Table = FunctionTables[getFunctionSignature(FT)];
+      unsigned MinSize = ReservedFunctionPointers ? 2*(ReservedFunctionPointers+1) : 1; // each reserved slot must be 2-aligned
+      while (Table.size() < MinSize) Table.push_back("0");
+      return Table;
+    }
     unsigned getFunctionIndex(const Function *F) {
       const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType(), &Name);
-      FunctionTable &Table = FunctionTables[Sig];
+      FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
       // use alignment info to avoid unnecessary holes. This is not optimal though,
       // (1) depends on order of appearance, and (2) really just need align for &class::method, see test_polymorph
       unsigned Alignment = F->getAlignment() || 1;
-      while (Table.size() == 0 || Table.size() % Alignment) Table.push_back("0");
+      while (Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
       Table.push_back(Name);
       IndexedFunctions[Name] = Index;
@@ -279,9 +290,6 @@ namespace {
       }
 
       return Index;
-    }
-    void ensureFunctionTable(const FunctionType *F) {
-      FunctionTables[getFunctionSignature(F)];
     }
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
