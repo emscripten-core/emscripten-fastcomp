@@ -43,8 +43,6 @@ R600TargetLowering::R600TargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::AND,  MVT::v4i32, Expand);
   setOperationAction(ISD::FP_TO_SINT, MVT::v4i32, Expand);
   setOperationAction(ISD::FP_TO_UINT, MVT::v4i32, Expand);
-  setOperationAction(ISD::MUL,  MVT::v2i32, Expand);
-  setOperationAction(ISD::MUL,  MVT::v4i32, Expand);
   setOperationAction(ISD::OR, MVT::v4i32, Expand);
   setOperationAction(ISD::OR, MVT::v2i32, Expand);
   setOperationAction(ISD::SINT_TO_FP, MVT::v4i32, Expand);
@@ -52,10 +50,6 @@ R600TargetLowering::R600TargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::SHL, MVT::v2i32, Expand);
   setOperationAction(ISD::SRL, MVT::v4i32, Expand);
   setOperationAction(ISD::SRL, MVT::v2i32, Expand);
-  setOperationAction(ISD::SRA, MVT::v4i32, Expand);
-  setOperationAction(ISD::SRA, MVT::v2i32, Expand);
-  setOperationAction(ISD::SUB, MVT::v4i32, Expand);
-  setOperationAction(ISD::SUB, MVT::v2i32, Expand);
   setOperationAction(ISD::UINT_TO_FP, MVT::v4i32, Expand);
   setOperationAction(ISD::UDIV, MVT::v4i32, Expand);
   setOperationAction(ISD::UREM, MVT::v4i32, Expand);
@@ -83,9 +77,6 @@ R600TargetLowering::R600TargetLowering(TargetMachine &TM) :
 
   setOperationAction(ISD::SELECT, MVT::i32, Custom);
   setOperationAction(ISD::SELECT, MVT::f32, Custom);
-
-  setOperationAction(ISD::VSELECT, MVT::v4i32, Expand);
-  setOperationAction(ISD::VSELECT, MVT::v2i32, Expand);
 
   // Legalize loads and stores to the private address space.
   setOperationAction(ISD::LOAD, MVT::i32, Custom);

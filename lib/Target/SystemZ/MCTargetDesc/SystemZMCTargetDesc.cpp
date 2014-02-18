@@ -57,7 +57,7 @@ static MCSubtargetInfo *createSystemZMCSubtargetInfo(StringRef TT,
 
 static MCCodeGenInfo *createSystemZMCCodeGenInfo(StringRef TT, Reloc::Model RM,
                                                  CodeModel::Model CM,
-                                                 CodeGenOpt::Level OL) {
+                                                 CodeGenOpt::Level) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
 
   // Static code is suitable for use in a dynamic executable; there is no
@@ -98,7 +98,7 @@ static MCCodeGenInfo *createSystemZMCCodeGenInfo(StringRef TT, Reloc::Model RM,
     CM = CodeModel::Small;
   else if (CM == CodeModel::JITDefault)
     CM = RM == Reloc::PIC_ ? CodeModel::Small : CodeModel::Medium;
-  X->InitMCCodeGenInfo(RM, CM, OL);
+  X->InitMCCodeGenInfo(RM, CM);
   return X;
 }
 

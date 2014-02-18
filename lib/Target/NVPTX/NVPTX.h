@@ -16,7 +16,6 @@
 #define LLVM_TARGET_NVPTX_H
 
 #include "MCTargetDesc/NVPTXBaseInfo.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -63,9 +62,6 @@ createNVPTXISelDag(NVPTXTargetMachine &TM, llvm::CodeGenOpt::Level OptLevel);
 FunctionPass *createLowerStructArgsPass(NVPTXTargetMachine &);
 FunctionPass *createNVPTXReMatPass(NVPTXTargetMachine &);
 FunctionPass *createNVPTXReMatBlockPass(NVPTXTargetMachine &);
-ModulePass *createGenericToNVVMPass();
-ModulePass *createNVVMReflectPass();
-ModulePass *createNVVMReflectPass(const StringMap<int>& Mapping);
 
 bool isImageOrSamplerVal(const Value *, const Module *);
 

@@ -81,8 +81,7 @@ AMDGPUDevice* getDeviceFromName(const std::string &deviceName,
     return new AMDGPUNIDevice(ptr);
   } else if (deviceName == "SI" ||
              deviceName == "tahiti" || deviceName == "pitcairn" ||
-             deviceName == "verde"  || deviceName == "oland" ||
-	     deviceName == "hainan") {
+             deviceName == "verde"  || deviceName == "oland") {
     return new AMDGPUSIDevice(ptr);
   } else {
 #if DEBUG

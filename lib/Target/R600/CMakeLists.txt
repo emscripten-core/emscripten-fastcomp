@@ -21,6 +21,7 @@ add_llvm_target(R600CodeGen
   AMDILISelDAGToDAG.cpp
   AMDILISelLowering.cpp
   AMDILNIDevice.cpp
+  AMDILPeepholeOptimizer.cpp
   AMDILSIDevice.cpp
   AMDGPUAsmPrinter.cpp
   AMDGPUFrameLowering.cpp

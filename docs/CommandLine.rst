@@ -618,8 +618,6 @@ would yield the help output:
     -help             - display available options (-help-hidden for more)
     -o <filename>     - Specify output filename
 
-.. _grouping options into categories:
-
 Grouping options into categories
 --------------------------------
 

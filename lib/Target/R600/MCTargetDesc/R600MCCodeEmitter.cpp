@@ -36,12 +36,13 @@ class R600MCCodeEmitter : public AMDGPUMCCodeEmitter {
   const MCInstrInfo &MCII;
   const MCRegisterInfo &MRI;
   const MCSubtargetInfo &STI;
+  MCContext &Ctx;
 
 public:
 
   R600MCCodeEmitter(const MCInstrInfo &mcii, const MCRegisterInfo &mri,
-                    const MCSubtargetInfo &sti)
-    : MCII(mcii), MRI(mri), STI(sti) { }
+                    const MCSubtargetInfo &sti, MCContext &ctx)
+    : MCII(mcii), MRI(mri), STI(sti), Ctx(ctx) { }
 
   /// \brief Encode the instruction and write it to the OS.
   virtual void EncodeInstruction(const MCInst &MI, raw_ostream &OS,
@@ -98,8 +99,9 @@ enum TextureTypes {
 
 MCCodeEmitter *llvm::createR600MCCodeEmitter(const MCInstrInfo &MCII,
                                            const MCRegisterInfo &MRI,
-                                           const MCSubtargetInfo &STI) {
-  return new R600MCCodeEmitter(MCII, MRI, STI);
+                                           const MCSubtargetInfo &STI,
+                                           MCContext &Ctx) {
+  return new R600MCCodeEmitter(MCII, MRI, STI, Ctx);
 }
 
 void R600MCCodeEmitter::EncodeInstruction(const MCInst &MI, raw_ostream &OS,
@@ -179,13 +181,6 @@ void R600MCCodeEmitter::EncodeInstruction(const MCInst &MI, raw_ostream &OS,
     Emit((u_int32_t) 0, OS);
   } else {
     uint64_t Inst = getBinaryCodeForInstr(MI, Fixups);
-    if ((STI.getFeatureBits() & AMDGPU::FeatureR600ALUInst) &&
-       ((Desc.TSFlags & R600_InstFlag::OP1) ||
-         Desc.TSFlags & R600_InstFlag::OP2)) {
-      uint64_t ISAOpCode = Inst & (0x3FFULL << 39);
-      Inst &= ~(0x3FFULL << 39);
-      Inst |= ISAOpCode << 1;
-    }
     Emit(Inst, OS);
   }
 }

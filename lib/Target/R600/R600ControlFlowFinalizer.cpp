@@ -116,15 +116,8 @@ private:
       const MachineOperand &MO = *I;
       if (!MO.isReg())
         continue;
-      if (MO.isDef()) {
-        unsigned Reg = MO.getReg();
-        if (AMDGPU::R600_Reg128RegClass.contains(Reg))
-          DstMI = Reg;
-        else
-          DstMI = TRI.getMatchingSuperReg(Reg,
-              TRI.getSubRegFromChannel(TRI.getHWRegChan(Reg)),
-              &AMDGPU::R600_Reg128RegClass);
-      }
+      if (MO.isDef())
+        DstMI = MO.getReg();
       if (MO.isUse()) {
         unsigned Reg = MO.getReg();
         if (AMDGPU::R600_Reg128RegClass.contains(Reg))
@@ -332,7 +325,7 @@ public:
   virtual bool runOnMachineFunction(MachineFunction &MF) {
     unsigned MaxStack = 0;
     unsigned CurrentStack = 0;
-    bool HasPush = false;
+    bool hasPush;
     for (MachineFunction::iterator MB = MF.begin(), ME = MF.end(); MB != ME;
         ++MB) {
       MachineBasicBlock &MBB = *MB;
@@ -344,7 +337,6 @@ public:
         BuildMI(MBB, MBB.begin(), MBB.findDebugLoc(MBB.begin()),
             getHWInstrDesc(CF_CALL_FS));
         CfCount++;
-        MaxStack = 1;
       }
       std::vector<ClauseFile> FetchClauses, AluClauses;
       for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end();
@@ -362,7 +354,7 @@ public:
         case AMDGPU::CF_ALU_PUSH_BEFORE:
           CurrentStack++;
           MaxStack = std::max(MaxStack, CurrentStack);
-          HasPush = true;
+          hasPush = true;
         case AMDGPU::CF_ALU:
           I = MI;
           AluClauses.push_back(MakeALUClause(MBB, I));
@@ -483,7 +475,7 @@ public:
           break;
         }
       }
-      MFI->StackSize = getHWStackSize(MaxStack, HasPush);
+      MFI->StackSize = getHWStackSize(MaxStack, hasPush);
     }
 
     return false;
