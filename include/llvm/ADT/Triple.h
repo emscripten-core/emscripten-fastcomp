@@ -318,6 +318,7 @@ public:
   bool isOSCygMing() const { return false; }
   bool isOSWindows() const { return false; }
   bool isOSNaCl() const { return true; }
+  bool isOSLinux() const { return false; }
   bool isOSBinFormatELF() const { return true; }
   bool isOSBinFormatCOFF() const { return false; }
   bool isEnvironmentMachO() const { return false; }
