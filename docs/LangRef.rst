@@ -2868,11 +2868,10 @@ All globals of this sort should have a section specified as
 The '``llvm.used``' Global Variable
 -----------------------------------
 
-The ``@llvm.used`` global is an array with i8\* element type which has
-:ref:`appending linkage <linkage_appending>`. This array contains a list of
-pointers to global variables and functions which may optionally have a
-pointer cast formed of bitcast or getelementptr. For example, a legal
-use of it is:
+The ``@llvm.used`` global is an array which has :ref:`appending linkage
+<linkage_appending>`. This array contains a list of pointers to global
+variables, functions and aliases which may optionally have a pointer cast formed
+of bitcast or getelementptr. For example, a legal use of it is:
 
 .. code-block:: llvm
 
@@ -2884,13 +2883,13 @@ use of it is:
        i8* bitcast (i32* @Y to i8*)
     ], section "llvm.metadata"
 
-If a global variable appears in the ``@llvm.used`` list, then the
-compiler, assembler, and linker are required to treat the symbol as if
-there is a reference to the global that it cannot see. For example, if a
-variable has internal linkage and no references other than that from the
-``@llvm.used`` list, it cannot be deleted. This is commonly used to
-represent references from inline asms and other things the compiler
-cannot "see", and corresponds to "``attribute((used))``" in GNU C.
+If a symbol appears in the ``@llvm.used`` list, then the compiler, assembler,
+and linker are required to treat the symbol as if there is a reference to the
+symbol that it cannot see. For example, if a variable has internal linkage and
+no references other than that from the ``@llvm.used`` list, it cannot be
+deleted. This is commonly used to represent references from inline asms and
+other things the compiler cannot "see", and corresponds to
+"``attribute((used))``" in GNU C.
 
 On some targets, the code generator must emit a directive to the
 assembler or object file to prevent the assembler and linker from
@@ -4008,7 +4007,7 @@ Example:
       <result> = lshr i32 4, 1   ; yields {i32}:result = 2
       <result> = lshr i32 4, 2   ; yields {i32}:result = 1
       <result> = lshr i8  4, 3   ; yields {i8}:result = 0
-      <result> = lshr i8 -2, 1   ; yields {i8}:result = 0x7FFFFFFF 
+      <result> = lshr i8 -2, 1   ; yields {i8}:result = 0x7FFFFFFF
       <result> = lshr i32 1, 32  ; undefined
       <result> = lshr <2 x i32> < i32 -2, i32 4>, < i32 1, i32 2>   ; yields: result=<2 x i32> < i32 0x7FFFFFFF, i32 1>
 
@@ -8614,4 +8613,3 @@ Semantics:
 
 This intrinsic does nothing, and it's removed by optimizers and ignored
 by codegen.
-S
