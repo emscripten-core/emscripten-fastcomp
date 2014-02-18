@@ -402,10 +402,64 @@ formatted_raw_ostream &JSWriter::nl(formatted_raw_ostream &Out, int delta) {
   return Out;
 }
 
-static inline void sanitize(std::string& str) {
-  for (size_t i = 1; i < str.length(); ++i)
-    if (!isalnum(str[i]) && str[i] != '_' && str[i] != '$')
-      str[i] = '_';
+static inline char halfCharToHex(unsigned char half) {
+  assert(half <= 15);
+  if (half <= 9) {
+    return '0' + half;
+  } else {
+    return 'A' + half - 10;
+  }
+}
+
+static inline void sanitizeGlobal(std::string& str) {
+  // functions and globals should already be in C-style format,
+  // in addition to . for llvm intrinsics. There is a risk of
+  // collisions with . and _, but this should not happen in
+  // practice.
+  size_t OriginalSize = str.size();
+  for (size_t i = 1; i < OriginalSize; ++i) {
+    unsigned char c = str[i];
+    if (c == '.') str[i] = '_';
+    assert(isalnum(c) || c == '_' || c == '.');
+  }
+}
+
+static inline void sanitizeLocal(std::string& str) {
+  // We need to convert every string that is not a valid JS identifier into
+  // a valid one, without collisions - we cannot turn "x.a" into "x_a" while
+  // also leaving "x_a" as is, for example.
+  //
+  // We leave valid characters 0-9a-zA-Z and _ unchanged. Anything else
+  // we replace with $ and append a hex representation of that value,
+  // so for example x.a turns into x$a2e, x..a turns into x$$a2e2e.
+  //
+  // As an optimization, we replace . with $ without appending anything,
+  // unless there is another illegal character. The reason is that . is
+  // a common illegal character, and we want to avoid resizing strings
+  // for perf reasons, and we If we do see we need to append something, then
+  // for . we just append Z (one character, instead of the hex code).
+  //
+
+  size_t OriginalSize = str.size();
+  int Queued = 0;
+  for (size_t i = 1; i < OriginalSize; ++i) {
+    unsigned char c = str[i];
+    if (!isalnum(c) && c != '_') {
+      str[i] = '$';
+      if (c == '.') {
+        Queued++;
+      } else {
+        size_t s = str.size();
+        str.resize(s+2+Queued);
+        for (int i = 0; i < Queued; i++) {
+          str[s++] = 'Z';
+        }
+        Queued = 0;
+        str[s] = halfCharToHex(c >> 4);
+        str[s+1] = halfCharToHex(c & 0xf);
+      }
+    }
+  }
 }
 
 static inline std::string ensureFloat(const std::string &S, Type *T) {
@@ -496,10 +550,11 @@ const std::string &JSWriter::getJSName(const Value* val) {
   if (val->hasName()) {
     if (isa<Function>(val) || isa<Constant>(val)) {
       name = std::string("_") + val->getName().str();
+      sanitizeGlobal(name);
     } else {
       name = std::string("$") + val->getName().str();
+      sanitizeLocal(name);
     }
-    sanitize(name);
   } else {
     name = "u$" + utostr(UniqueNum++);
   }
