@@ -1410,7 +1410,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   }
   case Instruction::Call: {
     const CallInst *CI = cast<CallInst>(I);
-    Code << handleCall(CI) << ';';
+    std::string Call = handleCall(CI);
+    if (Call.size() > 0) Code << Call << ';';
     break;
   }
   case Instruction::Select: {
