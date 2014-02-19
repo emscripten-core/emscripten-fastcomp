@@ -1492,12 +1492,12 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
       case AtomicRMWInst::Xchg: Code << getStore(I, P, I->getType(), VS, 0); break;
-      case AtomicRMWInst::Add:  Code << getStore(I, P, I->getType(), "((" + VS + '+' + iName + ")|0)", 0); break;
-      case AtomicRMWInst::Sub:  Code << getStore(I, P, I->getType(), "((" + VS + '-' + iName + ")|0)", 0); break;
-      case AtomicRMWInst::And:  Code << getStore(I, P, I->getType(), "(" + VS + '&' + iName + ")", 0); break;
-      case AtomicRMWInst::Nand: Code << getStore(I, P, I->getType(), "(~(" + VS + '&' + iName + "))", 0); break;
-      case AtomicRMWInst::Or:   Code << getStore(I, P, I->getType(), "(" + VS + '|' + iName + ")", 0); break;
-      case AtomicRMWInst::Xor:  Code << getStore(I, P, I->getType(), "(" + VS + '^' + iName + ")", 0); break;
+      case AtomicRMWInst::Add:  Code << getStore(I, P, I->getType(), "((" + iName + '+' + VS + ")|0)", 0); break;
+      case AtomicRMWInst::Sub:  Code << getStore(I, P, I->getType(), "((" + iName + '-' + VS + ")|0)", 0); break;
+      case AtomicRMWInst::And:  Code << getStore(I, P, I->getType(), "(" + iName + '&' + VS + ")", 0); break;
+      case AtomicRMWInst::Nand: Code << getStore(I, P, I->getType(), "(~(" + iName + '&' + VS + "))", 0); break;
+      case AtomicRMWInst::Or:   Code << getStore(I, P, I->getType(), "(" + iName + '|' + VS + ")", 0); break;
+      case AtomicRMWInst::Xor:  Code << getStore(I, P, I->getType(), "(" + iName + '^' + VS + ")", 0); break;
       case AtomicRMWInst::Max:
       case AtomicRMWInst::Min:
       case AtomicRMWInst::UMax:
