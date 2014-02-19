@@ -413,14 +413,14 @@ static inline char halfCharToHex(unsigned char half) {
 
 static inline void sanitizeGlobal(std::string& str) {
   // functions and globals should already be in C-style format,
-  // in addition to . for llvm intrinsics. There is a risk of
-  // collisions with . and _, but this should not happen in
-  // practice.
+  // in addition to . for llvm intrinsics and possibly $ and so forth.
+  // There is a risk of collisions here, we just lower all these
+  // invalid characters to _, but this should not happen in practice.
+  // TODO: in debug mode, check for such collisions.
   size_t OriginalSize = str.size();
   for (size_t i = 1; i < OriginalSize; ++i) {
     unsigned char c = str[i];
-    if (c == '.') str[i] = '_';
-    assert(isalnum(c) || c == '_' || c == '.');
+    if (!isalnum(c) && c != '_') str[i] = '_';
   }
 }
 
@@ -1765,7 +1765,9 @@ void JSWriter::printFunction(const Function *F) {
 
   // Emit the function
 
-  Out << "function _" << F->getName() << "(";
+  std::string Name = F->getName();
+  sanitizeGlobal(Name);
+  Out << "function _" << Name << "(";
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
     if (AI != F->arg_begin()) Out << ",";
