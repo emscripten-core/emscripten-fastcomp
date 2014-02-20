@@ -347,6 +347,9 @@ namespace {
       if (const Function *F = dyn_cast<Function>(Ptr)) {
         return utostr(getFunctionIndex(F));
       } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
+        if (const BlockAddress *BA = dyn_cast<const BlockAddress>(Ptr)) {
+          return utostr(getBlockAddress(BA));
+        }
         if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
           if (GV->isDeclaration()) {
             std::string Name = getOpName(Ptr);
@@ -1534,7 +1537,11 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   emitDebugInfo(Code, I);
 }
 
-static const SwitchInst *considerSwitch(const Instruction *I) {
+// Checks whether to use a condition variable. We do so for switches and for indirectbrs
+static const Value *considerConditionVar(const Instruction *I) {
+  if (const IndirectBrInst *IB = dyn_cast<const IndirectBrInst>(I)) {
+    return IB->getAddress();
+  }
   const SwitchInst *SI = dyn_cast<SwitchInst>(I);
   if (!SI) return NULL;
   // use a switch if the range is not too big or sparse
@@ -1551,7 +1558,7 @@ static const SwitchInst *considerSwitch(const Instruction *I) {
     Num++;
   }
   int64_t Range = (int64_t)Maxx - (int64_t)Minn;
-  return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI; // heuristics
+  return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI->getCondition(); // heuristics
 }
 
 void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
@@ -1563,8 +1570,8 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
     CodeStream << '\n';
   }
   CodeStream.flush();
-  const SwitchInst* SI = considerSwitch(BB->getTerminator());
-  Block *Curr = new Block(Code.c_str(), SI ? getValueAsCastStr(SI->getCondition()).c_str() : NULL);
+  const Value* Condition = considerConditionVar(BB->getTerminator());
+  Block *Curr = new Block(Code.c_str(), Condition ? getValueAsCastStr(Condition).c_str() : NULL);
   LLVMToRelooper[BB] = Curr;
   R.AddBlock(Curr);
 }
@@ -1633,7 +1640,7 @@ void JSWriter::printFunctionBody(const Function *F) {
           std::string P = getPhiCode(&*BI, S);
           std::string Target;
           if (i < Num-1) {
-            Target = utostr(getBlockAddress(F, S));
+            Target =  "case " + utostr(getBlockAddress(F, S)) + ": ";
           }
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], Target.size() > 0 ? Target.c_str() : NULL, P.size() > 0 ? P.c_str() : NULL);
         }
@@ -1641,7 +1648,7 @@ void JSWriter::printFunctionBody(const Function *F) {
       }
       case Instruction::Switch: {
         const SwitchInst* SI = cast<SwitchInst>(TI);
-        bool UseSwitch = !!considerSwitch(SI);
+        bool UseSwitch = !!considerConditionVar(SI);
         BasicBlock *DD = SI->getDefaultDest();
         std::string P = getPhiCode(&*BI, DD);
         LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], NULL, P.size() > 0 ? P.c_str() : NULL);
