@@ -96,6 +96,9 @@ namespace {
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
   typedef std::map<std::string, std::string> StringMap;
   typedef std::map<std::string, unsigned> NameIntMap;
+  typedef std::map<const BasicBlock*, unsigned> BlockIndexMap;
+  typedef std::map<const Function*, BlockIndexMap> BlockAddressMap;
+  typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
 
   /// JSWriter - This class is the main chunk of code that converts an LLVM
   /// module to JavaScript.
@@ -120,6 +123,7 @@ namespace {
     FunctionTableMap FunctionTables; // sig => list of functions
     std::vector<std::string> GlobalInitializers;
     std::vector<std::string> Exports; // additional exports
+    BlockAddressMap BlockAddresses;
 
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
@@ -291,11 +295,26 @@ namespace {
 
       return Index;
     }
+
+    unsigned getBlockAddress(const Function *F, const BasicBlock *BB) {
+      BlockIndexMap& Blocks = BlockAddresses[F];
+      if (Blocks.find(BB) == Blocks.end()) {
+        Blocks[BB] = Blocks.size(); // block addresses start from 0
+      }
+      return Blocks[BB];
+    }
+
+    unsigned getBlockAddress(const BlockAddress *BA) {
+      return getBlockAddress(BA->getFunction(), BA->getBasicBlock());
+    }
+
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
     unsigned getConstAsOffset(const Value *V, unsigned AbsoluteTarget) {
       if (const Function *F = dyn_cast<const Function>(V)) {
         return getFunctionIndex(F);
+      } else if (const BlockAddress *BA = dyn_cast<const BlockAddress>(V)) {
+        return getBlockAddress(BA);
       } else {
         if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
           if (GV->hasExternalLinkage()) {
@@ -328,6 +347,9 @@ namespace {
       if (const Function *F = dyn_cast<Function>(Ptr)) {
         return utostr(getFunctionIndex(F));
       } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
+        if (const BlockAddress *BA = dyn_cast<const BlockAddress>(Ptr)) {
+          return utostr(getBlockAddress(BA));
+        }
         if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
           if (GV->isDeclaration()) {
             std::string Name = getOpName(Ptr);
@@ -373,6 +395,7 @@ namespace {
     std::string getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep=';');
     std::string getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep=';');
 
+    void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
     bool generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code);
     void generateInstruction(const Instruction *I, raw_string_ostream& Code);
@@ -1165,6 +1188,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     break;
   }
   case Instruction::Br:
+  case Instruction::IndirectBr:
   case Instruction::Switch: break; // handled while relooping
   case Instruction::Unreachable: {
     // Typically there should be an abort right before these, so we don't emit any code // TODO: when ASSERTIONS are on, emit abort(0)
@@ -1513,7 +1537,11 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   emitDebugInfo(Code, I);
 }
 
-static const SwitchInst *considerSwitch(const Instruction *I) {
+// Checks whether to use a condition variable. We do so for switches and for indirectbrs
+static const Value *considerConditionVar(const Instruction *I) {
+  if (const IndirectBrInst *IB = dyn_cast<const IndirectBrInst>(I)) {
+    return IB->getAddress();
+  }
   const SwitchInst *SI = dyn_cast<SwitchInst>(I);
   if (!SI) return NULL;
   // use a switch if the range is not too big or sparse
@@ -1530,7 +1558,22 @@ static const SwitchInst *considerSwitch(const Instruction *I) {
     Num++;
   }
   int64_t Range = (int64_t)Maxx - (int64_t)Minn;
-  return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI; // heuristics
+  return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI->getCondition(); // heuristics
+}
+
+void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
+  std::string Code;
+  raw_string_ostream CodeStream(Code);
+  for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
+       I != E; ++I) {
+    generateInstruction(I, CodeStream);
+    CodeStream << '\n';
+  }
+  CodeStream.flush();
+  const Value* Condition = considerConditionVar(BB->getTerminator());
+  Block *Curr = new Block(Code.c_str(), Condition ? getValueAsCastStr(Condition).c_str() : NULL);
+  LLVMToRelooper[BB] = Curr;
+  R.AddBlock(Curr);
 }
 
 void JSWriter::printFunctionBody(const Function *F) {
@@ -1542,26 +1585,17 @@ void JSWriter::printFunctionBody(const Function *F) {
   //if (!canReloop(F)) R.SetEmulate(true);
   R.SetAsmJSMode(1);
   Block *Entry = NULL;
-  std::map<const BasicBlock*, Block*> LLVMToRelooper;
+  LLVMToRelooperMap LLVMToRelooper;
 
-  // Create relooper blocks with their contents
+  // Create relooper blocks with their contents. TODO: We could optimize
+  // indirectbr by emitting indexed blocks first, so their indexes
+  // match up with the label index.
   for (Function::const_iterator BI = F->begin(), BE = F->end();
        BI != BE; ++BI) {
-    std::string Code;
-    raw_string_ostream CodeStream(Code);
-    for (BasicBlock::const_iterator I = BI->begin(), E = BI->end();
-         I != E; ++I) {
-      generateInstruction(I, CodeStream);
-      CodeStream << '\n';
-    }
-    CodeStream.flush();
-    const SwitchInst* SI = considerSwitch(BI->getTerminator());
-    Block *Curr = new Block(Code.c_str(), SI ? getValueAsCastStr(SI->getCondition()).c_str() : NULL);
-    const BasicBlock *BB = &*BI;
-    LLVMToRelooper[BB] = Curr;
-    R.AddBlock(Curr);
-    if (!Entry) Entry = Curr;
+    addBlock(BI, R, LLVMToRelooper);
+    if (!Entry) Entry = LLVMToRelooper[BI];
   }
+  assert(Entry);
 
   // Create branchings
   for (Function::const_iterator BI = F->begin(), BE = F->end();
@@ -1590,9 +1624,29 @@ void JSWriter::printFunctionBody(const Function *F) {
         }
         break;
       }
+      case Instruction::IndirectBr: {
+        const IndirectBrInst* br = cast<IndirectBrInst>(TI);
+        unsigned Num = br->getNumDestinations();
+        std::set<const BasicBlock*> Seen; // sadly llvm allows the same block to appear multiple times
+        bool SetDefault = false; // pick the first and make it the default, llvm gives no reasonable default here
+        for (unsigned i = 0; i < Num; i++) {
+          const BasicBlock *S = br->getDestination(i);
+          if (Seen.find(S) != Seen.end()) continue;
+          Seen.insert(S);
+          std::string P = getPhiCode(&*BI, S);
+          std::string Target;
+          if (!SetDefault) {
+            SetDefault = true;
+          } else {
+            Target = "case " + utostr(getBlockAddress(F, S)) + ": ";
+          }
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], Target.size() > 0 ? Target.c_str() : NULL, P.size() > 0 ? P.c_str() : NULL);
+        }
+        break;
+      }
       case Instruction::Switch: {
         const SwitchInst* SI = cast<SwitchInst>(TI);
-        bool UseSwitch = !!considerSwitch(SI);
+        bool UseSwitch = !!considerConditionVar(SI);
         BasicBlock *DD = SI->getDefaultDest();
         std::string P = getPhiCode(&*BI, DD);
         LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], NULL, P.size() > 0 ? P.c_str() : NULL);
