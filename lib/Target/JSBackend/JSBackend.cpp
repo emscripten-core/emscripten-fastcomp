@@ -1633,14 +1633,16 @@ void JSWriter::printFunctionBody(const Function *F) {
         const IndirectBrInst* br = cast<IndirectBrInst>(TI);
         unsigned Num = br->getNumDestinations();
         std::set<const BasicBlock*> Seen; // sadly llvm allows the same block to appear multiple times
+        bool SetDefault = false;
         for (unsigned i = 0; i < Num; i++) {
           const BasicBlock *S = br->getDestination(i);
           if (Seen.find(S) != Seen.end()) continue;
           Seen.insert(S);
           std::string P = getPhiCode(&*BI, S);
           std::string Target;
-          if (i < Num-1) {
+          if (!SetDefault) {
             Target =  "case " + utostr(getBlockAddress(F, S)) + ": ";
+            SetDefault = true;
           }
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], Target.size() > 0 ? Target.c_str() : NULL, P.size() > 0 ? P.c_str() : NULL);
         }
