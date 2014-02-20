@@ -212,13 +212,25 @@ static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
   NewFunc->addAttributes(AttributeSet::FunctionIndex, FnAttrs);
   NewFunc->addAttributes(AttributeSet::ReturnIndex, Attrs.getRetAttributes());
   Function::arg_iterator AI = F->arg_begin();
-  for (unsigned i = 0, e = F->arg_size(), j = 0; i != e; ++i, ++j, ++AI) {
-    AttributeSet ArgAttrs = Attrs.getParamAttributes(i);
+
+  // We need to recreate the attribute set, with the right indexes
+  AttributeSet NewAttrs;
+  unsigned NumArgs = F->arg_size();
+  for (unsigned i = 1, j = 1; i < NumArgs+1; i++, j++, AI++) {
     if (isIllegal(AI->getType())) {
-      ++j;
-    } else {
-      NewFunc->addAttributes(j + 1, ArgAttrs);
+      j++;
+      continue;
     }
+    if (!Attrs.hasAttributes(i)) continue;
+    AttributeSet ParamAttrs = Attrs.getParamAttributes(i);
+    AttrBuilder AB;
+    unsigned NumSlots = ParamAttrs.getNumSlots();
+    for (unsigned k = 0; k < NumSlots; k++) {
+      for (AttributeSet::iterator I = ParamAttrs.begin(k), E = ParamAttrs.end(k); I != E; I++) {
+        AB.addAttribute(*I);
+      }
+    }
+    NewFunc->addAttributes(j, AttributeSet::get(F->getContext(), j, AB));
   }
 
   F->getParent()->getFunctionList().insert(F, NewFunc);
