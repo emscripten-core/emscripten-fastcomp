@@ -1587,20 +1587,15 @@ void JSWriter::printFunctionBody(const Function *F) {
   Block *Entry = NULL;
   LLVMToRelooperMap LLVMToRelooper;
 
-  // Create relooper blocks with their contents. First, emit the blocks
-  // that appear in BlockAddresses, so we fix their addresses to the ones
-  // we want (relooper indexes from 0). Then, emit all the rest.
-  BlockIndexMap& AddressedBlocks = BlockAddresses[F];
-  for (BlockIndexMap::iterator I = AddressedBlocks.begin(); I != AddressedBlocks.end(); I++) {
-    addBlock(I->first, R, LLVMToRelooper);
-  }
+  // Create relooper blocks with their contents. TODO: We could optimize
+  // indirectbr by emitting indexed blocks first, so their indexes
+  // match up with the label index.
   for (Function::const_iterator BI = F->begin(), BE = F->end();
        BI != BE; ++BI) {
-    if (AddressedBlocks.find(BI) == AddressedBlocks.end()) {
-      addBlock(BI, R, LLVMToRelooper);
-    }
+    addBlock(BI, R, LLVMToRelooper);
     if (!Entry) Entry = LLVMToRelooper[BI];
   }
+  assert(Entry);
 
   // Create branchings
   for (Function::const_iterator BI = F->begin(), BE = F->end();
@@ -1633,7 +1628,7 @@ void JSWriter::printFunctionBody(const Function *F) {
         const IndirectBrInst* br = cast<IndirectBrInst>(TI);
         unsigned Num = br->getNumDestinations();
         std::set<const BasicBlock*> Seen; // sadly llvm allows the same block to appear multiple times
-        bool SetDefault = false;
+        bool SetDefault = false; // pick the first and make it the default, llvm gives no reasonable default here
         for (unsigned i = 0; i < Num; i++) {
           const BasicBlock *S = br->getDestination(i);
           if (Seen.find(S) != Seen.end()) continue;
@@ -1641,8 +1636,9 @@ void JSWriter::printFunctionBody(const Function *F) {
           std::string P = getPhiCode(&*BI, S);
           std::string Target;
           if (!SetDefault) {
-            Target =  "case " + utostr(getBlockAddress(F, S)) + ": ";
             SetDefault = true;
+          } else {
+            Target = "case " + utostr(getBlockAddress(F, S)) + ": ";
           }
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], Target.size() > 0 ? Target.c_str() : NULL, P.size() > 0 ? P.c_str() : NULL);
         }
