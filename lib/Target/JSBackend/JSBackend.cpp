@@ -15,8 +15,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "JSTargetMachine.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Config/config.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
@@ -24,7 +27,9 @@
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -34,6 +39,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/DebugInfo.h"
 #include <algorithm>
@@ -341,28 +347,6 @@ namespace {
       return false;
     }
 
-    std::string getPtrAsStr(const Value* Ptr) {
-      Ptr = Ptr->stripPointerCasts();
-      if (isa<const ConstantPointerNull>(Ptr) || isa<UndefValue>(Ptr)) return "0";
-      if (const Function *F = dyn_cast<Function>(Ptr)) {
-        return utostr(getFunctionIndex(F));
-      } else if (const Constant *CV = dyn_cast<Constant>(Ptr)) {
-        if (const BlockAddress *BA = dyn_cast<const BlockAddress>(Ptr)) {
-          return utostr(getBlockAddress(BA));
-        }
-        if (const GlobalValue *GV = dyn_cast<GlobalValue>(Ptr)) {
-          if (GV->isDeclaration()) {
-            std::string Name = getOpName(Ptr);
-            Externals.insert(Name);
-            return Name;
-          }
-        }
-        return utostr(getGlobalAddress(CV->getName().str()));
-      } else {
-        return getOpName(Ptr);
-      }
-    }
-
     void checkVectorType(Type *T) {
       VectorType *VT = cast<VectorType>(T);
       assert(VT->getElementType()->getPrimitiveSizeInBits() == 32);
@@ -387,7 +371,9 @@ namespace {
     void printType(Type* Ty);
     void printTypes(const Module* M);
 
-    std::string getAssign(const StringRef &, Type *);
+    std::string getAdHocAssign(const StringRef &, Type *);
+    std::string getAssign(const Instruction *I);
+    std::string getAssignIfNeeded(const Value *V);
     std::string getCast(const StringRef &, Type *, AsmCast sign=ASM_SIGNED);
     std::string getParenCast(const StringRef &, Type *, AsmCast sign=ASM_SIGNED);
     std::string getDoubleToInt(const StringRef &);
@@ -397,8 +383,9 @@ namespace {
 
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
-    bool generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code);
-    void generateInstruction(const Instruction *I, raw_string_ostream& Code);
+    bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
+    void generateExpression(const User *I, raw_string_ostream& Code);
+
     std::string getOpName(const Value*);
 
     void processConstants();
@@ -522,7 +509,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     if (index < 0) continue;
     // we found it
     const std::string &name = getJSName(P);
-    assigns[name] = getAssign(name, P->getType());
+    assigns[name] = getAssign(P);
     const Value *V = P->getIncomingValue(index);
     values[name] = V;
     std::string vname = getValueAsStr(V);
@@ -550,7 +537,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
           // break a cycle
           std::string depString = dep->second;
           std::string temp = curr + "$phi";
-          pre  += getAssign(temp, V->getType()) + CV + ';';
+          pre  += getAdHocAssign(temp, V->getType()) + CV + ';';
           CV = temp;
           deps.erase(curr);
           undeps.erase(depString);
@@ -584,16 +571,26 @@ const std::string &JSWriter::getJSName(const Value* val) {
   return ValueNames[val] = name;
 }
 
-std::string JSWriter::getAssign(const StringRef &s, Type *t) {
+std::string JSWriter::getAdHocAssign(const StringRef &s, Type *t) {
   UsedVars[s] = t->getTypeID();
   return (s + " = ").str();
+}
+
+std::string JSWriter::getAssign(const Instruction *I) {
+  return getAdHocAssign(getJSName(I), I->getType());
+}
+
+std::string JSWriter::getAssignIfNeeded(const Value *V) {
+  if (const Instruction *I = dyn_cast<Instruction>(V))
+    return getAssign(I);
+  return std::string();
 }
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: {
       // some types we cannot cast, like vectors - ignore
-      if (!t->isVectorTy()) assert(false && "Unsupported type");
+      if (!t->isVectorTy()) { errs() << *t << "\n"; assert(false && "Unsupported type");}
     }
     case Type::FloatTyID: {
       if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
@@ -656,8 +653,8 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
 }
 
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
-  std::string Assign = getAssign(getJSName(I), I->getType());
-  unsigned Bytes = T->getPrimitiveSizeInBits()/8;
+  std::string Assign = getAssign(I);
+  unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     text = Assign + getPtrLoad(P);
@@ -672,7 +669,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
       emitDebugInfo(errs(), I);
       errs() << "\n";
     }
-    std::string PS = getOpName(P);
+    std::string PS = getValueAsStr(P);
     switch (Bytes) {
       case 8: {
         switch (Alignment) {
@@ -767,7 +764,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
       emitDebugInfo(errs(), I);
       errs() << "\n";
     }
-    std::string PS = getOpName(P);
+    std::string PS = getValueAsStr(P);
     switch (Bytes) {
       case 8: {
         text = "HEAPF64[tempDoublePtr>>3]=" + VS + ';';
@@ -894,121 +891,108 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     case 1: return "HEAP8[" + utostr(Addr) + "]";
     }
   } else {
-    return getHeapAccess(getPtrAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
+    return getHeapAccess(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
   }
 }
 
-static int hexToInt(char x) {
-  if (x <= '9') {
-    assert(x >= '0');
-    return x - '0';
-  } else {
-    assert('A' <= x && x <= 'F');
-    return x - 'A' + 10;
-  }
-}
-
-/* static inline std::string ftostr(const APFloat& V) {
-  std::string Buf;
-  if (&V.getSemantics() == &APFloat::IEEEdouble) {
-    raw_string_ostream(Buf) << V.convertToDouble();
-    return Buf;
-  } else if (&V.getSemantics() == &APFloat::IEEEsingle) {
-    raw_string_ostream(Buf) << (double)V.convertToFloat();
-    return Buf;
-  }
-  return "<unknown format in ftostr>"; // error
-} */
-
-static inline std::string ftostr_exact(const ConstantFP *CFP) {
+static inline std::string ftostr(const ConstantFP *CFP) {
   const APFloat &flt = CFP->getValueAPF();
+
+  // Emscripten has its own spellings for infinity and NaN.
   if (flt.getCategory() == APFloat::fcInfinity) return flt.isNegative() ? "-inf" : "inf";
   else if (flt.getCategory() == APFloat::fcNaN) return "nan";
 
-  std::string temp;
-  raw_string_ostream stream(temp);
-  stream << *CFP; // bitcast on APF produces odd results, so do it this horrible way
-  const char *raw = temp.c_str();
-  if (CFP->getType()->isFloatTy()) {
-    raw += 6; // skip "float "
-  } else {
-    raw += 7; // skip "double "
+  // Request 21 digits, aka DECIMAL_DIG, to avoid rounding errors.
+  SmallString<29> Str;
+  flt.toString(Str, 21);
+
+  // asm.js considers literals to be floating-point literals when they contain a
+  // dot, however our output may be processed by UglifyJS, which doesn't
+  // currently preserve dots in all cases. Mark floating-point literals with
+  // unary plus to force them to floating-point.
+  if (APFloat(flt).roundToIntegral(APFloat::rmNearestTiesToEven) == APFloat::opOK) {
+    return '+' + Str.str().str();
   }
-  if (raw[1] != 'x') return raw; // number has already been printed out
-  raw += 2; // skip "0x"
-  unsigned len = strlen(raw);
-  if (len&1) {
-    // uneven, need to add a 0 to make it be entire bytes
-    temp = std::string("0") + raw;
-    raw = temp.c_str();
-    len++;
-  }
-  unsigned missing = 8 - len/2;
-  union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
-  dbl.d = 0;
-  for (unsigned i = 0; i < 8 - missing; i++) {
-    dbl.b[7-i] = (hexToInt(raw[2*i]) << 4) |
-                  hexToInt(raw[2*i+1]);
-  }
-  char buffer[101];
-  snprintf(buffer, 100, "%.30g", dbl.d);
-  return buffer;
+
+  return Str.str().str();
 }
 
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
-  if (isa<PointerType>(CV->getType())) {
-    return getPtrAsStr(CV);
-  } else {
-    if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-      std::string S = ftostr_exact(CFP);
-      if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
-        S = "Math_fround(+" + S + ")"; // FIXME: can avoid "+" for small enough constants
-      } else if (S[0] != '+') {
-        S = '+' + S;
-      }
-      return S;
-    } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-      if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
-        sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
-      }
-      return CI->getValue().toString(10, sign != ASM_UNSIGNED);
-    } else if (isa<UndefValue>(CV)) {
-      return CV->getType()->isIntegerTy() || CV->getType()->isPointerTy() ? "0" : getCast("0", CV->getType());
-    } else if (isa<ConstantAggregateZero>(CV)) {
-      if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
-        if (VT->getElementType()->isIntegerTy()) {
-          return "int32x4.splat(0)";
-        } else {
-          return "float32x4.splat(0)";
-        }
-      } else {
-        // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
-        return "0";
-      }
-    } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
-      const VectorType *VT = cast<VectorType>(CV->getType());
+  if (isa<ConstantPointerNull>(CV)) return "0";
+
+  if (const Function *F = dyn_cast<Function>(CV)) {
+    return utostr(getFunctionIndex(F));
+  }
+
+  if (const GlobalValue *GV = dyn_cast<GlobalValue>(CV)) {
+    if (GV->isDeclaration()) {
+      std::string Name = getOpName(GV);
+      Externals.insert(Name);
+      return Name;
+    }
+    return utostr(getGlobalAddress(GV->getName().str()));
+  }
+
+  if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
+    std::string S = ftostr(CFP);
+    if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+      S = "Math_fround(" + S + ")";
+    }
+    return S;
+  } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
+    if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
+      sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
+    }
+    return CI->getValue().toString(10, sign != ASM_UNSIGNED);
+  } else if (isa<UndefValue>(CV)) {
+    std::string S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
+    if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+      S = "Math_fround(" + S + ")";
+    }
+    return S;
+  } else if (isa<ConstantAggregateZero>(CV)) {
+    if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       if (VT->getElementType()->isIntegerTy()) {
-        return "int32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
+        return "int32x4.splat(0)";
+      } else {
+        return "float32x4.splat(0)";
+      }
+    } else {
+      // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
+      return "0";
+    }
+  } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
+    const VectorType *VT = cast<VectorType>(CV->getType());
+    if (VT->getElementType()->isIntegerTy()) {
+      return "int32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
+                          getConstant(DV->getElementAsConstant(1)) + ',' +
+                          getConstant(DV->getElementAsConstant(2)) + ',' +
+                          getConstant(DV->getElementAsConstant(3)) + ')';
+    } else {
+      return "float32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
                             getConstant(DV->getElementAsConstant(1)) + ',' +
                             getConstant(DV->getElementAsConstant(2)) + ',' +
                             getConstant(DV->getElementAsConstant(3)) + ')';
-      } else {
-        return "float32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
-                              getConstant(DV->getElementAsConstant(1)) + ',' +
-                              getConstant(DV->getElementAsConstant(2)) + ',' +
-                              getConstant(DV->getElementAsConstant(3)) + ')';
-      }
-    } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
-      // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
-      assert(CA->getNumOperands() == 1);
-      CV = CA->getOperand(0);
-      const ConstantExpr *CE = cast<ConstantExpr>(CV);
-      CV = CE->getOperand(0); // ignore bitcast
-      return getPtrAsStr(CV);
-    } else {
-      CV->dump();
-      llvm_unreachable("Unsupported constant kind");
     }
+  } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
+    // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
+    assert(CA->getNumOperands() == 1);
+    CV = CA->getOperand(0);
+    const ConstantExpr *CE = cast<ConstantExpr>(CV);
+    CV = CE->getOperand(0); // ignore bitcast
+    return getConstant(CV);
+  } else if (const BlockAddress *BA = dyn_cast<const BlockAddress>(CV)) {
+    return utostr(getBlockAddress(BA));
+  } else if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
+    std::string Code;
+    raw_string_ostream CodeStream(Code);
+    CodeStream << '(';
+    generateExpression(CE, CodeStream);
+    CodeStream << ')';
+    return CodeStream.str();
+  } else {
+    CV->dump();
+    llvm_unreachable("Unsupported constant kind");
   }
 }
 
@@ -1021,10 +1005,10 @@ std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
 }
 
 std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
-  if (const Constant *CV = dyn_cast<Constant>(V)) {
-    return getConstant(CV, sign);
+  if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
+    return getConstant(cast<Constant>(V), sign);
   } else {
-    return getCast(getJSName(V), V->getType(), sign);
+    return getCast(getValueAsStr(V), V->getType(), sign);
   }
 }
 
@@ -1032,39 +1016,38 @@ std::string JSWriter::getValueAsParenStr(const Value* V) {
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
   } else {
-    return "(" + getJSName(V) + ")";
+    return "(" + getValueAsStr(V) + ")";
   }
 }
 
 std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
-  if (const Constant *CV = dyn_cast<Constant>(V)) {
-    return getConstant(CV, sign);
+  if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
+    return getConstant(cast<Constant>(V), sign);
   } else {
-    return "(" + getCast(getJSName(V), V->getType(), sign) + ")";
+    return "(" + getCast(getValueAsStr(V), V->getType(), sign) + ")";
   }
 }
 
-bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instruction *I, raw_string_ostream& Code) {
+bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
   VectorType *VT;
   if ((VT = dyn_cast<VectorType>(I->getType()))) {
     // vector-producing instructions
     checkVectorType(VT);
 
-    Code << getAssign(iName, I->getType());
-
-    switch (I->getOpcode()) {
+    switch (Operator::getOpcode(I)) {
       default: I->dump(); error("invalid vector instr"); break;
-      case Instruction::FAdd: Code << "SIMD.float32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::FMul: Code << "SIMD.float32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::FDiv: Code << "SIMD.float32x4.div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Add: Code << "SIMD.int32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Sub: Code << "SIMD.int32x4.sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Mul: Code << "SIMD.int32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::And: Code << "SIMD.int32x4.and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Or:  Code << "SIMD.int32x4.or(" <<  getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Xor: Code << "SIMD.int32x4.xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD.float32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD.float32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FDiv: Code << getAssignIfNeeded(I) << "SIMD.float32x4.div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Add: Code << getAssignIfNeeded(I) << "SIMD.int32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Sub: Code << getAssignIfNeeded(I) << "SIMD.int32x4.sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Mul: Code << getAssignIfNeeded(I) << "SIMD.int32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::And: Code << getAssignIfNeeded(I) << "SIMD.int32x4.and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Or:  Code << getAssignIfNeeded(I) << "SIMD.int32x4.or(" <<  getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Xor: Code << getAssignIfNeeded(I) << "SIMD.int32x4.xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
+        Code << getAssignIfNeeded(I);
         if (BinaryOperator::isFNeg(I)) {
           Code << "SIMD.float32x4.neg(" << getValueAsStr(BinaryOperator::getFNegArgument(I)) << ")";
         } else {
@@ -1072,6 +1055,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
         }
         break;
       case Instruction::BitCast: {
+        Code << getAssignIfNeeded(I);
         if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
           Code << "SIMD.float32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
         } else {
@@ -1080,7 +1064,10 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
         break;
       }
       case Instruction::Load: {
-        std::string PS = getOpName(I->getOperand(0));
+        const LoadInst *LI = cast<LoadInst>(I);
+        const Value *P = LI->getPointerOperand();
+        std::string PS = getValueAsStr(P);
+        Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
           Code << "int32x4(HEAPU32[" << PS << ">>2],HEAPU32[" << PS << "+4>>2],HEAPU32[" << PS << "+8>>2],HEAPU32[" << PS << "+12>>2])";
         } else {
@@ -1093,6 +1080,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
         const ConstantInt *IndexInt = cast<const ConstantInt>(III->getOperand(2));
         unsigned Index = IndexInt->getZExtValue();
         assert(Index <= 3);
+        Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
           Code << "SIMD.int32x4.with";
         } else {
@@ -1103,6 +1091,7 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
         break;
       }
       case Instruction::ShuffleVector: {
+        Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
           Code << "int32x4(";
         } else {
@@ -1130,24 +1119,27 @@ bool JSWriter::generateSIMDInstruction(const std::string &iName, const Instructi
     return true;
   } else {
     // vector-consuming instructions
-    if (I->getOpcode() == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
+    if (Operator::getOpcode(I) == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
       checkVectorType(VT);
-      std::string PS = getOpName(I->getOperand(1));
-      std::string VS = getValueAsStr(I->getOperand(0));
+      const StoreInst *SI = cast<StoreInst>(I);
+      const Value *P = SI->getPointerOperand();
+      std::string PS = getOpName(P);
+      std::string VS = getValueAsStr(SI->getValueOperand());
+      Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
       if (VT->getElementType()->isIntegerTy()) {
         Code << "HEAPU32[" << PS << ">>2]=" << VS << ".x;HEAPU32[" << PS << "+4>>2]=" << VS << ".y;HEAPU32[" << PS << "+8>>2]=" << VS << ".z;HEAPU32[" << PS << "+12>>2]=" << VS << ".w";
       } else {
         Code << "HEAPF32[" << PS << ">>2]=" << VS << ".x;HEAPF32[" << PS << "+4>>2]=" << VS << ".y;HEAPF32[" << PS << "+8>>2]=" << VS << ".z;HEAPF32[" << PS << "+12>>2]=" << VS << ".w";
       }
       return true;
-    } else if (I->getOpcode() == Instruction::ExtractElement) {
+    } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
       const ExtractElementInst *EEI = cast<ExtractElementInst>(I);
       VT = cast<VectorType>(EEI->getVectorOperand()->getType());
       checkVectorType(VT);
       const ConstantInt *IndexInt = cast<const ConstantInt>(EEI->getIndexOperand());
       unsigned Index = IndexInt->getZExtValue();
       assert(Index <= 3);
-      Code << getAssign(iName, I->getType());
+      Code << getAssignIfNeeded(I);
       Code << getValueAsStr(EEI->getVectorOperand()) << '.' << simdLane[Index];
       return true;
     }
@@ -1159,17 +1151,15 @@ static uint64_t LSBMask(unsigned numBits) {
   return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits) - 1;
 }
 
-// generateInstruction - This member is called for each Instruction in a function.
-void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Code) {
-  const std::string &iName(getJSName(I));
-
+// Generate code for and operator, either an Instruction or a ConstantExpr.
+void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
     errs() << *I << "\n";
     report_fatal_error("legalization problem");
   }
 
-  if (!generateSIMDInstruction(iName, I, Code)) switch (I->getOpcode()) {
+  if (!generateSIMDExpression(I, Code)) switch (Operator::getOpcode(I)) {
   default: {
     I->dump();
     error("Invalid instruction");
@@ -1180,16 +1170,14 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const Value *RV = ret->getReturnValue();
     Code << "STACKTOP = sp;";
     Code << "return";
-    if (RV == NULL) {
-      Code << ";";
-    } else {
-      Code << " " << getValueAsCastStr(RV, ASM_NONSPECIFIC) << ";";
+    if (RV != NULL) {
+      Code << " " << getValueAsCastParenStr(RV, ASM_NONSPECIFIC);
     }
     break;
   }
   case Instruction::Br:
   case Instruction::IndirectBr:
-  case Instruction::Switch: break; // handled while relooping
+  case Instruction::Switch: return; // handled while relooping
   case Instruction::Unreachable: {
     // Typically there should be an abort right before these, so we don't emit any code // TODO: when ASSERTIONS are on, emit abort(0)
     Code << "// unreachable";
@@ -1213,8 +1201,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::Shl:
   case Instruction::LShr:
   case Instruction::AShr:{
-    Code << getAssign(iName, I->getType());
-    unsigned opcode = I->getOpcode();
+    Code << getAssignIfNeeded(I);
+    unsigned opcode = Operator::getOpcode(I);
     switch (opcode) {
       case Instruction::Add:  Code << getParenCast(
                                         getValueAsParenStr(I->getOperand(0)) +
@@ -1270,13 +1258,12 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
           Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " - " + getValueAsStr(I->getOperand(1)), I->getType());
         }
         break;
-      default: error("bad icmp"); break;
+      default: error("bad binary opcode"); break;
     }
-    Code << ';';
     break;
   }
   case Instruction::FCmp: {
-    Code << getAssign(iName, I->getType());
+    Code << getAssignIfNeeded(I);
     switch (cast<FCmpInst>(I)->getPredicate()) {
       // Comparisons which are simple JS operators.
       case FCmpInst::FCMP_OEQ:   Code << getValueAsStr(I->getOperand(0)) << " == " << getValueAsStr(I->getOperand(1)); break;
@@ -1324,13 +1311,14 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
 
       default: error("bad fcmp"); break;
     }
-    Code << ";";
     break;
   }
   case Instruction::ICmp: {
-    unsigned predicate = cast<ICmpInst>(I)->getPredicate();
+    unsigned predicate = isa<ConstantExpr>(I) ?
+                         cast<ConstantExpr>(I)->getPredicate() :
+                         cast<ICmpInst>(I)->getPredicate();
     AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "(" <<
+    Code << getAssignIfNeeded(I) << "(" <<
       getValueAsCastStr(I->getOperand(0), sign) <<
     ")";
     switch (predicate) {
@@ -1348,23 +1336,23 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     }
     Code << "(" <<
       getValueAsCastStr(I->getOperand(1), sign) <<
-    ");";
+    ")";
     break;
   }
   case Instruction::Alloca: {
     if (NativizedVars.count(I)) {
       // nativized stack variable, we just need a 'var' definition
-      UsedVars[iName] = cast<PointerType>(I->getType())->getElementType()->getTypeID();
-      break;
+      UsedVars[getJSName(I)] = cast<PointerType>(I->getType())->getElementType()->getTypeID();
+      return;
     }
     const AllocaInst* AI = cast<AllocaInst>(I);
     AllocaIntMap::iterator AIMI = StackAllocs.find(AI);
     if (AIMI != StackAllocs.end()) {
       // fixed-size allocation that is already taken into account in the big initial allocation
       if (AIMI->second) {
-        Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "sp + " << utostr(AIMI->second) << "|0;";     
+        Code << getAssign(AI) << "sp + " << utostr(AIMI->second) << "|0";
       } else {
-        Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "sp;";
+        Code << getAssign(AI) << "sp";
       }
       break;
     }
@@ -1377,7 +1365,7 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     } else {
       Size = memAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
     }
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << "STACKTOP; STACKTOP = STACKTOP + " << Size << "|0;";
+    Code << getAssign(AI) << "STACKTOP; STACKTOP = STACKTOP + " << Size << "|0";
     break;
   }
   case Instruction::Load: {
@@ -1385,9 +1373,9 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const Value *P = LI->getPointerOperand();
     unsigned Alignment = LI->getAlignment();
     if (NativizedVars.count(P)) {
-      Code << getAssign(iName, LI->getType()) << getValueAsStr(P) << ';';
+      Code << getAssign(LI) << getValueAsStr(P);
     } else {
-      Code << getLoad(I, P, LI->getType(), Alignment) << ';';
+      Code << getLoad(LI, P, LI->getType(), Alignment);
     }
     break;
   }
@@ -1398,9 +1386,9 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     unsigned Alignment = SI->getAlignment();
     std::string VS = getValueAsStr(V);
     if (NativizedVars.count(P)) {
-      Code << getValueAsStr(P) << " = " << VS << ';';
+      Code << getValueAsStr(P) << " = " << VS;
     } else {
-      Code << getStore(I, P, V->getType(), VS, Alignment) << ';';
+      Code << getStore(SI, P, V->getType(), VS, Alignment);
     }
 
     Type *T = V->getType();
@@ -1411,18 +1399,43 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     break;
   }
   case Instruction::GetElementPtr: {
-    report_fatal_error("Unlowered getelementptr");
+    Code << getAssignIfNeeded(I);
+    const GEPOperator *GEP = cast<GEPOperator>(I);
+    gep_type_iterator GTI = gep_type_begin(GEP);
+    int32_t ConstantOffset = 0;
+    std::string text = getValueAsParenStr(GEP->getPointerOperand());
+    for (GetElementPtrInst::const_op_iterator I = llvm::next(GEP->op_begin()),
+                                              E = GEP->op_end();
+       I != E; ++I) {
+      const Value *Index = *I;
+      if (StructType *STy = dyn_cast<StructType>(*GTI++)) {
+        // For a struct, add the member offset.
+        unsigned FieldNo = cast<ConstantInt>(Index)->getZExtValue();
+        uint32_t Offset = DL->getStructLayout(STy)->getElementOffset(FieldNo);
+        ConstantOffset = (uint32_t)ConstantOffset + Offset;
+      } else {
+        // For an array, add the element offset, explicitly scaled.
+        uint32_t ElementSize = DL->getTypeAllocSize(*GTI);
+        if (const ConstantInt *CI = dyn_cast<ConstantInt>(Index)) {
+          ConstantOffset = (uint32_t)ConstantOffset + (uint32_t)CI->getSExtValue() * ElementSize;
+        } else {
+          text = "(" + text + " + (" + getIMul(Index, ConstantInt::get(Type::getInt32Ty(GEP->getContext()), ElementSize)) + ")|0)";
+        }
+      }
+    }
+    if (ConstantOffset != 0) {
+      text = "(" + text + " + " + itostr(ConstantOffset) + "|0)";
+    }
+    Code << text;
     break;
   }
   case Instruction::PHI: {
     // handled separately - we push them back into the relooper branchings
-    break;
+    return;
   }
   case Instruction::PtrToInt:
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << getPtrAsStr(I->getOperand(0)) << ';';
-    break;
   case Instruction::IntToPtr:
-    Code << getAssign(iName, Type::getInt32Ty(I->getContext())) << getValueAsStr(I->getOperand(0)) << ";";
+    Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
     break;
   case Instruction::Trunc:
   case Instruction::ZExt:
@@ -1433,8 +1446,8 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
   case Instruction::FPToSI:
   case Instruction::UIToFP:
   case Instruction::SIToFP: {
-    Code << getAssign(iName, I->getType());
-    switch (I->getOpcode()) {
+    Code << getAssignIfNeeded(I);
+    switch (Operator::getOpcode(I)) {
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
       unsigned outBits = I->getType()->getIntegerBitWidth();
@@ -1459,52 +1472,53 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
       Code << ensureFloat(getValueAsStr(I->getOperand(0)), I->getType());
       break;
     }
-    case Instruction::SIToFP:   Code << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()); break;
-    case Instruction::UIToFP:   Code << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()); break;
-    case Instruction::FPToSI:   Code << getDoubleToInt(getValueAsParenStr(I->getOperand(0))); break;
-    case Instruction::FPToUI:   Code << getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED); break;
-    case Instruction::PtrToInt: Code << getValueAsStr(I->getOperand(0)); break;
-    case Instruction::IntToPtr: Code << getValueAsStr(I->getOperand(0)); break;
+    case Instruction::SIToFP:   Code << '(' << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()) << ')'; break;
+    case Instruction::UIToFP:   Code << '('<< getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()) << ')'; break;
+    case Instruction::FPToSI:   Code << '('<< getDoubleToInt(getValueAsParenStr(I->getOperand(0))) << ')'; break;
+    case Instruction::FPToUI:   Code << '('<< getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED) << ')'; break;
+    case Instruction::PtrToInt: Code << '(' << getValueAsStr(I->getOperand(0)) << ')'; break;
+    case Instruction::IntToPtr: Code << '(' << getValueAsStr(I->getOperand(0)) << ')'; break;
     default: llvm_unreachable("Unreachable");
     }
-    Code << ";";
     break;
   }
   case Instruction::BitCast: {
-    Code << getAssign(iName, I->getType());
+    Code << getAssignIfNeeded(I);
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     Type *InType = I->getOperand(0)->getType();
     Type *OutType = I->getType();
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
       assert(InType->getIntegerBitWidth() == 32);
-      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) + ");";
+      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) + ")";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
       assert(OutType->getIntegerBitWidth() == 32);
-      Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," << "HEAP32[tempDoublePtr>>2]|0);";
+      Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," << "HEAP32[tempDoublePtr>>2]|0)";
     } else {
-      Code << V << ";";
+      Code << V;
     }
     break;
   }
   case Instruction::Call: {
     const CallInst *CI = cast<CallInst>(I);
     std::string Call = handleCall(CI);
-    if (Call.size() > 0) Code << Call << ';';
+    if (Call.empty()) return;
+    Code << Call;
     break;
   }
   case Instruction::Select: {
     const SelectInst* SI = cast<SelectInst>(I);
-    Code << getAssign(iName, I->getType()) << getValueAsStr(SI->getCondition()) << " ? " <<
-                                              getValueAsStr(SI->getTrueValue()) << " : " <<
-                                              getValueAsStr(SI->getFalseValue()) << ';';
+    Code << getAssignIfNeeded(I) << getValueAsStr(SI->getCondition()) << " ? " <<
+                                    getValueAsStr(SI->getTrueValue()) << " : " <<
+                                    getValueAsStr(SI->getFalseValue());
     break;
   }
   case Instruction::AtomicCmpXchg: {
+    const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
     const Value *P = I->getOperand(0);
-    Code << getLoad(I, P, I->getType(), 0) << ';' <<
-           "if ((" << getCast(iName, I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
-              getStore(I, P, I->getType(), getValueAsStr(I->getOperand(2)), 0) << ";";
+    Code << getLoad(cxi, P, I->getType(), 0) << ';' <<
+           "if ((" << getCast(getJSName(I), I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
+              getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
     break;
   }
   case Instruction::AtomicRMW: {
@@ -1512,29 +1526,35 @@ void JSWriter::generateInstruction(const Instruction *I, raw_string_ostream& Cod
     const Value *P = rmwi->getOperand(0);
     const Value *V = rmwi->getOperand(1);
     std::string VS = getValueAsStr(V);
-    Code << getLoad(I, P, I->getType(), 0) << ';';
+    Code << getLoad(rmwi, P, I->getType(), 0) << ';';
     // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
     switch (rmwi->getOperation()) {
-      case AtomicRMWInst::Xchg: Code << getStore(I, P, I->getType(), VS, 0); break;
-      case AtomicRMWInst::Add:  Code << getStore(I, P, I->getType(), "((" + iName + '+' + VS + ")|0)", 0); break;
-      case AtomicRMWInst::Sub:  Code << getStore(I, P, I->getType(), "((" + iName + '-' + VS + ")|0)", 0); break;
-      case AtomicRMWInst::And:  Code << getStore(I, P, I->getType(), "(" + iName + '&' + VS + ")", 0); break;
-      case AtomicRMWInst::Nand: Code << getStore(I, P, I->getType(), "(~(" + iName + '&' + VS + "))", 0); break;
-      case AtomicRMWInst::Or:   Code << getStore(I, P, I->getType(), "(" + iName + '|' + VS + ")", 0); break;
-      case AtomicRMWInst::Xor:  Code << getStore(I, P, I->getType(), "(" + iName + '^' + VS + ")", 0); break;
+      case AtomicRMWInst::Xchg: Code << getStore(rmwi, P, I->getType(), VS, 0); break;
+      case AtomicRMWInst::Add:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '+' + VS + ")|0)", 0); break;
+      case AtomicRMWInst::Sub:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '-' + VS + ")|0)", 0); break;
+      case AtomicRMWInst::And:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '&' + VS + ")", 0); break;
+      case AtomicRMWInst::Nand: Code << getStore(rmwi, P, I->getType(), "(~(" + getJSName(I) + '&' + VS + "))", 0); break;
+      case AtomicRMWInst::Or:   Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '|' + VS + ")", 0); break;
+      case AtomicRMWInst::Xor:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '^' + VS + ")", 0); break;
       case AtomicRMWInst::Max:
       case AtomicRMWInst::Min:
       case AtomicRMWInst::UMax:
       case AtomicRMWInst::UMin:
       case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
     }
-    Code << ";";
     break;
   }
-  case Instruction::Fence: break; // no threads, so nothing to do here
+  case Instruction::Fence: // no threads, so nothing to do here
+    Code << "/* fence */";
+    break;
   }
-  // append debug info
-  emitDebugInfo(Code, I);
+
+  if (const Instruction *Inst = dyn_cast<Instruction>(I)) {
+    Code << ';';
+    // append debug info
+    emitDebugInfo(Code, Inst);
+    Code << '\n';
+  }
 }
 
 // Checks whether to use a condition variable. We do so for switches and for indirectbrs
@@ -1566,8 +1586,7 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   raw_string_ostream CodeStream(Code);
   for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
        I != E; ++I) {
-    generateInstruction(I, CodeStream);
-    CodeStream << '\n';
+    generateExpression(I, CodeStream);
   }
   CodeStream.flush();
   const Value* Condition = considerConditionVar(BB->getTerminator());
@@ -1726,7 +1745,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   }
 
   // Emit stack entry
-  Out << " " << getAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
+  Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
   if (TotalStackAllocs) {
     Out << "\n " << "STACKTOP = STACKTOP + " + utostr(TotalStackAllocs) + "|0;";
   }
@@ -1798,15 +1817,13 @@ void JSWriter::printFunction(const Function *F) {
     for (BasicBlock::const_iterator II = BI->begin(), E = BI->end(); II != E; ++II) {
       if (const AllocaInst* AI = dyn_cast<AllocaInst>(II)) {
         Type *T = AI->getAllocatedType();
-        if (!T->isVectorTy()) {
-          const Value *AS = AI->getArraySize();
-          unsigned BaseSize = DL->getTypeAllocSize(T);
-          if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
-            // TODO: group by alignment to avoid unnecessary padding
-            unsigned Size = memAlign(BaseSize * CI->getZExtValue());
-            StackAllocs[AI] = TotalStackAllocs;
-            TotalStackAllocs += Size;
-          }
+        const Value *AS = AI->getArraySize();
+        unsigned BaseSize = DL->getTypeAllocSize(T);
+        if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
+          // TODO: group by alignment to avoid unnecessary padding
+          unsigned Size = memAlign(BaseSize * CI->getZExtValue());
+          StackAllocs[AI] = TotalStackAllocs;
+          TotalStackAllocs += Size;
         }
       } else {
         // stop after the first non-alloca - could alter the stack
@@ -1847,6 +1864,21 @@ void JSWriter::printModuleBody() {
   nl(Out) << "// EMSCRIPTEN_START_FUNCTIONS"; nl(Out);
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
+    // Ignore intrinsics that are always no-ops. We don't emit any code for
+    // them, so we don't need to declare them.
+    if (I->isIntrinsic()) {
+      switch (I->getIntrinsicID()) {
+      case Intrinsic::dbg_declare:
+      case Intrinsic::dbg_value:
+      case Intrinsic::lifetime_start:
+      case Intrinsic::lifetime_end:
+      case Intrinsic::invariant_start:
+      case Intrinsic::invariant_end:
+      case Intrinsic::prefetch:
+        continue;
+      }
+    }
+
     if (!I->isDeclaration()) printFunction(I);
   }
   Out << "function runPostSets() {\n";
@@ -2168,12 +2200,22 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
         }
       } else {
         unsigned Data = 0;
+
+        // Deconstruct lowered getelementptrs.
         if (CE->getOpcode() == Instruction::Add) {
           Data = cast<ConstantInt>(CE->getOperand(1))->getZExtValue();
           CE = cast<ConstantExpr>(CE->getOperand(0));
         }
-        assert(CE->isCast());
-        const Value *V = CE->getOperand(0);
+        const Value *V = CE;
+        if (CE->getOpcode() == Instruction::PtrToInt) {
+          V = CE->getOperand(0);
+        }
+
+        // Deconstruct getelementptrs.
+        int64_t BaseOffset;
+        V = GetPointerBaseWithConstantOffset(V, BaseOffset, DL);
+        Data += (uint64_t)BaseOffset;
+
         Data += getConstAsOffset(V, getGlobalAddress(name));
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;

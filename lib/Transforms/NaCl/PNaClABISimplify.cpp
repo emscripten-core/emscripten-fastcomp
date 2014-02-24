@@ -116,15 +116,19 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // are expanded out later.
   PM.add(createFlattenGlobalsPass());
 
+#if 0 // XXX EMSCRIPTEN: We can handle ConstantExprs in our backend.
   // We should not place arbitrary passes after ExpandConstantExpr
   // because they might reintroduce ConstantExprs.
   PM.add(createExpandConstantExprPass());
+#endif
   // PromoteIntegersPass does not handle constexprs and creates GEPs,
   // so it goes between those passes.
   PM.add(createPromoteIntegersPass());
+#if 0 // XXX EMSCRIPTEN: We can handle GEPs in our backend.
   // ExpandGetElementPtr must follow ExpandConstantExpr to expand the
   // getelementptr instructions it creates.
   PM.add(createExpandGetElementPtrPass());
+#endif
   // Rewrite atomic and volatile instructions with intrinsic calls.
 #if 0 // EMSCRIPTEN: we don't need to fix volatiles etc, and can use llvm intrinsics
   PM.add(createRewriteAtomicsPass());

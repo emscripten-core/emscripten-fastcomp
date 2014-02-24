@@ -283,9 +283,14 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   ArgTypes.push_back(VarArgsTy->getPointerTo());
   FunctionType *NFTy = FunctionType::get(FuncType->getReturnType(),
                                          ArgTypes, false);
-  Value *CastFunc =
-    CopyDebug(new BitCastInst(Call->getCalledValue(), NFTy->getPointerTo(),
-                              "vararg_func", Call), Call);
+  /// XXX EMSCRIPTEN: Handle Constants as well as Instructions, since we
+  /// don't run the ConstantExpr lowering pass.
+  Value *CastFunc;
+  if (Constant *C = dyn_cast<Constant>(Call->getCalledValue()))
+    CastFunc = ConstantExpr::getBitCast(C, NFTy->getPointerTo());
+  else
+    CastFunc = CopyDebug(new BitCastInst(Call->getCalledValue(), NFTy->getPointerTo(),
+                                         "vararg_func", Call), Call);
 
   // Create the converted function call.
   FixedArgs.push_back(Buf);

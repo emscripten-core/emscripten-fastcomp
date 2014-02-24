@@ -231,7 +231,21 @@ bool LowerEmExceptions::runOnModule(Module &M) {
       unsigned Num = LP->getNumClauses();
       SmallVector<Value*,16> NewLPArgs;
       NewLPArgs.push_back(LP->getPersonalityFn());
-      for (unsigned i = 0; i < Num; i++) NewLPArgs.push_back(LP->getClause(i));
+      for (unsigned i = 0; i < Num; i++) {
+        Value *Arg = LP->getClause(i);
+        // As a temporary workaround for the lack of aggregate varargs support
+        // in the varargs lowering code, break out filter operands into their
+        // component elements.
+        if (LP->isFilter(i)) {
+          ArrayType *ATy = cast<ArrayType>(Arg->getType());
+          for (unsigned elem = 0, elemEnd = ATy->getNumElements(); elem != elemEnd; ++elem) {
+            Instruction *EE = ExtractValueInst::Create(Arg, makeArrayRef(elem), "", LP);
+            NewLPArgs.push_back(EE);
+          }
+        } else {
+          NewLPArgs.push_back(Arg);
+        }
+      }
       NewLPArgs.push_back(LP->isCleanup() ? ConstantInt::getTrue(i1) : ConstantInt::getFalse(i1));
       CallInst *NewLP = CallInst::Create(LandingPad, NewLPArgs, "", LP);
 
