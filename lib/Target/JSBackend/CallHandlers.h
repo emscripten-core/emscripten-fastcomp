@@ -690,7 +690,7 @@ DEF_REDIRECT_HANDLER(SDL_RWFromMem, SDL_RWFromConstMem);
 void setupCallHandlers() {
   CallHandlers = new CallHandlerMap;
   #define SETUP_CALL_HANDLER(Ident) \
-    (*CallHandlers)[std::string("_") + #Ident] = &JSWriter::CH_##Ident;
+    (*CallHandlers)["_" #Ident] = &JSWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(emscripten_preinvoke);
