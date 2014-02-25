@@ -78,7 +78,7 @@ DEF_CALL_HANDLER(__default__, {
     if (!NeedCasts) {
       text += getValueAsStr(CI->getOperand(i));
     } else {
-      text += getValueAsCastStr(CI->getOperand(i), ASM_NONSPECIFIC | FFI_OUT);
+      text += getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC | FFI_OUT);
     }
     if (i < NumArgs - 1) text += ",";
   }
@@ -89,11 +89,11 @@ DEF_CALL_HANDLER(__default__, {
   if (!InstRT->isVoidTy() && ActualRT->isVoidTy()) {
     // the function we are calling was cast to something returning a value, but it really
     // does not return a value
-    getAssign(getJSName(CI), InstRT); // ensure the variable is defined, but do not emit it here
-                                      // it should have 0 uses, but just to be safe
+    getAssignIfNeeded(CI); // ensure the variable is defined, but do not emit it here
+                           // it should have 0 uses, but just to be safe
   } else if (!ActualRT->isVoidTy()) {
     unsigned FFI_IN = FFI ? ASM_FFI_IN : 0;
-    text = getAssign(getJSName(CI), ActualRT) + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN);
+    text = getAssignIfNeeded(CI) + "(" + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN) + ")";
   }
   return text;
 })
@@ -107,10 +107,10 @@ DEF_CALL_HANDLER(emscripten_preinvoke, {
 DEF_CALL_HANDLER(emscripten_postinvoke, {
   assert(InvokeState == 1 || InvokeState == 2); // normally 2, but can be 1 if the call in between was optimized out
   InvokeState = 0;
-  return getAssign(getJSName(CI), CI->getType()) + "__THREW__; __THREW__ = 0";
+  return getAssign(CI) + "__THREW__; __THREW__ = 0";
 })
 DEF_CALL_HANDLER(emscripten_landingpad, {
-  std::string Ret = getAssign(getJSName(CI), CI->getType()) + "___cxa_find_matching_catch(-1,-1";
+  std::string Ret = getAssign(CI) + "___cxa_find_matching_catch(-1,-1";
   unsigned Num = getNumArgOperands(CI);
   for (unsigned i = 1; i < Num-1; i++) { // ignore personality and cleanup XXX - we probably should not be doing that!
     Ret += ",";
@@ -126,7 +126,7 @@ DEF_CALL_HANDLER(emscripten_resume, {
 // setjmp support
 
 DEF_CALL_HANDLER(emscripten_prep_setjmp, {
-  return getAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; STACKTOP=(STACKTOP+168)|0;" + // XXX FIXME
+  return getAdHocAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; STACKTOP=(STACKTOP+168)|0;" + // XXX FIXME
          "HEAP32[_setjmpTable>>2]=0";
 })
 DEF_CALL_HANDLER(emscripten_setjmp, {
@@ -141,7 +141,7 @@ DEF_CALL_HANDLER(emscripten_longjmp, {
 DEF_CALL_HANDLER(emscripten_check_longjmp, {
   std::string Threw = getValueAsStr(CI->getOperand(0));
   std::string Target = getJSName(CI);
-  std::string Assign = getAssign(Target, CI->getType());
+  std::string Assign = getAssign(CI);
   return "if (((" + Threw + "|0) != 0) & ((threwValue|0) != 0)) { " +
            Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable)|0; " +
            "if ((" + Target + "|0) == 0) { _longjmp(" + Threw + "|0, threwValue|0); } " + // rethrow
@@ -150,13 +150,13 @@ DEF_CALL_HANDLER(emscripten_check_longjmp, {
 })
 DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
   std::string Threw = getValueAsStr(CI->getOperand(0));
-  return getAssign(getJSName(CI), CI->getType()) + "tempRet0";
+  return getAssign(CI) + "tempRet0";
 })
 
 // i64 support
 
 DEF_CALL_HANDLER(getHigh32, {
-  return getAssign(getJSName(CI), CI->getType()) + "tempRet0";
+  return getAssign(CI) + "tempRet0";
 })
 DEF_CALL_HANDLER(setHigh32, {
   return "tempRet0 = " + getValueAsStr(CI->getOperand(0));
@@ -166,20 +166,20 @@ DEF_CALL_HANDLER(setHigh32, {
 DEF_CALL_HANDLER(low, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
   if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
-  return getAssign(getJSName(CI), CI->getType()) + "(~~" + Input + ")>>>0"; \
+  return getAssign(CI) + "(~~" + Input + ")>>>0"; \
 }) \
 DEF_CALL_HANDLER(high, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
   if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
-  return getAssign(getJSName(CI), CI->getType()) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
+  return getAssign(CI) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
 })
 TO_I(FtoILow, FtoIHigh);
 TO_I(DtoILow, DtoIHigh);
 DEF_CALL_HANDLER(BDtoILow, {
-  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ";" + getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr>>2]|0";
+  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ";" + getAssign(CI) + "HEAP32[tempDoublePtr>>2]|0";
 })
 DEF_CALL_HANDLER(BDtoIHigh, {
-  return getAssign(getJSName(CI), CI->getType()) + "HEAP32[tempDoublePtr+4>>2]|0";
+  return getAssign(CI) + "HEAP32[tempDoublePtr+4>>2]|0";
 })
 DEF_CALL_HANDLER(SItoF, {
   std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
@@ -187,7 +187,7 @@ DEF_CALL_HANDLER(SItoF, {
   if (PreciseF32 && CI->getType()->isFloatTy()) {
     Ret = "Math_fround(" + Ret + ")";
   }
-  return getAssign(getJSName(CI), CI->getType()) + Ret;
+  return getAssign(CI) + Ret;
 })
 DEF_CALL_HANDLER(UItoF, {
   std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
@@ -195,20 +195,20 @@ DEF_CALL_HANDLER(UItoF, {
   if (PreciseF32 && CI->getType()->isFloatTy()) {
     Ret = "Math_fround(" + Ret + ")";
   }
-  return getAssign(getJSName(CI), CI->getType()) + Ret;
+  return getAssign(CI) + Ret;
 })
 DEF_CALL_HANDLER(SItoD, {
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+  return getAssign(CI) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
 })
 DEF_CALL_HANDLER(UItoD, {
-  return getAssign(getJSName(CI), CI->getType()) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
+  return getAssign(CI) + "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
 DEF_CALL_HANDLER(BItoD, {
   return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getOperand(0)) + ";" +
          "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ";" +
-         getAssign(getJSName(CI), CI->getType()) + "+HEAPF64[tempDoublePtr>>3]";
+         getAssign(CI) + "+HEAPF64[tempDoublePtr>>3]";
 })
 
 // misc
@@ -323,7 +323,7 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_expect_i32, {
-  return getAssign(getJSName(CI), CI->getType()) + getValueAsStr(CI->getOperand(0));
+  return getAssign(CI) + getValueAsStr(CI->getOperand(0));
 })
 
 DEF_CALL_HANDLER(llvm_dbg_declare, {
@@ -339,6 +339,18 @@ DEF_CALL_HANDLER(llvm_lifetime_start, {
 })
 
 DEF_CALL_HANDLER(llvm_lifetime_end, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_invariant_start, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_invariant_end, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_prefetch, {
   return "";
 })
 
@@ -364,7 +376,7 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
 
 // vector ops
 DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
-  return getAssign(getJSName(CI), CI->getType()) + "SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(0)) + ").signMask";
+  return getAssign(CI) + "SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(0)) + ").signMask";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_min, {
   return CH___default__(CI, "SIMD.float32x4.min");
@@ -391,19 +403,19 @@ DEF_CALL_HANDLER(emscripten_float32x4_greaterThan, {
   return CH___default__(CI, "SIMD.float32x4.greaterThan");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_and, {
-  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.and(SIMD.float32x4.bitsToInt32x4(" +
+  return getAssign(CI) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.and(SIMD.float32x4.bitsToInt32x4(" +
                                                       getValueAsStr(CI->getOperand(0)) + "),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_andNot, {
-  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.and(SIMD.int32x4.not(SIMD.float32x4.bitsToInt32x4(" +
+  return getAssign(CI) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.and(SIMD.int32x4.not(SIMD.float32x4.bitsToInt32x4(" +
                                                       getValueAsStr(CI->getOperand(0)) + ")),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_or, {
-  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.or(SIMD.float32x4.bitsToInt32x4(" +
+  return getAssign(CI) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.or(SIMD.float32x4.bitsToInt32x4(" +
                                                       getValueAsStr(CI->getOperand(0)) + "),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_xor, {
-  return getAssign(getJSName(CI), CI->getType()) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.xor(SIMD.float32x4.bitsToInt32x4(" +
+  return getAssign(CI) + "SIMD.int32x4.bitsToFloat32x4(SIMD.int32x4.xor(SIMD.float32x4.bitsToInt32x4(" +
                                                       getValueAsStr(CI->getOperand(0)) + "),SIMD.float32x4.bitsToInt32x4(" + getValueAsStr(CI->getOperand(1)) + ")))";
 })
 DEF_CALL_HANDLER(emscripten_int32x4_bitsToFloat32x4, {
@@ -678,7 +690,7 @@ DEF_REDIRECT_HANDLER(SDL_RWFromMem, SDL_RWFromConstMem);
 void setupCallHandlers() {
   CallHandlers = new CallHandlerMap;
   #define SETUP_CALL_HANDLER(Ident) \
-    (*CallHandlers)[std::string("_") + #Ident] = &JSWriter::CH_##Ident;
+    (*CallHandlers)["_" #Ident] = &JSWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(emscripten_preinvoke);
@@ -712,6 +724,9 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_dbg_value);
   SETUP_CALL_HANDLER(llvm_lifetime_start);
   SETUP_CALL_HANDLER(llvm_lifetime_end);
+  SETUP_CALL_HANDLER(llvm_invariant_start);
+  SETUP_CALL_HANDLER(llvm_invariant_end);
+  SETUP_CALL_HANDLER(llvm_prefetch);
   SETUP_CALL_HANDLER(bitshift64Lshr);
   SETUP_CALL_HANDLER(bitshift64Ashr);
   SETUP_CALL_HANDLER(bitshift64Shl);
@@ -977,7 +992,12 @@ void setupCallHandlers() {
 std::string handleCall(const Instruction *CI) {
   const Value *CV = getActuallyCalledValue(CI);
   assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
-  const std::string &Name = getJSName(CV);
+
+  // Get the name to call this function by. If it's a direct call, meaning
+  // which know which Function we're calling, avoid calling getValueAsStr, as
+  // we don't need to use a function index.
+  const std::string &Name = isa<Function>(CV) ? getJSName(CV) : getValueAsStr(CV);
+
   unsigned NumArgs = getNumArgOperands(CI);
   CallHandlerMap::iterator CH = CallHandlers->find("___default__");
   if (isa<Function>(CV)) {

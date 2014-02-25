@@ -28,6 +28,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
@@ -37,6 +38,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
@@ -302,6 +304,23 @@ bool ExpandI64::splitInst(Instruction *I) {
   ChunksVec &Chunks = Splits[I];
 
   switch (I->getOpcode()) {
+    case Instruction::GetElementPtr: {
+      GetElementPtrInst *GEP = cast<GetElementPtrInst>(I);
+      SmallVector<Value*, 2> NewOps;
+      for (unsigned i = 1, e = I->getNumOperands(); i != e; ++i) {
+        Value *Op = I->getOperand(i);
+        if (isIllegal(Op->getType())) {
+          // Truncate the operand down to one chunk.
+          NewOps.push_back(getChunks(Op)[0]);
+        } else {
+          NewOps.push_back(Op);
+        }
+      }
+      Value *NewGEP = CopyDebug(GetElementPtrInst::Create(GEP->getPointerOperand(), NewOps, "", GEP), GEP);
+      Chunks.push_back(NewGEP);
+      I->replaceAllUsesWith(NewGEP);
+      break;
+    }
     case Instruction::SExt: {
       ChunksVec InputChunks;
       Value *Op = I->getOperand(0);
@@ -881,32 +900,32 @@ bool ExpandI64::splitInst(Instruction *I) {
 ChunksVec ExpandI64::getChunks(Value *V) {
   assert(isIllegal(V->getType()));
 
-  Type *i32 = Type::getInt32Ty(V->getContext());
-  Value *Zero = ConstantInt::get(i32, 0);
-
   unsigned Num = getNumChunks(V->getType());
+  Type *i32 = Type::getInt32Ty(V->getContext());
 
-  if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
-    APInt C = CI->getValue();
+  if (isa<UndefValue>(V))
+    return ChunksVec(Num, UndefValue::get(i32));
+
+  if (Constant *C = dyn_cast<Constant>(V)) {
     ChunksVec Chunks;
     for (unsigned i = 0; i < Num; i++) {
-      Chunks.push_back(ConstantInt::get(i32, C.trunc(32)));
-      C = C.lshr(32);
+      Constant *Count = ConstantInt::get(C->getType(), i * 32);
+      Constant *NewC = ConstantExpr::getTrunc(ConstantExpr::getLShr(C, Count), i32);
+      TargetLibraryInfo *TLI = 0; // TODO
+      if (ConstantExpr *NewCE = dyn_cast<ConstantExpr>(NewC)) {
+        if (Constant *FoldedC = ConstantFoldConstantExpression(NewCE, DL, TLI)) {
+          NewC = FoldedC;
+        }
+      }
+
+      Chunks.push_back(NewC);
     }
     return Chunks;
-  } else if (Instruction *I = dyn_cast<Instruction>(V)) {
-    assert(Splits.find(I) != Splits.end());
-    return Splits[I];
-  } else if (isa<UndefValue>(V)) {
-    ChunksVec Chunks;
-    for (unsigned i = 0; i < Num; i++) {
-      Chunks.push_back(Zero);
-    }
-    return Chunks;
-  } else {
-    assert(Splits.find(V) != Splits.end());
-    return Splits[V];
   }
+
+  assert(Splits.find(V) != Splits.end());
+  assert(Splits[V].size() == Num);
+  return Splits[V];
 }
 
 void ExpandI64::ensureFuncs() {

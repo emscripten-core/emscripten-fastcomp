@@ -233,14 +233,14 @@ class ConversionState {
 Value *PromoteIntegers::splitLoad(LoadInst *Inst, ConversionState &State) {
   if (Inst->isVolatile() || Inst->isAtomic())
     report_fatal_error("Can't split volatile/atomic loads");
-  if (cast<IntegerType>(Inst->getType())->getBitWidth() % 8 != 0)
+  if (DL->getTypeSizeInBits(Inst->getType()) % 8 != 0)
     report_fatal_error("Loads must be a multiple of 8 bits");
 
   Value *OrigPtr = State.getConverted(Inst->getPointerOperand());
   // OrigPtr is a placeholder in recursive calls, and so has no name
   if (OrigPtr->getName().empty())
     OrigPtr->setName(Inst->getPointerOperand()->getName());
-  unsigned Width = cast<IntegerType>(Inst->getType())->getBitWidth();
+  unsigned Width = DL->getTypeSizeInBits(Inst->getType());
   Type *NewType = getPromotedType(Inst->getType());
   unsigned LoWidth = Width;
 
@@ -293,8 +293,7 @@ Value *PromoteIntegers::splitLoad(LoadInst *Inst, ConversionState &State) {
 Value *PromoteIntegers::splitStore(StoreInst *Inst, ConversionState &State) {
   if (Inst->isVolatile() || Inst->isAtomic())
     report_fatal_error("Can't split volatile/atomic stores");
-  if (cast<IntegerType>(Inst->getValueOperand()->getType())->getBitWidth() % 8
-      != 0)
+  if (DL->getTypeSizeInBits(Inst->getValueOperand()->getType()) % 8 != 0)
     report_fatal_error("Stores must be a multiple of 8 bits");
 
   Value *OrigPtr = State.getConverted(Inst->getPointerOperand());
@@ -302,8 +301,7 @@ Value *PromoteIntegers::splitStore(StoreInst *Inst, ConversionState &State) {
   if (OrigPtr->getName().empty())
     OrigPtr->setName(Inst->getPointerOperand()->getName());
   Value *OrigVal = State.getConverted(Inst->getValueOperand());
-  unsigned Width = cast<IntegerType>(
-      Inst->getValueOperand()->getType())->getBitWidth();
+  unsigned Width = DL->getTypeSizeInBits(Inst->getValueOperand()->getType());
   unsigned LoWidth = Width;
 
   while (!isLegalSize(LoWidth)) LoWidth -= 8;

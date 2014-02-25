@@ -56,6 +56,25 @@ static Value *expandConstantExpr(Instruction *InsertPt, ConstantExpr *Expr) {
   return NewInst;
 }
 
+// XXX Emscripten: Utilities for illegal expressions.
+static bool isIllegal(Type *T) {
+  return T->isIntegerTy() && T->getIntegerBitWidth() > 32;
+}
+static bool ContainsIllegalTypes(const Value *Expr) {
+  if (isIllegal(Expr->getType()))
+    return true;
+  if (const User *U = dyn_cast<User>(Expr)) {
+    for (User::const_op_iterator I = U->op_begin(), E = U->op_end(); I != E; ++I) {
+      if (Constant *C = dyn_cast<Constant>(*I)) {
+        if (!isa<GlobalValue>(C) && ContainsIllegalTypes(C)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 static bool expandInstruction(Instruction *Inst) {
   // A landingpad can only accept ConstantExprs, so it should remain
   // unmodified.
@@ -66,9 +85,14 @@ static bool expandInstruction(Instruction *Inst) {
   for (unsigned OpNum = 0; OpNum < Inst->getNumOperands(); OpNum++) {
     if (ConstantExpr *Expr =
         dyn_cast<ConstantExpr>(Inst->getOperand(OpNum))) {
-      Modified = true;
-      Use *U = &Inst->getOperandUse(OpNum);
-      PhiSafeReplaceUses(U, expandConstantExpr(PhiSafeInsertPt(U), Expr));
+      // XXX Emscripten: Only do the expansion of the expression contains
+      // illegal types, for now, since we can handle legal ConstantExprs
+      // in the backend directly.
+      if (ContainsIllegalTypes(Expr)) {
+        Modified = true;
+        Use *U = &Inst->getOperandUse(OpNum);
+        PhiSafeReplaceUses(U, expandConstantExpr(PhiSafeInsertPt(U), Expr));
+      }
     }
   }
   return Modified;
