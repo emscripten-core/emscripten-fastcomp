@@ -116,11 +116,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // are expanded out later.
   PM.add(createFlattenGlobalsPass());
 
-#if 0 // XXX EMSCRIPTEN: We can handle ConstantExprs in our backend.
   // We should not place arbitrary passes after ExpandConstantExpr
   // because they might reintroduce ConstantExprs.
   PM.add(createExpandConstantExprPass());
-#endif
   // PromoteIntegersPass does not handle constexprs and creates GEPs,
   // so it goes between those passes.
   PM.add(createPromoteIntegersPass());
