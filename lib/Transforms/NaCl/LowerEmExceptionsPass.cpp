@@ -45,20 +45,10 @@
 #include <vector>
 #include <set>
 
-#include "llvm/Support/raw_ostream.h"
-#include <stdio.h>
-#define dump(x) fprintf(stderr, x "\n")
-#define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
-#define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpIR(value) { \
-  std::string temp; \
-  raw_string_ostream stream(temp); \
-  stream << *(value); \
-  fprintf(stderr, "%s\n", temp.c_str()); \
-}
+#ifdef NDEBUG
 #undef assert
-#define assert(x) { if (!(x)) dumpfail(#x); }
+#define assert(x) { if (!(x)) report_fatal_error(#x); }
+#endif
 
 using namespace llvm;
 
