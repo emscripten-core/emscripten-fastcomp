@@ -232,7 +232,11 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
         unsigned Len = LenInt->getZExtValue();
         if (Len <= WRITE_LOOP_MAX) {
           unsigned Align = AlignInt->getZExtValue();
-          if (Align > 4 || Align == 0) Align = 4; // XXX actually memcpy align 0 means 1, not 4
+          if (Align > 4) Align = 4;
+          else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
+          if (Align == 1 && Len > 1 && WarnOnUnaligned) {
+            errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
+          }
           unsigned Pos = 0;
           std::string Ret;
           std::string Dest = getValueAsStr(CI->getOperand(0));
@@ -279,7 +283,11 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
           if (Len <= WRITE_LOOP_MAX) {
             unsigned Align = AlignInt->getZExtValue();
             unsigned Val = ValInt->getZExtValue();
-            if (Align > 4 || Align == 0) Align = 4; // XXX actually memset align 0 means 1, not 4
+            if (Align > 4) Align = 4;
+            else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
+            if (Align == 1 && Len > 1 && WarnOnUnaligned) {
+              errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
+            }
             unsigned Pos = 0;
             std::string Ret;
             std::string Dest = getValueAsStr(CI->getOperand(0));
