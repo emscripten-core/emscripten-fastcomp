@@ -362,6 +362,12 @@ DEF_CALL_HANDLER(llvm_prefetch, {
   return "";
 })
 
+DEF_CALL_HANDLER(llvm_flt_rounds, {
+  // FLT_ROUNDS helper. We don't support setting the rounding mode dynamically,
+  // so it's always round-to-nearest (1).
+  return getAssign(CI) + "1";
+})
+
 DEF_CALL_HANDLER(bitshift64Lshr, {
   return CH___default__(CI, "_bitshift64Lshr", 3);
 })
@@ -735,6 +741,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_invariant_start);
   SETUP_CALL_HANDLER(llvm_invariant_end);
   SETUP_CALL_HANDLER(llvm_prefetch);
+  SETUP_CALL_HANDLER(llvm_flt_rounds);
   SETUP_CALL_HANDLER(bitshift64Lshr);
   SETUP_CALL_HANDLER(bitshift64Ashr);
   SETUP_CALL_HANDLER(bitshift64Shl);

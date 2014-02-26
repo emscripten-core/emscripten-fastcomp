@@ -61,8 +61,10 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
   PM.add(createLowerExpectIntrinsicPass());
+#if 0 // XXX EMSCRIPTEN: We don't need this.
   // Rewrite unsupported intrinsics to simpler and portable constructs.
   PM.add(createRewriteLLVMIntrinsicsPass());
+#endif
 
   // Expand out some uses of struct types.
   PM.add(createExpandArithWithOverflowPass());

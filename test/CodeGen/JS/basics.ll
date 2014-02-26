@@ -25,3 +25,11 @@ define double @fneg(double %d) nounwind {
   %f = fsub double -0.0, %d
   ret double %f
 }
+
+; CHECK: function _flt_rounds(
+; CHECK: t = 1;
+declare i32 @llvm.flt.rounds()
+define i32 @flt_rounds() {
+  %t = call i32 @llvm.flt.rounds()
+  ret i32 %t
+}
