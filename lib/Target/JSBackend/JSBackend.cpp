@@ -1507,10 +1507,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::Select: {
-    const SelectInst* SI = cast<SelectInst>(I);
-    Code << getAssignIfNeeded(I) << getValueAsStr(SI->getCondition()) << " ? " <<
-                                    getValueAsStr(SI->getTrueValue()) << " : " <<
-                                    getValueAsStr(SI->getFalseValue());
+    Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0)) << " ? " <<
+                                    getValueAsStr(I->getOperand(1)) << " : " <<
+                                    getValueAsStr(I->getOperand(2));
     break;
   }
   case Instruction::AtomicCmpXchg: {
