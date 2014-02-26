@@ -83,7 +83,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
 }
 
 void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
+#if 0 // XXX EMSCRIPTEN: No need for this.
   PM.add(createRewritePNaClLibraryCallsPass());
+#endif
 
   // We place ExpandByVal after optimization passes because some byval
   // arguments can be expanded away by the ArgPromotion pass.  Leaving
