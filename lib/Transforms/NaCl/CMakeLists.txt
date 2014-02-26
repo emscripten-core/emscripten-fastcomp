@@ -31,6 +31,7 @@ add_llvm_library(LLVMNaClTransforms
   ExpandI64.cpp
   LowerEmExceptionsPass.cpp
   LowerEmSetjmp.cpp
+  NoExitRuntime.cpp
   )
 
 add_dependencies(LLVMNaClTransforms intrinsics_gen)

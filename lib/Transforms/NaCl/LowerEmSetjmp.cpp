@@ -297,7 +297,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
     }
   }
 
-  for (int i = 0; i < ToErase.size(); i++) {
+  for (unsigned i = 0; i < ToErase.size(); i++) {
     ToErase[i]->eraseFromParent();
   }
 

@@ -642,6 +642,7 @@ int main(int argc, char **argv) {
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeExpandI64Pass(Registry);
+  initializeNoExitRuntimePass(Registry);
   // @LOCALMOD-END
 
   cl::ParseCommandLineOptions(argc, argv,

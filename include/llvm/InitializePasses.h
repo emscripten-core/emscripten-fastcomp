@@ -308,6 +308,7 @@ void initializeStripMetadataPass(PassRegistry&);
 void initializeExpandI64Pass(PassRegistry&); // XXX EMSCRIPTEN
 void initializeLowerEmExceptionsPass(PassRegistry&); // XXX EMSCRIPTEN
 void initializeLowerEmSetjmpPass(PassRegistry&); // XXX EMSCRIPTEN
+void initializeNoExitRuntimePass(PassRegistry&); // XXX EMSCRIPTEN
 // @LOCALMOD-END
 }
 
