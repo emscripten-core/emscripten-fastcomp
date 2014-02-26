@@ -28,7 +28,6 @@ add_llvm_library(LLVMNaClTransforms
   RewritePNaClLibraryCalls.cpp
   StripAttributes.cpp
   StripMetadata.cpp
-  ExpandI64.cpp
   LowerEmExceptionsPass.cpp
   LowerEmSetjmp.cpp
   NoExitRuntime.cpp

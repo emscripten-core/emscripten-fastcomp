@@ -164,7 +164,5 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   PM.add(createDeadInstEliminationPass());
 #endif
   PM.add(createDeadCodeEliminationPass());
-
-  PM.add(createExpandI64Pass()); // EMSCRIPTEN // FIXME: move this before the dce stuff here
 }
 

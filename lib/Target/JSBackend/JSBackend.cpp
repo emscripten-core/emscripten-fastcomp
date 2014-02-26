@@ -2318,6 +2318,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                           AnalysisID StopAfter) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
+  PM.add(createExpandI64Pass());
   PM.add(createSimplifyAllocasPass());
   PM.add(new JSWriter(o));
 

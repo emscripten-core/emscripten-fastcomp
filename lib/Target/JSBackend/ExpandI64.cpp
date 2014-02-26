@@ -24,6 +24,7 @@
 //
 //===------------------------------------------------------------------===//
 
+#include "OptPasses.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallString.h"
@@ -39,7 +40,6 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Target/TargetLibraryInfo.h"
-#include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
 
@@ -113,6 +113,11 @@ INITIALIZE_PASS(ExpandI64, "expand-illegal-ints",
                 false, false)
 
 // Utilities
+
+static Instruction *CopyDebug(Instruction *NewInst, Instruction *Original) {
+  NewInst->setDebugLoc(Original->getDebugLoc());
+  return NewInst;
+}
 
 static bool isIllegal(Type *T) {
   return T->isIntegerTy() && T->getIntegerBitWidth() > 32;
@@ -1102,6 +1107,6 @@ void ExpandI64::getAnalysisUsage(AnalysisUsage &AU) const {
   ModulePass::getAnalysisUsage(AU);
 }
 
-ModulePass *llvm::createExpandI64Pass() {
+Pass *llvm::createExpandI64Pass() {
   return new ExpandI64();
 }
