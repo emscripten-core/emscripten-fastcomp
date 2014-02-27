@@ -6,11 +6,11 @@
 ; CHECK:  [[VAR_t:\$[a-z]+]] = HEAP32[2]|0;
 ; CHECK:  [[VAR_s:\$[a-z]+]] = +HEAPF64[2];
 ; CHECK:  [[VAR_u:\$[a-z]+]] = HEAP8[24]|0;
-; CHECK:  [[VAR_a:\$[a-z]+]] = ~~(([[VAR_s:\$[a-z]+]]))>>>0;
+; CHECK:  [[VAR_a:\$[a-z]+]] = (~~(([[VAR_s:\$[a-z]+]]))>>>0);
 ; CHECK:  [[VAR_b:\$[a-z]+]] = [[VAR_u:\$[a-z]+]] << 24 >> 24;
 ; CHECK:  [[VAR_c:\$[a-z]+]] = (([[VAR_t:\$[a-z]+]]) + ([[VAR_a:\$[a-z]+]]))|0;
 ; CHECK:  [[VAR_d:\$[a-z]+]] = (([[VAR_c:\$[a-z]+]]) + ([[VAR_b:\$[a-z]+]]))|0;
-; CHECK:  return [[VAR_d:\$[a-z]+]]|0;
+; CHECK:  return ([[VAR_d:\$[a-z]+]]|0);
 define i32 @loads() {
   %t = load i32* @A
   %s = load double* @B
