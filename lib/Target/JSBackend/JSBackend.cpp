@@ -581,8 +581,9 @@ std::string JSWriter::getAssign(const Instruction *I) {
 }
 
 std::string JSWriter::getAssignIfNeeded(const Value *V) {
-  if (const Instruction *I = dyn_cast<Instruction>(V))
-    return getAssign(I);
+  if (const Instruction *I = dyn_cast<Instruction>(V)) {
+    if (I->getNumUses() > 0) return getAssign(I);
+  }
   return std::string();
 }
 
