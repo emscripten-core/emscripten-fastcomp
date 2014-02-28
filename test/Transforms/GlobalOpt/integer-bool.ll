@@ -4,17 +4,17 @@
 @G = internal addrspace(1) global i32 0
 ; CHECK: @G
 ; CHECK: addrspace(1)
-; CHECK: global i1 false
+; CHECK: global i32 0
 
 define void @set1() {
   store i32 0, i32 addrspace(1)* @G
-; CHECK: store i1 false
+; CHECK: store i32 0
   ret void
 }
 
 define void @set2() {
   store i32 1, i32 addrspace(1)* @G
-; CHECK: store i1 true
+; CHECK: store i32 1
   ret void
 }
 
