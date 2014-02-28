@@ -582,7 +582,7 @@ std::string JSWriter::getAssign(const Instruction *I) {
 
 std::string JSWriter::getAssignIfNeeded(const Value *V) {
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
-    if (I->getNumUses() > 0) return getAssign(I);
+    if (!I->use_empty()) return getAssign(I);
   }
   return std::string();
 }
@@ -1790,7 +1790,7 @@ void JSWriter::printFunction(const Function *F) {
   unsigned Next = 1;
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
-    if (!AI->hasName() && AI->hasNUsesOrMore(1)) {
+    if (!AI->hasName() && !AI->use_empty()) {
       ValueNames[AI] = "$" + utostr(Next++);
     }
   }
@@ -1798,7 +1798,7 @@ void JSWriter::printFunction(const Function *F) {
        BI != BE; ++BI) {
     for (BasicBlock::const_iterator II = BI->begin(), E = BI->end();
          II != E; ++II) {
-      if (!II->hasName() && II->hasNUsesOrMore(1)) {
+      if (!II->hasName() && !II->use_empty()) {
         ValueNames[II] = "$" + utostr(Next++);
       }
     }
@@ -1910,7 +1910,7 @@ void JSWriter::printModuleBody() {
   bool first = true;
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
-    if (I->isDeclaration() && I->hasNUsesOrMore(1)) {
+    if (I->isDeclaration() && !I->use_empty()) {
       if (first) {
         first = false;
       } else {
