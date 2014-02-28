@@ -322,8 +322,8 @@ namespace {
       } else if (const BlockAddress *BA = dyn_cast<const BlockAddress>(V)) {
         return getBlockAddress(BA);
       } else {
-        if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
-          if (GV->hasExternalLinkage()) {
+        if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+          if (!GV->hasInitializer()) {
             // We don't have a constant to emit here, so we must emit a postSet
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
