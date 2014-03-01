@@ -466,11 +466,6 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
       // value, so check all the cases too.
       for (SwitchInst::ConstCaseIt Case = Switch->case_begin(),
              E = Switch->case_end(); Case != E; ++Case) {
-        // This check will go away when we merge upstream's r190328,
-        // which removes all case range support.
-        if (!Case.getCaseValueEx().isSingleNumber())
-          return "case range in switch instruction";
-
         if (!isValidScalarOperand(Case.getCaseValue()))
           return "bad switch case";
       }

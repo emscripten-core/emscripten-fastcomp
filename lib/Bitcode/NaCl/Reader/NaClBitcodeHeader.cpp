@@ -199,14 +199,14 @@ bool NaClBitcodeHeader::Read(StreamableMemoryObject *Bytes) {
   unsigned NumBytes;
   {
     unsigned char Buffer[2 * WordSize];
-    if (Bytes->readBytes(0, sizeof(Buffer), Buffer, NULL))
+    if (Bytes->readBytes(0, sizeof(Buffer), Buffer))
       return UnsupportedError("Bitcode read failure");
     if (ReadPrefix(Buffer, Buffer + sizeof(Buffer), NumFields, NumBytes))
       return true; // ReadPrefix sets UnsupportedMessage
   }
   uint8_t *Header = new uint8_t[NumBytes];
   bool failed =
-      Bytes->readBytes(2 * WordSize, NumBytes, Header, NULL) ||
+      Bytes->readBytes(2 * WordSize, NumBytes, Header) ||
       ReadFields(Header, Header + NumBytes, NumFields, NumBytes);
   delete[] Header;
   if (failed)

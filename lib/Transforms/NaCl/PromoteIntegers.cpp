@@ -551,12 +551,6 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     for (SwitchInst::CaseIt I = Switch->case_begin(),
              E = Switch->case_end();
          I != E; ++I) {
-      // This sanity check should never trigger because no-one
-      // generates case ranges.  It will go away when we merge
-      // upstream's r190328, which removes all case range support.
-      if (!I.getCaseValueEx().isSingleNumber())
-        report_fatal_error("Case ranges are not supported in PNaCl");
-
       NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue())),
                        I.getCaseSuccessor());
     }

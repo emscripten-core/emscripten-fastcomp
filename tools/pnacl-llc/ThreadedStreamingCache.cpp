@@ -25,19 +25,16 @@ ThreadedStreamingCache::ThreadedStreamingCache(
 
 int ThreadedStreamingCache::fetchCacheLine(uint64_t address) const {
   uint64_t Base = address & kCacheSizeMask;
-  uint64_t Copied;
   int Ret;
   ScopedLock L(StreamerLock);
   if (Streamer->isValidAddress(Base + kCacheSize - 1)) {
-    Ret = Streamer->readBytes(Base, kCacheSize, &Cache[0], &Copied);
-    assert(Copied == kCacheSize);
+    Ret = Streamer->readBytes(Base, kCacheSize, &Cache[0]);
     assert(Ret == 0);
     MinObjectSize = Base + kCacheSize;
   } else {
     uint64_t End = Streamer->getExtent();
     assert(End > address && End <= Base + kCacheSize);
-    Ret = Streamer->readBytes(Base, End - Base, &Cache[0], &Copied);
-    assert(Copied == End - Base);
+    Ret = Streamer->readBytes(Base, End - Base, &Cache[0]);
     assert(Ret == 0);
     MinObjectSize = End;
   }
@@ -56,7 +53,7 @@ int ThreadedStreamingCache::readByte(
 }
 
 int ThreadedStreamingCache::readBytes(
-    uint64_t address, uint64_t size, uint8_t* buf, uint64_t* copied) const {
+    uint64_t address, uint64_t size, uint8_t* buf) const {
   // To keep the cache fetch simple, we currently require that no request cross
   // the cache line. This isn't a problem for the bitcode reader because it only
   // fetches a byte or a word at a time.
@@ -66,7 +63,6 @@ int ThreadedStreamingCache::readBytes(
     if(fetchCacheLine(address))
       return -1;
   }
-  if (copied) *copied = size;
   memcpy(buf, &Cache[address - CacheBase], size);
   return 0;
 }

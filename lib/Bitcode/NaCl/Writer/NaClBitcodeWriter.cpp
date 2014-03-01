@@ -695,11 +695,6 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       Vals64.push_back(SI.getNumCases());
       for (SwitchInst::ConstCaseIt i = SI.case_begin(), e = SI.case_end();
            i != e; ++i) {
-        // This check will go away when we merge upstream's r190328,
-        // which removes all case range support.
-        if (!i.getCaseValueEx().isSingleNumber())
-          report_fatal_error("Case ranges are not supported in PNaCl bitcode");
-
         // The PNaCl bitcode format has vestigial support for case
         // ranges, but we no longer support reading or writing them,
         // so the next two fields always have the same values.

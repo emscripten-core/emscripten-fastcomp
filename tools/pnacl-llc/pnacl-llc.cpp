@@ -205,8 +205,9 @@ static tool_output_file *GetOutputStream(const char *TargetName,
 
   // Open the file.
   std::string error;
-  unsigned OpenFlags = 0;
-  if (Binary) OpenFlags |= raw_fd_ostream::F_Binary;
+  sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
+  if (Binary)
+    OpenFlags |= sys::fs::F_Binary;
   OwningPtr<tool_output_file> FDOut(
       new tool_output_file(Filename.c_str(), error, OpenFlags));
   if (!error.empty()) {
@@ -602,7 +603,6 @@ static int compileModule(StringRef ProgramName) {
   TargetOptions Options;
   Options.LessPreciseFPMADOption = EnableFPMAD;
   Options.NoFramePointerElim = DisableFPElim;
-  Options.NoFramePointerElimNonLeaf = DisableFPElimNonLeaf;
   Options.AllowFPOpFusion = FuseFPOps;
   Options.UnsafeFPMath = EnableUnsafeFPMath;
   Options.NoInfsFPMath = EnableNoInfsFPMath;
@@ -616,12 +616,10 @@ static int compileModule(StringRef ProgramName) {
   Options.GuaranteedTailCallOpt = EnableGuaranteedTailCallOpt;
   Options.DisableTailCalls = DisableTailCalls;
   Options.StackAlignmentOverride = OverrideStackAlignment;
-  Options.RealignStack = EnableRealignStack;
   Options.TrapFuncName = TrapFuncName;
   Options.PositionIndependentExecutable = EnablePIE;
   Options.EnableSegmentedStacks = SegmentedStacks;
   Options.UseInitArray = UseInitArray;
-  Options.SSPBufferSize = SSPBufferSize;
 
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;

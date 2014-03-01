@@ -225,8 +225,8 @@ public:
 
   virtual bool isMaterializable(const GlobalValue *GV) const;
   virtual bool isDematerializable(const GlobalValue *GV) const;
-  virtual bool Materialize(GlobalValue *GV, std::string *ErrInfo = 0);
-  virtual bool MaterializeModule(Module *M, std::string *ErrInfo = 0);
+  virtual error_code Materialize(GlobalValue *GV);
+  virtual error_code MaterializeModule(Module *M);
   virtual void Dematerialize(GlobalValue *GV);
 
   bool Error(const std::string &Str) {

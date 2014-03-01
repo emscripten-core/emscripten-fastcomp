@@ -56,7 +56,7 @@ unsigned DemoteRegTo32_(unsigned RegIn);
 static MCSymbol *CreateTempLabel(MCContext &Context, const char *Prefix) {
   SmallString<128> NameSV;
   raw_svector_ostream(NameSV)
-    << Context.getAsmInfo().getPrivateGlobalPrefix() // get internal label
+    << Context.getAsmInfo()->getPrivateGlobalPrefix() // get internal label
     << Prefix << Context.getUniqueSymbolID();
   return Context.GetOrCreateSymbol(NameSV);
 }

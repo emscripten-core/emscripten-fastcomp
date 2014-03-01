@@ -1,4 +1,4 @@
-; RUN: not pnacl-llc -mtriple=i386-unknown-nacl -filetype=asm %s -o - 2>&1 | FileCheck %s
+; RUN: not --crash pnacl-llc -mtriple=i386-unknown-nacl -filetype=asm %s -o - 2>&1 | FileCheck %s
 
 ; Test that the Verifier pass is running in pnacl-llc.
 

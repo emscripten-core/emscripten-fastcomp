@@ -29,8 +29,7 @@ class ThreadedStreamingCache : public llvm::StreamableMemoryObject {
   virtual int readByte(uint64_t address, uint8_t* ptr) const LLVM_OVERRIDE;
   virtual int readBytes(uint64_t address,
                         uint64_t size,
-                        uint8_t* buf,
-                        uint64_t* copied) const LLVM_OVERRIDE;
+                        uint8_t* buf) const LLVM_OVERRIDE;
   virtual const uint8_t *getPointer(uint64_t address,
                                     uint64_t size) const LLVM_OVERRIDE {
     // This could be fixed by ensuring the bytes are fetched and making a copy,
