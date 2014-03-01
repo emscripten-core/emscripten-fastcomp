@@ -773,6 +773,27 @@ bool ModuleLinker::linkGlobalProto(GlobalVariable *SGV) {
   return false;
 }
 
+static void CheckCastFunction(Value *V, Function *SF) {
+  // It is common to need a bitcast between an declaration and definition, but
+  // should never happen that two declarations do not agree in type and
+  // require a bitcast.
+  if (SF->isDeclaration()) {
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V)) {
+      assert(CE->getOpcode() == Instruction::BitCast);
+      if (Function *F = dyn_cast<Function>(CE->getOperand(0))) {
+        if (F->isDeclaration()) {
+          errs().changeColor(raw_ostream::YELLOW);
+          errs() << "link warning:";
+          errs().resetColor();
+          errs() << " function prototype has non-matching types\n";
+          errs() << *V;
+          errs() << *F;
+        }
+      }
+    }
+  }
+}
+
 /// linkFunctionProto - Link the function in the source module into the
 /// destination module if needed, setting up mapping information.
 bool ModuleLinker::linkFunctionProto(Function *SF) {
@@ -793,7 +814,9 @@ bool ModuleLinker::linkFunctionProto(Function *SF) {
       DGV->setVisibility(*NewVisibility);
 
       // Make sure to remember this mapping.
-      ValueMap[SF] = ConstantExpr::getBitCast(DGV, TypeMap.get(SF->getType()));
+      Value *V = ConstantExpr::getBitCast(DGV, TypeMap.get(SF->getType()));
+      CheckCastFunction(V, SF);
+      ValueMap[SF] = V;
       
       // Track the function from the source module so we don't attempt to remap 
       // it.
@@ -813,7 +836,9 @@ bool ModuleLinker::linkFunctionProto(Function *SF) {
 
   if (DGV) {
     // Any uses of DF need to change to NewDF, with cast.
-    DGV->replaceAllUsesWith(ConstantExpr::getBitCast(NewDF, DGV->getType()));
+    Value *V = ConstantExpr::getBitCast(NewDF, DGV->getType());
+    CheckCastFunction(V, SF);
+    DGV->replaceAllUsesWith(V);
     DGV->eraseFromParent();
   } else {
     // Internal, LO_ODR, or LO linkage - stick in set to ignore and lazily link.
