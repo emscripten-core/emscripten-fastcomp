@@ -618,6 +618,8 @@ would yield the help output:
     -help             - display available options (-help-hidden for more)
     -o <filename>     - Specify output filename
 
+.. _grouping options into categories:
+
 Grouping options into categories
 --------------------------------
 
@@ -923,12 +925,13 @@ This section describes the basic attributes that you can specify on options.
 
   .. code-block:: c++
 
-    cl::opt<**bool**> Quiet("quiet");
+    cl::opt<bool> Quiet("quiet");
 
 .. _cl::desc(...):
 
 * The **cl::desc** attribute specifies a description for the option to be
-  shown in the ``-help`` output for the program.
+  shown in the ``-help`` output for the program. This attribute supports
+  multi-line descriptions with lines separated by '\n'.
 
 .. _cl::value_desc:
 

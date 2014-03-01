@@ -1,7 +1,10 @@
-; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=v7
-; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv4t-apple-ios | FileCheck %s --check-prefix=prev6
-; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv5-apple-ios | FileCheck %s --check-prefix=prev6
-; RUN: llc < %s -O0 -fast-isel-abort -mtriple=thumbv7-apple-ios | FileCheck %s --check-prefix=v7
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=v7
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=v7
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv4t-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=prev6
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv4t-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=prev6
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv5-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=prev6
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=armv5-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=prev6
+; RUN: llc < %s -O0 -fast-isel-abort -mtriple=thumbv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=v7
 
 ; Can't test pre-ARMv6 Thumb because ARM FastISel currently only supports
 ; Thumb2. The ARMFastISel::ARMEmitIntExt code should work for Thumb by always
@@ -14,54 +17,54 @@
 ; zext
 
 define i8 @zext_1_8(i1 %a) nounwind ssp {
-; v7: zext_1_8:
+; v7-LABEL: zext_1_8:
 ; v7: and r0, r0, #1
-; prev6: zext_1_8:
+; prev6-LABEL: zext_1_8:
 ; prev6: and r0, r0, #1
   %r = zext i1 %a to i8
   ret i8 %r
 }
 
 define i16 @zext_1_16(i1 %a) nounwind ssp {
-; v7: zext_1_16:
+; v7-LABEL: zext_1_16:
 ; v7: and r0, r0, #1
-; prev6: zext_1_16:
+; prev6-LABEL: zext_1_16:
 ; prev6: and r0, r0, #1
   %r = zext i1 %a to i16
   ret i16 %r
 }
 
 define i32 @zext_1_32(i1 %a) nounwind ssp {
-; v7: zext_1_32:
+; v7-LABEL: zext_1_32:
 ; v7: and r0, r0, #1
-; prev6: zext_1_32:
+; prev6-LABEL: zext_1_32:
 ; prev6: and r0, r0, #1
   %r = zext i1 %a to i32
   ret i32 %r
 }
 
 define i16 @zext_8_16(i8 %a) nounwind ssp {
-; v7: zext_8_16:
+; v7-LABEL: zext_8_16:
 ; v7: and r0, r0, #255
-; prev6: zext_8_16:
+; prev6-LABEL: zext_8_16:
 ; prev6: and r0, r0, #255
   %r = zext i8 %a to i16
   ret i16 %r
 }
 
 define i32 @zext_8_32(i8 %a) nounwind ssp {
-; v7: zext_8_32:
+; v7-LABEL: zext_8_32:
 ; v7: and r0, r0, #255
-; prev6: zext_8_32:
+; prev6-LABEL: zext_8_32:
 ; prev6: and r0, r0, #255
   %r = zext i8 %a to i32
   ret i32 %r
 }
 
 define i32 @zext_16_32(i16 %a) nounwind ssp {
-; v7: zext_16_32:
+; v7-LABEL: zext_16_32:
 ; v7: uxth r0, r0
-; prev6: zext_16_32:
+; prev6-LABEL: zext_16_32:
 ; prev6: lsl{{s?}} r0, r0, #16
 ; prev6: lsr{{s?}} r0, r0, #16
   %r = zext i16 %a to i32
@@ -71,10 +74,10 @@ define i32 @zext_16_32(i16 %a) nounwind ssp {
 ; sext
 
 define i8 @sext_1_8(i1 %a) nounwind ssp {
-; v7: sext_1_8:
+; v7-LABEL: sext_1_8:
 ; v7: lsl{{s?}} r0, r0, #31
 ; v7: asr{{s?}} r0, r0, #31
-; prev6: sext_1_8:
+; prev6-LABEL: sext_1_8:
 ; prev6: lsl{{s?}} r0, r0, #31
 ; prev6: asr{{s?}} r0, r0, #31
   %r = sext i1 %a to i8
@@ -82,10 +85,10 @@ define i8 @sext_1_8(i1 %a) nounwind ssp {
 }
 
 define i16 @sext_1_16(i1 %a) nounwind ssp {
-; v7: sext_1_16:
+; v7-LABEL: sext_1_16:
 ; v7: lsl{{s?}} r0, r0, #31
 ; v7: asr{{s?}} r0, r0, #31
-; prev6: sext_1_16:
+; prev6-LABEL: sext_1_16:
 ; prev6: lsl{{s?}} r0, r0, #31
 ; prev6: asr{{s?}} r0, r0, #31
   %r = sext i1 %a to i16
@@ -93,10 +96,10 @@ define i16 @sext_1_16(i1 %a) nounwind ssp {
 }
 
 define i32 @sext_1_32(i1 %a) nounwind ssp {
-; v7: sext_1_32:
+; v7-LABEL: sext_1_32:
 ; v7: lsl{{s?}} r0, r0, #31
 ; v7: asr{{s?}} r0, r0, #31
-; prev6: sext_1_32:
+; prev6-LABEL: sext_1_32:
 ; prev6: lsl{{s?}} r0, r0, #31
 ; prev6: asr{{s?}} r0, r0, #31
   %r = sext i1 %a to i32
@@ -104,9 +107,9 @@ define i32 @sext_1_32(i1 %a) nounwind ssp {
 }
 
 define i16 @sext_8_16(i8 %a) nounwind ssp {
-; v7: sext_8_16:
+; v7-LABEL: sext_8_16:
 ; v7: sxtb r0, r0
-; prev6: sext_8_16:
+; prev6-LABEL: sext_8_16:
 ; prev6: lsl{{s?}} r0, r0, #24
 ; prev6: asr{{s?}} r0, r0, #24
   %r = sext i8 %a to i16
@@ -114,9 +117,9 @@ define i16 @sext_8_16(i8 %a) nounwind ssp {
 }
 
 define i32 @sext_8_32(i8 %a) nounwind ssp {
-; v7: sext_8_32:
+; v7-LABEL: sext_8_32:
 ; v7: sxtb r0, r0
-; prev6: sext_8_32:
+; prev6-LABEL: sext_8_32:
 ; prev6: lsl{{s?}} r0, r0, #24
 ; prev6: asr{{s?}} r0, r0, #24
   %r = sext i8 %a to i32
@@ -124,9 +127,9 @@ define i32 @sext_8_32(i8 %a) nounwind ssp {
 }
 
 define i32 @sext_16_32(i16 %a) nounwind ssp {
-; v7: sext_16_32:
+; v7-LABEL: sext_16_32:
 ; v7: sxth r0, r0
-; prev6: sext_16_32:
+; prev6-LABEL: sext_16_32:
 ; prev6: lsl{{s?}} r0, r0, #16
 ; prev6: asr{{s?}} r0, r0, #16
   %r = sext i16 %a to i32

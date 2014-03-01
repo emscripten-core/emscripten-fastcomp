@@ -1,98 +1,116 @@
 import os
 import sys
 
+PY2 = sys.version_info[0] < 3
+
 class TestingConfig:
     """"
     TestingConfig - Information on the tests inside a suite.
     """
 
-    # @LOCALMOD-START
-    # Msys tools like make and bash output paths like /c/dir/path. We need
-    # Windows drive letters. Makefile.rules has $(ECHOPATH) to try to get
-    # Windows paths but it doesn't work with autoconf substitutions like
-    # @FOO@=$(path)
     @staticmethod
-    def FixMsysPath(path):
-        if sys.platform == 'win32' and path and path.startswith('/'):
-            return path[1] + ':' + path[2:]
-        return path
-    # @LOCALMOD-END
+    def fromdefaults(litConfig):
+        """
+        fromdefaults(litConfig) -> TestingConfig
 
-    @staticmethod
-    def frompath(path, parent, litConfig, mustExist, config = None):
-        if config is None:
-            # Set the environment based on the command line arguments.
-            environment = {
-                'LIBRARY_PATH' : os.environ.get('LIBRARY_PATH',''),
-                'LD_LIBRARY_PATH' : os.environ.get('LD_LIBRARY_PATH',''),
-                'PATH' : os.pathsep.join(litConfig.path +
-                                         [os.environ.get('PATH','')]),
-                'SYSTEMROOT' : os.environ.get('SYSTEMROOT',''),
-                'TERM' : os.environ.get('TERM',''),
-                'LLVM_DISABLE_CRASH_REPORT' : '1',
-                }
+        Create a TestingConfig object with default values.
+        """
+        # Set the environment based on the command line arguments.
+        environment = {
+            'LIBRARY_PATH' : os.environ.get('LIBRARY_PATH',''),
+            'LD_LIBRARY_PATH' : os.environ.get('LD_LIBRARY_PATH',''),
+            'PATH' : os.pathsep.join(litConfig.path +
+                                     [os.environ.get('PATH','')]),
+            'SYSTEMROOT' : os.environ.get('SYSTEMROOT',''),
+            'TERM' : os.environ.get('TERM',''),
+            'LLVM_DISABLE_CRASH_REPORT' : '1',
+            }
 
-            if sys.platform == 'win32':
-                environment.update({
-                        'INCLUDE' : os.environ.get('INCLUDE',''),
-                        'PATHEXT' : os.environ.get('PATHEXT',''),
-                        'PYTHONUNBUFFERED' : '1',
-                        'TEMP' : os.environ.get('TEMP',''),
-                        'TMP' : os.environ.get('TMP',''),
-                        })
+        if sys.platform == 'win32':
+            environment.update({
+                    'INCLUDE' : os.environ.get('INCLUDE',''),
+                    'PATHEXT' : os.environ.get('PATHEXT',''),
+                    'PYTHONUNBUFFERED' : '1',
+                    'TEMP' : os.environ.get('TEMP',''),
+                    'TMP' : os.environ.get('TMP',''),
+                    })
 
-            # Set the default available features based on the LitConfig.
-            available_features = []
-            if litConfig.useValgrind:
-                available_features.append('valgrind')
-                if litConfig.valgrindLeakCheck:
-                    available_features.append('vg_leak')
+        # The option to preserve TEMP, TMP, and TMPDIR.
+        # This is intended to check how many temporary files would be generated
+        # (and be not cleaned up) in automated builders.
+        if os.environ.has_key('LIT_PRESERVES_TMP'):
+            environment.update({
+                    'TEMP' : os.environ.get('TEMP',''),
+                    'TMP' : os.environ.get('TMP',''),
+                    'TMPDIR' : os.environ.get('TMPDIR',''),
+                    })
 
-            config = TestingConfig(parent,
-                                   name = '<unnamed>',
-                                   suffixes = set(),
-                                   test_format = None,
-                                   environment = environment,
-                                   substitutions = [],
-                                   unsupported = False,
-                                   on_clone = None,
-                                   test_exec_root = None,
-                                   test_source_root = None,
-                                   excludes = [],
-                                   available_features = available_features)
+        # Set the default available features based on the LitConfig.
+        available_features = []
+        if litConfig.useValgrind:
+            available_features.append('valgrind')
+            if litConfig.valgrindLeakCheck:
+                available_features.append('vg_leak')
 
-        path = TestingConfig.FixMsysPath(path) # @LOCALMOD
-        if os.path.exists(path):
-            # FIXME: Improve detection and error reporting of errors in the
-            # config file.
-            f = open(path)
-            cfg_globals = dict(globals())
-            cfg_globals['config'] = config
-            cfg_globals['lit'] = litConfig
-            cfg_globals['__file__'] = path
-            try:
-                exec f in cfg_globals
-                if litConfig.debug:
-                    litConfig.note('... loaded config %r' % path)
-            except SystemExit,status:
-                # We allow normal system exit inside a config file to just
-                # return control without error.
-                if status.args:
-                    raise
-            f.close()
-        else:
-            if mustExist:
-                litConfig.fatal('unable to load config from %r ' % path)
-            elif litConfig.debug:
-                litConfig.note('... config not found  - %r' %path)
+        return TestingConfig(None,
+                             name = '<unnamed>',
+                             suffixes = set(),
+                             test_format = None,
+                             environment = environment,
+                             substitutions = [],
+                             unsupported = False,
+                             test_exec_root = None,
+                             test_source_root = None,
+                             excludes = [],
+                             available_features = available_features,
+                             pipefail = True)
 
-        config.finish(litConfig)
-        return config
+    def load_from_path(self, path, litConfig):
+        """
+        load_from_path(path, litConfig)
+
+        Load the configuration module at the provided path into the given config
+        object.
+        """
+
+        # Load the config script data.
+        f = open(path)
+        try:
+            data = f.read()
+        except:
+            litConfig.fatal('unable to load config file: %r' % (path,))
+        f.close()
+
+        # Execute the config script to initialize the object.
+        cfg_globals = dict(globals())
+        cfg_globals['config'] = self
+        cfg_globals['lit_config'] = litConfig
+        cfg_globals['__file__'] = path
+        try:
+            if PY2:
+                exec("exec data in cfg_globals")
+            else:
+                exec(data, cfg_globals)
+            if litConfig.debug:
+                litConfig.note('... loaded config %r' % path)
+        except SystemExit:
+            e = sys.exc_info()[1]
+            # We allow normal system exit inside a config file to just
+            # return control without error.
+            if e.args:
+                raise
+        except:
+            import traceback
+            litConfig.fatal(
+                'unable to parse config file %r, traceback: %s' % (
+                    path, traceback.format_exc()))
+
+        self.finish(litConfig)
 
     def __init__(self, parent, name, suffixes, test_format,
-                 environment, substitutions, unsupported, on_clone,
+                 environment, substitutions, unsupported,
                  test_exec_root, test_source_root, excludes,
-                 available_features):
+                 available_features, pipefail):
         self.parent = parent
         self.name = str(name)
         self.suffixes = set(suffixes)
@@ -100,25 +118,11 @@ class TestingConfig:
         self.environment = dict(environment)
         self.substitutions = list(substitutions)
         self.unsupported = unsupported
-        self.on_clone = on_clone
-        # @LOCALMOD
-        self.test_exec_root = TestingConfig.FixMsysPath(test_exec_root)
-        self.test_source_root = TestingConfig.FixMsysPath(test_source_root)
+        self.test_exec_root = test_exec_root
+        self.test_source_root = test_source_root
         self.excludes = set(excludes)
         self.available_features = set(available_features)
-
-    def clone(self, path):
-        # FIXME: Chain implementations?
-        #
-        # FIXME: Allow extra parameters?
-        cfg = TestingConfig(self, self.name, self.suffixes, self.test_format,
-                            self.environment, self.substitutions,
-                            self.unsupported, self.on_clone,
-                            self.test_exec_root, self.test_source_root,
-                            self.excludes, self.available_features)
-        if cfg.on_clone:
-            cfg.on_clone(self, cfg, path)
-        return cfg
+        self.pipefail = pipefail
 
     def finish(self, litConfig):
         """finish() - Finish this config object, after loading is complete."""

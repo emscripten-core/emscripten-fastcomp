@@ -80,8 +80,15 @@ namespace llvm {
 
     /// Construct an ArrayRef from a C array.
     template <size_t N>
-    /*implicit*/ ArrayRef(const T (&Arr)[N])
+    /*implicit*/ LLVM_CONSTEXPR ArrayRef(const T (&Arr)[N])
       : Data(Arr), Length(N) {}
+
+#if LLVM_HAS_INITIALIZER_LISTS
+    /// Construct an ArrayRef from a std::initializer_list.
+    /*implicit*/ ArrayRef(const std::initializer_list<T> &Vec)
+    : Data(Vec.begin() == Vec.end() ? (T*)0 : Vec.begin()),
+      Length(Vec.size()) {}
+#endif
 
     /// @}
     /// @name Simple Operations

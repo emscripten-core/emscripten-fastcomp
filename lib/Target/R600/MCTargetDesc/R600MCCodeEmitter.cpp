@@ -24,7 +24,6 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/raw_ostream.h"
-#include <stdio.h>
 
 using namespace llvm;
 
@@ -36,13 +35,12 @@ class R600MCCodeEmitter : public AMDGPUMCCodeEmitter {
   const MCInstrInfo &MCII;
   const MCRegisterInfo &MRI;
   const MCSubtargetInfo &STI;
-  MCContext &Ctx;
 
 public:
 
   R600MCCodeEmitter(const MCInstrInfo &mcii, const MCRegisterInfo &mri,
-                    const MCSubtargetInfo &sti, MCContext &ctx)
-    : MCII(mcii), MRI(mri), STI(sti), Ctx(ctx) { }
+                    const MCSubtargetInfo &sti)
+    : MCII(mcii), MRI(mri), STI(sti) { }
 
   /// \brief Encode the instruction and write it to the OS.
   virtual void EncodeInstruction(const MCInst &MI, raw_ostream &OS,
@@ -82,26 +80,10 @@ enum FCInstr {
   FC_CONTINUE
 };
 
-enum TextureTypes {
-  TEXTURE_1D = 1,
-  TEXTURE_2D,
-  TEXTURE_3D,
-  TEXTURE_CUBE,
-  TEXTURE_RECT,
-  TEXTURE_SHADOW1D,
-  TEXTURE_SHADOW2D,
-  TEXTURE_SHADOWRECT,
-  TEXTURE_1D_ARRAY,
-  TEXTURE_2D_ARRAY,
-  TEXTURE_SHADOW1D_ARRAY,
-  TEXTURE_SHADOW2D_ARRAY
-};
-
 MCCodeEmitter *llvm::createR600MCCodeEmitter(const MCInstrInfo &MCII,
                                            const MCRegisterInfo &MRI,
-                                           const MCSubtargetInfo &STI,
-                                           MCContext &Ctx) {
-  return new R600MCCodeEmitter(MCII, MRI, STI, Ctx);
+                                           const MCSubtargetInfo &STI) {
+  return new R600MCCodeEmitter(MCII, MRI, STI);
 }
 
 void R600MCCodeEmitter::EncodeInstruction(const MCInst &MI, raw_ostream &OS,
@@ -116,71 +98,46 @@ void R600MCCodeEmitter::EncodeInstruction(const MCInst &MI, raw_ostream &OS,
   } else if (IS_VTX(Desc)) {
     uint64_t InstWord01 = getBinaryCodeForInstr(MI, Fixups);
     uint32_t InstWord2 = MI.getOperand(2).getImm(); // Offset
-    InstWord2 |= 1 << 19;
+    if (!(STI.getFeatureBits() & AMDGPU::FeatureCaymanISA)) {
+      InstWord2 |= 1 << 19; // Mega-Fetch bit
+    }
 
     Emit(InstWord01, OS);
     Emit(InstWord2, OS);
-    Emit((u_int32_t) 0, OS);
+    Emit((uint32_t) 0, OS);
   } else if (IS_TEX(Desc)) {
-    unsigned Opcode = MI.getOpcode();
-    bool HasOffsets = (Opcode == AMDGPU::TEX_LD);
-    unsigned OpOffset = HasOffsets ? 3 : 0;
-    int64_t Sampler = MI.getOperand(OpOffset + 3).getImm();
-    int64_t TextureType = MI.getOperand(OpOffset + 4).getImm();
+      int64_t Sampler = MI.getOperand(14).getImm();
 
-    uint32_t SrcSelect[4] = {0, 1, 2, 3};
-    uint32_t Offsets[3] = {0, 0, 0};
-    uint64_t CoordType[4] = {1, 1, 1, 1};
+      int64_t SrcSelect[4] = {
+        MI.getOperand(2).getImm(),
+        MI.getOperand(3).getImm(),
+        MI.getOperand(4).getImm(),
+        MI.getOperand(5).getImm()
+      };
+      int64_t Offsets[3] = {
+        MI.getOperand(6).getImm() & 0x1F,
+        MI.getOperand(7).getImm() & 0x1F,
+        MI.getOperand(8).getImm() & 0x1F
+      };
 
-    if (HasOffsets)
-      for (unsigned i = 0; i < 3; i++) {
-        int SignedOffset = MI.getOperand(i + 2).getImm();
-        Offsets[i] = (SignedOffset & 0x1F);
-      }
+      uint64_t Word01 = getBinaryCodeForInstr(MI, Fixups);
+      uint32_t Word2 = Sampler << 15 | SrcSelect[ELEMENT_X] << 20 |
+          SrcSelect[ELEMENT_Y] << 23 | SrcSelect[ELEMENT_Z] << 26 |
+          SrcSelect[ELEMENT_W] << 29 | Offsets[0] << 0 | Offsets[1] << 5 |
+          Offsets[2] << 10;
 
-    if (TextureType == TEXTURE_RECT ||
-        TextureType == TEXTURE_SHADOWRECT) {
-      CoordType[ELEMENT_X] = 0;
-      CoordType[ELEMENT_Y] = 0;
-    }
-
-    if (TextureType == TEXTURE_1D_ARRAY ||
-        TextureType == TEXTURE_SHADOW1D_ARRAY) {
-      if (Opcode == AMDGPU::TEX_SAMPLE_C_L ||
-          Opcode == AMDGPU::TEX_SAMPLE_C_LB) {
-        CoordType[ELEMENT_Y] = 0;
-      } else {
-        CoordType[ELEMENT_Z] = 0;
-        SrcSelect[ELEMENT_Z] = ELEMENT_Y;
-      }
-    } else if (TextureType == TEXTURE_2D_ARRAY ||
-        TextureType == TEXTURE_SHADOW2D_ARRAY) {
-      CoordType[ELEMENT_Z] = 0;
-    }
-
-
-    if ((TextureType == TEXTURE_SHADOW1D ||
-        TextureType == TEXTURE_SHADOW2D ||
-        TextureType == TEXTURE_SHADOWRECT ||
-        TextureType == TEXTURE_SHADOW1D_ARRAY) &&
-        Opcode != AMDGPU::TEX_SAMPLE_C_L &&
-        Opcode != AMDGPU::TEX_SAMPLE_C_LB) {
-      SrcSelect[ELEMENT_W] = ELEMENT_Z;
-    }
-
-    uint64_t Word01 = getBinaryCodeForInstr(MI, Fixups) |
-        CoordType[ELEMENT_X] << 60 | CoordType[ELEMENT_Y] << 61 |
-        CoordType[ELEMENT_Z] << 62 | CoordType[ELEMENT_W] << 63;
-    uint32_t Word2 = Sampler << 15 | SrcSelect[ELEMENT_X] << 20 |
-        SrcSelect[ELEMENT_Y] << 23 | SrcSelect[ELEMENT_Z] << 26 |
-        SrcSelect[ELEMENT_W] << 29 | Offsets[0] << 0 | Offsets[1] << 5 |
-        Offsets[2] << 10;
-
-    Emit(Word01, OS);
-    Emit(Word2, OS);
-    Emit((u_int32_t) 0, OS);
+      Emit(Word01, OS);
+      Emit(Word2, OS);
+      Emit((uint32_t) 0, OS);
   } else {
     uint64_t Inst = getBinaryCodeForInstr(MI, Fixups);
+    if ((STI.getFeatureBits() & AMDGPU::FeatureR600ALUInst) &&
+       ((Desc.TSFlags & R600_InstFlag::OP1) ||
+         Desc.TSFlags & R600_InstFlag::OP2)) {
+      uint64_t ISAOpCode = Inst & (0x3FFULL << 39);
+      Inst &= ~(0x3FFULL << 39);
+      Inst |= ISAOpCode << 1;
+    }
     Emit(Inst, OS);
   }
 }

@@ -289,6 +289,7 @@ namespace A64SE {
     enum ShiftExtSpecifiers {
         Invalid = -1,
         LSL,
+        MSL,
         LSR,
         ASR,
         ROR,
@@ -303,6 +304,65 @@ namespace A64SE {
         SXTW,
         SXTX
     };
+}
+
+namespace A64Layout {
+    enum VectorLayout {
+        Invalid = -1,
+        _8B,
+        _4H,
+        _2S,
+        _1D,
+
+        _16B,
+        _8H,
+        _4S,
+        _2D,
+
+        // Bare layout for the 128-bit vector
+        // (only show ".b", ".h", ".s", ".d" without vector number)
+        _B,
+        _H,
+        _S,
+        _D
+    };
+}
+
+inline static const char *
+A64VectorLayoutToString(A64Layout::VectorLayout Layout) {
+  switch (Layout) {
+  case A64Layout::_8B:  return ".8b";
+  case A64Layout::_4H:  return ".4h";
+  case A64Layout::_2S:  return ".2s";
+  case A64Layout::_1D:  return ".1d";
+  case A64Layout::_16B:  return ".16b";
+  case A64Layout::_8H:  return ".8h";
+  case A64Layout::_4S:  return ".4s";
+  case A64Layout::_2D:  return ".2d";
+  case A64Layout::_B:  return ".b";
+  case A64Layout::_H:  return ".h";
+  case A64Layout::_S:  return ".s";
+  case A64Layout::_D:  return ".d";
+  default: llvm_unreachable("Unknown Vector Layout");
+  }
+}
+
+inline static A64Layout::VectorLayout
+A64StringToVectorLayout(StringRef LayoutStr) {
+  return StringSwitch<A64Layout::VectorLayout>(LayoutStr)
+             .Case(".8b", A64Layout::_8B)
+             .Case(".4h", A64Layout::_4H)
+             .Case(".2s", A64Layout::_2S)
+             .Case(".1d", A64Layout::_1D)
+             .Case(".16b", A64Layout::_16B)
+             .Case(".8h", A64Layout::_8H)
+             .Case(".4s", A64Layout::_4S)
+             .Case(".2d", A64Layout::_2D)
+             .Case(".b", A64Layout::_B)
+             .Case(".h", A64Layout::_H)
+             .Case(".s", A64Layout::_S)
+             .Case(".d", A64Layout::_D)
+             .Default(A64Layout::Invalid);
 }
 
 namespace A64SysReg {
@@ -1068,7 +1128,10 @@ namespace A64Imms {
   // MOVN but *not* with a MOVZ (because that would take priority).
   bool isOnlyMOVNImm(int RegWidth, uint64_t Value, int &UImm16, int &Shift);
 
-}
+  uint64_t decodeNeonModImm(unsigned Val, unsigned OpCmode, unsigned &EltBits);
+  bool decodeNeonModShiftImm(unsigned OpCmode, unsigned &ShiftImm,
+                             unsigned &ShiftOnesIn);
+  }
 
 } // end namespace llvm;
 

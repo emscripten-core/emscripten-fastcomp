@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=sparcv9 -disable-sparc-delay-filler | FileCheck %s
+; RUN: llc < %s -march=sparcv9 -disable-sparc-delay-filler -disable-sparc-leaf-proc | FileCheck %s
 
 ; CHECK: intarg
 ; The save/restore frame is not strictly necessary here, but we would need to
@@ -375,4 +375,20 @@ define signext i32 @ret_nosext(i32 signext %a0) {
 ; CHECK-NOT: srl
 define signext i32 @ret_nozext(i32 signext %a0) {
   ret i32 %a0
+}
+
+; CHECK-LABEL: test_register_directive
+; CHECK:       .register %g2, #scratch
+; CHECK:       .register %g3, #scratch
+; CHECK:       .register %g6, #ignore
+; CHECK:       .register %g7, #ignore
+; CHECK:       add %i0, 2, %g2
+; CHECK:       add %i0, 3, %g3
+define i32 @test_register_directive(i32 %i0) {
+entry:
+  %0 = add nsw i32 %i0, 2
+  %1 = add nsw i32 %i0, 3
+  tail call void asm sideeffect "", "r,r,~{l0},~{l1},~{l2},~{l3},~{l4},~{l5},~{l6},~{l7},~{i0},~{i1},~{i2},~{i3},~{i4},~{i5},~{i6},~{i7},~{o0},~{o1},~{o2},~{o3},~{o4},~{o5},~{o6},~{o7},~{g1},~{g4},~{g5},~{g6},~{g7}"(i32 %0, i32 %1)
+  %2 = add nsw i32 %0, %1
+  ret i32 %2
 }
