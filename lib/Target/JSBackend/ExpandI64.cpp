@@ -87,7 +87,14 @@ namespace {
     // The value can also be a constant, in which case we just
     // split it, or a function argument, in which case we
     // map to the proper legalized new arguments
-    ChunksVec getChunks(Value *V);
+    //
+    // @param AllowUnreachable  It is possible for phi nodes
+    //                          to refer to unreachable blocks,
+    //                          which our traversal never
+    //                          reaches; this flag lets us
+    //                          ignore those - otherwise,
+    //                          not finding chunks is fatal
+    ChunksVec getChunks(Value *V, bool AllowUnreachable=false);
 
     Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FtoILow, *FtoIHigh, *DtoILow, *DtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD, *BDtoILow, *BDtoIHigh;
 
@@ -902,7 +909,7 @@ bool ExpandI64::splitInst(Instruction *I) {
   return true;
 }
 
-ChunksVec ExpandI64::getChunks(Value *V) {
+ChunksVec ExpandI64::getChunks(Value *V, bool AllowUnreachable) {
   assert(isIllegal(V->getType()));
 
   unsigned Num = getNumChunks(V->getType());
@@ -928,7 +935,12 @@ ChunksVec ExpandI64::getChunks(Value *V) {
     return Chunks;
   }
 
-  assert(Splits.find(V) != Splits.end());
+  if (Splits.find(V) == Splits.end()) {
+    if (AllowUnreachable)
+      return ChunksVec(Num, UndefValue::get(i32));
+    errs() << *V << "\n";
+    report_fatal_error("could not find chunks for illegal value");
+  }
   assert(Splits[V].size() == Num);
   return Splits[V];
 }
@@ -1070,7 +1082,7 @@ bool ExpandI64::runOnModule(Module &M) {
       ChunksVec OutputChunks = getChunks(PN);
       for (unsigned j = 0, je = PN->getNumIncomingValues(); j != je; ++j) {
         Value *Op = PN->getIncomingValue(j);
-        ChunksVec InputChunks = getChunks(Op);
+        ChunksVec InputChunks = getChunks(Op, true);
         for (unsigned k = 0, ke = OutputChunks.size(); k != ke; ++k) {
           PHINode *NewPN = cast<PHINode>(OutputChunks[k]);
           NewPN->addIncoming(InputChunks[k], PN->getIncomingBlock(j));
