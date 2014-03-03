@@ -998,6 +998,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
 }
 
 std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
+  // Skip past no-op bitcasts and zero-index geps.
+  V = V->stripPointerCasts();
+
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
@@ -1006,6 +1009,9 @@ std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
 }
 
 std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
+  // Skip past no-op bitcasts and zero-index geps.
+  V = V->stripPointerCasts();
+
   if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
     return getConstant(cast<Constant>(V), sign);
   } else {
@@ -1014,6 +1020,9 @@ std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
 }
 
 std::string JSWriter::getValueAsParenStr(const Value* V) {
+  // Skip past no-op bitcasts and zero-index geps.
+  V = V->stripPointerCasts();
+
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
   } else {
@@ -1022,6 +1031,9 @@ std::string JSWriter::getValueAsParenStr(const Value* V) {
 }
 
 std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
+  // Skip past no-op bitcasts and zero-index geps.
+  V = V->stripPointerCasts();
+
   if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
     return getConstant(cast<Constant>(V), sign);
   } else {
@@ -1154,6 +1166,12 @@ static uint64_t LSBMask(unsigned numBits) {
 
 // Generate code for and operator, either an Instruction or a ConstantExpr.
 void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
+  // To avoid emiting code and variables for the no-op pointer bitcasts
+  // and all-zero-index geps that LLVM needs to satisfy its type system, we
+  // call stripPointerCasts() on all values before translating them. This
+  // includes bitcasts whose only use is lifetime marker intrinsics.
+  assert(I == I->stripPointerCasts());
+
   Type *T = I->getType();
   if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
     errs() << *I << "\n";
@@ -1586,7 +1604,9 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   raw_string_ostream CodeStream(Code);
   for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
        I != E; ++I) {
-    generateExpression(I, CodeStream);
+    if (I->stripPointerCasts() == I) {
+      generateExpression(I, CodeStream);
+    }
   }
   CodeStream.flush();
   const Value* Condition = considerConditionVar(BB->getTerminator());
