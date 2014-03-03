@@ -240,7 +240,8 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   // start of the function so that we don't leak space if the function
   // is called in a loop.
   Function *Func = Call->getParent()->getParent();
-  Instruction *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
+  AllocaInst *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
+  Buf->setAlignment(8); // XXX EMSCRIPTEN: Align for 8-byte aligned doubles.
   Func->getEntryBlock().getInstList().push_front(Buf);
 
   // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
