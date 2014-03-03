@@ -2089,8 +2089,6 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (calculate) {
       unsigned Bytes = DL->getTypeStoreSize(CV->getType());
-      // FIXME: assume full 64-bit alignment for now
-      Bytes = memAlign(Bytes);
       HeapData *GlobalData = allocateAddress(name);
       for (unsigned i = 0; i < Bytes; ++i) {
         GlobalData->push_back(0);
