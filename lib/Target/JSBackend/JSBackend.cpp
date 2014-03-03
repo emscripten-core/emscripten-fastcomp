@@ -40,6 +40,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/DebugInfo.h"
 #include <algorithm>
@@ -167,12 +168,14 @@ namespace {
 
     #define MEM_ALIGN 8
     #define MEM_ALIGN_BITS 64
+    #define STACK_ALIGN 16
+    #define STACK_ALIGN_BITS 128
 
-    unsigned memAlign(unsigned x) {
-      return x + (x%MEM_ALIGN != 0 ? MEM_ALIGN - x%MEM_ALIGN : 0);
+    unsigned stackAlign(unsigned x) {
+      return RoundUpToAlignment(x, STACK_ALIGN);
     }
-    std::string memAlignStr(std::string x) {
-      return "((" + x + "+" + utostr(MEM_ALIGN-1) + ")&-" + utostr(MEM_ALIGN) + ")";
+    std::string stackAlignStr(std::string x) {
+      return "((" + x + "+" + utostr(STACK_ALIGN-1) + ")&-" + utostr(STACK_ALIGN) + ")";
     }
 
     HeapData *allocateAddress(const std::string& Name, unsigned Bits = MEM_ALIGN_BITS) {
@@ -1380,9 +1383,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     uint64_t BaseSize = DL->getTypeAllocSize(T);
     const Value *AS = AI->getArraySize();
     if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
-      Size = Twine(memAlign(BaseSize * CI->getZExtValue())).str();
+      Size = Twine(stackAlign(BaseSize * CI->getZExtValue())).str();
     } else {
-      Size = memAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
+      Size = stackAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
     }
     Code << getAssign(AI) << "STACKTOP; STACKTOP = STACKTOP + " << Size << "|0";
     break;
@@ -1841,7 +1844,7 @@ void JSWriter::printFunction(const Function *F) {
         unsigned BaseSize = DL->getTypeAllocSize(T);
         if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
           // TODO: group by alignment to avoid unnecessary padding
-          unsigned Size = memAlign(BaseSize * CI->getZExtValue());
+          unsigned Size = stackAlign(BaseSize * CI->getZExtValue());
           StackAllocs[AI] = TotalStackAllocs;
           TotalStackAllocs += Size;
         }
