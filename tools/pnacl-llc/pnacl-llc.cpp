@@ -92,15 +92,6 @@ LazyBitcode("streaming-bitcode",
   cl::desc("Use lazy bitcode streaming for file inputs"),
   cl::init(false));
 
-// The option below overlaps very much with bitcode streaming.
-// We keep it separate because it is still experimental and we want
-// to use it without changing the outside behavior which is especially
-// relevant for the sandboxed case.
-static cl::opt<bool>
-ReduceMemoryFootprint("reduce-memory-footprint",
-  cl::desc("Aggressively reduce memory used by pnacl-llc"),
-  cl::init(false));
-
 static cl::opt<bool>
 PNaClABIVerify("pnaclabi-verify",
   cl::desc("Verify PNaCl bitcode ABI before translating"),
@@ -378,7 +369,7 @@ static int runCompilePasses(Module *mod,
 
   // Build up all of the passes that we want to do to the module.
   OwningPtr<PassManagerBase> PM;
-  if (LazyBitcode || ReduceMemoryFootprint)
+  if (LazyBitcode)
     PM.reset(new FunctionPassManager(mod));
   else
     PM.reset(new PassManager());
@@ -422,7 +413,7 @@ static int runCompilePasses(Module *mod,
     return 1;
   }
 
-  if (LazyBitcode || ReduceMemoryFootprint) {
+  if (LazyBitcode) {
     FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
     P->doInitialization();
     unsigned FuncIndex = 0;
@@ -430,9 +421,7 @@ static int runCompilePasses(Module *mod,
       if (FuncIndex++ % SplitModuleCount == ModuleIndex) {
         P->run(*I);
         CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-        if (ReduceMemoryFootprint) {
-          I->Dematerialize();
-        }
+        I->Dematerialize();
       }
     }
     P->doFinalization();
