@@ -144,8 +144,9 @@ class AllocaManager {
 public:
   AllocaManager();
 
-  /// Analyze the given function and prepare for getReplacement queries.
-  void analyze(const Function &Func, const DataLayout &Layout);
+  /// Analyze the given function and prepare for getRepresentative queries.
+  void analyze(const Function &Func, const DataLayout &Layout,
+               bool PerformColoring);
 
   /// Reset all stored state.
   void clear();
