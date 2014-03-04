@@ -1,4 +1,4 @@
-//===-- JSTargetMachine.h - TargetMachine for the C++ backend --*- C++ -*-===//
+//===-- JSTargetMachine.h - TargetMachine for the JS Backend ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //

@@ -1,4 +1,4 @@
-//===-- SimplifyAllocas.cpp - TargetMachine for the C++ backend --*- C++ -*-===//
+//===-- SimplifyAllocas.cpp - Alloca optimization ---------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,29 +6,23 @@
 // License. See LICENSE.TXT for details.
 //
 //===-----------------------------------------------------------------------===//
+//
+// There shouldn't be any opportunities for this pass to do anything if the
+// regular LLVM optimizer passes are run. However, it does make things nicer
+// at -O0.
+//
+//===-----------------------------------------------------------------------===//
 
-#include <OptPasses.h>
+#include "OptPasses.h"
 
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Function.h"
 
-// XXX
-#include "llvm/Support/FormattedStream.h"
-#include <stdio.h>
-#define dump(x) fprintf(stderr, x "\n")
-#define dumpv(x, ...) fprintf(stderr, x "\n", __VA_ARGS__)
-#define dumpfail(x)       { fprintf(stderr, x "\n");              fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpfailv(x, ...) { fprintf(stderr, x "\n", __VA_ARGS__); fprintf(stderr, "%s : %d\n", __FILE__, __LINE__); report_fatal_error("fail"); }
-#define dumpIR(value) { \
-  std::string temp; \
-  raw_string_ostream stream(temp); \
-  stream << *(value); \
-  fprintf(stderr, "%s\n", temp.c_str()); \
-}
+#ifdef NDEBUG
 #undef assert
-#define assert(x) { if (!(x)) dumpfail(#x); }
-// XXX
+#define assert(x) { if (!(x)) report_fatal_error(#x); }
+#endif
 
 namespace llvm {
 
@@ -115,4 +109,3 @@ extern FunctionPass *createSimplifyAllocasPass() {
 }
 
 } // End llvm namespace
-

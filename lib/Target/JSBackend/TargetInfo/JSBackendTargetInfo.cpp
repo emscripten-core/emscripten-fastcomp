@@ -8,6 +8,7 @@
 //===--------------------------------------------------------------------===//
 
 #include "JSTargetMachine.h"
+#include "MCTargetDesc/JSBackendMCTargetDesc.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
@@ -15,8 +16,21 @@ using namespace llvm;
 Target llvm::TheJSBackendTarget;
 
 static unsigned JSBackend_TripleMatchQuality(const std::string &TT) {
-  // This class always works, but shouldn't be the default in most cases.
-  return 1;
+  switch (Triple(TT).getArch()) {
+  case Triple::asmjs:
+    // That's us!
+    return 20;
+
+  case Triple::le32:
+  case Triple::x86:
+    // For compatibility with older versions of Emscripten, we also basically
+    // support generating code for le32-unknown-nacl and i386-pc-linux-gnu,
+    // but we use a low number here so that we're not the default.
+    return 1;
+
+  default:
+    return 0;
+  }
 }
 
 extern "C" void LLVMInitializeJSBackendTargetInfo() { 
@@ -24,5 +38,3 @@ extern "C" void LLVMInitializeJSBackendTargetInfo() {
                                  "JavaScript (asm.js, emscripten) backend",
                                  &JSBackend_TripleMatchQuality);
 }
-
-extern "C" void LLVMInitializeJSBackendTargetMC() {}

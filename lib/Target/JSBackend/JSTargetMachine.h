@@ -1,4 +1,4 @@
-//===-- JSTargetMachine.h - TargetMachine for the C++ backend --*- C++ -*-===//
+//===-- JSTargetMachine.h - TargetMachine for the JS Backend ----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -22,12 +22,14 @@ namespace llvm {
 
 class formatted_raw_ostream;
 
-struct JSTargetMachine : public TargetMachine {
-  JSTargetMachine(const Target &T, StringRef TT,
+class JSTargetMachine : public TargetMachine {
+  const DataLayout DL;
+
+public:
+  JSTargetMachine(const Target &T, StringRef Triple,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
                   Reloc::Model RM, CodeModel::Model CM,
-                  CodeGenOpt::Level OL)
-    : TargetMachine(T, TT, CPU, FS, Options) {}
+                  CodeGenOpt::Level OL);
 
   virtual bool addPassesToEmitFile(PassManagerBase &PM,
                                    formatted_raw_ostream &Out,
@@ -36,12 +38,9 @@ struct JSTargetMachine : public TargetMachine {
                                    AnalysisID StartAfter,
                                    AnalysisID StopAfter);
 
-  virtual const DataLayout *getDataLayout() const { return 0; }
+  virtual const DataLayout *getDataLayout() const { return &DL; }
 };
 
-extern Target TheJSBackendTarget;
-
 } // End llvm namespace
-
 
 #endif

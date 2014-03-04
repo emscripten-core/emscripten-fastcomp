@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "JSTargetMachine.h"
+#include "MCTargetDesc/JSBackendMCTargetDesc.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
@@ -2350,4 +2351,3 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
 
   return false;
 }
-
