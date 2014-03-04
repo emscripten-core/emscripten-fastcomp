@@ -138,13 +138,16 @@ namespace {
 
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
+    CodeGenOpt::Level OptLevel;
     DataLayout *DL;
 
     #include "CallHandlers.h"
 
   public:
     static char ID;
-    explicit JSWriter(formatted_raw_ostream &o) : ModulePass(ID), Out(o), UniqueNum(0), UsesSIMD(false), InvokeState(0) {}
+    JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
+      : ModulePass(ID), Out(o), UniqueNum(0), UsesSIMD(false), InvokeState(0),
+        OptLevel(OptLevel) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
 
@@ -1863,7 +1866,7 @@ void JSWriter::printFunction(const Function *F) {
   UsedVars.clear();
   UniqueNum = 0;
   calculateNativizedVars(F);
-  Allocas.analyze(*F, *DL);
+  Allocas.analyze(*F, *DL, OptLevel != CodeGenOpt::None);
 
   // Emit the function
 
@@ -2351,7 +2354,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
 
   PM.add(createExpandI64Pass());
   PM.add(createSimplifyAllocasPass());
-  PM.add(new JSWriter(o));
+  PM.add(new JSWriter(o, getOptLevel()));
 
   return false;
 }

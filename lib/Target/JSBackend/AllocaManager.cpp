@@ -449,7 +449,8 @@ void AllocaManager::computeFrameOffsets() {
 AllocaManager::AllocaManager() {
 }
 
-void AllocaManager::analyze(const Function &Func, const DataLayout &Layout) {
+void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,
+                            bool PerformColoring) {
   NamedRegionTimer Timer("AllocaManager", TimePassesIsEnabled);
 
   assert(Allocas.empty());
@@ -468,8 +469,11 @@ void AllocaManager::analyze(const Function &Func, const DataLayout &Layout) {
   LifetimeStart = M->getFunction(Intrinsic::getName(Intrinsic::lifetime_start));
   LifetimeEnd = M->getFunction(Intrinsic::getName(Intrinsic::lifetime_end));
 
-  if ((LifetimeStart && !LifetimeStart->use_empty()) ||
-      (LifetimeEnd   && !LifetimeEnd->use_empty())) {
+  // If we are optimizing and the module contains any lifetime intrinsics, run
+  // the alloca coloring algorithm.
+  if (PerformColoring &&
+      ((LifetimeStart && !LifetimeStart->use_empty()) ||
+       (LifetimeEnd   && !LifetimeEnd->use_empty()))) {
 
     collectMarkedAllocas();
 

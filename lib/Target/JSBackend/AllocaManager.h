@@ -145,7 +145,8 @@ public:
   AllocaManager();
 
   /// Analyze the given function and prepare for getReplacement queries.
-  void analyze(const Function &Func, const DataLayout &Layout);
+  void analyze(const Function &Func, const DataLayout &Layout,
+               bool PerformColoring);
 
   /// Reset all stored state.
   void clear();
