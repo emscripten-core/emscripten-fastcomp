@@ -431,6 +431,10 @@ static inline char halfCharToHex(unsigned char half) {
 }
 
 static inline void sanitizeGlobal(std::string& str) {
+  // Global names are prefixed with "_" to prevent them from colliding with
+  // names of things in normal JS.
+  str = "_" + str;
+
   // functions and globals should already be in C-style format,
   // in addition to . for llvm intrinsics and possibly $ and so forth.
   // There is a risk of collisions here, we just lower all these
@@ -444,6 +448,10 @@ static inline void sanitizeGlobal(std::string& str) {
 }
 
 static inline void sanitizeLocal(std::string& str) {
+  // Local names are prefixed with "$" to prevent them from colliding with
+  // global names.
+  str = "$" + str;
+
   // We need to convert every string that is not a valid JS identifier into
   // a valid one, without collisions - we cannot turn "x.a" into "x_a" while
   // also leaving "x_a" as is, for example.
@@ -568,10 +576,10 @@ const std::string &JSWriter::getJSName(const Value* val) {
   std::string name;
   if (val->hasName()) {
     if (isa<Function>(val) || isa<Constant>(val)) {
-      name = std::string("_") + val->getName().str();
+      name = val->getName().str();
       sanitizeGlobal(name);
     } else {
-      name = std::string("$") + val->getName().str();
+      name = val->getName().str();
       sanitizeLocal(name);
     }
   } else {
@@ -1867,7 +1875,7 @@ void JSWriter::printFunction(const Function *F) {
 
   std::string Name = F->getName();
   sanitizeGlobal(Name);
-  Out << "function _" << Name << "(";
+  Out << "function " << Name << "(";
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
     if (AI != F->arg_begin()) Out << ",";
