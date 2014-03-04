@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "JSTargetMachine.h"
+#include "AllocaManager.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
@@ -102,7 +103,6 @@ namespace {
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
   typedef std::map<std::string, Type::TypeID> VarMap;
-  typedef std::map<const AllocaInst*, unsigned> AllocaIntMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
   typedef std::vector<std::string> FunctionTable;
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
@@ -120,8 +120,7 @@ namespace {
     unsigned UniqueNum;
     ValueMap ValueNames;
     VarMap UsedVars;
-    AllocaIntMap StackAllocs;
-    unsigned TotalStackAllocs;
+    AllocaManager Allocas;
     HeapData GlobalData8;
     HeapData GlobalData32;
     HeapData GlobalData64;
@@ -571,6 +570,16 @@ const std::string &JSWriter::getJSName(const Value* val) {
   ValueMap::const_iterator I = ValueNames.find(val);
   if (I != ValueNames.end() && I->first == val)
     return I->second;
+
+  // If this is an alloca we've replaced with another, use the other name.
+  if (const AllocaInst *AI = dyn_cast<AllocaInst>(val)) {
+    if (AI->isStaticAlloca()) {
+      const AllocaInst *Rep = Allocas.getRepresentative(AI);
+      if (Rep != AI) {
+        return getJSName(Rep);
+      }
+    }
+  }
 
   std::string name;
   if (val->hasName()) {
@@ -1375,22 +1384,31 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::Alloca: {
-    if (NativizedVars.count(I)) {
+    const AllocaInst* AI = cast<AllocaInst>(I);
+
+    if (NativizedVars.count(AI)) {
       // nativized stack variable, we just need a 'var' definition
-      UsedVars[getJSName(I)] = cast<PointerType>(I->getType())->getElementType()->getTypeID();
+      UsedVars[getJSName(AI)] = AI->getType()->getElementType()->getTypeID();
       return;
     }
-    const AllocaInst* AI = cast<AllocaInst>(I);
-    AllocaIntMap::iterator AIMI = StackAllocs.find(AI);
-    if (AIMI != StackAllocs.end()) {
-      // fixed-size allocation that is already taken into account in the big initial allocation
-      if (AIMI->second) {
-        Code << getAssign(AI) << "sp + " << utostr(AIMI->second) << "|0";
-      } else {
-        Code << getAssign(AI) << "sp";
+
+    // Fixed-size entry-block allocations are allocated all at once in the
+    // function prologue.
+    if (AI->isStaticAlloca()) {
+      uint64_t Offset;
+      if (Allocas.getFrameOffset(AI, &Offset)) {
+        if (Offset != 0) {
+          Code << getAssign(AI) << "sp + " << Offset << "|0";
+        } else {
+          Code << getAssign(AI) << "sp";
+        }
+        break;
       }
-      break;
+      // Otherwise, this alloca is being represented by another alloca, so
+      // there's nothing to print.
+      return;
     }
+
     Type *T = AI->getAllocatedType();
     std::string Size;
     uint64_t BaseSize = DL->getTypeAllocSize(T);
@@ -1782,8 +1800,8 @@ void JSWriter::printFunctionBody(const Function *F) {
 
   // Emit stack entry
   Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
-  if (TotalStackAllocs) {
-    Out << "\n " << "STACKTOP = STACKTOP + " + utostr(TotalStackAllocs) + "|0;";
+  if (uint64_t FrameSize = Allocas.getFrameSize()) {
+    Out << "\n " "STACKTOP = STACKTOP + " << FrameSize << "|0;";
   }
 
   // Emit (relooped) code
@@ -1845,30 +1863,7 @@ void JSWriter::printFunction(const Function *F) {
   UsedVars.clear();
   UniqueNum = 0;
   calculateNativizedVars(F);
-
-  StackAllocs.clear();
-  TotalStackAllocs = 0;
-
-  for (Function::const_iterator BI = F->begin(), BE = F->end(); BI != BE; ++BI) {
-    for (BasicBlock::const_iterator II = BI->begin(), E = BI->end(); II != E; ++II) {
-      if (const AllocaInst* AI = dyn_cast<AllocaInst>(II)) {
-        Type *T = AI->getAllocatedType();
-        const Value *AS = AI->getArraySize();
-        unsigned BaseSize = DL->getTypeAllocSize(T);
-        if (const ConstantInt *CI = dyn_cast<ConstantInt>(AS)) {
-          // TODO: group by alignment to avoid unnecessary padding
-          unsigned Size = stackAlign(BaseSize * CI->getZExtValue());
-          StackAllocs[AI] = TotalStackAllocs;
-          TotalStackAllocs += Size;
-        }
-      } else {
-        // stop after the first non-alloca - could alter the stack
-        // however, ptrtoints are ok, and the legalizaton passes introduce them
-        if (!isa<PtrToIntInst>(II)) break;
-      }
-    }
-    break;
-  }
+  Allocas.analyze(*F, *DL);
 
   // Emit the function
 
@@ -1891,6 +1886,8 @@ void JSWriter::printFunction(const Function *F) {
   printFunctionBody(F);
   Out << "}";
   nl(Out);
+
+  Allocas.clear();
 }
 
 void JSWriter::printModuleBody() {
