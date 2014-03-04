@@ -44,6 +44,17 @@ DEF_CALL_HANDLER(__default__, {
   if (F) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
     FT = F->getFunctionType();
+    if (EmscriptenAssertions) {
+      unsigned TypeNumArgs = FT->getNumParams();
+      unsigned ActualNumArgs = getNumArgOperands(CI);
+      if (TypeNumArgs != ActualNumArgs) {
+        errs().changeColor(raw_ostream::YELLOW);
+        errs() << "warning:";
+        errs().resetColor();
+        errs() << " unexpected number of arguments " << utostr(ActualNumArgs) << " in call to '" << F->getName() << "', should be " << utostr(TypeNumArgs) << "\n";
+      }
+      // TODO: also check types of arguments, but must take into account JS types, not LLVM types
+    }
   } else {
     if (isAbsolute(CV)) return "abort(); /* segfault, call an absolute addr */";
     // function pointer call

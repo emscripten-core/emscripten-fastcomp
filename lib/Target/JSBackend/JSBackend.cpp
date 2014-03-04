@@ -76,6 +76,11 @@ ReservedFunctionPointers("emscripten-reserved-function-pointers",
                          cl::desc("Number of reserved slots in function tables for functions to be added at runtime (see emscripten RESERVED_FUNCTION_POINTERS option)"),
                          cl::init(0));
 
+static cl::opt<int>
+EmscriptenAssertions("emscripten-assertions",
+                     cl::desc("Additional JS-specific assertions (see emscripten ASSERTIONS)"),
+                     cl::init(0));
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
