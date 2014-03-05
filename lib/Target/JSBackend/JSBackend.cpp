@@ -1849,7 +1849,11 @@ void JSWriter::printFunction(const Function *F) {
 
   UsedVars.clear();
   UniqueNum = 0;
-  calculateNativizedVars(F);
+
+  // When optimizing, the regular optimizer (mem2reg, SROA, GVN, and others)
+  // will have already taken all the opportunities for nativization.
+  if (OptLevel == CodeGenOpt::None)
+    calculateNativizedVars(F);
 
   // Do alloca coloring at -O1 and higher.
   Allocas.analyze(*F, *DL, OptLevel != CodeGenOpt::None);
