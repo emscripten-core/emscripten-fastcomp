@@ -23,7 +23,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Config/config.h"
-#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
@@ -32,9 +31,6 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/MC/MCAsmInfo.h"
-#include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CallSite.h"
@@ -53,10 +49,6 @@ using namespace llvm;
 
 #include <OptPasses.h>
 #include <Relooper.h>
-
-#ifdef _MSC_VER
-#define snprintf _snprintf
-#endif
 
 #ifdef NDEBUG
 #undef assert
