@@ -1520,7 +1520,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     case Instruction::ZExt:     Code << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
     case Instruction::FPExt: {
       if (PreciseF32) {
-        Code << "+" + getValueAsStr(I->getOperand(0)); break;
+        Code << "+" << getValueAsStr(I->getOperand(0)); break;
       } else {
         Code << getValueAsStr(I->getOperand(0)); break;
       }
@@ -1548,10 +1548,10 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
       assert(InType->getIntegerBitWidth() == 32);
-      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) + ")";
+      Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) << ")";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
       assert(OutType->getIntegerBitWidth() == 32);
-      Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," << "HEAP32[tempDoublePtr>>2]|0)";
+      Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," "HEAP32[tempDoublePtr>>2]|0)";
     } else {
       Code << V;
     }
