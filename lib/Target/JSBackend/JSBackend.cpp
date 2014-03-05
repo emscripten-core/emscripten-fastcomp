@@ -2339,8 +2339,16 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
   PM.add(createExpandI64Pass());
-  PM.add(createSimplifyAllocasPass());
-  PM.add(new JSWriter(o, getOptLevel()));
+
+  CodeGenOpt::Level OptLevel = getOptLevel();
+
+  // When optimizing, there shouldn't be any opportunities for SimplifyAllocas
+  // because the regular optimizer should have taken them all (GVN, and possibly
+  // also SROA).
+  if (OptLevel == CodeGenOpt::None)
+    PM.add(createSimplifyAllocasPass());
+
+  PM.add(new JSWriter(o, OptLevel));
 
   return false;
 }
