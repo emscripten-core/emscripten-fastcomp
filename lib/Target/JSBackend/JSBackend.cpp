@@ -575,16 +575,17 @@ const std::string &JSWriter::getJSName(const Value* val) {
 
   std::string name;
   if (val->hasName()) {
-    if (isa<Function>(val) || isa<Constant>(val)) {
-      name = val->getName().str();
-      sanitizeGlobal(name);
-    } else {
-      name = val->getName().str();
-      sanitizeLocal(name);
-    }
+    name = val->getName().str();
   } else {
-    name = "u$" + utostr(UniqueNum++);
+    name = utostr(UniqueNum++);
   }
+
+  if (isa<Constant>(val)) {
+    sanitizeGlobal(name);
+  } else {
+    sanitizeLocal(name);
+  }
+
   return ValueNames[val] = name;
 }
 
@@ -1822,24 +1823,6 @@ void JSWriter::processConstants() {
 
 void JSWriter::printFunction(const Function *F) {
   ValueNames.clear();
-
-  // Ensure all arguments and locals are named (we assume used values need names, which might be false if the optimizer did not run)
-  unsigned Next = 1;
-  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
-       AI != AE; ++AI) {
-    if (!AI->hasName() && !AI->use_empty()) {
-      ValueNames[AI] = "$" + utostr(Next++);
-    }
-  }
-  for (Function::const_iterator BI = F->begin(), BE = F->end();
-       BI != BE; ++BI) {
-    for (BasicBlock::const_iterator II = BI->begin(), E = BI->end();
-         II != E; ++II) {
-      if (!II->hasName() && !II->use_empty()) {
-        ValueNames[II] = "$" + utostr(Next++);
-      }
-    }
-  }
 
   // Prepare and analyze function
 
