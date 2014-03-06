@@ -1,0 +1,36 @@
+; RUN: llc -march=js < %s | FileCheck %s
+
+; llc should emit small aligned memcpy and memset inline.
+
+; CHECK: test_unrolled_memcpy
+; CHECK: HEAP32[$d+0>>2]=HEAP32[$s+0>>2]|0;HEAP32[$d+4>>2]=HEAP32[$s+4>>2]|0;HEAP32[$d+8>>2]=HEAP32[$s+8>>2]|0;HEAP32[$d+12>>2]=HEAP32[$s+12>>2]|0;HEAP32[$d+16>>2]=HEAP32[$s+16>>2]|0;HEAP32[$d+20>>2]=HEAP32[$s+20>>2]|0;HEAP32[$d+24>>2]=HEAP32[$s+24>>2]|0;HEAP32[$d+28>>2]=HEAP32[$s+28>>2]|0;
+define void @test_unrolled_memcpy(i8* %d, i8* %s) {
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %d, i8* %s, i32 32, i32 4, i1 false)
+  ret void
+}
+
+; CHECK: test_loop_memcpy
+; CHECK: dest=$d+0|0; src=$s+0|0; stop=dest+64|0; do { HEAP32[dest>>2]=HEAP32[src>>2]|0; dest=dest+4|0; src=src+4|0; } while ((dest|0) < (stop|0))
+define void @test_loop_memcpy(i8* %d, i8* %s) {
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %d, i8* %s, i32 64, i32 4, i1 false)
+  ret void
+}
+
+; CHECK: test_unrolled_memset
+; CHECK:  HEAP32[$d+0>>2]=0|0;HEAP32[$d+4>>2]=0|0;HEAP32[$d+8>>2]=0|0;HEAP32[$d+12>>2]=0|0;HEAP32[$d+16>>2]=0|0;HEAP32[$d+20>>2]=0|0;HEAP32[$d+24>>2]=0|0;HEAP32[$d+28>>2]=0|0;
+define void @test_unrolled_memset(i8* %d, i8* %s) {
+  call void @llvm.memset.p0i8.i32(i8* %d, i8 0, i32 32, i32 4, i1 false)
+  ret void
+}
+
+; CHECK: test_loop_memset
+; CHECK: dest=$d+0|0; stop=dest+64|0; do { HEAP32[dest>>2]=0|0; dest=dest+4|0; } while ((dest|0) < (stop|0));
+define void @test_loop_memset(i8* %d, i8* %s) {
+  call void @llvm.memset.p0i8.i32(i8* %d, i8 0, i32 64, i32 4, i1 false)
+  ret void
+}
+
+declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1) #0
+declare void @llvm.memset.p0i8.i32(i8* nocapture, i8, i32, i32, i1) #0
+
+attributes #0 = { nounwind }

@@ -255,8 +255,6 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
 #define WRITE_LOOP_MAX 128
 
 DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
-  Declares.insert("memcpy");
-  Redirects["llvm_memcpy_p0i8_p0i8_i32"] = "memcpy";
   if (CI) {
     ConstantInt *AlignInt = dyn_cast<ConstantInt>(CI->getOperand(3));
     if (AlignInt) {
@@ -288,7 +286,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
             } else {
               // emit a loop
               UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
-              Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; src=" + Src + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0));";
+              Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; src=" + Src + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
             }
             Pos += CurrLen;
             Len -= CurrLen;
@@ -299,12 +297,12 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
       }
     }
   }
+  Declares.insert("memcpy");
+  Redirects["llvm_memcpy_p0i8_p0i8_i32"] = "memcpy";
   return CH___default__(CI, "_memcpy", 3) + "|0";
 })
 
 DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
-  Declares.insert("memset");
-  Redirects["llvm_memset_p0i8_i32"] = "memset";
   if (CI) {
     ConstantInt *AlignInt = dyn_cast<ConstantInt>(CI->getOperand(3));
     if (AlignInt) {
@@ -343,7 +341,7 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
               } else {
                 // emit a loop
                 UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
-                Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0));";
+                Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
               }
               Pos += CurrLen;
               Len -= CurrLen;
@@ -355,6 +353,8 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
       }
     }
   }
+  Declares.insert("memset");
+  Redirects["llvm_memset_p0i8_i32"] = "memset";
   return CH___default__(CI, "_memset", 3) + "|0";
 })
 
