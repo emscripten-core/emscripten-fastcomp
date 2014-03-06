@@ -521,7 +521,10 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     // we found it
     const std::string &name = getJSName(P);
     assigns[name] = getAssign(P);
-    const Value *V = P->getIncomingValue(index);
+    // Get the operand, and strip pointer casts, since normal expression
+    // translation also strips pointer casts, and we want to see the same
+    // thing so that we can detect any resulting dependencies.
+    const Value *V = P->getIncomingValue(index)->stripPointerCasts();
     values[name] = V;
     std::string vname = getValueAsStr(V);
     if (const Instruction *VI = dyn_cast<const Instruction>(V)) {
