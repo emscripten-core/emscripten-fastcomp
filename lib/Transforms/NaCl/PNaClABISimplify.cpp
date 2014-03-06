@@ -158,7 +158,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // Strip dead prototytes to appease the intrinsic ABI checks.
   // ExpandVarArgs leaves around vararg intrinsics, and
   // ReplacePtrsWithInts leaves the lifetime.start/end intrinsics.
+#if 0 // XXX EMSCRIPTEN: We just ignore dead prototypes.
   PM.add(createStripDeadPrototypesPass());
+#endif
 
   // Eliminate simple dead code that the post-opt passes could have
   // created.

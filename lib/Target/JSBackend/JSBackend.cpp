@@ -1887,21 +1887,6 @@ void JSWriter::printModuleBody() {
   nl(Out) << "// EMSCRIPTEN_START_FUNCTIONS"; nl(Out);
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
-    // Ignore intrinsics that are always no-ops. We don't emit any code for
-    // them, so we don't need to declare them.
-    if (I->isIntrinsic()) {
-      switch (I->getIntrinsicID()) {
-      case Intrinsic::dbg_declare:
-      case Intrinsic::dbg_value:
-      case Intrinsic::lifetime_start:
-      case Intrinsic::lifetime_end:
-      case Intrinsic::invariant_start:
-      case Intrinsic::invariant_end:
-      case Intrinsic::prefetch:
-        continue;
-      }
-    }
-
     if (!I->isDeclaration()) printFunction(I);
   }
   Out << "function runPostSets() {\n";
@@ -1934,6 +1919,21 @@ void JSWriter::printModuleBody() {
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
     if (I->isDeclaration() && !I->use_empty()) {
+      // Ignore intrinsics that are always no-ops. We don't emit any code for
+      // them, so we don't need to declare them.
+      if (I->isIntrinsic()) {
+        switch (I->getIntrinsicID()) {
+        case Intrinsic::dbg_declare:
+        case Intrinsic::dbg_value:
+        case Intrinsic::lifetime_start:
+        case Intrinsic::lifetime_end:
+        case Intrinsic::invariant_start:
+        case Intrinsic::invariant_end:
+        case Intrinsic::prefetch:
+          continue;
+        }
+      }
+
       if (first) {
         first = false;
       } else {
