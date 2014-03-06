@@ -138,7 +138,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
   // Remove ``asm("":::"memory")``. This must occur after rewriting
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
+#if 0 // XXX EMSCRIPTEN: asm("":::"memory") does't have special semantics.
   PM.add(createRemoveAsmMemoryPass());
+#endif
 #if 0 // XXX EMSCRIPTEN: PNaCl replaces pointers with ints to simplify their ABI; empscripten doesn't need this.
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.

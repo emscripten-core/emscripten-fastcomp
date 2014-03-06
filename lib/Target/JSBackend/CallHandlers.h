@@ -1034,7 +1034,9 @@ void setupCallHandlers() {
 
 std::string handleCall(const Instruction *CI) {
   const Value *CV = getActuallyCalledValue(CI);
-  assert(!isa<InlineAsm>(CV) && "asm() not supported, use EM_ASM() (see emscripten.h)");
+  if (isa<InlineAsm>(CV)) {
+    report_fatal_error("asm() not supported, use EM_ASM() (see emscripten.h)");
+  }
 
   // Get the name to call this function by. If it's a direct call, meaning
   // which know which Function we're calling, avoid calling getValueAsStr, as
