@@ -16,6 +16,13 @@ define void @test_loop_memcpy(i8* %d, i8* %s) {
   ret void
 }
 
+; CHECK: test_call_memcpy
+; CHECK: memcpy(($d|0),($s|0),65536)
+define void @test_call_memcpy(i8* %d, i8* %s) {
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %d, i8* %s, i32 65536, i32 4, i1 false)
+  ret void
+}
+
 ; CHECK: test_unrolled_memset
 ; CHECK:  HEAP32[$d+0>>2]=0|0;HEAP32[$d+4>>2]=0|0;HEAP32[$d+8>>2]=0|0;HEAP32[$d+12>>2]=0|0;HEAP32[$d+16>>2]=0|0;HEAP32[$d+20>>2]=0|0;HEAP32[$d+24>>2]=0|0;HEAP32[$d+28>>2]=0|0;
 define void @test_unrolled_memset(i8* %d, i8* %s) {
@@ -27,6 +34,13 @@ define void @test_unrolled_memset(i8* %d, i8* %s) {
 ; CHECK: dest=$d+0|0; stop=dest+64|0; do { HEAP32[dest>>2]=0|0; dest=dest+4|0; } while ((dest|0) < (stop|0));
 define void @test_loop_memset(i8* %d, i8* %s) {
   call void @llvm.memset.p0i8.i32(i8* %d, i8 0, i32 64, i32 4, i1 false)
+  ret void
+}
+
+; CHECK: test_call_memset
+; CHECK: memset(($d|0),0,65536)
+define void @test_call_memset(i8* %d, i8* %s) {
+  call void @llvm.memset.p0i8.i32(i8* %d, i8 0, i32 65536, i32 4, i1 false)
   ret void
 }
 

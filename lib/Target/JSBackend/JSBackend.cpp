@@ -262,14 +262,6 @@ namespace {
       } else return 'i';
     }
     std::string getFunctionSignature(const FunctionType *F, const std::string *Name=NULL) {
-      if (Name) {
-        // special-case some function signatures, because of how we emit code for them FIXME this is hackish
-        if (*Name == "_llvm_memcpy_p0i8_p0i8_i32"  || *Name == "_memcpy" ||
-            *Name == "_llvm_memset_p0i8_i32"       || *Name == "_memset" ||
-            *Name == "_llvm_memmove_p0i8_p0i8_i32" || *Name == "_memmove") {
-          return "iiii";
-        }
-      }
       std::string Ret;
       Ret += getFunctionSignatureLetter(F->getReturnType());
       for (FunctionType::param_iterator AI = F->param_begin(),

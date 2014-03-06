@@ -298,7 +298,6 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
     }
   }
   Declares.insert("memcpy");
-  Redirects["llvm_memcpy_p0i8_p0i8_i32"] = "memcpy";
   return CH___default__(CI, "_memcpy", 3) + "|0";
 })
 
@@ -354,13 +353,11 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
     }
   }
   Declares.insert("memset");
-  Redirects["llvm_memset_p0i8_i32"] = "memset";
   return CH___default__(CI, "_memset", 3) + "|0";
 })
 
 DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
   Declares.insert("memmove");
-  Redirects["llvm_memmove_p0i8_p0i8_i32"] = "memmove";
   return CH___default__(CI, "_memmove", 3) + "|0";
 })
 
