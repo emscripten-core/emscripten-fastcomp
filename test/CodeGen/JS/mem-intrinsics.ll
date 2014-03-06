@@ -30,6 +30,9 @@ define void @test_loop_memset(i8* %d, i8* %s) {
   ret void
 }
 
+; Also, don't emit declarations for the intrinsic functions.
+; CHECK-NOT: p0i8
+
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1) #0
 declare void @llvm.memset.p0i8.i32(i8* nocapture, i8, i32, i32, i1) #0
 

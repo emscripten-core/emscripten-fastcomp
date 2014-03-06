@@ -1919,8 +1919,8 @@ void JSWriter::printModuleBody() {
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
        I != E; ++I) {
     if (I->isDeclaration() && !I->use_empty()) {
-      // Ignore intrinsics that are always no-ops. We don't emit any code for
-      // them, so we don't need to declare them.
+      // Ignore intrinsics that are always no-ops or expanded into other code
+      // which doesn't require the intrinsic function itself to be declared.
       if (I->isIntrinsic()) {
         switch (I->getIntrinsicID()) {
         case Intrinsic::dbg_declare:
@@ -1930,6 +1930,11 @@ void JSWriter::printModuleBody() {
         case Intrinsic::invariant_start:
         case Intrinsic::invariant_end:
         case Intrinsic::prefetch:
+        case Intrinsic::memcpy:
+        case Intrinsic::memset:
+        case Intrinsic::memmove:
+        case Intrinsic::expect:
+        case Intrinsic::flt_rounds:
           continue;
         }
       }
