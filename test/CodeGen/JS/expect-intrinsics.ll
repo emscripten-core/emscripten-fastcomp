@@ -2,8 +2,7 @@
 
 ; Handle the llvm.expect intrinsic.
 
-; CHECK: $expval = $x;
-; CHECK: $tobool = ($expval|0)!=(0);
+; CHECK: if (((($x)|0)!=(0)))
 define void @foo(i32 %x) {
 entry:
   %expval = call i32 @llvm.expect.i32(i32 %x, i32 0)

@@ -354,6 +354,8 @@ namespace {
       CanValidate = false;
     }
 
+    bool isForwardSub(const Instruction *I);
+
     std::string getPtrLoad(const Value* Ptr);
     std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
     std::string getPtrUse(const Value* Ptr);
@@ -602,9 +604,31 @@ std::string JSWriter::getAssign(const Instruction *I) {
   return getAdHocAssign(getJSName(I), I->getType());
 }
 
+/// Test whether the given instruction is to be forward-substituted, meaning
+/// instead of computing its result into a temporary variable, it will be
+/// expanded inline where it's used.
+bool JSWriter::isForwardSub(const Instruction *I) {
+  // Don't make debugging harder.
+  if (OptLevel == CodeGenOpt::None)
+    return false;
+
+  // Check for outright unsafe conditions. This includes non-static allocas,
+  // because despite claiming to not have side effects, they really do.
+  if (I->mayHaveSideEffects() ||
+      I->mayReadFromMemory() ||
+      isa<PHINode>(I) ||
+      (isa<AllocaInst>(I) && !cast<AllocaInst>(I)->isStaticAlloca())) {
+    return false;
+  }
+
+  // As an easy heuristic, only forward-sub instructions with one use, so that
+  // we don't produce redundant code.
+  return I->hasOneUse();
+}
+
 std::string JSWriter::getAssignIfNeeded(const Value *V) {
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
-    if (!I->use_empty()) return getAssign(I);
+    if (!I->use_empty() && !isForwardSub(I)) return getAssign(I);
   }
   return std::string();
 }
@@ -1030,9 +1054,22 @@ std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
 
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
-  } else {
-    return getJSName(V);
   }
+
+  if (const Instruction *I = dyn_cast<Instruction>(V)) {
+    if (isForwardSub(I)) {
+      std::string Code;
+      raw_string_ostream CodeStream(Code);
+      CodeStream << '(';
+      generateExpression(I, CodeStream);
+      CodeStream << ')';
+      const std::string &Str = CodeStream.str();
+      assert(Str.find(';') == std::string::npos);
+      return Str;
+    }
+  }
+
+  return getJSName(V);
 }
 
 std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
@@ -1400,9 +1437,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       uint64_t Offset;
       if (Allocas.getFrameOffset(AI, &Offset)) {
         if (Offset != 0) {
-          Code << getAssign(AI) << "sp + " << Offset << "|0";
+          Code << getAssignIfNeeded(AI) << "sp + " << Offset << "|0";
         } else {
-          Code << getAssign(AI) << "sp";
+          Code << getAssignIfNeeded(AI) << "sp";
         }
         break;
       }
@@ -1604,10 +1641,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   }
 
   if (const Instruction *Inst = dyn_cast<Instruction>(I)) {
-    Code << ';';
-    // append debug info
-    emitDebugInfo(Code, Inst);
-    Code << '\n';
+    if (!isForwardSub(Inst)) {
+      Code << ';';
+      // append debug info
+      emitDebugInfo(Code, Inst);
+      Code << '\n';
+    }
   }
 }
 
@@ -1640,7 +1679,7 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   raw_string_ostream CodeStream(Code);
   for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
        I != E; ++I) {
-    if (I->stripPointerCasts() == I) {
+    if (!isForwardSub(I) && I->stripPointerCasts() == I) {
       generateExpression(I, CodeStream);
     }
   }
