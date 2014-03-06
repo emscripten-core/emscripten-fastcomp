@@ -7,5 +7,7 @@ add_llvm_target(JSBackendCodeGen
   SimplifyAllocas.cpp
   )
 
+add_dependencies(LLVMJSBackendCodeGen intrinsics_gen)
+
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
