@@ -313,6 +313,9 @@ namespace {
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
     unsigned getConstAsOffset(const Value *V, unsigned AbsoluteTarget) {
+      if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(V)) {
+        V = GA->getAliasee();
+      }
       if (const Function *F = dyn_cast<const Function>(V)) {
         return getFunctionIndex(F);
       } else if (const BlockAddress *BA = dyn_cast<const BlockAddress>(V)) {
