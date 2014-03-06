@@ -290,8 +290,8 @@ namespace {
       IndexedFunctions[Name] = Index;
 
       // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, and we may need to do things in the handler
-      CallHandlerMap::const_iterator CH = CallHandlers->find(Name);
-      if (CH != CallHandlers->end()) {
+      CallHandlerMap::const_iterator CH = CallHandlers.find(Name);
+      if (CH != CallHandlers.end()) {
         (this->*(CH->second))(NULL, Name, -1);
       }
 

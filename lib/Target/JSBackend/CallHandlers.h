@@ -5,7 +5,7 @@
 
 typedef std::string (JSWriter::*CallHandler)(const Instruction*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
-CallHandlerMap *CallHandlers;
+CallHandlerMap CallHandlers;
 
 // Definitions
 
@@ -481,13 +481,11 @@ DEF_CALL_HANDLER(name, { \
   /* FIXME: do not redirect if this is implemented and not just a declare! */ \
   Declares.insert(#to); \
   Redirects[#name] = #to; \
-  if (!CI) return ""; \
   return CH___default__(CI, "_" #to); \
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
-  if (!CI) return ""; \
   return CH___default__(CI, #to); \
 })
 
@@ -733,9 +731,9 @@ DEF_REDIRECT_HANDLER(SDL_RWFromMem, SDL_RWFromConstMem);
 // Setups
 
 void setupCallHandlers() {
-  CallHandlers = new CallHandlerMap;
+  assert(CallHandlers.empty());
   #define SETUP_CALL_HANDLER(Ident) \
-    (*CallHandlers)["_" #Ident] = &JSWriter::CH_##Ident;
+    CallHandlers["_" #Ident] = &JSWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(emscripten_preinvoke);
@@ -1048,10 +1046,10 @@ std::string handleCall(const Instruction *CI) {
   const std::string &Name = isa<Function>(CV) ? getJSName(CV) : getValueAsStr(CV);
 
   unsigned NumArgs = getNumArgOperands(CI);
-  CallHandlerMap::iterator CH = CallHandlers->find("___default__");
+  CallHandlerMap::iterator CH = CallHandlers.find("___default__");
   if (isa<Function>(CV)) {
-    CallHandlerMap::iterator Custom = CallHandlers->find(Name);
-    if (Custom != CallHandlers->end()) CH = Custom;
+    CallHandlerMap::iterator Custom = CallHandlers.find(Name);
+    if (Custom != CallHandlers.end()) CH = Custom;
   }
   return (this->*(CH->second))(CI, Name, NumArgs);
 }
