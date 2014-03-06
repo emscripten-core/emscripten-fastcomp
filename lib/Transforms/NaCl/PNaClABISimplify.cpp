@@ -60,7 +60,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
 
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
+#if 0 // XXX EMSCRIPTEN: We support the expect intrinsic.
   PM.add(createLowerExpectIntrinsicPass());
+#endif
 #if 0 // XXX EMSCRIPTEN: We don't need this.
   // Rewrite unsupported intrinsics to simpler and portable constructs.
   PM.add(createRewriteLLVMIntrinsicsPass());
