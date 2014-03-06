@@ -228,6 +228,62 @@ define void @ashr1(i16 %a) {
   ret void
 }
 
+; CHECK: @udiv1
+define void @udiv1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = zext i32 %a to i64
+  %a33 = zext i32 %a to i33
+; CHECK-NEXT: %b33 = zext i32 %b to i64
+  %b33 = zext i32 %b to i33
+; CHECK-NEXT: %a33.clear = and i64 %a33, 8589934591
+; CHECK-NEXT: %b33.clear = and i64 %b33, 8589934591
+; CHECK-NEXT: %result = udiv i64 %a33.clear, %b33.clear
+  %result = udiv i33 %a33, %b33
+  ret void
+}
+
+; CHECK: @sdiv1
+define void @sdiv1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = sext i32 %a to i64
+  %a33 = sext i32 %a to i33
+; CHECK-NEXT: %b33 = sext i32 %b to i64
+; CHECK-NEXT: %a33.getsign = shl i64 %a33, 31
+; CHECK-NEXT: %a33.signed = ashr i64 %a33.getsign, 31
+; CHECK-NEXT: %b33.getsign = shl i64 %b33, 31
+; CHECK-NEXT: %b33.signed = ashr i64 %b33.getsign, 31
+  %b33 = sext i32 %b to i33
+; CHECK-NEXT: %result = sdiv i64 %a33.signed, %b33.signed
+  %result = sdiv i33 %a33, %b33
+  ret void
+}
+
+; CHECK: @urem1
+define void @urem1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = zext i32 %a to i64
+  %a33 = zext i32 %a to i33
+; CHECK-NEXT: %b33 = zext i32 %b to i64
+; CHECK-NEXT: %a33.clear = and i64 %a33, 8589934591
+; CHECK-NEXT: %b33.clear = and i64 %b33, 8589934591
+  %b33 = zext i32 %b to i33
+; CHECK-NEXT: %result = urem i64 %a33.clear, %b33.clear
+  %result = urem i33 %a33, %b33
+  ret void
+}
+
+; CHECK: @srem1
+define void @srem1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = sext i32 %a to i64
+  %a33 = sext i32 %a to i33
+; CHECK-NEXT: %b33 = sext i32 %b to i64
+; CHECK-NEXT: %a33.getsign = shl i64 %a33, 31
+; CHECK-NEXT: %a33.signed = ashr i64 %a33.getsign, 31
+; CHECK-NEXT: %b33.getsign = shl i64 %b33, 31
+; CHECK-NEXT: %b33.signed = ashr i64 %b33.getsign, 31
+  %b33 = sext i32 %b to i33
+; CHECK-NEXT: %result = srem i64 %a33.signed, %b33.signed
+  %result = srem i33 %a33, %b33
+  ret void
+}
+
 ; CHECK: @phi_icmp
 define void @phi_icmp(i32 %a) {
 entry:

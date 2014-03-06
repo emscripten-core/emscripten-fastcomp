@@ -577,18 +577,38 @@ void PromoteIntegers::convertInstruction(Instruction *Inst, ConversionState &Sta
             State.getConverted(Binop->getOperand(1)),
             Binop->getName() + ".result", Binop), Binop);
         break;
+      // XXX EMSCRIPTEN: Implement {U,S}{Div,Rem}
+      case Instruction::UDiv:
+      case Instruction::URem:
+        NewInst = CopyDebug(BinaryOperator::Create(
+            Binop->getOpcode(),
+            getClearConverted(Binop->getOperand(0),
+                              Binop,
+                              State),
+            getClearConverted(Binop->getOperand(1),
+                              Binop,
+                              State),
+            Binop->getName() + ".result", Binop), Binop);
+         break;
+      case Instruction::SDiv:
+      case Instruction::SRem:
+        NewInst = CopyDebug(BinaryOperator::Create(
+            Binop->getOpcode(),
+            getSignExtend(State.getConverted(Binop->getOperand(0)),
+                          Binop->getOperand(0),
+                          Binop),
+            getSignExtend(State.getConverted(Binop->getOperand(1)),
+                          Binop->getOperand(0),
+                          Binop),
+            Binop->getName() + ".result", Binop), Binop);
+         break;
       case Instruction::FAdd:
       case Instruction::FSub:
       case Instruction::FMul:
-      case Instruction::UDiv:
-      case Instruction::SDiv:
       case Instruction::FDiv:
-      case Instruction::URem:
-      case Instruction::SRem:
       case Instruction::FRem:
       case Instruction::BinaryOpsEnd:
         // We should not see FP operators here.
-        // We don't handle div.
         errs() << *Inst << "\n";
         llvm_unreachable("Cannot handle binary operator");
         break;
