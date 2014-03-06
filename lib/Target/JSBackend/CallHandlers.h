@@ -181,6 +181,12 @@ DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
   return getAssign(CI) + "tempRet0";
 })
 
+// emscripten instrinsics
+DEF_CALL_HANDLER(emscripten_debugger, {
+  CanValidate = false;
+  return "debugger";
+})
+
 // i64 support
 
 DEF_CALL_HANDLER(getHigh32, {
@@ -744,6 +750,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_longjmp);
   SETUP_CALL_HANDLER(emscripten_check_longjmp);
   SETUP_CALL_HANDLER(emscripten_get_longjmp_result);
+  SETUP_CALL_HANDLER(emscripten_debugger);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FtoILow);

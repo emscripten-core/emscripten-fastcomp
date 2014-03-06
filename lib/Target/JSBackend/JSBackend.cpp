@@ -129,6 +129,7 @@ namespace {
     std::vector<std::string> Exports; // additional exports
     BlockAddressMap BlockAddresses;
 
+    bool CanValidate;
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
@@ -139,7 +140,7 @@ namespace {
   public:
     static char ID;
     JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
-      : ModulePass(ID), Out(o), UniqueNum(0), UsesSIMD(false), InvokeState(0),
+      : ModulePass(ID), Out(o), UniqueNum(0), CanValidate(true), UsesSIMD(false), InvokeState(0),
         OptLevel(OptLevel) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
@@ -355,6 +356,7 @@ namespace {
       assert(VT->getElementType()->getPrimitiveSizeInBits() == 32);
       assert(VT->getNumElements() == 4);
       UsesSIMD = true;
+      CanValidate = false;
     }
 
     std::string getPtrLoad(const Value* Ptr);
@@ -2034,6 +2036,10 @@ void JSWriter::printModuleBody() {
     Out << "\"" << Exports[i] << "\"";
   }
   Out << "],";
+
+  Out << "\"canValidate\": ";
+  Out << (CanValidate ? "1" : "0");
+  Out << ",";
 
   Out << "\"simd\": ";
   Out << (UsesSIMD ? "1" : "0");
