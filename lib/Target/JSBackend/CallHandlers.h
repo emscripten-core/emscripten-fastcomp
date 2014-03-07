@@ -364,7 +364,7 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_expect_i32, {
-  return getAssign(CI) + getValueAsStr(CI->getOperand(0));
+  return getAssignIfNeeded(CI) + getValueAsStr(CI->getOperand(0));
 })
 
 DEF_CALL_HANDLER(llvm_dbg_declare, {
