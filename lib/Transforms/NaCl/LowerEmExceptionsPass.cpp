@@ -99,19 +99,19 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   Type *i8P = i8->getPointerTo();
   Type *Void = Type::getVoidTy(M.getContext());
 
-  if (!TheModule->getFunction("getHigh32")) {
+  if (!(GetHigh = TheModule->getFunction("getHigh32"))) {
     FunctionType *GetHighFunc = FunctionType::get(i32, false);
     GetHigh = Function::Create(GetHighFunc, GlobalValue::ExternalLinkage,
                                "getHigh32", TheModule);
   }
 
-  FunctionType *VoidFunc = FunctionType::get(Void, false);
-  if (!TheModule->getFunction("emscripten_preinvoke")) {
+  if (!(PreInvoke = TheModule->getFunction("emscripten_preinvoke"))) {
+    FunctionType *VoidFunc = FunctionType::get(Void, false);
     PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
   }
 
-  FunctionType *IntFunc = FunctionType::get(i32, false);
-  if (!TheModule->getFunction("emscripten_postinvoke")) {
+  if (!(PostInvoke = TheModule->getFunction("emscripten_postinvoke"))) {
+    FunctionType *IntFunc = FunctionType::get(i32, false);
     PostInvoke = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
   }
 
