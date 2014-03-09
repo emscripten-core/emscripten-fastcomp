@@ -249,11 +249,15 @@ void AllocaManager::computeInterBlockLiveness() {
     // If it contains new live blocks, prepare to propagate them.
     if (Temp.test(BLI.LiveIn)) {
       BLI.LiveIn |= Temp;
+      BitVector LiveOut = BLI.LiveOut;
       BLI.LiveOut |= Temp;
       BLI.LiveOut.reset(BLI.End);
-      for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
-           SI != SE; ++SI) {
-        InterBlockWorklist.insert(*SI);
+      // If we actually added to live-out, re-process them
+      if (BLI.LiveOut.test(LiveOut)) {
+        for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
+             SI != SE; ++SI) {
+          InterBlockWorklist.insert(*SI);
+        }
       }
     }
     Temp.reset();
@@ -268,11 +272,15 @@ void AllocaManager::computeInterBlockLiveness() {
     if (Temp.test(BLI.LiveOut)) {
       // TODO: As above, what are the semantics of a standalone lifetime end?
       BLI.LiveOut |= Temp;
+      BitVector LiveIn = BLI.LiveIn;
       BLI.LiveIn |= Temp;
       BLI.LiveIn.reset(BLI.Start);
-      for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
-           PI != PE; ++PI) {
-        InterBlockWorklist.insert(*PI);
+      // If we actually added to live-in, re-process them
+      if (BLI.LiveIn.test(LiveIn)) {
+        for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
+             PI != PE; ++PI) {
+          InterBlockWorklist.insert(*PI);
+        }
       }
     }
     Temp.reset();
@@ -453,7 +461,6 @@ AllocaManager::AllocaManager() {
 void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,
                             bool PerformColoring) {
   NamedRegionTimer Timer("AllocaManager", TimePassesIsEnabled);
-
   assert(Allocas.empty());
   assert(AllocasByIndex.empty());
   assert(AllocaCompatibility.empty());
