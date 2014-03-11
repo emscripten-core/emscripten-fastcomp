@@ -1,4 +1,7 @@
-; RUN: llc < %s -march=js -o - | FileCheck %s
+; RUN: llc < %s | FileCheck %s
+
+target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:128-n32-S128"
+target triple = "asmjs-unknown-emscripten"
 
 ; CHECK: function _simple_integer_math(
 ; CHECK:   [[VAL_A:\$[a-z]+]] = [[VAL_A]]|0;

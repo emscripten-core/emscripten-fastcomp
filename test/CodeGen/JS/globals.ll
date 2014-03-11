@@ -1,6 +1,9 @@
-; RUN: llc -march=js %s -o - | FileCheck %s
+; RUN: llc < %s | FileCheck %s
 
 ; Test simple global variable codegen.
+
+target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:128-n32-S128"
+target triple = "asmjs-unknown-emscripten"
 
 ; CHECK: function _loads() {
 ; CHECK:  [[VAR_t:\$[a-z]+]] = HEAP32[2]|0;

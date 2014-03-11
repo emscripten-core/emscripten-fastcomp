@@ -1,6 +1,9 @@
-; RUN: llc -march=js < %s | FileCheck %s
+; RUN: llc < %s | FileCheck %s
 
 ; llc should emit small aligned memcpy and memset inline.
+
+target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:128-n32-S128"
+target triple = "asmjs-unknown-emscripten"
 
 ; CHECK: test_unrolled_memcpy
 ; CHECK: HEAP32[$d+0>>2]=HEAP32[$s+0>>2]|0;HEAP32[$d+4>>2]=HEAP32[$s+4>>2]|0;HEAP32[$d+8>>2]=HEAP32[$s+8>>2]|0;HEAP32[$d+12>>2]=HEAP32[$s+12>>2]|0;HEAP32[$d+16>>2]=HEAP32[$s+16>>2]|0;HEAP32[$d+20>>2]=HEAP32[$s+20>>2]|0;HEAP32[$d+24>>2]=HEAP32[$s+24>>2]|0;HEAP32[$d+28>>2]=HEAP32[$s+28>>2]|0;
