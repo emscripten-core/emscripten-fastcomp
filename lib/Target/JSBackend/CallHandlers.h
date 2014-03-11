@@ -1045,6 +1045,7 @@ void setupCallHandlers() {
 std::string handleCall(const Instruction *CI) {
   const Value *CV = getActuallyCalledValue(CI);
   if (isa<InlineAsm>(CV)) {
+    errs() << "In function " << CI->getParent()->getParent()->getName() << "()\n";
     report_fatal_error("asm() not supported, use EM_ASM() (see emscripten.h)");
   }
 
