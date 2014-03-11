@@ -562,7 +562,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
           // break a cycle
           std::string depString = dep->second;
           std::string temp = curr + "$phi";
-          pre  += getAdHocAssign(temp, V->getType()) + CV + ';';
+          pre += getAdHocAssign(temp, V->getType()) + CV + ';';
           CV = temp;
           deps.erase(curr);
           undeps.erase(depString);
