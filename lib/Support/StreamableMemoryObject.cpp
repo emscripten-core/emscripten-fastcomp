@@ -80,18 +80,18 @@ const uint8_t *RawMemoryObject::getPointer(uint64_t address,
 namespace llvm {
 // If the bitcode has a header, then its size is known, and we don't have to
 // block until we actually want to read it.
-bool StreamingMemoryObject::isValidAddress(uint64_t address) const {
+bool StreamingMemoryObjectImpl::isValidAddress(uint64_t address) const {
   if (ObjectSize && address < ObjectSize) return true;
     return fetchToPos(address);
 }
 
-bool StreamingMemoryObject::isObjectEnd(uint64_t address) const {
+bool StreamingMemoryObjectImpl::isObjectEnd(uint64_t address) const {
   if (ObjectSize) return address == ObjectSize;
   fetchToPos(address);
   return address == ObjectSize && address != 0;
 }
 
-uint64_t StreamingMemoryObject::getExtent() const {
+uint64_t StreamingMemoryObjectImpl::getExtent() const {
   if (ObjectSize) return ObjectSize;
   size_t pos = BytesRead + kChunkSize;
   // keep fetching until we run out of bytes
@@ -99,13 +99,13 @@ uint64_t StreamingMemoryObject::getExtent() const {
   return ObjectSize;
 }
 
-int StreamingMemoryObject::readByte(uint64_t address, uint8_t* ptr) const {
+int StreamingMemoryObjectImpl::readByte(uint64_t address, uint8_t* ptr) const {
   if (!fetchToPos(address)) return -1;
   *ptr = Bytes[address + BytesSkipped];
   return 0;
 }
 
-int StreamingMemoryObject::readBytes(uint64_t address,
+int StreamingMemoryObjectImpl::readBytes(uint64_t address,
                                      uint64_t size,
                                      uint8_t *buf) const {
   if (!fetchToPos(address + size - 1)) return -1;
@@ -113,14 +113,14 @@ int StreamingMemoryObject::readBytes(uint64_t address,
   return 0;
 }
 
-bool StreamingMemoryObject::dropLeadingBytes(size_t s) {
+bool StreamingMemoryObjectImpl::dropLeadingBytes(size_t s) {
   if (BytesRead < s) return true;
   BytesSkipped = s;
   BytesRead -= s;
   return false;
 }
 
-void StreamingMemoryObject::setKnownObjectSize(size_t size) {
+void StreamingMemoryObjectImpl::setKnownObjectSize(size_t size) {
   ObjectSize = size;
   Bytes.reserve(size);
 }
@@ -132,7 +132,8 @@ StreamableMemoryObject *getNonStreamedMemoryObject(
 
 StreamableMemoryObject::~StreamableMemoryObject() { }
 
-StreamingMemoryObject::StreamingMemoryObject(DataStreamer *streamer) :
+StreamingMemoryObjectImpl::StreamingMemoryObjectImpl(
+    DataStreamer *streamer) :
   Bytes(kChunkSize), Streamer(streamer), BytesRead(0), BytesSkipped(0),
   ObjectSize(0), EOFReached(false) {
   BytesRead = streamer->GetBytes(&Bytes[0], kChunkSize);

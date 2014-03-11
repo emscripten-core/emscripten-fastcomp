@@ -3197,12 +3197,12 @@ error_code BitcodeReader::InitStreamFromBuffer() {
 error_code BitcodeReader::InitLazyStream() {
   // Check and strip off the bitcode wrapper; BitstreamReader expects never to
   // see it.
-  StreamingMemoryObject *Bytes = new StreamingMemoryObject(LazyStreamer);
-  StreamFile.reset(new BitstreamReader(Bytes));
+  // @LOCALMOD Bytes -> LazyStreamer
+  StreamFile.reset(new BitstreamReader(LazyStreamer));
   Stream.init(*StreamFile);
 
   unsigned char buf[16];
-  if (Bytes->readBytes(0, 16, buf) == -1)
+  if (LazyStreamer->readBytes(0, 16, buf) == -1)
     return Error(BitcodeStreamInvalidSize);
 
   if (!isBitcode(buf, buf + 16))
@@ -3212,8 +3212,8 @@ error_code BitcodeReader::InitLazyStream() {
     const unsigned char *bitcodeStart = buf;
     const unsigned char *bitcodeEnd = buf + 16;
     SkipBitcodeWrapperHeader(bitcodeStart, bitcodeEnd, false);
-    Bytes->dropLeadingBytes(bitcodeStart - buf);
-    Bytes->setKnownObjectSize(bitcodeEnd - bitcodeStart);
+    LazyStreamer->dropLeadingBytes(bitcodeStart - buf);
+    LazyStreamer->setKnownObjectSize(bitcodeEnd - bitcodeStart);
   }
   return error_code::success();
 }
@@ -3302,9 +3302,9 @@ Module *llvm::getLazyBitcodeModule(MemoryBuffer *Buffer,
   return M;
 }
 
-
 Module *llvm::getStreamedBitcodeModule(const std::string &name,
-                                       DataStreamer *streamer,
+                                       // @LOCALMOD
+                                       StreamingMemoryObject *streamer,
                                        LLVMContext &Context,
                                        std::string *ErrMsg) {
   Module *M = new Module(name, Context);

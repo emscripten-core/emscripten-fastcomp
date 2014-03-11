@@ -19,7 +19,7 @@
 namespace llvm {
   class BitstreamWriter;
   class MemoryBuffer;
-  class DataStreamer;
+  class StreamingMemoryObject; // @LOCALMOD
   class LLVMContext;
   class Module;
   class ModulePass;
@@ -39,7 +39,8 @@ namespace llvm {
   /// On error, this returns null, and fills in *ErrMsg with an error
   /// description if ErrMsg is non-null.
   Module *getStreamedBitcodeModule(const std::string &name,
-                                   DataStreamer *streamer,
+                                   // @LOCALMOD
+                                   StreamingMemoryObject *streamer,
                                    LLVMContext &Context,
                                    std::string *ErrMsg = 0);
 

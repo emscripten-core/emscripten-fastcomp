@@ -129,7 +129,7 @@ class BitcodeReader : public GVMaterializer {
   bool BufferOwned;
   OwningPtr<BitstreamReader> StreamFile;
   BitstreamCursor Stream;
-  DataStreamer *LazyStreamer;
+  StreamingMemoryObject *LazyStreamer; // @LOCALMOD
   uint64_t NextUnreadBit;
   bool SeenValueSymbolTable;
 
@@ -229,7 +229,9 @@ public:
       ValueList(C), MDValueList(C),
       SeenFirstFunctionBody(false), UseRelativeIDs(false) {
   }
-  explicit BitcodeReader(DataStreamer *streamer, LLVMContext &C)
+  // @LOCALMOD -- DataStreamer -> StreamingMemoryObject.
+  explicit BitcodeReader(StreamingMemoryObject *streamer,
+                         LLVMContext &C)
     : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
       LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
       ValueList(C), MDValueList(C),

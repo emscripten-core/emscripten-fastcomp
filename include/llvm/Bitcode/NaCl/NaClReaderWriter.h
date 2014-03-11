@@ -27,7 +27,7 @@ namespace llvm {
   class raw_ostream;
   class NaClBitcodeHeader;
   class NaClBitstreamWriter;
-  class StreamableMemoryObject;
+  class StreamingMemoryObject;
 
 
   /// Allows (function) local symbol tables (unsupported) in PNaCl bitcode
@@ -64,7 +64,7 @@ namespace llvm {
   /// See getNaClLazyBitcodeModule for an explanation of argument
   /// AcceptSupportedOnly.
   Module *getNaClStreamedBitcodeModule(const std::string &name,
-                                       StreamableMemoryObject *streamer,
+                                       StreamingMemoryObject *streamer,
                                        LLVMContext &Context,
                                        std::string *ErrMsg = 0,
                                        bool AcceptSupportedOnly = true);

@@ -14,14 +14,13 @@
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/StreamableMemoryObject.h"
 
-// An implementation of StreamableMemoryObject for use in multithreaded
+// An implementation of StreamingMemoryObject for use in multithreaded
 // translation. Each thread has one of these objects, each of which has a
 // pointer to a shared StreamingMemoryObject. This object is effectively
 // a thread-local cache for the bitcode streamer to avoid contention, since
 // bits are only read from the bitcode stream one word at a time.
-// Its interface is exactly the same as StreamableMemoryObject.
 
-class ThreadedStreamingCache : public llvm::StreamableMemoryObject {
+class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
  public:
   explicit ThreadedStreamingCache(llvm::StreamingMemoryObject *S);
   virtual uint64_t getBase() const LLVM_OVERRIDE { return 0; }
@@ -46,12 +45,12 @@ class ThreadedStreamingCache : public llvm::StreamableMemoryObject {
   /// remaining bytes down by s. This is used to skip past the bitcode header,
   /// since we don't know a priori if it's present, and we can't put bytes
   /// back into the stream once we've read them.
-  bool dropLeadingBytes(size_t s);
+  virtual bool dropLeadingBytes(size_t s) LLVM_OVERRIDE;
 
   /// If the data object size is known in advance, many of the operations can
   /// be made more efficient, so this method should be called before reading
   /// starts (although it can be called anytime).
-  void setKnownObjectSize(size_t size);
+  virtual void setKnownObjectSize(size_t size) LLVM_OVERRIDE;
  private:
   const static uint64_t kCacheSize = 4 * 4096;
   const static uint64_t kCacheSizeMask = ~(kCacheSize - 1);

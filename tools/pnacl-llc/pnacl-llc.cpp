@@ -15,6 +15,7 @@
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/PrintModulePass.h"
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
@@ -70,7 +71,12 @@ InputFileFormat(
         clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
         clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
-    cl::init(LLVMFormat));
+#if defined(__native_client__)
+    cl::init(PNaClFormat)
+#else
+    cl::init(LLVMFormat)
+#endif
+                );
 
 // General options for llc.  Other pass-specific options are specified
 // within the corresponding llc passes, and target-specific options
@@ -256,6 +262,15 @@ int llc_main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "pnacl-llc\n");
 
+#if defined(__native_client__)
+  // If the user explicitly requests LLVM format in sandboxed mode
+  // (where the default is PNaCl format), they probably want debug
+  // metadata enabled.
+  if (InputFileFormat == LLVMFormat) {
+    PNaClABIAllowDebugMetadata = true;
+  }
+#endif
+
   if (SplitModuleCount > 1)
     LLVMStartMultithreaded();
 
@@ -282,30 +297,30 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
                          StreamingMemoryObject *StreamingObject) {
   Module *M = 0;
   SMDiagnostic Err;
-#if defined(__native_client__)
   if (LazyBitcode) {
     std::string StrError;
-    std::string DisplayFilename("<PNaCl-translated pexe>");
-    M = getNaClStreamedBitcodeModule(
-        DisplayFilename,
-        new ThreadedStreamingCache(StreamingObject), Context, &StrError);
-    if (!StrError.empty())
-      Err = SMDiagnostic(DisplayFilename, SourceMgr::DK_Error, StrError);
-  } else {
-    llvm_unreachable("native client SRPC only supports streaming");
-  }
-#else
-  if (LazyBitcode) {
-    std::string StrError;
-    M = getNaClStreamedBitcodeModule(
-        InputFilename,
-        new ThreadedStreamingCache(StreamingObject), Context, &StrError);
+    if (InputFileFormat == PNaClFormat) {
+      M = getNaClStreamedBitcodeModule(
+          InputFilename,
+          new ThreadedStreamingCache(StreamingObject), Context, &StrError);
+    } else if (InputFileFormat == LLVMFormat) {
+      M = getStreamedBitcodeModule(
+          InputFilename,
+          new ThreadedStreamingCache(StreamingObject), Context, &StrError);
+    } else {
+      llvm_unreachable("Unknown bitcode format");
+    }
     if (!StrError.empty())
       Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
   } else {
+#if defined(__native_client__)
+    llvm_unreachable("native client SRPC only supports streaming");
+#else
+    // Parses binary bitcode as well as textual assembly
+    // (so pulls in more code into pnacl-llc).
     M = NaClParseIRFile(InputFilename, InputFileFormat, Err, Context);
+#endif
   }
-#endif // __native_client__
   if (M == 0) {
 #if defined(__native_client__)
     report_fatal_error(Err.getMessage());
@@ -547,7 +562,8 @@ static int compileModule(StringRef ProgramName) {
   if (!MainContext) return 1;
 
 #if defined(__native_client__)
-  StreamingObject.reset(new StreamingMemoryObject(getNaClBitcodeStreamer()));
+  StreamingObject.reset(
+      new StreamingMemoryObjectImpl(getNaClBitcodeStreamer()));
 #else
   if (LazyBitcode) {
     std::string StrError;
@@ -558,7 +574,7 @@ static int compileModule(StringRef ProgramName) {
     }
     if (!FileStreamer)
       return 1;
-    StreamingObject.reset(new StreamingMemoryObject(FileStreamer));
+    StreamingObject.reset(new StreamingMemoryObjectImpl(FileStreamer));
   }
 #endif
   mod.reset(getModule(ProgramName, *MainContext.get(), StreamingObject.get()));
