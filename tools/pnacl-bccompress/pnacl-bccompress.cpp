@@ -52,6 +52,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Bitcode/NaCl/AbbrevTrieNode.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
@@ -91,6 +92,13 @@ static cl::opt<bool>
 ShowValueDistributions(
     "show-distributions",
     cl::desc("Show collected value distributions in bitcode records."),
+    cl::init(false));
+
+static cl::opt<bool>
+ShowAbbrevLookupTries(
+    "show-lookup-tries",
+    cl::desc("Show lookup tries used to minimize search for \n"
+             "matching abbreviations."),
     cl::init(false));
 
 /// Error - All bitcode analysis errors go through this function,
@@ -198,6 +206,11 @@ public:
          Iter != IterEnd; ++Iter) {
       (*Iter)->dropRef();
     }
+    for (AbbrevLookupSizeMap::const_iterator
+             Iter = LookupMap.begin(), IterEnd = LookupMap.end();
+         Iter != IterEnd; ++Iter) {
+      delete Iter->second;
+    }
   }
 
   // Constant used to denote that a given abbreviation is not in the
@@ -266,8 +279,26 @@ public:
     return Abbrevs[index];
   }
 
+  // Builds the corresponding fast lookup map for finding abbreviations
+  // that applies to abbreviations in the block
+  void BuildAbbrevLookupSizeMap() {
+    NaClBuildAbbrevLookupMap(GetLookupMap(),
+                             GetAbbrevs(),
+                             GetFirstApplicationAbbreviation());
+    if (ShowAbbrevLookupTries) PrintLookupMap(errs());
+  }
+
   AbbrevBitstreamToInternalMap &GetGlobalAbbrevBitstreamToInternalMap() {
     return GlobalAbbrevBitstreamToInternalMap;
+  }
+
+  AbbrevLookupSizeMap &GetLookupMap() {
+    return LookupMap;
+  }
+
+  // Returns lower level vector of abbreviations.
+  const AbbrevVector &GetAbbrevs() const {
+    return Abbrevs;
   }
 
 private:
@@ -278,6 +309,28 @@ private:
   // The mapping from global bitstream abbreviations to the corresponding
   // block abbreviation index (in Abbrevs).
   AbbrevBitstreamToInternalMap GlobalAbbrevBitstreamToInternalMap;
+  // A fast lookup map for finding the abbreviation that applies
+  // to a record.
+  AbbrevLookupSizeMap LookupMap;
+
+  void PrintLookupMap(raw_ostream &Stream) {
+    Stream << "------------------------------\n";
+    Stream << "Block " << GetBlockID() << " abbreviation tries:\n";
+    bool IsFirstIteration = true;
+    for (AbbrevLookupSizeMap::const_iterator
+           Iter = LookupMap.begin(), IterEnd = LookupMap.end();
+         Iter != IterEnd; ++Iter) {
+      if (IsFirstIteration)
+        IsFirstIteration = false;
+      else
+        Stream << "-----\n";
+      if (Iter->second) {
+        Stream << "Index " << Iter->first << ":\n";
+        Iter->second->Print(Stream, "  ");
+      }
+    }
+    Stream << "------------------------------\n";
+  }
 };
 
 /// Defines a map from block ID's to the corresponding abbreviation
@@ -668,10 +721,6 @@ static inline bool operator<(const CandBlockAbbrev &A1,
                              const CandBlockAbbrev &A2) {
   return A1.Compare(A2) < 0;
 }
-
-/// Models the minimum number of instances for a candidate abbreviation
-/// before we will even consider it a potential candidate abbreviation.
-static unsigned MinNumInstancesForNewAbbrevs = 100;
 
 /// Models the set of candidate abbreviations being considered, and
 /// the number of abbreviations associated with each candidate
@@ -1165,39 +1214,44 @@ protected:
     }
   }
 
-  /// Returns the abbreviation (index) to use for the corresponding
-  /// read record.
+  // Returns the abbreviation (index) to use for the corresponding
+  // read record.
   unsigned GetRecordAbbrevIndex() {
-
-    // Note: We can't use abbreviations till they have been inserted
-    // into the bitcode file. So give up if the record appears before
-    // where they are inserted (which is where the first BlockInfo
-    // block appears in the input bitcode file).
-    if (!Context->FoundFirstBlockInfo)
-      return naclbitc::UNABBREV_RECORD;
-
-    BlockAbbrevs *Abbrevs = BlockAbbreviations;
     unsigned BestIndex = 0; // Ignored unless found candidate.
     unsigned BestScore = 0; // Number of bits associated with BestIndex.
     bool FoundCandidate = false;
-    for (unsigned Index = Abbrevs->GetFirstApplicationAbbreviation();
-         Index < Abbrevs->GetNumberAbbreviations(); ++Index) {
-      uint64_t NumBits = 0;
-      if (CanUseAbbreviation(Abbrevs->GetIndexedAbbrev(Index), NumBits)) {
-        if (!FoundCandidate || NumBits < BestScore) {
-          // Use this as candidate.
-          BestIndex = Index;
-          BestScore = NumBits;
-          FoundCandidate = true;
+    const AbbrevLookupSizeMap &LookupMap = BlockAbbreviations->GetLookupMap();
+    size_t Size = Record.GetValues().size() + 1;  // Add record code.
+
+    if (Size > NaClValueIndexCutoff) Size = NaClValueIndexCutoff+1;
+    AbbrevLookupSizeMap::const_iterator Pos = LookupMap.find(Size);
+    if (Pos != LookupMap.end()) {
+      if (const AbbrevTrieNode *Node = Pos->second) {
+        if (const AbbrevTrieNode *MatchNode =
+            Node->MatchRecord(Record.GetRecordData())) {
+          const std::set<AbbrevIndexPair> &Abbreviations =
+              MatchNode->GetAbbreviations();
+          for (std::set<AbbrevIndexPair>::const_iterator
+                   Iter = Abbreviations.begin(),
+                   IterEnd = Abbreviations.end();
+               Iter != IterEnd; ++Iter) {
+            uint64_t NumBits = 0;
+            if (CanUseAbbreviation(Iter->second, NumBits)) {
+              if (!FoundCandidate || NumBits < BestScore) {
+                // Use this as candidate.
+                BestIndex = Iter->first;
+                BestScore = NumBits;
+                FoundCandidate = true;
+              }
+            }
+          }
         }
       }
     }
     if (FoundCandidate && BestScore <= UnabbreviatedSize()) {
       return BestIndex;
     }
-    else {
-      return naclbitc::UNABBREV_RECORD;
-    }
+    return naclbitc::UNABBREV_RECORD;
   }
 
   // Computes the number of bits that will be generated by the
@@ -1305,7 +1359,6 @@ protected:
       }
       }
     }
-
     return ValueIndex == ValueIndexEnd && OpIndex == OpIndexEnd;
   }
 
@@ -1427,6 +1480,17 @@ static bool CopyBitcode(OwningPtr<MemoryBuffer> &MemBuf,
   return false;
 }
 
+// Build fast lookup abbreviation maps for each of the abbreviation blocks
+// defined in AbbrevsMap.
+static void BuildAbbrevLookupMaps(BlockAbbrevsMapType &AbbrevsMap) {
+  for (BlockAbbrevsMapType::const_iterator
+           Iter = AbbrevsMap.begin(),
+           IterEnd = AbbrevsMap.end();
+       Iter != IterEnd; ++Iter) {
+    Iter->second->BuildAbbrevLookupSizeMap();
+  }
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -1440,6 +1504,7 @@ int main(int argc, char **argv) {
   if (ReadAndBuffer(MemBuf)) return 1;
   BlockAbbrevsMapType BlockAbbrevsMap;
   if (AnalyzeBitcode(MemBuf, BlockAbbrevsMap)) return 1;
+  BuildAbbrevLookupMaps(BlockAbbrevsMap);
   if (CopyBitcode(MemBuf, BlockAbbrevsMap)) return 1;
   return 0;
 }

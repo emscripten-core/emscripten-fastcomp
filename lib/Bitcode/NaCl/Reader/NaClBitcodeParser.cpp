@@ -12,12 +12,22 @@
 
 using namespace llvm;
 
+void NaClBitcodeRecordData::Print(raw_ostream &os) const {
+  os << "[" << Code;
+  for (NaClRecordVector::const_iterator
+           Iter = Values.begin(), IterEnd = Values.end();
+       Iter != IterEnd; ++Iter) {
+    os << ", " << *Iter;
+  }
+  os << "]";
+}
+
 void NaClBitcodeRecord::Print(raw_ostream& os) const {
   Block.Print(os);
-  os << ", Code " << Code << ", EntryID " << Entry.ID << ", <";
-  for (unsigned i = 0, e = Values.size(); i != e; ++i) {
+  os << ", Code " << Data.Code << ", EntryID " << Entry.ID << ", <";
+  for (unsigned i = 0, e = Data.Values.size(); i != e; ++i) {
     if (i > 0) os << " ";
-    os << Values[i];
+    os << Data.Values[i];
   }
   os << ">";
 }

@@ -209,12 +209,30 @@ protected:
   friend class NaClBitcodeParser;
 };
 
+typedef SmallVector<uint64_t, 8> NaClRecordVector;
+
+class NaClBitcodeRecordData {
+public:
+  // The selector code associated with the record.
+  unsigned Code;
+  // The sequence of values defining the parsed record.
+  NaClRecordVector Values;
+
+  void Print(raw_ostream &strm) const;
+};
+
+inline raw_ostream &operator<<(raw_ostream &Strm,
+                               const NaClBitcodeRecordData &Data) {
+  Data.Print(Strm);
+  return Strm;
+}
+
 /// Defines the data associated with reading a block record in the
 /// PNaCl bitcode stream.
 class NaClBitcodeRecord : public NaClBitcodeData {
 public:
   /// Type for vector of values representing a record.
-  typedef SmallVector<uint64_t, 8> RecordVector;
+  typedef NaClRecordVector RecordVector;
 
   /// Creates a bitcode record, starting at the position defined
   /// by cursor.
@@ -244,7 +262,7 @@ public:
   /// Returns the code value (i.e. selector) associated with the
   /// record.
   unsigned GetCode() const {
-    return Code;
+    return Data.Code;
   }
 
   /// Returns the EntryID (e.g. abbreviation if !=
@@ -257,7 +275,12 @@ public:
 
   /// Returns the (value) record associated with the read record.
   const RecordVector &GetValues() const {
-    return Values;
+    return Data.Values;
+  }
+
+  /// Allows lower level access to data representing record.
+  const NaClBitcodeRecordData &GetRecordData() const {
+    return Data;
   }
 
   /// Returns true if the record was read using an abbreviation.
@@ -281,10 +304,8 @@ public:
 protected:
   // The block associated with the record.
   const NaClBitcodeBlock &Block;
-  // The selector code associated with the record.
-  unsigned Code;
-  // The sequence of values defining the parsed record.
-  RecordVector Values;
+  // The data of the record.
+  NaClBitcodeRecordData Data;
   // The entry (i.e. value(s) preceding the record that define what
   // value comes next).
   NaClBitstreamEntry Entry;
@@ -304,8 +325,8 @@ private:
   /// Reads in a record's values, if the entry defines a record (Must
   /// be called after ReadEntry).
   void ReadValues() {
-    Values.clear();
-    Code = GetCursor().readRecord(Entry.ID, Values);
+    Data.Values.clear();
+    Data.Code = GetCursor().readRecord(Entry.ID, Data.Values);
   }
 
   NaClBitcodeRecord(const NaClBitcodeRecord &Rcd) LLVM_DELETED_FUNCTION;

@@ -1,4 +1,4 @@
-##===- unittests/Bitcode/Makefile --------------------------*- Makefile -*-===##
+##===- lib/Bitcode/NaCl/Analysis/Makefile ------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,9 +7,8 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../..
-TESTNAME = Bitcode
-LINK_COMPONENTS := bitreader bitwriter bitanalysis
+LEVEL = ../../../..
+LIBRARYNAME = LLVMNaClBitAnalysis
+BUILD_ARCHIVE = 1
 
-include $(LEVEL)/Makefile.config
-include $(LLVM_SRC_ROOT)/unittests/Makefile.unittest
+include $(LEVEL)/Makefile.common

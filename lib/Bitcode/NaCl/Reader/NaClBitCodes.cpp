@@ -69,13 +69,14 @@ static void PrintExpression(raw_ostream &Stream,
   }
 }
 
-void NaClBitCodeAbbrev::Print(raw_ostream &Stream) const {
+void NaClBitCodeAbbrev::Print(raw_ostream &Stream, bool AddNewLine) const {
   Stream << "[";
   for (unsigned i = 0; i < getNumOperandInfos(); ++i) {
     if (i > 0) Stream << ", ";
     PrintExpression(Stream, this, i);
   }
-  Stream << "]\n";
+  Stream << "]";
+  if (AddNewLine) Stream << "\n";
 }
 
 NaClBitCodeAbbrev *NaClBitCodeAbbrev::Simplify() const {
