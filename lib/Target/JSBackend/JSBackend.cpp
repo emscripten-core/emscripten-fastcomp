@@ -2346,6 +2346,10 @@ void JSWriter::printModule(const std::string& fname,
 }
 
 bool JSWriter::runOnModule(Module &M) {
+  if (M.getTargetTriple() != "asmjs-unknown-emscripten") {
+    prettyWarning() << "incorrect target triple '" << M.getTargetTriple() << "' (did you use emcc/em++ on all source files and not clang directly?)\n";
+  }
+
   TheModule = &M;
   DL = &getAnalysis<DataLayout>();
 
