@@ -49,29 +49,20 @@ DEF_CALL_HANDLER(__default__, {
         unsigned TypeNumArgs = FT->getNumParams();
         unsigned ActualNumArgs = getNumArgOperands(CI);
         if (TypeNumArgs != ActualNumArgs) {
-          errs().changeColor(raw_ostream::YELLOW);
-          errs() << "warning:";
-          errs().resetColor();
-          errs() << " unexpected number of arguments " << utostr(ActualNumArgs) << " in call to '" << F->getName() << "', should be " << utostr(TypeNumArgs) << "\n";
+          prettyWarning() << "unexpected number of arguments " << utostr(ActualNumArgs) << " in call to '" << F->getName() << "', should be " << utostr(TypeNumArgs) << "\n";
         }
         for (unsigned i = 0; i < std::min(TypeNumArgs, ActualNumArgs); i++) {
           Type *TypeType = FT->getParamType(i);
           Type *ActualType = CI->getOperand(i)->getType();
           if (getFunctionSignatureLetter(TypeType) != getFunctionSignatureLetter(ActualType)) {
-            errs().changeColor(raw_ostream::YELLOW);
-            errs() << "warning:";
-            errs().resetColor();
-            errs() << " unexpected argument type " << *ActualType << " at index " << utostr(i) << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
+            prettyWarning() << "unexpected argument type " << *ActualType << " at index " << utostr(i) << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
           }
         }
       }
       Type *TypeType = FT->getReturnType();
       Type *ActualType = CI->getType();
       if (getFunctionSignatureLetter(TypeType) != getFunctionSignatureLetter(ActualType)) {
-        errs().changeColor(raw_ostream::YELLOW);
-        errs() << "warning:";
-        errs().resetColor();
-        errs() << " unexpected return type " << *ActualType << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
+        prettyWarning() << "unexpected return type " << *ActualType << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
       }
     }
   } else {

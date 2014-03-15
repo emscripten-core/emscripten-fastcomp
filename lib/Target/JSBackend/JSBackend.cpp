@@ -55,6 +55,14 @@ using namespace llvm;
 #define assert(x) { if (!(x)) report_fatal_error(#x); }
 #endif
 
+raw_ostream &prettyWarning() {
+  errs().changeColor(raw_ostream::YELLOW);
+  errs() << "warning:";
+  errs().resetColor();
+  errs() << " ";
+  return errs();
+}
+
 static cl::opt<bool>
 PreciseF32("emscripten-precise-f32",
            cl::desc("Enables Math.fround usage to implement precise float32 semantics and performance (see emscripten PRECISE_F32 option)"),
