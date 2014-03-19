@@ -1,4 +1,4 @@
-//===-- NaClAnalBlockDist.cpp ---------------------------------------===//
+//===-- NaClAnalyzerBlockDist.cpp -----------------------------------------===//
 //      implements distribution maps used to collect block and record
 //      distributions for tools pnacl-bcanalyzer and pnacl-benchmark.
 //
