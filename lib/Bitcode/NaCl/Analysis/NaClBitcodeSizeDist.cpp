@@ -32,7 +32,6 @@ GetValueList(const NaClBitcodeRecord &Record,
 void NaClBitcodeSizeDistElement::AddRecord(const NaClBitcodeRecord &Record) {
   NaClBitcodeDistElement::AddRecord(Record);
   ValueIndexDist.AddRecord(Record);
-  UntrackedValues.AddRecord(Record);
 }
 
 const SmallVectorImpl<NaClBitcodeDist*> *NaClBitcodeSizeDistElement::
