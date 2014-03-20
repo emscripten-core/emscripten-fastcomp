@@ -45,10 +45,10 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/NaCl.h"
+#include "ThreadedFunctionQueue.h"
 #include "ThreadedStreamingCache.h"
 #include <pthread.h>
 #include <memory>
-
 
 using namespace llvm;
 
@@ -130,6 +130,23 @@ DisableSimplifyLibCalls("disable-simplify-libcalls",
 cl::opt<unsigned>
 SplitModuleCount("split-module",
                  cl::desc("Split PNaCl module"), cl::init(1U));
+
+enum SplitModuleSchedulerKind {
+  SplitModuleDynamic,
+  SplitModuleStatic
+};
+
+cl::opt<SplitModuleSchedulerKind>
+SplitModuleSched(
+    "split-module-sched",
+    cl::desc("Choose thread scheduler for split module compilation."),
+    cl::values(
+        clEnumValN(SplitModuleDynamic, "dynamic",
+                   "Dynamic thread scheduling (default)"),
+        clEnumValN(SplitModuleStatic, "static",
+                   "Static thread scheduling"),
+        clEnumValEnd),
+    cl::init(SplitModuleDynamic));
 
 /// Compile the module provided to pnacl-llc. The file name for reading the
 /// module and other options are taken from globals populated by command-line
@@ -335,6 +352,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
 
 static int runCompilePasses(Module *mod,
                             unsigned ModuleIndex,
+                            ThreadedFunctionQueue *FuncQueue,
                             const Triple &TheTriple,
                             TargetMachine &Target,
                             StringRef ProgramName,
@@ -431,13 +449,49 @@ static int runCompilePasses(Module *mod,
   if (LazyBitcode) {
     FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
     P->doInitialization();
-    unsigned FuncIndex = 0;
-    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-      if (FuncIndex++ % SplitModuleCount == ModuleIndex) {
-        P->run(*I);
-        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-        I->Dematerialize();
+    int FuncIndex = 0;
+    switch (SplitModuleSched) {
+    case SplitModuleStatic:
+      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
+        if (FuncQueue->GrabFunctionStatic(FuncIndex, ModuleIndex)) {
+          P->run(*I);
+          CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
+          I->Dematerialize();
+        }
+        ++FuncIndex;
       }
+      break;
+    case SplitModuleDynamic:
+      unsigned ChunkSize = 0;
+      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ) {
+        ChunkSize = FuncQueue->RecommendedChunkSize();
+        int NextIndex;
+        bool grabbed = FuncQueue->GrabFunctionDynamic(FuncIndex, ChunkSize,
+                                                      NextIndex);
+        if (grabbed) {
+          while (FuncIndex < NextIndex && I != E) {
+            P->run(*I);
+            CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
+            I->Dematerialize();
+            ++FuncIndex;
+            ++I;
+          }
+        } else {
+          // Currently the ResolvePNaClIntrinsics function pass may
+          // add more declarations as we iterate. Some threads may get
+          // "lucky" and not add the related declarations, so those
+          // threads would have an earlier endpoint than other
+          // threads.  the final NextIndex established by another
+          // thread would then be out of the bounds of the current thread.
+          // TODO(jvoung): Ensure that all declarations are added up front
+          // and uniformly so that we don't need this I != E check.
+          while (FuncIndex < NextIndex && I != E) {
+            ++FuncIndex;
+            ++I;
+          }
+        }
+      }
+      break;
     }
     P->doFinalization();
   } else {
@@ -455,7 +509,8 @@ static int compileSplitModule(const TargetOptions &Options,
                               const StringRef &ProgramName,
                               Module *GlobalModule,
                               StreamingMemoryObject *StreamingObject,
-                              unsigned ModuleIndex) {
+                              unsigned ModuleIndex,
+                              ThreadedFunctionQueue *FuncQueue) {
   std::auto_ptr<TargetMachine>
     target(TheTarget->createTargetMachine(TheTriple.getTriple(),
                                           MCPU, FeaturesStr, Options,
@@ -495,8 +550,8 @@ static int compileSplitModule(const TargetOptions &Options,
     if (ModuleIndex > 0)
       OutFileName << ".module" << ModuleIndex;
     OwningPtr<tool_output_file> Out
-    (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
-     OutFileName.str()));
+        (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
+                         OutFileName.str()));
     if (!Out) return 1;
     formatted_raw_ostream FOS(Out->os());
 #else
@@ -504,7 +559,8 @@ static int compileSplitModule(const TargetOptions &Options,
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
 #endif
-    int ret = runCompilePasses(mod, ModuleIndex, TheTriple, Target, ProgramName,
+    int ret = runCompilePasses(mod, ModuleIndex, FuncQueue,
+                               TheTriple, Target, ProgramName,
                                FOS);
     if (ret)
       return ret;
@@ -529,6 +585,7 @@ struct ThreadData {
   Module *GlobalModule;
   StreamingMemoryObject *StreamingObject;
   unsigned ModuleIndex;
+  ThreadedFunctionQueue *FuncQueue;
 };
 
 
@@ -542,7 +599,8 @@ static void *runCompileThread(void *arg) {
                                Data->ProgramName,
                                Data->GlobalModule,
                                Data->StreamingObject,
-                               Data->ModuleIndex);
+                               Data->ModuleIndex,
+                               Data->FuncQueue);
   return reinterpret_cast<void *>(static_cast<intptr_t>(ret));
 }
 
@@ -652,10 +710,14 @@ static int compileModule(StringRef ProgramName) {
 
   SmallVector<pthread_t, 4> Pthreads(SplitModuleCount);
   SmallVector<ThreadData, 4> ThreadDatas(SplitModuleCount);
+  ThreadedFunctionQueue FuncQueue(mod.get(), SplitModuleCount);
 
   if (SplitModuleCount == 1) {
+    // No need for dynamic scheduling with one thread.
+    SplitModuleSched = SplitModuleStatic;
     return compileSplitModule(Options, TheTriple, TheTarget, FeaturesStr,
-                              OLvl, ProgramName, mod.get(), NULL, 0);
+                              OLvl, ProgramName, mod.get(), NULL, 0,
+                              &FuncQueue);
   }
 
   for(unsigned ModuleIndex = 0; ModuleIndex < SplitModuleCount; ++ModuleIndex) {
@@ -668,6 +730,7 @@ static int compileModule(StringRef ProgramName) {
     ThreadDatas[ModuleIndex].GlobalModule = mod.get();
     ThreadDatas[ModuleIndex].StreamingObject = StreamingObject.get();
     ThreadDatas[ModuleIndex].ModuleIndex = ModuleIndex;
+    ThreadDatas[ModuleIndex].FuncQueue = &FuncQueue;
     if (pthread_create(&Pthreads[ModuleIndex], NULL, runCompileThread,
                         &ThreadDatas[ModuleIndex])) {
       report_fatal_error("Failed to create thread");
