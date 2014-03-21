@@ -356,7 +356,7 @@ static bool isSimpleElement(const Constant *C) {
   if (ArrayType *Ty = dyn_cast<ArrayType>(C->getType())) {
     return Ty->getElementType()->isIntegerTy(8) &&
            (isa<ConstantAggregateZero>(C) ||
-            isa<ConstantDataSequential>(C));
+            isa<ConstantDataArray>(C));
   }
   // 2) A reference to a GlobalValue (a function or global variable)
   //    with an optional byte offset added to it (the addend).
