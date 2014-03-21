@@ -260,6 +260,16 @@ void lto_codegen_add_must_preserve_symbol(lto_code_gen_t cg,
   cg->addMustPreserveSymbol(symbol);
 }
 
+// @LOCALMOD-BEGIN
+//
+// Apply symbol wrapping in the linked bitcode module.
+//
+void lto_codegen_wrap_symbol_in_merged_module(lto_code_gen_t cg,
+                                              const char *sym) {
+  cg->wrapSymbol(sym);
+}
+// @LOCALMOD-END
+
 /// lto_codegen_write_merged_modules - Writes a new file at the specified path
 /// that contains the merged contents of all modules added so far. Returns true
 /// on error (check lto_get_error_message() for details).

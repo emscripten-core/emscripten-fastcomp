@@ -54,6 +54,13 @@ namespace {
   ld_plugin_set_extra_library_path set_extra_library_path = NULL;
   ld_plugin_get_view get_view = NULL;
   ld_plugin_message message = discard_message;
+  // @LOCALMOD-BEGIN
+  // Callback for getting the number of --wrap'd symbols.
+  ld_plugin_get_num_wrapped get_num_wrapped = NULL;
+
+  // Callback for getting the name of a wrapped symbol.
+  ld_plugin_get_wrapped get_wrapped = NULL;
+  // @LOCALMOD-END
 
   int api_version = 0;
   int gold_version = 0;
@@ -214,6 +221,14 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
       case LDPT_GET_VIEW:
         get_view = tv->tv_u.tv_get_view;
         break;
+      // @LOCALMOD-BEGIN
+      case LDPT_GET_WRAPPED:
+        get_wrapped = tv->tv_u.tv_get_wrapped;
+        break;
+      case LDPT_GET_NUM_WRAPPED:
+        get_num_wrapped = tv->tv_u.tv_get_num_wrapped;
+        break;
+      // @LOCALMOD-END
       case LDPT_MESSAGE:
         message = tv->tv_u.tv_message;
         break;
@@ -424,6 +439,23 @@ static ld_plugin_status all_symbols_read_hook(void) {
       lto_codegen_debug_options(code_gen, (*it).c_str());
     }
   }
+
+  // @LOCALMOD-BEGIN
+  // Perform symbol wrapping.
+  unsigned num_wrapped;
+  if ((*get_num_wrapped)(&num_wrapped) != LDPS_OK) {
+    (*message)(LDPL_ERROR, "Unable to get the number of wrapped symbols.");
+    return LDPS_ERR;
+  }
+  for (unsigned i = 0; i < num_wrapped; ++i) {
+    const char *sym;
+    if ((*get_wrapped)(i, &sym) != LDPS_OK) {
+      (*message)(LDPL_ERROR, "Unable to wrap symbol %u/%u.", i, num_wrapped);
+      return LDPS_ERR;
+    }
+    lto_codegen_wrap_symbol_in_merged_module(code_gen, sym);
+  }
+  // @LOCALMOD-END
 
   if (options::generate_bc_file != options::BC_NO) {
     std::string path;

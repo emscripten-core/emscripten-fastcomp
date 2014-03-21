@@ -165,6 +165,36 @@ void LTOCodeGenerator::setCodePICModel(lto_codegen_model model) {
   llvm_unreachable("Unknown PIC model!");
 }
 
+// @LOCALMOD-BEGIN
+void LTOCodeGenerator::wrapSymbol(const char *sym) {
+  Module *M = Linker.getModule();
+
+  std::string wrapSymName("__wrap_");
+  wrapSymName += sym;
+  std::string realSymName("__real_");
+  realSymName += sym;
+
+  Constant *SymGV = M->getNamedValue(sym);
+
+  // Replace uses of "sym" with "__wrap_sym".
+  if (SymGV) {
+    Constant *WrapGV = M->getNamedValue(wrapSymName);
+    if (!WrapGV)
+      WrapGV = M->getOrInsertGlobal(wrapSymName, SymGV->getType());
+    SymGV->replaceAllUsesWith(
+        ConstantExpr::getBitCast(WrapGV, SymGV->getType()));
+  }
+
+  // Replace uses of "__real_sym" with "sym".
+  if (Constant *RealGV = M->getNamedValue(realSymName)) {
+    if (!SymGV)
+      SymGV = M->getOrInsertGlobal(sym, RealGV->getType());
+    RealGV->replaceAllUsesWith(
+        ConstantExpr::getBitCast(SymGV, RealGV->getType()));
+  }
+}
+// @LOCALMOD-END
+
 bool LTOCodeGenerator::writeMergedModules(const char *path,
                                           std::string &errMsg) {
   if (!determineTarget(errMsg))
