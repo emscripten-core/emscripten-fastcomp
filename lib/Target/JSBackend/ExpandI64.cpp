@@ -42,6 +42,7 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
+#include <vector>
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -53,6 +54,10 @@
 using namespace llvm;
 
 namespace {
+
+  struct PhiBlockChange {
+    BasicBlock *DD, *SwitchBB, *NewBB;
+  };
 
   typedef SmallVector<Value*, 2> ChunksVec;
   typedef std::map<Value*, ChunksVec> SplitsMap;
@@ -69,6 +74,7 @@ namespace {
 
     SplitsMap Splits; // old illegal value to new insts
     PHIVec Phis;
+    std::vector<PhiBlockChange> PhiBlockChanges;
 
     // If the function has an illegal return or argument, create a legal version
     void ensureLegalFunc(Function *F);
@@ -890,13 +896,12 @@ bool ExpandI64::splitInst(Instruction *I) {
         // We used to go SwitchBB->DD, but now go SwitchBB->NewBB->DD, fix that like with BB above. However here we do not replace,
         // as the switch BB is still possible to arrive from - we can arrive at the default if either the lower bits were wrong (we
         // arrive from the switchBB) or from the NewBB if the high bits were wrong.
-        for (BasicBlock::iterator I = DD->begin(); I != DD->end(); ++I) {
-          PHINode *Phi = dyn_cast<PHINode>(I);
-          if (!Phi) break;
-          Phi->addIncoming(Phi->getIncomingValue(Phi->getBasicBlockIndex(SwitchBB)), NewBB);
-          // XXX note that we add a new i64 thing here. now the phi was already an i64 operation, and is being legalized anyhow, but we only notice the original inputs!
-          //     we seem to be safe for now due to order of operation (phis show up after switches, but FIXME
-        }
+        // We cannot do this here right now, as phis we encounter may be in the middle of processing (empty), so we queue these.
+        PhiBlockChange Change;
+        Change.DD = DD;
+        Change.SwitchBB = SwitchBB;
+        Change.NewBB = NewBB;
+        PhiBlockChanges.push_back(Change);
       }
       break;
     }
@@ -1089,6 +1094,18 @@ bool ExpandI64::runOnModule(Module &M) {
         }
       }
       PN->dropAllReferences();
+    }
+
+    // Apply basic block changes to phis, now that phis are all processed
+    for (unsigned i = 0; i < PhiBlockChanges.size(); i++) {
+      PhiBlockChange &Change = PhiBlockChanges[i];
+      for (BasicBlock::iterator I = Change.DD->begin(); I != Change.DD->end(); ++I) {
+        PHINode *Phi = dyn_cast<PHINode>(I);
+        if (!Phi) break;
+        int Index = Phi->getBasicBlockIndex(Change.SwitchBB);
+        assert(Index >= 0);
+        Phi->addIncoming(Phi->getIncomingValue(Index), Change.NewBB);
+      }
     }
 
     // Delete instructions which were replaced. We do this after the full walk
