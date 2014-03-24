@@ -1096,7 +1096,14 @@ bool ExpandI64::runOnModule(Module &M) {
       PN->dropAllReferences();
     }
 
-    // Apply basic block changes to phis, now that phis are all processed
+    // Delete instructions which were replaced. We do this after the full walk
+    // of the instructions so that all uses are replaced first.
+    while (!Dead.empty()) {
+      Instruction *D = Dead.pop_back_val();
+      D->eraseFromParent();
+    }
+
+    // Apply basic block changes to phis, now that phis are all processed (and illegal phis erased)
     for (unsigned i = 0; i < PhiBlockChanges.size(); i++) {
       PhiBlockChange &Change = PhiBlockChanges[i];
       for (BasicBlock::iterator I = Change.DD->begin(); I != Change.DD->end(); ++I) {
@@ -1106,13 +1113,6 @@ bool ExpandI64::runOnModule(Module &M) {
         assert(Index >= 0);
         Phi->addIncoming(Phi->getIncomingValue(Index), Change.NewBB);
       }
-    }
-
-    // Delete instructions which were replaced. We do this after the full walk
-    // of the instructions so that all uses are replaced first.
-    while (!Dead.empty()) {
-      Instruction *D = Dead.pop_back_val();
-      D->eraseFromParent();
     }
 
     // We only visited blocks found by a DFS walk from the entry, so we haven't
