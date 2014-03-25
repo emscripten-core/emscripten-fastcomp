@@ -32,7 +32,7 @@ const Value *getActuallyCalledValue(const Instruction *I) {
 DEF_CALL_HANDLER(__default__, {
   if (!CI) return ""; // we are just called from a handler that was called from getFunctionIndex, only to ensure the handler was run at least once
   const Value *CV = getActuallyCalledValue(CI);
-  bool NeedCasts;
+  bool NeedCasts = true;
   FunctionType *FT;
   bool Invoke = false;
   if (InvokeState == 1) {
@@ -66,14 +66,17 @@ DEF_CALL_HANDLER(__default__, {
       }
     }
   } else {
-    if (isAbsolute(CV)) return "abort(); /* segfault, call an absolute addr */";
-    // function pointer call
     FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
-    ensureFunctionTable(FT);
-    if (!Invoke) {
-      Sig = getFunctionSignature(FT, &Name);
-      Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
-      NeedCasts = false; // function table call, so stays in asm module
+    if (isAbsolute(CV->stripPointerCasts())) {
+      Name = "abort /* segfault, call an absolute addr */ ";
+    } else {
+      // function pointer call
+      ensureFunctionTable(FT);
+      if (!Invoke) {
+        Sig = getFunctionSignature(FT, &Name);
+        Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+        NeedCasts = false; // function table call, so stays in asm module
+      }
     }
   }
   if (Invoke) {
