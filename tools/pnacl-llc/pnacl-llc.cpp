@@ -357,14 +357,6 @@ static int runCompilePasses(Module *mod,
                             TargetMachine &Target,
                             StringRef ProgramName,
                             formatted_raw_ostream &FOS){
-  // Add declarations for external functions required by PNaCl. The
-  // ResolvePNaClIntrinsics function pass running during streaming
-  // depends on these declarations being in the module.
-  OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
-    createAddPNaClExternalDeclsPass());
-  AddPNaClExternalDeclsPass->runOnModule(*mod);
-  AddPNaClExternalDeclsPass.reset();
-
   PNaClABIErrorReporter ABIErrorReporter;
 
   if (SplitModuleCount > 1) {
@@ -463,13 +455,19 @@ static int runCompilePasses(Module *mod,
       break;
     case SplitModuleDynamic:
       unsigned ChunkSize = 0;
-      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ) {
+      unsigned NumFunctions = FuncQueue->Size();
+      Module::iterator I = mod->begin();
+      while (FuncIndex < NumFunctions) {
         ChunkSize = FuncQueue->RecommendedChunkSize();
         int NextIndex;
         bool grabbed = FuncQueue->GrabFunctionDynamic(FuncIndex, ChunkSize,
                                                       NextIndex);
         if (grabbed) {
-          while (FuncIndex < NextIndex && I != E) {
+          while (FuncIndex < NextIndex) {
+            if (!I->isMaterializable() && I->isDeclaration()) {
+              ++I;
+              continue;
+            }
             P->run(*I);
             CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
             I->Dematerialize();
@@ -477,15 +475,11 @@ static int runCompilePasses(Module *mod,
             ++I;
           }
         } else {
-          // Currently the ResolvePNaClIntrinsics function pass may
-          // add more declarations as we iterate. Some threads may get
-          // "lucky" and not add the related declarations, so those
-          // threads would have an earlier endpoint than other
-          // threads.  the final NextIndex established by another
-          // thread would then be out of the bounds of the current thread.
-          // TODO(jvoung): Ensure that all declarations are added up front
-          // and uniformly so that we don't need this I != E check.
-          while (FuncIndex < NextIndex && I != E) {
+          while (FuncIndex < NextIndex) {
+            if (!I->isMaterializable() && I->isDeclaration()) {
+              ++I;
+              continue;
+            }
             ++FuncIndex;
             ++I;
           }
@@ -539,6 +533,13 @@ static int compileSplitModule(const TargetOptions &Options,
     if (!mod)
       return 1;
     M.reset(mod);
+    // Add declarations for external functions required by PNaCl. The
+    // ResolvePNaClIntrinsics function pass running during streaming
+    // depends on these declarations being in the module.
+    OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+        createAddPNaClExternalDeclsPass());
+    AddPNaClExternalDeclsPass->runOnModule(*M);
+    AddPNaClExternalDeclsPass.reset();
   }
 
   mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
@@ -641,11 +642,20 @@ static int compileModule(StringRef ProgramName) {
 
   if (PNaClABIVerify) {
     // Verify the module (but not the functions yet)
-    ModulePass *VerifyPass = createPNaClABIVerifyModulePass(&ABIErrorReporter,
-                                                            LazyBitcode);
+    OwningPtr<ModulePass> VerifyPass(
+        createPNaClABIVerifyModulePass(&ABIErrorReporter, LazyBitcode));
     VerifyPass->runOnModule(*mod);
     CheckABIVerifyErrors(ABIErrorReporter, "Module");
+    VerifyPass.reset();
   }
+
+  // Add declarations for external functions required by PNaCl. The
+  // ResolvePNaClIntrinsics function pass running during streaming
+  // depends on these declarations being in the module.
+  OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+      createAddPNaClExternalDeclsPass());
+  AddPNaClExternalDeclsPass->runOnModule(*mod);
+  AddPNaClExternalDeclsPass.reset();
 
   if (UserDefinedTriple.empty()) {
     report_fatal_error("-mtriple must be set to a target triple for pnacl-llc");

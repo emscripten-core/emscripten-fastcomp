@@ -27,18 +27,19 @@ class ThreadedFunctionQueue {
         NumFunctions(mod->getFunctionList().size()),
         CurrentFunction(0) {
     assert(NumThreads > 0);
-    size_t size = mod->getFunctionList().size();
-    // NOTE: NumFunctions is only the approximate number of functions.
-    // Some additional declarations will be added by other passes:
-    // AddPNaClExternalDeclsPass (for setjmp/longjmp and nacl variants),
-    // and the NaCl Atomics pass adds declarations of NaCl atomic intrinsics.
-    // So make the unsigned -> signed range check a little more conservative,
-    // because CurrentFunction may be incremented beyond NumFunctions.
-    const int kSlack = 2048;
-    if (size > static_cast<size_t>(std::numeric_limits<int>::max() - kSlack))
+    size_t Size = 0;
+    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
+      // Only count functions with bodies. At this point nothing should
+      // be "already materialized", so if functions with bodies are
+      // materializable.
+      if (I->isMaterializable() || !I->isDeclaration())
+        Size++;
+    }
+    if (Size > static_cast<size_t>(std::numeric_limits<int>::max()))
       report_fatal_error("Too many functions");
-    NumFunctions = size;
+    NumFunctions = Size;
   }
+
   ~ThreadedFunctionQueue() {}
 
   // Assign functions in a static manner between threads.
@@ -89,11 +90,14 @@ class ThreadedFunctionQueue {
   // reduced when the remaining number of functions is low so that
   // load balancing can be achieved near the end.
   unsigned RecommendedChunkSize() const {
-    // Since NumFunctions may be less than the actual number of functions
-    // (see note in ctor), clamp remaining functions to 1.
-    int ApproxRemainingFuncs = std::max(NumFunctions - CurrentFunction, 1);
-    int DynamicChunkSize = ApproxRemainingFuncs / (NumThreads * 4);
+    int RemainingFuncs = NumFunctions - CurrentFunction;
+    int DynamicChunkSize = RemainingFuncs / (NumThreads * 4);
     return std::max(1, std::min(8, DynamicChunkSize));
+  }
+
+  // Total number of functions with bodies that should be processed.
+  unsigned Size() const {
+    return NumFunctions;
   }
 
  private:

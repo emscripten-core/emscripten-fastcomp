@@ -76,6 +76,9 @@ public:
 
     /// The following pure virtual methods must be defined by
     /// implementors, and will be called once per intrinsic call.
+    /// NOTE: doGetDeclaration() should only "get" the intrinsic declaration
+    /// and not *add* decls to the module. Declarations should be added
+    /// up front by the AddPNaClExternalDecls module pass.
     virtual Function *doGetDeclaration() const = 0;
     /// Returns true if the Function was changed.
     virtual bool doResolve(IntrinsicInst *Call) = 0;
@@ -96,10 +99,9 @@ class IntrinsicCallToFunctionCall :
     public ResolvePNaClIntrinsics::CallResolver {
 public:
   IntrinsicCallToFunctionCall(Function &F, Intrinsic::ID IntrinsicID,
-                              const char *TargetFunctionName,
-                              ArrayRef<Type *> Tys = None)
+                              const char *TargetFunctionName)
       : CallResolver(F, IntrinsicID),
-        TargetFunction(M->getFunction(TargetFunctionName)), Tys(Tys) {
+        TargetFunction(M->getFunction(TargetFunctionName)) {
     // Expect to find the target function for this intrinsic already
     // declared, even if it is never used.
     if (!TargetFunction)
@@ -110,10 +112,9 @@ public:
 
 private:
   Function *TargetFunction;
-  ArrayRef<Type *> Tys;
 
   virtual Function *doGetDeclaration() const {
-    return Intrinsic::getDeclaration(M, IntrinsicID, Tys);
+    return Intrinsic::getDeclaration(M, IntrinsicID);
   }
 
   virtual bool doResolve(IntrinsicInst *Call) {
@@ -133,17 +134,16 @@ private:
 template <class Callable>
 class ConstantCallResolver : public ResolvePNaClIntrinsics::CallResolver {
 public:
-  ConstantCallResolver(Function &F, Intrinsic::ID IntrinsicID, Callable Functor,
-                       ArrayRef<Type *> Tys = None)
+  ConstantCallResolver(Function &F, Intrinsic::ID IntrinsicID,
+                       Callable Functor)
       : CallResolver(F, IntrinsicID), Functor(Functor) {}
   virtual ~ConstantCallResolver() {}
 
 private:
   Callable Functor;
-  ArrayRef<Type *> Tys;
 
   virtual Function *doGetDeclaration() const {
-    return Intrinsic::getDeclaration(M, IntrinsicID, Tys);
+    return Intrinsic::getDeclaration(M, IntrinsicID);
   }
 
   virtual bool doResolve(IntrinsicInst *Call) {

@@ -17,7 +17,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/NaClAtomicIntrinsics.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/NaCl.h"
@@ -58,6 +60,18 @@ bool AddPNaClExternalDecls::runOnModule(Module &M) {
                         Type::getInt8Ty(C)->getPointerTo(),
                         Type::getInt32Ty(C),
                         NULL);
+
+  // Add Intrinsic declarations needed by ResolvePNaClIntrinsics up front.
+  Intrinsic::getDeclaration(&M, Intrinsic::nacl_setjmp);
+  Intrinsic::getDeclaration(&M, Intrinsic::nacl_longjmp);
+  NaCl::AtomicIntrinsics AI(C);
+  NaCl::AtomicIntrinsics::View V = AI.allIntrinsicsAndOverloads();
+  for (NaCl::AtomicIntrinsics::View::iterator I = V.begin(), E = V.end();
+       I != E; ++I) {
+    I->getDeclaration(&M);
+  }
+  Intrinsic::getDeclaration(&M, Intrinsic::nacl_atomic_is_lock_free);
+
   return true;
 }
 
