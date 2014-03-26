@@ -646,6 +646,15 @@ bool ExpandI64::splitInst(Instruction *I) {
         case ICmpInst::ICMP_SLE:
         case ICmpInst::ICMP_UGE:
         case ICmpInst::ICMP_SGE: {
+          if (ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1))) {
+            if (CI->getZExtValue() == 0 && Pred == ICmpInst::ICMP_SLT) {
+              // strict < 0 is easy to do, even on non-i64, just the sign bit matters
+              Instruction *NewInst = new ICmpInst(I, ICmpInst::ICMP_SLT, LeftChunks[LeftChunks.size()-1], Zero);
+              CopyDebug(NewInst, I);
+              I->replaceAllUsesWith(NewInst);
+              return true;
+            }
+          }
           assert(I->getOperand(0)->getType() == i64);
           Instruction *A, *B, *C, *D, *Final;
           ICmpInst::Predicate StrictPred = Pred;

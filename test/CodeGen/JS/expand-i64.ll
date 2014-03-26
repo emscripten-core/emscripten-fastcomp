@@ -312,3 +312,18 @@ dead:
   store i64 %s, i64* %p
   ret void
 }
+
+; CHECK: define i1 @slt_zero(i32 %a) {
+; CHECK:   %1 = icmp slt i32 %a, 0
+; CHECK:   %2 = sext i1 %1 to i32
+; CHECK:   %3 = sext i1 %1 to i32
+; CHECK:   %4 = sext i1 %1 to i32
+; CHECK:   %5 = icmp slt i32 %4, 0
+; CHECK:   ret i1 %5
+; CHECK: }
+define i1 @slt_zero(i32 %a) {
+  %b = sext i32 %a to i128
+  %c = icmp slt i128 %b, 0
+  ret i1 %c
+}
+
