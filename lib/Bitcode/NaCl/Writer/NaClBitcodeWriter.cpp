@@ -99,7 +99,7 @@ static void ReportIllegalValue(const char *ValueMessage,
                                const Value &Value) {
   std::string Message;
   raw_string_ostream StrM(Message);
-  StrM << "Illegal ";
+  StrM << "NaCl Illegal ";
   if (ValueMessage != 0)
     StrM << ValueMessage << " ";
   StrM << ": " << Value;
