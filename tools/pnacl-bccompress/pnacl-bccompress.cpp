@@ -1248,7 +1248,7 @@ static void DisplayAbbreviationFrequencies(
            AbbrevIter != AbbrevIterEnd; ++AbbrevIter) {
         unsigned Index = static_cast<unsigned>(AbbrevIter->second);
         unsigned Count = AbbrevDist.at(Index)->GetNumInstances();
-        Output << format("%8u (%6.2f\%): ", Count,
+        Output << format("%8u (%6.2f%%): ", Count,
                          (double) Count/Total*100.0);
         BlockPos->second->GetIndexedAbbrev(Index)->Print(Output);
       }

@@ -164,7 +164,7 @@ public:
   /// stream. In general errors will be printed after the next record,
   /// unless a call to Flush is made.
   raw_ostream &Error() {
-    Error(LastKnownBit);
+    return Error(LastKnownBit);
   }
 
   /// Prints "Error(Bit/8:Bit%8): " onto the comments stream, records
