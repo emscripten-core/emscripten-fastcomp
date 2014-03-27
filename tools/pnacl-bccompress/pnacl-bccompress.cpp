@@ -60,6 +60,7 @@
 #include "llvm/Bitcode/NaCl/NaClCompressBlockDist.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -91,7 +92,8 @@ OutputFilename("o", cl::desc("Specify output filename"),
 static cl::opt<bool>
 ShowValueDistributions(
     "show-distributions",
-    cl::desc("Show collected value distributions in bitcode records."),
+    cl::desc("Show collected value distributions in bitcode records. "
+             "Turns off compression."),
     cl::init(false));
 
 static cl::opt<bool>
@@ -99,6 +101,13 @@ ShowAbbrevLookupTries(
     "show-lookup-tries",
     cl::desc("Show lookup tries used to minimize search for \n"
              "matching abbreviations."),
+    cl::init(false));
+
+static cl::opt<bool>
+ShowAbbreviationFrequencies(
+    "show-abbreviation-frequencies",
+    cl::desc("Show how often each abbreviation is used. "
+             "Turns off compression."),
     cl::init(false));
 
 /// Error - All bitcode analysis errors go through this function,
@@ -1210,6 +1219,44 @@ static void AddNewAbbreviations(NaClBitcodeBlockDist &BlockDist,
   }
 }
 
+// Walks the block distribution (BlockDist), sorting entries based
+// on the distribution of blocks and abbreviations, and then
+// prints out the frequency of each abbreviation used.
+static void DisplayAbbreviationFrequencies(
+    raw_ostream &Output,
+    const NaClBitcodeBlockDist &BlockDist,
+    const BlockAbbrevsMapType &BlockAbbrevsMap) {
+  const NaClBitcodeDist::Distribution *BlockDistribution =
+      BlockDist.GetDistribution();
+  for (NaClBitcodeDist::Distribution::const_iterator
+           BlockIter = BlockDistribution->begin(),
+           BlockIterEnd = BlockDistribution->end();
+       BlockIter != BlockIterEnd; ++BlockIter) {
+    unsigned BlockID = static_cast<unsigned>(BlockIter->second);
+    BlockAbbrevsMapType::const_iterator BlockPos = BlockAbbrevsMap.find(BlockID);
+    if (BlockPos == BlockAbbrevsMap.end()) continue;
+    Output << "Block " << BlockID << "\n";
+    if (NaClCompressBlockDistElement *BlockElement =
+        dyn_cast<NaClCompressBlockDistElement>(BlockDist.at(BlockID))) {
+      NaClBitcodeDist &AbbrevDist = BlockElement->GetAbbrevDist();
+      const NaClBitcodeDist::Distribution *AbbrevDistribution =
+          AbbrevDist.GetDistribution();
+      unsigned Total = AbbrevDist.GetTotal();
+      for (NaClBitcodeDist::Distribution::const_iterator
+               AbbrevIter = AbbrevDistribution->begin(),
+               AbbrevIterEnd = AbbrevDistribution->end();
+           AbbrevIter != AbbrevIterEnd; ++AbbrevIter) {
+        unsigned Index = static_cast<unsigned>(AbbrevIter->second);
+        unsigned Count = AbbrevDist.at(Index)->GetNumInstances();
+        Output << format("%8u (%6.2f\%): ", Count,
+                         (double) Count/Total*100.0);
+        BlockPos->second->GetIndexedAbbrev(Index)->Print(Output);
+      }
+    }
+    Output << '\n';
+  }
+}
+
 // Read in bitcode, analyze data, and figure out set of abbreviations
 // to use, from memory buffer MemBuf containing the input bitcode file.
 static bool AnalyzeBitcode(OwningPtr<MemoryBuffer> &MemBuf,
@@ -1237,11 +1284,17 @@ static bool AnalyzeBitcode(OwningPtr<MemoryBuffer> &MemBuf,
     if (Parser.Parse()) return true;
   }
 
-  if (ShowValueDistributions) {
-    // To make shell redirection of this trace easier, print it to
-    // stdout unless stdout is being used to contain the compressed
-    // bitcode file. In the latter case, use stderr.
-    Parser.BlockDist.Print(OutputFilename == "-" ? errs() : outs());
+  if (ShowAbbreviationFrequencies || ShowValueDistributions) {
+    std::string ErrorInfo;
+    raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo);
+    if (!ErrorInfo.empty()) {
+      errs() << ErrorInfo << "\n";
+      exit(1);
+    }
+    if (ShowAbbreviationFrequencies)
+      DisplayAbbreviationFrequencies(Output, Parser.BlockDist, BlockAbbrevsMap);
+    if (ShowValueDistributions)
+      Parser.BlockDist.Print(Output);
   }
 
   AddNewAbbreviations(Parser.BlockDist, BlockAbbrevsMap);
@@ -1481,6 +1534,9 @@ int main(int argc, char **argv) {
   if (ReadAndBuffer(MemBuf)) return 1;
   BlockAbbrevsMapType BlockAbbrevsMap;
   if (AnalyzeBitcode(MemBuf, BlockAbbrevsMap)) return 1;
+  if (ShowAbbreviationFrequencies || ShowValueDistributions) {
+    return 0;
+  }
   BuildAbbrevLookupMaps(BlockAbbrevsMap);
   if (CopyBitcode(MemBuf, BlockAbbrevsMap)) return 1;
   return 0;
