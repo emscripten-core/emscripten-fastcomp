@@ -134,12 +134,12 @@ public:
   }
 
   /// Returns the number of bits defined by the data.
-  unsigned GetNumBits() const {
+  uint64_t GetNumBits() const {
     return GetCursor().GetCurrentBitNo() - StartBit;
   }
 
   /// Returns the first bit of the stream data.
-  unsigned GetStartBit() const {
+  uint64_t GetStartBit() const {
     return StartBit;
   }
 
@@ -226,6 +226,25 @@ inline raw_ostream &operator<<(raw_ostream &Strm,
   Data.Print(Strm);
   return Strm;
 }
+
+/// Simple container class to convert the values of the corresponding
+/// read record to a simpler form, only containing values.
+struct NaClBitcodeValues {
+public:
+  NaClBitcodeValues(const NaClBitcodeRecordData &Record)
+      : Record(Record) {}
+
+  size_t size() const {
+    return Record.Values.size()+1;
+  }
+
+  uint64_t operator[](size_t index) const {
+    return index == 0 ? Record.Code : Record.Values[index-1];
+  }
+
+private:
+  const NaClBitcodeRecordData &Record;
+};
 
 /// Defines the data associated with reading a block record in the
 /// PNaCl bitcode stream.

@@ -301,27 +301,6 @@ public:
     return Abbrevs;
   }
 
-  /// Simple container class to convert the values of the
-  /// corresponding read record to the form expected by
-  /// abbreviations. That is, the record code is prefixed
-  /// to the set of values in the record.
-  struct AbbrevValues {
-  public:
-    AbbrevValues(const NaClBitcodeRecordData &Record)
-        : Record(Record) {}
-
-    size_t size() const {
-      return Record.Values.size()+1;
-    }
-
-    uint64_t operator[](size_t index) const {
-      return index == 0 ? Record.Code : Record.Values[index-1];
-    }
-
-  private:
-    const NaClBitcodeRecordData &Record;
-  };
-
   // Returns the abbreviation (index) to use for the corresponding
   // record, based on the abbreviations of this block.  Note: Assumes
   // that BuildAbbrevLookupSizeMap has already been called.
@@ -329,7 +308,7 @@ public:
     unsigned BestIndex = 0; // Ignored unless found candidate.
     unsigned BestScore = 0; // Number of bits associated with BestIndex.
     bool FoundCandidate = false;
-    AbbrevValues Values(Record);
+    NaClBitcodeValues Values(Record);
     size_t Size = Values.size();
 
     if (Size > NaClValueIndexCutoff) Size = NaClValueIndexCutoff+1;
@@ -379,7 +358,7 @@ public:
   // record. Sets NumBits to the number of bits the abbreviation will
   // generate. Note: Value of NumBits is undefined if this function
   // return false.
-  static bool CanUseAbbreviation(AbbrevValues &Values,
+  static bool CanUseAbbreviation(NaClBitcodeValues &Values,
                                  NaClBitCodeAbbrev *Abbrev, uint64_t &NumBits) {
     NumBits = 0;
     unsigned OpIndex = 0;
