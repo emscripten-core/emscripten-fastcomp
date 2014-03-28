@@ -1,4 +1,3 @@
-
 //===-- X86MCAsmInfo.cpp - X86 asm properties -----------------------------===//
 //
 //                     The LLVM Compiler Infrastructure

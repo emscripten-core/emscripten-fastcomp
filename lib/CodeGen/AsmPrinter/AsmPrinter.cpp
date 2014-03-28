@@ -1272,6 +1272,7 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
   OutStreamer.EmitValue(Value, EntrySize);
 }
 
+
 /// EmitSpecialLLVMGlobal - Check to see if the specified global is a
 /// special global used by LLVM.  If so, emit it and return true, otherwise
 /// do nothing and return false.

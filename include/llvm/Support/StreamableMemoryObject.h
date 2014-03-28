@@ -98,7 +98,6 @@ class StreamableMemoryObject : public MemoryObject {
   virtual bool isObjectEnd(uint64_t address) const = 0;
 };
 
-
 /// StreamingMemoryObject - interface to data which is actually streamed from
 /// a DataStreamer. In addition to inherited members, it has the
 /// dropLeadingBytes and setKnownObjectSize methods which are not applicable
@@ -116,7 +115,6 @@ class StreamingMemoryObject : public StreamableMemoryObject {
   /// starts (although it can be called anytime).
   virtual void setKnownObjectSize(size_t size) = 0;
 };
-
 
 /// StreamingMemoryObjectImpl - an implementation of a StreamingMemoryObject.
 class StreamingMemoryObjectImpl : public StreamingMemoryObject {

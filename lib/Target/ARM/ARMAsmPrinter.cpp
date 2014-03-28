@@ -322,7 +322,6 @@ void ARMAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
 
 //===--------------------------------------------------------------------===//
 
-
 MCSymbol *ARMAsmPrinter::
 GetARMJTIPICJumpTableLabel2(unsigned uid, unsigned uid2) const {
   SmallString<60> Name;
@@ -682,7 +681,6 @@ void ARMAsmPrinter::EmitEndOfAsmFile(Module &M) {
     OutStreamer.EmitAssemblerFlag(MCAF_SubsectionsViaSymbols);
   }
 }
-
 
 //===----------------------------------------------------------------------===//
 // Helper routines for EmitStartOfAsmFile() and EmitEndOfAsmFile()

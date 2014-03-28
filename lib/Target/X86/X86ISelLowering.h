@@ -533,7 +533,6 @@ namespace llvm {
   //===--------------------------------------------------------------------===//
   //  X86TargetLowering - X86 Implementation of the TargetLowering interface
   class X86TargetLowering : public TargetLowering {
-
   public:
     explicit X86TargetLowering(X86TargetMachine &TM);
 

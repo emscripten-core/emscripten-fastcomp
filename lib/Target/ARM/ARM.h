@@ -55,11 +55,9 @@ FunctionPass *createARMNaClRewritePass();
 /// \brief Creates an ARM-specific Target Transformation Info pass.
 ImmutablePass *createARMTargetTransformInfoPass(const ARMBaseTargetMachine *TM);
 
-
 void LowerARMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                   ARMAsmPrinter &AP);
 
-                                          
 /* @LOCALMOD-START */
 // Used to lower the pc-relative MOVi16PIC / MOVTi16PIC pseudo instructions
 // into the real MOVi16 / MOVTi16 instructions.

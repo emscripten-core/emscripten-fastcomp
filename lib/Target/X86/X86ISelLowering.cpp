@@ -14650,6 +14650,7 @@ X86TargetLowering::EmitAtomicLoadArith(MachineInstr *MI,
   // Copy PhyReg back to virtual register.
   BuildMI(mainMBB, DL, TII->get(TargetOpcode::COPY), t3)
     .addReg(PhyReg);
+
   BuildMI(mainMBB, DL, TII->get(X86::JNE_4)).addMBB(origMainMBB);
 
   mainMBB->addSuccessor(origMainMBB);
@@ -18428,6 +18429,7 @@ static SDValue PerformSTORECombine(SDNode *N, SelectionDAG &DAG,
   SDLoc dl(St);
   SDValue StoredVal = St->getOperand(1);
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+
   // If we are saving a concatenation of two XMM registers, perform two stores.
   // On Sandy Bridge, 256-bit memory operations are executed by two
   // 128-bit ports. However, on Haswell it is better to issue a single 256-bit

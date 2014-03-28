@@ -1913,7 +1913,6 @@ class LibCallSimplifierImpl {
   const LibCallSimplifier *LCS;
   bool UnsafeFPShrink;
 
-
   // Math library call optimizations.
   CosOpt Cos;
   PowOpt Pow;
@@ -2188,7 +2187,6 @@ Value *LibCallSimplifierImpl::optimizeCall(CallInst *CI) {
   }
   return 0;
 }
-
 
 LibCallSimplifier::LibCallSimplifier(const DataLayout *TD,
                                      const TargetLibraryInfo *TLI,

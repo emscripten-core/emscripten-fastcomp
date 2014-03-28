@@ -46,7 +46,6 @@ namespace llvm {
 
 using namespace llvm;
 
-
 static cl::opt<bool>
 DisableShifterOp("disable-shifter-op", cl::Hidden,
   cl::desc("Disable isel of shifter-op"),
@@ -785,7 +784,7 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDNode *Op,
       return AM2_BASE;
     }
   }
-  
+
   if ((Subtarget->isLikeA9() || Subtarget->isSwift()) && !N.hasOneUse()) {
     // Compute R +/- (R << N) and reuse it.
     Base = N;
@@ -976,7 +975,6 @@ bool ARMDAGToDAGISel::SelectAddrMode3(SDNode *Op, SDValue N,
   if (!restrict_addressing_modes_for_nacl) {
   // @LOCALMOD-END
   if (N.getOpcode() == ISD::SUB) {
-
     // X - C  is canonicalize to X + -C, no need to handle it here.
     Base = N.getOperand(0);
     Offset = N.getOperand(1);

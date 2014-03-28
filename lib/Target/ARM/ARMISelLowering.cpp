@@ -1939,7 +1939,6 @@ ARMTargetLowering::HandleByVal(
       }
     }
   }
-
 }
 
 /// MatchingStackOffset - Return true if the given stack call argument is
@@ -3134,7 +3133,7 @@ ARMTargetLowering::LowerFormalArguments(SDValue Chain,
   CCInfo.AnalyzeFormalArguments(Ins,
                                 CCAssignFnForNode(CallConv, /* Return*/ false,
                                                   isVarArg));
-  
+
   SmallVector<SDValue, 16> ArgValues;
   int lastInsIndex = -1;
   SDValue ArgValue;

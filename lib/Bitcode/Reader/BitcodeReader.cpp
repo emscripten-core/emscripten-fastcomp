@@ -3302,6 +3302,7 @@ Module *llvm::getLazyBitcodeModule(MemoryBuffer *Buffer,
   return M;
 }
 
+
 Module *llvm::getStreamedBitcodeModule(const std::string &name,
                                        // @LOCALMOD
                                        StreamingMemoryObject *streamer,

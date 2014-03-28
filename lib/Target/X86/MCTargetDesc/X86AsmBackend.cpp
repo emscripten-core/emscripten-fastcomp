@@ -356,7 +356,6 @@ public:
     const MCSectionELF &ES = static_cast<const MCSectionELF&>(Section);
     return ES.getFlags() & ELF::SHF_MERGE;
   }
-
 };
 
 class ELFX86_32AsmBackend : public ELFX86AsmBackend {

@@ -336,3 +336,4 @@ MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T,
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/false, /*Is64Bit*/true);
 }
+

@@ -1077,6 +1077,7 @@ void X86MCCodeEmitter::EmitOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
                                         int MemOperand, const MCInst &MI,
                                         const MCInstrDesc &Desc,
                                         raw_ostream &OS) const {
+
   // Emit the lock opcode prefix as needed.
   if (TSFlags & X86II::LOCK)
     EmitByte(0xF0, CurByte, OS);

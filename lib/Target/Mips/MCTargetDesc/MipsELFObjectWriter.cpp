@@ -60,7 +60,6 @@ MipsELFObjectWriter::MipsELFObjectWriter(bool _is64Bit, uint8_t OSABI,
 
 MipsELFObjectWriter::~MipsELFObjectWriter() {}
 
-
 const MCSymbol *MipsELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
                                                     const MCValue &Target,
                                                     const MCFragment &F,
