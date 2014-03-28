@@ -58,7 +58,10 @@ static Value *expandConstantExpr(Instruction *InsertPt, ConstantExpr *Expr) {
 
 // XXX Emscripten: Utilities for illegal expressions.
 static bool isIllegal(Type *T) {
-  return T->isIntegerTy() && T->getIntegerBitWidth() > 32;
+  if (!T->isIntegerTy()) return false;
+  unsigned Bits = T->getIntegerBitWidth();
+  // we need to expand out not just 64-bit and larger values, but also i24s, so PromoteIntegers can process them
+  return Bits != 1 && Bits != 8 && Bits != 16 && Bits != 32;
 }
 static bool ContainsIllegalTypes(const Value *Expr) {
   if (isIllegal(Expr->getType()))
