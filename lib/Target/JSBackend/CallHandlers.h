@@ -59,8 +59,10 @@ DEF_CALL_HANDLER(__default__, {
     }
   }
 
-  if (NumArgs == -1) NumArgs = getNumArgOperands(CI);
-  if (!FT->isVarArg()) {
+  bool ForcedNumArgs = NumArgs != -1;
+  if (!ForcedNumArgs) NumArgs = getNumArgOperands(CI);
+
+  if (!FT->isVarArg() && !ForcedNumArgs) {
     int TypeNumArgs = FT->getNumParams();
     if (TypeNumArgs != NumArgs) {
       if (EmscriptenAssertions) prettyWarning() << "unexpected number of arguments " << utostr(NumArgs) << " in call to '" << F->getName() << "', should be " << utostr(TypeNumArgs) << "\n";
@@ -1052,12 +1054,11 @@ std::string handleCall(const Instruction *CI) {
   // we don't need to use a function index.
   const std::string &Name = isa<Function>(CV) ? getJSName(CV) : getValueAsStr(CV);
 
-  unsigned NumArgs = getNumArgOperands(CI);
   CallHandlerMap::iterator CH = CallHandlers.find("___default__");
   if (isa<Function>(CV)) {
     CallHandlerMap::iterator Custom = CallHandlers.find(Name);
     if (Custom != CallHandlers.end()) CH = Custom;
   }
-  return (this->*(CH->second))(CI, Name, NumArgs);
+  return (this->*(CH->second))(CI, Name, -1);
 }
 
