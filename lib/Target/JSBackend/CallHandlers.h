@@ -44,27 +44,6 @@ DEF_CALL_HANDLER(__default__, {
   if (F) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
     FT = F->getFunctionType();
-    if (EmscriptenAssertions) {
-      if (!FT->isVarArg()) {
-        unsigned TypeNumArgs = FT->getNumParams();
-        unsigned ActualNumArgs = getNumArgOperands(CI);
-        if (TypeNumArgs != ActualNumArgs) {
-          prettyWarning() << "unexpected number of arguments " << utostr(ActualNumArgs) << " in call to '" << F->getName() << "', should be " << utostr(TypeNumArgs) << "\n";
-        }
-        for (unsigned i = 0; i < std::min(TypeNumArgs, ActualNumArgs); i++) {
-          Type *TypeType = FT->getParamType(i);
-          Type *ActualType = CI->getOperand(i)->getType();
-          if (getFunctionSignatureLetter(TypeType) != getFunctionSignatureLetter(ActualType)) {
-            prettyWarning() << "unexpected argument type " << *ActualType << " at index " << utostr(i) << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
-          }
-        }
-      }
-      Type *TypeType = FT->getReturnType();
-      Type *ActualType = CI->getType();
-      if (getFunctionSignatureLetter(TypeType) != getFunctionSignatureLetter(ActualType)) {
-        prettyWarning() << "unexpected return type " << *ActualType << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
-      }
-    }
   } else {
     FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
     if (isAbsolute(CV->stripPointerCasts())) {
@@ -79,13 +58,38 @@ DEF_CALL_HANDLER(__default__, {
       }
     }
   }
+
+  if (NumArgs == -1) NumArgs = getNumArgOperands(CI);
+  if (!FT->isVarArg()) {
+    int TypeNumArgs = FT->getNumParams();
+    if (TypeNumArgs != NumArgs) {
+      if (EmscriptenAssertions) prettyWarning() << "unexpected number of arguments " << utostr(NumArgs) << " in call to '" << F->getName() << "', should be " << utostr(TypeNumArgs) << "\n";
+      if (NumArgs > TypeNumArgs) NumArgs = TypeNumArgs; // lop off the extra params that will not be used and just break validation
+    }
+    if (EmscriptenAssertions) {
+      for (int i = 0; i < std::min(TypeNumArgs, NumArgs); i++) {
+        Type *TypeType = FT->getParamType(i);
+        Type *ActualType = CI->getOperand(i)->getType();
+        if (getFunctionSignatureLetter(TypeType) != getFunctionSignatureLetter(ActualType)) {
+          prettyWarning() << "unexpected argument type " << *ActualType << " at index " << utostr(i) << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
+        }
+      }
+    }
+  }
+  if (EmscriptenAssertions) {
+    Type *TypeType = FT->getReturnType();
+    Type *ActualType = CI->getType();
+    if (getFunctionSignatureLetter(TypeType) != getFunctionSignatureLetter(ActualType)) {
+      prettyWarning() << "unexpected return type " << *ActualType << " in call to '" << F->getName() << "', should be " << *TypeType << "\n";
+    }
+  }
+
   if (Invoke) {
     Sig = getFunctionSignature(FT, &Name);
     Name = "invoke_" + Sig;
     NeedCasts = true;
   }
   std::string text = Name + "(";
-  if (NumArgs == -1) NumArgs = getNumArgOperands(CI);
   if (Invoke) {
     // add first param
     if (F) {
