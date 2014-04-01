@@ -94,6 +94,7 @@ namespace {
   #define ASM_NONSPECIFIC 2 // nonspecific means to not differentiate ints. |0 for all, regardless of size and sign
   #define ASM_FFI_IN 4 // FFI return values are limited to things that work in ffis
   #define ASM_FFI_OUT 8 // params to FFIs are limited to things that work in ffis
+  #define ASM_MUST_CAST 16 // this value must be explicitly cast (or be an integer constant)
   typedef unsigned AsmCast;
 
   const char *const SIMDLane = "XYZW";
@@ -374,6 +375,33 @@ namespace {
       assert(VT->getNumElements() == 4);
       UsesSIMD = true;
       CanValidate = false;
+    }
+
+    std::string ensureCast(std::string S, Type *T, AsmCast sign) {
+      if (sign & ASM_MUST_CAST) return getCast(S, T);
+      return S;
+    }
+
+    std::string ftostr(const ConstantFP *CFP, AsmCast sign) {
+      const APFloat &flt = CFP->getValueAPF();
+
+      // Emscripten has its own spellings for infinity and NaN.
+      if (flt.getCategory() == APFloat::fcInfinity) return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
+      else if (flt.getCategory() == APFloat::fcNaN) return ensureCast("nan", CFP->getType(), sign);
+
+      // Request 21 digits, aka DECIMAL_DIG, to avoid rounding errors.
+      SmallString<29> Str;
+      flt.toString(Str, 21);
+
+      // asm.js considers literals to be floating-point literals when they contain a
+      // dot, however our output may be processed by UglifyJS, which doesn't
+      // currently preserve dots in all cases. Mark floating-point literals with
+      // unary plus to force them to floating-point.
+      if (APFloat(flt).roundToIntegral(APFloat::rmNearestTiesToEven) == APFloat::opOK) {
+        return '+' + Str.str().str();
+      }
+
+      return Str.str().str();
     }
 
     std::string getPtrLoad(const Value* Ptr);
@@ -940,28 +968,6 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   }
 }
 
-static inline std::string ftostr(const ConstantFP *CFP) {
-  const APFloat &flt = CFP->getValueAPF();
-
-  // Emscripten has its own spellings for infinity and NaN.
-  if (flt.getCategory() == APFloat::fcInfinity) return flt.isNegative() ? "-inf" : "inf";
-  else if (flt.getCategory() == APFloat::fcNaN) return "nan";
-
-  // Request 21 digits, aka DECIMAL_DIG, to avoid rounding errors.
-  SmallString<29> Str;
-  flt.toString(Str, 21);
-
-  // asm.js considers literals to be floating-point literals when they contain a
-  // dot, however our output may be processed by UglifyJS, which doesn't
-  // currently preserve dots in all cases. Mark floating-point literals with
-  // unary plus to force them to floating-point.
-  if (APFloat(flt).roundToIntegral(APFloat::rmNearestTiesToEven) == APFloat::opOK) {
-    return '+' + Str.str().str();
-  }
-
-  return Str.str().str();
-}
-
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
@@ -984,7 +990,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-    std::string S = ftostr(CFP);
+    std::string S = ftostr(CFP, sign);
     if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
       S = "Math_fround(" + S + ")";
     }
@@ -1239,7 +1245,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     Code << "STACKTOP = sp;";
     Code << "return";
     if (RV != NULL) {
-      Code << " " << getValueAsCastParenStr(RV, ASM_NONSPECIFIC);
+      Code << " " << getValueAsCastParenStr(RV, ASM_NONSPECIFIC | ASM_MUST_CAST);
     }
     break;
   }
