@@ -257,7 +257,8 @@ bool FlattenGlobals::runOnModule(Module &M) {
     Modified = true;
 
     Type *GlobalType = Global->getType()->getPointerElementType();
-    uint64_t Size = DL.getTypeAllocSize(GlobalType);
+    uint64_t Size = GlobalType->isSized() ?
+        DL.getTypeAllocSize(GlobalType) : 0;
     Constant *NewInit;
     Type *NewType;
     if (Global->hasInitializer()) {
@@ -282,7 +283,7 @@ bool FlattenGlobals::runOnModule(Module &M) {
         NewInit, "", Global,
         Global->getThreadLocalMode());
     NewGlobal->copyAttributesFrom(Global);
-    if (NewGlobal->getAlignment() == 0)
+    if (NewGlobal->getAlignment() == 0 && GlobalType->isSized())
       NewGlobal->setAlignment(DL.getPrefTypeAlignment(GlobalType));
     NewGlobal->setExternallyInitialized(Global->isExternallyInitialized());
     NewGlobal->takeName(Global);

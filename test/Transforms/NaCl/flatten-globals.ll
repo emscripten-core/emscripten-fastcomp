@@ -25,6 +25,10 @@ target datalayout = "p:32:32:32"
 @undef_value = global i32 undef
 ; CHECK: @undef_value = global [4 x i8] zeroinitializer
 
+%opaque = type opaque
+@opaque_extern = external global %opaque
+; CHECK: @opaque_extern = external global [0 x i8]
+
 
 ; Check various data types
 
