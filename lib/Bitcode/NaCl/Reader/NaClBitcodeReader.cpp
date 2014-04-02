@@ -328,33 +328,45 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       StrM.flush();
       return Error(Message);
     }
+
     case naclbitc::TYPE_CODE_NUMENTRY: // TYPE_CODE_NUMENTRY: [numentries]
       // TYPE_CODE_NUMENTRY contains a count of the number of types in the
       // type list.  This allows us to reserve space.
-      if (Record.size() < 1)
+      if (Record.size() != 1)
         return Error("Invalid TYPE_CODE_NUMENTRY record");
       TypeList.resize(Record[0]);
+      // No type was defined, skip the checks that follow the switch.
       continue;
-    case naclbitc::TYPE_CODE_VOID:      // VOID
+
+    case naclbitc::TYPE_CODE_VOID: // VOID
+      if (Record.size() != 0)
+        return Error("Invalid TYPE_CODE_VOID record");
       ResultTy = Type::getVoidTy(Context);
       break;
-    case naclbitc::TYPE_CODE_FLOAT:     // FLOAT
+
+    case naclbitc::TYPE_CODE_FLOAT: // FLOAT
+      if (Record.size() != 0)
+        return Error("Invalid TYPE_CODE_FLOAT record");
       ResultTy = Type::getFloatTy(Context);
       break;
-    case naclbitc::TYPE_CODE_DOUBLE:    // DOUBLE
+
+    case naclbitc::TYPE_CODE_DOUBLE: // DOUBLE
+      if (Record.size() != 0)
+        return Error("Invalid TYPE_CODE_DOUBLE record");
       ResultTy = Type::getDoubleTy(Context);
       break;
-    case naclbitc::TYPE_CODE_INTEGER:   // INTEGER: [width]
-      if (Record.size() < 1)
-        return Error("Invalid Integer type record");
 
+    case naclbitc::TYPE_CODE_INTEGER: // INTEGER: [width]
+      if (Record.size() != 1)
+        return Error("Invalid TYPE_CODE_INTEGER record");
       ResultTy = IntegerType::get(Context, Record[0]);
       break;
+
     case naclbitc::TYPE_CODE_FUNCTION: {
       // FUNCTION: [vararg, retty, paramty x N]
       if (Record.size() < 2)
-        return Error("Invalid FUNCTION type record");
-      SmallVector<Type*, 8> ArgTys;
+        return Error("Invalid TYPE_CODE_FUNCTION record");
+      SmallVector<Type *, 8> ArgTys;
       for (unsigned i = 2, e = Record.size(); i != e; ++i) {
         if (Type *T = getTypeByID(Record[i]))
           ArgTys.push_back(T);
@@ -363,7 +375,7 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       }
 
       ResultTy = getTypeByID(Record[1]);
-      if (ResultTy == 0 || ArgTys.size() < Record.size()-2)
+      if (ResultTy == 0 || ArgTys.size() < Record.size() - 2)
         return Error("invalid type in function type");
 
       ResultTy = FunctionType::get(ResultTy, ArgTys, Record[0]);
@@ -1074,7 +1086,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     }
 
     case naclbitc::FUNC_CODE_DECLAREBLOCKS:     // DECLAREBLOCKS: [nblocks]
-      if (Record.size() < 1 || Record[0] == 0)
+      if (Record.size() != 1 || Record[0] == 0)
         return Error("Invalid DECLAREBLOCKS record");
       // Create all the basic blocks for the function.
       FunctionBBs.resize(Record[0]);
@@ -1144,7 +1156,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Value *TrueVal, *FalseVal, *Cond;
       if (popValue(Record, &OpNum, NextValueNo, &TrueVal) ||
           popValue(Record, &OpNum, NextValueNo, &FalseVal) ||
-          popValue(Record, &OpNum, NextValueNo, &Cond))
+          popValue(Record, &OpNum, NextValueNo, &Cond) ||
+          OpNum != Record.size())
         return Error("Invalid SELECT record");
 
       TrueVal = ConvertOpToScalar(TrueVal, CurBBNo);
@@ -1317,9 +1330,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       unsigned OpNum = 0;
       Value *Val, *Ptr;
       if (popValue(Record, &OpNum, NextValueNo, &Ptr) ||
-          popValue(Record, &OpNum, NextValueNo, &Val))
-        return Error("Invalid STORE record");
-      if (OpNum+1 != Record.size())
+          popValue(Record, &OpNum, NextValueNo, &Val) ||
+          OpNum+1 != Record.size())
         return Error("Invalid STORE record");
       Val = ConvertOpToScalar(Val, CurBBNo);
       Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
