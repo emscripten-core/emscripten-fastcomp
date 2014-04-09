@@ -554,6 +554,13 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   // FIXME this is all quite inefficient, and also done once per incoming to each phi
 
   // Find the phis, and generate assignments and dependencies
+  std::set<std::string> PhiVars;
+  for (BasicBlock::const_iterator I = To->begin(), E = To->end();
+       I != E; ++I) {
+    const PHINode* P = dyn_cast<PHINode>(I);
+    if (!P) break;
+    PhiVars.insert(getJSName(P));
+  }
   typedef std::map<std::string, std::string> StringMap;
   StringMap assigns; // variable -> assign statement
   std::map<std::string, const Value*> values; // variable -> Value
@@ -575,7 +582,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     values[name] = V;
     std::string vname = getValueAsStr(V);
     if (const Instruction *VI = dyn_cast<const Instruction>(V)) {
-      if (VI->getParent() == To) {
+      if (VI->getParent() == To && PhiVars.find(vname) != PhiVars.end()) {
         deps[name] = vname;
         undeps[vname] = name;
       }
