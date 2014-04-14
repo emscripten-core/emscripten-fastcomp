@@ -232,62 +232,6 @@ void do_stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **out_args,
   }
 }
 
-// Invoked by the StreamInit RPC to initialize bitcode streaming over SRPC.
-// Under the hood it forks a new thread at starts the llc_main, which sets
-// up the compilation and blocks when it tries to start reading the bitcode.
-// Input arg is a file descriptor to write the output object file to.
-// Returns a string, containing an error message if the call fails.
-void stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                 NaClSrpcArg **out_args, NaClSrpcClosure *done) {
-  // cmd_line_vec allocated by GetDefaultCommandLine() is freed by the
-  // translation thread in run_streamed()
-  ArgStringList *cmd_line_vec = GetDefaultCommandLine();
-  if (!cmd_line_vec || !AddDefaultCPU(cmd_line_vec)) {
-    NaClSrpcClosureRunner runner(done);
-    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
-    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
-    return;
-  }
-  AddFixedArguments(cmd_line_vec);
-  StreamingThreadData *thread_data =
-      new StreamingThreadData(1, cmd_line_vec);
-  object_file_fd[0] = in_args[0]->u.hval;
-  do_stream_init(rpc, out_args, done, thread_data);
-}
-
-// Invoked by StreamInitWithOverrides RPC. Same as stream_init, but
-// provides commandline flag overrides (appended to the default).
-void stream_init_with_overrides(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                                NaClSrpcArg **out_args, NaClSrpcClosure *done) {
-  ArgStringList *cmd_line_vec = GetDefaultCommandLine();
-  if (!cmd_line_vec) {
-    NaClSrpcClosureRunner runner(done);
-    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
-    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
-    return;
-  }
-  AddFixedArguments(cmd_line_vec);
-
-  char *command_line = in_args[1]->arrays.carr;
-  size_t command_line_len = in_args[1]->u.count;
-  OwningPtr<ArgStringList> extra_vec(
-      CommandLineFromArgz(command_line, command_line_len));
-  cmd_line_vec->insert(cmd_line_vec->end(), extra_vec->begin(),
-                       extra_vec->end());
-  // Make sure some -mcpu override exists for now to prevent
-  // auto-cpu feature detection from triggering instructions that
-  // we do not validate yet.
-  if (!HasCPUOverride(extra_vec.get())) {
-    AddDefaultCPU(cmd_line_vec);
-  }
-  extra_vec.reset(NULL);
-  StreamingThreadData *thread_data =
-      new StreamingThreadData(1, cmd_line_vec);
-  object_file_fd[0] = in_args[0]->u.hval;
-  // cmd_line_vec is freed by the translation thread in run_streamed.
-  do_stream_init(rpc, out_args, done, thread_data);
-}
-
 void stream_init_with_split(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
                             NaClSrpcArg **out_args, NaClSrpcClosure *done) {
   ArgStringList *cmd_line_vec = GetDefaultCommandLine();
@@ -373,14 +317,12 @@ void stream_end(NaClSrpcRpc *rpc, NaClSrpcArg **in_args, NaClSrpcArg **out_args,
 
 const struct NaClSrpcHandlerDesc srpc_methods[] = {
   // Protocol for streaming:
-  // (StreamInit(obj_fd) -> error_str |
-  //    StreamInitWIthOverrides(obj_fd, escaped_cmdline_flags) -> error_str)
+  // StreamInitWithSplit(num_split, obj_fd x 16, cmdline_flags) -> error_str
   // StreamChunk(data) +
   // StreamEnd() -> (is_shared_lib,soname,dependencies,error_str)
-  { "StreamInit:h:s", stream_init },
-  { "StreamInitWithOverrides:hC:s:", stream_init_with_overrides },
   { "StreamInitWithSplit:ihhhhhhhhhhhhhhhhC:s", stream_init_with_split },
-  { "StreamChunk:C:", stream_chunk }, { "StreamEnd::isss", stream_end },
+  { "StreamChunk:C:", stream_chunk },
+  { "StreamEnd::isss", stream_end },
   { NULL, NULL },
 };
 
