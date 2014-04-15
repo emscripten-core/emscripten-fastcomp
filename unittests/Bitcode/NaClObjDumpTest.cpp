@@ -87,7 +87,7 @@ static std::string RunIndentedAssemblyTest(
   raw_string_ostream BufStream(Buffer);
   ObjDumpStream DumpStream(BufStream, DumpRecords, DumpAssembly);
   for (unsigned i = 0; i < NumRecordIndents; ++i) {
-    DumpStream.GetRecordIndenter().Inc();
+    DumpStream.IncRecordIndent();
   }
   RunLabeledAssemblyExamples(TestName, DumpStream, Bit, Record, AddErrors);
   return BufStream.str();
@@ -204,8 +204,8 @@ TEST(NaClObjDumpText, LongRecords) {
                               false, false, 0, 64564, &Record, false));
 }
 
-// Test case where comma wraps to next line.
-TEST(NaClObjDumpText, CommaWrapRecords) {
+// Test case where comma hits boundary.
+TEST(NaClObjDumpText, CommaBoundaryRecords) {
   NaClBitcodeRecordData Record;
   Record.Code = 5;
   Record.Values.push_back(static_cast<uint64_t>(-1));
@@ -214,13 +214,55 @@ TEST(NaClObjDumpText, CommaWrapRecords) {
   Record.Values.push_back(107056);
 
   EXPECT_EQ(
+      "Testing CommaBoundaryRecords(t,t) with record indent 0\n"
+      "     127:1 <5, 18446744073709551615, 10,|\n"
+      "            15, 107056>                 |\n"
+      "     129:6 <5, 18446744073709551615, 10,|One line assembly.\n"
+      "            15, 107056>                 |\n"
+      "     131:7 <5, 18446744073709551615, 10,|Two Line\n"
+      "            15, 107056>                 |example assembly.\n",
+      RunIndentedAssemblyTest("CommaBoundaryRecords(t,t)",
+                              true, true, 0, 1017, &Record, false));
+
+  EXPECT_EQ(
+      "Testing CommaBoundaryRecords(f,t) with record indent 0\n"
+      "One line assembly.\n"
+      "Two Line\n"
+      "example assembly.\n",
+      RunIndentedAssemblyTest("CommaBoundaryRecords(f,t)",
+                              false, true, 0, 91, &Record, false));
+
+  EXPECT_EQ(
+      "Testing CommaBoundaryRecords(t,f) with record indent 0\n"
+      "   47073:6 <5, 18446744073709551615, 10, 15, 107056>\n"
+      "   47076:3 <5, 18446744073709551615, 10, 15, 107056>\n"
+      "   47078:4 <5, 18446744073709551615, 10, 15, 107056>\n",
+      RunIndentedAssemblyTest("CommaBoundaryRecords(t,f)",
+                              true, false, 0, 376590, &Record, false));
+
+  EXPECT_EQ(
+      "Testing CommaBoundaryRecords(f,f) with record indent 0\n",
+      RunIndentedAssemblyTest("CommaBoundaryRecords(f,f)",
+                              false, false, 0, 64564, &Record, false));
+}
+
+// Test case where comma wraps to next line.
+TEST(NaClObjDumpText, CommaWrapRecords) {
+  NaClBitcodeRecordData Record;
+  Record.Code = 5;
+  Record.Values.push_back(static_cast<uint64_t>(-1));
+  Record.Values.push_back(100);
+  Record.Values.push_back(15);
+  Record.Values.push_back(107056);
+
+  EXPECT_EQ(
       "Testing CommaWrapRecords(t,t) with record indent 0\n"
-      "     127:1 <5, 18446744073709551615, 10 |\n"
-      "            , 15, 107056>               |\n"
-      "     129:6 <5, 18446744073709551615, 10 |One line assembly.\n"
-      "            , 15, 107056>               |\n"
-      "     131:7 <5, 18446744073709551615, 10 |Two Line\n"
-      "            , 15, 107056>               |example assembly.\n",
+      "     127:1 <5, 18446744073709551615,    |\n"
+      "            100, 15, 107056>            |\n"
+      "     129:6 <5, 18446744073709551615,    |One line assembly.\n"
+      "            100, 15, 107056>            |\n"
+      "     131:7 <5, 18446744073709551615,    |Two Line\n"
+      "            100, 15, 107056>            |example assembly.\n",
       RunIndentedAssemblyTest("CommaWrapRecords(t,t)",
                               true, true, 0, 1017, &Record, false));
 
@@ -234,9 +276,9 @@ TEST(NaClObjDumpText, CommaWrapRecords) {
 
   EXPECT_EQ(
       "Testing CommaWrapRecords(t,f) with record indent 0\n"
-      "   47073:6 <5, 18446744073709551615, 10, 15, 107056>\n"
-      "   47076:3 <5, 18446744073709551615, 10, 15, 107056>\n"
-      "   47078:4 <5, 18446744073709551615, 10, 15, 107056>\n",
+      "   47073:6 <5, 18446744073709551615, 100, 15, 107056>\n"
+      "   47076:3 <5, 18446744073709551615, 100, 15, 107056>\n"
+      "   47078:4 <5, 18446744073709551615, 100, 15, 107056>\n",
       RunIndentedAssemblyTest("CommaWrapRecords(t,f)",
                               true, false, 0, 376590, &Record, false));
 
@@ -633,20 +675,20 @@ TEST(NaClObjDumpText, VeryLongIndentRecords) {
   EXPECT_EQ(
       "Testing VeryLongIndentRecords(t,t) with record indent 3\n"
       "     127:1       <5,                    |\n"
-      "                  18446744073709551615  |\n"
-      "                  , 100, 15, 107056,    |\n"
-      "                  18446744073709546551  |\n"
-      "                  , 101958788>          |\n"
+      "                  18446744073709551615, |\n"
+      "                  100, 15, 107056,      |\n"
+      "                  18446744073709546551, |\n"
+      "                  101958788>            |\n"
       "     129:6       <5,                    |One line assembly.\n"
-      "                  18446744073709551615  |\n"
-      "                  , 100, 15, 107056,    |\n"
-      "                  18446744073709546551  |\n"
-      "                  , 101958788>          |\n"
+      "                  18446744073709551615, |\n"
+      "                  100, 15, 107056,      |\n"
+      "                  18446744073709546551, |\n"
+      "                  101958788>            |\n"
       "     131:7       <5,                    |Two Line\n"
-      "                  18446744073709551615  |example assembly.\n"
-      "                  , 100, 15, 107056,    |\n"
-      "                  18446744073709546551  |\n"
-      "                  , 101958788>          |\n",
+      "                  18446744073709551615, |example assembly.\n"
+      "                  100, 15, 107056,      |\n"
+      "                  18446744073709546551, |\n"
+      "                  101958788>            |\n",
       RunIndentedAssemblyTest("VeryLongIndentRecords(t,t)",
                               true, true, 3, 1017, &Record, false));
 

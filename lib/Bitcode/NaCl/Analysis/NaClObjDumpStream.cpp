@@ -17,6 +17,160 @@
 namespace llvm {
 namespace naclbitc {
 
+TextFormatter::TextFormatter(raw_ostream &BaseStream,
+                             unsigned LineWidth,
+                             const char *Tab)
+    : TextIndenter(Tab),
+      BaseStream(BaseStream),
+      TextStream(TextBuffer),
+      LineWidth(LineWidth),
+      LinePosition(0),
+      CurrentIndent(0),
+      MinLineWidth(20),
+      AtInstructionBeginning(true),
+      LineIndent(),
+      ContinuationIndent(),
+      InsideCluster(false) {
+  if (MinLineWidth > LineWidth) MinLineWidth = LineWidth;
+}
+
+void TextFormatter::WriteEndline() {
+  assert(!InsideCluster && "Must close clustering before ending instruction");
+  WriteToken();
+  Write('\n');
+  CurrentIndent = 0;
+  AtInstructionBeginning = true;
+  LineIndent.clear();
+}
+
+void TextFormatter::Write(char ch) {
+  switch (ch) {
+  case '\n':
+    BaseStream << ch;
+    LinePosition = 0;
+    break;
+  case '\t': {
+    size_t TabWidth = GetTabSize();
+    size_t NumChars = LinePosition % TabWidth;
+    if (NumChars == 0) NumChars = TabWidth;
+    for (size_t i = 0; i < NumChars; ++i) Write(' ');
+    break;
+  }
+  default:
+    if (LinePosition == 0) {
+      WriteLineIndents();
+    }
+    BaseStream << ch;
+    ++LinePosition;
+  }
+  AtInstructionBeginning = false;
+}
+
+void TextFormatter::Write(const std::string &Text) {
+  if (InsideCluster) {
+    ClusteredText.push_back(Text);
+  } else {
+    for (std::string::const_iterator
+             Iter = Text.begin(), IterEnd = Text.end();
+         Iter != IterEnd; ++Iter) {
+      Write(*Iter);
+    }
+  }
+}
+
+void TextFormatter::StartClustering() {
+  assert(!InsideCluster && "Clustering can't be nested!");
+  WriteToken();
+  InsideCluster = true;
+}
+
+void TextFormatter::FinishClustering() {
+  assert(InsideCluster && "Can't finish clustering, not in cluster!");
+  // Start by flushing previous token.
+  WriteToken();
+  InsideCluster = false;
+
+  // Compute width of cluster, and line wrap if it doesn't fit on the
+  // current line.
+  size_t Size = 0;
+  for (std::vector<std::string>::const_iterator
+           Iter = ClusteredText.begin(), IterEnd = ClusteredText.end();
+       Iter != IterEnd; ++Iter) {
+    Size += Iter->size();
+  }
+  AddLineWrapIfNeeded(Size);
+
+  // Use WriteToken to print tokens of cluster, and add wrap lines if too
+  // long to fit.
+  for (std::vector<std::string>::const_iterator
+           Iter = ClusteredText.begin(), IterEnd = ClusteredText.end();
+       Iter != IterEnd; ++Iter) {
+    WriteToken(*Iter);
+  }
+  ClusteredText.clear();
+}
+
+void TextFormatter::WriteLineIndents() {
+  // Add line indent to base stream.
+  if (AtInstructionBeginning) LineIndent = GetIndent();
+  BaseStream << LineIndent;
+  LinePosition += LineIndent.size();
+
+  // If not the first line, add continuation indent to the base stream.
+  if (!AtInstructionBeginning) {
+    BaseStream << ContinuationIndent;
+    LinePosition += ContinuationIndent.size();
+    LineIndent = GetIndent();
+  }
+
+  // Add any additional indents local to the current instruction
+  // being dumped to the base stream.
+  for (; LinePosition < CurrentIndent; ++LinePosition) {
+    BaseStream << ' ';
+  }
+}
+
+RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
+    : TextFormatter(ObjDump->Records(), 0, "  "),
+      ObjDump(ObjDump),
+      Label(' ', ObjDump->ObjDumpAddress(0).size()),
+      OpenBrace(this, "<"),
+      CloseBrace(this, ">"),
+      Comma(this, ","),
+      Space(this),
+      Endline(this),
+      StartCluster(this),
+      FinishCluster(this)
+{}
+
+void RecordTextFormatter::WriteLineIndents() {
+  if (AtInstructionBeginning) {
+    BaseStream << Label;
+  } else {
+    for (size_t i = 0; i < Label.size(); ++i) {
+      BaseStream << ' ';
+    }
+  }
+  BaseStream << ' ';
+  LinePosition += Label.size() + 1;
+  TextFormatter::WriteLineIndents();
+}
+
+void RecordTextFormatter::WriteValues(uint64_t Bit,
+                                      const llvm::NaClBitcodeValues &Values) {
+  Label = ObjDump->RecordAddress(Bit);
+  TextStream << OpenBrace;
+  for (size_t i = 0; i < Values.size(); ++i) {
+    if (i > 0) {
+      TextStream << Comma << FinishCluster << Space;
+    }
+    TextStream << StartCluster << Values[i];
+  }
+  // Note: Because of record codes, Values are never empty. Hence we
+  // always need to finish the cluster for the last number printed.
+  TextStream << FinishCluster << CloseBrace << Endline;
+}
+
 unsigned ObjDumpStream::DefaultMaxErrors = 20;
 
 unsigned ObjDumpStream::ComboObjDumpSeparatorColumn = 40;
@@ -38,11 +192,15 @@ ObjDumpStream::ObjDumpStream(raw_ostream &Stream,
       MessageStream(MessageBuffer),
       ColumnSeparator('|'),
       LastKnownBit(0),
-      AddressWriteWidth(8) {
+      AddressWriteWidth(8),
+      RecordBuffer(),
+      RecordStream(RecordBuffer),
+      RecordFormatter(this) {
   if (DumpRecords) {
     RecordWidth = DumpAssembly
         ? ComboObjDumpSeparatorColumn
         : RecordObjectDumpLength;
+    RecordFormatter.SetLineWidth(RecordWidth);
   }
 }
 
@@ -85,157 +243,64 @@ std::string ObjDumpStream::ObjDumpAddress(uint64_t Bit,
   return Stream.str();
 }
 
-void ObjDumpStream::WriteOrFlush(uint64_t Bit,
-                                 const llvm::NaClBitcodeValues *Record) {
-  LastKnownBit = Bit;
-  // Start by flushing assembly/error buffers, so that we know the
+// Dumps the next line of text in the buffer. Returns the number of characters
+// printed.
+static size_t DumpLine(raw_ostream &Stream,
+                       const std::string &Buffer,
+                       size_t &Index,
+                       size_t Size) {
+  size_t Count = 0;
+  while (Index < Size) {
+    char ch = Buffer[Index];
+    if (ch == '\n') {
+      // At end of line, stop here.
+      ++Index;
+      return Count;
+    } else {
+      Stream << ch;
+      ++Index;
+      ++Count;
+    }
+  }
+  return Count;
+}
+
+void ObjDumpStream::Flush() {
+  // Start by flushing all buffers, so that we know the
   // text that must be written.
+  RecordStream.flush();
   AssemblyStream.flush();
   MessageStream.flush();
 
-  // See if there is anything to print.
-  if ((!DumpRecords || Record == 0)
-      && (!DumpAssembly || AssemblyBuffer.empty())
-      && MessageBuffer.empty()) {
-    ResetBuffers();
-    return;
-  }
+  // See if there is any record/assembly lines to print.
+  if ((DumpRecords && !RecordBuffer.empty())
+      || (DumpAssembly && !AssemblyBuffer.empty())) {
+    size_t RecordIndex = 0;
+    size_t RecordSize = DumpRecords ? RecordBuffer.size() : 0;
+    size_t AssemblyIndex = 0;
+    size_t AssemblySize = DumpAssembly ? AssemblyBuffer.size() : 0;
 
-  // Something to print. Start by setting up control variables
-  // for splicing records and assembly.
-  size_t RecordSize = Record ? Record->size() : 0;
-  // Note: We use RecordSize to denote when to print the record close
-  // parenthesis. Hence, legal values go from 0 to RecordSize.
-  size_t RecordIndex = (Record && DumpRecords) ? 0 : (RecordSize + 1);
-  size_t RecordCol = 0;
-  bool AddedRecordComma = false;
-  size_t AssemblySize = AssemblyBuffer.size();
-  size_t AssemblyIndex = DumpAssembly ? 0 : AssemblySize;
-
-  // Print out records and/or assembly as appropriate.
-  while (RecordIndex <= RecordSize || AssemblyIndex < AssemblySize) {
-    // First fill in record information while it fits into the current line.
-    while (RecordIndex < RecordSize) {
-      // Fill record information.
-      if (RecordIndex == 0) {
-        // Beginning of record, print first element.
-        std::string Buffer;
-        raw_string_ostream StreamBuffer(Buffer);
-        StreamBuffer << ObjDumpAddress(Bit, AddressWriteWidth) << ' '
-                     << RecordIndenter.GetIndent()
-                     << "<" << (*Record)[RecordIndex];
-        const std::string &text = StreamBuffer.str();
-        RecordCol = text.size();
-        Stream << text;
-        ++RecordIndex;
-      } else {
-        // Add comma before next element.
-        if (!AddedRecordComma) {
-          if (RecordCol && RecordCol + 2 >= RecordWidth) {
-            // Wait to put on next line, since there is no more room.
-            break;
-          }
-          if (RecordCol == 0) {
-            std::string DumpAddress(ObjDumpAddress(Bit, AddressWriteWidth));
-            const std::string &Indent = RecordIndenter.GetIndent();
-            for (size_t i = 0; i < DumpAddress.size(); ++i) Stream << ' ';
-            Stream << ' ' << Indent << ' ';
-            RecordCol += DumpAddress.size() + Indent.size() + 2;
-          }
-          Stream << ", ";
-          RecordCol += 2;
-          AddedRecordComma = true;
+    while (RecordIndex < RecordSize || AssemblyIndex < AssemblySize) {
+      // Dump next record line.
+      size_t Column = DumpLine(Stream, RecordBuffer, RecordIndex, RecordSize);
+      // Now move to separator if assembly is to be printed also.
+      if (DumpRecords && DumpAssembly) {
+        for (size_t i = Column; i < RecordWidth; ++i) {
+          Stream << ' ';
         }
-
-        // See how wide the next element is, to see if it can fit on
-        // the current line.
-        std::string Buffer;
-        raw_string_ostream StreamBuffer(Buffer);
-        StreamBuffer << (*Record)[RecordIndex];
-        const std::string &Text = StreamBuffer.str();
-        if (RecordCol && RecordCol + Text.size() >= RecordWidth) {
-          // Wait to put on next line, since there is no more room.
-          break;
-        }
-        // If reached, fits on current line so add.
-        if (RecordCol == 0) {
-          // At beginning of new line, indent appropriately first.
-          std::string DumpAddress(ObjDumpAddress(Bit, AddressWriteWidth));
-          const std::string &Indent = RecordIndenter.GetIndent();
-          for (size_t i = 0; i < DumpAddress.size(); ++i) Stream << ' ';
-          Stream << ' ' << Indent << ' ';
-          RecordCol += DumpAddress.size() + Indent.size() + 2;
-        }
-        // Print out element.
-        Stream << Text;
-        RecordCol += Text.size();
-        AddedRecordComma = false;
-        ++RecordIndex;
+        Stream << ColumnSeparator;
       }
-    }
-
-    if (RecordIndex == RecordSize) {
-      // Add end of record if there is room. Otherwise, add end of record
-      // to next line.
-      if (Record == 0) {
-        // No record, so nothing to close.
-        ++RecordIndex;
-      } else if (RecordCol == 0) {
-        // At beginning of new line, indent appropriately first.
-        const std::string &Indent = RecordIndenter.GetIndent();
-        Stream << Indent << ">";
-        RecordCol = Indent.size() + 1;
-        ++RecordIndex;
-      } else if (RecordCol < RecordWidth) {
-        // Fits on current line, close record.
-        Stream << '>';
-        ++RecordCol;
-        ++RecordIndex;
-      } else {
-        // Doesn't fit on current line, wait for next line.
-        RecordCol = 0;
-      }
-    }
-
-    // Now move to separator if assembly is to be printed also.
-    if (DumpRecords && DumpAssembly) {
-      for (size_t i = RecordCol; i < RecordWidth; ++i) {
-        Stream << ' ';
-      }
-      Stream << ColumnSeparator;
-    }
-    RecordCol = 0;
-
-    // Fill in next line of assembly.
-    bool DumpedAssembly = false;
-    while(AssemblyIndex < AssemblySize) {
-      char ch = AssemblyBuffer[AssemblyIndex];
-      if (ch == '\n') {
-        // At end of line, stop here.
-        ++AssemblyIndex;
-        break;
-      } else {
-        DumpedAssembly = true;
-        Stream << ch;
-        ++AssemblyIndex;
-      }
-    }
-
-    // Line full. End line and continue on next line (if applicable).
-    // Note that this is called by either Write or Flush. The first
-    // test verifies that a record write is occurring. The second test
-    // checks if there is assembly being flushed, that wasn't
-    // preceeded with record contents.
-    if ((DumpRecords && Record) || (DumpAssembly && DumpedAssembly))
+      // Dump next assembly line.
+      DumpLine(Stream, AssemblyBuffer, AssemblyIndex, AssemblySize);
       Stream << '\n';
+    }
   }
 
-  // Printed records and assembly. Now print errors if applicable.
+  // Print out messages and reset buffers.
   Stream << MessageBuffer;
   ResetBuffers();
-  if (NumErrors >= MaxErrors) Fatal(Bit, "Too many errors");
+  if (NumErrors >= MaxErrors) Fatal("Too many errors");
 }
-
 
 }
 }

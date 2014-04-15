@@ -14,17 +14,22 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Support/raw_ostream.h"
 #include <vector>
+#include <algorithm>
 
 namespace llvm {
 namespace naclbitc {
+
+// The default string assumed for a tab.
+static const char *DefaultTab = "        ";
 
 /// Class that implements text indenting for pretty printing text.
 class TextIndenter {
 public:
   /// Creates a text indenter that indents using the given tab.
-  TextIndenter(const char* Tab = "  ")
+  TextIndenter(const char* Tab = DefaultTab)
     : Indent(""),
       Tab(Tab),
+      TabSize(strlen(Tab)),
       NumTabs(0) {
     Values.push_back(Indent);
   }
@@ -34,6 +39,20 @@ public:
   /// Returns the current indentation to use.
   const std::string &GetIndent() const {
     return Indent;
+  }
+
+  /// Returns the indent with the given number of tabs.
+  const std::string &GetIndent(unsigned Count) {
+    if (Count >= Values.size()) {
+      // Indents not yet generated, fill in cache to size needed.
+      std::string Results;
+      if (Values.size() > 0) Results = Values.back();
+      for (size_t i = Values.size(); i <= Count; ++i) {
+        Results += Tab;
+        Values.push_back(Results);
+      }
+    }
+    return Values[Count];
   }
 
   /// Increments the current indentation by one tab.
@@ -61,6 +80,14 @@ public:
     return NumTabs;
   }
 
+  const char *GetTab() const {
+    return Tab;
+  }
+
+  size_t GetTabSize() const {
+    return TabSize;
+  }
+
 private:
   // The current indentation to use.
   std::string Indent;
@@ -69,8 +96,450 @@ private:
   std::vector<std::string> Values;
   // The text defining a tab.
   const char *Tab;
+  // The size of the tab.
+  size_t TabSize;
   // The number of tabs currently being used.
   unsigned NumTabs;
+};
+
+/// This class defines a simple formatter for a stream that consists
+/// of a sequence of instructions. In general, this class assumes that
+/// instructions are a single line. In addition, some instructions
+/// define a block around a sequence of instructions. Each block of
+/// instructions is indented to clarify the block structure over that
+/// set of instructions.
+///
+/// To handle line indentation of blocks, this class inherits class
+/// TextIndenter.  The TextIndenter controls how blocks of lines are
+/// indented. At the beginning of a block, the user should call method
+/// Inc.  It should then write out the sequence of instructions to be
+/// indented.  Then, after the last indented instruction of the block
+/// is printed, the user should call method Dec. Nested blocks are
+/// handled by nesting methods Inc and Dec appropriately.
+///
+/// This class mainly focuses on the tools needed to format an
+/// instruction, given a specified viewing width. The issue is that
+/// while instructions should be on a single line, some instructions
+/// are too wide to fit into the viewing width. Hence, we need a way
+/// to deal with line overflow.
+///
+/// The way this class handles the line overflow problem is to
+/// basically force the user to break up the output into a sequence of
+/// tokens. This is done using two streams. The text stream is used to
+/// buffer tokens.  The base stream is the stream to write tokens to
+/// once they have been identified.  The goal of the formatter is to
+/// decide where the instruction text should be cut (i.e. between
+/// tokens), so that the instruction does not overflow the viewing
+/// width. It also handles the automatic insertion of line indentation
+/// into the base stream when needed.
+///
+/// To make it easy to print tokens to the text stream, we use text
+/// directives.  Whenever a text directive is written to the text
+/// stream, it is assumed that all text written to the text stream
+/// (since the last directive) is an (indivisible) token. The first
+/// thing directives do is move the token from the text stream to the
+/// base stream.
+///
+/// In addition to defining tokens, text directives can also be
+/// defined to query the formatter state and apply an appropriate
+/// action. An example of this is the space text directive. It only
+/// adds a space if the formatter isn't at the beginning of a new line
+/// (since a newline can act as whitespace).
+///
+/// The text formatter also has a notion of clustering
+/// tokens. Clustering forces a consecutive sequence of tokens to
+/// be treated as a single token, when deciding where to wrap long
+/// lines. In particular, clustered tokens will not be broken up
+/// unless there is no other way to print them, because the cluster is
+/// larger than what can fit in a line.
+class TextFormatter : public TextIndenter {
+public:
+
+  /// Creates a text formatter to print instructions onto the given
+  /// Base Stream. The viewing width is defined by LineWidth. The
+  /// given tab is the assumed value for tab characters and line
+  /// indents.
+  TextFormatter(raw_ostream &BaseStream,
+                unsigned LineWidth = 80,
+                const char *Tab = DefaultTab);
+
+  /// Returns the user-level text stream of the formatter that tokens
+  /// should be written to.
+  raw_ostream &Tokens() {
+    return TextStream;
+  }
+
+  /// Changes the line width to the given value.
+  void SetLineWidth(unsigned NewLineWidth) {
+    LineWidth = NewLineWidth;
+    if (MinLineWidth > LineWidth) MinLineWidth = LineWidth;
+  }
+
+  /// Base class for all directives. The basic functionality is that it
+  /// has a reference to the text formatter, and is applied by calling
+  /// virtual method apply. This method apply is encorporated into the
+  /// stream operator<<, so that they can be used as part of the
+  /// streamed output.
+  ///
+  /// In general, the Apply method should begin with a call to the
+  /// formatter's WriteToken to flush any existing token out of the
+  /// formatter's text stream.
+  class Directive {
+    Directive(const Directive&) LLVM_DELETED_FUNCTION;
+    void operator=(const Directive&) LLVM_DELETED_FUNCTION;
+  public:
+    /// Creates a directive for the given stream.
+    Directive(TextFormatter *Formatter)
+      : Formatter(Formatter) {}
+
+    virtual ~Directive() {}
+
+    /// Returns the formatter associated with the directive.
+    TextFormatter &GetFormatter() {
+      return *Formatter;
+    }
+
+    /// Does action of directive.
+    virtual void Apply() = 0;
+
+   protected:
+    // The formatter associated with the directive.
+    TextFormatter *Formatter;
+
+    // ***********************************************************
+    // Note: The following have been added so that derived classes
+    // have public access to protected text formatter methods.
+    // (Otherwise, you get a compiler error that they are protected
+    //  in derived classes).
+    // ***********************************************************
+
+    raw_ostream &Tokens() {
+      return Formatter->Tokens();
+    }
+
+    std::string GetToken() {
+      return Formatter->GetToken();
+    }
+
+    void WriteToken() {
+      Formatter->WriteToken();
+    }
+
+    void WriteToken(const std::string &Token) {
+      Formatter->WriteToken(Token);
+    }
+
+    void Write(char ch) {
+      Formatter->Write(ch);
+    }
+
+    void Write(std::string &Text) {
+      Formatter->Write(Text);
+    }
+
+    void WriteEndline() {
+      Formatter->WriteEndline();
+    }
+
+    void PopIndent() {
+      Formatter->PopIndent();
+    }
+
+    void PushIndent() {
+      Formatter->PushIndent();
+    }
+
+    bool AddLineWrapIfNeeded(unsigned TextSize) const {
+      return Formatter->AddLineWrapIfNeeded(TextSize);
+    }
+
+    void StartClustering() {
+      Formatter->StartClustering();
+    }
+
+    void FinishClustering() {
+      Formatter->FinishClustering();
+    }
+  };
+
+protected:
+  // The base stream to send formatted text to.
+  raw_ostream &BaseStream;
+  // Buffer that holds token text.
+  std::string TextBuffer;
+  // The user-level stream for (token) text and directives.
+  raw_string_ostream TextStream;
+  // The buffered token waiting to be flushed to the base stream.
+  // std::string BufferedToken;
+  // The expected line width the formatter should try and match.
+  unsigned LineWidth;
+  // The current position (i.e. column of previous character on line)
+  // associated with the current line in the base stream.
+  unsigned LinePosition;
+  // The stack of (intraline) indents added by PushIndent.
+  std::vector<unsigned> IntralineIndents;
+  // The current intraline indent to use.
+  unsigned CurrentIndent;
+  // The minimum line width. Used to limit indents so that there
+  // will always be at least this amount of space on the line.
+  unsigned MinLineWidth;
+  // True if no characters have moved to the base stream for the
+  // instruction being printed.  Note: This is different than
+  // LinePosition == 0. The latter can be true, when
+  // AtInstructionBeginning is false, if the current line is a
+  // continuation line caused by line overflow.
+  bool AtInstructionBeginning;
+  // The indent string to use for indenting each line of the instruction.
+  std::string LineIndent;
+  // The indent to add on continuation (i.e. overflow) lines for an
+  // instruction.
+  std::string ContinuationIndent;
+  // True if we are in a token cluster, which delays the writing of
+  // tokens till the end of the token cluster.
+  bool InsideCluster;
+  // Contains the clustered sequence of tokens. Kept so that we
+  // can replay to find best spot to line wrap, if it doesn't fit
+  // on the current line.
+  std::vector<std::string> ClusteredText;
+
+  /// Writes out the token in the text stream. If necessary, moves to
+  // a new line first.
+  void WriteToken() {
+    WriteToken(GetToken());
+  }
+
+  /// Writes out the given token. If necessary, moves to a new line first.
+  void WriteToken(const std::string &Token) {
+    if (Token.empty()) return;
+    AddLineWrapIfNeeded(Token.size());
+    Write(Token);
+  }
+
+  // Extracts the text that has been added to the text stream, and
+  // returns it.
+  std::string GetToken() {
+    TextStream.flush();
+    std::string Token(TextBuffer);
+    TextBuffer.clear();
+    return Token;
+  }
+
+  /// Writes out a non-newline character to the base stream.
+  void Write(char ch);
+
+  /// Writes out a string.
+  void Write(const std::string &Text);
+
+  /// Starts a new cluster of tokens.
+  /// Note: We do not allow nested clusterings.
+  void StartClustering();
+
+  /// Ends the existing cluster of tokens.
+  void FinishClustering();
+
+  /// Adds a newline that ends the current instruction being printed.
+  virtual void WriteEndline();
+
+  /// Called just before the first character on a line is printed, to
+  /// add indentation text for the line.
+  virtual void WriteLineIndents();
+
+  /// Analyzes the formatter state to determine if a token of the
+  /// given TextSize can fit on the current line. If it can't fit,
+  /// it wraps the input line. Returns true only if line wrap was
+  /// added by this method.
+  bool AddLineWrapIfNeeded(unsigned TextSize) {
+    if (InsideCluster) {
+      // Don't consider line wrapping until all text is clustered. That
+      // way we have full information on what we should do.
+      return false;
+    } else {
+      // If the text fits on the current line, there is nothing to do.
+      // Otherwise, we should add a newline, unless we are already
+      // at the new line. If we are already at the newline, we can't
+      // split up the token, so just allow line overflow.
+      if (LinePosition + TextSize <= LineWidth
+          || LinePosition == 0)
+        return false;
+      // If reached, it must not fit, so add a line wrap.
+      Write('\n');
+      return true;
+    }
+  }
+
+  /// Pops the current (intraline) indentation and restores it to the
+  /// previous indentation. Used to restore the indentation of
+  /// parenthesized subexpressions, where this should be called on the
+  /// close parenthesis.
+  void PopIndent() {
+    // Be pragmatic. If there is underflow, assume that it was due to
+    // the fact that the caller of this text formatter used a close
+    // directive for a pair of matching parenthesis that crossed
+    // multiple (i.e. instruction) lines.
+    if (IntralineIndents.empty()) return;
+    CurrentIndent = IntralineIndents.back();
+    IntralineIndents.pop_back();
+  }
+
+  /// Pushes the current (intraline) indentation to match the current
+  /// position within the line. Used to indent parenthesized
+  /// subexpressions, where this should be called on the open
+  /// parenthesis.
+  void PushIndent() {
+    IntralineIndents.push_back(CurrentIndent);
+    CurrentIndent = std::min(LinePosition, LineWidth - MinLineWidth);
+  }
+};
+
+inline raw_ostream &operator<<(raw_ostream &Stream,
+                               TextFormatter::Directive &Directive) {
+  // Be sure that the directive is defined for the given stream,
+  // before applying the directive, since directives may have
+  // different meanings on different text streams.
+  assert(&Stream == &Directive.GetFormatter().Tokens());
+  Directive.Apply();
+  return Stream;
+}
+
+/// Defines a token which doesn't need whitespace on either side of
+/// the token to be a valid token (such as punctuation).
+class TokenTextDirective : public TextFormatter::Directive {
+public:
+  TokenTextDirective(TextFormatter *Formatter, const char *Str)
+      : TextFormatter::Directive(Formatter), Text(Str) {
+  }
+
+  virtual ~TokenTextDirective() {}
+
+  virtual void Apply() {
+    WriteToken();
+    WriteToken(Text);
+  }
+
+private:
+  std::string Text;
+};
+
+/// Writes out the current token. Then adds a space if the base
+/// stream is not at the beginning of a continuation line.
+class SpaceTextDirective : public TextFormatter::Directive {
+public:
+  SpaceTextDirective(TextFormatter *Formatter)
+      : TextFormatter::Directive(Formatter) {}
+
+  ~SpaceTextDirective() {}
+
+  virtual void Apply() {
+    WriteToken();
+    if (!AddLineWrapIfNeeded(1))
+      WriteToken(" ");
+  }
+};
+
+/// Adds a newline that ends the current instruction being printed.
+class EndlineTextDirective : public TextFormatter::Directive {
+public:
+  EndlineTextDirective(TextFormatter *Formatter)
+      : TextFormatter::Directive(Formatter) {}
+
+  virtual ~EndlineTextDirective() {}
+
+  virtual void Apply() {
+    WriteEndline();
+  }
+};
+
+/// Inserts a token and then pushes the current indent to the position
+/// after the token. Used to model a open parenthesis.
+class OpenTextDirective : public TokenTextDirective {
+public:
+
+  // Creates an open using the given indent.
+  OpenTextDirective(TextFormatter *Formatter, const char *Text)
+      : TokenTextDirective(Formatter, Text) {}
+
+  virtual ~OpenTextDirective() {}
+
+  virtual void Apply() {
+    TokenTextDirective::Apply();
+    PushIndent();
+  }
+};
+
+/// Inserts a token and then pops current indent.  Used to model a
+/// close parenthesis.
+class CloseTextDirective : public TokenTextDirective {
+public:
+  CloseTextDirective(TextFormatter *Formatter, const char *Text)
+      : TokenTextDirective(Formatter, Text) {}
+
+  virtual ~CloseTextDirective() {}
+
+  virtual void Apply() {
+    WriteToken();
+    PopIndent();
+    TokenTextDirective::Apply();
+  }
+};
+
+/// Defines the beginning of a token cluster, which should be put on the
+/// same line if possible.
+class StartClusteringDirective : public TextFormatter::Directive {
+public:
+  StartClusteringDirective(TextFormatter *Formatter)
+      : TextFormatter::Directive(Formatter) {}
+
+  virtual ~StartClusteringDirective() {}
+
+  virtual void Apply() {
+    StartClustering();
+  }
+};
+
+class FinishClusteringDirective : public TextFormatter::Directive {
+public:
+  FinishClusteringDirective(TextFormatter *Formatter)
+      : TextFormatter::Directive(Formatter) {}
+
+  virtual ~FinishClusteringDirective() {}
+
+  virtual void Apply() {
+    FinishClustering();
+  }
+};
+
+class ObjDumpStream;
+
+/// The formatter used for dumping records in ObjDumpStream.
+class RecordTextFormatter : public TextFormatter {
+public:
+  RecordTextFormatter(ObjDumpStream *ObjDump);
+
+  /// Writes out the given record of values as an instruction.
+  void WriteValues(uint64_t Bit, const llvm::NaClBitcodeValues &Values);
+
+protected:
+  virtual void WriteLineIndents();
+
+private:
+  // The object dumper this formatter is associated with.
+  ObjDumpStream *ObjDump;
+  // The address label associated with the current line.
+  std::string Label;
+  // The open brace '<' for a record.
+  OpenTextDirective OpenBrace;
+  // The close brace '>' for a record.
+  CloseTextDirective CloseBrace;
+  // A comma between elements in a record.
+  TokenTextDirective Comma;
+  // A space inside a record.
+  SpaceTextDirective Space;
+  // End the line.
+  EndlineTextDirective Endline;
+  // Start clustering tokens.
+  StartClusteringDirective StartCluster;
+  // End clustering tokens.
+  FinishClusteringDirective FinishCluster;
 };
 
 /// Implements a stream to print out bitcode records, assembly code,
@@ -153,6 +622,12 @@ public:
     return AssemblyStream;
   }
 
+  /// Returns stream to buffer records that will be printed during the
+  /// next write call.
+  raw_ostream &Records() {
+    return RecordStream;
+  }
+
   /// Returns stream to buffer messages that will be printed during the
   // next write call.
   raw_ostream &Comments() {
@@ -197,24 +672,45 @@ public:
   /// comments, and errors, into the objdump stream.
   void Write(uint64_t Bit,
              const llvm::NaClBitcodeRecordData &Record) {
+    LastKnownBit = Bit;
     NaClBitcodeValues Values(Record);
-    WriteOrFlush(Bit, &Values);
+    RecordFormatter.WriteValues(Bit, Values);
+    Flush();
   }
 
   /// Dumps the buffered assembly, comments, and errors, without any
   /// corresponding record, into the objdump stream.
-  void Flush() {
-    WriteOrFlush(0, 0);
+  void Flush();
+
+  /// Increments the record indent by one.
+  void IncRecordIndent() {
+    RecordFormatter.Inc();
   }
 
-  /// Returns the record indenter being used by the objdump stream.
-  TextIndenter &GetRecordIndenter() {
-    return RecordIndenter;
+  /// Decrements the record indent by one.
+  void DecRecordIndent() {
+    RecordFormatter.Dec();
+  }
+
+  /// Returns the record indenter being used by the objdump stream, for
+  /// the purposes of querying state.
+  const TextIndenter &GetRecordIndenter() {
+    return RecordFormatter;
   }
 
   /// Returns the number of errors reported to the dump stream.
   unsigned GetNumErrors() const {
     return NumErrors;
+  }
+
+  // Returns true if dumping record.
+  bool GetDumpRecords() const {
+    return DumpRecords;
+  }
+
+  // Returns true if dumping assembly.
+  bool GetDumpAssembly() const {
+    return DumpAssembly;
   }
 
   /// Changes the default assumption that bit addresses start
@@ -233,14 +729,31 @@ public:
     RecordWidth = Width;
   }
 
+  unsigned GetRecordWidth() const {
+    return RecordWidth;
+  }
+
   /// Changes the column separator character to the given value.
   void SetColumnSeparator(char Separator) {
     ColumnSeparator = Separator;
   }
 
+  /// Changes the internal state, to assume one is processing a record
+  /// at the given bit. Used by Error() and Fatal(Message) to fill in
+  /// the corresponding bit to associate with the error message.
+  void SetRecordBitAddress(uint64_t Bit) {
+    LastKnownBit = Bit;
+  }
+
   // Converts the given start bit to the corresponding address to
   // print. That is, generate "Bit/8:Bit%8" value.
   std::string ObjDumpAddress(uint64_t Bit, unsigned MinByteWidth=1);
+
+  // Returns the record address (when printing records) associated with
+  // the given bit.
+  std::string RecordAddress(uint64_t Bit) {
+    return ObjDumpAddress(Bit, AddressWriteWidth);
+  }
 
 private:
   // The stream to dump to.
@@ -249,8 +762,6 @@ private:
   bool DumpRecords;
   // True if assembly text should be dumped to the dump stream.
   bool DumpAssembly;
-  // The indenter for indenting records.
-  TextIndenter RecordIndenter;
   // The number of errors reported.
   unsigned NumErrors;
   // The maximum number of errors before quitting.
@@ -276,14 +787,16 @@ private:
   /// The address write width used to print the number of
   /// bytes in the record bit address, when printing records.
   unsigned AddressWriteWidth;
-
-  // Low-level write. Dumps buffered assembly, comments, and errors,
-  // and optional record. If Record is null, no record is printed.
-  void WriteOrFlush(uint64_t StartBit,
-                    const llvm::NaClBitcodeValues *Record);
+  /// The buffer for records to be printed to during the next write.
+  std::string RecordBuffer;
+  /// The stream to buffer recordds into the record buffer.
+  raw_string_ostream RecordStream;
+  /// The text formatter for generating records.
+  RecordTextFormatter RecordFormatter;
 
   // Resets assembly and buffers.
   void ResetBuffers() {
+    RecordBuffer.clear();
     AssemblyBuffer.clear();
     MessageBuffer.clear();
   }
