@@ -92,6 +92,16 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 
   PM.add(createPromoteI1OpsPass());
 
+  // Vector simplifications.
+  // TODO(jfb) Remove duplicate constant vector values using
+  //           ConstantMerge after the GlobalizeConstantVectors pass?
+  PM.add(createGlobalizeConstantVectorsPass());
+  // The following pass inserts GEPs, it must precede
+  // ExpandGetElementPtr. It also creates vector loads and stores, the
+  // subsequent pass cleans them up to fix their alignment.
+  PM.add(createConstantInsertExtractElementIndexPass());
+  PM.add(createFixVectorLoadStoreAlignmentPass());
+
   // Optimization passes and ExpandByVal introduce
   // memset/memcpy/memmove intrinsics with a 64-bit size argument.
   // This pass converts those arguments to 32-bit.

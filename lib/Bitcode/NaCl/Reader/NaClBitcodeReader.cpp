@@ -381,6 +381,15 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
       ResultTy = FunctionType::get(ResultTy, ArgTys, Record[0]);
       break;
     }
+    case naclbitc::TYPE_CODE_VECTOR: { // VECTOR: [numelts, eltty]
+      if (Record.size() != 2)
+        return Error("Invalid VECTOR type record");
+      if ((ResultTy = getTypeByID(Record[1])))
+        ResultTy = VectorType::get(ResultTy, Record[0]);
+      else
+        return Error("invalid type in vector type");
+      break;
+    }
     }
 
     if (NumRecords >= TypeList.size())
@@ -1168,6 +1177,43 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid SELECT condition type");
 
       I = SelectInst::Create(Cond, TrueVal, FalseVal);
+      break;
+    }
+
+    case naclbitc::FUNC_CODE_INST_EXTRACTELT: { // EXTRACTELT: [opval, opval]
+      unsigned OpNum = 0;
+      Value *Vec, *Idx;
+      if (popValue(Record, &OpNum, NextValueNo, &Vec) ||
+          popValue(Record, &OpNum, NextValueNo, &Idx) || OpNum != Record.size())
+        return Error("Invalid EXTRACTELEMENT record");
+
+      // expect i32
+      if (Idx->getType() != Type::getInt32Ty(Context))
+        return Error("Invalid EXTRACTELEMENT index type");
+
+      I = ExtractElementInst::Create(Vec, Idx);
+      break;
+    }
+
+    case naclbitc::FUNC_CODE_INST_INSERTELT: { // INSERTELT: [opval,opval,opval]
+      unsigned OpNum = 0;
+      Value *Vec, *Elt, *Idx;
+      if (popValue(Record, &OpNum, NextValueNo, &Vec) ||
+          popValue(Record, &OpNum, NextValueNo, &Elt) ||
+          popValue(Record, &OpNum, NextValueNo, &Idx) || OpNum != Record.size())
+        return Error("Invalid INSERTELEMENT record");
+
+      // expect vector type
+      if (!isa<VectorType>(Vec->getType()))
+        return Error("Invalid INSERTELEMENT vector type");
+      // match vector and element types
+      if (cast<VectorType>(Vec->getType())->getElementType() != Elt->getType())
+        return Error("Mismatched INSERTELEMENT vector and element type");
+      // expect i32
+      if (Idx->getType() != Type::getInt32Ty(Context))
+        return Error("Invalid INSERTELEMENT index type");
+
+      I = InsertElementInst::Create(Vec, Elt, Idx);
       break;
     }
 

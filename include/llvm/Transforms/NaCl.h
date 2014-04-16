@@ -23,7 +23,9 @@ class ModulePass;
 class Use;
 class Value;
 
+BasicBlockPass *createConstantInsertExtractElementIndexPass();
 BasicBlockPass *createExpandGetElementPtrPass();
+BasicBlockPass *createFixVectorLoadStoreAlignmentPass();
 BasicBlockPass *createPromoteI1OpsPass();
 FunctionPass *createExpandConstantExprPass();
 FunctionPass *createExpandStructRegsPass();
@@ -43,6 +45,7 @@ ModulePass *createExpandTlsPass();
 ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
+ModulePass *createGlobalizeConstantVectorsPass();
 ModulePass *createPNaClSjLjEHPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();

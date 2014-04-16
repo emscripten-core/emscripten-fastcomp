@@ -268,6 +268,7 @@ void initializeMachineFunctionPrinterPassPass(PassRegistry&);
 // @LOCALMOD-BEGIN
 void initializeAddPNaClExternalDeclsPass(PassRegistry&);
 void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
+void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
 void initializeExpandArithWithOverflowPass(PassRegistry&);
 void initializeExpandByValPass(PassRegistry&);
 void initializeExpandConstantExprPass(PassRegistry&);
@@ -279,8 +280,10 @@ void initializeExpandStructRegsPass(PassRegistry&);
 void initializeExpandTlsConstantExprPass(PassRegistry&);
 void initializeExpandTlsPass(PassRegistry&);
 void initializeExpandVarArgsPass(PassRegistry&);
+void initializeFixVectorLoadStoreAlignmentPass(PassRegistry&);
 void initializeFlattenGlobalsPass(PassRegistry&);
 void initializeGlobalCleanupPass(PassRegistry&);
+void initializeGlobalizeConstantVectorsPass(PassRegistry&);
 void initializeInsertDivideCheckPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);

@@ -93,13 +93,15 @@ bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
 // i1 is disallowed so that all loads and stores are a whole number of
 // bytes, and so that we do not need to define whether a store of i1
 // zero-extends.
+//
+// Vector pointer types aren't currently allowed because vector memory
+// accesses go through their scalar elements.
 static bool isValidPointerType(Type *Ty) {
   if (PointerType *PtrTy = dyn_cast<PointerType>(Ty)) {
     if (PtrTy->getAddressSpace() != 0)
       return false;
     Type *EltTy = PtrTy->getElementType();
-    if (PNaClABITypeChecker::isValidScalarType(EltTy) &&
-        !EltTy->isIntegerTy(1))
+    if (PNaClABITypeChecker::isValidScalarType(EltTy) && !EltTy->isIntegerTy(1))
       return true;
     if (FunctionType *FTy = dyn_cast<FunctionType>(EltTy))
       return PNaClABITypeChecker::isValidFunctionType(FTy);
@@ -152,6 +154,16 @@ static bool isValidScalarOperand(const Value *Val) {
           isa<UndefValue>(Val));
 }
 
+static bool isValidVectorOperand(const Value *Val) {
+  // The types of Instructions and Arguments are checked elsewhere.
+  if (isa<Instruction>(Val) || isa<Argument>(Val))
+    return true;
+  // Contrary to scalars, constant vector values aren't allowed on
+  // instructions, except for aggregate zero and undefined.
+  return PNaClABITypeChecker::isValidVectorType(Val->getType()) &&
+         (isa<ConstantAggregateZero>(Val) || isa<UndefValue>(Val));
+}
+
 static bool isAllowedAlignment(unsigned Alignment, Type *Ty) {
   // Non-atomic integer operations must always use "align 1", since we
   // do not want the backend to generate code with non-portable
@@ -163,6 +175,9 @@ static bool isAllowedAlignment(unsigned Alignment, Type *Ty) {
   // To reduce the set of alignment values that need to be encoded in
   // pexes, we disallow other alignment values.  We require alignments
   // to be explicit by disallowing Alignment == 0.
+  //
+  // Vector memory accesses go through their scalar elements, there is
+  // therefore no such thing as vector alignment.
   return Alignment == 1 ||
          (Ty->isDoubleTy() && Alignment == 8) ||
          (Ty->isFloatTy() && Alignment == 4);
@@ -253,9 +268,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     case Instruction::Resume:
     // indirectbr may interfere with streaming
     case Instruction::IndirectBr:
-    // No vector instructions yet
-    case Instruction::ExtractElement:
-    case Instruction::InsertElement:
+    // TODO(jfb) Figure out ShuffleVector.
     case Instruction::ShuffleVector:
     // ExtractValue and InsertValue operate on struct values.
     case Instruction::ExtractValue:
@@ -312,10 +325,32 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
     case Instruction::SRem:
     case Instruction::Shl:
     case Instruction::LShr:
-    case Instruction::AShr:
-      if (Inst->getOperand(0)->getType()->isIntegerTy(1))
+    case Instruction::AShr: {
+      Type *Op0Ty = Inst->getOperand(0)->getType();
+      if (Op0Ty->isIntegerTy(1))
         return "arithmetic on i1";
+      if (VectorType *Op0VTy = dyn_cast<VectorType>(Op0Ty))
+        if (Op0VTy->getElementType()->isIntegerTy(1))
+          return "arithmetic on vector of i1";
       break;
+    }
+
+    // Vector.
+    case Instruction::ExtractElement:
+    case Instruction::InsertElement: {
+      // Insert and extract element are restricted to constant indices
+      // that are in range to prevent undefined behavior.
+      Value *Vec = Inst->getOperand(0);
+      Value *Idx = Inst->getOperand(
+          Instruction::InsertElement == Inst->getOpcode() ? 2 : 1);
+      if (!isa<ConstantInt>(Idx))
+        return "non-constant vector insert/extract index";
+      const APInt &I = cast<ConstantInt>(Idx)->getValue();
+      unsigned NumElements = cast<VectorType>(Vec->getType())->getNumElements();
+      if (!I.ult(NumElements))
+        return "out of range vector insert/extract index";
+      break;
+    }
 
     // Memory accesses.
     case Instruction::Load: {
@@ -325,11 +360,11 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
         return "atomic load";
       if (Load->isVolatile())
         return "volatile load";
+      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
+        return "bad pointer";
       if (!isAllowedAlignment(Load->getAlignment(),
                               Load->getType()))
         return "bad alignment";
-      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
-        return "bad pointer";
       break;
     }
     case Instruction::Store: {
@@ -339,11 +374,11 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
         return "atomic store";
       if (Store->isVolatile())
         return "volatile store";
+      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
+        return "bad pointer";
       if (!isAllowedAlignment(Store->getAlignment(),
                               Store->getValueOperand()->getType()))
         return "bad alignment";
-      if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
-        return "bad pointer";
       break;
     }
 
@@ -392,6 +427,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
              ArgNum < E; ++ArgNum) {
           const Value *Arg = Call->getArgOperand(ArgNum);
           if (!(isValidScalarOperand(Arg) ||
+                isValidVectorOperand(Arg) ||
                 isNormalizedPtr(Arg) ||
                 isa<MDNode>(Arg)))
             return "bad intrinsic operand";
@@ -476,10 +512,11 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const Instruction *Inst) {
   }
 
   // Check the instruction's operands.  We have already checked any
-  // pointer operands.  Any remaining operands must be scalars.
+  // pointer operands.  Any remaining operands must be scalars or vectors.
   for (unsigned OpNum = 0, E = Inst->getNumOperands(); OpNum < E; ++OpNum) {
     if (OpNum != PtrOperandIndex &&
-        !isValidScalarOperand(Inst->getOperand(OpNum)))
+        !(isValidScalarOperand(Inst->getOperand(OpNum)) ||
+          isValidVectorOperand(Inst->getOperand(OpNum))))
       return "bad operand";
   }
 
@@ -516,14 +553,19 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       // check the reason for rejection.
       const char *Error = checkInstruction(BBI);
       // Check the instruction's result type.
+      bool BadResult = false;
       if (!Error && !(PNaClABITypeChecker::isValidScalarType(Inst->getType()) ||
+                      PNaClABITypeChecker::isValidVectorType(Inst->getType()) ||
                       isNormalizedPtr(Inst) ||
                       isa<AllocaInst>(Inst))) {
         Error = "bad result type";
+        BadResult = true;
       }
       if (Error) {
-        Reporter->addError() << "Function " << F.getName() <<
-          " disallowed: " << Error << ": " << *BBI << "\n";
+        Reporter->addError()
+            << "Function " << F.getName() << " disallowed: " << Error << ": "
+            << (BadResult ? PNaClABITypeChecker::getTypeName(BBI->getType())
+                          : "") << " " << *BBI << "\n";
       }
 
       // Check instruction attachment metadata.

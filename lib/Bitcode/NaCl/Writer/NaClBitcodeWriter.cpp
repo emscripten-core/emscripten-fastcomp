@@ -285,6 +285,14 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       Code = naclbitc::TYPE_CODE_INTEGER;
       TypeVals.push_back(cast<IntegerType>(T)->getBitWidth());
       break;
+    case Type::VectorTyID: {
+      VectorType *VT = cast<VectorType>(T);
+      // VECTOR [numelts, eltty]
+      Code = naclbitc::TYPE_CODE_VECTOR;
+      TypeVals.push_back(VT->getNumElements());
+      TypeVals.push_back(VE.getTypeID(VT->getElementType()));
+      break;
+    }
     case Type::FunctionTyID: {
       FunctionType *FT = cast<FunctionType>(T);
       // FUNCTION: [isvararg, retty, paramty x N]
@@ -300,8 +308,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       report_fatal_error("Struct types are not supported in PNaCl bitcode");
     case Type::ArrayTyID:
       report_fatal_error("Array types are not supported in PNaCl bitcode");
-    case Type::VectorTyID:
-      report_fatal_error("Vector types are not supported in PNaCl bitcode");
     }
 
     // Emit the finished record.
@@ -644,6 +650,17 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
+    break;
+  case Instruction::ExtractElement:
+    Code = naclbitc::FUNC_CODE_INST_EXTRACTELT;
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
+    break;
+  case Instruction::InsertElement:
+    Code = naclbitc::FUNC_CODE_INST_INSERTELT;
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
     break;
   case Instruction::ICmp:
   case Instruction::FCmp:

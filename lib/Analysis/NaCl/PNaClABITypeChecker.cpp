@@ -21,7 +21,7 @@
 using namespace llvm;
 
 bool PNaClABITypeChecker::isValidParamType(const Type *Ty) {
-  if (!isValidScalarType(Ty))
+  if (!(isValidScalarType(Ty) || isValidVectorType(Ty)))
     return false;
   if (const IntegerType *IntTy = dyn_cast<IntegerType>(Ty)) {
     // PNaCl requires function arguments and return values to be 32
@@ -60,5 +60,30 @@ bool PNaClABITypeChecker::isValidScalarType(const Type *Ty) {
       return true;
     default:
       return false;
+  }
+}
+
+// TODO(jfb) Handle 64-bit int and double, and 2xi1.
+bool PNaClABITypeChecker::isValidVectorType(const Type *Ty) {
+  if (!Ty->isVectorTy())
+    return false;
+  unsigned Elems = Ty->getVectorNumElements();
+  const Type *VTy = Ty->getVectorElementType();
+
+  switch (VTy->getTypeID()) {
+  case Type::IntegerTyID: {
+    unsigned Width = cast<const IntegerType>(VTy)->getBitWidth();
+    switch (Width) {
+    case 1: return Elems == 4 || Elems == 8 || Elems == 16;
+    case 8: return Elems == 16;
+    case 16: return Elems == 8;
+    case 32: return Elems == 4;
+    default: return false;
+    }
+  }
+  case Type::FloatTyID:
+    return Elems == 4;
+  default:
+    return false;
   }
 }

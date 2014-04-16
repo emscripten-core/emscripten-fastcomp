@@ -33,6 +33,9 @@ class PNaClABITypeChecker {
   // Returns true if Ty is a valid non-derived type for PNaCl.
   static bool isValidScalarType(const Type *Ty);
 
+  // Returns true if Ty is a valid vector type for PNaCl.
+  static bool isValidVectorType(const Type *Ty);
+
   // There's no built-in way to get the name of a type, so use a
   // string ostream to print it.
   static std::string getTypeName(const Type *T) {

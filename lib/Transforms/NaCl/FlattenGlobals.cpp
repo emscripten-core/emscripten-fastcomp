@@ -178,7 +178,8 @@ void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
     StringRef Data = CD->getRawDataValues();
     assert(Data.size() == ValSize);
     memcpy(Dest, Data.data(), Data.size());
-  } else if (isa<ConstantArray>(Val) || isa<ConstantVector>(Val)) {
+  } else if (isa<ConstantArray>(Val) || isa<ConstantDataVector>(Val) ||
+             isa<ConstantVector>(Val)) {
     uint64_t ElementSize = DL->getTypeAllocSize(
         Val->getType()->getSequentialElementType());
     for (unsigned I = 0; I < Val->getNumOperands(); ++I) {

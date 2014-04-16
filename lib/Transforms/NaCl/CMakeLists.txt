@@ -1,6 +1,7 @@
 add_llvm_library(LLVMNaClTransforms
   AddPNaClExternalDecls.cpp
   CanonicalizeMemIntrinsics.cpp
+  ConstantInsertExtractElementIndex.cpp
   ExceptionInfoWriter.cpp
   ExpandArithWithOverflow.cpp
   ExpandByVal.cpp
@@ -14,8 +15,10 @@ add_llvm_library(LLVMNaClTransforms
   ExpandTlsConstantExpr.cpp
   ExpandUtils.cpp
   ExpandVarArgs.cpp
+  FixVectorLoadStoreAlignment.cpp
   FlattenGlobals.cpp
   GlobalCleanup.cpp
+  GlobalizeConstantVectors.cpp
   InsertDivideCheck.cpp
   PNaClABISimplify.cpp
   PNaClSjLjEH.cpp
