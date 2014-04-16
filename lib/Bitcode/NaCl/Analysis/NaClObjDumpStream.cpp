@@ -36,7 +36,6 @@ TextFormatter::TextFormatter(raw_ostream &BaseStream,
 
 void TextFormatter::WriteEndline() {
   assert(!InsideCluster && "Must close clustering before ending instruction");
-  WriteToken();
   Write('\n');
   CurrentIndent = 0;
   AtInstructionBeginning = true;
@@ -80,14 +79,11 @@ void TextFormatter::Write(const std::string &Text) {
 
 void TextFormatter::StartClustering() {
   assert(!InsideCluster && "Clustering can't be nested!");
-  WriteToken();
   InsideCluster = true;
 }
 
 void TextFormatter::FinishClustering() {
   assert(InsideCluster && "Can't finish clustering, not in cluster!");
-  // Start by flushing previous token.
-  WriteToken();
   InsideCluster = false;
 
   // Compute width of cluster, and line wrap if it doesn't fit on the

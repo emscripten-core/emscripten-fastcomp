@@ -200,7 +200,13 @@ public:
     }
 
     /// Does action of directive.
-    virtual void Apply() = 0;
+    void Apply() {
+      Formatter->WriteToken();
+      MyApply();
+    }
+
+    // Does directive specific action.
+    virtual void MyApply() = 0;
 
    protected:
     // The formatter associated with the directive.
@@ -217,24 +223,8 @@ public:
       return Formatter->Tokens();
     }
 
-    std::string GetToken() {
-      return Formatter->GetToken();
-    }
-
-    void WriteToken() {
-      Formatter->WriteToken();
-    }
-
     void WriteToken(const std::string &Token) {
       Formatter->WriteToken(Token);
-    }
-
-    void Write(char ch) {
-      Formatter->Write(ch);
-    }
-
-    void Write(std::string &Text) {
-      Formatter->Write(Text);
     }
 
     void WriteEndline() {
@@ -411,8 +401,7 @@ public:
 
   virtual ~TokenTextDirective() {}
 
-  virtual void Apply() {
-    WriteToken();
+  virtual void MyApply() {
     WriteToken(Text);
   }
 
@@ -429,8 +418,7 @@ public:
 
   ~SpaceTextDirective() {}
 
-  virtual void Apply() {
-    WriteToken();
+  virtual void MyApply() {
     if (!AddLineWrapIfNeeded(1))
       WriteToken(" ");
   }
@@ -444,7 +432,7 @@ public:
 
   virtual ~EndlineTextDirective() {}
 
-  virtual void Apply() {
+  virtual void MyApply() {
     WriteEndline();
   }
 };
@@ -460,8 +448,8 @@ public:
 
   virtual ~OpenTextDirective() {}
 
-  virtual void Apply() {
-    TokenTextDirective::Apply();
+  virtual void MyApply() {
+    TokenTextDirective::MyApply();
     PushIndent();
   }
 };
@@ -475,10 +463,9 @@ public:
 
   virtual ~CloseTextDirective() {}
 
-  virtual void Apply() {
-    WriteToken();
+  virtual void MyApply() {
     PopIndent();
-    TokenTextDirective::Apply();
+    TokenTextDirective::MyApply();
   }
 };
 
@@ -491,7 +478,7 @@ public:
 
   virtual ~StartClusteringDirective() {}
 
-  virtual void Apply() {
+  virtual void MyApply() {
     StartClustering();
   }
 };
@@ -503,7 +490,7 @@ public:
 
   virtual ~FinishClusteringDirective() {}
 
-  virtual void Apply() {
+  virtual void MyApply() {
     FinishClustering();
   }
 };
