@@ -159,14 +159,6 @@ public:
   LexicalScope(LexicalScope *P, const MDNode *D, const MDNode *I, bool A)
     : Parent(P), Desc(D), InlinedAtLocation(I), AbstractScope(A),
       LastInsn(0), FirstInsn(0), DFSIn(0), DFSOut(0) {
-    // @LOCALMOD-BEGIN -- Hack for bug
-    // http://code.google.com/p/nativeclient/issues/detail?id=2786
-#ifndef NDEBUG
-    Desc.make_weak();
-    InlinedAtLocation.make_weak();
-#endif
-    // @LOCALMOD-END
-
     if (Parent)
       Parent->addChild(this);
   }
