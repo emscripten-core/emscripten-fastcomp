@@ -73,10 +73,12 @@ int main(int argc, char **argv) {
   // error. No need for a pass manager since it's just one pass.
   OwningPtr<ModulePass> ModuleChecker(
       createPNaClABIVerifyModulePass(&ABIErrorReporter));
+  ModuleChecker->doInitialization(*Mod);
   ModuleChecker->runOnModule(*Mod);
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
   OwningPtr<FunctionPass> FunctionChecker(
       createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
+  FunctionChecker->doInitialization(*Mod);
   for (Module::iterator MI = Mod->begin(), ME = Mod->end(); MI != ME; ++MI) {
     FunctionChecker->runOnFunction(*MI);
     ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter,
