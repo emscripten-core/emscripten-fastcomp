@@ -62,7 +62,8 @@ void GlobalizeConstantVectors::findConstantVectors(const Function &F,
     for (User::const_op_iterator OI = II->op_begin(), OE = II->op_end();
          OI != OE; ++OI) {
       Value *V = OI->get();
-      if (isa<ConstantVector>(V) || isa<ConstantDataVector>(V))
+      if (isa<ConstantVector>(V) || isa<ConstantDataVector>(V) ||
+          isa<ConstantAggregateZero>(V))
         CVs.push_back(V);
     }
   }

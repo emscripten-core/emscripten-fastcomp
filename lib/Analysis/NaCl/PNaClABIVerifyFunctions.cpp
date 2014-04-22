@@ -159,9 +159,11 @@ static bool isValidVectorOperand(const Value *Val) {
   if (isa<Instruction>(Val) || isa<Argument>(Val))
     return true;
   // Contrary to scalars, constant vector values aren't allowed on
-  // instructions, except for aggregate zero and undefined.
+  // instructions, except undefined. Constant vectors are loaded from
+  // constant global memory instead, and can be rematerialized as
+  // constants by the backend if need be.
   return PNaClABITypeChecker::isValidVectorType(Val->getType()) &&
-         (isa<ConstantAggregateZero>(Val) || isa<UndefValue>(Val));
+         isa<UndefValue>(Val);
 }
 
 static bool isAllowedAlignment(unsigned Alignment, Type *Ty) {

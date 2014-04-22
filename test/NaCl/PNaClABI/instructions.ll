@@ -73,11 +73,6 @@ define internal void @vector_binops(<4 x i32> %i, <4 x float> %f) {
 
 define internal void @vectors_ok(<4 x i32> %i) {
 ; CHECK-NOT: ERROR: Function vectors_ok
-  %ez4xi32.0 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 0
-  %ez4xi32.1 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1
-  %ez4xi32.2 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 2
-  %ez4xi32.3 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 3
-
   %eu4xi32.0 = extractelement <4 x i32> undef, i32 0
   %eu4xi32.1 = extractelement <4 x i32> undef, i32 1
   %eu4xi32.2 = extractelement <4 x i32> undef, i32 2
@@ -87,11 +82,6 @@ define internal void @vectors_ok(<4 x i32> %i) {
   %ev4xi32.1 = extractelement <4 x i32> %i, i32 1
   %ev4xi32.2 = extractelement <4 x i32> %i, i32 2
   %ev4xi32.3 = extractelement <4 x i32> %i, i32 3
-
-  %iz4xi32.0 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 0
-  %iz4xi32.1 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 1
-  %iz4xi32.2 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 2
-  %iz4xi32.3 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 3
 
   %iu4xi32.0 = insertelement <4 x i32> undef, i32 1, i32 0
   %iu4xi32.1 = insertelement <4 x i32> undef, i32 1, i32 1
@@ -117,6 +107,22 @@ define internal void @vectors_bad(i32 %idx) {
   %i.oob.idx = insertelement <4 x i32> undef, i32 42, i32 4 ; CHECK-NEXT: disallowed: out of range vector insert/extract index: {{.*}} insertelement
   %i.vec.imm = insertelement <4 x i32> <i32 0, i32 1, i32 2, i32 3>, i32 42, i32 0 ; CHECK-NEXT: disallowed: bad operand: {{.*}} insertelement
   %a3 = shufflevector <4 x i32> undef, <4 x i32> undef, <4 x i32> undef ; CHECK-NEXT: disallowed: bad instruction opcode: {{.*}} shufflevector
+
+  ret void
+}
+
+define internal void @vectors_bad_zeroinitializer() {
+; CHECK: ERROR: Function vectors_bad_zeroinitializer
+
+  ; zeroinitializer isn't allowed, it should be globalized instead.
+  %ez4xi32.0 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 0 ; CHECK-NEXT: disallowed: bad operand: {{.*}} extractelement {{.*}} zeroinitializer
+  %ez4xi32.1 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1 ; CHECK-NEXT: disallowed: bad operand: {{.*}} extractelement {{.*}} zeroinitializer
+  %ez4xi32.2 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 2 ; CHECK-NEXT: disallowed: bad operand: {{.*}} extractelement {{.*}} zeroinitializer
+  %ez4xi32.3 = extractelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 3 ; CHECK-NEXT: disallowed: bad operand: {{.*}} extractelement {{.*}} zeroinitializer
+  %iz4xi32.0 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 0 ; CHECK-NEXT: disallowed: bad operand: {{.*}} insertelement {{.*}} zeroinitializer
+  %iz4xi32.1 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 1 ; CHECK-NEXT: disallowed: bad operand: {{.*}} insertelement {{.*}} zeroinitializer
+  %iz4xi32.2 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 2 ; CHECK-NEXT: disallowed: bad operand: {{.*}} insertelement {{.*}} zeroinitializer
+  %iz4xi32.3 = insertelement <4 x i32> <i32 0, i32 0, i32 0, i32 0>, i32 1, i32 3 ; CHECK-NEXT: disallowed: bad operand: {{.*}} insertelement {{.*}} zeroinitializer
 
   ret void
 }

@@ -8,6 +8,7 @@
 ; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=C4xfloat %s
 ; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=Cbranch %s
 ; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=Cduplicate %s
+; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=Czeroinitializer %s
 
 ; Run the test once per function so that each check can look at its
 ; globals as well as its function.
@@ -156,20 +157,31 @@ done:
 ; Globalizing redundant constants between functions should materialize
 ; them in each function.
 define void @testduplicate1() {
-  %foo = add <4 x i32> <i32 1, i32 1, i32 1, i32 1>, <i32 0, i32 0, i32 0, i32 0>
+  %foo = add <4 x i32> <i32 1, i32 1, i32 1, i32 1>, undef
   ret void
 }
 define void @testduplicate2() {
-  %foo = add <4 x i32> <i32 1, i32 1, i32 1, i32 1>, <i32 0, i32 0, i32 0, i32 0>
+  %foo = add <4 x i32> <i32 1, i32 1, i32 1, i32 1>, undef
   ret void
 }
 ; Cduplicate: @[[C1:[_a-z0-9]+]] = internal constant <4 x i32> <i32 1, i32 1, i32 1, i32 1>, align 4
 ; Cduplicate: @[[C2:[_a-z0-9]+]] = internal constant <4 x i32> <i32 1, i32 1, i32 1, i32 1>, align 4
 ; Cduplicate: define void @testduplicate1() {
 ; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
-; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], zeroinitializer
+; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], undef
 ; Cduplicate-NEXT: ret void
 ; Cduplicate: define void @testduplicate2() {
 ; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C2]], align 4
-; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], zeroinitializer
+; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], undef
 ; Cduplicate-NEXT: ret void
+
+; zeroinitializer vectors should get globalized.
+define void @testzeroinitializer(<4 x float> %in) {
+  %id = fadd <4 x float> %in, <float 0.0, float 0.0, float 0.0, float 0.0>
+  ret void
+}
+; Czeroinitializer: @[[C1:[_a-z0-9]+]] = internal constant <4 x float> zeroinitializer, align 4
+; Czeroinitializer: define void @testzeroinitializer(<4 x float> %in) {
+; Czeroinitializer-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x float>* @[[C1]], align 4
+; Czeroinitializer-NEXT: %id = fadd <4 x float> %in, %[[M1]]
+; Czeroinitializer-NEXT: ret void
