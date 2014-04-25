@@ -290,9 +290,8 @@ namespace {
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType(), &Name);
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
-      // use alignment info to avoid unnecessary holes. This is not optimal though,
-      // (1) depends on order of appearance, and (2) really just need align for &class::method, see test_polymorph
-      unsigned Alignment = F->getAlignment() || 1;
+      unsigned Alignment = F->getAlignment() || 1; // XXX this is wrong, it's always 1. but, that's fine in the ARM-like ABI we have which allows unaligned functions.
+                                                   //     the one risk is if someone forces a function to be aligned, and relies on that.
       while (Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
       Table.push_back(Name);
