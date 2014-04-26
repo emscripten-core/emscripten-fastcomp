@@ -83,6 +83,11 @@ EmscriptenAssertions("emscripten-assertions",
                      cl::desc("Additional JS-specific assertions (see emscripten ASSERTIONS)"),
                      cl::init(0));
 
+static cl::opt<bool>
+NoAliasingFunctionPointers("emscripten-no-aliasing-function-pointers",
+                           cl::desc("Forces function pointers to not alias (this is more correct, but rarely needed, and has the cost of much larger function tables; it is useful for debugging though; see emscripten ALIASING_FUNCTION_POINTERS option)"),
+                           cl::init(false));
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
@@ -120,6 +125,7 @@ namespace {
     formatted_raw_ostream &Out;
     const Module *TheModule;
     unsigned UniqueNum;
+    unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
     ValueMap ValueNames;
     VarMap UsedVars;
     AllocaManager Allocas;
@@ -149,7 +155,7 @@ namespace {
   public:
     static char ID;
     JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
-      : ModulePass(ID), Out(o), UniqueNum(0), CanValidate(true), UsesSIMD(false), InvokeState(0),
+      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CanValidate(true), UsesSIMD(false), InvokeState(0),
         OptLevel(OptLevel) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
@@ -290,12 +296,18 @@ namespace {
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType(), &Name);
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
+      if (NoAliasingFunctionPointers) {
+        while (Table.size() < NextFunctionIndex) Table.push_back("0");
+      }
       unsigned Alignment = F->getAlignment() || 1; // XXX this is wrong, it's always 1. but, that's fine in the ARM-like ABI we have which allows unaligned functions.
                                                    //     the one risk is if someone forces a function to be aligned, and relies on that.
       while (Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
       Table.push_back(Name);
       IndexedFunctions[Name] = Index;
+      if (NoAliasingFunctionPointers) {
+        NextFunctionIndex = Index+1;
+      }
 
       // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, and we may need to do things in the handler
       CallHandlerMap::const_iterator CH = CallHandlers.find(Name);
