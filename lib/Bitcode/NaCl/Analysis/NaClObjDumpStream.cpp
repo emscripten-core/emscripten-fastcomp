@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 
@@ -30,16 +31,30 @@ TextFormatter::TextFormatter(raw_ostream &BaseStream,
       AtInstructionBeginning(true),
       LineIndent(),
       ContinuationIndent(),
-      InsideCluster(false) {
+      ClusteringLevel(0),
+      ClusteredTextSize(0) {
   if (MinLineWidth > LineWidth) MinLineWidth = LineWidth;
 }
 
+TextFormatter::~TextFormatter() {
+  DeleteContainerPointers(GetTokenFreeList);
+}
+
 void TextFormatter::WriteEndline() {
-  assert(!InsideCluster && "Must close clustering before ending instruction");
+  assert(!IsClustering() && "Must close clustering before ending instruction");
   Write('\n');
   CurrentIndent = 0;
   AtInstructionBeginning = true;
   LineIndent.clear();
+}
+
+std::string TextFormatter::GetToken() {
+  TextStream.flush();
+  std::string Token(TextBuffer);
+  TextBuffer.clear();
+  if (!Token.empty() && IsClustering())
+    AppendForReplay(GetTokenDirective::Allocate(this, Token));
+  return Token;
 }
 
 void TextFormatter::Write(char ch) {
@@ -66,8 +81,8 @@ void TextFormatter::Write(char ch) {
 }
 
 void TextFormatter::Write(const std::string &Text) {
-  if (InsideCluster) {
-    ClusteredText.push_back(Text);
+  if (IsClustering()) {
+    ClusteredTextSize += Text.size();
   } else {
     for (std::string::const_iterator
              Iter = Text.begin(), IterEnd = Text.end();
@@ -78,32 +93,29 @@ void TextFormatter::Write(const std::string &Text) {
 }
 
 void TextFormatter::StartClustering() {
-  assert(!InsideCluster && "Clustering can't be nested!");
-  InsideCluster = true;
+  ++ClusteringLevel;
 }
 
 void TextFormatter::FinishClustering() {
-  assert(InsideCluster && "Can't finish clustering, not in cluster!");
-  InsideCluster = false;
+  assert(IsClustering() && "Can't finish clustering, not in cluster!");
+  --ClusteringLevel;
+  if (IsClustering()) return;
 
-  // Compute width of cluster, and line wrap if it doesn't fit on the
-  // current line.
-  size_t Size = 0;
-  for (std::vector<std::string>::const_iterator
-           Iter = ClusteredText.begin(), IterEnd = ClusteredText.end();
-       Iter != IterEnd; ++Iter) {
-    Size += Iter->size();
-  }
-  AddLineWrapIfNeeded(Size);
+  AddLineWrapIfNeeded(ClusteredTextSize);
 
-  // Use WriteToken to print tokens of cluster, and add wrap lines if too
-  // long to fit.
-  for (std::vector<std::string>::const_iterator
-           Iter = ClusteredText.begin(), IterEnd = ClusteredText.end();
+  // Reapply the directives to generate the token text, and set
+  // indentations. Because clustering can be nested, duplicate before
+  // replaying, so that nested clusters can replayed and build its own
+  // list of clustered directives.
+  std::vector<const Directive*> Directives(ClusteredDirectives);
+  ClusteredDirectives.clear();
+  ClusteredTextSize = 0;
+  for (std::vector<const Directive*>::iterator
+           Iter = Directives.begin(),
+           IterEnd = Directives.end();
        Iter != IterEnd; ++Iter) {
-    WriteToken(*Iter);
+    (*Iter)->Apply();
   }
-  ClusteredText.clear();
 }
 
 void TextFormatter::WriteLineIndents() {
@@ -112,18 +124,43 @@ void TextFormatter::WriteLineIndents() {
   BaseStream << LineIndent;
   LinePosition += LineIndent.size();
 
-  // If not the first line, add continuation indent to the base stream.
-  if (!AtInstructionBeginning) {
-    BaseStream << ContinuationIndent;
-    LinePosition += ContinuationIndent.size();
-    LineIndent = GetIndent();
+  // If not the first line, and local indent not set, add continuation
+  // indent to the base stream.
+  unsigned UseIndent = CurrentIndent;
+  if (!AtInstructionBeginning && CurrentIndent == 0) {
+    UseIndent = FixIndentValue(LinePosition + ContinuationIndent.size());
   }
 
   // Add any additional indents local to the current instruction
   // being dumped to the base stream.
-  for (; LinePosition < CurrentIndent; ++LinePosition) {
+  for (; LinePosition < UseIndent; ++LinePosition) {
     BaseStream << ' ';
   }
+}
+
+void TextFormatter::Directive::Reapply() const {
+  // Note: We don't want to store top-level start/finish cluster
+  // directives on ClusteredDirectives, so that nested replays won't
+  // reapply them.
+  bool WasClustering = IsClustering();
+  MyApply(true);
+  if (WasClustering && IsClustering())
+    Formatter->ClusteredDirectives.push_back(this);
+}
+
+
+TextFormatter::Directive *TextFormatter::GetTokenDirective::
+Allocate(TextFormatter *Formatter, const std::string &Text) {
+  GetTokenDirective *Dir;
+  if (Formatter->GetTokenFreeList.empty()) {
+    Dir = new GetTokenDirective(Formatter, Text);
+  } else {
+    Dir = Formatter->GetTokenFreeList.back();
+    Dir->Formatter = Formatter;
+    Dir->Text = Text;
+    Formatter->GetTokenFreeList.pop_back();
+  }
+  return Dir;
 }
 
 RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
@@ -210,7 +247,8 @@ raw_ostream &ObjDumpStream::Error(uint64_t Bit) {
 
 void ObjDumpStream::Fatal(uint64_t Bit, const std::string &Message) {
   LastKnownBit = Bit;
-  PrintMessagePrefix("Error", Bit) << Message;
+  if (!Message.empty())
+    PrintMessagePrefix("Error", Bit) << Message;
   Flush();
   llvm::report_fatal_error("Unable to continue");
 }

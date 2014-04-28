@@ -127,18 +127,18 @@ private:
 /// basically force the user to break up the output into a sequence of
 /// tokens. This is done using two streams. The text stream is used to
 /// buffer tokens.  The base stream is the stream to write tokens to
-/// once they have been identified.  The goal of the formatter is to
-/// decide where the instruction text should be cut (i.e. between
-/// tokens), so that the instruction does not overflow the viewing
-/// width. It also handles the automatic insertion of line indentation
-/// into the base stream when needed.
+/// once they have been identified and positioned.  The goal of the
+/// formatter is to decide where the instruction text should be cut
+/// (i.e. between tokens), so that the instruction does not overflow
+/// the viewing width. It also handles the automatic insertion of line
+/// indentation into the base stream when needed.
 ///
 /// To make it easy to print tokens to the text stream, we use text
 /// directives.  Whenever a text directive is written to the text
 /// stream, it is assumed that all text written to the text stream
 /// (since the last directive) is an (indivisible) token. The first
-/// thing directives do is move the token from the text stream to the
-/// base stream.
+/// thing directives do is move the token from the text stream (if
+/// present) to the base stream.
 ///
 /// In addition to defining tokens, text directives can also be
 /// defined to query the formatter state and apply an appropriate
@@ -152,6 +152,22 @@ private:
 /// lines. In particular, clustered tokens will not be broken up
 /// unless there is no other way to print them, because the cluster is
 /// larger than what can fit in a line.
+///
+/// Clustering is implemented using two passes. In the first pass, the
+/// sequence of tokens/directives are collected to find the clustered
+/// text.  They are also applied to collect any text internal to the
+/// directives. Actions that can change (intraline) indenting are
+/// turned off.
+///
+/// Once the first pass is done, the second pass starts. It begins
+/// with a check to see if the clustered text can fit on the current
+/// line, and adds a newline if necessary. Then it replays the
+/// directives to put the tokens of the cluster into the base stream.
+/// The replay also changes (intraline) indenting as necessary.
+///
+/// Clusters can be nested. In such cases, they are stripped one layer
+/// per pass. Nested clusters are replayed after line wrapping of
+/// outer clusters have been resolved.
 class TextFormatter : public TextIndenter {
 public:
 
@@ -159,9 +175,11 @@ public:
   /// Base Stream. The viewing width is defined by LineWidth. The
   /// given tab is the assumed value for tab characters and line
   /// indents.
-  TextFormatter(raw_ostream &BaseStream,
-                unsigned LineWidth = 80,
-                const char *Tab = DefaultTab);
+  explicit TextFormatter(raw_ostream &BaseStream,
+                         unsigned LineWidth = 80,
+                         const char *Tab = DefaultTab);
+
+  ~TextFormatter();
 
   /// Returns the user-level text stream of the formatter that tokens
   /// should be written to.
@@ -175,42 +193,62 @@ public:
     if (MinLineWidth > LineWidth) MinLineWidth = LineWidth;
   }
 
+  // Changes the (default) line-wrap, continuation indent.
+  void SetContinuationIndent(const std::string &Indent) {
+    ContinuationIndent = Indent;
+  }
+
   /// Base class for all directives. The basic functionality is that it
   /// has a reference to the text formatter, and is applied by calling
-  /// virtual method apply. This method apply is encorporated into the
+  /// method apply. This method apply is encorporated into the
   /// stream operator<<, so that they can be used as part of the
   /// streamed output.
   ///
-  /// In general, the Apply method should begin with a call to the
-  /// formatter's WriteToken to flush any existing token out of the
-  /// formatter's text stream.
+  /// Method apply extracts any tokens in the text stream.  Moves them
+  /// into the base stream. Finally, it calls virtual method MyApply
+  /// to do the actions of the directive.
   class Directive {
     Directive(const Directive&) LLVM_DELETED_FUNCTION;
     void operator=(const Directive&) LLVM_DELETED_FUNCTION;
   public:
     /// Creates a directive for the given stream.
-    Directive(TextFormatter *Formatter)
-      : Formatter(Formatter) {}
+    explicit Directive(TextFormatter *Formatter)
+        : Formatter(Formatter) {}
 
     virtual ~Directive() {}
 
     /// Returns the formatter associated with the directive.
-    TextFormatter &GetFormatter() {
+    TextFormatter &GetFormatter() const {
       return *Formatter;
     }
 
     /// Does action of directive.
-    void Apply() {
+    void Apply() const {
+      // Start by writing token if Tokens() buffer (if non-empty).
       Formatter->WriteToken();
-      MyApply();
+      // Apply the directive.
+      MyApply(false);
+      // Save the directive for replay if we are clustering.
+      MaybeSaveForReplay();
     }
-
-    // Does directive specific action.
-    virtual void MyApply() = 0;
 
    protected:
     // The formatter associated with the directive.
     TextFormatter *Formatter;
+
+    // Like Apply, but called instead of Apply whey doing a replay.
+    void Reapply() const;
+
+    // Does directive specific action. Replay is true only if the
+    // directive was in a cluster, and it is being called to replay
+    // the directive a second time.
+    virtual void MyApply(bool Replay) const = 0;
+
+    // Adds the directive to the clustered directives if appropriate
+    // (i.e. inside a cluster).
+    virtual void MaybeSaveForReplay() const {
+      if (IsClustering()) AppendForReplay(this);
+    }
 
     // ***********************************************************
     // Note: The following have been added so that derived classes
@@ -219,23 +257,35 @@ public:
     //  in derived classes).
     // ***********************************************************
 
-    raw_ostream &Tokens() {
+    bool IsClustering() const {
+      return Formatter->IsClustering();
+    }
+
+    unsigned GetClusteringLevel() const {
+      return Formatter->GetClusteringLevel();
+    }
+
+    void AppendForReplay(const Directive *D) const {
+      Formatter->AppendForReplay(D);
+    }
+
+    raw_ostream &Tokens() const {
       return Formatter->Tokens();
     }
 
-    void WriteToken(const std::string &Token) {
+    void WriteToken(const std::string &Token) const {
       Formatter->WriteToken(Token);
     }
 
-    void WriteEndline() {
+    void WriteEndline() const {
       Formatter->WriteEndline();
     }
 
-    void PopIndent() {
+    void PopIndent() const {
       Formatter->PopIndent();
     }
 
-    void PushIndent() {
+    void PushIndent() const {
       Formatter->PushIndent();
     }
 
@@ -243,11 +293,11 @@ public:
       return Formatter->AddLineWrapIfNeeded(TextSize);
     }
 
-    void StartClustering() {
+    void StartClustering() const {
       Formatter->StartClustering();
     }
 
-    void FinishClustering() {
+    void FinishClustering() const {
       Formatter->FinishClustering();
     }
   };
@@ -284,13 +334,32 @@ protected:
   // The indent to add on continuation (i.e. overflow) lines for an
   // instruction.
   std::string ContinuationIndent;
-  // True if we are in a token cluster, which delays the writing of
-  // tokens till the end of the token cluster.
-  bool InsideCluster;
-  // Contains the clustered sequence of tokens. Kept so that we
-  // can replay to find best spot to line wrap, if it doesn't fit
-  // on the current line.
-  std::vector<std::string> ClusteredText;
+  // Counts how nested we are within clustering directives.
+  unsigned ClusteringLevel;
+  // Contains the number of columns needed to hold the generated text,
+  // while clustering. Computed so that we can test if it fits on the
+  // current line.
+  unsigned ClusteredTextSize;
+  // Contains the sequence of directives (including tokens) during
+  // clustering, so that it can be replayed after we determine if a
+  // new line needs to be added.
+  std::vector<const Directive*> ClusteredDirectives;
+
+  // Returns if we are currently inside a cluster.
+  bool IsClustering() const {
+    return ClusteringLevel > 0;
+  }
+
+  // Returns the clustering level of the formatter.
+  unsigned GetClusteringLevel() const {
+    return ClusteringLevel;
+  }
+
+  // Appends the given directive to the list of directives to
+  // replay, if clustering.
+  void AppendForReplay(const Directive *D) {
+    ClusteredDirectives.push_back(D);
+  }
 
   /// Writes out the token in the text stream. If necessary, moves to
   // a new line first.
@@ -307,12 +376,7 @@ protected:
 
   // Extracts the text that has been added to the text stream, and
   // returns it.
-  std::string GetToken() {
-    TextStream.flush();
-    std::string Token(TextBuffer);
-    TextBuffer.clear();
-    return Token;
-  }
+  std::string GetToken();
 
   /// Writes out a non-newline character to the base stream.
   void Write(char ch);
@@ -339,7 +403,7 @@ protected:
   /// it wraps the input line. Returns true only if line wrap was
   /// added by this method.
   bool AddLineWrapIfNeeded(unsigned TextSize) {
-    if (InsideCluster) {
+    if (IsClustering()) {
       // Don't consider line wrapping until all text is clustered. That
       // way we have full information on what we should do.
       return false;
@@ -366,7 +430,7 @@ protected:
     // the fact that the caller of this text formatter used a close
     // directive for a pair of matching parenthesis that crossed
     // multiple (i.e. instruction) lines.
-    if (IntralineIndents.empty()) return;
+    if (IsClustering() || IntralineIndents.empty()) return;
     CurrentIndent = IntralineIndents.back();
     IntralineIndents.pop_back();
   }
@@ -376,13 +440,54 @@ protected:
   /// subexpressions, where this should be called on the open
   /// parenthesis.
   void PushIndent() {
+    if (IsClustering()) return;
     IntralineIndents.push_back(CurrentIndent);
-    CurrentIndent = std::min(LinePosition, LineWidth - MinLineWidth);
+    CurrentIndent = FixIndentValue(LinePosition);
   }
+
+  /// Fixes the given position, to the appropriate value for setting
+  /// CurrentIndent. That is, it makes sure there is always MinLineWidth
+  /// printable characters on a line.
+  unsigned FixIndentValue(unsigned Position) {
+    return std::min(Position, LineWidth - MinLineWidth);
+  }
+
+private:
+  /// Directive that generates temporary instances to hold tokens from
+  /// the Tokens() stream. Generated when GetToken() is called. Used
+  /// during clustering to regenerate the corresponding extracted
+  /// tokens during a replay.
+  class GetTokenDirective : public Directive {
+    GetTokenDirective(TextFormatter *Formatter, const std::string &Text)
+        : Directive(Formatter), Text(Text) {}
+
+  public:
+    virtual ~GetTokenDirective() {}
+
+    /// Allocates an instance of a GetTokenDirective.
+    /// Note: Will be reclaimed when MyApply is called.
+    static Directive *Allocate(TextFormatter *Formatter,
+                               const std::string &Text);
+
+  protected:
+    virtual void MyApply(bool Replay) const {
+      WriteToken(Text);
+      if (!IsClustering())
+        Formatter->GetTokenFreeList.
+            push_back(const_cast<GetTokenDirective*>(this));
+    }
+
+  private:
+    // The token text.
+    std::string Text;
+  };
+
+  // The set of freed GetTokenDirectives, that can be reused.
+  std::vector<GetTokenDirective*> GetTokenFreeList;
 };
 
 inline raw_ostream &operator<<(raw_ostream &Stream,
-                               TextFormatter::Directive &Directive) {
+                               const TextFormatter::Directive &Directive) {
   // Be sure that the directive is defined for the given stream,
   // before applying the directive, since directives may have
   // different meanings on different text streams.
@@ -391,17 +496,31 @@ inline raw_ostream &operator<<(raw_ostream &Stream,
   return Stream;
 }
 
+/// Defines a directive that only tokenizes the text in the Tokens()
+/// stream.
+class TokenizeTextDirective : public TextFormatter::Directive {
+public:
+  explicit TokenizeTextDirective(TextFormatter *Formatter)
+      : TextFormatter::Directive(Formatter) {}
+
+  virtual ~TokenizeTextDirective() {}
+
+protected:
+  virtual void MyApply(bool Replay) const {}
+};
+
 /// Defines a token which doesn't need whitespace on either side of
 /// the token to be a valid token (such as punctuation).
 class TokenTextDirective : public TextFormatter::Directive {
 public:
-  TokenTextDirective(TextFormatter *Formatter, const char *Str)
+  TokenTextDirective(TextFormatter *Formatter, const std::string &Str)
       : TextFormatter::Directive(Formatter), Text(Str) {
   }
 
   virtual ~TokenTextDirective() {}
 
-  virtual void MyApply() {
+protected:
+  virtual void MyApply(bool Replay) const {
     WriteToken(Text);
   }
 
@@ -413,26 +532,33 @@ private:
 /// stream is not at the beginning of a continuation line.
 class SpaceTextDirective : public TextFormatter::Directive {
 public:
-  SpaceTextDirective(TextFormatter *Formatter)
-      : TextFormatter::Directive(Formatter) {}
+  SpaceTextDirective(TextFormatter *Formatter, const std::string &Space)
+      : TextFormatter::Directive(Formatter), Space(Space) {}
+
+  explicit SpaceTextDirective(TextFormatter *Formatter)
+      : TextFormatter::Directive(Formatter), Space(" ") {}
 
   ~SpaceTextDirective() {}
 
-  virtual void MyApply() {
-    if (!AddLineWrapIfNeeded(1))
-      WriteToken(" ");
+protected:
+  virtual void MyApply(bool Replay) const {
+    if (!AddLineWrapIfNeeded(Space.size()))
+      WriteToken(Space);
   }
+private:
+  std::string Space;
 };
 
 /// Adds a newline that ends the current instruction being printed.
 class EndlineTextDirective : public TextFormatter::Directive {
 public:
-  EndlineTextDirective(TextFormatter *Formatter)
+  explicit EndlineTextDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
   virtual ~EndlineTextDirective() {}
 
-  virtual void MyApply() {
+protected:
+  virtual void MyApply(bool Replay) const {
     WriteEndline();
   }
 };
@@ -443,13 +569,14 @@ class OpenTextDirective : public TokenTextDirective {
 public:
 
   // Creates an open using the given indent.
-  OpenTextDirective(TextFormatter *Formatter, const char *Text)
+  OpenTextDirective(TextFormatter *Formatter, const std::string &Text)
       : TokenTextDirective(Formatter, Text) {}
 
   virtual ~OpenTextDirective() {}
 
-  virtual void MyApply() {
-    TokenTextDirective::MyApply();
+protected:
+  virtual void MyApply(bool Replay) const {
+    TokenTextDirective::MyApply(Replay);
     PushIndent();
   }
 };
@@ -458,14 +585,15 @@ public:
 /// close parenthesis.
 class CloseTextDirective : public TokenTextDirective {
 public:
-  CloseTextDirective(TextFormatter *Formatter, const char *Text)
+  CloseTextDirective(TextFormatter *Formatter, const std::string &Text)
       : TokenTextDirective(Formatter, Text) {}
 
   virtual ~CloseTextDirective() {}
 
-  virtual void MyApply() {
+protected:
+  virtual void MyApply(bool Replay) const {
+    TokenTextDirective::MyApply(Replay);
     PopIndent();
-    TokenTextDirective::MyApply();
   }
 };
 
@@ -473,24 +601,30 @@ public:
 /// same line if possible.
 class StartClusteringDirective : public TextFormatter::Directive {
 public:
-  StartClusteringDirective(TextFormatter *Formatter)
+  explicit StartClusteringDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
   virtual ~StartClusteringDirective() {}
 
-  virtual void MyApply() {
+protected:
+  virtual void MyApply(bool Replay) const {
     StartClustering();
+  }
+
+  virtual void MaybeSaveForReplay() const {
+    if (GetClusteringLevel() > 1) AppendForReplay(this);
   }
 };
 
 class FinishClusteringDirective : public TextFormatter::Directive {
 public:
-  FinishClusteringDirective(TextFormatter *Formatter)
+  explicit FinishClusteringDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
   virtual ~FinishClusteringDirective() {}
 
-  virtual void MyApply() {
+protected:
+  virtual void MyApply(bool Replay) const {
     FinishClustering();
   }
 };
@@ -500,7 +634,7 @@ class ObjDumpStream;
 /// The formatter used for dumping records in ObjDumpStream.
 class RecordTextFormatter : public TextFormatter {
 public:
-  RecordTextFormatter(ObjDumpStream *ObjDump);
+  explicit RecordTextFormatter(ObjDumpStream *ObjDump);
 
   /// Writes out the given record of values as an instruction.
   void WriteValues(uint64_t Bit, const llvm::NaClBitcodeValues &Values);

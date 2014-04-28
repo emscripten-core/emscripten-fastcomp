@@ -742,4 +742,40 @@ TEST(NaClObjDumpText, VeryLongIndentRecords) {
                               false, false, 2, 64564, &Record, false));
 }
 
+// Tests that Clustering doesn't effect (intraline) indenting.
+TEST(NaClObjDumpTest, ClusterIndentInteraction) {
+  std::string Buffer;
+  raw_string_ostream BufStream(Buffer);
+  ObjDumpStream Stream(BufStream, true, true);
+
+  TextFormatter Formatter(Stream.Assembly(), 40, "  ");
+  TokenTextDirective Comma(&Formatter, ",");
+  SpaceTextDirective Space(&Formatter);
+  OpenTextDirective OpenParen(&Formatter, "(");
+  CloseTextDirective CloseParen(&Formatter, ")");
+  StartClusteringDirective StartCluster(&Formatter);
+  FinishClusteringDirective FinishCluster(&Formatter);
+  EndlineTextDirective Endline(&Formatter);
+
+  Formatter.Tokens() << "begin" << Space;
+  // Generates text on single line, setting indent at "(".
+  Formatter.Tokens()
+      << StartCluster << "SomeReasonablylongText" << OpenParen << FinishCluster;
+  // Generates a long cluster that should move to the next line.
+  Formatter.Tokens()
+      << StartCluster << "ThisIsBoring" << Space
+      << "VeryBoring" << Space << "longggggggggggggggggg"
+      << Space << "Example" << Comma << FinishCluster;
+  Formatter.Tokens() << CloseParen << Comma << Endline;
+  Stream.Flush();
+  EXPECT_EQ(
+"                                        |begin SomeReasonablylongText(\n"
+"                                        |                    ThisIsBoring \n"
+"                                        |                    VeryBoring \n"
+"                                        |                    longggggggggggggggggg\n"
+"                                        |                    Example,),\n",
+BufStream.str());
+}
+
+
 }
