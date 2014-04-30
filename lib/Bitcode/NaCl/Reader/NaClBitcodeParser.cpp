@@ -44,6 +44,40 @@ void NaClBitcodeBlock::Print(raw_ostream &os) const {
   os << "Block " << BlockID;
 }
 
+void NaClBitcodeParserListener::BeginBlock(unsigned NumWords) {
+  Parser->EnterBlock(NumWords);
+}
+
+void NaClBitcodeParserListener::SetBID() {
+  Parser->Record.SetStartBit(StartBit);
+  Parser->Record.Entry.Kind = NaClBitstreamEntry::Record;
+  Parser->Record.Entry.ID = naclbitc::BLOCKINFO_CODE_SETBID;
+  Parser->Record.Data.Code = naclbitc::BLOCKINFO_CODE_SETBID;
+  Parser->Record.Data.Values = Values;
+  GlobalBlockID = Values[0];
+  Parser->SetBID();
+}
+
+void NaClBitcodeParserListener::EndBlock() {
+  Parser->Record.SetStartBit(StartBit);
+  Parser->Record.Entry.Kind = NaClBitstreamEntry::EndBlock;
+  Parser->Record.Entry.ID = naclbitc::END_BLOCK;
+  Parser->Record.Data.Code = naclbitc::END_BLOCK;
+  Parser->Record.Data.Values.clear();
+  GlobalBlockID = naclbitc::BLOCKINFO_BLOCK_ID;
+}
+
+void NaClBitcodeParserListener::
+ProcessAbbreviation(NaClBitCodeAbbrev *Abbrev, bool IsLocal) {
+  Parser->Record.SetStartBit(StartBit);
+  Parser->Record.Entry.Kind = NaClBitstreamEntry::Record;
+  Parser->Record.Entry.ID = naclbitc::DEFINE_ABBREV;
+  Parser->Record.Data.Code = naclbitc::DEFINE_ABBREV;
+  Parser->Record.Data.Values = Values;
+  Parser->ProcessAbbreviation(IsLocal ? Parser->GetBlockID() : GlobalBlockID,
+                              Abbrev, IsLocal);
+}
+
 NaClBitcodeParser::~NaClBitcodeParser() {
   if (EnclosingParser) {
     EnclosingParser->Block.LocalStartBit += Block.GetNumBits();
@@ -59,18 +93,14 @@ bool NaClBitcodeParser::Parse() {
   return ParseBlock(Record.GetEntryID());
 }
 
-bool NaClBitcodeParser::ParseThisBlock() {
+bool NaClBitcodeParser::ParseThisBlockInternal() {
   if (GetBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
     // BLOCKINFO is a special part of the stream. Let the bitstream
     // reader process this block.
-    //
-    // TODO(kschimpf): Move this out of the bitstream reader, so that
-    // we have simplier API's for this class.
-    EnterBlockInfo();
-    if (Record.GetCursor().ReadBlockInfoBlock())
-      return Error("Malformed BlockInfoBlock");
-    ExitBlockInfo();
-    return false;
+    bool Result = Record.GetCursor().ReadBlockInfoBlock(Listener);
+    if (Result) return Error("Malformed BlockInfoBlock");
+    ProcessBlockInfo();
+    return Result;
   }
 
   // Regular block. Enter subblock.
@@ -93,7 +123,6 @@ bool NaClBitcodeParser::ParseThisBlock() {
     case NaClBitstreamEntry::Error:
       return Error("malformed bitcode file");
     case NaClBitstreamEntry::EndBlock: {
-      ExitBlock();
       return false;
     }
     case NaClBitstreamEntry::SubBlock: {
@@ -103,9 +132,7 @@ bool NaClBitcodeParser::ParseThisBlock() {
     case NaClBitstreamEntry::Record:
       // The interesting case.
       if (Record.GetEntryID() == naclbitc::DEFINE_ABBREV) {
-        //Process any block-local abbreviation definitions.
-        Record.GetCursor().ReadAbbrevRecord();
-        ProcessRecordAbbrev();
+        Record.GetCursor().ReadAbbrevRecord(true, Listener);
       } else {
         // Read in a record.
         Record.ReadValues();

@@ -53,8 +53,10 @@ public:
       IndentLevel(0),
       OS(OS),
       DumpOptions(DumpOptions),
-      Dist(Dist)
+      Dist(Dist),
+      AbbrevListener(this)
   {
+    SetListener(&AbbrevListener);
   }
 
   virtual ~PNaClBitcodeAnalyzerParser() {}
@@ -92,6 +94,8 @@ private:
   // The set of cached, indentation strings. Used for indenting
   // records when dumping.
   std::vector<std::string> IndentationCache;
+  // Listener used to get abbreviations as they are read.
+  NaClBitcodeParserListener AbbrevListener;
 };
 
 // Define the encodings for abbreviation operands that we recognize,
@@ -283,8 +287,13 @@ protected:
         EmitAttribute("NumWords", NumWords);
         EmitAttribute("BlockCodeSize", Record.GetCursor().getAbbrevIDWidth());
       }
-      EmitEndElementTag();
-      IncrementIndent();
+      if (!Context->DumpOptions.DumpDetails &&
+          naclbitc::BLOCKINFO_BLOCK_ID == GetBlockID()) {
+        EmitEndTag();
+      } else {
+        EmitEndElementTag();
+        IncrementIndent();
+      }
     }
   }
 
@@ -292,6 +301,9 @@ protected:
   // is found.
   virtual void ExitBlock() {
     if (Context->DumpOptions.DumpRecords) {
+      if (!Context->DumpOptions.DumpDetails &&
+          naclbitc::BLOCKINFO_BLOCK_ID == GetBlockID())
+        return;
       DecrementIndent();
       EmitBeginEndTag();
       EmitExitBlockTagName(Record.GetBlockID());
@@ -299,30 +311,24 @@ protected:
     }
   }
 
-  // Called after a BlockInfo block is parsed.
-  virtual void ExitBlockInfo() {
-    if (Context->DumpOptions.DumpRecords) {
-      EmitBeginStartTag();
-      EmitEnterBlockTagName(naclbitc::BLOCKINFO_BLOCK_ID);
-      if (Context->DumpOptions.DumpDetails) {
-        /// Long form. Fill out block with abbreviations read.
-        EmitEndElementTag();
-        IncrementIndent();
-        EmitBlockInfoAbbreviations();
-        DecrementIndent();
-        EmitBeginEndTag();
-        EmitExitBlockTagName(naclbitc::BLOCKINFO_BLOCK_ID);
-        EmitEndTag();
-      } else {
-        EmitEndTag();
-      }
+  virtual void SetBID() {
+    if (!(Context->DumpOptions.DumpRecords &&
+          Context->DumpOptions.DumpDetails)) {
+      return;
     }
+    EmitBeginStartTag();
+    EmitCodeTagName(naclbitc::BLOCKINFO_CODE_SETBID,
+                    naclbitc::BLOCKINFO_BLOCK_ID);
+    EmitStringAttribute("block",
+                        NaClBitcodeBlockDist::GetName(Record.GetValues()[0]));
+    EmitEndTag();
   }
 
-  // Process the abbreviation just read.
-  virtual void ProcessRecordAbbrev() {
+  virtual void ProcessAbbreviation(unsigned BlockID,
+                                   NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal) {
     if (Context->DumpOptions.DumpDetails) {
-      EmitAbbreviation(Record.GetCursor().GetNewestAbbrev());
+      EmitAbbreviation(Abbrev);
     }
   }
 
@@ -381,32 +387,6 @@ protected:
         Context->OS << "(" << Op.getEncodingData() << ")";
       }
       Context->OS << "'";
-    }
-  }
-
-  /// Emit the abbreviations that were read when the BlockInfo block
-  /// was parsed.
-  void EmitBlockInfoAbbreviations() {
-    SmallVector<unsigned, 10> BlockIDs;
-    NaClBitstreamReader &Reader = Record.GetReader();
-    Reader.GetBlockInfoBlockIDs(BlockIDs);
-    for (size_t I=0, IEnd = BlockIDs.size(); I < IEnd; ++I) {
-      unsigned BlockID = BlockIDs[I];
-      if (const NaClBitstreamReader::BlockInfo *Info =
-          Reader.getBlockInfo(BlockID)) {
-        EmitBeginStartTag();
-        EmitCodeTagName(naclbitc::BLOCKINFO_CODE_SETBID,
-                        naclbitc::BLOCKINFO_BLOCK_ID);
-        EmitStringAttribute("block",
-                            NaClBitcodeBlockDist::GetName(Info->BlockID));
-        EmitEndTag();
-        for (std::vector<NaClBitCodeAbbrev*>::const_iterator
-                 AbbrevIter = Info->Abbrevs.begin(),
-                 AbbrevIterEnd = Info->Abbrevs.end();
-             AbbrevIter != AbbrevIterEnd; ++AbbrevIter) {
-          EmitAbbreviation(*AbbrevIter);
-        }
-      }
     }
   }
 

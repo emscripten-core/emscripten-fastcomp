@@ -25,8 +25,7 @@
 // bitcode file.
 //
 // The second type of abbreviations are local to a particular instance
-// of a block. They are defined by abbreviations processed by the
-// ProcessRecordAbbrev method of class NaClBitcodeParser.
+// of a block.
 //
 // In pnacl-bccompress, for simplicity, we will only add global
 // abbreviations. Local abbreviations are converted to corresponding
@@ -554,8 +553,11 @@ public:
                     BlockAbbrevsMapType &BlockAbbrevsMap)
       : NaClBitcodeParser(Cursor),
         BlockAbbrevsMap(BlockAbbrevsMap),
-        BlockDist(&NaClCompressBlockDistElement::Sentinel)
-  {}
+        BlockDist(&NaClCompressBlockDistElement::Sentinel),
+        AbbrevListener(this)
+  {
+    SetListener(&AbbrevListener);
+  }
 
   virtual ~NaClAnalyzeParser() {}
 
@@ -572,6 +574,9 @@ public:
 
   // Nested distribution capturing distribution of records in bitcode file.
   NaClBitcodeBlockDist BlockDist;
+
+  // Listener used to get abbreviations as they are read.
+  NaClBitcodeParserListener AbbrevListener;
 };
 
 class NaClBlockAnalyzeParser : public NaClBitcodeParser {
@@ -645,41 +650,16 @@ public:
         ->GetAbbrevDist().AddRecord(Record);
   }
 
-  virtual void ProcessRecordAbbrev() {
-    // Convert the local abbreviation to a corresponding global
-    // abbreviation.
-    const NaClBitCodeAbbrev *Abbrev = Record.GetCursor().GetNewestAbbrev();
+  virtual void ProcessAbbreviation(unsigned BlockID,
+                                   NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal) {
     int Index;
-    AddAbbreviation(GetBlockID(), Abbrev->Simplify(), Index);
-    LocalAbbrevBitstreamToInternalMap.InstallNewBitstreamAbbrevIndex(Index);
-  }
-
-  virtual void ExitBlockInfo() {
-    // Now extract out global abbreviations and put into corresponding
-    // block abbreviations map, so that they will be used when the
-    // bitcode is compressed.
-    NaClBitstreamReader &Reader = Record.GetReader();
-    SmallVector<unsigned, 12> BlockIDs;
-    Reader.GetBlockInfoBlockIDs(BlockIDs);
-    for (SmallVectorImpl<unsigned>::const_iterator
-             IDIter = BlockIDs.begin(), IDIterEnd = BlockIDs.end();
-         IDIter != IDIterEnd; ++IDIter) {
-      unsigned BlockID = *IDIter;
-      BlockAbbrevs* BlkAbbrevs = GetGlobalAbbrevs(BlockID);
-      if (const NaClBitstreamReader::BlockInfo *Info =
-          Reader.getBlockInfo(BlockID)) {
-        for (std::vector<NaClBitCodeAbbrev*>::const_iterator
-                 AbbrevIter = Info->Abbrevs.begin(),
-                 AbbrevIterEnd = Info->Abbrevs.end();
-             AbbrevIter != AbbrevIterEnd;
-             ++AbbrevIter) {
-          NaClBitCodeAbbrev *Abbrev = *AbbrevIter;
-          int Index;
-          AddAbbreviation(BlockID, Abbrev->Simplify(), Index);
-          BlkAbbrevs->GetGlobalAbbrevBitstreamToInternalMap().
-              InstallNewBitstreamAbbrevIndex(Index);
-        }
-      }
+    AddAbbreviation(BlockID, Abbrev->Simplify(), Index);
+    if (IsLocal) {
+      LocalAbbrevBitstreamToInternalMap.InstallNewBitstreamAbbrevIndex(Index);
+    } else {
+      GetGlobalAbbrevs(BlockID)->GetGlobalAbbrevBitstreamToInternalMap().
+          InstallNewBitstreamAbbrevIndex(Index);
     }
   }
 
@@ -1413,7 +1393,7 @@ protected:
     Context->Writer.ExitBlock();
   }
 
-  virtual void ExitBlockInfo() {
+  virtual void ProcessBlockInfo() {
     assert(!Context->FoundFirstBlockInfo &&
            "Input bitcode has more that one BlockInfoBlock");
     Context->FoundFirstBlockInfo = true;
@@ -1437,7 +1417,6 @@ protected:
         Context->Writer.EmitBlockInfoAbbrev(BlockID, Abbrev);
       }
     }
-    Context->Writer.ExitBlock();
   }
 
   virtual void ProcessRecord() {

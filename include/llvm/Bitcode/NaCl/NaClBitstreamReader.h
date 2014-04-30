@@ -99,13 +99,6 @@ public:
   /// cursor that walks over it.
   bool hasBlockInfoRecords() const { return !BlockInfoRecords.empty(); }
 
-  /// Gets the set of blocks defined in the block info records structure.
-  void GetBlockInfoBlockIDs(SmallVectorImpl<unsigned> &Out) {
-    for (size_t i = 0, e = BlockInfoRecords.size(); i != e; ++i) {
-      Out.push_back(BlockInfoRecords[i].BlockID);
-    }
-  }
-
   /// getBlockInfo - If there is block info for the specified ID, return it,
   /// otherwise return null.
   const BlockInfo *getBlockInfo(unsigned BlockID) const {
@@ -162,6 +155,50 @@ struct NaClBitstreamEntry {
   static NaClBitstreamEntry getRecord(unsigned AbbrevID) {
     NaClBitstreamEntry E; E.Kind = Record; E.ID = AbbrevID; return E;
   }
+};
+
+/// Models default view of a bitcode record.
+typedef SmallVector<uint64_t, 8> NaClBitcodeRecordVector;
+
+/// Class NaClAbbrevListener is used to allow instances of class
+/// NaClBitcodeParser to listen to record details when processing
+/// abbreviations. The major reason for using a listener is that the
+/// NaCl bitcode reader would require a major rewrite (including the
+/// introduction of more overhead) if we were to lift abbreviations up
+/// to the bitcode reader. That is, not only would we have to lift the
+/// block processing up into the readers (i.e. many blocks in
+/// NaClBitcodeReader and NaClBitcodeParser), but add many new API's
+/// to allow the readers to update internals of the bit stream reader
+/// appropriately.
+class NaClAbbrevListener {
+  NaClAbbrevListener(const NaClAbbrevListener&) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClAbbrevListener&) LLVM_DELETED_FUNCTION;
+public:
+  NaClAbbrevListener() {}
+
+  /// Called to process the read abbreviation.
+  virtual void ProcessAbbreviation(NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal) = 0;
+
+  /// Called after entering block. NumWords is the number of words
+  /// in the block.
+  virtual void BeginBlock(unsigned NumWords) = 0;
+
+  /// Called if a naclbitc::BLOCKINFO_CODE_SETBID record is found in
+  /// NaClBitstreamCursor::ReadBlockInfoBlock.
+  virtual void SetBID() = 0;
+
+  /// Called just before an EndBlock record is processed by
+  /// NaClBitstreamCursor::ReadBlockInfoBlock
+  virtual void EndBlock() = 0;
+
+  /// The values of the bitcode record associated with the called
+  /// virtual function.
+  NaClBitcodeRecordVector Values;
+
+  /// Start bit for current record being processed in
+  /// NaClBitstreamCursor::ReadBlockInfoBlock.
+  uint64_t StartBit;
 };
 
 /// NaClBitstreamCursor - This represents a position within a bitcode
@@ -278,14 +315,16 @@ public:
   };
   
   /// advance - Advance the current bitstream, returning the next entry in the
-  /// stream.
-  NaClBitstreamEntry advance(unsigned Flags = 0) {
+  /// stream. Use the given abbreviation listener (if provided).
+  NaClBitstreamEntry advance(unsigned Flags, NaClAbbrevListener *Listener) {
     while (1) {
+      if (Listener) Listener->StartBit = GetCurrentBitNo();
       unsigned Code = ReadCode();
       if (Code == naclbitc::END_BLOCK) {
         // Pop the end of the block unless Flags tells us not to.
         if (!(Flags & AF_DontPopBlockAtEnd) && ReadBlockEnd())
           return NaClBitstreamEntry::getError();
+        if (Listener) Listener->EndBlock();
         return NaClBitstreamEntry::getEndBlock();
       }
       
@@ -296,7 +335,7 @@ public:
           !(Flags & AF_DontAutoprocessAbbrevs)) {
         // We read and accumulate abbrev's, the client can't do anything with
         // them anyway.
-        ReadAbbrevRecord();
+        ReadAbbrevRecord(true, Listener);
         continue;
       }
 
@@ -309,7 +348,7 @@ public:
   NaClBitstreamEntry advanceSkippingSubblocks(unsigned Flags = 0) {
     while (1) {
       // If we found a normal entry, return it.
-      NaClBitstreamEntry Entry = advance(Flags);
+      NaClBitstreamEntry Entry = advance(Flags, 0);
       if (Entry.Kind != NaClBitstreamEntry::SubBlock)
         return Entry;
       
@@ -536,13 +575,6 @@ public:
     return CurAbbrevs[AbbrevNo];
   }
 
-  /// Returns the last (i.e. newest) abbreviation added to the current
-  /// block.
-  const NaClBitCodeAbbrev *GetNewestAbbrev() const {
-    assert(CurAbbrevs.size() && "No newest abbrev!");
-    return CurAbbrevs.back();
-  }
-
   /// skipRecord - Read the current record and discard it.
   void skipRecord(unsigned AbbrevID);
   
@@ -551,9 +583,13 @@ public:
   //===--------------------------------------------------------------------===//
   // Abbrev Processing
   //===--------------------------------------------------------------------===//
-  void ReadAbbrevRecord();
+  // IsLocal indicates where the abbreviation occurs. If it is in the
+  // BlockInfo block, IsLocal is false. In all other cases, IsLocal is
+  // true.
+  void ReadAbbrevRecord(bool IsLocal,
+                        NaClAbbrevListener *Listener);
   
-  bool ReadBlockInfoBlock();
+  bool ReadBlockInfoBlock(NaClAbbrevListener *Listener);
 };
 
 } // End llvm namespace

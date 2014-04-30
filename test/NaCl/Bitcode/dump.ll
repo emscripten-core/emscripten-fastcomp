@@ -130,7 +130,7 @@ merge:                                            ; preds = %false, %true
 
 ; DRWD: <MODULE_BLOCK abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=2>
 ; DRWD:   <VERSION abbrev='UNABBREVIATED' op0=1/>
-; DRWD:   <BLOCKINFO_BLOCK abbrev='ENTER_SUBBLOCK'>
+; DRWD:   <BLOCKINFO_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=24 BlockCodeSize=2>
 ; DRWD:     <SETBID abbrev='UNABBREVIATED' block='VALUE_SYMTAB'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='FIXED(3)' op1='VBR(8)' op2='ARRAY
 ; DRWD:                    op3='FIXED(8)'/>
@@ -165,7 +165,7 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(3)' op1='ARRAY' op2='FIXED(8)'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)' op2='VBR(6)'/>
-; DRWD:   </BLOCKINFO_BLOCK abbrev='END_BLOCK'/>
+; DRWD:   </BLOCKINFO_BLOCK abbrev='END_BLOCK'>
 ; DRWD:   <TYPE_BLOCK_ID abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(8)' op1='FIXED(3)' op2='LIT(0)'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(21)' op1='FIXED(1)' op2='ARRAY'

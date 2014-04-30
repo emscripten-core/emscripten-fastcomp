@@ -779,7 +779,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
 
   // Read all the records for this module.
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advance();
+    NaClBitstreamEntry Entry = Stream.advance(0, 0);
 
     switch (Entry.Kind) {
     case NaClBitstreamEntry::Error:
@@ -798,7 +798,7 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
         return Error(StrM.str());
       }
       case naclbitc::BLOCKINFO_BLOCK_ID:
-        if (Stream.ReadBlockInfoBlock())
+        if (Stream.ReadBlockInfoBlock(0))
           return Error("Malformed BlockInfoBlock");
         break;
       case naclbitc::TYPE_BLOCK_ID_NEW:
@@ -922,7 +922,7 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
       return false;
 
     NaClBitstreamEntry Entry =
-      Stream.advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs);
+        Stream.advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs, 0);
 
     switch (Entry.Kind) {
     case NaClBitstreamEntry::Error:
@@ -934,7 +934,7 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
       case naclbitc::BLOCKINFO_BLOCK_ID:
-        if (Stream.ReadBlockInfoBlock())
+        if (Stream.ReadBlockInfoBlock(0))
           return Error("Malformed BlockInfoBlock");
         break;
       case naclbitc::MODULE_BLOCK_ID:
@@ -1042,7 +1042,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
   // Read all the records.
   SmallVector<uint64_t, 64> Record;
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advance();
+    NaClBitstreamEntry Entry = Stream.advance(0, 0);
 
     switch (Entry.Kind) {
     case NaClBitstreamEntry::Error:
