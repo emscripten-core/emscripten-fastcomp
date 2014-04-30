@@ -1791,6 +1791,7 @@ void JSWriter::printFunctionBody(const Function *F) {
         }
         for (BlockCondMap::const_iterator I = BlocksToConditions.begin(), E = BlocksToConditions.end(); I != E; ++I) {
           const BasicBlock *BB = I->first;
+          if (BB == DD) continue; // ok to eliminate this, default dest will get there anyhow
           std::string P = getPhiCode(&*BI, BB);
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], I->second.c_str(), P.size() > 0 ? P.c_str() : NULL);
         }
