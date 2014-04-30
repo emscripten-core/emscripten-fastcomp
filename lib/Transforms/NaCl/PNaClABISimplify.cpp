@@ -92,7 +92,12 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 
   PM.add(createPromoteI1OpsPass());
 
-  // Vector simplifications.
+  // Vector simplifications.  The following pass relies on
+  // ConstantInsertExtractElementIndex running after it, and it must run
+  // before GlobalizeConstantVectors because the mask argument of
+  // shufflevector must be a constant (the pass would otherwise violate
+  // this requirement).
+  PM.add(createExpandShuffleVectorPass());
   // TODO(jfb) Remove duplicate constant vector values using
   //           ConstantMerge after the GlobalizeConstantVectors pass?
   PM.add(createGlobalizeConstantVectorsPass());

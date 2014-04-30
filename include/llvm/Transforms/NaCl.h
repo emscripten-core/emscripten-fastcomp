@@ -25,6 +25,7 @@ class Value;
 
 BasicBlockPass *createConstantInsertExtractElementIndexPass();
 BasicBlockPass *createExpandGetElementPtrPass();
+BasicBlockPass *createExpandShuffleVectorPass();
 BasicBlockPass *createFixVectorLoadStoreAlignmentPass();
 BasicBlockPass *createPromoteI1OpsPass();
 FunctionPass *createExpandConstantExprPass();
