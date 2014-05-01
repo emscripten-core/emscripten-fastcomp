@@ -1013,7 +1013,7 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser) {
   }
 
-  virtual void EnterBlockInfo() LLVM_OVERRIDE {
+  virtual void ProcessBlockInfo() LLVM_OVERRIDE {
     EnterBlock(0);
   }
 
