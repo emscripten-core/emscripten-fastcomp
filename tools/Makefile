@@ -33,7 +33,7 @@ PARALLEL_DIRS := opt llvm-as llvm-dis llc llvm-ar llvm-nm llvm-link \
                  llvm-dwarfdump llvm-cov llvm-size llvm-stress llvm-mcmarkup \
                  llvm-symbolizer obj2yaml yaml2obj llvm-c-test \
                  pnacl-llc pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
-                 pnacl-benchmark pnacl-thaw pnacl-bccompress
+                 pnacl-benchmark pnacl-thaw pnacl-bccompress pnacl-bcdis
 
 # If Intel JIT Events support is configured, build an extra tool to test it.
 ifeq ($(USE_INTEL_JITEVENTS), 1)
