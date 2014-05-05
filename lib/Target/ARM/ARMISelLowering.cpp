@@ -80,6 +80,18 @@ ARMInterworking("arm-interworking", cl::Hidden,
   cl::desc("Enable / disable ARM interworking (for debugging only)"),
   cl::init(true));
 
+// @LOCALMOD-START
+// PNaCl's build of compiler-rt does not define __aeabi_* functions for ARM
+// yet.  For Non-SFI NaCl, where we don't use "nacl" in the target triple,
+// we use the following option to turn off use of the __aeabi_* functions.
+// TODO(mseaborn): In the longer term, it would be cleaner to change the
+// compiler-rt build to define __aeabi_* functions.
+static cl::opt<bool>
+EnableARMAEABIFunctions("arm-enable-aeabi-functions",
+  cl::desc("Allow using ARM __aeabi_* functions in generated code"),
+  cl::init(true));
+// @LOCALMOD-END
+
 namespace {
   class ARMCCState : public CCState {
   public:
@@ -267,7 +279,8 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
   setLibcallName(RTLIB::SRL_I128, 0);
   setLibcallName(RTLIB::SRA_I128, 0);
   // @LOCALMOD: use standard names and calling conventions for pnacl
-  if (!Subtarget->isTargetNaCl() && Subtarget->isAAPCS_ABI() && !Subtarget->isTargetDarwin()) { 
+  if (!Subtarget->isTargetNaCl() && EnableARMAEABIFunctions &&
+      Subtarget->isAAPCS_ABI() && !Subtarget->isTargetDarwin()) {
     // Double-precision floating-point arithmetic helper functions
     // RTABI chapter 4.1.2, Table 2
     setLibcallName(RTLIB::ADD_F64, "__aeabi_dadd");
