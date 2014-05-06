@@ -288,7 +288,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
             if (Factor <= UNROLL_LOOP_MAX) {
               // unroll
               for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
-                std::string Add = "+" + utostr(Pos + Offset) + (Align == 1 ? "|0" : "");
+                std::string Add = "+" + utostr(Pos + Offset);
                 Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + getHeapAccess(Src + Add, Align) + "|0";
               }
             } else {
