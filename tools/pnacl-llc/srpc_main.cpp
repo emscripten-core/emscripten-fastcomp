@@ -121,6 +121,7 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
   CmdLineArgs->push_back("-mcpu=core2");
 #elif defined(__arm__)
   CmdLineArgs->push_back("-mcpu=cortex-a9");
+#else
 #error "Unknown architecture"
 #endif
   return true;
@@ -176,10 +177,16 @@ ArgStringList *GetDefaultCommandLine() {
   }
 // Some cases for building this with nacl-gcc.
 #elif defined(__i386__)
+  (void)llc_args_x8664;
+  (void)llc_args_arm;
   llc_args = llc_args_x8632;
 #elif defined(__x86_64__)
+  (void)llc_args_x8632;
+  (void)llc_args_arm;
   llc_args = llc_args_x8664;
 #elif defined(__arm__)
+  (void)llc_args_x8632;
+  (void)llc_args_x8664;
   llc_args = llc_args_arm;
 #else
 #error "Unknown architecture"

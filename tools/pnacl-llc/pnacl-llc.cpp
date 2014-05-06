@@ -441,7 +441,7 @@ static int runCompilePasses(Module *mod,
   if (LazyBitcode) {
     FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
     P->doInitialization();
-    int FuncIndex = 0;
+    unsigned FuncIndex = 0;
     switch (SplitModuleSched) {
     case SplitModuleStatic:
       for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
@@ -459,7 +459,7 @@ static int runCompilePasses(Module *mod,
       Module::iterator I = mod->begin();
       while (FuncIndex < NumFunctions) {
         ChunkSize = FuncQueue->RecommendedChunkSize();
-        int NextIndex;
+        unsigned NextIndex;
         bool grabbed = FuncQueue->GrabFunctionDynamic(FuncIndex, ChunkSize,
                                                       NextIndex);
         if (grabbed) {

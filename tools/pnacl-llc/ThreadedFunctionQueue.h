@@ -24,7 +24,7 @@ class ThreadedFunctionQueue {
  public:
   ThreadedFunctionQueue(Module *mod, unsigned NumThreads)
       : NumThreads(NumThreads),
-        NumFunctions(mod->getFunctionList().size()),
+        NumFunctions(0),
         CurrentFunction(0) {
     assert(NumThreads > 0);
     size_t Size = 0;
@@ -43,7 +43,7 @@ class ThreadedFunctionQueue {
   ~ThreadedFunctionQueue() {}
 
   // Assign functions in a static manner between threads.
-  bool GrabFunctionStatic(int FuncIndex, unsigned ThreadIndex) const {
+  bool GrabFunctionStatic(unsigned FuncIndex, unsigned ThreadIndex) const {
     // Note: This assumes NumThreads == SplitModuleCount, so that
     // (a) every function of every module is covered by the NumThreads and
     // (b) no function is covered twice by the threads.
@@ -62,15 +62,15 @@ class ThreadedFunctionQueue {
   // next. Each thread may have a different value for the ideal ChunkSize
   // so it is hard to predict the next available function solely based
   // on incrementing by ChunkSize.
-  bool GrabFunctionDynamic(int FuncIndex, unsigned ChunkSize,
-                           int &NextIndex) {
-    int Cur = CurrentFunction;
+  bool GrabFunctionDynamic(unsigned FuncIndex, unsigned ChunkSize,
+                           unsigned &NextIndex) {
+    unsigned Cur = CurrentFunction;
     if (FuncIndex < Cur) {
       NextIndex = Cur;
       return false;
     }
     NextIndex = Cur + ChunkSize;
-    int Index;
+    unsigned Index;
     if (Cur == (Index = __sync_val_compare_and_swap(&CurrentFunction,
                                                     Cur, NextIndex))) {
       return true;
@@ -102,8 +102,8 @@ class ThreadedFunctionQueue {
 
  private:
   const unsigned NumThreads;
-  int NumFunctions;
-  volatile int CurrentFunction;
+  unsigned NumFunctions;
+  volatile unsigned CurrentFunction;
 
   ThreadedFunctionQueue(
       const ThreadedFunctionQueue&) LLVM_DELETED_FUNCTION;
