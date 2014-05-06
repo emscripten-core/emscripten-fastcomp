@@ -1033,12 +1033,15 @@ class NaClDisTypesParser : public NaClDisBlockParser {
 public:
   NaClDisTypesParser(unsigned BlockID,
                      NaClDisBlockParser *EnclosingParser)
-      : NaClDisBlockParser(BlockID, EnclosingParser)
+      : NaClDisBlockParser(BlockID, EnclosingParser),
+        ExpectedNumTypes(0),
+        IsFirstRecord(true)
   {
   }
 
-  virtual ~NaClDisTypesParser() {}
+  virtual ~NaClDisTypesParser();
 
+private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
 
   virtual void ProcessRecord() LLVM_OVERRIDE;
@@ -1047,7 +1050,17 @@ public:
   BitcodeId NextTypeId() {
     return BitcodeId('t', GetNumTypes());
   }
+
+  uint32_t ExpectedNumTypes;
+  bool IsFirstRecord;
 };
+
+NaClDisTypesParser::~NaClDisTypesParser() {
+  if (GetNumTypes() != ExpectedNumTypes) {
+    Errors() << "Expected " << ExpectedNumTypes << " types but found: "
+             << GetNumTypes() << "\n";
+  }
+}
 
 void NaClDisTypesParser::PrintBlockHeader() {
   Tokens() << "types" << Space() << OpenCurly()
@@ -1068,7 +1081,11 @@ void NaClDisTypesParser::ProcessRecord() {
       Errors() << "Count record should have 1 argument. Found: "
                << Values.size() << "\n";
     }
+    if (!IsFirstRecord) {
+      Errors() << "Count record not first record of types block\n";
+    }
     Tokens() << "count" << Space() << Size << Semicolon() << Endline();
+    ExpectedNumTypes = Size;
     break;
   }
   case naclbitc::TYPE_CODE_VOID: {
@@ -1181,6 +1198,7 @@ void NaClDisTypesParser::ProcessRecord() {
     break;
   }
   ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  IsFirstRecord = false;
 }
 
 /// Parses and disassembles the globalvars block.
