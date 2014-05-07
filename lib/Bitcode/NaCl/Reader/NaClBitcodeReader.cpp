@@ -1172,9 +1172,17 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       TrueVal = ConvertOpToScalar(TrueVal, CurBBNo);
       FalseVal = ConvertOpToScalar(FalseVal, CurBBNo);
 
-      // expect i1
-      if (Cond->getType() != Type::getInt1Ty(Context))
-        return Error("Invalid SELECT condition type");
+      // select condition can be either i1 or [N x i1]
+      if (VectorType* vector_type =
+          dyn_cast<VectorType>(Cond->getType())) {
+        // expect <n x i1>
+        if (vector_type->getElementType() != Type::getInt1Ty(Context))
+          return Error("Invalid SELECT vector condition type");
+      } else {
+        // expect i1
+        if (Cond->getType() != Type::getInt1Ty(Context))
+          return Error("Invalid SELECT condition type");
+      }
 
       I = SelectInst::Create(Cond, TrueVal, FalseVal);
       break;

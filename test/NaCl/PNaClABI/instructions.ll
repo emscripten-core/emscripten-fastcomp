@@ -268,13 +268,23 @@ foo:
   %vphi8 = phi <16 x i8> [undef, %entry], [undef, %foo]
   %vphi16 = phi <8 x i16> [undef, %entry], [undef, %foo]
   %vphi32 = phi <4 x i32> [undef, %entry], [undef, %foo]
+
   %select = select i1 true, i8 undef, i8 undef
+
   %vselect4x1 = select i1 true, <4 x i1> undef, <4 x i1> undef
   %vselect8x1 = select i1 true, <8 x i1> undef, <8 x i1> undef
   %vselect16x1 = select i1 true, <16 x i1> undef, <16 x i1> undef
   %vselect8 = select i1 true, <16 x i8> undef, <16 x i8> undef
   %vselect16 = select i1 true, <8 x i16> undef, <8 x i16> undef
   %vselect32 = select i1 true, <4 x i32> undef, <4 x i32> undef
+
+  %vvselect4x1 = select <4 x i1> undef, <4 x i1> undef, <4 x i1> undef
+  %vvselect8x1 = select <8 x i1> undef, <8 x i1> undef, <8 x i1> undef
+  %vvselect16x1 = select <16 x i1> undef, <16 x i1> undef, <16 x i1> undef
+  %vvselect8 = select <16 x i1> undef, <16 x i8> undef, <16 x i8> undef
+  %vvselect16 = select <8 x i1> undef, <8 x i16> undef, <8 x i16> undef
+  %vvselect32 = select <4 x i1> undef, <4 x i32> undef, <4 x i32> undef
+
   call void @conversion()
   br i1 undef, label %foo, label %bar
 bar:

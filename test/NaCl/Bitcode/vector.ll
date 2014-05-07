@@ -22,6 +22,7 @@ define internal void @binops() {      ; CHECK-LABEL: binops
   %16 = and <4 x i32> undef, undef    ; CHECK-NEXT: %16 = and <4 x i32> undef, undef
   %17 = or <4 x i32> undef, undef     ; CHECK-NEXT: %17 = or <4 x i32> undef, undef
   %18 = xor <4 x i32> undef, undef    ; CHECK-NEXT: %18 = xor <4 x i32> undef, undef
+  %19 = select <4 x i1> undef, <4 x i32> undef, <4 x i32> undef ; CHECK-NEXT: %19 = select <4 x i1> undef, <4 x i32> undef, <4 x i32> undef
   ret void                            ; CHECK-NEXT: ret void
 }
 
