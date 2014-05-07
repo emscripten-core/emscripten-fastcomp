@@ -175,6 +175,7 @@ class NaClAbbrevListener {
   void operator=(const NaClAbbrevListener&) LLVM_DELETED_FUNCTION;
 public:
   NaClAbbrevListener() {}
+  virtual ~NaClAbbrevListener() {}
 
   /// Called to process the read abbreviation.
   virtual void ProcessAbbreviation(NaClBitCodeAbbrev *Abbrev,
