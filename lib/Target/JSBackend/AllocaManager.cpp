@@ -247,9 +247,8 @@ void AllocaManager::computeInterBlockLiveness() {
     }
 
     // If it contains new live blocks, prepare to propagate them.
-    if (Temp.test(BLI.LiveIn)) {
-      BLI.LiveIn |= Temp;
-      Temp.reset(BLI.End);
+    Temp.reset(BLI.End);
+    if (Temp.test(BLI.LiveOut)) {
       BLI.LiveOut |= Temp;
       for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
            SI != SE; ++SI) {
@@ -265,10 +264,9 @@ void AllocaManager::computeInterBlockLiveness() {
     }
 
     // If it contains new live blocks, prepare to propagate them.
-    if (Temp.test(BLI.LiveOut)) {
-      // TODO: As above, what are the semantics of a standalone lifetime end?
-      BLI.LiveOut |= Temp;
-      Temp.reset(BLI.Start);
+    // TODO: As above, what are the semantics of a standalone lifetime end?
+    Temp.reset(BLI.Start);
+    if (Temp.test(BLI.LiveIn)) {
       BLI.LiveIn |= Temp;
       for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
            PI != PE; ++PI) {
