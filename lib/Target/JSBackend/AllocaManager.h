@@ -46,7 +46,8 @@ class AllocaManager {
 
   // Worklist for inter-block liveness analysis.
   typedef SmallSetVector<const BasicBlock *, 8> InterBlockWorklistVec;
-  InterBlockWorklistVec InterBlockWorklist;
+  InterBlockWorklistVec InterBlockTopDownWorklist;
+  InterBlockWorklistVec InterBlockBottomUpWorklist;
 
   // Map allocas to their index in AllocasByIndex.
   typedef DenseMap<const AllocaInst *, size_t> AllocaMap;

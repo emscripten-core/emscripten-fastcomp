@@ -206,7 +206,7 @@ void AllocaManager::collectBlocks() {
     if (BLI.LiveOut.any()) {
       for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
            SI != SE; ++SI) {
-        InterBlockWorklist.insert(*SI);
+        InterBlockTopDownWorklist.insert(*SI);
       }
     }
 
@@ -218,7 +218,7 @@ void AllocaManager::collectBlocks() {
     if (BLI.LiveIn.any()) {
       for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
            PI != PE; ++PI) {
-        InterBlockWorklist.insert(*PI);
+        InterBlockBottomUpWorklist.insert(*PI);
       }
     }
   }
@@ -233,29 +233,10 @@ void AllocaManager::computeInterBlockLiveness() {
 
   BitVector Temp(AllocaCount);
 
-  // This is currently using a very simple-minded bi-directional liveness
-  // propagation algorithm. Numerous opportunities for compile time
-  // speedups here.
-  while (!InterBlockWorklist.empty()) {
-    const BasicBlock *BB = InterBlockWorklist.pop_back_val();
+  // Proporgate liveness backwards.
+  while (!InterBlockBottomUpWorklist.empty()) {
+    const BasicBlock *BB = InterBlockBottomUpWorklist.pop_back_val();
     BlockLifetimeInfo &BLI = BlockLiveness[BB];
-
-    // Compute the new live-in set.
-    for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
-         PI != PE; ++PI) {
-      Temp |= BlockLiveness[*PI].LiveOut;
-    }
-
-    // If it contains new live blocks, prepare to propagate them.
-    Temp.reset(BLI.End);
-    if (Temp.test(BLI.LiveOut)) {
-      BLI.LiveOut |= Temp;
-      for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
-           SI != SE; ++SI) {
-        InterBlockWorklist.insert(*SI);
-      }
-    }
-    Temp.reset();
 
     // Compute the new live-out set.
     for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
@@ -270,7 +251,33 @@ void AllocaManager::computeInterBlockLiveness() {
       BLI.LiveIn |= Temp;
       for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
            PI != PE; ++PI) {
-        InterBlockWorklist.insert(*PI);
+        InterBlockBottomUpWorklist.insert(*PI);
+      }
+    }
+    Temp.reset();
+  }
+
+  // Proporgate liveness forwards.
+  while (!InterBlockTopDownWorklist.empty()) {
+    const BasicBlock *BB = InterBlockTopDownWorklist.pop_back_val();
+    BlockLifetimeInfo &BLI = BlockLiveness[BB];
+
+    // Compute the new live-in set.
+    for (const_pred_iterator PI = pred_begin(BB), PE = pred_end(BB);
+         PI != PE; ++PI) {
+      Temp |= BlockLiveness[*PI].LiveOut;
+    }
+
+    // Also record the live-in values.
+    BLI.LiveIn |= Temp;
+
+    // If it contains new live blocks, prepare to propagate them.
+    Temp.reset(BLI.End);
+    if (Temp.test(BLI.LiveOut)) {
+      BLI.LiveOut |= Temp;
+      for (succ_const_iterator SI = succ_begin(BB), SE = succ_end(BB);
+           SI != SE; ++SI) {
+        InterBlockTopDownWorklist.insert(*SI);
       }
     }
     Temp.reset();
