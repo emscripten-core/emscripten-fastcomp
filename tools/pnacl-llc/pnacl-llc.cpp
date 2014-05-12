@@ -420,6 +420,10 @@ static int runCompilePasses(Module *mod,
     TLI->disableAllFunctions();
   PM->add(TLI);
 
+  // Allow subsequent passes to better optimize vector instructions.
+  // This pass uses the TargetLibraryInfo above.
+  PM->add(createCombineVectorInstructionsPass());
+
   // Add intenal analysis passes from the target machine.
   Target.addAnalysisPasses(*PM.get());
 
