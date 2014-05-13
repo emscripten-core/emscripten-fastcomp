@@ -697,7 +697,7 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
     case Type::IntegerTyID: {
       // fall through to the end for nonspecific
       switch (t->getIntegerBitWidth()) {
-        case 1:  if (!(sign & ASM_NONSPECIFIC)) return (s + "&1").str();
+        case 1:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&1").str()     : (s + "<<31>>31").str();
         case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
         case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
         case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
