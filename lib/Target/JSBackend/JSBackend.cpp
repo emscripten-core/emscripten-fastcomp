@@ -1560,7 +1560,10 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       Code << getValueAsStr(I->getOperand(0)) << " << " << bits << " >> " << bits;
       break;
     }
-    case Instruction::ZExt:     Code << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED); break;
+    case Instruction::ZExt: {
+      Code << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED);
+      break;
+    }
     case Instruction::FPExt: {
       if (PreciseF32) {
         Code << "+" << getValueAsStr(I->getOperand(0)); break;
@@ -1574,9 +1577,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       break;
     }
     case Instruction::SIToFP:   Code << '(' << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_SIGNED),   I->getType()) << ')'; break;
-    case Instruction::UIToFP:   Code << '('<< getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()) << ')'; break;
-    case Instruction::FPToSI:   Code << '('<< getDoubleToInt(getValueAsParenStr(I->getOperand(0))) << ')'; break;
-    case Instruction::FPToUI:   Code << '('<< getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED) << ')'; break;
+    case Instruction::UIToFP:   Code << '(' << getCast(getValueAsCastParenStr(I->getOperand(0), ASM_UNSIGNED), I->getType()) << ')'; break;
+    case Instruction::FPToSI:   Code << '(' << getDoubleToInt(getValueAsParenStr(I->getOperand(0))) << ')'; break;
+    case Instruction::FPToUI:   Code << '(' << getCast(getDoubleToInt(getValueAsParenStr(I->getOperand(0))), I->getType(), ASM_UNSIGNED) << ')'; break;
     case Instruction::PtrToInt: Code << '(' << getValueAsStr(I->getOperand(0)) << ')'; break;
     case Instruction::IntToPtr: Code << '(' << getValueAsStr(I->getOperand(0)) << ')'; break;
     default: llvm_unreachable("Unreachable");
