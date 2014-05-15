@@ -126,7 +126,7 @@ static void ExpandVAArgInst(VAArgInst *Inst) {
       Inst->getType()->getPointerTo()->getPointerTo(), "arglist", Inst), Inst);
   Value *CurrentPtr = CopyDebug(new LoadInst(ArgList, "arglist_current", Inst),
                                 Inst);
-  Value *Result = CopyDebug(new LoadInst(CurrentPtr, "va_arg", Inst), Inst);
+  Value *Result = CopyDebug(new LoadInst(CurrentPtr, "va_arg", false, 4, Inst), Inst); // XXX Emscripten: varargs are 4-byte aligned
   Result->takeName(Inst);
 
   // Update the va_list to point to the next argument.
@@ -148,7 +148,7 @@ static void ExpandVACopyInst(VACopyInst *Inst) {
                                          Inst), Inst);
   Value *Dest = CopyDebug(new BitCastInst(Inst->getDest(), PtrTy, "vacopy_dest",
                                           Inst), Inst);
-  Value *CurrentPtr = CopyDebug(new LoadInst(Src, "vacopy_currentptr", Inst),
+  Value *CurrentPtr = CopyDebug(new LoadInst(Src, "vacopy_currentptr", false, 4, Inst), // XXX Emscripten: varargs are 4-byte aligned
                                 Inst);
   CopyDebug(new StoreInst(CurrentPtr, Dest, Inst), Inst);
   Inst->eraseFromParent();
