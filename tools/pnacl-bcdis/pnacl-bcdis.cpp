@@ -792,6 +792,10 @@ protected:
     return Context->Space();
   }
 
+  naclbitc::TokenTextDirective &Comma() {
+    return Context->Comma();
+  }
+
   naclbitc::OpenTextDirective &OpenParen() {
     return Context->OpenParen();
   }
@@ -1231,13 +1235,70 @@ public:
 
   virtual ~NaClDisValueSymtabParser() {}
 
+private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
+
+  virtual void ProcessRecord() LLVM_OVERRIDE;
 };
 
 void NaClDisValueSymtabParser::PrintBlockHeader() {
   Tokens() << "valuesymtab" << Space() << OpenCurly()
            << Space() << Space() << "// BlockID = " << GetBlockID()
            << Endline();
+}
+
+void NaClDisValueSymtabParser::ProcessRecord() {
+  ObjDumpSetRecordBitAddress(Record.GetStartBit());
+  const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
+  switch (Record.GetCode()) {
+  case naclbitc::VST_CODE_ENTRY: {
+    // VST_ENTRY: [valueid, namechar x N]
+    if (Values.size() <= 1) {
+      Errors() <<
+          "Valuesymtab entry record must contain at least 2 arguments.\n";
+      break;
+    }
+    Tokens() << GetBitcodeId(Values[0]) << Space() << ":" << Space();
+    // Check if the name of the symbol is alphanumeric. If so, print
+    // as a string. Otherwise, print a sequence of bytes.
+    // Note: The check isChar6 is a test for aphanumeric + {'.', '_'}.
+    bool IsChar6 = true;  // Until proven otherwise.
+    for (size_t i = 1; i < Values.size(); ++i) {
+      uint64_t Byte = Values[i];
+      if (Byte >= 256) {
+        Errors() << "Argument " << i << " of symbol entry not byte: "
+                 << Byte << "\n";
+        IsChar6 = false;
+        break;
+      }
+      if (!NaClBitCodeAbbrevOp::isChar6(Byte))
+        IsChar6 = false;
+    }
+
+    if (IsChar6) {
+      Tokens() << StartCluster() << "\"";
+      for (size_t i = 1; i < Values.size(); ++i) {
+        Tokens() << static_cast<char>(Values[i]);
+      }
+      Tokens() << "\"" << Semicolon() << FinishCluster() << Endline();
+    } else {
+      Tokens() << StartCluster() << OpenCurly();
+      for (size_t i = 1; i < Values.size(); ++i) {
+        if (i > 1) {
+          Tokens() << Comma() << FinishCluster() << Space()
+                   << StartCluster();
+        }
+        Tokens() << format("%3u", static_cast<unsigned>(Values[i]));
+      }
+      Tokens() << CloseCurly() << FinishCluster() << Endline();
+    }
+    break;
+  }
+  default:
+    Errors() << "Unknown record in valuesymtab block.\n";
+    break;
+  }
+  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
 }
 
 /// Parses and disassembles a constants block.
