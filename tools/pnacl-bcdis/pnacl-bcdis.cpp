@@ -1503,7 +1503,12 @@ void NaClDisValueSymtabParser::ProcessRecord() {
           Tokens() << Comma() << FinishCluster() << Space()
                    << StartCluster();
         }
-        Tokens() << format("%3u", static_cast<unsigned>(Values[i]));
+        char ch = Values[i];
+        if (NaClBitCodeAbbrevOp::isChar6(ch)) {
+          Tokens() << "'" << ch << "'";
+        } else {
+          Tokens() << format("%3u", static_cast<unsigned>(ch));
+        }
       }
       Tokens() << CloseCurly() << FinishCluster() << Endline();
     }

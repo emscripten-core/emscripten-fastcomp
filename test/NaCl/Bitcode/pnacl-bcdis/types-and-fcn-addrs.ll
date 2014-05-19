@@ -81,8 +81,8 @@ declare i32 @foo$bar(i32);
 ; CHECK-NEXT:     298:1     <1, 0, 102, 117, 110, 99>|    @f0 : "func";
 ; Note that that @f7 is the sequence of characters for "foo$bar". It isn't
 ; printed as a string, because it can't be represented using "char6".
-; CHECK-NEXT:     303:2     <1, 7, 102, 111, 111, 36,|    @f7 : {102, 111, 111,  36,  98, 
-; CHECK-NEXT:                98, 97, 114>            |            97, 114}
+; CHECK-NEXT:     303:2     <1, 7, 102, 111, 111, 36,|    @f7 : {'f', 'o', 'o',  36, 'b', 
+; CHECK-NEXT:                98, 97, 114>            |           'a', 'r'}
 ; CHECK-NEXT:     311:4     <1, 6, 77, 117, 108>     |    @f6 : "Mul";
 ; CHECK-NEXT:     315:7   <65534>                    |  }
 ; CHECK-NEXT:     320:0 <65534>                      |}
