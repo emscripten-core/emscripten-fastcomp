@@ -375,6 +375,7 @@ public:
         Header(Header),
         HeaderBuffer(HeaderBuffer),
         NumFunctions(0),
+        NumGlobals(0),
         NumParams(0),
         NumValuedInsts(0),
         UnknownType(Type::getVoidTy(getGlobalContext())),
@@ -473,6 +474,16 @@ public:
   /// bitcode file by one.
   void IncNumDefinedFunctions() {
     ++NumDefinedFunctions;
+  }
+
+  void IncNumGlobals() {
+    NumGlobals++;
+  }
+
+  /// Returns the number of globals (currently) defined in the bitcode
+  /// file.
+  uint32_t GetNumGlobals() const {
+    return NumGlobals;
   }
 
   /// Installs the given type to the next available parameter index.
@@ -673,6 +684,8 @@ private:
   std::vector<Type*>FunctionIdType;
   // The number of function indices currently defined.
   uint32_t NumFunctions;
+  // The number of global indices currently defined.
+  uint32_t NumGlobals;
   // The list of known parameter types (index i defines the type
   // associated with parameter index i).
   std::vector<Type*>ParamIdType;
@@ -701,11 +714,14 @@ BitcodeId NaClDisParser::GetBitcodeId(uint32_t Index) {
     return BitcodeId('f', Index);
   }
   Index -= NumFunctions;
+  if (Index < NumGlobals) {
+    return BitcodeId('g', Index);
+  }
+  Index -= NumGlobals;
   if (Index < NumParams) {
     return BitcodeId('p', Index);
   }
   Index -= NumParams;
-  // TODO(kschimpf): Add global addresses.
   // TODO(kschimpf): Add function-level constants.
   // TODO(kschimpf): Add instruction values.
   return BitcodeId('v', Index);
@@ -715,7 +731,9 @@ Type *NaClDisParser::GetValueType(uint32_t Index, bool UnderlyingType) {
   if (Index < NumFunctions)
     return UnderlyingType ? GetFunctionType(Index) : PointerType;
   Index -= NumFunctions;
-  // TODO(kschimpf): Add adjustment for global addresses.
+  if (Index < NumGlobals)
+    return PointerType;
+  Index -= NumGlobals;
   if (Index < NumParams)
     return GetParamType(Index);
   // TODO(kschimpf): Add adjustment for function-level constants
@@ -895,6 +913,14 @@ protected:
 
   uint32_t GetNumFunctions() const {
     return Context->GetNumFunctions();
+  }
+
+  void IncNumGlobals() {
+    Context->IncNumGlobals();
+  }
+
+  uint32_t GetNumGlobals() const {
+    return Context->GetNumGlobals();
   }
 
   void InstallFunctionType(Type *Ty) {
@@ -1206,22 +1232,211 @@ void NaClDisTypesParser::ProcessRecord() {
 }
 
 /// Parses and disassembles the globalvars block.
-/// TODO(kschimpf): Process records of this class.
 class NaClDisGlobalsParser : public NaClDisBlockParser {
 public:
   NaClDisGlobalsParser(unsigned BlockID,
                        NaClDisBlockParser *EnclosingParser)
-      : NaClDisBlockParser(BlockID, EnclosingParser) {}
+      : NaClDisBlockParser(BlockID, EnclosingParser),
+        NumInitializers(0),
+        InsideCompound(false),
+        BaseTabs(GetAssemblyNumTabs()+1),
+        ExpectedNumGlobals(0) {}
 
   virtual ~NaClDisGlobalsParser() {}
 
+private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
+
+  virtual void ProcessRecord() LLVM_OVERRIDE;
+
+  virtual void ExitBlock() LLVM_OVERRIDE;
+
+  // Expected number of initializers associated with last globalvars
+  // record
+  uint32_t NumInitializers;
+  // True if last globalvars record was defined by a compound record.
+  bool InsideCompound;
+  // Number of tabs used to indent elements in the globals block.
+  unsigned BaseTabs;
+  // The number of expected global variables.
+  unsigned ExpectedNumGlobals;
+
+  // Returns the ID for the next defined global.
+  BitcodeId NextGlobalId() {
+    return BitcodeId('g', GetNumGlobals());
+  }
+
+  // Prints out the close initializer "}" if necessary, and fixes
+  // the indentation to match previous indentation.
+  void InsertCloseInitializer();
 };
 
 void NaClDisGlobalsParser::PrintBlockHeader() {
   Tokens() << "globals" << Space() << OpenCurly()
            << Space() << Space() << "// BlockID = " << GetBlockID()
            << Endline();
+}
+
+void NaClDisGlobalsParser::InsertCloseInitializer() {
+  if (InsideCompound) {
+    while (BaseTabs + 1 < GetAssemblyNumTabs()) DecAssemblyIndent();
+    Tokens() << CloseCurly() << Endline();
+  }
+  while (BaseTabs < GetAssemblyNumTabs()) DecAssemblyIndent();
+  ObjDumpFlush();
+  NumInitializers = 0;
+  InsideCompound = false;
+}
+
+void NaClDisGlobalsParser::ExitBlock() {
+  if (NumInitializers > 0) {
+    BitcodeId LastGlobal('g', (GetNumGlobals()-1));
+    Errors() << "More initializers for " << LastGlobal << " expected: "
+             << NumInitializers << "\n";
+  }
+  if (GetNumGlobals() != ExpectedNumGlobals) {
+    Errors() << "Expected " << ExpectedNumGlobals << " globals but found: "
+             << GetNumGlobals() << "\n";
+  }
+  NaClDisBlockParser::ExitBlock();
+}
+
+void NaClDisGlobalsParser::ProcessRecord() {
+  ObjDumpSetRecordBitAddress(Record.GetStartBit());
+  const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
+  switch (Record.GetCode()) {
+  case naclbitc::GLOBALVAR_VAR: {
+    // VAR: [align, isconst]
+    if (Values.size() != 2) {
+      Errors() << "Globalvar record expects two arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    if (GetNumGlobals() == ExpectedNumGlobals) {
+      Errors() << "Exceeded expected number of globals: "
+               << ExpectedNumGlobals << "\n";
+    }
+    if (NumInitializers > 0) {
+      Errors() << "Previous initializer list too short. Expects "
+               << NumInitializers << " more initializers\n";
+      InsertCloseInitializer();
+    }
+    uint32_t Alignment = (1 << Values[0]) >> 1;
+    Tokens() << StartCluster() << (Values[1] ? "const" : "var")
+             << Space() << NextGlobalId()
+             << Comma() << FinishCluster() << Space()
+             << StartCluster() << "align" << Space() << Alignment
+             << Comma() << FinishCluster() << Endline();
+    IncAssemblyIndent();
+    IncNumGlobals();
+    NumInitializers = 1;
+    break;
+  }
+  case naclbitc::GLOBALVAR_COMPOUND:
+    // COMPOUND: [size]
+    if (Values.size() != 1) {
+      Errors() << "Compound record expects one argument. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    if (NumInitializers == 1) {
+      if (InsideCompound) {
+        Errors() << "Nested initialization records not allowed\n";
+        InsertCloseInitializer();
+      }
+    } else {
+      Errors() << "Compound record must follow globalvars record\n";
+      InsertCloseInitializer();
+    }
+    Tokens() << StartCluster() << "initializers" << Space()
+             << Values[0] << FinishCluster() << Space()
+             << OpenCurly() << Endline();
+    IncAssemblyIndent();
+    NumInitializers = Values[0];
+    InsideCompound = true;
+    break;
+  case naclbitc::GLOBALVAR_ZEROFILL:
+    // ZEROFILL: [size]
+    if (Values.size() != 1) {
+      Errors() << "Zerofill record expects one argument. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    if (NumInitializers == 0) {
+      Errors() << "Zerofill initializer not associated with globalvar record\n";
+    }
+    Tokens() << "zerofill" << Space() << Values[0] << Semicolon() << Endline();
+    --NumInitializers;
+    break;
+  case naclbitc::GLOBALVAR_DATA: {
+    // DATA: [b0, b1, ...]
+    if (Values.empty()) {
+      Errors() << "Globals data record must have arguments.\n";
+    }
+    if (NumInitializers == 0) {
+      Errors() << "Data initializer not associated with globalvar record\n";
+    }
+    Tokens() << StartCluster() << OpenCurly();
+    for (size_t i = 0; i < Values.size(); ++i) {
+      if (i > 0) Tokens() << Comma() << FinishCluster() << Space();
+      uint64_t Byte = Values[i];
+      if (Byte >= 256) {
+        Errors() << "Invalid byte value in data record: " << Byte << "\n";
+        Byte &= 0xFF;
+      }
+      if (i > 0) Tokens() << StartCluster();
+      Tokens() << format("%3u", static_cast<unsigned>(Byte));
+    }
+    Tokens() << CloseCurly() << FinishCluster() << Endline();
+    --NumInitializers;
+    break;
+  }
+  case naclbitc::GLOBALVAR_RELOC:
+    // RELOC: [val, [addend]]
+    if (Values.empty() || Values.size() > 2) {
+      Errors() << "Invalid reloc record size: " << Values.size() << "\n";
+      break;
+    }
+    if (NumInitializers == 0) {
+      Errors() <<
+          "Relocation initializer not associated with globalvar record\n";
+    }
+    Tokens() << "reloc" << Space() << StartCluster() << GetBitcodeId(Values[0]);
+    if (Values.size() == 2) {
+      int32_t Addend = static_cast<int32_t>(Values[1]);
+      char Operator = '+';
+      if (Addend < 0) {
+        Operator = '-';
+        Addend = -Addend;
+      }
+      Tokens() << Space()<< Operator << Space() << Addend;
+    }
+    Tokens() << Semicolon() << FinishCluster() << Endline();
+    --NumInitializers;
+    break;
+  case naclbitc::GLOBALVAR_COUNT: {
+    // COUNT: [n]
+    uint32_t Count = 0;
+    if (Values.size() == 1) {
+      Count = Values[0];
+    } else {
+      Errors() << "Globals count record expects one argument. Found: "
+               << Values.size() << "\n";
+    }
+    if (GetNumGlobals() != 0)
+      Errors() << "Count record not first record in block.\n";
+    Tokens() << "count" << Space() << Count << Semicolon() << Endline();
+    ExpectedNumGlobals = Count;
+    break;
+  }
+  default:
+    Errors() << "Unknown Record found in globals block.\n";
+  }
+
+  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+
+  if (GetNumGlobals() > 0 && NumInitializers == 0)
+    InsertCloseInitializer();
 }
 
 /// Parsers and disassembles a valuesymtab block.
