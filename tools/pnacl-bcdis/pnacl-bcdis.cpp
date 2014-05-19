@@ -648,8 +648,16 @@ public:
     ObjDump.SetRecordBitAddress(Bit);
   }
 
-  void ObjDumpWrite(uint64_t Bit, const NaClBitcodeRecordData &Record) {
-    ObjDump.Write(Bit, Record);
+  void ObjDumpWrite(uint64_t Bit,
+                    const NaClBitcodeRecordData &Record,
+                    int32_t AbbrevIndex =
+                    naclbitc::ABBREV_INDEX_NOT_SPECIFIED) {
+    ObjDump.Write(Bit, Record, AbbrevIndex);
+  }
+
+  void ObjDumpWrite(uint64_t Bit,
+                    const NaClBitcodeRecord &Record) {
+    ObjDump.Write(Bit, Record.GetRecordData(), Record.GetAbbreviationIndex());
   }
 
   AssemblyTextFormatter::TypeDirective &
@@ -887,7 +895,15 @@ protected:
     Context->ObjDumpFlush();
   }
 
-  void ObjDumpWrite(uint64_t Bit, const NaClBitcodeRecordData &Record) {
+  void ObjDumpWrite(uint64_t Bit,
+                    const NaClBitcodeRecordData &Record,
+                    int32_t AbbrevIndex =
+                    naclbitc::ABBREV_INDEX_NOT_SPECIFIED) {
+    Context->ObjDumpWrite(Bit, Record, AbbrevIndex);
+  }
+
+  void ObjDumpWrite(uint64_t Bit,
+                    const NaClBitcodeRecord &Record) {
     Context->ObjDumpWrite(Bit, Record);
   }
 
@@ -1013,7 +1029,7 @@ void NaClDisBlockParser::ExitBlock() {
   Tokens() << CloseCurly() << Endline();
   NaClBitcodeRecordData Exit;
   Exit.Code = naclbitc::BLK_CODE_EXIT;
-  ObjDumpWrite(Record.GetStartBit(), Exit);
+  ObjDumpWrite(Record.GetStartBit(), Exit, naclbitc::END_BLOCK);
 }
 
 void NaClDisBlockParser::DumpEnterBlockRecord() {
@@ -1023,13 +1039,13 @@ void NaClDisBlockParser::DumpEnterBlockRecord() {
   Enter.Code = naclbitc::BLK_CODE_ENTER;
   Enter.Values.push_back(GetBlockID());
   Enter.Values.push_back(Record.GetCursor().getAbbrevIDWidth());
-  ObjDumpWrite(GetBlock().GetStartBit(), Enter);
+  ObjDumpWrite(GetBlock().GetStartBit(), Enter, naclbitc::ENTER_SUBBLOCK);
 }
 
 void NaClDisBlockParser::ProcessRecord() {
   // Note: Only called if block is not understood. Hence, we
   // only report the records.
-  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
 /// Parses and disassembles the blockinfo block.
@@ -1227,7 +1243,7 @@ void NaClDisTypesParser::ProcessRecord() {
     Errors() << "Unknown record in types block.\n";
     break;
   }
-  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  ObjDumpWrite(Record.GetStartBit(), Record);
   IsFirstRecord = false;
 }
 
@@ -1433,7 +1449,7 @@ void NaClDisGlobalsParser::ProcessRecord() {
     Errors() << "Unknown Record found in globals block.\n";
   }
 
-  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  ObjDumpWrite(Record.GetStartBit(), Record);
 
   if (GetNumGlobals() > 0 && NumInitializers == 0)
     InsertCloseInitializer();
@@ -1518,7 +1534,7 @@ void NaClDisValueSymtabParser::ProcessRecord() {
     Errors() << "Unknown record in valuesymtab block.\n";
     break;
   }
-  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
 /// Parses and disassembles a constants block.
@@ -1718,7 +1734,7 @@ void NaClDisModuleParser::ProcessRecord() {
     Errors() << "Unknown Record found in module block\n";
     break;
   }
-  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
 bool NaClDisParser::ParseBlock(unsigned BlockID) {

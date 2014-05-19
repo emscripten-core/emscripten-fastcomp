@@ -631,13 +631,36 @@ protected:
 
 class ObjDumpStream;
 
+/// Models that an abbreviation index is not specified when dumping a
+/// bitcode record.
+static int32_t ABBREV_INDEX_NOT_SPECIFIED = -1;
+
 /// The formatter used for dumping records in ObjDumpStream.
 class RecordTextFormatter : public TextFormatter {
 public:
+  /// The address write width used to print the number of
+  /// bytes in the record bit address, when printing records.
+  static const unsigned AddressWriteWidth = 8;
+
   explicit RecordTextFormatter(ObjDumpStream *ObjDump);
 
   /// Writes out the given record of values as an instruction.
-  void WriteValues(uint64_t Bit, const llvm::NaClBitcodeValues &Values);
+  void WriteValues(uint64_t Bit,
+                   const llvm::NaClBitcodeValues &Values,
+                   int32_t AbbrevIndex = ABBREV_INDEX_NOT_SPECIFIED);
+
+  /// Returns text corresponding to an empty label column.
+  std::string GetEmptyLabelColumn();
+
+  // Converts the given start bit to the corresponding address to
+  // print. That is, generate "Bit/8:Bit%8" value.
+  static std::string RecordAddress(uint64_t Bit, unsigned MinByteWidth);
+
+  // Returns the record address (when printing records) associated with
+  // the given bit.
+  static std::string RecordAddress(uint64_t Bit) {
+    return RecordAddress(Bit, AddressWriteWidth);
+  }
 
 protected:
   virtual void WriteLineIndents();
@@ -792,10 +815,11 @@ public:
   /// Dumps a record (at the given bit), along with all buffered assembly,
   /// comments, and errors, into the objdump stream.
   void Write(uint64_t Bit,
-             const llvm::NaClBitcodeRecordData &Record) {
+             const llvm::NaClBitcodeRecordData &Record,
+             int32_t AbbrevIndex = ABBREV_INDEX_NOT_SPECIFIED) {
     LastKnownBit = Bit;
     NaClBitcodeValues Values(Record);
-    RecordFormatter.WriteValues(Bit, Values);
+    RecordFormatter.WriteValues(Bit, Values, AbbrevIndex);
     Flush();
   }
 
@@ -868,12 +892,14 @@ public:
 
   // Converts the given start bit to the corresponding address to
   // print. That is, generate "Bit/8:Bit%8" value.
-  std::string ObjDumpAddress(uint64_t Bit, unsigned MinByteWidth=1);
+  std::string ObjDumpAddress(uint64_t Bit, unsigned MinByteWidth=1) {
+    return RecordFormatter.RecordAddress(Bit + StartOffset, MinByteWidth);
+  }
 
   // Returns the record address (when printing records) associated with
   // the given bit.
   std::string RecordAddress(uint64_t Bit) {
-    return ObjDumpAddress(Bit, AddressWriteWidth);
+    return RecordFormatter.RecordAddress(Bit + StartOffset);
   }
 
 private:
@@ -905,9 +931,6 @@ private:
   // The last known bit passed to the objdump object. Used as default
   // for automatically generated errors.
   uint64_t LastKnownBit;
-  /// The address write width used to print the number of
-  /// bytes in the record bit address, when printing records.
-  unsigned AddressWriteWidth;
   /// The buffer for records to be printed to during the next write.
   std::string RecordBuffer;
   /// The stream to buffer recordds into the record buffer.

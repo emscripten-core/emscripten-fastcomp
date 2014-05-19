@@ -166,32 +166,59 @@ Allocate(TextFormatter *Formatter, const std::string &Text) {
 RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
     : TextFormatter(ObjDump->Records(), 0, "  "),
       ObjDump(ObjDump),
-      Label(' ', ObjDump->ObjDumpAddress(0).size()),
       OpenBrace(this, "<"),
       CloseBrace(this, ">"),
       Comma(this, ","),
       Space(this),
       Endline(this),
       StartCluster(this),
-      FinishCluster(this)
-{}
+      FinishCluster(this) {
+  // Handle fact that 64-bit values can take up to 21 characters.
+  MinLineWidth = 21;
+  Label = RecordAddress(0);
+}
+
+std::string RecordTextFormatter::RecordAddress(uint64_t Bit,
+                                               unsigned MinByteWidth) {
+  std::string Buffer;
+  raw_string_ostream Stream(Buffer);
+  Stream << '%' << MinByteWidth << PRIu64 << ":%u";
+  Stream.flush();
+  std::string FormatString(Buffer);
+  Buffer.clear();
+  Stream << format(FormatString.c_str(),
+                   (Bit / 8),
+                   static_cast<unsigned>(Bit % 8));
+  return Stream.str();
+}
+
+std::string RecordTextFormatter::GetEmptyLabelColumn() {
+  std::string Buffer;
+  raw_string_ostream StrmBuffer(Buffer);
+  for (size_t i = 0; i < Label.size(); ++i) {
+    StrmBuffer << ' ';
+  }
+  StrmBuffer << '|';
+  return StrmBuffer.str();
+}
 
 void RecordTextFormatter::WriteLineIndents() {
   if (AtInstructionBeginning) {
-    BaseStream << Label;
+    BaseStream << Label << '|';
   } else {
-    for (size_t i = 0; i < Label.size(); ++i) {
-      BaseStream << ' ';
-    }
+    BaseStream << GetEmptyLabelColumn();
   }
-  BaseStream << ' ';
   LinePosition += Label.size() + 1;
   TextFormatter::WriteLineIndents();
 }
 
 void RecordTextFormatter::WriteValues(uint64_t Bit,
-                                      const llvm::NaClBitcodeValues &Values) {
+                                      const llvm::NaClBitcodeValues &Values,
+                                      int32_t AbbrevIndex) {
   Label = ObjDump->RecordAddress(Bit);
+  if (AbbrevIndex != ABBREV_INDEX_NOT_SPECIFIED) {
+    TextStream << AbbrevIndex << ":" << Space;
+  }
   TextStream << OpenBrace;
   for (size_t i = 0; i < Values.size(); ++i) {
     if (i > 0) {
@@ -225,7 +252,6 @@ ObjDumpStream::ObjDumpStream(raw_ostream &Stream,
       MessageStream(MessageBuffer),
       ColumnSeparator('|'),
       LastKnownBit(0),
-      AddressWriteWidth(8),
       RecordBuffer(),
       RecordStream(RecordBuffer),
       RecordFormatter(this) {
@@ -260,21 +286,6 @@ void ObjDumpStream::Fatal(uint64_t Bit,
   PrintMessagePrefix("Error", Bit) << Message;
   Write(Bit, Record);
   llvm::report_fatal_error("Unable to continue");
-}
-
-std::string ObjDumpStream::ObjDumpAddress(uint64_t Bit,
-                                          unsigned MinByteWidth) {
-  Bit += StartOffset;
-  std::string Buffer;
-  raw_string_ostream Stream(Buffer);
-  Stream << '%' << MinByteWidth << PRIu64 << ":%u";
-  Stream.flush();
-  std::string FormatString(Buffer);
-  Buffer.clear();
-  Stream << format(FormatString.c_str(),
-                   (Bit / 8),
-                   static_cast<unsigned>(Bit % 8));
-  return Stream.str();
 }
 
 // Dumps the next line of text in the buffer. Returns the number of characters
@@ -319,6 +330,12 @@ void ObjDumpStream::Flush() {
       size_t Column = DumpLine(Stream, RecordBuffer, RecordIndex, RecordSize);
       // Now move to separator if assembly is to be printed also.
       if (DumpRecords && DumpAssembly) {
+        if (Column == 0) {
+          // Add indent filler.
+          std::string Label = RecordFormatter.GetEmptyLabelColumn();
+          Stream << Label;
+          Column += Label.size();
+        }
         for (size_t i = Column; i < RecordWidth; ++i) {
           Stream << ' ';
         }
