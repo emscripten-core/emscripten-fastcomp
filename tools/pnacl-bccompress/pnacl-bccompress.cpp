@@ -109,6 +109,16 @@ ShowAbbreviationFrequencies(
              "Turns off compression."),
     cl::init(false));
 
+// Note: When this flag is true, we still generate new abbreviations,
+// because we don't want to add the complexity of turning it off.
+// Rather, we simply make sure abbreviations are ignored when writing
+// out the final copy.
+static cl::opt<bool>
+RemoveAbbreviations(
+    "remove-abbreviations",
+    cl::desc("Remove abbreviations from input bitcode file."),
+    cl::init(false));
+
 /// Error - All bitcode analysis errors go through this function,
 /// making this a good place to breakpoint if debugging.
 static bool Error(const std::string &Err) {
@@ -1381,7 +1391,7 @@ protected:
     // Note: We must dump module abbreviations as local
     // abbreviations, because they are in a yet to be
     // dumped BlockInfoBlock.
-    if (BlockID == naclbitc::MODULE_BLOCK_ID) {
+    if (!RemoveAbbreviations && BlockID == naclbitc::MODULE_BLOCK_ID) {
       BlockAbbrevs* Abbrevs = GetGlobalAbbrevs(naclbitc::MODULE_BLOCK_ID);
       for (unsigned i = 0; i < Abbrevs->GetNumberAbbreviations(); ++i) {
         Context->Writer.EmitAbbrev(Abbrevs->GetIndexedAbbrev(i)->Copy());
@@ -1400,6 +1410,7 @@ protected:
 
     // Generate global abbreviations within a blockinfo block.
     Context->Writer.EnterBlockInfoBlock();
+    if (RemoveAbbreviations) return;
     for (BlockAbbrevsMapType::const_iterator
              Iter = Context->BlockAbbrevsMap.begin(),
              IterEnd = Context->BlockAbbrevsMap.end();
@@ -1420,11 +1431,15 @@ protected:
   }
 
   virtual void ProcessRecord() {
+    const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
+    if (RemoveAbbreviations) {
+      Context->Writer.EmitRecord(Record.GetCode(), Values, 0);
+      return;
+    }
     // Find best fitting abbreviation to use, and print out the record
     // using that abbreviations.
     unsigned AbbrevIndex =
         BlockAbbreviations->GetRecordAbbrevIndex(Record.GetRecordData());
-    const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
     if (AbbrevIndex == naclbitc::UNABBREV_RECORD) {
       Context->Writer.EmitRecord(Record.GetCode(), Values, 0);
     } else {
