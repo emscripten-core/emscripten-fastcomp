@@ -628,7 +628,6 @@ int main(int argc, char **argv) {
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
-  initializeCombineVectorInstructionsPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);

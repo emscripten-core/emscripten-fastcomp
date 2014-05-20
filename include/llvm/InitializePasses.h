@@ -268,7 +268,6 @@ void initializeMachineFunctionPrinterPassPass(PassRegistry&);
 // @LOCALMOD-BEGIN
 void initializeAddPNaClExternalDeclsPass(PassRegistry&);
 void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
-void initializeCombineVectorInstructionsPass(PassRegistry&);
 void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
 void initializeExpandArithWithOverflowPass(PassRegistry&);
 void initializeExpandByValPass(PassRegistry&);

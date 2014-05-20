@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 //
 // Replace all shufflevector instructions by insertelement /
-// extractelement. CombineVectorInstructions is able to reconstruct the
-// shufflevector.
+// extractelement. InstCombine should be able to reconstruct the
+// shufflevector,
 //
 //===----------------------------------------------------------------------===//
 
