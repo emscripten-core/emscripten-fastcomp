@@ -112,5 +112,12 @@ namespace llvm {
   void NaClWriteHeader(const NaClBitcodeHeader &Header,
                        NaClBitstreamWriter &Stream);
 
+  /// NaClObjDump - Read PNaCl bitcode file from input, and print a
+  /// textual representation of its contents. NoRecords and NoAssembly
+  /// define what should not be included in the dump. Note: The caller
+  /// retains ownership of the Input memory buffer.
+  bool NaClObjDump(MemoryBuffer *Input, raw_ostream &output,
+                   bool NoRecords, bool NoAssembly);
+
 } // end llvm namespace
 #endif

@@ -14,6 +14,7 @@ add_llvm_library(LLVMNaClBitAnalysis
   NaClCompressBlockDist.cpp
   NaClCompressCodeDist.cpp
   NaClObjDumpStream.cpp
+  NaClObjDump.cpp
   )
 
 add_dependencies(LLVMNaClBitAnalysis intrinsics_gen)
