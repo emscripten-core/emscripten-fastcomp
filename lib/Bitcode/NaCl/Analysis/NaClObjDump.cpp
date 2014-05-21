@@ -19,22 +19,6 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
-namespace llvm {
-namespace naclbitc {
-
-// Special record codes used to model codes for predefined records.
-// They are very large so that they do not conflict with existing
-// record codes for user-defined blocks.
-enum SpecialBlockCodes {
-  BLK_CODE_ENTER = 65535,
-  BLK_CODE_EXIT  = 65534,
-  BLK_CODE_DEFINE_ABBREV = 65533,
-  BLK_CODE_HEADER = 65532
-};
-
-}
-}
-
 namespace {
 
 using namespace llvm;
@@ -322,6 +306,10 @@ class NaClDisParser : public NaClBitcodeParser {
 
   // The output stream to generate disassembly into.
   naclbitc::ObjDumpStream ObjDump;
+
+  // Listener used to get abbreviations as they are read.
+  NaClBitcodeParserListener AbbrevListener;
+
 public:
   NaClDisParser(NaClBitcodeHeader &Header,
                 const unsigned char *HeaderBuffer,
@@ -329,6 +317,7 @@ public:
                 raw_ostream &Stream, bool NoRecords, bool NoAssembly)
       : NaClBitcodeParser(Cursor),
         ObjDump(Stream, !NoRecords, !NoAssembly),
+        AbbrevListener(this),
         AssemblyFormatter(ObjDump),
         Header(Header),
         HeaderBuffer(HeaderBuffer),
@@ -340,6 +329,7 @@ public:
         PointerType(Type::getInt32Ty(getGlobalContext())),
         ComparisonType(Type::getInt1Ty(getGlobalContext())),
         NumDefinedFunctions(0) {
+    SetListener(&AbbrevListener);
   }
 
   virtual ~NaClDisParser() {}
@@ -737,6 +727,10 @@ public:
 
   virtual void ProcessRecord() LLVM_OVERRIDE;
 
+  virtual void ProcessAbbreviation(unsigned BlockID,
+                                   NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal) LLVM_OVERRIDE;
+
 protected:
   // Prints the block header instruction for the block. Called by EnterBlock.
   virtual void PrintBlockHeader();
@@ -1000,6 +994,12 @@ void NaClDisBlockParser::DumpEnterBlockRecord() {
   ObjDumpWrite(GetBlock().GetStartBit(), Enter, naclbitc::ENTER_SUBBLOCK);
 }
 
+void NaClDisBlockParser::ProcessAbbreviation(unsigned BlockID,
+                                             NaClBitCodeAbbrev *Abbrev,
+                                             bool IsLocal) {
+  ObjDumpWrite(Record.GetStartBit(), Record);
+}
+
 void NaClDisBlockParser::ProcessRecord() {
   // Note: Only called if block is not understood. Hence, we
   // only report the records.
@@ -1017,11 +1017,9 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser) {
   }
 
-  virtual void ProcessBlockInfo() LLVM_OVERRIDE {
-    EnterBlock(0);
-  }
-
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
+
+  virtual void SetBID() LLVM_OVERRIDE;
 
   virtual ~NaClDisBlockInfoParser() {}
 };
@@ -1030,6 +1028,10 @@ void NaClDisBlockInfoParser::PrintBlockHeader() {
   Tokens() << "abbreviations" << Space() << OpenCurly()
            << Space() << Space() << "// BlockID = "
            << GetBlockID() << Endline();
+}
+
+void NaClDisBlockInfoParser::SetBID() {
+  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
 }
 
 /// Parses and disassembles the types block.

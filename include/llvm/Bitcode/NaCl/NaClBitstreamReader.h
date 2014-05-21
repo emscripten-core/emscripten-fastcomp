@@ -183,7 +183,7 @@ public:
 
   /// Called after entering block. NumWords is the number of words
   /// in the block.
-  virtual void BeginBlock(unsigned NumWords) = 0;
+  virtual void BeginBlockInfoBlock(unsigned NumWords) = 0;
 
   /// Called if a naclbitc::BLOCKINFO_CODE_SETBID record is found in
   /// NaClBitstreamCursor::ReadBlockInfoBlock.
@@ -191,7 +191,7 @@ public:
 
   /// Called just before an EndBlock record is processed by
   /// NaClBitstreamCursor::ReadBlockInfoBlock
-  virtual void EndBlock() = 0;
+  virtual void EndBlockInfoBlock() = 0;
 
   /// The values of the bitcode record associated with the called
   /// virtual function.
@@ -319,13 +319,11 @@ public:
   /// stream. Use the given abbreviation listener (if provided).
   NaClBitstreamEntry advance(unsigned Flags, NaClAbbrevListener *Listener) {
     while (1) {
-      if (Listener) Listener->StartBit = GetCurrentBitNo();
       unsigned Code = ReadCode();
       if (Code == naclbitc::END_BLOCK) {
         // Pop the end of the block unless Flags tells us not to.
         if (!(Flags & AF_DontPopBlockAtEnd) && ReadBlockEnd())
           return NaClBitstreamEntry::getError();
-        if (Listener) Listener->EndBlock();
         return NaClBitstreamEntry::getEndBlock();
       }
       

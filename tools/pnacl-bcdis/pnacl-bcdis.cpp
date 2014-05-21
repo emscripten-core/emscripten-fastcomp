@@ -18,6 +18,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
 
+#include "llvm/Support/system_error.h"
+#include "llvm/Support/ToolOutputFile.h"
+
 namespace {
 
 using namespace llvm;

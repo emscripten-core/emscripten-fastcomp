@@ -1410,24 +1410,26 @@ protected:
 
     // Generate global abbreviations within a blockinfo block.
     Context->Writer.EnterBlockInfoBlock();
-    if (RemoveAbbreviations) return;
-    for (BlockAbbrevsMapType::const_iterator
-             Iter = Context->BlockAbbrevsMap.begin(),
-             IterEnd = Context->BlockAbbrevsMap.end();
-         Iter != IterEnd; ++Iter) {
-      unsigned BlockID = Iter->first;
-      // Don't emit module abbreviations, since they have been
-      // emitted as local abbreviations.
-      if (BlockID == naclbitc::MODULE_BLOCK_ID) continue;
+    if (!RemoveAbbreviations) {
+      for (BlockAbbrevsMapType::const_iterator
+               Iter = Context->BlockAbbrevsMap.begin(),
+               IterEnd = Context->BlockAbbrevsMap.end();
+           Iter != IterEnd; ++Iter) {
+        unsigned BlockID = Iter->first;
+        // Don't emit module abbreviations, since they have been
+        // emitted as local abbreviations.
+        if (BlockID == naclbitc::MODULE_BLOCK_ID) continue;
 
-      BlockAbbrevs *Abbrevs = Iter->second;
-      if (Abbrevs == 0) continue;
-      for (unsigned i = Abbrevs->GetFirstApplicationAbbreviation();
-           i < Abbrevs->GetNumberAbbreviations(); ++i) {
-        NaClBitCodeAbbrev *Abbrev = Abbrevs->GetIndexedAbbrev(i);
-        Context->Writer.EmitBlockInfoAbbrev(BlockID, Abbrev);
+        BlockAbbrevs *Abbrevs = Iter->second;
+        if (Abbrevs == 0) continue;
+        for (unsigned i = Abbrevs->GetFirstApplicationAbbreviation();
+             i < Abbrevs->GetNumberAbbreviations(); ++i) {
+          NaClBitCodeAbbrev *Abbrev = Abbrevs->GetIndexedAbbrev(i);
+          Context->Writer.EmitBlockInfoAbbrev(BlockID, Abbrev);
+        }
       }
     }
+    Context->Writer.ExitBlock();
   }
 
   virtual void ProcessRecord() {

@@ -263,7 +263,9 @@ void NaClBitstreamCursor::ReadAbbrevRecord(bool IsLocal,
   CurAbbrevs.push_back(Abbv);
   if (Listener) {
     Listener->ProcessAbbreviation(Abbv, IsLocal);
+    // Reset record information of the listener.
     Listener->Values.clear();
+    Listener->StartBit = GetCurrentBitNo();
   }
 }
 
@@ -275,13 +277,14 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock(NaClAbbrevListener *Listener) {
   unsigned NumWords;
   if (EnterSubBlock(naclbitc::BLOCKINFO_BLOCK_ID, &NumWords)) return true;
 
-  if (Listener) Listener->BeginBlock(NumWords);
+  if (Listener) Listener->BeginBlockInfoBlock(NumWords);
 
   NaClBitcodeRecordVector Record;
   NaClBitstreamReader::BlockInfo *CurBlockInfo = 0;
 
-  // Read all the records for this module.
+  // Read records of the BlockInfo block.
   while (1) {
+    if (Listener) Listener->StartBit = GetCurrentBitNo();
     NaClBitstreamEntry Entry = advance(AF_DontAutoprocessAbbrevs, Listener);
 
     switch (Entry.Kind) {
@@ -289,7 +292,7 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock(NaClAbbrevListener *Listener) {
     case llvm::NaClBitstreamEntry::Error:
       return true;
     case llvm::NaClBitstreamEntry::EndBlock:
-      if (Listener) Listener->EndBlock();
+      if (Listener) Listener->EndBlockInfoBlock();
       return false;
     case llvm::NaClBitstreamEntry::Record:
       // The interesting case.

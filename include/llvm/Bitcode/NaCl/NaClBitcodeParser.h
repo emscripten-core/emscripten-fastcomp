@@ -105,6 +105,19 @@
 
 namespace llvm {
 
+namespace naclbitc {
+  // Special record codes used to model codes for predefined records.
+  // They are very large so that they do not conflict with existing
+  // record codes for user-defined blocks.
+  enum SpecialBlockCodes {
+    BLK_CODE_ENTER = 65535,
+    BLK_CODE_EXIT  = 65534,
+    BLK_CODE_DEFINE_ABBREV = 65533,
+    BLK_CODE_HEADER = 65532
+  };
+
+}
+
 class NaClBitcodeRecord;
 class NaClBitcodeParser;
 class NaClBitcodeParserListener;
@@ -372,11 +385,11 @@ public:
   virtual ~NaClBitcodeParserListener() {}
 
 private:
-  virtual void BeginBlock(unsigned NumWords);
+  virtual void BeginBlockInfoBlock(unsigned NumWords);
 
   virtual void SetBID();
 
-  virtual void EndBlock();
+  virtual void EndBlockInfoBlock();
 
   virtual void ProcessAbbreviation(NaClBitCodeAbbrev *Abbrev,
                                    bool IsLocal);
@@ -494,7 +507,6 @@ public:
     } else {
       Results = ParseThisBlockInternal();
     }
-    ExitBlock();
     return Results;
   }
 
@@ -533,7 +545,25 @@ private:
 
   // Parses the block. Returns true if unable to parse the
   // block. Note: Should only be called by virtual ParseThisBlock.
-  bool ParseThisBlockInternal();
+  bool ParseThisBlockInternal() {
+    bool Results;
+    if (GetBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
+      Results = ParseBlockInfoInternal();
+    } else {
+      Results = ParseBlockInternal();
+      ExitBlock();
+    }
+    return Results;
+  }
+
+  // Parses a BlockInfo block, where processing is handled through
+  // a listener in the bitstream reader.
+  bool ParseBlockInfoInternal();
+
+  // Parses the non-BlockInfo block. Returns true if unable to parse the
+  // block.
+  bool ParseBlockInternal();
+
 
   void operator=(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
   NaClBitcodeParser(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
