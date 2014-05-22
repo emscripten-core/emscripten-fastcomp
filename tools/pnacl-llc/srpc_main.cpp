@@ -150,9 +150,8 @@ ArgStringList *GetDefaultCommandLine() {
   static const char *llc_args_x8664[] = { "-mtriple=x86_64-none-nacl-gnu",
                                           NULL };
   static const char *llc_args_arm[] = {
-    "-mtriple=armv7a-none-nacl-gnueabi", "-arm-reserve-r9", "-sfi-disable-cp",
-    "-sfi-store", "-sfi-load", "-sfi-stack", "-sfi-branch", "-sfi-data",
-    "-mattr=+neon", "-no-inline-jumptables", "-float-abi=hard", NULL
+    "-mtriple=armv7a-none-nacl-gnueabi", "-mattr=+neon",
+    "-float-abi=hard", NULL
   };
 
   const char **llc_args = NULL;

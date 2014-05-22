@@ -17,7 +17,6 @@
 #include "ARMFrameLowering.h"
 #include "ARMMachineFunctionInfo.h"
 #include "ARMSubtarget.h"
-#include "ARMTargetMachine.h"  // @LOCALMOD
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -50,10 +49,9 @@ ARMBaseRegisterInfo::ARMBaseRegisterInfo(const ARMSubtarget &sti)
     BasePtr(ARM::R6) {
 }
 
-extern cl::opt<bool> ReserveR9; // @LOCALMOD
 const uint16_t*
 ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
-  if (ReserveR9) return CSR_NaCl_SaveList; // @LOCALMOD
+  if (STI.isTargetNaCl()) return CSR_NaCl_SaveList; // @LOCALMOD
 
   const uint16_t *RegList = (STI.isTargetIOS() && !STI.isAAPCS_ABI())
                                 ? CSR_iOS_SaveList
@@ -87,7 +85,7 @@ ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
 
 const uint32_t*
 ARMBaseRegisterInfo::getCallPreservedMask(CallingConv::ID CC) const {
-  if (ReserveR9) return CSR_NaCl_RegMask; // @LOCALMOD
+  if (STI.isTargetNaCl()) return CSR_NaCl_RegMask; // @LOCALMOD
   if (CC == CallingConv::GHC)
     // This is academic becase all GHC calls are (supposed to be) tail calls
     return CSR_NoRegs_RegMask;
@@ -399,13 +397,6 @@ emitLoadConstPool(MachineBasicBlock &MBB,
                   unsigned DestReg, unsigned SubIdx, int Val,
                   ARMCC::CondCodes Pred,
                   unsigned PredReg, unsigned MIFlags) const {
-  // @LOCALMOD-START
-  // In the sfi case we do not want to use the load const pseudo instr.
-  // Sadly, the ARM backend is not very consistent about using this
-  // pseudo instr. and hence checking this is not sufficient.
-  // But, it should help detect some regressions early.
-  assert(!FlagSfiDisableCP && "unexpected call to emitLoadConstPool");
-  // @LOCALMOD-END
   MachineFunction &MF = *MBB.getParent();
   const TargetInstrInfo &TII = *MF.getTarget().getInstrInfo();
   MachineConstantPool *ConstantPool = MF.getConstantPool();

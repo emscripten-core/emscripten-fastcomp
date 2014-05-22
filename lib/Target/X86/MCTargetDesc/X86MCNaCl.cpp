@@ -27,12 +27,6 @@
 
 using namespace llvm;
 
-// This option makes it possible to overwrite the x86 jmp mask immediate.
-// Setting it to -1 will effectively turn masking into a nop which will
-// help with linking this code with non-sandboxed libs (at least for x86-32).
-cl::opt<int> FlagSfiX86JmpMask("sfi-x86-jmp-mask",
-                               cl::init(-kNaClX86InstructionBundleSize));
-
 cl::opt<bool> FlagUseZeroBasedSandbox("sfi-zero-based-sandbox",
                                       cl::desc("Use a zero-based sandbox model"
                                                " for the NaCl SFI."),
@@ -112,7 +106,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
                                MCStreamer &Out) {
   const bool HideSandboxBase = (FlagHideSandboxBase &&
                                 Is64Bit && !FlagUseZeroBasedSandbox);
-  const int JmpMask = FlagSfiX86JmpMask;
+  const int JmpMask = -kNaClX86InstructionBundleSize;
   unsigned Reg32 = Op.getReg();
 
   // For NaCl64, the sequence

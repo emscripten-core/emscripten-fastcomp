@@ -21,10 +21,6 @@
 
 using namespace llvm;
 
-namespace llvm {
-  cl::opt<bool> FlagSfiZeroMask("sfi-zero-mask");
-}
-
 /// Two helper functions for emitting the actual guard instructions
 
 static void EmitBICMask(MCStreamer &Out,
@@ -34,11 +30,7 @@ static void EmitBICMask(MCStreamer &Out,
   BICInst.setOpcode(ARM::BICri);
   BICInst.addOperand(MCOperand::CreateReg(Addr)); // rD
   BICInst.addOperand(MCOperand::CreateReg(Addr)); // rS
-  if (FlagSfiZeroMask) {
-    BICInst.addOperand(MCOperand::CreateImm(0)); // imm
-  } else {
-    BICInst.addOperand(MCOperand::CreateImm(Mask)); // imm
-  }
+  BICInst.addOperand(MCOperand::CreateImm(Mask)); // imm
   BICInst.addOperand(MCOperand::CreateImm(Pred));  // predicate
   BICInst.addOperand(MCOperand::CreateReg(ARM::CPSR)); // CPSR
   BICInst.addOperand(MCOperand::CreateReg(0)); // flag out
@@ -51,11 +43,7 @@ static void EmitTST(MCStreamer &Out, unsigned Reg) {
   MCInst TSTInst;
   TSTInst.setOpcode(ARM::TSTri);
   TSTInst.addOperand(MCOperand::CreateReg(Reg));  // rS
-  if (FlagSfiZeroMask) {
-    TSTInst.addOperand(MCOperand::CreateImm(0)); // imm
-  } else {
-    TSTInst.addOperand(MCOperand::CreateImm(Mask)); // imm
-  }
+  TSTInst.addOperand(MCOperand::CreateImm(Mask)); // imm
   TSTInst.addOperand(MCOperand::CreateImm((int64_t)ARMCC::AL)); // Always
   TSTInst.addOperand(MCOperand::CreateImm(0)); // flag out
   Out.EmitInstruction(TSTInst);

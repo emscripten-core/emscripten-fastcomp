@@ -27,8 +27,7 @@
 
 using namespace llvm;
 
-// @LOCALMOD: remove 'static' to make this flag visible elsewhere
-cl::opt<bool>
+static cl::opt<bool>
 ReserveR9("arm-reserve-r9", cl::Hidden,
           cl::desc("Reserve R9, making it unavailable as GPR"));
 
@@ -113,7 +112,10 @@ void ARMSubtarget::initializeEnvironment() {
   HasFPARMv8 = false;
   HasNEON = false;
   UseNEONForSinglePrecisionFP = false;
+  // @LOCALMOD-START
   UseInlineJumpTables = !NoInlineJumpTables;
+  UseConstIslands = true;
+  // @LOCALMOD-END
   UseMulOps = UseFusedMulOps;
   SlowFPVMLx = false;
   HasVMLxForwarding = false;
@@ -218,15 +220,14 @@ void ARMSubtarget::resetSubtargetFeatures(StringRef CPU, StringRef FS) {
   }
 
   // @LOCALMOD-BEGIN
-  // Advanced SIMD and Q registers are part of the NaCl ARM ABI.  The ARM
-  // EABI specifies only an 8 byte alignment, which can result in poor
-  // performance for these 16 byte data types if they straddle cache lines, etc.
-  // Therefore, NaCl aligns stack frames 0mod16.
-  if (isTargetNaCl())
-    stackAlignment = 16;
-  // NaCl uses MovT to avoid generating constant islands.
-  if (isTargetNaCl() && !useConstPool())
+  if (isTargetNaCl()) {
+    // NaCl reserves R9 for TLS.
+    IsR9Reserved = true;
+    // NaCl uses MovT to avoid generating constant islands.
     UseMovt = true;
+    UseInlineJumpTables = false;
+    UseConstIslands = false;
+  }
   // @LOCALMOD-END
 
   if (!isThumb() || hasThumb2())

@@ -710,7 +710,7 @@ void ARMExpandPseudo::ExpandMOV32BitImm(MachineBasicBlock &MBB,
   // We need to know if it matters that references are pc-relative
   // (e.g., to be PIC).
   // See the comments on MOVi16PIC / MOVTi16PIC for more details.
-  const bool ShouldUseMOV16PIC = FlagSfiDisableCP && IsRelocPIC &&
+  const bool ShouldUseMOV16PIC = !STI->useConstIslands() && IsRelocPIC &&
       (MO.isCPI() || MO.isJTI() || MO.isGlobal()); // TODO check this list.
   if (ShouldUseMOV16PIC) {
     if (isThumb2)

@@ -23,14 +23,6 @@
 #define GET_SUBTARGETINFO_HEADER
 #include "ARMGenSubtargetInfo.inc"
 
-// @LOCALMOD-BEGIN
-#include "llvm/Support/CommandLine.h"
-namespace llvm {
-  extern cl::opt<bool> FlagSfiDisableCP;
-}
-// @LOCALMOD-END
-
-
 namespace llvm {
 class GlobalValue;
 class StringRef;
@@ -109,6 +101,9 @@ protected:
   // @LOCALMOD-START
   /// UseInlineJumpTables - True if jump tables should be in-line in the code.
   bool UseInlineJumpTables;
+
+  /// UseConstIslands - True if constant islands should be used.
+  bool UseConstIslands;
   // @LOCALMOD-END
 
   /// UseMovt - True if MOVT / MOVW pairs are used for materialization of 32-bit
@@ -343,7 +338,7 @@ public:
   bool supportsTailCall() const { return SupportsTailCall; }
 
   // @LOCALMOD
-  bool useConstPool() const { return !FlagSfiDisableCP; }
+  bool useConstIslands() const { return UseConstIslands; }
 
   bool allowsUnalignedMem() const { return AllowsUnalignedMem; }
 

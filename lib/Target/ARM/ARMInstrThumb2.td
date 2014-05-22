@@ -3814,9 +3814,9 @@ def : T2Pat<(ARMWrapperJT tjumptable:$dst, imm:$id),
             (t2LEApcrelJT tjumptable:$dst, imm:$id)>;
 // @LOCALMOD-START
 def : T2Pat<(ARMWrapper  tconstpool :$dst), (t2MOVi32imm tconstpool :$dst)>,
-            Requires<[IsThumb2, UseMovt, DontUseConstPool]>;
+            Requires<[IsThumb2, UseMovt, DontUseConstIslands]>;
 def : T2Pat<(ARMWrapper  tconstpool :$dst), (t2LEApcrel tconstpool :$dst)>,
-            Requires<[IsThumb2, UseMovt, UseConstPool]>;
+            Requires<[IsThumb2, UseMovt, UseConstIslands]>;
 def : T2Pat<(ARMWrapperJT2  tjumptable :$dst), (t2MOVi32imm tjumptable :$dst)>,
             Requires<[IsThumb2, UseMovt]>;
 // @LOCALMOD-END

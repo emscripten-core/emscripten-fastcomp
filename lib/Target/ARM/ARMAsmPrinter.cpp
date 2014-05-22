@@ -41,7 +41,7 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstBuilder.h"
-#include "llvm/MC/MCNaCl.h"
+#include "llvm/MC/MCNaCl.h"  // @LOCALMOD
 #include "llvm/MC/MCObjectStreamer.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
@@ -58,13 +58,8 @@
 using namespace llvm;
 
 // @LOCALMOD-START
-namespace llvm {
-  extern cl::opt<bool> FlagSfiBranch;
-  extern cl::opt<bool> FlagSfiData;
-}
-
 // Make sure all jump targets are aligned and also all constant pools
-void NaclAlignAllJumpTargetsAndConstantPools(MachineFunction &MF) {
+static void NaClAlignAllJumpTargetsAndConstantPools(MachineFunction &MF) {
   // JUMP TABLE TARGETS
   MachineJumpTableInfo *jt_info = MF.getJumpTableInfo();
   if (jt_info) {
@@ -249,8 +244,8 @@ bool ARMAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   MCP = MF.getConstantPool();
 
   // @LOCALMOD-START
-  if (FlagSfiBranch) {
-    NaclAlignAllJumpTargetsAndConstantPools(MF);
+  if (Subtarget->isTargetNaCl()) {
+    NaClAlignAllJumpTargetsAndConstantPools(MF);
   }
   // @LOCALMOD-END
   return AsmPrinter::runOnMachineFunction(MF);
@@ -293,10 +288,10 @@ void ARMAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
   case MachineOperand::MO_GlobalAddress: {
     const GlobalValue *GV = MO.getGlobal();
     if ((Modifier && strcmp(Modifier, "lo16") == 0) ||
-        (TF == ARMII::MO_LO16)) // @LOCALMOD: TEMPORARY FIX
+        (TF == ARMII::MO_LO16)) // @LOCALMOD: TEMPORARY FIX (pr8252)
       O << ":lower16:";
     else if ((Modifier && strcmp(Modifier, "hi16") == 0) ||
-             (TF == ARMII::MO_HI16)) // @LOCALMOD: TEMPORARY FIX
+             (TF == ARMII::MO_HI16)) // @LOCALMOD: TEMPORARY FIX (pr8252)
       O << ":upper16:";
     O << *getSymbol(GV);
 
@@ -538,7 +533,7 @@ bool ARMAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
   return false;
 }
 
-void EmitSFIHeaders(raw_ostream &O);
+void EmitSFIHeaders(raw_ostream &O); // @LOCALMOD
 
 void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
   if (Subtarget->isTargetDarwin()) {
@@ -1527,28 +1522,6 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       InConstantPool = true;
     }
 
-    
-    // @LOCALMOD-START
-    // NOTE: we also should make sure that the first data item
-    // is not in a code bundle
-    // NOTE: there may be issues with alignment constraints
-    if (Subtarget->isTargetNaCl() && OutStreamer.hasRawTextSupport()) {
-      const unsigned size = MI->getOperand(2).getImm();
-      //assert(size == 4 || size == 8 && "Unsupported data item size");
-      if (size == 8) {
-        // we cannot generate a size 8 constant at offset 12 (mod 16)
-        OutStreamer.EmitRawText(StringRef("sfi_nop_if_at_bundle_end\n"));
-      }
-
-      if (FlagSfiData) {
-        SmallString<128> Str;
-        raw_svector_ostream OS(Str);
-        OS << "sfi_illegal_if_at_bundle_begining  @ ========== SFI (" << 
-          size << ")\n";
-        OutStreamer.EmitRawText(OS.str());
-      }
-    }
-    // @LOCALMOD-END
     OutStreamer.EmitLabel(GetCPISymbol(LabelId));
 
     const MachineConstantPoolEntry &MCPE = MCP->getConstants()[CPIdx];

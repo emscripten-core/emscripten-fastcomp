@@ -8,8 +8,9 @@
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=thumbv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN
 
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM
-; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
+; LOCALMOD: use -relocation-model=static for NaCl to keep fast-isel simple.
+; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=static -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -arm-strict-align -relocation-model=static -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 
 ; RUN: llc < %s -O0  -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 ; RUN: llc < %s -O0  -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN

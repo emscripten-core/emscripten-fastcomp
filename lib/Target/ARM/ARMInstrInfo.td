@@ -309,8 +309,8 @@ def IsLE             : Predicate<"getTargetLowering()->isLittleEndian()">;
 def IsBE             : Predicate<"getTargetLowering()->isBigEndian()">;
 
 // @LOCALMOD-BEGIN
-def UseConstPool : Predicate<"Subtarget->useConstPool()">;
-def DontUseConstPool : Predicate<"!Subtarget->useConstPool()">;
+def UseConstIslands : Predicate<"Subtarget->useConstIslands()">;
+def DontUseConstIslands : Predicate<"!Subtarget->useConstIslands()">;
 // @LOCALMOD-END
 
 //===----------------------------------------------------------------------===//
@@ -5356,9 +5356,9 @@ def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (MOVi32imm tglobaladdr :$dst)>,
             Requires<[IsARM, UseMovt]>;
 // @LOCALMOD-START
 def : ARMPat<(ARMWrapper  tconstpool :$dst), (MOVi32imm tconstpool :$dst)>,
-            Requires<[IsARM, UseMovt, DontUseConstPool]>;
+            Requires<[IsARM, UseMovt, DontUseConstIslands]>;
 def : ARMPat<(ARMWrapper  tconstpool :$dst), (LEApcrel tconstpool :$dst)>,
-            Requires<[IsARM, UseMovt, UseConstPool]>;
+            Requires<[IsARM, UseMovt, UseConstIslands]>;
 def : ARMPat<(ARMWrapperJT2  tjumptable :$dst), (MOVi32imm tjumptable :$dst)>,
             Requires<[IsARM, UseMovt]>;
 // @LOCALMOD-END

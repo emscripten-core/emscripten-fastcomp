@@ -36,14 +36,6 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 
-// @LOCALMOD-START
-#include "llvm/Support/CommandLine.h"
-namespace llvm {
-  extern cl::opt<bool> FlagSfiLoad;
-  extern cl::opt<bool> FlagSfiStore;
-}
-// @LOCALMOD-END
-
 using namespace llvm;
 
 static cl::opt<bool>
@@ -531,9 +523,9 @@ static bool ShouldOperandBeUnwrappedForUseAsBaseAddress(
   SDValue& N, const ARMSubtarget* Subtarget) {
   assert (N.getOpcode() == ARMISD::Wrapper);
   // Never use this transformation if constant island pools are disallowed 
-  if (FlagSfiDisableCP) return false;
+  if (!Subtarget->useConstIslands()) return false;
 
-  // always apply this when we do not have movt/movw available
+  // Always apply this when we do not have movt/movw available
   // (if we do have movt/movw we be able to get rid of the
   // constant pool entry altogether)
   if (!Subtarget->useMovt()) return true;
@@ -701,16 +693,11 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDNode *Op,
                                                      SDValue N,
                                                      SDValue &Base,
                                                      SDValue &Offset,
-// @LOCALMOD-START
-// Note: In the code below we do not want "Offset" to be real register to
-// not violate ARM sandboxing.
-// @LOCALMOD-END
                                                      SDValue &Opc) {
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl =
-     (FlagSfiLoad && (Op->getOpcode() == ISD::LOAD)) ||
-     (FlagSfiStore && (Op->getOpcode() == ISD::STORE));
+  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
+     (Op->getOpcode() == ISD::LOAD || Op->getOpcode() == ISD::STORE);
   // This is neither a sandboxable load nor a sandboxable store.
   if (!restrict_addressing_modes_for_nacl) {
   // @LOCALMOD-END
@@ -883,11 +870,9 @@ bool ARMDAGToDAGISel::SelectAddrMode2OffsetReg(SDNode *Op, SDValue N,
 
   // @LOCALMOD-BEGIN
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl =
-     (FlagSfiLoad && (Op->getOpcode() == ISD::LOAD)) ||
-     (FlagSfiStore && (Op->getOpcode() == ISD::STORE));
+  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
+     (Op->getOpcode() == ISD::LOAD || Op->getOpcode() == ISD::STORE);
   // @LOCALMOD-END
-
 
   Offset = N;
   ARM_AM::ShiftOpc ShOpcVal = ARM_AM::getShiftOpcForNode(N.getOpcode());
@@ -969,9 +954,8 @@ bool ARMDAGToDAGISel::SelectAddrMode3(SDNode *Op, SDValue N,
                                       SDValue &Opc) {
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl =
-     (FlagSfiLoad && (Op->getOpcode() == ISD::LOAD)) ||
-     (FlagSfiStore && (Op->getOpcode() == ISD::STORE));
+  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
+     (Op->getOpcode() == ISD::LOAD || Op->getOpcode() == ISD::STORE);
   if (!restrict_addressing_modes_for_nacl) {
   // @LOCALMOD-END
   if (N.getOpcode() == ISD::SUB) {
@@ -2533,7 +2517,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
                  !ARM_AM::isSOImmTwoPartVal(Val));     // two instrs.
     }
 
-    if (FlagSfiDisableCP) UseCP = false; // @LOCALMOD
+    if (!Subtarget->useConstIslands()) UseCP = false; // @LOCALMOD
 
     if (UseCP) {
       SDValue CPIdx =

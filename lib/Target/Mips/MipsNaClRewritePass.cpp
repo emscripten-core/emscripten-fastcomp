@@ -317,18 +317,12 @@ bool MipsNaClRewritePass::runOnMachineFunction(MachineFunction &MF) {
        ++MFI) {
     MachineBasicBlock &MBB = *MFI;
 
-    if (FlagSfiLoad)
-      Modified |= SandboxLoadsInBlock(MBB);
-    if (FlagSfiStore)
-      Modified |= SandboxStoresInBlock(MBB);
-    if (FlagSfiBranch)
-      Modified |= SandboxBranchesInBlock(MBB);
-    if (FlagSfiStack)
-      Modified |= SandboxStackChangesInBlock(MBB);
+    Modified |= SandboxLoadsInBlock(MBB);
+    Modified |= SandboxStoresInBlock(MBB);
+    Modified |= SandboxBranchesInBlock(MBB);
+    Modified |= SandboxStackChangesInBlock(MBB);
   }
-
-  if (FlagSfiBranch)
-    AlignAllJumpTargets(MF);
+  AlignAllJumpTargets(MF);
 
   return Modified;
 }

@@ -374,7 +374,6 @@ FunctionPass *llvm::createARMConstantIslandPass() {
 }
 
 bool ARMConstantIslands::runOnMachineFunction(MachineFunction &mf) {
-  if (FlagSfiDisableCP) return false;   // @LOCALMOD
   MF = &mf;
   MCP = mf.getConstantPool();
 
@@ -385,6 +384,8 @@ bool ARMConstantIslands::runOnMachineFunction(MachineFunction &mf) {
   TII = (const ARMBaseInstrInfo*)MF->getTarget().getInstrInfo();
   AFI = MF->getInfo<ARMFunctionInfo>();
   STI = &MF->getTarget().getSubtarget<ARMSubtarget>();
+
+  if (!STI->useConstIslands()) return false;   // @LOCALMOD
 
   isThumb = AFI->isThumbFunction();
   isThumb1 = AFI->isThumb1OnlyFunction();

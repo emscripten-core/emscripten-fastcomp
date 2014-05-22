@@ -37,6 +37,7 @@ DisableA15SDOptimization("disable-a15-sd-optimization", cl::Hidden,
                    cl::init(false));
 
 // @LOCALMOD-START
+// TODO(jvoung): Remove this once there are no more users.
 namespace llvm {
 cl::opt<bool> FlagSfiDisableCP("sfi-disable-cp",
                                cl::desc("disable arm constant island pools"));
@@ -243,15 +244,9 @@ bool ARMPassConfig::addPreEmitPass() {
   }
 
   // @LOCALMOD-START
-  // Note with FlagSfiDisableCP we effectively disable the
-  // ARMConstantIslandPass and rely on movt/movw to eliminate the need
-  // for constant islands
-  if (FlagSfiDisableCP) {
-    assert(getARMSubtarget().useMovt());
-  }
+  if (getARMSubtarget().useConstIslands())
+    addPass(createARMConstantIslandPass());
   // @LOCALMOD-END
-
-  addPass(createARMConstantIslandPass());
 
   // @LOCALMOD-START
   // This pass does all the heavy sfi lifting.

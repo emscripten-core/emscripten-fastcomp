@@ -30,4 +30,5 @@ define void @varargs_func(i32 %arg1, ...) {
 ; @LOCALMOD: Adjust test expectation, removing NEXT to allow CFI
 ; directive to intervene in the output.
 ; CHECK: add r0, sp, #20
-; CHECK-NEXT: stm r0, {r1, r2, r3}
+; @LOCALMOD: Adjust test expectation, removing NEXT to allow sandboxing.
+; CHECK: stm r0, {r1, r2, r3}

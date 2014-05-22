@@ -1,8 +1,8 @@
 
-; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -sfi-store -filetype=asm %s -o - \
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -filetype=asm %s -o - \
 ; RUN:   | FileCheck -check-prefix=ARM %s
 
-; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -sfi-store -filetype=asm -mtls-use-call %s -o - \
+; RUN: pnacl-llc -mtriple=armv7-unknown-nacl -filetype=asm -mtls-use-call %s -o - \
 ; RUN:   | FileCheck -check-prefix=ARM_IRT %s
 
 

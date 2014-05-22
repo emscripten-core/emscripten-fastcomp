@@ -50,14 +50,6 @@
 #include "llvm/Target/TargetOptions.h"
 #include <utility>
 
-// @LOCALMOD-START
-namespace llvm {
-  extern cl::opt<bool> FlagSfiLoad;
-  extern cl::opt<bool> FlagSfiStore;
-  extern cl::opt<bool> FlagSfiDisableCP;
-}
-// @LOCALMOD-END
-
 using namespace llvm;
 
 STATISTIC(NumTailCalls, "Number of tail calls");
@@ -2452,8 +2444,8 @@ ARMTargetLowering::LowerToTLSGeneralDynamicModel(GlobalAddressSDNode *GA,
   SDValue Chain;
   SDValue Argument;
 
-  if (FlagSfiDisableCP) {
-    // With constant pools "disabled" (moved to rodata), this constant pool
+  if (!Subtarget->useConstIslands()) {
+    // With constant islands "disabled" (moved to rodata), this constant pool
     // entry is no longer in text, and simultaneous PC relativeness
     // and CP Addr relativeness is no longer expressible.
     // So, instead of having:
@@ -2547,7 +2539,7 @@ ARMTargetLowering::LowerToTLSExecModels(GlobalAddressSDNode *GA,
     unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
 
     // @LOCALMOD-BEGIN
-    if (FlagSfiDisableCP) {
+    if (!Subtarget->useConstIslands()) {
       // Similar to change to LowerToTLSGeneralDynamicModel, and
       // for the same reason.
       unsigned char PCAdj = 0;
@@ -2739,8 +2731,8 @@ SDValue ARMTargetLowering::LowerGLOBAL_OFFSET_TABLE(SDValue Op,
   SDLoc dl(Op);
 
   // @LOCALMOD-BEGIN
-  if (FlagSfiDisableCP) {
-    // With constant pools "disabled" (moved to rodata), the constant pool
+  if (!Subtarget->useConstIslands()) {
+    // With constant islands "disabled" (moved to rodata), the constant pool
     // entry is no longer in text, and the PC relativeness is
     // no longer expressible.
     //
@@ -10856,9 +10848,8 @@ ARMTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
 
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl =
-      ((FlagSfiLoad && N->getOpcode() == ISD::LOAD) ||
-       (FlagSfiStore && N->getOpcode() == ISD::STORE));
+  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
+      (N->getOpcode() == ISD::LOAD || N->getOpcode() == ISD::STORE);
   if (restrict_addressing_modes_for_nacl) {
     return false;
   }
@@ -10904,9 +10895,8 @@ bool ARMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
     return false;
    // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl =
-      ((FlagSfiLoad && N->getOpcode() == ISD::LOAD) ||
-       (FlagSfiStore && N->getOpcode() == ISD::STORE));
+  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
+      (N->getOpcode() == ISD::LOAD || N->getOpcode() == ISD::STORE);
   if (restrict_addressing_modes_for_nacl) {
     return false;
   }

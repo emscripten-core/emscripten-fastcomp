@@ -1,12 +1,13 @@
 ; RUN: pnacl-llc -mtriple=armv7a-none-nacl-gnueabi %s -filetype=obj \
-; RUN:  -relocation-model=pic -sfi-disable-cp -mattr=+neon \
+; RUN:  -relocation-model=pic -mattr=+neon \
 ; RUN:  -O0 -mcpu=cortex-a9 -o - \
 ; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
 
-; This test exercises -sfi-disable-cp together with -relocation-model=pic,
-; to see that a movw/movt is actually generated as expected.
-; Use -O0 so that movw/movt are scheduled to be adjacent,
-; instead of having other independent instructions interleaved.
+; This test exercises NaCl (which doesn't use constant islands)
+; together with -relocation-model=pic, to see that a movw/movt
+; is actually generated as expected. Use -O0 so that movw/movt
+; are scheduled to be adjacent, instead of having other independent
+; instructions interleaved.
 
 %struct.object = type { [16 x i8*] }
 

@@ -582,8 +582,7 @@ unsigned ARMFastISel::ARMMaterializeFP(const ConstantFP *CFP, MVT VT) {
   if (!Subtarget->hasVFP2()) return false;
 
   // @LOCALMOD-START
-  // Don't use constant pools in NaCl.
-  if (FlagSfiDisableCP)
+  if (!Subtarget->useConstIslands())
     return false;
   // @LOCALMOD-END
 
@@ -640,8 +639,9 @@ unsigned ARMFastISel::ARMMaterializeInt(const Constant *C, MVT VT) {
   }
 
   // @LOCALMOD-START
-  // No constant pool, use movw+movt for 32-bit values.
-  if (FlagSfiDisableCP && Subtarget->hasV6T2Ops() && VT == MVT::i32) {
+  // No constant islands, use movw+movt for 32-bit values.
+  if (!Subtarget->useConstIslands() &&
+      Subtarget->hasV6T2Ops() && VT == MVT::i32) {
     unsigned Opc = isThumb2 ? ARM::t2MOVi32imm : ARM::MOVi32imm;
     const TargetRegisterClass *RC = isThumb2 ?
         &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
@@ -651,8 +651,7 @@ unsigned ARMFastISel::ARMMaterializeInt(const Constant *C, MVT VT) {
     return ImmReg;
   }
 
-  // Don't use constant pools in NaCl.
-  if (FlagSfiDisableCP)
+  if (!Subtarget->useConstIslands())
     return false;
   // @LOCALMOD-END
 
@@ -722,9 +721,8 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, MVT VT) {
     AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
                             DestReg).addGlobalAddress(GV));
   } else {
-    // @LOCALMOD-START
-    // Don't use constant pools in NaCl.
-    if (FlagSfiDisableCP)
+    // @LOCALMOD-BEGIN
+    if (!Subtarget->useConstIslands())
       return false;
     // @LOCALMOD-END
 

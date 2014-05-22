@@ -69,12 +69,11 @@ public:
   virtual bool runOnMachineFunction(MachineFunction &F) LLVM_OVERRIDE;
 
   // @LOCALMOD-START
-  // usually this does nothing on ARM as constants pools
-  // are handled with custom code.
-  // For the sfi case we do not use the custom logic and fall back
-  // to the default implementation.
+  // Usually this does nothing on ARM as constants pools are handled with
+  // custom code (for constant islands).
+  // When not using constant islands, fall back to the default implementation.
   virtual void EmitConstantPool() LLVM_OVERRIDE {
-    if (FlagSfiDisableCP) AsmPrinter::EmitConstantPool();
+    if (!Subtarget->useConstIslands()) AsmPrinter::EmitConstantPool();
   }
   // @LOCALMOD-END
 
