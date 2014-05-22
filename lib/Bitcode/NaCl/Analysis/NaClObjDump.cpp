@@ -94,7 +94,7 @@ public:
   // type signatures into a sequence of tokens.
   class TypeDirective : public naclbitc::TextFormatter::Directive {
   public:
-    TypeDirective(AssemblyTextFormatter *Formatter)
+    TypeDirective(TextFormatter *Formatter)
         : naclbitc::TextFormatter::Directive(Formatter),
           Typ(0),
           FcnId(0),
@@ -150,9 +150,7 @@ public:
     ContinuationIndent = GetIndent(2);
   }
 
-  ~AssemblyTextFormatter() {
-    DeleteContainerPointers(TypeDirectiveFreeList);
-  }
+  ~AssemblyTextFormatter() {}
 
   naclbitc::TokenTextDirective Comma;
   naclbitc::TokenTextDirective Semicolon;
@@ -195,15 +193,11 @@ private:
   void TokenizeTypeInternal(Type *Typ, BitcodeId* FcnName, bool AddParams);
 
   // The free list of type directives.
-  std::vector<TypeDirective*> TypeDirectiveFreeList;
+  naclbitc::DirectiveMemoryPool<TypeDirective> TypeDirMemoryPool;
 
   // Allocates an instance of TypeDirective with the following fields.
   TypeDirective &AllocateTypeDirective(Type *Typ, BitcodeId *FcnId,
                                        bool AddParams);
-
-  void FreeTypeDirective(const TypeDirective* Dir) {
-    TypeDirectiveFreeList.push_back(const_cast<TypeDirective*>(Dir));
-  }
 
   // Computes how wide the assembly portion of the dump file should be.
   static unsigned GetAssemblyWidth(naclbitc::ObjDumpStream &ObjDump) {
@@ -219,18 +213,12 @@ void AssemblyTextFormatter::TypeDirective::MyApply(bool Replay) const {
   AssemblyTextFormatter *AssemblyFormatter =
       reinterpret_cast<AssemblyTextFormatter*>(Formatter);
   AssemblyFormatter->TokenizeTypeInternal(Typ, FcnId, AddParams);
-  AssemblyFormatter->FreeTypeDirective(this);
+  AssemblyFormatter->TypeDirMemoryPool.Free(const_cast<TypeDirective*>(this));
 }
 
 AssemblyTextFormatter::TypeDirective &AssemblyTextFormatter::
 AllocateTypeDirective(Type *Typ, BitcodeId *FcnId, bool AddParams) {
-  TypeDirective *Element = 0;
-  if (!TypeDirectiveFreeList.empty()) {
-    Element = TypeDirectiveFreeList.back();
-    TypeDirectiveFreeList.pop_back();
-  } else {
-    Element = new TypeDirective(this);
-  }
+  TypeDirective *Element = TypeDirMemoryPool.Allocate(this);
   Element->Init(Typ, FcnId, AddParams);
   return *Element;
 }

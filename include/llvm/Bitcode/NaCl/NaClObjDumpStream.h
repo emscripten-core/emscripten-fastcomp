@@ -102,6 +102,37 @@ private:
   unsigned NumTabs;
 };
 
+class TextFormatter;
+
+/// This template class maintains a simply pool of directives for
+/// a text formatter. Assumes that all elements in pool are associated
+/// with the same formatter.
+template<class Directive>
+class DirectiveMemoryPool {
+public:
+  DirectiveMemoryPool() {}
+
+  ~DirectiveMemoryPool() {
+    DeleteContainerPointers(FreeList);
+  }
+
+  Directive *Allocate(TextFormatter *Fmtr) {
+    if (FreeList.empty()) return new Directive(Fmtr);
+    Directive *Element = FreeList.back();
+    assert(&Element->GetFormatter() == Fmtr
+           && "Directive memory pool formatter mismatch");
+    FreeList.pop_back();
+    return Element;
+  }
+
+  void Free(Directive *Dir) {
+    FreeList.push_back(Dir);
+  }
+
+private:
+  std::vector<Directive*> FreeList;
+};
+
 /// This class defines a simple formatter for a stream that consists
 /// of a sequence of instructions. In general, this class assumes that
 /// instructions are a single line. In addition, some instructions
@@ -458,8 +489,9 @@ private:
   /// during clustering to regenerate the corresponding extracted
   /// tokens during a replay.
   class GetTokenDirective : public Directive {
-    GetTokenDirective(TextFormatter *Formatter, const std::string &Text)
-        : Directive(Formatter), Text(Text) {}
+    friend class DirectiveMemoryPool<GetTokenDirective>;
+    GetTokenDirective(TextFormatter *Formatter)
+        : Directive(Formatter) {}
 
   public:
     virtual ~GetTokenDirective() {}
@@ -473,8 +505,7 @@ private:
     virtual void MyApply(bool Replay) const {
       WriteToken(Text);
       if (!IsClustering())
-        Formatter->GetTokenFreeList.
-            push_back(const_cast<GetTokenDirective*>(this));
+        Formatter->GetTokenFreeList.Free(const_cast<GetTokenDirective*>(this));
     }
 
   private:
@@ -483,7 +514,7 @@ private:
   };
 
   // The set of freed GetTokenDirectives, that can be reused.
-  std::vector<GetTokenDirective*> GetTokenFreeList;
+  DirectiveMemoryPool<GetTokenDirective> GetTokenFreeList;
 };
 
 inline raw_ostream &operator<<(raw_ostream &Stream,

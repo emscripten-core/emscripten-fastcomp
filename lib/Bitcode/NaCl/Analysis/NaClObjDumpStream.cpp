@@ -36,9 +36,7 @@ TextFormatter::TextFormatter(raw_ostream &BaseStream,
   if (MinLineWidth > LineWidth) MinLineWidth = LineWidth;
 }
 
-TextFormatter::~TextFormatter() {
-  DeleteContainerPointers(GetTokenFreeList);
-}
+TextFormatter::~TextFormatter() {}
 
 void TextFormatter::WriteEndline() {
   assert(!IsClustering() && "Must close clustering before ending instruction");
@@ -151,15 +149,8 @@ void TextFormatter::Directive::Reapply() const {
 
 TextFormatter::Directive *TextFormatter::GetTokenDirective::
 Allocate(TextFormatter *Formatter, const std::string &Text) {
-  GetTokenDirective *Dir;
-  if (Formatter->GetTokenFreeList.empty()) {
-    Dir = new GetTokenDirective(Formatter, Text);
-  } else {
-    Dir = Formatter->GetTokenFreeList.back();
-    Dir->Formatter = Formatter;
-    Dir->Text = Text;
-    Formatter->GetTokenFreeList.pop_back();
-  }
+  GetTokenDirective *Dir = Formatter->GetTokenFreeList.Allocate(Formatter);
+  Dir->Text = Text;
   return Dir;
 }
 
