@@ -19,6 +19,7 @@ else
   OPTIONAL_PARALLEL_DIRS := clang
 endif
 
+OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT)
 # Build LLDB if present. Note LLDB must be built last as it depends on the
 # wider LLVM infrastructure (including Clang).
 OPTIONAL_DIRS := lldb
