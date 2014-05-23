@@ -35,7 +35,7 @@ public:
                        && ValueType->getIntegerBitWidth() == 1)) {
   }
 
-  explicit SignRotatedInt()
+  SignRotatedInt()
       : SignedValue(0), IsNegated(false) {}
 
   explicit SignRotatedInt(const SignRotatedInt &V)
@@ -1637,7 +1637,8 @@ void NaClDisConstantsParser::ProcessRecord() {
     // INTEGER: [intval]
     SignRotatedInt Value;
     if (Values.size() == 1) {
-      Value = SignRotatedInt(Values[0], ConstantType);
+      const SignRotatedInt MyValue(Values[0], ConstantType);
+      Value = MyValue;
     } else {
       Errors() << "Integer record should have 1 argument. Found: "
                << Values.size() << "\n";
