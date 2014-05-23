@@ -167,7 +167,6 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)' op2='VBR(6)'/>
 ; DRWD:   </BLOCKINFO_BLOCK abbrev='END_BLOCK'>
 ; DRWD:   <TYPE_BLOCK_ID abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(8)' op1='FIXED(3)' op2='LIT(0)'/>
 ; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(21)' op1='FIXED(1)' op2='ARRAY'
 ; DRWD:                    op3='FIXED(3)'/>
 ; DRWD:     <NUMENTRY abbrev='UNABBREVIATED' op0=7/>
@@ -175,9 +174,9 @@ merge:                                            ; preds = %false, %true
 ; DRWD:     <VOID abbrev='UNABBREVIATED'/>
 ; DRWD:     <INTEGER abbrev='UNABBREVIATED' op0=1/>
 ; DRWD:     <INTEGER abbrev='UNABBREVIATED' op0=8/>
-; DRWD:     <FUNCTION abbrev=5 op0=0 op1=0 op2=0/>
-; DRWD:     <FUNCTION abbrev=5 op0=0 op1=1/>
-; DRWD:     <FUNCTION abbrev=5 op0=0 op1=1 op2=2/>
+; DRWD:     <FUNCTION abbrev=4 op0=0 op1=0 op2=0/>
+; DRWD:     <FUNCTION abbrev=4 op0=0 op1=1/>
+; DRWD:     <FUNCTION abbrev=4 op0=0 op1=1 op2=2/>
 ; DRWD:   </TYPE_BLOCK_ID abbrev='END_BLOCK'>
 ; DRWD:   <FUNCTION abbrev='UNABBREVIATED' op0=4 op1=0 op2=1
 ; DRWD:             op3=0/>

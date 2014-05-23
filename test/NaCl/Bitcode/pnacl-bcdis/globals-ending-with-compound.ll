@@ -63,33 +63,31 @@ declare void @func();
 ; CHECK-NEXT:          |        6, 0, 2, 6>          |
 ; CHECK-NEXT:     130:5|  0: <65534>                 |  }
 ; CHECK-NEXT:     132:0|  1: <65535, 17, 3>          |  types {  // BlockID = 17
-; CHECK-NEXT:     140:0|    2: <65533, 3, 1, 8, 0, 1,|
-; CHECK-NEXT:          |        2, 1, 0>             |
-; CHECK-NEXT:     144:3|    2: <65533, 4, 1, 21, 0,  |
+; CHECK-NEXT:     140:0|    2: <65533, 4, 1, 21, 0,  |
 ; CHECK-NEXT:          |        1, 1, 0, 3, 0, 1, 2> |
-; CHECK-NEXT:     149:2|    3: <1, 2>                |    count 2;
-; CHECK-NEXT:     151:7|    3: <2>                   |    @t0 = void;
-; CHECK-NEXT:     153:6|    5: <21, 0, 0>            |    @t1 = void ();
-; CHECK-NEXT:     155:2|  0: <65534>                 |  }
-; CHECK-NEXT:     156:0|  3: <8, 1, 0, 1, 0>         |  declare external void @f0();
-; CHECK-NEXT:     160:6|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
-; CHECK-NEXT:     168:0|    3: <5, 2>                |    count 2;
-; CHECK-NEXT:     170:6|    4: <0, 0, 0>             |    var @g0, align 0,
-; CHECK-NEXT:     172:1|    7: <3, 97, 98, 99, 100,  |      { 97,  98,  99, 100, 101, 102, 
+; CHECK-NEXT:     144:7|    3: <1, 2>                |    count 2;
+; CHECK-NEXT:     147:4|    3: <2>                   |    @t0 = void;
+; CHECK-NEXT:     149:3|    4: <21, 0, 0>            |    @t1 = void ();
+; CHECK-NEXT:     150:7|  0: <65534>                 |  }
+; CHECK-NEXT:     152:0|  3: <8, 1, 0, 1, 0>         |  declare external void @f0();
+; CHECK-NEXT:     156:6|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
+; CHECK-NEXT:     164:0|    3: <5, 2>                |    count 2;
+; CHECK-NEXT:     166:6|    4: <0, 0, 0>             |    var @g0, align 0,
+; CHECK-NEXT:     168:1|    7: <3, 97, 98, 99, 100,  |      { 97,  98,  99, 100, 101, 102, 
 ; CHECK-NEXT:          |        101, 102, 103>       |       103}
-; CHECK-NEXT:     180:3|    4: <0, 0, 0>             |    var @g1, align 0,
-; CHECK-NEXT:     181:6|    5: <1, 2>                |      initializers 2 {
-; CHECK-NEXT:     183:2|    7: <3, 102, 111, 111>    |        {102, 111, 111}
-; CHECK-NEXT:     187:4|    8: <4, 0>                |        reloc @f0;
+; CHECK-NEXT:     176:3|    4: <0, 0, 0>             |    var @g1, align 0,
+; CHECK-NEXT:     177:6|    5: <1, 2>                |      initializers 2 {
+; CHECK-NEXT:     179:2|    7: <3, 102, 111, 111>    |        {102, 111, 111}
+; CHECK-NEXT:     183:4|    8: <4, 0>                |        reloc @f0;
 ; CHECK-NEXT:          |                             |      }
-; CHECK-NEXT:     188:6|  0: <65534>                 |  }
-; CHECK-NEXT:     192:0|  1: <65535, 14, 3>          |  valuesymtab {  // BlockID = 14
-; CHECK-NEXT:     200:0|    6: <1, 2, 99, 111, 109,  |    @g1 : "compound";
+; CHECK-NEXT:     184:6|  0: <65534>                 |  }
+; CHECK-NEXT:     188:0|  1: <65535, 14, 3>          |  valuesymtab {  // BlockID = 14
+; CHECK-NEXT:     196:0|    6: <1, 2, 99, 111, 109,  |    @g1 : "compound";
 ; CHECK-NEXT:          |        112, 111, 117, 110,  |
 ; CHECK-NEXT:          |        100>                 |
-; CHECK-NEXT:     208:1|    6: <1, 1, 98, 121, 116,  |    @g0 : "bytes";
+; CHECK-NEXT:     204:1|    6: <1, 1, 98, 121, 116,  |    @g0 : "bytes";
 ; CHECK-NEXT:          |        101, 115>            |
-; CHECK-NEXT:     214:0|    6: <1, 0, 102, 117, 110, |    @f0 : "func";
+; CHECK-NEXT:     210:0|    6: <1, 0, 102, 117, 110, |    @f0 : "func";
 ; CHECK-NEXT:          |        99>                  |
-; CHECK-NEXT:     219:1|  0: <65534>                 |  }
-; CHECK-NEXT:     220:0|0: <65534>                   |}
+; CHECK-NEXT:     215:1|  0: <65534>                 |  }
+; CHECK-NEXT:     216:0|0: <65534>                   |}

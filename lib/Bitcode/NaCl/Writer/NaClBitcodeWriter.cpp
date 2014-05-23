@@ -88,10 +88,8 @@ enum {
   FUNCTION_INST_MAX_ABBREV = FUNCTION_INST_STORE_ABBREV,
 
   // TYPE_BLOCK_ID_NEW abbrev id's.
-  TYPE_POINTER_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
-  TYPE_FUNCTION_ABBREV,
-  TYPE_ARRAY_ABBREV,
-  TYPE_MAX_ABBREV = TYPE_ARRAY_ABBREV
+  TYPE_FUNCTION_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
+  TYPE_MAX_ABBREV = TYPE_FUNCTION_ABBREV
 };
 
 LLVM_ATTRIBUTE_NORETURN
@@ -247,16 +245,8 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
   SmallVector<uint64_t, 64> TypeVals;
 
-  // Abbrev for TYPE_CODE_POINTER.
-  NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-  Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_POINTER));
-  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
-  Abbv->Add(NaClBitCodeAbbrevOp(0));  // Addrspace = 0
-  if (TYPE_POINTER_ABBREV != Stream.EmitAbbrev(Abbv))
-    llvm_unreachable("Unexpected abbrev ordering!");
-
   // Abbrev for TYPE_CODE_FUNCTION.
-  Abbv = new NaClBitCodeAbbrev();
+  NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_FUNCTION));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // isvararg
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));

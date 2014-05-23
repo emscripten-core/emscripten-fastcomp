@@ -81,55 +81,52 @@ false:
 ; ABV-NEXT:          |        6, 0, 2, 6>          |
 ; ABV-NEXT:     130:5|  0: <65534>                 |  }
 ; ABV-NEXT:     132:0|  1: <65535, 17, 3>          |  types {  // BlockID = 17
-; ABV-NEXT:     140:0|    2: <65533, 3, 1, 8, 0, 1,|
-; ABV-NEXT:          |        3, 1, 0>             |
-; ABV-NEXT:     144:3|    2: <65533, 4, 1, 21, 0,  |
+; ABV-NEXT:     140:0|    2: <65533, 4, 1, 21, 0,  |
 ; ABV-NEXT:          |        1, 1, 0, 3, 0, 1, 3> |
-; ABV-NEXT:     149:2|    3: <1, 4>                |    count 4;
-; ABV-NEXT:     151:7|    3: <7, 32>               |    @t0 = i32;
-; ABV-NEXT:     155:2|    3: <2>                   |    @t1 = void;
-; ABV-NEXT:     157:1|    5: <21, 0, 0, 0>         |    @t2 = i32 (i32);
-; ABV-NEXT:     159:1|    3: <7, 1>                |    @t3 = i1;
-; ABV-NEXT:     161:6|  0: <65534>                 |  }
-; ABV-NEXT:     164:0|  3: <8, 2, 0, 0, 0>         |  define external i32 @f0(i32);
-; ABV-NEXT:     168:6|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
-; ABV-NEXT:     176:0|    3: <5, 0>                |    count 0;
-; ABV-NEXT:     178:6|  0: <65534>                 |  }
-; ABV-NEXT:     180:0|  1: <65535, 14, 3>          |  valuesymtab {  // BlockID = 14
-; ABV-NEXT:     188:0|    6: <1, 0, 102, 97, 99,   |    @f0 : "fact";
+; ABV-NEXT:     144:7|    3: <1, 4>                |    count 4;
+; ABV-NEXT:     147:4|    3: <7, 32>               |    @t0 = i32;
+; ABV-NEXT:     150:7|    3: <2>                   |    @t1 = void;
+; ABV-NEXT:     152:6|    4: <21, 0, 0, 0>         |    @t2 = i32 (i32);
+; ABV-NEXT:     154:6|    3: <7, 1>                |    @t3 = i1;
+; ABV-NEXT:     157:3|  0: <65534>                 |  }
+; ABV-NEXT:     160:0|  3: <8, 2, 0, 0, 0>         |  define external i32 @f0(i32);
+; ABV-NEXT:     164:6|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
+; ABV-NEXT:     172:0|    3: <5, 0>                |    count 0;
+; ABV-NEXT:     174:6|  0: <65534>                 |  }
+; ABV-NEXT:     176:0|  1: <65535, 14, 3>          |  valuesymtab {  // BlockID = 14
+; ABV-NEXT:     184:0|    6: <1, 0, 102, 97, 99,   |    @f0 : "fact";
 ; ABV-NEXT:          |        116>                 |
-; ABV-NEXT:     193:1|  0: <65534>                 |  }
-; ABV-NEXT:     196:0|  1: <65535, 12, 4>          |  function i32 @f0(i32 %p0) {  
+; ABV-NEXT:     189:1|  0: <65534>                 |  }
+; ABV-NEXT:     192:0|  1: <65535, 12, 4>          |  function i32 @f0(i32 %p0) {  
 ; ABV-NEXT:          |                             |                   // BlockID = 12
-; ABV-NEXT:     204:0|    3: <1, 3>                |
-; ABV-NEXT:     206:6|    1: <65535, 11, 3>        |    constants {  // BlockID = 11
-; ABV-NEXT:     216:0|      4: <1, 0>              |
-; ABV-NEXT:     216:6|      5: <4, 2>              |
-; ABV-NEXT:     218:1|      6: <4, 0>              |
-; ABV-NEXT:     218:4|    0: <65534>               |    }
-; ABV-NEXT:     220:0|    3: <28, 1, 2, 32>        |
-; ABV-NEXT:     225:0|    3: <11, 1, 2, 1>         |
-; ABV-NEXT:     229:2|    8: <10, 3>               |
-; ABV-NEXT:     230:4|    5: <2, 4, 3, 1>          |
-; ABV-NEXT:     233:0|    5: <2, 5, 1, 2>          |
-; ABV-NEXT:     235:4|    3: <34, 0, 7, 1>         |
-; ABV-NEXT:     240:4|    8: <10, 1>               |
-; ABV-NEXT:     241:6|    1: <65535, 14, 3>        |    valuesymtab {  // BlockID = 14
-; ABV-NEXT:     248:0|      7: <2, 1, 116, 114,    |
+; ABV-NEXT:     200:0|    3: <1, 3>                |
+; ABV-NEXT:     202:6|    1: <65535, 11, 3>        |    constants {  // BlockID = 11
+; ABV-NEXT:     212:0|      4: <1, 0>              |
+; ABV-NEXT:     212:6|      5: <4, 2>              |
+; ABV-NEXT:     214:1|      6: <4, 0>              |
+; ABV-NEXT:     214:4|    0: <65534>               |    }
+; ABV-NEXT:     216:0|    3: <28, 1, 2, 32>        |
+; ABV-NEXT:     221:0|    3: <11, 1, 2, 1>         |
+; ABV-NEXT:     225:2|    8: <10, 3>               |
+; ABV-NEXT:     226:4|    5: <2, 4, 3, 1>          |
+; ABV-NEXT:     229:0|    5: <2, 5, 1, 2>          |
+; ABV-NEXT:     231:4|    3: <34, 0, 7, 1>         |
+; ABV-NEXT:     236:4|    8: <10, 1>               |
+; ABV-NEXT:     237:6|    1: <65535, 14, 3>        |    valuesymtab {  // BlockID = 14
+; ABV-NEXT:     244:0|      7: <2, 1, 116, 114,    |
 ; ABV-NEXT:          |        117, 101>            |
-; ABV-NEXT:Error(248:0): Unknown record in valuesymtab block.
-; ABV-NEXT:     253:1|      6: <1, 4, 118, 49>     |      %v2 : "v1";
-; ABV-NEXT:     256:6|      6: <1, 5, 118, 50>     |      %v3 : "v2";
-; ABV-NEXT:     260:3|      6: <1, 6, 118, 51>     |      %v4 : "v3";
-; ABV-NEXT:     264:0|      6: <1, 7, 118, 52>     |      %v5 : "v4";
-; ABV-NEXT:     267:5|      7: <2, 2, 102, 97, 108,|
+; ABV-NEXT:Error(244:0): Unknown record in valuesymtab block.
+; ABV-NEXT:     249:1|      6: <1, 4, 118, 49>     |      %v2 : "v1";
+; ABV-NEXT:     252:6|      6: <1, 5, 118, 50>     |      %v3 : "v2";
+; ABV-NEXT:     256:3|      6: <1, 6, 118, 51>     |      %v4 : "v3";
+; ABV-NEXT:     260:0|      6: <1, 7, 118, 52>     |      %v5 : "v4";
+; ABV-NEXT:     263:5|      7: <2, 2, 102, 97, 108,|
 ; ABV-NEXT:          |        115, 101>            |
-; ABV-NEXT:Error(267:5): Unknown record in valuesymtab block.
-; ABV-NEXT:     273:4|      6: <1, 1, 110>         |      %p0 : "n";
-; ABV-NEXT:     276:3|    0: <65534>               |    }
-; ABV-NEXT:     280:0|  0: <65534>                 |  }
-; ABV-NEXT:     284:0|0: <65534>                   |}
-
+; ABV-NEXT:Error(263:5): Unknown record in valuesymtab block.
+; ABV-NEXT:     269:4|      6: <1, 1, 110>         |      %p0 : "n";
+; ABV-NEXT:     272:3|    0: <65534>               |    }
+; ABV-NEXT:     276:0|  0: <65534>                 |  }
+; ABV-NEXT:     280:0|0: <65534>                   |}
 
 ; NOABV:            0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, 88, 69)
 ; NOABV-NEXT:          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2

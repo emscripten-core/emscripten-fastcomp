@@ -62,27 +62,25 @@
 ; CHECK-NEXT:          |        6, 0, 2, 6>          |
 ; CHECK-NEXT:     130:5|  0: <65534>                 |  }
 ; CHECK-NEXT:     132:0|  1: <65535, 17, 3>          |  types {  // BlockID = 17
-; CHECK-NEXT:     140:0|    2: <65533, 3, 1, 8, 0, 1,|
-; CHECK-NEXT:          |        0, 0, 1, 0>          |
-; CHECK-NEXT:     144:3|    2: <65533, 4, 1, 21, 0,  |
+; CHECK-NEXT:     140:0|    2: <65533, 4, 1, 21, 0,  |
 ; CHECK-NEXT:          |        1, 1, 0, 3, 0, 1, 0, |
 ; CHECK-NEXT:          |        0>                   |
-; CHECK-NEXT:     149:2|    3: <1, 0>                |    count 0;
-; CHECK-NEXT:     151:7|  0: <65534>                 |  }
-; CHECK-NEXT:     156:0|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
-; CHECK-NEXT:     164:0|    3: <5, 2>                |    count 2;
-; CHECK-NEXT:     166:6|    4: <0, 0, 0>             |    var @g0, align 0,
-; CHECK-NEXT:     168:1|    7: <3, 97, 98, 99, 100,  |      { 97,  98,  99, 100, 101, 102, 
+; CHECK-NEXT:     144:7|    3: <1, 0>                |    count 0;
+; CHECK-NEXT:     147:4|  0: <65534>                 |  }
+; CHECK-NEXT:     148:0|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
+; CHECK-NEXT:     156:0|    3: <5, 2>                |    count 2;
+; CHECK-NEXT:     158:6|    4: <0, 0, 0>             |    var @g0, align 0,
+; CHECK-NEXT:     160:1|    7: <3, 97, 98, 99, 100,  |      { 97,  98,  99, 100, 101, 102, 
 ; CHECK-NEXT:          |        101, 102, 103>       |       103}
-; CHECK-NEXT:     176:3|    4: <0, 0, 0>             |    var @g1, align 0,
-; CHECK-NEXT:     177:6|    9: <4, 0, 4294967295>    |      reloc @g0 - 1;
-; CHECK-NEXT:     184:2|  0: <65534>                 |  }
-; CHECK-NEXT:     188:0|  1: <65535, 14, 3>          |  valuesymtab {  // BlockID = 14
-; CHECK-NEXT:     196:0|    6: <1, 1, 97, 100, 100,  |    @g1 : "addend_negative";
+; CHECK-NEXT:     168:3|    4: <0, 0, 0>             |    var @g1, align 0,
+; CHECK-NEXT:     169:6|    9: <4, 0, 4294967295>    |      reloc @g0 - 1;
+; CHECK-NEXT:     176:2|  0: <65534>                 |  }
+; CHECK-NEXT:     180:0|  1: <65535, 14, 3>          |  valuesymtab {  // BlockID = 14
+; CHECK-NEXT:     188:0|    6: <1, 1, 97, 100, 100,  |    @g1 : "addend_negative";
 ; CHECK-NEXT:          |        101, 110, 100, 95,   |
 ; CHECK-NEXT:          |        110, 101, 103, 97,   |
 ; CHECK-NEXT:          |        116, 105, 118, 101>  |
-; CHECK-NEXT:     209:3|    6: <1, 0, 98, 121, 116,  |    @g0 : "bytes";
+; CHECK-NEXT:     201:3|    6: <1, 0, 98, 121, 116,  |    @g0 : "bytes";
 ; CHECK-NEXT:          |        101, 115>            |
-; CHECK-NEXT:     215:2|  0: <65534>                 |  }
-; CHECK-NEXT:     216:0|0: <65534>                   |}
+; CHECK-NEXT:     207:2|  0: <65534>                 |  }
+; CHECK-NEXT:     208:0|0: <65534>                   |}
