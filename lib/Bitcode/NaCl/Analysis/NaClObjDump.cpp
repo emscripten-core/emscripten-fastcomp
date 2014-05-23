@@ -12,7 +12,6 @@
 #include "llvm/Bitcode/NaCl/NaClBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/MemoryBuffer.h"

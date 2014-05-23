@@ -11,6 +11,7 @@
 #ifndef LLVM_BITCODE_NACL_NACLOBJDUMPSTREAM_H
 #define LLVM_BITCODE_NACL_NACLOBJDUMPSTREAM_H
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Support/raw_ostream.h"
 #include <vector>
