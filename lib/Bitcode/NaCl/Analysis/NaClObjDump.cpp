@@ -22,6 +22,45 @@ namespace {
 
 using namespace llvm;
 
+/// Class to handle sign rotations in a human readable form. That is,
+/// the sign is in the low bit. The two special cases are:
+/// 1) -1 is true for i1.
+/// 2) The representation allows -0 (which is different than 0).
+class SignRotatedInt {
+public:
+  SignRotatedInt(uint64_t Value, Type* ValueType)
+      : SignedValue(Value >> 1),
+        IsNegated((Value & 0x1)
+                  && !(ValueType->isIntegerTy()
+                       && ValueType->getIntegerBitWidth() == 1)) {
+  }
+
+  explicit SignRotatedInt()
+      : SignedValue(0), IsNegated(false) {}
+
+  explicit SignRotatedInt(const SignRotatedInt &V)
+      : SignedValue(V.SignedValue), IsNegated(V.IsNegated) {}
+
+  void operator=(const SignRotatedInt &V) {
+    SignedValue = V.SignedValue;
+    IsNegated = V.IsNegated;
+  }
+
+  void Print(raw_ostream &Strm) const {
+    if (IsNegated) Strm << "-";
+    Strm << SignedValue;
+  }
+
+private:
+  int64_t SignedValue;
+  bool IsNegated;
+};
+
+inline raw_ostream &operator<<(raw_ostream &Strm, const SignRotatedInt &V) {
+  V.Print(Strm);
+  return Strm;
+}
+
 /// Convenience class to be able to print value ids to raw_ostream's.
 /// Kinds of bitcode Ids:
 ///    a : For abbreviations.
@@ -311,6 +350,7 @@ public:
         NumFunctions(0),
         NumGlobals(0),
         NumParams(0),
+        NumConstants(0),
         NumValuedInsts(0),
         UnknownType(Type::getVoidTy(getGlobalContext())),
         PointerType(Type::getInt32Ty(getGlobalContext())),
@@ -445,11 +485,36 @@ public:
     return NumParams;
   }
 
+  /// Installs the given type to the next available constant index.
+  void InstallConstantType(Type *Ty) {
+    while (ConstantIdType.size() <= NumConstants) {
+      ConstantIdType.push_back(UnknownType);
+    }
+    ConstantIdType[NumConstants++] = Ty;
+  }
+
+  /// Returns the type associated with the given constant index.
+  Type *GetConstantType(uint32_t Index) {
+    if (Index >= ConstantIdType.size()) {
+      BitcodeId Id('c', Index);
+      Errors() << "Can't find definition for " << Id << "\n";
+      Fatal();
+    }
+    return ConstantIdType[Index];
+  }
+
+  /// Returns the number of constants (currently) defined in the
+  /// enclosing defined function.
+  uint32_t GetNumConstants() const {
+    return NumConstants;
+  }
+
   /// Resets index counters local to a defined function.
   void ResetLocalCounters() {
     ParamIdType.clear();
     NumParams = 0;
-    // TODO(kschimpf) Add missing constant and instruction counters.
+    NumConstants = 0;
+    // TODO(kschimpf) Add missing instruction counters.
     InstIdType.clear();
     NumValuedInsts = 0;
   }
@@ -634,6 +699,9 @@ private:
   std::vector<Type*>ParamIdType;
   // The number of parameter indices currently defined.
   uint32_t NumParams;
+  std::vector<Type*>ConstantIdType;
+  // The number of constant indices currently defined.
+  uint32_t NumConstants;
   // The list of known instruction types (index i defines the type
   // associated with valued instruction index i).
   std::vector<Type*> InstIdType;
@@ -665,22 +733,27 @@ BitcodeId NaClDisParser::GetBitcodeId(uint32_t Index) {
     return BitcodeId('p', Index);
   }
   Index -= NumParams;
-  // TODO(kschimpf): Add function-level constants.
-  // TODO(kschimpf): Add instruction values.
+  if (Index < NumConstants) {
+    return BitcodeId('c', Index);
+  }
+  Index -= NumConstants;
   return BitcodeId('v', Index);
 }
 
 Type *NaClDisParser::GetValueType(uint32_t Index, bool UnderlyingType) {
-  if (Index < NumFunctions)
-    return UnderlyingType ? GetFunctionType(Index) : PointerType;
-  Index -= NumFunctions;
-  if (Index < NumGlobals)
+  uint32_t Idx = Index;
+  if (Idx < NumFunctions)
+    return UnderlyingType ? GetFunctionType(Idx) : PointerType;
+  Idx -= NumFunctions;
+  if (Idx < NumGlobals)
     return PointerType;
-  Index -= NumGlobals;
-  if (Index < NumParams)
-    return GetParamType(Index);
-  // TODO(kschimpf): Add adjustment for function-level constants
-  // and instructions.
+  Idx -= NumGlobals;
+  if (Idx < NumParams)
+    return GetParamType(Idx);
+  Idx -= NumParams;
+  if (Idx < NumConstants)
+    return GetConstantType(Idx);
+  // TODO(kschimpf): Add adjustment for function-level instructions.
   Errors() << "Can't find type for (absolute) index: " << Index;
 }
 
@@ -900,6 +973,17 @@ protected:
 
   uint32_t GetNumParams() const {
     return Context->GetNumParams();
+  }
+  void InstallConstantType(Type *ConstantType) {
+    Context->InstallConstantType(ConstantType);
+  }
+
+  Type *GetConstantType(uint32_t Index) {
+    return Context->GetConstantType(Index);
+  }
+
+  uint32_t GetNumConstants() const {
+    return Context->GetNumConstants();
   }
 
   Type *GetValueType(uint32_t Id, bool UnderlyingType = false) {
@@ -1485,22 +1569,122 @@ void NaClDisValueSymtabParser::ProcessRecord() {
 }
 
 /// Parses and disassembles a constants block.
-/// TODO(kschimpf): Process records of this class.
 class NaClDisConstantsParser : public NaClDisBlockParser {
 public:
   NaClDisConstantsParser(unsigned BlockID,
                          NaClDisBlockParser *EnclosingParser)
-      : NaClDisBlockParser(BlockID, EnclosingParser) {}
+      : NaClDisBlockParser(BlockID, EnclosingParser),
+        ConstantType(0),
+        BlockTabs(GetAssemblyNumTabs()) {}
 
-  virtual ~NaClDisConstantsParser() {}
+  virtual ~NaClDisConstantsParser() {
+    while (BlockTabs < GetAssemblyNumTabs()) DecAssemblyIndent();
+  }
 
+private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
+
+  virtual void ProcessRecord() LLVM_OVERRIDE;
+
+  /// Generates the value id for the next generated constant.
+  BitcodeId NextConstId() {
+    return BitcodeId('c', GetNumConstants());
+  }
+
+  // The type associated with the constant.
+  Type *ConstantType;
+  // The number of tabs used to indent the globals block.
+  unsigned BlockTabs;
 };
 
 void NaClDisConstantsParser::PrintBlockHeader() {
   Tokens() << "constants" << Space() << OpenCurly()
            << Space() << Space() << "// BlockID = " << GetBlockID()
            << Endline();
+}
+
+void NaClDisConstantsParser::ProcessRecord() {
+  ObjDumpSetRecordBitAddress(Record.GetStartBit());
+  const NaClBitcodeRecord::RecordVector Values = Record.GetValues();
+  switch (Record.GetCode()) {
+  case naclbitc::CST_CODE_SETTYPE:
+    // SETTYPE: [typeid]
+    while (BlockTabs + 1 < GetAssemblyNumTabs()) DecAssemblyIndent();
+    if (Values.size() == 1) {
+      ConstantType = GetType(Values[0]);
+      Tokens() << TokenizeType(ConstantType) << ":" << Endline();
+    } else {
+      Errors() << "Settype record should have 1 argument. Found: "
+               << Values.size() << "\n";
+      // Make up a type, so we can continue.
+      ConstantType = GetIntegerType(32);
+    }
+    IncAssemblyIndent();
+    break;
+  case naclbitc::CST_CODE_UNDEF:
+    // CST_CODE_UNDEF: []
+    if (!Values.empty()) {
+      Errors() << "Undefined record should not have arguments: Found: "
+               << Values.size() << "\n";
+    }
+    Tokens() << NextConstId() << Space() << "=" << Space()
+             << StartCluster() << TokenizeType(ConstantType)
+             << Space() << "undefined"
+             << Semicolon() << FinishCluster() << Endline();
+    InstallConstantType(ConstantType);
+    break;
+  case naclbitc::CST_CODE_INTEGER: {
+    // INTEGER: [intval]
+    SignRotatedInt Value;
+    if (Values.size() == 1) {
+      Value = SignRotatedInt(Values[0], ConstantType);
+    } else {
+      Errors() << "Integer record should have 1 argument. Found: "
+               << Values.size() << "\n";
+    }
+    Tokens() << NextConstId() << Space() << "=" << Space() << StartCluster()
+             << StartCluster() << TokenizeType(ConstantType) << Space()
+             << Value << Semicolon() << FinishCluster() << FinishCluster()
+             << Endline();
+    InstallConstantType(ConstantType);
+    break;
+  }
+  case naclbitc::CST_CODE_FLOAT: {
+    // FLOAT: [fpval]
+    // Define initially with default value zero, in case of errors.
+    const fltSemantics &FloatRep =
+        ConstantType->isFloatTy() ? APFloat::IEEEsingle : APFloat::IEEEdouble;
+    APFloat Value(APFloat::getZero(FloatRep));
+    if (Values.size() == 1) {
+      if (ConstantType->isFloatTy()) {
+        Value = APFloat(FloatRep, APInt(32, static_cast<uint32_t>(Values[0])));
+      }
+      else if (ConstantType->isDoubleTy()) {
+        Value = APFloat(FloatRep, APInt(64, Values[0]));
+      } else {
+        Errors() << "Bad floating point constant argument: "
+                 << Values[0] << "\n";
+      }
+    } else {
+      Errors() << "Float record should have 1 argument. Found: "
+               << Values.size() << "\n";
+    }
+    Tokens() << NextConstId() << Space() << "=" << Space() << StartCluster()
+             << TokenizeType(ConstantType) << Space();
+    if (ConstantType->isFloatTy()) {
+      Tokens() << format("%g", Value.convertToFloat());
+    } else {
+      Tokens() << format("%g", Value.convertToDouble());
+    }
+    Tokens() << Semicolon() << FinishCluster() << Endline();
+    InstallConstantType(ConstantType);
+    break;
+  }
+  default:
+    Errors() << "Unknown record in valuesymtab block.\n";
+    break;
+  }
+  ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
 /// Parses and disassembles function blocks.

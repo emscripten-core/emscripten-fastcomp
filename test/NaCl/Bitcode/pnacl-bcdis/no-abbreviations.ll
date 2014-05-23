@@ -101,10 +101,10 @@ false:
 ; ABV-NEXT:          |                             |                   // BlockID = 12
 ; ABV-NEXT:     200:0|    3: <1, 3>                |
 ; ABV-NEXT:     202:6|    1: <65535, 11, 3>        |    constants {  // BlockID = 11
-; ABV-NEXT:     212:0|      4: <1, 0>              |
-; ABV-NEXT:     212:6|      5: <4, 2>              |
-; ABV-NEXT:     214:1|      6: <4, 0>              |
-; ABV-NEXT:     214:4|    0: <65534>               |    }
+; ABV-NEXT:     212:0|      4: <1, 0>              |      i32:
+; ABV-NEXT:     212:6|      5: <4, 2>              |        %c0 = i32 1;
+; ABV-NEXT:     214:1|      6: <4, 0>              |        %c1 = i32 0;
+; ABV-NEXT:     214:4|    0: <65534>               |      }
 ; ABV-NEXT:     216:0|    3: <28, 1, 2, 32>        |
 ; ABV-NEXT:     221:0|    3: <11, 1, 2, 1>         |
 ; ABV-NEXT:     225:2|    8: <10, 3>               |
@@ -116,10 +116,10 @@ false:
 ; ABV-NEXT:     244:0|      7: <2, 1, 116, 114,    |
 ; ABV-NEXT:          |        117, 101>            |
 ; ABV-NEXT:Error(244:0): Unknown record in valuesymtab block.
-; ABV-NEXT:     249:1|      6: <1, 4, 118, 49>     |      %v2 : "v1";
-; ABV-NEXT:     252:6|      6: <1, 5, 118, 50>     |      %v3 : "v2";
-; ABV-NEXT:     256:3|      6: <1, 6, 118, 51>     |      %v4 : "v3";
-; ABV-NEXT:     260:0|      6: <1, 7, 118, 52>     |      %v5 : "v4";
+; ABV-NEXT:     249:1|      6: <1, 4, 118, 49>     |      %v0 : "v1";
+; ABV-NEXT:     252:6|      6: <1, 5, 118, 50>     |      %v1 : "v2";
+; ABV-NEXT:     256:3|      6: <1, 6, 118, 51>     |      %v2 : "v3";
+; ABV-NEXT:     260:0|      6: <1, 7, 118, 52>     |      %v3 : "v4";
 ; ABV-NEXT:     263:5|      7: <2, 2, 102, 97, 108,|
 ; ABV-NEXT:          |        115, 101>            |
 ; ABV-NEXT:Error(263:5): Unknown record in valuesymtab block.
@@ -154,10 +154,10 @@ false:
 ; NOABV-NEXT:          |                             |                   // BlockID = 12
 ; NOABV-NEXT:     108:0|    3: <1, 3>                |
 ; NOABV-NEXT:     110:7|    1: <65535, 11, 4>        |    constants {  // BlockID = 11
-; NOABV-NEXT:     120:0|      3: <1, 0>              |
-; NOABV-NEXT:     122:6|      3: <4, 2>              |
-; NOABV-NEXT:     125:4|      3: <4, 0>              |
-; NOABV-NEXT:     128:2|    0: <65534>               |    }
+; NOABV-NEXT:     120:0|      3: <1, 0>              |      i32:
+; NOABV-NEXT:     122:6|      3: <4, 2>              |        %c0 = i32 1;
+; NOABV-NEXT:     125:4|      3: <4, 0>              |        %c1 = i32 0;
+; NOABV-NEXT:     128:2|    0: <65534>               |      }
 ; NOABV-NEXT:     132:0|    3: <28, 1, 2, 32>        |
 ; NOABV-NEXT:     137:1|    3: <11, 1, 2, 1>         |
 ; NOABV-NEXT:     141:4|    3: <10, 3>               |
@@ -169,10 +169,10 @@ false:
 ; NOABV-NEXT:     168:0|      3: <2, 1, 116, 114,    |
 ; NOABV-NEXT:          |        117, 101>            |
 ; NOABV-NEXT:Error(168:0): Unknown record in valuesymtab block.
-; NOABV-NEXT:     176:6|      3: <1, 4, 118, 49>     |      %v2 : "v1";
-; NOABV-NEXT:     182:4|      3: <1, 5, 118, 50>     |      %v3 : "v2";
-; NOABV-NEXT:     188:2|      3: <1, 6, 118, 51>     |      %v4 : "v3";
-; NOABV-NEXT:     194:0|      3: <1, 7, 118, 52>     |      %v5 : "v4";
+; NOABV-NEXT:     176:6|      3: <1, 4, 118, 49>     |      %v0 : "v1";
+; NOABV-NEXT:     182:4|      3: <1, 5, 118, 50>     |      %v1 : "v2";
+; NOABV-NEXT:     188:2|      3: <1, 6, 118, 51>     |      %v2 : "v3";
+; NOABV-NEXT:     194:0|      3: <1, 7, 118, 52>     |      %v3 : "v4";
 ; NOABV-NEXT:     199:6|      3: <2, 2, 102, 97, 108,|
 ; NOABV-NEXT:          |        115, 101>            |
 ; NOABV-NEXT:Error(199:6): Unknown record in valuesymtab block.
