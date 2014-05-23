@@ -146,8 +146,11 @@ EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
                         unsigned Align, bool isVolatile,
                         MachinePointerInfo DstPtrInfo) const {
   // Use default for non AAPCS (or Darwin) subtargets
-  if (Subtarget->isTargetNaCl() || !Subtarget->isAAPCS_ABI() || Subtarget->isTargetDarwin()) // @LOCALMOD
+  // @LOCALMOD-START
+  if (Subtarget->isTargetNaCl() || !EnableARMAEABIFunctions ||
+      !Subtarget->isAAPCS_ABI() || Subtarget->isTargetDarwin())
     return SDValue();
+  // @LOCALMOD-END
 
   const ARMTargetLowering &TLI =
     *static_cast<const ARMTargetLowering*>(DAG.getTarget().getTargetLowering());

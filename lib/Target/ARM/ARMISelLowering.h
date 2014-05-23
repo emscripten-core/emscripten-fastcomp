@@ -20,6 +20,7 @@
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/Support/CommandLine.h"  // @LOCALMOD
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include <vector>
@@ -598,6 +599,10 @@ namespace llvm {
     FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
                              const TargetLibraryInfo *libInfo);
   }
+
+  // @LOCALMOD-START
+  extern cl::opt<bool> EnableARMAEABIFunctions;
+  // @LOCALMOD-END
 }
 
 #endif  // ARMISELLOWERING_H

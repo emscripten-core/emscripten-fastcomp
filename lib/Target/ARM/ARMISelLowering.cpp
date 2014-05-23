@@ -78,8 +78,8 @@ ARMInterworking("arm-interworking", cl::Hidden,
 // we use the following option to turn off use of the __aeabi_* functions.
 // TODO(mseaborn): In the longer term, it would be cleaner to change the
 // compiler-rt build to define __aeabi_* functions.
-static cl::opt<bool>
-EnableARMAEABIFunctions("arm-enable-aeabi-functions",
+cl::opt<bool>
+llvm::EnableARMAEABIFunctions("arm-enable-aeabi-functions",
   cl::desc("Allow using ARM __aeabi_* functions in generated code"),
   cl::init(true));
 // @LOCALMOD-END
