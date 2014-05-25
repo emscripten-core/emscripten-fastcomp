@@ -38,15 +38,16 @@ declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
 declare i32 @setjmp(i8*)
 declare void @longjmp(i8*, i32)
 
+; For correctness, the resulting call must get the "returns_twice" attribute.
 define i32 @call_setjmp(i8* %arg) {
   %val = call i32 @llvm.nacl.setjmp(i8* %arg)
-; CHECK: %val = call i32 @setjmp(i8* %arg)
+; CHECK: %val = call i32 @setjmp(i8* %arg) [[RETURNS_TWICE:#[0-9]+]]
   ret i32 %val
 }
 
 define void @call_longjmp(i8* %arg, i32 %num) {
   call void @llvm.nacl.longjmp(i8* %arg, i32 %num)
-; CHECK: call void @longjmp(i8* %arg, i32 %num)
+; CHECK: call void @longjmp(i8* %arg, i32 %num){{$}}
   ret void
 }
 
@@ -211,3 +212,5 @@ define void @test_atomic_store_i64(i64* %ptr, i64 %value) {
   call void @llvm.nacl.atomic.store.i64(i64 %value, i64* %ptr, i32 6)
   ret void
 }
+
+; CHECK: attributes [[RETURNS_TWICE]] = { returns_twice }

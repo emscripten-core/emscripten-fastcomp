@@ -119,6 +119,13 @@ private:
 
   virtual bool doResolve(IntrinsicInst *Call) {
     Call->setCalledFunction(TargetFunction);
+    if (IntrinsicID == Intrinsic::nacl_setjmp) {
+      // The "returns_twice" attribute is required for correctness,
+      // otherwise the backend will reuse stack slots in a way that is
+      // incorrect for setjmp().  See:
+      // https://code.google.com/p/nativeclient/issues/detail?id=3733
+      Call->setCanReturnTwice();
+    }
     return true;
   }
 
