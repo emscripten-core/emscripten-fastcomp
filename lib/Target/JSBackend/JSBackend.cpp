@@ -1112,7 +1112,7 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
   V = V->stripPointerCasts();
 
-  if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
+  if (isa<ConstantInt>(V) || isa<ConstantFP>(V) || isa<UndefValue>(V)) {
     return getConstant(cast<Constant>(V), sign);
   } else {
     return "(" + getCast(getValueAsStr(V), V->getType(), sign) + ")";
