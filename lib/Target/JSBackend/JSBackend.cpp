@@ -88,6 +88,11 @@ NoAliasingFunctionPointers("emscripten-no-aliasing-function-pointers",
                            cl::desc("Forces function pointers to not alias (this is more correct, but rarely needed, and has the cost of much larger function tables; it is useful for debugging though; see emscripten ALIASING_FUNCTION_POINTERS option)"),
                            cl::init(false));
 
+static cl::opt<int>
+MaxSetjmps("emscripten-max-setjmps",
+           cl::desc("Maximum amount of setjmp() calls per function stack frame (see emscripten MAX_SETJMPS)"),
+           cl::init(20));
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
