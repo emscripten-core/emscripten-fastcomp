@@ -423,7 +423,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   // 32-bit
   case X86::JMP32r               : NewOpc = X86::NACL_JMP32r; break;
   case X86::TAILJMPr             : NewOpc = X86::NACL_JMP32r; break;
-  case X86::NACL_CG_CALL32r      : NewOpc = X86::NACL_CALL32r; break;
+  case X86::CALL32r              : NewOpc = X86::NACL_CALL32r; break;
   // 64-bit
   case X86::NACL_CG_JMP64r       : NewOpc = X86::NACL_JMP64r; break;
   case X86::NACL_CG_CALL64r      : NewOpc = X86::NACL_CALL64r; break;
@@ -585,7 +585,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
   // and variable operands removed.
   unsigned NewOpc = 0;
   switch (Opc) {
-  case X86::NACL_CG_CALLpcrel32  : NewOpc = X86::NACL_CALL32d; break;
+  case X86::CALLpcrel32          : NewOpc = X86::NACL_CALL32d; break;
   case X86::TAILJMPd             : NewOpc = X86::JMP_4; break;
   case X86::NACL_CG_TAILJMPd64   : NewOpc = X86::JMP_4; break;
   case X86::NACL_CG_CALL64pcrel32: NewOpc = X86::NACL_CALL64d; break;

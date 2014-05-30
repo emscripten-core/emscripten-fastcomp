@@ -1037,7 +1037,7 @@ def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
 // callee-saved register.
 def : Pat<(X86tcret (load addr:$dst), imm:$off),
           (TCRETURNmi addr:$dst, imm:$off)>,
-          Requires<[In32BitMode, IsNotPIC, IsNotNaCl]>;
+          Requires<[In32BitMode, IsNotPIC, IsNotNaCl]>; // @LOCALMOD
 
 def : Pat<(X86tcret (i32 tglobaladdr:$dst), imm:$off),
           (TCRETURNdi texternalsym:$dst, imm:$off)>,
@@ -1067,11 +1067,11 @@ def : Pat<(X86tcret (i64 texternalsym:$dst), imm:$off),
 
 // Normal calls, with various flavors of addresses.
 def : Pat<(X86call (i32 tglobaladdr:$dst)),
-          (CALLpcrel32 tglobaladdr:$dst)>, Requires<[IsNotNaCl]>;
+          (CALLpcrel32 tglobaladdr:$dst)>;
 def : Pat<(X86call (i32 texternalsym:$dst)),
-          (CALLpcrel32 texternalsym:$dst)>, Requires<[IsNotNaCl]>;
+          (CALLpcrel32 texternalsym:$dst)>;
 def : Pat<(X86call (i32 imm:$dst)),
-          (CALLpcrel32 imm:$dst)>, Requires<[CallImmAddr, IsNotNaCl]>;
+          (CALLpcrel32 imm:$dst)>, Requires<[CallImmAddr]>;
 
 // Comparisons.
 
@@ -1510,19 +1510,19 @@ def : Pat<(store (i8 (trunc_su (srl_su GR64:$src, (i8 8)))), addr:$dst),
           (MOV8mr_NOREX
             addr:$dst,
             (EXTRACT_SUBREG (i64 (COPY_TO_REGCLASS GR64:$src, GR64_ABCD)),
-                            sub_8bit_hi))>, Requires<[IsNotNaCl]>;
+                            sub_8bit_hi))>, Requires<[IsNotNaCl]>; // @LOCALMOD
 def : Pat<(store (i8 (trunc_su (srl_su GR32:$src, (i8 8)))), addr:$dst),
           (MOV8mr_NOREX
             addr:$dst,
             (EXTRACT_SUBREG (i32 (COPY_TO_REGCLASS GR32:$src, GR32_ABCD)),
                             sub_8bit_hi))>,
-      Requires<[In64BitMode, IsNotNaCl]>;
+      Requires<[In64BitMode, IsNotNaCl]>; // @LOCALMOD
 def : Pat<(store (i8 (trunc_su (srl_su GR16:$src, (i8 8)))), addr:$dst),
           (MOV8mr_NOREX
             addr:$dst,
             (EXTRACT_SUBREG (i16 (COPY_TO_REGCLASS GR16:$src, GR16_ABCD)),
                             sub_8bit_hi))>,
-      Requires<[In64BitMode, IsNotNaCl]>;
+      Requires<[In64BitMode, IsNotNaCl]>; // @LOCALMOD
 
 
 // (shl x, 1) ==> (add x, x)

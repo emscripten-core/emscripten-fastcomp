@@ -169,11 +169,13 @@ let isCall = 1 in
                       Requires<[In32BitMode]>, Sched<[WriteJump]>;
     def CALL32r     : I<0xFF, MRM2r, (outs), (ins GR32:$dst),
                         "call{l}\t{*}$dst", [(X86call GR32:$dst)], IIC_CALL_RI>,
-                         Requires<[In32BitMode,IsNotNaCl]>, Sched<[WriteJump]>; // @LOCALMOD
+                         Requires<[In32BitMode]>, Sched<[WriteJump]>;
+    // @LOCALMOD to disallow load-folded calls in NaCl (need to sandbox
+    // the destination address first).
     def CALL32m     : I<0xFF, MRM2m, (outs), (ins i32mem:$dst),
                         "call{l}\t{*}$dst", [(X86call (loadi32 addr:$dst))],
                         IIC_CALL_MEM>,
-                      Requires<[In32BitMode,IsNotNaCl,FavorMemIndirectCall]>, // @LOCALMOD
+                      Requires<[In32BitMode,IsNotNaCl,FavorMemIndirectCall]>,
                       Sched<[WriteJumpLd]>;
 
     def FARCALL16i  : Iseg16<0x9A, RawFrmImm16, (outs),
@@ -199,17 +201,6 @@ let isCall = 1 in
                        "callw\t$dst", []>, OpSize,
                        Requires<[IsNotNaCl]>; // @LOCALMOD
   }
-
-// @LOCALMOD-BEGIN
-// These CodeGen patterns are normally part of the declaration above.
-// However, we need to be able to disable these patterns for NaCl
-// without disabling the the instruction itself. (so we can use the
-// instruction in assembly input)
-def : Pat<(X86call GR32:$dst),
-          (CALL32r GR32:$dst)>, Requires<[IsNotNaCl]>;
-def : Pat<(X86call (loadi32 addr:$dst)),
-          (CALL32m addr:$dst)>, Requires<[IsNotNaCl]>;
-// @LOCALMOD-END
 
 // Tail call stuff.
 

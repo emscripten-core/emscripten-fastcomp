@@ -2298,11 +2298,7 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
         CallOpc = X86::CALL64r;
       }
     } else {
-      if (Subtarget->isTargetNaCl()) {
-        CallOpc = X86::NACL_CG_CALL32r;
-      } else {
-        CallOpc = X86::CALL32r;
-      }
+      CallOpc = X86::CALL32r;
     }
     // @LOCALMOD-END
     MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(CallOpc))
@@ -2320,11 +2316,7 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
         CallOpc = X86::CALL64pcrel32;
       }
     } else {
-      if (Subtarget->isTargetNaCl()) {
-        CallOpc = X86::NACL_CG_CALLpcrel32;
-      } else {
-        CallOpc = X86::CALLpcrel32;
-      }
+      CallOpc = X86::CALLpcrel32;
     }
     // @LOCALMOD-END
 
