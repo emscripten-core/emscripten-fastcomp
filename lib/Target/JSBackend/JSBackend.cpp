@@ -1032,9 +1032,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       if (VT->getElementType()->isIntegerTy()) {
-        return "int32x4.splat(0)";
+        return "SIMD.int32x4.splat(0)";
       } else {
-        return "float32x4.splat(0)";
+        return "SIMD.float32x4.splat(0)";
       }
     } else {
       // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
@@ -1043,15 +1043,15 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
     const VectorType *VT = cast<VectorType>(CV->getType());
     if (VT->getElementType()->isIntegerTy()) {
-      return "int32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
-                          getConstant(DV->getElementAsConstant(1)) + ',' +
-                          getConstant(DV->getElementAsConstant(2)) + ',' +
-                          getConstant(DV->getElementAsConstant(3)) + ')';
+      return "SIMD.int32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
+                               getConstant(DV->getElementAsConstant(1)) + ',' +
+                               getConstant(DV->getElementAsConstant(2)) + ',' +
+                               getConstant(DV->getElementAsConstant(3)) + ')';
     } else {
-      return "float32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
-                            getConstant(DV->getElementAsConstant(1)) + ',' +
-                            getConstant(DV->getElementAsConstant(2)) + ',' +
-                            getConstant(DV->getElementAsConstant(3)) + ')';
+      return "SIMD.float32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
+                                 getConstant(DV->getElementAsConstant(1)) + ',' +
+                                 getConstant(DV->getElementAsConstant(2)) + ',' +
+                                 getConstant(DV->getElementAsConstant(3)) + ')';
     }
   } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
     // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
@@ -1160,9 +1160,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         std::string PS = getValueAsStr(P);
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "int32x4(HEAPU32[" << PS << ">>2],HEAPU32[" << PS << "+4>>2],HEAPU32[" << PS << "+8>>2],HEAPU32[" << PS << "+12>>2])";
+          Code << "SIMD.int32x4(HEAPU32[" << PS << ">>2],HEAPU32[" << PS << "+4>>2],HEAPU32[" << PS << "+8>>2],HEAPU32[" << PS << "+12>>2])";
         } else {
-          Code << "float32x4(HEAPF32[" << PS << ">>2],HEAPF32[" << PS << "+4>>2],HEAPF32[" << PS << "+8>>2],HEAPF32[" << PS << "+12>>2])";
+          Code << "SIMD.float32x4(HEAPF32[" << PS << ">>2],HEAPF32[" << PS << "+4>>2],HEAPF32[" << PS << "+8>>2],HEAPF32[" << PS << "+12>>2])";
         }
         break;
       }
@@ -1184,9 +1184,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::ShuffleVector: {
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "int32x4(";
+          Code << "SIMD.int32x4(";
         } else {
-          Code << "float32x4(";
+          Code << "SIMD.float32x4(";
         }
         const ShuffleVectorInst *SVI = cast<ShuffleVectorInst>(I);
         std::string A = getValueAsStr(I->getOperand(0));
