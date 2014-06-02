@@ -31,7 +31,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
@@ -74,13 +73,7 @@ INITIALIZE_PASS(ExpandTls, "nacl-expand-tls",
 
 static void setGlobalVariableValue(Module &M, const char *Name,
                                    Constant *Value) {
-  GlobalVariable *Var = M.getNamedGlobal(Name);
-  if (!Var) {
-    // This warning can happen in a program that does not use a libc
-    // and does not initialize TLS variables.  Such a program might be
-    // linked with "-nostdlib".
-    errs() << "Warning: Variable " << Name << " not referenced\n";
-  } else {
+  if (GlobalVariable *Var = M.getNamedGlobal(Name)) {
     if (Var->hasInitializer()) {
       report_fatal_error(std::string("Variable ") + Name +
                          " already has an initializer");
