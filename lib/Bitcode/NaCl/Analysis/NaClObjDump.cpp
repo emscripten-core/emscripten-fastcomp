@@ -18,6 +18,8 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <map>
+
 namespace {
 
 using namespace llvm;
@@ -80,6 +82,9 @@ public:
   BitcodeId(const BitcodeId &Id)
       : Kind(Id.Kind), Index(Id.Index), IsGlobal(Id.IsGlobal) {}
 
+  BitcodeId(char Kind, uint32_t Index, bool IsGlobal)
+      : Kind(Kind), Index(Index), IsGlobal(IsGlobal) {}
+
   void operator=(const BitcodeId &Id) {
     Kind = Id.Kind;
     Index = Id.Index;
@@ -125,6 +130,8 @@ raw_ostream &operator<<(raw_ostream &Stream, const BitcodeId &Id) {
   return Id.Print(Stream);
 }
 
+class NaClDisBlockParser;
+
 /// The text formatter for PNaClAsm instructions.
 class AssemblyTextFormatter : public naclbitc::TextFormatter {
 public:
@@ -138,15 +145,15 @@ public:
           FcnId(0),
           AddParams(false) {}
 
-    virtual ~TypeDirective() {}
-
-    /// Calls the corresponding method in AssemblyTextFormatter, with
-    /// the locally stored arguments.
-    virtual void MyApply(bool Replay) const;
-
-    virtual void MaybeSaveForReplay() const {}
+    virtual ~TypeDirective() LLVM_OVERRIDE {}
 
   private:
+    /// Calls the corresponding method in AssemblyTextFormatter, with
+    /// the locally stored arguments.
+    virtual void MyApply(bool Replay) const LLVM_OVERRIDE;
+
+    virtual void MaybeSaveForReplay() const LLVM_OVERRIDE {}
+
     // The type to tokenize.
     Type *Typ;
     // Pointer to function id, if not NULL.
@@ -165,6 +172,52 @@ public:
     }
   };
 
+  // Special directive to tokenize an abbreviation. Used to convert
+  // an abbreviation (pointer) into a sequence of tokens.
+  class AbbreviationDirective : public naclbitc::TextFormatter::Directive {
+  public:
+    AbbreviationDirective(TextFormatter *Formatter)
+        : naclbitc::TextFormatter::Directive(Formatter),
+          Abbrev(0) {}
+
+    virtual ~AbbreviationDirective() LLVM_OVERRIDE {}
+
+  private:
+    virtual void MyApply(bool Replay) const LLVM_OVERRIDE;
+
+    virtual void MaybeSaveForReplay() const LLVM_OVERRIDE {}
+
+    // The abbreviation to tokenize.
+    NaClBitCodeAbbrev *Abbrev;
+
+    friend class AssemblyTextFormatter;
+  };
+
+  // Special directive to tokenize an abbreviation index, if the corresponding
+  // record in the block parser used a user-defined abbreviation.
+  class AbbrevIndexDirective : public naclbitc::TextFormatter::Directive {
+  public:
+    AbbrevIndexDirective(TextFormatter *Formatter)
+        : naclbitc::TextFormatter::Directive(Formatter),
+          Record(0), NumGlobalAbbreviations(0) {}
+
+    virtual ~AbbrevIndexDirective() LLVM_OVERRIDE {}
+
+  private:
+    virtual void MyApply(bool Replay) const LLVM_OVERRIDE;
+
+    virtual void MaybeSaveForReplay() const LLVM_OVERRIDE {}
+
+    // The record containing the associated abbreviation.
+    NaClBitcodeRecord *Record;
+
+    // The number of global abbreviations defined for the block the
+    // record appears in.
+    unsigned NumGlobalAbbreviations;
+
+    friend class AssemblyTextFormatter;
+  };
+
 public:
 
   /// Creates an assembly text formatter for the given dump stream.
@@ -174,6 +227,7 @@ public:
                       "  "),
         Comma(this, ","),
         Semicolon(this, ";"),
+        Colon(this, ":"),
         Space(this),
         OpenParen(this, "("),
         CloseParen(this, ")"),
@@ -183,7 +237,8 @@ public:
         CloseCurly(this, "}"),
         Endline(this),
         StartCluster(this),
-        FinishCluster(this)
+        FinishCluster(this),
+        ObjDump(ObjDump)
   {
     ContinuationIndent = GetIndent(2);
   }
@@ -192,6 +247,7 @@ public:
 
   naclbitc::TokenTextDirective Comma;
   naclbitc::TokenTextDirective Semicolon;
+  naclbitc::TokenTextDirective Colon;
   naclbitc::SpaceTextDirective Space;
   naclbitc::OpenTextDirective OpenParen;
   naclbitc::CloseTextDirective CloseParen;
@@ -225,7 +281,30 @@ public:
     return AllocateTypeDirective(Typ, FunctionName, true);
   }
 
+  /// Prints out the abbreviation defined by Abbrev.
+  AbbreviationDirective &TokenizeAbbreviation(NaClBitCodeAbbrev *Abbrev) {
+    AbbreviationDirective *Dir = AbbrevDirMemoryPool.Allocate(this);
+    Dir->Abbrev = Abbrev;
+    return *Dir;
+  }
+
+  /// If the record was read using a user-defined abbreviation,
+  /// generates assembly tokens describing the abbreviation index
+  /// used. Otherwise, no tokens are generated. NumGlobalAbbreviations
+  /// is used to determine if the user-defined abbreviation is local
+  /// or global.
+  AbbrevIndexDirective &TokenizeAbbrevIndex(NaClBitcodeRecord &Record,
+                                            unsigned NumGlobalAbbreviations) {
+    AbbrevIndexDirective *Dir = AbbrevIndexDirMemoryPool.Allocate(this);
+    Dir->Record = &Record;
+    Dir->NumGlobalAbbreviations = NumGlobalAbbreviations;
+    return *Dir;
+  }
+
 private:
+  // The ObjDumpStream associated with this text formatter.
+  naclbitc::ObjDumpStream &ObjDump;
+
   // Converts the given type to tokens, based on the values passed in
   // by TokenizeType, TokenizeFunctionType, or TokenizeFunctionSignature.
   void TokenizeTypeInternal(Type *Typ, BitcodeId* FcnName, bool AddParams);
@@ -237,13 +316,30 @@ private:
   TypeDirective &AllocateTypeDirective(Type *Typ, BitcodeId *FcnId,
                                        bool AddParams);
 
+  // Converts the given abbreviation to tokens.
+  void TokenizeAbbreviationInternal(const NaClBitCodeAbbrev *Abbrev);
+
+  // Helper function that prints out the abbreviation expression
+  // located at Index in the given abbreviation. Updates Index to
+  // next expression in the abbreviation.
+  void TokenizeAbbrevExpression(const NaClBitCodeAbbrev *Abbrev,
+                                unsigned &Index);
+
+  // Prints out the given abbreviation operator.
+  void TokenizeAbbrevOp(const NaClBitCodeAbbrevOp &Op);
+
+  // The free list for abbreviation directives.
+  naclbitc::DirectiveMemoryPool<AbbreviationDirective> AbbrevDirMemoryPool;
+
+  // The free list for abbreviation index directives.
+  naclbitc::DirectiveMemoryPool<AbbrevIndexDirective> AbbrevIndexDirMemoryPool;
+
   // Computes how wide the assembly portion of the dump file should be.
   static unsigned GetAssemblyWidth(naclbitc::ObjDumpStream &ObjDump) {
     int Diff = 80 - (ObjDump.GetRecordWidth()+1);
     // Make sure there is enough room to print out assembly.
     return Diff < 20 ? 20 : Diff;
   }
-
 };
 
 void AssemblyTextFormatter::TypeDirective::MyApply(bool Replay) const {
@@ -252,6 +348,15 @@ void AssemblyTextFormatter::TypeDirective::MyApply(bool Replay) const {
       reinterpret_cast<AssemblyTextFormatter*>(Formatter);
   AssemblyFormatter->TokenizeTypeInternal(Typ, FcnId, AddParams);
   AssemblyFormatter->TypeDirMemoryPool.Free(const_cast<TypeDirective*>(this));
+}
+
+void AssemblyTextFormatter::AbbreviationDirective::MyApply(bool Replay) const {
+  assert(!Replay && "Shouldn't have been saved for replay");
+  AssemblyTextFormatter *AssemblyFormatter =
+      reinterpret_cast<AssemblyTextFormatter*>(Formatter);
+  AssemblyFormatter->TokenizeAbbreviationInternal(Abbrev);
+  AssemblyFormatter->AbbrevDirMemoryPool.Free(
+      const_cast<AbbreviationDirective*>(this));
 }
 
 AssemblyTextFormatter::TypeDirective &AssemblyTextFormatter::
@@ -324,6 +429,83 @@ void AssemblyTextFormatter::TokenizeTypeInternal(
   }
 }
 
+void AssemblyTextFormatter::TokenizeAbbrevOp(const NaClBitCodeAbbrevOp &Op) {
+  // Note: Mimics NaClBitCodeAbbrevOp::Print in NaClBitCodes.cpp
+  if (Op.isLiteral()) {
+    Tokens() << Op.getLiteralValue();
+    return;
+  }
+  if (Op.isEncoding()) {
+    switch (Op.getEncoding()) {
+    case NaClBitCodeAbbrevOp::Fixed:
+      Tokens() << StartCluster << "fixed" << OpenParen << Op.getEncodingData()
+               << CloseParen << FinishCluster;
+      return;
+    case NaClBitCodeAbbrevOp::VBR:
+      Tokens() << StartCluster << "vbr" << OpenParen << Op.getEncodingData()
+               << CloseParen << FinishCluster;
+      return;
+    case NaClBitCodeAbbrevOp::Array:
+      Tokens() << "array";
+      return;
+    case NaClBitCodeAbbrevOp::Char6:
+      Tokens() << "char6";
+      return;
+    default:
+      break;
+    }
+  }
+  // If reached, don't know how to print.
+  Tokens() << "???";
+  ObjDump.Error() << "Unknown abbreviation operator in abbreviation record\n";
+}
+
+void AssemblyTextFormatter::
+TokenizeAbbrevExpression(const NaClBitCodeAbbrev *Abbrev, unsigned &Index) {
+  // Note: Mimics PrintExpression in NaClBitCodes.cpp
+  const NaClBitCodeAbbrevOp &Op = Abbrev->getOperandInfo(Index);
+  TokenizeAbbrevOp(Op);
+  if (unsigned NumArgs = Op.NumArguments()) {
+    Tokens() << StartCluster << OpenParen;
+    for (unsigned i = 0; i < NumArgs; ++i) {
+      ++Index;
+      if (i > 0) {
+        Tokens() << Comma << FinishCluster << Space << StartCluster;
+      }
+      TokenizeAbbrevExpression(Abbrev, Index);
+    }
+    Tokens() << CloseParen << FinishCluster;
+  }
+}
+
+void AssemblyTextFormatter::
+TokenizeAbbreviationInternal(const NaClBitCodeAbbrev *Abbrev) {
+  Tokens() << StartCluster << OpenAngle;
+  for (unsigned i = 0; i < Abbrev->getNumOperandInfos(); ++i) {
+    if (i > 0) {
+      Tokens() << Comma << FinishCluster << Space << StartCluster;
+    }
+    TokenizeAbbrevExpression(Abbrev, i);
+  }
+  Tokens() << CloseAngle << FinishCluster;
+}
+
+void AssemblyTextFormatter::AbbrevIndexDirective::MyApply(bool Replay) const {
+  assert(!Replay && "Shouldn't have been saved for replay");
+  if (!Record->UsedAnAbbreviation()) return;
+  unsigned Index = Record->GetAbbreviationIndex();
+  if (Index < naclbitc::FIRST_APPLICATION_ABBREV) return;
+  Index -= naclbitc::FIRST_APPLICATION_ABBREV;
+  bool IsGlobal = Index < NumGlobalAbbreviations;
+  if (!IsGlobal) Index -= NumGlobalAbbreviations;
+  BitcodeId AbbrevIndex('a', Index, IsGlobal);
+  AssemblyTextFormatter *Fmtr =
+      reinterpret_cast<AssemblyTextFormatter*>(Formatter);
+  Tokens() << Fmtr->Space << Fmtr->StartCluster << Fmtr->OpenAngle
+           << AbbrevIndex << Fmtr->CloseAngle << Fmtr->FinishCluster;
+  Fmtr->AbbrevIndexDirMemoryPool.Free(const_cast<AbbrevIndexDirective*>(this));
+}
+
 /// Top-level class to parse bitcode file and transform to
 /// corresponding disassembled code.
 class NaClDisParser : public NaClBitcodeParser {
@@ -359,7 +541,7 @@ public:
     SetListener(&AbbrevListener);
   }
 
-  virtual ~NaClDisParser() {}
+  virtual ~NaClDisParser() LLVM_OVERRIDE {}
 
   // Returns the number of errors that were sent to the ObjDump.
   unsigned GetNumErrors() {
@@ -563,6 +745,17 @@ public:
     return Type::getIntNTy(getGlobalContext(), N);
   }
 
+  /// Returns the number of defined global abbreviations (currently)
+  /// for the given block id.
+  unsigned GetNumGlobalAbbreviations(unsigned BlockID) {
+    return GlobalAbbrevsCountMap[BlockID];
+  }
+
+  /// Increments the current number of defined global abbreviations.
+  void IncNumGlobalAbbreviations(unsigned BlockID) {
+    ++GlobalAbbrevsCountMap[BlockID];
+  }
+
   // ******************************************************
   // The following return the corresponding methods/fields
   // from the the assembly formatter/objdumper.
@@ -570,6 +763,10 @@ public:
 
   naclbitc::TokenTextDirective &Semicolon() {
     return AssemblyFormatter.Semicolon;
+  }
+
+  naclbitc::TokenTextDirective &Colon() {
+    return AssemblyFormatter.Colon;
   }
 
   naclbitc::SpaceTextDirective &Space() {
@@ -586,6 +783,14 @@ public:
 
   naclbitc::CloseTextDirective &CloseParen() {
     return AssemblyFormatter.CloseParen;
+  }
+
+  naclbitc::OpenTextDirective &OpenAngle() {
+    return AssemblyFormatter.OpenAngle;
+  }
+
+  naclbitc::CloseTextDirective &CloseAngle() {
+    return AssemblyFormatter.CloseAngle;
   }
 
   naclbitc::OpenTextDirective &OpenCurly() {
@@ -675,6 +880,18 @@ public:
     return AssemblyFormatter.TokenizeFunctionSignature(Typ, FcnId);
   }
 
+  AssemblyTextFormatter::AbbreviationDirective &
+  TokenizeAbbreviation(NaClBitCodeAbbrev *Abbrev) {
+    return AssemblyFormatter.TokenizeAbbreviation(Abbrev);
+  }
+
+  AssemblyTextFormatter::AbbrevIndexDirective &
+  TokenizeAbbrevIndex(NaClBitcodeRecord &Record,
+                      unsigned NumGlobalAbbreviations) {
+    return AssemblyFormatter.TokenizeAbbrevIndex(Record,
+                                                 NumGlobalAbbreviations);
+  }
+
 private:
   // The formatter to use to format assembly code.
   AssemblyTextFormatter AssemblyFormatter;
@@ -718,6 +935,8 @@ private:
   std::vector<uint32_t> DefinedFunctions;
   // The number of function indices currently known to be defined.
   uint32_t NumDefinedFunctions;
+  // Holds the number of global abbreviations defined for each block.
+  std::map<unsigned, unsigned> GlobalAbbrevsCountMap;
 };
 
 BitcodeId NaClDisParser::GetBitcodeId(uint32_t Index) {
@@ -766,21 +985,24 @@ protected:
   /// Constructor for the top-level block parser.
   NaClDisBlockParser(unsigned BlockID, NaClDisParser *Context)
       : NaClBitcodeParser(BlockID, Context),
-        Context(Context) {
+        Context(Context){
+    InitAbbreviations();
   }
 
   /// Constructor for nested block parsers.
   NaClDisBlockParser(unsigned BlockID, NaClDisBlockParser *EnclosingParser)
       : NaClBitcodeParser(BlockID, EnclosingParser),
         Context(EnclosingParser->Context) {
+    InitAbbreviations();
   }
 
 public:
 
-  virtual ~NaClDisBlockParser() {}
+  virtual ~NaClDisBlockParser() LLVM_OVERRIDE {}
 
   virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
 
+protected:
   virtual void EnterBlock(unsigned NumWords) LLVM_OVERRIDE;
 
   virtual void ExitBlock() LLVM_OVERRIDE;
@@ -791,12 +1013,26 @@ public:
                                    NaClBitCodeAbbrev *Abbrev,
                                    bool IsLocal) LLVM_OVERRIDE;
 
-protected:
+  void InitAbbreviations() {
+    NumGlobalAbbreviations = Context->GetNumGlobalAbbreviations(GetBlockID());
+    NumLocalAbbreviations = 0;
+  }
+
   // Prints the block header instruction for the block. Called by EnterBlock.
-  virtual void PrintBlockHeader();
+  virtual void PrintBlockHeader() LLVM_OVERRIDE;
 
   // Dumps the corresponding record for a block enter.
   void DumpEnterBlockRecord();
+
+  // Returns the identifier for the next local abbreviation appearing in
+  // the block.
+  BitcodeId NextLocalAbbreviationId() {
+    return BitcodeId('a', NumLocalAbbreviations, false);
+  }
+
+  AssemblyTextFormatter::AbbrevIndexDirective &TokenizeAbbrevIndex() {
+    return Context->TokenizeAbbrevIndex(Record, NumGlobalAbbreviations);
+  }
 
   // *****************************************************************
   // The following are dispatching methods that call the corresponding
@@ -822,8 +1058,17 @@ protected:
     return Context->TokenizeFunctionSignature(Typ, FcnId);
   }
 
+  AssemblyTextFormatter::AbbreviationDirective &TokenizeAbbreviation(
+      NaClBitCodeAbbrev *Abbrev) {
+    return Context->TokenizeAbbreviation(Abbrev);
+  }
+
   naclbitc::TokenTextDirective &Semicolon() {
     return Context->Semicolon();
+  }
+
+  naclbitc::TokenTextDirective &Colon() {
+    return Context->Colon();
   }
 
   naclbitc::SpaceTextDirective &Space() {
@@ -841,6 +1086,14 @@ protected:
 
   naclbitc::CloseTextDirective &CloseParen() {
     return Context->CloseParen();
+  }
+
+  naclbitc::OpenTextDirective &OpenAngle() {
+    return Context->OpenAngle();
+  }
+
+  naclbitc::CloseTextDirective &CloseAngle() {
+    return Context->CloseAngle();
   }
 
   naclbitc::OpenTextDirective &OpenCurly() {
@@ -1021,6 +1274,10 @@ protected:
 protected:
   // The context parser that contains decoding state.
   NaClDisParser *Context;
+  // The number of global abbreviations defined for this block.
+  unsigned NumGlobalAbbreviations;
+  // The current number of local abbreviations defined for this block.
+  unsigned NumLocalAbbreviations;
 };
 
 bool NaClDisBlockParser::ParseBlock(unsigned BlockId) {
@@ -1068,6 +1325,10 @@ void NaClDisBlockParser::DumpEnterBlockRecord() {
 void NaClDisBlockParser::ProcessAbbreviation(unsigned BlockID,
                                              NaClBitCodeAbbrev *Abbrev,
                                              bool IsLocal) {
+  Tokens() << NextLocalAbbreviationId() << Space() << "=" << Space()
+           << "abbrev" << Space() << TokenizeAbbreviation(Abbrev)
+           << Semicolon() << Endline();
+  ++NumLocalAbbreviations;
   ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
@@ -1088,11 +1349,22 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser) {
   }
 
+  virtual ~NaClDisBlockInfoParser() LLVM_OVERRIDE {}
+
+private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
 
   virtual void SetBID() LLVM_OVERRIDE;
 
-  virtual ~NaClDisBlockInfoParser() {}
+  virtual void ProcessAbbreviation(unsigned BlockID,
+                                   NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal) LLVM_OVERRIDE;
+
+  /// Returns the abbreviation id for the next global abbreviation
+  /// to be defined for the given block id.
+  BitcodeId NextGlobalAbbreviationId(unsigned BlockID) {
+    return BitcodeId('a', Context->GetNumGlobalAbbreviations(BlockID), true);
+  }
 };
 
 void NaClDisBlockInfoParser::PrintBlockHeader() {
@@ -1102,7 +1374,46 @@ void NaClDisBlockInfoParser::PrintBlockHeader() {
 }
 
 void NaClDisBlockInfoParser::SetBID() {
-  ObjDumpWrite(Record.GetStartBit(), Record.GetRecordData());
+  std::string BlockName;
+  uint64_t BlockID = Record.GetValues()[0];
+  switch (BlockID) {
+  case naclbitc::MODULE_BLOCK_ID:
+    Tokens() << "module";
+    break;
+  case naclbitc::CONSTANTS_BLOCK_ID:
+    Tokens() << "constants";
+    break;
+  case naclbitc::FUNCTION_BLOCK_ID:
+    Tokens() << "function";
+    break;
+  case naclbitc::VALUE_SYMTAB_BLOCK_ID:
+    Tokens() << "valuesymtab";
+    break;
+  case naclbitc::TYPE_BLOCK_ID_NEW:
+    Tokens() << "types";
+    break;
+  case naclbitc::GLOBALVAR_BLOCK_ID:
+    Tokens() << "globals";
+    break;
+  default:
+    Tokens() << "block" << OpenParen() << BlockID << CloseParen();
+    Errors() << "Block id " << BlockID << " not understood.\n";
+    break;
+  }
+  Tokens() << Colon() << Endline();
+  ObjDumpWrite(Record.GetStartBit(), Record);
+}
+
+void NaClDisBlockInfoParser::ProcessAbbreviation(unsigned BlockID,
+                                                 NaClBitCodeAbbrev *Abbrev,
+                                                 bool IsLocal) {
+  IncAssemblyIndent();
+  Tokens() << NextGlobalAbbreviationId(BlockID) << Space() << "=" << Space()
+           << "abbrev" << Space() << TokenizeAbbreviation(Abbrev)
+           << Semicolon() << Endline();
+  Context->IncNumGlobalAbbreviations(BlockID);
+  DecAssemblyIndent();
+  ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
 /// Parses and disassembles the types block.
@@ -1116,7 +1427,7 @@ public:
   {
   }
 
-  virtual ~NaClDisTypesParser();
+  virtual ~NaClDisTypesParser() LLVM_OVERRIDE;
 
 private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
@@ -1161,7 +1472,8 @@ void NaClDisTypesParser::ProcessRecord() {
     if (!IsFirstRecord) {
       Errors() << "Count record not first record of types block\n";
     }
-    Tokens() << "count" << Space() << Size << Semicolon() << Endline();
+    Tokens() << "count" << Space() << Size << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     ExpectedNumTypes = Size;
     break;
   }
@@ -1172,7 +1484,8 @@ void NaClDisTypesParser::ProcessRecord() {
                << Values.size() << "\n";
     Type *VoidType = GetVoidType();
     Tokens() << NextTypeId() << Space() << "=" << Space()
-             << TokenizeType(VoidType) << Semicolon() << Endline();
+             << TokenizeType(VoidType) << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     InstallType(VoidType);
     break;
   }
@@ -1183,7 +1496,8 @@ void NaClDisTypesParser::ProcessRecord() {
                << Values.size() << "\n";
     Type *FloatType = GetFloatType();
     Tokens() << NextTypeId() << Space() << "=" << Space()
-             << TokenizeType(FloatType) << Semicolon() << Endline();
+             << TokenizeType(FloatType) << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     InstallType(FloatType);
     break;
   }
@@ -1194,7 +1508,8 @@ void NaClDisTypesParser::ProcessRecord() {
                << Values.size() << "\n";
     Type *DoubleType = GetDoubleType();
     Tokens() << NextTypeId() << Space() << "=" << Space()
-             << TokenizeType(DoubleType) << Semicolon() << Endline();
+             << TokenizeType(DoubleType) << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     InstallType(DoubleType);
     break;
   }
@@ -1224,7 +1539,8 @@ void NaClDisTypesParser::ProcessRecord() {
     }
     Type *IntType = GetIntegerType(Size);
     Tokens() << NextTypeId() << Space() << "=" << Space()
-             << TokenizeType(IntType) << Semicolon() << Endline();
+             << TokenizeType(IntType) << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     InstallType(IntType);
     break;
   }
@@ -1238,7 +1554,8 @@ void NaClDisTypesParser::ProcessRecord() {
     }
     Type *VecType = VectorType::get(GetType(Values[1]), Values[0]);
     Tokens() << NextTypeId() << Space() << "=" << Space()
-             << TokenizeType(VecType) << Semicolon() << Endline();
+             << TokenizeType(VecType) << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     InstallType(VecType);
     break;
   }
@@ -1266,7 +1583,8 @@ void NaClDisTypesParser::ProcessRecord() {
     Type *FcnType =  FunctionType::get(ReturnType, Signature, Values[0]);
     Tokens() << NextTypeId() << Space() << "=" << Space()
              << StartCluster() << TokenizeType(FcnType)
-             << Semicolon() << FinishCluster() << Endline();
+             << Semicolon() << FinishCluster() << TokenizeAbbrevIndex()
+             << Endline();
     InstallType(FcnType);
     break;
   }
@@ -1289,7 +1607,7 @@ public:
         BaseTabs(GetAssemblyNumTabs()+1),
         ExpectedNumGlobals(0) {}
 
-  virtual ~NaClDisGlobalsParser() {}
+  virtual ~NaClDisGlobalsParser() LLVM_OVERRIDE {}
 
 private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
@@ -1373,7 +1691,8 @@ void NaClDisGlobalsParser::ProcessRecord() {
              << Space() << NextGlobalId()
              << Comma() << FinishCluster() << Space()
              << StartCluster() << "align" << Space() << Alignment
-             << Comma() << FinishCluster() << Endline();
+             << Comma() << FinishCluster() << TokenizeAbbrevIndex()
+             << Endline();
     IncAssemblyIndent();
     IncNumGlobals();
     NumInitializers = 1;
@@ -1397,7 +1716,7 @@ void NaClDisGlobalsParser::ProcessRecord() {
     }
     Tokens() << StartCluster() << "initializers" << Space()
              << Values[0] << FinishCluster() << Space()
-             << OpenCurly() << Endline();
+             << OpenCurly() << TokenizeAbbrevIndex() << Endline();
     IncAssemblyIndent();
     NumInitializers = Values[0];
     InsideCompound = true;
@@ -1412,7 +1731,8 @@ void NaClDisGlobalsParser::ProcessRecord() {
     if (NumInitializers == 0) {
       Errors() << "Zerofill initializer not associated with globalvar record\n";
     }
-    Tokens() << "zerofill" << Space() << Values[0] << Semicolon() << Endline();
+    Tokens() << "zerofill" << Space() << Values[0] << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     --NumInitializers;
     break;
   case naclbitc::GLOBALVAR_DATA: {
@@ -1434,7 +1754,8 @@ void NaClDisGlobalsParser::ProcessRecord() {
       if (i > 0) Tokens() << StartCluster();
       Tokens() << format("%3u", static_cast<unsigned>(Byte));
     }
-    Tokens() << CloseCurly() << FinishCluster() << Endline();
+    Tokens() << CloseCurly() << FinishCluster() << TokenizeAbbrevIndex()
+             << Endline();
     --NumInitializers;
     break;
   }
@@ -1458,7 +1779,8 @@ void NaClDisGlobalsParser::ProcessRecord() {
       }
       Tokens() << Space()<< Operator << Space() << Addend;
     }
-    Tokens() << Semicolon() << FinishCluster() << Endline();
+    Tokens() << Semicolon() << FinishCluster() << TokenizeAbbrevIndex()
+             << Endline();
     --NumInitializers;
     break;
   case naclbitc::GLOBALVAR_COUNT: {
@@ -1472,7 +1794,8 @@ void NaClDisGlobalsParser::ProcessRecord() {
     }
     if (GetNumGlobals() != 0)
       Errors() << "Count record not first record in block.\n";
-    Tokens() << "count" << Space() << Count << Semicolon() << Endline();
+    Tokens() << "count" << Space() << Count << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     ExpectedNumGlobals = Count;
     break;
   }
@@ -1495,7 +1818,7 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser) {
   }
 
-  virtual ~NaClDisValueSymtabParser() {}
+  virtual ~NaClDisValueSymtabParser() LLVM_OVERRIDE {}
 
 private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
@@ -1520,7 +1843,7 @@ void NaClDisValueSymtabParser::ProcessRecord() {
           "Valuesymtab entry record must contain at least 2 arguments.\n";
       break;
     }
-    Tokens() << GetBitcodeId(Values[0]) << Space() << ":" << Space();
+    Tokens() << GetBitcodeId(Values[0]) << Space() << Colon() << Space();
     // Check if the name of the symbol is alphanumeric. If so, print
     // as a string. Otherwise, print a sequence of bytes.
     // Note: The check isChar6 is a test for aphanumeric + {'.', '_'}.
@@ -1542,7 +1865,7 @@ void NaClDisValueSymtabParser::ProcessRecord() {
       for (size_t i = 1; i < Values.size(); ++i) {
         Tokens() << static_cast<char>(Values[i]);
       }
-      Tokens() << "\"" << Semicolon() << FinishCluster() << Endline();
+      Tokens() << "\"" << Semicolon();
     } else {
       Tokens() << StartCluster() << OpenCurly();
       for (size_t i = 1; i < Values.size(); ++i) {
@@ -1557,8 +1880,9 @@ void NaClDisValueSymtabParser::ProcessRecord() {
           Tokens() << format("%3u", static_cast<unsigned>(ch));
         }
       }
-      Tokens() << CloseCurly() << FinishCluster() << Endline();
+      Tokens() << CloseCurly();
     }
+    Tokens() << FinishCluster() << TokenizeAbbrevIndex() << Endline();
     break;
   }
   default:
@@ -1612,7 +1936,8 @@ void NaClDisConstantsParser::ProcessRecord() {
     while (BlockTabs + 1 < GetAssemblyNumTabs()) DecAssemblyIndent();
     if (Values.size() == 1) {
       ConstantType = GetType(Values[0]);
-      Tokens() << TokenizeType(ConstantType) << ":" << Endline();
+      Tokens() << TokenizeType(ConstantType) << ":"
+               << TokenizeAbbrevIndex() << Endline();
     } else {
       Errors() << "Settype record should have 1 argument. Found: "
                << Values.size() << "\n";
@@ -1630,7 +1955,8 @@ void NaClDisConstantsParser::ProcessRecord() {
     Tokens() << NextConstId() << Space() << "=" << Space()
              << StartCluster() << TokenizeType(ConstantType)
              << Space() << "undefined"
-             << Semicolon() << FinishCluster() << Endline();
+             << Semicolon() << FinishCluster()
+             << TokenizeAbbrevIndex() << Endline();
     InstallConstantType(ConstantType);
     break;
   case naclbitc::CST_CODE_INTEGER: {
@@ -1646,7 +1972,7 @@ void NaClDisConstantsParser::ProcessRecord() {
     Tokens() << NextConstId() << Space() << "=" << Space() << StartCluster()
              << StartCluster() << TokenizeType(ConstantType) << Space()
              << Value << Semicolon() << FinishCluster() << FinishCluster()
-             << Endline();
+             << TokenizeAbbrevIndex() << Endline();
     InstallConstantType(ConstantType);
     break;
   }
@@ -1677,7 +2003,8 @@ void NaClDisConstantsParser::ProcessRecord() {
     } else {
       Tokens() << format("%g", Value.convertToDouble());
     }
-    Tokens() << Semicolon() << FinishCluster() << Endline();
+    Tokens() << Semicolon() << FinishCluster()
+             << TokenizeAbbrevIndex() << Endline();
     InstallConstantType(ConstantType);
     break;
   }
@@ -1695,7 +2022,7 @@ public:
   NaClDisFunctionParser(unsigned BlockID,
                         NaClDisBlockParser *EnclosingParser);
 
-  virtual ~NaClDisFunctionParser() {
+  virtual ~NaClDisFunctionParser() LLVM_OVERRIDE {
     Context->ResetLocalCounters();
   }
 
@@ -1765,7 +2092,7 @@ public:
       : NaClDisBlockParser(BlockID, Context) {
   }
 
-  virtual ~NaClDisModuleParser() {}
+  virtual ~NaClDisModuleParser() LLVM_OVERRIDE {}
 
   virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
 
@@ -1819,7 +2146,8 @@ void NaClDisModuleParser::ProcessRecord() {
                << Values.size() << "\n";
       break;
     }
-    Tokens() << "version" << Space() << Values[0] << Semicolon() << Endline();
+    Tokens() << "version" << Space() << Values[0] << Semicolon()
+             << TokenizeAbbrevIndex() << Endline();
     break;
   case naclbitc::MODULE_CODE_FUNCTION: {
     // [type, callingconv, isproto, linkage]
@@ -1857,7 +2185,8 @@ void NaClDisModuleParser::ProcessRecord() {
       SmallVector<Type*, 1> Signature;
       FcnType = FunctionType::get(GetVoidType(), Signature, 0);
     }
-    Tokens() << Semicolon() << FinishCluster() << Endline();
+    Tokens() << Semicolon() << FinishCluster() << TokenizeAbbrevIndex()
+             << Endline();
     InstallFunctionType(FcnType);
     if (!IsProto) InstallDefinedFunction(FcnId);
     break;
@@ -1880,7 +2209,7 @@ bool NaClDisParser::ParseBlock(unsigned BlockID) {
   if (ObjDump.GetDumpRecords() && ObjDump.GetDumpAssembly()) {
     if (HeaderSize >= 4) {
       const NaClRecordVector &Values = Record.Values;
-      Tokens() << "Magic" << Space() << "Number" << ":"
+      Tokens() << "Magic" << Space() << "Number" << Colon()
                << Space() << StartCluster() << StartCluster() << "'"
                << (char) Values[0] << (char) Values[1]
                << (char) Values[2] << (char) Values[3]
