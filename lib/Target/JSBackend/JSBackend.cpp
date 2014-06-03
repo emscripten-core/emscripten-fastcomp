@@ -1127,6 +1127,8 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
 
     switch (Operator::getOpcode(I)) {
       default: I->dump(); error("invalid vector instr"); break;
+      case Instruction::PHI: // handled separately - we push them back into the relooper branchings
+        break;
       case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD.float32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD.float32x4.mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FDiv: Code << getAssignIfNeeded(I) << "SIMD.float32x4.div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
