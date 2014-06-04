@@ -189,18 +189,10 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
                            Requires<[IsNaCl, In64BitMode]>;
 }
 
-let isCall = 1 in
-  // All calls clobber the non-callee saved registers. RSP is marked as
-  // a use to prevent stack-pointer assignments that appear immediately
-  // before calls from potentially appearing dead. Uses for argument
-  // registers are added manually.
-  let Defs = [RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11,
-              FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0, ST1,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
-              XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
-      Uses = [RSP] in {
-
+// RSP is marked as a use to prevent stack-pointer assignments that appear
+// immediately before calls from potentially appearing dead. Uses for argument
+// registers are added manually.
+let isCall = 1, Uses = [RSP] in {
     def NACL_CG_CALL64pcrel32 : I<0, Pseudo, (outs),
                                 (ins i32imm_pcrel:$dst),
                                 "naclcall\t$dst", []>,
@@ -223,12 +215,7 @@ def : Pat<(X86call (i32 texternalsym:$dst)),
 // Also needed due to the i64 / i32 pointer problem.
 let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
     isCodeGenOnly = 1 in
-  let Defs = [RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11,
-              FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0, ST1,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
-              XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
-      Uses = [RSP] in {
+  let Uses = [RSP] in {
 
   def NACL_CG_TCRETURNdi64 : I<0, Pseudo, (outs),
                              (ins i32imm_pcrel:$dst, i32imm:$offset),
