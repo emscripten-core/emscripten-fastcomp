@@ -1386,6 +1386,7 @@ protected:
     // Enter the subblock.
     NaClBitcodeSelectorAbbrev
         Selector(BlockAbbreviations->GetNumberAbbreviations()-1);
+    if (RemoveAbbreviations) Selector = NaClBitcodeSelectorAbbrev();
     Context->Writer.EnterSubblock(BlockID, Selector);
 
     // Note: We must dump module abbreviations as local

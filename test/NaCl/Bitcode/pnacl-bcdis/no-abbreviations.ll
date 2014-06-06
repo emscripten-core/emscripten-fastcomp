@@ -131,52 +131,52 @@ false:
 ; NOABV:            0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, 88, 69)
 ; NOABV-NEXT:          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2
 ; NOABV-NEXT:          | 0>                          |
-; NOABV-NEXT:      16:0|1: <65535, 8, 3>             |module {  // BlockID = 8
+; NOABV-NEXT:      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8
 ; NOABV-NEXT:      24:0|  3: <1, 1>                  |  version 1;
-; NOABV-NEXT:      26:5|  1: <65535, 0, 2>           |  abbreviations {  // BlockID = 0
+; NOABV-NEXT:      26:4|  1: <65535, 0, 2>           |  abbreviations {  // BlockID = 0
 ; NOABV-NEXT:      36:0|  0: <65534>                 |  }
-; NOABV-NEXT:      40:0|  1: <65535, 17, 4>          |  types {  // BlockID = 17
+; NOABV-NEXT:      40:0|  1: <65535, 17, 2>          |  types {  // BlockID = 17
 ; NOABV-NEXT:      48:0|    3: <1, 4>                |    count 4;
-; NOABV-NEXT:      50:6|    3: <7, 32>               |    @t0 = i32;
-; NOABV-NEXT:      54:2|    3: <2>                   |    @t1 = void;
-; NOABV-NEXT:      56:2|    3: <21, 0, 0, 0>         |    @t2 = i32 (i32);
-; NOABV-NEXT:      60:4|    3: <7, 1>                |    @t3 = i1;
-; NOABV-NEXT:      63:2|  0: <65534>                 |  }
+; NOABV-NEXT:      50:4|    3: <7, 32>               |    @t0 = i32;
+; NOABV-NEXT:      53:6|    3: <2>                   |    @t1 = void;
+; NOABV-NEXT:      55:4|    3: <21, 0, 0, 0>         |    @t2 = i32 (i32);
+; NOABV-NEXT:      59:4|    3: <7, 1>                |    @t3 = i1;
+; NOABV-NEXT:      62:0|  0: <65534>                 |  }
 ; NOABV-NEXT:      64:0|  3: <8, 2, 0, 0, 0>         |  define external i32 @f0(i32);
-; NOABV-NEXT:      68:7|  1: <65535, 19, 4>          |  globals {  // BlockID = 19
+; NOABV-NEXT:      68:6|  1: <65535, 19, 2>          |  globals {  // BlockID = 19
 ; NOABV-NEXT:      76:0|    3: <5, 0>                |    count 0;
-; NOABV-NEXT:      78:6|  0: <65534>                 |  }
-; NOABV-NEXT:      80:0|  1: <65535, 14, 4>          |  valuesymtab {  // BlockID = 14
+; NOABV-NEXT:      78:4|  0: <65534>                 |  }
+; NOABV-NEXT:      80:0|  1: <65535, 14, 2>          |  valuesymtab {  // BlockID = 14
 ; NOABV-NEXT:      88:0|    3: <1, 0, 102, 97, 99,   |    @f0 : "fact";
 ; NOABV-NEXT:          |        116>                 |
-; NOABV-NEXT:      96:6|  0: <65534>                 |  }
-; NOABV-NEXT:     100:0|  1: <65535, 12, 5>          |  function i32 @f0(i32 %p0) {  
+; NOABV-NEXT:      96:4|  0: <65534>                 |  }
+; NOABV-NEXT:     100:0|  1: <65535, 12, 2>          |  function i32 @f0(i32 %p0) {  
 ; NOABV-NEXT:          |                             |                   // BlockID = 12
 ; NOABV-NEXT:     108:0|    3: <1, 3>                |
-; NOABV-NEXT:     110:7|    1: <65535, 11, 4>        |    constants {  // BlockID = 11
+; NOABV-NEXT:     110:4|    1: <65535, 11, 2>        |    constants {  // BlockID = 11
 ; NOABV-NEXT:     120:0|      3: <1, 0>              |      i32:
-; NOABV-NEXT:     122:6|      3: <4, 2>              |        %c0 = i32 1;
-; NOABV-NEXT:     125:4|      3: <4, 0>              |        %c1 = i32 0;
-; NOABV-NEXT:     128:2|    0: <65534>               |      }
-; NOABV-NEXT:     132:0|    3: <28, 1, 2, 32>        |
-; NOABV-NEXT:     137:1|    3: <11, 1, 2, 1>         |
-; NOABV-NEXT:     141:4|    3: <10, 3>               |
-; NOABV-NEXT:     144:3|    3: <2, 4, 3, 1>          |
-; NOABV-NEXT:     148:6|    3: <34, 0, 6, 1>         |
-; NOABV-NEXT:     153:7|    3: <2, 6, 1, 2>          |
-; NOABV-NEXT:     158:2|    3: <10, 1>               |
-; NOABV-NEXT:     161:1|    1: <65535, 14, 4>        |    valuesymtab {  // BlockID = 14
-; NOABV-NEXT:     168:0|      3: <2, 1, 116, 114,    |
+; NOABV-NEXT:     122:4|      3: <4, 2>              |        %c0 = i32 1;
+; NOABV-NEXT:     125:0|      3: <4, 0>              |        %c1 = i32 0;
+; NOABV-NEXT:     127:4|    0: <65534>               |      }
+; NOABV-NEXT:     128:0|    3: <28, 1, 2, 32>        |
+; NOABV-NEXT:     132:6|    3: <11, 1, 2, 1>         |
+; NOABV-NEXT:     136:6|    3: <10, 3>               |
+; NOABV-NEXT:     139:2|    3: <2, 4, 3, 1>          |
+; NOABV-NEXT:     143:2|    3: <34, 0, 6, 1>         |
+; NOABV-NEXT:     148:0|    3: <2, 6, 1, 2>          |
+; NOABV-NEXT:     152:0|    3: <10, 1>               |
+; NOABV-NEXT:     154:4|    1: <65535, 14, 2>        |    valuesymtab {  // BlockID = 14
+; NOABV-NEXT:     164:0|      3: <2, 1, 116, 114,    |
 ; NOABV-NEXT:          |        117, 101>            |
-; NOABV-NEXT:Error(168:0): Unknown record in valuesymtab block.
-; NOABV-NEXT:     176:6|      3: <1, 4, 118, 49>     |      %v0 : "v1";
-; NOABV-NEXT:     182:4|      3: <1, 5, 118, 50>     |      %v1 : "v2";
-; NOABV-NEXT:     188:2|      3: <1, 6, 118, 51>     |      %v2 : "v3";
-; NOABV-NEXT:     194:0|      3: <1, 7, 118, 52>     |      %v3 : "v4";
-; NOABV-NEXT:     199:6|      3: <2, 2, 102, 97, 108,|
+; NOABV-NEXT:Error(164:0): Unknown record in valuesymtab block.
+; NOABV-NEXT:     172:4|      3: <1, 4, 118, 49>     |      %v0 : "v1";
+; NOABV-NEXT:     178:0|      3: <1, 5, 118, 50>     |      %v1 : "v2";
+; NOABV-NEXT:     183:4|      3: <1, 6, 118, 51>     |      %v2 : "v3";
+; NOABV-NEXT:     189:0|      3: <1, 7, 118, 52>     |      %v3 : "v4";
+; NOABV-NEXT:     194:4|      3: <2, 2, 102, 97, 108,|
 ; NOABV-NEXT:          |        115, 101>            |
-; NOABV-NEXT:Error(199:6): Unknown record in valuesymtab block.
-; NOABV-NEXT:     210:0|      3: <1, 1, 110>         |      %p0 : "n";
-; NOABV-NEXT:     214:2|    0: <65534>               |    }
-; NOABV-NEXT:     216:0|  0: <65534>                 |  }
-; NOABV-NEXT:     220:0|0: <65534>                   |}
+; NOABV-NEXT:Error(194:4): Unknown record in valuesymtab block.
+; NOABV-NEXT:     204:4|      3: <1, 1, 110>         |      %p0 : "n";
+; NOABV-NEXT:     208:4|    0: <65534>               |    }
+; NOABV-NEXT:     212:0|  0: <65534>                 |  }
+; NOABV-NEXT:     216:0|0: <65534>                   |}
