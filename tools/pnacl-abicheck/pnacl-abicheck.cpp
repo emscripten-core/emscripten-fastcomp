@@ -13,10 +13,12 @@
 
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/NaCl.h"
-#include "llvm/IRReader/IRReader.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/Pass.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/SourceMgr.h"
@@ -69,21 +71,24 @@ int main(int argc, char **argv) {
   PNaClABIErrorReporter ABIErrorReporter;
   ABIErrorReporter.setNonFatal();
   bool ErrorsFound = false;
-  // Manually run the passes so we can tell the user which function had the
-  // error. No need for a pass manager since it's just one pass.
+
   OwningPtr<ModulePass> ModuleChecker(
       createPNaClABIVerifyModulePass(&ABIErrorReporter));
   ModuleChecker->doInitialization(*Mod);
   ModuleChecker->runOnModule(*Mod);
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
-  OwningPtr<FunctionPass> FunctionChecker(
-      createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
-  FunctionChecker->doInitialization(*Mod);
-  for (Module::iterator MI = Mod->begin(), ME = Mod->end(); MI != ME; ++MI) {
-    FunctionChecker->runOnFunction(*MI);
-    ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter,
-                                        "Function " + MI->getName());
+
+  OwningPtr<FunctionPassManager> PM(new FunctionPassManager(&*Mod));
+  PM->add(new DataLayout(&*Mod));
+  PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
+
+  PM->doInitialization();
+  for (Module::iterator I = Mod->begin(), E = Mod->end(); I != E; ++I) {
+    PM->run(*I);
+    ErrorsFound |=
+        CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
   }
+  PM->doFinalization();
 
   return ErrorsFound ? 1 : 0;
 }

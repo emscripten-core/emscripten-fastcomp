@@ -88,11 +88,13 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
 
-// Using bitcode streaming has a couple of ramifications. Primarily it means
-// that the module in the file will be compiled one function at a time rather
-// than the whole module. This allows earlier functions to be compiled before
-// later functions are read from the bitcode but of course means no whole-module
-// optimizations. For now, streaming is only supported for files and stdin.
+// Using bitcode streaming allows compilation of one function at a time. This
+// allows earlier functions to be compiled before later functions are read from
+// the bitcode but of course means no whole-module optimizations. This means
+// that Module passes that run should only touch globals/function declarations
+// and not function bodies, otherwise the streaming and non-streaming code
+// pathes wouldn't emit the same code for each function. For now, streaming is
+// only supported for files and stdin.
 static cl::opt<bool>
 LazyBitcode("streaming-bitcode",
   cl::desc("Use lazy bitcode streaming for file inputs"),
@@ -393,11 +395,7 @@ static int runCompilePasses(Module *mod,
   }
 
   // Build up all of the passes that we want to do to the module.
-  OwningPtr<PassManagerBase> PM;
-  if (LazyBitcode)
-    PM.reset(new FunctionPassManager(mod));
-  else
-    PM.reset(new PassManager());
+  OwningPtr<FunctionPassManager> PM(new FunctionPassManager(mod));
 
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
@@ -438,15 +436,14 @@ static int runCompilePasses(Module *mod,
     return 1;
   }
 
+  PM->doInitialization();
   if (LazyBitcode) {
-    FunctionPassManager* P = static_cast<FunctionPassManager*>(PM.get());
-    P->doInitialization();
     unsigned FuncIndex = 0;
     switch (SplitModuleSched) {
     case SplitModuleStatic:
       for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
         if (FuncQueue->GrabFunctionStatic(FuncIndex, ModuleIndex)) {
-          P->run(*I);
+          PM->run(*I);
           CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
           I->Dematerialize();
         }
@@ -468,7 +465,7 @@ static int runCompilePasses(Module *mod,
               ++I;
               continue;
             }
-            P->run(*I);
+            PM->run(*I);
             CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
             I->Dematerialize();
             ++FuncIndex;
@@ -487,13 +484,13 @@ static int runCompilePasses(Module *mod,
       }
       break;
     }
-    P->doFinalization();
   } else {
-    static_cast<PassManager*>(PM.get())->run(*mod);
+    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I)
+      PM->run(*I);
   }
+  PM->doFinalization();
   return 0;
 }
-
 
 static int compileSplitModule(const TargetOptions &Options,
                               const Triple &TheTriple,
