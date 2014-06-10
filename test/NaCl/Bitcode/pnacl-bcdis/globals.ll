@@ -89,7 +89,7 @@ declare void @func();
 ; CHECK-NEXT:     171:0|    7: <3, 97, 98, 99, 100,  |      { 97,  98,  99, 100, 101, 102, 
 ; CHECK-NEXT:          |        101, 102, 103>       |       103} <@a3>
 ; CHECK-NEXT:     179:2|    4: <0, 0, 0>             |    var @g2, align 0, <@a0>
-; CHECK-NEXT:     180:5|    8: <4, 6>                |      reloc %v2; <@a4>
+; CHECK-NEXT:     180:5|    8: <4, 6>                |      reloc @g5; <@a4>
 ; CHECK-NEXT:     181:7|    4: <0, 0, 0>             |    var @g3, align 0, <@a0>
 ; CHECK-NEXT:     183:2|    8: <4, 0>                |      reloc @f0; <@a4>
 ; CHECK-NEXT:     184:4|    4: <0, 0, 0>             |    var @g4, align 0, <@a0>

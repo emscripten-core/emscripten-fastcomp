@@ -531,6 +531,7 @@ public:
         HeaderBuffer(HeaderBuffer),
         NumFunctions(0),
         NumGlobals(0),
+        ExpectedNumGlobals(0),
         NumParams(0),
         NumConstants(0),
         NumValuedInsts(0),
@@ -641,6 +642,17 @@ public:
   /// file.
   uint32_t GetNumGlobals() const {
     return NumGlobals;
+  }
+
+  /// Returns the expected number of globals (as defined by the count
+  /// record of the globals block).
+  uint32_t GetExpectedNumGlobals() const {
+    return ExpectedNumGlobals;
+  }
+
+  /// Sets field ExpectedNumGlobals to the given value.
+  void SetExpectedNumGlobals(uint32_t NewValue) {
+    ExpectedNumGlobals = NewValue;
   }
 
   /// Installs the given type to the next available parameter index.
@@ -911,6 +923,9 @@ private:
   uint32_t NumFunctions;
   // The number of global indices currently defined.
   uint32_t NumGlobals;
+  // The expected number of global indices (i.e. value of count record
+  // in the globals block).
+  uint32_t ExpectedNumGlobals;
   // The list of known parameter types (index i defines the type
   // associated with parameter index i).
   std::vector<Type*>ParamIdType;
@@ -944,10 +959,10 @@ BitcodeId NaClDisParser::GetBitcodeId(uint32_t Index) {
     return BitcodeId('f', Index);
   }
   Index -= NumFunctions;
-  if (Index < NumGlobals) {
+  if (Index < ExpectedNumGlobals) {
     return BitcodeId('g', Index);
   }
-  Index -= NumGlobals;
+  Index -= ExpectedNumGlobals;
   if (Index < NumParams) {
     return BitcodeId('p', Index);
   }
@@ -964,9 +979,9 @@ Type *NaClDisParser::GetValueType(uint32_t Index, bool UnderlyingType) {
   if (Idx < NumFunctions)
     return UnderlyingType ? GetFunctionType(Idx) : PointerType;
   Idx -= NumFunctions;
-  if (Idx < NumGlobals)
+  if (Idx < ExpectedNumGlobals)
     return PointerType;
-  Idx -= NumGlobals;
+  Idx -= ExpectedNumGlobals;
   if (Idx < NumParams)
     return GetParamType(Idx);
   Idx -= NumParams;
@@ -1604,8 +1619,7 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser),
         NumInitializers(0),
         InsideCompound(false),
-        BaseTabs(GetAssemblyNumTabs()+1),
-        ExpectedNumGlobals(0) {}
+        BaseTabs(GetAssemblyNumTabs()+1) {}
 
   virtual ~NaClDisGlobalsParser() LLVM_OVERRIDE {}
 
@@ -1623,8 +1637,6 @@ private:
   bool InsideCompound;
   // Number of tabs used to indent elements in the globals block.
   unsigned BaseTabs;
-  // The number of expected global variables.
-  unsigned ExpectedNumGlobals;
 
   // Returns the ID for the next defined global.
   BitcodeId NextGlobalId() {
@@ -1634,6 +1646,10 @@ private:
   // Prints out the close initializer "}" if necessary, and fixes
   // the indentation to match previous indentation.
   void InsertCloseInitializer();
+
+  uint32_t GetExpectedNumGlobals() const {
+    return Context->GetExpectedNumGlobals();
+  }
 };
 
 void NaClDisGlobalsParser::PrintBlockHeader() {
@@ -1659,9 +1675,9 @@ void NaClDisGlobalsParser::ExitBlock() {
     Errors() << "More initializers for " << LastGlobal << " expected: "
              << NumInitializers << "\n";
   }
-  if (GetNumGlobals() != ExpectedNumGlobals) {
-    Errors() << "Expected " << ExpectedNumGlobals << " globals but found: "
-             << GetNumGlobals() << "\n";
+  if (GetNumGlobals() != GetExpectedNumGlobals()) {
+    Errors() << "Expected " << GetExpectedNumGlobals()
+             << " globals but found: " << GetNumGlobals() << "\n";
   }
   NaClDisBlockParser::ExitBlock();
 }
@@ -1677,9 +1693,9 @@ void NaClDisGlobalsParser::ProcessRecord() {
                << Values.size() << "\n";
       break;
     }
-    if (GetNumGlobals() == ExpectedNumGlobals) {
+    if (GetNumGlobals() == GetExpectedNumGlobals()) {
       Errors() << "Exceeded expected number of globals: "
-               << ExpectedNumGlobals << "\n";
+               << GetExpectedNumGlobals() << "\n";
     }
     if (NumInitializers > 0) {
       Errors() << "Previous initializer list too short. Expects "
@@ -1796,7 +1812,7 @@ void NaClDisGlobalsParser::ProcessRecord() {
       Errors() << "Count record not first record in block.\n";
     Tokens() << "count" << Space() << Count << Semicolon()
              << TokenizeAbbrevIndex() << Endline();
-    ExpectedNumGlobals = Count;
+    Context->SetExpectedNumGlobals(Count);
     break;
   }
   default:
