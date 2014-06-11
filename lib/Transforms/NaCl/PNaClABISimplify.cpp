@@ -92,18 +92,17 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 
   PM.add(createPromoteI1OpsPass());
 
-  // Vector simplifications.  The following pass relies on
-  // ConstantInsertExtractElementIndex running after it, and it must run
-  // before GlobalizeConstantVectors because the mask argument of
-  // shufflevector must be a constant (the pass would otherwise violate
-  // this requirement).
+  // Vector simplifications.
+  //
+  // The following pass relies on ConstantInsertExtractElementIndex running
+  // after it, and it must run before GlobalizeConstantVectors because the mask
+  // argument of shufflevector must be a constant (the pass would otherwise
+  // violate this requirement).
   PM.add(createExpandShuffleVectorPass());
-  // TODO(jfb) Remove duplicate constant vector values using
-  //           ConstantMerge after the GlobalizeConstantVectors pass?
   PM.add(createGlobalizeConstantVectorsPass());
-  // The following pass inserts GEPs, it must precede
-  // ExpandGetElementPtr. It also creates vector loads and stores, the
-  // subsequent pass cleans them up to fix their alignment.
+  // The following pass inserts GEPs, it must precede ExpandGetElementPtr. It
+  // also creates vector loads and stores, the subsequent pass cleans them up to
+  // fix their alignment.
   PM.add(createConstantInsertExtractElementIndexPass());
   PM.add(createFixVectorLoadStoreAlignmentPass());
 
@@ -116,6 +115,10 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // optimizations depend on the metadata.
   PM.add(createStripMetadataPass());
 
+  // ConstantMerge cleans up after passes such as GlobalizeConstantVectors. It
+  // must run before the FlattenGlobals pass because FlattenGlobals loses
+  // information that otherwise helps ConstantMerge do a good job.
+  PM.add(createConstantMergePass());
   // FlattenGlobals introduces ConstantExpr bitcasts of globals which
   // are expanded out later.
   PM.add(createFlattenGlobalsPass());
