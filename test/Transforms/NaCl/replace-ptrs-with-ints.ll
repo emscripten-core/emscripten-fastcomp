@@ -345,6 +345,7 @@ define i16 @load_global_bitcast() {
 
 
 declare void @receive_alloca(%struct* %ptr)
+declare void @receive_vector_alloca(<4 x i32>* %ptr)
 
 define void @alloca_fixed() {
   %buf = alloca %struct, align 128
@@ -367,6 +368,16 @@ define void @alloca_fixed_array() {
 ; CHECK-NEXT: %buf = alloca i8, i32 800, align 8
 ; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
 ; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
+
+define void @alloca_fixed_vector() {
+  %buf = alloca <4 x i32>, align 128
+  call void @receive_vector_alloca(<4 x i32>* %buf)
+  ret void
+}
+; CHECK: define void @alloca_fixed_vector() {
+; CHECK-NEXT: %buf = alloca i8, i32 16, align 128
+; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
+; CHECK-NEXT: call void @receive_vector_alloca(i32 %buf.asint)
 
 define void @alloca_variable(i32 %size) {
   %buf = alloca %struct, i32 %size
@@ -392,6 +403,13 @@ define void @alloca_alignment_double() {
 }
 ; CHECK: void @alloca_alignment_double() {
 ; CHECK-NEXT: alloca i8, i32 8, align 8
+
+define void @alloca_alignment_vector() {
+  %buf = alloca <4 x i32>
+  ret void
+}
+; CHECK: void @alloca_alignment_vector() {
+; CHECK-NEXT: alloca i8, i32 16, align 16
 
 define void @alloca_lower_alignment() {
   %buf = alloca i32, align 1

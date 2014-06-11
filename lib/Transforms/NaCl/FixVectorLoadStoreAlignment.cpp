@@ -7,15 +7,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Replace all vector load/store instructions by loads/stores of each
-// individual element since different architectures have different
-// faults on unaligned memory access. This pass pessimizes all vector
-// memory accesses. It's expected that backends with more liberal
-// alignment restrictions recognize this pattern and reconstruct the
-// original vector load/store.
+// Fix vector load/store alignment by:
+// - Leaving as-is if the alignment is equal to the vector's element width.
+// - Reducing the alignment to vector's element width if it's greater and the
+//   current alignment is a factor of the element alignment.
+// - Scalarizing if the alignment is smaller than the element-wise alignment.
 //
-// Volatile load/store are broken up as allowed by C/C++, and atomic
-// accesses cause errors at compile-time.
+// Volatile vector load/store are handled the same, and can therefore be broken
+// up as allowed by C/C++.
+//
+// TODO(jfb) Atomic accesses cause errors at compile-time. This could be
+//           implemented as a call to the C++ runtime, since 128-bit atomics
+//           aren't usually lock-free.
 //
 //===----------------------------------------------------------------------===//
 
@@ -81,37 +84,65 @@ private:
     return false;
   }
 
-  void findVectorLoadStore(const BasicBlock &BB, Instructions &Loads,
-                           Instructions &Stores) const;
-  void fixVectorLoadStoreAlignment(BasicBlock &BB, const Instructions &Loads,
-                                   const Instructions &Stores) const;
+  /// Vectors are expected to be element-aligned. If they are, leave as-is; if
+  /// the alignment is too much then narrow the alignment (when possible);
+  /// otherwise return false.
+  template <typename InstTy>
+  static bool tryFixVectorAlignment(const DataLayout *DL, Instruction *I) {
+    InstTy *LoadStore = cast<InstTy>(I);
+    VectorType *VecTy =
+        cast<VectorType>(pointerOperandType(LoadStore)->getElementType());
+    Type *ElemTy = VecTy->getElementType();
+    uint64_t ElemBitSize = DL->getTypeSizeInBits(ElemTy);
+    uint64_t ElemByteSize = ElemBitSize / CHAR_BIT;
+    uint64_t CurrentByteAlign = LoadStore->getAlignment();
+    bool isABIAligned = CurrentByteAlign == 0;
+    uint64_t VecABIByteAlign = DL->getABITypeAlignment(VecTy);
+    CurrentByteAlign = isABIAligned ? VecABIByteAlign : CurrentByteAlign;
+
+    if (CHAR_BIT * ElemByteSize != ElemBitSize)
+      return false; // Minimum byte-size elements.
+    if (MinAlign(ElemByteSize, CurrentByteAlign) == ElemByteSize) {
+      // Element-aligned, or compatible over-aligned. Keep element-aligned.
+      LoadStore->setAlignment(ElemByteSize);
+      return true;
+    }
+    return false; // Under-aligned.
+  }
+
+  void visitVectorLoadStore(BasicBlock &BB, Instructions &Loads,
+                            Instructions &Stores) const;
+  void scalarizeVectorLoadStore(BasicBlock &BB, const Instructions &Loads,
+                                const Instructions &Stores) const;
 };
 } // anonymous namespace
 
 char FixVectorLoadStoreAlignment::ID = 0;
 INITIALIZE_PASS(FixVectorLoadStoreAlignment, "fix-vector-load-store-alignment",
-                "Replace vector load/store by loads/stores of each element",
+                "Ensure vector load/store have element-size alignment",
                 false, false)
 
-void FixVectorLoadStoreAlignment::findVectorLoadStore(
-    const BasicBlock &BB, Instructions &Loads, Instructions &Stores) const {
-  for (BasicBlock::const_iterator BBI = BB.begin(), BBE = BB.end(); BBI != BBE;
+void FixVectorLoadStoreAlignment::visitVectorLoadStore(
+    BasicBlock &BB, Instructions &Loads, Instructions &Stores) const {
+  for (BasicBlock::iterator BBI = BB.begin(), BBE = BB.end(); BBI != BBE;
        ++BBI) {
-    Instruction *I = const_cast<Instruction *>(&*BBI);
+    Instruction *I = &*BBI;
     // The following list of instructions is based on mayReadOrWriteMemory.
     switch (I->getOpcode()) {
     case Instruction::Load:
       if (pointerOperandIsVectorPointer<LoadInst>(I)) {
         if (cast<LoadInst>(I)->isAtomic())
           report_fatal_error("unhandled: atomic vector store");
-        Loads.push_back(I);
+        if (!tryFixVectorAlignment<LoadInst>(DL, I))
+          Loads.push_back(I);
       }
       break;
     case Instruction::Store:
       if (pointerOperandIsVectorPointer<StoreInst>(I)) {
         if (cast<StoreInst>(I)->isAtomic())
           report_fatal_error("unhandled: atomic vector store");
-        Stores.push_back(I);
+        if (!tryFixVectorAlignment<StoreInst>(DL, I))
+          Stores.push_back(I);
       }
       break;
     case Instruction::Alloca:
@@ -144,7 +175,7 @@ void FixVectorLoadStoreAlignment::findVectorLoadStore(
   }
 }
 
-void FixVectorLoadStoreAlignment::fixVectorLoadStoreAlignment(
+void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
     BasicBlock &BB, const Instructions &Loads,
     const Instructions &Stores) const {
   for (Instructions::const_iterator IB = Loads.begin(), IE = Loads.end();
@@ -222,10 +253,10 @@ bool FixVectorLoadStoreAlignment::runOnBasicBlock(BasicBlock &BB) {
     DL = &getAnalysis<DataLayout>();
   Instructions Loads;
   Instructions Stores;
-  findVectorLoadStore(BB, Loads, Stores);
+  visitVectorLoadStore(BB, Loads, Stores);
   if (!(Loads.empty() && Stores.empty())) {
     Changed = true;
-    fixVectorLoadStoreAlignment(BB, Loads, Stores);
+    scalarizeVectorLoadStore(BB, Loads, Stores);
   }
   return Changed;
 }

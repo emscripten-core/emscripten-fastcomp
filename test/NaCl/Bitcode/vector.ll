@@ -3,6 +3,24 @@
 ; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw | llvm-dis - \
 ; RUN:              | FileCheck %s
 
+define internal void @loadstore(i32 %addr) { ; CHECK-LABEL: loadstore
+  %ptr16xi8 = inttoptr i32 %addr to <16 x i8>*        ; CHECK-NEXT: %[[ptr16xi8:[0-9]+]] = inttoptr i32 %[[addr:[0-9]+]] to <16 x i8>*
+  %l16xi8 = load <16 x i8>* %ptr16xi8, align 1        ; CHECK-NEXT: %[[l16xi8:[0-9]+]] = load <16 x i8>* %[[ptr16xi8]], align 1
+  %ptr8xi16 = inttoptr i32 %addr to <8 x i16>*        ; CHECK-NEXT: %[[ptr8xi16:[0-9]+]] = inttoptr i32 %[[addr]] to <8 x i16>*
+  %l8xi16 = load <8 x i16>* %ptr8xi16, align 2        ; CHECK-NEXT: %[[l8xi16:[0-9]+]] = load <8 x i16>* %[[ptr8xi16]], align 2
+  %ptr4xi32 = inttoptr i32 %addr to <4 x i32>*        ; CHECK-NEXT: %[[ptr4xi32:[0-9]+]] = inttoptr i32 %[[addr]] to <4 x i32>*
+  %l4xi32 = load <4 x i32>* %ptr4xi32, align 4        ; CHECK-NEXT: %[[l4xi32:[0-9]+]] = load <4 x i32>* %[[ptr4xi32]], align 4
+  %ptr4xfloat = inttoptr i32 %addr to <4 x float>*    ; CHECK-NEXT: %[[ptr4xfloat:[0-9]+]] = inttoptr i32 %[[addr]] to <4 x float>*
+  %l4xfloat = load <4 x float>* %ptr4xfloat, align 4  ; CHECK-NEXT: %[[l4xfloat:[0-9]+]] = load <4 x float>* %[[ptr4xfloat]], align 4
+
+  store <16 x i8> undef, <16 x i8>* %ptr16xi8, align 1       ; CHECK-NEXT: store <16 x i8> undef, <16 x i8>* %[[ptr16xi8]], align 1
+  store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 2       ; CHECK-NEXT: store <8 x i16> undef, <8 x i16>* %[[ptr8xi16]], align 2
+  store <4 x i32> undef, <4 x i32>* %ptr4xi32, align 4       ; CHECK-NEXT: store <4 x i32> undef, <4 x i32>* %[[ptr4xi32]], align 4
+  store <4 x float> undef, <4 x float>* %ptr4xfloat, align 4 ; CHECK-NEXT: store <4 x float> undef, <4 x float>* %[[ptr4xfloat]], align 4
+
+  ret void ; CHECK-NEXT: ret void
+}
+
 define internal void @binops() {      ; CHECK-LABEL: binops
   %1 = add <4 x i32> undef, undef     ; CHECK-NEXT: %1 = add <4 x i32> undef, undef
   %2 = fadd <4 x float> undef, undef  ; CHECK-NEXT: %2 = fadd <4 x float> undef, undef

@@ -163,6 +163,9 @@ void stripGlobalValueAttrs(GlobalValue *GV) {
 static unsigned normalizeAlignment(DataLayout *DL, unsigned Alignment,
                                    Type *Ty, bool IsAtomic) {
   unsigned MaxAllowed = 1;
+  if (isa<VectorType>(Ty))
+    // Already handled properly by FixVectorLoadStoreAlignment.
+    return Alignment;
   if (Ty->isDoubleTy() || Ty->isFloatTy() || IsAtomic)
     MaxAllowed = DL->getTypeAllocSize(Ty);
   // If the alignment is set to 0, this means "use the default

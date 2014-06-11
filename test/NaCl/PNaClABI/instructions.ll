@@ -148,11 +148,86 @@ define internal void @memory() {
   %a2 = load i32* %ptr, align 1
   store i32 undef, i32* %ptr, align 1
  ; CHECK-NOT: disallowed
-  %vptr = inttoptr i32 0 to <4 x i32>* ; CHECK-NEXT: disallowed: bad result type: <4 x i32>*
-  %a3 = load <4 x i32>* %vptr, align 16 ; CHECK-NEXT: disallowed: bad pointer: {{.*}} load <4 x i32>*
-  store <4 x i32> undef, <4 x i32>* %vptr, align 16 ; CHECK-NEXT: disallowed: bad pointer: store <4 x i32>
   %a4 = getelementptr { i32, i32}* undef ; CHECK-NEXT: disallowed: bad instruction opcode: {{.*}} getelementptr
   ret void
+}
+
+define internal void @vector_memory() {
+; CHECK: ERROR: Function vector_memory
+; Vector memory operations.
+  %ptr16xi8 = inttoptr i32 0 to <16 x i8>*
+  %ptr8xi16 = inttoptr i32 0 to <8 x i16>*
+  %ptr4xi32 = inttoptr i32 0 to <4 x i32>*
+  %ptr4xfloat = inttoptr i32 0 to <4 x float>*
+
+  %l16xi8 = load <16 x i8>* %ptr16xi8, align 1
+  %l8xi16 = load <8 x i16>* %ptr8xi16, align 2
+  %l4xi32 = load <4 x i32>* %ptr4xi32, align 4
+  %l4xfloat = load <4 x float>* %ptr4xfloat, align 4
+
+  store <16 x i8> undef, <16 x i8>* %ptr16xi8, align 1
+  store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 2
+  store <4 x i32> undef, <4 x i32>* %ptr4xi32, align 4
+  store <4 x float> undef, <4 x float>* %ptr4xfloat, align 4
+
+ ; CHECK-NOT: disallowed
+ ; The following vector types are disallowed.
+  %ptr2xi1 = inttoptr i32 0 to <2 x i1>*         ; CHECK-NEXT: disallowed: bad result type: <2 x i1>*
+  %ptr4xi1 = inttoptr i32 0 to <4 x i1>*         ; CHECK-NEXT: disallowed: bad result type: <4 x i1>*
+  %ptr8xi1 = inttoptr i32 0 to <8 x i1>*	 ; CHECK-NEXT: disallowed: bad result type: <8 x i1>*
+  %ptr16xi1 = inttoptr i32 0 to <16 x i1>*	 ; CHECK-NEXT: disallowed: bad result type: <16 x i1>*
+  %ptr32xi1 = inttoptr i32 0 to <32 x i1>*       ; CHECK-NEXT: disallowed: bad result type: <32 x i1>*
+  %ptr64xi1 = inttoptr i32 0 to <64 x i1>*       ; CHECK-NEXT: disallowed: bad result type: <64 x i1>*
+  %ptr2xi8 = inttoptr i32 0 to <2 x i8>*         ; CHECK-NEXT: disallowed: bad result type: <2 x i8>*
+  %ptr4xi8 = inttoptr i32 0 to <4 x i8>*         ; CHECK-NEXT: disallowed: bad result type: <4 x i8>*
+  %ptr32xi8 = inttoptr i32 0 to <32 x i8>*       ; CHECK-NEXT: disallowed: bad result type: <32 x i8>*
+  %ptr64xi8 = inttoptr i32 0 to <64 x i8>*       ; CHECK-NEXT: disallowed: bad result type: <64 x i8>*
+  %ptr2xi16 = inttoptr i32 0 to <2 x i16>*       ; CHECK-NEXT: disallowed: bad result type: <2 x i16>*
+  %ptr4xi16 = inttoptr i32 0 to <4 x i16>*       ; CHECK-NEXT: disallowed: bad result type: <4 x i16>*
+  %ptr16xi16 = inttoptr i32 0 to <16 x i16>*     ; CHECK-NEXT: disallowed: bad result type: <16 x i16>*
+  %ptr32xi16 = inttoptr i32 0 to <32 x i16>*     ; CHECK-NEXT: disallowed: bad result type: <32 x i16>*
+  %ptr2xi32 = inttoptr i32 0 to <2 x i32>*       ; CHECK-NEXT: disallowed: bad result type: <2 x i32>*
+  %ptr8xi32 = inttoptr i32 0 to <8 x i32>*       ; CHECK-NEXT: disallowed: bad result type: <8 x i32>*
+  %ptr16xi32 = inttoptr i32 0 to <16 x i32>*     ; CHECK-NEXT: disallowed: bad result type: <16 x i32>*
+  %ptr2xi64 = inttoptr i32 0 to <2 x i64>*       ; CHECK-NEXT: disallowed: bad result type: <2 x i64>*
+  %ptr4xi64 = inttoptr i32 0 to <4 x i64>*       ; CHECK-NEXT: disallowed: bad result type: <4 x i64>*
+  %ptr8xi64 = inttoptr i32 0 to <8 x i64>*       ; CHECK-NEXT: disallowed: bad result type: <8 x i64>*
+  %ptr2xfloat = inttoptr i32 0 to <2 x float>*   ; CHECK-NEXT: disallowed: bad result type: <2 x float>*
+  %ptr8xfloat = inttoptr i32 0 to <8 x float>*   ; CHECK-NEXT: disallowed: bad result type: <8 x float>*
+  %ptr16xfloat = inttoptr i32 0 to <16 x float>* ; CHECK-NEXT: disallowed: bad result type: <16 x float>*
+  %ptr2xdouble = inttoptr i32 0 to <2 x double>* ; CHECK-NEXT: disallowed: bad result type: <2 x double>*
+  %ptr4xdouble = inttoptr i32 0 to <4 x double>* ; CHECK-NEXT: disallowed: bad result type: <4 x double>*
+  %ptr8xdouble = inttoptr i32 0 to <8 x double>* ; CHECK-NEXT: disallowed: bad result type: <8 x double>*
+
+  ; i1 vector pointers are simply disallowed, their alignment is inconsequential.
+  %l4xi1 = load <4 x i1>* %ptr4xi1, align 1    ; CHECK-NEXT: disallowed: bad pointer: %l4xi1 = load <4 x i1>* %ptr4xi1, align 1
+  %l8xi1 = load <8 x i1>* %ptr8xi1, align 1    ; CHECK-NEXT: disallowed: bad pointer: %l8xi1 = load <8 x i1>* %ptr8xi1, align 1
+  %l16xi1 = load <16 x i1>* %ptr16xi1, align 1 ; CHECK-NEXT: disallowed: bad pointer: %l16xi1 = load <16 x i1>* %ptr16xi1, align 1
+
+  store <4 x i1> undef, <4 x i1>* %ptr4xi1, align 1    ; CHECK-NEXT: disallowed: bad pointer: store <4 x i1> undef, <4 x i1>* %ptr4xi1, align 1
+  store <8 x i1> undef, <8 x i1>* %ptr8xi1, align 1    ; CHECK-NEXT: disallowed: bad pointer: store <8 x i1> undef, <8 x i1>* %ptr8xi1, align 1
+  store <16 x i1> undef, <16 x i1>* %ptr16xi1, align 1 ; CHECK-NEXT: disallowed: bad pointer: store <16 x i1> undef, <16 x i1>* %ptr16xi1, align 1
+
+  ; Under- or over-aligned load/store are disallowed.
+  %a1_8xi16 = load <8 x i16>* %ptr8xi16, align 1       ; CHECK-NEXT: disallowed: bad alignment: %a1_8xi16 = load <8 x i16>* %ptr8xi16, align 1
+  %a1_4xi32 = load <4 x i32>* %ptr4xi32, align 1       ; CHECK-NEXT: disallowed: bad alignment:	%a1_4xi32 = load <4 x i32>* %ptr4xi32, align 1
+  %a1_4xfloat = load <4 x float>* %ptr4xfloat, align 1 ; CHECK-NEXT: disallowed: bad alignment:	%a1_4xfloat = load <4 x float>* %ptr4xfloat, align 1
+
+  %a16_16xi8 = load <16 x i8>* %ptr16xi8, align 16       ; CHECK-NEXT: disallowed: bad alignment: %a16_16xi8 = load <16 x i8>* %ptr16xi8, align 16
+  %a16_8xi16 = load <8 x i16>* %ptr8xi16, align 16       ; CHECK-NEXT: disallowed: bad alignment: %a16_8xi16 = load <8 x i16>* %ptr8xi16, align 16
+  %a16_4xi32 = load <4 x i32>* %ptr4xi32, align 16       ; CHECK-NEXT: disallowed: bad alignment: %a16_4xi32 = load <4 x i32>* %ptr4xi32, align 16
+  %a16_4xfloat = load <4 x float>* %ptr4xfloat, align 16 ; CHECK-NEXT: disallowed: bad alignment: %a16_4xfloat = load <4 x float>* %ptr4xfloat, align 16
+
+  store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 1       ; CHECK-NEXT: disallowed: bad alignment: store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 1
+  store <4 x i32> undef, <4 x i32>* %ptr4xi32, align 1	     ; CHECK-NEXT: disallowed: bad alignment: store <4 x i32> undef, <4 x i32>* %ptr4xi32, align 1
+  store <4 x float> undef, <4 x float>* %ptr4xfloat, align 1 ; CHECK-NEXT: disallowed: bad alignment: store <4 x float> undef, <4 x float>* %ptr4xfloat, align 1
+
+  store <16 x i8> undef, <16 x i8>* %ptr16xi8, align 16       ; CHECK-NEXT: disallowed: bad alignment: store <16 x i8> undef, <16 x i8>* %ptr16xi8, align 16
+  store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 16	      ; CHECK-NEXT: disallowed: bad alignment: store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 16
+  store <4 x i32> undef, <4 x i32>* %ptr4xi32, align 16	      ; CHECK-NEXT: disallowed: bad alignment: store <4 x i32> undef, <4 x i32>* %ptr4xi32, align 16
+  store <4 x float> undef, <4 x float>* %ptr4xfloat, align 16 ; CHECK-NEXT: disallowed: bad alignment: store <4 x float> undef, <4 x float>* %ptr4xfloat, align 16
+
+ ret void
 }
 
 define internal void @atomic() {
