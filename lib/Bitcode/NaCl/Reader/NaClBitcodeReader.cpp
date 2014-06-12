@@ -10,6 +10,7 @@
 
 #define DEBUG_TYPE "NaClBitcodeReader"
 
+#include "llvm/Bitcode/NaCl/NaClBitcodeDecoders.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "NaClBitcodeReader.h"
 #include "llvm/ADT/SmallString.h"
@@ -61,104 +62,6 @@ static bool ConvertToString(ArrayRef<uint64_t> Record, unsigned Idx,
   for (unsigned i = Idx, e = Record.size(); i != e; ++i)
     Result += (char)Record[i];
   return false;
-}
-
-static GlobalValue::LinkageTypes GetDecodedLinkage(unsigned Val) {
-  switch (Val) {
-  case 0:  return GlobalValue::ExternalLinkage;
-  case 3:  return GlobalValue::InternalLinkage;
-  default:
-    report_fatal_error("PNaCl bitcode contains invalid linkage type");
-  }
-}
-
-static int GetDecodedCastOpcode(unsigned Val) {
-  switch (Val) {
-  default: return -1;
-  case naclbitc::CAST_TRUNC   : return Instruction::Trunc;
-  case naclbitc::CAST_ZEXT    : return Instruction::ZExt;
-  case naclbitc::CAST_SEXT    : return Instruction::SExt;
-  case naclbitc::CAST_FPTOUI  : return Instruction::FPToUI;
-  case naclbitc::CAST_FPTOSI  : return Instruction::FPToSI;
-  case naclbitc::CAST_UITOFP  : return Instruction::UIToFP;
-  case naclbitc::CAST_SITOFP  : return Instruction::SIToFP;
-  case naclbitc::CAST_FPTRUNC : return Instruction::FPTrunc;
-  case naclbitc::CAST_FPEXT   : return Instruction::FPExt;
-  case naclbitc::CAST_BITCAST : return Instruction::BitCast;
-  }
-}
-static int GetDecodedBinaryOpcode(unsigned Val, Type *Ty) {
-  switch (Val) {
-  default: return -1;
-  case naclbitc::BINOP_ADD:
-    return Ty->isFPOrFPVectorTy() ? Instruction::FAdd : Instruction::Add;
-  case naclbitc::BINOP_SUB:
-    return Ty->isFPOrFPVectorTy() ? Instruction::FSub : Instruction::Sub;
-  case naclbitc::BINOP_MUL:
-    return Ty->isFPOrFPVectorTy() ? Instruction::FMul : Instruction::Mul;
-  case naclbitc::BINOP_UDIV: return Instruction::UDiv;
-  case naclbitc::BINOP_SDIV:
-    return Ty->isFPOrFPVectorTy() ? Instruction::FDiv : Instruction::SDiv;
-  case naclbitc::BINOP_UREM: return Instruction::URem;
-  case naclbitc::BINOP_SREM:
-    return Ty->isFPOrFPVectorTy() ? Instruction::FRem : Instruction::SRem;
-  case naclbitc::BINOP_SHL:  return Instruction::Shl;
-  case naclbitc::BINOP_LSHR: return Instruction::LShr;
-  case naclbitc::BINOP_ASHR: return Instruction::AShr;
-  case naclbitc::BINOP_AND:  return Instruction::And;
-  case naclbitc::BINOP_OR:   return Instruction::Or;
-  case naclbitc::BINOP_XOR:  return Instruction::Xor;
-  }
-}
-
-static CallingConv::ID GetDecodedCallingConv(unsigned Val) {
-  switch (Val) {
-  default:
-    report_fatal_error("PNaCl bitcode contains invalid calling conventions.");
-  case naclbitc::C_CallingConv: return CallingConv::C;
-  }
-}
-
-static FCmpInst::Predicate GetDecodedFCmpPredicate(unsigned Val) {
-  switch (Val) {
-  default:
-    report_fatal_error(
-        "PNaCl bitcode contains invalid floating comparison predicate");
-  case naclbitc::FCMP_FALSE: return FCmpInst::FCMP_FALSE;
-  case naclbitc::FCMP_OEQ:   return FCmpInst::FCMP_OEQ;
-  case naclbitc::FCMP_OGT:   return FCmpInst::FCMP_OGT;
-  case naclbitc::FCMP_OGE:   return FCmpInst::FCMP_OGE;
-  case naclbitc::FCMP_OLT:   return FCmpInst::FCMP_OLT;
-  case naclbitc::FCMP_OLE:   return FCmpInst::FCMP_OLE;
-  case naclbitc::FCMP_ONE:   return FCmpInst::FCMP_ONE;
-  case naclbitc::FCMP_ORD:   return FCmpInst::FCMP_ORD;
-  case naclbitc::FCMP_UNO:   return FCmpInst::FCMP_UNO;
-  case naclbitc::FCMP_UEQ:   return FCmpInst::FCMP_UEQ;
-  case naclbitc::FCMP_UGT:   return FCmpInst::FCMP_UGT;
-  case naclbitc::FCMP_UGE:   return FCmpInst::FCMP_UGE;
-  case naclbitc::FCMP_ULT:   return FCmpInst::FCMP_ULT;
-  case naclbitc::FCMP_ULE:   return FCmpInst::FCMP_ULE;
-  case naclbitc::FCMP_UNE:   return FCmpInst::FCMP_UNE;
-  case naclbitc::FCMP_TRUE:  return FCmpInst::FCMP_TRUE;
-  }
-}
-
-static ICmpInst::Predicate GetDecodedICmpPredicate(unsigned Val) {
-  switch (Val) {
-  default:
-    report_fatal_error(
-        "PNaCl bitcode contains invalid integer comparison predicate");
-    case naclbitc::ICMP_EQ:  return ICmpInst::ICMP_EQ;
-    case naclbitc::ICMP_NE:  return ICmpInst::ICMP_NE;
-    case naclbitc::ICMP_UGT: return ICmpInst::ICMP_UGT;
-    case naclbitc::ICMP_UGE: return ICmpInst::ICMP_UGE;
-    case naclbitc::ICMP_ULT: return ICmpInst::ICMP_ULT;
-    case naclbitc::ICMP_ULE: return ICmpInst::ICMP_ULE;
-    case naclbitc::ICMP_SGT: return ICmpInst::ICMP_SGT;
-    case naclbitc::ICMP_SGE: return ICmpInst::ICMP_SGE;
-    case naclbitc::ICMP_SLT: return ICmpInst::ICMP_SLT;
-    case naclbitc::ICMP_SLE: return ICmpInst::ICMP_SLE;
-  }
 }
 
 void NaClBitcodeReaderValueList::AssignValue(Value *V, unsigned Idx) {
@@ -882,9 +785,15 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
       Function *Func = Function::Create(FTy, GlobalValue::ExternalLinkage,
                                         "", TheModule);
 
-      Func->setCallingConv(GetDecodedCallingConv(Record[1]));
+      CallingConv::ID CallingConv;
+      if (!naclbitc::DecodeCallingConv(Record[1], CallingConv))
+        return Error("PNaCl bitcode contains invalid calling conventions.");
+      Func->setCallingConv(CallingConv);
       bool isProto = Record[2];
-      Func->setLinkage(GetDecodedLinkage(Record[3]));
+      GlobalValue::LinkageTypes Linkage;
+      if (!naclbitc::DecodeLinkage(Record[3], Linkage))
+        return Error("Unknown linkage type");
+      Func->setLinkage(Linkage);
       ValueList.push_back(Func);
 
       // If this is a function with a body, remember the prototype we are
@@ -1120,9 +1029,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       LHS = ConvertOpToScalar(LHS, CurBBNo);
       RHS = ConvertOpToScalar(RHS, CurBBNo);
 
-      int Opc = GetDecodedBinaryOpcode(Record[OpNum++], LHS->getType());
-      if (Opc == -1) return Error("Invalid BINOP record");
-      I = BinaryOperator::Create((Instruction::BinaryOps)Opc, LHS, RHS);
+      Instruction::BinaryOps Opc;
+      if (!naclbitc::DecodeBinaryOpcode(Record[OpNum++], LHS->getType(), Opc))
+        return Error("Invalid binary opcode in BINOP record");
+      I = BinaryOperator::Create(Opc, LHS, RHS);
       break;
     }
     case naclbitc::FUNC_CODE_INST_CAST: {    // CAST: [opval, destty, castopc]
@@ -1135,9 +1045,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Type *ResTy = getTypeByID(Record[OpNum]);
       if (ResTy == 0)
         return Error("Invalid CAST record: bad type ID");
-      int Opc = GetDecodedCastOpcode(Record[OpNum+1]);
-      if (Opc == -1)
+      Instruction::CastOps Opc;
+      if (!naclbitc::DecodeCastOpcode(Record[OpNum+1], Opc)) {
         return Error("Invalid CAST record: bad opcode");
+      }
 
       // If a ptrtoint cast was elided on the argument of the cast,
       // add it back. Note: The casts allowed here should match the
@@ -1154,7 +1065,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         break;
       }
 
-      I = CastInst::Create((Instruction::CastOps)Opc, Op, ResTy);
+      I = CastInst::Create(Opc, Op, ResTy);
       break;
     }
 
@@ -1238,10 +1149,18 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       LHS = ConvertOpToScalar(LHS, CurBBNo);
       RHS = ConvertOpToScalar(RHS, CurBBNo);
 
-      if (LHS->getType()->isFPOrFPVectorTy())
-        I = new FCmpInst(GetDecodedFCmpPredicate(Record[OpNum]), LHS, RHS);
-      else
-        I = new ICmpInst(GetDecodedICmpPredicate(Record[OpNum]), LHS, RHS);
+      CmpInst::Predicate Predicate;
+      if (LHS->getType()->isFPOrFPVectorTy()) {
+        if (!naclbitc::DecodeFcmpPredicate(Record[OpNum], Predicate))
+          return Error(
+              "PNaCl bitcode contains invalid floating comparison predicate");
+        I = new FCmpInst(Predicate, LHS, RHS);
+      } else {
+        if (!naclbitc::DecodeIcmpPredicate(Record[OpNum], Predicate))
+          return Error(
+              "PNaCl bitcode contains invalid integer comparison predicate");
+        I = new ICmpInst(Predicate, LHS, RHS);
+      }
       break;
     }
 
@@ -1456,7 +1375,10 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       // Construct call.
       I = CallInst::Create(Callee, Args);
-      cast<CallInst>(I)->setCallingConv(GetDecodedCallingConv(CCInfo>>1));
+      CallingConv::ID CallingConv;
+      if (!naclbitc::DecodeCallingConv(CCInfo>>1, CallingConv))
+        return Error("PNaCl bitcode contains invalid calling conventions.");
+      cast<CallInst>(I)->setCallingConv(CallingConv);
       cast<CallInst>(I)->setTailCall(CCInfo & 1);
       break;
     }

@@ -303,6 +303,11 @@ namespace naclbitc {
     ICMP_SLE   = 41   ///< signed less or equal
   };
 
+  enum NaClLinkageTypes {
+    LINKAGE_EXTERNAL = 0,
+    LINKAGE_INTERNAL = 3
+  };
+
   // The function body block (FUNCTION_BLOCK_ID) describes function bodies.  It
   // can contain a constant block (CONSTANTS_BLOCK_ID).
   enum NaClFunctionCodes {
