@@ -397,6 +397,12 @@ static int runCompilePasses(Module *mod,
   // Build up all of the passes that we want to do to the module.
   OwningPtr<FunctionPassManager> PM(new FunctionPassManager(mod));
 
+  // Add the target data from the target machine, if it exists, or the module.
+  if (const DataLayout *TD = Target.getDataLayout())
+    PM->add(new DataLayout(*TD));
+  else
+    PM->add(new DataLayout(mod));
+
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
   // run it once, before PNaCl ABI verification.
@@ -420,12 +426,6 @@ static int runCompilePasses(Module *mod,
 
   // Add intenal analysis passes from the target machine.
   Target.addAnalysisPasses(*PM.get());
-
-  // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *TD = Target.getDataLayout())
-    PM->add(new DataLayout(*TD));
-  else
-    PM->add(new DataLayout(mod));
 
   // Ask the target to add backend passes as necessary. We explicitly ask it
   // not to add the verifier pass because we added it earlier.

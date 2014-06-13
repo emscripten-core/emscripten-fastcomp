@@ -304,7 +304,16 @@ UniqueID file_status::getUniqueID() const {
 
 error_code current_path(SmallVectorImpl<char> &result) {
   result.clear();
-
+  // @LOCALMOD-START NaCl doesn't have pathes, and the translator returns an
+  //                 error for getcwd below. Return a dummy path instead.
+#if defined(__native_client__)
+  result.reserve(2);
+  result.set_size(2);
+  result[0] = '/';
+  result[1] = '\0';
+  return error_code::success();
+#else // !defined(__native_client__)
+  // @LOCALMOD-END
   const char *pwd = ::getenv("PWD");
   llvm::sys::fs::file_status PWDStatus, DotStatus;
   if (pwd && llvm::sys::path::is_absolute(pwd) &&
@@ -335,6 +344,9 @@ error_code current_path(SmallVectorImpl<char> &result) {
 
   result.set_size(strlen(result.data()));
   return error_code::success();
+  // @LOCALMOD-START
+#endif // defined(__native_client__)
+  // @LOCALMOD-END
 }
 
 error_code create_directory(const Twine &path, bool &existed) {
