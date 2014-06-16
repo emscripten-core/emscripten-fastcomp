@@ -22,24 +22,27 @@ class ModulePass;
 extern cl::opt<bool> PNaClABIAllowDebugMetadata;
 
 class PNaClABIErrorReporter {
+  PNaClABIErrorReporter(const PNaClABIErrorReporter&) LLVM_DELETED_FUNCTION;
+  void operator=(const PNaClABIErrorReporter&) LLVM_DELETED_FUNCTION;
  public:
   PNaClABIErrorReporter() : ErrorCount(0), Errors(ErrorString),
                             UseFatalErrors(true) {}
+  virtual ~PNaClABIErrorReporter();
   // Return the number of verification errors from the last run.
-  int getErrorCount() { return ErrorCount; }
+  virtual int getErrorCount() const { return ErrorCount; }
   // Print the error messages to O
-  void printErrors(llvm::raw_ostream &O) {
+  virtual void printErrors(llvm::raw_ostream &O) {
     Errors.flush();
     O << ErrorString;
   }
   // Increments the error count and returns an ostream to which the error
   // message can be streamed.
-  raw_ostream &addError() {
+  virtual raw_ostream &addError() {
     ErrorCount++;
     return Errors;
   }
   // Reset the error count and error messages.
-  void reset() {
+  virtual void reset() {
     ErrorCount = 0;
     Errors.flush();
     ErrorString.clear();
@@ -47,7 +50,7 @@ class PNaClABIErrorReporter {
   void setNonFatal() {
     UseFatalErrors = false;
   }
-  void checkForFatalErrors() {
+  virtual void checkForFatalErrors() {
     if (UseFatalErrors && ErrorCount != 0) {
       printErrors(errs());
       report_fatal_error("PNaCl ABI verification failed");

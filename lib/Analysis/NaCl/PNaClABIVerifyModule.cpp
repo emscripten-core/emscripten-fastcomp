@@ -13,20 +13,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Analysis/NaCl/PNaClABIVerifyModule.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "PNaClABITypeChecker.h"
 using namespace llvm;
 
 namespace llvm {
@@ -45,59 +41,6 @@ PNaClABIAllowDevIntrinsics("pnaclabi-allow-dev-intrinsics",
   cl::init(false));
 
 namespace {
-// This pass should not touch function bodies, to stay streaming-friendly
-class PNaClABIVerifyModule : public ModulePass {
- public:
-  static char ID;
-  PNaClABIVerifyModule() :
-      ModulePass(ID),
-      Reporter(new PNaClABIErrorReporter),
-      ReporterIsOwned(true) {
-    initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
-  }
-  explicit PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_,
-                                bool StreamingMode) :
-      ModulePass(ID),
-      Reporter(Reporter_),
-      ReporterIsOwned(false),
-      StreamingMode(StreamingMode) {
-    initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
-  }
-  ~PNaClABIVerifyModule() {
-    if (ReporterIsOwned)
-      delete Reporter;
-  }
-  bool runOnModule(Module &M);
-  virtual void print(raw_ostream &O, const Module *M) const;
- private:
-  void checkGlobalValueCommon(const GlobalValue *GV);
-  bool isWhitelistedMetadata(const NamedMDNode *MD);
-
-  /// Returns whether \p GV is an allowed external symbol in stable bitcode.
-  bool isWhitelistedExternal(const GlobalValue *GV);
-
-  void checkGlobalIsFlattened(const GlobalVariable *GV);
-  PNaClABIErrorReporter *Reporter;
-  bool ReporterIsOwned;
-  bool StreamingMode;
-};
-
-class AllowedIntrinsics {
-  LLVMContext *Context;
-  // Maps from an allowed intrinsic's name to its type.
-  StringMap<FunctionType *> Mapping;
-
-  // Tys is an array of type parameters for the intrinsic.  This
-  // defaults to an empty array.
-  void addIntrinsic(Intrinsic::ID ID,
-                    ArrayRef<Type *> Tys = ArrayRef<Type*>()) {
-    Mapping[Intrinsic::getName(ID, Tys)] =
-        Intrinsic::getType(*Context, ID, Tys);
-  }
-public:
-  AllowedIntrinsics(LLVMContext *Context);
-  bool isAllowed(const Function *Func);
-};
 
 static const char *linkageName(GlobalValue::LinkageTypes LT) {
   // This logic is taken from PrintLinkage in lib/VMCore/AsmWriter.cpp
@@ -125,9 +68,14 @@ static const char *linkageName(GlobalValue::LinkageTypes LT) {
 
 } // end anonymous namespace
 
+PNaClABIVerifyModule::~PNaClABIVerifyModule() {
+  if (ReporterIsOwned)
+    delete Reporter;
+}
+
 // Check linkage type and section attributes, which are the same for
 // GlobalVariables and Functions.
-void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
+void PNaClABIVerifyModule::checkGlobalValue(const GlobalValue *GV) {
   assert(!isa<GlobalAlias>(GV));
   const char *GVTypeName = isa<GlobalVariable>(GV) ?
       "Variable " : "Function ";
@@ -172,8 +120,8 @@ void PNaClABIVerifyModule::checkGlobalValueCommon(const GlobalValue *GV) {
                          << " has disallowed \"unnamed_addr\" attribute\n";
   }
 }
-
-AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
+PNaClAllowedIntrinsics::
+PNaClAllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   // Note that new intrinsics added here may also need to be added to
   // NaClBitcodeReader.cpp if they contain pointer-typed parameters.
   // TODO(mseaborn): Change NaClBitcodeReader.cpp to reuse the list
@@ -238,7 +186,7 @@ AllowedIntrinsics::AllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   addIntrinsic(Intrinsic::memset, MemsetTypes);
 }
 
-bool AllowedIntrinsics::isAllowed(const Function *Func) {
+bool PNaClAllowedIntrinsics::isAllowed(const Function *Func) {
   // Keep 3 categories of intrinsics for now.
   // (1) Allowed always, provided the exact name and type match.
   // (2) Never allowed.
@@ -326,11 +274,11 @@ bool AllowedIntrinsics::isAllowed(const Function *Func) {
   }
 }
 
-bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) {
+bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) const {
   return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
 }
 
-bool PNaClABIVerifyModule::isWhitelistedExternal(const GlobalValue *GV) {
+bool PNaClABIVerifyModule::isWhitelistedExternal(const GlobalValue *GV) const {
   if (const Function *Func = dyn_cast<const Function>(GV)) {
     if (Func->getName().equals("_start") || Func->isIntrinsic()) {
       return true;
@@ -417,8 +365,68 @@ void PNaClABIVerifyModule::checkGlobalIsFlattened(const GlobalVariable *GV) {
                        << *InitVal << "\n";
 }
 
+void PNaClABIVerifyModule::checkCallingConv(CallingConv::ID Conv,
+                                            const StringRef &Name){
+  if (Conv != CallingConv::C) {
+    Reporter->addError()
+        << "Function " << Name
+        << " has disallowed calling convention: " << Conv << "\n";
+  }
+}
+
+void PNaClABIVerifyModule::checkFunction(const Function *F,
+                                         const StringRef &Name,
+                                         PNaClAllowedIntrinsics &Intrinsics) {
+  if (F->isIntrinsic()) {
+    // Check intrinsics.
+    if (!Intrinsics.isAllowed(F)) {
+      Reporter->addError() << "Function " << F->getName()
+                           << " is a disallowed LLVM intrinsic\n";
+    }
+  } else {
+    // Check types of functions and their arguments.  Not necessary
+    // for intrinsics, whose types are fixed anyway, and which have
+    // argument types that we disallow such as i8.
+    if (!PNaClABITypeChecker::isValidFunctionType(F->getFunctionType())) {
+      Reporter->addError()
+          << "Function " << Name << " has disallowed type: "
+          << PNaClABITypeChecker::getTypeName(F->getFunctionType())
+          << "\n";
+    }
+    // This check is disabled in streaming mode because it would
+    // reject a function that is defined but not read in yet.
+    // Unfortunately this means we simply don't check this property
+    // when translating a pexe in the browser.
+    // TODO(mseaborn): Enforce this property in the bitcode reader.
+    if (!StreamingMode && F->isDeclaration()) {
+      Reporter->addError() << "Function " << Name
+                           << " is declared but not defined (disallowed)\n";
+    }
+    if (!F->getAttributes().isEmpty()) {
+      Reporter->addError()
+          << "Function " << Name << " has disallowed attributes:"
+          << getAttributesAsString(F->getAttributes()) << "\n";
+    }
+    checkCallingConv(F->getCallingConv(), Name);
+  }
+
+  checkGlobalValue(F);
+
+  if (F->hasGC()) {
+    Reporter->addError() << "Function " << Name <<
+        " has disallowed \"gc\" attribute\n";
+  }
+  // Knowledge of what function alignments are useful is
+  // architecture-specific and sandbox-specific, so PNaCl pexes
+  // should not be able to specify function alignment.
+  if (F->getAlignment() != 0) {
+    Reporter->addError() << "Function " << Name <<
+        " has disallowed \"align\" attribute\n";
+  }
+}
+
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
-  AllowedIntrinsics Intrinsics(&M.getContext());
+  PNaClAllowedIntrinsics Intrinsics(&M.getContext());
 
   if (!M.getModuleInlineAsm().empty()) {
     Reporter->addError() <<
@@ -428,7 +436,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   for (Module::const_global_iterator MI = M.global_begin(), ME = M.global_end();
        MI != ME; ++MI) {
     checkGlobalIsFlattened(MI);
-    checkGlobalValueCommon(MI);
+    checkGlobalVariable(MI);
 
     if (MI->isThreadLocal()) {
       Reporter->addError() << "Variable " << MI->getName() <<
@@ -448,57 +456,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   }
 
   for (Module::const_iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
-    if (MI->isIntrinsic()) {
-      // Check intrinsics.
-      if (!Intrinsics.isAllowed(MI)) {
-        Reporter->addError() << "Function " << MI->getName()
-                             << " is a disallowed LLVM intrinsic\n";
-      }
-    } else {
-      // Check types of functions and their arguments.  Not necessary
-      // for intrinsics, whose types are fixed anyway, and which have
-      // argument types that we disallow such as i8.
-      if (!PNaClABITypeChecker::isValidFunctionType(MI->getFunctionType())) {
-        Reporter->addError() << "Function " << MI->getName()
-            << " has disallowed type: "
-            << PNaClABITypeChecker::getTypeName(MI->getFunctionType())
-            << "\n";
-      }
-      // This check is disabled in streaming mode because it would
-      // reject a function that is defined but not read in yet.
-      // Unfortunately this means we simply don't check this property
-      // when translating a pexe in the browser.
-      // TODO(mseaborn): Enforce this property in the bitcode reader.
-      if (!StreamingMode && MI->isDeclaration()) {
-        Reporter->addError() << "Function " << MI->getName()
-                             << " is declared but not defined (disallowed)\n";
-      }
-      if (!MI->getAttributes().isEmpty()) {
-        Reporter->addError()
-            << "Function " << MI->getName() << " has disallowed attributes:"
-            << getAttributesAsString(MI->getAttributes()) << "\n";
-      }
-      if (MI->getCallingConv() != CallingConv::C) {
-        Reporter->addError()
-            << "Function " << MI->getName()
-            << " has disallowed calling convention: "
-            << MI->getCallingConv() << "\n";
-      }
-    }
-
-    checkGlobalValueCommon(MI);
-
-    if (MI->hasGC()) {
-      Reporter->addError() << "Function " << MI->getName() <<
-          " has disallowed \"gc\" attribute\n";
-    }
-    // Knowledge of what function alignments are useful is
-    // architecture-specific and sandbox-specific, so PNaCl pexes
-    // should not be able to specify function alignment.
-    if (MI->getAlignment() != 0) {
-      Reporter->addError() << "Function " << MI->getName() <<
-          " has disallowed \"align\" attribute\n";
-    }
+    checkFunction(MI, MI->getName(), Intrinsics);
   }
 
   // Check named metadata nodes
@@ -529,5 +487,5 @@ INITIALIZE_PASS(PNaClABIVerifyModule, "verify-pnaclabi-module",
 
 ModulePass *llvm::createPNaClABIVerifyModulePass(
     PNaClABIErrorReporter *Reporter, bool StreamingMode) {
-  return new PNaClABIVerifyModule(Reporter, StreamingMode);
+  return new PNaClABIVerifyModule(Reporter, StreamingMode, true);
 }

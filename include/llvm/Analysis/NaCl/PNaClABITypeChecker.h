@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LIB_ANALYSIS_NACL_CHECKTYPES_H
-#define LIB_ANALYSIS_NACL_CHECKTYPES_H
+#ifndef LLVM_ANALYSIS_NACL_PNACLABITYPECHECKER_H
+#define LLVM_ANALYSIS_NACL_PNACLABITYPECHECKER_H
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/Type.h"
@@ -23,10 +23,12 @@ namespace llvm {
 class FunctionType;
 
 class PNaClABITypeChecker {
+  PNaClABITypeChecker(const PNaClABITypeChecker&) LLVM_DELETED_FUNCTION;
+  void operator=(const PNaClABITypeChecker&) LLVM_DELETED_FUNCTION;
+public:
   // Returns true if Ty is a valid argument or return value type for PNaCl.
   static bool isValidParamType(const Type *Ty);
 
- public:
   // Returns true if Ty is a valid function type for PNaCl.
   static bool isValidFunctionType(const FunctionType *FTy);
 
@@ -47,4 +49,4 @@ class PNaClABITypeChecker {
 };
 } // namespace llvm
 
-#endif // LIB_ANALYSIS_NACL_CHECKTYPES_H
+#endif // LLVM_ANALYSIS_NACL_PNACLABITYPECHECKER_H

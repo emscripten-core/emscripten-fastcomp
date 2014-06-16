@@ -12,65 +12,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/OwningPtr.h"
+#include "llvm/Analysis/NaCl/PNaClABIVerifyFunctions.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/NaClAtomicIntrinsics.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "PNaClABITypeChecker.h"
 using namespace llvm;
-
-namespace {
-
-// Checks that examine anything in the function body should be in
-// FunctionPasses to make them streaming-friendly
-class PNaClABIVerifyFunctions : public FunctionPass {
- public:
-  static char ID;
-  PNaClABIVerifyFunctions() :
-      FunctionPass(ID),
-      Reporter(new PNaClABIErrorReporter),
-      ReporterIsOwned(true) {
-    initializePNaClABIVerifyFunctionsPass(*PassRegistry::getPassRegistry());
-  }
-  explicit PNaClABIVerifyFunctions(PNaClABIErrorReporter *Reporter_) :
-      FunctionPass(ID),
-      Reporter(Reporter_),
-      ReporterIsOwned(false) {
-    initializePNaClABIVerifyFunctionsPass(*PassRegistry::getPassRegistry());
-  }
-  ~PNaClABIVerifyFunctions() {
-    if (ReporterIsOwned)
-      delete Reporter;
-  }
-  virtual bool doInitialization(Module &M) {
-    AtomicIntrinsics.reset(new NaCl::AtomicIntrinsics(M.getContext()));
-    return false;
-  }
-  virtual void getAnalysisUsage(AnalysisUsage &Info) const {
-    Info.setPreservesAll();
-    Info.addRequired<DataLayout>();
-  }
-  bool runOnFunction(Function &F);
-  virtual void print(raw_ostream &O, const Module *M) const;
- private:
-  bool IsWhitelistedMetadata(unsigned MDKind);
-  const char *checkInstruction(const DataLayout *DL, const Instruction *Inst);
-  PNaClABIErrorReporter *Reporter;
-  bool ReporterIsOwned;
-  OwningPtr<NaCl::AtomicIntrinsics> AtomicIntrinsics;
-};
-
-} // and anonymous namespace
 
 // There's no built-in way to get the name of an MDNode, so use a
 // string ostream to print it.
@@ -84,6 +38,11 @@ static std::string getMDNodeString(unsigned Kind,
     N << "!<unknown kind #" << Kind << ">";
   }
   return N.str();
+}
+
+PNaClABIVerifyFunctions::~PNaClABIVerifyFunctions() {
+  if (ReporterIsOwned)
+    delete Reporter;
 }
 
 bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
@@ -171,8 +130,8 @@ static bool isValidVectorOperand(const Value *Val) {
          isa<UndefValue>(Val);
 }
 
-static bool isAllowedAlignment(const DataLayout *DL, uint64_t Alignment,
-                               Type *Ty) {
+bool PNaClABIVerifyFunctions::
+isAllowedAlignment(const DataLayout *DL, uint64_t Alignment, Type *Ty) const {
   // Non-atomic integer operations must always use "align 1", since we do not
   // want the backend to generate code with non-portable undefined behaviour
   // (such as misaligned access faults) if user code specifies "align 4" but
@@ -262,6 +221,15 @@ static bool hasAllowedLockFreeByteSize(const CallInst *Call) {
   return false;
 }
 
+const char* PNaClABIVerifyFunctions::verifyArithmeticType(Type *Ty) const {
+  if (Ty->isIntegerTy(1))
+    return "arithmetic on i1";
+  if (VectorType *VecTy = dyn_cast<VectorType>(Ty))
+    if (VecTy->getElementType()->isIntegerTy(1))
+      return "arithmetic on vector of i1";
+  return 0;
+}
+
 // Check the instruction's opcode and its operands.  The operands may
 // require opcode-specific checking.
 //
@@ -342,30 +310,29 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
     case Instruction::SRem:
     case Instruction::Shl:
     case Instruction::LShr:
-    case Instruction::AShr: {
-      Type *Op0Ty = Inst->getOperand(0)->getType();
-      if (Op0Ty->isIntegerTy(1))
-        return "arithmetic on i1";
-      if (VectorType *Op0VTy = dyn_cast<VectorType>(Op0Ty))
-        if (Op0VTy->getElementType()->isIntegerTy(1))
-          return "arithmetic on vector of i1";
+    case Instruction::AShr:
+      if (const char *Error =
+          verifyArithmeticType(Inst->getOperand(0)->getType()))
+        return Error;
       break;
-    }
 
     // Vector.
     case Instruction::ExtractElement:
     case Instruction::InsertElement: {
       // Insert and extract element are restricted to constant indices
       // that are in range to prevent undefined behavior.
+      // TODO(kschimpf) Figure out way to put test into pnacl-bcdis?
       Value *Vec = Inst->getOperand(0);
       Value *Idx = Inst->getOperand(
           Instruction::InsertElement == Inst->getOpcode() ? 2 : 1);
       if (!isa<ConstantInt>(Idx))
         return "non-constant vector insert/extract index";
-      const APInt &I = cast<ConstantInt>(Idx)->getValue();
-      unsigned NumElements = cast<VectorType>(Vec->getType())->getNumElements();
-      if (!I.ult(NumElements))
-        return "out of range vector insert/extract index";
+      if (const char *Error =
+          verifyVectorIndexSafe(cast<ConstantInt>(Idx)->getValue(),
+                                cast<VectorType>(Vec->getType())
+                                ->getNumElements())) {
+        return Error;
+      }
       break;
     }
 
@@ -420,10 +387,12 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
 
     case Instruction::Alloca: {
       const AllocaInst *Alloca = cast<AllocaInst>(Inst);
-      if (!Alloca->getAllocatedType()->isIntegerTy(8))
-        return "non-i8 alloca";
-      if (!Alloca->getArraySize()->getType()->isIntegerTy(32))
-        return "alloca array size is not i32";
+      if (const char *Error =
+          verifyAllocaAllocatedType(Alloca->getAllocatedType()))
+        return Error;
+      if (const char *Error =
+          verifyAllocaSizeType(Alloca->getArraySize()->getType()))
+        return Error;
       break;
     }
 
@@ -433,11 +402,12 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
         return "inline assembly";
       if (!Call->getAttributes().isEmpty())
         return "bad call attributes";
-      if (Call->getCallingConv() != CallingConv::C)
-        return "bad calling convention";
+      if (const char *Error = verifyCallingConv(Call->getCallingConv()))
+        return Error;
 
       // Intrinsic calls can have multiple pointer arguments and
       // metadata arguments, so handle them specially.
+      // TODO(kschimpf) How can we lift this to pnacl-bcdis.
       if (const IntrinsicInst *Call = dyn_cast<IntrinsicInst>(Inst)) {
         for (unsigned ArgNum = 0, E = Call->getNumArgOperands();
              ArgNum < E; ++ArgNum) {
@@ -510,8 +480,9 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
       const SwitchInst *Switch = cast<SwitchInst>(Inst);
       if (!isValidScalarOperand(Switch->getCondition()))
         return "bad switch condition";
-      if (Switch->getCondition()->getType()->isIntegerTy(1))
-        return "switch on i1";
+      if (const char *Error =
+          verifySwitchConditionType(Switch->getCondition()->getType()))
+        return Error;
 
       // SwitchInst requires the cases to be ConstantInts, but it
       // doesn't require their types to be the same as the condition
@@ -613,11 +584,14 @@ void PNaClABIVerifyFunctions::print(llvm::raw_ostream &O, const Module *M)
   Reporter->reset();
 }
 
+PNaClABIErrorReporter::~PNaClABIErrorReporter() {}
+
+
 char PNaClABIVerifyFunctions::ID = 0;
 INITIALIZE_PASS(PNaClABIVerifyFunctions, "verify-pnaclabi-functions",
                 "Verify functions for PNaCl", false, true)
 
 FunctionPass *llvm::createPNaClABIVerifyFunctionsPass(
     PNaClABIErrorReporter *Reporter) {
-  return new PNaClABIVerifyFunctions(Reporter);
+  return new PNaClABIVerifyFunctions(Reporter, true);
 }
