@@ -30,6 +30,7 @@ add_llvm_library(LLVMNaClTransforms
   StripMetadata.cpp
   LowerEmExceptionsPass.cpp
   LowerEmSetjmp.cpp
+  LowerEmAsyncify.cpp
   NoExitRuntime.cpp
   )
 
