@@ -99,11 +99,11 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
 #if defined(__pnacl__)
   switch (__builtin_nacl_target_arch()) {
   case PnaclTargetArchitectureX86_32: {
-    CmdLineArgs->push_back("-mcpu=pentium4");
+    CmdLineArgs->push_back("-mcpu=pentium4m");
     break;
   }
   case PnaclTargetArchitectureX86_64: {
-    CmdLineArgs->push_back("-mcpu=core2");
+    CmdLineArgs->push_back("-mcpu=x86-64");
     break;
   }
   case PnaclTargetArchitectureARM_32: {
@@ -116,9 +116,9 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
   }
 // Some cases for building this with nacl-gcc.
 #elif defined(__i386__)
-  CmdLineArgs->push_back("-mcpu=pentium4");
+  CmdLineArgs->push_back("-mcpu=pentium4m");
 #elif defined(__x86_64__)
-  CmdLineArgs->push_back("-mcpu=core2");
+  CmdLineArgs->push_back("-mcpu=x86-64");
 #elif defined(__arm__)
   CmdLineArgs->push_back("-mcpu=cortex-a9");
 #else
