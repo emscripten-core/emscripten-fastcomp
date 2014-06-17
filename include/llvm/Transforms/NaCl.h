@@ -23,6 +23,7 @@ class ModulePass;
 class Use;
 class Value;
 
+BasicBlockPass *createCombineVectorInstructionsPass();
 BasicBlockPass *createConstantInsertExtractElementIndexPass();
 BasicBlockPass *createExpandGetElementPtrPass();
 BasicBlockPass *createExpandShuffleVectorPass();
