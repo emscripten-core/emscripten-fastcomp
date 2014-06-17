@@ -52,7 +52,8 @@ class PNaClABIVerifyModule : public ModulePass {
   PNaClABIVerifyModule() :
       ModulePass(ID),
       Reporter(new PNaClABIErrorReporter),
-      ReporterIsOwned(true) {
+      ReporterIsOwned(true),
+      SeenEntryPoint(false) {
     initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
   PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_,
@@ -61,7 +62,8 @@ class PNaClABIVerifyModule : public ModulePass {
       ModulePass(ID),
       Reporter(Reporter_),
       ReporterIsOwned(false),
-      StreamingMode(StreamingMode) {
+      StreamingMode(StreamingMode),
+      SeenEntryPoint(false) {
     if (RegisterPass)
       initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
@@ -83,13 +85,14 @@ class PNaClABIVerifyModule : public ModulePass {
   void checkGlobalValue(const GlobalValue *GV);
   bool isWhitelistedMetadata(const NamedMDNode *MD) const;
 
-  /// Returns whether \p GV is an allowed external symbol in stable bitcode.
-  bool isWhitelistedExternal(const GlobalValue *GV) const;
+  /// Checks whether \p GV is an allowed external symbol in stable bitcode.
+  void checkExternalSymbol(const GlobalValue *GV);
 
   void checkGlobalIsFlattened(const GlobalVariable *GV);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
   bool StreamingMode;
+  bool SeenEntryPoint;
 };
 
 }

@@ -60,3 +60,9 @@ define internal void @func_with_unnamed_addr() unnamed_addr {
 
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check
+
+
+; This stops the verifier from complaining about the lack of an entry point.
+define void @_start(i32 %arg) {
+  ret void
+}

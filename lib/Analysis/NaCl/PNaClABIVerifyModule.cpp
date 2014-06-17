@@ -81,11 +81,7 @@ void PNaClABIVerifyModule::checkGlobalValue(const GlobalValue *GV) {
       "Variable " : "Function ";
   switch (GV->getLinkage()) {
     case GlobalValue::ExternalLinkage:
-      if (!isWhitelistedExternal(GV)) {
-        Reporter->addError()
-          << GV->getName()
-          << " is not a valid external symbol (disallowed)\n";
-      }
+      checkExternalSymbol(GV);
       break;
     case GlobalValue::InternalLinkage:
       break;
@@ -278,13 +274,20 @@ bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) const {
   return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
 }
 
-bool PNaClABIVerifyModule::isWhitelistedExternal(const GlobalValue *GV) const {
+void PNaClABIVerifyModule::checkExternalSymbol(const GlobalValue *GV) {
   if (const Function *Func = dyn_cast<const Function>(GV)) {
-    if (Func->getName().equals("_start") || Func->isIntrinsic()) {
-      return true;
-    }
+    if (Func->isIntrinsic())
+      return;
   }
-  return false;
+
+  bool ValidEntry = isa<Function>(GV) && GV->getName().equals("_start");
+  if (!ValidEntry) {
+    Reporter->addError()
+        << GV->getName()
+        << " is not a valid external symbol (disallowed)\n";
+  } else {
+    SeenEntryPoint = true;
+  }
 }
 
 static bool isPtrToIntOfGlobal(const Constant *C) {
@@ -426,6 +429,7 @@ void PNaClABIVerifyModule::checkFunction(const Function *F,
 }
 
 bool PNaClABIVerifyModule::runOnModule(Module &M) {
+  SeenEntryPoint = false;
   PNaClAllowedIntrinsics Intrinsics(&M.getContext());
 
   if (!M.getModuleInlineAsm().empty()) {
@@ -468,6 +472,9 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
     }
   }
 
+  if (!SeenEntryPoint) {
+    Reporter->addError() << "Module has no entry point (disallowed)\n";
+  }
   Reporter->checkForFatalErrors();
   return false;
 }
