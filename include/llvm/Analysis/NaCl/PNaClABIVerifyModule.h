@@ -53,6 +53,7 @@ class PNaClABIVerifyModule : public ModulePass {
       ModulePass(ID),
       Reporter(new PNaClABIErrorReporter),
       ReporterIsOwned(true),
+      StreamingMode(false),
       SeenEntryPoint(false) {
     initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
