@@ -7,13 +7,24 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
+#include "llvm/Analysis/NaCl/PNaClABIVerifyFunctions.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeDecoders.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/LLVMContext.h"
+// TODO(kschimpf) Refactor PNaClABIVerifyFunctions.h so that a pass/pass manager
+//                is not needed (and remvoe the corresponding includes).
+#include "llvm/Pass.h"
+#include "llvm/PassManager.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,6 +34,12 @@
 namespace {
 
 using namespace llvm;
+
+static cl::opt<bool>
+ReportWarningsAsErrors(
+    "Werror",
+    cl::desc("Report warnings as errors."),
+    cl::init(false));
 
 /// Class to handle sign rotations in a human readable form. That is,
 /// the sign is in the low bit. The two special cases are:
@@ -93,6 +110,10 @@ public:
 
   raw_ostream &Print(raw_ostream &Stream) const {
     return Stream << Prefix() << Kind << Index;
+  }
+
+  char GetKind() const {
+    return Kind;
   }
 
 private:
@@ -235,6 +256,8 @@ public:
         CloseAngle(this, ">"),
         OpenCurly(this, "{"),
         CloseCurly(this, "}"),
+        OpenSquare(this, "["),
+        CloseSquare(this, "]"),
         Endline(this),
         StartCluster(this),
         FinishCluster(this),
@@ -255,6 +278,8 @@ public:
   naclbitc::CloseTextDirective CloseAngle;
   naclbitc::OpenTextDirective OpenCurly;
   naclbitc::CloseTextDirective CloseCurly;
+  naclbitc::OpenTextDirective OpenSquare;
+  naclbitc::CloseTextDirective CloseSquare;
   naclbitc::EndlineTextDirective Endline;
   naclbitc::StartClusteringDirective StartCluster;
   naclbitc::FinishClusteringDirective FinishCluster;
@@ -506,6 +531,54 @@ void AssemblyTextFormatter::AbbrevIndexDirective::MyApply(bool Replay) const {
   Fmtr->AbbrevIndexDirMemoryPool.Free(const_cast<AbbrevIndexDirective*>(this));
 }
 
+/// Error reporter that redirects errors to the ObjDump stream.
+class NaClDisErrorReporter : public PNaClABIErrorReporter {
+public:
+  NaClDisErrorReporter(naclbitc::ObjDumpStream &ObjDump)
+      : ObjDump(ObjDump)
+  { setNonFatal(); }
+
+  virtual ~NaClDisErrorReporter() LLVM_OVERRIDE;
+
+  virtual void printErrors(raw_ostream &o) LLVM_OVERRIDE {}
+
+  virtual raw_ostream &addError() LLVM_OVERRIDE {
+    return ObjDump.Error();
+  }
+
+  virtual void reset() LLVM_OVERRIDE {
+    ObjDump.Flush();
+  }
+
+  virtual void checkForFatalErrors() LLVM_OVERRIDE {}
+
+private:
+  naclbitc::ObjDumpStream &ObjDump;
+};
+
+NaClDisErrorReporter::~NaClDisErrorReporter() {}
+
+// Holds possible alignements for loads/stores etc. Used to extract
+// expected value.
+static unsigned NaClPossibleLoadStoreAlignments[] = {
+  // Note: Because all primitive types can be aligned 1 (for packing),
+  // that value must be last in the list.
+  2, 4, 8, 1
+};
+
+// Finds the expected alignment for the load/store, for type Ty.
+// Returns 0 if no expected alignment can be found.
+static unsigned NaClGetExpectedLoadStoreAlignment(
+    const DataLayout &DL, PNaClABIVerifyFunctions &FcnVerifier, Type *Ty) {
+  for (size_t i = 0; i < array_lengthof(NaClPossibleLoadStoreAlignments); ++i) {
+    unsigned Alignment = NaClPossibleLoadStoreAlignments[i];
+    if (FcnVerifier.isAllowedAlignment(&DL, Alignment, Ty)) {
+      return Alignment;
+    }
+  }
+  return 0;
+}
+
 /// Top-level class to parse bitcode file and transform to
 /// corresponding disassembled code.
 class NaClDisParser : public NaClBitcodeParser {
@@ -513,19 +586,29 @@ class NaClDisParser : public NaClBitcodeParser {
   void operator=(const NaClDisParser&) LLVM_DELETED_FUNCTION;
 
   // The output stream to generate disassembly into.
-  naclbitc::ObjDumpStream ObjDump;
+  naclbitc::ObjDumpStream &ObjDump;
 
   // Listener used to get abbreviations as they are read.
   NaClBitcodeParserListener AbbrevListener;
+
+  // Used to verify properties of instructions.
+  PNaClABIVerifyFunctions &FcnVerifier;
+
+  // DataLayout to use.
+  const DataLayout &DL;
 
 public:
   NaClDisParser(NaClBitcodeHeader &Header,
                 const unsigned char *HeaderBuffer,
                 NaClBitstreamCursor &Cursor,
-                raw_ostream &Stream, bool NoRecords, bool NoAssembly)
+                naclbitc::ObjDumpStream &ObjDump,
+                PNaClABIVerifyFunctions &FcnVerifier,
+                DataLayout &DL)
       : NaClBitcodeParser(Cursor),
-        ObjDump(Stream, !NoRecords, !NoAssembly),
+        ObjDump(ObjDump),
         AbbrevListener(this),
+        FcnVerifier(FcnVerifier),
+        DL(DL),
         AssemblyFormatter(ObjDump),
         Header(Header),
         HeaderBuffer(HeaderBuffer),
@@ -703,12 +786,47 @@ public:
     return NumConstants;
   }
 
+  /// Installs the given type to the given instruction index.  Note:
+  /// Instruction indices are only associated with instructions that
+  /// generate values.
+  void InstallInstType(Type *Ty, uint32_t Index) {
+    while (InstIdType.size() <= Index) {
+      InstIdType.push_back(UnknownType);
+    }
+    if (InstIdType[Index] != UnknownType && Ty != InstIdType[Index]) {
+      Errors() << BitcodeId('v', Index) << " defined with multiple types: "
+               << *Ty << " and " << *InstIdType[Index] << "\n";
+    }
+    InstIdType[Index] = Ty;
+  }
+
+  /// Installs the given type to the next available instruction index.
+  void InstallInstType(Type *Ty) {
+    InstallInstType(Ty, NumValuedInsts++);
+  }
+
+  /// Returns the type associated with the given instruction index.
+  /// Note: Instruction indices are only associated with instructions
+  /// that generate values.
+  Type *GetInstType(uint32_t Index) {
+    if (Index >= InstIdType.size()) {
+      Errors() << "Can't find type for " << BitcodeId('v', Index) << "\n";
+      return UnknownType;
+    }
+    return InstIdType[Index];
+  }
+
+  /// Returns the number of instructions (in the defined function)
+  /// that (currently) generate values.
+  uint32_t GetNumValuedInstructions() const {
+    return NumValuedInsts;
+  }
+
   /// Resets index counters local to a defined function.
   void ResetLocalCounters() {
     ParamIdType.clear();
     NumParams = 0;
     NumConstants = 0;
-    // TODO(kschimpf) Add missing instruction counters.
     InstIdType.clear();
     NumValuedInsts = 0;
   }
@@ -768,6 +886,35 @@ public:
     ++GlobalAbbrevsCountMap[BlockID];
   }
 
+  /// Verifies the given integer operator has the right type.  Returns
+  /// the operator.
+  const char *VerifyIntArithmeticOp(const char *Op, Type *OpTy) {
+    if (const char *Error = FcnVerifier.verifyArithmeticType(OpTy))
+      Errors() << Op << ": " << Error << "\n";
+    return Op;
+  }
+
+  // Checks the Alignment for loading/storing a value of type Ty. If
+  // invalid, generates an appropriate error message.
+  void VerifyMemoryAccessAlignment(const char *Op, Type *Ty,
+                                   uint64_t Alignment) {
+    if (!FcnVerifier.isAllowedAlignment(&DL, Alignment, Ty)) {
+      if (unsigned Expected = NaClGetExpectedLoadStoreAlignment(DL,
+                                                                FcnVerifier,
+                                                                Ty)) {
+        Errors() << Op << ": Illegal alignment for " << *Ty
+                 << ". Expects: " << Expected << "\n";
+      } else {
+        Errors() << Op << ": Not allowed for type: " << *Ty << "\n";
+      }
+    }
+  }
+
+  void VerifyAllocaSizeType(Type *ArraySizeType) {
+    if (const char *Error = FcnVerifier.verifyAllocaSizeType(ArraySizeType))
+      Errors() << Error << "\n";
+  }
+
   // ******************************************************
   // The following return the corresponding methods/fields
   // from the the assembly formatter/objdumper.
@@ -813,6 +960,14 @@ public:
     return AssemblyFormatter.CloseCurly;
   }
 
+  naclbitc::OpenTextDirective &OpenSquare() {
+    return AssemblyFormatter.OpenSquare;
+  }
+
+  naclbitc::CloseTextDirective &CloseSquare() {
+    return AssemblyFormatter.CloseSquare;
+  }
+
   naclbitc::EndlineTextDirective &Endline() {
     return AssemblyFormatter.Endline;
   }
@@ -831,6 +986,11 @@ public:
 
   raw_ostream &Errors() {
     return ObjDump.Error();
+  }
+
+  raw_ostream &Warnings() {
+    if (ReportWarningsAsErrors) return Errors();
+    return ObjDump.Warning();
   }
 
   const std::string &GetAssemblyIndent() const {
@@ -987,8 +1147,8 @@ Type *NaClDisParser::GetValueType(uint32_t Index, bool UnderlyingType) {
   Idx -= NumParams;
   if (Idx < NumConstants)
     return GetConstantType(Idx);
-  // TODO(kschimpf): Add adjustment for function-level instructions.
-  Errors() << "Can't find type for (absolute) index: " << Index;
+  Idx -= NumConstants;
+  return GetInstType(Idx);
 }
 
 // Base class of all block parsers for the bitcode file. Handles
@@ -1119,6 +1279,14 @@ protected:
     return Context->CloseCurly();
   }
 
+  naclbitc::OpenTextDirective &OpenSquare() {
+    return Context->OpenSquare();
+  }
+
+  naclbitc::CloseTextDirective &CloseSquare() {
+    return Context->CloseSquare();
+  }
+
   naclbitc::EndlineTextDirective &Endline() {
     return Context->Endline();
   }
@@ -1137,6 +1305,10 @@ protected:
 
   raw_ostream &Errors() {
     return Context->Errors();
+  }
+
+  raw_ostream &Warnings() {
+    return Context->Warnings();
   }
 
   void Fatal() {
@@ -1254,6 +1426,18 @@ protected:
     return Context->GetNumConstants();
   }
 
+  void InstallInstType(Type *Ty, uint32_t Index) {
+    Context->InstallInstType(Ty, Index);
+  }
+
+  void InstallInstType(Type *Ty) {
+    Context->InstallInstType(Ty);
+  }
+
+  uint32_t GetNumValuedInstructions() const {
+    return Context->GetNumValuedInstructions();
+  }
+
   Type *GetValueType(uint32_t Id, bool UnderlyingType = false) {
     return Context->GetValueType(Id, UnderlyingType);
   }
@@ -1284,6 +1468,10 @@ protected:
 
   Type *GetIntegerType(unsigned Size) const {
     return Context->GetIntegerType(Size);
+  }
+
+  const char *VerifyIntArithmeticOp(const char *Op, Type *OpTy) {
+    return Context->VerifyIntArithmeticOp(Op, OpTy);
   }
 
 protected:
@@ -1354,9 +1542,6 @@ void NaClDisBlockParser::ProcessRecord() {
 }
 
 /// Parses and disassembles the blockinfo block.
-/// TODO(kschimpf): Make this understand record structure
-/// of this block. Currently can't be done because it is
-/// all handled in the bitstream reader.
 class NaClDisBlockInfoParser : public NaClDisBlockParser {
 public:
   NaClDisBlockInfoParser(unsigned BlockID,
@@ -1567,7 +1752,12 @@ void NaClDisTypesParser::ProcessRecord() {
       InstallType(GetUnknownType());
       break;
     }
-    Type *VecType = VectorType::get(GetType(Values[1]), Values[0]);
+    Type *BaseType = GetType(Values[1]);
+    uint64_t NumElements = Values[0];
+    Type *VecType = VectorType::get(BaseType, NumElements);
+    if (!PNaClABITypeChecker::isValidVectorType(VecType)) {
+      Errors() << "Vector type " << *VecType << " not allowed\n";
+    }
     Tokens() << NextTypeId() << Space() << "=" << Space()
              << TokenizeType(VecType) << Semicolon()
              << TokenizeAbbrevIndex() << Endline();
@@ -1816,7 +2006,7 @@ void NaClDisGlobalsParser::ProcessRecord() {
     break;
   }
   default:
-    Errors() << "Unknown Record found in globals block.\n";
+    Errors() << "Unknown record found in globals block.\n";
   }
 
   ObjDumpWrite(Record.GetStartBit(), Record);
@@ -1826,7 +2016,6 @@ void NaClDisGlobalsParser::ProcessRecord() {
 }
 
 /// Parsers and disassembles a valuesymtab block.
-/// TODO(kschimpf): Process records of this class.
 class NaClDisValueSymtabParser : public NaClDisBlockParser {
 public:
   NaClDisValueSymtabParser(unsigned BlockID,
@@ -1840,6 +2029,9 @@ private:
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
 
   virtual void ProcessRecord() LLVM_OVERRIDE;
+
+  void DisplayEntry(BitcodeId &Id,
+                    const NaClBitcodeRecord::RecordVector &Values);
 };
 
 void NaClDisValueSymtabParser::PrintBlockHeader() {
@@ -1848,57 +2040,69 @@ void NaClDisValueSymtabParser::PrintBlockHeader() {
            << Endline();
 }
 
+void NaClDisValueSymtabParser::
+DisplayEntry(BitcodeId &Id,
+             const NaClBitcodeRecord::RecordVector &Values) {
+  if (Values.size() <= 1) {
+    Errors() << "Valuesymtab entry record expects 2 arguments. Found: "
+             << Values.size() << "\n";
+    return;
+  }
+  Tokens() << Id << Space() << Colon() << Space();
+  // Check if the name of the symbol is alphanumeric. If so, print
+  // as a string. Otherwise, print a sequence of bytes.
+  // Note: The check isChar6 is a test for aphanumeric + {'.', '_'}.
+  bool IsChar6 = true;  // Until proven otherwise.
+  for (size_t i = 1; i < Values.size(); ++i) {
+    uint64_t Byte = Values[i];
+    if (Byte >= 256) {
+      Errors() << "Argument " << i << " of symbol entry not byte: "
+               << Byte << "\n";
+      IsChar6 = false;
+      break;
+    }
+    if (!NaClBitCodeAbbrevOp::isChar6(Byte))
+      IsChar6 = false;
+  }
+  if (IsChar6) {
+    Tokens() << StartCluster() << "\"";
+    for (size_t i = 1; i < Values.size(); ++i) {
+      Tokens() << static_cast<char>(Values[i]);
+    }
+    Tokens() << "\"" << Semicolon();
+  } else {
+    Tokens() << StartCluster() << OpenCurly();
+    for (size_t i = 1; i < Values.size(); ++i) {
+      if (i > 1) {
+        Tokens() << Comma() << FinishCluster() << Space()
+                 << StartCluster();
+      }
+      char ch = Values[i];
+      if (NaClBitCodeAbbrevOp::isChar6(ch)) {
+        Tokens() << "'" << ch << "'";
+      } else {
+        Tokens() << format("%3u", static_cast<unsigned>(ch));
+      }
+    }
+    Tokens() << CloseCurly();
+  }
+  Tokens() << FinishCluster() << TokenizeAbbrevIndex() << Endline();
+}
+
 void NaClDisValueSymtabParser::ProcessRecord() {
   ObjDumpSetRecordBitAddress(Record.GetStartBit());
   const NaClBitcodeRecord::RecordVector &Values = Record.GetValues();
   switch (Record.GetCode()) {
   case naclbitc::VST_CODE_ENTRY: {
     // VST_ENTRY: [valueid, namechar x N]
-    if (Values.size() <= 1) {
-      Errors() <<
-          "Valuesymtab entry record must contain at least 2 arguments.\n";
-      break;
-    }
-    Tokens() << GetBitcodeId(Values[0]) << Space() << Colon() << Space();
-    // Check if the name of the symbol is alphanumeric. If so, print
-    // as a string. Otherwise, print a sequence of bytes.
-    // Note: The check isChar6 is a test for aphanumeric + {'.', '_'}.
-    bool IsChar6 = true;  // Until proven otherwise.
-    for (size_t i = 1; i < Values.size(); ++i) {
-      uint64_t Byte = Values[i];
-      if (Byte >= 256) {
-        Errors() << "Argument " << i << " of symbol entry not byte: "
-                 << Byte << "\n";
-        IsChar6 = false;
-        break;
-      }
-      if (!NaClBitCodeAbbrevOp::isChar6(Byte))
-        IsChar6 = false;
-    }
-
-    if (IsChar6) {
-      Tokens() << StartCluster() << "\"";
-      for (size_t i = 1; i < Values.size(); ++i) {
-        Tokens() << static_cast<char>(Values[i]);
-      }
-      Tokens() << "\"" << Semicolon();
-    } else {
-      Tokens() << StartCluster() << OpenCurly();
-      for (size_t i = 1; i < Values.size(); ++i) {
-        if (i > 1) {
-          Tokens() << Comma() << FinishCluster() << Space()
-                   << StartCluster();
-        }
-        char ch = Values[i];
-        if (NaClBitCodeAbbrevOp::isChar6(ch)) {
-          Tokens() << "'" << ch << "'";
-        } else {
-          Tokens() << format("%3u", static_cast<unsigned>(ch));
-        }
-      }
-      Tokens() << CloseCurly();
-    }
-    Tokens() << FinishCluster() << TokenizeAbbrevIndex() << Endline();
+    BitcodeId ID(GetBitcodeId(Values[0]));
+    DisplayEntry(ID, Values);
+    break;
+  }
+  case naclbitc::VST_CODE_BBENTRY: {
+    // [bbid, namechar x N]
+    BitcodeId ID('b', Values[0]);
+    DisplayEntry(ID, Values);
     break;
   }
   default:
@@ -1970,7 +2174,7 @@ void NaClDisConstantsParser::ProcessRecord() {
     }
     Tokens() << NextConstId() << Space() << "=" << Space()
              << StartCluster() << TokenizeType(ConstantType)
-             << Space() << "undefined"
+             << Space() << "undef"
              << Semicolon() << FinishCluster()
              << TokenizeAbbrevIndex() << Endline();
     InstallConstantType(ConstantType);
@@ -2032,28 +2236,207 @@ void NaClDisConstantsParser::ProcessRecord() {
 }
 
 /// Parses and disassembles function blocks.
-/// TODO(kschimpf): Process records of this class.
 class NaClDisFunctionParser : public NaClDisBlockParser {
 public:
   NaClDisFunctionParser(unsigned BlockID,
                         NaClDisBlockParser *EnclosingParser);
 
-  virtual ~NaClDisFunctionParser() LLVM_OVERRIDE {
-    Context->ResetLocalCounters();
-  }
+  virtual ~NaClDisFunctionParser() LLVM_OVERRIDE {}
 
   virtual void PrintBlockHeader() LLVM_OVERRIDE;
 
   virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
+
+  virtual void ProcessRecord() LLVM_OVERRIDE;
+
+  /// Returns the absolute value index of the first instruction that
+  /// generates a value in the defined function.
+  uint32_t FirstValuedInstructionId() const {
+    return GetNumFunctions() + GetNumGlobals() + GetNumParams()
+        + GetNumConstants();
+  }
+
+  /// Converts an instruction index to the corresponding absolute value
+  /// index.
+  uint32_t ValuedInstToAbsId(uint32_t Id) const {
+    return FirstValuedInstructionId() + Id;
+  }
+
+  /// Converts the (function) relative index to the corresponding
+  /// absolute value index.
+  uint32_t RelativeToAbsId(int32_t Id) {
+    uint32_t AbsNextId = ValuedInstToAbsId(GetNumValuedInstructions());
+    if (Id > 0 && AbsNextId < static_cast<uint32_t>(Id)) {
+      Errors() << "Invalid relative value id: " << Id
+               << " (Must be <= " << AbsNextId << ")\n";
+      AbsNextId = Id;
+    }
+    return AbsNextId - Id;
+  }
+
+  /// Converts the given absolute value index to a corresponding
+  /// valued instruction index.
+  uint32_t AbsToValuedInstId(uint32_t Id) const {
+    return Id - FirstValuedInstructionId();
+  }
+
+  /// Returns the text representation of the encoded binary operator,
+  /// assuming the binary operator is operating on the given type.
+  /// Generates appropriate error messages if the given type is not
+  // allowed for the given Opcode.
+  const char *GetBinop(uint32_t Opcode, Type *Type);
+
+  /// Returns the text representation of the encoded cast operator.
+  /// Generates appropriate error messages if the given Opcode is
+  /// not allowed for the given types.
+  const char *GetCastOp(uint32_t Opcode, Type *FromType, Type *ToType);
+
+  /// Returns the text representation of the encoded integer compare
+  /// predicate. Generates appropriate error message if the given
+  /// Opcode is not defined.
+  const char *GetIcmpPredicate(uint32_t Opcode);
+
+  /// Returns the text representation of the encoded floating point
+  /// compare predicate. Generates appropriate error message if the
+  /// given Opcode is not defined.
+  const char *GetFcmpPredicate(uint32_t Opcode);
+
+  /// Returns the value id for the next instruction to be defined.
+  BitcodeId NextInstId() const {
+    return BitcodeId('v', GetNumValuedInstructions());
+  }
+
 private:
   // The function index of the function being defined.
   uint32_t FcnId;
+  // The current basic block being printed.
+  int32_t CurrentBbIndex;
+  // The expected number of basic blocks.
+  uint64_t ExpectedNumBbs;
+  // True if the previously printed instruction was a terminating
+  // instruction. Used to figure out where to insert block labels.
+  bool InstIsTerminating;
+
+  /// Returns scalar type of vector type Ty, if vector type. Otherwise
+  /// returns Ty.
+  Type *UnderlyingType(Type *Ty) {
+    return Ty->isVectorTy() ? Ty->getScalarType() : Ty;
+  }
+
+  bool isFloatingType(Type *Ty) {
+    return Ty->isFloatTy() || Ty->isDoubleTy();
+  }
+
+  /// Verifies that type OpTy is integer, for operator Op. Generates
+  /// error messages if appropriate. Returns Op.
+  const char *VerifyIntegerOp(const char *Op, Type *OpTy) {
+    if (OpTy->isIntegerTy()) {
+      if (PNaClABITypeChecker::isValidScalarType(OpTy)) return Op;
+      Errors() << Op << ": Invalid integer type: " << *OpTy << "\n";
+    } else {
+      Errors() << Op << ": Expects integer type. Found: " << *OpTy << "\n";
+    }
+    return Op;
+  }
+
+  /// Verifies that OpTy is an integer, or a vector of integers, for
+  /// operator Op. Generates error messages if appropriate. Returns Op.
+  const char *VerifyIntegerOrVectorOp(const char *Op, Type *OpTy) {
+    Type *BaseTy = OpTy;
+    if (OpTy->isVectorTy()) {
+      if (!PNaClABITypeChecker::isValidVectorType(OpTy)) {
+        Errors() << Op << ": invalid vector type: " << *OpTy << "\n";
+        return Op;
+      }
+      BaseTy = OpTy->getScalarType();
+    }
+    if (BaseTy->isIntegerTy()) {
+      if (PNaClABITypeChecker::isValidScalarType(BaseTy)) return Op;
+      Errors() << Op << ": Invalid integer type: " << *OpTy << "\n";
+    } else {
+      Errors() << Op << ": Expects integer type. Found: " << *OpTy << "\n";
+    }
+    return Op;
+  }
+
+  /// Verifies that Opty is a floating point type, or a vector of a
+  /// floating points, for operator Op. Generates error messages if
+  /// appropriate. Returns Op.
+  const char *VerifyFloatingOrVectorOp(const char *Op, Type *OpTy) {
+    Type *BaseTy = OpTy;
+    if (OpTy->isVectorTy()) {
+      if (!PNaClABITypeChecker::isValidVectorType(OpTy)) {
+        Errors() << Op << ": invalid vector type: " << *OpTy << "\n";
+        return Op;
+      }
+      BaseTy = OpTy->getScalarType();
+    }
+    if (!isFloatingType(BaseTy)) {
+      Errors() << Op << ": Expects floating point. Found "
+               << OpTy << "\n";
+      return Op;
+    }
+    if (!PNaClABITypeChecker::isValidScalarType(BaseTy)) {
+      Errors() << Op << ": type not allowed: " << OpTy << "\n";
+    }
+    return Op;
+  }
+
+  /// Op is the name of the operation that called this.  Checks if
+  /// OpTy is either a (non-void) scalar, or a vector of scalars. If
+  /// not, generates an appropriate error message. Always returns Op.
+  const char *VerifyScalarOrVectorOp(const char *Op, Type *OpTy) {
+    if (PNaClABITypeChecker::isValidScalarType(OpTy)) {
+      if (OpTy->isVoidTy())
+        Errors() << Op << ": Type void not allowed\n";
+    } else if (!PNaClABITypeChecker::isValidVectorType(OpTy)) {
+      Errors() << Op << ": Expects scalar/vector type. Found: "
+               << OpTy << "\n";
+    }
+    return Op;
+  }
+
+  void VerifyIndexedVector(const char *Op, uint32_t VecValue,
+                           uint32_t IdxValue) {
+    Type *VecType = GetValueType(VecValue);
+    Type *IdxType = GetValueType(IdxValue);
+    if (!PNaClABITypeChecker::isValidVectorType(VecType)){
+      if (VecType->isVectorTy())
+        Errors() << Op << ": Vector type " << *VecType << " not allowed\n";
+      else
+        Errors() << Op << ": Vector type expected. Found: " << *VecType << "\n";
+    }
+    // Note: This restriction appears to be LLVM specific.
+    if (!IdxType->isIntegerTy(32)) {
+      Errors() << Op << ": Index not i32. Found: " << *IdxType << "\n";
+    }
+    BitcodeId IdxId(GetBitcodeId(IdxValue));
+    if (IdxId.GetKind() != 'c') {
+      Errors() << Op << ": Vector index not constant: " << IdxId << "\n";
+      // TODO(kschimpf): We should check that Idx is a constant with
+      // valid access. However, we currently don't store constant
+      // values, so it can't be tested.
+    }
+  }
+
+  /// Checks if block Value is a valid branch target for the current
+  /// function block. If not, generates an appropriate error message.
+  void VerifyBranchRange(uint64_t Value) {
+    if (0 == Value || Value >= ExpectedNumBbs) {
+      Errors() << "Branch " << BitcodeId('b', Value)
+               << " out of range. Not in [1," << ExpectedNumBbs << "]\n";
+    }
+  }
 };
 
 NaClDisFunctionParser::NaClDisFunctionParser(
     unsigned BlockID,
     NaClDisBlockParser *EnclosingParser)
-    : NaClDisBlockParser(BlockID, EnclosingParser) {
+    : NaClDisBlockParser(BlockID, EnclosingParser),
+      CurrentBbIndex(-1),
+      ExpectedNumBbs(0),
+      InstIsTerminating(false) {
+  Context->ResetLocalCounters();
   FcnId = Context->GetNextDefinedFunctionIndex();
   Context->IncNumDefinedFunctions();
 
@@ -2083,6 +2466,183 @@ void NaClDisFunctionParser::PrintBlockHeader() {
            << Endline();
 }
 
+const char *NaClDisFunctionParser::GetBinop(uint32_t Opcode, Type *Ty) {
+  Instruction::BinaryOps LLVMOpcode;
+  if (!naclbitc::DecodeBinaryOpcode(Opcode, Ty, LLVMOpcode)) {
+    Errors() << "Binary opcode not understood: " << Opcode << "\n";
+    return "???";
+  }
+  switch (LLVMOpcode) {
+  default:
+    Errors() << "Binary opcode not understood: " << Opcode << "\n";
+    return "???";
+  case Instruction::Add:
+    return VerifyIntArithmeticOp("add", Ty);
+  case Instruction::FAdd:
+    return VerifyFloatingOrVectorOp("fadd", Ty);
+  case Instruction::Sub:
+    return VerifyIntArithmeticOp("sub", Ty);
+  case Instruction::FSub:
+    return VerifyFloatingOrVectorOp("fsub", Ty);
+  case Instruction::Mul:
+    return VerifyIntArithmeticOp("mul", Ty);
+  case Instruction::FMul:
+    return VerifyFloatingOrVectorOp("fmul", Ty);
+  case Instruction::UDiv:
+    return VerifyIntArithmeticOp("udiv", Ty);
+  case Instruction::SDiv:
+    return VerifyIntArithmeticOp("sdiv", Ty);
+  case Instruction::FDiv:
+    return VerifyFloatingOrVectorOp("fdiv", Ty);
+  case Instruction::URem:
+    return VerifyIntArithmeticOp("urem", Ty);
+  case Instruction::SRem:
+    return VerifyIntArithmeticOp("srem", Ty);
+  case Instruction::FRem:
+    return VerifyFloatingOrVectorOp("frem", Ty);
+  case Instruction::Shl:
+    return VerifyIntArithmeticOp("shl", Ty);
+  case Instruction::LShr:
+    return VerifyIntArithmeticOp("lshr", Ty);
+  case Instruction::AShr:
+    return VerifyIntArithmeticOp("ashr", Ty);
+  case Instruction::And:
+    return VerifyIntegerOrVectorOp("and", Ty);
+  case Instruction::Or:
+    return VerifyIntegerOrVectorOp("or", Ty);
+  case Instruction::Xor:
+    return VerifyIntegerOrVectorOp("xor", Ty);
+  }
+}
+
+const char *NaClDisFunctionParser::GetCastOp(uint32_t Opcode,
+                                             Type *FromType, Type *ToType) {
+  Instruction::CastOps Cast;
+  const char *CastName = "???";
+  if (!naclbitc::DecodeCastOpcode(Opcode, Cast)) {
+    Errors() << "Cast opcode not understood: " << Opcode << "\n";
+    return CastName;
+  }
+  switch (Cast) {
+  default:
+    Errors() << "Cast opcode not understood: " << Opcode << "\n";
+    return CastName;
+  case Instruction::BitCast:
+    CastName = "bitcast";
+    break;
+  case Instruction::Trunc:
+    CastName = "trunc";
+    break;
+  case Instruction::ZExt:
+    CastName = "zext";
+    break;
+  case Instruction::SExt:
+    CastName = "sext";
+    break;
+  case Instruction::FPToUI:
+    CastName = "fptoui";
+    break;
+  case Instruction::FPToSI:
+    CastName = "fptosi";
+    break;
+  case Instruction::UIToFP:
+    CastName = "uitofp";
+    break;
+  case Instruction::SIToFP:
+    CastName = "sitofp";
+    break;
+  case Instruction::FPTrunc:
+    CastName = "fptrunc";
+    break;
+  case Instruction::FPExt:
+    CastName = "fpext";
+    break;
+  }
+  if (!CastInst::castIsValid(Cast, FromType, ToType)) {
+    Errors() << "Invalid cast '" << CastName << "'. Not defined on "
+             << FromType << " to " << ToType << "\n";
+  }
+  return CastName;
+}
+
+const char *NaClDisFunctionParser::GetIcmpPredicate(uint32_t Opcode) {
+  CmpInst::Predicate Predicate;
+  if (!naclbitc::DecodeIcmpPredicate(Opcode, Predicate)) {
+    Errors() << "Icmp predicate not understood: " << Opcode << "\n";
+    return "???";
+  }
+  switch (Predicate) {
+  default:
+    Errors() << "Icmp predicate not understood: " << Opcode << "\n";
+    return "???";
+  case CmpInst::ICMP_EQ:
+    return "eq";
+  case CmpInst::ICMP_NE:
+    return "ne";
+ case CmpInst::ICMP_UGT:
+    return "ugt";
+  case CmpInst::ICMP_UGE:
+    return "uge";
+  case CmpInst::ICMP_ULT:
+    return "ult";
+  case CmpInst::ICMP_ULE:
+    return "ule";
+  case CmpInst::ICMP_SGT:
+    return "sgt";
+  case CmpInst::ICMP_SGE:
+    return "sge";
+  case CmpInst::ICMP_SLT:
+    return "slt";
+  case CmpInst::ICMP_SLE:
+    return "sle";
+  }
+}
+
+const char *NaClDisFunctionParser::GetFcmpPredicate(uint32_t Opcode) {
+  CmpInst::Predicate Predicate;
+  if (!naclbitc::DecodeFcmpPredicate(Opcode, Predicate)) {
+    Errors() << "Fcmp predicate not understood: " << Opcode << "\n";
+    return "???";
+  }
+  switch (Predicate) {
+  default:
+    Errors() << "Fcmp predicate not understood: " << Opcode << "\n";
+    return "???";
+  case CmpInst::FCMP_FALSE:
+    return "false";
+  case CmpInst::FCMP_OEQ:
+    return "oeq";
+  case CmpInst::FCMP_OGT:
+    return "ogt";
+  case CmpInst::FCMP_OGE:
+    return "oge";
+  case CmpInst::FCMP_OLT:
+    return "olt";
+  case CmpInst::FCMP_OLE:
+    return "ole";
+  case CmpInst::FCMP_ONE:
+    return "one";
+  case CmpInst::FCMP_ORD:
+    return "ord";
+  case CmpInst::FCMP_UNO:
+    return "uno";
+  case CmpInst::FCMP_UEQ:
+    return "ueq";
+  case CmpInst::FCMP_UGT:
+    return "ugt";
+  case CmpInst::FCMP_UGE:
+    return "uge";
+  case CmpInst::FCMP_ULT:
+    return "ult";
+  case CmpInst::FCMP_ULE:
+    return "ule";
+  case CmpInst::FCMP_UNE:
+    return "une";
+  case CmpInst::FCMP_TRUE:
+    return "true";
+  }
+}
+
 bool NaClDisFunctionParser::ParseBlock(unsigned BlockID) {
   ObjDumpSetRecordBitAddress(GetBlock().GetStartBit());
   switch (BlockID) {
@@ -2099,6 +2659,488 @@ bool NaClDisFunctionParser::ParseBlock(unsigned BlockID) {
     break;
   }
   return NaClDisBlockParser::ParseBlock(BlockID);
+}
+
+void NaClDisFunctionParser::ProcessRecord() {
+  ObjDumpSetRecordBitAddress(Record.GetStartBit());
+  const NaClBitcodeRecord::RecordVector Values = Record.GetValues();
+  // Start by adding block label if previous instruction is terminating.
+  if (InstIsTerminating) {
+    InstIsTerminating = false;
+    ++CurrentBbIndex;
+    DecAssemblyIndent();
+    Tokens() << BitcodeId('b', CurrentBbIndex) << ":" << Endline();
+    ObjDumpFlush();
+    IncAssemblyIndent();
+  }
+  switch (Record.GetCode()) {
+  case naclbitc::FUNC_CODE_DECLAREBLOCKS:
+    // DECLAREBLOCKS: [n]
+    InstIsTerminating = true;  // Force block label on first instruction.
+    if (Values.size() != 1) {
+      Errors() << "Function blocks record expects a size argument.\n";
+      break;
+    }
+    ExpectedNumBbs = Values[0];
+    if (ExpectedNumBbs == 0) {
+      Errors() << "Functions must contain at least one block.\n";
+    }
+    Tokens() << "blocks" << Space() << ExpectedNumBbs << Semicolon();
+    break;
+  case naclbitc::FUNC_CODE_INST_BINOP: {
+    // BINOP: [opval, opval, opcode]
+    if (Values.size() != 3) {
+      Errors() << "Binop record expects 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint32_t Op1 = RelativeToAbsId(Values[0]);
+    uint32_t Op2 = RelativeToAbsId(Values[1]);
+    Type *Type1 = GetValueType(Op1);
+    Type *Type2 = GetValueType(Op2);
+    if (Type1 != Type2) {
+      Errors() << "Binop argument types differ: " << *Type1 << " and "
+               << *Type2 << "\n";
+    }
+    const char *Binop = GetBinop(Values[2], Type1);
+    Tokens() << NextInstId() << Space() << "=" << Space() << Binop << Space()
+             << TokenizeType(Type1) << Space() << GetBitcodeId(Op1) << Comma()
+             << Space() << GetBitcodeId(Op2) << Semicolon();
+    InstallInstType(Type1);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_CAST: {
+    // CAST: [opval, destty, castopc]
+    if (Values.size() != 3) {
+      Errors() << "Cast record expects 3 argments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint32_t Op = RelativeToAbsId(Values[0]);
+    Type *FromType = GetValueType(Op);
+    Type *ToType = GetType(Values[1]);
+    const char *CastOp = GetCastOp(Values[2], FromType, ToType);
+    Tokens() << NextInstId() << Space() << "=" << Space() << CastOp << Space()
+             << TokenizeType(FromType) << Space() << GetBitcodeId(Op)
+             << Space() << "to" << Space() << TokenizeType(ToType)
+             << Semicolon();
+    InstallInstType(ToType);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_RET: {
+    // RET: [opval?]
+    InstIsTerminating = true;
+    Tokens() << "ret" << Space();
+    switch (Values.size()) {
+    default:
+      Errors() << "Function return record expects an optional return argument. "
+               << "Found: " << Values.size() << " arguments\n";
+      break;
+    case 0:
+      Tokens() << "void";
+      break;
+    case 1: {
+      uint32_t Op = RelativeToAbsId(Values[0]);
+      Tokens() << TokenizeType(GetValueType(Op)) << Space()<< GetBitcodeId(Op);
+      break;
+    }
+    }
+    Tokens() << Semicolon();
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_BR: {
+    // BR: [bb#, bb#, opval] or [bb#]
+    InstIsTerminating = true;
+    if (Values.size() != 1 && Values.size() != 3) {
+      Errors() << "Function branch record expects 1 or 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    Tokens() << "br" << Space();
+    if (Values.size() == 3) {
+      uint32_t OpIndex = RelativeToAbsId(Values[2]);
+      if (GetValueType(OpIndex) != GetComparisonType())
+        Errors() << "Branch condition not i1\n";
+      Tokens() << StartCluster() << "i1" << Space() << GetBitcodeId(OpIndex)
+               << Comma() << FinishCluster() << Space();
+    }
+    VerifyBranchRange(Values[0]);
+    Tokens() << StartCluster() << "label" << Space()
+             << BitcodeId('b', Values[0]);
+    if (Values.size() == 3) {
+      VerifyBranchRange(Values[1]);
+      Tokens() << Comma() << FinishCluster() << Space()
+               << StartCluster() << "label" << Space()
+               << BitcodeId('b', Values[1]);
+    }
+    Tokens() << Semicolon() << FinishCluster();
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_SWITCH: {
+    // SWITCH:  [opty, op, bb#, n, (1, 1, int, bb#)*]
+    InstIsTerminating = true;
+    if (Values.size() < 4) {
+      Errors()
+          << "Function switch record expects at least 4 arguments. Found: "
+          << Values.size() << "\n";
+      break;
+    }
+    Type *OpType = GetType(Values[0]);
+    uint32_t CondId = RelativeToAbsId(Values[1]);
+    Type *CondType = GetValueType(CondId);
+    if (OpType != CondType)
+      Errors() << "Specified select type " << *OpType << " but found: "
+               << *CondType << "\n";
+    VerifyIntegerOp("switch", OpType);
+    uint32_t DefaultBb = Values[2];
+    unsigned NumCases = Values[3];
+    VerifyBranchRange(DefaultBb);
+    Tokens() << "switch" << Space() << StartCluster() << StartCluster()
+             << TokenizeType(OpType) << Space() <<  GetBitcodeId(CondId)
+             << FinishCluster() << Space() << "{" << FinishCluster()
+             << Endline();
+    IncAssemblyIndent();
+    Tokens() << StartCluster() << "default" << ":" << Space()
+             << FinishCluster() << StartCluster() << "br" << Space() << "label"
+             << Space() << BitcodeId('b', DefaultBb) << Semicolon()
+             << FinishCluster() << Endline();
+    unsigned CurIdx = 4;
+    for (unsigned i = 0; i < NumCases; ++i) {
+      unsigned NumItems = Values[CurIdx++];
+      bool IsSingleNumber = Values[CurIdx++];
+      if (NumItems != 1 || !IsSingleNumber) {
+        Errors() << "Case ranges are not supported in PNaCl\n";
+        break;
+      }
+      SignRotatedInt CaseValue(Values[CurIdx++], OpType);
+      // TODO(kschimpf) Check if CaseValue possible based on OpType.
+      uint64_t Label = Values[CurIdx++];
+      VerifyBranchRange(Label);
+      Tokens() << StartCluster() << TokenizeType(OpType) << Space()
+               << CaseValue << ":" << Space() << FinishCluster()
+               << StartCluster() << "br" << Space() << "label" << Space()
+               << BitcodeId('b', Label) << Semicolon() << FinishCluster()
+               << Endline();
+    }
+    DecAssemblyIndent();
+    Tokens() << "}";
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_UNREACHABLE:
+    // UNREACHABLE
+    InstIsTerminating = true;
+    if (!Values.empty()) {
+      Errors() << "Function unreachable record expects no arguments. Found: "
+               << Values.size() << "\n";
+    }
+    Tokens() << "unreachable" << Semicolon();
+    break;
+  case naclbitc::FUNC_CODE_INST_PHI: {
+    // PHI: [ty, (val0, bb0)*]
+    if (Values.size() < 3) {
+      Errors() << "Function phi record expects at least 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    } else if (Values.size() % 2 == 0) {
+      Errors()
+          << "Function phi records should have an odd number of arguments. "
+          << "Found: " << Values.size() << "\n";
+    }
+    Type* OpType = GetType(Values[0]);
+    Tokens() << NextInstId() << Space() << "=" << StartCluster() << Space()
+             << "phi" << Space() << TokenizeType(OpType);
+    for (size_t i = 1; i < Values.size(); i += 2) {
+      if (i > 1) Tokens() << Comma();
+      uint32_t Index = RelativeToAbsId(NaClDecodeSignRotatedValue(Values[i]));
+      Tokens() << FinishCluster() << Space() << StartCluster() << OpenSquare()
+               << GetBitcodeId(Index) << Comma() << Space()
+               << BitcodeId('b', Values[i+1]) << CloseSquare();
+    }
+    Tokens() << Semicolon() << FinishCluster();
+    InstallInstType(OpType);
+    break;
+  };
+  case naclbitc::FUNC_CODE_INST_ALLOCA: {
+    // ALLOCA:     [size, align]
+    if (Values.size() != 2) {
+      Errors() << "Function alloca record expects 2 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint32_t SizeOp = RelativeToAbsId(Values[0]);
+    Type* SizeType = GetValueType(SizeOp);
+    BitcodeId SizeId(GetBitcodeId(SizeOp));
+    uint64_t Alignment = (1 << Values[1]) >> 1;
+    Context->VerifyAllocaSizeType(SizeType);
+    // TODO(kschimpf) Are there any constraints on alignment?
+    Tokens() << NextInstId() << Space() << "=" << Space() << StartCluster()
+             << "alloca" << Space() << "i8" << Comma() << FinishCluster()
+             << Space() << StartCluster() << TokenizeType(SizeType) << Space()
+             << SizeId << Comma() << FinishCluster() << Space()
+             << StartCluster() <<"align" << Space() << Alignment << Semicolon()
+             << FinishCluster();
+    InstallInstType(GetPointerType());
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_LOAD: {
+    // LOAD: [op, align, ty]
+    if (Values.size() != 3) {
+      Errors() << "Function load record expects 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint64_t Alignment = (1 << Values[1]) >> 1;
+    Type *LoadType = GetType(Values[2]);
+    VerifyScalarOrVectorOp("load", LoadType);
+    Context->VerifyMemoryAccessAlignment("load", LoadType, Alignment);
+    Tokens() << NextInstId() << Space() << "=" << Space() << StartCluster()
+             << "load" << Space() << TokenizeType(LoadType) << "*" << Space()
+             << GetBitcodeId(RelativeToAbsId(Values[0])) << Comma()
+             << FinishCluster() << Space() << StartCluster()
+             << "align" << Space() << Alignment << Semicolon()
+             << FinishCluster();
+    InstallInstType(LoadType);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_STORE: {
+    // STORE: [ptr, val, align]
+    if (Values.size() != 3) {
+      Errors() << "Function store record expects 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint64_t Alignment = (1 << Values[2]) >> 1;
+    uint32_t Val = RelativeToAbsId(Values[1]);
+    Type *ValType = GetValueType(Val);
+    VerifyScalarOrVectorOp("store", ValType);
+    Context->VerifyMemoryAccessAlignment("store", ValType, Alignment);
+    Tokens() << StartCluster() << "store" << Space() << TokenizeType(ValType)
+             << Space() << GetBitcodeId(Val) << Comma() << FinishCluster()
+             << Space() << StartCluster() << TokenizeType(ValType) << "*"
+             << Space() << GetBitcodeId(RelativeToAbsId(Values[0])) << Comma()
+             << FinishCluster() << Space() << StartCluster() << "align"
+             << Space() << Alignment << Semicolon() << FinishCluster();
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_CMP2: {
+    // CMP2: [opval, opval, pred]
+    if (Values.size() != 3) {
+      Errors() << "Function compare record expects 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint32_t Arg1 = RelativeToAbsId(Values[0]);
+    uint32_t Arg2 = RelativeToAbsId(Values[1]);
+    Type *Arg1Type = GetValueType(Arg1);
+    Type *Arg2Type = GetValueType(Arg2);
+    if (Arg1Type != Arg2Type) {
+      Errors() << "Arguments not of same type: " << *Arg1Type << " and "
+               << *Arg2Type << "\n";
+    }
+    const char *Pred = "???";
+    Tokens() << NextInstId() << Space() << "=" << Space() << StartCluster();
+    Type* BaseType = UnderlyingType(Arg1Type);
+    if (BaseType->isIntegerTy()) {
+      Pred = GetIcmpPredicate(Values[2]);
+      Tokens() << "icmp" << Space() << Pred;
+    } else if (isFloatingType(BaseType)) {
+      Pred = GetFcmpPredicate(Values[2]);
+      Tokens() << "fcmp" << Space() << Pred;
+    } else {
+      Errors() << "Compare not on integer/float type. Found: "
+               << *Arg1Type << "\n";
+      Tokens() << "cmp" << Space() << "???(" << Values[2] << ")";
+    }
+    Tokens() << FinishCluster() << Space() << StartCluster()
+             << TokenizeType(Arg1Type) << Space () << GetBitcodeId(Arg1)
+             << Comma() << FinishCluster() << Space() << StartCluster()
+             << GetBitcodeId(Arg2) << Semicolon() << FinishCluster();
+    Type *ResultType = GetComparisonType();
+    if (Arg1Type->isVectorTy()) {
+      ResultType = VectorType::get(ResultType,
+                                   Arg1Type->getVectorNumElements());
+    }
+    InstallInstType(ResultType);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_VSELECT: {
+    // VSELECT:    [opval, opval, pred]
+    if (Values.size() != 3) {
+      Errors() << "Select record expects 3 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint32_t CondValue = RelativeToAbsId(Values[2]);
+    uint32_t ThenValue = RelativeToAbsId(Values[0]);
+    uint32_t ElseValue = RelativeToAbsId(Values[1]);
+    Type *CondType = GetValueType(CondValue);
+    Type *ThenType = GetValueType(ThenValue);
+    Type *ElseType = GetValueType(ElseValue);
+    if (ThenType != ElseType) {
+      Errors() << "Selected arguments not of same type: "
+               << *ThenType << " and " << *ElseType << "\n";
+    }
+    Type *BaseType = UnderlyingType(ThenType);
+    if (!(BaseType->isIntegerTy() || isFloatingType(BaseType))) {
+      Errors() << "Select arguments not integer/float. Found: " << *ThenType;
+    }
+    Tokens() << NextInstId() << Space() << "=" << Space() << StartCluster()
+             << "select" << Space() << TokenizeType(CondType) << Space()
+             << GetBitcodeId(CondValue) << Comma() << FinishCluster() << Space()
+             << StartCluster() << TokenizeType(ThenType) << Space()
+             << GetBitcodeId(ThenValue) << Comma() << FinishCluster() << Space()
+             << StartCluster() << TokenizeType(ElseType) << Space()
+             << GetBitcodeId(ElseValue) << Semicolon()
+             << FinishCluster();
+    InstallInstType(ThenType);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_EXTRACTELT: {
+    // EXTRACTELT: [opval, opval]
+    if (Values.size() != 2) {
+      Errors() << "Extract element record expects 2 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    uint32_t VecValue = RelativeToAbsId(Values[0]);
+    uint32_t IdxValue = RelativeToAbsId(Values[1]);
+    VerifyIndexedVector("extractelement", VecValue, IdxValue);
+    Type *VecType = GetValueType(VecValue);
+    Type *IdxType = GetValueType(IdxValue);
+    Tokens() << NextInstId() << Space() << " = " << Space() << StartCluster()
+             << "extractelement" << Space() << TokenizeType(VecType) << Space()
+             << GetBitcodeId(VecValue) << Comma() << FinishCluster() << Space()
+             << StartCluster() << TokenizeType(IdxType) << Space()
+             << GetBitcodeId(IdxValue) << Semicolon() << FinishCluster();
+    InstallInstType(UnderlyingType(VecType));
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_INSERTELT: {
+    // INSERTELT:  [opval, opval, opval]
+    uint32_t VecValue = RelativeToAbsId(Values[0]);
+    uint32_t EltValue = RelativeToAbsId(Values[1]);
+    uint32_t IdxValue = RelativeToAbsId(Values[2]);
+    VerifyIndexedVector("insertelement", VecValue, IdxValue);
+    Type *VecType = GetValueType(VecValue);
+    Type *EltType = GetValueType(EltValue);
+    Type *IdxType = GetValueType(IdxValue);
+    if (EltType != UnderlyingType(VecType)) {
+      Errors() << "insertelement: Illegal element type " << *EltType
+               << ". Expected: " << *UnderlyingType(VecType) << "\n";
+    }
+    Tokens() << NextInstId() << Space() << " = " << Space() << StartCluster()
+             << "insertelement" << Space() << TokenizeType(VecType) << Space()
+             << GetBitcodeId(VecValue) << Comma() << FinishCluster() << Space()
+             << StartCluster() << TokenizeType(EltType) << Space()
+             << GetBitcodeId(EltValue) << Comma() << FinishCluster() << Space()
+             << StartCluster() << TokenizeType(IdxType) << Space()
+             << GetBitcodeId(IdxValue) << Semicolon() << FinishCluster();
+    InstallInstType(VecType);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_CALL:
+  case naclbitc::FUNC_CODE_INST_CALL_INDIRECT: {
+    // CALL: [cc, fnid, arg0, arg1...]
+    // CALL_INDIRECT: [cc, fnid, returnty, args...]
+    if (Record.GetCode() == naclbitc::FUNC_CODE_INST_CALL) {
+      if (Values.size() < 2) {
+        Errors() << "Call record expects at least 2 arguments. Found: "
+                 << Values.size() << "\n";
+        break;
+      }
+    } else if (Record.GetCode() == naclbitc::FUNC_CODE_INST_CALL_INDIRECT) {
+      if (Values.size() < 3) {
+        Errors() << "Call indirect record expects at least 3 arguments. Found: "
+                 << Values.size() << "\n";
+        break;
+      }
+    }
+    unsigned IsTailCall = (Values[0] & 0x1);
+    CallingConv::ID CallingConv;
+    if (!naclbitc::DecodeCallingConv(Values[0]>>1, CallingConv))
+      Errors() << "Call has invalid calling convention.\n";
+    // TODO: Add check that CallingConv is ccc???
+    uint32_t FcnId = RelativeToAbsId(Values[1]);
+    FunctionType *FcnType = 0;
+    Type *ReturnType = 0;
+    size_t ArgIndex = 2;
+    if (Record.GetCode() == naclbitc::FUNC_CODE_INST_CALL) {
+      Type *FcnTy = GetValueType(FcnId, /* UnderlyingType = */ true);
+      if (FunctionType *FcnTyp = dyn_cast<FunctionType>(FcnTy)) {
+        if (!PNaClABITypeChecker::isValidFunctionType(FcnTyp))
+          Errors() << "Invalid function signature: " << *FcnTy << "\n";
+        FcnType = FcnTyp;
+        ReturnType = FcnType->getReturnType();
+      } else {
+        Errors() << "Invalid function signature: " << *FcnTy << "\n";
+        ReturnType = GetVoidType();
+      }
+    } else {
+      ReturnType = GetType(Values[2]);
+      ArgIndex = 3;
+    }
+    if (!ReturnType->isVoidTy()) {
+      Tokens() << NextInstId() << Space() << "=" << Space();
+    }
+    if (IsTailCall) {
+      Tokens() << "tail" << Space();
+    }
+    if (!PNaClABITypeChecker::isValidParamType(ReturnType))
+      Errors() << "Invalid return type: " << *ReturnType << "\n";
+    Tokens() << "call" << Space() << TokenizeType(ReturnType) << Space()
+             << StartCluster() << GetBitcodeId(FcnId) << OpenParen()
+             << StartCluster();
+    unsigned ParamIndex = 0;
+    unsigned NumParams = Values.size() + 1 - ArgIndex;
+    for (size_t i = ArgIndex; i < Values.size(); ++i, ++ParamIndex) {
+      uint32_t ParamId = RelativeToAbsId(Values[i]);
+      Type *ParamType = GetValueType(ParamId);
+      if (!PNaClABITypeChecker::isValidParamType(ParamType))
+        Errors() << "invalid type for parameter " << i << ": "
+                 << *ParamType << "\n";
+      if (FcnType) {
+        if (ParamIndex < FcnType->getNumParams()) {
+          Type *ExpectedType = FcnType->getParamType(ParamIndex);
+          if (ParamType != ExpectedType) {
+            Warnings() << "Parameter " << (ParamIndex + 1) << " mismatch: "
+                       << *ParamType << " and " << *ExpectedType << "\n";
+          }
+        }
+        else if (ParamIndex == FcnType->getNumParams()) {
+          Warnings() << "Call expects " << FcnType->getNumParams()
+                     << " arguments. Got: " << NumParams << "\n";
+        }
+      }
+      if (i > ArgIndex) {
+        Tokens() << Comma() << FinishCluster() << Space() << StartCluster();
+      }
+      Tokens() << TokenizeType(ParamType) << Space() << GetBitcodeId(ParamId);
+    }
+    Tokens() << CloseParen() << Semicolon() << FinishCluster()
+             << FinishCluster();
+    if (!ReturnType->isVoidTy()) InstallInstType(ReturnType);
+    break;
+  }
+  case naclbitc::FUNC_CODE_INST_FORWARDTYPEREF: {
+    // TYPE: [opval, ty]
+    if (Values.size() != 2) {
+      Errors() << "Forward declare record expects 2 arguments. Found: "
+               << Values.size() << "\n";
+      break;
+    }
+    Type *OpType = GetType(Values[1]);
+    Tokens() << "declare" << Space() << StartCluster()
+             << TokenizeType(OpType) << Space()
+             << GetBitcodeId(Values[0]) << Semicolon() << FinishCluster();
+    InstallInstType(OpType, AbsToValuedInstId(Values[0]));
+    break;
+  }
+  default:
+    Errors() << "Unknown record found in module block.\n";
+    break;
+  }
+  Tokens() << TokenizeAbbrevIndex() << Endline();
+  ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
 /// Parses and disassembles the module block.
@@ -2208,7 +3250,7 @@ void NaClDisModuleParser::ProcessRecord() {
     break;
   }
   default:
-    Errors() << "Unknown Record found in module block\n";
+    Errors() << "Unknown record found in module block\n";
     break;
   }
   ObjDumpWrite(Record.GetStartBit(), Record);
@@ -2276,12 +3318,21 @@ bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
   NaClBitstreamReader InputStreamFile(BufPtr, EndBufPtr);
   NaClBitstreamCursor InputStream(InputStreamFile);
 
+  // Create objects needed to run parser.
+  naclbitc::ObjDumpStream ObjDump(Output, !NoRecords, !NoAssembly);
+  Module Mod("ObjDump", getGlobalContext());
+  OwningPtr<DataLayout> DL(new DataLayout(&Mod));
+  NaClDisErrorReporter ErrorReporter(ObjDump);
+  OwningPtr<PNaClABIVerifyFunctions> VerifyFunctions(
+      new PNaClABIVerifyFunctions(&ErrorReporter, false));
+
   // Parse the the bitcode file.
-  ::NaClDisParser Parser(Header, HeaderPtr, InputStream, Output,
-                         NoRecords, NoAssembly);
+  ::NaClDisParser Parser(Header, HeaderPtr, InputStream, ObjDump,
+                         *VerifyFunctions, *DL);
   while (!InputStream.AtEndOfStream()) {
     if (Parser.Parse()) return true;
   }
+
   return Parser.GetNumErrors() > 0;
 }
 

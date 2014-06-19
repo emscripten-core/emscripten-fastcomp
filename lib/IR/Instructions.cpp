@@ -2750,11 +2750,9 @@ CastInst::getCastOpcode(
 /// it in one place and to eliminate the redundant code for getting the sizes
 /// of the types involved.
 bool 
-CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
-
-  // Check for type sanity on the arguments
-  Type *SrcTy = S->getType();
-
+// @LOCALMOD-BEGIN
+CastInst::castIsValid(Instruction::CastOps op, Type *SrcTy, Type *DstTy) {
+// @LOCALMOD-END
   // If this is a cast to the same type then it's trivially true.
   if (SrcTy == DstTy)
     return true;

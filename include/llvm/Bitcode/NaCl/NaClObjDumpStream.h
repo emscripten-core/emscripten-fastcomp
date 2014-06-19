@@ -810,6 +810,21 @@ public:
     return MessageStream;
   }
 
+  /// Prints "Warning(Bit/8:Bit%8): " onto the comments stream, and
+  /// then returns the comments stream. In general, warnings will be
+  /// printed after the next record, unless a call to Flush is made.
+  raw_ostream &Warning() {
+    return Warning(LastKnownBit);
+  }
+
+  /// Prints "Warning(Bit/8:Bit%8): " onto the comments stream, and
+  /// then returns the comments stream. In general, warnings will be
+  /// printed after the next record, unless a call to Flush is made.
+  raw_ostream &Warning(uint64_t Bit) {
+    LastKnownBit = Bit;
+    return PrintMessagePrefix("Warning", Bit);
+  }
+
   /// Prints "Error(Bit/8:Bit%8): " onto the comments stream, records
   /// that an error has occurred, and then returns the comments
   /// stream. In general errors will be printed after the next record,

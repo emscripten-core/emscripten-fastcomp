@@ -1314,7 +1314,7 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
     case naclbitc::FUNC_CODE_INST_CALL:
     case naclbitc::FUNC_CODE_INST_CALL_INDIRECT: {
       // CALL: [cc, fnid, arg0, arg1...]
-      // CALL_INDIRECT: [cc, fnid, fnty, args...]
+      // CALL_INDIRECT: [cc, fnid, returnty, args...]
       if ((Record.size() < 2) ||
           (BitCode == naclbitc::FUNC_CODE_INST_CALL_INDIRECT &&
            Record.size() < 3))

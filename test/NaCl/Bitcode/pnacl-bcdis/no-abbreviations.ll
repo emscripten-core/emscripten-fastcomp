@@ -2,15 +2,13 @@
 ; the ones provided by pnacl-freeze. Differences are show by the
 ; addresses for records.
 
-; TODO(kschimpf): Add basic block symbol table entry, removing errors.
-
 ; RUN: llvm-as < %s | pnacl-freeze --allow-local-symbol-tables \
-; RUN:              | not pnacl-bcdis --allow-local-symbol-tables \
+; RUN:              | pnacl-bcdis --allow-local-symbol-tables \
 ; RUN:              | FileCheck %s --check-prefix ABV
 
 ; RUN: llvm-as < %s | pnacl-freeze --allow-local-symbol-tables \
 ; RUN:              | pnacl-bccompress --remove-abbreviations \
-; RUN:              | not pnacl-bcdis --allow-local-symbol-tables \
+; RUN:              | pnacl-bcdis --allow-local-symbol-tables \
 ; RUN:              | FileCheck %s --check-prefix NOABV
 
 define i32 @fact(i32 %n) {
@@ -99,30 +97,31 @@ false:
 ; ABV-NEXT:     189:1|  0: <65534>                 |  }
 ; ABV-NEXT:     192:0|  1: <65535, 12, 4>          |  function i32 @f0(i32 %p0) {  
 ; ABV-NEXT:          |                             |                   // BlockID = 12
-; ABV-NEXT:     200:0|    3: <1, 3>                |
+; ABV-NEXT:     200:0|    3: <1, 3>                |    blocks 3;
 ; ABV-NEXT:     202:6|    1: <65535, 11, 3>        |    constants {  // BlockID = 11
 ; ABV-NEXT:     212:0|      4: <1, 0>              |      i32: <@a0>
 ; ABV-NEXT:     212:6|      5: <4, 2>              |        %c0 = i32 1; <@a1>
 ; ABV-NEXT:     214:1|      6: <4, 0>              |        %c1 = i32 0; <@a2>
 ; ABV-NEXT:     214:4|    0: <65534>               |      }
-; ABV-NEXT:     216:0|    3: <28, 1, 2, 32>        |
-; ABV-NEXT:     221:0|    3: <11, 1, 2, 1>         |
-; ABV-NEXT:     225:2|    8: <10, 3>               |
-; ABV-NEXT:     226:4|    5: <2, 4, 3, 1>          |
-; ABV-NEXT:     229:0|    3: <34, 0, 6, 1>         |
-; ABV-NEXT:     234:0|    5: <2, 6, 1, 2>          |
-; ABV-NEXT:     236:4|    8: <10, 1>               |
+; ABV-NEXT:          |                             |  %b0:
+; ABV-NEXT:     216:0|    3: <28, 1, 2, 32>        |    %v0 = icmp eq i32 %c1, %c0;
+; ABV-NEXT:     221:0|    3: <11, 1, 2, 1>         |    br i1 %v0, label %b1, label %b2;
+; ABV-NEXT:          |                             |  %b1:
+; ABV-NEXT:     225:2|    8: <10, 3>               |    ret i32 %c0; <@a4>
+; ABV-NEXT:          |                             |  %b2:
+; ABV-NEXT:     226:4|    5: <2, 4, 3, 1>          |    %v1 = sub i32 %p0, %c0; <@a1>
+; ABV-NEXT:     229:0|    3: <34, 0, 6, 1>         |    %v2 = call i32 @f0(i32 %v1);
+; ABV-NEXT:     234:0|    5: <2, 6, 1, 2>          |    %v3 = mul i32 %p0, %v2; <@a1>
+; ABV-NEXT:     236:4|    8: <10, 1>               |    ret i32 %v3; <@a4>
 ; ABV-NEXT:     237:6|    1: <65535, 14, 3>        |    valuesymtab {  // BlockID = 14
-; ABV-NEXT:     244:0|      7: <2, 1, 116, 114,    |
+; ABV-NEXT:     244:0|      7: <2, 1, 116, 114,    |      %b1 : "true"; <@a3>
 ; ABV-NEXT:          |        117, 101>            |
-; ABV-NEXT:Error(244:0): Unknown record in valuesymtab block.
 ; ABV-NEXT:     249:1|      6: <1, 4, 118, 49>     |      %v0 : "v1"; <@a2>
 ; ABV-NEXT:     252:6|      6: <1, 5, 118, 50>     |      %v1 : "v2"; <@a2>
 ; ABV-NEXT:     256:3|      6: <1, 6, 118, 51>     |      %v2 : "v3"; <@a2>
 ; ABV-NEXT:     260:0|      6: <1, 7, 118, 52>     |      %v3 : "v4"; <@a2>
-; ABV-NEXT:     263:5|      7: <2, 2, 102, 97, 108,|
+; ABV-NEXT:     263:5|      7: <2, 2, 102, 97, 108,|      %b2 : "false"; <@a3>
 ; ABV-NEXT:          |        115, 101>            |
-; ABV-NEXT:Error(263:5): Unknown record in valuesymtab block.
 ; ABV-NEXT:     269:4|      6: <1, 1, 110>         |      %p0 : "n"; <@a2>
 ; ABV-NEXT:     272:3|    0: <65534>               |    }
 ; ABV-NEXT:     276:0|  0: <65534>                 |  }
@@ -152,30 +151,31 @@ false:
 ; NOABV-NEXT:      96:4|  0: <65534>                 |  }
 ; NOABV-NEXT:     100:0|  1: <65535, 12, 2>          |  function i32 @f0(i32 %p0) {  
 ; NOABV-NEXT:          |                             |                   // BlockID = 12
-; NOABV-NEXT:     108:0|    3: <1, 3>                |
+; NOABV-NEXT:     108:0|    3: <1, 3>                |    blocks 3;
 ; NOABV-NEXT:     110:4|    1: <65535, 11, 2>        |    constants {  // BlockID = 11
 ; NOABV-NEXT:     120:0|      3: <1, 0>              |      i32:
 ; NOABV-NEXT:     122:4|      3: <4, 2>              |        %c0 = i32 1;
 ; NOABV-NEXT:     125:0|      3: <4, 0>              |        %c1 = i32 0;
 ; NOABV-NEXT:     127:4|    0: <65534>               |      }
-; NOABV-NEXT:     128:0|    3: <28, 1, 2, 32>        |
-; NOABV-NEXT:     132:6|    3: <11, 1, 2, 1>         |
-; NOABV-NEXT:     136:6|    3: <10, 3>               |
-; NOABV-NEXT:     139:2|    3: <2, 4, 3, 1>          |
-; NOABV-NEXT:     143:2|    3: <34, 0, 6, 1>         |
-; NOABV-NEXT:     148:0|    3: <2, 6, 1, 2>          |
-; NOABV-NEXT:     152:0|    3: <10, 1>               |
+; NOABV-NEXT:          |                             |  %b0:
+; NOABV-NEXT:     128:0|    3: <28, 1, 2, 32>        |    %v0 = icmp eq i32 %c1, %c0;
+; NOABV-NEXT:     132:6|    3: <11, 1, 2, 1>         |    br i1 %v0, label %b1, label %b2;
+; NOABV-NEXT:          |                             |  %b1:
+; NOABV-NEXT:     136:6|    3: <10, 3>               |    ret i32 %c0;
+; NOABV-NEXT:          |                             |  %b2:
+; NOABV-NEXT:     139:2|    3: <2, 4, 3, 1>          |    %v1 = sub i32 %p0, %c0;
+; NOABV-NEXT:     143:2|    3: <34, 0, 6, 1>         |    %v2 = call i32 @f0(i32 %v1);
+; NOABV-NEXT:     148:0|    3: <2, 6, 1, 2>          |    %v3 = mul i32 %p0, %v2;
+; NOABV-NEXT:     152:0|    3: <10, 1>               |    ret i32 %v3;
 ; NOABV-NEXT:     154:4|    1: <65535, 14, 2>        |    valuesymtab {  // BlockID = 14
-; NOABV-NEXT:     164:0|      3: <2, 1, 116, 114,    |
+; NOABV-NEXT:     164:0|      3: <2, 1, 116, 114,    |      %b1 : "true";
 ; NOABV-NEXT:          |        117, 101>            |
-; NOABV-NEXT:Error(164:0): Unknown record in valuesymtab block.
 ; NOABV-NEXT:     172:4|      3: <1, 4, 118, 49>     |      %v0 : "v1";
 ; NOABV-NEXT:     178:0|      3: <1, 5, 118, 50>     |      %v1 : "v2";
 ; NOABV-NEXT:     183:4|      3: <1, 6, 118, 51>     |      %v2 : "v3";
 ; NOABV-NEXT:     189:0|      3: <1, 7, 118, 52>     |      %v3 : "v4";
-; NOABV-NEXT:     194:4|      3: <2, 2, 102, 97, 108,|
+; NOABV-NEXT:     194:4|      3: <2, 2, 102, 97, 108,|      %b2 : "false";
 ; NOABV-NEXT:          |        115, 101>            |
-; NOABV-NEXT:Error(194:4): Unknown record in valuesymtab block.
 ; NOABV-NEXT:     204:4|      3: <1, 1, 110>         |      %p0 : "n";
 ; NOABV-NEXT:     208:4|    0: <65534>               |    }
 ; NOABV-NEXT:     212:0|  0: <65534>                 |  }

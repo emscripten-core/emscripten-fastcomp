@@ -265,7 +265,7 @@ raw_ostream &ObjDumpStream::Error(uint64_t Bit) {
 void ObjDumpStream::Fatal(uint64_t Bit, const std::string &Message) {
   LastKnownBit = Bit;
   if (!Message.empty())
-    PrintMessagePrefix("Error", Bit) << Message;
+    PrintMessagePrefix("Error", Bit) << Message << "\n";
   Flush();
   llvm::report_fatal_error("Unable to continue");
 }
@@ -341,7 +341,12 @@ void ObjDumpStream::Flush() {
   // Print out messages and reset buffers.
   Stream << MessageBuffer;
   ResetBuffers();
-  if (NumErrors >= MaxErrors) Fatal("Too many errors");
+  if (NumErrors >= MaxErrors) {
+    // Note: we don't call Fatal here because that will call Flush, causing
+    // an infinite loop.
+    Stream << "Error(" << ObjDumpAddress(LastKnownBit) << "): Too many errors\n";
+    llvm::report_fatal_error("Unable to continue");
+  }
 }
 
 }
