@@ -280,12 +280,20 @@ void PNaClABIVerifyModule::checkExternalSymbol(const GlobalValue *GV) {
       return;
   }
 
-  bool ValidEntry = isa<Function>(GV) && GV->getName().equals("_start");
+  // We only allow __pnacl_pso_root to be a variable, not a function, to
+  // reduce the number of cases that the translator needs to handle.
+  bool ValidEntry =
+      (isa<Function>(GV) && GV->getName().equals("_start")) ||
+      (isa<GlobalVariable>(GV) && GV->getName().equals("__pnacl_pso_root"));
   if (!ValidEntry) {
     Reporter->addError()
         << GV->getName()
         << " is not a valid external symbol (disallowed)\n";
   } else {
+    if (SeenEntryPoint) {
+      Reporter->addError() <<
+          "Module has multiple entry points (disallowed)\n";
+    }
     SeenEntryPoint = true;
   }
 }
