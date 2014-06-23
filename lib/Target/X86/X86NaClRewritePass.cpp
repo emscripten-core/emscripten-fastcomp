@@ -480,20 +480,10 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  // Rewrite trap
-  if (Opc == X86::TRAP) {
-    // To maintain compatibility with nacl-as, for now we don't emit nacltrap.
-    // MI.setDesc(TII->get(Is64Bit ? X86::NACL_TRAP64 : X86::NACL_TRAP32));
-    BuildMI(MBB, MBBI, DL, TII->get(X86::MOV32mi))
-      .addReg(Is64Bit && !FlagUseZeroBasedSandbox ? X86::R15 : 0) // Base
-      .addImm(1) // Scale
-      .addReg(0) // Index
-      .addImm(0) // Offset
-      .addReg(0) // Segment
-      .addImm(0); // Value
-    MI.eraseFromParent();
-    return true;
-  }
+  // Traps are OK (but are considered to have control flow
+  // being a terminator like RET).
+  if (Opc == X86::TRAP)
+    return false;
 
   DEBUG(DumpInstructionVerbose(MI));
   llvm_unreachable("Unhandled Control SFI");

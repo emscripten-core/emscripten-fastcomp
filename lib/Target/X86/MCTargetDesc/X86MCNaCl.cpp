@@ -245,24 +245,6 @@ static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
   Out.EmitInstruction(JMPInst);
 }
 
-static void EmitTrap(bool Is64Bit, MCStreamer &Out) {
-  // Rewrite to:
-  //    X86-32:  mov $0, 0
-  //    X86-64:  mov $0, (%r15)
-  unsigned BaseReg = Is64Bit && !FlagUseZeroBasedSandbox ? X86::R15 : 0;
-
-  MCInst Tmp;
-  Tmp.setOpcode(X86::MOV32mi);
-  Tmp.addOperand(MCOperand::CreateReg(BaseReg)); // BaseReg
-  Tmp.addOperand(MCOperand::CreateImm(1)); // Scale
-  Tmp.addOperand(MCOperand::CreateReg(0)); // IndexReg
-  Tmp.addOperand(MCOperand::CreateImm(0)); // Offset
-  Tmp.addOperand(MCOperand::CreateReg(0)); // SegmentReg
-  Tmp.addOperand(MCOperand::CreateImm(0)); // Value
-
-  Out.EmitInstruction(Tmp);
-}
-
 // Fix a register after being truncated to 32-bits.
 static void EmitRegFix(unsigned Reg64, MCStreamer &Out) {
   // lea (%rsp, %r15, 1), %rsp
@@ -499,14 +481,6 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
     }
     assert(State.PrefixSaved == 0);
     State.PrefixSaved = Opc;
-    return true;
-  case X86::NACL_TRAP32:
-    assert(State.PrefixSaved == 0);
-    EmitTrap(false, Out);
-    return true;
-  case X86::NACL_TRAP64:
-    assert(State.PrefixSaved == 0);
-    EmitTrap(true, Out);
     return true;
   case X86::NACL_CALL32d:
     assert(State.PrefixSaved == 0);

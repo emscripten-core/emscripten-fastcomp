@@ -48,10 +48,6 @@
 class NaClPI32<dag outs, dag ins, string asm>
   : I<0, CustomFrm, outs, ins, asm, []>, Requires<[IsNaCl, In32BitMode]>;
 
-let isTerminator = 1, isBarrier = 1, hasCtrlDep = 1, isAsmParserOnly = 1 in {
-  def NACL_TRAP32  : NaClPI32<(outs), (ins), "nacltrap">;
-}
-
 let isTerminator = 1, isReturn = 1, isBarrier = 1,
     hasCtrlDep = 1, FPForm = SpecialFP, isAsmParserOnly = 1 in {
   def NACL_RET32  : NaClPI32<(outs), (ins), "naclret">;
@@ -92,10 +88,6 @@ def NACL_TLS_addr32 : NaClPI32<(outs), (ins i32mem:$sym),
 
 class NaClPI64<dag outs, dag ins, string asm>
   : I<0, CustomFrm, outs, ins, asm, []>, Requires<[IsNaCl, In64BitMode]>;
-
-let isTerminator = 1, isBarrier = 1, hasCtrlDep = 1, isAsmParserOnly = 1 in {
-  def NACL_TRAP64  : NaClPI64<(outs), (ins), "nacltrap">;
-}
 
 let isTerminator = 1, isReturn = 1, isBarrier = 1,
     hasCtrlDep = 1, FPForm = SpecialFP, isAsmParserOnly = 1 in {
