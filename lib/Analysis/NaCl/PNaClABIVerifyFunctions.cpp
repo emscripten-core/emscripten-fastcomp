@@ -45,10 +45,6 @@ PNaClABIVerifyFunctions::~PNaClABIVerifyFunctions() {
     delete Reporter;
 }
 
-bool PNaClABIVerifyFunctions::IsWhitelistedMetadata(unsigned MDKind) {
-  return MDKind == LLVMContext::MD_dbg && PNaClABIAllowDebugMetadata;
-}
-
 // A valid pointer type is either:
 //  * a pointer to a valid PNaCl scalar type (except i1), or
 //  * a pointer to a valid PNaCl vector type (except i1), or
@@ -130,34 +126,6 @@ static bool isValidVectorOperand(const Value *Val) {
          isa<UndefValue>(Val);
 }
 
-bool PNaClABIVerifyFunctions::
-isAllowedAlignment(const DataLayout *DL, uint64_t Alignment, Type *Ty) const {
-  // Non-atomic integer operations must always use "align 1", since we do not
-  // want the backend to generate code with non-portable undefined behaviour
-  // (such as misaligned access faults) if user code specifies "align 4" but
-  // uses a misaligned pointer.  As a concession to performance, we allow larger
-  // alignment values for floating point types, and we only allow vectors to be
-  // aligned by their element's size.
-  //
-  // TODO(jfb) Allow vectors to be marked as align == 1. This requires proper
-  //           testing on each supported ISA, and is probably not as common as
-  //           align == elemsize.
-  //
-  // To reduce the set of alignment values that need to be encoded in pexes, we
-  // disallow other alignment values.  We require alignments to be explicit by
-  // disallowing Alignment == 0.
-  if (Alignment > std::numeric_limits<uint64_t>::max() / CHAR_BIT)
-    return false; // No overflow assumed below.
-  else if (VectorType *VTy = dyn_cast<VectorType>(Ty))
-    return !VTy->getElementType()->isIntegerTy(1) &&
-           (Alignment * CHAR_BIT ==
-            DL->getTypeSizeInBits(VTy->getElementType()));
-  else
-    return Alignment == 1 ||
-           (Ty->isDoubleTy() && Alignment == 8) ||
-           (Ty->isFloatTy() && Alignment == 4);
-}
-
 static bool hasAllowedAtomicRMWOperation(
     const NaCl::AtomicIntrinsics::AtomicIntrinsic *I, const CallInst *Call) {
   for (size_t P = 0; P != I->NumParams; ++P) {
@@ -221,15 +189,6 @@ static bool hasAllowedLockFreeByteSize(const CallInst *Call) {
   return false;
 }
 
-const char* PNaClABIVerifyFunctions::verifyArithmeticType(Type *Ty) const {
-  if (Ty->isIntegerTy(1))
-    return "arithmetic on i1";
-  if (VectorType *VecTy = dyn_cast<VectorType>(Ty))
-    if (VecTy->getElementType()->isIntegerTy(1))
-      return "arithmetic on vector of i1";
-  return 0;
-}
-
 // Check the instruction's opcode and its operands.  The operands may
 // require opcode-specific checking.
 //
@@ -240,6 +199,10 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
   // If the instruction has a single pointer operand, PtrOperandIndex is
   // set to its operand index.
   unsigned PtrOperandIndex = -1;
+
+  // True if we should apply the default operand checks, at the end
+  // of this function.
+  bool ApplyDefaultOperandTypeChecks = true;
 
   switch (Inst->getOpcode()) {
     // Disallowed instructions. Default is to disallow.
@@ -310,11 +273,20 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
     case Instruction::SRem:
     case Instruction::Shl:
     case Instruction::LShr:
-    case Instruction::AShr:
-      if (const char *Error =
-          verifyArithmeticType(Inst->getOperand(0)->getType()))
-        return Error;
+    case Instruction::AShr: {
+      const Type *Ty = Inst->getOperand(0)->getType();
+      if (!PNaClABITypeChecker::isValidIntArithmeticType(
+              Inst->getOperand(0)->getType())) {
+        if (Ty->isIntegerTy() ||
+            (Ty->isVectorTy() && Ty->getVectorElementType()->isIntegerTy())) {
+          return "Invalid integer arithmetic type";
+        } else {
+          return "Expects integer arithmetic type";
+        }
+      }
+      ApplyDefaultOperandTypeChecks = false;
       break;
+    }
 
     // Vector.
     case Instruction::ExtractElement:
@@ -327,11 +299,10 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
           Instruction::InsertElement == Inst->getOpcode() ? 2 : 1);
       if (!isa<ConstantInt>(Idx))
         return "non-constant vector insert/extract index";
-      if (const char *Error =
-          verifyVectorIndexSafe(cast<ConstantInt>(Idx)->getValue(),
-                                cast<VectorType>(Vec->getType())
-                                ->getNumElements())) {
-        return Error;
+      if (!PNaClABIProps::isVectorIndexSafe(
+              cast<ConstantInt>(Idx)->getValue(),
+              cast<VectorType>(Vec->getType())->getNumElements())) {
+        return "out of range vector insert/extract index";
       }
       break;
     }
@@ -346,7 +317,8 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
         return "volatile load";
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad pointer";
-      if (!isAllowedAlignment(DL, Load->getAlignment(), Load->getType()))
+      if (!PNaClABIProps::
+          isAllowedAlignment(DL, Load->getAlignment(), Load->getType()))
         return "bad alignment";
       break;
     }
@@ -359,8 +331,9 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
         return "volatile store";
       if (!isNormalizedPtr(Inst->getOperand(PtrOperandIndex)))
         return "bad pointer";
-      if (!isAllowedAlignment(DL, Store->getAlignment(),
-                              Store->getValueOperand()->getType()))
+      if (!PNaClABIProps::
+          isAllowedAlignment(DL, Store->getAlignment(),
+                             Store->getValueOperand()->getType()))
         return "bad alignment";
       break;
     }
@@ -387,12 +360,10 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
 
     case Instruction::Alloca: {
       const AllocaInst *Alloca = cast<AllocaInst>(Inst);
-      if (const char *Error =
-          verifyAllocaAllocatedType(Alloca->getAllocatedType()))
-        return Error;
-      if (const char *Error =
-          verifyAllocaSizeType(Alloca->getArraySize()->getType()))
-        return Error;
+      if (!PNaClABIProps::isAllocaAllocatedType(Alloca->getAllocatedType()))
+        return "non-i8 alloca";
+      if (!PNaClABIProps::isAllocaSizeType(Alloca->getArraySize()->getType()))
+        return PNaClABIProps::ExpectedAllocaSizeType();
       break;
     }
 
@@ -402,8 +373,8 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
         return "inline assembly";
       if (!Call->getAttributes().isEmpty())
         return "bad call attributes";
-      if (const char *Error = verifyCallingConv(Call->getCallingConv()))
-        return Error;
+      if (!PNaClABIProps::isValidCallingConv(Call->getCallingConv()))
+        return "bad calling convention";
 
       // Intrinsic calls can have multiple pointer arguments and
       // metadata arguments, so handle them specially.
@@ -480,9 +451,9 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
       const SwitchInst *Switch = cast<SwitchInst>(Inst);
       if (!isValidScalarOperand(Switch->getCondition()))
         return "bad switch condition";
-      if (const char *Error =
-          verifySwitchConditionType(Switch->getCondition()->getType()))
-        return Error;
+      const Type *SwitchType = Switch->getCondition()->getType();
+      if (!PNaClABITypeChecker::isValidSwitchConditionType(SwitchType))
+        return PNaClABITypeChecker::ExpectedSwitchConditionType(SwitchType);
 
       // SwitchInst requires the cases to be ConstantInts, but it
       // doesn't require their types to be the same as the condition
@@ -498,13 +469,15 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
     }
   }
 
-  // Check the instruction's operands.  We have already checked any
-  // pointer operands.  Any remaining operands must be scalars or vectors.
-  for (unsigned OpNum = 0, E = Inst->getNumOperands(); OpNum < E; ++OpNum) {
-    if (OpNum != PtrOperandIndex &&
-        !(isValidScalarOperand(Inst->getOperand(OpNum)) ||
-          isValidVectorOperand(Inst->getOperand(OpNum))))
-      return "bad operand";
+  if (ApplyDefaultOperandTypeChecks) {
+    // Check the instruction's operands.  We have already checked any
+    // pointer operands.  Any remaining operands must be scalars or vectors.
+    for (unsigned OpNum = 0, E = Inst->getNumOperands(); OpNum < E; ++OpNum) {
+      if (OpNum != PtrOperandIndex &&
+          !(isValidScalarOperand(Inst->getOperand(OpNum)) ||
+            isValidVectorOperand(Inst->getOperand(OpNum))))
+        return "bad operand";
+    }
   }
 
   // Check arithmetic attributes.
@@ -561,7 +534,7 @@ bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
       BBI->getAllMetadata(MDForInst);
 
       for (unsigned i = 0, e = MDForInst.size(); i != e; i++) {
-        if (!IsWhitelistedMetadata(MDForInst[i].first)) {
+        if (!PNaClABIProps::isWhitelistedMetadata(MDForInst[i].first)) {
           Reporter->addError()
               << "Function " << F.getName()
               << " has disallowed instruction metadata: "
@@ -584,14 +557,11 @@ void PNaClABIVerifyFunctions::print(llvm::raw_ostream &O, const Module *M)
   Reporter->reset();
 }
 
-PNaClABIErrorReporter::~PNaClABIErrorReporter() {}
-
-
 char PNaClABIVerifyFunctions::ID = 0;
 INITIALIZE_PASS(PNaClABIVerifyFunctions, "verify-pnaclabi-functions",
                 "Verify functions for PNaCl", false, true)
 
 FunctionPass *llvm::createPNaClABIVerifyFunctionsPass(
     PNaClABIErrorReporter *Reporter) {
-  return new PNaClABIVerifyFunctions(Reporter, true);
+  return new PNaClABIVerifyFunctions(Reporter);
 }

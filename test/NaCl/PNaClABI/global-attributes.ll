@@ -33,7 +33,7 @@ define internal void @func_with_arg_attrs(i32 inreg zeroext) {
   ret void
 }
 
-; CHECK-NEXT: Function func_with_callingconv has disallowed calling convention: 8
+; CHECK-NEXT: Function func_with_callingconv has disallowed calling convention: fastcc (8)
 define internal fastcc void @func_with_callingconv() {
   ret void
 }

@@ -8,9 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Analysis/NaCl.h"
+#include "llvm/Analysis/NaCl/PNaClABIProps.h"
 #include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
-#include "llvm/Analysis/NaCl/PNaClABIVerifyFunctions.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeDecoders.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
@@ -18,12 +17,10 @@
 #include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/LLVMContext.h"
-// TODO(kschimpf) Refactor PNaClABIVerifyFunctions.h so that a pass/pass manager
-//                is not needed (and remvoe the corresponding includes).
-#include "llvm/Pass.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Format.h"
@@ -114,6 +111,13 @@ public:
 
   char GetKind() const {
     return Kind;
+  }
+
+  std::string GetName() const {
+    std::string Buffer;
+    raw_string_ostream StrBuf(Buffer);
+    Print(StrBuf);
+    return StrBuf.str();
   }
 
 private:
@@ -531,33 +535,6 @@ void AssemblyTextFormatter::AbbrevIndexDirective::MyApply(bool Replay) const {
   Fmtr->AbbrevIndexDirMemoryPool.Free(const_cast<AbbrevIndexDirective*>(this));
 }
 
-/// Error reporter that redirects errors to the ObjDump stream.
-class NaClDisErrorReporter : public PNaClABIErrorReporter {
-public:
-  NaClDisErrorReporter(naclbitc::ObjDumpStream &ObjDump)
-      : ObjDump(ObjDump)
-  { setNonFatal(); }
-
-  virtual ~NaClDisErrorReporter() LLVM_OVERRIDE;
-
-  virtual void printErrors(raw_ostream &o) LLVM_OVERRIDE {}
-
-  virtual raw_ostream &addError() LLVM_OVERRIDE {
-    return ObjDump.Error();
-  }
-
-  virtual void reset() LLVM_OVERRIDE {
-    ObjDump.Flush();
-  }
-
-  virtual void checkForFatalErrors() LLVM_OVERRIDE {}
-
-private:
-  naclbitc::ObjDumpStream &ObjDump;
-};
-
-NaClDisErrorReporter::~NaClDisErrorReporter() {}
-
 // Holds possible alignements for loads/stores etc. Used to extract
 // expected value.
 static unsigned NaClPossibleLoadStoreAlignments[] = {
@@ -569,10 +546,10 @@ static unsigned NaClPossibleLoadStoreAlignments[] = {
 // Finds the expected alignment for the load/store, for type Ty.
 // Returns 0 if no expected alignment can be found.
 static unsigned NaClGetExpectedLoadStoreAlignment(
-    const DataLayout &DL, PNaClABIVerifyFunctions &FcnVerifier, Type *Ty) {
+    const DataLayout &DL, Type *Ty) {
   for (size_t i = 0; i < array_lengthof(NaClPossibleLoadStoreAlignments); ++i) {
     unsigned Alignment = NaClPossibleLoadStoreAlignments[i];
-    if (FcnVerifier.isAllowedAlignment(&DL, Alignment, Ty)) {
+    if (PNaClABIProps::isAllowedAlignment(&DL, Alignment, Ty)) {
       return Alignment;
     }
   }
@@ -591,9 +568,6 @@ class NaClDisParser : public NaClBitcodeParser {
   // Listener used to get abbreviations as they are read.
   NaClBitcodeParserListener AbbrevListener;
 
-  // Used to verify properties of instructions.
-  PNaClABIVerifyFunctions &FcnVerifier;
-
   // DataLayout to use.
   const DataLayout &DL;
 
@@ -602,12 +576,10 @@ public:
                 const unsigned char *HeaderBuffer,
                 NaClBitstreamCursor &Cursor,
                 naclbitc::ObjDumpStream &ObjDump,
-                PNaClABIVerifyFunctions &FcnVerifier,
                 DataLayout &DL)
       : NaClBitcodeParser(Cursor),
         ObjDump(ObjDump),
         AbbrevListener(this),
-        FcnVerifier(FcnVerifier),
         DL(DL),
         AssemblyFormatter(ObjDump),
         Header(Header),
@@ -889,8 +861,9 @@ public:
   /// Verifies the given integer operator has the right type.  Returns
   /// the operator.
   const char *VerifyIntArithmeticOp(const char *Op, Type *OpTy) {
-    if (const char *Error = FcnVerifier.verifyArithmeticType(OpTy))
-      Errors() << Op << ": " << Error << "\n";
+    if (!PNaClABITypeChecker::isValidIntArithmeticType(OpTy)) {
+      Errors() << Op << ": Invalid integer arithmetic type: " << *OpTy;
+    }
     return Op;
   }
 
@@ -898,21 +871,14 @@ public:
   // invalid, generates an appropriate error message.
   void VerifyMemoryAccessAlignment(const char *Op, Type *Ty,
                                    uint64_t Alignment) {
-    if (!FcnVerifier.isAllowedAlignment(&DL, Alignment, Ty)) {
-      if (unsigned Expected = NaClGetExpectedLoadStoreAlignment(DL,
-                                                                FcnVerifier,
-                                                                Ty)) {
+    if (!PNaClABIProps::isAllowedAlignment(&DL, Alignment, Ty)) {
+      if (unsigned Expected = NaClGetExpectedLoadStoreAlignment(DL, Ty)) {
         Errors() << Op << ": Illegal alignment for " << *Ty
                  << ". Expects: " << Expected << "\n";
       } else {
         Errors() << Op << ": Not allowed for type: " << *Ty << "\n";
       }
     }
-  }
-
-  void VerifyAllocaSizeType(Type *ArraySizeType) {
-    if (const char *Error = FcnVerifier.verifyAllocaSizeType(ArraySizeType))
-      Errors() << Error << "\n";
   }
 
   // ******************************************************
@@ -2320,23 +2286,11 @@ private:
   /// Returns scalar type of vector type Ty, if vector type. Otherwise
   /// returns Ty.
   Type *UnderlyingType(Type *Ty) {
-    return Ty->isVectorTy() ? Ty->getScalarType() : Ty;
+    return Ty->isVectorTy() ? Ty->getVectorElementType() : Ty;
   }
 
   bool isFloatingType(Type *Ty) {
     return Ty->isFloatTy() || Ty->isDoubleTy();
-  }
-
-  /// Verifies that type OpTy is integer, for operator Op. Generates
-  /// error messages if appropriate. Returns Op.
-  const char *VerifyIntegerOp(const char *Op, Type *OpTy) {
-    if (OpTy->isIntegerTy()) {
-      if (PNaClABITypeChecker::isValidScalarType(OpTy)) return Op;
-      Errors() << Op << ": Invalid integer type: " << *OpTy << "\n";
-    } else {
-      Errors() << Op << ": Expects integer type. Found: " << *OpTy << "\n";
-    }
-    return Op;
   }
 
   /// Verifies that OpTy is an integer, or a vector of integers, for
@@ -2348,7 +2302,7 @@ private:
         Errors() << Op << ": invalid vector type: " << *OpTy << "\n";
         return Op;
       }
-      BaseTy = OpTy->getScalarType();
+      BaseTy = OpTy->getVectorElementType();
     }
     if (BaseTy->isIntegerTy()) {
       if (PNaClABITypeChecker::isValidScalarType(BaseTy)) return Op;
@@ -2369,7 +2323,7 @@ private:
         Errors() << Op << ": invalid vector type: " << *OpTy << "\n";
         return Op;
       }
-      BaseTy = OpTy->getScalarType();
+      BaseTy = OpTy->getVectorElementType();
     }
     if (!isFloatingType(BaseTy)) {
       Errors() << Op << ": Expects floating point. Found "
@@ -2791,7 +2745,9 @@ void NaClDisFunctionParser::ProcessRecord() {
     if (OpType != CondType)
       Errors() << "Specified select type " << *OpType << " but found: "
                << *CondType << "\n";
-    VerifyIntegerOp("switch", OpType);
+    if (!PNaClABITypeChecker::isValidSwitchConditionType(CondType))
+      Errors() << PNaClABITypeChecker::ExpectedSwitchConditionType(CondType)
+               << "\n";
     uint32_t DefaultBb = Values[2];
     unsigned NumCases = Values[3];
     VerifyBranchRange(DefaultBb);
@@ -2871,7 +2827,8 @@ void NaClDisFunctionParser::ProcessRecord() {
     Type* SizeType = GetValueType(SizeOp);
     BitcodeId SizeId(GetBitcodeId(SizeOp));
     uint64_t Alignment = (1 << Values[1]) >> 1;
-    Context->VerifyAllocaSizeType(SizeType);
+    if (!PNaClABIProps::isAllocaSizeType(SizeType))
+      Errors() << PNaClABIProps::ExpectedAllocaSizeType() << "\n";
     // TODO(kschimpf) Are there any constraints on alignment?
     Tokens() << NextInstId() << Space() << "=" << Space() << StartCluster()
              << "alloca" << Space() << "i8" << Comma() << FinishCluster()
@@ -3057,10 +3014,14 @@ void NaClDisFunctionParser::ProcessRecord() {
     }
     unsigned IsTailCall = (Values[0] & 0x1);
     CallingConv::ID CallingConv;
-    if (!naclbitc::DecodeCallingConv(Values[0]>>1, CallingConv))
-      Errors() << "Call has invalid calling convention.\n";
-    // TODO: Add check that CallingConv is ccc???
     uint32_t FcnId = RelativeToAbsId(Values[1]);
+    if (!naclbitc::DecodeCallingConv(Values[0]>>1, CallingConv))
+      Errors() << "Call unknown calling convention:" << (Values[0]>>1) << "\n";
+    if (!PNaClABIProps::isValidCallingConv(CallingConv)) {
+      Errors() << "Call uses disallowed calling convention: "
+               << PNaClABIProps::CallingConvName(CallingConv) << "("
+               << CallingConv << ")\n";
+    }
     FunctionType *FcnType = 0;
     Type *ReturnType = 0;
     size_t ArgIndex = 2;
@@ -3087,7 +3048,11 @@ void NaClDisFunctionParser::ProcessRecord() {
     }
     if (!PNaClABITypeChecker::isValidParamType(ReturnType))
       Errors() << "Invalid return type: " << *ReturnType << "\n";
-    Tokens() << "call" << Space() << TokenizeType(ReturnType) << Space()
+    Tokens() << "call" << Space();
+    if (CallingConv != CallingConv::C) {
+      Tokens() << PNaClABIProps::CallingConvName(CallingConv) << Space();
+    }
+    Tokens() << TokenizeType(ReturnType) << Space()
              << StartCluster() << GetBitcodeId(FcnId) << OpenParen()
              << StartCluster();
     unsigned ParamIndex = 0;
@@ -3216,23 +3181,33 @@ void NaClDisModuleParser::ProcessRecord() {
     }
     bool IsProto = (Values[2] != 0);
     Tokens() << StartCluster() << (IsProto ? "declare" : "define") << Space();
-    switch (Values[3]) {
-    case 0:
-      Tokens() << "external";
-      break;
-    case 3:
-      Tokens() << "internal";
-      break;
-    default:
-      Errors() << "Unknown linkage value: " << Values[3] << "\n";
-      break;
-    }
-    if (Values[1] != naclbitc::C_CallingConv)
-      Errors() << "Unknown calling convention value: " << Values[1] << "\n";
-    Tokens() << FinishCluster() << Space() << StartCluster();
     uint32_t FcnId = GetNumFunctions();
-    Type *FcnType = GetType(Values[0]);
     BitcodeId FcnName('f', FcnId);
+    std::string FcnStrName(FcnName.GetName());
+    GlobalValue::LinkageTypes Linkage;
+    if (!naclbitc::DecodeLinkage(Values[3], Linkage)) {
+      Errors() << "Unknown linkage value: " << Values[3] << "\n";
+    } else {
+      if (!PNaClABIProps::isValidGlobalLinkage(Linkage))
+        Errors() << "Disallowed linkage type: "
+                 << PNaClABIProps::LinkageName(Linkage) << "\n";
+      Tokens() << PNaClABIProps::LinkageName(Linkage);
+    }
+    CallingConv::ID CallingConv;
+    if (!naclbitc::DecodeCallingConv(Values[1], CallingConv)) {
+      Errors() << "Unknown calling convention value: " << Values[1] << "\n";
+    } else if (PNaClABIProps::isValidCallingConv(CallingConv)) {
+      if (CallingConv != CallingConv::C) {
+        Tokens() << PNaClABIProps::CallingConvName(CallingConv) << Space();
+      }
+    } else {
+      Errors() << "Function " << FcnStrName
+               << " has disallowed calling convention: "
+               << PNaClABIProps::CallingConvName(CallingConv)
+               << " (" << CallingConv << ")\n";
+    }
+    Tokens() << FinishCluster() << Space() << StartCluster();
+    Type *FcnType = GetType(Values[0]);
     if (FunctionType *FunctionTy = dyn_cast<FunctionType>(FcnType)) {
       Tokens() << TokenizeFunctionType(FunctionTy, &FcnName);
     } else {
@@ -3321,14 +3296,11 @@ bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
   // Create objects needed to run parser.
   naclbitc::ObjDumpStream ObjDump(Output, !NoRecords, !NoAssembly);
   Module Mod("ObjDump", getGlobalContext());
+  Mod.setDataLayout(PNaClDataLayout);
   OwningPtr<DataLayout> DL(new DataLayout(&Mod));
-  NaClDisErrorReporter ErrorReporter(ObjDump);
-  OwningPtr<PNaClABIVerifyFunctions> VerifyFunctions(
-      new PNaClABIVerifyFunctions(&ErrorReporter, false));
 
   // Parse the the bitcode file.
-  ::NaClDisParser Parser(Header, HeaderPtr, InputStream, ObjDump,
-                         *VerifyFunctions, *DL);
+  ::NaClDisParser Parser(Header, HeaderPtr, InputStream, ObjDump, *DL);
   while (!InputStream.AtEndOfStream()) {
     if (Parser.Parse()) return true;
   }

@@ -18,7 +18,6 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/NaCl.h"
-#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
@@ -58,15 +57,13 @@ class PNaClABIVerifyModule : public ModulePass {
     initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
   PNaClABIVerifyModule(PNaClABIErrorReporter *Reporter_,
-                       bool StreamingMode,
-                       bool RegisterPass) :
+                       bool StreamingMode) :
       ModulePass(ID),
       Reporter(Reporter_),
       ReporterIsOwned(false),
       StreamingMode(StreamingMode),
       SeenEntryPoint(false) {
-    if (RegisterPass)
-      initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
+    initializePNaClABIVerifyModulePass(*PassRegistry::getPassRegistry());
   }
   virtual ~PNaClABIVerifyModule();
   bool runOnModule(Module &M);
@@ -80,12 +77,8 @@ class PNaClABIVerifyModule : public ModulePass {
   void checkGlobalVariable(const GlobalVariable *GV) {
     return checkGlobalValue(GV);
   }
-  // Checks validity of calling convention for function with given Name.
-  void checkCallingConv(CallingConv::ID Conv, const StringRef &Name);
  private:
   void checkGlobalValue(const GlobalValue *GV);
-  bool isWhitelistedMetadata(const NamedMDNode *MD) const;
-
   /// Checks whether \p GV is an allowed external symbol in stable bitcode.
   void checkExternalSymbol(const GlobalValue *GV);
 

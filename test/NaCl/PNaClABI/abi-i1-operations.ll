@@ -40,105 +40,109 @@ define internal void @rejected_cases(i32 %ptr) {
   load <4 x i1>* %vptr.p, align 4
 ; CHECK-NEXT: disallowed: bad pointer: {{.*}} load <4 x i1>*
 
+  ; Check that we don't allow weird sizes.
+  add i31 0, 0
+; CHECK-NEXT:  disallowed: Invalid integer arithmetic type: {{.*}} add i31
+
   ; i1 arithmetic is of dubious usefulness, so it is rejected.
   add i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} add i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} add i1
   sub i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} sub i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sub i1
   mul i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} mul i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} = mul i1
   udiv i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} udiv i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} = udiv i1
   sdiv i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} sdiv i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} = sdiv i1
   urem i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} urem i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} = urem i1
   srem i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} srem i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} = srem i1
   shl i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} shl i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} = shl i1
   lshr i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} lshr i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} lshr i1
   ashr i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} ashr i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} ashr i1
   add <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} add <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} add <4 x i1>
   sub <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} sub <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sub <4 x i1>
   mul <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} mul <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} mul <4 x i1>
   udiv <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} udiv <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} udiv <4 x i1>
   sdiv <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} sdiv <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sdiv <4 x i1>
   urem <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} urem <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} urem <4 x i1>
   srem <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} srem <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} srem <4 x i1>
   shl <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} shl <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} shl <4 x i1>
   lshr <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} lshr <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} lshr <4 x i1>
   ashr <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} ashr <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} ashr <4 x i1>
   add <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} add <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} add <8 x i1>
   sub <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} sub <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sub <8 x i1>
   mul <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} mul <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} mul <8 x i1>
   udiv <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} udiv <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} udiv <8 x i1>
   sdiv <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} sdiv <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sdiv <8 x i1>
   urem <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} urem <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} urem <8 x i1>
   srem <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} srem <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} srem <8 x i1>
   shl <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} shl <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} shl <8 x i1>
   lshr <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} lshr <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} lshr <8 x i1>
   ashr <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} ashr <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} ashr <8 x i1>
   add <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} add <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} add <16 x i1>
   sub <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} sub <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sub <16 x i1>
   mul <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} mul <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} mul <16 x i1>
   udiv <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} udiv <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} udiv <16 x i1>
   sdiv <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} sdiv <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} sdiv <16 x i1>
   urem <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} urem <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} urem <16 x i1>
   srem <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} srem <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} srem <16 x i1>
   shl <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} shl <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} shl <16 x i1>
   lshr <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} lshr <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} lshr <16 x i1>
   ashr <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} ashr <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} ashr <16 x i1>
 
   ; The same applies to i1 comparisons.
   icmp eq i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} icmp eq i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp eq i1
   icmp ult i1 0, 0
-; CHECK-NEXT: disallowed: arithmetic on i1: {{.*}} icmp ult i1
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp ult i1
   icmp eq <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} icmp eq <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp eq <4 x i1>
   icmp ult <4 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} icmp ult <4 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp ult <4 x i1>
   icmp eq <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} icmp eq <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp eq <8 x i1>
   icmp ult <8 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} icmp ult <8 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp ult <8 x i1>
   icmp eq <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} icmp eq <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp eq <16 x i1>
   icmp ult <16 x i1> undef, undef
-; CHECK-NEXT: disallowed: arithmetic on vector of i1: {{.*}} icmp ult <16 x i1>
+; CHECK-NEXT: disallowed: Invalid integer arithmetic type: {{.*}} icmp ult <16 x i1>
 
   ; There should be no implicit zero-extension in alloca.
   alloca i8, i1 1

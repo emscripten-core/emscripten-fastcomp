@@ -1,5 +1,6 @@
 add_llvm_library(LLVMNaClAnalysis
   PNaClABITypeChecker.cpp
+  PNaClABIProps.cpp
   PNaClABIVerifyFunctions.cpp
   PNaClABIVerifyModule.cpp
   )

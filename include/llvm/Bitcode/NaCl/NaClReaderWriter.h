@@ -29,6 +29,11 @@ namespace llvm {
   class NaClBitstreamWriter;
   class StreamingMemoryObject;
 
+  /// Defines the data layout used for PNaCl bitcode files. We set the
+  /// data layout of the module in the bitcode readers rather than in
+  /// pnacl-llc so that 'opt' will also use the correct data layout if
+  /// it is run on a pexe.
+  extern const char *PNaClDataLayout;
 
   /// Allows (function) local symbol tables (unsupported) in PNaCl bitcode
   /// files.

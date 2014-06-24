@@ -809,6 +809,10 @@ bool NaClBitcodeReader::ParseModule(bool Resume) {
   }
 }
 
+const char *llvm::PNaClDataLayout =
+    "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-"
+    "f32:32:32-f64:64:64-p:32:32:32-v128:32:32";
+
 bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
   TheModule = 0;
 
@@ -819,8 +823,7 @@ bool NaClBitcodeReader::ParseBitcodeInto(Module *M) {
   // by IR passes that the PNaCl translator runs.  We set this in the
   // reader rather than in pnacl-llc so that 'opt' will also use the
   // correct DataLayout if it is run on a pexe.
-  M->setDataLayout("e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-"
-                   "f32:32:32-f64:64:64-p:32:32:32-v128:32:32");
+  M->setDataLayout(PNaClDataLayout);
 
   if (InitStream()) return true; // InitSream will set the error string.
 

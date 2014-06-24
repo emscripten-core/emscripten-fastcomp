@@ -16,6 +16,7 @@
 #include "llvm/Analysis/NaCl/PNaClABIVerifyModule.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Analysis/NaCl/PNaClABIProps.h"
 #include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -40,34 +41,6 @@ PNaClABIAllowDevIntrinsics("pnaclabi-allow-dev-intrinsics",
   cl::desc("Allow dev LLVM intrinsics during PNaCl ABI verification."),
   cl::init(false));
 
-namespace {
-
-static const char *linkageName(GlobalValue::LinkageTypes LT) {
-  // This logic is taken from PrintLinkage in lib/VMCore/AsmWriter.cpp
-  switch (LT) {
-    case GlobalValue::ExternalLinkage: return "external";
-    case GlobalValue::PrivateLinkage:       return "private ";
-    case GlobalValue::LinkerPrivateLinkage: return "linker_private ";
-    case GlobalValue::LinkerPrivateWeakLinkage: return "linker_private_weak ";
-    case GlobalValue::InternalLinkage:      return "internal ";
-    case GlobalValue::LinkOnceAnyLinkage:   return "linkonce ";
-    case GlobalValue::LinkOnceODRLinkage:   return "linkonce_odr ";
-    case GlobalValue::WeakAnyLinkage:       return "weak ";
-    case GlobalValue::WeakODRLinkage:       return "weak_odr ";
-    case GlobalValue::CommonLinkage:        return "common ";
-    case GlobalValue::AppendingLinkage:     return "appending ";
-    case GlobalValue::DLLImportLinkage:     return "dllimport ";
-    case GlobalValue::DLLExportLinkage:     return "dllexport ";
-    case GlobalValue::ExternalWeakLinkage:  return "extern_weak ";
-    case GlobalValue::AvailableExternallyLinkage:
-      return "available_externally ";
-    default:
-      return "unknown";
-  }
-}
-
-} // end anonymous namespace
-
 PNaClABIVerifyModule::~PNaClABIVerifyModule() {
   if (ReporterIsOwned)
     delete Reporter;
@@ -77,19 +50,14 @@ PNaClABIVerifyModule::~PNaClABIVerifyModule() {
 // GlobalVariables and Functions.
 void PNaClABIVerifyModule::checkGlobalValue(const GlobalValue *GV) {
   assert(!isa<GlobalAlias>(GV));
-  const char *GVTypeName = isa<GlobalVariable>(GV) ?
-      "Variable " : "Function ";
-  switch (GV->getLinkage()) {
-    case GlobalValue::ExternalLinkage:
-      checkExternalSymbol(GV);
-      break;
-    case GlobalValue::InternalLinkage:
-      break;
-    default:
-      Reporter->addError() << GVTypeName << GV->getName()
-                           << " has disallowed linkage type: "
-                           << linkageName(GV->getLinkage()) << "\n";
+  const char *GVTypeName = PNaClABIProps::GVTypeName(isa<Function>(GV));
+  GlobalValue::LinkageTypes Linkage = GV->getLinkage();
+  if (!PNaClABIProps::isValidGlobalLinkage(Linkage)) {
+    Reporter->addError() << GVTypeName << " " << GV->getName()
+                         << " has disallowed linkage type: "
+                         << PNaClABIProps::LinkageName(Linkage) << "\n";
   }
+  if (Linkage == GlobalValue::ExternalLinkage) checkExternalSymbol(GV);
   if (GV->getVisibility() != GlobalValue::DefaultVisibility) {
     std::string Text = "unknown";
     if (GV->getVisibility() == GlobalValue::HiddenVisibility) {
@@ -97,22 +65,22 @@ void PNaClABIVerifyModule::checkGlobalValue(const GlobalValue *GV) {
     } else if (GV->getVisibility() == GlobalValue::ProtectedVisibility) {
       Text = "protected";
     }
-    Reporter->addError() << GVTypeName << GV->getName()
+    Reporter->addError() << GVTypeName << " " << GV->getName()
                          << " has disallowed visibility: " << Text << "\n";
   }
   if (GV->hasSection()) {
-    Reporter->addError() << GVTypeName << GV->getName() <<
+    Reporter->addError() << GVTypeName << " " << GV->getName() <<
         " has disallowed \"section\" attribute\n";
   }
   if (GV->getType()->getAddressSpace() != 0) {
-    Reporter->addError() << GVTypeName << GV->getName()
+    Reporter->addError() << GVTypeName << " " << GV->getName()
                          << " has addrspace attribute (disallowed)\n";
   }
   // The "unnamed_addr" attribute can be used to merge duplicate
   // definitions, but that should be done by user-toolchain
   // optimization passes, not by the PNaCl translator.
   if (GV->hasUnnamedAddr()) {
-    Reporter->addError() << GVTypeName << GV->getName()
+    Reporter->addError() << GVTypeName << " " << GV->getName()
                          << " has disallowed \"unnamed_addr\" attribute\n";
   }
 }
@@ -270,10 +238,6 @@ bool PNaClAllowedIntrinsics::isAllowed(const Function *Func) {
   }
 }
 
-bool PNaClABIVerifyModule::isWhitelistedMetadata(const NamedMDNode *MD) const {
-  return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
-}
-
 void PNaClABIVerifyModule::checkExternalSymbol(const GlobalValue *GV) {
   if (const Function *Func = dyn_cast<const Function>(GV)) {
     if (Func->isIntrinsic())
@@ -376,15 +340,6 @@ void PNaClABIVerifyModule::checkGlobalIsFlattened(const GlobalVariable *GV) {
                        << *InitVal << "\n";
 }
 
-void PNaClABIVerifyModule::checkCallingConv(CallingConv::ID Conv,
-                                            const StringRef &Name){
-  if (Conv != CallingConv::C) {
-    Reporter->addError()
-        << "Function " << Name
-        << " has disallowed calling convention: " << Conv << "\n";
-  }
-}
-
 void PNaClABIVerifyModule::checkFunction(const Function *F,
                                          const StringRef &Name,
                                          PNaClAllowedIntrinsics &Intrinsics) {
@@ -418,7 +373,12 @@ void PNaClABIVerifyModule::checkFunction(const Function *F,
           << "Function " << Name << " has disallowed attributes:"
           << getAttributesAsString(F->getAttributes()) << "\n";
     }
-    checkCallingConv(F->getCallingConv(), Name);
+    if (!PNaClABIProps::isValidCallingConv(F->getCallingConv())) {
+      Reporter->addError()
+          << "Function " << Name << " has disallowed calling convention: "
+          << PNaClABIProps::CallingConvName(F->getCallingConv()) << " ("
+          << F->getCallingConv() << ")\n";
+    }
   }
 
   checkGlobalValue(F);
@@ -474,7 +434,7 @@ bool PNaClABIVerifyModule::runOnModule(Module &M) {
   // Check named metadata nodes
   for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
            E = M.named_metadata_end(); I != E; ++I) {
-    if (!isWhitelistedMetadata(I)) {
+    if (!PNaClABIProps::isWhitelistedMetadata(I)) {
       Reporter->addError() << "Named metadata node " << I->getName()
                            << " is disallowed\n";
     }
@@ -502,5 +462,5 @@ INITIALIZE_PASS(PNaClABIVerifyModule, "verify-pnaclabi-module",
 
 ModulePass *llvm::createPNaClABIVerifyModulePass(
     PNaClABIErrorReporter *Reporter, bool StreamingMode) {
-  return new PNaClABIVerifyModule(Reporter, StreamingMode, true);
+  return new PNaClABIVerifyModule(Reporter, StreamingMode);
 }

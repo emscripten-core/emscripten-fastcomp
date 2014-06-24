@@ -38,6 +38,25 @@ public:
   // Returns true if Ty is a valid vector type for PNaCl.
   static bool isValidVectorType(const Type *Ty);
 
+  // Returns true if type Ty can be used in (integer) arithmetic operations.
+  static bool isValidIntArithmeticType(const Type *Ty);
+
+  // Returns true if type Ty can be used to define the test condition of
+  // a switch instruction.
+  static bool isValidSwitchConditionType(const Type *Ty) {
+    return PNaClABITypeChecker::isValidIntArithmeticType(Ty);
+  }
+  // Returns error message showing what was expected when given the
+  // switch condition type Ty. Assumes isValidSwitchConditionType(Ty)
+  // returned false.
+  static const char *ExpectedSwitchConditionType(const Type *Ty) {
+    if (!Ty->isIntegerTy())
+      return "switch not on integer type";
+    if (Ty->isIntegerTy(1))
+      return "switch on i1 not allowed";
+    return "switch disallowed for integer type";
+  }
+
   // There's no built-in way to get the name of a type, so use a
   // string ostream to print it.
   static std::string getTypeName(const Type *T) {

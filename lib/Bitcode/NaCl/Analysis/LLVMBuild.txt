@@ -19,4 +19,4 @@
 type = Library
 name = NaClBitAnalysis
 parent = NaClBitcode
-required_libraries = Core Support Analysis
+required_libraries = Core Support Analysis NaClBitReader

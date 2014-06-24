@@ -47,12 +47,18 @@ bool PNaClABITypeChecker::isValidFunctionType(const FunctionType *FTy) {
   return true;
 }
 
+namespace {
+static inline bool NaClIsValidIntType(const Type *Ty) {
+  unsigned Width = cast<const IntegerType>(Ty)->getBitWidth();
+  return Width == 1 || Width == 8 || Width == 16 ||
+      Width == 32 || Width == 64;
+}
+}
+
 bool PNaClABITypeChecker::isValidScalarType(const Type *Ty) {
   switch (Ty->getTypeID()) {
     case Type::IntegerTyID: {
-      unsigned Width = cast<const IntegerType>(Ty)->getBitWidth();
-      return Width == 1 || Width == 8 || Width == 16 ||
-             Width == 32 || Width == 64;
+      return NaClIsValidIntType(Ty);
     }
     case Type::VoidTyID:
     case Type::FloatTyID:
@@ -86,4 +92,18 @@ bool PNaClABITypeChecker::isValidVectorType(const Type *Ty) {
   default:
     return false;
   }
+}
+
+namespace {
+static inline bool NaClIsValidIntArithmeticType(const Type *Ty) {
+  return Ty->isIntegerTy() && !Ty->isIntegerTy(1)
+      && NaClIsValidIntType(Ty);
+}
+
+}
+
+bool PNaClABITypeChecker::isValidIntArithmeticType(const Type *Ty) {
+  if (isValidVectorType(Ty))
+    return NaClIsValidIntArithmeticType(Ty->getVectorElementType());
+  return NaClIsValidIntArithmeticType(Ty);
 }
