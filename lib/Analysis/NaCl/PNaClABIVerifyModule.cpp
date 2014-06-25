@@ -34,13 +34,6 @@ PNaClABIAllowDebugMetadata("pnaclabi-allow-debug-metadata",
 
 }
 
-// TODO(mseaborn): This option no longer has any effect, so remove it
-// after its uses have been removed.
-static cl::opt<bool>
-PNaClABIAllowDevIntrinsics("pnaclabi-allow-dev-intrinsics",
-  cl::desc("Allow dev LLVM intrinsics during PNaCl ABI verification."),
-  cl::init(false));
-
 PNaClABIVerifyModule::~PNaClABIVerifyModule() {
   if (ReporterIsOwned)
     delete Reporter;
