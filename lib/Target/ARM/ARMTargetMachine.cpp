@@ -36,14 +36,6 @@ DisableA15SDOptimization("disable-a15-sd-optimization", cl::Hidden,
                    cl::desc("Inhibit optimization of S->D register accesses on A15"),
                    cl::init(false));
 
-// @LOCALMOD-START
-// TODO(jvoung): Remove this once there are no more users.
-namespace llvm {
-cl::opt<bool> FlagSfiDisableCP("sfi-disable-cp",
-                               cl::desc("disable arm constant island pools"));
-}
-// @LOCALMOD-END
-
 extern "C" void LLVMInitializeARMTarget() {
   // Register the target.
   RegisterTargetMachine<ARMTargetMachine> X(TheARMTarget);

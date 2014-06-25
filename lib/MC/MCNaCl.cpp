@@ -19,21 +19,6 @@ static const char NoteNamespace[] = "NaCl";
 
 namespace llvm {
 
-cl::opt<bool>
-FlagSfiData("sfi-data", cl::desc("use illegal at data bundle beginning"));
-
-cl::opt<bool>
-FlagSfiLoad("sfi-load", cl::desc("enable sandboxing for load"));
-
-cl::opt<bool>
-FlagSfiStore("sfi-store", cl::desc("enable sandboxing for stores"));
-
-cl::opt<bool>
-FlagSfiStack("sfi-stack", cl::desc("enable sandboxing for stack changes"));
-
-cl::opt<bool>
-FlagSfiBranch("sfi-branch", cl::desc("enable sandboxing for branches"));
-
 void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
                               const Triple &TheTriple) {
   assert(TheTriple.isOSNaCl());

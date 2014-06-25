@@ -20,12 +20,6 @@ using namespace llvm;
 
 void EmitMipsSFIHeaders(raw_ostream &O) {
   O << " # ========================================\n";
-  O << "# Branch: " << FlagSfiBranch << "\n";
-  O << "# Stack: " << FlagSfiStack << "\n";
-  O << "# Store: " << FlagSfiStore << "\n";
-  O << "# Load: " << FlagSfiLoad << "\n";
-
-  O << " # ========================================\n";
   // NOTE: this macro does bundle alignment as follows
   //       if current bundle pos is X emit pX data items of value "val"
   // NOTE: that pos will be one of: 0,4,8,12
@@ -75,53 +69,43 @@ void EmitMipsSFIHeaders(raw_ostream &O) {
     "\n\n";
 
   O << " # ========================================\n";
-  if (FlagSfiBranch) {
-    O <<
-      "\t.macro sfi_call_preamble\n"
-      "\tsfi_nops_to_force_slot2\n"
-      "\t.endm\n"
-      "\n\n";
+  O <<
+    "\t.macro sfi_call_preamble\n"
+    "\tsfi_nops_to_force_slot2\n"
+    "\t.endm\n"
+    "\n\n";
 
-    O <<
-      "\t.macro sfi_return_preamble reg1 reg2 maskreg\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_code_mask \\reg1, \\reg2, \\maskreg\n"
-      "\t.endm\n"
-      "\n\n";
+  O <<
+    "\t.macro sfi_return_preamble reg1 reg2 maskreg\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_code_mask \\reg1, \\reg2, \\maskreg\n"
+    "\t.endm\n"
+    "\n\n";
 
-    // This is used just before "jr"
-    O <<
-      "\t.macro sfi_indirect_jump_preamble reg1 reg2 maskreg\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_code_mask \\reg1, \\reg2, \\maskreg\n"
-      "\t.endm\n"
-      "\n\n";
+  // This is used just before "jr"
+  O <<
+    "\t.macro sfi_indirect_jump_preamble reg1 reg2 maskreg\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_code_mask \\reg1, \\reg2, \\maskreg\n"
+    "\t.endm\n"
+    "\n\n";
 
-    // This is used just before "jalr"
-    O <<
-      "\t.macro sfi_indirect_call_preamble reg1 reg2 maskreg\n"
-      "\tsfi_nops_to_force_slot1\n"
-      "\tsfi_code_mask \\reg1, \\reg2, \\maskreg\n"
-      "\t.endm\n"
-      "\n\n";
+  // This is used just before "jalr"
+  O <<
+    "\t.macro sfi_indirect_call_preamble reg1 reg2 maskreg\n"
+    "\tsfi_nops_to_force_slot1\n"
+    "\tsfi_code_mask \\reg1, \\reg2, \\maskreg\n"
+    "\t.endm\n"
+    "\n\n";
 
-  }
+  O << " # ========================================\n";
 
-  if (FlagSfiStore) {
-    O << " # ========================================\n";
-
-    O <<
-      "\t.macro sfi_load_store_preamble reg1 reg2 maskreg\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_data_mask \\reg1, \\reg2 , \\maskreg\n"
-      "\t.endm\n"
-      "\n\n";
-  } else {
-    O <<
-      "\t.macro sfi_load_store_preamble reg1 reg2 maskreg\n"
-      "\t.endm\n"
-      "\n\n";
-  }
+  O <<
+    "\t.macro sfi_load_store_preamble reg1 reg2 maskreg\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_data_mask \\reg1, \\reg2 , \\maskreg\n"
+    "\t.endm\n"
+    "\n\n";
 
   O << " # ========================================\n";
   O << "\t.text\n";
