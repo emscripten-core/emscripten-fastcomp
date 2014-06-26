@@ -558,9 +558,9 @@ static unsigned NaClGetExpectedLoadStoreAlignment(
 
 /// Top-level class to parse bitcode file and transform to
 /// corresponding disassembled code.
-class NaClDisParser : public NaClBitcodeParser {
-  NaClDisParser(const NaClDisParser&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClDisParser&) LLVM_DELETED_FUNCTION;
+class NaClDisTopLevelParser : public NaClBitcodeParser {
+  NaClDisTopLevelParser(const NaClDisTopLevelParser&) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClDisTopLevelParser&) LLVM_DELETED_FUNCTION;
 
   // The output stream to generate disassembly into.
   naclbitc::ObjDumpStream &ObjDump;
@@ -572,11 +572,11 @@ class NaClDisParser : public NaClBitcodeParser {
   const DataLayout &DL;
 
 public:
-  NaClDisParser(NaClBitcodeHeader &Header,
-                const unsigned char *HeaderBuffer,
-                NaClBitstreamCursor &Cursor,
-                naclbitc::ObjDumpStream &ObjDump,
-                DataLayout &DL)
+  NaClDisTopLevelParser(NaClBitcodeHeader &Header,
+                        const unsigned char *HeaderBuffer,
+                        NaClBitstreamCursor &Cursor,
+                        naclbitc::ObjDumpStream &ObjDump,
+                        DataLayout &DL)
       : NaClBitcodeParser(Cursor),
         ObjDump(ObjDump),
         AbbrevListener(this),
@@ -597,7 +597,7 @@ public:
     SetListener(&AbbrevListener);
   }
 
-  virtual ~NaClDisParser() LLVM_OVERRIDE {}
+  virtual ~NaClDisTopLevelParser() LLVM_OVERRIDE {}
 
   // Returns the number of errors that were sent to the ObjDump.
   unsigned GetNumErrors() {
@@ -1080,7 +1080,7 @@ private:
   std::map<unsigned, unsigned> GlobalAbbrevsCountMap;
 };
 
-BitcodeId NaClDisParser::GetBitcodeId(uint32_t Index) {
+BitcodeId NaClDisTopLevelParser::GetBitcodeId(uint32_t Index) {
   if (Index < NumFunctions) {
     return BitcodeId('f', Index);
   }
@@ -1100,7 +1100,7 @@ BitcodeId NaClDisParser::GetBitcodeId(uint32_t Index) {
   return BitcodeId('v', Index);
 }
 
-Type *NaClDisParser::GetValueType(uint32_t Index, bool UnderlyingType) {
+Type *NaClDisTopLevelParser::GetValueType(uint32_t Index, bool UnderlyingType) {
   uint32_t Idx = Index;
   if (Idx < NumFunctions)
     return UnderlyingType ? GetFunctionType(Idx) : PointerType;
@@ -1124,7 +1124,7 @@ Type *NaClDisParser::GetValueType(uint32_t Index, bool UnderlyingType) {
 class NaClDisBlockParser : public NaClBitcodeParser {
 protected:
   /// Constructor for the top-level block parser.
-  NaClDisBlockParser(unsigned BlockID, NaClDisParser *Context)
+  NaClDisBlockParser(unsigned BlockID, NaClDisTopLevelParser *Context)
       : NaClBitcodeParser(BlockID, Context),
         Context(Context){
     InitAbbreviations();
@@ -1177,7 +1177,7 @@ protected:
 
   // *****************************************************************
   // The following are dispatching methods that call the corresponding
-  // method on the Context (i.e. NaClDisParser).
+  // method on the Context (i.e. NaClDisTopLevelParser).
   // *****************************************************************
 
   /// Returns a directive to tokenize the given type.
@@ -1442,7 +1442,7 @@ protected:
 
 protected:
   // The context parser that contains decoding state.
-  NaClDisParser *Context;
+  NaClDisTopLevelParser *Context;
   // The number of global abbreviations defined for this block.
   unsigned NumGlobalAbbreviations;
   // The current number of local abbreviations defined for this block.
@@ -3111,7 +3111,7 @@ void NaClDisFunctionParser::ProcessRecord() {
 /// Parses and disassembles the module block.
 class NaClDisModuleParser : public NaClDisBlockParser {
 public:
-  NaClDisModuleParser(unsigned BlockID, NaClDisParser *Context)
+  NaClDisModuleParser(unsigned BlockID, NaClDisTopLevelParser *Context)
       : NaClDisBlockParser(BlockID, Context) {
   }
 
@@ -3231,7 +3231,7 @@ void NaClDisModuleParser::ProcessRecord() {
   ObjDumpWrite(Record.GetStartBit(), Record);
 }
 
-bool NaClDisParser::ParseBlock(unsigned BlockID) {
+bool NaClDisTopLevelParser::ParseBlock(unsigned BlockID) {
   // Before parsing top-level module block. Describe header.
   NaClBitcodeRecordData Record;
   size_t HeaderSize = Header.getHeaderSize();
@@ -3261,6 +3261,9 @@ bool NaClDisParser::ParseBlock(unsigned BlockID) {
   }
   ObjDump.Write(0, Record);
   ObjDump.SetStartOffset(HeaderSize * 8);
+
+  if (BlockID != naclbitc::MODULE_BLOCK_ID)
+    return Error("Module block expected at top-level, but not found");
 
   // Now parse a module block.
   NaClDisModuleParser Parser(BlockID, this);
@@ -3300,12 +3303,22 @@ bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
   OwningPtr<DataLayout> DL(new DataLayout(&Mod));
 
   // Parse the the bitcode file.
-  ::NaClDisParser Parser(Header, HeaderPtr, InputStream, ObjDump, *DL);
+  ::NaClDisTopLevelParser Parser(Header, HeaderPtr, InputStream, ObjDump, *DL);
+  int NumBlocksRead = 0;
+  bool ErrorsFound = false;
   while (!InputStream.AtEndOfStream()) {
-    if (Parser.Parse()) return true;
+    ++NumBlocksRead;
+    if (Parser.Parse()) ErrorsFound = true;
   }
 
-  return Parser.GetNumErrors() > 0;
+  if (NumBlocksRead != 1) {
+    ObjDump.Error() << "Expected 1 top level block in bitcode: Found:"
+                    << NumBlocksRead << "\n";
+    ErrorsFound = true;
+  }
+
+  ObjDump.Flush();
+  return ErrorsFound || Parser.GetNumErrors() > 0;
 }
 
 }

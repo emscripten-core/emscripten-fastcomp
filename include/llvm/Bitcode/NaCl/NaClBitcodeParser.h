@@ -369,6 +369,12 @@ private:
   void operator=(const NaClBitcodeRecord &Rcd) LLVM_DELETED_FUNCTION;
 };
 
+inline raw_ostream &operator<<(raw_ostream &Strm,
+                               const NaClBitcodeRecord &Record) {
+  Record.Print(Strm);
+  return Strm;
+}
+
 /// Defines a listener to handle abbreviations within a bitcode file.
 /// In particular, abbreviations and the BlockInfo block are made more
 /// explicit, and then sent to the parser through virtuals
