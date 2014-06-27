@@ -15,12 +15,13 @@
 #include "MCTargetDesc/X86MCNaCl.h"
 #include "X86NaClDecls.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCContext.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -55,6 +56,38 @@ static MCSymbol *CreateTempLabel(MCContext &Context, const char *Prefix) {
   return Context.GetOrCreateSymbol(NameSV);
 }
 
+static void PushReturnAddress(MCContext &Context,
+                              MCStreamer &Out, MCSymbol *RetTarget) {
+  const MCExpr *RetTargetExpr = MCSymbolRefExpr::Create(RetTarget, Context);
+  if (Context.getObjectFileInfo()->getRelocM() == Reloc::PIC_) {
+    // Calculate return_addr
+    // The return address should not be calculated into R11 because if the push
+    // instruction ends up at the start of a bundle, an attacker could arrange
+    // an indirect jump to it, which would push the full jump target
+    // (which itself was calculated into r11) onto the stack.
+    MCInst LEAInst;
+    LEAInst.setOpcode(X86::LEA64_32r);
+    LEAInst.addOperand(MCOperand::CreateReg(X86::R10D)); // DestReg
+    LEAInst.addOperand(MCOperand::CreateReg(X86::RIP)); // BaseReg
+    LEAInst.addOperand(MCOperand::CreateImm(1)); // Scale
+    LEAInst.addOperand(MCOperand::CreateReg(0)); // IndexReg
+    LEAInst.addOperand(MCOperand::CreateExpr(RetTargetExpr)); // Offset
+    LEAInst.addOperand(MCOperand::CreateReg(0)); // SegmentReg
+    Out.EmitInstruction(LEAInst);
+    // push return_addr
+    MCInst PUSHInst;
+    PUSHInst.setOpcode(X86::PUSH64r);
+    PUSHInst.addOperand(MCOperand::CreateReg(X86::R10));
+    Out.EmitInstruction(PUSHInst);
+  } else {
+    // push return_addr
+    MCInst PUSHInst;
+    PUSHInst.setOpcode(X86::PUSH64i32);
+    PUSHInst.addOperand(MCOperand::CreateExpr(RetTargetExpr));
+    Out.EmitInstruction(PUSHInst);
+  }
+}
+
 static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
                            MCStreamer &Out) {
   const bool HideSandboxBase = (FlagHideSandboxBase &&
@@ -71,17 +104,19 @@ static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
     // This avoids exposing the sandbox base address via the return
     // address on the stack.
 
+    // When generating PIC code, calculate the return address manually:
+    //  leal return_addr(%rip), %r11d
+    //  push %r11
+    //  jmp target
+    //  .align 32
+    //  return_addr:
+
     MCContext &Context = Out.getContext();
 
     // Generate a label for the return address.
     MCSymbol *RetTarget = CreateTempLabel(Context, "DirectCallRetAddr");
-    const MCExpr *RetTargetExpr = MCSymbolRefExpr::Create(RetTarget, Context);
 
-    // push return_addr
-    MCInst PUSHInst;
-    PUSHInst.setOpcode(X86::PUSH64i32);
-    PUSHInst.addOperand(MCOperand::CreateExpr(RetTargetExpr));
-    Out.EmitInstruction(PUSHInst);
+    PushReturnAddress(Context, Out, RetTarget);
 
     // jmp target
     MCInst JMPInst;
@@ -132,6 +167,28 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   // This avoids exposing the sandbox base address via the return
   // address on the stack.
 
+  // When generating PIC code for calls, calculate the return address manually:
+  //   leal return_addr(%rip), %r11d
+  //   pushq %r11
+  //   mov %rXX,%r11d
+  //   and $0xffffffe0,%r11d
+  //   add %r15,%r11
+  //   jmpq *%r11
+  //   .align 32
+  //   return_addr:
+
+  // Explicitly push the (32-bit) return address for a NaCl64 call
+  // instruction.
+  MCSymbol *RetTarget = NULL;
+  if (IsCall && HideSandboxBase) {
+    MCContext &Context = Out.getContext();
+
+    // Generate a label for the return address.
+    RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
+
+    PushReturnAddress(Context, Out, RetTarget);
+  }
+
   // For NaCl64, force an assignment of the branch target into r11,
   // and subsequently use r11 as the ultimate branch target, so that
   // only r11 (which will never be written to memory) exposes the
@@ -155,23 +212,6 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
     }
   }
   const unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
-
-  // Explicitly push the (32-bit) return address for a NaCl64 call
-  // instruction.
-  MCSymbol *RetTarget = NULL;
-  if (IsCall && HideSandboxBase) {
-    MCContext &Context = Out.getContext();
-
-    // Generate a label for the return address.
-    RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
-    const MCExpr *RetTargetExpr = MCSymbolRefExpr::Create(RetTarget, Context);
-
-    // push return_addr
-    MCInst PUSHInst;
-    PUSHInst.setOpcode(X86::PUSH64i32);
-    PUSHInst.addOperand(MCOperand::CreateExpr(RetTargetExpr));
-    Out.EmitInstruction(PUSHInst);
-  }
 
   const bool WillEmitCallInst = IsCall && !HideSandboxBase;
   Out.EmitBundleLock(WillEmitCallInst);

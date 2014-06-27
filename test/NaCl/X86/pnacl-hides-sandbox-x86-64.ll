@@ -2,6 +2,9 @@
 ; RUN:     llvm-objdump -d -r - | FileCheck %s
 ; RUN: pnacl-llc -O2 -mtriple=x86_64-none-nacl -filetype=obj < %s | \
 ; RUN:     llvm-objdump -d -r - | FileCheck %s --check-prefix=NOCALLRET
+; RUN: pnacl-llc -O2 -mtriple=x86_64-none-nacl -filetype=obj \
+; RUN:     -relocation-model=pic < %s | \
+; RUN:     llvm-objdump -d -r - | FileCheck %s --check-prefix=PIC
 
 ; ModuleID = 'pnacl-hides-sandbox-x86-64.c'
 target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:32"
@@ -20,7 +23,7 @@ entry:
   call void @DirectCallTarget()
   ret void
 }
-; CHECK: TestDirectCall:
+; CHECK-LABEL: TestDirectCall:
 ; Push the immediate return address
 ; CHECK:      pushq $0
 ; CHECK-NEXT: .text
@@ -28,7 +31,13 @@ entry:
 ; CHECK:      jmpq 0
 ; CHECK-NEXT: DirectCallTarget
 
-declare void @DirectCallTarget() #1
+; PIC-LABEL: TestDirectCall
+; PIC: leal 19(%rip), %r10d
+; PIC-NEXT: pushq %r10
+; PIC-NEXT: jmpq 0
+; PIC-NEXT: DirectCallTarget
+
+declare hidden void @DirectCallTarget() #1
 
 ; Function Attrs: nounwind
 define void @TestIndirectCall() #0 {
@@ -37,7 +46,7 @@ entry:
   call void %0()
   ret void
 }
-; CHECK: TestIndirectCall:
+; CHECK-LABEL: TestIndirectCall:
 ; Push the immediate return address
 ; CHECK:      pushq $0
 ; CHECK-NEXT: .text
@@ -45,6 +54,15 @@ entry:
 ; CHECK:      andl $-32, %r11d
 ; CHECK-NEXT: addq %r15, %r11
 ; CHECK-NEXT: jmpq *%r11
+
+; PIC-LABEL: TestIndirectCall:
+; Calculate and push the return address
+; PIC: leal 39(%rip), %r10d
+; PIC-NEXT: pushq %r10
+; Fixed sequence for indirect jump
+; PIC: andl $-32, %r11d
+; PIC-NEXT: addq %r15, %r11
+; PIC-NEXT: jmpq *%r11
 
 ; Function Attrs: nounwind
 define void @TestMaskedFramePointer(i32 %Arg) #0 {

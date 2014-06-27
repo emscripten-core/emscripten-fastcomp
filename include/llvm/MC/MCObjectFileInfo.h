@@ -353,6 +353,10 @@ public:
     return EHFrameSection;
   }
 
+  Reloc::Model getRelocM() const {
+    return RelocM;
+  }
+
 private:
   enum Environment { IsMachO, IsELF, IsCOFF };
   Environment Env;
