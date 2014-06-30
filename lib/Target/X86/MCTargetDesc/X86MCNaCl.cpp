@@ -105,8 +105,8 @@ static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
     // address on the stack.
 
     // When generating PIC code, calculate the return address manually:
-    //  leal return_addr(%rip), %r11d
-    //  push %r11
+    //  leal return_addr(%rip), %r10d
+    //  push %r10
     //  jmp target
     //  .align 32
     //  return_addr:
@@ -168,8 +168,8 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   // address on the stack.
 
   // When generating PIC code for calls, calculate the return address manually:
-  //   leal return_addr(%rip), %r11d
-  //   pushq %r11
+  //   leal return_addr(%rip), %r10d
+  //   pushq %r10
   //   mov %rXX,%r11d
   //   and $0xffffffe0,%r11d
   //   add %r15,%r11
