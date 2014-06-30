@@ -516,6 +516,16 @@ public:
     return Results;
   }
 
+  /// Skips the current block, assuming the parser is at the beginning
+  /// of the block. That is, Record.GetEntryKind() equals
+  /// NaClBitstreamEntry::SubBlock. Returns false if
+  /// successful. Otherwise returns 1.
+  bool SkipBlock() {
+    if (Record.GetEntryKind() != NaClBitstreamEntry::SubBlock)
+      return Error("SkipBlock on non-block record");
+    return Record.GetCursor().SkipBlock();
+  }
+
 protected:
   // The containing parser.
   NaClBitcodeParser *EnclosingParser;
