@@ -15,7 +15,6 @@
 
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -69,7 +68,7 @@ void ExpandShuffleVector::Expand(ShuffleVectorInst *Shuf, Type *Int32) {
   // The sources for shufflevector must have the same type but the
   // destination could be a narrower or wider vector with the same
   // element type.
-  IRBuilder<> IRB(Shuf);
+  Instruction *ExtractLoc = Shuf;
   Value *Res = UndefValue::get(DstVecTy);
   for (unsigned Elem = 0; Elem != NumDstElems; ++Elem) {
     bool IsUndef =
@@ -80,8 +79,12 @@ void ExpandShuffleVector::Expand(ShuffleVectorInst *Shuf, Type *Int32) {
     Constant *ExtractIdx = ConstantInt::get(Int32, Mask[Elem] - Adjustment);
     Constant *InsertIdx = ConstantInt::get(Int32, Elem);
     Value *ElemToInsert = IsUndef ? UndefValue::get(ElemTy)
-                                  : IRB.CreateExtractElement(From, ExtractIdx);
-    Res = IRB.CreateInsertElement(Res, ElemToInsert, InsertIdx);
+                                  : (Value *)ExtractElementInst::Create(
+                                        From, ExtractIdx, "", ExtractLoc);
+    Res = InsertElementInst::Create(Res, ElemToInsert, InsertIdx, "", Shuf);
+    if (ExtractLoc == Shuf)
+      // All the extracts should be added just before the first insert we added.
+      ExtractLoc = cast<Instruction>(Res);
   }
 
   Shuf->replaceAllUsesWith(Res);

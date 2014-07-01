@@ -56,3 +56,11 @@ define <4 x i32> @test_interleave_hi_4xi32(<4 x i32> %lhs, <4 x i32> %rhs) {
   ; CHECK-NEXT: ret <4 x i32> %[[R]]
   ret <4 x i32> %res
 }
+
+define <4 x i32> @test_with_constant(<4 x i32> %lhs, <4 x i32> %rhs) {
+  ; CHECK-LABEL: test_with_constant
+  ; CHECK-NEXT: %[[R:[0-9]+]] = shufflevector <4 x i32> %lhs, <4 x i32> <i32 0, i32 -1, i32 undef, i32 undef>, <4 x i32> <i32 4, i32 0, i32 1, i32 5>
+  %res = shufflevector <4 x i32> %lhs, <4 x i32> <i32 0, i32 -1, i32 undef, i32 undef>, <4 x i32> <i32 4, i32 0, i32 1, i32 5>
+  ; CHECK-NEXT: ret <4 x i32> %[[R]]
+  ret <4 x i32> %res
+}
