@@ -29,7 +29,7 @@ class PNaClABIErrorReporter {
                             UseFatalErrors(true) {}
   ~PNaClABIErrorReporter() {}
   // Return the number of verification errors from the last run.
-  virtual int getErrorCount() const { return ErrorCount; }
+  int getErrorCount() const { return ErrorCount; }
   // Print the error messages to O
   void printErrors(llvm::raw_ostream &O) {
     Errors.flush();
