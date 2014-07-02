@@ -85,6 +85,7 @@ GlobalizeConstantVectors::globalizeConstantVectors(Module &M, Function &F,
         M, V->getType(), /* isConstant= */ true, GlobalValue::InternalLinkage,
         cast<Constant>(V), Name);
     GV->setAlignment(DL->getPrefTypeAlignment(V->getType()));
+    GV->setUnnamedAddr(true);  // The content is significant, not the address.
     LoadInst *MaterializedGV = new LoadInst(GV, Name, /* isVolatile= */ false,
                                             GV->getAlignment(), FirstInst);
 
