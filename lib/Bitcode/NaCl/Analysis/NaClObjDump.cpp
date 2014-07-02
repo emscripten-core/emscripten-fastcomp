@@ -3025,11 +3025,16 @@ void NaClDisFunctionParser::ProcessRecord() {
     FunctionType *FcnType = 0;
     Type *ReturnType = 0;
     size_t ArgIndex = 2;
+    // Flag defining if type checking should be done on argument/return
+    // types.
+    bool CheckArgRetTypes = true;
     if (Record.GetCode() == naclbitc::FUNC_CODE_INST_CALL) {
       Type *FcnTy = GetValueType(FcnId, /* UnderlyingType = */ true);
       if (FunctionType *FcnTyp = dyn_cast<FunctionType>(FcnTy)) {
-        if (!PNaClABITypeChecker::isValidFunctionType(FcnTyp))
-          Errors() << "Invalid function signature: " << *FcnTy << "\n";
+        // TODO(kschimpf) Add back signature checking once we know how
+        // to handle intrinsics (which can violate general signature
+        // rules).
+        CheckArgRetTypes = false;
         FcnType = FcnTyp;
         ReturnType = FcnType->getReturnType();
       } else {
@@ -3046,7 +3051,7 @@ void NaClDisFunctionParser::ProcessRecord() {
     if (IsTailCall) {
       Tokens() << "tail" << Space();
     }
-    if (!PNaClABITypeChecker::isValidParamType(ReturnType))
+    if (CheckArgRetTypes && !PNaClABITypeChecker::isValidParamType(ReturnType))
       Errors() << "Invalid return type: " << *ReturnType << "\n";
     Tokens() << "call" << Space();
     if (CallingConv != CallingConv::C) {
@@ -3060,7 +3065,7 @@ void NaClDisFunctionParser::ProcessRecord() {
     for (size_t i = ArgIndex; i < Values.size(); ++i, ++ParamIndex) {
       uint32_t ParamId = RelativeToAbsId(Values[i]);
       Type *ParamType = GetValueType(ParamId);
-      if (!PNaClABITypeChecker::isValidParamType(ParamType))
+      if (CheckArgRetTypes && !PNaClABITypeChecker::isValidParamType(ParamType))
         Errors() << "invalid type for parameter " << i << ": "
                  << *ParamType << "\n";
       if (FcnType) {
