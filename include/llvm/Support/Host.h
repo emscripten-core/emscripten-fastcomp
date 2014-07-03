@@ -16,7 +16,7 @@
 
 #include "llvm/ADT/StringMap.h"
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__asmjs__)
 #include <endian.h>
 #else
 #ifndef LLVM_ON_WIN32

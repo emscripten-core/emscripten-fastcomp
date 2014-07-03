@@ -187,6 +187,7 @@ struct IsLockFreeToConstant {
     // Continue.
 #   elif defined(__mips__) || defined(_M_IX86) // XXX Emscripten TODO: Move this fix to PNaCl upstream.
     MaxLockFreeByteSize = 4;
+#   elif defined(__EMSCRIPTEN__) || defined(__asmjs__)
 #   else
 #     error "Unknown architecture"
 #   endif

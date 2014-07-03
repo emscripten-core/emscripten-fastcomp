@@ -36,7 +36,11 @@
 #  include <termios.h>
 #endif
 
+#if !defined(__EMSCRIPTEN__)
 #include <sys/unistd.h>
+#else
+#include <unistd.h>
+#endif
 
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only generic UNIX code that

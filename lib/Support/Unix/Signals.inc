@@ -18,6 +18,12 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+
+#if defined(__EMSCRIPTEN__)
+  #undef HAVE_CXXABI_H
+  #undef HAVE_DLFCN_H
+#endif
+
 #if HAVE_EXECINFO_H
 # include <execinfo.h>         // For backtrace().
 #endif
@@ -274,7 +280,7 @@ void llvm::sys::AddSignalHandler(void (*FnPtr)(void *), void *Cookie) {
 // On glibc systems we have the 'backtrace' function, which works nicely, but
 // doesn't demangle symbols.
 void llvm::sys::PrintStackTrace(FILE *FD) {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
+#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES) && !defined(__EMSCRIPTEN__)
   static void* StackTrace[256];
   // Use backtrace() to output a backtrace on Linux systems with glibc.
   int depth = backtrace(StackTrace,
