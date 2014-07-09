@@ -1180,7 +1180,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
           Code << "SIMD.float32x4.with";
         }
         Code << SIMDLane[Index];
-        Code << "(" << getValueAsStr(III->getOperand(0)) << ',' << getValueAsStr(III->getOperand(1)) << ')';
+        Code << "(" << (isa<UndefValue>(III->getOperand(0)) ? (VT->getElementType()->isIntegerTy() ? "SIMD.int32x4()" : "SIMD.float32x4()") : getValueAsStr(III->getOperand(0))) << ',' << getValueAsStr(III->getOperand(1)) << ')';
         break;
       }
       case Instruction::ShuffleVector: {
