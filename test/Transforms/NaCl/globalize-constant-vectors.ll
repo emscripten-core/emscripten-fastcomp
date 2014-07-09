@@ -155,7 +155,7 @@ done:
 ; Cbranch-NEXT: ret void
 
 ; Globalizing redundant constants between functions should materialize
-; them in each function.
+; them in each function, but there should only be a single global.
 define void @testduplicate1() {
   %foo = add <4 x i32> <i32 1, i32 1, i32 1, i32 1>, undef
   ret void
@@ -165,13 +165,12 @@ define void @testduplicate2() {
   ret void
 }
 ; Cduplicate: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 1, i32 1, i32 1, i32 1>, align 4
-; Cduplicate: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 1, i32 1, i32 1, i32 1>, align 4
 ; Cduplicate: define void @testduplicate1() {
 ; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
 ; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], undef
 ; Cduplicate-NEXT: ret void
 ; Cduplicate: define void @testduplicate2() {
-; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C2]], align 4
+; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
 ; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], undef
 ; Cduplicate-NEXT: ret void
 
