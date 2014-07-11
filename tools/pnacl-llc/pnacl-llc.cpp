@@ -424,9 +424,10 @@ static int runCompilePasses(Module *mod,
     TLI->disableAllFunctions();
   PM->add(TLI);
 
-  // Allow subsequent passes to better optimize vector instructions.
-  // This pass uses the TargetLibraryInfo above.
-  PM->add(createCombineVectorInstructionsPass());
+  // Allow subsequent passes and the backend to better optimize instructions
+  // that were simplified for PNaCl's ABI. This pass uses the TargetLibraryInfo
+  // above.
+  PM->add(createBackendCanonicalizePass());
 
   // Add intenal analysis passes from the target machine.
   Target.addAnalysisPasses(*PM.get());

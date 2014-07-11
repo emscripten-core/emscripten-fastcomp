@@ -7,9 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Replace all shufflevector instructions by insertelement /
-// extractelement. CombineVectorInstructions is able to reconstruct the
-// shufflevector.
+// Replace all shufflevector instructions by insertelement / extractelement.
+// BackendCanonicalize is able to reconstruct the shufflevector.
 //
 //===----------------------------------------------------------------------===//
 

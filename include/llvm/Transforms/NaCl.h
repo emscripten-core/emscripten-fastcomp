@@ -23,12 +23,12 @@ class ModulePass;
 class Use;
 class Value;
 
-BasicBlockPass *createCombineVectorInstructionsPass();
 BasicBlockPass *createConstantInsertExtractElementIndexPass();
 BasicBlockPass *createExpandGetElementPtrPass();
 BasicBlockPass *createExpandShuffleVectorPass();
 BasicBlockPass *createFixVectorLoadStoreAlignmentPass();
 BasicBlockPass *createPromoteI1OpsPass();
+FunctionPass *createBackendCanonicalizePass();
 FunctionPass *createExpandConstantExprPass();
 FunctionPass *createExpandStructRegsPass();
 FunctionPass *createInsertDivideCheckPass();

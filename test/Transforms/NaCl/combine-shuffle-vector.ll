@@ -1,5 +1,5 @@
 ; RUN: opt -expand-shufflevector %s -S | \
-; RUN:   opt -combine-vector-instructions -S | FileCheck %s
+; RUN:   opt -backend-canonicalize -S | FileCheck %s
 
 ; Test that shufflevector is re-created after having been expanded to
 ; insertelement / extractelement: shufflevector isn't part of the stable
@@ -8,6 +8,9 @@
 ;
 ; TODO(jfb) Narrow and widen aren't tested since the underlying types
 ;           are currently not supported by the PNaCl ABI.
+
+; The datalayout is needed to fold global constants.
+target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:32"
 
 define <4 x i32> @test_splat_lo_4xi32(<4 x i32> %lhs, <4 x i32> %rhs) {
   ; CHECK-LABEL: test_splat_lo_4xi32

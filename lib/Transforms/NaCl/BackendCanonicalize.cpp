@@ -1,4 +1,4 @@
-//===- CombineVectorInstructions.cpp --------------------------------------===//
+//===- BackendCanonicalize.cpp --------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,30 +7,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This pass cleans up some of the toolchain-side PNaCl ABI
-// simplification passes relating to vectors. These passes allow PNaCl
-// to have a simple and stable ABI, but they sometimes lead to
-// harder-to-optimize code.
+// Clean up some toolchain-side PNaCl ABI simplification passes. These passes
+// allow PNaCl to have a simple and stable ABI, but they sometimes lead to
+// harder-to-optimize code. This is desirable because LLVM's definition of
+// "canonical" evolves over time, meaning that PNaCl's simple ABI can stay
+// simple yet still take full advantage of LLVM's backend by having this pass
+// massage the code into something that the backend prefers handling.
 //
 // It currently:
-// - Re-generates shufflevector (not part of the PNaCl ABI) from
-//   insertelement / extractelement combinations. This is done by
-//   duplicating some of instcombine's implementation, and ignoring
-//   optimizations that should already have taken place.
-// - TODO(jfb) Re-combine load/store for vectors, which are transformed
-//             into load/store of the underlying elements.
-// - TODO(jfb) Re-materialize constant arguments, which are currently
-//             loads from global constant vectors.
+// - Re-generates shufflevector (not part of the PNaCl ABI) from insertelement /
+//   extractelement combinations. This is done by duplicating some of
+//   instcombine's implementation, and ignoring optimizations that should
+//   already have taken place.
+// - Re-materializes constant loads, especially of vectors. This requires doing
+//   constant folding through bitcasts.
 //
-// The pass also performs limited DCE on instructions it knows to be
-// dead, instead of performing a full global DCE. Note that it can also
-// eliminate load/store instructions that it makes redundant, which DCE
-// can't traditionally do without proving the redundancy (somewhat
-// prohibitive).
+// The pass also performs limited DCE on instructions it knows to be dead,
+// instead of performing a full global DCE.
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
@@ -200,52 +199,64 @@ Value *CollectShuffleElements(Value *V, SmallVectorImpl<Constant*> &Mask,
   return V;
 }
 
-class CombineVectorInstructions
-    : public BasicBlockPass,
-      public InstVisitor<CombineVectorInstructions, bool> {
+class BackendCanonicalize : public FunctionPass,
+                            public InstVisitor<BackendCanonicalize, bool> {
 public:
   static char ID; // Pass identification, replacement for typeid
-  CombineVectorInstructions() : BasicBlockPass(ID) {
-    initializeCombineVectorInstructionsPass(*PassRegistry::getPassRegistry());
+  BackendCanonicalize() : FunctionPass(ID), DL(0), TLI(0) {
+    initializeBackendCanonicalizePass(*PassRegistry::getPassRegistry());
   }
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.addRequired<DataLayout>();
     AU.addRequired<TargetLibraryInfo>();
-    BasicBlockPass::getAnalysisUsage(AU);
+    FunctionPass::getAnalysisUsage(AU);
   }
 
-  virtual bool runOnBasicBlock(BasicBlock &B);
+  virtual bool runOnFunction(Function &F);
 
   // InstVisitor implementation. Unhandled instructions stay as-is.
   bool visitInstruction(Instruction &I) { return false; }
   bool visitInsertElementInst(InsertElementInst &IE);
+  bool visitBitCastInst(BitCastInst &C);
+  bool visitLoadInst(LoadInst &L);
 
- private:
+private:
+  const DataLayout *DL;
+  const TargetLibraryInfo *TLI;
+
   // List of instructions that are now obsolete, and should be DCE'd.
-  typedef SmallVector<Instruction *, 16> KillListT;
-  KillListT KillList;
+  typedef SmallVector<Instruction *, 512> KillList;
+  KillList Kill;
+
+  /// Helper that constant folds an instruction.
+  bool visitConstantFoldableInstruction(Instruction *I);
 
   /// Empty the kill list, making sure that all other dead instructions
   /// up the chain (but in the current basic block) also get killed.
-  void emptyKillList(BasicBlock &B);
+  static void emptyKillList(KillList &Kill);
 };
 
 } // anonymous namespace
 
-char CombineVectorInstructions::ID = 0;
-INITIALIZE_PASS(CombineVectorInstructions, "combine-vector-instructions",
-                "Combine vector instructions", false, false)
+char BackendCanonicalize::ID = 0;
+INITIALIZE_PASS(BackendCanonicalize, "backend-canonicalize",
+                "Canonicalize PNaCl bitcode for LLVM backends", false, false)
 
-bool CombineVectorInstructions::runOnBasicBlock(BasicBlock &B) {
+bool BackendCanonicalize::runOnFunction(Function &F) {
   bool Modified = false;
-  for (BasicBlock::iterator BI = B.begin(), BE = B.end(); BI != BE; ++BI)
-    Modified |= visit(&*BI);
-  emptyKillList(B);
+  DL = &getAnalysis<DataLayout>();
+  TLI = &getAnalysis<TargetLibraryInfo>();
+
+  for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
+    for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE; ++BI)
+      Modified |= visit(&*BI);
+  emptyKillList(Kill);
   return Modified;
 }
 
 // This function is *almost* as-is from instcombine, avoiding silly
 // cases that should already have been optimized.
-bool CombineVectorInstructions::visitInsertElementInst(InsertElementInst &IE) {
+bool BackendCanonicalize::visitInsertElementInst(InsertElementInst &IE) {
   Value *ScalarOp = IE.getOperand(1);
   Value *IdxOp = IE.getOperand(2);
 
@@ -293,7 +304,7 @@ bool CombineVectorInstructions::visitInsertElementInst(InsertElementInst &IE) {
             IRB.CreateShuffleVector(LHS, RHS, ConstantVector::get(Mask)));
         // The chain of now-dead insertelement / extractelement
         // instructions can be deleted.
-        KillList.push_back(&IE);
+        Kill.push_back(&IE);
 
         return true;
       }
@@ -303,24 +314,28 @@ bool CombineVectorInstructions::visitInsertElementInst(InsertElementInst &IE) {
   return false;
 }
 
-void CombineVectorInstructions::emptyKillList(BasicBlock &B) {
-  const TargetLibraryInfo *TLI = &getAnalysis<TargetLibraryInfo>();
-  while (!KillList.empty()) {
-    Instruction *KillMe = KillList.pop_back_val();
-    if (isa<LoadInst>(KillMe) || isa<StoreInst>(KillMe)) {
-      // Load/store instructions can't traditionally be killed since
-      // they have side-effects. This pass combines load/store
-      // instructions and touches all the memory that the original
-      // load/store touched, it's therefore legal to kill these
-      // load/store instructions.
-      //
-      // TODO(jfb) Eliminate load/store once their combination is
-      //           implemented.
-    } else
-      RecursivelyDeleteTriviallyDeadInstructions(KillMe, TLI);
-  }
+bool BackendCanonicalize::visitBitCastInst(BitCastInst &B) {
+  return visitConstantFoldableInstruction(&B);
 }
 
-BasicBlockPass *llvm::createCombineVectorInstructionsPass() {
-  return new CombineVectorInstructions();
+bool BackendCanonicalize::visitLoadInst(LoadInst &L) {
+  return visitConstantFoldableInstruction(&L);
+}
+
+bool BackendCanonicalize::visitConstantFoldableInstruction(Instruction *I) {
+  if (Constant *Folded = ConstantFoldInstruction(I, DL, TLI)) {
+    I->replaceAllUsesWith(Folded);
+    Kill.push_back(I);
+    return true;
+  }
+  return false;
+}
+
+void BackendCanonicalize::emptyKillList(KillList &Kill) {
+  while (!Kill.empty())
+    RecursivelyDeleteTriviallyDeadInstructions(Kill.pop_back_val());
+}
+
+FunctionPass *llvm::createBackendCanonicalizePass() {
+  return new BackendCanonicalize();
 }
