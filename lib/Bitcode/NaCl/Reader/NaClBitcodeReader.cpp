@@ -10,6 +10,7 @@
 
 #define DEBUG_TYPE "NaClBitcodeReader"
 
+#include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeDecoders.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "NaClBitcodeReader.h"
@@ -29,6 +30,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
+
 
 cl::opt<bool>
 llvm::PNaClAllowLocalSymbolTables(
@@ -616,53 +618,50 @@ bool NaClBitcodeReader::GlobalCleanup() {
 
 FunctionType *NaClBitcodeReader::AddPointerTypesToIntrinsicType(
     StringRef Name, FunctionType *FTy) {
-  Type *ReturnTy = FTy->getReturnType();
-  SmallVector<Type *, 8> ArgTypes(FTy->param_begin(), FTy->param_end());
+  FunctionType *IntrinsicTy = AllowedIntrinsics.getIntrinsicType(Name);
+  if (IntrinsicTy == 0) return FTy;
 
-  // Ideally we wouldn't need a list of supported intrinsics here, but
-  // Intrinsic::* doesn't provide a function for recovering the
-  // expected type of an intrinsic given its full name.
-  // TODO(mseaborn): We could reuse the intrinsic list from
-  // PNaClABIVerifyModule.cpp here.
-  if (Name == "llvm.nacl.read.tp" ||
-      Name == "llvm.stacksave") {
-    ReturnTy = Type::getInt8PtrTy(Context);
-  } else if (Name == "llvm.nacl.setjmp" ||
-             Name == "llvm.nacl.longjmp" ||
-             Name == "llvm.stackrestore" ||
-             Name.startswith("llvm.memset.")) {
-    assert(ArgTypes.size() >= 1);
-    ArgTypes[0] = Type::getInt8PtrTy(Context);
-  } else if (Name.startswith("llvm.memcpy.") ||
-             Name.startswith("llvm.memmove.")) {
-    assert(ArgTypes.size() >= 2);
-    ArgTypes[0] = Type::getInt8PtrTy(Context);
-    ArgTypes[1] = Type::getInt8PtrTy(Context);
-  } else if (Name.startswith("llvm.nacl.atomic.load.") ||
-             Name.startswith("llvm.nacl.atomic.cmpxchg.")) {
-    assert(ArgTypes.size() >= 1);
-    ArgTypes[0] = ReturnTy->getPointerTo();
-  } else if (Name.startswith("llvm.nacl.atomic.store.")) {
-    assert(ArgTypes.size() >= 2);
-    ArgTypes[1] = ArgTypes[0]->getPointerTo();
-  } else if (Name.startswith("llvm.nacl.atomic.rmw.")) {
-    assert(ArgTypes.size() >= 3);
-    ArgTypes[1] = ArgTypes[2]->getPointerTo();
-  } else if (Name == "llvm.nacl.atomic.is.lock.free") {
-    assert(ArgTypes.size() >= 2);
-    ArgTypes[1] = Type::getInt8PtrTy(Context);
+  Type *IReturnTy = IntrinsicTy->getReturnType();
+  Type *FReturnTy = FTy->getReturnType();
+
+  if (!PNaClABITypeChecker::IsPointerEquivType(IReturnTy, FReturnTy)) {
+    std::string Buffer;
+    raw_string_ostream StrBuf(Buffer);
+    StrBuf << "Intrinsic return type mismatch for " << Name << ": "
+           << *IReturnTy << " and " << *FReturnTy;
+    report_fatal_error(StrBuf.str());
   }
-  return FunctionType::get(ReturnTy, ArgTypes, false);
+  if (FTy->getNumParams() != IntrinsicTy->getNumParams()) {
+    std::string Buffer;
+    raw_string_ostream StrBuf(Buffer);
+    StrBuf << "Intrinsic type mistmatch for " << Name << ": "
+           << *FTy << " and " << *IntrinsicTy;
+    report_fatal_error(StrBuf.str());
+  }
+  for (unsigned i = 0; i < FTy->getNumParams(); ++i) {
+    Type *IargTy = IntrinsicTy->getParamType(i);
+    Type *FargTy = FTy->getParamType(i);
+    if (!PNaClABITypeChecker::IsPointerEquivType(IargTy, FargTy)) {
+      std::string Buffer;
+      raw_string_ostream StrBuf(Buffer);
+      StrBuf << "Intrinsic type mismatch for argument " << i << " in "
+             << Name << ": " << *IargTy << " and " << *FargTy;
+      report_fatal_error(StrBuf.str());
+    }
+  }
+  return IntrinsicTy;
 }
 
 void NaClBitcodeReader::AddPointerTypesToIntrinsicParams() {
   for (unsigned Index = 0, E = ValueList.size(); Index < E; ++Index) {
     if (Function *Func = dyn_cast<Function>(ValueList[Index])) {
       if (Func->isIntrinsic()) {
-        FunctionType *FTy = AddPointerTypesToIntrinsicType(
-            Func->getName(), Func->getFunctionType());
+        FunctionType *FTy = Func->getFunctionType();
+        FunctionType *ITy = AddPointerTypesToIntrinsicType(
+            Func->getName(), FTy);
+        if (ITy == FTy) continue;
         Function *NewIntrinsic = Function::Create(
-            FTy, GlobalValue::ExternalLinkage, "", TheModule);
+            ITy, GlobalValue::ExternalLinkage, "", TheModule);
         NewIntrinsic->takeName(Func);
         ValueList.OverwriteValue(NewIntrinsic, Index);
         Func->eraseFromParent();

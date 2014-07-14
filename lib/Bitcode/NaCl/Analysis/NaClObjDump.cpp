@@ -10,6 +10,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/NaCl/PNaClABIProps.h"
 #include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
+#include "llvm/Analysis/NaCl/PNaClAllowedIntrinsics.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeDecoders.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
@@ -562,25 +563,17 @@ class NaClDisTopLevelParser : public NaClBitcodeParser {
   NaClDisTopLevelParser(const NaClDisTopLevelParser&) LLVM_DELETED_FUNCTION;
   void operator=(const NaClDisTopLevelParser&) LLVM_DELETED_FUNCTION;
 
-  // The output stream to generate disassembly into.
-  naclbitc::ObjDumpStream &ObjDump;
-
-  // Listener used to get abbreviations as they are read.
-  NaClBitcodeParserListener AbbrevListener;
-
-  // DataLayout to use.
-  const DataLayout &DL;
-
 public:
   NaClDisTopLevelParser(NaClBitcodeHeader &Header,
                         const unsigned char *HeaderBuffer,
                         NaClBitstreamCursor &Cursor,
-                        naclbitc::ObjDumpStream &ObjDump,
-                        DataLayout &DL)
+                        naclbitc::ObjDumpStream &ObjDump)
       : NaClBitcodeParser(Cursor),
+        Mod("ObjDump", getGlobalContext()),
         ObjDump(ObjDump),
         AbbrevListener(this),
-        DL(DL),
+        DL(&Mod),
+        AllowedIntrinsics(&Mod.getContext()),
         AssemblyFormatter(ObjDump),
         Header(Header),
         HeaderBuffer(HeaderBuffer),
@@ -590,9 +583,9 @@ public:
         NumParams(0),
         NumConstants(0),
         NumValuedInsts(0),
-        UnknownType(Type::getVoidTy(getGlobalContext())),
-        PointerType(Type::getInt32Ty(getGlobalContext())),
-        ComparisonType(Type::getInt1Ty(getGlobalContext())),
+        UnknownType(Type::getVoidTy(Mod.getContext())),
+        PointerType(Type::getInt32Ty(Mod.getContext())),
+        ComparisonType(Type::getInt1Ty(Mod.getContext())),
         NumDefinedFunctions(0) {
     SetListener(&AbbrevListener);
   }
@@ -647,21 +640,64 @@ public:
   }
 
   /// Installs the given type to the next available function index.
-  void InstallFunctionType(Type *Ty) {
-    while (FunctionIdType.size() <= NumFunctions) {
-      FunctionIdType.push_back(UnknownType);
-    }
-    FunctionIdType[NumFunctions++] = Ty;
+  void InstallFunctionType(FunctionType *Ty, uint64_t BitAddress) {
+    assert(FunctionIdType.size() == NumFunctions);
+    ++NumFunctions;
+    FunctionIdType.push_back(Ty);
+    FunctionIdAddress.push_back(BitAddress);
+    // Let Valuesymtab change this to true if appropriate.
+    FunctionIdIsIntrinsic.push_back(false);
+  }
+
+  /// Returns the bit address where the function record appeared in
+  /// the bitcode file. Returns 0 if unknown.
+  uint64_t GetFunctionIdAddress(uint32_t Index) {
+    if (Index >= FunctionIdAddress.size()) return 0;
+    return FunctionIdAddress[Index];
+  }
+
+  /// Sets the record bit address to the function ID address (if known).
+  void SetRecordAddressToFunctionIdAddress(uint32_t Index) {
+    uint64_t Address = GetFunctionIdAddress(Index);
+    if (Address)
+      ObjDump.SetRecordBitAddress(Address);
   }
 
   //// Returns the type associated with the given function index.
-  Type *GetFunctionType(uint32_t Index) {
+  FunctionType *GetFunctionType(uint32_t Index) {
     if (Index >= FunctionIdType.size()) {
       BitcodeId Id('f', Index);
       Errors() << "Can't find definition for " << Id << "\n";
       Fatal();
     }
     return FunctionIdType[Index];
+  }
+
+  /// Marks the function associated with the given Index as intrinsic.
+  void MarkFunctionAsIntrinsic(uint32_t Index) {
+    if (Index >= FunctionIdIsIntrinsic.size()) {
+      BitcodeId Id('f', Index);
+      Errors() << "Can't define " << Id << " as intrinsic, no definition";
+    }
+    FunctionIdIsIntrinsic[Index] = true;
+  }
+
+  /// Returns true if the given Index is for a function intrinsic.
+  bool IsFunctionIntrinsic(uint32_t Index) {
+    if (Index >= FunctionIdIsIntrinsic.size()) return false;
+    return FunctionIdIsIntrinsic[Index];
+  }
+
+  /// Returns true if the function is an intrinsic function.
+  bool IsIntrinsicAllowed(const std::string &FuncName,
+                          const FunctionType *FuncType) {
+    return AllowedIntrinsics.isAllowed(FuncName, FuncType);
+  }
+
+  /// Returns the type of the Name'd intrinsic, if defined as an
+  /// allowed intrinsic name. Otherwise returns 0.
+  FunctionType *GetIntrinsicType(const std::string &Name) {
+    return AllowedIntrinsics.getIntrinsicType(Name);
   }
 
   /// Returns the number of functions (currently) defined/declared in
@@ -677,10 +713,36 @@ public:
     DefinedFunctions.push_back(Index);
   }
 
-  /// Returns the index associated with the next function block.
-  uint32_t GetNextDefinedFunctionIndex() const {
-    assert(NumDefinedFunctions < DefinedFunctions.size());
+  /// Returns true if there is an Index defined function block.
+  bool HasDefinedFunctionIndex(uint32_t Index) const {
+    return Index < DefinedFunctions.size();
+  }
+
+  /// Returns the function index associated with the Index defined
+  /// function block.
+  uint32_t GetDefinedFunctionIndex(uint32_t Index) const {
+    assert(Index < DefinedFunctions.size());
     return DefinedFunctions[NumDefinedFunctions];
+  }
+
+  /// Returns true if there is a next defined function index.
+  bool HasNextDefinedFunctionIndex() const {
+    return HasDefinedFunctionIndex(NumDefinedFunctions);
+  }
+
+  /// Returns the function index associated with the next defined function.
+  uint32_t GetNextDefinedFunctionIndex() const {
+    return GetDefinedFunctionIndex(NumDefinedFunctions);
+  }
+
+  /// Returns true if the given value ID corresponds to a declared (rather
+  /// than defined) function.
+  bool IsDeclaredFunction(uint32_t Index) {
+    if (Index >= NumFunctions) return false;
+    for (size_t i = 0, e = DefinedFunctions.size(); i < e; ++i) {
+      if (DefinedFunctions[i] == Index) return false;
+    }
+    return true;
   }
 
   /// Increments the number of (currently) defined functions in the
@@ -1031,6 +1093,16 @@ public:
   }
 
 private:
+  // A placeholder module for associating context and data layout.
+  Module Mod;
+  // The output stream to generate disassembly into.
+  naclbitc::ObjDumpStream &ObjDump;
+  // Listener used to get abbreviations as they are read.
+  NaClBitcodeParserListener AbbrevListener;
+  // DataLayout to use.
+  const DataLayout DL;
+  // The set of allowed intrinsics.
+  PNaClAllowedIntrinsics AllowedIntrinsics;
   // The formatter to use to format assembly code.
   AssemblyTextFormatter AssemblyFormatter;
   // The header appearing before the beginning of the input stream.
@@ -1039,12 +1111,17 @@ private:
   const unsigned char *HeaderBuffer;
   // The list of known types (index i defines the type associated with
   // type index i).
-  std::vector<Type*>TypeIdType;
+  std::vector<Type*> TypeIdType;
   // The number of type indices currently defined.
   uint32_t NumTypes;
   // The list of known function signatures (index i defines the type
   // signature associated with function index i).
-  std::vector<Type*>FunctionIdType;
+  std::vector<FunctionType*> FunctionIdType;
+  // boolean flag defining if function id is an intrinsic.
+  std::vector<bool> FunctionIdIsIntrinsic;
+  // The list of record bit addresses associated with corresponding
+  // declaration of function IDs.
+  std::vector<uint64_t> FunctionIdAddress;
   // The number of function indices currently defined.
   uint32_t NumFunctions;
   // The number of global indices currently defined.
@@ -1341,7 +1418,7 @@ protected:
     return Context->GetNumTypes();
   }
 
-  Type *GetFunctionType(uint32_t Index) {
+  FunctionType *GetFunctionType(uint32_t Index) {
     return Context->GetFunctionType(Index);
   }
 
@@ -1357,16 +1434,12 @@ protected:
     return Context->GetNumGlobals();
   }
 
-  void InstallFunctionType(Type *Ty) {
-    return Context->InstallFunctionType(Ty);
+  void InstallFunctionType(FunctionType *Ty) {
+    return Context->InstallFunctionType(Ty, Record.GetStartBit());
   }
 
   void InstallDefinedFunction(uint32_t Index) {
     Context->InstallDefinedFunction(Index);
-  }
-
-  uint32_t GetNextDefinedFunctionIndex() const {
-    return Context->GetNextDefinedFunctionIndex();
   }
 
   BitcodeId GetBitcodeId(uint32_t Id) {
@@ -1406,6 +1479,10 @@ protected:
 
   Type *GetValueType(uint32_t Id, bool UnderlyingType = false) {
     return Context->GetValueType(Id, UnderlyingType);
+  }
+
+  Type *GetFunctionValueType(uint32_t Id) {
+    return GetValueType(Id, /* UnderlyingType = */ true);
   }
 
   Type *GetUnknownType() const {
@@ -1996,6 +2073,7 @@ private:
 
   virtual void ProcessRecord() LLVM_OVERRIDE;
 
+  // Displays the context of the name (in Values) for the given Id.
   void DisplayEntry(BitcodeId &Id,
                     const NaClBitcodeRecord::RecordVector &Values);
 };
@@ -2061,8 +2139,49 @@ void NaClDisValueSymtabParser::ProcessRecord() {
   switch (Record.GetCode()) {
   case naclbitc::VST_CODE_ENTRY: {
     // VST_ENTRY: [valueid, namechar x N]
-    BitcodeId ID(GetBitcodeId(Values[0]));
+    uint32_t ValID = Values[0];
+    BitcodeId ID(GetBitcodeId(ValID));
     DisplayEntry(ID, Values);
+    if (ValID < GetNumFunctions()) {
+      // Check if value is intrinsic name. If so, verify function signature.
+      std::string Name;
+      for (unsigned i = 1; i < Values.size(); ++i) {
+        Name.push_back(static_cast<char>(Values[i]));
+      }
+      FunctionType *IntrinTy = Context->GetIntrinsicType(Name);
+      if (IntrinTy == 0)
+        // TODO(kschimpf): Check for _start? Complain about other names?
+        break;
+      Context->MarkFunctionAsIntrinsic(ValID);
+      // Verify that expected intrinsic function type matches declared
+      // type signature.
+      FunctionType *FcnTy = GetFunctionType(ValID);
+      if (FcnTy->getNumParams() != IntrinTy->getNumParams()) {
+        Errors() << "Intrinsic " << Name
+                 << " expects " << IntrinTy->getNumParams()
+                 << " arguments. Found: " << FcnTy->getNumParams()
+                 << "\n";
+        break;
+      }
+      if (!PNaClABITypeChecker::IsPointerEquivType(
+              IntrinTy->getReturnType(), FcnTy->getReturnType())) {
+        Errors() << "Intrinsic " << Name
+                 << " expects return type " << *IntrinTy->getReturnType()
+                 << ". Found: " << *FcnTy->getReturnType() << "\n";
+        break;
+      }
+      for (size_t i = 0; i < FcnTy->getNumParams(); ++i) {
+        if (!PNaClABITypeChecker::IsPointerEquivType(
+                IntrinTy->getParamType(i),
+                FcnTy->getParamType(i))) {
+          Errors() << "Intrinsic " << Name
+                   << " expects " << *IntrinTy->getParamType(i)
+                   << " for argument " << (i+1) << ". Found: "
+                   << *FcnTy->getParamType(i) << "\n";
+          break;
+        }
+      }
+    }
     break;
   }
   case naclbitc::VST_CODE_BBENTRY: {
@@ -2275,6 +2394,8 @@ public:
 private:
   // The function index of the function being defined.
   uint32_t FcnId;
+  // The function type for the function being defined.
+  FunctionType *FcnTy;
   // The current basic block being printed.
   int32_t CurrentBbIndex;
   // The expected number of basic blocks.
@@ -2391,31 +2512,35 @@ NaClDisFunctionParser::NaClDisFunctionParser(
       ExpectedNumBbs(0),
       InstIsTerminating(false) {
   Context->ResetLocalCounters();
-  FcnId = Context->GetNextDefinedFunctionIndex();
+  if (Context->HasNextDefinedFunctionIndex()) {
+    FcnId = Context->GetNextDefinedFunctionIndex();
+    FcnTy = GetFunctionType(FcnId);
+  } else {
+    FcnId = 0;
+    SmallVector<Type*, 8> Signature;
+    FcnTy = FunctionType::get(GetVoidType(), Signature, 0);
+    Errors() <<
+        "No corresponding defining function address for function block.\n";
+    return;
+  }
   Context->IncNumDefinedFunctions();
 
   // Now install parameters.
-  Type *Ty = GetFunctionType(FcnId);
-  assert(Ty->isFunctionTy());
-  for (size_t Index = 0; Index < Ty->getFunctionNumParams(); ++Index) {
-    InstallParamType(Ty->getFunctionParamType(Index));
+  for (size_t Index = 0; Index < FcnTy->getFunctionNumParams(); ++Index) {
+    InstallParamType(FcnTy->getFunctionParamType(Index));
   }
 }
 
 void NaClDisFunctionParser::PrintBlockHeader() {
-  Type *FcnTy = GetFunctionType(FcnId);
   Tokens() << "function" << Space();
   BitcodeId FunctionId('f', FcnId);
-  if (FunctionType *FunctionTy = dyn_cast<FunctionType>(FcnTy)) {
-    Tokens() << TokenizeFunctionSignature(FunctionTy, &FunctionId);
-  } else {
-    Tokens() << "???" << Space() << FunctionId
-             << OpenParen() << "???" << CloseParen();
-    Errors()
-        << "Can't find function definition (from module block) for: "
-        << FunctionId << "\n";
+  if (!(Context->IsFunctionIntrinsic(FcnId)
+        || PNaClABITypeChecker::isValidFunctionType(FcnTy))) {
+    Errors() << "Invalid type signature for "
+             << BitcodeId('f', FcnId) << ": " << *FcnTy << "\n";
   }
-  Tokens() << Space() << OpenCurly()
+  Tokens() << TokenizeFunctionSignature(FcnTy, &FunctionId)
+           << Space() << OpenCurly()
            << Space() << Space() << "// BlockID = " << GetBlockID()
            << Endline();
 }
@@ -3029,7 +3154,7 @@ void NaClDisFunctionParser::ProcessRecord() {
     // types.
     bool CheckArgRetTypes = true;
     if (Record.GetCode() == naclbitc::FUNC_CODE_INST_CALL) {
-      Type *FcnTy = GetValueType(FcnId, /* UnderlyingType = */ true);
+      Type *FcnTy = GetFunctionValueType(FcnId);
       if (FunctionType *FcnTyp = dyn_cast<FunctionType>(FcnTy)) {
         // TODO(kschimpf) Add back signature checking once we know how
         // to handle intrinsics (which can violate general signature
@@ -3120,7 +3245,7 @@ public:
       : NaClDisBlockParser(BlockID, Context) {
   }
 
-  virtual ~NaClDisModuleParser() LLVM_OVERRIDE {}
+  virtual ~NaClDisModuleParser() LLVM_OVERRIDE;
 
   virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
 
@@ -3128,6 +3253,33 @@ public:
 
   virtual void ProcessRecord() LLVM_OVERRIDE;
 };
+
+NaClDisModuleParser::~NaClDisModuleParser() {
+  // Note: Since we can't check type signatures of most functions till
+  // we know intrinsic names, and that isn't known until the (optional)
+  // valuesymtab block is parsed, the only reasonable spot to check
+  // function signatures is once the module block has been processed.
+  unsigned NextFcnDefinedId = 0;
+  for (unsigned i = 0, e = GetNumFunctions(); i < e; ++i) {
+    // Note: If the type of a function isn't a function type, that
+    // was checked in method ProcessRecord.
+    // Note: If the function was defined, the type was checked in
+    // NaClDisFunctionParser::PrintBlockHeader.
+    if (Context->HasDefinedFunctionIndex(NextFcnDefinedId)
+        && i == Context->GetDefinedFunctionIndex(NextFcnDefinedId)) {
+      ++NextFcnDefinedId;
+      continue;
+    }
+    if (FunctionType *FcnTy = dyn_cast<FunctionType>(GetFunctionValueType(i))) {
+      if (!Context->IsFunctionIntrinsic(i) &&
+          !PNaClABITypeChecker::isValidFunctionType(FcnTy)) {
+        Context->SetRecordAddressToFunctionIdAddress(i);
+        Errors() << "Invalid type signature for "
+                 << BitcodeId('f', i) << ": " << *FcnTy << "\n";
+      }
+    }
+  }
+}
 
 bool NaClDisModuleParser::ParseBlock(unsigned BlockID) {
   ObjDumpSetRecordBitAddress(GetBlock().GetStartBit());
@@ -3213,7 +3365,8 @@ void NaClDisModuleParser::ProcessRecord() {
     }
     Tokens() << FinishCluster() << Space() << StartCluster();
     Type *FcnType = GetType(Values[0]);
-    if (FunctionType *FunctionTy = dyn_cast<FunctionType>(FcnType)) {
+    FunctionType *FunctionTy = dyn_cast<FunctionType>(FcnType);
+    if (FunctionTy) {
       Tokens() << TokenizeFunctionType(FunctionTy, &FcnName);
     } else {
       BitcodeId FcnTypeId('t', Values[0]);
@@ -3221,11 +3374,11 @@ void NaClDisModuleParser::ProcessRecord() {
                << *FcnType << "\n";
       Tokens() << "???";
       SmallVector<Type*, 1> Signature;
-      FcnType = FunctionType::get(GetVoidType(), Signature, 0);
+      FunctionTy = FunctionType::get(GetVoidType(), Signature, 0);
     }
     Tokens() << Semicolon() << FinishCluster() << TokenizeAbbrevIndex()
              << Endline();
-    InstallFunctionType(FcnType);
+    InstallFunctionType(FunctionTy);
     if (!IsProto) InstallDefinedFunction(FcnId);
     break;
   }
@@ -3303,12 +3456,9 @@ bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
 
   // Create objects needed to run parser.
   naclbitc::ObjDumpStream ObjDump(Output, !NoRecords, !NoAssembly);
-  Module Mod("ObjDump", getGlobalContext());
-  Mod.setDataLayout(PNaClDataLayout);
-  OwningPtr<DataLayout> DL(new DataLayout(&Mod));
 
   // Parse the the bitcode file.
-  ::NaClDisTopLevelParser Parser(Header, HeaderPtr, InputStream, ObjDump, *DL);
+  ::NaClDisTopLevelParser Parser(Header, HeaderPtr, InputStream, ObjDump);
   int NumBlocksRead = 0;
   bool ErrorsFound = false;
   while (!InputStream.AtEndOfStream()) {

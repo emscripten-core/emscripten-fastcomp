@@ -1,4 +1,4 @@
-//===- PNaClABITypeChecker.h - Verify PNaCl ABI rules ---------------------===//
+//===- PNaClABITypeChecker.h - Verify PNaCl ABI rules -----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -65,6 +65,15 @@ public:
     T->print(N);
     return N.str();
   }
+
+  // Returns true if T1 is equivalent to T2, converting to i32 if
+  // a pointer type.
+  static bool IsPointerEquivType(Type *T1, Type *T2) {
+    if (T1->isPointerTy()) return T2->isIntegerTy(32);
+    if (T2->isPointerTy()) return T1->isIntegerTy(32);
+    return T1 == T2;
+  }
+
 };
 } // namespace llvm
 

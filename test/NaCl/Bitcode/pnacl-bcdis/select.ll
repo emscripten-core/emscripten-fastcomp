@@ -16,12 +16,12 @@ define void @TestIntTypes() {
 
 ; CHECK-NEXT:    {{.*}}|    3: <29, 5, 5, 5>         |    %v0 = select i1 %c0, i1 %c0, 
 ; CHECK-NEXT:          |                             |        i1 %c0;
-; CHECK-NEXT:    {{.*}}|    3: <29, 5, 5, 1>         |    %v1 = select i1 %v0, i8 %c1, 
-; CHECK-NEXT:          |                             |        i8 %c1;
-; CHECK-NEXT:    {{.*}}|    3: <29, 5, 5, 2>         |    %v2 = select i1 %v0, i16 %c2, 
-; CHECK-NEXT:          |                             |        i16 %c2;
-; CHECK-NEXT:    {{.*}}|    3: <29, 5, 5, 3>         |    %v3 = select i1 %v0, i32 %c3, 
-; CHECK-NEXT:          |                             |        i32 %c3;
+; CHECK-NEXT:    {{.*}}|    3: <29, 4, 4, 1>         |    %v1 = select i1 %v0, i8 %c2, 
+; CHECK-NEXT:          |                             |        i8 %c2;
+; CHECK-NEXT:    {{.*}}|    3: <29, 4, 4, 2>         |    %v2 = select i1 %v0, i16 %c3, 
+; CHECK-NEXT:          |                             |        i16 %c3;
+; CHECK-NEXT:    {{.*}}|    3: <29, 7, 7, 3>         |    %v3 = select i1 %v0, i32 %c1, 
+; CHECK-NEXT:          |                             |        i32 %c1;
 ; CHECK-NEXT:    {{.*}}|    3: <29, 5, 5, 4>         |    %v4 = select i1 %v0, i64 %c4, 
 ; CHECK-NEXT:          |                             |        i64 %c4;
 
@@ -67,51 +67,52 @@ define void @TestFloatTypes(float %p0, double %p1) {
 }
 
 ; Test select on integer vectors
-define void @TestVecIntTypes(i1 %p0, <16 x i8> %p1, <8 x i16> %p2, <4 x i32> %p3) {
+define void @TestVecIntTypes(i32 %p0, <16 x i8> %p1, <8 x i16> %p2, <4 x i32> %p3) {
 
-; CHECK:               |                             |  %b0:
+  %v0 = trunc i32 %p0 to i1;
+  %v1 = select i1 %v0, <16 x i8> %p1, <16 x i8> %p1
+  %v2 = select i1 %v0, <8 x i16> %p2, <8 x i16> %p2
+  %v3 = select i1 %v0, <4 x i32> %p3, <4 x i32> %p3
 
-  %v0 = select i1 %p0, <16 x i8> %p1, <16 x i8> %p1
-  %v1 = select i1 %p0, <8 x i16> %p2, <8 x i16> %p2
-  %v2 = select i1 %p0, <4 x i32> %p3, <4 x i32> %p3
+; CHECK:         {{.*}}|    {{.*}}                   |    {{.*}} trunc
 
-; CHECK-NEXT:    {{.*}}|    3: <29, 3, 3, 4>         |    %v0 = select i1 %p0, <16 x i8> %p1,
+; CHECK-NEXT:    {{.*}}|    3: <29, 4, 4, 1>         |    %v1 = select i1 %v0, <16 x i8> %p1,
 ; CHECK-NEXT:          |                             |        <16 x i8> %p1;
-; CHECK-NEXT:    {{.*}}|    3: <29, 3, 3, 5>         |    %v1 = select i1 %p0, <8 x i16> %p2,
+; CHECK-NEXT:    {{.*}}|    3: <29, 4, 4, 2>         |    %v2 = select i1 %v0, <8 x i16> %p2,
 ; CHECK-NEXT:          |                             |        <8 x i16> %p2;
-; CHECK-NEXT:    {{.*}}|    3: <29, 3, 3, 6>         |    %v2 = select i1 %p0, <4 x i32> %p3,
+; CHECK-NEXT:    {{.*}}|    3: <29, 4, 4, 3>         |    %v3 = select i1 %v0, <4 x i32> %p3,
 ; CHECK-NEXT:          |                             |        <4 x i32> %p3;
 
   ; Verify computed results are of right type.
-  %v3 = and <16 x i8> %v0, %v0
-  %v4 = add <8 x i16> %v1, %v1
-  %v5 = add <4 x i32> %v2, %v2
+  %v4 = and <16 x i8> %v1, %v1
+  %v5 = add <8 x i16> %v2, %v2
+  %v6 = add <4 x i32> %v3, %v3
   ret void
 
-; CHECK-NEXT:    {{.*}}|    3: <2, 3, 3, 10>         |    %v3 = and <16 x i8> %v0, %v0;
-; CHECK-NEXT:    {{.*}}|    3: <2, 3, 3, 0>          |    %v4 = add <8 x i16> %v1, %v1;
-; CHECK-NEXT:    {{.*}}|    3: <2, 3, 3, 0>          |    %v5 = add <4 x i32> %v2, %v2;
+; CHECK-NEXT:    {{.*}}|    3: <2, 3, 3, 10>         |    %v4 = and <16 x i8> %v1, %v1;
+; CHECK-NEXT:    {{.*}}|    3: <2, 3, 3, 0>          |    %v5 = add <8 x i16> %v2, %v2;
+; CHECK-NEXT:    {{.*}}|    3: <2, 3, 3, 0>          |    %v6 = add <4 x i32> %v3, %v3;
 ; CHECK-NEXT:    {{.*}}|    3: <10>                  |    ret void;
 
 }
 
 
 ; Test select on floating vectors
-define void @TestVecFloatTypes(i1 %p0, <4 x float> %p1) {
+define void @TestVecFloatTypes(i32 %p0, <4 x float> %p1) {
 
-; CHECK:               |                             |  %b0:
+  %v0 = trunc i32 %p0 to i1;  
+  %v1 = select i1 %v0, <4 x float> %p1, <4 x float> %p1
 
-  %v0 = select i1 %p0, <4 x float> %p1, <4 x float> %p1
-
-; CHECK-NEXT:    {{.*}}|    3: <29, 1, 1, 2>         |    %v0 = select i1 %p0, 
+; CHECK:         {{.*}}|    {{.*}}                   |    {{.*}} trunc
+; CHECK-NEXT:    {{.*}}|    3: <29, 2, 2, 1>         |    %v1 = select i1 %v0, 
 ; CHECK-NEXT:          |                             |        <4 x float> %p1, 
 ; CHECK-NEXT:          |                             |        <4 x float> %p1;
 
   ; Verify computed results are of right type.
-  %v2 = fadd <4 x float> %v0, %v0
+  %v2 = fadd <4 x float> %v1, %v1
   ret void
 
-; CHECK-NEXT:    {{.*}}|    3: <2, 1, 1, 0>          |    %v1 = fadd <4 x float> %v0, %v0;
+; CHECK-NEXT:    {{.*}}|    3: <2, 1, 1, 0>          |    %v2 = fadd <4 x float> %v1, %v1;
 ; CHECK-NEXT:    {{.*}}|    3: <10>                  |    ret void;
 
 }

@@ -1,4 +1,4 @@
-//===- PNaClABIVerifyModule.h - Verify PNaCl ABI rules --------------------===//
+//===- PNaClABIVerifyModule.h - Verify PNaCl ABI rules ----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -18,29 +18,12 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/NaCl.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
 
-// Holds the set of allowed instrinsics.
-class PNaClAllowedIntrinsics {
-  LLVMContext *Context;
-  // Maps from an allowed intrinsic's name to its type.
-  StringMap<FunctionType *> Mapping;
-
-  // Tys is an array of type parameters for the intrinsic.  This
-  // defaults to an empty array.
-  void addIntrinsic(Intrinsic::ID ID,
-                    ArrayRef<Type *> Tys = ArrayRef<Type*>()) {
-    Mapping[Intrinsic::getName(ID, Tys)] =
-        Intrinsic::getType(*Context, ID, Tys);
-  }
-public:
-  PNaClAllowedIntrinsics(LLVMContext *Context);
-  bool isAllowed(const Function *Func);
-};
+class PNaClAllowedIntrinsics;
 
 // This pass should not touch function bodies, to stay streaming-friendly
 class PNaClABIVerifyModule : public ModulePass {

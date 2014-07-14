@@ -16,6 +16,7 @@
 #define NACL_BITCODE_READER_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Analysis/NaCl/PNaClAllowedIntrinsics.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
@@ -141,6 +142,7 @@ class NaClBitcodeReader : public GVMaterializer {
   NaClBitcodeHeader Header;  // Header fields of the PNaCl bitcode file.
   LLVMContext &Context;
   Module *TheModule;
+  PNaClAllowedIntrinsics AllowedIntrinsics;
   MemoryBuffer *Buffer;
   bool BufferOwned;
   OwningPtr<NaClBitstreamReader> StreamFile;
@@ -197,22 +199,24 @@ class NaClBitcodeReader : public GVMaterializer {
 public:
   explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
                              bool AcceptSupportedOnly = true)
-    : Context(C), TheModule(0), Buffer(buffer), BufferOwned(false),
-      LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ValueList(C),
-      SeenFirstFunctionBody(false),
-      AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
-      IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
+      : Context(C), TheModule(0), AllowedIntrinsics(&C),
+        Buffer(buffer), BufferOwned(false),
+        LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
+        ValueList(C),
+        SeenFirstFunctionBody(false),
+        AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
+        IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
   explicit NaClBitcodeReader(StreamingMemoryObject *streamer,
                              LLVMContext &C,
                              bool AcceptSupportedOnly = true)
-    : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
-      LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ValueList(C),
-      SeenFirstFunctionBody(false),
-      AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
-      IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
+      : Context(C), TheModule(0), AllowedIntrinsics(&C),
+        Buffer(0), BufferOwned(false),
+        LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
+        ValueList(C),
+        SeenFirstFunctionBody(false),
+        AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
+        IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
   ~NaClBitcodeReader() {
     FreeState();
