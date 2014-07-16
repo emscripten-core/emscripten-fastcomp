@@ -133,7 +133,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     std::vector<Instruction*> ToErase;
     std::set<LandingPadInst*> LandingPads;
 
-    bool AllowExceptionsInFunc = (WhitelistSet.count(F->getName()) != 0);
+    bool AllowExceptionsInFunc = WhitelistSet.empty() || (WhitelistSet.count("_" + F->getName().str()) != 0);
 
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       // check terminator for invokes
