@@ -52,10 +52,10 @@
 
 using namespace llvm;
 
-static cl::opt<std::string>
+static cl::list<std::string>
 Whitelist("emscripten-cxx-exceptions-whitelist",
           cl::desc("Enables C++ exceptions in emscripten (see emscripten EXCEPTION_CATCHING_WHITELIST option)"),
-          cl::init(""));
+          cl::CommaSeparated);
 
 namespace {
   class LowerEmExceptions : public ModulePass {
@@ -123,9 +123,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   
   // Process
 
-  bool HasWhitelist = Whitelist.size() > 0;
-  std::string WhitelistChecker;
-  if (HasWhitelist) WhitelistChecker = "," + Whitelist + ",";
+  std::set<std::string> WhitelistSet(Whitelist.begin(), Whitelist.end());
 
   bool Changed = false;
 
@@ -135,7 +133,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
     std::vector<Instruction*> ToErase;
     std::set<LandingPadInst*> LandingPads;
 
-    bool AllowExceptionsInFunc = !HasWhitelist || int(WhitelistChecker.find(F->getName())) > 0;
+    bool AllowExceptionsInFunc = (WhitelistSet.count(F->getName()) != 0);
 
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       // check terminator for invokes
