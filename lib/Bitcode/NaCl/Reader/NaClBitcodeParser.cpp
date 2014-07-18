@@ -56,6 +56,7 @@ void NaClBitcodeParserListener::SetBID() {
   Parser->Record.Data.Values = Values;
   GlobalBlockID = Values[0];
   Parser->SetBID();
+  Values.clear();
 }
 
 void NaClBitcodeParserListener::EndBlockInfoBlock() {
