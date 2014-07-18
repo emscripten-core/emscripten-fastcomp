@@ -895,17 +895,22 @@ bool ExpandI64::splitInst(Instruction *I) {
           HighSI->addCase(cast<ConstantInt>(ConstantInt::get(i32, V[i].first)), BB);
           // fix phis, we used to go SwitchBB->BB, but now go SwitchBB->NewBB->BB, so we look like we arrived from NewBB. Replace the phi from the
           // now unneeded SwitchBB to the new BB
+          // We cannot do this here right now, as phis we encounter may be in the middle of processing (empty), so we queue these.
           for (BasicBlock::iterator I = BB->begin(); I != BB->end(); ++I) {
             PHINode *Phi = dyn_cast<PHINode>(I);
             if (!Phi) break;
-            Phi->setIncomingBlock(Phi->getBasicBlockIndex(SwitchBB), NewBB);
+            PhiBlockChange Change;
+            Change.DD = BB;
+            Change.SwitchBB = SwitchBB;
+            Change.NewBB = NewBB;
+            PhiBlockChanges.push_back(Change);
+            break; // we saw a phi on this BB, and pushed a Change
           }
         }
 
         // We used to go SwitchBB->DD, but now go SwitchBB->NewBB->DD, fix that like with BB above. However here we do not replace,
         // as the switch BB is still possible to arrive from - we can arrive at the default if either the lower bits were wrong (we
         // arrive from the switchBB) or from the NewBB if the high bits were wrong.
-        // We cannot do this here right now, as phis we encounter may be in the middle of processing (empty), so we queue these.
         PhiBlockChange Change;
         Change.DD = DD;
         Change.SwitchBB = SwitchBB;
