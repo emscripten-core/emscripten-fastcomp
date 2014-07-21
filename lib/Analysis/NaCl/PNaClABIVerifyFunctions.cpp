@@ -420,6 +420,10 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
                 Inst->getParent()->getParent()->getContext());
             const NaCl::AtomicIntrinsics::AtomicIntrinsic *I =
                 AtomicIntrinsics->find(Call->getIntrinsicID(), T);
+            if (!I)
+              // All intrinsics have an I32 overload. Failure here means there
+              // is no such intrinsic.
+              return "invalid atomic intrinsic";
             if (!hasAllowedAtomicMemoryOrder(I, Call))
               return "invalid memory order";
             if (!hasAllowedAtomicRMWOperation(I, Call))
