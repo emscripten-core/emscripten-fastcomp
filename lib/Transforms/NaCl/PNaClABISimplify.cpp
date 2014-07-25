@@ -32,6 +32,12 @@ EnableEmCxxExceptions("enable-emscripten-cxx-exceptions",
                       cl::desc("Enables C++ exceptions in emscripten"),
                       cl::init(false));
 
+static cl::opt<bool> // XXX EMSCRIPTEN
+EnableEmAsyncify("emscripten-asyncify",
+                cl::desc("Enable asyncify transformation (see emscripten ASYNCIFY option)"),
+                cl::init(false));
+
+
 void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   if (EnableSjLjEH) {
     // This comes before ExpandTls because it introduces references to
@@ -88,6 +94,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
 #if 0 // XXX EMSCRIPTEN: We don't currently have tls, and we don't have the same complications with extern_weak
   PM.add(createGlobalCleanupPass());
 #endif
+
+  if (EnableEmAsyncify) // XXX EMSCRIPTEN
+    PM.add(createLowerEmAsyncifyPass());
 }
 
 void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {

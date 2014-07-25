@@ -189,6 +189,27 @@ DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
   return getAssign(CI) + "tempRet0";
 })
 
+// supporting async functions, see `<emscripten>/src/library_async.js` for detail.
+DEF_CALL_HANDLER(emscripten_alloc_async_context, {
+  // insert sp as the 2nd parameter
+  return getAssign(CI) + "_emscripten_alloc_async_context(" + getValueAsStr(CI->getOperand(0)) + ",sp)|0";
+})
+DEF_CALL_HANDLER(emscripten_check_async, {
+  return getAssign(CI) + "___async";
+})
+// prevent unwinding the stack
+// preserve the return value of the return inst
+DEF_CALL_HANDLER(emscripten_do_not_unwind, {
+  return "sp = STACKTOP";
+})
+// prevent unwinding the async stack
+DEF_CALL_HANDLER(emscripten_do_not_unwind_async, {
+  return "___async_unwind = 0";
+})
+DEF_CALL_HANDLER(emscripten_get_async_return_value_addr, {
+  return getAssign(CI) + "___async_retval";
+})
+
 // emscripten instrinsics
 DEF_CALL_HANDLER(emscripten_debugger, {
   CanValidate = false;
@@ -560,6 +581,11 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_longjmp);
   SETUP_CALL_HANDLER(emscripten_check_longjmp);
   SETUP_CALL_HANDLER(emscripten_get_longjmp_result);
+  SETUP_CALL_HANDLER(emscripten_alloc_async_context);
+  SETUP_CALL_HANDLER(emscripten_check_async);
+  SETUP_CALL_HANDLER(emscripten_do_not_unwind);
+  SETUP_CALL_HANDLER(emscripten_do_not_unwind_async);
+  SETUP_CALL_HANDLER(emscripten_get_async_return_value_addr);
   SETUP_CALL_HANDLER(emscripten_debugger);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
