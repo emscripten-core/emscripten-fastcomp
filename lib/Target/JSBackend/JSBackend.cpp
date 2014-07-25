@@ -2187,7 +2187,10 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
   } else if (const ConstantArray *CA = dyn_cast<ConstantArray>(CV)) {
     if (calculate) {
       for (Constant::const_use_iterator UI = CV->use_begin(), UE = CV->use_end(); UI != UE; ++UI) {
-        assert((*UI)->getName() == "llvm.used"); // llvm.used is acceptable (and can be ignored)
+        // llvm.used and llvm.global.annotations are acceptable (and can be
+        // ignored).
+        assert((*UI)->getName() == "llvm.used" ||
+               (*UI)->getName() == "llvm.global.annotations");
       }
       // export the kept-alives
       for (unsigned i = 0; i < CA->getNumOperands(); i++) {
