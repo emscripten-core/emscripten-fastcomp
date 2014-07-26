@@ -2187,18 +2187,21 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
   } else if (const ConstantArray *CA = dyn_cast<ConstantArray>(CV)) {
     if (calculate) {
       for (Constant::const_use_iterator UI = CV->use_begin(), UE = CV->use_end(); UI != UE; ++UI) {
-        // llvm.used and llvm.global.annotations are acceptable (and can be
-        // ignored).
-        assert((*UI)->getName() == "llvm.used" ||
-               (*UI)->getName() == "llvm.global.annotations");
-      }
-      // export the kept-alives
-      for (unsigned i = 0; i < CA->getNumOperands(); i++) {
-        const Constant *C = CA->getOperand(i);
-        if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
-          C = CE->getOperand(0); // ignore bitcasts
+        if ((*UI)->getName() == "llvm.used") {
+          // export the kept-alives
+          for (unsigned i = 0; i < CA->getNumOperands(); i++) {
+            const Constant *C = CA->getOperand(i);
+            if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+              C = CE->getOperand(0); // ignore bitcasts
+            }
+            Exports.push_back(getJSName(C));
+          }
+        } else if ((*UI)->getName() == "llvm.global.annotations") {
+          // llvm.global.annotations can be ignored.
+        } else {
+          llvm_unreachable("Unexpected constant array");
         }
-        Exports.push_back(getJSName(C));
+        break; // we assume one use here
       }
     }
   } else if (const ConstantStruct *CS = dyn_cast<ConstantStruct>(CV)) {
