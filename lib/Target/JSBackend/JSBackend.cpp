@@ -241,25 +241,6 @@ namespace {
                              "count=" + Twine(a.first) + " "
                              "elementsize=" + Twine(a.second));
       }
-      if (s == "_ZTVN10__cxxabiv119__pointer_type_infoE" ||
-          s == "_ZTVN10__cxxabiv117__class_type_infoE" ||
-          s == "_ZTVN10__cxxabiv120__si_class_type_infoE" ||
-          s == "_ZTIi" ||
-          s == "_ZTIj" ||
-          s == "_ZTIl" ||
-          s == "_ZTIm" ||
-          s == "_ZTIx" ||
-          s == "_ZTIy" ||
-          s == "_ZTIf" ||
-          s == "_ZTId" ||
-          s == "_ZTIe" ||
-          s == "_ZTIc" ||
-          s == "_ZTIa" ||
-          s == "_ZTIh" ||
-          s == "_ZTIs" ||
-          s == "_ZTIt") {
-        NamedGlobals[s] = Ret;
-      }
       return Ret;
     }
     // returns the internal offset inside the proper block: GlobalData8, 32, 64
