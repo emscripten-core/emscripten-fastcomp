@@ -300,6 +300,7 @@ void initializeResolvePNaClIntrinsicsPass(PassRegistry&);
 void initializeRewriteAtomicsPass(PassRegistry&);
 void initializeRewriteLLVMIntrinsicsPass(PassRegistry&);
 void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
+void initializeSandboxMemoryAccessesPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 // @LOCALMOD-END

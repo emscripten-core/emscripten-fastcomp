@@ -1,4 +1,4 @@
-;===- ./tools/opt/LLVMBuild.txt --------------------------------*- Conf -*--===;
+;===- ./lib/Transforms/MinSFI/LLVMBuild.txt --------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -16,7 +16,8 @@
 ;===------------------------------------------------------------------------===;
 
 [component_0]
-type = Tool
-name = opt
-parent = Tools
-required_libraries = AsmParser BitReader BitWriter IRReader NaClBitWriter IPO Instrumentation Scalar ObjCARC all-targets NaClTransforms NaClAnalysis MinSFITransforms
+type = Library
+name = MinSFITransforms
+parent = Transforms
+library_name = MinSFITransforms
+required_libraries = Core Support IPO NaClTransforms

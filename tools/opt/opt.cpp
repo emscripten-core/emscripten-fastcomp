@@ -659,6 +659,7 @@ int main(int argc, char **argv) {
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
+  initializeSandboxMemoryAccessesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   // @LOCALMOD-END
