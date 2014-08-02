@@ -146,10 +146,10 @@ DEF_CALL_HANDLER(emscripten_postinvoke, {
   return getAssign(CI) + "__THREW__; __THREW__ = 0";
 })
 DEF_CALL_HANDLER(emscripten_landingpad, {
-  std::string Ret = getAssign(CI) + "___cxa_find_matching_catch(-1,-1";
+  std::string Ret = getAssign(CI) + "___cxa_find_matching_catch(";
   unsigned Num = getNumArgOperands(CI);
   for (unsigned i = 1; i < Num-1; i++) { // ignore personality and cleanup XXX - we probably should not be doing that!
-    Ret += ",";
+    if (i > 1) Ret += ",";
     Ret += getValueAsCastStr(CI->getOperand(i));
   }
   Ret += ")|0";
