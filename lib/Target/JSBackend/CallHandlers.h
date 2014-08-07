@@ -162,7 +162,7 @@ DEF_CALL_HANDLER(emscripten_resume, {
 // setjmp support
 
 DEF_CALL_HANDLER(emscripten_prep_setjmp, {
-  return getAdHocAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; STACKTOP=(STACKTOP+" + utostr(4 * 2 * (MaxSetjmps+1)) + ")|0;" +
+  return getAdHocAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; " + getStackBump(4 * 2 * (MaxSetjmps+1)) +
          "HEAP32[_setjmpTable>>2]=0";
 })
 DEF_CALL_HANDLER(emscripten_setjmp, {

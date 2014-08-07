@@ -427,6 +427,8 @@ namespace {
     std::string getIMul(const Value *, const Value *);
     std::string getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep=';');
     std::string getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep=';');
+    std::string getStackBump(unsigned Size);
+    std::string getStackBump(const std::string &Size);
 
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
@@ -920,6 +922,18 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
     }
   }
   return text;
+}
+
+std::string JSWriter::getStackBump(unsigned Size) {
+  return getStackBump(utostr(Size));
+}
+
+std::string JSWriter::getStackBump(const std::string &Size) {
+  std::string ret = "STACKTOP=STACKTOP+" + Size + "|0;";
+  if (EmscriptenAssertions) {
+    ret += " if ((STACKTOP|0) >= (STACK_MAX|0)) abort();";
+  }
+  return ret;
 }
 
 std::string JSWriter::getOpName(const Value* V) { // TODO: remove this
@@ -1454,7 +1468,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     } else {
       Size = stackAlignStr("((" + utostr(BaseSize) + '*' + getValueAsStr(AS) + ")|0)");
     }
-    Code << getAssign(AI) << "STACKTOP; STACKTOP = STACKTOP + " << Size << "|0";
+    Code << getAssign(AI) << "STACKTOP; " << getStackBump(Size);
     break;
   }
   case Instruction::Load: {
@@ -1841,7 +1855,8 @@ void JSWriter::printFunctionBody(const Function *F) {
   // Emit stack entry
   Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
   if (uint64_t FrameSize = Allocas.getFrameSize()) {
-    Out << "\n " "STACKTOP = STACKTOP + " << FrameSize << "|0;";
+    Out << "\n ";
+    Out << getStackBump(FrameSize);
   }
 
   // Emit (relooped) code
