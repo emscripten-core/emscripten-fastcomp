@@ -50,7 +50,8 @@ static const char GlobalMemBaseVariableName[] = "__sfi_memory_base";
 using namespace llvm;
 
 namespace {
-class SandboxMemoryAccesses : public FunctionPass {
+// This pass needs to be a ModulePass because it adds a GlobalVariable.
+class SandboxMemoryAccesses : public ModulePass {
   Value *MemBaseVar;
   Type *I32;
   Type *I64;
@@ -58,21 +59,21 @@ class SandboxMemoryAccesses : public FunctionPass {
   void sandboxPtrOperand(Instruction *Inst, unsigned int OpNum, Function &Func,
                          Value **MemBase);
   void checkDoesNotHavePointerOperands(Instruction *Inst);
+  void runOnFunction(Function &Func);
 
  public:
   static char ID;
-  SandboxMemoryAccesses() : FunctionPass(ID) {
+  SandboxMemoryAccesses() : ModulePass(ID) {
     initializeSandboxMemoryAccessesPass(*PassRegistry::getPassRegistry());
     MemBaseVar = NULL;
     I32 = I64 = NULL;
   }
 
-  virtual bool doInitialization(Module &M);
-  virtual bool runOnFunction(Function &Func);
+  virtual bool runOnModule(Module &M);
 };
 }  // namespace
 
-bool SandboxMemoryAccesses::doInitialization(Module &M) {
+bool SandboxMemoryAccesses::runOnModule(Module &M) {
   I32 = Type::getInt32Ty(M.getContext());
   I64 = Type::getInt64Ty(M.getContext());
 
@@ -81,6 +82,9 @@ bool SandboxMemoryAccesses::doInitialization(Module &M) {
   // the runtime. We assume that all original global variables have been 
   // removed during the AllocateDataSegment pass.
   MemBaseVar = M.getOrInsertGlobal(GlobalMemBaseVariableName, I64);
+
+  for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func)
+    runOnFunction(*Func);
 
   return true;
 }
@@ -188,7 +192,7 @@ void SandboxMemoryAccesses::checkDoesNotHavePointerOperands(Instruction *Inst) {
                        "pointer-type operands");
 }
 
-bool SandboxMemoryAccesses::runOnFunction(Function &Func) {
+void SandboxMemoryAccesses::runOnFunction(Function &Func) {
   Value *MemBase = NULL;
 
   for (Function::iterator BB = Func.begin(), E = Func.end(); BB != E; ++BB) {
@@ -222,8 +226,6 @@ bool SandboxMemoryAccesses::runOnFunction(Function &Func) {
       }
     }
   }
-
-  return true;
 }
 
 char SandboxMemoryAccesses::ID = 0;
