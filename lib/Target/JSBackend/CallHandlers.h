@@ -692,9 +692,14 @@ void setupCallHandlers() {
 
 std::string handleCall(const Instruction *CI) {
   const Value *CV = getActuallyCalledValue(CI);
-  if (isa<InlineAsm>(CV)) {
-    errs() << "In function " << CI->getParent()->getParent()->getName() << "()\n";
-    report_fatal_error("asm() not supported, use EM_ASM() (see emscripten.h)");
+  if (const InlineAsm* IA = dyn_cast<const InlineAsm>(CV)) {
+    if (IA->hasSideEffects() && IA->getAsmString() == "") {
+      return "/* asm() memory 'barrier' */";
+    } else {
+      errs() << "In function " << CI->getParent()->getParent()->getName() << "()\n";
+      errs() << *IA << "\n";
+      report_fatal_error("asm() with non-empty content not supported, use EM_ASM() (see emscripten.h)");
+    }
   }
 
   // Get the name to call this function by. If it's a direct call, meaning
