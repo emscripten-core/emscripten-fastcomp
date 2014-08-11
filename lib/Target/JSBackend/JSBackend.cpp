@@ -929,7 +929,7 @@ std::string JSWriter::getStackBump(unsigned Size) {
 }
 
 std::string JSWriter::getStackBump(const std::string &Size) {
-  std::string ret = "STACKTOP=STACKTOP+" + Size + "|0;";
+  std::string ret = "STACKTOP = STACKTOP + " + Size + "|0;";
   if (EmscriptenAssertions) {
     ret += " if ((STACKTOP|0) >= (STACK_MAX|0)) abort();";
   }
