@@ -2650,6 +2650,7 @@ void JSWriter::printModuleBody() {
   assert(GlobalData32.size() == 0 && GlobalData8.size() == 0); // FIXME when we use optimal constant alignments
 
   // TODO fix commas
+  Out << "if (!ENVIRONMENT_IS_PTHREAD) {\n";
   Out << "/* memory initializer */ allocate([";
   printCommaSeparated(GlobalData64);
   if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
@@ -2660,7 +2661,8 @@ void JSWriter::printModuleBody() {
     Out << ",";
   }
   printCommaSeparated(GlobalData8);
-  Out << "], \"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);";
+  Out << "], \"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);\n";
+  Out << "}\n";
 
   // Emit metadata for emcc driver
   Out << "\n\n// EMSCRIPTEN_METADATA\n";
