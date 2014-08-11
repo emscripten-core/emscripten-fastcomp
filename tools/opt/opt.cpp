@@ -627,6 +627,7 @@ int main(int argc, char **argv) {
   initializeTarget(Registry);
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
+  initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
