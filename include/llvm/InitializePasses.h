@@ -271,6 +271,7 @@ void initializeAllocateDataSegmentPass(PassRegistry&);
 void initializeBackendCanonicalizePass(PassRegistry&);
 void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
 void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
+void initializeExpandAllocasPass(PassRegistry&);
 void initializeExpandArithWithOverflowPass(PassRegistry&);
 void initializeExpandByValPass(PassRegistry&);
 void initializeExpandConstantExprPass(PassRegistry&);

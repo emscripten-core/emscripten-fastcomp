@@ -631,6 +631,7 @@ int main(int argc, char **argv) {
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
+  initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
