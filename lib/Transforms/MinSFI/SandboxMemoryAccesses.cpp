@@ -30,14 +30,16 @@
 // not listed above, with the exception of ptrtoint needed for function
 // pointers. Assumes those will be sandboxed by a CFI pass applied afterwards.
 //
-// The pass recognizes pointer arithmetic produced by ExpandGetElementPtr and
-// reuses its final integer value to save target instructions. This optimization
-// is safe only if the runtime creates a 4GB guard region after the dedicated
-// memory region.
+// The pass recognizes the pointer arithmetic produced by ExpandGetElementPtr
+// and reuses its final integer value to save target instructions. This
+// optimization, as well as the memcpy, memmove and memset intrinsics, is safe
+// only if the runtime creates a guard region after the dedicated memory region.
+// The guard region must be of the same size as the memory region.
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Pass.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -53,10 +55,12 @@ namespace {
 // This pass needs to be a ModulePass because it adds a GlobalVariable.
 class SandboxMemoryAccesses : public ModulePass {
   Value *MemBaseVar;
+  DataLayout *DL;
   Type *I32;
   Type *I64;
 
-  void sandboxPtrOperand(Instruction *Inst, unsigned int OpNum, Function &Func,
+  void sandboxPtrOperand(Instruction *Inst, unsigned int OpNum,
+                         bool IsFirstClassValueAccess, Function &Func,
                          Value **MemBase);
   void checkDoesNotHavePointerOperands(Instruction *Inst);
   void runOnFunction(Function &Func);
@@ -66,6 +70,7 @@ class SandboxMemoryAccesses : public ModulePass {
   SandboxMemoryAccesses() : ModulePass(ID) {
     initializeSandboxMemoryAccessesPass(*PassRegistry::getPassRegistry());
     MemBaseVar = NULL;
+    DL = NULL;
     I32 = I64 = NULL;
   }
 
@@ -74,6 +79,8 @@ class SandboxMemoryAccesses : public ModulePass {
 }  // namespace
 
 bool SandboxMemoryAccesses::runOnModule(Module &M) {
+  DataLayout Layout(&M);
+  DL = &Layout;
   I32 = Type::getInt32Ty(M.getContext());
   I64 = Type::getInt64Ty(M.getContext());
 
@@ -91,6 +98,7 @@ bool SandboxMemoryAccesses::runOnModule(Module &M) {
 
 void SandboxMemoryAccesses::sandboxPtrOperand(Instruction *Inst,
                                               unsigned int OpNum,
+                                              bool IsFirstClassValueAccess,
                                               Function &Func, Value **MemBase) {
   // Function must first acquire the sandbox memory region base from
   // the global variable. If this is the first sandboxed pointer, insert
@@ -110,31 +118,35 @@ void SandboxMemoryAccesses::sandboxPtrOperand(Instruction *Inst,
   // case below.
   //
   // The recognized pattern is:
-  //   %0 = add i32 %x, <const>               ; must be positive
+  //   %0 = add i32 %x, <const>               ; treated as signed, must be >= 0
   //   %ptr = inttoptr i32 %0 to <type>*
   // and can be replaced with:
   //   %0 = zext i32 %x to i64
   //   %1 = add i64 %0, %mem_base
-  //   %2 = add i64 %1, <const>               ; zero-extended to i64
+  //   %2 = add i64 %1, <const>               ; extended to i64
   //   %ptr = inttoptr i64 %2 to <type>*
   //
-  // Since this enables the code to access memory outside the dedicated
-  // region, this is safe only if the 4GB sandbox region is followed by
-  // a 4GB guard region.
+  // Since this enables the code to access memory outside the dedicated region,
+  // this is safe only if the memory region is followed by a 1MB guard region.
 
   bool OptimizeGEP = false;
   Instruction *RedundantCast = NULL, *RedundantAdd = NULL;
-  if (IntToPtrInst *Cast = dyn_cast<IntToPtrInst>(Ptr)) {
-    if (BinaryOperator *Op = dyn_cast<BinaryOperator>(Cast->getOperand(0))) {
-      if (Op->getOpcode() == Instruction::Add) {
-        if (Op->getType()->isIntegerTy(32)) {
-          if (ConstantInt *CI = dyn_cast<ConstantInt>(Op->getOperand(1))) {
-            if (CI->getSExtValue() > 0) {
-              Truncated = Op->getOperand(0);
-              OffsetConst = ConstantInt::get(I64, CI->getZExtValue());
-              RedundantCast = Cast;
-              RedundantAdd = Op;
-              OptimizeGEP = true;
+  if (IsFirstClassValueAccess) {
+    if (IntToPtrInst *Cast = dyn_cast<IntToPtrInst>(Ptr)) {
+      if (BinaryOperator *Op = dyn_cast<BinaryOperator>(Cast->getOperand(0))) {
+        if (Op->getOpcode() == Instruction::Add) {
+          if (Op->getType()->isIntegerTy(32)) {
+            if (ConstantInt *CI = dyn_cast<ConstantInt>(Op->getOperand(1))) {
+              Type *ValType = Ptr->getType()->getPointerElementType();
+              int64_t MaxOffset = (1L << 20) - DL->getTypeStoreSize(ValType);
+              int64_t Offset = CI->getSExtValue();
+              if ((Offset >= 0) && (Offset <= MaxOffset)) {
+                Truncated = Op->getOperand(0);
+                OffsetConst = ConstantInt::get(I64, Offset);
+                RedundantCast = Cast;
+                RedundantAdd = Op;
+                OptimizeGEP = true;
+              }
             }
           }
         }
@@ -199,24 +211,24 @@ void SandboxMemoryAccesses::runOnFunction(Function &Func) {
     for (BasicBlock::iterator Inst = BB->begin(), E = BB->end(); Inst != E; 
          ++Inst) {
       if (isa<LoadInst>(Inst)) {
-        sandboxPtrOperand(Inst, 0, Func, &MemBase);
+        sandboxPtrOperand(Inst, 0, true, Func, &MemBase);
       } else if (isa<StoreInst>(Inst)) {
-        sandboxPtrOperand(Inst, 1, Func, &MemBase);
+        sandboxPtrOperand(Inst, 1, true, Func, &MemBase);
       } else if (isa<MemCpyInst>(Inst) || isa<MemMoveInst>(Inst)) {
-        sandboxPtrOperand(Inst, 0, Func, &MemBase);
-        sandboxPtrOperand(Inst, 1, Func, &MemBase);
+        sandboxPtrOperand(Inst, 0, false, Func, &MemBase);
+        sandboxPtrOperand(Inst, 1, false, Func, &MemBase);
       } else if (isa<MemSetInst>(Inst)) {
-        sandboxPtrOperand(Inst, 0, Func, &MemBase);
+        sandboxPtrOperand(Inst, 0, false, Func, &MemBase);
       } else if (IntrinsicInst *IntrCall = dyn_cast<IntrinsicInst>(Inst)) {
         switch (IntrCall->getIntrinsicID()) {
         case Intrinsic::nacl_atomic_load:
         case Intrinsic::nacl_atomic_cmpxchg:
-          sandboxPtrOperand(IntrCall, 0, Func, &MemBase);
+          sandboxPtrOperand(IntrCall, 0, true, Func, &MemBase);
           break;
         case Intrinsic::nacl_atomic_store:
         case Intrinsic::nacl_atomic_rmw:
         case Intrinsic::nacl_atomic_is_lock_free:
-          sandboxPtrOperand(IntrCall, 1, Func, &MemBase);
+          sandboxPtrOperand(IntrCall, 1, true, Func, &MemBase);
           break;
         default:
           checkDoesNotHavePointerOperands(IntrCall);
