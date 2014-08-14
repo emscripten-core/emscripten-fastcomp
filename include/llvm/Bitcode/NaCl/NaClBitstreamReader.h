@@ -564,7 +564,7 @@ private:
   void readAbbreviatedField(const NaClBitCodeAbbrevOp &Op,
                             SmallVectorImpl<uint64_t> &Vals);
   void skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op);
-  
+
 public:
 
   /// getAbbrev - Return the abbreviation for the specified AbbrevId.
@@ -587,6 +587,10 @@ public:
   // true.
   void ReadAbbrevRecord(bool IsLocal,
                         NaClAbbrevListener *Listener);
+
+  // Skips over an abbreviation record. Duplicates code of ReadAbbrevRecord,
+  // except that no abbreviation is built.
+  void SkipAbbrevRecord();
   
   bool ReadBlockInfoBlock(NaClAbbrevListener *Listener);
 };

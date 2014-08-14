@@ -269,6 +269,22 @@ void NaClBitstreamCursor::ReadAbbrevRecord(bool IsLocal,
   }
 }
 
+void NaClBitstreamCursor::SkipAbbrevRecord() {
+  unsigned NumOpInfo = ReadVBR(5);
+  for (unsigned i = 0; i != NumOpInfo; ++i) {
+    bool IsLiteral = Read(1) ? true : false;
+    if (IsLiteral) {
+      ReadVBR64(8);
+      continue;
+    }
+
+    NaClBitCodeAbbrevOp::Encoding E = (NaClBitCodeAbbrevOp::Encoding)Read(3);
+    if (NaClBitCodeAbbrevOp::hasEncodingData(E)) {
+      ReadVBR64(5);
+    }
+  }
+}
+
 bool NaClBitstreamCursor::ReadBlockInfoBlock(NaClAbbrevListener *Listener) {
   // If this is the second stream to get to the block info block, skip it.
   if (BitStream->hasBlockInfoRecords())
