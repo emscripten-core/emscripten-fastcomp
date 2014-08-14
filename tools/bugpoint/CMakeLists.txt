@@ -1,6 +1,6 @@
 set(LLVM_LINK_COMPONENTS asmparser instrumentation scalaropts ipo
   linker bitreader bitwriter irreader vectorize objcarcopts naclanalysis
-  nacltransforms naclbitreader)
+  nacltransforms naclbitreader minsfitransforms)
 
 add_llvm_tool(bugpoint
   BugDriver.cpp
