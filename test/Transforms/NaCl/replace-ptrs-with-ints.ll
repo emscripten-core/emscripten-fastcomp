@@ -435,6 +435,20 @@ define void @alloca_cast_stripping() {
 ; CHECK-NEXT: %buf.bc = bitcast i8* %buf to i32*
 ; CHECK-NEXT: store i32 0, i32* %buf.bc
 
+define void @alloca_array_i64() {
+  %a = alloca i32, i64 1024
+  unreachable
+}
+; CHECK-LABEL: define void @alloca_array_i64()
+; CHECK-NEXT:    %a = alloca i8, i32 4096
+
+define void @alloca_array_i8() {
+  %a = alloca i32, i8 128
+  unreachable
+}
+; CHECK-LABEL: define void @alloca_array_i8()
+; CHECK-NEXT:    %a = alloca i8, i32 512
+
 
 define i1 @compare(i8* %ptr1, i8* %ptr2) {
   %cmp = icmp ult i8* %ptr1, %ptr2

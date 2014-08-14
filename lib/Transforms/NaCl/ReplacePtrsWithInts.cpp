@@ -470,7 +470,11 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     // Expand out alloca's built-in multiplication.
     Value *MulSize;
     if (ConstantInt *C = dyn_cast<ConstantInt>(Alloca->getArraySize())) {
-      MulSize = ConstantExpr::getMul(ElementSize, C);
+      const APInt Value =
+        C->getValue().zextOrTrunc(IntPtrType->getScalarSizeInBits());
+      MulSize = ConstantExpr::getMul(ElementSize,
+                                     ConstantInt::get(IntPtrType,
+                                                      Value));
     } else {
       MulSize = BinaryOperator::Create(
           Instruction::Mul, ElementSize, Alloca->getArraySize(),
