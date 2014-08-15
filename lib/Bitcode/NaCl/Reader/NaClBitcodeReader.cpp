@@ -439,13 +439,16 @@ namespace {
 // placeholders for relocation records, and the corresponding cost
 // of duplicating initializers when these placeholders are replaced.
 class ParseGlobalsHandler {
+  ParseGlobalsHandler(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
+  void operator=(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
+
   NaClBitcodeReader &Reader;
   NaClBitcodeReaderValueList &ValueList;
   NaClBitstreamCursor &Stream;
   LLVMContext &Context;
   Module *TheModule;
 
-  // Holds record data read in when
+  // Holds read data record.
   SmallVector<uint64_t, 64> Record;
   // True when processing a global variable. Stays true until all records
   // are processed, and the global variable is created.
@@ -686,7 +689,9 @@ public:
       case naclbitc::GLOBALVAR_COUNT:
         if (Record.size() != 1)
           return Reader.Error("Invalid global count record");
-        NumGlobals = Record[0];
+        // Note: NumGlobals should have been set in GenerateGlobalVarsPass.
+        // Fail if methods are called in wrong order.
+        assert(NumGlobals == Record[0]);
         break;
       }
 
