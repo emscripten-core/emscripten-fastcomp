@@ -78,23 +78,8 @@ public:
 
 class NaClBitcodeReaderValueList {
   std::vector<WeakVH> ValuePtrs;
-  // Holds the map from constant placeholders to their corresponding
-  // real values. Used to fix up forward referenced relocations in the
-  // globals block.
-  typedef DenseMap<Constant*, Constant*> GlobalPlaceholderMapType;
-  GlobalPlaceholderMapType GlobalPlaceholderMap;
-  LLVMContext &Context;
-  // Returns Exp unless it is a placeholder. When a placeholder, returns
-  // the corresponding fixed expression.
-  Constant *GetReplacedGlobalConstant(Constant * const Exp) const {
-    GlobalPlaceholderMapType::const_iterator Pos
-        = GlobalPlaceholderMap.find(Exp);
-    if (Pos == GlobalPlaceholderMap.end())
-      return Exp;
-    return Pos->second;
-  }
 public:
-  NaClBitcodeReaderValueList(LLVMContext &C) : Context(C) {}
+  NaClBitcodeReaderValueList() {}
   ~NaClBitcodeReaderValueList() {}
 
   // vector compatibility methods
@@ -105,8 +90,6 @@ public:
   }
 
   void clear() {
-    assert(GlobalPlaceholderMap.empty()
-           && "Global placeholders not resolved?");
     ValuePtrs.clear();
   }
 
@@ -131,28 +114,12 @@ public:
   // Gets the forward reference value for Idx.
   Value *getValueFwdRef(unsigned Idx);
 
-  // Gets the corresponding constant defining the address of the
-  // corresponding global variable defined by Idx, if already defined.
-  // Otherwise, creates a forward reference for Idx, and returns the
-  // placeholder constant for the address of the corresponding global
-  // variable defined by Idx. Forward references will be fixed to
-  // match the corresponding definition defined by AssignGlobalVar,
-  // after the globals block has been read in.
-  Constant *getOrCreateGlobalVarRef(unsigned Idx, Module* M);
-
   // Assigns V to value index Idx.
   void AssignValue(Value *V, unsigned Idx);
-
-  // Assigns GV to value index Idx.
-  void AssignGlobalVar(GlobalVariable *GV, unsigned Idx);
 
   // Assigns Idx to the given value, overwriting the existing entry
   // and possibly modifying the type of the entry.
   void OverwriteValue(Value *V, unsigned Idx);
-
-  // Once all initializers for global variables are read, this method bulk
-  // resolves any forward references in the initializers.
-  void ResolveGlobalPlaceholders();
 };
 
 
@@ -220,7 +187,7 @@ public:
       : Context(C), TheModule(0), AllowedIntrinsics(&C),
         Buffer(buffer), BufferOwned(false),
         LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
-        ValueList(C),
+        ValueList(),
         SeenFirstFunctionBody(false),
         AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
         IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
@@ -231,7 +198,7 @@ public:
       : Context(C), TheModule(0), AllowedIntrinsics(&C),
         Buffer(0), BufferOwned(false),
         LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
-        ValueList(C),
+        ValueList(),
         SeenFirstFunctionBody(false),
         AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
         IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {

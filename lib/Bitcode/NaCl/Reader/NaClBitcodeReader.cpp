@@ -88,36 +88,6 @@ void NaClBitcodeReaderValueList::AssignValue(Value *V, unsigned Idx) {
   delete PrevVal;
 }
 
-void NaClBitcodeReaderValueList::AssignGlobalVar(GlobalVariable *GV,
-                                                 unsigned Idx) {
-  assert(GV);
-
-  if (Idx == size()) {
-    push_back(GV);
-    return;
-  }
-
-  if (Idx >= size())
-    resize(Idx+1);
-
-  WeakVH &OldV = ValuePtrs[Idx];
-  if (OldV == 0) {
-    OldV = GV;
-    return;
-  }
-
-  // If reached, we have a forward reference that needs to be replaced
-  // by GV. Replace the placeholder with GV for later lookups in
-  // ValuePtrs.  However, don't replace uses of placeholders yet. Wait
-  // till the end when we know all replacements, so that we can bulk
-  // replace.
-  Value *PrevVal = OldV;
-  GlobalVariable *Placeholder = cast<GlobalVariable>(PrevVal);
-  Constant *RealValue = ConstantExpr::getBitCast(GV, Placeholder->getType());
-  GlobalPlaceholderMap[Placeholder] = RealValue;
-  ValuePtrs[Idx] = GV;
-}
-
 void NaClBitcodeReaderValueList::OverwriteValue(Value *V, unsigned Idx) {
   ValuePtrs[Idx] = V;
 }
@@ -147,148 +117,6 @@ bool NaClBitcodeReaderValueList::createValueFwdRef(unsigned Idx, Type *Ty) {
   // Create a placeholder, which will later be RAUW'd.
   ValuePtrs[Idx] = new Argument(Ty);
   return false;
-}
-
-Constant *NaClBitcodeReaderValueList::getOrCreateGlobalVarRef(
-    unsigned Idx, Module *M) {
-  // First make sure the element for Idx is defined.
-  if (Idx >= size())
-    resize(Idx + 1);
-
-  // Now get its value (if applicable).
-  if (Value *V = ValuePtrs[Idx])
-    return dyn_cast<Constant>(V);
-
-  // Create a placeholder, which will later be RAUW'd.
-  Type *PlaceholderType = Type::getInt8Ty(Context);
-
-  Constant *C =
-      new GlobalVariable(*M, PlaceholderType, false,
-                         GlobalValue::ExternalLinkage, 0);
-  ValuePtrs[Idx] = C;
-  return C;
-}
-
-void NaClBitcodeReaderValueList::ResolveGlobalPlaceholders() {
-  // Replaces global initializers using bulk replacements. These
-  // replacements make a single copy of each global variable
-  // initializer (containing placeholder relocation addresses).  In
-  // particular, we must deal with the fact that initializers are
-  // constants, and hence uniqued.
-  //
-  // To do this, we work our way up to one of the above:
-  // 1) The global variable containing the initializer.
-  // 2) The struct constant defining the initializer for a global variable.
-  //
-  // The remaining cases are the constant expressions computing
-  // relocation address (and includes global variables, pointer cast
-  // operations, and additions of a constant offset).  For these
-  // operations, placeholders can only appear in one of its operands.
-  // Hence, it does not matter the order such constant expressions are
-  // replaced.
-  //
-  // On the other hand, a struct constant can contain multiple
-  // operands that should all be replaced at the same time. To do
-  // this, we delay processing struct constants until after all other
-  // constants have been duplicated.  At that point, we know that all
-  // operands to the struct constant have replacements computed for
-  // them, if replacements are needed. Hence, we can do the bulk
-  // replacements all at once.
-  //
-  // Once we reach a global variable, we replace the initializer since
-  // we know what the replaced initializer must be.
-  std::vector<GlobalVariable*> ToDeleteList;
-  ToDeleteList.reserve(GlobalPlaceholderMap.size());
-  DenseSet<Constant*> ToFixList;
-  DenseSet<ConstantStruct*> StructConstants;
-  // Used to build a copy of operands, and is used to build
-  // the replacement constant.
-  SmallVector<Constant*, 64> NewOps;
-
-  // Start by collecting the place holders, which are instances
-  // of GlobalVariable.
-  for (GlobalPlaceholderMapType::iterator
-           Iter = GlobalPlaceholderMap.begin(),
-           IterEnd = GlobalPlaceholderMap.end();
-       Iter != IterEnd; ++Iter) {
-    ToDeleteList.push_back(cast<GlobalVariable>(Iter->first));
-    ToFixList.insert(Iter->first);
-  }
-
-  // Duplicate expressions up to either the constant struct
-  // initializer, or to the global variable enclosing the initializer
-  // (if the initializer contains a single relocation computation
-  // rather than a constant struct). If at the constant struct
-  // initializer, put on list to process later. Otherwise, fix the
-  // initializer of the global variable.
-  while (!ToFixList.empty()) {
-    DenseSet<Constant*>::iterator Next = ToFixList.begin();
-    Constant *Placeholder = *Next;
-    ToFixList.erase(Next);
-    for (Value::use_iterator
-             I = Placeholder->use_begin(), E = Placeholder->use_end();
-         I != E; ++I) {
-      // Handle special case of global variable.
-      User *U = *I;
-      if (isa<GlobalVariable>(U)) {
-        I.getUse().set(GetReplacedGlobalConstant(Placeholder));
-        continue;
-      }
-
-      // Handle special case of constant struct.
-      Constant *Exp = cast<Constant>(U);
-      if (ConstantStruct *CS = dyn_cast<ConstantStruct>(Exp)) {
-        StructConstants.insert(CS);
-        continue;
-      }
-
-      // If reached, Exp is an ordinary case of constants. Create
-      // duplicate with proper replacements, and define as placeholder
-      // for Exp.
-      for (User::op_iterator I = Exp->op_begin(), E = Exp->op_end();
-           I != E; ++I) {
-        Constant *Op = cast<Constant>(*I);
-        NewOps.push_back(GetReplacedGlobalConstant(Op));
-      }
-      Constant *RealExp = cast<ConstantExpr>(Exp)->getWithOperands(NewOps);
-      GlobalPlaceholderMap[Exp] = RealExp;
-      NewOps.clear();
-      ToFixList.insert(Exp);
-    }
-  }
-
-  // Process remaining structs, which must appear as the initializer of
-  // of global variables.
-  while (!StructConstants.empty()) {
-    DenseSet<ConstantStruct*>::iterator Next = StructConstants.begin();
-    ConstantStruct *C = *Next;
-    StructConstants.erase(Next);
-
-    for (User::op_iterator I = C->op_begin(), E = C->op_end(); I != E; ++I) {
-      Constant *Op = cast<Constant>(*I);
-      NewOps.push_back(GetReplacedGlobalConstant(Op));
-    }
-    Constant *RealExp = ConstantStruct::get(C->getType(), NewOps);
-    NewOps.clear();
-
-    for (Value::use_iterator
-             I = C->use_begin(), E = C->use_end();
-         I != E; ++I) {
-      I.getUse().set(RealExp);
-    }
-  }
-
-  // Remove the initial placeholders from the program.
-  for (std::vector<GlobalVariable*>::iterator
-           I = ToDeleteList.begin(), E = ToDeleteList.end();
-       I != E; ++I) {
-    (*I)->eraseFromParent();
-  }
-
-  // Reset the placeholder map, so that any further (accidental)
-  // changes will generate a runtime error.
-  GlobalPlaceholderMapType EmptyMap;
-  GlobalPlaceholderMap.swap(EmptyMap);
 }
 
 Type *NaClBitcodeReader::getTypeByID(unsigned ID) {
@@ -586,7 +414,7 @@ public:
           *TheModule, Ty, VarIsConstant,
           GlobalValue::InternalLinkage, NULL, "");
       GV->setAlignment(VarAlignment);
-      ValueList.AssignGlobalVar(GV, NextValueNo);
+      ValueList.AssignValue(GV, NextValueNo);
       ++NextValueNo;
       ProcessingGlobal = false;
       VarAlignment = 0;
@@ -672,10 +500,7 @@ public:
         // Define a relocation initializer.
         if (!ProcessingGlobal || Record.size() < 1 || Record.size() > 2)
           return Reader.Error("Bad GLOBALVAR_RELOC record");
-        Constant *BaseVal =
-            ValueList.getOrCreateGlobalVarRef(Record[0], TheModule);
-        if (BaseVal == 0)
-          return Reader.Error("Bad base value in GLOBALVAR_RELOC record");
+        Constant *BaseVal = cast<Constant>(ValueList[Record[0]]);
         Type *IntPtrType = IntegerType::get(Context, 32);
         Constant *Val = ConstantExpr::getPtrToInt(BaseVal, IntPtrType);
         if (Record.size() == 2) {
@@ -711,9 +536,7 @@ public:
         Init = ConstantStruct::getAnon(Context, VarInit, true);
         break;
       }
-      cast<GlobalVariable>(
-          ValueList.getOrCreateGlobalVarRef(NextValueNo, TheModule))
-          ->setInitializer(Init);
+      cast<GlobalVariable>(ValueList[NextValueNo])->setInitializer(Init);
       ++NextValueNo;
       ProcessingGlobal = false;
       VarInitializersNeeded = 0;
