@@ -51,10 +51,10 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Transforms/MinSFI.h"
 #include "llvm/Transforms/NaCl.h"
 
 static const char StackPtrVariableName[] = "__sfi_stack_ptr";
-static const uintptr_t StackPtrInitialValue = 0xF0000000;
 
 using namespace llvm;
 
@@ -82,6 +82,10 @@ bool ExpandAllocas::runOnModule(Module &M) {
   IntPtrType = DL.getIntPtrType(M.getContext());
   I8Ptr = Type::getInt8PtrTy(M.getContext());
 
+  // The stack bottom is positioned arbitrarily towards the end of the address
+  // subspace. This has no effect on the alignment of memory allocated on the
+  // untrusted stack.
+  uint64_t StackPtrInitialValue = minsfi::GetAddressSubspaceSize() - 16;
   StackPtrVar = new GlobalVariable(M, IntPtrType, /*isConstant=*/false,
                                    GlobalVariable::InternalLinkage,
                                    ConstantInt::get(IntPtrType,
