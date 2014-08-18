@@ -31,7 +31,7 @@
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/Local.h" // for DemoteRegToStack
+#include "llvm/Transforms/Utils/Local.h" // for DemoteRegToStack, removeUnreachableBlocks
 #include "llvm/Transforms/Utils/PromoteMemToReg.h" // for PromoteMemToReg
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include "llvm/Pass.h"
@@ -696,13 +696,14 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
      * such that we can free and extend the ctx by simply update STACKTOP.
      * Therefore we don't want any alloca's in callback functions.
      *
-     * TODO: can we create phi directly, without using Demote/Premote ?
      */
     if (!ToPromote.empty()) {
       DominatorTree DT;
       DT.runOnFunction(*CurCallbackFunc);
       PromoteMemToReg(ToPromote, DT);
     }
+
+    removeUnreachableBlocks(*CurCallbackFunc);
   }
 
   // Pass 4
