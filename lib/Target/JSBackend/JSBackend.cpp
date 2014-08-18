@@ -1145,9 +1145,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::BitCast: {
         Code << getAssignIfNeeded(I);
         if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-          Code << "SIMD.float32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
+          Code << "SIMD.int32x4.fromFloat32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
         } else {
-          Code << "SIMD.int32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
+          Code << "SIMD.float32x4.fromInt32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
         }
         break;
       }
