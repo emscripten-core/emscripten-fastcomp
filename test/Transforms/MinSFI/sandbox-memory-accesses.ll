@@ -334,6 +334,18 @@ define i1 @test_atomic_is_lock_free(i8* %ptr) {
 ; CHECK-NEXT:    ret i1 %val
 ; CHECK-NEXT:  }
 
+define void @test_bitcast_whitelisted(i32 %val) {
+  %ptr = inttoptr i32 %val to i8*
+  %ptr.bc = bitcast i8* %ptr to i32*
+  ret void
+}
+
+; CHECK-LABEL: define void @test_bitcast_whitelisted(i32 %val) {
+; CHECK-NEXT:    %ptr = inttoptr i32 %val to i8*
+; CHECK-NEXT:    %ptr.bc = bitcast i8* %ptr to i32*
+; CHECK-NEXT:    ret void
+; CHECK-NEXT:  }
+
 ; -----------------------------------------------------------------------------
 ; Test the special case which optimizes sandboxing of the output of
 ; the ExpandGetElementPtr pass. 

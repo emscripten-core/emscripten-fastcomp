@@ -26,9 +26,13 @@
 //  - @llvm.nacl.atomic.rmw.*
 //  - @llvm.nacl.atomic.cmpxchg.*
 //
-// This pass fails if code contains an instruction with pointer-type operands
-// not listed above, with the exception of ptrtoint needed for function
-// pointers. It assumes those will be later sandboxed by a CFI pass.
+// Whitelisted instructions:
+//  - ptrtoint
+//  - bitcast
+//
+// This pass fails if code contains instructions with pointer-type operands
+// not listed above. PtrToInt and BitCast instructions are whitelisted because
+// they do not access memory and therefore do not need to be sandboxed.
 //
 // The pass recognizes the pointer arithmetic produced by ExpandGetElementPtr
 // and reuses its final integer value to save target instructions. This
@@ -280,7 +284,7 @@ void SandboxMemoryAccesses::runOnFunction(Function &Func) {
         default:
           checkDoesNotHavePointerOperands(IntrCall);
         }
-      } else if (!isa<PtrToIntInst>(Inst)) {
+      } else if (!isa<PtrToIntInst>(Inst) && !isa<BitCastInst>(Inst)) {
         checkDoesNotHavePointerOperands(Inst);
       }
     }
