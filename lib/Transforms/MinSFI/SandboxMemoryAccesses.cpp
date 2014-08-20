@@ -62,10 +62,10 @@
 #include "llvm/Transforms/MinSFI.h"
 #include "llvm/Transforms/NaCl.h"
 
-static const char GlobalMemBaseVariableName[] = "__sfi_memory_base";
-static const char GlobalAddrSizeVariableName[] = "__sfi_pointer_size";
-
 using namespace llvm;
+
+static const char ExternalSymName_MemoryBase[] = "__sfi_memory_base";
+static const char ExternalSymName_PointerSize[] = "__sfi_pointer_size";
 
 namespace {
 // This pass needs to be a ModulePass because it adds a GlobalVariable.
@@ -85,12 +85,9 @@ class SandboxMemoryAccesses : public ModulePass {
 
  public:
   static char ID;
-  SandboxMemoryAccesses() : ModulePass(ID) {
+  SandboxMemoryAccesses() : ModulePass(ID), MemBaseVar(NULL), PtrMask(NULL),
+                            DL(NULL), I32(NULL), I64(NULL) {
     initializeSandboxMemoryAccessesPass(*PassRegistry::getPassRegistry());
-    MemBaseVar = NULL;
-    PtrMask = NULL;
-    DL = NULL;
-    I32 = I64 = NULL;
   }
 
   virtual bool runOnModule(Module &M);
@@ -107,16 +104,16 @@ bool SandboxMemoryAccesses::runOnModule(Module &M) {
   // address of the sandbox. This variable is defined and initialized by
   // the runtime. We assume that all original global variables have been 
   // removed during the AllocateDataSegment pass.
-  MemBaseVar = M.getOrInsertGlobal(GlobalMemBaseVariableName, I64);
+  MemBaseVar = M.getOrInsertGlobal(ExternalSymName_MemoryBase, I64);
 
-  // Create a global constant holding the size of the sandboxed pointers. If
-  // it is smaller than 32 bits, prepare the corresponding bit mask which
+  // Create an exported global constant holding the size of the sandboxed
+  // pointers. If it is smaller than 32 bits, prepare the corresponding bit mask
   // will later be applied on pointer and length arguments of instructions.
   unsigned int PointerSize = minsfi::GetPointerSizeInBits();
   new GlobalVariable(M, I32, /*isConstant=*/true,
                      GlobalVariable::ExternalLinkage,
                      ConstantInt::get(I32, PointerSize),
-                     GlobalAddrSizeVariableName);
+                     ExternalSymName_PointerSize);
   if (PointerSize < 32)
     PtrMask = ConstantInt::get(I32, (1 << PointerSize) - 1);
 
@@ -215,9 +212,9 @@ void SandboxMemoryAccesses::sandboxPtrOperand(Instruction *Inst,
     CopyDebug(SandboxedPtr, RedundantCast);
 
     // Remove instructions if now dead (order matters)
-    if (RedundantCast->getNumUses() == 0)
+    if (RedundantCast->use_empty())
       RedundantCast->eraseFromParent();
-    if (RedundantAdd->getNumUses() == 0)
+    if (RedundantAdd->use_empty())
       RedundantAdd->eraseFromParent();
   }
 }

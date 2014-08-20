@@ -1,8 +1,8 @@
 add_llvm_library(LLVMMinSFITransforms
+  AllocateDataSegment.cpp
   ExpandAllocas.cpp
   SandboxIndirectCalls.cpp
   SandboxMemoryAccesses.cpp
-  AllocateDataSegment.cpp
   Utils.cpp
   )
 

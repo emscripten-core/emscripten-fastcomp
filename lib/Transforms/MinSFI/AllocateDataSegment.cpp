@@ -10,7 +10,7 @@
 // Code sandboxed with MinSFI cannot access the memory containing its data
 // segment directly because it is located outside its address subspace. To
 // this end, this pass collates all of the global variables in the module
-// into an exported global struct named "__sfi_data_segment" and a correspoding
+// into an exported global struct named "__sfi_data_segment" and a corresponding
 // global integer holding the overall size. The runtime is expected to link
 // against these variables and to initialize the memory region of the sandbox
 // by copying the data segment template into a fixed address inside the region.
@@ -21,17 +21,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include "llvm/Pass.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Transforms/MinSFI.h"
 
 using namespace llvm;
 
+static const char ExternalSymName_DataSegment[] = "__sfi_data_segment";
+static const char ExternalSymName_DataSegmentSize[] = "__sfi_data_segment_size";
+
 static const uint32_t DataSegmentBaseAddress = 0x10000;
-static const char DataSegmentGlobalName[] = "__sfi_data_segment";
-static const char DataSegmentGlobalSizeName[] = "__sfi_data_segment_size";
 
 namespace {
 class AllocateDataSegment : public ModulePass {
@@ -47,12 +48,11 @@ class AllocateDataSegment : public ModulePass {
 
 static inline uint32_t getPadding(uint32_t Offset, const GlobalVariable *GV,
                                   const DataLayout &DL) {
-  uint32_t Alignment =
-      std::max(DL.getPreferredAlignment(GV), GV->getAlignment());
+  uint32_t Alignment = DL.getPreferredAlignment(GV);
   if (Alignment <= 1)
     return 0;
   else
-    return (-Offset) & (Alignment - 1);
+    return OffsetToAlignment(Offset, Alignment);
 }
 
 bool AllocateDataSegment::runOnModule(Module &M) {
@@ -75,9 +75,11 @@ bool AllocateDataSegment::runOnModule(Module &M) {
     VarPadding[GV] = Padding;
     VarOffset += Padding;
 
-    GV->replaceAllUsesWith(ConstantExpr::getIntToPtr(
-        ConstantInt::get(IntPtrType, DataSegmentBaseAddress + VarOffset),
-        GV->getType()));
+    GV->replaceAllUsesWith(
+        ConstantExpr::getIntToPtr(
+            ConstantInt::get(IntPtrType,
+                             DataSegmentBaseAddress + VarOffset),
+            GV->getType()));
 
     VarOffset += DL.getTypeStoreSize(GV->getType()->getPointerElementType());
   }
@@ -106,19 +108,19 @@ bool AllocateDataSegment::runOnModule(Module &M) {
 
   // Finally, we create the struct and size global variables.
   StructType *TemplateType =
-      StructType::create(M.getContext(), DataSegmentGlobalName);
+      StructType::create(M.getContext(), ExternalSymName_DataSegment);
   TemplateType->setBody(TemplateLayout, /*isPacked=*/true);
 
   Constant *Template = ConstantStruct::get(TemplateType, TemplateData);
   new GlobalVariable(M, Template->getType(), /*isConstant=*/true,
                      GlobalVariable::ExternalLinkage, Template,
-                     DataSegmentGlobalName);
+                     ExternalSymName_DataSegment);
 
   Constant *TemplateSize =
       ConstantInt::get(I32, DL.getTypeAllocSize(TemplateType));
   new GlobalVariable(M, TemplateSize->getType(), /*isConstant=*/true,
                      GlobalVariable::ExternalLinkage, TemplateSize,
-                     DataSegmentGlobalSizeName);
+                     ExternalSymName_DataSegmentSize);
 
   return true;
 }

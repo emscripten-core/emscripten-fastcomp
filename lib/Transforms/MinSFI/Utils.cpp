@@ -12,7 +12,7 @@
 
 using namespace llvm;
 
-static cl::opt<unsigned int>
+static cl::opt<uint32_t>
 PointerSizeInBits("minsfi-ptrsize", cl::init(32),
                   cl::desc("Size of the address subspace in bits"));
 

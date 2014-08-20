@@ -42,9 +42,9 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/NaCl.h"
 
-static const char GlobalFuncTableVariableName[] = "__sfi_function_table";
-
 using namespace llvm;
+
+static const char InternalSymName_FunctionTable[] = "__sfi_function_table";
 
 namespace {
 // This pass needs to be a ModulePass because it adds a GlobalVariable.
@@ -132,7 +132,7 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
     TableGlobals[FuncType] =
         new GlobalVariable(M, TableArray->getType(), /*isConstant=*/true,
                            GlobalVariable::InternalLinkage, TableArray,
-                           GlobalFuncTableVariableName);
+                           InternalSymName_FunctionTable);
   }
 
   // Iterate over all call instructions and replace integers casted to function

@@ -10,8 +10,8 @@ target triple = "le32-unknown-nacl"
 @b = global [3 x i8] c"ABC"                                ; no alignment
 @c = global [5 x i8] c"ABCDE", align 16                    ; explicit 16B align
 @d = global i32 ptrtoint ([3 x i8]* @b to i32)             ; implicit 4B align
-@e = global i32 add (i32 ptrtoint ([5 x i8]* @c to i32), 
-                     i32 3)                                ; implicit 4B align
+@e = global i32 add (i32 ptrtoint ([5 x i8]* @c to i32), i32 3), align 2
+                                                           ; implicit 4B align
 @f = global <{ [1 x i8], i32 }> 
        <{ [1 x i8] zeroinitializer, 
           i32 ptrtoint ([5 x i8]* @c to i32) }>            ; no alignment

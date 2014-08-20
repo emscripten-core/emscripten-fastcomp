@@ -51,12 +51,13 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/MinSFI.h"
 #include "llvm/Transforms/NaCl.h"
 
-static const char StackPtrVariableName[] = "__sfi_stack_ptr";
-
 using namespace llvm;
+
+static const char InternalSymName_StackPointer[] = "__sfi_stack_ptr";
 
 namespace {
 // ExpandAllocas needs to be a ModulePass because it adds a GlobalVariable.
@@ -64,7 +65,7 @@ class ExpandAllocas : public ModulePass {
   GlobalVariable *StackPtrVar;
   Type *IntPtrType, *I8Ptr;
 
-  bool runOnFunction(Function &Func);
+  void runOnFunction(Function &Func);
 
 public:
   static char ID;
@@ -90,13 +91,12 @@ bool ExpandAllocas::runOnModule(Module &M) {
                                    GlobalVariable::InternalLinkage,
                                    ConstantInt::get(IntPtrType,
                                                     StackPtrInitialValue),
-                                   StackPtrVariableName);
+                                   InternalSymName_StackPointer);
 
-  bool Changed = false;
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func)
-    Changed |= runOnFunction(*Func);
+    runOnFunction(*Func);
 
-  return Changed;
+  return true;
 }
 
 static inline void replaceWithPointer(Instruction *OrigInst, Value *IntPtr,
@@ -113,7 +113,7 @@ static inline Instruction *getBBStackPtr(BasicBlock *BB) {
   return BB->getInstList().begin();
 }
 
-bool ExpandAllocas::runOnFunction(Function &Func) {
+void ExpandAllocas::runOnFunction(Function &Func) {
   // Do an initial scan of the entire function body. Check whether it contains
   // instructions which we want to operate on the untrusted stack and return
   // if there aren't any. Also check whether it contains any function calls.
@@ -139,7 +139,7 @@ bool ExpandAllocas::runOnFunction(Function &Func) {
   }
 
   if (NoUntrustedStackOps)
-    return false;
+    return;
 
   SmallVector<Instruction *, 10> DeadInsts;
   Instruction *InitialStackPtr = new LoadInst(StackPtrVar, "frame_top");
@@ -216,8 +216,6 @@ bool ExpandAllocas::runOnFunction(Function &Func) {
   for (SmallVectorImpl<Instruction *>::const_iterator Inst = DeadInsts.begin(),
        E = DeadInsts.end(); Inst != E; ++Inst)
     (*Inst)->eraseFromParent();
-
-  return true;
 }
 
 char ExpandAllocas::ID = 0;
