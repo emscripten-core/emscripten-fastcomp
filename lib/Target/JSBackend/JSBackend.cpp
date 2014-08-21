@@ -1019,9 +1019,18 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     }
     return CI->getValue().toString(10, sign != ASM_UNSIGNED);
   } else if (isa<UndefValue>(CV)) {
-    std::string S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
-    if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
-      S = "Math_fround(" + S + ")";
+    std::string S;
+    if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
+      if (VT->getElementType()->isIntegerTy()) {
+        S = "SIMD.int32x4.splat(0)";
+      } else {
+        S = "SIMD.float32x4.splat(0.0)";
+      }
+    } else {
+      S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
+      if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+        S = "Math_fround(" + S + ")";
+      }
     }
     return S;
   } else if (isa<ConstantAggregateZero>(CV)) {
@@ -1145,9 +1154,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::BitCast: {
         Code << getAssignIfNeeded(I);
         if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-          Code << "SIMD.float32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
+          Code << "SIMD.int32x4.fromFloat32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
         } else {
-          Code << "SIMD.int32x4.bitsToInt32x4(" << getValueAsStr(I->getOperand(0)) << ')';
+          Code << "SIMD.float32x4.fromInt32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
         }
         break;
       }
