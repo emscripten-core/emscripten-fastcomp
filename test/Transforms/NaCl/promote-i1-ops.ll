@@ -75,3 +75,69 @@ define void @unchanged_cases(i32 %x, i32 %y, i32* %ptr) {
 ; CHECK-NEXT: %cmp = icmp slt i32 %x, %y
 ; CHECK-NEXT: %val = load i32* %ptr
 ; CHECK-NEXT: store i32 %x, i32* %ptr
+
+define void @i1_switch(i1 %a) {
+entry:
+  switch i1 %a, label %impossible [
+    i1 true, label %truedest
+    i1 false, label %falsedest
+  ]
+
+impossible:
+  %phi = phi i32 [ 123, %entry ]
+  unreachable
+
+truedest:
+  unreachable
+
+falsedest:
+  unreachable
+}
+; CHECK-LABEL: define void @i1_switch
+; CHECK-LABEL: entry:
+; CHECK-NEXT:    br i1 %a, label %truedest, label %falsedest
+; CHECK-LABEL: impossible:
+; CHECK-NEXT:    unreachable
+; CHECK-LABEL: truedest:
+; CHECK-NEXT:    unreachable
+; CHECK-LABEL: falsedest:
+; CHECK-NEXT:    unreachable
+
+define void @i1_switch_default_true(i1 %a) {
+entry:
+  switch i1 %a, label %truedest [
+    i1 false, label %falsedest
+  ]
+
+truedest:
+  unreachable
+falsedest:
+  unreachable
+}
+; CHECK-LABEL: define void @i1_switch_default_true(i1 %a)
+; CHECK-LABEL: entry:
+; CHECK-NEXT:    br i1 %a, label %truedest, label %falsedest
+; CHECK-LABEL: truedest:
+; CHECK-NEXT:    unreachable
+; CHECK-LABEL: falsedest:
+; CHECK-NEXT:    unreachable
+
+define void @i1_switch_default_false(i1 %a) {
+entry:
+  switch i1 %a, label %falsedest [
+    i1 true, label %truedest
+  ]
+
+truedest:
+  unreachable
+falsedest:
+  unreachable
+}
+; CHECK-LABEL: define void @i1_switch_default_false(i1 %a)
+; CHECK-LABEL: entry:
+; CHECK-NEXT:    br i1 %a, label %truedest, label %falsedest
+; CHECK-LABEL: truedest:
+; CHECK-NEXT:    unreachable
+; CHECK-LABEL: falsedest:
+; CHECK-NEXT:    unreachable
+
