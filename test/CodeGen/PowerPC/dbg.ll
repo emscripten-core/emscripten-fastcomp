@@ -15,9 +15,10 @@ entry:
 declare void @llvm.dbg.value(metadata, i64, metadata) nounwind readnone
 
 !llvm.dbg.cu = !{!0}
+!llvm.module.flags = !{!22}
 
 !0 = metadata !{i32 720913, metadata !21, i32 12, metadata !"clang version 3.1", i1 true, metadata !"", i32 0, metadata !1, metadata !1, metadata !3, metadata !1, metadata !"", metadata !""} ; [ DW_TAG_compile_unit ]
-!1 = metadata !{i32 0}
+!1 = metadata !{}
 !3 = metadata !{metadata !5}
 !5 = metadata !{i32 720942, metadata !21, null, metadata !"main", metadata !"main", metadata !"", i32 1, metadata !7, i1 false, i1 true, i32 0, i32 0, null, i32 256, i1 true, i32 (i32, i8**)* @main, null, null, metadata !13, i32 0} ; [ DW_TAG_subprogram ]
 !6 = metadata !{i32 720937, metadata !21} ; [ DW_TAG_file_type ]
@@ -27,8 +28,7 @@ declare void @llvm.dbg.value(metadata, i64, metadata) nounwind readnone
 !10 = metadata !{i32 720911, null, null, metadata !"", i32 0, i64 64, i64 64, i64 0, i32 0, metadata !11} ; [ DW_TAG_pointer_type ]
 !11 = metadata !{i32 720911, null, null, metadata !"", i32 0, i64 64, i64 64, i64 0, i32 0, metadata !12} ; [ DW_TAG_pointer_type ]
 !12 = metadata !{i32 720932, null, null, metadata !"char", i32 0, i64 8, i64 8, i64 0, i32 0, i32 8} ; [ DW_TAG_base_type ]
-!13 = metadata !{metadata !14}
-!14 = metadata !{metadata !15, metadata !16}
+!13 = metadata !{metadata !15, metadata !16}
 !15 = metadata !{i32 721153, metadata !5, metadata !"argc", metadata !6, i32 16777217, metadata !9, i32 0, i32 0} ; [ DW_TAG_arg_variable ]
 !16 = metadata !{i32 721153, metadata !5, metadata !"argv", metadata !6, i32 33554433, metadata !10, i32 0, i32 0} ; [ DW_TAG_arg_variable ]
 !17 = metadata !{i32 1, i32 14, metadata !5, null}
@@ -36,3 +36,4 @@ declare void @llvm.dbg.value(metadata, i64, metadata) nounwind readnone
 !19 = metadata !{i32 2, i32 3, metadata !20, null}
 !20 = metadata !{i32 720907, metadata !21, metadata !5, i32 1, i32 34, i32 0} ; [ DW_TAG_lexical_block ]
 !21 = metadata !{metadata !"dbg.c", metadata !"/src"}
+!22 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}

@@ -19,10 +19,11 @@ else
   OPTIONAL_PARALLEL_DIRS := clang
 endif
 
-OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT)
-# Build LLDB if present. Note LLDB must be built last as it depends on the
-# wider LLVM infrastructure (including Clang).
-OPTIONAL_DIRS := lldb
+OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT) # @LOCALMOD
+
+# Build LLD and LLDB if present. Note LLDB must be built last as it depends on
+# the wider LLVM infrastructure (including Clang).
+OPTIONAL_DIRS := lld lldb
 
 # NOTE: The tools are organized into five groups of four consisting of one
 # large and three small executables. This is done to minimize memory load
@@ -32,7 +33,7 @@ PARALLEL_DIRS := opt llvm-as llvm-dis llc llvm-ar llvm-nm llvm-link \
                  lli llvm-extract llvm-mc bugpoint llvm-bcanalyzer llvm-diff \
                  macho-dump llvm-objdump llvm-readobj llvm-rtdyld \
                  llvm-dwarfdump llvm-cov llvm-size llvm-stress llvm-mcmarkup \
-                 llvm-symbolizer obj2yaml yaml2obj llvm-c-test \
+                 llvm-profdata llvm-symbolizer obj2yaml yaml2obj llvm-c-test \
                  pnacl-llc pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
                  pnacl-benchmark pnacl-thaw pnacl-bccompress pnacl-bcdis
 

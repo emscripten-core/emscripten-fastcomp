@@ -18,30 +18,40 @@
 #include "SystemZMCInstLower.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInstBuilder.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/Target/Mangler.h"
 
 using namespace llvm;
 
 // Return an RI instruction like MI with opcode Opcode, but with the
 // GR64 register operands turned into GR32s.
 static MCInst lowerRILow(const MachineInstr *MI, unsigned Opcode) {
-  return MCInstBuilder(Opcode)
-    .addReg(SystemZMC::getRegAsGR32(MI->getOperand(0).getReg()))
-    .addReg(SystemZMC::getRegAsGR32(MI->getOperand(1).getReg()))
-    .addImm(MI->getOperand(2).getImm());
+  if (MI->isCompare())
+    return MCInstBuilder(Opcode)
+      .addReg(SystemZMC::getRegAsGR32(MI->getOperand(0).getReg()))
+      .addImm(MI->getOperand(1).getImm());
+  else
+    return MCInstBuilder(Opcode)
+      .addReg(SystemZMC::getRegAsGR32(MI->getOperand(0).getReg()))
+      .addReg(SystemZMC::getRegAsGR32(MI->getOperand(1).getReg()))
+      .addImm(MI->getOperand(2).getImm());
 }
 
 // Return an RI instruction like MI with opcode Opcode, but with the
 // GR64 register operands turned into GRH32s.
 static MCInst lowerRIHigh(const MachineInstr *MI, unsigned Opcode) {
-  return MCInstBuilder(Opcode)
-    .addReg(SystemZMC::getRegAsGRH32(MI->getOperand(0).getReg()))
-    .addReg(SystemZMC::getRegAsGRH32(MI->getOperand(1).getReg()))
-    .addImm(MI->getOperand(2).getImm());
+  if (MI->isCompare())
+    return MCInstBuilder(Opcode)
+      .addReg(SystemZMC::getRegAsGRH32(MI->getOperand(0).getReg()))
+      .addImm(MI->getOperand(1).getImm());
+  else
+    return MCInstBuilder(Opcode)
+      .addReg(SystemZMC::getRegAsGRH32(MI->getOperand(0).getReg()))
+      .addReg(SystemZMC::getRegAsGRH32(MI->getOperand(1).getReg()))
+      .addImm(MI->getOperand(2).getImm());
 }
 
 // Return an RI instruction like MI with opcode Opcode, but with the
@@ -112,6 +122,8 @@ void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
   LOWER_LOW(IILL);
   LOWER_LOW(IILH);
+  LOWER_LOW(TMLL);
+  LOWER_LOW(TMLH);
   LOWER_LOW(NILL);
   LOWER_LOW(NILH);
   LOWER_LOW(NILF);
@@ -127,6 +139,8 @@ void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
   LOWER_HIGH(IIHL);
   LOWER_HIGH(IIHH);
+  LOWER_HIGH(TMHL);
+  LOWER_HIGH(TMHH);
   LOWER_HIGH(NIHL);
   LOWER_HIGH(NIHH);
   LOWER_HIGH(NIHF);
@@ -137,11 +151,20 @@ void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
 #undef LOWER_HIGH
 
+  case SystemZ::Serialize:
+    if (Subtarget->hasFastSerialization())
+      LoweredMI = MCInstBuilder(SystemZ::AsmBCR)
+        .addImm(14).addReg(SystemZ::R0D);
+    else
+      LoweredMI = MCInstBuilder(SystemZ::AsmBCR)
+        .addImm(15).addReg(SystemZ::R0D);
+    break;
+
   default:
     Lower.lower(MI, LoweredMI);
     break;
   }
-  OutStreamer.EmitInstruction(LoweredMI);
+  EmitToStreamer(OutStreamer, LoweredMI);
 }
 
 // Convert a SystemZ-specific constant pool modifier into the associated
@@ -156,8 +179,7 @@ getModifierVariantKind(SystemZCP::SystemZCPModifier Modifier) {
 
 void SystemZAsmPrinter::
 EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) {
-  SystemZConstantPoolValue *ZCPV =
-    static_cast<SystemZConstantPoolValue*>(MCPV);
+  auto *ZCPV = static_cast<SystemZConstantPoolValue*>(MCPV);
 
   const MCExpr *Expr =
     MCSymbolRefExpr::Create(getSymbol(ZCPV->getGlobalValue()),
@@ -198,7 +220,7 @@ bool SystemZAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
 
 void SystemZAsmPrinter::EmitEndOfAsmFile(Module &M) {
   if (Subtarget->isTargetELF()) {
-    const TargetLoweringObjectFileELF &TLOFELF =
+    auto &TLOFELF =
       static_cast<const TargetLoweringObjectFileELF &>(getObjFileLowering());
 
     MachineModuleInfoELF &MMIELF = MMI->getObjFileInfo<MachineModuleInfoELF>();

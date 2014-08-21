@@ -37,39 +37,6 @@ void MipsTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM){
     getContext().getELFSection(".sbss", ELF::SHT_NOBITS,
                                ELF::SHF_WRITE |ELF::SHF_ALLOC,
                                SectionKind::getBSS());
-
-  // Register info information
-  const MipsSubtarget &Subtarget = TM.getSubtarget<MipsSubtarget>();
-  if (Subtarget.isABI_N64() || Subtarget.isABI_N32())
-    ReginfoSection =
-      getContext().getELFSection(".MIPS.options",
-                                 ELF::SHT_MIPS_OPTIONS,
-                                 ELF::SHF_ALLOC |ELF::SHF_MIPS_NOSTRIP,
-                                 SectionKind::getMetadata());
-  else
-    ReginfoSection =
-      getContext().getELFSection(".reginfo",
-                                 ELF::SHT_MIPS_REGINFO,
-                                 ELF::SHF_ALLOC,
-                                 SectionKind::getMetadata());
-
-  // @LOCALMOD-BEGIN
-  // Without this the linker defined symbols __fini_array_start and
-  // __fini_array_end do not have useful values. c.f.:
-  // http://code.google.com/p/nativeclient/issues/detail?id=805
-  if (Subtarget.isTargetNaCl()) {
-    StaticCtorSection =
-      getContext().getELFSection(".init_array", ELF::SHT_INIT_ARRAY,
-                               ELF::SHF_WRITE |
-                               ELF::SHF_ALLOC,
-                               SectionKind::getDataRel());
-    StaticDtorSection =
-      getContext().getELFSection(".fini_array", ELF::SHT_FINI_ARRAY,
-                               ELF::SHF_WRITE |
-                               ELF::SHF_ALLOC,
-                               SectionKind::getDataRel());
-  }
-  // @LOCALMOD-END
 }
 
 // A address must be loaded from a small section if its size is less than the
@@ -99,12 +66,6 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
   if (!Subtarget.useSmallSection())
     return false;
 
-  // @LOCALMOD-BEGIN
-  // Do not use small section for NaCl.
-  if (Subtarget.isTargetNaCl())
-    return false;
-  // @LOCALMOD-BEGIN
-
   // Only global variables, not functions.
   const GlobalVariable *GVA = dyn_cast<GlobalVariable>(GV);
   if (!GVA)
@@ -127,7 +88,7 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
 
 const MCSection *MipsTargetObjectFile::
 SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
-                       Mangler *Mang, const TargetMachine &TM) const {
+                       Mangler &Mang, const TargetMachine &TM) const {
   // TODO: Could also support "weak" symbols as well with ".gnu.linkonce.s.*"
   // sections?
 

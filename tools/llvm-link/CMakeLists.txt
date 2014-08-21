@@ -1,4 +1,11 @@
-set(LLVM_LINK_COMPONENTS linker bitreader bitwriter naclbitwriter asmparser irreader)
+set(LLVM_LINK_COMPONENTS
+  BitWriter
+  naclbitwriter
+  Core
+  IRReader
+  Linker
+  Support
+  )
 
 add_llvm_tool(llvm-link
   llvm-link.cpp

@@ -18,17 +18,18 @@
 #include "llvm/MC/MCAsmInfoELF.h"
 
 namespace llvm {
+class Triple;
 
   class PPCMCAsmInfoDarwin : public MCAsmInfoDarwin {
-    virtual void anchor();
+    void anchor() override;
   public:
-    explicit PPCMCAsmInfoDarwin(bool is64Bit);
+    explicit PPCMCAsmInfoDarwin(bool is64Bit, const Triple&);
   };
 
   class PPCLinuxMCAsmInfo : public MCAsmInfoELF {
-    virtual void anchor();
+    void anchor() override;
   public:
-    explicit PPCLinuxMCAsmInfo(bool is64Bit);
+    explicit PPCLinuxMCAsmInfo(bool is64Bit, const Triple&);
   };
 
 } // namespace llvm

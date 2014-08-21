@@ -97,13 +97,13 @@ private:
 public:
   SIInsertWaits(TargetMachine &tm) :
     MachineFunctionPass(ID),
-    TII(0),
-    TRI(0),
+    TII(nullptr),
+    TRI(nullptr),
     ExpInstrTypesSeen(0) { }
 
-  virtual bool runOnMachineFunction(MachineFunction &MF);
+  bool runOnMachineFunction(MachineFunction &MF) override;
 
-  const char *getPassName() const {
+  const char *getPassName() const override {
     return "SI insert wait  instructions";
   }
 
@@ -273,17 +273,17 @@ bool SIInsertWaits::insertWait(MachineBasicBlock &MBB,
       continue;
 
     NeedWait = true;
-    
+
     if (Ordered[i]) {
       unsigned Value = LastIssued.Array[i] - Required.Array[i];
 
-      // adjust the value to the real hardware posibilities
+      // Adjust the value to the real hardware possibilities.
       Counts.Array[i] = std::min(Value, WaitCounts.Array[i]);
 
     } else
       Counts.Array[i] = 0;
 
-    // Remember on what we have waited on
+    // Remember on what we have waited on.
     WaitedOn.Array[i] = LastIssued.Array[i] - Counts.Array[i];
   }
 
@@ -314,6 +314,12 @@ Counters SIInsertWaits::handleOperands(MachineInstr &MI) {
 
   Counters Result = ZeroCounts;
 
+  // S_SENDMSG implicitly waits for all outstanding LGKM transfers to finish,
+  // but we also want to wait for any other outstanding transfers before
+  // signalling other hardware blocks
+  if (MI.getOpcode() == AMDGPU::S_SENDMSG)
+    return LastIssued;
+
   // For each register affected by this
   // instruction increase the result sequence
   for (unsigned i = 0, e = MI.getNumOperands(); i != e; ++i) {
@@ -335,6 +341,8 @@ Counters SIInsertWaits::handleOperands(MachineInstr &MI) {
   return Result;
 }
 
+// FIXME: Insert waits listed in Table 4.2 "Required User-Inserted Wait States"
+// around other non-memory instructions.
 bool SIInsertWaits::runOnMachineFunction(MachineFunction &MF) {
   bool Changes = false;
 
