@@ -24,5 +24,5 @@ uint32_t minsfi::GetPointerSizeInBits() {
 }
 
 uint64_t minsfi::GetAddressSubspaceSize() {
-  return 1L << GetPointerSizeInBits();
+  return 1LL << GetPointerSizeInBits();
 }
