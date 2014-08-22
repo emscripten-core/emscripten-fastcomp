@@ -277,7 +277,7 @@ void CrashRecoveryContext::Enable() {
 
   gCrashRecoveryEnabled = true;
 
-#if !defined(__native_client__)
+#if !defined(__native_client__) // @LOCALMOD
   // Setup the signal handler.
   struct sigaction Handler;
   Handler.sa_handler = CrashRecoverySignalHandler;
@@ -287,9 +287,11 @@ void CrashRecoveryContext::Enable() {
   for (unsigned i = 0; i != NumSignals; ++i) {
     sigaction(Signals[i], &Handler, &PrevActions[i]);
   }
+// @LOCALMOD-START
 #else
 #warning Cannot setup the signal handler on this machine
 #endif
+// @LOCALMOD-END
 }
 
 void CrashRecoveryContext::Disable() {
@@ -300,10 +302,11 @@ void CrashRecoveryContext::Disable() {
 
   gCrashRecoveryEnabled = false;
 
-#if !defined(__native_client__)
+#if !defined(__native_client__) // @LOCALMOD
   // Restore the previous signal handlers.
   for (unsigned i = 0; i != NumSignals; ++i)
     sigaction(Signals[i], &PrevActions[i], nullptr);
+#endif // @LOCALMOD
 }
 
 #endif
