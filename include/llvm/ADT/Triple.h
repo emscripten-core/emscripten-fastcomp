@@ -246,9 +246,6 @@ public:
     return getEnvironmentName() != "";
   }
 
-  /// getEnvironment - Get the parsed environment type of this triple.
-  EnvironmentType getEnvironment() const { return Environment; }
-
   /// getFormat - Get the object format for this triple.
   ObjectFormatType getObjectFormat() const { return ObjectFormat; }
 
