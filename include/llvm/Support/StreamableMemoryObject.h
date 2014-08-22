@@ -141,12 +141,12 @@ public:
   /// remaining bytes down by s. This is used to skip past the bitcode header,
   /// since we don't know a priori if it's present, and we can't put bytes
   /// back into the stream once we've read them.
-  virtual bool dropLeadingBytes(size_t s) LLVM_OVERRIDE;
+  bool dropLeadingBytes(size_t s) override;
 
   /// If the data object size is known in advance, many of the operations can
   /// be made more efficient, so this method should be called before reading
   /// starts (although it can be called anytime).
-  virtual void setKnownObjectSize(size_t size) LLVM_OVERRIDE;
+  void setKnownObjectSize(size_t size) override;
 
 private:
   const static uint32_t kChunkSize = 4096 * 4;

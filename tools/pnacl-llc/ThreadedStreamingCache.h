@@ -23,14 +23,13 @@
 class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
  public:
   explicit ThreadedStreamingCache(llvm::StreamingMemoryObject *S);
-  virtual uint64_t getBase() const LLVM_OVERRIDE { return 0; }
-  virtual uint64_t getExtent() const LLVM_OVERRIDE;
-  virtual int readByte(uint64_t address, uint8_t* ptr) const LLVM_OVERRIDE;
-  virtual int readBytes(uint64_t address,
-                        uint64_t size,
-                        uint8_t* buf) const LLVM_OVERRIDE;
-  virtual const uint8_t *getPointer(uint64_t address,
-                                    uint64_t size) const LLVM_OVERRIDE {
+  uint64_t getBase() const override { return 0; }
+  uint64_t getExtent() const override;
+  int readByte(uint64_t address, uint8_t* ptr) const override;
+  int readBytes(uint64_t address, uint64_t size,
+                uint8_t *buf) const override;
+  const uint8_t *getPointer(uint64_t address,
+                            uint64_t size) const override {
     // This could be fixed by ensuring the bytes are fetched and making a copy,
     // requiring that the bitcode size be known, or otherwise ensuring that
     // the memory doesn't go away/get reallocated, but it's
@@ -38,19 +37,19 @@ class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
     llvm_unreachable("getPointer in streaming memory objects not allowed");
     return NULL;
   }
-  virtual bool isValidAddress(uint64_t address) const LLVM_OVERRIDE;
-  virtual bool isObjectEnd(uint64_t address) const LLVM_OVERRIDE;
+  bool isValidAddress(uint64_t address) const override;
+  bool isObjectEnd(uint64_t address) const override;
 
   /// Drop s bytes from the front of the stream, pushing the positions of the
   /// remaining bytes down by s. This is used to skip past the bitcode header,
   /// since we don't know a priori if it's present, and we can't put bytes
   /// back into the stream once we've read them.
-  virtual bool dropLeadingBytes(size_t s) LLVM_OVERRIDE;
+  bool dropLeadingBytes(size_t s) override;
 
   /// If the data object size is known in advance, many of the operations can
   /// be made more efficient, so this method should be called before reading
   /// starts (although it can be called anytime).
-  virtual void setKnownObjectSize(size_t size) LLVM_OVERRIDE;
+  void setKnownObjectSize(size_t size) override;
  private:
   const static uint64_t kCacheSize = 4 * 4096;
   const static uint64_t kCacheSizeMask = ~(kCacheSize - 1);

@@ -171,14 +171,14 @@ public:
           FcnId(0),
           AddParams(false) {}
 
-    virtual ~TypeDirective() LLVM_OVERRIDE {}
+    ~TypeDirective() override {}
 
   private:
     /// Calls the corresponding method in AssemblyTextFormatter, with
     /// the locally stored arguments.
-    virtual void MyApply(bool Replay) const LLVM_OVERRIDE;
+    void MyApply(bool Replay) const override;
 
-    virtual void MaybeSaveForReplay() const LLVM_OVERRIDE {}
+    void MaybeSaveForReplay() const override {}
 
     // The type to tokenize.
     Type *Typ;
@@ -206,12 +206,12 @@ public:
         : naclbitc::TextFormatter::Directive(Formatter),
           Abbrev(0) {}
 
-    virtual ~AbbreviationDirective() LLVM_OVERRIDE {}
+    ~AbbreviationDirective() override {}
 
   private:
-    virtual void MyApply(bool Replay) const LLVM_OVERRIDE;
+    void MyApply(bool Replay) const override;
 
-    virtual void MaybeSaveForReplay() const LLVM_OVERRIDE {}
+    void MaybeSaveForReplay() const override {}
 
     // The abbreviation to tokenize.
     NaClBitCodeAbbrev *Abbrev;
@@ -227,12 +227,12 @@ public:
         : naclbitc::TextFormatter::Directive(Formatter),
           Record(0), NumGlobalAbbreviations(0) {}
 
-    virtual ~AbbrevIndexDirective() LLVM_OVERRIDE {}
+    ~AbbrevIndexDirective() override {}
 
   private:
-    virtual void MyApply(bool Replay) const LLVM_OVERRIDE;
+    void MyApply(bool Replay) const override;
 
-    virtual void MaybeSaveForReplay() const LLVM_OVERRIDE {}
+    void MaybeSaveForReplay() const override {}
 
     // The record containing the associated abbreviation.
     NaClBitcodeRecord *Record;
@@ -590,7 +590,7 @@ public:
     SetListener(&AbbrevListener);
   }
 
-  virtual ~NaClDisTopLevelParser() LLVM_OVERRIDE {}
+  ~NaClDisTopLevelParser() override {}
 
   // Returns the number of errors that were sent to the ObjDump.
   unsigned GetNumErrors() {
@@ -598,7 +598,7 @@ public:
   }
 
   /// Generates an error with the given message.
-  virtual bool Error(const std::string &Message) LLVM_OVERRIDE {
+  bool Error(const std::string &Message) override {
     // Use local error routine so that all errors are treated uniformly.
     ObjDump.Error() << Message << "\n";
     return true;
@@ -611,12 +611,12 @@ public:
 
   /// Flushes out objdump and then exits with fatal error, using
   /// the given message.
-  void Fatal(const std::string &Message) LLVM_OVERRIDE {
+  void Fatal(const std::string &Message) override {
     ObjDump.Fatal(Message);
   }
 
   /// Parses the top-level module block.
-  virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
+  bool ParseBlock(unsigned BlockID) override;
 
   /// Installs the given type to the next available type index.
   void InstallType(Type *Ty) {
@@ -1216,20 +1216,19 @@ protected:
 
 public:
 
-  virtual ~NaClDisBlockParser() LLVM_OVERRIDE {}
+  ~NaClDisBlockParser() override {}
 
-  virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
+  bool ParseBlock(unsigned BlockID) override;
 
 protected:
-  virtual void EnterBlock(unsigned NumWords) LLVM_OVERRIDE;
+  void EnterBlock(unsigned NumWords) override;
 
-  virtual void ExitBlock() LLVM_OVERRIDE;
+  void ExitBlock() override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 
-  virtual void ProcessAbbreviation(unsigned BlockID,
-                                   NaClBitCodeAbbrev *Abbrev,
-                                   bool IsLocal) LLVM_OVERRIDE;
+  void ProcessAbbreviation(unsigned BlockID, NaClBitCodeAbbrev *Abbrev,
+                           bool IsLocal) override;
 
   void InitAbbreviations() {
     NumGlobalAbbreviations = Context->GetNumGlobalAbbreviations(GetBlockID());
@@ -1237,7 +1236,7 @@ protected:
   }
 
   // Prints the block header instruction for the block. Called by EnterBlock.
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
   // Dumps the corresponding record for a block enter.
   void DumpEnterBlockRecord();
@@ -1592,16 +1591,15 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser) {
   }
 
-  virtual ~NaClDisBlockInfoParser() LLVM_OVERRIDE {}
+  ~NaClDisBlockInfoParser() override {}
 
 private:
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual void SetBID() LLVM_OVERRIDE;
+  void SetBID() override;
 
-  virtual void ProcessAbbreviation(unsigned BlockID,
-                                   NaClBitCodeAbbrev *Abbrev,
-                                   bool IsLocal) LLVM_OVERRIDE;
+  void ProcessAbbreviation(unsigned BlockID, NaClBitCodeAbbrev *Abbrev,
+                           bool IsLocal) override;
 
   /// Returns the abbreviation id for the next global abbreviation
   /// to be defined for the given block id.
@@ -1670,12 +1668,12 @@ public:
   {
   }
 
-  virtual ~NaClDisTypesParser() LLVM_OVERRIDE;
+  ~NaClDisTypesParser() override;
 
 private:
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 
   /// Returns the value id for the next type to be defined.
   BitcodeId NextTypeId() {
@@ -1854,14 +1852,14 @@ public:
         InsideCompound(false),
         BaseTabs(GetAssemblyNumTabs()+1) {}
 
-  virtual ~NaClDisGlobalsParser() LLVM_OVERRIDE {}
+  ~NaClDisGlobalsParser() override {}
 
 private:
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 
-  virtual void ExitBlock() LLVM_OVERRIDE;
+  void ExitBlock() override;
 
   // Expected number of initializers associated with last globalvars
   // record
@@ -2066,12 +2064,12 @@ public:
       : NaClDisBlockParser(BlockID, EnclosingParser) {
   }
 
-  virtual ~NaClDisValueSymtabParser() LLVM_OVERRIDE {}
+  ~NaClDisValueSymtabParser() override {}
 
 private:
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 
   // Displays the context of the name (in Values) for the given Id.
   void DisplayEntry(BitcodeId &Id,
@@ -2211,9 +2209,9 @@ public:
   }
 
 private:
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 
   /// Generates the value id for the next generated constant.
   BitcodeId NextConstId() {
@@ -2326,13 +2324,13 @@ public:
   NaClDisFunctionParser(unsigned BlockID,
                         NaClDisBlockParser *EnclosingParser);
 
-  virtual ~NaClDisFunctionParser() LLVM_OVERRIDE {}
+  ~NaClDisFunctionParser() override {}
 
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
+  bool ParseBlock(unsigned BlockID) override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 
   /// Returns the absolute value index of the first instruction that
   /// generates a value in the defined function.
@@ -3245,13 +3243,13 @@ public:
       : NaClDisBlockParser(BlockID, Context) {
   }
 
-  virtual ~NaClDisModuleParser() LLVM_OVERRIDE;
+  ~NaClDisModuleParser() override;
 
-  virtual bool ParseBlock(unsigned BlockID) LLVM_OVERRIDE;
+  bool ParseBlock(unsigned BlockID) override;
 
-  virtual void PrintBlockHeader() LLVM_OVERRIDE;
+  void PrintBlockHeader() override;
 
-  virtual void ProcessRecord() LLVM_OVERRIDE;
+  void ProcessRecord() override;
 };
 
 NaClDisModuleParser::~NaClDisModuleParser() {
