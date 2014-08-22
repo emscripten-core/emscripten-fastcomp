@@ -357,12 +357,6 @@ public:
     return EHFrameSection;
   }
 
-  // @LOCALMOD-START
-  Reloc::Model getRelocM() const {
-    return RelocM;
-  }
-  // @LOCALMOD-END
-
   enum Environment { IsMachO, IsELF, IsCOFF };
   Environment getObjectFileType() const {
     return Env;
