@@ -120,7 +120,7 @@ class StreamingMemoryObject : public StreamableMemoryObject {
 /// StreamingMemoryObjectImpl - an implementation of a StreamingMemoryObject.
 class StreamingMemoryObjectImpl : public StreamingMemoryObject {
 public:
-  StreamingMemoryObject(DataStreamer *streamer);
+  StreamingMemoryObjectImpl(DataStreamer *streamer);
   uint64_t getBase() const override { return 0; }
   uint64_t getExtent() const override;
   int readByte(uint64_t address, uint8_t *ptr) const override;
