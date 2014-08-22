@@ -281,9 +281,11 @@ void initializeLoadCombinePass(PassRegistry&);
 
 // @LOCALMOD-BEGIN
 void initializeAddPNaClExternalDeclsPass(PassRegistry&);
+void initializeAllocateDataSegmentPass(PassRegistry&);
 void initializeBackendCanonicalizePass(PassRegistry&);
 void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
 void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
+void initializeExpandAllocasPass(PassRegistry&);
 void initializeExpandArithWithOverflowPass(PassRegistry&);
 void initializeExpandByValPass(PassRegistry&);
 void initializeExpandConstantExprPass(PassRegistry&);
@@ -314,6 +316,7 @@ void initializeResolvePNaClIntrinsicsPass(PassRegistry&);
 void initializeRewriteAtomicsPass(PassRegistry&);
 void initializeRewriteLLVMIntrinsicsPass(PassRegistry&);
 void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
+void initializeSandboxIndirectCallsPass(PassRegistry&);
 void initializeSandboxMemoryAccessesPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);

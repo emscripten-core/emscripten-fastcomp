@@ -88,36 +88,6 @@ void NaClBitcodeReaderValueList::AssignValue(Value *V, unsigned Idx) {
   delete PrevVal;
 }
 
-void NaClBitcodeReaderValueList::AssignGlobalVar(GlobalVariable *GV,
-                                                 unsigned Idx) {
-  assert(GV);
-
-  if (Idx == size()) {
-    push_back(GV);
-    return;
-  }
-
-  if (Idx >= size())
-    resize(Idx+1);
-
-  WeakVH &OldV = ValuePtrs[Idx];
-  if (OldV == 0) {
-    OldV = GV;
-    return;
-  }
-
-  // If reached, we have a forward reference that needs to be replaced
-  // by GV. Replace the placeholder with GV for later lookups in
-  // ValuePtrs.  However, don't replace uses of placeholders yet. Wait
-  // till the end when we know all replacements, so that we can bulk
-  // replace.
-  Value *PrevVal = OldV;
-  GlobalVariable *Placeholder = cast<GlobalVariable>(PrevVal);
-  Constant *RealValue = ConstantExpr::getBitCast(GV, Placeholder->getType());
-  GlobalPlaceholderMap[Placeholder] = RealValue;
-  ValuePtrs[Idx] = GV;
-}
-
 void NaClBitcodeReaderValueList::OverwriteValue(Value *V, unsigned Idx) {
   ValuePtrs[Idx] = V;
 }
@@ -147,148 +117,6 @@ bool NaClBitcodeReaderValueList::createValueFwdRef(unsigned Idx, Type *Ty) {
   // Create a placeholder, which will later be RAUW'd.
   ValuePtrs[Idx] = new Argument(Ty);
   return false;
-}
-
-Constant *NaClBitcodeReaderValueList::getOrCreateGlobalVarRef(
-    unsigned Idx, Module *M) {
-  // First make sure the element for Idx is defined.
-  if (Idx >= size())
-    resize(Idx + 1);
-
-  // Now get its value (if applicable).
-  if (Value *V = ValuePtrs[Idx])
-    return dyn_cast<Constant>(V);
-
-  // Create a placeholder, which will later be RAUW'd.
-  Type *PlaceholderType = Type::getInt8Ty(Context);
-
-  Constant *C =
-      new GlobalVariable(*M, PlaceholderType, false,
-                         GlobalValue::ExternalLinkage, 0);
-  ValuePtrs[Idx] = C;
-  return C;
-}
-
-void NaClBitcodeReaderValueList::ResolveGlobalPlaceholders() {
-  // Replaces global initializers using bulk replacements. These
-  // replacements make a single copy of each global variable
-  // initializer (containing placeholder relocation addresses).  In
-  // particular, we must deal with the fact that initializers are
-  // constants, and hence uniqued.
-  //
-  // To do this, we work our way up to one of the above:
-  // 1) The global variable containing the initializer.
-  // 2) The struct constant defining the initializer for a global variable.
-  //
-  // The remaining cases are the constant expressions computing
-  // relocation address (and includes global variables, pointer cast
-  // operations, and additions of a constant offset).  For these
-  // operations, placeholders can only appear in one of its operands.
-  // Hence, it does not matter the order such constant expressions are
-  // replaced.
-  //
-  // On the other hand, a struct constant can contain multiple
-  // operands that should all be replaced at the same time. To do
-  // this, we delay processing struct constants until after all other
-  // constants have been duplicated.  At that point, we know that all
-  // operands to the struct constant have replacements computed for
-  // them, if replacements are needed. Hence, we can do the bulk
-  // replacements all at once.
-  //
-  // Once we reach a global variable, we replace the initializer since
-  // we know what the replaced initializer must be.
-  std::vector<GlobalVariable*> ToDeleteList;
-  ToDeleteList.reserve(GlobalPlaceholderMap.size());
-  DenseSet<Constant*> ToFixList;
-  DenseSet<ConstantStruct*> StructConstants;
-  // Used to build a copy of operands, and is used to build
-  // the replacement constant.
-  SmallVector<Constant*, 64> NewOps;
-
-  // Start by collecting the place holders, which are instances
-  // of GlobalVariable.
-  for (GlobalPlaceholderMapType::iterator
-           Iter = GlobalPlaceholderMap.begin(),
-           IterEnd = GlobalPlaceholderMap.end();
-       Iter != IterEnd; ++Iter) {
-    ToDeleteList.push_back(cast<GlobalVariable>(Iter->first));
-    ToFixList.insert(Iter->first);
-  }
-
-  // Duplicate expressions up to either the constant struct
-  // initializer, or to the global variable enclosing the initializer
-  // (if the initializer contains a single relocation computation
-  // rather than a constant struct). If at the constant struct
-  // initializer, put on list to process later. Otherwise, fix the
-  // initializer of the global variable.
-  while (!ToFixList.empty()) {
-    DenseSet<Constant*>::iterator Next = ToFixList.begin();
-    Constant *Placeholder = *Next;
-    ToFixList.erase(Next);
-    for (Value::use_iterator
-             I = Placeholder->use_begin(), E = Placeholder->use_end();
-         I != E; ++I) {
-      // Handle special case of global variable.
-      User *U = *I;
-      if (isa<GlobalVariable>(U)) {
-        I.getUse().set(GetReplacedGlobalConstant(Placeholder));
-        continue;
-      }
-
-      // Handle special case of constant struct.
-      Constant *Exp = cast<Constant>(U);
-      if (ConstantStruct *CS = dyn_cast<ConstantStruct>(Exp)) {
-        StructConstants.insert(CS);
-        continue;
-      }
-
-      // If reached, Exp is an ordinary case of constants. Create
-      // duplicate with proper replacements, and define as placeholder
-      // for Exp.
-      for (User::op_iterator I = Exp->op_begin(), E = Exp->op_end();
-           I != E; ++I) {
-        Constant *Op = cast<Constant>(*I);
-        NewOps.push_back(GetReplacedGlobalConstant(Op));
-      }
-      Constant *RealExp = cast<ConstantExpr>(Exp)->getWithOperands(NewOps);
-      GlobalPlaceholderMap[Exp] = RealExp;
-      NewOps.clear();
-      ToFixList.insert(Exp);
-    }
-  }
-
-  // Process remaining structs, which must appear as the initializer of
-  // of global variables.
-  while (!StructConstants.empty()) {
-    DenseSet<ConstantStruct*>::iterator Next = StructConstants.begin();
-    ConstantStruct *C = *Next;
-    StructConstants.erase(Next);
-
-    for (User::op_iterator I = C->op_begin(), E = C->op_end(); I != E; ++I) {
-      Constant *Op = cast<Constant>(*I);
-      NewOps.push_back(GetReplacedGlobalConstant(Op));
-    }
-    Constant *RealExp = ConstantStruct::get(C->getType(), NewOps);
-    NewOps.clear();
-
-    for (Value::use_iterator
-             I = C->use_begin(), E = C->use_end();
-         I != E; ++I) {
-      I.getUse().set(RealExp);
-    }
-  }
-
-  // Remove the initial placeholders from the program.
-  for (std::vector<GlobalVariable*>::iterator
-           I = ToDeleteList.begin(), E = ToDeleteList.end();
-       I != E; ++I) {
-    (*I)->eraseFromParent();
-  }
-
-  // Reset the placeholder map, so that any further (accidental)
-  // changes will generate a runtime error.
-  GlobalPlaceholderMapType EmptyMap;
-  GlobalPlaceholderMap.swap(EmptyMap);
 }
 
 Type *NaClBitcodeReader::getTypeByID(unsigned ID) {
@@ -430,146 +258,302 @@ bool NaClBitcodeReader::ParseTypeTableBody() {
   }
 }
 
+namespace {
+
+// Class to process globals in two passes. In the first pass, build
+// the corresponding global variables with no initializers. In the
+// second pass, add initializers. The purpose of putting off
+// initializers is to make sure that we don't need to generate
+// placeholders for relocation records, and the corresponding cost
+// of duplicating initializers when these placeholders are replaced.
+class ParseGlobalsHandler {
+  ParseGlobalsHandler(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
+  void operator=(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
+
+  NaClBitcodeReader &Reader;
+  NaClBitcodeReaderValueList &ValueList;
+  NaClBitstreamCursor &Stream;
+  LLVMContext &Context;
+  Module *TheModule;
+
+  // Holds read data record.
+  SmallVector<uint64_t, 64> Record;
+  // True when processing a global variable. Stays true until all records
+  // are processed, and the global variable is created.
+  bool ProcessingGlobal;
+  // The number of initializers needed for the global variable.
+  unsigned VarInitializersNeeded ;
+  unsigned FirstValueNo;
+  // The index of the next global variable.
+  unsigned NextValueNo;
+  // The number of expected global variable definitions.
+  unsigned NumGlobals;
+  // The bit to go back to to generate initializers.
+  uint64_t StartBit;
+
+  void InitPass() {
+    Stream.JumpToBit(StartBit);
+    ProcessingGlobal = false;
+    VarInitializersNeeded = 0;
+    NextValueNo = FirstValueNo;
+  }
+
+public:
+  ParseGlobalsHandler(NaClBitcodeReader &Reader,
+                      NaClBitcodeReaderValueList &ValueList,
+                      NaClBitstreamCursor &Stream,
+                      LLVMContext &Context,
+                      Module *TheModule)
+      : Reader(Reader),
+        ValueList(ValueList),
+        Stream(Stream),
+        Context(Context),
+        TheModule(TheModule),
+        FirstValueNo(ValueList.size()),
+        NumGlobals(0),
+        StartBit(Stream.GetCurrentBitNo()) {}
+
+  bool GenerateGlobalVarsPass() {
+    InitPass();
+
+    // The type for the initializer of the global variable.
+    SmallVector<Type*, 10> VarType;
+    // The alignment value defined for the global variable.
+    unsigned VarAlignment = 0;
+    // True if the variable is read-only.
+    bool VarIsConstant = false;
+
+    // Read all records to build global variables without initializers.
+    while (1) {
+      NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks(
+          NaClBitstreamCursor::AF_DontPopBlockAtEnd);
+      switch (Entry.Kind) {
+      case NaClBitstreamEntry::SubBlock:
+      case NaClBitstreamEntry::Error:
+        return Reader.Error("Error in the global vars block");
+      case NaClBitstreamEntry::EndBlock:
+        if (ProcessingGlobal || NumGlobals != (NextValueNo - FirstValueNo))
+          return Reader.Error("Error in the global vars block");
+        return false;
+      case NaClBitstreamEntry::Record:
+        // The interesting case.
+        break;
+      }
+
+      // Read a record.
+      Record.clear();
+      unsigned Bitcode = Stream.readRecord(Entry.ID, Record);
+      switch (Bitcode) {
+      default: return Reader.Error("Unknown global variable entry");
+      case naclbitc::GLOBALVAR_VAR:
+        // Start the definition of a global variable.
+        if (ProcessingGlobal || Record.size() != 2)
+          return Reader.Error("Bad GLOBALVAR_VAR record");
+        ProcessingGlobal = true;
+        VarAlignment = (1 << Record[0]) >> 1;
+        VarIsConstant = Record[1] != 0;
+        // Assume (by default) there is a single initializer.
+        VarInitializersNeeded = 1;
+        break;
+      case naclbitc::GLOBALVAR_COMPOUND:
+        // Global variable has multiple initializers. Changes the
+        // default number of initializers to the given value in
+        // Record[0].
+        if (!ProcessingGlobal || !VarType.empty() ||
+            VarInitializersNeeded != 1 || Record.size() != 1)
+          return Reader.Error("Bad GLOBALVAR_COMPOUND record");
+        VarInitializersNeeded = Record[0];
+        break;
+      case naclbitc::GLOBALVAR_ZEROFILL: {
+        // Define a type that defines a sequence of zero-filled bytes.
+        if (!ProcessingGlobal || Record.size() != 1)
+          return Reader.Error("Bad GLOBALVAR_ZEROFILL record");
+        VarType.push_back(ArrayType::get(
+            Type::getInt8Ty(Context), Record[0]));
+        break;
+      }
+      case naclbitc::GLOBALVAR_DATA: {
+        // Defines a type defined by a sequence of byte values.
+        if (!ProcessingGlobal || Record.size() < 1)
+          return Reader.Error("Bad GLOBALVAR_DATA record");
+        VarType.push_back(ArrayType::get(
+            Type::getInt8Ty(Context), Record.size()));
+        break;
+      }
+      case naclbitc::GLOBALVAR_RELOC: {
+        // Define a relocation initializer type.
+        if (!ProcessingGlobal || Record.size() < 1 || Record.size() > 2)
+          return Reader.Error("Bad GLOBALVAR_RELOC record");
+        VarType.push_back(IntegerType::get(Context, 32));
+        break;
+      }
+      case naclbitc::GLOBALVAR_COUNT:
+        if (Record.size() != 1 || NumGlobals != 0)
+          return Reader.Error("Invalid global count record");
+        NumGlobals = Record[0];
+        break;
+      }
+
+      // If more initializers needed for global variable, continue processing.
+      if (!ProcessingGlobal || VarType.size() < VarInitializersNeeded)
+        continue;
+
+      Type *Ty = 0;
+      switch (VarType.size()) {
+      case 0:
+        return Reader.Error(
+            "No initializer for global variable in global vars block");
+      case 1:
+        Ty = VarType[0];
+        break;
+      default:
+        Ty = StructType::get(Context, VarType, true);
+        break;
+      }
+      GlobalVariable *GV = new GlobalVariable(
+          *TheModule, Ty, VarIsConstant,
+          GlobalValue::InternalLinkage, NULL, "");
+      GV->setAlignment(VarAlignment);
+      ValueList.AssignValue(GV, NextValueNo);
+      ++NextValueNo;
+      ProcessingGlobal = false;
+      VarAlignment = 0;
+      VarIsConstant = false;
+      VarInitializersNeeded = 0;
+      VarType.clear();
+    }
+  }
+
+  bool GenerateGlobalVarInitsPass() {
+    InitPass();
+    // The initializer for the global variable.
+    SmallVector<Constant *, 10> VarInit;
+
+    while (1) {
+      NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks(
+          NaClBitstreamCursor::AF_DontAutoprocessAbbrevs);
+      switch (Entry.Kind) {
+      case NaClBitstreamEntry::SubBlock:
+      case NaClBitstreamEntry::Error:
+        return Reader.Error("Error in the global vars block");
+      case NaClBitstreamEntry::EndBlock:
+        if (ProcessingGlobal || NumGlobals != (NextValueNo - FirstValueNo))
+          return Reader.Error("Error in the global vars block");
+        return false;
+      case NaClBitstreamEntry::Record:
+        if (Entry.ID == naclbitc::DEFINE_ABBREV) {
+          Stream.SkipAbbrevRecord();
+          continue;
+        }
+        // The interesting case.
+        break;
+      default:
+        return Reader.Error("Unexpected record");
+      }
+
+      // Read a record.
+      Record.clear();
+      unsigned Bitcode = Stream.readRecord(Entry.ID, Record);
+      switch (Bitcode) {
+      default: return Reader.Error("Unknown global variable entry 2");
+      case naclbitc::GLOBALVAR_VAR:
+        // Start the definition of a global variable.
+        ProcessingGlobal = true;
+        // Assume (by default) there is a single initializer.
+        VarInitializersNeeded = 1;
+        break;
+      case naclbitc::GLOBALVAR_COMPOUND:
+        // Global variable has multiple initializers. Changes the
+        // default number of initializers to the given value in
+        // Record[0].
+        if (!ProcessingGlobal || !VarInit.empty() ||
+            VarInitializersNeeded != 1 || Record.size() != 1)
+          return Reader.Error("Bad GLOBALVAR_COMPOUND record");
+        VarInitializersNeeded = Record[0];
+        break;
+      case naclbitc::GLOBALVAR_ZEROFILL: {
+        // Define an initializer that defines a sequence of zero-filled bytes.
+        if (!ProcessingGlobal || Record.size() != 1)
+          return Reader.Error("Bad GLOBALVAR_ZEROFILL record");
+        Type *Ty = ArrayType::get(Type::getInt8Ty(Context),
+                                  Record[0]);
+        Constant *Zero = ConstantAggregateZero::get(Ty);
+        VarInit.push_back(Zero);
+        break;
+      }
+      case naclbitc::GLOBALVAR_DATA: {
+        // Defines an initializer defined by a sequence of byte values.
+        if (!ProcessingGlobal || Record.size() < 1)
+          return Reader.Error("Bad GLOBALVAR_DATA record");
+        unsigned Size = Record.size();
+        uint8_t *Buf = new uint8_t[Size];
+        assert(Buf);
+        for (unsigned i = 0; i < Size; ++i)
+          Buf[i] = Record[i];
+        Constant *Init = ConstantDataArray::get(
+            Context, ArrayRef<uint8_t>(Buf, Buf + Size));
+        VarInit.push_back(Init);
+        delete[] Buf;
+        break;
+      }
+      case naclbitc::GLOBALVAR_RELOC: {
+        // Define a relocation initializer.
+        if (!ProcessingGlobal || Record.size() < 1 || Record.size() > 2)
+          return Reader.Error("Bad GLOBALVAR_RELOC record");
+        Constant *BaseVal = cast<Constant>(ValueList[Record[0]]);
+        Type *IntPtrType = IntegerType::get(Context, 32);
+        Constant *Val = ConstantExpr::getPtrToInt(BaseVal, IntPtrType);
+        if (Record.size() == 2) {
+          uint32_t Addend = Record[1];
+          Val = ConstantExpr::getAdd(Val, ConstantInt::get(IntPtrType,
+                                                           Addend));
+        }
+        VarInit.push_back(Val);
+        break;
+      }
+      case naclbitc::GLOBALVAR_COUNT:
+        if (Record.size() != 1)
+          return Reader.Error("Invalid global count record");
+        // Note: NumGlobals should have been set in GenerateGlobalVarsPass.
+        // Fail if methods are called in wrong order.
+        assert(NumGlobals == Record[0]);
+        break;
+      }
+
+      // If more initializers needed for global variable, continue processing.
+      if (!ProcessingGlobal || VarInit.size() < VarInitializersNeeded)
+        continue;
+
+      Constant *Init = 0;
+      switch (VarInit.size()) {
+      case 0:
+        return Reader.Error(
+            "No initializer for global variable in global vars block");
+      case 1:
+        Init = VarInit[0];
+        break;
+      default:
+        Init = ConstantStruct::getAnon(Context, VarInit, true);
+        break;
+      }
+      cast<GlobalVariable>(ValueList[NextValueNo])->setInitializer(Init);
+      ++NextValueNo;
+      ProcessingGlobal = false;
+      VarInitializersNeeded = 0;
+      VarInit.clear();
+    }
+  }
+};
+
+} // End anonymous namespace.
+
 bool NaClBitcodeReader::ParseGlobalVars() {
   if (Stream.EnterSubBlock(naclbitc::GLOBALVAR_BLOCK_ID))
     return Error("Malformed block record");
 
-  SmallVector<uint64_t, 64> Record;
-
-  // True when processing a global variable. Stays true until all records
-  // are processed, and the global variable is created.
-  bool ProcessingGlobal = false;
-  // The alignment value defined for the global variable.
-  unsigned VarAlignment = 0;
-  // True if the variable is read-only.
-  bool VarIsConstant = false;
-  // The initializer for the global variable.
-  SmallVector<Constant *, 10> VarInit;
-  // The number of initializers needed for the global variable.
-  unsigned VarInitializersNeeded = 0;
-  unsigned FirstValueNo = ValueList.size();
-  // The index of the next global variable.
-  unsigned NextValueNo = FirstValueNo;
-  // The number of expected global variable definitions.
-  unsigned NumGlobals = 0;
-
-  // Read all global variable records.
-  while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
-    switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock:
-    case NaClBitstreamEntry::Error:
-      return Error("Error in the global vars block");
-    case NaClBitstreamEntry::EndBlock:
-      if (ProcessingGlobal || NumGlobals != (NextValueNo - FirstValueNo))
-        return Error("Error in the global vars block");
-      ValueList.ResolveGlobalPlaceholders();
-      return false;
-    case NaClBitstreamEntry::Record:
-      // The interesting case.
-      break;
-    }
-
-    // Read a record.
-    Record.clear();
-    unsigned Bitcode = Stream.readRecord(Entry.ID, Record);
-    switch (Bitcode) {
-    default: return Error("Unknown global variable entry");
-    case naclbitc::GLOBALVAR_VAR:
-      // Start the definition of a global variable.
-      if (ProcessingGlobal || Record.size() != 2)
-        return Error("Bad GLOBALVAR_VAR record");
-      ProcessingGlobal = true;
-      VarAlignment = (1 << Record[0]) >> 1;
-      VarIsConstant = Record[1] != 0;
-      // Assume (by default) there is a single initializer.
-      VarInitializersNeeded = 1;
-      break;
-    case naclbitc::GLOBALVAR_COMPOUND:
-      // Global variable has multiple initializers. Changes the
-      // default number of initializers to the given value in
-      // Record[0].
-      if (!ProcessingGlobal || !VarInit.empty() ||
-          VarInitializersNeeded != 1 || Record.size() != 1)
-        return Error("Bad GLOBALVAR_COMPOUND record");
-      VarInitializersNeeded = Record[0];
-      break;
-    case naclbitc::GLOBALVAR_ZEROFILL: {
-      // Define an initializer that defines a sequence of zero-filled bytes.
-      if (!ProcessingGlobal || Record.size() != 1)
-        return Error("Bad GLOBALVAR_ZEROFILL record");
-      Type *Ty = ArrayType::get(Type::getInt8Ty(Context), Record[0]);
-      Constant *Zero = ConstantAggregateZero::get(Ty);
-      VarInit.push_back(Zero);
-      break;
-    }
-    case naclbitc::GLOBALVAR_DATA: {
-      // Defines an initializer defined by a sequence of byte values.
-      if (!ProcessingGlobal || Record.size() < 1)
-        return Error("Bad GLOBALVAR_DATA record");
-      unsigned Size = Record.size();
-      uint8_t *Buf = new uint8_t[Size];
-      assert(Buf);
-      for (unsigned i = 0; i < Size; ++i)
-        Buf[i] = Record[i];
-      Constant *Init = ConstantDataArray::get(
-          Context, ArrayRef<uint8_t>(Buf, Buf + Size));
-      VarInit.push_back(Init);
-      delete[] Buf;
-      break;
-    }
-    case naclbitc::GLOBALVAR_RELOC: {
-      // Define a relocation initializer.
-      if (!ProcessingGlobal || Record.size() < 1 || Record.size() > 2)
-        return Error("Bad GLOBALVAR_RELOC record");
-      Constant *BaseVal =
-          ValueList.getOrCreateGlobalVarRef(Record[0], TheModule);
-      if (BaseVal == 0)
-        return Error("Bad base value in GLOBALVAR_RELOC record");
-      Type *IntPtrType = IntegerType::get(Context, 32);
-      Constant *Val = ConstantExpr::getPtrToInt(BaseVal, IntPtrType);
-      if (Record.size() == 2) {
-        uint32_t Addend = Record[1];
-        Val = ConstantExpr::getAdd(Val, ConstantInt::get(IntPtrType,
-                                                         Addend));
-      }
-      VarInit.push_back(Val);
-      break;
-    }
-    case naclbitc::GLOBALVAR_COUNT:
-      if (Record.size() != 1 || NumGlobals != 0)
-        return Error("Invalid global count record");
-      NumGlobals = Record[0];
-      break;
-    }
-
-    // If more initializers needed for global variable, continue processing.
-    if (!ProcessingGlobal || VarInit.size() < VarInitializersNeeded)
-      continue;
-
-    Constant *Init = 0;
-    switch (VarInit.size()) {
-    case 0:
-      return Error("No initializer for global variable in global vars block");
-    case 1:
-      Init = VarInit[0];
-      break;
-    default:
-      Init = ConstantStruct::getAnon(Context, VarInit, true);
-      break;
-    }
-    GlobalVariable *GV = new GlobalVariable(
-        *TheModule, Init->getType(), VarIsConstant,
-        GlobalValue::InternalLinkage, Init, "");
-    GV->setAlignment(VarAlignment);
-    ValueList.AssignGlobalVar(GV, NextValueNo);
-    ++NextValueNo;
-    ProcessingGlobal = false;
-    VarAlignment = 0;
-    VarIsConstant = false;
-    VarInitializersNeeded = 0;
-    VarInit.clear();
-  }
+  ParseGlobalsHandler PassHandler(*this, ValueList, Stream, Context, TheModule);
+  if (PassHandler.GenerateGlobalVarsPass()) return true;
+  return PassHandler.GenerateGlobalVarInitsPass();
 }
 
 bool NaClBitcodeReader::ParseValueSymbolTable() {

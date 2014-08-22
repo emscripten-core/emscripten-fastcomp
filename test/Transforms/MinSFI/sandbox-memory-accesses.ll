@@ -1,9 +1,13 @@
 ; RUN: opt %s -minsfi-sandbox-memory-accesses -S | FileCheck %s
+; RUN: opt %s -minsfi-ptrsize=20 -minsfi-sandbox-memory-accesses -S \ 
+; RUN:   | FileCheck %s -check-prefix=CHECK-MASK
 
 target datalayout = "p:32:32:32"
 target triple = "le32-unknown-nacl"
 
 ; CHECK:  @__sfi_memory_base = external global i64
+; CHECK:  @__sfi_pointer_size = constant i32 32
+; CHECK-MASK:  @__sfi_pointer_size = constant i32 20
 
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture readonly, i32, i32, i1)
 declare void @llvm.memmove.p0i8.p0i8.i32(i8* nocapture, i8* nocapture readonly, i32, i32, i1)
@@ -49,6 +53,17 @@ define i32 @test_load(i32* %ptr) {
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define i32 @test_load(i32* %ptr) {
+; CHECK-MASK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-MASK-NEXT:    %1 = ptrtoint i32* %ptr to i32
+; CHECK-MASK-NEXT:    %2 = and i32 %1, 1048575
+; CHECK-MASK-NEXT:    %3 = zext i32 %2 to i64
+; CHECK-MASK-NEXT:    %4 = add i64 %mem_base, %3
+; CHECK-MASK-NEXT:    %5 = inttoptr i64 %4 to i32* 
+; CHECK-MASK-NEXT:    %val = load i32* %5
+; CHECK-MASK-NEXT:    ret i32 %val
+; CHECK-MASK-NEXT:  }
+
 define void @test_store(i32* %ptr) {
   store i32 1234, i32* %ptr
   ret void
@@ -63,6 +78,17 @@ define void @test_store(i32* %ptr) {
 ; CHECK-NEXT:    store i32 1234, i32* %4
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
+
+; CHECK-MASK-LABEL: define void @test_store(i32* %ptr) {
+; CHECK-MASK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-MASK-NEXT:    %1 = ptrtoint i32* %ptr to i32
+; CHECK-MASK-NEXT:    %2 = and i32 %1, 1048575
+; CHECK-MASK-NEXT:    %3 = zext i32 %2 to i64
+; CHECK-MASK-NEXT:    %4 = add i64 %mem_base, %3
+; CHECK-MASK-NEXT:    %5 = inttoptr i64 %4 to i32* 
+; CHECK-MASK-NEXT:    store i32 1234, i32* %5
+; CHECK-MASK-NEXT:    ret void
+; CHECK-MASK-NEXT:  }
 
 define void @test_memcpy_32(i8* %dest, i8* %src, i32 %len) {
   call void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src, i32 %len, i32 4, i1 false)
@@ -83,6 +109,10 @@ define void @test_memcpy_32(i8* %dest, i8* %src, i32 %len) {
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define void @test_memcpy_32(i8* %dest, i8* %src, i32 %len) {
+; CHECK-MASK:         %11 = and i32 %len, 1048575
+; CHECK-MASK-NEXT:    call void @llvm.memcpy.p0i8.p0i8.i32(i8* %5, i8* %10, i32 %11, i32 4, i1 false)
+
 define void @test_memmove_32(i8* %dest, i8* %src, i32 %len) {
   call void @llvm.memmove.p0i8.p0i8.i32(i8* %dest, i8* %src, i32 %len, i32 4, i1 false)
   ret void
@@ -102,6 +132,10 @@ define void @test_memmove_32(i8* %dest, i8* %src, i32 %len) {
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define void @test_memmove_32(i8* %dest, i8* %src, i32 %len) {
+; CHECK-MASK:         %11 = and i32 %len, 1048575
+; CHECK-MASK-NEXT:    call void @llvm.memmove.p0i8.p0i8.i32(i8* %5, i8* %10, i32 %11, i32 4, i1 false)
+
 define void @test_memset_32(i8* %dest, i32 %len) {
   call void @llvm.memset.p0i8.i32(i8* %dest, i8 5, i32 %len, i32 4, i1 false)
   ret void
@@ -116,6 +150,10 @@ define void @test_memset_32(i8* %dest, i32 %len) {
 ; CHECK-NEXT:    call void @llvm.memset.p0i8.i32(i8* %4, i8 5, i32 %len, i32 4, i1 false)
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
+
+; CHECK-MASK-LABEL: define void @test_memset_32(i8* %dest, i32 %len) {
+; CHECK-MASK:         %6 = and i32 %len, 1048575
+; CHECK-MASK-NEXT:    call void @llvm.memset.p0i8.i32(i8* %5, i8 5, i32 %6, i32 4, i1 false)
 
 define i32 @test_atomic_load_32(i32* %ptr) {
   %val = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr, i32 1)
@@ -132,6 +170,9 @@ define i32 @test_atomic_load_32(i32* %ptr) {
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define i32 @test_atomic_load_32(i32* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
+
 define i64 @test_atomic_load_64(i64* %ptr) {
   %val = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr, i32 1)
   ret i64 %val
@@ -146,6 +187,9 @@ define i64 @test_atomic_load_64(i64* %ptr) {
 ; CHECK-NEXT:    %val = call i64 @llvm.nacl.atomic.load.i64(i64* %4, i32 1)
 ; CHECK-NEXT:    ret i64 %val
 ; CHECK-NEXT:  }
+
+; CHECK-MASK-LABEL: define i64 @test_atomic_load_64(i64* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
 
 define void @test_atomic_store_32(i32* %ptr) {
   call void @llvm.nacl.atomic.store.i32(i32 1234, i32* %ptr, i32 1)
@@ -162,6 +206,9 @@ define void @test_atomic_store_32(i32* %ptr) {
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define void @test_atomic_store_32(i32* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
+
 define void @test_atomic_store_64(i64* %ptr) {
   call void @llvm.nacl.atomic.store.i64(i64 1234, i64* %ptr, i32 1)
   ret void
@@ -176,6 +223,9 @@ define void @test_atomic_store_64(i64* %ptr) {
 ; CHECK-NEXT:    call void @llvm.nacl.atomic.store.i64(i64 1234, i64* %4, i32 1)
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
+
+; CHECK-MASK-LABEL: define void @test_atomic_store_64(i64* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
 
 define i32 @test_atomic_rmw_32(i32* %ptr) {
   %val = call i32 @llvm.nacl.atomic.rmw.i32(i32 1, i32* %ptr, i32 1234, i32 1)
@@ -192,6 +242,9 @@ define i32 @test_atomic_rmw_32(i32* %ptr) {
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define i32 @test_atomic_rmw_32(i32* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
+
 define i64 @test_atomic_rmw_64(i64* %ptr) {
   %val = call i64 @llvm.nacl.atomic.rmw.i64(i32 1, i64* %ptr, i64 1234, i32 1)
   ret i64 %val
@@ -206,6 +259,9 @@ define i64 @test_atomic_rmw_64(i64* %ptr) {
 ; CHECK-NEXT:    %val = call i64 @llvm.nacl.atomic.rmw.i64(i32 1, i64* %4, i64 1234, i32 1)
 ; CHECK-NEXT:    ret i64 %val
 ; CHECK-NEXT:  }
+
+; CHECK-MASK-LABEL: define i64 @test_atomic_rmw_64(i64* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
 
 define i32 @test_atomic_cmpxchg_32(i32* %ptr) {
   %val = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 0, i32 1, i32 1, i32 1)
@@ -222,6 +278,9 @@ define i32 @test_atomic_cmpxchg_32(i32* %ptr) {
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
+; CHECK-MASK-LABEL: define i32 @test_atomic_cmpxchg_32(i32* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
+
 define i64 @test_atomic_cmpxchg_64(i64* %ptr) {
   %val = call i64 @llvm.nacl.atomic.cmpxchg.i64(i64* %ptr, i64 0, i64 1, i32 1, i32 1)
   ret i64 %val
@@ -236,6 +295,9 @@ define i64 @test_atomic_cmpxchg_64(i64* %ptr) {
 ; CHECK-NEXT:    %val = call i64 @llvm.nacl.atomic.cmpxchg.i64(i64* %4, i64 0, i64 1, i32 1, i32 1)
 ; CHECK-NEXT:    ret i64 %val
 ; CHECK-NEXT:  }
+
+; CHECK-MASK-LABEL: define i64 @test_atomic_cmpxchg_64(i64* %ptr) {
+; CHECK-MASK:         %2 = and i32 %1, 1048575
 
 define void @test_atomic_fence() {
   call void @llvm.nacl.atomic.fence(i32 1)
@@ -270,6 +332,18 @@ define i1 @test_atomic_is_lock_free(i8* %ptr) {
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i8*
 ; CHECK-NEXT:    %val = call i1 @llvm.nacl.atomic.is.lock.free(i32 4, i8* %4)
 ; CHECK-NEXT:    ret i1 %val
+; CHECK-NEXT:  }
+
+define void @test_bitcast_whitelisted(i32 %val) {
+  %ptr = inttoptr i32 %val to i8*
+  %ptr.bc = bitcast i8* %ptr to i32*
+  ret void
+}
+
+; CHECK-LABEL: define void @test_bitcast_whitelisted(i32 %val) {
+; CHECK-NEXT:    %ptr = inttoptr i32 %val to i8*
+; CHECK-NEXT:    %ptr.bc = bitcast i8* %ptr to i32*
+; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
 
 ; -----------------------------------------------------------------------------

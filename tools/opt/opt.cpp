@@ -396,9 +396,11 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
+  initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
+  initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
@@ -428,6 +430,7 @@ int main(int argc, char **argv) {
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
+  initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
@@ -571,6 +574,14 @@ int main(int argc, char **argv) {
 
   // Create a new optimization pass for each one specified on the command line
   for (unsigned i = 0; i < PassList.size(); ++i) {
+    // @LOCALMOD-BEGIN
+    if (PNaClABISimplifyPreOpt &&
+        PNaClABISimplifyPreOpt.getPosition() < PassList.getPosition(i)) {
+      PNaClABISimplifyAddPreOptPasses(Passes);
+      PNaClABISimplifyPreOpt = false;
+    }
+    // @LOCALMOD-END
+
     // Check to see if -std-compile-opts was specified before this option.  If
     // so, handle it.
     if (StandardCompileOpts &&
@@ -611,12 +622,6 @@ int main(int argc, char **argv) {
     }
 
     // @LOCALMOD-BEGIN
-    if (PNaClABISimplifyPreOpt &&
-        PNaClABISimplifyPreOpt.getPosition() < PassList.getPosition(i)) {
-      PNaClABISimplifyAddPreOptPasses(Passes);
-      PNaClABISimplifyPreOpt = false;
-    }
-
     if (PNaClABISimplifyPostOpt &&
         PNaClABISimplifyPostOpt.getPosition() < PassList.getPosition(i)) {
       PNaClABISimplifyAddPostOptPasses(Passes);
@@ -665,6 +670,11 @@ int main(int argc, char **argv) {
       Passes.add(createPrintModulePass(errs()));
   }
 
+  // @LOCALMOD-BEGIN
+  if (PNaClABISimplifyPreOpt)
+    PNaClABISimplifyAddPreOptPasses(Passes);
+  // @LOCALMOD-END
+
   // If -std-compile-opts was specified at the end of the pass list, add them.
   if (StandardCompileOpts) {
     AddStandardCompilePasses(Passes);
@@ -699,9 +709,6 @@ int main(int argc, char **argv) {
   }
 
   // @LOCALMOD-BEGIN
-  if (PNaClABISimplifyPreOpt)
-    PNaClABISimplifyAddPreOptPasses(Passes);
-
   if (PNaClABISimplifyPostOpt)
     PNaClABISimplifyAddPostOptPasses(Passes);
   // @LOCALMOD-END
