@@ -296,6 +296,7 @@ void initializePNaClSjLjEHPass(PassRegistry&);
 void initializePromoteI1OpsPass(PassRegistry&);
 void initializePromoteIntegersPass(PassRegistry&);
 void initializeRemoveAsmMemoryPass(PassRegistry&);
+void initializeRenameEntryPointPass(PassRegistry&);
 void initializeReplacePtrsWithIntsPass(PassRegistry&);
 void initializeResolveAliasesPass(PassRegistry&);
 void initializeResolvePNaClIntrinsicsPass(PassRegistry&);

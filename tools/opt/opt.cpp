@@ -655,6 +655,7 @@ int main(int argc, char **argv) {
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);
+  initializeRenameEntryPointPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
