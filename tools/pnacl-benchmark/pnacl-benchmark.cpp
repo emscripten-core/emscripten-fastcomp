@@ -125,7 +125,7 @@ private:
 
 void BenchmarkIRParsing() {
   outs() << "Benchmarking IR parsing...\n";
-  OwningPtr<MemoryBuffer> FileBuf;
+  std::unique_ptr<MemoryBuffer> FileBuf;
   error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename.c_str(), FileBuf);
   if (ec) {
     report_fatal_error("Could not open input file: " + ec.message());

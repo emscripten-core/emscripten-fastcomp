@@ -9,7 +9,6 @@
 
 #define DEBUG_TYPE "nacl-bitcode-analyzer"
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Bitcode/NaCl/NaClAnalyzerBlockDist.h"
@@ -491,7 +490,7 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
 int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
                          const AnalysisDumpOptions &DumpOptions) {
   // Read the input file.
-  OwningPtr<MemoryBuffer> MemBuf;
+  std::unique_ptr<MemoryBuffer> MemBuf;
 
   if (error_code ec =
         MemoryBuffer::getFileOrSTDIN(InputFilename, MemBuf))

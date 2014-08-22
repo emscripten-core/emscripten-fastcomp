@@ -9,7 +9,6 @@
 
 /// TODO(kschimpf): Add disassembling abbreviations.
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -48,7 +47,7 @@ NoAssembly("no-assembly",
 // if successful, true otherwise.
 static bool DisassembleBitcode() {
   // Open the bitcode file and put into a buffer.
-  OwningPtr<MemoryBuffer> MemBuf;
+  std::unique_ptr<MemoryBuffer> MemBuf;
   if (error_code ec =
       MemoryBuffer::getFileOrSTDIN(InputFilename.c_str(), MemBuf)) {
     errs() << "Error reading '" << InputFilename << "': "

@@ -224,7 +224,7 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (Binary)
     OpenFlags |= sys::fs::F_Binary;
-  OwningPtr<tool_output_file> FDOut(
+  std::unique_ptr<tool_output_file> FDOut(
       new tool_output_file(Filename.c_str(), error, OpenFlags));
   if (!error.empty()) {
     errs() << error << '\n';
@@ -395,7 +395,7 @@ static int runCompilePasses(Module *mod,
   }
 
   // Build up all of the passes that we want to do to the module.
-  OwningPtr<FunctionPassManager> PM(new FunctionPassManager(mod));
+  std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(mod));
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const DataLayout *TD = Target.getDataLayout())
@@ -523,8 +523,8 @@ static int compileSplitModule(const TargetOptions &Options,
       Target.setMCRelaxAll(true);
   }
   // The OwningPtrs are only used if we are not the primary module.
-  OwningPtr<LLVMContext> C;
-  OwningPtr<Module> M;
+  std::unique_ptr<LLVMContext> C;
+  std::unique_ptr<Module> M;
   Module *mod(NULL);
 
   if (ModuleIndex == 0) {
@@ -538,7 +538,7 @@ static int compileSplitModule(const TargetOptions &Options,
     // Add declarations for external functions required by PNaCl. The
     // ResolvePNaClIntrinsics function pass running during streaming
     // depends on these declarations being in the module.
-    OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+    std::unique_ptr<ModulePass> AddPNaClExternalDeclsPass(
         createAddPNaClExternalDeclsPass());
     AddPNaClExternalDeclsPass->runOnModule(*M);
     AddPNaClExternalDeclsPass.reset();
@@ -552,7 +552,7 @@ static int compileSplitModule(const TargetOptions &Options,
     raw_string_ostream OutFileName(N);
     if (ModuleIndex > 0)
       OutFileName << ".module" << ModuleIndex;
-    OwningPtr<tool_output_file> Out
+    std::unique_ptr<tool_output_file> Out
         (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
                          OutFileName.str()));
     if (!Out) return 1;
@@ -614,11 +614,11 @@ static int compileModule(StringRef ProgramName) {
   // races with any other use of the context. Rather than doing an invasive
   // plumbing change to fix it, we work around it by using a new context here
   // and leaving PseudoSourceValue as the only user of the global context.
-  OwningPtr<LLVMContext> MainContext(new LLVMContext());
-  OwningPtr<Module> mod;
+  std::unique_ptr<LLVMContext> MainContext(new LLVMContext());
+  std::unique_ptr<Module> mod;
   Triple TheTriple;
   PNaClABIErrorReporter ABIErrorReporter;
-  OwningPtr<StreamingMemoryObject> StreamingObject;
+  std::unique_ptr<StreamingMemoryObject> StreamingObject;
 
   if (!MainContext) return 1;
 
@@ -644,7 +644,7 @@ static int compileModule(StringRef ProgramName) {
 
   if (PNaClABIVerify) {
     // Verify the module (but not the functions yet)
-    OwningPtr<ModulePass> VerifyPass(
+    std::unique_ptr<ModulePass> VerifyPass(
         createPNaClABIVerifyModulePass(&ABIErrorReporter, LazyBitcode));
     VerifyPass->runOnModule(*mod);
     CheckABIVerifyErrors(ABIErrorReporter, "Module");
@@ -654,7 +654,7 @@ static int compileModule(StringRef ProgramName) {
   // Add declarations for external functions required by PNaCl. The
   // ResolvePNaClIntrinsics function pass running during streaming
   // depends on these declarations being in the module.
-  OwningPtr<ModulePass> AddPNaClExternalDeclsPass(
+  std::unique_ptr<ModulePass> AddPNaClExternalDeclsPass(
       createAddPNaClExternalDeclsPass());
   AddPNaClExternalDeclsPass->runOnModule(*mod);
   AddPNaClExternalDeclsPass.reset();

@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
   // Use the bitcode streaming interface
   DataStreamer *streamer(getDataFileStreamer(InputFilename, &ErrorMessage));
   if (streamer) {
-    OwningPtr<StreamingMemoryObject> Buffer(
+    std::unique_ptr<StreamingMemoryObject> Buffer(
         new StreamingMemoryObjectImpl(streamer));  // @LOCALMOD
     std::string DisplayFilename;
     if (InputFilename == "-")

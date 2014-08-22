@@ -17,7 +17,6 @@
 
 #include "llvm/Analysis/NaCl/PNaClABIProps.h"
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/NaClAtomicIntrinsics.h"
@@ -62,7 +61,7 @@ private:
   const char *checkInstruction(const DataLayout *DL, const Instruction *Inst);
   PNaClABIErrorReporter *Reporter;
   bool ReporterIsOwned;
-  OwningPtr<NaCl::AtomicIntrinsics> AtomicIntrinsics;
+  std::unique_ptr<NaCl::AtomicIntrinsics> AtomicIntrinsics;
 };
 
 }

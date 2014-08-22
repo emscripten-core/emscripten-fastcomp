@@ -130,7 +130,7 @@ class NaClBitcodeReader : public GVMaterializer {
   PNaClAllowedIntrinsics AllowedIntrinsics;
   MemoryBuffer *Buffer;
   bool BufferOwned;
-  OwningPtr<NaClBitstreamReader> StreamFile;
+  std::unique_ptr<NaClBitstreamReader> StreamFile;
   NaClBitstreamCursor Stream;
   StreamingMemoryObject *LazyStreamer;
   uint64_t NextUnreadBit;

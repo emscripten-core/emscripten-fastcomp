@@ -40,7 +40,7 @@ InputFilename(cl::Positional, cl::desc("<pexe file>"), cl::init("-"));
 static void WriteOutputFile(const Module *M) {
 
   std::string ErrorInfo;
-  OwningPtr<tool_output_file> Out
+  std::unique_ptr<tool_output_file> Out
     (new tool_output_file(OutputFilename.c_str(), ErrorInfo,
                           sys::fs::F_Binary));
   if (!ErrorInfo.empty()) {
@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
 
   // Use the bitcode streaming interface
   DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
-  OwningPtr<StreamingMemoryObject> Buffer(
+  std::unique_ptr<StreamingMemoryObject> Buffer(
       new StreamingMemoryObjectImpl(streamer));
   if (streamer) {
     std::string DisplayFilename;

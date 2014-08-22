@@ -16,7 +16,6 @@
 #ifndef LLVM_BITCODE_NACL_NACLBITSTREAMREADER_H
 #define LLVM_BITCODE_NACL_NACLBITSTREAMREADER_H
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Support/Endian.h"
@@ -42,7 +41,7 @@ public:
     std::vector<NaClBitCodeAbbrev*> Abbrevs;
   };
 private:
-  OwningPtr<StreamableMemoryObject> BitcodeBytes;
+  std::unique_ptr<StreamableMemoryObject> BitcodeBytes;
 
   std::vector<BlockInfo> BlockInfoRecords;
 

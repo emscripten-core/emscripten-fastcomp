@@ -141,7 +141,7 @@ Module *llvm::NaClParseIRFile(const std::string &Filename,
                               NaClFileFormat Format,
                               SMDiagnostic &Err,
                               LLVMContext &Context) {
-  OwningPtr<MemoryBuffer> File;
+  std::unique_ptr<MemoryBuffer> File;
   if (error_code ec = MemoryBuffer::getFileOrSTDIN(Filename.c_str(), File)) {
     Err = SMDiagnostic(Filename, SourceMgr::DK_Error,
                        "Could not open input file: " + ec.message());

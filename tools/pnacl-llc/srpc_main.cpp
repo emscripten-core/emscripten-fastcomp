@@ -29,7 +29,6 @@
 
 #include <string>
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -203,7 +202,7 @@ public:
       : module_count_(module_count), cmd_line_vec_(cmd_line_vec) {}
   ArgStringList *CmdLineVec() const { return cmd_line_vec_.get(); }
   int module_count_;
-  const OwningPtr<ArgStringList> cmd_line_vec_;
+  const std::unique_ptr<ArgStringList> cmd_line_vec_;
 };
 
 void *run_streamed(void *arg) {
@@ -266,7 +265,7 @@ void stream_init_with_split(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
 
   char *command_line = in_args[kMaxModuleSplit + 1]->arrays.carr;
   size_t command_line_len = in_args[kMaxModuleSplit + 1]->u.count;
-  OwningPtr<ArgStringList> extra_vec(
+  std::unique_ptr<ArgStringList> extra_vec(
       CommandLineFromArgz(command_line, command_line_len));
   cmd_line_vec->insert(cmd_line_vec->end(), extra_vec->begin(),
                        extra_vec->end());
