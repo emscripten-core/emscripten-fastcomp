@@ -18,13 +18,12 @@
 #include "llvm/Analysis/NaCl/PNaClABIProps.h"
 
 #include "llvm/Analysis/NaCl.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/NaClAtomicIntrinsics.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
-
-class DataLayout;
 
 // Checks that examine anything in the function body should be in
 // FunctionPasses to make them streaming-friendly.
@@ -52,7 +51,7 @@ class PNaClABIVerifyFunctions : public FunctionPass {
   }
   virtual void getAnalysisUsage(AnalysisUsage &Info) const {
     Info.setPreservesAll();
-    Info.addRequired<DataLayout>();
+    Info.addRequired<DataLayoutPass>();
   }
   bool runOnFunction(Function &F);
   virtual void print(raw_ostream &O, const Module *M) const;

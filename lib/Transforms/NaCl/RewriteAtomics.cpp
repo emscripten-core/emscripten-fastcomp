@@ -45,7 +45,7 @@ public:
 
   virtual bool runOnModule(Module &M);
   virtual void getAnalysisUsage(AnalysisUsage &Info) const {
-    Info.addRequired<DataLayout>();
+    Info.addRequired<DataLayoutPass>();
   }
 };
 
@@ -59,7 +59,8 @@ template <class T> std::string ToStr(const T &V) {
 class AtomicVisitor : public InstVisitor<AtomicVisitor> {
 public:
   AtomicVisitor(Module &M, Pass &P)
-      : M(M), C(M.getContext()), TD(P.getAnalysis<DataLayout>()), AI(C),
+      : M(M), C(M.getContext()),
+        TD(P.getAnalysis<DataLayoutPass>()->getDataLayout()), AI(C),
         ModifiedModule(false) {}
   ~AtomicVisitor() {}
   bool modifiedModule() const { return ModifiedModule; }

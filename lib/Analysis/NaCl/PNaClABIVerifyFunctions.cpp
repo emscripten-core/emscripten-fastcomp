@@ -503,7 +503,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
 }
 
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
-  const DataLayout *DL = &getAnalysis<DataLayout>();
+  const DataLayout *DL = &getAnalysis<DataLayoutPass>()->getDataLayout();
   SmallVector<StringRef, 8> MDNames;
   F.getContext().getMDKindNames(MDNames);
 

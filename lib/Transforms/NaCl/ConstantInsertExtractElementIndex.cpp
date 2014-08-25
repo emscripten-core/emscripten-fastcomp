@@ -35,7 +35,7 @@ public:
         *PassRegistry::getPassRegistry());
   }
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.addRequired<DataLayout>();
+    AU.addRequired<DataLayoutPass>();
     BasicBlockPass::getAnalysisUsage(AU);
   }
   virtual bool doInitialization(Module &Mod) {
@@ -161,7 +161,7 @@ void ConstantInsertExtractElementIndex::fixNonConstantVectorIndices(
 bool ConstantInsertExtractElementIndex::runOnBasicBlock(BasicBlock &BB) {
   bool Changed = false;
   if (!DL)
-    DL = &getAnalysis<DataLayout>();
+    DL = &getAnalysis<DataLayoutPass>()->getDataLayout();
   Instructions OutOfRangeConstantIndices;
   Instructions NonConstantVectorIndices;
 
