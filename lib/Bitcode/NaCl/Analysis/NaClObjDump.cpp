@@ -1236,7 +1236,7 @@ protected:
   }
 
   // Prints the block header instruction for the block. Called by EnterBlock.
-  void PrintBlockHeader() override;
+  virtual void PrintBlockHeader();
 
   // Dumps the corresponding record for a block enter.
   void DumpEnterBlockRecord();
