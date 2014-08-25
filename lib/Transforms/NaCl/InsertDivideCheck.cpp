@@ -12,16 +12,16 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "add-divide-check"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
