@@ -15,7 +15,6 @@
 #include "MCTargetDesc/MipsFixupKinds.h"
 #include "MCTargetDesc/MipsAsmBackend.h"
 #include "MCTargetDesc/MipsMCTargetDesc.h"
-#include "MCTargetDesc/MipsMCNaCl.h" // @LOCALMOD
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
@@ -397,10 +396,6 @@ MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T,
                                              const MCRegisterInfo &MRI,
                                              StringRef TT,
                                              StringRef CPU) {
-  // @LOCALMOD-BEGIN
-  if (Triple(TT).isOSNaCl())
-    return new NaClMipsAsmBackend(T, /*Is64Bit*/false);
-  // @LOCALMOD-END
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/true, /*Is64Bit*/false);
 }
@@ -417,10 +412,6 @@ MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T,
                                              const MCRegisterInfo &MRI,
                                              StringRef TT,
                                              StringRef CPU) {
-  // @LOCALMOD-BEGIN
-  if (Triple(TT).isOSNaCl())
-    return new NaClMipsAsmBackend(T, /*Is64Bit*/true);
-  // @LOCALMOD-END
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/true, /*Is64Bit*/true);
 }

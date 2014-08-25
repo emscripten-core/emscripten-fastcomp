@@ -347,13 +347,6 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM,
   setOperationAction(ISD::VACOPY,            MVT::Other, Expand);
   setOperationAction(ISD::VAEND,             MVT::Other, Expand);
 
-  // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl())
-    setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
-  else
-    setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
-  // @LOCALMOD-END
-
   // Use the default for now
   setOperationAction(ISD::STACKSAVE,         MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,      MVT::Other, Expand);
@@ -1631,50 +1624,6 @@ SDValue MipsTargetLowering::lowerBlockAddress(SDValue Op,
                       Subtarget.isABI_N32() || Subtarget.isABI_N64());
 }
 
-// @LOCALMOD-BEGIN
-SDValue MipsTargetLowering::
-GetNaClThreadPointer(SelectionDAG &DAG, SDLoc DL) const {
-  EVT PtrVT = getPointerTy();
-  SDValue ThreadPointer;
-  if (llvm::TLSUseCall) {
-    unsigned PtrSize = PtrVT.getSizeInBits();
-    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
-
-    // We must check whether the __nacl_read_tp is defined in the module because
-    // local and global pic functions are called differently. If the function
-    // is local the address is calculated with %got and %lo relocations.
-    // Otherwise, the address is calculated with %call16 relocation.
-    const Function *NaClReadTp = NULL;
-    const Module *M = DAG.getMachineFunction().getFunction()->getParent();
-    for (Module::const_iterator I = M->getFunctionList().begin(),
-           E = M->getFunctionList().end(); I != E; ++I) {
-      if (I->getName() == "__nacl_read_tp") {
-        NaClReadTp = I;
-        break;
-      }
-    }
-
-    SDValue TlsReadTp;
-    if (NaClReadTp == NULL)
-      TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
-    else
-      TlsReadTp = DAG.getGlobalAddress(NaClReadTp, DL, PtrVT);
-
-    ArgListTy Args;
-    TargetLowering::CallLoweringInfo CLI(
-        DAG.getEntryNode(), PtrTy, false, false, false, false, 0,
-        CallingConv::C, /*isTailCall=*/false, /*doesNotRet=*/false,
-        /*isReturnValueUsed=*/true, TlsReadTp, Args, DAG, DL);
-    std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
-    ThreadPointer = CallResult.first;
-  } else {
-    ThreadPointer = DAG.getCopyFromReg(DAG.getEntryNode(), DL,
-                                       Mips::T8, PtrVT);
-  }
-  return ThreadPointer;
-}
-// @LOCALMOD-END
-
 SDValue MipsTargetLowering::
 lowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
 {
@@ -1688,27 +1637,6 @@ lowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
   EVT PtrVT = getPointerTy();
 
   TLSModel::Model model = getTargetMachine().getTLSModel(GV);
-
-  // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl()) {
-    SDVTList VTs = DAG.getVTList(MVT::i32);
-    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
-                                                 MipsII::MO_TPREL_HI);
-    SDValue TGALo = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
-                                                 MipsII::MO_TPREL_LO);
-    SDValue Hi = DAG.getNode(MipsISD::Hi, DL, VTs, &TGAHi, 1);
-    SDValue Lo = DAG.getNode(MipsISD::Lo, DL, MVT::i32, TGALo);
-    SDValue Offset = DAG.getNode(ISD::ADD, DL, MVT::i32, Hi, Lo);
-
-    SDValue ThreadPointer = GetNaClThreadPointer(DAG, DL);
-    // tprel_hi and tprel_lo relocations expect that thread pointer is offset
-    // by 0x7000 from the start of the TLS data area.
-    SDValue TPOffset = DAG.getConstant(0x7000, MVT::i32);
-    SDValue ThreadPointer2 = DAG.getNode(ISD::ADD, DL, PtrVT, ThreadPointer,
-                                         TPOffset);
-    return DAG.getNode(ISD::ADD, DL, PtrVT, ThreadPointer2, Offset);
-  }
-  // @LOCALMOD-END
 
   if (model == TLSModel::GeneralDynamic || model == TLSModel::LocalDynamic) {
     // General Dynamic and Local Dynamic TLS Model.
