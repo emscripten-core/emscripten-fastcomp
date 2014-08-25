@@ -244,7 +244,7 @@ INITIALIZE_PASS(BackendCanonicalize, "backend-canonicalize",
 
 bool BackendCanonicalize::runOnFunction(Function &F) {
   bool Modified = false;
-  DL = &getAnalysis<DataLayoutPass>()->getDataLayout();
+  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
   TLI = &getAnalysis<TargetLibraryInfo>();
 
   for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)

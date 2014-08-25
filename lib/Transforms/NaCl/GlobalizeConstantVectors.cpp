@@ -151,7 +151,7 @@ void GlobalizeConstantVectors::materializeConstantVectors(
 }
 
 bool GlobalizeConstantVectors::runOnModule(Module &M) {
-  DL = &getAnalysis<DataLayoutPass>()->getDataLayout();
+  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
 
   FunctionConstantList FCs;
   FCs.reserve(M.size());

@@ -60,7 +60,7 @@ class AtomicVisitor : public InstVisitor<AtomicVisitor> {
 public:
   AtomicVisitor(Module &M, Pass &P)
       : M(M), C(M.getContext()),
-        TD(P.getAnalysis<DataLayoutPass>()->getDataLayout()), AI(C),
+        TD(P.getAnalysis<DataLayoutPass>().getDataLayout()), AI(C),
         ModifiedModule(false) {}
   ~AtomicVisitor() {}
   bool modifiedModule() const { return ModifiedModule; }
