@@ -431,12 +431,12 @@ static void PrintSize(uint64_t Bits, raw_ostream &OS) {
                (double)Bits/8, (unsigned long)(Bits/32));
 }
 
-int AnalyzeBitcodeInBuffer(std::unique_ptr<const MemoryBuffer> Buf,
+int AnalyzeBitcodeInBuffer(const std::unique_ptr<MemoryBuffer> &Buf,
                            raw_ostream &OS,
                            const AnalysisDumpOptions &DumpOptions) {
   DEBUG(dbgs() << "-> AnalyzeBitcodeInBuffer\n");
 
-  if (Buf.getBufferSize() & 3)
+  if (Buf->getBufferSize() & 3)
     return Error("Bitcode stream should be a multiple of 4 bytes in length");
 
   const unsigned char *BufPtr = (const unsigned char *)Buf->getBufferStart();
@@ -496,7 +496,7 @@ int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
     return Error(Twine("Error reading '") + InputFilename + "': " +
                  EC.message());
 
-  return AnalyzeBitcodeInBuffer(ErrOrFile.get().release(), OS, DumpOptions);
+  return AnalyzeBitcodeInBuffer(ErrOrFile.get(), OS, DumpOptions);
 }
 
 } // namespace llvm

@@ -57,7 +57,7 @@ int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
 
 /// Run analysis on a memory buffer with bitcode.  Output goes to
 /// OS. The buffer is owned by the caller.
-int AnalyzeBitcodeInBuffer(std::unique_ptr<const MemoryBuffer> &Buf,
+int AnalyzeBitcodeInBuffer(const std::unique_ptr<MemoryBuffer> &Buf,
                            raw_ostream &OS,
                            const AnalysisDumpOptions &DumpOptions);
 
