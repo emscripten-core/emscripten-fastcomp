@@ -611,7 +611,7 @@ public:
 
   /// Flushes out objdump and then exits with fatal error, using
   /// the given message.
-  void Fatal(const std::string &Message) override {
+  void Fatal(const std::string &Message) {
     ObjDump.Fatal(Message);
   }
 
