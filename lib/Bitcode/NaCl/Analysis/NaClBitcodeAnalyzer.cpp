@@ -489,15 +489,13 @@ int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
 
 int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
                          const AnalysisDumpOptions &DumpOptions) {
-  // Read the input file.
-  std::unique_ptr<MemoryBuffer> MemBuf;
-
-  if (std::error_code ec =
-        MemoryBuffer::getFileOrSTDIN(InputFilename, MemBuf))
+  ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
+      MemoryBuffer::getFileOrSTDIN(InputFilename);
+  if (std::error_code EC = ErrOrFile.getError())
     return Error(Twine("Error reading '") + InputFilename + "': " +
-                 ec.message());
+                 EC.message());
 
-  return AnalyzeBitcodeInBuffer(*MemBuf, OS, DumpOptions);
+  return AnalyzeBitcodeInBuffer(ErrOrFile.get().release(), OS, DumpOptions);
 }
 
 } // namespace llvm

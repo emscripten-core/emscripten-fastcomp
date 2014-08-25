@@ -47,11 +47,11 @@ NoAssembly("no-assembly",
 // if successful, true otherwise.
 static bool DisassembleBitcode() {
   // Open the bitcode file and put into a buffer.
-  std::unique_ptr<MemoryBuffer> MemBuf;
-  if (std::error_code ec =
-      MemoryBuffer::getFileOrSTDIN(InputFilename.c_str(), MemBuf)) {
-    errs() << "Error reading '" << InputFilename << "': "
-           << ec.message() << "\n";
+  ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
+      MemoryBuffer::getFileOrSTDIN(InputFilename);
+  if (std::error_code EC = ErrOrFile.getError()) {
+    errs() << "Error reading '" << InputFilename << "': " << EC.message()
+           << "\n";
     return true;
   }
 
@@ -64,7 +64,7 @@ static bool DisassembleBitcode() {
   }
 
   // Parse the the bitcode file.
-  return NaClObjDump(MemBuf.get(), Output, NoRecords, NoAssembly);
+  return NaClObjDump(ErrOrFile.get().release(), Output, NoRecords, NoAssembly);
 }
 
 }

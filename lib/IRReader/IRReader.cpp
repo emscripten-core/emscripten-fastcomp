@@ -119,14 +119,13 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
   } else if (Format == LLVMFormat) {
     if (isBitcode((const unsigned char *)Buffer->getBufferStart(),
                   (const unsigned char *)Buffer->getBufferEnd())) {
-      std::string ErrMsg;
-      Module *M = ParseBitcodeFile(Buffer, Context, &ErrMsg);
-      if (M == 0)
+      ErrorOr<Module *> MOrErr = ParseBitcodeFile(Buffer, Context);
+      if (std::error_code EC = MOrErr.getError())
         Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
-                           ErrMsg);
+                           EC.message());
       // ParseBitcodeFile does not take ownership of the Buffer.
       delete Buffer;
-      return M;
+      return MOrErr.get();
     }
 
     return ParseAssembly(Buffer, 0, Err, Context);
@@ -141,14 +140,15 @@ Module *llvm::NaClParseIRFile(const std::string &Filename,
                               NaClFileFormat Format,
                               SMDiagnostic &Err,
                               LLVMContext &Context) {
-  std::unique_ptr<MemoryBuffer> File;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(Filename.c_str(), File)) {
+  ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
+      MemoryBuffer::getFileOrSTDIN(Filename);
+  if (std::error_code EC = ErrOrFile.getError()) {
     Err = SMDiagnostic(Filename, SourceMgr::DK_Error,
-                       "Could not open input file: " + ec.message());
-    return 0;
+                       "Could not open input file: " + EC.message());
+    return nullptr;
   }
 
-  return NaClParseIR(File.take(), Format, Err, Context);
+  return NaClParseIR(ErrOrFile.get().release(), Format, Err, Context);
 }
 
 // @LOCALMOD-END
