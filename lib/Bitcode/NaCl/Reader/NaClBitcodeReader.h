@@ -20,6 +20,7 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GVMaterializer.h"
 #include "llvm/IR/Instruction.h"
