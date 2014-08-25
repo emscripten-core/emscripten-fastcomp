@@ -80,9 +80,11 @@ int main(int argc, char **argv) {
     M.reset(getNaClStreamedBitcodeModule(
         DisplayFilename, Buffer.take(), Context,
         &ErrorMessage, /*AcceptSupportedOnly=*/false));
-    if(M.get() != 0 && M->MaterializeAllPermanently(&ErrorMessage)) {
-      M.reset();
-    }
+    if (M.get())
+      if (std::error_code EC = M->materializeAllPermanently()) {
+        ErrorMessage = EC.message();
+        M.reset();
+      }
   }
 
   if (M.get() == 0) {

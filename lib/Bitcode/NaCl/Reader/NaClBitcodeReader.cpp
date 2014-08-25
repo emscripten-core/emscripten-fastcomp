@@ -1784,7 +1784,8 @@ Module *llvm::NaClParseBitcodeFile(MemoryBuffer *Buffer, LLVMContext& Context,
   if (!M) return 0;
 
   // Read in the entire module, and destroy the NaClBitcodeReader.
-  if (M->MaterializeAllPermanently(ErrMsg)) {
+  if (std::error_code EC = M->materializeAllPermanently()) {
+    *ErrMsg = EC.message();
     delete M;
     return 0;
   }

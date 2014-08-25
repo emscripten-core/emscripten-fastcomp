@@ -79,10 +79,13 @@ int main(int argc, char **argv) {
       DisplayFilename = InputFilename;
     M.reset(getStreamedBitcodeModule(DisplayFilename, Buffer.take(), Context,
                                      &ErrorMessage));
-    if(M.get() != 0 && M->MaterializeAllPermanently(&ErrorMessage)) {
-      M.reset();
-    }
+    if (M.get())
+      if (std::error_code EC = M->materializeAllPermanently()) {
+        ErrorMessage = EC.message();
+        M.reset();
+      }
   }
+}
 
   if (M.get() == 0) {
     errs() << argv[0] << ": ";
