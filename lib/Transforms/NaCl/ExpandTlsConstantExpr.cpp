@@ -78,7 +78,7 @@ static void expandConstExpr(Constant *Expr) {
 
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Expr)) {
     while (!Expr->use_empty()) {
-      Use *U = &Expr->use_begin().getUse();
+      Use *U = &Expr->use_begin();
       Instruction *NewInst = CE->getAsInstruction();
       NewInst->insertBefore(PhiSafeInsertPt(U));
       NewInst->setName("expanded");
