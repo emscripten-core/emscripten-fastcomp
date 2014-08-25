@@ -77,7 +77,7 @@ AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
     AttrBuilder AB;
     for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
          Attr != E; ++Attr) {
-      if (!Attr->isAlignAttribute() &&
+      if (!Attr->isIntAttribute() &&
           Attr->isEnumAttribute() &&
           Attr->getKindAsEnum() != Attribute::ByVal &&
           Attr->getKindAsEnum() != Attribute::StructRet) {
