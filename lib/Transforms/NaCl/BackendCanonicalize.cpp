@@ -278,7 +278,7 @@ bool BackendCanonicalize::visitInsertElementInst(InsertElementInst &IE) {
 
       // If this insertelement isn't used by some other insertelement, turn it
       // (and any insertelements it points to), into one big shuffle.
-      if (!IE.hasOneUse() || !isa<InsertElementInst>(IE.use_back())) {
+      if (!IE.hasOneUse() || !isa<InsertElementInst>(IE.user_back())) {
         typedef SmallVector<Constant *, 16> MaskT;
         MaskT Mask;
         Value *RHS = 0;
