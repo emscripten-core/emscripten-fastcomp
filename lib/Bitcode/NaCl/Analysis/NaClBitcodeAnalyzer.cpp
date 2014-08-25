@@ -431,15 +431,16 @@ static void PrintSize(uint64_t Bits, raw_ostream &OS) {
                (double)Bits/8, (unsigned long)(Bits/32));
 }
 
-int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
+int AnalyzeBitcodeInBuffer(std::unique_ptr<const MemoryBuffer> Buf,
+                           raw_ostream &OS,
                            const AnalysisDumpOptions &DumpOptions) {
   DEBUG(dbgs() << "-> AnalyzeBitcodeInBuffer\n");
 
   if (Buf.getBufferSize() & 3)
     return Error("Bitcode stream should be a multiple of 4 bytes in length");
 
-  const unsigned char *BufPtr = (const unsigned char *)Buf.getBufferStart();
-  const unsigned char *EndBufPtr = BufPtr+Buf.getBufferSize();
+  const unsigned char *BufPtr = (const unsigned char *)Buf->getBufferStart();
+  const unsigned char *EndBufPtr = BufPtr + Buf->getBufferSize();
 
   NaClBitcodeHeader Header;
   if (Header.Read(BufPtr, EndBufPtr))

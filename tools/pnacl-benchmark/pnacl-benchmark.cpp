@@ -195,7 +195,7 @@ void BenchmarkIRParsing() {
     TimingOperationBlock T("Running bitcode analysis", BufSize);
 
     AnalysisDumpOptions DumpOptions;
-    AnalyzeBitcodeInBuffer(*FileBuf, nulls(), DumpOptions);
+    AnalyzeBitcodeInBuffer(FileBuf.release(), nulls(), DumpOptions);
   }
 
   // Actual LLVM IR parsing and formation from the bitcode
