@@ -4,6 +4,7 @@ add_llvm_library(LLVMMinSFITransforms
   RenameEntryPoint.cpp
   SandboxIndirectCalls.cpp
   SandboxMemoryAccesses.cpp
+  StripTls.cpp
   Utils.cpp
   )
 
