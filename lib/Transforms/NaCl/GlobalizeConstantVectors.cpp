@@ -120,8 +120,8 @@ void GlobalizeConstantVectors::materializeConstantVectors(
     // Find users of the constant vector.
     typedef SmallVector<User *, 64> UserList;
     UserList CVUsers;
-    for (Value::use_iterator UI = C->use_begin(), UE = C->use_end(); UI != UE;
-         ++UI) {
+    for (Value::user_iterator UI = C->user_begin(), UE = C->user_end();
+         UI != UE; ++UI) {
       User *U = *UI;
       if (Instruction *I = dyn_cast<Instruction>(U))
         if (I->getParent()->getParent() != &F)
