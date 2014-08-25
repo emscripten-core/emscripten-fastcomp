@@ -79,7 +79,8 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
     bool HasIndirectUse = false;
     Constant *Index = ConstantInt::get(IntPtrType, AddrTakenFuncs.size() + 1);
-    for (Function::use_iterator User = Func->use_begin(), E = Func->use_end();
+    for (Function::user_iterator User = Func->user_begin(),
+                                 E = Func->user_end();
          User != E; ++User) {
       if (CallInst *Call = dyn_cast<CallInst>(*User)) {
         // Because PNaCl does not allow pointer-type arguments, this should be
