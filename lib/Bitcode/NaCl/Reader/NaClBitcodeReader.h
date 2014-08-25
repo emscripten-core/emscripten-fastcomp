@@ -129,8 +129,7 @@ class NaClBitcodeReader : public GVMaterializer {
   LLVMContext &Context;
   Module *TheModule;
   PNaClAllowedIntrinsics AllowedIntrinsics;
-  MemoryBuffer *Buffer;
-  bool BufferOwned;
+  std::unique_ptr<MemoryBuffer> Buffer;
   std::unique_ptr<NaClBitstreamReader> StreamFile;
   NaClBitstreamCursor Stream;
   StreamingMemoryObject *LazyStreamer;
@@ -186,7 +185,7 @@ public:
   explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
                              bool AcceptSupportedOnly = true)
       : Context(C), TheModule(0), AllowedIntrinsics(&C),
-        Buffer(buffer), BufferOwned(false),
+        Buffer(buffer),
         LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
         ValueList(),
         SeenFirstFunctionBody(false),
@@ -197,28 +196,25 @@ public:
                              LLVMContext &C,
                              bool AcceptSupportedOnly = true)
       : Context(C), TheModule(0), AllowedIntrinsics(&C),
-        Buffer(0), BufferOwned(false),
+        Buffer(nullptr),
         LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
         ValueList(),
         SeenFirstFunctionBody(false),
         AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
         IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
-  ~NaClBitcodeReader() {
+  ~NaClBitcodeReader() override {
     FreeState();
   }
 
   void FreeState();
 
-  /// setBufferOwned - If this is true, the reader will destroy the MemoryBuffer
-  /// when the reader is destroyed.
-  void setBufferOwned(bool Owned) { BufferOwned = Owned; }
-
-  virtual bool isMaterializable(const GlobalValue *GV) const;
-  virtual bool isDematerializable(const GlobalValue *GV) const;
-  virtual std::error_code Materialize(GlobalValue *GV);
-  virtual std::error_code MaterializeModule(Module *M);
-  virtual void Dematerialize(GlobalValue *GV);
+  bool isMaterializable(const GlobalValue *GV) const override;
+  bool isDematerializable(const GlobalValue *GV) const override;
+  std::error_code Materialize(GlobalValue *GV) override;
+  std::error_code MaterializeModule(Module *M) override;
+  void Dematerialize(GlobalValue *GV) override;
+  void releaseBuffer() override;
 
   bool Error(const std::string &Str) {
     ErrorString = Str;

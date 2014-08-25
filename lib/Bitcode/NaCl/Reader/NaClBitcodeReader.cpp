@@ -39,9 +39,6 @@ llvm::PNaClAllowLocalSymbolTables(
     cl::init(false));
 
 void NaClBitcodeReader::FreeState() {
-  if (BufferOwned)
-    delete Buffer;
-  Buffer = 0;
   std::vector<Type*>().swap(TypeList);
   ValueList.clear();
 
@@ -1581,6 +1578,7 @@ bool NaClBitcodeReader::FindFunctionInStream(Function *F,
 // GVMaterializer implementation
 //===----------------------------------------------------------------------===//
 
+void NaClBitcodeReader::releaseBuffer() { Buffer.release(); }
 
 bool NaClBitcodeReader::isMaterializable(const GlobalValue *GV) const {
   if (const Function *F = dyn_cast<Function>(GV)) {
@@ -1752,8 +1750,6 @@ Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
     delete M;  // Also deletes R.
     return 0;
   }
-  // Have the NaClBitcodeReader dtor delete 'Buffer'.
-  R->setBufferOwned(true);
 
   return M;
 }
@@ -1774,7 +1770,6 @@ Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
     delete M;  // Also deletes R.
     return 0;
   }
-  R->setBufferOwned(false); // no buffer to delete
 
   return M;
 }
@@ -1787,10 +1782,6 @@ Module *llvm::NaClParseBitcodeFile(MemoryBuffer *Buffer, LLVMContext& Context,
   Module *M = getNaClLazyBitcodeModule(Buffer, Context, ErrMsg,
                                        AcceptSupportedOnly);
   if (!M) return 0;
-
-  // Don't let the NaClBitcodeReader dtor delete 'Buffer', regardless of whether
-  // there was an error.
-  static_cast<NaClBitcodeReader*>(M->getMaterializer())->setBufferOwned(false);
 
   // Read in the entire module, and destroy the NaClBitcodeReader.
   if (M->MaterializeAllPermanently(ErrMsg)) {
