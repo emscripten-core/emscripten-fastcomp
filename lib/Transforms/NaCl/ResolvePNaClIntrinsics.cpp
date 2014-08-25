@@ -434,6 +434,7 @@ private:
                        "expected") :
           Loaded;
       Value *OldVal = IRB.CreateAtomicCmpXchg(Ptr32, Expected, FinalRes,
+                                              SequentiallyConsistent,
                                               SequentiallyConsistent);
       OldVal->setName("oldval");
       // Test that the entire 32-bit value didn't change during the operation.
@@ -484,6 +485,7 @@ private:
                        "expected") :
           Loaded;
       Value *OldVal = IRB.CreateAtomicCmpXchg(Ptr32, Expected, FinalRes,
+                                              SequentiallyConsistent,
                                               SequentiallyConsistent);
       OldVal->setName("oldval");
       // Test that the entire 32-bit value didn't change during the operation.
