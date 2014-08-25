@@ -1590,11 +1590,11 @@ bool NaClBitcodeReader::isMaterializable(const GlobalValue *GV) const {
   return false;
 }
 
-error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
+std::error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
   Function *F = dyn_cast<Function>(GV);
   // If it's not a function or is already material, ignore the request.
   if (!F || !F->isMaterializable())
-    return error_code::success();
+    return std::error_code();
 
   DenseMap<Function*, uint64_t>::iterator DFII = DeferredFunctionInfo.find(F);
   assert(DFII != DeferredFunctionInfo.end() && "Deferred function not found!");
@@ -1607,7 +1607,7 @@ error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
       // code.
       // TODO(mseaborn): Clean up the reader to return a more
       // meaningful error_code here.
-      return make_error_code(errc::invalid_argument);
+      return make_error_code(std::errc::invalid_argument);
     }
   }
 
@@ -1617,7 +1617,7 @@ error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
   if (ParseFunctionBody(F)) {
     // TODO(mseaborn): Clean up the reader to return a more meaningful
     // error_code instead of a catch-all.
-    return make_error_code(errc::invalid_argument);
+    return make_error_code(std::errc::invalid_argument);
   }
 
   // Upgrade any old intrinsic calls in the function.
@@ -1632,7 +1632,7 @@ error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
     }
   }
 
-  return error_code::success();
+  return std::error_code();
 }
 
 bool NaClBitcodeReader::isDematerializable(const GlobalValue *GV) const {
@@ -1655,7 +1655,7 @@ void NaClBitcodeReader::Dematerialize(GlobalValue *GV) {
 }
 
 
-error_code NaClBitcodeReader::MaterializeModule(Module *M) {
+std::error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   assert(M == TheModule &&
          "Can only Materialize the Module this NaClBitcodeReader is attached to.");
   // Iterate over the module, deserializing any functions that are still on
@@ -1663,7 +1663,7 @@ error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   for (Module::iterator F = TheModule->begin(), E = TheModule->end();
        F != E; ++F) {
     if (F->isMaterializable()) {
-      if (error_code EC = Materialize(F))
+      if (std::error_code EC = Materialize(F))
         return EC;
     }
   }
@@ -1693,7 +1693,7 @@ error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   }
   std::vector<std::pair<Function*, Function*> >().swap(UpgradedIntrinsics);
 
-  return error_code::success();
+  return std::error_code();
 }
 
 bool NaClBitcodeReader::InitStream() {

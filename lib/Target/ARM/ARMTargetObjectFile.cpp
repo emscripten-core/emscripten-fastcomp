@@ -59,8 +59,8 @@ const MCExpr *ARMElfTargetObjectFile::getTTypeGlobalReference(
   // FIXME: There has got to be a better way to get this info.
   Triple T(MMI->getModule()->getTargetTriple());
   if (T.isOSNaCl())
-    return TargetLoweringObjectFileELF::getTTypeGlobalReference(GV, Mang,
-                                        MMI, Encoding, Streamer);
+    return TargetLoweringObjectFileELF::getTTypeGlobalReference(
+        GV, Encoding, Mang, TM, MMI, Streamer);
   // @LOCALMOD-END
 
   return MCSymbolRefExpr::Create(TM.getSymbol(GV, Mang),

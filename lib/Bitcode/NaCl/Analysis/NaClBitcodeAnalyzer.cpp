@@ -22,9 +22,9 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include <algorithm>
 #include <map>
+#include <system_error>
 
 // TODO(kschimpf): Separate out into two bitcode parsers, one for
 // dumping records, and one for collecting distribution stats for
@@ -492,7 +492,7 @@ int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
   // Read the input file.
   std::unique_ptr<MemoryBuffer> MemBuf;
 
-  if (error_code ec =
+  if (std::error_code ec =
         MemoryBuffer::getFileOrSTDIN(InputFilename, MemBuf))
     return Error(Twine("Error reading '") + InputFilename + "': " +
                  ec.message());

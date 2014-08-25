@@ -155,7 +155,7 @@ void LTOCodeGenerator::setCodePICModel(lto_codegen_model model) {
 
 // @LOCALMOD-BEGIN
 void LTOCodeGenerator::wrapSymbol(const char *sym) {
-  Module *M = Linker.getModule();
+  Module *M = IRLinker.getModule();
 
   std::string wrapSymName("__wrap_");
   wrapSymName += sym;

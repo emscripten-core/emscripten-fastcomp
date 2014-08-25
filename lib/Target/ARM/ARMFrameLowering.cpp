@@ -188,14 +188,13 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   int D8SpillFI = 0;
 
   // @LOCALMOD-START
-  MachineModuleInfo &MMI = MF.getMMI();
   // This condition was gleaned from x86 / PowerPC / XCore
   bool needsFrameMoves = STI.isTargetNaCl() &&
                          (MMI.hasDebugInfo() ||
                           !MF.getFunction()->doesNotThrow() ||
                           MF.getFunction()->needsUnwindTableEntry());
   // @LOCALMOD-END
-  
+
   // All calls are tail calls in GHC calling conv, and functions have no
   // prologue/epilogue.
   if (MF.getFunction()->getCallingConv() == CallingConv::GHC)
@@ -276,8 +275,11 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     // push {r4, r5, r6, lr}
     // NOTE: this likely is not the right thing to do for darwin as it does not
     //       treat all callee save regs uniformly
-    MCSymbol *AfterRegSave = MMI.getContext().CreateTempSymbol();
-    BuildMI(MBB, MBBI, dl, TII.get(ARM::PROLOG_LABEL)).addSym(AfterRegSave);
+    unsigned CFIIndex = MMI.addFrameInst(
+        MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
+
     // record the fact that the stack has moved
     MMI.addFrameInst(MCCFIInstruction::createDefCfaOffset(
                          AfterRegSave, -TotalCfaAdjust));
@@ -326,9 +328,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (HasFP && needsFrameMoves) {
     // we just emitted the fp pointer setup instruction, e.g.
     // add      r11, sp, #8
-    MCSymbol *AfterFramePointerInit = MMI.getContext().CreateTempSymbol();
-    BuildMI(MBB, MBBI, dl,
-            TII.get(ARM::PROLOG_LABEL)).addSym(AfterFramePointerInit);
+    unsigned CFIIndex = MMI.addFrameInst(
+        MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
     // record the fact that the frame pointer is now tracking the "cfa"
     // Note, gcc and llvm have a slightly different notion of where the
     // frame pointer should be pointing. gcc points after the return address
@@ -356,8 +359,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
 
     // @LOCALMOD-BEGIN
     if(needsFrameMoves) {
-      MCSymbol *AfterRegSave = MMI.getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(ARM::PROLOG_LABEL)).addSym(AfterRegSave);
+      unsigned CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
       if (!HasFP) {
         // CFA offset needs to be updated if it is relative to the SP (which as
         // just moved). Otherwise it is relative to FP, which has not changed.
@@ -474,9 +479,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     // just moved). Otherwise it is relative to FP, which has not changed.
     if (needsFrameMoves && !HasFP) {
       TotalCfaAdjust += NumBytes;
-      MCSymbol *AfterStackUpdate = MMI.getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl,
-              TII.get(ARM::PROLOG_LABEL)).addSym(AfterStackUpdate);
+      unsigned CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
       MMI.addFrameInst(MCCFIInstruction::createDefCfaOffset(
                            AfterStackUpdate, -TotalCfaAdjust));
     }

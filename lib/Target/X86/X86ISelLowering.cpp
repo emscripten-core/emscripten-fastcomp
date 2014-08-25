@@ -202,7 +202,7 @@ static TargetLoweringObjectFile *createTLOF(const Triple &TT) {
     return new X86LinuxTargetObjectFile();
 
   // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl())
+  if (TT.isTargetNaCl())
     return new TargetLoweringObjectFileNaCl();
   // @LOCALMOD-END
 

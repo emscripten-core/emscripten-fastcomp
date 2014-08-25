@@ -555,9 +555,8 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
     // Save EBP/RBP into the appropriate stack slot.
     // @LOCALMOD-BEGIN
     unsigned RegToPush = FramePtr;
-    const X86Subtarget *Subtarget = &TM.getSubtarget<X86Subtarget>();
     const bool HideSandboxBase = (FlagHideSandboxBase &&
-                                  Subtarget->isTargetNaCl64() &&
+                                  STI.isTargetNaCl64() &&
                                   !FlagUseZeroBasedSandbox);
     if (HideSandboxBase) {
       // Hide the sandbox base address by masking off the upper 32
@@ -1804,4 +1803,3 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     MBB.insert(I, New);
   }
 }
-

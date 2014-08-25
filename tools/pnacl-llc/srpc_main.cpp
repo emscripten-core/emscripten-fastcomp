@@ -22,17 +22,15 @@
 
 #include "SRPCStreamer.h"
 
-#include <argz.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <string>
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/system_error.h"
+
+#include <argz.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 using namespace llvm;
 using namespace llvm::opt;

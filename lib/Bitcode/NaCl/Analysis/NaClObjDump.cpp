@@ -3029,7 +3029,7 @@ void NaClDisFunctionParser::ProcessRecord() {
     } else {
       Errors() << "Compare not on integer/float type. Found: "
                << *Arg1Type << "\n";
-      Tokens() << "cmp" << Space() << "???(" << Values[2] << ")";
+      Tokens() << "cmp" << Space() << "???" "(" << Values[2] << ")";
     }
     Tokens() << FinishCluster() << Space() << StartCluster()
              << TokenizeType(Arg1Type) << Space () << GetBitcodeId(Arg1)

@@ -555,8 +555,8 @@ unsigned ARMFastISel::ARMMaterializeInt(const Constant *C, MVT VT) {
     const TargetRegisterClass *RC = isThumb2 ?
         &ARM::rGPRRegClass : &ARM::GPRnopcRegClass;
     unsigned ImmReg = createResultReg(RC);
-    AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
-                            ImmReg).addImm(CI->getZExtValue()));
+    AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+                            TII.get(Opc), ImmReg).addImm(CI->getZExtValue()));
     return ImmReg;
   }
 

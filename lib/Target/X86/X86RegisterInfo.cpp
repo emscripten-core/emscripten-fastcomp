@@ -256,7 +256,7 @@ X86RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   }
 
   bool CallsEHReturn = MF->getMMI().callsEHReturn();
-  bool IsNaCl = TM.getSubtarget<X86Subtarget>().isTargetNaCl(); // @LOCALMOD
+  bool IsNaCl = Subtarget.isTargetNaCl(); // @LOCALMOD
   if (Is64Bit) {
     if (IsWin64)
       return CSR_Win64_SaveList;

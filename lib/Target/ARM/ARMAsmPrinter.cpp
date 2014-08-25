@@ -1952,7 +1952,7 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
                                     OutContext);
     LowerARMMachineInstrToMCInstPCRel(MI, TmpInst, *this, ImmIndex,
                                       PIC_id_index, PCLabel, PCAdjustment);
-    OutStreamer.EmitInstruction(TmpInst);
+    EmitToStreamer(OutStreamer, TmpInst);
     return;
   }
   case ARM::MOVTi16PIC: {
@@ -1971,7 +1971,7 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
     LowerARMMachineInstrToMCInstPCRel(MI, TmpInst, *this, ImmIndex,
                                       PIC_id_index, PCLabel, PCAdjustment);
-    OutStreamer.EmitInstruction(TmpInst);
+    EmitToStreamer(OutStreamer, TmpInst);
     return;
   }
   //@LOCALMOD-END
