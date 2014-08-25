@@ -87,7 +87,7 @@ private:
   /// intrinsics. This function may strengthen the ordering initially
   /// specified by the instruction \p I for stability purpose.
   template <class Instruction>
-  ConstantInt *freezeMemoryOrder(const Instruction &I) const;
+  ConstantInt *freezeMemoryOrder(const Instruction &I, AtomicOrdering O) const;
 
   /// Sanity-check that instruction \p I which has pointer and value
   /// parameters have matching sizes \p BitSize for the type-pointed-to
@@ -161,7 +161,8 @@ bool RewriteAtomics::runOnModule(Module &M) {
 }
 
 template <class Instruction>
-ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I) const {
+ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I,
+                                              AtomicOrdering O) const {
   NaCl::MemoryOrder AO = NaCl::MemoryOrderInvalid;
 
   // TODO Volatile load/store are promoted to sequentially consistent
@@ -175,7 +176,7 @@ ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I) const {
   }
 
   if (AO == NaCl::MemoryOrderInvalid) {
-    switch (I.getOrdering()) {
+    switch (O) {
     default:
     case NotAtomic: llvm_unreachable("unexpected memory order");
     // Monotonic is a strict superset of Unordered. Both can therefore
@@ -268,7 +269,7 @@ void AtomicVisitor::visitLoadInst(LoadInst &I) {
   const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
       findAtomicIntrinsic(I, Intrinsic::nacl_atomic_load, PH.PET);
   checkAlignment(I, I.getAlignment(), PH.BitSize / CHAR_BIT);
-  Value *Args[] = {PH.P, freezeMemoryOrder(I)};
+  Value *Args[] = {PH.P, freezeMemoryOrder(I, I.getOrdering())};
   replaceInstructionWithIntrinsicCall(I, Intrinsic, PH.OriginalPET, PH.PET,
                                       Args);
 }
@@ -294,7 +295,7 @@ void AtomicVisitor::visitStoreInst(StoreInst &I) {
     V = Cast;
   }
   checkSizeMatchesType(I, PH.BitSize, V->getType());
-  Value *Args[] = { V, PH.P, freezeMemoryOrder(I) };
+  Value *Args[] = {V, PH.P, freezeMemoryOrder(I, I.getOrdering())};
   replaceInstructionWithIntrinsicCall(I, Intrinsic, PH.OriginalPET, PH.PET,
                                       Args);
 }
@@ -317,13 +318,14 @@ void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
   const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
       findAtomicIntrinsic(I, Intrinsic::nacl_atomic_rmw, PH.PET);
   checkSizeMatchesType(I, PH.BitSize, I.getValOperand()->getType());
-  Value *Args[] = { ConstantInt::get(Type::getInt32Ty(C), Op), PH.P,
-                    I.getValOperand(), freezeMemoryOrder(I) };
+  Value *Args[] = {ConstantInt::get(Type::getInt32Ty(C), Op), PH.P,
+                   I.getValOperand(), freezeMemoryOrder(I, I.getOrdering())};
   replaceInstructionWithIntrinsicCall(I, Intrinsic, PH.OriginalPET, PH.PET,
                                       Args);
 }
 
-///   %res = cmpxchg T* %ptr, T %old, T %new memory_order
+///   %res = cmpxchg T* %ptr, T %old, T %new, memory_order_success,
+///       %memory_order_failure
 /// becomes:
 ///   %res = call T @llvm.nacl.atomic.cmpxchg.i<size>(
 ///       %object, %expected, %desired, memory_order_success,
@@ -334,12 +336,9 @@ void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
       findAtomicIntrinsic(I, Intrinsic::nacl_atomic_cmpxchg, PH.PET);
   checkSizeMatchesType(I, PH.BitSize, I.getCompareOperand()->getType());
   checkSizeMatchesType(I, PH.BitSize, I.getNewValOperand()->getType());
-  // TODO LLVM currently doesn't support specifying separate memory
-  //      orders for compare exchange's success and failure cases: LLVM
-  //      IR implicitly drops the Release part of the specified memory
-  //      order on failure.
-  Value *Args[] = { PH.P, I.getCompareOperand(), I.getNewValOperand(),
-                    freezeMemoryOrder(I), freezeMemoryOrder(I) };
+  Value *Args[] = {PH.P, I.getCompareOperand(), I.getNewValOperand(),
+                   freezeMemoryOrder(I, I.getSuccessOrdering()),
+                   freezeMemoryOrder(I, I.getFailureOrdering())};
   replaceInstructionWithIntrinsicCall(I, Intrinsic, PH.OriginalPET, PH.PET,
                                       Args);
 }
@@ -376,7 +375,7 @@ void AtomicVisitor::visitFenceInst(FenceInst &I) {
   } else {
     const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
         findAtomicIntrinsic(I, Intrinsic::nacl_atomic_fence, T);
-    Value *Args[] = {freezeMemoryOrder(I)};
+    Value *Args[] = {freezeMemoryOrder(I, I.getOrdering())};
     replaceInstructionWithIntrinsicCall(I, Intrinsic, T, T, Args);
   }
 }
