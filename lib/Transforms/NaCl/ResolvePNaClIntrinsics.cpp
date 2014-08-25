@@ -260,16 +260,10 @@ private:
                              Call->getArgOperand(1));
         return true;
       }
-      // TODO LLVM currently doesn't support specifying separate memory
-      //      orders for compare exchange's success and failure cases:
-      //      LLVM IR implicitly drops the Release part of the specified
-      //      memory order on failure. It is therefore correct to map
-      //      the success memory order onto the LLVM IR and ignore the
-      //      failure one.
-      I = new AtomicCmpXchgInst(Call->getArgOperand(0), Call->getArgOperand(1),
-                                Call->getArgOperand(2),
-                                thawMemoryOrder(Call->getArgOperand(3)), SS,
-                                Call);
+      I = new AtomicCmpXchgInst(
+          Call->getArgOperand(0), Call->getArgOperand(1),
+          Call->getArgOperand(2), thawMemoryOrder(Call->getArgOperand(3)),
+          thawMemoryOrder(Call->getArgOperand(4)), SS, Call);
       break;
     case Intrinsic::nacl_atomic_fence:
       I = new FenceInst(M->getContext(),
