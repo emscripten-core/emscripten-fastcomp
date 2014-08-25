@@ -119,7 +119,7 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
   } else if (Format == LLVMFormat) {
     if (isBitcode((const unsigned char *)Buffer->getBufferStart(),
                   (const unsigned char *)Buffer->getBufferEnd())) {
-      ErrorOr<Module *> MOrErr = ParseBitcodeFile(Buffer, Context);
+      ErrorOr<Module *> MOrErr = parseBitcodeFile(Buffer, Context);
       if (std::error_code EC = MOrErr.getError())
         Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
                            EC.message());
