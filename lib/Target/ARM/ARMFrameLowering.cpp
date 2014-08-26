@@ -275,12 +275,11 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     // push {r4, r5, r6, lr}
     // NOTE: this likely is not the right thing to do for darwin as it does not
     //       treat all callee save regs uniformly
-    MCSymbol *AfterRegSave = MMI.getContext().CreateTempSymbol();
-    BuildMI(MBB, MBBI, dl, TII.get(ARM::PROLOG_LABEL)).addSym(AfterRegSave);
+    unsigned CFIIndex = MMI.addFrameInst(
+        MCCFIInstruction::createDefCfaOffset(nullptr, -TotalCfaAdjust));
+    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
 
-    // record the fact that the stack has moved
-    MMI.addFrameInst(MCCFIInstruction::createDefCfaOffset(
-                         AfterRegSave, -TotalCfaAdjust));
     // for each callee saved register record where it has been saved
     int offset = 0;
     for (unsigned i = 0, e = CSI.size(); i != e; ++i) {
@@ -296,9 +295,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
        case ARM::R11:
        case ARM::LR:
         offset -= 4;
-        unsigned DwarfReg = RegInfo->getDwarfRegNum(Reg, true);
-        MMI.addFrameInst(MCCFIInstruction::createOffset(
-                             AfterRegSave, DwarfReg, offset));
+        unsigned CFIIndex = MMI.addFrameInst(MCCFIInstruction::createOffset(
+            nullptr, MRI->getDwarfRegNum(Reg, true), offset));
+        BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+            .addCFIIndex(CFIIndex);
         break;
       }
     }
@@ -326,9 +326,6 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (HasFP && needsFrameMoves) {
     // we just emitted the fp pointer setup instruction, e.g.
     // add      r11, sp, #8
-    MCSymbol *AfterFramePointerInit = MMI.getContext().CreateTempSymbol();
-    BuildMI(MBB, MBBI, dl,
-            TII.get(ARM::PROLOG_LABEL)).addSym(AfterFramePointerInit);
     // record the fact that the frame pointer is now tracking the "cfa"
     // Note, gcc and llvm have a slightly different notion of where the
     // frame pointer should be pointing. gcc points after the return address
@@ -336,9 +333,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     // This should be fine as long as we are consistent.
     // NOTE: this is related to the offset computed for
     // ISD::FRAME_TO_ARGS_OFFSET
-    unsigned DwarfFramePtr = RegInfo->getDwarfRegNum(FramePtr, true);
-    MMI.addFrameInst(MCCFIInstruction::createDefCfa(
-                         AfterFramePointerInit, DwarfFramePtr, -8));
+    unsigned CFIIndex = MMI.addFrameInst(MCCFIInstruction::createDefCfa(
+        nullptr, MRI->getDwarfRegNum(FramePtr, true), -8));
+    BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+        .addCFIIndex(CFIIndex);
   }
   // @LOCALMOD-END
 
@@ -356,14 +354,13 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
 
     // @LOCALMOD-BEGIN
     if(needsFrameMoves) {
-      MCSymbol *AfterRegSave = MMI.getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(ARM::PROLOG_LABEL)).addSym(AfterRegSave);
       if (!HasFP) {
         // CFA offset needs to be updated if it is relative to the SP (which as
         // just moved). Otherwise it is relative to FP, which has not changed.
-        TotalCfaAdjust += DPRCSSize;
-        MMI.addFrameInst(MCCFIInstruction::createDefCfaOffset(
-                             AfterRegSave, -TotalCfaAdjust));
+        unsigned CFIIndex = MMI.addFrameInst(
+            MCCFIInstruction::createDefCfaOffset(nullptr, -TotalCfaAdjust));
+        BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+            .addCFIIndex(CFIIndex);
       }
       // for each callee saved register record where it has been saved
       int offset = -GPRCS1Size;
@@ -379,9 +376,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
           case ARM::D14:
           case ARM::D15:
             offset -= 8;
-            unsigned DwarfReg = RegInfo->getDwarfRegNum(Reg, true);
-            MMI.addFrameInst(MCCFIInstruction::createOffset(
-                                 AfterRegSave, DwarfReg, offset));
+            unsigned CFIIndex = MMI.addFrameInst(MCCFIInstruction::createOffset(
+                nullptr, MRI->getDwarfRegNum(Reg, true), offset));
+            BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+                .addCFIIndex(CFIIndex);
             break;
         }
       }
@@ -474,11 +472,10 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
     // just moved). Otherwise it is relative to FP, which has not changed.
     if (needsFrameMoves && !HasFP) {
       TotalCfaAdjust += NumBytes;
-      MCSymbol *AfterStackUpdate = MMI.getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl,
-              TII.get(ARM::PROLOG_LABEL)).addSym(AfterStackUpdate);
-      MMI.addFrameInst(MCCFIInstruction::createDefCfaOffset(
-                           AfterStackUpdate, -TotalCfaAdjust));
+      unsigned CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createDefCfaOffset(nullptr, -TotalCfaAdjust));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
     }
     // @LOCALMOD-END
   }
