@@ -202,7 +202,7 @@ static TargetLoweringObjectFile *createTLOF(const Triple &TT) {
     return new X86LinuxTargetObjectFile();
 
   // @LOCALMOD-BEGIN
-  if (TT.isTargetNaCl())
+  if (TT.isOSNaCl())
     return new TargetLoweringObjectFileNaCl();
   // @LOCALMOD-END
 
@@ -13616,17 +13616,13 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
     if (Subtarget->is64Bit() || llvm::TLSUseCall) {
       // Call __nacl_read_tp() to get the thread pointer.
       unsigned PtrSize = PtrVT.getSizeInBits();
-      IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+      IntegerType *RetTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
       SDValue ReadTpFunction = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
       ArgListTy Args;
-      TargetLowering::CallLoweringInfo CLI(
-          DAG.getEntryNode(), PtrTy,
-          false, false, false, false, 0, CallingConv::C,
-          /*isTailCall=*/false, /*doesNotRet=*/false,
-          /*isReturnValueUsed=*/true,
-          ReadTpFunction, Args, DAG, dl);
-      std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
-      return CallResult.first;
+      return LowerCallTo(TargetLowering::CallLoweringInfo(DAG)
+                             .setChain(DAG.getEntryNode())
+                             .setCallee(CallingConv::C, RetTy, ReadTpFunction,
+                                        std::move(Args), 0)).first;
     } else {
       // Get %gs:0, which contains the thread pointer on x86-32.
       return DAG.getNode(X86ISD::THREAD_POINTER_FROM_GS, dl, PtrVT);
