@@ -445,8 +445,9 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   // before returning. EmitPrologue takes care of that repositioning.
   // So EH_RETURN just ultimately emits a plain "ret".
   // RETI returns and pops some number of bytes from the stack.
-  if (Opc == X86::RET || Opc == X86::EH_RETURN || Opc == X86::EH_RETURN64 ||
-      Opc == X86::RETI) {
+  if (Opc == X86::RETL || Opc == X86::RETQ ||
+      Opc == X86::EH_RETURN || Opc == X86::EH_RETURN64 ||
+      Opc == X86::RETIL || Opc == X86::RETIQ) {
     // To maintain compatibility with nacl-as, for now we don't emit naclret.
     // MI.setDesc(TII->get(Is64Bit ? X86::NACL_RET64 : X86::NACL_RET32));
     //
@@ -457,7 +458,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     if (Is64Bit) {
       RegTarget = (HideSandboxBase ? X86::R11 : X86::RCX);
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP64r), RegTarget);
-      if (Opc == X86::RETI) {
+      if (Opc == X86::RETIL || Opc == X86::RETIQ) {
         BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_ASPi32))
           .addOperand(MI.getOperand(0))
           .addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
@@ -468,7 +469,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     } else {
       RegTarget = X86::ECX;
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP32r), RegTarget);
-      if (Opc == X86::RETI) {
+      if (Opc == X86::RETI || Opc == X86::RETIQ) {
         BuildMI(MBB, MBBI, DL, TII->get(X86::ADD32ri), X86::ESP)
           .addReg(X86::ESP)
           .addOperand(MI.getOperand(0));
