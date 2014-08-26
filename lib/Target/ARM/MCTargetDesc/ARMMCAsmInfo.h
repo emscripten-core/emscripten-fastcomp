@@ -35,7 +35,7 @@ namespace llvm {
 
     // @LOCALMOD-BEGIN
     // Exceptions handling
-    void setExceptionsType(ExceptionHandling::ExceptionsType ExType) {
+    void setExceptionsType(ExceptionHandling ExType) {
        ExceptionsType = ExType;
     }
     // @LOCALMOD-END

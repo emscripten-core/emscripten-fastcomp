@@ -237,16 +237,17 @@ static MCAsmInfo *createARMMCAsmInfo(const MCRegisterInfo &MRI, StringRef TT) {
   default:
     if (TheTriple.isOSBinFormatMachO())
       MAI = new ARMMCAsmInfoDarwin(TT);
-    else
-      MAI = new ARMELFMCAsmInfo(TT);
+  // @LOCALMOD-BEGIN
+    else {
+      ARMELFMCAsmInfo *AEMAI = new ARMELFMCAsmInfo(TT);
+      if (TheTriple.isOSNaCl())
+        // NativeClient uses Dwarf exception handling
+        AEMAI->setExceptionsType(ExceptionHandling::DwarfCFI);
+      MAI = AEMAI;
+    }
+  // @LOCALMOD-END
     break;
   }
-
-  // @LOCALMOD-BEGIN
-  if (TheTriple.isOSNaCl())
-    // NativeClient uses Dwarf exception handling
-    MAI->setExceptionsType(ExceptionHandling::DwarfCFI);
-  // @LOCALMOD-END
 
   unsigned Reg = MRI.getDwarfRegNum(ARM::SP, true);
   MAI->addInitialFrameState(MCCFIInstruction::createDefCfa(nullptr, Reg, 0));
