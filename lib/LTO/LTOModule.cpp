@@ -112,7 +112,7 @@ LTOModule *LTOModule::makeLTOModule(std::unique_ptr<MemoryBuffer> Buffer,
                                     std::string &errMsg) {
   // parse bitcode buffer
   ErrorOr<Module *> MOrErr =
-      getLazyBitcodeModule(buffer.get(), getGlobalContext(), &errMsg); // @LOCALMOD
+      getLazyBitcodeModule(Buffer.get(), getGlobalContext(), &errMsg); // @LOCALMOD
   if (std::error_code EC = MOrErr.getError()) {
     errMsg = EC.message();
     return nullptr;
@@ -505,14 +505,6 @@ void LTOModule::addAsmGlobalSymbolUndef(const char *name) {
 /// Add a symbol which isn't defined just yet to a list to be resolved later.
 void LTOModule::addPotentialUndefinedSymbol(const object::BasicSymbolRef &Sym,
                                             bool isFunc) {
-  // @LOCALMOD-BEGIN
-  // Bitcode modules may have declarations for functions or globals
-  // which are unused. Ignore them here so that gold does not mistake
-  // them for undefined symbols.
-  if (decl->use_empty())
-    return;
-  // @LOCALMOD-END
-
   SmallString<64> name;
   {
     raw_svector_ostream OS(name);
@@ -573,6 +565,14 @@ bool LTOModule::parseSymbols(std::string &errMsg) {
 
     auto *F = dyn_cast<Function>(GV);
     if (IsUndefined) {
+      // @LOCALMOD-BEGIN
+      // Bitcode modules may have declarations for functions or globals
+      // which are unused. Ignore them here so that gold does not mistake
+      // them for undefined symbols.
+      if (GV->use_empty())
+        continue;
+      // @LOCALMOD-END
+
       addPotentialUndefinedSymbol(Sym, F != nullptr);
       continue;
     }
