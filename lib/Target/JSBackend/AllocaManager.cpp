@@ -40,8 +40,10 @@ uint64_t AllocaManager::getSize(const AllocaInst *AI) {
 // Return the alignment of the given alloca.
 unsigned AllocaManager::getAlignment(const AllocaInst *AI) {
   assert(AI->isStaticAlloca());
-  return std::max(AI->getAlignment(),
-                  DL->getABITypeAlignment(AI->getAllocatedType()));
+  unsigned Alignment = std::max(AI->getAlignment(),
+                                DL->getABITypeAlignment(AI->getAllocatedType()));
+  MaxAlignment = std::max(Alignment, MaxAlignment);
+  return Alignment;
 }
 
 AllocaManager::AllocaInfo AllocaManager::getInfo(const AllocaInst *AI) {
@@ -452,7 +454,7 @@ void AllocaManager::computeFrameOffsets() {
                   "Statically allocated frame size is " << FrameSize << "\n");
 }
 
-AllocaManager::AllocaManager() {
+AllocaManager::AllocaManager() : MaxAlignment(0) {
 }
 
 void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,

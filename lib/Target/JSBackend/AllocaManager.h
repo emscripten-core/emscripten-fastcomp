@@ -142,6 +142,8 @@ class AllocaManager {
   void computeRepresentatives();
   void computeFrameOffsets();
 
+  unsigned MaxAlignment;
+
 public:
   AllocaManager();
 
@@ -166,6 +168,9 @@ public:
 
   /// Return the total frame size for all static allocas and associated padding.
   uint64_t getFrameSize() const { return FrameSize; }
+
+  /// Return the largest alignment seen.
+  unsigned getMaxAlignment() const { return MaxAlignment; }
 };
 
 } // namespace llvm

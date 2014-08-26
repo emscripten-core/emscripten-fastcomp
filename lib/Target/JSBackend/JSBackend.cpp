@@ -1456,10 +1456,14 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     if (AI->isStaticAlloca()) {
       uint64_t Offset;
       if (Allocas.getFrameOffset(AI, &Offset)) {
-        if (Offset != 0) {
-          Code << getAssign(AI) << "sp + " << Offset << "|0";
+        Code << getAssign(AI);
+        if (Allocas.getMaxAlignment() <= STACK_ALIGN) {
+          Code << "sp";
         } else {
-          Code << getAssign(AI) << "sp";
+          Code << "sp_a"; // aligned base of stack is different, use that
+        }
+        if (Offset != 0) {
+          Code << " + " << Offset << "|0";
         }
         break;
       }
@@ -1467,6 +1471,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       // there's nothing to print.
       return;
     }
+
+    assert(AI->getAlignment() <= STACK_ALIGN); // TODO
 
     Type *T = AI->getAllocatedType();
     std::string Size;
@@ -1822,6 +1828,10 @@ void JSWriter::printFunctionBody(const Function *F) {
 
   // Emit local variables
   UsedVars["sp"] = Type::IntegerTyID;
+  unsigned MaxAlignment = Allocas.getMaxAlignment();
+  if (MaxAlignment > STACK_ALIGN) {
+    UsedVars["sp_a"] = Type::IntegerTyID;
+  }
   UsedVars["label"] = Type::IntegerTyID;
   if (!UsedVars.empty()) {
     unsigned Count = 0;
@@ -1864,6 +1874,11 @@ void JSWriter::printFunctionBody(const Function *F) {
   // Emit stack entry
   Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
   if (uint64_t FrameSize = Allocas.getFrameSize()) {
+    if (MaxAlignment > STACK_ALIGN) {
+      // We must align this entire stack frame to something higher than the default
+      Out << "\n ";
+      Out << "sp_a = STACKTOP = (STACKTOP + " << utostr(MaxAlignment-1) << ")&-" << utostr(MaxAlignment) << ";";
+    }
     Out << "\n ";
     Out << getStackBump(FrameSize);
   }
