@@ -112,7 +112,7 @@ LTOModule *LTOModule::makeLTOModule(std::unique_ptr<MemoryBuffer> Buffer,
                                     std::string &errMsg) {
   // parse bitcode buffer
   ErrorOr<Module *> MOrErr =
-      getLazyBitcodeModule(Buffer.get(), getGlobalContext(), &errMsg); // @LOCALMOD
+      getLazyBitcodeModule(Buffer.get(), getGlobalContext()); // @LOCALMOD
   if (std::error_code EC = MOrErr.getError()) {
     errMsg = EC.message();
     return nullptr;
