@@ -153,9 +153,6 @@ public:
   bool addPreRegAlloc() override;
   bool addPreSched2() override;
   bool addPreEmitPass() override;
-// @LOCALMOD-START
-  virtual void addIRPasses() override;
-// @LOCALMOD-END
 };
 } // namespace
 
@@ -164,6 +161,10 @@ TargetPassConfig *ARMBaseTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 void ARMPassConfig::addIRPasses() {
+  // @LOCALMOD-START
+  if (getARMSubtarget().isTargetNaCl())
+    addPass(createInsertDivideCheckPass());
+  // @LOCALMOD-END
   addPass(createAtomicExpandLoadLinkedPass(TM));
 
   // Cmpxchg instructions are often used with a subsequent comparison to
@@ -272,15 +273,6 @@ bool ARMPassConfig::addPreEmitPass() {
 
   return true;
 }
-
-// @LOCALMOD-START
-void ARMPassConfig::addIRPasses() {
-  if (getARMSubtarget().isTargetNaCl()) {
-    addPass(createInsertDivideCheckPass());
-  }
-  TargetPassConfig::addIRPasses();
-}
-// @LOCALMOD-END
 
 bool ARMBaseTargetMachine::addCodeEmitter(PassManagerBase &PM,
                                           JITCodeEmitter &JCE) {
