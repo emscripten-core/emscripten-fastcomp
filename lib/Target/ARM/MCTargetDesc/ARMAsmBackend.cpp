@@ -786,17 +786,27 @@ public:
 // @LOCALMOD-BEGIN
 class NaClARMAsmBackend : public ELFARMAsmBackend {
 public:
-  NaClARMAsmBackend(const Target &T, const StringRef TT, uint8_t _OSABI)
-      : ELFARMAsmBackend(T, TT, _OSABI) {
+  NaClARMAsmBackend(const Target &T, const StringRef TT, uint8_t _OSABI,
+                    bool isLittle)
+      : ELFARMAsmBackend(T, TT, _OSABI, isLittle),
+        STI(ARM_MC::createARMMCSubtargetInfo(TT, "", "")) {
+    assert(isLittle && "NaCl only supports little-endian");
     State.SaveCount = 0;
     State.I = 0;
     State.RecursiveCall = false;
   }
 
+  ~NaClARMAsmBackend() override {}
+
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
-    return CustomExpandInstNaClARM(Inst, Out, State);
+    return CustomExpandInstNaClARM(*STI, Inst, Out, State);
   }
- private:
+
+private:
+  // TODO(jfb) When upstreaming this class we can drop STI since ARMAsmBackend
+  //           already has one. It's unfortunately private so we recreate one
+  //           here to avoid the extra localmod.
+  std::unique_ptr<MCSubtargetInfo> STI;
   ARMMCNaClSFIState State;
 };
 
