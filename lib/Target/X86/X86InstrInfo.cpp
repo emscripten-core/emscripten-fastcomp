@@ -282,7 +282,7 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
   }
 
   // @LOCALMOD-BEGIN
-  unsigned NoForwardForNaCl = STI.isTargetNaCl() ? TB_NO_FORWARD : 0;
+  uint16_t NoForwardForNaCl = STI.isTargetNaCl() ? TB_NO_FORWARD : 0;
   // @LOCALMOD-END
 
   static const X86OpTblEntry OpTbl0[] = {
