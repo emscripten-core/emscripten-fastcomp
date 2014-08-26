@@ -469,7 +469,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     } else {
       RegTarget = X86::ECX;
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP32r), RegTarget);
-      if (Opc == X86::RETI || Opc == X86::RETIQ) {
+      if (Opc == X86::RETIL || Opc == X86::RETIQ) {
         BuildMI(MBB, MBBI, DL, TII->get(X86::ADD32ri), X86::ESP)
           .addReg(X86::ESP)
           .addOperand(MI.getOperand(0));
