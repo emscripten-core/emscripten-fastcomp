@@ -15,6 +15,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 
+namespace llvm {
+
 // A "queue" that keeps track of which functions have been assigned to
 // threads and which functions have not yet been assigned. It does not
 // actually use a queue data structure and instead uses a number which
@@ -109,5 +111,7 @@ class ThreadedFunctionQueue {
       const ThreadedFunctionQueue&) LLVM_DELETED_FUNCTION;
   void operator=(const ThreadedFunctionQueue&) LLVM_DELETED_FUNCTION;
 };
+
+} // end namespace llvm
 
 #endif
