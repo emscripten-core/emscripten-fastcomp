@@ -21,7 +21,7 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/RegionPass.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h" // @LOCALMOD
+#include "llvm/Bitcode/NaCl/NaClBitcodeWriterPass.h" // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRPrintingPasses.h"
@@ -209,6 +209,7 @@ OutputFileFormat(
         clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
     cl::init(LLVMFormat));
+extern bool OutputFileFormatIsPNaCl;
 // @LOCALMOD-END
 
 
@@ -723,7 +724,20 @@ int main(int argc, char **argv) {
   if (!NoOutput && !AnalyzeOnly) {
     if (OutputAssembly)
       Passes.add(createPrintModulePass(Out->os()));
-    // @LOCALMOD
+    else
+      // @LOCALMOD-START
+      switch (OutputFileFormat) {
+      case LLVMFormat:
+        Passes.add(createBitcodeWriterPass(Out->os()));
+        break;
+      case PNaClFormat:
+        Passes.add(createNaClBitcodeWriterPass(Out->os()));
+        break;
+      default:
+        errs() << "Don't understand bitcode format for generated bitcode.\n";
+        return 1;
+      }
+      // @LOCALMOD-END
   }
 
   // Before executing passes, print the final values of the LLVM options.
@@ -731,23 +745,6 @@ int main(int argc, char **argv) {
 
   // Now that we have all of the passes ready, run them.
   Passes.run(*M.get());
-
-// @LOCALMOD-BEGIN
-  // Write bitcode to the output.
-  if (!NoOutput && !AnalyzeOnly && !OutputAssembly) {
-    switch (OutputFileFormat) {
-      case LLVMFormat:
-        WriteBitcodeToFile(M.get(), Out->os());
-        break;
-      case PNaClFormat:
-        NaClWriteBitcodeToFile(M.get(), Out->os());
-        break;
-      default:
-        errs() << "Don't understand bitcode format for generated bitcode.\n";
-        return 1;
-    }
-  }
-// @LOCALMOD-END
 
   // Declare success.
   if (!NoOutput || PrintBreakpoints)
