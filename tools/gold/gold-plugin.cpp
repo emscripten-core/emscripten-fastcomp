@@ -471,7 +471,7 @@ static ld_plugin_status all_symbols_read_hook(void) {
       (*message)(LDPL_ERROR, "Unable to wrap symbol %u/%u.", i, num_wrapped);
       return LDPS_ERR;
     }
-    lto_codegen_wrap_symbol_in_merged_module(code_gen, sym);
+    CodeGen->wrapSymbol(sym);
   }
   // @LOCALMOD-END
 
