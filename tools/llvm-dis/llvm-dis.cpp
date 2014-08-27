@@ -158,11 +158,11 @@ int main(int argc, char **argv) {
         // The Module's BitcodeReader's BitstreamReader takes ownership
         // of the StreamingMemoryObject.
         M.reset(getStreamedBitcodeModule(
-            DisplayFilename, Buffer.take(), Context, &ErrorMessage));
+            DisplayFilename, Buffer.release(), Context, &ErrorMessage));
         break;
       case PNaClFormat:
         M.reset(getNaClStreamedBitcodeModule(
-            DisplayFilename, Buffer.take(), Context, &ErrorMessage));
+            DisplayFilename, Buffer.release(), Context, &ErrorMessage));
         break;
       default:
         ErrorMessage = "Don't understand specified bitcode format";
