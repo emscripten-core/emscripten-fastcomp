@@ -1009,9 +1009,11 @@ static void dumpSymbolNamesFromFile(std::string &Filename) {
 
   // @LOCALMOD-BEGIN
   // Support parsing PNaCl bitcode files
+  /* TODO(jfb) This is currently broken: the code base now requires an Object.
   if (InputFileFormat == PNaClFormat) {
     std::string ErrorMessage;
-    Module *Result = NaClParseBitcodeFile(Buffer.get(), Context, &ErrorMessage);
+    Module *Result = NaClParseBitcodeFile(BufferOrErr.get().release(), Context,
+                                          &ErrorMessage);
     if (Result) {
       DumpSymbolNamesFromModule(Result);
       delete Result;
@@ -1019,7 +1021,8 @@ static void dumpSymbolNamesFromFile(std::string &Filename) {
       error(ErrorMessage, Filename);
       return;
     }
-  } else
+  }
+  */
   // @LOCALMOD-END
 
   ErrorOr<Binary *> BinaryOrErr =
