@@ -242,7 +242,8 @@ void lto_codegen_add_must_preserve_symbol(lto_code_gen_t cg,
 //
 void lto_codegen_wrap_symbol_in_merged_module(lto_code_gen_t cg,
                                               const char *sym) {
-  cg->wrapSymbol(sym);
+  LTOCodeGenerator *CG = unwrap(cg);
+  CG->wrapSymbol(sym);
 }
 // @LOCALMOD-END
 
