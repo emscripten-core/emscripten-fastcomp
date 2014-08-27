@@ -15,7 +15,6 @@
 #include "ThreadedStreamingCache.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
-#include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
