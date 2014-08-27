@@ -17,8 +17,8 @@ struct X86MCNaClSFIState {
   unsigned PrefixSaved;
   bool PrefixPass;
 };
-bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
-                             X86MCNaClSFIState &State);
+bool CustomExpandInstNaClX86(const MCSubtargetInfo &STI, const MCInst &Inst,
+                             MCStreamer &Out, X86MCNaClSFIState &State);
 }
 
 #endif

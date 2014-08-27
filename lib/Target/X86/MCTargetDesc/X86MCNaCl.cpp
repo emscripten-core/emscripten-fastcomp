@@ -56,8 +56,9 @@ static MCSymbol *CreateTempLabel(MCContext &Context, const char *Prefix) {
   return Context.GetOrCreateSymbol(NameSV);
 }
 
-static void PushReturnAddress(MCContext &Context,
-                              MCStreamer &Out, MCSymbol *RetTarget) {
+static void PushReturnAddress(const llvm::MCSubtargetInfo &STI,
+                              MCContext &Context, MCStreamer &Out,
+                              MCSymbol *RetTarget) {
   const MCExpr *RetTargetExpr = MCSymbolRefExpr::Create(RetTarget, Context);
   if (Context.getObjectFileInfo()->getRelocM() == Reloc::PIC_) {
     // Calculate return_addr
@@ -73,25 +74,25 @@ static void PushReturnAddress(MCContext &Context,
     LEAInst.addOperand(MCOperand::CreateReg(0)); // IndexReg
     LEAInst.addOperand(MCOperand::CreateExpr(RetTargetExpr)); // Offset
     LEAInst.addOperand(MCOperand::CreateReg(0)); // SegmentReg
-    Out.EmitInstruction(LEAInst);
+    Out.EmitInstruction(LEAInst, STI);
     // push return_addr
     MCInst PUSHInst;
     PUSHInst.setOpcode(X86::PUSH64r);
     PUSHInst.addOperand(MCOperand::CreateReg(X86::R10));
-    Out.EmitInstruction(PUSHInst);
+    Out.EmitInstruction(PUSHInst, STI);
   } else {
     // push return_addr
     MCInst PUSHInst;
     PUSHInst.setOpcode(X86::PUSH64i32);
     PUSHInst.addOperand(MCOperand::CreateExpr(RetTargetExpr));
-    Out.EmitInstruction(PUSHInst);
+    Out.EmitInstruction(PUSHInst, STI);
   }
 }
 
-static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
-                           MCStreamer &Out) {
-  const bool HideSandboxBase = (FlagHideSandboxBase &&
-                                Is64Bit && !FlagUseZeroBasedSandbox);
+static void EmitDirectCall(const llvm::MCSubtargetInfo &STI,
+                           const MCOperand &Op, bool Is64Bit, MCStreamer &Out) {
+  const bool HideSandboxBase =
+      (FlagHideSandboxBase && Is64Bit && !FlagUseZeroBasedSandbox);
   if (HideSandboxBase) {
     // For NaCl64, the sequence
     //   call target
@@ -116,13 +117,13 @@ static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
     // Generate a label for the return address.
     MCSymbol *RetTarget = CreateTempLabel(Context, "DirectCallRetAddr");
 
-    PushReturnAddress(Context, Out, RetTarget);
+    PushReturnAddress(STI, Context, Out, RetTarget);
 
     // jmp target
     MCInst JMPInst;
     JMPInst.setOpcode(X86::JMP_4);
     JMPInst.addOperand(Op);
-    Out.EmitInstruction(JMPInst);
+    Out.EmitInstruction(JMPInst, STI);
 
     Out.EmitCodeAlignment(kNaClX86InstructionBundleSize);
     Out.EmitLabel(RetTarget);
@@ -132,15 +133,16 @@ static void EmitDirectCall(const MCOperand &Op, bool Is64Bit,
     MCInst CALLInst;
     CALLInst.setOpcode(Is64Bit ? X86::CALL64pcrel32 : X86::CALLpcrel32);
     CALLInst.addOperand(Op);
-    Out.EmitInstruction(CALLInst);
+    Out.EmitInstruction(CALLInst, STI);
     Out.EmitBundleUnlock();
   }
 }
 
-static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
+static void EmitIndirectBranch(const llvm::MCSubtargetInfo &STI,
+                               const MCOperand &Op, bool Is64Bit, bool IsCall,
                                MCStreamer &Out) {
-  const bool HideSandboxBase = (FlagHideSandboxBase &&
-                                Is64Bit && !FlagUseZeroBasedSandbox);
+  const bool HideSandboxBase =
+      (FlagHideSandboxBase && Is64Bit && !FlagUseZeroBasedSandbox);
   const int JmpMask = -kNaClX86InstructionBundleSize;
   unsigned Reg32 = Op.getReg();
 
@@ -186,7 +188,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
     // Generate a label for the return address.
     RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
 
-    PushReturnAddress(Context, Out, RetTarget);
+    PushReturnAddress(STI, Context, Out, RetTarget);
   }
 
   // For NaCl64, force an assignment of the branch target into r11,
@@ -207,7 +209,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
       MOVInst.setOpcode(X86::MOV32rr);
       MOVInst.addOperand(MCOperand::CreateReg(SafeReg32));
       MOVInst.addOperand(MCOperand::CreateReg(Reg32));
-      Out.EmitInstruction(MOVInst);
+      Out.EmitInstruction(MOVInst, STI);
       Reg32 = SafeReg32;
     }
   }
@@ -221,7 +223,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   ANDInst.addOperand(MCOperand::CreateReg(Reg32));
   ANDInst.addOperand(MCOperand::CreateReg(Reg32));
   ANDInst.addOperand(MCOperand::CreateImm(JmpMask));
-  Out.EmitInstruction(ANDInst);
+  Out.EmitInstruction(ANDInst, STI);
 
   if (Is64Bit && !FlagUseZeroBasedSandbox) {
     MCInst InstADD;
@@ -229,7 +231,7 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
     InstADD.addOperand(MCOperand::CreateReg(Reg64));
     InstADD.addOperand(MCOperand::CreateReg(Reg64));
     InstADD.addOperand(MCOperand::CreateReg(X86::R15));
-    Out.EmitInstruction(InstADD);
+    Out.EmitInstruction(InstADD, STI);
   }
 
   if (WillEmitCallInst) {
@@ -237,13 +239,13 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
     MCInst CALLInst;
     CALLInst.setOpcode(Is64Bit ? X86::CALL64r : X86::CALL32r);
     CALLInst.addOperand(MCOperand::CreateReg(Is64Bit ? Reg64 : Reg32));
-    Out.EmitInstruction(CALLInst);
+    Out.EmitInstruction(CALLInst, STI);
   } else {
     // jmpq *%rXX   -or-   jmpq *%r11
     MCInst JMPInst;
     JMPInst.setOpcode(Is64Bit ? X86::JMP64r : X86::JMP32r);
     JMPInst.addOperand(MCOperand::CreateReg(Is64Bit ? Reg64 : Reg32));
-    Out.EmitInstruction(JMPInst);
+    Out.EmitInstruction(JMPInst, STI);
   }
   Out.EmitBundleUnlock();
   if (RetTarget) {
@@ -252,7 +254,8 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   }
 }
 
-static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
+static void EmitRet(const llvm::MCSubtargetInfo &STI, const MCOperand *AmtOp,
+                    bool Is64Bit, MCStreamer &Out) {
   // For NaCl64 returns, follow the convention of using r11 to hold
   // the target of an indirect jump to avoid potentially leaking the
   // sandbox base address.
@@ -266,7 +269,7 @@ static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
   MCInst POPInst;
   POPInst.setOpcode(Is64Bit ? X86::POP64r : X86::POP32r);
   POPInst.addOperand(MCOperand::CreateReg(RegTarget));
-  Out.EmitInstruction(POPInst);
+  Out.EmitInstruction(POPInst, STI);
 
   if (AmtOp) {
     assert(!Is64Bit);
@@ -276,17 +279,18 @@ static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
     ADDInst.addOperand(MCOperand::CreateReg(ADDReg));
     ADDInst.addOperand(MCOperand::CreateReg(ADDReg));
     ADDInst.addOperand(*AmtOp);
-    Out.EmitInstruction(ADDInst);
+    Out.EmitInstruction(ADDInst, STI);
   }
 
   MCInst JMPInst;
   JMPInst.setOpcode(Is64Bit ? X86::NACL_JMP64r : X86::NACL_JMP32r);
   JMPInst.addOperand(MCOperand::CreateReg(RegTarget));
-  Out.EmitInstruction(JMPInst);
+  Out.EmitInstruction(JMPInst, STI);
 }
 
 // Fix a register after being truncated to 32-bits.
-static void EmitRegFix(unsigned Reg64, MCStreamer &Out) {
+static void EmitRegFix(const llvm::MCSubtargetInfo &STI, unsigned Reg64,
+                       MCStreamer &Out) {
   // lea (%rsp, %r15, 1), %rsp
   // We do not need to add the R15 base for the zero-based sandbox model
   if (!FlagUseZeroBasedSandbox) {
@@ -298,12 +302,12 @@ static void EmitRegFix(unsigned Reg64, MCStreamer &Out) {
     Tmp.addOperand(MCOperand::CreateReg(X86::R15)); // IndexReg
     Tmp.addOperand(MCOperand::CreateImm(0));        // Offset
     Tmp.addOperand(MCOperand::CreateReg(0));        // SegmentReg
-    Out.EmitInstruction(Tmp);
+    Out.EmitInstruction(Tmp, STI);
   }
 }
 
-static void EmitSPArith(unsigned Opc, const MCOperand &ImmOp,
-                        MCStreamer &Out) {
+static void EmitSPArith(const llvm::MCSubtargetInfo &STI, unsigned Opc,
+                        const MCOperand &ImmOp, MCStreamer &Out) {
   Out.EmitBundleLock(false);
 
   MCInst Tmp;
@@ -311,13 +315,14 @@ static void EmitSPArith(unsigned Opc, const MCOperand &ImmOp,
   Tmp.addOperand(MCOperand::CreateReg(X86::RSP));
   Tmp.addOperand(MCOperand::CreateReg(X86::RSP));
   Tmp.addOperand(ImmOp);
-  Out.EmitInstruction(Tmp);
+  Out.EmitInstruction(Tmp, STI);
 
-  EmitRegFix(X86::RSP, Out);
+  EmitRegFix(STI, X86::RSP, Out);
   Out.EmitBundleUnlock();
 }
 
-static void EmitSPAdj(const MCOperand &ImmOp, MCStreamer &Out) {
+static void EmitSPAdj(const llvm::MCSubtargetInfo &STI, const MCOperand &ImmOp,
+                      MCStreamer &Out) {
   Out.EmitBundleLock(false);
 
   MCInst Tmp;
@@ -328,48 +333,50 @@ static void EmitSPAdj(const MCOperand &ImmOp, MCStreamer &Out) {
   Tmp.addOperand(MCOperand::CreateReg(0));        // IndexReg
   Tmp.addOperand(ImmOp);                          // Offset
   Tmp.addOperand(MCOperand::CreateReg(0));        // SegmentReg
-  Out.EmitInstruction(Tmp);
+  Out.EmitInstruction(Tmp, STI);
 
-  EmitRegFix(X86::RSP, Out);
+  EmitRegFix(STI, X86::RSP, Out);
   Out.EmitBundleUnlock();
 }
 
-static void EmitPrefix(unsigned Opc, MCStreamer &Out,
-                       X86MCNaClSFIState &State) {
+static void EmitPrefix(const llvm::MCSubtargetInfo &STI, unsigned Opc,
+                       MCStreamer &Out, X86MCNaClSFIState &State) {
   assert(State.PrefixSaved == 0);
   assert(State.PrefixPass == false);
 
   MCInst PrefixInst;
   PrefixInst.setOpcode(Opc);
   State.PrefixPass = true;
-  Out.EmitInstruction(PrefixInst);
+  Out.EmitInstruction(PrefixInst, STI);
 
   assert(State.PrefixSaved == 0);
   assert(State.PrefixPass == false);
 }
 
-static void EmitMoveRegReg(bool Is64Bit, unsigned ToReg,
-                           unsigned FromReg, MCStreamer &Out) {
+static void EmitMoveRegReg(const llvm::MCSubtargetInfo &STI, bool Is64Bit,
+                           unsigned ToReg, unsigned FromReg, MCStreamer &Out) {
   MCInst Move;
   Move.setOpcode(Is64Bit ? X86::MOV64rr : X86::MOV32rr);
   Move.addOperand(MCOperand::CreateReg(ToReg));
   Move.addOperand(MCOperand::CreateReg(FromReg));
-  Out.EmitInstruction(Move);
+  Out.EmitInstruction(Move, STI);
 }
 
-static void EmitRegTruncate(unsigned Reg64, MCStreamer &Out) {
+static void EmitRegTruncate(const llvm::MCSubtargetInfo &STI, unsigned Reg64,
+                            MCStreamer &Out) {
   unsigned Reg32 = getX86SubSuperRegister_(Reg64, MVT::i32);
-  EmitMoveRegReg(false, Reg32, Reg32, Out);
+  EmitMoveRegReg(STI, false, Reg32, Reg32, Out);
 }
 
-static void HandleMemoryRefTruncation(MCInst *Inst, unsigned IndexOpPosition,
+static void HandleMemoryRefTruncation(const llvm::MCSubtargetInfo &STI,
+                                      MCInst *Inst, unsigned IndexOpPosition,
                                       MCStreamer &Out) {
   unsigned IndexReg = Inst->getOperand(IndexOpPosition).getReg();
   if (FlagUseZeroBasedSandbox) {
     // With the zero-based sandbox, we use a 32-bit register on the index
     Inst->getOperand(IndexOpPosition).setReg(DemoteRegTo32_(IndexReg));
   } else {
-    EmitRegTruncate(IndexReg, Out);
+    EmitRegTruncate(STI, IndexReg, Out);
   }
 }
 
@@ -388,13 +395,9 @@ static void ShortenMemoryRef(MCInst *Inst, unsigned IndexOpPosition) {
   }
 }
 
-static void EmitLoad(bool Is64Bit,
-                     unsigned DestReg,
-                     unsigned BaseReg,
-                     unsigned Scale,
-                     unsigned IndexReg,
-                     unsigned Offset,
-                     unsigned SegmentReg,
+static void EmitLoad(const llvm::MCSubtargetInfo &STI, bool Is64Bit,
+                     unsigned DestReg, unsigned BaseReg, unsigned Scale,
+                     unsigned IndexReg, unsigned Offset, unsigned SegmentReg,
                      MCStreamer &Out) {
   // Load DestReg from address BaseReg + Scale * IndexReg + Offset
   MCInst Load;
@@ -405,7 +408,7 @@ static void EmitLoad(bool Is64Bit,
   Load.addOperand(MCOperand::CreateReg(IndexReg));
   Load.addOperand(MCOperand::CreateImm(Offset));
   Load.addOperand(MCOperand::CreateReg(SegmentReg));
-  Out.EmitInstruction(Load);
+  Out.EmitInstruction(Load, STI);
 }
 
 static bool SandboxMemoryRef(MCInst *Inst,
@@ -429,7 +432,8 @@ static bool SandboxMemoryRef(MCInst *Inst,
   return false;
 }
 
-static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
+static void EmitTLSAddr32(const llvm::MCSubtargetInfo &STI, const MCInst &Inst,
+                          MCStreamer &Out) {
   Out.EmitBundleLock(true);
 
   MCInst LeaInst;
@@ -440,7 +444,7 @@ static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
   LeaInst.addOperand(Inst.getOperand(2)); // IndexReg
   LeaInst.addOperand(Inst.getOperand(3)); // Offset
   LeaInst.addOperand(Inst.getOperand(4)); // SegmentReg
-  Out.EmitInstruction(LeaInst);
+  Out.EmitInstruction(LeaInst, STI);
 
   MCInst CALLInst;
   CALLInst.setOpcode(X86::CALLpcrel32);
@@ -450,35 +454,33 @@ static void EmitTLSAddr32(const MCInst &Inst, MCStreamer &Out) {
       context.GetOrCreateSymbol(StringRef("___tls_get_addr")),
       MCSymbolRefExpr::VK_PLT, context);
   CALLInst.addOperand(MCOperand::CreateExpr(expr));
-  Out.EmitInstruction(CALLInst);
+  Out.EmitInstruction(CALLInst, STI);
   Out.EmitBundleUnlock();
 }
 
-
-static void EmitREST(const MCInst &Inst, unsigned Reg32,
-                     bool IsMem, MCStreamer &Out) {
+static void EmitREST(const llvm::MCSubtargetInfo &STI, const MCInst &Inst,
+                     unsigned Reg32, bool IsMem, MCStreamer &Out) {
   unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
   Out.EmitBundleLock(false);
   if (!IsMem) {
-    EmitMoveRegReg(false, Reg32, Inst.getOperand(0).getReg(), Out);
+    EmitMoveRegReg(STI, false, Reg32, Inst.getOperand(0).getReg(), Out);
   } else {
     unsigned IndexOpPosition;
     MCInst SandboxedInst = Inst;
     if (SandboxMemoryRef(&SandboxedInst, &IndexOpPosition)) {
-      HandleMemoryRefTruncation(&SandboxedInst, IndexOpPosition, Out);
+      HandleMemoryRefTruncation(STI, &SandboxedInst, IndexOpPosition, Out);
       ShortenMemoryRef(&SandboxedInst, IndexOpPosition);
     }
-    EmitLoad(false,
-             Reg32,
-             SandboxedInst.getOperand(0).getReg(),  // BaseReg
-             SandboxedInst.getOperand(1).getImm(),  // Scale
-             SandboxedInst.getOperand(2).getReg(),  // IndexReg
-             SandboxedInst.getOperand(3).getImm(),  // Offset
-             SandboxedInst.getOperand(4).getReg(),  // SegmentReg
+    EmitLoad(STI, false, Reg32,
+             SandboxedInst.getOperand(0).getReg(), // BaseReg
+             SandboxedInst.getOperand(1).getImm(), // Scale
+             SandboxedInst.getOperand(2).getReg(), // IndexReg
+             SandboxedInst.getOperand(3).getImm(), // Offset
+             SandboxedInst.getOperand(4).getReg(), // SegmentReg
              Out);
   }
 
-  EmitRegFix(Reg64, Out);
+  EmitRegFix(STI, Reg64, Out);
   Out.EmitBundleUnlock();
 }
 
@@ -499,7 +501,8 @@ namespace llvm {
 //   instructions. Unfortunately, the assembly parser prefers to generate
 //   these instead of combined instructions. At this time, having only
 //   one explicit prefix is supported.
-bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
+bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
+                             const MCInst &Inst, MCStreamer &Out,
                              X86MCNaClSFIState &State) {
   // If we are emitting to .s, just emit all pseudo-instructions directly.
   if (Out.hasRawTextSupport()) {
@@ -524,86 +527,86 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
     return true;
   case X86::NACL_CALL32d:
     assert(State.PrefixSaved == 0);
-    EmitDirectCall(Inst.getOperand(0), false, Out);
+    EmitDirectCall(STI, Inst.getOperand(0), false, Out);
     return true;
   case X86::NACL_CALL64d:
     assert(State.PrefixSaved == 0);
-    EmitDirectCall(Inst.getOperand(0), true, Out);
+    EmitDirectCall(STI, Inst.getOperand(0), true, Out);
     return true;
   case X86::NACL_CALL32r:
     assert(State.PrefixSaved == 0);
-    EmitIndirectBranch(Inst.getOperand(0), false, true, Out);
+    EmitIndirectBranch(STI, Inst.getOperand(0), false, true, Out);
     return true;
   case X86::NACL_CALL64r:
     assert(State.PrefixSaved == 0);
-    EmitIndirectBranch(Inst.getOperand(0), true, true, Out);
+    EmitIndirectBranch(STI, Inst.getOperand(0), true, true, Out);
     return true;
   case X86::NACL_JMP32r:
     assert(State.PrefixSaved == 0);
-    EmitIndirectBranch(Inst.getOperand(0), false, false, Out);
+    EmitIndirectBranch(STI, Inst.getOperand(0), false, false, Out);
     return true;
   case X86::NACL_TLS_addr32:
     assert(State.PrefixSaved == 0);
-    EmitTLSAddr32(Inst, Out);
+    EmitTLSAddr32(STI, Inst, Out);
     return true;
   case X86::NACL_JMP64r:
   case X86::NACL_JMP64z:
     assert(State.PrefixSaved == 0);
-    EmitIndirectBranch(Inst.getOperand(0), true, false, Out);
+    EmitIndirectBranch(STI, Inst.getOperand(0), true, false, Out);
     return true;
   case X86::NACL_RET32:
     assert(State.PrefixSaved == 0);
-    EmitRet(NULL, false, Out);
+    EmitRet(STI, NULL, false, Out);
     return true;
   case X86::NACL_RET64:
     assert(State.PrefixSaved == 0);
-    EmitRet(NULL, true, Out);
+    EmitRet(STI, NULL, true, Out);
     return true;
   case X86::NACL_RETI32:
     assert(State.PrefixSaved == 0);
-    EmitRet(&Inst.getOperand(0), false, Out);
+    EmitRet(STI, &Inst.getOperand(0), false, Out);
     return true;
   case X86::NACL_ASPi8:
     assert(State.PrefixSaved == 0);
-    EmitSPArith(X86::ADD32ri8, Inst.getOperand(0), Out);
+    EmitSPArith(STI, X86::ADD32ri8, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_ASPi32:
     assert(State.PrefixSaved == 0);
-    EmitSPArith(X86::ADD32ri, Inst.getOperand(0), Out);
+    EmitSPArith(STI, X86::ADD32ri, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_SSPi8:
     assert(State.PrefixSaved == 0);
-    EmitSPArith(X86::SUB32ri8, Inst.getOperand(0), Out);
+    EmitSPArith(STI, X86::SUB32ri8, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_SSPi32:
     assert(State.PrefixSaved == 0);
-    EmitSPArith(X86::SUB32ri, Inst.getOperand(0), Out);
+    EmitSPArith(STI, X86::SUB32ri, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_ANDSPi32:
     assert(State.PrefixSaved == 0);
-    EmitSPArith(X86::AND32ri, Inst.getOperand(0), Out);
+    EmitSPArith(STI, X86::AND32ri, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_SPADJi32:
     assert(State.PrefixSaved == 0);
-    EmitSPAdj(Inst.getOperand(0), Out);
+    EmitSPAdj(STI, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_RESTBPm:
     assert(State.PrefixSaved == 0);
-    EmitREST(Inst, X86::EBP, true, Out);
+    EmitREST(STI, Inst, X86::EBP, true, Out);
     return true;
   case X86::NACL_RESTBPr:
   case X86::NACL_RESTBPrz:
     assert(State.PrefixSaved == 0);
-    EmitREST(Inst, X86::EBP, false, Out);
+    EmitREST(STI, Inst, X86::EBP, false, Out);
     return true;
   case X86::NACL_RESTSPm:
     assert(State.PrefixSaved == 0);
-    EmitREST(Inst, X86::ESP, true, Out);
+    EmitREST(STI, Inst, X86::ESP, true, Out);
     return true;
   case X86::NACL_RESTSPr:
   case X86::NACL_RESTSPrz:
     assert(State.PrefixSaved == 0);
-    EmitREST(Inst, X86::ESP, false, Out);
+    EmitREST(STI, Inst, X86::ESP, false, Out);
     return true;
   }
 
@@ -616,12 +619,12 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
     if (PrefixLocal || !FlagUseZeroBasedSandbox)
       Out.EmitBundleLock(false);
 
-    HandleMemoryRefTruncation(&SandboxedInst, IndexOpPosition, Out);
+    HandleMemoryRefTruncation(STI, &SandboxedInst, IndexOpPosition, Out);
     ShortenMemoryRef(&SandboxedInst, IndexOpPosition);
 
     if (PrefixLocal)
-      EmitPrefix(PrefixLocal, Out, State);
-    Out.EmitInstruction(SandboxedInst);
+      EmitPrefix(STI, PrefixLocal, Out, State);
+    Out.EmitInstruction(SandboxedInst, STI);
 
     if (PrefixLocal || !FlagUseZeroBasedSandbox)
       Out.EmitBundleUnlock();
@@ -631,7 +634,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
   if (State.PrefixSaved) {
     unsigned PrefixLocal = State.PrefixSaved;
     State.PrefixSaved = 0;
-    EmitPrefix(PrefixLocal, Out, State);
+    EmitPrefix(STI, PrefixLocal, Out, State);
   }
   return false;
 }
