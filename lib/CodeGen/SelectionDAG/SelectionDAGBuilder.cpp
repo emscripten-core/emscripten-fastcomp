@@ -6749,7 +6749,7 @@ void SelectionDAGBuilder::visitVAArg(const VAArgInst &I) {
                            getRoot(), getValue(I.getOperand(0)),
                            DAG.getSrcValue(I.getOperand(0)),
 // @LOCALMOD-BEGIN
-                           DL.getCallFrameTypeAlignment(I.getType()));
+                           DL.getABITypeAlignment(I.getType()));
 // @LOCALMOD-END
   setValue(&I, V);
   DAG.setRoot(V.getValue(1));
