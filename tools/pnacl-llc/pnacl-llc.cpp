@@ -513,13 +513,10 @@ static int compileSplitModule(const TargetOptions &Options,
   TargetMachine &Target = *target.get();
   // Override default to generate verbose assembly.
   Target.setAsmVerbosityDefault(true);
-  if (RelaxAll) {
-    if (FileType != TargetMachine::CGFT_ObjectFile)
-      errs() << ProgramName
+  if (RelaxAll.getNumOccurrences() > 0 &&
+      FileType != TargetMachine::CGFT_ObjectFile)
+    errs() << ProgramName
              << ": warning: ignoring -mc-relax-all because filetype != obj";
-    else
-      Target.setMCRelaxAll(true);
-  }
   // The OwningPtrs are only used if we are not the primary module.
   std::unique_ptr<LLVMContext> C;
   std::unique_ptr<Module> M;
