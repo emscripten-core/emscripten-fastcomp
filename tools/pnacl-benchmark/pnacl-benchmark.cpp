@@ -125,12 +125,12 @@ private:
 
 void BenchmarkIRParsing() {
   outs() << "Benchmarking IR parsing...\n";
-  ErrOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
+  ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
       MemoryBuffer::getFileOrSTDIN(InputFilename);
   if (std::error_code EC = ErrOrFile.getError())
-    report_fatal_error("Could not open input file: " + ec.message());
+    report_fatal_error("Could not open input file: " + EC.message());
 
-  std::unique_ptr<MemoryBuffer> FileBuf = ErrOrFile.get().release();
+  std::unique_ptr<MemoryBuffer> FileBuf(ErrOrFile.get().release());
   size_t BufSize = FileBuf->getBufferSize();
   const uint8_t *BufPtr =
       reinterpret_cast<const uint8_t *>(FileBuf->getBufferStart());
