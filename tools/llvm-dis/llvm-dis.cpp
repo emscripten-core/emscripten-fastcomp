@@ -169,8 +169,7 @@ int main(int argc, char **argv) {
         break;
     }
     // @LOCALMOD-END
-    M.reset(getStreamedBitcodeModule(DisplayFilename, streamer, Context,
-                                     &ErrorMessage));
+
     if(M.get()) {
       if (std::error_code EC = M->materializeAllPermanently()) {
         ErrorMessage = EC.message();
