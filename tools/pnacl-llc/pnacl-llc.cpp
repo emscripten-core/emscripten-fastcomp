@@ -688,7 +688,6 @@ static int compileModule(StringRef ProgramName) {
   Options.StackAlignmentOverride = OverrideStackAlignment;
   Options.TrapFuncName = TrapFuncName;
   Options.PositionIndependentExecutable = EnablePIE;
-  Options.EnableSegmentedStacks = SegmentedStacks;
   Options.UseInitArray = UseInitArray;
 
   if (GenerateSoftFloatCalls)
