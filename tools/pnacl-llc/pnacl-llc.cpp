@@ -33,6 +33,7 @@
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -221,9 +222,7 @@ static tool_output_file *GetOutputStream(const char *TargetName,
 
   // Open the file.
   std::string error;
-  sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
-  if (Binary)
-    OpenFlags |= sys::fs::F_Binary;
+  sys::fs::OpenFlags OpenFlags = Binary ? sys::fs::F_None : sys::fs::F_Text;
   std::unique_ptr<tool_output_file> FDOut(
       new tool_output_file(Filename.c_str(), error, OpenFlags));
   if (!error.empty()) {
@@ -558,7 +557,7 @@ static int compileSplitModule(const TargetOptions &Options,
     if (!Out) return 1;
     formatted_raw_ostream FOS(Out->os());
 #else
-    raw_fd_ostream ROS(getObjectFileFD(ModuleIndex), true);
+    raw_fd_ostream ROS(getObjectFileFD(ModuleIndex), true, sys::fs::F_None);
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
 #endif

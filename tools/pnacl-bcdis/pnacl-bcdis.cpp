@@ -11,6 +11,7 @@
 
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -56,7 +57,7 @@ static bool DisassembleBitcode() {
 
   // Create a stream to output the bitcode text to.
   std::string ErrorInfo;
-  raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo);
+  raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None);
   if (!ErrorInfo.empty()) {
     errs() << ErrorInfo << '\n';
     return true;

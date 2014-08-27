@@ -48,9 +48,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/NaCl/AbbrevTrieNode.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
@@ -59,13 +59,14 @@
 #include "llvm/Bitcode/NaCl/NaClCompressBlockDist.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include <set>
 #include <map>
 #include <system_error>
@@ -140,7 +141,7 @@ static bool ReadAndBuffer(std::unique_ptr<MemoryBuffer> &MemBuf) {
   if (std::error_code EC = ErrOrFile.getError())
     return Error("Error reading '" + InputFilename + "': " + EC.message());
 
-  MemBuf = ErrOrFile.get().release();
+  MemBuf.reset(ErrOrFile.get().release());
   if (MemBuf->getBufferSize() % 4 != 0)
     return Error("Bitcode stream should be a multiple of 4 bytes in length");
   return false;
@@ -1277,7 +1278,7 @@ static bool AnalyzeBitcode(std::unique_ptr<MemoryBuffer> &MemBuf,
 
   if (ShowAbbreviationFrequencies || ShowValueDistributions) {
     std::string ErrorInfo;
-    raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo);
+    raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None);
     if (!ErrorInfo.empty()) {
       errs() << ErrorInfo << "\n";
       exit(1);
@@ -1495,8 +1496,7 @@ static bool CopyBitcode(std::unique_ptr<MemoryBuffer> &MemBuf,
   // Write out the copied results.
   std::string ErrorInfo;
   std::unique_ptr<tool_output_file> OutFile(
-      new tool_output_file(OutputFilename.c_str(), ErrorInfo,
-                           sys::fs::F_Binary));
+      new tool_output_file(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None));
   if (!ErrorInfo.empty())
     return Error(ErrorInfo);
 

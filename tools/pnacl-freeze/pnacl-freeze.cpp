@@ -11,16 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/LLVMContext.h"
-// Note: We need the following to provide the API for calling the NaCl
-// Bitcode Writer to generate the frozen file.
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
-// Note: We need the following to provide the API for calling the (LLVM)
-// Bitcode Reader to read in the corresonding pexe file to freeze.
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataStream.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
@@ -40,9 +37,8 @@ InputFilename(cl::Positional, cl::desc("<pexe file>"), cl::init("-"));
 static void WriteOutputFile(const Module *M) {
 
   std::string ErrorInfo;
-  std::unique_ptr<tool_output_file> Out
-    (new tool_output_file(OutputFilename.c_str(), ErrorInfo,
-                          sys::fs::F_Binary));
+  std::unique_ptr<tool_output_file> Out(
+      new tool_output_file(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None));
   if (!ErrorInfo.empty()) {
     errs() << ErrorInfo << '\n';
     exit(1);
