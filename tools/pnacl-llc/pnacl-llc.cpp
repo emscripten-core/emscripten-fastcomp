@@ -230,7 +230,7 @@ static tool_output_file *GetOutputStream(const char *TargetName,
     return 0;
   }
 
-  return FDOut.take();
+  return FDOut.release();
 }
 #endif // !defined(__native_client__)
 

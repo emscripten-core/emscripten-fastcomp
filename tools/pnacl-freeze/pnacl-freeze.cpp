@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
-    M.reset(getStreamedBitcodeModule(DisplayFilename, Buffer.take(), Context,
+    M.reset(getStreamedBitcodeModule(DisplayFilename, Buffer.release(), Context,
                                      &ErrorMessage));
     if (M.get())
       if (std::error_code EC = M->materializeAllPermanently()) {

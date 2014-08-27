@@ -73,9 +73,9 @@ int main(int argc, char **argv) {
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
-    M.reset(getNaClStreamedBitcodeModule(
-        DisplayFilename, Buffer.take(), Context,
-        &ErrorMessage, /*AcceptSupportedOnly=*/false));
+    M.reset(getNaClStreamedBitcodeModule(DisplayFilename, Buffer.release(),
+                                         Context, &ErrorMessage,
+                                         /*AcceptSupportedOnly=*/false));
     if (M.get())
       if (std::error_code EC = M->materializeAllPermanently()) {
         ErrorMessage = EC.message();
