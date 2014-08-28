@@ -112,6 +112,11 @@ namespace llvm {
         BufPtr[3] == 'E';
   }
 
+  /// NaClWriteHeader - Generate a default header (using the version
+  /// number defined by kPNaClVersion) and write to the corresponding
+  /// bitcode stream.
+  void NaClWriteHeader(NaClBitstreamWriter &Stream, bool AcceptSupportedOnly);
+
   // NaClWriteHeader - Write the contents of the bitcode header to the
   // corresponding bitcode stream.
   void NaClWriteHeader(const NaClBitcodeHeader &Header,

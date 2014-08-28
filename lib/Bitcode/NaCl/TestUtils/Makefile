@@ -1,4 +1,4 @@
-##===- lib/Bitcode/NaCl/Makefile ---------------------------*- Makefile -*-===##
+##===- lib/Bitcode/NaCl/TestUtils/Makefile -----------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,8 +7,8 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../../..
-PARALLEL_DIRS = Writer Reader Analysis TestUtils
+LEVEL = ../../../..
+LIBRARYNAME = LLVMNaClBitTestUtils
+BUILD_ARCHIVE = 1
 
 include $(LEVEL)/Makefile.common
-

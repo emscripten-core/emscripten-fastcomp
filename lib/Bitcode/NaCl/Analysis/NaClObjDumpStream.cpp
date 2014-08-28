@@ -344,9 +344,11 @@ void ObjDumpStream::Flush() {
   if (NumErrors >= MaxErrors) {
     // Note: we don't call Fatal here because that will call Flush, causing
     // an infinite loop.
-    Stream << "Error(" << ObjDumpAddress(LastKnownBit) << "): Too many errors\n";
+    Stream << "Error(" << ObjDumpAddress(LastKnownBit)
+           << "): Too many errors\n";
     llvm::report_fatal_error("Unable to continue");
   }
+  Stream.flush();
 }
 
 }

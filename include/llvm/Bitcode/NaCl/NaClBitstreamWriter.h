@@ -411,6 +411,13 @@ private:
 
 public:
 
+  /// Returns true if the given abbreviation index corresponds to a user-defined
+  /// abbreviation.
+  bool isUserRecordAbbreviation(unsigned Abbrev) const {
+    return Abbrev >= naclbitc::FIRST_APPLICATION_ABBREV
+        && Abbrev < CurAbbrevs.size();
+  }
+
   /// EmitRecord - Emit the specified record to the stream, using an abbrev if
   /// we have one to compress the output.
   template<typename uintty>
