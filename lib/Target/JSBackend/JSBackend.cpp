@@ -149,7 +149,7 @@ namespace {
     std::vector<std::string> Exports; // additional exports
     BlockAddressMap BlockAddresses;
 
-    bool CanValidate;
+    std::string CantValidate;
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
@@ -160,7 +160,7 @@ namespace {
   public:
     static char ID;
     JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
-      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CanValidate(true), UsesSIMD(false), InvokeState(0),
+      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
         OptLevel(OptLevel) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
@@ -371,7 +371,7 @@ namespace {
       assert(VT->getElementType()->getPrimitiveSizeInBits() == 32);
       assert(VT->getNumElements() == 4);
       UsesSIMD = true;
-      CanValidate = false;
+      CantValidate = "SIMD types in use";
     }
 
     std::string ensureCast(std::string S, Type *T, AsmCast sign) {
@@ -2119,9 +2119,7 @@ void JSWriter::printModuleBody() {
   }
   Out << "],";
 
-  Out << "\"canValidate\": ";
-  Out << (CanValidate ? "1" : "0");
-  Out << ",";
+  Out << "\"cantValidate\": \"" << CantValidate << "\",";
 
   Out << "\"simd\": ";
   Out << (UsesSIMD ? "1" : "0");

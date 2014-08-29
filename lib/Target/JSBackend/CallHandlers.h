@@ -212,7 +212,7 @@ DEF_CALL_HANDLER(emscripten_get_async_return_value_addr, {
 
 // emscripten instrinsics
 DEF_CALL_HANDLER(emscripten_debugger, {
-  CanValidate = false;
+  CantValidate = "emscripten_debugger is used";
   return "debugger";
 })
 
