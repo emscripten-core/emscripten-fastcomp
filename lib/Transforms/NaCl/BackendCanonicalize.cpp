@@ -42,15 +42,16 @@
 
 using namespace llvm;
 
-namespace {
-// TODO(jfb) This function is as-is from instcombine. Make it reusable instead.
-//
+// =============================================================================
+// TODO(jfb) The following functions are as-is from instcombine. Make them
+//           reusable instead.
+
 /// CollectSingleShuffleElements - If V is a shuffle of values that ONLY returns
 /// elements from either LHS or RHS, return the shuffle mask and true.
 /// Otherwise, return false.
-bool CollectSingleShuffleElements(Value *V, Value *LHS, Value *RHS,
+static bool CollectSingleShuffleElements(Value *V, Value *LHS, Value *RHS,
                                          SmallVectorImpl<Constant*> &Mask) {
-  assert(V->getType() == LHS->getType() && V->getType() == RHS->getType() &&
+  assert(LHS->getType() == RHS->getType() &&
          "Invalid CollectSingleShuffleElements");
   unsigned NumElts = V->getType()->getVectorNumElements();
 
@@ -83,7 +84,7 @@ bool CollectSingleShuffleElements(Value *V, Value *LHS, Value *RHS,
     unsigned InsertedIdx = cast<ConstantInt>(IdxOp)->getZExtValue();
 
     if (isa<UndefValue>(ScalarOp)) {  // inserting undef into vector.
-      // Okay, we can handle this if the vector we are insertinting into is
+      // We can handle this if the vector we are inserting into is
       // transitively ok.
       if (CollectSingleShuffleElements(VecOp, LHS, RHS, Mask)) {
         // If so, update the mask to reflect the inserted undef.
@@ -91,14 +92,14 @@ bool CollectSingleShuffleElements(Value *V, Value *LHS, Value *RHS,
         return true;
       }
     } else if (ExtractElementInst *EI = dyn_cast<ExtractElementInst>(ScalarOp)){
-      if (isa<ConstantInt>(EI->getOperand(1)) &&
-          EI->getOperand(0)->getType() == V->getType()) {
+      if (isa<ConstantInt>(EI->getOperand(1))) {
         unsigned ExtractedIdx =
         cast<ConstantInt>(EI->getOperand(1))->getZExtValue();
+        unsigned NumLHSElts = LHS->getType()->getVectorNumElements();
 
         // This must be extracting from either LHS or RHS.
         if (EI->getOperand(0) == LHS || EI->getOperand(0) == RHS) {
-          // Okay, we can handle this if the vector we are insertinting into is
+          // We can handle this if the vector we are inserting into is
           // transitively ok.
           if (CollectSingleShuffleElements(VecOp, LHS, RHS, Mask)) {
             // If so, update the mask to reflect the inserted value.
@@ -110,7 +111,7 @@ bool CollectSingleShuffleElements(Value *V, Value *LHS, Value *RHS,
               assert(EI->getOperand(0) == RHS);
               Mask[InsertedIdx % NumElts] =
               ConstantInt::get(Type::getInt32Ty(V->getContext()),
-                               ExtractedIdx+NumElts);
+                               ExtractedIdx + NumLHSElts);
             }
             return true;
           }
@@ -118,31 +119,35 @@ bool CollectSingleShuffleElements(Value *V, Value *LHS, Value *RHS,
       }
     }
   }
-  // TODO: Handle shufflevector here!
 
   return false;
 }
 
-// TODO(jfb) This function is as-is from instcombine. Make it reusable instead.
-//
-/// CollectShuffleElements - We are building a shuffle of V, using RHS as the
-/// RHS of the shuffle instruction, if it is not null.  Return a shuffle mask
-/// that computes V and the LHS value of the shuffle.
-Value *CollectShuffleElements(Value *V, SmallVectorImpl<Constant*> &Mask,
-                                     Value *&RHS) {
-  assert(V->getType()->isVectorTy() &&
-         (RHS == 0 || V->getType() == RHS->getType()) &&
-         "Invalid shuffle!");
+/// We are building a shuffle to create V, which is a sequence of insertelement,
+/// extractelement pairs. If PermittedRHS is set, then we must either use it or
+/// not rely on the second vector source. Return a std::pair containing the
+/// left and right vectors of the proposed shuffle (or 0), and set the Mask
+/// parameter as required.
+///
+/// Note: we intentionally don't try to fold earlier shuffles since they have
+/// often been chosen carefully to be efficiently implementable on the target.
+typedef std::pair<Value *, Value *> ShuffleOps;
+
+static ShuffleOps CollectShuffleElements(Value *V,
+                                         SmallVectorImpl<Constant *> &Mask,
+                                         Value *PermittedRHS) {
+  assert(V->getType()->isVectorTy() && "Invalid shuffle!");
   unsigned NumElts = cast<VectorType>(V->getType())->getNumElements();
 
   if (isa<UndefValue>(V)) {
     Mask.assign(NumElts, UndefValue::get(Type::getInt32Ty(V->getContext())));
-    return V;
+    return std::make_pair(
+        PermittedRHS ? UndefValue::get(PermittedRHS->getType()) : V, nullptr);
   }
 
   if (isa<ConstantAggregateZero>(V)) {
     Mask.assign(NumElts, ConstantInt::get(Type::getInt32Ty(V->getContext()),0));
-    return V;
+    return std::make_pair(V, nullptr);
   }
 
   if (InsertElementInst *IEI = dyn_cast<InsertElementInst>(V)) {
@@ -152,52 +157,65 @@ Value *CollectShuffleElements(Value *V, SmallVectorImpl<Constant*> &Mask,
     Value *IdxOp    = IEI->getOperand(2);
 
     if (ExtractElementInst *EI = dyn_cast<ExtractElementInst>(ScalarOp)) {
-      if (isa<ConstantInt>(EI->getOperand(1)) && isa<ConstantInt>(IdxOp) &&
-          EI->getOperand(0)->getType() == V->getType()) {
+      if (isa<ConstantInt>(EI->getOperand(1)) && isa<ConstantInt>(IdxOp)) {
         unsigned ExtractedIdx =
           cast<ConstantInt>(EI->getOperand(1))->getZExtValue();
         unsigned InsertedIdx = cast<ConstantInt>(IdxOp)->getZExtValue();
 
         // Either the extracted from or inserted into vector must be RHSVec,
         // otherwise we'd end up with a shuffle of three inputs.
-        if (EI->getOperand(0) == RHS || RHS == 0) {
-          RHS = EI->getOperand(0);
-          Value *V = CollectShuffleElements(VecOp, Mask, RHS);
+        if (EI->getOperand(0) == PermittedRHS || PermittedRHS == nullptr) {
+          Value *RHS = EI->getOperand(0);
+          ShuffleOps LR = CollectShuffleElements(VecOp, Mask, RHS);
+          assert(LR.second == nullptr || LR.second == RHS);
+
+          if (LR.first->getType() != RHS->getType()) {
+            // We tried our best, but we can't find anything compatible with RHS
+            // further up the chain. Return a trivial shuffle.
+            for (unsigned i = 0; i < NumElts; ++i)
+              Mask[i] = ConstantInt::get(Type::getInt32Ty(V->getContext()), i);
+            return std::make_pair(V, nullptr);
+          }
+
+          unsigned NumLHSElts = RHS->getType()->getVectorNumElements();
           Mask[InsertedIdx % NumElts] =
             ConstantInt::get(Type::getInt32Ty(V->getContext()),
-                             NumElts+ExtractedIdx);
-          return V;
+                             NumLHSElts+ExtractedIdx);
+          return std::make_pair(LR.first, RHS);
         }
 
-        if (VecOp == RHS) {
-          Value *V = CollectShuffleElements(EI->getOperand(0), Mask, RHS);
-          // Update Mask to reflect that `ScalarOp' has been inserted at
-          // position `InsertedIdx' within the vector returned by IEI.
-          Mask[InsertedIdx % NumElts] = Mask[ExtractedIdx];
-
-          // Everything but the extracted element is replaced with the RHS.
-          for (unsigned i = 0; i != NumElts; ++i) {
-            if (i != InsertedIdx)
-              Mask[i] = ConstantInt::get(Type::getInt32Ty(V->getContext()),
-                                         NumElts+i);
-          }
-          return V;
+        if (VecOp == PermittedRHS) {
+          // We've gone as far as we can: anything on the other side of the
+          // extractelement will already have been converted into a shuffle.
+          unsigned NumLHSElts =
+              EI->getOperand(0)->getType()->getVectorNumElements();
+          for (unsigned i = 0; i != NumElts; ++i)
+            Mask.push_back(ConstantInt::get(
+                Type::getInt32Ty(V->getContext()),
+                i == InsertedIdx ? ExtractedIdx : NumLHSElts + i));
+          return std::make_pair(EI->getOperand(0), PermittedRHS);
         }
 
         // If this insertelement is a chain that comes from exactly these two
         // vectors, return the vector and the effective shuffle.
-        if (CollectSingleShuffleElements(IEI, EI->getOperand(0), RHS, Mask))
-          return EI->getOperand(0);
+        if (EI->getOperand(0)->getType() == PermittedRHS->getType() &&
+            CollectSingleShuffleElements(IEI, EI->getOperand(0), PermittedRHS,
+                                         Mask))
+          return std::make_pair(EI->getOperand(0), PermittedRHS);
       }
     }
   }
-  // TODO: Handle shufflevector here!
 
   // Otherwise, can't do anything fancy.  Return an identity vector.
   for (unsigned i = 0; i != NumElts; ++i)
     Mask.push_back(ConstantInt::get(Type::getInt32Ty(V->getContext()), i));
-  return V;
+  return std::make_pair(V, nullptr);
 }
+
+// =============================================================================
+
+
+namespace {
 
 class BackendCanonicalize : public FunctionPass,
                             public InstVisitor<BackendCanonicalize, bool> {
@@ -263,17 +281,18 @@ bool BackendCanonicalize::visitInsertElementInst(InsertElementInst &IE) {
   // If the inserted element was extracted from some other vector, and if the
   // indexes are constant, try to turn this into a shufflevector operation.
   if (ExtractElementInst *EI = dyn_cast<ExtractElementInst>(ScalarOp)) {
-    if (isa<ConstantInt>(EI->getOperand(1)) && isa<ConstantInt>(IdxOp) &&
-        EI->getOperand(0)->getType() == IE.getType()) {
-      unsigned NumVectorElts = IE.getType()->getNumElements();
+    if (isa<ConstantInt>(EI->getOperand(1)) && isa<ConstantInt>(IdxOp)) {
+      unsigned NumInsertVectorElts = IE.getType()->getNumElements();
+      unsigned NumExtractVectorElts =
+          EI->getOperand(0)->getType()->getVectorNumElements();
       unsigned ExtractedIdx =
           cast<ConstantInt>(EI->getOperand(1))->getZExtValue();
       unsigned InsertedIdx = cast<ConstantInt>(IdxOp)->getZExtValue();
 
-      if (ExtractedIdx >= NumVectorElts) // Out of range extract.
+      if (ExtractedIdx >= NumExtractVectorElts) // Out of range extract.
         return false;
 
-      if (InsertedIdx >= NumVectorElts) // Out of range insert.
+      if (InsertedIdx >= NumInsertVectorElts)  // Out of range insert.
         return false;
 
       // If this insertelement isn't used by some other insertelement, turn it
@@ -281,9 +300,9 @@ bool BackendCanonicalize::visitInsertElementInst(InsertElementInst &IE) {
       if (!IE.hasOneUse() || !isa<InsertElementInst>(IE.user_back())) {
         typedef SmallVector<Constant *, 16> MaskT;
         MaskT Mask;
-        Value *RHS = 0;
-        Value *LHS = CollectShuffleElements(&IE, Mask, RHS);
-        if (RHS == 0)
+        Value *LHS, *RHS;
+        std::tie(LHS, RHS) = CollectShuffleElements(&IE, Mask, nullptr);
+        if (!RHS)
           RHS = UndefValue::get(LHS->getType());
         // We now have a shuffle of LHS, RHS, Mask.
 
@@ -293,8 +312,9 @@ bool BackendCanonicalize::visitInsertElementInst(InsertElementInst &IE) {
           std::swap(LHS, RHS);
           for (MaskT::iterator I = Mask.begin(), E = Mask.end(); I != E; ++I) {
             unsigned Idx = cast<ConstantInt>(*I)->getZExtValue();
-            unsigned NewIdx = Idx >= NumVectorElts ? Idx - NumVectorElts
-                                                   : Idx + NumVectorElts;
+            unsigned NewIdx = Idx >= NumInsertVectorElts
+                                  ? Idx - NumInsertVectorElts
+                                  : Idx + NumInsertVectorElts;
             *I = ConstantInt::get(Type::getInt32Ty(RHS->getContext()), NewIdx);
           }
         }
