@@ -109,6 +109,11 @@ PNaClABIVerifyFatalErrors("pnaclabi-verify-fatal-errors",
   cl::desc("PNaCl ABI verification errors are fatal"),
   cl::init(false));
 
+
+static cl::opt<bool>
+NoIntegratedAssembler("no-integrated-as", cl::Hidden,
+                      cl::desc("Disable integrated assembler"));
+
 // Determine optimization level.
 static cl::opt<char>
 OptLevel("O",
@@ -121,15 +126,14 @@ OptLevel("O",
 static cl::opt<std::string>
 UserDefinedTriple("mtriple", cl::desc("Set target triple"));
 
-cl::opt<bool> NoVerify("disable-verify", cl::Hidden,
-                       cl::desc("Do not verify input module"));
+static cl::opt<bool> NoVerify("disable-verify", cl::Hidden,
+                              cl::desc("Do not verify input module"));
 
-cl::opt<bool>
-DisableSimplifyLibCalls("disable-simplify-libcalls",
-                        cl::desc("Disable simplify-libcalls"),
-                        cl::init(false));
+static cl::opt<bool>
+    DisableSimplifyLibCalls("disable-simplify-libcalls",
+                            cl::desc("Disable simplify-libcalls"));
 
-cl::opt<unsigned>
+static cl::opt<unsigned>
 SplitModuleCount("split-module",
                  cl::desc("Split PNaCl module"), cl::init(1U));
 
@@ -138,7 +142,7 @@ enum SplitModuleSchedulerKind {
   SplitModuleStatic
 };
 
-cl::opt<SplitModuleSchedulerKind>
+static cl::opt<SplitModuleSchedulerKind>
 SplitModuleSched(
     "split-module-sched",
     cl::desc("Choose thread scheduler for split module compilation."),
@@ -221,12 +225,14 @@ static tool_output_file *GetOutputStream(const char *TargetName,
 
   // Open the file.
   std::string error;
-  sys::fs::OpenFlags OpenFlags = Binary ? sys::fs::F_None : sys::fs::F_Text;
+  sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
+  if (!Binary)
+    OpenFlags |= sys::fs::F_Text;
   std::unique_ptr<tool_output_file> FDOut(
-      new tool_output_file(Filename.c_str(), error, OpenFlags));
+      new tool_output_file(OutputFilename.c_str(), error, OpenFlags));
   if (!error.empty()) {
     errs() << error << '\n';
-    return 0;
+    return nullptr;
   }
 
   return FDOut.release();
@@ -245,7 +251,7 @@ int llc_main(int argc, char **argv) {
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
 #if defined(__native_client__)
-  install_fatal_error_handler(getSRPCErrorHandler(), NULL);
+  install_fatal_error_handler(getSRPCErrorHandler(), nullptr);
 #endif
 
   // Initialize targets first, so that --version shows registered targets.
@@ -312,7 +318,7 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
 
 static Module* getModule(StringRef ProgramName, LLVMContext &Context,
                          StreamingMemoryObject *StreamingObject) {
-  Module *M = 0;
+  Module *M = nullptr;
   SMDiagnostic Err;
   if (LazyBitcode) {
     std::string StrError;
@@ -338,13 +344,13 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
     M = NaClParseIRFile(InputFilename, InputFileFormat, Err, Context);
 #endif
   }
-  if (M == 0) {
+  if (!M) {
 #if defined(__native_client__)
     report_fatal_error(Err.getMessage());
 #else
     // Err.print is prettier, so use it for the non-sandboxed translator.
     Err.print(ProgramName.data(), errs());
-    return NULL;
+    return nullptr;
 #endif
   }
   return M;
@@ -385,7 +391,7 @@ static int runCompilePasses(Module *mod,
           GI != GE; ++GI) {
         assert(GI->hasInitializer() && "Global variable missing initializer");
         Constant *Init = GI->getInitializer();
-        GI->setInitializer(NULL);
+        GI->setInitializer(nullptr);
         if (Init->getNumUses() == 0)
           Init->destroyConstant();
       }
@@ -396,10 +402,9 @@ static int runCompilePasses(Module *mod,
   std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(mod));
 
   // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *TD = Target.getDataLayout())
-    PM->add(new DataLayoutPass(*TD));
-  else
-    PM->add(new DataLayoutPass(mod));
+  if (const DataLayout *DL = Target.getDataLayout())
+    mod->setDataLayout(DL);
+  PM->add(new DataLayoutPass(mod));
 
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
@@ -520,7 +525,7 @@ static int compileSplitModule(const TargetOptions &Options,
   // The OwningPtrs are only used if we are not the primary module.
   std::unique_ptr<LLVMContext> C;
   std::unique_ptr<Module> M;
-  Module *mod(NULL);
+  Module *mod(nullptr);
 
   if (ModuleIndex == 0) {
     mod = GlobalModule;
@@ -670,25 +675,8 @@ static int compileModule(StringRef ProgramName) {
     return 1;
   }
 
-  TargetOptions Options;
-  Options.LessPreciseFPMADOption = EnableFPMAD;
-  Options.NoFramePointerElim = DisableFPElim;
-  Options.AllowFPOpFusion = FuseFPOps;
-  Options.UnsafeFPMath = EnableUnsafeFPMath;
-  Options.NoInfsFPMath = EnableNoInfsFPMath;
-  Options.NoNaNsFPMath = EnableNoNaNsFPMath;
-  Options.HonorSignDependentRoundingFPMathOption =
-      EnableHonorSignDependentRoundingFPMath;
-  Options.UseSoftFloat = GenerateSoftFloatCalls;
-  if (FloatABIForCalls != FloatABI::Default)
-    Options.FloatABIType = FloatABIForCalls;
-  Options.NoZerosInBSS = DontPlaceZerosInBSS;
-  Options.GuaranteedTailCallOpt = EnableGuaranteedTailCallOpt;
-  Options.DisableTailCalls = DisableTailCalls;
-  Options.StackAlignmentOverride = OverrideStackAlignment;
-  Options.TrapFuncName = TrapFuncName;
-  Options.PositionIndependentExecutable = EnablePIE;
-  Options.UseInitArray = UseInitArray;
+  TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
+  Options.DisableIntegratedAS = NoIntegratedAssembler;
 
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;
@@ -722,7 +710,7 @@ static int compileModule(StringRef ProgramName) {
     // No need for dynamic scheduling with one thread.
     SplitModuleSched = SplitModuleStatic;
     return compileSplitModule(Options, TheTriple, TheTarget, FeaturesStr,
-                              OLvl, ProgramName, mod.get(), NULL, 0,
+                              OLvl, ProgramName, mod.get(), nullptr, 0,
                               &FuncQueue);
   }
 
@@ -737,7 +725,7 @@ static int compileModule(StringRef ProgramName) {
     ThreadDatas[ModuleIndex].StreamingObject = StreamingObject.get();
     ThreadDatas[ModuleIndex].ModuleIndex = ModuleIndex;
     ThreadDatas[ModuleIndex].FuncQueue = &FuncQueue;
-    if (pthread_create(&Pthreads[ModuleIndex], NULL, runCompileThread,
+    if (pthread_create(&Pthreads[ModuleIndex], nullptr, runCompileThread,
                         &ThreadDatas[ModuleIndex])) {
       report_fatal_error("Failed to create thread");
     }
