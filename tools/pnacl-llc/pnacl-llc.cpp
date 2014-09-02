@@ -49,7 +49,6 @@
 #include "llvm/Transforms/NaCl.h"
 #include <pthread.h>
 #include <memory>
-
 using namespace llvm;
 
 // NOTE: When __native_client__ is defined it means pnacl-llc is built as a
@@ -399,7 +398,11 @@ static int runCompilePasses(Module *mod,
   }
 
   // Build up all of the passes that we want to do to the module.
-  std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(mod));
+  std::unique_ptr<PassManagerBase> PM;
+  if (LazyBitcode)
+    PM.reset(new FunctionPassManager(mod));
+  else
+    PM.reset(new PassManager());
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const DataLayout *DL = Target.getDataLayout())
@@ -409,14 +412,12 @@ static int runCompilePasses(Module *mod,
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
   // run it once, before PNaCl ABI verification.
-  if (!NoVerify) {
+  if (!NoVerify)
     PM->add(createVerifierPass());
-  }
 
   // Add the ABI verifier pass before the analysis and code emission passes.
-  if (PNaClABIVerify) {
+  if (PNaClABIVerify)
     PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
-  }
 
   // Add the intrinsic resolution pass. It assumes ABI-conformant code.
   PM->add(createResolvePNaClIntrinsicsPass());
@@ -432,8 +433,8 @@ static int runCompilePasses(Module *mod,
   // above.
   PM->add(createBackendCanonicalizePass());
 
-  // Add intenal analysis passes from the target machine.
-  Target.addAnalysisPasses(*PM.get());
+  // Add internal analysis passes from the target machine.
+  Target.addAnalysisPasses(*PM);
 
   // Ask the target to add backend passes as necessary. We explicitly ask it
   // not to add the verifier pass because we added it earlier.
@@ -444,14 +445,15 @@ static int runCompilePasses(Module *mod,
     return 1;
   }
 
-  PM->doInitialization();
   if (LazyBitcode) {
+    auto FPM = static_cast<FunctionPassManager *>(PM.get());
+    FPM->doInitialization();
     unsigned FuncIndex = 0;
     switch (SplitModuleSched) {
     case SplitModuleStatic:
       for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
         if (FuncQueue->GrabFunctionStatic(FuncIndex, ModuleIndex)) {
-          PM->run(*I);
+          FPM->run(*I);
           CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
           I->Dematerialize();
         }
@@ -473,7 +475,7 @@ static int runCompilePasses(Module *mod,
               ++I;
               continue;
             }
-            PM->run(*I);
+            FPM->run(*I);
             CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
             I->Dematerialize();
             ++FuncIndex;
@@ -492,11 +494,10 @@ static int runCompilePasses(Module *mod,
       }
       break;
     }
-  } else {
-    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I)
-      PM->run(*I);
-  }
-  PM->doFinalization();
+    FPM->doFinalization();
+  } else
+    static_cast<PassManager *>(PM.get())->run(*mod);
+
   return 0;
 }
 
@@ -535,6 +536,7 @@ static int compileSplitModule(const TargetOptions &Options,
     if (!mod)
       return 1;
     M.reset(mod);
+
     // Add declarations for external functions required by PNaCl. The
     // ResolvePNaClIntrinsics function pass running during streaming
     // depends on these declarations being in the module.
@@ -545,6 +547,7 @@ static int compileSplitModule(const TargetOptions &Options,
   }
 
   mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
+
   {
 #if !defined(__native_client__)
       // Figure out where we are going to send the output.
