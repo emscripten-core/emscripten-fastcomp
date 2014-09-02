@@ -308,7 +308,6 @@ void initializeSandboxMemoryAccessesPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 void initializeStripTlsPass(PassRegistry&);
-void initializeSubstituteUndefsPass(PassRegistry&);
 // @LOCALMOD-END
 }
 

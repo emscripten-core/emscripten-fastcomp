@@ -172,7 +172,6 @@ int main(int argc, char **argv) {
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripTlsPass(Registry);
-  initializeSubstituteUndefsPass(Registry);
   // @LOCALMOD-END
   
   cl::ParseCommandLineOptions(argc, argv,

@@ -3,9 +3,6 @@ set(LLVM_LINK_COMPONENTS
   BitWriter
   NaClBitAnalysis
   NaClBitReader
-  NaClBitWriter
-  NaClBitAnalysis
-  NaClBitTestUtils
   )
 
 add_llvm_unittest(BitcodeTests
