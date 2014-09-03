@@ -119,7 +119,7 @@ bool SandboxMemoryAccesses::runOnModule(Module &M) {
                      ConstantInt::get(I32, PointerSize),
                      ExternalSymName_PointerSize);
   if (PointerSize < 32)
-    PtrMask = ConstantInt::get(I32, (1 << PointerSize) - 1);
+    PtrMask = ConstantInt::get(I32, (1U << PointerSize) - 1);
 
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func)
     runOnFunction(*Func);
