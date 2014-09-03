@@ -40,6 +40,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Transforms/MinSFI.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
@@ -185,3 +186,7 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
 char SandboxIndirectCalls::ID = 0;
 INITIALIZE_PASS(SandboxIndirectCalls, "minsfi-sandbox-indirect-calls",
                 "Add CFI to indirect calls", false, false)
+
+ModulePass *llvm::createSandboxIndirectCallsPass() {
+  return new SandboxIndirectCalls();
+}

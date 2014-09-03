@@ -18,6 +18,7 @@
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Transforms/MinSFI.h"
 
 using namespace llvm;
 
@@ -53,3 +54,7 @@ bool RenameEntryPoint::runOnModule(Module &M) {
 char RenameEntryPoint::ID = 0;
 INITIALIZE_PASS(RenameEntryPoint, "minsfi-rename-entry-point",
                 "Rename _start to avoid linking collisions", false, false)
+
+ModulePass *llvm::createRenameEntryPointPass() {
+  return new RenameEntryPoint();
+}

@@ -222,3 +222,7 @@ char ExpandAllocas::ID = 0;
 INITIALIZE_PASS(ExpandAllocas, "minsfi-expand-allocas",
                 "Expand allocas to allocate memory on an untrusted stack",
                 false, false)
+
+ModulePass *llvm::createExpandAllocasPass() {
+  return new ExpandAllocas();
+}

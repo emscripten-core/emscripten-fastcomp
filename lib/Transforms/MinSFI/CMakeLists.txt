@@ -1,6 +1,7 @@
 add_llvm_library(LLVMMinSFITransforms
   AllocateDataSegment.cpp
   ExpandAllocas.cpp
+  MinSFI.cpp
   RenameEntryPoint.cpp
   SandboxIndirectCalls.cpp
   SandboxMemoryAccesses.cpp

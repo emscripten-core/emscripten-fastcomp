@@ -46,6 +46,7 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/MinSFI.h"  // @LOCALMOD
 #include "llvm/Transforms/NaCl.h"  // @LOCALMOD
 #include <algorithm>
 #include <memory>
@@ -139,6 +140,10 @@ static cl::opt<bool>
 PNaClABISimplifyPostOpt(
     "pnacl-abi-simplify-postopt",
     cl::desc("PNaCl ABI simplifications for after optimizations"));
+
+static cl::opt<bool>
+MinSFI("minsfi",
+       cl::desc("MinSFI sandboxing"));
 // @LOCALMOD-END
 
 static cl::opt<std::string>
@@ -842,6 +847,11 @@ int main(int argc, char **argv) {
       PNaClABISimplifyAddPostOptPasses(Passes);
       PNaClABISimplifyPostOpt = false;
     }
+
+    if (MinSFI && MinSFI.getPosition() < PassList.getPosition(i)) {
+      MinSFIPasses(Passes);
+      MinSFI = false;
+    }
     // @LOCALMOD-END
 
     const PassInfo *PassInf = PassList[i];
@@ -924,6 +934,9 @@ int main(int argc, char **argv) {
   // @LOCALMOD-BEGIN
   if (PNaClABISimplifyPostOpt)
     PNaClABISimplifyAddPostOptPasses(Passes);
+
+  if (MinSFI)
+     MinSFIPasses(Passes);
   // @LOCALMOD-END
 
   // Check that the module is well formed on completion of optimization

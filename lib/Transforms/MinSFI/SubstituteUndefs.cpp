@@ -25,6 +25,7 @@
 #include "llvm/Pass.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Transforms/MinSFI.h"
 
 using namespace llvm;
 
@@ -89,3 +90,7 @@ char SubstituteUndefs::ID = 0;
 INITIALIZE_PASS(SubstituteUndefs, "minsfi-substitute-undefs",
                 "Replace undef values with deterministic constants",
                 false, false)
+
+FunctionPass *llvm::createSubstituteUndefsPass() {
+  return new SubstituteUndefs();
+}

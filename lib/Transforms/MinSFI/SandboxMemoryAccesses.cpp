@@ -294,3 +294,7 @@ void SandboxMemoryAccesses::runOnFunction(Function &Func) {
 char SandboxMemoryAccesses::ID = 0;
 INITIALIZE_PASS(SandboxMemoryAccesses, "minsfi-sandbox-memory-accesses",
                 "Add SFI sandboxing to memory accesses", false, false)
+
+ModulePass *llvm::createSandboxMemoryAccessesPass() {
+  return new SandboxMemoryAccesses();
+}
