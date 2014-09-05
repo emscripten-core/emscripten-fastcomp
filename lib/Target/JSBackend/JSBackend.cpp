@@ -495,6 +495,7 @@ namespace {
     }
 
     std::string getPtrLoad(const Value* Ptr);
+    std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName);
     std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
     std::string getPtrUse(const Value* Ptr);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
@@ -840,18 +841,67 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
+/// Given a pointer to memory, returns the HEAP object and index to that object that is used to access that memory.
+/// @param Ptr [in] The heap object.
+/// @param HeapName [out] Receives the name of the HEAP object used to perform the memory acess.
+/// @return The index to the heap HeapName for the memory access.
+std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
+{
+  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
+  unsigned Bytes = DL->getTypeAllocSize(t);
+
+  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
+    unsigned Addr = getGlobalAddress(GV->getName().str());
+    switch (Bytes) {
+      default: llvm_unreachable("Unsupported type");
+      case 8: *HeapName = "HEAPF64"; return utostr(Addr >> 3);
+      case 4:
+        if (t->isIntegerTy() || t->isPointerTy()) *HeapName = "HEAP32";
+        else *HeapName = "HEAPF32";
+        return utostr(Addr >> 2);
+      case 2: *HeapName = "HEAP16"; return utostr(Addr >> 1); break;
+      case 1: *HeapName = "HEAP8"; return utostr(Addr); break;
+    }
+  } else {
+    std::string Index = getValueAsStr(Ptr);
+    switch (Bytes) {
+      default: llvm_unreachable("Unsupported type");
+      case 8: *HeapName = "HEAPF64"; return Index + ">>3";
+      case 4:
+        if (t->isIntegerTy() || t->isPointerTy()) *HeapName = "HEAP32";
+        else *HeapName = "HEAPF32";
+        return Index + ">>2";
+      case 2: *HeapName = "HEAP16"; return Index + ">>1";
+      case 1: *HeapName = "HEAP8"; return Index;
+    }
+  }
+}
+
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
-    text = Assign + getPtrLoad(P);
+    if (cast<LoadInst>(I)->isVolatile()) {
+      const char *HeapName;
+      std::string Index = getHeapNameAndIndex(P, &HeapName);
+      text = Assign + "Atomics.load(" + HeapName + ',' + Index + ')';
+    } else {
+      text = Assign + getPtrLoad(P);
+    }
     if (isAbsolute(P)) {
       // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
       text += "; abort() /* segfault, load from absolute addr */";
     }
   } else {
     // unaligned in some manner
+
+    if (true/*compilingWithPthreadsSupport*/ && cast<LoadInst>(I)->isVolatile()) {
+      errs() << "emcc: warning: unable to implement unaligned volatile load as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
+    }
+
     if (WarnOnUnaligned) {
       errs() << "emcc: warning: unaligned load in  " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
       emitDebugInfo(errs(), I);
@@ -938,15 +988,30 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   return text;
 }
 
+static const std::string AtomicsStore = "Atomics.store(";
+
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
-    text = getPtrUse(P) + " = " + VS;
+    if (true/*compilingWithPthreadsSupport*/ && cast<StoreInst>(I)->isVolatile()) {
+      const char *HeapName;
+      std::string Index = getHeapNameAndIndex(P, &HeapName);
+      text = AtomicsStore + HeapName + ',' + Index + ',' + VS+ ')';
+    } else {
+      text = getPtrUse(P) + " = " + VS;
+    }
     if (Alignment == 536870912) text += "; abort() /* segfault */";
   } else {
     // unaligned in some manner
+
+    if (true/*compilingWithPthreadsSupport*/ && cast<StoreInst>(I)->isVolatile()) {
+      errs() << "emcc: warning: unable to implement unaligned volatile store as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
+    }
+
     if (WarnOnUnaligned) {
       errs() << "emcc: warning: unaligned store in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
       emitDebugInfo(errs(), I);
