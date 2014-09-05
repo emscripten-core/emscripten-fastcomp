@@ -24,6 +24,9 @@ uint32_t GetPointerSizeInBits();
 // by the size of the sandboxed pointers.
 uint64_t GetAddressSubspaceSize();
 
+// The name of MinSFI's entry function which will be invoked by the runtime.
+extern const char EntryFunctionName[];
+
 }  // namespace minsfi
 
 FunctionPass *createSubstituteUndefsPass();

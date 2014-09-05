@@ -22,8 +22,8 @@
 
 using namespace llvm;
 
-static const char OldEntryPointName[] = "_start";
-static const char NewEntryPointName[] = "_start_minsfi";
+static const char PNaClEntryPointName[] = "_start";
+const char minsfi::EntryFunctionName[] = "_start_minsfi";
 
 namespace {
 class RenameEntryPoint : public ModulePass {
@@ -38,16 +38,20 @@ class RenameEntryPoint : public ModulePass {
 }  // namespace
 
 bool RenameEntryPoint::runOnModule(Module &M) {
-  if (M.getNamedValue(NewEntryPointName))
+  if (M.getNamedValue(minsfi::EntryFunctionName)) {
     report_fatal_error(std::string("RenameEntryPoint: The module already "
-                       "contains a value named '") + NewEntryPointName + "'");
+                       "contains a value named '") +
+                       minsfi::EntryFunctionName + "'");
+  }
 
-  Function *EntryFunc = M.getFunction(OldEntryPointName);
-  if (!EntryFunc)
+  Function *EntryFunc = M.getFunction(PNaClEntryPointName);
+  if (!EntryFunc) {
     report_fatal_error(std::string("RenameEntryPoint: The module does not "
-                       "contain a function named '") + OldEntryPointName + "'");
+                       "contain a function named '") +
+                       PNaClEntryPointName + "'");
+  }
 
-  EntryFunc->setName(NewEntryPointName);
+  EntryFunc->setName(minsfi::EntryFunctionName);
   return true;
 }
 

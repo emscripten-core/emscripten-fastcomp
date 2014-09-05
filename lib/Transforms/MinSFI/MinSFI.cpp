@@ -33,9 +33,11 @@ void llvm::MinSFIPasses(PassManagerBase &PM) {
   PM.add(createPNaClABIVerifyFunctionsPass(ErrorReporter));
 
   // The naming of NaCl's entry point causes a conflict when linking into
-  // native executables. This pass renames the entry function to avoid it. It
-  // does not depend on any other MinSFI passes but must be invoked after the
-  // PNaCl ABI verifier.
+  // native executables. This pass renames the entry function to resolve it.
+  // The pass must be invoked after the PNaCl ABI verifier but otherwise could
+  // be invoked at any point. To avoid confusion, we rename the function
+  // immediately after the verifier and have all the subsequent passes refer to
+  // the new name.
   PM.add(createRenameEntryPointPass());
 
   // Sandboxed code cannot access memory allocated on the native stack. This
