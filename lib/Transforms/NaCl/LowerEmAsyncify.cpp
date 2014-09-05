@@ -82,7 +82,7 @@ namespace {
 
     Function *AllocAsyncCtxFunction, *ReallocAsyncCtxFunction, *FreeAsyncCtxFunction;
     Function *CheckAsyncFunction;
-    Function *DoNotUnwindFunction, *DoNotUnwindAsyncFunction;
+    Function *DoNotUnwindFunction, *DoNotUnwindAsyncFunction, *OnAsyncResumeFunction;
     Function *GetAsyncReturnValueAddrFunction;
 
     void initTypesAndFunctions(void);
@@ -264,6 +264,13 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
     TheModule
   );
 
+  OnAsyncResumeFunction = Function::Create(
+    VFunction,
+    GlobalValue::ExternalLinkage,
+    "emscripten_async_rethrow",
+    TheModule
+  );
+
   GetAsyncReturnValueAddrFunction = Function::Create(
     I32PFunction,
     GlobalValue::ExternalLinkage,
@@ -369,10 +376,11 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
     register F.async_cb as the callback in frame
     return without unwinding the stack frame
   } else { // G was sync
-    // use %0 as normal
     free_ctx(ctx); // main func only
     // ctx is freed here, because so far F is still a sync function
     // and we don't want any side effects
+    <postinvoke goes here if G was invoked>
+    use %0 as normal
     ...
     async return value = %%;
     return & normally unwind the stack frame // main func only
@@ -397,7 +405,9 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
     return without unwinding the stack frame
   } else {
     resume_point:
-    %0'= either $0 or the async return value // callback func only
+    <if G invoked> if (__THROW__) jump to catch block;            // callback func only
+    <if G not invoked> if (__THROW__) emscripten_async_rethrow(); // callback func only
+    %0'= either $0 or the async return value                      // callback func only
     ...
     async return value = %%
     return restore the stack pointer back to the value stored in F // callback func only
