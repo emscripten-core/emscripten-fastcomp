@@ -100,6 +100,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // argument of shufflevector must be a constant (the pass would otherwise
   // violate this requirement).
   PM.add(createExpandShuffleVectorPass());
+  // We should not place arbitrary passes after ExpandConstantExpr
+  // because they might reintroduce ConstantExprs.
+  PM.add(createExpandConstantExprPass());
+  // GlobalizeConstantVectors does not handle nested ConstantExprs, so we
+  // run ExpandConstantExpr first.
   PM.add(createGlobalizeConstantVectorsPass());
   // The following pass inserts GEPs, it must precede ExpandGetElementPtr. It
   // also creates vector loads and stores, the subsequent pass cleans them up to
@@ -121,12 +126,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // information that otherwise helps ConstantMerge do a good job.
   PM.add(createConstantMergePass());
   // FlattenGlobals introduces ConstantExpr bitcasts of globals which
-  // are expanded out later.
+  // are expanded out later. ReplacePtrsWithInts also creates some
+  // ConstantExprs, and it locally creates an ExpandConstantExprPass
+  // to clean both of these up.
   PM.add(createFlattenGlobalsPass());
 
-  // We should not place arbitrary passes after ExpandConstantExpr
-  // because they might reintroduce ConstantExprs.
-  PM.add(createExpandConstantExprPass());
   // PromoteIntegersPass does not handle constexprs and creates GEPs,
   // so it goes between those passes.
   PM.add(createPromoteIntegersPass());
