@@ -158,6 +158,15 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
 DEF_CALL_HANDLER(emscripten_resume, {
   return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
 })
+DEF_CALL_HANDLER(emscripten_async_reinvoke, {
+  assert(InvokeState == 0);
+  InvokeState = 2; // reset the state as if we've just done an invoke (it returned asynchronously)
+  return "__THREW__ = " + CI->getOperand(0);
+})
+DEF_CALL_HANDLER(emscripten_async_queryinvoke, {
+  assert(InvokeState == 0);
+  return getAssign(CI) + "__THREW__";
+})
 
 // setjmp support
 

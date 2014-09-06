@@ -151,7 +151,9 @@ bool LowerEmExceptions::runOnModule(Module &M) {
                                                CallArgs, "", II);
           NewCall->takeName(II);
           NewCall->setCallingConv(II->getCallingConv());
-          NewCall->setAttributes(II->getAttributes());
+		  AttributeSet attrs = II->getAttributes();
+		  attrs = attrs.addAttribute(M.getContext(), AttributeSet::FunctionIndex, "emscripten_invoke");
+          NewCall->setAttributes(attrs);
           NewCall->setDebugLoc(II->getDebugLoc());
           II->replaceAllUsesWith(NewCall);
           ToErase.push_back(II);
