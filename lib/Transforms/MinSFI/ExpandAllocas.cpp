@@ -228,7 +228,8 @@ void ExpandAllocas::runOnFunction(Function &Func) {
 
 void ExpandAllocas::insertStackPtrInit(Module &M) {
   Function *EntryFunction = M.getFunction(minsfi::EntryFunctionName);
-  assert(EntryFunction && "Module does not contain an entry function");
+  if (!EntryFunction)
+    report_fatal_error("ExpandAllocas: Module does not have an entry function");
 
   // Check the signature of the entry function.
   Function::ArgumentListType &Args = EntryFunction->getArgumentList();
