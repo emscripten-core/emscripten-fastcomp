@@ -424,8 +424,6 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
   } else {
     resume_point:
     <if G was an invoke>:
-      // only call emscripten_async_reinvoke if we just called G;
-      // emscripten_async_resume set up the correct context if we're resuming
       emscripten_async_postinvoke2();
     %0'= either $0 or the async return value                      // callback func only
     ...
