@@ -67,6 +67,24 @@ static inline size_t RoundToPowerOf2(size_t n) {
     return NextPowerOf2(n);
 }
 
+static inline bool IsPtrToIntUse(const Function::use_iterator &FuncUse) {
+  if (isa<PtrToIntInst>(*FuncUse))
+    return true;
+  else if (ConstantExpr *Expr = dyn_cast<ConstantExpr>(*FuncUse))
+    return Expr->getOpcode() == Instruction::PtrToInt;
+  else
+    return false;
+}
+
+// Function use is a direct call if the user is a call instruction and
+// the function is its last operand.
+static inline bool IsDirectCallUse(const Function::use_iterator &FuncUse) {
+  if (CallInst *Call = dyn_cast<CallInst>(*FuncUse))
+    return FuncUse.getOperandNo() == Call->getNumArgOperands();
+  else
+    return false;
+}
+
 bool SandboxIndirectCalls::runOnModule(Module &M) {
   typedef SmallVector<Constant*, 16> FunctionVector;
   DataLayout DL(&M);
@@ -82,15 +100,14 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
     Constant *Index = ConstantInt::get(IntPtrType, AddrTakenFuncs.size() + 1);
     for (Function::use_iterator User = Func->use_begin(), E = Func->use_end();
          User != E; ++User) {
-      if (CallInst *Call = dyn_cast<CallInst>(*User)) {
-        // Because PNaCl does not allow pointer-type arguments, this should be
-        // a direct call and the function should be its last argument.
-        assert(User.getOperandNo() == Call->getNumArgOperands());
-      } else {
+      if (IsPtrToIntUse(User)) {
         HasIndirectUse = true;
         (*User)->replaceAllUsesWith(Index);
         if (Instruction *UserInst = dyn_cast<Instruction>(*User))
           UserInst->eraseFromParent();
+      } else if (!IsDirectCallUse(User)) {
+        report_fatal_error("SandboxIndirectCalls: Invalid reference to "
+                           "function @" + Func->getName());
       }
     }
 
