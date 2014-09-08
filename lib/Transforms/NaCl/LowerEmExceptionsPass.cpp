@@ -151,8 +151,10 @@ bool LowerEmExceptions::runOnModule(Module &M) {
                                                CallArgs, "", II);
           NewCall->takeName(II);
           NewCall->setCallingConv(II->getCallingConv());
-		  AttributeSet attrs = II->getAttributes();
-		  attrs = attrs.addAttribute(M.getContext(), AttributeSet::FunctionIndex, "emscripten_invoke");
+          AttributeSet attrs = II->getAttributes();
+          // We set the "emscripten_invoke" attribute on the call instruction, so that
+          // later passes can recognise that the call site has special semantics
+          attrs = attrs.addAttribute(M.getContext(), AttributeSet::FunctionIndex, "emscripten_invoke");
           NewCall->setAttributes(attrs);
           NewCall->setDebugLoc(II->getDebugLoc());
           II->replaceAllUsesWith(NewCall);

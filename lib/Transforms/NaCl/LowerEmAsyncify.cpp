@@ -77,12 +77,13 @@ namespace {
 
     Type *Void, *I1, *I32, *I32Ptr;
     FunctionType *VFunction, *I1Function, *I32PFunction;
-    FunctionType *VI32PFunction, *I32PI32Function;
+    FunctionType *VI32PFunction, *I32PI32Function, *I32PI32I32Function;
     FunctionType *CallbackFunctionType;
 
     Function *AllocAsyncCtxFunction, *ReallocAsyncCtxFunction, *FreeAsyncCtxFunction;
     Function *CheckAsyncFunction;
-    Function *DoNotUnwindFunction, *DoNotUnwindAsyncFunction, *OnAsyncResumeFunction;
+    Function *DoNotUnwindFunction, *DoNotUnwindAsyncFunction;
+    Function *PostInvokeSplit1Function, *PostInvokeSplit2Function;
     Function *GetAsyncReturnValueAddrFunction;
 
     void initTypesAndFunctions(void);
@@ -95,10 +96,9 @@ namespace {
     // all the information we want for an async call
     struct AsyncCallEntry {
       Instruction *AsyncCallInst; // calling an async function
-	  bool CallIsInvoke; // whether the async call came from an "invoke" instruction
+      bool CallIsInvoke; // whether the async call came from an "invoke" instruction
       BasicBlock *AfterCallBlock; // the block we should continue on after getting the return value of AsynCallInst
       CallInst *AllocAsyncCtxInst;  // where we allocate the async ctx before the async call, in the original function
-	  Value StashedInvokeStatus; // the variable where we stash the value of __THREW__ after the async call
       Values ContextVariables; // those need to be saved and restored for the async call
       StructType *ContextStructType; // The structure constructing all the context variables
       BasicBlock *SaveAsyncCtxBlock; // the block in which we save all the variables
@@ -176,7 +176,7 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
         if (CurFunction != ICS.getCalledValue()->stripPointerCasts()) continue;
         // Now I is either CallInst or InvokeInst, but we should have already lowered invoke instructions
         Instruction *I = cast<Instruction>(*UI);
-		assert(!isa<InvokeInst>(I));
+        assert(!isa<InvokeInst>(I));
         Function *F = I->getParent()->getParent();
         if (AsyncFunctionCalls.count(F) == 0) {
           AsyncFunctionsPending.push_back(F);
@@ -222,6 +222,9 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   ArgTypes.push_back(I32);
   I32PI32Function = FunctionType::get(I32Ptr, ArgTypes, false);
 
+  ArgTypes.push_back(I32);
+  I32PI32I32Function = FunctionType::get(I32Ptr, ArgTypes, false);
+
   CallbackFunctionType = VI32PFunction;
 
   // Functions
@@ -233,7 +236,7 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   );
 
   AllocAsyncCtxFunction = Function::Create(
-    I32PI32Function,
+    I32PI32I32Function,
     GlobalValue::ExternalLinkage,
     "emscripten_alloc_async_context",
     TheModule
@@ -267,10 +270,17 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
     TheModule
   );
 
-  OnAsyncResumeFunction = Function::Create(
+  PostInvokeSplit1Function = Function::Create(
     VFunction,
     GlobalValue::ExternalLinkage,
-    "emscripten_async_rethrow",
+    "emscripten_async_postinvoke1",
+    TheModule
+  );
+
+  PostInvokeSplit2Function = Function::Create(
+    VFunction,
+    GlobalValue::ExternalLinkage,
+    "emscripten_async_postinvoke2",
     TheModule
   );
 
@@ -375,7 +385,7 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
                          // since ctx is no longer in the top async stack frame
   %0 = G(%1, %2, ...);
   <if G was an invoke>:
-    %invokeStatus = emscripten_postinvoke()
+    emscripten_async_postinvoke1();
   if (async) { // G was async
     save context variables in ctx
     register F.async_cb as the callback in frame
@@ -384,11 +394,8 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
     // ctx is freed here, because so far F is still a sync function
     // and we don't want any side effects
     free_ctx(ctx); // main func only
-	<if G was an invoke>:
-	  emscripten_async_reinvoke(%invokeStatus)
-	<if G was not an invoke>:
-	  %invokeStatus = emscripten_async_queryinvoke();
-	  if (%invokeStatus) emscripten_async_rethrow()
+    <if G was an invoke>:
+      emscripten_async_postinvoke2();
     use %0 as normal, including emscripten_postinvoke() and br if G was an invoke
     ...
     async return value = %%;
@@ -409,20 +416,17 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
                           // we want to keep the saved stack pointer
   %0 = G(%1, %2, ...);
   <if G was an invoke>:
-    %invokeStatus = emscripten_postinvoke()
+    emscripten_async_postinvoke1();
   if (async) {
     save context variables in ctx
     register F.async_cb as the callback
     return without unwinding the stack frame
   } else {
-	<if G was an invoke>:
-	  // only call emscripten_async_reinvoke if we just called G;
-	  // emscripten_async_resume set up the correct context if we're resuming
-	  emscripten_async_reinvoke(%invokeStatus)
     resume_point:
-	<if G was not an invoke>:
-	  %invokeStatus = emscripten_async_queryinvoke();
-	  if (%invokeStatus) emscripten_async_rethrow()
+    <if G was an invoke>:
+      // only call emscripten_async_reinvoke if we just called G;
+      // emscripten_async_resume set up the correct context if we're resuming
+      emscripten_async_postinvoke2();
     %0'= either $0 or the async return value                      // callback func only
     ...
     async return value = %%
@@ -451,17 +455,15 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
   // Scan each async call and make the basic structure:
   // All these will be cloned into the callback functions
   // - allocate the async context before calling an async function
-  // - if the async function is being invoked, stash __THREW__ in a local variable
-  // - check async right after that, save context & return if async, continue if not
+  // - check async right after calling an async function, save context & return if async, continue if not
   // - retrieve the async return value and free the async context if the called function turns out to be sync
   std::vector<AsyncCallEntry> AsyncCallEntries;
   AsyncCallEntries.reserve(AsyncCalls.size());
   for (Instructions::const_iterator I = AsyncCalls.begin(), E = AsyncCalls.end(); I != E; ++I) {
     // prepare blocks
     Instruction *CurAsyncCall = *I;
-	CallInst *CurAsyncCallInst = cast<CallInst*>(CurAsyncCall);
-	bool CurIsInvoke = CurAsyncCallInst->getAttributes()->hasAttribute(AttributeSet::FunctionIndex, "emscripten_invoke");
-	Value InvokeStatusVariable;
+    CallInst *CurAsyncCallInst = cast<CallInst>(CurAsyncCall);
+    bool CurIsInvoke = CurAsyncCallInst->getAttributes().hasAttribute(AttributeSet::FunctionIndex, "emscripten_invoke");
 
     // The block containing the async call
     BasicBlock *CurBlock = CurAsyncCall->getParent();
@@ -476,15 +478,21 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // we don't know the size yet, will fix it later
     // we cannot insert the instruction later because,
     // we need to make sure that all the instructions and blocks are fixed before we can generate DT and find context variables
-    // In CallHandler.h `sp` will be put as the second parameter
-    // such that we can take a note of the original sp 
-    CallInst *AllocAsyncCtxInst = CallInst::Create(AllocAsyncCtxFunction, Constant::getNullValue(I32), "AsyncCtx", CurAsyncCall);
+    // In CallHandler.h `sp` will be put as the third parameter
+    // such that we can take a note of the original sp
+    SmallVector<Value*,16> AllocCtxArgs;
+    AllocCtxArgs.push_back(Constant::getNullValue(I32));
+    AllocCtxArgs.push_back(ConstantInt::get(I32, CurIsInvoke));
+    CallInst *AllocAsyncCtxInst = CallInst::Create(AllocAsyncCtxFunction, AllocCtxArgs, "AsyncCtx", CurAsyncCall);
 
-    // Right after the call, stash the exception status if we just split the block in between a call and postinvoke
-	if (CurIsInvoke) {
-	  Insert "%invokeStatus = call emscripten_postinvoke()" at end of CurBlock;
-	  InvokeStatusVariable = auto-generated name of %invokeStatus (eg invokeStatus1);
-	}
+    // Is the call is an invoke, then we just split the block in between call and emscripten_postinvoke().
+    // We patch that up by putting in an emscripten_async_postinvoke1() right after call, and an
+    // emscripten_async_postinvoke2() on the other side of the split.
+    if (CurIsInvoke) {
+      CallInst::Create(PostInvokeSplit1Function, "", CurBlock->getTerminator());
+      CallInst::Create(PostInvokeSplit2Function, "", AfterCallBlock->getFirstNonPHI());
+    }
+
     // Then, check async and return if so
     // TODO: we can define truly async functions and partial async functions
     {
@@ -499,10 +507,9 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // take a note of this async call
     AsyncCallEntry CurAsyncCallEntry;
     CurAsyncCallEntry.AsyncCallInst = CurAsyncCall;
-	CurAsyncCallEntry.CallIsInvoke = CurIsInvoke;
+    CurAsyncCallEntry.CallIsInvoke = CurIsInvoke;
     CurAsyncCallEntry.AfterCallBlock = AfterCallBlock;
     CurAsyncCallEntry.AllocAsyncCtxInst = AllocAsyncCtxInst;
-	CurAsyncCallEntry.StashedInvokeStatus = InvokeStatusVariable;
     CurAsyncCallEntry.SaveAsyncCtxBlock = SaveAsyncCtxBlock;
     // create an empty function for the callback, which will be constructed later
     CurAsyncCallEntry.CallbackFunc = Function::Create(CallbackFunctionType, F.getLinkage(), F.getName() + "__async_cb", TheModule);
@@ -719,17 +726,6 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
       ToPromote.push_back(Addr);
     }
 
-	// XXX we need to push the following instructions at the front of the ResumeBlock:
-	<if G was not an invoke>:
-	  %invokeStatus = emscripten_async_queryinvoke();
-	  if (%invokeStatus) emscripten_async_rethrow()
-	// XXX if the call was an invoke, we need to push the following instructions at the front of ResumeBlock, then
-	// XXX split the block and the BranchInst::Create below should point to the place just after these instructions:
-	<if G was an invoke>:
-	  // only call emscripten_async_reinvoke if we just called G;
-	  // emscripten_async_resume set up the correct context if we're resuming
-	  emscripten_async_reinvoke(%invokeStatus)
-
     // TODO remove unreachable blocks before creating phi
    
     // We go right to ResumeBlock from the EntryBlock
@@ -758,16 +754,7 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
   for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
     AsyncCallEntry & CurEntry = *EI;
     // remove the frame if no async functinon has been called
-    CallInst *FreeCtxtInst =
-	    CallInst::Create(FreeAsyncCtxFunction, CurEntry.AllocAsyncCtxInst, "", CurEntry.AfterCallBlock->getFirstNonPHI());
-	if (CurEntry.IsInvoke) {
-	  // if we're an invoke instruction, restore __THREW__ from %invokeStatus and let postinvoke() do its thing
-	  CallInst::Create(emscripten_async_reinvoke, CurEntry.InvokeVariable, "", FreeCtxtInst->getNextInstruction());
-	} else {
-	  // otherwise, for ordinary calls, we have to rethrow the exception if emscripten_async_resume wants to inject one in here
-	  %invokeStatus = emscripten_async_queryinvoke();
-	  if (%invokeStatus) emscripten_async_rethrow()
-	}
+    CallInst::Create(FreeAsyncCtxFunction, CurEntry.AllocAsyncCtxInst, "", CurEntry.AfterCallBlock->getFirstNonPHI());
   }
 }
 

@@ -158,14 +158,15 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
 DEF_CALL_HANDLER(emscripten_resume, {
   return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
 })
-DEF_CALL_HANDLER(emscripten_async_reinvoke, {
+DEF_CALL_HANDLER(emscripten_async_postinvoke1, {
+  assert(InvokeState == 1 || InvokeState == 2); // normally 2, but can be 1 if the call in between was optimized out
+  InvokeState = 0;
+  return "";
+})
+DEF_CALL_HANDLER(emscripten_async_postinvoke2, {
   assert(InvokeState == 0);
   InvokeState = 2; // reset the state as if we've just done an invoke (it returned asynchronously)
-  return "__THREW__ = " + CI->getOperand(0);
-})
-DEF_CALL_HANDLER(emscripten_async_queryinvoke, {
-  assert(InvokeState == 0);
-  return getAssign(CI) + "__THREW__";
+  return "";
 })
 
 // setjmp support
@@ -200,8 +201,10 @@ DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
 
 // supporting async functions, see `<emscripten>/src/library_async.js` for detail.
 DEF_CALL_HANDLER(emscripten_alloc_async_context, {
-  // insert sp as the 2nd parameter
-  return getAssign(CI) + "_emscripten_alloc_async_context(" + getValueAsStr(CI->getOperand(0)) + ",sp)|0";
+  // insert sp as the 3rd parameter
+  return getAssign(CI) + "_emscripten_alloc_async_context(" +
+      getValueAsStr(CI->getOperand(0)) + "," +
+      getValueAsStr(CI->getOperand(1)) + ",sp)|0";
 })
 DEF_CALL_HANDLER(emscripten_check_async, {
   return getAssign(CI) + "___async";
@@ -583,6 +586,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(emscripten_preinvoke);
   SETUP_CALL_HANDLER(emscripten_postinvoke);
+  SETUP_CALL_HANDLER(emscripten_async_postinvoke1);
+  SETUP_CALL_HANDLER(emscripten_async_postinvoke2);
   SETUP_CALL_HANDLER(emscripten_landingpad);
   SETUP_CALL_HANDLER(emscripten_resume);
   SETUP_CALL_HANDLER(emscripten_prep_setjmp);
