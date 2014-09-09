@@ -492,6 +492,10 @@ DEF_CALL_HANDLER(emscripten_float32x4_xor, {
   return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.xor(" +
       getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
 })
+DEF_CALL_HANDLER(emscripten_float32x4_not, {
+  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.not(" +
+      getValueAsStr(CI->getOperand(0)) + "))";
+})
 DEF_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits, {
   return CH___default__(CI, "SIMD.float32x4.fromInt32x4Bits");
 })
@@ -631,6 +635,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_andNot);
   SETUP_CALL_HANDLER(emscripten_float32x4_or);
   SETUP_CALL_HANDLER(emscripten_float32x4_xor);
+  SETUP_CALL_HANDLER(emscripten_float32x4_not);
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
   SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
