@@ -243,7 +243,7 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   );
 
   ReallocAsyncCtxFunction = Function::Create(
-    I32PI32Function,
+    I32PI32I32Function,
     GlobalValue::ExternalLinkage,
     "emscripten_realloc_async_context",
     TheModule
@@ -647,9 +647,13 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
 
     // in the callback function, we never allocate a new async frame
     // instead we reuse the existing one
+    SmallVector<Value*,16> ReallocCtxArgs;
     for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
       Instruction *I = cast<Instruction>(VMap[EI->AllocAsyncCtxInst]);
-      ReplaceInstWithInst(I, CallInst::Create(ReallocAsyncCtxFunction, I->getOperand(0), "ReallocAsyncCtx"));
+      ReallocCtxArgs.clear();
+      ReallocCtxArgs.push_back(I->getOperand(0));
+      ReallocCtxArgs.push_back(ConstantInt::get(I32, EI->CallIsInvoke));
+      ReplaceInstWithInst(I, CallInst::Create(ReallocAsyncCtxFunction, ReallocCtxArgs, "ReallocAsyncCtx"));
     }
 
     // mapped entry point & async call
