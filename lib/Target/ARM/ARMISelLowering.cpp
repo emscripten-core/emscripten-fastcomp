@@ -2706,19 +2706,19 @@ SDValue ARMTargetLowering::LowerGLOBAL_OFFSET_TABLE(SDValue Op,
     // We will try (1) for now, since (2) takes about 3 more instructions
     // (and one of them is a load).
     return DAG.getNode(ARMISD::WrapperGOT, dl, MVT::i32);
-  } else { // Sort of LOCALMOD-END (indentation only
-    unsigned PCAdj = Subtarget->isThumb() ? 4 : 8;
+  }
+  // @LOCALMOD-END
+  unsigned PCAdj = Subtarget->isThumb() ? 4 : 8;
   ARMConstantPoolValue *CPV =
     ARMConstantPoolSymbol::Create(*DAG.getContext(), "_GLOBAL_OFFSET_TABLE_",
                                   ARMPCLabelIndex, PCAdj);
-    SDValue CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
-    CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
-    SDValue Result = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), CPAddr,
-                                 MachinePointerInfo::getConstantPool(),
-                                 false, false, false, 0);
-    SDValue PICLabel = DAG.getConstant(ARMPCLabelIndex, MVT::i32);
-    return DAG.getNode(ARMISD::PIC_ADD, dl, PtrVT, Result, PICLabel);
-  } // @LOCALMOD-END
+  SDValue CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
+  CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
+  SDValue Result = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), CPAddr,
+                               MachinePointerInfo::getConstantPool(),
+                               false, false, false, 0);
+  SDValue PICLabel = DAG.getConstant(ARMPCLabelIndex, MVT::i32);
+  return DAG.getNode(ARMISD::PIC_ADD, dl, PtrVT, Result, PICLabel);
 }
 
 SDValue
