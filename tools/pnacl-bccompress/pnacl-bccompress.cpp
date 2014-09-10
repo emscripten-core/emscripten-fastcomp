@@ -479,7 +479,7 @@ public:
       NumBits += 6;
       return true;
     default:
-      assert(0 && "Bad abbreviation operator");
+      llvm_unreachable("Bad abbreviation operator");
       return false;
     }
   }

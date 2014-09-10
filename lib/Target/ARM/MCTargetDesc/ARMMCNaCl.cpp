@@ -244,7 +244,7 @@ bool CustomExpandInstNaClARM(const MCSubtargetInfo &STI, const MCInst &Inst,
         State.SaveCount = 3;
         break;
       case ARM::SFI_DATA_MASK:
-        assert(0 &&
+        llvm_unreachable(
             "SFI_DATA_MASK found without preceding SFI_NOP_IF_AT_BUNDLE_END");
         return false;
       case ARM::SFI_GUARD_CALL:
@@ -283,7 +283,7 @@ bool CustomExpandInstNaClARM(const MCSubtargetInfo &STI, const MCInst &Inst,
       EmitDataMask(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_DATA_MASK:
-      assert(0 && "SFI_DATA_MASK can't start a SFI sequence");
+      llvm_unreachable("SFI_DATA_MASK can't start a SFI sequence");
       break;
     case ARM::SFI_GUARD_CALL:
       EmitDirectGuardCall(STI, State.I, State.Saved, Out);
