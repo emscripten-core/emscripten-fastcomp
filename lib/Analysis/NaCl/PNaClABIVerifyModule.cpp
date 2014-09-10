@@ -32,11 +32,32 @@ PNaClABIAllowDebugMetadata("pnaclabi-allow-debug-metadata",
   cl::desc("Allow debug metadata during PNaCl ABI verification."),
   cl::init(false));
 
+cl::opt<bool>
+PNaClABIAllowMinsfiSyscalls("pnaclabi-allow-minsfi-syscalls",
+  cl::desc("Allow undefined references to MinSFI syscall functions."),
+  cl::init(false));
+
 }
 
 PNaClABIVerifyModule::~PNaClABIVerifyModule() {
   if (ReporterIsOwned)
     delete Reporter;
+}
+
+// MinSFI syscalls are functions with a given prefix which are left undefined
+// and later linked against their implementation inside the trusted runtime.
+// If the corresponding flag is set, do allow these external symbols in the
+// module.
+//
+// We also require the syscall declarations to have an i32 return type. This
+// is meant to prevent abusing syscalls to obtain an undefined value, e.g. by
+// invoking a syscall whose trusted implementation returns void as a function
+// which returns an integer, leaking the value of a register (see comments in
+// the SubstituteUndefs pass for more information on undef values).
+static bool isAllowedMinsfiSyscall(const Function *Func) {
+  return PNaClABIAllowMinsfiSyscalls &&
+         Func->getName().startswith("__minsfi_syscall_") &&
+         Func->getReturnType()->isIntegerTy(32);
 }
 
 // Check linkage type and section attributes, which are the same for
@@ -80,7 +101,7 @@ void PNaClABIVerifyModule::checkGlobalValue(const GlobalValue *GV) {
 
 void PNaClABIVerifyModule::checkExternalSymbol(const GlobalValue *GV) {
   if (const Function *Func = dyn_cast<const Function>(GV)) {
-    if (Func->isIntrinsic())
+    if (Func->isIntrinsic() || isAllowedMinsfiSyscall(Func))
       return;
   }
 
@@ -204,7 +225,7 @@ void PNaClABIVerifyModule::checkFunction(const Function *F,
     // Unfortunately this means we simply don't check this property
     // when translating a pexe in the browser.
     // TODO(mseaborn): Enforce this property in the bitcode reader.
-    if (!StreamingMode && F->isDeclaration()) {
+    if (!StreamingMode && F->isDeclaration() && !isAllowedMinsfiSyscall(F)) {
       Reporter->addError() << "Function " << Name
                            << " is declared but not defined (disallowed)\n";
     }
