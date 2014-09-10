@@ -21,6 +21,7 @@ class FunctionType;
 class Instruction;
 class ModulePass;
 class Use;
+class User;
 class Value;
 
 BasicBlockPass *createConstantInsertExtractElementIndexPass();
@@ -60,8 +61,8 @@ ModulePass *createStripMetadataPass();
 void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
 void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
 
-Instruction *PhiSafeInsertPt(Use *U);
-void PhiSafeReplaceUses(Use *U, Value *NewVal);
+Instruction *PhiSafeInsertPt(User *U);
+void PhiSafeReplaceUsers(User *U, Value *NewVal);
 
 // Copy debug information from Original to NewInst, and return NewInst.
 Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);

@@ -17,8 +17,8 @@
 
 using namespace llvm;
 
-Instruction *llvm::PhiSafeInsertPt(Use *U) {
-  Instruction *InsertPt = cast<Instruction>(U->getUser());
+Instruction *llvm::PhiSafeInsertPt(User *U) {
+  Instruction *InsertPt = cast<Instruction>(U);
   if (PHINode *PN = dyn_cast<PHINode>(InsertPt)) {
     // We cannot insert instructions before a PHI node, so insert
     // before the incoming block's terminator.  This could be
@@ -28,8 +28,8 @@ Instruction *llvm::PhiSafeInsertPt(Use *U) {
   return InsertPt;
 }
 
-void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
-  if (PHINode *PN = dyn_cast<PHINode>(U->getUser())) {
+void llvm::PhiSafeReplaceUsers(User *U, Value *NewVal) {
+  if (PHINode *PN = dyn_cast<PHINode>(U)) {
     // A PHI node can have multiple incoming edges from the same
     // block, in which case all these edges must have the same
     // incoming value.
@@ -39,7 +39,7 @@ void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
         PN->setIncomingValue(I, NewVal);
     }
   } else {
-    U->getUser()->replaceUsesOfWith(U->get(), NewVal);
+    U->replaceUsesOfWith(U, NewVal);
   }
 }
 

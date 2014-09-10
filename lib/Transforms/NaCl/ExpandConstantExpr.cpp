@@ -68,8 +68,8 @@ static bool expandInstruction(Instruction *Inst) {
     if (ConstantExpr *Expr =
         dyn_cast<ConstantExpr>(Inst->getOperand(OpNum))) {
       Modified = true;
-      Use *U = &Inst->getOperandUse(OpNum);
-      PhiSafeReplaceUses(U, expandConstantExpr(PhiSafeInsertPt(U), Expr));
+      User *U = Inst->getOperandUse(OpNum).getUser();
+      PhiSafeReplaceUsers(U, expandConstantExpr(PhiSafeInsertPt(U), Expr));
     }
   }
   return Modified;
