@@ -2434,22 +2434,22 @@ ARMTargetLowering::LowerToTLSGeneralDynamicModel(GlobalAddressSDNode *GA,
     Chain = Argument.getValue(1);
     Argument = DAG.getNode(ISD::ADD, dl, PtrVT, Argument, CPAddr);
   } else { // sort of @LOCALMOD-END
-    unsigned char PCAdj = Subtarget->isThumb() ? 4 : 8;
-    MachineFunction &MF = DAG.getMachineFunction();
-    ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
-    unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
-    ARMConstantPoolValue *CPV =
-        ARMConstantPoolConstant::Create(GA->getGlobal(), ARMPCLabelIndex,
-                                        ARMCP::CPValue, PCAdj, ARMCP::TLSGD, true);
-    Argument = DAG.getTargetConstantPool(CPV, PtrVT, 4); // @ LOCALMOD
-    Argument = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, Argument);
-    Argument = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), Argument,
-                           MachinePointerInfo::getConstantPool(),
-                           false, false, false, 0);
-    Chain = Argument.getValue(1); // @LOCALMOD
+  unsigned char PCAdj = Subtarget->isThumb() ? 4 : 8;
+  MachineFunction &MF = DAG.getMachineFunction();
+  ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
+  unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
+  ARMConstantPoolValue *CPV =
+    ARMConstantPoolConstant::Create(GA->getGlobal(), ARMPCLabelIndex,
+                                    ARMCP::CPValue, PCAdj, ARMCP::TLSGD, true);
+  /*SDValue*/ Argument = DAG.getTargetConstantPool(CPV, PtrVT, 4); // @LOCALMOD
+  Argument = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, Argument);
+  Argument = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), Argument,
+                         MachinePointerInfo::getConstantPool(),
+                         false, false, false, 0);
+  /*SDValue*/ Chain = Argument.getValue(1); // @LOCALMOD
 
-    SDValue PICLabel = DAG.getConstant(ARMPCLabelIndex, MVT::i32);
-    Argument = DAG.getNode(ARMISD::PIC_ADD, dl, PtrVT, Argument, PICLabel);
+  SDValue PICLabel = DAG.getConstant(ARMPCLabelIndex, MVT::i32);
+  Argument = DAG.getNode(ARMISD::PIC_ADD, dl, PtrVT, Argument, PICLabel);
   } // @LOCALMOD-END
 
   // call __tls_get_addr.
