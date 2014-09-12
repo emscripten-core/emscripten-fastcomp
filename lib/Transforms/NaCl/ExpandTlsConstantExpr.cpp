@@ -73,7 +73,7 @@ static void expandConstExpr(Constant *Expr) {
   Expr->removeDeadConstantUsers();
 
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Expr)) {
-    while (Expr->hasNUsesOrMore(0)) {
+    while (Expr->hasNUsesOrMore(1)) {
       Use *U = &*Expr->use_begin();
       Instruction *NewInst = CE->getAsInstruction();
       NewInst->insertBefore(PhiSafeInsertPt(U));

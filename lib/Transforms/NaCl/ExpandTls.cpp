@@ -233,7 +233,7 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
        VarInfo != TlsVars->end();
        ++VarInfo) {
     GlobalVariable *Var = VarInfo->TlsVar;
-    while (Var->hasNUsesOrMore(0)) {
+    while (Var->hasNUsesOrMore(1)) {
       Use *U = &*Var->use_begin();
       Instruction *InsertPt = PhiSafeInsertPt(U);
       Value *RawThreadPtr = CallInst::Create(ReadTpFunc, "tls_raw", InsertPt);
