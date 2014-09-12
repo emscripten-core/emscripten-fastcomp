@@ -233,8 +233,8 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
        VarInfo != TlsVars->end();
        ++VarInfo) {
     GlobalVariable *Var = VarInfo->TlsVar;
-    while (!Var->user_empty()) {
-      User *U = &*Var->user_begin();
+    while (Var->hasNUsesOrMore(0)) {
+      Use *U = &*Var->use_begin();
       Instruction *InsertPt = PhiSafeInsertPt(U);
       Value *RawThreadPtr = CallInst::Create(ReadTpFunc, "tls_raw", InsertPt);
       Value *TypedThreadPtr = new BitCastInst(RawThreadPtr, TemplatePtrType,

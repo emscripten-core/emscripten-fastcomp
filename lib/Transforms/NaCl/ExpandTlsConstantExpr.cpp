@@ -67,22 +67,18 @@ INITIALIZE_PASS(ExpandTlsConstantExpr, "nacl-expand-tls-constant-expr",
 static void expandConstExpr(Constant *Expr) {
   // First, ensure that ConstantExpr references to Expr are converted
   // to Instructions so that we can modify them.
-  for (Value::user_iterator UI = Expr->user_begin();
-       UI != Expr->user_end();
-       ++UI) {
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(*UI)) {
+  for (Use &U : Expr->uses())
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(U.getUser()))
       expandConstExpr(CE);
-    }
-  }
   Expr->removeDeadConstantUsers();
 
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Expr)) {
-    while (!Expr->user_empty()) {
-      User *U = &*Expr->user_begin();
+    while (Expr->hasNUsesOrMore(0)) {
+      Use *U = &*Expr->use_begin();
       Instruction *NewInst = CE->getAsInstruction();
       NewInst->insertBefore(PhiSafeInsertPt(U));
       NewInst->setName("expanded");
-      PhiSafeReplaceUsers(U, NewInst);
+      PhiSafeReplaceUses(U, NewInst);
     }
   }
 }
