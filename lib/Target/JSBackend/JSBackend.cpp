@@ -669,7 +669,9 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: {
       // some types we cannot cast, like vectors - ignore
-      if (!t->isVectorTy()) { errs() << *t << "\n"; assert(false && "Unsupported type");}
+      if (t->isVectorTy()) return s;
+      errs() << *t << "\n";
+      assert(false && "Unsupported type");
     }
     case Type::FloatTyID: {
       if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
@@ -1131,6 +1133,8 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
 
     switch (Operator::getOpcode(I)) {
       default: I->dump(); error("invalid vector instr"); break;
+      case Instruction::Call: // return value is just a SIMD value, no special handling
+        return false;
       case Instruction::PHI: // handled separately - we push them back into the relooper branchings
         break;
       case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD.float32x4.add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
