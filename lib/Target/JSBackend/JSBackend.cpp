@@ -133,6 +133,7 @@ namespace {
     unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
     ValueMap ValueNames;
     VarMap UsedVars;
+    bool FunctionHasLandingpad;
     AllocaManager Allocas;
     HeapData GlobalData8;
     HeapData GlobalData32;
@@ -160,8 +161,9 @@ namespace {
   public:
     static char ID;
     JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
-      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
-        OptLevel(OptLevel) {}
+      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0),
+        FunctionHasLandingpad(false), CantValidate(""), UsesSIMD(false),
+        InvokeState(0), OptLevel(OptLevel) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
 
@@ -929,7 +931,8 @@ std::string JSWriter::getStackBump(unsigned Size) {
 }
 
 std::string JSWriter::getStackBump(const std::string &Size) {
-  std::string ret = "STACKTOP = STACKTOP + " + Size + "|0;";
+  std::string ret = FunctionHasLandingpad ? "st = " : "";
+  ret += "STACKTOP = STACKTOP + " + Size + "|0;";
   if (EmscriptenAssertions) {
     ret += " if ((STACKTOP|0) >= (STACK_MAX|0)) abort();";
   }
@@ -1910,6 +1913,9 @@ void JSWriter::printFunctionBody(const Function *F) {
   if (MaxAlignment > STACK_ALIGN) {
     UsedVars["sp_a"] = Type::IntegerTyID;
   }
+  if (FunctionHasLandingpad) {
+    UsedVars["st"] = Type::IntegerTyID;
+  }
   UsedVars["label"] = Type::IntegerTyID;
   if (!UsedVars.empty()) {
     unsigned Count = 0;
@@ -1959,6 +1965,8 @@ void JSWriter::printFunctionBody(const Function *F) {
     }
     Out << "\n ";
     Out << getStackBump(FrameSize);
+  } else if (FunctionHasLandingpad) {
+    Out << " " << getAdHocAssign("st", Type::getInt32Ty(F->getContext())) << "sp;";
   }
 
   // Emit (relooped) code
@@ -1994,6 +2002,18 @@ void JSWriter::processConstants() {
   }
 }
 
+static inline bool functionCallsFunction(const Function* F, const char* name) {
+  for (Function::const_iterator FI = F->begin(), FE = F->end(); FI != FE; ++FI) {
+    for (BasicBlock::const_iterator BI = FI->begin(), BE = FI->end(); BI != BE; ++BI) {
+      ImmutableCallSite CS(BI);
+      const Function* Called;
+      if (CS && (Called = CS.getCalledFunction()) && Called->getName() == name)
+        return true;
+    }
+  }
+  return false;
+}
+
 void JSWriter::printFunction(const Function *F) {
   ValueNames.clear();
 
@@ -2001,6 +2021,7 @@ void JSWriter::printFunction(const Function *F) {
 
   UsedVars.clear();
   UniqueNum = 0;
+  FunctionHasLandingpad = functionCallsFunction(F, "emscripten_landingpad");
 
   // When optimizing, the regular optimizer (mem2reg, SROA, GVN, and others)
   // will have already taken all the opportunities for nativization.
