@@ -609,6 +609,9 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
 
   unsigned IndexOpPosition;
   MCInst SandboxedInst = Inst;
+  // If we need to sandbox a memory reference and we have a saved prefix,
+  // use a single bundle-lock/unlock for the whole sequence of
+  // added_truncating_inst + prefix + mem_ref_inst.
   if (SandboxMemoryRef(&SandboxedInst, &IndexOpPosition)) {
     unsigned PrefixLocal = State.PrefixSaved;
     State.PrefixSaved = 0;
@@ -628,10 +631,17 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
     return true;
   }
 
+  // If the special case above doesn't apply, but there is still a saved prefix,
+  // then the saved prefix should be bundled-locked with Inst, so that it cannot
+  // be separated by bundle padding.
   if (State.PrefixSaved) {
     unsigned PrefixLocal = State.PrefixSaved;
     State.PrefixSaved = 0;
+    Out.EmitBundleLock(false);
     EmitPrefix(PrefixLocal, Out, State);
+    Out.EmitInstruction(Inst);
+    Out.EmitBundleUnlock();
+    return true;
   }
   return false;
 }
