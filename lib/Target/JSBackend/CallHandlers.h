@@ -196,6 +196,13 @@ DEF_CALL_HANDLER(emscripten_alloc_async_context, {
       getValueAsStr(CI->getOperand(0)) + "," +
       getValueAsStr(CI->getOperand(1)) + ",sp)|0";
 })
+DEF_CALL_HANDLER(emscripten_free_async_context, {
+  // insert st as the 2nd parameter if we have it, -1 otherwise
+  return getAssign(CI) + "_emscripten_free_async_context(" +
+      getValueAsStr(CI->getOperand(0)) + "," +
+      (FunctionHasLandingpad ? "st" : "-1") +
+      ")|0";
+})
 DEF_CALL_HANDLER(emscripten_check_async, {
   return getAssign(CI) + "___async";
 })
@@ -595,6 +602,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_check_longjmp);
   SETUP_CALL_HANDLER(emscripten_get_longjmp_result);
   SETUP_CALL_HANDLER(emscripten_alloc_async_context);
+  SETUP_CALL_HANDLER(emscripten_free_async_context);
   SETUP_CALL_HANDLER(emscripten_check_async);
   SETUP_CALL_HANDLER(emscripten_async_postinvoke1);
   SETUP_CALL_HANDLER(emscripten_async_postinvoke2);
