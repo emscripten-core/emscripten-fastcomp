@@ -405,6 +405,7 @@ namespace {
     std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
     std::string getPtrUse(const Value* Ptr);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
+    std::string getConstantVector(Type *ElementType, std::string x, std::string y, std::string z, std::string w);
     std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsCastStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
@@ -1047,18 +1048,18 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       return "0";
     }
   } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
-    const VectorType *VT = cast<VectorType>(CV->getType());
-    if (VT->getElementType()->isIntegerTy()) {
-      return "SIMD.int32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
-                               getConstant(DV->getElementAsConstant(1)) + ',' +
-                               getConstant(DV->getElementAsConstant(2)) + ',' +
-                               getConstant(DV->getElementAsConstant(3)) + ')';
-    } else {
-      return "SIMD.float32x4(" + getConstant(DV->getElementAsConstant(0)) + ',' +
-                                 getConstant(DV->getElementAsConstant(1)) + ',' +
-                                 getConstant(DV->getElementAsConstant(2)) + ',' +
-                                 getConstant(DV->getElementAsConstant(3)) + ')';
-    }
+    return getConstantVector(cast<VectorType>(CV->getType())->getElementType(),
+                             getConstant(DV->getElementAsConstant(0)),
+                             getConstant(DV->getElementAsConstant(1)),
+                             getConstant(DV->getElementAsConstant(2)),
+                             getConstant(DV->getElementAsConstant(3)));
+  } else if (const ConstantVector *V = dyn_cast<ConstantVector>(CV)) {
+    assert(V->getNumOperands() == 4);
+    return getConstantVector(cast<VectorType>(V->getType())->getElementType(),
+                             getConstant(V->getOperand(0)),
+                             getConstant(V->getOperand(1)),
+                             getConstant(V->getOperand(2)),
+                             getConstant(V->getOperand(3)));
   } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
     // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
     assert(CA->getNumOperands() == 1);
@@ -1078,6 +1079,14 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else {
     CV->dump();
     llvm_unreachable("Unsupported constant kind");
+  }
+}
+
+std::string JSWriter::getConstantVector(Type *ElementType, std::string x, std::string y, std::string z, std::string w) {
+  if (ElementType->isIntegerTy()) {
+    return "SIMD.int32x4(" + x + ',' + y + ',' + z + ',' + w + ')';
+  } else {
+    return "SIMD.float32x4(" + x + ',' + y + ',' + z + ',' + w + ')';
   }
 }
 
