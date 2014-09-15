@@ -80,8 +80,8 @@ namespace {
     FunctionType *VI32PFunction, *I32PI32Function, *I32PI32I32Function;
     FunctionType *CallbackFunctionType;
 
-    Function *AllocAsyncCtxFunction, *ReallocAsyncCtxFunction, *FreeAsyncCtxFunction;
-    Function *CheckAsyncFunction;
+    Function *AllocAsyncCtxFunction, *ReallocAsyncCtxFunction;
+    Function *FreeAsyncCtxFunction, *CheckAsyncFunction;
     Function *DoNotUnwindFunction, *DoNotUnwindAsyncFunction;
     Function *PostInvokeSplit1Function, *PostInvokeSplit2Function;
     Function *GetAsyncReturnValueAddrFunction;
@@ -111,8 +111,9 @@ namespace {
     // save them to Entry.ContextVariables
     void FindContextVariables(AsyncCallEntry & Entry);
 
-    // The essential function
-    // F is now in the sync form, transform it into an async form that is valid in JS
+    // The essential function, which transforms a function F in sync form into
+    // an async function, and adds to the module some modified copies of F to be
+    // used as callback functions for resuming execution.
     void transformAsyncFunction(Function &F, Instructions const& AsyncCalls);
 
     bool IsFunctionPointerCall(const Instruction *I);
@@ -127,7 +128,8 @@ INITIALIZE_PASS(LowerEmAsyncify, "loweremasyncify",
 bool LowerEmAsyncify::runOnModule(Module &M) {
   TheModule = &M;
 
-  std::set<std::string> WhiteList(AsyncifyWhiteList.begin(), AsyncifyWhiteList.end());
+  std::set<std::string> WhiteList(AsyncifyWhiteList.begin(),
+                                  AsyncifyWhiteList.end());
 
   /* 
    * collect all the functions that should be asyncified
@@ -150,7 +152,9 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
   {
     // pessimistic: consider all indirect calls as possibly async
     // TODO: deduce based on function types
-    for (Module::iterator FI = TheModule->begin(), FE = TheModule->end(); FI != FE; ++FI) {
+    for (Module::iterator FI = TheModule->begin(), FE = TheModule->end();
+         FI != FE; ++FI)
+    {
       if (WhiteList.count(FI->getName())) continue;
 
       bool has_indirect_call = false;
@@ -168,13 +172,17 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
       Function *CurFunction = AsyncFunctionsPending.back();
       AsyncFunctionsPending.pop_back();
 
-      for (Value::use_iterator UI = CurFunction->use_begin(), E = CurFunction->use_end(); UI != E; ++UI) {
+      for (Value::use_iterator UI = CurFunction->use_begin(),
+                               E = CurFunction->use_end();
+           UI != E; ++UI)
+      {
         ImmutableCallSite ICS(*UI);
         if (!ICS) continue;
         // we only need those instructions calling the function
         // if the function address is used for other purpose, we don't care
         if (CurFunction != ICS.getCalledValue()->stripPointerCasts()) continue;
-        // Now I is either CallInst or InvokeInst, but we should have already lowered invoke instructions
+        // Now I is either CallInst or InvokeInst, but we should have already
+        // lowered invoke instructions
         Instruction *I = cast<Instruction>(*UI);
         assert(!isa<InvokeInst>(I));
         Function *F = I->getParent()->getParent();
@@ -191,8 +199,10 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
 
   initTypesAndFunctions();
 
-  for (FunctionInstructionsMap::iterator I = AsyncFunctionCalls.begin(), E = AsyncFunctionCalls.end();
-      I != E; ++I) {
+  for (FunctionInstructionsMap::iterator I = AsyncFunctionCalls.begin(),
+           E = AsyncFunctionCalls.end();
+       I != E; ++I)
+  {
     transformAsyncFunction(*(I->first), I->second);
   }
 
@@ -222,6 +232,8 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   ArgTypes.push_back(I32);
   I32PI32Function = FunctionType::get(I32Ptr, ArgTypes, false);
 
+  ArgTypes.clear();
+  ArgTypes.push_back(I32);
   ArgTypes.push_back(I32);
   I32PI32I32Function = FunctionType::get(I32Ptr, ArgTypes, false);
 
@@ -292,15 +304,17 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   );
 }
 
-LowerEmAsyncify::BasicBlockSet LowerEmAsyncify::FindReachableBlocksFrom(BasicBlock *src) {
+LowerEmAsyncify::BasicBlockSet
+LowerEmAsyncify::FindReachableBlocksFrom(BasicBlock *src) {
   BasicBlockSet ReachableBlockSet;
-  std::vector<BasicBlock*> pending;
+  SmallVector<BasicBlock*,16> pending;
   ReachableBlockSet.insert(src);
   pending.push_back(src);
   while (!pending.empty()) {
     BasicBlock *CurBlock = pending.back();
     pending.pop_back();
-    for (succ_iterator SI = succ_begin(CurBlock), SE = succ_end(CurBlock); SI != SE; ++SI) {
+    for (succ_iterator SI = succ_begin(CurBlock), SE = succ_end(CurBlock);
+         SI != SE; ++SI) {
       if (ReachableBlockSet.count(*SI) == 0) {
         ReachableBlockSet.insert(*SI);
         pending.push_back(*SI);
@@ -315,9 +329,10 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
 
   Function & F = *AfterCallBlock->getParent();
 
-  // Create a new entry block as if in the callback function
-  // theck check variables that no longer properly dominate their uses
-  BasicBlock *EntryBlock = BasicBlock::Create(TheModule->getContext(), "", &F, &F.getEntryBlock());
+  // Create a new entry block as if in the callback function, then check
+  // for variables that no longer properly dominate their uses.
+  BasicBlock *EntryBlock =
+      BasicBlock::Create(TheModule->getContext(), "", &F, &F.getEntryBlock());
   BranchInst::Create(AfterCallBlock, EntryBlock);
 
   DominatorTree DT;
@@ -327,22 +342,29 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
   BasicBlockSet Ramifications = FindReachableBlocksFrom(AfterCallBlock); 
 
   SmallPtrSet<Value*, 256> ContextVariables;
-  //Values Pending;
 
-  // Examine the instructions, find all variables that we need to store in the context
-  for (BasicBlockSet::iterator RI = Ramifications.begin(), RE = Ramifications.end(); RI != RE; ++RI) {
+  // Examine the instructions in the reachable blocks. The variables that we
+  // need to save are the function's arguments which are used, and the results
+  // of previous instructions which don't dominate their uses in the modified
+  // function.
+  for (BasicBlockSet::iterator RI = Ramifications.begin(),
+                               RE = Ramifications.end();
+       RI != RE; ++RI)
+  {
     for (BasicBlock::iterator I = (*RI)->begin(), E = (*RI)->end(); I != E; ++I) {
       for (unsigned i = 0, NumOperands = I->getNumOperands(); i < NumOperands; ++i) {
         Value *O = I->getOperand(i);
         if (Instruction *Inst = dyn_cast<Instruction>(O)) {
-          if (Inst == Entry.AsyncCallInst) continue; // for the original async call, we will load directly from async return value
+          // Ignore uses of the async call itself, since this is already handled
+          if (Inst == Entry.AsyncCallInst) continue;
+
           if (ContextVariables.count(Inst) != 0)  continue; // already examined 
 
           if (!DT.dominates(Inst, I->getOperandUse(i))) {
-            // `I` is using `Inst`, yet `Inst` does not dominate `I` if we arrive directly at AfterCallBlock
-            // so we need to save `Inst` in the context
+            // `I` is using `Inst`, yet `Inst` does not dominate `I` if we
+            // arrive directly at AfterCallBlock, so we need to save `Inst` in
+            // the context.
             ContextVariables.insert(Inst);
-            //Pending.push_back(Inst);
           }
         } else if (Argument *Arg = dyn_cast<Argument>(O)) {
           // count() should be as fast/slow as insert, so just insert here 
@@ -353,13 +375,12 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
   }
 
   // restore F
-  EntryBlock->eraseFromParent();  
+  EntryBlock->eraseFromParent();
 
   Entry.ContextVariables.clear();
-  Entry.ContextVariables.reserve(ContextVariables.size());
-  for (SmallPtrSet<Value*, 256>::iterator I = ContextVariables.begin(), E = ContextVariables.end(); I != E; ++I) {
-    Entry.ContextVariables.push_back(*I);
-  }
+  Entry.ContextVariables.insert(Entry.ContextVariables.begin(),
+                                ContextVariables.begin(),
+                                ContextVariables.end());
 }
 
 /*
@@ -436,12 +457,13 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
 
  */
 
-void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& AsyncCalls) {
+void LowerEmAsyncify::transformAsyncFunction(Function &F,
+                                             Instructions const& AsyncCalls) {
   assert(!AsyncCalls.empty());
 
   // Pass 0
-  // collect all the return instructions from the original function
-  // will use later
+  // Collect all the return instructions from the original function, which we
+  // will use later.
   std::vector<ReturnInst*> OrigReturns;
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
     if (ReturnInst *RI = dyn_cast<ReturnInst>(&*I)) {
@@ -453,38 +475,49 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
   // Scan each async call and make the basic structure:
   // All these will be cloned into the callback functions
   // - allocate the async context before calling an async function
-  // - check async right after calling an async function, save context & return if async, continue if not
-  // - retrieve the async return value and free the async context if the called function turns out to be sync
+  // - check async right after calling an async function, save context & return
+  //   if async, continue if not
+  // - retrieve the async return value and free the async context if the called
+  //   function turns out to be sync
   std::vector<AsyncCallEntry> AsyncCallEntries;
   AsyncCallEntries.reserve(AsyncCalls.size());
-  for (Instructions::const_iterator I = AsyncCalls.begin(), E = AsyncCalls.end(); I != E; ++I) {
+  for (Instructions::const_iterator I = AsyncCalls.begin(), E = AsyncCalls.end();
+       I != E; ++I)
+  {
     // prepare blocks
     Instruction *CurAsyncCall = *I;
     CallInst *CurAsyncCallInst = cast<CallInst>(CurAsyncCall);
-    bool CurIsInvoke = CurAsyncCallInst->getAttributes().hasAttribute(AttributeSet::FunctionIndex, "emscripten_invoke");
+    bool CurIsInvoke =
+        CurAsyncCallInst->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                                       "emscripten_invoke");
 
     // The block containing the async call
     BasicBlock *CurBlock = CurAsyncCall->getParent();
     // The block should run after the async call
-    BasicBlock *AfterCallBlock = SplitBlock(CurBlock, CurAsyncCall->getNextNode(), this);
+    BasicBlock *AfterCallBlock =
+        SplitBlock(CurBlock, CurAsyncCall->getNextNode(), this);
     // The block where we store the context and return
-    BasicBlock *SaveAsyncCtxBlock = BasicBlock::Create(TheModule->getContext(), "SaveAsyncCtx", &F, AfterCallBlock);
+    BasicBlock *SaveAsyncCtxBlock =
+        BasicBlock::Create(TheModule->getContext(), "SaveAsyncCtx", &F,
+                           AfterCallBlock);
     // return a dummy value at the end, to make the block valid
     new UnreachableInst(TheModule->getContext(), SaveAsyncCtxBlock);
 
-    // allocate the context before making the call
-    // we don't know the size yet, will fix it later
-    // we cannot insert the instruction later because,
-    // we need to make sure that all the instructions and blocks are fixed before we can generate DT and find context variables
-    // In CallHandler.h `sp` will be put as the third parameter
-    // such that we can take a note of the original sp
+    // Allocate the context before making the call
+    // We don't know the size until we've analysed all the context variables, so
+    // we put in zero for the first argument and fix it later.
+    // In CallHandler.h `sp` will be fudged in as the third parameter so that
+    // `emscripten_alloc_async_context` can save the stack pointer.
     SmallVector<Value*,16> AllocCtxArgs;
     AllocCtxArgs.push_back(Constant::getNullValue(I32));
     AllocCtxArgs.push_back(ConstantInt::get(I32, CurIsInvoke));
-    CallInst *AllocAsyncCtxInst = CallInst::Create(AllocAsyncCtxFunction, AllocCtxArgs, "AsyncCtx", CurAsyncCall);
+    CallInst *AllocAsyncCtxInst =
+        CallInst::Create(AllocAsyncCtxFunction, AllocCtxArgs, "AsyncCtx",
+                         CurAsyncCall);
 
-    // Is the call is an invoke, then we just split the block in between call and emscripten_postinvoke().
-    // We patch that up by putting in an emscripten_async_postinvoke1() right after call, and an
+    // If the call is an invoke, then we just split the block in between the call
+    // instruction and emscripten_postinvoke().  We patch that up by putting in
+    // an emscripten_async_postinvoke1() right after call, and an
     // emscripten_async_postinvoke2() on the other side of the split.
     if (CurIsInvoke) {
       CallInst::Create(PostInvokeSplit1Function, "", CurBlock->getTerminator());
@@ -498,7 +531,8 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
       CurBlock->getTerminator()->eraseFromParent();
       // go to SaveAsyncCtxBlock if the previous call is async
       // otherwise just continue to AfterCallBlock
-      CallInst *CheckAsync = CallInst::Create(CheckAsyncFunction, "IsAsync", CurBlock);
+      CallInst *CheckAsync =
+          CallInst::Create(CheckAsyncFunction, "IsAsync", CurBlock);
       BranchInst::Create(SaveAsyncCtxBlock, AfterCallBlock, CheckAsync, CurBlock);
     }
 
@@ -510,7 +544,9 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     CurAsyncCallEntry.AllocAsyncCtxInst = AllocAsyncCtxInst;
     CurAsyncCallEntry.SaveAsyncCtxBlock = SaveAsyncCtxBlock;
     // create an empty function for the callback, which will be constructed later
-    CurAsyncCallEntry.CallbackFunc = Function::Create(CallbackFunctionType, F.getLinkage(), F.getName() + "__async_cb", TheModule);
+    CurAsyncCallEntry.CallbackFunc =
+        Function::Create(CallbackFunctionType, F.getLinkage(),
+                         F.getName() + "__async_cb", TheModule);
     AsyncCallEntries.push_back(CurAsyncCallEntry);
   }
 
@@ -518,7 +554,9 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
   // Pass 2
   // analyze the context variables and construct SaveAsyncCtxBlock for each async call
   // also calculate the size of the context and allocate the async context accordingly
-  for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
+  for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(),
+                                             EE = AsyncCallEntries.end();
+       EI != EE; ++EI) {
     AsyncCallEntry & CurEntry = *EI;
 
     // Collect everything to be saved
@@ -526,10 +564,13 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
 
     // Pack the variables as a struct
     {
-      // TODO: sort them from large memeber to small ones, in order to make the struct compact even when aligned
+      // TODO: sort them from large members to small ones, in order to make the
+      //       struct compact even when aligned
       SmallVector<Type*, 8> Types;
       Types.push_back(CallbackFunctionType->getPointerTo());
-      for (Values::iterator VI = CurEntry.ContextVariables.begin(), VE = CurEntry.ContextVariables.end(); VI != VE; ++VI) {
+      for (Values::iterator VI = CurEntry.ContextVariables.begin(),
+                            VE = CurEntry.ContextVariables.end();
+           VI != VE; ++VI) {
         Types.push_back((*VI)->getType());
       }
       CurEntry.ContextStructType = StructType::get(TheModule->getContext(), Types);
@@ -546,26 +587,36 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
       CurEntry.SaveAsyncCtxBlock->getTerminator()->eraseFromParent();
       assert(CurEntry.SaveAsyncCtxBlock->empty());
 
-      BitCastInst *AsyncCtxAddr = new BitCastInst(CurEntry.AllocAsyncCtxInst, CurEntry.ContextStructType->getPointerTo(), "AsyncCtxAddr", CurEntry.SaveAsyncCtxBlock);
+      BitCastInst *AsyncCtxAddr =
+          new BitCastInst(CurEntry.AllocAsyncCtxInst,
+                          CurEntry.ContextStructType->getPointerTo(),
+                          "AsyncCtxAddr", CurEntry.SaveAsyncCtxBlock);
       SmallVector<Value*, 2> Indices;
       // store the callback
       {
         Indices.push_back(ConstantInt::get(I32, 0));
         Indices.push_back(ConstantInt::get(I32, 0));
-        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", CurEntry.SaveAsyncCtxBlock);
-        new StoreInst(CurEntry.CallbackFunc, AsyncVarAddr, CurEntry.SaveAsyncCtxBlock);
+        GetElementPtrInst *AsyncVarAddr =
+            GetElementPtrInst::Create(AsyncCtxAddr, Indices, "",
+                                      CurEntry.SaveAsyncCtxBlock);
+        new StoreInst(CurEntry.CallbackFunc, AsyncVarAddr,
+                      CurEntry.SaveAsyncCtxBlock);
       }
       // store the context variables
       for (size_t i = 0; i < CurEntry.ContextVariables.size(); ++i) {
         Indices.clear();
         Indices.push_back(ConstantInt::get(I32, 0));
-        Indices.push_back(ConstantInt::get(I32, i + 1)); // the 0th element is the callback function
-        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", CurEntry.SaveAsyncCtxBlock);
-        new StoreInst(CurEntry.ContextVariables[i], AsyncVarAddr, CurEntry.SaveAsyncCtxBlock);
+        // Store i'th variable at i+1 (the first element is the callback function)
+        Indices.push_back(ConstantInt::get(I32, i + 1));
+        GetElementPtrInst *AsyncVarAddr =
+            GetElementPtrInst::Create(AsyncCtxAddr, Indices, "",
+                                      CurEntry.SaveAsyncCtxBlock);
+        new StoreInst(CurEntry.ContextVariables[i], AsyncVarAddr,
+                      CurEntry.SaveAsyncCtxBlock);
       }
       // to exit the block, we want to return without unwinding the stack frame
       CallInst::Create(DoNotUnwindFunction, "", CurEntry.SaveAsyncCtxBlock);
-      ReturnInst::Create(TheModule->getContext(), 
+      ReturnInst::Create(TheModule->getContext(),
           (F.getReturnType()->isVoidTy() ? 0 : Constant::getNullValue(F.getReturnType())),
           CurEntry.SaveAsyncCtxBlock);
     }
@@ -574,8 +625,11 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
   // Pass 3
   // now all the SaveAsyncCtxBlock's have been constructed
   // we can clone F and construct callback functions 
-  // we could not construct the callbacks in Pass 2 because we need _all_ those SaveAsyncCtxBlock's appear in _each_ callback
-  for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
+  // we could not construct the callbacks in Pass 2 because we need _all_ those
+  // SaveAsyncCtxBlock's appear in _each_ callback
+  for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(),
+                                             EE = AsyncCallEntries.end();
+       EI != EE; ++EI) {
     AsyncCallEntry & CurEntry = *EI;
 
     Function *CurCallbackFunc = CurEntry.CallbackFunc;
@@ -584,16 +638,23 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // Add the entry block
     // load variables from the context
     // also update VMap for CloneFunction
-    BasicBlock *EntryBlock = BasicBlock::Create(TheModule->getContext(), "AsyncCallbackEntry", CurCallbackFunc);
+    BasicBlock *EntryBlock =
+        BasicBlock::Create(TheModule->getContext(), "AsyncCallbackEntry",
+                           CurCallbackFunc);
     std::vector<LoadInst *> LoadedAsyncVars;
     {
-      BitCastInst *AsyncCtxAddr = new BitCastInst(CurCallbackFunc->arg_begin(), CurEntry.ContextStructType->getPointerTo(), "AsyncCtx", EntryBlock);
+      BitCastInst *AsyncCtxAddr =
+          new BitCastInst(CurCallbackFunc->arg_begin(),
+                          CurEntry.ContextStructType->getPointerTo(),
+                          "AsyncCtx", EntryBlock);
       SmallVector<Value*, 2> Indices;
       for (size_t i = 0; i < CurEntry.ContextVariables.size(); ++i) {
         Indices.clear();
         Indices.push_back(ConstantInt::get(I32, 0));
-        Indices.push_back(ConstantInt::get(I32, i + 1)); // the 0th element of AsyncCtx is the callback function
-        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", EntryBlock);
+        // Load i'th variable from i+1 (the first element is the callback function)
+        Indices.push_back(ConstantInt::get(I32, i + 1));
+        GetElementPtrInst *AsyncVarAddr =
+            GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", EntryBlock);
         LoadedAsyncVars.push_back(new LoadInst(AsyncVarAddr, "", EntryBlock));
         // we want the argument to be replaced by the loaded value
         if (isa<Argument>(CurEntry.ContextVariables[i]))
@@ -621,8 +682,11 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
         for (size_t i = 0; i < OrigReturns.size(); ++i) {
           ReturnInst *RI = cast<ReturnInst>(VMap[OrigReturns[i]]);
           // Need to store the return value into the global area
-          CallInst *RawRetValAddr = CallInst::Create(GetAsyncReturnValueAddrFunction, "", RI);
-          BitCastInst *RetValAddr = new BitCastInst(RawRetValAddr, F.getReturnType()->getPointerTo(), "AsyncRetValAddr", RI);
+          CallInst *RawRetValAddr =
+              CallInst::Create(GetAsyncReturnValueAddrFunction, "", RI);
+          BitCastInst *RetValAddr =
+              new BitCastInst(RawRetValAddr, F.getReturnType()->getPointerTo(),
+                              "AsyncRetValAddr", RI);
           new StoreInst(RI->getOperand(0), RetValAddr, RI);
         }
         // we want to unwind the stack back to where it was before the original function as called
@@ -636,52 +700,68 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
       }
     }
 
-    // the callback function does not have any return value
-    // so clear all the attributes for return
+    // The callback function does not have any return value, so clear all the
+    // attributes on the return value.
     {
       AttributeSet Attrs = CurCallbackFunc->getAttributes();
-      CurCallbackFunc->setAttributes(
-        Attrs.removeAttributes(TheModule->getContext(), AttributeSet::ReturnIndex, Attrs.getRetAttributes())
-      );
+      Attrs = Attrs.removeAttributes(TheModule->getContext(),
+                                     AttributeSet::ReturnIndex,
+                                     Attrs.getRetAttributes());
+      CurCallbackFunc->setAttributes(Attrs);
     }
 
     // in the callback function, we never allocate a new async frame
     // instead we reuse the existing one
     SmallVector<Value*,16> ReallocCtxArgs;
-    for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
+    for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(),
+                                               EE = AsyncCallEntries.end();
+         EI != EE; ++EI) {
       Instruction *I = cast<Instruction>(VMap[EI->AllocAsyncCtxInst]);
       ReallocCtxArgs.clear();
       ReallocCtxArgs.push_back(I->getOperand(0));
       ReallocCtxArgs.push_back(ConstantInt::get(I32, EI->CallIsInvoke));
-      ReplaceInstWithInst(I, CallInst::Create(ReallocAsyncCtxFunction, ReallocCtxArgs, "ReallocAsyncCtx"));
+      ReplaceInstWithInst(I, CallInst::Create(ReallocAsyncCtxFunction,
+                          ReallocCtxArgs, "ReallocAsyncCtx"));
     }
 
     // mapped entry point & async call
     BasicBlock *ResumeBlock = cast<BasicBlock>(VMap[CurEntry.AfterCallBlock]);
     Instruction *MappedAsyncCall = cast<Instruction>(VMap[CurEntry.AsyncCallInst]);
-   
-    // To save space, for each async call in the callback function, we just ignore the sync case, and leave it to the scheduler
+
+    // To save space, for each async call in the callback function, we just
+    // ignore the sync case, and leave it to the scheduler
     // TODO need an option for this
     {
-      for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
+      for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(),
+                                                 EE = AsyncCallEntries.end();
+           EI != EE; ++EI)
+      {
         AsyncCallEntry & CurEntry = *EI;
         Instruction *MappedAsyncCallInst = cast<Instruction>(VMap[CurEntry.AsyncCallInst]);
         BasicBlock *MappedAsyncCallBlock = MappedAsyncCallInst->getParent();
         BasicBlock *MappedAfterCallBlock = cast<BasicBlock>(VMap[CurEntry.AfterCallBlock]);
 
         // for the sync case of the call, go to NewBlock (instead of MappedAfterCallBlock)
-        BasicBlock *NewBlock = BasicBlock::Create(TheModule->getContext(), "", CurCallbackFunc, MappedAfterCallBlock);
+        BasicBlock *NewBlock =
+            BasicBlock::Create(TheModule->getContext(), "", CurCallbackFunc,
+                               MappedAfterCallBlock);
         MappedAsyncCallBlock->getTerminator()->setSuccessor(1, NewBlock);
         // store the return value
         if (!MappedAsyncCallInst->use_empty()) {
-          CallInst *RawRetValAddr = CallInst::Create(GetAsyncReturnValueAddrFunction, "", NewBlock);
-          BitCastInst *RetValAddr = new BitCastInst(RawRetValAddr, MappedAsyncCallInst->getType()->getPointerTo(), "AsyncRetValAddr", NewBlock);
+          CallInst *RawRetValAddr =
+              CallInst::Create(GetAsyncReturnValueAddrFunction, "", NewBlock);
+          BitCastInst *RetValAddr =
+              new BitCastInst(RawRetValAddr,
+                              MappedAsyncCallInst->getType()->getPointerTo(),
+                              "AsyncRetValAddr", NewBlock);
           new StoreInst(MappedAsyncCallInst, RetValAddr, NewBlock);
         }
         // tell the scheduler that we want to keep the current async stack frame
         CallInst::Create(DoNotUnwindAsyncFunction, "", NewBlock);
-        // finally we go to the SaveAsyncCtxBlock, to register the callbac, save the local variables and leave
-        BasicBlock *MappedSaveAsyncCtxBlock = cast<BasicBlock>(VMap[CurEntry.SaveAsyncCtxBlock]);
+        // finally we go to the SaveAsyncCtxBlock, to register the callback,
+        // save the local variables and leave
+        BasicBlock *MappedSaveAsyncCtxBlock =
+            cast<BasicBlock>(VMap[CurEntry.SaveAsyncCtxBlock]);
         BranchInst::Create(MappedSaveAsyncCtxBlock, NewBlock);
       }
     }
@@ -705,7 +785,7 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
             new StoreInst(LoadedAsyncVars[i], Addr, EntryBlock);
             ToPromote.push_back(Addr);
           } else {
-            // The parent block is not reachable, which means there is no confliction
+            // The parent block is not reachable, which means there is no conflict
             // it's safe to replace Inst with the loaded value
             assert(Inst != LoadedAsyncVars[i]); // this should only happen when OrigVar is an Argument
             Inst->replaceAllUsesWith(LoadedAsyncVars[i]); 
@@ -719,8 +799,12 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // or directly returned by the function (in its sync case)
     if (!CurEntry.AsyncCallInst->use_empty()) {
       // load the async return value
-      CallInst *RawRetValAddr = CallInst::Create(GetAsyncReturnValueAddrFunction, "", EntryBlock);
-      BitCastInst *RetValAddr = new BitCastInst(RawRetValAddr, MappedAsyncCall->getType()->getPointerTo(), "AsyncRetValAddr", EntryBlock);
+      CallInst *RawRetValAddr =
+          CallInst::Create(GetAsyncReturnValueAddrFunction, "", EntryBlock);
+      BitCastInst *RetValAddr =
+          new BitCastInst(RawRetValAddr,
+                          MappedAsyncCall->getType()->getPointerTo(),
+                          "AsyncRetValAddr", EntryBlock);
       LoadInst *RetVal = new LoadInst(RetValAddr, "AsyncRetVal", EntryBlock);
 
       AllocaInst *Addr = DemoteRegToStack(*MappedAsyncCall, false);
@@ -741,6 +825,9 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
      * such that we can free and extend the ctx by simply update STACKTOP.
      * Therefore we don't want any alloca's in callback functions.
      *
+     * XXX It's impossible to eliminate every alloca instruction; some simply
+     * can't be promoted (for example where the size of the allocation is dynamic:
+     * `while (std::cin.get()) variable.push_back(__builtin_alloca(100));`)
      */
     if (!ToPromote.empty()) {
       DominatorTree DT;
@@ -752,11 +839,16 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
   }
 
   // Pass 4
-  // Here are modifications to the original function, which we won't want to be cloned into the callback functions
-  for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(), EE = AsyncCallEntries.end();  EI != EE; ++EI) {
+  // Here are modifications to the original function, which we won't want to be
+  // cloned into the callback functions
+  for (std::vector<AsyncCallEntry>::iterator EI = AsyncCallEntries.begin(),
+                                             EE = AsyncCallEntries.end();
+      EI != EE; ++EI)
+  {
     AsyncCallEntry & CurEntry = *EI;
     // remove the frame if no async functinon has been called
-    CallInst::Create(FreeAsyncCtxFunction, CurEntry.AllocAsyncCtxInst, "", CurEntry.AfterCallBlock->getFirstNonPHI());
+    CallInst::Create(FreeAsyncCtxFunction, CurEntry.AllocAsyncCtxInst, "",
+                     CurEntry.AfterCallBlock->getFirstNonPHI());
   }
 }
 

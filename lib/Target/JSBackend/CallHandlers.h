@@ -158,16 +158,6 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
 DEF_CALL_HANDLER(emscripten_resume, {
   return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
 })
-DEF_CALL_HANDLER(emscripten_async_postinvoke1, {
-  assert(InvokeState == 1 || InvokeState == 2); // normally 2, but can be 1 if the call in between was optimized out
-  InvokeState = 0;
-  return "";
-})
-DEF_CALL_HANDLER(emscripten_async_postinvoke2, {
-  assert(InvokeState == 0);
-  InvokeState = 2; // reset the state as if we've just done an invoke (it returned asynchronously)
-  return "";
-})
 
 // setjmp support
 
@@ -209,6 +199,17 @@ DEF_CALL_HANDLER(emscripten_alloc_async_context, {
 DEF_CALL_HANDLER(emscripten_check_async, {
   return getAssign(CI) + "___async";
 })
+DEF_CALL_HANDLER(emscripten_async_postinvoke1, {
+  assert(InvokeState == 1 || InvokeState == 2); // normally 2, but can be 1 if the call in between was optimized out
+  InvokeState = 0;
+  return "";
+})
+DEF_CALL_HANDLER(emscripten_async_postinvoke2, {
+  assert(InvokeState == 0);
+  InvokeState = 2; // reset the state as if we've just done an invoke (it returned asynchronously)
+  return "";
+})
+
 // prevent unwinding the stack
 // preserve the return value of the return inst
 DEF_CALL_HANDLER(emscripten_do_not_unwind, {
@@ -586,8 +587,6 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(emscripten_preinvoke);
   SETUP_CALL_HANDLER(emscripten_postinvoke);
-  SETUP_CALL_HANDLER(emscripten_async_postinvoke1);
-  SETUP_CALL_HANDLER(emscripten_async_postinvoke2);
   SETUP_CALL_HANDLER(emscripten_landingpad);
   SETUP_CALL_HANDLER(emscripten_resume);
   SETUP_CALL_HANDLER(emscripten_prep_setjmp);
@@ -597,6 +596,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_get_longjmp_result);
   SETUP_CALL_HANDLER(emscripten_alloc_async_context);
   SETUP_CALL_HANDLER(emscripten_check_async);
+  SETUP_CALL_HANDLER(emscripten_async_postinvoke1);
+  SETUP_CALL_HANDLER(emscripten_async_postinvoke2);
   SETUP_CALL_HANDLER(emscripten_do_not_unwind);
   SETUP_CALL_HANDLER(emscripten_do_not_unwind_async);
   SETUP_CALL_HANDLER(emscripten_get_async_return_value_addr);
