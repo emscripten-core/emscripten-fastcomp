@@ -6,4 +6,4 @@
 ; The most important parts of the datalayout for PNaCl are the pointer
 ; size and the endianness ("e" for little endian).
 
-; CHECK: target datalayout = "e{{.*}}p:32:32:32{{.*}}"
+; CHECK: target datalayout = "e-{{.*}}p:32:32-{{.*}}"
