@@ -26,7 +26,10 @@ bool PNaClABIProps::isWhitelistedMetadata(unsigned MDKind) {
 }
 
 bool PNaClABIProps::isWhitelistedMetadata(const NamedMDNode *MD) {
-  return MD->getName().startswith("llvm.dbg.") && PNaClABIAllowDebugMetadata;
+  return PNaClABIAllowDebugMetadata &&
+         (MD->getName().startswith("llvm.dbg.") ||
+          // "Debug Info Version" is in llvm.module.flags.
+          MD->getName().equals("llvm.module.flags"));
 }
 
 bool PNaClABIProps::
