@@ -521,12 +521,10 @@ bool ResolvePNaClIntrinsics::visitCalls(
   if (!IntrinsicFunction)
     return false;
 
-  for (Value::use_iterator UI = IntrinsicFunction->use_begin(),
-                           UE = IntrinsicFunction->use_end();
-       UI != UE;) {
+  for (User *U : IntrinsicFunction->users()) {
     // At this point, the only uses of the intrinsic can be calls, since
     // we assume this pass runs on bitcode that passed ABI verification.
-    IntrinsicInst *Call = dyn_cast<IntrinsicInst>(*UI++);
+    IntrinsicInst *Call = dyn_cast<IntrinsicInst>(U);
     if (!Call)
       report_fatal_error("Expected use of intrinsic to be a call: " +
                          Resolver.getName());
