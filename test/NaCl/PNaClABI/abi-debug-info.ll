@@ -4,6 +4,9 @@
 
 ; DBG-NOT: disallowed
 
+; A debuginfo version is required.
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
 
 declare void @llvm.dbg.declare(metadata, metadata)
 declare void @llvm.dbg.value(metadata, i64, metadata)
