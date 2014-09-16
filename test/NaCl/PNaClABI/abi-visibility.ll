@@ -4,12 +4,12 @@
 ; __attribute__((visibility("hidden"))) and
 ; __attribute__((visibility("protected"))).
 
-define internal hidden void @visibility_hidden() {
+define hidden void @visibility_hidden() {
   ret void
 }
 ; CHECK: Function visibility_hidden has disallowed visibility: hidden
 
-define internal protected void @visibility_protected() {
+define protected void @visibility_protected() {
   ret void
 }
-; CHECK-NEXT: Function visibility_protected has disallowed visibility: protected
+; CHECK: Function visibility_protected has disallowed visibility: protected
