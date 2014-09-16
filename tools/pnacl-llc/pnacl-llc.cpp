@@ -178,34 +178,34 @@ GetFileNameRoot(StringRef InputFilename) {
 
 static tool_output_file *GetOutputStream(const char *TargetName,
                                          Triple::OSType OS,
-                                         std::string Filename) {
+                                         const char *ProgName) {
   // If we don't yet have an output filename, make one.
-  if (Filename.empty()) {
+  if (OutputFilename.empty()) {
     if (InputFilename == "-")
-      Filename = "-";
+      OutputFilename = "-";
     else {
-      Filename = GetFileNameRoot(InputFilename);
+      OutputFilename = GetFileNameRoot(InputFilename);
 
       switch (FileType) {
       case TargetMachine::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
-            Filename += ".cbe.c";
+            OutputFilename += ".cbe.c";
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
-            Filename += ".cpp";
+            OutputFilename += ".cpp";
           else
-            Filename += ".s";
+            OutputFilename += ".s";
         } else
-          Filename += ".s";
+          OutputFilename += ".s";
         break;
       case TargetMachine::CGFT_ObjectFile:
         if (OS == Triple::Win32)
-          Filename += ".obj";
+          OutputFilename += ".obj";
         else
-          Filename += ".o";
+          OutputFilename += ".o";
         break;
       case TargetMachine::CGFT_Null:
-        Filename += ".null";
+        OutputFilename += ".null";
         break;
       }
     }
@@ -227,14 +227,15 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (!Binary)
     OpenFlags |= sys::fs::F_Text;
-  std::unique_ptr<tool_output_file> FDOut(
-      new tool_output_file(OutputFilename.c_str(), error, OpenFlags));
+  tool_output_file *FDOut = new tool_output_file(OutputFilename.c_str(), error,
+                                                 OpenFlags);
   if (!error.empty()) {
     errs() << error << '\n';
+    delete FDOut;
     return nullptr;
   }
 
-  return FDOut.release();
+  return FDOut;
 }
 #endif // !defined(__native_client__)
 
@@ -557,7 +558,7 @@ static int compileSplitModule(const TargetOptions &Options,
       OutFileName << ".module" << ModuleIndex;
     std::unique_ptr<tool_output_file> Out
         (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
-                         OutFileName.str()));
+                         ProgramName.data()));
     if (!Out) return 1;
     formatted_raw_ostream FOS(Out->os());
 #else
