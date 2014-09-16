@@ -76,8 +76,8 @@ namespace {
     DataLayout *DL;
 
     Type *Void, *I1, *I32, *I32Ptr;
-    FunctionType *VFunction, *I1Function, *I32PFunction;
-    FunctionType *VI32PFunction, *I32PI32Function, *I32PI32I32Function;
+    FunctionType *VFunction, *I1Function, *I32PFunction, *VI32PFunction;
+    FunctionType *VI32PI1Function, *I32PI32Function, *I32PI32I32Function;
     FunctionType *CallbackFunctionType;
 
     Function *AllocAsyncCtxFunction, *ReallocAsyncCtxFunction;
@@ -229,6 +229,11 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   VI32PFunction = FunctionType::get(Void, ArgTypes, false);
 
   ArgTypes.clear();
+  ArgTypes.push_back(I32Ptr);
+  ArgTypes.push_back(I1);
+  VI32PI1Function = FunctionType::get(Void, ArgTypes, false);
+
+  ArgTypes.clear();
   ArgTypes.push_back(I32);
   I32PI32Function = FunctionType::get(I32Ptr, ArgTypes, false);
 
@@ -262,7 +267,7 @@ void LowerEmAsyncify::initTypesAndFunctions(void) {
   );
 
   FreeAsyncCtxFunction = Function::Create(
-    VI32PFunction,
+    VI32PI1Function,
     GlobalValue::ExternalLinkage,
     "emscripten_free_async_context",
     TheModule
@@ -846,8 +851,11 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F,
       EI != EE; ++EI)
   {
     AsyncCallEntry & CurEntry = *EI;
-    // remove the frame if no async functinon has been called
-    CallInst::Create(FreeAsyncCtxFunction, CurEntry.AllocAsyncCtxInst, "",
+    // remove the frame if no async function has been called
+    SmallVector<Value*,16> FreeCtxArgs;
+    FreeCtxArgs.push_back(CurEntry.AllocAsyncCtxInst);
+    FreeCtxArgs.push_back(ConstantInt::get(I1, CurEntry.CallIsInvoke));
+    CallInst::Create(FreeAsyncCtxFunction, FreeCtxArgs, "",
                      CurEntry.AfterCallBlock->getFirstNonPHI());
   }
 }

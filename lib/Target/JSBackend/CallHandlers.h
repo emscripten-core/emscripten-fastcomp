@@ -198,9 +198,11 @@ DEF_CALL_HANDLER(emscripten_alloc_async_context, {
 })
 DEF_CALL_HANDLER(emscripten_free_async_context, {
   // insert st as the 2nd parameter if we have it, -1 otherwise
+  bool invoking = dyn_cast<ConstantInt>(CI->getOperand(1))->equalsInt(1);
+  assert(!invoking || FunctionHasLandingpad);
   return getAssign(CI) + "_emscripten_free_async_context(" +
       getValueAsStr(CI->getOperand(0)) + "," +
-      (FunctionHasLandingpad ? "st" : "-1") +
+      (invoking ? "st" : "-1") +
       ")|0";
 })
 DEF_CALL_HANDLER(emscripten_check_async, {
