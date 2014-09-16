@@ -19,6 +19,7 @@
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Instructions.h"
@@ -28,6 +29,8 @@
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InstIterator.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -44,6 +47,14 @@
 #endif
 
 using namespace llvm;
+
+static raw_ostream &prettyWarning() {
+  errs().changeColor(raw_ostream::YELLOW);
+  errs() << "warning:";
+  errs().resetColor();
+  errs() << " ";
+  return errs();
+}
 
 static cl::list<std::string>
 AsyncifyFunctions("emscripten-asyncify-functions",
@@ -125,11 +136,18 @@ INITIALIZE_PASS(LowerEmAsyncify, "loweremasyncify",
     "Lower async functions for js/emscripten",
     false, false)
 
+#define DEBUG_TYPE "loweremasyncify"
+STATISTIC(StatFnsAnalysed, "The # of functions scanned");
+STATISTIC(StatFnsAsyncified, "The # of functions marked as async");
+STATISTIC(StatFnsAsyncCallbacks, "The # of async callback functions created");
+
 bool LowerEmAsyncify::runOnModule(Module &M) {
   TheModule = &M;
 
   std::set<std::string> WhiteList(AsyncifyWhiteList.begin(),
                                   AsyncifyWhiteList.end());
+  int NumFnsAnalysed = M.size();
+  StatFnsAnalysed += NumFnsAnalysed;
 
   /* 
    * collect all the functions that should be asyncified
@@ -141,7 +159,7 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
     Function *F = TheModule->getFunction(AFName);
     if (F && !WhiteList.count(F->getName())) {
       AsyncFunctionsPending.push_back(F);
-    }  
+    }
   }
 
   // No function needed to transform
@@ -205,6 +223,21 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
   {
     transformAsyncFunction(*(I->first), I->second);
   }
+
+  int NumCallbackFns = M.size() - NumFnsAnalysed;
+  StatFnsAsyncCallbacks += NumCallbackFns;
+
+  int NumFnsAsyncified = AsyncFunctionCalls.size();
+  StatFnsAsyncified += NumFnsAsyncified;
+  int BloatedFns = NumFnsAsyncified + NumCallbackFns, TotalFns = M.size();
+  if (BloatedFns > TotalFns / 2)
+    prettyWarning()
+        << "ASYNCIFY has run wild and expanded "
+        << format("%.1f%%", double(BloatedFns)/TotalFns*100)
+        << " of the application (" << NumCallbackFns
+        << " callbacks for " << NumFnsAsyncified << " async functions out of "
+        << NumFnsAnalysed << " total) -- consider using fewer calls to async "
+        << "functions or fewer virtual methods\n";
 
   return true;
 }

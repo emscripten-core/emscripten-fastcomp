@@ -55,7 +55,7 @@ using namespace llvm;
 #define assert(x) { if (!(x)) report_fatal_error(#x); }
 #endif
 
-raw_ostream &prettyWarning() {
+static raw_ostream &prettyWarning() {
   errs().changeColor(raw_ostream::YELLOW);
   errs() << "warning:";
   errs().resetColor();
