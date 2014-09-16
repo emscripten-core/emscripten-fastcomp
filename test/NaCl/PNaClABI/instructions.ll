@@ -235,13 +235,13 @@ define internal void @atomic() {
   %ptr = inttoptr i32 0 to i32*
 
  ; CHECK-NOT: disallowed
-  %la = load atomic i32* %ptr seq_cst, align 4            ; CHECK: disallowed: atomic load: {{.*}} load atomic
-  %lv = load volatile i32* %ptr, align 4                  ; CHECK: disallowed: volatile load: {{.*}} load volatile
-  store atomic i32 undef, i32* %ptr seq_cst, align 4      ; CHECK: disallowed: atomic store: store atomic
-  store volatile i32 undef, i32* %ptr, align 4            ; CHECK: disallowed: volatile store: store volatile
-  fence acq_rel                                           ; CHECK: disallowed: bad instruction opcode: fence
-  %cmpx = cmpxchg i32* %ptr, i32 undef, i32 undef acq_rel ; CHECK: disallowed: bad instruction opcode: {{.*}} cmpxchg
-  %crm = atomicrmw add i32* %ptr, i32 1 acquire           ; CHECK: disallowed: bad instruction opcode: {{.*}} atomicrmw
+  %la = load atomic i32* %ptr seq_cst, align 4                      ; CHECK: disallowed: atomic load: {{.*}} load atomic
+  %lv = load volatile i32* %ptr, align 4                            ; CHECK: disallowed: volatile load: {{.*}} load volatile
+  store atomic i32 undef, i32* %ptr seq_cst, align 4                ; CHECK: disallowed: atomic store: store atomic
+  store volatile i32 undef, i32* %ptr, align 4                      ; CHECK: disallowed: volatile store: store volatile
+  fence acq_rel                                                     ; CHECK: disallowed: bad instruction opcode: fence
+  %cmpx = cmpxchg i32* %ptr, i32 undef, i32 undef acq_rel monotonic ; CHECK: disallowed: bad instruction opcode: {{.*}} cmpxchg
+  %crm = atomicrmw add i32* %ptr, i32 1 acquire                     ; CHECK: disallowed: bad instruction opcode: {{.*}} atomicrmw
   ret void
 }
 
