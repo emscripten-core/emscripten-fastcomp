@@ -40,7 +40,7 @@ void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
         PN->setIncomingValue(I, NewVal);
     }
   } else {
-    UR->replaceUsesOfWith(UR, NewVal);
+    UR->replaceUsesOfWith(U->get(), NewVal);
   }
 }
 
