@@ -62,13 +62,17 @@ static bool expandIntrinsic(Module *M, Intrinsic::ID ID) {
   Types[LengthTypePos] = Type::getInt32Ty(M->getContext());
   Function *NewIntrinsic = Intrinsic::getDeclaration(M, ID, Types);
 
-  for (Value::use_iterator CallIter = OldIntrinsic->use_begin(),
-         E = OldIntrinsic->use_end(); CallIter != E; ) {
-    CallInst *Call = dyn_cast<CallInst>(*CallIter++);
-    if (!Call) {
+  SmallVector<CallInst *, 64> Calls;
+  for (User *U : OldIntrinsic->users()) {
+    if (CallInst *Call = dyn_cast<CallInst>(U))
+      Calls.push_back(Call);
+    else
       report_fatal_error("CanonicalizeMemIntrinsics: Taking the address of an "
-                         "intrinsic is not allowed: " + OldName);
-    }
+                         "intrinsic is not allowed: " +
+                         OldName);
+  }
+
+  for (CallInst *Call : Calls) {
     // This temporarily leaves Call non-well-typed.
     Call->setCalledFunction(NewIntrinsic);
     // Truncate the "len" argument.  No overflow check.
@@ -78,6 +82,7 @@ static bool expandIntrinsic(Module *M, Intrinsic::ID ID) {
                                         "mem_len_truncate");
     Call->setArgOperand(2, Length);
   }
+
   OldIntrinsic->eraseFromParent();
   return true;
 }
