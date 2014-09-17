@@ -46,7 +46,7 @@
 //===----------------------------------------------------------------------===//
 
 class NaClPI32<dag outs, dag ins, string asm>
-  : I<0, CustomFrm, outs, ins, asm, []>, Requires<[IsNaCl, In32BitMode]>;
+  : I<0, CustomFrm, outs, ins, asm, []>, Requires<[IsNaCl, Not64BitMode]>;
 
 let isTerminator = 1, isReturn = 1, isBarrier = 1,
     hasCtrlDep = 1, FPForm = SpecialFP, isAsmParserOnly = 1 in {
@@ -254,7 +254,7 @@ def NACL_CG_TLS_addr32 : I<0, Pseudo, (outs), (ins i32mem:$sym),
                          "call\t___tls_get_addr@PLT"
                          ".bundle_unlock",
                          [(X86tlsaddr tls32addr:$sym)]>,
-                         Requires<[In32BitMode, IsNaCl]>;
+                         Requires<[Not64BitMode, IsNaCl]>;
 
 // These are lowered in X86NaClRewritePass.
 let Defs = [RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11,
@@ -275,10 +275,10 @@ def NACL_CG_IE_TLS_addr64 : I<0, Pseudo, (outs), (ins i32mem:$sym), "",
 // For mtls-use-call.
 def NACL_CG_LE_TLS_addr32 : I<0, Pseudo, (outs), (ins i32mem:$sym), "",
                             [(X86tlsaddr_le tls32addr:$sym)]>,
-                            Requires<[IsNaCl, In32BitMode]>;
+                            Requires<[IsNaCl, Not64BitMode]>;
 def NACL_CG_IE_TLS_addr32 : I<0, Pseudo, (outs), (ins i32mem:$sym), "",
                             [(X86tlsaddr_ie tls32addr:$sym)]>,
-                            Requires<[IsNaCl, In32BitMode]>;
+                            Requires<[IsNaCl, Not64BitMode]>;
 }
 
 let usesCustomInserter = 1, Defs = [EFLAGS] in
