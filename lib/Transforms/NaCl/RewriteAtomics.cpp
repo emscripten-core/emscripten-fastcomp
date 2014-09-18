@@ -246,13 +246,32 @@ void AtomicVisitor::replaceInstructionWithIntrinsicCall(
   std::string Name(I.getName());
   Function *F = Intrinsic->getDeclaration(&M);
   CallInst *Call = CallInst::Create(F, Args, "", &I);
+  Call->setDebugLoc(I.getDebugLoc());
   Instruction *Res = Call;
-  if (!Call->getType()->isVoidTy() && DstType != OverloadedType) {
+
+  assert((I.getType()->isStructTy() == isa<AtomicCmpXchgInst>(&I)) &&
+         "cmpxchg returns a struct, and other instructions don't");
+  if (auto S = dyn_cast<StructType>(I.getType())) {
+    assert(S->getNumElements() == 2 &&
+           "cmpxchg returns a struct with two elements");
+    assert(S->getElementType(0) == DstType &&
+           "cmpxchg struct's first member should be the value type");
+    assert(S->getElementType(1) == Type::getInt1Ty(C) &&
+           "cmpxchg struct's second member should be the success flag");
+    // Recreate struct { T value, i1 success } after the call.
+    auto Success = CmpInst::Create(
+        Instruction::ICmp, CmpInst::ICMP_EQ, Res,
+        cast<AtomicCmpXchgInst>(&I)->getCompareOperand(), "success", &I);
+    Res = InsertValueInst::Create(
+        InsertValueInst::Create(UndefValue::get(S), Res, 0,
+                                Name + ".insert.value", &I),
+        Success, 1, Name + ".insert.success", &I);
+  } else if (!Call->getType()->isVoidTy() && DstType != OverloadedType) {
     // The call returns a value which needs to be cast to a non-integer.
     Res = createCast(I, Call, DstType, Name + ".cast");
     Res->setDebugLoc(I.getDebugLoc());
   }
-  Call->setDebugLoc(I.getDebugLoc());
+
   I.replaceAllUsesWith(Res);
   I.eraseFromParent();
   Call->setName(Name);
@@ -324,12 +343,16 @@ void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
                                       Args);
 }
 
-///   %res = cmpxchg T* %ptr, T %old, T %new, memory_order_success,
-///       %memory_order_failure
+///   %res = cmpxchg [weak] T* %ptr, T %old, T %new, memory_order_success
+///       memory_order_failure
+///   %val = extractvalue { T, i1 } %res, 0
+///   %success = extractvalue { T, i1 } %res, 1
 /// becomes:
-///   %res = call T @llvm.nacl.atomic.cmpxchg.i<size>(
+///   %val = call T @llvm.nacl.atomic.cmpxchg.i<size>(
 ///       %object, %expected, %desired, memory_order_success,
 ///       memory_order_failure)
+///  %success = icmp eq %old, %val
+/// Note: weak is currently dropped if present, the cmpxchg is always strong.
 void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
   PointerHelper<AtomicCmpXchgInst> PH(*this, I);
   const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
