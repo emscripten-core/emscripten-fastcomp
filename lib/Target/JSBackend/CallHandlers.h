@@ -477,24 +477,20 @@ DEF_CALL_HANDLER(emscripten_float32x4_greaterThan, {
   return CH___default__(CI, "SIMD.float32x4.greaterThan");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_and, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.and(" +
-      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
+  return CH___default__(CI, "SIMD.float32x4.and");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_andNot, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.and(SIMD.float32x4.not(" +
-      getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
+  return getAssign(CI) + "SIMD.float32x4.and(SIMD.float32x4.not(" +
+      getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_or, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.or(" +
-      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
+  return CH___default__(CI, "SIMD.float32x4.or");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_xor, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.xor(" +
-      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
+  return CH___default__(CI, "SIMD.float32x4.xor");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_not, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.not(" +
-      getValueAsStr(CI->getOperand(0)) + "))";
+  return CH___default__(CI, "SIMD.float32x4.not");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits, {
   return CH___default__(CI, "SIMD.float32x4.fromInt32x4Bits");
