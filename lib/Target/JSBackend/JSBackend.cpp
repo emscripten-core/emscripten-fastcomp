@@ -260,7 +260,16 @@ namespace {
         } else {
           return 'd';
         }
-      } else return 'i';
+      } else if (VectorType *VT = dyn_cast<VectorType>(T)) {
+        checkVectorType(VT);
+        if (VT->getElementType()->isIntegerTy()) {
+          return 'I';
+        } else {
+          return 'F';
+        }
+      } else {
+        return 'i';
+      }
     }
     std::string getFunctionSignature(const FunctionType *F, const std::string *Name=NULL) {
       std::string Ret;
