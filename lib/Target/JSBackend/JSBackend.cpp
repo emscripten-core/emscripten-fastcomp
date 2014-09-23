@@ -114,7 +114,7 @@ namespace {
   typedef std::set<std::string> NameSet;
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
-  typedef std::map<std::string, Type::TypeID> VarMap;
+  typedef std::map<std::string, Type *> VarMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
   typedef std::vector<std::string> FunctionTable;
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
@@ -660,7 +660,7 @@ const std::string &JSWriter::getJSName(const Value* val) {
 }
 
 std::string JSWriter::getAdHocAssign(const StringRef &s, Type *t) {
-  UsedVars[s] = t->getTypeID();
+  UsedVars[s] = t;
   return (s + " = ").str();
 }
 
@@ -1547,7 +1547,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
 
     if (NativizedVars.count(AI)) {
       // nativized stack variable, we just need a 'var' definition
-      UsedVars[getJSName(AI)] = AI->getType()->getElementType()->getTypeID();
+      UsedVars[getJSName(AI)] = AI->getType()->getElementType();
       return;
     }
 
@@ -1927,12 +1927,12 @@ void JSWriter::printFunctionBody(const Function *F) {
   R.Render();
 
   // Emit local variables
-  UsedVars["sp"] = Type::IntegerTyID;
+  UsedVars["sp"] = Type::getInt32Ty(F->getContext());
   unsigned MaxAlignment = Allocas.getMaxAlignment();
   if (MaxAlignment > STACK_ALIGN) {
-    UsedVars["sp_a"] = Type::IntegerTyID;
+    UsedVars["sp_a"] = Type::getInt32Ty(F->getContext());
   }
-  UsedVars["label"] = Type::IntegerTyID;
+  UsedVars["label"] = Type::getInt32Ty(F->getContext());
   if (!UsedVars.empty()) {
     unsigned Count = 0;
     for (VarMap::const_iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
@@ -1946,7 +1946,7 @@ void JSWriter::printFunctionBody(const Function *F) {
       }
       Count++;
       Out << VI->first << " = ";
-      switch (VI->second) {
+      switch (VI->second->getTypeID()) {
         default:
           llvm_unreachable("unsupported variable initializer type");
         case Type::PointerTyID:
@@ -1963,7 +1963,8 @@ void JSWriter::printFunctionBody(const Function *F) {
           Out << "+0";
           break;
         case Type::VectorTyID:
-          Out << "0"; // best we can do for now
+          // TODO: When ecmascript_simd issue #54 is implemented, we'll do a coercive call here.
+          Out << "0";
           break;
       }
     }

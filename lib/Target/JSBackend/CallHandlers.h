@@ -314,7 +314,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
               }
             } else {
               // emit a loop
-              UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
+              UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
               Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; src=" + Src + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
             }
             Pos += CurrLen;
@@ -368,7 +368,7 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
                 }
               } else {
                 // emit a loop
-                UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext())->getTypeID();
+                UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
                 Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
               }
               Pos += CurrLen;
@@ -477,24 +477,24 @@ DEF_CALL_HANDLER(emscripten_float32x4_greaterThan, {
   return CH___default__(CI, "SIMD.float32x4.greaterThan");
 })
 DEF_CALL_HANDLER(emscripten_float32x4_and, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.and(" +
-      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
+  return getAssign(CI) + "SIMD.float32x4.and(" +
+      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_andNot, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.and(SIMD.float32x4.not(" +
-      getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
+  return getAssign(CI) + "SIMD.float32x4.and(SIMD.float32x4.not(" +
+      getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_or, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.or(" +
-      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
+  return getAssign(CI) + "SIMD.float32x4.or(" +
+      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_xor, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.xor(" +
-      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + "))";
+  return getAssign(CI) + "SIMD.float32x4.xor(" +
+      getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_not, {
-  return getAssign(CI) + "SIMD.float32x4.fromInt32x4Bits(SIMD.float32x4.not(" +
-      getValueAsStr(CI->getOperand(0)) + "))";
+  return getAssign(CI) + "SIMD.float32x4.not(" +
+      getValueAsStr(CI->getOperand(0)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits, {
   return CH___default__(CI, "SIMD.float32x4.fromInt32x4Bits");
@@ -507,6 +507,9 @@ DEF_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits, {
 })
 DEF_CALL_HANDLER(emscripten_int32x4_fromFloat32x4, {
   return CH___default__(CI, "SIMD.int32x4.fromFloat32x4");
+})
+DEF_CALL_HANDLER(emscripten_float32x4_select, {
+  return CH___default__(CI, "SIMD.float32x4.select");
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \
@@ -636,6 +639,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_or);
   SETUP_CALL_HANDLER(emscripten_float32x4_xor);
   SETUP_CALL_HANDLER(emscripten_float32x4_not);
+  SETUP_CALL_HANDLER(emscripten_float32x4_select);
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
   SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
