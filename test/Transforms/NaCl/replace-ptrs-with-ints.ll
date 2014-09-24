@@ -263,12 +263,13 @@ define void @store_attrs(i8* %ptr, i8 %val) {
 
 
 define i32 @cmpxchg(i32* %ptr, i32 %a, i32 %b) {
-  %r = cmpxchg i32* %ptr, i32 %a, i32 %b seq_cst
-  ret i32 %r
+  %r = cmpxchg i32* %ptr, i32 %a, i32 %b seq_cst seq_cst
+  %res = extractvalue { i32, i1 } %r, 0
+  ret i32 %res
 }
 ; CHECK: define i32 @cmpxchg(i32 %ptr, i32 %a, i32 %b) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
-; CHECK-NEXT: %r = cmpxchg i32* %ptr.asptr, i32 %a, i32 %b seq_cst
+; CHECK-NEXT: %r = cmpxchg i32* %ptr.asptr, i32 %a, i32 %b seq_cst seq_cst
 
 define i32 @atomicrmw(i32* %ptr, i32 %x) {
   %r = atomicrmw add i32* %ptr, i32 %x seq_cst
