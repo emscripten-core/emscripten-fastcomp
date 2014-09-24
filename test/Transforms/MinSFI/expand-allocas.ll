@@ -1,5 +1,8 @@
 ; RUN: opt %s -minsfi-expand-allocas -S | FileCheck %s
 
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+
 target datalayout = "p:32:32:32"
 target triple = "le32-unknown-nacl"
 
@@ -31,14 +34,14 @@ IfNotOne:
 ; CHECK-NEXT:  }
 
 define i8* @test_const_alloca() {
-  %ptr = alloca i8, i32 9, !dbg !0
+  %ptr = alloca i8, i32 9, !dbg !1
   ret i8* %ptr
 }
 
 ; CHECK-LABEL: define i8* @test_const_alloca() {
 ; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 9
-; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*, !dbg !0
+; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr
 ; CHECK-NEXT:  }
 
@@ -56,14 +59,14 @@ define i8* @test_const_alloca_align() {
 ; CHECK-NEXT:  }
 
 define i8* @test_variable_length_alloca(i32 %size) {
-  %ptr = alloca i8, i32 %size, !dbg !0
+  %ptr = alloca i8, i32 %size, !dbg !1
   ret i8* %ptr
 }
 
 ; CHECK-LABEL: define i8* @test_variable_length_alloca(i32 %size) {
 ; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, %size
-; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*, !dbg !0
+; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr
 ; CHECK-NEXT:  }
 
@@ -111,19 +114,19 @@ define i8* @test_const_after_variable_alloca(i32 %size) {
 ; CHECK-NEXT:  }
 
 define i8* @test_stacksave() {
-  %ptr = call i8* @llvm.stacksave(), !dbg !0
+  %ptr = call i8* @llvm.stacksave(), !dbg !1
   ret i8* %ptr
 }
 
 ; CHECK-LABEL: define i8* @test_stacksave() {
 ; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
-; CHECK-NEXT:    %ptr = inttoptr i32 %frame_top to i8*, !dbg !0
+; CHECK-NEXT:    %ptr = inttoptr i32 %frame_top to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr
 ; CHECK-NEXT:  }
 
 define i8* @test_stacksave_after_alloca() {
   %ptr1 = alloca i8, i32 11
-  %ptr2 = call i8* @llvm.stacksave(), !dbg !0
+  %ptr2 = call i8* @llvm.stacksave(), !dbg !1
   ret i8* %ptr2
 }
 
@@ -131,38 +134,38 @@ define i8* @test_stacksave_after_alloca() {
 ; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 11
 ; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*
-; CHECK-NEXT:    %ptr2 = inttoptr i32 %1 to i8*, !dbg !0
+; CHECK-NEXT:    %ptr2 = inttoptr i32 %1 to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr2
 ; CHECK-NEXT:  }
 
 define i8* @test_stackrestore(i8* %new_stack) {
-  call void @llvm.stackrestore(i8* %new_stack), !dbg !0
-  %ptr = alloca i8, i32 5, !dbg !1
+  call void @llvm.stackrestore(i8* %new_stack), !dbg !1
+  %ptr = alloca i8, i32 5, !dbg !2
   ret i8* %ptr
 }
 
 ; CHECK-LABEL: define i8* @test_stackrestore(i8* %new_stack) {
 ; CHECK-NEXT:    frame_top = load i32* @__sfi_stack_ptr
-; CHECK-NEXT:    %1 = ptrtoint i8* %new_stack to i32, !dbg !0
+; CHECK-NEXT:    %1 = ptrtoint i8* %new_stack to i32, !dbg !1
 ; CHECK-NEXT:    %2 = sub i32 %1, 5
-; CHECK-NEXT:    %ptr = inttoptr i32 %2 to i8*, !dbg !1
+; CHECK-NEXT:    %ptr = inttoptr i32 %2 to i8*, !dbg !2
 ; CHECK-NEXT:    ret i8* %ptr
 ; CHECK-NEXT:  }
 
 define i8* @test_stackrestore_after_push(i8* %new_stack) {
-  %ptr1 = alloca i8, i32 5, !dbg !0
-  call void @llvm.stackrestore(i8* %new_stack), !dbg !1
-  %ptr2 = alloca i8, i32 6, !dbg !2
+  %ptr1 = alloca i8, i32 5, !dbg !1
+  call void @llvm.stackrestore(i8* %new_stack), !dbg !2
+  %ptr2 = alloca i8, i32 6, !dbg !3
   ret i8* %ptr2
 }
 
 ; CHECK-LABEL: define i8* @test_stackrestore_after_push(i8* %new_stack) {
 ; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 5
-; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*, !dbg !0
-; CHECK-NEXT:    %2 = ptrtoint i8* %new_stack to i32, !dbg !1
+; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*, !dbg !1
+; CHECK-NEXT:    %2 = ptrtoint i8* %new_stack to i32, !dbg !2
 ; CHECK-NEXT:    %3 = sub i32 %2, 6
-; CHECK-NEXT:    %ptr2 = inttoptr i32 %3 to i8*, !dbg !2
+; CHECK-NEXT:    %ptr2 = inttoptr i32 %3 to i8*, !dbg !3
 ; CHECK-NEXT:    ret i8* %ptr2
 ; CHECK-NEXT:  }
 
@@ -242,6 +245,6 @@ define i8* @test_global_ptr_updates(i32 %size) {
 ; CHECK-NEXT:    ret i8* %ptr2
 ; CHECK-NEXT:  }
 
-!0 = metadata !{i32 138, i32 0, metadata !0, null}
-!1 = metadata !{i32 142, i32 0, metadata !1, null}
-!2 = metadata !{i32 144, i32 0, metadata !2, null}
+!1 = metadata !{i32 138, i32 0, metadata !1, null}
+!2 = metadata !{i32 142, i32 0, metadata !2, null}
+!3 = metadata !{i32 144, i32 0, metadata !3, null}
