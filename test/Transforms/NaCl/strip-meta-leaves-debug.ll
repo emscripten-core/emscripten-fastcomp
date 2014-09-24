@@ -1,6 +1,9 @@
 ; RUN: opt -S -strip-metadata %s | FileCheck %s
 ; RUN: opt -S -strip-metadata -strip-debug %s | FileCheck %s --check-prefix=NODEBUG
 
+!llvm.module.flags = !{!13}
+!13 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+
 define i32 @foo(i32 %c) {
 ; CHECK: @foo
 ; CHECK-NEXT: call void @llvm.dbg{{.*}}, !dbg

@@ -1,5 +1,8 @@
 ; RUN: opt %s -replace-ptrs-with-ints -S | FileCheck %s
 
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+
 target datalayout = "p:32:32:32"
 
 
@@ -496,6 +499,9 @@ define void @debug_declare(i32 %val) {
 }
 ; CHECK: define void @debug_declare(i32 %val) {
 ; CHECK-NEXT: %var = alloca i8, i32 4
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !1)
+; This case is currently not converted.
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !1)
 ; CHECK-NEXT: ret void
 
 ; For now, debugging info for values is lost.  replaceAllUsesWith()
@@ -507,6 +513,8 @@ define void @debug_value(i32 %val, i8* %ptr) {
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1)
 ; CHECK-NEXT: ret void
 
 
