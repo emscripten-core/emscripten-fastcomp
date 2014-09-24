@@ -2,6 +2,9 @@
 ; RUN: opt %s -minsfi-ptrsize=20 -minsfi-sandbox-memory-accesses -S \ 
 ; RUN:   | FileCheck %s -check-prefix=CHECK-MASK
 
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+
 target datalayout = "p:32:32:32"
 target triple = "le32-unknown-nacl"
 
@@ -474,7 +477,7 @@ define i32 @test_opt_dont_remove_add_if_used(i32 %ptr_int, i32 %replace) {
 ; Check that dbg symbols are preserved
 
 define void @test_len_dbg(i8* %dest, i8* %src, i32 %len) {
-  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src, i32 %len, i32 4, i1 false), !dbg !0
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src, i32 %len, i32 4, i1 false), !dbg !1
   ret void
 }
 
@@ -488,28 +491,28 @@ define void @test_len_dbg(i8* %dest, i8* %src, i32 %len) {
 ; CHECK-NEXT:    %6 = zext i32 %5 to i64
 ; CHECK-NEXT:    %7 = add i64 %mem_base, %6
 ; CHECK-NEXT:    %8 = inttoptr i64 %7 to i8*
-; CHECK-NEXT:    call void @llvm.memcpy.p0i8.p0i8.i32(i8* %4, i8* %8, i32 %len, i32 4, i1 false), !dbg !0
+; CHECK-NEXT:    call void @llvm.memcpy.p0i8.p0i8.i32(i8* %4, i8* %8, i32 %len, i32 4, i1 false), !dbg !1
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
 
 define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
-  %ptr_sum = add i32 %ptr_int, 5, !dbg !0
-  %ptr = inttoptr i32 %ptr_sum to i32*, !dbg !1
-  store i32 %replace, i32* %ptr, !dbg !2
-  ret void, !dbg !3
+  %ptr_sum = add i32 %ptr_int, 5, !dbg !1
+  %ptr = inttoptr i32 %ptr_sum to i32*, !dbg !2
+  store i32 %replace, i32* %ptr, !dbg !3
+  ret void, !dbg !4
 }
 
 ; CHECK-LABEL: define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
 ; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = zext i32 %ptr_int to i64
 ; CHECK-NEXT:    %2 = add i64 %mem_base, %1
-; CHECK-NEXT:    %3 = add i64 %2, 5, !dbg !0
-; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*, !dbg !1
-; CHECK-NEXT:    store i32 %replace, i32* %4, !dbg !2
-; CHECK-NEXT:    ret void, !dbg !3
+; CHECK-NEXT:    %3 = add i64 %2, 5, !dbg !1
+; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*, !dbg !2
+; CHECK-NEXT:    store i32 %replace, i32* %4, !dbg !3
+; CHECK-NEXT:    ret void, !dbg !4
 ; CHECK-NEXT:  }
 
-!0 = metadata !{i32 138, i32 0, metadata !0, null}
-!1 = metadata !{i32 142, i32 0, metadata !1, null}
-!2 = metadata !{i32 144, i32 0, metadata !2, null}
+!1 = metadata !{i32 138, i32 0, metadata !1, null}
+!2 = metadata !{i32 142, i32 0, metadata !2, null}
 !3 = metadata !{i32 144, i32 0, metadata !3, null}
+!4 = metadata !{i32 144, i32 0, metadata !4, null}
