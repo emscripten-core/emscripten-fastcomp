@@ -1506,7 +1506,7 @@ Instruction *InstCombiner::visitICmpInstWithInstAndIntCst(ICmpInst &ICI,
     if (LHSI->hasOneUse() &&
         // @LOCALMOD-BEGIN
         // We don't want to introduce non-power-of-two integer sizes for PNaCl's
-        // stable wire format, so modify this transformation for NaCl.       
+        // stable wire format, so modify this transformation for NaCl.
         isPowerOf2_32(TypeBits - Amt) && (TypeBits - Amt) >= 8 &&
         // @LOCALMOD-END
         Amt != 0 && RHSV.countTrailingZeros() >= Amt) {
@@ -2438,12 +2438,13 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
     // @LOCALMOD-BEGIN
     // This is disabled for PNaCl, because we don't support the
     // with.overflow intrinsics in PNaCl's stable ABI.
-    if (0) {
-      ConstantInt *CI2;    // I = icmp ugt (add (add A, B), CI2), CI
-      if (I.getPredicate() == ICmpInst::ICMP_UGT &&
-          match(Op0, m_Add(m_Add(m_Value(A), m_Value(B)), m_ConstantInt(CI2))))
-        if (Instruction *Res = ProcessUGT_ADDCST_ADD(I, A, B, CI2, CI, *this))
-          return Res;
+    if (0)
+    {
+    ConstantInt *CI2;    // I = icmp ugt (add (add A, B), CI2), CI
+    if (I.getPredicate() == ICmpInst::ICMP_UGT &&
+        match(Op0, m_Add(m_Add(m_Value(A), m_Value(B)), m_ConstantInt(CI2))))
+      if (Instruction *Res = ProcessUGT_ADDCST_ADD(I, A, B, CI2, CI, *this))
+        return Res;
     }
     // @LOCALMOD-END
 
