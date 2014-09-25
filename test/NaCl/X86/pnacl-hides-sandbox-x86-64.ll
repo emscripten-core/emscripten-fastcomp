@@ -28,13 +28,13 @@ entry:
 ; CHECK:      pushq $0
 ; CHECK-NEXT: .text
 ; Immediate jump to the target
-; CHECK:      jmpq 0
+; CHECK:      jmp 0
 ; CHECK-NEXT: DirectCallTarget
 
 ; PIC-LABEL: TestDirectCall
 ; PIC: leal 19(%rip), %r10d
 ; PIC-NEXT: pushq %r10
-; PIC-NEXT: jmpq 0
+; PIC-NEXT: jmp 0
 ; PIC-NEXT: DirectCallTarget
 
 declare hidden void @DirectCallTarget() #1
@@ -155,7 +155,7 @@ sw.epilog:                                        ; preds = %entry, %sw.bb7, %sw
 ; At least 1 direct call to puts()
 ; CHECK:      pushq $0
 ; CHECK-NEXT: .text
-; CHECK:      jmpq 0
+; CHECK:      jmp 0
 ; CHECK-NEXT: puts
 
 declare i32 @puts(i8*) #1
