@@ -400,7 +400,7 @@ class NaClX86_32AsmBackend : public ELFX86_32AsmBackend {
 public:
   NaClX86_32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
       : ELFX86_32AsmBackend(T, OSABI, CPU),
-        STI(X86_MC::createX86MCSubtargetInfo(CPU, "", "")) {
+        STI(X86_MC::createX86MCSubtargetInfo("i386-unknown-nacl", CPU, "")) {
     State.PrefixSaved = 0;
     State.PrefixPass = false;
   }
@@ -419,7 +419,7 @@ class NaClX86_64AsmBackend : public ELFX86_64AsmBackend {
 public:
   NaClX86_64AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
       : ELFX86_64AsmBackend(T, OSABI, CPU),
-        STI(X86_MC::createX86MCSubtargetInfo(CPU, "", "")) {
+        STI(X86_MC::createX86MCSubtargetInfo("x86_64-unknown-nacl", CPU, "")) {
     State.PrefixSaved = 0;
     State.PrefixPass = false;
   }
