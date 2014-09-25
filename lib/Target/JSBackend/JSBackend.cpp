@@ -1196,9 +1196,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         std::string PS = getValueAsStr(P);
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4(HEAPU32[" << PS << ">>2],HEAPU32[" << PS << "+4>>2],HEAPU32[" << PS << "+8>>2],HEAPU32[" << PS << "+12>>2])";
+          Code << "SIMD_int32x4_load(HEAPU32.buffer, " << PS << ")";
         } else {
-          Code << "SIMD_float32x4(HEAPF32[" << PS << ">>2],HEAPF32[" << PS << "+4>>2],HEAPF32[" << PS << "+8>>2],HEAPF32[" << PS << "+12>>2])";
+          Code << "SIMD_float32x4_load(HEAPF32.buffer, " << PS << ")";
         }
         break;
       }
@@ -1332,9 +1332,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       std::string VS = getValueAsStr(SI->getValueOperand());
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "HEAPU32[" << PS << ">>2]=" << VS << ".x;HEAPU32[" << PS << "+4>>2]=" << VS << ".y;HEAPU32[" << PS << "+8>>2]=" << VS << ".z;HEAPU32[" << PS << "+12>>2]=" << VS << ".w";
+        Code << "SIMD_int32x4_store(HEAPU32.buffer, " << PS << ", " << VS << ")";
       } else {
-        Code << "HEAPF32[" << PS << ">>2]=" << VS << ".x;HEAPF32[" << PS << "+4>>2]=" << VS << ".y;HEAPF32[" << PS << "+8>>2]=" << VS << ".z;HEAPF32[" << PS << "+12>>2]=" << VS << ".w";
+        Code << "SIMD_float32x4_store(HEAPF32.buffer, " << PS << ", " << VS << ")";
       }
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
