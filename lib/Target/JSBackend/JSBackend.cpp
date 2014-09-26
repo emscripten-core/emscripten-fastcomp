@@ -679,11 +679,13 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: {
-      // some types we cannot cast, like vectors - ignore
-      if (t->isVectorTy()) return s;
       errs() << *t << "\n";
       assert(false && "Unsupported type");
     }
+    case Type::VectorTyID:
+      return (cast<VectorType>(t)->getElementType()->isIntegerTy() ?
+              "SIMD_int32x4(" + s + ")" :
+              "SIMD_float32x4(" + s + ")").str();
     case Type::FloatTyID: {
       if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
         if (sign & ASM_FFI_IN) {
