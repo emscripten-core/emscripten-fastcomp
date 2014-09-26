@@ -442,6 +442,7 @@ namespace {
 
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
+    void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
     bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
     void generateExpression(const User *I, raw_string_ostream& Code);
 
@@ -1143,6 +1144,79 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   }
 }
 
+void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code) {
+  // LLVM has no vector type constructor operator; it uses chains of
+  // insertelement instructions instead. If this insertelement is part of a
+  // chain, skip it for now; we'll process it when we reach the end.
+  if (III->hasOneUse() && isa<InsertElementInst>(*III->use_begin()))
+      return;
+
+  // This insertelement is at the base of a chain of single-user insertelement
+  // instructions. Collect all the inserted elements so that we can categorize
+  // the chain as either a splat, a constructor, or an actual series of inserts.
+  VectorType *VT = III->getType();
+  unsigned NumElems = VT->getNumElements();
+  unsigned NumInserted = 0;
+  SmallVector<const Value *, 8> Operands(NumElems, NULL);
+  const Value *Splat = III->getOperand(1);
+  const Value *Base = III;
+  do {
+    const InsertElementInst *BaseIII = cast<InsertElementInst>(Base);
+    const ConstantInt *IndexInt = cast<ConstantInt>(BaseIII->getOperand(2));
+    unsigned Index = IndexInt->getZExtValue();
+    if (Operands[Index] == NULL)
+      ++NumInserted;
+    Value *Op = BaseIII->getOperand(1);
+    if (Operands[Index] == NULL) {
+      Operands[Index] = Op;
+      if (Op != Splat)
+        Splat = NULL;
+    }
+    Base = BaseIII->getOperand(0);
+  } while (Base->hasOneUse() && isa<InsertElementInst>(Base));
+
+  // Emit code for the chain.
+  Code << getAssignIfNeeded(III);
+  if (NumInserted == NumElems) {
+    if (Splat) {
+      // Emit splat code.
+      if (VT->getElementType()->isIntegerTy()) {
+        Code << "SIMD_int32x4_splat(" << getValueAsStr(Splat) << ")";
+      } else {
+        Code << "SIMD_float32x4_splat(" << getValueAsStr(Splat) << ")";
+      }
+    } else {
+      // Emit constructor code.
+      if (VT->getElementType()->isIntegerTy()) {
+        Code << "SIMD_int32x4(";
+      } else {
+        Code << "SIMD_float32x4(";
+      }
+      for (unsigned Index = 0; Index < NumElems; ++Index) {
+        if (Index != 0)
+          Code << ", ";
+        Code << getValueAsStr(Operands[Index]);
+      }
+      Code << ")";
+    }
+  } else {
+    // Emit a series of inserts.
+    std::string Result = getValueAsStr(Base);
+    for (unsigned Index = 0; Index < NumElems; ++Index) {
+      std::string with;
+      if (!Operands[Index])
+        continue;
+      if (VT->getElementType()->isIntegerTy()) {
+        with = "SIMD_int32x4_with";
+      } else {
+        with = "SIMD_float32x4_with";
+      }
+      Result = with + SIMDLane[Index] + "(" + Result + ',' + getValueAsStr(Operands[Index]) + ')';
+    }
+    Code << Result;
+  }
+}
+
 bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
   VectorType *VT;
   if ((VT = dyn_cast<VectorType>(I->getType()))) {
@@ -1202,21 +1276,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         }
         break;
       }
-      case Instruction::InsertElement: {
-        const InsertElementInst *III = cast<InsertElementInst>(I);
-        const ConstantInt *IndexInt = cast<const ConstantInt>(III->getOperand(2));
-        unsigned Index = IndexInt->getZExtValue();
-        assert(Index <= 3);
-        Code << getAssignIfNeeded(I);
-        if (VT->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4_with";
-        } else {
-          Code << "SIMD_float32x4_with";
-        }
-        Code << SIMDLane[Index];
-        Code << "(" << getValueAsStr(III->getOperand(0)) << ',' << getValueAsStr(III->getOperand(1)) << ')';
+      case Instruction::InsertElement:
+        generateInsertElementExpression(cast<InsertElementInst>(I), Code);
         break;
-      }
       case Instruction::ShuffleVector: {
         Code << getAssignIfNeeded(I);
         const ShuffleVectorInst *SVI = cast<ShuffleVectorInst>(I);
