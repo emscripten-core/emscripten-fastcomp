@@ -68,6 +68,7 @@ static bool EnsureOutputBuffer(int Needed) { // ensures the output buffer is suf
       while (NewSize < TotalNeeded) NewSize = NewSize + (NewSize/2);
       //printf("resize %d => %d\n", OutputBufferSize, NewSize);
       OutputBufferRoot = (char*)realloc(OutputBufferRoot, NewSize);
+      assert(OutputBufferRoot);
       OutputBuffer = OutputBufferRoot + Offset;
       OutputBufferSize = NewSize;
       return false;
