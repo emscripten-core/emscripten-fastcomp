@@ -168,26 +168,16 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
   // address on the stack.
 
   // When generating PIC code for calls, calculate the return address manually:
+  //   mov %rXX,%r11d
   //   leal return_addr(%rip), %r10d
   //   pushq %r10
-  //   mov %rXX,%r11d
   //   and $0xffffffe0,%r11d
   //   add %r15,%r11
   //   jmpq *%r11
   //   .align 32
   //   return_addr:
 
-  // Explicitly push the (32-bit) return address for a NaCl64 call
-  // instruction.
   MCSymbol *RetTarget = NULL;
-  if (IsCall && HideSandboxBase) {
-    MCContext &Context = Out.getContext();
-
-    // Generate a label for the return address.
-    RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
-
-    PushReturnAddress(Context, Out, RetTarget);
-  }
 
   // For NaCl64, force an assignment of the branch target into r11,
   // and subsequently use r11 as the ultimate branch target, so that
@@ -209,6 +199,14 @@ static void EmitIndirectBranch(const MCOperand &Op, bool Is64Bit, bool IsCall,
       MOVInst.addOperand(MCOperand::CreateReg(Reg32));
       Out.EmitInstruction(MOVInst);
       Reg32 = SafeReg32;
+    }
+    if (IsCall) {
+      MCContext &Context = Out.getContext();
+      // Generate a label for the return address.
+      RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
+      // Explicitly push the (32-bit) return address for a NaCl64 call
+      // instruction.
+      PushReturnAddress(Context, Out, RetTarget);
     }
   }
   const unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);

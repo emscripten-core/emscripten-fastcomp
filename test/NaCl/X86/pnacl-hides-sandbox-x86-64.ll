@@ -56,8 +56,11 @@ entry:
 ; CHECK-NEXT: jmpq *%r11
 
 ; PIC-LABEL: TestIndirectCall:
+; Ensure that the mov of the call target happens before the return address
+; calculation
+; PIC: movl {{.*}}, %r11d
 ; Calculate and push the return address
-; PIC: leal 39(%rip), %r10d
+; PIC-NEXT: leal 36(%rip), %r10d
 ; PIC-NEXT: pushq %r10
 ; Fixed sequence for indirect jump
 ; PIC: andl $-32, %r11d
