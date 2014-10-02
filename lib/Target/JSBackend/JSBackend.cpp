@@ -1231,6 +1231,10 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         return false;
       case Instruction::PHI: // handled separately - we push them back into the relooper branchings
         break;
+      case Instruction::Select:
+        assert(I->getOperand(0)->getType()->isIntegerTy(1) && "vector-of-i1 select not yet supported");
+        Code << "(" << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0)) << "?" << getValueAsStr(I->getOperand(1)) << ":" << getValueAsStr(I->getOperand(2)) << ")";
+        break;
       case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD_float32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD_float32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FDiv: Code << getAssignIfNeeded(I) << "SIMD_float32x4_div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
