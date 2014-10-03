@@ -93,5 +93,124 @@ define void @intrinsic_call(i8* %ptr) {
 ; CHECK: define void @intrinsic_call
 ; CHECK-NEXT: call void @llvm.memset.p0i8.i32(i8* %ptr, i8 99,
 
+define void @invoking_small_arg(i8) {
+  invoke void @small_arg(i8 %0)
+      to label %cont unwind label %lpad
+cont:
+  ret void
+lpad:
+  %lp = landingpad { i8*, i32 } personality i8* null cleanup
+  ret void
+}
+; CHECK-LABEL: define void @invoking_small_arg(i32)
+; CHECK-NEXT:    %.arg_trunc = trunc i32 %0 to i8
+; CHECK-NEXT:    %arg_ext = zext i8 %.arg_trunc to i32
+; CHECK-NEXT:    %.arg_cast = bitcast void (i8)* bitcast (void (i32)* @small_arg to void (i8)*) to void (i32)*
+; CHECK-NEXT:    invoke void %.arg_cast(i32 %arg_ext)
+; CHECK-NEXT:        to label %cont unwind label %lpad
+
+; CHECK:       cont:
+; CHECK-NEXT:    ret void
+
+; CHECK:       lpad:
+; CHECK-NEXT:    %lp = landingpad { i8*, i32 } personality i8* null
+; CHECK-NEXT:            cleanup
+; CHECK-NEXT:    ret void
+
+define fastcc void @invoking_cc() {
+  invoke fastcc void @invoking_cc()
+      to label %cont unwind label %lpad
+cont:
+  ret void
+lpad:
+  %lp = landingpad { i8*, i32 } personality i8* null cleanup
+  ret void
+}
+; CHECK-LABEL: define fastcc void @invoking_cc()
+; CHECK-NEXT:    invoke fastcc void @invoking_cc()
+
+define void @invoking_attrs() noinline {
+  invoke void @invoking_attrs() noinline
+      to label %cont unwind label %lpad
+cont:
+  ret void
+lpad:
+  %lp = landingpad { i8*, i32 } personality i8* null cleanup
+  ret void
+}
+; CHECK:       define void @invoking_attrs() [[NOINLINE:#[0-9]+]]
+; CHECK:         invoke void @invoking_attrs() [[NOINLINE]]
+
+define void @invoking_critical_edge() {
+entry:
+  %a = invoke i8 @small_result()
+      to label %loop unwind label %lpad
+loop:
+  %b = phi i8 [ %a, %entry ], [ %c, %loop ]
+  %c = add i8 1, %b
+  %d = icmp eq i8 %c, 5
+  br i1 %d, label %exit, label %loop
+
+exit:
+  %aa = phi i8 [ 0, %lpad ], [ %c, %loop ]
+  ret void
+
+lpad:
+  %lp = landingpad { i8*, i32 } personality i8* null cleanup
+  br label %exit
+}
+; CHECK-LABEL: define void @invoking_critical_edge()
+; CHECK:        entry:
+; CHECK-NEXT:    %a.arg_cast = bitcast i8 ()* bitcast (i32 ()* @small_result to i8 ()*) to i32 ()*
+; CHECK-NEXT:    %a = invoke i32 %a.arg_cast()
+; CHECK-NEXT:            to label %entry.loop_crit_edge unwind label %lpad
+
+; CHECK:       entry.loop_crit_edge:
+; CHECK-NEXT:    %a.ret_trunc = trunc i32 %a to i8
+; CHECK-NEXT:    br label %loop
+
+; CHECK:       loop:
+; CHECK-NEXT:    %b = phi i8 [ %a.ret_trunc, %entry.loop_crit_edge ], [ %c, %loop ]
+; CHECK-NEXT:    %c = add i8 1, %b
+; CHECK-NEXT:    %d = icmp eq i8 %c, 5
+; CHECK-NEXT:    br i1 %d, label %exit, label %loop
+
+; CHECK:       exit:
+; CHECK-NEXT:    %aa = phi i8 [ 0, %lpad ], [ %c, %loop ]
+; CHECK-NEXT:    ret void
+
+; CHECK:       lpad:
+; CHECK-NEXT:    %lp = landingpad { i8*, i32 } personality i8* null
+; CHECK-NEXT:            cleanup
+; CHECK-NEXT:    br label %exit
+
+define i8 @invoking_small_result() {
+entry:
+  %a = invoke i8 @small_result()
+      to label %cont unwind label %lpad
+cont:
+  ret i8 %a
+lpad:
+  %lp = landingpad { i8*, i32 } personality i8* null cleanup
+  ret i8 123
+}
+; CHECK-LABEL: define i32 @invoking_small_result()
+; CHECK:       entry:
+; CHECK-NEXT:    %a.arg_cast = bitcast i8 ()* bitcast (i32 ()* @small_result to i8 ()*) to i32 ()*
+; CHECK-NEXT:    %a = invoke i32 %a.arg_cast()
+; CHECK-NEXT:        to label %cont unwind label %lpad
+
+; CHECK:       cont:
+; CHECK-NEXT:    %a.ret_trunc = trunc i32 %a to i8
+; CHECK-NEXT:    %a.ret_trunc.ret_ext = zext i8 %a.ret_trunc to i32
+; CHECK-NEXT:    ret i32 %a.ret_trunc.ret_ext
+
+; CHECK:       lpad:
+; CHECK-NEXT:    %lp = landingpad { i8*, i32 } personality i8* null
+; CHECK-NEXT:            cleanup
+; CHECK-NEXT:    %.ret_ext = zext i8 123 to i32
+; CHECK-NEXT:    ret i32 %.ret_ext
+
 
 ; CHECK: attributes [[NOUNWIND]] = { nounwind }
+; CHECK: attributes [[NOINLINE]] = { noinline }

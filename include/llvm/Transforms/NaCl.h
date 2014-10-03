@@ -11,6 +11,8 @@
 #define LLVM_TRANSFORMS_NACL_H
 
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 
 namespace llvm {
 
@@ -63,8 +65,11 @@ void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);
 
-// Copy debug information from Original to NewInst, and return NewInst.
-Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
+// Copy debug information from Original to New, and return New.
+template <typename T> T *CopyDebug(T *New, Instruction *Original) {
+  New->setDebugLoc(Original->getDebugLoc());
+  return New;
+}
 
 template <class InstType>
 static void CopyLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
