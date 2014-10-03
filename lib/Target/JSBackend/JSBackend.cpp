@@ -93,6 +93,12 @@ MaxSetjmps("emscripten-max-setjmps",
            cl::desc("Maximum amount of setjmp() calls per function stack frame (see emscripten MAX_SETJMPS)"),
            cl::init(20));
 
+static cl::opt<int>
+GlobalBase("emscripten-global-base",
+           cl::desc("Where global variables start out in memory (see emscripten GLOBAL_BASE option)"),
+           cl::init(8));
+
+
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
@@ -213,8 +219,6 @@ namespace {
       return GlobalData;
     }
 
-    #define GLOBAL_BASE 8
-
     // return the absolute offset of a global
     unsigned getGlobalAddress(const std::string &s) {
       GlobalAddressMap::const_iterator I = GlobalAddresses.find(s);
@@ -226,15 +230,15 @@ namespace {
       unsigned Ret;
       switch (a.second) {
         case 64:
-          assert((a.first + GLOBAL_BASE)%8 == 0);
-          Ret = a.first + GLOBAL_BASE;
+          assert((a.first + GlobalBase)%8 == 0);
+          Ret = a.first + GlobalBase;
           break;
         case 32:
-          assert((a.first + GLOBAL_BASE)%4 == 0);
-          Ret = a.first + GLOBAL_BASE + GlobalData64.size();
+          assert((a.first + GlobalBase)%4 == 0);
+          Ret = a.first + GlobalBase + GlobalData64.size();
           break;
         case 8:
-          Ret = a.first + GLOBAL_BASE + GlobalData64.size() + GlobalData32.size();
+          Ret = a.first + GlobalBase + GlobalData64.size() + GlobalData32.size();
           break;
         default:
           report_fatal_error("bad global address " + Twine(s) + ": "
