@@ -88,6 +88,16 @@ void PrintIndented(const char *Format, ...) {
     va_start(Args, Format);
     Written = vsnprintf(OutputBuffer, Left, Format, Args);
     va_end(Args);
+#ifdef _MSC_VER
+    // VC CRT specific: vsnprintf returns -1 on failure, other runtimes return the number of characters that would have been
+    // written. On VC, if we get -1, count the number of characters manually.
+    if (Written < 0) {
+      va_start(Args, Format);
+      Written = _vscprintf(Format, Args);
+      va_end(Args);
+    }
+#endif
+
     if (EnsureOutputBuffer(Written)) break;
   }
   OutputBuffer += Written;
