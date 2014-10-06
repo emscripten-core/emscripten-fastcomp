@@ -447,6 +447,7 @@ namespace {
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
+    void generateUnrolledExpression(const User *I, raw_string_ostream& Code);
     bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
     void generateExpression(const User *I, raw_string_ostream& Code);
 
@@ -1223,6 +1224,45 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   }
 }
 
+void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Code) {
+  VectorType *VT = cast<VectorType>(I->getType());
+
+  if (VT->getElementType()->isIntegerTy()) {
+    Code << "SIMD_int32x4(";
+  } else {
+    Code << "SIMD_float32x4(";
+  }
+
+  for (unsigned Index = 0; Index < VT->getNumElements(); ++Index) {
+    if (Index != 0)
+        Code << ", ";
+    std::string Lane = VT->getNumElements() <= 4 ?
+                       std::string(".") + simdLane[Index] :
+                       ".s" + utostr(Index);
+    switch (Operator::getOpcode(I)) {
+      case Instruction::SDiv:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) / ("
+             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        break;
+      case Instruction::UDiv:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << ">>>0) / ("
+             << getValueAsStr(I->getOperand(1)) << Lane << ">>>0)>>>0";
+        break;
+      case Instruction::SRem:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) / ("
+             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        break;
+      case Instruction::URem:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << ">>>0) / ("
+             << getValueAsStr(I->getOperand(1)) << Lane << ">>>0)>>>0";
+        break;
+      default: I->dump(); error("invalid unrolled vector instr"); break;
+    }
+  }
+
+  Code << ")";
+}
+
 bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
   VectorType *VT;
   if ((VT = dyn_cast<VectorType>(I->getType()))) {
@@ -1392,6 +1432,16 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         Code << ')';
         break;
       }
+      case Instruction::SDiv:
+      case Instruction::UDiv:
+      case Instruction::SRem:
+      case Instruction::URem:
+        // The SIMD API does not currently support these operations directly.
+        // Emulate them using scalar operations (which is essentially the same
+        // as what would happen if the API did support them, since hardware
+        // doesn't support them).
+        generateUnrolledExpression(I, Code);
+        break;
     }
     return true;
   } else {
