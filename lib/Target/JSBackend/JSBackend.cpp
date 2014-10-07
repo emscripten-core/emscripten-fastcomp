@@ -451,6 +451,7 @@ namespace {
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
+    void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
     void generateUnrolledExpression(const User *I, raw_string_ostream& Code);
@@ -1230,6 +1231,71 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   }
 }
 
+void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
+  Code << getAssignIfNeeded(SVI);
+
+  // Check whether can generate SIMD.js swizzle or shuffle.
+  std::string A = getValueAsStr(SVI->getOperand(0));
+  std::string B = getValueAsStr(SVI->getOperand(1));
+  int Mask0 = SVI->getMaskValue(0);
+  int Mask1 = SVI->getMaskValue(1);
+  int Mask2 = SVI->getMaskValue(2);
+  int Mask3 = SVI->getMaskValue(3);
+  bool swizzleA = false;
+  bool swizzleB = false;
+  if ((Mask0 < 4) && (Mask1 < 4) &&
+      (Mask2 < 4) && (Mask3 < 4)) {
+    swizzleA = true;
+  }
+  if ((Mask0 < 0 || (Mask0 >= 4 && Mask0 < 8)) &&
+      (Mask1 < 0 || (Mask1 >= 4 && Mask1 < 8)) &&
+      (Mask2 < 0 || (Mask2 >= 4 && Mask2 < 8)) &&
+      (Mask3 < 0 || (Mask3 >= 4 && Mask3 < 8))) {
+    swizzleB = true;
+  }
+  assert(!(swizzleA && swizzleB));
+  if (swizzleA || swizzleB) {
+    std::string T = (swizzleA ? A : B);
+    if (SVI->getType()->getElementType()->isIntegerTy()) {
+      Code << "SIMD_int32x4_swizzle(" << T << ", SIMD.";
+    } else {
+      Code << "SIMD_float32x4_swizzle(" << T << ", SIMD.";
+    }
+    for (unsigned int i = 0; i < 4; i++) {
+      int Mask = SVI->getMaskValue(i);
+      if (Mask < 0) {
+        Code << SIMDLane[0];
+      } else if (Mask < 4) {
+        Code << SIMDLane[Mask];
+      } else {
+        assert(Mask < 8);
+        Code << SIMDLane[Mask-4];
+      }
+    }
+    Code << ")";
+    return;
+  }
+
+  // Emit a fully-general shuffle.
+  if (SVI->getType()->getElementType()->isIntegerTy()) {
+    Code << "SIMD_int32x4_shuffle(";
+  } else {
+    Code << "SIMD_float32x4_shuffle(";
+  }
+
+  Code << A << ", " << B << ", ";
+
+  SmallVector<int, 16> Indices;
+  SVI->getShuffleMask(Indices);
+  for (unsigned int i = 0; i < Indices.size(); ++i) {
+    if (i != 0)
+      Code << ", ";
+    Code << Indices[i];
+  }
+
+  Code << ")";
+}
+
 void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code) {
   bool Invert = false;
   const char *Name;
@@ -1438,109 +1504,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::InsertElement:
         generateInsertElementExpression(cast<InsertElementInst>(I), Code);
         break;
-      case Instruction::ShuffleVector: {
-        Code << getAssignIfNeeded(I);
-        const ShuffleVectorInst *SVI = cast<ShuffleVectorInst>(I);
-        // Check whether can generate SIMD.js shuffle or shuffleMix.
-        std::string A = getValueAsStr(I->getOperand(0));
-        std::string B = getValueAsStr(I->getOperand(1));
-        int Mask0 = SVI->getMaskValue(0);
-        int Mask1 = SVI->getMaskValue(1);
-        int Mask2 = SVI->getMaskValue(2);
-        int Mask3 = SVI->getMaskValue(3);
-        bool shuffleA = false;
-        bool shuffleB = false;
-        if ((Mask0 < 4) && (Mask1 < 4) &&
-            (Mask2 < 4) && (Mask3 < 4)) {
-          shuffleA = true;
-        }
-        if ((Mask0 < 0 || (Mask0 >= 4 && Mask0 < 8)) &&
-            (Mask1 < 0 || (Mask1 >= 4 && Mask1 < 8)) &&
-            (Mask2 < 0 || (Mask2 >= 4 && Mask2 < 8)) &&
-            (Mask3 < 0 || (Mask3 >= 4 && Mask3 < 8))) {
-          shuffleB = true;
-        }
-        assert(!(shuffleA && shuffleB));
-        if (shuffleA || shuffleB) {
-          std::string T = (shuffleA ? A : B);
-          if (VT->getElementType()->isIntegerTy()) {
-            Code << "SIMD_int32x4_shuffle(" << T << ", SIMD.";
-          } else {
-            Code << "SIMD_float32x4_shuffle(" << T << ", SIMD.";
-          }
-          for (unsigned int i = 0; i < 4; i++) {
-            int Mask = SVI->getMaskValue(i);
-            if (Mask < 0) {
-              Code << SIMDLane[0];
-            } else if (Mask < 4) {
-              Code << SIMDLane[Mask];
-            } else {
-              assert(Mask < 8);
-              Code << SIMDLane[Mask-4];
-            }
-          }
-          Code << ")";
-          break;
-        }
-        bool shuffleMix = false;
-        bool swapAndShuffleMix = false;
-        if ((Mask0 < 4) && (Mask1 < 4) &&
-            (Mask2 < 0 || (Mask2 >= 4 && Mask2 < 8)) &&
-            (Mask3 < 0 || (Mask3 >= 4 && Mask3 < 8))) {
-          shuffleMix = true;
-        }
-        if ((Mask0 < 0 || (Mask0 >= 4 && Mask0 < 8)) &&
-            (Mask1 < 0 || (Mask1 >= 4 && Mask1 < 8)) &&
-            (Mask2 < 4) && (Mask3 < 4)) {
-          swapAndShuffleMix = true;
-        }
-        assert(!(shuffleMix && swapAndShuffleMix));
-        if (shuffleMix || swapAndShuffleMix) {
-          if (swapAndShuffleMix) {
-            std::string C = A;
-            A = B;
-            B = C;
-          }
-          if (VT->getElementType()->isIntegerTy()) {
-            Code << "SIMD_int32x4_shuffleMix(" << A << ", " << B << ", SIMD.";
-          } else {
-            Code << "SIMD_float32x4_shuffleMix(" << A << ", " << B << ", SIMD.";
-          }
-          for (unsigned int i = 0; i < 4; i++) {
-            int Mask = SVI->getMaskValue(i);
-            if (Mask < 0) {
-              Code << SIMDLane[0];
-            } else if (Mask < 4) {
-              Code << SIMDLane[Mask];
-            } else {
-              assert(Mask < 8);
-              Code << SIMDLane[Mask-4];
-            }
-          }
-          Code << ")";
-          break;
-        }
-        // Other cases.
-        if (VT->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4(";
-        } else {
-          Code << "SIMD_float32x4(";
-        }
-        for (unsigned int i = 0; i < 4; i++) {
-          int Mask = SVI->getMaskValue(i);
-          if (Mask < 0) {
-            Code << "0";
-          } else if (Mask < 4) {
-            Code << A << "." << simdLane[Mask];
-          } else {
-            assert(Mask < 8);
-            Code << B << "." << simdLane[Mask-4];
-          }
-          if (i < 3) Code << ",";
-        }
-        Code << ')';
+      case Instruction::ShuffleVector:
+        generateShuffleVectorExpression(cast<ShuffleVectorInst>(I), Code);
         break;
-      }
       case Instruction::SDiv:
       case Instruction::UDiv:
       case Instruction::SRem:
