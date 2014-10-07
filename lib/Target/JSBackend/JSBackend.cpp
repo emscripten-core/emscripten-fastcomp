@@ -381,7 +381,11 @@ namespace {
 
     void checkVectorType(Type *T) {
       VectorType *VT = cast<VectorType>(T);
-      assert(VT->getElementType()->getPrimitiveSizeInBits() == 32);
+      // LLVM represents the results of vector comparison as vectors of i1. We
+      // represent them as vectors of integers the size of the vector elements
+      // of the compare that produced them.
+      assert(VT->getElementType()->getPrimitiveSizeInBits() == 32 ||
+             VT->getElementType()->getPrimitiveSizeInBits() == 1);
       assert(VT->getNumElements() == 4);
       UsesSIMD = true;
       CantValidate = "SIMD types in use";
@@ -447,6 +451,7 @@ namespace {
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
+    void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateUnrolledExpression(const User *I, raw_string_ostream& Code);
     bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
     void generateExpression(const User *I, raw_string_ostream& Code);
@@ -1224,6 +1229,24 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   }
 }
 
+void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code) {
+  Code << getAssignIfNeeded(I) << "SIMD_int32x4_";
+  switch (cast<ICmpInst>(I)->getPredicate()) {
+    case ICmpInst::ICMP_EQ:  Code << "equal";  break;
+    case ICmpInst::ICMP_NE:  Code << "notEqual";  break;
+    case ICmpInst::ICMP_ULE: Code << "unsignedLessThanOrEqual"; break;
+    case ICmpInst::ICMP_SLE: Code << "lessThanOrEqual"; break;
+    case ICmpInst::ICMP_UGE: Code << "unsignedGreaterThanOrEqual"; break;
+    case ICmpInst::ICMP_SGE: Code << "greaterThanOrEqual"; break;
+    case ICmpInst::ICMP_ULT: Code << "unsignedLessThan"; break;
+    case ICmpInst::ICMP_SLT: Code << "lessThan"; break;
+    case ICmpInst::ICMP_UGT: Code << "unsignedGreaterThan"; break;
+    case ICmpInst::ICMP_SGT: Code << "greaterThan"; break;
+    default: I->dump(); error("invalid vector icmp"); break;
+  }
+  Code << "(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
+}
+
 void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Code) {
   VectorType *VT = cast<VectorType>(I->getType());
 
@@ -1274,6 +1297,16 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::Call: // return value is just a SIMD value, no special handling
         return false;
       case Instruction::PHI: // handled separately - we push them back into the relooper branchings
+        break;
+      case Instruction::ICmp:
+        generateICmpExpression(cast<ICmpInst>(I), Code);
+        break;
+      case Instruction::SExt:
+        assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
+               "sign-extension from vector of other than i1 not yet supported");
+        // Since we represent vectors of i1 as vectors of sign extended wider integers,
+        // sign extending them is a no-op.
+        Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
         break;
       case Instruction::Select:
         assert(I->getOperand(0)->getType()->isIntegerTy(1) && "vector-of-i1 select not yet supported");
