@@ -1231,21 +1231,30 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
 }
 
 void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code) {
-  Code << getAssignIfNeeded(I) << "SIMD_int32x4_";
+  bool Invert = false;
+  const char *Name;
   switch (cast<ICmpInst>(I)->getPredicate()) {
-    case ICmpInst::ICMP_EQ:  Code << "equal";  break;
-    case ICmpInst::ICMP_NE:  Code << "notEqual";  break;
-    case ICmpInst::ICMP_ULE: Code << "unsignedLessThanOrEqual"; break;
-    case ICmpInst::ICMP_SLE: Code << "lessThanOrEqual"; break;
-    case ICmpInst::ICMP_UGE: Code << "unsignedGreaterThanOrEqual"; break;
-    case ICmpInst::ICMP_SGE: Code << "greaterThanOrEqual"; break;
-    case ICmpInst::ICMP_ULT: Code << "unsignedLessThan"; break;
-    case ICmpInst::ICMP_SLT: Code << "lessThan"; break;
-    case ICmpInst::ICMP_UGT: Code << "unsignedGreaterThan"; break;
-    case ICmpInst::ICMP_SGT: Code << "greaterThan"; break;
+    case ICmpInst::ICMP_EQ:  Name = "equal"; break;
+    case ICmpInst::ICMP_NE:  Name = "equal"; Invert = true; break;
+    case ICmpInst::ICMP_SLE: Name = "greaterThan"; Invert = true; break;
+    case ICmpInst::ICMP_SGE: Name = "lessThan"; Invert = true; break;
+    case ICmpInst::ICMP_ULE: Name = "unsignedLessThanOrEqual"; break;
+    case ICmpInst::ICMP_UGE: Name = "unsignedGreaterThanOrEqual"; break;
+    case ICmpInst::ICMP_ULT: Name = "unsignedLessThan"; break;
+    case ICmpInst::ICMP_SLT: Name = "lessThan"; break;
+    case ICmpInst::ICMP_UGT: Name = "unsignedGreaterThan"; break;
+    case ICmpInst::ICMP_SGT: Name = "greaterThan"; break;
     default: I->dump(); error("invalid vector icmp"); break;
   }
-  Code << "(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
+
+  if (Invert)
+    Code << "SIMD_int32x4_not(";
+
+  Code << getAssignIfNeeded(I) << "SIMD_int32x4_" << Name << "("
+       << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
+
+  if (Invert)
+    Code << ")";
 }
 
 void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code) {
