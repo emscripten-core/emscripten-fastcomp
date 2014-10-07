@@ -452,6 +452,7 @@ namespace {
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
+    void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
     void generateUnrolledExpression(const User *I, raw_string_ostream& Code);
     bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
     void generateExpression(const User *I, raw_string_ostream& Code);
@@ -1247,6 +1248,69 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
   Code << "(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
 }
 
+void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code) {
+  const char *Name;
+  bool Invert = false;
+  switch (cast<FCmpInst>(I)->getPredicate()) {
+    case ICmpInst::FCMP_FALSE:
+      Code << "SIMD_int32x4(0, 0, 0, 0)";
+      return;
+    case ICmpInst::FCMP_TRUE:
+      Code << "SIMD_int32x4(-1, -1, -1, -1)";
+      return;
+    case ICmpInst::FCMP_ONE:
+      Code << "SIMD_float32x4_and(SIMD_float32x4_and("
+              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
+                                      << getValueAsStr(I->getOperand(0)) << "), " <<
+              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", "
+                                      << getValueAsStr(I->getOperand(1)) << ")), " <<
+              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
+                                         << getValueAsStr(I->getOperand(1)) << "))";
+      return;
+    case ICmpInst::FCMP_UEQ:
+      Code << "SIMD_float32x4_or(SIMD_float32x4_or("
+              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
+                                         << getValueAsStr(I->getOperand(0)) << "), " <<
+              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", "
+                                         << getValueAsStr(I->getOperand(1)) << ")), " <<
+              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
+                                      << getValueAsStr(I->getOperand(1)) << "))";
+      break;
+    case FCmpInst::FCMP_ORD:
+      Code << "SIMD_float32x4_and("
+              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
+              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
+      break;
+
+    case FCmpInst::FCMP_UNO:
+      Code << "SIMD_float32x4_or("
+              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
+              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
+      break;
+
+    case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
+    case ICmpInst::FCMP_OGT:  Name = "greaterThan"; break;
+    case ICmpInst::FCMP_OGE:  Name = "greaterThanOrEqual"; break;
+    case ICmpInst::FCMP_OLT:  Name = "lessThan"; break;
+    case ICmpInst::FCMP_OLE:  Name = "lessThanOrEqual"; break;
+    case ICmpInst::FCMP_UGT:  Name = "lessThanOrEqual"; Invert = true; break;
+    case ICmpInst::FCMP_UGE:  Name = "lessThan"; Invert = true; break;
+    case ICmpInst::FCMP_ULT:  Name = "greaterThanOrEqual"; Invert = true; break;
+    case ICmpInst::FCMP_ULE:  Name = "greaterThan"; Invert = true; break;
+    case ICmpInst::FCMP_UNE:  Name = "notEqual"; break;
+    default: I->dump(); error("invalid vector fcmp"); break;
+  }
+
+  if (Invert)
+    Code << "SIMD_int32x4_not(";
+
+  Code << getAssignIfNeeded(I) << "SIMD_float32x4_" << Name << "("
+       << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
+
+  if (Invert)
+    Code << ")";
+}
+
 void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Code) {
   VectorType *VT = cast<VectorType>(I->getType());
 
@@ -1300,6 +1364,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         break;
       case Instruction::ICmp:
         generateICmpExpression(cast<ICmpInst>(I), Code);
+        break;
+      case Instruction::FCmp:
+        generateFCmpExpression(cast<FCmpInst>(I), Code);
         break;
       case Instruction::SExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
