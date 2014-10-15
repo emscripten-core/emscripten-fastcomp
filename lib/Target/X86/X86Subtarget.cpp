@@ -321,9 +321,9 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
     Ret += "-f64:32:64";
 
   // Some ABIs align long double to 128 bits, others to 32.
-  if (ST.isTargetNaCl())
-    ; // No f80
-  else if (ST.is64Bit() || ST.isTargetDarwin())
+  // @LOCALMOD Removed the NaCl special-casing for LLVM 3.5 merge, it was
+  //           wrong. Patch sent upstream.
+  if (ST.is64Bit() || ST.isTargetDarwin())
     Ret += "-f80:128";
   else
     Ret += "-f80:32";
@@ -370,4 +370,3 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
 bool X86Subtarget::enableEarlyIfConversion() const {
   return hasCMov() && X86EarlyIfConv;
 }
-
