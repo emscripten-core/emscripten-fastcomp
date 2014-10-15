@@ -385,6 +385,7 @@ public:
     : ELFX86_32AsmBackend(T, OSABI, CPU) {
     State.PrefixSaved = 0;
     State.PrefixPass = false;
+    State.EmitRaw = false;
   }
 
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
@@ -400,6 +401,7 @@ public:
     : ELFX86_64AsmBackend(T, OSABI, CPU) {
     State.PrefixSaved = 0;
     State.PrefixPass = false;
+    State.EmitRaw = false;
   }
 
   bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {

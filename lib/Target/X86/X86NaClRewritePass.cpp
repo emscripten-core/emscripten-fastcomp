@@ -462,8 +462,9 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
           .addOperand(MI.getOperand(0))
           .addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
       }
+
       BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP64r))
-        .addReg(RegTarget)
+        .addReg(getX86SubSuperRegister(RegTarget, MVT::i32, false))
         .addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
     } else {
       RegTarget = X86::ECX;
@@ -575,7 +576,8 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
   // and variable operands removed.
   unsigned NewOpc = 0;
   switch (Opc) {
-  case X86::CALLpcrel32          : NewOpc = X86::NACL_CALL32d; break;
+  // 32-bit direct calls are handled unmodified by the assemblers
+  case X86::CALLpcrel32          : return true;
   case X86::TAILJMPd             : NewOpc = X86::JMP_4; break;
   case X86::NACL_CG_TAILJMPd64   : NewOpc = X86::JMP_4; break;
   case X86::NACL_CG_CALL64pcrel32: NewOpc = X86::NACL_CALL64d; break;
@@ -605,7 +607,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
 
     // Rewrite to:
     //   leaq $sym@TLSGD(%rip), %rdi
-    //   naclcall __tls_get_addr@PLT
+    //   call __tls_get_addr@PLT
     BuildMI(MBB, MBBI, DL, TII->get(X86::LEA64r), X86::RDI)
         .addReg(X86::RIP) // Base
         .addImm(1) // Scale
@@ -624,14 +626,14 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
       Opc == X86::NACL_CG_LE_TLS_addr32) {
     unsigned CallOpc, LeaOpc, Reg;
     // Rewrite to:
-    //   naclcall __nacl_read_tp@PLT
+    //   call __nacl_read_tp@PLT
     //   lea $sym@flag(,%reg), %reg
     if (Opc == X86::NACL_CG_LE_TLS_addr64) {
       CallOpc = X86::NACL_CALL64d;
       LeaOpc = X86::LEA64r;
       Reg = X86::RAX;
     } else {
-      CallOpc = X86::NACL_CALL32d;
+      CallOpc = X86::CALLpcrel32;
       LeaOpc = X86::LEA32r;
       Reg = X86::EAX;
     }
@@ -653,7 +655,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
       Opc == X86::NACL_CG_IE_TLS_addr32) {
     unsigned CallOpc, AddOpc, Base, Reg;
     // Rewrite to:
-    //   naclcall __nacl_read_tp@PLT
+    //   call __nacl_read_tp@PLT
     //   addq sym@flag(%base), %reg
     if (Opc == X86::NACL_CG_IE_TLS_addr64) {
       CallOpc = X86::NACL_CALL64d;
@@ -661,7 +663,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
       Base = X86::RIP;
       Reg = X86::RAX;
     } else {
-      CallOpc = X86::NACL_CALL32d;
+      CallOpc = X86::CALLpcrel32;
       AddOpc = X86::ADD32rm;
       Base = MI.getOperand(3).getTargetFlags() == X86II::MO_INDNTPOFF ?
           0 : X86::EBX; // EBX for GOTNTPOFF.

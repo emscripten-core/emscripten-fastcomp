@@ -277,10 +277,7 @@ static void EmitRet(const MCOperand *AmtOp, bool Is64Bit, MCStreamer &Out) {
     Out.EmitInstruction(ADDInst);
   }
 
-  MCInst JMPInst;
-  JMPInst.setOpcode(Is64Bit ? X86::NACL_JMP64r : X86::NACL_JMP32r);
-  JMPInst.addOperand(MCOperand::CreateReg(RegTarget));
-  Out.EmitInstruction(JMPInst);
+  EmitIndirectBranch(MCOperand::CreateReg(RegTarget), Is64Bit, false, Out);
 }
 
 // Fix a register after being truncated to 32-bits.
@@ -481,6 +478,21 @@ static void EmitREST(const MCInst &Inst, unsigned Reg32,
 }
 
 
+namespace {
+// RAII holder for the recursion guard.
+class EmitRawState {
+ public:
+  EmitRawState(X86MCNaClSFIState &S) : State(S) {
+    State.EmitRaw = true;
+  }
+  ~EmitRawState() {
+    State.EmitRaw = false;
+  }
+ private:
+  X86MCNaClSFIState &State;
+};
+}
+
 namespace llvm {
 // CustomExpandInstNaClX86 -
 //   If Inst is a NaCl pseudo instruction, emits the substitute
@@ -503,6 +515,13 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
   if (Out.hasRawTextSupport()) {
     return false;
   }
+  // If we make a call to EmitInstruction, we will be called recursively. In
+  // this case we just want the raw instruction to be emitted instead of
+  // handling the insruction here.
+  if (State.EmitRaw == true && !State.PrefixPass) {
+    return false;
+  }
+  EmitRawState E(State);
   unsigned Opc = Inst.getOpcode();
   DEBUG(dbgs() << "CustomExpandInstNaClX86("; Inst.dump(); dbgs() << ")\n");
   switch (Opc) {
@@ -520,10 +539,11 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
     assert(State.PrefixSaved == 0);
     State.PrefixSaved = Opc;
     return true;
-  case X86::NACL_CALL32d:
+  case X86::CALLpcrel32:
     assert(State.PrefixSaved == 0);
     EmitDirectCall(Inst.getOperand(0), false, Out);
     return true;
+  case X86::CALL64pcrel32:
   case X86::NACL_CALL64d:
     assert(State.PrefixSaved == 0);
     EmitDirectCall(Inst.getOperand(0), true, Out);
