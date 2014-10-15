@@ -1,7 +1,7 @@
 ; RUN: pnacl-llc -mtriple=armv7a-none-nacl-gnueabi %s -filetype=obj \
 ; RUN:  -relocation-model=pic -mattr=+neon \
 ; RUN:  -O0 -mcpu=cortex-a9 -o - \
-; RUN:  | llvm-objdump -disassemble -triple armv7 - | FileCheck %s
+; RUN:  | llvm-objdump -disassemble -r -triple armv7 - | FileCheck %s
 
 ; This test exercises NaCl (which doesn't use constant islands)
 ; together with -relocation-model=pic, to see that a movw/movt
@@ -21,9 +21,28 @@ define internal void @__do_eh_ctor() {
 entry:
   call void @__register_frame_info(i8* getelementptr inbounds ([0 x i8]* @__EH_FRAME_BEGIN__, i32 0, i32 0), %struct.object* @__do_eh_ctor.object)
 ; CHECK-LABEL: __do_eh_ctor
-; CHECK: movw
-; CHECK-NEXT: movt
-; CHECK-NEXT: add r{{.*}}, pc, r{{.*}}
+
+; CHECK: movw r[[REG0:[0-9]+]]
+; CHECK-NEXT: R_ARM_MOVW_PREL_NC .LCPI
+; CHECK-NEXT: movt r[[REG0]]
+; CHECK-NEXT: R_ARM_MOVT_PREL .LCPI
+; CHECK-NEXT: add r[[REG0]], pc, r[[REG0]]
+; CHECK: ldr r[[REG0]], {{\[}}r[[REG0]]{{\]}}
+
+; CHECK: movw r[[REG1:[0-9]+]]
+; CHECK-NEXT: R_ARM_MOVW_PREL_NC _GLOBAL_OFFSET_TABLE_
+; CHECK-NEXT: movt r[[REG1]]
+; CHECK-NEXT: R_ARM_MOVT_PREL _GLOBAL_OFFSET_TABLE_
+; CHECK-NEXT: add r[[REG1]], pc, r[[REG1]]
+; CHECK: add r[[REG0]], r[[REG0]], r[[REG1]]
+
+; CHECK: movw r[[REG2:[0-9]+]]
+; CHECK-NEXT: R_ARM_MOVW_PREL_NC .LCPI
+; CHECK-NEXT: movt r[[REG2]]
+; CHECK-NEXT: R_ARM_MOVT_PREL .LCPI
+; CHECK-NEXT: add r[[REG2:[0-9]+]], pc, r[[REG2]]
+; CHECK: ldr r[[REG2]], {{\[}}r[[REG2]]{{\]}}
+; CHECK: add r[[REG1]], r[[REG2]], r[[REG1]]
 
   ret void
 }
