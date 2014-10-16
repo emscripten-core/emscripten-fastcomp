@@ -517,7 +517,6 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
       // Note that the epilog already adds R15 when restoring RBP.
 
       // mov %ebp, %r10d
-      unsigned RegToPushLower;
       if (Fn->isVarArg()) {
         // Note: This use of r10 in the prolog can't be used with the
         // gcc "nest" attribute, due to its use of r10.  Example:
@@ -532,13 +531,12 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
         //     movq    %r10, %rax
         //     ret
         RegToPush = X86::R10;
-        RegToPushLower = X86::R10D;
       } else {
         RegToPush = X86::RAX;
-        RegToPushLower = X86::EAX;
       }
-      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32rr), RegToPushLower)
-        .addReg(FramePtr)
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32rr),
+              getX86SubSuperRegister(RegToPush, MVT::i32, false))
+        .addReg(getX86SubSuperRegister(FramePtr, MVT::i32, false))
         .setMIFlag(MachineInstr::FrameSetup);
     }
     // @LOCALMOD-END
@@ -1625,4 +1623,3 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     MBB.insert(I, New);
   }
 }
-
