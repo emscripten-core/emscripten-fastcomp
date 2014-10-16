@@ -143,6 +143,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
 
+  // The atomic cmpxchg instruction returns a struct, and is rewritten to an
+  // intrinsic as a post-opt pass, we therefore need to expand struct regs one
+  // last time.
+  PM.add(createExpandStructRegsPass());
+
   // We place StripAttributes after optimization passes because many
   // analyses add attributes to reflect their results.
   // StripAttributes must come after ExpandByVal and

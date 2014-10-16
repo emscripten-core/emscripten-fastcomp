@@ -191,11 +191,13 @@ static void SplitUpLoad(LoadInst *Load) {
   Load->eraseFromParent();
 }
 
-static void ExpandExtractValue(ExtractValueInst *EV) {
+static bool ExpandExtractValue(ExtractValueInst *EV) {
   // Search for the insertvalue instruction that inserts the struct
   // field referenced by this extractvalue instruction.
   Value *StructVal = EV->getAggregateOperand();
   Value *ResultField;
+  if (isa<AtomicCmpXchgInst>(StructVal))
+    return false; // CmpXchg returns a struct, it's handled by RewriteAtomics.
   for (;;) {
     if (InsertValueInst *IV = dyn_cast<InsertValueInst>(StructVal)) {
       if (EV->getNumIndices() != 1 || IV->getNumIndices() != 1) {
@@ -219,6 +221,7 @@ static void ExpandExtractValue(ExtractValueInst *EV) {
   }
   EV->replaceAllUsesWith(ResultField);
   EV->eraseFromParent();
+  return true;
 }
 
 bool ExpandStructRegs::runOnFunction(Function &Func) {
@@ -266,8 +269,7 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
          Iter != E; ) {
       Instruction *Inst = Iter++;
       if (ExtractValueInst *EV = dyn_cast<ExtractValueInst>(Inst)) {
-        ExpandExtractValue(EV);
-        Changed = true;
+        Changed |= ExpandExtractValue(EV);
       } else if (isa<InsertValueInst>(Inst)) {
         ToErase.push_back(Inst);
         Changed = true;
