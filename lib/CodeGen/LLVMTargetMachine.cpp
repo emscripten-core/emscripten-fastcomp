@@ -141,10 +141,12 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                             bool DisableVerify,
                                             AnalysisID StartAfter,
                                             AnalysisID StopAfter) {
+#if 0 // @LOCALMOD
   // Passes to handle jumptable function annotations. These can't be handled at
   // JIT time, so we don't add them directly to addPassesToGenerateCode.
   PM.add(createJumpInstrTableInfoPass());
   PM.add(createJumpInstrTablesPass(Options.JTType));
+#endif // @LOCALMOD
 
   // Add common CodeGen passes.
   MCContext *Context = addPassesToGenerateCode(this, PM, DisableVerify,
