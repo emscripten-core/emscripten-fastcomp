@@ -1142,12 +1142,15 @@ void AsmPrinter::EmitJumpTableInfo() {
       // rodata and text be too far apart for a RIP-relative offset?
        F->isWeakForLinker())
       && !UseReadOnlyJumpTables()) {
-      // @LOCALMOD-END
     OutStreamer.SwitchSection(getObjFileLowering().SectionForGlobal(F,Mang,TM));
   } else {
     // Otherwise, drop it in the readonly section.
+    // (localmod: pick a readonly section based on the properties of F, which
+    // means a unique readonly section if F gets a unique text section)
     const MCSection *ReadOnlySection =
-      getObjFileLowering().getSectionForConstant(SectionKind::getReadOnly());
+        getObjFileLowering().SectionForGlobal(
+            F, SectionKind::getReadOnly(), Mang, TM);
+    // @LOCALMOD-END
     OutStreamer.SwitchSection(ReadOnlySection);
     JTInDiffSection = true;
   }
