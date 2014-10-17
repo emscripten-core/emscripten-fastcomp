@@ -178,34 +178,34 @@ GetFileNameRoot(StringRef InputFilename) {
 
 static tool_output_file *GetOutputStream(const char *TargetName,
                                          Triple::OSType OS,
-                                         const char *ProgName) {
+                                         std::string Filename) {
   // If we don't yet have an output filename, make one.
-  if (OutputFilename.empty()) {
+  if (Filename.empty()) {
     if (InputFilename == "-")
-      OutputFilename = "-";
+      Filename = "-";
     else {
-      OutputFilename = GetFileNameRoot(InputFilename);
+      Filename = GetFileNameRoot(InputFilename);
 
       switch (FileType) {
       case TargetMachine::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
-            OutputFilename += ".cbe.c";
+            Filename += ".cbe.c";
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
-            OutputFilename += ".cpp";
+            Filename += ".cpp";
           else
-            OutputFilename += ".s";
+            Filename += ".s";
         } else
-          OutputFilename += ".s";
+          Filename += ".s";
         break;
       case TargetMachine::CGFT_ObjectFile:
         if (OS == Triple::Win32)
-          OutputFilename += ".obj";
+          Filename += ".obj";
         else
-          OutputFilename += ".o";
+          Filename += ".o";
         break;
       case TargetMachine::CGFT_Null:
-        OutputFilename += ".null";
+        Filename += ".null";
         break;
       }
     }
@@ -227,8 +227,8 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (!Binary)
     OpenFlags |= sys::fs::F_Text;
-  tool_output_file *FDOut = new tool_output_file(OutputFilename.c_str(), error,
-                                                 OpenFlags);
+  tool_output_file *FDOut =
+      new tool_output_file(Filename.c_str(), error, OpenFlags);
   if (!error.empty()) {
     errs() << error << '\n';
     delete FDOut;
@@ -558,7 +558,7 @@ static int compileSplitModule(const TargetOptions &Options,
       OutFileName << ".module" << ModuleIndex;
     std::unique_ptr<tool_output_file> Out
         (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
-                         ProgramName.data()));
+                         OutFileName.str()));
     if (!Out) return 1;
     formatted_raw_ostream FOS(Out->os());
 #else
