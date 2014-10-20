@@ -403,9 +403,10 @@ namespace {
       if (flt.getCategory() == APFloat::fcInfinity) return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
       else if (flt.getCategory() == APFloat::fcNaN) return ensureCast("nan", CFP->getType(), sign);
 
-      // Request 21 digits, aka DECIMAL_DIG, to avoid rounding errors.
+      // Request 9 or 17 digits, aka FLT_DECIMAL_DIG or DBL_DECIMAL_DIG (our
+      // long double is the the same as our double), to avoid rounding errors.
       SmallString<29> Str;
-      flt.toString(Str, 21);
+      flt.toString(Str, PreciseF32 && CFP->getType()->isFloatTy() ? 9 : 17);
 
       // asm.js considers literals to be floating-point literals when they contain a
       // dot, however our output may be processed by UglifyJS, which doesn't
