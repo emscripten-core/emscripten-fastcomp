@@ -358,10 +358,14 @@ void PassManagerBuilder::populateLTOPassManager(PassManagerBase &PM,
   // More loops are countable; try to optimize them.
   PM.add(createIndVarSimplifyPass());
   PM.add(createLoopDeletionPass());
-  PM.add(createLoopVectorizePass(true, true));
+  // @LOCALMOD-START The vectorizer was ignoring command-line options. A similar
+  //                 patch was sent upstream.
+  PM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
 
   // More scalar chains could be vectorized due to more alias information
-  PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
+  if (SLPVectorize)
+    PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
+  // @LOCALMOD-END
 
   if (LoadCombine)
     PM.add(createLoadCombinePass());
