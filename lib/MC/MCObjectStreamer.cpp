@@ -46,11 +46,27 @@ MCObjectStreamer::~MCObjectStreamer() {
   delete Assembler;
 }
 
+void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
+  if (PendingLabels.size()) {
+    if (!F) {
+      F = new MCDataFragment();
+      CurSectionData->getFragmentList().insert(CurInsertionPoint, F);
+      F->setParent(CurSectionData);
+    }
+    for (MCSymbolData *SD : PendingLabels) {
+      SD->setFragment(F);
+      SD->setOffset(0);
+    }
+    PendingLabels.clear();
+  }
+}
+
 void MCObjectStreamer::reset() {
   if (Assembler)
     Assembler->reset();
   CurSectionData = 0;
   CurInsertionPoint = MCSectionData::iterator();
+  PendingLabels.clear();
   MCStreamer::reset();
 }
 
@@ -63,7 +79,7 @@ MCFragment *MCObjectStreamer::getCurrentFragment() const {
   return 0;
 }
 
-MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() const {
+MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() {
   MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
   // When bundling is enabled, we don't want to add data to a fragment that
   // already has instructions (see MCELFStreamer::EmitInstToData for details)
@@ -131,15 +147,17 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   MCStreamer::EmitLabel(Symbol);
 
   MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
-
-  // FIXME: This is wasteful, we don't necessarily need to create a data
-  // fragment. Instead, we should mark the symbol as pointing into the data
-  // fragment if it exists, otherwise we should just queue the label and set its
-  // fragment pointer when we emit the next fragment.
-  MCDataFragment *F = getOrCreateDataFragment();
   assert(!SD.getFragment() && "Unexpected fragment on symbol data!");
-  SD.setFragment(F);
-  SD.setOffset(F->getContents().size());
+
+  // If there is a current fragment, mark the symbol as pointing into it.
+  // Otherwise queue the label and set its fragment pointer when we emit the
+  // next fragment.
+  if (auto *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment())) {
+    SD.setFragment(F);
+    SD.setOffset(F->getContents().size());
+  } else {
+    PendingLabels.push_back(&SD);
+  }
 }
 
 void MCObjectStreamer::EmitDebugLabel(MCSymbol *Symbol) {
@@ -174,6 +192,7 @@ void MCObjectStreamer::EmitWeakReference(MCSymbol *Alias,
 void MCObjectStreamer::ChangeSection(const MCSection *Section,
                                      const MCExpr *Subsection) {
   assert(Section && "Cannot switch to a null section!");
+  flushPendingLabels(NULL);
 
   CurSectionData = &getAssembler().getOrCreateSectionData(*Section);
 
@@ -396,5 +415,6 @@ void MCObjectStreamer::FinishImpl() {
   if (getContext().getGenDwarfForAssembly())
     MCGenDwarfInfo::Emit(this, LineSectionSymbol);
 
+  flushPendingLabels(NULL);
   getAssembler().Finish();
 }
