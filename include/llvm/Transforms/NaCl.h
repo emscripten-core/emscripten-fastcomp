@@ -57,6 +57,7 @@ ModulePass *createRewriteLLVMIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
+ModulePass *createStripModuleFlagsPass();
 
 void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
 void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);

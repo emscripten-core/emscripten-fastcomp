@@ -320,6 +320,7 @@ void initializeSandboxIndirectCallsPass(PassRegistry&);
 void initializeSandboxMemoryAccessesPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
+void initializeStripModuleFlagsPass(PassRegistry&);
 // @LOCALMOD-END
 }
 

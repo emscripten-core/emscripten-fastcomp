@@ -435,6 +435,7 @@ int main(int argc, char **argv) {
   initializeSandboxMemoryAccessesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
+  initializeStripModuleFlagsPass(Registry);
   // @LOCALMOD-END
 
   cl::ParseCommandLineOptions(argc, argv,

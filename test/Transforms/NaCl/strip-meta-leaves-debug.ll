@@ -1,34 +1,41 @@
-; RUN: opt -S -strip-metadata %s | FileCheck %s
-; RUN: opt -S -strip-metadata -strip-debug %s | FileCheck %s --check-prefix=NODEBUG
-
-!llvm.module.flags = !{!13}
-!13 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+; RUN: opt -S -strip-metadata %s | FileCheck %s --check-prefix=STRIPMETA
+; RUN: opt -S -strip-module-flags %s | FileCheck %s --check-prefix=STRIPMODF
+; RUN: opt -S -strip-metadata -strip-module-flags -strip-debug %s | FileCheck %s --check-prefix=STRIPALL
 
 define i32 @foo(i32 %c) {
-; CHECK: @foo
-; CHECK-NEXT: call void @llvm.dbg{{.*}}, !dbg
-; CHECK-NEXT: ret{{.*}}, !dbg
-; NODEBUG: @foo
-; NODEBUG-NOT: !dbg
+; STRIPMETA: @foo
+; STRIPMETA-NEXT: call void @llvm.dbg{{.*}}, !dbg
+; STRIPMETA-NEXT: ret{{.*}}, !dbg
+; STRIPMODF: @foo
+; STRIPMODF-NEXT: call void @llvm.dbg{{.*}}, !dbg
+; STRIPMODF-NEXT: ret{{.*}}, !dbg
+; STRIPALL: @foo
+; STRIPALL-NOT: !dbg
   tail call void @llvm.dbg.value(metadata !{i32 %c}, i64 0, metadata !9), !dbg !10
   ret i32 %c, !dbg !11
 }
 
-; CHECK: @llvm.dbg.value
-; NODEBUG: ret i32
-; NODEBUG-NOT: @llvm.dbg.value
+; STRIPMETA: @llvm.dbg.value
+; STRIPMODF: @llvm.dbg.value
+; STRIPALL: ret i32
+; STRIPALL-NOT: @llvm.dbg.value
 declare void @llvm.dbg.value(metadata, i64, metadata) #1
 
-; CHECK-NOT: MadeUpMetadata
+; STRIPMETA-NOT: MadeUpMetadata
+; STRIPMODF-NOT: MadeUpMetadata
 !MadeUpMetadata = !{}
 
-; CHECK: !llvm.dbg.cu
+; STRIPMETA: !llvm.dbg.cu
+; STRIPMODF: !llvm.dbg.cu
 !llvm.dbg.cu = !{!0}
 
-; CHECK-NOT: llvm.module.flags
-!llvm.module.flags = !{ !12}
+; STRIPMETA: llvm.module.flags
+; STRIPMODF-NOT: llvm.module.flags
+; STRIPALL-NOT: llvm.module.flags
+!llvm.module.flags = !{!12,!13}
 
-; CHECK: !0 =
+; STRIPMETA: !0 =
+; STRIPMODF: !0 =
 !0 = metadata !{i32 786449, i32 0, i32 12, metadata !"test.c", metadata !"/tmp", metadata !"clang version 3.3 (trunk 176732) (llvm/trunk 176733)", i1 true, i1 true, metadata !"", i32 0, metadata !1, metadata !1, metadata !2, metadata !1, metadata !""} ; [ DW_TAG_compile_unit ] [/tmp/test.c] [DW_LANG_C99]
 !1 = metadata !{i32 0}
 !2 = metadata !{metadata !3}
@@ -40,10 +47,15 @@ declare void @llvm.dbg.value(metadata, i64, metadata) #1
 !8 = metadata !{metadata !9}
 !9 = metadata !{i32 786689, metadata !3, metadata !"c", metadata !4, i32 16777217, metadata !7, i32 0, i32 0} ; [ DW_TAG_arg_variable ] [c] [line 1]
 !10 = metadata !{i32 1, i32 0, metadata !3, null}
-; CHECK: !11 =
 !11 = metadata !{i32 2, i32 0, metadata !3, null}
-; CHECK-NOT: !12 =
+; STRIPMETA: Linker Options
+; STRIPMODF-NOT: Linker Options
+; STRIPALL-NOT: Linker Options
 !12 = metadata !{ i32 6, metadata !"Linker Options",
      metadata !{
         metadata !{ metadata !"-lz" },
         metadata !{ metadata !"-framework", metadata !"Cocoa" } } }
+; STRIPMETA: Debug Info Version
+; STRIPMODF-NOT: Debug Info Version
+; STRIPALL-NOT: Debug Info Version
+!13 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
