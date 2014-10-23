@@ -13,13 +13,14 @@
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeMunge.h"
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
+
+#include <memory>
 
 using namespace llvm;
 
@@ -57,7 +58,7 @@ bool NaClBitcodeMunger::runTestWithFlags(
     BitcodeStrm << *Iter;
   }
 
-  OwningPtr<MemoryBuffer> Input(
+  std::unique_ptr<MemoryBuffer> Input(
       MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), Name));
   if (NaClObjDump(Input.get(), *DumpStream, NoRecords, NoAssembly))
     FoundErrors = true;
