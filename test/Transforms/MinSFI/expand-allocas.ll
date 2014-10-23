@@ -245,6 +245,15 @@ define i8* @test_global_ptr_updates(i32 %size) {
 ; CHECK-NEXT:    ret i8* %ptr2
 ; CHECK-NEXT:  }
 
+define i32 @_start_minsfi(i32 %args) {
+  ret i32 0
+}
+
+; CHECK-LABEL: define i32 @_start_minsfi(i32 %args) {
+; CHECK-NEXT:    store i32 %args, i32* @__sfi_stack_ptr
+; CHECK-NEXT:    ret i32 0
+; CHECK-NEXT:  }
+
 !1 = metadata !{i32 138, i32 0, metadata !1, null}
 !2 = metadata !{i32 142, i32 0, metadata !2, null}
 !3 = metadata !{i32 144, i32 0, metadata !3, null}

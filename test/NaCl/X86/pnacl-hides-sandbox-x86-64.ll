@@ -6,6 +6,9 @@
 ; RUN:     -relocation-model=pic < %s | \
 ; RUN:     llvm-objdump -d -r - | FileCheck %s --check-prefix=PIC
 
+; RUN: pnacl-llc -O2 -mtriple=x86_64-none-nacl -filetype=asm < %s | \
+; RUN: FileCheck %s --check-prefix=ASM
+
 ; ModuleID = 'pnacl-hides-sandbox-x86-64.c'
 target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:32"
 target triple = "le32-unknown-nacl"
@@ -24,18 +27,36 @@ entry:
   ret void
 }
 ; CHECK-LABEL: TestDirectCall:
+; Push only the bottom 32-bits of the frame pointer
+; CHECK: movl %ebp, %eax
+; CHECK-NEXT: pushq %rax
 ; Push the immediate return address
 ; CHECK:      pushq $0
 ; CHECK-NEXT: .text
 ; Immediate jump to the target
 ; CHECK:      jmp 0
 ; CHECK-NEXT: DirectCallTarget
+; The return sequence should use %r11
+; CHECK: popq %r11
+; CHECK: andl $-32, %r11d
+; CHECK-NEXT: addq %r15, %r11
+; CHECK-NEXT: jmpq *%r11
 
 ; PIC-LABEL: TestDirectCall
 ; PIC: leal 19(%rip), %r10d
 ; PIC-NEXT: pushq %r10
 ; PIC-NEXT: jmp 0
 ; PIC-NEXT: DirectCallTarget
+
+; ASM-LABEL: TestDirectCall:
+; Push only the bottom 32-bits of the frame pointer
+; ASM: movl %ebp, %eax
+; ASM-NEXT: pushq %rax
+; In asm, direct calls are just 'call'
+; ASM: call DirectCallTarget
+; The return sequence should use %r11
+; ASM: popq %r11
+; ASM: nacljmp %r11d, %r15
 
 declare hidden void @DirectCallTarget() #1
 
@@ -56,8 +77,11 @@ entry:
 ; CHECK-NEXT: jmpq *%r11
 
 ; PIC-LABEL: TestIndirectCall:
+; Ensure that the mov of the call target happens before the return address
+; calculation
+; PIC: movl {{.*}}, %r11d
 ; Calculate and push the return address
-; PIC: leal 39(%rip), %r10d
+; PIC-NEXT: leal 36(%rip), %r10d
 ; PIC-NEXT: pushq %r10
 ; Fixed sequence for indirect jump
 ; PIC: andl $-32, %r11d

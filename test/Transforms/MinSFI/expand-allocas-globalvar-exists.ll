@@ -18,3 +18,7 @@ define i8* @test_correct_global_var_used() {
 ; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*
 ; CHECK-NEXT:    ret i8* %ptr
 ; CHECK-NEXT:  }
+
+define i32 @_start_minsfi(i32 %args) {
+  ret i32 0
+}

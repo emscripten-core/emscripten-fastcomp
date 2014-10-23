@@ -119,7 +119,7 @@ bool SandboxMemoryAccesses::runOnModule(Module &M) {
                      ConstantInt::get(I32, PointerSize),
                      ExternalSymName_PointerSize);
   if (PointerSize < 32)
-    PtrMask = ConstantInt::get(I32, (1 << PointerSize) - 1);
+    PtrMask = ConstantInt::get(I32, (1U << PointerSize) - 1);
 
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func)
     runOnFunction(*Func);
@@ -294,3 +294,7 @@ void SandboxMemoryAccesses::runOnFunction(Function &Func) {
 char SandboxMemoryAccesses::ID = 0;
 INITIALIZE_PASS(SandboxMemoryAccesses, "minsfi-sandbox-memory-accesses",
                 "Add SFI sandboxing to memory accesses", false, false)
+
+ModulePass *llvm::createSandboxMemoryAccessesPass() {
+  return new SandboxMemoryAccesses();
+}

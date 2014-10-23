@@ -9,6 +9,7 @@
 ; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=Cbranch %s
 ; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=Cduplicate %s
 ; RUN: opt -globalize-constant-vectors %s -S | FileCheck -check-prefix=Czeroinitializer %s
+; RUN: opt -expand-constant-expr -globalize-constant-vectors %s -S | FileCheck -check-prefix=Cnestedconst %s
 
 ; Run the test once per function so that each check can look at its
 ; globals as well as its function.
@@ -19,6 +20,11 @@ target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64
 ; Globals shouldn't get globalized.
 ; CHECK: @global_should_stay_untouched = internal constant <4 x i32> <i32 1337, i32 0, i32 0, i32 0>
 @global_should_stay_untouched = internal constant <4 x i32> <i32 1337, i32 0, i32 0, i32 0>
+
+; Also test a global initializer with nested const-exprs.
+; NOTE: Have the global share the same const-expr as an instruction below.
+; CHECK: @global_with_nesting = internal global <{ <4 x i32>, <8 x i16> }> <{ <4 x i32> <i32 1, i32 4, i32 10, i32 20>, <8 x i16> <i16 0, i16 1, i16 1, i16 2, i16 3, i16 5, i16 8, i16 13> }>
+@global_with_nesting = internal global <{ <4 x i32>, <8 x i16> }> <{ <4 x i32> <i32 1, i32 4, i32 10, i32 20>, <8 x i16> <i16 0, i16 1, i16 1, i16 2, i16 3, i16 5, i16 8, i16 13> }>
 
 ; 4xi1 vectors should get globalized.
 define void @test4xi1(<4 x i1> %in) {
@@ -184,3 +190,15 @@ define void @testzeroinitializer(<4 x float> %in) {
 ; Czeroinitializer-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x float>* @[[C1]], align 4
 ; Czeroinitializer-NEXT: %id = fadd <4 x float> %in, %[[M1]]
 ; Czeroinitializer-NEXT: ret void
+
+; Nested constant exprs are handled by running -expand-constant-expr first.
+define i64 @test_nested_const(i64 %x) {
+  %foo = add i64 bitcast (<8 x i8><i8 10, i8 20, i8 30, i8 40, i8 50, i8 60, i8 70, i8 80> to i64), %x
+  ret i64 %foo
+}
+; Cnestedconst: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <8 x i8> <i8 10, i8 20, i8 30, i8 40, i8 50, i8 60, i8 70, i8 80>, align 8
+; Cnestedconst: define i64 @test_nested_const(i64 %x) {
+; Cnestedconst-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i8>* @[[C1]], align 8
+; Cnestedconst-NEXT: %[[X1:[_a-z0-9]+]] = bitcast <8 x i8> %[[M1]] to i64
+; Cnestedconst-NEXT: add i64 %[[X1]], %x
+; Cnestedconst-NEXT: ret i64 %foo

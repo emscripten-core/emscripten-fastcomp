@@ -170,6 +170,7 @@ int main(int argc, char **argv) {
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);
+  initializeRenameEntryPointPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
@@ -181,6 +182,8 @@ int main(int argc, char **argv) {
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
+  initializeStripTlsPass(Registry);
+  initializeSubstituteUndefsPass(Registry);
   // @LOCALMOD-END
   
   cl::ParseCommandLineOptions(argc, argv,

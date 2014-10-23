@@ -403,6 +403,7 @@ public:
         STI(X86_MC::createX86MCSubtargetInfo("i386-unknown-nacl", CPU, "")) {
     State.PrefixSaved = 0;
     State.PrefixPass = false;
+    State.EmitRaw = false;
   }
   ~NaClX86_32AsmBackend() override {}
 
@@ -422,6 +423,7 @@ public:
         STI(X86_MC::createX86MCSubtargetInfo("x86_64-unknown-nacl", CPU, "")) {
     State.PrefixSaved = 0;
     State.PrefixPass = false;
+    State.EmitRaw = false;
   }
   ~NaClX86_64AsmBackend() override {}
 

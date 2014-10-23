@@ -10,6 +10,7 @@
 #ifndef LLVM_TRANSFORMS_MINSFI_H
 #define LLVM_TRANSFORMS_MINSFI_H
 
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
@@ -23,7 +24,20 @@ uint32_t GetPointerSizeInBits();
 // by the size of the sandboxed pointers.
 uint64_t GetAddressSubspaceSize();
 
+// The name of MinSFI's entry function which will be invoked by the runtime.
+extern const char EntryFunctionName[];
+
 }  // namespace minsfi
+
+FunctionPass *createSubstituteUndefsPass();
+ModulePass *createAllocateDataSegmentPass();
+ModulePass *createExpandAllocasPass();
+ModulePass *createRenameEntryPointPass();
+ModulePass *createSandboxIndirectCallsPass();
+ModulePass *createSandboxMemoryAccessesPass();
+
+void MinSFIPasses(PassManagerBase &PM);
+
 }  // namespace llvm
 
 #endif

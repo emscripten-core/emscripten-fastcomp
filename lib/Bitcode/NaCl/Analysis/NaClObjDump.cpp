@@ -590,7 +590,10 @@ public:
     SetListener(&AbbrevListener);
   }
 
-  ~NaClDisTopLevelParser() override {}
+  ~NaClDisTopLevelParser() override {
+    // Be sure to flush any remaining errors.
+    ObjDump.Flush();
+  }
 
   // Returns the number of errors that were sent to the ObjDump.
   unsigned GetNumErrors() {
@@ -628,7 +631,8 @@ public:
     if (Index >= TypeIdType.size()) {
       BitcodeId Id('t', Index);
       Errors() << "Can't find definition for " << Id << "\n";
-      Fatal();
+      // Recover so that additional errors can be found.
+      return UnknownType;
     }
     return TypeIdType[Index];
   }
@@ -637,6 +641,12 @@ public:
   /// file.
   uint32_t GetNumTypes() const {
     return TypeIdType.size();
+  }
+
+  /// Returns true if Type represents a (non-zero sized) value.
+  bool isValidValueType(Type *Ty) const {
+    return Ty->isIntegerTy() || Ty->isFloatTy() || Ty->isDoubleTy()
+        || Ty->isVectorTy();
   }
 
   /// Installs the given type to the next available function index.
@@ -1216,7 +1226,10 @@ protected:
 
 public:
 
-  ~NaClDisBlockParser() override {}
+  ~NaClDisBlockParser() override {
+    // Be sure to flush any remaining errors reported at end of block.
+    ObjDumpFlush();
+  }
 
   bool ParseBlock(unsigned BlockID) override;
 
@@ -1415,6 +1428,10 @@ protected:
 
   uint32_t GetNumTypes() const {
     return Context->GetNumTypes();
+  }
+
+  bool isValidValueType(Type *Ty) const {
+    return Context->isValidValueType(Ty);
   }
 
   FunctionType *GetFunctionType(uint32_t Index) {
@@ -1680,6 +1697,10 @@ private:
     return BitcodeId('t', GetNumTypes());
   }
 
+  // Installs unknown type as definition of next type.
+  void InstallUnknownTypeForNextId();
+
+
   uint32_t ExpectedNumTypes;
   bool IsFirstRecord;
 };
@@ -1695,6 +1716,14 @@ void NaClDisTypesParser::PrintBlockHeader() {
   Tokens() << "types" << Space() << OpenCurly()
            << Space() << Space() << "// BlockID = " << GetBlockID()
            << Endline();
+}
+
+void NaClDisTypesParser::InstallUnknownTypeForNextId() {
+  Type *UnknownType = GetUnknownType();
+  Tokens() << NextTypeId() << Space() << "=" << Space()
+           << TokenizeType(UnknownType) << Semicolon()
+           << TokenizeAbbrevIndex() << Endline();
+  InstallType(UnknownType);
 }
 
 void NaClDisTypesParser::ProcessRecord() {
@@ -1790,14 +1819,23 @@ void NaClDisTypesParser::ProcessRecord() {
     if (Values.size() != 2) {
       Errors() << "Vector record should contain two arguments. Found: "
                << Values.size() << "\n";
-      InstallType(GetUnknownType());
+      InstallUnknownTypeForNextId();
       break;
     }
     Type *BaseType = GetType(Values[1]);
+    if (!(BaseType->isIntegerTy()
+          || BaseType->isFloatTy()
+          || BaseType->isDoubleTy())) {
+      Type *ErrorRecoveryTy = GetIntegerType(32);
+      Errors() << "Vectors can only be defined on primitive types. Found "
+               << *BaseType << ". Assuming " << *ErrorRecoveryTy
+               << " instead.\n";
+      BaseType = ErrorRecoveryTy;
+    }
     uint64_t NumElements = Values[0];
     Type *VecType = VectorType::get(BaseType, NumElements);
     if (!PNaClABITypeChecker::isValidVectorType(VecType)) {
-      Errors() << "Vector type " << *VecType << " not allowed\n";
+      Errors() << "Vector type " << *VecType << " not allowed.\n";
     }
     Tokens() << NextTypeId() << Space() << "=" << Space()
              << TokenizeType(VecType) << Semicolon()
@@ -1811,20 +1849,29 @@ void NaClDisTypesParser::ProcessRecord() {
       Errors()
           << "Function record should contain at least 2 arguments. Found: "
           << Values.size() << "\n";
-      InstallType(GetUnknownType());
+      InstallUnknownTypeForNextId();
       break;
     }
     if (Values[0]) {
       Errors() << "Functions with variable length arguments is not supported\n";
     }
     Type *ReturnType = GetType(Values[1]);
+    if (!(isValidValueType(ReturnType) || ReturnType->isVoidTy())) {
+      Type *ReplaceType = GetIntegerType(32);
+      Errors() << "Invalid return type. Found: " << *ReturnType
+               << ". Assuming: " << *ReplaceType << "\n";
+      ReturnType = ReplaceType;
+    }
     SmallVector<Type*, 8> Signature;
     for (size_t i = 2; i < Values.size(); ++i) {
-      if (Type *Ty = GetType(Values[i])) {
-        Signature.push_back(Ty);
-      } else {
-        Errors() << "Invalid parameter type: record element " << i << "\n";
+      Type *Ty = GetType(Values[i]);
+      if (!isValidValueType(Ty)) {
+        Type *ReplaceTy = GetIntegerType(32);
+        Errors() << "Invalid type for parameter " << (i - 1) << ". Found: "
+                 << *Ty << ". Assuming: " << *ReplaceTy << "\n";
+        Ty = ReplaceTy;
       }
+      Signature.push_back(Ty);
     }
     Type *FcnType =  FunctionType::get(ReturnType, Signature, Values[0]);
     Tokens() << NextTypeId() << Space() << "=" << Space()
@@ -1835,7 +1882,8 @@ void NaClDisTypesParser::ProcessRecord() {
     break;
   }
   default:
-    Errors() << "Unknown record in types block.\n";
+    Errors() << "Unknown record code in types block. Found: "
+             << Record.GetCode() << "\n";
     break;
   }
   ObjDumpWrite(Record.GetStartBit(), Record);
@@ -3432,8 +3480,12 @@ namespace llvm {
 
 bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
                  bool NoRecords, bool NoAssembly) {
+  // Create objects needed to run parser.
+  naclbitc::ObjDumpStream ObjDump(Output, !NoRecords, !NoAssembly);
+
   if (MemBuf->getBufferSize() % 4 != 0) {
-    errs() << "Bitcode stream should be a multiple of 4 bytes in length.\n";
+    ObjDump.Error()
+        << "Bitcode stream should be a multiple of 4 bytes in length.\n";
     return true;
   }
 
@@ -3444,16 +3496,13 @@ bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
   // Read header and verify it is good.
   NaClBitcodeHeader Header;
   if (Header.Read(BufPtr, EndBufPtr) || !Header.IsSupported()) {
-    errs() << "Invalid PNaCl bitcode header.\n";
+    ObjDump.Error() << "Invalid PNaCl bitcode header.\n";
     return true;
   }
 
   // Create a bitstream reader to read the bitcode file.
   NaClBitstreamReader InputStreamFile(BufPtr, EndBufPtr);
   NaClBitstreamCursor InputStream(InputStreamFile);
-
-  // Create objects needed to run parser.
-  naclbitc::ObjDumpStream ObjDump(Output, !NoRecords, !NoAssembly);
 
   // Parse the the bitcode file.
   ::NaClDisTopLevelParser Parser(Header, HeaderPtr, InputStream, ObjDump);

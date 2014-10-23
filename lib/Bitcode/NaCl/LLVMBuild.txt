@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = Writer Reader Analysis
+subdirectories = Writer Reader Analysis TestUtils
 
 [component_0]
 type = Group

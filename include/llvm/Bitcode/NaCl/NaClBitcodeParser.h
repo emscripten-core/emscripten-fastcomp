@@ -422,7 +422,8 @@ public:
       : EnclosingParser(0),
         Block(ILLEGAL_BLOCK_ID, Cursor),
         Record(Block),
-        Listener(0)
+        Listener(0),
+        ErrStream(&errs())
   {}
 
   virtual ~NaClBitcodeParser();
@@ -467,10 +468,20 @@ public:
     return Parser.ParseThisBlock();
   }
 
+  // Changes the error stream to print errors to Stream.  Warning:
+  // Stream must exist till the next call to setErrStream.  Otherwise
+  // it must exist for the entire lifetime of the bitcode parser.
+  // Note: This err stream should be set immediately after
+  // construction.  Assigning after nested bitcode parsers have been
+  // built will not work.
+  void setErrStream(raw_ostream &Stream) {
+    ErrStream = &Stream;
+  }
+
   // Called when error occurs. Message is the error to report. Always
   // returns true (the error return value of Parse).
   virtual bool Error(const std::string &Message) {
-    errs() << "Error: " << Message << "\n";
+    *ErrStream << "Error: " << Message << "\n";
     return true;
   }
 
@@ -539,6 +550,9 @@ protected:
   // The listener (if any) to use.
   NaClBitcodeParserListener *Listener;
 
+  // The error stream to use if non-null (uses errs() if null).
+  raw_ostream *ErrStream;
+
   // Creates a block parser to parse the block associated with the
   // bitcode entry that defines the beginning of a block. This
   // instance actually parses the corresponding block.
@@ -546,7 +560,8 @@ protected:
       : EnclosingParser(EnclosingParser),
         Block(BlockID, EnclosingParser->Record),
         Record(Block),
-        Listener(EnclosingParser->Listener)
+        Listener(EnclosingParser->Listener),
+        ErrStream(EnclosingParser->ErrStream)
   {}
 
   /// Defines the listener for this block, and all enclosing blocks,

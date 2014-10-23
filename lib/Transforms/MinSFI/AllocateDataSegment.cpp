@@ -128,3 +128,7 @@ bool AllocateDataSegment::runOnModule(Module &M) {
 char AllocateDataSegment::ID = 0;
 INITIALIZE_PASS(AllocateDataSegment, "minsfi-allocate-data-segment",
                 "Create a template for the data segment", false, false)
+
+ModulePass *llvm::createAllocateDataSegmentPass() {
+  return new AllocateDataSegment();
+}

@@ -356,6 +356,11 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
   return M;
 }
 
+static cl::opt<bool>
+ExternalizeAll("externalize",
+               cl::desc("Externalize all symbols"),
+               cl::init(false));
+
 static int runCompilePasses(Module *mod,
                             unsigned ModuleIndex,
                             ThreadedFunctionQueue *FuncQueue,
@@ -365,7 +370,7 @@ static int runCompilePasses(Module *mod,
                             formatted_raw_ostream &FOS){
   PNaClABIErrorReporter ABIErrorReporter;
 
-  if (SplitModuleCount > 1) {
+  if (SplitModuleCount > 1 || ExternalizeAll) {
     // Add function and global names, and give them external linkage.
     // This relies on LLVM's consistent auto-generation of names, we could
     // maybe do our own in case something changes there.

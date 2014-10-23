@@ -29,6 +29,14 @@
 // must update the global variable prior to any function calls and restore the
 // initial value before it returns.
 //
+// The stack pointer is initialized in the entry function of the module, the
+// _start_minsfi function. The runtime is expected to copy the arguments
+// (a NULL-terminated integer array) at the end of the allocated memory region,
+// i.e. at the bottom of the untrusted stack, and pass the pointer to the array
+// to the entry function. The sandboxed code is then expected to use the
+// pointer not only to access its arguments but also as the initial value of
+// its stack pointer and to grow the stack backwards.
+//
 // If an alloca requests alignment greater than 1, the untrusted stack pointer
 // is aligned accordingly. However, the alignment is applied before the address
 // is sandboxed and therefore the runtime must guarantee that the base address
@@ -66,6 +74,7 @@ class ExpandAllocas : public ModulePass {
   Type *IntPtrType, *I8Ptr;
 
   void runOnFunction(Function &Func);
+  void insertStackPtrInit(Module &M);
 
 public:
   static char ID;
@@ -83,18 +92,17 @@ bool ExpandAllocas::runOnModule(Module &M) {
   IntPtrType = DL.getIntPtrType(M.getContext());
   I8Ptr = Type::getInt8PtrTy(M.getContext());
 
-  // The stack bottom is positioned arbitrarily towards the end of the address
-  // subspace. This has no effect on the alignment of memory allocated on the
-  // untrusted stack.
-  uint64_t StackPtrInitialValue = minsfi::GetAddressSubspaceSize() - 16;
+  // Create the stack pointer global variable. We are forced to give it some
+  // initial value, but it will be initialized at runtime.
   StackPtrVar = new GlobalVariable(M, IntPtrType, /*isConstant=*/false,
                                    GlobalVariable::InternalLinkage,
-                                   ConstantInt::get(IntPtrType,
-                                                    StackPtrInitialValue),
+                                   ConstantInt::get(IntPtrType, 0),
                                    InternalSymName_StackPointer);
 
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func)
     runOnFunction(*Func);
+
+  insertStackPtrInit(M);
 
   return true;
 }
@@ -218,7 +226,29 @@ void ExpandAllocas::runOnFunction(Function &Func) {
     (*Inst)->eraseFromParent();
 }
 
+void ExpandAllocas::insertStackPtrInit(Module &M) {
+  Function *EntryFunction = M.getFunction(minsfi::EntryFunctionName);
+  if (!EntryFunction)
+    report_fatal_error("ExpandAllocas: Module does not have an entry function");
+
+  // Check the signature of the entry function.
+  Function::ArgumentListType &Args = EntryFunction->getArgumentList();
+  if (Args.size() != 1 || Args.front().getType() != IntPtrType) {
+    report_fatal_error(std::string("ExpandAllocas: Invalid signature of ") +
+                       minsfi::EntryFunctionName);
+  }
+
+  // Insert a store instruction which saves the value of the first argument
+  // to the stack pointer global variable.
+  new StoreInst(&Args.front(), StackPtrVar,
+                EntryFunction->getEntryBlock().getFirstInsertionPt());
+}
+
 char ExpandAllocas::ID = 0;
 INITIALIZE_PASS(ExpandAllocas, "minsfi-expand-allocas",
                 "Expand allocas to allocate memory on an untrusted stack",
                 false, false)
+
+ModulePass *llvm::createExpandAllocasPass() {
+  return new ExpandAllocas();
+}

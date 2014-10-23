@@ -15,7 +15,7 @@ entry:
   ret i32 0
 }
 ; NACL32-LABEL: call_address
-; NACL32: naclcall 66496
+; NACL32: calll 66496
 ; NACL32O0-LABEL: call_address
 ; NACL32O0: movl $66496, [[REG:%[a-z0-9]+]]
 ; NACL32O0: naclcall {{.*}}[[REG]]
@@ -54,15 +54,15 @@ define void @call_other_function2() {
   ret void
 }
 ; NACL32-LABEL: call_other_function
-; NACL32: naclcall other_function
+; NACL32: calll other_function
 ; NACL32-LABEL: call_other_function2
-; NACL32: naclcall call_other_function
+; NACL32: calll call_other_function
 ; NACL32O0-LABEL: call_other_function
-; NACL32O0: naclcall other_function
+; NACL32O0: calll other_function
 ; NACL64-LABEL: call_other_function
-; NACL64: naclcall other_function
+; NACL64: call other_function
 ; NACL64-LABEL: call_other_function2
-; NACL64: naclcall call_other_function
+; NACL64: call call_other_function
 
 
 declare fastcc i32 @other_function_fast()

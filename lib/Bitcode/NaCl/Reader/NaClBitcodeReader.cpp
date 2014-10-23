@@ -1649,7 +1649,7 @@ void NaClBitcodeReader::Dematerialize(GlobalValue *GV) {
   assert(DeferredFunctionInfo.count(F) && "No info to read function later?");
 
   // Just forget the function body, we can remat it later.
-  F->deleteBody();
+  F->dropAllReferences();
 }
 
 

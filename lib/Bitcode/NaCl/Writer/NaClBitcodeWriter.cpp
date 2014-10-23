@@ -1168,6 +1168,20 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 // out to files (the parsing works for arbitrary sizes).
 static const size_t kMaxVariableFieldSize = 256;
 
+void llvm::NaClWriteHeader(NaClBitstreamWriter &Stream,
+                           bool AcceptSupportedOnly) {
+  NaClBitcodeHeader Header;
+  Header.push_back(
+      new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
+                                 PNaClVersion));
+  Header.InstallFields();
+  if (!(Header.IsSupported() ||
+        (!AcceptSupportedOnly && Header.IsReadable()))) {
+    report_fatal_error(Header.Unsupported());
+  }
+  NaClWriteHeader(Header, Stream);
+}
+
 // Write out the given Header to the bitstream.
 void llvm::NaClWriteHeader(const NaClBitcodeHeader &Header,
                            NaClBitstreamWriter &Stream) {
@@ -1218,22 +1232,7 @@ void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out,
   // Emit the module into the buffer.
   {
     NaClBitstreamWriter Stream(Buffer);
-
-    // Define header and install into stream.
-    {
-      NaClBitcodeHeader Header;
-      Header.push_back(
-          new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
-                                     PNaClVersion));
-      Header.InstallFields();
-      if (!(Header.IsSupported() ||
-            (!AcceptSupportedOnly && Header.IsReadable()))) {
-        report_fatal_error(Header.Unsupported());
-      }
-      NaClWriteHeader(Header, Stream);
-    }
-
-    // Emit the module.
+    NaClWriteHeader(Stream, AcceptSupportedOnly);
     WriteModule(M, Stream);
   }
 

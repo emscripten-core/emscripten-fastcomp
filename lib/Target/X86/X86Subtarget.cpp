@@ -43,6 +43,13 @@ X86EarlyIfConv("x86-early-ifcvt", cl::Hidden,
                cl::desc("Enable early if-conversion on X86"));
 
 
+// @LOCALMOD-START
+static cl::opt<bool>
+MalignDouble("malign-double", cl::Hidden,
+             cl::desc("Align i64 and f64 types to 8 bytes"));
+// @LOCALMOD-END
+
+
 /// ClassifyBlockAddressReference - Classify a blockaddress reference for the
 /// current subtarget according to how we should reference it in a non-pcrel
 /// context.
@@ -315,7 +322,8 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
     Ret += "-p:32:32";
 
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
-  if (ST.is64Bit() || ST.isOSWindows() || ST.isTargetNaCl())
+  if (ST.is64Bit() || ST.isOSWindows() || ST.isTargetNaCl()
+      || MalignDouble) // @LOCALMOD
     Ret += "-i64:64";
   else
     Ret += "-f64:32:64";

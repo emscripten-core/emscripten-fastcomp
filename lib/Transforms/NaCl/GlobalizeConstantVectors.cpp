@@ -128,9 +128,11 @@ void GlobalizeConstantVectors::materializeConstantVectors(
           // Skip uses of the constant vector in other functions: we need to
           // materialize it in every function which has a use.
           continue;
-      if (isa<GlobalVariable>(U))
+      if (isa<Constant>(U))
         // Don't replace global uses of the constant vector: we just created a
         // new one. This avoid recursive references.
+        // Also, it's not legal to replace a constant's operand with
+        // a non-constant (the load instruction).
         continue;
       CVUsers.push_back(U);
     }

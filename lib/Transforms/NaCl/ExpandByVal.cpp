@@ -117,18 +117,24 @@ static bool ExpandCall(DataLayout *DL, InstType *Call) {
       Type *ArgType = ArgPtr->getType()->getPointerElementType();
       ConstantInt *ArgSize = ConstantInt::get(
           Call->getContext(), APInt(64, DL->getTypeStoreSize(ArgType)));
-      unsigned Alignment = Attrs.getParamAlignment(AttrIdx);
       // In principle, using the alignment from the argument attribute
       // should be enough.  However, Clang is not emitting this
       // attribute for PNaCl.  LLVM alloca instructions do not use the
       // ABI alignment of the type, so this must be specified
       // explicitly.
       // See https://code.google.com/p/nativeclient/issues/detail?id=3403
-      unsigned AllocAlignment =
-          std::max(Alignment, DL->getABITypeAlignment(ArgType));
+      //
+      // Note that the parameter may have no alignment, but we have
+      // more useful information from the type which we can use here
+      // -- 0 in the parameter means no alignment is specified there,
+      // so it has default alignment, but in memcpy 0 means
+      // pessimistic alignment, the same as 1.
+      unsigned Alignment =
+          std::max(Attrs.getParamAlignment(AttrIdx),
+                   DL->getABITypeAlignment(ArgType));
 
       // Make a copy of the byval argument.
-      Instruction *CopyBuf = new AllocaInst(ArgType, 0, AllocAlignment,
+      Instruction *CopyBuf = new AllocaInst(ArgType, 0, Alignment,
                                             ArgPtr->getName() + ".byval_copy");
       Function *Func = Call->getParent()->getParent();
       Func->getEntryBlock().getInstList().push_front(CopyBuf);

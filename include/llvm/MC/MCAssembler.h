@@ -593,7 +593,10 @@ private:
   unsigned Alignment;
 
   /// \brief Keeping track of bundle-locked state.
-  BundleLockStateType BundleLockState; 
+  BundleLockStateType BundleLockState;
+
+  /// \brief Current nesting depth of bundle_lock directives.
+  unsigned BundleLockNestingDepth;
 
   /// \brief We've seen a bundle_lock directive but not its first instruction
   /// yet.
@@ -665,9 +668,7 @@ public:
     return BundleLockState;
   }
 
-  void setBundleLockState(BundleLockStateType NewState) {
-    BundleLockState = NewState;
-  }
+  void setBundleLockState(BundleLockStateType NewState);
 
   bool isBundleGroupBeforeFirstInst() const {
     return BundleGroupBeforeFirstInst;

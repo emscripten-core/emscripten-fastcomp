@@ -44,11 +44,6 @@ void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
   }
 }
 
-Instruction *llvm::CopyDebug(Instruction *NewInst, Instruction *Original) {
-  NewInst->setDebugLoc(Original->getDebugLoc());
-  return NewInst;
-}
-
 Function *llvm::RecreateFunction(Function *Func, FunctionType *NewType) {
   Function *NewFunc = Function::Create(NewType, Func->getLinkage());
   NewFunc->copyAttributesFrom(Func);

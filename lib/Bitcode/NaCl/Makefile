@@ -8,7 +8,7 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL = ../../..
-PARALLEL_DIRS = Writer Reader Analysis
+PARALLEL_DIRS = Writer Reader Analysis TestUtils
 
 include $(LEVEL)/Makefile.common
 

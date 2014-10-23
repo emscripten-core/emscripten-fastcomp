@@ -170,26 +170,16 @@ static void EmitIndirectBranch(const llvm::MCSubtargetInfo &STI,
   // address on the stack.
 
   // When generating PIC code for calls, calculate the return address manually:
+  //   mov %rXX,%r11d
   //   leal return_addr(%rip), %r10d
   //   pushq %r10
-  //   mov %rXX,%r11d
   //   and $0xffffffe0,%r11d
   //   add %r15,%r11
   //   jmpq *%r11
   //   .align 32
   //   return_addr:
 
-  // Explicitly push the (32-bit) return address for a NaCl64 call
-  // instruction.
   MCSymbol *RetTarget = NULL;
-  if (IsCall && HideSandboxBase) {
-    MCContext &Context = Out.getContext();
-
-    // Generate a label for the return address.
-    RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
-
-    PushReturnAddress(STI, Context, Out, RetTarget);
-  }
 
   // For NaCl64, force an assignment of the branch target into r11,
   // and subsequently use r11 as the ultimate branch target, so that
@@ -211,6 +201,14 @@ static void EmitIndirectBranch(const llvm::MCSubtargetInfo &STI,
       MOVInst.addOperand(MCOperand::CreateReg(Reg32));
       Out.EmitInstruction(MOVInst, STI);
       Reg32 = SafeReg32;
+    }
+    if (IsCall) {
+      MCContext &Context = Out.getContext();
+      // Generate a label for the return address.
+      RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
+      // Explicitly push the (32-bit) return address for a NaCl64 call
+      // instruction.
+      PushReturnAddress(STI, Context, Out, RetTarget);
     }
   }
   const unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
@@ -282,10 +280,7 @@ static void EmitRet(const llvm::MCSubtargetInfo &STI, const MCOperand *AmtOp,
     Out.EmitInstruction(ADDInst, STI);
   }
 
-  MCInst JMPInst;
-  JMPInst.setOpcode(Is64Bit ? X86::NACL_JMP64r : X86::NACL_JMP32r);
-  JMPInst.addOperand(MCOperand::CreateReg(RegTarget));
-  Out.EmitInstruction(JMPInst, STI);
+  EmitIndirectBranch(MCOperand::CreateReg(RegTarget), Is64Bit, false, Out);
 }
 
 // Fix a register after being truncated to 32-bits.
@@ -485,6 +480,21 @@ static void EmitREST(const llvm::MCSubtargetInfo &STI, const MCInst &Inst,
 }
 
 
+namespace {
+// RAII holder for the recursion guard.
+class EmitRawState {
+ public:
+  EmitRawState(X86MCNaClSFIState &S) : State(S) {
+    State.EmitRaw = true;
+  }
+  ~EmitRawState() {
+    State.EmitRaw = false;
+  }
+ private:
+  X86MCNaClSFIState &State;
+};
+}
+
 namespace llvm {
 // CustomExpandInstNaClX86 -
 //   If Inst is a NaCl pseudo instruction, emits the substitute
@@ -508,6 +518,13 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
   if (Out.hasRawTextSupport()) {
     return false;
   }
+  // If we make a call to EmitInstruction, we will be called recursively. In
+  // this case we just want the raw instruction to be emitted instead of
+  // handling the insruction here.
+  if (State.EmitRaw == true && !State.PrefixPass) {
+    return false;
+  }
+  EmitRawState E(State);
   unsigned Opc = Inst.getOpcode();
   DEBUG(dbgs() << "CustomExpandInstNaClX86("; Inst.dump(); dbgs() << ")\n");
   switch (Opc) {
@@ -525,10 +542,11 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
     assert(State.PrefixSaved == 0);
     State.PrefixSaved = Opc;
     return true;
-  case X86::NACL_CALL32d:
+  case X86::CALLpcrel32:
     assert(State.PrefixSaved == 0);
     EmitDirectCall(STI, Inst.getOperand(0), false, Out);
     return true;
+  case X86::CALL64pcrel32:
   case X86::NACL_CALL64d:
     assert(State.PrefixSaved == 0);
     EmitDirectCall(STI, Inst.getOperand(0), true, Out);
@@ -612,6 +630,9 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
 
   unsigned IndexOpPosition;
   MCInst SandboxedInst = Inst;
+  // If we need to sandbox a memory reference and we have a saved prefix,
+  // use a single bundle-lock/unlock for the whole sequence of
+  // added_truncating_inst + prefix + mem_ref_inst.
   if (SandboxMemoryRef(&SandboxedInst, &IndexOpPosition)) {
     unsigned PrefixLocal = State.PrefixSaved;
     State.PrefixSaved = 0;
@@ -631,10 +652,17 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
     return true;
   }
 
+  // If the special case above doesn't apply, but there is still a saved prefix,
+  // then the saved prefix should be bundled-locked with Inst, so that it cannot
+  // be separated by bundle padding.
   if (State.PrefixSaved) {
     unsigned PrefixLocal = State.PrefixSaved;
     State.PrefixSaved = 0;
+    Out.EmitBundleLock(false);
     EmitPrefix(STI, PrefixLocal, Out, State);
+    Out.EmitInstruction(Inst, STI);
+    Out.EmitBundleUnlock();
+    return true;
   }
   return false;
 }
