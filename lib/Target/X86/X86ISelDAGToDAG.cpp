@@ -1768,7 +1768,7 @@ void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
   if (!NeedsFixing1 && !NeedsFixing2)
     return;
 
-  static const unsigned LogTable[] = { ~0, 0, 1, ~0, 2, ~0, ~0, ~0, 3 };
+  static const unsigned LogTable[] = { ~0u, 0, 1, ~0u, 2, ~0u, ~0u, ~0u, 3 };
   assert(AM.Scale < sizeof(LogTable)/sizeof(LogTable[0]));
   unsigned ScaleLog = LogTable[AM.Scale];
   assert(ScaleLog <= 3);
