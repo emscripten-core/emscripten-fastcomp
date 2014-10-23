@@ -825,10 +825,8 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     MCSymbol *PICBase = MF->getPICBaseSymbol();
     // FIXME: We would like an efficient form for this, so we don't have to do a
     // lot of extra uniquing.
-    OutStreamer.EmitInstruction(
-        MCInstBuilder(X86::CALLpcrel32)
-            .addExpr(MCSymbolRefExpr::Create(PICBase, OutContext)),
-        STI);
+    EmitToStreamer(OutStreamer, MCInstBuilder(X86::CALLpcrel32)
+      .addExpr(MCSymbolRefExpr::Create(PICBase, OutContext)));
 
     // Emit the label.
     OutStreamer.EmitLabel(PICBase);
