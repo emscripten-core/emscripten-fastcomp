@@ -280,7 +280,7 @@ static void EmitRet(const llvm::MCSubtargetInfo &STI, const MCOperand *AmtOp,
     Out.EmitInstruction(ADDInst, STI);
   }
 
-  EmitIndirectBranch(MCOperand::CreateReg(RegTarget), Is64Bit, false, Out);
+  EmitIndirectBranch(STI, MCOperand::CreateReg(RegTarget), Is64Bit, false, Out);
 }
 
 // Fix a register after being truncated to 32-bits.
