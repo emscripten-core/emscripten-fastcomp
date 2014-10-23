@@ -78,9 +78,9 @@ static inline bool IsPtrToIntUse(const Function::use_iterator &FuncUse) {
 
 // Function use is a direct call if the user is a call instruction and
 // the function is its last operand.
-static inline bool IsDirectCallUse(const Function::use_iterator &FuncUse) {
+static inline bool IsDirectCallUse(const Function::user_iterator &FuncUser) {
   if (CallInst *Call = dyn_cast<CallInst>(*FuncUse))
-    return FuncUse.getOperandNo() == Call->getNumArgOperands();
+    return FuncUser.getOperandNo() == Call->getNumArgOperands();
   else
     return false;
 }
