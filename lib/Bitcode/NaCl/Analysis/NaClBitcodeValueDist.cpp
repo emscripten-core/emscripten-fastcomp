@@ -93,9 +93,9 @@ PrintRowValue(raw_ostream &Stream,
               NaClBitcodeDistValue Value,
               const NaClBitcodeDist *Distribution) const {
   NaClValueRangeType Range = GetNaClValueRange(Value);
-  Stream << format("%"PRIu64, Range.first);
+  Stream << format("%" PRIu64, Range.first);
   if (Range.first != Range.second) {
-    Stream << " .. " << format("%"PRIu64, Range.second);
+    Stream << " .. " << format("%" PRIu64, Range.second);
   }
 }
 
