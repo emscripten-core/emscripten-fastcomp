@@ -67,10 +67,10 @@ static inline size_t RoundToPowerOf2(size_t n) {
     return NextPowerOf2(n);
 }
 
-static inline bool IsPtrToIntUse(const Function::use_iterator &FuncUse) {
-  if (isa<PtrToIntInst>(*FuncUse))
+static inline bool IsPtrToIntUse(const Function::user_iterator &FuncUser) {
+  if (isa<PtrToIntInst>(*FuncUser))
     return true;
-  else if (ConstantExpr *Expr = dyn_cast<ConstantExpr>(*FuncUse))
+  else if (ConstantExpr *Expr = dyn_cast<ConstantExpr>(*FuncUser))
     return Expr->getOpcode() == Instruction::PtrToInt;
   else
     return false;
@@ -79,7 +79,7 @@ static inline bool IsPtrToIntUse(const Function::use_iterator &FuncUse) {
 // Function use is a direct call if the user is a call instruction and
 // the function is its last operand.
 static inline bool IsDirectCallUse(const Function::user_iterator &FuncUser) {
-  if (CallInst *Call = dyn_cast<CallInst>(*FuncUse))
+  if (CallInst *Call = dyn_cast<CallInst>(*FuncUser))
     return FuncUser.getOperandNo() == Call->getNumArgOperands();
   else
     return false;
