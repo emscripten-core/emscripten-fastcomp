@@ -92,7 +92,8 @@ static void DumpInstructionVerbose(const MachineInstr &MI) {
       dbgs() << MI.getNumOperands() << " operands:" << "\n";
       for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
         const MachineOperand& op = MI.getOperand(i);
-        dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
+        dbgs() << "  " << i << "(" << (unsigned)op.getType() << "):" << op
+               << "\n";
       }
       dbgs() << "\n";
     });
