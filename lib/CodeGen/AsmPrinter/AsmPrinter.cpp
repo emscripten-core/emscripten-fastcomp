@@ -1175,7 +1175,7 @@ void AsmPrinter::EmitJumpTableInfo() {
     // means a unique readonly section if F gets a unique text section)
     const MCSection *ReadOnlySection =
         getObjFileLowering().SectionForGlobal(
-            F, SectionKind::getReadOnly(), Mang, TM);
+            F, SectionKind::getReadOnly(), *Mang, TM);
     // @LOCALMOD-END
     OutStreamer.SwitchSection(ReadOnlySection);
     JTInDiffSection = true;
