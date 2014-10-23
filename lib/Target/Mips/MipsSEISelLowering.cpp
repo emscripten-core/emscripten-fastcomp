@@ -1190,8 +1190,7 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
             CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const {
   Ops.push_back(Callee);
   MipsTargetLowering::getOpndList(Ops, RegsToPass, IsPICCall, GlobalOrExternal,
-                                  InternalLinkage, IsCallReloc, CLI, Callee,
-                                  Chain);
+                                  InternalLinkage, CLI, Callee, Chain);
 }
 
 SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {

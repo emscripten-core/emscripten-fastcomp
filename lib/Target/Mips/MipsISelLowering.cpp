@@ -2334,8 +2334,7 @@ void MipsTargetLowering::
 getOpndList(SmallVectorImpl<SDValue> &Ops,
             std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
             bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-            bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
-            SDValue Chain) const {
+            CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const {
   // Insert node "GP copy globalreg" before call to function.
   //
   // R_MIPS_CALL* operators (emitted when non-internal functions are called
@@ -2552,12 +2551,9 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
         Callee = getAddrGlobalLargeGOT(G, Ty, DAG, MipsII::MO_CALL_HI16,
                                        MipsII::MO_CALL_LO16, Chain,
                                        FuncInfo->callPtrInfo(Val));
-        IsCallReloc = true;
-      } else {
+      else
         Callee = getAddrGlobal(G, Ty, DAG, MipsII::MO_GOT_CALL, Chain,
                                FuncInfo->callPtrInfo(Val));
-        IsCallReloc = true;
-      }
     } else
       Callee = DAG.getTargetGlobalAddress(G->getGlobal(), DL, getPointerTy(), 0,
                                           MipsII::MO_NO_FLAG);
@@ -2569,16 +2565,13 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     if (!Subtarget.isABI_N64() && !IsPIC) // !N64 && static
       Callee = DAG.getTargetExternalSymbol(Sym, getPointerTy(),
                                             MipsII::MO_NO_FLAG);
-    else if (LargeGOT) {
+    else if (LargeGOT)
       Callee = getAddrGlobalLargeGOT(S, Ty, DAG, MipsII::MO_CALL_HI16,
                                      MipsII::MO_CALL_LO16, Chain,
                                      FuncInfo->callPtrInfo(Sym));
-      IsCallReloc = true;
-    } else { // N64 || PIC
+    else // N64 || PIC
       Callee = getAddrGlobal(S, Ty, DAG, MipsII::MO_GOT_CALL, Chain,
                              FuncInfo->callPtrInfo(Sym));
-      IsCallReloc = true;
-    }
 
     GlobalOrExternal = true;
   }
@@ -2587,7 +2580,7 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
 
   getOpndList(Ops, RegsToPass, IsPICCall, GlobalOrExternal, InternalLinkage,
-              IsCallReloc, CLI, Callee, Chain);
+              CLI, Callee, Chain);
 
   if (IsTailCall)
     return DAG.getNode(MipsISD::TailCall, DL, MVT::Other, Ops);

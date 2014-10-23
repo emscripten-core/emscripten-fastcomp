@@ -336,8 +336,7 @@ namespace llvm {
     getOpndList(SmallVectorImpl<SDValue> &Ops,
                 std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
                 bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-                bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
-                SDValue Chain) const;
+                CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const;
 
     /// ByValArgInfo - Byval argument information.
     struct ByValArgInfo {
