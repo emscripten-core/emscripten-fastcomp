@@ -1425,12 +1425,7 @@ bool X86DAGToDAGISel::SelectAddr(SDNode *Parent, SDValue N, SDValue &Base,
     if (Index.getValueType() != MVT::i64) {
       Index = CurDAG->getZExtOrTrunc(Index, SDLoc(Index), MVT::i64);
       // Insert the new node into the topological ordering.
-      if (Parent &&
-          (Index->getNodeId() == -1 ||
-           Index->getNodeId() > Parent->getNodeId())) {
-        CurDAG->RepositionNode(Parent, Index.getNode());
-        Index->setNodeId(Parent->getNodeId());
-      }
+      InsertDAGNode(*CurDAG, Parent ? SDValue(Parent, 0) : N, Index);
     }
   }
   // @LOCALMOD-END

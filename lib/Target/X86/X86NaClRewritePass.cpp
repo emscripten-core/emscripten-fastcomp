@@ -110,11 +110,11 @@ static bool IsPushPop(MachineInstr &MI) {
 }
 
 static bool IsStore(MachineInstr &MI) {
-  return MI.getDesc().mayStore();
+  return MI.mayStore();
 }
 
 static bool IsLoad(MachineInstr &MI) {
-  return MI.getDesc().mayLoad();
+  return MI.mayLoad();
 }
 
 static bool IsFrameChange(MachineInstr &MI) {
