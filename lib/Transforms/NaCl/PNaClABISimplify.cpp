@@ -74,14 +74,16 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   PM.add(createRewriteLLVMIntrinsicsPass());
 #endif
 
+  PM.add(createExpandVarArgsPass());
   // Expand out some uses of struct types.
   PM.add(createExpandArithWithOverflowPass());
   // ExpandStructRegs must be run after ExpandArithWithOverflow to
   // expand out the insertvalue instructions that
-  // ExpandArithWithOverflow introduces.
+  // ExpandArithWithOverflow introduces.  ExpandStructRegs must be run
+  // after ExpandVarArgs so that struct-typed "va_arg" instructions
+  // have been removed.
   PM.add(createExpandStructRegsPass());
 
-  PM.add(createExpandVarArgsPass());
   PM.add(createExpandCtorsPass());
 #if 0 // XXX EMSCRIPTEN: We handle aliases.
   PM.add(createResolveAliasesPass());
