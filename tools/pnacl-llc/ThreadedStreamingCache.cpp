@@ -12,6 +12,7 @@
 #include "llvm/Support/Mutex.h"
 #include <cstring>
 
+using namespace llvm;
 using llvm::sys::ScopedLock;
 
 ThreadedStreamingCache::ThreadedStreamingCache(

@@ -30,8 +30,7 @@ namespace {
   class StripMetadata : public ModulePass {
   public:
     static char ID;
-    StripMetadata()
-        : ModulePass(ID), ShouldStripModuleFlags(false) {
+    StripMetadata() : ModulePass(ID), ShouldStripModuleFlags(false) {
       initializeStripMetadataPass(*PassRegistry::getPassRegistry());
     }
 

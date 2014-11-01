@@ -351,7 +351,7 @@ void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
 ///   %val = call T @llvm.nacl.atomic.cmpxchg.i<size>(
 ///       %object, %expected, %desired, memory_order_success,
 ///       memory_order_failure)
-///  %success = icmp eq %old, %val
+///   %success = icmp eq %old, %val
 /// Note: weak is currently dropped if present, the cmpxchg is always strong.
 void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
   PointerHelper<AtomicCmpXchgInst> PH(*this, I);

@@ -11,7 +11,7 @@
 
 target datalayout = "p:32:32:32"
 
-; val
+; __sync_val_compare_and_swap
 
 ; CHECK-LABEL: @test_val_compare_and_swap_i8
 define zeroext i8 @test_val_compare_and_swap_i8(i8* %ptr, i8 zeroext %oldval, i8 zeroext %newval) {
@@ -61,7 +61,7 @@ define i64 @test_val_compare_and_swap_i64(i64* %ptr, i64 %oldval, i64 %newval) {
   ret i64 %val  ; CHECK-NEXT: ret i64 %val
 }
 
-; bool
+; __sync_bool_compare_and_swap
 
 ; CHECK-LABEL: @test_bool_compare_and_swap_i8
 define zeroext i1 @test_bool_compare_and_swap_i8(i8* %ptr, i8 zeroext %oldval, i8 zeroext %newval) {

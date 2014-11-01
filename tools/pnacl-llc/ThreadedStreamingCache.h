@@ -14,6 +14,8 @@
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/StreamableMemoryObject.h"
 
+namespace llvm {
+
 // An implementation of StreamingMemoryObject for use in multithreaded
 // translation. Each thread has one of these objects, each of which has a
 // pointer to a shared StreamingMemoryObject. This object is effectively
@@ -70,5 +72,7 @@ class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
       const ThreadedStreamingCache&) LLVM_DELETED_FUNCTION;
   void operator=(const ThreadedStreamingCache&) LLVM_DELETED_FUNCTION;
 };
+
+} // namespace llvm
 
 #endif // THREADEDSTREAMINGCACHE_H

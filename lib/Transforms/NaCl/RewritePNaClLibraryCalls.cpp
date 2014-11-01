@@ -172,9 +172,9 @@ bool RewritePNaClLibraryCalls::RewriteLibraryCall(
     {
       SmallVector<CallInst *, 32> Calls;
       for (User *U : LibFunc->users())
-        // use_iterator will also provide call instructions in which the used
-        // value is an argument, and not the value being called. Make sure we
-        // rewrite only actual calls to LibFunc here.
+        // users() will also provide call instructions in which the used value
+        // is an argument, and not the value being called. Make sure we rewrite
+        // only actual calls to LibFunc here.
         if (CallInst *Call = dyn_cast<CallInst>(U))
           if (Call->getCalledValue() == LibFunc)
             Calls.push_back(Call);

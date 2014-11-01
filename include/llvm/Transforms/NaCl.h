@@ -23,7 +23,6 @@ class FunctionType;
 class Instruction;
 class ModulePass;
 class Use;
-class User;
 class Value;
 
 BasicBlockPass *createConstantInsertExtractElementIndexPass();

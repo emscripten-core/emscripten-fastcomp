@@ -40,7 +40,7 @@ entry:
 ; CHECK-NEXT: R_ARM_MOVW_PREL_NC .LCPI
 ; CHECK-NEXT: movt r[[REG2]]
 ; CHECK-NEXT: R_ARM_MOVT_PREL .LCPI
-; CHECK-NEXT: add r[[REG2:[0-9]+]], pc, r[[REG2]]
+; CHECK-NEXT: add r[[REG2]], pc, r[[REG2]]
 ; CHECK: ldr r[[REG2]], {{\[}}r[[REG2]]{{\]}}
 ; CHECK: add r[[REG1]], r[[REG2]], r[[REG1]]
 

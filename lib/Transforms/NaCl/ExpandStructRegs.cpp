@@ -192,12 +192,13 @@ static void SplitUpLoad(LoadInst *Load) {
 }
 
 static bool ExpandExtractValue(ExtractValueInst *EV) {
-  // Search for the insertvalue instruction that inserts the struct
-  // field referenced by this extractvalue instruction.
+  // Search for the insertvalue instruction that inserts the struct field
+  // referenced by this extractvalue instruction, excluding CmpXchg which
+  // returns a struct and is handled by RewriteAtomics.
   Value *StructVal = EV->getAggregateOperand();
   Value *ResultField;
   if (isa<AtomicCmpXchgInst>(StructVal))
-    return false; // CmpXchg returns a struct, it's handled by RewriteAtomics.
+    return false;
   for (;;) {
     if (InsertValueInst *IV = dyn_cast<InsertValueInst>(StructVal)) {
       if (EV->getNumIndices() != 1 || IV->getNumIndices() != 1) {

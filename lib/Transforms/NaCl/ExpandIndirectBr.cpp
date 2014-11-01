@@ -126,10 +126,9 @@ static bool convertFunction(Function *Func) {
 
   // If there are any blockaddresses that are never used by an
   // indirectbr, replace them with dummy values.
-  SmallVector<Value *, 20> Uses(Func->user_begin(), Func->user_end());
-  for (SmallVectorImpl<Value *>::iterator UI = Uses.begin(), E = Uses.end();
-       UI != E; ++UI) {
-    if (BlockAddress *BA = dyn_cast<BlockAddress>(*UI)) {
+  SmallVector<Value *, 20> Users(Func->user_begin(), Func->user_end());
+  for (auto U : Users) {
+    if (BlockAddress *BA = dyn_cast<BlockAddress>(U)) {
       Changed = true;
       Value *DummyVal = ConstantExpr::getIntToPtr(ConstantInt::get(I32, ~0L),
                                                   BA->getType());

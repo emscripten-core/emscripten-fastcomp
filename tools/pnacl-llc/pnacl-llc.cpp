@@ -11,8 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ThreadedFunctionQueue.h"
-#include "ThreadedStreamingCache.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -47,8 +45,13 @@
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/NaCl.h"
+
+#include "ThreadedFunctionQueue.h"
+#include "ThreadedStreamingCache.h"
+
 #include <pthread.h>
 #include <memory>
+
 using namespace llvm;
 
 // NOTE: When __native_client__ is defined it means pnacl-llc is built as a
