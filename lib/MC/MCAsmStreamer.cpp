@@ -53,6 +53,9 @@ private:
   unsigned UseLoc : 1;
   unsigned UseCFI : 1;
   unsigned UseDwarfDirectory : 1;
+  // @LOCALMOD: we don't have an MCAssembler object here, so we can't ask it
+  // if bundle alignment is enabled. Instead, just track the alignment here.
+  unsigned BundleAlignmentEnabled : 1;
 
   enum EHSymbolFlags { EHGlobal         = 1,
                        EHWeakDefinition = 1 << 1,
@@ -74,7 +77,7 @@ public:
         InstPrinter(printer), Emitter(emitter), AsmBackend(asmbackend),
         CommentStream(CommentToEmit), IsVerboseAsm(isVerboseAsm),
         ShowInst(showInst), UseLoc(useLoc), UseCFI(useCFI),
-        UseDwarfDirectory(useDwarfDirectory) {
+        UseDwarfDirectory(useDwarfDirectory), BundleAlignmentEnabled(0) {
     if (InstPrinter && IsVerboseAsm)
       InstPrinter->setCommentStream(CommentStream);
   }
@@ -1308,6 +1311,12 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst) {
   assert(getCurrentSection().first &&
          "Cannot emit contents before setting section!");
 
+  // @LOCALMOD-START
+  if (BundleAlignmentEnabled && AsmBackend &&
+      AsmBackend->CustomExpandInst(Inst, *this)) {
+    return;
+  }
+  // @LOCALMOD-END
   // Show the encoding in a comment if we have a code emitter.
   if (Emitter)
     AddEncodingComment(Inst);
@@ -1328,6 +1337,7 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst) {
 
 void MCAsmStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
   OS << "\t.bundle_align_mode " << AlignPow2;
+  BundleAlignmentEnabled = AlignPow2 > 0; // @LOCALMOD
   EmitEOL();
 }
 

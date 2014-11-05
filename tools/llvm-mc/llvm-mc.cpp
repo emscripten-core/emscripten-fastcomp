@@ -425,13 +425,17 @@ int main(int argc, char **argv) {
   OwningPtr<MCSubtargetInfo>
     STI(TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
+  Triple T(TripleName); // @LOCALMOD
+
   MCInstPrinter *IP = NULL;
   if (FileType == OFT_AssemblyFile) {
     IP =
       TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI, *MCII, *MRI, *STI);
     MCCodeEmitter *CE = 0;
     MCAsmBackend *MAB = 0;
-    if (ShowEncoding) {
+    if (ShowEncoding || T.isOSNaCl()) { // @LOCALMOD
+      // We always create an asm backend for NaCl to get CustomExpandInst,
+      // which is used by asm streamers as well as object streamers.
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
       MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
@@ -452,7 +456,6 @@ int main(int argc, char **argv) {
                                                 FOS, CE, RelaxAll,
                                                 NoExecStack));
     // @LOCALMOD-BEGIN
-    Triple T(TripleName);
     if (T.isOSNaCl())
       initializeNaClMCStreamer(*Str.get(), Ctx, T);
     // @LOCALMOD-END

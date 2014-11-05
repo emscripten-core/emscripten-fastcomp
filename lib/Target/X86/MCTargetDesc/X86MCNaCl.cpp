@@ -303,8 +303,8 @@ static void EmitSPArith(unsigned Opc, const MCOperand &ImmOp,
 
   MCInst Tmp;
   Tmp.setOpcode(Opc);
-  Tmp.addOperand(MCOperand::CreateReg(X86::RSP));
-  Tmp.addOperand(MCOperand::CreateReg(X86::RSP));
+  Tmp.addOperand(MCOperand::CreateReg(X86::ESP));
+  Tmp.addOperand(MCOperand::CreateReg(X86::ESP));
   Tmp.addOperand(ImmOp);
   Out.EmitInstruction(Tmp);
 
@@ -511,9 +511,10 @@ namespace llvm {
 //   one explicit prefix is supported.
 bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
                              X86MCNaClSFIState &State) {
-  // If we are emitting to .s, just emit all pseudo-instructions directly.
+  // If we are emitting to .s, only sandbox pseudos not supported by gas.
   if (Out.hasRawTextSupport()) {
-    return false;
+    if (Inst.getOpcode() != X86::NACL_ANDSPi32)
+      return false;
   }
   // If we make a call to EmitInstruction, we will be called recursively. In
   // this case we just want the raw instruction to be emitted instead of
