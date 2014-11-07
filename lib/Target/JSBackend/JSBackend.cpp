@@ -1277,19 +1277,20 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   if (swizzleA || swizzleB) {
     std::string T = (swizzleA ? A : B);
     if (SVI->getType()->getElementType()->isIntegerTy()) {
-      Code << "SIMD_int32x4_swizzle(" << T << ", SIMD.";
+      Code << "SIMD_int32x4_swizzle(" << T;
     } else {
-      Code << "SIMD_float32x4_swizzle(" << T << ", SIMD.";
+      Code << "SIMD_float32x4_swizzle(" << T;
     }
     for (unsigned int i = 0; i < 4; i++) {
+      Code << ", ";
       int Mask = SVI->getMaskValue(i);
       if (Mask < 0) {
-        Code << SIMDLane[0];
+        Code << 0;
       } else if (Mask < 4) {
-        Code << SIMDLane[Mask];
+        Code << Mask;
       } else {
         assert(Mask < 8);
-        Code << SIMDLane[Mask-4];
+        Code << (Mask-4);
       }
     }
     Code << ")";
