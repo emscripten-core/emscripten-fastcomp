@@ -452,6 +452,7 @@ namespace {
     void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
+    void generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code);
     void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
@@ -1232,6 +1233,24 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   }
 }
 
+void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code) {
+  VectorType *VT = cast<VectorType>(EEI->getVectorOperand()->getType());
+  checkVectorType(VT);
+  const ConstantInt *IndexInt = dyn_cast<const ConstantInt>(EEI->getIndexOperand());
+  if (IndexInt) {
+    unsigned Index = IndexInt->getZExtValue();
+    assert(Index <= 3);
+    Code << getAssignIfNeeded(EEI);
+    std::string OperandCode;
+    raw_string_ostream CodeStream(OperandCode);
+    CodeStream << getValueAsStr(EEI->getVectorOperand()) << '.' << simdLane[Index];
+    Code << getCast(CodeStream.str(), EEI->getType());
+    return;
+  }
+
+  error("SIMD extract element with non-constant index not implemented yet");
+}
+
 void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
   Code << getAssignIfNeeded(SVI);
 
@@ -1536,17 +1555,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       }
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
-      const ExtractElementInst *EEI = cast<ExtractElementInst>(I);
-      VT = cast<VectorType>(EEI->getVectorOperand()->getType());
-      checkVectorType(VT);
-      const ConstantInt *IndexInt = cast<const ConstantInt>(EEI->getIndexOperand());
-      unsigned Index = IndexInt->getZExtValue();
-      assert(Index <= 3);
-      Code << getAssignIfNeeded(EEI);
-      std::string OperandCode;
-      raw_string_ostream CodeStream(OperandCode);
-      CodeStream << getValueAsStr(EEI->getVectorOperand()) << '.' << simdLane[Index];
-      Code << getCast(CodeStream.str(), EEI->getType());
+      generateExtractElementExpression(cast<ExtractElementInst>(I), Code);
       return true;
     }
   }
