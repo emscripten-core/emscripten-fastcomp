@@ -257,7 +257,6 @@ bool ARMPassConfig::addPreEmitPass() {
   }
 
   addPass(createARMOptimizeBarriersPass());
-  addPass(createARMConstantIslandPass());
 
   // @LOCALMOD-START
   if (getARMSubtarget().useConstIslands())
