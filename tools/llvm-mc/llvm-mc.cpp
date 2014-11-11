@@ -447,7 +447,9 @@ int main(int argc, char **argv) {
   std::unique_ptr<MCSubtargetInfo> STI(
       TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
-  MCInstPrinter *IP = nullptr;
+  Triple T(TripleName); // @LOCALMOD
+
+  MCInstPrinter *IP = NULL;
   if (FileType == OFT_AssemblyFile) {
     IP =
       TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI, *MCII, *MRI, *STI);
@@ -458,7 +460,7 @@ int main(int argc, char **argv) {
     // Set up the AsmStreamer.
     MCCodeEmitter *CE = nullptr;
     MCAsmBackend *MAB = nullptr;
-    if (ShowEncoding) {
+    if (ShowEncoding || T.isOSNaCl()) { // @LOCALMOD
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
       MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
@@ -476,7 +478,6 @@ int main(int argc, char **argv) {
                                                 FOS, CE, *STI, RelaxAll,
                                                 NoExecStack));
     // @LOCALMOD-BEGIN
-    Triple T(TripleName);
     if (T.isOSNaCl())
       initializeNaClMCStreamer(*Str.get(), Ctx, T);
     // @LOCALMOD-END

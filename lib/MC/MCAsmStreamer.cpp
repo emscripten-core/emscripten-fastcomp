@@ -52,6 +52,9 @@ private:
   unsigned IsVerboseAsm : 1;
   unsigned ShowInst : 1;
   unsigned UseDwarfDirectory : 1;
+  // @LOCALMOD: we don't have an MCAssembler object here, so we can't ask it
+  // if bundle alignment is enabled. Instead, just track the alignment here.
+  unsigned BundleAlignmentEnabled : 1;
 
   void EmitRegisterName(int64_t Register);
   void EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) override;
@@ -65,7 +68,8 @@ public:
       : MCStreamer(Context), OS(os), MAI(Context.getAsmInfo()),
         InstPrinter(printer), Emitter(emitter), AsmBackend(asmbackend),
         CommentStream(CommentToEmit), IsVerboseAsm(isVerboseAsm),
-        ShowInst(showInst), UseDwarfDirectory(useDwarfDirectory) {
+        ShowInst(showInst), UseDwarfDirectory(useDwarfDirectory),
+        BundleAlignmentEnabled(0) {
     if (InstPrinter && IsVerboseAsm)
       InstPrinter->setCommentStream(CommentStream);
   }
@@ -1259,6 +1263,12 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
   assert(getCurrentSection().first &&
          "Cannot emit contents before setting section!");
 
+  // @LOCALMOD-START
+  if (BundleAlignmentEnabled && AsmBackend &&
+      AsmBackend->CustomExpandInst(Inst, *this)) {
+    return;
+  }
+  // @LOCALMOD-END
   // Show the encoding in a comment if we have a code emitter.
   if (Emitter)
     AddEncodingComment(Inst, STI);
@@ -1279,6 +1289,7 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
 
 void MCAsmStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
   OS << "\t.bundle_align_mode " << AlignPow2;
+  BundleAlignmentEnabled = AlignPow2 > 0; // @LOCALMOD
   EmitEOL();
 }
 
