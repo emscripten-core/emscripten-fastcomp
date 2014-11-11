@@ -223,22 +223,14 @@ public:
   // cleanly separated.
 #if defined(__native_client__)
   OSType getOS() const { return NaCl; }
-  EnvironmentType getEnvironment() const {
-    // The X86 backend checks OS || Environment == MachO, so we need to hack
-    // the environment as well to make MachO impossible.
-    if (Environment == MachO) {
-      report_fatal_error("NaCl-specific build doesn't handle MachO");
-    }
-    return Environment;
-  }
 #else
   /// getOS - Get the parsed operating system type of this triple.
   OSType getOS() const { return OS; }
+#endif
+  // @LOCALMOD-END
 
   /// getEnvironment - Get the parsed environment type of this triple.
   EnvironmentType getEnvironment() const { return Environment; }
-#endif
-  // @LOCALMOD-END
 
   /// hasEnvironment - Does this triple have the optional environment
   /// (fourth) component?
@@ -368,13 +360,20 @@ public:
   bool isMacOSX() const { return false; }
   bool isiOS() const { return false; }
   bool isOSDarwin() const { return false; }
+  bool isOSFreeBSD() const { return false; }
+  bool isWindowsMSVCEnvironment() const { return false; }
+  bool isKnownWindowsMSVCEnvironment() const { return false; }
+  bool isWindowsItaniumEnvironment() const { return false; }
+  bool isWindowsCygwinEnvironment() const { return false; }
+  bool isWindowsGNUEnvironment() const { return false; }
   bool isOSCygMing() const { return false; }
+  bool isOSMSVCRT() const { return false; }
   bool isOSWindows() const { return false; }
   bool isOSNaCl() const { return true; }
   bool isOSLinux() const { return false; }
   bool isOSBinFormatELF() const { return true; }
   bool isOSBinFormatCOFF() const { return false; }
-  bool isEnvironmentMachO() const { return false; }
+  bool isOSBinFormatMachO() const { return false; }
 #else
   /// isMacOSX - Is this a Mac OS X triple. For legacy reasons, we support both
   /// "darwin" and "osx" as OS X triples.

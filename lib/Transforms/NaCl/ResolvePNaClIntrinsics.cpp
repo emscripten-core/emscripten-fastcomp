@@ -189,7 +189,7 @@ struct IsLockFreeToConstant {
       MaxLockFreeByteSize = 4;
       break;
     default:
-      return false;
+      report_fatal_error("Unhandled arch from __builtin_nacl_target_arch()");
     }
 #   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__)
     // Continue.
