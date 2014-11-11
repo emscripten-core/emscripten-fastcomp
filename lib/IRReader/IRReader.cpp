@@ -114,7 +114,6 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
       Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
                          ErrMsg);
     // ParseBitcodeFile does not take ownership of the Buffer.
-    delete Buffer;
     return M;
   } else if (Format == LLVMFormat) {
     if (isBitcode((const unsigned char *)Buffer->getBufferStart(),
@@ -124,7 +123,6 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
         Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
                            EC.message());
       // ParseBitcodeFile does not take ownership of the Buffer.
-      delete Buffer;
       return MOrErr.get();
     }
 
