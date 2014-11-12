@@ -223,9 +223,13 @@ public:
   // cleanly separated.
 #if defined(__native_client__)
   OSType getOS() const { return NaCl; }
+  ObjectFormatType getObjectFormat() const { return ELF; }
 #else
   /// getOS - Get the parsed operating system type of this triple.
   OSType getOS() const { return OS; }
+
+  /// getFormat - Get the object format for this triple.
+  ObjectFormatType getObjectFormat() const { return ObjectFormat; }
 #endif
   // @LOCALMOD-END
 
@@ -237,9 +241,6 @@ public:
   bool hasEnvironment() const {
     return getEnvironmentName() != "";
   }
-
-  /// getFormat - Get the object format for this triple.
-  ObjectFormatType getObjectFormat() const { return ObjectFormat; }
 
   /// getOSVersion - Parse the version number from the OS name component of the
   /// triple, if present.
