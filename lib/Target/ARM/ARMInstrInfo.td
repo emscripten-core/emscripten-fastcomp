@@ -5372,7 +5372,8 @@ def MOV_ga_pcrel_ldr : PseudoInst<(outs GPR:$dst), (ins i32imm:$addr),
 
 // ConstantPool, GlobalAddress, and JumpTable
 def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>,
-            Requires<[UseConstIslands]>; // @LOCALMOD see tconstpool mod below.
+            Requires<[IsARM, UseConstIslands]>; // @LOCALMOD see tconstpool
+                                                // with DontUseConstIslands.
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (MOVi32imm tglobaladdr :$dst)>,
             Requires<[IsARM, UseMovt]>;
 // @LOCALMOD-START
