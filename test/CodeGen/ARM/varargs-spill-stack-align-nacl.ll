@@ -1,4 +1,6 @@
-; RUN: llc < %s -mtriple=arm-nacl-gnueabi | FileCheck %s
+; RUN: llc < %s -mtriple=armv7-nacl-gnueabi | FileCheck %s
+; @LOCALMOD: change to armv7, (or alternatively +v6t2) since NaCl needs
+; movw/movt to materialize the @va_list global address.
 
 declare void @llvm.va_start(i8*)
 declare void @external_func(i8*)
