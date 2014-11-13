@@ -14,6 +14,7 @@
 #define LLVM_CODEGEN_JUMPINSTRTABLES_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/IR/LegacyPassManagers.h"
 #include "llvm/Pass.h"
 #include "llvm/Target/TargetOptions.h"
 
@@ -56,6 +57,27 @@ public:
   bool runOnModule(Module &M) override;
   const char *getPassName() const override { return "Jump-Instruction Tables"; }
   void getAnalysisUsage(AnalysisUsage &AU) const override;
+
+  // @LOCALMOD-BEGIN
+  // If there is not a ModulePassManager in the pass manager stack, do not
+  // schedule this pass. pnacl-llc uses only a FunctionPassManager but for
+  // some reason it will happily schedule any module passes that are handed to
+  // it and call them with bogus arguments. We could move this mod up into
+  // ModulePass::assignPassManager except that the JIT also uses a FPM and
+  // schedules a DebugInfoVerifier (which we do not use). That is still
+  // probably wrong but DebugInfoVerifier seems to accidentally work anyway for
+  // that case.
+  // All of this should be fixed upstream, except that the pass manager is being
+  // completely rewritten. So for now this is a noninvasive solution.
+  void assignPassManager(PMStack &PMS, PassManagerType PreferredType) override {
+
+    if (std::none_of(PMS.begin(), PMS.end(), [](PMDataManager *PM) {
+        return PM->getPassManagerType() == PMT_ModulePassManager;})) {
+      return;
+    }
+    ModulePass::assignPassManager(PMS, PreferredType);
+  }
+  // @LOCALMOD-END
 
   /// Creates a jump-instruction table function for the Target and adds it to
   /// the tables.
