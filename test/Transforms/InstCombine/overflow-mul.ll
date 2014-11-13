@@ -1,5 +1,13 @@
 ; RUN: opt -S -instcombine < %s | FileCheck %s
 
+; @LOCALMOD-BEGIN
+; PNaCl does not support the with.overflow intrinsics in its stable
+; ABI, so these optimizations are disabled.
+
+; RUN: opt -S -instcombine -mtriple=le32-nacl < %s | FileCheck %s -check-prefix=PNACL
+; PNACL-NOT: with.overflow
+; @LOCALMOD-END
+
 ; return mul(zext x, zext y) > MAX
 define i32 @pr4917_1(i32 %x, i32 %y) nounwind {
 ; CHECK-LABEL: @pr4917_1(

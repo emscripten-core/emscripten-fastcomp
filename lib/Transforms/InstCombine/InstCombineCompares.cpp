@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "InstCombine.h"
+#include "llvm/ADT/Triple.h" // @LOCALMOD
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
@@ -2438,7 +2439,9 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
     // @LOCALMOD-BEGIN
     // This is disabled for PNaCl, because we don't support the
     // with.overflow intrinsics in PNaCl's stable ABI.
-    if (0)
+    Triple T(I.getParent()->getParent()->getParent()->getTargetTriple());
+    if (T.getArch() != Triple::le32)
+    // @LOCALMOD-END
     {
     ConstantInt *CI2;    // I = icmp ugt (add (add A, B), CI2), CI
     if (I.getPredicate() == ICmpInst::ICMP_UGT &&
@@ -2446,7 +2449,6 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
       if (Instruction *Res = ProcessUGT_ADDCST_ADD(I, A, B, CI2, CI, *this))
         return Res;
     }
-    // @LOCALMOD-END
 
     // (icmp ne/eq (sub A B) 0) -> (icmp ne/eq A, B)
     if (I.isEquality() && CI->isZero() &&
@@ -3139,7 +3141,8 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
     // @LOCALMOD-BEGIN
     // This is disabled for PNaCl, because we don't support the
     // with.overflow intrinsics in PNaCl's stable ABI.
-    if (0) {
+    Triple T(I.getParent()->getParent()->getParent()->getTargetTriple());
+    if (T.getArch() != Triple::le32) {
     // (a+b) <u a  --> llvm.uadd.with.overflow.
     // (a+b) <u b  --> llvm.uadd.with.overflow.
     if (I.getPredicate() == ICmpInst::ICMP_ULT &&
