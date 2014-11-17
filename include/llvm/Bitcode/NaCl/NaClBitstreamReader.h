@@ -17,11 +17,11 @@
 #define LLVM_BITCODE_NACL_NACLBITSTREAMREADER_H
 
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/StreamableMemoryObject.h"
 #include <climits>
-#include <string>
 #include <vector>
 
 namespace llvm {
@@ -40,19 +40,11 @@ public:
   struct BlockInfo {
     unsigned BlockID;
     std::vector<NaClBitCodeAbbrev*> Abbrevs;
-    std::string Name;
-
-    std::vector<std::pair<unsigned, std::string> > RecordNames;
   };
 private:
   OwningPtr<StreamableMemoryObject> BitcodeBytes;
 
   std::vector<BlockInfo> BlockInfoRecords;
-
-  /// IgnoreBlockInfoNames - This is set to true if we don't care
-  /// about the block/record name information in the BlockInfo
-  /// block. Only pnacl-bcanalyzer uses this.
-  bool IgnoreBlockInfoNames;
 
   /// \brief Holds the offset of the first byte after the header.
   size_t InitialAddress;
@@ -60,10 +52,9 @@ private:
   NaClBitstreamReader(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
 public:
-  NaClBitstreamReader() : IgnoreBlockInfoNames(true), InitialAddress(0) {}
+  NaClBitstreamReader() : InitialAddress(0) {}
 
   NaClBitstreamReader(const unsigned char *Start, const unsigned char *End) {
-    IgnoreBlockInfoNames = true;
     InitialAddress = 0;
     init(Start, End);
   }
@@ -94,11 +85,6 @@ public:
     }
   }
 
-  /// CollectBlockInfoNames - This is called by clients that want block/record
-  /// name information.
-  void CollectBlockInfoNames() { IgnoreBlockInfoNames = false; }
-  bool isIgnoringBlockInfoNames() { return IgnoreBlockInfoNames; }
-
   /// \brief Returns the initial address (after the header) of the input stream.
   size_t getInitialAddress() const {
     return InitialAddress;
@@ -112,6 +98,13 @@ public:
   /// block info block for this Bitstream.  We only process it for the first
   /// cursor that walks over it.
   bool hasBlockInfoRecords() const { return !BlockInfoRecords.empty(); }
+
+  /// Gets the set of blocks defined in the block info records structure.
+  void GetBlockInfoBlockIDs(SmallVectorImpl<unsigned> &Out) {
+    for (size_t i = 0, e = BlockInfoRecords.size(); i != e; ++i) {
+      Out.push_back(BlockInfoRecords[i].BlockID);
+    }
+  }
 
   /// getBlockInfo - If there is block info for the specified ID, return it,
   /// otherwise return null.
@@ -370,8 +363,7 @@ public:
     // Read the next word from the stream.
     uint8_t Array[sizeof(word_t)] = {0};
     
-    BitStream->getBitcodeBytes().readBytes(NextChar, sizeof(Array),
-                                           Array, NULL);
+    BitStream->getBitcodeBytes().readBytes(NextChar, sizeof(Array), Array);
     
     // Handle big-endian byte-swapping if necessary.
     support::detail::packed_endian_specific_integral
@@ -538,17 +530,23 @@ private:
 public:
 
   /// getAbbrev - Return the abbreviation for the specified AbbrevId.
-  const NaClBitCodeAbbrev *getAbbrev(unsigned AbbrevID) {
+  const NaClBitCodeAbbrev *getAbbrev(unsigned AbbrevID) const {
     unsigned AbbrevNo = AbbrevID-naclbitc::FIRST_APPLICATION_ABBREV;
     assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
     return CurAbbrevs[AbbrevNo];
   }
 
+  /// Returns the last (i.e. newest) abbreviation added to the current
+  /// block.
+  const NaClBitCodeAbbrev *GetNewestAbbrev() const {
+    assert(CurAbbrevs.size() && "No newest abbrev!");
+    return CurAbbrevs.back();
+  }
+
   /// skipRecord - Read the current record and discard it.
   void skipRecord(unsigned AbbrevID);
   
-  unsigned readRecord(unsigned AbbrevID, SmallVectorImpl<uint64_t> &Vals,
-                      StringRef *Blob = 0);
+  unsigned readRecord(unsigned AbbrevID, SmallVectorImpl<uint64_t> &Vals);
 
   //===--------------------------------------------------------------------===//
   // Abbrev Processing

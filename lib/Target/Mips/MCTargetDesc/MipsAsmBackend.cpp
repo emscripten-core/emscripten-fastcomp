@@ -46,6 +46,10 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
   case Mips::fixup_Mips_GOT_DISP:
   case Mips::fixup_Mips_GOT_LO16:
   case Mips::fixup_Mips_CALL_LO16:
+  case Mips::fixup_MICROMIPS_LO16:
+  case Mips::fixup_MICROMIPS_GOT_PAGE:
+  case Mips::fixup_MICROMIPS_GOT_OFST:
+  case Mips::fixup_MICROMIPS_GOT_DISP:
     break;
   case Mips::fixup_Mips_PC16:
     // So far we are only using this type for branches.
@@ -66,6 +70,7 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
   case Mips::fixup_Mips_GOT_Local:
   case Mips::fixup_Mips_GOT_HI16:
   case Mips::fixup_Mips_CALL_HI16:
+  case Mips::fixup_MICROMIPS_HI16:
     // Get the 2nd 16-bits. Also add 1 if bit 15 is 1.
     Value = ((Value + 0x8000) >> 16) & 0xffff;
     break;
@@ -76,6 +81,13 @@ static unsigned adjustFixupValue(unsigned Kind, uint64_t Value) {
   case Mips::fixup_Mips_HIGHEST:
     // Get the 4th 16-bits.
     Value = ((Value + 0x800080008000LL) >> 48) & 0xffff;
+    break;
+  case Mips::fixup_MICROMIPS_26_S1:
+    Value >>= 1;
+    break;
+  case Mips::fixup_MICROMIPS_PC16_S1:
+    Value -= 4;
+    Value >>= 1;
     break;
   }
 
@@ -189,7 +201,20 @@ public:
       { "fixup_Mips_GOT_HI16",     0,     16,   0 },
       { "fixup_Mips_GOT_LO16",     0,     16,   0 },
       { "fixup_Mips_CALL_HI16",    0,     16,   0 },
-      { "fixup_Mips_CALL_LO16",    0,     16,   0 }
+      { "fixup_Mips_CALL_LO16",    0,     16,   0 },
+      { "fixup_MICROMIPS_26_S1",   0,     26,   0 },
+      { "fixup_MICROMIPS_HI16",    0,     16,   0 },
+      { "fixup_MICROMIPS_LO16",    0,     16,   0 },
+      { "fixup_MICROMIPS_GOT16",   0,     16,   0 },
+      { "fixup_MICROMIPS_PC16_S1", 0,     16,   MCFixupKindInfo::FKF_IsPCRel },
+      { "fixup_MICROMIPS_CALL16",  0,     16,   0 },
+      { "fixup_MICROMIPS_GOT_DISP",        0,     16,   0 },
+      { "fixup_MICROMIPS_GOT_PAGE",        0,     16,   0 },
+      { "fixup_MICROMIPS_GOT_OFST",        0,     16,   0 },
+      { "fixup_MICROMIPS_TLS_DTPREL_HI16", 0,     16,   0 },
+      { "fixup_MICROMIPS_TLS_DTPREL_LO16", 0,     16,   0 },
+      { "fixup_MICROMIPS_TLS_TPREL_HI16",  0,     16,   0 },
+      { "fixup_MICROMIPS_TLS_TPREL_LO16",  0,     16,   0 }
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -255,18 +280,26 @@ public:
 class NaClMipsAsmBackend : public MipsAsmBackend {
 public:
   NaClMipsAsmBackend(const Target &T, bool _is64Bit)
-    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {}
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) const {
-    return CustomExpandInstNaClMips(Inst, Out);
+    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {
+    State.SaveCount = 0;
+    State.I = 0;
+    State.RecursiveCall = false;
   }
+
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+    return CustomExpandInstNaClMips(Inst, Out, State);
+  }
+ private:
+  MipsMCNaClSFIState State;
 }; // class NaClMipsAsmBackend
 // @LOCALMOD-END
 
 } // namespace
 
 // MCAsmBackend
-MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T, StringRef TT,
+MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T,
+                                             const MCRegisterInfo &MRI,
+                                             StringRef TT,
                                              StringRef CPU) {
   // @LOCALMOD-BEGIN
   if (Triple(TT).isOSNaCl())
@@ -276,13 +309,17 @@ MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T, StringRef TT,
                             /*IsLittle*/true, /*Is64Bit*/false);
 }
 
-MCAsmBackend *llvm::createMipsAsmBackendEB32(const Target &T, StringRef TT,
+MCAsmBackend *llvm::createMipsAsmBackendEB32(const Target &T,
+                                             const MCRegisterInfo &MRI,
+                                             StringRef TT,
                                              StringRef CPU) {
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/false, /*Is64Bit*/false);
 }
 
-MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T, StringRef TT,
+MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T,
+                                             const MCRegisterInfo &MRI,
+                                             StringRef TT,
                                              StringRef CPU) {
   // @LOCALMOD-BEGIN
   if (Triple(TT).isOSNaCl())
@@ -292,7 +329,9 @@ MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T, StringRef TT,
                             /*IsLittle*/true, /*Is64Bit*/true);
 }
 
-MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T, StringRef TT,
+MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T,
+                                             const MCRegisterInfo &MRI,
+                                             StringRef TT,
                                              StringRef CPU) {
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/false, /*Is64Bit*/true);

@@ -32,7 +32,11 @@
 #  endif
 #endif
 
+#ifdef __APPLE__
 extern "C" void sys_icache_invalidate(const void *Addr, size_t len);
+#else
+extern "C" void __clear_cache(void *, void*);
+#endif
 
 namespace {
 
@@ -156,12 +160,8 @@ Memory::protectMappedMemory(const MemoryBlock &M, unsigned Flags) {
     return error_code(EINVAL, generic_category());
 
   int Protect = getPosixProtectionFlags(Flags);
-#ifndef __native_client__
+
   int Result = ::mprotect(M.Address, M.Size, Protect);
-#else
-  int Result = -1;
-  llvm_unreachable("Native client does not support mprotect");
-#endif
   if (Result != 0)
     return error_code(errno, system_category());
 
@@ -271,6 +271,9 @@ bool Memory::setExecutable (MemoryBlock &M, std::string *ErrMsg) {
   kern_return_t kr = vm_protect(mach_task_self(), (vm_address_t)M.Address,
     (vm_size_t)M.Size, 0, VM_PROT_READ | VM_PROT_EXECUTE | VM_PROT_COPY);
   return KERN_SUCCESS == kr;
+#elif defined(__arm__) || defined(__aarch64__)
+  Memory::InvalidateInstructionCache(M.Address, M.Size);
+  return true;
 #else
   return true;
 #endif

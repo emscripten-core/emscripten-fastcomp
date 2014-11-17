@@ -32,9 +32,3 @@ define i8* @call_memset(i8* %dest, i32 %c, i32 %len) {
 ; CHECK: call void @llvm.memset.p0i8.i32(i8* %dest, i8 %trunc_byte, i32 %len, i32 1, i1 false)
 ; CHECK: ret i8* %dest
 }
-
-; CHECK: declare void @llvm.memset.p0i8.i32(i8* nocapture, i8, i32, i32, i1)
-
-; CHECK: declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1)
-
-; CHECK: declare void @llvm.memmove.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1)

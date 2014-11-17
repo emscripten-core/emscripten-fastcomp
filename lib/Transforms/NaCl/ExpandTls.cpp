@@ -269,12 +269,25 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
   }
 }
 
-// Provide fixed definitions for PNaCl's TLS layout intrinsics.  We
-// adopt the x86-style layout: ExpandTls will output a program that
-// uses the x86-style layout wherever it runs.  This overrides any
-// architecture-specific definitions of the intrinsics that the LLVM
-// backend might provide.
-static void defineTlsLayoutIntrinsics(Module &M) {
+static void replaceFunction(Module &M, const char *Name, Value *NewFunc) {
+  if (Function *Func = M.getFunction(Name)) {
+    if (Func->hasLocalLinkage())
+      return;
+    if (!Func->isDeclaration())
+      report_fatal_error(std::string("Function already defined: ") + Name);
+    Func->replaceAllUsesWith(NewFunc);
+    Func->eraseFromParent();
+  }
+}
+
+// Provide fixed definitions for NaCl's TLS layout functions,
+// __nacl_tp_*().  We adopt the x86-style layout: ExpandTls will
+// output a program that uses the x86-style layout wherever it runs.
+//
+// This overrides the architecture-specific definitions of
+// __nacl_tp_*() that PNaCl's native support code makes available to
+// non-ABI-stable code.
+static void defineTlsLayoutFunctions(Module &M) {
   Type *i32 = Type::getInt32Ty(M.getContext());
   SmallVector<Type*, 1> ArgTypes;
   ArgTypes.push_back(i32);
@@ -282,7 +295,7 @@ static void defineTlsLayoutIntrinsics(Module &M) {
   Function *NewFunc;
   BasicBlock *BB;
 
-  // Define the intrinsic as follows:
+  // Define the function as follows:
   //   uint32_t __nacl_tp_tdb_offset(uint32_t tdb_size) {
   //     return 0;
   //   }
@@ -292,12 +305,9 @@ static void defineTlsLayoutIntrinsics(Module &M) {
   BB = BasicBlock::Create(M.getContext(), "entry", NewFunc);
   ReturnInst::Create(M.getContext(),
                      ConstantInt::get(M.getContext(), APInt(32, 0)), BB);
-  if (Function *Intrinsic = M.getFunction("llvm.nacl.tp.tdb.offset")) {
-    Intrinsic->replaceAllUsesWith(NewFunc);
-    Intrinsic->eraseFromParent();
-  }
+  replaceFunction(M, "__nacl_tp_tdb_offset", NewFunc);
 
-  // Define the intrinsic as follows:
+  // Define the function as follows:
   //   uint32_t __nacl_tp_tls_offset(uint32_t tls_size) {
   //     return -tls_size;
   //   }
@@ -309,10 +319,7 @@ static void defineTlsLayoutIntrinsics(Module &M) {
   Arg->setName("size");
   Value *Result = BinaryOperator::CreateNeg(Arg, "result", BB);
   ReturnInst::Create(M.getContext(), Result, BB);
-  if (Function *Intrinsic = M.getFunction("llvm.nacl.tp.tls.offset")) {
-    Intrinsic->replaceAllUsesWith(NewFunc);
-    Intrinsic->eraseFromParent();
-  }
+  replaceFunction(M, "__nacl_tp_tls_offset", NewFunc);
 }
 
 bool ExpandTls::runOnModule(Module &M) {
@@ -324,7 +331,7 @@ bool ExpandTls::runOnModule(Module &M) {
   PointerType *TemplatePtrType = buildTlsTemplate(M, &TlsVars);
   rewriteTlsVars(M, &TlsVars, TemplatePtrType);
 
-  defineTlsLayoutIntrinsics(M);
+  defineTlsLayoutFunctions(M);
 
   return true;
 }

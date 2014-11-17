@@ -13,6 +13,9 @@
 
 #include "Unix.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Mutex.h"
+#include "llvm/Support/MutexGuard.h"
 #include "llvm/Support/TimeValue.h"
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
@@ -35,8 +38,6 @@
 #ifdef HAVE_TERMIOS_H
 #  include <termios.h>
 #endif
-
-#include <sys/unistd.h>
 
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only generic UNIX code that
@@ -88,18 +89,14 @@ TimeValue self_process::get_system_time() const {
   return getRUsageTimes().second;
 }
 
+// On Cygwin, getpagesize() returns 64k(AllocationGranularity) and
+// offset in mmap(3) should be aligned to the AllocationGranularity.
 static unsigned getPageSize() {
-#if defined(__CYGWIN__)
-  // On Cygwin, getpagesize() returns 64k but the page size for the purposes of
-  // memory protection and mmap() is 4k.
-  // See http://www.cygwin.com/ml/cygwin/2009-01/threads.html#00492
-  const int page_size = 0x1000;
-#elif defined(HAVE_GETPAGESIZE)
+#if defined(HAVE_GETPAGESIZE)
   const int page_size = ::getpagesize();
-#elif defined(HAVE_SYSCONF)  && !defined(__native_client__)
+#elif defined(HAVE_SYSCONF)
   long page_size = ::sysconf(_SC_PAGE_SIZE);
 #else
-  const int page_size = 0;
 #warning Cannot get the page size on this machine
 #endif
   return static_cast<unsigned>(page_size);
@@ -139,26 +136,6 @@ void Process::GetTimeUsage(TimeValue &elapsed, TimeValue &user_time,
                            TimeValue &sys_time) {
   elapsed = TimeValue::now();
   llvm::tie(user_time, sys_time) = getRUsageTimes();
-}
-
-int Process::GetCurrentUserId() {
-#if !defined(__native_client__)
-  return getuid();
-#else // (__native_client__)
-// TODO(abetul): What the proper return value should be for this function?
-// What about having a reserved user_id or the user "nobody" for PNACL?
-  return -1;
-#endif // (__native_client__)
-}
-
-int Process::GetCurrentGroupId() {
-#if !defined(__native_client__)
-  return getgid();
-#else // (__native_client__)
-// TODO(abetul): What the proper return value should be for this function?
-// What about having a reserved/unused group_id?  
-  return -1;
-#endif // (__native_client__)
 }
 
 #if defined(HAVE_MACH_MACH_H) && !defined(__GNU__)
@@ -205,6 +182,22 @@ void Process::PreventCoreFiles() {
 #endif
 }
 
+Optional<std::string> Process::GetEnv(StringRef Name) {
+  std::string NameStr = Name.str();
+  const char *Val = ::getenv(NameStr.c_str());
+  if (!Val)
+    return None;
+  return std::string(Val);
+}
+
+error_code Process::GetArgumentVector(SmallVectorImpl<const char *> &ArgsOut,
+                                      ArrayRef<const char *> ArgsIn,
+                                      SpecificBumpPtrAllocator<char> &) {
+  ArgsOut.append(ArgsIn.begin(), ArgsIn.end());
+
+  return error_code::success();
+}
+
 bool Process::StandardInIsUserInput() {
   return FileDescriptorIsDisplayed(STDIN_FILENO);
 }
@@ -239,8 +232,6 @@ static unsigned getColumns(int FileID) {
 #if defined(HAVE_SYS_IOCTL_H) && defined(HAVE_TERMIOS_H)
   // Try to determine the width of the terminal.
   struct winsize ws;
-  // Zero-fill ws to avoid a false positive from MemorySanitizer.
-  memset(&ws, 0, sizeof(ws));
   if (ioctl(FileID, TIOCGWINSZ, &ws) == 0)
     Columns = ws.ws_col;
 #endif
@@ -262,22 +253,61 @@ unsigned Process::StandardErrColumns() {
   return getColumns(2);
 }
 
-static bool terminalHasColors() {
-  if (const char *term = std::getenv("TERM")) {
-    // Most modern terminals support ANSI escape sequences for colors.
-    // We could check terminfo, or have a list of known terms that support
-    // colors, but that would be overkill.
-    // The user can always ask for no colors by setting TERM to dumb, or
-    // using a commandline flag.
-    return strcmp(term, "dumb") != 0;
-  }
+#ifdef HAVE_TERMINFO
+// We manually declare these extern functions because finding the correct
+// headers from various terminfo, curses, or other sources is harder than
+// writing their specs down.
+extern "C" int setupterm(char *term, int filedes, int *errret);
+extern "C" struct term *set_curterm(struct term *termp);
+extern "C" int del_curterm(struct term *termp);
+extern "C" int tigetnum(char *capname);
+#endif
+
+static bool terminalHasColors(int fd) {
+#ifdef HAVE_TERMINFO
+  // First, acquire a global lock because these C routines are thread hostile.
+  static sys::Mutex M;
+  MutexGuard G(M);
+
+  int errret = 0;
+  if (setupterm((char *)0, fd, &errret) != 0)
+    // Regardless of why, if we can't get terminfo, we shouldn't try to print
+    // colors.
+    return false;
+
+  // Test whether the terminal as set up supports color output. How to do this
+  // isn't entirely obvious. We can use the curses routine 'has_colors' but it
+  // would be nice to avoid a dependency on curses proper when we can make do
+  // with a minimal terminfo parsing library. Also, we don't really care whether
+  // the terminal supports the curses-specific color changing routines, merely
+  // if it will interpret ANSI color escape codes in a reasonable way. Thus, the
+  // strategy here is just to query the baseline colors capability and if it
+  // supports colors at all to assume it will translate the escape codes into
+  // whatever range of colors it does support. We can add more detailed tests
+  // here if users report them as necessary.
+  //
+  // The 'tigetnum' routine returns -2 or -1 on errors, and might return 0 if
+  // the terminfo says that no colors are supported.
+  bool HasColors = tigetnum(const_cast<char *>("colors")) > 0;
+
+  // Now extract the structure allocated by setupterm and free its memory
+  // through a really silly dance.
+  struct term *termp = set_curterm((struct term *)0);
+  (void)del_curterm(termp); // Drop any errors here.
+
+  // Return true if we found a color capabilities for the current terminal.
+  if (HasColors)
+    return true;
+#endif
+
+  // Otherwise, be conservative.
   return false;
 }
 
 bool Process::FileDescriptorHasColors(int fd) {
   // A file descriptor has colors if it is displayed and the terminal has
   // colors.
-  return FileDescriptorIsDisplayed(fd) && terminalHasColors();
+  return FileDescriptorIsDisplayed(fd) && terminalHasColors(fd);
 }
 
 bool Process::StandardOutHasColors() {
@@ -288,28 +318,14 @@ bool Process::StandardErrHasColors() {
   return FileDescriptorHasColors(STDERR_FILENO);
 }
 
+void Process::UseANSIEscapeCodes(bool /*enable*/) {
+  // No effect.
+}
+
 bool Process::ColorNeedsFlush() {
   // No, we use ANSI escape sequences.
   return false;
 }
-
-#define COLOR(FGBG, CODE, BOLD) "\033[0;" BOLD FGBG CODE "m"
-
-#define ALLCOLORS(FGBG,BOLD) {\
-    COLOR(FGBG, "0", BOLD),\
-    COLOR(FGBG, "1", BOLD),\
-    COLOR(FGBG, "2", BOLD),\
-    COLOR(FGBG, "3", BOLD),\
-    COLOR(FGBG, "4", BOLD),\
-    COLOR(FGBG, "5", BOLD),\
-    COLOR(FGBG, "6", BOLD),\
-    COLOR(FGBG, "7", BOLD)\
-  }
-
-static const char colorcodes[2][2][8][10] = {
- { ALLCOLORS("3",""), ALLCOLORS("3","1;") },
- { ALLCOLORS("4",""), ALLCOLORS("4","1;") }
-};
 
 const char *Process::OutputColor(char code, bool bold, bool bg) {
   return colorcodes[bg?1:0][bold?1:0][code&7];

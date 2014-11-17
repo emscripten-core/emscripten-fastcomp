@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 
 ; Make sure that external symbols are properly rejected or accepted
 

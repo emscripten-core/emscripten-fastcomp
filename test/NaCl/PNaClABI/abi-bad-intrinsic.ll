@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 
 ; This intrinsic is declared with the wrong type, using i32* arguments
 ; instead of i8*.  Check that the ABI verifier rejects this.  This

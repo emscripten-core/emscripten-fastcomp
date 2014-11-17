@@ -55,6 +55,7 @@ namespace llvm {
       BR_JT,        // Jumptable branch.
       BR2_JT,       // Jumptable branch (2 level - jumptable entry is a jump).
       RET_FLAG,     // Return with a flag operand.
+      INTRET_FLAG,  // Interrupt return with an LR-offset and a flag operand.
 
       PIC_ADD,      // Add with a PC operand and a PIC label.
 
@@ -97,7 +98,6 @@ namespace llvm {
 
       DYN_ALLOC,    // Dynamic allocation on the stack.
 
-      MEMBARRIER,   // Memory barrier (DMB)
       MEMBARRIER_MCR, // Memory barrier (MCR)
 
       PRELOAD,      // Preload
@@ -189,6 +189,8 @@ namespace llvm {
       // Floating-point max and min:
       FMAX,
       FMIN,
+      VMAXNM,
+      VMINNM,
 
       // Bit-field insert
       BFI,
@@ -225,21 +227,7 @@ namespace llvm {
       VST4_UPD,
       VST2LN_UPD,
       VST3LN_UPD,
-      VST4LN_UPD,
-
-      // 64-bit atomic ops (value split into two registers)
-      ATOMADD64_DAG,
-      ATOMSUB64_DAG,
-      ATOMOR64_DAG,
-      ATOMXOR64_DAG,
-      ATOMAND64_DAG,
-      ATOMNAND64_DAG,
-      ATOMSWAP64_DAG,
-      ATOMCMPXCHG64_DAG,
-      ATOMMIN64_DAG,
-      ATOMUMIN64_DAG,
-      ATOMMAX64_DAG,
-      ATOMUMAX64_DAG
+      VST4LN_UPD
     };
   }
 
@@ -273,7 +261,7 @@ namespace llvm {
     }
 
     /// getSetCCResultType - Return the value type to use for ISD::SETCC.
-    virtual EVT getSetCCResultType(EVT VT) const;
+    virtual EVT getSetCCResultType(LLVMContext &Context, EVT VT) const;
 
     virtual MachineBasicBlock *
       EmitInstrWithCustomInserter(MachineInstr *MI,
@@ -300,6 +288,9 @@ namespace llvm {
 
     using TargetLowering::isZExtFree;
     virtual bool isZExtFree(SDValue Val, EVT VT2) const;
+
+    virtual bool allowTruncateForTailCall(Type *Ty1, Type *Ty2) const;
+
 
     /// isLegalAddressingMode - Return true if the addressing mode represented
     /// by AM is legal for this target, for a load/store of the specified type.
@@ -352,7 +343,7 @@ namespace llvm {
 
     std::pair<unsigned, const TargetRegisterClass*>
       getRegForInlineAsmConstraint(const std::string &Constraint,
-                                   EVT VT) const;
+                                   MVT VT) const;
 
     /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
     /// vector.  If it is invalid, don't add anything to Ops. If hasMemory is
@@ -415,21 +406,21 @@ namespace llvm {
     void addQRTypeForNEON(MVT VT);
 
     typedef SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPassVector;
-    void PassF64ArgInRegs(DebugLoc dl, SelectionDAG &DAG,
+    void PassF64ArgInRegs(SDLoc dl, SelectionDAG &DAG,
                           SDValue Chain, SDValue &Arg,
                           RegsToPassVector &RegsToPass,
                           CCValAssign &VA, CCValAssign &NextVA,
                           SDValue &StackPtr,
-                          SmallVector<SDValue, 8> &MemOpChains,
+                          SmallVectorImpl<SDValue> &MemOpChains,
                           ISD::ArgFlagsTy Flags) const;
     SDValue GetF64FormalArgument(CCValAssign &VA, CCValAssign &NextVA,
                                  SDValue &Root, SelectionDAG &DAG,
-                                 DebugLoc dl) const;
+                                 SDLoc dl) const;
 
     CCAssignFn *CCAssignFnForNode(CallingConv::ID CC, bool Return,
                                   bool isVarArg) const;
     SDValue LowerMemOpCallTo(SDValue Chain, SDValue StackPtr, SDValue Arg,
-                             DebugLoc dl, SelectionDAG &DAG,
+                             SDLoc dl, SelectionDAG &DAG,
                              const CCValAssign &VA,
                              ISD::ArgFlagsTy Flags) const;
     SDValue LowerEH_SJLJ_SETJMP(SDValue Op, SelectionDAG &DAG) const;
@@ -448,9 +439,6 @@ namespace llvm {
     // @LOCALMOD-START
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerNaClTpTlsOffset(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerNaClTpTdbOffset(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerNaClTargetArch(SDValue Op, SelectionDAG &DAG) const;
     // @LOCALMOD-END
 
     SDValue LowerGLOBAL_OFFSET_TABLE(SDValue Op, SelectionDAG &DAG) const;
@@ -468,13 +456,26 @@ namespace llvm {
                             const ARMSubtarget *ST) const;
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
                               const ARMSubtarget *ST) const;
+    SDValue LowerFSINCOS(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerDivRem(SDValue Op, SelectionDAG &DAG) const;
+
+    /// isFMAFasterThanFMulAndFAdd - Return true if an FMA operation is faster
+    /// than a pair of fmul and fadd instructions. fmuladd intrinsics will be
+    /// expanded to FMAs when this method returns true, otherwise fmuladd is
+    /// expanded to fmul + fadd.
+    ///
+    /// ARM supports both fused and unfused multiply-add operations; we already
+    /// lower a pair of fmul and fadd to the latter so it's not clear that there
+    /// would be a gain or that the gain would be worthwhile enough to risk
+    /// correctness bugs.
+    virtual bool isFMAFasterThanFMulAndFAdd(EVT VT) const { return false; }
 
     SDValue ReconstructShuffle(SDValue Op, SelectionDAG &DAG) const;
 
     SDValue LowerCallResult(SDValue Chain, SDValue InFlag,
                             CallingConv::ID CallConv, bool isVarArg,
                             const SmallVectorImpl<ISD::InputArg> &Ins,
-                            DebugLoc dl, SelectionDAG &DAG,
+                            SDLoc dl, SelectionDAG &DAG,
                             SmallVectorImpl<SDValue> &InVals,
                             bool isThisReturn, SDValue ThisVal) const;
 
@@ -482,24 +483,26 @@ namespace llvm {
       LowerFormalArguments(SDValue Chain,
                            CallingConv::ID CallConv, bool isVarArg,
                            const SmallVectorImpl<ISD::InputArg> &Ins,
-                           DebugLoc dl, SelectionDAG &DAG,
+                           SDLoc dl, SelectionDAG &DAG,
                            SmallVectorImpl<SDValue> &InVals) const;
 
     int StoreByValRegs(CCState &CCInfo, SelectionDAG &DAG,
-                       DebugLoc dl, SDValue &Chain,
+                       SDLoc dl, SDValue &Chain,
                        const Value *OrigArg,
                        unsigned InRegsParamRecordIdx,
                        unsigned OffsetFromOrigArg,
                        unsigned ArgOffset,
+                       unsigned ArgSize,
                        bool ForceMutable) const;
 
     void VarArgStyleRegisters(CCState &CCInfo, SelectionDAG &DAG,
-                              DebugLoc dl, SDValue &Chain,
+                              SDLoc dl, SDValue &Chain,
                               unsigned ArgOffset,
                               bool ForceMutable = false) const;
 
     void computeRegArea(CCState &CCInfo, MachineFunction &MF,
                         unsigned InRegsParamRecordIdx,
+                        unsigned ArgSize,
                         unsigned &ArgRegsSize,
                         unsigned &ArgRegsSaveSize) const;
 
@@ -533,16 +536,16 @@ namespace llvm {
                   CallingConv::ID CallConv, bool isVarArg,
                   const SmallVectorImpl<ISD::OutputArg> &Outs,
                   const SmallVectorImpl<SDValue> &OutVals,
-                  DebugLoc dl, SelectionDAG &DAG) const;
+                  SDLoc dl, SelectionDAG &DAG) const;
 
     virtual bool isUsedByReturnOnly(SDNode *N, SDValue &Chain) const;
 
     virtual bool mayBeEmittedAsTailCall(CallInst *CI) const;
 
     SDValue getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
-                      SDValue &ARMcc, SelectionDAG &DAG, DebugLoc dl) const;
+                      SDValue &ARMcc, SelectionDAG &DAG, SDLoc dl) const;
     SDValue getVFPCmp(SDValue LHS, SDValue RHS,
-                      SelectionDAG &DAG, DebugLoc dl) const;
+                      SelectionDAG &DAG, SDLoc dl) const;
     SDValue duplicateCmp(SDValue Cmp, SelectionDAG &DAG) const;
 
     SDValue OptimizeVFPBrcond(SDValue Op, SelectionDAG &DAG) const;
@@ -567,6 +570,8 @@ namespace llvm {
                                                unsigned Size,
                                                bool signExtend,
                                                ARMCC::CondCodes Cond) const;
+    MachineBasicBlock *EmitAtomicLoad64(MachineInstr *MI,
+                                        MachineBasicBlock *BB) const;
 
     void SetupEntryBlockForSjLj(MachineInstr *MI,
                                 MachineBasicBlock *MBB,

@@ -32,6 +32,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/StreamableMemoryObject.h" // @LOCALMOD
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/system_error.h"
 using namespace llvm;
@@ -54,11 +55,6 @@ ShowAnnotations("show-annotations",
                 cl::desc("Add informational comments to the .ll file"));
 
 // @LOCALMOD-BEGIN
-// Print bitcode metadata only, in text format.
-// (includes output format, soname, and dependencies).
-static cl::opt<bool>
-DumpMetadata("dump-metadata", cl::desc("Dump bitcode metadata"));
-
 static cl::opt<NaClFileFormat>
 InputFileFormat(
     "bitcode-format",
@@ -145,7 +141,8 @@ int main(int argc, char **argv) {
   OwningPtr<Module> M;
 
   // Use the bitcode streaming interface
-  DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
+  DataStreamer *streamer(getDataFileStreamer(InputFilename, &ErrorMessage));
+  OwningPtr<StreamingMemoryObject> Buffer;  // @LOCALMOD
   if (streamer) {
     std::string DisplayFilename;
     if (InputFilename == "-")
@@ -156,12 +153,13 @@ int main(int argc, char **argv) {
     // @LOCALMOD-BEGIN
     switch (InputFileFormat) {
       case LLVMFormat:
-        M.reset(getStreamedBitcodeModule(DisplayFilename, streamer, Context,
-                                         &ErrorMessage));
+        M.reset(getStreamedBitcodeModule(
+            DisplayFilename, streamer, Context, &ErrorMessage));
         break;
       case PNaClFormat:
-        M.reset(getNaClStreamedBitcodeModule(DisplayFilename, streamer, Context,
-                                             &ErrorMessage));
+        Buffer.reset(new StreamingMemoryObject(streamer));
+        M.reset(getNaClStreamedBitcodeModule(
+            DisplayFilename, Buffer.get(), Context, &ErrorMessage));
         break;
       default:
         ErrorMessage = "Don't understand specified bitcode format";
@@ -187,7 +185,7 @@ int main(int argc, char **argv) {
     OutputFilename = "-";
 
   if (OutputFilename.empty()) { // Unspecified output, infer it.
-    if (InputFilename == "-" || DumpMetadata) { // @LOCALMOD
+    if (InputFilename == "-") {
       OutputFilename = "-";
     } else {
       const std::string &IFN = InputFilename;
@@ -201,21 +199,12 @@ int main(int argc, char **argv) {
   }
 
   std::string ErrorInfo;
-  OwningPtr<tool_output_file>
-  Out(new tool_output_file(OutputFilename.c_str(), ErrorInfo,
-                           raw_fd_ostream::F_Binary));
+  OwningPtr<tool_output_file> Out(new tool_output_file(
+      OutputFilename.c_str(), ErrorInfo, sys::fs::F_Binary));
   if (!ErrorInfo.empty()) {
     errs() << ErrorInfo << '\n';
     return 1;
   }
-
-  // @LOCALMOD-BEGIN
-  if (DumpMetadata) {
-    M->dumpMeta(Out->os());
-    Out->keep();
-    return 0;
-  }
-  // @LOCALMOD-END
 
   OwningPtr<AssemblyAnnotationWriter> Annotator;
   if (ShowAnnotations)

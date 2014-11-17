@@ -10,6 +10,8 @@
 #ifndef LLVM_TRANSFORMS_NACL_H
 #define LLVM_TRANSFORMS_NACL_H
 
+#include "llvm/CodeGen/Passes.h"
+
 namespace llvm {
 
 class BasicBlockPass;
@@ -18,7 +20,6 @@ class FunctionPass;
 class FunctionType;
 class Instruction;
 class ModulePass;
-class PassManager;
 class Use;
 class Value;
 
@@ -35,6 +36,7 @@ ModulePass *createCanonicalizeMemIntrinsicsPass();
 ModulePass *createExpandArithWithOverflowPass();
 ModulePass *createExpandByValPass();
 ModulePass *createExpandCtorsPass();
+ModulePass *createExpandIndirectBrPass();
 ModulePass *createExpandSmallArgumentsPass();
 ModulePass *createExpandTlsConstantExprPass();
 ModulePass *createExpandTlsPass();
@@ -50,8 +52,8 @@ ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 
-void PNaClABISimplifyAddPreOptPasses(PassManager &PM);
-void PNaClABISimplifyAddPostOptPasses(PassManager &PM);
+void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
+void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);

@@ -24,6 +24,7 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/StreamableMemoryObject.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 using namespace llvm;
@@ -40,7 +41,7 @@ static void WriteOutputFile(const Module *M) {
   std::string ErrorInfo;
   OwningPtr<tool_output_file> Out
     (new tool_output_file(OutputFilename.c_str(), ErrorInfo,
-			  raw_fd_ostream::F_Binary));
+                          sys::fs::F_Binary));
   if (!ErrorInfo.empty()) {
     errs() << ErrorInfo << '\n';
     exit(1);
@@ -68,6 +69,7 @@ int main(int argc, char **argv) {
 
   // Use the bitcode streaming interface
   DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
+  StreamingMemoryObject *Buffer = new StreamingMemoryObject(streamer);
   if (streamer) {
     std::string DisplayFilename;
     if (InputFilename == "-")
@@ -75,7 +77,7 @@ int main(int argc, char **argv) {
     else
       DisplayFilename = InputFilename;
     M.reset(getNaClStreamedBitcodeModule(
-        DisplayFilename, streamer, Context,
+        DisplayFilename, Buffer, Context,
         &ErrorMessage, /*AcceptSupportedOnly=*/false));
     if(M.get() != 0 && M->MaterializeAllPermanently(&ErrorMessage)) {
       M.reset();

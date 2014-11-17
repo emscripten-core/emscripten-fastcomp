@@ -105,12 +105,13 @@ define void @icmpsigned(i32 %a) {
   ret void
 }
 
+; Bitcasts are left unchanged.
 %struct.ints = type { i32, i32 }
 ; CHECK: @bc1
-; CHECK: bc1 = bitcast i32* %a to i64*
-; CHECK-NEXT: bc2 = bitcast i64* %bc1 to i32*
-; CHECK-NEXT: bc3 = bitcast %struct.ints* null to i64*
-; CHECK-NEXT: bc4 = bitcast i64* %bc1 to %struct.ints*
+; CHECK-NEXT: %bc1 = bitcast i32* %a to i40*
+; CHECK-NEXT: %bc2 = bitcast i40* %bc1 to i32*
+; CHECK-NEXT: %bc3 = bitcast %struct.ints* null to i40*
+; CHECK-NEXT: %bc4 = bitcast i40* %bc1 to %struct.ints*
 define i32* @bc1(i32* %a) {
   %bc1 = bitcast i32* %a to i40*
   %bc2 = bitcast i40* %bc1 to i32*
@@ -267,8 +268,9 @@ define void @select1(i32 %a) {
   ret void
 }
 
+; Allocas are left unchanged.
 ; CHECK: @alloca40
-; CHECK: %a = alloca i64, align 8
+; CHECK: %a = alloca i40, align 8
 define void @alloca40() {
   %a = alloca i40, align 8
   %b = bitcast i40* %a to i8*
@@ -277,7 +279,7 @@ define void @alloca40() {
 }
 
 ; CHECK: @load24
-; CHECK: %bc.loty = bitcast i32* %bc to i16*
+; CHECK: %bc.loty = bitcast i24* %bc to i16*
 ; CHECK-NEXT: %load.lo = load i16* %bc.loty
 ; CHECK-NEXT: %load.lo.ext = zext i16 %load.lo to i32
 ; CHECK-NEXT: %bc.hi = getelementptr i16* %bc.loty, i32 1
@@ -293,7 +295,7 @@ define void @load24(i8* %a) {
 }
 
 ; CHECK: @load48
-; CHECK: %bc.loty = bitcast i64* %bc to i32*
+; CHECK: %bc.loty = bitcast i48* %bc to i32*
 ; CHECK-NEXT: %load.lo = load i32* %bc.loty
 ; CHECK-NEXT: %load.lo.ext = zext i32 %load.lo to i64
 ; CHECK-NEXT: %bc.hi = getelementptr i32* %bc.loty, i32 1
@@ -308,12 +310,14 @@ define void @load48(i32* %a) {
   ret void
 }
 
-; CHECK:  %bc = bitcast i32* %a to i64*
-; CHECK-NEXT:  %bc.loty = bitcast i64* %bc to i32*
+; CHECK: @load56
+; CHECK:  %bc = bitcast i32* %a to i56*
+; CHECK-NEXT:  %bc.loty = bitcast i56* %bc to i32*
 ; CHECK-NEXT:  %load.lo = load i32* %bc.loty
 ; CHECK-NEXT:  %load.lo.ext = zext i32 %load.lo to i64
 ; CHECK-NEXT:  %bc.hi = getelementptr i32* %bc.loty, i32 1
-; CHECK-NEXT:  %bc.hity.loty = bitcast i32* %bc.hi to i16*
+; CHECK-NEXT:  %bc.hity = bitcast i32* %bc.hi to i24*
+; CHECK-NEXT:  %bc.hity.loty = bitcast i24* %bc.hity to i16*
 ; CHECK-NEXT:  %load.hi.lo = load i16* %bc.hity.loty
 ; CHECK-NEXT:  %load.hi.lo.ext = zext i16 %load.hi.lo to i32
 ; CHECK-NEXT:  %bc.hity.hi = getelementptr i16* %bc.hity.loty, i32 1
@@ -333,7 +337,7 @@ define void @load56(i32* %a) {
 
 ; CHECK: @store24
 ; CHECK: %b24 = zext i8 %b to i32
-; CHECK-NEXT: %bc.loty = bitcast i32* %bc to i16*
+; CHECK-NEXT: %bc.loty = bitcast i24* %bc to i16*
 ; CHECK-NEXT: %b24.lo = trunc i32 %b24 to i16
 ; CHECK-NEXT: store i16 %b24.lo, i16* %bc.loty
 ; CHECK-NEXT: %b24.hi.sh = lshr i32 %b24, 16
@@ -350,12 +354,13 @@ define void @store24(i8* %a, i8 %b) {
 
 ; CHECK: @store56
 ; CHECK: %b56 = zext i8 %b to i64
-; CHECK-NEXT: %bc.loty = bitcast i64* %bc to i32*
+; CHECK-NEXT: %bc.loty = bitcast i56* %bc to i32*
 ; CHECK-NEXT: %b56.lo = trunc i64 %b56 to i32
 ; CHECK-NEXT: store i32 %b56.lo, i32* %bc.loty
 ; CHECK-NEXT: %b56.hi.sh = lshr i64 %b56, 32
 ; CHECK-NEXT: %bc.hi = getelementptr i32* %bc.loty, i32 1
-; CHECK-NEXT: %bc.hity.loty = bitcast i32* %bc.hi to i16*
+; CHECK-NEXT: %bc.hity = bitcast i32* %bc.hi to i24*
+; CHECK-NEXT: %bc.hity.loty = bitcast i24* %bc.hity to i16*
 ; CHECK-NEXT: %b56.hi.sh.lo = trunc i64 %b56.hi.sh to i16
 ; CHECK-NEXT: store i16 %b56.hi.sh.lo, i16* %bc.hity.loty
 ; CHECK-NEXT: %b56.hi.sh.hi.sh = lshr i64 %b56.hi.sh, 16
@@ -396,5 +401,15 @@ if1:
 if2:
   ret void
 end:
+  ret void
+}
+
+
+; The getelementptr here should be handled unchanged.
+; CHECK: @pointer_to_array
+; CHECK: %element_ptr = getelementptr [2 x i40]* %ptr, i32 0, i32 0
+define void @pointer_to_array([2 x i40]* %ptr) {
+  %element_ptr = getelementptr [2 x i40]* %ptr, i32 0, i32 0
+  load i40* %element_ptr
   ret void
 }

@@ -1,5 +1,5 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
-; RUN: pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | FileCheck %s --check-prefix=DEBUG
+; RUN: not pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | FileCheck %s --check-prefix=DEBUG
 
 
 ; Metadata is not part of the PNaCl's stable ABI, so normally the ABI
