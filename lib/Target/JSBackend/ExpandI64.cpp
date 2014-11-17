@@ -844,10 +844,7 @@ bool ExpandI64::splitInst(Instruction *I) {
       BasicBlock *SwitchBB = I->getParent();
       Function *F = SwitchBB->getParent();
 
-      unsigned NumItems = 0;
-      for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-        NumItems += i.getCaseValueEx().getNumItems();
-      }
+      unsigned NumItems = SI->getNumCases();
       SwitchInst *LowSI = SwitchInst::Create(InputChunks[0], DD, NumItems, I); // same default destination: if lower bits do not match, go straight to default
       CopyDebug(LowSI, I);
 
@@ -858,15 +855,11 @@ bool ExpandI64::splitInst(Instruction *I) {
 
       for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
         BasicBlock *BB = i.getCaseSuccessor();
-        const IntegersSubset CaseVal = i.getCaseValueEx();
-        assert(CaseVal.isSingleNumbersOnly());
-        for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
-          uint64_t Bits = CaseVal.getSingleNumber(Index).toConstantInt()->getZExtValue();
-          uint32_t LowBits = (uint32_t)Bits;
-          uint32_t HighBits = (uint32_t)(Bits >> 32);
-          Vec& V = Groups[LowBits];
-          V.push_back(Pair(HighBits, BB));
-        }
+        uint64_t Bits = i.getCaseValue()->getZExtValue();
+        uint32_t LowBits = (uint32_t)Bits;
+        uint32_t HighBits = (uint32_t)(Bits >> 32);
+        Vec& V = Groups[LowBits];
+        V.push_back(Pair(HighBits, BB));
       }
 
       unsigned Counter = 0;
