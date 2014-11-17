@@ -1203,14 +1203,21 @@ bool ModuleLinker::run() {
     DstM->setTargetTriple(SrcM->getTargetTriple());
 
   if (!SrcM->getDataLayout().empty() && !DstM->getDataLayout().empty() &&
-      SrcM->getDataLayout() != DstM->getDataLayout())
-    errs() << "WARNING: Linking two modules of different data layouts!\n";
+      SrcM->getDataLayout() != DstM->getDataLayout()) {
+    // XXX EMSCRIPTEN: backport r203009 from LLVM trunk:
+    errs() << "WARNING: Linking two modules of different data layouts: '"
+           << SrcM->getModuleIdentifier() << "' is '"
+           << SrcM->getDataLayout() << "' whereas '"
+           << DstM->getModuleIdentifier() << "' is '"
+           << DstM->getDataLayout() << "'\n";
+  }
   if (!SrcM->getTargetTriple().empty() &&
       DstM->getTargetTriple() != SrcM->getTargetTriple()) {
-    errs() << "WARNING: Linking two modules of different target triples: ";
-    if (!SrcM->getModuleIdentifier().empty())
-      errs() << SrcM->getModuleIdentifier() << ": ";
-    errs() << "'" << SrcM->getTargetTriple() << "' and '" 
+    // XXX EMSCRIPTEN: backport r203009 from LLVM trunk:
+    errs() << "WARNING: Linking two modules of different target triples: "
+           << SrcM->getModuleIdentifier() << "' is '"
+           << SrcM->getTargetTriple() << "' whereas '"
+           << DstM->getModuleIdentifier() << "' is '"
            << DstM->getTargetTriple() << "'\n";
   }
 

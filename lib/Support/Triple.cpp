@@ -21,6 +21,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
 
   case aarch64: return "aarch64";
   case arm:     return "arm";
+  case asmjs:   return "asmjs";
   case hexagon: return "hexagon";
   case mips:    return "mips";
   case mipsel:  return "mipsel";
@@ -56,6 +57,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
     return 0;
 
   case aarch64: return "aarch64";
+
+  case asmjs:   return "asmjs";
 
   case arm:
   case thumb:   return "arm";
@@ -117,6 +120,7 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case Cygwin: return "cygwin";
   case Darwin: return "darwin";
   case DragonFly: return "dragonfly";
+  case Emscripten: return "emscripten";
   case FreeBSD: return "freebsd";
   case IOS: return "ios";
   case KFreeBSD: return "kfreebsd";
@@ -184,6 +188,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("nvptx", nvptx)
     .Case("nvptx64", nvptx64)
     .Case("le32", le32)
+    .Case("asmjs", asmjs)
     .Case("amdil", amdil)
     .Case("spir", spir)
     .Case("spir64", spir64)
@@ -210,6 +215,7 @@ const char *Triple::getArchNameForAssembler() {
     .Case("nvptx", "nvptx")
     .Case("nvptx64", "nvptx64")
     .Case("le32", "le32")
+    .Case("asmjs", "asmjs")
     .Case("amdil", "amdil")
     .Case("spir", "spir")
     .Case("spir64", "spir64")
@@ -247,6 +253,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("nvptx", Triple::nvptx)
     .Case("nvptx64", Triple::nvptx64)
     .Case("le32", Triple::le32)
+    .Case("asmjs", Triple::asmjs)
     .Case("amdil", Triple::amdil)
     .Case("spir", Triple::spir)
     .Case("spir64", Triple::spir64)
@@ -292,6 +299,7 @@ static Triple::OSType parseOS(StringRef OSName) {
     .StartsWith("aix", Triple::AIX)
     .StartsWith("cuda", Triple::CUDA)
     .StartsWith("nvcl", Triple::NVCL)
+    .StartsWith("emscripten", Triple::Emscripten)
     .Default(Triple::UnknownOS);
 }
 
@@ -675,6 +683,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
 
   case llvm::Triple::amdil:
   case llvm::Triple::arm:
+  case llvm::Triple::asmjs:
   case llvm::Triple::hexagon:
   case llvm::Triple::le32:
   case llvm::Triple::mips:
@@ -731,6 +740,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::amdil:
   case Triple::spir:
   case Triple::arm:
+  case Triple::asmjs:
   case Triple::hexagon:
   case Triple::le32:
   case Triple::mips:
@@ -763,6 +773,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::UnknownArch:
   case Triple::amdil:
   case Triple::arm:
+  case Triple::asmjs:
   case Triple::hexagon:
   case Triple::le32:
   case Triple::msp430:

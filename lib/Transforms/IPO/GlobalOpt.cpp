@@ -37,6 +37,7 @@
 #include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ValueHandle.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
@@ -267,9 +268,17 @@ static bool CleanupPointerRootUsers(GlobalVariable *GV,
 static bool CleanupConstantGlobalUsers(Value *V, Constant *Init,
                                        DataLayout *TD, TargetLibraryInfo *TLI) {
   bool Changed = false;
-  SmallVector<User*, 8> WorkList(V->use_begin(), V->use_end());
+  // Note that we need to use a weak value handle for the worklist items. When
+  // we delete a constant array, we may also be holding pointer to one of its
+  // elements (or an element of one of its elements if we're dealing with an
+  // array of arrays) in the worklist.
+  SmallVector<WeakVH, 8> WorkList(V->use_begin(), V->use_end());
   while (!WorkList.empty()) {
-    User *U = WorkList.pop_back_val();
+    Value *UV = WorkList.pop_back_val();
+    if (!UV)
+      continue;
+
+    User *U = cast<User>(UV);
 
     if (LoadInst *LI = dyn_cast<LoadInst>(U)) {
       if (Init) {
@@ -1588,18 +1597,16 @@ static bool OptimizeOnceStoredGlobal(GlobalVariable *GV, Value *StoredOnceVal,
   return false;
 }
 
-/// TryToShrinkGlobalToBoolean - At this point, we have learned that the only
+/// TryToAddRangeMetadata - At this point, we have learned that the only
 /// two values ever stored into GV are its initializer and OtherVal.  See if we
-/// can shrink the global into a boolean and select between the two values
-/// whenever it is used.  This exposes the values to other scalar optimizations.
-static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
+/// can annotate loads from it with range metadata describing this.
+/// This exposes the values to other scalar optimizations.
+static bool TryToAddRangeMetadata(GlobalVariable *GV, Constant *OtherVal) {
   Type *GVElType = GV->getType()->getElementType();
 
-  // If GVElType is already i1, it is already shrunk.  If the type of the GV is
-  // an FP value, pointer or vector, don't do this optimization because a select
-  // between them is very expensive and unlikely to lead to later
-  // simplification.  In these cases, we typically end up with "cond ? v1 : v2"
-  // where v1 and v2 both require constant pool loads, a big loss.
+  // If GVElType is already i1, it already has a minimal range. If the type of
+  // the GV is an FP value, pointer or vector, don't do this optimization
+  // because range metadata is currently only supported on scalar integers.
   if (GVElType == Type::getInt1Ty(GV->getContext()) ||
       GVElType->isFloatingPointTy() ||
       GVElType->isPointerTy() || GVElType->isVectorTy())
@@ -1613,81 +1620,38 @@ static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
       return false;
   }
 
-  DEBUG(dbgs() << "   *** SHRINKING TO BOOL: " << *GV);
-
-  // Create the new global, initializing it to false.
-  GlobalVariable *NewGV = new GlobalVariable(Type::getInt1Ty(GV->getContext()),
-                                             false,
-                                             GlobalValue::InternalLinkage,
-                                        ConstantInt::getFalse(GV->getContext()),
-                                             GV->getName()+".b",
-                                             GV->getThreadLocalMode(),
-                                             GV->getType()->getAddressSpace());
-  GV->getParent()->getGlobalList().insert(GV, NewGV);
-
   Constant *InitVal = GV->getInitializer();
   assert(InitVal->getType() != Type::getInt1Ty(GV->getContext()) &&
-         "No reason to shrink to bool!");
+         "No reason to add range metadata!");
 
-  // If initialized to zero and storing one into the global, we can use a cast
-  // instead of a select to synthesize the desired value.
-  bool IsOneZero = false;
-  if (ConstantInt *CI = dyn_cast<ConstantInt>(OtherVal))
-    IsOneZero = InitVal->isNullValue() && CI->isOne();
+  // The MD_range metadata only supports absolute integer constants.
+  if (!isa<ConstantInt>(InitVal) || !isa<ConstantInt>(OtherVal))
+    return false;
 
-  while (!GV->use_empty()) {
-    Instruction *UI = cast<Instruction>(GV->use_back());
-    if (StoreInst *SI = dyn_cast<StoreInst>(UI)) {
-      // Change the store into a boolean store.
-      bool StoringOther = SI->getOperand(0) == OtherVal;
-      // Only do this if we weren't storing a loaded value.
-      Value *StoreVal;
-      if (StoringOther || SI->getOperand(0) == InitVal) {
-        StoreVal = ConstantInt::get(Type::getInt1Ty(GV->getContext()),
-                                    StoringOther);
-      } else {
-        // Otherwise, we are storing a previously loaded copy.  To do this,
-        // change the copy from copying the original value to just copying the
-        // bool.
-        Instruction *StoredVal = cast<Instruction>(SI->getOperand(0));
+  DEBUG(dbgs() << "   *** ADDING RANGE METADATA: " << *GV);
 
-        // If we've already replaced the input, StoredVal will be a cast or
-        // select instruction.  If not, it will be a load of the original
-        // global.
-        if (LoadInst *LI = dyn_cast<LoadInst>(StoredVal)) {
-          assert(LI->getOperand(0) == GV && "Not a copy!");
-          // Insert a new load, to preserve the saved value.
-          StoreVal = new LoadInst(NewGV, LI->getName()+".b", false, 0,
-                                  LI->getOrdering(), LI->getSynchScope(), LI);
-        } else {
-          assert((isa<CastInst>(StoredVal) || isa<SelectInst>(StoredVal)) &&
-                 "This is not a form that we understand!");
-          StoreVal = StoredVal->getOperand(0);
-          assert(isa<LoadInst>(StoreVal) && "Not a load of NewGV!");
-        }
-      }
-      new StoreInst(StoreVal, NewGV, false, 0,
-                    SI->getOrdering(), SI->getSynchScope(), SI);
-    } else {
-      // Change the load into a load of bool then a select.
-      LoadInst *LI = cast<LoadInst>(UI);
-      LoadInst *NLI = new LoadInst(NewGV, LI->getName()+".b", false, 0,
-                                   LI->getOrdering(), LI->getSynchScope(), LI);
-      Value *NSI;
-      if (IsOneZero)
-        NSI = new ZExtInst(NLI, LI->getType(), "", LI);
-      else
-        NSI = SelectInst::Create(NLI, OtherVal, InitVal, "", LI);
-      NSI->takeName(LI);
-      LI->replaceAllUsesWith(NSI);
+  for (Value::use_iterator I = GV->use_begin(), E = GV->use_end(); I != E; ++I){
+    Instruction *UI = cast<Instruction>(*I);
+    if (LoadInst *LI = dyn_cast<LoadInst>(UI)) {
+      // If we already have a range, don't add a new one, so that GlobalOpt
+      // terminates. In theory, we could merge the two ranges.
+      if (LI->getMetadata(LLVMContext::MD_range))
+        return false;
+      // Add range metadata to the load. We have two possible values, and we
+      // need to create a half-open range. The range can wrap, so we can use
+      // either signed or unsigned; we pick signed because it might be prettier
+      // in common cases.
+      Constant *Cmp = ConstantExpr::getICmp(ICmpInst::ICMP_SLT, InitVal, OtherVal);
+      Constant *One = ConstantInt::get(LI->getType(), 1);
+      Value *Vals[] = {
+        ConstantExpr::getSelect(Cmp, InitVal, OtherVal),
+        ConstantExpr::getAdd(ConstantExpr::getSelect(Cmp, OtherVal, InitVal), One)
+      };
+      MDNode *MD = MDNode::get(LI->getContext(), Vals);
+      LI->setMetadata(LLVMContext::MD_range, MD);
     }
-    UI->eraseFromParent();
   }
 
-  // Retain the name of the old global variable. People who are debugging their
-  // programs may expect these variables to be named the same.
-  NewGV->takeName(GV);
-  GV->eraseFromParent();
   return true;
 }
 
@@ -1839,11 +1803,10 @@ bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
                                  TD, TLI))
       return true;
 
-    // Otherwise, if the global was not a boolean, we can shrink it to be a
-    // boolean.
+    // Otherwise, if the global was not a boolean, we can add range metadata. XXX EMSCRIPTEN
     if (Constant *SOVConstant = dyn_cast<Constant>(GS.StoredOnceValue)) {
       if (GS.Ordering == NotAtomic) {
-        if (TryToShrinkGlobalToBoolean(GV, SOVConstant)) {
+        if (TryToAddRangeMetadata(GV, SOVConstant)) { // XXX EMSCRIPTEN
           ++NumShrunkToBool;
           return true;
         }

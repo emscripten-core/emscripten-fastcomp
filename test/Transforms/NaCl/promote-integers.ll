@@ -229,6 +229,62 @@ define void @ashr1(i16 %a) {
   ret void
 }
 
+; CHECK: @udiv1
+define void @udiv1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = zext i32 %a to i64
+  %a33 = zext i32 %a to i33
+; CHECK-NEXT: %b33 = zext i32 %b to i64
+  %b33 = zext i32 %b to i33
+; CHECK-NEXT: %a33.clear = and i64 %a33, 8589934591
+; CHECK-NEXT: %b33.clear = and i64 %b33, 8589934591
+; CHECK-NEXT: %result = udiv i64 %a33.clear, %b33.clear
+  %result = udiv i33 %a33, %b33
+  ret void
+}
+
+; CHECK: @sdiv1
+define void @sdiv1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = sext i32 %a to i64
+  %a33 = sext i32 %a to i33
+; CHECK-NEXT: %b33 = sext i32 %b to i64
+; CHECK-NEXT: %a33.getsign = shl i64 %a33, 31
+; CHECK-NEXT: %a33.signed = ashr i64 %a33.getsign, 31
+; CHECK-NEXT: %b33.getsign = shl i64 %b33, 31
+; CHECK-NEXT: %b33.signed = ashr i64 %b33.getsign, 31
+  %b33 = sext i32 %b to i33
+; CHECK-NEXT: %result = sdiv i64 %a33.signed, %b33.signed
+  %result = sdiv i33 %a33, %b33
+  ret void
+}
+
+; CHECK: @urem1
+define void @urem1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = zext i32 %a to i64
+  %a33 = zext i32 %a to i33
+; CHECK-NEXT: %b33 = zext i32 %b to i64
+; CHECK-NEXT: %a33.clear = and i64 %a33, 8589934591
+; CHECK-NEXT: %b33.clear = and i64 %b33, 8589934591
+  %b33 = zext i32 %b to i33
+; CHECK-NEXT: %result = urem i64 %a33.clear, %b33.clear
+  %result = urem i33 %a33, %b33
+  ret void
+}
+
+; CHECK: @srem1
+define void @srem1(i32 %a, i32 %b) {
+; CHECK-NEXT: %a33 = sext i32 %a to i64
+  %a33 = sext i32 %a to i33
+; CHECK-NEXT: %b33 = sext i32 %b to i64
+; CHECK-NEXT: %a33.getsign = shl i64 %a33, 31
+; CHECK-NEXT: %a33.signed = ashr i64 %a33.getsign, 31
+; CHECK-NEXT: %b33.getsign = shl i64 %b33, 31
+; CHECK-NEXT: %b33.signed = ashr i64 %b33.getsign, 31
+  %b33 = sext i32 %b to i33
+; CHECK-NEXT: %result = srem i64 %a33.signed, %b33.signed
+  %result = srem i33 %a33, %b33
+  ret void
+}
+
 ; CHECK: @phi_icmp
 define void @phi_icmp(i32 %a) {
 entry:
@@ -412,4 +468,52 @@ define void @pointer_to_array([2 x i40]* %ptr) {
   %element_ptr = getelementptr [2 x i40]* %ptr, i32 0, i32 0
   load i40* %element_ptr
   ret void
+}
+
+; CHECK: @bigger_integers
+; CHECK-NEXT: %q = bitcast i8* %p to i128*
+; CHECK-NEXT: %q.loty = bitcast i128* %q to i64*
+; CHECK-NEXT: %x.lo = load i64* %q.loty
+; CHECK-NEXT: %x.lo.ext = zext i64 %x.lo to i128
+; CHECK-NEXT: %q.hi = getelementptr i64* %q.loty, i32 1
+; CHECK-NEXT: %q.hity.loty = bitcast i64* %q.hi to i32*
+; CHECK-NEXT: %x.hi.lo = load i32* %q.hity.loty
+; CHECK-NEXT: %x.hi.lo.ext = zext i32 %x.hi.lo to i64
+; CHECK-NEXT: %q.hity.hi = getelementptr i32* %q.hity.loty, i32 1
+; CHECK-NEXT: %q.hity.hity.loty = bitcast i32* %q.hity.hi to i16*
+; CHECK-NEXT: %x.hi.hi.lo = load i16* %q.hity.hity.loty
+; CHECK-NEXT: %x.hi.hi.lo.ext = zext i16 %x.hi.hi.lo to i32
+; CHECK-NEXT: %q.hity.hity.hi = getelementptr i16* %q.hity.hity.loty, i32 1
+; CHECK-NEXT: %q.hity.hity.hity = bitcast i16* %q.hity.hity.hi to i8*
+; CHECK-NEXT: %x.hi.hi.hi = load i8* %q.hity.hity.hity
+; CHECK-NEXT: %x.hi.hi.hi.ext = zext i8 %x.hi.hi.hi to i32
+; CHECK-NEXT: %x.hi.hi.hi.ext.sh = shl i32 %x.hi.hi.hi.ext, 16
+; CHECK-NEXT: %x.hi.hi = or i32 %x.hi.hi.lo.ext, %x.hi.hi.hi.ext.sh
+; CHECK-NEXT: %x.hi.hi.ext = zext i32 %x.hi.hi to i64
+; CHECK-NEXT: %x.hi.hi.ext.sh = shl i64 %x.hi.hi.ext, 32
+; CHECK-NEXT: %x.hi = or i64 %x.hi.lo.ext, %x.hi.hi.ext.sh
+; CHECK-NEXT: %x.hi.ext = zext i64 %x.hi to i128
+; CHECK-NEXT: %x.hi.ext.sh = shl i128 %x.hi.ext, 64
+; CHECK-NEXT: %x = or i128 %x.lo.ext, %x.hi.ext.sh
+; CHECK-NEXT: %q.loty1 = bitcast i128* %q to i64*
+; CHECK-NEXT: store i64 -5076944270305263616, i64* %q.loty1
+; CHECK-NEXT: %q.hi2 = getelementptr i64* %q.loty1, i32 1
+; CHECK-NEXT: %q.hity3.loty = bitcast i64* %q.hi2 to i32*
+; CHECK-NEXT: store i32 1624466223, i32* %q.hity3.loty, align 1
+; CHECK-NEXT: %q.hity3.hi = getelementptr i32* %q.hity3.loty, i32 1
+; CHECK-NEXT: %q.hity3.hity.loty = bitcast i32* %q.hity3.hi to i16*
+; CHECK-NEXT: store i16 3, i16* %q.hity3.hity.loty, align 1
+; CHECK-NEXT: %q.hity3.hity.hi = getelementptr i16* %q.hity3.hity.loty, i32 1
+; CHECK-NEXT: %q.hity3.hity.hity = bitcast i16* %q.hity3.hity.hi to i8*
+; CHECK-NEXT: store i8 0, i8* %q.hity3.hity.hity
+; CHECK-NEXT: %z = add i128 %x, 3
+; CHECK-NEXT: %y = trunc i128 %z to i32
+; CHECK-NEXT: ret i32 %y
+define i32 @bigger_integers(i8* %p) {
+  %q = bitcast i8* %p to i120*
+  %x = load i120* %q
+  store i120 267650600228229401496703205376, i120* %q
+  %z = add i120 %x, 3
+  %y = trunc i120 %z to i32
+  ret i32 %y
 }

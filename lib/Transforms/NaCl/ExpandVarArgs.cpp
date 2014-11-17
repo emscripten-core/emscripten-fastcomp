@@ -60,6 +60,13 @@ INITIALIZE_PASS(ExpandVarArgs, "expand-varargs",
                 "Expand out variable argument function definitions and calls",
                 false, false)
 
+static bool isEmscriptenJSArgsFunc(StringRef Name) {
+  return Name.equals("emscripten_asm_const_int") ||
+         Name.equals("emscripten_asm_const_double") ||
+         Name.equals("emscripten_landingpad") ||
+         Name.equals("emscripten_resume");
+}
+
 static void ExpandVarArgFunc(Function *Func) {
   Type *PtrType = Type::getInt8PtrTy(Func->getContext());
 
@@ -113,7 +120,7 @@ static void ExpandVAArgInst(VAArgInst *Inst) {
       Inst->getType()->getPointerTo()->getPointerTo(), "arglist", Inst), Inst);
   Value *CurrentPtr = CopyDebug(new LoadInst(ArgList, "arglist_current", Inst),
                                 Inst);
-  Value *Result = CopyDebug(new LoadInst(CurrentPtr, "va_arg", Inst), Inst);
+  Value *Result = CopyDebug(new LoadInst(CurrentPtr, "va_arg", false, 4, Inst), Inst); // XXX Emscripten: varargs are 4-byte aligned
   Result->takeName(Inst);
 
   // Update the va_list to point to the next argument.
@@ -135,7 +142,7 @@ static void ExpandVACopyInst(VACopyInst *Inst) {
                                          Inst), Inst);
   Value *Dest = CopyDebug(new BitCastInst(Inst->getDest(), PtrTy, "vacopy_dest",
                                           Inst), Inst);
-  Value *CurrentPtr = CopyDebug(new LoadInst(Src, "vacopy_currentptr", Inst),
+  Value *CurrentPtr = CopyDebug(new LoadInst(Src, "vacopy_currentptr", false, 4, Inst), // XXX Emscripten: varargs are 4-byte aligned
                                 Inst);
   CopyDebug(new StoreInst(CurrentPtr, Dest, Inst), Inst);
   Inst->eraseFromParent();
@@ -172,6 +179,13 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
       Call->getCalledValue()->getType()->getPointerElementType());
   if (!FuncType->isFunctionVarArg())
     return false;
+
+
+  // EMSCRIPTEN: use js varargs for special instrinsics
+  const Value *CV = Call->getCalledValue();
+  if (isa<Function>(CV) && isEmscriptenJSArgsFunc(CV->getName())) {
+    return false;
+  }
 
   LLVMContext *Context = &Call->getContext();
 
@@ -220,7 +234,8 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   // start of the function so that we don't leak space if the function
   // is called in a loop.
   Function *Func = Call->getParent()->getParent();
-  Instruction *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
+  AllocaInst *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
+  Buf->setAlignment(8); // XXX EMSCRIPTEN: Align for 8-byte aligned doubles.
   Func->getEntryBlock().getInstList().push_front(Buf);
 
   // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
@@ -251,7 +266,9 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
           DL->getTypeAllocSize((*Iter)->getType()->getPointerElementType()),
           /* Align= */ 1);
     } else {
-      CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
+      StoreInst *S = new StoreInst(*Iter, Ptr, Call);
+      CopyDebug(S, Call);
+      S->setAlignment(4); // EMSCRIPTEN: pnacl stack is only 4-byte aligned
     }
   }
 
@@ -261,9 +278,14 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   ArgTypes.push_back(VarArgsTy->getPointerTo());
   FunctionType *NFTy = FunctionType::get(FuncType->getReturnType(),
                                          ArgTypes, false);
-  Value *CastFunc =
-    CopyDebug(new BitCastInst(Call->getCalledValue(), NFTy->getPointerTo(),
-                              "vararg_func", Call), Call);
+  /// XXX EMSCRIPTEN: Handle Constants as well as Instructions, since we
+  /// don't run the ConstantExpr lowering pass.
+  Value *CastFunc;
+  if (Constant *C = dyn_cast<Constant>(Call->getCalledValue()))
+    CastFunc = ConstantExpr::getBitCast(C, NFTy->getPointerTo());
+  else
+    CastFunc = CopyDebug(new BitCastInst(Call->getCalledValue(), NFTy->getPointerTo(),
+                                         "vararg_func", Call), Call);
 
   // Create the converted function call.
   FixedArgs.push_back(Buf);
@@ -318,7 +340,8 @@ bool ExpandVarArgs::runOnModule(Module &M) {
       }
     }
 
-    if (Func->isVarArg()) {
+    // EMSCRIPTEN: use js varargs for special instrinsics
+    if (Func->isVarArg() && !isEmscriptenJSArgsFunc(Func->getName())) {
       Changed = true;
       ExpandVarArgFunc(Func);
     }

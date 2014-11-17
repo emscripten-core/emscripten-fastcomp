@@ -52,6 +52,12 @@ ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 
+ModulePass *createExpandI64Pass(); // XXX EMSCRIPTEN
+ModulePass *createLowerEmExceptionsPass(); // XXX EMSCRIPTEN
+ModulePass *createLowerEmSetjmpPass(); // XXX EMSCRIPTEN
+ModulePass *createNoExitRuntimePass(); // XXX EMSCRIPTEN
+ModulePass *createLowerEmAsyncifyPass(); // XXX EMSCRIPTEN
+
 void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
 void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
 

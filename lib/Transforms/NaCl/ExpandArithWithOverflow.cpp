@@ -90,7 +90,7 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
       report_fatal_error("ExpandArithWithOverflow: Taking the address of a "
                          "*.with.overflow intrinsic is not allowed");
     }
-    Value *VariableArg;
+    Value *VariableArg, *VariableArg2 = NULL;
     ConstantInt *ConstantArg;
     if (ConstantInt *C = dyn_cast<ConstantInt>(Call->getArgOperand(0))) {
       VariableArg = Call->getArgOperand(1);
@@ -98,25 +98,42 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
     } else if (ConstantInt *C = dyn_cast<ConstantInt>(Call->getArgOperand(1))) {
       VariableArg = Call->getArgOperand(0);
       ConstantArg = C;
+    } else if (!Mul) {
+      // XXX EMSCRIPTEN: generalize this to nonconstant values, easy for addition
+      VariableArg = Call->getArgOperand(0);
+      VariableArg2 = Call->getArgOperand(1);
     } else {
       errs() << "Use: " << *Call << "\n";
       report_fatal_error("ExpandArithWithOverflow: At least one argument of "
                          "*.with.overflow must be a constant");
     }
 
-    Value *ArithResult = BinaryOperator::Create(
-        (Mul ? Instruction::Mul : Instruction::Add), VariableArg, ConstantArg,
-        Call->getName() + ".arith", Call);
+    Value *ArithResult, *OverflowResult;
 
-    uint64_t ArgMax;
-    if (Mul) {
-      ArgMax = UintTypeMax(Bits) / ConstantArg->getZExtValue();
+    if (!VariableArg2) {
+      ArithResult = BinaryOperator::Create(
+          (Mul ? Instruction::Mul : Instruction::Add), VariableArg, ConstantArg,
+          Call->getName() + ".arith", Call);
+
+      uint64_t ArgMax;
+      if (Mul) {
+        ArgMax = UintTypeMax(Bits) / ConstantArg->getZExtValue();
+      } else {
+        ArgMax = UintTypeMax(Bits) - ConstantArg->getZExtValue();
+      }
+      OverflowResult = new ICmpInst(
+          Call, CmpInst::ICMP_UGT, VariableArg, ConstantInt::get(IntTy, ArgMax),
+          Call->getName() + ".overflow");
     } else {
-      ArgMax = UintTypeMax(Bits) - ConstantArg->getZExtValue();
+      // XXX EMSCRIPTEN: generalize this to nonconstant values, easy for addition
+      ArithResult = BinaryOperator::Create(Instruction::Add,
+          VariableArg, VariableArg2,
+          Call->getName() + ".arith", Call);
+      // If x+y < x (or y), unsigned 32 addition, then an overflow occurred
+      OverflowResult = new ICmpInst(
+          Call, CmpInst::ICMP_ULT, ArithResult, VariableArg,
+          Call->getName() + ".overflow");
     }
-    Value *OverflowResult = new ICmpInst(
-        Call, CmpInst::ICMP_UGT, VariableArg, ConstantInt::get(IntTy, ArgMax),
-        Call->getName() + ".overflow");
 
     // Construct the struct result.
     Value *NewStruct = UndefValue::get(Call->getType());

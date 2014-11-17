@@ -23,6 +23,7 @@
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/LeakDetector.h"
+#include "llvm/Support/raw_ostream.h" // XXX Emscripten TODO: Move to PNacl upstream.
 #include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
