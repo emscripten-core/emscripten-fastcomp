@@ -1,4 +1,4 @@
-;===- ./lib/Target/JSBackend/LLVMBuild.txt --------------------*- Conf -*--===;
+;===- ./lib/Target/CppBackend/TargetInfo/LLVMBuild.txt ---------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,17 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = MCTargetDesc TargetInfo
-
 [component_0]
-type = TargetGroup
-name = JSBackend
-parent = Target
-
-[component_1]
 type = Library
-name = JSBackendCodeGen
-parent = JSBackend
-required_libraries = Core JSBackendInfo JSBackendDesc Support Target
-add_to_library_groups = JSBackend
+name = CppBackendInfo
+parent = CppBackend
+required_libraries = MC Support Target
+add_to_library_groups = CppBackend

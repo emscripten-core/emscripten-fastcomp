@@ -162,7 +162,6 @@ void stripGlobalValueAttrs(GlobalValue *GV) {
 
 static unsigned normalizeAlignment(DataLayout *DL, unsigned Alignment,
                                    Type *Ty, bool IsAtomic) {
-#if 0
   unsigned MaxAllowed = 1;
   if (Ty->isDoubleTy() || Ty->isFloatTy() || IsAtomic)
     MaxAllowed = DL->getTypeAllocSize(Ty);
@@ -171,9 +170,6 @@ static unsigned normalizeAlignment(DataLayout *DL, unsigned Alignment,
   if (Alignment == 0 || Alignment >= MaxAllowed)
     return MaxAllowed;
   return 1;
-#else
-  return Alignment; // EMSCRIPTEN: no need to change alignment
-#endif
 }
 
 void stripFunctionAttrs(DataLayout *DL, Function *Func) {
@@ -192,14 +188,12 @@ void stripFunctionAttrs(DataLayout *DL, Function *Func) {
         Call.setAttributes(AttributeSet());
         Call.setCallingConv(CallingConv::C);
 
-#if 0 // EMSCRIPTEN: we do support alignment info in these calls
         // Set memcpy(), memmove() and memset() to use pessimistic
         // alignment assumptions.
         if (MemIntrinsic *MemOp = dyn_cast<MemIntrinsic>(Inst)) {
           Type *AlignTy = MemOp->getAlignmentCst()->getType();
           MemOp->setAlignment(ConstantInt::get(AlignTy, 1));
         }
-#endif
       } else if (OverflowingBinaryOperator *Op =
                      dyn_cast<OverflowingBinaryOperator>(Inst)) {
         cast<BinaryOperator>(Op)->setHasNoUnsignedWrap(false);

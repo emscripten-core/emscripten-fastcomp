@@ -1,2 +1,0 @@
-EMCC_FAST_COMPILER=1 ./tests/runner.py asm2g.test_hello_world asm2g.test_loop asm2g.test_floatvars asm2g.test_alloca_stack asm2g.test_sintvars asm2g.test_intvars asm2g.test_i32_mul_precise asm2g.test_align64 asm2g.test_negative_zero asm2g.test_pystruct asm2.test_llvmswitch asm2g.test_isnan asm2g.test_bigarray asm2g.test_inlinejs3 asm2g.test_strtod asm2g.test_sscanf_2 asm2g.test_files_m asm2g.test_funcptr asm2g.test_cubescript asm2g.test_i64_zextneg asm2g.test_zlib asm2g.test_i64_b asm2g.test_i64 asm2g.test_i64_umul
-

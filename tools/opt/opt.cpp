@@ -641,8 +641,6 @@ int main(int argc, char **argv) {
   initializeRewritePNaClLibraryCallsPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
-  initializeExpandI64Pass(Registry);
-  initializeNoExitRuntimePass(Registry);
   // @LOCALMOD-END
 
   cl::ParseCommandLineOptions(argc, argv,

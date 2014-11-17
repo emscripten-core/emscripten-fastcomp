@@ -28,10 +28,6 @@ add_llvm_library(LLVMNaClTransforms
   RewritePNaClLibraryCalls.cpp
   StripAttributes.cpp
   StripMetadata.cpp
-  LowerEmExceptionsPass.cpp
-  LowerEmSetjmp.cpp
-  LowerEmAsyncify.cpp
-  NoExitRuntime.cpp
   )
 
 add_dependencies(LLVMNaClTransforms intrinsics_gen)

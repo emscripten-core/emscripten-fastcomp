@@ -76,12 +76,10 @@ bool GlobalCleanup::runOnModule(Module &M) {
     GV->eraseFromParent();
     Modified = true;
   }
-#if 0 // XXX EMSCRIPTEN: we need dis
   if (GlobalVariable *GV = M.getNamedGlobal("llvm.used")) {
     GV->eraseFromParent();
     Modified = true;
   }
-#endif
 
   for (Module::global_iterator I = M.global_begin(), E = M.global_end();
        I != E; ) {

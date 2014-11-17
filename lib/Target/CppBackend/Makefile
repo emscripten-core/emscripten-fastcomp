@@ -1,15 +1,15 @@
-##===- lib/Target/JSBackend/Makefile --- ------------------*- Makefile -*-===##
+##===- lib/Target/CppBackend/Makefile --- ------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
 # This file is distributed under the University of Illinois Open Source
 # License. See LICENSE.TXT for details.
 #
-##===---------------------------------------------------------------------===##
+##===----------------------------------------------------------------------===##
 
 LEVEL = ../../..
-LIBRARYNAME = LLVMJSBackendCodeGen
-DIRS = MCTargetDesc TargetInfo
+LIBRARYNAME = LLVMCppBackendCodeGen
+DIRS = TargetInfo
 
 include $(LEVEL)/Makefile.common
 

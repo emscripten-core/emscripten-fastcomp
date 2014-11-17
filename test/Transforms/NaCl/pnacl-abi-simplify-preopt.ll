@@ -25,18 +25,6 @@ define void @varargs_func(...) {
 ; CHECK-NOT: @varargs_func(...)
 
 
-%MyStruct = type { i32, i32 }
-
-; Checks that ExpandVarArgs and ExpandStructRegs are applied in the
-; right order.
-define void @get_struct_from_varargs(i8* %va_list, %MyStruct* %dest) {
-  %val = va_arg i8* %va_list, %MyStruct
-  store %MyStruct %val, %MyStruct* %dest
-  ret void
-}
-; CHECK-NOT: va_arg
-
-
 @llvm.global_ctors = appending global [0 x { i32, void ()* }] zeroinitializer
 ; CHECK-NOT: @llvm.global_ctors
 
