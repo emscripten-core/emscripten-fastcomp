@@ -133,7 +133,7 @@ class AllocaManager {
   unsigned getAlignment(const AllocaInst *AI);
   AllocaInfo getInfo(const AllocaInst *AI);
   const AllocaInst *getAllocaFromIntrinsic(const CallInst *CI);
-  static int AllocaSort(const void *l, const void *r);
+  static int AllocaSort(const AllocaInfo *l, const AllocaInfo *r);
 
   void collectMarkedAllocas();
   void collectBlocks();

@@ -83,10 +83,7 @@ AllocaManager::getAllocaFromIntrinsic(const CallInst *CI) {
   return AI;
 }
 
-int AllocaManager::AllocaSort(const void *l, const void *r) {
-  const AllocaInfo *li = static_cast<const AllocaInfo *>(l);
-  const AllocaInfo *ri = static_cast<const AllocaInfo *>(r);
-
+int AllocaManager::AllocaSort(const AllocaInfo *li, const AllocaInfo *ri) {
   // Sort by alignment to minimize padding.
   if (li->getAlignment() > ri->getAlignment()) return -1;
   if (li->getAlignment() < ri->getAlignment()) return 1;
@@ -417,7 +414,7 @@ void AllocaManager::computeFrameOffsets() {
     // is known to depend on this.
     // TODO: Consider disabling this and making people fix their code.
     if (uint64_t Size = Info.getSize()) {
-      uint64_t P2 = uint64_t(1) << CountTrailingZeros_64(Size);
+      uint64_t P2 = uint64_t(1) << countTrailingZeros(Size);
       unsigned CompatAlign = unsigned(std::min(P2, uint64_t(8)));
       NewOffset = RoundUpToAlignment(NewOffset, CompatAlign);
     }
