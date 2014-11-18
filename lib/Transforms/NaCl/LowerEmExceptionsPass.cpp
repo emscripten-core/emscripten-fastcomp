@@ -42,6 +42,8 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/NaCl.h"
+#include "llvm/Support/raw_ostream.h"
+
 #include <vector>
 #include <set>
 
@@ -143,6 +145,16 @@ bool LowerEmExceptions::runOnModule(Module &M) {
         bool NeedInvoke = AllowExceptionsInFunc && canThrow(II->getCalledValue());
 
         if (NeedInvoke) {
+          // If we are calling a function that is noreturn, we must remove that attribute. The code we
+          // insert here does expect it to return, after we catch the exception.
+          if (II->doesNotReturn()) {
+            if (Function *F = dyn_cast<Function>(II->getCalledValue())) {
+              F->removeFnAttr(Attribute::NoReturn);
+            }
+            II->setAttributes(II->getAttributes().removeAttribute(TheModule->getContext(), AttributeSet::FunctionIndex, Attribute::NoReturn));
+            assert(!II->doesNotReturn());
+          }
+
           // Insert a normal call instruction folded in between pre- and post-invoke
           CallInst::Create(PreInvoke, "", II);
 
