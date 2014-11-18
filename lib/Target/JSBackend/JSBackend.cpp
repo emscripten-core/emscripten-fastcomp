@@ -1162,10 +1162,23 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
 
 void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code) {
   // LLVM has no vector type constructor operator; it uses chains of
-  // insertelement instructions instead. If this insertelement is part of a
-  // chain, skip it for now; we'll process it when we reach the end.
-  if (III->hasOneUse() && isa<InsertElementInst>(*III->use_begin()))
-      return;
+  // insertelement instructions instead. It also has no splat operator; it
+  // uses an insertelement followed by a shuffle instead. If this insertelement
+  // is part of either such sequence, skip it for now; we'll process it when we
+  // reach the end.
+  if (III->hasOneUse()) {
+      const User *U = *III->use_begin();
+      if (isa<InsertElementInst>(U))
+          return;
+      if (isa<ShuffleVectorInst>(U) &&
+          isa<ConstantAggregateZero>(cast<ShuffleVectorInst>(U)->getMask()) &&
+          !isa<InsertElementInst>(III->getOperand(0)) &&
+          isa<ConstantInt>(III->getOperand(2)) &&
+          cast<ConstantInt>(III->getOperand(2))->isZero())
+      {
+          return;
+      }
+  }
 
   // This insertelement is at the base of a chain of single-user insertelement
   // instructions. Collect all the inserted elements so that we can categorize
@@ -1253,6 +1266,27 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
 
 void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
   Code << getAssignIfNeeded(SVI);
+
+  // LLVM has no splat operator, so it makes do by using an insert and a
+  // shuffle. If that's what this shuffle is doing, the code in
+  // generateInsertElementExpression will have also detected it and skipped
+  // emitting the insert, so we can just emit a splat here.
+  if (isa<ConstantAggregateZero>(SVI->getMask()) &&
+      isa<InsertElementInst>(SVI->getOperand(0)))
+  {
+    InsertElementInst *IEI = cast<InsertElementInst>(SVI->getOperand(0));
+    if (ConstantInt *CI = dyn_cast<ConstantInt>(IEI->getOperand(2))) {
+      if (CI->isZero()) {
+        if (SVI->getType()->getElementType()->isIntegerTy()) {
+          Code << "SIMD_int32x4_splat(";
+        } else {
+          Code << "SIMD_float32x4_splat(";
+        }
+        Code << getValueAsStr(IEI->getOperand(1)) << ")";
+        return;
+      }
+    }
+  }
 
   // Check whether can generate SIMD.js swizzle or shuffle.
   std::string A = getValueAsStr(SVI->getOperand(0));
