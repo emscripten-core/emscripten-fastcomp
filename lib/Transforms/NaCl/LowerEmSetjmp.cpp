@@ -269,6 +269,16 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
             // no existing pre|postinvoke, create our own
             CallInst::Create(PreInvoke, "", CI);
             Check = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
+
+            // If we are calling a function that is noreturn, we must remove that attribute. The code we
+            // insert here does expect it to return, after we catch the exception.
+            if (CI->doesNotReturn()) {
+              if (Function *F = dyn_cast<Function>(CI->getCalledValue())) {
+                F->removeFnAttr(Attribute::NoReturn);
+              }
+              CI->setAttributes(CI->getAttributes().removeAttribute(TheModule->getContext(), AttributeSet::FunctionIndex, Attribute::NoReturn));
+              assert(!CI->doesNotReturn());
+            }
           }
 
           // We need to replace the terminator in Tail - SplitBlock makes BB go straight to Tail, we need to check if a longjmp occurred, and
