@@ -2047,6 +2047,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   // match up with the label index.
   for (Function::const_iterator BI = F->begin(), BE = F->end();
        BI != BE; ++BI) {
+    InvokeState = 0; // each basic block begins in state 0; the previous may not have cleared it, if e.g. it had a throw in the middle and the rest of it was decapitated
     addBlock(BI, R, LLVMToRelooper);
     if (!Entry) Entry = LLVMToRelooper[BI];
   }
