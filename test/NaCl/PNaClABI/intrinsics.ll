@@ -1,18 +1,8 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
-; RUN: pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
+; RUN: not pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
 ; RUN:   FileCheck %s --check-prefix=DBG
-; RUN: pnacl-abicheck -pnaclabi-allow-dev-intrinsics < %s | \
-; RUN:   FileCheck %s --check-prefix=DEV
 
 ; Test that only white-listed intrinsics are allowed.
-
-; ===================================
-; Some "Dev" intrinsics which are disallowed by default.
-
-; CHECK: Function llvm.nacl.target.arch is a disallowed LLVM intrinsic
-; DEV-NOT: Function llvm.nacl.target.arch is a disallowed LLVM intrinsic
-declare i32 @llvm.nacl.target.arch()
-
 
 ; ===================================
 ; Debug info intrinsics, which are disallowed by default.
@@ -88,22 +78,18 @@ declare i32 @llvm.nacl.setjmp(i8*)
 
 ; CHECK: Function llvm.adjust.trampoline is a disallowed LLVM intrinsic
 ; DBG: Function llvm.adjust.trampoline is a disallowed LLVM intrinsic
-; DEV: Function llvm.adjust.trampoline is a disallowed LLVM intrinsic
 declare i8* @llvm.adjust.trampoline(i8*)
 
 ; CHECK: Function llvm.init.trampoline is a disallowed LLVM intrinsic
 ; DBG: Function llvm.init.trampoline is a disallowed LLVM intrinsic
-; DEV: Function llvm.init.trampoline is a disallowed LLVM intrinsic
 declare void @llvm.init.trampoline(i8*, i8*, i8*)
 
 ; CHECK: Function llvm.x86.aesni.aeskeygenassist is a disallowed LLVM intrinsic
 ; DBG: Function llvm.x86.aesni.aeskeygenassist is a disallowed LLVM intrinsic
-; DEV: Function llvm.x86.aesni.aeskeygenassist is a disallowed LLVM intrinsic
 declare <2 x i64> @llvm.x86.aesni.aeskeygenassist(<2 x i64>, i8)
 
 ; CHECK: Function llvm.va_copy is a disallowed LLVM intrinsic
 ; DBG: Function llvm.va_copy is a disallowed LLVM intrinsic
-; DEV: Function llvm.va_copy is a disallowed LLVM intrinsic
 declare void @llvm.va_copy(i8*, i8*)
 
 ; CHECK: Function llvm.bswap.i1 is a disallowed LLVM intrinsic

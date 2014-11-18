@@ -1,4 +1,5 @@
-; RUN: llc < %s -O0 -verify-machineinstrs -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM-IOS
+; RUN: llc < %s -O0 -verify-machineinstrs -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -verify-machineinstrs -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi | FileCheck %s --check-prefix=ARM
 ; RUN: llc < %s -O0 -verify-machineinstrs -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios | FileCheck %s --check-prefix=THUMB
 
 define i32 @VarArg() nounwind {
@@ -14,18 +15,18 @@ entry:
   %2 = load i32* %k, align 4
   %3 = load i32* %m, align 4
   %4 = load i32* %n, align 4
-; ARM-IOS: VarArg
-; ARM-IOS: mov r7, sp
-; ARM-IOS: sub sp, sp, #32
-; ARM-IOS: movw r0, #5
-; ARM-IOS: ldr r1, [r7, #-4]
-; ARM-IOS: ldr r2, [r7, #-8]
-; ARM-IOS: ldr r3, [r7, #-12]
-; ARM-IOS: ldr r9, [sp, #16]
-; ARM-IOS: ldr r12, [sp, #12]
-; ARM-IOS: str r9, [sp]
-; ARM-IOS: str r12, [sp, #4]
-; ARM-IOS: bl _CallVariadic
+; ARM: VarArg
+; ARM: mov [[FP:r[0-9]+]], sp
+; ARM: sub sp, sp, #32
+; ARM: movw r0, #5
+; ARM: ldr r1, {{\[}}[[FP]], #-4]
+; ARM: ldr r2, {{\[}}[[FP]], #-8]
+; ARM: ldr r3, {{\[}}[[FP]], #-12]
+; ARM: ldr [[Ra:r[0-9]+]], [sp, #16]
+; ARM: ldr [[Rb:[lr]+[0-9]*]], [sp, #12]
+; ARM: str [[Ra]], [sp]
+; ARM: str [[Rb]], [sp, #4]
+; ARM: bl {{_?CallVariadic}}
 ; THUMB: sub sp, #32
 ; THUMB: movs r0, #5
 ; THUMB: movt r0, #0

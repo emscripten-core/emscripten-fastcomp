@@ -8,22 +8,37 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "NaClBitcodeParser"
-
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
-#include "llvm/Support/Debug.h"
+
+using namespace llvm;
 
 void NaClBitcodeRecord::Print(raw_ostream& os) const {
-  DEBUG(os << "Block " << GetBlockID() << ", Code " << Code
-        << ", EntryID " << Entry.ID << ", <";
-        for (unsigned i = 0, e = Values.size(); i != e; ++i) {
-          if (i > 0) os << " ";
-          os << Values[i];
-        }
-        os << ">");
+  Block.Print(os);
+  os << ", Code " << Code << ", EntryID " << Entry.ID << ", <";
+  for (unsigned i = 0, e = Values.size(); i != e; ++i) {
+    if (i > 0) os << " ";
+    os << Values[i];
+  }
+  os << ">";
 }
 
-NaClBitcodeParser::~NaClBitcodeParser() {}
+NaClBitcodeBlock::NaClBitcodeBlock(unsigned BlockID,
+                                   const NaClBitcodeRecord &Record)
+    : NaClBitcodeData(Record),
+      BlockID(BlockID),
+      EnclosingBlock(&Record.GetBlock()),
+      LocalStartBit(Record.GetStartBit())
+{}
+
+void NaClBitcodeBlock::Print(raw_ostream &os) const {
+  os << "Block " << BlockID;
+}
+
+NaClBitcodeParser::~NaClBitcodeParser() {
+  if (EnclosingParser) {
+    EnclosingParser->Block.LocalStartBit += Block.GetNumBits();
+  }
+}
 
 bool NaClBitcodeParser::Parse() {
   Record.ReadEntry();
@@ -44,7 +59,6 @@ bool NaClBitcodeParser::ParseThisBlock() {
     EnterBlockInfo();
     if (Record.GetCursor().ReadBlockInfoBlock())
       return Error("Malformed BlockInfoBlock");
-    RemoveBlockBitsFromEnclosingBlock();
     ExitBlockInfo();
     return false;
   }
@@ -70,7 +84,6 @@ bool NaClBitcodeParser::ParseThisBlock() {
       return Error("malformed bitcode file");
     case NaClBitstreamEntry::EndBlock: {
       ExitBlock();
-      RemoveBlockBitsFromEnclosingBlock();
       return false;
     }
     case NaClBitstreamEntry::SubBlock: {

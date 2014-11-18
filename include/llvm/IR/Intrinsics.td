@@ -55,6 +55,18 @@ class NoCapture<int argNo> : IntrinsicProperty {
   int ArgNo = argNo;
 }
 
+// ReadOnly - The specified argument pointer is not written to through the
+// pointer by the intrinsic.
+class ReadOnly<int argNo> : IntrinsicProperty {
+  int ArgNo = argNo;
+}
+
+// ReadNone - The specified argument pointer is not dereferenced by the
+// intrinsic.
+class ReadNone<int argNo> : IntrinsicProperty {
+  int ArgNo = argNo;
+}
+
 def IntrNoReturn : IntrinsicProperty;
 
 //===----------------------------------------------------------------------===//
@@ -128,6 +140,7 @@ def llvm_v8i1_ty       : LLVMType<v8i1>;     //  8 x i1
 def llvm_v16i1_ty      : LLVMType<v16i1>;    // 16 x i1
 def llvm_v32i1_ty      : LLVMType<v32i1>;    // 32 x i1
 def llvm_v64i1_ty      : LLVMType<v64i1>;    // 64 x i1
+def llvm_v1i8_ty       : LLVMType<v1i8>;     //  1 x i8
 def llvm_v2i8_ty       : LLVMType<v2i8>;     //  2 x i8
 def llvm_v4i8_ty       : LLVMType<v4i8>;     //  4 x i8
 def llvm_v8i8_ty       : LLVMType<v8i8>;     //  8 x i8
@@ -153,10 +166,15 @@ def llvm_v4i64_ty      : LLVMType<v4i64>;    //  4 x i64
 def llvm_v8i64_ty      : LLVMType<v8i64>;    //  8 x i64
 def llvm_v16i64_ty     : LLVMType<v16i64>;   // 16 x i64
 
+def llvm_v2f16_ty      : LLVMType<v2f16>;    //  2 x half (__fp16)
+def llvm_v4f16_ty      : LLVMType<v4f16>;    //  4 x half (__fp16)
+def llvm_v8f16_ty      : LLVMType<v8f16>;    //  8 x half (__fp16)
+def llvm_v1f32_ty      : LLVMType<v1f32>;    //  1 x float
 def llvm_v2f32_ty      : LLVMType<v2f32>;    //  2 x float
 def llvm_v4f32_ty      : LLVMType<v4f32>;    //  4 x float
 def llvm_v8f32_ty      : LLVMType<v8f32>;    //  8 x float
 def llvm_v16f32_ty     : LLVMType<v16f32>;   // 16 x float
+def llvm_v1f64_ty      : LLVMType<v1f64>;    //  1 x double
 def llvm_v2f64_ty      : LLVMType<v2f64>;    //  2 x double
 def llvm_v4f64_ty      : LLVMType<v4f64>;    //  4 x double
 def llvm_v8f64_ty      : LLVMType<v8f64>;    //  8 x double
@@ -246,6 +264,8 @@ def int_readcyclecounter : Intrinsic<[llvm_i64_ty]>;
 // Stack Protector Intrinsic - The stackprotector intrinsic writes the stack
 // guard to the correct place on the stack frame.
 def int_stackprotector : Intrinsic<[], [llvm_ptr_ty, llvm_ptrptr_ty], []>;
+def int_stackprotectorcheck : Intrinsic<[], [llvm_ptrptr_ty],
+                                        [IntrReadWriteArgMem]>;
 
 //===------------------- Standard C Library Intrinsics --------------------===//
 //
@@ -253,11 +273,13 @@ def int_stackprotector : Intrinsic<[], [llvm_ptr_ty, llvm_ptrptr_ty], []>;
 def int_memcpy  : Intrinsic<[],
                              [llvm_anyptr_ty, llvm_anyptr_ty, llvm_anyint_ty,
                               llvm_i32_ty, llvm_i1_ty],
-                            [IntrReadWriteArgMem, NoCapture<0>, NoCapture<1>]>;
+                            [IntrReadWriteArgMem, NoCapture<0>, NoCapture<1>,
+                             ReadOnly<1>]>;
 def int_memmove : Intrinsic<[],
                             [llvm_anyptr_ty, llvm_anyptr_ty, llvm_anyint_ty,
                              llvm_i32_ty, llvm_i1_ty],
-                            [IntrReadWriteArgMem, NoCapture<0>, NoCapture<1>]>;
+                            [IntrReadWriteArgMem, NoCapture<0>, NoCapture<1>,
+                             ReadOnly<1>]>;
 def int_memset  : Intrinsic<[],
                             [llvm_anyptr_ty, llvm_i8_ty, llvm_anyint_ty,
                              llvm_i32_ty, llvm_i1_ty],
@@ -279,11 +301,14 @@ let Properties = [IntrReadMem] in {
   def int_exp  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_exp2 : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_fabs : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_copysign : Intrinsic<[llvm_anyfloat_ty],
+                               [LLVMMatchType<0>, LLVMMatchType<0>]>;
   def int_floor : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_ceil  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_trunc : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_rint  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_nearbyint : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_round : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
 }
 
 let Properties = [IntrNoMem] in {
@@ -303,7 +328,7 @@ def int_sigsetjmp  : Intrinsic<[llvm_i32_ty] , [llvm_ptr_ty, llvm_i32_ty]>;
 def int_siglongjmp : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty], [IntrNoReturn]>;
 
 // Internal interface for object size checking
-def int_objectsize : Intrinsic<[llvm_anyint_ty], [llvm_ptr_ty, llvm_i1_ty],
+def int_objectsize : Intrinsic<[llvm_anyint_ty], [llvm_anyptr_ty, llvm_i1_ty],
                                [IntrNoMem]>,
                                GCCBuiltin<"__builtin_object_size">;
 
@@ -430,6 +455,19 @@ def int_invariant_end   : Intrinsic<[],
                                      llvm_ptr_ty],
                                     [IntrReadWriteArgMem, NoCapture<2>]>;
 
+//===------------------------ Stackmap Intrinsics -------------------------===//
+//
+def int_experimental_stackmap : Intrinsic<[],
+                                  [llvm_i32_ty, llvm_i32_ty, llvm_vararg_ty]>;
+def int_experimental_patchpoint_void : Intrinsic<[],
+                                                 [llvm_i32_ty, llvm_i32_ty,
+                                                  llvm_ptr_ty, llvm_i32_ty,
+                                                  llvm_vararg_ty]>;
+def int_experimental_patchpoint_i64 : Intrinsic<[llvm_i64_ty],
+                                                [llvm_i32_ty, llvm_i32_ty,
+                                                 llvm_ptr_ty, llvm_i32_ty,
+                                                 llvm_vararg_ty]>;
+
 //===-------------------------- Other Intrinsics --------------------------===//
 //
 def int_flt_rounds : Intrinsic<[llvm_i32_ty]>,
@@ -484,21 +522,6 @@ def int_nacl_longjmp  : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty],
 // Fast built-in version of NaCl's tls_get() IRT interface.
 def int_nacl_read_tp : Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
 
-// The following intrinsics provide target-specific implementations of
-// the interface in native_client/src/untrusted/nacl/tls_params.h.
-// The intrinsic names are basically the functions there without the
-// leading underscores.
-def int_nacl_tp_tls_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
-                             GCCBuiltin<"__builtin_nacl_tp_tls_offset">;
-def int_nacl_tp_tdb_offset : Intrinsic<[llvm_i32_ty], [llvm_i32_ty]>,
-                             GCCBuiltin<"__builtin_nacl_tp_tdb_offset">;
-
-// The following intrinsic provides a target-specific constant value to
-// indicate the target platform compiled to.  The enum values are enumerated
-// pnaclintrin.h.
-def int_nacl_target_arch : Intrinsic<[llvm_i32_ty], []>,
-                            GCCBuiltin<"__builtin_nacl_target_arch">;
-
 // Atomic intrinsics.
 //
 // Volatiles and atomics are encoded through these intrinsics to make
@@ -540,6 +563,7 @@ def int_nacl_atomic_is_lock_free : Intrinsic<[llvm_i1_ty],
 include "llvm/IR/IntrinsicsPowerPC.td"
 include "llvm/IR/IntrinsicsX86.td"
 include "llvm/IR/IntrinsicsARM.td"
+include "llvm/IR/IntrinsicsAArch64.td"
 include "llvm/IR/IntrinsicsXCore.td"
 include "llvm/IR/IntrinsicsHexagon.td"
 include "llvm/IR/IntrinsicsNVVM.td"

@@ -23,7 +23,6 @@
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/LeakDetector.h"
-#include "llvm/Support/ErrorHandling.h" // @LOCALMOD
 #include "llvm/Support/raw_ostream.h" // XXX Emscripten TODO: Move to PNacl upstream.
 #include <algorithm>
 #include <cstdarg>
@@ -57,7 +56,6 @@ Module::~Module() {
   GlobalList.clear();
   FunctionList.clear();
   AliasList.clear();
-  LibraryList.clear(); // @LOCALMOD
   NamedMDList.clear();
   delete ValSymTab;
   delete static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab);
@@ -171,23 +169,6 @@ Constant *Module::getOrInsertFunction(StringRef Name,
   return F;
 }
 
-Constant *Module::getOrInsertTargetIntrinsic(StringRef Name,
-                                             FunctionType *Ty,
-                                             AttributeSet AttributeList) {
-  // See if we have a definition for the specified function already.
-  GlobalValue *F = getNamedValue(Name);
-  if (F == 0) {
-    // Nope, add it
-    Function *New = Function::Create(Ty, GlobalVariable::ExternalLinkage, Name);
-    New->setAttributes(AttributeList);
-    FunctionList.push_back(New);
-    return New; // Return the new prototype.
-  }
-
-  // Otherwise, we just found the existing function or a prototype.
-  return F;
-}
-
 Constant *Module::getOrInsertFunction(StringRef Name,
                                       FunctionType *Ty) {
   return getOrInsertFunction(Name, Ty, AttributeSet());
@@ -253,8 +234,7 @@ Function *Module::getFunction(StringRef Name) const {
 /// If AllowLocal is set to true, this function will return types that
 /// have an local. By default, these types are not returned.
 ///
-GlobalVariable *Module::getGlobalVariable(StringRef Name,
-                                          bool AllowLocal) const {
+GlobalVariable *Module::getGlobalVariable(StringRef Name, bool AllowLocal) {
   if (GlobalVariable *Result =
       dyn_cast_or_null<GlobalVariable>(getNamedValue(Name)))
     if (AllowLocal || !Result->hasLocalLinkage())
@@ -266,7 +246,7 @@ GlobalVariable *Module::getGlobalVariable(StringRef Name,
 ///   1. If it does not exist, add a declaration of the global and return it.
 ///   2. Else, the global exists but has the wrong type: return the function
 ///      with a constantexpr cast to the right type.
-///   3. Finally, if the existing global is the correct delclaration, return the
+///   3. Finally, if the existing global is the correct declaration, return the
 ///      existing global.
 Constant *Module::getOrInsertGlobal(StringRef Name, Type *Ty) {
   // See if we have a definition for the specified global already.
@@ -281,8 +261,10 @@ Constant *Module::getOrInsertGlobal(StringRef Name, Type *Ty) {
 
   // If the variable exists but has the wrong type, return a bitcast to the
   // right type.
-  if (GV->getType() != PointerType::getUnqual(Ty))
-    return ConstantExpr::getBitCast(GV, PointerType::getUnqual(Ty));
+  Type *GVTy = GV->getType();
+  PointerType *PTy = PointerType::get(Ty, GVTy->getPointerAddressSpace());
+  if (GVTy != PTy)
+    return ConstantExpr::getBitCast(GV, PTy);
 
   // Otherwise, we just found the existing function or a prototype.
   return GV;
@@ -343,6 +325,19 @@ getModuleFlagsMetadata(SmallVectorImpl<ModuleFlagEntry> &Flags) const {
     Flags.push_back(ModuleFlagEntry(ModFlagBehavior(Behavior->getZExtValue()),
                                     Key, Val));
   }
+}
+
+/// Return the corresponding value if Key appears in module flags, otherwise
+/// return null.
+Value *Module::getModuleFlag(StringRef Key) const {
+  SmallVector<Module::ModuleFlagEntry, 8> ModuleFlags;
+  getModuleFlagsMetadata(ModuleFlags);
+  for (unsigned I = 0, E = ModuleFlags.size(); I < E; ++I) {
+    const ModuleFlagEntry &MFE = ModuleFlags[I];
+    if (Key == MFE.Key->getString())
+      return MFE.Val;
+  }
+  return 0;
 }
 
 /// getModuleFlagsMetadata - Returns the NamedMDNode in the module that
@@ -407,9 +402,15 @@ bool Module::isDematerializable(const GlobalValue *GV) const {
 }
 
 bool Module::Materialize(GlobalValue *GV, std::string *ErrInfo) {
-  if (Materializer)
-    return Materializer->Materialize(GV, ErrInfo);
-  return false;
+  if (!Materializer)
+    return false;
+
+  error_code EC = Materializer->Materialize(GV);
+  if (!EC)
+    return false;
+  if (ErrInfo)
+    *ErrInfo = EC.message();
+  return true;
 }
 
 void Module::Dematerialize(GlobalValue *GV) {
@@ -420,7 +421,12 @@ void Module::Dematerialize(GlobalValue *GV) {
 bool Module::MaterializeAll(std::string *ErrInfo) {
   if (!Materializer)
     return false;
-  return Materializer->MaterializeModule(this, ErrInfo);
+  error_code EC = Materializer->MaterializeModule(this);
+  if (!EC)
+    return false;
+  if (ErrInfo)
+    *ErrInfo = EC.message();
+  return true;
 }
 
 bool Module::MaterializeAllPermanently(std::string *ErrInfo) {
@@ -452,228 +458,3 @@ void Module::dropAllReferences() {
   for(Module::alias_iterator I = alias_begin(), E = alias_end(); I != E; ++I)
     I->dropAllReferences();
 }
-
-// @LOCALMOD-BEGIN
-void Module::convertMetadataToLibraryList() {
-  LibraryList.clear();
-  // Get the DepLib node
-  NamedMDNode *Node = getNamedMetadata("DepLibs");
-  if (!Node)
-    return;
-  for (unsigned i = 0; i < Node->getNumOperands(); i++) {
-    MDString* Mds = dyn_cast_or_null<MDString>(
-        Node->getOperand(i)->getOperand(0));
-    assert(Mds && "Bad NamedMetadata operand");
-    LibraryList.push_back(Mds->getString());
-  }
-  // Clear the metadata so the linker won't try to merge it
-  Node->dropAllReferences();
-}
-
-void Module::convertLibraryListToMetadata() const {
-  if (LibraryList.size() == 0)
-    return;
-  // Get the DepLib node
-  NamedMDNode *Node = getNamedMetadata("DepLibs");
-  assert(Node && "DepLibs metadata node missing");
-  // Erase all existing operands
-  Node->dropAllReferences();
-  // Add all libraries from the library list
-  for (Module::lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I) {
-    MDString *value = MDString::get(getContext(), *I);
-    Node->addOperand(MDNode::get(getContext(),
-                                 makeArrayRef(static_cast<Value*>(value))));
-  }
-}
-
-void Module::addLibrary(StringRef Lib) {
-  for (Module::lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I)
-    if (*I == Lib)
-      return;
-  LibraryList.push_back(Lib);
-  // If the module previously had no deplibs, it may not have the metadata node.
-  // Ensure it exists now, so that we don't have to create it in
-  // convertLibraryListToMetadata (which is const)
-  getOrInsertNamedMetadata("DepLibs");
-}
-
-void Module::removeLibrary(StringRef Lib) {
-  LibraryListType::iterator I = LibraryList.begin();
-  LibraryListType::iterator E = LibraryList.end();
-  for (;I != E; ++I)
-    if (*I == Lib) {
-      LibraryList.erase(I);
-      return;
-    }
-}
-
-static std::string
-ModuleMetaGet(const Module *module, StringRef MetaName) {
-  NamedMDNode *node = module->getNamedMetadata(MetaName);
-  if (node == NULL)
-    return "";
-  assert(node->getNumOperands() == 1);
-  MDNode *subnode = node->getOperand(0);
-  assert(subnode->getNumOperands() == 1);
-  MDString *value = dyn_cast<MDString>(subnode->getOperand(0));
-  assert(value != NULL);
-  return value->getString();
-}
-
-static void
-ModuleMetaSet(Module *module, StringRef MetaName, StringRef ValueStr) {
-  NamedMDNode *node = module->getNamedMetadata(MetaName);
-  if (node)
-    module->eraseNamedMetadata(node);
-  node = module->getOrInsertNamedMetadata(MetaName);
-  MDString *value = MDString::get(module->getContext(), ValueStr);
-  node->addOperand(MDNode::get(module->getContext(),
-                   makeArrayRef(static_cast<Value*>(value))));
-}
-
-const std::string &Module::getSOName() const {
-  if (ModuleSOName == "")
-    ModuleSOName.assign(ModuleMetaGet(this, "SOName"));
-  return ModuleSOName;
-}
-
-void Module::setSOName(StringRef Name) {
-  ModuleMetaSet(this, "SOName", Name);
-  ModuleSOName = Name;
-}
-
-void Module::setOutputFormat(Module::OutputFormat F) {
-  const char *formatStr;
-  switch (F) {
-  case ObjectOutputFormat: formatStr = "object"; break;
-  case SharedOutputFormat: formatStr = "shared"; break;
-  case ExecutableOutputFormat: formatStr = "executable"; break;
-  default:
-    llvm_unreachable("Unrecognized output format in setOutputFormat()");
-  }
-  ModuleMetaSet(this, "OutputFormat", formatStr);
-}
-
-Module::OutputFormat Module::getOutputFormat() const {
-  std::string formatStr = ModuleMetaGet(this, "OutputFormat");
-  if (formatStr == "" || formatStr == "object")
-    return ObjectOutputFormat;
-  else if (formatStr == "shared")
-    return SharedOutputFormat;
-  else if (formatStr == "executable")
-    return ExecutableOutputFormat;
-  llvm_unreachable("Invalid module compile type in getOutputFormat()");
-}
-
-void
-Module::wrapSymbol(StringRef symName) {
-  std::string wrapSymName("__wrap_");
-  wrapSymName += symName;
-
-  std::string realSymName("__real_");
-  realSymName += symName;
-
-  GlobalValue *SymGV = getNamedValue(symName);
-  GlobalValue *WrapGV = getNamedValue(wrapSymName);
-  GlobalValue *RealGV = getNamedValue(realSymName);
-
-  // Replace uses of "sym" with __wrap_sym.
-  if (SymGV) {
-    if (!WrapGV)
-      WrapGV = cast<GlobalValue>(getOrInsertGlobal(wrapSymName,
-                                                   SymGV->getType()));
-    SymGV->replaceAllUsesWith(ConstantExpr::getBitCast(WrapGV,
-                                                       SymGV->getType()));
-  }
-
-  // Replace uses of "__real_sym" with "sym".
-  if (RealGV) {
-    if (!SymGV)
-      SymGV = cast<GlobalValue>(getOrInsertGlobal(symName, RealGV->getType()));
-    RealGV->replaceAllUsesWith(ConstantExpr::getBitCast(SymGV,
-                                                        RealGV->getType()));
-  }
-}
-
-// The metadata key prefix for NeededRecords.
-static const char *NeededPrefix = "NeededRecord_";
-
-void
-Module::dumpMeta(raw_ostream &OS) const {
-  OS << "OutputFormat: ";
-  switch (getOutputFormat()) {
-    case Module::ObjectOutputFormat: OS << "object"; break;
-    case Module::SharedOutputFormat: OS << "shared"; break;
-    case Module::ExecutableOutputFormat: OS << "executable"; break;
-  }
-  OS << "\n";
-  OS << "SOName: " << getSOName() << "\n";
-  for (Module::lib_iterator L = lib_begin(),
-                            E = lib_end();
-       L != E; ++L) {
-    OS << "NeedsLibrary: " << (*L) << "\n";
-  }
-  std::vector<NeededRecord> NList;
-  getNeededRecords(&NList);
-  for (unsigned i = 0; i < NList.size(); ++i) {
-    const NeededRecord &NR = NList[i];
-    OS << StringRef(NeededPrefix) << NR.DynFile << ": ";
-    for (unsigned j = 0; j < NR.Symbols.size(); ++j) {
-      if (j != 0)
-        OS << " ";
-      OS << NR.Symbols[j];
-    }
-    OS << "\n";
-  }
-}
-
-void Module::addNeededRecord(StringRef DynFile, GlobalValue *GV) {
-  if (DynFile.empty()) {
-    // We never resolved this symbol, even after linking.
-    // This should only happen in a shared object.
-    // It is safe to ignore this symbol, and let the dynamic loader
-    // figure out where it comes from.
-    return;
-  }
-  std::string Key = NeededPrefix;
-  Key += DynFile;
-  // Get the node for this file.
-  NamedMDNode *Node = getOrInsertNamedMetadata(Key);
-  // Add this global value's name to the list.
-  MDString *value = MDString::get(getContext(), GV->getName());
-  Node->addOperand(MDNode::get(getContext(),
-                   makeArrayRef(static_cast<Value*>(value))));
-}
-
-// Get the NeededRecord for SOName.
-// Returns an empty NeededRecord if there was no metadata found.
-static void getNeededRecordFor(const Module *M,
-                               StringRef SOName,
-                               Module::NeededRecord *NR) {
-  NR->DynFile = SOName;
-  NR->Symbols.clear();
-
-  std::string Key = NeededPrefix;
-  Key += SOName;
-  NamedMDNode *Node = M->getNamedMetadata(Key);
-  if (!Node)
-    return;
-
-  for (unsigned k = 0; k < Node->getNumOperands(); ++k) {
-    // Insert the symbol name.
-    const MDString *SymName =
-        dyn_cast<MDString>(Node->getOperand(k)->getOperand(0));
-    NR->Symbols.push_back(SymName->getString());
-  }
-}
-
-// Place the complete list of needed records in NeededOut.
-void Module::getNeededRecords(std::vector<NeededRecord> *NeededOut) const {
-  // Iterate through the libraries needed, grabbing each NeededRecord.
-  for (lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I) {
-    NeededRecord NR;
-    getNeededRecordFor(this, *I, &NR);
-    NeededOut->push_back(NR);
-  }
-}
-// @LOCALMOD-END

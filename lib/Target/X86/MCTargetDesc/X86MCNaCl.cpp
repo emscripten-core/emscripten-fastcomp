@@ -47,9 +47,6 @@ cl::opt<bool> FlagHideSandboxBase("sfi-hide-sandbox-base",
 
 const int kNaClX86InstructionBundleSize = 32;
 
-static unsigned PrefixSaved = 0;
-static bool PrefixPass = false;
-
 // See the notes below where these functions are defined.
 namespace {
 unsigned getX86SubSuperRegister_(unsigned Reg, EVT VT, bool High=false);
@@ -59,7 +56,7 @@ unsigned DemoteRegTo32_(unsigned RegIn);
 static MCSymbol *CreateTempLabel(MCContext &Context, const char *Prefix) {
   SmallString<128> NameSV;
   raw_svector_ostream(NameSV)
-    << Context.getAsmInfo().getPrivateGlobalPrefix() // get internal label
+    << Context.getAsmInfo()->getPrivateGlobalPrefix() // get internal label
     << Prefix << Context.getUniqueSymbolID();
   return Context.GetOrCreateSymbol(NameSV);
 }
@@ -321,17 +318,18 @@ static void EmitSPAdj(const MCOperand &ImmOp, MCStreamer &Out) {
   Out.EmitBundleUnlock();
 }
 
-static void EmitPrefix(unsigned Opc, MCStreamer &Out) {
-  assert(PrefixSaved == 0);
-  assert(PrefixPass == false);
+static void EmitPrefix(unsigned Opc, MCStreamer &Out,
+                       X86MCNaClSFIState &State) {
+  assert(State.PrefixSaved == 0);
+  assert(State.PrefixPass == false);
 
   MCInst PrefixInst;
   PrefixInst.setOpcode(Opc);
-  PrefixPass = true;
+  State.PrefixPass = true;
   Out.EmitInstruction(PrefixInst);
 
-  assert(PrefixSaved == 0);
-  assert(PrefixPass == false);
+  assert(State.PrefixSaved == 0);
+  assert(State.PrefixPass == false);
 }
 
 static void EmitMoveRegReg(bool Is64Bit, unsigned ToReg,
@@ -485,7 +483,8 @@ namespace llvm {
 //   instructions. Unfortunately, the assembly parser prefers to generate
 //   these instead of combined instructions. At this time, having only
 //   one explicit prefix is supported.
-bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
+bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
+                             X86MCNaClSFIState &State) {
   // If we are emitting to .s, just emit all pseudo-instructions directly.
   if (Out.hasRawTextSupport()) {
     return false;
@@ -499,103 +498,103 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
   case X86::REX64_PREFIX:
     // Ugly hack because LLVM AsmParser is not smart enough to combine
     // prefixes back into the instruction they modify.
-    if (PrefixPass) {
-      PrefixPass = false;
-      PrefixSaved = 0;
+    if (State.PrefixPass) {
+      State.PrefixPass = false;
+      State.PrefixSaved = 0;
       return false;
     }
-    assert(PrefixSaved == 0);
-    PrefixSaved = Opc;
+    assert(State.PrefixSaved == 0);
+    State.PrefixSaved = Opc;
     return true;
   case X86::NACL_TRAP32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitTrap(false, Out);
     return true;
   case X86::NACL_TRAP64:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitTrap(true, Out);
     return true;
   case X86::NACL_CALL32d:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitDirectCall(Inst.getOperand(0), false, Out);
     return true;
   case X86::NACL_CALL64d:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitDirectCall(Inst.getOperand(0), true, Out);
     return true;
   case X86::NACL_CALL32r:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitIndirectBranch(Inst.getOperand(0), false, true, Out);
     return true;
   case X86::NACL_CALL64r:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitIndirectBranch(Inst.getOperand(0), true, true, Out);
     return true;
   case X86::NACL_JMP32r:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitIndirectBranch(Inst.getOperand(0), false, false, Out);
     return true;
   case X86::NACL_TLS_addr32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitTLSAddr32(Inst, Out);
     return true;
   case X86::NACL_JMP64r:
   case X86::NACL_JMP64z:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitIndirectBranch(Inst.getOperand(0), true, false, Out);
     return true;
   case X86::NACL_RET32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitRet(NULL, false, Out);
     return true;
   case X86::NACL_RET64:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitRet(NULL, true, Out);
     return true;
   case X86::NACL_RETI32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitRet(&Inst.getOperand(0), false, Out);
     return true;
   case X86::NACL_ASPi8:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitSPArith(X86::ADD32ri8, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_ASPi32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitSPArith(X86::ADD32ri, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_SSPi8:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitSPArith(X86::SUB32ri8, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_SSPi32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitSPArith(X86::SUB32ri, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_ANDSPi32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitSPArith(X86::AND32ri, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_SPADJi32:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitSPAdj(Inst.getOperand(0), Out);
     return true;
   case X86::NACL_RESTBPm:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitREST(Inst, X86::EBP, true, Out);
     return true;
   case X86::NACL_RESTBPr:
   case X86::NACL_RESTBPrz:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitREST(Inst, X86::EBP, false, Out);
     return true;
   case X86::NACL_RESTSPm:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitREST(Inst, X86::ESP, true, Out);
     return true;
   case X86::NACL_RESTSPr:
   case X86::NACL_RESTSPrz:
-    assert(PrefixSaved == 0);
+    assert(State.PrefixSaved == 0);
     EmitREST(Inst, X86::ESP, false, Out);
     return true;
   }
@@ -603,8 +602,8 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
   unsigned IndexOpPosition;
   MCInst SandboxedInst = Inst;
   if (SandboxMemoryRef(&SandboxedInst, &IndexOpPosition)) {
-    unsigned PrefixLocal = PrefixSaved;
-    PrefixSaved = 0;
+    unsigned PrefixLocal = State.PrefixSaved;
+    State.PrefixSaved = 0;
 
     if (PrefixLocal || !FlagUseZeroBasedSandbox)
       Out.EmitBundleLock(false);
@@ -613,7 +612,7 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     ShortenMemoryRef(&SandboxedInst, IndexOpPosition);
 
     if (PrefixLocal)
-      EmitPrefix(PrefixLocal, Out);
+      EmitPrefix(PrefixLocal, Out, State);
     Out.EmitInstruction(SandboxedInst);
 
     if (PrefixLocal || !FlagUseZeroBasedSandbox)
@@ -621,10 +620,10 @@ bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out) {
     return true;
   }
 
-  if (PrefixSaved) {
-    unsigned PrefixLocal = PrefixSaved;
-    PrefixSaved = 0;
-    EmitPrefix(PrefixLocal, Out);
+  if (State.PrefixSaved) {
+    unsigned PrefixLocal = State.PrefixSaved;
+    State.PrefixSaved = 0;
+    EmitPrefix(PrefixLocal, Out, State);
   }
   return false;
 }

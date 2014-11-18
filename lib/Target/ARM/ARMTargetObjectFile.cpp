@@ -57,7 +57,8 @@ getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
     return TargetLoweringObjectFileELF::getTTypeGlobalReference(GV, Mang,
                                         MMI, Encoding, Streamer);
   // @LOCALMOD-END
-  return MCSymbolRefExpr::Create(Mang->getSymbol(GV),
+
+  return MCSymbolRefExpr::Create(getSymbol(*Mang, GV),
                                  MCSymbolRefExpr::VK_ARM_TARGET2,
                                  getContext());
 }

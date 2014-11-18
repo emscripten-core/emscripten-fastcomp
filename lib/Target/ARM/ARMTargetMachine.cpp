@@ -70,7 +70,7 @@ void ARMBaseTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
   // Add first the target-independent BasicTTI pass, then our ARM pass. This
   // allows the ARM pass to delegate to the target independent layer when
   // appropriate.
-  PM.add(createBasicTargetTransformInfoPass(getTargetLowering()));
+  PM.add(createBasicTargetTransformInfoPass(this));
   PM.add(createARMTargetTransformInfoPass(this));
 }
 
@@ -95,6 +95,7 @@ ARMTargetMachine::ARMTargetMachine(const Target &T, StringRef TT,
     TLInfo(*this),
     TSInfo(*this),
     FrameLowering(Subtarget) {
+  initAsmInfo();
   if (!Subtarget.hasARMOps())
     report_fatal_error("CPU: '" + Subtarget.getCPUString() + "' does not "
                        "support ARM mode execution!");
@@ -127,6 +128,7 @@ ThumbTargetMachine::ThumbTargetMachine(const Target &T, StringRef TT,
     FrameLowering(Subtarget.hasThumb2()
               ? new ARMFrameLowering(Subtarget)
               : (ARMFrameLowering*)new Thumb1FrameLowering(Subtarget)) {
+  initAsmInfo();
 }
 
 namespace {
@@ -170,7 +172,7 @@ bool ARMPassConfig::addPreISel() {
   // get back the performance benefits of GlobalMerge.
   if (TM->getOptLevel() != CodeGenOpt::None && EnableGlobalMerge &&
       !getARMSubtarget().isTargetNaCl())
-    addPass(createGlobalMergePass(TM->getTargetLowering()));
+    addPass(createGlobalMergePass(TM));
   // @LOCALMOD-END
 
   return false;
@@ -190,7 +192,7 @@ bool ARMPassConfig::addPreRegAlloc() {
   // FIXME: temporarily disabling load / store optimization pass for Thumb1.
   if (getOptLevel() != CodeGenOpt::None && !getARMSubtarget().isThumb1Only())
     addPass(createARMLoadStoreOptimizationPass(true));
-  if (getOptLevel() != CodeGenOpt::None && getARMSubtarget().isLikeA9())
+  if (getOptLevel() != CodeGenOpt::None && getARMSubtarget().isCortexA9())
     addPass(createMLxExpansionPass());
   // Since the A15SDOptimizer pass can insert VDUP instructions, it can only be
   // enabled when NEON is available.
@@ -217,8 +219,13 @@ bool ARMPassConfig::addPreSched2() {
   addPass(createARMExpandPseudoPass());
 
   if (getOptLevel() != CodeGenOpt::None) {
-    if (!getARMSubtarget().isThumb1Only())
+    if (!getARMSubtarget().isThumb1Only()) {
+      // in v8, IfConversion depends on Thumb instruction widths
+      if (getARMSubtarget().restrictIT() &&
+          !getARMSubtarget().prefers32BitThumb())
+        addPass(createThumb2SizeReductionPass());
       addPass(&IfConverterID);
+    }
   }
   if (getARMSubtarget().isThumb2())
     addPass(createThumb2ITBlockPass());

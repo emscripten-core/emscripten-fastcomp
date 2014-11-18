@@ -29,7 +29,6 @@ class GlobalValue;
 class MCAsmInfo;
 class MCCodeGenInfo;
 class MCContext;
-class PassManagerBase;
 class Target;
 class DataLayout;
 class TargetLibraryInfo;
@@ -46,6 +45,12 @@ class ScalarTargetTransformInfo;
 class VectorTargetTransformInfo;
 class formatted_raw_ostream;
 class raw_ostream;
+
+// The old pass manager infrastructure is hidden in a legacy namespace now.
+namespace legacy {
+class PassManagerBase;
+}
+using legacy::PassManagerBase;
 
 //===----------------------------------------------------------------------===//
 ///
@@ -102,11 +107,14 @@ public:
   void resetTargetOptions(const MachineFunction *MF) const;
 
   // Interfaces to the major aspects of target machine information:
+  // 
   // -- Instruction opcode and operand information
   // -- Pipelines and scheduling information
   // -- Stack frame information
   // -- Selection DAG lowering information
   //
+  // N.B. These objects may change during compilation. It's not safe to cache
+  // them between functions.
   virtual const TargetInstrInfo         *getInstrInfo() const { return 0; }
   virtual const TargetFrameLowering *getFrameLowering() const { return 0; }
   virtual const TargetLowering    *getTargetLowering() const { return 0; }
@@ -252,8 +260,8 @@ public:
                                    formatted_raw_ostream &,
                                    CodeGenFileType,
                                    bool /*DisableVerify*/ = true,
-                                   AnalysisID StartAfter = 0,
-                                   AnalysisID StopAfter = 0) {
+                                   AnalysisID /*StartAfter*/ = 0,
+                                   AnalysisID /*StopAfter*/ = 0) {
     return true;
   }
 
@@ -292,6 +300,7 @@ protected: // Can only create subclasses.
                     Reloc::Model RM, CodeModel::Model CM,
                     CodeGenOpt::Level OL);
 
+  void initAsmInfo();
 public:
   /// \brief Register analysis passes for this target with a pass manager.
   ///

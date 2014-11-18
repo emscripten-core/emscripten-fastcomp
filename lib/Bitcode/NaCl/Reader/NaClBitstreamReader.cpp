@@ -99,9 +99,8 @@ void NaClBitstreamCursor::readAbbreviatedField(
 
   // Decode the value as we are commanded.
   switch (Op.getEncoding()) {
-  case NaClBitCodeAbbrevOp::Array:
-  case NaClBitCodeAbbrevOp::Blob:
-    assert(0 && "Should not reach here");
+  default:
+    report_fatal_error("Should not reach here");
   case NaClBitCodeAbbrevOp::Fixed:
     Vals.push_back(Read((unsigned)Op.getEncodingData()));
     break;
@@ -119,9 +118,8 @@ void NaClBitstreamCursor::skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op) {
 
   // Decode the value as we are commanded.
   switch (Op.getEncoding()) {
-  case NaClBitCodeAbbrevOp::Array:
-  case NaClBitCodeAbbrevOp::Blob:
-    assert(0 && "Should not reach here");
+  default:
+    report_fatal_error("Should not reach here");
   case NaClBitCodeAbbrevOp::Fixed:
     (void)Read((unsigned)Op.getEncodingData());
     break;
@@ -155,8 +153,10 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
     if (Op.isLiteral())
       continue;
 
-    if (Op.getEncoding() != NaClBitCodeAbbrevOp::Array &&
-        Op.getEncoding() != NaClBitCodeAbbrevOp::Blob) {
+    if (Op.getEncoding() == NaClBitCodeAbbrevOp::Blob)
+      report_fatal_error("Should not reach here");
+
+    if (Op.getEncoding() != NaClBitCodeAbbrevOp::Array) {
       skipAbbreviatedField(Op);
       continue;
     }
@@ -174,30 +174,11 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
         skipAbbreviatedField(EltEnc);
       continue;
     }
-
-    assert(Op.getEncoding() == NaClBitCodeAbbrevOp::Blob);
-    // Blob case.  Read the number of bytes as a vbr6.
-    unsigned NumElts = ReadVBR(6);
-    SkipToFourByteBoundary();  // 32-bit alignment
-
-    // Figure out where the end of this blob will be including tail padding.
-    size_t NewEnd = GetCurrentBitNo()+((NumElts+3)&~3)*8;
-
-    // If this would read off the end of the bitcode file, just set the
-    // record to empty and return.
-    if (!canSkipToPos(NewEnd/8)) {
-      NextChar = BitStream->getBitcodeBytes().getExtent();
-      break;
-    }
-
-    // Skip over the blob.
-    JumpToBit(NewEnd);
   }
 }
 
 unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
-                                         SmallVectorImpl<uint64_t> &Vals,
-                                         StringRef *Blob) {
+                                         SmallVectorImpl<uint64_t> &Vals) {
   if (AbbrevID == naclbitc::UNABBREV_RECORD) {
     unsigned Code = ReadVBR(6);
     unsigned NumElts = ReadVBR(6);
@@ -215,8 +196,10 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
       continue;
     }
 
-    if (Op.getEncoding() != NaClBitCodeAbbrevOp::Array &&
-        Op.getEncoding() != NaClBitCodeAbbrevOp::Blob) {
+    if (Op.getEncoding() == NaClBitCodeAbbrevOp::Blob)
+      report_fatal_error("Should not reach here");
+
+    if (Op.getEncoding() != NaClBitCodeAbbrevOp::Array) {
       readAbbreviatedField(Op, Vals);
       continue;
     }
@@ -234,38 +217,6 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
         readAbbreviatedField(EltEnc, Vals);
       continue;
     }
-
-    assert(Op.getEncoding() == NaClBitCodeAbbrevOp::Blob);
-    // Blob case.  Read the number of bytes as a vbr6.
-    unsigned NumElts = ReadVBR(6);
-    SkipToFourByteBoundary();  // 32-bit alignment
-
-    // Figure out where the end of this blob will be including tail padding.
-    size_t CurBitPos = GetCurrentBitNo();
-    size_t NewEnd = CurBitPos+((NumElts+3)&~3)*8;
-
-    // If this would read off the end of the bitcode file, just set the
-    // record to empty and return.
-    if (!canSkipToPos(NewEnd/8)) {
-      Vals.append(NumElts, 0);
-      NextChar = BitStream->getBitcodeBytes().getExtent();
-      break;
-    }
-
-    // Otherwise, inform the streamer that we need these bytes in memory.
-    const char *Ptr = (const char*)
-      BitStream->getBitcodeBytes().getPointer(CurBitPos/8, NumElts);
-
-    // If we can return a reference to the data, do so to avoid copying it.
-    if (Blob) {
-      *Blob = StringRef(Ptr, NumElts);
-    } else {
-      // Otherwise, unpack into Vals with zero extension.
-      for (; NumElts; --NumElts)
-        Vals.push_back((unsigned char)*Ptr++);
-    }
-    // Skip over tail padding.
-    JumpToBit(NewEnd);
   }
 
   unsigned Code = (unsigned)Vals[0];
@@ -350,25 +301,6 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
         if (Record.size() < 1) return true;
         CurBlockInfo = &BitStream->getOrCreateBlockInfo((unsigned)Record[0]);
         break;
-      case naclbitc::BLOCKINFO_CODE_BLOCKNAME: {
-        if (!CurBlockInfo) return true;
-        if (BitStream->isIgnoringBlockInfoNames()) break;  // Ignore name.
-        std::string Name;
-        for (unsigned i = 0, e = Record.size(); i != e; ++i)
-          Name += (char)Record[i];
-        CurBlockInfo->Name = Name;
-        break;
-      }
-      case naclbitc::BLOCKINFO_CODE_SETRECORDNAME: {
-        if (!CurBlockInfo) return true;
-        if (BitStream->isIgnoringBlockInfoNames()) break;  // Ignore name.
-        std::string Name;
-        for (unsigned i = 1, e = Record.size(); i != e; ++i)
-          Name += (char)Record[i];
-        CurBlockInfo->RecordNames.push_back(std::make_pair((unsigned)Record[0],
-                                                           Name));
-        break;
-      }
     }
   }
 }

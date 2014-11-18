@@ -84,9 +84,8 @@ static bool IsIndirectCall(const MachineInstr &MI) {
 }
 
 static bool IsDirectCall(const MachineInstr &MI) {
-  return ((MI.getOpcode() == Mips::JAL) || (MI.getOpcode() == Mips::BGEZAL)
-       || (MI.getOpcode() == Mips::BLTZAL));
-;
+  return ((MI.getOpcode() == Mips::JAL) || (MI.getOpcode() == Mips::BAL_BR)
+    || (MI.getOpcode() == Mips::BLTZAL) || (MI.getOpcode() == Mips::BGEZAL));
 }
 
 static bool IsStackMask(const MachineInstr &MI) {

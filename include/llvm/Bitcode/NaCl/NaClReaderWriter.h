@@ -16,16 +16,23 @@
 #ifndef LLVM_BITCODE_NACL_NACLREADERWRITER_H
 #define LLVM_BITCODE_NACL_NACLREADERWRITER_H
 
+#include "llvm/Support/CommandLine.h"
+
 #include <string>
 
 namespace llvm {
   class MemoryBuffer;
-  class DataStreamer;
   class LLVMContext;
   class Module;
   class raw_ostream;
   class NaClBitcodeHeader;
   class NaClBitstreamWriter;
+  class StreamableMemoryObject;
+
+
+  /// Allows (function) local symbol tables (unsupported) in PNaCl bitcode
+  /// files.
+  extern cl::opt<bool> PNaClAllowLocalSymbolTables;
 
   /// \brief Defines the integer bit size used to model pointers in PNaCl.
   static const unsigned PNaClIntPtrTypeBitSize = 32;
@@ -57,7 +64,7 @@ namespace llvm {
   /// See getNaClLazyBitcodeModule for an explanation of argument
   /// AcceptSupportedOnly.
   Module *getNaClStreamedBitcodeModule(const std::string &name,
-                                       DataStreamer *streamer,
+                                       StreamableMemoryObject *streamer,
                                        LLVMContext &Context,
                                        std::string *ErrMsg = 0,
                                        bool AcceptSupportedOnly = true);

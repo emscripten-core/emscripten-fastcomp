@@ -4,7 +4,8 @@
 ; RUN:              | pnacl-bcanalyzer -dump-records \
 ; RUN:              | FileCheck %s -check-prefix=PF2
 
-; RUN: llvm-as < %s | pnacl-freeze | pnacl-thaw \
+; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
+; RUN:              | pnacl-thaw -allow-local-symbol-tables \
 ; RUN:              | llvm-dis - | FileCheck %s -check-prefix=TD2
 
 ; ------------------------------------------------------
@@ -26,7 +27,7 @@ define void @SimpleLoad(i32 %i) {
 ; PF2-NEXT:    <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:    <INST_LOAD op0=1 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_RET/>
-; PF2:       </FUNCTION_BLOCK>
+; PF2-NEXT:  </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 
@@ -54,7 +55,7 @@ define i32 @TwoLoads(i32 %i) {
 ; PF2-NEXT:    <INST_LOAD op0=2 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_BINOP op0=2 op1=1 op2=0/>
 ; PF2-NEXT:    <INST_RET op0=1/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT:  </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 
@@ -82,7 +83,7 @@ define i32 @TwoLoadOptOneBlock(i32 %i) {
 ; PF2-NEXT:    <INST_LOAD op0=2 op1=3 op2=0/>
 ; PF2-NEXT:    <INST_BINOP op0=2 op1=1 op2=0/>
 ; PF2-NEXT:    <INST_RET op0=1/>
-; PF2:       </FUNCTION_BLOCK>
+; PF2-NEXT:  </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 
@@ -126,7 +127,7 @@ BB:
 ; PF2-NEXT:     <INST_LOAD op0=5 op1=3 op2=0/>
 ; PF2-NEXT:     <INST_BINOP op0=2 op1=1 op2=0/>
 ; PF2-NEXT:     <INST_RET op0=1/>
-; PF2:        </FUNCTION_BLOCK>
+; PF2-NEXT:   </FUNCTION_BLOCK>
 
 ; ------------------------------------------------------
 
@@ -147,4 +148,4 @@ define void @SimpleStore(i32 %i) {
 ; PF2-NEXT:   <DECLAREBLOCKS op0=1/>
 ; PF2-NEXT:   <INST_STORE op0=1 op1=1 op2=3/>
 ; PF2-NEXT:   <INST_RET/>
-; PF2:      </FUNCTION_BLOCK>
+; PF2-NEXT: </FUNCTION_BLOCK>

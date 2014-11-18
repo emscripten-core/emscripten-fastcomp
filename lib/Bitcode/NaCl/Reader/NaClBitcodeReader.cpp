@@ -29,6 +29,12 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
+cl::opt<bool>
+llvm::PNaClAllowLocalSymbolTables(
+    "allow-local-symbol-tables",
+    cl::desc("Allow (function) local symbol tables in PNaCl bitcode files"),
+    cl::init(false));
+
 void NaClBitcodeReader::FreeState() {
   if (BufferOwned)
     delete Buffer;
@@ -59,23 +65,10 @@ static bool ConvertToString(ArrayRef<uint64_t> Record, unsigned Idx,
 
 static GlobalValue::LinkageTypes GetDecodedLinkage(unsigned Val) {
   switch (Val) {
-  default: // Map unknown/new linkages to external
   case 0:  return GlobalValue::ExternalLinkage;
-  case 1:  return GlobalValue::WeakAnyLinkage;
-  case 2:  return GlobalValue::AppendingLinkage;
   case 3:  return GlobalValue::InternalLinkage;
-  case 4:  return GlobalValue::LinkOnceAnyLinkage;
-  case 5:  return GlobalValue::DLLImportLinkage;
-  case 6:  return GlobalValue::DLLExportLinkage;
-  case 7:  return GlobalValue::ExternalWeakLinkage;
-  case 8:  return GlobalValue::CommonLinkage;
-  case 9:  return GlobalValue::PrivateLinkage;
-  case 10: return GlobalValue::WeakODRLinkage;
-  case 11: return GlobalValue::LinkOnceODRLinkage;
-  case 12: return GlobalValue::AvailableExternallyLinkage;
-  case 13: return GlobalValue::LinkerPrivateLinkage;
-  case 14: return GlobalValue::LinkerPrivateWeakLinkage;
-  case 15: return GlobalValue::LinkOnceODRAutoHideLinkage;
+  default:
+    report_fatal_error("PNaCl bitcode contains invalid linkage type");
   }
 }
 
@@ -123,6 +116,48 @@ static CallingConv::ID GetDecodedCallingConv(unsigned Val) {
   default:
     report_fatal_error("PNaCl bitcode contains invalid calling conventions.");
   case naclbitc::C_CallingConv: return CallingConv::C;
+  }
+}
+
+static FCmpInst::Predicate GetDecodedFCmpPredicate(unsigned Val) {
+  switch (Val) {
+  default:
+    report_fatal_error(
+        "PNaCl bitcode contains invalid floating comparison predicate");
+  case naclbitc::FCMP_FALSE: return FCmpInst::FCMP_FALSE;
+  case naclbitc::FCMP_OEQ:   return FCmpInst::FCMP_OEQ;
+  case naclbitc::FCMP_OGT:   return FCmpInst::FCMP_OGT;
+  case naclbitc::FCMP_OGE:   return FCmpInst::FCMP_OGE;
+  case naclbitc::FCMP_OLT:   return FCmpInst::FCMP_OLT;
+  case naclbitc::FCMP_OLE:   return FCmpInst::FCMP_OLE;
+  case naclbitc::FCMP_ONE:   return FCmpInst::FCMP_ONE;
+  case naclbitc::FCMP_ORD:   return FCmpInst::FCMP_ORD;
+  case naclbitc::FCMP_UNO:   return FCmpInst::FCMP_UNO;
+  case naclbitc::FCMP_UEQ:   return FCmpInst::FCMP_UEQ;
+  case naclbitc::FCMP_UGT:   return FCmpInst::FCMP_UGT;
+  case naclbitc::FCMP_UGE:   return FCmpInst::FCMP_UGE;
+  case naclbitc::FCMP_ULT:   return FCmpInst::FCMP_ULT;
+  case naclbitc::FCMP_ULE:   return FCmpInst::FCMP_ULE;
+  case naclbitc::FCMP_UNE:   return FCmpInst::FCMP_UNE;
+  case naclbitc::FCMP_TRUE:  return FCmpInst::FCMP_TRUE;
+  }
+}
+
+static ICmpInst::Predicate GetDecodedICmpPredicate(unsigned Val) {
+  switch (Val) {
+  default:
+    report_fatal_error(
+        "PNaCl bitcode contains invalid integer comparison predicate");
+    case naclbitc::ICMP_EQ:  return ICmpInst::ICMP_EQ;
+    case naclbitc::ICMP_NE:  return ICmpInst::ICMP_NE;
+    case naclbitc::ICMP_UGT: return ICmpInst::ICMP_UGT;
+    case naclbitc::ICMP_UGE: return ICmpInst::ICMP_UGE;
+    case naclbitc::ICMP_ULT: return ICmpInst::ICMP_ULT;
+    case naclbitc::ICMP_ULE: return ICmpInst::ICMP_ULE;
+    case naclbitc::ICMP_SGT: return ICmpInst::ICMP_SGT;
+    case naclbitc::ICMP_SGE: return ICmpInst::ICMP_SGE;
+    case naclbitc::ICMP_SLT: return ICmpInst::ICMP_SLT;
+    case naclbitc::ICMP_SLE: return ICmpInst::ICMP_SLE;
   }
 }
 
@@ -539,14 +574,6 @@ bool NaClBitcodeReader::ParseValueSymbolTable() {
     }
     }
   }
-}
-
-static APInt ReadWideAPInt(ArrayRef<uint64_t> Vals, unsigned TypeBits) {
-  SmallVector<uint64_t, 8> Words(Vals.size());
-  std::transform(Vals.begin(), Vals.end(), Words.begin(),
-                 NaClDecodeSignRotatedValue);
-
-  return APInt(TypeBits, Words);
 }
 
 bool NaClBitcodeReader::ParseConstants() {
@@ -1015,8 +1042,12 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
         NextValueNo = ValueList.size();
         break;
       case naclbitc::VALUE_SYMTAB_BLOCK_ID:
-        if (ParseValueSymbolTable())
-          return true;
+        if (PNaClAllowLocalSymbolTables) {
+          if (ParseValueSymbolTable())
+            return true;
+        } else {
+          return Error("Local value symbol tables not allowed");
+        }
         break;
       }
       continue;
@@ -1056,6 +1087,8 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
     case naclbitc::FUNC_CODE_INST_BINOP: {
       // BINOP: [opval, opval, opcode[, flags]]
+      // Note: Only old PNaCl bitcode files may contain flags. If
+      // they are found, we ignore them.
       unsigned OpNum = 0;
       Value *LHS, *RHS;
       if (popValue(Record, &OpNum, NextValueNo, &LHS) ||
@@ -1069,38 +1102,6 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       int Opc = GetDecodedBinaryOpcode(Record[OpNum++], LHS->getType());
       if (Opc == -1) return Error("Invalid BINOP record");
       I = BinaryOperator::Create((Instruction::BinaryOps)Opc, LHS, RHS);
-      if (OpNum < Record.size()) {
-        if (Opc == Instruction::Add ||
-            Opc == Instruction::Sub ||
-            Opc == Instruction::Mul ||
-            Opc == Instruction::Shl) {
-          if (Record[OpNum] & (1 << naclbitc::OBO_NO_SIGNED_WRAP))
-            cast<BinaryOperator>(I)->setHasNoSignedWrap(true);
-          if (Record[OpNum] & (1 << naclbitc::OBO_NO_UNSIGNED_WRAP))
-            cast<BinaryOperator>(I)->setHasNoUnsignedWrap(true);
-        } else if (Opc == Instruction::SDiv ||
-                   Opc == Instruction::UDiv ||
-                   Opc == Instruction::LShr ||
-                   Opc == Instruction::AShr) {
-          if (Record[OpNum] & (1 << naclbitc::PEO_EXACT))
-            cast<BinaryOperator>(I)->setIsExact(true);
-        } else if (isa<FPMathOperator>(I)) {
-          FastMathFlags FMF;
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_UNSAFE_ALGEBRA)))
-            FMF.setUnsafeAlgebra();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_NANS)))
-            FMF.setNoNaNs();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_INFS)))
-            FMF.setNoInfs();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_NO_SIGNED_ZEROS)))
-            FMF.setNoSignedZeros();
-          if (0 != (Record[OpNum] & (1 << naclbitc::FPO_ALLOW_RECIPROCAL)))
-            FMF.setAllowReciprocal();
-          if (FMF.any())
-            I->setFastMathFlags(FMF);
-        }
-
-      }
       break;
     }
     case naclbitc::FUNC_CODE_INST_CAST: {    // CAST: [opval, destty, castopc]
@@ -1171,9 +1172,9 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       RHS = ConvertOpToScalar(RHS, CurBBNo);
 
       if (LHS->getType()->isFPOrFPVectorTy())
-        I = new FCmpInst((FCmpInst::Predicate)Record[OpNum], LHS, RHS);
+        I = new FCmpInst(GetDecodedFCmpPredicate(Record[OpNum]), LHS, RHS);
       else
-        I = new ICmpInst((ICmpInst::Predicate)Record[OpNum], LHS, RHS);
+        I = new ICmpInst(GetDecodedICmpPredicate(Record[OpNum]), LHS, RHS);
       break;
     }
 
@@ -1215,11 +1216,12 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case naclbitc::FUNC_CODE_INST_SWITCH: { // SWITCH: [opty, op0, op1, ...]
-      // New SwitchInst format with case ranges.
       if (Record.size() < 4)
         return Error("Invalid SWITCH record");
       Type *OpTy = getTypeByID(Record[0]);
       unsigned ValueBitWidth = cast<IntegerType>(OpTy)->getBitWidth();
+      if (ValueBitWidth > 64)
+        return Error("Wide integers are not supported in PNaCl bitcode");
 
       Value *Cond = getValue(Record, 1, NextValueNo);
       BasicBlock *Default = getBasicBlock(Record[2]);
@@ -1232,36 +1234,19 @@ bool NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
       unsigned CurIdx = 4;
       for (unsigned i = 0; i != NumCases; ++i) {
-        IntegersSubsetToBB CaseBuilder;
+        // The PNaCl bitcode format has vestigial support for case
+        // ranges, but we no longer support reading them because
+        // no-one produced them.
+        // See https://code.google.com/p/nativeclient/issues/detail?id=3758
         unsigned NumItems = Record[CurIdx++];
-        for (unsigned ci = 0; ci != NumItems; ++ci) {
-          bool isSingleNumber = Record[CurIdx++];
+        bool isSingleNumber = Record[CurIdx++];
+        if (NumItems != 1 || !isSingleNumber)
+          return Error("Case ranges are not supported in PNaCl bitcode");
 
-          APInt Low;
-          unsigned ActiveWords = 1;
-          if (ValueBitWidth > 64)
-            ActiveWords = Record[CurIdx++];
-          Low = ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                              ValueBitWidth);
-          CurIdx += ActiveWords;
-
-          if (!isSingleNumber) {
-            ActiveWords = 1;
-            if (ValueBitWidth > 64)
-              ActiveWords = Record[CurIdx++];
-            APInt High =
-                ReadWideAPInt(makeArrayRef(&Record[CurIdx], ActiveWords),
-                              ValueBitWidth);
-
-            CaseBuilder.add(IntItem::fromType(OpTy, Low),
-                            IntItem::fromType(OpTy, High));
-            CurIdx += ActiveWords;
-          } else
-            CaseBuilder.add(IntItem::fromType(OpTy, Low));
-        }
+        APInt CaseValue(ValueBitWidth,
+                        NaClDecodeSignRotatedValue(Record[CurIdx++]));
         BasicBlock *DestBB = getBasicBlock(Record[CurIdx++]);
-        IntegersSubset Case = CaseBuilder.getCase();
-        SI->addCase(Case, DestBB);
+        SI->addCase(ConstantInt::get(Context, CaseValue), DestBB);
       }
       I = SI;
       break;
@@ -1505,24 +1490,34 @@ bool NaClBitcodeReader::isMaterializable(const GlobalValue *GV) const {
   return false;
 }
 
-bool NaClBitcodeReader::Materialize(GlobalValue *GV, std::string *ErrInfo) {
+error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
   Function *F = dyn_cast<Function>(GV);
   // If it's not a function or is already material, ignore the request.
-  if (!F || !F->isMaterializable()) return false;
+  if (!F || !F->isMaterializable())
+    return error_code::success();
 
   DenseMap<Function*, uint64_t>::iterator DFII = DeferredFunctionInfo.find(F);
   assert(DFII != DeferredFunctionInfo.end() && "Deferred function not found!");
   // If its position is recorded as 0, its body is somewhere in the stream
   // but we haven't seen it yet.
-  if (DFII->second == 0)
-    if (LazyStreamer && FindFunctionInStream(F, DFII)) return true;
+  if (DFII->second == 0) {
+    if (FindFunctionInStream(F, DFII)) {
+      // Refactoring upstream in LLVM 3.4 means we can no longer
+      // return an error string here, so return a catch-all error
+      // code.
+      // TODO(mseaborn): Clean up the reader to return a more
+      // meaningful error_code here.
+      return make_error_code(errc::invalid_argument);
+    }
+  }
 
   // Move the bit stream to the saved position of the deferred function body.
   Stream.JumpToBit(DFII->second);
 
   if (ParseFunctionBody(F)) {
-    if (ErrInfo) *ErrInfo = ErrorString;
-    return true;
+    // TODO(mseaborn): Clean up the reader to return a more meaningful
+    // error_code instead of a catch-all.
+    return make_error_code(errc::invalid_argument);
   }
 
   // Upgrade any old intrinsic calls in the function.
@@ -1537,7 +1532,7 @@ bool NaClBitcodeReader::Materialize(GlobalValue *GV, std::string *ErrInfo) {
     }
   }
 
-  return false;
+  return error_code::success();
 }
 
 bool NaClBitcodeReader::isDematerializable(const GlobalValue *GV) const {
@@ -1560,16 +1555,18 @@ void NaClBitcodeReader::Dematerialize(GlobalValue *GV) {
 }
 
 
-bool NaClBitcodeReader::MaterializeModule(Module *M, std::string *ErrInfo) {
+error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   assert(M == TheModule &&
          "Can only Materialize the Module this NaClBitcodeReader is attached to.");
   // Iterate over the module, deserializing any functions that are still on
   // disk.
   for (Module::iterator F = TheModule->begin(), E = TheModule->end();
-       F != E; ++F)
-    if (F->isMaterializable() &&
-        Materialize(F, ErrInfo))
-      return true;
+       F != E; ++F) {
+    if (F->isMaterializable()) {
+      if (error_code EC = Materialize(F))
+        return EC;
+    }
+  }
 
   // At this point, if there are any function bodies, the current bit is
   // pointing to the END_BLOCK record after them. Now make sure the rest
@@ -1596,7 +1593,7 @@ bool NaClBitcodeReader::MaterializeModule(Module *M, std::string *ErrInfo) {
   }
   std::vector<std::pair<Function*, Function*> >().swap(UpgradedIntrinsics);
 
-  return false;
+  return error_code::success();
 }
 
 bool NaClBitcodeReader::InitStream() {
@@ -1623,11 +1620,10 @@ bool NaClBitcodeReader::InitStreamFromBuffer() {
 }
 
 bool NaClBitcodeReader::InitLazyStream() {
-  StreamingMemoryObject *Bytes = new StreamingMemoryObject(LazyStreamer);
-  if (Header.Read(Bytes))
+  if (Header.Read(LazyStreamer))
     return Error(Header.Unsupported());
 
-  StreamFile.reset(new NaClBitstreamReader(Bytes, Header.getHeaderSize()));
+  StreamFile.reset(new NaClBitstreamReader(LazyStreamer, Header.getHeaderSize()));
   Stream.init(*StreamFile);
   if (AcceptHeader())
     return Error(Header.Unsupported());
@@ -1663,13 +1659,13 @@ Module *llvm::getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
 
 
 Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
-                                           DataStreamer *streamer,
+                                           StreamableMemoryObject *Streamer,
                                            LLVMContext &Context,
                                            std::string *ErrMsg,
                                            bool AcceptSupportedOnly) {
   Module *M = new Module(name, Context);
   NaClBitcodeReader *R =
-      new NaClBitcodeReader(streamer, Context, AcceptSupportedOnly);
+      new NaClBitcodeReader(Streamer, Context, AcceptSupportedOnly);
   M->setMaterializer(R);
   if (R->ParseBitcodeInto(M)) {
     if (ErrMsg)

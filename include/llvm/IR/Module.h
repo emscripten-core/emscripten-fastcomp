@@ -22,7 +22,6 @@
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/DataTypes.h"
-#include <vector> // @LOCALMOD
 
 namespace llvm {
 
@@ -122,10 +121,7 @@ public:
   typedef iplist<GlobalAlias> AliasListType;
   /// The type for the list of named metadata.
   typedef ilist<NamedMDNode> NamedMDListType;
-  // @LOCALMOD-BEGIN
-  /// The type for the list of dependent libraries.
-  typedef std::vector<std::string> LibraryListType;
-  // @LOCALMOD-END
+
   /// The Global Variable iterator.
   typedef GlobalListType::iterator                      global_iterator;
   /// The Global Variable constant iterator.
@@ -145,10 +141,7 @@ public:
   typedef NamedMDListType::iterator             named_metadata_iterator;
   /// The named metadata constant interators.
   typedef NamedMDListType::const_iterator const_named_metadata_iterator;
-  // @LOCALMOD-BEGIN
-  /// The Library list iterator.
-  typedef LibraryListType::const_iterator lib_iterator;
-  // @LOCALMOD-END
+
   /// An enumeration for describing the endianess of the target machine.
   enum Endianness  { AnyEndianness, LittleEndian, BigEndian };
 
@@ -196,22 +189,6 @@ public:
       : Behavior(B), Key(K), Val(V) {}
   };
 
-  /// @LOCALMOD-BEGIN
-  /// An enumeration for describing the module format
-  enum OutputFormat {
-    ObjectOutputFormat,
-    SharedOutputFormat,
-    ExecutableOutputFormat
-  };
-
-  /// A structure describing the symbols needed from an external file.
-  struct NeededRecord {
-    std::string              DynFile; // Source file (soname)
-    std::vector<std::string> Symbols; // List of symbol names
-                                      // (with version suffix)
-  };
-  /// @LOCALMOD-END
-  
 /// @}
 /// @name Member Variables
 /// @{
@@ -221,8 +198,6 @@ private:
   GlobalListType GlobalList;      ///< The Global Variables in the module
   FunctionListType FunctionList;  ///< The Functions in the module
   AliasListType AliasList;        ///< The Aliases in the module
-  // @LOCALMOD
-  LibraryListType LibraryList;    ///< The Libraries needed by the module
   NamedMDListType NamedMDList;    ///< The named metadata in the module
   std::string GlobalScopeAsm;     ///< Inline Asm at global scope.
   ValueSymbolTable *ValSymTab;    ///< Symbol table for values
@@ -230,9 +205,6 @@ private:
   std::string ModuleID;           ///< Human readable identifier for the module
   std::string TargetTriple;       ///< Platform target triple Module compiled on
   std::string DataLayout;         ///< Target data description
-  // @LOCALMOD-BEGIN
-  mutable std::string ModuleSOName; ///< Module SOName (for shared format)
-  // @LOCALMOD-END
   void *NamedMDSymTab;            ///< NamedMDNode names.
 
   friend class Constant;
@@ -264,24 +236,6 @@ public:
   /// @returns a string containing the target triple.
   const std::string &getTargetTriple() const { return TargetTriple; }
 
-  // @LOCALMOD-BEGIN
-
-  /// Get the module format
-  /// @returns the module format
-  OutputFormat getOutputFormat() const;
-
-  /// Get the SOName of this module.
-  /// @returns a string containing the module soname
-  const std::string &getSOName() const;
-
-  /// Record the needed information for a global value.
-  /// This creates a needed record for DynFile, if one does not already exist.
-  void addNeededRecord(StringRef DynFile, GlobalValue *GV);
-
-  // Fill NeededOut with all needed records present in the module.
-  void getNeededRecords(std::vector<NeededRecord> *NeededOut) const;
-  // @LOCALMOD-END
-
   /// Get the target endian information.
   /// @returns Endianess - an enumeration for the endianess of the target
   Endianness getEndianness() const;
@@ -310,18 +264,6 @@ public:
 
   /// Set the target triple.
   void setTargetTriple(StringRef T) { TargetTriple = T; }
-
-  /// @LOCALMOD-BEGIN
-
-  /// Set the module format
-  void setOutputFormat(OutputFormat F);
-
-  /// For modules with output format "shared", set the output soname.
-  void setSOName(StringRef Name);
-
-  /// Wrap a global symbol.
-  void wrapSymbol(StringRef SymName);
-  /// @LOCALMOD-END
 
   /// Set the module-scope inline assembly blocks.
   void setModuleInlineAsm(StringRef Asm) {
@@ -398,10 +340,6 @@ public:
   Constant *getOrInsertFunction(StringRef Name, Type *RetTy, ...)
     END_WITH_NULL;
 
-  Constant *getOrInsertTargetIntrinsic(StringRef Name,
-                                       FunctionType *Ty,
-                                       AttributeSet AttributeList);
-
   /// getFunction - Look up the specified function in the module symbol table.
   /// If it does not exist, return null.
   Function *getFunction(StringRef Name) const;
@@ -414,14 +352,21 @@ public:
   /// symbol table.  If it does not exist, return null. If AllowInternal is set
   /// to true, this function will return types that have InternalLinkage. By
   /// default, these types are not returned.
-  GlobalVariable *getGlobalVariable(StringRef Name,
-                                    bool AllowInternal = false) const;
+  const GlobalVariable *getGlobalVariable(StringRef Name,
+                                          bool AllowInternal = false) const {
+    return const_cast<Module *>(this)->getGlobalVariable(Name, AllowInternal);
+  }
+
+  GlobalVariable *getGlobalVariable(StringRef Name, bool AllowInternal = false);
 
   /// getNamedGlobal - Return the global variable in the module with the
   /// specified name, of arbitrary type.  This method returns null if a global
   /// with the specified name is not found.
-  GlobalVariable *getNamedGlobal(StringRef Name) const {
+  GlobalVariable *getNamedGlobal(StringRef Name) {
     return getGlobalVariable(Name, true);
+  }
+  const GlobalVariable *getNamedGlobal(StringRef Name) const {
+    return const_cast<Module *>(this)->getNamedGlobal(Name);
   }
 
   /// getOrInsertGlobal - Look up the specified global in the module symbol
@@ -446,7 +391,7 @@ public:
 /// @name Named Metadata Accessors
 /// @{
 
-  /// getNamedMetadata - Return the NamedMDNode in the module with the
+  /// getNamedMetadata - Return the first NamedMDNode in the module with the
   /// specified name. This method returns null if a NamedMDNode with the
   /// specified name is not found.
   NamedMDNode *getNamedMetadata(const Twine &Name) const;
@@ -466,6 +411,10 @@ public:
 
   /// getModuleFlagsMetadata - Returns the module flags in the provided vector.
   void getModuleFlagsMetadata(SmallVectorImpl<ModuleFlagEntry> &Flags) const;
+
+  /// Return the corresponding value if Key appears in module flags, otherwise
+  /// return null.
+  Value *getModuleFlag(StringRef Key) const;
 
   /// getModuleFlagsMetadata - Returns the NamedMDNode in the module that
   /// represents module-level flags. This method returns null if there are no
@@ -585,28 +534,8 @@ public:
   const_iterator          end  () const { return FunctionList.end();   }
   size_t                  size() const  { return FunctionList.size(); }
   bool                    empty() const { return FunctionList.empty(); }
-  // @LOCALMOD-BEGIN
-/// @}
-/// @name Dependent Library Iteration
-/// @{
-
-  /// @brief Get a constant iterator to beginning of dependent library list.
-  inline lib_iterator lib_begin() const { return LibraryList.begin(); }
-  /// @brief Get a constant iterator to end of dependent library list.
-  inline lib_iterator lib_end()   const { return LibraryList.end();   }
-  /// @brief Returns the number of items in the list of libraries.
-  inline size_t       lib_size()  const { return LibraryList.size();  }
-  void convertMetadataToLibraryList();
-  void convertLibraryListToMetadata() const;
-  /// @brief Add a library to the list of dependent libraries
-  void addLibrary(StringRef Lib);
-  /// @brief Remove a library from the list of dependent libraries
-  void removeLibrary(StringRef Lib);
-  /// @brief Get all the libraries
-  inline const LibraryListType& getLibraries() const { return LibraryList; }
 
 /// @}
-  // @LOCALMOD-END
 /// @name Alias Iteration
 /// @{
 
@@ -647,11 +576,6 @@ public:
   /// Dump the module to stderr (for debugging).
   void dump() const;
   
-  /// @LOCALMOD-BEGIN
-  /// Print the PNaCl metadata for the module.
-  void dumpMeta(raw_ostream &OS) const;
-  /// @LOCALMOD-END
-
   /// This function causes all the subinstructions to "let go" of all references
   /// that they are maintaining.  This allows one to 'delete' a whole class at
   /// a time, even though there may be circular references... first all
