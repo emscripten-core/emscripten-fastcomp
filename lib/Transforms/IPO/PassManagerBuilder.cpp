@@ -28,6 +28,10 @@
 
 using namespace llvm;
 
+static cl::opt<bool> // XXX EMSCRIPTEN
+DisableVectorization("disable-vectorize", cl::Hidden,
+                     cl::desc("Force-disable all vectorization (-vectorize-loops=false etc. do not work, as opt.cpp modifies the values)"));
+
 static cl::opt<bool>
 RunLoopVectorization("vectorize-loops", cl::Hidden,
                      cl::desc("Run the Loop vectorization passes"));
@@ -200,7 +204,7 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
   MPM.add(createLoopIdiomPass());             // Recognize idioms like memset.
   MPM.add(createLoopDeletionPass());          // Delete dead loops
 
-  if (!LateVectorize && LoopVectorize)
+  if (!LateVectorize && LoopVectorize && !DisableVectorization) // XXX EMSCRIPTEN
       MPM.add(createLoopVectorizePass(DisableUnrollLoops));
 
   if (!DisableUnrollLoops)
@@ -223,10 +227,10 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
 
   if (RerollLoops)
     MPM.add(createLoopRerollPass());
-  if (SLPVectorize)
+  if (SLPVectorize && !DisableVectorization) // XXX EMSCRIPTEN
     MPM.add(createSLPVectorizerPass());   // Vectorize parallel scalar chains.
 
-  if (BBVectorize) {
+  if (BBVectorize && !DisableVectorization) { // XXX EMSCRIPTEN
     MPM.add(createBBVectorizePass());
     MPM.add(createInstructionCombiningPass());
     if (OptLevel > 1 && UseGVNAfterVectorization)
@@ -246,7 +250,7 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
   // As an experimental mode, run any vectorization passes in a separate
   // pipeline from the CGSCC pass manager that runs iteratively with the
   // inliner.
-  if (LateVectorize && LoopVectorize) {
+  if (LateVectorize && LoopVectorize && !DisableVectorization) { // XXX EMSCRIPTEN
     // FIXME: This is a HACK! The inliner pass above implicitly creates a CGSCC
     // pass manager that we are specifically trying to avoid. To prevent this
     // we must insert a no-op module pass to reset the pass manager.
