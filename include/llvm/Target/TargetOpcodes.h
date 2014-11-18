@@ -69,8 +69,9 @@ namespace TargetOpcode {
     DBG_VALUE = 11,
 
     /// REG_SEQUENCE - This variadic instruction is used to form a register that
-    /// represent a consecutive sequence of sub-registers. It's used as register
-    /// coalescing / allocation aid and must be eliminated before code emission.
+    /// represents a consecutive sequence of sub-registers. It's used as a
+    /// register coalescing / allocation aid and must be eliminated before code
+    /// emission.
     // In SDNode form, the first operand encodes the register class created by
     // the REG_SEQUENCE, while each subsequent pair names a vreg + subreg index
     // pair.  Once it has been lowered to a MachineInstr, the regclass operand
@@ -93,12 +94,17 @@ namespace TargetOpcode {
     LIFETIME_START = 15,
     LIFETIME_END = 16,
 
-    // @LOCALMOD-BEGIN
-    BUNDLE_ALIGN_START = 14,
-    BUNDLE_ALIGN_END = 15,
-    BUNDLE_LOCK = 16,
-    BUNDLE_UNLOCK = 17
-    // @LOCALMOD-END
+    /// A Stackmap instruction captures the location of live variables at its
+    /// position in the instruction stream. It is followed by a shadow of bytes
+    /// that must lie within the function and not contain another stackmap.
+    STACKMAP = 17,
+
+    /// Patchable call instruction - this instruction represents a call to a
+    /// constant address, followed by a series of NOPs. It is intended to
+    /// support optimizations for dynamic languages (such as javascript) that
+    /// rewrite calls to runtimes with more efficient code sequences.
+    /// This also implies a stack map.
+    PATCHPOINT = 18
   };
 } // end namespace TargetOpcode
 } // end namespace llvm

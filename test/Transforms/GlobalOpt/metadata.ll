@@ -1,8 +1,4 @@
 ; RUN: opt -S -globalopt < %s | FileCheck %s
-; LOCALMOD: We've changed the heuristic used to detect "main" for the GlobalOpt
-; optimization of replacing globals with allocas. Revert this when fixed
-; properly upstream (http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-July/063580.html)
-; XFAIL: *
 
 ; PR6112 - When globalopt does RAUW(@G, %G), the metadata reference should drop
 ; to null.  Function local metadata that references @G from a different function
@@ -10,7 +6,7 @@
 @G = internal global i8** null
 
 define i32 @main(i32 %argc, i8** %argv) {
-; CHECK: @main
+; CHECK-LABEL: @main(
 ; CHECK: %G = alloca
   store i8** %argv, i8*** @G
   ret i32 0

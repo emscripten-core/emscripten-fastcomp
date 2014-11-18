@@ -1,4 +1,4 @@
-; RUN: pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck < %s | FileCheck %s
 
 @var = internal global [4 x i8] c"xxxx"
 

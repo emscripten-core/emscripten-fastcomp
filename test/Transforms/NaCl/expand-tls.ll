@@ -62,25 +62,25 @@ define i8* @get_tls_template_end() {
 ; CHECK: ret i8* bitcast (%tls_struct* getelementptr (%tls_struct* bitcast (%tls_init_template* @__tls_template_start to %tls_struct*), i32 1) to i8*)
 
 
-; Check that we expand out the TLS layout intrinsics
+; Check that we define the TLS layout functions
 
-declare i32 @llvm.nacl.tp.tls.offset(i32)
-declare i32 @llvm.nacl.tp.tdb.offset(i32)
+declare i32 @__nacl_tp_tls_offset(i32)
+declare i32 @__nacl_tp_tdb_offset(i32)
 
 define i32 @test_get_tp_tls_offset(i32 %tls_size) {
-  %offset = call i32 @llvm.nacl.tp.tls.offset(i32 %tls_size)
+  %offset = call i32 @__nacl_tp_tls_offset(i32 %tls_size)
   ret i32 %offset
 }
 ; Uses of the intrinsic are replaced with uses of a regular function.
 ; CHECK: define i32 @test_get_tp_tls_offset
 ; CHECK: call i32 @nacl_tp_tls_offset
-; NO_TLS-NOT: llvm.nacl.tp.tls.offset
+; NO_TLS-NOT: __nacl_tp_tls_offset
 
 define i32 @test_get_tp_tdb_offset(i32 %tdb_size) {
-  %offset = call i32 @llvm.nacl.tp.tdb.offset(i32 %tdb_size)
+  %offset = call i32 @__nacl_tp_tdb_offset(i32 %tdb_size)
   ret i32 %offset
 }
 ; Uses of the intrinsic are replaced with uses of a regular function.
 ; CHECK: define i32 @test_get_tp_tdb_offset
 ; CHECK: call i32 @nacl_tp_tdb_offset
-; NO_TLS-NOT: llvm.nacl.tp.tdb.offset
+; NO_TLS-NOT: __nacl_tp_tdb_offset

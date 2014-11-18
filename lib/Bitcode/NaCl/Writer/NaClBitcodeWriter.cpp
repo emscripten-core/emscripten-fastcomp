@@ -79,7 +79,6 @@ enum {
   // FUNCTION_BLOCK abbrev id's.
   FUNCTION_INST_LOAD_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
   FUNCTION_INST_BINOP_ABBREV,
-  FUNCTION_INST_BINOP_FLAGS_ABBREV,
   FUNCTION_INST_CAST_ABBREV,
   FUNCTION_INST_RET_VOID_ABBREV,
   FUNCTION_INST_RET_VAL_ABBREV,
@@ -152,6 +151,67 @@ static unsigned GetEncodedCallingConv(CallingConv::ID conv) {
   default: report_fatal_error(
       "Calling convention not supported by PNaCL bitcode");
   case CallingConv::C: return naclbitc::C_CallingConv;
+  }
+}
+
+// Converts LLVM encoding of comparison predicates to the
+// corresponding bitcode versions.
+static unsigned GetEncodedCmpPredicate(const CmpInst &Cmp) {
+  switch (Cmp.getPredicate()) {
+  default: report_fatal_error(
+      "Comparison predicate not supported by PNaCl bitcode");
+  case CmpInst::FCMP_FALSE:
+    return naclbitc::FCMP_FALSE;
+  case CmpInst::FCMP_OEQ:
+    return naclbitc::FCMP_OEQ;
+  case CmpInst::FCMP_OGT:
+    return naclbitc::FCMP_OGT;
+  case CmpInst::FCMP_OGE:
+    return naclbitc::FCMP_OGE;
+  case CmpInst::FCMP_OLT:
+    return naclbitc::FCMP_OLT;
+  case CmpInst::FCMP_OLE:
+    return naclbitc::FCMP_OLE;
+  case CmpInst::FCMP_ONE:
+    return naclbitc::FCMP_ONE;
+  case CmpInst::FCMP_ORD:
+    return naclbitc::FCMP_ORD;
+  case CmpInst::FCMP_UNO:
+    return naclbitc::FCMP_UNO;
+  case CmpInst::FCMP_UEQ:
+    return naclbitc::FCMP_UEQ;
+  case CmpInst::FCMP_UGT:
+    return naclbitc::FCMP_UGT;
+  case CmpInst::FCMP_UGE:
+    return naclbitc::FCMP_UGE;
+  case CmpInst::FCMP_ULT:
+    return naclbitc::FCMP_ULT;
+  case CmpInst::FCMP_ULE:
+    return naclbitc::FCMP_ULE;
+  case CmpInst::FCMP_UNE:
+    return naclbitc::FCMP_UNE;
+  case CmpInst::FCMP_TRUE:
+    return naclbitc::FCMP_TRUE;
+  case CmpInst::ICMP_EQ:
+    return naclbitc::ICMP_EQ;
+  case CmpInst::ICMP_NE:
+    return naclbitc::ICMP_NE;
+  case CmpInst::ICMP_UGT:
+    return naclbitc::ICMP_UGT;
+  case CmpInst::ICMP_UGE:
+    return naclbitc::ICMP_UGE;
+  case CmpInst::ICMP_ULT:
+    return naclbitc::ICMP_ULT;
+  case CmpInst::ICMP_ULE:
+    return naclbitc::ICMP_ULE;
+  case CmpInst::ICMP_SGT:
+    return naclbitc::ICMP_SGT;
+  case CmpInst::ICMP_SGE:
+    return naclbitc::ICMP_SGE;
+  case CmpInst::ICMP_SLT:
+    return naclbitc::ICMP_SLT;
+  case CmpInst::ICMP_SLE:
+    return naclbitc::ICMP_SLE;
   }
 }
 
@@ -256,23 +316,10 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 static unsigned getEncodedLinkage(const GlobalValue *GV) {
   switch (GV->getLinkage()) {
   case GlobalValue::ExternalLinkage:                 return 0;
-  case GlobalValue::WeakAnyLinkage:                  return 1;
-  case GlobalValue::AppendingLinkage:                return 2;
   case GlobalValue::InternalLinkage:                 return 3;
-  case GlobalValue::LinkOnceAnyLinkage:              return 4;
-  case GlobalValue::DLLImportLinkage:                return 5;
-  case GlobalValue::DLLExportLinkage:                return 6;
-  case GlobalValue::ExternalWeakLinkage:             return 7;
-  case GlobalValue::CommonLinkage:                   return 8;
-  case GlobalValue::PrivateLinkage:                  return 9;
-  case GlobalValue::WeakODRLinkage:                  return 10;
-  case GlobalValue::LinkOnceODRLinkage:              return 11;
-  case GlobalValue::AvailableExternallyLinkage:      return 12;
-  case GlobalValue::LinkerPrivateLinkage:            return 13;
-  case GlobalValue::LinkerPrivateWeakLinkage:        return 14;
-  case GlobalValue::LinkOnceODRAutoHideLinkage:      return 15;
+  default:
+    report_fatal_error("Invalid linkage");
   }
-  llvm_unreachable("Invalid linkage");
 }
 
 /// \brief Function to convert constant initializers for global
@@ -421,36 +468,6 @@ static void WriteModuleInfo(const Module *M, const NaClValueEnumerator &VE,
   // Emit the global variable information.
   WriteGlobalVars(M, VE, Stream);
   DEBUG(dbgs() << "<- WriteModuleInfo\n");
-}
-
-static uint64_t GetOptimizationFlags(const Value *V) {
-  uint64_t Flags = 0;
-
-  if (const OverflowingBinaryOperator *OBO =
-        dyn_cast<OverflowingBinaryOperator>(V)) {
-    if (OBO->hasNoSignedWrap())
-      Flags |= 1 << naclbitc::OBO_NO_SIGNED_WRAP;
-    if (OBO->hasNoUnsignedWrap())
-      Flags |= 1 << naclbitc::OBO_NO_UNSIGNED_WRAP;
-  } else if (const PossiblyExactOperator *PEO =
-               dyn_cast<PossiblyExactOperator>(V)) {
-    if (PEO->isExact())
-      Flags |= 1 << naclbitc::PEO_EXACT;
-  } else if (const FPMathOperator *FPMO =
-             dyn_cast<const FPMathOperator>(V)) {
-    if (FPMO->hasUnsafeAlgebra())
-      Flags |= 1 << naclbitc::FPO_UNSAFE_ALGEBRA;
-    if (FPMO->hasNoNaNs())
-      Flags |= 1 << naclbitc::FPO_NO_NANS;
-    if (FPMO->hasNoInfs())
-      Flags |= 1 << naclbitc::FPO_NO_INFS;
-    if (FPMO->hasNoSignedZeros())
-      Flags |= 1 << naclbitc::FPO_NO_SIGNED_ZEROS;
-    if (FPMO->hasAllowReciprocal())
-      Flags |= 1 << naclbitc::FPO_ALLOW_RECIPROCAL;
-  }
-
-  return Flags;
 }
 
 static void emitSignedInt64(SmallVectorImpl<uint64_t> &Vals, uint64_t V) {
@@ -612,17 +629,12 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
         ReportIllegalValue("(PNaCl ABI) pointer cast", I);
       }
     } else if (isa<BinaryOperator>(I)) {
-      // BINOP:      [opval, opval, opcode[, flags]]
+      // BINOP:      [opval, opval, opcode]
       Code = naclbitc::FUNC_CODE_INST_BINOP;
       AbbrevToUse = FUNCTION_INST_BINOP_ABBREV;
       pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
       pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
       Vals.push_back(GetEncodedBinaryOpcode(I.getOpcode(), I));
-      uint64_t Flags = GetOptimizationFlags(&I);
-      if (Flags != 0) {
-        AbbrevToUse = FUNCTION_INST_BINOP_FLAGS_ABBREV;
-        Vals.push_back(Flags);
-      }
     } else {
       ReportIllegalValue("instruction", I);
     }
@@ -639,7 +651,7 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     Code = naclbitc::FUNC_CODE_INST_CMP2;
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
-    Vals.push_back(cast<CmpInst>(I).getPredicate());
+    Vals.push_back(GetEncodedCmpPredicate(cast<CmpInst>(I)));
     break;
 
   case Instruction::Ret:
@@ -683,38 +695,14 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
       Vals64.push_back(SI.getNumCases());
       for (SwitchInst::ConstCaseIt i = SI.case_begin(), e = SI.case_end();
            i != e; ++i) {
-        const IntegersSubset& CaseRanges = i.getCaseValueEx();
-        unsigned Code, Abbrev; // will unused.
+        // The PNaCl bitcode format has vestigial support for case
+        // ranges, but we no longer support reading or writing them,
+        // so the next two fields always have the same values.
+        // See https://code.google.com/p/nativeclient/issues/detail?id=3758
+        Vals64.push_back(1/*NumItems = 1*/);
+        Vals64.push_back(true/*IsSingleNumber = true*/);
 
-        if (CaseRanges.isSingleNumber()) {
-          Vals64.push_back(1/*NumItems = 1*/);
-          Vals64.push_back(true/*IsSingleNumber = true*/);
-          EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(0));
-        } else {
-
-          Vals64.push_back(CaseRanges.getNumItems());
-
-          if (CaseRanges.isSingleNumbersOnly()) {
-            for (unsigned ri = 0, rn = CaseRanges.getNumItems();
-                 ri != rn; ++ri) {
-
-              Vals64.push_back(true/*IsSingleNumber = true*/);
-
-              EmitAPInt(Vals64, Code, Abbrev, CaseRanges.getSingleNumber(ri));
-            }
-          } else
-            for (unsigned ri = 0, rn = CaseRanges.getNumItems();
-                 ri != rn; ++ri) {
-              IntegersSubset::Range r = CaseRanges.getItem(ri);
-              bool IsSingleNumber = CaseRanges.isSingleNumber(ri);
-
-              Vals64.push_back(IsSingleNumber);
-
-              EmitAPInt(Vals64, Code, Abbrev, r.getLow());
-              if (!IsSingleNumber)
-                EmitAPInt(Vals64, Code, Abbrev, r.getHigh());
-            }
-        }
+        emitSignedInt64(Vals64, i.getCaseValue()->getSExtValue());
         Vals64.push_back(VE.getValueID(i.getCaseSuccessor()));
       }
 
@@ -825,6 +813,7 @@ static void WriteValueSymbolTable(const ValueSymbolTable &VST,
 
   for (ValueSymbolTable::const_iterator SI = VST.begin(), SE = VST.end();
        SI != SE; ++SI) {
+    if (VE.IsElidedCast(SI->getValue())) continue;
 
     const ValueName &Name = *SI;
 
@@ -901,8 +890,9 @@ static void WriteFunction(const Function &F, NaClValueEnumerator &VE,
         ++InstID;
     }
 
-  // Emit names for all the instructions etc.
-  WriteValueSymbolTable(F.getValueSymbolTable(), VE, Stream);
+  // Emit names for instructions etc.
+  if (PNaClAllowLocalSymbolTables)
+    WriteValueSymbolTable(F.getValueSymbolTable(), VE, Stream);
 
   VE.purgeFunction();
   Stream.ExitBlock();
@@ -1007,7 +997,7 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     // type IDs associated integers and floats to very low
     // indices. Hence, we assume that we can use a smaller width for
     // the typecast.
-    Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, 4));           // TypeCast
+    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 4)); // TypeCast
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_LOAD_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
@@ -1020,17 +1010,6 @@ static void WriteBlockInfo(const NaClValueEnumerator &VE,
     Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4)); // opc
     if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
                                    Abbv) != FUNCTION_INST_BINOP_ABBREV)
-      llvm_unreachable("Unexpected abbrev ordering!");
-  }
-  { // INST_BINOP_FLAGS abbrev for FUNCTION_BLOCK.
-    NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-    Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::FUNC_CODE_INST_BINOP));
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // LHS
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, 6)); // RHS
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 4)); // opc
-    Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 7)); // flags
-    if (Stream.EmitBlockInfoAbbrev(naclbitc::FUNCTION_BLOCK_ID,
-                                   Abbv) != FUNCTION_INST_BINOP_FLAGS_ABBREV)
       llvm_unreachable("Unexpected abbrev ordering!");
   }
   { // INST_CAST abbrev for FUNCTION_BLOCK.

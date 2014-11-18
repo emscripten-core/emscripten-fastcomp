@@ -11,6 +11,7 @@
 #define DEBUG_TYPE "mips-mc-nacl"
 
 #include "MCTargetDesc/MipsBaseInfo.h"
+#include "MCTargetDesc/MipsMCNaCl.h"
 #include "MCTargetDesc/MipsMCTargetDesc.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
@@ -146,22 +147,17 @@ namespace llvm {
 //   these instead of combined instructions. At this time, having only
 //   one explicit prefix is supported.
 
+const int MipsMCNaClSFIState::MaxSaved;
 
-bool CustomExpandInstNaClMips(const MCInst &Inst, MCStreamer &Out) {
-  const int MaxSaved = 4;
-  static MCInst Saved[MaxSaved];
-  static int SaveCount  = 0;
-  static int I = 0;
-  // This routine only executes  if RecurseGuard == 0
-  static bool RecurseGuard = false;
-
+bool CustomExpandInstNaClMips(const MCInst &Inst, MCStreamer &Out,
+                              MipsMCNaClSFIState &State) {
   // If we are emitting to .s, just emit all pseudo-instructions directly.
   if (Out.hasRawTextSupport()) {
     return false;
   }
 
   //No recursive calls allowed;
-  if (RecurseGuard) return false;
+  if (State.RecursiveCall) return false;
 
   unsigned Opc = Inst.getOpcode();
 
@@ -184,73 +180,73 @@ bool CustomExpandInstNaClMips(const MCInst &Inst, MCStreamer &Out) {
 
   // By default, we only need to save two or three instructions
 
-  if ((I == 0) && (SaveCount == 0)) {
+  if ((State.I == 0) && (State.SaveCount == 0)) {
     // Base State, no saved instructions.
     // If the current instruction is a SFI instruction, set the SaveCount
     // and fall through.
     switch (Opc) {
     default:
-      SaveCount = 0; // Nothing to do.
+      State.SaveCount = 0; // Nothing to do.
       return false;  // Handle this Inst elsewhere.
     case Mips::SFI_NOP_IF_AT_BUNDLE_END:
     case Mips::SFI_GUARD_CALL:
     case Mips::SFI_GUARD_INDIRECT_CALL:
-      SaveCount = 3;
+      State.SaveCount = 3;
       break;
     case Mips::SFI_DATA_MASK:
-      SaveCount = 0; // Do nothing.
+      State.SaveCount = 0; // Do nothing.
       break;
     case Mips::SFI_GUARD_INDIRECT_JMP:
     case Mips::SFI_GUARD_RETURN:
     case Mips::SFI_GUARD_LOADSTORE:
-      SaveCount = 2;
+      State.SaveCount = 2;
       break;
     }
   }
 
-  if (I < SaveCount) {
+  if (State.I < State.SaveCount) {
     // Othewise, save the current Inst and return
-    Saved[I++] = Inst;
-    if (I < SaveCount)
+    State.Saved[State.I++] = Inst;
+    if (State.I < State.SaveCount)
       return true;
     // Else fall through to next stat
   }
 
-  if (SaveCount > 0) {
-    assert(I == SaveCount && "Bookeeping Error");
-    SaveCount = 0; // Reset for next iteration
+  if (State.SaveCount > 0) {
+    assert(State.I == State.SaveCount && "Bookeeping Error");
+    State.SaveCount = 0; // Reset for next iteration
     // The following calls may call Out.EmitInstruction()
     // which must not again call CustomExpandInst ...
-    // So set RecurseGuard = 1;
-    RecurseGuard = true;
+    // So set State.RecursiveCall = 1;
+    State.RecursiveCall = true;
 
-    switch (Saved[0].getOpcode()) {
+    switch (State.Saved[0].getOpcode()) {
     default:  /* No action required */      break;
     case Mips::SFI_NOP_IF_AT_BUNDLE_END:
-      EmitDataMask(I, Saved, Out);
+      EmitDataMask(State.I, State.Saved, Out);
       break;
     case Mips::SFI_DATA_MASK:
       assert(0 && "Unexpected NOP_IF_AT_BUNDLE_END as a Saved Inst");
       break;
     case Mips::SFI_GUARD_CALL:
-      EmitDirectGuardCall(I, Saved, Out);
+      EmitDirectGuardCall(State.I, State.Saved, Out);
       break;
     case Mips::SFI_GUARD_INDIRECT_CALL:
-      EmitIndirectGuardCall(I, Saved, Out);
+      EmitIndirectGuardCall(State.I, State.Saved, Out);
       break;
     case Mips::SFI_GUARD_INDIRECT_JMP:
-      EmitIndirectGuardJmp(I, Saved, Out);
+      EmitIndirectGuardJmp(State.I, State.Saved, Out);
       break;
     case Mips::SFI_GUARD_RETURN:
-      EmitGuardReturn(I, Saved, Out);
+      EmitGuardReturn(State.I, State.Saved, Out);
       break;
     case Mips::SFI_GUARD_LOADSTORE:
-      EmitGuardLoadOrStore(I, Saved, Out);
+      EmitGuardLoadOrStore(State.I, State.Saved, Out);
       break;
     }
-    I = 0; // Reset I for next.
-    assert(RecurseGuard && "Illegal Depth");
-    RecurseGuard = false;
+    State.I = 0; // Reset I for next.
+    assert(State.RecursiveCall && "Illegal Depth");
+    State.RecursiveCall = false;
     return true;
   }
   return false;

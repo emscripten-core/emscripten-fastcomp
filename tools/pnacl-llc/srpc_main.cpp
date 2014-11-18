@@ -48,18 +48,20 @@ namespace {
 const char kBitcodeFilename[] = "pnacl.pexe";
 // The filename used internally for looking up the object code file.
 const char kObjectFilename[] = "pnacl.o";
+// Maximum number of modules supported for splitting. Can't be changed without
+// also changing the SRPC signature for StreamInitWithSplit
+const int kMaxModuleSplit = 16;
 // Object which manages streaming bitcode over SRPC and threading.
 SRPCStreamer *srpc_streamer;
-// FD of the object file.
-int object_file_fd;
+// FDs of the object file(s).
+int object_file_fd[kMaxModuleSplit];
 
 DataStreamer *NaClBitcodeStreamer;
 
-int DoTranslate(ArgStringList *CmdLineArgs, int object_fd) {
+int DoTranslate(ArgStringList *CmdLineArgs) {
   if (CmdLineArgs == NULL) {
     return 1;
   }
-  object_file_fd = object_fd;
   // Make an argv array from the input vector.
   size_t argc = CmdLineArgs->size();
   char **argv = new char *[argc + 1];
@@ -75,7 +77,7 @@ int DoTranslate(ArgStringList *CmdLineArgs, int object_fd) {
 ArgStringList *CommandLineFromArgz(char *str, size_t str_len) {
   char *entry = str;
   ArgStringList *CmdLineArgs = new ArgStringList;
-  while (entry != NULL) {
+  while (entry != NULL && str_len) {
     // Call strdup(entry) since the str argument will ultimately be
     // freed by the SRPC message sender.
     CmdLineArgs->push_back(strdup(entry));
@@ -191,18 +193,17 @@ ArgStringList *GetDefaultCommandLine() {
 // Takes ownership of the commandline vector.
 class StreamingThreadData {
 public:
-  StreamingThreadData(int object_fd, ArgStringList *cmd_line_vec)
-      : object_fd_(object_fd), cmd_line_vec_(cmd_line_vec) {}
-  int ObjectFD() const { return object_fd_; }
+  StreamingThreadData(int module_count, ArgStringList *cmd_line_vec)
+      : module_count_(module_count), cmd_line_vec_(cmd_line_vec) {}
   ArgStringList *CmdLineVec() const { return cmd_line_vec_.get(); }
-  const int object_fd_;
+  int module_count_;
   const OwningPtr<ArgStringList> cmd_line_vec_;
 };
 
 void *run_streamed(void *arg) {
   StreamingThreadData *data = reinterpret_cast<StreamingThreadData *>(arg);
   data->CmdLineVec()->push_back("-streaming-bitcode");
-  if (DoTranslate(data->CmdLineVec(), data->ObjectFD()) != 0) {
+  if (DoTranslate(data->CmdLineVec()) != 0) {
     // llc_main only returns 1 (as opposed to calling report_fatal_error)
     // in conditions we never expect to see in the browser (e.g. bad
     // command-line flags).
@@ -214,15 +215,13 @@ void *run_streamed(void *arg) {
 }
 
 // Actually do the work for stream initialization.
-void do_stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                    NaClSrpcArg **out_args, NaClSrpcClosure *done,
-                    ArgStringList *command_line_vec) {
+void do_stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **out_args,
+                    NaClSrpcClosure *done, StreamingThreadData* thread_data) {
   NaClSrpcClosureRunner runner(done);
   rpc->result = NACL_SRPC_RESULT_APP_ERROR;
   srpc_streamer = new SRPCStreamer();
   std::string StrError;
-  StreamingThreadData *thread_data =
-      new StreamingThreadData(in_args[0]->u.hval, command_line_vec);
+
   NaClBitcodeStreamer = srpc_streamer->init(
       run_streamed, reinterpret_cast<void *>(thread_data), &StrError);
   if (NaClBitcodeStreamer) {
@@ -250,21 +249,10 @@ void stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
     return;
   }
   AddFixedArguments(cmd_line_vec);
-  do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
-}
-
-// Invoked by StreamInitWithCommandLine RPC. Same as stream_init, but
-// provides a command line to use instead of the default.
-void stream_init_with_command_line(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                                   NaClSrpcArg **out_args,
-                                   NaClSrpcClosure *done) {
-  char *command_line = in_args[1]->arrays.carr;
-  size_t command_line_len = in_args[1]->u.count;
-  ArgStringList *cmd_line_vec =
-      CommandLineFromArgz(command_line, command_line_len);
-  AddFixedArguments(cmd_line_vec);
-  // cmd_line_vec is freed by the translation thread in run_streamed
-  do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
+  StreamingThreadData *thread_data =
+      new StreamingThreadData(1, cmd_line_vec);
+  object_file_fd[0] = in_args[0]->u.hval;
+  do_stream_init(rpc, out_args, done, thread_data);
 }
 
 // Invoked by StreamInitWithOverrides RPC. Same as stream_init, but
@@ -293,8 +281,55 @@ void stream_init_with_overrides(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
     AddDefaultCPU(cmd_line_vec);
   }
   extra_vec.reset(NULL);
+  StreamingThreadData *thread_data =
+      new StreamingThreadData(1, cmd_line_vec);
+  object_file_fd[0] = in_args[0]->u.hval;
   // cmd_line_vec is freed by the translation thread in run_streamed.
-  do_stream_init(rpc, in_args, out_args, done, cmd_line_vec);
+  do_stream_init(rpc, out_args, done, thread_data);
+}
+
+void stream_init_with_split(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
+                            NaClSrpcArg **out_args, NaClSrpcClosure *done) {
+  ArgStringList *cmd_line_vec = GetDefaultCommandLine();
+  if (!cmd_line_vec) {
+    NaClSrpcClosureRunner runner(done);
+    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
+    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
+    return;
+  }
+  AddFixedArguments(cmd_line_vec);
+
+  int num_modules = in_args[0]->u.ival;
+  if (num_modules < 1 || num_modules > kMaxModuleSplit) {
+    NaClSrpcClosureRunner runner(done);
+    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
+    out_args[0]->arrays.str = strdup("Invalid module split count.");
+    return;
+  }
+
+  StreamingThreadData *thread_data =
+      new StreamingThreadData(num_modules, cmd_line_vec);
+
+  for (int i = 1; i <= num_modules; i++) {
+    object_file_fd[i - 1] = in_args[i]->u.hval;
+  }
+
+  char *command_line = in_args[kMaxModuleSplit + 1]->arrays.carr;
+  size_t command_line_len = in_args[kMaxModuleSplit + 1]->u.count;
+  OwningPtr<ArgStringList> extra_vec(
+      CommandLineFromArgz(command_line, command_line_len));
+  cmd_line_vec->insert(cmd_line_vec->end(), extra_vec->begin(),
+                       extra_vec->end());
+  // Make sure some -mcpu override exists for now to prevent
+  // auto-cpu feature detection from triggering instructions that
+  // we do not validate yet.
+  if (!HasCPUOverride(extra_vec.get())) {
+    AddDefaultCPU(cmd_line_vec);
+  }
+  extra_vec.reset(NULL);
+
+  // cmd_line_vec is freed by the translation thread in run_streamed.
+  do_stream_init(rpc, out_args, done, thread_data);
 }
 
 // Invoked by the StreamChunk RPC. Receives a chunk of the bitcode and
@@ -319,38 +354,42 @@ void stream_chunk(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
 void stream_end(NaClSrpcRpc *rpc, NaClSrpcArg **in_args, NaClSrpcArg **out_args,
                 NaClSrpcClosure *done) {
   NaClSrpcClosureRunner runner(done);
+  // TODO(eliben): We don't really use shared libraries now. At some
+  // point this should be cleaned up from SRPC as well.
+  out_args[0]->u.ival = false;
+  out_args[1]->arrays.str = strdup("");
+  out_args[2]->arrays.str = strdup("");
   rpc->result = NACL_SRPC_RESULT_APP_ERROR;
   std::string StrError;
   if (srpc_streamer->streamEnd(&StrError)) {
     out_args[3]->arrays.str = strdup(StrError.c_str());
     return;
   }
-  // TODO(eliben): We don't really use shared libraries now. At some
-  // point this should be cleaned up from SRPC as well.
-  out_args[0]->u.ival = false;
   // SRPC deletes the strings returned when the closure is invoked.
   // Therefore we need to use strdup.
-  out_args[1]->arrays.str = strdup("");
-  out_args[2]->arrays.str = strdup("");
+  out_args[3]->arrays.str = strdup("");
   rpc->result = NACL_SRPC_RESULT_OK;
 }
 
 const struct NaClSrpcHandlerDesc srpc_methods[] = {
   // Protocol for streaming:
   // (StreamInit(obj_fd) -> error_str |
-  //    StreamInitWIthCommandLine(obj_fd, escaped_cmdline) -> error_str)
+  //    StreamInitWIthOverrides(obj_fd, escaped_cmdline_flags) -> error_str)
   // StreamChunk(data) +
   // StreamEnd() -> (is_shared_lib,soname,dependencies,error_str)
   { "StreamInit:h:s", stream_init },
-  { "StreamInitWithCommandLine:hC:s:", stream_init_with_command_line },
   { "StreamInitWithOverrides:hC:s:", stream_init_with_overrides },
+  { "StreamInitWithSplit:ihhhhhhhhhhhhhhhhC:s", stream_init_with_split },
   { "StreamChunk:C:", stream_chunk }, { "StreamEnd::isss", stream_end },
   { NULL, NULL },
 };
 
 } // namespace
 
-int getObjectFileFD() { return object_file_fd; }
+int getObjectFileFD(unsigned Index) {
+  assert(Index < kMaxModuleSplit);
+  return object_file_fd[Index];
+}
 
 DataStreamer *getNaClBitcodeStreamer() { return NaClBitcodeStreamer; }
 

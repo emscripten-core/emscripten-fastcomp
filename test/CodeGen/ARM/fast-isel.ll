@@ -1,8 +1,9 @@
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios | FileCheck %s --check-prefix=THUMB
+; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
 
 ; Very basic fast-isel functionality.
-define i32 @add(i32 %a, i32 %b) nounwind {
+define i32 @test0(i32 %a, i32 %b) nounwind {
 entry:
   %a.addr = alloca i32, align 4
   %b.addr = alloca i32, align 4
@@ -26,16 +27,16 @@ br label %if.end
 
 if.end:                                           ; preds = %if.then, %entry
 ret void
-; ARM: test1:
+; ARM-LABEL: test1:
 ; ARM: tst r0, #1
-; THUMB: test1:
+; THUMB-LABEL: test1:
 ; THUMB: tst.w r0, #1
 }
 
 ; Check some simple operations with immediates
 define void @test2(i32 %tmp, i32* %ptr) nounwind {
-; THUMB: test2:
-; ARM: test2:
+; THUMB-LABEL: test2:
+; ARM-LABEL: test2:
 
 b1:
   %a = add i32 %tmp, 4096
@@ -63,8 +64,8 @@ b3:
 }
 
 define void @test3(i32 %tmp, i32* %ptr1, i16* %ptr2, i8* %ptr3) nounwind {
-; THUMB: test3:
-; ARM: test3:
+; THUMB-LABEL: test3:
+; ARM-LABEL: test3:
 
 bb1:
   %a1 = trunc i32 %tmp to i16

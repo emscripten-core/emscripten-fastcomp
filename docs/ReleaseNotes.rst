@@ -1,15 +1,21 @@
 ======================
-LLVM 3.3 Release Notes
+LLVM 3.4 Release Notes
 ======================
 
 .. contents::
     :local:
 
+.. warning::
+   These are in-progress notes for the upcoming LLVM 3.4 release.  You may
+   prefer the `LLVM 3.3 Release Notes <http://llvm.org/releases/3.3/docs
+   /ReleaseNotes.html>`_.
+
+
 Introduction
 ============
 
 This document contains the release notes for the LLVM Compiler Infrastructure,
-release 3.3.  Here we describe the status of LLVM, including major improvements
+release 3.4.  Here we describe the status of LLVM, including major improvements
 from the previous release, improvements in various subprojects of LLVM, and
 some of the current users of the code.  All LLVM releases may be downloaded
 from the `LLVM releases web site <http://llvm.org/releases/>`_.
@@ -28,268 +34,92 @@ page <http://llvm.org/releases/>`_.
 Non-comprehensive list of changes in this release
 =================================================
 
-* The CellSPU port has been removed.  It can still be found in older versions.
+.. NOTE
+   For small 1-3 sentence descriptions, just add an entry at the end of
+   this list. If your description won't fit comfortably in one bullet
+   point (e.g. maybe you would like to give an example of the
+   functionality, or simply have a lot to talk about), see the `NOTE` below
+   for adding a new subsection.
 
-* The IR-level extended linker APIs (for example, to link bitcode files out of
-  archives) have been removed. Any existing clients of these features should
-  move to using a linker with integrated LTO support.
+* This is expected to be the last release of LLVM which compiles using a C++98
+  toolchain. We expect to start using some C++11 features in LLVM and other
+  sub-projects starting after this release. That said, we are committed to
+  supporting a reasonable set of modern C++ toolchains as the host compiler on
+  all of the platforms. This will at least include Visual Studio 2012 on
+  Windows, and Clang 3.1 or GCC 4.7.x on Mac and Linux. The final set of
+  compilers (and the C++11 features they support) is not set in stone, but we
+  wanted users of LLVM to have a heads up that the next release will involve
+  a substantial change in the host toolchain requirements.
 
-* LLVM and Clang's documentation has been migrated to the `Sphinx
-  <http://sphinx-doc.org/>`_ documentation generation system which uses
-  easy-to-write reStructuredText. See `llvm/docs/README.txt` for more
-  information.
+* The regression tests now fail if any command in a pipe fails. To disable it in
+  a directory, just add ``config.pipefail = False`` to its ``lit.local.cfg``.
+  See :doc:`Lit <CommandGuide/lit>` for the details.
 
-* TargetTransformInfo (TTI) is a new interface that can be used by IR-level
-  passes to obtain target-specific information, such as the costs of
-  instructions. Only "Lowering" passes such as LSR and the vectorizer are
-  allowed to use the TTI infrastructure.
+* Support for exception handling has been removed from the old JIT. Use MCJIT
+  if you need EH support.
 
-* We've improved the X86 and ARM cost model.
+* The R600 backend is not marked experimental anymore and is built by default.
 
-* The Attributes classes have been completely rewritten and expanded. They now
-  support not only enumerated attributes and alignments, but "string"
-  attributes, which are useful for passing information to code generation. See
-  :doc:`HowToUseAttributes` for more details.
+* APFloat::isNormal() was renamed to APFloat::isFiniteNonZero() and
+  APFloat::isIEEENormal() was renamed to APFloat::isNormal(). This ensures that
+  APFloat::isNormal() conforms to IEEE-754R-2008.
 
-* TableGen's syntax for instruction selection patterns has been simplified.
-  Instead of specifying types indirectly with register classes, you should now
-  specify types directly in the input patterns. See ``SparcInstrInfo.td`` for
-  examples of the new syntax. The old syntax using register classes still
-  works, but it will be removed in a future LLVM release.
+* The library call simplification pass has been removed.  Its functionality
+  has been integrated into the instruction combiner and function attribute
+  marking passes.
 
-* MCJIT now supports exception handling. Support for it in the old jit will be
-  removed in the 3.4 release.
+* Support for building using Visual Studio 2008 has been dropped. Use VS 2010
+  or later instead. For more information, see the `Getting Started using Visual
+  Studio <GettingStartedVS.html>`_ page.
 
-* Command line options can now be grouped into categories which are shown in
-  the output of ``-help``. See :ref:`grouping options into categories`.
+* The Loop Vectorizer that was previously enabled for -O3 is now enabled for
+  -Os and -O2.
 
-* The appearance of command line options in ``-help`` that are inherited by
-  linking with libraries that use the LLVM Command line support library can now
-  be modified at runtime. See :ref:`cl::getRegisteredOptions`.
+* The new SLP Vectorizer is now enabled by default.
 
-AArch64 target
---------------
+* llvm-ar now uses the new Object library and produces archives and
+  symbol tables in the gnu format.
 
-We've added support for AArch64, ARM's 64-bit architecture. Development is still
-in fairly early stages, but we expect successful compilation when:
+* FileCheck now allows specifing -check-prefix multiple times. This
+  helps reduce duplicate check lines when using multiple RUN lines.
 
-- compiling standard compliant C99 and C++03 with Clang;
-- using Linux as a target platform;
-- where code + static data doesn't exceed 4GB in size (heap allocated data has
-  no limitation).
+* The bitcast instruction no longer allows casting between pointers
+   with different address spaces. To achieve this, use the new
+   addrspacecast instruction.
 
-Some additional functionality is also implemented, notably DWARF debugging,
-GNU-style thread local storage and inline assembly.
+* Different sized pointers for different address spaces should now
+  generally work. This is primarily useful for GPU targets.
 
-Hexagon Target
---------------
+* ... next change ...
 
-Removed support for legacy hexagonv2 and hexagonv3 processor architectures which
-are no longer in use. Currently supported architectures are hexagonv4 and
-hexagonv5.
+.. NOTE
+   If you would like to document a larger change, then you can add a
+   subsection about it right here. You can copy the following boilerplate
+   and un-indent it (the indentation causes it to be inside this comment).
 
-Mips target
---------------
+   Special New Feature
+   -------------------
 
-New features and improvements:
+   Makes programs 10x faster by doing Special New Thing.
 
-- Clang driver
- - Support for Sourcery CodeBench Mips toolchain directories tree.
- - Support for new command line options including:
-  - -mxgot/-mno-xgot
-  - -EL / -EB
-  - -mmicromips / -mno-micromips
-  - -msingle-float / -mdouble-float
-  - -mabi=32 (o32 abi) and -mabi=64 (n64 abi)
- - Previously, options such as -mips16, -mmicromips, -mdsp and -mdspr2 were
-   not passed to the assembler. This issue has been fixed.
+Mips Target
+-----------
 
-- A number of changes have been made to improve the quality of DSP-ASE code
-  generation.
- - Multiply and multiply-accumulate instructions can now use all four
-   accumulators.
- - Instruction selection patterns have been added so that DSP instructions
-   are emitted without having to use builtins.
+Support for the MIPS SIMD Architecture (MSA) has been added. MSA is supported
+through inline assembly, intrinsics with the prefix '__builtin_msa', and normal
+code generation.
 
-- Delay slot filler pass can now search successor blocks for instructions to
-  fill delay slots (use option -disable-mips-df-succbb-search=false).
+For more information on MSA (including documentation for the instruction set),
+see the `MIPS SIMD page at Imagination Technologies
+<http://imgtec.com/mips/mips-simd.asp>`_
 
-PowerPC Target
---------------
-
-New features and improvements:
-
-- PowerPC now supports an assembly parser.
-- Support added for thread-local storage.  64-bit ELF subtarget only.
-- Support added for medium and large code model (-mcmodel=medium,large).
-  Medium code model is now the default.  64-bit ELF subtarget only.
-- Improved register allocation (fewer reserved registers).
-- 64-bit atomic load and store are now supported.
-- Improved code generation for unaligned memory accesses of scalar types.
-- Improved performance of floating-point divide and square root
-  with -ffast-math.
-- Support for predicated returns.
-- Improved code generation for comparisons.
-- Support added for inline setjmp and longjmp.
-- Support added for many instructions introduced in PowerISA 2.04, 2.05,
-  and 2.06.
-- Improved spill code for vector registers.
-- Support added for -mno-altivec.
-- ABI compatibility fixes for complex parameters, 128-bit integer parameters,
-  and varargs functions.  64-bit ELF subtarget only.
-
-Loop Vectorizer
----------------
-
-We've continued the work on the loop vectorizer. The loop vectorizer now
-has the following features:
-
-- Loops with unknown trip counts.
-- Runtime checks of pointers.
-- Reductions, Inductions.
-- Min/Max reductions of integers.
-- If Conversion.
-- Pointer induction variables.
-- Reverse iterators.
-- Vectorization of mixed types.
-- Vectorization of function calls.
-- Partial unrolling during vectorization.
-
-The loop vectorizer is now enabled by default for -O3.
-
-SLP Vectorizer
---------------
-
-LLVM now has a new SLP vectorizer. The new SLP vectorizer is not enabled by
-default but can be enabled using the clang flag ``-fslp-vectorize``. The
-BB-vectorizer can also be enabled using the command line flag
-``-fslp-vectorize-aggressive``.
-
-R600 Backend
-------------
-
-The R600 backend was added in this release, it supports AMD GPUs (HD2XXX -
-HD7XXX).  This backend is used in AMD's Open Source graphics / compute drivers
-which are developed as part of the `Mesa3D <http://www.mesa3d.org>`_ project.
-
-SystemZ/s390x Backend
----------------------
-
-LLVM and clang now support IBM's z/Architecture.  At present this support
-is restricted to GNU/Linux (GNU triplet s390x-linux-gnu) and requires
-z10 or greater.
-
-
-Sub-project Status Update
-=========================
-
-In addition to the core LLVM 3.3 distribution of production-quality compiler
-infrastructure, the LLVM project includes sub-projects that use the LLVM core
-and share the same distribution license.  This section provides updates on these
-sub-projects.
-
-
-DragonEgg: GCC front-ends, LLVM back-end
-----------------------------------------
-
-`DragonEgg <http://dragonegg.llvm.org/>`_ is a
-`GCC plugin <http://gcc.gnu.org/wiki/plugins>`_ that replaces GCC's optimizers
-and code generators with LLVM's.  It works with gcc-4.5, 4.6, 4.7 and 4.8, can
-target the x86-32/x86-64 and ARM processor families, and has been successfully
-used on the Darwin, FreeBSD, KFreeBSD, Linux and OpenBSD platforms.  It fully
-supports Ada, C, C++ and Fortran.  It has partial support for Go, Java, Obj-C
-and Obj-C++.  Note that gcc-4.6 is the best supported version, and that Ada in
-particular doesn't work well with gcc-4.7 and newer.
-
-The `3.3 release <http://llvm.org/apt/>`_ has the following notable changes.
-
-- supports gcc-4.8 (requires gcc-4.8.1 or newer)
-- object files can be written directly using LLVM's integrated assembler
-- produces saner debug info
-- bitfields can now contain arbitrary scalar types (useful for Ada)
-
-
-LLDB: Low Level Debugger
-------------------------
-
-`LLDB <http://lldb.llvm.org/>`_ is a ground-up implementation of a command-line
-debugger, as well as a debugger API that can be used from scripts and other
-applications. LLDB uses the following components of the LLVM core distribution
-to support the latest language features and target support:
-
-- the Clang parser for high-quality parsing of C, C++ and Objective C
-- the LLVM disassembler
-- the LLVM JIT compiler (MCJIT) for expression evaluation
-
-The `3.3 release <http://lldb.llvm.org/download.html>`_ has the following notable changes.
-
-Features now supported on Linux:
-
-- Debugging multi-threaded programs
-- Support for watchpoints
-- Process list, attach and fork
-- `vim integration <http://llvm.org/svn/llvm-project/lldb/branches/release_33/utils/vim-lldb/README>`_ for LLDB
-
-Portability:
-
-- Builds with cmake, ninja, auto-tools, clang 3.3 and gcc 4.6
-
-Linux Improvements:
-
-- Improved register support including vector registers
-- Basic debugging of i386 programs
-- Bug fixes for expression evaluation
-
-
-External Open Source Projects Using LLVM 3.3
+External Open Source Projects Using LLVM 3.4
 ============================================
 
-An exciting aspect of LLVM is that it is used as an enabling technology for a
-lot of other language and tools projects. This section lists some of the
-projects that have already been updated to work with LLVM 3.3.
+An exciting aspect of LLVM is that it is used as an enabling technology for
+a lot of other language and tools projects. This section lists some of the
+projects that have already been updated to work with LLVM 3.4.
 
-
-Portable Computing Language (pocl)
-----------------------------------
-
-In addition to producing an easily portable open source OpenCL implementation,
-another major goal of `pocl <http://pocl.sourceforge.net/>`_ is improving
-performance portability of OpenCL programs with compiler optimizations, reducing
-the need for target-dependent manual optimizations. An important part of pocl is
-a set of LLVM passes used to statically parallelize multiple work-items with the
-kernel compiler, even in the presence of work-group barriers. This enables
-static parallelization of the fine-grained static concurrency in the work groups
-in multiple ways.
-
-TTA-based Co-design Environment (TCE)
--------------------------------------
-
-`TCE <http://tce.cs.tut.fi/>`_ is a toolset for designing new processors based
-on the Transport triggered architecture (TTA).  The toolset provides a complete
-co-design flow from C/C++ programs down to synthesizable VHDL/Verilog and
-parallel program binaries.  Processor customization points include the register
-files, function units, supported operations, and the interconnection network.
-
-TCE uses Clang and LLVM for C/C++/OpenCL C language support, target independent
-optimizations and also for parts of code generation. It generates new LLVM-based
-code generators "on the fly" for the designed TTA processors and loads them in
-to the compiler backend as runtime libraries to avoid per-target recompilation
-of larger parts of the compiler chain.
-
-Just-in-time Adaptive Decoder Engine (Jade)
--------------------------------------------
-
-`Jade <https://github.com/orcc/jade>`_ (Just-in-time Adaptive Decoder Engine) is
-a generic video decoder engine using LLVM for just-in-time compilation of video
-decoder configurations. Those configurations are designed by MPEG Reconfigurable
-Video Coding (RVC) committee. MPEG RVC standard is built on a stream-based
-dataflow representation of decoders. It is composed of a standard library of
-coding tools written in RVC-CAL language and a dataflow configuration --- block
-diagram --- of a decoder.
-
-Jade project is hosted as part of the Open RVC-CAL Compiler (`Orcc
-<http://orcc.sf.net>`_) and requires it to translate the RVC-CAL standard
-library of video coding tools into an LLVM assembly code.
 
 LDC - the LLVM-based D compiler
 -------------------------------
@@ -302,8 +132,8 @@ to concurrency and offers many classical paradigms.
 
 `LDC <http://wiki.dlang.org/LDC>`_ uses the frontend from the reference compiler
 combined with LLVM as backend to produce efficient native code. LDC targets
-x86/x86_64 systems like Linux, OS X and Windows and also Linux/PPC64. Ports to
-other architectures like ARM are underway.
+x86/x86_64 systems like Linux, OS X, FreeBSD and Windows and also Linux/PPC64.
+Ports to other architectures like ARM and AArch64 are underway.
 
 
 Additional Information

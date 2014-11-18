@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := llvm-nm
-LINK_COMPONENTS := archive bitreader naclbitreader object
+LINK_COMPONENTS := bitreader naclbitreader object
 
 # This tool has no plugins, optimize startup time.
 TOOL_NO_EXPORTS := 1

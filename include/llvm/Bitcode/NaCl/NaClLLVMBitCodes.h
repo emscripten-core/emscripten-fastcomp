@@ -239,6 +239,8 @@ namespace naclbitc {
 
   /// OverflowingBinaryOperatorOptionalFlags - Flags for serializing
   /// OverflowingBinaryOperator's SubclassOptionalData contents.
+  /// Note: This enum is no longer used in PNaCl, because these
+  /// flags can't exist in files that meet the PNaCl ABI.
   enum NaClOverflowingBinaryOperatorOptionalFlags {
     OBO_NO_UNSIGNED_WRAP = 0,
     OBO_NO_SIGNED_WRAP = 1
@@ -246,12 +248,17 @@ namespace naclbitc {
 
   /// PossiblyExactOperatorOptionalFlags - Flags for serializing
   /// PossiblyExactOperator's SubclassOptionalData contents.
+  /// Note: This enum is no longer used in PNaCl, because these
+  /// flags can't exist in files that meet the PNaCl ABI.
   enum NaClPossiblyExactOperatorOptionalFlags {
     PEO_EXACT = 0
   };
 
   /// \brief Flags for serializing floating point binary operators's
   /// SubclassOptionalData contents.
+  /// Note: This enum is no longer used in PNaCl, because these
+  /// flags shouldn't exist in files that meet the PNaCl ABI, unless
+  /// they are old. In the latter case, they are ignored by the reader.
   enum NaClFloatingPointBinaryOperatorOptionalFlags {
     FPO_UNSAFE_ALGEBRA = 0,
     FPO_NO_NANS = 1,
@@ -265,13 +272,47 @@ namespace naclbitc {
     C_CallingConv = 0
   };
 
+  /// Encoded comparison predicates.
+  enum NaClComparisonPredicates {
+    // Opcode              U L G E    Intuitive operation
+    FCMP_FALSE =  0,  ///< 0 0 0 0    Always false (always folded)
+    FCMP_OEQ   =  1,  ///< 0 0 0 1    True if ordered and equal
+    FCMP_OGT   =  2,  ///< 0 0 1 0    True if ordered and greater than
+    FCMP_OGE   =  3,  ///< 0 0 1 1    True if ordered and greater than or equal
+    FCMP_OLT   =  4,  ///< 0 1 0 0    True if ordered and less than
+    FCMP_OLE   =  5,  ///< 0 1 0 1    True if ordered and less than or equal
+    FCMP_ONE   =  6,  ///< 0 1 1 0    True if ordered and operands are unequal
+    FCMP_ORD   =  7,  ///< 0 1 1 1    True if ordered (no nans)
+    FCMP_UNO   =  8,  ///< 1 0 0 0    True if unordered: isnan(X) | isnan(Y)
+    FCMP_UEQ   =  9,  ///< 1 0 0 1    True if unordered or equal
+    FCMP_UGT   = 10,  ///< 1 0 1 0    True if unordered or greater than
+    FCMP_UGE   = 11,  ///< 1 0 1 1    True if unordered, greater than, or equal
+    FCMP_ULT   = 12,  ///< 1 1 0 0    True if unordered or less than
+    FCMP_ULE   = 13,  ///< 1 1 0 1    True if unordered, less than, or equal
+    FCMP_UNE   = 14,  ///< 1 1 1 0    True if unordered or not equal
+    FCMP_TRUE  = 15,  ///< 1 1 1 1    Always true (always folded)
+    ICMP_EQ    = 32,  ///< equal
+    ICMP_NE    = 33,  ///< not equal
+    ICMP_UGT   = 34,  ///< unsigned greater than
+    ICMP_UGE   = 35,  ///< unsigned greater or equal
+    ICMP_ULT   = 36,  ///< unsigned less than
+    ICMP_ULE   = 37,  ///< unsigned less or equal
+    ICMP_SGT   = 38,  ///< signed greater than
+    ICMP_SGE   = 39,  ///< signed greater or equal
+    ICMP_SLT   = 40,  ///< signed less than
+    ICMP_SLE   = 41   ///< signed less or equal
+  };
+
   // The function body block (FUNCTION_BLOCK_ID) describes function bodies.  It
   // can contain a constant block (CONSTANTS_BLOCK_ID).
   enum NaClFunctionCodes {
     FUNC_CODE_DECLAREBLOCKS    =  1, // DECLAREBLOCKS: [n]
 
-    FUNC_CODE_INST_BINOP       =  2, // BINOP:      [opval, opval, opcode
-                                     //              [, flags]]
+    FUNC_CODE_INST_BINOP       =  2, // BINOP:      [opval, opval, opcode]
+                                     // Note: because old PNaCl bitcode files
+                                     // may contain flags (which we now ignore),
+                                     // the reader must also support:
+                                     // BINOP: [opval, opval, opcode, flags]
     FUNC_CODE_INST_CAST        =  3, // CAST:       [opval, destty, castopc]
     FUNC_CODE_INST_GEP         =  4, // Not used in PNaCl.
     FUNC_CODE_INST_SELECT      =  5, // Not used in PNaCl. Replaced by VSELECT.

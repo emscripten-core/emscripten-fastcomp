@@ -11,9 +11,14 @@
 #define X86MCNACL_H
 
 namespace llvm {
-  class MCInst;
-  class MCStreamer;
-  bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out);
+class MCInst;
+class MCStreamer;
+struct X86MCNaClSFIState {
+  unsigned PrefixSaved;
+  bool PrefixPass;
+};
+bool CustomExpandInstNaClX86(const MCInst &Inst, MCStreamer &Out,
+                             X86MCNaClSFIState &State);
 }
 
 #endif

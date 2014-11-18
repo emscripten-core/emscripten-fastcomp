@@ -38,7 +38,7 @@ EnableEmAsyncify("emscripten-asyncify",
                 cl::init(false));
 
 
-void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
+void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   if (EnableSjLjEH) {
     // This comes before ExpandTls because it introduces references to
     // a TLS variable, __pnacl_eh_stack.  This comes before
@@ -64,18 +64,21 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   PM.add(createInternalizePass(SymbolsToPreserve));
 #endif
 
+  // Expand out computed gotos (indirectbr and blockaddresses) into switches.
+  PM.add(createExpandIndirectBrPass());
+
   // LowerExpect converts Intrinsic::expect into branch weights,
   // which can then be removed after BlockPlacement.
 #if 0 // XXX EMSCRIPTEN: We support the expect intrinsic.
   PM.add(createLowerExpectIntrinsicPass());
 #endif
-#if 0 // XXX EMSCRIPTEN: We don't need this.
   // Rewrite unsupported intrinsics to simpler and portable constructs.
+#if 0 // XXX EMSCRIPTEN: We don't need this.
   PM.add(createRewriteLLVMIntrinsicsPass());
 #endif
 
-  PM.add(createExpandVarArgsPass());
   // Expand out some uses of struct types.
+  PM.add(createExpandVarArgsPass());
   PM.add(createExpandArithWithOverflowPass());
   // ExpandStructRegs must be run after ExpandArithWithOverflow to
   // expand out the insertvalue instructions that
@@ -97,11 +100,12 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManager &PM) {
   PM.add(createGlobalCleanupPass());
 #endif
 
-  if (EnableEmAsyncify) // XXX EMSCRIPTEN
+  if (EnableEmAsyncify) { // XXX EMSCRIPTEN
     PM.add(createLowerEmAsyncifyPass());
+  }
 }
 
-void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
+void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 #if 0 // XXX EMSCRIPTEN: No need for this.
   PM.add(createRewritePNaClLibraryCallsPass());
 #endif
@@ -186,4 +190,3 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManager &PM) {
 #endif
   PM.add(createDeadCodeEliminationPass());
 }
-

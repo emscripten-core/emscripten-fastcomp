@@ -184,9 +184,9 @@ namespace {
     void printFunction(const Function *F);
 
     void error(const std::string& msg);
-    
+
     formatted_raw_ostream& nl(formatted_raw_ostream &Out, int delta = 0);
-    
+
   private:
     void printCommaSeparated(const HeapData v);
 
@@ -2004,19 +2004,14 @@ static const Value *considerConditionVar(const Instruction *I) {
   const SwitchInst *SI = dyn_cast<SwitchInst>(I);
   if (!SI) return NULL;
   // use a switch if the range is not too big or sparse
-  int Minn = INT_MAX, Maxx = INT_MIN, Num = 0;
+  int64_t Minn = INT64_MAX, Maxx = INT64_MIN;
   for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-    const IntegersSubset CaseVal = i.getCaseValueEx();
-    assert(CaseVal.isSingleNumbersOnly());
-    std::string Condition = "";
-    for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
-      int Curr = CaseVal.getSingleNumber(Index).toConstantInt()->getSExtValue();
-      if (Curr < Minn) Minn = Curr;
-      if (Curr > Maxx) Maxx = Curr;
-    }
-    Num++;
+    int64_t Curr = i.getCaseValue()->getSExtValue();
+    if (Curr < Minn) Minn = Curr;
+    if (Curr > Maxx) Maxx = Curr;
   }
-  int64_t Range = (int64_t)Maxx - (int64_t)Minn;
+  int64_t Range = Maxx - Minn;
+  int Num = SI->getNumCases();
   return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI->getCondition(); // heuristics
 }
 
@@ -2114,17 +2109,12 @@ void JSWriter::printFunctionBody(const Function *F) {
         BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
           const BasicBlock *BB = i.getCaseSuccessor();
-          const IntegersSubset CaseVal = i.getCaseValueEx();
-          assert(CaseVal.isSingleNumbersOnly());
-          std::string Condition = "";
-          for (unsigned Index = 0; Index < CaseVal.getNumItems(); Index++) {
-            std::string Curr = CaseVal.getSingleNumber(Index).toConstantInt()->getValue().toString(10, true);
-            if (UseSwitch) {
-              Condition += "case " + Curr + ": ";
-            } else {
-              if (Condition.size() > 0) Condition += " | ";
-              Condition += "(" + getValueAsCastParenStr(SI->getCondition()) + " == " + Curr + ")";
-            }
+          std::string Curr = i.getCaseValue()->getValue().toString(10, true);
+          std::string Condition;
+          if (UseSwitch) {
+            Condition = "case " + Curr + ": ";
+          } else {
+            Condition = "(" + getValueAsCastParenStr(SI->getCondition()) + " == " + Curr + ")";
           }
           BlocksToConditions[BB] = Condition + (!UseSwitch && BlocksToConditions[BB].size() > 0 ? " | " : "") + BlocksToConditions[BB];
         }

@@ -416,8 +416,7 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     if (IntrinsicInst *ICall = dyn_cast<IntrinsicInst>(Inst)) {
       if (ICall->getIntrinsicID() == Intrinsic::lifetime_start ||
           ICall->getIntrinsicID() == Intrinsic::lifetime_end ||
-          ICall->getIntrinsicID() == Intrinsic::invariant_start ||
-          ICall->getIntrinsicID() == Intrinsic::invariant_end) {
+          ICall->getIntrinsicID() == Intrinsic::invariant_start) {
         // Remove alloca lifetime markers for now.  This is because
         // the GVN pass can introduce lifetime markers taking PHI
         // nodes as arguments.  If ReplacePtrsWithInts converts the
@@ -445,6 +444,7 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
       NewCall->setAttributes(RemovePointerAttrs(Call->getContext(),
                                                 Call->getAttributes()));
       NewCall->setCallingConv(Call->getCallingConv());
+      NewCall->setTailCall(Call->isTailCall());
       NewCall->takeName(Call);
       FC->recordConvertedAndErase(Call, NewCall);
     }
@@ -583,6 +583,19 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
          Arg != E; ++Arg, ++NewArg) {
       FC.recordConverted(Arg, NewArg);
       NewArg->takeName(Arg);
+    }
+
+    // invariant.end calls refer to invariant.start calls, so we must
+    // remove the former first.
+    for (Function::iterator BB = NewFunc->begin(), E = NewFunc->end();
+         BB != E; ++BB) {
+      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
+           Iter != E; ) {
+        if (IntrinsicInst *ICall = dyn_cast<IntrinsicInst>(Iter++)) {
+          if (ICall->getIntrinsicID() == Intrinsic::invariant_end)
+            ICall->eraseFromParent();
+        }
+      }
     }
 
     // Convert the function body.
