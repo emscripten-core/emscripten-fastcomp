@@ -264,9 +264,7 @@ Value *PromoteIntegers::splitLoad(LoadInst *Inst, ConversionState &State) {
   Value *HiShift = IRB.CreateShl(HiExt, LoWidth, HiExt->getName() + ".sh");
   Value *Result = IRB.CreateOr(LoExt, HiShift);
 
-#if 0 /// XXX EMSCRIPTEN: We don't need to convert pointers.
   State.recordConverted(Inst, Result);
-#endif
 
   return Result;
 }
@@ -332,9 +330,7 @@ Value *PromoteIntegers::splitStore(StoreInst *Inst, ConversionState &State) {
 #endif
     StoreHi = splitStore(cast<StoreInst>(StoreHi), State);
   }
-#if 0 /// XXX EMSCRIPTEN: We don't need to convert pointers.
   State.recordConverted(Inst, StoreHi, /*TakeName=*/false);
-#endif
   return StoreHi;
 }
 
