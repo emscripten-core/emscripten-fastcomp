@@ -84,20 +84,18 @@ static bool IsWhitelistedMetadata(const NamedMDNode *node,
 static bool DoStripMetadata(Module &M, bool StripModuleFlags) {
   bool Changed = false;
 
-  for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
-    for (Function::iterator FI = MI->begin(), FE = MI->end(); FI != FE; ++FI) {
-      for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE;
-           ++BI) {
-        SmallVector<std::pair<unsigned, MDNode *>, 8> InstMeta;
-        // Let the debug metadata be stripped by the -strip-debug pass.
-        BI->getAllMetadataOtherThanDebugLoc(InstMeta);
-        for (size_t i = 0; i < InstMeta.size(); ++i) {
-          BI->setMetadata(InstMeta[i].first, NULL);
-          Changed = true;
+  if (!StripModuleFlags)
+    for (Function &F : M)
+      for (BasicBlock &B : F)
+        for (Instruction &I : B) {
+          SmallVector<std::pair<unsigned, MDNode *>, 8> InstMeta;
+          // Let the debug metadata be stripped by the -strip-debug pass.
+          I.getAllMetadataOtherThanDebugLoc(InstMeta);
+          for (size_t i = 0; i < InstMeta.size(); ++i) {
+            I.setMetadata(InstMeta[i].first, NULL);
+            Changed = true;
+          }
         }
-      }
-    }
-  }
 
   // Strip unsupported named metadata.
   SmallVector<NamedMDNode*, 8> ToErase;
