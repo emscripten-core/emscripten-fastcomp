@@ -1187,10 +1187,12 @@ void MipsSETargetLowering::
 getOpndList(SmallVectorImpl<SDValue> &Ops,
             std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
             bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-            CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const {
+            bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
+            SDValue Chain) const {
   Ops.push_back(Callee);
   MipsTargetLowering::getOpndList(Ops, RegsToPass, IsPICCall, GlobalOrExternal,
-                                  InternalLinkage, CLI, Callee, Chain);
+                                  InternalLinkage, IsCallReloc, CLI, Callee,
+                                  Chain);
 }
 
 SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {
@@ -1507,6 +1509,10 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   switch (cast<ConstantSDNode>(Op->getOperand(0))->getZExtValue()) {
   default:
     return SDValue();
+  // @LOCALMOD-BEGIN
+  case Intrinsic::nacl_read_tp:
+    return GetNaClThreadPointer(DAG, SDLoc(Op));
+  // @LOCALMOD-END
   case Intrinsic::mips_shilo:
     return lowerDSPIntr(Op, DAG, MipsISD::SHILO);
   case Intrinsic::mips_dpau_h_qbl:

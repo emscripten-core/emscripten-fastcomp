@@ -347,6 +347,13 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM,
   setOperationAction(ISD::VACOPY,            MVT::Other, Expand);
   setOperationAction(ISD::VAEND,             MVT::Other, Expand);
 
+  // @LOCALMOD-BEGIN
+  if (Subtarget.isTargetNaCl())
+    setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
+  else
+    setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::i64, Custom);
+  // @LOCALMOD-END
+
   // Use the default for now
   setOperationAction(ISD::STACKSAVE,         MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,      MVT::Other, Expand);
@@ -1624,6 +1631,50 @@ SDValue MipsTargetLowering::lowerBlockAddress(SDValue Op,
                       Subtarget.isABI_N32() || Subtarget.isABI_N64());
 }
 
+// @LOCALMOD-BEGIN
+SDValue MipsTargetLowering::
+GetNaClThreadPointer(SelectionDAG &DAG, SDLoc DL) const {
+  EVT PtrVT = getPointerTy();
+  SDValue ThreadPointer;
+  if (llvm::TLSUseCall) {
+    unsigned PtrSize = PtrVT.getSizeInBits();
+    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+
+    // We must check whether the __nacl_read_tp is defined in the module because
+    // local and global pic functions are called differently. If the function
+    // is local the address is calculated with %got and %lo relocations.
+    // Otherwise, the address is calculated with %call16 relocation.
+    const Function *NaClReadTp = NULL;
+    const Module *M = DAG.getMachineFunction().getFunction()->getParent();
+    for (Module::const_iterator I = M->getFunctionList().begin(),
+           E = M->getFunctionList().end(); I != E; ++I) {
+      if (I->getName() == "__nacl_read_tp") {
+        NaClReadTp = I;
+        break;
+      }
+    }
+
+    SDValue TlsReadTp;
+    if (NaClReadTp == NULL)
+      TlsReadTp = DAG.getExternalSymbol("__nacl_read_tp", PtrVT);
+    else
+      TlsReadTp = DAG.getGlobalAddress(NaClReadTp, DL, PtrVT);
+
+    ArgListTy Args;
+    TargetLowering::CallLoweringInfo CLI(DAG);
+    CLI.setDebugLoc(DL).setChain(DAG.getEntryNode())
+      .setCallee(CallingConv::C, PtrTy, TlsReadTp, std::move(Args), 0);
+    std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
+
+    ThreadPointer = CallResult.first;
+  } else {
+    ThreadPointer = DAG.getCopyFromReg(DAG.getEntryNode(), DL,
+                                       Mips::T8, PtrVT);
+  }
+  return ThreadPointer;
+}
+// @LOCALMOD-END
+
 SDValue MipsTargetLowering::
 lowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
 {
@@ -1637,6 +1688,27 @@ lowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
   EVT PtrVT = getPointerTy();
 
   TLSModel::Model model = getTargetMachine().getTLSModel(GV);
+
+  // @LOCALMOD-BEGIN
+  if (Subtarget.isTargetNaCl()) {
+    SDVTList VTs = DAG.getVTList(MVT::i32);
+    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
+                                                 MipsII::MO_TPREL_HI);
+    SDValue TGALo = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, 0,
+                                                 MipsII::MO_TPREL_LO);
+    SDValue Hi = DAG.getNode(MipsISD::Hi, DL, VTs, TGAHi);
+    SDValue Lo = DAG.getNode(MipsISD::Lo, DL, MVT::i32, TGALo);
+    SDValue Offset = DAG.getNode(ISD::ADD, DL, MVT::i32, Hi, Lo);
+
+    SDValue ThreadPointer = GetNaClThreadPointer(DAG, DL);
+    // tprel_hi and tprel_lo relocations expect that thread pointer is offset
+    // by 0x7000 from the start of the TLS data area.
+    SDValue TPOffset = DAG.getConstant(0x7000, MVT::i32);
+    SDValue ThreadPointer2 = DAG.getNode(ISD::ADD, DL, PtrVT, ThreadPointer,
+                                         TPOffset);
+    return DAG.getNode(ISD::ADD, DL, PtrVT, ThreadPointer2, Offset);
+  }
+  // @LOCALMOD-END
 
   if (model == TLSModel::GeneralDynamic || model == TLSModel::LocalDynamic) {
     // General Dynamic and Local Dynamic TLS Model.
@@ -2334,13 +2406,19 @@ void MipsTargetLowering::
 getOpndList(SmallVectorImpl<SDValue> &Ops,
             std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
             bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-            CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const {
+            bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
+            SDValue Chain) const {
   // Insert node "GP copy globalreg" before call to function.
   //
   // R_MIPS_CALL* operators (emitted when non-internal functions are called
   // in PIC mode) allow symbols to be resolved via lazy binding.
   // The lazy binding stub requires GP to point to the GOT.
-  if (IsPICCall && !InternalLinkage) {
+  // Note that we don't need GP to point to the GOT for indirect calls
+  // (when R_MIPS_CALL* is not used for the call) because Mips linker generates
+  // lazy binding stub for a function only when R_MIPS_CALL* are the only relocs
+  // used for the function (that is, Mips linker doesn't generate lazy binding
+  // stub for a function whose address is taken in the program).
+  if (IsPICCall && !InternalLinkage && IsCallReloc) {
     unsigned GPReg = Subtarget.isABI_N64() ? Mips::GP_64 : Mips::GP;
     EVT Ty = Subtarget.isABI_N64() ? MVT::i64 : MVT::i32;
     RegsToPass.push_back(std::make_pair(GPReg, getGlobalReg(CLI.DAG, Ty)));
@@ -2535,7 +2613,7 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   bool IsPICCall =
       (Subtarget.isABI_N64() || IsPIC); // true if calls are translated to
                                          // jalr $25
-  bool GlobalOrExternal = false, InternalLinkage = false;
+  bool GlobalOrExternal = false, InternalLinkage = false, IsCallReloc = false;
   SDValue CalleeLo;
   EVT Ty = Callee.getValueType();
 
@@ -2547,13 +2625,16 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       if (InternalLinkage)
         Callee = getAddrLocal(G, Ty, DAG,
                               Subtarget.isABI_N32() || Subtarget.isABI_N64());
-      else if (LargeGOT)
+      else if (LargeGOT) {
         Callee = getAddrGlobalLargeGOT(G, Ty, DAG, MipsII::MO_CALL_HI16,
                                        MipsII::MO_CALL_LO16, Chain,
                                        FuncInfo->callPtrInfo(Val));
-      else
+        IsCallReloc = true;
+      } else {
         Callee = getAddrGlobal(G, Ty, DAG, MipsII::MO_GOT_CALL, Chain,
                                FuncInfo->callPtrInfo(Val));
+        IsCallReloc = true;
+      }
     } else
       Callee = DAG.getTargetGlobalAddress(G->getGlobal(), DL, getPointerTy(), 0,
                                           MipsII::MO_NO_FLAG);
@@ -2565,13 +2646,16 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     if (!Subtarget.isABI_N64() && !IsPIC) // !N64 && static
       Callee = DAG.getTargetExternalSymbol(Sym, getPointerTy(),
                                             MipsII::MO_NO_FLAG);
-    else if (LargeGOT)
+    else if (LargeGOT) {
       Callee = getAddrGlobalLargeGOT(S, Ty, DAG, MipsII::MO_CALL_HI16,
                                      MipsII::MO_CALL_LO16, Chain,
                                      FuncInfo->callPtrInfo(Sym));
-    else // N64 || PIC
+      IsCallReloc = true;
+    } else { // N64 || PIC
       Callee = getAddrGlobal(S, Ty, DAG, MipsII::MO_GOT_CALL, Chain,
                              FuncInfo->callPtrInfo(Sym));
+      IsCallReloc = true;
+    }
 
     GlobalOrExternal = true;
   }
@@ -2580,7 +2664,7 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
 
   getOpndList(Ops, RegsToPass, IsPICCall, GlobalOrExternal, InternalLinkage,
-              CLI, Callee, Chain);
+              IsCallReloc, CLI, Callee, Chain);
 
   if (IsTailCall)
     return DAG.getNode(MipsISD::TailCall, DL, MVT::Other, Ops);

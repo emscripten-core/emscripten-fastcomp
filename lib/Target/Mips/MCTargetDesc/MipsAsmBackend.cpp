@@ -396,6 +396,10 @@ MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T,
                                              const MCRegisterInfo &MRI,
                                              StringRef TT,
                                              StringRef CPU) {
+  // @LOCALMOD-BEGIN
+  if (Triple(TT).isOSNaCl())
+    return new NaClMipsAsmBackend(T, /*Is64Bit*/false);
+  // @LOCALMOD-END
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/true, /*Is64Bit*/false);
 }
@@ -412,6 +416,10 @@ MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T,
                                              const MCRegisterInfo &MRI,
                                              StringRef TT,
                                              StringRef CPU) {
+  // @LOCALMOD-BEGIN
+  if (Triple(TT).isOSNaCl())
+    return new NaClMipsAsmBackend(T, /*Is64Bit*/true);
+  // @LOCALMOD-END
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/true, /*Is64Bit*/true);
 }

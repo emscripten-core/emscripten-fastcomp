@@ -88,6 +88,15 @@ public:
 
 }; // class MipsAsmBackend
 
+// @LOCALMOD-BEGIN
+class NaClMipsAsmBackend : public MipsAsmBackend {
+public:
+  NaClMipsAsmBackend(const Target &T, bool _is64Bit)
+    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {
+  }
+}; // class NaClMipsAsmBackend
+// @LOCALMOD-END
+
 } // namespace
 
 #endif

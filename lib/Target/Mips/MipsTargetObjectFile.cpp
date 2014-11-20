@@ -37,6 +37,25 @@ void MipsTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM){
     getContext().getELFSection(".sbss", ELF::SHT_NOBITS,
                                ELF::SHF_WRITE |ELF::SHF_ALLOC,
                                SectionKind::getBSS());
+
+  // @LOCALMOD-BEGIN
+  // Without this the linker defined symbols __fini_array_start and
+  // __fini_array_end do not have useful values. c.f.:
+  // http://code.google.com/p/nativeclient/issues/detail?id=805
+  const MipsSubtarget &Subtarget = TM.getSubtarget<MipsSubtarget>();
+  if (Subtarget.isTargetNaCl()) {
+    StaticCtorSection =
+      getContext().getELFSection(".init_array", ELF::SHT_INIT_ARRAY,
+                               ELF::SHF_WRITE |
+                               ELF::SHF_ALLOC,
+                               SectionKind::getDataRel());
+    StaticDtorSection =
+      getContext().getELFSection(".fini_array", ELF::SHT_FINI_ARRAY,
+                               ELF::SHF_WRITE |
+                               ELF::SHF_ALLOC,
+                               SectionKind::getDataRel());
+  }
+  // @LOCALMOD-END
 }
 
 // A address must be loaded from a small section if its size is less than the
@@ -65,6 +84,12 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
   // Return if small section is not available.
   if (!Subtarget.useSmallSection())
     return false;
+
+  // @LOCALMOD-BEGIN
+  // Do not use small section for NaCl.
+  if (Subtarget.isTargetNaCl())
+    return false;
+  // @LOCALMOD-BEGIN
 
   // Only global variables, not functions.
   const GlobalVariable *GVA = dyn_cast<GlobalVariable>(GV);

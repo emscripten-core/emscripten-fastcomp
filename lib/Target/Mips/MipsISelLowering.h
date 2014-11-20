@@ -336,7 +336,8 @@ namespace llvm {
     getOpndList(SmallVectorImpl<SDValue> &Ops,
                 std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
                 bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-                CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const;
+                bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
+                SDValue Chain) const;
 
     /// ByValArgInfo - Byval argument information.
     struct ByValArgInfo {
@@ -439,6 +440,10 @@ namespace llvm {
 
     // Subtarget Info
     const MipsSubtarget &Subtarget;
+
+    // @LOCALMOD-BEGIN
+    SDValue GetNaClThreadPointer(SelectionDAG &DAG, SDLoc DL) const;
+    // @LOCALMOD-END
 
   private:
     // Create a TargetGlobalAddress node.
