@@ -86,3 +86,14 @@ define <4 x float> @test5(float %x, float %y, float %z, float %w) {
     %f = insertelement <4 x float> %e, float %z, i32 2
     ret <4 x float> %f
 }
+
+; Splat via insert+shuffle.
+
+; CHECK: function _test6($x) {
+; CHECK:   $b = SIMD_float32x4_splat($x)
+; CHECK: }
+define <4 x float> @test6(float %x) {
+    %a = insertelement <4 x float> undef, float %x, i32 0
+    %b = shufflevector <4 x float> %a, <4 x float> undef, <4 x i32> zeroinitializer
+    ret <4 x float> %b
+}
