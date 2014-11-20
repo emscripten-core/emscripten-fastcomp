@@ -32,13 +32,6 @@ namespace llvm {
     explicit ARMELFMCAsmInfo(StringRef TT);
 
     void setUseIntegratedAssembler(bool Value) override;
-
-    // @LOCALMOD-BEGIN
-    // Exceptions handling
-    void setExceptionsType(ExceptionHandling ExType) {
-       ExceptionsType = ExType;
-    }
-    // @LOCALMOD-END
   };
 
   class ARMCOFFMCAsmInfoMicrosoft : public MCAsmInfoMicrosoft {

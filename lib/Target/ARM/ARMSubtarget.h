@@ -40,6 +40,8 @@ class GlobalValue;
 class StringRef;
 class TargetOptions;
 
+extern cl::opt<bool>  EnableARMDwarfEH; // @LOCALMOD
+
 class ARMSubtarget : public ARMGenSubtargetInfo {
 protected:
   enum ARMProcFamilyEnum {
@@ -383,7 +385,8 @@ public:
             TargetTriple.getEnvironment() == Triple::EABIHF ||
             TargetTriple.getEnvironment() == Triple::GNUEABIHF ||
             TargetTriple.getEnvironment() == Triple::Android) &&
-           !isTargetDarwin() && !isTargetWindows();
+        !isTargetDarwin() && !isTargetWindows() &&
+        !isTargetNaCl() && !EnableARMDwarfEH; // @LOCALMOD
   }
 
   bool isTargetHardFloat() const {

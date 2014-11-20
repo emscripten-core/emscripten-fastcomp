@@ -17,6 +17,15 @@
 
 using namespace llvm;
 
+// @LOCALMOD-BEGIN
+namespace llvm {
+cl::opt<bool>
+EnableARMDwarfEH("arm-enable-dwarf-eh",
+                 cl::desc("Use DWARF EH instead of EABI EH on ARM"),
+                 cl::init(false));
+}
+// @LOCALMOD-END
+
 void ARMMCAsmInfoDarwin::anchor() { }
 
 ARMMCAsmInfoDarwin::ARMMCAsmInfoDarwin(StringRef TT) {
@@ -61,12 +70,16 @@ ARMELFMCAsmInfo::ARMELFMCAsmInfo(StringRef TT) {
   // Exceptions handling
   switch (TheTriple.getOS()) {
   case Triple::NetBSD:
+  case Triple::NaCl: // @LOCALMOD: NaCl uses DWARF EH
     ExceptionsType = ExceptionHandling::DwarfCFI;
     break;
   default:
     ExceptionsType = ExceptionHandling::ARM;
     break;
   }
+  // @LOCALMOD: NonSFI mode uses DWARF EH
+  if (EnableARMDwarfEH)
+    ExceptionsType = ExceptionHandling::DwarfCFI;
 
   // foo(plt) instead of foo@plt
   UseParensForSymbolVariant = true;
@@ -111,4 +124,3 @@ ARMCOFFMCAsmInfoGNU::ARMCOFFMCAsmInfoGNU() {
   UseIntegratedAssembler = false;
   DwarfRegNumForCFI = true;
 }
-

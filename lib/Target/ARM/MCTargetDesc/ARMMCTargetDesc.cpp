@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ARMMCTargetDesc.h"
 #include "ARMBaseInfo.h"
 #include "ARMMCAsmInfo.h"
 #include "ARMMCTargetDesc.h"
@@ -237,15 +236,8 @@ static MCAsmInfo *createARMMCAsmInfo(const MCRegisterInfo &MRI, StringRef TT) {
   default:
     if (TheTriple.isOSBinFormatMachO())
       MAI = new ARMMCAsmInfoDarwin(TT);
-  // @LOCALMOD-BEGIN
-    else {
-      ARMELFMCAsmInfo *AEMAI = new ARMELFMCAsmInfo(TT);
-      if (TheTriple.isOSNaCl())
-        // NativeClient uses Dwarf exception handling
-        AEMAI->setExceptionsType(ExceptionHandling::DwarfCFI);
-      MAI = AEMAI;
-    }
-  // @LOCALMOD-END
+    else
+      MAI = new ARMELFMCAsmInfo(TT);
     break;
   }
 
