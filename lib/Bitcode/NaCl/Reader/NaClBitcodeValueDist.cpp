@@ -12,7 +12,9 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeValueDist.h"
 #include "llvm/ADT/STLExtras.h"
 
+#ifndef _MSC_VER // XXX Emscripten: This header doesn't exist on MSVC, not needed anyways, as builds without.
 #include <inttypes.h>
+#endif
 
 using namespace llvm;
 

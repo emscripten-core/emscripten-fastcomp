@@ -10,8 +10,15 @@ add_llvm_tool_subdirectory(llvm-dis)
 add_llvm_tool_subdirectory(llvm-mc)
 
 add_llvm_tool_subdirectory(llc)
-add_llvm_tool_subdirectory(pnacl-llc)
-add_llvm_tool_subdirectory(pnacl-benchmark)
+
+if (ENABLE_PNACL) # XXX Emscripten: Disable PNaCl build (unless -DENABLE_PNACL=1 is specified), PNaCl is not needed for Emscripten.
+  add_llvm_tool_subdirectory(pnacl-llc)
+  add_llvm_tool_subdirectory(pnacl-benchmark)
+else()
+  ignore_llvm_tool_subdirectory(pnacl-llc)
+  ignore_llvm_tool_subdirectory(pnacl-benchmark)
+endif()
+
 add_llvm_tool_subdirectory(llvm-ar)
 add_llvm_tool_subdirectory(llvm-nm)
 add_llvm_tool_subdirectory(llvm-size)
@@ -40,11 +47,19 @@ add_llvm_tool_subdirectory(llvm-stress)
 add_llvm_tool_subdirectory(llvm-mcmarkup)
 
 add_llvm_tool_subdirectory(llvm-symbolizer)
-add_llvm_tool_subdirectory(pnacl-abicheck)
-add_llvm_tool_subdirectory(pnacl-bcanalyzer)
-add_llvm_tool_subdirectory(pnacl-bccompress)
-add_llvm_tool_subdirectory(pnacl-freeze)
-add_llvm_tool_subdirectory(pnacl-thaw)
+if (ENABLE_PNACL) # XXX Emscripten: Disable PNaCl build (unless -DENABLE_PNACL=1 is specified), PNaCl is not needed for Emscripten.
+  add_llvm_tool_subdirectory(pnacl-abicheck)
+  add_llvm_tool_subdirectory(pnacl-bcanalyzer)
+  add_llvm_tool_subdirectory(pnacl-bccompress)
+  add_llvm_tool_subdirectory(pnacl-freeze)
+  add_llvm_tool_subdirectory(pnacl-thaw)
+else()
+  ignore_llvm_tool_subdirectory(pnacl-abicheck)
+  ignore_llvm_tool_subdirectory(pnacl-bcanalyzer)
+  ignore_llvm_tool_subdirectory(pnacl-bccompress)
+  ignore_llvm_tool_subdirectory(pnacl-freeze)
+  ignore_llvm_tool_subdirectory(pnacl-thaw)
+endif()
 
 add_llvm_tool_subdirectory(llvm-c-test)
 
