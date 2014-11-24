@@ -9,6 +9,7 @@ set(LLVM_LINK_COMPONENTS
   IRReader
   naclbitwriter
   naclbitreader
+  minsfitransforms
   InstCombine
   Instrumentation
   MC
