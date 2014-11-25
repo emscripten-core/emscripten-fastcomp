@@ -655,8 +655,10 @@ bool ExpandI64::splitInst(Instruction *I) {
               return true;
             }
           }
-          assert(I->getOperand(0)->getType() == i64);
-          Instruction *A, *B, *C, *D, *Final;
+          Type *T = I->getOperand(0)->getType();
+          assert(T->isIntegerTy() && T->getIntegerBitWidth() % 32 == 0);
+          int NumChunks = getNumChunks(T);
+          assert(NumChunks >= 2);
           ICmpInst::Predicate StrictPred = Pred;
           ICmpInst::Predicate UnsignedPred = Pred;
           switch (Pred) {
@@ -670,11 +672,17 @@ bool ExpandI64::splitInst(Instruction *I) {
             case ICmpInst::ICMP_UGT: break;
             default: assert(0);
           }
-          A = CopyDebug(new ICmpInst(I, StrictPred, LeftChunks[1], RightChunks[1]), I);
-          B = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, LeftChunks[1], RightChunks[1]), I);
-          C = CopyDebug(new ICmpInst(I, UnsignedPred, LeftChunks[0], RightChunks[0]), I);
-          D = CopyDebug(BinaryOperator::Create(Instruction::And, B, C, "", I), I);
-          Final = CopyDebug(BinaryOperator::Create(Instruction::Or, A, D, "", I), I);
+          // general pattern is
+          // a,b,c < A,B,C    =>    c < C || (c == C && b < B) || (c == C && b == B && a < A)
+          Instruction *Final = CopyDebug(new ICmpInst(I, StrictPred, LeftChunks[NumChunks-1], RightChunks[NumChunks-1]), I);
+          for (int i = NumChunks-2; i >= 0; i--) {
+            Instruction *Curr = CopyDebug(new ICmpInst(I, UnsignedPred, LeftChunks[i], RightChunks[i]), I);
+            for (int j = NumChunks-1; j > i; j--) {
+              Instruction *Temp = CopyDebug(new ICmpInst(I, ICmpInst::ICMP_EQ, LeftChunks[j], RightChunks[j]), I);
+              Curr = CopyDebug(BinaryOperator::Create(Instruction::And, Temp, Curr, "", I), I);
+            }
+            Final = CopyDebug(BinaryOperator::Create(Instruction::Or, Final, Curr, "", I), I);
+          }
           I->replaceAllUsesWith(Final);
           break;
         }
