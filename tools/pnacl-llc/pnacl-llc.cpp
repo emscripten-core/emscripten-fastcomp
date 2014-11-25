@@ -406,6 +406,20 @@ static int runCompilePasses(Module *mod,
     }
   }
 
+  // Make all non-weak symbols hidden for better code. We cannot do
+  // this for weak symbols. The linker complains when some weak
+  // symbols are not resolved.
+  for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
+    if (!I->isWeakForLinker() && !I->hasLocalLinkage())
+      I->setVisibility(GlobalValue::HiddenVisibility);
+  }
+  for (Module::global_iterator GI = mod->global_begin(),
+           GE = mod->global_end();
+       GI != GE; ++GI) {
+    if (!GI->isWeakForLinker() && !GI->hasLocalLinkage())
+      GI->setVisibility(GlobalValue::HiddenVisibility);
+  }
+
   // Build up all of the passes that we want to do to the module.
   std::unique_ptr<PassManagerBase> PM;
   if (LazyBitcode)
