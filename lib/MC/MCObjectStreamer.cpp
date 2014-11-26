@@ -49,10 +49,9 @@ void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
       CurSectionData->getFragmentList().insert(CurInsertionPoint, F);
       F->setParent(CurSectionData);
     }
-    for (SmallVectorImpl<MCSymbolData *>::iterator SD = PendingLabels.begin();
-         SD != PendingLabels.end(); ++SD) {
-      (*SD)->setFragment(F);
-      (*SD)->setOffset(0);
+    for (MCSymbolData *SD : PendingLabels) {
+      SD->setFragment(F);
+      SD->setOffset(0);
     }
     PendingLabels.clear();
   }
@@ -149,7 +148,7 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   // If there is a current fragment, mark the symbol as pointing into it.
   // Otherwise queue the label and set its fragment pointer when we emit the
   // next fragment.
-  if (MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment())) {
+  if (auto *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment())) {
     SD.setFragment(F);
     SD.setOffset(F->getContents().size());
   } else {
@@ -185,7 +184,7 @@ void MCObjectStreamer::EmitWeakReference(MCSymbol *Alias,
 void MCObjectStreamer::ChangeSection(const MCSection *Section,
                                      const MCExpr *Subsection) {
   assert(Section && "Cannot switch to a null section!");
-  flushPendingLabels(NULL);
+  flushPendingLabels(nullptr);
 
   CurSectionData = &getAssembler().getOrCreateSectionData(*Section);
 
@@ -406,6 +405,6 @@ void MCObjectStreamer::FinishImpl() {
   // Dump out the dwarf file & directory tables and line tables.
   MCDwarfLineTable::Emit(this);
 
-  flushPendingLabels(NULL);
+  flushPendingLabels(nullptr);
   getAssembler().Finish();
 }
