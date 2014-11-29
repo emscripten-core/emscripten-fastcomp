@@ -388,7 +388,6 @@ namespace {
              VT->getElementType()->getPrimitiveSizeInBits() == 1);
       assert(VT->getNumElements() == 4);
       UsesSIMD = true;
-      CantValidate = "SIMD types in use";
     }
 
     std::string ensureCast(std::string S, Type *T, AsmCast sign) {
