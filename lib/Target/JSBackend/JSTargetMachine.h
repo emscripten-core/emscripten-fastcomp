@@ -15,6 +15,7 @@
 #ifndef JSTARGETMACHINE_H
 #define JSTARGETMACHINE_H
 
+#include "JS.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -39,6 +40,9 @@ public:
                                    AnalysisID StopAfter);
 
   virtual const DataLayout *getDataLayout() const { return &DL; }
+
+  /// \brief Register X86 analysis passes with a pass manager.
+  virtual void addAnalysisPasses(PassManagerBase &PM);
 };
 
 } // End llvm namespace

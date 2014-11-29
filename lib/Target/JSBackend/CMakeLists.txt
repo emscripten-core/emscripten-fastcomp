@@ -3,6 +3,7 @@ add_llvm_target(JSBackendCodeGen
   ExpandI64.cpp
   JSBackend.cpp
   JSTargetMachine.cpp
+  JSTargetTransformInfo.cpp
   Relooper.cpp
   SimplifyAllocas.cpp
   )
