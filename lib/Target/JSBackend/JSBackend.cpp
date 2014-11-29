@@ -1550,9 +1550,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         std::string PS = getValueAsStr(P);
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4_load(HEAP8, " << PS << ")";
+          Code << "SIMD_int32x4_load(HEAPU8, " << PS << ")";
         } else {
-          Code << "SIMD_float32x4_load(HEAP8, " << PS << ")";
+          Code << "SIMD_float32x4_load(HEAPU8, " << PS << ")";
         }
         break;
       }
@@ -1584,9 +1584,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       std::string VS = getValueAsStr(SI->getValueOperand());
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "SIMD_int32x4_store(HEAP8, " << PS << ", " << VS << ")";
+        Code << "SIMD_int32x4_store(HEAPU8, " << PS << ", " << VS << ")";
       } else {
-        Code << "SIMD_float32x4_store(HEAP8, " << PS << ", " << VS << ")";
+        Code << "SIMD_float32x4_store(HEAPU8, " << PS << ", " << VS << ")";
       }
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
