@@ -1108,6 +1108,15 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
 }
 
 std::string JSWriter::getConstantVector(Type *ElementType, std::string x, std::string y, std::string z, std::string w) {
+  // Check for a splat.
+  if (x == y && x == z && x == w) {
+    if (ElementType->isIntegerTy()) {
+      return "SIMD_int32x4_splat(" + x + ')';
+    } else {
+      return "SIMD_float32x4_splat(Math_fround(" + x + "))";
+    }
+  }
+
   if (ElementType->isIntegerTy()) {
     return "SIMD_int32x4(" + x + ',' + y + ',' + z + ',' + w + ')';
   } else {
