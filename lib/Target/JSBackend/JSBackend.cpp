@@ -2330,6 +2330,21 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
                                     getValueAsStr(I->getOperand(2));
     break;
   }
+  case Instruction::AtomicCmpXchg: {
+    const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
+    const Value *P = I->getOperand(0);
+    if (true/*compilingWithPthreadsSupport*/) {
+      const char *HeapName;
+      std::string Index = getHeapNameAndIndex(P, &HeapName);
+      std::string Assign = getAssign(cxi);
+      Code << Assign << "Atomics.compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ")";
+    } else {
+      Code << getLoad(cxi, P, I->getType(), 0) << ';' <<
+             "if ((" << getCast(getJSName(I), I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
+                getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
+    }
+    break;
+  }
   case Instruction::AtomicRMW: {
     const AtomicRMWInst *rmwi = cast<AtomicRMWInst>(I);
     const Value *P = rmwi->getOperand(0);
@@ -2344,7 +2359,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       const char *atomicFunc = 0;
       switch (rmwi->getOperation()) {
-        case AtomicRMWInst::Xchg: atomicFunc = "Atomics.compareExchange("; break;
+        case AtomicRMWInst::Xchg: atomicFunc = "Atomics.store("; break;
         case AtomicRMWInst::Add: atomicFunc = "Atomics.add("; break;
         case AtomicRMWInst::Sub: atomicFunc = "Atomics.sub("; break;
         case AtomicRMWInst::And: atomicFunc = "Atomics.and("; break;
