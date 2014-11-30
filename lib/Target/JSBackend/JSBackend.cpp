@@ -2335,21 +2335,46 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     const Value *P = rmwi->getOperand(0);
     const Value *V = rmwi->getOperand(1);
     std::string VS = getValueAsStr(V);
-    Code << getLoad(rmwi, P, I->getType(), 0) << ';';
-    // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
-    switch (rmwi->getOperation()) {
-      case AtomicRMWInst::Xchg: Code << getStore(rmwi, P, I->getType(), VS, 0); break;
-      case AtomicRMWInst::Add:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '+' + VS + ")|0)", 0); break;
-      case AtomicRMWInst::Sub:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '-' + VS + ")|0)", 0); break;
-      case AtomicRMWInst::And:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '&' + VS + ")", 0); break;
-      case AtomicRMWInst::Nand: Code << getStore(rmwi, P, I->getType(), "(~(" + getJSName(I) + '&' + VS + "))", 0); break;
-      case AtomicRMWInst::Or:   Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '|' + VS + ")", 0); break;
-      case AtomicRMWInst::Xor:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '^' + VS + ")", 0); break;
-      case AtomicRMWInst::Max:
-      case AtomicRMWInst::Min:
-      case AtomicRMWInst::UMax:
-      case AtomicRMWInst::UMin:
-      case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
+
+    if (true/*compilingWithPthreadsSupport*/) {
+      std::string Assign = getAssign(rmwi);
+      unsigned Bytes = DL->getTypeAllocSize(T);
+      std::string text;
+      const char *HeapName;
+      std::string Index = getHeapNameAndIndex(P, &HeapName);
+      const char *atomicFunc = 0;
+      switch (rmwi->getOperation()) {
+        case AtomicRMWInst::Xchg: atomicFunc = "Atomics.compareExchange("; break;
+        case AtomicRMWInst::Add: atomicFunc = "Atomics.add("; break;
+        case AtomicRMWInst::Sub: atomicFunc = "Atomics.sub("; break;
+        case AtomicRMWInst::And: atomicFunc = "Atomics.and("; break;
+        case AtomicRMWInst::Or: atomicFunc = "Atomics.or("; break;
+        case AtomicRMWInst::Xor: atomicFunc = "Atomics.xor("; break;
+        case AtomicRMWInst::Nand: // TODO
+        case AtomicRMWInst::Max:
+        case AtomicRMWInst::Min:
+        case AtomicRMWInst::UMax:
+        case AtomicRMWInst::UMin:
+        case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
+      }
+      Code << Assign << atomicFunc << HeapName << ", " << Index << ", " << VS << ")"; break;
+    } else {
+      Code << getLoad(rmwi, P, I->getType(), 0) << ';';
+      // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
+      switch (rmwi->getOperation()) {
+        case AtomicRMWInst::Xchg: Code << getStore(rmwi, P, I->getType(), VS, 0); break;
+        case AtomicRMWInst::Add: Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '+' + VS + ")|0)", 0); break;
+        case AtomicRMWInst::Sub:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '-' + VS + ")|0)", 0); break;
+        case AtomicRMWInst::And:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '&' + VS + ")", 0); break;
+        case AtomicRMWInst::Nand: Code << getStore(rmwi, P, I->getType(), "(~(" + getJSName(I) + '&' + VS + "))", 0); break;
+        case AtomicRMWInst::Or:   Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '|' + VS + ")", 0); break;
+        case AtomicRMWInst::Xor:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '^' + VS + ")", 0); break;
+        case AtomicRMWInst::Max:
+        case AtomicRMWInst::Min:
+        case AtomicRMWInst::UMax:
+        case AtomicRMWInst::UMin:
+        case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
+      }
     }
     break;
   }
