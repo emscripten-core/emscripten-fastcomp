@@ -2394,7 +2394,11 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::Fence: // no threads, so nothing to do here
-    Code << "/* fence */";
+    if (true/*compilingWithPthreadsSupport*/) {
+      Code << "Atomics.fence()";
+    } else {
+      Code << "/* fence */";
+    }
     break;
   }
 
