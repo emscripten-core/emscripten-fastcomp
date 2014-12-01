@@ -614,6 +614,26 @@ static void LowerTlsAddr(MCStreamer &OutStreamer,
 
   MCContext &context = OutStreamer.getContext();
 
+  Triple TT(STI.getTargetTriple());
+  // @LOCALMOD-START
+  // There are 2 issues with this code. First, instead of testing the target OS
+  // we should add (upstream) a method to one of the MC classes to test whether
+  // bundle alignment is enabled (currently only the AsmBackend has this, which
+  // can't be used when emitting asm files). That facility should be used here
+  // and in MCAsmStreamer.cpp (this should be done once we are unblocked from
+  // switching to gas by default, so we know exactly where we need it).
+  // Secondly, a bug in gas prevents us from using .bundle_lock with the call
+  // here (https://code.google.com/p/nativeclient/issues/detail?id=4008).
+  // This is actually ok for nacl-clang for now because the old x86 ld linker
+  // has a hack that allows it to rewrite TLS GD sequences even in the presence
+  // of nop padding. For PNaCl (with gold) we do need the sequence to be bundle
+  // locked, so we use !hasRawTextSupport as a proxy for that. Once bug 4008
+  // is fixed we will use the bundle-locks unconditionally with NaCl.
+  bool needsBundleLock = (TT.getOS() == Triple::NaCl &&
+                          !OutStreamer.hasRawTextSupport());
+  if (needsBundleLock)
+    OutStreamer.EmitBundleLock(false);
+  // @LOCALMOD-END
   if (needsPadding)
     OutStreamer.EmitInstruction(MCInstBuilder(X86::DATA16_PREFIX), STI);
 
@@ -680,6 +700,10 @@ static void LowerTlsAddr(MCStreamer &OutStreamer,
   OutStreamer.EmitInstruction(MCInstBuilder(is64Bits ? X86::CALL64pcrel32
                                                      : X86::CALLpcrel32)
     .addExpr(tlsRef), STI);
+  // @LOCALMOD-START
+  if (needsBundleLock)
+    OutStreamer.EmitBundleUnlock();
+  // @LOCALMOD-END
 }
 
 /// \brief Emit the optimal amount of multi-byte nops on X86.

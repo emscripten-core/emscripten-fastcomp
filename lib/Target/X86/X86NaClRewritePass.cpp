@@ -591,18 +591,6 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
     return true;
   }
 
-  if (Opc == X86::NACL_CG_TLS_addr32) {
-    // Rewrite to nacltlsaddr32
-    BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_TLS_addr32))
-      .addOperand(MI.getOperand(0))  // Base
-      .addOperand(MI.getOperand(1))  // Scale
-      .addOperand(MI.getOperand(2))  // Index
-      .addGlobalAddress(MI.getOperand(3).getGlobal(), 0, X86II::MO_TLSGD)
-      .addOperand(MI.getOperand(4)); // Segment
-    MI.eraseFromParent();
-    return true;
-  }
-
   // General Dynamic NaCl TLS model
   // http://code.google.com/p/nativeclient/issues/detail?id=1685
   if (Opc == X86::NACL_CG_GD_TLS_addr64) {

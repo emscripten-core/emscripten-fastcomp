@@ -415,7 +415,7 @@ let Defs = [EAX, ECX, EDX, FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0,
 def TLS_addr32 : I<0, Pseudo, (outs), (ins i32mem:$sym),
                   "# TLS_addr32",
                   [(X86tlsaddr tls32addr:$sym)]>,
-                  Requires<[Not64BitMode, IsNotNaCl]>;
+                  Requires<[Not64BitMode]>;
 def TLS_base_addr32 : I<0, Pseudo, (outs), (ins i32mem:$sym),
                   "# TLS_base_addr32",
                   [(X86tlsbaseaddr tls32baseaddr:$sym)]>,
