@@ -873,6 +873,29 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     //   MYGLOBAL + (. - PICBASE)
     // However, we can't generate a ".", so just emit a new label here and refer
     // to it.
+
+    // @LOCALMOD-START
+    // When using the gas assembler, emitting a new label and then using it in
+    // the difference expression gives the wrong value when the instruction
+    // following the label gets bundle padding added to it. (The label will
+    // point to the nop padding instead of the instruction, which works when
+    // jumping to the label, but not when calculating GOT addresses. See
+    // https://code.google.com/p/nativeclient/issues/detail?id=3982) For this
+    // case, just emit the instruction using the "." directly rather than going
+    // through all the MC layers. The LLVM assembler is smart enough to make the
+    // label point to the actual instruction rather than the nop, so this hack
+    // isn't necessary.
+    if (Subtarget->isTargetNaCl32() &&
+        OutStreamer.hasRawTextSupport()) {
+      std::string OS;
+      raw_string_ostream ROS(OS);
+      ROS << "\taddl\t$_GLOBAL_OFFSET_TABLE_+(.-" << *MF->getPICBaseSymbol()
+          << "), %"
+          << X86ATTInstPrinter::getRegisterName(MI->getOperand(0).getReg());
+      OutStreamer.EmitRawText(ROS.str());
+      return;
+    }
+    // @LOCALMOD-END
     MCSymbol *DotSym = OutContext.CreateTempSymbol();
     OutStreamer.EmitLabel(DotSym);
 
