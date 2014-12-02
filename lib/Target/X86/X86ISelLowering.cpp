@@ -20986,12 +20986,6 @@ static SDValue PerformOrCombine(SDNode *N, SelectionDAG &DAG,
   }
 
   unsigned Bits = VT.getSizeInBits();
-  // @LOCALMOD-START
-  // Due to a limitation in NaCl's 32-bit validator,
-  // 16-bit shld instructions are illegal in 32-bit NaCl.
-  if (Subtarget->isTargetNaCl() && !Subtarget->is64Bit() && Bits == 16)
-    return SDValue();
-  // @LOCALMOD-END
   if (ShAmt1.getOpcode() == ISD::SUB) {
     SDValue Sum = ShAmt1.getOperand(0);
     if (ConstantSDNode *SumC = dyn_cast<ConstantSDNode>(Sum)) {
