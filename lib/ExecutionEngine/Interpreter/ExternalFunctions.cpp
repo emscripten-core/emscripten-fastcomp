@@ -322,9 +322,7 @@ GenericValue lle_X_abort(FunctionType *FT,
                          const std::vector<GenericValue> &Args) {
   //FIXME: should we report or raise here?
   //report_fatal_error("Interpreted program raised SIGABRT");
-  //TODO(dschuff) fixme or figure out how to get raise()
-  abort(); // @LOCALMOD 
-  //raise (SIGABRT);
+  raise (SIGABRT);
   return GenericValue();
 }
 
