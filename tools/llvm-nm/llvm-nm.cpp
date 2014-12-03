@@ -166,6 +166,12 @@ cl::opt<NaClFileFormat> InputFileFormat(
                clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
                clEnumValEnd),
     cl::init(LLVMFormat));
+
+static cl::opt<bool>
+VerboseErrors(
+    "verbose-parse-errors",
+    cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
+    cl::init(false));
 // @LOCALMOD-END
 }
 
@@ -1011,14 +1017,17 @@ static void dumpSymbolNamesFromFile(std::string &Filename) {
   // Support parsing PNaCl bitcode files
   /* TODO(jfb) This is currently broken: the code base now requires an Object.
   if (InputFileFormat == PNaClFormat) {
-    std::string ErrorMessage;
-    Module *Result = NaClParseBitcodeFile(BufferOrErr.get().release(), Context,
-                                          &ErrorMessage);
+    std::string VerboseBuffer;
+    raw_string_ostream VerboseStrm(VerboseBuffer);
+    raw_ostream *Verbose = VerboseErrors ? &VerboseStrm : nullptr;
+    ErrorOr<Module *> Result =
+        NaClParseBitcodeFile(BufferOrErr.get().release(), Verbose,
+        Context);
     if (Result) {
-      DumpSymbolNamesFromModule(Result);
+      DumpSymbolNamesFromModule(Result.get());
       delete Result;
     } else {
-      error(ErrorMessage, Filename);
+      error(VerboseStrm.str() + Result.message()), Filename);
       return;
     }
   }

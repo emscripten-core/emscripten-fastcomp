@@ -33,6 +33,12 @@ OutputFilename("o", cl::desc("Specify thawed pexe filename"),
 static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<frozen file>"), cl::init("-"));
 
+static cl::opt<bool>
+VerboseErrors(
+    "verbose-parse-errors",
+    cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
+    cl::init(false));
+
 static void WriteOutputFile(const Module *M) {
 
   std::string ErrorInfo;
@@ -73,8 +79,10 @@ int main(int argc, char **argv) {
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
+    raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
     M.reset(getNaClStreamedBitcodeModule(DisplayFilename, Buffer.release(),
-                                         Context, &ErrorMessage,
+                                         Context, Verbose,
+                                         &ErrorMessage,
                                          /*AcceptSupportedOnly=*/false));
     if (M.get())
       if (std::error_code EC = M->materializeAllPermanently()) {

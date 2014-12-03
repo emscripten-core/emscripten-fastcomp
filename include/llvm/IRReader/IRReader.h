@@ -43,6 +43,8 @@ Module *ParseIRFile(const std::string &Filename, SMDiagnostic &Err,
                     LLVMContext &Context);
 
 // @LOCALMOD-BEGIN
+class raw_ostream;
+
 // \brief Define the expected format of the file.
 enum NaClFileFormat {
   // LLVM IR source or bitcode file (as appropriate).
@@ -51,21 +53,27 @@ enum NaClFileFormat {
   PNaClFormat
 };
 
-// \brief If the given MemoryBuffer holds a bitcode image, return a Module
-// for it.  Otherwise, attempt to parse it as LLVM Assembly and return
-// a Module for it. This function *always* takes ownership of the given
-// MemoryBuffer.
+// \brief If the given MemoryBuffer holds a bitcode image, return a
+// Module for it.  Otherwise, attempt to parse it as LLVM Assembly and
+// return a Module for it. This function *always* takes ownership of
+// the given MemoryBuffer. When Format=PNaClFormat and Verbose
+// is non-null, more descriptive error messages are also written to
+// Verbose.
 Module *NaClParseIR(MemoryBuffer *Buffer,
                     NaClFileFormat Format,
                     SMDiagnostic &Err,
+                    raw_ostream *Verbose,
                     LLVMContext &Context);
 
 /// \brief If the given file holds a Bitcode image, read the file.
 /// Otherwise, attempt to parse it as LLVM assembly and return a
-/// Module for it.
+/// Module for it. When Format=PNaClFormat and Verbose
+// is non-null, more descriptive error messages are also written to
+// Verbose.
 Module *NaClParseIRFile(const std::string &Filename,
                         NaClFileFormat Format,
                         SMDiagnostic &Err,
+                        raw_ostream *Verbose,
                         LLVMContext &Context);
 // @LOCALMOD-END
 }

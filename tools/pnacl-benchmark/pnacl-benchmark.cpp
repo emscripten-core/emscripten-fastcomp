@@ -45,6 +45,12 @@ InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 static cl::opt<unsigned>
 NumRuns("num-runs", cl::desc("Number of runs"), cl::init(1));
 
+static cl::opt<bool>
+VerboseErrors(
+    "verbose-parse-errors",
+    cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
+    cl::init(false));
+
 /// Used in a lexical block to measure and report the block's execution time.
 ///
 /// \param N block name
@@ -202,8 +208,9 @@ void BenchmarkIRParsing() {
   {
     TimingOperationBlock T("LLVM IR parsing", BufSize);
     SMDiagnostic Err;
+    raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
     Module *M = NaClParseIRFile(InputFilename, PNaClFormat,
-                                Err, getGlobalContext());
+                                Err, Verbose, getGlobalContext());
 
     if (!M) {
       report_fatal_error("Unable to NaClParseIRFile");

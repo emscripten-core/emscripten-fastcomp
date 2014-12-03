@@ -128,6 +128,8 @@ class NaClBitcodeReader : public GVMaterializer {
   NaClBitcodeHeader Header;  // Header fields of the PNaCl bitcode file.
   LLVMContext &Context;
   Module *TheModule;
+  // If non-null, stream to write verbose errors to.
+  raw_ostream *Verbose;
   PNaClAllowedIntrinsics AllowedIntrinsics;
   std::unique_ptr<MemoryBuffer> Buffer;
   std::unique_ptr<NaClBitstreamReader> StreamFile;
@@ -135,9 +137,6 @@ class NaClBitcodeReader : public GVMaterializer {
   StreamingMemoryObject *LazyStreamer;
   uint64_t NextUnreadBit;
   bool SeenValueSymbolTable;
-
-  std::string ErrorString;
-
   std::vector<Type*> TypeList;
   NaClBitcodeReaderValueList ValueList;
 
@@ -181,12 +180,33 @@ class NaClBitcodeReader : public GVMaterializer {
   /// \brief Integer type use for PNaCl conversion of pointers.
   Type *IntPtrType;
 
+  static const std::error_category &BitcodeErrorCategory();
+
 public:
+
+  /// Types of errors reported.
+  enum ErrorType {
+    CouldNotFindFunctionInStream, // Unable to find function in bitcode stream.
+    InsufficientFunctionProtos,
+    InvalidBitstream,         // Error in bitstream format.
+    InvalidConstantReference, // Bad constant reference.
+    InvalidInstructionWithNoBB,  // No basic block for instruction.
+    InvalidMultipleBlocks, // Multiple blocks for a kind of block that should
+                           // have only one.
+    InvalidRecord, // Record doesn't have expected size or structure.
+    InvalidSkippedBlock, // Unable to skip unknown block in bitcode file.
+    InvalidType,   // Invalid type in record.
+    InvalidTypeForValue, // Type of value incorrect.
+    InvalidValue,  // Invalid value in record.
+    MalformedBlock, // Unable to advance over block.
+  };
+
   explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
-                             bool AcceptSupportedOnly = true)
-      : Context(C), TheModule(0), AllowedIntrinsics(&C),
+                             raw_ostream *Verbose,
+                             bool AcceptSupportedOnly)
+      : Context(C), TheModule(nullptr), Verbose(Verbose), AllowedIntrinsics(&C),
         Buffer(buffer),
-        LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
+        LazyStreamer(nullptr), NextUnreadBit(0), SeenValueSymbolTable(false),
         ValueList(),
         SeenFirstFunctionBody(false),
         AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
@@ -194,8 +214,9 @@ public:
   }
   explicit NaClBitcodeReader(StreamingMemoryObject *streamer,
                              LLVMContext &C,
-                             bool AcceptSupportedOnly = true)
-      : Context(C), TheModule(0), AllowedIntrinsics(&C),
+                             raw_ostream *Verbose,
+                             bool AcceptSupportedOnly)
+      : Context(C), TheModule(nullptr), Verbose(Verbose), AllowedIntrinsics(&C),
         Buffer(nullptr),
         LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
         ValueList(),
@@ -216,15 +237,16 @@ public:
   void Dematerialize(GlobalValue *GV) override;
   void releaseBuffer() override;
 
-  bool Error(const std::string &Str) {
-    ErrorString = Str;
-    return true;
+  std::error_code Error(ErrorType E) const {
+    return std::error_code(E, BitcodeErrorCategory());
   }
-  const std::string &getErrorString() const { return ErrorString; }
+
+  /// Generates the corresponding verbose Message, then generates error.
+  std::error_code Error(ErrorType E, const std::string &Message) const;
 
   /// @brief Main interface to parsing a bitcode buffer.
   /// @returns true if an error occurred.
-  bool ParseBitcodeInto(Module *M);
+  std::error_code ParseBitcodeInto(Module *M);
 
 private:
   // Returns false if Header is acceptable.
@@ -304,25 +326,26 @@ private:
                            bool DeferInsertion = false);
 
   /// \brief Install instruction I into basic block BB.
-  bool InstallInstruction(BasicBlock *BB, Instruction *I);
+  std::error_code InstallInstruction(BasicBlock *BB, Instruction *I);
 
   FunctionType *AddPointerTypesToIntrinsicType(StringRef Name,
                                                FunctionType *FTy);
   void AddPointerTypesToIntrinsicParams();
-  bool ParseModule(bool Resume);
-  bool ParseTypeTable();
-  bool ParseTypeTableBody();
-  bool ParseGlobalVars();
-  bool ParseValueSymbolTable();
-  bool ParseConstants();
-  bool RememberAndSkipFunctionBody();
-  bool ParseFunctionBody(Function *F);
-  bool GlobalCleanup();
-  bool InitStream();
-  bool InitStreamFromBuffer();
-  bool InitLazyStream();
-  bool FindFunctionInStream(Function *F,
-         DenseMap<Function*, uint64_t>::iterator DeferredFunctionInfoIterator);
+  std::error_code ParseModule(bool Resume);
+  std::error_code ParseTypeTable();
+  std::error_code ParseTypeTableBody();
+  std::error_code ParseGlobalVars();
+  std::error_code ParseValueSymbolTable();
+  std::error_code ParseConstants();
+  std::error_code RememberAndSkipFunctionBody();
+  std::error_code ParseFunctionBody(Function *F);
+  std::error_code GlobalCleanup();
+  std::error_code InitStream();
+  std::error_code InitStreamFromBuffer();
+  std::error_code InitLazyStream();
+  std::error_code FindFunctionInStream(
+      Function *F,
+      DenseMap<Function*, uint64_t>::iterator DeferredFunctionInfoIterator);
 };
 
 } // End llvm namespace

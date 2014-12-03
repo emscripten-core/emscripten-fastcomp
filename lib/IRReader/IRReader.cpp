@@ -102,19 +102,20 @@ Module *llvm::ParseIRFile(const std::string &Filename, SMDiagnostic &Err,
 Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
                           NaClFileFormat Format,
                           SMDiagnostic &Err,
+                          raw_ostream *Verbose,
                           LLVMContext &Context) {
   NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
                      TimePassesIsEnabled);
   if ((Format == PNaClFormat) &&
       isNaClBitcode((const unsigned char *)Buffer->getBufferStart(),
                     (const unsigned char *)Buffer->getBufferEnd())) {
-    std::string ErrMsg;
-    Module *M = NaClParseBitcodeFile(Buffer, Context, &ErrMsg);
-    if (M == 0)
+    ErrorOr<Module *> ModuleOrErr =
+        NaClParseBitcodeFile(Buffer, Context, Verbose);
+    if (std::error_code EC = ModuleOrErr.getError())
       Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
-                         ErrMsg);
+                         EC.message());
     // ParseBitcodeFile does not take ownership of the Buffer.
-    return M;
+    return ModuleOrErr.get();
   } else if (Format == LLVMFormat) {
     if (isBitcode((const unsigned char *)Buffer->getBufferStart(),
                   (const unsigned char *)Buffer->getBufferEnd())) {
@@ -137,6 +138,7 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
 Module *llvm::NaClParseIRFile(const std::string &Filename,
                               NaClFileFormat Format,
                               SMDiagnostic &Err,
+                              raw_ostream *Verbose,
                               LLVMContext &Context) {
   ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
       MemoryBuffer::getFileOrSTDIN(Filename);
@@ -146,7 +148,8 @@ Module *llvm::NaClParseIRFile(const std::string &Filename,
     return nullptr;
   }
 
-  return NaClParseIR(ErrOrFile.get().release(), Format, Err, Context);
+  return NaClParseIR(ErrOrFile.get().release(), Format, Err, Verbose,
+                     Context);
 }
 
 // @LOCALMOD-END

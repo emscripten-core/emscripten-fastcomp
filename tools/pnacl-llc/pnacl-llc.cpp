@@ -323,12 +323,15 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
                          StreamingMemoryObject *StreamingObject) {
   Module *M = nullptr;
   SMDiagnostic Err;
+  std::string VerboseBuffer;
+  raw_string_ostream VerboseStrm(VerboseBuffer);
   if (LazyBitcode) {
     std::string StrError;
     if (InputFileFormat == PNaClFormat) {
       M = getNaClStreamedBitcodeModule(
           InputFilename,
-          new ThreadedStreamingCache(StreamingObject), Context, &StrError);
+          new ThreadedStreamingCache(StreamingObject), Context, &VerboseStrm,
+          &StrError);
     } else if (InputFileFormat == LLVMFormat) {
       M = getStreamedBitcodeModule(
           InputFilename,
@@ -344,15 +347,17 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
 #else
     // Parses binary bitcode as well as textual assembly
     // (so pulls in more code into pnacl-llc).
-    M = NaClParseIRFile(InputFilename, InputFileFormat, Err, Context);
+    M = NaClParseIRFile(InputFilename, InputFileFormat, Err, &VerboseStrm,
+                        Context);
 #endif
   }
   if (!M) {
 #if defined(__native_client__)
-    report_fatal_error(Err.getMessage());
+    report_fatal_error(VerboseStrm.str() + Err.getMessage());
 #else
     // Err.print is prettier, so use it for the non-sandboxed translator.
     Err.print(ProgramName.data(), errs());
+    errs() << VerboseStrm.str();
     return nullptr;
 #endif
   }

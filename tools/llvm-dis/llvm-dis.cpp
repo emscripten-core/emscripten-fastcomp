@@ -160,10 +160,12 @@ int main(int argc, char **argv) {
         M.reset(getStreamedBitcodeModule(
             DisplayFilename, Buffer.release(), Context, &ErrorMessage));
         break;
-      case PNaClFormat:
+      case PNaClFormat: {
         M.reset(getNaClStreamedBitcodeModule(
-            DisplayFilename, Buffer.release(), Context, &ErrorMessage));
+            DisplayFilename, Buffer.release(), Context, nullptr,
+            &ErrorMessage));
         break;
+      }
       default:
         ErrorMessage = "Don't understand specified bitcode format";
         break;

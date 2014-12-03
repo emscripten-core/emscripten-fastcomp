@@ -17,6 +17,8 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -28,22 +30,22 @@ using namespace llvm;
 // emitted to the bitcode file.
 static bool DebugEmitRecord = false;
 
-bool NaClBitcodeMunger::runTestWithFlags(
-    const char *Name, const uint64_t Munges[], size_t MungesSize,
-    bool AddHeader, bool NoRecords, bool NoAssembly) {
-  assert(DumpStream == NULL && "Test run with DumpStream already defined");
+void NaClBitcodeMunger::setupTest(
+    const char *TestName, const uint64_t Munges[], size_t MungesSize,
+    bool AddHeader) {
+  assert(DumpStream == nullptr && "Test run with DumpStream already defined");
+  assert(MungedInput == nullptr && "Test run with MungedInput already defined");
   FoundErrors = false;
   DumpResults.clear(); // Throw away any previous results.
   std::string DumpBuffer;
-  raw_string_ostream MungedDumpStream(DumpResults);
-  DumpStream = &MungedDumpStream;
+  DumpStream = new raw_string_ostream(DumpResults);
   SmallVector<char, 0> StreamBuffer;
   StreamBuffer.reserve(256*1024);
   NaClBitstreamWriter OutStream(StreamBuffer);
   Writer = &OutStream;
 
   if (DebugEmitRecord) {
-    errs() << "*** Run test: " << Name << "\n";
+    errs() << "*** Run test: " << TestName << "\n";
   }
 
   WriteBlockID = -1;
@@ -57,15 +59,17 @@ bool NaClBitcodeMunger::runTestWithFlags(
        Iter != IterEnd; ++Iter) {
     BitcodeStrm << *Iter;
   }
+  MungedInput = MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), TestName);
+}
 
-  std::unique_ptr<MemoryBuffer> Input(
-      MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), Name));
-  if (NaClObjDump(Input.get(), *DumpStream, NoRecords, NoAssembly))
-    FoundErrors = true;
-  DumpStream = NULL;
-  Writer = NULL;
-  MungedDumpStream.flush();
-  return !FoundErrors;
+void NaClBitcodeMunger::cleanupTest() {
+  delete MungedInput;
+  MungedInput = nullptr;
+  assert(DumpStream && "Dump stream removed before cleanup!");
+  DumpStream->flush();
+  delete DumpStream;
+  DumpStream = nullptr;
+  Writer = nullptr;
 }
 
 // Return the next line of input (including eoln), starting from
@@ -337,4 +341,38 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
     }
   }
   return Abbrev;
+}
+
+bool NaClObjDumpMunger::runTestWithFlags(
+    const char *Name, const uint64_t Munges[], size_t MungesSize,
+    bool AddHeader, bool NoRecords, bool NoAssembly) {
+  setupTest(Name, Munges, MungesSize, AddHeader);
+  if (NaClObjDump(MungedInput, *DumpStream, NoRecords, NoAssembly))
+    FoundErrors = true;
+  cleanupTest();
+  return !FoundErrors;
+}
+
+bool NaClParseBitcodeMunger::runTest(
+    const char *Name, const uint64_t Munges[], size_t MungesSize,
+    bool VerboseErrors) {
+  bool AddHeader = true;
+  setupTest(Name, Munges, MungesSize, AddHeader);
+  LLVMContext &Context = getGlobalContext();
+  raw_ostream *VerboseStrm = VerboseErrors ? DumpStream : nullptr;
+  ErrorOr<Module *> ModuleOrError =
+      NaClParseBitcodeFile(MungedInput, Context, VerboseStrm);
+  if (ModuleOrError) {
+    delete ModuleOrError.get();
+    if (VerboseErrors)
+      *DumpStream << "Successful parse!\n";
+    // If there was a successful parse, MungedInput was deleted by the
+    // parser. Hence, we null it out here so that cleanupTest doesn't
+    // double delete it.
+    MungedInput = nullptr;
+  } else {
+    Error() << ModuleOrError.getError().message() << "\n";
+  }
+  cleanupTest();
+  return !FoundErrors;
 }
