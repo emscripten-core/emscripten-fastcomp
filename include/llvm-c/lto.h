@@ -404,15 +404,6 @@ lto_codegen_set_assembler_args(lto_code_gen_t cg, const char **args,
 extern void
 lto_codegen_add_must_preserve_symbol(lto_code_gen_t cg, const char* symbol);
 
-/* @LOCALMOD-BEGIN */
-/**
- * Wrap a symbol in the merged module.
- */
-extern void
-lto_codegen_wrap_symbol_in_merged_module(lto_code_gen_t cg,
-                                         const char *sym);
-/* @LOCALMOD-END */
-
 /**
  * Writes a new object file at the specified path that contains the
  * merged contents of all modules added so far.

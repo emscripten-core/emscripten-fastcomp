@@ -236,17 +236,6 @@ void lto_codegen_add_must_preserve_symbol(lto_code_gen_t cg,
   unwrap(cg)->addMustPreserveSymbol(symbol);
 }
 
-// @LOCALMOD-BEGIN
-//
-// Apply symbol wrapping in the linked bitcode module.
-//
-void lto_codegen_wrap_symbol_in_merged_module(lto_code_gen_t cg,
-                                              const char *sym) {
-  LTOCodeGenerator *CG = unwrap(cg);
-  CG->wrapSymbol(sym);
-}
-// @LOCALMOD-END
-
 bool lto_codegen_write_merged_modules(lto_code_gen_t cg, const char *path) {
   if (!parsedOptions) {
     unwrap(cg)->parseCodeGenDebugOptions();
