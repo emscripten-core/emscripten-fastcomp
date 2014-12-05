@@ -78,7 +78,7 @@ namespace {
   typedef DenseMap<Constant*, RelocUserType*> RelocMapType;
 
   // Define the list to hold the list of global variables being flattened.
-  class FlattenedGlobal;
+  struct FlattenedGlobal;
   typedef std::vector<FlattenedGlobal*> FlattenedGlobalsVectorType;
 
   // Returns the corresponding relocation, for the given user handle.

@@ -118,16 +118,13 @@ static bool IsLoad(MachineInstr &MI) {
   return MI.mayLoad();
 }
 
-static bool IsFrameChange(MachineInstr &MI) {
-  return MI.modifiesRegister(X86::EBP, NULL) ||
-         MI.modifiesRegister(X86::RBP, NULL);
+static bool IsFrameChange(MachineInstr &MI, const TargetRegisterInfo *TRI) {
+  return MI.modifiesRegister(X86::EBP, TRI);
 }
 
-static bool IsStackChange(MachineInstr &MI) {
-  return MI.modifiesRegister(X86::ESP, NULL) ||
-         MI.modifiesRegister(X86::RSP, NULL);
+static bool IsStackChange(MachineInstr &MI, const TargetRegisterInfo *TRI) {
+  return MI.modifiesRegister(X86::ESP, TRI);
 }
-
 
 static bool HasControlFlow(const MachineInstr &MI) {
  return MI.getDesc().isBranch() ||
@@ -223,7 +220,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
 
-  if (!IsStackChange(MI))
+  if (!IsStackChange(MI, TRI))
     return false;
 
   if (IsPushPop(MI))
@@ -322,7 +319,7 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
 
-  if (!IsFrameChange(MI))
+  if (!IsFrameChange(MI, TRI))
     return false;
 
   unsigned Opc = MI.getOpcode();

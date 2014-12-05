@@ -81,16 +81,13 @@ private:
   // The number of global variable IDs defined in the bitcode file.
   unsigned NumGlobalVarIDs;
 
-  // The version of PNaCl bitcode to generate.
-  uint32_t PNaClVersion;
-
   /// \brief Integer type use for PNaCl conversion of pointers.
   Type *IntPtrType;
 
   NaClValueEnumerator(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
   void operator=(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
 public:
-  NaClValueEnumerator(const Module *M, uint32_t PNaClVersion);
+  NaClValueEnumerator(const Module *M);
 
   void dump() const;
   void print(raw_ostream &OS, const ValueMapType &Map, const char *Name) const;

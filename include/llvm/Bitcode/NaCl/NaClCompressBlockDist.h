@@ -30,7 +30,6 @@ public:
 
   explicit NaClCompressBlockDistElement(unsigned BlockID=0)
       : NaClBitcodeBlockDistElement(RDE_PNaClCompressBlockDist),
-        BlockID(BlockID),
         AbbrevDist(BlockID) {
     NestedDists.push_back(&AbbrevDist);
   }
@@ -51,9 +50,6 @@ public:
   static NaClCompressBlockDistElement Sentinel;
 
 private:
-  // The block ID of the distribution.
-  unsigned BlockID;
-
   // Nested blocks used by GetNestedDistributions.
   SmallVector<NaClBitcodeDist*, 1> NestedDists;
 

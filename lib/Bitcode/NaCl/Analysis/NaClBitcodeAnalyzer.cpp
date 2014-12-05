@@ -423,9 +423,6 @@ bool PNaClBitcodeAnalyzerParser::ParseBlock(unsigned BlockID) {
   return Parser.ParseThisBlock();
 }
 
-static void PrintSize(double Bits, raw_ostream &OS) {
-  OS << format("%.2f/%.2fB/%luW", Bits, Bits/8,(unsigned long)(Bits/32));
-}
 static void PrintSize(uint64_t Bits, raw_ostream &OS) {
   OS << format("%lub/%.2fB/%luW", (unsigned long)Bits,
                (double)Bits/8, (unsigned long)(Bits/32));

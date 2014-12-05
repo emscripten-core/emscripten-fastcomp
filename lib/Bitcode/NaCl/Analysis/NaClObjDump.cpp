@@ -1122,8 +1122,6 @@ private:
   // The list of known types (index i defines the type associated with
   // type index i).
   std::vector<Type*> TypeIdType;
-  // The number of type indices currently defined.
-  uint32_t NumTypes;
   // The list of known function signatures (index i defines the type
   // signature associated with function index i).
   std::vector<FunctionType*> FunctionIdType;
