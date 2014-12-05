@@ -503,10 +503,10 @@ void Verifier::visitGlobalVariable(GlobalVariable &GV) {
     }
   }
 
-  if (!GV.hasInitializer()) {
+  //if (!GV.hasInitializer()) { // XXX EMSCRIPTEN - do not do extra verification below, 40x slower linking on some big projects
     visitGlobalValue(GV);
     return;
-  }
+  //}
 
   // Walk any aggregate initializers looking for bitcasts between address spaces
   SmallPtrSet<const Value *, 4> Visited;
