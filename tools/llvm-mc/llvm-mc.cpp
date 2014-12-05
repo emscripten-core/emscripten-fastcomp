@@ -478,8 +478,10 @@ int main(int argc, char **argv) {
                                                 FOS, CE, *STI, RelaxAll,
                                                 NoExecStack));
     // @LOCALMOD-BEGIN
-    if (T.isOSNaCl())
+    if (T.isOSNaCl()) {
+      Str.get()->InitSections();
       initializeNaClMCStreamer(*Str.get(), Ctx, T);
+    }
     // @LOCALMOD-END
   }
 

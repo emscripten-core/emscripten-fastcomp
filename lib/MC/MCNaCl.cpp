@@ -65,9 +65,7 @@ void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
       NoteName, ELF::SHT_NOTE, ELF::SHF_ALLOC | ELF::SHF_GROUP,
       SectionKind::getReadOnly(), 0, NoteName);
 
-  // TODO(dschuff) This should probably use PushSection and PopSection, but
-  // PopSection will assert if there haven't been any other sections switched to
-  // yet.
+  Streamer.PushSection();
   Streamer.SwitchSection(Note);
   Streamer.EmitIntValue(strlen(NoteNamespace) + 1, 4);
   Streamer.EmitIntValue(strlen(NoteArch) + 1, 4);
@@ -78,6 +76,7 @@ void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
   Streamer.EmitBytes(NoteArch);
   Streamer.EmitIntValue(0, 1); // NUL terminator
   Streamer.EmitValueToAlignment(4);
+  Streamer.PopSection();
 }
 
 } // namespace llvm
