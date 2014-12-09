@@ -174,9 +174,9 @@ define i32 @icmp_ne(i64 %a, i64 %b) {
 
 ; CHECK: define i32 @icmp_slt(i32, i32, i32, i32) {
 ; CHECK:   %5 = icmp slt i32 %1, %3
-; CHECK:   %6 = icmp eq i32 %1, %3
-; CHECK:   %7 = icmp ult i32 %0, %2
-; CHECK:   %8 = and i1 %6, %7
+; CHECK:   %6 = icmp ult i32 %0, %2
+; CHECK:   %7 = icmp eq i32 %1, %3
+; CHECK:   %8 = and i1 %7, %6
 ; CHECK:   %9 = or i1 %5, %8
 ; CHECK:   %d = zext i1 %9 to i32
 ; CHECK:   ret i32 %d
@@ -189,9 +189,9 @@ define i32 @icmp_slt(i64 %a, i64 %b) {
 
 ; CHECK: define i32 @icmp_ult(i32, i32, i32, i32) {
 ; CHECK:   %5 = icmp ult i32 %1, %3
-; CHECK:   %6 = icmp eq i32 %1, %3
-; CHECK:   %7 = icmp ult i32 %0, %2
-; CHECK:   %8 = and i1 %6, %7
+; CHECK:   %6 = icmp ult i32 %0, %2
+; CHECK:   %7 = icmp eq i32 %1, %3
+; CHECK:   %8 = and i1 %7, %6
 ; CHECK:   %9 = or i1 %5, %8
 ; CHECK:   %d = zext i1 %9 to i32
 ; CHECK:   ret i32 %d
