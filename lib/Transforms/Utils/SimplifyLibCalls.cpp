@@ -2286,13 +2286,6 @@ LibCallOptimization *LibCallSimplifierImpl::lookupOptimization(CallInst *CI) {
 Value *LibCallSimplifierImpl::optimizeCall(CallInst *CI) {
   LibCallOptimization *LCO = lookupOptimization(CI);
 
-  // @LOCALMOD-BEGIN
-  Function *Caller = CI->getParent()->getParent();
-  LibFunc::Func F = LibFunc::NumLibFuncs;
-  // Don't modify the implementation of known library functions
-  if (TLI->getLibFunc(Caller->getName(), F))
-    return 0;
-  // @LOCALMOD-END
   if (LCO) {
     IRBuilder<> Builder(CI);
     return LCO->optimizeCall(CI, DL, TLI, LCS, Builder);
