@@ -53,7 +53,7 @@ entry:
 ; ASM: movl %ebp, %eax
 ; ASM-NEXT: pushq %rax
 ; In asm, direct calls are just 'call'
-; ASM: call DirectCallTarget
+; ASM: callq DirectCallTarget
 ; The return sequence should use %r11
 ; ASM: popq %r11
 ; ASM: nacljmp %r11d, %r15

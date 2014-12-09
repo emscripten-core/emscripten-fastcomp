@@ -23,7 +23,7 @@ define i8* @get_thread_pointer() {
 ; X32: movl %gs:0, %eax
 
 ; USE_CALL: get_thread_pointer:
-; USE_CALL: call{{l?}} __nacl_read_tp
+; USE_CALL: call{{[lq]?}} __nacl_read_tp
 
 
 ; Make sure that we do not generate:

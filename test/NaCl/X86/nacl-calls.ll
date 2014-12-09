@@ -60,9 +60,9 @@ define void @call_other_function2() {
 ; NACL32O0-LABEL: call_other_function
 ; NACL32O0: calll other_function
 ; NACL64-LABEL: call_other_function
-; NACL64: call other_function
+; NACL64: callq other_function
 ; NACL64-LABEL: call_other_function2
-; NACL64: call call_other_function
+; NACL64: callq call_other_function
 
 
 declare fastcc i32 @other_function_fast()
