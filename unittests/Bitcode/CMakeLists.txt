@@ -15,5 +15,6 @@ add_llvm_unittest(BitcodeTests
   NaClObjDumpTest.cpp
   NaClObjDumpTypesTest.cpp
   NaClParseTypesTest.cpp
+  NaClParseInstsTest.cpp
   NaClTextFormatterTest.cpp
   )

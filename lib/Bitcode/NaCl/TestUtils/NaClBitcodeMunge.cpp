@@ -34,7 +34,8 @@ void NaClBitcodeMunger::setupTest(
     const char *TestName, const uint64_t Munges[], size_t MungesSize,
     bool AddHeader) {
   assert(DumpStream == nullptr && "Test run with DumpStream already defined");
-  assert(MungedInput == nullptr && "Test run with MungedInput already defined");
+  assert(MungedInput.get() == nullptr
+         && "Test run with MungedInput already defined");
   FoundErrors = false;
   DumpResults.clear(); // Throw away any previous results.
   std::string DumpBuffer;
@@ -59,12 +60,12 @@ void NaClBitcodeMunger::setupTest(
        Iter != IterEnd; ++Iter) {
     BitcodeStrm << *Iter;
   }
-  MungedInput = MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), TestName);
+  MungedInput.reset(MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(),
+                                                   TestName));
 }
 
 void NaClBitcodeMunger::cleanupTest() {
-  delete MungedInput;
-  MungedInput = nullptr;
+  MungedInput.reset();
   assert(DumpStream && "Dump stream removed before cleanup!");
   DumpStream->flush();
   delete DumpStream;
@@ -347,7 +348,7 @@ bool NaClObjDumpMunger::runTestWithFlags(
     const char *Name, const uint64_t Munges[], size_t MungesSize,
     bool AddHeader, bool NoRecords, bool NoAssembly) {
   setupTest(Name, Munges, MungesSize, AddHeader);
-  if (NaClObjDump(MungedInput, *DumpStream, NoRecords, NoAssembly))
+  if (NaClObjDump(MungedInput.get(), *DumpStream, NoRecords, NoAssembly))
     FoundErrors = true;
   cleanupTest();
   return !FoundErrors;
@@ -361,17 +362,18 @@ bool NaClParseBitcodeMunger::runTest(
   LLVMContext &Context = getGlobalContext();
   raw_ostream *VerboseStrm = VerboseErrors ? DumpStream : nullptr;
   ErrorOr<Module *> ModuleOrError =
-      NaClParseBitcodeFile(MungedInput, Context, VerboseStrm);
+      NaClParseBitcodeFile(MungedInput.get(), Context, VerboseStrm);
   if (ModuleOrError) {
-    delete ModuleOrError.get();
     if (VerboseErrors)
       *DumpStream << "Successful parse!\n";
-    // If there was a successful parse, MungedInput was deleted by the
-    // parser. Hence, we null it out here so that cleanupTest doesn't
-    // double delete it.
-    MungedInput = nullptr;
+    delete ModuleOrError.get();
   } else {
     Error() << ModuleOrError.getError().message() << "\n";
+    // TODO(kschimpf) The code sometimes deletes the buffer, and
+    // sometimes releases it, when an error occurs. It should always
+    // release.  The bug should be found and fixed.  In the meantime,
+    // just release the buffer so that we can test errors.
+    MungedInput.release();
   }
   cleanupTest();
   return !FoundErrors;

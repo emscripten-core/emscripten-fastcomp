@@ -81,9 +81,7 @@ namespace llvm {
                                        bool AcceptSupportedOnly = true);
 
   /// NaClParseBitcodeFile - Read the specified bitcode file,
-  /// returning the module.  If successful, takes ownership of
-  /// 'buffer' and returns a non-null pointer.  On error, this returns
-  /// an error code and *does not* take ownership of Buffer.
+  /// returning the module. This method *never* takes ownership of Buffer.
   ///
   /// See getNaClLazyBitcodeModule for an explanation of arguments
   /// Verbose, AcceptSupportedOnly.

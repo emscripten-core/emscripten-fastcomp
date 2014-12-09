@@ -75,19 +75,19 @@ const char *PNaClABIProps::CallingConvName(CallingConv::ID CallingConv) {
 const char *PNaClABIProps::LinkageName(GlobalValue::LinkageTypes LT) {
   // This logic is taken from PrintLinkage in lib/IR/AsmWriter.cpp
   switch (LT) {
-  case GlobalValue::ExternalLinkage:      return "external ";
-  case GlobalValue::PrivateLinkage:       return "private ";
-  case GlobalValue::InternalLinkage:      return "internal ";
-  case GlobalValue::LinkOnceAnyLinkage:   return "linkonce ";
-  case GlobalValue::LinkOnceODRLinkage:   return "linkonce_odr ";
-  case GlobalValue::WeakAnyLinkage:       return "weak ";
-  case GlobalValue::WeakODRLinkage:       return "weak_odr ";
-  case GlobalValue::CommonLinkage:        return "common ";
-  case GlobalValue::AppendingLinkage:     return "appending ";
-  case GlobalValue::ExternalWeakLinkage:  return "extern_weak ";
+  case GlobalValue::ExternalLinkage:      return "external";
+  case GlobalValue::PrivateLinkage:       return "private";
+  case GlobalValue::InternalLinkage:      return "internal";
+  case GlobalValue::LinkOnceAnyLinkage:   return "linkonce";
+  case GlobalValue::LinkOnceODRLinkage:   return "linkonce_odr";
+  case GlobalValue::WeakAnyLinkage:       return "weak";
+  case GlobalValue::WeakODRLinkage:       return "weak_odr";
+  case GlobalValue::CommonLinkage:        return "common";
+  case GlobalValue::AppendingLinkage:     return "appending";
+  case GlobalValue::ExternalWeakLinkage:  return "extern_weak";
   case GlobalValue::AvailableExternallyLinkage:
-    return "available_externally ";
-    default: return "unknown";
+    return "available_externally";
+  default: return "unknown";
   }
 }
 

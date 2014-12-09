@@ -1557,8 +1557,12 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
       SmallVector<Value*, 6> Args;
       for (unsigned Index = 0; Index < NumParams; ++Index) {
         Value *Arg;
-        if (popValue(Record, &OpNum, NextValueNo, &Arg))
-          Error(InvalidValue, "Invalid argument in CALL record");
+        if (popValue(Record, &OpNum, NextValueNo, &Arg)) {
+          std::string Buffer;
+          raw_string_ostream StrBuf(Buffer);
+          StrBuf << "Invalid call argument: Index " << Index;
+          return Error(InvalidValue, StrBuf.str());
+        }
         if (FTy) {
           // Add a cast, to a pointer type if necessary, in case this
           // is an intrinsic call that takes a pointer argument.
@@ -1566,15 +1570,21 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
         } else {
           Arg = ConvertOpToScalar(Arg, CurBBNo);
         }
+        if (Arg == nullptr) {
+          std::string Buffer;
+          raw_string_ostream StrBuf(Buffer);
+          StrBuf << "Unable to cast call argument to parameter type: " << Index;
+          return Error(InvalidValue, StrBuf.str());
+        }
         Args.push_back(Arg);
       }
-
-      if (FTy == 0) {
+      if (FTy == nullptr) {
         // Reconstruct the function type and cast the function pointer
         // to it.
         SmallVector<Type*, 6> ArgTypes;
-        for (unsigned Index = 0; Index < NumParams; ++Index)
-          ArgTypes.push_back(Args[Index]->getType());
+        for (const auto Arg : Args) {
+          ArgTypes.push_back(Arg->getType());
+        }
         FTy = FunctionType::get(ReturnType, ArgTypes, false);
         Callee = ConvertOpToType(Callee, FTy->getPointerTo(), CurBBNo);
       }
@@ -1700,24 +1710,16 @@ std::error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
   // If its position is recorded as 0, its body is somewhere in the stream
   // but we haven't seen it yet.
   if (DFII->second == 0) {
-    if (FindFunctionInStream(F, DFII)) {
-      // Refactoring upstream in LLVM 3.4 means we can no longer
-      // return an error string here, so return a catch-all error
-      // code.
-      // TODO(mseaborn): Clean up the reader to return a more
-      // meaningful error_code here.
-      return make_error_code(std::errc::invalid_argument);
+    if (std::error_code EC = FindFunctionInStream(F, DFII)) {
+      return EC;
     }
   }
 
   // Move the bit stream to the saved position of the deferred function body.
   Stream.JumpToBit(DFII->second);
 
-  if (ParseFunctionBody(F)) {
-    // TODO(mseaborn): Clean up the reader to return a more meaningful
-    // error_code instead of a catch-all.
-    return make_error_code(std::errc::invalid_argument);
-  }
+  if (std::error_code EC = ParseFunctionBody(F))
+    return EC;
 
   // Upgrade any old intrinsic calls in the function.
   for (UpgradedIntrinsicMap::iterator I = UpgradedIntrinsics.begin(),
@@ -1887,7 +1889,7 @@ ErrorOr<Module *> llvm::NaClParseBitcodeFile(
     return ModuleOrErr;
   Module *M = ModuleOrErr.get();
   // Read in the entire module, and destroy the NaClBitcodeReader.
-  if (std::error_code EC = M->materializeAllPermanently()) {
+  if (std::error_code EC = M->materializeAllPermanently(true)) {
     delete M;
     return EC;
   }

@@ -3381,7 +3381,7 @@ void NaClDisModuleParser::ProcessRecord() {
       break;
     }
     bool IsProto = (Values[2] != 0);
-    Tokens() << StartCluster() << (IsProto ? "declare" : "define") << Space();
+    Tokens() << StartCluster() << (IsProto ? "declare" : "define");
     uint32_t FcnId = GetNumFunctions();
     BitcodeId FcnName('f', FcnId);
     std::string FcnStrName(FcnName.GetName());
@@ -3392,14 +3392,14 @@ void NaClDisModuleParser::ProcessRecord() {
       if (!PNaClABIProps::isValidGlobalLinkage(Linkage))
         Errors() << "Disallowed linkage type: "
                  << PNaClABIProps::LinkageName(Linkage) << "\n";
-      Tokens() << PNaClABIProps::LinkageName(Linkage);
+      Tokens() << Space() << PNaClABIProps::LinkageName(Linkage);
     }
     CallingConv::ID CallingConv;
     if (!naclbitc::DecodeCallingConv(Values[1], CallingConv)) {
       Errors() << "Unknown calling convention value: " << Values[1] << "\n";
     } else if (PNaClABIProps::isValidCallingConv(CallingConv)) {
       if (CallingConv != CallingConv::C) {
-        Tokens() << PNaClABIProps::CallingConvName(CallingConv) << Space();
+        Tokens() << Space() << PNaClABIProps::CallingConvName(CallingConv);
       }
     } else {
       Errors() << "Function " << FcnStrName

@@ -55,15 +55,16 @@
 #define LLVM_BITCODE_NACL_NACLBITCODEMUNGE_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <string>
 
 namespace llvm {
 
-class MemoryBuffer;
 class NaClBitstreamWriter;
 class NaClBitCodeAbbrev;
 
@@ -83,7 +84,7 @@ public:
                     uint64_t RecordTerminator)
       : Records(Records), RecordsSize(RecordsSize),
         RecordTerminator(RecordTerminator), WriteBlockID(-1), SetBID(-1),
-        DumpResults("Error: No previous dump results!\n"), MungedInput(nullptr),
+        DumpResults("Error: No previous dump results!\n"),
         DumpStream(nullptr), Writer(nullptr), FoundErrors(false),
         FatalBuffer(), FatalStream(FatalBuffer) {}
 
@@ -127,7 +128,7 @@ protected:
   // The results buffer of the last dump.
   std::string DumpResults;
   // The memory buffer containing the munged input.
-  MemoryBuffer *MungedInput;
+  std::unique_ptr<MemoryBuffer> MungedInput;
   // The stream containing errors and the objdump of the generated bitcode file.
   raw_ostream *DumpStream;
   // The bitstream writer to use to generate the bitcode file.
