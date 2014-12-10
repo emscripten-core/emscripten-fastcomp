@@ -272,7 +272,7 @@ let isCall = 1, Uses = [RSP], SchedRW = [WriteJump] in {
   def CALL64r       : I<0xFF, MRM2r, (outs), (ins GR64:$dst),
                         "call{q}\t{*}$dst", [(X86call GR64:$dst)],
                         IIC_CALL_RI>,
-                        Requires<[In64BitMode, IsNotNaCl]>; // @LOCALMOD
+                        Requires<[In64BitMode]>;
   def CALL64m       : I<0xFF, MRM2m, (outs), (ins i64mem:$dst),
                         "call{q}\t{*}$dst", [(X86call (loadi64 addr:$dst))],
                         IIC_CALL_MEM>,

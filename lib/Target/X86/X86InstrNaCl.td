@@ -156,6 +156,10 @@ let Defs = [RBP], isAsmParserOnly = 1 in {
 // Because pointers are 32-bit on X86-64 Native Client, we need to
 // produce new versions of the JMP64/CALL64 instructions which can accept
 // addresses which are i32 instead of i64.
+//
+// Indirect calls have been changed to zero extend i32 to i64, so
+// we don't need a NaCl-specific CALL64r. We could possibly do the same for
+// indirect branches (switch jump tables) and direct calls.
 
 let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
   def NACL_CG_JMP64r     : I<0, Pseudo, (outs), (ins GR32:$dst),
@@ -170,12 +174,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
 let isCall = 1, Uses = [RSP] in {
     def NACL_CG_CALL64pcrel32 : I<0, Pseudo, (outs),
                                 (ins i32imm_pcrel:$dst),
-                                "callq\t$dst", []>,
-                                Requires<[IsNaCl, In64BitMode]>;
-
-    def NACL_CG_CALL64r       : I<0, Pseudo, (outs), (ins GR32:$dst),
-                                "naclcall\t$dst,%r15",
-                                [(X86call GR32:$dst)]>,
+                                "call{q}\t$dst", []>,
                                 Requires<[IsNaCl, In64BitMode]>;
 }
 
@@ -196,18 +195,10 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
                              (ins i32imm_pcrel:$dst, i32imm:$offset),
                              "#TC_RETURN $dst $offset", []>,
                           Requires<[IsNaCl, In64BitMode]>;
-  def NACL_CG_TCRETURNri64 : I<0, Pseudo, (outs),
-                            (ins GR32_TC_64:$dst, i32imm:$offset),
-                            "#TC_RETURN $dst $offset", []>,
-                            Requires<[IsNaCl, In64BitMode]>;
 
   def NACL_CG_TAILJMPd64 : I<0, Pseudo, (outs),
                            (ins i32imm_pcrel:$dst),
                            "jmp\t$dst  # TAILCALL", []>,
-                           Requires<[IsNaCl, In64BitMode]>;
-  def NACL_CG_TAILJMPr64 : I<0, Pseudo, (outs),
-                           (ins GR32_TC_64:$dst),
-                           "nacljmp\t$dst,%r15  # TAILCALL", []>,
                            Requires<[IsNaCl, In64BitMode]>;
 }
 
@@ -217,10 +208,6 @@ def : Pat<(X86tcret (i32 tglobaladdr:$dst), imm:$off),
 
 def : Pat<(X86tcret (i32 texternalsym:$dst), imm:$off),
           (NACL_CG_TCRETURNdi64 texternalsym:$dst, imm:$off)>,
-         Requires<[IsNaCl, In64BitMode]>;
-
-def : Pat<(X86tcret GR32_TC_64:$dst, imm:$off),
-          (NACL_CG_TCRETURNri64 GR32_TC_64:$dst, imm:$off)>,
          Requires<[IsNaCl, In64BitMode]>;
 
 // ELF TLS Support

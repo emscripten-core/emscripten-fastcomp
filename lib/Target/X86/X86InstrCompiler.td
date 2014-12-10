@@ -992,7 +992,7 @@ def : Pat<(X86tcret (i32 texternalsym:$dst), imm:$off),
 
 def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
           (TCRETURNri64 ptr_rc_tailcall:$dst, imm:$off)>,
-          Requires<[In64BitMode, IsNotNaCl]>;
+          Requires<[In64BitMode]>;
 
 // Don't fold loads into X86tcret requiring more than 6 regs.
 // There wouldn't be enough scratch registers for base+index.

@@ -420,13 +420,21 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   case X86::CALL32r              : NewOpc = X86::NACL_CALL32r; break;
   // 64-bit
   case X86::NACL_CG_JMP64r       : NewOpc = X86::NACL_JMP64r; break;
-  case X86::NACL_CG_CALL64r      : NewOpc = X86::NACL_CALL64r; break;
-  case X86::NACL_CG_TAILJMPr64   : NewOpc = X86::NACL_JMP64r; break;
+  case X86::CALL64r              : NewOpc = X86::NACL_CALL64r; break;
+  case X86::TAILJMPr64           : NewOpc = X86::NACL_JMP64r; break;
   }
   if (NewOpc) {
+    unsigned TargetReg = MI.getOperand(0).getReg();
+    if (Is64Bit) {
+      // CALL64r, etc. take a 64-bit register as a target. However, NaCl gas
+      // expects naclcall/nacljmp pseudos to have 32-bit regs as targets
+      // so NACL_CALL64r and NACL_JMP64r stick with that as well.
+      // Demote any 64-bit register to 32-bit to match the expectations.
+      TargetReg = DemoteRegTo32(TargetReg);
+    }
     MachineInstrBuilder NewMI =
      BuildMI(MBB, MBBI, DL, TII->get(NewOpc))
-       .addOperand(MI.getOperand(0));
+       .addReg(TargetReg);
     if (Is64Bit) {
       NewMI.addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
     }

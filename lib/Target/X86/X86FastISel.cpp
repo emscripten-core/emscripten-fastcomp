@@ -3048,9 +3048,20 @@ bool X86FastISel::FastLowerCall(CallLoweringInfo &CLI) {
   if (CalleeOp) {
     // Register-indirect call.
     unsigned CallOpc;
-    if (Subtarget->is64Bit())
-      CallOpc = Subtarget->isTargetNaCl() ? X86::NACL_CG_CALL64r : X86::CALL64r; // @LOCALMOD
-    else
+    if (Subtarget->is64Bit()) {
+      // @LOCALMOD-BEGIN: zero extend the register like in the non-O0 case:
+      // http://reviews.llvm.org/D5355
+      // TODO: upstream this for x32 also (add a test).
+      if (Subtarget->isTarget64BitILP32()) {
+        unsigned CalleeOp32 = CalleeOp;
+        CalleeOp = createResultReg(&X86::GR64RegClass);
+        BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+                TII.get(TargetOpcode::SUBREG_TO_REG), CalleeOp)
+            .addImm(0).addReg(CalleeOp32).addImm(X86::sub_32bit);
+      }
+      // @LOCALMOD-END
+      CallOpc = X86::CALL64r;
+    } else
       CallOpc = X86::CALL32r;
     MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(CallOpc))
       .addReg(CalleeOp);

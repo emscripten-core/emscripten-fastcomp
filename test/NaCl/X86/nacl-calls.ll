@@ -20,8 +20,8 @@ entry:
 ; NACL32O0: movl $66496, [[REG:%[a-z0-9]+]]
 ; NACL32O0: naclcall {{.*}}[[REG]]
 ; NACL64-LABEL: call_address
-; NACL64: movl $66496, [[REG:%[a-z0-9]+]]
-; NACL64: naclcall {{.*}}[[REG]],%r15
+; NACL64: movl $66496, %{{.*}}
+; NACL64: naclcall %{{.*}},%r15
 
 define fastcc i32 @tail_call_address(i32 %arg) {
 entry:
@@ -35,8 +35,8 @@ entry:
 ; NACL32O0: movl $66496, [[REG:%[a-z0-9]+]]
 ; NACL32O0: nacljmp {{.*}}[[REG]]
 ; NACL64-LABEL: tail_call_address
-; NACL64: movl $66496, [[REG:%[a-z0-9]+]]
-; NACL64: nacljmp {{.*}}[[REG]], %r15
+; NACL64: movl $66496, %{{.*}}
+; NACL64: nacljmp %{{.*}}, %r15
 
 
 ;;;;;
@@ -107,8 +107,8 @@ define i32 @call_indirect() {
 ; NACL32O0: movl fp, [[REG:%[a-z0-9]+]]
 ; NACL32O0: naclcall {{.*}}[[REG]]
 ; NACL64-LABEL: call_indirect
-; NACL64: movl fp({{.*}}), [[REG:%[a-z0-9]+]]
-; NACL64: naclcall {{.*}}[[REG]],%r15
+; NACL64: movl fp({{.*}}), %{{.*}}
+; NACL64: naclcall %{{.*}},%r15
 
 define fastcc i32 @tail_call_indirect() {
   %1 = load i32 (i32)** @fp, align 4
@@ -122,8 +122,8 @@ define fastcc i32 @tail_call_indirect() {
 ; NACL32O0: movl fp, [[REG:%[a-z0-9]+]]
 ; NACL32O0: nacljmp {{.*}}[[REG]]
 ; NACL64-LABEL: tail_call_indirect
-; NACL64: movl fp({{.*}}), [[REG:%[a-z0-9]+]]
-; NACL64: nacljmp {{.*}}[[REG]], %r15
+; NACL64: movl fp({{.*}}), %{{.*}}
+; NACL64: nacljmp %{{.*}}, %r15
 
 ; "Without" a load (may load from stack on x86-32 still).
 define i32 @call_indirect_arg(i32 ()* %argfp) {

@@ -119,7 +119,6 @@ static unsigned findDeadCallerSavedReg(MachineBasicBlock &MBB,
   case X86::TCRETURNdi64:
   case X86::TCRETURNri64:
   case X86::NACL_CG_TCRETURNdi64: // @LOCALMOD
-  case X86::NACL_CG_TCRETURNri64: // @LOCALMOD
   case X86::TCRETURNmi64:
   case X86::EH_RETURN:
   case X86::EH_RETURN64: {
@@ -907,7 +906,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   case X86::TCRETURNri64:
   case X86::TCRETURNmi64:
   case X86::NACL_CG_TCRETURNdi64: // @LOCALMOD
-  case X86::NACL_CG_TCRETURNri64: // @LOCALMOD
   case X86::EH_RETURN:
   case X86::EH_RETURN64:
     break;  // These are ok
@@ -1001,7 +999,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   } else if (RetOpcode == X86::TCRETURNri || RetOpcode == X86::TCRETURNdi ||
              RetOpcode == X86::TCRETURNmi ||
              RetOpcode == X86::TCRETURNri64 || RetOpcode == X86::TCRETURNdi64 ||
-             RetOpcode == X86::NACL_CG_TCRETURNri64 || // @LOCALMOD
              RetOpcode == X86::NACL_CG_TCRETURNdi64 || // @LOCALMOD
              RetOpcode == X86::TCRETURNmi64) {
     bool isMem = RetOpcode == X86::TCRETURNmi || RetOpcode == X86::TCRETURNmi64;
@@ -1062,11 +1059,6 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
     } else if (RetOpcode == X86::TCRETURNri64) {
       BuildMI(MBB, MBBI, DL, TII.get(X86::TAILJMPr64)).
         addReg(JumpTarget.getReg(), RegState::Kill);
-// @LOCALMOD-BEGIN
-    } else if (RetOpcode == X86::NACL_CG_TCRETURNri64) {
-      BuildMI(MBB, MBBI, DL, TII.get(X86::NACL_CG_TAILJMPr64)).
-        addReg(JumpTarget.getReg(), RegState::Kill);
-// @LOCALMOD-END
     } else {
       BuildMI(MBB, MBBI, DL, TII.get(X86::TAILJMPr)).
         addReg(JumpTarget.getReg(), RegState::Kill);
