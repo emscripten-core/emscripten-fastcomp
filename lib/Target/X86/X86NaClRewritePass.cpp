@@ -146,13 +146,13 @@ static bool IsRegAbsolute(unsigned Reg) {
           (Reg == X86::R15 && RestrictR15));
 }
 
-static bool FindMemoryOperand(const MachineInstr &MI, unsigned* index) {
+static bool FindMemoryOperand(const MachineInstr &MI,
+                              SmallVectorImpl<unsigned>* indices) {
   int NumFound = 0;
-  unsigned MemOp = 0;
   for (unsigned i = 0; i < MI.getNumOperands(); ) {
     if (isMem(&MI, i)) {
       NumFound++;
-      MemOp = i;
+      indices->push_back(i);
       i += X86::AddrNumOperands;
     } else {
       i++;
@@ -165,10 +165,6 @@ static bool FindMemoryOperand(const MachineInstr &MI, unsigned* index) {
   if (NumFound == 0)
     return false;
 
-  if (NumFound > 1)
-    llvm_unreachable("Too many memory operands in instruction!");
-
-  *index = MemOp;
   return true;
 }
 
@@ -504,65 +500,67 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
   if (IsPushPop(MI))
     return false;
 
-  unsigned MemOp;
-  if (!FindMemoryOperand(MI, &MemOp))
+  SmallVector<unsigned, 2> MemOps;
+  if (!FindMemoryOperand(MI, &MemOps))
     return false;
-  assert(isMem(&MI, MemOp));
-  MachineOperand &BaseReg  = MI.getOperand(MemOp + 0);
-  MachineOperand &Scale = MI.getOperand(MemOp + 1);
-  MachineOperand &IndexReg  = MI.getOperand(MemOp + 2);
-  //MachineOperand &Disp = MI.getOperand(MemOp + 3);
-  MachineOperand &SegmentReg = MI.getOperand(MemOp + 4);
+  bool Modified = false;
+  for (unsigned MemOp : MemOps) {
+    MachineOperand &BaseReg  = MI.getOperand(MemOp + 0);
+    MachineOperand &Scale = MI.getOperand(MemOp + 1);
+    MachineOperand &IndexReg  = MI.getOperand(MemOp + 2);
+    //MachineOperand &Disp = MI.getOperand(MemOp + 3);
+    MachineOperand &SegmentReg = MI.getOperand(MemOp + 4);
 
-  // RIP-relative addressing is safe.
-  if (BaseReg.getReg() == X86::RIP)
-    return false;
+    // RIP-relative addressing is safe.
+    if (BaseReg.getReg() == X86::RIP)
+      continue;
 
-  // Make sure the base and index are 64-bit registers.
-  IndexReg.setReg(PromoteRegTo64(IndexReg.getReg()));
-  BaseReg.setReg(PromoteRegTo64(BaseReg.getReg()));
-  assert(IndexReg.getSubReg() == 0);
-  assert(BaseReg.getSubReg() == 0);
+    // Make sure the base and index are 64-bit registers.
+    IndexReg.setReg(PromoteRegTo64(IndexReg.getReg()));
+    BaseReg.setReg(PromoteRegTo64(BaseReg.getReg()));
+    assert(IndexReg.getSubReg() == 0);
+    assert(BaseReg.getSubReg() == 0);
 
-  bool AbsoluteBase = IsRegAbsolute(BaseReg.getReg());
-  bool AbsoluteIndex = IsRegAbsolute(IndexReg.getReg());
-  unsigned AddrReg = 0;
+    bool AbsoluteBase = IsRegAbsolute(BaseReg.getReg());
+    bool AbsoluteIndex = IsRegAbsolute(IndexReg.getReg());
+    unsigned AddrReg = 0;
 
-  if (AbsoluteBase && AbsoluteIndex) {
-    llvm_unreachable("Unexpected absolute register pair");
-  } else if (AbsoluteBase) {
-    AddrReg = IndexReg.getReg();
-  } else if (AbsoluteIndex) {
-    assert(!BaseReg.getReg() && "Unexpected base register");
-    assert(Scale.getImm() == 1);
-    AddrReg = 0;
-  } else {
-    if (!BaseReg.getReg()) {
-      // No base, fill in relative.
-      BaseReg.setReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
+    if (AbsoluteBase && AbsoluteIndex) {
+      llvm_unreachable("Unexpected absolute register pair");
+    } else if (AbsoluteBase) {
       AddrReg = IndexReg.getReg();
-    } else if (!FlagUseZeroBasedSandbox) {
-      // Switch base and index registers if index register is undefined.
-      // That is do conversions like "mov d(%r,0,0) -> mov d(%r15, %r, 1)".
-      assert (!IndexReg.getReg()
-              && "Unexpected index and base register");
-      IndexReg.setReg(BaseReg.getReg());
-      Scale.setImm(1);
-      BaseReg.setReg(X86::R15);
-      AddrReg = IndexReg.getReg();
+    } else if (AbsoluteIndex) {
+      assert(!BaseReg.getReg() && "Unexpected base register");
+      assert(Scale.getImm() == 1);
+      AddrReg = 0;
     } else {
-      llvm_unreachable(
-          "Unexpected index and base register");
+      if (!BaseReg.getReg()) {
+        // No base, fill in relative.
+        BaseReg.setReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
+        AddrReg = IndexReg.getReg();
+      } else if (!FlagUseZeroBasedSandbox) {
+        // Switch base and index registers if index register is undefined.
+        // That is do conversions like "mov d(%r,0,0) -> mov d(%r15, %r, 1)".
+        assert (!IndexReg.getReg()
+                && "Unexpected index and base register");
+        IndexReg.setReg(BaseReg.getReg());
+        Scale.setImm(1);
+        BaseReg.setReg(X86::R15);
+        AddrReg = IndexReg.getReg();
+      } else {
+        llvm_unreachable(
+            "Unexpected index and base register");
+      }
+    }
+
+    if (AddrReg) {
+      assert(!SegmentReg.getReg() && "Unexpected segment register");
+      SegmentReg.setReg(X86::PSEUDO_NACL_SEG);
+      Modified = true;
     }
   }
 
-  if (AddrReg) {
-    assert(!SegmentReg.getReg() && "Unexpected segment register");
-    SegmentReg.setReg(X86::PSEUDO_NACL_SEG);
-    return true;
-  }
-
-  return false;
+  return Modified;
 }
 
 bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
