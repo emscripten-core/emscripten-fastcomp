@@ -369,11 +369,6 @@ bool NaClParseBitcodeMunger::runTest(
     delete ModuleOrError.get();
   } else {
     Error() << ModuleOrError.getError().message() << "\n";
-    // TODO(kschimpf) The code sometimes deletes the buffer, and
-    // sometimes releases it, when an error occurs. It should always
-    // release.  The bug should be found and fixed.  In the meantime,
-    // just release the buffer so that we can test errors.
-    MungedInput.release();
   }
   cleanupTest();
   return !FoundErrors;

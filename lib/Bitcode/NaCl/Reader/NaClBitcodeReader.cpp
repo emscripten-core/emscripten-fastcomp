@@ -1890,6 +1890,11 @@ ErrorOr<Module *> llvm::NaClParseBitcodeFile(
   Module *M = ModuleOrErr.get();
   // Read in the entire module, and destroy the NaClBitcodeReader.
   if (std::error_code EC = M->materializeAllPermanently(true)) {
+    // Be sure the input buffer is released on error
+    // (materalializeAllPermanently doesn't release the buffer on error).
+    // TODO(kschimpf) Revisit this when we merge to tip of LLVM.
+    if (GVMaterializer *Materializer = M->getMaterializer())
+      Materializer->releaseBuffer();
     delete M;
     return EC;
   }

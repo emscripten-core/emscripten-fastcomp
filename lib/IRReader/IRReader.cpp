@@ -111,18 +111,22 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
                     (const unsigned char *)Buffer->getBufferEnd())) {
     ErrorOr<Module *> ModuleOrErr =
         NaClParseBitcodeFile(Buffer, Context, Verbose);
-    if (std::error_code EC = ModuleOrErr.getError())
+    if (std::error_code EC = ModuleOrErr.getError()) {
       Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
                          EC.message());
+      return nullptr;
+    }
     // ParseBitcodeFile does not take ownership of the Buffer.
     return ModuleOrErr.get();
   } else if (Format == LLVMFormat) {
     if (isBitcode((const unsigned char *)Buffer->getBufferStart(),
                   (const unsigned char *)Buffer->getBufferEnd())) {
       ErrorOr<Module *> MOrErr = parseBitcodeFile(Buffer, Context);
-      if (std::error_code EC = MOrErr.getError())
+      if (std::error_code EC = MOrErr.getError()) {
         Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
                            EC.message());
+        return nullptr;
+      }
       // ParseBitcodeFile does not take ownership of the Buffer.
       return MOrErr.get();
     }
@@ -131,7 +135,7 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
   } else {
     Err = SMDiagnostic(Buffer->getBufferIdentifier(), SourceMgr::DK_Error,
                        "Did not specify correct format for file");
-    return 0;
+    return nullptr;
   }
 }
 
