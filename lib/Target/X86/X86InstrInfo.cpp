@@ -3148,6 +3148,35 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   // Moving EFLAGS to / from another register requires a push and a pop.
   // Notice that we have to adjust the stack if we don't want to clobber the
   // first frame index. See X86FrameLowering.cpp - colobbersTheStack.
+
+  // @LOCALMOD-BEGIN
+  //
+  // NaCl's sandbox doesn't allow usage of PUSHF/POPF. Instead use LAHF/SAHF
+  // which write the bottom 8 EFLAGS bits from/to AH.
+  bool FromEFLAGS = SrcReg == X86::EFLAGS;
+  bool ToEFLAGS = DestReg == X86::EFLAGS;
+  int Reg = FromEFLAGS ? DestReg : SrcReg;
+  bool is32 = X86::GR32RegClass.contains(Reg);
+  bool is64 = X86::GR64RegClass.contains(Reg);
+  int Mov = is64 ? X86::MOV64rr : X86::MOV32rr;
+  int Push = is64 ? X86::PUSH64r : X86::PUSH32r;
+  int Pop = is64 ? X86::POP64r : X86::POP32r;
+  int AX = is64 ? X86::RAX : X86::EAX;
+  if ((FromEFLAGS || ToEFLAGS) && (is32 || is64) && Subtarget.isTargetNaCl()) {
+    BuildMI(MBB, MI, DL, get(Push)).addReg(AX);
+    if (FromEFLAGS) {
+      BuildMI(MBB, MI, DL, get(X86::LAHF));
+      BuildMI(MBB, MI, DL, get(Mov), Reg).addReg(AX);
+    }
+    if (ToEFLAGS) {
+      BuildMI(MBB, MI, DL, get(Mov), AX).addReg(Reg, getKillRegState(KillSrc));
+      BuildMI(MBB, MI, DL, get(X86::SAHF));
+    }
+    BuildMI(MBB, MI, DL, get(Pop), AX);
+    return;
+  }
+  // @LOCALMOD-END
+
   if (SrcReg == X86::EFLAGS) {
     if (X86::GR64RegClass.contains(DestReg)) {
       BuildMI(MBB, MI, DL, get(X86::PUSHF64));
