@@ -1413,18 +1413,18 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
                                          << getValueAsStr(I->getOperand(1)) << ")), " <<
               "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
                                       << getValueAsStr(I->getOperand(1)) << "))";
-      break;
+      return;
     case FCmpInst::FCMP_ORD:
       Code << "SIMD_float32x4_and("
               "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
               "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
-      break;
+      return;
 
     case FCmpInst::FCMP_UNO:
       Code << "SIMD_float32x4_or("
               "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
               "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
-      break;
+      return;
 
     case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
     case ICmpInst::FCMP_OGT:  Name = "greaterThan"; break;
