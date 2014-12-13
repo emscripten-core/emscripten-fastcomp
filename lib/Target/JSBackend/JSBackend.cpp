@@ -1391,10 +1391,10 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
   bool Invert = false;
   switch (cast<FCmpInst>(I)->getPredicate()) {
     case ICmpInst::FCMP_FALSE:
-      Code << "SIMD_int32x4(0, 0, 0, 0)";
+      Code << "SIMD_int32x4_splat(0)";
       return;
     case ICmpInst::FCMP_TRUE:
-      Code << "SIMD_int32x4(-1, -1, -1, -1)";
+      Code << "SIMD_int32x4_splat(-1)";
       return;
     case ICmpInst::FCMP_ONE:
       Code << "SIMD_float32x4_and(SIMD_float32x4_and("
