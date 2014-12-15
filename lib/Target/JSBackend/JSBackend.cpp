@@ -455,6 +455,7 @@ namespace {
     void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
+    void generateShiftExpression(const BinaryOperator *I, raw_string_ostream& Code);
     void generateUnrolledExpression(const User *I, raw_string_ostream& Code);
     bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
     void generateExpression(const User *I, raw_string_ostream& Code);
@@ -1449,8 +1450,60 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
     Code << ")";
 }
 
+static const Value *getElement(const Value *V, unsigned i) {
+    if (const InsertElementInst *II = dyn_cast<InsertElementInst>(V)) {
+        if (ConstantInt *CI = dyn_cast<ConstantInt>(II->getOperand(2))) {
+            if (CI->equalsInt(i))
+                return II->getOperand(1);
+        }
+        return getElement(II->getOperand(0), i);
+    }
+    return NULL;
+}
+
+static const Value *getSplatValue(const Value *V) {
+    if (const Constant *C = dyn_cast<Constant>(V))
+        return C->getSplatValue();
+
+    VectorType *VTy = cast<VectorType>(V->getType());
+    const Value *Result = NULL;
+    for (unsigned i = 0; i < VTy->getNumElements(); ++i) {
+        const Value *E = getElement(V, i);
+        if (!E)
+            return NULL;
+        if (!Result)
+            Result = E;
+        else if (Result != E)
+            return NULL;
+    }
+    return Result;
+
+}
+
+void JSWriter::generateShiftExpression(const BinaryOperator *I, raw_string_ostream& Code) {
+    // If we're shifting every lane by the same amount (shifting by a splat value
+    // then we can use a ByScalar shift.
+    const Value *Count = I->getOperand(1);
+    if (const Value *Splat = getSplatValue(Count)) {
+        Code << getAssignIfNeeded(I) << "SIMD_int32x4_";
+        if (I->getOpcode() == Instruction::AShr)
+            Code << "shiftRightArithmeticByScalar";
+        else if (I->getOpcode() == Instruction::LShr)
+            Code << "shiftRightLogicalByScalar";
+        else
+            Code << "shiftLeftByScalar";
+        Code << "(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(Splat) << ")";
+        return;
+    }
+
+    // SIMD.js does not currently have vector-vector shifts.
+    generateUnrolledExpression(I, Code);
+}
+
 void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Code) {
   VectorType *VT = cast<VectorType>(I->getType());
+
+  Code << getAssignIfNeeded(I);
 
   if (VT->getElementType()->isIntegerTy()) {
     Code << "SIMD_int32x4(";
@@ -1480,6 +1533,18 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
       case Instruction::URem:
         Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << ">>>0) / ("
              << getValueAsStr(I->getOperand(1)) << Lane << ">>>0)>>>0";
+        break;
+      case Instruction::AShr:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) >> ("
+             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        break;
+      case Instruction::LShr:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) >>> ("
+             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        break;
+      case Instruction::Shl:
+        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) << ("
+             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
         break;
       default: I->dump(); error("invalid unrolled vector instr"); break;
     }
@@ -1514,8 +1579,13 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
         break;
       case Instruction::Select:
-        assert(I->getOperand(0)->getType()->isIntegerTy(1) && "vector-of-i1 select not yet supported");
-        // select arms are SIMD values, no special handling
+        // Since we represent vectors of i1 as vectors of sign extended wider integers,
+        // selecting on them is just an elementwise select.
+        if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
+          Code << getAssignIfNeeded(I) << "SIMD_int32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+        } else {
+          Code << getAssignIfNeeded(I) << "SIMD_float32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+        }
         return false;
       case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD_float32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD_float32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
@@ -1579,6 +1649,11 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         // as what would happen if the API did support them, since hardware
         // doesn't support them).
         generateUnrolledExpression(I, Code);
+        break;
+      case Instruction::AShr:
+      case Instruction::LShr:
+      case Instruction::Shl:
+        generateShiftExpression(cast<BinaryOperator>(I), Code);
         break;
     }
     return true;
