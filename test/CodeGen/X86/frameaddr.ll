@@ -2,6 +2,8 @@
 ; RUN: llc < %s -march=x86    -fast-isel -fast-isel-abort | FileCheck %s --check-prefix=CHECK-32
 ; RUN: llc < %s -march=x86-64                             | FileCheck %s --check-prefix=CHECK-64
 ; RUN: llc < %s -march=x86-64 -fast-isel -fast-isel-abort | FileCheck %s --check-prefix=CHECK-64
+; RUN: llc < %s -mtriple=x86_64-nacl                    | FileCheck %s --check-prefix=CHECK-NACL64
+; RUN: llc < %s -mtriple=x86_64-nacl -fast-isel -fast-isel-abort | FileCheck %s --check-prefix=CHECK-NACL64
 
 define i8* @test1() nounwind {
 entry:
@@ -17,6 +19,11 @@ entry:
 ; CHECK-64-NEXT:  movq %rbp, %rax
 ; CHECK-64-NEXT:  pop
 ; CHECK-64-NEXT:  ret
+; CHECK-NACL64-LABEL: test1
+; CHECK-NACL64:       movl %ebp, %eax
+; CHECK-NACL64-NEXT:  pushq %rax
+; CHECK-NACL64-NEXT:  movq %rsp, %rbp
+; CHECK-NACL64-NEXT:  movl %ebp, %eax
   %0 = tail call i8* @llvm.frameaddress(i32 0)
   ret i8* %0
 }
@@ -37,6 +44,14 @@ entry:
 ; CHECK-64-NEXT:  movq (%rax), %rax
 ; CHECK-64-NEXT:  pop
 ; CHECK-64-NEXT:  ret
+; CHECK-NACL64-LABEL: test2
+; CHECK-NACL64:       movl %ebp, %eax
+; CHECK-NACL64-NEXT:  pushq %rax
+; CHECK-NACL64-NEXT:  movq %rsp, %rbp
+; -fast-isel and -O2 are a bit different in how they load from rbp
+; (we can use NACL64-NEXT if we ever make the sequences the same).
+; CHECK-NACL64:       movl {{.*}}(%{{.*}}), %eax
+; CHECK-NACL64-NEXT:  movl %nacl:(%r15,%rax), %eax
   %0 = tail call i8* @llvm.frameaddress(i32 2)
   ret i8* %0
 }
