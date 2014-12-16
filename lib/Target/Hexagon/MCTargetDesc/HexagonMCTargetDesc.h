@@ -11,14 +11,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef HEXAGONMCTARGETDESC_H
-#define HEXAGONMCTARGETDESC_H
+#ifndef LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCTARGETDESC_H
+#define LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCTARGETDESC_H
 
 namespace llvm {
+class MCCodeEmitter;
+class MCContext;
+class MCInstrInfo;
+class MCRegisterInfo;
 class MCSubtargetInfo;
 class Target;
 
 extern Target TheHexagonTarget;
+
+MCCodeEmitter *createHexagonMCCodeEmitter(const MCInstrInfo &MCII,
+                                          const MCRegisterInfo &MRI,
+                                          const MCSubtargetInfo &MST,
+                                          MCContext &MCT);
 
 } // End llvm namespace
 

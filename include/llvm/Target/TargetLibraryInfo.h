@@ -26,10 +26,18 @@ namespace llvm {
       ZdaPv,
       /// void operator delete[](void*, nothrow);
       ZdaPvRKSt9nothrow_t,
+      /// void operator delete[](void*, unsigned int);
+      ZdaPvj,
+      /// void operator delete[](void*, unsigned long);
+      ZdaPvm,
       /// void operator delete(void*);
       ZdlPv,
       /// void operator delete(void*, nothrow);
       ZdlPvRKSt9nothrow_t,
+      /// void operator delete(void*, unsigned int);
+      ZdlPvj,
+      /// void operator delete(void*, unsigned long);
+      ZdlPvm,
       /// void *new[](unsigned int);
       Znaj,
       /// void *new[](unsigned int, nothrow);
@@ -54,7 +62,7 @@ namespace llvm {
       cxa_atexit,
       /// void __cxa_guard_abort(guard_t *guard);
       /// guard_t is int64_t in Itanium ABI or int32_t on ARM eabi.
-      cxa_guard_abort,      
+      cxa_guard_abort,
       /// int __cxa_guard_acquire(guard_t *guard);
       cxa_guard_acquire,
       /// void __cxa_guard_release(guard_t *guard);
@@ -696,7 +704,7 @@ public:
   TargetLibraryInfo();
   TargetLibraryInfo(const Triple &T);
   explicit TargetLibraryInfo(const TargetLibraryInfo &TLI);
-  
+
   /// getLibFunc - Search for a particular function name.  If it is one of the
   /// known library functions, return true and set F to the corresponding value.
   bool getLibFunc(StringRef funcName, LibFunc::Func &F) const;

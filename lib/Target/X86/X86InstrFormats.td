@@ -36,20 +36,21 @@ def MRM6m  : Format<30>; def MRM7m  : Format<31>;
 def MRM_C0 : Format<32>; def MRM_C1 : Format<33>; def MRM_C2 : Format<34>;
 def MRM_C3 : Format<35>; def MRM_C4 : Format<36>; def MRM_C8 : Format<37>;
 def MRM_C9 : Format<38>; def MRM_CA : Format<39>; def MRM_CB : Format<40>;
-def MRM_D0 : Format<41>; def MRM_D1 : Format<42>; def MRM_D4 : Format<43>;
-def MRM_D5 : Format<44>; def MRM_D6 : Format<45>; def MRM_D8 : Format<46>;
-def MRM_D9 : Format<47>; def MRM_DA : Format<48>; def MRM_DB : Format<49>;
-def MRM_DC : Format<50>; def MRM_DD : Format<51>; def MRM_DE : Format<52>;
-def MRM_DF : Format<53>; def MRM_E0 : Format<54>; def MRM_E1 : Format<55>;
-def MRM_E2 : Format<56>; def MRM_E3 : Format<57>; def MRM_E4 : Format<58>;
-def MRM_E5 : Format<59>; def MRM_E8 : Format<60>; def MRM_E9 : Format<61>;
-def MRM_EA : Format<62>; def MRM_EB : Format<63>; def MRM_EC : Format<64>;
-def MRM_ED : Format<65>; def MRM_EE : Format<66>; def MRM_F0 : Format<67>;
-def MRM_F1 : Format<68>; def MRM_F2 : Format<69>; def MRM_F3 : Format<70>;
-def MRM_F4 : Format<71>; def MRM_F5 : Format<72>; def MRM_F6 : Format<73>;
-def MRM_F7 : Format<74>; def MRM_F8 : Format<75>; def MRM_F9 : Format<76>;
-def MRM_FA : Format<77>; def MRM_FB : Format<78>; def MRM_FC : Format<79>;
-def MRM_FD : Format<80>; def MRM_FE : Format<81>; def MRM_FF : Format<82>;
+def MRM_CF : Format<41>; def MRM_D0 : Format<42>; def MRM_D1 : Format<43>;
+def MRM_D4 : Format<44>; def MRM_D5 : Format<45>; def MRM_D6 : Format<46>;
+def MRM_D7 : Format<47>; def MRM_D8 : Format<48>; def MRM_D9 : Format<49>;
+def MRM_DA : Format<50>; def MRM_DB : Format<51>; def MRM_DC : Format<52>;
+def MRM_DD : Format<53>; def MRM_DE : Format<54>; def MRM_DF : Format<55>;
+def MRM_E0 : Format<56>; def MRM_E1 : Format<57>; def MRM_E2 : Format<58>;
+def MRM_E3 : Format<59>; def MRM_E4 : Format<60>; def MRM_E5 : Format<61>;
+def MRM_E8 : Format<62>; def MRM_E9 : Format<63>; def MRM_EA : Format<64>;
+def MRM_EB : Format<65>; def MRM_EC : Format<66>; def MRM_ED : Format<67>;
+def MRM_EE : Format<68>; def MRM_F0 : Format<69>; def MRM_F1 : Format<70>;
+def MRM_F2 : Format<71>; def MRM_F3 : Format<72>; def MRM_F4 : Format<73>;
+def MRM_F5 : Format<74>; def MRM_F6 : Format<75>; def MRM_F7 : Format<76>;
+def MRM_F8 : Format<77>; def MRM_F9 : Format<78>; def MRM_FA : Format<79>;
+def MRM_FB : Format<80>; def MRM_FC : Format<81>; def MRM_FD : Format<82>;
+def MRM_FE : Format<83>; def MRM_FF : Format<84>;
 def CustomFrm : Format<126>; // @LOCALMOD
 
 // ImmType - This specifies the immediate type used by an instruction. This is
@@ -101,6 +102,7 @@ def CD8VF  : CD8VForm<0>;  // v := VL
 def CD8VH  : CD8VForm<1>;  // v := VL/2
 def CD8VQ  : CD8VForm<2>;  // v := VL/4
 def CD8VO  : CD8VForm<3>;  // v := VL/8
+// The tuple (subvector) forms.
 def CD8VT1 : CD8VForm<4>;  // v := 1
 def CD8VT2 : CD8VForm<5>;  // v := 2
 def CD8VT4 : CD8VForm<6>;  // v := 4
@@ -714,6 +716,9 @@ class AVX512BI<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag> pattern, InstrItinClass itin = NoItinerary>
       : I<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>, PD,
         Requires<[HasAVX512]>;
+class AVX512BIBase : PD {
+  Domain ExeDomain = SSEPackedInt;
+}
 class AVX512BIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
               list<dag> pattern, InstrItinClass itin = NoItinerary>
       : Ii8<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>, PD,
@@ -722,6 +727,10 @@ class AVX512AIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
               list<dag> pattern, InstrItinClass itin = NoItinerary>
       : Ii8<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>, TAPD,
         Requires<[HasAVX512]>;
+class AVX512AIi8Base : TAPD {
+  Domain ExeDomain = SSEPackedInt;
+  ImmType ImmT = Imm8;
+}
 class AVX512Ii8<bits<8> o, Format F, dag outs, dag ins, string asm,
               list<dag> pattern, InstrItinClass itin = NoItinerary>
       : Ii8<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>,
@@ -744,6 +753,11 @@ class AVX512FMA3<bits<8> o, Format F, dag outs, dag ins, string asm,
            list<dag>pattern, InstrItinClass itin = NoItinerary>
       : I<o, F, outs, ins, asm, pattern, itin>, T8PD,
         EVEX_4V, Requires<[HasAVX512]>;
+class AVX512FMA3Base : T8PD, EVEX_4V;
+
+class AVX512<bits<8> o, Format F, dag outs, dag ins, string asm,
+           list<dag>pattern, InstrItinClass itin = NoItinerary>
+      : I<o, F, outs, ins, asm, pattern, itin>, Requires<[HasAVX512]>;
 
 // AES Instruction Templates:
 //

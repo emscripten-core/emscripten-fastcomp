@@ -1277,10 +1277,10 @@ static bool AnalyzeBitcode(std::unique_ptr<MemoryBuffer> &MemBuf,
   }
 
   if (ShowAbbreviationFrequencies || ShowValueDistributions) {
-    std::string ErrorInfo;
-    raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None);
-    if (!ErrorInfo.empty()) {
-      errs() << ErrorInfo << "\n";
+    std::error_code EC;
+    raw_fd_ostream Output(OutputFilename, EC, sys::fs::F_None);
+    if (EC) {
+      errs() << EC.message() << "\n";
       exit(1);
     }
     if (ShowAbbreviationFrequencies)
@@ -1494,11 +1494,11 @@ static bool CopyBitcode(std::unique_ptr<MemoryBuffer> &MemBuf,
   }
 
   // Write out the copied results.
-  std::string ErrorInfo;
+  std::error_code EC;
   std::unique_ptr<tool_output_file> OutFile(
-      new tool_output_file(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None));
-  if (!ErrorInfo.empty())
-    return Error(ErrorInfo);
+      new tool_output_file(OutputFilename.c_str(), EC, sys::fs::F_None));
+  if (EC)
+    return Error(EC.message());
 
   // Write the generated bitstream to "Out".
   OutFile->os().write((char*)&OutputBuffer.front(),

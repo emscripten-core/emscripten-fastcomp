@@ -365,7 +365,8 @@ bool CallInst::paramHasAttr(unsigned i, Attribute::AttrKind A) const {
 /// IsConstantOne - Return true only if val is constant int 1
 static bool IsConstantOne(Value *val) {
   assert(val && "IsConstantOne does not work with NULL val");
-  return isa<ConstantInt>(val) && cast<ConstantInt>(val)->isOne();
+  const ConstantInt *CVal = dyn_cast<ConstantInt>(val);
+  return CVal && CVal->isOne();
 }
 
 static Instruction *createMalloc(Instruction *InsertBefore,
@@ -2030,6 +2031,39 @@ bool BinaryOperator::isExact() const {
   return cast<PossiblyExactOperator>(this)->isExact();
 }
 
+void BinaryOperator::copyIRFlags(const Value *V) {
+  // Copy the wrapping flags.
+  if (auto *OB = dyn_cast<OverflowingBinaryOperator>(V)) {
+    setHasNoSignedWrap(OB->hasNoSignedWrap());
+    setHasNoUnsignedWrap(OB->hasNoUnsignedWrap());
+  }
+
+  // Copy the exact flag.
+  if (auto *PE = dyn_cast<PossiblyExactOperator>(V))
+    setIsExact(PE->isExact());
+  
+  // Copy the fast-math flags.
+  if (auto *FP = dyn_cast<FPMathOperator>(V))
+    copyFastMathFlags(FP->getFastMathFlags());
+}
+
+void BinaryOperator::andIRFlags(const Value *V) {
+  if (auto *OB = dyn_cast<OverflowingBinaryOperator>(V)) {
+    setHasNoSignedWrap(hasNoSignedWrap() & OB->hasNoSignedWrap());
+    setHasNoUnsignedWrap(hasNoUnsignedWrap() & OB->hasNoUnsignedWrap());
+  }
+  
+  if (auto *PE = dyn_cast<PossiblyExactOperator>(V))
+    setIsExact(isExact() & PE->isExact());
+  
+  if (auto *FP = dyn_cast<FPMathOperator>(V)) {
+    FastMathFlags FM = getFastMathFlags();
+    FM &= FP->getFastMathFlags();
+    copyFastMathFlags(FM);
+  }
+}
+
+
 //===----------------------------------------------------------------------===//
 //                             FPMathOperator Class
 //===----------------------------------------------------------------------===//
@@ -2525,6 +2559,17 @@ CastInst *CastInst::CreatePointerBitCastOrAddrSpaceCast(
   return Create(Instruction::BitCast, S, Ty, Name, InsertBefore);
 }
 
+CastInst *CastInst::CreateBitOrPointerCast(Value *S, Type *Ty,
+                                           const Twine &Name,
+                                           Instruction *InsertBefore) {
+  if (S->getType()->isPointerTy() && Ty->isIntegerTy())
+    return Create(Instruction::PtrToInt, S, Ty, Name, InsertBefore);
+  if (S->getType()->isIntegerTy() && Ty->isPointerTy())
+    return Create(Instruction::IntToPtr, S, Ty, Name, InsertBefore);
+
+  return Create(Instruction::BitCast, S, Ty, Name, InsertBefore);
+}
+
 CastInst *CastInst::CreateIntegerCast(Value *C, Type *Ty,
                                       bool isSigned, const Twine &Name,
                                       Instruction *InsertBefore) {
@@ -2680,6 +2725,18 @@ bool CastInst::isBitCastable(Type *SrcTy, Type *DestTy) {
     return false;
 
   return true;
+}
+
+bool CastInst::isBitOrNoopPointerCastable(Type *SrcTy, Type *DestTy,
+                                          const DataLayout *DL) {
+  if (auto *PtrTy = dyn_cast<PointerType>(SrcTy))
+    if (auto *IntTy = dyn_cast<IntegerType>(DestTy))
+      return DL && IntTy->getBitWidth() >= DL->getPointerTypeSizeInBits(PtrTy);
+  if (auto *PtrTy = dyn_cast<PointerType>(DestTy))
+    if (auto *IntTy = dyn_cast<IntegerType>(SrcTy))
+      return DL && IntTy->getBitWidth() >= DL->getPointerTypeSizeInBits(PtrTy);
+
+  return isBitCastable(SrcTy, DestTy);
 }
 
 // Provide a way to get a "cast" where the cast opcode is inferred from the

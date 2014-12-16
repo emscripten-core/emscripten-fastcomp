@@ -34,8 +34,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -110,9 +110,8 @@ void LiveIntervals::releaseMemory() {
 bool LiveIntervals::runOnMachineFunction(MachineFunction &fn) {
   MF = &fn;
   MRI = &MF->getRegInfo();
-  TM = &fn.getTarget();
-  TRI = TM->getRegisterInfo();
-  TII = TM->getInstrInfo();
+  TRI = MF->getSubtarget().getRegisterInfo();
+  TII = MF->getSubtarget().getInstrInfo();
   AA = &getAnalysis<AliasAnalysis>();
   Indexes = &getAnalysis<SlotIndexes>();
   DomTree = &getAnalysis<MachineDominatorTree>();

@@ -34,7 +34,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -139,21 +138,16 @@ private:
   ~InlineSpiller() {}
 
 public:
-  InlineSpiller(MachineFunctionPass &pass,
-                MachineFunction &mf,
-                VirtRegMap &vrm)
-    : MF(mf),
-      LIS(pass.getAnalysis<LiveIntervals>()),
-      LSS(pass.getAnalysis<LiveStacks>()),
-      AA(&pass.getAnalysis<AliasAnalysis>()),
-      MDT(pass.getAnalysis<MachineDominatorTree>()),
-      Loops(pass.getAnalysis<MachineLoopInfo>()),
-      VRM(vrm),
-      MFI(*mf.getFrameInfo()),
-      MRI(mf.getRegInfo()),
-      TII(*mf.getTarget().getInstrInfo()),
-      TRI(*mf.getTarget().getRegisterInfo()),
-      MBFI(pass.getAnalysis<MachineBlockFrequencyInfo>()) {}
+  InlineSpiller(MachineFunctionPass &pass, MachineFunction &mf, VirtRegMap &vrm)
+      : MF(mf), LIS(pass.getAnalysis<LiveIntervals>()),
+        LSS(pass.getAnalysis<LiveStacks>()),
+        AA(&pass.getAnalysis<AliasAnalysis>()),
+        MDT(pass.getAnalysis<MachineDominatorTree>()),
+        Loops(pass.getAnalysis<MachineLoopInfo>()), VRM(vrm),
+        MFI(*mf.getFrameInfo()), MRI(mf.getRegInfo()),
+        TII(*mf.getSubtarget().getInstrInfo()),
+        TRI(*mf.getSubtarget().getRegisterInfo()),
+        MBFI(pass.getAnalysis<MachineBlockFrequencyInfo>()) {}
 
   void spill(LiveRangeEdit &) override;
 
@@ -853,6 +847,15 @@ void InlineSpiller::markValueUsed(LiveInterval *LI, VNInfo *VNI) {
 /// reMaterializeFor - Attempt to rematerialize before MI instead of reloading.
 bool InlineSpiller::reMaterializeFor(LiveInterval &VirtReg,
                                      MachineBasicBlock::iterator MI) {
+
+  // Analyze instruction
+  SmallVector<std::pair<MachineInstr *, unsigned>, 8> Ops;
+  MIBundleOperands::VirtRegInfo RI =
+    MIBundleOperands(MI).analyzeVirtReg(VirtReg.reg, &Ops);
+
+  if (!RI.Reads)
+    return false;
+
   SlotIndex UseIdx = LIS.getInstructionIndex(MI).getRegSlot(true);
   VNInfo *ParentVNI = VirtReg.getVNInfoAt(UseIdx.getBaseIndex());
 
@@ -883,9 +886,6 @@ bool InlineSpiller::reMaterializeFor(LiveInterval &VirtReg,
 
   // If the instruction also writes VirtReg.reg, it had better not require the
   // same register for uses and defs.
-  SmallVector<std::pair<MachineInstr*, unsigned>, 8> Ops;
-  MIBundleOperands::VirtRegInfo RI =
-    MIBundleOperands(MI).analyzeVirtReg(VirtReg.reg, &Ops);
   if (RI.Tied) {
     markValueUsed(&VirtReg, ParentVNI);
     DEBUG(dbgs() << "\tcannot remat tied reg: " << UseIdx << '\t' << *MI);
@@ -939,10 +939,15 @@ void InlineSpiller::reMaterializeAll() {
   for (unsigned i = 0, e = RegsToSpill.size(); i != e; ++i) {
     unsigned Reg = RegsToSpill[i];
     LiveInterval &LI = LIS.getInterval(Reg);
-    for (MachineRegisterInfo::use_bundle_nodbg_iterator
-         RI = MRI.use_bundle_nodbg_begin(Reg), E = MRI.use_bundle_nodbg_end();
-         RI != E; ) {
-      MachineInstr *MI = &*(RI++);
+    for (MachineRegisterInfo::reg_bundle_iterator
+           RegI = MRI.reg_bundle_begin(Reg), E = MRI.reg_bundle_end();
+         RegI != E; ) {
+      MachineInstr *MI = &*(RegI++);
+
+      // Debug values are not allowed to affect codegen.
+      if (MI->isDebugValue())
+        continue;
+
       anyRemat |= reMaterializeFor(LI, MI);
     }
   }
@@ -1218,12 +1223,16 @@ void InlineSpiller::spillAroundUses(unsigned Reg) {
       // Modify DBG_VALUE now that the value is in a spill slot.
       bool IsIndirect = MI->isIndirectDebugValue();
       uint64_t Offset = IsIndirect ? MI->getOperand(1).getImm() : 0;
-      const MDNode *MDPtr = MI->getOperand(2).getMetadata();
+      const MDNode *Var = MI->getDebugVariable();
+      const MDNode *Expr = MI->getDebugExpression();
       DebugLoc DL = MI->getDebugLoc();
       DEBUG(dbgs() << "Modifying debug info due to spill:" << "\t" << *MI);
       MachineBasicBlock *MBB = MI->getParent();
       BuildMI(*MBB, MBB->erase(MI), DL, TII.get(TargetOpcode::DBG_VALUE))
-          .addFrameIndex(StackSlot).addImm(Offset).addMetadata(MDPtr);
+          .addFrameIndex(StackSlot)
+          .addImm(Offset)
+          .addMetadata(Var)
+          .addMetadata(Expr);
       continue;
     }
 

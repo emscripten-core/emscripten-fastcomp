@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef AArch64TARGETMACHINE_H
-#define AArch64TARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_AARCH64_AARCH64TARGETMACHINE_H
+#define LLVM_LIB_TARGET_AARCH64_AARCH64TARGETMACHINE_H
 
 #include "AArch64InstrInfo.h"
 #include "AArch64Subtarget.h"
@@ -24,6 +24,7 @@ namespace llvm {
 class AArch64TargetMachine : public LLVMTargetMachine {
 protected:
   AArch64Subtarget Subtarget;
+  mutable StringMap<std::unique_ptr<AArch64Subtarget>> SubtargetMap;
 
 public:
   AArch64TargetMachine(const Target &T, StringRef TT, StringRef CPU,
@@ -34,30 +35,20 @@ public:
   const AArch64Subtarget *getSubtargetImpl() const override {
     return &Subtarget;
   }
-  const AArch64TargetLowering *getTargetLowering() const override {
-    return getSubtargetImpl()->getTargetLowering();
-  }
-  const DataLayout *getDataLayout() const override {
-    return getSubtargetImpl()->getDataLayout();
-  }
-  const AArch64FrameLowering *getFrameLowering() const override {
-    return getSubtargetImpl()->getFrameLowering();
-  }
-  const AArch64InstrInfo *getInstrInfo() const override {
-    return getSubtargetImpl()->getInstrInfo();
-  }
-  const AArch64RegisterInfo *getRegisterInfo() const override {
-    return &getInstrInfo()->getRegisterInfo();
-  }
-  const AArch64SelectionDAGInfo *getSelectionDAGInfo() const override {
-    return getSubtargetImpl()->getSelectionDAGInfo();
-  }
+  const AArch64Subtarget *getSubtargetImpl(const Function &F) const override;
 
   // Pass Pipeline Configuration
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 
   /// \brief Register AArch64 analysis passes with a pass manager.
   void addAnalysisPasses(PassManagerBase &PM) override;
+
+  /// \brief Query if the PBQP register allocator is being used
+  bool isPBQPUsed() const { return usingPBQP; }
+
+private:
+  bool isLittle;
+  bool usingPBQP;
 };
 
 // AArch64leTargetMachine - AArch64 little endian target machine.

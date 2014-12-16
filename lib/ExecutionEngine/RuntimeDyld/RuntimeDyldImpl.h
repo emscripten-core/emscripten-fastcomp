@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_RUNTIME_DYLD_IMPL_H
-#define LLVM_RUNTIME_DYLD_IMPL_H
+#ifndef LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDIMPL_H
+#define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDIMPL_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -70,7 +70,7 @@ public:
   SectionEntry(StringRef name, uint8_t *address, size_t size,
                uintptr_t objAddress)
       : Name(name), Address(address), Size(size),
-        LoadAddress((uintptr_t)address), StubOffset(size),
+        LoadAddress(reinterpret_cast<uintptr_t>(address)), StubOffset(size),
         ObjAddress(objAddress) {}
 };
 
@@ -159,7 +159,7 @@ public:
 };
 
 class RuntimeDyldImpl {
-  friend class RuntimeDyldChecker;
+  friend class RuntimeDyldCheckerImpl;
 private:
 
   uint64_t getAnySymbolRemoteAddress(StringRef Symbol) {
@@ -171,6 +171,9 @@ private:
 protected:
   // The MemoryManager to load objects into.
   RTDyldMemoryManager *MemMgr;
+
+  // Attached RuntimeDyldChecker instance. Null if no instance attached.
+  RuntimeDyldCheckerImpl *Checker;
 
   // A list of all sections emitted by the dynamic linker.  These sections are
   // referenced in the code by means of their index in this list - SectionID.
@@ -211,6 +214,7 @@ protected:
   // modules.  This map is indexed by symbol name.
   StringMap<RelocationList> ExternalSymbolRelocations;
 
+
   typedef std::map<RelocationValueRef, uintptr_t> StubMap;
 
   Triple::ArchType Arch;
@@ -245,11 +249,11 @@ protected:
     return true;
   }
 
-  uint64_t getSectionLoadAddress(unsigned SectionID) {
+  uint64_t getSectionLoadAddress(unsigned SectionID) const {
     return Sections[SectionID].LoadAddress;
   }
 
-  uint8_t *getSectionAddress(unsigned SectionID) {
+  uint8_t *getSectionAddress(unsigned SectionID) const {
     return (uint8_t *)Sections[SectionID].Address;
   }
 
@@ -281,6 +285,13 @@ protected:
     *(Addr + 6) = (Value >> 8) & 0xFF;
     *(Addr + 7) = Value & 0xFF;
   }
+
+  /// Endian-aware read Read the least significant Size bytes from Src.
+  uint64_t readBytesUnaligned(uint8_t *Src, unsigned Size) const;
+
+  /// Endian-aware write. Write the least significant Size bytes from Value to
+  /// Dst.
+  void writeBytesUnaligned(uint64_t Value, uint8_t *Dst, unsigned Size) const;
 
   /// \brief Given the common symbols discovered in the object file, emit a
   /// new section for them and update the symbol mappings in the object and
@@ -349,7 +360,7 @@ protected:
 
 public:
   RuntimeDyldImpl(RTDyldMemoryManager *mm)
-      : MemMgr(mm), ProcessAllSections(false), HasError(false) {
+    : MemMgr(mm), Checker(nullptr), ProcessAllSections(false), HasError(false) {
   }
 
   virtual ~RuntimeDyldImpl();
@@ -358,9 +369,14 @@ public:
     this->ProcessAllSections = ProcessAllSections;
   }
 
-  ObjectImage *loadObject(ObjectImage *InputObject);
+  void setRuntimeDyldChecker(RuntimeDyldCheckerImpl *Checker) {
+    this->Checker = Checker;
+  }
 
-  uint8_t* getSymbolAddress(StringRef Name) {
+  std::unique_ptr<ObjectImage>
+  loadObject(std::unique_ptr<ObjectImage> InputObject);
+
+  uint8_t* getSymbolAddress(StringRef Name) const {
     // FIXME: Just look up as a function for now. Overly simple of course.
     // Work in progress.
     SymbolTableMap::const_iterator pos = GlobalSymbolTable.find(Name);
@@ -370,7 +386,7 @@ public:
     return getSectionAddress(Loc.first) + Loc.second;
   }
 
-  uint64_t getSymbolLoadAddress(StringRef Name) {
+  uint64_t getSymbolLoadAddress(StringRef Name) const {
     // FIXME: Just look up as a function for now. Overly simple of course.
     // Work in progress.
     SymbolTableMap::const_iterator pos = GlobalSymbolTable.find(Name);

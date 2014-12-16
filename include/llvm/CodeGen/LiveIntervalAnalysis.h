@@ -17,8 +17,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CODEGEN_LIVEINTERVAL_ANALYSIS_H
-#define LLVM_CODEGEN_LIVEINTERVAL_ANALYSIS_H
+#ifndef LLVM_CODEGEN_LIVEINTERVALANALYSIS_H
+#define LLVM_CODEGEN_LIVEINTERVALANALYSIS_H
 
 #include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -50,7 +50,6 @@ namespace llvm {
   class LiveIntervals : public MachineFunctionPass {
     MachineFunction* MF;
     MachineRegisterInfo* MRI;
-    const TargetMachine* TM;
     const TargetRegisterInfo* TRI;
     const TargetInstrInfo* TII;
     AliasAnalysis *AA;

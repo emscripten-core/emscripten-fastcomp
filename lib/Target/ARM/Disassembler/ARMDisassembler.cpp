@@ -281,6 +281,8 @@ static DecodeStatus DecodeInstSyncBarrierOption(MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeMSRMask(MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
+static DecodeStatus DecodeBankedReg(MCInst &Inst, unsigned Insn,
+                               uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeDoubleRegLoad(MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeDoubleRegStore(MCInst &Inst, unsigned Insn,
@@ -3974,7 +3976,85 @@ static DecodeStatus DecodeInstSyncBarrierOption(MCInst &Inst, unsigned Val,
 
 static DecodeStatus DecodeMSRMask(MCInst &Inst, unsigned Val,
                           uint64_t Address, const void *Decoder) {
-  if (!Val) return MCDisassembler::Fail;
+  DecodeStatus S = MCDisassembler::Success;
+  uint64_t FeatureBits = ((const MCDisassembler*)Decoder)->getSubtargetInfo()
+                                                          .getFeatureBits();
+  if (FeatureBits & ARM::FeatureMClass) {
+    unsigned ValLow = Val & 0xff;
+
+    // Validate the SYSm value first.
+    switch (ValLow) {
+    case  0: // apsr
+    case  1: // iapsr
+    case  2: // eapsr
+    case  3: // xpsr
+    case  5: // ipsr
+    case  6: // epsr
+    case  7: // iepsr
+    case  8: // msp
+    case  9: // psp
+    case 16: // primask
+    case 20: // control
+      break;
+    case 17: // basepri
+    case 18: // basepri_max
+    case 19: // faultmask
+      if (!(FeatureBits & ARM::HasV7Ops))
+        // Values basepri, basepri_max and faultmask are only valid for v7m.
+        return MCDisassembler::Fail;
+      break;
+    default:
+      return MCDisassembler::Fail;
+    }
+
+    if (Inst.getOpcode() == ARM::t2MSR_M) {
+      unsigned Mask = fieldFromInstruction(Val, 10, 2);
+      if (!(FeatureBits & ARM::HasV7Ops)) {
+        // The ARMv6-M MSR bits {11-10} can be only 0b10, other values are
+        // unpredictable.
+        if (Mask != 2)
+          S = MCDisassembler::SoftFail;
+      }
+      else {
+        // The ARMv7-M architecture stores an additional 2-bit mask value in
+        // MSR bits {11-10}. The mask is used only with apsr, iapsr, eapsr and
+        // xpsr, it has to be 0b10 in other cases. Bit mask{1} indicates if
+        // the NZCVQ bits should be moved by the instruction. Bit mask{0}
+        // indicates the move for the GE{3:0} bits, the mask{0} bit can be set
+        // only if the processor includes the DSP extension.
+        if (Mask == 0 || (Mask != 2 && ValLow > 3) ||
+            (!(FeatureBits & ARM::FeatureDSPThumb2) && (Mask & 1)))
+          S = MCDisassembler::SoftFail;
+      }
+    }
+  } else {
+    // A/R class
+    if (Val == 0)
+      return MCDisassembler::Fail;
+  }
+  Inst.addOperand(MCOperand::CreateImm(Val));
+  return S;
+}
+
+static DecodeStatus DecodeBankedReg(MCInst &Inst, unsigned Val,
+                                    uint64_t Address, const void *Decoder) {
+
+  unsigned R = fieldFromInstruction(Val, 5, 1);
+  unsigned SysM = fieldFromInstruction(Val, 0, 5);
+
+  // The table of encodings for these banked registers comes from B9.2.3 of the
+  // ARM ARM. There are patterns, but nothing regular enough to make this logic
+  // neater. So by fiat, these values are UNPREDICTABLE:
+  if (!R) {
+    if (SysM == 0x7 || SysM == 0xf || SysM == 0x18 || SysM == 0x19 ||
+        SysM == 0x1a || SysM == 0x1b)
+      return MCDisassembler::SoftFail;
+  } else {
+    if (SysM != 0xe && SysM != 0x10 && SysM != 0x12 && SysM != 0x14 &&
+        SysM != 0x16 && SysM != 0x1c && SysM != 0x1e)
+      return MCDisassembler::SoftFail;
+  }
+
   Inst.addOperand(MCOperand::CreateImm(Val));
   return MCDisassembler::Success;
 }

@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 #include "Mips16ISelLowering.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
+#include "Mips16HardFloatInfo.h"
+#include "MipsMachineFunction.h"
 #include "MipsRegisterInfo.h"
 #include "MipsTargetMachine.h"
 #include "llvm/ADT/StringRef.h"
@@ -27,7 +29,7 @@ using namespace llvm;
 static cl::opt<bool> DontExpandCondPseudos16(
   "mips16-dont-expand-cond-pseudo",
   cl::init(false),
-  cl::desc("Dont expand conditional move related "
+  cl::desc("Don't expand conditional move related "
            "pseudos for Mips 16"),
   cl::Hidden);
 
@@ -118,7 +120,7 @@ static const Mips16IntrinsicHelperType Mips16IntrinsicHelper[] = {
   {"truncf", "__mips16_call_stub_sf_1"},
 };
 
-Mips16TargetLowering::Mips16TargetLowering(MipsTargetMachine &TM,
+Mips16TargetLowering::Mips16TargetLowering(const MipsTargetMachine &TM,
                                            const MipsSubtarget &STI)
     : MipsTargetLowering(TM, STI) {
 
@@ -151,15 +153,16 @@ Mips16TargetLowering::Mips16TargetLowering(MipsTargetMachine &TM,
 }
 
 const MipsTargetLowering *
-llvm::createMips16TargetLowering(MipsTargetMachine &TM,
+llvm::createMips16TargetLowering(const MipsTargetMachine &TM,
                                  const MipsSubtarget &STI) {
   return new Mips16TargetLowering(TM, STI);
 }
 
 bool
-Mips16TargetLowering::allowsUnalignedMemoryAccesses(EVT VT,
-                                                    unsigned,
-                                                    bool *Fast) const {
+Mips16TargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
+                                                     unsigned,
+                                                     unsigned,
+                                                     bool *Fast) const {
   return false;
 }
 
@@ -319,7 +322,7 @@ unsigned int Mips16TargetLowering::getMips16HelperFunctionStubNumber
 }
 
 //
-// prefixs are attached to stub numbers depending on the return type .
+// Prefixes are attached to stub numbers depending on the return type.
 // return type: float  sf_
 //              double df_
 //              single complex sc_
@@ -330,17 +333,16 @@ unsigned int Mips16TargetLowering::getMips16HelperFunctionStubNumber
 // The full name of a helper function is__mips16_call_stub +
 //    return type dependent prefix + stub number
 //
-//
-// This is something that probably should be in a different source file and
-// perhaps done differently but my main purpose is to not waste runtime
+// FIXME: This is something that probably should be in a different source file
+// and perhaps done differently but my main purpose is to not waste runtime
 // on something that we can enumerate in the source. Another possibility is
 // to have a python script to generate these mapping tables. This will do
 // for now. There are a whole series of helper function mapping arrays, one
 // for each return type class as outlined above. There there are 11 possible
-//  entries. Ones with 0 are ones which should never be selected
+// entries. Ones with 0 are ones which should never be selected.
 //
 // All the arrays are similar except for ones which return neither
-// sf, df, sc, dc, in which only care about ones which have sf or df as a
+// sf, df, sc, dc, in which we only care about ones which have sf or df as a
 // first parameter.
 //
 #define P_ "__mips16_call_stub_"
@@ -521,7 +523,8 @@ MachineBasicBlock *Mips16TargetLowering::
 emitSel16(unsigned Opc, MachineInstr *MI, MachineBasicBlock *BB) const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   DebugLoc DL = MI->getDebugLoc();
   // To "insert" a SELECT_CC instruction, we actually have to insert the
   // diamond control-flow pattern.  The incoming instruction knows the
@@ -583,7 +586,8 @@ MachineBasicBlock *Mips16TargetLowering::emitSelT16
    MachineInstr *MI, MachineBasicBlock *BB) const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   DebugLoc DL = MI->getDebugLoc();
   // To "insert" a SELECT_CC instruction, we actually have to insert the
   // diamond control-flow pattern.  The incoming instruction knows the
@@ -647,7 +651,8 @@ MachineBasicBlock *Mips16TargetLowering::emitSeliT16
    MachineInstr *MI, MachineBasicBlock *BB) const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   DebugLoc DL = MI->getDebugLoc();
   // To "insert" a SELECT_CC instruction, we actually have to insert the
   // diamond control-flow pattern.  The incoming instruction knows the
@@ -712,7 +717,8 @@ MachineBasicBlock
                                              MachineBasicBlock *BB) const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   unsigned regX = MI->getOperand(0).getReg();
   unsigned regY = MI->getOperand(1).getReg();
   MachineBasicBlock *target = MI->getOperand(2).getMBB();
@@ -728,7 +734,8 @@ MachineBasicBlock *Mips16TargetLowering::emitFEXT_T8I8I16_ins(
   MachineInstr *MI,  MachineBasicBlock *BB) const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   unsigned regX = MI->getOperand(0).getReg();
   int64_t imm = MI->getOperand(1).getImm();
   MachineBasicBlock *target = MI->getOperand(2).getMBB();
@@ -762,7 +769,8 @@ MachineBasicBlock *Mips16TargetLowering::emitFEXT_CCRX16_ins(
   MachineInstr *MI,  MachineBasicBlock *BB) const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   unsigned CC = MI->getOperand(0).getReg();
   unsigned regX = MI->getOperand(1).getReg();
   unsigned regY = MI->getOperand(2).getReg();
@@ -779,7 +787,8 @@ MachineBasicBlock *Mips16TargetLowering::emitFEXT_CCRXI16_ins(
   MachineInstr *MI,  MachineBasicBlock *BB )const {
   if (DontExpandCondPseudos16)
     return BB;
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  const TargetInstrInfo *TII =
+      getTargetMachine().getSubtargetImpl()->getInstrInfo();
   unsigned CC = MI->getOperand(0).getReg();
   unsigned regX = MI->getOperand(1).getReg();
   int64_t Imm = MI->getOperand(2).getImm();

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef NVPTX_TARGETMACHINE_H
-#define NVPTX_TARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_NVPTX_NVPTXTARGETMACHINE_H
+#define LLVM_LIB_TARGET_NVPTX_NVPTXTARGETMACHINE_H
 
 #include "NVPTXSubtarget.h"
 #include "ManagedStringPool.h"
@@ -35,39 +35,13 @@ public:
                      const TargetOptions &Options, Reloc::Model RM,
                      CodeModel::Model CM, CodeGenOpt::Level OP, bool is64bit);
 
-  const TargetFrameLowering *getFrameLowering() const override {
-    return getSubtargetImpl()->getFrameLowering();
-  }
-  const NVPTXInstrInfo *getInstrInfo() const override {
-    return getSubtargetImpl()->getInstrInfo();
-  }
-  const DataLayout *getDataLayout() const override {
-    return getSubtargetImpl()->getDataLayout();
-  }
   const NVPTXSubtarget *getSubtargetImpl() const override { return &Subtarget; }
-  const NVPTXRegisterInfo *getRegisterInfo() const override {
-    return getSubtargetImpl()->getRegisterInfo();
-  }
-
-  const NVPTXTargetLowering *getTargetLowering() const override {
-    return getSubtargetImpl()->getTargetLowering();
-  }
-
-  const TargetSelectionDAGInfo *getSelectionDAGInfo() const override {
-    return getSubtargetImpl()->getSelectionDAGInfo();
-  }
 
   ManagedStringPool *getManagedStrPool() const {
     return const_cast<ManagedStringPool *>(&ManagedStrPool);
   }
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
-
-  // Emission of machine code through JITCodeEmitter is not supported.
-  bool addPassesToEmitMachineCode(PassManagerBase &, JITCodeEmitter &,
-                                  bool = true) override {
-    return true;
-  }
 
   // Emission of machine code through MCJIT is not supported.
   bool addPassesToEmitMC(PassManagerBase &, MCContext *&, raw_ostream &,

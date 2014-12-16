@@ -763,6 +763,10 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       return VectorType::get(IntegerType::get(*MS.C, EltSize),
                              VT->getNumElements());
     }
+    if (ArrayType *AT = dyn_cast<ArrayType>(OrigTy)) {
+      return ArrayType::get(getShadowTy(AT->getElementType()),
+                            AT->getNumElements());
+    }
     if (StructType *ST = dyn_cast<StructType>(OrigTy)) {
       SmallVector<Type*, 4> Elements;
       for (unsigned i = 0, n = ST->getNumElements(); i < n; i++)
@@ -882,11 +886,18 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     assert(ShadowTy);
     if (isa<IntegerType>(ShadowTy) || isa<VectorType>(ShadowTy))
       return Constant::getAllOnesValue(ShadowTy);
-    StructType *ST = cast<StructType>(ShadowTy);
-    SmallVector<Constant *, 4> Vals;
-    for (unsigned i = 0, n = ST->getNumElements(); i < n; i++)
-      Vals.push_back(getPoisonedShadow(ST->getElementType(i)));
-    return ConstantStruct::get(ST, Vals);
+    if (ArrayType *AT = dyn_cast<ArrayType>(ShadowTy)) {
+      SmallVector<Constant *, 4> Vals(AT->getNumElements(),
+                                      getPoisonedShadow(AT->getElementType()));
+      return ConstantArray::get(AT, Vals);
+    }
+    if (StructType *ST = dyn_cast<StructType>(ShadowTy)) {
+      SmallVector<Constant *, 4> Vals;
+      for (unsigned i = 0, n = ST->getNumElements(); i < n; i++)
+        Vals.push_back(getPoisonedShadow(ST->getElementType(i)));
+      return ConstantStruct::get(ST, Vals);
+    }
+    llvm_unreachable("Unexpected shadow type");
   }
 
   /// \brief Create a dirty shadow for a given value.
@@ -969,7 +980,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
             setOrigin(A, EntryIRB.CreateLoad(OriginPtr));
           }
         }
-        ArgOffset += DataLayout::RoundUpAlignment(Size, kShadowTLSAlignment);
+        ArgOffset += RoundUpToAlignment(Size, kShadowTLSAlignment);
       }
       assert(*ShadowPtr && "Could not find shadow for an argument");
       return *ShadowPtr;
@@ -1859,7 +1870,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
     Value *Op = I.getArgOperand(0);
     Type *OpType = Op->getType();
     Function *BswapFunc = Intrinsic::getDeclaration(
-      F.getParent(), Intrinsic::bswap, ArrayRef<Type*>(&OpType, 1));
+      F.getParent(), Intrinsic::bswap, makeArrayRef(&OpType, 1));
     setShadow(&I, IRB.CreateCall(BswapFunc, getShadow(Op)));
     setOrigin(&I, getOrigin(Op));
   }
@@ -2318,7 +2329,8 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
         assert(A->getType()->isPointerTy() &&
                "ByVal argument is not a pointer!");
         Size = MS.DL->getTypeAllocSize(A->getType()->getPointerElementType());
-        unsigned Alignment = CS.getParamAlignment(i + 1);
+        unsigned ParamAlignment = CS.getParamAlignment(i + 1);
+        unsigned Alignment = std::min(ParamAlignment, kShadowTLSAlignment);
         Store = IRB.CreateMemCpy(ArgShadowBase,
                                  getShadowPtr(A, Type::getInt8Ty(*MS.C), IRB),
                                  Size, Alignment);
@@ -2335,7 +2347,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
       (void)Store;
       assert(Size != 0 && Store != nullptr);
       DEBUG(dbgs() << "  Param:" << *Store << "\n");
-      ArgOffset += DataLayout::RoundUpAlignment(Size, 8);
+      ArgOffset += RoundUpToAlignment(Size, 8);
     }
     DEBUG(dbgs() << "  done with call args\n");
 
@@ -2616,7 +2628,7 @@ struct VarArgAMD64Helper : public VarArgHelper {
         Type *RealTy = A->getType()->getPointerElementType();
         uint64_t ArgSize = MS.DL->getTypeAllocSize(RealTy);
         Value *Base = getShadowPtrForVAArgument(RealTy, IRB, OverflowOffset);
-        OverflowOffset += DataLayout::RoundUpAlignment(ArgSize, 8);
+        OverflowOffset += RoundUpToAlignment(ArgSize, 8);
         IRB.CreateMemCpy(Base, MSV.getShadowPtr(A, IRB.getInt8Ty(), IRB),
                          ArgSize, kShadowTLSAlignment);
       } else {
@@ -2638,7 +2650,7 @@ struct VarArgAMD64Helper : public VarArgHelper {
           case AK_Memory:
             uint64_t ArgSize = MS.DL->getTypeAllocSize(A->getType());
             Base = getShadowPtrForVAArgument(A->getType(), IRB, OverflowOffset);
-            OverflowOffset += DataLayout::RoundUpAlignment(ArgSize, 8);
+            OverflowOffset += RoundUpToAlignment(ArgSize, 8);
         }
         IRB.CreateAlignedStore(MSV.getShadow(A), Base, kShadowTLSAlignment);
       }

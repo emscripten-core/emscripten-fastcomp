@@ -57,16 +57,16 @@ namespace {
     unsigned GlobalBaseReg;
   public:
     explicit PPCDAGToDAGISel(PPCTargetMachine &tm)
-      : SelectionDAGISel(tm), TM(tm),
-        PPCLowering(TM.getTargetLowering()),
-        PPCSubTarget(TM.getSubtargetImpl()) {
+        : SelectionDAGISel(tm), TM(tm),
+          PPCLowering(TM.getSubtargetImpl()->getTargetLowering()),
+          PPCSubTarget(TM.getSubtargetImpl()) {
       initializePPCDAGToDAGISelPass(*PassRegistry::getPassRegistry());
     }
 
     bool runOnMachineFunction(MachineFunction &MF) override {
       // Make sure we re-emit a set of the global base reg if necessary
       GlobalBaseReg = 0;
-      PPCLowering = TM.getTargetLowering();
+      PPCLowering = TM.getSubtargetImpl()->getTargetLowering();
       PPCSubTarget = TM.getSubtargetImpl();
       SelectionDAGISel::runOnMachineFunction(MF);
 
@@ -233,7 +233,7 @@ void PPCDAGToDAGISel::InsertVRSaveCode(MachineFunction &Fn) {
   unsigned InVRSAVE = RegInfo->createVirtualRegister(&PPC::GPRCRegClass);
   unsigned UpdatedVRSAVE = RegInfo->createVirtualRegister(&PPC::GPRCRegClass);
 
-  const TargetInstrInfo &TII = *TM.getInstrInfo();
+  const TargetInstrInfo &TII = *TM.getSubtargetImpl()->getInstrInfo();
   MachineBasicBlock &EntryBB = *Fn.begin();
   DebugLoc dl;
   // Emit the following code into the entry block:
@@ -269,7 +269,7 @@ void PPCDAGToDAGISel::InsertVRSaveCode(MachineFunction &Fn) {
 ///
 SDNode *PPCDAGToDAGISel::getGlobalBaseReg() {
   if (!GlobalBaseReg) {
-    const TargetInstrInfo &TII = *TM.getInstrInfo();
+    const TargetInstrInfo &TII = *TM.getSubtargetImpl()->getInstrInfo();
     // Insert the set of GlobalBaseReg into the first MBB of the function
     MachineBasicBlock &FirstMBB = MF->front();
     MachineBasicBlock::iterator MBBI = FirstMBB.begin();
@@ -908,6 +908,13 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
     return nullptr;   // Already selected.
   }
 
+  // In case any misguided DAG-level optimizations form an ADD with a
+  // TargetConstant operand, crash here instead of miscompiling (by selecting
+  // an r+r add instead of some kind of r+i add).
+  if (N->getOpcode() == ISD::ADD &&
+      N->getOperand(1).getOpcode() == ISD::TargetConstant)
+    llvm_unreachable("Invalid ADD with TargetConstant operand");
+
   switch (N->getOpcode()) {
   default: break;
 
@@ -1433,7 +1440,7 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
       SDValue GA = N->getOperand(0);
       return CurDAG->getMachineNode(PPC::LWZtoc, dl, MVT::i32, GA,
                                     N->getOperand(1));
-	}
+    }
     assert (PPCSubTarget->isPPC64() &&
             "Only supported for 64-bit ABI and 32-bit SVR4");
 
@@ -1472,6 +1479,12 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
 
     return CurDAG->getMachineNode(PPC::ADDItocL, dl, MVT::i64,
                                   SDValue(Tmp, 0), GA);
+  }
+  case PPCISD::PPC32_PICGOT: {
+    // Generate a PIC-safe GOT reference.
+    assert(!PPCSubTarget->isPPC64() && PPCSubTarget->isSVR4ABI() &&
+      "PPCISD::PPC32_PICGOT is only supported for 32-bit SVR4");
+    return CurDAG->SelectNodeTo(N, PPC::PPC32PICGOT, PPCLowering->getPointerTy(),  MVT::i32);
   }
   case PPCISD::VADD_SPLAT: {
     // This expands into one of three sequences, depending on whether

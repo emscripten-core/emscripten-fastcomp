@@ -36,9 +36,11 @@ add_llvm_library(LLVMSupport
   Locale.cpp
   LockFileManager.cpp
   ManagedStatic.cpp
+  MathExtras.cpp
   MemoryBuffer.cpp
   MemoryObject.cpp
   MD5.cpp
+  Options.cpp
   PluginLoader.cpp
   PrettyStackTrace.cpp
   RandomNumberGenerator.cpp
@@ -76,7 +78,6 @@ add_llvm_library(LLVMSupport
   DynamicLibrary.cpp
   Errno.cpp
   Host.cpp
-  IncludeFile.cpp
   Memory.cpp
   Mutex.cpp
   Path.cpp
@@ -132,6 +133,9 @@ if( NOT MSVC )
       if(HAVE_TERMINFO)
         set(system_libs ${system_libs} ${TERMINFO_LIBS})
       endif()
+    endif()
+    if( LLVM_ENABLE_THREADS AND HAVE_LIBATOMIC )
+      set(system_libs ${system_libs} atomic)
     endif()
     if( LLVM_ENABLE_THREADS AND HAVE_LIBPTHREAD )
       set(system_libs ${system_libs} pthread)

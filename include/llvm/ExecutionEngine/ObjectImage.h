@@ -31,7 +31,7 @@ protected:
   std::unique_ptr<ObjectBuffer> Buffer;
 
 public:
-  ObjectImage(ObjectBuffer *Input) : Buffer(Input) {}
+  ObjectImage(std::unique_ptr<ObjectBuffer> Input) : Buffer(std::move(Input)) {}
   virtual ~ObjectImage() {}
 
   virtual object::symbol_iterator begin_symbols() const = 0;
@@ -49,6 +49,11 @@ public:
   }
 
   virtual /* Triple::ArchType */ unsigned getArch() const = 0;
+
+  // Return the name associated with this ObjectImage.
+  // This is usually the name of the file or MemoryBuffer that the the
+  // ObjectBuffer was constructed from.
+  StringRef getImageName() const { return Buffer->getBufferIdentifier(); }
 
   // Subclasses can override these methods to update the image with loaded
   // addresses for sections and common symbols

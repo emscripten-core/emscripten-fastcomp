@@ -449,7 +449,6 @@ ifeq ($(HOST_OS),MingW)
   endif
 endif
 
-CXX.Flags     += -Woverloaded-virtual
 CPP.BaseFlags += $(CPP.Defines)
 AR.Flags      := cru
 
@@ -740,10 +739,6 @@ endif
 ifeq ($(HOST_OS),SunOS)
 CPP.BaseFlags += -include llvm/Support/Solaris.h
 endif
-
-ifeq ($(HOST_OS),AuroraUX)
-CPP.BaseFlags += -include llvm/Support/Solaris.h
-endif # !HOST_OS - AuroraUX.
 
 # On Windows, SharedLibDir != LibDir. The order is important.
 ifeq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
@@ -1687,17 +1682,12 @@ $(ObjDir)/%GenAsmMatcher.inc.tmp : %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
 $(TARGET:%=$(ObjDir)/%GenMCCodeEmitter.inc.tmp): \
 $(ObjDir)/%GenMCCodeEmitter.inc.tmp: %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
 	$(Echo) "Building $(<F) MC code emitter with tblgen"
-	$(Verb) $(LLVMTableGen) -gen-emitter -mc-emitter -o $(call SYSPATH, $@) $<
+	$(Verb) $(LLVMTableGen) -gen-emitter -o $(call SYSPATH, $@) $<
 
 $(TARGET:%=$(ObjDir)/%GenMCPseudoLowering.inc.tmp): \
 $(ObjDir)/%GenMCPseudoLowering.inc.tmp: %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
 	$(Echo) "Building $(<F) MC Pseudo instruction expander with tblgen"
 	$(Verb) $(LLVMTableGen) -gen-pseudo-lowering -o $(call SYSPATH, $@) $<
-
-$(TARGET:%=$(ObjDir)/%GenCodeEmitter.inc.tmp): \
-$(ObjDir)/%GenCodeEmitter.inc.tmp: %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
-	$(Echo) "Building $(<F) code emitter with tblgen"
-	$(Verb) $(LLVMTableGen) -gen-emitter -o $(call SYSPATH, $@) $<
 
 $(TARGET:%=$(ObjDir)/%GenDAGISel.inc.tmp): \
 $(ObjDir)/%GenDAGISel.inc.tmp : %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
@@ -1804,7 +1794,7 @@ endif
 # CHECK: Running the test suite
 ###############################################################################
 
-check:: all
+check::
 	$(Verb) if test -d "$(PROJ_OBJ_ROOT)/test" ; then \
 	  if test -f "$(PROJ_OBJ_ROOT)/test/Makefile" ; then \
 	    $(EchoCmd) Running test suite ; \

@@ -276,14 +276,6 @@ private:
 ///          platform-specific error_code.
 std::error_code make_absolute(SmallVectorImpl<char> &path);
 
-/// @brief Normalize path separators in \a Path
-///
-/// If the path contains any '\' separators, they are transformed into '/'.
-/// This is particularly useful when cross-compiling Windows on Linux, but is
-/// safe to invoke on Windows, which accepts both characters as a path
-/// separator.
-std::error_code normalize_separators(SmallVectorImpl<char> &Path);
-
 /// @brief Create all the non-existent directories in path.
 ///
 /// @param path Directories to create.
@@ -360,33 +352,38 @@ std::error_code resize_file(const Twine &path, uint64_t size);
 ///          not.
 bool exists(file_status status);
 
+enum class AccessMode { Exist, Write, Execute };
+
+/// @brief Can the file be accessed?
+///
+/// @param Path Input path.
+/// @returns errc::success if the path can be accessed, otherwise a
+///          platform-specific error_code.
+std::error_code access(const Twine &Path, AccessMode Mode);
+
 /// @brief Does file exist?
 ///
-/// @param path Input path.
-/// @param result Set to true if the file represented by status exists, false if
-///               it does not. Undefined otherwise.
-/// @returns errc::success if result has been successfully set, otherwise a
-///          platform-specific error_code.
-std::error_code exists(const Twine &path, bool &result);
-
-/// @brief Simpler version of exists for clients that don't need to
-///        differentiate between an error and false.
-inline bool exists(const Twine &path) {
-  bool result;
-  return !exists(path, result) && result;
+/// @param Path Input path.
+/// @returns True if it exists, false otherwise.
+inline bool exists(const Twine &Path) {
+  return !access(Path, AccessMode::Exist);
 }
 
 /// @brief Can we execute this file?
 ///
 /// @param Path Input path.
 /// @returns True if we can execute it, false otherwise.
-bool can_execute(const Twine &Path);
+inline bool can_execute(const Twine &Path) {
+  return !access(Path, AccessMode::Execute);
+}
 
 /// @brief Can we write this file?
 ///
 /// @param Path Input path.
 /// @returns True if we can write to it, false otherwise.
-bool can_write(const Twine &Path);
+inline bool can_write(const Twine &Path) {
+  return !access(Path, AccessMode::Write);
+}
 
 /// @brief Do file_status's represent the same thing?
 ///

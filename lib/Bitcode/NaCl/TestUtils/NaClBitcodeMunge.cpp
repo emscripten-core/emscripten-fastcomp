@@ -60,8 +60,7 @@ void NaClBitcodeMunger::setupTest(
        Iter != IterEnd; ++Iter) {
     BitcodeStrm << *Iter;
   }
-  MungedInput.reset(MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(),
-                                                   TestName));
+  MungedInput = MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), TestName);
 }
 
 void NaClBitcodeMunger::cleanupTest() {
@@ -348,6 +347,8 @@ bool NaClObjDumpMunger::runTestWithFlags(
     const char *Name, const uint64_t Munges[], size_t MungesSize,
     bool AddHeader, bool NoRecords, bool NoAssembly) {
   setupTest(Name, Munges, MungesSize, AddHeader);
+  // TODO(jvoung,kschimpf): Should NaClObjDump take a MemoryBufferRef
+  // like the parser?
   if (NaClObjDump(MungedInput.get(), *DumpStream, NoRecords, NoAssembly))
     FoundErrors = true;
   cleanupTest();
@@ -362,7 +363,8 @@ bool NaClParseBitcodeMunger::runTest(
   LLVMContext &Context = getGlobalContext();
   raw_ostream *VerboseStrm = VerboseErrors ? DumpStream : nullptr;
   ErrorOr<Module *> ModuleOrError =
-      NaClParseBitcodeFile(MungedInput.get(), Context, VerboseStrm);
+      NaClParseBitcodeFile(MungedInput->getMemBufferRef(), Context,
+                           VerboseStrm);
   if (ModuleOrError) {
     if (VerboseErrors)
       *DumpStream << "Successful parse!\n";

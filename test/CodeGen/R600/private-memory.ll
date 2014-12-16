@@ -1,10 +1,10 @@
 ; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck %s -check-prefix=R600 -check-prefix=FUNC
-; RUN: llc -mattr=+promote-alloca -verify-machineinstrs -march=r600 -mcpu=SI < %s | FileCheck %s -check-prefix=SI-PROMOTE -check-prefix=SI -check-prefix=FUNC
-; RUN: llc -mattr=-promote-alloca -verify-machineinstrs -march=r600 -mcpu=SI < %s | FileCheck %s -check-prefix=SI-ALLOCA -check-prefix=SI -check-prefix=FUNC
+; RUN: llc -show-mc-encoding -mattr=+promote-alloca -verify-machineinstrs -march=r600 -mcpu=SI < %s | FileCheck %s -check-prefix=SI-PROMOTE -check-prefix=SI -check-prefix=FUNC
+; RUN: llc -show-mc-encoding -mattr=-promote-alloca -verify-machineinstrs -march=r600 -mcpu=SI < %s | FileCheck %s -check-prefix=SI-ALLOCA -check-prefix=SI -check-prefix=FUNC
 
 declare i32 @llvm.r600.read.tidig.x() nounwind readnone
 
-; FUNC-LABEL: @mova_same_clause
+; FUNC-LABEL: {{^}}mova_same_clause:
 
 ; R600: LDS_WRITE
 ; R600: LDS_WRITE
@@ -16,8 +16,8 @@ declare i32 @llvm.r600.read.tidig.x() nounwind readnone
 ; SI-PROMOTE: DS_READ_B32
 ; SI-PROMOTE: DS_READ_B32
 
-; SI-ALLOCA: BUFFER_STORE_DWORD v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], v{{[0-9]+}}, s{{[0-9]+}}
-; SI-ALLOCA: BUFFER_STORE_DWORD v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], v{{[0-9]+}}, s{{[0-9]+}}
+; SI-ALLOCA: BUFFER_STORE_DWORD v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}} offen ; encoding: [0x00,0x10,0x70,0xe0
+; SI-ALLOCA: BUFFER_STORE_DWORD v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}} offen ; encoding: [0x00,0x10,0x70,0xe0
 define void @mova_same_clause(i32 addrspace(1)* nocapture %out, i32 addrspace(1)* nocapture %in) {
 entry:
   %stack = alloca [5 x i32], align 4
@@ -45,7 +45,7 @@ entry:
 ; XXX: This generated code has unnecessary MOVs, we should be able to optimize
 ; this.
 
-; FUNC-LABEL: @multiple_structs
+; FUNC-LABEL: {{^}}multiple_structs:
 ; R600-NOT: MOVA_INT
 ; SI-NOT: V_MOVREL
 ; SI-NOT: V_MOVREL
@@ -76,7 +76,7 @@ entry:
 ; loads and stores should be lowered to copies, so there shouldn't be any
 ; MOVA instructions.
 
-; FUNC-LABEL: @direct_loop
+; FUNC-LABEL: {{^}}direct_loop:
 ; R600-NOT: MOVA_INT
 ; SI-NOT: V_MOVREL
 
@@ -112,14 +112,13 @@ for.end:
   ret void
 }
 
-; FUNC-LABEL: @short_array
+; FUNC-LABEL: {{^}}short_array:
 
 ; R600: MOVA_INT
 
-; SI-PROMOTE: BUFFER_STORE_SHORT v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], v{{[0-9]+}}, s{{[0-9]+}}
-; SI-PROMOTE: BUFFER_STORE_SHORT v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], v{{[0-9]+}}, s{{[0-9]+}}
-; SI-PROMOTE-NOT: MOVREL
-; SI-PROMOTE: BUFFER_LOAD_SSHORT v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}] + v{{[0-9]+}} + s{{[0-9]+}}
+; SI-PROMOTE-DAG: BUFFER_STORE_SHORT v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}} offen ; encoding: [0x00,0x10,0x68,0xe0
+; SI-PROMOTE-DAG: BUFFER_STORE_SHORT v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}} offen offset:0x2 ; encoding: [0x02,0x10,0x68,0xe0
+; SI-PROMOTE: BUFFER_LOAD_SSHORT v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}}
 define void @short_array(i32 addrspace(1)* %out, i32 %index) {
 entry:
   %0 = alloca [2 x i16]
@@ -134,12 +133,12 @@ entry:
   ret void
 }
 
-; FUNC-LABEL: @char_array
+; FUNC-LABEL: {{^}}char_array:
 
 ; R600: MOVA_INT
 
-; SI-DAG: BUFFER_STORE_BYTE v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], v{{[0-9]+}}, s{{[0-9]+}}, 0x0
-; SI-DAG: BUFFER_STORE_BYTE v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], v{{[0-9]+}}, s{{[0-9]+}}, 0x1
+; SI-DAG: BUFFER_STORE_BYTE v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}} offen ; encoding: [0x00,0x10,0x60,0xe0
+; SI-DAG: BUFFER_STORE_BYTE v{{[0-9]+}}, v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}], s{{[0-9]+}} offen offset:0x1 ; encoding: [0x01,0x10,0x60,0xe0
 define void @char_array(i32 addrspace(1)* %out, i32 %index) {
 entry:
   %0 = alloca [2 x i8]
@@ -157,7 +156,7 @@ entry:
 
 ; Make sure we don't overwrite workitem information with private memory
 
-; FUNC-LABEL: @work_item_info
+; FUNC-LABEL: {{^}}work_item_info:
 ; R600-NOT: MOV T0.X
 ; Additional check in case the move ends up in the last slot
 ; R600-NOT: MOV * TO.X
@@ -180,7 +179,7 @@ entry:
 
 ; Test that two stack objects are not stored in the same register
 ; The second stack object should be in T3.X
-; FUNC-LABEL: @no_overlap
+; FUNC-LABEL: {{^}}no_overlap:
 ; R600_CHECK: MOV
 ; R600_CHECK: [[CHAN:[XYZW]]]+
 ; R600-NOT: [[CHAN]]+

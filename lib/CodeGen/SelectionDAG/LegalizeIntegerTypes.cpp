@@ -342,9 +342,10 @@ SDValue DAGTypeLegalizer::PromoteIntRes_CTLZ(SDNode *N) {
   EVT NVT = Op.getValueType();
   Op = DAG.getNode(N->getOpcode(), dl, NVT, Op);
   // Subtract off the extra leading bits in the bigger type.
-  return DAG.getNode(ISD::SUB, dl, NVT, Op,
-                     DAG.getConstant(NVT.getSizeInBits() -
-                                     OVT.getSizeInBits(), NVT));
+  return DAG.getNode(
+      ISD::SUB, dl, NVT, Op,
+      DAG.getConstant(NVT.getScalarSizeInBits() - OVT.getScalarSizeInBits(),
+                      NVT));
 }
 
 SDValue DAGTypeLegalizer::PromoteIntRes_CTPOP(SDNode *N) {
@@ -362,8 +363,8 @@ SDValue DAGTypeLegalizer::PromoteIntRes_CTTZ(SDNode *N) {
     // The count is the same in the promoted type except if the original
     // value was zero.  This can be handled by setting the bit just off
     // the top of the original type.
-    APInt TopBit(NVT.getSizeInBits(), 0);
-    TopBit.setBit(OVT.getSizeInBits());
+    auto TopBit = APInt::getOneBitSet(NVT.getScalarSizeInBits(),
+                                      OVT.getScalarSizeInBits());
     Op = DAG.getNode(ISD::OR, dl, NVT, Op, DAG.getConstant(TopBit, NVT));
   }
   return DAG.getNode(N->getOpcode(), dl, NVT, Op);
@@ -861,7 +862,26 @@ void DAGTypeLegalizer::PromoteSetCCOperands(SDValue &NewLHS,SDValue &NewRHS,
   switch (CCCode) {
   default: llvm_unreachable("Unknown integer comparison!");
   case ISD::SETEQ:
-  case ISD::SETNE:
+  case ISD::SETNE: {
+    SDValue OpL = GetPromotedInteger(NewLHS);
+    SDValue OpR = GetPromotedInteger(NewRHS);
+
+    // We would prefer to promote the comparison operand with sign extension,
+    // if we find the operand is actually to truncate an AssertSext. With this
+    // optimization, we can avoid inserting real truncate instruction, which
+    // is redudant eventually.
+    if (OpL->getOpcode() == ISD::AssertSext &&
+        cast<VTSDNode>(OpL->getOperand(1))->getVT() == NewLHS.getValueType() &&
+        OpR->getOpcode() == ISD::AssertSext &&
+        cast<VTSDNode>(OpR->getOperand(1))->getVT() == NewRHS.getValueType()) {
+      NewLHS = OpL;
+      NewRHS = OpR;
+    } else {
+      NewLHS = ZExtPromotedInteger(NewLHS);
+      NewRHS = ZExtPromotedInteger(NewRHS);
+    }
+    break;
+  }
   case ISD::SETUGE:
   case ISD::SETUGT:
   case ISD::SETULE:
@@ -1859,7 +1879,7 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
   bool isVolatile = N->isVolatile();
   bool isNonTemporal = N->isNonTemporal();
   bool isInvariant = N->isInvariant();
-  const MDNode *TBAAInfo = N->getTBAAInfo();
+  AAMDNodes AAInfo = N->getAAInfo();
   SDLoc dl(N);
 
   assert(NVT.isByteSized() && "Expanded type not byte sized!");
@@ -1868,7 +1888,8 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
     EVT MemVT = N->getMemoryVT();
 
     Lo = DAG.getExtLoad(ExtType, dl, NVT, Ch, Ptr, N->getPointerInfo(),
-                        MemVT, isVolatile, isNonTemporal, Alignment, TBAAInfo);
+                        MemVT, isVolatile, isNonTemporal, isInvariant,
+                        Alignment, AAInfo);
 
     // Remember the chain.
     Ch = Lo.getValue(1);
@@ -1891,7 +1912,7 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
     // Little-endian - low bits are at low addresses.
     Lo = DAG.getLoad(NVT, dl, Ch, Ptr, N->getPointerInfo(),
                      isVolatile, isNonTemporal, isInvariant, Alignment,
-                     TBAAInfo);
+                     AAInfo);
 
     unsigned ExcessBits =
       N->getMemoryVT().getSizeInBits() - NVT.getSizeInBits();
@@ -1903,8 +1924,8 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
                       DAG.getConstant(IncrementSize, Ptr.getValueType()));
     Hi = DAG.getExtLoad(ExtType, dl, NVT, Ch, Ptr,
                         N->getPointerInfo().getWithOffset(IncrementSize), NEVT,
-                        isVolatile, isNonTemporal,
-                        MinAlign(Alignment, IncrementSize), TBAAInfo);
+                        isVolatile, isNonTemporal, isInvariant,
+                        MinAlign(Alignment, IncrementSize), AAInfo);
 
     // Build a factor node to remember that this load is independent of the
     // other one.
@@ -1922,7 +1943,8 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
     Hi = DAG.getExtLoad(ExtType, dl, NVT, Ch, Ptr, N->getPointerInfo(),
                         EVT::getIntegerVT(*DAG.getContext(),
                                           MemVT.getSizeInBits() - ExcessBits),
-                        isVolatile, isNonTemporal, Alignment, TBAAInfo);
+                        isVolatile, isNonTemporal, isInvariant, Alignment,
+                        AAInfo);
 
     // Increment the pointer to the other half.
     Ptr = DAG.getNode(ISD::ADD, dl, Ptr.getValueType(), Ptr,
@@ -1931,8 +1953,8 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
     Lo = DAG.getExtLoad(ISD::ZEXTLOAD, dl, NVT, Ch, Ptr,
                         N->getPointerInfo().getWithOffset(IncrementSize),
                         EVT::getIntegerVT(*DAG.getContext(), ExcessBits),
-                        isVolatile, isNonTemporal,
-                        MinAlign(Alignment, IncrementSize), TBAAInfo);
+                        isVolatile, isNonTemporal, isInvariant,
+                        MinAlign(Alignment, IncrementSize), AAInfo);
 
     // Build a factor node to remember that this load is independent of the
     // other one.
@@ -2709,7 +2731,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
   unsigned Alignment = N->getAlignment();
   bool isVolatile = N->isVolatile();
   bool isNonTemporal = N->isNonTemporal();
-  const MDNode *TBAAInfo = N->getTBAAInfo();
+  AAMDNodes AAInfo = N->getAAInfo();
   SDLoc dl(N);
   SDValue Lo, Hi;
 
@@ -2719,7 +2741,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
     GetExpandedInteger(N->getValue(), Lo, Hi);
     return DAG.getTruncStore(Ch, dl, Lo, Ptr, N->getPointerInfo(),
                              N->getMemoryVT(), isVolatile, isNonTemporal,
-                             Alignment, TBAAInfo);
+                             Alignment, AAInfo);
   }
 
   if (TLI.isLittleEndian()) {
@@ -2727,7 +2749,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
     GetExpandedInteger(N->getValue(), Lo, Hi);
 
     Lo = DAG.getStore(Ch, dl, Lo, Ptr, N->getPointerInfo(),
-                      isVolatile, isNonTemporal, Alignment, TBAAInfo);
+                      isVolatile, isNonTemporal, Alignment, AAInfo);
 
     unsigned ExcessBits =
       N->getMemoryVT().getSizeInBits() - NVT.getSizeInBits();
@@ -2740,7 +2762,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
     Hi = DAG.getTruncStore(Ch, dl, Hi, Ptr,
                            N->getPointerInfo().getWithOffset(IncrementSize),
                            NEVT, isVolatile, isNonTemporal,
-                           MinAlign(Alignment, IncrementSize), TBAAInfo);
+                           MinAlign(Alignment, IncrementSize), AAInfo);
     return DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Lo, Hi);
   }
 
@@ -2768,7 +2790,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
 
   // Store both the high bits and maybe some of the low bits.
   Hi = DAG.getTruncStore(Ch, dl, Hi, Ptr, N->getPointerInfo(),
-                         HiVT, isVolatile, isNonTemporal, Alignment, TBAAInfo);
+                         HiVT, isVolatile, isNonTemporal, Alignment, AAInfo);
 
   // Increment the pointer to the other half.
   Ptr = DAG.getNode(ISD::ADD, dl, Ptr.getValueType(), Ptr,
@@ -2778,7 +2800,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
                          N->getPointerInfo().getWithOffset(IncrementSize),
                          EVT::getIntegerVT(*DAG.getContext(), ExcessBits),
                          isVolatile, isNonTemporal,
-                         MinAlign(Alignment, IncrementSize), TBAAInfo);
+                         MinAlign(Alignment, IncrementSize), AAInfo);
   return DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Lo, Hi);
 }
 
@@ -2853,7 +2875,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_UINT_TO_FP(SDNode *N) {
                                    FudgePtr,
                                    MachinePointerInfo::getConstantPool(),
                                    MVT::f32,
-                                   false, false, Alignment);
+                                   false, false, false, Alignment);
     return DAG.getNode(ISD::FADD, dl, DstVT, SignedConv, Fudge);
   }
 

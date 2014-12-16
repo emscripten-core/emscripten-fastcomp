@@ -13,6 +13,7 @@
 
 #include "X86Subtarget.h"
 #include "X86InstrInfo.h"
+#include "X86TargetMachine.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
@@ -197,23 +198,7 @@ bool X86Subtarget::IsLegalToCallImmediateAddr(const TargetMachine &TM) const {
   // @LOCALMOD-END
 }
 
-void X86Subtarget::resetSubtargetFeatures(const MachineFunction *MF) {
-  AttributeSet FnAttrs = MF->getFunction()->getAttributes();
-  Attribute CPUAttr =
-      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "target-cpu");
-  Attribute FSAttr =
-      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "target-features");
-  std::string CPU =
-      !CPUAttr.hasAttribute(Attribute::None) ? CPUAttr.getValueAsString() : "";
-  std::string FS =
-      !FSAttr.hasAttribute(Attribute::None) ? FSAttr.getValueAsString() : "";
-  if (!FS.empty()) {
-    initializeEnvironment();
-    resetSubtargetFeatures(CPU, FS);
-  }
-}
-
-void X86Subtarget::resetSubtargetFeatures(StringRef CPU, StringRef FS) {
+void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   std::string CPUName = CPU;
   if (CPUName.empty())
     CPUName = "generic";
@@ -293,8 +278,10 @@ void X86Subtarget::initializeEnvironment() {
   HasVLX = false;
   HasADX = false;
   HasSHA = false;
+  HasSGX = false;
   HasPRFCHW = false;
   HasRDSEED = false;
+  HasSMAP = false;
   IsBTMemSlow = false;
   IsSHLDSlow = false;
   IsUAMemFast = false;
@@ -312,17 +299,19 @@ void X86Subtarget::initializeEnvironment() {
   MaxInlineSizeThreshold = 128;
 }
 
-static std::string computeDataLayout(const X86Subtarget &ST) {
+static std::string computeDataLayout(const Triple &TT) {
   // X86 is little endian
   std::string Ret = "e";
 
-  Ret += DataLayout::getManglingComponent(ST.getTargetTriple());
+  Ret += DataLayout::getManglingComponent(TT);
   // X86 and x32 have 32 bit pointers.
-  if (ST.isTarget64BitILP32() || !ST.is64Bit())
+  if ((TT.isArch64Bit() &&
+       (TT.getEnvironment() == Triple::GNUX32 || TT.isOSNaCl())) ||
+      !TT.isArch64Bit())
     Ret += "-p:32:32";
 
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
-  if (ST.is64Bit() || ST.isOSWindows() || ST.isTargetNaCl()
+  if (TT.isArch64Bit() || TT.isOSWindows() || TT.isOSNaCl()
       || MalignDouble) // @LOCALMOD
     Ret += "-i64:64";
   else
@@ -331,19 +320,19 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
   // Some ABIs align long double to 128 bits, others to 32.
   // @LOCALMOD Removed the NaCl special-casing for LLVM 3.5 merge, it was
   //           wrong. Patch sent upstream.
-  if (ST.is64Bit() || ST.isTargetDarwin())
+  if (TT.isArch64Bit() || TT.isOSDarwin())
     Ret += "-f80:128";
   else
     Ret += "-f80:32";
 
   // The registers can hold 8, 16, 32 or, in x86-64, 64 bits.
-  if (ST.is64Bit())
+  if (TT.isArch64Bit())
     Ret += "-n8:16:32:64";
   else
     Ret += "-n8:16:32";
 
   // The stack is aligned to 32 bits on some ABIs and 128 bits on others.
-  if (!ST.is64Bit() && ST.isOSWindows())  
+  if (!TT.isArch64Bit() && TT.isOSWindows())
     Ret += "-S32";
   else
     Ret += "-S128";
@@ -354,26 +343,45 @@ static std::string computeDataLayout(const X86Subtarget &ST) {
 X86Subtarget &X86Subtarget::initializeSubtargetDependencies(StringRef CPU,
                                                             StringRef FS) {
   initializeEnvironment();
-  resetSubtargetFeatures(CPU, FS);
+  initSubtargetFeatures(CPU, FS);
   return *this;
 }
 
 X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
-                           const std::string &FS, X86TargetMachine &TM,
+                           const std::string &FS, const X86TargetMachine &TM,
                            unsigned StackAlignOverride)
     : X86GenSubtargetInfo(TT, CPU, FS), X86ProcFamily(Others),
       PICStyle(PICStyles::None), TargetTriple(TT),
+      DL(computeDataLayout(TargetTriple)),
       StackAlignOverride(StackAlignOverride),
       In64BitMode(TargetTriple.getArch() == Triple::x86_64),
       In32BitMode(TargetTriple.getArch() == Triple::x86 &&
                   TargetTriple.getEnvironment() != Triple::CODE16),
       In16BitMode(TargetTriple.getArch() == Triple::x86 &&
                   TargetTriple.getEnvironment() == Triple::CODE16),
-      DL(computeDataLayout(*this)), TSInfo(DL),
-      InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM),
-      FrameLowering(TargetFrameLowering::StackGrowsDown, getStackAlignment(),
-                    is64Bit() ? -8 : -4),
-      JITInfo(hasSSE1()) {}
+      TSInfo(DL), InstrInfo(initializeSubtargetDependencies(CPU, FS)),
+      TLInfo(TM), FrameLowering(TargetFrameLowering::StackGrowsDown,
+                                getStackAlignment(), is64Bit() ? -8 : -4) {
+  // Determine the PICStyle based on the target selected.
+  if (TM.getRelocationModel() == Reloc::Static) {
+    // Unless we're in PIC or DynamicNoPIC mode, set the PIC style to None.
+    setPICStyle(PICStyles::None);
+  } else if (is64Bit()) {
+    // PIC in 64 bit mode is always rip-rel.
+    setPICStyle(PICStyles::RIPRel);
+  } else if (isTargetCOFF()) {
+    setPICStyle(PICStyles::None);
+  } else if (isTargetDarwin()) {
+    if (TM.getRelocationModel() == Reloc::PIC_)
+      setPICStyle(PICStyles::StubPIC);
+    else {
+      assert(TM.getRelocationModel() == Reloc::DynamicNoPIC);
+      setPICStyle(PICStyles::StubDynamicNoPIC);
+    }
+  } else if (isTargetELF()) {
+    setPICStyle(PICStyles::GOT);
+  }
+}
 
 bool X86Subtarget::enableEarlyIfConversion() const {
   return hasCMov() && X86EarlyIfConv;

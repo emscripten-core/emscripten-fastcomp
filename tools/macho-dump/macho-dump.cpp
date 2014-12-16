@@ -324,7 +324,7 @@ DumpVersionMin(const MachOObjectFile &Obj,
                const MachOObjectFile::LoadCommandInfo &LCI) {
   MachO::version_min_command VMLC = Obj.getVersionMinLoadCommand(LCI);
   outs() << "  ('version, " << VMLC.version << ")\n"
-         << "  ('reserved, " << VMLC.reserved << ")\n";
+         << "  ('sdk, " << VMLC.sdk << ")\n";
   return 0;
 }
 
@@ -403,12 +403,12 @@ int main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "llvm Mach-O dumping tool\n");
 
-  ErrorOr<Binary *> BinaryOrErr = createBinary(InputFile);
+  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(InputFile);
   if (std::error_code EC = BinaryOrErr.getError())
     return Error("unable to read input: '" + EC.message() + "'");
-  std::unique_ptr<Binary> Binary(BinaryOrErr.get());
+  Binary &Binary = *BinaryOrErr.get().getBinary();
 
-  const MachOObjectFile *InputObject = dyn_cast<MachOObjectFile>(Binary.get());
+  const MachOObjectFile *InputObject = dyn_cast<MachOObjectFile>(&Binary);
   if (!InputObject)
     return Error("Not a MachO object");
 

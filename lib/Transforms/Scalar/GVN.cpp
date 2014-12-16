@@ -24,6 +24,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/AssumptionTracker.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -45,6 +46,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/SSAUpdater.h"
 #include <vector>
 using namespace llvm;
@@ -590,6 +592,7 @@ namespace {
     DominatorTree *DT;
     const DataLayout *DL;
     const TargetLibraryInfo *TLI;
+    AssumptionTracker *AT;
     SetVector<BasicBlock *> DeadBlocks;
 
     ValueTable VN;
@@ -679,6 +682,7 @@ namespace {
 
     // This transformation requires dominator postdominator info
     void getAnalysisUsage(AnalysisUsage &AU) const override {
+      AU.addRequired<AssumptionTracker>();
       AU.addRequired<DominatorTreeWrapperPass>();
       AU.addRequired<TargetLibraryInfo>();
       if (!NoLoads)
@@ -727,6 +731,7 @@ FunctionPass *llvm::createGVNPass(bool NoLoads) {
 }
 
 INITIALIZE_PASS_BEGIN(GVN, "gvn", "Global Value Numbering", false, false)
+INITIALIZE_PASS_DEPENDENCY(AssumptionTracker)
 INITIALIZE_PASS_DEPENDENCY(MemoryDependenceAnalysis)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfo)
@@ -1616,7 +1621,7 @@ bool GVN::PerformLoadPRE(LoadInst *LI, AvailValInBlkVect &ValuesPerBlock,
     // If all preds have a single successor, then we know it is safe to insert
     // the load on the pred (?!?), so we can insert code to materialize the
     // pointer if it is not available.
-    PHITransAddr Address(LI->getPointerOperand(), DL);
+    PHITransAddr Address(LI->getPointerOperand(), DL, AT);
     Value *LoadPtr = nullptr;
     LoadPtr = Address.PHITranslateWithInsertion(LoadBB, UnavailablePred,
                                                 *DT, NewInsts);
@@ -1669,9 +1674,11 @@ bool GVN::PerformLoadPRE(LoadInst *LI, AvailValInBlkVect &ValuesPerBlock,
                                         LI->getAlignment(),
                                         UnavailablePred->getTerminator());
 
-    // Transfer the old load's TBAA tag to the new load.
-    if (MDNode *Tag = LI->getMetadata(LLVMContext::MD_tbaa))
-      NewLoad->setMetadata(LLVMContext::MD_tbaa, Tag);
+    // Transfer the old load's AA tags to the new load.
+    AAMDNodes Tags;
+    LI->getAAMetadata(Tags);
+    if (Tags)
+      NewLoad->setAAMetadata(Tags);
 
     // Transfer DebugLoc.
     NewLoad->setDebugLoc(LI->getDebugLoc());
@@ -1774,36 +1781,24 @@ static void patchReplacementInstruction(Instruction *I, Value *Repl) {
       ReplOp->setHasNoUnsignedWrap(false);
   }
   if (Instruction *ReplInst = dyn_cast<Instruction>(Repl)) {
-    SmallVector<std::pair<unsigned, MDNode*>, 4> Metadata;
-    ReplInst->getAllMetadataOtherThanDebugLoc(Metadata);
-    for (int i = 0, n = Metadata.size(); i < n; ++i) {
-      unsigned Kind = Metadata[i].first;
-      MDNode *IMD = I->getMetadata(Kind);
-      MDNode *ReplMD = Metadata[i].second;
-      switch(Kind) {
-      default:
-        ReplInst->setMetadata(Kind, nullptr); // Remove unknown metadata
-        break;
-      case LLVMContext::MD_dbg:
-        llvm_unreachable("getAllMetadataOtherThanDebugLoc returned a MD_dbg");
-      case LLVMContext::MD_tbaa:
-        ReplInst->setMetadata(Kind, MDNode::getMostGenericTBAA(IMD, ReplMD));
-        break;
-      case LLVMContext::MD_range:
-        ReplInst->setMetadata(Kind, MDNode::getMostGenericRange(IMD, ReplMD));
-        break;
-      case LLVMContext::MD_prof:
-        llvm_unreachable("MD_prof in a non-terminator instruction");
-        break;
-      case LLVMContext::MD_fpmath:
-        ReplInst->setMetadata(Kind, MDNode::getMostGenericFPMath(IMD, ReplMD));
-        break;
-      case LLVMContext::MD_invariant_load:
-        // Only set the !invariant.load if it is present in both instructions.
-        ReplInst->setMetadata(Kind, IMD);
-        break;
-      }
-    }
+    // FIXME: If both the original and replacement value are part of the
+    // same control-flow region (meaning that the execution of one
+    // guarentees the executation of the other), then we can combine the
+    // noalias scopes here and do better than the general conservative
+    // answer used in combineMetadata().
+
+    // In general, GVN unifies expressions over different control-flow
+    // regions, and so we need a conservative combination of the noalias
+    // scopes.
+    unsigned KnownIDs[] = {
+      LLVMContext::MD_tbaa,
+      LLVMContext::MD_alias_scope,
+      LLVMContext::MD_noalias,
+      LLVMContext::MD_range,
+      LLVMContext::MD_fpmath,
+      LLVMContext::MD_invariant_load,
+    };
+    combineMetadata(ReplInst, I, KnownIDs);
   }
 }
 
@@ -2219,7 +2214,7 @@ bool GVN::processInstruction(Instruction *I) {
   // to value numbering it.  Value numbering often exposes redundancies, for
   // example if it determines that %y is equal to %x then the instruction
   // "%z = and i32 %x, %y" becomes "%z = and i32 %x, %x" which we now simplify.
-  if (Value *V = SimplifyInstruction(I, DL, TLI, DT)) {
+  if (Value *V = SimplifyInstruction(I, DL, TLI, DT, AT)) {
     I->replaceAllUsesWith(V);
     if (MD && V->getType()->getScalarType()->isPointerTy())
       MD->invalidateCachedPointerInfo(V);
@@ -2339,6 +2334,7 @@ bool GVN::runOnFunction(Function& F) {
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
   DL = DLP ? &DLP->getDataLayout() : nullptr;
+  AT = &getAnalysis<AssumptionTracker>();
   TLI = &getAnalysis<TargetLibraryInfo>();
   VN.setAliasAnalysis(&getAnalysis<AliasAnalysis>());
   VN.setMemDep(MD);
@@ -2653,8 +2649,8 @@ bool GVN::iterateOnFunction(Function &F) {
   //
   std::vector<BasicBlock *> BBVect;
   BBVect.reserve(256);
-  for (DomTreeNode *x : depth_first(DT->getRootNode()))
-    BBVect.push_back(x->getBlock());
+  for (DomTreeNode *X : depth_first(DT->getRootNode()))
+    BBVect.push_back(X->getBlock());
 
   for (std::vector<BasicBlock *>::iterator I = BBVect.begin(), E = BBVect.end();
        I != E; I++)
@@ -2802,7 +2798,7 @@ bool GVN::processFoldableCondBr(BranchInst *BI) {
   return true;
 }
 
-// performPRE() will trigger assert if it come across an instruciton without
+// performPRE() will trigger assert if it comes across an instruction without
 // associated val-num. As it normally has far more live instructions than dead
 // instructions, it makes more sense just to "fabricate" a val-number for the
 // dead code than checking if instruction involved is dead or not.

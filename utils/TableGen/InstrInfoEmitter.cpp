@@ -266,6 +266,7 @@ void InstrInfoEmitter::emitOperandNameMappings(raw_ostream &OS,
   OS << "#undef GET_INSTRINFO_NAMED_OPS\n";
   OS << "namespace llvm {";
   OS << "namespace " << Namespace << " {\n";
+  OS << "LLVM_READONLY\n";
   OS << "int16_t getNamedOperandIdx(uint16_t Opcode, uint16_t NamedIdx) {\n";
   if (!Operands.empty()) {
     OS << "  static const int16_t OperandMap [][" << Operands.size()
@@ -504,6 +505,9 @@ void InstrInfoEmitter::emitRecord(const CodeGenInstruction &Inst, unsigned Num,
   if (Inst.isAsCheapAsAMove)   OS << "|(1<<MCID::CheapAsAMove)";
   if (Inst.hasExtraSrcRegAllocReq) OS << "|(1<<MCID::ExtraSrcRegAllocReq)";
   if (Inst.hasExtraDefRegAllocReq) OS << "|(1<<MCID::ExtraDefRegAllocReq)";
+  if (Inst.isRegSequence) OS << "|(1<<MCID::RegSequence)";
+  if (Inst.isExtractSubreg) OS << "|(1<<MCID::ExtractSubreg)";
+  if (Inst.isInsertSubreg) OS << "|(1<<MCID::InsertSubreg)";
 
   // Emit all of the target-specific flags...
   BitsInit *TSF = Inst.TheDef->getValueAsBitsInit("TSFlags");

@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef X86_OPERAND_H
-#define X86_OPERAND_H
+#ifndef LLVM_LIB_TARGET_X86_ASMPARSER_X86OPERAND_H
+#define LLVM_LIB_TARGET_X86_ASMPARSER_X86OPERAND_H
 
 #include "X86AsmParserCommon.h"
 #include "llvm/MC/MCExpr.h"
@@ -153,20 +153,6 @@ struct X86Operand : public MCParsedAsmOperand {
     // extension.
     return isImmSExti32i8Value(CE->getValue());
   }
-  bool isImmZExtu32u8() const {
-    if (!isImm())
-      return false;
-
-    // If this isn't a constant expr, just assume it fits and let relaxation
-    // handle it.
-    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
-    if (!CE)
-      return true;
-
-    // Otherwise, check the value is in a range that makes sense for this
-    // extension.
-    return isImmZExtu32u8Value(CE->getValue());
-  }
   bool isImmSExti64i8() const {
     if (!isImm())
       return false;
@@ -205,6 +191,9 @@ struct X86Operand : public MCParsedAsmOperand {
   }
 
   bool isMem() const override { return Kind == Memory; }
+  bool isMemUnsized() const {
+    return Kind == Memory && Mem.Size == 0;
+  }
   bool isMem8() const {
     return Kind == Memory && (!Mem.Size || Mem.Size == 8);
   }
@@ -485,4 +474,4 @@ struct X86Operand : public MCParsedAsmOperand {
 
 } // End of namespace llvm
 
-#endif // X86_OPERAND
+#endif

@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 //
 
-#ifndef MIPS_MC_CODE_EMITTER_H
-#define MIPS_MC_CODE_EMITTER_H
+#ifndef LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSMCCODEEMITTER_H
+#define LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSMCCODEEMITTER_H
 
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/Support/DataTypes.h"
@@ -73,6 +73,18 @@ public:
   unsigned getJumpTargetOpValueMM(const MCInst &MI, unsigned OpNo,
                                   SmallVectorImpl<MCFixup> &Fixups,
                                   const MCSubtargetInfo &STI) const;
+
+  // getUImm5Lsl2Encoding - Return binary encoding of the microMIPS jump
+  // target operand.
+  unsigned getUImm5Lsl2Encoding(const MCInst &MI, unsigned OpNo,
+                                SmallVectorImpl<MCFixup> &Fixups,
+                                const MCSubtargetInfo &STI) const;
+
+  // getSImm9AddiuspValue - Return binary encoding of the microMIPS addiusp
+  // instruction immediate operand.
+  unsigned getSImm9AddiuspValue(const MCInst &MI, unsigned OpNo,
+                                SmallVectorImpl<MCFixup> &Fixups,
+                                const MCSubtargetInfo &STI) const;
 
   // getBranchTargetOpValue - Return binary encoding of the branch
   // target operand. If the machine operand requires relocation,

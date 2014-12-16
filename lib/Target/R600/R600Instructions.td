@@ -915,6 +915,11 @@ class MULADD_IEEE_Common <bits<5> inst> : R600_3OP <
   [(set f32:$dst, (fadd (fmul f32:$src0, f32:$src1), f32:$src2))]
 >;
 
+class FMA_Common <bits<5> inst> : R600_3OP <
+  inst, "FMA",
+  [(set f32:$dst, (fma f32:$src0, f32:$src1, f32:$src2))], VecALU
+>;
+
 class CNDE_Common <bits<5> inst> : R600_3OP <
   inst, "CNDE",
   [(set f32:$dst, (selectcc f32:$src0, FP_ZERO, f32:$src1, f32:$src2, COND_OEQ))]
@@ -1068,7 +1073,7 @@ class RECIP_CLAMPED_Common <bits<11> inst> : R600_1OP <
 }
 
 class RECIP_IEEE_Common <bits<11> inst> : R600_1OP <
-  inst, "RECIP_IEEE", [(set f32:$dst, (fdiv FP_ONE, f32:$src0))]
+  inst, "RECIP_IEEE", [(set f32:$dst, (AMDGPUrcp f32:$src0))]
 > {
   let Itinerary = TransALU;
 }
@@ -1114,6 +1119,7 @@ def FNEG_R600 : FNEG<R600_Reg32>;
 // Helper patterns for complex intrinsics
 //===----------------------------------------------------------------------===//
 
+// FIXME: Should be predicated on unsafe fp math.
 multiclass DIV_Common <InstR600 recip_ieee> {
 def : Pat<
   (int_AMDGPU_div f32:$src0, f32:$src1),
@@ -1124,6 +1130,8 @@ def : Pat<
   (fdiv f32:$src0, f32:$src1),
   (MUL_IEEE $src0, (recip_ieee $src1))
 >;
+
+def : RcpPat<recip_ieee, f32>;
 }
 
 class TGSI_LIT_Z_Common <InstR600 mul_lit, InstR600 log_clamped, InstR600 exp_ieee>
@@ -1133,9 +1141,12 @@ class TGSI_LIT_Z_Common <InstR600 mul_lit, InstR600 log_clamped, InstR600 exp_ie
 >;
 
 // FROUND pattern
-class FROUNDPat<Instruction CNDGE> : Pat <
+class FROUNDPat<Instruction CNDGE, Instruction CNDGT> : Pat <
   (AMDGPUround f32:$x),
-  (CNDGE (ADD (FNEG_R600 (f32 HALF)), (FRACT $x)), (CEIL $x), (FLOOR $x))
+  (CNDGE $x,
+  (CNDGE (ADD (FNEG_R600 (f32 HALF)), (FRACT $x)), (CEIL $x), (FLOOR $x)),
+  (CNDGT (ADD (FNEG_R600 (f32 HALF)), (FRACT $x)), (CEIL $x), (FLOOR $x))
+  )
 >;
 
 
@@ -1180,7 +1191,9 @@ let Predicates = [isR600] in {
   def TGSI_LIT_Z_r600 : TGSI_LIT_Z_Common<MUL_LIT_r600, LOG_CLAMPED_r600, EXP_IEEE_r600>;
 
   def : Pat<(fsqrt f32:$src), (MUL $src, (RECIPSQRT_CLAMPED_r600 $src))>;
-  def : FROUNDPat <CNDGE_r600>;
+  defm : RsqPat<RECIPSQRT_IEEE_r600, f32>;
+
+  def : FROUNDPat <CNDGE_r600, CNDGT_r600>;
 
   def R600_ExportSwz : ExportSwzInst {
     let Word1{20-17} = 0; // BURST_COUNT

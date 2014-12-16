@@ -12,8 +12,10 @@
 
 #include "AArch64.h"
 #include "AArch64TargetMachine.h"
-#include "llvm/PassManager.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/RegAllocRegistry.h"
+#include "llvm/IR/Function.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetOptions.h"
@@ -23,6 +25,10 @@ using namespace llvm;
 static cl::opt<bool>
 EnableCCMP("aarch64-ccmp", cl::desc("Enable the CCMP formation pass"),
            cl::init(true), cl::Hidden);
+
+static cl::opt<bool> EnableMCR("aarch64-mcr",
+                               cl::desc("Enable the machine combiner pass"),
+                               cl::init(true), cl::Hidden);
 
 static cl::opt<bool>
 EnableStPairSuppress("aarch64-stp-suppress", cl::desc("Suppress STP for AArch64"),
@@ -59,13 +65,31 @@ EnableAtomicTidy("aarch64-atomic-cfg-tidy", cl::Hidden,
                           " to make use of cmpxchg flow-based information"),
                  cl::init(true));
 
+static cl::opt<bool>
+EnableEarlyIfConversion("aarch64-enable-early-ifcvt", cl::Hidden,
+                        cl::desc("Run early if-conversion"),
+                        cl::init(true));
+
+static cl::opt<bool>
+EnableCondOpt("aarch64-condopt",
+              cl::desc("Enable the condition optimizer pass"),
+              cl::init(true), cl::Hidden);
+
+static cl::opt<bool>
+EnablePBQP("aarch64-pbqp", cl::Hidden,
+           cl::desc("Use PBQP register allocator (experimental)"),
+           cl::init(false));
+
+static cl::opt<bool>
+EnableA53Fix835769("aarch64-fix-cortex-a53-835769", cl::Hidden,
+                cl::desc("Work around Cortex-A53 erratum 835769"),
+                cl::init(false));
+
 extern "C" void LLVMInitializeAArch64Target() {
   // Register the target.
   RegisterTargetMachine<AArch64leTargetMachine> X(TheAArch64leTarget);
   RegisterTargetMachine<AArch64beTargetMachine> Y(TheAArch64beTarget);
-
-  RegisterTargetMachine<AArch64leTargetMachine> Z(TheARM64leTarget);
-  RegisterTargetMachine<AArch64beTargetMachine> W(TheARM64beTarget);
+  RegisterTargetMachine<AArch64leTargetMachine> Z(TheARM64Target);
 }
 
 /// TargetMachine ctor - Create an AArch64 architecture model.
@@ -77,8 +101,40 @@ AArch64TargetMachine::AArch64TargetMachine(const Target &T, StringRef TT,
                                            CodeGenOpt::Level OL,
                                            bool LittleEndian)
     : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-      Subtarget(TT, CPU, FS, *this, LittleEndian) {
+      Subtarget(TT, CPU, FS, *this, LittleEndian), isLittle(LittleEndian),
+      usingPBQP(false) {
   initAsmInfo();
+
+  if (EnablePBQP && Subtarget.isCortexA57() && OL != CodeGenOpt::None) {
+    usingPBQP = true;
+    RegisterRegAlloc::setDefault(createDefaultPBQPRegisterAllocator);
+  }
+}
+
+const AArch64Subtarget *
+AArch64TargetMachine::getSubtargetImpl(const Function &F) const {
+  AttributeSet FnAttrs = F.getAttributes();
+  Attribute CPUAttr =
+      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "target-cpu");
+  Attribute FSAttr =
+      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "target-features");
+
+  std::string CPU = !CPUAttr.hasAttribute(Attribute::None)
+                        ? CPUAttr.getValueAsString().str()
+                        : TargetCPU;
+  std::string FS = !FSAttr.hasAttribute(Attribute::None)
+                       ? FSAttr.getValueAsString().str()
+                       : TargetFS;
+
+  auto &I = SubtargetMap[CPU + FS];
+  if (!I) {
+    // This needs to be done before we create a new subtarget since any
+    // creation will depend on the TM and the code generation flags on the
+    // function that reside in TargetOptions.
+    resetTargetOptions(F);
+    I = llvm::make_unique<AArch64Subtarget>(TargetTriple, CPU, FS, *this, isLittle);
+  }
+  return I.get();
 }
 
 void AArch64leTargetMachine::anchor() { }
@@ -104,7 +160,10 @@ namespace {
 class AArch64PassConfig : public TargetPassConfig {
 public:
   AArch64PassConfig(AArch64TargetMachine *TM, PassManagerBase &PM)
-      : TargetPassConfig(TM, PM) {}
+      : TargetPassConfig(TM, PM) {
+    if (TM->getOptLevel() != CodeGenOpt::None)
+      substitutePass(&PostRASchedulerID, &PostMachineSchedulerID);
+  }
 
   AArch64TargetMachine &getAArch64TargetMachine() const {
     return getTM<AArch64TargetMachine>();
@@ -136,7 +195,7 @@ TargetPassConfig *AArch64TargetMachine::createPassConfig(PassManagerBase &PM) {
 void AArch64PassConfig::addIRPasses() {
   // Always expand atomic operations, we don't deal with atomicrmw or cmpxchg
   // ourselves.
-  addPass(createAtomicExpandLoadLinkedPass(TM));
+  addPass(createAtomicExpandPass(TM));
 
   // Cmpxchg instructions are often used with a subsequent comparison to
   // determine whether it succeeded. We can exploit existing control-flow in
@@ -174,9 +233,14 @@ bool AArch64PassConfig::addInstSelector() {
 }
 
 bool AArch64PassConfig::addILPOpts() {
+  if (EnableCondOpt)
+    addPass(createAArch64ConditionOptimizerPass());
   if (EnableCCMP)
     addPass(createAArch64ConditionalCompares());
-  addPass(&EarlyIfConverterID);
+  if (EnableMCR)
+    addPass(&MachineCombinerID);
+  if (EnableEarlyIfConversion)
+    addPass(&EarlyIfConverterID);
   if (EnableStPairSuppress)
     addPass(createAArch64StorePairSuppressPass());
   return true;
@@ -184,8 +248,12 @@ bool AArch64PassConfig::addILPOpts() {
 
 bool AArch64PassConfig::addPreRegAlloc() {
   // Use AdvSIMD scalar instructions whenever profitable.
-  if (TM->getOptLevel() != CodeGenOpt::None && EnableAdvSIMDScalar)
+  if (TM->getOptLevel() != CodeGenOpt::None && EnableAdvSIMDScalar) {
     addPass(createAArch64AdvSIMDScalar());
+    // The AdvSIMD pass may produce copies that can be rewritten to
+    // be register coaleascer friendly.
+    addPass(&PeepholeOptimizerID);
+  }
   return true;
 }
 
@@ -193,6 +261,11 @@ bool AArch64PassConfig::addPostRegAlloc() {
   // Change dead register definitions to refer to the zero register.
   if (TM->getOptLevel() != CodeGenOpt::None && EnableDeadRegisterElimination)
     addPass(createAArch64DeadRegisterDefinitions());
+  if (TM->getOptLevel() != CodeGenOpt::None &&
+      TM->getSubtarget<AArch64Subtarget>().isCortexA57() &&
+      !static_cast<const AArch64TargetMachine *>(TM)->isPBQPUsed())
+    // Improve performance for some FP/SIMD code for A57.
+    addPass(createAArch64A57FPLoadBalancing());
   return true;
 }
 
@@ -206,6 +279,8 @@ bool AArch64PassConfig::addPreSched2() {
 }
 
 bool AArch64PassConfig::addPreEmitPass() {
+  if (EnableA53Fix835769)
+    addPass(createAArch64A53Fix835769());
   // Relax conditional branch instructions if they're otherwise out of
   // range of their destination.
   addPass(createAArch64BranchRelaxation());

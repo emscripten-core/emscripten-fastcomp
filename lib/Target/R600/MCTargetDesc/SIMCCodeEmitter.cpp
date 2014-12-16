@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AMDGPU.h"
+#include "SIDefines.h"
 #include "MCTargetDesc/AMDGPUMCTargetDesc.h"
 #include "MCTargetDesc/AMDGPUMCCodeEmitter.h"
 #include "MCTargetDesc/AMDGPUFixupKinds.h"
@@ -84,12 +85,13 @@ MCCodeEmitter *llvm::createSIMCCodeEmitter(const MCInstrInfo &MCII,
 
 bool SIMCCodeEmitter::isSrcOperand(const MCInstrDesc &Desc,
                                    unsigned OpNo) const {
-
   unsigned RegClass = Desc.OpInfo[OpNo].RegClass;
   return (AMDGPU::SSrc_32RegClassID == RegClass) ||
          (AMDGPU::SSrc_64RegClassID == RegClass) ||
          (AMDGPU::VSrc_32RegClassID == RegClass) ||
-         (AMDGPU::VSrc_64RegClassID == RegClass);
+         (AMDGPU::VSrc_64RegClassID == RegClass) ||
+	 (AMDGPU::VCSrc_32RegClassID == RegClass) ||
+	 (AMDGPU::VCSrc_64RegClassID == RegClass);
 }
 
 uint32_t SIMCCodeEmitter::getLitEncoding(const MCOperand &MO) const {

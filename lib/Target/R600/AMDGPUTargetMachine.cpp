@@ -48,41 +48,13 @@ static MachineSchedRegistry
 SchedCustomRegistry("r600", "Run R600's custom scheduler",
                     createR600MachineScheduler);
 
-static std::string computeDataLayout(const AMDGPUSubtarget &ST) {
-  std::string Ret = "e-p:32:32";
-
-  if (ST.is64bit()) {
-    // 32-bit local, and region pointers. 64-bit private, global, and constant.
-    Ret += "-p1:64:64-p2:64:64-p3:32:32-p4:64:64-p5:32:32-p24:64:64";
-  }
-
-  Ret += "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256"
-         "-v512:512-v1024:1024-v2048:2048-n32:64";
-
-  return Ret;
-}
-
 AMDGPUTargetMachine::AMDGPUTargetMachine(const Target &T, StringRef TT,
-    StringRef CPU, StringRef FS,
-  TargetOptions Options,
-  Reloc::Model RM, CodeModel::Model CM,
-  CodeGenOpt::Level OptLevel
-)
-:
-  LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OptLevel),
-  Subtarget(TT, CPU, FS),
-  Layout(computeDataLayout(Subtarget)),
-  FrameLowering(TargetFrameLowering::StackGrowsUp,
-                64 * 16 // Maximum stack alignment (long16)
-               , 0),
-  IntrinsicInfo(this),
-  InstrItins(&Subtarget.getInstrItineraryData()) {
-  // TLInfo uses InstrInfo so it must be initialized after.
-  if (Subtarget.getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS) {
-    TLInfo.reset(new R600TargetLowering(*this));
-  } else {
-    TLInfo.reset(new SITargetLowering(*this));
-  }
+                                         StringRef CPU, StringRef FS,
+                                         TargetOptions Options, Reloc::Model RM,
+                                         CodeModel::Model CM,
+                                         CodeGenOpt::Level OptLevel)
+    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OptLevel),
+      Subtarget(TT, CPU, FS, *this), IntrinsicInfo() {
   setRequiresStructuredCFG(true);
   initAsmInfo();
 }
@@ -108,7 +80,7 @@ public:
     return nullptr;
   }
 
-  virtual void addCodeGenPrepare();
+  void addCodeGenPrepare() override;
   bool addPreISel() override;
   bool addInstSelector() override;
   bool addPreRegAlloc() override;
@@ -176,9 +148,19 @@ bool AMDGPUPassConfig::addPreRegAlloc() {
     // SIFixSGPRCopies can generate a lot of duplicate instructions,
     // so we need to run MachineCSE afterwards.
     addPass(&MachineCSEID);
+
+    if (getOptLevel() > CodeGenOpt::None && ST.loadStoreOptEnabled()) {
+      // Don't do this with no optimizations since it throws away debug info by
+      // merging nonadjacent loads.
+
+      // This should be run after scheduling, but before register allocation. It
+      // also need extra copies to the address operand to be eliminated.
+      initializeSILoadStoreOptimizerPass(*PassRegistry::getPassRegistry());
+      insertPass(&MachineSchedulerID, &SILoadStoreOptimizerID);
+    }
+
     addPass(createSIShrinkInstructionsPass());
-    initializeSIFixSGPRLiveRangesPass(*PassRegistry::getPassRegistry());
-    insertPass(&RegisterCoalescerID, &SIFixSGPRLiveRangesID);
+    addPass(createSIFixSGPRLiveRangesPass());
   }
   return false;
 }

@@ -74,8 +74,7 @@ public:
     this->setAsFirstOperand(IsFirst);
   }
 
-  /// setAsFirstOperand - Accessor method to mark the operand as the first in
-  /// the list.
+  /// \brief Accessor method to mark the operand as the first in the list.
   void setAsFirstOperand(unsigned V) { this->setValPtrInt(V); }
 
   void deleted() override;
@@ -98,8 +97,7 @@ void MDNodeOperand::allUsesReplacedWith(Value *NV) {
 // MDNode implementation.
 //
 
-/// getOperandPtr - Helper function to get the MDNodeOperand's coallocated on
-/// the end of the MDNode.
+/// \brief Get the MDNodeOperand's coallocated on the end of the MDNode.
 static MDNodeOperand *getOperandPtr(MDNode *N, unsigned Op) {
   // Use <= instead of < to permit a one-past-the-end address.
   assert(Op <= N->getNumOperands() && "Invalid operand number");
@@ -209,8 +207,7 @@ void MDNode::destroy() {
   free(this);
 }
 
-/// isFunctionLocalValue - Return true if this is a value that would require a
-/// function-local MDNode.
+/// \brief Check if the Value  would require a function-local MDNode.
 static bool isFunctionLocalValue(Value *V) {
   return isa<Instruction>(V) || isa<Argument>(V) || isa<BasicBlock>(V) ||
          (isa<MDNode>(V) && cast<MDNode>(V)->isFunctionLocal());
@@ -304,7 +301,7 @@ void MDNode::deleteTemporary(MDNode *N) {
   N->destroy();
 }
 
-/// getOperand - Return specified operand.
+/// \brief Return specified operand.
 Value *MDNode::getOperand(unsigned i) const {
   assert(i < getNumOperands() && "Invalid operand number");
   return *getOperandPtr(const_cast<MDNode*>(this), i);
@@ -404,6 +401,41 @@ void MDNode::replaceOperand(MDNodeOperand *Op, Value *To) {
     if (!isStillFunctionLocal)
       setValueSubclassData(getSubclassDataFromValue() & ~FunctionLocalBit);
   }
+}
+
+MDNode *MDNode::concatenate(MDNode *A, MDNode *B) {
+  if (!A)
+    return B;
+  if (!B)
+    return A;
+
+  SmallVector<Value *, 4> Vals(A->getNumOperands() +
+                               B->getNumOperands());
+
+  unsigned j = 0;
+  for (unsigned i = 0, ie = A->getNumOperands(); i != ie; ++i)
+    Vals[j++] = A->getOperand(i);
+  for (unsigned i = 0, ie = B->getNumOperands(); i != ie; ++i)
+    Vals[j++] = B->getOperand(i);
+
+  return MDNode::get(A->getContext(), Vals);
+}
+
+MDNode *MDNode::intersect(MDNode *A, MDNode *B) {
+  if (!A || !B)
+    return nullptr;
+
+  SmallVector<Value *, 4> Vals;
+  for (unsigned i = 0, ie = A->getNumOperands(); i != ie; ++i) {
+    Value *V = A->getOperand(i);
+    for (unsigned j = 0, je = B->getNumOperands(); j != je; ++j)
+      if (V == B->getOperand(j)) {
+        Vals.push_back(V);
+        break;
+      }
+  }
+
+  return MDNode::get(A->getContext(), Vals);
 }
 
 MDNode *MDNode::getMostGenericFPMath(MDNode *A, MDNode *B) {
@@ -537,36 +569,29 @@ NamedMDNode::~NamedMDNode() {
   delete &getNMDOps(Operands);
 }
 
-/// getNumOperands - Return number of NamedMDNode operands.
 unsigned NamedMDNode::getNumOperands() const {
   return (unsigned)getNMDOps(Operands).size();
 }
 
-/// getOperand - Return specified operand.
 MDNode *NamedMDNode::getOperand(unsigned i) const {
   assert(i < getNumOperands() && "Invalid Operand number!");
   return dyn_cast<MDNode>(&*getNMDOps(Operands)[i]);
 }
 
-/// addOperand - Add metadata Operand.
 void NamedMDNode::addOperand(MDNode *M) {
   assert(!M->isFunctionLocal() &&
          "NamedMDNode operands must not be function-local!");
   getNMDOps(Operands).push_back(TrackingVH<MDNode>(M));
 }
 
-/// eraseFromParent - Drop all references and remove the node from parent
-/// module.
 void NamedMDNode::eraseFromParent() {
   getParent()->eraseNamedMetadata(this);
 }
 
-/// dropAllReferences - Remove all uses and clear node vector.
 void NamedMDNode::dropAllReferences() {
   getNMDOps(Operands).clear();
 }
 
-/// getName - Return a constant reference to this named metadata's name.
 StringRef NamedMDNode::getName() const {
   return StringRef(Name);
 }
@@ -685,6 +710,12 @@ void Instruction::setMetadata(unsigned KindID, MDNode *Node) {
       return;
     }
   // Otherwise, removing an entry that doesn't exist on the instruction.
+}
+
+void Instruction::setAAMetadata(const AAMDNodes &N) {
+  setMetadata(LLVMContext::MD_tbaa, N.TBAA);
+  setMetadata(LLVMContext::MD_alias_scope, N.Scope);
+  setMetadata(LLVMContext::MD_noalias, N.NoAlias);
 }
 
 MDNode *Instruction::getMetadataImpl(unsigned KindID) const {

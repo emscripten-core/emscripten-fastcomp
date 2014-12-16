@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CODEGEN_ASMPRINTER_DWARFFILE_H__
-#define CODEGEN_ASMPRINTER_DWARFFILE_H__
+#ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFFILE_H
+#define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFFILE_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
@@ -74,8 +74,7 @@ public:
 
   /// \brief Emit all of the strings to the section given.
   void emitStrings(const MCSection *StrSection,
-                   const MCSection *OffsetSection = nullptr,
-                   const MCSymbol *StrSecSym = nullptr);
+                   const MCSection *OffsetSection = nullptr);
 
   /// \brief Returns the string pool.
   DwarfStringPool &getStringPool() { return StrPool; }

@@ -31,18 +31,25 @@ class TargetRegisterInfo;
 class CCValAssign {
 public:
   enum LocInfo {
-    Full,   // The value fills the full location.
-    SExt,   // The value is sign extended in the location.
-    ZExt,   // The value is zero extended in the location.
-    AExt,   // The value is extended with undefined upper bits.
-    BCvt,   // The value is bit-converted in the location.
-    VExt,   // The value is vector-widened in the location.
-            // FIXME: Not implemented yet. Code that uses AExt to mean
-            // vector-widen should be fixed to use VExt instead.
-    FPExt,  // The floating-point value is fp-extended in the location.
-    Indirect // The location contains pointer to the value.
+    Full,      // The value fills the full location.
+    SExt,      // The value is sign extended in the location.
+    ZExt,      // The value is zero extended in the location.
+    AExt,      // The value is extended with undefined upper bits.
+    SExtUpper, // The value is in the upper bits of the location and should be
+               // sign extended when retrieved.
+    ZExtUpper, // The value is in the upper bits of the location and should be
+               // zero extended when retrieved.
+    AExtUpper, // The value is in the upper bits of the location and should be
+               // extended with undefined upper bits when retrieved.
+    BCvt,      // The value is bit-converted in the location.
+    VExt,      // The value is vector-widened in the location.
+               // FIXME: Not implemented yet. Code that uses AExt to mean
+               // vector-widen should be fixed to use VExt instead.
+    FPExt,     // The floating-point value is fp-extended in the location.
+    Indirect   // The location contains pointer to the value.
     // TODO: a subset of the value is in the location.
   };
+
 private:
   /// ValNo - This is the value number begin assigned (e.g. an argument number).
   unsigned ValNo;
@@ -146,6 +153,9 @@ public:
     return (HTP == AExt || HTP == SExt || HTP == ZExt);
   }
 
+  bool isUpperBitsInLoc() const {
+    return HTP == AExtUpper || HTP == SExtUpper || HTP == ZExtUpper;
+  }
 };
 
 /// CCAssignFn - This function assigns a location for Val, updating State to
@@ -174,7 +184,6 @@ private:
   CallingConv::ID CallingConv;
   bool IsVarArg;
   MachineFunction &MF;
-  const TargetMachine &TM;
   const TargetRegisterInfo &TRI;
   SmallVectorImpl<CCValAssign> &Locs;
   LLVMContext &Context;
@@ -238,15 +247,13 @@ protected:
 
 public:
   CCState(CallingConv::ID CC, bool isVarArg, MachineFunction &MF,
-          const TargetMachine &TM, SmallVectorImpl<CCValAssign> &locs,
-          LLVMContext &C);
+          SmallVectorImpl<CCValAssign> &locs, LLVMContext &C);
 
   void addLoc(const CCValAssign &V) {
     Locs.push_back(V);
   }
 
   LLVMContext &getContext() const { return Context; }
-  const TargetMachine &getTarget() const { return TM; }
   MachineFunction &getMachineFunction() const { return MF; }
   CallingConv::ID getCallingConv() const { return CallingConv; }
   bool isVarArg() const { return IsVarArg; }
@@ -377,8 +384,8 @@ public:
   /// AllocateStack - Allocate a chunk of stack space with the specified size
   /// and alignment.
   unsigned AllocateStack(unsigned Size, unsigned Align) {
-    assert(Align && ((Align-1) & Align) == 0); // Align is power of 2.
-    StackOffset = ((StackOffset + Align-1) & ~(Align-1));
+    assert(Align && ((Align - 1) & Align) == 0); // Align is power of 2.
+    StackOffset = ((StackOffset + Align - 1) & ~(Align - 1));
     unsigned Result = StackOffset;
     StackOffset += Size;
     MF.getFrameInfo()->ensureMaxAlignment(Align);

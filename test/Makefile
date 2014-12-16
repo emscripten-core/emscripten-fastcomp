@@ -57,7 +57,7 @@ LIT_ALL_TESTSUITES += $(PROJ_OBJ_DIR)/../tools/clang/tools/extra/test
 
 # Force creation of Clang Tools' lit.site.cfg.
 clang-tools-site-cfg: FORCE
-	$(MAKE) -C $(PROJ_OBJ_DIR)/../tools/clang/tools/extra/test lit.site.cfg
+	$(MAKE) -C $(PROJ_OBJ_DIR)/../tools/clang/tools/extra/test lit.site.cfg Unit/lit.site.cfg
 extra-site-cfgs:: clang-tools-site-cfg
 endif
 
@@ -83,19 +83,15 @@ endif
 
 # ulimits like these are redundantly enforced by the buildbots, so
 # just removing them here won't work.
-# Both AuroraUX & Solaris do not have the -m flag for ulimit
+# Solaris does not have the -m flag for ulimit
 ifeq ($(HOST_OS),SunOS)
 ULIMIT=ulimit -t 600 ; ulimit -d 512000 ; ulimit -v 512000 ;
 else # !SunOS
-ifeq ($(HOST_OS),AuroraUX)
-ULIMIT=ulimit -t 600 ; ulimit -d 512000 ; ulimit -v 512000 ;
-else # !AuroraUX
 # Newer versions of python try to allocate an insane amount of address space for
 # its thread-local storage, don't set a limit here.
 # When -v is not used, then -s has to be used to limit the stack size.
 # FIXME: Those limits should be enforced by lit instead of globally.
 ULIMIT=ulimit -t 600 ; ulimit -d 512000 ; ulimit -m 512000 ; ulimit -s 8192 ;
-endif # AuroraUX
 endif # SunOS
 
 check-local:: lit.site.cfg Unit/lit.site.cfg
@@ -137,6 +133,10 @@ lit.site.cfg: FORCE
 	@$(ECHOPATH) s=@EXEEXT@=$(EXEEXT)=g >> lit.tmp
 	@$(ECHOPATH) s=@PYTHON_EXECUTABLE@=$(PYTHON)=g >> lit.tmp
 	@$(ECHOPATH) s=@OCAMLOPT@=$(OCAMLOPT) -cc $(subst *,'\\\"',*$(subst =,"\\=",$(CXX_FOR_OCAMLOPT))*) -cclib -L$(LibDir) -I $(LibDir)/ocaml=g >> lit.tmp
+	@$(ECHOPATH) s=@GO_EXECUTABLE@=$(GO)=g >> lit.tmp
+	@$(ECHOPATH) s!@HOST_CC@!$(CC)!g >> lit.tmp
+	@$(ECHOPATH) s!@HOST_CXX@!$(CXX)!g >> lit.tmp
+	@$(ECHOPATH) s!@HOST_LDFLAGS@!$(LDFLAGS)!g >> lit.tmp
 	@$(ECHOPATH) s=@ENABLE_SHARED@=$(ENABLE_SHARED)=g >> lit.tmp
 	@$(ECHOPATH) s=@ENABLE_ASSERTIONS@=$(ENABLE_ASSERTIONS)=g >> lit.tmp
 	@$(ECHOPATH) s=@TARGETS_TO_BUILD@=$(TARGETS_TO_BUILD)=g >> lit.tmp

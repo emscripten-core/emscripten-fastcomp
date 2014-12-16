@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_RUNTIMEDYLD_OBJECTIMAGECOMMON_H
-#define LLVM_RUNTIMEDYLD_OBJECTIMAGECOMMON_H
+#ifndef LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_OBJECTIMAGECOMMON_H
+#define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_OBJECTIMAGECOMMON_H
 
 #include "llvm/ExecutionEngine/ObjectBuffer.h"
 #include "llvm/ExecutionEngine/ObjectImage.h"
@@ -36,20 +36,17 @@ protected:
 
   // This form of the constructor allows subclasses to use
   // format-specific subclasses of ObjectFile directly
-  ObjectImageCommon(ObjectBuffer *Input, std::unique_ptr<object::ObjectFile> Obj)
-  : ObjectImage(Input), // saves Input as Buffer and takes ownership
-    ObjFile(std::move(Obj))
-  {
-  }
+  ObjectImageCommon(std::unique_ptr<ObjectBuffer> Input,
+                    std::unique_ptr<object::ObjectFile> Obj)
+      : ObjectImage(std::move(Input)), ObjFile(std::move(Obj)) {}
 
 public:
-  ObjectImageCommon(ObjectBuffer* Input)
-  : ObjectImage(Input) // saves Input as Buffer and takes ownership
-  {
+  ObjectImageCommon(std::unique_ptr<ObjectBuffer> Input)
+      : ObjectImage(std::move(Input)) {
     // FIXME: error checking? createObjectFile returns an ErrorOr<ObjectFile*>
     // and should probably be checked for failure.
-    std::unique_ptr<MemoryBuffer> Buf(Buffer->getMemBuffer());
-    ObjFile.reset(object::ObjectFile::createObjectFile(Buf).get());
+    MemoryBufferRef Buf = Buffer->getMemBuffer();
+    ObjFile = std::move(object::ObjectFile::createObjectFile(Buf).get());
   }
   ObjectImageCommon(std::unique_ptr<object::ObjectFile> Input)
   : ObjectImage(nullptr), ObjFile(std::move(Input))  {}
@@ -86,4 +83,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_RUNTIMEDYLD_OBJECT_IMAGE_H
+#endif

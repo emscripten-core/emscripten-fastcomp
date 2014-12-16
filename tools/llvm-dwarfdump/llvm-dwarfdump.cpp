@@ -65,26 +65,28 @@ DumpType("debug-dump", cl::init(DIDT_All),
         clEnumValN(DIDT_StrOffsetsDwo, "str_offsets.dwo", ".debug_str_offsets.dwo"),
         clEnumValEnd));
 
-static void DumpInput(const StringRef &Filename) {
-  ErrorOr<std::unique_ptr<MemoryBuffer>> Buff =
+static void DumpInput(StringRef Filename) {
+  ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr =
       MemoryBuffer::getFileOrSTDIN(Filename);
 
-  if (std::error_code EC = Buff.getError()) {
+  if (std::error_code EC = BuffOrErr.getError()) {
     errs() << Filename << ": " << EC.message() << "\n";
     return;
   }
+  std::unique_ptr<MemoryBuffer> Buff = std::move(BuffOrErr.get());
 
-  ErrorOr<ObjectFile *> ObjOrErr(ObjectFile::createObjectFile(Buff.get()));
+  ErrorOr<std::unique_ptr<ObjectFile>> ObjOrErr =
+      ObjectFile::createObjectFile(Buff->getMemBufferRef());
   if (std::error_code EC = ObjOrErr.getError()) {
     errs() << Filename << ": " << EC.message() << '\n';
     return;
   }
-  std::unique_ptr<ObjectFile> Obj(ObjOrErr.get());
+  ObjectFile &Obj = *ObjOrErr.get();
 
-  std::unique_ptr<DIContext> DICtx(DIContext::getDWARFContext(Obj.get()));
+  std::unique_ptr<DIContext> DICtx(DIContext::getDWARFContext(Obj));
 
   outs() << Filename
-         << ":\tfile format " << Obj->getFileFormatName() << "\n\n";
+         << ":\tfile format " << Obj.getFileFormatName() << "\n\n";
   // Dump the complete DWARF structure.
   DICtx->dump(outs(), DumpType);
 }

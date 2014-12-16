@@ -2,7 +2,7 @@
 ; RUN: llc < %s -march=r600 -mcpu=cayman | FileCheck %s --check-prefix=EG --check-prefix=FUNC
 ; RUN: llc < %s -march=r600 -mcpu=SI -verify-machineinstrs | FileCheck %s --check-prefix=SI --check-prefix=FUNC
 
-; FUNC-LABEL: @u32_mul24
+; FUNC-LABEL: {{^}}u32_mul24:
 ; EG: MUL_UINT24 {{[* ]*}}T{{[0-9]\.[XYZW]}}, KC0[2].Z, KC0[2].W
 ; SI: V_MUL_U32_U24
 
@@ -17,13 +17,13 @@ entry:
   ret void
 }
 
-; FUNC-LABEL: @i16_mul24
+; FUNC-LABEL: {{^}}i16_mul24:
 ; EG: MUL_UINT24 {{[* ]*}}T{{[0-9]}}.[[MUL_CHAN:[XYZW]]]
 ; The result must be sign-extended
 ; EG: BFE_INT {{[* ]*}}T{{[0-9]}}.{{[XYZW]}}, PV.[[MUL_CHAN]], 0.0, literal.x
 ; EG: 16
 ; SI: V_MUL_U32_U24_e{{(32|64)}} [[MUL:v[0-9]]], {{[sv][0-9], [sv][0-9]}}
-; SI: V_BFE_I32 v{{[0-9]}}, [[MUL]], 0, 16,
+; SI: V_BFE_I32 v{{[0-9]}}, [[MUL]], 0, 16
 define void @i16_mul24(i32 addrspace(1)* %out, i16 %a, i16 %b) {
 entry:
   %0 = mul i16 %a, %b
@@ -32,12 +32,12 @@ entry:
   ret void
 }
 
-; FUNC-LABEL: @i8_mul24
+; FUNC-LABEL: {{^}}i8_mul24:
 ; EG: MUL_UINT24 {{[* ]*}}T{{[0-9]}}.[[MUL_CHAN:[XYZW]]]
 ; The result must be sign-extended
 ; EG: BFE_INT {{[* ]*}}T{{[0-9]}}.{{[XYZW]}}, PV.[[MUL_CHAN]], 0.0, literal.x
 ; SI: V_MUL_U32_U24_e{{(32|64)}} [[MUL:v[0-9]]], {{[sv][0-9], [sv][0-9]}}
-; SI: V_BFE_I32 v{{[0-9]}}, [[MUL]], 0, 8,
+; SI: V_BFE_I32 v{{[0-9]}}, [[MUL]], 0, 8
 
 define void @i8_mul24(i32 addrspace(1)* %out, i8 %a, i8 %b) {
 entry:
@@ -48,7 +48,7 @@ entry:
 }
 
 ; Multiply with 24-bit inputs and 64-bit output
-; FUNC_LABEL: @mul24_i64
+; FUNC_LABEL: {{^}}mul24_i64:
 ; EG; MUL_UINT24
 ; EG: MULHI
 ; SI: V_MUL_U32_U24

@@ -4,21 +4,6 @@
 
 ; Test that only white-listed intrinsics are allowed.
 
-; A debuginfo version is required.
-!llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
-
-; ===================================
-; Debug info intrinsics, which are disallowed by default.
-
-; CHECK: Function llvm.dbg.value is a disallowed LLVM intrinsic
-; DBG-NOT: Function llvm.dbg.value is a disallowed LLVM intrinsic
-declare void @llvm.dbg.value(metadata, i64, metadata)
-; CHECK: Function llvm.dbg.declare is a disallowed LLVM intrinsic
-; DBG-NOT: Function llvm.dbg.declare is a disallowed LLVM intrinsic
-declare void @llvm.dbg.declare(metadata, metadata)
-
-
 ; ===================================
 ; Always allowed intrinsics.
 
@@ -141,3 +126,17 @@ declare void @llvm.memset.p0i8.i64(i8* %dest, i8 %val,
 ; CHECK: Function llvm.memset.foo is a disallowed LLVM intrinsic
 declare void @llvm.memset.foo(i8* %dest, i8 %val,
                               i64 %len, i32 %align, i1 %isvolatile)
+
+; A debuginfo version is required.
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+
+; ===================================
+; Debug info intrinsics, which are disallowed by default.
+
+; CHECK: Function llvm.dbg.value is a disallowed LLVM intrinsic
+; DBG-NOT: Function llvm.dbg.value is a disallowed LLVM intrinsic
+declare void @llvm.dbg.value(metadata, i64, metadata, metadata)
+; CHECK: Function llvm.dbg.declare is a disallowed LLVM intrinsic
+; DBG-NOT: Function llvm.dbg.declare is a disallowed LLVM intrinsic
+declare void @llvm.dbg.declare(metadata, metadata, metadata)

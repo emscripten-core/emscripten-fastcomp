@@ -22,10 +22,15 @@
 ; RUN: llc < %s -mtriple=armv7-linux-gnueabi -mcpu=cortex-a12 -mattr=-vfp2 | FileCheck %s --check-prefix=CORTEX-A12-NOFPU
 ; RUN: llc < %s -mtriple=armv7-linux-gnueabi -mcpu=cortex-a9-mp | FileCheck %s --check-prefix=CORTEX-A9-MP
 ; RUN: llc < %s -mtriple=armv7-linux-gnueabi -mcpu=cortex-a15 | FileCheck %s --check-prefix=CORTEX-A15
+; RUN: llc < %s -mtriple=armv7-linux-gnueabi -mcpu=cortex-a17 | FileCheck %s --check-prefix=CORTEX-A17-DEFAULT
+; RUN: llc < %s -mtriple=armv7-linux-gnueabi -mcpu=cortex-a17 -mattr=-vfp2 | FileCheck %s --check-prefix=CORTEX-A17-NOFPU
 ; RUN: llc < %s -mtriple=thumbv6m-linux-gnueabi -mcpu=cortex-m0 | FileCheck %s --check-prefix=CORTEX-M0
 ; RUN: llc < %s -mtriple=thumbv7m-linux-gnueabi -mcpu=cortex-m3 | FileCheck %s --check-prefix=CORTEX-M3
 ; RUN: llc < %s -mtriple=thumbv7m-linux-gnueabi -mcpu=cortex-m4 -float-abi=soft | FileCheck %s --check-prefix=CORTEX-M4-SOFT
 ; RUN: llc < %s -mtriple=thumbv7m-linux-gnueabi -mcpu=cortex-m4 -float-abi=hard | FileCheck %s --check-prefix=CORTEX-M4-HARD
+; RUN: llc < %s -mtriple=thumbv7em-linux-gnueabi -mcpu=cortex-m7 -mattr=-vfp2 | FileCheck %s --check-prefix=CORTEX-M7 --check-prefix=CORTEX-M7-SOFT
+; RUN: llc < %s -mtriple=thumbv7em-linux-gnueabi -mcpu=cortex-m7 -mattr=+fp-only-sp | FileCheck %s --check-prefix=CORTEX-M7 --check-prefix=CORTEX-M7-SINGLE
+; RUN: llc < %s -mtriple=thumbv7em-linux-gnueabi -mcpu=cortex-m7 | FileCheck %s --check-prefix=CORTEX-M7 --check-prefix=CORTEX-M7-DOUBLE
 ; RUN: llc < %s -mtriple=armv7r-linux-gnueabi -mcpu=cortex-r5 | FileCheck %s --check-prefix=CORTEX-R5
 ; RUN: llc < %s -mtriple=armv8-linux-gnueabi -mcpu=cortex-a53 | FileCheck %s --check-prefix=CORTEX-A53
 ; RUN: llc < %s -mtriple=armv8-linux-gnueabi -mcpu=cortex-a57 | FileCheck %s --check-prefix=CORTEX-A57
@@ -38,6 +43,32 @@
 ; RUN: llc < %s -mtriple=arm-none-linux-gnueabi -relocation-model=default | FileCheck %s --check-prefix=RELOC-OTHER
 ; RUN: llc < %s -mtriple=arm-none-linux-gnueabi -relocation-model=dynamic-no-pic | FileCheck %s --check-prefix=RELOC-OTHER
 ; RUN: llc < %s -mtriple=arm-none-linux-gnueabi | FileCheck %s --check-prefix=RELOC-OTHER
+; RUN: llc < %s -mtriple=arm-none-linux-gnueabi | FileCheck %s --check-prefix=PCS-R9-USE
+; RUN: llc < %s -mtriple=arm-none-linux-gnueabi -arm-reserve-r9 | FileCheck %s --check-prefix=PCS-R9-RESERVE
+
+; ARMv8a (AArch32)
+; RUN: llc < %s -mtriple=armv8-none-linux-gnueabi -mcpu=cortex-a57 -arm-no-strict-align | FileCheck %s --check-prefix=NO-STRICT-ALIGN
+; RUN: llc < %s -mtriple=armv8-none-linux-gnueabi -mcpu=cortex-a57 -arm-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
+; ARMv7a
+; RUN: llc < %s -mtriple=armv7-none-linux-gnueabi -mcpu=cortex-a7 -arm-no-strict-align | FileCheck %s --check-prefix=NO-STRICT-ALIGN
+; RUN: llc < %s -mtriple=armv7-none-linux-gnueabi -mcpu=cortex-a7 -arm-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
+; ARMv7r
+; RUN: llc < %s -mtriple=armv7r-none-linux-gnueabi -mcpu=cortex-r5 -arm-no-strict-align | FileCheck %s --check-prefix=NO-STRICT-ALIGN
+; RUN: llc < %s -mtriple=armv7r-none-linux-gnueabi -mcpu=cortex-r5 -arm-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
+; ARMv7m
+; RUN: llc < %s -mtriple=thumbv7m-none-linux-gnueabi -mcpu=cortex-m3 -arm-no-strict-align | FileCheck %s --check-prefix=NO-STRICT-ALIGN
+; RUN: llc < %s -mtriple=thumbv7m-none-linux-gnueabi -mcpu=cortex-m3 -arm-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
+; ARMv6
+; RUN: llc < %s -mtriple=armv6-none-netbsd-gnueabi -mcpu=arm1136j-s | FileCheck %s --check-prefix=NO-STRICT-ALIGN
+; RUN: llc < %s -mtriple=armv6-none-linux-gnueabi -mcpu=arm1136j-s | FileCheck %s --check-prefix=STRICT-ALIGN
+; ARMv6m
+; RUN: llc < %s -mtriple=thumb-none-linux-gnueabi -arm-no-strict-align -mcpu=cortex-m0 | FileCheck %s --check-prefix=STRICT-ALIGN
+; RUN: llc < %s -mtriple=thumb-none-linux-gnueabi -arm-strict-align -mcpu=cortex-m0 | FileCheck %s --check-prefix=STRICT-ALIGN
+; RUN: llc < %s -mtriple=thumbv6m-none-linux-gnueabi -arm-no-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
+; RUN: llc < %s -mtriple=thumbv6m-none-linux-gnueabi -arm-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
+; ARMv5
+; RUN: llc < %s -mtriple=armv5-none-linux-gnueabi -mcpu=arm1022e -arm-no-strict-align | FileCheck %s --check-prefix=NO-STRICT-ALIGN
+; RUN: llc < %s -mtriple=armv5-none-linux-gnueabi -mcpu=arm1022e -arm-strict-align | FileCheck %s --check-prefix=STRICT-ALIGN
 
 ; XSCALE:      .eabi_attribute 6, 5
 ; XSCALE:      .eabi_attribute 8, 1
@@ -131,6 +162,10 @@
 ; V8-FPARMv8-NEON-CRYPTO: .eabi_attribute 6, 14
 ; V8-FPARMv8-NEON-CRYPTO: .fpu crypto-neon-fp-armv8
 ; V8-FPARMv8-NEON-CRYPTO: .eabi_attribute 12, 3
+
+; Tag_CPU_unaligned_access
+; NO-STRICT-ALIGN: .eabi_attribute 34, 1
+; STRICT-ALIGN: .eabi_attribute 34, 0
 
 ; Tag_CPU_arch	'ARMv7'
 ; CORTEX-A7-CHECK: .eabi_attribute	6, 10
@@ -342,6 +377,36 @@
 ; CORTEX-A15: .eabi_attribute 44, 2
 ; CORTEX-A15: .eabi_attribute 68, 3
 
+; CORTEX-A17-DEFAULT:  .cpu cortex-a17
+; CORTEX-A17-DEFAULT:  .eabi_attribute 6, 10
+; CORTEX-A17-DEFAULT:  .eabi_attribute 7, 65
+; CORTEX-A17-DEFAULT:  .eabi_attribute 8, 1
+; CORTEX-A17-DEFAULT:  .eabi_attribute 9, 2
+; CORTEX-A17-DEFAULT:  .fpu neon-vfpv4
+; CORTEX-A17-DEFAULT:  .eabi_attribute 20, 1
+; CORTEX-A17-DEFAULT:  .eabi_attribute 21, 1
+; CORTEX-A17-DEFAULT:  .eabi_attribute 23, 3
+; CORTEX-A17-DEFAULT:  .eabi_attribute 24, 1
+; CORTEX-A17-DEFAULT:  .eabi_attribute 25, 1
+; CORTEX-A17-DEFAULT:  .eabi_attribute 42, 1
+; CORTEX-A17-DEFAULT:  .eabi_attribute 44, 2
+; CORTEX-A17-DEFAULT:  .eabi_attribute 68, 3
+
+; CORTEX-A17-NOFPU:  .cpu cortex-a17
+; CORTEX-A17-NOFPU:  .eabi_attribute 6, 10
+; CORTEX-A17-NOFPU:  .eabi_attribute 7, 65
+; CORTEX-A17-NOFPU:  .eabi_attribute 8, 1
+; CORTEX-A17-NOFPU:  .eabi_attribute 9, 2
+; CORTEX-A17-NOFPU-NOT:  .fpu
+; CORTEX-A17-NOFPU:  .eabi_attribute 20, 1
+; CORTEX-A17-NOFPU:  .eabi_attribute 21, 1
+; CORTEX-A17-NOFPU:  .eabi_attribute 23, 3
+; CORTEX-A17-NOFPU:  .eabi_attribute 24, 1
+; CORTEX-A17-NOFPU:  .eabi_attribute 25, 1
+; CORTEX-A17-NOFPU:  .eabi_attribute 42, 1
+; CORTEX-A17-NOFPU:  .eabi_attribute 44, 2
+; CORTEX-A17-NOFPU:  .eabi_attribute 68, 3
+
 ; CORTEX-M0:  .cpu cortex-m0
 ; CORTEX-M0:  .eabi_attribute 6, 12
 ; CORTEX-M0-NOT:  .eabi_attribute 7
@@ -408,6 +473,26 @@
 ; CORTEX-M4-HARD-NOT:  .eabi_attribute 44
 ; CORTEX-M4-HARD-NOT:  .eabi_attribute 68
 
+; CORTEX-M7:  .cpu    cortex-m7
+; CORTEX-M7:  .eabi_attribute 6, 13
+; CORTEX-M7:  .eabi_attribute 7, 77
+; CORTEX-M7:  .eabi_attribute 8, 0
+; CORTEX-M7:  .eabi_attribute 9, 2
+; CORTEX-M7-SOFT-NOT: .fpu
+; CORTEX-M7-SINGLE:  .fpu fpv5-d16
+; CORTEX-M7-DOUBLE:  .fpu fpv5-d16
+; CORTEX-M7:  .eabi_attribute 17, 1
+; CORTEX-M7:  .eabi_attribute 20, 1
+; CORTEX-M7:  .eabi_attribute 21, 1
+; CORTEX-M7:  .eabi_attribute 23, 3
+; CORTEX-M7:  .eabi_attribute 24, 1
+; CORTEX-M7:  .eabi_attribute 25, 1
+; CORTEX-M7-SOFT-NOT: .eabi_attribute 27
+; CORTEX-M7-SINGLE:  .eabi_attribute 27, 1
+; CORTEX-M7-DOUBLE-NOT: .eabi_attribute 27
+; CORTEX-M7:  .eabi_attribute 36, 1
+; CORTEX-M7:  .eabi_attribute 14, 0
+
 ; CORTEX-R5:  .cpu cortex-r5
 ; CORTEX-R5:  .eabi_attribute 6, 10
 ; CORTEX-R5:  .eabi_attribute 7, 82
@@ -462,6 +547,9 @@
 ; RELOC-PIC:  .eabi_attribute 16, 1
 ; RELOC-PIC:  .eabi_attribute 17, 2
 ; RELOC-OTHER:  .eabi_attribute 17, 1
+
+; PCS-R9-USE:  .eabi_attribute 14, 0
+; PCS-R9-RESERVE:  .eabi_attribute 14, 3
 
 define i32 @f(i64 %z) {
 	ret i32 0

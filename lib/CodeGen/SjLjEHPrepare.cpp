@@ -31,6 +31,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
@@ -138,7 +139,7 @@ void SjLjEHPrepare::insertCallSiteStore(Instruction *I, int Number) {
 /// MarkBlocksLiveIn - Insert BB and all of its predescessors into LiveBBs until
 /// we reach blocks we've already seen.
 static void MarkBlocksLiveIn(BasicBlock *BB,
-                             SmallPtrSet<BasicBlock *, 64> &LiveBBs) {
+                             SmallPtrSetImpl<BasicBlock *> &LiveBBs) {
   if (!LiveBBs.insert(BB))
     return; // already been here.
 
@@ -190,7 +191,7 @@ Value *SjLjEHPrepare::setupFunctionContext(Function &F,
   // Create an alloca for the incoming jump buffer ptr and the new jump buffer
   // that needs to be restored on all exits from the function. This is an alloca
   // because the value needs to be added to the global context list.
-  const TargetLowering *TLI = TM->getTargetLowering();
+  const TargetLowering *TLI = TM->getSubtargetImpl()->getTargetLowering();
   unsigned Align =
       TLI->getDataLayout()->getPrefTypeAlignment(FunctionContextTy);
   FuncCtx = new AllocaInst(FunctionContextTy, nullptr, Align, "fn_context",
@@ -350,10 +351,8 @@ void SjLjEHPrepare::lowerAcrossUnwindEdges(Function &F,
       continue;
 
     // Demote the PHIs to the stack.
-    for (SmallPtrSet<PHINode *, 8>::iterator I = PHIsToDemote.begin(),
-                                             E = PHIsToDemote.end();
-         I != E; ++I)
-      DemotePHIToStack(*I);
+    for (PHINode *PN : PHIsToDemote)
+      DemotePHIToStack(PN);
 
     // Move the landingpad instruction back to the top of the landing pad block.
     LPI->moveBefore(UnwindBlock->begin());

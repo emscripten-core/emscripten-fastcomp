@@ -704,7 +704,6 @@ void MCAsmStreamer::EmitULEB128Value(const MCExpr *Value) {
     EmitULEB128IntValue(IntValue);
     return;
   }
-  assert(MAI->hasLEB128() && "Cannot print a .uleb");
   OS << ".uleb128 " << *Value;
   EmitEOL();
 }
@@ -715,7 +714,6 @@ void MCAsmStreamer::EmitSLEB128Value(const MCExpr *Value) {
     EmitSLEB128IntValue(IntValue);
     return;
   }
-  assert(MAI->hasLEB128() && "Cannot print a .sleb");
   OS << ".sleb128 " << *Value;
   EmitEOL();
 }
@@ -1093,19 +1091,6 @@ void MCAsmStreamer::EmitWinEHHandler(const MCSymbol *Sym, bool Unwind,
   EmitEOL();
 }
 
-static const MCSection *getWin64EHTableSection(StringRef suffix,
-                                               MCContext &context) {
-  // FIXME: This doesn't belong in MCObjectFileInfo. However,
-  /// this duplicate code in MCWin64EH.cpp.
-  if (suffix == "")
-    return context.getObjectFileInfo()->getXDataSection();
-  return context.getCOFFSection((".xdata"+suffix).str(),
-                                COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                COFF::IMAGE_SCN_MEM_READ |
-                                COFF::IMAGE_SCN_MEM_WRITE,
-                                SectionKind::getDataRel());
-}
-
 void MCAsmStreamer::EmitWinEHHandlerData() {
   MCStreamer::EmitWinEHHandlerData();
 
@@ -1113,11 +1098,10 @@ void MCAsmStreamer::EmitWinEHHandlerData() {
   // cause the section switch to be visible in the emitted assembly.
   // We only do this so the section switch that terminates the handler
   // data block is visible.
-  MCWinFrameInfo *CurFrame = getCurrentWinFrameInfo();
-  StringRef suffix=MCWin64EHUnwindEmitter::GetSectionSuffix(CurFrame->Function);
-  const MCSection *xdataSect = getWin64EHTableSection(suffix, getContext());
-  if (xdataSect)
-    SwitchSectionNoChange(xdataSect);
+  WinEH::FrameInfo *CurFrame = getCurrentWinFrameInfo();
+  if (const MCSection *XData = WinEH::UnwindEmitter::getXDataSection(
+          CurFrame->Function, getContext()))
+    SwitchSectionNoChange(XData);
 
   OS << "\t.seh_handlerdata";
   EmitEOL();

@@ -19,6 +19,7 @@
 #include "Unix.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_ostream.h"
 #include <llvm/Config/config.h>
 #if HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -442,6 +443,23 @@ ProcessInfo sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
     return std::error_code();
 }
 
+std::error_code
+llvm::sys::writeFileWithEncoding(StringRef FileName, StringRef Contents,
+                                 WindowsEncodingMethod Encoding /*unused*/) {
+  std::error_code EC;
+  llvm::raw_fd_ostream OS(FileName, EC, llvm::sys::fs::OpenFlags::F_Text);
+
+  if (EC)
+    return EC;
+
+  OS << Contents;
+
+  if (OS.has_error())
+    return std::make_error_code(std::errc::io_error);
+
+  return EC;
+}
+
 bool llvm::sys::argumentsFitWithinSystemLimits(ArrayRef<const char*> Args) {
 #if defined(__native_client__)
   static long ArgMax = -1;
@@ -454,13 +472,13 @@ bool llvm::sys::argumentsFitWithinSystemLimits(ArrayRef<const char*> Args) {
     return true;
 
   // Conservatively account for space required by environment variables.
-  ArgMax /= 2;
+  long HalfArgMax = ArgMax / 2;
 
   size_t ArgLength = 0;
   for (ArrayRef<const char*>::iterator I = Args.begin(), E = Args.end();
        I != E; ++I) {
     ArgLength += strlen(*I) + 1;
-    if (ArgLength > size_t(ArgMax)) {
+    if (ArgLength > size_t(HalfArgMax)) {
       return false;
     }
   }

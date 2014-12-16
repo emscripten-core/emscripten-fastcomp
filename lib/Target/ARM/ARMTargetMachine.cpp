@@ -14,6 +14,7 @@
 #include "ARMTargetMachine.h"
 #include "ARMFrameLowering.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
@@ -45,7 +46,6 @@ extern "C" void LLVMInitializeARMTarget() {
   RegisterTargetMachine<ThumbBETargetMachine> B(TheThumbBETarget);
 }
 
-
 /// TargetMachine ctor - Create an ARM architecture model.
 ///
 ARMBaseTargetMachine::ARMBaseTargetMachine(const Target &T, StringRef TT,
@@ -54,12 +54,50 @@ ARMBaseTargetMachine::ARMBaseTargetMachine(const Target &T, StringRef TT,
                                            Reloc::Model RM, CodeModel::Model CM,
                                            CodeGenOpt::Level OL, bool isLittle)
     : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-      Subtarget(TT, CPU, FS, *this, isLittle, Options) {
+      Subtarget(TT, CPU, FS, *this, isLittle), isLittle(isLittle) {
 
   // Default to triple-appropriate float ABI
   if (Options.FloatABIType == FloatABI::Default)
     this->Options.FloatABIType =
         Subtarget.isTargetHardFloat() ? FloatABI::Hard : FloatABI::Soft;
+}
+
+const ARMSubtarget *
+ARMBaseTargetMachine::getSubtargetImpl(const Function &F) const {
+  AttributeSet FnAttrs = F.getAttributes();
+  Attribute CPUAttr =
+      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "target-cpu");
+  Attribute FSAttr =
+      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "target-features");
+
+  std::string CPU = !CPUAttr.hasAttribute(Attribute::None)
+                        ? CPUAttr.getValueAsString().str()
+                        : TargetCPU;
+  std::string FS = !FSAttr.hasAttribute(Attribute::None)
+                       ? FSAttr.getValueAsString().str()
+                       : TargetFS;
+
+  // FIXME: This is related to the code below to reset the target options,
+  // we need to know whether or not the soft float flag is set on the
+  // function before we can generate a subtarget. We also need to use
+  // it as a key for the subtarget since that can be the only difference
+  // between two functions.
+  Attribute SFAttr =
+      FnAttrs.getAttribute(AttributeSet::FunctionIndex, "use-soft-float");
+  bool SoftFloat = !SFAttr.hasAttribute(Attribute::None)
+                       ? SFAttr.getValueAsString() == "true"
+                       : Options.UseSoftFloat;
+
+  auto &I = SubtargetMap[CPU + FS + (SoftFloat ? "use-soft-float=true"
+                                               : "use-soft-float=false")];
+  if (!I) {
+    // This needs to be done before we create a new subtarget since any
+    // creation will depend on the TM and the code generation flags on the
+    // function that reside in TargetOptions.
+    resetTargetOptions(F);
+    I = llvm::make_unique<ARMSubtarget>(TargetTriple, CPU, FS, *this, isLittle);
+  }
+  return I.get();
 }
 
 void ARMBaseTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
@@ -165,7 +203,11 @@ void ARMPassConfig::addIRPasses() {
   if (getARMSubtarget().isTargetNaCl())
     addPass(createInsertDivideCheckPass());
   // @LOCALMOD-END
-  addPass(createAtomicExpandLoadLinkedPass(TM));
+
+  if (TM->Options.ThreadModel == ThreadModel::Single)
+    addPass(createLowerAtomicPass());
+  else
+    addPass(createAtomicExpandPass(TM));
 
   // Cmpxchg instructions are often used with a subsequent comparison to
   // determine whether it succeeded. We can exploit existing control-flow in
@@ -271,11 +313,4 @@ bool ARMPassConfig::addPreEmitPass() {
   // @LOCALMOD-END
 
   return true;
-}
-
-bool ARMBaseTargetMachine::addCodeEmitter(PassManagerBase &PM,
-                                          JITCodeEmitter &JCE) {
-  // Machine code emitter pass for ARM.
-  PM.add(createARMJITCodeEmitterPass(*this, JCE));
-  return false;
 }

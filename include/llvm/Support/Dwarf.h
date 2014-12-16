@@ -21,22 +21,6 @@
 
 namespace llvm {
 
-//===----------------------------------------------------------------------===//
-// Debug info constants.
-
-enum : uint32_t {
-  LLVMDebugVersion = (12 << 16),    // Current version of debug information.
-  LLVMDebugVersion11 = (11 << 16),  // Constant for version 11.
-  LLVMDebugVersion10 = (10 << 16),  // Constant for version 10.
-  LLVMDebugVersion9 = (9 << 16),    // Constant for version 9.
-  LLVMDebugVersion8 = (8 << 16),    // Constant for version 8.
-  LLVMDebugVersion7 = (7 << 16),    // Constant for version 7.
-  LLVMDebugVersion6 = (6 << 16),    // Constant for version 6.
-  LLVMDebugVersion5 = (5 << 16),    // Constant for version 5.
-  LLVMDebugVersion4 = (4 << 16),    // Constant for version 4.
-  LLVMDebugVersionMask = 0xffff0000 // Mask for version number.
-};
-
 namespace dwarf {
 
 //===----------------------------------------------------------------------===//
@@ -53,6 +37,7 @@ enum LLVMConstants : uint32_t {
 
   DW_TAG_auto_variable = 0x100, // Tag for local (auto) variables.
   DW_TAG_arg_variable = 0x101,  // Tag for argument variables.
+  DW_TAG_expression = 0x102,    // Tag for complex address expressions.
 
   DW_TAG_user_base = 0x1000, // Recommended base for user tags.
 
@@ -779,14 +764,22 @@ enum LocationListEntry : unsigned char {
   DW_LLE_offset_pair_entry
 };
 
+/// Contstants for the DW_APPLE_PROPERTY_attributes attribute.
+/// Keep this list in sync with clang's DeclSpec.h ObjCPropertyAttributeKind.
 enum ApplePropertyAttributes {
   // Apple Objective-C Property Attributes
   DW_APPLE_PROPERTY_readonly = 0x01,
-  DW_APPLE_PROPERTY_readwrite = 0x02,
+  DW_APPLE_PROPERTY_getter = 0x02,
   DW_APPLE_PROPERTY_assign = 0x04,
-  DW_APPLE_PROPERTY_retain = 0x08,
-  DW_APPLE_PROPERTY_copy = 0x10,
-  DW_APPLE_PROPERTY_nonatomic = 0x20
+  DW_APPLE_PROPERTY_readwrite = 0x08,
+  DW_APPLE_PROPERTY_retain = 0x10,
+  DW_APPLE_PROPERTY_copy = 0x20,
+  DW_APPLE_PROPERTY_nonatomic = 0x40,
+  DW_APPLE_PROPERTY_setter = 0x80,
+  DW_APPLE_PROPERTY_atomic = 0x100,
+  DW_APPLE_PROPERTY_weak =   0x200,
+  DW_APPLE_PROPERTY_strong = 0x400,
+  DW_APPLE_PROPERTY_unsafe_unretained = 0x800
 };
 
 /// TagString - Return the string for the specified tag.
@@ -873,6 +866,11 @@ const char *MacinfoString(unsigned Encoding);
 /// encodings.
 const char *CallFrameString(unsigned Encoding);
 
+/// ApplePropertyString - Return the string for the specified Apple
+/// property bit. This function is meant to return the symbolic name
+/// for 1 bit of the DW_AT_APPLE_property attribute, not for the whole attribute.
+const char *ApplePropertyString(unsigned);
+
 // Constants for the DWARF5 Accelerator Table Proposal
 enum AcceleratorTable {
   // Data layout descriptors.
@@ -949,6 +947,10 @@ private:
     LINKAGE_MASK = 1 << LINKAGE_OFFSET
   };
 };
+
+/// Returns the symbolic string representing Val when used as a value
+/// for attribute Attr.
+const char *AttributeValueString(uint16_t Attr, unsigned Val);
 
 } // End of namespace dwarf
 

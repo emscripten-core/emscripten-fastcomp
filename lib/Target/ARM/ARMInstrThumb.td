@@ -311,7 +311,7 @@ def tHLT : T1I<(outs), (ins imm0_63:$val), NoItinerary, "hlt\t$val",
 }
 
 def tSETEND : T1I<(outs), (ins setend_op:$end), NoItinerary, "setend\t$end",
-                  []>, T1Encoding<0b101101>, Deprecated<HasV8Ops> {
+                  []>, T1Encoding<0b101101>, Requires<[IsNotMClass]>, Deprecated<HasV8Ops> {
   bits<1> end;
   // A8.6.156
   let Inst{9-5} = 0b10010;
@@ -358,6 +358,14 @@ def tADDrSPi : T1pI<(outs tGPR:$dst), (ins GPRsp:$sp, t_imm0_1020s4:$imm),
   let Inst{10-8} = dst;
   let Inst{7-0}  = imm;
   let DecoderMethod = "DecodeThumbAddSpecialReg";
+}
+
+// Thumb1 frame lowering is rather fragile, we hope to be able to use
+// tADDrSPi, but we may need to insert a sequence that clobbers CPSR.
+def tADDframe : PseudoInst<(outs tGPR:$dst), (ins i32imm:$base, i32imm:$offset),
+                           NoItinerary, []>,
+                Requires<[IsThumb, IsThumb1Only]> {
+  let Defs = [CPSR];
 }
 
 // ADD sp, sp, #<imm7>
@@ -466,7 +474,7 @@ let isCall = 1,
                  (outs), (ins pred:$p, t_blxtarget:$func), IIC_Br,
                    "blx${p}\t$func",
                    [(ARMcall tglobaladdr:$func)]>,
-              Requires<[IsThumb, HasV5T]>, Sched<[WriteBrL]> {
+              Requires<[IsThumb, HasV5T, IsNotMClass]>, Sched<[WriteBrL]> {
     bits<24> func;
     let Inst{26} = func{23};
     let Inst{25-16} = func{20-11};
@@ -1355,7 +1363,7 @@ def : T1Pat<(ARMtcall texternalsym:$func), (tBL texternalsym:$func)>,
       Requires<[IsThumb]>;
 
 def : Tv5Pat<(ARMcall texternalsym:$func), (tBLXi texternalsym:$func)>,
-      Requires<[IsThumb, HasV5T]>;
+      Requires<[IsThumb, HasV5T, IsNotMClass]>;
 
 // Indirect calls to ARM routines
 def : Tv5Pat<(ARMcall GPR:$dst), (tBLXr GPR:$dst)>,

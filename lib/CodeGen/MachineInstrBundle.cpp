@@ -16,6 +16,7 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 using namespace llvm;
 
 namespace {
@@ -103,12 +104,12 @@ void llvm::finalizeBundle(MachineBasicBlock &MBB,
   assert(FirstMI != LastMI && "Empty bundle?");
   MIBundleBuilder Bundle(MBB, FirstMI, LastMI);
 
-  const TargetMachine &TM = MBB.getParent()->getTarget();
-  const TargetInstrInfo *TII = TM.getInstrInfo();
-  const TargetRegisterInfo *TRI = TM.getRegisterInfo();
+  MachineFunction &MF = *MBB.getParent();
+  const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
 
-  MachineInstrBuilder MIB = BuildMI(*MBB.getParent(), FirstMI->getDebugLoc(),
-                                    TII->get(TargetOpcode::BUNDLE));
+  MachineInstrBuilder MIB =
+      BuildMI(MF, FirstMI->getDebugLoc(), TII->get(TargetOpcode::BUNDLE));
   Bundle.prepend(MIB);
 
   SmallVector<unsigned, 32> LocalDefs;

@@ -22,7 +22,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -65,8 +64,8 @@ protected:
     lis = &pass.getAnalysis<LiveIntervals>();
     mfi = mf.getFrameInfo();
     mri = &mf.getRegInfo();
-    tii = mf.getTarget().getInstrInfo();
-    tri = mf.getTarget().getRegisterInfo();
+    tii = mf.getSubtarget().getInstrInfo();
+    tri = mf.getSubtarget().getRegisterInfo();
   }
 
   /// Add spill ranges for every use/def of the live interval, inserting loads

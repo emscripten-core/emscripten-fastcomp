@@ -34,7 +34,6 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/Mutex.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
@@ -44,6 +43,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/NaCl.h"
 
 #include "ThreadedFunctionQueue.h"
@@ -226,14 +226,13 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   }
 
   // Open the file.
-  std::string error;
+  std::error_code EC;
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (!Binary)
     OpenFlags |= sys::fs::F_Text;
-  tool_output_file *FDOut =
-      new tool_output_file(Filename.c_str(), error, OpenFlags);
-  if (!error.empty()) {
-    errs() << error << '\n';
+  tool_output_file *FDOut = new tool_output_file(Filename, EC, OpenFlags);
+  if (EC) {
+    errs() << EC.message() << '\n';
     delete FDOut;
     return nullptr;
   }
@@ -321,21 +320,21 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
 
 static Module* getModule(StringRef ProgramName, LLVMContext &Context,
                          StreamingMemoryObject *StreamingObject) {
-  Module *M = nullptr;
+  std::unique_ptr<Module> M;
   SMDiagnostic Err;
   std::string VerboseBuffer;
   raw_string_ostream VerboseStrm(VerboseBuffer);
   if (LazyBitcode) {
     std::string StrError;
     if (InputFileFormat == PNaClFormat) {
-      M = getNaClStreamedBitcodeModule(
+      M.reset(getNaClStreamedBitcodeModule(
           InputFilename,
           new ThreadedStreamingCache(StreamingObject), Context, &VerboseStrm,
-          &StrError);
+          &StrError));
     } else if (InputFileFormat == LLVMFormat) {
-      M = getStreamedBitcodeModule(
+      M.reset(getStreamedBitcodeModule(
           InputFilename,
-          new ThreadedStreamingCache(StreamingObject), Context, &StrError);
+          new ThreadedStreamingCache(StreamingObject), Context, &StrError));
     } else {
       llvm_unreachable("Unknown bitcode format");
     }
@@ -361,7 +360,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
     return nullptr;
 #endif
   }
-  return M;
+  return M.release();
 }
 
 static cl::opt<bool>
@@ -433,9 +432,9 @@ static int runCompilePasses(Module *mod,
     PM.reset(new PassManager());
 
   // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *DL = Target.getDataLayout())
+  if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
     mod->setDataLayout(DL);
-  PM->add(new DataLayoutPass(mod));
+  PM->add(new DataLayoutPass());
 
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
@@ -589,7 +588,7 @@ static int compileSplitModule(const TargetOptions &Options,
     if (!Out) return 1;
     formatted_raw_ostream FOS(Out->os());
 #else
-    raw_fd_ostream ROS(getObjectFileFD(ModuleIndex), true, sys::fs::F_None);
+    raw_fd_ostream ROS(getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
 #endif

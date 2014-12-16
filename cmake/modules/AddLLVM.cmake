@@ -143,10 +143,14 @@ endfunction(add_llvm_symbol_exports)
 function(add_dead_strip target_name)
   if(NOT LLVM_NO_DEAD_STRIP)
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+      # ld64's implementation of -dead_strip breaks tools that use plugins.
       set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                    LINK_FLAGS " -Wl,-dead_strip")
     elseif(NOT WIN32)
       # Object files are compiled with -ffunction-data-sections.
+      # Versions of bfd ld < 2.23.1 have a bug in --gc-sections that breaks
+      # tools that use plugins. Always pass --gc-sections once we require
+      # a newer linker.
       set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                    LINK_FLAGS " -Wl,--gc-sections")
     endif()
@@ -310,6 +314,12 @@ function(llvm_add_library name)
   endif()
 
   if(ARG_MODULE OR ARG_SHARED)
+    # Do not add -Dname_EXPORTS to the command-line when building files in this
+    # target. Doing so is actively harmful for the modules build because it
+    # creates extra module variants, and not useful because we don't use these
+    # macros.
+    set_target_properties( ${name} PROPERTIES DEFINE_SYMBOL "" )
+
     if (LLVM_EXPORTED_SYMBOL_FILE)
       add_llvm_symbol_exports( ${name} ${LLVM_EXPORTED_SYMBOL_FILE} )
     endif()
@@ -434,6 +444,12 @@ macro(add_llvm_executable name)
   endif()
   llvm_update_compile_flags(${name})
   add_dead_strip( ${name} )
+
+  # Do not add -Dname_EXPORTS to the command-line when building files in this
+  # target. Doing so is actively harmful for the modules build because it
+  # creates extra module variants, and not useful because we don't use these
+  # macros.
+  set_target_properties( ${name} PROPERTIES DEFINE_SYMBOL "" )
 
   if (LLVM_EXPORTED_SYMBOL_FILE)
     add_llvm_symbol_exports( ${name} ${LLVM_EXPORTED_SYMBOL_FILE} )
@@ -638,6 +654,10 @@ function(configure_lit_site_cfg input output)
 
   set(HOST_OS ${CMAKE_SYSTEM_NAME})
   set(HOST_ARCH ${CMAKE_SYSTEM_PROCESSOR})
+
+  set(HOST_CC "${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1}")
+  set(HOST_CXX "${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_ARG1}")
+  set(HOST_LDFLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 
   configure_file(${input} ${output} @ONLY)
 endfunction()

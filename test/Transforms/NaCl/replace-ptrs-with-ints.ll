@@ -1,7 +1,9 @@
 ; RUN: opt %s -replace-ptrs-with-ints -S | FileCheck %s
 
 !llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+!1 = metadata !{}
+!2 = metadata !{metadata !"0x102"} ; [ DW_TAG_expression ]
 
 target datalayout = "p:32:32:32"
 
@@ -487,34 +489,34 @@ define i16** @inline_asm2(i8** %ptr) {
 }
 
 
-declare void @llvm.dbg.declare(metadata, metadata)
-declare void @llvm.dbg.value(metadata, i64, metadata)
+declare void @llvm.dbg.declare(metadata, metadata, metadata)
+declare void @llvm.dbg.value(metadata, i64, metadata, metadata)
 
 define void @debug_declare(i32 %val) {
   ; We normally expect llvm.dbg.declare to be used on an alloca.
   %var = alloca i32
-  tail call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !{})
-  tail call void @llvm.dbg.declare(metadata !{i32 %val}, metadata !{})
+  call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !1, metadata !2)
+  call void @llvm.dbg.declare(metadata !{i32 %val}, metadata !1, metadata !2)
   ret void
 }
 ; CHECK: define void @debug_declare(i32 %val) {
 ; CHECK-NEXT: %var = alloca i8, i32 4
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !1, metadata !2)
 ; This case is currently not converted.
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !1, metadata !2)
 ; CHECK-NEXT: ret void
 
 ; For now, debugging info for values is lost.  replaceAllUsesWith()
 ; does not work for metadata references -- it converts them to nulls.
 ; This makes dbg.value too tricky to handle for now.
 define void @debug_value(i32 %val, i8* %ptr) {
-  tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !{})
-  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !{})
+  tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !1, metadata !2)
+  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !1, metadata !2)
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1)
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1, metadata !2)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1, metadata !2)
 ; CHECK-NEXT: ret void
 
 

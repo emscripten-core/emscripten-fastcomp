@@ -73,7 +73,10 @@ void MCContext::reset() {
   Symbols.clear();
   Allocator.Reset();
   Instances.clear();
+  CompilationDir.clear();
+  MainFileName.clear();
   MCDwarfLineTablesCUMap.clear();
+  SectionStartEndSyms.clear();
   MCGenDwarfLabelEntries.clear();
   DwarfDebugFlags = StringRef();
   DwarfCompileUnitID = 0;
@@ -107,6 +110,30 @@ MCSymbol *MCContext::GetOrCreateSymbol(StringRef Name) {
 
   Sym = CreateSymbol(Name);
   Entry.setValue(Sym);
+  return Sym;
+}
+
+MCSymbol *MCContext::getOrCreateSectionSymbol(const MCSectionELF &Section) {
+  MCSymbol *&Sym = SectionSymbols[&Section];
+  if (Sym)
+    return Sym;
+
+  StringRef Name = Section.getSectionName();
+
+  StringMapEntry<MCSymbol*> &Entry = Symbols.GetOrCreateValue(Name);
+  MCSymbol *OldSym = Entry.getValue();
+  if (OldSym && OldSym->isUndefined()) {
+    Sym = OldSym;
+    return OldSym;
+  }
+
+  StringMapEntry<bool> *NameEntry = &UsedNames.GetOrCreateValue(Name);
+  NameEntry->setValue(true);
+  Sym = new (*this) MCSymbol(NameEntry->getKey(), /*isTemporary*/ false);
+
+  if (!Entry.getValue())
+    Entry.setValue(Sym);
+
   return Sym;
 }
 
@@ -315,6 +342,22 @@ const MCSectionCOFF *MCContext::getCOFFSection(StringRef Section) {
   if (Iter == COFFUniquingMap.end())
     return nullptr;
   return Iter->second;
+}
+
+const MCSectionCOFF *
+MCContext::getAssociativeCOFFSection(const MCSectionCOFF *Sec,
+                                     const MCSymbol *KeySym) {
+  // Return the normal section if we don't have to be associative.
+  if (!KeySym)
+    return Sec;
+
+  // Make an associative section with the same name and kind as the normal
+  // section.
+  unsigned Characteristics =
+      Sec->getCharacteristics() | COFF::IMAGE_SCN_LNK_COMDAT;
+  return getCOFFSection(Sec->getSectionName(), Characteristics, Sec->getKind(),
+                        KeySym->getName(),
+                        COFF::IMAGE_COMDAT_SELECT_ASSOCIATIVE);
 }
 
 //===----------------------------------------------------------------------===//

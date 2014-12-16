@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARMTARGETMACHINE_H
-#define ARMTARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_ARM_ARMTARGETMACHINE_H
+#define LLVM_LIB_TARGET_ARM_ARMTARGETMACHINE_H
 
 #include "ARMInstrInfo.h"
 #include "ARMSubtarget.h"
@@ -24,6 +24,9 @@ namespace llvm {
 class ARMBaseTargetMachine : public LLVMTargetMachine {
 protected:
   ARMSubtarget        Subtarget;
+  bool isLittle;
+  mutable StringMap<std::unique_ptr<ARMSubtarget>> SubtargetMap;
+
 public:
   ARMBaseTargetMachine(const Target &T, StringRef TT,
                        StringRef CPU, StringRef FS,
@@ -33,36 +36,13 @@ public:
                        bool isLittle);
 
   const ARMSubtarget *getSubtargetImpl() const override { return &Subtarget; }
-  const ARMBaseRegisterInfo *getRegisterInfo() const override {
-    return getSubtargetImpl()->getRegisterInfo();
-  }
-  const ARMTargetLowering *getTargetLowering() const override {
-    return getSubtargetImpl()->getTargetLowering();
-  }
-  const ARMSelectionDAGInfo *getSelectionDAGInfo() const override {
-    return getSubtargetImpl()->getSelectionDAGInfo();
-  }
-  const ARMBaseInstrInfo *getInstrInfo() const override {
-    return getSubtargetImpl()->getInstrInfo();
-  }
-  const ARMFrameLowering *getFrameLowering() const override {
-    return getSubtargetImpl()->getFrameLowering();
-  }
-  const InstrItineraryData *getInstrItineraryData() const override {
-    return &getSubtargetImpl()->getInstrItineraryData();
-  }
-  const DataLayout *getDataLayout() const override {
-    return getSubtargetImpl()->getDataLayout();
-  }
-  ARMJITInfo *getJITInfo() override { return Subtarget.getJITInfo(); }
+  const ARMSubtarget *getSubtargetImpl(const Function &F) const override;
 
   /// \brief Register ARM analysis passes with a pass manager.
   void addAnalysisPasses(PassManagerBase &PM) override;
 
   // Pass Pipeline Configuration
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
-
-  bool addCodeEmitter(PassManagerBase &PM, JITCodeEmitter &MCE) override;
 };
 
 /// ARMTargetMachine - ARM target machine.

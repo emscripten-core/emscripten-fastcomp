@@ -47,6 +47,7 @@ public:
     return getTM<SparcTargetMachine>();
   }
 
+  void addIRPasses() override;
   bool addInstSelector() override;
   bool addPreEmitPass() override;
 };
@@ -56,15 +57,14 @@ TargetPassConfig *SparcTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new SparcPassConfig(this, PM);
 }
 
-bool SparcPassConfig::addInstSelector() {
-  addPass(createSparcISelDag(getSparcTargetMachine()));
-  return false;
+void SparcPassConfig::addIRPasses() {
+  addPass(createAtomicExpandPass(&getSparcTargetMachine()));
+
+  TargetPassConfig::addIRPasses();
 }
 
-bool SparcTargetMachine::addCodeEmitter(PassManagerBase &PM,
-                                        JITCodeEmitter &JCE) {
-  // Machine code emitter pass for Sparc.
-  PM.add(createSparcJITCodeEmitterPass(*this, JCE));
+bool SparcPassConfig::addInstSelector() {
+  addPass(createSparcISelDag(getSparcTargetMachine()));
   return false;
 }
 

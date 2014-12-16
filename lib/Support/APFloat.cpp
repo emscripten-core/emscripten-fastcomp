@@ -35,8 +35,7 @@ using namespace llvm;
 
 /* Assumed in hexadecimal significand parsing, and conversion to
    hexadecimal strings.  */
-#define COMPILE_TIME_ASSERT(cond) extern int CTAssert[(cond) ? 1 : -1]
-COMPILE_TIME_ASSERT(integerPartWidth % 4 == 0);
+static_assert(integerPartWidth % 4 == 0, "Part width must be divisible by 4!");
 
 namespace llvm {
 
@@ -212,15 +211,15 @@ skipLeadingZeroesAndAnyDot(StringRef::iterator begin, StringRef::iterator end,
 {
   StringRef::iterator p = begin;
   *dot = end;
-  while (*p == '0' && p != end)
+  while (p != end && *p == '0')
     p++;
 
-  if (*p == '.') {
+  if (p != end && *p == '.') {
     *dot = p++;
 
     assert(end - begin != 1 && "Significand has no digits");
 
-    while (*p == '0' && p != end)
+    while (p != end && *p == '0')
       p++;
   }
 
@@ -955,7 +954,7 @@ APFloat::multiplySignificand(const APFloat &rhs, const APFloat *addend)
   // exponent accordingly.
   exponent += 1;
 
-  if (addend) {
+  if (addend && addend->isNonZero()) {
     // The intermediate result of the multiplication has "2 * precision" 
     // signicant bit; adjust the addend to be consistent with mul result.
     //
@@ -1801,7 +1800,7 @@ APFloat::fusedMultiplyAdd(const APFloat &multiplicand,
      extended-precision calculation.  */
   if (isFiniteNonZero() &&
       multiplicand.isFiniteNonZero() &&
-      addend.isFiniteNonZero()) {
+      addend.isFinite()) {
     lostFraction lost_fraction;
 
     lost_fraction = multiplySignificand(multiplicand, &addend);
@@ -3377,7 +3376,9 @@ void APFloat::makeLargest(bool Negative) {
   // internal consistency.
   const unsigned NumUnusedHighBits =
     PartCount*integerPartWidth - semantics->precision;
-  significand[PartCount - 1] = ~integerPart(0) >> NumUnusedHighBits;
+  significand[PartCount - 1] = (NumUnusedHighBits < integerPartWidth)
+                                   ? (~integerPart(0) >> NumUnusedHighBits)
+                                   : 0;
 }
 
 /// Make this number the smallest magnitude denormal number in the given
@@ -3903,4 +3904,21 @@ APFloat::makeZero(bool Negative) {
   sign = Negative;
   exponent = semantics->minExponent-1;
   APInt::tcSet(significandParts(), 0, partCount());  
+}
+
+APFloat llvm::scalbn(APFloat X, int Exp) {
+  if (X.isInfinity() || X.isZero() || X.isNaN())
+    return std::move(X);
+
+  auto MaxExp = X.getSemantics().maxExponent;
+  auto MinExp = X.getSemantics().minExponent;
+  if (Exp > (MaxExp - X.exponent))
+    // Overflow saturates to infinity.
+    return APFloat::getInf(X.getSemantics(), X.isNegative());
+  if (Exp < (MinExp - X.exponent))
+    // Underflow saturates to zero.
+    return APFloat::getZero(X.getSemantics(), X.isNegative());
+
+  X.exponent += Exp;
+  return std::move(X);
 }

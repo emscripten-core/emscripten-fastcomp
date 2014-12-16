@@ -1838,8 +1838,12 @@ std::error_code NaClBitcodeReader::InitLazyStream() {
 // External interface
 //===----------------------------------------------------------------------===//
 
-/// getNaClLazyBitcodeModule - lazy function-at-a-time loading from a file.
+/// \brief Get a lazy one-at-time loading module from bitcode.
 ///
+/// This isn't always used in a lazy context.  In particular, it's also used by
+/// \a NaClParseBitcodeFile(). Compared to the upstream LLVM bitcode reader,
+/// NaCl does not support BlockAddresses, so it does not need to materialize
+/// forward-referenced functions from block address references.
 ErrorOr<Module *> llvm::getNaClLazyBitcodeModule(
     MemoryBuffer *Buffer, LLVMContext& Context, raw_ostream *Verbose,
     bool AcceptSupportedOnly) {
@@ -1847,11 +1851,15 @@ ErrorOr<Module *> llvm::getNaClLazyBitcodeModule(
   NaClBitcodeReader *R =
       new NaClBitcodeReader(Buffer, Context, Verbose, AcceptSupportedOnly);
   M->setMaterializer(R);
-  if (std::error_code EC = R->ParseBitcodeInto(M)) {
+
+  auto cleanupOnError = [&](std::error_code EC) {
     R->releaseBuffer(); // Never take ownership on error.
     delete M;  // Also deletes R.
     return EC;
-  }
+  };
+
+  if (std::error_code EC = R->ParseBitcodeInto(M))
+    return cleanupOnError(EC);
 
   return M;
 }
@@ -1878,23 +1886,18 @@ Module *llvm::getNaClStreamedBitcodeModule(const std::string &name,
   return M;
 }
 
-/// NaClParseBitcodeFile - Read the specified bitcode file, returning the module.
-/// If an error occurs, return null and fill in *ErrMsg if non-null.
 ErrorOr<Module *> llvm::NaClParseBitcodeFile(
-    MemoryBuffer *Buffer, LLVMContext& Context, raw_ostream *Verbose,
+    MemoryBufferRef Buffer, LLVMContext& Context, raw_ostream *Verbose,
     bool AcceptSupportedOnly){
+  std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(Buffer, false);
   ErrorOr<Module *> ModuleOrErr =
-      getNaClLazyBitcodeModule(Buffer, Context, Verbose, AcceptSupportedOnly);
+      getNaClLazyBitcodeModule(Buf.get(), Context, Verbose, AcceptSupportedOnly);
   if (!ModuleOrErr)
     return ModuleOrErr;
+  Buf.release(); // The BitcodeReader owns it now.
   Module *M = ModuleOrErr.get();
   // Read in the entire module, and destroy the NaClBitcodeReader.
-  if (std::error_code EC = M->materializeAllPermanently(true)) {
-    // Be sure the input buffer is released on error
-    // (materalializeAllPermanently doesn't release the buffer on error).
-    // TODO(kschimpf) Revisit this when we merge to tip of LLVM.
-    if (GVMaterializer *Materializer = M->getMaterializer())
-      Materializer->releaseBuffer();
+  if (std::error_code EC = M->materializeAllPermanently()) {
     delete M;
     return EC;
   }

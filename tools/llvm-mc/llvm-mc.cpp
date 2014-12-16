@@ -209,11 +209,11 @@ static tool_output_file *GetOutputStream() {
   if (OutputFilename == "")
     OutputFilename = "-";
 
-  std::string Err;
+  std::error_code EC;
   tool_output_file *Out =
-      new tool_output_file(OutputFilename.c_str(), Err, sys::fs::F_None);
-  if (!Err.empty()) {
-    errs() << Err << '\n';
+      new tool_output_file(OutputFilename, EC, sys::fs::F_None);
+  if (EC) {
+    errs() << EC.message() << '\n';
     delete Out;
     return nullptr;
   }
@@ -374,12 +374,12 @@ int main(int argc, char **argv) {
     errs() << ProgName << ": " << EC.message() << '\n';
     return 1;
   }
-  MemoryBuffer *Buffer = BufferPtr->release();
+  MemoryBuffer *Buffer = BufferPtr->get();
 
   SourceMgr SrcMgr;
 
   // Tell SrcMgr about this buffer, which is what the parser will pick up.
-  SrcMgr.AddNewSourceBuffer(Buffer, SMLoc());
+  SrcMgr.AddNewSourceBuffer(std::move(*BufferPtr), SMLoc());
 
   // Record the location of the include directories so that the lexer can find
   // it later.
@@ -474,12 +474,15 @@ int main(int argc, char **argv) {
     assert(FileType == OFT_ObjectFile && "Invalid file type!");
     MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
     MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
-    Str.reset(TheTarget->createMCObjectStreamer(TripleName, Ctx, *MAB,
-                                                FOS, CE, *STI, RelaxAll,
-                                                NoExecStack));
+    Str.reset(TheTarget->createMCObjectStreamer(TripleName, Ctx, *MAB, FOS, CE,
+                                                *STI, RelaxAll));
+    if (NoExecStack)
+      Str->InitSections(true);
     // @LOCALMOD-BEGIN
     if (T.isOSNaCl()) {
-      Str.get()->InitSections();
+      // If the above non-localmod does InitSections unconditionally,
+      // we can use that.
+      Str->InitSections(NoExecStack);
       initializeNaClMCStreamer(*Str.get(), Ctx, T);
     }
     // @LOCALMOD-END

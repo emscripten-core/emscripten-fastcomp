@@ -235,7 +235,7 @@ public:
   std::error_code Materialize(GlobalValue *GV) override;
   std::error_code MaterializeModule(Module *M) override;
   void Dematerialize(GlobalValue *GV) override;
-  void releaseBuffer() override;
+  void releaseBuffer();
 
   std::error_code Error(ErrorType E) const {
     return std::error_code(E, BitcodeErrorCategory());

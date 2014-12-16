@@ -6,7 +6,7 @@ tablegen(LLVM AMDGPUGenDAGISel.inc -gen-dag-isel)
 tablegen(LLVM AMDGPUGenCallingConv.inc -gen-callingconv)
 tablegen(LLVM AMDGPUGenSubtargetInfo.inc -gen-subtarget)
 tablegen(LLVM AMDGPUGenIntrinsics.inc -gen-tgt-intrinsic)
-tablegen(LLVM AMDGPUGenMCCodeEmitter.inc -gen-emitter -mc-emitter)
+tablegen(LLVM AMDGPUGenMCCodeEmitter.inc -gen-emitter)
 tablegen(LLVM AMDGPUGenDFAPacketizer.inc -gen-dfa-packetizer)
 tablegen(LLVM AMDGPUGenAsmWriter.inc -gen-asm-writer)
 add_public_tablegen_target(AMDGPUCommonTableGen)
@@ -44,6 +44,7 @@ add_llvm_target(R600CodeGen
   SIInsertWaits.cpp
   SIInstrInfo.cpp
   SIISelLowering.cpp
+  SILoadStoreOptimizer.cpp
   SILowerControlFlow.cpp
   SILowerI1Copies.cpp
   SIMachineFunctionInfo.cpp

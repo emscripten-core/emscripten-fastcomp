@@ -41,6 +41,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include <memory>
 using namespace llvm;
 
@@ -94,23 +95,6 @@ static cl::opt<bool> AsmVerbose("asm-verbose",
 
 static int compileModule(char **, LLVMContext &);
 
-// GetFileNameRoot - Helper function to get the basename of a filename.
-static inline std::string
-GetFileNameRoot(const std::string &InputFilename) {
-  std::string IFN = InputFilename;
-  std::string outputFilename;
-  int Len = IFN.length();
-  if ((Len > 2) &&
-      IFN[Len-3] == '.' &&
-      ((IFN[Len-2] == 'b' && IFN[Len-1] == 'c') ||
-       (IFN[Len-2] == 'l' && IFN[Len-1] == 'l'))) {
-    outputFilename = std::string(IFN.begin(), IFN.end()-3); // s/.bc/.s/
-  } else {
-    outputFilename = IFN;
-  }
-  return outputFilename;
-}
-
 static tool_output_file *GetOutputStream(const char *TargetName,
                                          Triple::OSType OS,
                                          const char *ProgName) {
@@ -119,7 +103,12 @@ static tool_output_file *GetOutputStream(const char *TargetName,
     if (InputFilename == "-")
       OutputFilename = "-";
     else {
-      OutputFilename = GetFileNameRoot(InputFilename);
+      // If InputFilename ends in .bc or .ll, remove it.
+      StringRef IFN = InputFilename;
+      if (IFN.endswith(".bc") || IFN.endswith(".ll"))
+        OutputFilename = IFN.drop_back(3);
+      else
+        OutputFilename = IFN;
 
       switch (FileType) {
       case TargetMachine::CGFT_AssemblyFile:
@@ -158,14 +147,13 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   }
 
   // Open the file.
-  std::string error;
+  std::error_code EC;
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (!Binary)
     OpenFlags |= sys::fs::F_Text;
-  tool_output_file *FDOut = new tool_output_file(OutputFilename.c_str(), error,
-                                                 OpenFlags);
-  if (!error.empty()) {
-    errs() << error << '\n';
+  tool_output_file *FDOut = new tool_output_file(OutputFilename, EC, OpenFlags);
+  if (EC) {
+    errs() << EC.message() << '\n';
     delete FDOut;
     return nullptr;
   }
@@ -231,7 +219,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   // If user just wants to list available options, skip module loading
   if (!SkipModule) {
-    M.reset(ParseIRFile(InputFilename, Err, Context));
+    M = parseIRFile(InputFilename, Err, Context);
     mod = M.get();
     if (mod == nullptr) {
       Err.print(argv[0], errs());
@@ -317,9 +305,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   PM.add(TLI);
 
   // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *DL = Target.getDataLayout())
+  if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
     mod->setDataLayout(DL);
-  PM.add(new DataLayoutPass(mod));
+  PM.add(new DataLayoutPass());
 
   if (RelaxAll.getNumOccurrences() > 0 &&
       FileType != TargetMachine::CGFT_ObjectFile)

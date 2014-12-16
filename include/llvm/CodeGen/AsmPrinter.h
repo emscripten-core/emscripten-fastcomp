@@ -281,6 +281,9 @@ public:
     // @LOCALMOD-END
   }
 
+  /// Targets can override this to emit stuff at the end of a basic block.
+  virtual void EmitBasicBlockEnd(const MachineBasicBlock &MBB) {}
+
   /// Targets should implement this to emit instructions.
   virtual void EmitInstruction(const MachineInstr *) {
     llvm_unreachable("EmitInstruction not implemented");
@@ -363,12 +366,6 @@ public:
   void EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
                            unsigned Size) const;
 
-  /// Emit something like ".long Hi+Offset-Lo" where the size in bytes of the
-  /// directive is specified by Size and Hi/Lo specify the labels.  This
-  /// implicitly uses .set if it is available.
-  void EmitLabelOffsetDifference(const MCSymbol *Hi, uint64_t Offset,
-                                 const MCSymbol *Lo, unsigned Size) const;
-
   /// Emit something like ".long Label+Offset" where the size in bytes of the
   /// directive is specified by Size and Label specifies the label.  This
   /// implicitly uses .set if it is available.
@@ -419,6 +416,13 @@ public:
   /// Get the value for DW_AT_APPLE_isa. Zero if no isa encoding specified.
   virtual unsigned getISAEncoding() { return 0; }
 
+  /// Emit a dwarf register operation for describing
+  /// - a small value occupying only part of a register or
+  /// - a register representing only part of a value.
+  void EmitDwarfOpPiece(ByteStreamer &Streamer, unsigned SizeInBits,
+                        unsigned OffsetInBits = 0) const;
+
+
   /// \brief Emit a partial DWARF register operation.
   /// \param MLoc             the register
   /// \param PieceSize        size and
@@ -435,7 +439,7 @@ public:
                            unsigned PieceSize = 0,
                            unsigned PieceOffset = 0) const;
 
-  /// Emit dwarf register operation.
+  /// EmitDwarfRegOp - Emit a dwarf register operation.
   /// \param Indirect   whether this is a register-indirect address
   virtual void EmitDwarfRegOp(ByteStreamer &BS, const MachineLocation &MLoc,
                               bool Indirect) const;

@@ -702,8 +702,8 @@ bool X86NaClRewritePass::runOnMachineFunction(MachineFunction &MF) {
   bool Modified = false;
 
   TM = &MF.getTarget();
-  TII = TM->getInstrInfo();
-  TRI = TM->getRegisterInfo();
+  TII = MF.getSubtarget().getInstrInfo();
+  TRI = MF.getSubtarget().getRegisterInfo();
   Subtarget = &TM->getSubtarget<X86Subtarget>();
   Is64Bit = Subtarget->is64Bit();
 

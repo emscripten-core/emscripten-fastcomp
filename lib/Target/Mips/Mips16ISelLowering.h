@@ -11,19 +11,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MIPS16ISELLOWERING_H
-#define MIPS16ISELLOWERING_H
+#ifndef LLVM_LIB_TARGET_MIPS_MIPS16ISELLOWERING_H
+#define LLVM_LIB_TARGET_MIPS_MIPS16ISELLOWERING_H
 
 #include "MipsISelLowering.h"
 
 namespace llvm {
   class Mips16TargetLowering : public MipsTargetLowering  {
   public:
-    explicit Mips16TargetLowering(MipsTargetMachine &TM,
+    explicit Mips16TargetLowering(const MipsTargetMachine &TM,
                                   const MipsSubtarget &STI);
 
-    bool allowsUnalignedMemoryAccesses(EVT VT, unsigned AddrSpace,
-                                       bool *Fast) const override;
+    bool allowsMisalignedMemoryAccesses(EVT VT, unsigned AddrSpace,
+                                        unsigned Align,
+                                        bool *Fast) const override;
 
     MachineBasicBlock *
     EmitInstrWithCustomInserter(MachineInstr *MI,
@@ -78,4 +79,4 @@ namespace llvm {
   };
 }
 
-#endif // Mips16ISELLOWERING_H
+#endif

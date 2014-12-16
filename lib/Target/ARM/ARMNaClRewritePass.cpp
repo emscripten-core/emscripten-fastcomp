@@ -30,7 +30,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include <set>
 #include <stdio.h>
 
@@ -1056,8 +1056,8 @@ bool ARMNaClRewritePass::SandboxMemoryReferencesInBlock(
 /**********************************************************************/
 
 bool ARMNaClRewritePass::runOnMachineFunction(MachineFunction &MF) {
-  TII = static_cast<const ARMBaseInstrInfo*>(MF.getTarget().getInstrInfo());
-  TRI = MF.getTarget().getRegisterInfo();
+  TII = static_cast<const ARMBaseInstrInfo*>(MF.getSubtarget().getInstrInfo());
+  TRI = MF.getSubtarget().getRegisterInfo();
 
   bool Modified = false;
   for (MachineFunction::iterator MFI = MF.begin(), E = MF.end();

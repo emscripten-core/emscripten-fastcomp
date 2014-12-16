@@ -26,6 +26,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 using namespace llvm;
 
 //---------------------------------------------------------------------------
@@ -67,17 +68,13 @@ TargetMachine::~TargetMachine() {
 }
 
 /// \brief Reset the target options based on the function's attributes.
-void TargetMachine::resetTargetOptions(const MachineFunction *MF) const {
-  const Function *F = MF->getFunction();
-  TargetOptions &TO = MF->getTarget().Options;
-
-#define RESET_OPTION(X, Y)                                              \
-  do {                                                                  \
-    if (F->hasFnAttribute(Y))                                           \
-      TO.X =                                                            \
-        (F->getAttributes().                                            \
-           getAttribute(AttributeSet::FunctionIndex,                    \
-                        Y).getValueAsString() == "true");               \
+void TargetMachine::resetTargetOptions(const Function &F) const {
+#define RESET_OPTION(X, Y)                                                     \
+  do {                                                                         \
+    if (F.hasFnAttribute(Y))                                                  \
+      Options.X = (F.getAttributes()                                          \
+                       .getAttribute(AttributeSet::FunctionIndex, Y)           \
+                       .getValueAsString() == "true");                         \
   } while (0)
 
   RESET_OPTION(NoFramePointerElim, "no-frame-pointer-elim");
@@ -88,7 +85,7 @@ void TargetMachine::resetTargetOptions(const MachineFunction *MF) const {
   RESET_OPTION(UseSoftFloat, "use-soft-float");
   RESET_OPTION(DisableTailCalls, "disable-tail-calls");
 
-  TO.MCOptions.SanitizeAddress = F->hasFnAttribute(Attribute::SanitizeAddress);
+  Options.MCOptions.SanitizeAddress = F.hasFnAttribute(Attribute::SanitizeAddress);
 }
 
 /// getRelocationModel - Returns the code generation relocation model. The
@@ -204,7 +201,7 @@ void TargetMachine::getNameWithPrefix(SmallVectorImpl<char> &Name,
   }
   SectionKind GVKind = TargetLoweringObjectFile::getKindForGlobal(GV, *this);
   const TargetLoweringObjectFile &TLOF =
-      getTargetLowering()->getObjFileLowering();
+      getSubtargetImpl()->getTargetLowering()->getObjFileLowering();
   const MCSection *TheSection = TLOF.SectionForGlobal(GV, GVKind, Mang, *this);
   bool CannotUsePrivateLabel = TLOF.isSectionAtomizableBySymbols(*TheSection);
   Mang.getNameWithPrefix(Name, GV, CannotUsePrivateLabel);
@@ -214,6 +211,6 @@ MCSymbol *TargetMachine::getSymbol(const GlobalValue *GV, Mangler &Mang) const {
   SmallString<60> NameStr;
   getNameWithPrefix(NameStr, GV, Mang);
   const TargetLoweringObjectFile &TLOF =
-      getTargetLowering()->getObjFileLowering();
+      getSubtargetImpl()->getTargetLowering()->getObjFileLowering();
   return TLOF.getContext().GetOrCreateSymbol(NameStr.str());
 }

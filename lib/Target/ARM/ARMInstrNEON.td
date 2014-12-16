@@ -34,6 +34,14 @@ def nImmSplatI32 : Operand<i32> {
   let PrintMethod = "printNEONModImmOperand";
   let ParserMatchClass = nImmSplatI32AsmOperand;
 }
+def nImmSplatNotI16AsmOperand : AsmOperandClass { let Name = "NEONi16splatNot"; }
+def nImmSplatNotI16 : Operand<i32> {
+  let ParserMatchClass = nImmSplatNotI16AsmOperand;
+}
+def nImmSplatNotI32AsmOperand : AsmOperandClass { let Name = "NEONi32splatNot"; }
+def nImmSplatNotI32 : Operand<i32> {
+  let ParserMatchClass = nImmSplatNotI32AsmOperand;
+}
 def nImmVMOVI32AsmOperand : AsmOperandClass { let Name = "NEONi32vmov"; }
 def nImmVMOVI32 : Operand<i32> {
   let PrintMethod = "printNEONModImmOperand";
@@ -4376,7 +4384,7 @@ defm VMLSLslu : N3VLMulOpSL_HS<1, 0b0110, "vmlsl", "u", NEONvmullu, sub>;
 //   VQDMLSL  : Vector Saturating Doubling Multiply Subtract Long (Q -= D * D)
 defm VQDMLSL  : N3VLInt3_HS<0, 1, 0b1011, 0, IIC_VMACi16D, IIC_VMACi32D,
                             "vqdmlsl", "s", null_frag>;
-defm VQDMLSLsl: N3VLInt3SL_HS<0, 0b111, "vqdmlsl", "s", null_frag>;
+defm VQDMLSLsl: N3VLInt3SL_HS<0, 0b0111, "vqdmlsl", "s", null_frag>;
 
 def : Pat<(v4i32 (int_arm_neon_vqsubs (v4i32 QPR:$src1),
                      (v4i32 (int_arm_neon_vqdmull (v4i16 DPR:$Vn),
@@ -5499,6 +5507,9 @@ def VSETLNi32 : NVSetLane<{1,1,1,0,0,0,?,0}, 0b1011, 0b00, (outs DPR:$V),
                           [(set DPR:$V, (insertelt (v2i32 DPR:$src1),
                                            GPR:$R, imm:$lane))]> {
   let Inst{21} = lane{0};
+  // This instruction is equivalent as
+  // $V = INSERT_SUBREG $src1, $R, translateImmToSubIdx($imm)
+  let isInsertSubreg = 1;
 }
 }
 def : Pat<(vector_insert (v16i8 QPR:$src1), GPR:$src2, imm:$lane),
@@ -6635,6 +6646,16 @@ defm : NEONDTAnyInstAlias<"vorr${p}", "$Vdn, $Vm",
                          (VORRd DPR:$Vdn, DPR:$Vdn, DPR:$Vm, pred:$p)>;
 defm : NEONDTAnyInstAlias<"vorr${p}", "$Vdn, $Vm",
                          (VORRq QPR:$Vdn, QPR:$Vdn, QPR:$Vm, pred:$p)>;
+// ... immediates
+def : NEONInstAlias<"vand${p}.i16 $Vd, $imm",
+                    (VBICiv4i16 DPR:$Vd, nImmSplatNotI16:$imm, pred:$p)>;
+def : NEONInstAlias<"vand${p}.i32 $Vd, $imm",
+                    (VBICiv2i32 DPR:$Vd, nImmSplatNotI32:$imm, pred:$p)>;
+def : NEONInstAlias<"vand${p}.i16 $Vd, $imm",
+                    (VBICiv8i16 QPR:$Vd, nImmSplatNotI16:$imm, pred:$p)>;
+def : NEONInstAlias<"vand${p}.i32 $Vd, $imm",
+                    (VBICiv4i32 QPR:$Vd, nImmSplatNotI32:$imm, pred:$p)>;
+
 
 // VLD1 single-lane pseudo-instructions. These need special handling for
 // the lane index that an InstAlias can't handle, so we use these instead.

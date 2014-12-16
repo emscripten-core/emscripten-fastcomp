@@ -137,6 +137,11 @@ public:
   /// The Function constant iterator
   typedef FunctionListType::const_iterator               const_iterator;
 
+  /// The Function reverse iterator.
+  typedef FunctionListType::reverse_iterator             reverse_iterator;
+  /// The Function constant reverse iterator.
+  typedef FunctionListType::const_reverse_iterator const_reverse_iterator;
+
   /// The Global Alias iterators.
   typedef AliasListType::iterator                        alias_iterator;
   /// The Global Alias constant iterator
@@ -177,8 +182,16 @@ public:
     /// Appends the two values, which are required to be metadata
     /// nodes. However, duplicate entries in the second list are dropped
     /// during the append operation.
-    AppendUnique = 6
+    AppendUnique = 6,
+
+    // Markers:
+    ModFlagBehaviorFirstVal = Error,
+    ModFlagBehaviorLastVal = AppendUnique
   };
+
+  /// Checks if Value represents a valid ModFlagBehavior, and stores the
+  /// converted result in MFB.
+  static bool isValidModFlagBehavior(Value *V, ModFlagBehavior &MFB);
 
   struct ModuleFlagEntry {
     ModFlagBehavior Behavior;
@@ -478,7 +491,7 @@ public:
   /// Make sure all GlobalValues in this Module are fully read and clear the
   /// Materializer. If the module is corrupt, this DOES NOT clear the old
   /// Materializer.
-  std::error_code materializeAllPermanently(bool ReleaseBuffer = false);
+  std::error_code materializeAllPermanently();
 
 /// @}
 /// @name Direct access to the globals list, functions list, and symbol table
@@ -546,6 +559,10 @@ public:
   const_iterator          begin() const { return FunctionList.begin(); }
   iterator                end  ()       { return FunctionList.end();   }
   const_iterator          end  () const { return FunctionList.end();   }
+  reverse_iterator        rbegin()      { return FunctionList.rbegin(); }
+  const_reverse_iterator  rbegin() const{ return FunctionList.rbegin(); }
+  reverse_iterator        rend()        { return FunctionList.rend(); }
+  const_reverse_iterator  rend() const  { return FunctionList.rend(); }
   size_t                  size() const  { return FunctionList.size(); }
   bool                    empty() const { return FunctionList.empty(); }
 

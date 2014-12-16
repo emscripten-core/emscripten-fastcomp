@@ -50,17 +50,24 @@ BasicBlock::BasicBlock(LLVMContext &C, const Twine &Name, Function *NewParent,
   // Make sure that we get added to a function
   LeakDetector::addGarbageObject(this);
 
-  if (InsertBefore) {
-    assert(NewParent &&
+  if (NewParent)
+    insertInto(NewParent, InsertBefore);
+  else
+    assert(!InsertBefore &&
            "Cannot insert block before another block with no function!");
-    NewParent->getBasicBlockList().insert(InsertBefore, this);
-  } else if (NewParent) {
-    NewParent->getBasicBlockList().push_back(this);
-  }
 
   setName(Name);
 }
 
+void BasicBlock::insertInto(Function *NewParent, BasicBlock *InsertBefore) {
+  assert(NewParent && "Expected a parent");
+  assert(!Parent && "Already has a parent");
+
+  if (InsertBefore)
+    NewParent->getBasicBlockList().insert(InsertBefore, this);
+  else
+    NewParent->getBasicBlockList().push_back(this);
+}
 
 BasicBlock::~BasicBlock() {
   // If the address of the block is taken and it is being deleted (e.g. because
@@ -129,6 +136,37 @@ TerminatorInst *BasicBlock::getTerminator() {
 const TerminatorInst *BasicBlock::getTerminator() const {
   if (InstList.empty()) return nullptr;
   return dyn_cast<TerminatorInst>(&InstList.back());
+}
+
+CallInst *BasicBlock::getTerminatingMustTailCall() {
+  if (InstList.empty())
+    return nullptr;
+  ReturnInst *RI = dyn_cast<ReturnInst>(&InstList.back());
+  if (!RI || RI == &InstList.front())
+    return nullptr;
+
+  Instruction *Prev = RI->getPrevNode();
+  if (!Prev)
+    return nullptr;
+
+  if (Value *RV = RI->getReturnValue()) {
+    if (RV != Prev)
+      return nullptr;
+
+    // Look through the optional bitcast.
+    if (auto *BI = dyn_cast<BitCastInst>(Prev)) {
+      RV = BI->getOperand(0);
+      Prev = BI->getPrevNode();
+      if (!Prev || RV != Prev)
+        return nullptr;
+    }
+  }
+
+  if (auto *CI = dyn_cast<CallInst>(Prev)) {
+    if (CI->isMustTailCall())
+      return CI;
+  }
+  return nullptr;
 }
 
 Instruction* BasicBlock::getFirstNonPHI() {

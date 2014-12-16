@@ -16,6 +16,7 @@
 #include "Mips.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
 #include "MCTargetDesc/MipsMCNaCl.h"
+#include "MipsMachineFunction.h"
 #include "MipsTargetMachine.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -170,7 +171,7 @@ void MipsLongBranch::initMBBInfo() {
   MBBInfos.resize(MF->size());
 
   const MipsInstrInfo *TII =
-    static_cast<const MipsInstrInfo*>(TM.getInstrInfo());
+      static_cast<const MipsInstrInfo *>(TM.getSubtargetImpl()->getInstrInfo());
   for (unsigned I = 0, E = MBBInfos.size(); I < E; ++I) {
     MachineBasicBlock *MBB = MF->getBlockNumbered(I);
 
@@ -217,7 +218,7 @@ int64_t MipsLongBranch::computeOffset(const MachineInstr *Br) {
 void MipsLongBranch::replaceBranch(MachineBasicBlock &MBB, Iter Br,
                                    DebugLoc DL, MachineBasicBlock *MBBOpnd) {
   const MipsInstrInfo *TII =
-    static_cast<const MipsInstrInfo*>(TM.getInstrInfo());
+      static_cast<const MipsInstrInfo *>(TM.getSubtargetImpl()->getInstrInfo());
   unsigned NewOpc = TII->getOppositeBranchOpc(Br->getOpcode());
   const MCInstrDesc &NewDesc = TII->get(NewOpc);
 
@@ -254,7 +255,7 @@ void MipsLongBranch::expandToLongBranch(MBBInfo &I) {
   MachineBasicBlock *LongBrMBB = MF->CreateMachineBasicBlock(BB);
 
   const MipsInstrInfo *TII =
-    static_cast<const MipsInstrInfo*>(TM.getInstrInfo());
+      static_cast<const MipsInstrInfo *>(TM.getSubtargetImpl()->getInstrInfo());
 
   MF->insert(FallThroughMBB, LongBrMBB);
   MBB->removeSuccessor(TgtMBB);
@@ -447,7 +448,7 @@ static void emitGPDisp(MachineFunction &F, const MipsInstrInfo *TII) {
 
 bool MipsLongBranch::runOnMachineFunction(MachineFunction &F) {
   const MipsInstrInfo *TII =
-    static_cast<const MipsInstrInfo*>(TM.getInstrInfo());
+      static_cast<const MipsInstrInfo *>(TM.getSubtargetImpl()->getInstrInfo());
 
   const MipsSubtarget &STI = TM.getSubtarget<MipsSubtarget>();
   if (STI.inMips16Mode() || !STI.enableLongBranchPass())

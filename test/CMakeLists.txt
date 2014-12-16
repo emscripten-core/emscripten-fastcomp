@@ -44,6 +44,7 @@ set(LLVM_TEST_DEPENDS
           llvm-rtdyld
           llvm-symbolizer
           llvm-tblgen
+          llvm-vtabledump
           macho-dump
           opt
           pnacl-bcanalyzer
@@ -56,12 +57,17 @@ set(LLVM_TEST_DEPENDS
           not
           yaml2obj
           obj2yaml
+          verify-uselistorder
         )
 
 # If Intel JIT events are supported, depend on a tool that tests the listener.
 if( LLVM_USE_INTEL_JITEVENTS )
   set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} llvm-jitlistener)
 endif( LLVM_USE_INTEL_JITEVENTS )
+
+if(TARGET LLVMgold)
+  set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} LLVMgold)
+endif()
 
 add_lit_testsuite(check-llvm "Running the LLVM regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}

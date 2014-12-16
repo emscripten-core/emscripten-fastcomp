@@ -219,7 +219,7 @@ define i16 @mul_add_to_mul_1(i16 %x) {
  %add2 = add nsw i16 %x, %mul1
  ret i16 %add2
 ; CHECK-LABEL: @mul_add_to_mul_1(
-; CHECK-NEXT: %add2 = mul nsw i16 %x, 9
+; CHECK-NEXT: %add2 = mul i16 %x, 9
 ; CHECK-NEXT: ret i16 %add2
 }
 
@@ -228,7 +228,7 @@ define i16 @mul_add_to_mul_2(i16 %x) {
  %add2 = add nsw i16 %mul1, %x
  ret i16 %add2
 ; CHECK-LABEL: @mul_add_to_mul_2(
-; CHECK-NEXT: %add2 = mul nsw i16 %x, 9
+; CHECK-NEXT: %add2 = mul i16 %x, 9
 ; CHECK-NEXT: ret i16 %add2
 }
 
@@ -248,7 +248,7 @@ define i16 @mul_add_to_mul_4(i16 %a) {
  %add = add nsw i16 %mul1, %mul2
  ret i16 %add
 ; CHECK-LABEL: @mul_add_to_mul_4(
-; CHECK-NEXT: %add = mul nsw i16 %a, 9
+; CHECK-NEXT: %add = mul i16 %a, 9
 ; CHECK-NEXT: ret i16 %add
 }
 
@@ -313,3 +313,43 @@ define i16 @add_cttz_2(i16 %a) {
   ret i16 %b
 }
 !1 = metadata !{i16 0, i16 32}
+
+define i32 @add_or_and(i32 %x, i32 %y) {
+  %or = or i32 %x, %y
+  %and = and i32 %x, %y
+  %add = add i32 %or, %and
+  ret i32 %add
+; CHECK-LABEL: @add_or_and(
+; CHECK-NEXT: add i32 %x, %y
+; CHECK-NEXT: ret i32
+}
+
+define i32 @add_nsw_or_and(i32 %x, i32 %y) {
+  %or = or i32 %x, %y
+  %and = and i32 %x, %y
+  %add = add nsw i32 %or, %and
+  ret i32 %add
+; CHECK-LABEL: @add_nsw_or_and(
+; CHECK-NEXT: add nsw i32 %x, %y
+; CHECK-NEXT: ret i32
+}
+
+define i32 @add_nuw_or_and(i32 %x, i32 %y) {
+  %or = or i32 %x, %y
+  %and = and i32 %x, %y
+  %add = add nuw i32 %or, %and
+  ret i32 %add
+; CHECK-LABEL: @add_nuw_or_and(
+; CHECK-NEXT: add nuw i32 %x, %y
+; CHECK-NEXT: ret i32
+}
+
+define i32 @add_nuw_nsw_or_and(i32 %x, i32 %y) {
+  %or = or i32 %x, %y
+  %and = and i32 %x, %y
+  %add = add nsw nuw i32 %or, %and
+  ret i32 %add
+; CHECK-LABEL: @add_nuw_nsw_or_and(
+; CHECK-NEXT: add nuw nsw i32 %x, %y
+; CHECK-NEXT: ret i32
+}

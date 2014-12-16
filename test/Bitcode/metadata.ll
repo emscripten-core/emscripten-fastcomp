@@ -1,4 +1,5 @@
 ; RUN: llvm-as < %s | llvm-dis -disable-output
+; RUN: verify-uselistorder < %s
 
 !llvm.foo = !{!0}
 !0 = metadata !{i32 42}

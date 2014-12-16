@@ -38,6 +38,10 @@ static cl::opt<bool>
 DisableGVNLoadPRE("disable-gvn-loadpre", cl::init(false),
   cl::desc("Do not run the GVN load PRE pass"));
 
+static cl::opt<bool>
+UseDiagnosticHandler("use-diagnostic-handler", cl::init(false),
+  cl::desc("Use a diagnostic handler to test the handler interface"));
+
 static cl::list<std::string>
 InputFilenames(cl::Positional, cl::OneOrMore,
   cl::desc("<input bitcode files>"));
@@ -63,6 +67,25 @@ struct ModuleInfo {
 };
 }
 
+void handleDiagnostics(lto_codegen_diagnostic_severity_t Severity,
+                       const char *Msg, void *) {
+  switch (Severity) {
+  case LTO_DS_NOTE:
+    errs() << "note: ";
+    break;
+  case LTO_DS_REMARK:
+    errs() << "remark: ";
+    break;
+  case LTO_DS_ERROR:
+    errs() << "error: ";
+    break;
+  case LTO_DS_WARNING:
+    errs() << "warning: ";
+    break;
+  }
+  errs() << Msg << "\n";
+}
+
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
@@ -83,6 +106,9 @@ int main(int argc, char **argv) {
   unsigned BaseArg = 0;
 
   LTOCodeGenerator CodeGen;
+
+  if (UseDiagnosticHandler)
+    CodeGen.setDiagnosticHandler(handleDiagnostics, nullptr);
 
   switch (RelocModel) {
   case Reloc::Static:
@@ -165,11 +191,11 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    raw_fd_ostream FileStream(OutputFilename.c_str(), ErrorInfo,
-                              sys::fs::F_None);
-    if (!ErrorInfo.empty()) {
+    std::error_code EC;
+    raw_fd_ostream FileStream(OutputFilename, EC, sys::fs::F_None);
+    if (EC) {
       errs() << argv[0] << ": error opening the file '" << OutputFilename
-             << "': " << ErrorInfo << "\n";
+             << "': " << EC.message() << "\n";
       return 1;
     }
 

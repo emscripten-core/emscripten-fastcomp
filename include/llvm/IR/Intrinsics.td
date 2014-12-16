@@ -277,6 +277,10 @@ def int_pcmarker      : Intrinsic<[], [llvm_i32_ty]>;
 
 def int_readcyclecounter : Intrinsic<[llvm_i64_ty]>;
 
+// The assume intrinsic is marked as arbitrarily writing so that proper
+// control dependencies will be maintained.
+def int_assume        : Intrinsic<[], [llvm_i1_ty], []>;
+
 // Stack Protector Intrinsic - The stackprotector intrinsic writes the stack
 // guard to the correct place on the stack frame.
 def int_stackprotector : Intrinsic<[], [llvm_ptr_ty, llvm_ptrptr_ty], []>;
@@ -369,9 +373,12 @@ let Properties = [IntrNoMem] in {
 // places.
 let Properties = [IntrNoMem] in {
   def int_dbg_declare      : Intrinsic<[],
-                                       [llvm_metadata_ty, llvm_metadata_ty]>;
+                                       [llvm_metadata_ty,
+                                       llvm_metadata_ty,
+                                       llvm_metadata_ty]>;
   def int_dbg_value        : Intrinsic<[],
                                        [llvm_metadata_ty, llvm_i64_ty,
+                                        llvm_metadata_ty,
                                         llvm_metadata_ty]>;
 }
 
@@ -476,11 +483,13 @@ def int_experimental_stackmap : Intrinsic<[],
 def int_experimental_patchpoint_void : Intrinsic<[],
                                                  [llvm_i64_ty, llvm_i32_ty,
                                                   llvm_ptr_ty, llvm_i32_ty,
-                                                  llvm_vararg_ty]>;
+                                                  llvm_vararg_ty],
+                                                  [Throws]>;
 def int_experimental_patchpoint_i64 : Intrinsic<[llvm_i64_ty],
                                                 [llvm_i64_ty, llvm_i32_ty,
                                                  llvm_ptr_ty, llvm_i32_ty,
-                                                 llvm_vararg_ty]>;
+                                                 llvm_vararg_ty],
+                                                 [Throws]>;
 
 //===-------------------------- Other Intrinsics --------------------------===//
 //

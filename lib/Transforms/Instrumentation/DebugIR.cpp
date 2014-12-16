@@ -396,7 +396,7 @@ private:
         Elements.push_back(getOrCreateType(T->getStructElementType(i)));
 
       // set struct elements
-      StructDescriptor.setTypeArray(Builder.getOrCreateArray(Elements));
+      StructDescriptor.setArrays(Builder.getOrCreateArray(Elements));
     } else if (T->isPointerTy()) {
       Type *PointeeTy = T->getPointerElementType();
       if (!(N = getType(PointeeTy)))
@@ -440,7 +440,7 @@ private:
       Params.push_back(getOrCreateType(T));
     }
 
-    DIArray ParamArray = Builder.getOrCreateArray(Params);
+    DITypeArray ParamArray = Builder.getOrCreateTypeArray(Params);
     return Builder.createSubroutineType(DIFile(FileNode), ParamArray);
   }
 
@@ -525,11 +525,11 @@ std::string DebugIR::getPath() {
 
 void DebugIR::writeDebugBitcode(const Module *M, int *fd) {
   std::unique_ptr<raw_fd_ostream> Out;
-  std::string error;
+  std::error_code EC;
 
   if (!fd) {
     std::string Path = getPath();
-    Out.reset(new raw_fd_ostream(Path.c_str(), error, sys::fs::F_Text));
+    Out.reset(new raw_fd_ostream(Path, EC, sys::fs::F_Text));
     DEBUG(dbgs() << "WRITING debug bitcode from Module " << M << " to file "
                  << Path << "\n");
   } else {

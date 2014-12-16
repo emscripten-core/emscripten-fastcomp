@@ -236,6 +236,12 @@
 #define LLVM_ATTRIBUTE_NORETURN
 #endif
 
+#if __has_attribute(returns_nonnull) || __GNUC_PREREQ(4, 9)
+#define LLVM_ATTRIBUTE_RETURNS_NONNULL __attribute__((returns_nonnull))
+#else
+#define LLVM_ATTRIBUTE_RETURNS_NONNULL
+#endif
+
 /// LLVM_EXTENSION - Support compilers where we have a keyword to suppress
 /// pedantic diagnostics.
 #ifdef __GNUC__
@@ -278,7 +284,7 @@
 
 /// \macro LLVM_ASSUME_ALIGNED
 /// \brief Returns a pointer with an assumed alignment.
-#if __has_builtin(__builtin_assume_aligned) && __GNUC_PREREQ(4, 7)
+#if __has_builtin(__builtin_assume_aligned) || __GNUC_PREREQ(4, 7)
 # define LLVM_ASSUME_ALIGNED(p, a) __builtin_assume_aligned(p, a)
 #elif defined(LLVM_BUILTIN_UNREACHABLE)
 // As of today, clang does not support __builtin_assume_aligned.

@@ -56,6 +56,13 @@ namespace llvm {
     };
   }
 
+  namespace ThreadModel {
+    enum Model {
+      POSIX,  // POSIX Threads
+      Single  // Single Threaded Environment
+    };
+  }
+
   class TargetOptions {
   public:
     TargetOptions()
@@ -71,7 +78,8 @@ namespace llvm {
           CompressDebugSections(false), FunctionSections(false),
           DataSections(false), TrapUnreachable(false), TrapFuncName(""),
           FloatABIType(FloatABI::Default),
-          AllowFPOpFusion(FPOpFusion::Standard), JTType(JumpTable::Single) {}
+          AllowFPOpFusion(FPOpFusion::Standard), JTType(JumpTable::Single),
+          ThreadModel(ThreadModel::POSIX) {}
 
     /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
     /// option is specified on the command line, and should enable debugging
@@ -225,6 +233,10 @@ namespace llvm {
     /// JTType - This flag specifies the type of jump-instruction table to
     /// create for functions that have the jumptable attribute.
     JumpTable::JumpTableType JTType;
+
+    /// ThreadModel - This flag specifies the type of threading model to assume
+    /// for things like atomics
+    ThreadModel::Model ThreadModel;
 
     /// Machine level options.
     MCTargetOptions MCOptions;

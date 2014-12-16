@@ -42,7 +42,9 @@ class BasicTTI final : public ImmutablePass, public TargetTransformInfo {
   /// Estimate the cost overhead of SK_Alternate shuffle.
   unsigned getAltShuffleOverhead(Type *Ty) const;
 
-  const TargetLoweringBase *getTLI() const { return TM->getTargetLowering(); }
+  const TargetLoweringBase *getTLI() const {
+    return TM->getSubtargetImpl()->getTargetLowering();
+  }
 
 public:
   BasicTTI() : ImmutablePass(ID), TM(nullptr) {
@@ -90,7 +92,7 @@ public:
   unsigned getJumpBufSize() const override;
   bool shouldBuildLookupTables() const override;
   bool haveFastSqrt(Type *Ty) const override;
-  void getUnrollingPreferences(Loop *L,
+  void getUnrollingPreferences(const Function *F, Loop *L,
                                UnrollingPreferences &UP) const override;
 
   /// @}
@@ -99,10 +101,11 @@ public:
   /// @{
 
   unsigned getNumberOfRegisters(bool Vector) const override;
-  unsigned getMaximumUnrollFactor() const override;
+  unsigned getMaxInterleaveFactor() const override;
   unsigned getRegisterBitWidth(bool Vector) const override;
   unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty, OperandValueKind,
-                                  OperandValueKind) const override;
+                                  OperandValueKind, OperandValueProperties,
+                                  OperandValueProperties) const override;
   unsigned getShuffleCost(ShuffleKind Kind, Type *Tp,
                           int Index, Type *SubTp) const override;
   unsigned getCastInstrCost(unsigned Opcode, Type *Dst,
@@ -186,9 +189,8 @@ unsigned BasicTTI::getJumpBufSize() const {
 
 bool BasicTTI::shouldBuildLookupTables() const {
   const TargetLoweringBase *TLI = getTLI();
-  return TLI->supportJumpTables() &&
-      (TLI->isOperationLegalOrCustom(ISD::BR_JT, MVT::Other) ||
-       TLI->isOperationLegalOrCustom(ISD::BRIND, MVT::Other));
+  return TLI->isOperationLegalOrCustom(ISD::BR_JT, MVT::Other) ||
+         TLI->isOperationLegalOrCustom(ISD::BRIND, MVT::Other);
 }
 
 bool BasicTTI::haveFastSqrt(Type *Ty) const {
@@ -197,7 +199,7 @@ bool BasicTTI::haveFastSqrt(Type *Ty) const {
   return TLI->isTypeLegal(VT) && TLI->isOperationLegalOrCustom(ISD::FSQRT, VT);
 }
 
-void BasicTTI::getUnrollingPreferences(Loop *L,
+void BasicTTI::getUnrollingPreferences(const Function *F, Loop *L,
                                        UnrollingPreferences &UP) const {
   // This unrolling functionality is target independent, but to provide some
   // motivation for its intended use, for x86:
@@ -223,11 +225,11 @@ void BasicTTI::getUnrollingPreferences(Loop *L,
   // until someone finds a case where it matters in practice.
 
   unsigned MaxOps;
-  const TargetSubtargetInfo *ST = &TM->getSubtarget<TargetSubtargetInfo>();
+  const TargetSubtargetInfo *ST = &TM->getSubtarget<TargetSubtargetInfo>(F);
   if (PartialUnrollingThreshold.getNumOccurrences() > 0)
     MaxOps = PartialUnrollingThreshold;
-  else if (ST->getSchedModel()->LoopMicroOpBufferSize > 0)
-    MaxOps = ST->getSchedModel()->LoopMicroOpBufferSize;
+  else if (ST->getSchedModel().LoopMicroOpBufferSize > 0)
+    MaxOps = ST->getSchedModel().LoopMicroOpBufferSize;
   else
     return;
 
@@ -282,13 +284,14 @@ unsigned BasicTTI::getRegisterBitWidth(bool Vector) const {
   return 32;
 }
 
-unsigned BasicTTI::getMaximumUnrollFactor() const {
+unsigned BasicTTI::getMaxInterleaveFactor() const {
   return 1;
 }
 
 unsigned BasicTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
-                                          OperandValueKind,
-                                          OperandValueKind) const {
+                                          OperandValueKind, OperandValueKind,
+                                          OperandValueProperties,
+                                          OperandValueProperties) const {
   // Check if any of the operands are vector operands.
   const TargetLoweringBase *TLI = getTLI();
   int ISD = TLI->InstructionOpcodeToISD(Opcode);
@@ -465,7 +468,8 @@ unsigned BasicTTI::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
 
   std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(ValTy);
 
-  if (!TLI->isOperationExpand(ISD, LT.second)) {
+  if (!(ValTy->isVectorTy() && !LT.second.isVector()) &&
+      !TLI->isOperationExpand(ISD, LT.second)) {
     // The operation is legal. Assume it costs 1. Multiply
     // by the type-legalization overhead.
     return LT.first * 1;
@@ -572,6 +576,7 @@ unsigned BasicTTI::getIntrinsicInstrCost(Intrinsic::ID IID, Type *RetTy,
   case Intrinsic::pow:     ISD = ISD::FPOW;   break;
   case Intrinsic::fma:     ISD = ISD::FMA;    break;
   case Intrinsic::fmuladd: ISD = ISD::FMA;    break;
+  // FIXME: We should return 0 whenever getIntrinsicCost == TCC_Free.
   case Intrinsic::lifetime_start:
   case Intrinsic::lifetime_end:
     return 0;

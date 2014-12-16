@@ -26,7 +26,7 @@ set(CMAKE_MODULE_PATH
   )
 
 set(LLVM_VERSION_MAJOR 3)
-set(LLVM_VERSION_MINOR 5)
+set(LLVM_VERSION_MINOR 6)
 set(LLVM_VERSION_PATCH 0)
 
 if (NOT PACKAGE_VERSION)
@@ -209,6 +209,7 @@ else()
   option(LLVM_ENABLE_WARNINGS "Enable compiler warnings." ON)
 endif()
 
+option(LLVM_ENABLE_MODULES "Compile with C++ modules enabled." OFF)
 option(LLVM_ENABLE_CXX1Y "Compile with C++1y enabled." OFF)
 option(LLVM_ENABLE_LIBCXX "Use libc++ if available." OFF)
 option(LLVM_ENABLE_PEDANTIC "Compile with pedantic enabled." ON)
@@ -462,6 +463,7 @@ else(UNIX)
     set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")
     if (${CMAKE_SYSTEM_NAME} MATCHES FreeBSD)
       set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,origin")
+      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,origin")
     endif()
   endif(NOT DEFINED CMAKE_INSTALL_RPATH)
 endif()
@@ -469,6 +471,11 @@ endif()
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories( ${LLVM_INCLUDE_DIR} ${LLVM_MAIN_INCLUDE_DIR})
+
+# when crosscompiling import the executable targets from a file
+if(CMAKE_CROSSCOMPILING)
+  include(CrossCompile)
+endif(CMAKE_CROSSCOMPILING)
 
 if( ${CMAKE_SYSTEM_NAME} MATCHES FreeBSD )
   # On FreeBSD, /usr/local/* is not used by default. In order to build LLVM

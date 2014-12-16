@@ -560,6 +560,10 @@ LLVMModuleRef LLVMModuleCreateWithName(const char *ModuleID);
  */
 LLVMModuleRef LLVMModuleCreateWithNameInContext(const char *ModuleID,
                                                 LLVMContextRef C);
+/**
+ * Return an exact copy of the specified module.
+ */
+LLVMModuleRef LLVMCloneModule(LLVMModuleRef M);
 
 /**
  * Destroy a module instance.
@@ -1378,6 +1382,13 @@ LLVMValueRef LLVMGetUsedValue(LLVMUseRef U);
 LLVMValueRef LLVMGetOperand(LLVMValueRef Val, unsigned Index);
 
 /**
+ * Obtain the use of an operand at a specific index in a llvm::User value.
+ *
+ * @see llvm::User::getOperandUse()
+ */
+LLVMUseRef LLVMGetOperandUse(LLVMValueRef Val, unsigned Index);
+
+/**
  * Set an operand at a specific index in a llvm::User value.
  *
  * @see llvm::User::setOperand()
@@ -1570,6 +1581,20 @@ LLVMValueRef LLVMConstString(const char *Str, unsigned Length,
                              LLVMBool DontNullTerminate);
 
 /**
+ * Returns true if the specified constant is an array of i8.
+ *
+ * @see ConstantDataSequential::getAsString()
+ */
+LLVMBool LLVMIsConstantString(LLVMValueRef c);
+
+/**
+ * Get the given constant data sequential as a string.
+ *
+ * @see ConstantDataSequential::getAsString()
+ */
+const char *LLVMGetAsString(LLVMValueRef c, size_t* out);
+
+/**
  * Create an anonymous ConstantStruct with the specified values.
  *
  * @see llvm::ConstantStruct::getAnon()
@@ -1605,6 +1630,13 @@ LLVMValueRef LLVMConstArray(LLVMTypeRef ElementTy,
 LLVMValueRef LLVMConstNamedStruct(LLVMTypeRef StructTy,
                                   LLVMValueRef *ConstantVals,
                                   unsigned Count);
+
+/**
+ * Get an element at specified index as a constant.
+ *
+ * @see ConstantDataSequential::getElementAsConstant()
+ */
+LLVMValueRef LLVMGetElementAsConstant(LLVMValueRef c, unsigned idx);
 
 /**
  * Create a ConstantVector from values.
@@ -2375,6 +2407,16 @@ LLVMOpcode   LLVMGetInstructionOpcode(LLVMValueRef Inst);
  * @see llvm::ICmpInst::getPredicate()
  */
 LLVMIntPredicate LLVMGetICmpPredicate(LLVMValueRef Inst);
+
+/**
+ * Create a copy of 'this' instruction that is identical in all ways
+ * except the following:
+ *   * The instruction has no parent
+ *   * The instruction has no name
+ *
+ * @see llvm::Instruction::clone()
+ */
+LLVMValueRef LLVMInstructionClone(LLVMValueRef Inst);
 
 /**
  * @defgroup LLVMCCoreValueInstructionCall Call Sites and Invocations

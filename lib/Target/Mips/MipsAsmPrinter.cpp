@@ -132,7 +132,7 @@ void MipsAsmPrinter::emitPseudoIndirectBranch(MCStreamer &OutStreamer,
 
 void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   MipsTargetStreamer &TS = getTargetStreamer();
-  TS.setCanHaveModuleDir(false);
+  TS.forbidModuleDirective();
 
   if (MI->isDebugValue()) {
     SmallString<128> Str;
@@ -267,7 +267,8 @@ void MipsAsmPrinter::printSavedRegsBitmask() {
     if (Mips::GPR32RegClass.contains(Reg))
       break;
 
-    unsigned RegNum = TM.getRegisterInfo()->getEncodingValue(Reg);
+    unsigned RegNum =
+        TM.getSubtargetImpl()->getRegisterInfo()->getEncodingValue(Reg);
     if (Mips::AFGR64RegClass.contains(Reg)) {
       FPUBitmask |= (3 << RegNum);
       CSFPRegsSize += AFGR64RegSize;
@@ -282,7 +283,8 @@ void MipsAsmPrinter::printSavedRegsBitmask() {
   // Set CPU Bitmask.
   for (; i != e; ++i) {
     unsigned Reg = CSI[i].getReg();
-    unsigned RegNum = TM.getRegisterInfo()->getEncodingValue(Reg);
+    unsigned RegNum =
+        TM.getSubtargetImpl()->getRegisterInfo()->getEncodingValue(Reg);
     CPUBitmask |= (1 << RegNum);
   }
 
@@ -307,7 +309,7 @@ void MipsAsmPrinter::printSavedRegsBitmask() {
 
 /// Frame Directive
 void MipsAsmPrinter::emitFrameDirective() {
-  const TargetRegisterInfo &RI = *TM.getRegisterInfo();
+  const TargetRegisterInfo &RI = *TM.getSubtargetImpl()->getRegisterInfo();
 
   unsigned stackReg  = RI.getFrameRegister(*MF);
   unsigned returnReg = RI.getRARegister();
@@ -561,7 +563,7 @@ bool MipsAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
 
 void MipsAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
                                   raw_ostream &O) {
-  const DataLayout *DL = TM.getDataLayout();
+  const DataLayout *DL = TM.getSubtargetImpl()->getDataLayout();
   const MachineOperand &MO = MI->getOperand(opNum);
   bool closeP = false;
 
@@ -670,9 +672,7 @@ printFCCOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
 }
 
 void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
-  // TODO: Need to add -mabicalls and -mno-abicalls flags.
-  // Currently we assume that -mabicalls is the default.
-  bool IsABICalls = true;
+  bool IsABICalls = Subtarget->isABICalls();
   if (IsABICalls) {
     getTargetStreamer().emitDirectiveAbiCalls();
     Reloc::Model RM = TM.getRelocationModel();

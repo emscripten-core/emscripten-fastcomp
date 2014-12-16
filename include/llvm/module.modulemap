@@ -112,7 +112,12 @@ module LLVM_MC {
   exclude header "MC/MCTargetOptionsCommandFlags.h"
 }
 
-module LLVM_Object { requires cplusplus umbrella "Object" module * { export * } }
+module LLVM_Object {
+  requires cplusplus
+  umbrella "Object"
+  module * { export * }
+}
+
 module LLVM_Option { requires cplusplus umbrella "Option" module * { export * } }
 module LLVM_TableGen { requires cplusplus umbrella "TableGen" module * { export * } }
 
@@ -146,9 +151,6 @@ module LLVM_Utils {
 
     // Exclude this; it's only included on AIX and fundamentally non-modular.
     exclude header "Support/AIXDataTypesFix.h"
-
-    // Exclude this; it's fundamentally non-modular.
-    exclude header "Support/Debug.h"
 
     // Exclude this; it's fundamentally non-modular.
     exclude header "Support/PluginLoader.h"

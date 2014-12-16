@@ -166,6 +166,20 @@ bool Argument::hasReturnedAttr() const {
     hasAttribute(getArgNo()+1, Attribute::Returned);
 }
 
+/// hasZExtAttr - Return true if this argument has the zext attribute on it in
+/// its containing function.
+bool Argument::hasZExtAttr() const {
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::ZExt);
+}
+
+/// hasSExtAttr Return true if this argument has the sext attribute on it in its
+/// containing function.
+bool Argument::hasSExtAttr() const {
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::SExt);
+}
+
 /// Return true if this argument has the readonly or readnone attribute on it
 /// in its containing function.
 bool Argument::onlyReadsMemory() const {
@@ -479,19 +493,20 @@ enum IIT_Info {
   IIT_ARG  = 15,
 
   // Values from 16+ are only encodable with the inefficient encoding.
-  IIT_MMX  = 16,
-  IIT_METADATA = 17,
-  IIT_EMPTYSTRUCT = 18,
-  IIT_STRUCT2 = 19,
-  IIT_STRUCT3 = 20,
-  IIT_STRUCT4 = 21,
-  IIT_STRUCT5 = 22,
-  IIT_EXTEND_ARG = 23,
-  IIT_TRUNC_ARG = 24,
-  IIT_ANYPTR = 25,
-  IIT_V1   = 26,
-  IIT_VARARG = 27,
-  IIT_HALF_VEC_ARG = 28
+  IIT_V64  = 16,
+  IIT_MMX  = 17,
+  IIT_METADATA = 18,
+  IIT_EMPTYSTRUCT = 19,
+  IIT_STRUCT2 = 20,
+  IIT_STRUCT3 = 21,
+  IIT_STRUCT4 = 22,
+  IIT_STRUCT5 = 23,
+  IIT_EXTEND_ARG = 24,
+  IIT_TRUNC_ARG = 25,
+  IIT_ANYPTR = 26,
+  IIT_V1   = 27,
+  IIT_VARARG = 28,
+  IIT_HALF_VEC_ARG = 29
 };
 
 
@@ -560,6 +575,10 @@ static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
     return;
   case IIT_V32:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Vector, 32));
+    DecodeIITType(NextElt, Infos, OutputTable);
+    return;
+  case IIT_V64:
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::Vector, 64));
     DecodeIITType(NextElt, Infos, OutputTable);
     return;
   case IIT_PTR:
@@ -678,7 +697,7 @@ static Type *DecodeFixedType(ArrayRef<Intrinsic::IITDescriptor> &Infos,
     assert(D.Struct_NumElements <= 5 && "Can't handle this yet");
     for (unsigned i = 0, e = D.Struct_NumElements; i != e; ++i)
       Elts[i] = DecodeFixedType(Infos, Tys, Context);
-    return StructType::get(Context, ArrayRef<Type*>(Elts,D.Struct_NumElements));
+    return StructType::get(Context, makeArrayRef(Elts,D.Struct_NumElements));
   }
 
   case IITDescriptor::Argument:
@@ -720,6 +739,12 @@ FunctionType *Intrinsic::getType(LLVMContext &Context,
   while (!TableRef.empty())
     ArgTys.push_back(DecodeFixedType(TableRef, Tys, Context));
 
+  // DecodeFixedType returns Void for IITDescriptor::Void and IITDescriptor::VarArg
+  // If we see void type as the type of the last argument, it is vararg intrinsic
+  if (!ArgTys.empty() && ArgTys.back()->isVoidTy()) {
+    ArgTys.pop_back();
+    return FunctionType::get(ResultTy, ArgTys, true);
+  }
   return FunctionType::get(ResultTy, ArgTys, false);
 }
 

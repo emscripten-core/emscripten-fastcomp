@@ -8,10 +8,11 @@
 /// \file
 //===----------------------------------------------------------------------===//
 
-#ifndef SIDEFINES_H_
-#define SIDEFINES_H_
+#ifndef LLVM_LIB_TARGET_R600_SIDEFINES_H
+#define LLVM_LIB_TARGET_R600_SIDEFINES_H
 
 namespace SIInstrFlags {
+// This needs to be kept in sync with the field bits in InstSI.
 enum {
   MIMG = 1 << 3,
   SMRD = 1 << 4,
@@ -19,8 +20,36 @@ enum {
   VOP2 = 1 << 6,
   VOP3 = 1 << 7,
   VOPC = 1 << 8,
-  SALU = 1 << 9
+  SALU = 1 << 9,
+  MUBUF = 1 << 10,
+  MTBUF = 1 << 11,
+  FLAT = 1 << 12
 };
+}
+
+namespace SIInstrFlags {
+  enum Flags {
+    // First 4 bits are the instruction encoding
+    VM_CNT = 1 << 0,
+    EXP_CNT = 1 << 1,
+    LGKM_CNT = 1 << 2
+  };
+}
+
+namespace SISrcMods {
+  enum {
+   NEG = 1 << 0,
+   ABS = 1 << 1
+  };
+}
+
+namespace SIOutMods {
+  enum {
+    NONE = 0,
+    MUL2 = 1,
+    MUL4 = 2,
+    DIV2 = 3
+  };
 }
 
 #define R_00B028_SPI_SHADER_PGM_RSRC1_PS                                0x00B028
@@ -89,4 +118,4 @@ enum {
 #define R_00B860_COMPUTE_TMPRING_SIZE                                   0x00B860
 #define   S_00B860_WAVESIZE(x)                                        (((x) & 0x1FFF) << 12)
 
-#endif // SIDEFINES_H_
+#endif

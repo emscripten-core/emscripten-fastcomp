@@ -32,6 +32,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 #include <memory>
 
 using namespace llvm;
@@ -693,10 +694,33 @@ private:
 
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                OperandVector &Operands, MCStreamer &Out,
-                               unsigned &ErrorInfo,
+                               uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override;
 
-  virtual bool OmitRegisterFromClobberLists(unsigned RegNo) override;
+  void MatchFPUWaitAlias(SMLoc IDLoc, X86Operand &Op, OperandVector &Operands,
+                         MCStreamer &Out, bool MatchingInlineAsm);
+
+  bool ErrorMissingFeature(SMLoc IDLoc, uint64_t ErrorInfo,
+                           bool MatchingInlineAsm);
+
+  bool MatchAndEmitATTInstruction(SMLoc IDLoc, unsigned &Opcode,
+                                  OperandVector &Operands, MCStreamer &Out,
+                                  uint64_t &ErrorInfo,
+                                  bool MatchingInlineAsm);
+
+  bool MatchAndEmitIntelInstruction(SMLoc IDLoc, unsigned &Opcode,
+                                    OperandVector &Operands, MCStreamer &Out,
+                                    uint64_t &ErrorInfo,
+                                    bool MatchingInlineAsm);
+
+  unsigned getPointerSize() {
+    if (is16BitMode()) return 16;
+    if (is32BitMode()) return 32;
+    if (is64BitMode()) return 64;
+    llvm_unreachable("invalid mode");
+  }
+
+  bool OmitRegisterFromClobberLists(unsigned RegNo) override;
 
   /// doSrcDstMatch - Returns true if operands are matching in their
   /// word size (%si and %di, %esi and %edi, etc.). Order depends on
@@ -730,6 +754,13 @@ private:
                     (X86::Mode64Bit | X86::Mode32Bit | X86::Mode16Bit)));
   }
 
+  unsigned getPointerWidth() {
+    if (is16BitMode()) return 16;
+    if (is32BitMode()) return 32;
+    if (is64BitMode()) return 64;
+    llvm_unreachable("invalid mode");
+  }
+
   bool isParsingIntelSyntax() {
     return getParser().getAssemblerDialect();
   }
@@ -756,6 +787,8 @@ public:
   }
 
   bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) override;
+
+  void SetFrameRegister(unsigned RegNo) override;
 
   bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
                         SMLoc NameLoc, OperandVector &Operands) override;
@@ -939,6 +972,10 @@ bool X86AsmParser::ParseRegister(unsigned &RegNo,
   return false;
 }
 
+void X86AsmParser::SetFrameRegister(unsigned RegNo) {
+  Instrumentation->SetInitialFrameRegister(RegNo);
+}
+
 std::unique_ptr<X86Operand> X86AsmParser::DefaultMemSIOperand(SMLoc Loc) {
   unsigned basereg =
     is64BitMode() ? X86::RSI : (is32BitMode() ? X86::ESI : X86::SI);
@@ -981,15 +1018,20 @@ std::unique_ptr<X86Operand> X86AsmParser::CreateMemForInlineAsm(
     unsigned SegReg, const MCExpr *Disp, unsigned BaseReg, unsigned IndexReg,
     unsigned Scale, SMLoc Start, SMLoc End, unsigned Size, StringRef Identifier,
     InlineAsmIdentifierInfo &Info) {
-  // If this is not a VarDecl then assume it is a FuncDecl or some other label
-  // reference.  We need an 'r' constraint here, so we need to create register
-  // operand to ensure proper matching.  Just pick a GPR based on the size of
-  // a pointer.
-  if (isa<MCSymbolRefExpr>(Disp) && !Info.IsVarDecl) {
-    unsigned RegNo =
-        is64BitMode() ? X86::RBX : (is32BitMode() ? X86::EBX : X86::BX);
-    return X86Operand::CreateReg(RegNo, Start, End, /*AddressOf=*/true,
-                                 SMLoc(), Identifier, Info.OpDecl);
+  // If we found a decl other than a VarDecl, then assume it is a FuncDecl or
+  // some other label reference.
+  if (isa<MCSymbolRefExpr>(Disp) && Info.OpDecl && !Info.IsVarDecl) {
+    // Insert an explicit size if the user didn't have one.
+    if (!Size) {
+      Size = getPointerWidth();
+      InstInfo->AsmRewrites->push_back(AsmRewrite(AOK_SizeDirective, Start,
+                                                  /*Len=*/0, Size));
+    }
+
+    // Create an absolute memory reference in order to match against
+    // instructions taking a PC relative operand.
+    return X86Operand::CreateMem(Disp, Start, End, Size, Identifier,
+                                 Info.OpDecl);
   }
 
   // We either have a direct symbol reference, or an offset from a symbol.  The
@@ -1278,9 +1320,11 @@ bool X86AsmParser::ParseIntelIdentifier(const MCExpr *&Val,
   Val = nullptr;
 
   StringRef LineBuf(Identifier.data());
-  SemaCallback->LookupInlineAsmIdentifier(LineBuf, Info, IsUnevaluatedOperand);
+  void *Result =
+    SemaCallback->LookupInlineAsmIdentifier(LineBuf, Info, IsUnevaluatedOperand);
 
   const AsmToken &Tok = Parser.getTok();
+  SMLoc Loc = Tok.getLoc();
 
   // Advance the token stream until the end of the current token is
   // after the end of what the frontend claimed.
@@ -1292,9 +1336,22 @@ bool X86AsmParser::ParseIntelIdentifier(const MCExpr *&Val,
     assert(End.getPointer() <= EndPtr && "frontend claimed part of a token?");
     if (End.getPointer() == EndPtr) break;
   }
+  Identifier = LineBuf;
+
+  // If the identifier lookup was unsuccessful, assume that we are dealing with
+  // a label.
+  if (!Result) {
+    StringRef InternalName =
+      SemaCallback->LookupInlineAsmLabel(Identifier, getSourceManager(),
+                                         Loc, false);
+    assert(InternalName.size() && "We should have an internal name here.");
+    // Push a rewrite for replacing the identifier name with the internal name.
+    InstInfo->AsmRewrites->push_back(AsmRewrite(AOK_Label, Loc,
+                                                Identifier.size(),
+                                                InternalName));
+  }
 
   // Create the symbol reference.
-  Identifier = LineBuf;
   MCSymbol *Sym = getContext().GetOrCreateSymbol(Identifier);
   MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
   Val = MCSymbolRefExpr::Create(Sym, Variant, getParser().getContext());
@@ -1549,7 +1606,7 @@ std::unique_ptr<X86Operand> X86AsmParser::ParseIntelOperand() {
   if (Size) {
     Parser.Lex(); // Eat operand size (e.g., byte, word).
     if (Tok.getString() != "PTR" && Tok.getString() != "ptr")
-      return ErrorOperand(Start, "Expected 'PTR' or 'ptr' token!");
+      return ErrorOperand(Tok.getLoc(), "Expected 'PTR' or 'ptr' token!");
     Parser.Lex(); // Eat ptr.
   }
   Start = Tok.getLoc();
@@ -1630,6 +1687,9 @@ std::unique_ptr<X86Operand> X86AsmParser::ParseATTOperand() {
     // of a memory reference, otherwise this is a normal register reference.
     if (getLexer().isNot(AsmToken::Colon))
       return X86Operand::CreateReg(RegNo, Start, End);
+
+    if (!X86MCRegisterClasses[X86::SEGMENT_REGRegClassID].contains(RegNo))
+      return ErrorOperand(Start, "invalid segment register");
 
     getParser().Lex(); // Eat the colon.
     return ParseMemOperand(RegNo, Start);
@@ -1876,8 +1936,10 @@ std::unique_ptr<X86Operand> X86AsmParser::ParseMemOperand(unsigned SegReg,
     return nullptr;
   }
 
-  return X86Operand::CreateMem(SegReg, Disp, BaseReg, IndexReg, Scale,
-                               MemStart, MemEnd);
+  if (SegReg || BaseReg || IndexReg)
+    return X86Operand::CreateMem(SegReg, Disp, BaseReg, IndexReg, Scale,
+                                 MemStart, MemEnd);
+  return X86Operand::CreateMem(Disp, MemStart, MemEnd);
 }
 
 bool X86AsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
@@ -2279,51 +2341,79 @@ bool X86AsmParser::processInstruction(MCInst &Inst, const OperandVector &Ops) {
   }
 }
 
-static const char *getSubtargetFeatureName(unsigned Val);
+static const char *getSubtargetFeatureName(uint64_t Val);
 
 void X86AsmParser::EmitInstruction(MCInst &Inst, OperandVector &Operands,
                                    MCStreamer &Out) {
-  Instrumentation->InstrumentInstruction(Inst, Operands, getContext(), MII,
-                                         Out);
-  Out.EmitInstruction(Inst, STI);
+  Instrumentation->InstrumentAndEmitInstruction(Inst, Operands, getContext(),
+                                                MII, Out);
 }
 
 bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                            OperandVector &Operands,
-                                           MCStreamer &Out, unsigned &ErrorInfo,
+                                           MCStreamer &Out, uint64_t &ErrorInfo,
                                            bool MatchingInlineAsm) {
+  if (isParsingIntelSyntax())
+    return MatchAndEmitIntelInstruction(IDLoc, Opcode, Operands, Out, ErrorInfo,
+                                        MatchingInlineAsm);
+  return MatchAndEmitATTInstruction(IDLoc, Opcode, Operands, Out, ErrorInfo,
+                                    MatchingInlineAsm);
+}
+
+void X86AsmParser::MatchFPUWaitAlias(SMLoc IDLoc, X86Operand &Op,
+                                     OperandVector &Operands, MCStreamer &Out,
+                                     bool MatchingInlineAsm) {
+  // FIXME: This should be replaced with a real .td file alias mechanism.
+  // Also, MatchInstructionImpl should actually *do* the EmitInstruction
+  // call.
+  const char *Repl = StringSwitch<const char *>(Op.getToken())
+                         .Case("finit", "fninit")
+                         .Case("fsave", "fnsave")
+                         .Case("fstcw", "fnstcw")
+                         .Case("fstcww", "fnstcw")
+                         .Case("fstenv", "fnstenv")
+                         .Case("fstsw", "fnstsw")
+                         .Case("fstsww", "fnstsw")
+                         .Case("fclex", "fnclex")
+                         .Default(nullptr);
+  if (Repl) {
+    MCInst Inst;
+    Inst.setOpcode(X86::WAIT);
+    Inst.setLoc(IDLoc);
+    if (!MatchingInlineAsm)
+      EmitInstruction(Inst, Operands, Out);
+    Operands[0] = X86Operand::CreateToken(Repl, IDLoc);
+  }
+}
+
+bool X86AsmParser::ErrorMissingFeature(SMLoc IDLoc, uint64_t ErrorInfo,
+                                       bool MatchingInlineAsm) {
+  assert(ErrorInfo && "Unknown missing feature!");
+  ArrayRef<SMRange> EmptyRanges = None;
+  SmallString<126> Msg;
+  raw_svector_ostream OS(Msg);
+  OS << "instruction requires:";
+  uint64_t Mask = 1;
+  for (unsigned i = 0; i < (sizeof(ErrorInfo)*8-1); ++i) {
+    if (ErrorInfo & Mask)
+      OS << ' ' << getSubtargetFeatureName(ErrorInfo & Mask);
+    Mask <<= 1;
+  }
+  return Error(IDLoc, OS.str(), EmptyRanges, MatchingInlineAsm);
+}
+
+bool X86AsmParser::MatchAndEmitATTInstruction(SMLoc IDLoc, unsigned &Opcode,
+                                              OperandVector &Operands,
+                                              MCStreamer &Out,
+                                              uint64_t &ErrorInfo,
+                                              bool MatchingInlineAsm) {
   assert(!Operands.empty() && "Unexpect empty operand list!");
   X86Operand &Op = static_cast<X86Operand &>(*Operands[0]);
   assert(Op.isToken() && "Leading operand should always be a mnemonic!");
   ArrayRef<SMRange> EmptyRanges = None;
 
   // First, handle aliases that expand to multiple instructions.
-  // FIXME: This should be replaced with a real .td file alias mechanism.
-  // Also, MatchInstructionImpl should actually *do* the EmitInstruction
-  // call.
-  if (Op.getToken() == "fstsw" || Op.getToken() == "fstcw" ||
-      Op.getToken() == "fstsww" || Op.getToken() == "fstcww" ||
-      Op.getToken() == "finit" || Op.getToken() == "fsave" ||
-      Op.getToken() == "fstenv" || Op.getToken() == "fclex") {
-    MCInst Inst;
-    Inst.setOpcode(X86::WAIT);
-    Inst.setLoc(IDLoc);
-    if (!MatchingInlineAsm)
-      EmitInstruction(Inst, Operands, Out);
-
-    const char *Repl = StringSwitch<const char *>(Op.getToken())
-                           .Case("finit", "fninit")
-                           .Case("fsave", "fnsave")
-                           .Case("fstcw", "fnstcw")
-                           .Case("fstcww", "fnstcw")
-                           .Case("fstenv", "fnstenv")
-                           .Case("fstsw", "fnstsw")
-                           .Case("fstsww", "fnstsw")
-                           .Case("fclex", "fnclex")
-                           .Default(nullptr);
-    assert(Repl && "Unknown wait-prefixed instruction");
-    Operands[0] = X86Operand::CreateToken(Repl, IDLoc);
-  }
+  MatchFPUWaitAlias(IDLoc, Op, Operands, Out, MatchingInlineAsm);
 
   bool WasOriginallyInvalidOperand = false;
   MCInst Inst;
@@ -2346,21 +2436,8 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       EmitInstruction(Inst, Operands, Out);
     Opcode = Inst.getOpcode();
     return false;
-  case Match_MissingFeature: {
-    assert(ErrorInfo && "Unknown missing feature!");
-    // Special case the error message for the very common case where only
-    // a single subtarget feature is missing.
-    std::string Msg = "instruction requires:";
-    unsigned Mask = 1;
-    for (unsigned i = 0; i < (sizeof(ErrorInfo)*8-1); ++i) {
-      if (ErrorInfo & Mask) {
-        Msg += " ";
-        Msg += getSubtargetFeatureName(ErrorInfo & Mask);
-      }
-      Mask <<= 1;
-    }
-    return Error(IDLoc, Msg, EmptyRanges, MatchingInlineAsm);
-  }
+  case Match_MissingFeature:
+    return ErrorMissingFeature(IDLoc, ErrorInfo, MatchingInlineAsm);
   case Match_InvalidOperand:
     WasOriginallyInvalidOperand = true;
     break;
@@ -2389,34 +2466,18 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   const char *Suffixes = Base[0] != 'f' ? "bwlq" : "slt\0";
 
   // Check for the various suffix matches.
-  Tmp[Base.size()] = Suffixes[0];
-  unsigned ErrorInfoIgnore;
-  unsigned ErrorInfoMissingFeature = 0; // Init suppresses compiler warnings.
-  unsigned Match1, Match2, Match3, Match4;
+  uint64_t ErrorInfoIgnore;
+  uint64_t ErrorInfoMissingFeature = 0; // Init suppresses compiler warnings.
+  unsigned Match[4];
 
-  Match1 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore,
-                                MatchingInlineAsm, isParsingIntelSyntax());
-  // If this returned as a missing feature failure, remember that.
-  if (Match1 == Match_MissingFeature)
-    ErrorInfoMissingFeature = ErrorInfoIgnore;
-  Tmp[Base.size()] = Suffixes[1];
-  Match2 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore,
-                                MatchingInlineAsm, isParsingIntelSyntax());
-  // If this returned as a missing feature failure, remember that.
-  if (Match2 == Match_MissingFeature)
-    ErrorInfoMissingFeature = ErrorInfoIgnore;
-  Tmp[Base.size()] = Suffixes[2];
-  Match3 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore,
-                                MatchingInlineAsm, isParsingIntelSyntax());
-  // If this returned as a missing feature failure, remember that.
-  if (Match3 == Match_MissingFeature)
-    ErrorInfoMissingFeature = ErrorInfoIgnore;
-  Tmp[Base.size()] = Suffixes[3];
-  Match4 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore,
-                                MatchingInlineAsm, isParsingIntelSyntax());
-  // If this returned as a missing feature failure, remember that.
-  if (Match4 == Match_MissingFeature)
-    ErrorInfoMissingFeature = ErrorInfoIgnore;
+  for (unsigned I = 0, E = array_lengthof(Match); I != E; ++I) {
+    Tmp.back() = Suffixes[I];
+    Match[I] = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore,
+                                  MatchingInlineAsm, isParsingIntelSyntax());
+    // If this returned as a missing feature failure, remember that.
+    if (Match[I] == Match_MissingFeature)
+      ErrorInfoMissingFeature = ErrorInfoIgnore;
+  }
 
   // Restore the old token.
   Op.setTokenValue(Base);
@@ -2425,8 +2486,7 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   // instruction will already have been filled in correctly, since the failing
   // matches won't have modified it).
   unsigned NumSuccessfulMatches =
-    (Match1 == Match_Success) + (Match2 == Match_Success) +
-    (Match3 == Match_Success) + (Match4 == Match_Success);
+      std::count(std::begin(Match), std::end(Match), Match_Success);
   if (NumSuccessfulMatches == 1) {
     Inst.setLoc(IDLoc);
     if (!MatchingInlineAsm)
@@ -2442,10 +2502,9 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   if (NumSuccessfulMatches > 1) {
     char MatchChars[4];
     unsigned NumMatches = 0;
-    if (Match1 == Match_Success) MatchChars[NumMatches++] = Suffixes[0];
-    if (Match2 == Match_Success) MatchChars[NumMatches++] = Suffixes[1];
-    if (Match3 == Match_Success) MatchChars[NumMatches++] = Suffixes[2];
-    if (Match4 == Match_Success) MatchChars[NumMatches++] = Suffixes[3];
+    for (unsigned I = 0, E = array_lengthof(Match); I != E; ++I)
+      if (Match[I] == Match_Success)
+        MatchChars[NumMatches++] = Suffixes[I];
 
     SmallString<126> Msg;
     raw_svector_ostream OS(Msg);
@@ -2466,8 +2525,7 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
 
   // If all of the instructions reported an invalid mnemonic, then the original
   // mnemonic was invalid.
-  if ((Match1 == Match_MnemonicFail) && (Match2 == Match_MnemonicFail) &&
-      (Match3 == Match_MnemonicFail) && (Match4 == Match_MnemonicFail)) {
+  if (std::count(std::begin(Match), std::end(Match), Match_MnemonicFail) == 4) {
     if (!WasOriginallyInvalidOperand) {
       ArrayRef<SMRange> Ranges =
           MatchingInlineAsm ? EmptyRanges : Op.getLocRange();
@@ -2476,7 +2534,7 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     }
 
     // Recover location info for the operand if we know which was the problem.
-    if (ErrorInfo != ~0U) {
+    if (ErrorInfo != ~0ULL) {
       if (ErrorInfo >= Operands.size())
         return Error(IDLoc, "too few operands for instruction",
                      EmptyRanges, MatchingInlineAsm);
@@ -2495,33 +2553,161 @@ bool X86AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
 
   // If one instruction matched with a missing feature, report this as a
   // missing feature.
-  if ((Match1 == Match_MissingFeature) + (Match2 == Match_MissingFeature) +
-      (Match3 == Match_MissingFeature) + (Match4 == Match_MissingFeature) == 1){
-    std::string Msg = "instruction requires:";
-    unsigned Mask = 1;
-    for (unsigned i = 0; i < (sizeof(ErrorInfoMissingFeature)*8-1); ++i) {
-      if (ErrorInfoMissingFeature & Mask) {
-        Msg += " ";
-        Msg += getSubtargetFeatureName(ErrorInfoMissingFeature & Mask);
-      }
-      Mask <<= 1;
-    }
-    return Error(IDLoc, Msg, EmptyRanges, MatchingInlineAsm);
+  if (std::count(std::begin(Match), std::end(Match),
+                 Match_MissingFeature) == 1) {
+    ErrorInfo = ErrorInfoMissingFeature;
+    return ErrorMissingFeature(IDLoc, ErrorInfoMissingFeature,
+                               MatchingInlineAsm);
   }
 
   // If one instruction matched with an invalid operand, report this as an
   // operand failure.
-  if ((Match1 == Match_InvalidOperand) + (Match2 == Match_InvalidOperand) +
-      (Match3 == Match_InvalidOperand) + (Match4 == Match_InvalidOperand) == 1){
-    Error(IDLoc, "invalid operand for instruction", EmptyRanges,
-          MatchingInlineAsm);
-    return true;
+  if (std::count(std::begin(Match), std::end(Match),
+                 Match_InvalidOperand) == 1) {
+    return Error(IDLoc, "invalid operand for instruction", EmptyRanges,
+                 MatchingInlineAsm);
   }
 
   // If all of these were an outright failure, report it in a useless way.
   Error(IDLoc, "unknown use of instruction mnemonic without a size suffix",
         EmptyRanges, MatchingInlineAsm);
   return true;
+}
+
+bool X86AsmParser::MatchAndEmitIntelInstruction(SMLoc IDLoc, unsigned &Opcode,
+                                                OperandVector &Operands,
+                                                MCStreamer &Out,
+                                                uint64_t &ErrorInfo,
+                                                bool MatchingInlineAsm) {
+  assert(!Operands.empty() && "Unexpect empty operand list!");
+  X86Operand &Op = static_cast<X86Operand &>(*Operands[0]);
+  assert(Op.isToken() && "Leading operand should always be a mnemonic!");
+  StringRef Mnemonic = Op.getToken();
+  ArrayRef<SMRange> EmptyRanges = None;
+
+  // First, handle aliases that expand to multiple instructions.
+  MatchFPUWaitAlias(IDLoc, Op, Operands, Out, MatchingInlineAsm);
+
+  MCInst Inst;
+
+  // Find one unsized memory operand, if present.
+  X86Operand *UnsizedMemOp = nullptr;
+  for (const auto &Op : Operands) {
+    X86Operand *X86Op = static_cast<X86Operand *>(Op.get());
+    if (X86Op->isMemUnsized())
+      UnsizedMemOp = X86Op;
+  }
+
+  // Allow some instructions to have implicitly pointer-sized operands.  This is
+  // compatible with gas.
+  if (UnsizedMemOp) {
+    static const char *const PtrSizedInstrs[] = {"call", "jmp", "push"};
+    for (const char *Instr : PtrSizedInstrs) {
+      if (Mnemonic == Instr) {
+        UnsizedMemOp->Mem.Size = getPointerSize();
+        break;
+      }
+    }
+  }
+
+  // If an unsized memory operand is present, try to match with each memory
+  // operand size.  In Intel assembly, the size is not part of the instruction
+  // mnemonic.
+  SmallVector<unsigned, 8> Match;
+  uint64_t ErrorInfoMissingFeature = 0;
+  if (UnsizedMemOp && UnsizedMemOp->isMemUnsized()) {
+    static const unsigned MopSizes[] = {8, 16, 32, 64, 80};
+    for (unsigned Size : MopSizes) {
+      UnsizedMemOp->Mem.Size = Size;
+      uint64_t ErrorInfoIgnore;
+      unsigned LastOpcode = Inst.getOpcode();
+      unsigned M =
+          MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore,
+                               MatchingInlineAsm, isParsingIntelSyntax());
+      if (Match.empty() || LastOpcode != Inst.getOpcode())
+        Match.push_back(M);
+
+      // If this returned as a missing feature failure, remember that.
+      if (Match.back() == Match_MissingFeature)
+        ErrorInfoMissingFeature = ErrorInfoIgnore;
+    }
+
+    // Restore the size of the unsized memory operand if we modified it.
+    if (UnsizedMemOp)
+      UnsizedMemOp->Mem.Size = 0;
+  }
+
+  // If we haven't matched anything yet, this is not a basic integer or FPU
+  // operation.  There shouldn't be any ambiguity in our mneumonic table, so try
+  // matching with the unsized operand.
+  if (Match.empty()) {
+    Match.push_back(MatchInstructionImpl(Operands, Inst, ErrorInfo,
+                                         MatchingInlineAsm,
+                                         isParsingIntelSyntax()));
+    // If this returned as a missing feature failure, remember that.
+    if (Match.back() == Match_MissingFeature)
+      ErrorInfoMissingFeature = ErrorInfo;
+  }
+
+  // Restore the size of the unsized memory operand if we modified it.
+  if (UnsizedMemOp)
+    UnsizedMemOp->Mem.Size = 0;
+
+  // If it's a bad mnemonic, all results will be the same.
+  if (Match.back() == Match_MnemonicFail) {
+    ArrayRef<SMRange> Ranges =
+        MatchingInlineAsm ? EmptyRanges : Op.getLocRange();
+    return Error(IDLoc, "invalid instruction mnemonic '" + Mnemonic + "'",
+                 Ranges, MatchingInlineAsm);
+  }
+
+  // If exactly one matched, then we treat that as a successful match (and the
+  // instruction will already have been filled in correctly, since the failing
+  // matches won't have modified it).
+  unsigned NumSuccessfulMatches =
+      std::count(std::begin(Match), std::end(Match), Match_Success);
+  if (NumSuccessfulMatches == 1) {
+    // Some instructions need post-processing to, for example, tweak which
+    // encoding is selected. Loop on it while changes happen so the individual
+    // transformations can chain off each other.
+    if (!MatchingInlineAsm)
+      while (processInstruction(Inst, Operands))
+        ;
+    Inst.setLoc(IDLoc);
+    if (!MatchingInlineAsm)
+      EmitInstruction(Inst, Operands, Out);
+    Opcode = Inst.getOpcode();
+    return false;
+  } else if (NumSuccessfulMatches > 1) {
+    assert(UnsizedMemOp &&
+           "multiple matches only possible with unsized memory operands");
+    ArrayRef<SMRange> Ranges =
+        MatchingInlineAsm ? EmptyRanges : UnsizedMemOp->getLocRange();
+    return Error(UnsizedMemOp->getStartLoc(),
+                 "ambiguous operand size for instruction '" + Mnemonic + "\'",
+                 Ranges, MatchingInlineAsm);
+  }
+
+  // If one instruction matched with a missing feature, report this as a
+  // missing feature.
+  if (std::count(std::begin(Match), std::end(Match),
+                 Match_MissingFeature) == 1) {
+    ErrorInfo = ErrorInfoMissingFeature;
+    return ErrorMissingFeature(IDLoc, ErrorInfoMissingFeature,
+                               MatchingInlineAsm);
+  }
+
+  // If one instruction matched with an invalid operand, report this as an
+  // operand failure.
+  if (std::count(std::begin(Match), std::end(Match),
+                 Match_InvalidOperand) == 1) {
+    return Error(IDLoc, "invalid operand for instruction", EmptyRanges,
+                 MatchingInlineAsm);
+  }
+
+  // If all of these were an outright failure, report it in a useless way.
+  return Error(IDLoc, "unknown instruction mnemonic", EmptyRanges,
+               MatchingInlineAsm);
 }
 
 bool X86AsmParser::OmitRegisterFromClobberLists(unsigned RegNo) {
@@ -2535,14 +2721,25 @@ bool X86AsmParser::ParseDirective(AsmToken DirectiveID) {
   else if (IDVal.startswith(".code"))
     return ParseDirectiveCode(IDVal, DirectiveID.getLoc());
   else if (IDVal.startswith(".att_syntax")) {
+    if (getLexer().isNot(AsmToken::EndOfStatement)) {
+      if (Parser.getTok().getString() == "prefix")
+        Parser.Lex();
+      else if (Parser.getTok().getString() == "noprefix")
+        return Error(DirectiveID.getLoc(), "'.att_syntax noprefix' is not "
+                                           "supported: registers must have a "
+                                           "'%' prefix in .att_syntax");
+    }
     getParser().setAssemblerDialect(0);
     return false;
   } else if (IDVal.startswith(".intel_syntax")) {
     getParser().setAssemblerDialect(1);
     if (getLexer().isNot(AsmToken::EndOfStatement)) {
-      // FIXME: Handle noprefix
       if (Parser.getTok().getString() == "noprefix")
         Parser.Lex();
+      else if (Parser.getTok().getString() == "prefix")
+        return Error(DirectiveID.getLoc(), "'.intel_syntax prefix' is not "
+                                           "supported: registers must not have "
+                                           "a '%' prefix in .intel_syntax");
     }
     return false;
   // @LOCALMOD-START

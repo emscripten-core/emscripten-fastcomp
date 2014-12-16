@@ -125,6 +125,13 @@ let test_constants () =
   let c = const_int_of_string i32_type "-1" 10 in
   ignore (define_global "const_int_string" c m);
   insist (i32_type = type_of c);
+  insist (None = (string_of_const c));
+
+  if Sys.word_size = 64; then begin
+    group "long int";
+    let c = const_int i64_type (1 lsl 61) in
+    insist (c = const_of_int64 i64_type (Int64.of_int (1 lsl 61)) false)
+  end;
 
   (* CHECK: @const_string = global {{.*}}c"cruel\00world"
    *)
@@ -132,6 +139,7 @@ let test_constants () =
   let c = const_string context "cruel\000world" in
   ignore (define_global "const_string" c m);
   insist ((array_type i8_type 11) = type_of c);
+  insist ((Some "cruel\000world") = (string_of_const c));
 
   (* CHECK: const_stringz{{.*}}"hi\00again\00"
    *)
@@ -169,7 +177,9 @@ let test_constants () =
   let c = const_array i32_type [| three; four |] in
   ignore (define_global "const_array" c m);
   insist ((array_type i32_type 2) = (type_of c));
-  
+  insist (three = (const_element c 0));
+  insist (four = (const_element c 1));
+
   (* CHECK: const_vector{{.*}}<i16 1, i16 2{{.*}}>
    *)
   group "vector";
@@ -832,6 +842,24 @@ let test_instructions () =
     insist ("One<-Two<-" = fold_right_instrs rf bb "");
     
     dispose_module m
+  end;
+
+  group "clone instr";
+  begin
+    (* CHECK: %clone = add i32 %0, 2
+     *)
+    let fty = function_type void_type [| i32_type |] in
+    let fn = define_function "BuilderParent" fty m in
+    let bb = entry_block fn in
+    let b = builder_at_end context bb in
+    let p = param fn 0 in
+    let sum = build_add p p "sum" b in
+    let y = const_int i32_type 2 in
+    let clone = instr_clone sum in
+    set_operand clone 0 p;
+    set_operand clone 1 y;
+    insert_into_builder clone "clone" b;
+    ignore (build_ret_void b)
   end
 
 
@@ -1060,7 +1088,8 @@ let test_builder () =
     (* !llvm.module.flags is emitted at EOF. *)
     let n1 = const_int i32_type 1 in
     let n2 = mdstring context "Debug Info Version" in
-    let md = mdnode context [| n1; n2; n1 |] in
+    let n3 = const_int i32_type 2 in
+    let md = mdnode context [| n1; n2; n3 |] in
     add_named_metadata_operand m "llvm.module.flags" md;
 
     insist ((get_named_metadata m "llvm.module.flags") = [| md |])
@@ -1348,7 +1377,7 @@ let test_builder () =
 (* End-of-file checks for things like metdata and attributes.
  * CHECK: attributes #0 = {{.*}}uwtable{{.*}}
  * CHECK: !llvm.module.flags = !{!0}
- * CHECK: !0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+ * CHECK: !0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
  * CHECK: !1 = metadata !{i32 1, metadata !"metadata test"}
  * CHECK: !2 = metadata !{i32 2, i32 3, metadata !3, metadata !3}
  *)

@@ -382,7 +382,9 @@ bool ARMConstantIslands::runOnMachineFunction(MachineFunction &mf) {
                << MCP->getConstants().size() << " CP entries, aligned to "
                << MCP->getConstantPoolAlignment() << " bytes *****\n");
 
-  TII = (const ARMBaseInstrInfo*)MF->getTarget().getInstrInfo();
+  TII = (const ARMBaseInstrInfo *)MF->getTarget()
+            .getSubtargetImpl()
+            ->getInstrInfo();
   AFI = MF->getInfo<ARMFunctionInfo>();
   STI = &MF->getTarget().getSubtarget<ARMSubtarget>();
 
@@ -531,7 +533,7 @@ ARMConstantIslands::doInitialPlacement(std::vector<MachineInstr*> &CPEMIs) {
   // identity mapping of CPI's to CPE's.
   const std::vector<MachineConstantPoolEntry> &CPs = MCP->getConstants();
 
-  const DataLayout &TD = *MF->getTarget().getDataLayout();
+  const DataLayout &TD = *MF->getSubtarget().getDataLayout();
   for (unsigned i = 0, e = CPs.size(); i != e; ++i) {
     unsigned Size = TD.getTypeAllocSize(CPs[i].getType());
     assert(Size >= 4 && "Too small constant pool entry");
@@ -556,9 +558,7 @@ ARMConstantIslands::doInitialPlacement(std::vector<MachineInstr*> &CPEMIs) {
         InsPoint[a] = CPEMI;
 
     // Add a new CPEntry, but no corresponding CPUser yet.
-    std::vector<CPEntry> CPEs;
-    CPEs.push_back(CPEntry(CPEMI, i));
-    CPEntries.push_back(CPEs);
+    CPEntries.emplace_back(1, CPEntry(CPEMI, i));
     ++NumCPEs;
     DEBUG(dbgs() << "Moved CPI#" << i << " to end of function, size = "
                  << Size << ", align = " << Align <<'\n');
@@ -1311,7 +1311,12 @@ void ARMConstantIslands::createNewWater(unsigned CPUserIndex,
   // Back past any possible branches (allow for a conditional and a maximally
   // long unconditional).
   if (BaseInsertOffset + 8 >= UserBBI.postOffset()) {
-    BaseInsertOffset = UserBBI.postOffset() - UPad - 8;
+    // Ensure BaseInsertOffset is larger than the offset of the instruction
+    // following UserMI so that the loop which searches for the split point
+    // iterates at least once.
+    BaseInsertOffset =
+        std::max(UserBBI.postOffset() - UPad - 8,
+                 UserOffset + TII->GetInstSizeInBytes(UserMI) + 1);
     DEBUG(dbgs() << format("Move inside block: %#x\n", BaseInsertOffset));
   }
   unsigned EndInsertOffset = BaseInsertOffset + 4 + UPad +

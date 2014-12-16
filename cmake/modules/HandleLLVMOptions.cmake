@@ -25,9 +25,6 @@ if(NOT LLVM_FORCE_USE_OLD_TOOLCHAIN)
       set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
       set(OLD_CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES})
       set(CMAKE_REQUIRED_FLAGS "-std=c++0x")
-      if (ANDROID)
-        set(CMAKE_REQUIRED_LIBRARIES "atomic")
-      endif()
       check_cxx_source_compiles("
 #include <atomic>
 std::atomic<float> x(0.0f);
@@ -131,7 +128,7 @@ endmacro()
 function(add_flag_or_print_warning flag name)
   check_c_compiler_flag("-Werror ${flag}" "C_SUPPORTS_${name}")
   check_cxx_compiler_flag("-Werror ${flag}" "CXX_SUPPORTS_${name}")
-  if ("C_SUPPORTS_${name}" AND "CXX_SUPPORTS_${name}")
+  if (C_SUPPORTS_${name} AND CXX_SUPPORTS_${name})
     message(STATUS "Building with ${flag}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flag}" PARENT_SCOPE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${flag}" PARENT_SCOPE)
@@ -240,6 +237,7 @@ if( MSVC )
     -wd4146 # Suppress 'unary minus operator applied to unsigned type, result still unsigned'
     -wd4180 # Suppress 'qualifier applied to function type has no meaning; ignored'
     -wd4244 # Suppress ''argument' : conversion from 'type1' to 'type2', possible loss of data'
+    -wd4258 # Suppress ''var' : definition from the for loop is ignored; the definition from the enclosing scope is used'
     -wd4267 # Suppress ''var' : conversion from 'size_t' to 'type', possible loss of data'
     -wd4291 # Suppress ''declaration' : no matching operator delete found; memory will not be freed if initialization throws an exception'
     -wd4345 # Suppress 'behavior change: an object of POD type constructed with an initializer of the form () will be default-initialized'
@@ -287,13 +285,25 @@ elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
     add_flag_if_supported("-Wcovered-switch-default" COVERED_SWITCH_DEFAULT_FLAG)
     append_if(USE_NO_UNINITIALIZED "-Wno-uninitialized" CMAKE_CXX_FLAGS)
     append_if(USE_NO_MAYBE_UNINITIALIZED "-Wno-maybe-uninitialized" CMAKE_CXX_FLAGS)
-    check_cxx_compiler_flag("-Werror -Wnon-virtual-dtor" CXX_SUPPORTS_NON_VIRTUAL_DTOR_FLAG)
-    append_if(CXX_SUPPORTS_NON_VIRTUAL_DTOR_FLAG "-Wnon-virtual-dtor" CMAKE_CXX_FLAGS)
+
+    # Check if -Wnon-virtual-dtor warns even though the class is marked final.
+    # If it does, don't add it. So it won't be added on clang 3.4 and older.
+    # This also catches cases when -Wnon-virtual-dtor isn't supported by
+    # the compiler at all.
+    set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++11 -Werror=non-virtual-dtor")
+    CHECK_CXX_SOURCE_COMPILES("class base {public: virtual void anchor();protected: ~base();};
+                               class derived final : public base { public: ~derived();};
+                               int main() { return 0; }"
+                              CXX_WONT_WARN_ON_FINAL_NONVIRTUALDTOR)
+    set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+    append_if(CXX_WONT_WARN_ON_FINAL_NONVIRTUALDTOR
+              "-Wnon-virtual-dtor" CMAKE_CXX_FLAGS)
 
     # Check if -Wcomment is OK with an // comment ending with '\' if the next
     # line is also a // comment.
     set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
-    set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -Werror -Wcomment)
+    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -Werror -Wcomment")
     CHECK_C_SOURCE_COMPILES("// \\\\\\n//\\nint main() {return 0;}"
                             C_WCOMMENT_ALLOWS_LINE_WRAP)
     set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
@@ -322,6 +332,25 @@ elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
       message(FATAL_ERROR "LLVM requires C++11 support but the '-std=c++11' flag isn't supported.")
     endif()
   endif()
+  if (LLVM_ENABLE_MODULES)
+    set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -fmodules -fcxx-modules")
+    # Check that we can build code with modules enabled, and that repeatedly
+    # including <cassert> still manages to respect NDEBUG properly.
+    CHECK_CXX_SOURCE_COMPILES("#undef NDEBUG
+                               #include <cassert>
+                               #define NDEBUG
+                               #include <cassert>
+                               int main() { assert(this code is not compiled); }"
+                               CXX_SUPPORTS_MODULES)
+    set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+    if (CXX_SUPPORTS_MODULES)
+      append_if(CXX_SUPPORTS_MODULES "-fmodules" CMAKE_C_FLAGS)
+      append_if(CXX_SUPPORTS_MODULES "-fmodules -fcxx-modules" CMAKE_CXX_FLAGS)
+    else()
+      message(FATAL_ERROR "LLVM_ENABLE_MODULES is not supported by this compiler")
+    endif()
+  endif(LLVM_ENABLE_MODULES)
 endif( MSVC )
 
 macro(append_common_sanitizer_flags)
@@ -350,6 +379,10 @@ if(LLVM_USE_SANITIZER)
       if(LLVM_USE_SANITIZER STREQUAL "MemoryWithOrigins")
         append("-fsanitize-memory-track-origins" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
       endif()
+    elseif (LLVM_USE_SANITIZER STREQUAL "Undefined")
+      append_common_sanitizer_flags()
+      append("-fsanitize=undefined -fno-sanitize=vptr,function -fno-sanitize-recover"
+              CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
     else()
       message(WARNING "Unsupported value of LLVM_USE_SANITIZER: ${LLVM_USE_SANITIZER}")
     endif()

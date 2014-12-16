@@ -15,12 +15,12 @@
 #ifndef LLVM_IRREADER_IRREADER_H
 #define LLVM_IRREADER_IRREADER_H
 
+#include "llvm/Support/MemoryBuffer.h"
 #include <string>
 
 namespace llvm {
 
 class Module;
-class MemoryBuffer;
 class SMDiagnostic;
 class LLVMContext;
 
@@ -28,19 +28,21 @@ class LLVMContext;
 /// for it which does lazy deserialization of function bodies.  Otherwise,
 /// attempt to parse it as LLVM Assembly and return a fully populated
 /// Module.
-Module *getLazyIRFileModule(const std::string &Filename, SMDiagnostic &Err,
-                            LLVMContext &Context);
+std::unique_ptr<Module> getLazyIRFileModule(StringRef Filename,
+                                            SMDiagnostic &Err,
+                                            LLVMContext &Context);
 
 /// If the given MemoryBuffer holds a bitcode image, return a Module
 /// for it.  Otherwise, attempt to parse it as LLVM Assembly and return
-/// a Module for it. This function *never* takes ownership of Buffer.
-Module *ParseIR(MemoryBuffer *Buffer, SMDiagnostic &Err, LLVMContext &Context);
+/// a Module for it.
+std::unique_ptr<Module> parseIR(MemoryBufferRef Buffer, SMDiagnostic &Err,
+                                LLVMContext &Context);
 
 /// If the given file holds a bitcode image, return a Module for it.
 /// Otherwise, attempt to parse it as LLVM Assembly and return a Module
 /// for it.
-Module *ParseIRFile(const std::string &Filename, SMDiagnostic &Err,
-                    LLVMContext &Context);
+std::unique_ptr<Module> parseIRFile(StringRef Filename, SMDiagnostic &Err,
+                                    LLVMContext &Context);
 
 // @LOCALMOD-BEGIN
 class raw_ostream;
@@ -55,26 +57,25 @@ enum NaClFileFormat {
 
 // \brief If the given MemoryBuffer holds a bitcode image, return a
 // Module for it.  Otherwise, attempt to parse it as LLVM Assembly and
-// return a Module for it. This function *always* takes ownership of
-// the given MemoryBuffer. When Format=PNaClFormat and Verbose
+// return a Module for it. When Format=PNaClFormat and Verbose
 // is non-null, more descriptive error messages are also written to
 // Verbose.
-Module *NaClParseIR(MemoryBuffer *Buffer,
-                    NaClFileFormat Format,
-                    SMDiagnostic &Err,
-                    raw_ostream *Verbose,
-                    LLVMContext &Context);
+std::unique_ptr<Module> NaClParseIR(MemoryBufferRef Buffer,
+                                    NaClFileFormat Format,
+                                    SMDiagnostic &Err,
+                                    raw_ostream *Verbose,
+                                    LLVMContext &Context);
 
 /// \brief If the given file holds a Bitcode image, read the file.
 /// Otherwise, attempt to parse it as LLVM assembly and return a
 /// Module for it. When Format=PNaClFormat and Verbose
 // is non-null, more descriptive error messages are also written to
 // Verbose.
-Module *NaClParseIRFile(const std::string &Filename,
-                        NaClFileFormat Format,
-                        SMDiagnostic &Err,
-                        raw_ostream *Verbose,
-                        LLVMContext &Context);
+std::unique_ptr<Module> NaClParseIRFile(StringRef Filename,
+                                        NaClFileFormat Format,
+                                        SMDiagnostic &Err,
+                                        raw_ostream *Verbose,
+                                        LLVMContext &Context);
 // @LOCALMOD-END
 }
 

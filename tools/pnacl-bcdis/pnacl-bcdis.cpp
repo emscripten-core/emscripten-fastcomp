@@ -56,10 +56,10 @@ static bool DisassembleBitcode() {
   }
 
   // Create a stream to output the bitcode text to.
-  std::string ErrorInfo;
-  raw_fd_ostream Output(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None);
-  if (!ErrorInfo.empty()) {
-    errs() << ErrorInfo << '\n';
+  std::error_code EC;
+  raw_fd_ostream Output(OutputFilename, EC, sys::fs::F_None);
+  if (EC) {
+    errs() << EC.message() << '\n';
     return true;
   }
 

@@ -49,23 +49,6 @@ static std::error_code windows_error(DWORD E) {
   return mapWindowsError(E);
 }
 
-static std::error_code TempDir(SmallVectorImpl<char> &Result) {
-  SmallVector<wchar_t, 64> Res;
-retry_temp_dir:
-  DWORD Len = ::GetTempPathW(Res.capacity(), Res.begin());
-
-  if (Len == 0)
-    return windows_error(::GetLastError());
-
-  if (Len > Res.capacity()) {
-    Res.reserve(Len);
-    goto retry_temp_dir;
-  }
-
-  Res.set_size(Len);
-  return UTF16ToUTF8(Res.begin(), Res.size(), Result);
-}
-
 static bool is_separator(const wchar_t value) {
   switch (value) {
   case L'\\':
@@ -160,11 +143,6 @@ std::error_code create_directory(const Twine &path, bool IgnoreExisting) {
       return windows_error(LastError);
   }
 
-  return std::error_code();
-}
-
-std::error_code normalize_separators(SmallVectorImpl<char> &Path) {
-  (void) Path;
   return std::error_code();
 }
 
@@ -273,49 +251,29 @@ std::error_code resize_file(const Twine &path, uint64_t size) {
   return std::error_code(error, std::generic_category());
 }
 
-std::error_code exists(const Twine &path, bool &result) {
-  SmallString<128> path_storage;
-  SmallVector<wchar_t, 128> path_utf16;
+std::error_code access(const Twine &Path, AccessMode Mode) {
+  SmallString<128> PathStorage;
+  SmallVector<wchar_t, 128> PathUtf16;
 
-  if (std::error_code ec =
-          UTF8ToUTF16(path.toStringRef(path_storage), path_utf16))
-    return ec;
+  if (std::error_code EC =
+          UTF8ToUTF16(Path.toStringRef(PathStorage), PathUtf16))
+    return EC;
 
-  DWORD attributes = ::GetFileAttributesW(path_utf16.begin());
+  DWORD Attributes = ::GetFileAttributesW(PathUtf16.begin());
 
-  if (attributes == INVALID_FILE_ATTRIBUTES) {
+  if (Attributes == INVALID_FILE_ATTRIBUTES) {
     // See if the file didn't actually exist.
     DWORD LastError = ::GetLastError();
     if (LastError != ERROR_FILE_NOT_FOUND &&
         LastError != ERROR_PATH_NOT_FOUND)
       return windows_error(LastError);
-    result = false;
-  } else
-    result = true;
+    return errc::no_such_file_or_directory;
+  }
+
+  if (Mode == AccessMode::Write && (Attributes & FILE_ATTRIBUTE_READONLY))
+    return errc::permission_denied;
+
   return std::error_code();
-}
-
-bool can_write(const Twine &Path) {
-  // FIXME: take security attributes into account.
-  SmallString<128> PathStorage;
-  SmallVector<wchar_t, 128> PathUtf16;
-
-  if (UTF8ToUTF16(Path.toStringRef(PathStorage), PathUtf16))
-    return false;
-
-  DWORD Attr = ::GetFileAttributesW(PathUtf16.begin());
-  return (Attr != INVALID_FILE_ATTRIBUTES) && !(Attr & FILE_ATTRIBUTE_READONLY);
-}
-
-bool can_execute(const Twine &Path) {
-  SmallString<128> PathStorage;
-  SmallVector<wchar_t, 128> PathUtf16;
-
-  if (UTF8ToUTF16(Path.toStringRef(PathStorage), PathUtf16))
-    return false;
-
-  DWORD Attr = ::GetFileAttributesW(PathUtf16.begin());
-  return Attr != INVALID_FILE_ATTRIBUTES;
 }
 
 bool equivalent(file_status A, file_status B) {
@@ -867,6 +825,51 @@ bool home_directory(SmallVectorImpl<char> &result) {
   return true;
 }
 
+static bool getTempDirEnvVar(const char *Var, SmallVectorImpl<char> &Res) {
+  SmallVector<wchar_t, 128> NameUTF16;
+  if (windows::UTF8ToUTF16(Var, NameUTF16))
+    return false;
+
+  SmallVector<wchar_t, 1024> Buf;
+  size_t Size = 1024;
+  do {
+    Buf.reserve(Size);
+    Size =
+        GetEnvironmentVariableW(NameUTF16.data(), Buf.data(), Buf.capacity());
+    if (Size == 0)
+      return false;
+
+    // Try again with larger buffer.
+  } while (Size > Buf.capacity());
+  Buf.set_size(Size);
+
+  if (windows::UTF16ToUTF8(Buf.data(), Size, Res))
+    return false;
+  return true;
+}
+
+static bool getTempDirEnvVar(SmallVectorImpl<char> &Res) {
+  const char *EnvironmentVariables[] = {"TMP", "TEMP", "USERPROFILE"};
+  for (const char *Env : EnvironmentVariables) {
+    if (getTempDirEnvVar(Env, Res))
+      return true;
+  }
+  return false;
+}
+
+void system_temp_directory(bool ErasedOnReboot, SmallVectorImpl<char> &Result) {
+  (void)ErasedOnReboot;
+  Result.clear();
+
+  // Check whether the temporary directory is specified by an environment
+  // variable.
+  if (getTempDirEnvVar(Result))
+    return;
+
+  // Fall back to a system default.
+  const char *DefaultResult = "C:\\TEMP";
+  Result.append(DefaultResult, DefaultResult + strlen(DefaultResult));
+}
 } // end namespace path
 
 namespace windows {
@@ -896,11 +899,13 @@ std::error_code UTF8ToUTF16(llvm::StringRef utf8,
   return std::error_code();
 }
 
-std::error_code UTF16ToUTF8(const wchar_t *utf16, size_t utf16_len,
-                            llvm::SmallVectorImpl<char> &utf8) {
+static
+std::error_code UTF16ToCodePage(unsigned codepage, const wchar_t *utf16,
+                                size_t utf16_len,
+                                llvm::SmallVectorImpl<char> &utf8) {
   if (utf16_len) {
     // Get length.
-    int len = ::WideCharToMultiByte(CP_UTF8, 0, utf16, utf16_len, utf8.begin(),
+    int len = ::WideCharToMultiByte(codepage, 0, utf16, utf16_len, utf8.begin(),
                                     0, NULL, NULL);
 
     if (len == 0)
@@ -910,7 +915,7 @@ std::error_code UTF16ToUTF8(const wchar_t *utf16, size_t utf16_len,
     utf8.set_size(len);
 
     // Now do the actual conversion.
-    len = ::WideCharToMultiByte(CP_UTF8, 0, utf16, utf16_len, utf8.data(),
+    len = ::WideCharToMultiByte(codepage, 0, utf16, utf16_len, utf8.data(),
                                 utf8.size(), NULL, NULL);
 
     if (len == 0)
@@ -922,6 +927,16 @@ std::error_code UTF16ToUTF8(const wchar_t *utf16, size_t utf16_len,
   utf8.pop_back();
 
   return std::error_code();
+}
+
+std::error_code UTF16ToUTF8(const wchar_t *utf16, size_t utf16_len,
+                            llvm::SmallVectorImpl<char> &utf8) {
+  return UTF16ToCodePage(CP_UTF8, utf16, utf16_len, utf8);
+}
+
+std::error_code UTF16ToCurCP(const wchar_t *utf16, size_t utf16_len,
+                             llvm::SmallVectorImpl<char> &utf8) {
+  return UTF16ToCodePage(CP_ACP, utf16, utf16_len, utf8);
 }
 } // end namespace windows
 } // end namespace sys

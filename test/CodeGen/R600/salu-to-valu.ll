@@ -7,15 +7,15 @@
 ; sgpr register pair and use that for the pointer operand
 ; (low 64-bits of srsrc).
 
-; CHECK-LABEL: @mubuf
+; CHECK-LABEL: {{^}}mubuf:
 
 ; Make sure we aren't using VGPRs for the source operand of S_MOV_B64
 ; CHECK-NOT: S_MOV_B64 s[{{[0-9]+:[0-9]+}}], v
 
 ; Make sure we aren't using VGPR's for the srsrc operand of BUFFER_LOAD_*
 ; instructions
-; CHECK: BUFFER_LOAD_UBYTE v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}]
-; CHECK: BUFFER_LOAD_UBYTE v{{[0-9]+}}, s[{{[0-9]+:[0-9]+}}]
+; CHECK: BUFFER_LOAD_UBYTE v{{[0-9]+}}, v[{{[0-9]+:[0-9]+}}], s[{{[0-9]+:[0-9]+}}], 0 addr64
+; CHECK: BUFFER_LOAD_UBYTE v{{[0-9]+}}, v[{{[0-9]+:[0-9]+}}], s[{{[0-9]+:[0-9]+}}], 0 addr64
 define void @mubuf(i32 addrspace(1)* %out, i8 addrspace(1)* %in) {
 entry:
   %0 = call i32 @llvm.r600.read.tidig.x() #1
@@ -49,7 +49,7 @@ attributes #1 = { nounwind readnone }
 
 ; Test moving an SMRD instruction to the VALU
 
-; CHECK-LABEL: @smrd_valu
+; CHECK-LABEL: {{^}}smrd_valu:
 ; CHECK: BUFFER_LOAD_DWORD [[OUT:v[0-9]+]]
 ; CHECK: BUFFER_STORE_DWORD [[OUT]]
 
@@ -77,7 +77,7 @@ endif:
 
 ; Test moving ann SMRD with an immediate offset to the VALU
 
-; CHECK-LABEL: @smrd_valu2
+; CHECK-LABEL: {{^}}smrd_valu2:
 ; CHECK: BUFFER_LOAD_DWORD
 define void @smrd_valu2(i32 addrspace(1)* %out, [8 x i32] addrspace(2)* %in) {
 entry:
@@ -86,5 +86,33 @@ entry:
   %2 = getelementptr [8 x i32] addrspace(2)* %in, i32 %0, i32 4
   %3 = load i32 addrspace(2)* %2
   store i32 %3, i32 addrspace(1)* %out
+  ret void
+}
+
+; CHECK-LABEL: {{^}}s_load_imm_v8i32:
+; CHECK: BUFFER_LOAD_DWORDX4
+; CHECK: BUFFER_LOAD_DWORDX4
+define void @s_load_imm_v8i32(<8 x i32> addrspace(1)* %out, i32 addrspace(2)* nocapture readonly %in) {
+entry:
+  %tmp0 = tail call i32 @llvm.r600.read.tidig.x() #1
+  %tmp1 = getelementptr inbounds i32 addrspace(2)* %in, i32 %tmp0
+  %tmp2 = bitcast i32 addrspace(2)* %tmp1 to <8 x i32> addrspace(2)*
+  %tmp3 = load <8 x i32> addrspace(2)* %tmp2, align 4
+  store <8 x i32> %tmp3, <8 x i32> addrspace(1)* %out, align 32
+  ret void
+}
+
+; CHECK-LABEL: {{^}}s_load_imm_v16i32:
+; CHECK: BUFFER_LOAD_DWORDX4
+; CHECK: BUFFER_LOAD_DWORDX4
+; CHECK: BUFFER_LOAD_DWORDX4
+; CHECK: BUFFER_LOAD_DWORDX4
+define void @s_load_imm_v16i32(<16 x i32> addrspace(1)* %out, i32 addrspace(2)* nocapture readonly %in) {
+entry:
+  %tmp0 = tail call i32 @llvm.r600.read.tidig.x() #1
+  %tmp1 = getelementptr inbounds i32 addrspace(2)* %in, i32 %tmp0
+  %tmp2 = bitcast i32 addrspace(2)* %tmp1 to <16 x i32> addrspace(2)*
+  %tmp3 = load <16 x i32> addrspace(2)* %tmp2, align 4
+  store <16 x i32> %tmp3, <16 x i32> addrspace(1)* %out, align 32
   ret void
 }

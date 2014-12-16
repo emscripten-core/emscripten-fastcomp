@@ -32,12 +32,12 @@ dnl===-----------------------------------------------------------------------===
 dnl Initialize autoconf and define the package name, version number and
 dnl address for reporting bugs.
 
-AC_INIT([LLVM],[3.5.0],[http://llvm.org/bugs/])
+AC_INIT([LLVM],[3.6.0svn],[http://llvm.org/bugs/])
 
 LLVM_VERSION_MAJOR=3
-LLVM_VERSION_MINOR=5
+LLVM_VERSION_MINOR=6
 LLVM_VERSION_PATCH=0
-LLVM_VERSION_SUFFIX=
+LLVM_VERSION_SUFFIX=svn
 
 AC_DEFINE_UNQUOTED([LLVM_VERSION_MAJOR], $LLVM_VERSION_MAJOR, [Major version of the LLVM API])
 AC_DEFINE_UNQUOTED([LLVM_VERSION_MINOR], $LLVM_VERSION_MINOR, [Minor version of the LLVM API])
@@ -291,11 +291,6 @@ AC_CACHE_CHECK([type of operating system we're going to host on],
     llvm_cv_no_link_all_option="-Wl,-z,defaultextract"
     llvm_cv_os_type="SunOS"
     llvm_cv_platform_type="Unix" ;;
-  *-*-auroraux*)
-    llvm_cv_link_all_option="-Wl,-z,allextract"
-    llvm_cv_link_all_option="-Wl,-z,defaultextract"
-    llvm_cv_os_type="AuroraUX"
-    llvm_cv_platform_type="Unix" ;;
   *-*-win32*)
     llvm_cv_link_all_option="-Wl,--whole-archive"
     llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
@@ -366,8 +361,6 @@ AC_CACHE_CHECK([type of operating system we're going to target],
     llvm_cv_target_os_type="GNU" ;;
   *-*-solaris*)
     llvm_cv_target_os_type="SunOS" ;;
-  *-*-auroraux*)
-    llvm_cv_target_os_type="AuroraUX" ;;
   *-*-win32*)
     llvm_cv_target_os_type="Win32" ;;
   *-*-mingw*)
@@ -1299,6 +1292,7 @@ AC_PATH_PROG(GROFF, [groff])
 AC_PATH_PROG(GZIPBIN, [gzip])
 AC_PATH_PROG(PDFROFF, [pdfroff])
 AC_PATH_PROG(ZIP, [zip])
+AC_PATH_PROG(GO, [go])
 AC_PATH_PROGS(OCAMLC, [ocamlc])
 AC_PATH_PROGS(OCAMLOPT, [ocamlopt])
 AC_PATH_PROGS(OCAMLDEP, [ocamldep])
@@ -1879,12 +1873,13 @@ if test "$BINDINGS_TO_BUILD" = auto ; then
   if test "x$OCAMLC" != x -a "x$OCAMLDEP" != x ; then
     BINDINGS_TO_BUILD="ocaml $BINDINGS_TO_BUILD"
   fi
+  if test "x$GO" != x ; then
+    if $GO run ${srcdir}/bindings/go/conftest.go ; then
+      BINDINGS_TO_BUILD="go $BINDINGS_TO_BUILD"
+    fi
+  fi
 fi
 AC_SUBST(BINDINGS_TO_BUILD,$BINDINGS_TO_BUILD)
-
-dnl This isn't really configurey, but it avoids having to repeat the list in
-dnl other files.
-AC_SUBST(ALL_BINDINGS,ocaml)
 
 dnl Do any work necessary to ensure that bindings have what they need.
 binding_prereqs_failed=0
@@ -1914,6 +1909,19 @@ for a_binding in $BINDINGS_TO_BUILD ; do
       else
         # ocaml stdlib is outside our prefix; use libdir/ocaml
         AC_SUBST(OCAML_LIBDIR,${prefix}/lib/ocaml)
+      fi
+    fi
+    ;;
+  go)
+    if test "x$GO" = x ; then
+      AC_MSG_WARN([--enable-bindings=go specified, but go not found. Try configure GO=/path/to/go])
+      binding_prereqs_failed=1
+    else
+      if $GO run ${srcdir}/bindings/go/conftest.go ; then
+        :
+      else
+        AC_MSG_WARN([--enable-bindings=go specified, but need at least Go 1.2. Try configure GO=/path/to/go])
+        binding_prereqs_failed=1
       fi
     fi
     ;;

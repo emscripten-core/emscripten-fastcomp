@@ -142,7 +142,7 @@ static bool getSymbolOffsetImpl(const MCAsmLayout &Layout,
 
   // If SD is a variable, evaluate it.
   MCValue Target;
-  if (!S.getVariableValue()->EvaluateAsValue(Target, &Layout))
+  if (!S.getVariableValue()->EvaluateAsValue(Target, &Layout, nullptr))
     report_fatal_error("unable to evaluate offset for variable '" +
                        S.getName() + "'");
 
@@ -188,7 +188,7 @@ const MCSymbol *MCAsmLayout::getBaseSymbol(const MCSymbol &Symbol) const {
 
   const MCExpr *Expr = Symbol.getVariableValue();
   MCValue Value;
-  if (!Expr->EvaluateAsValue(Value, this))
+  if (!Expr->EvaluateAsValue(Value, this, nullptr))
     llvm_unreachable("Invalid Expression");
 
   const MCSymbolRefExpr *RefB = Value.getSymB();
@@ -364,11 +364,8 @@ MCSymbolData::MCSymbolData() : Symbol(nullptr) {}
 
 MCSymbolData::MCSymbolData(const MCSymbol &_Symbol, MCFragment *_Fragment,
                            uint64_t _Offset, MCAssembler *A)
-  : Symbol(&_Symbol), Fragment(_Fragment), Offset(_Offset),
-    IsExternal(false), IsPrivateExtern(false),
-    CommonSize(0), SymbolSize(nullptr), CommonAlign(0),
-    Flags(0), Index(0)
-{
+    : Symbol(&_Symbol), Fragment(_Fragment), Offset(_Offset),
+      SymbolSize(nullptr), CommonAlign(-1U), Flags(0), Index(0) {
   if (A)
     A->getSymbolList().push_back(this);
 }
@@ -378,9 +375,9 @@ MCSymbolData::MCSymbolData(const MCSymbol &_Symbol, MCFragment *_Fragment,
 MCAssembler::MCAssembler(MCContext &Context_, MCAsmBackend &Backend_,
                          MCCodeEmitter &Emitter_, MCObjectWriter &Writer_,
                          raw_ostream &OS_)
-  : Context(Context_), Backend(Backend_), Emitter(Emitter_), Writer(Writer_),
-    OS(OS_), BundleAlignSize(0), RelaxAll(false), NoExecStack(false),
-    SubsectionsViaSymbols(false), ELFHeaderEFlags(0) {
+    : Context(Context_), Backend(Backend_), Emitter(Emitter_), Writer(Writer_),
+      OS(OS_), BundleAlignSize(0), RelaxAll(false),
+      SubsectionsViaSymbols(false), ELFHeaderEFlags(0) {
   VersionMinInfo.Major = 0; // Major version == 0 for "none specified"
 }
 
@@ -394,11 +391,15 @@ void MCAssembler::reset() {
   SymbolMap.clear();
   IndirectSymbols.clear();
   DataRegions.clear();
+  LinkerOptions.clear();
+  FileNames.clear();
   ThumbFuncs.clear();
+  BundleAlignSize = 0;
   RelaxAll = false;
-  NoExecStack = false;
   SubsectionsViaSymbols = false;
   ELFHeaderEFlags = 0;
+  LOHContainer.reset();
+  VersionMinInfo.Major = 0;
 
   // reset objects owned by us
   getBackend().reset();
@@ -468,11 +469,12 @@ const MCSymbolData *MCAssembler::getAtom(const MCSymbolData *SD) const {
 // a relocatable expr.
 // FIXME: Should this be the behavior of EvaluateAsRelocatable itself?
 static bool evaluate(const MCExpr &Expr, const MCAsmLayout &Layout,
-                     MCValue &Target) {
-  if (Expr.EvaluateAsValue(Target, &Layout))
+                     const MCFixup &Fixup, MCValue &Target) {
+  if (Expr.EvaluateAsValue(Target, &Layout, &Fixup)) {
     if (Target.isAbsolute())
       return true;
-  return Expr.EvaluateAsRelocatable(Target, &Layout);
+  }
+  return Expr.EvaluateAsRelocatable(Target, &Layout, &Fixup);
 }
 
 bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
@@ -484,7 +486,7 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
   // probably merge the two into a single callback that tries to evaluate a
   // fixup and records a relocation if one is needed.
   const MCExpr *Expr = Fixup.getValue();
-  if (!evaluate(*Expr, Layout, Target))
+  if (!evaluate(*Expr, Layout, Fixup, Target))
     getContext().FatalError(Fixup.getLoc(), "expected relocatable expression");
 
   bool IsPCRel = Backend.getFixupKindInfo(
@@ -1023,11 +1025,8 @@ bool MCAssembler::relaxInstruction(MCAsmLayout &Layout,
 }
 
 bool MCAssembler::relaxLEB(MCAsmLayout &Layout, MCLEBFragment &LF) {
-  int64_t Value = 0;
   uint64_t OldSize = LF.getContents().size();
-  bool IsAbs = LF.getValue().EvaluateAsAbsolute(Value, Layout);
-  (void)IsAbs;
-  assert(IsAbs);
+  int64_t Value = LF.getValue().evaluateKnownAbsolute(Layout);
   SmallString<8> &Data = LF.getContents();
   Data.clear();
   raw_svector_ostream OSE(Data);
@@ -1042,11 +1041,8 @@ bool MCAssembler::relaxLEB(MCAsmLayout &Layout, MCLEBFragment &LF) {
 bool MCAssembler::relaxDwarfLineAddr(MCAsmLayout &Layout,
                                      MCDwarfLineAddrFragment &DF) {
   MCContext &Context = Layout.getAssembler().getContext();
-  int64_t AddrDelta = 0;
   uint64_t OldSize = DF.getContents().size();
-  bool IsAbs = DF.getAddrDelta().EvaluateAsAbsolute(AddrDelta, Layout);
-  (void)IsAbs;
-  assert(IsAbs);
+  int64_t AddrDelta = DF.getAddrDelta().evaluateKnownAbsolute(Layout);
   int64_t LineDelta;
   LineDelta = DF.getLineDelta();
   SmallString<8> &Data = DF.getContents();
@@ -1060,11 +1056,8 @@ bool MCAssembler::relaxDwarfLineAddr(MCAsmLayout &Layout,
 bool MCAssembler::relaxDwarfCallFrameFragment(MCAsmLayout &Layout,
                                               MCDwarfCallFrameFragment &DF) {
   MCContext &Context = Layout.getAssembler().getContext();
-  int64_t AddrDelta = 0;
   uint64_t OldSize = DF.getContents().size();
-  bool IsAbs = DF.getAddrDelta().EvaluateAsAbsolute(AddrDelta, Layout);
-  (void)IsAbs;
-  assert(IsAbs);
+  int64_t AddrDelta = DF.getAddrDelta().evaluateKnownAbsolute(Layout);
   SmallString<8> &Data = DF.getContents();
   Data.clear();
   raw_svector_ostream OSE(Data);
@@ -1277,8 +1270,10 @@ void MCSymbolData::dump() const {
   raw_ostream &OS = llvm::errs();
 
   OS << "<MCSymbolData Symbol:" << getSymbol()
-     << " Fragment:" << getFragment() << " Offset:" << getOffset()
-     << " Flags:" << getFlags() << " Index:" << getIndex();
+     << " Fragment:" << getFragment();
+  if (!isCommon())
+    OS << " Offset:" << getOffset();
+  OS << " Flags:" << getFlags() << " Index:" << getIndex();
   if (isCommon())
     OS << " (common, size:" << getCommonSize()
        << " align: " << getCommonAlignment() << ")";

@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef SIINSTRINFO_H
-#define SIINSTRINFO_H
+#ifndef LLVM_LIB_TARGET_R600_SIINSTRINFO_H
+#define LLVM_LIB_TARGET_R600_SIINSTRINFO_H
 
 #include "AMDGPUInstrInfo.h"
 #include "SIRegisterInfo.h"
@@ -55,6 +55,8 @@ private:
 
   void addDescImplicitUseDef(const MCInstrDesc &Desc, MachineInstr *MI) const;
 
+  unsigned findUsedSGPR(const MachineInstr *MI, int OpIndices[3]) const;
+
 public:
   explicit SIInstrInfo(const AMDGPUSubtarget &st);
 
@@ -62,10 +64,29 @@ public:
     return RI;
   }
 
+  bool areLoadsFromSameBasePtr(SDNode *Load1, SDNode *Load2,
+                               int64_t &Offset1,
+                               int64_t &Offset2) const override;
+
+  bool getLdStBaseRegImmOfs(MachineInstr *LdSt,
+                            unsigned &BaseReg, unsigned &Offset,
+                            const TargetRegisterInfo *TRI) const final;
+
+  bool shouldClusterLoads(MachineInstr *FirstLdSt,
+                          MachineInstr *SecondLdSt,
+                          unsigned NumLoads) const final;
+
   void copyPhysReg(MachineBasicBlock &MBB,
                    MachineBasicBlock::iterator MI, DebugLoc DL,
                    unsigned DestReg, unsigned SrcReg,
                    bool KillSrc) const override;
+
+  unsigned calculateLDSSpillAddress(MachineBasicBlock &MBB,
+                                    MachineBasicBlock::iterator MI,
+                                    RegScavenger *RS,
+                                    unsigned TmpReg,
+                                    unsigned Offset,
+                                    unsigned Size) const;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MI,
@@ -79,12 +100,15 @@ public:
                             const TargetRegisterClass *RC,
                             const TargetRegisterInfo *TRI) const override;
 
-  virtual bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const;
+  bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const override;
 
   unsigned commuteOpcode(unsigned Opcode) const;
 
   MachineInstr *commuteInstruction(MachineInstr *MI,
-                                   bool NewMI=false) const override;
+                                   bool NewMI = false) const override;
+  bool findCommutedOpIndices(MachineInstr *MI,
+                             unsigned &SrcOpIdx1,
+                             unsigned &SrcOpIdx2) const override;
 
   bool isTriviallyReMaterializable(const MachineInstr *MI,
                                    AliasAnalysis *AA = nullptr) const;
@@ -96,8 +120,11 @@ public:
 
   bool isSafeToMoveRegClassDefs(const TargetRegisterClass *RC) const override;
   bool isDS(uint16_t Opcode) const;
-  int isMIMG(uint16_t Opcode) const;
-  int isSMRD(uint16_t Opcode) const;
+  bool isMIMG(uint16_t Opcode) const;
+  bool isSMRD(uint16_t Opcode) const;
+  bool isMUBUF(uint16_t Opcode) const;
+  bool isMTBUF(uint16_t Opcode) const;
+  bool isFLAT(uint16_t Opcode) const;
   bool isVOP1(uint16_t Opcode) const;
   bool isVOP2(uint16_t Opcode) const;
   bool isVOP3(uint16_t Opcode) const;
@@ -109,9 +136,24 @@ public:
   bool isImmOperandLegal(const MachineInstr *MI, unsigned OpNo,
                          const MachineOperand &MO) const;
 
+  /// \brief Return true if the given offset Size in bytes can be folded into
+  /// the immediate offsets of a memory instruction for the given address space.
+  static bool canFoldOffset(unsigned OffsetSize, unsigned AS) LLVM_READNONE;
+
   /// \brief Return true if this 64-bit VALU instruction has a 32-bit encoding.
   /// This function will return false if you pass it a 32-bit instruction.
   bool hasVALU32BitEncoding(unsigned Opcode) const;
+
+  /// \brief Returns true if this operand uses the constant bus.
+  bool usesConstantBus(const MachineRegisterInfo &MRI,
+                       const MachineOperand &MO) const;
+
+  /// \brief Return true if this instruction has any modifiers.
+  ///  e.g. src[012]_mod, omod, clamp.
+  bool hasModifiers(unsigned Opcode) const;
+
+  bool hasModifiersSet(const MachineInstr &MI,
+                       unsigned OpName) const;
 
   bool verifyInstruction(const MachineInstr *MI,
                          StringRef &ErrInfo) const override;
@@ -144,9 +186,20 @@ public:
   /// instead of MOV.
   void legalizeOpWithMove(MachineInstr *MI, unsigned OpIdx) const;
 
+  /// \brief Check if \p MO is a legal operand if it was the \p OpIdx Operand
+  /// for \p MI.
+  bool isOperandLegal(const MachineInstr *MI, unsigned OpIdx,
+                      const MachineOperand *MO = nullptr) const;
+
   /// \brief Legalize all operands in this instruction.  This function may
   /// create new instruction and insert them before \p MI.
   void legalizeOperands(MachineInstr *MI) const;
+
+  /// \brief Split an SMRD instruction into two smaller loads of half the
+  //  size storing the results in \p Lo and \p Hi.
+  void splitSMRD(MachineInstr *MI, const TargetRegisterClass *HalfRC,
+                 unsigned HalfImmOp, unsigned HalfSGPROp,
+                 MachineInstr *&Lo, MachineInstr *&Hi) const;
 
   void moveSMRDToVALU(MachineInstr *MI, MachineRegisterInfo &MRI) const;
 
@@ -181,8 +234,12 @@ public:
 
   /// \brief Returns the operand named \p Op.  If \p MI does not have an
   /// operand named \c Op, this function returns nullptr.
-  const MachineOperand *getNamedOperand(const MachineInstr& MI,
-                                        unsigned OperandName) const;
+  MachineOperand *getNamedOperand(MachineInstr &MI, unsigned OperandName) const;
+
+  const MachineOperand *getNamedOperand(const MachineInstr &MI,
+                                        unsigned OpName) const {
+    return getNamedOperand(const_cast<MachineInstr &>(MI), OpName);
+  }
 };
 
 namespace AMDGPU {
@@ -192,21 +249,34 @@ namespace AMDGPU {
   int getCommuteRev(uint16_t Opcode);
   int getCommuteOrig(uint16_t Opcode);
   int getMCOpcode(uint16_t Opcode, unsigned Gen);
+  int getAddr64Inst(uint16_t Opcode);
+  int getAtomicRetOp(uint16_t Opcode);
+  int getAtomicNoRetOp(uint16_t Opcode);
 
   const uint64_t RSRC_DATA_FORMAT = 0xf00000000000LL;
   const uint64_t RSRC_TID_ENABLE = 1LL << 55;
 
 } // End namespace AMDGPU
 
+namespace SI {
+namespace KernelInputOffsets {
+
+/// Offsets in bytes from the start of the input buffer
+enum Offsets {
+  NGROUPS_X = 0,
+  NGROUPS_Y = 4,
+  NGROUPS_Z = 8,
+  GLOBAL_SIZE_X = 12,
+  GLOBAL_SIZE_Y = 16,
+  GLOBAL_SIZE_Z = 20,
+  LOCAL_SIZE_X = 24,
+  LOCAL_SIZE_Y = 28,
+  LOCAL_SIZE_Z = 32
+};
+
+} // End namespace KernelInputOffsets
+} // End namespace SI
+
 } // End namespace llvm
 
-namespace SIInstrFlags {
-  enum Flags {
-    // First 4 bits are the instruction encoding
-    VM_CNT = 1 << 0,
-    EXP_CNT = 1 << 1,
-    LGKM_CNT = 1 << 2
-  };
-}
-
-#endif //SIINSTRINFO_H
+#endif

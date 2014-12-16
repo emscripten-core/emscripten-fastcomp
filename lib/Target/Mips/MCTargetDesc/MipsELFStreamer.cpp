@@ -9,6 +9,7 @@
 
 #include "MipsELFStreamer.h"
 #include "llvm/MC/MCInst.h"
+using namespace llvm;
 
 void MipsELFStreamer::EmitInstruction(const MCInst &Inst,
                                       const MCSubtargetInfo &STI) {
@@ -36,8 +37,8 @@ void MipsELFStreamer::EmitMipsOptionRecords() {
 namespace llvm {
 MCELFStreamer *createMipsELFStreamer(MCContext &Context, MCAsmBackend &MAB,
                                      raw_ostream &OS, MCCodeEmitter *Emitter,
-                                     const MCSubtargetInfo &STI, bool RelaxAll,
-                                     bool NoExecStack) {
+                                     const MCSubtargetInfo &STI,
+                                     bool RelaxAll) {
   return new MipsELFStreamer(Context, MAB, OS, Emitter, STI);
 }
 }

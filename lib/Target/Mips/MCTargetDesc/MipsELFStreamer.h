@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MIPSELFSTREAMER_H
-#define MIPSELFSTREAMER_H
+#ifndef LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSELFSTREAMER_H
+#define LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSELFSTREAMER_H
 
 #include "MipsOptionRecord.h"
 #include "llvm/ADT/SmallVector.h"
@@ -52,7 +52,6 @@ public:
 
 MCELFStreamer *createMipsELFStreamer(MCContext &Context, MCAsmBackend &MAB,
                                      raw_ostream &OS, MCCodeEmitter *Emitter,
-                                     const MCSubtargetInfo &STI, bool RelaxAll,
-                                     bool NoExecStack);
+                                     const MCSubtargetInfo &STI, bool RelaxAll);
 } // namespace llvm.
 #endif

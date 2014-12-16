@@ -514,7 +514,7 @@ void RAGreedy::enqueue(PQueue &CurQueue, LiveInterval *LI) {
     // Giant live ranges fall back to the global assignment heuristic, which
     // prevents excessive spilling in pathological cases.
     bool ReverseLocal = TRI->reverseLocalAssignment();
-    bool ForceGlobal = !ReverseLocal && TRI->mayOverrideLocalAssignment() &&
+    bool ForceGlobal = !ReverseLocal &&
       (Size / SlotIndex::InstrDist) > (2 * MRI->getRegClass(Reg)->getNumRegs());
 
     if (ExtraRegInfo[Reg].Stage == RS_Assign && !ForceGlobal && !LI->empty() &&
@@ -967,14 +967,12 @@ void RAGreedy::addThroughConstraints(InterferenceCache::Cursor Intf,
       BCS[B].Exit = SpillPlacement::PrefSpill;
 
     if (++B == GroupSize) {
-      ArrayRef<SpillPlacement::BlockConstraint> Array(BCS, B);
-      SpillPlacer->addConstraints(Array);
+      SpillPlacer->addConstraints(makeArrayRef(BCS, B));
       B = 0;
     }
   }
 
-  ArrayRef<SpillPlacement::BlockConstraint> Array(BCS, B);
-  SpillPlacer->addConstraints(Array);
+  SpillPlacer->addConstraints(makeArrayRef(BCS, B));
   SpillPlacer->addLinks(makeArrayRef(TBS, T));
 }
 
@@ -1013,7 +1011,7 @@ void RAGreedy::growRegion(GlobalSplitCandidate &Cand) {
 
     // Compute through constraints from the interference, or assume that all
     // through blocks prefer spilling when forming compact regions.
-    ArrayRef<unsigned> NewBlocks = makeArrayRef(ActiveBlocks).slice(AddedTo);
+    auto NewBlocks = makeArrayRef(ActiveBlocks).slice(AddedTo);
     if (Cand.PhysReg)
       addThroughConstraints(Cand.Intf, NewBlocks);
     else
@@ -2319,13 +2317,13 @@ bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
                << "********** Function: " << mf.getName() << '\n');
 
   MF = &mf;
-  const TargetMachine &TM = MF->getTarget();
-  TRI = TM.getRegisterInfo();
-  TII = TM.getInstrInfo();
+  TRI = MF->getSubtarget().getRegisterInfo();
+  TII = MF->getSubtarget().getInstrInfo();
   RCI.runOnMachineFunction(mf);
 
   EnableLocalReassign = EnableLocalReassignment ||
-    TM.getSubtargetImpl()->enableRALocalReassignment(TM.getOptLevel());
+                        MF->getSubtarget().enableRALocalReassignment(
+                            MF->getTarget().getOptLevel());
 
   if (VerifyEnabled)
     MF->verify(this, "Before greedy register allocator");

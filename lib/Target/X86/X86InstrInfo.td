@@ -566,11 +566,6 @@ class ImmSExtAsmOperandClass : AsmOperandClass {
   let RenderMethod = "addImmOperands";
 }
 
-class ImmZExtAsmOperandClass : AsmOperandClass {
-  let SuperClasses = [ImmAsmOperand];
-  let RenderMethod = "addImmOperands";
-}
-
 def X86GR32orGR64AsmOperand : AsmOperandClass {
   let Name = "GR32orGR64";
 }
@@ -583,6 +578,7 @@ def AVX512RC : Operand<i32> {
   let PrintMethod = "printRoundingControl";
   let OperandType = "OPERAND_IMMEDIATE";
 }
+
 // Sign-extended immediate classes. We don't need to define the full lattice
 // here because there is no instruction with an ambiguity between ImmSExti64i32
 // and ImmSExti32i8.
@@ -610,12 +606,6 @@ def ImmSExti32i8AsmOperand : ImmSExtAsmOperandClass {
   let Name = "ImmSExti32i8";
 }
 
-// [0, 0x000000FF]
-def ImmZExtu32u8AsmOperand : ImmZExtAsmOperandClass {
-  let Name = "ImmZExtu32u8";
-}
-
-
 // [0, 0x0000007F]                                            |
 //   [0xFFFFFFFFFFFFFF80, 0xFFFFFFFFFFFFFFFF]
 def ImmSExti64i8AsmOperand : ImmSExtAsmOperandClass {
@@ -633,11 +623,6 @@ def i16i8imm  : Operand<i16> {
 // 32-bits but only 8 bits are significant.
 def i32i8imm  : Operand<i32> {
   let ParserMatchClass = ImmSExti32i8AsmOperand;
-  let OperandType = "OPERAND_IMMEDIATE";
-}
-// 32-bits but only 8 bits are significant, and those 8 bits are unsigned.
-def u32u8imm  : Operand<i32> {
-  let ParserMatchClass = ImmZExtu32u8AsmOperand;
   let OperandType = "OPERAND_IMMEDIATE";
 }
 
@@ -723,6 +708,7 @@ def UseSSE3      : Predicate<"Subtarget->hasSSE3() && !Subtarget->hasAVX()">;
 def HasSSSE3     : Predicate<"Subtarget->hasSSSE3()">;
 def UseSSSE3     : Predicate<"Subtarget->hasSSSE3() && !Subtarget->hasAVX()">;
 def HasSSE41     : Predicate<"Subtarget->hasSSE41()">;
+def NoSSE41      : Predicate<"!Subtarget->hasSSE41()">;
 def UseSSE41     : Predicate<"Subtarget->hasSSE41() && !Subtarget->hasAVX()">;
 def HasSSE42     : Predicate<"Subtarget->hasSSE42()">;
 def UseSSE42     : Predicate<"Subtarget->hasSSE42() && !Subtarget->hasAVX()">;
@@ -739,9 +725,11 @@ def HasCDI       : Predicate<"Subtarget->hasCDI()">;
 def HasPFI       : Predicate<"Subtarget->hasPFI()">;
 def HasERI       : Predicate<"Subtarget->hasERI()">;
 def HasDQI       : Predicate<"Subtarget->hasDQI()">;
+def NoDQI        : Predicate<"!Subtarget->hasDQI()">;
 def HasBWI       : Predicate<"Subtarget->hasBWI()">;
 def HasVLX       : Predicate<"Subtarget->hasVLX()">,
                      AssemblerPredicate<"FeatureVLX", "AVX-512 VLX ISA">;
+def NoVLX        : Predicate<"!Subtarget->hasVLX()">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
 def HasAES       : Predicate<"Subtarget->hasAES()">;
@@ -763,8 +751,10 @@ def HasHLE       : Predicate<"Subtarget->hasHLE()">;
 def HasTSX       : Predicate<"Subtarget->hasRTM() || Subtarget->hasHLE()">;
 def HasADX       : Predicate<"Subtarget->hasADX()">;
 def HasSHA       : Predicate<"Subtarget->hasSHA()">;
+def HasSGX       : Predicate<"Subtarget->hasSGX()">;
 def HasPRFCHW    : Predicate<"Subtarget->hasPRFCHW()">;
 def HasRDSEED    : Predicate<"Subtarget->hasRDSEED()">;
+def HasSMAP      : Predicate<"Subtarget->hasSMAP()">;
 def HasPrefetchW : Predicate<"Subtarget->hasPRFCHW()">;
 def FPStackf32   : Predicate<"!Subtarget->hasSSE1()">;
 def FPStackf64   : Predicate<"!Subtarget->hasSSE2()">;
@@ -773,6 +763,8 @@ def Not64BitMode : Predicate<"!Subtarget->is64Bit()">,
                              AssemblerPredicate<"!Mode64Bit", "Not 64-bit mode">;
 def In64BitMode  : Predicate<"Subtarget->is64Bit()">,
                              AssemblerPredicate<"Mode64Bit", "64-bit mode">;
+def IsLP64  : Predicate<"Subtarget->isTarget64BitLP64()">;
+def NotLP64 : Predicate<"!Subtarget->isTarget64BitLP64()">;
 def In16BitMode  : Predicate<"Subtarget->is16Bit()">,
                              AssemblerPredicate<"Mode16Bit", "16-bit mode">;
 def Not16BitMode : Predicate<"!Subtarget->is16Bit()">,
@@ -2421,6 +2413,7 @@ include "X86InstrVMX.td"
 include "X86InstrSVM.td"
 
 include "X86InstrTSX.td"
+include "X86InstrSGX.td"
 
 // System instructions.
 include "X86InstrSystem.td"
@@ -2539,7 +2532,7 @@ def : MnemonicAlias<"fldcww",   "fldcw",    "att">;
 def : MnemonicAlias<"fnstcww",  "fnstcw",   "att">;
 def : MnemonicAlias<"fnstsww",  "fnstsw",   "att">;
 def : MnemonicAlias<"fucomip",  "fucompi",  "att">;
-def : MnemonicAlias<"fwait",    "wait",     "att">;
+def : MnemonicAlias<"fwait",    "wait">;
 
 
 class CondCodeAlias<string Prefix,string Suffix, string OldCond, string NewCond,

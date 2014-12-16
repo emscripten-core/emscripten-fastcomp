@@ -848,6 +848,14 @@ void ARMTargetELFStreamer::emitFPUDefaultAttributes() {
                      /* OverwriteExisting= */ false);
     break;
 
+  // FPV5_D16 is identical to FP_ARMV8 except for the number of D registers, so
+  // uses the FP_ARMV8_D16 build attribute.
+  case ARM::FPV5_D16:
+    setAttributeItem(ARMBuildAttrs::FP_arch,
+                     ARMBuildAttrs::AllowFPARMv8B,
+                     /* OverwriteExisting= */ false);
+    break;
+
   case ARM::NEON:
     setAttributeItem(ARMBuildAttrs::FP_arch,
                      ARMBuildAttrs::AllowFPv3A,
@@ -1339,10 +1347,9 @@ MCStreamer *createARMNullStreamer(MCContext &Ctx) {
   return S;
 }
 
-  MCELFStreamer* createARMELFStreamer(MCContext &Context, MCAsmBackend &TAB,
-                                      raw_ostream &OS, MCCodeEmitter *Emitter,
-                                      bool RelaxAll, bool NoExecStack,
-                                      bool IsThumb) {
+MCELFStreamer *createARMELFStreamer(MCContext &Context, MCAsmBackend &TAB,
+                                    raw_ostream &OS, MCCodeEmitter *Emitter,
+                                    bool RelaxAll, bool IsThumb) {
     ARMELFStreamer *S = new ARMELFStreamer(Context, TAB, OS, Emitter, IsThumb);
     new ARMTargetELFStreamer(*S);
     // FIXME: This should eventually end up somewhere else where more
@@ -1352,8 +1359,6 @@ MCStreamer *createARMNullStreamer(MCContext &Ctx) {
 
     if (RelaxAll)
       S->getAssembler().setRelaxAll(true);
-    if (NoExecStack)
-      S->getAssembler().setNoExecStack(true);
     return S;
   }
 

@@ -577,6 +577,11 @@ CAMLprim LLVMValueRef llvm_operand(LLVMValueRef V, value I) {
   return LLVMGetOperand(V, Int_val(I));
 }
 
+/* llvalue -> int -> lluse */
+CAMLprim LLVMUseRef llvm_operand_use(LLVMValueRef V, value I) {
+  return LLVMGetOperandUse(V, Int_val(I));
+}
+
 /* llvalue -> int -> llvalue -> unit */
 CAMLprim value llvm_set_operand(LLVMValueRef U, value I, LLVMValueRef V) {
   LLVMSetOperand(U, Int_val(I), V);
@@ -695,7 +700,7 @@ CAMLprim value llvm_append_namedmd(LLVMModuleRef M, value Name, LLVMValueRef Val
 
 /* lltype -> int -> llvalue */
 CAMLprim LLVMValueRef llvm_const_int(LLVMTypeRef IntTy, value N) {
-  return LLVMConstInt(IntTy, (long long) Int_val(N), 1);
+  return LLVMConstInt(IntTy, (long long) Long_val(N), 1);
 }
 
 /* lltype -> Int64.t -> bool -> llvalue */
@@ -780,6 +785,31 @@ CAMLprim LLVMValueRef llvm_const_packed_struct(LLVMContextRef C,
 CAMLprim LLVMValueRef llvm_const_vector(value ElementVals) {
   return LLVMConstVector((LLVMValueRef*) Op_val(ElementVals),
                          Wosize_val(ElementVals));
+}
+
+/* llvalue -> string option */
+CAMLprim value llvm_string_of_const(LLVMValueRef Const) {
+  const char *S;
+  size_t Len;
+  CAMLparam0();
+  CAMLlocal2(Option, Str);
+
+  if(LLVMIsAConstantDataSequential(Const) && LLVMIsConstantString(Const)) {
+    S = LLVMGetAsString(Const, &Len);
+    Str = caml_alloc_string(Len);
+    memcpy(String_val(Str), S, Len);
+
+    Option = alloc(1, 0);
+    Field(Option, 0) = Str;
+    CAMLreturn(Option);
+  } else {
+    CAMLreturn(Val_int(0));
+  }
+}
+
+/* llvalue -> int -> llvalue */
+CAMLprim LLVMValueRef llvm_const_element(LLVMValueRef Const, value N) {
+  return LLVMGetElementAsConstant(Const, Int_val(N));
 }
 
 /*--... Constant expressions ...............................................--*/
@@ -1326,6 +1356,13 @@ CAMLprim value llvm_instr_icmp_predicate(LLVMValueRef Val) {
     CAMLreturn(Option);
   }
   CAMLreturn(Val_int(0));
+}
+
+/* llvalue -> llvalue */
+CAMLprim LLVMValueRef llvm_instr_clone(LLVMValueRef Inst) {
+  if (!LLVMIsAInstruction(Inst))
+      failwith("Not an instruction");
+  return LLVMInstructionClone(Inst);
 }
 
 

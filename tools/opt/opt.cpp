@@ -112,14 +112,6 @@ DisableOptimizations("disable-opt",
                      cl::desc("Do not run any optimization passes"));
 
 static cl::opt<bool>
-DisableInternalize("disable-internalize",
-                   cl::desc("Do not mark all symbols as internal"));
-
-static cl::opt<bool>
-StandardCompileOpts("std-compile-opts",
-                   cl::desc("Include the standard compile time optimizations"));
-
-static cl::opt<bool>
 StandardLinkOpts("std-link-opts",
                  cl::desc("Include the standard link time optimizations"));
 
@@ -164,7 +156,7 @@ TargetTriple("mtriple", cl::desc("Override target triple for module"));
 
 static cl::opt<bool>
 UnitAtATime("funit-at-a-time",
-            cl::desc("Enable IPO. This is same as llvm-gcc's -funit-at-a-time"),
+            cl::desc("Enable IPO. This corresponds to gcc's -funit-at-a-time"),
             cl::init(true));
 
 static cl::opt<bool>
@@ -229,9 +221,8 @@ static inline void addPass(PassManagerBase &PM, Pass *P) {
   }
 }
 
-/// AddOptimizationPasses - This routine adds optimization passes
-/// based on selected optimization level, OptLevel. This routine
-/// duplicates llvm-gcc behaviour.
+/// This routine adds optimization passes based on selected optimization level,
+/// OptLevel.
 ///
 /// OptLevel - Optimization Level
 static void AddOptimizationPasses(PassManagerBase &MPM,FunctionPassManager &FPM,
@@ -269,41 +260,16 @@ static void AddOptimizationPasses(PassManagerBase &MPM,FunctionPassManager &FPM,
   Builder.populateModulePassManager(MPM);
 }
 
-static void AddStandardCompilePasses(PassManagerBase &PM) {
-  PM.add(createVerifierPass());                  // Verify that input is correct
-
-  // If the -strip-debug command line option was specified, do it.
-  if (StripDebug)
-    addPass(PM, createStripSymbolsPass(true));
-
-  // Verify debug info only after it's (possibly) stripped.
-  PM.add(createDebugInfoVerifierPass());
-
-  if (DisableOptimizations) return;
-
-  // -std-compile-opts adds the same module passes as -O3.
+static void AddStandardLinkPasses(PassManagerBase &PM) {
   PassManagerBuilder Builder;
+  Builder.VerifyInput = true;
+  Builder.StripDebug = StripDebug;
+  if (DisableOptimizations)
+    Builder.OptLevel = 0;
+
   if (!DisableInline)
     Builder.Inliner = createFunctionInliningPass();
-  Builder.OptLevel = 3;
-  Builder.populateModulePassManager(PM);
-}
-
-static void AddStandardLinkPasses(PassManagerBase &PM) {
-  PM.add(createVerifierPass());                  // Verify that input is correct
-
-  // If the -strip-debug command line option was specified, do it.
-  if (StripDebug)
-    addPass(PM, createStripSymbolsPass(true));
-
-  // Verify debug info only after it's (possibly) stripped.
-  PM.add(createDebugInfoVerifierPass());
-
-  if (DisableOptimizations) return;
-
-  PassManagerBuilder Builder;
-  Builder.populateLTOPassManager(PM, /*Internalize=*/ !DisableInternalize,
-                                 /*RunInliner=*/ !DisableInline);
+  Builder.populateLTOPassManager(PM);
 }
 
 //===----------------------------------------------------------------------===//
@@ -394,7 +360,7 @@ int main(int argc, char **argv) {
   // For codegen passes, only passes that do IR to IR transformation are
   // supported.
   initializeCodeGenPreparePass(Registry);
-  initializeAtomicExpandLoadLinkedPass(Registry);
+  initializeAtomicExpandPass(Registry);
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
@@ -457,8 +423,7 @@ int main(int argc, char **argv) {
   SMDiagnostic Err;
 
   // Load the input module...
-  std::unique_ptr<Module> M;
-  M.reset(ParseIRFile(InputFilename, Err, Context));
+  std::unique_ptr<Module> M = parseIRFile(InputFilename, Err, Context);
 
   if (!M.get()) {
     Err.print(argv[0], errs());
@@ -480,11 +445,10 @@ int main(int argc, char **argv) {
     if (OutputFilename.empty())
       OutputFilename = "-";
 
-    std::string ErrorInfo;
-    Out.reset(new tool_output_file(OutputFilename.c_str(), ErrorInfo,
-                                   sys::fs::F_None));
-    if (!ErrorInfo.empty()) {
-      errs() << ErrorInfo << '\n';
+    std::error_code EC;
+    Out.reset(new tool_output_file(OutputFilename, EC, sys::fs::F_None));
+    if (EC) {
+      errs() << EC.message() << '\n';
       return 1;
     }
   }
@@ -537,7 +501,7 @@ int main(int argc, char **argv) {
   }
 
   if (DL)
-    Passes.add(new DataLayoutPass(M.get()));
+    Passes.add(new DataLayoutPass());
 
   Triple ModuleTriple(M->getTargetTriple());
   TargetMachine *Machine = nullptr;
@@ -553,7 +517,7 @@ int main(int argc, char **argv) {
   if (OptLevelO1 || OptLevelO2 || OptLevelOs || OptLevelOz || OptLevelO3) {
     FPasses.reset(new FunctionPassManager(M.get()));
     if (DL)
-      FPasses->add(new DataLayoutPass(M.get()));
+      FPasses->add(new DataLayoutPass());
     if (TM.get())
       TM->addAnalysisPasses(*FPasses);
 
@@ -565,11 +529,10 @@ int main(int argc, char **argv) {
       if (OutputFilename.empty())
         OutputFilename = "-";
 
-      std::string ErrorInfo;
-      Out.reset(new tool_output_file(OutputFilename.c_str(), ErrorInfo,
-                                     sys::fs::F_None));
-      if (!ErrorInfo.empty()) {
-        errs() << ErrorInfo << '\n';
+      std::error_code EC;
+      Out.reset(new tool_output_file(OutputFilename, EC, sys::fs::F_None));
+      if (EC) {
+        errs() << EC.message() << '\n';
         return 1;
       }
     }
@@ -577,9 +540,8 @@ int main(int argc, char **argv) {
     NoOutput = true;
   }
 
-  // If the -strip-debug command line option was specified, add it.  If
-  // -std-compile-opts was also specified, it will handle StripDebug.
-  if (StripDebug && !StandardCompileOpts)
+  // If the -strip-debug command line option was specified, add it.
+  if (StripDebug)
     addPass(Passes, createStripSymbolsPass(true));
 
   // Create a new optimization pass for each one specified on the command line
@@ -591,14 +553,6 @@ int main(int argc, char **argv) {
       PNaClABISimplifyPreOpt = false;
     }
     // @LOCALMOD-END
-
-    // Check to see if -std-compile-opts was specified before this option.  If
-    // so, handle it.
-    if (StandardCompileOpts &&
-        StandardCompileOpts.getPosition() < PassList.getPosition(i)) {
-      AddStandardCompilePasses(Passes);
-      StandardCompileOpts = false;
-    }
 
     if (StandardLinkOpts &&
         StandardLinkOpts.getPosition() < PassList.getPosition(i)) {
@@ -689,12 +643,6 @@ int main(int argc, char **argv) {
   if (PNaClABISimplifyPreOpt)
     PNaClABISimplifyAddPreOptPasses(Passes);
   // @LOCALMOD-END
-
-  // If -std-compile-opts was specified at the end of the pass list, add them.
-  if (StandardCompileOpts) {
-    AddStandardCompilePasses(Passes);
-    StandardCompileOpts = false;
-  }
 
   if (StandardLinkOpts) {
     AddStandardLinkPasses(Passes);

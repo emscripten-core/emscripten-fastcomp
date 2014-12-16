@@ -378,9 +378,18 @@ class Instruction {
   bit isAsCheapAsAMove = 0; // As cheap (or cheaper) than a move instruction.
   bit hasExtraSrcRegAllocReq = 0; // Sources have special regalloc requirement?
   bit hasExtraDefRegAllocReq = 0; // Defs have special regalloc requirement?
+  bit isRegSequence = 0;    // Is this instruction a kind of reg sequence?
+                            // If so, make sure to override
+                            // TargetInstrInfo::getRegSequenceLikeInputs.
   bit isPseudo     = 0;     // Is this instruction a pseudo-instruction?
                             // If so, won't have encoding information for
                             // the [MC]CodeEmitter stuff.
+  bit isExtractSubreg = 0;  // Is this instruction a kind of extract subreg?
+                             // If so, make sure to override
+                             // TargetInstrInfo::getExtractSubregLikeInputs.
+  bit isInsertSubreg = 0;   // Is this instruction a kind of insert subreg?
+                            // If so, make sure to override
+                            // TargetInstrInfo::getInsertSubregLikeInputs.
 
   // Side effect flags - When set, the flags have these meanings:
   //
@@ -583,7 +592,6 @@ class Operand<ValueType ty> : DAGOperand {
   string PrintMethod = "printOperand";
   string EncoderMethod = "";
   string DecoderMethod = "";
-  string AsmOperandLowerMethod = ?;
   string OperandType = "OPERAND_UNKNOWN";
   dag MIOperandInfo = (ops);
 
@@ -840,6 +848,14 @@ def PATCHPOINT : Instruction {
   let isCall = 1;
   let mayLoad = 1;
   let usesCustomInserter = 1;
+}
+def LOAD_STACK_GUARD : Instruction {
+  let OutOperandList = (outs ptr_rc:$dst);
+  let InOperandList = (ins);
+  let mayLoad = 1;
+  bit isReMaterializable = 1;
+  let hasSideEffects = 0;
+  bit isPseudo = 1;
 }
 }
 

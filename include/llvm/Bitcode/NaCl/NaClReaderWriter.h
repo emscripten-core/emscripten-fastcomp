@@ -18,17 +18,17 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 #include <string>
 
 namespace llvm {
-  class MemoryBuffer;
   class LLVMContext;
   class Module;
-  class raw_ostream;
   class NaClBitcodeHeader;
   class NaClBitstreamWriter;
   class StreamingMemoryObject;
+  class raw_ostream;
 
   /// Defines the data layout used for PNaCl bitcode files. We set the
   /// data layout of the module in the bitcode readers rather than in
@@ -81,11 +81,11 @@ namespace llvm {
                                        bool AcceptSupportedOnly = true);
 
   /// NaClParseBitcodeFile - Read the specified bitcode file,
-  /// returning the module. This method *never* takes ownership of Buffer.
+  /// returning the module.
   ///
   /// See getNaClLazyBitcodeModule for an explanation of arguments
   /// Verbose, AcceptSupportedOnly.
-  ErrorOr<Module *> NaClParseBitcodeFile(MemoryBuffer *Buffer,
+  ErrorOr<Module *> NaClParseBitcodeFile(MemoryBufferRef Buffer,
                                          LLVMContext &Context,
                                          raw_ostream *Verbose = nullptr,
                                          bool AcceptSupportedOnly = true);

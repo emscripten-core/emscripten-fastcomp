@@ -20,7 +20,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -38,8 +37,8 @@ void RegisterClassInfo::runOnMachineFunction(const MachineFunction &mf) {
   MF = &mf;
 
   // Allocate new array the first time we see a new target.
-  if (MF->getTarget().getRegisterInfo() != TRI) {
-    TRI = MF->getTarget().getRegisterInfo();
+  if (MF->getSubtarget().getRegisterInfo() != TRI) {
+    TRI = MF->getSubtarget().getRegisterInfo();
     RegClass.reset(new RCInfo[TRI->getNumRegClasses()]);
     unsigned NumPSets = TRI->getNumRegPressureSets();
     PSetLimits.reset(new unsigned[NumPSets]);

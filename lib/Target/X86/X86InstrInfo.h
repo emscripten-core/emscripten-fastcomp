@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef X86INSTRUCTIONINFO_H
-#define X86INSTRUCTIONINFO_H
+#ifndef LLVM_LIB_TARGET_X86_X86INSTRINFO_H
+#define LLVM_LIB_TARGET_X86_X86INSTRINFO_H
 
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "X86RegisterInfo.h"
@@ -404,7 +404,8 @@ public:
                                       MachineInstr* MI,
                                       unsigned OpNum,
                                       const SmallVectorImpl<MachineOperand> &MOs,
-                                      unsigned Size, unsigned Alignment) const;
+                                      unsigned Size, unsigned Alignment,
+                                      bool AllowCommute) const;
 
   void
   getUnconditionalBranch(MCInst &Branch,

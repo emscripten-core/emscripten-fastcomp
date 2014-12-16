@@ -135,11 +135,18 @@ bool TGParser::SetValue(Record *CurRec, SMLoc Loc, Init *ValName,
     V = BitsInit::get(NewBits);
   }
 
-  if (RV->setValue(V))
+  if (RV->setValue(V)) {
+    std::string InitType = "";
+    if (BitsInit *BI = dyn_cast<BitsInit>(V)) {
+      InitType = (Twine("' of type bit initializer with length ") +
+                  Twine(BI->getNumBits())).str();
+    }
     return Error(Loc, "Value '" + ValName->getAsUnquotedString() + "' of type '"
                  + RV->getType()->getAsString() +
                  "' is incompatible with initializer '" + V->getAsString()
+                 + InitType
                  + "'");
+  }
   return false;
 }
 
@@ -225,14 +232,14 @@ bool TGParser::AddSubMultiClass(MultiClass *CurMC,
        i != iend;
        ++i) {
     // Clone the def and add it to the current multiclass
-    Record *NewDef = new Record(**i);
+    auto NewDef = make_unique<Record>(**i);
 
     // Add all of the values in the superclass into the current def.
     for (unsigned i = 0, e = MCVals.size(); i != e; ++i)
-      if (AddValue(NewDef, SubMultiClass.RefRange.Start, MCVals[i]))
+      if (AddValue(NewDef.get(), SubMultiClass.RefRange.Start, MCVals[i]))
         return true;
 
-    CurMC->DefPrototypes.push_back(NewDef);
+    CurMC->DefPrototypes.push_back(NewDef.release());
   }
 
   const std::vector<Init *> &SMCTArgs = SMC->Rec.getTemplateArgs();
@@ -341,6 +348,7 @@ bool TGParser::ProcessForeachDefs(Record *CurRec, SMLoc Loc, IterSet &IterVals){
     TypedInit *IVal = dyn_cast<TypedInit>(IterVals[i].IterValue);
     if (!IVal) {
       Error(Loc, "foreach iterator value is untyped");
+      delete IterRec;
       return true;
     }
 
@@ -349,6 +357,7 @@ bool TGParser::ProcessForeachDefs(Record *CurRec, SMLoc Loc, IterSet &IterVals){
     if (SetValue(IterRec, Loc, IterVar->getName(),
                  std::vector<unsigned>(), IVal)) {
       Error(Loc, "when instantiating this def");
+      delete IterRec;
       return true;
     }
 
@@ -365,6 +374,7 @@ bool TGParser::ProcessForeachDefs(Record *CurRec, SMLoc Loc, IterSet &IterVals){
       IterRec->setName(GetNewAnonymousName());
     else {
       Error(Loc, "def already exists: " + IterRec->getNameInitAsString());
+      delete IterRec;
       return true;
     }
   }
@@ -904,6 +914,7 @@ Init *TGParser::ParseOperation(Record *CurRec, RecTy *ItemType) {
 
   case tgtok::XConcat:
   case tgtok::XADD:
+  case tgtok::XAND:
   case tgtok::XSRA:
   case tgtok::XSRL:
   case tgtok::XSHL:
@@ -921,6 +932,7 @@ Init *TGParser::ParseOperation(Record *CurRec, RecTy *ItemType) {
     default: llvm_unreachable("Unhandled code!");
     case tgtok::XConcat: Code = BinOpInit::CONCAT;Type = DagRecTy::get(); break;
     case tgtok::XADD:    Code = BinOpInit::ADD;   Type = IntRecTy::get(); break;
+    case tgtok::XAND:    Code = BinOpInit::AND;   Type = IntRecTy::get(); break;
     case tgtok::XSRA:    Code = BinOpInit::SRA;   Type = IntRecTy::get(); break;
     case tgtok::XSRL:    Code = BinOpInit::SRL;   Type = IntRecTy::get(); break;
     case tgtok::XSHL:    Code = BinOpInit::SHL;   Type = IntRecTy::get(); break;
@@ -1173,6 +1185,15 @@ Init *TGParser::ParseSimpleValue(Record *CurRec, RecTy *ItemType,
     Lex.Lex();  // Skip '#'.
     return ParseSimpleValue(CurRec, ItemType, Mode);
   case tgtok::IntVal: R = IntInit::get(Lex.getCurIntVal()); Lex.Lex(); break;
+  case tgtok::BinaryIntVal: {
+    auto BinaryVal = Lex.getCurBinaryIntVal();
+    SmallVector<Init*, 16> Bits(BinaryVal.second);
+    for (unsigned i = 0, e = BinaryVal.second; i != e; ++i)
+      Bits[i] = BitInit::get(BinaryVal.first & (1LL << i));
+    R = BitsInit::get(Bits);
+    Lex.Lex();
+    break;
+  }
   case tgtok::StrVal: {
     std::string Val = Lex.getCurStrVal();
     Lex.Lex();
@@ -1233,12 +1254,17 @@ Init *TGParser::ParseSimpleValue(Record *CurRec, RecTy *ItemType,
     SCRef.Rec = Class;
     SCRef.TemplateArgs = ValueList;
     // Add info about the subclass to NewRec.
-    if (AddSubClass(NewRec, SCRef))
+    if (AddSubClass(NewRec, SCRef)) {
+      delete NewRec;
       return nullptr;
+    }
     if (!CurMultiClass) {
       NewRec->resolveReferences();
       Records.addDef(NewRec);
     } else {
+      // This needs to get resolved once the multiclass template arguments are
+      // known before any use.
+      NewRec->setResolveFirst(true);
       // Otherwise, we're inside a multiclass, add it to the multiclass.
       CurMultiClass->DefPrototypes.push_back(NewRec);
 
@@ -1284,17 +1310,40 @@ Init *TGParser::ParseSimpleValue(Record *CurRec, RecTy *ItemType,
     }
     Lex.Lex();  // eat the '}'
 
-    SmallVector<Init *, 16> NewBits(Vals.size());
+    SmallVector<Init *, 16> NewBits;
 
+    // As we parse { a, b, ... }, 'a' is the highest bit, but we parse it
+    // first.  We'll first read everything in to a vector, then we can reverse
+    // it to get the bits in the correct order for the BitsInit value.
     for (unsigned i = 0, e = Vals.size(); i != e; ++i) {
+      // FIXME: The following two loops would not be duplicated
+      //        if the API was a little more orthogonal.
+
+      // bits<n> values are allowed to initialize n bits.
+      if (BitsInit *BI = dyn_cast<BitsInit>(Vals[i])) {
+        for (unsigned i = 0, e = BI->getNumBits(); i != e; ++i)
+          NewBits.push_back(BI->getBit((e - i) - 1));
+        continue;
+      }
+      // bits<n> can also come from variable initializers.
+      if (VarInit *VI = dyn_cast<VarInit>(Vals[i])) {
+        if (BitsRecTy *BitsRec = dyn_cast<BitsRecTy>(VI->getType())) {
+          for (unsigned i = 0, e = BitsRec->getNumBits(); i != e; ++i)
+            NewBits.push_back(VI->getBit((e - i) - 1));
+          continue;
+        }
+        // Fallthrough to try convert this to a bit.
+      }
+      // All other values must be convertible to just a single bit.
       Init *Bit = Vals[i]->convertInitializerTo(BitRecTy::get());
       if (!Bit) {
         Error(BraceLoc, "Element #" + utostr(i) + " (" + Vals[i]->getAsString()+
               ") is not convertable to a bit");
         return nullptr;
       }
-      NewBits[Vals.size()-i-1] = Bit;
+      NewBits.push_back(Bit);
     }
+    std::reverse(NewBits.begin(), NewBits.end());
     return BitsInit::get(NewBits);
   }
   case tgtok::l_square: {          // Value ::= '[' ValueList ']'
@@ -1439,6 +1488,7 @@ Init *TGParser::ParseSimpleValue(Record *CurRec, RecTy *ItemType,
   case tgtok::XCast:  // Value ::= !unop '(' Value ')'
   case tgtok::XConcat:
   case tgtok::XADD:
+  case tgtok::XAND:
   case tgtok::XSRA:
   case tgtok::XSRL:
   case tgtok::XSHL:
@@ -1727,7 +1777,10 @@ Init *TGParser::ParseDeclaration(Record *CurRec,
     Init *Val = ParseValue(CurRec, Type);
     if (!Val ||
         SetValue(CurRec, ValLoc, DeclName, std::vector<unsigned>(), Val))
-      return nullptr;
+      // Return the name, even if an error is thrown.  This is so that we can
+      // continue to make some progress, even without the value having been
+      // initialized.
+      return DeclName;
   }
 
   return DeclName;
@@ -1984,6 +2037,7 @@ bool TGParser::ParseDef(MultiClass *CurMultiClass) {
 
   // Parse ObjectName and make a record for it.
   Record *CurRec;
+  bool CurRecOwnershipTransferred = false;
   Init *Name = ParseObjectName(CurMultiClass);
   if (Name)
     CurRec = new Record(Name, DefLoc, Records);
@@ -1998,9 +2052,11 @@ bool TGParser::ParseDef(MultiClass *CurMultiClass) {
     if (Records.getDef(CurRec->getNameInitAsString())) {
       Error(DefLoc, "def '" + CurRec->getNameInitAsString()
             + "' already defined");
+      delete CurRec;
       return true;
     }
     Records.addDef(CurRec);
+    CurRecOwnershipTransferred = true;
 
     if (ParseObjectBody(CurRec))
       return true;
@@ -2010,8 +2066,10 @@ bool TGParser::ParseDef(MultiClass *CurMultiClass) {
     // before this object, instantiated prior to defs derived from this object,
     // and this available for indirect name resolution when defs derived from
     // this object are instantiated.
-    if (ParseObjectBody(CurRec))
+    if (ParseObjectBody(CurRec)) {
+      delete CurRec;
       return true;
+    }
 
     // Otherwise, a def inside a multiclass, add it to the multiclass.
     for (unsigned i = 0, e = CurMultiClass->DefPrototypes.size(); i != e; ++i)
@@ -2019,11 +2077,15 @@ bool TGParser::ParseDef(MultiClass *CurMultiClass) {
           == CurRec->getNameInit()) {
         Error(DefLoc, "def '" + CurRec->getNameInitAsString() +
               "' already defined in this multiclass!");
+        delete CurRec;
         return true;
       }
     CurMultiClass->DefPrototypes.push_back(CurRec);
-  } else if (ParseObjectBody(CurRec))
+    CurRecOwnershipTransferred = true;
+  } else if (ParseObjectBody(CurRec)) {
+    delete CurRec;
     return true;
+  }
 
   if (!CurMultiClass)  // Def's in multiclasses aren't really defs.
     // See Record::setName().  This resolve step will see any new name
@@ -2049,9 +2111,13 @@ bool TGParser::ParseDef(MultiClass *CurMultiClass) {
   if (ProcessForeachDefs(CurRec, DefLoc)) {
     Error(DefLoc,
           "Could not process loops for def" + CurRec->getNameInitAsString());
+    if (!CurRecOwnershipTransferred)
+      delete CurRec;
     return true;
   }
 
+  if (!CurRecOwnershipTransferred)
+    delete CurRec;
   return false;
 }
 
@@ -2196,7 +2262,7 @@ bool TGParser::ParseTopLevelLet(MultiClass *CurMultiClass) {
   // Add this entry to the let stack.
   std::vector<LetRecord> LetInfo = ParseLetList();
   if (LetInfo.empty()) return true;
-  LetStack.push_back(LetInfo);
+  LetStack.push_back(std::move(LetInfo));
 
   if (Lex.getCode() != tgtok::In)
     return TokError("expected 'in' at end of top-level 'let'");
@@ -2365,6 +2431,7 @@ InstantiateMulticlassDef(MultiClass &MC,
     Error(DefmPrefixRange.Start, "Could not resolve "
           + CurRec->getNameInitAsString() + ":NAME to '"
           + DefmPrefix->getAsUnquotedString() + "'");
+    delete CurRec;
     return nullptr;
   }
 
@@ -2396,6 +2463,7 @@ InstantiateMulticlassDef(MultiClass &MC,
       Error(DefmPrefixRange.Start, "def '" + CurRec->getNameInitAsString() +
             "' already defined, instantiating defm with subdef '" + 
             DefProto->getNameInitAsString() + "'");
+      delete CurRec;
       return nullptr;
     }
 
@@ -2535,6 +2603,12 @@ bool TGParser::ParseDefm(MultiClass *CurMultiClass) {
       if (ResolveMulticlassDef(*MC, CurRec, DefProto, DefmLoc))
         return Error(SubClassLoc, "could not instantiate def");
 
+      // Defs that can be used by other definitions should be fully resolved
+      // before any use.
+      if (DefProto->isResolveFirst() && !CurMultiClass) {
+        CurRec->resolveReferences();
+        CurRec->setResolveFirst(false);
+      }
       NewRecDefs.push_back(CurRec);
     }
 

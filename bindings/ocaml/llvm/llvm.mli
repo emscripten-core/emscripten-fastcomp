@@ -720,6 +720,11 @@ val fold_right_uses : (lluse -> 'a -> 'a) -> llvalue -> 'a -> 'a
     method [llvm::User::getOperand]. *)
 val operand : llvalue -> int -> llvalue
 
+(** [operand_use v i] returns the use of the operand at index [i] for the value [v]. See the
+    method [llvm::User::getOperandUse]. *)
+val operand_use : llvalue -> int -> lluse
+
+
 (** [set_operand v i o] sets the operand of the value [v] at the index [i] to
     the value [o].
     See the method [llvm::User::setOperand]. *)
@@ -841,7 +846,6 @@ val const_float : lltype -> float -> llvalue
     [ty] and value [n]. See the method [llvm::ConstantFP::get]. *)
 val const_float_of_string : lltype -> string -> llvalue
 
-
 (** {7 Operations on composite constants} *)
 
 (** [const_string c s] returns the constant [i8] array with the values of the
@@ -886,6 +890,14 @@ val const_packed_struct : llcontext -> llvalue array -> llvalue
     [vector_type (type_of elts.(0)) (Array.length elts)] and containing the
     values [elts]. See the method [llvm::ConstantVector::get]. *)
 val const_vector : llvalue array -> llvalue
+
+(** [string_of_const c] returns [Some str] if [c] is a string constant,
+    or [None] if this is not a string constant. *)
+val string_of_const : llvalue -> string option
+
+(** [const_element c] returns a constant for a specified index's element.
+    See the method ConstantDataSequential::getElementAsConstant. *)
+val const_element : llvalue -> int -> llvalue
 
 
 (** {7 Constant expressions} *)
@@ -1686,6 +1698,11 @@ val instr_opcode : llvalue -> Opcode.t
 (** [icmp_predicate i] returns the [Icmp.t] corresponding to an [icmp]
     instruction [i]. *)
 val icmp_predicate : llvalue -> Icmp.t option
+
+(** [inst_clone i] returns a copy of instruction [i],
+    The instruction has no parent, and no name.
+    See the method [llvm::Instruction::clone]. *)
+val instr_clone : llvalue -> llvalue
 
 
 (** {7 Operations on call sites} *)

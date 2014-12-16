@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_RUNTIME_DYLD_ELF_H
-#define LLVM_RUNTIME_DYLD_ELF_H
+#ifndef LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDELF_H
+#define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDELF_H
 
 #include "RuntimeDyldImpl.h"
 #include "llvm/ADT/DenseMap.h"
@@ -58,8 +58,7 @@ class RuntimeDyldELF : public RuntimeDyldImpl {
                                 uint64_t Value, uint32_t Type, int64_t Addend);
 
   unsigned getMaxStubSize() override {
-    if (Arch == Triple::aarch64 || Arch == Triple::arm64 ||
-        Arch == Triple::aarch64_be || Arch == Triple::arm64_be)
+    if (Arch == Triple::aarch64 || Arch == Triple::aarch64_be)
       return 20; // movz; movk; movk; movk; br
     if (Arch == Triple::arm || Arch == Triple::thumb)
       return 8; // 32-bit instruction and 32-bit address
@@ -120,7 +119,8 @@ public:
                     ObjSectionToIDMap &SectionMap) override;
   virtual ~RuntimeDyldELF();
 
-  static ObjectImage *createObjectImage(ObjectBuffer *InputBuffer);
+  static std::unique_ptr<ObjectImage>
+  createObjectImage(std::unique_ptr<ObjectBuffer> InputBuffer);
   static ObjectImage *createObjectImageFromFile(std::unique_ptr<object::ObjectFile> Obj);
 };
 

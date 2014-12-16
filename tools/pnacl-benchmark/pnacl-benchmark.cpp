@@ -209,8 +209,9 @@ void BenchmarkIRParsing() {
     TimingOperationBlock T("LLVM IR parsing", BufSize);
     SMDiagnostic Err;
     raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
-    Module *M = NaClParseIRFile(InputFilename, PNaClFormat,
-                                Err, Verbose, getGlobalContext());
+    std::unique_ptr<Module> M = NaClParseIRFile(
+        InputFilename, PNaClFormat,
+        Err, Verbose, getGlobalContext());
 
     if (!M) {
       report_fatal_error("Unable to NaClParseIRFile");
