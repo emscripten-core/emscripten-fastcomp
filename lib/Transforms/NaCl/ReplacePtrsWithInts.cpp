@@ -46,6 +46,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -567,6 +568,7 @@ INITIALIZE_PASS(ReplacePtrsWithInts, "replace-ptrs-with-ints",
 
 bool ReplacePtrsWithInts::runOnModule(Module &M) {
   DataLayout DL(&M);
+  DenseMap<const Function *, DISubprogram> FunctionDIs = makeSubprogramMap(M);
   Type *IntPtrType = DL.getIntPtrType(M.getContext());
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
@@ -624,6 +626,12 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
       }
     }
     FC.eraseReplacedInstructions();
+
+    // Patch the pointer to LLVM function in debug info descriptor.
+    auto DI = FunctionDIs.find(OldFunc);
+    if (DI != FunctionDIs.end())
+      DI->second.replaceFunction(NewFunc);
+
     OldFunc->eraseFromParent();
   }
   // Now that all functions have their normalized types, we can remove

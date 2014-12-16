@@ -1,8 +1,5 @@
 ; RUN: opt %s -replace-ptrs-with-ints -S | FileCheck %s
 
-!llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
-
 target datalayout = "p:32:32:32"
 
 
@@ -499,9 +496,9 @@ define void @debug_declare(i32 %val) {
 }
 ; CHECK: define void @debug_declare(i32 %val) {
 ; CHECK-NEXT: %var = alloca i8, i32 4
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !2)
 ; This case is currently not converted.
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !2)
 ; CHECK-NEXT: ret void
 
 ; For now, debugging info for values is lost.  replaceAllUsesWith()
@@ -513,8 +510,8 @@ define void @debug_value(i32 %val, i8* %ptr) {
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1)
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !2)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !2)
 ; CHECK-NEXT: ret void
 
 
@@ -679,4 +676,42 @@ define void @typeid_for() {
 ; CHECK-NEXT: call i32 @llvm.eh.typeid.for(i8* %typeid.bc)
 
 
+; Subprogram debug metadata may refer to a function.
+; Make sure those are updated too.
+; Regenerate the debug info from the following C program:
+; void nop(void *ptr) {
+; }
+
+define void @nop(i8* %ptr) {
+  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 0, metadata !10), !dbg !14
+  ret void, !dbg !15
+}
+; CHECK: define void @nop(i32 %ptr) {
+; CHECK-NEXT: call void @llvm.dbg.value{{.*}}
+; CHECK-NEXT: ret void
+
+
 ; CHECK: attributes {{.*}}[[NOUNWIND]] = { nounwind }
+
+!llvm.dbg.cu = !{!0}
+!llvm.module.flags = !{!11, !12}
+!llvm.ident = !{!13}
+
+!0 = metadata !{i32 786449, metadata !1, i32 12, metadata !"clang version 3.5.0", i1 true, metadata !"", i32 0, metadata !2, metadata !2, metadata !3, metadata !2, metadata !2, metadata !"", i32 1} ; [ DW_TAG_compile_unit ] [/home/foo/test_min.c] [DW_LANG_C99]
+!1 = metadata !{metadata !"test_min.c", metadata !"/home/foo"}
+!2 = metadata !{}
+!3 = metadata !{metadata !4}
+!4 = metadata !{i32 786478, metadata !1, metadata !5, metadata !"nop", metadata !"nop", metadata !"", i32 1, metadata !6, i1 false, i1 true, i32 0, i32 0, null, i32 256, i1 true, void (i8*)* @nop, null, null, metadata !9, i32 1} ; [ DW_TAG_subprogram ] [line 1] [def] [nop]
+!5 = metadata !{i32 786473, metadata !1}          ; [ DW_TAG_file_type ] [/home/foo/test_min.c]
+!6 = metadata !{i32 786453, i32 0, null, metadata !"", i32 0, i64 0, i64 0, i64 0, i32 0, null, metadata !7, i32 0, null, null, null} ; [ DW_TAG_subroutine_type ] [line 0, size 0, align 0, offset 0] [from ]
+!7 = metadata !{null, metadata !8}
+!8 = metadata !{i32 786447, null, null, metadata !"", i32 0, i64 32, i64 32, i64 0, i32 0, null} ; [ DW_TAG_pointer_type ] [line 0, size 32, align 32, offset 0] [from ]
+!9 = metadata !{metadata !10}
+!10 = metadata !{i32 786689, metadata !4, metadata !"ptr", metadata !5, i32 16777217, metadata !8, i32 0, i32 0} ; [ DW_TAG_arg_variable ] [ptr] [line 1]
+!11 = metadata !{i32 2, metadata !"Dwarf Version", i32 4}
+!12 = metadata !{i32 2, metadata !"Debug Info Version", i32 1}
+!13 = metadata !{metadata !"clang version 3.5.0"}
+!14 = metadata !{i32 1, i32 16, metadata !4, null}
+!15 = metadata !{i32 2, i32 1, metadata !4, null}
+
+; CHECK: !4 = metadata !{{{.*}}nop{{.*}}, void (i32)* @nop, {{.*}}} ; [ DW_TAG_subprogram ] [line 1] [def] [nop]
