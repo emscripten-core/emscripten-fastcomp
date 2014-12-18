@@ -1773,7 +1773,11 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
   int Opcode = I->getOpcode();
   bool isDestroy = Opcode == TII.getCallFrameDestroyOpcode();
   const X86Subtarget &STI = MF.getTarget().getSubtarget<X86Subtarget>();
-  bool IsLP64 = STI.isTarget64BitLP64();
+  // @LOCALMOD-BEGIN
+  // standard x86_64 and NaCl use 64-bit frame/stack pointers, x32 - 32-bit.
+  const bool Uses64BitStackPtr =
+      STI.isTarget64BitLP64() || STI.isTargetNaCl64();
+  // @LOCALMOD-END
   DebugLoc DL = I->getDebugLoc();
   uint64_t Amount = !reseveCallFrame ? I->getOperand(0).getImm() : 0;
   uint64_t CalleeAmt = isDestroy ? I->getOperand(1).getImm() : 0;
@@ -1798,7 +1802,8 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 
     MachineInstr *New = nullptr;
     if (Opcode == TII.getCallFrameSetupOpcode()) {
-      New = BuildMI(MF, DL, TII.get(getSUBriOpcode(IsLP64, Amount)),
+      // @LOCALMOD
+      New = BuildMI(MF, DL, TII.get(getSUBriOpcode(Uses64BitStackPtr, Amount)),
                     StackPtr)
         .addReg(StackPtr)
         .addImm(Amount);
@@ -1809,7 +1814,8 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
       Amount -= CalleeAmt;
 
       if (Amount) {
-        unsigned Opc = getADDriOpcode(IsLP64, Amount);
+        // @LOCALMOD
+        unsigned Opc = getADDriOpcode(Uses64BitStackPtr, Amount);
         New = BuildMI(MF, DL, TII.get(Opc), StackPtr)
           .addReg(StackPtr).addImm(Amount);
       }
@@ -1830,7 +1836,8 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     // If we are performing frame pointer elimination and if the callee pops
     // something off the stack pointer, add it back.  We do this until we have
     // more advanced stack pointer tracking ability.
-    unsigned Opc = getSUBriOpcode(IsLP64, CalleeAmt);
+    // @LOCALMOD
+    unsigned Opc = getSUBriOpcode(Uses64BitStackPtr, CalleeAmt);
     MachineInstr *New = BuildMI(MF, DL, TII.get(Opc), StackPtr)
       .addReg(StackPtr).addImm(CalleeAmt);
 
