@@ -386,7 +386,8 @@ namespace {
       // of the compare that produced them.
       assert(VT->getElementType()->getPrimitiveSizeInBits() == 32 ||
              VT->getElementType()->getPrimitiveSizeInBits() == 1);
-      assert(VT->getNumElements() == 4);
+      assert(VT->getBitWidth() <= 128);
+      assert(VT->getNumElements() <= 4);
       UsesSIMD = true;
     }
 
@@ -1074,18 +1075,23 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       return "0";
     }
   } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
-    return getConstantVector(cast<VectorType>(CV->getType())->getElementType(),
-                             getConstant(DV->getElementAsConstant(0)),
-                             getConstant(DV->getElementAsConstant(1)),
-                             getConstant(DV->getElementAsConstant(2)),
-                             getConstant(DV->getElementAsConstant(3)));
+    unsigned NumElts = cast<VectorType>(DV->getType())->getNumElements();
+    Type *EltTy = cast<VectorType>(DV->getType())->getElementType();
+    Constant *Undef = UndefValue::get(EltTy);
+    return getConstantVector(EltTy,
+                             getConstant(NumElts > 0 ? DV->getElementAsConstant(0) : Undef),
+                             getConstant(NumElts > 1 ? DV->getElementAsConstant(1) : Undef),
+                             getConstant(NumElts > 2 ? DV->getElementAsConstant(2) : Undef),
+                             getConstant(NumElts > 3 ? DV->getElementAsConstant(3) : Undef));
   } else if (const ConstantVector *V = dyn_cast<ConstantVector>(CV)) {
-    assert(V->getNumOperands() == 4);
+    unsigned NumElts = cast<VectorType>(CV->getType())->getNumElements();
+    Type *EltTy = cast<VectorType>(CV->getType())->getElementType();
+    Constant *Undef = UndefValue::get(EltTy);
     return getConstantVector(cast<VectorType>(V->getType())->getElementType(),
-                             getConstant(V->getOperand(0)),
-                             getConstant(V->getOperand(1)),
-                             getConstant(V->getOperand(2)),
-                             getConstant(V->getOperand(3)));
+                             getConstant(NumElts > 0 ? V->getOperand(0) : Undef),
+                             getConstant(NumElts > 1 ? V->getOperand(1) : Undef),
+                             getConstant(NumElts > 2 ? V->getOperand(2) : Undef),
+                             getConstant(NumElts > 3 ? V->getOperand(3) : Undef));
   } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
     // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
     assert(CA->getNumOperands() == 1);
@@ -1300,20 +1306,22 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   // Check whether can generate SIMD.js swizzle or shuffle.
   std::string A = getValueAsStr(SVI->getOperand(0));
   std::string B = getValueAsStr(SVI->getOperand(1));
-  int Mask0 = SVI->getMaskValue(0);
-  int Mask1 = SVI->getMaskValue(1);
-  int Mask2 = SVI->getMaskValue(2);
-  int Mask3 = SVI->getMaskValue(3);
+  int OpNumElements = cast<VectorType>(SVI->getOperand(0)->getType())->getNumElements();
+  int ResultNumElements = SVI->getType()->getNumElements();
+  int Mask0 = ResultNumElements > 0 ? SVI->getMaskValue(0) : -1;
+  int Mask1 = ResultNumElements > 1 ? SVI->getMaskValue(1) : -1;
+  int Mask2 = ResultNumElements > 2 ? SVI->getMaskValue(2) : -1;
+  int Mask3 = ResultNumElements > 3 ? SVI->getMaskValue(3) : -1;
   bool swizzleA = false;
   bool swizzleB = false;
-  if ((Mask0 < 4) && (Mask1 < 4) &&
-      (Mask2 < 4) && (Mask3 < 4)) {
+  if ((Mask0 < OpNumElements) && (Mask1 < OpNumElements) &&
+      (Mask2 < OpNumElements) && (Mask3 < OpNumElements)) {
     swizzleA = true;
   }
-  if ((Mask0 < 0 || (Mask0 >= 4 && Mask0 < 8)) &&
-      (Mask1 < 0 || (Mask1 >= 4 && Mask1 < 8)) &&
-      (Mask2 < 0 || (Mask2 >= 4 && Mask2 < 8)) &&
-      (Mask3 < 0 || (Mask3 >= 4 && Mask3 < 8))) {
+  if ((Mask0 < 0 || (Mask0 >= OpNumElements && Mask0 < OpNumElements * 2)) &&
+      (Mask1 < 0 || (Mask1 >= OpNumElements && Mask1 < OpNumElements * 2)) &&
+      (Mask2 < 0 || (Mask2 >= OpNumElements && Mask2 < OpNumElements * 2)) &&
+      (Mask3 < 0 || (Mask3 >= OpNumElements && Mask3 < OpNumElements * 2))) {
     swizzleB = true;
   }
   assert(!(swizzleA && swizzleB));
@@ -1324,17 +1332,21 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
     } else {
       Code << "SIMD_float32x4_swizzle(" << T;
     }
-    for (unsigned int i = 0; i < 4; i++) {
+    int i = 0;
+    for (; i < ResultNumElements; ++i) {
       Code << ", ";
       int Mask = SVI->getMaskValue(i);
       if (Mask < 0) {
         Code << 0;
-      } else if (Mask < 4) {
+      } else if (Mask < OpNumElements) {
         Code << Mask;
       } else {
-        assert(Mask < 8);
-        Code << (Mask-4);
+        assert(Mask < OpNumElements * 2);
+        Code << (Mask-OpNumElements);
       }
+    }
+    for (; i < 4; ++i) {
+      Code << ", 0";
     }
     Code << ")";
     return;
@@ -1354,7 +1366,10 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   for (unsigned int i = 0; i < Indices.size(); ++i) {
     if (i != 0)
       Code << ", ";
-    Code << Indices[i];
+    int Mask = Indices[i];
+    if (Mask >= OpNumElements)
+        Mask = Mask - OpNumElements + 4;
+    Code << Mask;
   }
 
   Code << ")";
@@ -1626,11 +1641,15 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         const LoadInst *LI = cast<LoadInst>(I);
         const Value *P = LI->getPointerOperand();
         std::string PS = getValueAsStr(P);
+
+        // Determine if this is a partial store.
+        std::string Part = (std::string[]) { "X", "XY", "XYZ", "" }[VT->getNumElements() - 1];
+
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4_load(HEAPU8, " << PS << ")";
+          Code << "SIMD_int32x4_load" << Part << "(HEAPU8, " << PS << ")";
         } else {
-          Code << "SIMD_float32x4_load(HEAPU8, " << PS << ")";
+          Code << "SIMD_float32x4_load" << Part << "(HEAPU8, " << PS << ")";
         }
         break;
       }
@@ -1666,10 +1685,14 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       std::string PS = getOpName(P);
       std::string VS = getValueAsStr(SI->getValueOperand());
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
+
+      // Determine if this is a partial store.
+      std::string Part = (std::string[]) { "X", "XY", "XYZ", "" }[VT->getNumElements() - 1];
+
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "SIMD_int32x4_store(HEAPU8, " << PS << ", " << VS << ")";
+        Code << "SIMD_int32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
       } else {
-        Code << "SIMD_float32x4_store(HEAPU8, " << PS << ", " << VS << ")";
+        Code << "SIMD_float32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
       }
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
