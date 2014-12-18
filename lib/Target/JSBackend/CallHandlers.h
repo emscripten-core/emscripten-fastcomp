@@ -454,8 +454,7 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
 
 // vector ops
 DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
-  // TODO: use signMaskPolyfill explicitly for now, until the builtin signMask is ready.
-  return getAssign(CI) + getValueAsStr(CI->getOperand(0)) + ".signMaskPolyfill";
+  return getAssign(CI) + getValueAsStr(CI->getOperand(0)) + ".signMask";
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \
