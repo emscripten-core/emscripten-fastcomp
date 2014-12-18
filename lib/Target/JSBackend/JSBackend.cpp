@@ -2864,6 +2864,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                           AnalysisID StopAfter) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
+  PM.add(createExpandInsertExtractElementPass());
   PM.add(createExpandI64Pass());
 
   CodeGenOpt::Level OptLevel = getOptLevel();

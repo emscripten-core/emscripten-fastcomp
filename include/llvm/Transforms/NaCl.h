@@ -53,6 +53,7 @@ ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 
 ModulePass *createExpandI64Pass(); // XXX EMSCRIPTEN
+ModulePass *createExpandInsertExtractElementPass(); // XXX EMSCRIPTEN
 ModulePass *createLowerEmExceptionsPass(); // XXX EMSCRIPTEN
 ModulePass *createLowerEmSetjmpPass(); // XXX EMSCRIPTEN
 ModulePass *createNoExitRuntimePass(); // XXX EMSCRIPTEN

@@ -1,6 +1,7 @@
 add_llvm_target(JSBackendCodeGen
   AllocaManager.cpp
   ExpandI64.cpp
+  ExpandInsertExtractElement.cpp
   JSBackend.cpp
   JSTargetMachine.cpp
   JSTargetTransformInfo.cpp
