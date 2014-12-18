@@ -1596,11 +1596,15 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::Select:
         // Since we represent vectors of i1 as vectors of sign extended wider integers,
         // selecting on them is just an elementwise select.
-        if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-          Code << getAssignIfNeeded(I) << "SIMD_int32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
-        } else {
-          Code << getAssignIfNeeded(I) << "SIMD_float32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+        if (isa<VectorType>(I->getOperand(0)->getType())) {
+          if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
+            Code << getAssignIfNeeded(I) << "SIMD_int32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+          } else {
+            Code << getAssignIfNeeded(I) << "SIMD_float32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+          }
+          return true;
         }
+        // Otherwise we have a scalar condition, so it's a ?: operator.
         return false;
       case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD_float32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD_float32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
