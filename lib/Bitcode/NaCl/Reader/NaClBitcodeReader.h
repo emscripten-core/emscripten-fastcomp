@@ -248,6 +248,11 @@ public:
   /// @returns true if an error occurred.
   std::error_code ParseBitcodeInto(Module *M);
 
+  /// Convert alignment exponent (i.e. power of two (or zero)) to the
+  /// corresponding alignment to use. If alignment is too large, it generates
+  /// an error message and returns corresponding error code.
+  std::error_code getAlignmentValue(uint64_t Exponent, unsigned &Alignment);
+
 private:
   // Returns false if Header is acceptable.
   bool AcceptHeader() const {

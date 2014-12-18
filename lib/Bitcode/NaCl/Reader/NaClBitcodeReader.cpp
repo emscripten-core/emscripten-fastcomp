@@ -177,11 +177,36 @@ Type *NaClBitcodeReader::getTypeByID(unsigned ID) {
 //===----------------------------------------------------------------------===//
 
 
+namespace {
+
+static const unsigned MaxAlignmentExponent = 29;
+static_assert(
+    (1u << MaxAlignmentExponent) == Value::MaximumAlignment,
+    "Inconsistency between Value.MaxAlignment and PNaCl alignment limit");
+}
+
 std::error_code NaClBitcodeReader::Error(ErrorType E,
                                          const std::string &Message) const {
-  if (Verbose)
-    *Verbose << "Error: " << Message << "\n";
+  if (Verbose) {
+    uint64_t Bit = Stream.GetCurrentBitNo();
+    *Verbose << "Error: (" <<  (Bit / CHAR_BIT) << ":"
+             << static_cast<unsigned>(Bit % CHAR_BIT)
+             << ") " << Message << "\n";
+  }
   return Error(E);
+}
+
+std::error_code NaClBitcodeReader::getAlignmentValue(
+    uint64_t Exponent, unsigned &Alignment) {
+  if (Exponent > MaxAlignmentExponent + 1) {
+    std::string Buffer;
+    raw_string_ostream StrBuf(Buffer);
+    StrBuf << "Alignment can't be greater than 2**" << MaxAlignmentExponent
+           << ". Found: 2**" << (Exponent - 1);
+    return Error(InvalidValue, StrBuf.str());
+  }
+  Alignment = (1 << static_cast<unsigned>(Exponent)) >> 1;
+  return std::error_code();
 }
 
 std::error_code NaClBitcodeReader::ParseTypeTable() {
@@ -402,7 +427,9 @@ public:
           return Reader.Error(NaClBitcodeReader::InvalidRecord,
                               "Bad GLOBALVAR_VAR record");
         ProcessingGlobal = true;
-        VarAlignment = (1 << Record[0]) >> 1;
+        if (std::error_code EC =
+            Reader.getAlignmentValue(Record[0], VarAlignment))
+          return EC;
         VarIsConstant = Record[1] != 0;
         // Assume (by default) there is a single initializer.
         VarInitializersNeeded = 1;
@@ -1480,8 +1507,10 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
       unsigned OpNum = 0;
       if (popValue(Record, &OpNum, NextValueNo, &Size))
         return Error(InvalidRecord, "Invalid ALLOCA record");
-      unsigned Align = Record[1];
-      I = new AllocaInst(Type::getInt8Ty(Context), Size, (1 << Align) >> 1);
+      unsigned Alignment;
+      if (std::error_code EC = getAlignmentValue(Record[1], Alignment))
+        return EC;
+      I = new AllocaInst(Type::getInt8Ty(Context), Size, Alignment);
       break;
     }
     case naclbitc::FUNC_CODE_INST_LOAD: {
@@ -1499,7 +1528,10 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Op = ConvertOpToType(Op, T->getPointerTo(), CurBBNo);
       if (Op == nullptr)
         return Error(InvalidTypeForValue, "Can't convert cast to type");
-      I = new LoadInst(Op, "", false, (1 << Record[OpNum]) >> 1);
+      unsigned Alignment;
+      if (std::error_code EC = getAlignmentValue(Record[OpNum], Alignment))
+        return EC;
+      I = new LoadInst(Op, "", false, Alignment);
       break;
     }
     case naclbitc::FUNC_CODE_INST_STORE: {
@@ -1514,7 +1546,10 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
       Ptr = ConvertOpToType(Ptr, Val->getType()->getPointerTo(), CurBBNo);
       if (Ptr == nullptr)
         return Error(InvalidTypeForValue, "Can't convert cast to type");
-      I = new StoreInst(Val, Ptr, false, (1 << Record[OpNum]) >> 1);
+      unsigned Alignment;
+      if (std::error_code EC = getAlignmentValue(Record[OpNum], Alignment))
+       return EC;
+      I = new StoreInst(Val, Ptr, false, Alignment);
       break;
     }
     case naclbitc::FUNC_CODE_INST_CALL:

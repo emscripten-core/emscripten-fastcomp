@@ -39,6 +39,12 @@ ReportWarningsAsErrors(
     cl::desc("Report warnings as errors."),
     cl::init(false));
 
+static cl::opt<bool>
+IgnorePNaClABIChecks(
+    "ignore-pnaclabi-checks",
+    cl::desc("Ignore checking bitcode for PNaCl ABI violations"),
+    cl::init(false));
+
 /// Class to handle sign rotations in a human readable form. That is,
 /// the sign is in the low bit. The two special cases are:
 /// 1) -1 is true for i1.
@@ -933,7 +939,8 @@ public:
   /// Verifies the given integer operator has the right type.  Returns
   /// the operator.
   const char *VerifyIntArithmeticOp(const char *Op, Type *OpTy) {
-    if (!PNaClABITypeChecker::isValidIntArithmeticType(OpTy)) {
+    if (!IgnorePNaClABIChecks &&
+        !PNaClABITypeChecker::isValidIntArithmeticType(OpTy)) {
       Errors() << Op << ": Invalid integer arithmetic type: " << *OpTy;
     }
     return Op;
@@ -942,7 +949,8 @@ public:
   // Checks the Alignment for loading/storing a value of type Ty. If
   // invalid, generates an appropriate error message.
   void VerifyMemoryAccessAlignment(const char *Op, Type *Ty,
-                                   uint64_t Alignment) {
+                                   unsigned Alignment) {
+    if (IgnorePNaClABIChecks) return;
     if (!PNaClABIProps::isAllowedAlignment(&DL, Alignment, Ty)) {
       if (unsigned Expected = NaClGetExpectedLoadStoreAlignment(DL, Ty)) {
         Errors() << Op << ": Illegal alignment for " << *Ty
@@ -1797,12 +1805,14 @@ void NaClDisTypesParser::ProcessRecord() {
       case 16:
       case 32:
       case 64: {
-          break;
-        }
+        break;
+      }
       default:
-        Errors() << "Integer record contains bad integer size: "
-                 << Size << "\n";
-        Size = 32;
+        if (!IgnorePNaClABIChecks) {
+          Errors() << "Integer record contains bad integer size: "
+                   << Size << "\n";
+          Size = 32;
+        }
         break;
     }
     Type *IntType = GetIntegerType(Size);
@@ -1832,7 +1842,8 @@ void NaClDisTypesParser::ProcessRecord() {
     }
     uint64_t NumElements = Values[0];
     Type *VecType = VectorType::get(BaseType, NumElements);
-    if (!PNaClABITypeChecker::isValidVectorType(VecType)) {
+    if (!IgnorePNaClABIChecks &&
+        !PNaClABITypeChecker::isValidVectorType(VecType)) {
       Errors() << "Vector type " << *VecType << " not allowed.\n";
     }
     Tokens() << NextTypeId() << Space() << "=" << Space()
@@ -2207,7 +2218,7 @@ void NaClDisValueSymtabParser::ProcessRecord() {
                  << "\n";
         break;
       }
-      if (!PNaClABITypeChecker::IsPointerEquivType(
+      if (!IgnorePNaClABIChecks && !PNaClABITypeChecker::IsPointerEquivType(
               IntrinTy->getReturnType(), FcnTy->getReturnType())) {
         Errors() << "Intrinsic " << Name
                  << " expects return type " << *IntrinTy->getReturnType()
@@ -2215,7 +2226,7 @@ void NaClDisValueSymtabParser::ProcessRecord() {
         break;
       }
       for (size_t i = 0; i < FcnTy->getNumParams(); ++i) {
-        if (!PNaClABITypeChecker::IsPointerEquivType(
+        if (!IgnorePNaClABIChecks && !PNaClABITypeChecker::IsPointerEquivType(
                 IntrinTy->getParamType(i),
                 FcnTy->getParamType(i))) {
           Errors() << "Intrinsic " << Name
@@ -2463,14 +2474,18 @@ private:
   const char *VerifyIntegerOrVectorOp(const char *Op, Type *OpTy) {
     Type *BaseTy = OpTy;
     if (OpTy->isVectorTy()) {
-      if (!PNaClABITypeChecker::isValidVectorType(OpTy)) {
+      if (!IgnorePNaClABIChecks &&
+          !PNaClABITypeChecker::isValidVectorType(OpTy)) {
         Errors() << Op << ": invalid vector type: " << *OpTy << "\n";
         return Op;
       }
       BaseTy = OpTy->getVectorElementType();
     }
     if (BaseTy->isIntegerTy()) {
-      if (PNaClABITypeChecker::isValidScalarType(BaseTy)) return Op;
+      if (IgnorePNaClABIChecks ||
+          PNaClABITypeChecker::isValidScalarType(BaseTy)) {
+        return Op;
+      }
       Errors() << Op << ": Invalid integer type: " << *OpTy << "\n";
     } else {
       Errors() << Op << ": Expects integer type. Found: " << *OpTy << "\n";
@@ -2484,7 +2499,8 @@ private:
   const char *VerifyFloatingOrVectorOp(const char *Op, Type *OpTy) {
     Type *BaseTy = OpTy;
     if (OpTy->isVectorTy()) {
-      if (!PNaClABITypeChecker::isValidVectorType(OpTy)) {
+      if (!IgnorePNaClABIChecks &&
+          !PNaClABITypeChecker::isValidVectorType(OpTy)) {
         Errors() << Op << ": invalid vector type: " << *OpTy << "\n";
         return Op;
       }
@@ -2495,7 +2511,8 @@ private:
                << OpTy << "\n";
       return Op;
     }
-    if (!PNaClABITypeChecker::isValidScalarType(BaseTy)) {
+    if (!IgnorePNaClABIChecks &&
+        !PNaClABITypeChecker::isValidScalarType(BaseTy)) {
       Errors() << Op << ": type not allowed: " << OpTy << "\n";
     }
     return Op;
@@ -2505,6 +2522,7 @@ private:
   /// OpTy is either a (non-void) scalar, or a vector of scalars. If
   /// not, generates an appropriate error message. Always returns Op.
   const char *VerifyScalarOrVectorOp(const char *Op, Type *OpTy) {
+    if (IgnorePNaClABIChecks) return Op;
     if (PNaClABITypeChecker::isValidScalarType(OpTy)) {
       if (OpTy->isVoidTy())
         Errors() << Op << ": Type void not allowed\n";
@@ -2519,7 +2537,8 @@ private:
                            uint32_t IdxValue) {
     Type *VecType = GetValueType(VecValue);
     Type *IdxType = GetValueType(IdxValue);
-    if (!PNaClABITypeChecker::isValidVectorType(VecType)){
+    if (!IgnorePNaClABIChecks &&
+        !PNaClABITypeChecker::isValidVectorType(VecType)){
       if (VecType->isVectorTy())
         Errors() << Op << ": Vector type " << *VecType << " not allowed\n";
       else
@@ -2546,6 +2565,11 @@ private:
                << " out of range. Not in [1," << ExpectedNumBbs << "]\n";
     }
   }
+
+  /// Convert alignment exponent (i.e. power of two (or zero)) to the
+  /// corresponding alignment to use. If alignment is too large, it generates
+  /// an error message and returns 0.
+  unsigned getAlignmentValue(uint64_t Exponent);
 };
 
 NaClDisFunctionParser::NaClDisFunctionParser(
@@ -2578,8 +2602,14 @@ NaClDisFunctionParser::NaClDisFunctionParser(
 void NaClDisFunctionParser::PrintBlockHeader() {
   Tokens() << "function" << Space();
   BitcodeId FunctionId('f', FcnId);
-  if (!(Context->IsFunctionIntrinsic(FcnId)
-        || PNaClABITypeChecker::isValidFunctionType(FcnTy))) {
+  bool InvalidSignature = true; // until proven otherwise.
+  if (Context->IsFunctionIntrinsic(FcnId))
+    InvalidSignature = false;
+  else if (IgnorePNaClABIChecks ||
+           PNaClABITypeChecker::isValidFunctionType(FcnTy)) {
+      InvalidSignature = false;
+  }
+  if (InvalidSignature) {
     Errors() << "Invalid type signature for "
              << BitcodeId('f', FcnId) << ": " << *FcnTy << "\n";
   }
@@ -2766,6 +2796,23 @@ const char *NaClDisFunctionParser::GetFcmpPredicate(uint32_t Opcode) {
   }
 }
 
+namespace {
+
+static const unsigned MaxAlignmentExponent = 29;
+static_assert(
+    (1u << MaxAlignmentExponent) == Value::MaximumAlignment,
+    "Inconsistency between Value.MaxAlignment and PNaCl alignment limit");
+}
+
+unsigned NaClDisFunctionParser::getAlignmentValue(uint64_t Exponent) {
+  if (Exponent > MaxAlignmentExponent + 1) {
+    Errors() << "Alignment can't be greater than 2**" << MaxAlignmentExponent
+             << ". Found: 2**" << (Exponent - 1) << "\n";
+    return 0;
+  }
+  return (1 << static_cast<unsigned>(Exponent)) >> 1;
+}
+
 bool NaClDisFunctionParser::ParseBlock(unsigned BlockID) {
   ObjDumpSetRecordBitAddress(GetBlock().GetStartBit());
   switch (BlockID) {
@@ -2914,9 +2961,11 @@ void NaClDisFunctionParser::ProcessRecord() {
     if (OpType != CondType)
       Errors() << "Specified select type " << *OpType << " but found: "
                << *CondType << "\n";
-    if (!PNaClABITypeChecker::isValidSwitchConditionType(CondType))
+    if (!IgnorePNaClABIChecks &&
+        !PNaClABITypeChecker::isValidSwitchConditionType(CondType)) {
       Errors() << PNaClABITypeChecker::ExpectedSwitchConditionType(CondType)
                << "\n";
+    }
     uint32_t DefaultBb = Values[2];
     unsigned NumCases = Values[3];
     VerifyBranchRange(DefaultBb);
@@ -2995,8 +3044,8 @@ void NaClDisFunctionParser::ProcessRecord() {
     uint32_t SizeOp = RelativeToAbsId(Values[0]);
     Type* SizeType = GetValueType(SizeOp);
     BitcodeId SizeId(GetBitcodeId(SizeOp));
-    uint64_t Alignment = (1 << Values[1]) >> 1;
-    if (!PNaClABIProps::isAllocaSizeType(SizeType))
+    unsigned Alignment = getAlignmentValue(Values[1]);
+    if (!IgnorePNaClABIChecks && !PNaClABIProps::isAllocaSizeType(SizeType))
       Errors() << PNaClABIProps::ExpectedAllocaSizeType() << "\n";
     // TODO(kschimpf) Are there any constraints on alignment?
     Tokens() << NextInstId() << Space() << "=" << Space() << StartCluster()
@@ -3015,7 +3064,7 @@ void NaClDisFunctionParser::ProcessRecord() {
                << Values.size() << "\n";
       break;
     }
-    uint64_t Alignment = (1 << Values[1]) >> 1;
+    unsigned Alignment = getAlignmentValue(Values[1]);
     Type *LoadType = GetType(Values[2]);
     VerifyScalarOrVectorOp("load", LoadType);
     Context->VerifyMemoryAccessAlignment("load", LoadType, Alignment);
@@ -3035,7 +3084,7 @@ void NaClDisFunctionParser::ProcessRecord() {
                << Values.size() << "\n";
       break;
     }
-    uint64_t Alignment = (1 << Values[2]) >> 1;
+    unsigned Alignment = getAlignmentValue(Values[2]);
     uint32_t Val = RelativeToAbsId(Values[1]);
     Type *ValType = GetValueType(Val);
     VerifyScalarOrVectorOp("store", ValType);
@@ -3186,7 +3235,8 @@ void NaClDisFunctionParser::ProcessRecord() {
     uint32_t FcnId = RelativeToAbsId(Values[1]);
     if (!naclbitc::DecodeCallingConv(Values[0]>>1, CallingConv))
       Errors() << "Call unknown calling convention:" << (Values[0]>>1) << "\n";
-    if (!PNaClABIProps::isValidCallingConv(CallingConv)) {
+    if (!IgnorePNaClABIChecks &&
+        !PNaClABIProps::isValidCallingConv(CallingConv)) {
       Errors() << "Call uses disallowed calling convention: "
                << PNaClABIProps::CallingConvName(CallingConv) << "("
                << CallingConv << ")\n";
@@ -3220,8 +3270,11 @@ void NaClDisFunctionParser::ProcessRecord() {
     if (IsTailCall) {
       Tokens() << "tail" << Space();
     }
-    if (CheckArgRetTypes && !PNaClABITypeChecker::isValidParamType(ReturnType))
+    if (CheckArgRetTypes &&
+        !IgnorePNaClABIChecks &&
+        !PNaClABITypeChecker::isValidParamType(ReturnType)) {
       Errors() << "Invalid return type: " << *ReturnType << "\n";
+    }
     Tokens() << "call" << Space();
     if (CallingConv != CallingConv::C) {
       Tokens() << PNaClABIProps::CallingConvName(CallingConv) << Space();
@@ -3234,9 +3287,12 @@ void NaClDisFunctionParser::ProcessRecord() {
     for (size_t i = ArgIndex; i < Values.size(); ++i, ++ParamIndex) {
       uint32_t ParamId = RelativeToAbsId(Values[i]);
       Type *ParamType = GetValueType(ParamId);
-      if (CheckArgRetTypes && !PNaClABITypeChecker::isValidParamType(ParamType))
+      if (CheckArgRetTypes &&
+          !IgnorePNaClABIChecks &&
+          !PNaClABITypeChecker::isValidParamType(ParamType)) {
         Errors() << "invalid type for parameter " << i << ": "
                  << *ParamType << "\n";
+      }
       if (FcnType) {
         if (ParamIndex < FcnType->getNumParams()) {
           Type *ExpectedType = FcnType->getParamType(ParamIndex);
@@ -3316,6 +3372,7 @@ NaClDisModuleParser::~NaClDisModuleParser() {
     }
     if (FunctionType *FcnTy = dyn_cast<FunctionType>(GetFunctionValueType(i))) {
       if (!Context->IsFunctionIntrinsic(i) &&
+          !IgnorePNaClABIChecks &&
           !PNaClABITypeChecker::isValidFunctionType(FcnTy)) {
         Context->SetRecordAddressToFunctionIdAddress(i);
         Errors() << "Invalid type signature for "
@@ -3389,9 +3446,11 @@ void NaClDisModuleParser::ProcessRecord() {
     if (!naclbitc::DecodeLinkage(Values[3], Linkage)) {
       Errors() << "Unknown linkage value: " << Values[3] << "\n";
     } else {
-      if (!PNaClABIProps::isValidGlobalLinkage(Linkage))
+      if (!IgnorePNaClABIChecks &&
+          !PNaClABIProps::isValidGlobalLinkage(Linkage)) {
         Errors() << "Disallowed linkage type: "
                  << PNaClABIProps::LinkageName(Linkage) << "\n";
+      }
       Tokens() << Space() << PNaClABIProps::LinkageName(Linkage);
     }
     CallingConv::ID CallingConv;
