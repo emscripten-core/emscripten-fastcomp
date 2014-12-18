@@ -28,3 +28,29 @@ entry:
   %cmp = select <4 x i1> %cond, <4 x float> %a, <4 x float> %b
   ret <4 x float> %cmp
 }
+
+; CHECK: function _test2($a,$b,$cond) {
+; CHECK:  $a = SIMD_int32x4($a);
+; CHECK:  $b = SIMD_int32x4($b);
+; CHECK:  $cond = $cond|0;
+; CHECK:  $cmp = $cond ? $a : $b;
+; CHECK:  return (SIMD_int32x4($cmp));
+; CHECK: }
+define <4 x i32> @test2(<4 x i32> %a, <4 x i32> %b, i1 %cond) nounwind {
+entry:
+  %cmp = select i1 %cond, <4 x i32> %a, <4 x i32> %b
+  ret <4 x i32> %cmp
+}
+
+; CHECK: function _test3($a,$b,$cond) {
+; CHECK:  $a = SIMD_float32x4($a);
+; CHECK:  $b = SIMD_float32x4($b);
+; CHECK:  $cond = $cond|0;
+; CHECK:  $cmp = $cond ? $a : $b;
+; CHECK:  return (SIMD_float32x4($cmp));
+; CHECK: }
+define <4 x float> @test3(<4 x float> %a, <4 x float> %b, i1 %cond) nounwind {
+entry:
+  %cmp = select i1 %cond, <4 x float> %a, <4 x float> %b
+  ret <4 x float> %cmp
+}

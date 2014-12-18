@@ -1368,8 +1368,11 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
       Code << ", ";
     int Mask = Indices[i];
     if (Mask >= OpNumElements)
-        Mask = Mask - OpNumElements + 4;
-    Code << Mask;
+      Mask = Mask - OpNumElements + 4;
+    if (Mask < 0)
+      Code << 0;
+    else
+      Code << Mask;
   }
 
   Code << ")";
