@@ -1642,8 +1642,13 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         const Value *P = LI->getPointerOperand();
         std::string PS = getValueAsStr(P);
 
-        // Determine if this is a partial store.
-        std::string Part = (std::string[]) { "X", "XY", "XYZ", "" }[VT->getNumElements() - 1];
+        // Determine if this is a partial load.
+        static const std::string partialAccess[4] = { "X", "XY", "XYZ", "" };
+        if (VT->getNumElements() < 1 || VT->getNumElements() > 4) {
+          error("invalid number of lanes in SIMD operation!");
+          break;
+        }
+        const std::string &Part = partialAccess[VT->getNumElements() - 1];
 
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
@@ -1687,7 +1692,12 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
 
       // Determine if this is a partial store.
-      std::string Part = (std::string[]) { "X", "XY", "XYZ", "" }[VT->getNumElements() - 1];
+      static const std::string partialAccess[4] = { "X", "XY", "XYZ", "" };
+      if (VT->getNumElements() < 1 || VT->getNumElements() > 4) {
+        error("invalid number of lanes in SIMD operation!");
+        return false;
+      }
+      const std::string &Part = partialAccess[VT->getNumElements() - 1];
 
       if (VT->getElementType()->isIntegerTy()) {
         Code << "SIMD_int32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
