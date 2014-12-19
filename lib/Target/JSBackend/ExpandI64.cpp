@@ -1139,6 +1139,7 @@ bool ExpandI64::runOnModule(Module &M) {
         Phi->addIncoming(Phi->getIncomingValue(Index), Change.NewBB);
       }
     }
+    PhiBlockChanges.clear();
 
     // We only visited blocks found by a DFS walk from the entry, so we haven't
     // visited any unreachable blocks, and they may still contain illegal
