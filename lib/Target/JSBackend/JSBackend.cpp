@@ -2365,7 +2365,7 @@ void JSWriter::printFunctionBody(const Function *F) {
     if (!LastCurly) LastCurly = buffer;
     char *FinalReturn = strstr(LastCurly, "return ");
     if (!FinalReturn) {
-      Out << " return " << getCast(getConstant(UndefValue::get(RT)), RT, ASM_NONSPECIFIC) << ";\n";
+      Out << " return " << getParenCast(getConstant(UndefValue::get(RT)), RT, ASM_NONSPECIFIC) << ";\n";
     }
   }
 }
