@@ -1027,7 +1027,17 @@ Instruction *InstCombiner::visitShuffleVectorInst(ShuffleVectorInst &SVI) {
 
   // If the result mask is equal to one of the original shuffle masks,
   // or is a splat, do the replacement.
-  if (isSplat || newMask == LHSMask || newMask == RHSMask || newMask == Mask) {
+  //
+  // XXX EMSCRIPTEN: Add '|| true' so that we always do the replacement.
+  // We're targetting SIMD.js, so there's less of an expectation that a
+  // particular shuffle mask will always map onto a particular instruction on
+  // a particular ISA because we aren't targetting a particular ISA (what the
+  // JS engine does is another story). We may wish to re-evaluate this choice
+  // as we move on to higher-element-count vectors, but especially for now this
+  // is quite desirable.
+  if (isSplat || newMask == LHSMask || newMask == RHSMask || newMask == Mask ||
+      true)
+  {
     SmallVector<Constant*, 16> Elts;
     Type *Int32Ty = Type::getInt32Ty(SVI.getContext());
     for (unsigned i = 0, e = newMask.size(); i != e; ++i) {
