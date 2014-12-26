@@ -195,7 +195,7 @@ namespace {
     formatted_raw_ostream& nl(formatted_raw_ostream &Out, int delta = 0);
 
   private:
-    void printCommaSeparated(const HeapData v);
+    int printCommaSeparated(const HeapData v);
     int printEscapedString(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
@@ -2463,16 +2463,16 @@ void JSWriter::printModuleBody() {
   } else {
     // TODO fix commas
     Out << "[";
-    printCommaSeparated(GlobalData64);
+    int num_bytes = printCommaSeparated(GlobalData64);
     if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
       Out << ",";
     }
-    printCommaSeparated(GlobalData32);
+    num_bytes += printCommaSeparated(GlobalData32);
     if (GlobalData32.size() > 0 && GlobalData8.size() > 0) {
       Out << ",";
     }
-    printCommaSeparated(GlobalData8);
-    Out << "], ";
+    num_bytes += printCommaSeparated(GlobalData8);
+    Out << "] /* contains " << num_bytes << " bytes */, ";
   }
   Out << "\"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);";
 
@@ -2873,14 +2873,87 @@ bool JSWriter::canReloop(const Function *F) {
 
 // main entry
 
-void JSWriter::printCommaSeparated(const HeapData data) {
+int JSWriter::printCommaSeparated(const HeapData data) {
+  int num_bytes = 0;
   for (HeapData::const_iterator I = data.begin();
        I != data.end(); ++I) {
     if (I != data.begin()) {
       Out << ",";
     }
     Out << (int)*I;
+    ++num_bytes;
   }
+  return num_bytes;
+}
+
+int JSWriter::printEscapedString(const HeapData data) {
+  int num_bytes = 0;
+  char buf[5];
+
+  for (std::vector<unsigned char>::const_iterator it=data.begin(); it != data.end(); ++it) {
+    unsigned char value = *it;
+    ++num_bytes;
+
+    switch(value) {
+      case '\\':
+        Out << "\\\\";
+        break;
+      case '\"':
+        Out << "\\\"";
+        break;
+      case '\t':
+        Out << "\\t";
+        break;
+      case '\n':
+        Out << "\\n";
+        break;
+      case '\b':
+        Out << "\\b";
+        break;
+      case '\f':
+        Out << "\\f";
+        break;
+      case '\r':
+        Out << "\\r";
+        break;
+      case '\v':
+        Out << "\\v";
+        break;
+      case '\0':
+        // we cannot print \0 at last byte because another byte string may follow
+        if ((it+1) != data.end() && ((*(it+1) < '0') || (*(it+1) > '9'))) {
+          Out << "\\0";
+        } else {
+          Out << "\\x00";
+        }
+        break;
+      default:
+        if (value < static_cast<unsigned char>('\x20')) {
+          if ((it+1) != data.end() && ((*(it+1) < '0') || (*(it+1) > '9'))) {
+            // Octal escape sequence for remaining C0 control characters
+            snprintf(buf, sizeof(buf), "\\%o", static_cast<unsigned int>(value));
+            Out << buf;
+          } else {
+            // If followed by digit, we need to use fixed-length hex escape code
+            snprintf(buf, sizeof(buf), "\\x%x", static_cast<unsigned int>(value));
+            Out << buf;
+          }
+        } else if (value >= static_cast<unsigned char>('\x20') && value < static_cast<unsigned char>('\x7f')) {
+          // Printable Latin 1 characters (1-byte UTF-8 representation)
+          Out << value;
+        } else if (value >= static_cast<unsigned char>('\x7f') && value < static_cast<unsigned char>('\xa0')) {
+          // Hex escape sequence for DEL and C1 control characters
+          snprintf(buf, sizeof(buf), "\\x%x", static_cast<unsigned int>(value));
+          Out << buf;
+        } else {
+          // Printable Latin 1 Supplement characters (2-byte UTF-8 representation)
+          Out << static_cast<unsigned char>(((value & 0xc0) >> 6) | 0xc0);
+          Out << static_cast<unsigned char>(value & 0xbf);
+        } 
+    }
+  }
+
+  return num_bytes;
 }
 
 int JSWriter::printEscapedString(const HeapData data) {
