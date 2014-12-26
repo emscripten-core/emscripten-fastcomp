@@ -45,6 +45,8 @@
 #include <cstdio>
 #include <map>
 #include <set> // TODO: unordered_set?
+#include <sstream>
+
 using namespace llvm;
 
 #include <OptPasses.h>
@@ -97,6 +99,11 @@ static cl::opt<int>
 GlobalBase("emscripten-global-base",
            cl::desc("Where global variables start out in memory (see emscripten GLOBAL_BASE option)"),
            cl::init(8));
+
+static cl::opt<bool>
+Utf8StaticMemory("emscripten-utf8-static-memory",
+                 cl::desc("Represents static memory as escaped UTF-8 string."),
+                 cl::init(false));
 
 
 extern "C" void LLVMInitializeJSBackendTarget() {
@@ -189,6 +196,7 @@ namespace {
 
   private:
     void printCommaSeparated(const HeapData v);
+    int printEscapedString(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
     void parseConstant(const std::string& name, const Constant* CV, bool calculate);
@@ -2445,18 +2453,28 @@ void JSWriter::printModuleBody() {
 
   assert(GlobalData32.size() == 0 && GlobalData8.size() == 0); // FIXME when we use optimal constant alignments
 
-  // TODO fix commas
-  Out << "/* memory initializer */ allocate([";
-  printCommaSeparated(GlobalData64);
-  if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
-    Out << ",";
+  Out << "/* memory initializer */ allocate(";
+  if (Utf8StaticMemory) {
+    Out << "\"";
+    int num_bytes = printEscapedString(GlobalData64);
+    num_bytes += printEscapedString(GlobalData32);
+    num_bytes += printEscapedString(GlobalData8);
+    Out << "\" /* contains " << num_bytes << " bytes */, ";
+  } else {
+    // TODO fix commas
+    Out << "[";
+    printCommaSeparated(GlobalData64);
+    if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
+      Out << ",";
+    }
+    printCommaSeparated(GlobalData32);
+    if (GlobalData32.size() > 0 && GlobalData8.size() > 0) {
+      Out << ",";
+    }
+    printCommaSeparated(GlobalData8);
+    Out << "], ";
   }
-  printCommaSeparated(GlobalData32);
-  if (GlobalData32.size() > 0 && GlobalData8.size() > 0) {
-    Out << ",";
-  }
-  printCommaSeparated(GlobalData8);
-  Out << "], \"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);";
+  Out << "\"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);";
 
   // Emit metadata for emcc driver
   Out << "\n\n// EMSCRIPTEN_METADATA\n";
@@ -2863,6 +2881,70 @@ void JSWriter::printCommaSeparated(const HeapData data) {
     }
     Out << (int)*I;
   }
+}
+
+int JSWriter::printEscapedString(const HeapData data) {
+  int num_bytes = 0;
+  for (std::vector<unsigned char>::const_iterator it=data.begin(); it != data.end(); ++it) {
+    unsigned char value = *it;
+    ++num_bytes;
+
+    switch(value) {
+      case '\\':
+        Out << "\\\\";
+        break;
+      case '\"':
+        Out << "\\\"";
+        break;
+      case '\t':
+        Out << "\\t";
+        break;
+      case '\n':
+        Out << "\\n";
+        break;
+      case '\b':
+        Out << "\\b";
+        break;
+      case '\f':
+        Out << "\\f";
+        break;
+      case '\r':
+        Out << "\\r";
+        break;
+      case '\v':
+        Out << "\\v";
+        break;
+      case '\0':
+        // we cannot print \0 at last byte because another byte string may follow
+        if ((it+1) != data.end() && ((*(it+1) < '0') || (*(it+1) > '9'))) {
+          Out << "\\0";
+        } else {
+          Out << "\\x00";
+        }
+        break;
+      default:
+        if (value < 0x20) {
+          // Octal escape sequence
+          std::stringstream stream;
+          stream << "\\" << std::oct << value;
+          Out << stream.str();
+        } else if (value >= 0x7f && value < 0xa0) {
+          // Hex escape sequence
+          std::stringstream stream;
+          stream << "\\x" << std::hex << value;
+          Out << stream.str();
+        } else if (value >= 0xa0) {
+          // Printable Latin 1 Supplement characters (2-byte UTF-8)
+          Out << static_cast<unsigned char>(((value & 0xc0) >> 6) | 0xc0);
+          Out << static_cast<unsigned char>(value & 0x80);
+        } else {
+          // Printable Latin 1 characters (1-byte UTF-8)
+          Out << value;
+        } 
+    }
+  }
+
+  return num_bytes;
 }
 
 void JSWriter::printProgram(const std::string& fname,
