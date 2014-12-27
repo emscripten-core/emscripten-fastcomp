@@ -319,6 +319,7 @@ void initializeRewriteLLVMIntrinsicsPass(PassRegistry&);
 void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
 void initializeSandboxIndirectCallsPass(PassRegistry&);
 void initializeSandboxMemoryAccessesPass(PassRegistry&);
+void initializeSimplifyAllocasPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 void initializeStripModuleFlagsPass(PassRegistry&);

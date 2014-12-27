@@ -179,6 +179,7 @@ int main(int argc, char **argv) {
   initializeRewritePNaClLibraryCallsPass(Registry);
   initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
+  initializeSimplifyAllocasPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);

@@ -345,110 +345,19 @@ define i16 @load_global_bitcast() {
 ; CHECK-NEXT: ret i16 %val
 
 
+; Check that unsimplified allocas are properly handled:
 declare void @receive_alloca(%struct* %ptr)
-declare void @receive_vector_alloca(<4 x i32>* %ptr)
 
-define void @alloca_fixed() {
-  %buf = alloca %struct, align 128
-  call void @receive_alloca(%struct* %buf)
-  ret void
-}
-; CHECK: define void @alloca_fixed() {
-; CHECK-NEXT: %buf = alloca i8, i32 8, align 128
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
-
-; When the size passed to alloca is a constant, it should be a
-; constant in the output too.
-define void @alloca_fixed_array() {
-  %buf = alloca %struct, i32 100
-  call void @receive_alloca(%struct* %buf)
-  ret void
-}
-; CHECK: define void @alloca_fixed_array() {
-; CHECK-NEXT: %buf = alloca i8, i32 800, align 8
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
-
-define void @alloca_fixed_vector() {
-  %buf = alloca <4 x i32>, align 128
-  call void @receive_vector_alloca(<4 x i32>* %buf)
-  ret void
-}
-; CHECK: define void @alloca_fixed_vector() {
-; CHECK-NEXT: %buf = alloca i8, i32 16, align 128
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_vector_alloca(i32 %buf.asint)
-
-define void @alloca_variable(i32 %size) {
-  %buf = alloca %struct, i32 %size
-  call void @receive_alloca(%struct* %buf)
-  ret void
-}
-; CHECK: define void @alloca_variable(i32 %size) {
-; CHECK-NEXT: %buf.alloca_mul = mul i32 8, %size
-; CHECK-NEXT: %buf = alloca i8, i32 %buf.alloca_mul
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
-
-define void @alloca_alignment_i32() {
-  %buf = alloca i32
-  ret void
-}
-; CHECK: void @alloca_alignment_i32() {
-; CHECK-NEXT: alloca i8, i32 4, align 4
-
-define void @alloca_alignment_double() {
-  %buf = alloca double
-  ret void
-}
-; CHECK: void @alloca_alignment_double() {
-; CHECK-NEXT: alloca i8, i32 8, align 8
-
-define void @alloca_alignment_vector() {
-  %buf = alloca <4 x i32>
-  ret void
-}
-; CHECK: void @alloca_alignment_vector() {
-; CHECK-NEXT: alloca i8, i32 16, align 16
-
-define void @alloca_lower_alignment() {
-  %buf = alloca i32, align 1
-  ret void
-}
-; CHECK: void @alloca_lower_alignment() {
-; CHECK-NEXT: alloca i8, i32 4, align 1
-
-
-; This tests for a bug in which, when processing the store's %buf2
-; operand, ReplacePtrsWithInts accidentally strips off the ptrtoint
-; cast that it previously introduced for the 'alloca', causing an
-; internal sanity check to fail.
-define void @alloca_cast_stripping() {
-  %buf = alloca i32
-  %buf1 = ptrtoint i32* %buf to i32
-  %buf2 = inttoptr i32 %buf1 to i32*
-  store i32 0, i32* %buf2
-  ret void
-}
-; CHECK: define void @alloca_cast_stripping() {
-; CHECK-NEXT: %buf = alloca i8, i32 4
-; CHECK-NEXT: %buf.bc = bitcast i8* %buf to i32*
-; CHECK-NEXT: store i32 0, i32* %buf.bc
-
-define void @alloca_array_i64() {
-  %a = alloca i32, i64 1024
+define void @unsimplified_alloca() {
+  %a = alloca %struct
+  call void @receive_alloca(%struct* %a)
   unreachable
 }
-; CHECK-LABEL: define void @alloca_array_i64()
-; CHECK-NEXT:    %a = alloca i8, i32 4096
-
-define void @alloca_array_i8() {
-  %a = alloca i32, i8 128
-  unreachable
-}
-; CHECK-LABEL: define void @alloca_array_i8()
-; CHECK-NEXT:    %a = alloca i8, i32 512
+; CHECK-LABEL: define void @unsimplified_alloca()
+; CHECK-NEXT:    %a = alloca %struct
+; CHECK-NEXT:    %a.asint = ptrtoint %struct* %a to i32
+; CHECK-NEXT:    call void @receive_alloca(i32 %a.asint)
+; CHECK-NEXT:    unreachable
 
 
 define i1 @compare(i8* %ptr1, i8* %ptr2) {
@@ -495,8 +404,8 @@ define void @debug_declare(i32 %val) {
   ret void
 }
 ; CHECK: define void @debug_declare(i32 %val) {
-; CHECK-NEXT: %var = alloca i8, i32 4
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !2)
+; CHECK-NEXT: %var = alloca i32
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !2)
 ; This case is currently not converted.
 ; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !2)
 ; CHECK-NEXT: ret void
@@ -554,8 +463,9 @@ define void @alloca_lifetime_via_bitcast() {
   ret void
 }
 ; CHECK: define void @alloca_lifetime_via_bitcast() {
-; CHECK-NEXT: %buf = alloca i8, i32 4
+; CHECK-NEXT: %buf = alloca i32
 ; CHECK-NEXT: ret void
+
 
 define void @strip_invariant_markers() {
   %buf = alloca i8

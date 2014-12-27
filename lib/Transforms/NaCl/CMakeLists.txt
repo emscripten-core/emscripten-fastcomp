@@ -32,6 +32,7 @@ add_llvm_library(LLVMNaClTransforms
   RewriteAtomics.cpp
   RewriteLLVMIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp
+  SimplifyAllocas.cpp
   StripAttributes.cpp
   StripMetadata.cpp
   )

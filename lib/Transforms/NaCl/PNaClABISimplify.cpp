@@ -143,6 +143,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
   PM.add(createRemoveAsmMemoryPass());
+
+  PM.add(createSimplifyAllocasPass());
+
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
