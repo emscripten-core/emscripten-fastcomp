@@ -9,7 +9,7 @@
 
 LEVEL = ../..
 TESTNAME = Bitcode
-LINK_COMPONENTS := bitreader bitwriter bitanalysis naclbitreader naclbitwriter \
+LINK_COMPONENTS := bitreader bitwriter naclbitreader naclbitwriter \
      naclbitanalysis naclbittestutils
 
 include $(LEVEL)/Makefile.config
