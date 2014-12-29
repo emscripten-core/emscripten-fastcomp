@@ -33,14 +33,14 @@
 #include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/PassManager.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Support/GetElementPtrTypeIterator.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/DebugInfo.h"
+#include "llvm/IR/DebugInfo.h"
 #include <algorithm>
 #include <cstdio>
 #include <map>
@@ -159,7 +159,7 @@ namespace {
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
-    DataLayout *DL;
+    const DataLayout *DL;
 
     #include "CallHandlers.h"
 
@@ -175,7 +175,7 @@ namespace {
 
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesAll();
-      AU.addRequired<DataLayout>();
+      AU.addRequired<DataLayoutPass>();
       ModulePass::getAnalysisUsage(AU);
     }
 
@@ -1182,7 +1182,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   // is part of either such sequence, skip it for now; we'll process it when we
   // reach the end.
   if (III->hasOneUse()) {
-      const User *U = *III->use_begin();
+      const User *U = *III->user_begin();
       if (isa<InsertElementInst>(U))
           return;
       if (isa<ShuffleVectorInst>(U) &&
@@ -1998,8 +1998,10 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     gep_type_iterator GTI = gep_type_begin(GEP);
     int32_t ConstantOffset = 0;
     std::string text = getValueAsParenStr(GEP->getPointerOperand());
-    for (GetElementPtrInst::const_op_iterator I = llvm::next(GEP->op_begin()),
-                                              E = GEP->op_end();
+
+    GetElementPtrInst::const_op_iterator I = GEP->op_begin();
+    I++;
+    for (GetElementPtrInst::const_op_iterator E = GEP->op_end();
        I != E; ++I) {
       const Value *Index = *I;
       if (StructType *STy = dyn_cast<StructType>(*GTI++)) {
@@ -2881,7 +2883,7 @@ bool JSWriter::runOnModule(Module &M) {
   }
 
   TheModule = &M;
-  DL = &getAnalysis<DataLayout>();
+  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
 
   setupCallHandlers();
 
