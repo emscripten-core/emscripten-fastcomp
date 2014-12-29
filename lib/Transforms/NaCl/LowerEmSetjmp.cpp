@@ -49,9 +49,10 @@ using namespace llvm;
 
 bool valueEscapes(const Instruction *Inst) {
   const BasicBlock *BB = Inst->getParent();
-  for (Value::const_use_iterator UI = Inst->use_begin(),E = Inst->use_end();
+  for (Value::const_user_iterator UI = Inst->user_begin(),E = Inst->user_end();
        UI != E; ++UI) {
-    const Instruction *I = cast<Instruction>(*UI);
+    const User *U = *UI;
+    const Instruction *I = cast<Instruction>(U);
     if (I->getParent() != BB || isa<PHINode>(I))
       return true;
   }
@@ -204,8 +205,9 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   std::vector<Instruction*> ToErase;
 
   if (Setjmp) {
-    for (Instruction::use_iterator UI = Setjmp->use_begin(), UE = Setjmp->use_end(); UI != UE; ++UI) {
-      if (CallInst *CI = dyn_cast<CallInst>(*UI)) {
+    for (Instruction::user_iterator UI = Setjmp->user_begin(), UE = Setjmp->user_end(); UI != UE; ++UI) {
+      User *U = *UI;
+      if (CallInst *CI = dyn_cast<CallInst>(U)) {
         BasicBlock *SJBB = CI->getParent();
         // The tail is everything right after the call, and will be reached once when setjmp is
         // called, and later when longjmp returns to the setjmp

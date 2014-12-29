@@ -166,7 +166,7 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
       Function *CurFunction = AsyncFunctionsPending.back();
       AsyncFunctionsPending.pop_back();
 
-      for (Value::use_iterator UI = CurFunction->use_begin(), E = CurFunction->use_end(); UI != E; ++UI) {
+      for (Value::user_iterator UI = CurFunction->user_begin(), E = CurFunction->user_end(); UI != E; ++UI) {
         ImmutableCallSite ICS(*UI);
         if (!ICS) continue;
         // we only need those instructions calling the function
