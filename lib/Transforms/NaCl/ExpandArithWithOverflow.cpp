@@ -94,7 +94,7 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
   }
 
   for (CallInst *Call : Calls) {
-    Value *VariableArg;
+    Value *VariableArg, *VariableArg2;
     ConstantInt *ConstantArg;
     if (ConstantInt *C = dyn_cast<ConstantInt>(Call->getArgOperand(0))) {
       VariableArg = Call->getArgOperand(1);

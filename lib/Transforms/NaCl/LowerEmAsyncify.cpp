@@ -19,15 +19,15 @@
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Analysis/Dominators.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/InstIterator.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -68,12 +68,12 @@ namespace {
     bool runOnModule(Module &M);
 
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-      AU.addRequired<DataLayout>();
+      AU.addRequired<DataLayoutPass>();
       ModulePass::getAnalysisUsage(AU);
     }
 
   private:
-    DataLayout *DL;
+    const DataLayout *DL;
 
     Type *Void, *I1, *I32, *I32Ptr;
     FunctionType *VFunction, *I1Function, *I32PFunction;
@@ -197,7 +197,7 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
 }
 
 void LowerEmAsyncify::initTypesAndFunctions(void) {
-  DL = &getAnalysis<DataLayout>();
+  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
 
   // Data types
   Void = Type::getVoidTy(TheModule->getContext());
@@ -300,8 +300,9 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
   BasicBlock *EntryBlock = BasicBlock::Create(TheModule->getContext(), "", &F, &F.getEntryBlock());
   BranchInst::Create(AfterCallBlock, EntryBlock);
 
-  DominatorTree DT;
-  DT.runOnFunction(F);
+  DominatorTreeWrapperPass DTW;
+  DTW.runOnFunction(F);
+  DominatorTree& DT = DTW.getDomTree();
 
   // These blocks may be using some values defined at or before AsyncCallBlock
   BasicBlockSet Ramifications = FindReachableBlocksFrom(AfterCallBlock); 
@@ -698,9 +699,9 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
      *
      */
     if (!ToPromote.empty()) {
-      DominatorTree DT;
-      DT.runOnFunction(*CurCallbackFunc);
-      PromoteMemToReg(ToPromote, DT);
+      DominatorTreeWrapperPass DTW;
+      DTW.runOnFunction(*CurCallbackFunc);
+      PromoteMemToReg(ToPromote, DTW.getDomTree());
     }
 
     removeUnreachableBlocks(*CurCallbackFunc);

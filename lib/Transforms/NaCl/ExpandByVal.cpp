@@ -145,15 +145,6 @@ static bool ExpandCall(DataLayout *DL, InstType *Call) {
       // slot to form and the known alignment of the pointer specified
       // to the call site".
 
-      // XXX EMSCRIPTEN: we also need to take into account the "intrinsic"
-      //                 alignment of the structure being copied. The
-      //                 arg align may be "0" but the struct could only be
-      //                 2-byte aligned for example. This seems to contradict
-      //                 the quote above, so this might be a bug elsewhere
-      //                 in LLVM. FIXME
-      //                 https://code.google.com/p/nativeclient/issues/detail?id=3798
-      Alignment = AllocAlignment;
-
       Instruction *MemCpy = Builder.CreateMemCpy(CopyBuf, ArgPtr, ArgSize,
                                                  Alignment);
       MemCpy->setDebugLoc(Call->getDebugLoc());
