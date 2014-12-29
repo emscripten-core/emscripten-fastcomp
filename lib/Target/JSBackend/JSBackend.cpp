@@ -2677,7 +2677,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
     }
   } else if (const ConstantArray *CA = dyn_cast<ConstantArray>(CV)) {
     if (calculate) {
-      for (Constant::const_use_iterator UI = CV->use_begin(), UE = CV->use_end(); UI != UE; ++UI) {
+      for (Constant::const_user_iterator UI = CV->user_begin(), UE = CV->user_end(); UI != UE; ++UI) {
         if ((*UI)->getName() == "llvm.used") {
           // export the kept-alives
           for (unsigned i = 0; i < CA->getNumOperands(); i++) {
@@ -2831,7 +2831,7 @@ void JSWriter::calculateNativizedVars(const Function *F) {
         if (AI->getAllocatedType()->isAggregateType()) continue; // we do not nativize aggregates either
         // this is on the stack. if its address is never used nor escaped, we can nativize it
         bool Fail = false;
-        for (Instruction::const_use_iterator UI = I->use_begin(), UE = I->use_end(); UI != UE && !Fail; ++UI) {
+        for (Instruction::const_user_iterator UI = I->user_begin(), UE = I->user_end(); UI != UE && !Fail; ++UI) {
           const Instruction *U = dyn_cast<Instruction>(*UI);
           if (!U) { Fail = true; break; } // not an instruction, not cool
           switch (U->getOpcode()) {
