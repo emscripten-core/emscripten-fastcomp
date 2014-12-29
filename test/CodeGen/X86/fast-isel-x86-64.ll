@@ -56,7 +56,7 @@ define i32 @test3_nacl64() nounwind {
 ; NACL64_PIC: test3_nacl64:
 ; NACL64_PIC: movl G@GOTPCREL(%rip), %eax
 ; NACL64_PIC-NEXT: popq    %r11
-; NACL64_PIC-NEXT: nacljmp %r11, %r15
+; NACL64_PIC-NEXT: nacljmp %r11d, %r15
 }
 
 
@@ -317,7 +317,17 @@ define void @test23(i8* noalias sret %result) {
 ; NACL64: call
 ; NACL64: movl  %edi, %eax
 ; NACL64: popq %r11
-; NACL64: nacljmp %r11, %r15
+; NACL64: nacljmp %r11d, %r15
 }
 
 declare i8* @foo23()
+
+declare void @takesi32ptr(i32* %arg)
+
+; CHECK-LABEL: allocamaterialize
+define void @allocamaterialize() {
+  %a = alloca i32
+; CHECK: leaq {{.*}}, %rdi
+  call void @takesi32ptr(i32* %a)
+  ret void
+}

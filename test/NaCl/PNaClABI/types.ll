@@ -27,6 +27,7 @@ block:
 
   ; Allowed types
 
+  ; Scalars.
   phi i1 [ undef, %entry ]
   phi i8 [ undef, %entry ]
   phi i16 [ undef, %entry ]
@@ -34,6 +35,14 @@ block:
   phi i64 [ undef, %entry ]
   phi float [ undef, %entry ]
   phi double [ undef, %entry ]
+  ; Vectors.
+  phi <4 x i1> [ undef, %entry ]
+  phi <8 x i1> [ undef, %entry ]
+  phi <16 x i1> [ undef, %entry ]
+  phi <16 x i8> [ undef, %entry ]
+  phi <8 x i16> [ undef, %entry ]
+  phi <4 x i32> [ undef, %entry ]
+  phi <4 x float> [ undef, %entry ]
 ; CHECK-NOT: disallowed
 
 
@@ -84,9 +93,64 @@ block:
   phi <{ i8, i32 }> [ undef, %entry ]
 ; CHECK-NEXT: disallowed: bad operand: {{.*}} <{ i8, i32 }>
 
-  ; Vector types are disallowed
+  ; Vector types of weird bit width are disallowed
+  phi <1 x i1> [ undef, %entry ]
+  phi <3 x i1> [ undef, %entry ]
+  phi <17 x i1> [ undef, %entry ]
+  phi <1 x i32> [ undef, %entry ]
   phi <2 x i32> [ undef, %entry ]
+  phi <3 x i32> [ undef, %entry ]
+  phi <5 x i32> [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <1 x i1>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <3 x i1>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <17 x i1>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <1 x i32>
 ; CHECK-NEXT: disallowed: bad operand: {{.*}} <2 x i32>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <3 x i32>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <5 x i32>
+
+  ; i64 and double vectors are currently disallowed, and so are the
+  ; corresponding bool vectors.
+  phi <2 x i1> [ undef, %entry ]
+  phi <2 x i64> [ undef, %entry ]
+  phi <2 x double> [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <2 x i1>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <2 x i64>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <2 x double>
+
+  ; 256-bit width vectors are currently disallowed, and so are the
+  ; corresponding bool vectors.
+  phi <32 x i1> [ undef, %entry ]
+  phi <32 x i8> [ undef, %entry ]
+  phi <16 x i16> [ undef, %entry ]
+  phi <8 x i32> [ undef, %entry ]
+  phi <4 x i64> [ undef, %entry ]
+  phi <8 x float> [ undef, %entry ]
+  phi <4 x double> [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <32 x i1>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <32 x i8>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <16 x i16>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <8 x i32>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <4 x i64>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <8 x float>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <4 x double>
+
+  ; 512-bit width vectors are currently disallowed, and so are the
+  ; corresponding bool vectors.
+  phi <64 x i1> [ undef, %entry ]
+  phi <64 x i8> [ undef, %entry ]
+  phi <32 x i16> [ undef, %entry ]
+  phi <16 x i32> [ undef, %entry ]
+  phi <8 x i64> [ undef, %entry ]
+  phi <16 x float> [ undef, %entry ]
+  phi <8 x double> [ undef, %entry ]
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <64 x i1>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <64 x i8>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <32 x i16>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <16 x i32>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <8 x i64>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <16 x float>
+; CHECK-NEXT: disallowed: bad operand: {{.*}} <8 x double>
 
   ret void
 }
@@ -132,5 +196,11 @@ block:
   phi %struct.linked [ undef, %entry ]
 ; CHECK-NEXT: disallowed: bad operand: {{.*}} %struct.linked
 
+  ret void
+}
+
+
+; This stops the verifier from complaining about the lack of an entry point.
+define void @_start(i32 %arg) {
   ret void
 }

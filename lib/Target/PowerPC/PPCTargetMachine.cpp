@@ -26,6 +26,10 @@ static cl::
 opt<bool> DisableCTRLoops("disable-ppc-ctrloops", cl::Hidden,
                         cl::desc("Disable CTR loops for PPC"));
 
+static cl::opt<bool>
+VSXFMAMutateEarly("schedule-ppc-vsx-fma-mutation-early",
+  cl::Hidden, cl::desc("Schedule VSX FMA instruction mutation early"));
+
 extern "C" void LLVMInitializePowerPCTarget() {
   // Register the targets
   RegisterTargetMachine<PPC32TargetMachine> A(ThePPC32Target);
@@ -33,22 +37,12 @@ extern "C" void LLVMInitializePowerPCTarget() {
   RegisterTargetMachine<PPC64TargetMachine> C(ThePPC64LETarget);
 }
 
-PPCTargetMachine::PPCTargetMachine(const Target &T, StringRef TT,
-                                   StringRef CPU, StringRef FS,
-                                   const TargetOptions &Options,
+PPCTargetMachine::PPCTargetMachine(const Target &T, StringRef TT, StringRef CPU,
+                                   StringRef FS, const TargetOptions &Options,
                                    Reloc::Model RM, CodeModel::Model CM,
-                                   CodeGenOpt::Level OL,
-                                   bool is64Bit)
-  : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-    Subtarget(TT, CPU, FS, is64Bit),
-    DL(Subtarget.getDataLayoutString()), InstrInfo(*this),
-    FrameLowering(Subtarget), JITInfo(*this, is64Bit),
-    TLInfo(*this), TSInfo(*this),
-    InstrItins(Subtarget.getInstrItineraryData()) {
-
-  // The binutils for the BG/P are too old for CFI.
-  if (Subtarget.isBGP())
-    setMCUseCFI(false);
+                                   CodeGenOpt::Level OL, bool is64Bit)
+    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+      Subtarget(TT, CPU, FS, *this, is64Bit, OL) {
   initAsmInfo();
 }
 
@@ -92,11 +86,12 @@ public:
     return *getPPCTargetMachine().getSubtargetImpl();
   }
 
-  virtual bool addPreISel();
-  virtual bool addILPOpts();
-  virtual bool addInstSelector();
-  virtual bool addPreSched2();
-  virtual bool addPreEmitPass();
+  bool addPreISel() override;
+  bool addILPOpts() override;
+  bool addInstSelector() override;
+  bool addPreRegAlloc() override;
+  bool addPreSched2() override;
+  bool addPreEmitPass() override;
 };
 } // namespace
 
@@ -112,12 +107,8 @@ bool PPCPassConfig::addPreISel() {
 }
 
 bool PPCPassConfig::addILPOpts() {
-  if (getPPCSubtarget().hasISEL()) {
-    addPass(&EarlyIfConverterID);
-    return true;
-  }
-
-  return false;
+  addPass(&EarlyIfConverterID);
+  return true;
 }
 
 bool PPCPassConfig::addInstSelector() {
@@ -129,10 +120,20 @@ bool PPCPassConfig::addInstSelector() {
     addPass(createPPCCTRLoopsVerify());
 #endif
 
+  addPass(createPPCVSXCopyPass());
+  return false;
+}
+
+bool PPCPassConfig::addPreRegAlloc() {
+  initializePPCVSXFMAMutatePass(*PassRegistry::getPassRegistry());
+  insertPass(VSXFMAMutateEarly ? &RegisterCoalescerID : &MachineSchedulerID,
+             &PPCVSXFMAMutateID);
   return false;
 }
 
 bool PPCPassConfig::addPreSched2() {
+  addPass(createPPCVSXCopyCleanupPass());
+
   if (getOptLevel() != CodeGenOpt::None)
     addPass(&IfConverterID);
 

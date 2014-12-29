@@ -25,6 +25,10 @@ target datalayout = "p:32:32:32"
 @undef_value = global i32 undef
 ; CHECK: @undef_value = global [4 x i8] zeroinitializer
 
+%opaque = type opaque
+@opaque_extern = external global %opaque
+; CHECK: @opaque_extern = external global [0 x i8]
+
 
 ; Check various data types
 
@@ -98,6 +102,9 @@ target datalayout = "p:32:32:32"
 
 @implicit_alignment_double = global double zeroinitializer
 ; CHECK: @implicit_alignment_double = global [8 x i8] zeroinitializer, align 8
+
+@implicit_alignment_vector = global <16 x i8> zeroinitializer
+; CHECK: @implicit_alignment_vector = global [16 x i8] zeroinitializer, align 16
 
 ; FlattenGlobals is not allowed to increase the alignment of the
 ; variable when an explicit section is specified (although PNaCl does

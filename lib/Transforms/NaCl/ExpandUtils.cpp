@@ -29,7 +29,8 @@ Instruction *llvm::PhiSafeInsertPt(Use *U) {
 }
 
 void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
-  if (PHINode *PN = dyn_cast<PHINode>(U->getUser())) {
+  User *UR = U->getUser();
+  if (PHINode *PN = dyn_cast<PHINode>(UR)) {
     // A PHI node can have multiple incoming edges from the same
     // block, in which case all these edges must have the same
     // incoming value.
@@ -39,13 +40,8 @@ void llvm::PhiSafeReplaceUses(Use *U, Value *NewVal) {
         PN->setIncomingValue(I, NewVal);
     }
   } else {
-    U->getUser()->replaceUsesOfWith(U->get(), NewVal);
+    UR->replaceUsesOfWith(U->get(), NewVal);
   }
-}
-
-Instruction *llvm::CopyDebug(Instruction *NewInst, Instruction *Original) {
-  NewInst->setDebugLoc(Original->getDebugLoc());
-  return NewInst;
 }
 
 Function *llvm::RecreateFunction(Function *Func, FunctionType *NewType) {

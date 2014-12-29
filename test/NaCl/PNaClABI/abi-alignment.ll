@@ -95,3 +95,9 @@ define internal void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) 
   ret void
 }
 ; CHECK-NOT: disallowed
+
+
+; This stops the verifier from complaining about the lack of an entry point.
+define void @_start(i32 %arg) {
+  ret void
+}

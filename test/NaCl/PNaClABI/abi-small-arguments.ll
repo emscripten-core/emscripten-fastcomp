@@ -39,12 +39,12 @@ define void @bad_direct_calls() {
 
 define void @bad_indirect_calls(i32 %ptr) {
   %func1 = inttoptr i32 %ptr to void (i8)*
-; CHECK: bad result type: %func1
+; CHECK: bad result type: void (i8)* %func1
   call void %func1(i8 0)
 ; CHECK: bad function callee operand: {{.*}} %func1
 
   %func2 = inttoptr i32 %ptr to i16 ()*
-; CHECK: bad result type: %func2
+; CHECK: bad result type: i16 ()* %func2
   %result3 = call i16 %func2()
 ; CHECK: bad function callee operand: {{.*}} %func2
 

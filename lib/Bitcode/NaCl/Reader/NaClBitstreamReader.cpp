@@ -225,25 +225,33 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
 }
 
 
-void NaClBitstreamCursor::ReadAbbrevRecord() {
+void NaClBitstreamCursor::ReadAbbrevRecord(bool IsLocal,
+                                           NaClAbbrevListener *Listener) {
   NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
   unsigned NumOpInfo = ReadVBR(5);
+  if (Listener) Listener->Values.push_back(NumOpInfo);
   for (unsigned i = 0; i != NumOpInfo; ++i) {
     bool IsLiteral = Read(1) ? true : false;
+    if (Listener) Listener->Values.push_back(IsLiteral);
     if (IsLiteral) {
-      Abbv->Add(NaClBitCodeAbbrevOp(ReadVBR64(8)));
+      uint64_t Value = ReadVBR64(8);
+      if (Listener) Listener->Values.push_back(Value);
+      Abbv->Add(NaClBitCodeAbbrevOp(Value));
       continue;
     }
 
     NaClBitCodeAbbrevOp::Encoding E = (NaClBitCodeAbbrevOp::Encoding)Read(3);
+    if (Listener) Listener->Values.push_back(E);
     if (NaClBitCodeAbbrevOp::hasEncodingData(E)) {
       unsigned Data = ReadVBR64(5);
+      if (Listener) Listener->Values.push_back(Data);
 
       // As a special case, handle fixed(0) (i.e., a fixed field with zero bits)
       // and vbr(0) as a literal zero.  This is decoded the same way, and avoids
       // a slow path in Read() to have to handle reading zero bits.
       if ((E == NaClBitCodeAbbrevOp::Fixed || E == NaClBitCodeAbbrevOp::VBR) &&
           Data == 0) {
+        if (Listener) Listener->Values.push_back(0);
         Abbv->Add(NaClBitCodeAbbrevOp(0));
         continue;
       }
@@ -253,27 +261,54 @@ void NaClBitstreamCursor::ReadAbbrevRecord() {
       Abbv->Add(NaClBitCodeAbbrevOp(E));
   }
   CurAbbrevs.push_back(Abbv);
+  if (Listener) {
+    Listener->ProcessAbbreviation(Abbv, IsLocal);
+    // Reset record information of the listener.
+    Listener->Values.clear();
+    Listener->StartBit = GetCurrentBitNo();
+  }
 }
 
-bool NaClBitstreamCursor::ReadBlockInfoBlock() {
+void NaClBitstreamCursor::SkipAbbrevRecord() {
+  unsigned NumOpInfo = ReadVBR(5);
+  for (unsigned i = 0; i != NumOpInfo; ++i) {
+    bool IsLiteral = Read(1) ? true : false;
+    if (IsLiteral) {
+      ReadVBR64(8);
+      continue;
+    }
+
+    NaClBitCodeAbbrevOp::Encoding E = (NaClBitCodeAbbrevOp::Encoding)Read(3);
+    if (NaClBitCodeAbbrevOp::hasEncodingData(E)) {
+      ReadVBR64(5);
+    }
+  }
+}
+
+bool NaClBitstreamCursor::ReadBlockInfoBlock(NaClAbbrevListener *Listener) {
   // If this is the second stream to get to the block info block, skip it.
   if (BitStream->hasBlockInfoRecords())
     return SkipBlock();
 
-  if (EnterSubBlock(naclbitc::BLOCKINFO_BLOCK_ID)) return true;
+  unsigned NumWords;
+  if (EnterSubBlock(naclbitc::BLOCKINFO_BLOCK_ID, &NumWords)) return true;
 
-  SmallVector<uint64_t, 64> Record;
+  if (Listener) Listener->BeginBlockInfoBlock(NumWords);
+
+  NaClBitcodeRecordVector Record;
   NaClBitstreamReader::BlockInfo *CurBlockInfo = 0;
 
-  // Read all the records for this module.
+  // Read records of the BlockInfo block.
   while (1) {
-    NaClBitstreamEntry Entry = advanceSkippingSubblocks(AF_DontAutoprocessAbbrevs);
+    if (Listener) Listener->StartBit = GetCurrentBitNo();
+    NaClBitstreamEntry Entry = advance(AF_DontAutoprocessAbbrevs, Listener);
 
     switch (Entry.Kind) {
-    case llvm::NaClBitstreamEntry::SubBlock: // Handled for us already.
+    case llvm::NaClBitstreamEntry::SubBlock:  // PNaCl doesn't allow!
     case llvm::NaClBitstreamEntry::Error:
       return true;
     case llvm::NaClBitstreamEntry::EndBlock:
+      if (Listener) Listener->EndBlockInfoBlock();
       return false;
     case llvm::NaClBitstreamEntry::Record:
       // The interesting case.
@@ -283,7 +318,7 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
     // Read abbrev records, associate them with CurBID.
     if (Entry.ID == naclbitc::DEFINE_ABBREV) {
       if (!CurBlockInfo) return true;
-      ReadAbbrevRecord();
+      ReadAbbrevRecord(false, Listener);
 
       // ReadAbbrevRecord installs the abbrev in CurAbbrevs.  Move it to the
       // appropriate BlockInfo.
@@ -296,10 +331,16 @@ bool NaClBitstreamCursor::ReadBlockInfoBlock() {
     // Read a record.
     Record.clear();
     switch (readRecord(Entry.ID, Record)) {
-      default: break;  // Default behavior, ignore unknown content.
+      default: 
+        // No other records should be found!
+        return true;
       case naclbitc::BLOCKINFO_CODE_SETBID:
         if (Record.size() < 1) return true;
         CurBlockInfo = &BitStream->getOrCreateBlockInfo((unsigned)Record[0]);
+        if (Listener) {
+          Listener->Values = Record;
+          Listener->SetBID();
+        }
         break;
     }
   }

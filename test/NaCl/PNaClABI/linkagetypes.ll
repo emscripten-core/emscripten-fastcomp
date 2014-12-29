@@ -11,9 +11,11 @@ target triple = "le32-unknown-nacl"
 @gv_private = private global [1 x i8] c"x"
 ; CHECK: Variable gv_private has disallowed linkage type: private
 @gv_linker_private = linker_private global [1 x i8] c"x"
-; CHECK: Variable gv_linker_private has disallowed linkage type: linker_private
+; linker_private is deprecated and treated as private.
+; CHECK: Variable gv_linker_private has disallowed linkage type: private
 @gv_linker_private_weak = linker_private_weak global [1 x i8] c"x"
-; CHECK: gv_linker_private_weak has disallowed linkage type: linker_private_weak
+; linker_private_weak is deprecated and treated as private.
+; CHECK: gv_linker_private_weak has disallowed linkage type: private
 @gv_linkonce = linkonce global [1 x i8] c"x"
 ; CHECK: gv_linkonce has disallowed linkage type: linkonce
 @gv_linkonce_odr = linkonce_odr global [1 x i8] c"x"
@@ -26,14 +28,14 @@ target triple = "le32-unknown-nacl"
 ; CHECK: gv_common has disallowed linkage type: common
 @gv_appending = appending global [1 x i8] zeroinitializer
 ; CHECK: gv_appending has disallowed linkage type: appending
-@gv_dllimport = dllimport global [1 x i8]
-; CHECK: gv_dllimport has disallowed linkage type: dllimport
+@gv_dllimport = external dllimport global [1 x i8]
+; CHECK: gv_dllimport is not a valid external symbol (disallowed)
 @gv_dllexport = dllexport global [1 x i8] c"x"
-; CHECK: gv_dllexport has disallowed linkage type: dllexport
+; CHECK: gv_dllexport is not a valid external symbol (disallowed)
 @gv_extern_weak = extern_weak global [1 x i8]
 ; CHECK: gv_extern_weak has disallowed linkage type: extern_weak
-@gv_avilable_externally = available_externally global [1 x i8] c"x"
-; CHECK: gv_avilable_externally has disallowed linkage type: available_externally
+@gv_available_externally = available_externally global [1 x i8] c"x"
+; CHECK: gv_available_externally has disallowed linkage type: available_externally
 
 
 ; CHECK-NOT: disallowed
@@ -66,9 +68,9 @@ define weak_odr void @weak_odr_func() {
   ret void
 }
 ; CHECK-NEXT: dllimport_func is declared but not defined (disallowed)
-; CHECK-NEXT: dllimport_func has disallowed linkage type: dllimport
+; CHECK-NEXT: dllimport_func is not a valid external symbol (disallowed)
 declare dllimport void @dllimport_func()
-; CHECK-NEXT: dllexport_func has disallowed linkage type: dllexport
+; CHECK-NEXT: dllexport_func is not a valid external symbol (disallowed)
 define dllexport void @dllexport_func() {
   ret void
 }

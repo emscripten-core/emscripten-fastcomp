@@ -27,8 +27,13 @@ namespace llvm {
   class raw_ostream;
   class NaClBitcodeHeader;
   class NaClBitstreamWriter;
-  class StreamableMemoryObject;
+  class StreamingMemoryObject;
 
+  /// Defines the data layout used for PNaCl bitcode files. We set the
+  /// data layout of the module in the bitcode readers rather than in
+  /// pnacl-llc so that 'opt' will also use the correct data layout if
+  /// it is run on a pexe.
+  extern const char *PNaClDataLayout;
 
   /// Allows (function) local symbol tables (unsupported) in PNaCl bitcode
   /// files.
@@ -64,7 +69,7 @@ namespace llvm {
   /// See getNaClLazyBitcodeModule for an explanation of argument
   /// AcceptSupportedOnly.
   Module *getNaClStreamedBitcodeModule(const std::string &name,
-                                       StreamableMemoryObject *streamer,
+                                       StreamingMemoryObject *streamer,
                                        LLVMContext &Context,
                                        std::string *ErrMsg = 0,
                                        bool AcceptSupportedOnly = true);
@@ -107,10 +112,22 @@ namespace llvm {
         BufPtr[3] == 'E';
   }
 
+  /// NaClWriteHeader - Generate a default header (using the version
+  /// number defined by kPNaClVersion) and write to the corresponding
+  /// bitcode stream.
+  void NaClWriteHeader(NaClBitstreamWriter &Stream, bool AcceptSupportedOnly);
+
   // NaClWriteHeader - Write the contents of the bitcode header to the
   // corresponding bitcode stream.
   void NaClWriteHeader(const NaClBitcodeHeader &Header,
                        NaClBitstreamWriter &Stream);
+
+  /// NaClObjDump - Read PNaCl bitcode file from input, and print a
+  /// textual representation of its contents. NoRecords and NoAssembly
+  /// define what should not be included in the dump. Note: The caller
+  /// retains ownership of the Input memory buffer.
+  bool NaClObjDump(MemoryBuffer *Input, raw_ostream &output,
+                   bool NoRecords, bool NoAssembly);
 
 } // end llvm namespace
 #endif

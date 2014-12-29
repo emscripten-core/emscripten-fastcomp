@@ -128,6 +128,9 @@ private:
 
 /// \brief Class holding parsed header fields in PNaCl bitcode file.
 class NaClBitcodeHeader {
+  NaClBitcodeHeader(const NaClBitcodeHeader &) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClBitcodeHeader &) LLVM_DELETED_FUNCTION;
+
   // The set of parsed header fields. The header takes ownership of
   // all fields in this vector.
   std::vector<NaClBitcodeHeaderField *> Fields;

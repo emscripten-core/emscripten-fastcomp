@@ -1,5 +1,8 @@
 ; RUN: opt %s -replace-ptrs-with-ints -S | FileCheck %s
 
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+
 target datalayout = "p:32:32:32"
 
 
@@ -263,12 +266,13 @@ define void @store_attrs(i8* %ptr, i8 %val) {
 
 
 define i32 @cmpxchg(i32* %ptr, i32 %a, i32 %b) {
-  %r = cmpxchg i32* %ptr, i32 %a, i32 %b seq_cst
-  ret i32 %r
+  %r = cmpxchg i32* %ptr, i32 %a, i32 %b seq_cst seq_cst
+  %res = extractvalue { i32, i1 } %r, 0
+  ret i32 %res
 }
 ; CHECK: define i32 @cmpxchg(i32 %ptr, i32 %a, i32 %b) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
-; CHECK-NEXT: %r = cmpxchg i32* %ptr.asptr, i32 %a, i32 %b seq_cst
+; CHECK-NEXT: %r = cmpxchg i32* %ptr.asptr, i32 %a, i32 %b seq_cst seq_cst
 
 define i32 @atomicrmw(i32* %ptr, i32 %x) {
   %r = atomicrmw add i32* %ptr, i32 %x seq_cst
@@ -345,6 +349,7 @@ define i16 @load_global_bitcast() {
 
 
 declare void @receive_alloca(%struct* %ptr)
+declare void @receive_vector_alloca(<4 x i32>* %ptr)
 
 define void @alloca_fixed() {
   %buf = alloca %struct, align 128
@@ -367,6 +372,16 @@ define void @alloca_fixed_array() {
 ; CHECK-NEXT: %buf = alloca i8, i32 800, align 8
 ; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
 ; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
+
+define void @alloca_fixed_vector() {
+  %buf = alloca <4 x i32>, align 128
+  call void @receive_vector_alloca(<4 x i32>* %buf)
+  ret void
+}
+; CHECK: define void @alloca_fixed_vector() {
+; CHECK-NEXT: %buf = alloca i8, i32 16, align 128
+; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
+; CHECK-NEXT: call void @receive_vector_alloca(i32 %buf.asint)
 
 define void @alloca_variable(i32 %size) {
   %buf = alloca %struct, i32 %size
@@ -393,6 +408,13 @@ define void @alloca_alignment_double() {
 ; CHECK: void @alloca_alignment_double() {
 ; CHECK-NEXT: alloca i8, i32 8, align 8
 
+define void @alloca_alignment_vector() {
+  %buf = alloca <4 x i32>
+  ret void
+}
+; CHECK: void @alloca_alignment_vector() {
+; CHECK-NEXT: alloca i8, i32 16, align 16
+
 define void @alloca_lower_alignment() {
   %buf = alloca i32, align 1
   ret void
@@ -416,6 +438,20 @@ define void @alloca_cast_stripping() {
 ; CHECK-NEXT: %buf = alloca i8, i32 4
 ; CHECK-NEXT: %buf.bc = bitcast i8* %buf to i32*
 ; CHECK-NEXT: store i32 0, i32* %buf.bc
+
+define void @alloca_array_i64() {
+  %a = alloca i32, i64 1024
+  unreachable
+}
+; CHECK-LABEL: define void @alloca_array_i64()
+; CHECK-NEXT:    %a = alloca i8, i32 4096
+
+define void @alloca_array_i8() {
+  %a = alloca i32, i8 128
+  unreachable
+}
+; CHECK-LABEL: define void @alloca_array_i8()
+; CHECK-NEXT:    %a = alloca i8, i32 512
 
 
 define i1 @compare(i8* %ptr1, i8* %ptr2) {
@@ -463,9 +499,9 @@ define void @debug_declare(i32 %val) {
 }
 ; CHECK: define void @debug_declare(i32 %val) {
 ; CHECK-NEXT: %var = alloca i8, i32 4
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !0)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !1)
 ; This case is currently not converted.
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !0)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !1)
 ; CHECK-NEXT: ret void
 
 ; For now, debugging info for values is lost.  replaceAllUsesWith()
@@ -477,8 +513,8 @@ define void @debug_value(i32 %val, i8* %ptr) {
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !0)
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !0)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1)
 ; CHECK-NEXT: ret void
 
 

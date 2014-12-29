@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -26,11 +27,11 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/NaClAtomicIntrinsics.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Transforms/NaCl.h"
+#include "llvm/Transforms/Utils/Local.h"
 #if defined(__pnacl__)
 #include "native_client/src/untrusted/nacl/pnacl.h"
 #endif
@@ -76,6 +77,9 @@ public:
 
     /// The following pure virtual methods must be defined by
     /// implementors, and will be called once per intrinsic call.
+    /// NOTE: doGetDeclaration() should only "get" the intrinsic declaration
+    /// and not *add* decls to the module. Declarations should be added
+    /// up front by the AddPNaClExternalDecls module pass.
     virtual Function *doGetDeclaration() const = 0;
     /// Returns true if the Function was changed.
     virtual bool doResolve(IntrinsicInst *Call) = 0;
@@ -96,10 +100,9 @@ class IntrinsicCallToFunctionCall :
     public ResolvePNaClIntrinsics::CallResolver {
 public:
   IntrinsicCallToFunctionCall(Function &F, Intrinsic::ID IntrinsicID,
-                              const char *TargetFunctionName,
-                              ArrayRef<Type *> Tys = None)
+                              const char *TargetFunctionName)
       : CallResolver(F, IntrinsicID),
-        TargetFunction(M->getFunction(TargetFunctionName)), Tys(Tys) {
+        TargetFunction(M->getFunction(TargetFunctionName)) {
     // Expect to find the target function for this intrinsic already
     // declared, even if it is never used.
     if (!TargetFunction)
@@ -110,14 +113,20 @@ public:
 
 private:
   Function *TargetFunction;
-  ArrayRef<Type *> Tys;
 
   virtual Function *doGetDeclaration() const {
-    return Intrinsic::getDeclaration(M, IntrinsicID, Tys);
+    return Intrinsic::getDeclaration(M, IntrinsicID);
   }
 
   virtual bool doResolve(IntrinsicInst *Call) {
     Call->setCalledFunction(TargetFunction);
+    if (IntrinsicID == Intrinsic::nacl_setjmp) {
+      // The "returns_twice" attribute is required for correctness,
+      // otherwise the backend will reuse stack slots in a way that is
+      // incorrect for setjmp().  See:
+      // https://code.google.com/p/nativeclient/issues/detail?id=3733
+      Call->setCanReturnTwice();
+    }
     return true;
   }
 
@@ -133,17 +142,16 @@ private:
 template <class Callable>
 class ConstantCallResolver : public ResolvePNaClIntrinsics::CallResolver {
 public:
-  ConstantCallResolver(Function &F, Intrinsic::ID IntrinsicID, Callable Functor,
-                       ArrayRef<Type *> Tys = None)
+  ConstantCallResolver(Function &F, Intrinsic::ID IntrinsicID,
+                       Callable Functor)
       : CallResolver(F, IntrinsicID), Functor(Functor) {}
   virtual ~ConstantCallResolver() {}
 
 private:
   Callable Functor;
-  ArrayRef<Type *> Tys;
 
   virtual Function *doGetDeclaration() const {
-    return Intrinsic::getDeclaration(M, IntrinsicID, Tys);
+    return Intrinsic::getDeclaration(M, IntrinsicID);
   }
 
   virtual bool doResolve(IntrinsicInst *Call) {
@@ -181,7 +189,7 @@ struct IsLockFreeToConstant {
       MaxLockFreeByteSize = 4;
       break;
     default:
-      return false;
+      report_fatal_error("Unhandled arch from __builtin_nacl_target_arch()");
     }
 #   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(_M_X64) // XXX Emscripten TODO: Move this fix to PNaCl upstream.
     // Continue.
@@ -216,6 +224,7 @@ private:
     bool isVolatile = false;
     SynchronizationScope SS = CrossThread;
     Instruction *I;
+    SmallVector<Instruction *, 16> MaybeDead;
 
     switch (Call->getIntrinsicID()) {
     default:
@@ -253,16 +262,98 @@ private:
                              Call->getArgOperand(1));
         return true;
       }
-      // TODO LLVM currently doesn't support specifying separate memory
-      //      orders for compare exchange's success and failure cases:
-      //      LLVM IR implicitly drops the Release part of the specified
-      //      memory order on failure. It is therefore correct to map
-      //      the success memory order onto the LLVM IR and ignore the
-      //      failure one.
-      I = new AtomicCmpXchgInst(Call->getArgOperand(0), Call->getArgOperand(1),
-                                Call->getArgOperand(2),
-                                thawMemoryOrder(Call->getArgOperand(3)), SS,
-                                Call);
+      I = new AtomicCmpXchgInst(
+          Call->getArgOperand(0), Call->getArgOperand(1),
+          Call->getArgOperand(2), thawMemoryOrder(Call->getArgOperand(3)),
+          thawMemoryOrder(Call->getArgOperand(4)), SS, Call);
+
+      // cmpxchg returns struct { T loaded, i1 success } whereas the PNaCl
+      // intrinsic only returns the loaded value. The Call can't simply be
+      // replaced. Identify loaded+success structs that can be replaced by the
+      // cmxpchg's returned struct.
+      {
+        Instruction *Loaded = nullptr;
+        Instruction *Success = nullptr;
+        for (User *CallUser : Call->users()) {
+          if (auto ICmp = dyn_cast<ICmpInst>(CallUser)) {
+            // Identify comparisons for cmpxchg's success.
+            if (ICmp->getPredicate() != CmpInst::ICMP_EQ)
+              continue;
+            Value *LHS = ICmp->getOperand(0);
+            Value *RHS = ICmp->getOperand(1);
+            Value *Old = I->getOperand(1);
+            if (RHS != Old && LHS != Old) // Call is either RHS or LHS.
+              continue; // The comparison isn't checking for cmpxchg's success.
+
+            // Recognize the pattern creating struct { T loaded, i1 success }:
+            // it can be replaced by cmpxchg's result.
+            for (User *InsUser : ICmp->users()) {
+              if (!isa<Instruction>(InsUser) ||
+                  cast<Instruction>(InsUser)->getParent() != Call->getParent())
+                continue; // Different basic blocks, don't be clever.
+              auto Ins = dyn_cast<InsertValueInst>(InsUser);
+              if (!Ins)
+                continue;
+              auto InsTy = dyn_cast<StructType>(Ins->getType());
+              if (!InsTy)
+                continue;
+              if (!InsTy->isLayoutIdentical(cast<StructType>(I->getType())))
+                continue; // Not a struct { T loaded, i1 success }.
+              if (Ins->getNumIndices() != 1 || Ins->getIndices()[0] != 1)
+                continue; // Not an insert { T, i1 } %something, %success, 1.
+              auto TIns = dyn_cast<InsertValueInst>(Ins->getAggregateOperand());
+              if (!TIns)
+                continue; // T wasn't inserted into the struct, don't be clever.
+              if (!isa<UndefValue>(TIns->getAggregateOperand()))
+                continue; // Not an insert into an undef value, don't be clever.
+              if (TIns->getInsertedValueOperand() != Call)
+                continue; // Not inserting the loaded value.
+              if (TIns->getNumIndices() != 1 || TIns->getIndices()[0] != 0)
+                continue; // Not an insert { T, i1 } undef, %loaded, 0.
+              // Hooray! This is the struct you're looking for.
+
+              // Keep track of values extracted from the struct, instead of
+              // recreating them.
+              for (User *StructUser : Ins->users()) {
+                if (auto Extract = dyn_cast<ExtractValueInst>(StructUser)) {
+                  MaybeDead.push_back(Extract);
+                  if (!Loaded && Extract->getIndices()[0] == 0) {
+                    Loaded = cast<Instruction>(StructUser);
+                    Loaded->moveBefore(Call);
+                  } else if (!Success && Extract->getIndices()[0] == 1) {
+                    Success = cast<Instruction>(StructUser);
+                    Success->moveBefore(Call);
+                  }
+                }
+              }
+
+              MaybeDead.push_back(Ins);
+              MaybeDead.push_back(TIns);
+              Ins->replaceAllUsesWith(I);
+            }
+
+            MaybeDead.push_back(ICmp);
+            if (!Success)
+              Success = ExtractValueInst::Create(I, 1, "success", Call);
+            ICmp->replaceAllUsesWith(Success);
+          }
+        }
+
+        // Clean up remaining uses of the loaded value, if any. Later code will
+        // try to replace Call with I, make sure the types match.
+        if (Call->hasNUsesOrMore(1)) {
+          if (!Loaded)
+            Loaded = ExtractValueInst::Create(I, 0, "loaded", Call);
+          I = Loaded;
+        } else {
+          I = nullptr;
+        }
+
+        if (Loaded)
+          MaybeDead.push_back(Loaded);
+        if (Success)
+          MaybeDead.push_back(Success);
+      }
       break;
     case Intrinsic::nacl_atomic_fence:
       I = new FenceInst(M->getContext(),
@@ -283,10 +374,18 @@ private:
       Asm->setDebugLoc(Call->getDebugLoc());
     } break;
     }
-    I->setName(Call->getName());
-    I->setDebugLoc(Call->getDebugLoc());
-    Call->replaceAllUsesWith(I);
+
+    if (I) {
+      I->setName(Call->getName());
+      I->setDebugLoc(Call->getDebugLoc());
+      Call->replaceAllUsesWith(I);
+    }
     Call->eraseFromParent();
+
+    // Remove dead code.
+    for (auto Kill : MaybeDead)
+      if (isInstructionTriviallyDead(Kill))
+        Kill->eraseFromParent();
 
     return true;
   }
@@ -432,11 +531,13 @@ private:
           IRB.CreateOr(MaskedLoaded, IRB.CreateZExt(CmpXChgOldVal, I32, "zext"),
                        "expected") :
           Loaded;
-      Value *OldVal = IRB.CreateAtomicCmpXchg(Ptr32, Expected, FinalRes,
+      Value *ValSuc = IRB.CreateAtomicCmpXchg(Ptr32, Expected, FinalRes,
+                                              SequentiallyConsistent,
                                               SequentiallyConsistent);
-      OldVal->setName("oldval");
+      ValSuc->setName("cmpxchg.results");
       // Test that the entire 32-bit value didn't change during the operation.
-      Value *Success = IRB.CreateICmpEQ(OldVal, Loaded, "success");
+      // The cmpxchg returned struct { i32 loaded, i1 success }.
+      Value *Success = IRB.CreateExtractValue(ValSuc, 1, "success");
       IRB.CreateCondBr(Success, Successor, Aligned32BB);
     }
 
@@ -482,11 +583,13 @@ private:
               IRB.CreateZExt(CmpXChgOldVal, I32, "zext"), 16, "shl"),
                        "expected") :
           Loaded;
-      Value *OldVal = IRB.CreateAtomicCmpXchg(Ptr32, Expected, FinalRes,
+      Value *ValSuc = IRB.CreateAtomicCmpXchg(Ptr32, Expected, FinalRes,
+                                              SequentiallyConsistent,
                                               SequentiallyConsistent);
-      OldVal->setName("oldval");
+      ValSuc->setName("cmpxchg.results");
       // Test that the entire 32-bit value didn't change during the operation.
-      Value *Success = IRB.CreateICmpEQ(OldVal, Loaded, "success");
+      // The cmpxchg returned struct { i32 loaded, i1 success }.
+      Value *Success = IRB.CreateExtractValue(ValSuc, 1, "success");
       IRB.CreateCondBr(Success, Successor, Aligned16BB);
     }
 
@@ -518,18 +621,19 @@ bool ResolvePNaClIntrinsics::visitCalls(
   if (!IntrinsicFunction)
     return false;
 
-  for (Value::use_iterator UI = IntrinsicFunction->use_begin(),
-                           UE = IntrinsicFunction->use_end();
-       UI != UE;) {
-    // At this point, the only uses of the intrinsic can be calls, since
-    // we assume this pass runs on bitcode that passed ABI verification.
-    IntrinsicInst *Call = dyn_cast<IntrinsicInst>(*UI++);
+  SmallVector<IntrinsicInst *, 64> Calls;
+  for (User *U : IntrinsicFunction->users()) {
+    // At this point, the only uses of the intrinsic can be calls, since we
+    // assume this pass runs on bitcode that passed ABI verification.
+    IntrinsicInst *Call = dyn_cast<IntrinsicInst>(U);
     if (!Call)
       report_fatal_error("Expected use of intrinsic to be a call: " +
                          Resolver.getName());
-
-    Changed |= Resolver.resolve(Call);
+    Calls.push_back(Call);
   }
+
+  for (auto Call : Calls)
+    Changed |= Resolver.resolve(Call);
 
   return Changed;
 }

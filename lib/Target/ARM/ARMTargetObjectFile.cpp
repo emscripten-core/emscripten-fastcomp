@@ -12,13 +12,14 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h" // @LOCALMOD
 #include "llvm/CodeGen/MachineModuleInfo.h" // @LOCALMOD
+#include "llvm/IR/Mangler.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/ELF.h"
-#include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetLowering.h"
 using namespace llvm;
 using namespace dwarf;
 
@@ -35,7 +36,7 @@ void ARMElfTargetObjectFile::Initialize(MCContext &Ctx,
   // @LOCALMOD-BEGIN
   if (isAAPCS_ABI && !TM.getSubtarget<ARMSubtarget>().isTargetNaCl()) {
   // @LOCALMOD-END
-    LSDASection = NULL;
+    LSDASection = nullptr;
   }
 
   AttributesSection =
@@ -45,20 +46,29 @@ void ARMElfTargetObjectFile::Initialize(MCContext &Ctx,
                                SectionKind::getMetadata());
 }
 
-const MCExpr *ARMElfTargetObjectFile::
-getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
-                        MachineModuleInfo *MMI, unsigned Encoding,
-                        MCStreamer &Streamer) const {
+const MCExpr *ARMElfTargetObjectFile::getTTypeGlobalReference(
+    const GlobalValue *GV, unsigned Encoding, Mangler &Mang,
+    const TargetMachine &TM, MachineModuleInfo *MMI,
+    MCStreamer &Streamer) const {
+  if (TM.getMCAsmInfo()->getExceptionHandlingType() != ExceptionHandling::ARM)
+    return TargetLoweringObjectFileELF::getTTypeGlobalReference(
+        GV, Encoding, Mang, TM, MMI, Streamer);
+
   assert(Encoding == DW_EH_PE_absptr && "Can handle absptr encoding only");
   // @LOCALMOD-BEGIN
   // FIXME: There has got to be a better way to get this info.
   Triple T(MMI->getModule()->getTargetTriple());
   if (T.isOSNaCl())
-    return TargetLoweringObjectFileELF::getTTypeGlobalReference(GV, Mang,
-                                        MMI, Encoding, Streamer);
+    return TargetLoweringObjectFileELF::getTTypeGlobalReference(
+        GV, Encoding, Mang, TM, MMI, Streamer);
   // @LOCALMOD-END
 
-  return MCSymbolRefExpr::Create(getSymbol(*Mang, GV),
-                                 MCSymbolRefExpr::VK_ARM_TARGET2,
+  return MCSymbolRefExpr::Create(TM.getSymbol(GV, Mang),
+                                 MCSymbolRefExpr::VK_ARM_TARGET2, getContext());
+}
+
+const MCExpr *ARMElfTargetObjectFile::
+getDebugThreadLocalSymbol(const MCSymbol *Sym) const {
+  return MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_ARM_TLSLDO,
                                  getContext());
 }

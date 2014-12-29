@@ -110,11 +110,11 @@ block:
 ; CHECK-NEXT: bad operand: %phi2
 
   icmp eq i32* @ptr, @ptr
-; CHECK-NEXT: bad operand: {{.*}} icmp
+; CHECK-NEXT: Expects integer arithmetic type: {{.*}} icmp eq i32*
   icmp eq void ()* @func, @func
-; CHECK-NEXT: bad operand: {{.*}} icmp
+; CHECK-NEXT: Expects integer arithmetic type: {{.*}} icmp eq void ()* 
   icmp eq i31 0, 0
-; CHECK-NEXT: bad operand: {{.*}} icmp
+; CHECK-NEXT: Invalid integer arithmetic type: {{.*}} icmp eq i31
 
   call void null()
 ; CHECK-NEXT: bad function callee operand
@@ -130,3 +130,9 @@ block:
 }
 
 ; CHECK-NOT: disallowed
+
+
+; This stops the verifier from complaining about the lack of an entry point.
+define void @_start(i32 %arg) {
+  ret void
+}

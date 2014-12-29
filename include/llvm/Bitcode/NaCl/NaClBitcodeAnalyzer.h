@@ -19,6 +19,8 @@
 #ifndef NACL_BITCODE_ANALYZER_H
 #define NACL_BITCODE_ANALYZER_H
 
+#include <memory>
+
 namespace llvm {
 
 class MemoryBuffer;
@@ -55,7 +57,8 @@ int AnalyzeBitcodeInFile(const StringRef &InputFilename, raw_ostream &OS,
 
 /// Run analysis on a memory buffer with bitcode.  Output goes to
 /// OS. The buffer is owned by the caller.
-int AnalyzeBitcodeInBuffer(const MemoryBuffer &Buf, raw_ostream &OS,
+int AnalyzeBitcodeInBuffer(const std::unique_ptr<MemoryBuffer> &Buf,
+                           raw_ostream &OS,
                            const AnalysisDumpOptions &DumpOptions);
 
 } // namespace llvm

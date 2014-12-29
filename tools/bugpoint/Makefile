@@ -10,6 +10,10 @@
 LEVEL := ../..
 TOOLNAME := bugpoint
 LINK_COMPONENTS := asmparser instrumentation scalaropts ipo linker bitreader \
-                   bitwriter irreader vectorize objcarcopts
+                   bitwriter irreader vectorize objcarcopts nacltransforms   \
+                   naclanalysis minsfitransforms naclbitreader
+
+# Support plugins.
+NO_DEAD_STRIP := 1
 
 include $(LEVEL)/Makefile.common
