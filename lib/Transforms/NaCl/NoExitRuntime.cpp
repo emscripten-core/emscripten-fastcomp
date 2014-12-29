@@ -22,7 +22,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"

@@ -30,7 +30,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/NaCl.h"
-#include "llvm/Analysis/Dominators.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 #include <vector>
 #include <set>
@@ -114,8 +114,9 @@ void doMemToReg(Function &F) {
 
   BasicBlock &BB = F.getEntryBlock();  // Get the entry node for the function
 
-  DominatorTree DT;
-  DT.runOnFunction(F);
+  DominatorTreeWrapperPass DTW;
+  DTW.runOnFunction(F);
+  DominatorTree& DT = DTW.getDomTree();
 
   while (1) {
     Allocas.clear();
