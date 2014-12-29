@@ -35,7 +35,7 @@
 ; The address of the global 'glbl', followed by DW_OP_stack_value (9f), to use
 ; the value immediately, rather than indirecting through the address.
 
-; CHECK-NEXT: DW_AT_location [DW_FORM_block1]{{ *}}(<0x0a> 03 00 00 00 00 00 00 00 00 9f )
+; CHECK-NEXT: DW_AT_location [DW_FORM_exprloc]{{ *}}(<0xa> 03 00 00 00 00 00 00 00 00 9f )
 ; CHECK-NOT: NULL
 
 ; CHECK: DW_TAG_GNU_template_template_param
@@ -84,12 +84,12 @@ entry:
 attributes #0 = { nounwind uwtable "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 
 !llvm.dbg.cu = !{!0}
-!llvm.module.flags = !{!31}
+!llvm.module.flags = !{!31, !36}
 !llvm.ident = !{!32}
 
 !0 = metadata !{i32 786449, metadata !1, i32 4, metadata !"clang version 3.4 (trunk 192849) (llvm/trunk 192850)", i1 false, metadata !"", i32 0, metadata !2, metadata !3, metadata !9, metadata !28, metadata !2, metadata !""} ; [ DW_TAG_compile_unit ] [/usr/local/google/home/echristo/tmp/bar.cpp] [DW_LANG_C_plus_plus]
 !1 = metadata !{metadata !"bar.cpp", metadata !"/usr/local/google/home/echristo/tmp"}
-!2 = metadata !{i32 0}
+!2 = metadata !{}
 !3 = metadata !{metadata !4, metadata !8}
 !4 = metadata !{i32 786451, metadata !1, null, metadata !"y_impl<int>", i32 2, i64 8, i64 8, i32 0, i32 0, null, metadata !2, i32 0, null, metadata !5, metadata !"_ZTS6y_implIiE"} ; [ DW_TAG_structure_type ] [y_impl<int>] [line 2, size 8, align 8, offset 0] [def] [from ]
 !5 = metadata !{metadata !6}
@@ -123,3 +123,4 @@ attributes #0 = { nounwind uwtable "less-precise-fpmad"="false" "no-frame-pointe
 !33 = metadata !{i32 3, i32 0, metadata !10, null}
 !34 = metadata !{i32 1, i32 0, metadata !14, null}
 !35 = metadata !{i32 1, i32 0, metadata !26, null}
+!36 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}

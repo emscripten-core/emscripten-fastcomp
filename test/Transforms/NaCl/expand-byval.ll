@@ -29,7 +29,7 @@ define void @byval_caller(%MyStruct* %ptr) {
 ; CHECK: define void @byval_caller(%MyStruct* %ptr) {
 ; CHECK-NEXT: %ptr.byval_copy = alloca %MyStruct, align 4
 ; CHECK: call void @llvm.lifetime.start(i64 12, i8* %{{.*}})
-; CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %{{.*}}, i8* %{{.*}}, i64 12, i32 0, i1 false)
+; CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %{{.*}}, i8* %{{.*}}, i64 12, i32 4, i1 false)
 ; CHECK-NEXT: call void @ext_byval_func(%MyStruct* noalias %ptr.byval_copy)
 
 
@@ -87,8 +87,7 @@ define void @byval_caller_align_via_type(%AlignedStruct* %ptr) {
 }
 ; CHECK: define void @byval_caller_align_via_type(%AlignedStruct* %ptr) {
 ; CHECK-NEXT: %ptr.byval_copy = alloca %AlignedStruct, align 8
-; Don't assume that %ptr is 8-byte-aligned when doing the memcpy.
-; CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %{{.*}}, i8* %{{.*}}, i64 16, i32 0, i1 false)
+; CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %{{.*}}, i8* %{{.*}}, i64 16, i32 8, i1 false)
 
 
 ; Removal of "sret" attribute for returning structs by value

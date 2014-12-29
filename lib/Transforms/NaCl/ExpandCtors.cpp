@@ -47,14 +47,7 @@ INITIALIZE_PASS(ExpandCtors, "nacl-expand-ctors",
 
 static void setGlobalVariableValue(Module &M, const char *Name,
                                    Constant *Value) {
-  GlobalVariable *Var = M.getNamedGlobal(Name);
-  if (!Var) {
-    // This warning can happen in a program that does not use a libc
-    // and so does not call the functions in __init_array_start or
-    // __fini_array_end.  Such a program might be linked with
-    // "-nostdlib".
-    // XXX EMSCRIPTEN: not surprising for us when this happens  errs() << "Warning: Variable " << Name << " not referenced\n";
-  } else {
+  if (GlobalVariable *Var = M.getNamedGlobal(Name)) {
     if (Var->hasInitializer()) {
       report_fatal_error(std::string("Variable ") + Name +
                          " already has an initializer");

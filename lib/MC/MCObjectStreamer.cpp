@@ -17,27 +17,23 @@
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectWriter.h"
-#include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCSection.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
 
-MCObjectStreamer::MCObjectStreamer(MCContext &Context,
-                                   MCTargetStreamer *TargetStreamer,
-                                   MCAsmBackend &TAB, raw_ostream &OS,
-                                   MCCodeEmitter *Emitter_)
-    : MCStreamer(Context, TargetStreamer),
+MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
+                                   raw_ostream &OS, MCCodeEmitter *Emitter_)
+    : MCStreamer(Context),
       Assembler(new MCAssembler(Context, TAB, *Emitter_,
                                 *TAB.createObjectWriter(OS), OS)),
-      CurSectionData(0) {}
+      CurSectionData(nullptr), EmitEHFrame(true), EmitDebugFrame(false) {}
 
-MCObjectStreamer::MCObjectStreamer(MCContext &Context,
-                                   MCTargetStreamer *TargetStreamer,
-                                   MCAsmBackend &TAB, raw_ostream &OS,
-                                   MCCodeEmitter *Emitter_,
+MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
+                                   raw_ostream &OS, MCCodeEmitter *Emitter_,
                                    MCAssembler *_Assembler)
-    : MCStreamer(Context, TargetStreamer), Assembler(_Assembler),
-      CurSectionData(0) {}
+    : MCStreamer(Context), Assembler(_Assembler), CurSectionData(nullptr),
+      EmitEHFrame(true), EmitDebugFrame(false) {}
 
 MCObjectStreamer::~MCObjectStreamer() {
   delete &Assembler->getBackend();
@@ -46,24 +42,54 @@ MCObjectStreamer::~MCObjectStreamer() {
   delete Assembler;
 }
 
+void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
+  if (PendingLabels.size()) {
+    if (!F) {
+      F = new MCDataFragment();
+      CurSectionData->getFragmentList().insert(CurInsertionPoint, F);
+      F->setParent(CurSectionData);
+    }
+    for (SmallVectorImpl<MCSymbolData *>::iterator SD = PendingLabels.begin();
+         SD != PendingLabels.end(); ++SD) {
+      (*SD)->setFragment(F);
+      (*SD)->setOffset(0);
+    }
+    PendingLabels.clear();
+  }
+}
+
 void MCObjectStreamer::reset() {
   if (Assembler)
     Assembler->reset();
-  CurSectionData = 0;
+  CurSectionData = nullptr;
   CurInsertionPoint = MCSectionData::iterator();
+  EmitEHFrame = true;
+  EmitDebugFrame = false;
+  PendingLabels.clear();
   MCStreamer::reset();
+}
+
+void MCObjectStreamer::EmitFrames(MCAsmBackend *MAB) {
+  if (!getNumFrameInfos())
+    return;
+
+  if (EmitEHFrame)
+    MCDwarfFrameEmitter::Emit(*this, MAB, true);
+
+  if (EmitDebugFrame)
+    MCDwarfFrameEmitter::Emit(*this, MAB, false);
 }
 
 MCFragment *MCObjectStreamer::getCurrentFragment() const {
   assert(getCurrentSectionData() && "No current section!");
 
   if (CurInsertionPoint != getCurrentSectionData()->getFragmentList().begin())
-    return prior(CurInsertionPoint);
+    return std::prev(CurInsertionPoint);
 
-  return 0;
+  return nullptr;
 }
 
-MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() const {
+MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() {
   MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
   // When bundling is enabled, we don't want to add data to a fragment that
   // already has instructions (see MCELFStreamer::EmitInstToData for details)
@@ -74,76 +100,61 @@ MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() const {
   return F;
 }
 
-const MCExpr *MCObjectStreamer::AddValueSymbols(const MCExpr *Value) {
-  switch (Value->getKind()) {
-  case MCExpr::Target:
-    cast<MCTargetExpr>(Value)->AddValueSymbols(Assembler);
-    break;
-
-  case MCExpr::Constant:
-    break;
-
-  case MCExpr::Binary: {
-    const MCBinaryExpr *BE = cast<MCBinaryExpr>(Value);
-    AddValueSymbols(BE->getLHS());
-    AddValueSymbols(BE->getRHS());
-    break;
-  }
-
-  case MCExpr::SymbolRef:
-    Assembler->getOrCreateSymbolData(cast<MCSymbolRefExpr>(Value)->getSymbol());
-    break;
-
-  case MCExpr::Unary:
-    AddValueSymbols(cast<MCUnaryExpr>(Value)->getSubExpr());
-    break;
-  }
-
-  return Value;
+void MCObjectStreamer::visitUsedSymbol(const MCSymbol &Sym) {
+  Assembler->getOrCreateSymbolData(Sym);
 }
 
-void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size) {
+void MCObjectStreamer::EmitCFISections(bool EH, bool Debug) {
+  MCStreamer::EmitCFISections(EH, Debug);
+  EmitEHFrame = EH;
+  EmitDebugFrame = Debug;
+}
+
+void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
+                                     const SMLoc &Loc) {
+  MCStreamer::EmitValueImpl(Value, Size, Loc);
   MCDataFragment *DF = getOrCreateDataFragment();
 
   MCLineEntry::Make(this, getCurrentSection().first);
 
   // Avoid fixups when possible.
   int64_t AbsValue;
-  if (AddValueSymbols(Value)->EvaluateAsAbsolute(AbsValue, getAssembler())) {
+  if (Value->EvaluateAsAbsolute(AbsValue, getAssembler())) {
     EmitIntValue(AbsValue, Size);
     return;
   }
   DF->getFixups().push_back(
       MCFixup::Create(DF->getContents().size(), Value,
-                      MCFixup::getKindForSize(Size, false)));
+                      MCFixup::getKindForSize(Size, false), Loc));
   DF->getContents().resize(DF->getContents().size() + Size, 0);
 }
 
 void MCObjectStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
-  RecordProcStart(Frame);
+  // We need to create a local symbol to avoid relocations.
+  Frame.Begin = getContext().CreateTempSymbol();
+  EmitLabel(Frame.Begin);
 }
 
 void MCObjectStreamer::EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) {
-  RecordProcEnd(Frame);
+  Frame.End = getContext().CreateTempSymbol();
+  EmitLabel(Frame.End);
 }
 
 void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   MCStreamer::EmitLabel(Symbol);
 
   MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
-
-  // FIXME: This is wasteful, we don't necessarily need to create a data
-  // fragment. Instead, we should mark the symbol as pointing into the data
-  // fragment if it exists, otherwise we should just queue the label and set its
-  // fragment pointer when we emit the next fragment.
-  MCDataFragment *F = getOrCreateDataFragment();
   assert(!SD.getFragment() && "Unexpected fragment on symbol data!");
-  SD.setFragment(F);
-  SD.setOffset(F->getContents().size());
-}
 
-void MCObjectStreamer::EmitDebugLabel(MCSymbol *Symbol) {
-  EmitLabel(Symbol);
+  // If there is a current fragment, mark the symbol as pointing into it.
+  // Otherwise queue the label and set its fragment pointer when we emit the
+  // next fragment.
+  if (MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment())) {
+    SD.setFragment(F);
+    SD.setOffset(F->getContents().size());
+  } else {
+    PendingLabels.push_back(&SD);
+  }
 }
 
 void MCObjectStreamer::EmitULEB128Value(const MCExpr *Value) {
@@ -174,6 +185,7 @@ void MCObjectStreamer::EmitWeakReference(MCSymbol *Alias,
 void MCObjectStreamer::ChangeSection(const MCSection *Section,
                                      const MCExpr *Subsection) {
   assert(Section && "Cannot switch to a null section!");
+  flushPendingLabels(NULL);
 
   CurSectionData = &getAssembler().getOrCreateSectionData(*Section);
 
@@ -189,10 +201,11 @@ void MCObjectStreamer::ChangeSection(const MCSection *Section,
 
 void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
   getAssembler().getOrCreateSymbolData(*Symbol);
-  Symbol->setVariableValue(AddValueSymbols(Value));
+  MCStreamer::EmitAssignment(Symbol, Value);
 }
 
-void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
+void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
+                                       const MCSubtargetInfo &STI) {
   // @LOCALMOD-BEGIN
   if (getAssembler().isBundlingEnabled() &&
       getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
@@ -200,10 +213,7 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
   }
   // @LOCALMOD-END
 
-  // Scan for values.
-  for (unsigned i = Inst.getNumOperands(); i--; )
-    if (Inst.getOperand(i).isExpr())
-      AddValueSymbols(Inst.getOperand(i).getExpr());
+  MCStreamer::EmitInstruction(Inst, STI);
 
   MCSectionData *SD = getCurrentSectionData();
   SD->setHasInstructions(true);
@@ -215,7 +225,7 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
   // If this instruction doesn't need relaxation, just emit it as data.
   MCAssembler &Assembler = getAssembler();
   if (!Assembler.getBackend().mayNeedRelaxation(Inst)) {
-    EmitInstToData(Inst);
+    EmitInstToData(Inst, STI);
     return;
   }
 
@@ -230,23 +240,25 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
     getAssembler().getBackend().relaxInstruction(Inst, Relaxed);
     while (getAssembler().getBackend().mayNeedRelaxation(Relaxed))
       getAssembler().getBackend().relaxInstruction(Relaxed, Relaxed);
-    EmitInstToData(Relaxed);
+    EmitInstToData(Relaxed, STI);
     return;
   }
 
   // Otherwise emit to a separate fragment.
-  EmitInstToFragment(Inst);
+  EmitInstToFragment(Inst, STI);
 }
 
-void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst) {
+void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst,
+                                          const MCSubtargetInfo &STI) {
   // Always create a new, separate fragment here, because its size can change
   // during relaxation.
-  MCRelaxableFragment *IF = new MCRelaxableFragment(Inst);
+  MCRelaxableFragment *IF = new MCRelaxableFragment(Inst, STI);
   insert(IF);
 
   SmallString<128> Code;
   raw_svector_ostream VecOS(Code);
-  getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, IF->getFixups());
+  getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, IF->getFixups(),
+                                                STI);
   VecOS.flush();
   IF->getContents().append(Code.begin(), Code.end());
 }
@@ -387,14 +399,13 @@ void MCObjectStreamer::EmitZeros(uint64_t NumBytes) {
 }
 
 void MCObjectStreamer::FinishImpl() {
-  // Dump out the dwarf file & directory tables and line tables.
-  const MCSymbol *LineSectionSymbol = NULL;
-  if (getContext().hasDwarfFiles())
-    LineSectionSymbol = MCDwarfFileTable::Emit(this);
-
   // If we are generating dwarf for assembly source files dump out the sections.
   if (getContext().getGenDwarfForAssembly())
-    MCGenDwarfInfo::Emit(this, LineSectionSymbol);
+    MCGenDwarfInfo::Emit(this);
 
+  // Dump out the dwarf file & directory tables and line tables.
+  MCDwarfLineTable::Emit(this);
+
+  flushPendingLabels(NULL);
   getAssembler().Finish();
 }

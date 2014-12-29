@@ -21,44 +21,32 @@
 
 using namespace llvm;
 
-namespace llvm {
-  cl::opt<bool> FlagSfiZeroMask("sfi-zero-mask");
-}
-
 /// Two helper functions for emitting the actual guard instructions
 
-static void EmitBICMask(MCStreamer &Out,
-                        unsigned Addr, int64_t  Pred, unsigned Mask) {
+static void EmitBICMask(const MCSubtargetInfo &STI, MCStreamer &Out,
+                        unsigned Addr, int64_t Pred, unsigned Mask) {
   // bic\Pred \Addr, \Addr, #Mask
   MCInst BICInst;
   BICInst.setOpcode(ARM::BICri);
   BICInst.addOperand(MCOperand::CreateReg(Addr)); // rD
   BICInst.addOperand(MCOperand::CreateReg(Addr)); // rS
-  if (FlagSfiZeroMask) {
-    BICInst.addOperand(MCOperand::CreateImm(0)); // imm
-  } else {
-    BICInst.addOperand(MCOperand::CreateImm(Mask)); // imm
-  }
+  BICInst.addOperand(MCOperand::CreateImm(Mask)); // imm
   BICInst.addOperand(MCOperand::CreateImm(Pred));  // predicate
   BICInst.addOperand(MCOperand::CreateReg(ARM::CPSR)); // CPSR
   BICInst.addOperand(MCOperand::CreateReg(0)); // flag out
-  Out.EmitInstruction(BICInst);
+  Out.EmitInstruction(BICInst, STI);
 }
 
-static void EmitTST(MCStreamer &Out, unsigned Reg) {
+static void EmitTST(const MCSubtargetInfo &STI, MCStreamer &Out, unsigned Reg) {
   // tst \reg, #\MASK typically 0xc0000000
   const unsigned Mask = 0xC0000000;
   MCInst TSTInst;
   TSTInst.setOpcode(ARM::TSTri);
   TSTInst.addOperand(MCOperand::CreateReg(Reg));  // rS
-  if (FlagSfiZeroMask) {
-    TSTInst.addOperand(MCOperand::CreateImm(0)); // imm
-  } else {
-    TSTInst.addOperand(MCOperand::CreateImm(Mask)); // imm
-  }
+  TSTInst.addOperand(MCOperand::CreateImm(Mask)); // imm
   TSTInst.addOperand(MCOperand::CreateImm((int64_t)ARMCC::AL)); // Always
   TSTInst.addOperand(MCOperand::CreateImm(0)); // flag out
-  Out.EmitInstruction(TSTInst);
+  Out.EmitInstruction(TSTInst, STI);
 }
 
 
@@ -68,9 +56,9 @@ static void EmitTST(MCStreamer &Out, unsigned Reg) {
 // It just so happens that the SFI_NOP_IF_AT_BUNDLE_END is always
 // emitted in conjunction with a SFI_DATA_MASK
 //
-static void EmitDataMask(int I, MCInst Saved[], MCStreamer &Out) {
-  assert(I == 3 &&
-         (ARM::SFI_NOP_IF_AT_BUNDLE_END == Saved[0].getOpcode()) &&
+static void EmitDataMask(const MCSubtargetInfo &STI, int I, MCInst Saved[],
+                         MCStreamer &Out) {
+  assert(I == 3 && (ARM::SFI_NOP_IF_AT_BUNDLE_END == Saved[0].getOpcode()) &&
          (ARM::SFI_DATA_MASK == Saved[2].getOpcode()) &&
          "Unexpected SFI Pseudo while lowering");
 
@@ -79,24 +67,24 @@ static void EmitDataMask(int I, MCInst Saved[], MCStreamer &Out) {
   assert((ARM::SP == Addr) && "Unexpected register at stack guard");
 
   Out.EmitBundleLock(false);
-  Out.EmitInstruction(Saved[1]);
-  EmitBICMask(Out, Addr, Pred, 0xC0000000);
+  Out.EmitInstruction(Saved[1], STI);
+  EmitBICMask(STI, Out, Addr, Pred, 0xC0000000);
   Out.EmitBundleUnlock();
 }
 
-static void EmitDirectGuardCall(int I, MCInst Saved[],
-                                MCStreamer &Out) {
+static void EmitDirectGuardCall(const MCSubtargetInfo &STI, int I,
+                                MCInst Saved[], MCStreamer &Out) {
   // sfi_call_preamble cond=
   //   sfi_nops_to_force_slot3
   assert(I == 2 && (ARM::SFI_GUARD_CALL == Saved[0].getOpcode()) &&
          "Unexpected SFI Pseudo while lowering SFI_GUARD_CALL");
   Out.EmitBundleLock(true);
-  Out.EmitInstruction(Saved[1]);
+  Out.EmitInstruction(Saved[1], STI);
   Out.EmitBundleUnlock();
 }
 
-static void EmitIndirectGuardCall(int I, MCInst Saved[],
-                                  MCStreamer &Out) {
+static void EmitIndirectGuardCall(const MCSubtargetInfo &STI, int I,
+                                  MCInst Saved[], MCStreamer &Out) {
   // sfi_indirect_call_preamble link cond=
   //   sfi_nops_to_force_slot2
   //   sfi_code_mask \link \cond
@@ -105,12 +93,13 @@ static void EmitIndirectGuardCall(int I, MCInst Saved[],
   unsigned Reg = Saved[0].getOperand(0).getReg();
   int64_t Pred = Saved[0].getOperand(2).getImm();
   Out.EmitBundleLock(true);
-  EmitBICMask(Out, Reg, Pred, 0xC000000F);
-  Out.EmitInstruction(Saved[1]);
+  EmitBICMask(STI, Out, Reg, Pred, 0xC000000F);
+  Out.EmitInstruction(Saved[1], STI);
   Out.EmitBundleUnlock();
 }
 
-static void EmitIndirectGuardJmp(int I, MCInst Saved[], MCStreamer &Out) {
+static void EmitIndirectGuardJmp(const MCSubtargetInfo &STI, int I,
+                                 MCInst Saved[], MCStreamer &Out) {
   //  sfi_indirect_jump_preamble link cond=
   //   sfi_nop_if_at_bundle_end
   //   sfi_code_mask \link \cond
@@ -120,12 +109,13 @@ static void EmitIndirectGuardJmp(int I, MCInst Saved[], MCStreamer &Out) {
   int64_t Pred = Saved[0].getOperand(2).getImm();
 
   Out.EmitBundleLock(false);
-  EmitBICMask(Out, Reg, Pred, 0xC000000F);
-  Out.EmitInstruction(Saved[1]);
+  EmitBICMask(STI, Out, Reg, Pred, 0xC000000F);
+  Out.EmitInstruction(Saved[1], STI);
   Out.EmitBundleUnlock();
 }
 
-static void EmitGuardReturn(int I, MCInst Saved[], MCStreamer &Out) {
+static void EmitGuardReturn(const MCSubtargetInfo &STI, int I, MCInst Saved[],
+                            MCStreamer &Out) {
   // sfi_return_preamble reg cond=
   //    sfi_nop_if_at_bundle_end
   //    sfi_code_mask \reg \cond
@@ -134,12 +124,13 @@ static void EmitGuardReturn(int I, MCInst Saved[], MCStreamer &Out) {
   int64_t Pred = Saved[0].getOperand(0).getImm();
 
   Out.EmitBundleLock(false);
-  EmitBICMask(Out, ARM::LR, Pred, 0xC000000F);
-  Out.EmitInstruction(Saved[1]);
+  EmitBICMask(STI, Out, ARM::LR, Pred, 0xC000000F);
+  Out.EmitInstruction(Saved[1], STI);
   Out.EmitBundleUnlock();
 }
 
-static void EmitGuardLoadOrStore(int I, MCInst Saved[], MCStreamer &Out) {
+static void EmitGuardLoadOrStore(const MCSubtargetInfo &STI, int I,
+                                 MCInst Saved[], MCStreamer &Out) {
   // sfi_store_preamble reg cond ---->
   //    sfi_nop_if_at_bundle_end
   //    sfi_data_mask \reg, \cond
@@ -149,12 +140,13 @@ static void EmitGuardLoadOrStore(int I, MCInst Saved[], MCStreamer &Out) {
   int64_t Pred = Saved[0].getOperand(2).getImm();
 
   Out.EmitBundleLock(false);
-  EmitBICMask(Out, Reg, Pred, 0xC0000000);
-  Out.EmitInstruction(Saved[1]);
+  EmitBICMask(STI, Out, Reg, Pred, 0xC0000000);
+  Out.EmitInstruction(Saved[1], STI);
   Out.EmitBundleUnlock();
 }
 
-static void EmitGuardLoadOrStoreTst(int I, MCInst Saved[], MCStreamer &Out) {
+static void EmitGuardLoadOrStoreTst(const MCSubtargetInfo &STI, int I,
+                                    MCInst Saved[], MCStreamer &Out) {
   // sfi_cstore_preamble reg -->
   //   sfi_nop_if_at_bundle_end
   //   sfi_data_tst \reg
@@ -163,13 +155,14 @@ static void EmitGuardLoadOrStoreTst(int I, MCInst Saved[], MCStreamer &Out) {
   unsigned Reg = Saved[0].getOperand(0).getReg();
 
   Out.EmitBundleLock(false);
-  EmitTST(Out, Reg);
-  Out.EmitInstruction(Saved[1]);
+  EmitTST(STI, Out, Reg);
+  Out.EmitInstruction(Saved[1], STI);
   Out.EmitBundleUnlock();
 }
 
 // This is ONLY used for loads into the stack pointer.
-static void EmitGuardSpLoad(int I, MCInst Saved[], MCStreamer &Out) {
+static void EmitGuardSpLoad(const MCSubtargetInfo &STI, int I, MCInst Saved[],
+                            MCStreamer &Out) {
   assert(I == 4 &&
          (ARM::SFI_GUARD_SP_LOAD == Saved[0].getOpcode()) &&
          (ARM::SFI_NOP_IF_AT_BUNDLE_END == Saved[1].getOpcode()) &&
@@ -182,9 +175,9 @@ static void EmitGuardSpLoad(int I, MCInst Saved[], MCStreamer &Out) {
   assert((ARM::SP == SpReg) && "Unexpected register at stack guard");
 
   Out.EmitBundleLock(false);
-  EmitBICMask(Out, AddrReg, Pred, 0xC0000000);
-  Out.EmitInstruction(Saved[2]);
-  EmitBICMask(Out, SpReg, Pred, 0xC0000000);
+  EmitBICMask(STI, Out, AddrReg, Pred, 0xC0000000);
+  Out.EmitInstruction(Saved[2], STI);
+  EmitBICMask(STI, Out, SpReg, Pred, 0xC0000000);
   Out.EmitBundleUnlock();
 }
 
@@ -202,8 +195,8 @@ const int ARMMCNaClSFIState::MaxSaved;
 //   Care must be taken to ensure that this does not result in an infinite
 //   loop. Also, global state must be managed carefully so that it is
 //   consistent during recursive calls.
-bool CustomExpandInstNaClARM(const MCInst &Inst, MCStreamer &Out,
-                             ARMMCNaClSFIState &State) {
+bool CustomExpandInstNaClARM(const MCSubtargetInfo &STI, const MCInst &Inst,
+                             MCStreamer &Out, ARMMCNaClSFIState &State) {
   // Logic:
   // This is somewhat convoluted, but in the current model, the SFI
   // guard pseudo instructions occur PRIOR to the actual instruction.
@@ -251,7 +244,7 @@ bool CustomExpandInstNaClARM(const MCInst &Inst, MCStreamer &Out,
         State.SaveCount = 3;
         break;
       case ARM::SFI_DATA_MASK:
-        assert(0 &&
+        llvm_unreachable(
             "SFI_DATA_MASK found without preceding SFI_NOP_IF_AT_BUNDLE_END");
         return false;
       case ARM::SFI_GUARD_CALL:
@@ -287,31 +280,31 @@ bool CustomExpandInstNaClARM(const MCInst &Inst, MCStreamer &Out,
     default:
       break;
     case ARM::SFI_NOP_IF_AT_BUNDLE_END:
-      EmitDataMask(State.I, State.Saved, Out);
+      EmitDataMask(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_DATA_MASK:
-      assert(0 && "SFI_DATA_MASK can't start a SFI sequence");
+      llvm_unreachable("SFI_DATA_MASK can't start a SFI sequence");
       break;
     case ARM::SFI_GUARD_CALL:
-      EmitDirectGuardCall(State.I, State.Saved, Out);
+      EmitDirectGuardCall(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_GUARD_INDIRECT_CALL:
-      EmitIndirectGuardCall(State.I, State.Saved, Out);
+      EmitIndirectGuardCall(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_GUARD_INDIRECT_JMP:
-      EmitIndirectGuardJmp(State.I, State.Saved, Out);
+      EmitIndirectGuardJmp(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_GUARD_RETURN:
-      EmitGuardReturn(State.I, State.Saved, Out);
+      EmitGuardReturn(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_GUARD_LOADSTORE:
-      EmitGuardLoadOrStore(State.I, State.Saved, Out);
+      EmitGuardLoadOrStore(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_GUARD_LOADSTORE_TST:
-      EmitGuardLoadOrStoreTst(State.I, State.Saved, Out);
+      EmitGuardLoadOrStoreTst(STI, State.I, State.Saved, Out);
       break;
     case ARM::SFI_GUARD_SP_LOAD:
-      EmitGuardSpLoad(State.I, State.Saved, Out);
+      EmitGuardSpLoad(STI, State.I, State.Saved, Out);
       break;
   }
   assert(State.RecursiveCall && "Illegal Depth");

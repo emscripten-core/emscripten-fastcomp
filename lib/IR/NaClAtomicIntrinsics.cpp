@@ -62,22 +62,13 @@ AtomicIntrinsics::View AtomicIntrinsics::allIntrinsicsAndOverloads() const {
   return View(&I[0][0], NumAtomicIntrinsics * NumAtomicIntrinsicOverloadTypes);
 }
 
-AtomicIntrinsics::View AtomicIntrinsics::overloadsFor(Intrinsic::ID ID) const {
-  // Overloads are stored consecutively.
-  View R = allIntrinsicsAndOverloads();
-  for (const AtomicIntrinsic *AI = R.begin(), *E = R.end(); AI != E; ++AI)
-    if (AI->ID == ID)
-      return View(AI, NumAtomicIntrinsicOverloadTypes);
-  llvm_unreachable("unhandled atomic intrinsic");
-}
-
 const AtomicIntrinsics::AtomicIntrinsic *
 AtomicIntrinsics::find(Intrinsic::ID ID, Type *OverloadedType) const {
   View R = allIntrinsicsAndOverloads();
   for (const AtomicIntrinsic *AI = R.begin(), *E = R.end(); AI != E; ++AI)
     if (AI->ID == ID && AI->OverloadedType == OverloadedType)
       return AI;
-  llvm_unreachable("unhandled atomic intrinsic");
+  return 0;
 }
 
 } // End NaCl namespace

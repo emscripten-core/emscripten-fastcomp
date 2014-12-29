@@ -12,6 +12,7 @@
 #include "llvm/Support/Mutex.h"
 #include <cstring>
 
+using namespace llvm;
 using llvm::sys::ScopedLock;
 
 ThreadedStreamingCache::ThreadedStreamingCache(
@@ -19,8 +20,8 @@ ThreadedStreamingCache::ThreadedStreamingCache(
                                       Cache(kCacheSize),
                                       MinObjectSize(0),
                                       CacheBase(-1) {
-  LLVM_STATIC_ASSERT((kCacheSize & (kCacheSize - 1)) == 0,
-                     "kCacheSize must be a power of 2")
+  static_assert((kCacheSize & (kCacheSize - 1)) == 0,
+                "kCacheSize must be a power of 2");
 }
 
 int ThreadedStreamingCache::fetchCacheLine(uint64_t address) const {

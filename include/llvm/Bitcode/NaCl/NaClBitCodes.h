@@ -301,7 +301,23 @@ public:
     return 0;
   }
 
-  void Print(raw_ostream &Stream) const;
+  // Returns true if all records matching the abbreviation must be
+  // of fixed length.
+  bool IsFixedSize() const {
+    unsigned Size = getNumOperandInfos();
+    if (Size < 2) return true;
+    return !OperandList[Size-2].isArrayOp();
+  }
+
+  // Returns the smallest record size that will match this
+  // abbreviation.
+  size_t GetMinRecordSize() const {
+    size_t Min = getNumOperandInfos();
+    if (!IsFixedSize()) Min -= 2;
+    return Min;
+  }
+
+  void Print(raw_ostream &Stream, bool AddNewline=true) const;
 
   NaClBitCodeAbbrev *Copy() const {
     NaClBitCodeAbbrev *AbbrevCopy = new NaClBitCodeAbbrev();

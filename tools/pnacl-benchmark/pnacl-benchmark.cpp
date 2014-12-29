@@ -30,10 +30,10 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/system_error.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/Timer.h"
 #include <memory>
+#include <system_error>
 #include <vector>
 
 using namespace llvm;
@@ -125,17 +125,17 @@ private:
 
 void BenchmarkIRParsing() {
   outs() << "Benchmarking IR parsing...\n";
-  OwningPtr<MemoryBuffer> FileBuf;
-  error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename.c_str(), FileBuf);
-  if (ec) {
-    report_fatal_error("Could not open input file: " + ec.message());
-  }
+  ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
+      MemoryBuffer::getFileOrSTDIN(InputFilename);
+  if (std::error_code EC = ErrOrFile.getError())
+    report_fatal_error("Could not open input file: " + EC.message());
 
+  std::unique_ptr<MemoryBuffer> FileBuf(ErrOrFile.get().release());
   size_t BufSize = FileBuf->getBufferSize();
   const uint8_t *BufPtr =
-    reinterpret_cast<const uint8_t*>(FileBuf->getBufferStart());
+      reinterpret_cast<const uint8_t *>(FileBuf->getBufferStart());
   const uint8_t *EndBufPtr =
-    reinterpret_cast<const uint8_t*>(FileBuf->getBufferEnd());
+      reinterpret_cast<const uint8_t *>(FileBuf->getBufferEnd());
 
   // Since MemoryBuffer may use mmap, make sure to first touch all bytes in the
   // input buffer to make sure it's actually in memory.
@@ -195,7 +195,7 @@ void BenchmarkIRParsing() {
     TimingOperationBlock T("Running bitcode analysis", BufSize);
 
     AnalysisDumpOptions DumpOptions;
-    AnalyzeBitcodeInBuffer(*FileBuf, nulls(), DumpOptions);
+    AnalyzeBitcodeInBuffer(FileBuf, nulls(), DumpOptions);
   }
 
   // Actual LLVM IR parsing and formation from the bitcode

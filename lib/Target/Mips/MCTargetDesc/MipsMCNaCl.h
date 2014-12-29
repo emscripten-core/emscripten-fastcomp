@@ -1,4 +1,4 @@
-//===-- MipsMCNaCl.h - Prototype for CustomExpandInstNaClMips ---*- C++ -*-===//
+//===-- MipsMCNaCl.h - NaCl-related declarations --------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,22 +10,24 @@
 #ifndef MIPSMCNACL_H
 #define MIPSMCNACL_H
 
-#include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCELFStreamer.h"
 
 namespace llvm {
-class MCInst;
-class MCStreamer;
-class MipsMCNaClSFIState {
- public:
-  static const int MaxSaved = 4;
-  MCInst Saved[MaxSaved];
-  int SaveCount;
-  int I;
-  bool RecursiveCall;
-};
 
-bool CustomExpandInstNaClMips(const MCInst &Inst, MCStreamer &Out,
-                              MipsMCNaClSFIState &State);
+// Log2 of the NaCl MIPS sandbox's instruction bundle size.
+static const unsigned MIPS_NACL_BUNDLE_ALIGN = 4u;
+
+bool isBasePlusOffsetMemoryAccess(unsigned Opcode, unsigned *AddrIdx,
+                                  bool *IsStore = nullptr);
+bool baseRegNeedsLoadStoreMask(unsigned Reg);
+
+// This function creates an MCELFStreamer for Mips NaCl.
+MCELFStreamer *createMipsNaClELFStreamer(MCContext &Context, MCAsmBackend &TAB,
+                                         raw_ostream &OS,
+                                         MCCodeEmitter *Emitter,
+                                         const MCSubtargetInfo &STI,
+                                         bool RelaxAll, bool NoExecStack);
+
 }
 
 #endif

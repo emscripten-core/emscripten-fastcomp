@@ -38,15 +38,16 @@ declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
 declare i32 @setjmp(i8*)
 declare void @longjmp(i8*, i32)
 
+; For correctness, the resulting call must get the "returns_twice" attribute.
 define i32 @call_setjmp(i8* %arg) {
   %val = call i32 @llvm.nacl.setjmp(i8* %arg)
-; CHECK: %val = call i32 @setjmp(i8* %arg)
+; CHECK: %val = call i32 @setjmp(i8* %arg) [[RETURNS_TWICE:#[0-9]+]]
   ret i32 %val
 }
 
 define void @call_longjmp(i8* %arg, i32 %num) {
   call void @llvm.nacl.longjmp(i8* %arg, i32 %num)
-; CHECK: call void @longjmp(i8* %arg, i32 %num)
+; CHECK: call void @longjmp(i8* %arg, i32 %num){{$}}
   ret void
 }
 
@@ -90,8 +91,67 @@ define i32 @test_fetch_and_xor_i32(i32* %ptr, i32 %value) {
 ; CHECK: @test_val_compare_and_swap_i32
 define i32 @test_val_compare_and_swap_i32(i32* %ptr, i32 %oldval, i32 %newval) {
   ; CHECK: %1 = cmpxchg i32* %ptr, i32 %oldval, i32 %newval seq_cst
+  ; CHECK-NEXT: %2 = extractvalue { i32, i1 } %1, 0
+  ; CHECK-NEXT: ret i32 %2
   %1 = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 %oldval, i32 %newval, i32 6, i32 6)
   ret i32 %1
+}
+
+; CHECK: @test_val_compare_and_swap_i32_new
+define i32 @test_val_compare_and_swap_i32_new(i32* %ptr, i32 %oldval, i32 %newval) {
+  ; CHECK: %1 = cmpxchg i32* %ptr, i32 %oldval, i32 %newval seq_cst
+  ; CHECK-NEXT: %res2 = extractvalue { i32, i1 } %1, 0
+  ; CHECK-NEXT: ret i32 %res2
+  %res = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 %oldval, i32 %newval, i32 6, i32 6)
+  %success = icmp eq i32 %res, %oldval
+  %res.insert.value = insertvalue { i32, i1 } undef, i32 %res, 0
+  %res.insert.success = insertvalue { i32, i1 } %res.insert.value, i1 %success, 1
+  %val = extractvalue { i32, i1 } %res.insert.success, 0
+  ret i32 %val
+}
+
+; CHECK: @test_bool_compare_and_swap_i32
+define i1 @test_bool_compare_and_swap_i32(i32* %ptr, i32 %oldval, i32 %newval) {
+  ; CHECK: %1 = cmpxchg i32* %ptr, i32 %oldval, i32 %newval seq_cst
+  ; CHECK-NEXT: %success = extractvalue { i32, i1 } %1, 1
+  ; CHECK-NEXT: ret i1 %success
+  %1 = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 %oldval, i32 %newval, i32 6, i32 6)
+  %2 = icmp eq i32 %1, %oldval
+  ret i1 %2
+}
+
+; CHECK: @test_bool_compare_and_swap_i32_new
+define i1 @test_bool_compare_and_swap_i32_new(i32* %ptr, i32 %oldval, i32 %newval) {
+  ; CHECK: %1 = cmpxchg i32* %ptr, i32 %oldval, i32 %newval seq_cst
+  ; CHECK-NEXT: %suc = extractvalue { i32, i1 } %1, 1
+  ; CHECK-NEXT: ret i1 %suc
+  %res = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 %oldval, i32 %newval, i32 6, i32 6)
+  %success = icmp eq i32 %res, %oldval
+  %res.insert.value = insertvalue { i32, i1 } undef, i32 %res, 0
+  %res.insert.success = insertvalue { i32, i1 } %res.insert.value, i1 %success, 1
+  %suc = extractvalue { i32, i1 } %res.insert.success, 1
+  ret i1 %suc
+}
+
+; CHECK: @test_bool_compare_and_swap_i32_reordered
+define i1 @test_bool_compare_and_swap_i32_reordered(i32* %ptr, i32 %oldval, i32 %newval) {
+  ; CHECK: %1 = cmpxchg i32* %ptr, i32 %oldval, i32 %newval seq_cst
+  ; CHECK-NEXT: %success = extractvalue { i32, i1 } %1, 1
+  ; CHECK-NEXT: ret i1 %success
+  %1 = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 %oldval, i32 %newval, i32 6, i32 6)
+  %2 = icmp eq i32 %oldval, %1 ; Note operands are swapped from above.
+  ret i1 %2
+}
+
+; CHECK: @test_struct_compare_and_swap_i32
+define { i32, i1 } @test_struct_compare_and_swap_i32(i32* %ptr, i32 %oldval, i32 %newval) {
+  ; CHECK: %1 = cmpxchg i32* %ptr, i32 %oldval, i32 %newval seq_cst
+  ; CHECK-NEXT: ret { i32, i1 } %1
+  %1 = call i32 @llvm.nacl.atomic.cmpxchg.i32(i32* %ptr, i32 %oldval, i32 %newval, i32 6, i32 6)
+  %2 = icmp eq i32 %1, %oldval
+  %3 = insertvalue { i32, i1 } undef, i32 %1, 0
+  %4 = insertvalue { i32, i1 } %3, i1 %2, 1
+  ret { i32, i1 } %4
 }
 
 ; CHECK: @test_c11_fence
@@ -211,3 +271,5 @@ define void @test_atomic_store_i64(i64* %ptr, i64 %value) {
   call void @llvm.nacl.atomic.store.i64(i64 %value, i64* %ptr, i32 6)
   ret void
 }
+
+; CHECK: attributes [[RETURNS_TWICE]] = { returns_twice }

@@ -58,9 +58,10 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN
 
 #if 0 // EMSCRIPTEN: we allow arbitrary symbols to be preserved
-  // Internalize all symbols in the module except _start, which is the only
-  // symbol a stable PNaCl pexe is allowed to export.
-  const char *SymbolsToPreserve[] = { "_start" };
+  // Internalize all symbols in the module except the entry point.  A PNaCl
+  // pexe is only allowed to export "_start", whereas a PNaCl PSO is only
+  // allowed to export "__pnacl_pso_root".
+  const char *SymbolsToPreserve[] = { "_start", "__pnacl_pso_root" };
   PM.add(createInternalizePass(SymbolsToPreserve));
 #endif
 
@@ -126,6 +127,25 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 #endif
   PM.add(createPromoteI1OpsPass());
 
+  // Vector simplifications.
+  //
+  // The following pass relies on ConstantInsertExtractElementIndex running
+  // after it, and it must run before GlobalizeConstantVectors because the mask
+  // argument of shufflevector must be a constant (the pass would otherwise
+  // violate this requirement).
+  PM.add(createExpandShuffleVectorPass());
+  // We should not place arbitrary passes after ExpandConstantExpr
+  // because they might reintroduce ConstantExprs.
+  PM.add(createExpandConstantExprPass());
+  // GlobalizeConstantVectors does not handle nested ConstantExprs, so we
+  // run ExpandConstantExpr first.
+  PM.add(createGlobalizeConstantVectorsPass());
+  // The following pass inserts GEPs, it must precede ExpandGetElementPtr. It
+  // also creates vector loads and stores, the subsequent pass cleans them up to
+  // fix their alignment.
+  PM.add(createConstantInsertExtractElementIndexPass());
+  PM.add(createFixVectorLoadStoreAlignmentPass());
+
   // Optimization passes and ExpandByVal introduce
   // memset/memcpy/memmove intrinsics with a 64-bit size argument.
   // This pass converts those arguments to 32-bit.
@@ -137,13 +157,16 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createStripMetadataPass());
 #endif
 
+  // ConstantMerge cleans up after passes such as GlobalizeConstantVectors. It
+  // must run before the FlattenGlobals pass because FlattenGlobals loses
+  // information that otherwise helps ConstantMerge do a good job.
+  PM.add(createConstantMergePass());
   // FlattenGlobals introduces ConstantExpr bitcasts of globals which
-  // are expanded out later.
+  // are expanded out later. ReplacePtrsWithInts also creates some
+  // ConstantExprs, and it locally creates an ExpandConstantExprPass
+  // to clean both of these up.
   PM.add(createFlattenGlobalsPass());
 
-  // We should not place arbitrary passes after ExpandConstantExpr
-  // because they might reintroduce ConstantExprs.
-  PM.add(createExpandConstantExprPass());
   // PromoteIntegersPass does not handle constexprs and creates GEPs,
   // so it goes between those passes.
   PM.add(createPromoteIntegersPass());
@@ -153,9 +176,7 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createExpandGetElementPtrPass());
 #endif
   // Rewrite atomic and volatile instructions with intrinsic calls.
-#if 0 // EMSCRIPTEN: we don't need to fix volatiles etc, and can use llvm intrinsics
   PM.add(createRewriteAtomicsPass());
-#endif
   // Remove ``asm("":::"memory")``. This must occur after rewriting
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
@@ -167,6 +188,11 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
 #endif
+
+  // The atomic cmpxchg instruction returns a struct, and is rewritten to an
+  // intrinsic as a post-opt pass, we therefore need to expand struct regs one
+  // last time.
+  PM.add(createExpandStructRegsPass());
 
   // We place StripAttributes after optimization passes because many
   // analyses add attributes to reflect their results.

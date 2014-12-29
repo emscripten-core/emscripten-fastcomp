@@ -4,6 +4,10 @@
 
 ; Test that only white-listed intrinsics are allowed.
 
+; A debuginfo version is required.
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+
 ; ===================================
 ; Debug info intrinsics, which are disallowed by default.
 

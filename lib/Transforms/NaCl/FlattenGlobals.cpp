@@ -49,10 +49,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
@@ -61,12 +64,102 @@
 using namespace llvm;
 
 namespace {
+
+  // Defines a (non-constant) handle that records a use of a
+  // constant. Used to make sure a relocation, within flattened global
+  // variable initializers, does not get destroyed when method
+  // removeDeadConstantUsers gets called. For simplicity, rather than
+  // defining a new (non-constant) construct, we use a return
+  // instruction as the handle.
+  typedef ReturnInst RelocUserType;
+
+  // Define map from a relocation, appearing in the flattened global variable
+  // initializers, to it's corresponding use handle.
+  typedef DenseMap<Constant*, RelocUserType*> RelocMapType;
+
+  // Define the list to hold the list of global variables being flattened.
+  class FlattenedGlobal;
+  typedef std::vector<FlattenedGlobal*> FlattenedGlobalsVectorType;
+
+  // Returns the corresponding relocation, for the given user handle.
+  static Constant *getRelocUse(RelocUserType *RelocUser) {
+    return cast<Constant>(RelocUser->getReturnValue());
+  }
+
+  // The state associated with flattening globals of a module.
+  struct FlattenGlobalsState {
+    /// The module being flattened.
+    Module &M;
+    /// The data layout to be used.
+    DataLayout DL;
+    /// The relocations (within the original global variable initializers)
+    /// that must be kept.
+    RelocMapType RelocMap;
+    /// The list of global variables that are being flattened.
+    FlattenedGlobalsVectorType FlattenedGlobalsVector;
+    /// True if the module was modified during the "flatten globals" pass.
+    bool Modified;
+    /// The type model of a byte.
+    Type *ByteType;
+    /// The type model of the integer pointer type.
+    Type *IntPtrType;
+    /// The size of the pointer type.
+    unsigned PtrSize;
+
+    explicit FlattenGlobalsState(Module &M)
+        : M(M), DL(&M), RelocMap(),
+          Modified(false),
+          ByteType(Type::getInt8Ty(M.getContext())),
+          IntPtrType(DL.getIntPtrType(M.getContext())),
+          PtrSize(DL.getPointerSize())
+    {}
+
+    ~FlattenGlobalsState() {
+      // Remove added user handles.
+      for (RelocMapType::iterator
+               I = RelocMap.begin(), E = RelocMap.end(); I != E; ++I) {
+        delete I->second;
+      }
+      // Remove flatteners for global varaibles.
+      DeleteContainerPointers(FlattenedGlobalsVector);
+    }
+
+    /// Collect Global variables whose initializers should be
+    /// flattened.  Creates corresponding flattened initializers (if
+    /// applicable), and creates uninitialized replacement global
+    /// variables.
+    void flattenGlobalsWithInitializers();
+
+    /// Remove initializers from original global variables, and
+    /// then remove the portions of the initializers that are
+    /// no longer used.
+    void removeDeadInitializerConstants();
+
+    // Replace the original global variables with their flattened
+    // global variable counterparts.
+    void replaceGlobalsWithFlattenedGlobals();
+
+    // Builds and installs initializers for flattened global
+    // variables, based on the flattened initializers of the
+    // corresponding original global variables.
+    void installFlattenedGlobalInitializers();
+
+    // Returns the user handle associated with the reloc, so that it
+    // won't be deleted during the flattening process.
+    RelocUserType *getRelocUserHandle(Constant *Reloc) {
+      RelocUserType *RelocUser = RelocMap[Reloc];
+      if (RelocUser == NULL) {
+        RelocUser = ReturnInst::Create(M.getContext(), Reloc);
+        RelocMap[Reloc] = RelocUser;
+      }
+      return RelocUser;
+    }
+  };
+
   // A FlattenedConstant represents a global variable initializer that
   // has been flattened and may be converted into the normal form.
   class FlattenedConstant {
-    LLVMContext *Context;
-    IntegerType *IntPtrType;
-    unsigned PtrSize;
+    FlattenGlobalsState &State;
 
     // A flattened global variable initializer is represented as:
     // 1) an array of bytes;
@@ -75,37 +168,166 @@ namespace {
     uint8_t *BufEnd;
 
     // 2) an array of relocations.
-    struct Reloc {
+    class Reloc {
+    private:
       unsigned RelOffset;  // Offset at which the relocation is to be applied.
-      Constant *GlobalRef;
+      RelocUserType *RelocUser;
+   public:
+
+      unsigned getRelOffset() const { return RelOffset; }
+      Constant *getRelocUse() const { return ::getRelocUse(RelocUser); }
+      Reloc(FlattenGlobalsState &State, unsigned RelOffset, Constant *NewVal)
+          : RelOffset(RelOffset),
+            RelocUser(State.getRelocUserHandle(NewVal)) {}
+
+      explicit Reloc(const Reloc &R)
+          : RelOffset(R.RelOffset), RelocUser(R.RelocUser) {}
+
+      void operator=(const Reloc &R) {
+        RelOffset = R.RelOffset;
+        RelocUser = R.RelocUser;
+      }
     };
     typedef SmallVector<Reloc, 10> RelocArray;
     RelocArray Relocs;
 
-    void putAtDest(DataLayout *DL, Constant *Value, uint8_t *Dest);
+    const DataLayout &getDataLayout() const { return State.DL; }
 
-    Constant *dataSlice(unsigned StartPos, unsigned EndPos) {
+    Module &getModule() const { return State.M; }
+
+    Type *getIntPtrType() const { return State.IntPtrType; }
+
+    Type *getByteType() const { return State.ByteType; }
+
+    unsigned getPtrSize() const { return State.PtrSize; }
+
+    void putAtDest(Constant *Value, uint8_t *Dest);
+
+    Constant *dataSlice(unsigned StartPos, unsigned EndPos) const {
       return ConstantDataArray::get(
-          *Context, ArrayRef<uint8_t>(Buf + StartPos, Buf + EndPos));
+          getModule().getContext(),
+          ArrayRef<uint8_t>(Buf + StartPos, Buf + EndPos));
+    }
+
+    Type *dataSliceType(unsigned StartPos, unsigned EndPos) const {
+      return ArrayType::get(getByteType(), EndPos - StartPos);
     }
 
   public:
-    FlattenedConstant(DataLayout *DL, Constant *Value):
-        Context(&Value->getContext()) {
-      IntPtrType = DL->getIntPtrType(*Context);
-      PtrSize = DL->getPointerSize();
-      BufSize = DL->getTypeAllocSize(Value->getType());
-      Buf = new uint8_t[BufSize];
-      BufEnd = Buf + BufSize;
+    FlattenedConstant(FlattenGlobalsState &State, Constant *Value):
+        State(State),
+        BufSize(getDataLayout().getTypeAllocSize(Value->getType())),
+        Buf(new uint8_t[BufSize]),
+        BufEnd(Buf + BufSize) {
       memset(Buf, 0, BufSize);
-      putAtDest(DL, Value, Buf);
+      putAtDest(Value, Buf);
     }
 
     ~FlattenedConstant() {
       delete[] Buf;
     }
 
-    Constant *getAsNormalFormConstant();
+    // Returns the corresponding flattened initializer.
+    Constant *getAsNormalFormConstant() const;
+
+    // Returns the type of the corresponding flattened initializer;
+    Type *getAsNormalFormType() const;
+
+  };
+
+  // Structure used to flatten a global variable.
+  struct FlattenedGlobal {
+    // The state of the flatten globals pass.
+    FlattenGlobalsState &State;
+    // The global variable to flatten.
+    GlobalVariable *Global;
+    // The replacement global variable, if known.
+    GlobalVariable *NewGlobal;
+    // True if Global has an initializer.
+    bool HasInitializer;
+    // The flattened initializer, if the initializer would not just be
+    // filled with zeroes.
+    FlattenedConstant *FlatConst;
+    // The type of GlobalType, when used in an initializer.
+    Type *GlobalType;
+    // The size of the initializer.
+    uint64_t Size;
+  public:
+    FlattenedGlobal(FlattenGlobalsState &State, GlobalVariable *Global)
+        : State(State),
+          Global(Global),
+          NewGlobal(NULL),
+          HasInitializer(Global->hasInitializer()),
+          FlatConst(NULL),
+          GlobalType(Global->getType()->getPointerElementType()),
+          Size(GlobalType->isSized()
+               ? getDataLayout().getTypeAllocSize(GlobalType) : 0) {
+      Type *NewType = NULL;
+      if (HasInitializer) {
+        if (Global->getInitializer()->isNullValue()) {
+          // Special case of NullValue. As an optimization, for large
+          // BSS variables, avoid allocating a buffer that would only be filled
+          // with zeros.
+          NewType = ArrayType::get(getByteType(), Size);
+        } else {
+          FlatConst = new FlattenedConstant(State, Global->getInitializer());
+          NewType = FlatConst->getAsNormalFormType();
+        }
+      } else {
+        NewType = ArrayType::get(getByteType(), Size);
+      }
+      NewGlobal = new GlobalVariable(getModule(), NewType,
+                                     Global->isConstant(),
+                                     Global->getLinkage(),
+                                     NULL, "", Global,
+                                     Global->getThreadLocalMode());
+      NewGlobal->copyAttributesFrom(Global);
+      if (NewGlobal->getAlignment() == 0 && GlobalType->isSized())
+        NewGlobal->setAlignment(getDataLayout().
+                                getPrefTypeAlignment(GlobalType));
+      NewGlobal->setExternallyInitialized(Global->isExternallyInitialized());
+      NewGlobal->takeName(Global);
+    }
+
+    ~FlattenedGlobal() {
+      delete FlatConst;
+    }
+
+    const DataLayout &getDataLayout() const { return State.DL; }
+
+    Module &getModule() const { return State.M; }
+
+    Type *getByteType() const { return State.ByteType; }
+
+    // Removes the original initializer from the global variable to be
+    // flattened, if applicable.
+    void removeOriginalInitializer() {
+      if (HasInitializer) Global->setInitializer(NULL);
+    }
+
+    // Replaces the original global variable with the corresponding
+    // flattened global variable.
+    void replaceGlobalWithFlattenedGlobal() {
+      Global->replaceAllUsesWith(
+          ConstantExpr::getBitCast(NewGlobal, Global->getType()));
+      Global->eraseFromParent();
+    }
+
+    // Installs flattened initializers to the corresponding flattened
+    // global variable.
+    void installFlattenedInitializer() {
+      if (HasInitializer) {
+        Constant *NewInit = NULL;
+        if (FlatConst == NULL) {
+          // Special case of NullValue.
+          NewInit = ConstantAggregateZero::get(ArrayType::get(getByteType(),
+                                                              Size));
+        } else {
+          NewInit = FlatConst->getAsNormalFormConstant();
+        }
+        NewGlobal->setInitializer(NewInit);
+      }
+    }
   };
 
   class FlattenGlobals : public ModulePass {
@@ -119,7 +341,7 @@ namespace {
   };
 }
 
-static void ExpandConstant(DataLayout *DL, Constant *Val,
+static void ExpandConstant(const DataLayout *DL, Constant *Val,
                            Constant **ResultGlobal, uint64_t *ResultOffset) {
   if (isa<GlobalValue>(Val) || isa<BlockAddress>(Val)) {
     *ResultGlobal = Val;
@@ -157,9 +379,8 @@ static void ExpandConstant(DataLayout *DL, Constant *Val,
   }
 }
 
-void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
-                                  uint8_t *Dest) {
-  uint64_t ValSize = DL->getTypeAllocSize(Val->getType());
+void FlattenedConstant::putAtDest(Constant *Val, uint8_t *Dest) {
+  uint64_t ValSize = getDataLayout().getTypeAllocSize(Val->getType());
   assert(Dest + ValSize <= BufEnd);
   if (isa<ConstantAggregateZero>(Val) ||
       isa<UndefValue>(Val) ||
@@ -178,23 +399,24 @@ void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
     StringRef Data = CD->getRawDataValues();
     assert(Data.size() == ValSize);
     memcpy(Dest, Data.data(), Data.size());
-  } else if (isa<ConstantArray>(Val) || isa<ConstantVector>(Val)) {
-    uint64_t ElementSize = DL->getTypeAllocSize(
+  } else if (isa<ConstantArray>(Val) || isa<ConstantDataVector>(Val) ||
+             isa<ConstantVector>(Val)) {
+    uint64_t ElementSize = getDataLayout().getTypeAllocSize(
         Val->getType()->getSequentialElementType());
     for (unsigned I = 0; I < Val->getNumOperands(); ++I) {
-      putAtDest(DL, cast<Constant>(Val->getOperand(I)), Dest + ElementSize * I);
+      putAtDest(cast<Constant>(Val->getOperand(I)), Dest + ElementSize * I);
     }
   } else if (ConstantStruct *CS = dyn_cast<ConstantStruct>(Val)) {
-    const StructLayout *Layout = DL->getStructLayout(CS->getType());
+    const StructLayout *Layout = getDataLayout().getStructLayout(CS->getType());
     for (unsigned I = 0; I < CS->getNumOperands(); ++I) {
-      putAtDest(DL, CS->getOperand(I), Dest + Layout->getElementOffset(I));
+      putAtDest(CS->getOperand(I), Dest + Layout->getElementOffset(I));
     }
   } else {
     Constant *GV;
     uint64_t Offset;
-    ExpandConstant(DL, Val, &GV, &Offset);
+    ExpandConstant(&getDataLayout(), Val, &GV, &Offset);
     if (GV) {
-      Constant *NewVal = ConstantExpr::getPtrToInt(GV, IntPtrType);
+      Constant *NewVal = ConstantExpr::getPtrToInt(GV, getIntPtrType());
       if (Offset) {
         // For simplicity, require addends to be 32-bit.
         if ((int64_t) Offset != (int32_t) (uint32_t) Offset) {
@@ -203,9 +425,10 @@ void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
               "FlattenGlobals: Offset does not fit into 32 bits");
         }
         NewVal = ConstantExpr::getAdd(
-            NewVal, ConstantInt::get(IntPtrType, Offset, /* isSigned= */ true));
+            NewVal, ConstantInt::get(getIntPtrType(), Offset,
+                                     /* isSigned= */ true));
       }
-      Reloc NewRel = { Dest - Buf, NewVal };
+      Reloc NewRel(State, Dest - Buf, NewVal);
       Relocs.push_back(NewRel);
     } else {
       memcpy(Dest, &Offset, ValSize);
@@ -213,28 +436,52 @@ void FlattenedConstant::putAtDest(DataLayout *DL, Constant *Val,
   }
 }
 
-Constant *FlattenedConstant::getAsNormalFormConstant() {
+Constant *FlattenedConstant::getAsNormalFormConstant() const {
   // Return a single SimpleElement.
   if (Relocs.size() == 0)
     return dataSlice(0, BufSize);
-  if (Relocs.size() == 1 && BufSize == PtrSize) {
-    assert(Relocs[0].RelOffset == 0);
-    return Relocs[0].GlobalRef;
+  if (Relocs.size() == 1 && BufSize == getPtrSize()) {
+    assert(Relocs[0].getRelOffset() == 0);
+    return Relocs[0].getRelocUse();
   }
 
   // Return a CompoundElement.
   SmallVector<Constant *, 10> Elements;
   unsigned PrevPos = 0;
-  for (RelocArray::iterator Rel = Relocs.begin(), E = Relocs.end();
+  for (RelocArray::const_iterator Rel = Relocs.begin(), E = Relocs.end();
        Rel != E; ++Rel) {
-    if (Rel->RelOffset > PrevPos)
-      Elements.push_back(dataSlice(PrevPos, Rel->RelOffset));
-    Elements.push_back(Rel->GlobalRef);
-    PrevPos = Rel->RelOffset + PtrSize;
+    if (Rel->getRelOffset() > PrevPos)
+      Elements.push_back(dataSlice(PrevPos, Rel->getRelOffset()));
+    Elements.push_back(Rel->getRelocUse());
+    PrevPos = Rel->getRelOffset() + getPtrSize();
   }
   if (PrevPos < BufSize)
     Elements.push_back(dataSlice(PrevPos, BufSize));
-  return ConstantStruct::getAnon(*Context, Elements, true);
+  return ConstantStruct::getAnon(getModule().getContext(), Elements, true);
+}
+
+Type *FlattenedConstant::getAsNormalFormType() const {
+  // Return a single element type.
+  if (Relocs.size() == 0)
+    return dataSliceType(0, BufSize);
+  if (Relocs.size() == 1 && BufSize == getPtrSize()) {
+    assert(Relocs[0].getRelOffset() == 0);
+    return Relocs[0].getRelocUse()->getType();
+  }
+
+  // Return a compound type.
+  SmallVector<Type *, 10> Elements;
+  unsigned PrevPos = 0;
+  for (RelocArray::const_iterator Rel = Relocs.begin(), E = Relocs.end();
+       Rel != E; ++Rel) {
+    if (Rel->getRelOffset() > PrevPos)
+      Elements.push_back(dataSliceType(PrevPos, Rel->getRelOffset()));
+    Elements.push_back(Rel->getRelocUse()->getType());
+    PrevPos = Rel->getRelOffset() + getPtrSize();
+  }
+  if (PrevPos < BufSize)
+    Elements.push_back(dataSliceType(PrevPos, BufSize));
+  return StructType::get(getModule().getContext(), Elements, true);
 }
 
 char FlattenGlobals::ID = 0;
@@ -242,57 +489,57 @@ INITIALIZE_PASS(FlattenGlobals, "flatten-globals",
                 "Flatten global variable initializers into byte arrays",
                 false, false)
 
-bool FlattenGlobals::runOnModule(Module &M) {
-  bool Modified = false;
-  DataLayout DL(&M);
-  Type *I8 = Type::getInt8Ty(M.getContext());
-
+void FlattenGlobalsState::flattenGlobalsWithInitializers() {
   for (Module::global_iterator I = M.global_begin(), E = M.global_end();
-       I != E; ) {
+       I != E;) {
     GlobalVariable *Global = I++;
     // Variables with "appending" linkage must always be arrays and so
     // cannot be normalized, so leave them alone.
     if (Global->hasAppendingLinkage())
       continue;
     Modified = true;
-
-    Type *GlobalType = Global->getType()->getPointerElementType();
-    uint64_t Size = DL.getTypeAllocSize(GlobalType);
-    Constant *NewInit;
-    Type *NewType;
-    if (Global->hasInitializer()) {
-      if (Global->getInitializer()->isNullValue()) {
-        // As an optimization, for large BSS variables, avoid
-        // allocating a buffer that would only be filled with zeroes.
-        NewType = ArrayType::get(I8, Size);
-        NewInit = ConstantAggregateZero::get(NewType);
-      } else {
-        FlattenedConstant Buffer(&DL, Global->getInitializer());
-        NewInit = Buffer.getAsNormalFormConstant();
-        NewType = NewInit->getType();
-      }
-    } else {
-      NewInit = NULL;
-      NewType = ArrayType::get(I8, Size);
-    }
-    GlobalVariable *NewGlobal = new GlobalVariable(
-        M, NewType,
-        Global->isConstant(),
-        Global->getLinkage(),
-        NewInit, "", Global,
-        Global->getThreadLocalMode());
-    NewGlobal->copyAttributesFrom(Global);
-    if (NewGlobal->getAlignment() == 0)
-      NewGlobal->setAlignment(DL.getPrefTypeAlignment(GlobalType));
-    NewGlobal->setExternallyInitialized(Global->isExternallyInitialized());
-    NewGlobal->takeName(Global);
-    if (!Global->use_empty())
-      Global->replaceAllUsesWith(
-          ConstantExpr::getBitCast(NewGlobal, Global->getType()));
-    Global->eraseFromParent();
+    FlattenedGlobalsVector.push_back(new FlattenedGlobal(*this, Global));
   }
-  return Modified;
+}
 
+void FlattenGlobalsState::removeDeadInitializerConstants() {
+  // Detach original initializers.
+  for (FlattenedGlobalsVectorType::iterator
+           I = FlattenedGlobalsVector.begin(), E = FlattenedGlobalsVector.end();
+       I != E; ++I) {
+    (*I)->removeOriginalInitializer();
+  }
+  // Do cleanup of old initializers.
+  for (RelocMapType::iterator I = RelocMap.begin(), E = RelocMap.end();
+       I != E; ++I) {
+    getRelocUse(I->second)->removeDeadConstantUsers();
+  }
+
+}
+
+void FlattenGlobalsState::replaceGlobalsWithFlattenedGlobals() {
+  for (FlattenedGlobalsVectorType::iterator
+           I = FlattenedGlobalsVector.begin(), E = FlattenedGlobalsVector.end();
+       I != E; ++I) {
+    (*I)->replaceGlobalWithFlattenedGlobal();
+  }
+}
+
+void FlattenGlobalsState::installFlattenedGlobalInitializers() {
+  for (FlattenedGlobalsVectorType::iterator
+           I = FlattenedGlobalsVector.begin(), E = FlattenedGlobalsVector.end();
+       I != E; ++I) {
+    (*I)->installFlattenedInitializer();
+  }
+}
+
+bool FlattenGlobals::runOnModule(Module &M) {
+  FlattenGlobalsState State(M);
+  State.flattenGlobalsWithInitializers();
+  State.removeDeadInitializerConstants();
+  State.replaceGlobalsWithFlattenedGlobals();
+  State.installFlattenedGlobalInitializers();
+  return State.Modified;
 }
 
 ModulePass *llvm::createFlattenGlobalsPass() {

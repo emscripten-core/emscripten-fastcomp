@@ -11,6 +11,8 @@
 #define LLVM_TRANSFORMS_NACL_H
 
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 
 namespace llvm {
 
@@ -23,8 +25,12 @@ class ModulePass;
 class Use;
 class Value;
 
+BasicBlockPass *createConstantInsertExtractElementIndexPass();
 BasicBlockPass *createExpandGetElementPtrPass();
+BasicBlockPass *createExpandShuffleVectorPass();
+BasicBlockPass *createFixVectorLoadStoreAlignmentPass();
 BasicBlockPass *createPromoteI1OpsPass();
+FunctionPass *createBackendCanonicalizePass();
 FunctionPass *createExpandConstantExprPass();
 FunctionPass *createExpandStructRegsPass();
 FunctionPass *createInsertDivideCheckPass();
@@ -43,6 +49,7 @@ ModulePass *createExpandTlsPass();
 ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
+ModulePass *createGlobalizeConstantVectorsPass();
 ModulePass *createPNaClSjLjEHPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
@@ -51,6 +58,7 @@ ModulePass *createRewriteLLVMIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
+ModulePass *createStripModuleFlagsPass();
 
 ModulePass *createExpandI64Pass(); // XXX EMSCRIPTEN
 ModulePass *createExpandInsertExtractElementPass(); // XXX EMSCRIPTEN
@@ -65,8 +73,11 @@ void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);
 
-// Copy debug information from Original to NewInst, and return NewInst.
-Instruction *CopyDebug(Instruction *NewInst, Instruction *Original);
+// Copy debug information from Original to New, and return New.
+template <typename T> T *CopyDebug(T *New, Instruction *Original) {
+  New->setDebugLoc(Original->getDebugLoc());
+  return New;
+}
 
 template <class InstType>
 static void CopyLoadOrStoreAttrs(InstType *Dest, InstType *Src) {

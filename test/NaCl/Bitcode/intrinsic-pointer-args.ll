@@ -8,7 +8,7 @@ declare void @llvm.stackrestore(i8*)
 
 declare i8* @llvm.nacl.read.tp()
 declare void @llvm.nacl.longjmp(i8*, i32)
-declare void @llvm.nacl.setjmp(i8*)
+declare i32 @llvm.nacl.setjmp(i8*)
 
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1)
 declare void @llvm.memmove.p0i8.p0i8.i32(i8* nocapture, i8* nocapture, i32, i32, i1)
@@ -34,7 +34,7 @@ declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
 
 ; TD: declare i8* @llvm.nacl.read.tp()
 ; TD: declare void @llvm.nacl.longjmp(i8*, i32)
-; TD: declare void @llvm.nacl.setjmp(i8*)
+; TD: declare i32 @llvm.nacl.setjmp(i8*)
 
 ; TD: declare void @llvm.memcpy.p0i8.p0i8.i32(i8* {{.*}}, i8* {{.*}}, i32, i32, i1)
 ; TD: declare void @llvm.memmove.p0i8.p0i8.i32(i8* {{.*}}, i8* {{.*}}, i32, i32, i1)

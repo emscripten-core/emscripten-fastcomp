@@ -16,15 +16,17 @@
 #define NACL_BITCODE_READER_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Analysis/NaCl/PNaClAllowedIntrinsics.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
-#include "llvm/GVMaterializer.h"
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GVMaterializer.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Type.h"
-#include "llvm/Support/ValueHandle.h"
+#include "llvm/IR/ValueHandle.h"
 #include <vector>
 
 namespace llvm {
@@ -77,9 +79,8 @@ public:
 
 class NaClBitcodeReaderValueList {
   std::vector<WeakVH> ValuePtrs;
-  LLVMContext &Context;
 public:
-  NaClBitcodeReaderValueList(LLVMContext &C) : Context(C) {}
+  NaClBitcodeReaderValueList() {}
   ~NaClBitcodeReaderValueList() {}
 
   // vector compatibility methods
@@ -114,22 +115,8 @@ public:
   // Gets the forward reference value for Idx.
   Value *getValueFwdRef(unsigned Idx);
 
-  // Gets the corresponding constant defining the address of the
-  // corresponding global variable defined by Idx, if already defined.
-  // Otherwise, creates a forward reference for Idx, and returns the
-  // placeholder constant for the address of the corresponding global
-  // variable defined by Idx.
-  Constant *getOrCreateGlobalVarRef(unsigned Idx, Module* M);
-
-  // Assigns Idx to the given value (if new), or assigns V to Idx (if Idx
-  // was forward referenced).
+  // Assigns V to value index Idx.
   void AssignValue(Value *V, unsigned Idx);
-
-  // Assigns Idx to the given global variable.  If the Idx currently has
-  // a forward reference (built by createGlobalVarFwdRef(unsigned Idx)),
-  // replaces uses of the global variable forward reference with the
-  // value GV.
-  void AssignGlobalVar(GlobalVariable *GV, unsigned Idx);
 
   // Assigns Idx to the given value, overwriting the existing entry
   // and possibly modifying the type of the entry.
@@ -141,11 +128,11 @@ class NaClBitcodeReader : public GVMaterializer {
   NaClBitcodeHeader Header;  // Header fields of the PNaCl bitcode file.
   LLVMContext &Context;
   Module *TheModule;
-  MemoryBuffer *Buffer;
-  bool BufferOwned;
-  OwningPtr<NaClBitstreamReader> StreamFile;
+  PNaClAllowedIntrinsics AllowedIntrinsics;
+  std::unique_ptr<MemoryBuffer> Buffer;
+  std::unique_ptr<NaClBitstreamReader> StreamFile;
   NaClBitstreamCursor Stream;
-  StreamableMemoryObject *LazyStreamer;
+  StreamingMemoryObject *LazyStreamer;
   uint64_t NextUnreadBit;
   bool SeenValueSymbolTable;
 
@@ -197,37 +184,37 @@ class NaClBitcodeReader : public GVMaterializer {
 public:
   explicit NaClBitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
                              bool AcceptSupportedOnly = true)
-    : Context(C), TheModule(0), Buffer(buffer), BufferOwned(false),
-      LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ValueList(C),
-      SeenFirstFunctionBody(false),
-      AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
-      IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
+      : Context(C), TheModule(0), AllowedIntrinsics(&C),
+        Buffer(buffer),
+        LazyStreamer(0), NextUnreadBit(0), SeenValueSymbolTable(false),
+        ValueList(),
+        SeenFirstFunctionBody(false),
+        AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
+        IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
-  explicit NaClBitcodeReader(StreamableMemoryObject *streamer, LLVMContext &C,
+  explicit NaClBitcodeReader(StreamingMemoryObject *streamer,
+                             LLVMContext &C,
                              bool AcceptSupportedOnly = true)
-    : Context(C), TheModule(0), Buffer(0), BufferOwned(false),
-      LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
-      ValueList(C),
-      SeenFirstFunctionBody(false),
-      AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
-      IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
+      : Context(C), TheModule(0), AllowedIntrinsics(&C),
+        Buffer(nullptr),
+        LazyStreamer(streamer), NextUnreadBit(0), SeenValueSymbolTable(false),
+        ValueList(),
+        SeenFirstFunctionBody(false),
+        AcceptSupportedBitcodeOnly(AcceptSupportedOnly),
+        IntPtrType(IntegerType::get(C, PNaClIntPtrTypeBitSize)) {
   }
-  ~NaClBitcodeReader() {
+  ~NaClBitcodeReader() override {
     FreeState();
   }
 
   void FreeState();
 
-  /// setBufferOwned - If this is true, the reader will destroy the MemoryBuffer
-  /// when the reader is destroyed.
-  void setBufferOwned(bool Owned) { BufferOwned = Owned; }
-
-  virtual bool isMaterializable(const GlobalValue *GV) const;
-  virtual bool isDematerializable(const GlobalValue *GV) const;
-  virtual error_code Materialize(GlobalValue *GV);
-  virtual error_code MaterializeModule(Module *M);
-  virtual void Dematerialize(GlobalValue *GV);
+  bool isMaterializable(const GlobalValue *GV) const override;
+  bool isDematerializable(const GlobalValue *GV) const override;
+  std::error_code Materialize(GlobalValue *GV) override;
+  std::error_code MaterializeModule(Module *M) override;
+  void Dematerialize(GlobalValue *GV) override;
+  void releaseBuffer() override;
 
   bool Error(const std::string &Str) {
     ErrorString = Str;

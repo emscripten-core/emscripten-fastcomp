@@ -48,10 +48,10 @@ namespace llvm {
     /// @{
 
     /// Construct an empty ArrayRef.
-    /*implicit*/ ArrayRef() : Data(0), Length(0) {}
+    /*implicit*/ ArrayRef() : Data(nullptr), Length(0) {}
 
     /// Construct an empty ArrayRef from None.
-    /*implicit*/ ArrayRef(NoneType) : Data(0), Length(0) {}
+    /*implicit*/ ArrayRef(NoneType) : Data(nullptr), Length(0) {}
 
     /// Construct an ArrayRef from a single element.
     /*implicit*/ ArrayRef(const T &OneElt)
@@ -76,7 +76,7 @@ namespace llvm {
     /// Construct an ArrayRef from a std::vector.
     template<typename A>
     /*implicit*/ ArrayRef(const std::vector<T, A> &Vec)
-      : Data(Vec.empty() ? (T*)0 : &Vec[0]), Length(Vec.size()) {}
+      : Data(Vec.data()), Length(Vec.size()) {}
 
     /// Construct an ArrayRef from a C array.
     template <size_t N>
@@ -120,14 +120,18 @@ namespace llvm {
       return Data[Length-1];
     }
 
+    // copy - Allocate copy in Allocator and return ArrayRef<T> to it.
+    template <typename Allocator> ArrayRef<T> copy(Allocator &A) {
+      T *Buff = A.template Allocate<T>(Length);
+      std::copy(begin(), end(), Buff);
+      return ArrayRef<T>(Buff, Length);
+    }
+
     /// equals - Check for element-wise equality.
     bool equals(ArrayRef RHS) const {
       if (Length != RHS.Length)
         return false;
-      for (size_type i = 0; i != Length; i++)
-        if (Data[i] != RHS.Data[i])
-          return false;
-      return true;
+      return std::equal(begin(), end(), RHS.begin());
     }
 
     /// slice(n) - Chop off the first N elements of the array.
@@ -141,6 +145,12 @@ namespace llvm {
     ArrayRef<T> slice(unsigned N, unsigned M) const {
       assert(N+M <= size() && "Invalid specifier");
       return ArrayRef<T>(data()+N, M);
+    }
+
+    // \brief Drop the last \p N elements of the array.
+    ArrayRef<T> drop_back(unsigned N = 1) const {
+      assert(size() >= N && "Dropping more elements than exist");
+      return slice(0, size() - N);
     }
 
     /// @}
@@ -185,6 +195,8 @@ namespace llvm {
   public:
     typedef T *iterator;
 
+    typedef std::reverse_iterator<iterator> reverse_iterator;
+
     /// Construct an empty MutableArrayRef.
     /*implicit*/ MutableArrayRef() : ArrayRef<T>() {}
 
@@ -211,13 +223,16 @@ namespace llvm {
 
     /// Construct an MutableArrayRef from a C array.
     template <size_t N>
-    /*implicit*/ MutableArrayRef(T (&Arr)[N])
+    /*implicit*/ LLVM_CONSTEXPR MutableArrayRef(T (&Arr)[N])
       : ArrayRef<T>(Arr) {}
 
     T *data() const { return const_cast<T*>(ArrayRef<T>::data()); }
 
     iterator begin() const { return data(); }
     iterator end() const { return data() + this->size(); }
+
+    reverse_iterator rbegin() const { return reverse_iterator(end()); }
+    reverse_iterator rend() const { return reverse_iterator(begin()); }
 
     /// front - Get the first element.
     T &front() const {
