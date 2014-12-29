@@ -1,4 +1,4 @@
-#include "llvm/Analysis/Verifier.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -80,16 +80,13 @@ static int gettok() {
 //===----------------------------------------------------------------------===//
 // Abstract Syntax Tree (aka Parse Tree)
 //===----------------------------------------------------------------------===//
-
+namespace {
 /// ExprAST - Base class for all expression nodes.
 class ExprAST {
 public:
-  virtual ~ExprAST();
+  virtual ~ExprAST() {}
   virtual Value *Codegen() = 0;
 };
-
-// Provide out-of-line definition to prevent weak vtable.
-ExprAST::~ExprAST() {}
 
 /// NumberExprAST - Expression class for numeric literals like "1.0".
 class NumberExprAST : public ExprAST {
@@ -150,6 +147,7 @@ public:
   
   Function *Codegen();
 };
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // Parser

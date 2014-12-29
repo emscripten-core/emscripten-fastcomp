@@ -20,12 +20,6 @@ using namespace llvm;
 
 void EmitSFIHeaders(raw_ostream &O) {
   O << " @ ========================================\n";
-  O << "@ Branch: " << FlagSfiBranch << "\n";
-  O << "@ Stack: " << FlagSfiStack << "\n";
-  O << "@ Store: " << FlagSfiStore << "\n";
-  O << "@ Data: " << FlagSfiData << "\n";
-
-  O << " @ ========================================\n";
   // NOTE: this macro does bundle alignment as follows
   //       if current bundle pos is X emit pX data items of value "val"
   // NOTE: that pos will be one of: 0,4,8,12
@@ -68,108 +62,69 @@ void EmitSFIHeaders(raw_ostream &O) {
     "\n\n";
 
   O << " @ ========================================\n";
-  if (FlagSfiZeroMask) {
-    // This mode sets all mask to zero which makes them into nops
-    // this is useful for linking this code against non-sandboxed code
-    // for debugging purposes
-    O <<
-      "\t.macro sfi_data_mask reg cond\n"
-      "\tbic\\cond \\reg, \\reg, #0\n"
-      "\t.endm\n"
-      "\n\n";
+  O <<
+    "\t.macro sfi_data_mask reg cond\n"
+    "\tbic\\cond \\reg, \\reg, #0xc0000000\n"
+    "\t.endm\n"
+    "\n\n";
 
-    O <<
-      "\t.macro sfi_data_tst reg\n"
-      "\ttst \\reg, #0x00000000\n"
-      "\t.endm\n"
-      "\n\n";
+  O <<
+    "\t.macro sfi_data_tst reg\n"
+    "\ttst \\reg, #0xc0000000\n"
+    "\t.endm\n"
+    "\n\n";
 
-    O <<
-      "\t.macro sfi_code_mask reg cond=\n"
-      "\tbic\\cond \\reg, \\reg, #0\n"
-      "\t.endm\n"
-      "\n\n";
-
-  } else {
-    O <<
-      "\t.macro sfi_data_mask reg cond\n"
-      "\tbic\\cond \\reg, \\reg, #0xc0000000\n"
-      "\t.endm\n"
-      "\n\n";
-
-    O <<
-      "\t.macro sfi_data_tst reg\n"
-      "\ttst \\reg, #0xc0000000\n"
-      "\t.endm\n"
-      "\n\n";
-
-    O <<
-      "\t.macro sfi_code_mask reg cond=\n"
-      "\tbic\\cond \\reg, \\reg, #0xc000000f\n"
-      "\t.endm\n"
-      "\n\n";
-  }
+  O <<
+    "\t.macro sfi_code_mask reg cond=\n"
+    "\tbic\\cond \\reg, \\reg, #0xc000000f\n"
+    "\t.endm\n"
+    "\n\n";
 
   O << " @ ========================================\n";
-  if (FlagSfiBranch) {
-    O <<
-      "\t.macro sfi_call_preamble cond=\n"
-      "\tsfi_nops_to_force_slot3\n"
-      "\t.endm\n"
-      "\n\n";
+  O <<
+    "\t.macro sfi_call_preamble cond=\n"
+    "\tsfi_nops_to_force_slot3\n"
+    "\t.endm\n"
+    "\n\n";
 
-    O <<
-      "\t.macro sfi_return_preamble reg cond=\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_code_mask \\reg \\cond\n"
-      "\t.endm\n"
-      "\n\n";
+  O <<
+    "\t.macro sfi_return_preamble reg cond=\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_code_mask \\reg \\cond\n"
+    "\t.endm\n"
+    "\n\n";
     
-    // This is used just before "bx rx"
-    O <<
-      "\t.macro sfi_indirect_jump_preamble link cond=\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_code_mask \\link \\cond\n"
-      "\t.endm\n"
-      "\n\n";
+  // This is used just before "bx rx"
+  O <<
+    "\t.macro sfi_indirect_jump_preamble link cond=\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_code_mask \\link \\cond\n"
+    "\t.endm\n"
+    "\n\n";
 
-    // This is use just before "blx rx"
-    O <<
-      "\t.macro sfi_indirect_call_preamble link cond=\n"
-      "\tsfi_nops_to_force_slot2\n"
-      "\tsfi_code_mask \\link \\cond\n"
-      "\t.endm\n"
-      "\n\n";
+  // This is use just before "blx rx"
+  O <<
+    "\t.macro sfi_indirect_call_preamble link cond=\n"
+    "\tsfi_nops_to_force_slot2\n"
+    "\tsfi_code_mask \\link \\cond\n"
+    "\t.endm\n"
+    "\n\n";
 
-  }
+  O << " @ ========================================\n";
 
-  if (FlagSfiStore) {
-    O << " @ ========================================\n";
+  O <<
+    "\t.macro sfi_load_store_preamble reg cond\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_data_mask \\reg, \\cond\n"
+    "\t.endm\n"
+    "\n\n";
 
-    O <<
-      "\t.macro sfi_load_store_preamble reg cond\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_data_mask \\reg, \\cond\n"
-      "\t.endm\n"
-      "\n\n";
-
-    O <<
-      "\t.macro sfi_cstore_preamble reg\n"
-      "\tsfi_nop_if_at_bundle_end\n"
-      "\tsfi_data_tst \\reg\n"
-      "\t.endm\n"
-      "\n\n";
-  } else {
-    O <<
-      "\t.macro sfi_load_store_preamble reg cond\n"
-      "\t.endm\n"
-      "\n\n";
-
-    O <<
-      "\t.macro sfi_cstore_preamble reg cond\n"
-      "\t.endm\n"
-      "\n\n";
-  }
+  O <<
+    "\t.macro sfi_cstore_preamble reg\n"
+    "\tsfi_nop_if_at_bundle_end\n"
+    "\tsfi_data_tst \\reg\n"
+    "\t.endm\n"
+    "\n\n";
 
   O << " @ ========================================\n";
   O << "\t.text\n";

@@ -15,21 +15,20 @@ using namespace llvm;
 
 Target llvm::TheJSBackendTarget;
 
-static unsigned JSBackend_TripleMatchQuality(const std::string &TT) {
-  switch (Triple(TT).getArch()) {
+static bool JSBackend_TripleMatchQuality(Triple::ArchType Arch) {
+  switch (Arch) {
   case Triple::asmjs:
     // That's us!
-    return 20;
+    return true;
 
   case Triple::le32:
-  case Triple::x86:
     // For compatibility with older versions of Emscripten, we also basically
-    // support generating code for le32-unknown-nacl and i386-pc-linux-gnu,
-    // but we use a low number here so that we're not the default.
-    return 1;
+    // support generating code for le32-unknown-nacl
+    return true;
 
+  case Triple::x86:
   default:
-    return 0;
+    return false;
   }
 }
 

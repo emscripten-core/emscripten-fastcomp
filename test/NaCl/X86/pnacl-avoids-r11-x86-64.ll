@@ -14,7 +14,7 @@
 ; NACLON: RegisterPressure:
 ; NACLON-NOT: %r11
 ; NACLON: popq %r11
-; NACLON: nacljmp %r11, %r15
+; NACLON: nacljmp %r11d, %r15
 ;
 ; NACLOFF: RegisterPressure:
 ; NACLOFF: %r11

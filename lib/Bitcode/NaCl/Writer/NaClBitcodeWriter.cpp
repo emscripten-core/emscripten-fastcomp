@@ -88,10 +88,8 @@ enum {
   FUNCTION_INST_MAX_ABBREV = FUNCTION_INST_STORE_ABBREV,
 
   // TYPE_BLOCK_ID_NEW abbrev id's.
-  TYPE_POINTER_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
-  TYPE_FUNCTION_ABBREV,
-  TYPE_ARRAY_ABBREV,
-  TYPE_MAX_ABBREV = TYPE_ARRAY_ABBREV
+  TYPE_FUNCTION_ABBREV = naclbitc::FIRST_APPLICATION_ABBREV,
+  TYPE_MAX_ABBREV = TYPE_FUNCTION_ABBREV
 };
 
 LLVM_ATTRIBUTE_NORETURN
@@ -99,7 +97,7 @@ static void ReportIllegalValue(const char *ValueMessage,
                                const Value &Value) {
   std::string Message;
   raw_string_ostream StrM(Message);
-  StrM << "Illegal ";
+  StrM << "NaCl Illegal ";
   if (ValueMessage != 0)
     StrM << ValueMessage << " ";
   StrM << ": " << Value;
@@ -247,16 +245,8 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
 
   SmallVector<uint64_t, 64> TypeVals;
 
-  // Abbrev for TYPE_CODE_POINTER.
-  NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
-  Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_POINTER));
-  Abbv->Add(NaClBitCodeAbbrevOp(TypeIdEncoding, TypeIdNumBits));
-  Abbv->Add(NaClBitCodeAbbrevOp(0));  // Addrspace = 0
-  if (TYPE_POINTER_ABBREV != Stream.EmitAbbrev(Abbv))
-    llvm_unreachable("Unexpected abbrev ordering!");
-
   // Abbrev for TYPE_CODE_FUNCTION.
-  Abbv = new NaClBitCodeAbbrev();
+  NaClBitCodeAbbrev *Abbv = new NaClBitCodeAbbrev();
   Abbv->Add(NaClBitCodeAbbrevOp(naclbitc::TYPE_CODE_FUNCTION));
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, 1));  // isvararg
   Abbv->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Array));
@@ -285,6 +275,14 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       Code = naclbitc::TYPE_CODE_INTEGER;
       TypeVals.push_back(cast<IntegerType>(T)->getBitWidth());
       break;
+    case Type::VectorTyID: {
+      VectorType *VT = cast<VectorType>(T);
+      // VECTOR [numelts, eltty]
+      Code = naclbitc::TYPE_CODE_VECTOR;
+      TypeVals.push_back(VT->getNumElements());
+      TypeVals.push_back(VE.getTypeID(VT->getElementType()));
+      break;
+    }
     case Type::FunctionTyID: {
       FunctionType *FT = cast<FunctionType>(T);
       // FUNCTION: [isvararg, retty, paramty x N]
@@ -300,8 +298,6 @@ static void WriteTypeTable(const NaClValueEnumerator &VE,
       report_fatal_error("Struct types are not supported in PNaCl bitcode");
     case Type::ArrayTyID:
       report_fatal_error("Array types are not supported in PNaCl bitcode");
-    case Type::VectorTyID:
-      report_fatal_error("Vector types are not supported in PNaCl bitcode");
     }
 
     // Emit the finished record.
@@ -644,6 +640,17 @@ static bool WriteInstruction(const Instruction &I, unsigned InstID,
     pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
     pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
+    break;
+  case Instruction::ExtractElement:
+    Code = naclbitc::FUNC_CODE_INST_EXTRACTELT;
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
+    break;
+  case Instruction::InsertElement:
+    Code = naclbitc::FUNC_CODE_INST_INSERTELT;
+    pushValue(I.getOperand(0), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(1), InstID, Vals, VE, Stream);
+    pushValue(I.getOperand(2), InstID, Vals, VE, Stream);
     break;
   case Instruction::ICmp:
   case Instruction::FCmp:
@@ -1161,6 +1168,20 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
 // out to files (the parsing works for arbitrary sizes).
 static const size_t kMaxVariableFieldSize = 256;
 
+void llvm::NaClWriteHeader(NaClBitstreamWriter &Stream,
+                           bool AcceptSupportedOnly) {
+  NaClBitcodeHeader Header;
+  Header.push_back(
+      new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
+                                 PNaClVersion));
+  Header.InstallFields();
+  if (!(Header.IsSupported() ||
+        (!AcceptSupportedOnly && Header.IsReadable()))) {
+    report_fatal_error(Header.Unsupported());
+  }
+  NaClWriteHeader(Header, Stream);
+}
+
 // Write out the given Header to the bitstream.
 void llvm::NaClWriteHeader(const NaClBitcodeHeader &Header,
                            NaClBitstreamWriter &Stream) {
@@ -1211,22 +1232,7 @@ void llvm::NaClWriteBitcodeToFile(const Module *M, raw_ostream &Out,
   // Emit the module into the buffer.
   {
     NaClBitstreamWriter Stream(Buffer);
-
-    // Define header and install into stream.
-    {
-      NaClBitcodeHeader Header;
-      Header.push_back(
-          new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
-                                     PNaClVersion));
-      Header.InstallFields();
-      if (!(Header.IsSupported() ||
-            (!AcceptSupportedOnly && Header.IsReadable()))) {
-        report_fatal_error(Header.Unsupported());
-      }
-      NaClWriteHeader(Header, Stream);
-    }
-
-    // Emit the module.
+    NaClWriteHeader(Stream, AcceptSupportedOnly);
     WriteModule(M, Stream);
   }
 

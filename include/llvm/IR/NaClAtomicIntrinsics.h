@@ -58,10 +58,10 @@ public:
 
   typedef ArrayRef<AtomicIntrinsic> View;
 
-  /// The following three methods give access to atomic intrinsics, or a
-  /// subset of them, and allows iteration through them.
+  /// Access all atomic intrinsics, which can then be iterated over.
   View allIntrinsicsAndOverloads() const;
-  View overloadsFor(Intrinsic::ID ID) const;
+  /// Access a particular atomic intrinsic.
+  /// \returns 0 if no intrinsic was found.
   const AtomicIntrinsic *find(Intrinsic::ID ID, Type *OverloadedType) const;
 
 private:

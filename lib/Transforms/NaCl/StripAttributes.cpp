@@ -30,7 +30,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
@@ -164,6 +164,9 @@ static unsigned normalizeAlignment(DataLayout *DL, unsigned Alignment,
                                    Type *Ty, bool IsAtomic) {
 #if 0
   unsigned MaxAllowed = 1;
+  if (isa<VectorType>(Ty))
+    // Already handled properly by FixVectorLoadStoreAlignment.
+    return Alignment;
   if (Ty->isDoubleTy() || Ty->isFloatTy() || IsAtomic)
     MaxAllowed = DL->getTypeAllocSize(Ty);
   // If the alignment is set to 0, this means "use the default

@@ -66,11 +66,11 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
         }                                   \
       }
       std::vector<Instruction*> Aliases; // the bitcasts of this alloca
-      for (Instruction::use_iterator UI = AI->use_begin(), UE = AI->use_end(); UI != UE && !Fail; ++UI) {
+      for (Instruction::user_iterator UI = AI->user_begin(), UE = AI->user_end(); UI != UE && !Fail; ++UI) {
         Instruction *U = cast<Instruction>(*UI);
         if (U->getOpcode() != Instruction::BitCast) { Fail = true; break; }
         // bitcasting just to do loads and stores is ok
-        for (Instruction::use_iterator BUI = U->use_begin(), BUE = U->use_end(); BUI != BUE && !Fail; ++BUI) {
+        for (Instruction::user_iterator BUI = U->user_begin(), BUE = U->user_end(); BUI != BUE && !Fail; ++BUI) {
           Instruction *BU = cast<Instruction>(*BUI);
           if (BU->getOpcode() == Instruction::Load) {
             CHECK_TYPE(BU->getType());

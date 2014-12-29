@@ -22,18 +22,15 @@
 
 #include "SRPCStreamer.h"
 
-#include <argz.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <string>
-
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/system_error.h"
+
+#include <argz.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 using namespace llvm;
 using namespace llvm::opt;
@@ -99,11 +96,11 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
 #if defined(__pnacl__)
   switch (__builtin_nacl_target_arch()) {
   case PnaclTargetArchitectureX86_32: {
-    CmdLineArgs->push_back("-mcpu=pentium4");
+    CmdLineArgs->push_back("-mcpu=pentium4m");
     break;
   }
   case PnaclTargetArchitectureX86_64: {
-    CmdLineArgs->push_back("-mcpu=core2");
+    CmdLineArgs->push_back("-mcpu=x86-64");
     break;
   }
   case PnaclTargetArchitectureARM_32: {
@@ -116,11 +113,12 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
   }
 // Some cases for building this with nacl-gcc.
 #elif defined(__i386__)
-  CmdLineArgs->push_back("-mcpu=pentium4");
+  CmdLineArgs->push_back("-mcpu=pentium4m");
 #elif defined(__x86_64__)
-  CmdLineArgs->push_back("-mcpu=core2");
+  CmdLineArgs->push_back("-mcpu=x86-64");
 #elif defined(__arm__)
   CmdLineArgs->push_back("-mcpu=cortex-a9");
+#else
 #error "Unknown architecture"
 #endif
   return true;
@@ -149,9 +147,8 @@ ArgStringList *GetDefaultCommandLine() {
   static const char *llc_args_x8664[] = { "-mtriple=x86_64-none-nacl-gnu",
                                           NULL };
   static const char *llc_args_arm[] = {
-    "-mtriple=armv7a-none-nacl-gnueabi", "-arm-reserve-r9", "-sfi-disable-cp",
-    "-sfi-store", "-sfi-load", "-sfi-stack", "-sfi-branch", "-sfi-data",
-    "-mattr=+neon", "-no-inline-jumptables", "-float-abi=hard", NULL
+    "-mtriple=armv7a-none-nacl-gnueabi", "-mattr=+neon",
+    "-float-abi=hard", NULL
   };
 
   const char **llc_args = NULL;
@@ -176,10 +173,16 @@ ArgStringList *GetDefaultCommandLine() {
   }
 // Some cases for building this with nacl-gcc.
 #elif defined(__i386__)
+  (void)llc_args_x8664;
+  (void)llc_args_arm;
   llc_args = llc_args_x8632;
 #elif defined(__x86_64__)
+  (void)llc_args_x8632;
+  (void)llc_args_arm;
   llc_args = llc_args_x8664;
 #elif defined(__arm__)
+  (void)llc_args_x8632;
+  (void)llc_args_x8664;
   llc_args = llc_args_arm;
 #else
 #error "Unknown architecture"
@@ -197,7 +200,7 @@ public:
       : module_count_(module_count), cmd_line_vec_(cmd_line_vec) {}
   ArgStringList *CmdLineVec() const { return cmd_line_vec_.get(); }
   int module_count_;
-  const OwningPtr<ArgStringList> cmd_line_vec_;
+  const std::unique_ptr<ArgStringList> cmd_line_vec_;
 };
 
 void *run_streamed(void *arg) {
@@ -232,62 +235,6 @@ void do_stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **out_args,
   }
 }
 
-// Invoked by the StreamInit RPC to initialize bitcode streaming over SRPC.
-// Under the hood it forks a new thread at starts the llc_main, which sets
-// up the compilation and blocks when it tries to start reading the bitcode.
-// Input arg is a file descriptor to write the output object file to.
-// Returns a string, containing an error message if the call fails.
-void stream_init(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                 NaClSrpcArg **out_args, NaClSrpcClosure *done) {
-  // cmd_line_vec allocated by GetDefaultCommandLine() is freed by the
-  // translation thread in run_streamed()
-  ArgStringList *cmd_line_vec = GetDefaultCommandLine();
-  if (!cmd_line_vec || !AddDefaultCPU(cmd_line_vec)) {
-    NaClSrpcClosureRunner runner(done);
-    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
-    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
-    return;
-  }
-  AddFixedArguments(cmd_line_vec);
-  StreamingThreadData *thread_data =
-      new StreamingThreadData(1, cmd_line_vec);
-  object_file_fd[0] = in_args[0]->u.hval;
-  do_stream_init(rpc, out_args, done, thread_data);
-}
-
-// Invoked by StreamInitWithOverrides RPC. Same as stream_init, but
-// provides commandline flag overrides (appended to the default).
-void stream_init_with_overrides(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
-                                NaClSrpcArg **out_args, NaClSrpcClosure *done) {
-  ArgStringList *cmd_line_vec = GetDefaultCommandLine();
-  if (!cmd_line_vec) {
-    NaClSrpcClosureRunner runner(done);
-    rpc->result = NACL_SRPC_RESULT_APP_ERROR;
-    out_args[0]->arrays.str = strdup("Failed to get default commandline.");
-    return;
-  }
-  AddFixedArguments(cmd_line_vec);
-
-  char *command_line = in_args[1]->arrays.carr;
-  size_t command_line_len = in_args[1]->u.count;
-  OwningPtr<ArgStringList> extra_vec(
-      CommandLineFromArgz(command_line, command_line_len));
-  cmd_line_vec->insert(cmd_line_vec->end(), extra_vec->begin(),
-                       extra_vec->end());
-  // Make sure some -mcpu override exists for now to prevent
-  // auto-cpu feature detection from triggering instructions that
-  // we do not validate yet.
-  if (!HasCPUOverride(extra_vec.get())) {
-    AddDefaultCPU(cmd_line_vec);
-  }
-  extra_vec.reset(NULL);
-  StreamingThreadData *thread_data =
-      new StreamingThreadData(1, cmd_line_vec);
-  object_file_fd[0] = in_args[0]->u.hval;
-  // cmd_line_vec is freed by the translation thread in run_streamed.
-  do_stream_init(rpc, out_args, done, thread_data);
-}
-
 void stream_init_with_split(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
                             NaClSrpcArg **out_args, NaClSrpcClosure *done) {
   ArgStringList *cmd_line_vec = GetDefaultCommandLine();
@@ -316,7 +263,7 @@ void stream_init_with_split(NaClSrpcRpc *rpc, NaClSrpcArg **in_args,
 
   char *command_line = in_args[kMaxModuleSplit + 1]->arrays.carr;
   size_t command_line_len = in_args[kMaxModuleSplit + 1]->u.count;
-  OwningPtr<ArgStringList> extra_vec(
+  std::unique_ptr<ArgStringList> extra_vec(
       CommandLineFromArgz(command_line, command_line_len));
   cmd_line_vec->insert(cmd_line_vec->end(), extra_vec->begin(),
                        extra_vec->end());
@@ -373,14 +320,12 @@ void stream_end(NaClSrpcRpc *rpc, NaClSrpcArg **in_args, NaClSrpcArg **out_args,
 
 const struct NaClSrpcHandlerDesc srpc_methods[] = {
   // Protocol for streaming:
-  // (StreamInit(obj_fd) -> error_str |
-  //    StreamInitWIthOverrides(obj_fd, escaped_cmdline_flags) -> error_str)
+  // StreamInitWithSplit(num_split, obj_fd x 16, cmdline_flags) -> error_str
   // StreamChunk(data) +
   // StreamEnd() -> (is_shared_lib,soname,dependencies,error_str)
-  { "StreamInit:h:s", stream_init },
-  { "StreamInitWithOverrides:hC:s:", stream_init_with_overrides },
   { "StreamInitWithSplit:ihhhhhhhhhhhhhhhhC:s", stream_init_with_split },
-  { "StreamChunk:C:", stream_chunk }, { "StreamEnd::isss", stream_end },
+  { "StreamChunk:C:", stream_chunk },
+  { "StreamEnd::isss", stream_end },
   { NULL, NULL },
 };
 

@@ -51,11 +51,11 @@
 @g = global %struct.foo zeroinitializer, align 1
 
 !llvm.dbg.cu = !{!0, !9}
-!llvm.module.flags = !{!14}
+!llvm.module.flags = !{!14, !15}
 
 !0 = metadata !{i32 786449, metadata !1, i32 4, metadata !"clang version 3.4 (trunk 191799)", i1 false, metadata !"", i32 0, metadata !2, metadata !3, metadata !2, metadata !6, metadata !2, metadata !""} ; [ DW_TAG_compile_unit ] [/Users/manmanren/test-Nov/type_unique_air/ref_addr/tu1.cpp] [DW_LANG_C_plus_plus]
 !1 = metadata !{metadata !"tu1.cpp", metadata !"/Users/manmanren/test-Nov/type_unique_air/ref_addr"}
-!2 = metadata !{i32 0}
+!2 = metadata !{}
 !3 = metadata !{metadata !4}
 !4 = metadata !{i32 786451, metadata !5, null, metadata !"foo", i32 1, i64 8, i64 8, i32 0, i32 0, null, metadata !2, i32 0, null, null, metadata !"_ZTS3foo"} ; [ DW_TAG_structure_type ] [foo] [line 1, size 8, align 8, offset 0] [def] [from ]
 !5 = metadata !{metadata !"./hdr.h", metadata !"/Users/manmanren/test-Nov/type_unique_air/ref_addr"}
@@ -68,3 +68,4 @@
 !12 = metadata !{i32 786484, i32 0, null, metadata !"g", metadata !"g", metadata !"", metadata !13, i32 2, metadata !4, i32 0, i32 1, %struct.foo* @g, null} ; [ DW_TAG_variable ] [g] [line 2] [def]
 !13 = metadata !{i32 786473, metadata !10}        ; [ DW_TAG_file_type ] [/Users/manmanren/test-Nov/type_unique_air/ref_addr/tu2.cpp]
 !14 = metadata !{i32 2, metadata !"Dwarf Version", i32 2}
+!15 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}

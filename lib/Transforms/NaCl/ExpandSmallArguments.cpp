@@ -38,6 +38,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/NaCl.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 using namespace llvm;
 
@@ -137,7 +138,7 @@ static bool ConvertFunction(Function *Func) {
 }
 
 // Convert the given call to use normalized argument/return types.
-static bool ConvertCall(CallInst *Call) {
+template <class T> static bool ConvertCall(T *Call, Pass *P) {
   // Don't try to change calls to intrinsics.
   if (isa<IntrinsicInst>(Call))
     return false;
@@ -163,17 +164,49 @@ static bool ConvertCall(CallInst *Call) {
   Value *CastFunc =
     CopyDebug(new BitCastInst(Call->getCalledValue(), NFTy->getPointerTo(),
                               Call->getName() + ".arg_cast", Call), Call);
-  CallInst *NewCall = CallInst::Create(CastFunc, Args, "", Call);
-  CopyDebug(NewCall, Call);
-  NewCall->takeName(Call);
-  NewCall->setAttributes(Call->getAttributes());
-  NewCall->setCallingConv(Call->getCallingConv());
-  NewCall->setTailCall(Call->isTailCall());
-  Value *Result = NewCall;
-  if (FTy->getReturnType() != NFTy->getReturnType()) {
-    Result = CopyDebug(new TruncInst(NewCall, FTy->getReturnType(),
-                                     NewCall->getName() + ".ret_trunc",
-                                     Call), Call);
+  Value *Result = NULL;
+  if (CallInst *OldCall = dyn_cast<CallInst>(Call)) {
+    CallInst *NewCall = CopyDebug(CallInst::Create(CastFunc, Args, "", OldCall),
+                                  OldCall);
+    NewCall->takeName(OldCall);
+    NewCall->setAttributes(OldCall->getAttributes());
+    NewCall->setCallingConv(OldCall->getCallingConv());
+    NewCall->setTailCall(OldCall->isTailCall());
+    Result = NewCall;
+
+    if (FTy->getReturnType() != NFTy->getReturnType()) {
+      Result = CopyDebug(new TruncInst(NewCall, FTy->getReturnType(),
+                                       NewCall->getName() + ".ret_trunc", Call),
+                         Call);
+    }
+  } else if (InvokeInst *OldInvoke = dyn_cast<InvokeInst>(Call)) {
+    BasicBlock *Parent = OldInvoke->getParent();
+    BasicBlock *NormalDest = OldInvoke->getNormalDest();
+    BasicBlock *UnwindDest = OldInvoke->getUnwindDest();
+
+    if (FTy->getReturnType() != NFTy->getReturnType()) {
+      if (BasicBlock *SplitDest = SplitCriticalEdge(Parent, NormalDest)) {
+        NormalDest = SplitDest;
+      }
+    }
+
+    InvokeInst *New = CopyDebug(InvokeInst::Create(CastFunc, NormalDest,
+                                                   UnwindDest, Args,
+                                                   "", OldInvoke),
+                                OldInvoke);
+    New->takeName(OldInvoke);
+
+    if (FTy->getReturnType() != NFTy->getReturnType()) {
+      Result = CopyDebug(new TruncInst(New, FTy->getReturnType(),
+                                       New->getName() + ".ret_trunc",
+                                       NormalDest->getTerminator()),
+                         OldInvoke);
+    } else {
+      Result = New;
+    }
+
+    New->setAttributes(OldInvoke->getAttributes());
+    New->setCallingConv(OldInvoke->getCallingConv());
   }
   Call->replaceAllUsesWith(Result);
   Call->eraseFromParent();
@@ -193,16 +226,14 @@ bool ExpandSmallArguments::runOnModule(Module &M) {
     if (Func->empty())
       continue;
 
-    for (Function::iterator BB = Func->begin(), E = Func->end();
-         BB != E; ++BB) {
-      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
-           Iter != E; ) {
+    for (Function::iterator BB = Func->begin(), E = Func->end(); BB != E;
+         ++BB) {
+      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E;) {
         Instruction *Inst = Iter++;
         if (CallInst *Call = dyn_cast<CallInst>(Inst)) {
-          Changed |= ConvertCall(Call);
-        } else if (isa<InvokeInst>(Inst)) {
-          report_fatal_error(
-              "ExpandSmallArguments does not handle invoke instructions");
+          Changed |= ConvertCall(Call, this);
+        } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Inst)) {
+          Changed |= ConvertCall(Invoke, this);
         }
       }
     }

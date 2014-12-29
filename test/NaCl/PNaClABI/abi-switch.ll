@@ -29,3 +29,9 @@ next:
 }
 
 ; CHECK-NOT: disallowed
+
+
+; This stops the verifier from complaining about the lack of an entry point.
+define void @_start(i32 %arg) {
+  ret void
+}

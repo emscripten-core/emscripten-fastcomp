@@ -30,6 +30,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
 #include <set>
 #include <stdio.h>
 
@@ -102,7 +103,8 @@ static void DumpInstructionVerbose(const MachineInstr &MI) {
       dbgs() << MI.getNumOperands() << " operands:" << "\n";
       for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
         const MachineOperand& op = MI.getOperand(i);
-        dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
+        dbgs() << "  " << i << "(" << (unsigned)op.getType() << "):" << op
+               << "\n";
       }
       dbgs() << "\n";
     });
@@ -1039,11 +1041,11 @@ bool ARMNaClRewritePass::SandboxMemoryReferencesInBlock(
     MachineInstr &MI = *MBBI;
     int AddrIdx;
 
-    if (FlagSfiLoad && IsDangerousLoad(MI, &AddrIdx)) {
+    if (IsDangerousLoad(MI, &AddrIdx)) {
       SandboxMemory(MBB, MBBI, MI, AddrIdx, true);
       Modified = true;
     }
-    if (FlagSfiStore && IsDangerousStore(MI, &AddrIdx)) {
+    if (IsDangerousStore(MI, &AddrIdx)) {
       SandboxMemory(MBB, MBBI, MI, AddrIdx, false);
       Modified = true;
     }
@@ -1069,10 +1071,9 @@ bool ARMNaClRewritePass::runOnMachineFunction(MachineFunction &MF) {
       Modified = true;
     }
 
-    if (FlagSfiLoad || FlagSfiStore)
-      Modified |= SandboxMemoryReferencesInBlock(MBB);
-    if (FlagSfiBranch) Modified |= SandboxBranchesInBlock(MBB);
-    if (FlagSfiStack)  Modified |= SandboxStackChangesInBlock(MBB);
+    Modified |= SandboxMemoryReferencesInBlock(MBB);
+    Modified |= SandboxBranchesInBlock(MBB);
+    Modified |= SandboxStackChangesInBlock(MBB);
   }
   DEBUG(LightweightVerify(MF));
   return Modified;
