@@ -136,12 +136,12 @@ DEF_CALL_HANDLER(__default__, {
 
 // exceptions support
 DEF_CALL_HANDLER(emscripten_preinvoke, {
-  assert(InvokeState == 0);
+  // InvokeState is normally 0 here, but might be otherwise if a block was split apart TODO: add a function attribute for this
   InvokeState = 1;
   return "__THREW__ = 0";
 })
 DEF_CALL_HANDLER(emscripten_postinvoke, {
-  assert(InvokeState == 1 || InvokeState == 2); // normally 2, but can be 1 if the call in between was optimized out
+  // InvokeState is normally 2 here, but can be 1 if the call in between was optimized out, or 0 if a block was split apart
   InvokeState = 0;
   return getAssign(CI) + "__THREW__; __THREW__ = 0";
 })
