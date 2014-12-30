@@ -10,7 +10,7 @@
 LEVEL := ../..
 TOOLNAME := pnacl-benchmark
 LINK_COMPONENTS := all-targets bitreader naclbitreader irreader \
-                   asmparser naclanalysis nacltransforms
+                   asmparser naclanalysis nacltransforms naclbitanalysis
 
 include $(LEVEL)/Makefile.common
 
