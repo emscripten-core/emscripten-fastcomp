@@ -259,7 +259,8 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
   // pass manager that we are specifically trying to avoid. To prevent this
   // we must insert a no-op module pass to reset the pass manager.
   MPM.add(createBarrierNoopPass());
-  MPM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+  if (!DisableVectorization) // XXX EMSCRIPTEN
+    MPM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
   // FIXME: Because of #pragma vectorize enable, the passes below are always
   // inserted in the pipeline, even when the vectorizer doesn't run (ex. when
   // on -O1 and no #pragma is found). Would be good to have these two passes
@@ -362,14 +363,17 @@ void PassManagerBuilder::populateLTOPassManager(PassManagerBase &PM,
   // More loops are countable; try to optimize them.
   PM.add(createIndVarSimplifyPass());
   PM.add(createLoopDeletionPass());
-  // @LOCALMOD-START The vectorizer was ignoring command-line options. A similar
-  //                 patch was sent upstream.
-  PM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
 
-  // More scalar chains could be vectorized due to more alias information
-  if (SLPVectorize)
-    PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
-  // @LOCALMOD-END
+  if (!DisableVectorization) { // XXX EMSCRIPTEN
+    // @LOCALMOD-START The vectorizer was ignoring command-line options. A similar
+    //                 patch was sent upstream.
+    PM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+
+    // More scalar chains could be vectorized due to more alias information
+    if (SLPVectorize)
+      PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
+    // @LOCALMOD-END
+  }
 
   if (LoadCombine)
     PM.add(createLoadCombinePass());
