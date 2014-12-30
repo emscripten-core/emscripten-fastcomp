@@ -1625,7 +1625,7 @@ static bool TryToAddRangeMetadata(GlobalVariable *GV, Constant *OtherVal) {
 
   DEBUG(dbgs() << "   *** ADDING RANGE METADATA: " << *GV);
 
-  for (Value::use_iterator I = GV->use_begin(), E = GV->use_end(); I != E; ++I){
+  for (Value::user_iterator I = GV->user_begin(), E = GV->user_end(); I != E; ++I){
     Instruction *UI = cast<Instruction>(*I);
     if (LoadInst *LI = dyn_cast<LoadInst>(UI)) {
       // If we already have a range, don't add a new one, so that GlobalOpt
