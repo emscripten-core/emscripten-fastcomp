@@ -121,6 +121,9 @@ bool ConstantMerge::runOnModule(Module &M) {
 
   bool MadeChange = false;
 
+  // XXX EMSCRIPTEN: mark @__init_array_start as not to be touched
+  const GlobalValue *InitArrayStart = M.getNamedGlobal("__init_array_start");
+
   // Iterate constant merging while we are still making progress.  Merging two
   // constants together may allow us to merge other constants together if the
   // second level constants have initializers which point to the globals that
@@ -131,6 +134,10 @@ bool ConstantMerge::runOnModule(Module &M) {
     for (Module::global_iterator GVI = M.global_begin(), E = M.global_end();
          GVI != E; ) {
       GlobalVariable *GV = GVI++;
+
+      // XXX EMSCRIPTEN: mark @__init_array_start as not to be touched
+      if (GV == InitArrayStart)
+        continue;
 
       // If this GV is dead, remove it.
       GV->removeDeadConstantUsers();
