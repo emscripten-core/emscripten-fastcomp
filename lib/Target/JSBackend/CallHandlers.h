@@ -280,6 +280,14 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
   return "HEAP32[" + getValueAsStr(CI->getOperand(0)) + ">>2]=" + getValueAsStr(CI->getOperand(1));
 })
 
+DEF_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i32, {
+  const Value *P = CI->getOperand(0);
+  return getLoad(CI, P, CI->getType(), 0) + ';' +
+         "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " +
+            getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0);
+})
+
+
 #define UNROLL_LOOP_MAX 8
 #define WRITE_LOOP_MAX 128
 
@@ -579,6 +587,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(UItoD);
   SETUP_CALL_HANDLER(BItoD);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_store_i32);
+  SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i32);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);

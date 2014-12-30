@@ -2111,14 +2111,6 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
                                     getValueAsStr(I->getOperand(2));
     break;
   }
-  case Instruction::AtomicCmpXchg: {
-    const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
-    const Value *P = I->getOperand(0);
-    Code << getLoad(cxi, P, I->getType(), 0) << ';' <<
-           "if ((" << getCast(getJSName(I), I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
-              getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
-    break;
-  }
   case Instruction::AtomicRMW: {
     const AtomicRMWInst *rmwi = cast<AtomicRMWInst>(I);
     const Value *P = rmwi->getOperand(0);
