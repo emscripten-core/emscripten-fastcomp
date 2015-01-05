@@ -436,7 +436,7 @@ public:
   // Called once the bitstream reader has entered the corresponding
   // subblock.  Argument NumWords is set to the number of words in the
   // corresponding subblock.
-  virtual void EnterBlock(unsigned NumWords) {}
+  virtual void EnterBlock(unsigned /*NumWords*/) {}
 
   // Called when the corresponding EndBlock of the block being parsed
   // is found.
@@ -453,9 +453,9 @@ public:
   virtual void SetBID() {}
 
   // Called to process an abbreviation if the parser has a listener.
-  virtual void ProcessAbbreviation(unsigned BlockID,
-                                   NaClBitCodeAbbrev *Abbrev,
-                                   bool IsLocal) {}
+  virtual void ProcessAbbreviation(unsigned /*BlockID*/,
+                                   NaClBitCodeAbbrev * /*Abbrev*/,
+                                   bool /*IsLocal*/) {}
 
   // Creates an instance of the NaClBitcodeParser to use to parse the
   // block with the given block ID, and then call's method
