@@ -10,6 +10,7 @@ add_llvm_library(LLVMNaClTransforms
   ExpandCtors.cpp
   ExpandGetElementPtr.cpp
   ExpandIndirectBr.cpp
+  ExpandLargeIntegers.cpp
   ExpandShuffleVector.cpp
   ExpandSmallArguments.cpp
   ExpandStructRegs.cpp

@@ -107,6 +107,7 @@ static Value *convertConstant(Constant *C, bool SignExt=false) {
   }
 }
 
+namespace {
 // Holds the state for converting/replacing values. Conversion is done in one
 // pass, with each value requiring conversion possibly having two stages. When
 // an instruction needs to be replaced (i.e. it has illegal operands or result)
@@ -129,14 +130,14 @@ class ConversionState {
       report_fatal_error("Can't convert illegal GlobalVariables");
     if (RewrittenMap.count(Val))
       return RewrittenMap[Val];
-    Value *P;
+
     // Directly convert constants.
-    if (Constant *C = dyn_cast<Constant>(Val)) {
+    if (Constant *C = dyn_cast<Constant>(Val))
       return convertConstant(C, /*SignExt=*/false);
-    } else {
-      // No converted value available yet, so create a placeholder.
-      P = new Argument(getPromotedType(Val->getType()));
-    }
+
+    // No converted value available yet, so create a placeholder.
+    Value *P = new Argument(getPromotedType(Val->getType()));
+
     RewrittenMap[Val] = P;
     Placeholders[Val] = P;
     return P;
@@ -183,6 +184,7 @@ class ConversionState {
   // Illegal values which have already been converted, will be erased.
   SmallVector<Instruction *, 8> ToErase;
 };
+} // anonymous namespace
 
 // Split an illegal load into multiple legal loads and return the resulting
 // promoted value. The size of the load is assumed to be a multiple of 8.

@@ -292,6 +292,7 @@ void initializeExpandConstantExprPass(PassRegistry&);
 void initializeExpandCtorsPass(PassRegistry&);
 void initializeExpandGetElementPtrPass(PassRegistry&);
 void initializeExpandIndirectBrPass(PassRegistry&);
+void initializeExpandLargeIntegersPass(PassRegistry&);
 void initializeExpandShuffleVectorPass(PassRegistry&);
 void initializeExpandSmallArgumentsPass(PassRegistry&);
 void initializeExpandStructRegsPass(PassRegistry&);

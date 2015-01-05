@@ -131,8 +131,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // to clean both of these up.
   PM.add(createFlattenGlobalsPass());
 
-  // PromoteIntegersPass does not handle constexprs and creates GEPs,
-  // so it goes between those passes.
+  // The type legalization passes (ExpandLargeIntegers and PromoteIntegers) do
+  // not handle constexprs and create GEPs, so they go between those passes.
+  PM.add(createExpandLargeIntegersPass());
   PM.add(createPromoteIntegersPass());
   // ExpandGetElementPtr must follow ExpandConstantExpr to expand the
   // getelementptr instructions it creates.

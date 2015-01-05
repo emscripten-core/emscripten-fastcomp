@@ -33,6 +33,7 @@ BasicBlockPass *createPromoteI1OpsPass();
 BasicBlockPass *createSimplifyAllocasPass();
 FunctionPass *createBackendCanonicalizePass();
 FunctionPass *createExpandConstantExprPass();
+FunctionPass *createExpandLargeIntegersPass();
 FunctionPass *createExpandStructRegsPass();
 FunctionPass *createInsertDivideCheckPass();
 FunctionPass *createPromoteIntegersPass();
