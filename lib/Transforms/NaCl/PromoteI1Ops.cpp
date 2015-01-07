@@ -25,13 +25,10 @@
 //    of "and", "or" and "xor", because these are used in practice and
 //    don't overflow.
 //
-// "switch" instructions on i1 are also disallowed by the PNaCl ABI
-// verifier, but they don't seem to be generated in practice and so
-// they are not currently expanded out by this pass.
-//
 //===----------------------------------------------------------------------===//
 
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/NaCl.h"
@@ -69,6 +66,41 @@ bool PromoteI1Ops::runOnBasicBlock(BasicBlock &BB) {
 
   Type *I1Ty = Type::getInt1Ty(BB.getContext());
   Type *I8Ty = Type::getInt8Ty(BB.getContext());
+
+  // Rewrite boolean Switch terminators:
+  if (SwitchInst *Switch = dyn_cast<SwitchInst>(BB.getTerminator())) {
+    Value *Condition = Switch->getCondition();
+    Type *ConditionTy = Condition->getType();
+    if (ConditionTy->isIntegerTy(1)) {
+      ConstantInt *False =
+        cast<ConstantInt>(ConstantInt::getFalse(ConditionTy));
+      ConstantInt *True =
+        cast<ConstantInt>(ConstantInt::getTrue(ConditionTy));
+
+      SwitchInst::CaseIt FalseCase = Switch->findCaseValue(False);
+      SwitchInst::CaseIt TrueCase  = Switch->findCaseValue(True);
+
+      BasicBlock *FalseBlock  = FalseCase.getCaseSuccessor();
+      BasicBlock *TrueBlock   = TrueCase.getCaseSuccessor();
+      BasicBlock *DefaultDest = Switch->getDefaultDest();
+
+      if (TrueBlock && FalseBlock) {
+        // impossible destination
+        DefaultDest->removePredecessor(Switch->getParent());
+      }
+
+      if (!TrueBlock) {
+        TrueBlock = DefaultDest;
+      }
+      if (!FalseBlock) {
+        FalseBlock = DefaultDest;
+      }
+
+      CopyDebug(BranchInst::Create(TrueBlock, FalseBlock, Condition, Switch),
+                Switch);
+      Switch->eraseFromParent();
+    }
+  }
 
   for (BasicBlock::iterator Iter = BB.begin(), E = BB.end(); Iter != E; ) {
     Instruction *Inst = Iter++;

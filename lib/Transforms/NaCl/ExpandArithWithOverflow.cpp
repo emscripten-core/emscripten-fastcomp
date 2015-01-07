@@ -83,14 +83,18 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
   Function *Intrinsic = M->getFunction(Name);
   if (!Intrinsic)
     return false;
-  for (Value::use_iterator CallIter = Intrinsic->use_begin(),
-         E = Intrinsic->use_end(); CallIter != E; ) {
-    CallInst *Call = dyn_cast<CallInst>(*CallIter++);
-    if (!Call) {
+
+  SmallVector<CallInst *, 64> Calls;
+  for (User *U : Intrinsic->users()) {
+    if (CallInst *Call = dyn_cast<CallInst>(U))
+      Calls.push_back(Call);
+    else
       report_fatal_error("ExpandArithWithOverflow: Taking the address of a "
                          "*.with.overflow intrinsic is not allowed");
-    }
-    Value *VariableArg, *VariableArg2 = NULL;
+  }
+
+  for (CallInst *Call : Calls) {
+    Value *VariableArg, *VariableArg2 = nullptr;
     ConstantInt *ConstantArg;
     if (ConstantInt *C = dyn_cast<ConstantInt>(Call->getArgOperand(0))) {
       VariableArg = Call->getArgOperand(1);
@@ -142,6 +146,7 @@ static bool ExpandOpForIntSize(Module *M, unsigned Bits, bool Mul) {
     Call->replaceAllUsesWith(NewStruct);
     Call->eraseFromParent();
   }
+
   Intrinsic->eraseFromParent();
   return true;
 }

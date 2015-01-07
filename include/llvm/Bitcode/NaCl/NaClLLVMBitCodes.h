@@ -97,7 +97,7 @@ namespace naclbitc {
     TYPE_CODE_HALF     =  10,   // Not used in PNaCl.
 
     TYPE_CODE_ARRAY    = 11,    // Not used in PNaCl.
-    TYPE_CODE_VECTOR   = 12,    // Not used in PNaCl.
+    TYPE_CODE_VECTOR   = 12,    // VECTOR: [numelts, eltty]
 
     // These are not with the other floating point types because they're
     // a late addition, and putting them in the right place breaks
@@ -303,6 +303,11 @@ namespace naclbitc {
     ICMP_SLE   = 41   ///< signed less or equal
   };
 
+  enum NaClLinkageTypes {
+    LINKAGE_EXTERNAL = 0,
+    LINKAGE_INTERNAL = 3
+  };
+
   // The function body block (FUNCTION_BLOCK_ID) describes function bodies.  It
   // can contain a constant block (CONSTANTS_BLOCK_ID).
   enum NaClFunctionCodes {
@@ -316,8 +321,8 @@ namespace naclbitc {
     FUNC_CODE_INST_CAST        =  3, // CAST:       [opval, destty, castopc]
     FUNC_CODE_INST_GEP         =  4, // Not used in PNaCl.
     FUNC_CODE_INST_SELECT      =  5, // Not used in PNaCl. Replaced by VSELECT.
-    FUNC_CODE_INST_EXTRACTELT  =  6, // Not used in PNaCl.
-    FUNC_CODE_INST_INSERTELT   =  7, // Not used in PNaCl.
+    FUNC_CODE_INST_EXTRACTELT  =  6, // EXTRACTELT: [opval, opval]
+    FUNC_CODE_INST_INSERTELT   =  7, // INSERTELT:  [opval, opval, opval]
     FUNC_CODE_INST_SHUFFLEVEC  =  8, // Not used in PNaCl.
     FUNC_CODE_INST_CMP         =  9, // Not used in PNaCl. Replaced by CMP2.
     FUNC_CODE_INST_RET         = 10, // RET:        [opval<optional>]

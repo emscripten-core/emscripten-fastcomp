@@ -92,7 +92,8 @@ static void DumpInstructionVerbose(const MachineInstr &MI) {
       dbgs() << MI.getNumOperands() << " operands:" << "\n";
       for (unsigned i = 0; i < MI.getNumOperands(); ++i) {
         const MachineOperand& op = MI.getOperand(i);
-        dbgs() << "  " << i << "(" << op.getType() << "):" << op << "\n";
+        dbgs() << "  " << i << "(" << (unsigned)op.getType() << "):" << op
+               << "\n";
       }
       dbgs() << "\n";
     });
@@ -110,11 +111,11 @@ static bool IsPushPop(MachineInstr &MI) {
 }
 
 static bool IsStore(MachineInstr &MI) {
-  return MI.getDesc().mayStore();
+  return MI.mayStore();
 }
 
 static bool IsLoad(MachineInstr &MI) {
-  return MI.getDesc().mayLoad();
+  return MI.mayLoad();
 }
 
 static bool IsFrameChange(MachineInstr &MI) {
@@ -423,7 +424,7 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   // 32-bit
   case X86::JMP32r               : NewOpc = X86::NACL_JMP32r; break;
   case X86::TAILJMPr             : NewOpc = X86::NACL_JMP32r; break;
-  case X86::NACL_CG_CALL32r      : NewOpc = X86::NACL_CALL32r; break;
+  case X86::CALL32r              : NewOpc = X86::NACL_CALL32r; break;
   // 64-bit
   case X86::NACL_CG_JMP64r       : NewOpc = X86::NACL_JMP64r; break;
   case X86::NACL_CG_CALL64r      : NewOpc = X86::NACL_CALL64r; break;
@@ -445,8 +446,9 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   // before returning. EmitPrologue takes care of that repositioning.
   // So EH_RETURN just ultimately emits a plain "ret".
   // RETI returns and pops some number of bytes from the stack.
-  if (Opc == X86::RET || Opc == X86::EH_RETURN || Opc == X86::EH_RETURN64 ||
-      Opc == X86::RETI) {
+  if (Opc == X86::RETL || Opc == X86::RETQ ||
+      Opc == X86::EH_RETURN || Opc == X86::EH_RETURN64 ||
+      Opc == X86::RETIL || Opc == X86::RETIQ) {
     // To maintain compatibility with nacl-as, for now we don't emit naclret.
     // MI.setDesc(TII->get(Is64Bit ? X86::NACL_RET64 : X86::NACL_RET32));
     //
@@ -457,18 +459,19 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     if (Is64Bit) {
       RegTarget = (HideSandboxBase ? X86::R11 : X86::RCX);
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP64r), RegTarget);
-      if (Opc == X86::RETI) {
+      if (Opc == X86::RETIL || Opc == X86::RETIQ) {
         BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_ASPi32))
           .addOperand(MI.getOperand(0))
           .addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
       }
+
       BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_JMP64r))
-        .addReg(RegTarget)
+        .addReg(getX86SubSuperRegister(RegTarget, MVT::i32, false))
         .addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
     } else {
       RegTarget = X86::ECX;
       BuildMI(MBB, MBBI, DL, TII->get(X86::POP32r), RegTarget);
-      if (Opc == X86::RETI) {
+      if (Opc == X86::RETIL || Opc == X86::RETIQ) {
         BuildMI(MBB, MBBI, DL, TII->get(X86::ADD32ri), X86::ESP)
           .addReg(X86::ESP)
           .addOperand(MI.getOperand(0));
@@ -480,20 +483,10 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  // Rewrite trap
-  if (Opc == X86::TRAP) {
-    // To maintain compatibility with nacl-as, for now we don't emit nacltrap.
-    // MI.setDesc(TII->get(Is64Bit ? X86::NACL_TRAP64 : X86::NACL_TRAP32));
-    BuildMI(MBB, MBBI, DL, TII->get(X86::MOV32mi))
-      .addReg(Is64Bit && !FlagUseZeroBasedSandbox ? X86::R15 : 0) // Base
-      .addImm(1) // Scale
-      .addReg(0) // Index
-      .addImm(0) // Offset
-      .addReg(0) // Segment
-      .addImm(0); // Value
-    MI.eraseFromParent();
-    return true;
-  }
+  // Traps are OK (but are considered to have control flow
+  // being a terminator like RET).
+  if (Opc == X86::TRAP)
+    return false;
 
   DEBUG(DumpInstructionVerbose(MI));
   llvm_unreachable("Unhandled Control SFI");
@@ -585,7 +578,8 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
   // and variable operands removed.
   unsigned NewOpc = 0;
   switch (Opc) {
-  case X86::NACL_CG_CALLpcrel32  : NewOpc = X86::NACL_CALL32d; break;
+  // 32-bit direct calls are handled unmodified by the assemblers
+  case X86::CALLpcrel32          : return true;
   case X86::TAILJMPd             : NewOpc = X86::JMP_4; break;
   case X86::NACL_CG_TAILJMPd64   : NewOpc = X86::JMP_4; break;
   case X86::NACL_CG_CALL64pcrel32: NewOpc = X86::NACL_CALL64d; break;
@@ -615,7 +609,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
 
     // Rewrite to:
     //   leaq $sym@TLSGD(%rip), %rdi
-    //   naclcall __tls_get_addr@PLT
+    //   call __tls_get_addr@PLT
     BuildMI(MBB, MBBI, DL, TII->get(X86::LEA64r), X86::RDI)
         .addReg(X86::RIP) // Base
         .addImm(1) // Scale
@@ -634,14 +628,14 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
       Opc == X86::NACL_CG_LE_TLS_addr32) {
     unsigned CallOpc, LeaOpc, Reg;
     // Rewrite to:
-    //   naclcall __nacl_read_tp@PLT
+    //   call __nacl_read_tp@PLT
     //   lea $sym@flag(,%reg), %reg
     if (Opc == X86::NACL_CG_LE_TLS_addr64) {
       CallOpc = X86::NACL_CALL64d;
       LeaOpc = X86::LEA64r;
       Reg = X86::RAX;
     } else {
-      CallOpc = X86::NACL_CALL32d;
+      CallOpc = X86::CALLpcrel32;
       LeaOpc = X86::LEA32r;
       Reg = X86::EAX;
     }
@@ -663,7 +657,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
       Opc == X86::NACL_CG_IE_TLS_addr32) {
     unsigned CallOpc, AddOpc, Base, Reg;
     // Rewrite to:
-    //   naclcall __nacl_read_tp@PLT
+    //   call __nacl_read_tp@PLT
     //   addq sym@flag(%base), %reg
     if (Opc == X86::NACL_CG_IE_TLS_addr64) {
       CallOpc = X86::NACL_CALL64d;
@@ -671,7 +665,7 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
       Base = X86::RIP;
       Reg = X86::RAX;
     } else {
-      CallOpc = X86::NACL_CALL32d;
+      CallOpc = X86::CALLpcrel32;
       AddOpc = X86::ADD32rm;
       Base = MI.getOperand(3).getTargetFlags() == X86II::MO_INDNTPOFF ?
           0 : X86::EBX; // EBX for GOTNTPOFF.

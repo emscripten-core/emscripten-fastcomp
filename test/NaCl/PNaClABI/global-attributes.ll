@@ -33,7 +33,7 @@ define internal void @func_with_arg_attrs(i32 inreg zeroext) {
   ret void
 }
 
-; CHECK-NEXT: Function func_with_callingconv has disallowed calling convention: 8
+; CHECK-NEXT: Function func_with_callingconv has disallowed calling convention: fastcc (8)
 define internal fastcc void @func_with_callingconv() {
   ret void
 }
@@ -60,3 +60,9 @@ define internal void @func_with_unnamed_addr() unnamed_addr {
 
 ; CHECK-NOT: disallowed
 ; If another check is added, there should be a check-not in between each check
+
+
+; This stops the verifier from complaining about the lack of an entry point.
+define void @_start(i32 %arg) {
+  ret void
+}

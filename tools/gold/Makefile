@@ -9,21 +9,18 @@
 
 LEVEL := ../..
 LIBRARYNAME := LLVMgold
-LINK_COMPONENTS := support
 LINK_LIBS_IN_SHARED := 1
 SHARED_LIBRARY := 1
 LOADABLE_MODULE := 1
 
-# @LOCALMOD: this forces to appear -lLTO *after* the object file
-#            on the linkline. This is necessary for linking on ubuntu precise.
-#            Otherwise LLVMgold.so will not have a dt_needed entry for LTO
-EXTRA_LIBS := -lLTO
 EXPORTED_SYMBOL_FILE = $(PROJ_SRC_DIR)/gold.exports
 
 # Include this here so we can get the configuration of the targets
 # that have been configured for construction. We have to do this 
 # early so we can set up LINK_COMPONENTS before including Makefile.rules
 include $(LEVEL)/Makefile.config
+
+LINK_COMPONENTS := $(TARGETS_TO_BUILD) LTO
 
 # Because off_t is used in the public API, the largefile parts are required for
 # ABI compatibility.
@@ -32,4 +29,3 @@ LDFLAGS += -L$(SharedLibDir)/$(SharedPrefix)
 
 include $(LEVEL)/Makefile.common
 
-LIBS += -lLTO

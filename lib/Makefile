@@ -12,7 +12,7 @@ include $(LEVEL)/Makefile.config
 
 PARALLEL_DIRS := IR AsmParser Bitcode Analysis Transforms CodeGen Target \
                  ExecutionEngine Linker LTO MC Object Option DebugInfo   \
-                 IRReader
+                 IRReader LineEditor ProfileData
 
 ifeq ($(NACL_SANDBOX),1)
   PARALLEL_DIRS := $(filter-out Archive Linker, \

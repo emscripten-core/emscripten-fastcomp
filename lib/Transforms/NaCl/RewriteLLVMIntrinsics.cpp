@@ -120,24 +120,27 @@ bool RewriteLLVMIntrinsics::runOnModule(Module &M) {
 }
 
 bool RewriteLLVMIntrinsics::visitUses(IntrinsicRewriter &Rewriter) {
-  bool Changed = false;
   Function *F = Rewriter.function();
-  for (Value::use_iterator UI = F->use_begin(), UE = F->use_end(); UI != UE;) {
-    Value *Use = *UI++;
-    if (CallInst *Call = dyn_cast<CallInst>(Use)) {
-      Rewriter.rewriteCall(Call);
-      Call->eraseFromParent();
-      Changed = true;
+  SmallVector<CallInst *, 64> Calls;
+  for (User *U : F->users()) {
+    if (CallInst *Call = dyn_cast<CallInst>(U)) {
+      Calls.push_back(Call);
     } else {
       // Intrinsics we care about currently don't need to handle this case.
       std::string S;
       raw_string_ostream OS(S);
-      OS << "Taking the address of this intrinsic is invalid: " << *Use;
+      OS << "Taking the address of this intrinsic is invalid: " << *U;
       report_fatal_error(OS.str());
     }
   }
+
+  for (auto Call : Calls) {
+      Rewriter.rewriteCall(Call);
+      Call->eraseFromParent();
+  }
+
   F->eraseFromParent();
-  return Changed;
+  return !Calls.empty();
 }
 
 ModulePass *llvm::createRewriteLLVMIntrinsicsPass() {

@@ -67,9 +67,8 @@
 //
 //    a) EnterBlock: What to do once we have entered the block.
 //    b) ProcessRecord: What to do with each parsed record.
-//    c) ProcessAbbrevRecord: What to do with a parsed abbreviation.
-//    d) ParseBlock: Parse the (nested) block with the given ID.
-//    e) ExitBlock: What to do once we have finished processing the block.
+//    c) ParseBlock: Parse the (nested) block with the given ID.
+//    d) ExitBlock: What to do once we have finished processing the block.
 //
 // Note that a separate instance of NaClBitcodeParser (or a
 // corresponding derived class) is created for each nested block. Each
@@ -78,22 +77,24 @@
 // GetEnclosingParser() can be used to refer to the parser associated
 // with the enclosing block.
 //
+// Currently, the default processing of abbreviations is handled by
+// the PNaCl bitstream reader, rather than by the parser. A hook,
+// ProcessBlockInfo exists if you want to do some processing before the
+// BlockInfo block is exited.
+//
+// If you need to process abbreviations processed by the PNaCl
+// bitstream reader, you must explicitly define a
+// NaClBitcodeParserListener to listen (within the bitstream reader),
+// and make appropriate call backs to the NaClBitcodeParser.
+// The listener is glued to parsers using method SetListener.
+//
 // TODO(kschimpf): Define an intermediate derived class of
 // NaClBitcodeParser that defines callbacks based on the actual
 // structure of PNaCl bitcode files.  That is, it has callbacks for
 // each of the types of blocks (i.e. module, types, global variables,
 // function, symbol tables etc). This derivied class can then be used
 // as the base class for the bitcode reader.
-//
-// TODO(kschimpf): Currently, the processing of abbreviations is
-// handled by the PNaCl bitstream reader, rather than by the
-// parser. Hence, we currently require defining methods
-// EnterBlockInfo, ExitBlockInfo, and ProcessRecordAbbrev. BlockInfo
-// is a special block that defines abbreviations to be applied to all
-// blocks. Record abbreviations (which are a special kind of record)
-// define abbreviations for a the current block.
-//
-//===----------------------------------------------------------------------===//
+// ===----------------------------------------------------------------------===//
 
 #ifndef LLVM_BITCODE_NACL_NACLBITCODEPARSER_H
 #define LLVM_BITCODE_NACL_NACLBITCODEPARSER_H
@@ -104,8 +105,22 @@
 
 namespace llvm {
 
+namespace naclbitc {
+  // Special record codes used to model codes for predefined records.
+  // They are very large so that they do not conflict with existing
+  // record codes for user-defined blocks.
+  enum SpecialBlockCodes {
+    BLK_CODE_ENTER = 65535,
+    BLK_CODE_EXIT  = 65534,
+    BLK_CODE_DEFINE_ABBREV = 65533,
+    BLK_CODE_HEADER = 65532
+  };
+
+}
+
 class NaClBitcodeRecord;
 class NaClBitcodeParser;
+class NaClBitcodeParserListener;
 
 // Defines the base class for data extracted from the input bitstream
 // (i.e blocks and records).
@@ -134,12 +149,12 @@ public:
   }
 
   /// Returns the number of bits defined by the data.
-  unsigned GetNumBits() const {
+  uint64_t GetNumBits() const {
     return GetCursor().GetCurrentBitNo() - StartBit;
   }
 
   /// Returns the first bit of the stream data.
-  unsigned GetStartBit() const {
+  uint64_t GetStartBit() const {
     return StartBit;
   }
 
@@ -209,12 +224,49 @@ protected:
   friend class NaClBitcodeParser;
 };
 
+typedef NaClBitcodeRecordVector NaClRecordVector;
+
+class NaClBitcodeRecordData {
+public:
+  // The selector code associated with the record.
+  unsigned Code;
+  // The sequence of values defining the parsed record.
+  NaClRecordVector Values;
+
+  void Print(raw_ostream &strm) const;
+};
+
+inline raw_ostream &operator<<(raw_ostream &Strm,
+                               const NaClBitcodeRecordData &Data) {
+  Data.Print(Strm);
+  return Strm;
+}
+
+/// Simple container class to convert the values of the corresponding
+/// read record to a simpler form, only containing values.
+struct NaClBitcodeValues {
+public:
+  NaClBitcodeValues(const NaClBitcodeRecordData &Record)
+      : Record(Record) {}
+
+  size_t size() const {
+    return Record.Values.size()+1;
+  }
+
+  uint64_t operator[](size_t index) const {
+    return index == 0 ? Record.Code : Record.Values[index-1];
+  }
+
+private:
+  const NaClBitcodeRecordData &Record;
+};
+
 /// Defines the data associated with reading a block record in the
 /// PNaCl bitcode stream.
 class NaClBitcodeRecord : public NaClBitcodeData {
 public:
   /// Type for vector of values representing a record.
-  typedef SmallVector<uint64_t, 8> RecordVector;
+  typedef NaClRecordVector RecordVector;
 
   /// Creates a bitcode record, starting at the position defined
   /// by cursor.
@@ -244,7 +296,7 @@ public:
   /// Returns the code value (i.e. selector) associated with the
   /// record.
   unsigned GetCode() const {
-    return Code;
+    return Data.Code;
   }
 
   /// Returns the EntryID (e.g. abbreviation if !=
@@ -257,7 +309,12 @@ public:
 
   /// Returns the (value) record associated with the read record.
   const RecordVector &GetValues() const {
-    return Values;
+    return Data.Values;
+  }
+
+  /// Allows lower level access to data representing record.
+  const NaClBitcodeRecordData &GetRecordData() const {
+    return Data;
   }
 
   /// Returns true if the record was read using an abbreviation.
@@ -281,10 +338,8 @@ public:
 protected:
   // The block associated with the record.
   const NaClBitcodeBlock &Block;
-  // The selector code associated with the record.
-  unsigned Code;
-  // The sequence of values defining the parsed record.
-  RecordVector Values;
+  // The data of the record.
+  NaClBitcodeRecordData Data;
   // The entry (i.e. value(s) preceding the record that define what
   // value comes next).
   NaClBitstreamEntry Entry;
@@ -293,27 +348,71 @@ private:
   // Allows class NaClBitcodeParser to read values into the
   // record, thereby hiding the details of how to read values.
   friend class NaClBitcodeParser;
+  friend class NaClBitcodeParserListener;
 
   /// Read bitstream entry. Defines what construct appears next in the
   /// bitstream.
   void ReadEntry() {
     SetStartBit(GetCursor().GetCurrentBitNo());
-    Entry = GetCursor().advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs);
+    Entry = GetCursor().
+        advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs, 0);
   }
 
   /// Reads in a record's values, if the entry defines a record (Must
   /// be called after ReadEntry).
   void ReadValues() {
-    Values.clear();
-    Code = GetCursor().readRecord(Entry.ID, Values);
+    Data.Values.clear();
+    Data.Code = GetCursor().readRecord(Entry.ID, Data.Values);
   }
 
   NaClBitcodeRecord(const NaClBitcodeRecord &Rcd) LLVM_DELETED_FUNCTION;
   void operator=(const NaClBitcodeRecord &Rcd) LLVM_DELETED_FUNCTION;
 };
 
-/// Parses a block in the PNaCL bitcode stream.
+inline raw_ostream &operator<<(raw_ostream &Strm,
+                               const NaClBitcodeRecord &Record) {
+  Record.Print(Strm);
+  return Strm;
+}
+
+/// Defines a listener to handle abbreviations within a bitcode file.
+/// In particular, abbreviations and the BlockInfo block are made more
+/// explicit, and then sent to the parser through virtuals
+/// ProcessAbbreviation and SetBID.
+class NaClBitcodeParserListener : public NaClAbbrevListener {
+  friend class NaClBitcodeParser;
+public:
+  // Constructs a listener for the given parser.  Note: All nested
+  // parsers automatically inherit this listener.
+  NaClBitcodeParserListener(NaClBitcodeParser *Parser)
+      : Parser(Parser), GlobalBlockID(naclbitc::BLOCKINFO_BLOCK_ID) {
+  }
+
+  virtual ~NaClBitcodeParserListener() {}
+
+private:
+  virtual void BeginBlockInfoBlock(unsigned NumWords);
+
+  virtual void SetBID();
+
+  virtual void EndBlockInfoBlock();
+
+  virtual void ProcessAbbreviation(NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal);
+
+  /// The block parser currently being listened to.
+  NaClBitcodeParser *Parser;
+
+  /// The block ID to use if a global abbreviation. Note: This field is
+  /// updated by calls to method SetBID.
+  unsigned GlobalBlockID;
+};
+
+/// Parses a block in the PNaCl bitcode stream.
 class NaClBitcodeParser {
+  // Allow listener privledges, so that it can update/call the parser
+  // using a clean API.
+  friend class NaClBitcodeParserListener;
 public:
 
   // Creates a parser to parse the the block at the given cursor in
@@ -322,7 +421,9 @@ public:
   explicit NaClBitcodeParser(NaClBitstreamCursor &Cursor)
       : EnclosingParser(0),
         Block(ILLEGAL_BLOCK_ID, Cursor),
-        Record(Block)
+        Record(Block),
+        Listener(0),
+        ErrStream(&errs())
   {}
 
   virtual ~NaClBitcodeParser();
@@ -341,22 +442,20 @@ public:
   // is found.
   virtual void ExitBlock() {}
 
-  // Called before a BlockInfo block is parsed. Note: BlockInfo blocks
-  // are special. They include abbreviations to be used for blocks.
-  // After this routine is called, the NaClBitstreamParser is called
-  // to parse the BlockInfo block (rather than making a call to
-  // Parser->Parse()).
-  virtual void EnterBlockInfo() {}
-
   // Called after a BlockInfo block is parsed.
-  virtual void ExitBlockInfo() { ExitBlock(); }
+  virtual void ProcessBlockInfo() {}
 
   // Called after each record (within the block) is read (into field Record).
   virtual void ProcessRecord() {}
 
-  // Called if a block-specific abbreviation is read (into field
-  // Record), after processing by the bitstream reader.
-  virtual void ProcessRecordAbbrev() {}
+  // Called if a SetBID record is encountered in the BlockInfo block,
+  // and the parser has a listener.
+  virtual void SetBID() {}
+
+  // Called to process an abbreviation if the parser has a listener.
+  virtual void ProcessAbbreviation(unsigned BlockID,
+                                   NaClBitCodeAbbrev *Abbrev,
+                                   bool IsLocal) {}
 
   // Creates an instance of the NaClBitcodeParser to use to parse the
   // block with the given block ID, and then call's method
@@ -369,10 +468,20 @@ public:
     return Parser.ParseThisBlock();
   }
 
+  // Changes the error stream to print errors to Stream.  Warning:
+  // Stream must exist till the next call to setErrStream.  Otherwise
+  // it must exist for the entire lifetime of the bitcode parser.
+  // Note: This err stream should be set immediately after
+  // construction.  Assigning after nested bitcode parsers have been
+  // built will not work.
+  void setErrStream(raw_ostream &Stream) {
+    ErrStream = &Stream;
+  }
+
   // Called when error occurs. Message is the error to report. Always
   // returns true (the error return value of Parse).
   virtual bool Error(const std::string &Message) {
-    errs() << "Error: " << Message << "\n";
+    *ErrStream << "Error: " << Message << "\n";
     return true;
   }
 
@@ -404,9 +513,29 @@ public:
 
   // Parses the block using the parser defined by
   // ParseBlock(unsigned).  Returns true if unable to parse the
-  // block. Note: Should only be called by virtual
-  // ParseBlock(unsigned).
-  bool ParseThisBlock();
+  // block. Note: Should only be called by virtual ParseBlock(unsigned).
+  bool ParseThisBlock() {
+    bool Results;
+    if (Listener) {
+      NaClBitcodeParser *CallingParser = Listener->Parser;
+      Listener->Parser = this;
+      Results = ParseThisBlockInternal();
+      Listener->Parser = CallingParser;
+    } else {
+      Results = ParseThisBlockInternal();
+    }
+    return Results;
+  }
+
+  /// Skips the current block, assuming the parser is at the beginning
+  /// of the block. That is, Record.GetEntryKind() equals
+  /// NaClBitstreamEntry::SubBlock. Returns false if
+  /// successful. Otherwise returns 1.
+  bool SkipBlock() {
+    if (Record.GetEntryKind() != NaClBitstreamEntry::SubBlock)
+      return Error("SkipBlock on non-block record");
+    return Record.GetCursor().SkipBlock();
+  }
 
 protected:
   // The containing parser.
@@ -418,21 +547,58 @@ protected:
   // The current record (within the block) being processed.
   NaClBitcodeRecord Record;
 
+  // The listener (if any) to use.
+  NaClBitcodeParserListener *Listener;
+
+  // The error stream to use if non-null (uses errs() if null).
+  raw_ostream *ErrStream;
+
   // Creates a block parser to parse the block associated with the
   // bitcode entry that defines the beginning of a block. This
   // instance actually parses the corresponding block.
   NaClBitcodeParser(unsigned BlockID, NaClBitcodeParser *EnclosingParser)
       : EnclosingParser(EnclosingParser),
         Block(BlockID, EnclosingParser->Record),
-        Record(Block)
+        Record(Block),
+        Listener(EnclosingParser->Listener),
+        ErrStream(EnclosingParser->ErrStream)
   {}
+
+  /// Defines the listener for this block, and all enclosing blocks,
+  /// to be the given listener. Should be set in the constructor.
+  void SetListener(NaClBitcodeParserListener* UseListener) {
+    Listener = UseListener;
+  }
 
 private:
   // Special constant identifying the top-level instance.
   static const unsigned ILLEGAL_BLOCK_ID = UINT_MAX;
 
+  // Parses the block. Returns true if unable to parse the
+  // block. Note: Should only be called by virtual ParseThisBlock.
+  bool ParseThisBlockInternal() {
+    bool Results;
+    if (GetBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
+      Results = ParseBlockInfoInternal();
+    } else {
+      Results = ParseBlockInternal();
+      ExitBlock();
+    }
+    return Results;
+  }
+
+  // Parses a BlockInfo block, where processing is handled through
+  // a listener in the bitstream reader.
+  bool ParseBlockInfoInternal();
+
+  // Parses the non-BlockInfo block. Returns true if unable to parse the
+  // block.
+  bool ParseBlockInternal();
+
+
   void operator=(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
   NaClBitcodeParser(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
+
 };
 
 }  // namespace llvm

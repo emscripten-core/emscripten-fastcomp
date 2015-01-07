@@ -47,10 +47,6 @@ public:
     pushTTIStack(this);
   }
 
-  virtual void finalizePass() {
-    popTTIStack();
-  }
-
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     TargetTransformInfo::getAnalysisUsage(AU);
   }

@@ -169,18 +169,20 @@ bool RewritePNaClLibraryCalls::RewriteLibraryCall(
 
     // Handle all uses that are calls. These are simply replaced with
     // equivalent intrinsic calls.
-    for (Value::use_iterator UI = LibFunc->use_begin(),
-                             UE = LibFunc->use_end(); UI != UE;) {
-      Value *Use = *UI++;
-      // use_iterator will also provide call instructions in which the used
-      // value is an argument, and not the value being called. Make sure we
-      // rewrite only actual calls to LibFunc here.
-      if (CallInst *Call = dyn_cast<CallInst>(Use)) {
-        if (Call->getCalledValue() == LibFunc) {
-          (this->*(CallRewriter))(Call);
-          Changed = true;
-        }
-      }
+    {
+      SmallVector<CallInst *, 32> Calls;
+      for (User *U : LibFunc->users())
+        // users() will also provide call instructions in which the used value
+        // is an argument, and not the value being called. Make sure we rewrite
+        // only actual calls to LibFunc here.
+        if (CallInst *Call = dyn_cast<CallInst>(U))
+          if (Call->getCalledValue() == LibFunc)
+            Calls.push_back(Call);
+
+      for (auto Call : Calls)
+        (this->*(CallRewriter))(Call);
+
+      Changed |= !Calls.empty();
     }
 
     if (LibFunc->use_empty()) {

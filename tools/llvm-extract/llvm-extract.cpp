@@ -12,17 +12,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/LLVMContext.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/Assembly/PrintModulePass.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Debug.h" // @LOCALMOD
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Regex.h"
@@ -48,18 +48,6 @@ Force("f", cl::desc("Enable binary output on terminals"));
 
 static cl::opt<bool>
 DeleteFn("delete", cl::desc("Delete specified Globals from Module"));
-
-// @LOCALMOD-BEGIN
-static cl::opt<unsigned>
-Divisor("divisor",
-        cl::init(0),
-        cl::desc("select GV by position (pos % divisor = remainder "));
-
-static cl::opt<unsigned>
-Remainder("remainder",
-          cl::init(0),
-          cl::desc("select GV by position (pos % divisor = remainder "));
-// @LOCALMOD-END
 
 // ExtractFuncs - The functions to extract from the module.
 static cl::list<std::string>
@@ -113,10 +101,10 @@ int main(int argc, char **argv) {
 
   // Use lazy loading, since we only care about selected global values.
   SMDiagnostic Err;
-  OwningPtr<Module> M;
+  std::unique_ptr<Module> M;
   M.reset(getLazyIRFileModule(InputFilename, Err, Context));
 
-  if (M.get() == 0) {
+  if (!M.get()) {
     Err.print(argv[0], errs());
     return 1;
   }
@@ -178,10 +166,9 @@ int main(int argc, char **argv) {
         "invalid regex: " << Error;
     }
     bool match = false;
-    for (Module::global_iterator GV = M->global_begin(),
-           E = M->global_end(); GV != E; GV++) {
-      if (RegEx.match(GV->getName())) {
-        GVs.insert(&*GV);
+    for (auto &GV : M->globals()) {
+      if (RegEx.match(GV.getName())) {
+        GVs.insert(&GV);
         match = true;
       }
     }
@@ -192,24 +179,6 @@ int main(int argc, char **argv) {
     }
   }
 
-  // @LOCALMOD-BEGIN
-  // Extract globals via modulo operation.
-  size_t count_globals = 0;
-  if (Divisor != 0) {
-    size_t pos = 0;
-    for (Module::global_iterator GV = M->global_begin(), E = M->global_end();
-         GV != E;
-         GV++, pos++) {
-      if (pos % Divisor == Remainder) {
-        GVs.insert(&*GV);
-      }
-    }
-    dbgs() << "total globals: " <<  pos << "\n";
-    count_globals = GVs.size();
-    dbgs() << "selected globals: " << count_globals  << "\n";
-  }
-  // @LOCALMOD-END
-  
   // Figure out which functions we should extract.
   for (size_t i = 0, e = ExtractFuncs.size(); i != e; ++i) {
     GlobalValue *GV = M->getFunction(ExtractFuncs[i]);
@@ -244,22 +213,6 @@ int main(int argc, char **argv) {
     }
   }
 
-  // @LOCALMOD-BEGIN
-  // Extract functions via modulo operation.
-  if (Divisor != 0) {
-    size_t pos = 0;
-    for (Module::iterator F = M->begin(), E = M->end();
-         F != E;
-         F++, pos++) {
-       if (pos % Divisor == Remainder) {
-         GVs.insert(&*F);
-      }
-    }
-    dbgs() << "total functions: " <<  pos << "\n";
-    dbgs() << "selected functions: " << GVs.size() - count_globals  << "\n";
-  }
-  // @LOCALMOD-END
-  
   // Materialize requisite global values.
   if (!DeleteFn)
     for (size_t i = 0, e = GVs.size(); i != e; ++i) {
@@ -275,22 +228,19 @@ int main(int argc, char **argv) {
   else {
     // Deleting. Materialize every GV that's *not* in GVs.
     SmallPtrSet<GlobalValue *, 8> GVSet(GVs.begin(), GVs.end());
-    for (Module::global_iterator I = M->global_begin(), E = M->global_end();
-         I != E; ++I) {
-      GlobalVariable *G = I;
-      if (!GVSet.count(G) && G->isMaterializable()) {
+    for (auto &G : M->globals()) {
+      if (!GVSet.count(&G) && G.isMaterializable()) {
         std::string ErrInfo;
-        if (G->Materialize(&ErrInfo)) {
+        if (G.Materialize(&ErrInfo)) {
           errs() << argv[0] << ": error reading input: " << ErrInfo << "\n";
           return 1;
         }
       }
     }
-    for (Module::iterator I = M->begin(), E = M->end(); I != E; ++I) {
-      Function *F = I;
-      if (!GVSet.count(F) && F->isMaterializable()) {
+    for (auto &F : *M) {
+      if (!GVSet.count(&F) && F.isMaterializable()) {
         std::string ErrInfo;
-        if (F->Materialize(&ErrInfo)) {
+        if (F.Materialize(&ErrInfo)) {
           errs() << argv[0] << ": error reading input: " << ErrInfo << "\n";
           return 1;
         }
@@ -301,7 +251,7 @@ int main(int argc, char **argv) {
   // In addition to deleting all other functions, we also want to spiff it
   // up a little bit.  Do this now.
   PassManager Passes;
-  Passes.add(new DataLayout(M.get())); // Use correct DataLayout
+  Passes.add(new DataLayoutPass(M.get())); // Use correct DataLayout
 
   std::vector<GlobalValue*> Gvs(GVs.begin(), GVs.end());
 
@@ -312,14 +262,14 @@ int main(int argc, char **argv) {
   Passes.add(createStripDeadPrototypesPass());   // Remove dead func decls
 
   std::string ErrorInfo;
-  tool_output_file Out(OutputFilename.c_str(), ErrorInfo, sys::fs::F_Binary);
+  tool_output_file Out(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None);
   if (!ErrorInfo.empty()) {
     errs() << ErrorInfo << '\n';
     return 1;
   }
 
   if (OutputAssembly)
-    Passes.add(createPrintModulePass(&Out.os()));
+    Passes.add(createPrintModulePass(Out.os()));
   else if (Force || !CheckBitcodeOutputToConsole(Out.os(), true))
     Passes.add(createBitcodeWriterPass(Out.os()));
 

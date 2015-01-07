@@ -22,11 +22,14 @@ class ModulePass;
 extern cl::opt<bool> PNaClABIAllowDebugMetadata;
 
 class PNaClABIErrorReporter {
+  PNaClABIErrorReporter(const PNaClABIErrorReporter&) LLVM_DELETED_FUNCTION;
+  void operator=(const PNaClABIErrorReporter&) LLVM_DELETED_FUNCTION;
  public:
   PNaClABIErrorReporter() : ErrorCount(0), Errors(ErrorString),
                             UseFatalErrors(true) {}
+  ~PNaClABIErrorReporter() {}
   // Return the number of verification errors from the last run.
-  int getErrorCount() { return ErrorCount; }
+  int getErrorCount() const { return ErrorCount; }
   // Print the error messages to O
   void printErrors(llvm::raw_ostream &O) {
     Errors.flush();

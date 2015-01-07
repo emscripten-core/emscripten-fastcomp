@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = IPO InstCombine Instrumentation Scalar Utils Vectorize ObjCARC NaCl
+subdirectories = IPO InstCombine Instrumentation Scalar Utils Vectorize ObjCARC NaCl MinSFI
 
 [component_0]
 type = Group
