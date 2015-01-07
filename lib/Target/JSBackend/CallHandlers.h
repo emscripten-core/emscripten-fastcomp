@@ -457,6 +457,22 @@ DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
   return getAssign(CI) + getValueAsStr(CI->getOperand(0)) + ".signMask";
 })
 
+DEF_CALL_HANDLER(emscripten_float32x4_loadx, {
+  return getAssign(CI) + "SIMD_float32x4_loadX(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+
+DEF_CALL_HANDLER(emscripten_float32x4_loadxy, {
+  return getAssign(CI) + "SIMD_float32x4_loadXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+
+DEF_CALL_HANDLER(emscripten_float32x4_storex, {
+  return "SIMD_float32x4_storeX(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+
+DEF_CALL_HANDLER(emscripten_float32x4_storexy, {
+  return "SIMD_float32x4_storeXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+
 #define DEF_BUILTIN_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   return CH___default__(CI, #to); \
@@ -617,6 +633,10 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
   SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
   SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4);
+  SETUP_CALL_HANDLER(emscripten_float32x4_loadx);
+  SETUP_CALL_HANDLER(emscripten_float32x4_loadxy);
+  SETUP_CALL_HANDLER(emscripten_float32x4_storex);
+  SETUP_CALL_HANDLER(emscripten_float32x4_storexy);
 
   SETUP_CALL_HANDLER(abs);
   SETUP_CALL_HANDLER(labs);
