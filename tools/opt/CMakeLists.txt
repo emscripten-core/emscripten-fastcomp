@@ -7,8 +7,11 @@ set(LLVM_LINK_COMPONENTS
   IPA
   IPO
   IRReader
-  naclbitwriter
-  naclbitreader
+  MinSFITransforms
+  NaClBitWriter
+  NaClBitReader
+  NaClTransforms
+  NaClAnalysis
   InstCombine
   Instrumentation
   MC
