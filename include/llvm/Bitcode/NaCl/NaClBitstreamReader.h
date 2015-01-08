@@ -558,11 +558,23 @@ private:
   //===--------------------------------------------------------------------===//
 
 private:
-  void readAbbreviatedLiteral(const NaClBitCodeAbbrevOp &Op,
-                              SmallVectorImpl<uint64_t> &Vals);
-  void readAbbreviatedField(const NaClBitCodeAbbrevOp &Op,
-                            SmallVectorImpl<uint64_t> &Vals);
   void skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op);
+
+  // Reads the next Value using the abbreviation Op. Returns true only
+  // if Op is an array (and sets Value to the number of elements in the
+  // array).
+  inline bool readRecordAbbrevField(const NaClBitCodeAbbrevOp &Op,
+                                    uint64_t &Value);
+
+  // Reads and returns the next value using the abbreviation Op,
+  // assuming Op appears after an array abbreviation.
+  inline uint64_t readArrayAbbreviatedField(const NaClBitCodeAbbrevOp &Op);
+
+  // Reads the array abbreviation Op, NumArrayElements times, putting
+  // the read values in Vals.
+  inline void readArrayAbbrev(const NaClBitCodeAbbrevOp &Op,
+                              unsigned NumArrayElements,
+                              SmallVectorImpl<uint64_t> &Vals);
 
 public:
 

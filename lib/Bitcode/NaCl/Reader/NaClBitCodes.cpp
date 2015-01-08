@@ -96,3 +96,15 @@ NaClBitCodeAbbrev *NaClBitCodeAbbrev::Simplify() const {
   }
   return Abbrev;
 }
+
+bool NaClBitCodeAbbrev::isValid() const {
+  // Verify that an array op appears can only appear if it is the
+  // second to last element.
+  unsigned NumOperands = getNumOperandInfos();
+  for (unsigned i = 0; i < NumOperands; ++i) {
+    const NaClBitCodeAbbrevOp &Op = getOperandInfo(i);
+    if (Op.isArrayOp() && i + 2 != NumOperands)
+      return false;
+  }
+  return true;
+}
