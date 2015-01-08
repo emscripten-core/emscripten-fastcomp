@@ -579,11 +579,24 @@ computeNewArchiveMembers(ArchiveOperation Operation,
 
 template <typename T>
 static void printWithSpacePadding(raw_ostream &OS, T Data, unsigned Size) {
-  uint64_t OldPos = OS.tell();
-  OS << Data;
-  unsigned SizeSoFar = OS.tell() - OldPos;
-  assert(Size >= SizeSoFar && "Data doesn't fit in Size");
-  unsigned Remaining = Size - SizeSoFar;
+  std::string buffer;
+  raw_string_ostream rss(buffer);
+  rss << Data;
+  bool cropped = rss.str().size() > Size; // use rss.str() which flushes
+  unsigned Remaining = 0;
+  if( cropped )
+  {
+    assert(!"Data doesn't fit in Size");
+    Remaining = Size;
+  }
+  else
+  {
+    uint64_t OldPos = OS.tell();
+    OS << rss.str();
+    unsigned SizeSoFar = OS.tell() - OldPos;
+    Remaining = Size - SizeSoFar;
+  }
+
   for (unsigned I = 0; I < Remaining; ++I)
     OS << ' ';
 }
@@ -600,8 +613,8 @@ static void printRestOfMemberHeader(raw_fd_ostream &Out,
                                     unsigned GID, unsigned Perms,
                                     unsigned Size) {
   printWithSpacePadding(Out, ModTime.toEpochTime(), 12);
-  printWithSpacePadding(Out, UID, 6);
-  printWithSpacePadding(Out, GID, 6);
+  printWithSpacePadding(Out, (UID > 999999u ? 999999u: UID), 6);
+  printWithSpacePadding(Out, (GID > 999999u ? 999999u: GID) , 6);
   printWithSpacePadding(Out, format("%o", Perms), 8);
   printWithSpacePadding(Out, Size, 10);
   Out << "`\n";
