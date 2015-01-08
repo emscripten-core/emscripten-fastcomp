@@ -88,6 +88,9 @@ private:
   /// specified by the instruction \p I for stability purpose.
   template <class Instruction>
   ConstantInt *freezeMemoryOrder(const Instruction &I, AtomicOrdering O) const;
+  std::pair<ConstantInt *, ConstantInt *>
+  freezeMemoryOrder(const AtomicCmpXchgInst &I, AtomicOrdering S,
+                    AtomicOrdering F) const;
 
   /// Sanity-check that instruction \p I which has pointer and value
   /// parameters have matching sizes \p BitSize for the type-pointed-to
@@ -177,7 +180,6 @@ ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I,
 
   if (AO == NaCl::MemoryOrderInvalid) {
     switch (O) {
-    default:
     case NotAtomic: llvm_unreachable("unexpected memory order");
     // Monotonic is a strict superset of Unordered. Both can therefore
     // map to Relaxed ordering, which is in the C11/C++11 standard.
@@ -192,10 +194,26 @@ ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I,
     }
   }
 
-  // TODO For now only sequential consistency is allowed.
-  AO = NaCl::MemoryOrderSequentiallyConsistent;
+  // TODO For now only acquire/release/acq_rel/seq_cst are allowed.
+  if (AO == NaCl::MemoryOrderRelaxed)
+    AO = NaCl::MemoryOrderSequentiallyConsistent;
 
   return ConstantInt::get(Type::getInt32Ty(C), AO);
+}
+
+std::pair<ConstantInt *, ConstantInt *>
+AtomicVisitor::freezeMemoryOrder(const AtomicCmpXchgInst &I, AtomicOrdering S,
+                                 AtomicOrdering F) const {
+  if (S == Release || (S == AcquireRelease && F != Acquire))
+    // According to C++11's [atomics.types.operations.req], cmpxchg with release
+    // success memory ordering must have relaxed failure memory ordering, which
+    // PNaCl currently disallows. The next-strongest ordering is acq_rel which
+    // is also an invalid failure ordering, we therefore have to change the
+    // success ordering to seq_cst, which can then fail as seq_cst.
+    S = F = SequentiallyConsistent;
+  if (F == Unordered || F == Monotonic) // Both are treated as relaxed.
+    F = AtomicCmpXchgInst::getStrongestFailureOrdering(S);
+  return std::make_pair(freezeMemoryOrder(I, S), freezeMemoryOrder(I, F));
 }
 
 void AtomicVisitor::checkSizeMatchesType(const Instruction &I, unsigned BitSize,
@@ -359,9 +377,10 @@ void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
       findAtomicIntrinsic(I, Intrinsic::nacl_atomic_cmpxchg, PH.PET);
   checkSizeMatchesType(I, PH.BitSize, I.getCompareOperand()->getType());
   checkSizeMatchesType(I, PH.BitSize, I.getNewValOperand()->getType());
+  auto Order =
+      freezeMemoryOrder(I, I.getSuccessOrdering(), I.getFailureOrdering());
   Value *Args[] = {PH.P, I.getCompareOperand(), I.getNewValOperand(),
-                   freezeMemoryOrder(I, I.getSuccessOrdering()),
-                   freezeMemoryOrder(I, I.getFailureOrdering())};
+                   Order.first, Order.second};
   replaceInstructionWithIntrinsicCall(I, Intrinsic, PH.OriginalPET, PH.PET,
                                       Args);
 }
