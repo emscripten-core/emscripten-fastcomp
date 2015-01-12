@@ -81,10 +81,20 @@ namespace {
   class FlattenedGlobal;
   typedef std::vector<FlattenedGlobal*> FlattenedGlobalsVectorType;
 
+#ifdef _MSC_VER
+// Work around Visual Studio bug https://connect.microsoft.com/VisualStudio/feedback/details/1085387
+}
+#endif
+
   // Returns the corresponding relocation, for the given user handle.
   static Constant *getRelocUse(RelocUserType *RelocUser) {
     return cast<Constant>(RelocUser->getReturnValue());
   }
+
+#ifdef _MSC_VER
+// Work around Visual Studio bug https://connect.microsoft.com/VisualStudio/feedback/details/1085387
+namespace {
+#endif
 
   // The state associated with flattening globals of a module.
   struct FlattenGlobalsState {
