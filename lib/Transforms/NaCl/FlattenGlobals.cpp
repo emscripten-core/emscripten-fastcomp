@@ -175,7 +175,7 @@ namespace {
    public:
 
       unsigned getRelOffset() const { return RelOffset; }
-      Constant *getRelocUse() const { return ::getRelocUseConstant(RelocUser); }
+      Constant *getRelocUse() const { return getRelocUseConstant(RelocUser); }
       Reloc(FlattenGlobalsState &State, unsigned RelOffset, Constant *NewVal)
           : RelOffset(RelOffset), RelocUser(State.getRelocUserHandle(NewVal)) {}
 
