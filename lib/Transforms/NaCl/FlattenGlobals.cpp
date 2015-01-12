@@ -81,20 +81,10 @@ namespace {
   class FlattenedGlobal;
   typedef std::vector<FlattenedGlobal*> FlattenedGlobalsVectorType;
 
-#ifdef _MSC_VER
-// Work around Visual Studio bug https://connect.microsoft.com/VisualStudio/feedback/details/1085387
-}
-#endif
-
   // Returns the corresponding relocation, for the given user handle.
-  static Constant *getRelocUse(RelocUserType *RelocUser) {
+  static Constant *getRelocUseConstant(RelocUserType *RelocUser) {
     return cast<Constant>(RelocUser->getReturnValue());
   }
-
-#ifdef _MSC_VER
-// Work around Visual Studio bug https://connect.microsoft.com/VisualStudio/feedback/details/1085387
-namespace {
-#endif
 
   // The state associated with flattening globals of a module.
   struct FlattenGlobalsState {
@@ -185,7 +175,7 @@ namespace {
    public:
 
       unsigned getRelOffset() const { return RelOffset; }
-      Constant *getRelocUse() const { return ::getRelocUse(RelocUser); }
+      Constant *getRelocUse() const { return getRelocUseConstant(RelocUser); }
       Reloc(FlattenGlobalsState &State, unsigned RelOffset, Constant *NewVal)
           : RelOffset(RelOffset),
             RelocUser(State.getRelocUserHandle(NewVal)) {}
@@ -522,7 +512,7 @@ void FlattenGlobalsState::removeDeadInitializerConstants() {
   // Do cleanup of old initializers.
   for (RelocMapType::iterator I = RelocMap.begin(), E = RelocMap.end();
        I != E; ++I) {
-    getRelocUse(I->second)->removeDeadConstantUsers();
+    getRelocUseConstant(I->second)->removeDeadConstantUsers();
   }
 
 }
