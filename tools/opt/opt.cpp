@@ -752,9 +752,6 @@ int main(int argc, char **argv) {
       case PNaClFormat:
         Passes.add(createNaClBitcodeWriterPass(Out->os()));
         break;
-      default:
-        errs() << "Don't understand bitcode format for generated bitcode.\n";
-        return 1;
       }
       // @LOCALMOD-END
   }

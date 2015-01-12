@@ -387,9 +387,6 @@ void FormatterTester::InsertClusterDirectives(std::string &CurToken,
       FunctionParseStack.pop_back();
     }
     break;
-  default:
-    EXPECT_TRUE(false) << "Formatter test state unknown: " << State;
-    break;
   }
 
   // Check if we are at the beginning of a new function.

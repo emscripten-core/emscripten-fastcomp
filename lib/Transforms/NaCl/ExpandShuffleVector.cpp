@@ -30,12 +30,12 @@ public:
   ExpandShuffleVector() : BasicBlockPass(ID), M(0) {
     initializeExpandShuffleVectorPass(*PassRegistry::getPassRegistry());
   }
-  virtual bool doInitialization(Module &Mod) {
+  using BasicBlockPass::doInitialization;
+  bool doInitialization(Module &Mod) override {
     M = &Mod;
     return false; // Unchanged.
   }
-
-  virtual bool runOnBasicBlock(BasicBlock &BB);
+  bool runOnBasicBlock(BasicBlock &BB) override;
 
 private:
   const Module *M;

@@ -478,9 +478,6 @@ public:
       if (!NaClBitCodeAbbrevOp::isChar6(Val)) return false;
       NumBits += 6;
       return true;
-    default:
-      llvm_unreachable("Bad abbreviation operator");
-      return false;
     }
   }
 

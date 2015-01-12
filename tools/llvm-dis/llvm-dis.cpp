@@ -166,9 +166,6 @@ int main(int argc, char **argv) {
             &ErrorMessage));
         break;
       }
-      default:
-        ErrorMessage = "Don't understand specified bitcode format";
-        break;
     }
     // @LOCALMOD-END
 

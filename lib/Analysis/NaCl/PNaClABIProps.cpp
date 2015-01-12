@@ -87,7 +87,6 @@ const char *PNaClABIProps::LinkageName(GlobalValue::LinkageTypes LT) {
   case GlobalValue::ExternalWeakLinkage:  return "extern_weak";
   case GlobalValue::AvailableExternallyLinkage:
     return "available_externally";
-  default: return "unknown";
   }
 }
 

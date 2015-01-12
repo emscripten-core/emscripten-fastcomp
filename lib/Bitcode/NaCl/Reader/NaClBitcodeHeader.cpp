@@ -101,8 +101,6 @@ std::string NaClBitcodeHeaderField::Contents() const {
   case kInvalid:
     ss << "Invalid";
     break;
-  default:
-    report_fatal_error("PNaCl bitcode file contains unknown field tag");
   }
   ss << ": ";
   switch (FType) {
@@ -118,8 +116,6 @@ std::string NaClBitcodeHeaderField::Contents() const {
     }
     ss << "]";
     break;
-  default:
-    report_fatal_error("PNaCl bitcode file contains unknown field type");
   }
   return ss.str();
 }

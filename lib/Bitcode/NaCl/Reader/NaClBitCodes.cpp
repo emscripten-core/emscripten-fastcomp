@@ -38,10 +38,6 @@ void NaClBitCodeAbbrevOp::Print(raw_ostream& Stream) const {
     case Blob:
       Stream << "Blob";
       break;
-    default:
-      llvm_unreachable("Unknown bitcode abbreviation operator");
-      Stream << "??";  // In case asserts are turned off.
-      break;
     }
   } else {
     llvm_unreachable("Unknown bitcode abbreviation operator");

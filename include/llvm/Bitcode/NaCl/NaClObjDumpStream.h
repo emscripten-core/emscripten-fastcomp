@@ -35,7 +35,7 @@ public:
     Values.push_back(Indent);
   }
 
-  ~TextIndenter() {}
+  virtual ~TextIndenter() {}
 
   /// Returns the current indentation to use.
   const std::string &GetIndent() const {
@@ -211,7 +211,7 @@ public:
                          unsigned LineWidth = 80,
                          const char *Tab = DefaultTab);
 
-  ~TextFormatter();
+  ~TextFormatter() override;
 
   /// Returns the user-level text stream of the formatter that tokens
   /// should be written to.
@@ -424,7 +424,7 @@ protected:
   void FinishClustering();
 
   /// Adds a newline that ends the current instruction being printed.
-  virtual void WriteEndline();
+  void WriteEndline();
 
   /// Called just before the first character on a line is printed, to
   /// add indentation text for the line.
@@ -495,7 +495,7 @@ private:
         : Directive(Formatter) {}
 
   public:
-    virtual ~GetTokenDirective() {}
+    ~GetTokenDirective() override {}
 
     /// Allocates an instance of a GetTokenDirective.
     /// Note: Will be reclaimed when MyApply is called.
@@ -503,7 +503,7 @@ private:
                                const std::string &Text);
 
   protected:
-    virtual void MyApply(bool Replay) const {
+    void MyApply(bool Replay) const override {
       WriteToken(Text);
       if (!IsClustering())
         Formatter->GetTokenFreeList.Free(const_cast<GetTokenDirective*>(this));
@@ -535,10 +535,10 @@ public:
   explicit TokenizeTextDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
-  virtual ~TokenizeTextDirective() {}
+  ~TokenizeTextDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {}
+  void MyApply(bool Replay) const override {}
 };
 
 /// Defines a token which doesn't need whitespace on either side of
@@ -549,10 +549,10 @@ public:
       : TextFormatter::Directive(Formatter), Text(Str) {
   }
 
-  virtual ~TokenTextDirective() {}
+  ~TokenTextDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     WriteToken(Text);
   }
 
@@ -573,7 +573,7 @@ public:
   ~SpaceTextDirective() {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     if (!AddLineWrapIfNeeded(Space.size()))
       WriteToken(Space);
   }
@@ -587,10 +587,10 @@ public:
   explicit EndlineTextDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
-  virtual ~EndlineTextDirective() {}
+  ~EndlineTextDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     WriteEndline();
   }
 };
@@ -604,10 +604,10 @@ public:
   OpenTextDirective(TextFormatter *Formatter, const std::string &Text)
       : TokenTextDirective(Formatter, Text) {}
 
-  virtual ~OpenTextDirective() {}
+  ~OpenTextDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     TokenTextDirective::MyApply(Replay);
     PushIndent();
   }
@@ -620,10 +620,10 @@ public:
   CloseTextDirective(TextFormatter *Formatter, const std::string &Text)
       : TokenTextDirective(Formatter, Text) {}
 
-  virtual ~CloseTextDirective() {}
+  ~CloseTextDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     TokenTextDirective::MyApply(Replay);
     PopIndent();
   }
@@ -636,14 +636,14 @@ public:
   explicit StartClusteringDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
-  virtual ~StartClusteringDirective() {}
+  ~StartClusteringDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     StartClustering();
   }
 
-  virtual void MaybeSaveForReplay() const {
+  void MaybeSaveForReplay() const override {
     if (GetClusteringLevel() > 1) AppendForReplay(this);
   }
 };
@@ -653,10 +653,10 @@ public:
   explicit FinishClusteringDirective(TextFormatter *Formatter)
       : TextFormatter::Directive(Formatter) {}
 
-  virtual ~FinishClusteringDirective() {}
+  ~FinishClusteringDirective() override {}
 
 protected:
-  virtual void MyApply(bool Replay) const {
+  void MyApply(bool Replay) const override {
     FinishClustering();
   }
 };
@@ -675,6 +675,8 @@ public:
   static const unsigned AddressWriteWidth = 8;
 
   explicit RecordTextFormatter(ObjDumpStream *ObjDump);
+
+  ~RecordTextFormatter() override {}
 
   /// Writes out the given record of values as an instruction.
   void WriteValues(uint64_t Bit,
@@ -695,7 +697,7 @@ public:
   }
 
 protected:
-  virtual void WriteLineIndents();
+  void WriteLineIndents() override;
 
 private:
   // The object dumper this formatter is associated with.

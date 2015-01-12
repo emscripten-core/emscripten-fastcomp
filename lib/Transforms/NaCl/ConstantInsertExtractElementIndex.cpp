@@ -34,15 +34,16 @@ public:
     initializeConstantInsertExtractElementIndexPass(
         *PassRegistry::getPassRegistry());
   }
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<DataLayoutPass>();
     BasicBlockPass::getAnalysisUsage(AU);
   }
-  virtual bool doInitialization(Module &Mod) {
+  using BasicBlockPass::doInitialization;
+  bool doInitialization(Module &Mod) override {
     M = &Mod;
     return false; // Unchanged.
   }
-  virtual bool runOnBasicBlock(BasicBlock &BB);
+  bool runOnBasicBlock(BasicBlock &BB) override;
 
 private:
   typedef SmallVector<Instruction *, 8> Instructions;

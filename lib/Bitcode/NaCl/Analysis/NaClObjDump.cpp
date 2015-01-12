@@ -277,7 +277,7 @@ public:
     ContinuationIndent = GetIndent(2);
   }
 
-  ~AssemblyTextFormatter() {}
+  ~AssemblyTextFormatter() override {}
 
   naclbitc::TokenTextDirective Comma;
   naclbitc::TokenTextDirective Semicolon;
