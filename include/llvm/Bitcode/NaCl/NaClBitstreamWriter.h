@@ -466,6 +466,7 @@ public:
   /// EmitAbbrev - This emits an abbreviation to the stream.  Note that this
   /// method takes ownership of the specified abbrev.
   unsigned EmitAbbrev(NaClBitCodeAbbrev *Abbv) {
+    assert(Abbv->isValid() && "Can't emit invalid abbreviation!");
     // Emit the abbreviation as a record.
     EncodeAbbrev(Abbv);
     CurAbbrevs.push_back(Abbv);

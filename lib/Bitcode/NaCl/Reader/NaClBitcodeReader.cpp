@@ -535,9 +535,6 @@ public:
         }
         // The interesting case.
         break;
-      default:
-        return Reader.Error(NaClBitcodeReader::InvalidRecord,
-                            "Unexpected record");
       }
 
       // Read a record.

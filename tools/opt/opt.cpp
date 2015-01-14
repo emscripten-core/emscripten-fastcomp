@@ -379,6 +379,7 @@ int main(int argc, char **argv) {
   initializeExpandCtorsPass(Registry);
   initializeExpandGetElementPtrPass(Registry);
   initializeExpandIndirectBrPass(Registry);
+  initializeExpandLargeIntegersPass(Registry);
   initializeExpandShuffleVectorPass(Registry);
   initializeExpandSmallArgumentsPass(Registry);
   initializeExpandStructRegsPass(Registry);
@@ -405,6 +406,7 @@ int main(int argc, char **argv) {
   initializeRewritePNaClLibraryCallsPass(Registry);
   initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
+  initializeSimplifyAllocasPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
@@ -698,9 +700,6 @@ int main(int argc, char **argv) {
       case PNaClFormat:
         Passes.add(createNaClBitcodeWriterPass(Out->os()));
         break;
-      default:
-        errs() << "Don't understand bitcode format for generated bitcode.\n";
-        return 1;
       }
       // @LOCALMOD-END
   }

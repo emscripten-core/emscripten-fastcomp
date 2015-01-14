@@ -145,29 +145,87 @@ static bool hasAllowedAtomicRMWOperation(
   return true;
 }
 
-static bool hasAllowedAtomicMemoryOrder(
-    const NaCl::AtomicIntrinsics::AtomicIntrinsic *I, const CallInst *Call) {
+static bool
+hasAllowedAtomicMemoryOrder(const NaCl::AtomicIntrinsics::AtomicIntrinsic *I,
+                            const CallInst *Call) {
+  NaCl::MemoryOrder PreviousOrder = NaCl::MemoryOrderInvalid;
+
   for (size_t P = 0; P != I->NumParams; ++P) {
     if (I->ParamType[P] != NaCl::AtomicIntrinsics::Mem)
       continue;
 
-    const Value *MemoryOrder = Call->getOperand(P);
-    if (!MemoryOrder)
+    NaCl::MemoryOrder Order = NaCl::MemoryOrderInvalid;
+    if (const Value *MemoryOrderOperand = Call->getOperand(P))
+      if (const Constant *C = dyn_cast<Constant>(MemoryOrderOperand)) {
+        const APInt &I = C->getUniqueInteger();
+        if (I.ugt(NaCl::MemoryOrderInvalid) && I.ult(NaCl::MemoryOrderNum))
+          Order = static_cast<NaCl::MemoryOrder>(I.getLimitedValue());
+      }
+    if (Order == NaCl::MemoryOrderInvalid)
       return false;
-    const Constant *C = dyn_cast<Constant>(MemoryOrder);
-    if (!C)
+
+    // Validate PNaCl restrictions.
+    switch (Order) {
+    case NaCl::MemoryOrderInvalid:
+    case NaCl::MemoryOrderNum:
+      llvm_unreachable("Invalid memory order");
+    case NaCl::MemoryOrderRelaxed:
+    case NaCl::MemoryOrderConsume:
+      // TODO(jfb) PNaCl doesn't allow relaxed or consume memory ordering.
       return false;
-    const APInt &I = C->getUniqueInteger();
-    if (I.ule(NaCl::MemoryOrderInvalid) || I.uge(NaCl::MemoryOrderNum))
-      return false;
-    // TODO For now only sequential consistency is allowed. When more
-    //      are allowed we need to validate that the memory order is
-    //      allowed on the specific atomic operation (e.g. no store
-    //      acquire, and relationship between success/failure memory
-    //      order on compare exchange).
-    if (I != NaCl::MemoryOrderSequentiallyConsistent)
-      return false;
+    case NaCl::MemoryOrderAcquire:
+    case NaCl::MemoryOrderRelease:
+    case NaCl::MemoryOrderAcquireRelease:
+    case NaCl::MemoryOrderSequentiallyConsistent:
+      break; // Allowed by PNaCl.
+    }
+
+    // Validate conformance to the C++11 memory model.
+    switch (I->ID) {
+    default:
+      llvm_unreachable("unexpected atomic operation");
+    case Intrinsic::nacl_atomic_load:
+      // C++11 [atomics.types.operations.req]: The order argument shall not be
+      // release nor acq_rel.
+      if (Order == NaCl::MemoryOrderRelease ||
+          Order == NaCl::MemoryOrderAcquireRelease)
+        return false;
+      break;
+    case Intrinsic::nacl_atomic_store:
+      // C++11 [atomics.types.operations.req]: The order argument shall not be
+      // consume, acquire, nor acq_rel.
+      if (Order == NaCl::MemoryOrderConsume ||
+          Order == NaCl::MemoryOrderAcquire ||
+          Order == NaCl::MemoryOrderAcquireRelease)
+        return false;
+      break;
+    case Intrinsic::nacl_atomic_rmw:
+      break; // No restriction.
+    case Intrinsic::nacl_atomic_cmpxchg:
+      // C++11 [atomics.types.operations.req]: The failure argument shall not be
+      // release nor acq_rel. The failure argument shall be no stronger than the
+      // success argument.
+      // Where the partial ordering is:
+      //   relaxed < consume < acquire           < acq_rel < seq_cst
+      //   relaxed <                     release < acq_rel < seq_cst
+      if (PreviousOrder != NaCl::MemoryOrderInvalid) { // Failure ordering.
+        NaCl::MemoryOrder Success = PreviousOrder, Failure = Order;
+        if (Failure == NaCl::MemoryOrderRelease ||
+            Failure == NaCl::MemoryOrderAcquireRelease)
+          return false;
+        if ((Success < Failure) || (Success == NaCl::MemoryOrderRelease &&
+                                    Failure != NaCl::MemoryOrderRelaxed))
+          return false;
+      }
+      break; // Success ordering has no restriction.
+    case Intrinsic::nacl_atomic_fence:
+    case Intrinsic::nacl_atomic_fence_all:
+      break; // No restrictions.
+    }
+
+    PreviousOrder = Order;
   }
+
   return true;
 }
 

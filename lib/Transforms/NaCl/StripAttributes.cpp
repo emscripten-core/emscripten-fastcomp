@@ -18,6 +18,7 @@
 //  * The "unnamed_addr" attribute on functions and global variables.
 //  * The distinction between "internal" and "private" linkage.
 //  * "protected" and "internal" visibility of functions and globals.
+//  * All sections are stripped. A few sections cause warnings.
 //  * The arithmetic attributes "nsw", "nuw" and "exact".
 //  * It reduces the set of possible "align" attributes on memory
 //    accesses.
@@ -32,6 +33,7 @@
 #include "llvm/Pass.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/Transforms/NaCl.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -142,12 +144,51 @@ static void CheckAttributes(AttributeSet Attrs) {
   }
 }
 
+static const char* ShouldWarnAboutSection(const char* Section) {
+  static const char* SpecialSections[] = {
+    ".init_array",
+    ".init",
+    ".fini_array",
+    ".fini",
+
+    // Java/LSB:
+    ".jcr",
+
+    // LSB:
+    ".ctors",
+    ".dtors",
+  };
+
+  for (auto CheckSection : SpecialSections) {
+    if (strcmp(Section, CheckSection) == 0) {
+      return CheckSection;
+    }
+  }
+
+  return nullptr;
+}
+
 void stripGlobalValueAttrs(GlobalValue *GV) {
   // In case source code uses __attribute__((visibility("hidden"))) or
   // __attribute__((visibility("protected"))), strip these attributes.
   GV->setVisibility(GlobalValue::DefaultVisibility);
 
   GV->setUnnamedAddr(false);
+
+  if (GV->hasSection()) {
+    const char *Section = GV->getSection();
+    // check for a few special cases
+    if (const char *WarnSection = ShouldWarnAboutSection(Section)) {
+      errs() << "Warning: " << GV->getName() <<
+        " will have its section (" <<
+        WarnSection << ") stripped.\n";
+    }
+
+    if(GlobalObject* GO = dyn_cast<GlobalObject>(GV)) {
+      GO->setSection("");
+    }
+    // Nothing we can do if GV isn't a GlobalObject.
+  }
 
   // Convert "private" linkage to "internal" to reduce the number of
   // linkage types that need to be represented in PNaCl's wire format.

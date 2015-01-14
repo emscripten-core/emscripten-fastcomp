@@ -284,6 +284,9 @@ public:
   // to recognize equivalent abbrevations.
   NaClBitCodeAbbrev *Simplify() const;
 
+  // Returns true if the abbreviation is valid wrt to the bitcode reader.
+  bool isValid() const;
+
   int Compare(const NaClBitCodeAbbrev &Abbrev) const {
     // First order based on number of operands.
     size_t OperandListSize = OperandList.size();

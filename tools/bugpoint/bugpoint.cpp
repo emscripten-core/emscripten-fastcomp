@@ -149,6 +149,7 @@ int main(int argc, char **argv) {
   initializeExpandCtorsPass(Registry);
   initializeExpandGetElementPtrPass(Registry);
   initializeExpandIndirectBrPass(Registry);
+  initializeExpandLargeIntegersPass(Registry);
   initializeExpandShuffleVectorPass(Registry);
   initializeExpandSmallArgumentsPass(Registry);
   initializeExpandStructRegsPass(Registry);
@@ -175,6 +176,7 @@ int main(int argc, char **argv) {
   initializeRewritePNaClLibraryCallsPass(Registry);
   initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
+  initializeSimplifyAllocasPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);

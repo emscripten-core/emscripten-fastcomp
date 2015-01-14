@@ -131,8 +131,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // to clean both of these up.
   PM.add(createFlattenGlobalsPass());
 
-  // PromoteIntegersPass does not handle constexprs and creates GEPs,
-  // so it goes between those passes.
+  // The type legalization passes (ExpandLargeIntegers and PromoteIntegers) do
+  // not handle constexprs and create GEPs, so they go between those passes.
+  PM.add(createExpandLargeIntegersPass());
   PM.add(createPromoteIntegersPass());
   // ExpandGetElementPtr must follow ExpandConstantExpr to expand the
   // getelementptr instructions it creates.
@@ -143,6 +144,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
   PM.add(createRemoveAsmMemoryPass());
+
+  PM.add(createSimplifyAllocasPass());
+
   // ReplacePtrsWithInts assumes that getelementptr instructions and
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());

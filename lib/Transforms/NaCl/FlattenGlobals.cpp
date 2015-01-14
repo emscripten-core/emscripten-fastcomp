@@ -82,7 +82,7 @@ namespace {
   typedef std::vector<FlattenedGlobal*> FlattenedGlobalsVectorType;
 
   // Returns the corresponding relocation, for the given user handle.
-  static Constant *getRelocUse(RelocUserType *RelocUser) {
+  Constant *getRelocUseConstant(RelocUserType *RelocUser) {
     return cast<Constant>(RelocUser->getReturnValue());
   }
 
@@ -175,10 +175,9 @@ namespace {
    public:
 
       unsigned getRelOffset() const { return RelOffset; }
-      Constant *getRelocUse() const { return ::getRelocUse(RelocUser); }
+      Constant *getRelocUse() const { return getRelocUseConstant(RelocUser); }
       Reloc(FlattenGlobalsState &State, unsigned RelOffset, Constant *NewVal)
-          : RelOffset(RelOffset),
-            RelocUser(State.getRelocUserHandle(NewVal)) {}
+          : RelOffset(RelOffset), RelocUser(State.getRelocUserHandle(NewVal)) {}
 
       explicit Reloc(const Reloc &R)
           : RelOffset(R.RelOffset), RelocUser(R.RelocUser) {}
@@ -512,7 +511,7 @@ void FlattenGlobalsState::removeDeadInitializerConstants() {
   // Do cleanup of old initializers.
   for (RelocMapType::iterator I = RelocMap.begin(), E = RelocMap.end();
        I != E; ++I) {
-    getRelocUse(I->second)->removeDeadConstantUsers();
+    getRelocUseConstant(I->second)->removeDeadConstantUsers();
   }
 
 }
