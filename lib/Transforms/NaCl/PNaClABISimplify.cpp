@@ -129,22 +129,28 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 
   // Vector simplifications.
   //
+#if 0 // EMSCRIPTEN: We can handle vector shuffles.
   // The following pass relies on ConstantInsertExtractElementIndex running
   // after it, and it must run before GlobalizeConstantVectors because the mask
   // argument of shufflevector must be a constant (the pass would otherwise
   // violate this requirement).
   PM.add(createExpandShuffleVectorPass());
+#endif
   // We should not place arbitrary passes after ExpandConstantExpr
   // because they might reintroduce ConstantExprs.
   PM.add(createExpandConstantExprPass());
+#if 0 // EMSCRIPTEN: We can handle constant vectors.
   // GlobalizeConstantVectors does not handle nested ConstantExprs, so we
   // run ExpandConstantExpr first.
   PM.add(createGlobalizeConstantVectorsPass());
+#endif
   // The following pass inserts GEPs, it must precede ExpandGetElementPtr. It
   // also creates vector loads and stores, the subsequent pass cleans them up to
   // fix their alignment.
   PM.add(createConstantInsertExtractElementIndexPass());
+#if 0 // EMSCRIPTEN: We can handle unaligned vector loads and stores.
   PM.add(createFixVectorLoadStoreAlignmentPass());
+#endif
 
   // Optimization passes and ExpandByVal introduce
   // memset/memcpy/memmove intrinsics with a 64-bit size argument.

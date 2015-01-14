@@ -112,24 +112,24 @@ static bool shouldConvert(Value *Val) {
 // Return a constant which has been promoted to a legal size.
 static Value *convertConstant(Constant *C, bool SignExt=false) {
   assert(shouldConvert(C));
+#if 0 // EMSCRIPTEN: Generalize this code to work on any width and any constant
   if (isa<UndefValue>(C)) {
     return UndefValue::get(getPromotedType(C->getType()));
   } else if (ConstantInt *CInt = dyn_cast<ConstantInt>(C)) {
-#if 0 // XXX EMSCRIPTEN: Generalize this code to work on any bit width.
     return ConstantInt::get(
         getPromotedType(C->getType()),
         SignExt ? CInt->getSExtValue() : CInt->getZExtValue(),
         /*isSigned=*/SignExt);
-#else
-    unsigned BitWidth = getPromotedType(C->getType())->getIntegerBitWidth();
-    const APInt &Value = CInt->getValue();
-    return ConstantInt::get(C->getContext(),
-                            SignExt ? Value.sext(BitWidth) : Value.zext(BitWidth));
-#endif
   } else {
     errs() << "Value: " << *C << "\n";
     report_fatal_error("Unexpected constant value");
   }
+#else
+  Type *ProTy = getPromotedType(C->getType());
+  return SignExt ?
+         ConstantExpr::getSExt(C, ProTy) :
+         ConstantExpr::getZExt(C, ProTy);
+#endif
 }
 
 namespace {
