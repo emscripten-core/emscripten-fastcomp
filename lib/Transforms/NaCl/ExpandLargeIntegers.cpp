@@ -436,6 +436,10 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     }
 
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
+    if (!Load->isSimple()) {
+      errs() << "Load: " << *Load << "\n";
+      report_fatal_error("Large volatile/atomic loads unsupported");
+    }
     Value *Op = Load->getPointerOperand();
     TypePair Tys = getExpandedIntTypes(Load->getType());
     AlignPair Align = getAlign(DL, Load, Load->getType());
@@ -452,6 +456,10 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     State.recordConverted(Load, ValuePair(Lo, Hi));
 
   } else if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
+    if (!Store->isSimple()) {
+      errs() << "Store: " << *Store << "\n";
+      report_fatal_error("Large volatile/atomic stores unsupported");
+    }
     Value *Ptr = Store->getPointerOperand();
     TypePair Tys = getExpandedIntTypes(Store->getValueOperand()->getType());
     ValuePair StoreVals = State.getConverted(Store->getValueOperand());
