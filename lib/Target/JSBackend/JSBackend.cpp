@@ -1936,7 +1936,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   if (!generateSIMDExpression(I, Code)) switch (Operator::getOpcode(I)) {
   default: {
     I->dump();
-    error("Invalid instruction");
+    error("Invalid instruction in JSWriter::generateExpression");
     break;
   }
   case Instruction::Ret: {
@@ -2330,18 +2330,29 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
                                     getValueAsStr(I->getOperand(2));
     break;
   }
+  case Instruction::ExtractValue: {
+    const ExtractValueInst *evi = cast<ExtractValueInst>(I);
+    std::string Assign = getAssign(evi);
+    Code << Assign << getValueAsStr(I->getOperand(0)) << "_" << evi->idx_begin()[0];
+    break;
+  }
   case Instruction::AtomicCmpXchg: {
     const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
     const Value *P = I->getOperand(0);
     if (true/*compilingWithPthreadsSupport*/) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
-      std::string Assign = getAssign(cxi);
-      Code << Assign << "Atomics.compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ")";
+      //std::string Assign = getAssign(cxi);
+      std::string Assign = getJSName(I);
+      Code << Assign << "_0 = Atomics.compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ");\n";
+      Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0)";
     } else {
+      report_fatal_error("TODO: AtomicCmpXchg without pthreads not currently supported!");
+      /*
       Code << getLoad(cxi, P, I->getType(), 0) << ';' <<
              "if ((" << getCast(getJSName(I), I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
                 getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
+      */
     }
     break;
   }

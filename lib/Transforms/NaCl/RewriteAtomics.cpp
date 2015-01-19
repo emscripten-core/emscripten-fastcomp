@@ -379,6 +379,7 @@ void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
 ///   %success = icmp eq %old, %val
 /// Note: weak is currently dropped if present, the cmpxchg is always strong.
 void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
+  return; // XXX EMSCRIPTEN
   PointerHelper<AtomicCmpXchgInst> PH(*this, I);
   const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
       findAtomicIntrinsic(I, Intrinsic::nacl_atomic_cmpxchg, PH.PET);
