@@ -885,7 +885,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
     if (cast<LoadInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
-      text = Assign + "Atomics.load(" + HeapName + ',' + Index + ')';
+      text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
     } else {
       text = Assign + getPtrLoad(P);
     }
@@ -988,7 +988,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   return text;
 }
 
-static const std::string AtomicsStore = "Atomics.store(";
+static const std::string AtomicsStore = "Atomics_store(";
 
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
@@ -2344,7 +2344,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       //std::string Assign = getAssign(cxi);
       std::string Assign = getJSName(I);
-      Code << Assign << "_0 = Atomics.compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ");\n";
+      Code << Assign << "_0 = Atomics_compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ");\n";
       Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0)";
     } else {
       report_fatal_error("TODO: AtomicCmpXchg without pthreads not currently supported!");
@@ -2370,12 +2370,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       const char *atomicFunc = 0;
       switch (rmwi->getOperation()) {
-        case AtomicRMWInst::Xchg: atomicFunc = "Atomics.store("; break;
-        case AtomicRMWInst::Add: atomicFunc = "Atomics.add("; break;
-        case AtomicRMWInst::Sub: atomicFunc = "Atomics.sub("; break;
-        case AtomicRMWInst::And: atomicFunc = "Atomics.and("; break;
-        case AtomicRMWInst::Or: atomicFunc = "Atomics.or("; break;
-        case AtomicRMWInst::Xor: atomicFunc = "Atomics.xor("; break;
+        case AtomicRMWInst::Xchg: atomicFunc = "Atomics_store("; break;
+        case AtomicRMWInst::Add: atomicFunc = "Atomics_add("; break;
+        case AtomicRMWInst::Sub: atomicFunc = "Atomics_sub("; break;
+        case AtomicRMWInst::And: atomicFunc = "Atomics_and("; break;
+        case AtomicRMWInst::Or: atomicFunc = "Atomics_or("; break;
+        case AtomicRMWInst::Xor: atomicFunc = "Atomics_xor("; break;
         case AtomicRMWInst::Nand: // TODO
         case AtomicRMWInst::Max:
         case AtomicRMWInst::Min:
@@ -2406,7 +2406,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   }
   case Instruction::Fence: // no threads, so nothing to do here
     if (true/*compilingWithPthreadsSupport*/) {
-      Code << "Atomics.fence()";
+      Code << "Atomics_fence()";
     } else {
       Code << "/* fence */";
     }
