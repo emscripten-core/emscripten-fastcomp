@@ -242,12 +242,11 @@ class NaClBitstreamCursor {
   /// BlockScope - This tracks the codesize of parent blocks.
   SmallVector<Block, 8> BlockScope;
 
+  NaClBitstreamCursor(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
+  NaClBitstreamCursor &operator=(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
+
 public:
   NaClBitstreamCursor() : BitStream(0), NextChar(0) {
-  }
-  NaClBitstreamCursor(const NaClBitstreamCursor &RHS)
-      : BitStream(0), NextChar(0) {
-    operator=(RHS);
   }
 
   explicit NaClBitstreamCursor(NaClBitstreamReader &R) : BitStream(&R) {
@@ -269,10 +268,8 @@ public:
     freeState();
   }
 
-  void operator=(const NaClBitstreamCursor &RHS);
-
   void freeState();
-  
+
   bool isEndPos(size_t pos) {
     return BitStream->getBitcodeBytes().isObjectEnd(static_cast<uint64_t>(pos));
   }
