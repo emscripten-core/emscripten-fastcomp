@@ -543,24 +543,20 @@ void AssemblyTextFormatter::AbbrevIndexDirective::MyApply(bool Replay) const {
 }
 
 // Holds possible alignements for loads/stores etc. Used to extract
-// expected value.
+// expected values.
 static unsigned NaClPossibleLoadStoreAlignments[] = {
-  // Note: Because all primitive types can be aligned 1 (for packing),
-  // that value must be last in the list.
-  2, 4, 8, 1
+  1, 2, 4, 8
 };
 
-// Finds the expected alignment for the load/store, for type Ty.
-// Returns 0 if no expected alignment can be found.
-static unsigned NaClGetExpectedLoadStoreAlignment(
-    const DataLayout &DL, Type *Ty) {
+// Finds the expected alignments for the load/store, for type Ty.
+static void NaClGetExpectedLoadStoreAlignment(
+    const DataLayout &DL, Type *Ty, std::vector<unsigned> &ValidAlignments) {
   for (size_t i = 0; i < array_lengthof(NaClPossibleLoadStoreAlignments); ++i) {
     unsigned Alignment = NaClPossibleLoadStoreAlignments[i];
     if (PNaClABIProps::isAllowedAlignment(&DL, Alignment, Ty)) {
-      return Alignment;
+      ValidAlignments.push_back(Alignment);
     }
   }
-  return 0;
 }
 
 /// Top-level class to parse bitcode file and transform to
@@ -952,11 +948,22 @@ public:
                                    unsigned Alignment) {
     if (IgnorePNaClABIChecks) return;
     if (!PNaClABIProps::isAllowedAlignment(&DL, Alignment, Ty)) {
-      if (unsigned Expected = NaClGetExpectedLoadStoreAlignment(DL, Ty)) {
-        Errors() << Op << ": Illegal alignment for " << *Ty
-                 << ". Expects: " << Expected << "\n";
+      raw_ostream &Errs = Errors();
+      std::vector<unsigned> Alignments;
+      NaClGetExpectedLoadStoreAlignment(DL, Ty, Alignments);
+      if (!Alignments.empty()) {
+        Errs << Op << ": Illegal alignment for " << *Ty << ". Expects: ";
+        bool isFirst = true;
+        for (auto Align : Alignments) {
+          if (isFirst)
+            isFirst = false;
+          else
+            Errs << " or ";
+          Errs << Align;
+        }
+        Errs << "\n";
       } else {
-        Errors() << Op << ": Not allowed for type: " << *Ty << "\n";
+        Errs << Op << ": Not allowed for type: " << *Ty << "\n";
       }
     }
   }
