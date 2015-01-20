@@ -53,8 +53,9 @@ private:
 public:
   NaClBitstreamReader() : InitialAddress(0) {}
 
-  NaClBitstreamReader(const unsigned char *Start, const unsigned char *End) {
-    InitialAddress = 0;
+  NaClBitstreamReader(const unsigned char *Start, const unsigned char *End,
+                      size_t MyInitialAddress=0) {
+    InitialAddress = MyInitialAddress;
     init(Start, End);
   }
 
@@ -246,20 +247,17 @@ class NaClBitstreamCursor {
   NaClBitstreamCursor &operator=(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
 
 public:
-  NaClBitstreamCursor() : BitStream(0), NextChar(0) {
+
+  NaClBitstreamCursor() {
+    init(nullptr);
   }
 
-  explicit NaClBitstreamCursor(NaClBitstreamReader &R) : BitStream(&R) {
-    NextChar = R.getInitialAddress();
-    CurWord = 0;
-    BitsInCurWord = 0;
-  }
+  explicit NaClBitstreamCursor(NaClBitstreamReader &R) { init(&R); }
 
-  void init(NaClBitstreamReader &R) {
+  void init(NaClBitstreamReader *R) {
     freeState();
-
-    BitStream = &R;
-    NextChar = R.getInitialAddress();
+    BitStream = R;
+    NextChar = (BitStream == nullptr) ? 0 : BitStream->getInitialAddress();
     CurWord = 0;
     BitsInCurWord = 0;
   }

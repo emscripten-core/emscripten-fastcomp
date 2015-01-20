@@ -1847,7 +1847,7 @@ std::error_code NaClBitcodeReader::InitStreamFromBuffer() {
     return Error(InvalidBitstream, Header.Unsupported());
 
   StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd));
-  Stream.init(*StreamFile);
+  Stream.init(StreamFile.get());
 
   if (AcceptHeader())
     return Error(InvalidBitstream, Header.Unsupported());
@@ -1860,7 +1860,7 @@ std::error_code NaClBitcodeReader::InitLazyStream() {
 
   StreamFile.reset(new NaClBitstreamReader(LazyStreamer,
                                            Header.getHeaderSize()));
-  Stream.init(*StreamFile);
+  Stream.init(StreamFile.get());
   if (AcceptHeader())
     return Error(InvalidBitstream, Header.Unsupported());
   return std::error_code();
