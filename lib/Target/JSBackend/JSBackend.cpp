@@ -2536,7 +2536,9 @@ void JSWriter::printModuleBody() {
       } else {
         Out << ", ";
       }
-      Out << "\"_" << I->getName() << '"';
+      std::string name = I->getName();
+      sanitizeGlobal(name);
+      Out << "\"" << name << '"';
     }
   }
   Out << "],";
