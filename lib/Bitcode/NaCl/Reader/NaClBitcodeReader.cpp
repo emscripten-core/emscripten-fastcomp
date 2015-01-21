@@ -1439,6 +1439,7 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (OpTy == 0 || Cond == 0 || Default == 0)
         return Error(InvalidRecord, "Invalid SWITCH record");
 
+      Cond = ConvertOpToScalar(Cond, CurBBNo);
       unsigned NumCases = Record[3];
 
       SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
