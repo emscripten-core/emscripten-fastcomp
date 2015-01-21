@@ -387,7 +387,8 @@ public:
     size_t ValueIndexEnd = Values.size();
     while (ValueIndex < ValueIndexEnd && OpIndex < OpIndexEnd) {
       const NaClBitCodeAbbrevOp &Op = Abbrev->getOperandInfo(OpIndex);
-      if (Op.isLiteral()) {
+      switch (Op.getEncoding()) {
+      case NaClBitCodeAbbrevOp::Literal:
         if (CanUseSimpleAbbrevOp(Op, Values[ValueIndex], NumBits)) {
           ++ValueIndex;
           ++OpIndex;
@@ -395,8 +396,6 @@ public:
         } else {
           return false;
         }
-      }
-      switch (Op.getEncoding()) {
       case NaClBitCodeAbbrevOp::Array: {
         assert(OpIndex+2 == OpIndexEnd);
         const NaClBitCodeAbbrevOp &ElmtOp =
@@ -415,25 +414,6 @@ public:
         }
         return true;
       }
-      case NaClBitCodeAbbrevOp::Blob:
-        assert(OpIndex+1 == OpIndexEnd);
-        // Add size of blob.
-        NumBits += MatchVBRBits(Values.size()-ValueIndex, DefaultVBRBits);
-
-        // We don't know how many bits are needed to word align, so we
-        // will assume 32. This makes blob more expensive than array
-        // unless there is a lot of elements that can modeled using
-        // fewer bits.
-        NumBits += 32;
-
-        // Add size of each byte in blob.
-        for (; ValueIndex != ValueIndexEnd; ++ValueIndex) {
-          if (Values[ValueIndex] >= 256) {
-            return false;
-          }
-          NumBits += 8;
-        }
-        return true;
       default: {
         if (CanUseSimpleAbbrevOp(Op, Values[ValueIndex], NumBits)) {
           ++ValueIndex;
@@ -453,22 +433,20 @@ public:
   static bool CanUseSimpleAbbrevOp(const NaClBitCodeAbbrevOp &Op,
                                    uint64_t Val,
                                    uint64_t &NumBits) {
-    if (Op.isLiteral())
-      return Val == Op.getLiteralValue();
-
     switch (Op.getEncoding()) {
+    case NaClBitCodeAbbrevOp::Literal:
+      return Val == Op.getValue();
     case NaClBitCodeAbbrevOp::Array:
-    case NaClBitCodeAbbrevOp::Blob:
       return false;
     case NaClBitCodeAbbrevOp::Fixed: {
-      uint64_t Width = Op.getEncodingData();
+      uint64_t Width = Op.getValue();
       if (!MatchFixedBits(Val, Width))
         return false;
       NumBits += Width;
       return true;
     }
     case NaClBitCodeAbbrevOp::VBR:
-      if (unsigned Width = MatchVBRBits(Val, Op.getEncodingData())) {
+      if (unsigned Width = MatchVBRBits(Val, Op.getValue())) {
         NumBits += Width;
         return true;
       } else {
@@ -840,7 +818,7 @@ private:
                       unsigned &NextOp) {
     assert(NextOp < Abbrev->getNumOperandInfos());
     const NaClBitCodeAbbrevOp &Op = Abbrev->getOperandInfo(NextOp);
-    if (Op.isEncoding() && Op.getEncoding() == NaClBitCodeAbbrevOp::Array) {
+    if (Op.isArrayOp()) {
       // Do not advance. The array operator assumes that all remaining
       // elements should match its argument.
       AbbrevOp = Abbrev->getOperandInfo(NextOp+1);

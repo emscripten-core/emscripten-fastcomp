@@ -467,33 +467,25 @@ void AssemblyTextFormatter::TokenizeTypeInternal(
 
 void AssemblyTextFormatter::TokenizeAbbrevOp(const NaClBitCodeAbbrevOp &Op) {
   // Note: Mimics NaClBitCodeAbbrevOp::Print in NaClBitCodes.cpp
-  if (Op.isLiteral()) {
-    Tokens() << Op.getLiteralValue();
+  switch (Op.getEncoding()) {
+  case NaClBitCodeAbbrevOp::Literal:
+    Tokens() << Op.getValue();
+    return;
+  case NaClBitCodeAbbrevOp::Fixed:
+    Tokens() << StartCluster << "fixed" << OpenParen << Op.getValue()
+             << CloseParen << FinishCluster;
+    return;
+  case NaClBitCodeAbbrevOp::VBR:
+    Tokens() << StartCluster << "vbr" << OpenParen << Op.getValue()
+             << CloseParen << FinishCluster;
+    return;
+  case NaClBitCodeAbbrevOp::Array:
+    Tokens() << "array";
+    return;
+  case NaClBitCodeAbbrevOp::Char6:
+    Tokens() << "char6";
     return;
   }
-  if (Op.isEncoding()) {
-    switch (Op.getEncoding()) {
-    case NaClBitCodeAbbrevOp::Fixed:
-      Tokens() << StartCluster << "fixed" << OpenParen << Op.getEncodingData()
-               << CloseParen << FinishCluster;
-      return;
-    case NaClBitCodeAbbrevOp::VBR:
-      Tokens() << StartCluster << "vbr" << OpenParen << Op.getEncodingData()
-               << CloseParen << FinishCluster;
-      return;
-    case NaClBitCodeAbbrevOp::Array:
-      Tokens() << "array";
-      return;
-    case NaClBitCodeAbbrevOp::Char6:
-      Tokens() << "char6";
-      return;
-    default:
-      break;
-    }
-  }
-  // If reached, don't know how to print.
-  Tokens() << "???";
-  ObjDump.Error() << "Unknown abbreviation operator in abbreviation record\n";
 }
 
 void AssemblyTextFormatter::

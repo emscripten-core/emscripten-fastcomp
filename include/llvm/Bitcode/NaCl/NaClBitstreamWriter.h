@@ -334,34 +334,25 @@ public:
   //===--------------------------------------------------------------------===//
 
 private:
-  /// EmitAbbreviatedLiteral - Emit a literal value according to its abbrev
-  /// record.  This is a no-op, since the abbrev specifies the literal to use.
-  template<typename uintty>
-  void EmitAbbreviatedLiteral(const NaClBitCodeAbbrevOp &Op, uintty V) {
-    assert(Op.isLiteral() && "Not a literal");
-    // If the abbrev specifies the literal value to use, don't emit
-    // anything.
-    assert(V == Op.getLiteralValue() &&
-           "Invalid abbrev for record!");
-  }
-
   /// EmitAbbreviatedField - Emit a single scalar field value with the specified
   /// encoding.
   template<typename uintty>
   void EmitAbbreviatedField(const NaClBitCodeAbbrevOp &Op, uintty V) {
-    assert(!Op.isLiteral() && "Literals should use EmitAbbreviatedLiteral!");
-
-    // Encode the value as we are commanded.
     switch (Op.getEncoding()) {
-    default: llvm_unreachable("Unknown encoding!");
+    case NaClBitCodeAbbrevOp::Literal:
+      // This is a no-op, since the abbrev specifies the literal to use.
+      assert(V == Op.getValue() && "Invalid abbrev for record!");
+      break;
     case NaClBitCodeAbbrevOp::Fixed:
-      if (Op.getEncodingData())
-        Emit((unsigned)V, (unsigned)Op.getEncodingData());
+      if (Op.getValue())
+        Emit((unsigned)V, (unsigned)Op.getValue());
       break;
     case NaClBitCodeAbbrevOp::VBR:
-      if (Op.getEncodingData())
-        EmitVBR64(V, (unsigned)Op.getEncodingData());
+      if (Op.getValue())
+        EmitVBR64(V, (unsigned)Op.getValue());
       break;
+    case NaClBitCodeAbbrevOp::Array:
+      report_fatal_error("Not to be used with array abbreviation op!");
     case NaClBitCodeAbbrevOp::Char6:
       Emit(NaClBitCodeAbbrevOp::EncodeChar6((char)V), 6);
       break;
@@ -383,11 +374,7 @@ private:
     for (unsigned i = 0, e = static_cast<unsigned>(Abbv->getNumOperandInfos());
          i != e; ++i) {
       const NaClBitCodeAbbrevOp &Op = Abbv->getOperandInfo(i);
-      if (Op.isLiteral()) {
-        assert(RecordIdx < Vals.size() && "Invalid abbrev/record");
-        EmitAbbreviatedLiteral(Op, Vals[RecordIdx]);
-        ++RecordIdx;
-      } else if (Op.getEncoding() == NaClBitCodeAbbrevOp::Array) {
+      if (Op.getEncoding() == NaClBitCodeAbbrevOp::Array) {
         // Array case.
         assert(i+2 == e && "array op not second to last?");
         const NaClBitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
@@ -398,9 +385,7 @@ private:
         // Emit each field.
         for (unsigned e = Vals.size(); RecordIdx != e; ++RecordIdx)
           EmitAbbreviatedField(EltEnc, Vals[RecordIdx]);
-      } else if (Op.getEncoding() == NaClBitCodeAbbrevOp::Blob) {
-        report_fatal_error("Blob not allowed");
-      } else {  // Single scalar field.
+      } else {
         assert(RecordIdx < Vals.size() && "Invalid abbrev/record");
         EmitAbbreviatedField(Op, Vals[RecordIdx]);
         ++RecordIdx;
@@ -451,13 +436,14 @@ private:
     for (unsigned i = 0, e = static_cast<unsigned>(Abbv->getNumOperandInfos());
          i != e; ++i) {
       const NaClBitCodeAbbrevOp &Op = Abbv->getOperandInfo(i);
-      Emit(Op.isLiteral(), 1);
-      if (Op.isLiteral()) {
-        EmitVBR64(Op.getLiteralValue(), 8);
+      bool IsLiteral = Op.isLiteral();
+      Emit(IsLiteral, 1);
+      if (IsLiteral) {
+        EmitVBR64(Op.getValue(), 8);
       } else {
         Emit(Op.getEncoding(), 3);
-        if (Op.hasEncodingData())
-          EmitVBR64(Op.getEncodingData(), 5);
+        if (Op.hasValue())
+          EmitVBR64(Op.getValue(), 5);
       }
     }
   }

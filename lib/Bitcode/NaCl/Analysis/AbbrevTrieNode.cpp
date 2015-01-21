@@ -127,11 +127,11 @@ bool AbbrevTrieNode::Add(NaClBitCodeAbbrev *Abbrev,
           ValueMap = new SuccessorValueMap();
           Successors[Index] = ValueMap;
         }
-        AbbrevTrieNode *Successor = (*ValueMap)[Op.getLiteralValue()];
+        AbbrevTrieNode *Successor = (*ValueMap)[Op.getValue()];
         if (Successor == 0) {
           Successor = new AbbrevTrieNode();
           AddedNodes = true;
-          (*ValueMap)[Op.getLiteralValue()] = Successor;
+          (*ValueMap)[Op.getValue()] = Successor;
         }
         if (Successor->Add(Abbrev, Index+1, Index+1))
           AddedNodes = true;
@@ -157,7 +157,7 @@ void AbbrevTrieNode::Insert(AbbrevIndexPair &AbbrevPair) {
         const NaClBitCodeAbbrevOp &Op =
             Abbrev->getOperandInfo(Iter->first);
         if (Op.isLiteral()) {
-          uint64_t Value = Op.getLiteralValue();
+          uint64_t Value = Op.getValue();
           SuccessorValueMap::iterator Pos = ValueMap->find(Value);
           if (Pos != ValueMap->end()) {
             if (AbbrevTrieNode *Next = Pos->second) {
