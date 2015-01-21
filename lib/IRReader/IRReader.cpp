@@ -99,6 +99,18 @@ Module *llvm::ParseIRFile(const std::string &Filename, SMDiagnostic &Err,
 }
 
 // @LOCALMOD-BEGIN
+
+
+static NaClFileFormat NaClDoAutodetectFileFormat(
+    NaClFileFormat Format, const char unsigned *StartBuffer,
+    const char unsigned *EndBuffer) {
+  if (Format != AutodetectFileFormat)
+    return Format;
+  if (isNaClBitcode(StartBuffer, EndBuffer))
+    return PNaClFormat;
+  return LLVMFormat;
+}
+
 Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
                           NaClFileFormat Format,
                           SMDiagnostic &Err,
@@ -106,6 +118,9 @@ Module *llvm::NaClParseIR(MemoryBuffer *Buffer,
                           LLVMContext &Context) {
   NamedRegionTimer T(TimeIRParsingName, TimeIRParsingGroupName,
                      TimePassesIsEnabled);
+  Format = NaClDoAutodetectFileFormat(
+      Format, (const unsigned char *)Buffer->getBufferStart(),
+      (const unsigned char *)Buffer->getBufferEnd());
   if ((Format == PNaClFormat) &&
       isNaClBitcode((const unsigned char *)Buffer->getBufferStart(),
                     (const unsigned char *)Buffer->getBufferEnd())) {

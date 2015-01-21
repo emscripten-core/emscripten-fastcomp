@@ -45,7 +45,7 @@ InputFileFormat(
         clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
         clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
-    cl::init(LLVMFormat));
+    cl::init(AutodetectFileFormat));
 
 // Print any errors collected by the error reporter. Return true if
 // there were any.
