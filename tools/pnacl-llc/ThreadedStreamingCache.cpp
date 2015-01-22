@@ -24,48 +24,40 @@ ThreadedStreamingCache::ThreadedStreamingCache(
                 "kCacheSize must be a power of 2");
 }
 
-int ThreadedStreamingCache::fetchCacheLine(uint64_t address) const {
+bool ThreadedStreamingCache::fetchCacheLine(uint64_t address) const {
   uint64_t Base = address & kCacheSizeMask;
-  int Ret;
+  uint64_t Ret;
   ScopedLock L(StreamerLock);
   if (Streamer->isValidAddress(Base + kCacheSize - 1)) {
-    Ret = Streamer->readBytes(Base, kCacheSize, &Cache[0]);
-    assert(Ret == 0);
+    Ret = Streamer->readBytes(&Cache[0], kCacheSize, Base);
+    if (Ret != kCacheSize)
+      return true;
     MinObjectSize = Base + kCacheSize;
   } else {
     uint64_t End = Streamer->getExtent();
     assert(End > address && End <= Base + kCacheSize);
-    Ret = Streamer->readBytes(Base, End - Base, &Cache[0]);
-    assert(Ret == 0);
+    Ret = Streamer->readBytes(&Cache[0], End - Base, Base);
+    if (Ret != (End - Base))
+      return true;
     MinObjectSize = End;
   }
   CacheBase = Base;
-  return Ret;
+  return false;
 }
 
-int ThreadedStreamingCache::readByte(
-    uint64_t address, uint8_t* ptr) const {
-  if (address < CacheBase || address >= CacheBase + kCacheSize) {
-    if(fetchCacheLine(address))
-      return -1;
-  }
-  *ptr = Cache[address - CacheBase];
-  return 0;
-}
-
-int ThreadedStreamingCache::readBytes(
-    uint64_t address, uint64_t size, uint8_t* buf) const {
+uint64_t ThreadedStreamingCache::readBytes(uint8_t* Buf, uint64_t Size,
+                                           uint64_t Address) const {
   // To keep the cache fetch simple, we currently require that no request cross
   // the cache line. This isn't a problem for the bitcode reader because it only
   // fetches a byte or a word at a time.
-  if (address < CacheBase || (address + size) > CacheBase + kCacheSize) {
-    if ((address & kCacheSizeMask) != ((address + size - 1) & kCacheSizeMask))
+  if (Address < CacheBase || (Address + Size) > CacheBase + kCacheSize) {
+    if ((Address & kCacheSizeMask) != ((Address + Size - 1) & kCacheSizeMask))
       llvm::report_fatal_error("readBytes request spans cache lines");
-    if(fetchCacheLine(address))
-      return -1;
+    if (fetchCacheLine(Address))
+      llvm::report_fatal_error("readBytes failed to fetch a full cache line");
   }
-  memcpy(buf, &Cache[address - CacheBase], size);
-  return 0;
+  memcpy(Buf, &Cache[Address - CacheBase], Size);
+  return Size;
 }
 
 uint64_t ThreadedStreamingCache::getExtent() const {
@@ -82,17 +74,6 @@ bool ThreadedStreamingCache::isValidAddress(uint64_t address) const {
   if (Valid)
     MinObjectSize = address;
   return Valid;
-}
-
-bool ThreadedStreamingCache::isObjectEnd(uint64_t address) const {
-  if (address < MinObjectSize)
-    return false;
-  ScopedLock L(StreamerLock);
-  if (Streamer->isValidAddress(address)) {
-    MinObjectSize = address;
-    return false;
-  }
-  return Streamer->isObjectEnd(address);
 }
 
 bool ThreadedStreamingCache::dropLeadingBytes(size_t s) {

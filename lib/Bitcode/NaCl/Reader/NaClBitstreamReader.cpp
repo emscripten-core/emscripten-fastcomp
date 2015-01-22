@@ -16,29 +16,6 @@ using namespace llvm;
 //  NaClBitstreamCursor implementation
 //===----------------------------------------------------------------------===//
 
-void NaClBitstreamCursor::operator=(const NaClBitstreamCursor &RHS) {
-  freeState();
-
-  BitStream = RHS.BitStream;
-  NextChar = RHS.NextChar;
-  CurWord = RHS.CurWord;
-  BitsInCurWord = RHS.BitsInCurWord;
-  CurCodeSize = RHS.CurCodeSize;
-
-  // Copy abbreviations, and bump ref counts.
-  CurAbbrevs = RHS.CurAbbrevs;
-  for (size_t i = 0, e = CurAbbrevs.size(); i != e; ++i)
-    CurAbbrevs[i]->addRef();
-
-  // Copy block scope and bump ref counts.
-  BlockScope = RHS.BlockScope;
-  for (size_t S = 0, e = BlockScope.size(); S != e; ++S) {
-    std::vector<NaClBitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
-    for (size_t i = 0, e = Abbrevs.size(); i != e; ++i)
-      Abbrevs[i]->addRef();
-  }
-}
-
 void NaClBitstreamCursor::freeState() {
   // Free all the Abbrevs.
   for (size_t i = 0, e = CurAbbrevs.size(); i != e; ++i)

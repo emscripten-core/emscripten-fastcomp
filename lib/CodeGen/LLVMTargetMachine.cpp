@@ -13,8 +13,10 @@
 
 #include "llvm/Target/TargetMachine.h"
 
+#include "llvm/Analysis/JumpInstrTableInfo.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/ForwardControlFlowIntegrity.h"
 #include "llvm/CodeGen/JumpInstrTables.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
@@ -146,8 +148,13 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   // @LOCALMOD: When there is no ModulePassManager in the PMStack, the
   // JumpInstrTablesPass will silently be dropped and not added to the pass
   // manager, because it is a module pass.
-  PM.add(createJumpInstrTableInfoPass());
+  PM.add(createJumpInstrTableInfoPass(
+      getSubtargetImpl()->getInstrInfo()->getJumpInstrTableEntryBound()));
   PM.add(createJumpInstrTablesPass(Options.JTType));
+  if (Options.FCFI)
+    PM.add(createForwardControlFlowIntegrityPass(
+        Options.JTType, Options.CFIType, Options.CFIEnforcing,
+        Options.getCFIFuncName()));
 
   // Add common CodeGen passes.
   MCContext *Context = addPassesToGenerateCode(this, PM, DisableVerify,

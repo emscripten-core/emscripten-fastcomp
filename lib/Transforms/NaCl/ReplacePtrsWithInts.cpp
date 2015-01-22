@@ -169,7 +169,7 @@ void FunctionConverter::recordConvertedAndErase(Instruction *From, Value *To) {
 Value *FunctionConverter::stripNoopCasts(Value *Val) {
   SmallPtrSet<Value *, 4> Visited;
   for (;;) {
-    if (!Visited.insert(Val)) {
+    if (!Visited.insert(Val).second) {
       // It is possible to get a circular reference in unreachable
       // basic blocks.  Handle this case for completeness.
       return UndefValue::get(Val->getType());

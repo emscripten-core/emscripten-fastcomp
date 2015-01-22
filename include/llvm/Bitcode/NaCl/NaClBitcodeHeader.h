@@ -23,7 +23,7 @@
 #include <vector>
 
 namespace llvm {
-class StreamableMemoryObject;
+class MemoryObject;
 
 // Class representing a variable-size metadata field in the bitcode header.
 // Also contains the list of known (typed) Tag IDs.
@@ -75,7 +75,7 @@ public:
   /// \brief Write field into Buf[BufLen].
   bool Write(uint8_t *Buf, size_t BufLen) const;
 
-  /// \brief Read field form Buf[BufLen].
+  /// \brief Read field from Buf[BufLen].
   bool Read(const uint8_t *Buf, size_t BufLen);
 
   /// \brief Returns string describing field.
@@ -177,7 +177,7 @@ public:
 
   // \brief Read the PNaCl bitcode header, recording the fields found
   // in the header. Returns false if able to read (all of) the bitcode header.
-  bool Read(StreamableMemoryObject *Bytes);
+  bool Read(MemoryObject *Bytes);
 
   // \brief Returns the number of bytes read to consume the header.
   size_t getHeaderSize() { return HeaderSize; }

@@ -51,6 +51,10 @@ declare i64 @llvm.ctpop.i64(i64)
 
 declare void @llvm.trap()
 
+declare float @llvm.fabs.f32(float)
+declare double @llvm.fabs.f64(double)
+declare <4 x float> @llvm.fabs.v4f32(<4 x float>)
+
 declare float @llvm.sqrt.f32(float)
 declare double @llvm.sqrt.f64(double)
 
@@ -107,6 +111,28 @@ declare i8* @llvm.frameaddress(i32 %level)
 
 ; CHECK: Function llvm.returnaddress is a disallowed LLVM intrinsic
 declare i8* @llvm.returnaddress(i32 %level)
+
+; CHECK: Function llvm.fabs.f16 is a disallowed LLVM intrinsic
+declare half @llvm.fabs.f16(half)
+
+; CHECK: Function llvm.fabs.v2f16 is a disallowed LLVM intrinsic
+declare <2 x half> @llvm.fabs.v2f16(<2 x half>)
+; CHECK: Function llvm.fabs.v4f16 is a disallowed LLVM intrinsic
+declare <4 x half> @llvm.fabs.v4f16(<4 x half>)
+; CHECK: Function llvm.fabs.v8f16 is a disallowed LLVM intrinsic
+declare <8 x half> @llvm.fabs.v8f16(<8 x half>)
+
+; CHECK: Function llvm.fabs.v2f32 is a disallowed LLVM intrinsic
+declare <2 x float> @llvm.fabs.v2f32(<2 x float>)
+; CHECK: Function llvm.fabs.v8f32 is a disallowed LLVM intrinsic
+declare <8 x float> @llvm.fabs.v8f32(<8 x float>)
+
+; CHECK: Function llvm.fabs.v2f64 is a disallowed LLVM intrinsic
+declare <2 x double> @llvm.fabs.v2f64(<2 x double>)
+; CHECK: Function llvm.fabs.v4f64 is a disallowed LLVM intrinsic
+declare <4 x double> @llvm.fabs.v4f64(<4 x double>)
+; CHECK: Function llvm.fabs.v8f64 is a disallowed LLVM intrinsic
+declare <8 x double> @llvm.fabs.v8f64(<8 x double>)
 
 ; CHECK: Function llvm.sqrt.fp128 is a disallowed LLVM intrinsic
 declare fp128 @llvm.sqrt.fp128(fp128)

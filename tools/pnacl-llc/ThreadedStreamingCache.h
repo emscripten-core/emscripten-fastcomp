@@ -12,7 +12,7 @@
 
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Mutex.h"
-#include "llvm/Support/StreamableMemoryObject.h"
+#include "llvm/Support/StreamingMemoryObject.h"
 
 namespace llvm {
 
@@ -25,11 +25,9 @@ namespace llvm {
 class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
  public:
   explicit ThreadedStreamingCache(llvm::StreamingMemoryObject *S);
-  uint64_t getBase() const override { return 0; }
   uint64_t getExtent() const override;
-  int readByte(uint64_t address, uint8_t* ptr) const override;
-  int readBytes(uint64_t address, uint64_t size,
-                uint8_t *buf) const override;
+  uint64_t readBytes(uint8_t *Buf, uint64_t Size,
+                     uint64_t Address) const override;
   const uint8_t *getPointer(uint64_t address,
                             uint64_t size) const override {
     // This could be fixed by ensuring the bytes are fetched and making a copy,
@@ -40,7 +38,6 @@ class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
     return NULL;
   }
   bool isValidAddress(uint64_t address) const override;
-  bool isObjectEnd(uint64_t address) const override;
 
   /// Drop s bytes from the front of the stream, pushing the positions of the
   /// remaining bytes down by s. This is used to skip past the bitcode header,
@@ -57,13 +54,14 @@ class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
   const static uint64_t kCacheSizeMask = ~(kCacheSize - 1);
   static llvm::sys::SmartMutex<false> StreamerLock;
 
-  int fetchCacheLine(uint64_t address) const;
+  // Fetch up to kCacheSize worth of data starting from address, into the
+  // CacheBase. Returns true if there is an error.
+  bool fetchCacheLine(uint64_t address) const;
 
   llvm::StreamingMemoryObject *Streamer;
   // Cached data for addresses [CacheBase, CacheBase + kCacheSize)
   mutable std::vector<unsigned char> Cache;
-  // The MemoryObject is at least this size. Used as a cache for isObjectEnd and
-  // isValidAddress
+  // The MemoryObject is at least this size. Used as a cache for isValidAddress.
   mutable uint64_t MinObjectSize;
   // Current base address for the cache.
   mutable uint64_t CacheBase;

@@ -121,7 +121,7 @@ public:
   /// \brief Inserts the give value into the set of known function forward
   /// value type refs. Returns true if the value id is added to the set.
   bool InsertFnForwardTypeRef(unsigned ValID) {
-    return FnForwardTypeRefs.insert(ValID);
+    return FnForwardTypeRefs.insert(ValID).second;
   }
 
   const ValueList &getValues() const { return Values; }

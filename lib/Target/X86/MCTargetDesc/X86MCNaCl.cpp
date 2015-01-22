@@ -490,7 +490,8 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
                              X86MCNaClSFIState &State) {
   // If we are emitting to .s, only sandbox pseudos not supported by gas.
   if (Out.hasRawTextSupport()) {
-    if (Inst.getOpcode() != X86::NACL_ANDSPi32)
+    if (!(Inst.getOpcode() == X86::NACL_ANDSPi8 ||
+          Inst.getOpcode() == X86::NACL_ANDSPi32))
       return false;
   }
   // If we make a call to EmitInstruction, we will be called recursively. In
@@ -570,6 +571,10 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
   case X86::NACL_SSPi32:
     assert(State.PrefixSaved == 0);
     EmitSPArith(STI, X86::SUB32ri, Inst.getOperand(0), Out);
+    return true;
+  case X86::NACL_ANDSPi8:
+    assert(State.PrefixSaved == 0);
+    EmitSPArith(STI, X86::AND32ri8, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_ANDSPi32:
     assert(State.PrefixSaved == 0);

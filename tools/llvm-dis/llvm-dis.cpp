@@ -33,7 +33,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
-#include "llvm/Support/StreamableMemoryObject.h" // @LOCALMOD
+#include "llvm/Support/StreamingMemoryObject.h" // @LOCALMOD
 #include "llvm/Support/ToolOutputFile.h"
 #include <system_error>
 using namespace llvm;

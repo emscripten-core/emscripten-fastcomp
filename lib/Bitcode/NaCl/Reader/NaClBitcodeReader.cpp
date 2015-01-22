@@ -1011,6 +1011,7 @@ std::error_code NaClBitcodeReader::ParseModule(bool Resume) {
       // If this is a function with a body, remember the prototype we are
       // creating now, so that we can match up the body with them later.
       if (!isProto) {
+        Func->setIsMaterializable(true);
         FunctionsWithBodies.push_back(Func);
         if (LazyStreamer) DeferredFunctionInfo[Func] = 0;
       }
@@ -1723,15 +1724,7 @@ std::error_code NaClBitcodeReader::FindFunctionInStream(
 
 void NaClBitcodeReader::releaseBuffer() { Buffer.release(); }
 
-bool NaClBitcodeReader::isMaterializable(const GlobalValue *GV) const {
-  if (const Function *F = dyn_cast<Function>(GV)) {
-    return F->isDeclaration() &&
-      DeferredFunctionInfo.count(const_cast<Function*>(F));
-  }
-  return false;
-}
-
-std::error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
+std::error_code NaClBitcodeReader::materialize(GlobalValue *GV) {
   Function *F = dyn_cast<Function>(GV);
   // If it's not a function or is already material, ignore the request.
   if (!F || !F->isMaterializable())
@@ -1752,6 +1745,7 @@ std::error_code NaClBitcodeReader::Materialize(GlobalValue *GV) {
 
   if (std::error_code EC = ParseFunctionBody(F))
     return EC;
+  F->setIsMaterializable(false);
 
   // Upgrade any old intrinsic calls in the function.
   for (UpgradedIntrinsicMap::iterator I = UpgradedIntrinsics.begin(),
@@ -1785,6 +1779,7 @@ void NaClBitcodeReader::Dematerialize(GlobalValue *GV) {
 
   // Just forget the function body, we can remat it later.
   F->dropAllReferences();
+  F->setIsMaterializable(true);
 }
 
 
@@ -1796,7 +1791,7 @@ std::error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   for (Module::iterator F = TheModule->begin(), E = TheModule->end();
        F != E; ++F) {
     if (F->isMaterializable()) {
-      if (std::error_code EC = Materialize(F))
+      if (std::error_code EC = materialize(F))
         return EC;
     }
   }

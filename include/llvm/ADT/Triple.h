@@ -364,7 +364,11 @@ public:
   bool isMacOSX() const { return false; }
   bool isiOS() const { return false; }
   bool isOSDarwin() const { return false; }
+  bool isOSNetBSD() const { return false; }
+  bool isOSOpenBSD() const { return false; }
   bool isOSFreeBSD() const { return false; }
+  bool isOSSolaris() const { return false; }
+  bool isOSBitrig() const { return false; }
   bool isWindowsMSVCEnvironment() const { return false; }
   bool isKnownWindowsMSVCEnvironment() const { return false; }
   bool isWindowsItaniumEnvironment() const { return false; }
@@ -395,8 +399,24 @@ public:
     return isMacOSX() || isiOS();
   }
 
+  bool isOSNetBSD() const {
+    return getOS() == Triple::NetBSD;
+  }
+
+  bool isOSOpenBSD() const {
+    return getOS() == Triple::OpenBSD;
+  }
+
   bool isOSFreeBSD() const {
     return getOS() == Triple::FreeBSD;
+  }
+
+  bool isOSSolaris() const {
+    return getOS() == Triple::Solaris;
+  }
+
+  bool isOSBitrig() const {
+    return getOS() == Triple::Bitrig;
   }
 
   bool isWindowsMSVCEnvironment() const {
@@ -428,7 +448,8 @@ public:
 
   /// \brief Is this a "Windows" OS targeting a "MSVCRT.dll" environment.
   bool isOSMSVCRT() const {
-    return isWindowsMSVCEnvironment() || isWindowsGNUEnvironment();
+    return isWindowsMSVCEnvironment() || isWindowsGNUEnvironment() ||
+           isWindowsItaniumEnvironment();
   }
 
   /// \brief Tests whether the OS is Windows.

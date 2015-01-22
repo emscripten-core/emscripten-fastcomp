@@ -106,6 +106,9 @@ let Defs = [RSP, EFLAGS], Uses = [RSP], isAsmParserOnly = 1 in {
   def NACL_SSPi32: NaClPI64<(outs), (ins i64i32imm:$off, GR64:$rZP),
                    "naclssp{q}\t{$off, $rZP|$rZP, $off}">;
 
+  def NACL_ANDSPi8: NaClPI64<(outs), (ins i64i8imm:$off, GR64:$rZP),
+                   "naclandsp{q}\t{$off, $rZP|$rZP, $off}">;
+
   def NACL_ANDSPi32: NaClPI64<(outs), (ins i64i32imm:$off, GR64:$rZP),
                    "naclandsp{q}\t{$off, $rZP|$rZP, $off}">;
 }

@@ -165,7 +165,7 @@ class NaClBitcodeReader : public GVMaterializer {
   UpgradedIntrinsicMap UpgradedIntrinsics;
 
   // Several operations happen after the module header has been read, but
-  // before function bodies are processed.  This keeps track of whether
+  // before function bodies are processed. This keeps track of whether
   // we've done this yet.
   bool SeenFirstFunctionBody;
 
@@ -230,9 +230,8 @@ public:
 
   void FreeState();
 
-  bool isMaterializable(const GlobalValue *GV) const override;
   bool isDematerializable(const GlobalValue *GV) const override;
-  std::error_code Materialize(GlobalValue *GV) override;
+  std::error_code materialize(GlobalValue *GV) override;
   std::error_code MaterializeModule(Module *M) override;
   void Dematerialize(GlobalValue *GV) override;
   void releaseBuffer();
