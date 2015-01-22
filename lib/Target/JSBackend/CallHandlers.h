@@ -525,6 +525,7 @@ DEF_BUILTIN_HANDLER(sqrtl, Math_sqrt);
 DEF_BUILTIN_HANDLER(fabs, Math_abs);
 DEF_BUILTIN_HANDLER(fabsf, Math_abs);
 DEF_BUILTIN_HANDLER(fabsl, Math_abs);
+DEF_BUILTIN_HANDLER(llvm_fabs_f64, Math_abs);
 DEF_BUILTIN_HANDLER(ceil, Math_ceil);
 DEF_BUILTIN_HANDLER(ceilf, Math_ceil);
 DEF_BUILTIN_HANDLER(ceill, Math_ceil);
@@ -687,6 +688,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(fabs);
   SETUP_CALL_HANDLER(fabsf);
   SETUP_CALL_HANDLER(fabsl);
+  SETUP_CALL_HANDLER(llvm_fabs_f64);
   SETUP_CALL_HANDLER(ceil);
   SETUP_CALL_HANDLER(ceilf);
   SETUP_CALL_HANDLER(ceill);
