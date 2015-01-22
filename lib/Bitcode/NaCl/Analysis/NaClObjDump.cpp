@@ -271,8 +271,7 @@ public:
         CloseSquare(this, "]"),
         Endline(this),
         StartCluster(this),
-        FinishCluster(this),
-        ObjDump(ObjDump)
+        FinishCluster(this)
   {
     ContinuationIndent = GetIndent(2);
   }
@@ -338,9 +337,6 @@ public:
   }
 
 private:
-  // The ObjDumpStream associated with this text formatter.
-  naclbitc::ObjDumpStream &ObjDump;
-
   // Converts the given type to tokens, based on the values passed in
   // by TokenizeType, TokenizeFunctionType, or TokenizeFunctionSignature.
   void TokenizeTypeInternal(Type *Typ, BitcodeId* FcnName, bool AddParams);
