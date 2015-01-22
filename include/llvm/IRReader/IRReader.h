@@ -52,7 +52,9 @@ enum NaClFileFormat {
   // LLVM IR source or bitcode file (as appropriate).
   LLVMFormat,
   // PNaCl bitcode file.
-  PNaClFormat
+  PNaClFormat,
+  // Autodetect if PNaCl or LLVM format.
+  AutodetectFileFormat
 };
 
 // \brief If the given MemoryBuffer holds a bitcode image, return a

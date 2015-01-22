@@ -326,17 +326,20 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
   raw_string_ostream VerboseStrm(VerboseBuffer);
   if (LazyBitcode) {
     std::string StrError;
-    if (InputFileFormat == PNaClFormat) {
+    switch (InputFileFormat) {
+    case PNaClFormat:
       M.reset(getNaClStreamedBitcodeModule(
           InputFilename,
           new ThreadedStreamingCache(StreamingObject), Context, &VerboseStrm,
           &StrError));
-    } else if (InputFileFormat == LLVMFormat) {
+      break;
+    case LLVMFormat:
       M.reset(getStreamedBitcodeModule(
           InputFilename,
           new ThreadedStreamingCache(StreamingObject), Context, &StrError));
-    } else {
-      llvm_unreachable("Unknown bitcode format");
+      break;
+    case AutodetectFileFormat:
+      report_fatal_error("Command can't autodetect file format!");
     }
     if (!StrError.empty())
       Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);

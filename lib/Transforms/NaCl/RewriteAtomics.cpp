@@ -19,12 +19,13 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/NaClAtomicIntrinsics.h"
-#include "llvm/IR/InstVisitor.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
@@ -33,7 +34,17 @@
 
 using namespace llvm;
 
+// TODO(jfb) Keep the default of this option to true for Chrome 42, and change
+//           it to false for Chrome 43. This allows the PNaCl translator to be
+//           updated before the SDK starts emitting atomic memory orders that
+//           the old translator rejected.
+static cl::opt<bool> PNaClMemoryOrderSeqCstOnly(
+    "pnacl-memory-order-seq-cst-only",
+    cl::desc("PNaCl should upgrade all atomic memory orders to seq_cst"),
+    cl::init(true));
+
 namespace {
+
 class RewriteAtomics : public ModulePass {
 public:
   static char ID; // Pass identification, replacement for typeid
@@ -195,7 +206,7 @@ ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I,
   }
 
   // TODO For now only acquire/release/acq_rel/seq_cst are allowed.
-  if (AO == NaCl::MemoryOrderRelaxed)
+  if (PNaClMemoryOrderSeqCstOnly || AO == NaCl::MemoryOrderRelaxed)
     AO = NaCl::MemoryOrderSequentiallyConsistent;
 
   return ConstantInt::get(Type::getInt32Ty(C), AO);

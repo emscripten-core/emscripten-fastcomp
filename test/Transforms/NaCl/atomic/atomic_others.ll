@@ -1,4 +1,4 @@
-; RUN: opt -nacl-rewrite-atomics -S < %s | FileCheck %s
+; RUN: opt -nacl-rewrite-atomics -pnacl-memory-order-seq-cst-only=false -S < %s | FileCheck %s
 ;
 ; Validate that atomic non-{acquire/release/acq_rel/seq_cst} loads/stores get
 ; rewritten into NaCl atomic builtins with sequentially consistent memory

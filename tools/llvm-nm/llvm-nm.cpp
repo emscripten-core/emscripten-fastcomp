@@ -1028,6 +1028,13 @@ static void dumpSymbolNamesFromFile(std::string &Filename) {
 
   // @LOCALMOD-BEGIN
   // Support parsing PNaCl bitcode files
+  switch (InputFileFormat) {
+  case LLVMFormat:
+    break;
+  case PNaClFormat:
+  case AutodetectFileFormat:
+    report_fatal_error("command only supports LLVM file format!");
+  }
   /* TODO(jfb) This is currently broken: the code base now requires an Object.
   if (InputFileFormat == PNaClFormat) {
     std::string VerboseBuffer;

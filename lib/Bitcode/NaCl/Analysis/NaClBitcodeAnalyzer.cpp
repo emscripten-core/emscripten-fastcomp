@@ -97,27 +97,6 @@ private:
   NaClBitcodeParserListener AbbrevListener;
 };
 
-// Define the encodings for abbreviation operands that we recognize,
-// based on the NaClBitCodeAbbrevOp::Encoding value.
-static const char *AbbrevEncodings[] = {
-  0,        // No encoding defined for 0.
-  "FIXED",
-  "VBR",
-  "ARRAY",
-  "CHAR6"
-};
-
-static std::string GetAbbrevEncoding(unsigned Encoding) {
-  if (Encoding < array_lengthof(AbbrevEncodings) && AbbrevEncodings[Encoding]) {
-    return AbbrevEncodings[Encoding];
-  } else {
-    std::string Str;
-    raw_string_ostream StrStrm(Str);
-    StrStrm << "UnknownEncoding" << Encoding;
-    return StrStrm.str();
-  }
-}
-
 // Parses a bitcode block, and collects distribution of records in that block.
 // Also dumps bitcode structure if specified (via global variables).
 class PNaClBitcodeAnalyzerBlockParser : public NaClBitcodeParser {
@@ -378,15 +357,12 @@ protected:
 
   /// Emit the given abbreviation operand as an XML tag attribute.
   void EmitAbbreviationOp(const NaClBitCodeAbbrevOp &Op) {
-    if (Op.isLiteral()) {
-      EmitOperandPrefix() << "'LIT(" << Op.getLiteralValue() << ")'";
-    } else {
-      EmitOperandPrefix() << "'" << GetAbbrevEncoding(Op.getEncoding());
-      if (Op.hasEncodingData()) {
-        Context->OS << "(" << Op.getEncodingData() << ")";
-      }
-      Context->OS << "'";
+    EmitOperandPrefix()
+        << "'" << NaClBitCodeAbbrevOp::getEncodingName(Op.getEncoding());
+    if (Op.hasValue()) {
+      Context->OS << "(" << Op.getValue() << ")";
     }
+    Context->OS << "'";
   }
 
   /// Emits the symbolic name of the record code as the XML tag name.

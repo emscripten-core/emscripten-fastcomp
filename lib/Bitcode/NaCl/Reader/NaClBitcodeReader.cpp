@@ -1440,6 +1440,7 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
       if (OpTy == 0 || Cond == 0 || Default == 0)
         return Error(InvalidRecord, "Invalid SWITCH record");
 
+      Cond = ConvertOpToScalar(Cond, CurBBNo);
       unsigned NumCases = Record[3];
 
       SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
@@ -1842,7 +1843,7 @@ std::error_code NaClBitcodeReader::InitStreamFromBuffer() {
     return Error(InvalidBitstream, Header.Unsupported());
 
   StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd));
-  Stream.init(*StreamFile);
+  Stream.init(StreamFile.get());
 
   if (AcceptHeader())
     return Error(InvalidBitstream, Header.Unsupported());
@@ -1855,7 +1856,7 @@ std::error_code NaClBitcodeReader::InitLazyStream() {
 
   StreamFile.reset(new NaClBitstreamReader(LazyStreamer,
                                            Header.getHeaderSize()));
-  Stream.init(*StreamFile);
+  Stream.init(StreamFile.get());
   if (AcceptHeader())
     return Error(InvalidBitstream, Header.Unsupported());
   return std::error_code();

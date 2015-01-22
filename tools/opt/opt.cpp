@@ -700,6 +700,9 @@ int main(int argc, char **argv) {
       case PNaClFormat:
         Passes.add(createNaClBitcodeWriterPass(Out->os()));
         break;
+      case AutodetectFileFormat:
+        report_fatal_error("Command can't autodetect file format!");
+        break;
       }
       // @LOCALMOD-END
   }

@@ -165,6 +165,8 @@ int main(int argc, char **argv) {
             DisplayFilename, Buffer.release(), Context, nullptr,
             &ErrorMessage));
         break;
+      case AutodetectFileFormat:
+        report_fatal_error("Command can't autodetect file format!");
       }
     }
     // @LOCALMOD-END

@@ -250,6 +250,7 @@ void X86TargetLowering::resetOperationActions() {
     setSchedulingPreference(Sched::RegPressure);
   const X86RegisterInfo *RegInfo =
       TM.getSubtarget<X86Subtarget>().getRegisterInfo();
+  (void)RegInfo;                                     // @LOCALMOD
   setStackPointerRegisterToSaveRestore(X86StackPtr); // @LOCALMOD
 
   // Bypass expensive divides on Atom when compiling with O2
@@ -16578,6 +16579,7 @@ X86TargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
 
     const X86RegisterInfo *RegInfo = static_cast<const X86RegisterInfo *>(
         DAG.getSubtarget().getRegisterInfo());
+    (void)RegInfo;                // @LOCALMOD
     unsigned SPReg = X86StackPtr; // @LOCALMOD
     SDValue SP = DAG.getCopyFromReg(Chain, dl, SPReg, SPTy);
     Chain = SP.getValue(1);

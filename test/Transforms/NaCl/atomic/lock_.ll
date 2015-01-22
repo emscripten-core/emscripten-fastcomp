@@ -1,4 +1,4 @@
-; RUN: opt -nacl-rewrite-atomics -S < %s | FileCheck %s
+; RUN: opt -nacl-rewrite-atomics -pnacl-memory-order-seq-cst-only=false -S < %s | FileCheck %s
 
 ; Each of these tests validates that the corresponding legacy GCC-style builtins
 ; are properly rewritten to NaCl atomic builtins. Only the GCC-style builtins

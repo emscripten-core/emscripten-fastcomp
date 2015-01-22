@@ -53,8 +53,9 @@ private:
 public:
   NaClBitstreamReader() : InitialAddress(0) {}
 
-  NaClBitstreamReader(const unsigned char *Start, const unsigned char *End) {
-    InitialAddress = 0;
+  NaClBitstreamReader(const unsigned char *Start, const unsigned char *End,
+                      size_t MyInitialAddress=0) {
+    InitialAddress = MyInitialAddress;
     init(Start, End);
   }
 
@@ -247,23 +248,16 @@ class NaClBitstreamCursor {
   NaClBitstreamCursor &operator=(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
 
 public:
-  NaClBitstreamCursor() : BitStream(nullptr), NextChar(0), Size(0) {
+  NaClBitstreamCursor() {
+    init(nullptr);
   }
 
-  explicit NaClBitstreamCursor(NaClBitstreamReader &R) : BitStream(&R) {
-    // TODO(jvoung,kschimpf), do like:
-    // https://www.marc.info/?l=llvm-commits&m=141580396602360&w=4
-    // and reduce duplication, but be careful of nullptr.
-    NextChar = R.getInitialAddress();
-    Size = 0;
-    BitsInCurWord = 0;
-  }
+  explicit NaClBitstreamCursor(NaClBitstreamReader &R) { init(&R); }
 
-  void init(NaClBitstreamReader &R) {
+  void init(NaClBitstreamReader *R) {
     freeState();
-
-    BitStream = &R;
-    NextChar = R.getInitialAddress();
+    BitStream = R;
+    NextChar = (BitStream == nullptr) ? 0 : BitStream->getInitialAddress();
     Size = 0;
     BitsInCurWord = 0;
   }
