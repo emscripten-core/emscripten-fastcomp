@@ -234,7 +234,7 @@ DEF_CALL_HANDLER(low, { \
 DEF_CALL_HANDLER(high, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
   if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
-  return getAssign(CI) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295) | 0) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
+  return getAssign(CI) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (~~+Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295)) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
 })
 TO_I(FtoILow, FtoIHigh);
 TO_I(DtoILow, DtoIHigh);
