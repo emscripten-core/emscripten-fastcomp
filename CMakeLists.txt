@@ -187,7 +187,6 @@ option(LLVM_ENABLE_TERMINFO "Use terminfo database if available." ON)
 option(LLVM_ENABLE_THREADS "Use threads if available." ON)
 
 option(LLVM_ENABLE_ZLIB "Use zlib for compression/decompression if available." ON)
-option(LLVM_ENABLE_LIBXML "Use libxml if available." ON) # @LOCALMOD
 
 if( LLVM_TARGETS_TO_BUILD STREQUAL "all" )
   set( LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS} )
