@@ -456,7 +456,7 @@ DEF_CALL_HANDLER(bitshift64Shl, {
 })
 
 DEF_CALL_HANDLER(llvm_ctlz_i32, {
-  return CH___default__(CI, "_llvm_ctlz_i32", 1);
+  return CH___default__(CI, "Math_clz32", 1);
 })
 
 DEF_CALL_HANDLER(llvm_cttz_i32, {
