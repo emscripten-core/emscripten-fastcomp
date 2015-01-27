@@ -89,11 +89,6 @@ NoAliasingFunctionPointers("emscripten-no-aliasing-function-pointers",
                            cl::init(false));
 
 static cl::opt<int>
-MaxSetjmps("emscripten-max-setjmps",
-           cl::desc("Maximum amount of setjmp() calls per function stack frame (see emscripten MAX_SETJMPS)"),
-           cl::init(20));
-
-static cl::opt<int>
 GlobalBase("emscripten-global-base",
            cl::desc("Where global variables start out in memory (see emscripten GLOBAL_BASE option)"),
            cl::init(8));

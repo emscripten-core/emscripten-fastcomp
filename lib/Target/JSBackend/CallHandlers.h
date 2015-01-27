@@ -162,13 +162,17 @@ DEF_CALL_HANDLER(emscripten_resume, {
 // setjmp support
 
 DEF_CALL_HANDLER(emscripten_prep_setjmp, {
-  return getAdHocAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "STACKTOP; " + getStackBump(4 * 2 * (MaxSetjmps+1)) +
+  return getAdHocAssign("_setjmpTableSize", Type::getInt32Ty(CI->getContext())) + "4;" +
+         getAdHocAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "_malloc(40) | 0;" +
          "HEAP32[_setjmpTable>>2]=0";
+})
+DEF_CALL_HANDLER(emscripten_cleanup_setjmp, {
+  return "_free(_setjmpTable|0)";
 })
 DEF_CALL_HANDLER(emscripten_setjmp, {
   // env, label, table
   Declares.insert("saveSetjmp");
-  return "_saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0)|0";
+  return "_setjmpTable = _saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0,_setjmpTableSize|0)|0;_setjmpTableSize = tempRet0";
 })
 DEF_CALL_HANDLER(emscripten_longjmp, {
   Declares.insert("longjmp");
@@ -179,7 +183,7 @@ DEF_CALL_HANDLER(emscripten_check_longjmp, {
   std::string Target = getJSName(CI);
   std::string Assign = getAssign(CI);
   return "if (((" + Threw + "|0) != 0) & ((threwValue|0) != 0)) { " +
-           Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable)|0; " +
+           Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable|0, _setjmpTableSize|0)|0; " +
            "if ((" + Target + "|0) == 0) { _longjmp(" + Threw + "|0, threwValue|0); } " + // rethrow
            "tempRet0 = threwValue; " +
          "} else { " + Assign + "-1; }";
@@ -583,6 +587,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_landingpad);
   SETUP_CALL_HANDLER(emscripten_resume);
   SETUP_CALL_HANDLER(emscripten_prep_setjmp);
+  SETUP_CALL_HANDLER(emscripten_cleanup_setjmp);
   SETUP_CALL_HANDLER(emscripten_setjmp);
   SETUP_CALL_HANDLER(emscripten_longjmp);
   SETUP_CALL_HANDLER(emscripten_check_longjmp);

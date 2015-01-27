@@ -190,6 +190,8 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   FunctionType *VoidFunc = FunctionType::get(Void, false);
   Function *PrepSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_prep_setjmp", TheModule);
 
+  Function *CleanupSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_cleanup_setjmp", TheModule);
+
   Function *PreInvoke = TheModule->getFunction("emscripten_preinvoke");
   if (!PreInvoke) PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
 
@@ -244,7 +246,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
     Function *F = I->first;
     Phis& P = I->second;
 
-    CallInst::Create(PrepSetjmp, "", F->begin()->begin()); // FIXME: adding after other allocas might be better
+    CallInst::Create(PrepSetjmp, "", F->begin()->begin());
 
     // Update each call that can longjmp so it can return to a setjmp where relevant
 
@@ -307,6 +309,15 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         } else if (InvokeInst *CI = dyn_cast<InvokeInst>(I)) { // XXX check if target is setjmp
           assert("TODO: invoke inside setjmping functions");
         }
+      }
+    }
+
+    // add a cleanup before each return
+    for (Function::iterator BBI = F->begin(), E = F->end(); BBI != E; ) {
+      BasicBlock *BB = BBI++;
+      TerminatorInst *TI = BB->getTerminator();
+      if (isa<ReturnInst>(TI)) {
+        CallInst::Create(CleanupSetjmp, "", TI);
       }
     }
   }
