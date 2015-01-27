@@ -267,14 +267,13 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
   } else if (TruncInst *Trunc = dyn_cast<TruncInst>(Inst)) {
     Value *Operand = Trunc->getOperand(0);
     assert(shouldConvert(Operand) && "TruncInst is expandable but not its op");
-    TypePair OpTys = getExpandedIntTypes(Operand->getType());
     ValuePair Ops = State.getConverted(Operand);
     if (!shouldConvert(Inst)) {
       Value *NewInst = IRB.CreateTrunc(Ops.Lo, Trunc->getType(), Name);
       State.recordConverted(Trunc, NewInst);
     } else {
       TypePair Tys = getExpandedIntTypes(Trunc->getType());
-      assert(Tys.Lo == OpTys.Lo);
+      assert(Tys.Lo == getExpandedIntTypes(Operand->getType()).Lo);
       Value *Lo = Ops.Lo;
       Value *Hi = IRB.CreateTrunc(Ops.Hi, Tys.Hi, Twine(Name, ".hi"));
       State.recordConverted(Trunc, ValuePair(Lo, Hi));
