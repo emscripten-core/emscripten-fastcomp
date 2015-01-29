@@ -54,13 +54,7 @@ void DbgValueHistoryMap::endInstrRange(const MDNode *Var,
   assert(!Ranges.empty() && Ranges.back().second == nullptr);
   // For now, instruction ranges are not allowed to cross basic block
   // boundaries.
-  // @LOCALMOD-START
-  // This assertion seems to fire for DBG_VALUE insts which are not present
-  // in the LLVM IR but are inserted by a previous MachineFunction pass run in
-  // -O0 mode.
-  // TODO(dschuff): investigate more after we merge closer to LLVM 3.6
-  // assert(Ranges.back().first->getParent() == MI.getParent());
-  // @LOCALMOD-END
+  assert(Ranges.back().first->getParent() == MI.getParent());
   Ranges.back().second = &MI;
 }
 

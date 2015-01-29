@@ -176,8 +176,17 @@ LexicalScope *LexicalScopes::getOrCreateRegularScope(MDNode *Scope) {
 
   if (!Parent) {
     assert(DIDescriptor(Scope).isSubprogram());
-    assert(DISubprogram(Scope).describes(MF->getFunction()));
-    assert(!CurrentFnLexicalScope);
+    // @LOCALMOD-BEGIN
+    // This currently asserts when mixing -g and -g0 compilation
+    // units + LTO. Debug info from a few inlined functions are not
+    // marked as inline, so we end up in getOrCreateRegularScope
+    // instead of getOrCreateInlinedScope.
+    // This is reproducible w/ the pnacl-llc.nexe build and
+    // setting the env var PNACL_PRUNE=false.
+    // https://code.google.com/p/nativeclient/issues/detail?id=4026
+    //assert(DISubprogram(Scope).describes(MF->getFunction()));
+    //assert(!CurrentFnLexicalScope);
+    // @LOCALMOD-END
     CurrentFnLexicalScope = &I->second;
   }
 
