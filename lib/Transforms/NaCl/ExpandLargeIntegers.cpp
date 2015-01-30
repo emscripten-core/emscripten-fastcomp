@@ -90,8 +90,8 @@ static bool isLegalBitSize(unsigned Bits) {
 static TypePair getExpandedIntTypes(Type *Ty) {
   unsigned BitWidth = Ty->getIntegerBitWidth();
   assert(!isLegalBitSize(BitWidth));
-  return TypePair(IntegerType::get(Ty->getContext(), kChunkBits),
-                  IntegerType::get(Ty->getContext(), BitWidth - kChunkBits));
+  return {IntegerType::get(Ty->getContext(), kChunkBits),
+          IntegerType::get(Ty->getContext(), BitWidth - kChunkBits)};
 }
 
 // Return true if Val is an int which should be converted.
@@ -107,15 +107,14 @@ static ValuePair expandConstant(Constant *C) {
   assert(shouldConvert(C));
   TypePair ExpandedTypes = getExpandedIntTypes(C->getType());
   if (isa<UndefValue>(C)) {
-    return ValuePair(UndefValue::get(ExpandedTypes.Lo),
-                     UndefValue::get(ExpandedTypes.Hi));
+    return {UndefValue::get(ExpandedTypes.Lo),
+            UndefValue::get(ExpandedTypes.Hi)};
   } else if (ConstantInt *CInt = dyn_cast<ConstantInt>(C)) {
     Constant *ShiftAmt = ConstantInt::get(
         CInt->getType(), ExpandedTypes.Lo->getBitWidth(), false);
-    return ValuePair(
-        ConstantExpr::getTrunc(CInt, ExpandedTypes.Lo),
-        ConstantExpr::getTrunc(ConstantExpr::getLShr(CInt, ShiftAmt),
-                               ExpandedTypes.Hi));
+    return {ConstantExpr::getTrunc(CInt, ExpandedTypes.Lo),
+            ConstantExpr::getTrunc(ConstantExpr::getLShr(CInt, ShiftAmt),
+                                   ExpandedTypes.Hi)};
   }
   errs() << "Value: " << *C << "\n";
   report_fatal_error("Unexpected constant value");
@@ -127,7 +126,229 @@ static AlignPair getAlign(const DataLayout &DL, T *I, Type *PrefAlignTy) {
   if (LoAlign == 0)
     LoAlign = DL.getPrefTypeAlignment(PrefAlignTy);
   unsigned HiAlign = MinAlign(LoAlign, kChunkBytes);
-  return AlignPair(LoAlign, HiAlign);
+  return {LoAlign, HiAlign};
+}
+
+static ValuePair createBit(IRBuilder<> *IRB, const BinaryOperator *Binop,
+                           const ValuePair &Lhs, const ValuePair &Rhs,
+                           const TypePair &Tys, const StringRef &Name) {
+  auto Op = Binop->getOpcode();
+  Value *Lo = IRB->CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
+  Value *Hi = IRB->CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi"));
+  return {Lo, Hi};
+}
+
+static ValuePair createShl(IRBuilder<> *IRB, const BinaryOperator *Binop,
+                           const ValuePair &Lhs, const ValuePair &Rhs,
+                           const TypePair &Tys, const StringRef &Name) {
+  ConstantInt *ShlAmount = dyn_cast<ConstantInt>(Rhs.Lo);
+  // TODO(dschuff): Expansion of variable-sized shifts isn't supported
+  // because the behavior depends on whether the shift amount is less than
+  // the size of the low part of the expanded type, and I haven't yet
+  // figured out a way to do it for variable-sized shifts without splitting
+  // the basic block. I don't believe it's actually necessary for
+  // bitfields. Likewise for LShr below.
+  if (!ShlAmount) {
+    errs() << "Shift: " << *Binop << "\n";
+    report_fatal_error("Expansion of variable-sized shifts of > 64-bit-"
+                       "wide values is not supported");
+  }
+  unsigned ShiftAmount = ShlAmount->getZExtValue();
+  if (ShiftAmount >= Binop->getType()->getIntegerBitWidth())
+    ShiftAmount = 0; // Undefined behavior.
+  unsigned HiBits = Tys.Hi->getIntegerBitWidth();
+  // |<------------Hi---------->|<-------Lo------>|
+  // |                          |                 |
+  // +--------+--------+--------+--------+--------+
+  // |abcdefghijklmnopqrstuvwxyz|ABCDEFGHIJKLMNOPQ|
+  // +--------+--------+--------+--------+--------+
+  // Possible shifts:
+  // |efghijklmnopqrstuvwxyzABCD|EFGHIJKLMNOPQ0000| Some Lo into Hi.
+  // |vwxyzABCDEFGHIJKLMNOPQ0000|00000000000000000| Lo is 0, keep some Hi.
+  // |DEFGHIJKLMNOPQ000000000000|00000000000000000| Lo is 0, no Hi left.
+  Value *Lo, *Hi;
+  if (ShiftAmount < kChunkBits) {
+    Lo = IRB->CreateShl(Lhs.Lo, ShiftAmount, Twine(Name, ".lo"));
+    Hi =
+        IRB->CreateZExtOrTrunc(IRB->CreateLShr(Lhs.Lo, kChunkBits - ShiftAmount,
+                                               Twine(Name, ".lo.shr")),
+                               Tys.Hi, Twine(Name, ".lo.ext"));
+  } else {
+    Lo = ConstantInt::get(Tys.Lo, 0);
+    Hi = IRB->CreateShl(
+        IRB->CreateZExtOrTrunc(Lhs.Lo, Tys.Hi, Twine(Name, ".lo.ext")),
+        ShiftAmount - kChunkBits, Twine(Name, ".lo.shl"));
+  }
+  if (ShiftAmount < HiBits)
+    Hi = IRB->CreateOr(
+        Hi, IRB->CreateShl(Lhs.Hi, ShiftAmount, Twine(Name, ".hi.shl")),
+        Twine(Name, ".or"));
+  return {Lo, Hi};
+}
+
+static ValuePair createShr(IRBuilder<> *IRB, const BinaryOperator *Binop,
+                           const ValuePair &Lhs, const ValuePair &Rhs,
+                           const TypePair &Tys, const StringRef &Name) {
+  auto Op = Binop->getOpcode();
+  ConstantInt *ShrAmount = dyn_cast<ConstantInt>(Rhs.Lo);
+  // TODO(dschuff): Expansion of variable-sized shifts isn't supported
+  // because the behavior depends on whether the shift amount is less than
+  // the size of the low part of the expanded type, and I haven't yet
+  // figured out a way to do it for variable-sized shifts without splitting
+  // the basic block. I don't believe it's actually necessary for bitfields.
+  if (!ShrAmount) {
+    errs() << "Shift: " << *Binop << "\n";
+    report_fatal_error("Expansion of variable-sized shifts of > 64-bit-"
+                       "wide values is not supported");
+  }
+  bool IsArith = Op == Instruction::AShr;
+  unsigned ShiftAmount = ShrAmount->getZExtValue();
+  if (ShiftAmount >= Binop->getType()->getIntegerBitWidth())
+    ShiftAmount = 0; // Undefined behavior.
+  unsigned HiBitWidth = Tys.Hi->getIntegerBitWidth();
+  // |<--Hi-->|<-------Lo------>|
+  // |        |                 |
+  // +--------+--------+--------+
+  // |abcdefgh|ABCDEFGHIJKLMNOPQ|
+  // +--------+--------+--------+
+  // Possible shifts (0 is sign when doing AShr):
+  // |0000abcd|defgABCDEFGHIJKLM| Some Hi into Lo.
+  // |00000000|00abcdefgABCDEFGH| Hi is 0, keep some Lo.
+  // |00000000|000000000000abcde| Hi is 0, no Lo left.
+  Value *Lo, *Hi;
+  if (ShiftAmount < kChunkBits) {
+    Lo = IRB->CreateShl(
+        IsArith
+            ? IRB->CreateSExtOrTrunc(Lhs.Hi, Tys.Lo, Twine(Name, ".hi.ext"))
+            : IRB->CreateZExtOrTrunc(Lhs.Hi, Tys.Lo, Twine(Name, ".hi.ext")),
+        kChunkBits - ShiftAmount, Twine(Name, ".hi.shl"));
+    Lo = IRB->CreateOr(
+        Lo, IRB->CreateLShr(Lhs.Lo, ShiftAmount, Twine(Name, ".lo.shr")),
+        Twine(Name, ".lo"));
+  } else {
+    Lo = IRB->CreateBinOp(Op, Lhs.Hi,
+                          ConstantInt::get(Tys.Hi, ShiftAmount - kChunkBits),
+                          Twine(Name, ".hi.shr"));
+    Lo = IsArith ? IRB->CreateSExtOrTrunc(Lo, Tys.Lo, Twine(Name, ".lo.ext"))
+                 : IRB->CreateZExtOrTrunc(Lo, Tys.Lo, Twine(Name, ".lo.ext"));
+  }
+  if (ShiftAmount < HiBitWidth) {
+    Hi = IRB->CreateBinOp(Op, Lhs.Hi, ConstantInt::get(Tys.Hi, ShiftAmount),
+                          Twine(Name, ".hi"));
+  } else {
+    Hi = IsArith ? IRB->CreateAShr(Lhs.Hi, HiBitWidth - 1, Twine(Name, ".hi"))
+                 : ConstantInt::get(Tys.Hi, 0);
+  }
+  return {Lo, Hi};
+}
+
+static ValuePair createAdd(IRBuilder<> *IRB, const ValuePair &Lhs,
+                           const ValuePair &Rhs, const TypePair &Tys,
+                           const StringRef &Name) {
+  auto Op = Instruction::Add;
+  Value *Limit =
+      IRB->CreateSelect(IRB->CreateICmpULT(Lhs.Lo, Rhs.Lo, Twine(Name, ".cmp")),
+                        Rhs.Lo, Lhs.Lo, Twine(Name, ".limit"));
+  // Don't propagate NUW/NSW to the lo operation: it can overflow.
+  Value *Lo = IRB->CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
+  Value *Carry =
+      IRB->CreateZExt(IRB->CreateICmpULT(Lo, Limit, Twine(Name, ".overflowed")),
+                      Tys.Hi, Twine(Name, ".carry"));
+  // TODO(jfb) The hi operation could be tagged with NUW/NSW.
+  Value *Hi = IRB->CreateBinOp(
+      Op, IRB->CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi")), Carry,
+      Twine(Name, ".carried"));
+  // TODO(jfb) Support returning hi carry:
+  //           dest[i] < limit || (carry && dest[i] == limit)
+  return {Lo, Hi};
+}
+
+static ValuePair createSub(IRBuilder<> *IRB, const ValuePair &Lhs,
+                           const ValuePair &Rhs, const TypePair &Tys,
+                           const StringRef &Name) {
+  auto Op = Instruction::Sub;
+  Value *Borrowed = IRB->CreateSExt(
+      IRB->CreateICmpULT(Lhs.Lo, Rhs.Lo, Twine(Name, ".borrow")), Tys.Hi,
+      Twine(Name, ".borrowing"));
+  Value *Lo = IRB->CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
+  Value *Hi =
+      IRB->CreateBinOp(Instruction::Add,
+                       IRB->CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi")),
+                       Borrowed, Twine(Name, ".borrowed"));
+  return {Lo, Hi};
+}
+
+static Value *createICmp(IRBuilder<> *IRB, const ICmpInst *ICmp,
+                         const ValuePair &Lhs, const ValuePair &Rhs,
+                         const StringRef &Name) {
+  switch (ICmp->getPredicate()) {
+  case CmpInst::ICMP_EQ:
+  case CmpInst::ICMP_NE: {
+    Value *Lo = IRB->CreateICmp(ICmp->getUnsignedPredicate(), Lhs.Lo, Rhs.Lo,
+                                Twine(Name, ".lo"));
+    Value *Hi = IRB->CreateICmp(ICmp->getUnsignedPredicate(), Lhs.Hi, Rhs.Hi,
+                                Twine(Name, ".hi"));
+    return IRB->CreateBinOp(Instruction::And, Lo, Hi, Twine(Name, ".result"));
+  }
+
+  // TODO(jfb): Implement the following:
+  case CmpInst::ICMP_UGT: // C == 1 and Z == 0
+  case CmpInst::ICMP_UGE: // C == 1
+  case CmpInst::ICMP_ULT: // C == 0 and Z == 0
+  case CmpInst::ICMP_ULE: // C == 0
+
+  case CmpInst::ICMP_SGT: // N == V and Z == 0
+  case CmpInst::ICMP_SGE: // N == V
+  case CmpInst::ICMP_SLT: // N != V
+  case CmpInst::ICMP_SLE: // N != V or Z == 1
+    errs() << "Comparison: " << *ICmp << "\n";
+    report_fatal_error("Comparisons other than equality not supported for "
+                       "integer types larger than 64 bit");
+  default:
+    llvm_unreachable("Invalid integer comparison");
+  }
+}
+
+static ValuePair createLoad(IRBuilder<> *IRB, const DataLayout &DL,
+                            LoadInst *Load) {
+  if (!Load->isSimple()) {
+    errs() << "Load: " << *Load << "\n";
+    report_fatal_error("Large volatile/atomic loads unsupported");
+  }
+  Value *Op = Load->getPointerOperand();
+  TypePair Tys = getExpandedIntTypes(Load->getType());
+  AlignPair Align = getAlign(DL, Load, Load->getType());
+  Value *Loty = IRB->CreateBitCast(Op, Tys.Lo->getPointerTo(),
+                                   Twine(Op->getName(), ".loty"));
+  Value *Lo =
+      IRB->CreateAlignedLoad(Loty, Align.Lo, Twine(Load->getName(), ".lo"));
+  Value *HiAddr =
+      IRB->CreateConstGEP1_32(Loty, 1, Twine(Op->getName(), ".hi.gep"));
+  Value *HiTy = IRB->CreateBitCast(HiAddr, Tys.Hi->getPointerTo(),
+                                   Twine(Op->getName(), ".hity"));
+  Value *Hi =
+      IRB->CreateAlignedLoad(HiTy, Align.Hi, Twine(Load->getName(), ".hi"));
+  return {Lo, Hi};
+}
+
+static ValuePair createStore(IRBuilder<> *IRB, const DataLayout &DL,
+                             StoreInst *Store, const ValuePair &StoreVals) {
+  if (!Store->isSimple()) {
+    errs() << "Store: " << *Store << "\n";
+    report_fatal_error("Large volatile/atomic stores unsupported");
+  }
+  Value *Ptr = Store->getPointerOperand();
+  TypePair Tys = getExpandedIntTypes(Store->getValueOperand()->getType());
+  AlignPair Align = getAlign(DL, Store, Store->getValueOperand()->getType());
+  Value *Loty = IRB->CreateBitCast(Ptr, Tys.Lo->getPointerTo(),
+                                   Twine(Ptr->getName(), ".loty"));
+  Value *Lo = IRB->CreateAlignedStore(StoreVals.Lo, Loty, Align.Lo);
+  Value *HiAddr =
+      IRB->CreateConstGEP1_32(Loty, 1, Twine(Ptr->getName(), ".hi.gep"));
+  Value *HiTy = IRB->CreateBitCast(HiAddr, Tys.Hi->getPointerTo(),
+                                   Twine(Ptr->getName(), ".hity"));
+  Value *Hi = IRB->CreateAlignedStore(StoreVals.Hi, HiTy, Align.Hi);
+  return {Lo, Hi};
 }
 
 namespace {
@@ -169,8 +390,7 @@ public:
                              unsigned ValueNumber) {
     DEBUG(dbgs() << "\tRecording as forward PHI\n");
     ForwardPHIs.push_back(ForwardPHI(Val, Lo, Hi, ValueNumber));
-    return ValuePair(UndefValue::get(Lo->getType()),
-                     UndefValue::get(Hi->getType()));
+    return {UndefValue::get(Lo->getType()), UndefValue::get(Hi->getType())};
   }
 
   void recordConverted(Instruction *From, const ValuePair &To) {
@@ -247,7 +467,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
       Lo->addIncoming(Ops.Lo, InBB);
       Hi->addIncoming(Ops.Hi, InBB);
     }
-    State.recordConverted(Phi, ValuePair(Lo, Hi));
+    State.recordConverted(Phi, {Lo, Hi});
 
   } else if (ZExtInst *ZExt = dyn_cast<ZExtInst>(Inst)) {
     Value *Operand = ZExt->getOperand(0);
@@ -262,249 +482,65 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
       Lo = Ops.Lo;
       Hi = IRB.CreateZExt(Ops.Hi, Tys.Hi, Twine(Name, ".hi"));
     }
-    State.recordConverted(ZExt, ValuePair(Lo, Hi));
+    State.recordConverted(ZExt, {Lo, Hi});
 
   } else if (TruncInst *Trunc = dyn_cast<TruncInst>(Inst)) {
     Value *Operand = Trunc->getOperand(0);
     assert(shouldConvert(Operand) && "TruncInst is expandable but not its op");
-    TypePair OpTys = getExpandedIntTypes(Operand->getType());
     ValuePair Ops = State.getConverted(Operand);
     if (!shouldConvert(Inst)) {
       Value *NewInst = IRB.CreateTrunc(Ops.Lo, Trunc->getType(), Name);
       State.recordConverted(Trunc, NewInst);
     } else {
       TypePair Tys = getExpandedIntTypes(Trunc->getType());
-      assert(Tys.Lo == OpTys.Lo);
+      assert(Tys.Lo == getExpandedIntTypes(Operand->getType()).Lo);
       Value *Lo = Ops.Lo;
       Value *Hi = IRB.CreateTrunc(Ops.Hi, Tys.Hi, Twine(Name, ".hi"));
-      State.recordConverted(Trunc, ValuePair(Lo, Hi));
+      State.recordConverted(Trunc, {Lo, Hi});
     }
 
   } else if (BinaryOperator *Binop = dyn_cast<BinaryOperator>(Inst)) {
     ValuePair Lhs = State.getConverted(Binop->getOperand(0));
     ValuePair Rhs = State.getConverted(Binop->getOperand(1));
     TypePair Tys = getExpandedIntTypes(Binop->getType());
-    Instruction::BinaryOps Op = Binop->getOpcode();
-    switch (Op) {
+    ValuePair Conv;
+    switch (Binop->getOpcode()) {
     case Instruction::And:
     case Instruction::Or:
-    case Instruction::Xor: {
-      Value *Lo = IRB.CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
-      Value *Hi = IRB.CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi"));
-      State.recordConverted(Binop, ValuePair(Lo, Hi));
+    case Instruction::Xor:
+      Conv = createBit(&IRB, Binop, Lhs, Rhs, Tys, Name);
       break;
-    }
-
-    case Instruction::Shl: {
-      ConstantInt *ShlAmount = dyn_cast<ConstantInt>(Rhs.Lo);
-      // TODO(dschuff): Expansion of variable-sized shifts isn't supported
-      // because the behavior depends on whether the shift amount is less than
-      // the size of the low part of the expanded type, and I haven't yet
-      // figured out a way to do it for variable-sized shifts without splitting
-      // the basic block. I don't believe it's actually necessary for
-      // bitfields. Likewise for LShr below.
-      if (!ShlAmount) {
-        errs() << "Shift: " << *Binop << "\n";
-        report_fatal_error("Expansion of variable-sized shifts of > 64-bit-"
-                           "wide values is not supported");
-      }
-      unsigned ShiftAmount = ShlAmount->getZExtValue();
-      if (ShiftAmount >= Binop->getType()->getIntegerBitWidth())
-        ShiftAmount = 0; // Undefined behavior.
-      unsigned HiBits = Tys.Hi->getIntegerBitWidth();
-      // |<------------Hi---------->|<-------Lo------>|
-      // |                          |                 |
-      // +--------+--------+--------+--------+--------+
-      // |abcdefghijklmnopqrstuvwxyz|ABCDEFGHIJKLMNOPQ|
-      // +--------+--------+--------+--------+--------+
-      // Possible shifts:
-      // |efghijklmnopqrstuvwxyzABCD|EFGHIJKLMNOPQ0000| Some Lo into Hi.
-      // |vwxyzABCDEFGHIJKLMNOPQ0000|00000000000000000| Lo is 0, keep some Hi.
-      // |DEFGHIJKLMNOPQ000000000000|00000000000000000| Lo is 0, no Hi left.
-      Value *Lo, *Hi;
-      if (ShiftAmount < kChunkBits) {
-        Lo = IRB.CreateShl(Lhs.Lo, ShiftAmount, Twine(Name, ".lo"));
-        Hi = IRB.CreateZExtOrTrunc(IRB.CreateLShr(Lhs.Lo,
-                                                  kChunkBits - ShiftAmount,
-                                                  Twine(Name, ".lo.shr")),
-                                   Tys.Hi, Twine(Name, ".lo.ext"));
-      } else {
-        Lo = ConstantInt::get(Tys.Lo, 0);
-        Hi = IRB.CreateShl(
-            IRB.CreateZExtOrTrunc(Lhs.Lo, Tys.Hi, Twine(Name, ".lo.ext")),
-            ShiftAmount - kChunkBits, Twine(Name, ".lo.shl"));
-      }
-      if (ShiftAmount < HiBits)
-        Hi = IRB.CreateOr(
-            Hi, IRB.CreateShl(Lhs.Hi, ShiftAmount, Twine(Name, ".hi.shl")),
-            Twine(Name, ".or"));
-      State.recordConverted(Binop, ValuePair(Lo, Hi));
+    case Instruction::Shl:
+      Conv = createShl(&IRB, Binop, Lhs, Rhs, Tys, Name);
       break;
-    }
-
     case Instruction::AShr:
-    case Instruction::LShr: {
-      ConstantInt *ShrAmount = dyn_cast<ConstantInt>(Rhs.Lo);
-      // TODO(dschuff): Expansion of variable-sized shifts isn't supported
-      // because the behavior depends on whether the shift amount is less than
-      // the size of the low part of the expanded type, and I haven't yet
-      // figured out a way to do it for variable-sized shifts without splitting
-      // the basic block. I don't believe it's actually necessary for bitfields.
-      if (!ShrAmount) {
-        errs() << "Shift: " << *Binop << "\n";
-        report_fatal_error("Expansion of variable-sized shifts of > 64-bit-"
-                           "wide values is not supported");
-      }
-      bool IsArith = Op == Instruction::AShr;
-      unsigned ShiftAmount = ShrAmount->getZExtValue();
-      if (ShiftAmount >= Binop->getType()->getIntegerBitWidth())
-        ShiftAmount = 0; // Undefined behavior.
-      unsigned HiBitWidth = Tys.Hi->getIntegerBitWidth();
-      // |<--Hi-->|<-------Lo------>|
-      // |        |                 |
-      // +--------+--------+--------+
-      // |abcdefgh|ABCDEFGHIJKLMNOPQ|
-      // +--------+--------+--------+
-      // Possible shifts (0 is sign when doing AShr):
-      // |0000abcd|defgABCDEFGHIJKLM| Some Hi into Lo.
-      // |00000000|00abcdefgABCDEFGH| Hi is 0, keep some Lo.
-      // |00000000|000000000000abcde| Hi is 0, no Lo left.
-      Value *Lo, *Hi;
-      if (ShiftAmount < kChunkBits) {
-        Lo = IRB.CreateShl(
-            IsArith
-                ? IRB.CreateSExtOrTrunc(Lhs.Hi, Tys.Lo, Twine(Name, ".hi.ext"))
-                : IRB.CreateZExtOrTrunc(Lhs.Hi, Tys.Lo, Twine(Name, ".hi.ext")),
-            kChunkBits - ShiftAmount, Twine(Name, ".hi.shl"));
-        Lo = IRB.CreateOr(
-            Lo, IRB.CreateLShr(Lhs.Lo, ShiftAmount, Twine(Name, ".lo.shr")),
-            Twine(Name, ".lo"));
-      } else {
-        Lo = IRB.CreateBinOp(Op, Lhs.Hi,
-                             ConstantInt::get(Tys.Hi, ShiftAmount - kChunkBits),
-                             Twine(Name, ".hi.shr"));
-        Lo = IsArith
-                 ? IRB.CreateSExtOrTrunc(Lo, Tys.Lo, Twine(Name, ".lo.ext"))
-                 : IRB.CreateZExtOrTrunc(Lo, Tys.Lo, Twine(Name, ".lo.ext"));
-      }
-      if (ShiftAmount < HiBitWidth) {
-        Hi = IRB.CreateBinOp(Op, Lhs.Hi, ConstantInt::get(Tys.Hi, ShiftAmount),
-                             Twine(Name, ".hi"));
-      } else {
-        Hi = IsArith
-                 ? IRB.CreateAShr(Lhs.Hi, HiBitWidth - 1, Twine(Name, ".hi"))
-                 : ConstantInt::get(Tys.Hi, 0);
-      }
-      State.recordConverted(Binop, ValuePair(Lo, Hi));
+    case Instruction::LShr:
+      Conv = createShr(&IRB, Binop, Lhs, Rhs, Tys, Name);
       break;
-    }
-
     case Instruction::Add:
-    case Instruction::Sub: {
-      Value *Lo, *Hi;
-      if (Op == Instruction::Add) {
-        Value *Limit = IRB.CreateSelect(
-            IRB.CreateICmpULT(Lhs.Lo, Rhs.Lo, Twine(Name, ".cmp")), Rhs.Lo,
-            Lhs.Lo, Twine(Name, ".limit"));
-        // Don't propagate NUW/NSW to the lo operation: it can overflow.
-        Lo = IRB.CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
-        Value *Carry = IRB.CreateZExt(
-            IRB.CreateICmpULT(Lo, Limit, Twine(Name, ".overflowed")), Tys.Hi,
-            Twine(Name, ".carry"));
-        // TODO(jfb) The hi operation could be tagged with NUW/NSW.
-        Hi = IRB.CreateBinOp(
-            Op, IRB.CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi")), Carry,
-            Twine(Name, ".carried"));
-      } else {
-        Value *Borrowed = IRB.CreateSExt(
-            IRB.CreateICmpULT(Lhs.Lo, Rhs.Lo, Twine(Name, ".borrow")), Tys.Hi,
-            Twine(Name, ".borrowing"));
-        Lo = IRB.CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
-        Hi = IRB.CreateBinOp(
-            Instruction::Add,
-            IRB.CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi")), Borrowed,
-            Twine(Name, ".borrowed"));
-      }
-      State.recordConverted(Binop, ValuePair(Lo, Hi));
+      Conv = createAdd(&IRB, Lhs, Rhs, Tys, Name);
       break;
-    }
-
+    case Instruction::Sub:
+      Conv = createSub(&IRB, Lhs, Rhs, Tys, Name);
+      break;
     default:
       errs() << "Operation: " << *Binop << "\n";
-      report_fatal_error("Unhandled BinaryOperator type in "
-                         "ExpandLargeIntegers");
+      report_fatal_error(
+          "Unhandled BinaryOperator type in ExpandLargeIntegers");
     }
+    State.recordConverted(Binop, Conv);
+
+  } else if (ICmpInst *ICmp = dyn_cast<ICmpInst>(Inst)) {
+    ValuePair Lhs = State.getConverted(ICmp->getOperand(0));
+    ValuePair Rhs = State.getConverted(ICmp->getOperand(1));
+    State.recordConverted(ICmp, createICmp(&IRB, ICmp, Lhs, Rhs, Name));
 
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
-    if (!Load->isSimple()) {
-      errs() << "Load: " << *Load << "\n";
-      report_fatal_error("Large volatile/atomic loads unsupported");
-    }
-    Value *Op = Load->getPointerOperand();
-    TypePair Tys = getExpandedIntTypes(Load->getType());
-    AlignPair Align = getAlign(DL, Load, Load->getType());
-    Value *Loty = IRB.CreateBitCast(Op, Tys.Lo->getPointerTo(),
-                                    Twine(Op->getName(), ".loty"));
-    Value *Lo =
-        IRB.CreateAlignedLoad(Loty, Align.Lo, Twine(Load->getName(), ".lo"));
-    Value *HiAddr =
-        IRB.CreateConstGEP1_32(Loty, 1, Twine(Op->getName(), ".hi.gep"));
-    Value *HiTy = IRB.CreateBitCast(HiAddr, Tys.Hi->getPointerTo(),
-                                    Twine(Op->getName(), ".hity"));
-    Value *Hi =
-        IRB.CreateAlignedLoad(HiTy, Align.Hi, Twine(Load->getName(), ".hi"));
-    State.recordConverted(Load, ValuePair(Lo, Hi));
+    State.recordConverted(Load, createLoad(&IRB, DL, Load));
 
   } else if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
-    if (!Store->isSimple()) {
-      errs() << "Store: " << *Store << "\n";
-      report_fatal_error("Large volatile/atomic stores unsupported");
-    }
-    Value *Ptr = Store->getPointerOperand();
-    TypePair Tys = getExpandedIntTypes(Store->getValueOperand()->getType());
     ValuePair StoreVals = State.getConverted(Store->getValueOperand());
-    AlignPair Align = getAlign(DL, Store, Store->getValueOperand()->getType());
-    Value *Loty = IRB.CreateBitCast(Ptr, Tys.Lo->getPointerTo(),
-                                    Twine(Ptr->getName(), ".loty"));
-    Value *Lo = IRB.CreateAlignedStore(StoreVals.Lo, Loty, Align.Lo);
-    Value *HiAddr =
-        IRB.CreateConstGEP1_32(Loty, 1, Twine(Ptr->getName(), ".hi.gep"));
-    Value *HiTy = IRB.CreateBitCast(HiAddr, Tys.Hi->getPointerTo(),
-                                    Twine(Ptr->getName(), ".hity"));
-    Value *Hi = IRB.CreateAlignedStore(StoreVals.Hi, HiTy, Align.Hi);
-    State.recordConverted(Store, ValuePair(Lo, Hi));
-
-  } else if (ICmpInst *Icmp = dyn_cast<ICmpInst>(Inst)) {
-    ValuePair Lhs = State.getConverted(Icmp->getOperand(0));
-    ValuePair Rhs = State.getConverted(Icmp->getOperand(1));
-    switch (Icmp->getPredicate()) {
-    case CmpInst::ICMP_EQ:
-    case CmpInst::ICMP_NE: {
-      Value *Lo = IRB.CreateICmp(Icmp->getUnsignedPredicate(), Lhs.Lo, Rhs.Lo,
-                                 Twine(Name, ".lo"));
-      Value *Hi = IRB.CreateICmp(Icmp->getUnsignedPredicate(), Lhs.Hi, Rhs.Hi,
-                                 Twine(Name, ".hi"));
-      Value *Result =
-          IRB.CreateBinOp(Instruction::And, Lo, Hi, Twine(Name, ".result"));
-      State.recordConverted(Icmp, Result);
-      break;
-    }
-
-    // TODO(jfb): Implement the following cases.
-    case CmpInst::ICMP_UGT:
-    case CmpInst::ICMP_UGE:
-    case CmpInst::ICMP_ULT:
-    case CmpInst::ICMP_ULE:
-    case CmpInst::ICMP_SGT:
-    case CmpInst::ICMP_SGE:
-    case CmpInst::ICMP_SLT:
-    case CmpInst::ICMP_SLE:
-      errs() << "Comparison: " << *Icmp << "\n";
-      report_fatal_error("Comparisons other than equality not supported for"
-                         "integer types larger than 64 bit");
-    default:
-      llvm_unreachable("Invalid integer comparison");
-    }
+    State.recordConverted(Store, createStore(&IRB, DL, Store, StoreVals));
 
   } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
     Value *Cond = Select->getCondition();
@@ -512,7 +548,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     ValuePair False = State.getConverted(Select->getFalseValue());
     Value *Lo = IRB.CreateSelect(Cond, True.Lo, False.Lo, Twine(Name, ".lo"));
     Value *Hi = IRB.CreateSelect(Cond, True.Hi, False.Hi, Twine(Name, ".hi"));
-    State.recordConverted(Select, ValuePair(Lo, Hi));
+    State.recordConverted(Select, {Lo, Hi});
 
   } else {
     errs() << "Instruction: " << *Inst << "\n";

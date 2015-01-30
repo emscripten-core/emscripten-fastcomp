@@ -468,14 +468,19 @@ public:
     return Parser.ParseThisBlock();
   }
 
-  // Changes the error stream to print errors to Stream.  Warning:
-  // Stream must exist till the next call to setErrStream.  Otherwise
-  // it must exist for the entire lifetime of the bitcode parser.
-  // Note: This err stream should be set immediately after
-  // construction.  Assigning after nested bitcode parsers have been
-  // built will not work.
-  void setErrStream(raw_ostream &Stream) {
+  // Changes the stream to print errors to, and returns the old error stream.
+  // There are two use cases:
+  // 1) To change (from the default errs()) inside the constructor of the
+  //    derived class. In this context, it will be used for all error
+  //    messages for the derived class.
+  // 2) Temporarily modify it for a single error message. In this context,
+  //    the method Error() is overridden in the derived class, and
+  //    calls this method twice. Once before calling base method Error(),
+  //    and followed by a second call to restore the default error stream.
+  raw_ostream &setErrStream(raw_ostream &Stream) {
+    raw_ostream &OldErrStream = *ErrStream;
     ErrStream = &Stream;
+    return OldErrStream;
   }
 
   // Called when error occurs. Message is the error to report. Always

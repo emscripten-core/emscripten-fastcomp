@@ -54,6 +54,7 @@ bool NaClBitCodeAbbrevOp::isValid(Encoding E, uint64_t Val) {
   case Array:
     return Val == 0;
   }
+  llvm_unreachable("unhandled abbreviation");
 }
 
 void NaClBitCodeAbbrevOp::Print(raw_ostream& Stream) const {

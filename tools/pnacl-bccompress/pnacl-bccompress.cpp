@@ -457,6 +457,7 @@ public:
       NumBits += 6;
       return true;
     }
+    llvm_unreachable("unhandled NaClBitCodeAbbrevOp encoding");
   }
 
   // Returns true if the given Val can be represented by abbreviation

@@ -88,6 +88,7 @@ const char *PNaClABIProps::LinkageName(GlobalValue::LinkageTypes LT) {
   case GlobalValue::AvailableExternallyLinkage:
     return "available_externally";
   }
+  llvm_unreachable("unhandled GlobalValue::LinkageTypes");
 }
 
 bool PNaClABIProps::isValidGlobalLinkage(GlobalValue::LinkageTypes Linkage) {
