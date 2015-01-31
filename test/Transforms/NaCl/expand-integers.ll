@@ -420,9 +420,9 @@ define void @adds(i32 *%dest, i32* %lhs, i32* %rhs) {
   %rp = bitcast i32* %rhs to i96*
   %rv = load i96* %rp
 
-; CHECK: %result.cmp = icmp ult i64 %lv.lo, %rv.lo
+; CHECK: %result.lo = add i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %result.cmp = icmp ult i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %result.limit = select i1 %result.cmp, i64 %rv.lo, i64 %lv.lo
-; CHECK-NEXT: %result.lo = add i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %result.overflowed = icmp ult i64 %result.lo, %result.limit
 ; CHECK-NEXT: %result.carry = zext i1 %result.overflowed to i32
 ; CHECK-NEXT: %result.hi = add i32 %lv.hi, %rv.hi
@@ -450,8 +450,8 @@ define void @subs(i32 *%dest, i32* %lhs, i32* %rhs) {
   ret void
 }
 
-; CHECK-LABEL: @icmps
-define void @icmps(i32* %p) {
+; CHECK-LABEL: @icmp_equality
+define void @icmp_equality(i32* %p) {
   %p96 = bitcast i32* %p to i96*
   %a96 = load i96* %p96
   %b96 = load i96* %p96
@@ -460,6 +460,111 @@ define void @icmps(i32* %p) {
 ; CHECK-NEXT: %eq.hi = icmp eq i32 %a96.hi, %b96.hi
 ; CHECK-NEXT: %eq = and i1 %eq.lo, %eq.hi
   %eq = icmp eq i96 %a96, %b96
+
+; CHECK: %ne.lo = icmp ne i64 %a96.lo, %b96.lo
+; CHECK-NEXT: %ne.hi = icmp ne i32 %a96.hi, %b96.hi
+; CHECK-NEXT: %ne = and i1 %ne.lo, %ne.hi
+  %ne = icmp ne i96 %a96, %b96
+  ret void
+}
+
+; CHECK-LABEL: @icmp_uge
+define void @icmp_uge(i32* %p) {
+  %p96 = bitcast i32* %p to i96*
+  %lv = load i96* %p96
+  %rv = load i96* %p96
+; Do an add.
+; CHECK: %uge.lo = add i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %uge.cmp = icmp ult i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %uge.limit = select i1 %uge.cmp, i64 %rv.lo, i64 %lv.lo
+; CHECK-NEXT: %uge.overflowed = icmp ult i64 %uge.lo, %uge.limit
+; CHECK-NEXT: %uge.carry = zext i1 %uge.overflowed to i32
+; CHECK-NEXT: %uge.hi = add i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %uge.carried = add i32 %uge.hi, %uge.carry
+; Do the hi carry.
+; CHECK-NEXT: %uge.cmp4 = icmp ult i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %uge.limit5 = select i1 %uge.cmp4, i32 %rv.hi, i32 %lv.hi
+; CHECK-NEXT: %uge = icmp ult i32 %uge.carried, %uge.limit5
+  %uge = icmp uge i96 %lv, %rv
+  ret void
+}
+
+; CHECK-LABEL: @icmp_ule
+define void @icmp_ule(i32* %p) {
+  %p96 = bitcast i32* %p to i96*
+  %lv = load i96* %p96
+  %rv = load i96* %p96
+; Do an add.
+; CHECK: %ule.lo = add i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ule.cmp = icmp ult i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ule.limit = select i1 %ule.cmp, i64 %rv.lo, i64 %lv.lo
+; CHECK-NEXT: %ule.overflowed = icmp ult i64 %ule.lo, %ule.limit
+; CHECK-NEXT: %ule.carry = zext i1 %ule.overflowed to i32
+; CHECK-NEXT: %ule.hi = add i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ule.carried = add i32 %ule.hi, %ule.carry
+; Do the hi carry.
+; CHECK-NEXT: %ule.cmp4 = icmp ult i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ule.limit5 = select i1 %ule.cmp4, i32 %rv.hi, i32 %lv.hi
+; CHECK-NEXT: %ule.overflowed6 = icmp ult i32 %ule.carried, %ule.limit5
+; Invert the carry result.
+; CHECK-NEXT: %ule = xor i1 %ule.overflowed6, true
+  %ule = icmp ule i96 %lv, %rv
+  ret void
+}
+
+; CHECK-LABEL: @icmp_ugt
+define void @icmp_ugt(i32* %p) {
+  %p96 = bitcast i32* %p to i96*
+  %lv = load i96* %p96
+  %rv = load i96* %p96
+; Do an add.
+; CHECK: %ugt.lo = add i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ugt.cmp = icmp ult i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ugt.limit = select i1 %ugt.cmp, i64 %rv.lo, i64 %lv.lo
+; CHECK-NEXT: %ugt.overflowed = icmp ult i64 %ugt.lo, %ugt.limit
+; CHECK-NEXT: %ugt.carry = zext i1 %ugt.overflowed to i32
+; CHECK-NEXT: %ugt.hi = add i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ugt.carried = add i32 %ugt.hi, %ugt.carry
+; Do the hi carry.
+; CHECK-NEXT: %ugt.cmp4 = icmp ult i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ugt.limit5 = select i1 %ugt.cmp4, i32 %rv.hi, i32 %lv.hi
+; CHECK-NEXT: %ugt.overflowed6 = icmp ult i32 %ugt.carried, %ugt.limit5
+; Equality comparison.
+; CHECK-NEXT: %ugt.lo7 = icmp eq i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ugt.hi8 = icmp eq i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ugt.eq = and i1 %ugt.lo7, %ugt.hi8
+; Merge the hi carry and equality comparison results.
+; CHECK-NEXT: %ugt = and i1 %ugt.overflowed6, %ugt.eq
+  %ugt = icmp ugt i96 %lv, %rv
+  ret void
+}
+
+; CHECK-LABEL: @icmp_ult
+define void @icmp_ult(i32* %p) {
+  %p96 = bitcast i32* %p to i96*
+  %lv = load i96* %p96
+  %rv = load i96* %p96
+; Do an add.
+; CHECK: %ult.lo = add i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ult.cmp = icmp ult i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ult.limit = select i1 %ult.cmp, i64 %rv.lo, i64 %lv.lo
+; CHECK-NEXT: %ult.overflowed = icmp ult i64 %ult.lo, %ult.limit
+; CHECK-NEXT: %ult.carry = zext i1 %ult.overflowed to i32
+; CHECK-NEXT: %ult.hi = add i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ult.carried = add i32 %ult.hi, %ult.carry
+; Do the hi carry.
+; CHECK-NEXT: %ult.cmp4 = icmp ult i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ult.limit5 = select i1 %ult.cmp4, i32 %rv.hi, i32 %lv.hi
+; CHECK-NEXT: %ult.overflowed6 = icmp ult i32 %ult.carried, %ult.limit5
+; Invert the carry result.
+; CHECK-NEXT: %ult7 = xor i1 %ult.overflowed6, true
+; Equality comparison.
+; CHECK-NEXT: %ult.lo8 = icmp eq i64 %lv.lo, %rv.lo
+; CHECK-NEXT: %ult.hi9 = icmp eq i32 %lv.hi, %rv.hi
+; CHECK-NEXT: %ult.eq = and i1 %ult.lo8, %ult.hi9
+; Merge the hi carry and equality comparison results.
+; CHECK-NEXT: %ult = and i1 %ult7, %ult.eq
+  %ult = icmp ult i96 %lv, %rv
   ret void
 }
 

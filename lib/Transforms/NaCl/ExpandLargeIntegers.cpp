@@ -64,9 +64,15 @@ template <typename T> struct LoHiPair {
   LoHiPair() : Lo(), Hi() {}
   LoHiPair(T Lo, T Hi) : Lo(Lo), Hi(Hi) {}
 };
+template <typename T> struct LoHiBitTriple {
+  T Lo, Hi, Bit;
+  LoHiBitTriple() : Lo(), Hi(), Bit() {}
+  LoHiBitTriple(T Lo, T Hi, T Bit) : Lo(Lo), Hi(Hi), Bit(Bit) {}
+};
 typedef LoHiPair<IntegerType *> TypePair;
 typedef LoHiPair<Value *> ValuePair;
 typedef LoHiPair<unsigned> AlignPair;
+typedef LoHiBitTriple<Value *> ValueTriple;
 
 // Information needed to patch a phi node which forward-references a value.
 struct ForwardPHI {
@@ -81,6 +87,15 @@ struct ForwardPHI {
 char ExpandLargeIntegers::ID = 0;
 INITIALIZE_PASS(ExpandLargeIntegers, "nacl-expand-ints",
                 "Expand integer types that are illegal in PNaCl", false, false)
+
+#define DIE_IF(COND, VAL, MSG)                                                 \
+  do {                                                                         \
+    if (COND) {                                                                \
+      errs() << "Unsupported: " << *(VAL) << '\n';                             \
+      report_fatal_error(                                                      \
+          MSG " not yet supported for integer types larger than 64 bits");     \
+    }                                                                          \
+  } while (0)
 
 static bool isLegalBitSize(unsigned Bits) {
   assert(Bits && "Can't have zero-size integers");
@@ -116,8 +131,7 @@ static ValuePair expandConstant(Constant *C) {
             ConstantExpr::getTrunc(ConstantExpr::getLShr(CInt, ShiftAmt),
                                    ExpandedTypes.Hi)};
   }
-  errs() << "Value: " << *C << "\n";
-  report_fatal_error("Unexpected constant value");
+  DIE_IF(true, C, "Constant value");
 }
 
 template <typename T>
@@ -148,11 +162,7 @@ static ValuePair createShl(IRBuilder<> *IRB, const BinaryOperator *Binop,
   // figured out a way to do it for variable-sized shifts without splitting
   // the basic block. I don't believe it's actually necessary for
   // bitfields. Likewise for LShr below.
-  if (!ShlAmount) {
-    errs() << "Shift: " << *Binop << "\n";
-    report_fatal_error("Expansion of variable-sized shifts of > 64-bit-"
-                       "wide values is not supported");
-  }
+  DIE_IF(!ShlAmount, Binop, "Expansion of variable-sized shifts");
   unsigned ShiftAmount = ShlAmount->getZExtValue();
   if (ShiftAmount >= Binop->getType()->getIntegerBitWidth())
     ShiftAmount = 0; // Undefined behavior.
@@ -196,11 +206,7 @@ static ValuePair createShr(IRBuilder<> *IRB, const BinaryOperator *Binop,
   // the size of the low part of the expanded type, and I haven't yet
   // figured out a way to do it for variable-sized shifts without splitting
   // the basic block. I don't believe it's actually necessary for bitfields.
-  if (!ShrAmount) {
-    errs() << "Shift: " << *Binop << "\n";
-    report_fatal_error("Expansion of variable-sized shifts of > 64-bit-"
-                       "wide values is not supported");
-  }
+  DIE_IF(!ShrAmount, Binop, "Expansion of variable-sized shifts");
   bool IsArith = Op == Instruction::AShr;
   unsigned ShiftAmount = ShrAmount->getZExtValue();
   if (ShiftAmount >= Binop->getType()->getIntegerBitWidth())
@@ -242,25 +248,31 @@ static ValuePair createShr(IRBuilder<> *IRB, const BinaryOperator *Binop,
   return {Lo, Hi};
 }
 
-static ValuePair createAdd(IRBuilder<> *IRB, const ValuePair &Lhs,
-                           const ValuePair &Rhs, const TypePair &Tys,
-                           const StringRef &Name) {
+static Value *createCarry(IRBuilder<> *IRB, Value *Lhs, Value *Rhs,
+                          Value *Added, Type *Ty, const StringRef &Name) {
+  return IRB->CreateZExt(
+      IRB->CreateICmpULT(
+          Added,
+          IRB->CreateSelect(IRB->CreateICmpULT(Lhs, Rhs, Twine(Name, ".cmp")),
+                            Rhs, Lhs, Twine(Name, ".limit")),
+          Twine(Name, ".overflowed")),
+      Ty, Twine(Name, ".carry"));
+}
+
+static ValueTriple createAdd(IRBuilder<> *IRB, const ValuePair &Lhs,
+                             const ValuePair &Rhs, const TypePair &Tys,
+                             const StringRef &Name, Type *HiCarryTy) {
   auto Op = Instruction::Add;
-  Value *Limit =
-      IRB->CreateSelect(IRB->CreateICmpULT(Lhs.Lo, Rhs.Lo, Twine(Name, ".cmp")),
-                        Rhs.Lo, Lhs.Lo, Twine(Name, ".limit"));
   // Don't propagate NUW/NSW to the lo operation: it can overflow.
   Value *Lo = IRB->CreateBinOp(Op, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
-  Value *Carry =
-      IRB->CreateZExt(IRB->CreateICmpULT(Lo, Limit, Twine(Name, ".overflowed")),
-                      Tys.Hi, Twine(Name, ".carry"));
+  Value *LoCarry = createCarry(IRB, Lhs.Lo, Rhs.Lo, Lo, Tys.Hi, Name);
   // TODO(jfb) The hi operation could be tagged with NUW/NSW.
-  Value *Hi = IRB->CreateBinOp(
-      Op, IRB->CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi")), Carry,
-      Twine(Name, ".carried"));
-  // TODO(jfb) Support returning hi carry:
-  //           dest[i] < limit || (carry && dest[i] == limit)
-  return {Lo, Hi};
+  Value *HiAdd = IRB->CreateBinOp(Op, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi"));
+  Value *Hi = IRB->CreateBinOp(Op, HiAdd, LoCarry, Twine(Name, ".carried"));
+  Value *HiCarry = HiCarryTy
+                       ? createCarry(IRB, Lhs.Hi, Rhs.Hi, Hi, HiCarryTy, Name)
+                       : nullptr;
+  return {Lo, Hi, HiCarry};
 }
 
 static ValuePair createSub(IRBuilder<> *IRB, const ValuePair &Lhs,
@@ -278,32 +290,46 @@ static ValuePair createSub(IRBuilder<> *IRB, const ValuePair &Lhs,
   return {Lo, Hi};
 }
 
+static Value *createICmpEquality(IRBuilder<> *IRB, CmpInst::Predicate Pred,
+                                 const ValuePair &Lhs, const ValuePair &Rhs,
+                                 const StringRef &Name) {
+  assert(Pred == CmpInst::ICMP_EQ || Pred == CmpInst::ICMP_NE);
+  Value *Lo = IRB->CreateICmp(Pred, Lhs.Lo, Rhs.Lo, Twine(Name, ".lo"));
+  Value *Hi = IRB->CreateICmp(Pred, Lhs.Hi, Rhs.Hi, Twine(Name, ".hi"));
+  return IRB->CreateBinOp(
+      Instruction::And, Lo, Hi,
+      Twine(Name, Pred == CmpInst::ICMP_EQ ? ".eq" : ".ne"));
+}
+
 static Value *createICmp(IRBuilder<> *IRB, const ICmpInst *ICmp,
                          const ValuePair &Lhs, const ValuePair &Rhs,
-                         const StringRef &Name) {
-  switch (ICmp->getPredicate()) {
+                         const TypePair &Tys, const StringRef &Name) {
+  auto Pred = ICmp->getPredicate();
+  switch (Pred) {
   case CmpInst::ICMP_EQ:
-  case CmpInst::ICMP_NE: {
-    Value *Lo = IRB->CreateICmp(ICmp->getUnsignedPredicate(), Lhs.Lo, Rhs.Lo,
-                                Twine(Name, ".lo"));
-    Value *Hi = IRB->CreateICmp(ICmp->getUnsignedPredicate(), Lhs.Hi, Rhs.Hi,
-                                Twine(Name, ".hi"));
-    return IRB->CreateBinOp(Instruction::And, Lo, Hi, Twine(Name, ".result"));
-  }
+  case CmpInst::ICMP_NE:
+    return createICmpEquality(IRB, ICmp->getPredicate(), Lhs, Rhs, Name);
 
-  // TODO(jfb): Implement the following:
   case CmpInst::ICMP_UGT: // C == 1 and Z == 0
   case CmpInst::ICMP_UGE: // C == 1
   case CmpInst::ICMP_ULT: // C == 0 and Z == 0
   case CmpInst::ICMP_ULE: // C == 0
+  {
+    Value *Carry = createAdd(IRB, Lhs, Rhs, Tys, Name, ICmp->getType()).Bit;
+    if (Pred == CmpInst::ICMP_ULT || Pred == CmpInst::ICMP_ULE)
+      Carry = IRB->CreateNot(Carry, Name);
+    if (Pred == CmpInst::ICMP_UGT || Pred == CmpInst::ICMP_ULT)
+      Carry = IRB->CreateBinOp(
+          Instruction::And, Carry,
+          createICmpEquality(IRB, CmpInst::ICMP_EQ, Lhs, Rhs, Name), Name);
+    return Carry;
+  }
 
   case CmpInst::ICMP_SGT: // N == V and Z == 0
   case CmpInst::ICMP_SGE: // N == V
   case CmpInst::ICMP_SLT: // N != V
   case CmpInst::ICMP_SLE: // N != V or Z == 1
-    errs() << "Comparison: " << *ICmp << "\n";
-    report_fatal_error("Comparisons other than equality not supported for "
-                       "integer types larger than 64 bit");
+    DIE_IF(true, ICmp, "Signed comparisons");
   default:
     llvm_unreachable("Invalid integer comparison");
   }
@@ -311,10 +337,7 @@ static Value *createICmp(IRBuilder<> *IRB, const ICmpInst *ICmp,
 
 static ValuePair createLoad(IRBuilder<> *IRB, const DataLayout &DL,
                             LoadInst *Load) {
-  if (!Load->isSimple()) {
-    errs() << "Load: " << *Load << "\n";
-    report_fatal_error("Large volatile/atomic loads unsupported");
-  }
+  DIE_IF(!Load->isSimple(), Load, "Volatile and atomic loads");
   Value *Op = Load->getPointerOperand();
   TypePair Tys = getExpandedIntTypes(Load->getType());
   AlignPair Align = getAlign(DL, Load, Load->getType());
@@ -333,10 +356,7 @@ static ValuePair createLoad(IRBuilder<> *IRB, const DataLayout &DL,
 
 static ValuePair createStore(IRBuilder<> *IRB, const DataLayout &DL,
                              StoreInst *Store, const ValuePair &StoreVals) {
-  if (!Store->isSimple()) {
-    errs() << "Store: " << *Store << "\n";
-    report_fatal_error("Large volatile/atomic stores unsupported");
-  }
+  DIE_IF(!Store->isSimple(), Store, "Volatile and atomic stores");
   Value *Ptr = Store->getPointerOperand();
   TypePair Tys = getExpandedIntTypes(Store->getValueOperand()->getType());
   AlignPair Align = getAlign(DL, Store, Store->getValueOperand()->getType());
@@ -517,23 +537,24 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     case Instruction::LShr:
       Conv = createShr(&IRB, Binop, Lhs, Rhs, Tys, Name);
       break;
-    case Instruction::Add:
-      Conv = createAdd(&IRB, Lhs, Rhs, Tys, Name);
-      break;
+    case Instruction::Add: {
+      ValueTriple VT =
+          createAdd(&IRB, Lhs, Rhs, Tys, Name, /*HiCarryTy=*/nullptr);
+      Conv = {VT.Lo, VT.Hi}; // Ignore Hi carry.
+    } break;
     case Instruction::Sub:
       Conv = createSub(&IRB, Lhs, Rhs, Tys, Name);
       break;
     default:
-      errs() << "Operation: " << *Binop << "\n";
-      report_fatal_error(
-          "Unhandled BinaryOperator type in ExpandLargeIntegers");
+      DIE_IF(true, Binop, "Binary operator type");
     }
     State.recordConverted(Binop, Conv);
 
   } else if (ICmpInst *ICmp = dyn_cast<ICmpInst>(Inst)) {
     ValuePair Lhs = State.getConverted(ICmp->getOperand(0));
     ValuePair Rhs = State.getConverted(ICmp->getOperand(1));
-    State.recordConverted(ICmp, createICmp(&IRB, ICmp, Lhs, Rhs, Name));
+    TypePair Tys = getExpandedIntTypes(ICmp->getOperand(0)->getType());
+    State.recordConverted(ICmp, createICmp(&IRB, ICmp, Lhs, Rhs, Tys, Name));
 
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
     State.recordConverted(Load, createLoad(&IRB, DL, Load));
@@ -551,8 +572,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     State.recordConverted(Select, {Lo, Hi});
 
   } else {
-    errs() << "Instruction: " << *Inst << "\n";
-    report_fatal_error("Unhandle large integer expansion");
+    DIE_IF(true, Inst, "Instruction");
   }
 }
 
