@@ -31,7 +31,7 @@ public:
 
   ~ARMAsmBackendNaClELF() override {}
 
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) override {
     return CustomExpandInstNaClARM(*STI, Inst, Out, State);
   }
 

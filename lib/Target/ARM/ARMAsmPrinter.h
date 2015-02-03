@@ -94,13 +94,13 @@ public:
   
   // @LOCALMOD-START
   /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
-  virtual bool UseReadOnlyJumpTables() const;
+  bool UseReadOnlyJumpTables() const override;
   /// GetTargetBasicBlockAlign - Get the target alignment for basic blocks.
-  virtual unsigned GetTargetBasicBlockAlign() const;
+  unsigned GetTargetBasicBlockAlign() const override;
   /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
   /// labels E.g., EH_LABEL.
   /// TODO(sehr,robertm): remove this if the labeled block has address taken.
-  virtual unsigned GetTargetLabelAlign(const MachineInstr *MI) const;
+  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
   // @LOCALMOD-END
 
 private:

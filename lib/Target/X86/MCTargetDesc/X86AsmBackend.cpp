@@ -406,7 +406,7 @@ public:
   }
   ~NaClX86_32AsmBackend() override {}
 
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) override {
     return CustomExpandInstNaClX86(*STI, Inst, Out, State);
   }
 
@@ -426,7 +426,7 @@ public:
   }
   ~NaClX86_64AsmBackend() override {}
 
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) override {
     return CustomExpandInstNaClX86(*STI, Inst, Out, State);
   }
 
