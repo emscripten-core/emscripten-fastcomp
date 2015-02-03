@@ -129,8 +129,12 @@ class NaClBitcodeErrorCategoryType : public std::error_category {
       return "Insufficient function protos";
     case NaClBitcodeReader::InvalidBitstream:
       return "Error in bitstream format";
+    case NaClBitcodeReader::InvalidBlock:
+      return "Invalid block found in bitcode file";
     case NaClBitcodeReader::InvalidConstantReference:
       return "Bad constant reference";
+    case NaClBitcodeReader::InvalidDataAfterModule:
+      return "Invalid data after module";
     case NaClBitcodeReader::InvalidInstructionWithNoBB:
       return "No basic block for instruction";
     case NaClBitcodeReader::InvalidMultipleBlocks:
@@ -229,16 +233,17 @@ std::error_code NaClBitcodeReader::ParseTypeTableBody() {
 
   // Read all the records for this type table.
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
+    NaClBitstreamEntry Entry = Stream.advance(0, nullptr);
 
     switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
+    case NaClBitstreamEntry::SubBlock:
+      return Error(InvalidBlock, "Invalid block found in the types block");
     case NaClBitstreamEntry::Error:
-      return Error(MalformedBlock, "Error in the type table block");
+      return Error(MalformedBlock, "Malformed types block");
     case NaClBitstreamEntry::EndBlock:
       if (NumRecords != TypeList.size())
         return Error(MalformedBlock,
-                     "Invalid type forward reference in TYPE_BLOCK");
+                     "Invalid forward reference in the types block");
       return std::error_code();
     case NaClBitstreamEntry::Record:
       // The interesting case.
@@ -397,10 +402,12 @@ public:
 
     // Read all records to build global variables without initializers.
     while (1) {
-      NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks(
-          NaClBitstreamCursor::AF_DontPopBlockAtEnd);
+      NaClBitstreamEntry Entry =
+        Stream.advance(NaClBitstreamCursor::AF_DontPopBlockAtEnd, nullptr);
       switch (Entry.Kind) {
       case NaClBitstreamEntry::SubBlock:
+	return Reader.Error(NaClBitcodeReader::InvalidBlock,
+			    "Invalid block in the global vars block");
       case NaClBitstreamEntry::Error:
         return Reader.Error(NaClBitcodeReader::MalformedBlock,
                             "Error in the global vars block");
@@ -516,10 +523,12 @@ public:
     SmallVector<Constant *, 10> VarInit;
 
     while (1) {
-      NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks(
-          NaClBitstreamCursor::AF_DontAutoprocessAbbrevs);
+      NaClBitstreamEntry Entry =
+        Stream.advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs, nullptr);
       switch (Entry.Kind) {
       case NaClBitstreamEntry::SubBlock:
+	return Reader.Error(NaClBitcodeReader::InvalidBlock,
+			    "Invalid block in the global vars block");
       case NaClBitstreamEntry::Error:
         return Reader.Error(NaClBitcodeReader::MalformedBlock,
                             "Error in the global vars block");
@@ -661,10 +670,12 @@ std::error_code NaClBitcodeReader::ParseValueSymbolTable() {
   // Read all the records for this value table.
   SmallString<128> ValueName;
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
+    NaClBitstreamEntry Entry = Stream.advance(0, nullptr);
 
     switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
+    case NaClBitstreamEntry::SubBlock:
+      return Error(InvalidBlock,
+                   "Invalid block in the value symbol table block");
     case NaClBitstreamEntry::Error:
       return Error(MalformedBlock, "malformed value symbol table block");
     case NaClBitstreamEntry::EndBlock:
@@ -718,12 +729,13 @@ std::error_code NaClBitcodeReader::ParseConstants() {
   Type *CurTy = Type::getInt32Ty(Context);
   unsigned NextCstNo = ValueList.size();
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advanceSkippingSubblocks();
+    NaClBitstreamEntry Entry = Stream.advance(0, nullptr);
 
     switch (Entry.Kind) {
-    case NaClBitstreamEntry::SubBlock: // Handled for us already.
+    case NaClBitstreamEntry::SubBlock:
+      return Error(InvalidBlock, "Invalid block in function constants block");
     case NaClBitstreamEntry::Error:
-      return Error(MalformedBlock, "malformed block record in AST file");
+      return Error(MalformedBlock, "malformed function constants block");
     case NaClBitstreamEntry::EndBlock:
       if (NextCstNo != ValueList.size())
         return Error(InvalidConstantReference,
@@ -892,15 +904,18 @@ std::error_code NaClBitcodeReader::ParseModule(bool Resume) {
 
   // Read all the records for this module.
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advance(0, 0);
+    NaClBitstreamEntry Entry = Stream.advance(0, nullptr);
 
     switch (Entry.Kind) {
     case NaClBitstreamEntry::Error:
       return Error(MalformedBlock, "malformed module block");
     case NaClBitstreamEntry::EndBlock:
       DEBUG(dbgs() << "<- ParseModule\n");
-      return GlobalCleanup();
-
+      if (std::error_code EC = GlobalCleanup())
+        return EC;
+      if (!Stream.AtEndOfStream())
+        return Error(InvalidDataAfterModule, "Invalid data after module");
+      return std::error_code();
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
       default: {
@@ -1048,7 +1063,7 @@ std::error_code NaClBitcodeReader::ParseBitcodeInto(Module *M) {
       return std::error_code();
 
     NaClBitstreamEntry Entry =
-        Stream.advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs, 0);
+        Stream.advance(NaClBitstreamCursor::AF_DontAutoprocessAbbrevs, nullptr);
 
     switch (Entry.Kind) {
     case NaClBitstreamEntry::Error:
@@ -1058,10 +1073,6 @@ std::error_code NaClBitcodeReader::ParseBitcodeInto(Module *M) {
 
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
-      case naclbitc::BLOCKINFO_BLOCK_ID:
-        if (Stream.ReadBlockInfoBlock(0))
-          return Error(MalformedBlock, "Malformed BlockInfoBlock");
-        break;
       case naclbitc::MODULE_BLOCK_ID:
         // Reject multiple MODULE_BLOCK's in a single bitstream.
         if (TheModule)
@@ -1074,9 +1085,7 @@ std::error_code NaClBitcodeReader::ParseBitcodeInto(Module *M) {
           return std::error_code();
         break;
       default:
-        if (Stream.SkipBlock())
-          return Error(InvalidSkippedBlock,
-                       "Unable to skip unknown top-level block");
+        return Error(InvalidBlock, "Invalid top-level block found.");
         break;
       }
       continue;
@@ -1171,7 +1180,7 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
   // Read all the records.
   SmallVector<uint64_t, 64> Record;
   while (1) {
-    NaClBitstreamEntry Entry = Stream.advance(0, 0);
+    NaClBitstreamEntry Entry = Stream.advance(0, nullptr);
 
     switch (Entry.Kind) {
     case NaClBitstreamEntry::Error:
@@ -1181,10 +1190,8 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
 
     case NaClBitstreamEntry::SubBlock:
       switch (Entry.ID) {
-      default:  // Skip unknown content.
-        if (Stream.SkipBlock())
-          return Error(InvalidSkippedBlock,
-                       "Unable to skip unknown block in function block");
+      default:
+        return Error(InvalidBlock, "Invalid block in function block");
         break;
       case naclbitc::CONSTANTS_BLOCK_ID:
         if (std::error_code EC = ParseConstants())
