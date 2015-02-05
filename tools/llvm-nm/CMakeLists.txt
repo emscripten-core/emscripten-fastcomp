@@ -1,7 +1,7 @@
 set(LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
-  naclbitreader
   Core
+  NaClBitReader # @LOCALMOD
   Object
   Support
   )

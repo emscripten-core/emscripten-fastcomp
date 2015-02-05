@@ -1,7 +1,7 @@
 set(LLVM_LINK_COMPONENTS
   BitReader
-  naclbitreader
   Core
+  NaClBitReader # @LOCALMOD
   Support
   )
 
