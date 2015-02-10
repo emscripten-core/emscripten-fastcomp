@@ -568,9 +568,11 @@ DEF_CALL_HANDLER(emscripten_atomic_cas_u32, {
   return getAssign(CI) + "Atomics_compareExchange(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_f32, {
+  errs() << "emcc: warning: float32 compare-and-swap is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
   return getAssign(CI) + "Atomics_compareExchange(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_f64, {
+  errs() << "emcc: warning: float64 compare-and-swap is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
   return getAssign(CI) + "Atomics_compareExchange(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
 })
 
@@ -584,10 +586,16 @@ DEF_CALL_HANDLER(emscripten_atomic_load_u32, {
   return getAssign(CI) + "Atomics_load(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
-  return getAssign(CI) + "Atomics_load(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ")";
+  // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
+  // we must emulate manually.
+  return getAssign(CI) + "__Atomics_load_f32_emulated(" + getAddressAsString(CI->getOperand(0), 2) + ")";
+//  return getAssign(CI) + "Atomics_load(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f64, {
-  return getAssign(CI) + "Atomics_load(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ")";
+  // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
+  // we must emulate manually.
+  return getAssign(CI) + "__Atomics_load_f64_emulated(" + getAddressAsString(CI->getOperand(0), 3) + ")";
+//  return getAssign(CI) + "Atomics_load(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ")";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_store_u8, {
@@ -600,10 +608,16 @@ DEF_CALL_HANDLER(emscripten_atomic_store_u32, {
   return getAssign(CI) + "Atomics_store(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
-  return getAssign(CI) + "Atomics_store(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
+  // we must emulate manually.
+  return getAssign(CI) + "__Atomics_store_f32_emulated(" + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+//  return getAssign(CI) + "Atomics_store(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f64, {
-  return getAssign(CI) + "Atomics_store(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
+  // we must emulate manually.
+  return getAssign(CI) + "__Atomics_store_f64_emulated(" + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+//  return getAssign(CI) + "Atomics_store(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_add_u8, {
@@ -616,9 +630,11 @@ DEF_CALL_HANDLER(emscripten_atomic_add_u32, {
   return getAssign(CI) + "Atomics_add(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_f32, {
+  errs() << "emcc: warning: float32 atomic add is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
   return getAssign(CI) + "Atomics_add(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_f64, {
+  errs() << "emcc: warning: float64 atomic add is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
   return getAssign(CI) + "Atomics_add(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
@@ -632,9 +648,11 @@ DEF_CALL_HANDLER(emscripten_atomic_sub_u32, {
   return getAssign(CI) + "Atomics_sub(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_f32, {
+  errs() << "emcc: warning: float32 atomic sub is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
   return getAssign(CI) + "Atomics_sub(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_f64, {
+  errs() << "emcc: warning: float64 atomic sub is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
   return getAssign(CI) + "Atomics_sub(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
@@ -647,12 +665,6 @@ DEF_CALL_HANDLER(emscripten_atomic_and_u16, {
 DEF_CALL_HANDLER(emscripten_atomic_and_u32, {
   return getAssign(CI) + "Atomics_and(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
-DEF_CALL_HANDLER(emscripten_atomic_and_f32, {
-  return getAssign(CI) + "Atomics_and(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
-DEF_CALL_HANDLER(emscripten_atomic_and_f64, {
-  return getAssign(CI) + "Atomics_and(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
 
 DEF_CALL_HANDLER(emscripten_atomic_or_u8, {
   return getAssign(CI) + "Atomics_or(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
@@ -663,12 +675,6 @@ DEF_CALL_HANDLER(emscripten_atomic_or_u16, {
 DEF_CALL_HANDLER(emscripten_atomic_or_u32, {
   return getAssign(CI) + "Atomics_or(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
-DEF_CALL_HANDLER(emscripten_atomic_or_f32, {
-  return getAssign(CI) + "Atomics_or(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
-DEF_CALL_HANDLER(emscripten_atomic_or_f64, {
-  return getAssign(CI) + "Atomics_or(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
 
 DEF_CALL_HANDLER(emscripten_atomic_xor_u8, {
   return getAssign(CI) + "Atomics_xor(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
@@ -678,12 +684,6 @@ DEF_CALL_HANDLER(emscripten_atomic_xor_u16, {
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u32, {
   return getAssign(CI) + "Atomics_xor(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
-DEF_CALL_HANDLER(emscripten_atomic_xor_f32, {
-  return getAssign(CI) + "Atomics_xor(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
-DEF_CALL_HANDLER(emscripten_atomic_xor_f64, {
-  return getAssign(CI) + "Atomics_xor(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \
@@ -898,20 +898,14 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_atomic_and_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_and_u16);
   SETUP_CALL_HANDLER(emscripten_atomic_and_u32);
-  SETUP_CALL_HANDLER(emscripten_atomic_and_f32);
-  SETUP_CALL_HANDLER(emscripten_atomic_and_f64);
 
   SETUP_CALL_HANDLER(emscripten_atomic_or_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_or_u16);
   SETUP_CALL_HANDLER(emscripten_atomic_or_u32);
-  SETUP_CALL_HANDLER(emscripten_atomic_or_f32);
-  SETUP_CALL_HANDLER(emscripten_atomic_or_f64);
 
   SETUP_CALL_HANDLER(emscripten_atomic_xor_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_xor_u16);
   SETUP_CALL_HANDLER(emscripten_atomic_xor_u32);
-  SETUP_CALL_HANDLER(emscripten_atomic_xor_f32);
-  SETUP_CALL_HANDLER(emscripten_atomic_xor_f64);
 
   SETUP_CALL_HANDLER(emscripten_atomic_fence);
 

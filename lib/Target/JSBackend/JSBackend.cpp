@@ -496,6 +496,7 @@ namespace {
 
     std::string getPtrLoad(const Value* Ptr);
     std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName);
+    std::string getByteAddressAsStr(const Value *Ptr);
     std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
     std::string getPtrUse(const Value* Ptr);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
@@ -877,6 +878,16 @@ std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapNam
   }
 }
 
+std::string JSWriter::getByteAddressAsStr(const Value *Ptr)
+{
+  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
+  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
+    return utostr(getGlobalAddress(GV->getName().str()));
+  } else {
+    return getValueAsStr(Ptr);
+  }
+}
+
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
@@ -885,7 +896,13 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
     if (cast<LoadInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
-      text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
+      if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+        // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
+        // implemented, we could remove the emulation, but until then we must emulate manually.
+        text = Assign + "__Atomics_load_" + HeapName + "_emulated(" + getByteAddressAsStr(P) + ')';
+      } else {
+        text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
+      }
     } else {
       text = Assign + getPtrLoad(P);
     }
@@ -998,7 +1015,13 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
     if (true/*compilingWithPthreadsSupport*/ && cast<StoreInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
-      text = AtomicsStore + HeapName + ',' + Index + ',' + VS+ ')';
+      if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+        // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
+        // implemented, we could remove the emulation, but until then we must emulate manually.
+        text = std::string("__Atomics_store_") + HeapName + "_emulated(" + getByteAddressAsStr(P) + ',' + VS + ')';
+      } else {
+        text = AtomicsStore + HeapName + ',' + Index + ',' + VS + ')';
+      }
     } else {
       text = getPtrUse(P) + " = " + VS;
     }
@@ -2370,12 +2393,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       const char *atomicFunc = 0;
       switch (rmwi->getOperation()) {
-        case AtomicRMWInst::Xchg: atomicFunc = "Atomics_store("; break;
-        case AtomicRMWInst::Add: atomicFunc = "Atomics_add("; break;
-        case AtomicRMWInst::Sub: atomicFunc = "Atomics_sub("; break;
-        case AtomicRMWInst::And: atomicFunc = "Atomics_and("; break;
-        case AtomicRMWInst::Or: atomicFunc = "Atomics_or("; break;
-        case AtomicRMWInst::Xor: atomicFunc = "Atomics_xor("; break;
+        case AtomicRMWInst::Xchg: atomicFunc = "Atomics_store"; break;
+        case AtomicRMWInst::Add: atomicFunc = "Atomics_add"; break;
+        case AtomicRMWInst::Sub: atomicFunc = "Atomics_sub"; break;
+        case AtomicRMWInst::And: atomicFunc = "Atomics_and"; break;
+        case AtomicRMWInst::Or: atomicFunc = "Atomics_or"; break;
+        case AtomicRMWInst::Xor: atomicFunc = "Atomics_xor"; break;
         case AtomicRMWInst::Nand: // TODO
         case AtomicRMWInst::Max:
         case AtomicRMWInst::Min:
@@ -2383,7 +2406,13 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         case AtomicRMWInst::UMin:
         case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
       }
-      Code << Assign << atomicFunc << HeapName << ", " << Index << ", " << VS << ")"; break;
+      if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+        // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
+        // implemented, we could remove the emulation, but until then we must emulate manually.
+        Code << Assign << "__" << atomicFunc << HeapName << "_emulated(" << getByteAddressAsStr(P) << ", " << VS << ")"; break;
+      } else {
+        Code << Assign << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
+      }
     } else {
       Code << getLoad(rmwi, P, I->getType(), 0) << ';';
       // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
