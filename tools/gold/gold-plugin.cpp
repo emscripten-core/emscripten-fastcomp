@@ -559,11 +559,9 @@ static Constant *mapConstantToLocalCopy(Constant *C, ValueToValueMapTy &VM,
 }
 
 static std::unique_ptr<Module>
-getModuleForFile(LLVMContext &Context, claimed_file &F, raw_fd_ostream *ApiFile,
+getModuleForFile(LLVMContext &Context, claimed_file &F,
+                 off_t Filesize, raw_fd_ostream *ApiFile,
                  StringSet<> &Internalize, StringSet<> &Maybe) {
-  ld_plugin_input_file File;
-  if (get_input_file(F.handle, &File) != LDPS_OK)
-    message(LDPL_FATAL, "Failed to get file information");
 
   if (get_symbols(F.handle, F.syms.size(), &F.syms[0]) != LDPS_OK)
     message(LDPL_FATAL, "Failed to get symbol information");
@@ -574,16 +572,13 @@ getModuleForFile(LLVMContext &Context, claimed_file &F, raw_fd_ostream *ApiFile,
 
   llvm::ErrorOr<MemoryBufferRef> MBOrErr =
       object::IRObjectFile::findBitcodeInMemBuffer(
-          MemoryBufferRef(StringRef((const char *)View, File.filesize), ""));
+          MemoryBufferRef(StringRef((const char *)View, Filesize), ""));
   if (std::error_code EC = MBOrErr.getError())
     message(LDPL_FATAL, "Could not read bitcode from file : %s",
             EC.message().c_str());
 
   std::unique_ptr<MemoryBuffer> Buffer =
       MemoryBuffer::getMemBuffer(MBOrErr->getBuffer(), "", false);
-
-  if (release_input_file(F.handle) != LDPS_OK)
-    message(LDPL_FATAL, "Failed to release file information");
 
   ErrorOr<Module *> MOrErr = getLazyBitcodeModule(std::move(Buffer), Context);
 
@@ -820,8 +815,12 @@ static ld_plugin_status allSymbolsReadHook(raw_fd_ostream *ApiFile) {
   StringSet<> Internalize;
   StringSet<> Maybe;
   for (claimed_file &F : Modules) {
+    ld_plugin_input_file File;
+    if (get_input_file(F.handle, &File) != LDPS_OK)
+      message(LDPL_FATAL, "Failed to get file information");
     std::unique_ptr<Module> M =
-        getModuleForFile(Context, F, ApiFile, Internalize, Maybe);
+        getModuleForFile(Context, F, File.filesize, ApiFile,
+                         Internalize, Maybe);
     if (!options::triple.empty())
       M->setTargetTriple(options::triple.c_str());
     else if (M->getTargetTriple().empty()) {
@@ -830,6 +829,8 @@ static ld_plugin_status allSymbolsReadHook(raw_fd_ostream *ApiFile) {
 
     if (L.linkInModule(M.get()))
       message(LDPL_FATAL, "Failed to link module");
+    if (release_input_file(F.handle) != LDPS_OK)
+      message(LDPL_FATAL, "Failed to release file information");
   }
 
   for (const auto &Name : Internalize) {
