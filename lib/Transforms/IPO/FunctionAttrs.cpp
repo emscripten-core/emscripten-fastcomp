@@ -1233,8 +1233,11 @@ bool FunctionAttrs::inferPrototypeAttributes(Function &F) {
   case LibFunc::fseek:
   case LibFunc::ftell:
   case LibFunc::fgetc:
-  case LibFunc::fseeko:
-  case LibFunc::ftello:
+  // @LOCALMOD-BEGIN:
+  // https://code.google.com/p/nativeclient/issues/detail?id=4089
+  case LibFunc::Fseeko:
+  case LibFunc::Ftello:
+  // @LOCALMOD-END
   case LibFunc::fileno:
   case LibFunc::fflush:
   case LibFunc::fclose:

@@ -317,7 +317,9 @@ namespace llvm {
       /// int fseek(FILE *stream, long offset, int whence);
       fseek,
       /// int fseeko(FILE *stream, off_t offset, int whence);
-      fseeko,
+      // @LOCALMOD: Capitalize to avoid mingw #define:
+      // https://code.google.com/p/nativeclient/issues/detail?id=4089
+      Fseeko,
       /// int fseeko64(FILE *stream, off64_t offset, int whence)
       fseeko64,
       /// int fsetpos(FILE *stream, const fpos_t *pos);
@@ -333,7 +335,9 @@ namespace llvm {
       /// long ftell(FILE *stream);
       ftell,
       /// off_t ftello(FILE *stream);
-      ftello,
+      // @LOCALMOD: Capitalize to avoid mingw #define:
+      // https://code.google.com/p/nativeclient/issues/detail?id=4089
+      Ftello,
       /// off64_t ftello64(FILE *stream)
       ftello64,
       /// int ftrylockfile(FILE *file);
