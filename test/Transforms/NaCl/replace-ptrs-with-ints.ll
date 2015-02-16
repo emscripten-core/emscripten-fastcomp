@@ -484,6 +484,12 @@ define void @nocapture_attr(i8* nocapture noalias %ptr) {
 }
 ; CHECK: define void @nocapture_attr(i32 %ptr) {
 
+
+define void @readonly_readnone(i8* readonly readnone) {
+  ret void
+}
+; CHECK-LABEL: define void @readonly_readnone(i32)
+
 ; "nounwind" should be preserved.
 define void @nounwind_func_attr() nounwind {
   ret void
