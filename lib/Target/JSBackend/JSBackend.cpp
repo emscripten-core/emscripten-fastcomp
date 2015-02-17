@@ -2331,6 +2331,14 @@ void JSWriter::printFunctionBody(const Function *F) {
     nl(Out);
   }
 
+  {
+    static bool Warned = false;
+    if (!Warned && OptLevel < 2 && UsedVars.size() > 2000) {
+      prettyWarning() << "emitted code will contain very large numbers of local variables, which is bad for performance (build to JS with -O2 or above to avoid this - make sure to do so both on source files, and during 'linking')\n";
+      Warned = true;
+    }
+  }
+
   // Emit stack entry
   Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
   if (uint64_t FrameSize = Allocas.getFrameSize()) {
