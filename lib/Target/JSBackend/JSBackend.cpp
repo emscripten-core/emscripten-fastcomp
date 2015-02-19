@@ -1046,6 +1046,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else if (isa<UndefValue>(CV)) {
     std::string S;
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
+      checkVectorType(VT);
       if (VT->getElementType()->isIntegerTy()) {
         S = "SIMD_int32x4_splat(0)";
       } else {
@@ -1060,6 +1061,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     return S;
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
+      checkVectorType(VT);
       if (VT->getElementType()->isIntegerTy()) {
         return "SIMD_int32x4_splat(0)";
       } else {
@@ -1070,6 +1072,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       return "0";
     }
   } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
+    checkVectorType(DV->getType());
     unsigned NumElts = cast<VectorType>(DV->getType())->getNumElements();
     Type *EltTy = cast<VectorType>(DV->getType())->getElementType();
     Constant *Undef = UndefValue::get(EltTy);
@@ -1079,6 +1082,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
                              getConstant(NumElts > 2 ? DV->getElementAsConstant(2) : Undef),
                              getConstant(NumElts > 3 ? DV->getElementAsConstant(3) : Undef));
   } else if (const ConstantVector *V = dyn_cast<ConstantVector>(CV)) {
+    checkVectorType(V->getType());
     unsigned NumElts = cast<VectorType>(CV->getType())->getNumElements();
     Type *EltTy = cast<VectorType>(CV->getType())->getElementType();
     Constant *Undef = UndefValue::get(EltTy);
