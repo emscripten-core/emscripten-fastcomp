@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
 
 // Headers which are not properly part of the SDK are included by their
 // path in the NaCl tree.

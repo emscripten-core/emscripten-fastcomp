@@ -665,7 +665,9 @@ ifneq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
   endif
 endif
 
-ifeq ($(NACL_SANDBOX),1)
+#@LOCALMOD-BEGIN
+ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
+  CPP.Flags += -DPNACL_BROWSER_TRANSLATOR
   # NOTE: we specify --noirt to tell the driver that we should link
   # against private (non-stable, non-IRT) libraries for the
   # sandboxed translator.  This could have been specified directly,
@@ -679,6 +681,7 @@ ifeq ($(NACL_SANDBOX),1)
     C.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
   endif
 endif
+# @LOCALMOD-END
 
 #----------------------------------------------------------
 # Options To Invoke Tools

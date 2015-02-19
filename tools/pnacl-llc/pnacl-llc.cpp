@@ -54,10 +54,10 @@
 
 using namespace llvm;
 
-// NOTE: When __native_client__ is defined it means pnacl-llc is built as a
-// sandboxed translator (from pnacl-llc.pexe to pnacl-llc.nexe). In this mode
-// it uses SRPC operations instead of direct OS intefaces.
-#if defined(__native_client__)
+// NOTE: When PNACL_BROWSER_TRANSLATOR is defined it means pnacl-llc is built
+// as a sandboxed translator (from pnacl-llc.pexe to pnacl-llc.nexe). In this
+// mode it uses SRPC operations instead of direct OS intefaces.
+#if defined(PNACL_BROWSER_TRANSLATOR)
 int srpc_main(int argc, char **argv);
 int getObjectFileFD(unsigned index);
 DataStreamer *getNaClBitcodeStreamer();
@@ -73,7 +73,7 @@ InputFileFormat(
         clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
         clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
     cl::init(PNaClFormat)
 #else
     cl::init(LLVMFormat)
@@ -161,7 +161,7 @@ SplitModuleSched(
 /// option parsing.
 static int compileModule(StringRef ProgramName);
 
-#if !defined(__native_client__)
+#if !defined(PNACL_BROWSER_TRANSLATOR)
 // GetFileNameRoot - Helper function to get the basename of a filename.
 static std::string
 GetFileNameRoot(StringRef InputFilename) {
@@ -240,7 +240,7 @@ static tool_output_file *GetOutputStream(const char *TargetName,
 
   return FDOut;
 }
-#endif // !defined(__native_client__)
+#endif // !defined(PNACL_BROWSER_TRANSLATOR)
 
 // main - Entry point for the llc compiler.
 //
@@ -253,7 +253,7 @@ int llc_main(int argc, char **argv) {
 
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
   install_fatal_error_handler(getSRPCErrorHandler(), nullptr);
 #endif
 
@@ -261,7 +261,7 @@ int llc_main(int argc, char **argv) {
   InitializeAllTargets();
   InitializeAllTargetMCs();
   InitializeAllAsmPrinters();
-#if !defined(__native_client__)
+#if !defined(PNACL_BROWSER_TRANSLATOR)
   // Prune asm parsing from sandboxed translator.
   // Do not prune "AsmPrinters" because that includes
   // the direct object emission.
@@ -281,14 +281,14 @@ int llc_main(int argc, char **argv) {
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
   // Enable the PNaCl ABI verifier by default in sandboxed mode.
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
   PNaClABIVerify = true;
   PNaClABIVerifyFatalErrors = true;
 #endif
 
   cl::ParseCommandLineOptions(argc, argv, "pnacl-llc\n");
 
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
   // If the user explicitly requests LLVM format in sandboxed mode
   // (where the default is PNaCl format), they probably want debug
   // metadata enabled.
@@ -345,7 +345,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
     if (!StrError.empty())
       Err = SMDiagnostic(InputFilename, SourceMgr::DK_Error, StrError);
   } else {
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
     llvm_unreachable("native client SRPC only supports streaming");
 #else
     // Parses binary bitcode as well as textual assembly
@@ -355,7 +355,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
 #endif
   }
   if (!M) {
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
     report_fatal_error(VerboseStrm.str() + Err.getMessage());
 #else
     // Err.print is prettier, so use it for the non-sandboxed translator.
@@ -580,7 +580,7 @@ static int compileSplitModule(const TargetOptions &Options,
   mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
 
   {
-#if !defined(__native_client__)
+#if !defined(PNACL_BROWSER_TRANSLATOR)
       // Figure out where we are going to send the output.
     std::string N(OutputFilename);
     raw_string_ostream OutFileName(N);
@@ -601,13 +601,13 @@ static int compileSplitModule(const TargetOptions &Options,
                                FOS);
     if (ret)
       return ret;
-#if defined (__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
     FOS.flush();
     ROS.flush();
 #else
     // Declare success.
     Out->keep();
-#endif // __native_client__
+#endif // PNACL_BROWSER_TRANSLATOR
   }
   return 0;
 }
@@ -656,7 +656,7 @@ static int compileModule(StringRef ProgramName) {
 
   if (!MainContext) return 1;
 
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
   StreamingObject.reset(
       new StreamingMemoryObjectImpl(getNaClBitcodeStreamer()));
 #else
@@ -776,9 +776,9 @@ static int compileModule(StringRef ProgramName) {
 }
 
 int main(int argc, char **argv) {
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
   return srpc_main(argc, argv);
 #else
   return llc_main(argc, argv);
-#endif // __native_client__
+#endif // PNACL_BROWSER_TRANSLATOR
 }

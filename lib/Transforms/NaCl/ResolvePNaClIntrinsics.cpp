@@ -32,7 +32,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
-#if defined(__pnacl__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
 #include "native_client/src/untrusted/nacl/pnacl.h"
 #endif
 
@@ -179,7 +179,7 @@ struct IsLockFreeToConstant {
     const APInt &ByteSize =
         cast<Constant>(Call->getOperand(0))->getUniqueInteger();
 
-#   if defined(__pnacl__)
+#   if defined(PNACL_BROWSER_TRANSLATOR)
     switch (__builtin_nacl_target_arch()) {
     case PnaclTargetArchitectureX86_32:
     case PnaclTargetArchitectureX86_64:
@@ -191,7 +191,9 @@ struct IsLockFreeToConstant {
     default:
       report_fatal_error("Unhandled arch from __builtin_nacl_target_arch()");
     }
-#   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__)
+#   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
+         defined(__pnacl__)
+    // TODO(jfb): MaxLockFreeByteSize should actually be selected at runtime.
     // Continue.
 #   elif defined(__mips__)
     MaxLockFreeByteSize = 4;
