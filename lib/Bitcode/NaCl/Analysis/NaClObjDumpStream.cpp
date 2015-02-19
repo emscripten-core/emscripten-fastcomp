@@ -8,12 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
+#include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
-
-#include <inttypes.h>
 
 namespace llvm {
 namespace naclbitc {
