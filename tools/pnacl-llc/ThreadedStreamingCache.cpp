@@ -24,37 +24,51 @@ ThreadedStreamingCache::ThreadedStreamingCache(
                 "kCacheSize must be a power of 2");
 }
 
-bool ThreadedStreamingCache::fetchCacheLine(uint64_t address) const {
-  uint64_t Base = address & kCacheSizeMask;
-  uint64_t Ret;
+void ThreadedStreamingCache::fetchCacheLine(uint64_t Address) const {
+  uint64_t Base = Address & kCacheSizeMask;
+  uint64_t BytesFetched;
   ScopedLock L(StreamerLock);
   if (Streamer->isValidAddress(Base + kCacheSize - 1)) {
-    Ret = Streamer->readBytes(&Cache[0], kCacheSize, Base);
-    if (Ret != kCacheSize)
-      return true;
+    BytesFetched = Streamer->readBytes(&Cache[0], kCacheSize, Base);
+    if (BytesFetched != kCacheSize) {
+      llvm::report_fatal_error(
+          "fetchCacheLine failed to fetch a full cache line");
+    }
     MinObjectSize = Base + kCacheSize;
   } else {
     uint64_t End = Streamer->getExtent();
-    assert(End > address && End <= Base + kCacheSize);
-    Ret = Streamer->readBytes(&Cache[0], End - Base, Base);
-    if (Ret != (End - Base))
-      return true;
+    assert(End > Address && End <= Base + kCacheSize);
+    BytesFetched = Streamer->readBytes(&Cache[0], End - Base, Base);
+    if (BytesFetched != (End - Base)) {
+      llvm::report_fatal_error(
+          "fetchCacheLine failed to fetch rest of stream");
+    }
     MinObjectSize = End;
   }
   CacheBase = Base;
-  return false;
 }
 
 uint64_t ThreadedStreamingCache::readBytes(uint8_t* Buf, uint64_t Size,
                                            uint64_t Address) const {
   // To keep the cache fetch simple, we currently require that no request cross
   // the cache line. This isn't a problem for the bitcode reader because it only
-  // fetches a byte or a word at a time.
-  if (Address < CacheBase || (Address + Size) > CacheBase + kCacheSize) {
-    if ((Address & kCacheSizeMask) != ((Address + Size - 1) & kCacheSizeMask))
+  // fetches a byte or a word (word may be 4 to 8 bytes) at a time.
+  uint64_t Upper = Address + Size;
+  if (Address < CacheBase || Upper > CacheBase + kCacheSize) {
+    // If completely outside of a cacheline, fetch the cacheline.
+    if ((Address & kCacheSizeMask) != ((Upper - 1) & kCacheSizeMask))
       llvm::report_fatal_error("readBytes request spans cache lines");
-    if (fetchCacheLine(Address))
-      llvm::report_fatal_error("readBytes failed to fetch a full cache line");
+    // Fetch a cache line first, which may be partial.
+    fetchCacheLine(Address);
+  }
+  // Now the start Address should at least fit in the cache line,
+  // but Upper may still be beyond the Extent / MinObjectSize, so clamp.
+  if (Address >= CacheBase && Upper > MinObjectSize) {
+    // If in the cacheline but stretches beyone the MinObjectSize,
+    // only read up to MinObjectSize (caller uses readBytes to check EOF,
+    // and can guess / try to read more). MinObjectSize should be the same
+    // as EOF in this case otherwise it would have fit in the cacheline.
+    Size = MinObjectSize - Address;
   }
   memcpy(Buf, &Cache[Address - CacheBase], Size);
   return Size;
@@ -66,25 +80,25 @@ uint64_t ThreadedStreamingCache::getExtent() const {
   return 0;
 }
 
-bool ThreadedStreamingCache::isValidAddress(uint64_t address) const {
-  if (address < MinObjectSize)
+bool ThreadedStreamingCache::isValidAddress(uint64_t Address) const {
+  if (Address < MinObjectSize)
     return true;
   ScopedLock L(StreamerLock);
-  bool Valid = Streamer->isValidAddress(address);
+  bool Valid = Streamer->isValidAddress(Address);
   if (Valid)
-    MinObjectSize = address;
+    MinObjectSize = Address;
   return Valid;
 }
 
-bool ThreadedStreamingCache::dropLeadingBytes(size_t s) {
+bool ThreadedStreamingCache::dropLeadingBytes(size_t S) {
   ScopedLock L(StreamerLock);
-  return Streamer->dropLeadingBytes(s);
+  return Streamer->dropLeadingBytes(S);
 }
 
-void ThreadedStreamingCache::setKnownObjectSize(size_t size) {
-  MinObjectSize = size;
+void ThreadedStreamingCache::setKnownObjectSize(size_t Size) {
+  MinObjectSize = Size;
   ScopedLock L(StreamerLock);
-  Streamer->setKnownObjectSize(size);
+  Streamer->setKnownObjectSize(Size);
 }
 
 const uint64_t ThreadedStreamingCache::kCacheSize;
