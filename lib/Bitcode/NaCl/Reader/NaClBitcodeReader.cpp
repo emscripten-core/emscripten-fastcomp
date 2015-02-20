@@ -1880,11 +1880,11 @@ std::error_code NaClBitcodeReader::InitLazyStream() {
 /// NaCl does not support BlockAddresses, so it does not need to materialize
 /// forward-referenced functions from block address references.
 ErrorOr<Module *> llvm::getNaClLazyBitcodeModule(
-    MemoryBuffer *Buffer, LLVMContext& Context, raw_ostream *Verbose,
-    bool AcceptSupportedOnly) {
+    std::unique_ptr<MemoryBuffer> &&Buffer, LLVMContext& Context,
+    raw_ostream *Verbose, bool AcceptSupportedOnly) {
   Module *M = new Module(Buffer->getBufferIdentifier(), Context);
   NaClBitcodeReader *R =
-      new NaClBitcodeReader(Buffer, Context, Verbose, AcceptSupportedOnly);
+      new NaClBitcodeReader(Buffer.get(), Context, Verbose, AcceptSupportedOnly);
   M->setMaterializer(R);
 
   auto cleanupOnError = [&](std::error_code EC) {
@@ -1896,6 +1896,7 @@ ErrorOr<Module *> llvm::getNaClLazyBitcodeModule(
   if (std::error_code EC = R->ParseBitcodeInto(M))
     return cleanupOnError(EC);
 
+  Buffer.release(); // The BitcodeReader owns it now.
   return M;
 }
 
@@ -1926,10 +1927,9 @@ ErrorOr<Module *> llvm::NaClParseBitcodeFile(
     bool AcceptSupportedOnly){
   std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(Buffer, false);
   ErrorOr<Module *> ModuleOrErr =
-      getNaClLazyBitcodeModule(Buf.get(), Context, Verbose, AcceptSupportedOnly);
+      getNaClLazyBitcodeModule(std::move(Buf), Context, Verbose, AcceptSupportedOnly);
   if (!ModuleOrErr)
     return ModuleOrErr;
-  Buf.release(); // The BitcodeReader owns it now.
   Module *M = ModuleOrErr.get();
   // Read in the entire module, and destroy the NaClBitcodeReader.
   if (std::error_code EC = M->materializeAllPermanently()) {

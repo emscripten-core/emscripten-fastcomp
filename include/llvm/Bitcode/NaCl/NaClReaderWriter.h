@@ -59,7 +59,7 @@ namespace llvm {
   ///    3) Unreadable.
   /// When AcceptSupportedOnly is true, only form 1 is allowed. When
   /// AcceptSupportedOnly is false, forms 1 and 2 are allowed.
-  ErrorOr<Module *> getNaClLazyBitcodeModule(MemoryBuffer *Buffer,
+  ErrorOr<Module *> getNaClLazyBitcodeModule(std::unique_ptr<MemoryBuffer> &&Buffer,
                                              LLVMContext &Context,
                                              raw_ostream *Verbose = nullptr,
                                              bool AcceptSupportedOnly = true);
