@@ -6,7 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#if defined(__native_client__)
+#if defined(PNACL_BROWSER_TRANSLATOR)
 #define DEBUG_TYPE "bitcode-stream"
 #include "SRPCStreamer.h"
 #include "llvm/Support/Debug.h"

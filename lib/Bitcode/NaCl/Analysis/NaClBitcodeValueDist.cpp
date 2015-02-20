@@ -9,10 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Bitcode/NaCl/NaClBitcodeValueDist.h"
 #include "llvm/ADT/STLExtras.h"
-
-#include <inttypes.h>
+#include "llvm/Bitcode/NaCl/NaClBitcodeValueDist.h"
+#include "llvm/Support/DataTypes.h"
 
 using namespace llvm;
 

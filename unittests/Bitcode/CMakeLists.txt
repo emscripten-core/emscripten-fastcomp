@@ -14,6 +14,7 @@ add_llvm_unittest(BitcodeTests
   BitReaderTest.cpp
   BitstreamReaderTest.cpp
   NaClAbbrevTrieTest.cpp
+  NaClBitReaderTest.cpp
   NaClBitstreamReaderTest.cpp
   NaClObjDumpTest.cpp
   NaClObjDumpTypesTest.cpp
