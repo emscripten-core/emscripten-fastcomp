@@ -69,6 +69,11 @@ PreciseF32("emscripten-precise-f32",
            cl::init(false));
 
 static cl::opt<bool>
+EnablePthreads("emscripten-enable-pthreads",
+           cl::desc("Enables compilation targeting JavaScript Shared Array Buffer and Atomics API to implement support for pthreads-based multithreading"),
+           cl::init(false));
+
+static cl::opt<bool>
 WarnOnUnaligned("emscripten-warn-unaligned",
                 cl::desc("Warns about unaligned loads and stores (which can negatively affect performance)"),
                 cl::init(false));
@@ -913,7 +918,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   } else {
     // unaligned in some manner
 
-    if (true/*compilingWithPthreadsSupport*/ && cast<LoadInst>(I)->isVolatile()) {
+    if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
       errs() << "emcc: warning: unable to implement unaligned volatile load as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
       emitDebugInfo(errs(), I);
       errs() << "\n";
@@ -1012,7 +1017,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
   unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
-    if (true/*compilingWithPthreadsSupport*/ && cast<StoreInst>(I)->isVolatile()) {
+    if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
@@ -1029,7 +1034,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
   } else {
     // unaligned in some manner
 
-    if (true/*compilingWithPthreadsSupport*/ && cast<StoreInst>(I)->isVolatile()) {
+    if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
       errs() << "emcc: warning: unable to implement unaligned volatile store as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
       emitDebugInfo(errs(), I);
       errs() << "\n";
@@ -2362,7 +2367,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::AtomicCmpXchg: {
     const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
     const Value *P = I->getOperand(0);
-    if (true/*compilingWithPthreadsSupport*/) {
+    if (EnablePthreads) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       //std::string Assign = getAssign(cxi);
@@ -2385,7 +2390,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     const Value *V = rmwi->getOperand(1);
     std::string VS = getValueAsStr(V);
 
-    if (true/*compilingWithPthreadsSupport*/) {
+    if (EnablePthreads) {
       std::string Assign = getAssign(rmwi);
       unsigned Bytes = DL->getTypeAllocSize(T);
       std::string text;
@@ -2434,7 +2439,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::Fence: // no threads, so nothing to do here
-    if (true/*compilingWithPthreadsSupport*/) {
+    if (EnablePthreads) {
       Code << "Atomics_fence()";
     } else {
       Code << "/* fence */";
