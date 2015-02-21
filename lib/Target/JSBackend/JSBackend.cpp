@@ -2367,20 +2367,16 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::AtomicCmpXchg: {
     const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
     const Value *P = I->getOperand(0);
+    const char *HeapName;
+    std::string Index = getHeapNameAndIndex(P, &HeapName);
+    std::string Assign = getJSName(I);
     if (EnablePthreads) {
-      const char *HeapName;
-      std::string Index = getHeapNameAndIndex(P, &HeapName);
-      //std::string Assign = getAssign(cxi);
-      std::string Assign = getJSName(I);
       Code << Assign << "_0 = Atomics_compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ");\n";
       Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0)";
     } else {
-      report_fatal_error("TODO: AtomicCmpXchg without pthreads not currently supported!");
-      /*
-      Code << getLoad(cxi, P, I->getType(), 0) << ';' <<
-             "if ((" << getCast(getJSName(I), I->getType()) << ") == " << getValueAsCastParenStr(I->getOperand(1)) << ") " <<
-                getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
-      */
+      Code << Assign << "_0 = " << HeapName << "[" << Index << "];\n";
+      Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0); ";
+	  Code << "if (" << Assign << "_1) " << getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
     }
     break;
   }
