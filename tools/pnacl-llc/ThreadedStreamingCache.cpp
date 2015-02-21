@@ -63,7 +63,7 @@ uint64_t ThreadedStreamingCache::readBytes(uint8_t* Buf, uint64_t Size,
   }
   // Now the start Address should at least fit in the cache line,
   // but Upper may still be beyond the Extent / MinObjectSize, so clamp.
-  if (Address >= CacheBase && Upper > MinObjectSize) {
+  if (Upper > MinObjectSize) {
     // If in the cacheline but stretches beyone the MinObjectSize,
     // only read up to MinObjectSize (caller uses readBytes to check EOF,
     // and can guess / try to read more). MinObjectSize should be the same

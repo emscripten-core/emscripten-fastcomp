@@ -55,7 +55,7 @@ class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
   static llvm::sys::SmartMutex<false> StreamerLock;
 
   // Fetch up to kCacheSize worth of data starting from Address, into the
-  // CacheBase, and sets MinObjectSize to the new known edge.
+  // CacheBase, and set MinObjectSize to the new known edge.
   // If at EOF, MinObjectSize reflects the final size.
   void fetchCacheLine(uint64_t Address) const;
 
