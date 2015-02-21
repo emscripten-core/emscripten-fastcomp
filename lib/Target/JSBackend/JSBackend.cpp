@@ -898,7 +898,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
-    if (cast<LoadInst>(I)->isVolatile()) {
+    if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
