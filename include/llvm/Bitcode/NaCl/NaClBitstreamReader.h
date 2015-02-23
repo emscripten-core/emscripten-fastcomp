@@ -217,7 +217,7 @@ class NaClBitstreamCursor {
   word_t CurWord;
 
   /// This is the number of bits in CurWord that are valid. This
-  /// is always from [0...bits_of(size_t)-1] inclusive.
+  /// is always from [0...bits_of(word_t)-1] inclusive.
   unsigned BitsInCurWord;
 
   /// This is the declared size of code values used for the current
