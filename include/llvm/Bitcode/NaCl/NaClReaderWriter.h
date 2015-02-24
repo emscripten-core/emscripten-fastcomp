@@ -43,10 +43,10 @@ namespace llvm {
   /// \brief Defines the integer bit size used to model pointers in PNaCl.
   static const unsigned PNaClIntPtrTypeBitSize = 32;
 
-  /// getNaClLazyBitcodeModule - Read the header of the specified bitcode buffer
-  /// and prepare for lazy deserialization of function bodies.  If successful,
-  /// takes ownership of 'buffer' and returns a non-null pointer.  On
-  /// error, this returns an error code and *does not* take ownership of Buffer.
+  /// Read the header of the specified bitcode buffer and prepare for lazy
+  /// deserialization of function bodies.  If successful, this takes ownership
+  /// of 'Buffer' (extending its lifetime).  On error, this returns an error code
+  /// and deletes Buffer.
   ///
   /// When Verbose is non-null, more descriptive error messages are also
   /// written to Verbose.
@@ -59,15 +59,14 @@ namespace llvm {
   ///    3) Unreadable.
   /// When AcceptSupportedOnly is true, only form 1 is allowed. When
   /// AcceptSupportedOnly is false, forms 1 and 2 are allowed.
-  ErrorOr<Module *> getNaClLazyBitcodeModule(std::unique_ptr<MemoryBuffer> &&Buffer,
-                                             LLVMContext &Context,
-                                             raw_ostream *Verbose = nullptr,
-                                             bool AcceptSupportedOnly = true);
+  ErrorOr<Module *> getNaClLazyBitcodeModule(
+      std::unique_ptr<MemoryBuffer> &&Buffer, LLVMContext &Context,
+      raw_ostream *Verbose = nullptr, bool AcceptSupportedOnly = true);
 
-  /// getNaClStreamedBitcodeModule - Read the header of the specified stream
-  /// and prepare for lazy deserialization and streaming of function bodies.
-  /// On error, this returns null, and fills in *ErrMsg with an error
-  /// description if ErrMsg is non-null.
+  /// Read the header of the specified stream and prepare for lazy
+  /// deserialization and streaming of function bodies. On error,
+  /// this returns null, and fills in *ErrMsg with an error description
+  /// if ErrMsg is non-null.
   ///
   /// See getNaClLazyBitcodeModule for an explanation of arguments
   /// Verbose, AcceptSupportedOnly.
@@ -80,8 +79,7 @@ namespace llvm {
                                        std::string *ErrMsg = nullptr,
                                        bool AcceptSupportedOnly = true);
 
-  /// NaClParseBitcodeFile - Read the specified bitcode file,
-  /// returning the module.
+  /// Read the bitcode file from a buffer, returning the module.
   ///
   /// See getNaClLazyBitcodeModule for an explanation of arguments
   /// Verbose, AcceptSupportedOnly.
@@ -90,10 +88,9 @@ namespace llvm {
                                          raw_ostream *Verbose = nullptr,
                                          bool AcceptSupportedOnly = true);
 
-  /// NaClWriteBitcodeToFile - Write the specified module to the
-  /// specified raw output stream, using PNaCl wire format.  For
-  /// streams where it matters, the given stream should be in "binary"
-  /// mode.
+  /// Write the specified module to the specified raw output stream, using
+  /// PNaCl wire format.  For streams where it matters, the given stream
+  /// should be in "binary" mode.
   ///
   /// The AcceptSupportedOnly argument is used to decide which PNaCl versions
   /// of the PNaCl bitcode to generate. There are two forms:

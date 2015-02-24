@@ -317,8 +317,9 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
   Reporter.reset();
 }
 
-static Module* getModule(StringRef ProgramName, LLVMContext &Context,
-                         StreamingMemoryObject *StreamingObject) {
+static std::unique_ptr<Module> getModule(
+    StringRef ProgramName, LLVMContext &Context,
+    StreamingMemoryObject *StreamingObject) {
   std::unique_ptr<Module> M;
   SMDiagnostic Err;
   std::string VerboseBuffer;
@@ -362,7 +363,7 @@ static Module* getModule(StringRef ProgramName, LLVMContext &Context,
     return nullptr;
 #endif
   }
-  return M.release();
+  return std::move(M);
 }
 
 static cl::opt<bool>
@@ -370,7 +371,7 @@ ExternalizeAll("externalize",
                cl::desc("Externalize all symbols"),
                cl::init(false));
 
-static int runCompilePasses(Module *mod,
+static int runCompilePasses(Module *ModuleRef,
                             unsigned ModuleIndex,
                             ThreadedFunctionQueue *FuncQueue,
                             const Triple &TheTriple,
@@ -383,14 +384,14 @@ static int runCompilePasses(Module *mod,
     // Add function and global names, and give them external linkage.
     // This relies on LLVM's consistent auto-generation of names, we could
     // maybe do our own in case something changes there.
-    for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-      if (!I->hasName())
-        I->setName("Function");
-      if (I->hasInternalLinkage())
-        I->setLinkage(GlobalValue::ExternalLinkage);
+    for (Function &F : *ModuleRef) {
+      if (!F.hasName())
+        F.setName("Function");
+      if (F.hasInternalLinkage())
+        F.setLinkage(GlobalValue::ExternalLinkage);
     }
-    for (Module::global_iterator GI = mod->global_begin(),
-         GE = mod->global_end();
+    for (Module::global_iterator GI = ModuleRef->global_begin(),
+         GE = ModuleRef->global_end();
          GI != GE; ++GI) {
       if (!GI->hasName())
         GI->setName("Global");
@@ -400,8 +401,8 @@ static int runCompilePasses(Module *mod,
     if (ModuleIndex > 0) {
       // Remove the initializers for all global variables, turning them into
       // declarations.
-      for (Module::global_iterator GI = mod->global_begin(),
-          GE = mod->global_end();
+      for (Module::global_iterator GI = ModuleRef->global_begin(),
+          GE = ModuleRef->global_end();
           GI != GE; ++GI) {
         assert(GI->hasInitializer() && "Global variable missing initializer");
         Constant *Init = GI->getInitializer();
@@ -415,12 +416,12 @@ static int runCompilePasses(Module *mod,
   // Make all non-weak symbols hidden for better code. We cannot do
   // this for weak symbols. The linker complains when some weak
   // symbols are not resolved.
-  for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
-    if (!I->isWeakForLinker() && !I->hasLocalLinkage())
-      I->setVisibility(GlobalValue::HiddenVisibility);
+  for (Function &F : *ModuleRef) {
+    if (!F.isWeakForLinker() && !F.hasLocalLinkage())
+      F.setVisibility(GlobalValue::HiddenVisibility);
   }
-  for (Module::global_iterator GI = mod->global_begin(),
-           GE = mod->global_end();
+  for (Module::global_iterator GI = ModuleRef->global_begin(),
+           GE = ModuleRef->global_end();
        GI != GE; ++GI) {
     if (!GI->isWeakForLinker() && !GI->hasLocalLinkage())
       GI->setVisibility(GlobalValue::HiddenVisibility);
@@ -429,13 +430,13 @@ static int runCompilePasses(Module *mod,
   // Build up all of the passes that we want to do to the module.
   std::unique_ptr<PassManagerBase> PM;
   if (LazyBitcode)
-    PM.reset(new FunctionPassManager(mod));
+    PM.reset(new FunctionPassManager(ModuleRef));
   else
     PM.reset(new PassManager());
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
-    mod->setDataLayout(DL);
+    ModuleRef->setDataLayout(DL);
   PM->add(new DataLayoutPass());
 
   // For conformance with llc, we let the user disable LLVM IR verification with
@@ -480,11 +481,11 @@ static int runCompilePasses(Module *mod,
     unsigned FuncIndex = 0;
     switch (SplitModuleSched) {
     case SplitModuleStatic:
-      for (Module::iterator I = mod->begin(), E = mod->end(); I != E; ++I) {
+      for (Function &F : *ModuleRef) {
         if (FuncQueue->GrabFunctionStatic(FuncIndex, ModuleIndex)) {
-          FPM->run(*I);
-          CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-          I->Dematerialize();
+          FPM->run(F);
+          CheckABIVerifyErrors(ABIErrorReporter, "Function " + F.getName());
+          F.Dematerialize();
         }
         ++FuncIndex;
       }
@@ -492,7 +493,7 @@ static int runCompilePasses(Module *mod,
     case SplitModuleDynamic:
       unsigned ChunkSize = 0;
       unsigned NumFunctions = FuncQueue->Size();
-      Module::iterator I = mod->begin();
+      Module::iterator I = ModuleRef->begin();
       while (FuncIndex < NumFunctions) {
         ChunkSize = FuncQueue->RecommendedChunkSize();
         unsigned NextIndex;
@@ -525,7 +526,7 @@ static int runCompilePasses(Module *mod,
     }
     FPM->doFinalization();
   } else
-    static_cast<PassManager *>(PM.get())->run(*mod);
+    static_cast<PassManager *>(PM.get())->run(*ModuleRef);
 
   return 0;
 }
@@ -536,7 +537,7 @@ static int compileSplitModule(const TargetOptions &Options,
                               const std::string &FeaturesStr,
                               CodeGenOpt::Level OLvl,
                               const StringRef &ProgramName,
-                              Module *GlobalModule,
+                              Module *GlobalModuleRef,
                               StreamingMemoryObject *StreamingObject,
                               unsigned ModuleIndex,
                               ThreadedFunctionQueue *FuncQueue) {
@@ -555,27 +556,29 @@ static int compileSplitModule(const TargetOptions &Options,
   // The OwningPtrs are only used if we are not the primary module.
   std::unique_ptr<LLVMContext> C;
   std::unique_ptr<Module> M;
-  Module *mod(nullptr);
+  Module *ModuleRef = nullptr;
 
   if (ModuleIndex == 0) {
-    mod = GlobalModule;
+    ModuleRef = GlobalModuleRef;
   } else {
     C.reset(new LLVMContext());
-    mod = getModule(ProgramName, *C, StreamingObject);
-    if (!mod)
+    M = getModule(ProgramName, *C, StreamingObject);
+    if (!M)
       return 1;
-    M.reset(mod);
+    // M owns the temporary module, but use a reference through ModuleRef
+    // to also work in the case we are using GlobalModuleRef.
+    ModuleRef = M.get();
 
     // Add declarations for external functions required by PNaCl. The
     // ResolvePNaClIntrinsics function pass running during streaming
     // depends on these declarations being in the module.
     std::unique_ptr<ModulePass> AddPNaClExternalDeclsPass(
         createAddPNaClExternalDeclsPass());
-    AddPNaClExternalDeclsPass->runOnModule(*M);
+    AddPNaClExternalDeclsPass->runOnModule(*ModuleRef);
     AddPNaClExternalDeclsPass.reset();
   }
 
-  mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
+  ModuleRef->setTargetTriple(Triple::normalize(UserDefinedTriple));
 
   {
 #if !defined(PNACL_BROWSER_TRANSLATOR)
@@ -594,7 +597,7 @@ static int compileSplitModule(const TargetOptions &Options,
     ROS.SetBufferSize(1 << 20);
     formatted_raw_ostream FOS(ROS);
 #endif
-    int ret = runCompilePasses(mod, ModuleIndex, FuncQueue,
+    int ret = runCompilePasses(ModuleRef, ModuleIndex, FuncQueue,
                                TheTriple, Target, ProgramName,
                                FOS);
     if (ret)
@@ -617,7 +620,7 @@ struct ThreadData {
   std::string FeaturesStr;
   CodeGenOpt::Level OLvl;
   std::string ProgramName;
-  Module *GlobalModule;
+  Module *GlobalModuleRef;
   StreamingMemoryObject *StreamingObject;
   unsigned ModuleIndex;
   ThreadedFunctionQueue *FuncQueue;
@@ -632,7 +635,7 @@ static void *runCompileThread(void *arg) {
                                Data->FeaturesStr,
                                Data->OLvl,
                                Data->ProgramName,
-                               Data->GlobalModule,
+                               Data->GlobalModuleRef,
                                Data->StreamingObject,
                                Data->ModuleIndex,
                                Data->FuncQueue);
@@ -647,7 +650,7 @@ static int compileModule(StringRef ProgramName) {
   // plumbing change to fix it, we work around it by using a new context here
   // and leaving PseudoSourceValue as the only user of the global context.
   std::unique_ptr<LLVMContext> MainContext(new LLVMContext());
-  std::unique_ptr<Module> mod;
+  std::unique_ptr<Module> MainMod;
   Triple TheTriple;
   PNaClABIErrorReporter ABIErrorReporter;
   std::unique_ptr<StreamingMemoryObject> StreamingObject;
@@ -670,15 +673,15 @@ static int compileModule(StringRef ProgramName) {
     StreamingObject.reset(new StreamingMemoryObjectImpl(FileStreamer));
   }
 #endif
-  mod.reset(getModule(ProgramName, *MainContext.get(), StreamingObject.get()));
+  MainMod = getModule(ProgramName, *MainContext.get(), StreamingObject.get());
 
-  if (!mod) return 1;
+  if (!MainMod) return 1;
 
   if (PNaClABIVerify) {
     // Verify the module (but not the functions yet)
     std::unique_ptr<ModulePass> VerifyPass(
         createPNaClABIVerifyModulePass(&ABIErrorReporter, LazyBitcode));
-    VerifyPass->runOnModule(*mod);
+    VerifyPass->runOnModule(*MainMod);
     CheckABIVerifyErrors(ABIErrorReporter, "Module");
     VerifyPass.reset();
   }
@@ -688,14 +691,14 @@ static int compileModule(StringRef ProgramName) {
   // depends on these declarations being in the module.
   std::unique_ptr<ModulePass> AddPNaClExternalDeclsPass(
       createAddPNaClExternalDeclsPass());
-  AddPNaClExternalDeclsPass->runOnModule(*mod);
+  AddPNaClExternalDeclsPass->runOnModule(*MainMod);
   AddPNaClExternalDeclsPass.reset();
 
   if (UserDefinedTriple.empty()) {
     report_fatal_error("-mtriple must be set to a target triple for pnacl-llc");
   } else {
-    mod->setTargetTriple(Triple::normalize(UserDefinedTriple));
-    TheTriple = Triple(mod->getTargetTriple());
+    MainMod->setTargetTriple(Triple::normalize(UserDefinedTriple));
+    TheTriple = Triple(MainMod->getTargetTriple());
   }
 
   // Get the target specific parser.
@@ -736,13 +739,13 @@ static int compileModule(StringRef ProgramName) {
 
   SmallVector<pthread_t, 4> Pthreads(SplitModuleCount);
   SmallVector<ThreadData, 4> ThreadDatas(SplitModuleCount);
-  ThreadedFunctionQueue FuncQueue(mod.get(), SplitModuleCount);
+  ThreadedFunctionQueue FuncQueue(MainMod.get(), SplitModuleCount);
 
   if (SplitModuleCount == 1) {
     // No need for dynamic scheduling with one thread.
     SplitModuleSched = SplitModuleStatic;
     return compileSplitModule(Options, TheTriple, TheTarget, FeaturesStr,
-                              OLvl, ProgramName, mod.get(), nullptr, 0,
+                              OLvl, ProgramName, MainMod.get(), nullptr, 0,
                               &FuncQueue);
   }
 
@@ -753,7 +756,7 @@ static int compileModule(StringRef ProgramName) {
     ThreadDatas[ModuleIndex].FeaturesStr = FeaturesStr;
     ThreadDatas[ModuleIndex].OLvl = OLvl;
     ThreadDatas[ModuleIndex].ProgramName = ProgramName.str();
-    ThreadDatas[ModuleIndex].GlobalModule = mod.get();
+    ThreadDatas[ModuleIndex].GlobalModuleRef = MainMod.get();
     ThreadDatas[ModuleIndex].StreamingObject = StreamingObject.get();
     ThreadDatas[ModuleIndex].ModuleIndex = ModuleIndex;
     ThreadDatas[ModuleIndex].FuncQueue = &FuncQueue;

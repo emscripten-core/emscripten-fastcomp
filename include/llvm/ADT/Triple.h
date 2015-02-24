@@ -236,14 +236,14 @@ public:
 #endif
   // @LOCALMOD-END
 
-  /// getEnvironment - Get the parsed environment type of this triple.
-  EnvironmentType getEnvironment() const { return Environment; }
-
   /// hasEnvironment - Does this triple have the optional environment
   /// (fourth) component?
   bool hasEnvironment() const {
     return getEnvironmentName() != "";
   }
+
+  /// getEnvironment - Get the parsed environment type of this triple.
+  EnvironmentType getEnvironment() const { return Environment; }
 
   /// getOSVersion - Parse the version number from the OS name component of the
   /// triple, if present.
