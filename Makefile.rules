@@ -667,18 +667,6 @@ endif
 #@LOCALMOD-BEGIN
 ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
   CPP.Flags += -DPNACL_BROWSER_TRANSLATOR
-  # NOTE: we specify --noirt to tell the driver that we should link
-  # against private (non-stable, non-IRT) libraries for the
-  # sandboxed translator.  This could have been specified directly,
-  # except that LLVM slips in -lpthread elsewhere in the build system,
-  # and we need it to use -lpthread_private instead.
-  LIBS += -Wl,--noirt -lsrpc -limc_syscalls -lplatform -lgio -lpthread
-  ifeq ($(USE_TCMALLOC),1)
-    # Note: -ltcmalloc_minimal needs to stay last on the link line
-    LIBS += -ltcmalloc_minimal
-    CXX.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-    C.Flags += -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
-  endif
 endif
 # @LOCALMOD-END
 

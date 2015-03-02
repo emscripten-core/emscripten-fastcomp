@@ -47,8 +47,13 @@ endif
 # Let users override the set of tools to build from the command line.
 ifdef ONLY_TOOLS
   OPTIONAL_PARALLEL_DIRS :=
+  # @LOCALMOD-BEGIN -- Allow subzero to be built as a tool if requested.
+  ifneq ($(findstring subzero,$(ONLY_TOOLS)),)
+    OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT)
+  endif
+  # @LOCALMOD-END
   OPTIONAL_DIRS := $(findstring lldb,$(ONLY_TOOLS))
-  PARALLEL_DIRS := $(filter-out lldb,$(ONLY_TOOLS))
+  PARALLEL_DIRS := $(filter-out lldb subzero,$(ONLY_TOOLS)) # @LOCALMOD
 endif
 
 # These libraries build as dynamic libraries (.dylib /.so), they can only be
