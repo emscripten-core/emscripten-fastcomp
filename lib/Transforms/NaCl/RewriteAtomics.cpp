@@ -34,14 +34,10 @@
 
 using namespace llvm;
 
-// TODO(jfb) Keep the default of this option to true for Chrome 42, and change
-//           it to false for Chrome 43. This allows the PNaCl translator to be
-//           updated before the SDK starts emitting atomic memory orders that
-//           the old translator rejected.
 static cl::opt<bool> PNaClMemoryOrderSeqCstOnly(
     "pnacl-memory-order-seq-cst-only",
     cl::desc("PNaCl should upgrade all atomic memory orders to seq_cst"),
-    cl::init(true));
+    cl::init(false));
 
 namespace {
 
