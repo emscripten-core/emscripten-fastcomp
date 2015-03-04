@@ -223,6 +223,8 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
               << Values.size();
       ReportFatalError();
     }
+    uint64_t MaxAbbrev = (static_cast<uint64_t>(1) << NumBits) - 1;
+    AbbrevIndexLimitStack.push_back(MaxAbbrev);
     if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
       if (NumBits != naclbitc::DEFAULT_MAX_ABBREV) {
         Fatal()
@@ -232,8 +234,8 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
       }
       Writer->EnterBlockInfoBlock();
     } else {
-      unsigned NumPossibleAbbrevs = (1 << NumBits) - 1;
-      Writer->EnterSubblock(WriteBlockID, NumPossibleAbbrevs);
+      NaClBitcodeSelectorAbbrev CurCodeLen(MaxAbbrev);
+      Writer->EnterSubblock(WriteBlockID, CurCodeLen);
     }
     return;
   }
@@ -248,6 +250,8 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
               << Values.size() << "\n";
       ReportFatalError();
     }
+    if (!AbbrevIndexLimitStack.empty())
+      AbbrevIndexLimitStack.pop_back();
     Writer->ExitBlock();
     return;
   case naclbitc::BLK_CODE_DEFINE_ABBREV: {
@@ -276,9 +280,31 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
   default:
     if ((AbbrevIndex != naclbitc::UNABBREV_RECORD
          && !Writer->isUserRecordAbbreviation(AbbrevIndex))) {
-      Fatal() << "Error: Record code " << RecordCode
-              << " uses illegal abbreviation index " << AbbrevIndex << "\n";
-      ReportFatalError();
+      uint64_t BlockAbbrevIndexLimit = 0;
+      if (!AbbrevIndexLimitStack.empty())
+        BlockAbbrevIndexLimit = AbbrevIndexLimitStack.back();
+      if (AbbrevIndex > BlockAbbrevIndexLimit) {
+        Fatal() << "Error: Record code " << RecordCode
+                << " uses illegal abbreviation index " << AbbrevIndex
+                << ". Must not exceed " << BlockAbbrevIndexLimit << "\n";
+        ReportFatalError();
+      }
+      // Note: If this point is reached, the abbreviation is
+      // bad. However, that may be the point of munge being
+      // applied. Hence, emit the bad abbreviation and the data so
+      // that the reader can be tested on this bad input.  For
+      // simplicity, we output the record data using the default
+      // abbreviation pattern.
+      errs() << "Warning: Record code " << RecordCode
+             << " uses illegal abbreviation index " << AbbrevIndex << "\n";
+      Writer->EmitCode(AbbrevIndex);
+      Writer->EmitVBR(RecordCode, 6);
+      uint32_t NumValues = static_cast<uint32_t>(Values.size());
+      Writer->EmitVBR(NumValues, 6);
+      for (uint32_t i = 0; i < NumValues; ++i) {
+        Writer->EmitVBR64(Values[i], 6);
+      }
+      return;
     }
     if (AbbrevIndex == naclbitc::UNABBREV_RECORD)
       Writer->EmitRecord(RecordCode, Values);
@@ -370,9 +396,14 @@ bool NaClObjDumpMunger::runTestWithFlags(
     const char *Name, const uint64_t Munges[], size_t MungesSize,
     bool AddHeader, bool NoRecords, bool NoAssembly) {
   setupTest(Name, Munges, MungesSize, AddHeader);
+
+  /// If running in death mode, redirect output directly to the
+  /// error stream (rather than buffering in DumpStream), so that
+  /// output can be seen in gtest death test.
+  raw_ostream &Output = RunAsDeathTest ? errs() : *DumpStream;
   // TODO(jvoung,kschimpf): Should NaClObjDump take a MemoryBufferRef
   // like the parser?
-  if (NaClObjDump(MungedInput.get(), *DumpStream, NoRecords, NoAssembly))
+  if (NaClObjDump(MungedInput.get(), Output, NoRecords, NoAssembly))
     FoundErrors = true;
   cleanupTest();
   return !FoundErrors;

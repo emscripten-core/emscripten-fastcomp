@@ -413,8 +413,24 @@ class NaClBitcodeParser {
   // Allow listener privledges, so that it can update/call the parser
   // using a clean API.
   friend class NaClBitcodeParserListener;
-public:
 
+  // Implements an error handler for errors in the bitstream reader.
+  // Redirects bitstream reader errors to corresponding parrser error
+  // reporting function.
+  class ErrorHandler : public NaClBitstreamCursor::ErrorHandler {
+    NaClBitcodeParser *Parser;
+  public:
+    ErrorHandler(NaClBitcodeParser *Parser,
+                 NaClBitstreamCursor &Cursor):
+        NaClBitstreamCursor::ErrorHandler(Cursor), Parser(Parser) {}
+    LLVM_ATTRIBUTE_NORETURN
+    void Fatal(const std::string &ErrorMessage) const final {
+      Parser->FatalAt(getCurrentBitNo(), ErrorMessage);
+    }
+    ~ErrorHandler() override {}
+  };
+
+public:
   // Creates a parser to parse the the block at the given cursor in
   // the PNaCl bitcode stream. This instance is a "dummy" instance
   // that starts the parser.
@@ -423,8 +439,11 @@ public:
         Block(ILLEGAL_BLOCK_ID, Cursor),
         Record(Block),
         Listener(0),
-        ErrStream(&errs())
-  {}
+        ErrStream(&errs()) {
+    std::unique_ptr<NaClBitstreamCursor::ErrorHandler>
+        ErrHandler(new ErrorHandler(this, Cursor));
+    Cursor.setErrorHandler(ErrHandler);
+  }
 
   virtual ~NaClBitcodeParser();
 
@@ -483,11 +502,34 @@ public:
     return OldErrStream;
   }
 
-  // Called when error occurs. Message is the error to report. Always
+  // Called when an error occurs. BitPosition is the bit position the
+  // error was found, and Message is the error to report. Always
   // returns true (the error return value of Parse).
-  virtual bool Error(const std::string &Message) {
-    *ErrStream << "Error: " << Message << "\n";
-    return true;
+  virtual bool ErrorAt(uint64_t BitPosition, const std::string &Message);
+
+  // Called when an error occurs. Message is the error to
+  // report. Always returns true (the error return value of Parse).
+  bool Error(const std::string &Message) {
+    return ErrorAt(Record.GetStartBit(), Message);
+  }
+
+  // Called when a fatal error occurs. BitPosition is the bit position
+  // the error was found, and Message is the error to report. Does not
+  // return.
+  LLVM_ATTRIBUTE_NORETURN
+  virtual void FatalAt(uint64_t BitPosition, const std::string &Message);
+
+  // Called when a fatal error occurs. Message is the error to
+  // report. Does not return.
+  LLVM_ATTRIBUTE_NORETURN
+  void Fatal(const std::string &Message) {
+    FatalAt(Record.GetStartBit(), Message);
+  }
+
+  // Generates fatal generic error message.
+  LLVM_ATTRIBUTE_NORETURN
+  void Fatal() {
+    Fatal("Fatal error occurred!");
   }
 
   // Returns the number of bits in this block, including nested blocks.
@@ -599,7 +641,6 @@ private:
   // Parses the non-BlockInfo block. Returns true if unable to parse the
   // block.
   bool ParseBlockInternal();
-
 
   void operator=(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
   NaClBitcodeParser(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;

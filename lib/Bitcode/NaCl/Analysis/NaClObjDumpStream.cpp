@@ -12,7 +12,6 @@
 #include "llvm/Bitcode/NaCl/NaClObjDumpStream.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/Format.h"
 
 namespace llvm {
 namespace naclbitc {
@@ -155,7 +154,6 @@ Allocate(TextFormatter *Formatter, const std::string &Text) {
 
 RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
     : TextFormatter(ObjDump->Records(), 0, "  "),
-      ObjDump(ObjDump),
       OpenBrace(this, "<"),
       CloseBrace(this, ">"),
       Comma(this, ","),
@@ -165,21 +163,7 @@ RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
       FinishCluster(this) {
   // Handle fact that 64-bit values can take up to 21 characters.
   MinLineWidth = 21;
-  Label = RecordAddress(0);
-}
-
-std::string RecordTextFormatter::RecordAddress(uint64_t Bit,
-                                               unsigned MinByteWidth) {
-  std::string Buffer;
-  raw_string_ostream Stream(Buffer);
-  Stream << '%' << MinByteWidth << PRIu64 << ":%u";
-  Stream.flush();
-  std::string FormatString(Buffer);
-  Buffer.clear();
-  Stream << format(FormatString.c_str(),
-                   (Bit / 8),
-                   static_cast<unsigned>(Bit % 8));
-  return Stream.str();
+  Label = NaClBitstreamReader::getBitAddress(0, AddressWriteWidth);
 }
 
 std::string RecordTextFormatter::GetEmptyLabelColumn() {
@@ -205,7 +189,8 @@ void RecordTextFormatter::WriteLineIndents() {
 void RecordTextFormatter::WriteValues(uint64_t Bit,
                                       const llvm::NaClBitcodeValues &Values,
                                       int32_t AbbrevIndex) {
-  Label = ObjDump->RecordAddress(Bit);
+  Label = NaClBitstreamReader::getBitAddress(
+      Bit, RecordTextFormatter::AddressWriteWidth);
   if (AbbrevIndex != ABBREV_INDEX_NOT_SPECIFIED) {
     TextStream << AbbrevIndex << ":" << Space;
   }
@@ -235,7 +220,6 @@ ObjDumpStream::ObjDumpStream(raw_ostream &Stream,
       NumErrors(0),
       MaxErrors(DefaultMaxErrors),
       RecordWidth(0),
-      StartOffset(0),
       AssemblyBuffer(),
       AssemblyStream(AssemblyBuffer),
       MessageBuffer(),
@@ -275,6 +259,7 @@ void ObjDumpStream::Fatal(uint64_t Bit,
   LastKnownBit = Bit;
   PrintMessagePrefix("Error", Bit) << Message;
   Write(Bit, Record);
+  Flush();
   llvm::report_fatal_error("Unable to continue");
 }
 
@@ -343,7 +328,7 @@ void ObjDumpStream::Flush() {
   if (NumErrors >= MaxErrors) {
     // Note: we don't call Fatal here because that will call Flush, causing
     // an infinite loop.
-    Stream << "Error(" << ObjDumpAddress(LastKnownBit)
+    Stream << "Error(" << NaClBitstreamReader::getBitAddress(LastKnownBit)
            << "): Too many errors\n";
     llvm::report_fatal_error("Unable to continue");
   }

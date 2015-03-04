@@ -555,7 +555,6 @@ class NaClDisTopLevelParser : public NaClBitcodeParser {
 
 public:
   NaClDisTopLevelParser(NaClBitcodeHeader &Header,
-                        const unsigned char *HeaderBuffer,
                         NaClBitstreamCursor &Cursor,
                         naclbitc::ObjDumpStream &ObjDump)
       : NaClBitcodeParser(Cursor),
@@ -566,7 +565,6 @@ public:
         AllowedIntrinsics(&Mod.getContext()),
         AssemblyFormatter(ObjDump),
         Header(Header),
-        HeaderBuffer(HeaderBuffer),
         NumFunctions(0),
         NumGlobals(0),
         ExpectedNumGlobals(0),
@@ -591,21 +589,23 @@ public:
   }
 
   /// Generates an error with the given message.
-  bool Error(const std::string &Message) override {
+  bool ErrorAt(uint64_t Bit, const std::string &Message) final {
     // Use local error routine so that all errors are treated uniformly.
-    ObjDump.Error() << Message << "\n";
+    ObjDump.Error(Bit) << Message << "\n";
     return true;
   }
 
   /// Flushes out objdump and then exits with fatal error.
+  LLVM_ATTRIBUTE_NORETURN
   void Fatal() {
-    Fatal("");
+    NaClBitcodeParser::Fatal();
   }
 
   /// Flushes out objdump and then exits with fatal error, using
   /// the given message.
-  void Fatal(const std::string &Message) {
-    ObjDump.Fatal(Message);
+  LLVM_ATTRIBUTE_NORETURN
+  void FatalAt(uint64_t Bit, const std::string &Message) final {
+    ObjDump.Fatal(Bit, Message);
   }
 
   /// Parses the top-level module block.
@@ -1120,8 +1120,6 @@ private:
   AssemblyTextFormatter AssemblyFormatter;
   // The header appearing before the beginning of the input stream.
   NaClBitcodeHeader &Header;
-  // Pointer to the buffer containing the header.
-  const unsigned char *HeaderBuffer;
   // The list of known types (index i defines the type associated with
   // type index i).
   std::vector<Type*> TypeIdType;
@@ -1371,8 +1369,8 @@ protected:
     return Context->Fatal();
   }
 
-  void Fatal(const std::string &Message) {
-    return Context->Fatal(Message);
+  void FatalAt(uint64_t Bit, const std::string &Message) override {
+    return Context->FatalAt(Bit, Message);
   }
 
   const std::string &GetAssemblyIndent() const {
@@ -3488,16 +3486,21 @@ void NaClDisModuleParser::ProcessRecord() {
 }
 
 bool NaClDisTopLevelParser::ParseBlock(unsigned BlockID) {
-  // Before parsing top-level module block. Describe header.
-  NaClBitcodeRecordData Record;
+  // Before parsing top-level module block. Describe header by
+  // reconstructing the corresponding header record.
+  NaClBitcodeRecordData HeaderRecord;
   size_t HeaderSize = Header.getHeaderSize();
-  Record.Code = naclbitc::BLK_CODE_HEADER;
+  HeaderRecord.Code = naclbitc::BLK_CODE_HEADER;
+  NaClBitstreamCursor &Cursor = Record.GetCursor();
+  uint64_t CurPos = Cursor.GetCurrentBitNo();
+  Cursor.JumpToBit(0);
   for (size_t i = 0; i < HeaderSize; ++i) {
-    Record.Values.push_back(HeaderBuffer[i]);
+    HeaderRecord.Values.push_back(Cursor.Read(CHAR_BIT));
   }
+  Cursor.JumpToBit(CurPos);
   if (ObjDump.GetDumpRecords() && ObjDump.GetDumpAssembly()) {
     if (HeaderSize >= 4) {
-      const NaClRecordVector &Values = Record.Values;
+      const NaClRecordVector &Values = HeaderRecord.Values;
       Tokens() << "Magic" << Space() << "Number" << Colon()
                << Space() << StartCluster() << StartCluster() << "'"
                << (char) Values[0] << (char) Values[1]
@@ -3515,8 +3518,7 @@ bool NaClDisTopLevelParser::ParseBlock(unsigned BlockID) {
       Tokens() << Header.GetField(i)->Contents() << Endline();
     }
   }
-  ObjDump.Write(0, Record);
-  ObjDump.SetStartOffset(HeaderSize * 8);
+  ObjDump.Write(0, HeaderRecord);
 
   if (BlockID != naclbitc::MODULE_BLOCK_ID)
     return Error("Module block expected at top-level, but not found");
@@ -3547,17 +3549,18 @@ bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
 
   // Read header and verify it is good.
   NaClBitcodeHeader Header;
-  if (Header.Read(BufPtr, EndBufPtr) || !Header.IsSupported()) {
+  if (Header.Read(HeaderPtr, EndBufPtr) || !Header.IsSupported()) {
     ObjDump.Error() << "Invalid PNaCl bitcode header.\n";
     return true;
   }
 
   // Create a bitstream reader to read the bitcode file.
-  NaClBitstreamReader InputStreamFile(BufPtr, EndBufPtr);
+  NaClBitstreamReader InputStreamFile(BufPtr, EndBufPtr,
+                                      Header.getHeaderSize());
   NaClBitstreamCursor InputStream(InputStreamFile);
 
   // Parse the the bitcode file.
-  ::NaClDisTopLevelParser Parser(Header, HeaderPtr, InputStream, ObjDump);
+  ::NaClDisTopLevelParser Parser(Header, InputStream, ObjDump);
   int NumBlocksRead = 0;
   bool ErrorsFound = false;
   while (!InputStream.AtEndOfStream()) {

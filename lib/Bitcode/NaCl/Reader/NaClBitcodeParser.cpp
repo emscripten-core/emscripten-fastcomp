@@ -86,6 +86,19 @@ NaClBitcodeParser::~NaClBitcodeParser() {
   }
 }
 
+bool NaClBitcodeParser::ErrorAt(uint64_t BitPosition,
+                                const std::string &Message) {
+  *ErrStream << "Error(" << NaClBitstreamReader::getBitAddress(BitPosition, 1)
+             << "): " << Message << "\n";
+  return true;
+}
+
+void NaClBitcodeParser::FatalAt(uint64_t BitPosition,
+                                const std::string &Message) {
+  ErrorAt(BitPosition, Message);
+  report_fatal_error("Unable to continue");
+}
+
 bool NaClBitcodeParser::Parse() {
   Record.ReadEntry();
 

@@ -88,6 +88,11 @@ public:
     return InitialAddress;
   }
 
+  /// Returns the Bit as a Byte:BitInByte string. MinByteWidth is the
+  /// minimum number of characters to print out the Byte value (blank
+  /// fills).
+  static std::string getBitAddress(uint64_t Bit, unsigned MinByteWidth=1);
+
   //===--------------------------------------------------------------------===//
   // Block Manipulation
   //===--------------------------------------------------------------------===//
@@ -201,9 +206,30 @@ public:
 /// Unlike iterators, NaClBitstreamCursors are heavy-weight objects
 /// that should not be passed by value.
 class NaClBitstreamCursor {
+public:
+  /// This class handles errors in the bitstream reader. Redirects
+  /// fatal error messages to virtual method Fatal.
+  class ErrorHandler {
+    ErrorHandler(const ErrorHandler &) = delete;
+    ErrorHandler &operator=(const ErrorHandler &) = delete;
+  public:
+    explicit ErrorHandler(NaClBitstreamCursor &Cursor) : Cursor(Cursor) {}
+    LLVM_ATTRIBUTE_NORETURN
+    virtual void Fatal(const std::string &ErrorMessage) const;
+    virtual ~ErrorHandler() {}
+    uint64_t getCurrentBitNo() const {
+      return Cursor.GetCurrentBitNo();
+    }
+  private:
+    NaClBitstreamCursor &Cursor;
+  };
+
+private:
   friend class Deserializer;
   NaClBitstreamReader *BitStream;
   size_t NextChar;
+  // The current error handler for the bitstream reader.
+  std::unique_ptr<ErrorHandler> ErrHandler;
 
   // The size of the bitcode. 0 if we don't know it yet.
   size_t Size;
@@ -242,9 +268,12 @@ class NaClBitstreamCursor {
   NaClBitstreamCursor &operator=(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
 
 public:
-  NaClBitstreamCursor() { init(nullptr); }
+  NaClBitstreamCursor() : ErrHandler(new ErrorHandler(*this)) {
+    init(nullptr);
+  }
 
-  explicit NaClBitstreamCursor(NaClBitstreamReader &R) { init(&R); }
+  explicit NaClBitstreamCursor(NaClBitstreamReader &R)
+      : ErrHandler(new ErrorHandler(*this)) { init(&R); }
 
   void init(NaClBitstreamReader *R) {
     freeState();
@@ -259,6 +288,13 @@ public:
   }
 
   void freeState();
+
+  // Replaces the current bitstream error handler with the new
+  // handler. Takes ownership of the new handler and deletes it when
+  // it is no longer needed.
+  void setErrorHandler(std::unique_ptr<ErrorHandler> &NewHandler) {
+    ErrHandler = std::move(NewHandler);
+  }
 
   bool canSkipToPos(size_t pos) const {
     // pos can be skipped to if it is a valid address or one byte past the end.
@@ -288,6 +324,13 @@ public:
   }
   const NaClBitstreamReader *getBitStreamReader() const {
     return BitStream;
+  }
+
+  /// Returns the current bit address (string) of the bit cursor.
+  /// MinByteWidth is the minimum number of characters to print out
+  /// the Byte value (blank fills).
+  std::string getCurrentBitAddress(unsigned MinByteWidth=1) const {
+    return BitStream->getBitAddress(GetCurrentBitNo(), MinByteWidth);
   }
 
   /// Flags that modify the behavior of advance().
@@ -347,7 +390,8 @@ public:
   void JumpToBit(uint64_t BitNo) {
     uintptr_t ByteNo = uintptr_t(BitNo/8) & ~(sizeof(word_t)-1);
     unsigned WordBitNo = unsigned(BitNo & (sizeof(word_t)*8-1));
-    assert(canSkipToPos(ByteNo) && "Invalid location");
+    if (!canSkipToPos(ByteNo))
+      reportInvalidJumpToBit(BitNo);
 
     // Move the cursor to the right word.
     NextChar = ByteNo;
@@ -540,6 +584,9 @@ private:
   //===--------------------------------------------------------------------===//
 
 private:
+  // Returns abbreviation encoding associated with Value.
+  NaClBitCodeAbbrevOp::Encoding getEncoding(uint64_t Value);
+
   void skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op);
 
   // Reads the next Value using the abbreviation Op. Returns true only
@@ -558,12 +605,19 @@ private:
                               unsigned NumArrayElements,
                               SmallVectorImpl<uint64_t> &Vals);
 
+  // Reports that that abbreviation Index is not valid.
+  void reportInvalidAbbrevNumber(unsigned Index) const;
+
+  // Reports that jumping to Bit is not valid.
+  void reportInvalidJumpToBit(uint64_t Bit) const;
+
 public:
 
   /// Return the abbreviation for the specified AbbrevId.
   const NaClBitCodeAbbrev *getAbbrev(unsigned AbbrevID) const {
     unsigned AbbrevNo = AbbrevID-naclbitc::FIRST_APPLICATION_ABBREV;
-    assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
+    if (AbbrevNo >= CurAbbrevs.size())
+      reportInvalidAbbrevNumber(AbbrevID);
     return CurAbbrevs[AbbrevNo];
   }
 

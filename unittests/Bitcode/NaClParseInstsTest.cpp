@@ -55,32 +55,42 @@ TEST(NaClParseInstsTest, NonexistantCallArg) {
   // Show text of base input.
   NaClObjDumpMunger DumpMunger(BitcodeRecords,
                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_FALSE(DumpMunger.runTestForAssembly("Nonexistant call arg"));
+  EXPECT_FALSE(DumpMunger.runTest("Nonexistant call arg"));
   EXPECT_EQ(
-      "module {  // BlockID = 8\n"
-      "  types {  // BlockID = 17\n"
-      "    count 3;\n"
-      "    @t0 = i32;\n"
-      "    @t1 = void;\n"
-      "    @t2 = void (i32, i32);\n"
-      "  }\n"
-      "  declare external void @f0(i32, i32);\n"
-      "  define external void @f1(i32, i32);\n"
-      "  function void @f1(i32 %p0, i32 %p1) {  // BlockID = 12\n"
-      "    blocks 1;\n"
-      "  %b0:\n"
-      "    call void @f0(i32 %p0, i32 @f0);\n"
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
+      "88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 17, 2>          |  types {  // BlockID = 17\n"
+      "      32:0|    3: <1, 3>                |    count 3;\n"
+      "      34:4|    3: <7, 32>               |    @t0 = i32;\n"
+      "      37:6|    3: <2>                   |    @t1 = void;\n"
+      "      39:4|    3: <21, 0, 1, 0, 0>      |    @t2 = void (i32, i32);\n"
+      "      44:2|  0: <65534>                 |  }\n"
+      "      48:0|  3: <8, 2, 0, 1, 0>         |  declare external void @f0(i32"
+      ", i32);\n"
+      "      52:6|  3: <8, 2, 0, 0, 0>         |  define external void @f1(i32,"
+      " i32);\n"
+      "      57:4|  1: <65535, 12, 2>          |  function void @f1(i32 %p0, "
+      "i32 %p1) {\n"
+      "          |                             |                    // BlockID "
+      "= 12\n"
+      "      64:0|    3: <1, 1>                |    blocks 1;\n"
+      "          |                             |  %b0:\n"
+      "      66:4|    3: <34, 0, 4, 2, 100>    |    call void @f0(i32 %p0, i32"
+      " @f0);\n"
       "Error(66:4): Invalid relative value id: 100 (Must be <= 4)\n"
-      "    ret void;\n"
-      "  }\n"
-      "}\n",
+      "      72:6|    3: <10>                  |    ret void;\n"
+      "      74:4|  0: <65534>                 |  }\n"
+      "      76:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
 
   NaClParseBitcodeMunger Munger(BitcodeRecords,
                                 array_lengthof(BitcodeRecords), Terminator);
   EXPECT_FALSE(Munger.runTest("Nonexistant call arg", true));
   EXPECT_EQ(
-      "Error: (56:6) Invalid call argument: Index 1\n"
+      "Error: (72:6) Invalid call argument: Index 1\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
 }
@@ -110,24 +120,33 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
   // Show text when alignment is 1.
   NaClObjDumpMunger DumpMunger(BitcodeRecords,
                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTestForAssembly("BadAllocaAlignment"));
+  EXPECT_TRUE(DumpMunger.runTest("BadAllocaAlignment"));
   EXPECT_EQ(
-      "module {  // BlockID = 8\n"
-      "  types {  // BlockID = 17\n"
-      "    count 4;\n"
-      "    @t0 = i32;\n"
-      "    @t1 = void;\n"
-      "    @t2 = void (i32);\n"
-      "    @t3 = i8;\n"
-      "  }\n"
-      "  define external void @f0(i32);\n"
-      "  function void @f0(i32 %p0) {  // BlockID = 12\n"
-      "    blocks 1;\n"
-      "  %b0:\n"
-      "    %v0 = alloca i8, i32 %p0, align 1;\n"
-      "    ret void;\n"
-      "  }\n"
-      "}\n",
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
+      "88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 17, 2>          |  types {  // BlockID = 17\n"
+      "      32:0|    3: <1, 4>                |    count 4;\n"
+      "      34:4|    3: <7, 32>               |    @t0 = i32;\n"
+      "      37:6|    3: <2>                   |    @t1 = void;\n"
+      "      39:4|    3: <21, 0, 1, 0>         |    @t2 = void (i32);\n"
+      "      43:4|    3: <7, 8>                |    @t3 = i8;\n"
+      "      46:0|  0: <65534>                 |  }\n"
+      "      48:0|  3: <8, 2, 0, 0, 0>         |  define external void @f0(i32"
+      ");\n"
+      "      52:6|  1: <65535, 12, 2>          |  function void @f0(i32 %p0) {"
+      "  \n"
+      "          |                             |                   // BlockID "
+      "= 12\n"
+      "      60:0|    3: <1, 1>                |    blocks 1;\n"
+      "          |                             |  %b0:\n"
+      "      62:4|    3: <19, 1, 1>            |    %v0 = alloca i8, i32 %p0, "
+      "align 1;\n"
+      "      65:6|    3: <10>                  |    ret void;\n"
+      "      67:4|  0: <65534>                 |  }\n"
+      "      68:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
   NaClParseBitcodeMunger Munger(BitcodeRecords,
                                 array_lengthof(BitcodeRecords), Terminator);
@@ -154,7 +173,7 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
   EXPECT_FALSE(Munger.runTest(
       "BadAllocaAlignment-30", Align30, array_lengthof(Align30), true));
   EXPECT_EQ(
-      "Error: (49:6) Alignment can't be greater than 2**29. Found: 2**30\n"
+      "Error: (65:6) Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
   EXPECT_FALSE(DumpMunger.runTestForAssembly(
@@ -206,22 +225,31 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
   // Show text when alignment is 1.
   NaClObjDumpMunger DumpMunger(BitcodeRecords,
                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTestForAssembly("BadLoadAlignment-1"));
+  EXPECT_TRUE(DumpMunger.runTest("BadLoadAlignment-1"));
   EXPECT_EQ(
-      "module {  // BlockID = 8\n"
-      "  types {  // BlockID = 17\n"
-      "    count 2;\n"
-      "    @t0 = i32;\n"
-      "    @t1 = i32 (i32);\n"
-      "  }\n"
-      "  define external i32 @f0(i32);\n"
-      "  function i32 @f0(i32 %p0) {  // BlockID = 12\n"
-      "    blocks 1;\n"
-      "  %b0:\n"
-      "    %v0 = load i32* %p0, align 1;\n"
-      "    ret i32 %v0;\n"
-      "  }\n"
-      "}\n",
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
+      "88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 17, 2>          |  types {  // BlockID = 17\n"
+      "      32:0|    3: <1, 2>                |    count 2;\n"
+      "      34:4|    3: <7, 32>               |    @t0 = i32;\n"
+      "      37:6|    3: <21, 0, 0, 0>         |    @t1 = i32 (i32);\n"
+      "      41:6|  0: <65534>                 |  }\n"
+      "      44:0|  3: <8, 1, 0, 0, 0>         |  define external i32 @f0(i32"
+      ");\n"
+      "      48:6|  1: <65535, 12, 2>          |  function i32 @f0(i32 %p0) {"
+      "  \n"
+      "          |                             |                   // BlockID "
+      "= 12\n"
+      "      56:0|    3: <1, 1>                |    blocks 1;\n"
+      "          |                             |  %b0:\n"
+      "      58:4|    3: <20, 1, 1, 0>         |    %v0 = load i32* %p0, "
+      "align 1;\n"
+      "      62:4|    3: <10, 1>               |    ret i32 %v0;\n"
+      "      65:0|  0: <65534>                 |  }\n"
+      "      68:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
   NaClParseBitcodeMunger Munger(BitcodeRecords,
                                 array_lengthof(BitcodeRecords), Terminator);
@@ -281,7 +309,7 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
   EXPECT_FALSE(Munger.runTest(
       "BadLoadAlignment-30", Align30, array_lengthof(Align30), true));
   EXPECT_EQ(
-      "Error: (46:4) Alignment can't be greater than 2**29. Found: 2**30\n"
+      "Error: (62:4) Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
   EXPECT_FALSE(DumpMunger.runTestForAssembly(
@@ -316,23 +344,34 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
   // Show text when alignment is 1.
   NaClObjDumpMunger DumpMunger(BitcodeRecords,
                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTestForAssembly("BadStoreAlignment"));
+  EXPECT_TRUE(DumpMunger.runTest("BadStoreAlignment"));
   EXPECT_EQ(
-      "module {  // BlockID = 8\n"
-      "  types {  // BlockID = 17\n"
-      "    count 3;\n"
-      "    @t0 = float;\n"
-      "    @t1 = i32;\n"
-      "    @t2 = float (i32, float);\n"
-      "  }\n"
-      "  define external float @f0(i32, float);\n"
-      "  function float @f0(i32 %p0, float %p1) {  // BlockID = 12\n"
-      "    blocks 1;\n"
-      "  %b0:\n"
-      "    store float %p1, float* %p0, align 1;\n"
-      "    ret float %p1;\n"
-      "  }\n"
-      "}\n",
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
+      "88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 17, 2>          |  types {  // BlockID = 17\n"
+      "      32:0|    3: <1, 3>                |    count 3;\n"
+      "      34:4|    3: <3>                   |    @t0 = float;\n"
+      "      36:2|    3: <7, 32>               |    @t1 = i32;\n"
+      "      39:4|    3: <21, 0, 0, 1, 0>      |    @t2 = float (i32, float);\n"
+      "      44:2|  0: <65534>                 |  }\n"
+      "      48:0|  3: <8, 2, 0, 0, 0>         |  define external \n"
+      "          |                             |      float @f0(i32, float);\n"
+      "      52:6|  1: <65535, 12, 2>          |  function \n"
+      "          |                             |      float @f0(i32 %p0, float "
+      "%p1) {  \n"
+      "          |                             |                   // BlockID "
+      "= 12\n"
+      "      60:0|    3: <1, 1>                |    blocks 1;\n"
+      "          |                             |  %b0:\n"
+      "      62:4|    3: <24, 2, 1, 1>         |    store float %p1, float* "
+      "%p0, \n"
+      "          |                             |        align 1;\n"
+      "      66:4|    3: <10, 1>               |    ret float %p1;\n"
+      "      69:0|  0: <65534>                 |  }\n"
+      "      72:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
   NaClParseBitcodeMunger Munger(BitcodeRecords,
                                 array_lengthof(BitcodeRecords), Terminator);
@@ -402,7 +441,7 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
   EXPECT_FALSE(Munger.runTest(
       "BadStoreAlignment-30", Align30, array_lengthof(Align30), true));
   EXPECT_EQ(
-      "Error: (50:4) Alignment can't be greater than 2**29. Found: 2**30\n"
+      "Error: (66:4) Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
   EXPECT_FALSE(DumpMunger.runTestForAssembly(

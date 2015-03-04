@@ -1846,10 +1846,12 @@ std::error_code NaClBitcodeReader::InitStreamFromBuffer() {
     return Error(InvalidBitstream,
                  "Bitcode stream should be a multiple of 4 bytes in length");
 
-  if (Header.Read(BufPtr, BufEnd))
+  const unsigned char *HeaderPtr = BufPtr;
+  if (Header.Read(HeaderPtr, BufEnd))
     return Error(InvalidBitstream, Header.Unsupported());
 
-  StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd));
+  StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd,
+                                           Header.getHeaderSize()));
   Stream.init(StreamFile.get());
 
   if (AcceptHeader())
