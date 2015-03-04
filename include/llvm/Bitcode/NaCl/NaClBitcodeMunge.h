@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Test harness for generating a PNaCl bitcode memory buffer from
-// an array, and parse/objdump the resulting contents.
+// an array, and parse/objdump/compress the resulting contents.
 //
 // Generates a bitcode memory buffer from an array containing 1 or
 // more PNaCl records. Used to test errors in PNaCl bitcode.
@@ -266,7 +266,7 @@ public:
 class NaClParseBitcodeMunger : public NaClBitcodeMunger {
 public:
   NaClParseBitcodeMunger(const uint64_t Records[], size_t RecordsSize,
-                    uint64_t RecordTerminator)
+                         uint64_t RecordTerminator)
       : NaClBitcodeMunger(Records, RecordsSize, RecordTerminator) {}
 
   /// Runs function llvm::NaClParseBitcodeFile, and puts error messages
@@ -278,6 +278,22 @@ public:
   bool runTest(const char* TestName, bool VerboseErrors) {
     uint64_t NoMunges[] = {0};
     return runTest(TestName, NoMunges, 0, VerboseErrors);
+  }
+};
+
+// Class to run tests for NaClBitcodeCompressor.compress().
+class NaClCompressMunger : public NaClBitcodeMunger {
+public:
+  NaClCompressMunger(const uint64_t Records[], size_t RecordsSize,
+                     uint64_t RecordTerminator)
+      : NaClBitcodeMunger(Records, RecordsSize, RecordTerminator) {}
+
+  bool runTest(const char* TestName, const uint64_t Munges[],
+               size_t MungesSize);
+
+  bool runTest(const char* TestName) {
+    uint64_t NoMunges[] = {0};
+    return runTest(TestName, NoMunges, 0);
   }
 };
 

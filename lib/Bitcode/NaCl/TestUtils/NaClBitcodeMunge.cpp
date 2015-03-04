@@ -16,6 +16,7 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
+#include "llvm/Bitcode/NaCl/NaClCompress.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -212,6 +213,11 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
                 << " for record should be <= 32\n";
         ReportFatalError();
       }
+      if (NumBits < 2) {
+        Fatal() << "Error: Bit size " << NumBits
+                << " for record should be >= 2\n";
+        ReportFatalError();
+      }
     } else {
       Fatal() << "Error: Values for enter record should be of size 2. Found: "
               << Values.size();
@@ -226,7 +232,8 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
       }
       Writer->EnterBlockInfoBlock();
     } else {
-      Writer->EnterSubblock(WriteBlockID, NumBits);
+      unsigned NumPossibleAbbrevs = (1 << NumBits) - 1;
+      Writer->EnterSubblock(WriteBlockID, NumPossibleAbbrevs);
     }
     return;
   }
@@ -286,21 +293,37 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
 NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
     unsigned RecordCode, SmallVectorImpl<uint64_t> &Values) {
   NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
-  for (size_t Index = 0; Index < Values.size(); ) {
-    switch (Values[Index]) {
+  size_t Index = 0;
+  if (Values.empty()) {
+    Fatal() << "Empty abbreviation record not allowed\n";
+    ReportFatalError();
+  }
+  size_t NumAbbreviations = Values[Index++];
+  if (NumAbbreviations == 0) {
+    Fatal() << "Abbreviation must contain at least one operator\n";
+    ReportFatalError();
+  }
+  for (size_t Count = 0; Count < NumAbbreviations; ++Count) {
+    if (Index >= Values.size()) {
+      Fatal() << "Malformed abbreviation found. Expects "
+              << NumAbbreviations << " operands. Found: "
+              << Count << "\n";
+      ReportFatalError();
+    }
+    switch (Values[Index++]) {
     case 1:
-      if (Index + 1 >= Values.size()) {
+      if (Index >= Values.size()) {
         Fatal() << "Malformed literal abbreviation.\n";
         ReportFatalError();
       }
-      Abbrev->Add(NaClBitCodeAbbrevOp(Values[++Index]));
+      Abbrev->Add(NaClBitCodeAbbrevOp(Values[Index++]));
       break;
     case 0: {
       if (Index >= Values.size()) {
         Fatal() << "Malformed abbreviation found.\n";
         ReportFatalError();
       }
-      unsigned Kind = Values[++Index];
+      unsigned Kind = Values[Index++];
       switch (Kind) {
       case NaClBitCodeAbbrevOp::Fixed:
         if (Index >= Values.size()) {
@@ -308,7 +331,7 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
           ReportFatalError();
         }
         Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                        Values[++Index]));
+                                        Values[Index++]));
         break;
       case NaClBitCodeAbbrevOp::VBR:
         if (Index >= Values.size()) {
@@ -316,7 +339,7 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
           ReportFatalError();
         }
         Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR,
-                                        Values[++Index]));
+                                        Values[Index++]));
         break;
       case NaClBitCodeAbbrevOp::Array:
         if (Index >= Values.size()) {
@@ -374,4 +397,14 @@ bool NaClParseBitcodeMunger::runTest(
   }
   cleanupTest();
   return !FoundErrors;
+}
+
+bool NaClCompressMunger::runTest(const char* Name, const uint64_t Munges[],
+                                 size_t MungesSize) {
+  bool AddHeader = true;
+  setupTest(Name, Munges, MungesSize, AddHeader);
+  NaClBitcodeCompressor Compressor;
+  bool Result = Compressor.compress(MungedInput.get(), *DumpStream);
+  cleanupTest();
+  return Result;
 }

@@ -400,7 +400,7 @@ public:
   /// abbreviation.
   bool isUserRecordAbbreviation(unsigned Abbrev) const {
     return Abbrev >= naclbitc::FIRST_APPLICATION_ABBREV
-        && Abbrev < CurAbbrevs.size();
+        && Abbrev < (CurAbbrevs.size() + naclbitc::FIRST_APPLICATION_ABBREV);
   }
 
   /// EmitRecord - Emit the specified record to the stream, using an abbrev if
