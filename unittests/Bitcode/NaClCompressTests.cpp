@@ -21,10 +21,9 @@ namespace {
 
 static const uint64_t Terminator = 0x5768798008978675LL;
 
-// Test that bitcode compression fails for the following example.
-// Note: Tests bug in
+// Note: Tests fix for bug in
 // https://code.google.com/p/nativeclient/issues/detail?id=4104
-TEST(NaClCompressTests, GenerateBadModuleAbbrevIds) {
+TEST(NaClCompressTests, FixedModuleAbbrevIdBug) {
   const uint64_t BitcodeRecords[] = {
     1, naclbitc::BLK_CODE_ENTER, naclbitc::MODULE_BLOCK_ID, 4, Terminator,
     // Note: We need at least one module abbreviation to activate bug.
@@ -44,7 +43,7 @@ TEST(NaClCompressTests, GenerateBadModuleAbbrevIds) {
   // Show textual version of sample input.
   NaClObjDumpMunger DumpMunger(BitcodeRecords,
                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTest("Generate Bad Module Abbrev Ids Test"));
+  EXPECT_TRUE(DumpMunger.runTest("Test fixed module abbreviation ID bug"));
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, 8"
       "8, 69)\n"
@@ -61,18 +60,10 @@ TEST(NaClCompressTests, GenerateBadModuleAbbrevIds) {
       "      40:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
 
-  // Show that exception is thrown when compressing.
+  // Show that we can compress as well.
   NaClCompressMunger CompressMunger(BitcodeRecords,
                                     array_lengthof(BitcodeRecords), Terminator);
-
-  EXPECT_DEATH(
-      CompressMunger.runTest("Generate Bad Module Abbrev Ids Test"),
-      ".*"
-      "void llvm\\:\\:NaClBitstreamWriter\\:\\:EmitRecordWithAbbrevImpl"
-      "\\(unsigned int, const AbbrevValues<uintty> &\\) \\[uintty "
-      "\\= unsigned long\\]\\: Assertion `AbbrevNo < CurAbbrevs\\."
-      "size\\(\\) && \\\"Invalid abbrev #!\\\"' failed\\."
-      ".*");
+  EXPECT_TRUE(CompressMunger.runTest("Test fixed module abbreviation ID bug"));
 }
 
 }

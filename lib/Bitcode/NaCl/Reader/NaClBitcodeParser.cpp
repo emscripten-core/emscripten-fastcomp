@@ -113,7 +113,6 @@ bool NaClBitcodeParser::ParseBlockInfoInternal() {
   // reader process this block.
   bool Result = Record.GetCursor().ReadBlockInfoBlock(Listener);
   if (Result) return Error("Malformed BlockInfoBlock");
-  ProcessBlockInfo();
   return Result;
 }
 

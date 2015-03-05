@@ -78,9 +78,7 @@
 // with the enclosing block.
 //
 // Currently, the default processing of abbreviations is handled by
-// the PNaCl bitstream reader, rather than by the parser. A hook,
-// ProcessBlockInfo exists if you want to do some processing before the
-// BlockInfo block is exited.
+// the PNaCl bitstream reader, rather than by the parser.
 //
 // If you need to process abbreviations processed by the PNaCl
 // bitstream reader, you must explicitly define a
@@ -460,9 +458,6 @@ public:
   // Called when the corresponding EndBlock of the block being parsed
   // is found.
   virtual void ExitBlock() {}
-
-  // Called after a BlockInfo block is parsed.
-  virtual void ProcessBlockInfo() {}
 
   // Called after each record (within the block) is read (into field Record).
   virtual void ProcessRecord() {}
