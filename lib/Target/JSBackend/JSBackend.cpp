@@ -178,7 +178,7 @@ namespace {
     void printModule(const std::string& fname, const std::string& modName );
     void printFunction(const Function *F);
 
-    void error(const std::string& msg);
+    LLVM_ATTRIBUTE_NORETURN void error(const std::string& msg);
 
     formatted_raw_ostream& nl(formatted_raw_ostream &Out, int delta = 0);
 
