@@ -13,7 +13,6 @@
 
 #include "InstCombine.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/Triple.h" // @LOCALMOD
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
@@ -2683,12 +2682,6 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
     //
     // sum = a + b
     // if (sum+128 >u 255)  ...  -> llvm.sadd.with.overflow.i8
-    // @LOCALMOD-BEGIN
-    // This is disabled for PNaCl, because we don't support the
-    // with.overflow intrinsics in PNaCl's stable ABI.
-    Triple T(I.getParent()->getParent()->getParent()->getTargetTriple());
-    if (T.getArch() != Triple::le32)
-    // @LOCALMOD-END
     {
     ConstantInt *CI2;    // I = icmp ugt (add (add A, B), CI2), CI
     if (I.getPredicate() == ICmpInst::ICMP_UGT &&
@@ -3429,11 +3422,6 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
         return new ICmpInst(I.getPredicate(), ConstantExpr::getNot(RHSC), A);
     }
 
-    // @LOCALMOD-BEGIN
-    // This is disabled for PNaCl, because we don't support the
-    // with.overflow intrinsics in PNaCl's stable ABI.
-    Triple T(I.getParent()->getParent()->getParent()->getTargetTriple());
-    if (T.getArch() != Triple::le32) {
     // (a+b) <u a  --> llvm.uadd.with.overflow.
     // (a+b) <u b  --> llvm.uadd.with.overflow.
     if (I.getPredicate() == ICmpInst::ICMP_ULT &&
@@ -3459,8 +3447,6 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
       if (Instruction *R = ProcessUMulZExtIdiom(I, Op1, Op0, *this))
         return R;
     }
-    }
-    // @LOCALMOD-END
   }
 
   if (I.isEquality()) {

@@ -1,14 +1,6 @@
 ; RUN: opt -S -instcombine < %s | FileCheck %s
 ; <rdar://problem/8558713>
 
-; @LOCALMOD-BEGIN
-; PNaCl does not support the with.overflow intrinsics in its stable
-; ABI, so these optimizations are disabled.
-
-; RUN: opt -S -instcombine -mtriple=le32-nacl < %s | FileCheck %s -check-prefix=PNACL
-; PNACL-NOT: with.overflow
-; @LOCALMOD-END
-
 declare void @throwAnExceptionOrWhatever()
 
 ; CHECK-LABEL: @test1(
