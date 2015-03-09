@@ -39,12 +39,16 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/Function.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
+
+#define DEBUG_TYPE "expand-struct-regs"
 
 using namespace llvm;
 
@@ -243,10 +247,14 @@ static bool ExpandExtractValue(ExtractValueInst *EV,
   // expanded), so this variable is never reset to zero.
   size_t EVIndex = 0;
 
-  if (isa<AtomicCmpXchgInst>(StructVal))
+  // Some intrinsics and cmpxchg returns struct vals and this pass can't do
+  // anything but ignore them.
+  if (isa<IntrinsicInst>(StructVal) || isa<AtomicCmpXchgInst>(StructVal))
     return false;
 
   for (;;) {
+    DEBUG(dbgs() << "Expanding struct value: " << *StructVal << "\n");
+
     if (InsertValueInst *IV = dyn_cast<InsertValueInst>(StructVal)) {
 
       size_t IVIndex = 0;

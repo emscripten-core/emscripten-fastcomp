@@ -61,6 +61,11 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   // "va_arg" instructions have been removed.
   PM.add(createExpandVarArgsPass());
 
+  // TODO(mtrofin) Remove the following and only run it as a post-opt pass once
+  //               the following bug is fixed.
+  // https://code.google.com/p/nativeclient/issues/detail?id=3857
+  PM.add(createExpandStructRegsPass());
+
   PM.add(createExpandCtorsPass());
   PM.add(createResolveAliasesPass());
   PM.add(createExpandTlsPass());
