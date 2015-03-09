@@ -57,15 +57,9 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   // Rewrite unsupported intrinsics to simpler and portable constructs.
   PM.add(createRewriteLLVMIntrinsicsPass());
 
-  // Expand out some uses of struct types.
+  // ExpandStructRegs must be run after ExpandVarArgs so that struct-typed
+  // "va_arg" instructions have been removed.
   PM.add(createExpandVarArgsPass());
-  PM.add(createExpandArithWithOverflowPass());
-  // ExpandStructRegs must be run after ExpandArithWithOverflow to
-  // expand out the insertvalue instructions that
-  // ExpandArithWithOverflow introduces.  ExpandStructRegs must be run
-  // after ExpandVarArgs so that struct-typed "va_arg" instructions
-  // have been removed.
-  PM.add(createExpandStructRegsPass());
 
   PM.add(createExpandCtorsPass());
   PM.add(createResolveAliasesPass());
@@ -77,6 +71,10 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
 
 void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createRewritePNaClLibraryCallsPass());
+
+  // ExpandStructRegs must be run after ExpandArithWithOverflow to expand out
+  // the insertvalue instructions that ExpandArithWithOverflow introduces.
+  PM.add(createExpandArithWithOverflowPass());
 
   // We place ExpandByVal after optimization passes because some byval
   // arguments can be expanded away by the ArgPromotion pass.  Leaving
@@ -152,8 +150,7 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createReplacePtrsWithIntsPass());
 
   // The atomic cmpxchg instruction returns a struct, and is rewritten to an
-  // intrinsic as a post-opt pass, we therefore need to expand struct regs one
-  // last time.
+  // intrinsic as a post-opt pass, we therefore need to expand struct regs.
   PM.add(createExpandStructRegsPass());
 
   // We place StripAttributes after optimization passes because many
