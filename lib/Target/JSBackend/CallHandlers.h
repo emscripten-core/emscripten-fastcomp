@@ -308,9 +308,6 @@ CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i8);
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16);
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32);
 
-#define UNROLL_LOOP_MAX 8
-#define WRITE_LOOP_MAX 128
-
 DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
   if (CI) {
     ConstantInt *AlignInt = dyn_cast<ConstantInt>(CI->getOperand(3));
@@ -319,7 +316,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
       if (LenInt) {
         // we can emit inline code for this
         unsigned Len = LenInt->getZExtValue();
-        if (Len <= WRITE_LOOP_MAX) {
+        if (Len <= MemWriteLoopMax) {
           unsigned Align = AlignInt->getZExtValue();
           if (Align > 4) Align = 4;
           else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
@@ -334,7 +331,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
             // handle as much as we can in the current alignment
             unsigned CurrLen = Align*(Len/Align);
             unsigned Factor = CurrLen/Align;
-            if (Factor <= UNROLL_LOOP_MAX) {
+            if (Factor <= MemUnrollLoopMax) {
               // unroll
               for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
                 std::string Add = "+" + utostr(Pos + Offset);
@@ -368,7 +365,7 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
         if (ValInt) {
           // we can emit inline code for this
           unsigned Len = LenInt->getZExtValue();
-          if (Len <= WRITE_LOOP_MAX) {
+          if (Len <= MemWriteLoopMax) {
             unsigned Align = AlignInt->getZExtValue();
             unsigned Val = ValInt->getZExtValue();
             if (Align > 4) Align = 4;
@@ -388,7 +385,7 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
                 FullVal |= Val;
               }
               unsigned Factor = CurrLen/Align;
-              if (Factor <= UNROLL_LOOP_MAX) {
+              if (Factor <= MemUnrollLoopMax) {
                 // unroll
                 for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
                   std::string Add = "+" + utostr(Pos + Offset);
