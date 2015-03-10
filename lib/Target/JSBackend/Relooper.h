@@ -189,6 +189,7 @@ struct Relooper {
   std::deque<Shape*> Shapes;
   Shape *Root;
   bool Emulate;
+  bool MinSize;
   int BlockIdCounter;
   int ShapeIdCounter;
 
@@ -219,6 +220,9 @@ struct Relooper {
 
   // Sets whether we must emulate everything with switch-loop code
   void SetEmulate(int E) { Emulate = E; }
+
+  // Sets us to try to minimize size
+  void SetMinSize(bool MinSize_) { MinSize = MinSize_; }
 };
 
 typedef std::map<Block*, BlockSet> BlockBlockSetMap;

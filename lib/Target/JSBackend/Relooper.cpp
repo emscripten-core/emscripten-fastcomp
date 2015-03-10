@@ -437,7 +437,7 @@ void EmulatedShape::Render(bool InLoop) {
 
 // Relooper
 
-Relooper::Relooper() : Root(NULL), Emulate(false), BlockIdCounter(1), ShapeIdCounter(0) { // block ID 0 is reserved for clearings
+Relooper::Relooper() : Root(NULL), Emulate(false), MinSize(false), BlockIdCounter(1), ShapeIdCounter(0) { // block ID 0 is reserved for clearings
 }
 
 Relooper::~Relooper() {
@@ -541,7 +541,7 @@ void Relooper::Calculate(Block *Entry) {
     }
   }
 
-  if (!Emulate) Pre.SplitDeadEnds();
+  if (!Emulate && !MinSize) Pre.SplitDeadEnds();
 
   // Recursively process the graph
 

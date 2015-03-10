@@ -2226,6 +2226,10 @@ void JSWriter::printFunctionBody(const Function *F) {
   Relooper::MakeOutputBuffer(1024*1024);
   Relooper R;
   //if (!canReloop(F)) R.SetEmulate(true);
+  if (F->getAttributes().hasAttribute(AttributeSet::FunctionIndex, Attribute::MinSize) ||
+      F->getAttributes().hasAttribute(AttributeSet::FunctionIndex, Attribute::OptimizeForSize)) {
+    R.SetMinSize(true);
+  }
   R.SetAsmJSMode(1);
   Block *Entry = NULL;
   LLVMToRelooperMap LLVMToRelooper;
