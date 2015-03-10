@@ -31,7 +31,7 @@ OPTIONAL_DIRS := lldb
 # in parallel builds.  Please retain this ordering.
 DIRS := llvm-config
 PARALLEL_DIRS := pnacl-llc pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
-                 pnacl-benchmark pnacl-thaw pnacl-bccompress pnacl-bcdis \
+                 pnacl-thaw pnacl-bccompress pnacl-bcdis \
                  opt llvm-as llvm-dis llc llvm-ar llvm-nm llvm-link \
                  lli llvm-extract llvm-mc bugpoint llvm-bcanalyzer llvm-diff \
                  macho-dump llvm-objdump llvm-readobj llvm-rtdyld \
