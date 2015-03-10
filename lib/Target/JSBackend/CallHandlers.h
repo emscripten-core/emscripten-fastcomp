@@ -26,6 +26,19 @@ const Value *getActuallyCalledValue(const Instruction *I) {
   return CV;
 }
 
+// We can't and shouldn't try to invoke an LLVM intrinsic which we overload with a call hander -
+// it would end up in a function table, which makes no sense.
+bool canInvoke(const Value *V) {
+  const Function *F = dyn_cast<const Function>(V);
+  if (F && F->isDeclaration() && F->isIntrinsic()) {
+    auto Intrin = F->getIntrinsicID();
+    if (Intrin == Intrinsic::memcpy || Intrin == Intrinsic::memset) {
+      return false;
+    }
+  }
+  return true;
+}
+
 #define DEF_CALL_HANDLER(Ident, Code) \
   std::string CH_##Ident(const Instruction *CI, std::string Name, int NumArgs=-1) { Code }
 
@@ -37,7 +50,7 @@ DEF_CALL_HANDLER(__default__, {
   bool Invoke = false;
   if (InvokeState == 1) {
     InvokeState = 2;
-    Invoke = true;
+    Invoke = canInvoke(CV);
   }
   std::string Sig;
   const Function *F = dyn_cast<const Function>(CV);
