@@ -413,3 +413,13 @@ define void @pointer_to_array([2 x i40]* %ptr) {
   load i40* %element_ptr
   ret void
 }
+
+; Store 0x1222277777777 and make sure it's split up into 3 stores of each part.
+; CHECK-LABEL: @constants(
+; CHECK: store i32 2004318071, i32* %{{.*}}, align 4
+; CHECK: store i16 8738, i16* %{{.*}}
+; CHECK: store i8 1, i8* %{{.*}}
+define void @constants(i56* %ptr) {
+  store i56 319006405261175, i56* %ptr, align 4
+  ret void
+}

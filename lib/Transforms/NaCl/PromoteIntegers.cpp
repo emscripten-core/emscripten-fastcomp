@@ -277,9 +277,13 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
 
   if (!isLegalSize(Width - LoWidth)) {
     // HiTrunc is still illegal, and is redundant with the truncate in the
-    // recursive call, so just get rid of it.
-    State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
-                          /*TakeName=*/false);
+    // recursive call, so just get rid of it. If HiTrunc is a constant then the
+    // IRB will have just returned a shifted, truncated constant, which is
+    // already uniqued (and does not need to be RAUWed), and recordConverted
+    // expects constants.
+    if (!isa<Constant>(HiTrunc))
+      State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
+                            /*TakeName=*/false);
     StoreHi = splitStore(cast<StoreInst>(StoreHi), State);
   }
   State.recordConverted(Inst, StoreHi, /*TakeName=*/false);
