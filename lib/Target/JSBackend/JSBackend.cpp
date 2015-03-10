@@ -1226,7 +1226,13 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       if (VT->getElementType()->isIntegerTy()) {
         Code << "SIMD_int32x4_splat(" << getValueAsStr(Splat) << ")";
       } else {
-        Code << "SIMD_float32x4_splat(" << getValueAsStr(Splat) << ")";
+        std::string operand = getValueAsStr(Splat);
+        if (!PreciseF32) {
+          // SIMD_float32x4_splat requires an actual float32 even if we're
+          // otherwise not being precise about it.
+          operand = "Math_fround(" + operand + ")";
+        }
+        Code << "SIMD_float32x4_splat(" << operand << ")";
       }
     } else {
       // Emit constructor code.
@@ -1238,7 +1244,13 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       for (unsigned Index = 0; Index < NumElems; ++Index) {
         if (Index != 0)
           Code << ", ";
-        Code << getValueAsStr(Operands[Index]);
+        std::string operand = getValueAsStr(Operands[Index]);
+        if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
+          // SIMD_float32x4_splat requires an actual float32 even if we're
+          // otherwise not being precise about it.
+          operand = "Math_fround(" + operand + ")";
+        }
+        Code << operand;
       }
       Code << ")";
     }
@@ -1254,7 +1266,11 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       } else {
         with = "SIMD_float32x4_with";
       }
-      Result = with + SIMDLane[Index] + "(" + Result + ',' + getValueAsStr(Operands[Index]) + ')';
+      std::string operand = getValueAsStr(Operands[Index]);
+      if (!PreciseF32) {
+        operand = "Math_fround(" + operand + ")";
+      }
+      Result = with + SIMDLane[Index] + "(" + Result + ',' + operand + ')';
     }
     Code << Result;
   }
@@ -1291,12 +1307,18 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
     InsertElementInst *IEI = cast<InsertElementInst>(SVI->getOperand(0));
     if (ConstantInt *CI = dyn_cast<ConstantInt>(IEI->getOperand(2))) {
       if (CI->isZero()) {
+        std::string operand = getValueAsStr(IEI->getOperand(1));
+        if (!PreciseF32) {
+          // SIMD_float32x4_splat requires an actual float32 even if we're
+          // otherwise not being precise about it.
+          operand = "Math_fround(" + operand + ")";
+        }
         if (SVI->getType()->getElementType()->isIntegerTy()) {
           Code << "SIMD_int32x4_splat(";
         } else {
           Code << "SIMD_float32x4_splat(";
         }
-        Code << getValueAsStr(IEI->getOperand(1)) << ")";
+        Code << operand << ")";
         return;
       }
     }
@@ -1531,6 +1553,9 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
   for (unsigned Index = 0; Index < VT->getNumElements(); ++Index) {
     if (Index != 0)
         Code << ", ";
+    if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
+        Code << "Math_fround(";
+    }
     std::string Lane = VT->getNumElements() <= 4 ?
                        std::string(".") + simdLane[Index] :
                        ".s" + utostr(Index);
@@ -1564,6 +1589,9 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
              << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
         break;
       default: I->dump(); error("invalid unrolled vector instr"); break;
+    }
+    if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
+        Code << ")";
     }
   }
 
