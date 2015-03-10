@@ -424,6 +424,7 @@ class NaClBitcodeParser {
     LLVM_ATTRIBUTE_NORETURN
     void Fatal(const std::string &ErrorMessage) const final {
       Parser->FatalAt(getCurrentBitNo(), ErrorMessage);
+      llvm_unreachable("GCC treats noreturn virtual functions as returning");
     }
     ~ErrorHandler() override {}
   };
@@ -519,6 +520,7 @@ public:
   LLVM_ATTRIBUTE_NORETURN
   void Fatal(const std::string &Message) {
     FatalAt(Record.GetStartBit(), Message);
+    llvm_unreachable("GCC treats noreturn virtual functions as returning");
   }
 
   // Generates fatal generic error message.

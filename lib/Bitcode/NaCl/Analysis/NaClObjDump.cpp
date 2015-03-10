@@ -1369,8 +1369,9 @@ protected:
     return Context->Fatal();
   }
 
-  void FatalAt(uint64_t Bit, const std::string &Message) override {
-    return Context->FatalAt(Bit, Message);
+  LLVM_ATTRIBUTE_NORETURN
+  void FatalAt(uint64_t Bit, const std::string &Message) final {
+    Context->FatalAt(Bit, Message);
   }
 
   const std::string &GetAssemblyIndent() const {
