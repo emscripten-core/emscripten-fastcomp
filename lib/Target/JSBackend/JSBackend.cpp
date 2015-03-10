@@ -155,6 +155,7 @@ namespace {
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
     const DataLayout *DL;
+    bool StackBumped;
 
     #include "CallHandlers.h"
 
@@ -162,7 +163,7 @@ namespace {
     static char ID;
     JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
-        OptLevel(OptLevel) {}
+        OptLevel(OptLevel), StackBumped(false) {}
 
     virtual const char *getPassName() const { return "JavaScript backend"; }
 
@@ -1774,7 +1775,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::Ret: {
     const ReturnInst* ret =  cast<ReturnInst>(I);
     const Value *RV = ret->getReturnValue();
-    Code << "STACKTOP = sp;";
+    if (StackBumped) {
+      Code << "STACKTOP = sp;";
+    }
     Code << "return";
     if (RV != NULL) {
       Code << " " << getValueAsCastParenStr(RV, ASM_NONSPECIFIC | ASM_MUST_CAST);
@@ -1947,6 +1950,13 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   }
   case Instruction::Alloca: {
     const AllocaInst* AI = cast<AllocaInst>(I);
+
+    // We've done an alloca, so we'll have bumped the stack and will
+    // need to restore it.
+    // Yes, we shouldn't have to bump it for nativized vars, however
+    // they are included in the frame offset, so the restore is still
+    // needed until that is fixed.
+    StackBumped = true;
 
     if (NativizedVars.count(AI)) {
       // nativized stack variable, we just need a 'var' definition
@@ -2455,6 +2465,7 @@ void JSWriter::printFunction(const Function *F) {
   nl(Out);
 
   Allocas.clear();
+  StackBumped = false;
 }
 
 void JSWriter::printModuleBody() {
