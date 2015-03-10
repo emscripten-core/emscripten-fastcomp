@@ -82,8 +82,8 @@ static Value *CreateInsertValue(IRBuilder<> *IRB, Value *StructVal,
 static bool Expand(Module *M, unsigned Bits, ExpandArith Op, bool Signed) {
   IntegerType *IntTy = IntegerType::get(M->getContext(), Bits);
   SmallVector<Type *, 1> Types(1, IntTy);
-  std::string Name = Intrinsic::getName(getID(Op, Signed), Types);
-  Function *Intrinsic = M->getFunction(Name);
+  Function *Intrinsic =
+      M->getFunction(Intrinsic::getName(getID(Op, Signed), Types));
   if (!Intrinsic)
     return false;
 
@@ -100,7 +100,7 @@ static bool Expand(Module *M, unsigned Bits, ExpandArith Op, bool Signed) {
   for (CallInst *Call : Calls) {
     DEBUG(dbgs() << "Expanding " << *Call << "\n");
 
-    Twine Name = Call->getName();
+    StringRef Name = Call->getName();
     Value *LHS;
     Value *RHS;
     Value *NonConstOperand;
