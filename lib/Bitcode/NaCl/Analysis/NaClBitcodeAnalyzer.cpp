@@ -30,12 +30,16 @@
 // dumping records, and one for collecting distribution stats for
 // printing. This should simplify the code.
 
-/// Error - All bitcode analysis errors go through this function, making this a
-/// good place to breakpoint if debugging.
-static bool Error(const llvm::Twine &Err) {
+namespace {
+
+// Generates an error message when outside parsing, and no
+// corresponding bit position is known.
+bool Error(const llvm::Twine &Err) {
   llvm::errs() << Err << "\n";
   return true;
 }
+
+} // End of anonymous namespace.
 
 namespace llvm {
 
@@ -59,11 +63,6 @@ public:
   }
 
   virtual ~PNaClBitcodeAnalyzerParser() {}
-
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
 
   virtual bool ParseBlock(unsigned BlockID);
 
@@ -245,11 +244,6 @@ protected:
   void DecrementIndent() {
     Context->IndentLevel--;
     Indent = Context->GetIndentation();
-  }
-
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
   }
 
   // Called once the block has been entered by the bitstream reader.

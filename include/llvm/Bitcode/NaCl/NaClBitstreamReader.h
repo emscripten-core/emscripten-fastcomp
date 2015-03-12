@@ -27,6 +27,26 @@ namespace llvm {
 
 class Deserializer;
 
+namespace naclbitc {
+
+/// Returns the Bit as a Byte:BitInByte string.
+std::string getBitAddress(uint64_t Bit);
+
+/// Severity levels for reporting errors.
+enum ErrorLevel {
+  Warning,
+  Error,
+  Fatal
+};
+
+// Basic printing routine to generate the beginning of an error
+// message. BitPosition is the bit position the error was found.
+// Level is the severity of the error.
+raw_ostream &ErrorAt(raw_ostream &Out, ErrorLevel Level,
+                     uint64_t BitPosition);
+
+} // End namespace naclbitc.
+
 /// This class is used to read from a NaCl bitcode wire format stream,
 /// maintaining information that is global to decoding the entire file.
 /// While a file is being read, multiple cursors can be independently
@@ -87,11 +107,6 @@ public:
   size_t getInitialAddress() const {
     return InitialAddress;
   }
-
-  /// Returns the Bit as a Byte:BitInByte string. MinByteWidth is the
-  /// minimum number of characters to print out the Byte value (blank
-  /// fills).
-  static std::string getBitAddress(uint64_t Bit, unsigned MinByteWidth=1);
 
   //===--------------------------------------------------------------------===//
   // Block Manipulation
@@ -327,10 +342,8 @@ public:
   }
 
   /// Returns the current bit address (string) of the bit cursor.
-  /// MinByteWidth is the minimum number of characters to print out
-  /// the Byte value (blank fills).
-  std::string getCurrentBitAddress(unsigned MinByteWidth=1) const {
-    return BitStream->getBitAddress(GetCurrentBitNo(), MinByteWidth);
+  std::string getCurrentBitAddress() const {
+    return naclbitc::getBitAddress(GetCurrentBitNo());
   }
 
   /// Flags that modify the behavior of advance().

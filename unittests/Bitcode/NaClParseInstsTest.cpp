@@ -90,7 +90,7 @@ TEST(NaClParseInstsTest, NonexistantCallArg) {
                                 array_lengthof(BitcodeRecords), Terminator);
   EXPECT_FALSE(Munger.runTest("Nonexistant call arg", true));
   EXPECT_EQ(
-      "Error: (72:6) Invalid call argument: Index 1\n"
+      "Error(72:6): Invalid call argument: Index 1\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
 }
@@ -173,7 +173,7 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
   EXPECT_FALSE(Munger.runTest(
       "BadAllocaAlignment-30", Align30, array_lengthof(Align30), true));
   EXPECT_EQ(
-      "Error: (65:6) Alignment can't be greater than 2**29. Found: 2**30\n"
+      "Error(65:6): Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
   EXPECT_FALSE(DumpMunger.runTestForAssembly(
@@ -309,7 +309,7 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
   EXPECT_FALSE(Munger.runTest(
       "BadLoadAlignment-30", Align30, array_lengthof(Align30), true));
   EXPECT_EQ(
-      "Error: (62:4) Alignment can't be greater than 2**29. Found: 2**30\n"
+      "Error(62:4): Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
   EXPECT_FALSE(DumpMunger.runTestForAssembly(
@@ -441,7 +441,7 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
   EXPECT_FALSE(Munger.runTest(
       "BadStoreAlignment-30", Align30, array_lengthof(Align30), true));
   EXPECT_EQ(
-      "Error: (66:4) Alignment can't be greater than 2**29. Found: 2**30\n"
+      "Error(66:4): Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
   EXPECT_FALSE(DumpMunger.runTestForAssembly(

@@ -152,6 +152,22 @@ Allocate(TextFormatter *Formatter, const std::string &Text) {
   return Dir;
 }
 
+std::string RecordTextFormatter::getBitAddress(uint64_t Bit) {
+  std::string Address = naclbitc::getBitAddress(Bit);
+  size_t AddressSize = Address.size();
+  if (AddressSize >= AddressWriteWidth)
+    return Address;
+
+  // Pad address with leading spaces.
+  std::string Buffer;
+  raw_string_ostream StrBuf(Buffer);
+  for (size_t i = AddressWriteWidth - AddressSize; i > 0; --i) {
+    StrBuf << " ";
+  }
+  StrBuf << Address;
+  return StrBuf.str();
+}
+
 RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
     : TextFormatter(ObjDump->Records(), 0, "  "),
       OpenBrace(this, "<"),
@@ -163,7 +179,7 @@ RecordTextFormatter::RecordTextFormatter(ObjDumpStream *ObjDump)
       FinishCluster(this) {
   // Handle fact that 64-bit values can take up to 21 characters.
   MinLineWidth = 21;
-  Label = NaClBitstreamReader::getBitAddress(0, AddressWriteWidth);
+  Label = getBitAddress(0);
 }
 
 std::string RecordTextFormatter::GetEmptyLabelColumn() {
@@ -189,8 +205,7 @@ void RecordTextFormatter::WriteLineIndents() {
 void RecordTextFormatter::WriteValues(uint64_t Bit,
                                       const llvm::NaClBitcodeValues &Values,
                                       int32_t AbbrevIndex) {
-  Label = NaClBitstreamReader::getBitAddress(
-      Bit, RecordTextFormatter::AddressWriteWidth);
+  Label = getBitAddress(Bit);
   if (AbbrevIndex != ABBREV_INDEX_NOT_SPECIFIED) {
     TextStream << AbbrevIndex << ":" << Space;
   }
@@ -237,30 +252,19 @@ ObjDumpStream::ObjDumpStream(raw_ostream &Stream,
   }
 }
 
-raw_ostream &ObjDumpStream::Error(uint64_t Bit) {
+raw_ostream &ObjDumpStream::ErrorAt(naclbitc::ErrorLevel Level, uint64_t Bit) {
+  // Note: Since this method only prints the error line prefix, and
+  // lets the caller fill in the rest of the error.
+  if (NumErrors >= MaxErrors) {
+    // If we've hit the maximum number of errors, let Flush empty the buffers,
+    // print out reported errors, and then exit the executable.
+    Flush();
+    llvm_unreachable("Flush shouldn't return if too many errors");
+  }
   LastKnownBit = Bit;
-  if (NumErrors >= MaxErrors)
-    Fatal(Bit, "Too many errors");
-  ++NumErrors;
-  return PrintMessagePrefix("Error", Bit);
-}
-
-void ObjDumpStream::Fatal(uint64_t Bit, const std::string &Message) {
-  LastKnownBit = Bit;
-  if (!Message.empty())
-    PrintMessagePrefix("Error", Bit) << Message << "\n";
-  Flush();
-  llvm::report_fatal_error("Unable to continue");
-}
-
-void ObjDumpStream::Fatal(uint64_t Bit,
-                          const llvm::NaClBitcodeRecordData &Record,
-                          const std::string &Message) {
-  LastKnownBit = Bit;
-  PrintMessagePrefix("Error", Bit) << Message;
-  Write(Bit, Record);
-  Flush();
-  llvm::report_fatal_error("Unable to continue");
+  if (Level >= naclbitc::Error)
+    ++NumErrors;
+  return naclbitc::ErrorAt(Comments(), Level, Bit);
 }
 
 // Dumps the next line of text in the buffer. Returns the number of characters
@@ -324,15 +328,15 @@ void ObjDumpStream::Flush() {
 
   // Print out messages and reset buffers.
   Stream << MessageBuffer;
-  ResetBuffers();
-  if (NumErrors >= MaxErrors) {
-    // Note: we don't call Fatal here because that will call Flush, causing
-    // an infinite loop.
-    Stream << "Error(" << NaClBitstreamReader::getBitAddress(LastKnownBit)
-           << "): Too many errors\n";
-    llvm::report_fatal_error("Unable to continue");
-  }
   Stream.flush();
+  ResetBuffers();
+  if (NumErrors >= MaxErrors)
+    report_fatal_error("Too many errors, Unable to continue");
+}
+
+void ObjDumpStream::FlushThenQuit() {
+  Flush();
+  report_fatal_error("Unable to continue");
 }
 
 }

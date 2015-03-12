@@ -8,24 +8,35 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
-std::string NaClBitstreamReader::getBitAddress(uint64_t Bit,
-                                               unsigned MinByteWidth) {
+namespace {
+
+static const char *ErrorLevelName[] = {
+  "Warning",
+  "Error",
+  "Fatal"
+};
+
+} // End of anonymous namespace.
+
+std::string llvm::naclbitc::getBitAddress(uint64_t Bit) {
   std::string Buffer;
   raw_string_ostream Stream(Buffer);
-  Stream << '%' << MinByteWidth << PRIu64 << ":%u";
-  Stream.flush();
-  std::string FormatString(Buffer);
-  Buffer.clear();
-  Stream << format(FormatString.c_str(),
-                   (Bit / 8),
-                   static_cast<unsigned>(Bit % 8));
+  Stream << (Bit / 8) << ":" << (Bit % 8);
   return Stream.str();
+}
+
+raw_ostream &llvm::naclbitc::ErrorAt(
+    raw_ostream &Out, ErrorLevel Level, uint64_t BitPosition) {
+  assert(Level < array_lengthof(::ErrorLevelName));
+  return Out << ErrorLevelName[Level] << "("
+             << naclbitc::getBitAddress(BitPosition) << "): ";
 }
 
 //===----------------------------------------------------------------------===//
@@ -38,9 +49,8 @@ Fatal(const std::string &ErrorMessage) const {
   // the error occurred.
   std::string Buffer;
   raw_string_ostream StrBuf(Buffer);
-  StrBuf << "Error("
-         << NaClBitstreamReader::getBitAddress(Cursor.GetCurrentBitNo())
-         << "): " << ErrorMessage;
+  naclbitc::ErrorAt(StrBuf, naclbitc::Fatal, Cursor.GetCurrentBitNo())
+      << ErrorMessage;
   report_fatal_error(StrBuf.str());
 }
 

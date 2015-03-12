@@ -589,23 +589,12 @@ public:
   }
 
   /// Generates an error with the given message.
-  bool ErrorAt(uint64_t Bit, const std::string &Message) final {
-    // Use local error routine so that all errors are treated uniformly.
-    ObjDump.Error(Bit) << Message << "\n";
+  bool ErrorAt(naclbitc::ErrorLevel Level, uint64_t Bit,
+               const std::string &Message) final {
+    ObjDump.ErrorAt(Level, Bit) << Message << "\n";
+    if (Level == naclbitc::Fatal)
+      ObjDump.FlushThenQuit();
     return true;
-  }
-
-  /// Flushes out objdump and then exits with fatal error.
-  LLVM_ATTRIBUTE_NORETURN
-  void Fatal() {
-    NaClBitcodeParser::Fatal();
-  }
-
-  /// Flushes out objdump and then exits with fatal error, using
-  /// the given message.
-  LLVM_ATTRIBUTE_NORETURN
-  void FatalAt(uint64_t Bit, const std::string &Message) final {
-    ObjDump.Fatal(Bit, Message);
   }
 
   /// Parses the top-level module block.
@@ -1365,13 +1354,9 @@ protected:
     return Context->Warnings();
   }
 
-  void Fatal() {
-    return Context->Fatal();
-  }
-
-  LLVM_ATTRIBUTE_NORETURN
-  void FatalAt(uint64_t Bit, const std::string &Message) final {
-    Context->FatalAt(Bit, Message);
+  bool ErrorAt(naclbitc::ErrorLevel Level, uint64_t Bit,
+               const std::string &Message) final {
+    return Context->ErrorAt(Level, Bit, Message);
   }
 
   const std::string &GetAssemblyIndent() const {

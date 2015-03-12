@@ -79,7 +79,7 @@ TEST(MyDeathNaClAbbrevErrorTests, BadAbbreviationIndex) {
   EXPECT_DEATH(
       DumpMunger.runTest("Bad abbreviation index 4",
                          AbbrevIndex4, array_lengthof(AbbrevIndex4)),
-      ".*Error\\(35\\:0\\)\\: Invalid abbreviation \\# 4 defined for record.*");
+      ".*Fatal\\(35\\:0\\)\\: Invalid abbreviation \\# 4 defined for record.*");
 
   // Test that bitcode reader reports problem correctly.
   NaClParseBitcodeMunger Munger(BitcodeRecords,
@@ -87,7 +87,7 @@ TEST(MyDeathNaClAbbrevErrorTests, BadAbbreviationIndex) {
   EXPECT_DEATH(
       Munger.runTest("Bad abbreviation index",
                      AbbrevIndex4, array_lengthof(AbbrevIndex4), true),
-      ".*Error\\(35\\:0\\)\\: Invalid abbreviation \\# 4 defined for record.*");
+      ".*Fatal\\(35\\:0\\)\\: Invalid abbreviation \\# 4 defined for record.*");
 }
 
 } // end of anonymous namespace.

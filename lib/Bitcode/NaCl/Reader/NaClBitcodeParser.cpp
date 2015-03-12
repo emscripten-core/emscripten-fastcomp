@@ -86,17 +86,13 @@ NaClBitcodeParser::~NaClBitcodeParser() {
   }
 }
 
-bool NaClBitcodeParser::ErrorAt(uint64_t BitPosition,
-                                const std::string &Message) {
-  *ErrStream << "Error(" << NaClBitstreamReader::getBitAddress(BitPosition, 1)
-             << "): " << Message << "\n";
+bool NaClBitcodeParser::ErrorAt(
+    naclbitc::ErrorLevel Level, uint64_t BitPosition,
+    const std::string &Message) {
+  naclbitc::ErrorAt(*ErrStream, Level, BitPosition) << Message << "\n";
+  if (Level == naclbitc::Fatal)
+    report_fatal_error("Unable to continue");
   return true;
-}
-
-void NaClBitcodeParser::FatalAt(uint64_t BitPosition,
-                                const std::string &Message) {
-  ErrorAt(BitPosition, Message);
-  report_fatal_error("Unable to continue");
 }
 
 bool NaClBitcodeParser::Parse() {

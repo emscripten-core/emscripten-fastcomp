@@ -192,10 +192,8 @@ static_assert(
 std::error_code NaClBitcodeReader::Error(ErrorType E,
                                          const std::string &Message) const {
   if (Verbose) {
-    uint64_t Bit = Stream.GetCurrentBitNo();
-    *Verbose << "Error: (" <<  (Bit / CHAR_BIT) << ":"
-             << static_cast<unsigned>(Bit % CHAR_BIT)
-             << ") " << Message << "\n";
+    naclbitc::ErrorAt(*Verbose, naclbitc::Error, Stream.GetCurrentBitNo())
+        << Message << "\n";
   }
   return Error(E);
 }

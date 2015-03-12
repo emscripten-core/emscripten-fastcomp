@@ -78,7 +78,7 @@ TEST(NaClParseTypesTest, BadTypeReferences) {
       AddSelfReference, array_lengthof(AddSelfReference),
       true));
   EXPECT_EQ(
-      "Error: (40:2) Invalid TYPE_CODE_FLOAT record\n"
+      "Error(40:2): Invalid TYPE_CODE_FLOAT record\n"
       "Error: Record doesn't have expected size or structure\n",
       Munger.getTestResults());
 }

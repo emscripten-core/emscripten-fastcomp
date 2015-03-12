@@ -488,10 +488,7 @@ public:
   // 1) To change (from the default errs()) inside the constructor of the
   //    derived class. In this context, it will be used for all error
   //    messages for the derived class.
-  // 2) Temporarily modify it for a single error message. In this context,
-  //    the method Error() is overridden in the derived class, and
-  //    calls this method twice. Once before calling base method Error(),
-  //    and followed by a second call to restore the default error stream.
+  // 2) Temporarily modify it for a single error message.
   raw_ostream &setErrStream(raw_ostream &Stream) {
     raw_ostream &OldErrStream = *ErrStream;
     ErrStream = &Stream;
@@ -500,8 +497,14 @@ public:
 
   // Called when an error occurs. BitPosition is the bit position the
   // error was found, and Message is the error to report. Always
-  // returns true (the error return value of Parse).
-  virtual bool ErrorAt(uint64_t BitPosition, const std::string &Message);
+  // returns true (the error return value of Parse). Level is
+  // the severity of the error.
+  virtual bool ErrorAt(naclbitc::ErrorLevel Level, uint64_t BitPosition,
+                       const std::string &Message);
+
+  bool ErrorAt(uint64_t BitPosition, const std::string &Message) {
+    return ErrorAt(naclbitc::Error, BitPosition, Message);
+  }
 
   // Called when an error occurs. Message is the error to
   // report. Always returns true (the error return value of Parse).
@@ -513,7 +516,10 @@ public:
   // the error was found, and Message is the error to report. Does not
   // return.
   LLVM_ATTRIBUTE_NORETURN
-  virtual void FatalAt(uint64_t BitPosition, const std::string &Message);
+  void FatalAt(uint64_t BitPosition, const std::string &Message) {
+    ErrorAt(naclbitc::Fatal, BitPosition, Message);
+    llvm_unreachable("Fatal errors should not return");
+  }
 
   // Called when a fatal error occurs. Message is the error to
   // report. Does not return.

@@ -48,14 +48,12 @@
 #include "llvm/Bitcode/NaCl/NaClCompressBlockDist.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 
-using namespace llvm;
-
 namespace {
 
 using namespace llvm;
 
-/// Error - All bitcode analysis errors go through this function,
-/// making this a good place to breakpoint if debugging.
+// Generates an error message when outside parsing, and no
+// corresponding bit position is known.
 static bool Error(const std::string &Err) {
   errs() << Err << "\n";
   return true;
@@ -478,11 +476,6 @@ public:
 
   virtual ~NaClAnalyzeParser() {}
 
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
-
   virtual bool ParseBlock(unsigned BlockID);
 
   const NaClBitcodeCompressor::CompressFlags &Flags;
@@ -529,11 +522,6 @@ protected:
   }
 
 public:
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
-
   virtual bool ParseBlock(unsigned BlockID) {
     NaClBlockAnalyzeParser Parser(BlockID, this);
     return Parser.ParseThisBlock();
@@ -1212,11 +1200,6 @@ public:
 
   virtual ~NaClBitcodeCopyParser() {}
 
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
-
   virtual bool ParseBlock(unsigned BlockID);
 
   const NaClBitcodeCompressor::CompressFlags &Flags;
@@ -1256,11 +1239,6 @@ protected:
       : NaClBitcodeParser(BlockID, EnclosingParser),
         Context(EnclosingParser->Context)
   {}
-
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
 
   /// Returns the set of (global) block abbreviations defined for the
   /// given block ID.
