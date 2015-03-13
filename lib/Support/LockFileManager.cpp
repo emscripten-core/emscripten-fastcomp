@@ -24,7 +24,9 @@
 #endif
 using namespace llvm;
 
-#ifndef __native_client__ // @LOCALMOD
+// @LOCALMOD-BEGIN
+#if !defined(PNACL_BROWSER_TRANSLATOR)
+// @LOCALMOD-END
 
 /// \brief Attempt to read the lock file with the given name, if it exists.
 ///
@@ -41,11 +43,11 @@ LockFileManager::readLockFile(StringRef LockFileName) {
     sys::fs::remove(LockFileName);
     return None;
   }
-  std::unique_ptr<MemoryBuffer> MB = std::move(MBOrErr.get());
+  MemoryBuffer &MB = *MBOrErr.get();
 
   StringRef Hostname;
   StringRef PIDStr;
-  std::tie(Hostname, PIDStr) = getToken(MB->getBuffer(), " ");
+  std::tie(Hostname, PIDStr) = getToken(MB.getBuffer(), " ");
   PIDStr = PIDStr.substr(PIDStr.find_first_not_of(" "));
   int PID;
   if (!PIDStr.getAsInteger(10, PID)) {
@@ -60,7 +62,9 @@ LockFileManager::readLockFile(StringRef LockFileName) {
 }
 
 bool LockFileManager::processStillExecuting(StringRef Hostname, int PID) {
-#if LLVM_ON_UNIX && !defined(__ANDROID__)
+// @LOCALMOD-BEGIN
+#if LLVM_ON_UNIX && !defined(__ANDROID__) && !defined(__native_client__)
+// @LOCALMOD-END
   char MyHostname[256];
   MyHostname[255] = 0;
   MyHostname[0] = 0;
@@ -206,8 +210,8 @@ LockFileManager::WaitForUnlockResult LockFileManager::waitForUnlock() {
     // If the lock file is still expected to be there, check whether it still
     // is.
     if (!LockFileGone) {
-      bool Exists;
-      if (!sys::fs::exists(LockFileName.str(), Exists) && !Exists) {
+      if (sys::fs::access(LockFileName.c_str(), sys::fs::AccessMode::Exist) ==
+          errc::no_such_file_or_directory) {
         LockFileGone = true;
         LockFileJustDisappeared = true;
       }

@@ -20,8 +20,7 @@ define zeroext i8 @test_lock_test_and_set_i8(i8* %ptr, i8 zeroext %value) {
 
 ; CHECK-LABEL: @test_lock_release_i8
 define void @test_lock_release_i8(i8* %ptr) {
-  ; Note that the 'release' was changed to a 'seq_cst'.
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i8(i8 0, i8* %ptr, i32 6)
+  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i8(i8 0, i8* %ptr, i32 4)
   store atomic i8 0, i8* %ptr release, align 1
   ret void  ; CHECK-NEXT: ret void
 }
@@ -35,8 +34,7 @@ define zeroext i16 @test_lock_test_and_set_i16(i16* %ptr, i16 zeroext %value) {
 
 ; CHECK-LABEL: @test_lock_release_i16
 define void @test_lock_release_i16(i16* %ptr) {
-  ; Note that the 'release' was changed to a 'seq_cst'.
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i16(i16 0, i16* %ptr, i32 6)
+  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i16(i16 0, i16* %ptr, i32 4)
   store atomic i16 0, i16* %ptr release, align 2
   ret void  ; CHECK-NEXT: ret void
 }
@@ -50,8 +48,7 @@ define i32 @test_lock_test_and_set_i32(i32* %ptr, i32 %value) {
 
 ; CHECK-LABEL: @test_lock_release_i32
 define void @test_lock_release_i32(i32* %ptr) {
-  ; Note that the 'release' was changed to a 'seq_cst'.
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i32(i32 0, i32* %ptr, i32 6)
+  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i32(i32 0, i32* %ptr, i32 4)
   store atomic i32 0, i32* %ptr release, align 4
   ret void  ; CHECK-NEXT: ret void
 }
@@ -65,8 +62,7 @@ define i64 @test_lock_test_and_set_i64(i64* %ptr, i64 %value) {
 
 ; CHECK-LABEL: @test_lock_release_i64
 define void @test_lock_release_i64(i64* %ptr) {
-  ; Note that the 'release' was changed to a 'seq_cst'.
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i64(i64 0, i64* %ptr, i32 6)
+  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i64(i64 0, i64* %ptr, i32 4)
   store atomic i64 0, i64* %ptr release, align 8
   ret void  ; CHECK-NEXT: ret void
 }

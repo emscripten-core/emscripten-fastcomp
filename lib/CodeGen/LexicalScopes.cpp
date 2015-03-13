@@ -137,6 +137,8 @@ LexicalScope *LexicalScopes::findLexicalScope(DebugLoc DL) {
 /// getOrCreateLexicalScope - Find lexical scope for the given DebugLoc. If
 /// not available then create new lexical scope.
 LexicalScope *LexicalScopes::getOrCreateLexicalScope(DebugLoc DL) {
+  if (DL.isUnknown())
+    return nullptr;
   MDNode *Scope = nullptr;
   MDNode *InlinedAt = nullptr;
   DL.getScopeAndInlinedAt(Scope, InlinedAt, MF->getFunction()->getContext());
@@ -172,9 +174,21 @@ LexicalScope *LexicalScopes::getOrCreateRegularScope(MDNode *Scope) {
                               std::make_tuple(Parent, DIDescriptor(Scope),
                                               nullptr, false)).first;
 
-  if (!Parent && DIDescriptor(Scope).isSubprogram() &&
-      DISubprogram(Scope).describes(MF->getFunction()))
+  if (!Parent) {
+    assert(DIDescriptor(Scope).isSubprogram());
+    // @LOCALMOD-BEGIN
+    // This currently asserts when mixing -g and -g0 compilation
+    // units + LTO. Debug info from a few inlined functions are not
+    // marked as inline, so we end up in getOrCreateRegularScope
+    // instead of getOrCreateInlinedScope.
+    // This is reproducible w/ the pnacl-llc.nexe build and
+    // setting the env var PNACL_PRUNE=false.
+    // https://code.google.com/p/nativeclient/issues/detail?id=4026
+    //assert(DISubprogram(Scope).describes(MF->getFunction()));
+    //assert(!CurrentFnLexicalScope);
+    // @LOCALMOD-END
     CurrentFnLexicalScope = &I->second;
+  }
 
   return &I->second;
 }
@@ -285,7 +299,7 @@ void LexicalScopes::assignInstructionRanges(
 /// have machine instructions that belong to lexical scope identified by
 /// DebugLoc.
 void LexicalScopes::getMachineBasicBlocks(
-    DebugLoc DL, SmallPtrSet<const MachineBasicBlock *, 4> &MBBs) {
+    DebugLoc DL, SmallPtrSetImpl<const MachineBasicBlock *> &MBBs) {
   MBBs.clear();
   LexicalScope *Scope = getOrCreateLexicalScope(DL);
   if (!Scope)

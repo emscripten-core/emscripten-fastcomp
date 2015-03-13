@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_DEBUGINFO_DWARFDEBUGINFOENTRY_H
-#define LLVM_DEBUGINFO_DWARFDEBUGINFOENTRY_H
+#ifndef LLVM_LIB_DEBUGINFO_DWARFDEBUGINFOENTRY_H
+#define LLVM_LIB_DEBUGINFO_DWARFDEBUGINFOENTRY_H
 
 #include "DWARFAbbreviationDeclaration.h"
 #include "DWARFDebugRangeList.h"
@@ -38,9 +38,9 @@ public:
   DWARFDebugInfoEntryMinimal()
     : Offset(0), SiblingIdx(0), AbbrevDecl(nullptr) {}
 
-  void dump(raw_ostream &OS, const DWARFUnit *u, unsigned recurseDepth,
+  void dump(raw_ostream &OS, DWARFUnit *u, unsigned recurseDepth,
             unsigned indent = 0) const;
-  void dumpAttribute(raw_ostream &OS, const DWARFUnit *u, uint32_t *offset_ptr,
+  void dumpAttribute(raw_ostream &OS, DWARFUnit *u, uint32_t *offset_ptr,
                      uint16_t attr, uint16_t form, unsigned indent = 0) const;
 
   /// Extracts a debug info entry, which is a child of a given unit,
@@ -125,9 +125,12 @@ public:
   /// returns its mangled name (or short name, if mangled is missing).
   /// This name may be fetched from specification or abstract origin
   /// for this subprogram. Returns null if no name is found.
-  const char *
-  getSubroutineName(const DWARFUnit *U,
-                    DILineInfoSpecifier::FunctionNameKind Kind) const;
+  const char *getSubroutineName(const DWARFUnit *U, DINameKind Kind) const;
+
+  /// Return the DIE name resolving DW_AT_sepcification or
+  /// DW_AT_abstract_origin references if necessary.
+  /// Returns null if no name is found.
+  const char *getName(const DWARFUnit *U, DINameKind Kind) const;
 
   /// Retrieves values of DW_AT_call_file, DW_AT_call_line and
   /// DW_AT_call_column from DIE (or zeroes if they are missing).

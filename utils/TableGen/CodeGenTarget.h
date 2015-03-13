@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CODEGEN_TARGET_H
-#define CODEGEN_TARGET_H
+#ifndef LLVM_UTILS_TABLEGEN_CODEGENTARGET_H
+#define LLVM_UTILS_TABLEGEN_CODEGENTARGET_H
 
 #include "CodeGenInstruction.h"
 #include "CodeGenRegisters.h"
@@ -66,14 +66,14 @@ class CodeGenTarget {
   Record *TargetRec;
 
   mutable DenseMap<const Record*, CodeGenInstruction*> Instructions;
-  mutable CodeGenRegBank *RegBank;
+  mutable std::unique_ptr<CodeGenRegBank> RegBank;
   mutable std::vector<Record*> RegAltNameIndices;
   mutable SmallVector<MVT::SimpleValueType, 8> LegalValueTypes;
   void ReadRegAltNameIndices() const;
   void ReadInstructions() const;
   void ReadLegalValueTypes() const;
 
-  mutable CodeGenSchedModels *SchedModels;
+  mutable std::unique_ptr<CodeGenSchedModels> SchedModels;
 
   mutable std::vector<const CodeGenInstruction*> InstrsByEnum;
 public:

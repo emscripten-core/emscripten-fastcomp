@@ -30,12 +30,16 @@
 // dumping records, and one for collecting distribution stats for
 // printing. This should simplify the code.
 
-/// Error - All bitcode analysis errors go through this function, making this a
-/// good place to breakpoint if debugging.
-static bool Error(const llvm::Twine &Err) {
+namespace {
+
+// Generates an error message when outside parsing, and no
+// corresponding bit position is known.
+bool Error(const llvm::Twine &Err) {
   llvm::errs() << Err << "\n";
   return true;
 }
+
+} // End of anonymous namespace.
 
 namespace llvm {
 
@@ -59,11 +63,6 @@ public:
   }
 
   virtual ~PNaClBitcodeAnalyzerParser() {}
-
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
 
   virtual bool ParseBlock(unsigned BlockID);
 
@@ -96,27 +95,6 @@ private:
   // Listener used to get abbreviations as they are read.
   NaClBitcodeParserListener AbbrevListener;
 };
-
-// Define the encodings for abbreviation operands that we recognize,
-// based on the NaClBitCodeAbbrevOp::Encoding value.
-static const char *AbbrevEncodings[] = {
-  0,        // No encoding defined for 0.
-  "FIXED",
-  "VBR",
-  "ARRAY",
-  "CHAR6"
-};
-
-static std::string GetAbbrevEncoding(unsigned Encoding) {
-  if (Encoding < array_lengthof(AbbrevEncodings) && AbbrevEncodings[Encoding]) {
-    return AbbrevEncodings[Encoding];
-  } else {
-    std::string Str;
-    raw_string_ostream StrStrm(Str);
-    StrStrm << "UnknownEncoding" << Encoding;
-    return StrStrm.str();
-  }
-}
 
 // Parses a bitcode block, and collects distribution of records in that block.
 // Also dumps bitcode structure if specified (via global variables).
@@ -268,11 +246,6 @@ protected:
     Indent = Context->GetIndentation();
   }
 
-  virtual bool Error(const std::string &Message) {
-    // Use local error routine so that all errors are treated uniformly.
-    return ::Error(Message);
-  }
-
   // Called once the block has been entered by the bitstream reader.
   // Argument NumWords is set to the number of words in the
   // corresponding block.
@@ -378,15 +351,12 @@ protected:
 
   /// Emit the given abbreviation operand as an XML tag attribute.
   void EmitAbbreviationOp(const NaClBitCodeAbbrevOp &Op) {
-    if (Op.isLiteral()) {
-      EmitOperandPrefix() << "'LIT(" << Op.getLiteralValue() << ")'";
-    } else {
-      EmitOperandPrefix() << "'" << GetAbbrevEncoding(Op.getEncoding());
-      if (Op.hasEncodingData()) {
-        Context->OS << "(" << Op.getEncodingData() << ")";
-      }
-      Context->OS << "'";
+    EmitOperandPrefix()
+        << "'" << NaClBitCodeAbbrevOp::getEncodingName(Op.getEncoding());
+    if (Op.hasValue()) {
+      Context->OS << "(" << Op.getValue() << ")";
     }
+    Context->OS << "'";
   }
 
   /// Emits the symbolic name of the record code as the XML tag name.
@@ -423,9 +393,6 @@ bool PNaClBitcodeAnalyzerParser::ParseBlock(unsigned BlockID) {
   return Parser.ParseThisBlock();
 }
 
-static void PrintSize(double Bits, raw_ostream &OS) {
-  OS << format("%.2f/%.2fB/%luW", Bits, Bits/8,(unsigned long)(Bits/32));
-}
 static void PrintSize(uint64_t Bits, raw_ostream &OS) {
   OS << format("%lub/%.2fB/%luW", (unsigned long)Bits,
                (double)Bits/8, (unsigned long)(Bits/32));

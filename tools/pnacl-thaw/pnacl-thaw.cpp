@@ -21,7 +21,7 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
-#include "llvm/Support/StreamableMemoryObject.h"
+#include "llvm/Support/StreamingMemoryObject.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 using namespace llvm;
@@ -33,13 +33,19 @@ OutputFilename("o", cl::desc("Specify thawed pexe filename"),
 static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<frozen file>"), cl::init("-"));
 
+static cl::opt<bool>
+VerboseErrors(
+    "verbose-parse-errors",
+    cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
+    cl::init(false));
+
 static void WriteOutputFile(const Module *M) {
 
-  std::string ErrorInfo;
+  std::error_code EC;
   std::unique_ptr<tool_output_file> Out(
-      new tool_output_file(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None));
-  if (!ErrorInfo.empty()) {
-    errs() << ErrorInfo << '\n';
+      new tool_output_file(OutputFilename, EC, sys::fs::F_None));
+  if (EC) {
+    errs() << EC.message() << '\n';
     exit(1);
   }
 
@@ -73,8 +79,10 @@ int main(int argc, char **argv) {
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
+    raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
     M.reset(getNaClStreamedBitcodeModule(DisplayFilename, Buffer.release(),
-                                         Context, &ErrorMessage,
+                                         Context, Verbose,
+                                         &ErrorMessage,
                                          /*AcceptSupportedOnly=*/false));
     if (M.get())
       if (std::error_code EC = M->materializeAllPermanently()) {

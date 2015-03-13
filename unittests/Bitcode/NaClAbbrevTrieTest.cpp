@@ -131,13 +131,13 @@ TEST(NaClAbbrevTrieTest, Simple) {
   // Build lookup map, and check that we build the expected trie.
   AbbrevLookupSizeMap LookupMap;
   NaClBuildAbbrevLookupMap(LookupMap, Abbrevs);
-  EXPECT_EQ(1, LookupMap.size())
+  EXPECT_EQ((size_t)1, LookupMap.size())
       << "There should only be one entry in the Lookup map "
       << "for abbreviations of length 2";
   for (AbbrevLookupSizeMap::iterator
            Iter = LookupMap.begin(), IterEnd = LookupMap.end();
        Iter != IterEnd; ++Iter) {
-    EXPECT_EQ(Iter->first, 2)
+    EXPECT_EQ(Iter->first, (size_t)2)
         << "Expecting abbreviations to be of length 2";
     EXPECT_EQ(std::string(
         "Abbreviations:\n"
@@ -350,7 +350,7 @@ TEST(NaClAbbrevTrieTest, Array) {
   for (AbbrevLookupSizeMap::iterator
            Iter = LookupMap.begin(), IterEnd = LookupMap.end();
        Iter != IterEnd; ++Iter) {
-    EXPECT_LE(0, Iter->first);
+    EXPECT_LE((size_t)0, Iter->first);
     EXPECT_GE(MaxValueIndex, Iter->first);
     if (Iter->first == 5) {
       // Note that all abbreviations accept records with 5 values.

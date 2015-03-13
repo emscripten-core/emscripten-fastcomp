@@ -20,8 +20,9 @@ using namespace llvm;
 
 // Return the slots used by the insn.
 unsigned HexagonMCInst::getUnits(const HexagonTargetMachine* TM) const {
-  const HexagonInstrInfo* QII = TM->getInstrInfo();
-  const InstrItineraryData* II = TM->getInstrItineraryData();
+  const HexagonInstrInfo *QII = TM->getSubtargetImpl()->getInstrInfo();
+  const InstrItineraryData *II =
+      TM->getSubtargetImpl()->getInstrItineraryData();
   const InstrStage*
     IS = II->beginStage(QII->get(this->getOpcode()).getSchedClass());
 
@@ -154,7 +155,7 @@ int HexagonMCInst::getMinValue(void) const {
                     & HexagonII::ExtentBitsMask;
 
   if (isSigned) // if value is signed
-    return -1 << (bits - 1);
+    return -1U << (bits - 1);
   else
     return 0;
 }
@@ -169,7 +170,7 @@ int HexagonMCInst::getMaxValue(void) const {
                     & HexagonII::ExtentBitsMask;
 
   if (isSigned) // if value is signed
-    return ~(-1 << (bits - 1));
+    return ~(-1U << (bits - 1));
   else
-    return ~(-1 << bits);
+    return ~(-1U << bits);
 }

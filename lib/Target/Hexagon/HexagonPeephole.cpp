@@ -111,10 +111,8 @@ INITIALIZE_PASS(HexagonPeephole, "hexagon-peephole", "Hexagon Peephole",
                 false, false)
 
 bool HexagonPeephole::runOnMachineFunction(MachineFunction &MF) {
-  QII = static_cast<const HexagonInstrInfo *>(MF.getTarget().
-                                        getInstrInfo());
-  QRI = static_cast<const HexagonRegisterInfo *>(MF.getTarget().
-                                       getRegisterInfo());
+  QII = static_cast<const HexagonInstrInfo *>(MF.getSubtarget().getInstrInfo());
+  QRI = MF.getTarget().getSubtarget<HexagonSubtarget>().getRegisterInfo();
   MRI = &MF.getRegInfo();
 
   DenseMap<unsigned, unsigned> PeepholeMap;
@@ -271,10 +269,9 @@ bool HexagonPeephole::runOnMachineFunction(MachineFunction &MF) {
           unsigned PR = 1, S1 = 2, S2 = 3;   // Operand indices.
 
           switch (Op) {
-            case Hexagon::TFR_condset_rr:
-            case Hexagon::TFR_condset_ii:
+            case Hexagon::C2_mux:
             case Hexagon::MUX_ii:
-            case Hexagon::MUX_rr:
+            case Hexagon::TFR_condset_ii:
               NewOp = Op;
               break;
             case Hexagon::TFR_condset_ri:

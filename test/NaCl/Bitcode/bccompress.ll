@@ -568,10 +568,10 @@ end:                                              ; preds = %l3, %l2, %l1, %2
 
 ; DUMP:     PNaCl Version: 2
 
-; DUMP:      <MODULE_BLOCK>
-; DUMP-NEXT:  <VERSION op0=1/>
-; DUMP-NEXT:  <BLOCKINFO_BLOCK/>
-; DUMP-NEXT:  <TYPE_BLOCK_ID>
+; DUMP:     <MODULE_BLOCK>
+; DUMP-DAG:   <VERSION op0=1/>
+; DUMP-DAG:   <BLOCKINFO_BLOCK/>
+; DUMP:       <TYPE_BLOCK_ID>
 ; DUMP-NEXT:    <NUMENTRY op0=9/>
 ; DUMP-NEXT:    <INTEGER op0=32/>
 ; DUMP-NEXT:    <VOID/>

@@ -11,13 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VALUE_ENUMERATOR_H
-#define VALUE_ENUMERATOR_H
+#ifndef LLVM_LIB_BITCODE_WRITER_VALUEENUMERATOR_H
+#define LLVM_LIB_BITCODE_WRITER_VALUEENUMERATOR_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/UniqueVector.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/UseListOrder.h"
 #include <vector>
 
 namespace llvm {
@@ -42,6 +43,9 @@ public:
 
   // For each value, we remember its Value* and occurrence frequency.
   typedef std::vector<std::pair<const Value*, unsigned> > ValueList;
+
+  UseListOrderStack UseListOrders;
+
 private:
   typedef DenseMap<Type*, unsigned> TypeMapType;
   TypeMapType TypeMap;
@@ -54,7 +58,7 @@ private:
   typedef UniqueVector<const Comdat *> ComdatSetType;
   ComdatSetType Comdats;
 
-  ValueList MDValues;
+  std::vector<const Value *> MDValues;
   SmallVector<const MDNode *, 8> FunctionLocalMDs;
   ValueMapType MDValueMap;
 
@@ -92,7 +96,7 @@ private:
   ValueEnumerator(const ValueEnumerator &) LLVM_DELETED_FUNCTION;
   void operator=(const ValueEnumerator &) LLVM_DELETED_FUNCTION;
 public:
-  ValueEnumerator(const Module *M);
+  ValueEnumerator(const Module &M);
 
   void dump() const;
   void print(raw_ostream &OS, const ValueMapType &Map, const char *Name) const;
@@ -130,7 +134,7 @@ public:
   }
 
   const ValueList &getValues() const { return Values; }
-  const ValueList &getMDValues() const { return MDValues; }
+  const std::vector<const Value *> &getMDValues() const { return MDValues; }
   const SmallVectorImpl<const MDNode *> &getFunctionLocalMDValues() const {
     return FunctionLocalMDs;
   }
@@ -172,7 +176,7 @@ private:
   void EnumerateAttributes(AttributeSet PAL);
 
   void EnumerateValueSymbolTable(const ValueSymbolTable &ST);
-  void EnumerateNamedMetadata(const Module *M);
+  void EnumerateNamedMetadata(const Module &M);
 };
 
 } // End llvm namespace

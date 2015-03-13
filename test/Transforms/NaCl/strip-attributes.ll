@@ -1,8 +1,25 @@
-; RUN: opt -S -nacl-strip-attributes %s | FileCheck %s
+; RUN: opt -S -nacl-strip-attributes %s 2>&1 | FileCheck %s
 
+
+; Check that we emit a warning for some special meaning sections:
+; CHECK: Warning: func_init_array will have its section (.init_array) stripped.
+; CHECK-NOT: Warning: __rustc_debug_gdb_scripts_section__ will have its section
 
 @var = unnamed_addr global i32 0
 ; CHECK: @var = global i32 0
+
+@__rustc_debug_gdb_scripts_section__ = internal unnamed_addr constant [34 x i8] c"\01gdb_load_rust_pretty_printers.py\00", section ".debug_gdb_scripts", align 1
+; CHECK: @__rustc_debug_gdb_scripts_section__ = internal constant [34 x i8] c"\01gdb_load_rust_pretty_printers.py\00", align 1
+
+define void @func_section() section ".some_section" {
+  ret void
+}
+; CHECK-LABEL: define void @func_section() {
+
+define void @func_init_array() section ".init_array" {
+  ret void
+}
+; CHECK-LABEL: define void @func_init_array() {
 
 
 define fastcc void @func_attrs(i32 inreg, i32 zeroext)

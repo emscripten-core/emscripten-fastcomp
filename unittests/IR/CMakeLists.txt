@@ -10,6 +10,7 @@ set(IRSources
   AttributesTest.cpp
   ConstantRangeTest.cpp
   ConstantsTest.cpp
+  DebugInfoTest.cpp
   DominatorTreeTest.cpp
   IRBuilderTest.cpp
   InstructionsTest.cpp
@@ -21,6 +22,7 @@ set(IRSources
   PatternMatch.cpp
   TypeBuilderTest.cpp
   TypesTest.cpp
+  UseTest.cpp
   UserTest.cpp
   ValueHandleTest.cpp
   ValueMapTest.cpp

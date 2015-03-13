@@ -43,7 +43,7 @@ EXTRA_DIST := test unittests llvm.spec include win32 Xcode
 
 include $(LEVEL)/Makefile.config
 
-ifeq ($(NACL_SANDBOX),1)
+ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
   DIRS := $(filter-out tools/llvm-shlib runtime docs unittests, $(DIRS))
   OPTIONAL_DIRS :=
 endif
@@ -138,7 +138,7 @@ cross-compile-build-tools:
 	fi; \
 	($(MAKE) -C BuildTools \
 	  BUILD_DIRS_ONLY=1 \
-	  NACL_SANDBOX=0 \
+	  PNACL_BROWSER_TRANSLATOR=0 \
 	  UNIVERSAL= \
 	  UNIVERSAL_SDK_PATH= \
 	  SDKROOT= \

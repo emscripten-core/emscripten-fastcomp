@@ -128,12 +128,12 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   // Addressable stack objects are accessed using neg. offsets from %fp.
   MachineFunction &MF = *MI.getParent()->getParent();
   const HexagonInstrInfo &TII =
-    *static_cast<const HexagonInstrInfo*>(MF.getTarget().getInstrInfo());
+      *static_cast<const HexagonInstrInfo *>(MF.getSubtarget().getInstrInfo());
   int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex);
   MachineFrameInfo &MFI = *MF.getFrameInfo();
 
   unsigned FrameReg = getFrameRegister(MF);
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
   if (!TFI->hasFP(MF)) {
     // We will not reserve space on the stack for the lr and fp registers.
     Offset -= 2 * Hexagon_WordSize;
@@ -176,7 +176,7 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
           BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
                   TII.get(Hexagon::CONST32_Int_Real), dstReg).addImm(Offset);
           BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                  TII.get(Hexagon::ADD_rr),
+                  TII.get(Hexagon::A2_add),
                   dstReg).addReg(FrameReg).addReg(dstReg);
         } else {
           BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
@@ -205,7 +205,7 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
           BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
                   TII.get(Hexagon::CONST32_Int_Real), resReg).addImm(Offset);
           BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                  TII.get(Hexagon::ADD_rr),
+                  TII.get(Hexagon::A2_add),
                   resReg).addReg(FrameReg).addReg(resReg);
         } else {
           BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
@@ -237,7 +237,7 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
             BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
                     TII.get(Hexagon::CONST32_Int_Real), ResReg).addImm(Offset);
             BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                    TII.get(Hexagon::ADD_rr), ResReg).addReg(FrameReg).
+                    TII.get(Hexagon::A2_add), ResReg).addReg(FrameReg).
               addReg(ResReg);
             MI.getOperand(FIOperandNum).ChangeToRegister(ResReg, false, false,
                                                          true);
@@ -256,7 +256,7 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
                 TII.get(Hexagon::CONST32_Int_Real), dstReg).addImm(Offset);
         BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                TII.get(Hexagon::ADD_rr),
+                TII.get(Hexagon::A2_add),
                 dstReg).addReg(FrameReg).addReg(dstReg);
         // Can we delete MI??? r2 = add (r2, #0).
         MI.getOperand(FIOperandNum).ChangeToRegister(dstReg, false, false,true);
@@ -278,7 +278,7 @@ unsigned HexagonRegisterInfo::getRARegister() const {
 
 unsigned HexagonRegisterInfo::getFrameRegister(const MachineFunction
                                                &MF) const {
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
   if (TFI->hasFP(MF)) {
     return Hexagon::R30;
   }

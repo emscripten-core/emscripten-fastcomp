@@ -196,12 +196,11 @@ AliasAnalysis::getModRefInfo(ImmutableCallSite CS1, ImmutableCallSite CS2) {
         if (!Arg->getType()->isPointerTy())
           continue;
         ModRefResult ArgMask;
-        Location CS1Loc =
-          getArgLocation(CS1, (unsigned) std::distance(CS1.arg_begin(), I),
-                         ArgMask);
-	// ArgMask indicates what CS1 might do to CS1Loc; if CS1 might Mod
-	// CS1Loc, then we care about either a Mod or a Ref by CS2. If CS1
-	// might Ref, then we care only about a Mod by CS2.
+        Location CS1Loc = getArgLocation(
+            CS1, (unsigned)std::distance(CS1.arg_begin(), I), ArgMask);
+        // ArgMask indicates what CS1 might do to CS1Loc; if CS1 might Mod
+        // CS1Loc, then we care about either a Mod or a Ref by CS2. If CS1
+        // might Ref, then we care only about a Mod by CS2.
         ModRefResult ArgR = getModRefInfo(CS2, CS1Loc);
         if (((ArgMask & Mod) != NoModRef && (ArgR & ModRef) != NoModRef) ||
             ((ArgMask & Ref) != NoModRef && (ArgR & Mod)    != NoModRef))
@@ -252,61 +251,73 @@ AliasAnalysis::getModRefBehavior(const Function *F) {
 //===----------------------------------------------------------------------===//
 
 AliasAnalysis::Location AliasAnalysis::getLocation(const LoadInst *LI) {
+  AAMDNodes AATags;
+  LI->getAAMetadata(AATags);
+
   return Location(LI->getPointerOperand(),
-                  getTypeStoreSize(LI->getType()),
-                  LI->getMetadata(LLVMContext::MD_tbaa));
+                  getTypeStoreSize(LI->getType()), AATags);
 }
 
 AliasAnalysis::Location AliasAnalysis::getLocation(const StoreInst *SI) {
+  AAMDNodes AATags;
+  SI->getAAMetadata(AATags);
+
   return Location(SI->getPointerOperand(),
-                  getTypeStoreSize(SI->getValueOperand()->getType()),
-                  SI->getMetadata(LLVMContext::MD_tbaa));
+                  getTypeStoreSize(SI->getValueOperand()->getType()), AATags);
 }
 
 AliasAnalysis::Location AliasAnalysis::getLocation(const VAArgInst *VI) {
-  return Location(VI->getPointerOperand(),
-                  UnknownSize,
-                  VI->getMetadata(LLVMContext::MD_tbaa));
+  AAMDNodes AATags;
+  VI->getAAMetadata(AATags);
+
+  return Location(VI->getPointerOperand(), UnknownSize, AATags);
 }
 
 AliasAnalysis::Location
 AliasAnalysis::getLocation(const AtomicCmpXchgInst *CXI) {
+  AAMDNodes AATags;
+  CXI->getAAMetadata(AATags);
+
   return Location(CXI->getPointerOperand(),
                   getTypeStoreSize(CXI->getCompareOperand()->getType()),
-                  CXI->getMetadata(LLVMContext::MD_tbaa));
+                  AATags);
 }
 
 AliasAnalysis::Location
 AliasAnalysis::getLocation(const AtomicRMWInst *RMWI) {
+  AAMDNodes AATags;
+  RMWI->getAAMetadata(AATags);
+
   return Location(RMWI->getPointerOperand(),
-                  getTypeStoreSize(RMWI->getValOperand()->getType()),
-                  RMWI->getMetadata(LLVMContext::MD_tbaa));
+                  getTypeStoreSize(RMWI->getValOperand()->getType()), AATags);
 }
 
-AliasAnalysis::Location 
+AliasAnalysis::Location
 AliasAnalysis::getLocationForSource(const MemTransferInst *MTI) {
   uint64_t Size = UnknownSize;
   if (ConstantInt *C = dyn_cast<ConstantInt>(MTI->getLength()))
     Size = C->getValue().getZExtValue();
 
-  // memcpy/memmove can have TBAA tags. For memcpy, they apply
+  // memcpy/memmove can have AA tags. For memcpy, they apply
   // to both the source and the destination.
-  MDNode *TBAATag = MTI->getMetadata(LLVMContext::MD_tbaa);
+  AAMDNodes AATags;
+  MTI->getAAMetadata(AATags);
 
-  return Location(MTI->getRawSource(), Size, TBAATag);
+  return Location(MTI->getRawSource(), Size, AATags);
 }
 
-AliasAnalysis::Location 
+AliasAnalysis::Location
 AliasAnalysis::getLocationForDest(const MemIntrinsic *MTI) {
   uint64_t Size = UnknownSize;
   if (ConstantInt *C = dyn_cast<ConstantInt>(MTI->getLength()))
     Size = C->getValue().getZExtValue();
 
-  // memcpy/memmove can have TBAA tags. For memcpy, they apply
+  // memcpy/memmove can have AA tags. For memcpy, they apply
   // to both the source and the destination.
-  MDNode *TBAATag = MTI->getMetadata(LLVMContext::MD_tbaa);
-  
-  return Location(MTI->getRawDest(), Size, TBAATag);
+  AAMDNodes AATags;
+  MTI->getAAMetadata(AATags);
+
+  return Location(MTI->getRawDest(), Size, AATags);
 }
 
 
@@ -428,7 +439,7 @@ AliasAnalysis::callCapturesBefore(const Instruction *I,
     // assume that the call could touch the pointer, even though it doesn't
     // escape.
     if (isNoAlias(AliasAnalysis::Location(*CI),
-		  AliasAnalysis::Location(Object)))
+                  AliasAnalysis::Location(Object)))
       continue;
     if (CS.doesNotAccessMemory(ArgNo))
       continue;
@@ -545,4 +556,3 @@ bool llvm::isIdentifiedFunctionLocal(const Value *V)
 {
   return isa<AllocaInst>(V) || isNoAliasCall(V) || isNoAliasArgument(V);
 }
-

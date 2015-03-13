@@ -2959,7 +2959,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   // because the regular optimizer should have taken them all (GVN, and possibly
   // also SROA).
   if (OptLevel == CodeGenOpt::None)
-    PM.add(createSimplifyAllocasPass());
+    PM.add(createEmscriptenSimplifyAllocasPass());
 
   PM.add(new JSWriter(o, OptLevel));
 

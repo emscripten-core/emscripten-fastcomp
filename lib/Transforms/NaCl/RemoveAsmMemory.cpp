@@ -30,13 +30,12 @@ public:
     initializeRemoveAsmMemoryPass(*PassRegistry::getPassRegistry());
   }
 
-  virtual bool runOnFunction(Function &F);
+  bool runOnFunction(Function &F) override;
 };
 
 class AsmDirectivesVisitor : public InstVisitor<AsmDirectivesVisitor> {
 public:
-  AsmDirectivesVisitor(Function &F)
-      : F(F), C(F.getParent()->getContext()), ModifiedFunction(false) {}
+  AsmDirectivesVisitor() : ModifiedFunction(false) {}
   ~AsmDirectivesVisitor() {}
   bool modifiedFunction() const { return ModifiedFunction; }
 
@@ -44,11 +43,8 @@ public:
   void visitCallInst(CallInst &CI);
 
 private:
-  Function &F;
-  LLVMContext &C;
   bool ModifiedFunction;
 
-  AsmDirectivesVisitor() LLVM_DELETED_FUNCTION;
   AsmDirectivesVisitor(const AsmDirectivesVisitor &) LLVM_DELETED_FUNCTION;
   AsmDirectivesVisitor &operator=(
       const AsmDirectivesVisitor &) LLVM_DELETED_FUNCTION;
@@ -61,7 +57,7 @@ INITIALIZE_PASS(RemoveAsmMemory, "remove-asm-memory",
                 false)
 
 bool RemoveAsmMemory::runOnFunction(Function &F) {
-  AsmDirectivesVisitor AV(F);
+  AsmDirectivesVisitor AV;
   AV.visit(F);
   return AV.modifiedFunction();
 }

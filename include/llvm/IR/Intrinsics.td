@@ -277,6 +277,10 @@ def int_pcmarker      : Intrinsic<[], [llvm_i32_ty]>;
 
 def int_readcyclecounter : Intrinsic<[llvm_i64_ty]>;
 
+// The assume intrinsic is marked as arbitrarily writing so that proper
+// control dependencies will be maintained.
+def int_assume        : Intrinsic<[], [llvm_i1_ty], []>;
+
 // Stack Protector Intrinsic - The stackprotector intrinsic writes the stack
 // guard to the correct place on the stack frame.
 def int_stackprotector : Intrinsic<[], [llvm_ptr_ty, llvm_ptrptr_ty], []>;
@@ -324,6 +328,8 @@ let Properties = [IntrNoMem] in {
   def int_exp  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_exp2 : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_fabs : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_minnum : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>, LLVMMatchType<0>]>;
+  def int_maxnum : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>, LLVMMatchType<0>]>;
   def int_copysign : Intrinsic<[llvm_anyfloat_ty],
                                [LLVMMatchType<0>, LLVMMatchType<0>]>;
   def int_floor : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
@@ -369,9 +375,12 @@ let Properties = [IntrNoMem] in {
 // places.
 let Properties = [IntrNoMem] in {
   def int_dbg_declare      : Intrinsic<[],
-                                       [llvm_metadata_ty, llvm_metadata_ty]>;
+                                       [llvm_metadata_ty,
+                                       llvm_metadata_ty,
+                                       llvm_metadata_ty]>;
   def int_dbg_value        : Intrinsic<[],
                                        [llvm_metadata_ty, llvm_i64_ty,
+                                        llvm_metadata_ty,
                                         llvm_metadata_ty]>;
 }
 
@@ -476,11 +485,29 @@ def int_experimental_stackmap : Intrinsic<[],
 def int_experimental_patchpoint_void : Intrinsic<[],
                                                  [llvm_i64_ty, llvm_i32_ty,
                                                   llvm_ptr_ty, llvm_i32_ty,
-                                                  llvm_vararg_ty]>;
+                                                  llvm_vararg_ty],
+                                                  [Throws]>;
 def int_experimental_patchpoint_i64 : Intrinsic<[llvm_i64_ty],
                                                 [llvm_i64_ty, llvm_i32_ty,
                                                  llvm_ptr_ty, llvm_i32_ty,
-                                                 llvm_vararg_ty]>;
+                                                 llvm_vararg_ty],
+                                                 [Throws]>;
+
+
+//===------------------------ Garbage Collection Intrinsics ---------------===//
+// These are documented in docs/Statepoint.rst
+
+def int_experimental_gc_statepoint : Intrinsic<[llvm_i32_ty],
+                               [llvm_anyptr_ty, llvm_i32_ty,
+                                llvm_i32_ty, llvm_vararg_ty]>;
+
+def int_experimental_gc_result_int : Intrinsic<[llvm_anyint_ty], [llvm_i32_ty]>;
+def int_experimental_gc_result_float : Intrinsic<[llvm_anyfloat_ty], 
+                                                 [llvm_i32_ty]>;
+def int_experimental_gc_result_ptr : Intrinsic<[llvm_anyptr_ty], [llvm_i32_ty]>;
+
+def int_experimental_gc_relocate : Intrinsic<[llvm_anyptr_ty],
+                                [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty]>;
 
 //===-------------------------- Other Intrinsics --------------------------===//
 //

@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 //
 
-#ifndef MIPSASMBACKEND_H
-#define MIPSASMBACKEND_H
+#ifndef LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSASMBACKEND_H
+#define LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSASMBACKEND_H
 
 #include "MCTargetDesc/MipsFixupKinds.h"
 #include "llvm/MC/MCAsmBackend.h"
@@ -87,15 +87,6 @@ public:
                          bool &IsResolved) override;
 
 }; // class MipsAsmBackend
-
-// @LOCALMOD-BEGIN
-class NaClMipsAsmBackend : public MipsAsmBackend {
-public:
-  NaClMipsAsmBackend(const Target &T, bool _is64Bit)
-    : MipsAsmBackend(T, Triple::NaCl, /* IsLittle */ true, _is64Bit) {
-  }
-}; // class NaClMipsAsmBackend
-// @LOCALMOD-END
 
 } // namespace
 

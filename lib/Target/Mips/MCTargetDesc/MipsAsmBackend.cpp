@@ -367,7 +367,12 @@ bool MipsAsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   // Check for a less than instruction size number of bytes
   // FIXME: 16 bit instructions are not handled yet here.
   // We shouldn't be using a hard coded number for instruction size.
-  if (Count % 4) return false;
+
+  // If the count is not 4-byte aligned, we must be writing data into the text
+  // section (otherwise we have unaligned instructions, and thus have far
+  // bigger problems), so just write zeros instead.
+  for (uint64_t i = 0, e = Count % 4; i != e; ++i)
+    OW->Write8(0);
 
   uint64_t NumNops = Count / 4;
   for (uint64_t i = 0; i != NumNops; ++i)
@@ -396,10 +401,6 @@ MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T,
                                              const MCRegisterInfo &MRI,
                                              StringRef TT,
                                              StringRef CPU) {
-  // @LOCALMOD-BEGIN
-  if (Triple(TT).isOSNaCl())
-    return new NaClMipsAsmBackend(T, /*Is64Bit*/false);
-  // @LOCALMOD-END
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/true, /*Is64Bit*/false);
 }
@@ -416,10 +417,6 @@ MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T,
                                              const MCRegisterInfo &MRI,
                                              StringRef TT,
                                              StringRef CPU) {
-  // @LOCALMOD-BEGIN
-  if (Triple(TT).isOSNaCl())
-    return new NaClMipsAsmBackend(T, /*Is64Bit*/true);
-  // @LOCALMOD-END
   return new MipsAsmBackend(T, Triple(TT).getOS(),
                             /*IsLittle*/true, /*Is64Bit*/true);
 }

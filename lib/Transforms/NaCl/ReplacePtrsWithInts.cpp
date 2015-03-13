@@ -12,12 +12,13 @@
 // will allow iPTR to be i64 if the DataLayout specifies 64-bit
 // pointers).
 //
+// This pass relies on -simplify-allocas to transform allocas into arrays of
+// bytes.
+//
 // The pass converts IR to the following normal form:
 //
 // All inttoptr and ptrtoint instructions use the same integer size
 // (iPTR), so they do not implicitly truncate or zero-extend.
-//
-// alloca always has the result type i8*.
 //
 // Pointer types only appear in the following instructions:
 //  * loads and stores:  the pointer operand is a NormalizedPtr.
@@ -46,6 +47,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -167,7 +169,7 @@ void FunctionConverter::recordConvertedAndErase(Instruction *From, Value *To) {
 Value *FunctionConverter::stripNoopCasts(Value *Val) {
   SmallPtrSet<Value *, 4> Visited;
   for (;;) {
-    if (!Visited.insert(Val)) {
+    if (!Visited.insert(Val).second) {
       // It is possible to get a circular reference in unreachable
       // basic blocks.  Handle this case for completeness.
       return UndefValue::get(Val->getType());
@@ -322,11 +324,13 @@ static AttributeSet RemovePointerAttrs(LLVMContext &Context,
           report_fatal_error("ReplacePtrsWithInts cannot handle "
                              "byval, sret or nest attrs");
           break;
-        // Strip NoCapture and NoAlias because they are only allowed
-        // on arguments of pointer type, and we are removing the
-        // pointer types.
+        // Strip these attributes because they apply only to pointers. This pass
+        // rewrites pointer arguments, thus these parameter attributes are
+        // meaningless. Also, they are rejected by the PNaCl module verifier.
         case Attribute::NoCapture:
         case Attribute::NoAlias:
+        case Attribute::ReadNone:
+        case Attribute::ReadOnly:
           break;
         default:
           AB.addAttribute(*Attr);
@@ -463,36 +467,10 @@ static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
     NewCall->setCallingConv(Call->getCallingConv());
     NewCall->takeName(Call);
     FC->recordConvertedAndErase(Call, NewCall);
-  } else if (AllocaInst *Alloca = dyn_cast<AllocaInst>(Inst)) {
-    Type *ElementTy = Inst->getType()->getPointerElementType();
-    Constant *ElementSize = ConstantInt::get(IntPtrType,
-                                             DL->getTypeAllocSize(ElementTy));
-    // Expand out alloca's built-in multiplication.
-    Value *MulSize;
-    if (ConstantInt *C = dyn_cast<ConstantInt>(Alloca->getArraySize())) {
-      const APInt Value =
-        C->getValue().zextOrTrunc(IntPtrType->getScalarSizeInBits());
-      MulSize = ConstantExpr::getMul(ElementSize,
-                                     ConstantInt::get(IntPtrType,
-                                                      Value));
-    } else {
-      MulSize = BinaryOperator::Create(
-          Instruction::Mul, ElementSize, Alloca->getArraySize(),
-          Alloca->getName() + ".alloca_mul", Alloca);
-    }
-    unsigned Alignment = Alloca->getAlignment();
-    if (Alignment == 0)
-      Alignment = DL->getPrefTypeAlignment(ElementTy);
-    Value *Tmp = CopyDebug(new AllocaInst(Type::getInt8Ty(Inst->getContext()),
-                                          MulSize, Alignment, "", Inst),
-                           Inst);
-    Tmp->takeName(Alloca);
-    Value *Alloca2 = new PtrToIntInst(Tmp, IntPtrType,
-                                      Tmp->getName() + ".asint", Inst);
-    FC->recordConvertedAndErase(Alloca, Alloca2);
   } else if (// Handle these instructions as a convenience to allow
              // the pass to be used in more situations, even though we
              // don't expect them in PNaCl's stable ABI.
+             isa<AllocaInst>(Inst) ||
              isa<GetElementPtrInst>(Inst) ||
              isa<VAArgInst>(Inst) ||
              isa<IndirectBrInst>(Inst) ||
@@ -567,6 +545,7 @@ INITIALIZE_PASS(ReplacePtrsWithInts, "replace-ptrs-with-ints",
 
 bool ReplacePtrsWithInts::runOnModule(Module &M) {
   DataLayout DL(&M);
+  DenseMap<const Function *, DISubprogram> FunctionDIs = makeSubprogramMap(M);
   Type *IntPtrType = DL.getIntPtrType(M.getContext());
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
@@ -624,6 +603,12 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
       }
     }
     FC.eraseReplacedInstructions();
+
+    // Patch the pointer to LLVM function in debug info descriptor.
+    auto DI = FunctionDIs.find(OldFunc);
+    if (DI != FunctionDIs.end())
+      DI->second.replaceFunction(NewFunc);
+
     OldFunc->eraseFromParent();
   }
   // Now that all functions have their normalized types, we can remove

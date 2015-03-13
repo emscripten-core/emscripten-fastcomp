@@ -338,7 +338,7 @@ static unsigned doesIntrinsicContainPredicate(unsigned ID)
     case Intrinsic::hexagon_C2_mask:
       return Hexagon::MASK_p;
     case Intrinsic::hexagon_C2_mux:
-      return Hexagon::MUX_rr;
+      return Hexagon::C2_mux;
 
       // Mapping hexagon_C2_muxir to MUX_pri.  This is pretty weird - but
       // that's how it's mapped in q6protos.h.
@@ -446,8 +446,8 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoadSignExtend64(LoadSDNode *LD,
 
   if (SelectADDRriS11_2(N1, CPTmpN1_0, CPTmpN1_1) &&
       N1.getNode()->getValueType(0) == MVT::i32) {
-    const HexagonInstrInfo *TII =
-      static_cast<const HexagonInstrInfo*>(TM.getInstrInfo());
+    const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
+        TM.getSubtargetImpl()->getInstrInfo());
     if (TII->isValidAutoIncImm(LoadedVT, Val)) {
       SDValue TargetConst = CurDAG->getTargetConstant(Val, MVT::i32);
       SDNode *Result_1 = CurDAG->getMachineNode(Opcode, dl, MVT::i32, MVT::i32,
@@ -513,8 +513,8 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoadZeroExtend64(LoadSDNode *LD,
 
   if (SelectADDRriS11_2(N1, CPTmpN1_0, CPTmpN1_1) &&
       N1.getNode()->getValueType(0) == MVT::i32) {
-    const HexagonInstrInfo *TII =
-      static_cast<const HexagonInstrInfo*>(TM.getInstrInfo());
+    const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
+        TM.getSubtargetImpl()->getInstrInfo());
     if (TII->isValidAutoIncImm(LoadedVT, Val)) {
       SDValue TargetConstVal = CurDAG->getTargetConstant(Val, MVT::i32);
       SDValue TargetConst0 = CurDAG->getTargetConstant(0, MVT::i32);
@@ -591,8 +591,8 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoad(LoadSDNode *LD, SDLoc dl) {
   bool zextval = (LD->getExtensionType() == ISD::ZEXTLOAD);
 
   // Figure out the opcode.
-  const HexagonInstrInfo *TII =
-    static_cast<const HexagonInstrInfo*>(TM.getInstrInfo());
+  const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
+      TM.getSubtargetImpl()->getInstrInfo());
   if (LoadedVT == MVT::i64) {
     if (TII->isValidAutoIncImm(LoadedVT, Val))
       Opcode = Hexagon::POST_LDrid;
@@ -701,8 +701,8 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedStore(StoreSDNode *ST, SDLoc dl) {
 
   // Offset value must be within representable range
   // and must have correct alignment properties.
-  const HexagonInstrInfo *TII =
-    static_cast<const HexagonInstrInfo*>(TM.getInstrInfo());
+  const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
+      TM.getSubtargetImpl()->getInstrInfo());
   if (TII->isValidAutoIncImm(StoredVT, Val)) {
     SDValue Ops[] = {Base, CurDAG->getTargetConstant(Val, MVT::i32), Value,
                      Chain};
@@ -934,7 +934,7 @@ SDNode *HexagonDAGToDAGISel::SelectSelect(SDNode *N) {
             if (N000 == N2 &&
                 N0.getNode()->getValueType(N0.getResNo()) == MVT::i1 &&
                 N00.getNode()->getValueType(N00.getResNo()) == MVT::i32) {
-              SDNode *SextNode = CurDAG->getMachineNode(Hexagon::SXTH, dl,
+              SDNode *SextNode = CurDAG->getMachineNode(Hexagon::A2_sxth, dl,
                                                         MVT::i32, N000);
               SDNode *Result = CurDAG->getMachineNode(Hexagon::MAXw_rr, dl,
                                                       MVT::i32,
@@ -958,7 +958,7 @@ SDNode *HexagonDAGToDAGISel::SelectSelect(SDNode *N) {
             if (N000 == N2 &&
                 N0.getNode()->getValueType(N0.getResNo()) == MVT::i1 &&
                 N00.getNode()->getValueType(N00.getResNo()) == MVT::i32) {
-              SDNode *SextNode = CurDAG->getMachineNode(Hexagon::SXTH, dl,
+              SDNode *SextNode = CurDAG->getMachineNode(Hexagon::A2_sxth, dl,
                                                         MVT::i32, N000);
               SDNode *Result = CurDAG->getMachineNode(Hexagon::MINw_rr, dl,
                                                       MVT::i32,
@@ -1218,10 +1218,10 @@ SDNode *HexagonDAGToDAGISel::SelectIntrinsicWOChain(SDNode *N) {
   // as at least one of the operands.
   if (IntrinsicWithPred) {
     SmallVector<SDValue, 8> Ops;
-    const HexagonInstrInfo *TII =
-      static_cast<const HexagonInstrInfo*>(TM.getInstrInfo());
+    const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
+        TM.getSubtargetImpl()->getInstrInfo());
     const MCInstrDesc &MCID = TII->get(IntrinsicWithPred);
-    const TargetRegisterInfo *TRI = TM.getRegisterInfo();
+    const TargetRegisterInfo *TRI = TM.getSubtargetImpl()->getRegisterInfo();
 
     // Iterate over all the operands of the intrinsics.
     // For PredRegs, do the transfer.

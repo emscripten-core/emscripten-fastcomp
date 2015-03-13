@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TARGET_POWERPC_PPC32ISELLOWERING_H
-#define LLVM_TARGET_POWERPC_PPC32ISELLOWERING_H
+#ifndef LLVM_LIB_TARGET_POWERPC_PPCISELLOWERING_H
+#define LLVM_LIB_TARGET_POWERPC_PPCISELLOWERING_H
 
 #include "PPC.h"
 #include "PPCInstrInfo.h"
@@ -99,6 +99,10 @@ namespace llvm {
       /// SVR4 calls.
       CALL, CALL_NOP,
 
+      /// CALL_TLS and CALL_NOP_TLS - Versions of CALL and CALL_NOP used
+      /// to access TLS variables.
+      CALL_TLS, CALL_NOP_TLS,
+
       /// CHAIN,FLAG = MTCTR(VAL, CHAIN[, INFLAG]) - Directly corresponds to a
       /// MTCTR instruction.
       MTCTR,
@@ -181,6 +185,10 @@ namespace llvm {
       /// on PPC32.
       PPC32_GOT,
 
+      /// GPRC = address of _GLOBAL_OFFSET_TABLE_. Used by general dynamic and
+      /// local dynamic TLS  on PPC32.
+      PPC32_PICGOT,
+
       /// G8RC = ADDIS_GOT_TPREL_HA %X2, Symbol - Used by the initial-exec
       /// TLS model, produces an ADDIS8 instruction that adds the GOT
       /// base to sym\@got\@tprel\@ha.
@@ -210,10 +218,6 @@ namespace llvm {
       /// sym\@got\@tlsgd\@l.
       ADDI_TLSGD_L,
 
-      /// G8RC = GET_TLS_ADDR %X3, Symbol - For the general-dynamic TLS
-      /// model, produces a call to __tls_get_addr(sym\@tlsgd).
-      GET_TLS_ADDR,
-
       /// G8RC = ADDIS_TLSLD_HA %X2, Symbol - For the local-dynamic TLS
       /// model, produces an ADDIS8 instruction that adds the GOT base
       /// register to sym\@got\@tlsld\@ha.
@@ -223,10 +227,6 @@ namespace llvm {
       /// model, produces an ADDI8 instruction that adds G8RReg to
       /// sym\@got\@tlsld\@l.
       ADDI_TLSLD_L,
-
-      /// G8RC = GET_TLSLD_ADDR %X3, Symbol - For the local-dynamic TLS
-      /// model, produces a call to __tls_get_addr(sym\@tlsld).
-      GET_TLSLD_ADDR,
 
       /// G8RC = ADDIS_DTPREL_HA %X3, Symbol, Chain - For the
       /// local-dynamic TLS model, produces an ADDIS8 instruction
@@ -345,7 +345,7 @@ namespace llvm {
     const PPCSubtarget &Subtarget;
 
   public:
-    explicit PPCTargetLowering(PPCTargetMachine &TM);
+    explicit PPCTargetLowering(const PPCTargetMachine &TM);
 
     /// getTargetNodeName() - This method returns the name of a target specific
     /// DAG node.
@@ -355,6 +355,11 @@ namespace llvm {
 
     /// getSetCCResultType - Return the ISD::SETCC ValueType
     EVT getSetCCResultType(LLVMContext &Context, EVT VT) const override;
+
+    /// Return true if target always beneficiates from combining into FMA for a
+    /// given value type. This must typically return false on targets where FMA
+    /// takes more cycles to execute than FADD.
+    bool enableAggressiveFMAFusion(EVT VT) const override;
 
     /// getPreIndexedAddressParts - returns true by value, base pointer and
     /// offset pointer and addressing mode by reference if the node's address
@@ -403,6 +408,11 @@ namespace llvm {
                                        APInt &KnownOne,
                                        const SelectionDAG &DAG,
                                        unsigned Depth = 0) const override;
+
+    Instruction* emitLeadingFence(IRBuilder<> &Builder, AtomicOrdering Ord,
+                                  bool IsStore, bool IsLoad) const override;
+    Instruction* emitTrailingFence(IRBuilder<> &Builder, AtomicOrdering Ord,
+                                   bool IsStore, bool IsLoad) const override;
 
     MachineBasicBlock *
       EmitInstrWithCustomInserter(MachineInstr *MI,
@@ -473,6 +483,10 @@ namespace llvm {
 
     bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
 
+    bool getTgtMemIntrinsic(IntrinsicInfo &Info,
+                            const CallInst &I,
+                            unsigned Intrinsic) const override;
+
     /// getOptimalMemOpType - Returns the target specific optimal type for load
     /// and store operations as a result of memset, memcpy, and memmove
     /// lowering. If DstAlign is zero that means it's safe to destination
@@ -491,9 +505,10 @@ namespace llvm {
 
     /// Is unaligned memory access allowed for the given type, and is it fast
     /// relative to software emulation.
-    bool allowsUnalignedMemoryAccesses(EVT VT,
-                                       unsigned AddrSpace,
-                                       bool *Fast = nullptr) const override;
+    bool allowsMisalignedMemoryAccesses(EVT VT,
+                                        unsigned AddrSpace,
+                                        unsigned Align = 1,
+                                        bool *Fast = nullptr) const override;
 
     /// isFMAFasterThanFMulAndFAdd - Return true if an FMA operation is faster
     /// than a pair of fmul and fadd instructions. fmuladd intrinsics will be
@@ -548,6 +563,8 @@ namespace llvm {
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerConstantPool(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBlockAddress(SDValue Op, SelectionDAG &DAG) const;
+    std::pair<SDValue,SDValue> lowerTLSCall(SDValue Op, SDLoc dl,
+                                            SelectionDAG &DAG) const;
     SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
@@ -681,8 +698,13 @@ namespace llvm {
 
     SDValue DAGCombineExtBoolTrunc(SDNode *N, DAGCombinerInfo &DCI) const;
     SDValue DAGCombineTruncBoolExt(SDNode *N, DAGCombinerInfo &DCI) const;
-    SDValue DAGCombineFastRecip(SDValue Op, DAGCombinerInfo &DCI) const;
-    SDValue DAGCombineFastRecipFSQRT(SDValue Op, DAGCombinerInfo &DCI) const;
+
+    SDValue getRsqrtEstimate(SDValue Operand, DAGCombinerInfo &DCI,
+                             unsigned &RefinementSteps,
+                             bool &UseOneConstNR) const override;
+    SDValue getRecipEstimate(SDValue Operand, DAGCombinerInfo &DCI,
+                             unsigned &RefinementSteps) const override;
+    bool combineRepeatedFPDivisors(unsigned NumUsers) const override;
 
     CCAssignFn *useFastISelCCs(unsigned Flag) const;
   };

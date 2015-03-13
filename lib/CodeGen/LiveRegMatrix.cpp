@@ -19,7 +19,6 @@
 #include "llvm/CodeGen/VirtRegMap.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
@@ -48,7 +47,7 @@ void LiveRegMatrix::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool LiveRegMatrix::runOnMachineFunction(MachineFunction &MF) {
-  TRI = MF.getTarget().getRegisterInfo();
+  TRI = MF.getSubtarget().getRegisterInfo();
   MRI = &MF.getRegInfo();
   LIS = &getAnalysis<LiveIntervals>();
   VRM = &getAnalysis<VirtRegMap>();

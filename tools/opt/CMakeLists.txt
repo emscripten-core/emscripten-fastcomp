@@ -7,11 +7,13 @@ set(LLVM_LINK_COMPONENTS
   IPA
   IPO
   IRReader
-  MinSFITransforms
+  # @LOCALMOD-BEGIN
+  NaClAnalysis
   NaClBitWriter
   NaClBitReader
   NaClTransforms
-  NaClAnalysis
+  MinSFITransforms
+  # @LOCALMOD-END
   InstCombine
   Instrumentation
   MC

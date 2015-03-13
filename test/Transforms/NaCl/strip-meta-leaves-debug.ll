@@ -58,4 +58,4 @@ declare void @llvm.dbg.value(metadata, i64, metadata) #1
 ; STRIPMETA: Debug Info Version
 ; STRIPMODF-NOT: Debug Info Version
 ; STRIPALL-NOT: Debug Info Version
-!13 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+!13 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}

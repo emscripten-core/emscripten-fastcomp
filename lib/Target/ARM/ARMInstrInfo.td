@@ -249,6 +249,9 @@ def HasDB            : Predicate<"Subtarget->hasDataBarrier()">,
 def HasMP            : Predicate<"Subtarget->hasMPExtension()">,
                                  AssemblerPredicate<"FeatureMP",
                                                     "mp-extensions">;
+def HasVirtualization: Predicate<"false">,
+                                 AssemblerPredicate<"FeatureVirtualization",
+                                                   "virtualization-extensions">;
 def HasTrustZone     : Predicate<"Subtarget->hasTrustZone()">,
                                  AssemblerPredicate<"FeatureTrustZone",
                                                     "TrustZone">;
@@ -645,6 +648,8 @@ def Imm32AsmOperand: ImmAsmOperand { let Name = "Imm32"; }
 def imm32 : Operand<i32>, ImmLeaf<i32, [{ return Imm == 32; }]> {
   let ParserMatchClass = Imm32AsmOperand;
 }
+
+def imm8_or_16 : ImmLeaf<i32, [{ return Imm == 8 || Imm == 16;}]>;
 
 /// imm1_7 predicate - Immediate in the range [1,7].
 def Imm1_7AsmOperand: ImmAsmOperand { let Name = "Imm1_7"; }
@@ -1858,7 +1863,7 @@ PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
 /// the function.  The first operand is the ID# for this instruction, the second
 /// is the index into the MachineConstantPool that this is, the third is the
 /// size in bytes of this constant pool entry.
-let neverHasSideEffects = 1, isNotDuplicable = 1 in
+let hasSideEffects = 0, isNotDuplicable = 1 in
 def CONSTPOOL_ENTRY :
 PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
                     i32imm:$size), NoItinerary, []>;
@@ -2011,7 +2016,7 @@ def SETEND : AXI<(outs), (ins setend_op:$end), MiscFrm, NoItinerary,
 }
 
 def DBG : AI<(outs), (ins imm0_15:$opt), MiscFrm, NoItinerary, "dbg", "\t$opt",
-             []>, Requires<[IsARM, HasV7]> {
+             [(int_arm_dbg imm0_15:$opt)]>, Requires<[IsARM, HasV7]> {
   bits<4> opt;
   let Inst{27-4} = 0b001100100000111100001111;
   let Inst{3-0} = opt;
@@ -2102,7 +2107,7 @@ def PICSTRB : ARMPseudoInst<(outs), (ins GPR:$src, addrmodepc:$addr, pred:$p),
 
 // LEApcrel - Load a pc-relative address into a register without offending the
 // assembler.
-let neverHasSideEffects = 1, isReMaterializable = 1 in
+let hasSideEffects = 0, isReMaterializable = 1 in
 // The 'adr' mnemonic encodes differently if the label is before or after
 // the instruction. The {24-21} opcode bits are set by the fixup, as we don't
 // know until then which form of the instruction will be used.
@@ -2459,6 +2464,33 @@ def RFEIB_UPD : RFEI<1, "rfeib\t$Rn!"> {
   let Inst{24-23} = 0b11;
 }
 
+// Hypervisor Call is a system instruction
+let isCall = 1 in {
+def HVC : AInoP< (outs), (ins imm0_65535:$imm), BrFrm, NoItinerary,
+                "hvc", "\t$imm", []>,
+          Requires<[IsARM, HasVirtualization]> {
+  bits<16> imm;
+
+  // Even though HVC isn't predicable, it's encoding includes a condition field.
+  // The instruction is undefined if the condition field is 0xf otherwise it is
+  // unpredictable if it isn't condition AL (0xe).
+  let Inst{31-28} = 0b1110;
+  let Unpredictable{31-28} = 0b1111;
+  let Inst{27-24} = 0b0001;
+  let Inst{23-20} = 0b0100;
+  let Inst{19-8} = imm{15-4};
+  let Inst{7-4} = 0b0111;
+  let Inst{3-0} = imm{3-0};
+}
+}
+
+// Return from exception in Hypervisor mode.
+let isReturn = 1, isBarrier = 1, isTerminator = 1, Defs = [PC] in
+def ERET : ABI<0b0001, (outs), (ins), NoItinerary, "eret", "", []>,
+    Requires<[IsARM, HasVirtualization]> {
+    let Inst{23-0} = 0b011000000000000001101110;
+}
+
 //===----------------------------------------------------------------------===//
 //  Load / Store Instructions.
 //
@@ -2476,7 +2508,7 @@ defm STRB : AI_str1nopc<1, "strb", IIC_iStore_bh_r, IIC_iStore_bh_si,
                    BinOpFrag<(truncstorei8 node:$LHS, node:$RHS)>>;
 
 // Special LDR for loads from non-pc-relative constpools.
-let canFoldAsLoad = 1, mayLoad = 1, neverHasSideEffects = 1,
+let canFoldAsLoad = 1, mayLoad = 1, hasSideEffects = 0,
     isReMaterializable = 1, isCodeGenOnly = 1 in
 def LDRcp : AI2ldst<0b010, 1, 0, (outs GPR:$Rt), (ins addrmode_imm12:$addr),
                  AddrMode_i12, LdFrm, IIC_iLoad_r, "ldr", "\t$Rt, $addr",
@@ -2503,7 +2535,7 @@ def LDRSB : AI3ld<0b1101, 1, (outs GPR:$Rt), (ins addrmode3:$addr), LdMiscFrm,
                    IIC_iLoad_bh_r, "ldrsb", "\t$Rt, $addr",
                    [(set GPR:$Rt, (sextloadi8 addrmode3:$addr))]>;
 
-let mayLoad = 1, neverHasSideEffects = 1, hasExtraDefRegAllocReq = 1 in {
+let mayLoad = 1, hasSideEffects = 0, hasExtraDefRegAllocReq = 1 in {
   // Load doubleword
   def LDRD : AI3ld<0b1101, 0, (outs GPR:$Rt, GPR:$Rt2), (ins addrmode3:$addr),
                    LdMiscFrm, IIC_iLoad_d_r, "ldrd", "\t$Rt, $Rt2, $addr", []>,
@@ -2580,7 +2612,7 @@ multiclass AI2_ldridx<bit isByte, string opc,
 
 }
 
-let mayLoad = 1, neverHasSideEffects = 1 in {
+let mayLoad = 1, hasSideEffects = 0 in {
 // FIXME: for LDR_PRE_REG etc. the itineray should be either IIC_iLoad_ru or
 // IIC_iLoad_siu depending on whether it the offset register is shifted.
 defm LDR  : AI2_ldridx<0, "ldr", IIC_iLoad_iu, IIC_iLoad_ru>;
@@ -2616,7 +2648,7 @@ multiclass AI3_ldridx<bits<4> op, string opc, InstrItinClass itin> {
   }
 }
 
-let mayLoad = 1, neverHasSideEffects = 1 in {
+let mayLoad = 1, hasSideEffects = 0 in {
 defm LDRH  : AI3_ldridx<0b1011, "ldrh", IIC_iLoad_bh_ru>;
 defm LDRSH : AI3_ldridx<0b1111, "ldrsh", IIC_iLoad_bh_ru>;
 defm LDRSB : AI3_ldridx<0b1101, "ldrsb", IIC_iLoad_bh_ru>;
@@ -2649,10 +2681,10 @@ def LDRD_POST: AI3ldstidx<0b1101, 0, 0, (outs GPR:$Rt, GPR:$Rt2, GPR:$Rn_wb),
   let DecoderMethod = "DecodeAddrMode3Instruction";
 }
 } // hasExtraDefRegAllocReq = 1
-} // mayLoad = 1, neverHasSideEffects = 1
+} // mayLoad = 1, hasSideEffects = 0
 
 // LDRT, LDRBT, LDRSBT, LDRHT, LDRSHT.
-let mayLoad = 1, neverHasSideEffects = 1 in {
+let mayLoad = 1, hasSideEffects = 0 in {
 def LDRT_POST_REG : AI2ldstidx<1, 0, 0, (outs GPR:$Rt, GPR:$Rn_wb),
                     (ins addr_offset_none:$addr, am2offset_reg:$offset),
                     IndexModePost, LdFrm, IIC_iLoad_ru,
@@ -2771,7 +2803,7 @@ def STRH : AI3str<0b1011, (outs), (ins GPR:$Rt, addrmode3:$addr), StMiscFrm,
                [(truncstorei16 GPR:$Rt, addrmode3:$addr)]>;
 
 // Store doubleword
-let mayStore = 1, neverHasSideEffects = 1, hasExtraSrcRegAllocReq = 1 in {
+let mayStore = 1, hasSideEffects = 0, hasExtraSrcRegAllocReq = 1 in {
   def STRD : AI3str<0b1111, (outs), (ins GPR:$Rt, GPR:$Rt2, addrmode3:$addr),
                     StMiscFrm, IIC_iStore_d_r, "strd", "\t$Rt, $Rt2, $addr", []>,
              Requires<[IsARM, HasV5TE]> {
@@ -2844,7 +2876,7 @@ multiclass AI2_stridx<bit isByte, string opc,
   }
 }
 
-let mayStore = 1, neverHasSideEffects = 1 in {
+let mayStore = 1, hasSideEffects = 0 in {
 // FIXME: for STR_PRE_REG etc. the itineray should be either IIC_iStore_ru or
 // IIC_iStore_siu depending on whether it the offset register is shifted.
 defm STR  : AI2_stridx<0, "str", IIC_iStore_iu, IIC_iStore_ru>;
@@ -2907,7 +2939,8 @@ def STRH_preidx: ARMPseudoInst<(outs GPR:$Rn_wb),
 def STRH_PRE  : AI3ldstidx<0b1011, 0, 1, (outs GPR:$Rn_wb),
                            (ins GPR:$Rt, addrmode3_pre:$addr), IndexModePre,
                            StMiscFrm, IIC_iStore_bh_ru,
-                           "strh", "\t$Rt, $addr!", "$addr.base = $Rn_wb", []> {
+                           "strh", "\t$Rt, $addr!",
+                           "$addr.base = $Rn_wb,@earlyclobber $Rn_wb", []> {
   bits<14> addr;
   let Inst{23}    = addr{8};      // U bit
   let Inst{22}    = addr{13};     // 1 == imm8, 0 == Rm
@@ -2920,7 +2953,8 @@ def STRH_PRE  : AI3ldstidx<0b1011, 0, 1, (outs GPR:$Rn_wb),
 def STRH_POST : AI3ldstidx<0b1011, 0, 0, (outs GPR:$Rn_wb),
                        (ins GPR:$Rt, addr_offset_none:$addr, am3offset:$offset),
                        IndexModePost, StMiscFrm, IIC_iStore_bh_ru,
-                       "strh", "\t$Rt, $addr, $offset", "$addr.base = $Rn_wb",
+                       "strh", "\t$Rt, $addr, $offset",
+                       "$addr.base = $Rn_wb,@earlyclobber $Rn_wb",
                    [(set GPR:$Rn_wb, (post_truncsti16 GPR:$Rt,
                                                       addr_offset_none:$addr,
                                                       am3offset:$offset))]> {
@@ -2934,7 +2968,7 @@ def STRH_POST : AI3ldstidx<0b1011, 0, 0, (outs GPR:$Rn_wb),
   let DecoderMethod = "DecodeAddrMode3Instruction";
 }
 
-let mayStore = 1, neverHasSideEffects = 1, hasExtraSrcRegAllocReq = 1 in {
+let mayStore = 1, hasSideEffects = 0, hasExtraSrcRegAllocReq = 1 in {
 def STRD_PRE : AI3ldstidx<0b1111, 0, 1, (outs GPR:$Rn_wb),
                           (ins GPR:$Rt, GPR:$Rt2, addrmode3_pre:$addr),
                           IndexModePre, StMiscFrm, IIC_iStore_d_ru,
@@ -2964,7 +2998,7 @@ def STRD_POST: AI3ldstidx<0b1111, 0, 0, (outs GPR:$Rn_wb),
   let Inst{3-0}   = offset{3-0};    // imm3_0/Rm
   let DecoderMethod = "DecodeAddrMode3Instruction";
 }
-} // mayStore = 1, neverHasSideEffects = 1, hasExtraSrcRegAllocReq = 1
+} // mayStore = 1, hasSideEffects = 0, hasExtraSrcRegAllocReq = 1
 
 // STRT, STRBT, and STRHT
 
@@ -3008,7 +3042,7 @@ def STRBT_POST
   : ARMAsmPseudo<"strbt${q} $Rt, $addr",
                  (ins GPR:$Rt, addr_offset_none:$addr, pred:$q)>;
 
-let mayStore = 1, neverHasSideEffects = 1 in {
+let mayStore = 1, hasSideEffects = 0 in {
 def STRT_POST_REG : AI2ldstidx<0, 0, 0, (outs GPR:$Rn_wb),
                    (ins GPR:$Rt, addr_offset_none:$addr, am2offset_reg:$offset),
                    IndexModePost, StFrm, IIC_iStore_ru,
@@ -3173,7 +3207,7 @@ multiclass arm_ldst_mult<string asm, string sfx, bit L_bit, bit P_bit, Format f,
   }
 }
 
-let neverHasSideEffects = 1 in {
+let hasSideEffects = 0 in {
 
 let mayLoad = 1, hasExtraDefRegAllocReq = 1 in
 defm LDM : arm_ldst_mult<"ldm", "", 1, 0, LdStMulFrm, IIC_iLoad_m,
@@ -3183,7 +3217,7 @@ let mayStore = 1, hasExtraSrcRegAllocReq = 1 in
 defm STM : arm_ldst_mult<"stm", "", 0, 0, LdStMulFrm, IIC_iStore_m,
                          IIC_iStore_mu>;
 
-} // neverHasSideEffects
+} // hasSideEffects
 
 // FIXME: remove when we have a way to marking a MI with these properties.
 // FIXME: Should pc be an implicit operand like PICADD, etc?
@@ -3209,7 +3243,7 @@ defm sysSTM : arm_ldst_mult<"stm", " ^", 0, 1, LdStMulFrm, IIC_iStore_m,
 //  Move Instructions.
 //
 
-let neverHasSideEffects = 1 in
+let hasSideEffects = 0 in
 def MOVr : AsI1<0b1101, (outs GPR:$Rd), (ins GPR:$Rm), DPFrm, IIC_iMOVr,
                 "mov", "\t$Rd, $Rm", []>, UnaryDP, Sched<[WriteALU]> {
   bits<4> Rd;
@@ -3223,7 +3257,7 @@ def MOVr : AsI1<0b1101, (outs GPR:$Rd), (ins GPR:$Rm), DPFrm, IIC_iMOVr,
 }
 
 // A version for the smaller set of tail call registers.
-let neverHasSideEffects = 1 in
+let hasSideEffects = 0 in
 def MOVr_TC : AsI1<0b1101, (outs tcGPR:$Rd), (ins tcGPR:$Rm), DPFrm,
                 IIC_iMOVr, "mov", "\t$Rd, $Rm", []>, UnaryDP, Sched<[WriteALU]> {
   bits<4> Rd;
@@ -3357,7 +3391,7 @@ def MOVTi16_ga_pcrel : PseudoInst<(outs GPR:$Rd),
 // be the same as the non-PIC versions to simplify conversion to the 
 // non-pseudo instructions.
 let isReMaterializable = 1, isAsCheapAsAMove = 1, isMoveImm = 1,
-    neverHasSideEffects = 1 in
+    hasSideEffects = 0 in
 def MOVi16PIC : PseudoInst<(outs GPR:$Rd), (ins imm0_65535_expr:$imm,
                                                 pclabel:$pic_add_id,
                                                 pred:$p),
@@ -3381,7 +3415,7 @@ def MOVTi16PIC : PseudoInst<(outs GPR:$Rd), (ins GPR:$src,
 // The alternative is to create a constant pool entry with the (relative)
 // GOT address and load from the constant pool. This is currently used
 // when constant islands are turned off, since MOVW / MOVT will be faster.
-let isReMaterializable = 1, isMoveImm = 1, neverHasSideEffects = 1 in
+let isReMaterializable = 1, isMoveImm = 1, hasSideEffects = 0 in
 def MOVGOTAddr : PseudoInst<(outs GPR:$dst), (ins),
                            IIC_iMOVix2, // will expand to two MOVi's
                            []>,
@@ -3559,7 +3593,8 @@ def : ARMPat<(ARMaddc GPR:$src, imm0_65535_neg:$imm),
 def : ARMPat<(ARMadde GPR:$src, so_imm_not:$imm, CPSR),
              (SBCri   GPR:$src, so_imm_not:$imm)>;
 def : ARMPat<(ARMadde GPR:$src, imm0_65535_neg:$imm, CPSR),
-             (SBCrr   GPR:$src, (MOVi16 (imm_not_XFORM imm:$imm)))>;
+             (SBCrr   GPR:$src, (MOVi16 (imm_not_XFORM imm:$imm)))>,
+             Requires<[IsARM, HasV6T2]>;
 
 // Note: These are implemented in C++ code, because they have to generate
 // ADD/SUBrs instructions, which use a complex pattern that a xform function
@@ -3943,7 +3978,7 @@ def MLS  : AMul1I<0b0000011, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm, GPR:$Ra),
 }
 
 // Extra precision multiplies with low / high results
-let neverHasSideEffects = 1 in {
+let hasSideEffects = 0 in {
 let isCommutable = 1 in {
 def SMULL : AsMul1I64<0b0000110, (outs GPR:$RdLo, GPR:$RdHi),
                                  (ins GPR:$Rn, GPR:$Rm), IIC_iMUL64,
@@ -4010,7 +4045,7 @@ def UMLALv5 : ARMPseudoExpand<(outs GPR:$RdLo, GPR:$RdHi),
                            Requires<[IsARM, NoV6]>;
 }
 
-} // neverHasSideEffects
+} // hasSideEffects
 
 // Most significant word multiply
 def SMMUL : AMul2I <0b0111010, 0b0001, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm),
@@ -4074,14 +4109,12 @@ multiclass AI_smul<string opc, PatFrag opnode> {
 
   def WB : AMulxyI<0b0001001, 0b01, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm),
               IIC_iMUL16, !strconcat(opc, "wb"), "\t$Rd, $Rn, $Rm",
-              [(set GPR:$Rd, (sra (opnode GPR:$Rn,
-                                    (sext_inreg GPR:$Rm, i16)), (i32 16)))]>,
+              []>,
            Requires<[IsARM, HasV5TE]>;
 
   def WT : AMulxyI<0b0001001, 0b11, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm),
               IIC_iMUL16, !strconcat(opc, "wt"), "\t$Rd, $Rn, $Rm",
-              [(set GPR:$Rd, (sra (opnode GPR:$Rn,
-                                    (sra GPR:$Rm, (i32 16))), (i32 16)))]>,
+              []>,
             Requires<[IsARM, HasV5TE]>;
 }
 
@@ -4123,17 +4156,13 @@ multiclass AI_smla<string opc, PatFrag opnode> {
   def WB : AMulxyIa<0b0001001, 0b00, (outs GPRnopc:$Rd),
               (ins GPRnopc:$Rn, GPRnopc:$Rm, GPR:$Ra),
               IIC_iMAC16, !strconcat(opc, "wb"), "\t$Rd, $Rn, $Rm, $Ra",
-              [(set GPRnopc:$Rd,
-                    (add GPR:$Ra, (sra (opnode GPRnopc:$Rn,
-                                  (sext_inreg GPRnopc:$Rm, i16)), (i32 16))))]>,
+              []>,
            Requires<[IsARM, HasV5TE, UseMulOps]>;
 
   def WT : AMulxyIa<0b0001001, 0b10, (outs GPRnopc:$Rd),
               (ins GPRnopc:$Rn, GPRnopc:$Rm, GPR:$Ra),
               IIC_iMAC16, !strconcat(opc, "wt"), "\t$Rd, $Rn, $Rm, $Ra",
-              [(set GPRnopc:$Rd,
-                 (add GPR:$Ra, (sra (opnode GPRnopc:$Rn,
-                                    (sra GPRnopc:$Rm, (i32 16))), (i32 16))))]>,
+              []>,
             Requires<[IsARM, HasV5TE, UseMulOps]>;
   }
 }
@@ -4253,7 +4282,7 @@ def UDIV : ADivA1I<0b011, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm), IIC_iDIV,
 //  Misc. Arithmetic Instructions.
 //
 
-def CLZ  : AMiscA1I<0b000010110, 0b0001, (outs GPR:$Rd), (ins GPR:$Rm),
+def CLZ  : AMiscA1I<0b00010110, 0b0001, (outs GPR:$Rd), (ins GPR:$Rm),
               IIC_iUNAr, "clz", "\t$Rd, $Rm",
               [(set GPR:$Rd, (ctlz GPR:$Rm))]>, Requires<[IsARM, HasV5T]>,
            Sched<[WriteALU]>;
@@ -4497,7 +4526,7 @@ def BCCZi64 : PseudoInst<(outs),
 
 
 // Conditional moves
-let neverHasSideEffects = 1 in {
+let hasSideEffects = 0 in {
 
 let isCommutable = 1, isSelect = 1 in
 def MOVCCr : ARMPseudoInst<(outs GPR:$Rd),
@@ -4558,7 +4587,7 @@ def MVNCCi : ARMPseudoInst<(outs GPR:$Rd),
                                                    cmovpred:$p))]>,
                 RegConstraint<"$false = $Rd">, Sched<[WriteALU]>;
 
-} // neverHasSideEffects
+} // hasSideEffects
 
 
 //===----------------------------------------------------------------------===//
@@ -4771,7 +4800,7 @@ def : ARMPat<(stlex_2 (and GPR:$Rt, 0xffff), addr_offset_none:$addr),
 class acquiring_load<PatFrag base>
   : PatFrag<(ops node:$ptr), (base node:$ptr), [{
   AtomicOrdering Ordering = cast<AtomicSDNode>(N)->getOrdering();
-  return Ordering == Acquire || Ordering == SequentiallyConsistent;
+  return isAtLeastAcquire(Ordering);
 }]>;
 
 def atomic_load_acquire_8  : acquiring_load<atomic_load_8>;
@@ -4781,7 +4810,7 @@ def atomic_load_acquire_32 : acquiring_load<atomic_load_32>;
 class releasing_store<PatFrag base>
   : PatFrag<(ops node:$ptr, node:$val), (base node:$ptr, node:$val), [{
   AtomicOrdering Ordering = cast<AtomicSDNode>(N)->getOrdering();
-  return Ordering == Release || Ordering == SequentiallyConsistent;
+  return isAtLeastRelease(Ordering);
 }]>;
 
 def atomic_store_release_8  : releasing_store<atomic_store_8>;
@@ -5202,12 +5231,31 @@ def MRSsys : ABI<0b0001, (outs GPRnopc:$Rd), (ins), NoItinerary,
   let Unpredictable{11-0} = 0b110100001111;
 }
 
+// However, the MRS (banked register) system instruction (ARMv7VE) *does* have a
+// separate encoding (distinguished by bit 5.
+def MRSbanked : ABI<0b0001, (outs GPRnopc:$Rd), (ins banked_reg:$banked),
+                    NoItinerary, "mrs", "\t$Rd, $banked", []>,
+                Requires<[IsARM, HasVirtualization]> {
+  bits<6> banked;
+  bits<4> Rd;
+
+  let Inst{23} = 0;
+  let Inst{22} = banked{5}; // R bit
+  let Inst{21-20} = 0b00;
+  let Inst{19-16} = banked{3-0};
+  let Inst{15-12} = Rd;
+  let Inst{11-9} = 0b001;
+  let Inst{8} = banked{4};
+  let Inst{7-0} = 0b00000000;
+}
+
 // Move from ARM core register to Special Register
 //
-// No need to have both system and application versions, the encodings are the
-// same and the assembly parser has no way to distinguish between them. The mask
-// operand contains the special register (R Bit) in bit 4 and bits 3-0 contains
-// the mask with the fields to be accessed in the special register.
+// No need to have both system and application versions of MSR (immediate) or
+// MSR (register), the encodings are the same and the assembly parser has no way
+// to distinguish between them. The mask operand contains the special register
+// (R Bit) in bit 4 and bits 3-0 contains the mask with the fields to be
+// accessed in the special register.
 def MSR : ABI<0b0001, (outs), (ins msr_mask:$mask, GPR:$Rn), NoItinerary,
               "msr", "\t$mask, $Rn", []> {
   bits<5> mask;
@@ -5233,6 +5281,25 @@ def MSRi : ABI<0b0011, (outs), (ins msr_mask:$mask,  so_imm:$a), NoItinerary,
   let Inst{19-16} = mask{3-0};
   let Inst{15-12} = 0b1111;
   let Inst{11-0} = a;
+}
+
+// However, the MSR (banked register) system instruction (ARMv7VE) *does* have a
+// separate encoding (distinguished by bit 5.
+def MSRbanked : ABI<0b0001, (outs), (ins banked_reg:$banked, GPRnopc:$Rn),
+                    NoItinerary, "msr", "\t$banked, $Rn", []>,
+                Requires<[IsARM, HasVirtualization]> {
+  bits<6> banked;
+  bits<4> Rn;
+
+  let Inst{23} = 0;
+  let Inst{22} = banked{5}; // R bit
+  let Inst{21-20} = 0b10;
+  let Inst{19-16} = banked{3-0};
+  let Inst{15-12} = 0b1111;
+  let Inst{11-9} = 0b001;
+  let Inst{8} = banked{4};
+  let Inst{7-4} = 0b0000;
+  let Inst{3-0} = Rn;
 }
 
 // Dynamic stack allocation yields a _chkstk for Windows targets.  These calls
@@ -5428,11 +5495,6 @@ def : ARMV5TEPat<(mul (sra GPR:$a, (i32 16)),
                  (SMULTB GPR:$a, GPR:$b)>;
 def : ARMV5TEPat<(mul (sra GPR:$a, (i32 16)), sext_16_node:$b),
                 (SMULTB GPR:$a, GPR:$b)>;
-def : ARMV5TEPat<(sra (mul GPR:$a, (sra (shl GPR:$b, (i32 16)), (i32 16))),
-                      (i32 16)),
-                 (SMULWB GPR:$a, GPR:$b)>;
-def : ARMV5TEPat<(sra (mul GPR:$a, sext_16_node:$b), (i32 16)),
-                 (SMULWB GPR:$a, GPR:$b)>;
 
 def : ARMV5MOPat<(add GPR:$acc,
                       (mul (sra (shl GPR:$a, (i32 16)), (i32 16)),
@@ -5455,13 +5517,6 @@ def : ARMV5MOPat<(add GPR:$acc,
 def : ARMV5MOPat<(add GPR:$acc,
                       (mul (sra GPR:$a, (i32 16)), sext_16_node:$b)),
                  (SMLATB GPR:$a, GPR:$b, GPR:$acc)>;
-def : ARMV5MOPat<(add GPR:$acc,
-                      (sra (mul GPR:$a, (sra (shl GPR:$b, (i32 16)), (i32 16))),
-                           (i32 16))),
-                 (SMLAWB GPR:$a, GPR:$b, GPR:$acc)>;
-def : ARMV5MOPat<(add GPR:$acc,
-                      (sra (mul GPR:$a, sext_16_node:$b), (i32 16))),
-                 (SMLAWB GPR:$a, GPR:$b, GPR:$acc)>;
 
 
 // Pre-v7 uses MCR for synchronization barriers.
@@ -5741,3 +5796,8 @@ def : InstAlias<"umull${s}${p} $RdLo, $RdHi, $Rn, $Rm",
 // is discarded.
 def ITasm : ARMAsmPseudo<"it$mask $cc", (ins it_pred:$cc, it_mask:$mask)>,
          ComplexDeprecationPredicate<"IT">;
+
+let mayLoad = 1, mayStore =1, hasSideEffects = 1 in
+def SPACE : PseudoInst<(outs GPR:$Rd), (ins i32imm:$size, GPR:$Rn),
+                       NoItinerary,
+                       [(set GPR:$Rd, (int_arm_space imm:$size, GPR:$Rn))]>;

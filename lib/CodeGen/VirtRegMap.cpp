@@ -36,6 +36,7 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -54,8 +55,8 @@ INITIALIZE_PASS(VirtRegMap, "virtregmap", "Virtual Register Map", false, false)
 
 bool VirtRegMap::runOnMachineFunction(MachineFunction &mf) {
   MRI = &mf.getRegInfo();
-  TII = mf.getTarget().getInstrInfo();
-  TRI = mf.getTarget().getRegisterInfo();
+  TII = mf.getSubtarget().getInstrInfo();
+  TRI = mf.getSubtarget().getRegisterInfo();
   MF = &mf;
 
   Virt2PhysMap.clear();
@@ -123,7 +124,7 @@ void VirtRegMap::print(raw_ostream &OS, const Module*) const {
     if (Virt2PhysMap[Reg] != (unsigned)VirtRegMap::NO_PHYS_REG) {
       OS << '[' << PrintReg(Reg, TRI) << " -> "
          << PrintReg(Virt2PhysMap[Reg], TRI) << "] "
-         << MRI->getRegClass(Reg)->getName() << "\n";
+         << TRI->getRegClassName(MRI->getRegClass(Reg)) << "\n";
     }
   }
 
@@ -131,7 +132,7 @@ void VirtRegMap::print(raw_ostream &OS, const Module*) const {
     unsigned Reg = TargetRegisterInfo::index2VirtReg(i);
     if (Virt2StackSlotMap[Reg] != VirtRegMap::NO_STACK_SLOT) {
       OS << '[' << PrintReg(Reg, TRI) << " -> fi#" << Virt2StackSlotMap[Reg]
-         << "] " << MRI->getRegClass(Reg)->getName() << "\n";
+         << "] " << TRI->getRegClassName(MRI->getRegClass(Reg)) << "\n";
     }
   }
   OS << '\n';
@@ -205,8 +206,8 @@ void VirtRegRewriter::getAnalysisUsage(AnalysisUsage &AU) const {
 bool VirtRegRewriter::runOnMachineFunction(MachineFunction &fn) {
   MF = &fn;
   TM = &MF->getTarget();
-  TRI = TM->getRegisterInfo();
-  TII = TM->getInstrInfo();
+  TRI = MF->getSubtarget().getRegisterInfo();
+  TII = MF->getSubtarget().getInstrInfo();
   MRI = &MF->getRegInfo();
   Indexes = &getAnalysis<SlotIndexes>();
   LIS = &getAnalysis<LiveIntervals>();

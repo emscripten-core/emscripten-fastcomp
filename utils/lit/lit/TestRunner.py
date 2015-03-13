@@ -144,13 +144,16 @@ def executeShCmd(cmd, cfg, cwd, results):
                     named_temp_files.append(f.name)
                     args[i] = f.name
 
-        procs.append(subprocess.Popen(args, cwd=cwd,
-                                      executable = executable,
-                                      stdin = stdin,
-                                      stdout = stdout,
-                                      stderr = stderr,
-                                      env = cfg.environment,
-                                      close_fds = kUseCloseFDs))
+        try:
+            procs.append(subprocess.Popen(args, cwd=cwd,
+                                          executable = executable,
+                                          stdin = stdin,
+                                          stdout = stdout,
+                                          stderr = stderr,
+                                          env = cfg.environment,
+                                          close_fds = kUseCloseFDs))
+        except OSError as e:
+            raise InternalShellError(j, 'Could not create process due to {}'.format(e))
 
         # Immediately close stdin for any process taking stdin from us.
         if stdin == subprocess.PIPE:
@@ -192,6 +195,11 @@ def executeShCmd(cmd, cfg, cwd, results):
         f.seek(0, 0)
         procData[i] = (procData[i][0], f.read())
 
+    def to_string(bytes):
+        if isinstance(bytes, str):
+            return bytes
+        return bytes.encode('utf-8')
+
     exitCode = None
     for i,(out,err) in enumerate(procData):
         res = procs[i].wait()
@@ -201,11 +209,11 @@ def executeShCmd(cmd, cfg, cwd, results):
 
         # Ensure the resulting output is always of string type.
         try:
-            out = str(out.decode('ascii'))
+            out = to_string(out.decode('utf-8'))
         except:
             out = str(out)
         try:
-            err = str(err.decode('ascii'))
+            err = to_string(err.decode('utf-8'))
         except:
             err = str(err)
 
@@ -314,13 +322,18 @@ def parseIntegratedTestScriptCommands(source_path):
     # Python2 and bytes in Python3.
     #
     # Once we find a match, we do require each script line to be decodable to
-    # ascii, so we convert the outputs to ascii before returning. This way the
+    # UTF-8, so we convert the outputs to UTF-8 before returning. This way the
     # remaining code can work with "strings" agnostic of the executing Python
     # version.
     
     def to_bytes(str):
-        # Encode to Latin1 to get binary data.
-        return str.encode('ISO-8859-1')
+        # Encode to UTF-8 to get binary data.
+        return str.encode('utf-8')
+    def to_string(bytes):
+        if isinstance(bytes, str):
+            return bytes
+        return to_bytes(bytes)
+        
     keywords = ('RUN:', 'XFAIL:', 'REQUIRES:', 'END.')
     keywords_re = re.compile(
         to_bytes("(%s)(.*)\n" % ("|".join(k for k in keywords),)))
@@ -329,6 +342,10 @@ def parseIntegratedTestScriptCommands(source_path):
     try:
         # Read the entire file contents.
         data = f.read()
+
+        # Ensure the data ends with a newline.
+        if not data.endswith(to_bytes('\n')):
+            data = data + to_bytes('\n')
 
         # Iterate over the matches.
         line_number = 1
@@ -341,13 +358,13 @@ def parseIntegratedTestScriptCommands(source_path):
                                       match_position)
             last_match_position = match_position
 
-            # Convert the keyword and line to ascii strings and yield the
+            # Convert the keyword and line to UTF-8 strings and yield the
             # command. Note that we take care to return regular strings in
             # Python 2, to avoid other code having to differentiate between the
             # str and unicode types.
             keyword,ln = match.groups()
-            yield (line_number, str(keyword[:-1].decode('ascii')),
-                   str(ln.decode('ascii')))
+            yield (line_number, to_string(keyword[:-1].decode('utf-8')),
+                   to_string(ln.decode('utf-8')))
     finally:
         f.close()
 

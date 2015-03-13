@@ -86,6 +86,15 @@ NaClBitcodeParser::~NaClBitcodeParser() {
   }
 }
 
+bool NaClBitcodeParser::ErrorAt(
+    naclbitc::ErrorLevel Level, uint64_t BitPosition,
+    const std::string &Message) {
+  naclbitc::ErrorAt(*ErrStream, Level, BitPosition) << Message << "\n";
+  if (Level == naclbitc::Fatal)
+    report_fatal_error("Unable to continue");
+  return true;
+}
+
 bool NaClBitcodeParser::Parse() {
   Record.ReadEntry();
 
@@ -100,7 +109,6 @@ bool NaClBitcodeParser::ParseBlockInfoInternal() {
   // reader process this block.
   bool Result = Record.GetCursor().ReadBlockInfoBlock(Listener);
   if (Result) return Error("Malformed BlockInfoBlock");
-  ProcessBlockInfo();
   return Result;
 }
 

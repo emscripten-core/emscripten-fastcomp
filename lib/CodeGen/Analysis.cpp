@@ -25,6 +25,9 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Transforms/Utils/GlobalStatus.h"
+
 using namespace llvm;
 
 /// ComputeLinearIndex - Given an LLVM IR aggregate type and a sequence
@@ -106,15 +109,16 @@ void llvm::ComputeValueVTs(const TargetLowering &TLI, Type *Ty,
 }
 
 /// ExtractTypeInfo - Returns the type info, possibly bitcast, encoded in V.
-GlobalVariable *llvm::ExtractTypeInfo(Value *V) {
+GlobalValue *llvm::ExtractTypeInfo(Value *V) {
   V = V->stripPointerCasts();
-  GlobalVariable *GV = dyn_cast<GlobalVariable>(V);
+  GlobalValue *GV = dyn_cast<GlobalValue>(V);
+  GlobalVariable *Var = dyn_cast<GlobalVariable>(V);
 
-  if (GV && GV->getName() == "llvm.eh.catch.all.value") {
-    assert(GV->hasInitializer() &&
+  if (Var && Var->getName() == "llvm.eh.catch.all.value") {
+    assert(Var->hasInitializer() &&
            "The EH catch-all value must have an initializer");
-    Value *Init = GV->getInitializer();
-    GV = dyn_cast<GlobalVariable>(Init);
+    Value *Init = Var->getInitializer();
+    GV = dyn_cast<GlobalValue>(Init);
     if (!GV) V = cast<ConstantPointerNull>(Init);
   }
 
@@ -508,8 +512,8 @@ bool llvm::isInTailCallPosition(ImmutableCallSite CS, const TargetMachine &TM) {
         return false;
     }
 
-  return returnTypeIsEligibleForTailCall(ExitBB->getParent(), I, Ret,
-                                         *TM.getTargetLowering());
+  return returnTypeIsEligibleForTailCall(
+      ExitBB->getParent(), I, Ret, *TM.getSubtargetImpl()->getTargetLowering());
 }
 
 bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
@@ -605,4 +609,30 @@ bool llvm::returnTypeIsEligibleForTailCall(const Function *F,
   } while(nextRealType(RetSubTypes, RetPath));
 
   return true;
+}
+
+bool llvm::canBeOmittedFromSymbolTable(const GlobalValue *GV) {
+  if (!GV->hasLinkOnceODRLinkage())
+    return false;
+
+  if (GV->hasUnnamedAddr())
+    return true;
+
+  // If it is a non constant variable, it needs to be uniqued across shared
+  // objects.
+  if (const GlobalVariable *Var = dyn_cast<GlobalVariable>(GV)) {
+    if (!Var->isConstant())
+      return false;
+  }
+
+  // An alias can point to a variable. We could try to resolve the alias to
+  // decide, but for now just don't hide them.
+  if (isa<GlobalAlias>(GV))
+    return false;
+
+  GlobalStatus GS;
+  if (GlobalStatus::analyzeGlobal(GV, GS))
+    return false;
+
+  return !GS.IsCompared;
 }

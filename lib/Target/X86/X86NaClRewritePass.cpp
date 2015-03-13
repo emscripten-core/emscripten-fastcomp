@@ -118,16 +118,13 @@ static bool IsLoad(MachineInstr &MI) {
   return MI.mayLoad();
 }
 
-static bool IsFrameChange(MachineInstr &MI) {
-  return MI.modifiesRegister(X86::EBP, NULL) ||
-         MI.modifiesRegister(X86::RBP, NULL);
+static bool IsFrameChange(MachineInstr &MI, const TargetRegisterInfo *TRI) {
+  return MI.modifiesRegister(X86::EBP, TRI);
 }
 
-static bool IsStackChange(MachineInstr &MI) {
-  return MI.modifiesRegister(X86::ESP, NULL) ||
-         MI.modifiesRegister(X86::RSP, NULL);
+static bool IsStackChange(MachineInstr &MI, const TargetRegisterInfo *TRI) {
+  return MI.modifiesRegister(X86::ESP, TRI);
 }
-
 
 static bool HasControlFlow(const MachineInstr &MI) {
  return MI.getDesc().isBranch() ||
@@ -149,13 +146,13 @@ static bool IsRegAbsolute(unsigned Reg) {
           (Reg == X86::R15 && RestrictR15));
 }
 
-static bool FindMemoryOperand(const MachineInstr &MI, unsigned* index) {
+static bool FindMemoryOperand(const MachineInstr &MI,
+                              SmallVectorImpl<unsigned>* indices) {
   int NumFound = 0;
-  unsigned MemOp = 0;
   for (unsigned i = 0; i < MI.getNumOperands(); ) {
     if (isMem(&MI, i)) {
       NumFound++;
-      MemOp = i;
+      indices->push_back(i);
       i += X86::AddrNumOperands;
     } else {
       i++;
@@ -168,10 +165,6 @@ static bool FindMemoryOperand(const MachineInstr &MI, unsigned* index) {
   if (NumFound == 0)
     return false;
 
-  if (NumFound > 1)
-    llvm_unreachable("Too many memory operands in instruction!");
-
-  *index = MemOp;
   return true;
 }
 
@@ -223,7 +216,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
 
-  if (!IsStackChange(MI))
+  if (!IsStackChange(MI, TRI))
     return false;
 
   if (IsPushPop(MI))
@@ -243,6 +236,7 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
   case X86::ADD64ri32: NewOpc = X86::NACL_ASPi32; break;
   case X86::SUB64ri8 : NewOpc = X86::NACL_SSPi8; break;
   case X86::SUB64ri32: NewOpc = X86::NACL_SSPi32; break;
+  case X86::AND64ri8 : NewOpc = X86::NACL_ANDSPi8; break;
   case X86::AND64ri32: NewOpc = X86::NACL_ANDSPi32; break;
   }
   if (NewOpc) {
@@ -322,7 +316,7 @@ bool X86NaClRewritePass::ApplyFrameSFI(MachineBasicBlock &MBB,
   assert(Is64Bit);
   MachineInstr &MI = *MBBI;
 
-  if (!IsFrameChange(MI))
+  if (!IsFrameChange(MI, TRI))
     return false;
 
   unsigned Opc = MI.getOpcode();
@@ -427,13 +421,21 @@ bool X86NaClRewritePass::ApplyControlSFI(MachineBasicBlock &MBB,
   case X86::CALL32r              : NewOpc = X86::NACL_CALL32r; break;
   // 64-bit
   case X86::NACL_CG_JMP64r       : NewOpc = X86::NACL_JMP64r; break;
-  case X86::NACL_CG_CALL64r      : NewOpc = X86::NACL_CALL64r; break;
-  case X86::NACL_CG_TAILJMPr64   : NewOpc = X86::NACL_JMP64r; break;
+  case X86::CALL64r              : NewOpc = X86::NACL_CALL64r; break;
+  case X86::TAILJMPr64           : NewOpc = X86::NACL_JMP64r; break;
   }
   if (NewOpc) {
+    unsigned TargetReg = MI.getOperand(0).getReg();
+    if (Is64Bit) {
+      // CALL64r, etc. take a 64-bit register as a target. However, NaCl gas
+      // expects naclcall/nacljmp pseudos to have 32-bit regs as targets
+      // so NACL_CALL64r and NACL_JMP64r stick with that as well.
+      // Demote any 64-bit register to 32-bit to match the expectations.
+      TargetReg = DemoteRegTo32(TargetReg);
+    }
     MachineInstrBuilder NewMI =
      BuildMI(MBB, MBBI, DL, TII->get(NewOpc))
-       .addOperand(MI.getOperand(0));
+       .addReg(TargetReg);
     if (Is64Bit) {
       NewMI.addReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
     }
@@ -507,65 +509,67 @@ bool X86NaClRewritePass::ApplyMemorySFI(MachineBasicBlock &MBB,
   if (IsPushPop(MI))
     return false;
 
-  unsigned MemOp;
-  if (!FindMemoryOperand(MI, &MemOp))
+  SmallVector<unsigned, 2> MemOps;
+  if (!FindMemoryOperand(MI, &MemOps))
     return false;
-  assert(isMem(&MI, MemOp));
-  MachineOperand &BaseReg  = MI.getOperand(MemOp + 0);
-  MachineOperand &Scale = MI.getOperand(MemOp + 1);
-  MachineOperand &IndexReg  = MI.getOperand(MemOp + 2);
-  //MachineOperand &Disp = MI.getOperand(MemOp + 3);
-  MachineOperand &SegmentReg = MI.getOperand(MemOp + 4);
+  bool Modified = false;
+  for (unsigned MemOp : MemOps) {
+    MachineOperand &BaseReg  = MI.getOperand(MemOp + 0);
+    MachineOperand &Scale = MI.getOperand(MemOp + 1);
+    MachineOperand &IndexReg  = MI.getOperand(MemOp + 2);
+    //MachineOperand &Disp = MI.getOperand(MemOp + 3);
+    MachineOperand &SegmentReg = MI.getOperand(MemOp + 4);
 
-  // RIP-relative addressing is safe.
-  if (BaseReg.getReg() == X86::RIP)
-    return false;
+    // RIP-relative addressing is safe.
+    if (BaseReg.getReg() == X86::RIP)
+      continue;
 
-  // Make sure the base and index are 64-bit registers.
-  IndexReg.setReg(PromoteRegTo64(IndexReg.getReg()));
-  BaseReg.setReg(PromoteRegTo64(BaseReg.getReg()));
-  assert(IndexReg.getSubReg() == 0);
-  assert(BaseReg.getSubReg() == 0);
+    // Make sure the base and index are 64-bit registers.
+    IndexReg.setReg(PromoteRegTo64(IndexReg.getReg()));
+    BaseReg.setReg(PromoteRegTo64(BaseReg.getReg()));
+    assert(IndexReg.getSubReg() == 0);
+    assert(BaseReg.getSubReg() == 0);
 
-  bool AbsoluteBase = IsRegAbsolute(BaseReg.getReg());
-  bool AbsoluteIndex = IsRegAbsolute(IndexReg.getReg());
-  unsigned AddrReg = 0;
+    bool AbsoluteBase = IsRegAbsolute(BaseReg.getReg());
+    bool AbsoluteIndex = IsRegAbsolute(IndexReg.getReg());
+    unsigned AddrReg = 0;
 
-  if (AbsoluteBase && AbsoluteIndex) {
-    llvm_unreachable("Unexpected absolute register pair");
-  } else if (AbsoluteBase) {
-    AddrReg = IndexReg.getReg();
-  } else if (AbsoluteIndex) {
-    assert(!BaseReg.getReg() && "Unexpected base register");
-    assert(Scale.getImm() == 1);
-    AddrReg = 0;
-  } else {
-    if (!BaseReg.getReg()) {
-      // No base, fill in relative.
-      BaseReg.setReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
+    if (AbsoluteBase && AbsoluteIndex) {
+      llvm_unreachable("Unexpected absolute register pair");
+    } else if (AbsoluteBase) {
       AddrReg = IndexReg.getReg();
-    } else if (!FlagUseZeroBasedSandbox) {
-      // Switch base and index registers if index register is undefined.
-      // That is do conversions like "mov d(%r,0,0) -> mov d(%r15, %r, 1)".
-      assert (!IndexReg.getReg()
-              && "Unexpected index and base register");
-      IndexReg.setReg(BaseReg.getReg());
-      Scale.setImm(1);
-      BaseReg.setReg(X86::R15);
-      AddrReg = IndexReg.getReg();
+    } else if (AbsoluteIndex) {
+      assert(!BaseReg.getReg() && "Unexpected base register");
+      assert(Scale.getImm() == 1);
+      AddrReg = 0;
     } else {
-      llvm_unreachable(
-          "Unexpected index and base register");
+      if (!BaseReg.getReg()) {
+        // No base, fill in relative.
+        BaseReg.setReg(FlagUseZeroBasedSandbox ? 0 : X86::R15);
+        AddrReg = IndexReg.getReg();
+      } else if (!FlagUseZeroBasedSandbox) {
+        // Switch base and index registers if index register is undefined.
+        // That is do conversions like "mov d(%r,0,0) -> mov d(%r15, %r, 1)".
+        assert (!IndexReg.getReg()
+                && "Unexpected index and base register");
+        IndexReg.setReg(BaseReg.getReg());
+        Scale.setImm(1);
+        BaseReg.setReg(X86::R15);
+        AddrReg = IndexReg.getReg();
+      } else {
+        llvm_unreachable(
+            "Unexpected index and base register");
+      }
+    }
+
+    if (AddrReg) {
+      assert(!SegmentReg.getReg() && "Unexpected segment register");
+      SegmentReg.setReg(X86::PSEUDO_NACL_SEG);
+      Modified = true;
     }
   }
 
-  if (AddrReg) {
-    assert(!SegmentReg.getReg() && "Unexpected segment register");
-    SegmentReg.setReg(X86::PSEUDO_NACL_SEG);
-    return true;
-  }
-
-  return false;
+  return Modified;
 }
 
 bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
@@ -587,18 +591,6 @@ bool X86NaClRewritePass::ApplyRewrites(MachineBasicBlock &MBB,
   if (NewOpc) {
     BuildMI(MBB, MBBI, DL, TII->get(NewOpc))
       .addOperand(MI.getOperand(0));
-    MI.eraseFromParent();
-    return true;
-  }
-
-  if (Opc == X86::NACL_CG_TLS_addr32) {
-    // Rewrite to nacltlsaddr32
-    BuildMI(MBB, MBBI, DL, TII->get(X86::NACL_TLS_addr32))
-      .addOperand(MI.getOperand(0))  // Base
-      .addOperand(MI.getOperand(1))  // Scale
-      .addOperand(MI.getOperand(2))  // Index
-      .addGlobalAddress(MI.getOperand(3).getGlobal(), 0, X86II::MO_TLSGD)
-      .addOperand(MI.getOperand(4)); // Segment
     MI.eraseFromParent();
     return true;
   }
@@ -711,8 +703,8 @@ bool X86NaClRewritePass::runOnMachineFunction(MachineFunction &MF) {
   bool Modified = false;
 
   TM = &MF.getTarget();
-  TII = TM->getInstrInfo();
-  TRI = TM->getRegisterInfo();
+  TII = MF.getSubtarget().getInstrInfo();
+  TRI = MF.getSubtarget().getRegisterInfo();
   Subtarget = &TM->getSubtarget<X86Subtarget>();
   Is64Bit = Subtarget->is64Bit();
 

@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARMASMPRINTER_H
-#define ARMASMPRINTER_H
+#ifndef LLVM_LIB_TARGET_ARM_ARMASMPRINTER_H
+#define LLVM_LIB_TARGET_ARM_ARMASMPRINTER_H
 
 #include "ARMSubtarget.h"
 #include "llvm/CodeGen/AsmPrinter.h"
@@ -94,13 +94,13 @@ public:
   
   // @LOCALMOD-START
   /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
-  virtual bool UseReadOnlyJumpTables() const;
+  bool UseReadOnlyJumpTables() const override;
   /// GetTargetBasicBlockAlign - Get the target alignment for basic blocks.
-  virtual unsigned GetTargetBasicBlockAlign() const;
+  unsigned GetTargetBasicBlockAlign() const override;
   /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
   /// labels E.g., EH_LABEL.
   /// TODO(sehr,robertm): remove this if the labeled block has address taken.
-  virtual unsigned GetTargetLabelAlign(const MachineInstr *MI) const;
+  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
   // @LOCALMOD-END
 
 private:

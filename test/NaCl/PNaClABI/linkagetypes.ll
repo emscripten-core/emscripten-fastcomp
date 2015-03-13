@@ -10,12 +10,6 @@ target triple = "le32-unknown-nacl"
 
 @gv_private = private global [1 x i8] c"x"
 ; CHECK: Variable gv_private has disallowed linkage type: private
-@gv_linker_private = linker_private global [1 x i8] c"x"
-; linker_private is deprecated and treated as private.
-; CHECK: Variable gv_linker_private has disallowed linkage type: private
-@gv_linker_private_weak = linker_private_weak global [1 x i8] c"x"
-; linker_private_weak is deprecated and treated as private.
-; CHECK: gv_linker_private_weak has disallowed linkage type: private
 @gv_linkonce = linkonce global [1 x i8] c"x"
 ; CHECK: gv_linkonce has disallowed linkage type: linkonce
 @gv_linkonce_odr = linkonce_odr global [1 x i8] c"x"

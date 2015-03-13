@@ -29,7 +29,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "execution-fix"
@@ -713,13 +714,13 @@ void ExeDepsFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
 
 bool ExeDepsFix::runOnMachineFunction(MachineFunction &mf) {
   MF = &mf;
-  TII = MF->getTarget().getInstrInfo();
-  TRI = MF->getTarget().getRegisterInfo();
+  TII = MF->getSubtarget().getInstrInfo();
+  TRI = MF->getSubtarget().getRegisterInfo();
   LiveRegs = nullptr;
   assert(NumRegs == RC->getNumRegs() && "Bad regclass");
 
   DEBUG(dbgs() << "********** FIX EXECUTION DEPENDENCIES: "
-               << RC->getName() << " **********\n");
+               << TRI->getRegClassName(RC) << " **********\n");
 
   // If no relevant registers are used in the function, we can skip it
   // completely.

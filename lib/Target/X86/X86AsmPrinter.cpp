@@ -48,6 +48,8 @@ using namespace llvm;
 /// runOnMachineFunction - Emit the function body.
 ///
 bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
+  SMShadowTracker.startFunction(MF);
+
   SetupMachineFunction(MF);
 
   if (Subtarget->isTargetCOFF()) {
@@ -592,14 +594,16 @@ MCSymbol *X86AsmPrinter::GetCPISymbol(unsigned CPID) const {
     const MachineConstantPoolEntry &CPE =
         MF->getConstantPool()->getConstants()[CPID];
     if (!CPE.isMachineConstantPoolEntry()) {
-      SectionKind Kind = CPE.getSectionKind(TM.getDataLayout());
+      SectionKind Kind =
+          CPE.getSectionKind(TM.getSubtargetImpl()->getDataLayout());
       const Constant *C = CPE.Val.ConstVal;
-      const MCSectionCOFF *S = cast<MCSectionCOFF>(
-          getObjFileLowering().getSectionForConstant(Kind, C));
-      if (MCSymbol *Sym = S->getCOMDATSymbol()) {
-        if (Sym->isUndefined())
-          OutStreamer.EmitSymbolAttribute(Sym, MCSA_Global);
-        return Sym;
+      if (const MCSectionCOFF *S = dyn_cast<MCSectionCOFF>(
+            getObjFileLowering().getSectionForConstant(Kind, C))) {
+        if (MCSymbol *Sym = S->getCOMDATSymbol()) {
+          if (Sym->isUndefined())
+            OutStreamer.EmitSymbolAttribute(Sym, MCSA_Global);
+          return Sym;
+        }
       }
     }
   }
@@ -761,7 +765,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
     MachineModuleInfoELF::SymbolListTy Stubs = MMIELF.GetGVStubList();
     if (!Stubs.empty()) {
       OutStreamer.SwitchSection(TLOFELF.getDataRelSection());
-      const DataLayout *TD = TM.getDataLayout();
+      const DataLayout *TD = TM.getSubtargetImpl()->getDataLayout();
 
       for (const auto &Stub : Stubs) {
         OutStreamer.EmitLabel(Stub.first);
@@ -770,6 +774,8 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
       }
       Stubs.clear();
     }
+
+    SM.serializeToStackMapSection();
   }
 }
 

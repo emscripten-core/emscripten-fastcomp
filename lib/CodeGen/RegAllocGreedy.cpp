@@ -514,7 +514,7 @@ void RAGreedy::enqueue(PQueue &CurQueue, LiveInterval *LI) {
     // Giant live ranges fall back to the global assignment heuristic, which
     // prevents excessive spilling in pathological cases.
     bool ReverseLocal = TRI->reverseLocalAssignment();
-    bool ForceGlobal = !ReverseLocal && TRI->mayOverrideLocalAssignment() &&
+    bool ForceGlobal = !ReverseLocal &&
       (Size / SlotIndex::InstrDist) > (2 * MRI->getRegClass(Reg)->getNumRegs());
 
     if (ExtraRegInfo[Reg].Stage == RS_Assign && !ForceGlobal && !LI->empty() &&
@@ -817,7 +817,7 @@ unsigned RAGreedy::tryEvict(LiveInterval &VirtReg,
     const TargetRegisterClass *RC = MRI->getRegClass(VirtReg.reg);
     unsigned MinCost = RegClassInfo.getMinCost(RC);
     if (MinCost >= CostPerUseLimit) {
-      DEBUG(dbgs() << RC->getName() << " minimum cost = " << MinCost
+      DEBUG(dbgs() << TRI->getRegClassName(RC) << " minimum cost = " << MinCost
                    << ", no cheaper registers to be found.\n");
       return 0;
     }
@@ -967,14 +967,12 @@ void RAGreedy::addThroughConstraints(InterferenceCache::Cursor Intf,
       BCS[B].Exit = SpillPlacement::PrefSpill;
 
     if (++B == GroupSize) {
-      ArrayRef<SpillPlacement::BlockConstraint> Array(BCS, B);
-      SpillPlacer->addConstraints(Array);
+      SpillPlacer->addConstraints(makeArrayRef(BCS, B));
       B = 0;
     }
   }
 
-  ArrayRef<SpillPlacement::BlockConstraint> Array(BCS, B);
-  SpillPlacer->addConstraints(Array);
+  SpillPlacer->addConstraints(makeArrayRef(BCS, B));
   SpillPlacer->addLinks(makeArrayRef(TBS, T));
 }
 
@@ -1013,7 +1011,7 @@ void RAGreedy::growRegion(GlobalSplitCandidate &Cand) {
 
     // Compute through constraints from the interference, or assume that all
     // through blocks prefer spilling when forming compact regions.
-    ArrayRef<unsigned> NewBlocks = makeArrayRef(ActiveBlocks).slice(AddedTo);
+    auto NewBlocks = makeArrayRef(ActiveBlocks).slice(AddedTo);
     if (Cand.PhysReg)
       addThroughConstraints(Cand.Intf, NewBlocks);
     else
@@ -1791,9 +1789,11 @@ unsigned RAGreedy::tryLocalSplit(LiveInterval &VirtReg, AllocationOrder &Order,
         // instructions.
         //
         // Try to guess the size of the new interval.
-        const float EstWeight = normalizeSpillWeight(blockFreq * (NewGaps + 1),
-                                 Uses[SplitBefore].distance(Uses[SplitAfter]) +
-                                 (LiveBefore + LiveAfter)*SlotIndex::InstrDist);
+        const float EstWeight = normalizeSpillWeight(
+            blockFreq * (NewGaps + 1),
+            Uses[SplitBefore].distance(Uses[SplitAfter]) +
+                (LiveBefore + LiveAfter) * SlotIndex::InstrDist,
+            1);
         // Would this split be possible to allocate?
         // Never allocate all gaps, we wouldn't be making progress.
         DEBUG(dbgs() << " w=" << EstWeight);
@@ -2319,13 +2319,13 @@ bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
                << "********** Function: " << mf.getName() << '\n');
 
   MF = &mf;
-  const TargetMachine &TM = MF->getTarget();
-  TRI = TM.getRegisterInfo();
-  TII = TM.getInstrInfo();
+  TRI = MF->getSubtarget().getRegisterInfo();
+  TII = MF->getSubtarget().getInstrInfo();
   RCI.runOnMachineFunction(mf);
 
   EnableLocalReassign = EnableLocalReassignment ||
-    TM.getSubtargetImpl()->enableRALocalReassignment(TM.getOptLevel());
+                        MF->getSubtarget().enableRALocalReassignment(
+                            MF->getTarget().getOptLevel());
 
   if (VerifyEnabled)
     MF->verify(this, "Before greedy register allocator");

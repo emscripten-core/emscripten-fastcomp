@@ -26,10 +26,18 @@ namespace llvm {
       ZdaPv,
       /// void operator delete[](void*, nothrow);
       ZdaPvRKSt9nothrow_t,
+      /// void operator delete[](void*, unsigned int);
+      ZdaPvj,
+      /// void operator delete[](void*, unsigned long);
+      ZdaPvm,
       /// void operator delete(void*);
       ZdlPv,
       /// void operator delete(void*, nothrow);
       ZdlPvRKSt9nothrow_t,
+      /// void operator delete(void*, unsigned int);
+      ZdlPvj,
+      /// void operator delete(void*, unsigned long);
+      ZdlPvm,
       /// void *new[](unsigned int);
       Znaj,
       /// void *new[](unsigned int, nothrow);
@@ -54,7 +62,7 @@ namespace llvm {
       cxa_atexit,
       /// void __cxa_guard_abort(guard_t *guard);
       /// guard_t is int64_t in Itanium ABI or int32_t on ARM eabi.
-      cxa_guard_abort,      
+      cxa_guard_abort,
       /// int __cxa_guard_acquire(guard_t *guard);
       cxa_guard_acquire,
       /// void __cxa_guard_release(guard_t *guard);
@@ -65,6 +73,11 @@ namespace llvm {
       dunder_isoc99_sscanf,
       /// void *__memcpy_chk(void *s1, const void *s2, size_t n, size_t s1size);
       memcpy_chk,
+      /// void *__memmove_chk(void *s1, const void *s2, size_t n,
+      ///                     size_t s1size);
+      memmove_chk,
+      /// void *__memset_chk(void *s, char v, size_t n, size_t s1size);
+      memset_chk,
       /// double __sincospi_stret(double x);
       sincospi_stret,
       /// float __sincospif_stret(float x);
@@ -79,8 +92,18 @@ namespace llvm {
       sqrtf_finite,
       /// long double __sqrt_finite(long double x);
       sqrtl_finite,
+      /// char *__stpcpy_chk(char *s1, const char *s2, size_t s1size);
+      stpcpy_chk,
+      /// char *__stpncpy_chk(char *s1, const char *s2, size_t n,
+      ///                     size_t s1size);
+      stpncpy_chk,
+      /// char *__strcpy_chk(char *s1, const char *s2, size_t s1size);
+      strcpy_chk,
       /// char * __strdup(const char *s);
       dunder_strdup,
+      /// char *__strncpy_chk(char *s1, const char *s2, size_t n,
+      ///                     size_t s1size);
+      strncpy_chk,
       /// char *__strndup(const char *s, size_t n);
       dunder_strndup,
       /// char * __strtok_r(char *s, const char *delim, char **save_ptr);
@@ -294,7 +317,9 @@ namespace llvm {
       /// int fseek(FILE *stream, long offset, int whence);
       fseek,
       /// int fseeko(FILE *stream, off_t offset, int whence);
-      fseeko,
+      // @LOCALMOD: Capitalize to avoid mingw #define:
+      // https://code.google.com/p/nativeclient/issues/detail?id=4089
+      Fseeko,
       /// int fseeko64(FILE *stream, off64_t offset, int whence)
       fseeko64,
       /// int fsetpos(FILE *stream, const fpos_t *pos);
@@ -310,7 +335,9 @@ namespace llvm {
       /// long ftell(FILE *stream);
       ftell,
       /// off_t ftello(FILE *stream);
-      ftello,
+      // @LOCALMOD: Capitalize to avoid mingw #define:
+      // https://code.google.com/p/nativeclient/issues/detail?id=4089
+      Ftello,
       /// off64_t ftello64(FILE *stream)
       ftello64,
       /// int ftrylockfile(FILE *file);
@@ -696,7 +723,7 @@ public:
   TargetLibraryInfo();
   TargetLibraryInfo(const Triple &T);
   explicit TargetLibraryInfo(const TargetLibraryInfo &TLI);
-  
+
   /// getLibFunc - Search for a particular function name.  If it is one of the
   /// known library functions, return true and set F to the corresponding value.
   bool getLibFunc(StringRef funcName, LibFunc::Func &F) const;

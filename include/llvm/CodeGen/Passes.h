@@ -178,6 +178,10 @@ public:
   /// Return true if the optimized regalloc pipeline is enabled.
   bool getOptimizeRegAlloc() const;
 
+  /// Return true if the default global register allocator is in use and
+  /// has not be overriden on the command line with '-regalloc=...'
+  bool usingDefaultRegAlloc() const;
+
   /// Add common target configurable passes that perform LLVM IR to IR
   /// transforms following machine independent optimization.
   virtual void addIRPasses();
@@ -345,7 +349,7 @@ protected:
 
 /// List of target independent CodeGen pass IDs.
 namespace llvm {
-  FunctionPass *createAtomicExpandLoadLinkedPass(const TargetMachine *TM);
+  FunctionPass *createAtomicExpandPass(const TargetMachine *TM);
 
   /// \brief Create a basic TargetTransformInfo analysis pass.
   ///
@@ -372,8 +376,9 @@ namespace llvm {
   /// matching during instruction selection.
   FunctionPass *createCodeGenPreparePass(const TargetMachine *TM = nullptr);
 
-  /// AtomicExpandLoadLinkedID -- FIXME
-  extern char &AtomicExpandLoadLinkedID;
+  /// AtomicExpandID -- Lowers atomic operations in terms of either cmpxchg
+  /// load-linked/store-conditional loops.
+  extern char &AtomicExpandID;
 
   /// MachineLoopInfo - This pass is a loop analysis pass.
   extern char &MachineLoopInfoID;
@@ -489,6 +494,10 @@ namespace llvm {
   /// inserting cmov instructions.
   extern char &EarlyIfConverterID;
 
+  /// This pass performs instruction combining using trace metrics to estimate
+  /// critical-path and resource depth.
+  extern char &MachineCombinerID;
+
   /// StackSlotColoring - This pass performs stack coloring and merging.
   /// It merges disjoint allocas to reduce the stack size.
   extern char &StackColoringID;
@@ -593,6 +602,10 @@ namespace llvm {
 
   /// createJumpInstrTables - This pass creates jump-instruction tables.
   ModulePass *createJumpInstrTablesPass();
+
+  /// createForwardControlFlowIntegrityPass - This pass adds control-flow
+  /// integrity.
+  ModulePass *createForwardControlFlowIntegrityPass();
 } // End llvm namespace
 
 /// This initializer registers TargetMachine constructor, so the pass being

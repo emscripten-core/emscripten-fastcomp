@@ -129,13 +129,13 @@ define void @BadTests(i32 %p0) {
   %v5 = load float* %af
 
 ; CHECK-NEXT:    {{.*}}|    3: <20, 6, 0, 1>         |    %v5 = load float* %p0, align 0;
-; CHECK-NEXT:Error({{.*}}): load: Illegal alignment for float. Expects: 4
+; CHECK-NEXT:Error({{.*}}): load: Illegal alignment for float. Expects: 1 or 4
 
   %ad = inttoptr i32 %p0 to double*
   %v6 = load double* %ad, align 4
 
 ; CHECK-NEXT:    {{.*}}|    3: <20, 7, 3, 2>         |    %v6 = load double* %p0, align 4;
-; CHECK-NEXT:Error({{.*}}): load: Illegal alignment for double. Expects: 8
+; CHECK-NEXT:Error({{.*}}): load: Illegal alignment for double. Expects: 1 or 8
 
   %av16_i8 = inttoptr i32 %p0 to <16 x i8>*
   %v7 = load <16 x i8>* %av16_i8, align 8

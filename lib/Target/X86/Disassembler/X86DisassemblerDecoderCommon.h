@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef X86DISASSEMBLERDECODERCOMMON_H
-#define X86DISASSEMBLERDECODERCOMMON_H
+#ifndef LLVM_LIB_TARGET_X86_DISASSEMBLER_X86DISASSEMBLERDECODERCOMMON_H
+#define LLVM_LIB_TARGET_X86_DISASSEMBLER_X86DISASSEMBLERDECODERCOMMON_H
 
 #include "llvm/Support/DataTypes.h"
 
@@ -500,7 +500,7 @@ enum ModifierType {
 };
 #undef ENUM_ENTRY
 
-static const unsigned X86_MAX_OPERANDS = 5;
+static const unsigned X86_MAX_OPERANDS = 6;
 
 /// Decoding mode for the Intel disassembler.  16-bit, 32-bit, and 64-bit mode
 /// are supported, and represent real mode, IA-32e, and IA-32e in 64-bit mode,

@@ -593,8 +593,13 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
       bool ignored;
       uint64_t x[2]; 
       uint32_t DestBitWidth = cast<IntegerType>(DestTy)->getBitWidth();
-      (void) V.convertToInteger(x, DestBitWidth, opc==Instruction::FPToSI,
-                                APFloat::rmTowardZero, &ignored);
+      if (APFloat::opInvalidOp ==
+          V.convertToInteger(x, DestBitWidth, opc==Instruction::FPToSI,
+                             APFloat::rmTowardZero, &ignored)) {
+        // Undefined behavior invoked - the destination type can't represent
+        // the input constant.
+        return UndefValue::get(DestTy);
+      }
       APInt Val(DestBitWidth, x);
       return ConstantInt::get(FPC->getContext(), Val);
     }
@@ -653,9 +658,13 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
       APInt api = CI->getValue();
       APFloat apf(DestTy->getFltSemantics(),
                   APInt::getNullValue(DestTy->getPrimitiveSizeInBits()));
-      (void)apf.convertFromAPInt(api, 
-                                 opc==Instruction::SIToFP,
-                                 APFloat::rmNearestTiesToEven);
+      if (APFloat::opOverflow &
+          apf.convertFromAPInt(api, opc==Instruction::SIToFP,
+                              APFloat::rmNearestTiesToEven)) {
+        // Undefined behavior invoked - the destination type can't represent
+        // the input constant.
+        return UndefValue::get(DestTy);
+      }
       return ConstantFP::get(V->getContext(), apf);
     }
     return nullptr;
@@ -674,6 +683,9 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
     }
     return nullptr;
   case Instruction::Trunc: {
+    if (V->getType()->isVectorTy())
+      return nullptr;
+
     uint32_t DestBitWidth = cast<IntegerType>(DestTy)->getBitWidth();
     if (ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
       return ConstantInt::get(V->getContext(),
@@ -2144,9 +2156,10 @@ static Constant *ConstantFoldGetElementPtrImpl(Constant *C,
 
   // If all indices are known integers and normalized, we can do a simple
   // check for the "inbounds" property.
-  if (!Unknown && !inBounds &&
-      isa<GlobalVariable>(C) && isInBoundsIndices(Idxs))
-    return ConstantExpr::getInBoundsGetElementPtr(C, Idxs);
+  if (!Unknown && !inBounds)
+    if (auto *GV = dyn_cast<GlobalVariable>(C))
+      if (!GV->hasExternalWeakLinkage() && isInBoundsIndices(Idxs))
+        return ConstantExpr::getInBoundsGetElementPtr(C, Idxs);
 
   return nullptr;
 }

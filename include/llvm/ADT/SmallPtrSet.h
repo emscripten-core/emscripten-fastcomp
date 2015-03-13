@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstring>
 #include <iterator>
+#include <utility>
 
 namespace llvm {
 
@@ -100,7 +101,7 @@ protected:
   /// insert_imp - This returns true if the pointer was new to the set, false if
   /// it was already in the set.  This is hidden from the client so that the
   /// derived class can check that the right type of pointer is passed in.
-  bool insert_imp(const void * Ptr);
+  std::pair<const void *const *, bool> insert_imp(const void *Ptr);
 
   /// erase_imp - If the set contains the specified pointer, remove it and
   /// return true, otherwise return false.  This is hidden from the client so
@@ -240,6 +241,8 @@ struct RoundUpToPowerOfTwo {
 template <typename PtrType>
 class SmallPtrSetImpl : public SmallPtrSetImplBase {
   typedef PointerLikeTypeTraits<PtrType> PtrTraits;
+
+  SmallPtrSetImpl(const SmallPtrSetImpl&) LLVM_DELETED_FUNCTION;
 protected:
   // Constructors that forward to the base.
   SmallPtrSetImpl(const void **SmallStorage, const SmallPtrSetImpl &that)
@@ -251,10 +254,14 @@ protected:
       : SmallPtrSetImplBase(SmallStorage, SmallSize) {}
 
 public:
+  typedef SmallPtrSetIterator<PtrType> iterator;
+  typedef SmallPtrSetIterator<PtrType> const_iterator;
+
   /// insert - This returns true if the pointer was new to the set, false if it
   /// was already in the set.
-  bool insert(PtrType Ptr) {
-    return insert_imp(PtrTraits::getAsVoidPointer(Ptr));
+  std::pair<iterator, bool> insert(PtrType Ptr) {
+    auto p = insert_imp(PtrTraits::getAsVoidPointer(Ptr));
+    return std::make_pair(iterator(p.first, CurArray + CurArraySize), p.second);
   }
 
   /// erase - If the set contains the specified pointer, remove it and return
@@ -274,8 +281,6 @@ public:
       insert(*I);
   }
 
-  typedef SmallPtrSetIterator<PtrType> iterator;
-  typedef SmallPtrSetIterator<PtrType> const_iterator;
   inline iterator begin() const {
     return iterator(CurArray, CurArray+CurArraySize);
   }

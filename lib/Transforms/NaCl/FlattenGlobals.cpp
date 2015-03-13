@@ -78,11 +78,11 @@ namespace {
   typedef DenseMap<Constant*, RelocUserType*> RelocMapType;
 
   // Define the list to hold the list of global variables being flattened.
-  class FlattenedGlobal;
+  struct FlattenedGlobal;
   typedef std::vector<FlattenedGlobal*> FlattenedGlobalsVectorType;
 
   // Returns the corresponding relocation, for the given user handle.
-  static Constant *getRelocUseConstant(RelocUserType *RelocUser) {
+  Constant *getRelocUseConstant(RelocUserType *RelocUser) {
     return cast<Constant>(RelocUser->getReturnValue());
   }
 
@@ -177,8 +177,7 @@ namespace {
       unsigned getRelOffset() const { return RelOffset; }
       Constant *getRelocUse() const { return getRelocUseConstant(RelocUser); }
       Reloc(FlattenGlobalsState &State, unsigned RelOffset, Constant *NewVal)
-          : RelOffset(RelOffset),
-            RelocUser(State.getRelocUserHandle(NewVal)) {}
+          : RelOffset(RelOffset), RelocUser(State.getRelocUserHandle(NewVal)) {}
 
       explicit Reloc(const Reloc &R)
           : RelOffset(R.RelOffset), RelocUser(R.RelocUser) {}

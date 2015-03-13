@@ -427,32 +427,6 @@ static bool SandboxMemoryRef(MCInst *Inst,
   return false;
 }
 
-static void EmitTLSAddr32(const llvm::MCSubtargetInfo &STI, const MCInst &Inst,
-                          MCStreamer &Out) {
-  Out.EmitBundleLock(true);
-
-  MCInst LeaInst;
-  LeaInst.setOpcode(X86::LEA32r);
-  LeaInst.addOperand(MCOperand::CreateReg(X86::EAX));    // DestReg
-  LeaInst.addOperand(Inst.getOperand(0)); // BaseReg
-  LeaInst.addOperand(Inst.getOperand(1)); // Scale
-  LeaInst.addOperand(Inst.getOperand(2)); // IndexReg
-  LeaInst.addOperand(Inst.getOperand(3)); // Offset
-  LeaInst.addOperand(Inst.getOperand(4)); // SegmentReg
-  Out.EmitInstruction(LeaInst, STI);
-
-  MCInst CALLInst;
-  CALLInst.setOpcode(X86::CALLpcrel32);
-  MCContext &context = Out.getContext();
-  const MCSymbolRefExpr *expr =
-    MCSymbolRefExpr::Create(
-      context.GetOrCreateSymbol(StringRef("___tls_get_addr")),
-      MCSymbolRefExpr::VK_PLT, context);
-  CALLInst.addOperand(MCOperand::CreateExpr(expr));
-  Out.EmitInstruction(CALLInst, STI);
-  Out.EmitBundleUnlock();
-}
-
 static void EmitREST(const llvm::MCSubtargetInfo &STI, const MCInst &Inst,
                      unsigned Reg32, bool IsMem, MCStreamer &Out) {
   unsigned Reg64 = getX86SubSuperRegister_(Reg32, MVT::i64);
@@ -516,7 +490,8 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
                              X86MCNaClSFIState &State) {
   // If we are emitting to .s, only sandbox pseudos not supported by gas.
   if (Out.hasRawTextSupport()) {
-    if (Inst.getOpcode() != X86::NACL_ANDSPi32)
+    if (!(Inst.getOpcode() == X86::NACL_ANDSPi8 ||
+          Inst.getOpcode() == X86::NACL_ANDSPi32))
       return false;
   }
   // If we make a call to EmitInstruction, we will be called recursively. In
@@ -564,10 +539,6 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
     assert(State.PrefixSaved == 0);
     EmitIndirectBranch(STI, Inst.getOperand(0), false, false, Out);
     return true;
-  case X86::NACL_TLS_addr32:
-    assert(State.PrefixSaved == 0);
-    EmitTLSAddr32(STI, Inst, Out);
-    return true;
   case X86::NACL_JMP64r:
   case X86::NACL_JMP64z:
     assert(State.PrefixSaved == 0);
@@ -600,6 +571,10 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
   case X86::NACL_SSPi32:
     assert(State.PrefixSaved == 0);
     EmitSPArith(STI, X86::SUB32ri, Inst.getOperand(0), Out);
+    return true;
+  case X86::NACL_ANDSPi8:
+    assert(State.PrefixSaved == 0);
+    EmitSPArith(STI, X86::AND32ri8, Inst.getOperand(0), Out);
     return true;
   case X86::NACL_ANDSPi32:
     assert(State.PrefixSaved == 0);

@@ -23,19 +23,21 @@ OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT) # @LOCALMOD
 
 # Build LLD and LLDB if present. Note LLDB must be built last as it depends on
 # the wider LLVM infrastructure (including Clang).
-OPTIONAL_DIRS := lld lldb
+OPTIONAL_PARALLEL_DIRS += lld
+OPTIONAL_DIRS := lldb
 
 # NOTE: The tools are organized into five groups of four consisting of one
 # large and three small executables. This is done to minimize memory load
 # in parallel builds.  Please retain this ordering.
 DIRS := llvm-config
-PARALLEL_DIRS := opt llvm-as llvm-dis llc llvm-ar llvm-nm llvm-link \
+PARALLEL_DIRS := pnacl-llc pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
+                 pnacl-thaw pnacl-bccompress pnacl-bcdis \
+                 opt llvm-as llvm-dis llc llvm-ar llvm-nm llvm-link \
                  lli llvm-extract llvm-mc bugpoint llvm-bcanalyzer llvm-diff \
                  macho-dump llvm-objdump llvm-readobj llvm-rtdyld \
                  llvm-dwarfdump llvm-cov llvm-size llvm-stress llvm-mcmarkup \
                  llvm-profdata llvm-symbolizer obj2yaml yaml2obj llvm-c-test \
-                 pnacl-llc pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
-                 pnacl-benchmark pnacl-thaw pnacl-bccompress pnacl-bcdis
+                 llvm-vtabledump verify-uselistorder
 
 # If Intel JIT Events support is configured, build an extra tool to test it.
 ifeq ($(USE_INTEL_JITEVENTS), 1)
@@ -45,8 +47,13 @@ endif
 # Let users override the set of tools to build from the command line.
 ifdef ONLY_TOOLS
   OPTIONAL_PARALLEL_DIRS :=
+  # @LOCALMOD-BEGIN -- Allow subzero to be built as a tool if requested.
+  ifneq ($(findstring subzero,$(ONLY_TOOLS)),)
+    OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT)
+  endif
+  # @LOCALMOD-END
   OPTIONAL_DIRS := $(findstring lldb,$(ONLY_TOOLS))
-  PARALLEL_DIRS := $(filter-out lldb,$(ONLY_TOOLS))
+  PARALLEL_DIRS := $(filter-out lldb subzero,$(ONLY_TOOLS)) # @LOCALMOD
 endif
 
 # These libraries build as dynamic libraries (.dylib /.so), they can only be
@@ -74,6 +81,10 @@ ifneq ($(ENABLE_SHARED),1)
     PARALLEL_DIRS := $(filter-out bugpoint-passes, \
                         $(PARALLEL_DIRS))
   endif
+endif
+
+ifneq (,$(filter go,$(BINDINGS_TO_BUILD)))
+  PARALLEL_DIRS += llvm-go
 endif
 
 include $(LEVEL)/Makefile.common

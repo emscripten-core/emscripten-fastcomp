@@ -34,6 +34,7 @@ PNaClAllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   Type *I64 = Type::getInt64Ty(*Context);
   Type *Float = Type::getFloatTy(*Context);
   Type *Double = Type::getDoubleTy(*Context);
+  Type *Vec4Float = VectorType::get(Float, 4);
 
   // We accept bswap for a limited set of types (i16, i32, i64).  The
   // various backends are able to generate instructions to implement
@@ -54,6 +55,10 @@ PNaClAllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   addIntrinsic(Intrinsic::nacl_read_tp);
   addIntrinsic(Intrinsic::nacl_longjmp);
   addIntrinsic(Intrinsic::nacl_setjmp);
+
+  addIntrinsic(Intrinsic::fabs, Float);
+  addIntrinsic(Intrinsic::fabs, Double);
+  addIntrinsic(Intrinsic::fabs, Vec4Float);
 
   // For native sqrt instructions. Must guarantee when x < -0.0, sqrt(x) = NaN.
   addIntrinsic(Intrinsic::sqrt, Float);
