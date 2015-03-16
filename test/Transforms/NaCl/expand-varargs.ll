@@ -1,5 +1,7 @@
 ; RUN: opt < %s -expand-varargs -S | FileCheck %s
 
+target datalayout = "p:32:32:32"
+
 %va_list = type i8*
 
 declare void @llvm.va_start(i8*)
@@ -27,20 +29,21 @@ define i32 @varargs_func(i32 %arg, ...) {
 
 
 define i32 @varargs_call1() {
-  %result = call i32 (i32, ...)* @varargs_func(i32 111, i64 222, i32 333)
+  %result = call i32 (i32, ...)* @varargs_func(i32 111, i64 222, i32 333, double 4.0)
   ret i32 %result
 }
 ; CHECK-LABEL: @varargs_call1(
-; CHECK-NEXT: %vararg_buffer = alloca { i64, i32 }
-; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast { i64, i32 }* %vararg_buffer to i8*
-; CHECK-NEXT: call void @llvm.lifetime.start(i64 12, i8* %vararg_lifetime_bitcast)
-; CHECK-NEXT: %vararg_ptr = getelementptr { i64, i32 }* %vararg_buffer, i32 0, i32 0
+; CHECK-NEXT: %vararg_buffer = alloca { i64, i32, double }
+; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast { i64, i32, double }* %vararg_buffer to i8*
+; CHECK-NEXT: call void @llvm.lifetime.start(i64 24, i8* %vararg_lifetime_bitcast)
+; CHECK-NEXT: %vararg_ptr = getelementptr inbounds { i64, i32, double }* %vararg_buffer, i32 0, i32 0
 ; CHECK-NEXT: store i64 222, i64* %vararg_ptr
-; CHECK-NEXT: %vararg_ptr1 = getelementptr { i64, i32 }* %vararg_buffer, i32 0, i32 1
+; CHECK-NEXT: %vararg_ptr1 = getelementptr inbounds { i64, i32, double }* %vararg_buffer, i32 0, i32 1
 ; CHECK-NEXT: store i32 333, i32* %vararg_ptr1
-; CHECK-NEXT: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, { i64, i32 }*)*
-; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, { i64, i32 }* %vararg_buffer)
-; CHECK-NEXT: call void @llvm.lifetime.end(i64 12, i8* %vararg_lifetime_bitcast)
+; CHECK-NEXT: %vararg_ptr2 = getelementptr inbounds { i64, i32, double }* %vararg_buffer, i32 0, i32 2
+; CHECK-NEXT: store double 4.{{0*}}e+00, double* %vararg_ptr2
+; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32, double }*)*)(i32 111, { i64, i32, double }* %vararg_buffer)
+; CHECK-NEXT: call void @llvm.lifetime.end(i64 24, i8* %vararg_lifetime_bitcast)
 ; CHECK-NEXT: ret i32 %result
 
 
@@ -52,8 +55,11 @@ define i32 @call_with_zero_varargs() {
 ; CHECK-LABEL: @call_with_zero_varargs(
 ; We have a dummy i32 field to deal with buggy programs:
 ; CHECK-NEXT: %vararg_buffer = alloca { i32 }
-; CHECK: %vararg_func = bitcast i32 (i32, ...)* bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, ...)*) to i32 (i32, { i32 }*)*
-; CHECK-NEXT: %result = call i32 %vararg_func(i32 111, { i32 }* %vararg_buffer)
+; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast { i32 }* %vararg_buffer to i8*
+; CHECK-NEXT: call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast)
+; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i32 }*)*)(i32 111, { i32 }* %vararg_buffer)
+; CHECK-NEXT: call void @llvm.lifetime.end(i64 4, i8* %vararg_lifetime_bitcast)
+; CHECK-NEXT: ret i32 %result
 
 
 ; Check that "invoke" instructions are expanded out too.
@@ -67,8 +73,9 @@ lpad:
   ret i32 0
 }
 ; CHECK-LABEL: @varargs_invoke(
-; CHECK: %result = invoke i32 %vararg_func(i32 111, { i64 }* %vararg_buffer)
-; CHECK-NEXT: to label %cont unwind label %lpad
+; CHECK: call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast)
+; CHECK: %result = invoke i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64 }*)*)(i32 111, { i64 }* %vararg_buffer)
+; CHECK-NEXT:    to label %cont unwind label %lpad
 ; CHECK: cont:
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)
 ; CHECK: lpad:
@@ -84,8 +91,9 @@ define void @varargs_multiple_calls() {
 ; The added allocas should appear at the start of the function.
 ; CHECK: %vararg_buffer{{.*}} = alloca { i64, i32 }
 ; CHECK: %vararg_buffer{{.*}} = alloca { i64, i32 }
-; CHECK: %call1 = call i32 %vararg_func{{.*}}(i32 11, { i64, i32 }* %vararg_buffer{{.*}})
-; CHECK: %call2 = call i32 %vararg_func{{.*}}(i32 44, { i64, i32 }* %vararg_buffer{{.*}})
+; CHECK: %call1 = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32 }*)*)(i32 11, { i64, i32 }* %vararg_buffer{{.*}})
+; CHECK: %call2 = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32 }*)*)(i32 44, { i64, i32 }* %vararg_buffer{{.*}})
+
 
 
 define i32 @va_arg_i32(i8* %arglist) {
@@ -96,7 +104,7 @@ define i32 @va_arg_i32(i8* %arglist) {
 ; CHECK-NEXT: %arglist1 = bitcast i8* %arglist to i32**
 ; CHECK-NEXT: %arglist_current = load i32** %arglist1
 ; CHECK-NEXT: %result = load i32* %arglist_current
-; CHECK-NEXT: %arglist_next = getelementptr i32* %arglist_current, i32 1
+; CHECK-NEXT: %arglist_next = getelementptr inbounds i32* %arglist_current, i32 1
 ; CHECK-NEXT: store i32* %arglist_next, i32** %arglist1
 ; CHECK-NEXT: ret i32 %result
 
@@ -109,7 +117,7 @@ define i64 @va_arg_i64(i8* %arglist) {
 ; CHECK-NEXT: %arglist1 = bitcast i8* %arglist to i64**
 ; CHECK-NEXT: %arglist_current = load i64** %arglist1
 ; CHECK-NEXT: %result = load i64* %arglist_current
-; CHECK-NEXT: %arglist_next = getelementptr i64* %arglist_current, i32 1
+; CHECK-NEXT: %arglist_next = getelementptr inbounds i64* %arglist_current, i32 1
 ; CHECK-NEXT: store i64* %arglist_next, i64** %arglist1
 ; CHECK-NEXT: ret i64 %result
 

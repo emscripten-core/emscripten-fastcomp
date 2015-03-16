@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -29,17 +30,14 @@
 using namespace llvm;
 
 namespace {
-  // This is a ModulePass because the pass recreates functions in
-  // order to change their argument lists.
-  class ExpandVarArgs : public ModulePass {
-  public:
-    static char ID; // Pass identification, replacement for typeid
-    ExpandVarArgs() : ModulePass(ID) {
-      initializeExpandVarArgsPass(*PassRegistry::getPassRegistry());
-    }
-
-    virtual bool runOnModule(Module &M);
-  };
+class ExpandVarArgs : public ModulePass {
+public:
+  static char ID;
+  ExpandVarArgs() : ModulePass(ID) {
+    initializeExpandVarArgsPass(*PassRegistry::getPassRegistry());
+  }
+  virtual bool runOnModule(Module &M);
+};
 }
 
 char ExpandVarArgs::ID = 0;
@@ -58,98 +56,71 @@ static void ExpandVarArgFunc(Function *Func) {
   Function *NewFunc = RecreateFunction(Func, NFTy);
 
   // Declare the new argument as "noalias".
-  NewFunc->setAttributes(
-      Func->getAttributes().addAttribute(
-          Func->getContext(), FTy->getNumParams() + 1, Attribute::NoAlias));
+  NewFunc->setAttributes(Func->getAttributes().addAttribute(
+      Func->getContext(), FTy->getNumParams() + 1, Attribute::NoAlias));
 
   // Move the arguments across to the new function.
-  for (Function::arg_iterator Arg = Func->arg_begin(), E = Func->arg_end(),
-         NewArg = NewFunc->arg_begin();
-       Arg != E; ++Arg, ++NewArg) {
-    Arg->replaceAllUsesWith(NewArg);
-    NewArg->takeName(Arg);
+  auto NewArg = NewFunc->arg_begin();
+  for (Argument &Arg : Func->args()) {
+    Arg.replaceAllUsesWith(NewArg);
+    NewArg->takeName(&Arg);
+    ++NewArg;
   }
+  // The last argument is the new `i8 * noalias %varargs`.
+  NewArg->setName("varargs");
 
   Func->eraseFromParent();
 
-  Value *VarArgsArg = --NewFunc->arg_end();
-  VarArgsArg->setName("varargs");
-
   // Expand out uses of llvm.va_start in this function.
-  for (Function::iterator BB = NewFunc->begin(), E = NewFunc->end();
-       BB != E;
-       ++BB) {
-    for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
-         Iter != E; ) {
-      Instruction *Inst = Iter++;
-      if (VAStartInst *VAS = dyn_cast<VAStartInst>(Inst)) {
-        Value *Cast = CopyDebug(new BitCastInst(VAS->getArgList(),
-                                                PtrType->getPointerTo(),
-                                                "arglist", VAS), VAS);
-        CopyDebug(new StoreInst(VarArgsArg, Cast, VAS), VAS);
+  for (BasicBlock &BB : *NewFunc) {
+    for (auto BI = BB.begin(), BE = BB.end(); BI != BE;) {
+      Instruction *I = BI++;
+      if (auto *VAS = dyn_cast<VAStartInst>(I)) {
+        IRBuilder<> IRB(VAS);
+        Value *Cast = IRB.CreateBitCast(VAS->getArgList(),
+                                        PtrType->getPointerTo(), "arglist");
+        IRB.CreateStore(NewArg, Cast);
         VAS->eraseFromParent();
       }
     }
   }
 }
 
-static void ExpandVAArgInst(VAArgInst *Inst) {
-  // Read the argument.  We assume that no realignment of the pointer
-  // is required.
-  Value *ArgList = CopyDebug(new BitCastInst(
+static void ExpandVAArgInst(VAArgInst *Inst, DataLayout *DL) {
+  Type *IntPtrTy = DL->getIntPtrType(Inst->getContext());
+  auto *One = ConstantInt::get(IntPtrTy, 1);
+  IRBuilder<> IRB(Inst);
+  auto *ArgList = IRB.CreateBitCast(
       Inst->getPointerOperand(),
-      Inst->getType()->getPointerTo()->getPointerTo(), "arglist", Inst), Inst);
-  Value *CurrentPtr = CopyDebug(new LoadInst(ArgList, "arglist_current", Inst),
-                                Inst);
-  Value *Result = CopyDebug(new LoadInst(CurrentPtr, "va_arg", Inst), Inst);
+      Inst->getType()->getPointerTo()->getPointerTo(), "arglist");
+  auto *CurrentPtr = IRB.CreateLoad(ArgList, "arglist_current");
+  auto *Result = IRB.CreateLoad(CurrentPtr, "va_arg");
   Result->takeName(Inst);
 
   // Update the va_list to point to the next argument.
-  SmallVector<Value *, 1> Indexes;
-  Indexes.push_back(ConstantInt::get(Inst->getContext(), APInt(32, 1)));
-  Value *Next = CopyDebug(GetElementPtrInst::Create(
-                              CurrentPtr, Indexes, "arglist_next", Inst), Inst);
-  CopyDebug(new StoreInst(Next, ArgList, Inst), Inst);
+  Value *Indexes[] = {One};
+  auto *Next = IRB.CreateInBoundsGEP(CurrentPtr, Indexes, "arglist_next");
+  IRB.CreateStore(Next, ArgList);
 
   Inst->replaceAllUsesWith(Result);
   Inst->eraseFromParent();
+}
+
+static void ExpandVAEnd(VAEndInst *VAE) {
+  // va_end() is a no-op in this implementation.
+  VAE->eraseFromParent();
 }
 
 static void ExpandVACopyInst(VACopyInst *Inst) {
   // va_list may have more space reserved, but we only need to
   // copy a single pointer.
   Type *PtrTy = Type::getInt8PtrTy(Inst->getContext())->getPointerTo();
-  Value *Src = CopyDebug(new BitCastInst(Inst->getSrc(), PtrTy, "vacopy_src",
-                                         Inst), Inst);
-  Value *Dest = CopyDebug(new BitCastInst(Inst->getDest(), PtrTy, "vacopy_dest",
-                                          Inst), Inst);
-  Value *CurrentPtr = CopyDebug(new LoadInst(Src, "vacopy_currentptr", Inst),
-                                Inst);
-  CopyDebug(new StoreInst(CurrentPtr, Dest, Inst), Inst);
+  IRBuilder<> IRB(Inst);
+  auto *Src = IRB.CreateBitCast(Inst->getSrc(), PtrTy, "vacopy_src");
+  auto *Dest = IRB.CreateBitCast(Inst->getDest(), PtrTy, "vacopy_dest");
+  auto *CurrentPtr = IRB.CreateLoad(Src, "vacopy_currentptr");
+  IRB.CreateStore(CurrentPtr, Dest);
   Inst->eraseFromParent();
-}
-
-static void LifetimeDecl(Intrinsic::ID id, Value *Ptr, Value *Size,
-                         Instruction *InsertPt) {
-  Module *M = InsertPt->getParent()->getParent()->getParent();
-  Value *Func = Intrinsic::getDeclaration(M, id);
-  SmallVector<Value *, 2> Args;
-  Args.push_back(Size);
-  Args.push_back(Ptr);
-  CallInst::Create(Func, Args, "", InsertPt);
-}
-
-// CopyCall() uses argument overloading so that it can be used by the
-// template ExpandVarArgCall().
-static CallInst *CopyCall(CallInst *Original, Value *Callee,
-                          ArrayRef<Value*> Args) {
-  return CallInst::Create(Callee, Args, "", Original);
-}
-
-static InvokeInst *CopyCall(InvokeInst *Original, Value *Callee,
-                            ArrayRef<Value*> Args) {
-  return InvokeInst::Create(Callee, Original->getNormalDest(),
-                            Original->getUnwindDest(), Args, "", Original);
 }
 
 // ExpandVarArgCall() converts a CallInst or InvokeInst to expand out
@@ -161,7 +132,9 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   if (!FuncType->isFunctionVarArg())
     return false;
 
-  LLVMContext *Context = &Call->getContext();
+  Function *F = Call->getParent()->getParent();
+  Module *M = F->getParent();
+  LLVMContext &Ctx = M->getContext();
 
   SmallVector<AttributeSet, 8> Attrs;
   Attrs.push_back(Call->getAttributes().getFnAttributes());
@@ -171,21 +144,19 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   SmallVector<Value *, 8> FixedArgs;
   SmallVector<Value *, 8> VarArgs;
   SmallVector<Type *, 8> VarArgsTypes;
-  for (unsigned I = 0; I < FuncType->getNumParams(); ++I) {
+  for (unsigned I = 0, E = FuncType->getNumParams(); I < E; ++I) {
     FixedArgs.push_back(Call->getArgOperand(I));
     // AttributeSets use 1-based indexing.
     Attrs.push_back(Call->getAttributes().getParamAttributes(I + 1));
   }
-  for (unsigned I = FuncType->getNumParams();
-       I < Call->getNumArgOperands(); ++I) {
+  for (unsigned I = FuncType->getNumParams(), E = Call->getNumArgOperands();
+       I < E; ++I) {
     Value *ArgVal = Call->getArgOperand(I);
     VarArgs.push_back(ArgVal);
-    if (Call->getAttributes().hasAttribute(I + 1, Attribute::ByVal)) {
-      // For "byval" arguments we must dereference the pointer.
-      VarArgsTypes.push_back(ArgVal->getType()->getPointerElementType());
-    } else {
-      VarArgsTypes.push_back(ArgVal->getType());
-    }
+    bool isByVal = Call->getAttributes().hasAttribute(I + 1, Attribute::ByVal);
+    // For "byval" arguments we must dereference the pointer.
+    VarArgsTypes.push_back(isByVal ? ArgVal->getType()->getPointerElementType()
+                                   : ArgVal->getType());
   }
   if (VarArgsTypes.size() == 0) {
     // Some buggy code (e.g. 176.gcc in Spec2k) uses va_arg on an
@@ -196,77 +167,78 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
     // rather than crashing by reading from an uninitialized pointer.
     // An alternative would be to pass a null pointer to catch the
     // invalid use of va_arg.
-    VarArgsTypes.push_back(Type::getInt32Ty(*Context));
+    VarArgsTypes.push_back(Type::getInt32Ty(Ctx));
   }
 
   // Create struct type for packing variable arguments into.
-  StructType *VarArgsTy = StructType::get(*Context, VarArgsTypes);
+  StructType *VarArgsTy = StructType::get(Ctx, VarArgsTypes);
 
   // Allocate space for the variable argument buffer.  Do this at the
   // start of the function so that we don't leak space if the function
   // is called in a loop.
-  Function *Func = Call->getParent()->getParent();
-  AllocaInst *Buf = new AllocaInst(VarArgsTy, "vararg_buffer");
-  Func->getEntryBlock().getInstList().push_front(Buf);
+  IRBuilder<> IRB(F->getEntryBlock().getFirstInsertionPt());
+  auto *Buf = IRB.CreateAlloca(VarArgsTy, nullptr, "vararg_buffer");
 
   // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
   // only used for the duration of the function call, so that the
   // stack space can be reused elsewhere.
-  Type *I8Ptr = Type::getInt8Ty(*Context)->getPointerTo();
-  Instruction *BufPtr = new BitCastInst(Buf, I8Ptr, "vararg_lifetime_bitcast");
-  BufPtr->insertAfter(Buf);
-  Value *BufSize = ConstantInt::get(*Context,
-                                    APInt(64, DL->getTypeAllocSize(VarArgsTy)));
-  LifetimeDecl(Intrinsic::lifetime_start, BufPtr, BufSize, Call);
+  auto LifetimeStart = Intrinsic::getDeclaration(M, Intrinsic::lifetime_start);
+  auto LifetimeEnd = Intrinsic::getDeclaration(M, Intrinsic::lifetime_end);
+  auto *I8Ptr = Type::getInt8Ty(Ctx)->getPointerTo();
+  auto *BufPtr = IRB.CreateBitCast(Buf, I8Ptr, "vararg_lifetime_bitcast");
+  auto *BufSize =
+      ConstantInt::get(Ctx, APInt(64, DL->getTypeAllocSize(VarArgsTy)));
+  IRB.CreateCall2(LifetimeStart, BufSize, BufPtr);
 
   // Copy variable arguments into buffer.
   int Index = 0;
-  for (SmallVector<Value *, 8>::iterator Iter = VarArgs.begin();
-       Iter != VarArgs.end();
-       ++Iter, ++Index) {
-    SmallVector<Value *, 2> Indexes;
-    Indexes.push_back(ConstantInt::get(*Context, APInt(32, 0)));
-    Indexes.push_back(ConstantInt::get(*Context, APInt(32, Index)));
-    Value *Ptr = CopyDebug(GetElementPtrInst::Create(
-                               Buf, Indexes, "vararg_ptr", Call), Call);
-    if (Call->getAttributes().hasAttribute(
-            FuncType->getNumParams() + Index + 1, Attribute::ByVal)) {
-      IRBuilder<> Builder(Call);
-      Builder.CreateMemCpy(
-          Ptr, *Iter,
-          DL->getTypeAllocSize((*Iter)->getType()->getPointerElementType()),
-          /* Align= */ 1);
-    } else {
-      CopyDebug(new StoreInst(*Iter, Ptr, Call), Call);
-    }
+  IRB.SetInsertPoint(Call);
+  for (Value *Arg : VarArgs) {
+    Value *Indexes[] = {ConstantInt::get(Ctx, APInt(32, 0)),
+                        ConstantInt::get(Ctx, APInt(32, Index))};
+    Value *Ptr = IRB.CreateInBoundsGEP(Buf, Indexes, "vararg_ptr");
+    bool isByVal = Call->getAttributes().hasAttribute(
+        FuncType->getNumParams() + Index + 1, Attribute::ByVal);
+    if (isByVal)
+      IRB.CreateMemCpy(Ptr, Arg, DL->getTypeAllocSize(
+                                     Arg->getType()->getPointerElementType()),
+                       /*Align=*/1);
+    else
+      IRB.CreateStore(Arg, Ptr);
+    ++Index;
   }
 
   // Cast function to new type to add our extra pointer argument.
   SmallVector<Type *, 8> ArgTypes(FuncType->param_begin(),
                                   FuncType->param_end());
   ArgTypes.push_back(VarArgsTy->getPointerTo());
-  FunctionType *NFTy = FunctionType::get(FuncType->getReturnType(),
-                                         ArgTypes, /*isVarArg=*/false);
-  Value *CastFunc =
-    CopyDebug(new BitCastInst(Call->getCalledValue(), NFTy->getPointerTo(),
-                              "vararg_func", Call), Call);
+  FunctionType *NFTy = FunctionType::get(FuncType->getReturnType(), ArgTypes,
+                                         /*isVarArg=*/false);
+  Value *CastFunc = IRB.CreateBitCast(Call->getCalledValue(),
+                                      NFTy->getPointerTo(), "vararg_func");
 
   // Create the converted function call.
   FixedArgs.push_back(Buf);
-  InstType *NewCall = CopyCall(Call, CastFunc, FixedArgs);
-  CopyDebug(NewCall, Call);
-  NewCall->setAttributes(AttributeSet::get(Call->getContext(), Attrs));
-  NewCall->takeName(Call);
-
-  if (isa<CallInst>(Call)) {
-    LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize, Call);
-  } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Call)) {
-    LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize,
-                 Invoke->getNormalDest()->getFirstInsertionPt());
-    LifetimeDecl(Intrinsic::lifetime_end, BufPtr, BufSize,
-                 Invoke->getUnwindDest()->getFirstInsertionPt());
+  Instruction *NewCall;
+  if (auto *C = dyn_cast<CallInst>(Call)) {
+    auto *N = IRB.CreateCall(CastFunc, FixedArgs);
+    N->setAttributes(AttributeSet::get(Ctx, Attrs));
+    NewCall = N;
+    IRB.CreateCall2(LifetimeEnd, BufSize, BufPtr);
+  } else if (auto *C = dyn_cast<InvokeInst>(Call)) {
+    auto *N = IRB.CreateInvoke(CastFunc, C->getNormalDest(), C->getUnwindDest(),
+                               FixedArgs, C->getName());
+    N->setAttributes(AttributeSet::get(Ctx, Attrs));
+    (IRBuilder<>(C->getNormalDest()->getFirstInsertionPt()))
+        .CreateCall2(LifetimeEnd, BufSize, BufPtr);
+    (IRBuilder<>(C->getUnwindDest()->getFirstInsertionPt()))
+        .CreateCall2(LifetimeEnd, BufSize, BufPtr);
+    NewCall = N;
+  } else {
+    llvm_unreachable("not a call/invoke");
   }
 
+  NewCall->takeName(Call);
   Call->replaceAllUsesWith(NewCall);
   Call->eraseFromParent();
 
@@ -277,42 +249,35 @@ bool ExpandVarArgs::runOnModule(Module &M) {
   bool Changed = false;
   DataLayout DL(&M);
 
-  for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *Func = Iter++;
-
-    for (Function::iterator BB = Func->begin(), E = Func->end();
-         BB != E;
-         ++BB) {
-      for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
-           Iter != E; ) {
-        Instruction *Inst = Iter++;
-        if (VAArgInst *VI = dyn_cast<VAArgInst>(Inst)) {
+  for (auto MI = M.begin(), ME = M.end(); MI != ME;) {
+    Function *F = MI++;
+    for (BasicBlock &BB : *F) {
+      for (auto BI = BB.begin(), BE = BB.end(); BI != BE;) {
+        Instruction *I = BI++;
+        if (auto *VI = dyn_cast<VAArgInst>(I)) {
           Changed = true;
-          ExpandVAArgInst(VI);
-        } else if (isa<VAEndInst>(Inst)) {
-          // va_end() is a no-op in this implementation.
+          ExpandVAArgInst(VI, &DL);
+        } else if (auto *VAE = dyn_cast<VAEndInst>(I)) {
           Changed = true;
-          Inst->eraseFromParent();
-        } else if (VACopyInst *VAC = dyn_cast<VACopyInst>(Inst)) {
+          ExpandVAEnd(VAE);
+        } else if (auto *VAC = dyn_cast<VACopyInst>(I)) {
           Changed = true;
           ExpandVACopyInst(VAC);
-        } else if (CallInst *Call = dyn_cast<CallInst>(Inst)) {
+        } else if (auto *Call = dyn_cast<CallInst>(I)) {
           Changed |= ExpandVarArgCall(Call, &DL);
-        } else if (InvokeInst *Call = dyn_cast<InvokeInst>(Inst)) {
+        } else if (auto *Call = dyn_cast<InvokeInst>(I)) {
           Changed |= ExpandVarArgCall(Call, &DL);
         }
       }
     }
 
-    if (Func->isVarArg()) {
+    if (F->isVarArg()) {
       Changed = true;
-      ExpandVarArgFunc(Func);
+      ExpandVarArgFunc(F);
     }
   }
 
   return Changed;
 }
 
-ModulePass *llvm::createExpandVarArgsPass() {
-  return new ExpandVarArgs();
-}
+ModulePass *llvm::createExpandVarArgsPass() { return new ExpandVarArgs(); }
