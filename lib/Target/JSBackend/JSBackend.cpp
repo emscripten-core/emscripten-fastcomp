@@ -2922,10 +2922,6 @@ void JSWriter::printModule(const std::string& fname,
 }
 
 bool JSWriter::runOnModule(Module &M) {
-  if (M.getTargetTriple() != "asmjs-unknown-emscripten") {
-    prettyWarning() << "incorrect target triple '" << M.getTargetTriple() << "' (did you use emcc/em++ on all source files and not clang directly?)\n";
-  }
-
   TheModule = &M;
   DL = &getAnalysis<DataLayoutPass>().getDataLayout();
 
@@ -2937,6 +2933,24 @@ bool JSWriter::runOnModule(Module &M) {
 }
 
 char JSWriter::ID = 0;
+
+class CheckTriple : public ModulePass {
+public:
+  static char ID;
+  CheckTriple() : ModulePass(ID) {}
+  virtual bool runOnModule(Module &M) {
+    if (M.getTargetTriple() != "asmjs-unknown-emscripten") {
+      prettyWarning() << "incorrect target triple '" << M.getTargetTriple() << "' (did you use emcc/em++ on all source files and not clang directly?)\n";
+    }
+    return false;
+  }
+};
+
+char CheckTriple::ID;
+
+Pass *createCheckTriplePass() {
+  return new CheckTriple();
+}
 
 //===----------------------------------------------------------------------===//
 //                       External Interface declaration
@@ -2950,6 +2964,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                           AnalysisID StopAfter) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
+  PM.add(createCheckTriplePass());
   PM.add(createExpandInsertExtractElementPass());
   PM.add(createExpandI64Pass());
 
