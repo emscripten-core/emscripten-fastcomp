@@ -90,9 +90,10 @@ PassManagerBuilder::PassManagerBuilder() {
     DisableTailCalls = false;
     DisableUnitAtATime = false;
     DisableUnrollLoops = false;
-    BBVectorize = RunBBVectorization;
-    SLPVectorize = RunSLPVectorization;
-    LoopVectorize = RunLoopVectorization;
+    // XXX EMSCRIPTEN: disable all vectorization if so requested
+    BBVectorize = DisableVectorization ? false : RunBBVectorization;
+    SLPVectorize = DisableVectorization ? false : RunSLPVectorization;
+    LoopVectorize = DisableVectorization ? false : RunLoopVectorization;
     RerollLoops = RunLoopRerolling;
     LoadCombine = RunLoadCombine;
     DisableGVNLoadPRE = false;
@@ -163,6 +164,12 @@ void PassManagerBuilder::populateFunctionPassManager(FunctionPassManager &FPM) {
 }
 
 void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
+  if (DisableVectorization) { // XXX EMSCRIPTEN: disable all vectorization if so requested
+    BBVectorize = false;
+    SLPVectorize = false;
+    LoopVectorize = false;
+  }
+
   // If all optimizations are disabled, just run the always-inline pass and,
   // if enabled, the function merging pass.
   if (OptLevel == 0) {
@@ -265,7 +272,7 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
 
   if (RerollLoops)
     MPM.add(createLoopRerollPass());
-  if (!RunSLPAfterLoopVectorization && !DisableVectorization) { // XXX EMSCRIPTEN
+  if (!RunSLPAfterLoopVectorization) {
     if (SLPVectorize)
       MPM.add(createSLPVectorizerPass());   // Vectorize parallel scalar chains.
 
@@ -303,8 +310,7 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
   if (ExtraVectorizerPasses)
     MPM.add(createLoopRotatePass());
 
-  if (!DisableVectorization) // XXX EMSCRIPTEN
-    MPM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+  MPM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
   // FIXME: Because of #pragma vectorize enable, the passes below are always
   // inserted in the pipeline, even when the vectorizer doesn't run (ex. when
   // on -O1 and no #pragma is found). Would be good to have these two passes
@@ -450,19 +456,16 @@ void PassManagerBuilder::addLTOOptimizationPasses(PassManagerBase &PM) {
   // More loops are countable; try to optimize them.
   PM.add(createIndVarSimplifyPass());
   PM.add(createLoopDeletionPass());
+  PM.add(createLoopVectorizePass(true, LoopVectorize));
 
-  if (!DisableVectorization) { // XXX EMSCRIPTEN
-    PM.add(createLoopVectorizePass(true, LoopVectorize));
+  // More scalar chains could be vectorized due to more alias information
+  if (RunSLPAfterLoopVectorization)
+    if (SLPVectorize)
+      PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
 
-    // More scalar chains could be vectorized due to more alias information
-    if (RunSLPAfterLoopVectorization)
-      if (SLPVectorize)
-        PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
-
-    // After vectorization, assume intrinsics may tell us more about pointer
-    // alignments.
-    PM.add(createAlignmentFromAssumptionsPass());
-  }
+  // After vectorization, assume intrinsics may tell us more about pointer
+  // alignments.
+  PM.add(createAlignmentFromAssumptionsPass());
 
   if (LoadCombine)
     PM.add(createLoadCombinePass());
