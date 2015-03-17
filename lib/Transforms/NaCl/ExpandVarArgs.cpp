@@ -100,7 +100,27 @@ static void ExpandVAArgInst(VAArgInst *Inst, DataLayout *DL) {
   auto *ArgList = IRB.CreateBitCast(
       Inst->getPointerOperand(),
       Inst->getType()->getPointerTo()->getPointerTo(), "arglist");
-  auto *CurrentPtr = IRB.CreateLoad(ArgList, "arglist_current");
+
+  // The caller spilled all of the va_args onto the stack in an unpacked
+  // struct. Each va_arg load from that struct needs to realign the element to
+  // its target-appropriate alignment in the struct in order to jump over
+  // padding that may have been in-between arguments. Do this with ConstantExpr
+  // to ensure good code gets generated, following the same approach as
+  // Support/MathExtras.h:alignAddr:
+  //   ((uintptr_t)Addr + Alignment - 1) & ~(uintptr_t)(Alignment - 1)
+  // This assumes the alignment of the type is a power of 2 (or 1, in which case
+  // no realignment occurs).
+  auto *Ptr = IRB.CreateLoad(ArgList, "arglist_current");
+  auto *AlignOf = ConstantExpr::getIntegerCast(
+      ConstantExpr::getAlignOf(Inst->getType()), IntPtrTy, /*isSigned=*/false);
+  auto *AlignMinus1 = ConstantExpr::getNUWSub(AlignOf, One);
+  auto *NotAlignMinus1 = IRB.CreateNot(AlignMinus1);
+  auto *CurrentPtr = IRB.CreateIntToPtr(
+      IRB.CreateAnd(
+          IRB.CreateNUWAdd(IRB.CreatePtrToInt(Ptr, IntPtrTy), AlignMinus1),
+          NotAlignMinus1),
+      Ptr->getType());
+
   auto *Result = IRB.CreateLoad(CurrentPtr, "va_arg");
   Result->takeName(Inst);
   Result->setAlignment(4); // XXX Emscripten: varargs are 4-byte aligned TODO needed?
