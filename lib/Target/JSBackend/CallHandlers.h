@@ -571,6 +571,8 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_min, SIMD_float32x4_min);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_max, SIMD.float32x4_max);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_float32x4_abs);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_sqrt, SIMD_float32x4_sqrt);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalApproximation, SIMD_float32x4_reciprocalApproximation);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation, SIMD_float32x4_reciprocalSqrtApproximation);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_and, SIMD_float32x4_and);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_or, SIMD_float32x4_or);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_xor, SIMD_float32x4_xor);
@@ -651,6 +653,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_max);
   SETUP_CALL_HANDLER(emscripten_float32x4_abs);
   SETUP_CALL_HANDLER(emscripten_float32x4_sqrt);
+  SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalApproximation);
+  SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation);
   SETUP_CALL_HANDLER(emscripten_float32x4_equal);
   SETUP_CALL_HANDLER(emscripten_float32x4_notEqual);
   SETUP_CALL_HANDLER(emscripten_float32x4_lessThan);
