@@ -123,7 +123,6 @@ static void ExpandVAArgInst(VAArgInst *Inst, DataLayout *DL) {
 
   auto *Result = IRB.CreateLoad(CurrentPtr, "va_arg");
   Result->takeName(Inst);
-  Result->setAlignment(4); // XXX Emscripten: varargs are 4-byte aligned TODO needed?
 
   // Update the va_list to point to the next argument.
   Value *Indexes[] = {One};
@@ -147,7 +146,6 @@ static void ExpandVACopyInst(VACopyInst *Inst) {
   auto *Src = IRB.CreateBitCast(Inst->getSrc(), PtrTy, "vacopy_src");
   auto *Dest = IRB.CreateBitCast(Inst->getDest(), PtrTy, "vacopy_dest");
   auto *CurrentPtr = IRB.CreateLoad(Src, "vacopy_currentptr");
-  CurrentPtr->setAlignment(4); // XXX Emscripten: varargs are 4-byte aligned TODO needed?
   IRB.CreateStore(CurrentPtr, Dest);
   Inst->eraseFromParent();
 }
@@ -213,7 +211,6 @@ static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
   // is called in a loop.
   IRBuilder<> IRB(F->getEntryBlock().getFirstInsertionPt());
   auto *Buf = IRB.CreateAlloca(VarArgsTy, nullptr, "vararg_buffer");
-  Buf->setAlignment(8); // XXX EMSCRIPTEN: Align for 8-byte aligned doubles.
 
   // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
   // only used for the duration of the function call, so that the
