@@ -31,10 +31,6 @@
 
 using namespace llvm;
 
-static cl::opt<bool> // XXX EMSCRIPTEN
-DisableVectorization("disable-vectorize", cl::Hidden,
-                     cl::desc("Force-disable all vectorization (-vectorize-loops=false etc. do not work, as opt.cpp modifies the values)"));
-
 static cl::opt<bool>
 RunLoopVectorization("vectorize-loops", cl::Hidden,
                      cl::desc("Run the Loop vectorization passes"));
@@ -82,6 +78,7 @@ static cl::opt<bool>
 EnableMLSM("mlsm", cl::init(true), cl::Hidden,
            cl::desc("Enable motion of merged load and store"));
 
+
 PassManagerBuilder::PassManagerBuilder() {
     OptLevel = 2;
     SizeLevel = 0;
@@ -90,10 +87,9 @@ PassManagerBuilder::PassManagerBuilder() {
     DisableTailCalls = false;
     DisableUnitAtATime = false;
     DisableUnrollLoops = false;
-    // XXX EMSCRIPTEN: disable all vectorization if so requested
-    BBVectorize = DisableVectorization ? false : RunBBVectorization;
-    SLPVectorize = DisableVectorization ? false : RunSLPVectorization;
-    LoopVectorize = DisableVectorization ? false : RunLoopVectorization;
+    BBVectorize = RunBBVectorization;
+    SLPVectorize = RunSLPVectorization;
+    LoopVectorize = RunLoopVectorization;
     RerollLoops = RunLoopRerolling;
     LoadCombine = RunLoadCombine;
     DisableGVNLoadPRE = false;
@@ -164,12 +160,6 @@ void PassManagerBuilder::populateFunctionPassManager(FunctionPassManager &FPM) {
 }
 
 void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
-  if (DisableVectorization) { // XXX EMSCRIPTEN: disable all vectorization if so requested
-    BBVectorize = false;
-    SLPVectorize = false;
-    LoopVectorize = false;
-  }
-
   // If all optimizations are disabled, just run the always-inline pass and,
   // if enabled, the function merging pass.
   if (OptLevel == 0) {
