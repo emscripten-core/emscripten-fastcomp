@@ -209,6 +209,20 @@ define void @sadd8_with_const(i8 %x, i8* %result_val, i1* %result_overflow) {
 ; CHECK-NEXT: store i1 %pair.select, i1* %result_overflow
 
 
+define void @sadd8_with_const_min(i8* %result_val, i1* %result_overflow) {
+  %pair = call {i8, i1} @llvm.sadd.with.overflow.i8(i8 0, i8 -128)
+  %val = extractvalue {i8, i1} %pair, 0
+  %overflow = extractvalue {i8, i1} %pair, 1
+
+  store i8 %val, i8* %result_val
+  store i1 %overflow, i1* %result_overflow
+  ret void
+}
+; CHECK: define void @sadd8_with_const_min(
+; CHECK-NEXT: store i8 -128, i8* %result_val
+; CHECK-NEXT: store i1 false, i1* %result_overflow
+
+
 define void @sadd8_with_var(i8 %x, i8 %y, i8* %result_val, i1* %result_overflow) {
   %pair = call {i8, i1} @llvm.sadd.with.overflow.i8(i8 %x, i8 %y)
   %val = extractvalue {i8, i1} %pair, 0
@@ -249,6 +263,19 @@ define void @ssub8_with_const(i8 %x, i8* %result_val, i1* %result_overflow) {
 ; CHECK-NEXT: %pair.select = select i1 %pair.ispos, i1 %pair.poscheck, i1 %pair.negcheck
 ; CHECK-NEXT: store i8 %pair.arith, i8* %result_val
 ; CHECK-NEXT: store i1 %pair.select, i1* %result_overflow
+
+
+define void @ssub8_with_const_min(i8* %result_val, i1* %result_overflow) {
+  %pair = call {i8, i1} @llvm.ssub.with.overflow.i8(i8 0, i8 -128)
+  %val = extractvalue {i8, i1} %pair, 0
+  %overflow = extractvalue {i8, i1} %pair, 1
+
+  store i8 %val, i8* %result_val
+  store i1 %overflow, i1* %result_overflow
+  ret void
+}
+; CHECK: define void @ssub8_with_const_min(
+; CHECK: store i1 true, i1* %result_overflow
 
 
 define void @ssub8_with_var(i8 %x, i8 %y, i8* %result_val, i1* %result_overflow) {

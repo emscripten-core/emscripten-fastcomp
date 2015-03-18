@@ -126,9 +126,9 @@ static bool Expand(Module *M, unsigned Bits, ExpandArith Op, bool Signed) {
         IRB.CreateBinOp(getOpcode(Op), LHS, RHS, Name + ".arith");
     Value *OverflowResult;
 
-    if (hasConstOperand && ConstOperand->getValue() == 0) {
-      // Add, sub and mul by zero never overflow. Avoid dividing by zero in this
-      // otherwise silly case.
+    if (ExpandArith::Mul == Op && hasConstOperand &&
+        ConstOperand->getValue() == 0) {
+      // Mul by zero never overflows but can divide by zero.
       OverflowResult = ConstantInt::getFalse(M->getContext());
     } else if (hasConstOperand && !Signed && ExpandArith::Sub != Op) {
       // Unsigned add & mul with a constant operand can be optimized.

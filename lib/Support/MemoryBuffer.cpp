@@ -277,17 +277,6 @@ static bool shouldUseMmap(int FD,
                           bool RequiresNullTerminator,
                           int PageSize,
                           bool IsVolatileSize) {
-
-  // @LOCALMOD-BEGIN
-  // Post 3.3-merge there seems to be a problem using mmap on cygwin. In the
-  // meantime, as a LOCALMOD, we disable usage of mmap in MemoryBuffer. The
-  // effect of this on the Windows/Cygwin toolchain can be a slightly slower
-  // developer-side linkage time.
-#if defined(__CYGWIN__)
-  return false;
-#endif
-  // @LOCALMOD-END
-
   // mmap may leave the buffer without null terminator if the file size changed
   // by the time the last page is mapped in, so avoid it if the file size is
   // likely to change.
