@@ -52,10 +52,10 @@ AllocaManager::AllocaInfo AllocaManager::getInfo(const AllocaInst *AI) {
 }
 
 // Given a lifetime_start or lifetime_end intrinsic, determine if it's
-// describing a static alloc memory region suitable for our analysis. If so,
-// return the alloca, otherwise return NULL.
-const AllocaInst *
-AllocaManager::getAllocaFromIntrinsic(const CallInst *CI) {
+// describing a single pointer suitable for our analysis. If so,
+// return the pointer, otherwise return NULL.
+const Value *
+AllocaManager::getPointerFromIntrinsic(const CallInst *CI) {
   const IntrinsicInst *II = cast<IntrinsicInst>(CI);
   assert(II->getIntrinsicID() == Intrinsic::lifetime_start ||
          II->getIntrinsicID() == Intrinsic::lifetime_end);
@@ -73,12 +73,60 @@ AllocaManager::getAllocaFromIntrinsic(const CallInst *CI) {
   if (SizeAP.getActiveBits() > 64) return NULL;
   uint64_t MarkedSize = SizeAP.getZExtValue();
 
-  // We're only interested if the pointer is a static alloca.
-  const AllocaInst *AI = dyn_cast<AllocaInst>(Ptr->stripPointerCasts());
-  if (!AI || !AI->isStaticAlloca()) return NULL;
+  // Test whether the pointer operand is an alloca. This ought to be pretty
+  // simple, but e.g. PRE can decide to PRE bitcasts and no-op geps and
+  // split critical edges and insert phis for them, even though it's all
+  // just no-ops, so we have to dig through phis to see whether all the
+  // inputs are in fact the same pointer after stripping away casts.
+  const Value *Result = NULL;
+  SmallPtrSet<const PHINode *, 8> VisitedPhis;
+  SmallVector<const Value *, 8> Worklist;
+  Worklist.push_back(Ptr);
+  do {
+      const Value *P = Worklist.pop_back_val()->stripPointerCasts();
 
-  // Make sure the size covers the alloca.
-  if (MarkedSize < getSize(AI)) return NULL;
+      if (const PHINode *Phi = dyn_cast<PHINode>(P)) {
+        if (!VisitedPhis.insert(Phi))
+          continue;
+        for (unsigned i = 0, e = Phi->getNumOperands(); i < e; ++i)
+          Worklist.push_back(Phi->getOperand(i));
+        continue;
+      }
+      if (const SelectInst *Select = dyn_cast<SelectInst>(P)) {
+        Worklist.push_back(Select->getTrueValue());
+        Worklist.push_back(Select->getFalseValue());
+        continue;
+      }
+
+      if (Result == NULL)
+        Result = P;
+      else if (Result != P)
+        return NULL;
+  } while (!Worklist.empty());
+
+  // If it's a static Alloca, make sure the size is suitable. We test this here
+  // because if this fails, we need to be as conservative as if we don't know
+  // what the pointer is.
+  if (const AllocaInst *AI = dyn_cast<AllocaInst>(Result)) {
+    if (AI->isStaticAlloca() && MarkedSize < getSize(AI))
+      return NULL;
+  } else if (isa<Instruction>(Result)) {
+    // And if it's any other kind of non-object/argument, we have to be
+    // similarly conservative, because we may be dealing with an escaped alloca
+    // that we can't see.
+    return NULL;
+  }
+
+  // Yay, it's all just one Value!
+  return Result;
+}
+
+// Test whether the given value is an alloca which we have a hope of
+const AllocaInst *AllocaManager::isFavorableAlloca(const Value *V) {
+  const AllocaInst *AI = dyn_cast<AllocaInst>(V);
+  if (!AI) return NULL;
+
+  if (!AI->isStaticAlloca()) return NULL;
 
   return AI;
 }
@@ -119,8 +167,17 @@ void AllocaManager::collectMarkedAllocas() {
 
       const Value *Callee = CI->getCalledValue();
       if (Callee == LifetimeStart || Callee == LifetimeEnd) {
-        if (const AllocaInst *AI = getAllocaFromIntrinsic(CI)) {
-          Allocas.insert(std::make_pair(AI, 0));
+        if (const Value *Ptr = getPointerFromIntrinsic(CI)) {
+          if (const AllocaInst *AI = isFavorableAlloca(Ptr))
+            Allocas.insert(std::make_pair(AI, 0));
+        } else if (isa<Instruction>(CI->getArgOperand(1)->stripPointerCasts())) {
+          // Oh noes, There's a lifetime intrinsics with something that
+          // doesn't appear to resolve to an alloca. This means that it's
+          // possible that it may be declaring a lifetime for some escaping
+          // alloca. Look out!
+          Allocas.clear();
+          assert(AllocasByIndex.empty());
+          return;
         }
       }
     }
@@ -176,24 +233,28 @@ void AllocaManager::collectBlocks() {
 
       const Value *Callee = CI->getCalledValue();
       if (Callee == LifetimeStart) {
-        if (const AllocaInst *AI = getAllocaFromIntrinsic(CI)) {
-          AllocaMap::const_iterator MI = Allocas.find(AI);
-          if (MI != Allocas.end()) {
-            size_t AllocaIndex = MI->second;
-            if (!Seen.test(AllocaIndex)) {
-              BLI.Start.set(AllocaIndex);
+        if (const Value *Ptr = getPointerFromIntrinsic(CI)) {
+          if (const AllocaInst *AI = isFavorableAlloca(Ptr)) {
+            AllocaMap::const_iterator MI = Allocas.find(AI);
+            if (MI != Allocas.end()) {
+              size_t AllocaIndex = MI->second;
+              if (!Seen.test(AllocaIndex)) {
+                BLI.Start.set(AllocaIndex);
+              }
+              BLI.End.reset(AllocaIndex);
+              Seen.set(AllocaIndex);
             }
-            BLI.End.reset(AllocaIndex);
-            Seen.set(AllocaIndex);
           }
         }
       } else if (Callee == LifetimeEnd) {
-        if (const AllocaInst *AI = getAllocaFromIntrinsic(CI)) {
-          AllocaMap::const_iterator MI = Allocas.find(AI);
-          if (MI != Allocas.end()) {
-            size_t AllocaIndex = MI->second;
-            BLI.End.set(AllocaIndex);
-            Seen.set(AllocaIndex);
+        if (const Value *Ptr = getPointerFromIntrinsic(CI)) {
+          if (const AllocaInst *AI = isFavorableAlloca(Ptr)) {
+            AllocaMap::const_iterator MI = Allocas.find(AI);
+            if (MI != Allocas.end()) {
+              size_t AllocaIndex = MI->second;
+              BLI.End.set(AllocaIndex);
+              Seen.set(AllocaIndex);
+            }
           }
         }
       }
@@ -311,22 +372,26 @@ void AllocaManager::computeIntraBlockLiveness() {
 
       const Value *Callee = CI->getCalledValue();
       if (Callee == LifetimeStart) {
-        if (const AllocaInst *AI = getAllocaFromIntrinsic(CI)) {
-          size_t AIndex = Allocas[AI];
-          // We conflict with everything else that's currently live.
-          AllocaCompatibility[AIndex].reset(Current);
-          // Everything else that's currently live conflicts with us.
-          for (int i = Current.find_first(); i >= 0; i = Current.find_next(i)) {
-            AllocaCompatibility[i].reset(AIndex);
+        if (const Value *Ptr = getPointerFromIntrinsic(CI)) {
+          if (const AllocaInst *AI = isFavorableAlloca(Ptr)) {
+            size_t AIndex = Allocas[AI];
+            // We conflict with everything else that's currently live.
+            AllocaCompatibility[AIndex].reset(Current);
+            // Everything else that's currently live conflicts with us.
+            for (int i = Current.find_first(); i >= 0; i = Current.find_next(i)) {
+              AllocaCompatibility[i].reset(AIndex);
+            }
+            // We're now live.
+            Current.set(AIndex);
           }
-          // We're now live.
-          Current.set(AIndex);
         }
       } else if (Callee == LifetimeEnd) {
-        if (const AllocaInst *AI = getAllocaFromIntrinsic(CI)) {
-          size_t AIndex = Allocas[AI];
-          // We're no longer live.
-          Current.reset(AIndex);
+        if (const Value *Ptr = getPointerFromIntrinsic(CI)) {
+          if (const AllocaInst *AI = isFavorableAlloca(Ptr)) {
+            size_t AIndex = Allocas[AI];
+            // We're no longer live.
+            Current.reset(AIndex);
+          }
         }
       }
     }
