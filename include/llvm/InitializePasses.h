@@ -312,6 +312,7 @@ void initializeFlattenGlobalsPass(PassRegistry&);
 void initializeGlobalCleanupPass(PassRegistry&);
 void initializeGlobalizeConstantVectorsPass(PassRegistry&);
 void initializeInsertDivideCheckPass(PassRegistry&);
+void initializeInternalizeUsedGlobalsPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
 void initializeSimplifyStructRegSignaturesPass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);

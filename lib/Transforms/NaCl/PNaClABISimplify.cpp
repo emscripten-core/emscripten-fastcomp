@@ -47,6 +47,7 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   // allowed to export "__pnacl_pso_root".
   const char *SymbolsToPreserve[] = { "_start", "__pnacl_pso_root" };
   PM.add(createInternalizePass(SymbolsToPreserve));
+  PM.add(createInternalizeUsedGlobalsPass());
 
   // Expand out computed gotos (indirectbr and blockaddresses) into switches.
   PM.add(createExpandIndirectBrPass());

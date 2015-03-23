@@ -52,6 +52,7 @@ ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createGlobalizeConstantVectorsPass();
+ModulePass *createInternalizeUsedGlobalsPass();
 ModulePass *createSimplifyStructRegSignaturesPass();
 ModulePass *createPNaClSjLjEHPass();
 ModulePass *createReplacePtrsWithIntsPass();
