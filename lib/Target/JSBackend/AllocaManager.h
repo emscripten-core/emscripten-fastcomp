@@ -26,6 +26,7 @@ class BasicBlock;
 class CallInst;
 class DataLayout;
 class Function;
+class Value;
 
 /// Compute frame layout for allocas.
 class AllocaManager {
@@ -132,7 +133,8 @@ class AllocaManager {
   uint64_t getSize(const AllocaInst *AI);
   unsigned getAlignment(const AllocaInst *AI);
   AllocaInfo getInfo(const AllocaInst *AI);
-  const AllocaInst *getAllocaFromIntrinsic(const CallInst *CI);
+  const Value *getPointerFromIntrinsic(const CallInst *CI);
+  const AllocaInst *isFavorableAlloca(const Value *V);
   static int AllocaSort(const AllocaInfo *l, const AllocaInfo *r);
 
   void collectMarkedAllocas();
