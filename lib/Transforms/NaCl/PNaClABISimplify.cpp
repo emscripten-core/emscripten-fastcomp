@@ -154,6 +154,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // ConstantExprs have already been expanded out.
   PM.add(createReplacePtrsWithIntsPass());
 
+  // Convert struct reg function params to struct* byval
+  PM.add(createSimplifyStructRegSignaturesPass());
+
   // The atomic cmpxchg instruction returns a struct, and is rewritten to an
   // intrinsic as a post-opt pass, we therefore need to expand struct regs.
   PM.add(createExpandStructRegsPass());

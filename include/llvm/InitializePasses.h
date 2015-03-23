@@ -313,6 +313,7 @@ void initializeGlobalCleanupPass(PassRegistry&);
 void initializeGlobalizeConstantVectorsPass(PassRegistry&);
 void initializeInsertDivideCheckPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
+void initializeSimplifyStructRegSignaturesPass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClSjLjEHPass(PassRegistry&);
