@@ -2799,9 +2799,11 @@ void JSWriter::printModuleBody() {
 
   assert(GlobalData32.size() == 0 && GlobalData8.size() == 0); // FIXME when we use optimal constant alignments
 
-  // TODO fix commas
-  Out << "if (!ENVIRONMENT_IS_PTHREAD) {\n";
+  if (EnablePthreads) {
+    Out << "if (!ENVIRONMENT_IS_PTHREAD) {\n";
+  }
   Out << "/* memory initializer */ allocate([";
+  // TODO fix commas
   printCommaSeparated(GlobalData64);
   if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
     Out << ",";
@@ -2812,7 +2814,9 @@ void JSWriter::printModuleBody() {
   }
   printCommaSeparated(GlobalData8);
   Out << "], \"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);\n";
-  Out << "}\n";
+  if (EnablePthreads) {
+    Out << "}\n";
+  }
 
   // Emit metadata for emcc driver
   Out << "\n\n// EMSCRIPTEN_METADATA\n";
