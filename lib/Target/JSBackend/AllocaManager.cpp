@@ -86,7 +86,7 @@ AllocaManager::getPointerFromIntrinsic(const CallInst *CI) {
       const Value *P = Worklist.pop_back_val()->stripPointerCasts();
 
       if (const PHINode *Phi = dyn_cast<PHINode>(P)) {
-        if (!VisitedPhis.insert(Phi))
+        if (!VisitedPhis.insert(Phi).second)
           continue;
         for (unsigned i = 0, e = Phi->getNumOperands(); i < e; ++i)
           Worklist.push_back(Phi->getOperand(i));

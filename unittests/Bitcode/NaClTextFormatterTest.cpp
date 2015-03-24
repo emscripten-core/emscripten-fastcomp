@@ -118,8 +118,7 @@ private:
 
 public:
   FormatterTester(unsigned LineWidth)
-      : LineWidth(LineWidth),
-        AddOpenCloseDirectives(false),
+      : AddOpenCloseDirectives(false),
         AddClusterDirectives(false),
         Buffer(),
         BufStream(Buffer),
@@ -197,8 +196,6 @@ private:
   /// if applicable.
   void WriteToken(const std::string &Token);
 
-  // The (byte) width of the line to format text onto.
-  unsigned LineWidth;
   // True if Open and Close directives should be used for "(" and ")" tokens.
   bool AddOpenCloseDirectives;
   // True if clustering directives (for functions) should be inserted.
@@ -389,9 +386,6 @@ void FormatterTester::InsertClusterDirectives(std::string &CurToken,
       State = FunctionParseStack.back();
       FunctionParseStack.pop_back();
     }
-    break;
-  default:
-    EXPECT_TRUE(false) << "Formatter test state unknown: " << State;
     break;
   }
 

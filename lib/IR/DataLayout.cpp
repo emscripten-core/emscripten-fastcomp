@@ -55,7 +55,7 @@ StructLayout::StructLayout(StructType *ST, const DataLayout &DL) {
 
     // Add padding if necessary to align the data element properly.
     if ((StructSize & (TyAlign-1)) != 0)
-      StructSize = DataLayout::RoundUpAlignment(StructSize, TyAlign);
+      StructSize = RoundUpToAlignment(StructSize, TyAlign);
 
     // Keep track of maximum alignment constraint.
     StructAlignment = std::max(TyAlign, StructAlignment);
@@ -70,7 +70,7 @@ StructLayout::StructLayout(StructType *ST, const DataLayout &DL) {
   // Add padding to the end of the struct so that it could be put in an array
   // and all array elements would be aligned correctly.
   if ((StructSize & (StructAlignment-1)) != 0)
-    StructSize = DataLayout::RoundUpAlignment(StructSize, StructAlignment);
+    StructSize = RoundUpToAlignment(StructSize, StructAlignment);
 }
 
 
@@ -179,7 +179,7 @@ void DataLayout::reset(StringRef Desc) {
   clear();
 
   LayoutMap = nullptr;
-  LittleEndian = false;
+  BigEndian = false;
   StackNaturalAlign = 0;
   ManglingMode = MM_None;
 
@@ -239,10 +239,10 @@ void DataLayout::parseSpecifier(StringRef Desc) {
       // FIXME: remove this on LLVM 4.0.
       break;
     case 'E':
-      LittleEndian = false;
+      BigEndian = true;
       break;
     case 'e':
-      LittleEndian = true;
+      BigEndian = false;
       break;
     case 'p': {
       // Address space.
@@ -345,6 +345,10 @@ void DataLayout::parseSpecifier(StringRef Desc) {
 }
 
 DataLayout::DataLayout(const Module *M) : LayoutMap(nullptr) {
+  init(M);
+}
+
+void DataLayout::init(const Module *M) {
   const DataLayout *Other = M->getDataLayout();
   if (Other)
     *this = *Other;
@@ -353,7 +357,7 @@ DataLayout::DataLayout(const Module *M) : LayoutMap(nullptr) {
 }
 
 bool DataLayout::operator==(const DataLayout &Other) const {
-  bool Ret = LittleEndian == Other.LittleEndian &&
+  bool Ret = BigEndian == Other.BigEndian &&
              StackNaturalAlign == Other.StackNaturalAlign &&
              ManglingMode == Other.ManglingMode &&
              LegalIntWidths == Other.LegalIntWidths &&
@@ -522,7 +526,7 @@ std::string DataLayout::getStringRepresentation() const {
   std::string Result;
   raw_string_ostream OS(Result);
 
-  OS << (LittleEndian ? "e" : "E");
+  OS << (BigEndian ? "E" : "e");
 
   switch (ManglingMode) {
   case MM_None:
@@ -637,7 +641,7 @@ unsigned DataLayout::getAlignment(Type *Ty, bool abi_or_pref) const {
             ? getPointerABIAlignment(0)
             : getPointerPrefAlignment(0));
   case Type::PointerTyID: {
-    unsigned AS = dyn_cast<PointerType>(Ty)->getAddressSpace();
+    unsigned AS = cast<PointerType>(Ty)->getAddressSpace();
     return (abi_or_pref
             ? getPointerABIAlignment(AS)
             : getPointerPrefAlignment(AS));
@@ -796,17 +800,17 @@ unsigned DataLayout::getPreferredAlignmentLog(const GlobalVariable *GV) const {
 }
 
 DataLayoutPass::DataLayoutPass() : ImmutablePass(ID), DL("") {
-  report_fatal_error("Bad DataLayoutPass ctor used. Tool did not specify a "
-                     "DataLayout to use?");
+  initializeDataLayoutPassPass(*PassRegistry::getPassRegistry());
 }
 
 DataLayoutPass::~DataLayoutPass() {}
 
-DataLayoutPass::DataLayoutPass(const DataLayout &DL)
-    : ImmutablePass(ID), DL(DL) {
-  initializeDataLayoutPassPass(*PassRegistry::getPassRegistry());
+bool DataLayoutPass::doInitialization(Module &M) {
+  DL.init(&M);
+  return false;
 }
 
-DataLayoutPass::DataLayoutPass(const Module *M) : ImmutablePass(ID), DL(M) {
-  initializeDataLayoutPassPass(*PassRegistry::getPassRegistry());
+bool DataLayoutPass::doFinalization(Module &M) {
+  DL.reset("");
+  return false;
 }

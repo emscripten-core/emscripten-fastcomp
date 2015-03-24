@@ -89,9 +89,13 @@ bool Type::canLosslesslyBitCastTo(Type *Ty) const {
 
   // At this point we have only various mismatches of the first class types
   // remaining and ptr->ptr. Just select the lossless conversions. Everything
-  // else is not lossless.
-  if (this->isPointerTy())
-    return Ty->isPointerTy();
+  // else is not lossless. Conservatively assume we can't losslessly convert
+  // between pointers with different address spaces.
+  if (const PointerType *PTy = dyn_cast<PointerType>(this)) {
+    if (const PointerType *OtherPTy = dyn_cast<PointerType>(Ty))
+      return PTy->getAddressSpace() == OtherPTy->getAddressSpace();
+    return false;
+  }
   return false;  // Other types have no identity values
 }
 
@@ -155,7 +159,7 @@ int Type::getFPMantissaWidth() const {
 /// isSizedDerivedType - Derived types like structures and arrays are sized
 /// iff all of the members of the type are sized as well.  Since asking for
 /// their size is relatively uncommon, move this operation out of line.
-bool Type::isSizedDerivedType(SmallPtrSet<const Type*, 4> *Visited) const {
+bool Type::isSizedDerivedType(SmallPtrSetImpl<const Type*> *Visited) const {
   if (const ArrayType *ATy = dyn_cast<ArrayType>(this))
     return ATy->getElementType()->isSized(Visited);
 
@@ -454,10 +458,11 @@ void StructType::setName(StringRef Name) {
   }
   
   // Look up the entry for the name.
-  EntryTy *Entry = &getContext().pImpl->NamedStructTypes.GetOrCreateValue(Name);
-  
+  auto IterBool =
+      getContext().pImpl->NamedStructTypes.insert(std::make_pair(Name, this));
+
   // While we have a name collision, try a random rename.
-  if (Entry->getValue()) {
+  if (!IterBool.second) {
     SmallString<64> TempStr(Name);
     TempStr.push_back('.');
     raw_svector_ostream TmpStream(TempStr);
@@ -467,19 +472,16 @@ void StructType::setName(StringRef Name) {
       TempStr.resize(NameSize + 1);
       TmpStream.resync();
       TmpStream << getContext().pImpl->NamedStructTypesUniqueID++;
-      
-      Entry = &getContext().pImpl->
-                 NamedStructTypes.GetOrCreateValue(TmpStream.str());
-    } while (Entry->getValue());
-  }
 
-  // Okay, we found an entry that isn't used.  It's us!
-  Entry->setValue(this);
+      IterBool = getContext().pImpl->NamedStructTypes.insert(
+          std::make_pair(TmpStream.str(), this));
+    } while (!IterBool.second);
+  }
 
   // Delete the old string data.
   if (SymbolTableEntry)
     ((EntryTy *)SymbolTableEntry)->Destroy(SymbolTable.getAllocator());
-  SymbolTableEntry = Entry;
+  SymbolTableEntry = &*IterBool.first;
 }
 
 //===----------------------------------------------------------------------===//
@@ -506,7 +508,9 @@ StructType *StructType::get(Type *type, ...) {
     StructFields.push_back(type);
     type = va_arg(ap, llvm::Type*);
   }
-  return llvm::StructType::get(Ctx, StructFields);
+  auto *Ret = llvm::StructType::get(Ctx, StructFields);
+  va_end(ap);
+  return Ret;
 }
 
 StructType *StructType::create(LLVMContext &Context, ArrayRef<Type*> Elements,
@@ -547,16 +551,18 @@ StructType *StructType::create(StringRef Name, Type *type, ...) {
     StructFields.push_back(type);
     type = va_arg(ap, llvm::Type*);
   }
-  return llvm::StructType::create(Ctx, StructFields, Name);
+  auto *Ret = llvm::StructType::create(Ctx, StructFields, Name);
+  va_end(ap);
+  return Ret;
 }
 
-bool StructType::isSized(SmallPtrSet<const Type*, 4> *Visited) const {
+bool StructType::isSized(SmallPtrSetImpl<const Type*> *Visited) const {
   if ((getSubclassData() & SCDB_IsSized) != 0)
     return true;
   if (isOpaque())
     return false;
 
-  if (Visited && !Visited->insert(this))
+  if (Visited && !Visited->insert(this).second)
     return false;
 
   // Okay, our struct is sized if all of the elements are, but if one of the
@@ -591,6 +597,7 @@ void StructType::setBody(Type *type, ...) {
     type = va_arg(ap, llvm::Type*);
   }
   setBody(StructFields);
+  va_end(ap);
 }
 
 bool StructType::isValidElementType(Type *ElemTy) {

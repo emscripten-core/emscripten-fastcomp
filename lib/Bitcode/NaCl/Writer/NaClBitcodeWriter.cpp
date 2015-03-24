@@ -1139,7 +1139,7 @@ static void WriteModule(const Module *M, NaClBitstreamWriter &Stream) {
   Stream.EmitRecord(naclbitc::MODULE_CODE_VERSION, Vals);
 
   // Analyze the module, enumerating globals, functions, etc.
-  NaClValueEnumerator VE(M, PNaClVersion);
+  NaClValueEnumerator VE(M);
   OptimizeTypeIdEncoding(VE);
 
   // Emit blockinfo, which defines the standard abbreviations etc.

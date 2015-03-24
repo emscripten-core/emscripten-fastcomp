@@ -214,16 +214,12 @@ struct PPCOperand;
 
 class PPCAsmParser : public MCTargetAsmParser {
   MCSubtargetInfo &STI;
-  MCAsmParser &Parser;
   const MCInstrInfo &MII;
   bool IsPPC64;
   bool IsDarwin;
 
-  MCAsmParser &getParser() const { return Parser; }
-  MCAsmLexer &getLexer() const { return Parser.getLexer(); }
-
-  void Warning(SMLoc L, const Twine &Msg) { Parser.Warning(L, Msg); }
-  bool Error(SMLoc L, const Twine &Msg) { return Parser.Error(L, Msg); }
+  void Warning(SMLoc L, const Twine &Msg) { getParser().Warning(L, Msg); }
+  bool Error(SMLoc L, const Twine &Msg) { return getParser().Error(L, Msg); }
 
   bool isPPC64() const { return IsPPC64; }
   bool isDarwin() const { return IsDarwin; }
@@ -250,7 +246,7 @@ class PPCAsmParser : public MCTargetAsmParser {
 
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                OperandVector &Operands, MCStreamer &Out,
-                               unsigned &ErrorInfo,
+                               uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override;
 
   void ProcessInstruction(MCInst &Inst, const OperandVector &Ops);
@@ -266,9 +262,8 @@ class PPCAsmParser : public MCTargetAsmParser {
 
 public:
   PPCAsmParser(MCSubtargetInfo &_STI, MCAsmParser &_Parser,
-               const MCInstrInfo &_MII,
-               const MCTargetOptions &Options)
-      : MCTargetAsmParser(), STI(_STI), Parser(_Parser), MII(_MII) {
+               const MCInstrInfo &_MII, const MCTargetOptions &Options)
+      : MCTargetAsmParser(), STI(_STI), MII(_MII) {
     // Check for 64-bit vs. 32-bit pointer mode.
     Triple TheTriple(STI.getTargetTriple());
     IsPPC64 = (TheTriple.getArch() == Triple::ppc64 ||
@@ -297,6 +292,7 @@ struct PPCOperand : public MCParsedAsmOperand {
   enum KindTy {
     Token,
     Immediate,
+    ContextImmediate,
     Expression,
     TLSRegister
   } Kind;
@@ -341,6 +337,7 @@ public:
       Tok = o.Tok;
       break;
     case Immediate:
+    case ContextImmediate:
       Imm = o.Imm;
       break;
     case Expression:
@@ -363,6 +360,16 @@ public:
 
   int64_t getImm() const {
     assert(Kind == Immediate && "Invalid access!");
+    return Imm.Val;
+  }
+  int64_t getImmS16Context() const {
+    assert((Kind == Immediate || Kind == ContextImmediate) && "Invalid access!");
+    if (Kind == Immediate)
+      return Imm.Val;
+    return static_cast<int16_t>(Imm.Val);
+  }
+  int64_t getImmU16Context() const {
+    assert((Kind == Immediate || Kind == ContextImmediate) && "Invalid access!");
     return Imm.Val;
   }
 
@@ -409,22 +416,73 @@ public:
   bool isToken() const override { return Kind == Token; }
   bool isImm() const override { return Kind == Immediate || Kind == Expression; }
   bool isU2Imm() const { return Kind == Immediate && isUInt<2>(getImm()); }
+  bool isU4Imm() const { return Kind == Immediate && isUInt<4>(getImm()); }
   bool isU5Imm() const { return Kind == Immediate && isUInt<5>(getImm()); }
   bool isS5Imm() const { return Kind == Immediate && isInt<5>(getImm()); }
   bool isU6Imm() const { return Kind == Immediate && isUInt<6>(getImm()); }
-  bool isU16Imm() const { return Kind == Expression ||
-                                 (Kind == Immediate && isUInt<16>(getImm())); }
-  bool isS16Imm() const { return Kind == Expression ||
-                                 (Kind == Immediate && isInt<16>(getImm())); }
+  bool isU6ImmX2() const { return Kind == Immediate &&
+                                  isUInt<6>(getImm()) &&
+                                  (getImm() & 1) == 0; }
+  bool isU7ImmX4() const { return Kind == Immediate &&
+                                  isUInt<7>(getImm()) &&
+                                  (getImm() & 3) == 0; }
+  bool isU8ImmX8() const { return Kind == Immediate &&
+                                  isUInt<8>(getImm()) &&
+                                  (getImm() & 7) == 0; }
+  bool isU16Imm() const {
+    switch (Kind) {
+      case Expression:
+        return true;
+      case Immediate:
+      case ContextImmediate:
+        return isUInt<16>(getImmU16Context());
+      default:
+        return false;
+    }
+  }
+  bool isS16Imm() const {
+    switch (Kind) {
+      case Expression:
+        return true;
+      case Immediate:
+      case ContextImmediate:
+        return isInt<16>(getImmS16Context());
+      default:
+        return false;
+    }
+  }
   bool isS16ImmX4() const { return Kind == Expression ||
                                    (Kind == Immediate && isInt<16>(getImm()) &&
                                     (getImm() & 3) == 0); }
-  bool isS17Imm() const { return Kind == Expression ||
-                                 (Kind == Immediate && isInt<17>(getImm())); }
+  bool isS17Imm() const {
+    switch (Kind) {
+      case Expression:
+        return true;
+      case Immediate:
+      case ContextImmediate:
+        return isInt<17>(getImmS16Context());
+      default:
+        return false;
+    }
+  }
   bool isTLSReg() const { return Kind == TLSRegister; }
-  bool isDirectBr() const { return Kind == Expression ||
-                                   (Kind == Immediate && isInt<26>(getImm()) &&
-                                    (getImm() & 3) == 0); }
+  bool isDirectBr() const {
+    if (Kind == Expression)
+      return true;
+    if (Kind != Immediate)
+      return false;
+    // Operand must be 64-bit aligned, signed 27-bit immediate.
+    if ((getImm() & 3) != 0)
+      return false;
+    if (isInt<26>(getImm()))
+      return true;
+    if (!IsPPC64) {
+      // In 32-bit mode, large 32-bit quantities wrap around.
+      if (isUInt<32>(getImm()) && isInt<26>(static_cast<int32_t>(getImm())))
+        return true;
+    }
+    return false;
+  }
   bool isCondBr() const { return Kind == Expression ||
                                  (Kind == Immediate && isInt<16>(getImm()) &&
                                   (getImm() & 3) == 0); }
@@ -529,6 +587,36 @@ public:
       Inst.addOperand(MCOperand::CreateExpr(getExpr()));
   }
 
+  void addS16ImmOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    switch (Kind) {
+      case Immediate:
+        Inst.addOperand(MCOperand::CreateImm(getImm()));
+        break;
+      case ContextImmediate:
+        Inst.addOperand(MCOperand::CreateImm(getImmS16Context()));
+        break;
+      default:
+        Inst.addOperand(MCOperand::CreateExpr(getExpr()));
+        break;
+    }
+  }
+
+  void addU16ImmOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    switch (Kind) {
+      case Immediate:
+        Inst.addOperand(MCOperand::CreateImm(getImm()));
+        break;
+      case ContextImmediate:
+        Inst.addOperand(MCOperand::CreateImm(getImmU16Context()));
+        break;
+      default:
+        Inst.addOperand(MCOperand::CreateExpr(getExpr()));
+        break;
+    }
+  }
+
   void addBranchTargetOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     if (Kind == Immediate)
@@ -569,9 +657,9 @@ public:
     // explicitly.
     void *Mem = ::operator new(sizeof(PPCOperand) + Str.size());
     std::unique_ptr<PPCOperand> Op(new (Mem) PPCOperand(Token));
-    Op->Tok.Data = (const char *)(Op.get() + 1);
+    Op->Tok.Data = reinterpret_cast<const char *>(Op.get() + 1);
     Op->Tok.Length = Str.size();
-    std::memcpy((void *)Op->Tok.Data, Str.data(), Str.size());
+    std::memcpy(const_cast<char *>(Op->Tok.Data), Str.data(), Str.size());
     Op->StartLoc = S;
     Op->EndLoc = S;
     Op->IsPPC64 = IsPPC64;
@@ -610,6 +698,16 @@ public:
   }
 
   static std::unique_ptr<PPCOperand>
+  CreateContextImm(int64_t Val, SMLoc S, SMLoc E, bool IsPPC64) {
+    auto Op = make_unique<PPCOperand>(ContextImmediate);
+    Op->Imm.Val = Val;
+    Op->StartLoc = S;
+    Op->EndLoc = E;
+    Op->IsPPC64 = IsPPC64;
+    return Op;
+  }
+
+  static std::unique_ptr<PPCOperand>
   CreateFromMCExpr(const MCExpr *Val, SMLoc S, SMLoc E, bool IsPPC64) {
     if (const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Val))
       return CreateImm(CE->getValue(), S, E, IsPPC64);
@@ -617,6 +715,12 @@ public:
     if (const MCSymbolRefExpr *SRE = dyn_cast<MCSymbolRefExpr>(Val))
       if (SRE->getKind() == MCSymbolRefExpr::VK_PPC_TLS)
         return CreateTLSReg(SRE, S, E, IsPPC64);
+
+    if (const PPCMCExpr *TE = dyn_cast<PPCMCExpr>(Val)) {
+      int64_t Res;
+      if (TE->EvaluateAsConstant(Res))
+        return CreateContextImm(Res, S, E, IsPPC64);
+    }
 
     return CreateExpr(Val, S, E, IsPPC64);
   }
@@ -630,6 +734,7 @@ void PPCOperand::print(raw_ostream &OS) const {
     OS << "'" << getToken() << "'";
     break;
   case Immediate:
+  case ContextImmediate:
     OS << getImm();
     break;
   case Expression:
@@ -639,6 +744,29 @@ void PPCOperand::print(raw_ostream &OS) const {
     getTLSReg()->print(OS);
     break;
   }
+}
+
+static void
+addNegOperand(MCInst &Inst, MCOperand &Op, MCContext &Ctx) {
+  if (Op.isImm()) {
+    Inst.addOperand(MCOperand::CreateImm(-Op.getImm()));
+    return;
+  }
+  const MCExpr *Expr = Op.getExpr();
+  if (const MCUnaryExpr *UnExpr = dyn_cast<MCUnaryExpr>(Expr)) {
+    if (UnExpr->getOpcode() == MCUnaryExpr::Minus) {
+      Inst.addOperand(MCOperand::CreateExpr(UnExpr->getSubExpr()));
+      return;
+    }
+  } else if (const MCBinaryExpr *BinExpr = dyn_cast<MCBinaryExpr>(Expr)) {
+    if (BinExpr->getOpcode() == MCBinaryExpr::Sub) {
+      const MCExpr *NE = MCBinaryExpr::CreateSub(BinExpr->getRHS(),
+                                                 BinExpr->getLHS(), Ctx);
+      Inst.addOperand(MCOperand::CreateExpr(NE));
+      return;
+    }
+  }
+  Inst.addOperand(MCOperand::CreateExpr(MCUnaryExpr::CreateMinus(Expr, Ctx)));
 }
 
 void PPCAsmParser::ProcessInstruction(MCInst &Inst,
@@ -656,41 +784,37 @@ void PPCAsmParser::ProcessInstruction(MCInst &Inst,
   }
   case PPC::SUBI: {
     MCInst TmpInst;
-    int64_t N = Inst.getOperand(2).getImm();
     TmpInst.setOpcode(PPC::ADDI);
     TmpInst.addOperand(Inst.getOperand(0));
     TmpInst.addOperand(Inst.getOperand(1));
-    TmpInst.addOperand(MCOperand::CreateImm(-N));
+    addNegOperand(TmpInst, Inst.getOperand(2), getContext());
     Inst = TmpInst;
     break;
   }
   case PPC::SUBIS: {
     MCInst TmpInst;
-    int64_t N = Inst.getOperand(2).getImm();
     TmpInst.setOpcode(PPC::ADDIS);
     TmpInst.addOperand(Inst.getOperand(0));
     TmpInst.addOperand(Inst.getOperand(1));
-    TmpInst.addOperand(MCOperand::CreateImm(-N));
+    addNegOperand(TmpInst, Inst.getOperand(2), getContext());
     Inst = TmpInst;
     break;
   }
   case PPC::SUBIC: {
     MCInst TmpInst;
-    int64_t N = Inst.getOperand(2).getImm();
     TmpInst.setOpcode(PPC::ADDIC);
     TmpInst.addOperand(Inst.getOperand(0));
     TmpInst.addOperand(Inst.getOperand(1));
-    TmpInst.addOperand(MCOperand::CreateImm(-N));
+    addNegOperand(TmpInst, Inst.getOperand(2), getContext());
     Inst = TmpInst;
     break;
   }
   case PPC::SUBICo: {
     MCInst TmpInst;
-    int64_t N = Inst.getOperand(2).getImm();
     TmpInst.setOpcode(PPC::ADDICo);
     TmpInst.addOperand(Inst.getOperand(0));
     TmpInst.addOperand(Inst.getOperand(1));
-    TmpInst.addOperand(MCOperand::CreateImm(-N));
+    addNegOperand(TmpInst, Inst.getOperand(2), getContext());
     Inst = TmpInst;
     break;
   }
@@ -924,7 +1048,7 @@ void PPCAsmParser::ProcessInstruction(MCInst &Inst,
 
 bool PPCAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                            OperandVector &Operands,
-                                           MCStreamer &Out, unsigned &ErrorInfo,
+                                           MCStreamer &Out, uint64_t &ErrorInfo,
                                            bool MatchingInlineAsm) {
   MCInst Inst;
 
@@ -942,7 +1066,7 @@ bool PPCAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       return Error(IDLoc, "unrecognized instruction mnemonic");
   case Match_InvalidOperand: {
     SMLoc ErrorLoc = IDLoc;
-    if (ErrorInfo != ~0U) {
+    if (ErrorInfo != ~0ULL) {
       if (ErrorInfo >= Operands.size())
         return Error(IDLoc, "too few operands for instruction");
 
@@ -998,6 +1122,7 @@ MatchRegisterName(const AsmToken &Tok, unsigned &RegNo, int64_t &IntVal) {
 
 bool PPCAsmParser::
 ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) {
+  MCAsmParser &Parser = getParser();
   const AsmToken &Tok = Parser.getTok();
   StartLoc = Tok.getLoc();
   EndLoc = Tok.getEndLoc();
@@ -1179,6 +1304,7 @@ ParseExpression(const MCExpr *&EVal) {
 /// for this to be done at a higher level.
 bool PPCAsmParser::
 ParseDarwinExpression(const MCExpr *&EVal) {
+  MCAsmParser &Parser = getParser();
   PPCMCExpr::VariantKind Variant = PPCMCExpr::VK_PPC_None;
   switch (getLexer().getKind()) {
   default:
@@ -1221,6 +1347,7 @@ ParseDarwinExpression(const MCExpr *&EVal) {
 /// This handles registers in the form 'NN', '%rNN' for ELF platforms and
 /// rNN for MachO.
 bool PPCAsmParser::ParseOperand(OperandVector &Operands) {
+  MCAsmParser &Parser = getParser();
   SMLoc S = Parser.getTok().getLoc();
   SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
   const MCExpr *EVal;
@@ -1429,6 +1556,7 @@ bool PPCAsmParser::ParseDirective(AsmToken DirectiveID) {
 /// ParseDirectiveWord
 ///  ::= .word [ expression (, expression)* ]
 bool PPCAsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
+  MCAsmParser &Parser = getParser();
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     for (;;) {
       const MCExpr *Value;
@@ -1453,6 +1581,7 @@ bool PPCAsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
 /// ParseDirectiveTC
 ///  ::= .tc [ symbol (, expression)* ]
 bool PPCAsmParser::ParseDirectiveTC(unsigned Size, SMLoc L) {
+  MCAsmParser &Parser = getParser();
   // Skip TC symbol, which is only used with XCOFF.
   while (getLexer().isNot(AsmToken::EndOfStatement)
          && getLexer().isNot(AsmToken::Comma))
@@ -1473,6 +1602,7 @@ bool PPCAsmParser::ParseDirectiveTC(unsigned Size, SMLoc L) {
 /// ParseDirectiveMachine (ELF platforms)
 ///  ::= .machine [ cpu | "push" | "pop" ]
 bool PPCAsmParser::ParseDirectiveMachine(SMLoc L) {
+  MCAsmParser &Parser = getParser();
   if (getLexer().isNot(AsmToken::Identifier) &&
       getLexer().isNot(AsmToken::String)) {
     Error(L, "unexpected token in directive");
@@ -1507,6 +1637,7 @@ bool PPCAsmParser::ParseDirectiveMachine(SMLoc L) {
 /// ParseDarwinDirectiveMachine (Mach-o platforms)
 ///  ::= .machine cpu-identifier
 bool PPCAsmParser::ParseDarwinDirectiveMachine(SMLoc L) {
+  MCAsmParser &Parser = getParser();
   if (getLexer().isNot(AsmToken::Identifier) &&
       getLexer().isNot(AsmToken::String)) {
     Error(L, "unexpected token in directive");
@@ -1623,6 +1754,10 @@ unsigned PPCAsmParser::validateTargetOperandClass(MCParsedAsmOperand &AsmOp,
     case MCK_1: ImmVal = 1; break;
     case MCK_2: ImmVal = 2; break;
     case MCK_3: ImmVal = 3; break;
+    case MCK_4: ImmVal = 4; break;
+    case MCK_5: ImmVal = 5; break;
+    case MCK_6: ImmVal = 6; break;
+    case MCK_7: ImmVal = 7; break;
     default: return Match_InvalidOperand;
   }
 

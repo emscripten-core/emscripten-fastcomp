@@ -173,14 +173,14 @@ define void @BadTests(i32 %p0) {
 
 ; CHECK-NEXT:    {{.*}}|    3: <24, 15, 1, 0>        |    store float %c13, float* %p0, 
 ; CHECK-NEXT:          |                             |        align 0;
-; CHECK-NEXT:Error({{.*}}): store: Illegal alignment for float. Expects: 4
+; CHECK-NEXT:Error({{.*}}): store: Illegal alignment for float. Expects: 1 or 4
 
   %ad = inttoptr i32 %p0 to double*
   store double 2.0, double* %ad, align 4
 
 ; CHECK-NEXT:    {{.*}}|    3: <24, 15, 2, 3>        |    store double %c12, double* %p0, 
 ; CHECK-NEXT:          |                             |        align 4;
-; CHECK-NEXT:Error({{.*}}): store: Illegal alignment for double. Expects: 8
+; CHECK-NEXT:Error({{.*}}): store: Illegal alignment for double. Expects: 1 or 8
 
   %av16_i8 = inttoptr i32 %p0 to <16 x i8>*
   store <16 x i8> undef, <16 x i8>* %av16_i8, align 4

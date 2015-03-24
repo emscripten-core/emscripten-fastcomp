@@ -16,7 +16,10 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
+#include "llvm/Bitcode/NaCl/NaClCompress.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -28,22 +31,23 @@ using namespace llvm;
 // emitted to the bitcode file.
 static bool DebugEmitRecord = false;
 
-bool NaClBitcodeMunger::runTestWithFlags(
-    const char *Name, const uint64_t Munges[], size_t MungesSize,
-    bool AddHeader, bool NoRecords, bool NoAssembly) {
-  assert(DumpStream == NULL && "Test run with DumpStream already defined");
+void NaClBitcodeMunger::setupTest(
+    const char *TestName, const uint64_t Munges[], size_t MungesSize,
+    bool AddHeader) {
+  assert(DumpStream == nullptr && "Test run with DumpStream already defined");
+  assert(MungedInput.get() == nullptr
+         && "Test run with MungedInput already defined");
   FoundErrors = false;
   DumpResults.clear(); // Throw away any previous results.
   std::string DumpBuffer;
-  raw_string_ostream MungedDumpStream(DumpResults);
-  DumpStream = &MungedDumpStream;
+  DumpStream = new raw_string_ostream(DumpResults);
   SmallVector<char, 0> StreamBuffer;
   StreamBuffer.reserve(256*1024);
   NaClBitstreamWriter OutStream(StreamBuffer);
   Writer = &OutStream;
 
   if (DebugEmitRecord) {
-    errs() << "*** Run test: " << Name << "\n";
+    errs() << "*** Run test: " << TestName << "\n";
   }
 
   WriteBlockID = -1;
@@ -57,15 +61,16 @@ bool NaClBitcodeMunger::runTestWithFlags(
        Iter != IterEnd; ++Iter) {
     BitcodeStrm << *Iter;
   }
+  MungedInput = MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), TestName);
+}
 
-  std::unique_ptr<MemoryBuffer> Input(
-      MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), Name));
-  if (NaClObjDump(Input.get(), *DumpStream, NoRecords, NoAssembly))
-    FoundErrors = true;
-  DumpStream = NULL;
-  Writer = NULL;
-  MungedDumpStream.flush();
-  return !FoundErrors;
+void NaClBitcodeMunger::cleanupTest() {
+  MungedInput.reset();
+  assert(DumpStream && "Dump stream removed before cleanup!");
+  DumpStream->flush();
+  delete DumpStream;
+  DumpStream = nullptr;
+  Writer = nullptr;
 }
 
 // Return the next line of input (including eoln), starting from
@@ -208,11 +213,18 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
                 << " for record should be <= 32\n";
         ReportFatalError();
       }
+      if (NumBits < 2) {
+        Fatal() << "Error: Bit size " << NumBits
+                << " for record should be >= 2\n";
+        ReportFatalError();
+      }
     } else {
       Fatal() << "Error: Values for enter record should be of size 2. Found: "
               << Values.size();
       ReportFatalError();
     }
+    uint64_t MaxAbbrev = (static_cast<uint64_t>(1) << NumBits) - 1;
+    AbbrevIndexLimitStack.push_back(MaxAbbrev);
     if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
       if (NumBits != naclbitc::DEFAULT_MAX_ABBREV) {
         Fatal()
@@ -222,7 +234,8 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
       }
       Writer->EnterBlockInfoBlock();
     } else {
-      Writer->EnterSubblock(WriteBlockID, NumBits);
+      NaClBitcodeSelectorAbbrev CurCodeLen(MaxAbbrev);
+      Writer->EnterSubblock(WriteBlockID, CurCodeLen);
     }
     return;
   }
@@ -237,6 +250,8 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
               << Values.size() << "\n";
       ReportFatalError();
     }
+    if (!AbbrevIndexLimitStack.empty())
+      AbbrevIndexLimitStack.pop_back();
     Writer->ExitBlock();
     return;
   case naclbitc::BLK_CODE_DEFINE_ABBREV: {
@@ -265,9 +280,31 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
   default:
     if ((AbbrevIndex != naclbitc::UNABBREV_RECORD
          && !Writer->isUserRecordAbbreviation(AbbrevIndex))) {
-      Fatal() << "Error: Record code " << RecordCode
-              << " uses illegal abbreviation index " << AbbrevIndex << "\n";
-      ReportFatalError();
+      uint64_t BlockAbbrevIndexLimit = 0;
+      if (!AbbrevIndexLimitStack.empty())
+        BlockAbbrevIndexLimit = AbbrevIndexLimitStack.back();
+      if (AbbrevIndex > BlockAbbrevIndexLimit) {
+        Fatal() << "Error: Record code " << RecordCode
+                << " uses illegal abbreviation index " << AbbrevIndex
+                << ". Must not exceed " << BlockAbbrevIndexLimit << "\n";
+        ReportFatalError();
+      }
+      // Note: If this point is reached, the abbreviation is
+      // bad. However, that may be the point of munge being
+      // applied. Hence, emit the bad abbreviation and the data so
+      // that the reader can be tested on this bad input.  For
+      // simplicity, we output the record data using the default
+      // abbreviation pattern.
+      errs() << "Warning: Record code " << RecordCode
+             << " uses illegal abbreviation index " << AbbrevIndex << "\n";
+      Writer->EmitCode(AbbrevIndex);
+      Writer->EmitVBR(RecordCode, 6);
+      uint32_t NumValues = static_cast<uint32_t>(Values.size());
+      Writer->EmitVBR(NumValues, 6);
+      for (uint32_t i = 0; i < NumValues; ++i) {
+        Writer->EmitVBR64(Values[i], 6);
+      }
+      return;
     }
     if (AbbrevIndex == naclbitc::UNABBREV_RECORD)
       Writer->EmitRecord(RecordCode, Values);
@@ -282,21 +319,37 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
 NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
     unsigned RecordCode, SmallVectorImpl<uint64_t> &Values) {
   NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
-  for (size_t Index = 0; Index < Values.size(); ) {
-    switch (Values[Index]) {
+  size_t Index = 0;
+  if (Values.empty()) {
+    Fatal() << "Empty abbreviation record not allowed\n";
+    ReportFatalError();
+  }
+  size_t NumAbbreviations = Values[Index++];
+  if (NumAbbreviations == 0) {
+    Fatal() << "Abbreviation must contain at least one operator\n";
+    ReportFatalError();
+  }
+  for (size_t Count = 0; Count < NumAbbreviations; ++Count) {
+    if (Index >= Values.size()) {
+      Fatal() << "Malformed abbreviation found. Expects "
+              << NumAbbreviations << " operands. Found: "
+              << Count << "\n";
+      ReportFatalError();
+    }
+    switch (Values[Index++]) {
     case 1:
-      if (Index + 1 >= Values.size()) {
+      if (Index >= Values.size()) {
         Fatal() << "Malformed literal abbreviation.\n";
         ReportFatalError();
       }
-      Abbrev->Add(NaClBitCodeAbbrevOp(Values[++Index]));
+      Abbrev->Add(NaClBitCodeAbbrevOp(Values[Index++]));
       break;
     case 0: {
       if (Index >= Values.size()) {
         Fatal() << "Malformed abbreviation found.\n";
         ReportFatalError();
       }
-      unsigned Kind = Values[++Index];
+      unsigned Kind = Values[Index++];
       switch (Kind) {
       case NaClBitCodeAbbrevOp::Fixed:
         if (Index >= Values.size()) {
@@ -304,7 +357,7 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
           ReportFatalError();
         }
         Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                        Values[++Index]));
+                                        Values[Index++]));
         break;
       case NaClBitCodeAbbrevOp::VBR:
         if (Index >= Values.size()) {
@@ -312,7 +365,7 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
           ReportFatalError();
         }
         Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR,
-                                        Values[++Index]));
+                                        Values[Index++]));
         break;
       case NaClBitCodeAbbrevOp::Array:
         if (Index >= Values.size()) {
@@ -337,4 +390,52 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
     }
   }
   return Abbrev;
+}
+
+bool NaClObjDumpMunger::runTestWithFlags(
+    const char *Name, const uint64_t Munges[], size_t MungesSize,
+    bool AddHeader, bool NoRecords, bool NoAssembly) {
+  setupTest(Name, Munges, MungesSize, AddHeader);
+
+  /// If running in death mode, redirect output directly to the
+  /// error stream (rather than buffering in DumpStream), so that
+  /// output can be seen in gtest death test.
+  raw_ostream &Output = RunAsDeathTest ? errs() : *DumpStream;
+  // TODO(jvoung,kschimpf): Should NaClObjDump take a MemoryBufferRef
+  // like the parser?
+  if (NaClObjDump(MungedInput.get(), Output, NoRecords, NoAssembly))
+    FoundErrors = true;
+  cleanupTest();
+  return !FoundErrors;
+}
+
+bool NaClParseBitcodeMunger::runTest(
+    const char *Name, const uint64_t Munges[], size_t MungesSize,
+    bool VerboseErrors) {
+  bool AddHeader = true;
+  setupTest(Name, Munges, MungesSize, AddHeader);
+  LLVMContext &Context = getGlobalContext();
+  raw_ostream *VerboseStrm = VerboseErrors ? DumpStream : nullptr;
+  ErrorOr<Module *> ModuleOrError =
+      NaClParseBitcodeFile(MungedInput->getMemBufferRef(), Context,
+                           VerboseStrm);
+  if (ModuleOrError) {
+    if (VerboseErrors)
+      *DumpStream << "Successful parse!\n";
+    delete ModuleOrError.get();
+  } else {
+    Error() << ModuleOrError.getError().message() << "\n";
+  }
+  cleanupTest();
+  return !FoundErrors;
+}
+
+bool NaClCompressMunger::runTest(const char* Name, const uint64_t Munges[],
+                                 size_t MungesSize) {
+  bool AddHeader = true;
+  setupTest(Name, Munges, MungesSize, AddHeader);
+  NaClBitcodeCompressor Compressor;
+  bool Result = Compressor.compress(MungedInput.get(), *DumpStream);
+  cleanupTest();
+  return Result;
 }

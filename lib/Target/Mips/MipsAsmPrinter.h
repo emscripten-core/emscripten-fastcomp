@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MIPSASMPRINTER_H
-#define MIPSASMPRINTER_H
+#ifndef LLVM_LIB_TARGET_MIPS_MIPSASMPRINTER_H
+#define LLVM_LIB_TARGET_MIPS_MIPSASMPRINTER_H
 
 #include "Mips16HardFloatInfo.h"
 #include "MipsMCInstLower.h"
@@ -134,12 +134,13 @@ public:
   void printMemOperandEA(const MachineInstr *MI, int opNum, raw_ostream &O);
   void printFCCOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
                        const char *Modifier = nullptr);
+  void printRegisterList(const MachineInstr *MI, int opNum, raw_ostream &O);
   void EmitStartOfAsmFile(Module &M) override;
   void EmitEndOfAsmFile(Module &M) override;
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
 
   // @LOCALMOD-START
-  virtual unsigned GetTargetLabelAlign(const MachineInstr *MI) const;
+  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
   // @LOCALMOD-END
 };
 }

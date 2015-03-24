@@ -33,7 +33,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
-#include "llvm/Support/StreamableMemoryObject.h" // @LOCALMOD
+#include "llvm/Support/StreamingMemoryObject.h" // @LOCALMOD
 #include "llvm/Support/ToolOutputFile.h"
 #include <system_error>
 using namespace llvm;
@@ -160,13 +160,14 @@ int main(int argc, char **argv) {
         M.reset(getStreamedBitcodeModule(
             DisplayFilename, Buffer.release(), Context, &ErrorMessage));
         break;
-      case PNaClFormat:
+      case PNaClFormat: {
         M.reset(getNaClStreamedBitcodeModule(
-            DisplayFilename, Buffer.release(), Context, &ErrorMessage));
+            DisplayFilename, Buffer.release(), Context, nullptr,
+            &ErrorMessage));
         break;
-      default:
-        ErrorMessage = "Don't understand specified bitcode format";
-        break;
+      case AutodetectFileFormat:
+        report_fatal_error("Command can't autodetect file format!");
+      }
     }
     // @LOCALMOD-END
 
@@ -205,11 +206,11 @@ int main(int argc, char **argv) {
     }
   }
 
-  std::string ErrorInfo;
+  std::error_code EC;
   std::unique_ptr<tool_output_file> Out(
-      new tool_output_file(OutputFilename.c_str(), ErrorInfo, sys::fs::F_None));
-  if (!ErrorInfo.empty()) {
-    errs() << ErrorInfo << '\n';
+      new tool_output_file(OutputFilename, EC, sys::fs::F_None));
+  if (EC) {
+    errs() << EC.message() << '\n';
     return 1;
   }
 

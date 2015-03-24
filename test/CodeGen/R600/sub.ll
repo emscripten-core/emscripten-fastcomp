@@ -3,12 +3,12 @@
 
 declare i32 @llvm.r600.read.tidig.x() readnone
 
-;FUNC-LABEL: @test2
+;FUNC-LABEL: {{^}}test2:
 ;EG: SUB_INT {{\** *}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 ;EG: SUB_INT {{\** *}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 
-;SI: V_SUB_I32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
-;SI: V_SUB_I32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_sub_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_sub_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
 
 define void @test2(<2 x i32> addrspace(1)* %out, <2 x i32> addrspace(1)* %in) {
   %b_ptr = getelementptr <2 x i32> addrspace(1)* %in, i32 1
@@ -19,16 +19,16 @@ define void @test2(<2 x i32> addrspace(1)* %out, <2 x i32> addrspace(1)* %in) {
   ret void
 }
 
-;FUNC-LABEL: @test4
+;FUNC-LABEL: {{^}}test4:
 ;EG: SUB_INT {{\** *}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 ;EG: SUB_INT {{\** *}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 ;EG: SUB_INT {{\** *}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 ;EG: SUB_INT {{\** *}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 
-;SI: V_SUB_I32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
-;SI: V_SUB_I32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
-;SI: V_SUB_I32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
-;SI: V_SUB_I32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_sub_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_sub_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_sub_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_sub_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
 
 define void @test4(<4 x i32> addrspace(1)* %out, <4 x i32> addrspace(1)* %in) {
   %b_ptr = getelementptr <4 x i32> addrspace(1)* %in, i32 1
@@ -39,9 +39,9 @@ define void @test4(<4 x i32> addrspace(1)* %out, <4 x i32> addrspace(1)* %in) {
   ret void
 }
 
-; FUNC-LABEL: @s_sub_i64:
-; SI: S_SUB_I32
-; SI: S_SUBB_U32
+; FUNC-LABEL: {{^}}s_sub_i64:
+; SI: s_sub_u32
+; SI: s_subb_u32
 
 ; EG-DAG: SETGE_UINT
 ; EG-DAG: CNDE_INT
@@ -54,9 +54,9 @@ define void @s_sub_i64(i64 addrspace(1)* noalias %out, i64 %a, i64 %b) nounwind 
   ret void
 }
 
-; FUNC-LABEL: @v_sub_i64:
-; SI: V_SUB_I32_e32
-; SI: V_SUBB_U32_e32
+; FUNC-LABEL: {{^}}v_sub_i64:
+; SI: v_sub_i32_e32
+; SI: v_subb_u32_e32
 
 ; EG-DAG: SETGE_UINT
 ; EG-DAG: CNDE_INT

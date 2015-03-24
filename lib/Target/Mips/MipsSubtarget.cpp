@@ -58,6 +58,10 @@ Mips16ConstantIslands(
   cl::desc("MIPS: mips16 constant islands enable."),
   cl::init(true));
 
+static cl::opt<bool>
+GPOpt("mgpopt", cl::Hidden,
+      cl::desc("MIPS: Enable gp-relative addressing of small data items"));
+
 /// Select the Mips CPU for the given triple and cpu name.
 /// FIXME: Merge with the copy in MipsMCTargetDesc.cpp
 static StringRef selectMipsCPU(Triple TT, StringRef CPU) {
@@ -104,30 +108,32 @@ static std::string computeDataLayout(const MipsSubtarget &ST) {
 
 MipsSubtarget::MipsSubtarget(const std::string &TT, const std::string &CPU,
                              const std::string &FS, bool little,
-                             MipsTargetMachine *_TM)
-    : MipsGenSubtargetInfo(TT, CPU, FS), MipsArchVersion(Mips32),
-      MipsABI(UnknownABI), IsLittle(little), IsSingleFloat(false),
-      IsFPXX(false), IsFP64bit(false), UseOddSPReg(true), IsNaN2008bit(false),
-      IsGP64bit(false), HasVFPU(false), HasCnMips(false), IsLinux(true),
-      HasMips3_32(false), HasMips3_32r2(false), HasMips4_32(false),
-      HasMips4_32r2(false), HasMips5_32r2(false), InMips16Mode(false),
-      InMips16HardFloat(Mips16HardFloat), InMicroMipsMode(false), HasDSP(false),
-      HasDSPR2(false), AllowMixed16_32(Mixed16_32 | Mips_Os16), Os16(Mips_Os16),
+                             const MipsTargetMachine *_TM)
+    : MipsGenSubtargetInfo(TT, CPU, FS), MipsArchVersion(MipsDefault),
+      ABI(MipsABIInfo::Unknown()), IsLittle(little), IsSingleFloat(false),
+      IsFPXX(false), NoABICalls(false), IsFP64bit(false), UseOddSPReg(true),
+      IsNaN2008bit(false), IsGP64bit(false), HasVFPU(false), HasCnMips(false),
+      IsLinux(true), HasMips3_32(false), HasMips3_32r2(false),
+      HasMips4_32(false), HasMips4_32r2(false), HasMips5_32r2(false),
+      InMips16Mode(false), InMips16HardFloat(Mips16HardFloat),
+      InMicroMipsMode(false), HasDSP(false), HasDSPR2(false),
+      AllowMixed16_32(Mixed16_32 | Mips_Os16), Os16(Mips_Os16),
       HasMSA(false), TM(_TM), TargetTriple(TT),
       DL(computeDataLayout(initializeSubtargetDependencies(CPU, FS, TM))),
-      TSInfo(DL), JITInfo(), InstrInfo(MipsInstrInfo::create(*this)),
+      TSInfo(DL), InstrInfo(MipsInstrInfo::create(*this)),
       FrameLowering(MipsFrameLowering::create(*this)),
       TLInfo(MipsTargetLowering::create(*TM, *this)) {
 
   PreviousInMips16Mode = InMips16Mode;
 
-  // Don't even attempt to generate code for MIPS-I, MIPS-II, MIPS-III, and
-  // MIPS-V. They have not been tested and currently exist for the integrated
+  if (MipsArchVersion == MipsDefault)
+    MipsArchVersion = Mips32;
+
+  // Don't even attempt to generate code for MIPS-I, MIPS-III and MIPS-V.
+  // They have not been tested and currently exist for the integrated
   // assembler only.
   if (MipsArchVersion == Mips1)
     report_fatal_error("Code generation for MIPS-I is not implemented", false);
-  if (MipsArchVersion == Mips2)
-    report_fatal_error("Code generation for MIPS-II is not implemented", false);
   if (MipsArchVersion == Mips3)
     report_fatal_error("Code generation for MIPS-III is not implemented",
                        false);
@@ -135,7 +141,7 @@ MipsSubtarget::MipsSubtarget(const std::string &TT, const std::string &CPU,
     report_fatal_error("Code generation for MIPS-V is not implemented", false);
 
   // Assert exactly one ABI was chosen.
-  assert(MipsABI != UnknownABI);
+  assert(ABI.IsKnown());
   assert((((getFeatureBits() & Mips::FeatureO32) != 0) +
           ((getFeatureBits() & Mips::FeatureEABI) != 0) +
           ((getFeatureBits() & Mips::FeatureN32) != 0) +
@@ -170,10 +176,16 @@ MipsSubtarget::MipsSubtarget(const std::string &TT, const std::string &CPU,
   if (TT.find("linux") == std::string::npos)
     IsLinux = false;
 
+  if (NoABICalls && TM->getRelocationModel() == Reloc::PIC_)
+    report_fatal_error("position-independent code requires '-mabicalls'");
+
   // Set UseSmallSection.
-  // TODO: Investigate the IsLinux check. I suspect it's really checking for
-  //       bare-metal.
-  UseSmallSection = !IsLinux && (TM->getRelocationModel() == Reloc::Static);
+  UseSmallSection = GPOpt;
+  if (!NoABICalls && GPOpt) {
+    errs() << "warning: cannot use small-data accesses for '-mabicalls'"
+           << "\n";
+    UseSmallSection = false;
+  }
 }
 
 /// This overrides the PostRAScheduler bit in the SchedModel for any CPU.

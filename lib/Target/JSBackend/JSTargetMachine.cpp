@@ -22,7 +22,8 @@ JSTargetMachine::JSTargetMachine(const Target &T, StringRef Triple,
                                  Reloc::Model RM, CodeModel::Model CM,
                                  CodeGenOpt::Level OL)
   : TargetMachine(T, Triple, CPU, FS, Options),
-    DL("e-p:32:32-i64:64-v128:32:128-n32-S128") {
+    DL("e-p:32:32-i64:64-v128:32:128-n32-S128"),
+    Subtarget(&DL) {
   CodeGenInfo = T.createMCCodeGenInfo(Triple, RM, CM, OL);
 }
 

@@ -42,14 +42,14 @@ static void RunAssemblyExamples(
 
   // First assume no assembly.
   if (AddErrors)
-    Stream.Error(Bit) << "This is an error\n";
+    Stream.ErrorAt(Bit) << "This is an error\n";
   Write(Stream, Bit, Record, AbbrevIndex);
   // Increment bit to new fictitious address, assuming Record takes 21 bits.
   Bit += 21;
 
   // Now a single line assembly.
   if (AddErrors)
-    Stream.Error(Bit) << "Oops, an error!\n";
+    Stream.ErrorAt(Bit) << "Oops, an error!\n";
   Stream.Assembly() << "One line assembly.";
   Write(Stream, Bit, Record, AbbrevIndex);
   // Increment bit to new fictitious address, assuming Record takes 17 bits.
@@ -57,10 +57,10 @@ static void RunAssemblyExamples(
 
   // Now multiple line assembly.
   if (AddErrors)
-    Stream.Error(Bit) << "The record looks bad\n";
+    Stream.ErrorAt(Bit) << "The record looks bad\n";
   Stream.Assembly() << "Two Line\nexample assembly.";
   if (AddErrors)
-    Stream.Error(Bit) << "Actually, it looks really bad\n";
+    Stream.ErrorAt(Bit) << "Actually, it looks really bad\n";
   Write(Stream, Bit, Record, AbbrevIndex);
 }
 

@@ -297,17 +297,13 @@ static void PrintObjectSectionSizes(ObjectFile *Obj) {
     std::size_t max_size_len = strlen("size");
     std::size_t max_addr_len = strlen("addr");
     for (const SectionRef &Section : Obj->sections()) {
-      uint64_t size = 0;
-      if (error(Section.getSize(size)))
-        return;
+      uint64_t size = Section.getSize();
       total += size;
 
       StringRef name;
-      uint64_t addr = 0;
       if (error(Section.getName(name)))
         return;
-      if (error(Section.getAddress(addr)))
-        return;
+      uint64_t addr = Section.getAddress();
       max_name_len = std::max(max_name_len, name.size());
       max_size_len = std::max(max_size_len, getNumLengthAsString(size));
       max_addr_len = std::max(max_addr_len, getNumLengthAsString(addr));
@@ -337,14 +333,10 @@ static void PrintObjectSectionSizes(ObjectFile *Obj) {
     // Print each section.
     for (const SectionRef &Section : Obj->sections()) {
       StringRef name;
-      uint64_t size = 0;
-      uint64_t addr = 0;
       if (error(Section.getName(name)))
         return;
-      if (error(Section.getSize(size)))
-        return;
-      if (error(Section.getAddress(addr)))
-        return;
+      uint64_t size = Section.getSize();
+      uint64_t addr = Section.getAddress();
       std::string namestr = name;
 
       outs() << format(fmt.str().c_str(), namestr.c_str(), size, addr);
@@ -365,18 +357,10 @@ static void PrintObjectSectionSizes(ObjectFile *Obj) {
 
     // Make one pass over the section table to calculate sizes.
     for (const SectionRef &Section : Obj->sections()) {
-      uint64_t size = 0;
-      bool isText = false;
-      bool isData = false;
-      bool isBSS = false;
-      if (error(Section.getSize(size)))
-        return;
-      if (error(Section.isText(isText)))
-        return;
-      if (error(Section.isData(isData)))
-        return;
-      if (error(Section.isBSS(isBSS)))
-        return;
+      uint64_t size = Section.getSize();
+      bool isText = Section.isText();
+      bool isData = Section.isData();
+      bool isBSS = Section.isBSS();
       if (isText)
         total_text += size;
       else if (isData)
@@ -444,8 +428,7 @@ static bool checkMachOAndArchFlags(ObjectFile *o, StringRef file) {
 static void PrintFileSectionSizes(StringRef file) {
   // If file is not stdin, check that it exists.
   if (file != "-") {
-    bool exists;
-    if (sys::fs::exists(file, exists) || !exists) {
+    if (!sys::fs::exists(file)) {
       errs() << ToolName << ": '" << file << "': "
              << "No such file\n";
       return;
@@ -453,14 +436,14 @@ static void PrintFileSectionSizes(StringRef file) {
   }
 
   // Attempt to open the binary.
-  ErrorOr<Binary *> BinaryOrErr = createBinary(file);
+  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(file);
   if (std::error_code EC = BinaryOrErr.getError()) {
     errs() << ToolName << ": " << file << ": " << EC.message() << ".\n";
     return;
   }
-  std::unique_ptr<Binary> binary(BinaryOrErr.get());
+  Binary &Bin = *BinaryOrErr.get().getBinary();
 
-  if (Archive *a = dyn_cast<Archive>(binary.get())) {
+  if (Archive *a = dyn_cast<Archive>(&Bin)) {
     // This is an archive. Iterate over each member and display its sizes.
     for (object::Archive::child_iterator i = a->child_begin(),
                                          e = a->child_end();
@@ -488,7 +471,7 @@ static void PrintFileSectionSizes(StringRef file) {
       }
     }
   } else if (MachOUniversalBinary *UB =
-                 dyn_cast<MachOUniversalBinary>(binary.get())) {
+                 dyn_cast<MachOUniversalBinary>(&Bin)) {
     // If we have a list of architecture flags specified dump only those.
     if (!ArchAll && ArchFlags.size() != 0) {
       // Look for a slice in the universal binary that matches each ArchFlag.
@@ -692,7 +675,7 @@ static void PrintFileSectionSizes(StringRef file) {
         }
       }
     }
-  } else if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get())) {
+  } else if (ObjectFile *o = dyn_cast<ObjectFile>(&Bin)) {
     if (!checkMachOAndArchFlags(o, file))
       return;
     if (OutputFormat == sysv)
@@ -731,8 +714,7 @@ int main(int argc, char **argv) {
     if (ArchFlags[i] == "all") {
       ArchAll = true;
     } else {
-      Triple T = MachOObjectFile::getArch(ArchFlags[i]);
-      if (T.getArch() == Triple::UnknownArch) {
+      if (!MachOObjectFile::isValidArch(ArchFlags[i])) {
         outs() << ToolName << ": for the -arch option: Unknown architecture "
                << "named '" << ArchFlags[i] << "'";
         return 1;

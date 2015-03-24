@@ -183,20 +183,22 @@ void LLVMDumpModule(LLVMModuleRef M) {
 
 LLVMBool LLVMPrintModuleToFile(LLVMModuleRef M, const char *Filename,
                                char **ErrorMessage) {
-  std::string error;
-  raw_fd_ostream dest(Filename, error, sys::fs::F_Text);
-  if (!error.empty()) {
-    *ErrorMessage = strdup(error.c_str());
+  std::error_code EC;
+  raw_fd_ostream dest(Filename, EC, sys::fs::F_Text);
+  if (EC) {
+    *ErrorMessage = strdup(EC.message().c_str());
     return true;
   }
 
   unwrap(M)->print(dest, nullptr);
 
-  if (!error.empty()) {
-    *ErrorMessage = strdup(error.c_str());
+  dest.close();
+
+  if (dest.has_error()) {
+    *ErrorMessage = strdup("Error printing to file");
     return true;
   }
-  dest.flush();
+
   return false;
 }
 
@@ -558,8 +560,8 @@ LLVMValueRef LLVMGetMetadata(LLVMValueRef Inst, unsigned KindID) {
 }
 
 void LLVMSetMetadata(LLVMValueRef Inst, unsigned KindID, LLVMValueRef MD) {
-  unwrap<Instruction>(Inst)->setMetadata(KindID,
-                                         MD ? unwrap<MDNode>(MD) : nullptr);
+  unwrap<Instruction>(Inst)
+      ->setMetadata(KindID, MD ? unwrap<MDNode>(MD) : nullptr);
 }
 
 /*--.. Conversion functions ................................................--*/
@@ -601,6 +603,11 @@ LLVMValueRef LLVMGetOperand(LLVMValueRef Val, unsigned Index) {
   if (MDNode *MD = dyn_cast<MDNode>(V))
       return wrap(MD->getOperand(Index));
   return wrap(cast<User>(V)->getOperand(Index));
+}
+
+LLVMUseRef LLVMGetOperandUse(LLVMValueRef Val, unsigned Index) {
+  Value *V = unwrap(Val);
+  return wrap(&cast<User>(V)->getOperandUse(Index));
 }
 
 void LLVMSetOperand(LLVMValueRef Val, unsigned Index, LLVMValueRef Op) {
@@ -767,6 +774,27 @@ long long LLVMConstIntGetSExtValue(LLVMValueRef ConstantVal) {
   return unwrap<ConstantInt>(ConstantVal)->getSExtValue();
 }
 
+double LLVMConstRealGetDouble(LLVMValueRef ConstantVal, LLVMBool *LosesInfo) {
+  ConstantFP *cFP = unwrap<ConstantFP>(ConstantVal) ;
+  Type *Ty = cFP->getType();
+
+  if (Ty->isFloatTy()) {
+    *LosesInfo = false;
+    return cFP->getValueAPF().convertToFloat();
+  }
+
+  if (Ty->isDoubleTy()) {
+    *LosesInfo = false;
+    return cFP->getValueAPF().convertToDouble();
+  }
+
+  bool APFLosesInfo;
+  APFloat APF = cFP->getValueAPF();
+  APF.convert(APFloat::IEEEdouble, APFloat::rmNearestTiesToEven, &APFLosesInfo);
+  *LosesInfo = APFLosesInfo;
+  return APF.convertToDouble();
+}
+
 /*--.. Operations on composite constants ...................................--*/
 
 LLVMValueRef LLVMConstStringInContext(LLVMContextRef C, const char *Str,
@@ -790,11 +818,27 @@ LLVMValueRef LLVMConstString(const char *Str, unsigned Length,
   return LLVMConstStringInContext(LLVMGetGlobalContext(), Str, Length,
                                   DontNullTerminate);
 }
+
+LLVMValueRef LLVMGetElementAsConstant(LLVMValueRef c, unsigned idx) {
+  return wrap(static_cast<ConstantDataSequential*>(unwrap(c))->getElementAsConstant(idx));
+}
+
+LLVMBool LLVMIsConstantString(LLVMValueRef c) {
+  return static_cast<ConstantDataSequential*>(unwrap(c))->isString();
+}
+
+const char *LLVMGetAsString(LLVMValueRef c, size_t* Length) {
+  StringRef str = static_cast<ConstantDataSequential*>(unwrap(c))->getAsString();
+  *Length = str.size();
+  return str.data();
+}
+
 LLVMValueRef LLVMConstArray(LLVMTypeRef ElementTy,
                             LLVMValueRef *ConstantVals, unsigned Length) {
   ArrayRef<Constant*> V(unwrap<Constant>(ConstantVals, Length), Length);
   return wrap(ConstantArray::get(ArrayType::get(unwrap(ElementTy), Length), V));
 }
+
 LLVMValueRef LLVMConstStruct(LLVMValueRef *ConstantVals, unsigned Count,
                              LLVMBool Packed) {
   return LLVMConstStructInContext(LLVMGetGlobalContext(), ConstantVals, Count,
@@ -1859,10 +1903,25 @@ LLVMIntPredicate LLVMGetICmpPredicate(LLVMValueRef Inst) {
   return (LLVMIntPredicate)0;
 }
 
+LLVMRealPredicate LLVMGetFCmpPredicate(LLVMValueRef Inst) {
+  if (FCmpInst *I = dyn_cast<FCmpInst>(unwrap(Inst)))
+    return (LLVMRealPredicate)I->getPredicate();
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(unwrap(Inst)))
+    if (CE->getOpcode() == Instruction::FCmp)
+      return (LLVMRealPredicate)CE->getPredicate();
+  return (LLVMRealPredicate)0;
+}
+
 LLVMOpcode LLVMGetInstructionOpcode(LLVMValueRef Inst) {
   if (Instruction *C = dyn_cast<Instruction>(unwrap(Inst)))
     return map_to_llvmopcode(C->getOpcode());
   return (LLVMOpcode)0;
+}
+
+LLVMValueRef LLVMInstructionClone(LLVMValueRef Inst) {
+  if (Instruction *C = dyn_cast<Instruction>(unwrap(Inst)))
+    return wrap(C->clone());
+  return nullptr;
 }
 
 /*--.. Call and invoke instructions ........................................--*/
@@ -1924,6 +1983,34 @@ LLVMBool LLVMIsTailCall(LLVMValueRef Call) {
 
 void LLVMSetTailCall(LLVMValueRef Call, LLVMBool isTailCall) {
   unwrap<CallInst>(Call)->setTailCall(isTailCall);
+}
+
+/*--.. Operations on terminators ...........................................--*/
+
+unsigned LLVMGetNumSuccessors(LLVMValueRef Term) {
+  return unwrap<TerminatorInst>(Term)->getNumSuccessors();
+}
+
+LLVMBasicBlockRef LLVMGetSuccessor(LLVMValueRef Term, unsigned i) {
+  return wrap(unwrap<TerminatorInst>(Term)->getSuccessor(i));
+}
+
+void LLVMSetSuccessor(LLVMValueRef Term, unsigned i, LLVMBasicBlockRef block) {
+  return unwrap<TerminatorInst>(Term)->setSuccessor(i,unwrap(block));
+}
+
+/*--.. Operations on branch instructions (only) ............................--*/
+
+LLVMBool LLVMIsConditional(LLVMValueRef Branch) {
+  return unwrap<BranchInst>(Branch)->isConditional();
+}
+
+LLVMValueRef LLVMGetCondition(LLVMValueRef Branch) {
+  return wrap(unwrap<BranchInst>(Branch)->getCondition());
+}
+
+void LLVMSetCondition(LLVMValueRef Branch, LLVMValueRef Cond) {
+  return unwrap<BranchInst>(Branch)->setCondition(unwrap(Cond));
 }
 
 /*--.. Operations on switch instructions (only) ............................--*/
@@ -2313,7 +2400,7 @@ static AtomicOrdering mapFromLLVMOrdering(LLVMAtomicOrdering Ordering) {
     case LLVMAtomicOrderingSequentiallyConsistent:
       return SequentiallyConsistent;
   }
-  
+
   llvm_unreachable("Invalid LLVMAtomicOrdering value!");
 }
 
@@ -2632,10 +2719,9 @@ LLVMMemoryBufferRef LLVMCreateMemoryBufferWithMemoryRange(
     const char *BufferName,
     LLVMBool RequiresNullTerminator) {
 
-  return wrap(MemoryBuffer::getMemBuffer(
-      StringRef(InputData, InputDataLength),
-      StringRef(BufferName),
-      RequiresNullTerminator));
+  return wrap(MemoryBuffer::getMemBuffer(StringRef(InputData, InputDataLength),
+                                         StringRef(BufferName),
+                                         RequiresNullTerminator).release());
 }
 
 LLVMMemoryBufferRef LLVMCreateMemoryBufferWithMemoryRangeCopy(
@@ -2643,9 +2729,9 @@ LLVMMemoryBufferRef LLVMCreateMemoryBufferWithMemoryRangeCopy(
     size_t InputDataLength,
     const char *BufferName) {
 
-  return wrap(MemoryBuffer::getMemBufferCopy(
-      StringRef(InputData, InputDataLength),
-      StringRef(BufferName)));
+  return wrap(
+      MemoryBuffer::getMemBufferCopy(StringRef(InputData, InputDataLength),
+                                     StringRef(BufferName)).release());
 }
 
 const char *LLVMGetBufferStart(LLVMMemoryBufferRef MemBuf) {

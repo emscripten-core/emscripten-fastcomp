@@ -566,11 +566,6 @@ class ImmSExtAsmOperandClass : AsmOperandClass {
   let RenderMethod = "addImmOperands";
 }
 
-class ImmZExtAsmOperandClass : AsmOperandClass {
-  let SuperClasses = [ImmAsmOperand];
-  let RenderMethod = "addImmOperands";
-}
-
 def X86GR32orGR64AsmOperand : AsmOperandClass {
   let Name = "GR32orGR64";
 }
@@ -583,6 +578,7 @@ def AVX512RC : Operand<i32> {
   let PrintMethod = "printRoundingControl";
   let OperandType = "OPERAND_IMMEDIATE";
 }
+
 // Sign-extended immediate classes. We don't need to define the full lattice
 // here because there is no instruction with an ambiguity between ImmSExti64i32
 // and ImmSExti32i8.
@@ -610,12 +606,6 @@ def ImmSExti32i8AsmOperand : ImmSExtAsmOperandClass {
   let Name = "ImmSExti32i8";
 }
 
-// [0, 0x000000FF]
-def ImmZExtu32u8AsmOperand : ImmZExtAsmOperandClass {
-  let Name = "ImmZExtu32u8";
-}
-
-
 // [0, 0x0000007F]                                            |
 //   [0xFFFFFFFFFFFFFF80, 0xFFFFFFFFFFFFFFFF]
 def ImmSExti64i8AsmOperand : ImmSExtAsmOperandClass {
@@ -633,11 +623,6 @@ def i16i8imm  : Operand<i16> {
 // 32-bits but only 8 bits are significant.
 def i32i8imm  : Operand<i32> {
   let ParserMatchClass = ImmSExti32i8AsmOperand;
-  let OperandType = "OPERAND_IMMEDIATE";
-}
-// 32-bits but only 8 bits are significant, and those 8 bits are unsigned.
-def u32u8imm  : Operand<i32> {
-  let ParserMatchClass = ImmZExtu32u8AsmOperand;
   let OperandType = "OPERAND_IMMEDIATE";
 }
 
@@ -723,6 +708,7 @@ def UseSSE3      : Predicate<"Subtarget->hasSSE3() && !Subtarget->hasAVX()">;
 def HasSSSE3     : Predicate<"Subtarget->hasSSSE3()">;
 def UseSSSE3     : Predicate<"Subtarget->hasSSSE3() && !Subtarget->hasAVX()">;
 def HasSSE41     : Predicate<"Subtarget->hasSSE41()">;
+def NoSSE41      : Predicate<"!Subtarget->hasSSE41()">;
 def UseSSE41     : Predicate<"Subtarget->hasSSE41() && !Subtarget->hasAVX()">;
 def HasSSE42     : Predicate<"Subtarget->hasSSE42()">;
 def UseSSE42     : Predicate<"Subtarget->hasSSE42() && !Subtarget->hasAVX()">;
@@ -739,9 +725,11 @@ def HasCDI       : Predicate<"Subtarget->hasCDI()">;
 def HasPFI       : Predicate<"Subtarget->hasPFI()">;
 def HasERI       : Predicate<"Subtarget->hasERI()">;
 def HasDQI       : Predicate<"Subtarget->hasDQI()">;
+def NoDQI        : Predicate<"!Subtarget->hasDQI()">;
 def HasBWI       : Predicate<"Subtarget->hasBWI()">;
 def HasVLX       : Predicate<"Subtarget->hasVLX()">,
                      AssemblerPredicate<"FeatureVLX", "AVX-512 VLX ISA">;
+def NoVLX        : Predicate<"!Subtarget->hasVLX()">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
 def HasAES       : Predicate<"Subtarget->hasAES()">;
@@ -763,8 +751,10 @@ def HasHLE       : Predicate<"Subtarget->hasHLE()">;
 def HasTSX       : Predicate<"Subtarget->hasRTM() || Subtarget->hasHLE()">;
 def HasADX       : Predicate<"Subtarget->hasADX()">;
 def HasSHA       : Predicate<"Subtarget->hasSHA()">;
+def HasSGX       : Predicate<"Subtarget->hasSGX()">;
 def HasPRFCHW    : Predicate<"Subtarget->hasPRFCHW()">;
 def HasRDSEED    : Predicate<"Subtarget->hasRDSEED()">;
+def HasSMAP      : Predicate<"Subtarget->hasSMAP()">;
 def HasPrefetchW : Predicate<"Subtarget->hasPRFCHW()">;
 def FPStackf32   : Predicate<"!Subtarget->hasSSE1()">;
 def FPStackf64   : Predicate<"!Subtarget->hasSSE2()">;
@@ -773,6 +763,8 @@ def Not64BitMode : Predicate<"!Subtarget->is64Bit()">,
                              AssemblerPredicate<"!Mode64Bit", "Not 64-bit mode">;
 def In64BitMode  : Predicate<"Subtarget->is64Bit()">,
                              AssemblerPredicate<"Mode64Bit", "64-bit mode">;
+def IsLP64  : Predicate<"Subtarget->isTarget64BitLP64()">;
+def NotLP64 : Predicate<"!Subtarget->isTarget64BitLP64()">;
 def In16BitMode  : Predicate<"Subtarget->is16Bit()">,
                              AssemblerPredicate<"Mode16Bit", "16-bit mode">;
 def Not16BitMode : Predicate<"!Subtarget->is16Bit()">,
@@ -928,7 +920,7 @@ def trunc_su : PatFrag<(ops node:$src), (trunc node:$src), [{
 //
 
 // Nop
-let neverHasSideEffects = 1, SchedRW = [WriteZero] in {
+let hasSideEffects = 0, SchedRW = [WriteZero] in {
   def NOOP : I<0x90, RawFrm, (outs), (ins), "nop", [], IIC_NOP>;
   def NOOPW : I<0x1f, MRMXm, (outs), (ins i16mem:$zero),
                 "nop{w}\t$zero", [], IIC_NOP>, TB, OpSize16;
@@ -942,12 +934,12 @@ def ENTER : Ii16<0xC8, RawFrmImm8, (outs), (ins i16imm:$len, i8imm:$lvl),
                  "enter\t$len, $lvl", [], IIC_ENTER>, Sched<[WriteMicrocoded]>;
 
 let SchedRW = [WriteALU] in {
-let Defs = [EBP, ESP], Uses = [EBP, ESP], mayLoad = 1, neverHasSideEffects=1 in
+let Defs = [EBP, ESP], Uses = [EBP, ESP], mayLoad = 1, hasSideEffects=0 in
 def LEAVE    : I<0xC9, RawFrm,
                  (outs), (ins), "leave", [], IIC_LEAVE>,
                  Requires<[Not64BitMode]>;
 
-let Defs = [RBP,RSP], Uses = [RBP,RSP], mayLoad = 1, neverHasSideEffects = 1 in
+let Defs = [RBP,RSP], Uses = [RBP,RSP], mayLoad = 1, hasSideEffects = 0 in
 def LEAVE64  : I<0xC9, RawFrm,
                  (outs), (ins), "leave", [], IIC_LEAVE>,
                  Requires<[In64BitMode]>;
@@ -957,7 +949,7 @@ def LEAVE64  : I<0xC9, RawFrm,
 //  Miscellaneous Instructions.
 //
 
-let Defs = [ESP], Uses = [ESP], neverHasSideEffects=1 in {
+let Defs = [ESP], Uses = [ESP], hasSideEffects=0 in {
 let mayLoad = 1, SchedRW = [WriteLoad] in {
 def POP16r  : I<0x58, AddRegFrm, (outs GR16:$reg), (ins), "pop{w}\t$reg", [],
                 IIC_POP_REG16>, OpSize16;
@@ -1013,7 +1005,7 @@ def PUSHF32  : I<0x9C, RawFrm, (outs), (ins), "pushf{l|d}", [], IIC_PUSH_F>,
 } // mayStore, SchedRW
 }
 
-let Defs = [RSP], Uses = [RSP], neverHasSideEffects=1 in {
+let Defs = [RSP], Uses = [RSP], hasSideEffects=0 in {
 let mayLoad = 1, SchedRW = [WriteLoad] in {
 def POP64r   : I<0x58, AddRegFrm, (outs GR64:$reg), (ins), "pop{q}\t$reg", [],
                  IIC_POP_REG>, OpSize32, Requires<[In64BitMode]>;
@@ -1032,7 +1024,7 @@ def PUSH64rmm: I<0xFF, MRM6m, (outs), (ins i64mem:$src), "push{q}\t$src", [],
 } // mayStore, SchedRW
 }
 
-let Defs = [RSP], Uses = [RSP], neverHasSideEffects = 1, mayStore = 1,
+let Defs = [RSP], Uses = [RSP], hasSideEffects = 0, mayStore = 1,
     SchedRW = [WriteStore] in {
 def PUSH64i8   : Ii8<0x6a, RawFrm, (outs), (ins i64i8imm:$imm),
                     "push{q}\t$imm", [], IIC_PUSH_IMM>, Requires<[In64BitMode]>;
@@ -1044,22 +1036,22 @@ def PUSH64i32  : Ii32S<0x68, RawFrm, (outs), (ins i64i32imm:$imm),
                     Requires<[In64BitMode]>;
 }
 
-let Defs = [RSP, EFLAGS], Uses = [RSP], mayLoad = 1, neverHasSideEffects=1 in
+let Defs = [RSP, EFLAGS], Uses = [RSP], mayLoad = 1, hasSideEffects=0 in
 def POPF64   : I<0x9D, RawFrm, (outs), (ins), "popfq", [], IIC_POP_FD>,
                OpSize32, Requires<[In64BitMode]>, Sched<[WriteLoad]>;
-let Defs = [RSP], Uses = [RSP, EFLAGS], mayStore = 1, neverHasSideEffects=1 in
+let Defs = [RSP], Uses = [RSP, EFLAGS], mayStore = 1, hasSideEffects=0 in
 def PUSHF64    : I<0x9C, RawFrm, (outs), (ins), "pushfq", [], IIC_PUSH_F>,
                  OpSize32, Requires<[In64BitMode]>, Sched<[WriteStore]>;
 
 let Defs = [EDI, ESI, EBP, EBX, EDX, ECX, EAX, ESP], Uses = [ESP],
-    mayLoad = 1, neverHasSideEffects = 1, SchedRW = [WriteLoad] in {
+    mayLoad = 1, hasSideEffects = 0, SchedRW = [WriteLoad] in {
 def POPA32   : I<0x61, RawFrm, (outs), (ins), "popal", [], IIC_POP_A>,
                OpSize32, Requires<[Not64BitMode]>;
 def POPA16   : I<0x61, RawFrm, (outs), (ins), "popaw", [], IIC_POP_A>,
                OpSize16, Requires<[Not64BitMode]>;
 }
 let Defs = [ESP], Uses = [EDI, ESI, EBP, EBX, EDX, ECX, EAX, ESP],
-    mayStore = 1, neverHasSideEffects = 1, SchedRW = [WriteStore] in {
+    mayStore = 1, hasSideEffects = 0, SchedRW = [WriteStore] in {
 def PUSHA32  : I<0x60, RawFrm, (outs), (ins), "pushal", [], IIC_PUSH_A>,
                OpSize32, Requires<[Not64BitMode]>;
 def PUSHA16  : I<0x60, RawFrm, (outs), (ins), "pushaw", [], IIC_PUSH_A>,
@@ -1189,7 +1181,7 @@ def CMPSQ : RI<0xA7, RawFrmDstSrc, (outs), (ins dstidx64:$dst, srcidx64:$src),
 //  Move Instructions.
 //
 let SchedRW = [WriteMove] in {
-let neverHasSideEffects = 1 in {
+let hasSideEffects = 0 in {
 def MOV8rr  : I<0x88, MRMDestReg, (outs GR8 :$dst), (ins GR8 :$src),
                 "mov{b}\t{$src, $dst|$dst, $src}", [], IIC_MOV>;
 def MOV16rr : I<0x89, MRMDestReg, (outs GR16:$dst), (ins GR16:$src),
@@ -1394,17 +1386,17 @@ def MOV64mr : RI<0x89, MRMDestMem, (outs), (ins i64mem:$dst, GR64:$src),
 // that they can be used for copying and storing h registers, which can't be
 // encoded when a REX prefix is present.
 let isCodeGenOnly = 1 in {
-let neverHasSideEffects = 1 in
+let hasSideEffects = 0 in
 def MOV8rr_NOREX : I<0x88, MRMDestReg,
                      (outs GR8_NOREX:$dst), (ins GR8_NOREX:$src),
                      "mov{b}\t{$src, $dst|$dst, $src}  # NOREX", [], IIC_MOV>,
                    Sched<[WriteMove]>;
-let mayStore = 1, neverHasSideEffects = 1 in
+let mayStore = 1, hasSideEffects = 0 in
 def MOV8mr_NOREX : I<0x88, MRMDestMem,
                      (outs), (ins i8mem_NOREX:$dst, GR8_NOREX:$src),
                      "mov{b}\t{$src, $dst|$dst, $src}  # NOREX", [],
                      IIC_MOV_MEM>, Sched<[WriteStore]>;
-let mayLoad = 1, neverHasSideEffects = 1,
+let mayLoad = 1, hasSideEffects = 0,
     canFoldAsLoad = 1, isReMaterializable = 1 in
 def MOV8rm_NOREX : I<0x8A, MRMSrcMem,
                      (outs GR8_NOREX:$dst), (ins i8mem_NOREX:$src),
@@ -1418,7 +1410,7 @@ let SchedRW = [WriteALU] in {
 let Defs = [EFLAGS], Uses = [AH] in
 def SAHF     : I<0x9E, RawFrm, (outs),  (ins), "sahf",
                  [(set EFLAGS, (X86sahf AH))], IIC_AHF>;
-let Defs = [AH], Uses = [EFLAGS], neverHasSideEffects = 1 in
+let Defs = [AH], Uses = [EFLAGS], hasSideEffects = 0 in
 def LAHF     : I<0x9F, RawFrm, (outs),  (ins), "lahf", [],
                 IIC_AHF>;  // AH = flags
 } // SchedRW
@@ -2421,6 +2413,7 @@ include "X86InstrVMX.td"
 include "X86InstrSVM.td"
 
 include "X86InstrTSX.td"
+include "X86InstrSGX.td"
 
 // System instructions.
 include "X86InstrSystem.td"
@@ -2539,7 +2532,7 @@ def : MnemonicAlias<"fldcww",   "fldcw",    "att">;
 def : MnemonicAlias<"fnstcww",  "fnstcw",   "att">;
 def : MnemonicAlias<"fnstsww",  "fnstsw",   "att">;
 def : MnemonicAlias<"fucomip",  "fucompi",  "att">;
-def : MnemonicAlias<"fwait",    "wait",     "att">;
+def : MnemonicAlias<"fwait",    "wait">;
 
 
 class CondCodeAlias<string Prefix,string Suffix, string OldCond, string NewCond,

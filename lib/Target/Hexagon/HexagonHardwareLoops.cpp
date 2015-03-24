@@ -220,7 +220,7 @@ namespace {
   int HexagonHardwareLoops::Counter = 0;
 #endif
 
-  /// \brief Abstraction for a trip count of a loop. A smaller vesrsion
+  /// \brief Abstraction for a trip count of a loop. A smaller version
   /// of the MachineOperand class without the concerns of changing the
   /// operand representation.
   class CountValue {
@@ -266,7 +266,8 @@ namespace {
     }
 
     void print(raw_ostream &OS, const TargetMachine *TM = nullptr) const {
-      const TargetRegisterInfo *TRI = TM ? TM->getRegisterInfo() : nullptr;
+      const TargetRegisterInfo *TRI =
+          TM ? TM->getSubtargetImpl()->getRegisterInfo() : nullptr;
       if (isReg()) { OS << PrintReg(Contents.R.Reg, TRI, Contents.R.Sub); }
       if (isImm()) { OS << Contents.ImmVal; }
     }
@@ -302,8 +303,10 @@ bool HexagonHardwareLoops::runOnMachineFunction(MachineFunction &MF) {
   MRI = &MF.getRegInfo();
   MDT = &getAnalysis<MachineDominatorTree>();
   TM  = static_cast<const HexagonTargetMachine*>(&MF.getTarget());
-  TII = static_cast<const HexagonInstrInfo*>(TM->getInstrInfo());
-  TRI = static_cast<const HexagonRegisterInfo*>(TM->getRegisterInfo());
+  TII = static_cast<const HexagonInstrInfo *>(
+      TM->getSubtargetImpl()->getInstrInfo());
+  TRI = static_cast<const HexagonRegisterInfo *>(
+      TM->getSubtargetImpl()->getRegisterInfo());
 
   for (MachineLoopInfo::iterator I = MLI->begin(), E = MLI->end();
        I != E; ++I) {
@@ -537,16 +540,16 @@ CountValue *HexagonHardwareLoops::getLoopTripCount(MachineLoop *L,
     return nullptr;
 
   switch (CondOpc) {
-    case Hexagon::CMPEQri:
-    case Hexagon::CMPEQrr:
+    case Hexagon::C2_cmpeqi:
+    case Hexagon::C2_cmpeq:
       Cmp = !Negated ? Comparison::EQ : Comparison::NE;
       break;
-    case Hexagon::CMPGTUri:
-    case Hexagon::CMPGTUrr:
+    case Hexagon::C2_cmpgtui:
+    case Hexagon::C2_cmpgtu:
       Cmp = !Negated ? Comparison::GTu : Comparison::LEu;
       break;
-    case Hexagon::CMPGTri:
-    case Hexagon::CMPGTrr:
+    case Hexagon::C2_cmpgti:
+    case Hexagon::C2_cmpgt:
       Cmp = !Negated ? Comparison::GTs : Comparison::LEs;
       break;
     // Very limited support for byte/halfword compares.
@@ -778,7 +781,7 @@ CountValue *HexagonHardwareLoops::computeCount(MachineLoop *Loop,
     DistR = End->getReg();
     DistSR = End->getSubReg();
   } else {
-    const MCInstrDesc &SubD = RegToReg ? TII->get(Hexagon::SUB_rr) :
+    const MCInstrDesc &SubD = RegToReg ? TII->get(Hexagon::A2_sub) :
                               (RegToImm ? TII->get(Hexagon::SUB_ri) :
                                           TII->get(Hexagon::ADD_ri));
     unsigned SubR = MRI->createVirtualRegister(IntRC);

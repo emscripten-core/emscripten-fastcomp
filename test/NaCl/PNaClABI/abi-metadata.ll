@@ -19,7 +19,7 @@
 ; DEBUG-NOT: Named metadata node llvm.module.flags is disallowed
 ; CHECK: Named metadata node llvm.module.flags is disallowed
 !llvm.module.flags = !{!1}
-!1 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+!1 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
 
 ; CHECK: Named metadata node madeup is disallowed
 ; DEBUG: Named metadata node madeup is disallowed

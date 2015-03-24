@@ -67,14 +67,13 @@ MachOUniversalBinary::ObjectForArch::ObjectForArch(
   }
 }
 
-ErrorOr<std::unique_ptr<ObjectFile>>
+ErrorOr<std::unique_ptr<MachOObjectFile>>
 MachOUniversalBinary::ObjectForArch::getAsObjectFile() const {
   if (Parent) {
     StringRef ParentData = Parent->getData();
     StringRef ObjectData = ParentData.substr(Header.offset, Header.size);
-    std::string ObjectName = Parent->getFileName().str();
-    std::unique_ptr<MemoryBuffer> ObjBuffer(
-        MemoryBuffer::getMemBuffer(ObjectData, ObjectName, false));
+    StringRef ObjectName = Parent->getFileName();
+    MemoryBufferRef ObjBuffer(ObjectData, ObjectName);
     return ObjectFile::createMachOObjectFile(ObjBuffer);
   }
   return object_error::parse_failed;
@@ -85,13 +84,12 @@ std::error_code MachOUniversalBinary::ObjectForArch::getAsArchive(
   if (Parent) {
     StringRef ParentData = Parent->getData();
     StringRef ObjectData = ParentData.substr(Header.offset, Header.size);
-    std::string ObjectName = Parent->getFileName().str();
-    std::unique_ptr<MemoryBuffer> ObjBuffer(
-        MemoryBuffer::getMemBuffer(ObjectData, ObjectName, false));
-    ErrorOr<Archive *> Obj = Archive::create(std::move(ObjBuffer));
+    StringRef ObjectName = Parent->getFileName();
+    MemoryBufferRef ObjBuffer(ObjectData, ObjectName);
+    ErrorOr<std::unique_ptr<Archive>> Obj = Archive::create(ObjBuffer);
     if (std::error_code EC = Obj.getError())
       return EC;
-    Result.reset(Obj.get());
+    Result = std::move(Obj.get());
     return object_error::success;
   }
   return object_error::parse_failed;
@@ -99,21 +97,20 @@ std::error_code MachOUniversalBinary::ObjectForArch::getAsArchive(
 
 void MachOUniversalBinary::anchor() { }
 
-ErrorOr<MachOUniversalBinary *>
-MachOUniversalBinary::create(std::unique_ptr<MemoryBuffer> Source) {
+ErrorOr<std::unique_ptr<MachOUniversalBinary>>
+MachOUniversalBinary::create(MemoryBufferRef Source) {
   std::error_code EC;
   std::unique_ptr<MachOUniversalBinary> Ret(
-      new MachOUniversalBinary(std::move(Source), EC));
+      new MachOUniversalBinary(Source, EC));
   if (EC)
     return EC;
-  return Ret.release();
+  return std::move(Ret);
 }
 
-MachOUniversalBinary::MachOUniversalBinary(std::unique_ptr<MemoryBuffer> Source,
+MachOUniversalBinary::MachOUniversalBinary(MemoryBufferRef Source,
                                            std::error_code &ec)
-    : Binary(Binary::ID_MachOUniversalBinary, std::move(Source)),
-      NumberOfObjects(0) {
-  if (Data->getBufferSize() < sizeof(MachO::fat_header)) {
+    : Binary(Binary::ID_MachOUniversalBinary, Source), NumberOfObjects(0) {
+  if (Data.getBufferSize() < sizeof(MachO::fat_header)) {
     ec = object_error::invalid_file_type;
     return;
   }
@@ -142,7 +139,7 @@ static bool getCTMForArch(Triple::ArchType Arch, MachO::CPUType &CTM) {
   }
 }
 
-ErrorOr<std::unique_ptr<ObjectFile>>
+ErrorOr<std::unique_ptr<MachOObjectFile>>
 MachOUniversalBinary::getObjectForArch(Triple::ArchType Arch) const {
   MachO::CPUType CTM;
   if (!getCTMForArch(Arch, CTM))

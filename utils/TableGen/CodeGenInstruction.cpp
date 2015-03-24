@@ -314,6 +314,9 @@ CodeGenInstruction::CodeGenInstruction(Record *R)
   hasPostISelHook = R->getValueAsBit("hasPostISelHook");
   hasCtrlDep   = R->getValueAsBit("hasCtrlDep");
   isNotDuplicable = R->getValueAsBit("isNotDuplicable");
+  isRegSequence = R->getValueAsBit("isRegSequence");
+  isExtractSubreg = R->getValueAsBit("isExtractSubreg");
+  isInsertSubreg = R->getValueAsBit("isInsertSubreg");
 
   bool Unset;
   mayLoad      = R->getValueAsBitOrUnset("mayLoad", Unset);
@@ -322,7 +325,6 @@ CodeGenInstruction::CodeGenInstruction(Record *R)
   mayStore_Unset = Unset;
   hasSideEffects = R->getValueAsBitOrUnset("hasSideEffects", Unset);
   hasSideEffects_Unset = Unset;
-  neverHasSideEffects = R->getValueAsBit("neverHasSideEffects");
 
   isAsCheapAsAMove = R->getValueAsBit("isAsCheapAsAMove");
   hasExtraSrcRegAllocReq = R->getValueAsBit("hasExtraSrcRegAllocReq");
@@ -331,9 +333,6 @@ CodeGenInstruction::CodeGenInstruction(Record *R)
   isPseudo = R->getValueAsBit("isPseudo");
   ImplicitDefs = R->getValueAsListOfDefs("Defs");
   ImplicitUses = R->getValueAsListOfDefs("Uses");
-
-  if (neverHasSideEffects + hasSideEffects > 1)
-    PrintFatalError(R->getName() + ": multiple conflicting side-effect flags set!");
 
   // Parse Constraints.
   ParseConstraints(R->getValueAsString("Constraints"), Operands);
@@ -516,6 +515,21 @@ bool CodeGenInstAlias::tryAliasOpMatch(DagInit *Result, unsigned AliasOpNo,
     if (!Result->getArgName(AliasOpNo).empty())
       PrintFatalError(Loc, "result argument #" + Twine(AliasOpNo) +
                       " must not have a name!");
+    ResOp = ResultOperand(II->getValue());
+    return true;
+  }
+
+  // Bits<n> (also used for 0bxx literals)
+  if (BitsInit *BI = dyn_cast<BitsInit>(Arg)) {
+    if (hasSubOps || !InstOpRec->isSubClassOf("Operand"))
+      return false;
+    if (!BI->isComplete())
+      return false;
+    // Convert the bits init to an integer and use that for the result.
+    IntInit *II =
+      dyn_cast_or_null<IntInit>(BI->convertInitializerTo(IntRecTy::get()));
+    if (!II)
+      return false;
     ResOp = ResultOperand(II->getValue());
     return true;
   }

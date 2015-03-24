@@ -110,10 +110,6 @@ class MachineModuleInfo : public ImmutablePass {
   /// by debug and exception handling consumers.
   std::vector<MCCFIInstruction> FrameInstructions;
 
-  /// CompactUnwindEncoding - If the target supports it, this is the compact
-  /// unwind encoding. It replaces a function's CIE and FDE.
-  uint32_t CompactUnwindEncoding;
-
   /// LandingPads - List of LandingPadInfo describing the landing pad
   /// information in the current function.
   std::vector<LandingPadInfo> LandingPads;
@@ -131,7 +127,7 @@ class MachineModuleInfo : public ImmutablePass {
   unsigned CurCallSite;
 
   /// TypeInfos - List of C++ TypeInfo used in the current function.
-  std::vector<const GlobalVariable *> TypeInfos;
+  std::vector<const GlobalValue *> TypeInfos;
 
   /// FilterIds - List of typeids encoding filters used in the current function.
   std::vector<unsigned> FilterIds;
@@ -170,6 +166,7 @@ public:
 
   struct VariableDbgInfo {
     TrackingVH<MDNode> Var;
+    TrackingVH<MDNode> Expr;
     unsigned Slot;
     DebugLoc Loc;
   };
@@ -247,15 +244,6 @@ public:
     return FrameInstructions.size() - 1;
   }
 
-  /// getCompactUnwindEncoding - Returns the compact unwind encoding for a
-  /// function if the target supports the encoding. This encoding replaces a
-  /// function's CIE and FDE.
-  uint32_t getCompactUnwindEncoding() const { return CompactUnwindEncoding; }
-
-  /// setCompactUnwindEncoding - Set the compact unwind encoding for a function
-  /// if the target supports the encoding.
-  void setCompactUnwindEncoding(uint32_t Enc) { CompactUnwindEncoding = Enc; }
-
   /// getAddrLabelSymbol - Return the symbol to be used for the specified basic
   /// block when its address is taken.  This cannot be its normal LBB label
   /// because the block may be accessed outside its containing function.
@@ -313,12 +301,12 @@ public:
   /// addCatchTypeInfo - Provide the catch typeinfo for a landing pad.
   ///
   void addCatchTypeInfo(MachineBasicBlock *LandingPad,
-                        ArrayRef<const GlobalVariable *> TyInfo);
+                        ArrayRef<const GlobalValue *> TyInfo);
 
   /// addFilterTypeInfo - Provide the filter typeinfo for a landing pad.
   ///
   void addFilterTypeInfo(MachineBasicBlock *LandingPad,
-                         ArrayRef<const GlobalVariable *> TyInfo);
+                         ArrayRef<const GlobalValue *> TyInfo);
 
   /// addCleanup - Add a cleanup action for a landing pad.
   ///
@@ -326,7 +314,7 @@ public:
 
   /// getTypeIDFor - Return the type id for the specified typeinfo.  This is
   /// function wide.
-  unsigned getTypeIDFor(const GlobalVariable *TI);
+  unsigned getTypeIDFor(const GlobalValue *TI);
 
   /// getFilterIDFor - Return the id of the filter encoded by TyIds.  This is
   /// function wide.
@@ -387,7 +375,7 @@ public:
 
   /// getTypeInfos - Return a reference to the C++ typeinfo for the current
   /// function.
-  const std::vector<const GlobalVariable *> &getTypeInfos() const {
+  const std::vector<const GlobalValue *> &getTypeInfos() const {
     return TypeInfos;
   }
 
@@ -403,8 +391,9 @@ public:
 
   /// setVariableDbgInfo - Collect information used to emit debugging
   /// information of a variable.
-  void setVariableDbgInfo(MDNode *N, unsigned Slot, DebugLoc Loc) {
-    VariableDbgInfo Info = { N, Slot, Loc };
+  void setVariableDbgInfo(MDNode *Var, MDNode *Expr, unsigned Slot,
+                          DebugLoc Loc) {
+    VariableDbgInfo Info = {Var, Expr, Slot, Loc};
     VariableDbgInfos.push_back(std::move(Info));
   }
 

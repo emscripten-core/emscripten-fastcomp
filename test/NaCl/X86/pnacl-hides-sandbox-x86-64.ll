@@ -53,7 +53,7 @@ entry:
 ; ASM: movl %ebp, %eax
 ; ASM-NEXT: pushq %rax
 ; In asm, direct calls are just 'call'
-; ASM: call DirectCallTarget
+; ASM: callq DirectCallTarget
 ; The return sequence should use %r11
 ; ASM: popq %r11
 ; ASM: nacljmp %r11d, %r15
@@ -81,7 +81,7 @@ entry:
 ; calculation
 ; PIC: movl {{.*}}, %r11d
 ; Calculate and push the return address
-; PIC-NEXT: leal 36(%rip), %r10d
+; PIC-NEXT: leal {{[0-9]+}}(%rip), %r10d
 ; PIC-NEXT: pushq %r10
 ; Fixed sequence for indirect jump
 ; PIC: andl $-32, %r11d

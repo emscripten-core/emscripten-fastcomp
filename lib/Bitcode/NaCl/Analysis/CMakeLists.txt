@@ -11,6 +11,7 @@ add_llvm_library(LLVMNaClBitAnalysis
   NaClBitcodeSubblockDist.cpp
   NaClBitcodeValueDist.cpp
   NaClAnalyzerBlockDist.cpp
+  NaClCompress.cpp
   NaClCompressBlockDist.cpp
   NaClCompressCodeDist.cpp
   NaClObjDumpStream.cpp

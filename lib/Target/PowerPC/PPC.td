@@ -56,6 +56,8 @@ def FeatureCRBits    : SubtargetFeature<"crbits", "UseCRBits", "true",
                               "Use condition-register bits individually">;
 def FeatureAltivec   : SubtargetFeature<"altivec","HasAltivec", "true",
                                         "Enable Altivec instructions">;
+def FeatureSPE       : SubtargetFeature<"spe","HasSPE", "true",
+                                        "Enable SPE instructions">;
 def FeatureMFOCRF    : SubtargetFeature<"mfocrf","HasMFOCRF", "true",
                                         "Enable the MFOCRF instruction">;
 def FeatureFSqrt     : SubtargetFeature<"fsqrt","HasFSQRT", "true",
@@ -88,11 +90,23 @@ def FeatureLDBRX     : SubtargetFeature<"ldbrx","HasLDBRX", "true",
                                         "Enable the ldbrx instruction">;
 def FeatureBookE     : SubtargetFeature<"booke", "IsBookE", "true",
                                         "Enable Book E instructions">;
+def FeatureMSYNC     : SubtargetFeature<"msync", "HasOnlyMSYNC", "true",
+                              "Has only the msync instruction instead of sync",
+                              [FeatureBookE]>;
+def FeatureE500      : SubtargetFeature<"e500", "IsE500", "true",
+                                        "Enable E500/E500mc instructions">;
+def FeaturePPC4xx    : SubtargetFeature<"ppc4xx", "IsPPC4xx", "true",
+                                        "Enable PPC 4xx instructions">;
+def FeaturePPC6xx    : SubtargetFeature<"ppc6xx", "IsPPC6xx", "true",
+                                        "Enable PPC 6xx instructions">;
 def FeatureQPX       : SubtargetFeature<"qpx","HasQPX", "true",
                                         "Enable QPX instructions">;
 def FeatureVSX       : SubtargetFeature<"vsx","HasVSX", "true",
                                         "Enable VSX instructions",
                                         [FeatureAltivec]>;
+def FeatureP8Vector  : SubtargetFeature<"power8-vector", "HasP8Vector", "true",
+                                        "Enable POWER8 vector instructions",
+                                        [FeatureVSX, FeatureAltivec]>;
 
 def DeprecatedMFTB   : SubtargetFeature<"", "DeprecatedMFTB", "true",
                                         "Treat mftb as deprecated">;
@@ -105,7 +119,16 @@ def DeprecatedDST    : SubtargetFeature<"", "DeprecatedDST", "true",
 // CMPB         p6, p6x, p7        cmpb
 // DFP          p6, p6x, p7        decimal floating-point instructions
 // POPCNTB      p5 through p7      popcntb and related instructions
-// VSX          p7                 vector-scalar instruction set
+
+//===----------------------------------------------------------------------===//
+// ABI Selection                                                              //
+//===----------------------------------------------------------------------===//
+
+def FeatureELFv1 : SubtargetFeature<"elfv1", "TargetABI", "PPC_ABI_ELFv1",
+                                    "Use the ELFv1 ABI">;
+
+def FeatureELFv2 : SubtargetFeature<"elfv2", "TargetABI", "PPC_ABI_ELFv2",
+                                    "Use the ELFv2 ABI">;
 
 //===----------------------------------------------------------------------===//
 // Classes used for relation maps.
@@ -178,10 +201,12 @@ include "PPCInstrInfo.td"
 def : Processor<"generic", G3Itineraries, [Directive32]>;
 def : ProcessorModel<"440", PPC440Model, [Directive440, FeatureISEL,
                                           FeatureFRES, FeatureFRSQRTE,
-                                          FeatureBookE, DeprecatedMFTB]>;
+                                          FeatureBookE, FeatureMSYNC,
+                                          DeprecatedMFTB]>;
 def : ProcessorModel<"450", PPC440Model, [Directive440, FeatureISEL,
                                           FeatureFRES, FeatureFRSQRTE,
-                                          FeatureBookE, DeprecatedMFTB]>;
+                                          FeatureBookE, FeatureMSYNC,
+                                          DeprecatedMFTB]>;
 def : Processor<"601", G3Itineraries, [Directive601]>;
 def : Processor<"602", G3Itineraries, [Directive602]>;
 def : Processor<"603", G3Itineraries, [Directive603,

@@ -14,7 +14,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/StreamableMemoryObject.h"
+#include "llvm/Support/StreamingMemoryObject.h"
 
 #include <limits>
 #include <cstring>
@@ -101,8 +101,6 @@ std::string NaClBitcodeHeaderField::Contents() const {
   case kInvalid:
     ss << "Invalid";
     break;
-  default:
-    report_fatal_error("PNaCl bitcode file contains unknown field tag");
   }
   ss << ": ";
   switch (FType) {
@@ -118,8 +116,6 @@ std::string NaClBitcodeHeaderField::Contents() const {
     }
     ss << "]";
     break;
-  default:
-    report_fatal_error("PNaCl bitcode file contains unknown field type");
   }
   return ss.str();
 }
@@ -194,19 +190,22 @@ bool NaClBitcodeHeader::Read(const unsigned char *&BufPtr,
   return false;
 }
 
-bool NaClBitcodeHeader::Read(StreamableMemoryObject *Bytes) {
+bool NaClBitcodeHeader::Read(MemoryObject *Bytes) {
   unsigned NumFields;
   unsigned NumBytes;
+  // First, read the prefix, which is 2 * WordSize, to determine the
+  // NumBytes and NumFields.
   {
     unsigned char Buffer[2 * WordSize];
-    if (Bytes->readBytes(0, sizeof(Buffer), Buffer))
+    if (Bytes->readBytes(Buffer, sizeof(Buffer), 0) != sizeof(Buffer))
       return UnsupportedError("Bitcode read failure");
     if (ReadPrefix(Buffer, Buffer + sizeof(Buffer), NumFields, NumBytes))
       return true; // ReadPrefix sets UnsupportedMessage
   }
+  // Then read the rest, starting after the 2 * WordSize of the prefix.
   uint8_t *Header = new uint8_t[NumBytes];
   bool failed =
-      Bytes->readBytes(2 * WordSize, NumBytes, Header) ||
+      Bytes->readBytes(Header, NumBytes, 2 * WordSize) != NumBytes ||
       ReadFields(Header, Header + NumBytes, NumFields, NumBytes);
   delete[] Header;
   if (failed)

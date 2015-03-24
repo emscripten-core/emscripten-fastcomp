@@ -105,7 +105,7 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
 
 //
 
-extern FunctionPass *createSimplifyAllocasPass() {
+extern FunctionPass *createEmscriptenSimplifyAllocasPass() {
   return new SimplifyAllocas();
 }
 

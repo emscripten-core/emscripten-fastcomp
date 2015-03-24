@@ -3,7 +3,7 @@
 ; RUN:   | FileCheck %s -check-prefix=CHECK-MASK
 
 !llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
 
 target datalayout = "p:32:32:32"
 target triple = "le32-unknown-nacl"

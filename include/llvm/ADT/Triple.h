@@ -48,8 +48,6 @@ public:
 
     arm,        // ARM (little endian): arm, armv.*, xscale
     armeb,      // ARM (big endian): armeb
-    arm64,      // ARM64 (little endian): arm64
-    arm64_be,   // ARM64 (big endian): arm64_be
     asmjs,      // asm.js: asmjs
     aarch64,    // AArch64 (little endian): aarch64
     aarch64_be, // AArch64 (big endian): aarch64_be
@@ -75,7 +73,11 @@ public:
     nvptx,      // NVPTX: 32-bit
     nvptx64,    // NVPTX: 64-bit
     le32,       // le32: generic little-endian 32-bit CPU (PNaCl / Emscripten)
-    amdil,      // amdil: amd IL
+    le64,       // le64: generic little-endian 64-bit CPU (PNaCl / Emscripten)
+    amdil,      // AMDIL
+    amdil64,    // AMDIL with 64-bit pointers
+    hsail,      // AMD HSAIL
+    hsail64,    // AMD HSAIL with 64-bit pointers
     spir,       // SPIR: standard portable IR for OpenCL 32-bit version
     spir64,     // SPIR: standard portable IR for OpenCL 64-bit version
     kalimba     // Kalimba: generic kalimba
@@ -93,7 +95,11 @@ public:
     ARMSubArch_v6t2,
     ARMSubArch_v5,
     ARMSubArch_v5te,
-    ARMSubArch_v4t
+    ARMSubArch_v4t,
+
+    KalimbaSubArch_v3,
+    KalimbaSubArch_v4,
+    KalimbaSubArch_v5
   };
   enum VendorType {
     UnknownVendor,
@@ -113,8 +119,6 @@ public:
   enum OSType {
     UnknownOS,
 
-    AuroraUX,
-    Cygwin,
     Darwin,
     DragonFly,
     FreeBSD,
@@ -123,7 +127,6 @@ public:
     Linux,
     Lv2,        // PS3
     MacOSX,
-    MinGW32,    // i*86-pc-mingw32, *-w64-mingw32
     NetBSD,
     OpenBSD,
     Solaris,
@@ -235,14 +238,14 @@ public:
 #endif
   // @LOCALMOD-END
 
-  /// getEnvironment - Get the parsed environment type of this triple.
-  EnvironmentType getEnvironment() const { return Environment; }
-
   /// hasEnvironment - Does this triple have the optional environment
   /// (fourth) component?
   bool hasEnvironment() const {
     return getEnvironmentName() != "";
   }
+
+  /// getEnvironment - Get the parsed environment type of this triple.
+  EnvironmentType getEnvironment() const { return Environment; }
 
   /// getOSVersion - Parse the version number from the OS name component of the
   /// triple, if present.
@@ -363,7 +366,11 @@ public:
   bool isMacOSX() const { return false; }
   bool isiOS() const { return false; }
   bool isOSDarwin() const { return false; }
+  bool isOSNetBSD() const { return false; }
+  bool isOSOpenBSD() const { return false; }
   bool isOSFreeBSD() const { return false; }
+  bool isOSSolaris() const { return false; }
+  bool isOSBitrig() const { return false; }
   bool isWindowsMSVCEnvironment() const { return false; }
   bool isKnownWindowsMSVCEnvironment() const { return false; }
   bool isWindowsItaniumEnvironment() const { return false; }
@@ -394,8 +401,24 @@ public:
     return isMacOSX() || isiOS();
   }
 
+  bool isOSNetBSD() const {
+    return getOS() == Triple::NetBSD;
+  }
+
+  bool isOSOpenBSD() const {
+    return getOS() == Triple::OpenBSD;
+  }
+
   bool isOSFreeBSD() const {
     return getOS() == Triple::FreeBSD;
+  }
+
+  bool isOSSolaris() const {
+    return getOS() == Triple::Solaris;
+  }
+
+  bool isOSBitrig() const {
+    return getOS() == Triple::Bitrig;
   }
 
   bool isWindowsMSVCEnvironment() const {
@@ -413,13 +436,11 @@ public:
   }
 
   bool isWindowsCygwinEnvironment() const {
-    return getOS() == Triple::Cygwin ||
-           (getOS() == Triple::Win32 && getEnvironment() == Triple::Cygnus);
+    return getOS() == Triple::Win32 && getEnvironment() == Triple::Cygnus;
   }
 
   bool isWindowsGNUEnvironment() const {
-    return getOS() == Triple::MinGW32 ||
-           (getOS() == Triple::Win32 && getEnvironment() == Triple::GNU);
+    return getOS() == Triple::Win32 && getEnvironment() == Triple::GNU;
   }
 
   /// \brief Tests for either Cygwin or MinGW OS
@@ -429,7 +450,8 @@ public:
 
   /// \brief Is this a "Windows" OS targeting a "MSVCRT.dll" environment.
   bool isOSMSVCRT() const {
-    return isWindowsMSVCEnvironment() || isWindowsGNUEnvironment();
+    return isWindowsMSVCEnvironment() || isWindowsGNUEnvironment() ||
+           isWindowsItaniumEnvironment();
   }
 
   /// \brief Tests whether the OS is Windows.
@@ -509,10 +531,6 @@ public:
   /// setOSAndEnvironmentName - Set the operating system and optional
   /// environment components with a single string.
   void setOSAndEnvironmentName(StringRef Str);
-
-  /// getArchNameForAssembler - Get an architecture name that is understood by
-  /// the target assembler.
-  const char *getArchNameForAssembler();
 
   /// @}
   /// @name Helpers to build variants of a particular triple.

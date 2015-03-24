@@ -148,12 +148,6 @@ public:
   /// empty - Return true if there is any lexical scope information available.
   bool empty() { return CurrentFnLexicalScope == nullptr; }
 
-  /// isCurrentFunctionScope - Return true if given lexical scope represents
-  /// current function.
-  bool isCurrentFunctionScope(const LexicalScope *LS) {
-    return LS == CurrentFnLexicalScope;
-  }
-
   /// getCurrentFunctionScope - Return lexical scope for the current function.
   LexicalScope *getCurrentFunctionScope() const {
     return CurrentFnLexicalScope;
@@ -163,7 +157,7 @@ public:
   /// which have machine instructions that belong to lexical scope identified by
   /// DebugLoc.
   void getMachineBasicBlocks(DebugLoc DL,
-                             SmallPtrSet<const MachineBasicBlock *, 4> &MBBs);
+                             SmallPtrSetImpl<const MachineBasicBlock *> &MBBs);
 
   /// dominates - Return true if DebugLoc's lexical scope dominates at least one
   /// machine instruction's lexical scope in a given machine basic block.

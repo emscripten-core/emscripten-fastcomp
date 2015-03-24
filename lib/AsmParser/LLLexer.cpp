@@ -161,14 +161,10 @@ static const char *isLabelTail(const char *CurPtr) {
 // Lexer definition.
 //===----------------------------------------------------------------------===//
 
-LLLexer::LLLexer(MemoryBuffer *StartBuf, SourceMgr &sm, SMDiagnostic &Err,
+LLLexer::LLLexer(StringRef StartBuf, SourceMgr &sm, SMDiagnostic &Err,
                  LLVMContext &C)
   : CurBuf(StartBuf), ErrorInfo(Err), SM(sm), Context(C), APFloatVal(0.0) {
-  CurPtr = CurBuf->getBufferStart();
-}
-
-std::string LLLexer::getFilename() const {
-  return CurBuf->getBufferIdentifier();
+  CurPtr = CurBuf.begin();
 }
 
 int LLLexer::getNextChar() {
@@ -178,7 +174,7 @@ int LLLexer::getNextChar() {
   case 0:
     // A nul character in the stream is either the end of the current buffer or
     // a random nul in the file.  Disambiguate that here.
-    if (CurPtr-1 != CurBuf->getBufferEnd())
+    if (CurPtr-1 != CurBuf.end())
       return 0;  // Just whitespace.
 
     // Otherwise, return end of file.
@@ -516,8 +512,6 @@ lltok::Kind LLLexer::LexIdentifier() {
 
   KEYWORD(private);
   KEYWORD(internal);
-  KEYWORD(linker_private);        // NOTE: deprecated, for parser compatibility
-  KEYWORD(linker_private_weak);   // NOTE: deprecated, for parser compatibility
   KEYWORD(available_externally);
   KEYWORD(linkonce);
   KEYWORD(linkonce_odr);
@@ -586,6 +580,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(x86_stdcallcc);
   KEYWORD(x86_fastcallcc);
   KEYWORD(x86_thiscallcc);
+  KEYWORD(x86_vectorcallcc);
   KEYWORD(arm_apcscc);
   KEYWORD(arm_aapcscc);
   KEYWORD(arm_aapcs_vfpcc);
@@ -601,6 +596,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(anyregcc);
   KEYWORD(preserve_mostcc);
   KEYWORD(preserve_allcc);
+  KEYWORD(ghccc);
 
   KEYWORD(cc);
   KEYWORD(c);
@@ -669,6 +665,10 @@ lltok::Kind LLLexer::LexIdentifier() {
 
   KEYWORD(x);
   KEYWORD(blockaddress);
+
+  // Use-list order directives.
+  KEYWORD(uselistorder);
+  KEYWORD(uselistorder_bb);
 
   KEYWORD(personality);
   KEYWORD(cleanup);

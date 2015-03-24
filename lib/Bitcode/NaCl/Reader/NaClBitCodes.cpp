@@ -18,35 +18,54 @@
 
 using namespace llvm;
 
-void NaClBitCodeAbbrevOp::Print(raw_ostream& Stream) const {
-  if (isLiteral()) {
-    Stream << getLiteralValue();
-  } else if (isEncoding()) {
-    switch (getEncoding()) {
-    case Fixed:
-      Stream << "Fixed(" << getEncodingData() << ")";
-      break;
-    case VBR:
-      Stream << "VBR(" << getEncodingData() << ")";
-      break;
-    case Array:
-      Stream << "Array";
-      break;
-    case Char6:
-      Stream << "Char6";
-      break;
-    case Blob:
-      Stream << "Blob";
-      break;
-    default:
-      llvm_unreachable("Unknown bitcode abbreviation operator");
-      Stream << "??";  // In case asserts are turned off.
-      break;
-    }
-  } else {
-    llvm_unreachable("Unknown bitcode abbreviation operator");
-    Stream << "??";  // In case asserts are turned off.
+const bool NaClBitCodeAbbrevOp::HasValueArray[] = {
+  true,  // Literal
+  true,  // Fixed
+  true,  // VBR
+  false, // Array
+  false  // Char6
+};
+
+const char *NaClBitCodeAbbrevOp::EncodingNameArray[] = {
+  "Literal",
+  "Fixed",
+  "VBR",
+  "Array",
+  "Char6"
+};
+
+NaClBitCodeAbbrevOp::NaClBitCodeAbbrevOp(Encoding E, uint64_t Data)
+    : Enc(E), Val(Data) {
+  if (isValid(E, Data)) return;
+  std::string Buffer;
+  raw_string_ostream StrBuf(Buffer);
+  StrBuf << "Invalid NaClBitCodeAbbrevOp(" << E << ", " << Data << ")";
+  report_fatal_error(StrBuf.str());
+}
+
+bool NaClBitCodeAbbrevOp::isValid(Encoding E, uint64_t Val) {
+  switch (NaClBitCodeAbbrevOp::Encoding(E)) {
+  case Literal:
+    return true;
+  case Fixed:
+  case VBR:
+    return Val <= naclbitc::MaxAbbrevWidth;
+  case Char6:
+  case Array:
+    return Val == 0;
   }
+  llvm_unreachable("unhandled abbreviation");
+}
+
+void NaClBitCodeAbbrevOp::Print(raw_ostream& Stream) const {
+  if (Enc == Literal) {
+    Stream << getValue();
+    return;
+  }
+  Stream << getEncodingName(Enc);
+  if (!hasValue())
+    return;
+  Stream << "(" << Val << ")";
 }
 
 static void PrintExpression(raw_ostream &Stream,
@@ -95,4 +114,17 @@ NaClBitCodeAbbrev *NaClBitCodeAbbrev::Simplify() const {
     Abbrev->OperandList.push_back(Op);
   }
   return Abbrev;
+}
+
+bool NaClBitCodeAbbrev::isValid() const {
+  // Verify that an array op appears can only appear if it is the
+  // second to last element.
+  unsigned NumOperands = getNumOperandInfos();
+  if (NumOperands == 0) return false;
+  for (unsigned i = 0; i < NumOperands; ++i) {
+    const NaClBitCodeAbbrevOp &Op = getOperandInfo(i);
+    if (Op.isArrayOp() && i + 2 != NumOperands)
+      return false;
+  }
+  return true;
 }

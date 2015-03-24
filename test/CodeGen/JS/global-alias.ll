@@ -8,12 +8,12 @@ target triple = "asmjs-unknown-emscripten"
 @pri = internal global [60 x i8] zeroinitializer
 @pub = global [60 x i8] zeroinitializer
 
-@pri_int = alias internal [60 x i8]* @pri
-@pri_wea = alias weak [60 x i8]* @pri
+@pri_int = internal alias [60 x i8]* @pri
+@pri_wea = weak alias [60 x i8]* @pri
 @pri_nor = alias [60 x i8]* @pri
 
-@pub_int = alias internal [60 x i8]* @pub
-@pub_wea = alias weak [60 x i8]* @pub
+@pub_int = internal alias [60 x i8]* @pub
+@pub_wea = weak alias [60 x i8]* @pub
 @pub_nor = alias [60 x i8]* @pub
 
 ; CHECK: test0(

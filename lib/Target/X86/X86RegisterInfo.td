@@ -166,6 +166,7 @@ def FP3 : X86Reg<"fp3", 0>;
 def FP4 : X86Reg<"fp4", 0>;
 def FP5 : X86Reg<"fp5", 0>;
 def FP6 : X86Reg<"fp6", 0>;
+def FP7 : X86Reg<"fp7", 0>;
 
 // XMM Registers, used by the various SSE instruction set extensions.
 def XMM0: X86Reg<"xmm0", 0>, DwarfRegNum<[17, 21, 21]>;
@@ -234,22 +235,18 @@ let SubRegIndices = [sub_ymm] in {
   def K6 : X86Reg<"k6", 6>, DwarfRegNum<[124, -2, -2]>;
   def K7 : X86Reg<"k7", 7>, DwarfRegNum<[125, -2, -2]>;
 
-class STRegister<string n, bits<16> Enc, list<Register> A> : X86Reg<n, Enc> {
-  let Aliases = A;
-}
-
 // Floating point stack registers. These don't map one-to-one to the FP
 // pseudo registers, but we still mark them as aliasing FP registers. That
 // way both kinds can be live without exceeding the stack depth. ST registers
 // are only live around inline assembly.
-def ST0 : STRegister<"st(0)", 0, []>,    DwarfRegNum<[33, 12, 11]>;
-def ST1 : STRegister<"st(1)", 1, [FP6]>, DwarfRegNum<[34, 13, 12]>;
-def ST2 : STRegister<"st(2)", 2, [FP5]>, DwarfRegNum<[35, 14, 13]>;
-def ST3 : STRegister<"st(3)", 3, [FP4]>, DwarfRegNum<[36, 15, 14]>;
-def ST4 : STRegister<"st(4)", 4, [FP3]>, DwarfRegNum<[37, 16, 15]>;
-def ST5 : STRegister<"st(5)", 5, [FP2]>, DwarfRegNum<[38, 17, 16]>;
-def ST6 : STRegister<"st(6)", 6, [FP1]>, DwarfRegNum<[39, 18, 17]>;
-def ST7 : STRegister<"st(7)", 7, [FP0]>, DwarfRegNum<[40, 19, 18]>;
+def ST0 : X86Reg<"st(0)", 0>, DwarfRegNum<[33, 12, 11]>;
+def ST1 : X86Reg<"st(1)", 1>, DwarfRegNum<[34, 13, 12]>;
+def ST2 : X86Reg<"st(2)", 2>, DwarfRegNum<[35, 14, 13]>;
+def ST3 : X86Reg<"st(3)", 3>, DwarfRegNum<[36, 15, 14]>;
+def ST4 : X86Reg<"st(4)", 4>, DwarfRegNum<[37, 16, 15]>;
+def ST5 : X86Reg<"st(5)", 5>, DwarfRegNum<[38, 17, 16]>;
+def ST6 : X86Reg<"st(6)", 6>, DwarfRegNum<[39, 18, 17]>;
+def ST7 : X86Reg<"st(7)", 7>, DwarfRegNum<[40, 19, 18]>;
 
 // Floating-point status word
 def FPSW : X86Reg<"fpsw", 0>;
@@ -264,6 +261,8 @@ def SS : X86Reg<"ss", 2>;
 def ES : X86Reg<"es", 0>;
 def FS : X86Reg<"fs", 4>;
 def GS : X86Reg<"gs", 5>;
+
+def PSEUDO_NACL_SEG : X86Reg<"nacl", 6>; // @LOCALMOD
 
 // Debug registers
 def DR0 : X86Reg<"dr0", 0>;
@@ -296,9 +295,6 @@ def CR15 : X86Reg<"cr15", 15>;
 // Pseudo index registers
 def EIZ : X86Reg<"eiz", 4>;
 def RIZ : X86Reg<"riz", 4>;
-  
-def PSEUDO_NACL_SEG : X86Reg<"nacl", 4>; // @LOCALMOD
-
 
 
 //===----------------------------------------------------------------------===//
@@ -345,7 +341,9 @@ def GR64 : RegisterClass<"X86", [i64], 64,
 // Segment registers for use by MOV instructions (and others) that have a
 //   segment register as one operand.  Always contain a 16-bit segment
 //   descriptor.
-def SEGMENT_REG : RegisterClass<"X86", [i16], 16, (add CS, DS, SS, ES, FS, GS)>;
+def SEGMENT_REG : RegisterClass<"X86", [i16], 16, (add CS, DS, SS, ES, FS, GS,
+                                                   // @LOCALMOD
+                                                   PSEUDO_NACL_SEG)>;
 
 // Debug registers.
 def DEBUG_REG : RegisterClass<"X86", [i32], 32, (sequence "DR%u", 0, 7)>;
@@ -365,10 +363,6 @@ def GR16_ABCD : RegisterClass<"X86", [i16], 16, (add AX, CX, DX, BX)>;
 def GR32_ABCD : RegisterClass<"X86", [i32], 32, (add EAX, ECX, EDX, EBX)>;
 def GR64_ABCD : RegisterClass<"X86", [i64], 64, (add RAX, RCX, RDX, RBX)>;
 def GR32_TC   : RegisterClass<"X86", [i32], 32, (add EAX, ECX, EDX)>;
-// @LOCALMOD-START
-def GR32_TC_64: RegisterClass<"X86", [i32], 32, (add EAX, ECX, EDX, ESI, EDI,
-                                                 R8D, R9D, R11D)>;
-// @LOCALMOD-END
 def GR64_TC   : RegisterClass<"X86", [i64], 64, (add RAX, RCX, RDX, RSI, RDI,
                                                      R8, R9, R11, RIP)>;
 def GR64_TCW64 : RegisterClass<"X86", [i64], 64, (add RAX, RCX, RDX,

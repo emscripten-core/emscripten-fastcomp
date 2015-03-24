@@ -48,13 +48,13 @@ MCSymbol *X86_64MachoTargetObjectFile::getCFIPersonalitySymbol(
 }
 
 void
-X86LinuxTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
+X86LinuxNaClTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
   InitializeELF(TM.Options.UseInitArray);
 }
 
 const MCExpr *
-X86LinuxTargetObjectFile::getDebugThreadLocalSymbol(
+X86LinuxNaClTargetObjectFile::getDebugThreadLocalSymbol(
     const MCSymbol *Sym) const {
   return MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_DTPOFF, getContext());
 }
@@ -170,30 +170,3 @@ X86WindowsTargetObjectFile::getSectionForConstant(SectionKind Kind,
 
   return TargetLoweringObjectFile::getSectionForConstant(Kind, C);
 }
-
-// @LOCALMOD-START
-// NOTE: this was largely lifted from
-// lib/Target/ARM/ARMTargetObjectFile.cpp
-//
-// The default is .ctors/.dtors while the arm backend uses
-// .init_array/.fini_array
-//
-// Without this the linker defined symbols __fini_array_start and
-// __fini_array_end do not have useful values. c.f.:
-// http://code.google.com/p/nativeclient/issues/detail?id=805
-void TargetLoweringObjectFileNaCl::Initialize(MCContext &Ctx,
-                                              const TargetMachine &TM) {
-  TargetLoweringObjectFileELF::Initialize(Ctx, TM);
-
-  StaticCtorSection =
-    getContext().getELFSection(".init_array", ELF::SHT_INIT_ARRAY,
-                               ELF::SHF_WRITE |
-                               ELF::SHF_ALLOC,
-                               SectionKind::getDataRel());
-  StaticDtorSection =
-    getContext().getELFSection(".fini_array", ELF::SHT_FINI_ARRAY,
-                               ELF::SHF_WRITE |
-                               ELF::SHF_ALLOC,
-                               SectionKind::getDataRel());
-}
-// @LOCALMOD-END

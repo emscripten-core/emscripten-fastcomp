@@ -1,6 +1,6 @@
 //===-- NaClAnalyzerBlockDist.h --------------------------------------------===//
 //      Defines distribution maps used to collect block and record
-//      distributions for tools pnacl-bcanalyzer and pnacl-benchmark.
+//      distributions for tools pnacl-bcanalyzer.
 //
 //                     The LLVM Compiler Infrastructure
 //

@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef AMDGPU_ASMPRINTER_H
-#define AMDGPU_ASMPRINTER_H
+#ifndef LLVM_LIB_TARGET_R600_AMDGPUASMPRINTER_H
+#define LLVM_LIB_TARGET_R600_AMDGPUASMPRINTER_H
 
 #include "llvm/CodeGen/AsmPrinter.h"
 #include <vector>
@@ -33,6 +33,8 @@ private:
       DebugMode(0),
       IEEEMode(0),
       ScratchSize(0),
+      FlatUsed(false),
+      VCCUsed(false),
       CodeLen(0) {}
 
     // Fields set in PGM_RSRC1 pm4 packet.
@@ -46,7 +48,10 @@ private:
     uint32_t IEEEMode;
     uint32_t ScratchSize;
 
+    bool FlatUsed;
+
     // Bonus information for debugging.
+    bool VCCUsed;
     uint64_t CodeLen;
   };
 
@@ -82,4 +87,4 @@ protected:
 
 } // End anonymous llvm
 
-#endif //AMDGPU_ASMPRINTER_H
+#endif

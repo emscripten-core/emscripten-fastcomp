@@ -5,10 +5,10 @@ target triple = "asmjs-unknown-emscripten"
 
 @.str = private unnamed_addr constant [18 x i8] c"hello, world! %d\0A\00", align 1 ; [#uses=1 type=[18 x i8]*]
 
-@othername = alias internal void (i32)* @doit
-@othername2 = alias internal void (i32)* @othername
-@othername3 = alias internal void (i32)* @othername2
-@othername4 = alias internal bitcast (void (i32)* @othername2 to void ()*)
+@othername = internal alias void (i32)* @doit
+@othername2 = internal alias void (i32)* @othername
+@othername3 = internal alias void (i32)* @othername2
+@othername4 = internal alias bitcast (void (i32)* @othername2 to void ()*)
 
 @list = global i32 ptrtoint (void ()* @othername4 to i32)
 @list2 = global <{ i32, i32, i32, i32, i32 }> <{ i32 ptrtoint (void (i32)* @doit to i32), i32 ptrtoint (void (i32)* @othername to i32), i32 ptrtoint (void (i32)* @othername2 to i32), i32 ptrtoint (void (i32)* @othername3 to i32), i32 ptrtoint (void ()* @othername4 to i32) }>

@@ -132,43 +132,43 @@ merge:                                            ; preds = %false, %true
 ; DRWD:   <VERSION abbrev='UNABBREVIATED' op0=1/>
 ; DRWD:   <BLOCKINFO_BLOCK abbrev='ENTER_SUBBLOCK' NumWords=24 BlockCodeSize=2>
 ; DRWD:     <SETBID abbrev='UNABBREVIATED' block='VALUE_SYMTAB'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='FIXED(3)' op1='VBR(8)' op2='ARRAY
-; DRWD:                    op3='FIXED(8)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(1)' op1='VBR(8)' op2='ARRAY'
-; DRWD:                    op3='FIXED(7)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(1)' op1='VBR(8)' op2='ARRAY'
-; DRWD:                    op3='CHAR6'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(2)' op1='VBR(8)' op2='ARRAY'
-; DRWD:                    op3='CHAR6'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Fixed(3)' op1='VBR(8)' op2='Array'
+; DRWD:                    op3='Fixed(8)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(1)' op1='VBR(8)' op2='Array'
+; DRWD:                    op3='Fixed(7)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(1)' op1='VBR(8)' op2='Array'
+; DRWD:                    op3='Char6'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(2)' op1='VBR(8)' op2='Array'
+; DRWD:                    op3='Char6'/>
 ; DRWD:     <SETBID abbrev='UNABBREVIATED' block='CONSTANTS_BLOCK'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(1)' op1='FIXED(3)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(8)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='LIT(0)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(6)' op1='VBR(8)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(1)' op1='Fixed(3)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(4)' op1='VBR(8)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(4)' op1='Literal(0)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(6)' op1='VBR(8)'/>
 ; DRWD:     <SETBID abbrev='UNABBREVIATED' block='FUNCTION_BLOCK'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(20)' op1='VBR(6)' op2='VBR(4)'
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(20)' op1='VBR(6)' op2='VBR(4)'
 ; DRWD:                    op3='VBR(4)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(2)' op1='VBR(6)' op2='VBR(6)'
-; DRWD:                    op3='FIXED(4)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(3)' op1='VBR(6)' op2='FIXED(3)'
-; DRWD:                    op3='FIXED(4)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(10)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(10)' op1='VBR(6)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(15)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(43)' op1='VBR(6)' op2='FIXED(3)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(24)' op1='VBR(6)' op2='VBR(6)'
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(2)' op1='VBR(6)' op2='VBR(6)'
+; DRWD:                    op3='Fixed(4)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(3)' op1='VBR(6)' op2='Fixed(3)'
+; DRWD:                    op3='Fixed(4)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(10)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(10)' op1='VBR(6)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(15)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(43)' op1='VBR(6)' op2='Fixed(3)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(24)' op1='VBR(6)' op2='VBR(6)'
 ; DRWD:                    op3='VBR(4)'/>
 ; DRWD:     <SETBID abbrev='UNABBREVIATED' block='GLOBALVAR_BLOCK'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(0)' op1='VBR(6)' op2='FIXED(1)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(1)' op1='VBR(8)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(2)' op1='VBR(8)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(3)' op1='ARRAY' op2='FIXED(8)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)'/>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(4)' op1='VBR(6)' op2='VBR(6)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(0)' op1='VBR(6)' op2='Fixed(1)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(1)' op1='VBR(8)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(2)' op1='VBR(8)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(3)' op1='Array' op2='Fixed(8)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(4)' op1='VBR(6)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(4)' op1='VBR(6)' op2='VBR(6)'/>
 ; DRWD:   </BLOCKINFO_BLOCK abbrev='END_BLOCK'>
 ; DRWD:   <TYPE_BLOCK_ID abbrev='ENTER_SUBBLOCK' NumWords={{.*}} BlockCodeSize=3>
-; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='LIT(21)' op1='FIXED(1)' op2='ARRAY'
-; DRWD:                    op3='FIXED(3)'/>
+; DRWD:     <DEFINE_ABBREV abbrev='DEFINE_ABBREV' op0='Literal(21)' op1='Fixed(1)' op2='Array'
+; DRWD:                    op3='Fixed(3)'/>
 ; DRWD:     <NUMENTRY abbrev='UNABBREVIATED' op0=7/>
 ; DRWD:     <INTEGER abbrev='UNABBREVIATED' op0=32/>
 ; DRWD:     <VOID abbrev='UNABBREVIATED'/>

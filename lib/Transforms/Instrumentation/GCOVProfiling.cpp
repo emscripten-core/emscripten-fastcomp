@@ -480,12 +480,12 @@ void GCOVProfiler::emitProfileNotes() {
     // LTO, we'll generate the same .gcno files.
 
     DICompileUnit CU(CU_Nodes->getOperand(i));
-    std::string ErrorInfo;
-    raw_fd_ostream out(mangleName(CU, "gcno").c_str(), ErrorInfo,
-                       sys::fs::F_None);
+    std::error_code EC;
+    raw_fd_ostream out(mangleName(CU, "gcno"), EC, sys::fs::F_None);
     std::string EdgeDestinations;
 
     DIArray SPs = CU.getSubprograms();
+    unsigned FunctionIdent = 0;
     for (unsigned i = 0, e = SPs.getNumElements(); i != e; ++i) {
       DISubprogram SP(SPs.getElement(i));
       assert((!SP || SP.isSubprogram()) &&
@@ -505,8 +505,8 @@ void GCOVProfiler::emitProfileNotes() {
         ++It;
       EntryBlock.splitBasicBlock(It);
 
-      Funcs.push_back(
-          make_unique<GCOVFunction>(SP, &out, i, Options.UseCfgChecksum));
+      Funcs.push_back(make_unique<GCOVFunction>(SP, &out, FunctionIdent++,
+                                                Options.UseCfgChecksum));
       GCOVFunction &Func = *Funcs.back();
 
       for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
@@ -738,11 +738,11 @@ GlobalVariable *GCOVProfiler::buildEdgeLookupTable(
     Edge += Successors;
   }
 
-  ArrayRef<Constant*> V(&EdgeTable[0], TableSize);
   GlobalVariable *EdgeTableGV =
       new GlobalVariable(
           *M, EdgeTableTy, true, GlobalValue::InternalLinkage,
-          ConstantArray::get(EdgeTableTy, V),
+          ConstantArray::get(EdgeTableTy,
+                             makeArrayRef(&EdgeTable[0],TableSize)),
           "__llvm_gcda_edge_table");
   EdgeTableGV->setUnnamedAddr(true);
   return EdgeTableGV;

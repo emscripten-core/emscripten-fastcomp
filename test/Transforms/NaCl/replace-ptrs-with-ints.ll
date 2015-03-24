@@ -1,8 +1,5 @@
 ; RUN: opt %s -replace-ptrs-with-ints -S | FileCheck %s
 
-!llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 1}
-
 target datalayout = "p:32:32:32"
 
 
@@ -348,110 +345,19 @@ define i16 @load_global_bitcast() {
 ; CHECK-NEXT: ret i16 %val
 
 
+; Check that unsimplified allocas are properly handled:
 declare void @receive_alloca(%struct* %ptr)
-declare void @receive_vector_alloca(<4 x i32>* %ptr)
 
-define void @alloca_fixed() {
-  %buf = alloca %struct, align 128
-  call void @receive_alloca(%struct* %buf)
-  ret void
-}
-; CHECK: define void @alloca_fixed() {
-; CHECK-NEXT: %buf = alloca i8, i32 8, align 128
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
-
-; When the size passed to alloca is a constant, it should be a
-; constant in the output too.
-define void @alloca_fixed_array() {
-  %buf = alloca %struct, i32 100
-  call void @receive_alloca(%struct* %buf)
-  ret void
-}
-; CHECK: define void @alloca_fixed_array() {
-; CHECK-NEXT: %buf = alloca i8, i32 800, align 8
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
-
-define void @alloca_fixed_vector() {
-  %buf = alloca <4 x i32>, align 128
-  call void @receive_vector_alloca(<4 x i32>* %buf)
-  ret void
-}
-; CHECK: define void @alloca_fixed_vector() {
-; CHECK-NEXT: %buf = alloca i8, i32 16, align 128
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_vector_alloca(i32 %buf.asint)
-
-define void @alloca_variable(i32 %size) {
-  %buf = alloca %struct, i32 %size
-  call void @receive_alloca(%struct* %buf)
-  ret void
-}
-; CHECK: define void @alloca_variable(i32 %size) {
-; CHECK-NEXT: %buf.alloca_mul = mul i32 8, %size
-; CHECK-NEXT: %buf = alloca i8, i32 %buf.alloca_mul
-; CHECK-NEXT: %buf.asint = ptrtoint i8* %buf to i32
-; CHECK-NEXT: call void @receive_alloca(i32 %buf.asint)
-
-define void @alloca_alignment_i32() {
-  %buf = alloca i32
-  ret void
-}
-; CHECK: void @alloca_alignment_i32() {
-; CHECK-NEXT: alloca i8, i32 4, align 4
-
-define void @alloca_alignment_double() {
-  %buf = alloca double
-  ret void
-}
-; CHECK: void @alloca_alignment_double() {
-; CHECK-NEXT: alloca i8, i32 8, align 8
-
-define void @alloca_alignment_vector() {
-  %buf = alloca <4 x i32>
-  ret void
-}
-; CHECK: void @alloca_alignment_vector() {
-; CHECK-NEXT: alloca i8, i32 16, align 16
-
-define void @alloca_lower_alignment() {
-  %buf = alloca i32, align 1
-  ret void
-}
-; CHECK: void @alloca_lower_alignment() {
-; CHECK-NEXT: alloca i8, i32 4, align 1
-
-
-; This tests for a bug in which, when processing the store's %buf2
-; operand, ReplacePtrsWithInts accidentally strips off the ptrtoint
-; cast that it previously introduced for the 'alloca', causing an
-; internal sanity check to fail.
-define void @alloca_cast_stripping() {
-  %buf = alloca i32
-  %buf1 = ptrtoint i32* %buf to i32
-  %buf2 = inttoptr i32 %buf1 to i32*
-  store i32 0, i32* %buf2
-  ret void
-}
-; CHECK: define void @alloca_cast_stripping() {
-; CHECK-NEXT: %buf = alloca i8, i32 4
-; CHECK-NEXT: %buf.bc = bitcast i8* %buf to i32*
-; CHECK-NEXT: store i32 0, i32* %buf.bc
-
-define void @alloca_array_i64() {
-  %a = alloca i32, i64 1024
+define void @unsimplified_alloca() {
+  %a = alloca %struct
+  call void @receive_alloca(%struct* %a)
   unreachable
 }
-; CHECK-LABEL: define void @alloca_array_i64()
-; CHECK-NEXT:    %a = alloca i8, i32 4096
-
-define void @alloca_array_i8() {
-  %a = alloca i32, i8 128
-  unreachable
-}
-; CHECK-LABEL: define void @alloca_array_i8()
-; CHECK-NEXT:    %a = alloca i8, i32 512
+; CHECK-LABEL: define void @unsimplified_alloca()
+; CHECK-NEXT:    %a = alloca %struct
+; CHECK-NEXT:    %a.asint = ptrtoint %struct* %a to i32
+; CHECK-NEXT:    call void @receive_alloca(i32 %a.asint)
+; CHECK-NEXT:    unreachable
 
 
 define i1 @compare(i8* %ptr1, i8* %ptr2) {
@@ -487,34 +393,34 @@ define i16** @inline_asm2(i8** %ptr) {
 }
 
 
-declare void @llvm.dbg.declare(metadata, metadata)
-declare void @llvm.dbg.value(metadata, i64, metadata)
+declare void @llvm.dbg.declare(metadata, metadata, metadata)
+declare void @llvm.dbg.value(metadata, i64, metadata, metadata)
 
 define void @debug_declare(i32 %val) {
   ; We normally expect llvm.dbg.declare to be used on an alloca.
   %var = alloca i32
-  tail call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !{})
-  tail call void @llvm.dbg.declare(metadata !{i32 %val}, metadata !{})
+  call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !2, metadata !14)
+  call void @llvm.dbg.declare(metadata !{i32 %val}, metadata !2, metadata !14)
   ret void
 }
 ; CHECK: define void @debug_declare(i32 %val) {
-; CHECK-NEXT: %var = alloca i8, i32 4
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i8* %var}, metadata !1)
+; CHECK-NEXT: %var = alloca i32
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !2, metadata !14)
 ; This case is currently not converted.
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !2, metadata !14)
 ; CHECK-NEXT: ret void
 
 ; For now, debugging info for values is lost.  replaceAllUsesWith()
 ; does not work for metadata references -- it converts them to nulls.
 ; This makes dbg.value too tricky to handle for now.
 define void @debug_value(i32 %val, i8* %ptr) {
-  tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !{})
-  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !{})
+  tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !1, metadata !14)
+  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !1, metadata !14)
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1)
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1, metadata !14)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1, metadata !14)
 ; CHECK-NEXT: ret void
 
 
@@ -557,8 +463,9 @@ define void @alloca_lifetime_via_bitcast() {
   ret void
 }
 ; CHECK: define void @alloca_lifetime_via_bitcast() {
-; CHECK-NEXT: %buf = alloca i8, i32 4
+; CHECK-NEXT: %buf = alloca i32
 ; CHECK-NEXT: ret void
+
 
 define void @strip_invariant_markers() {
   %buf = alloca i8
@@ -576,6 +483,12 @@ define void @nocapture_attr(i8* nocapture noalias %ptr) {
   ret void
 }
 ; CHECK: define void @nocapture_attr(i32 %ptr) {
+
+
+define void @readonly_readnone(i8* readonly readnone) {
+  ret void
+}
+; CHECK-LABEL: define void @readonly_readnone(i32)
 
 ; "nounwind" should be preserved.
 define void @nounwind_func_attr() nounwind {
@@ -679,4 +592,43 @@ define void @typeid_for() {
 ; CHECK-NEXT: call i32 @llvm.eh.typeid.for(i8* %typeid.bc)
 
 
+; Subprogram debug metadata may refer to a function.
+; Make sure those are updated too.
+; Regenerate the debug info from the following C program:
+; void nop(void *ptr) {
+; }
+
+define void @nop(i8* %ptr) {
+  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 0, metadata !10, metadata !14), !dbg !15
+  ret void, !dbg !16
+}
+; CHECK: define void @nop(i32 %ptr) {
+; CHECK-NEXT: call void @llvm.dbg.value{{.*}}
+; CHECK-NEXT: ret void
+
+
 ; CHECK: attributes {{.*}}[[NOUNWIND]] = { nounwind }
+
+!llvm.dbg.cu = !{!0}
+!llvm.module.flags = !{!11, !12}
+!llvm.ident = !{!13}
+
+!0 = metadata !{metadata !"0x11\0012\00clang version 3.6.0", metadata !1, metadata !2, metadata !2, metadata !3, metadata !2, metadata !2} ; [ DW_TAG_compile_unit ] [/home/foo/test_debug.c] [DW_LANG_C99]
+!1 = metadata !{metadata !"test_debug.c", metadata !"/home/foo"}
+!2 = metadata !{}
+!3 = metadata !{metadata !4}
+!4 = metadata !{metadata !"0x2e\00nop\00nop\00\001\000\001\000\000\00256\001\001", metadata !1, metadata !5, metadata !6, null, void (i8*)* @nop, null, null, metadata !9} ; [ DW_TAG_subprogram ] [line 1] [def] [nop]
+!5 = metadata !{metadata !"0x29", metadata !1}    ; [ DW_TAG_file_type ] [/home/foo/test_debug.c]
+!6 = metadata !{metadata !"0x15\00\000\000\000\000\000\000", null, null, null, metadata !7, null, null, null} ; [ DW_TAG_subroutine_type ] [line 0, size 0, align 0, offset 0] [from ]
+!7 = metadata !{null, metadata !8}
+!8 = metadata !{metadata !"0xf\00\000\0032\0032\000\000", null, null, null} ; [ DW_TAG_pointer_type ] [line 0, size 32, align 32, offset 0] [from ]
+!9 = metadata !{metadata !10}
+!10 = metadata !{metadata !"0x101\00ptr\0016777217\000", metadata !4, metadata !5, metadata !8} ; [ DW_TAG_arg_variable ] [ptr] [line 1]
+!11 = metadata !{i32 2, metadata !"Dwarf Version", i32 4}
+!12 = metadata !{i32 2, metadata !"Debug Info Version", i32 2}
+!13 = metadata !{metadata !"clang version 3.6.0"}
+!14 = metadata !{metadata !"0x102"}               ; [ DW_TAG_expression ]
+!15 = metadata !{i32 1, i32 16, metadata !4, null}
+!16 = metadata !{i32 2, i32 1, metadata !4, null}
+
+; CHECK: !4 = metadata !{{{.*}}nop{{.*}}, void (i32)* @nop, {{.*}}} ; [ DW_TAG_subprogram ] [line 1] [def] [nop]

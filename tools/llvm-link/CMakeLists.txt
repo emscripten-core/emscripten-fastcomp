@@ -1,9 +1,9 @@
 set(LLVM_LINK_COMPONENTS
   BitWriter
-  naclbitwriter
   Core
   IRReader
   Linker
+  NaClBitWriter # @LOCALMOD
   Support
   )
 

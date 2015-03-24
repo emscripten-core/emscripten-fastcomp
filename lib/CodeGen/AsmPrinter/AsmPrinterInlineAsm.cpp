@@ -33,6 +33,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 using namespace llvm;
 
@@ -115,14 +116,14 @@ void AsmPrinter::EmitInlineAsm(StringRef Str, const MDNode *LocMDNode,
     HasDiagHandler = true;
   }
 
-  MemoryBuffer *Buffer;
+  std::unique_ptr<MemoryBuffer> Buffer;
   if (isNullTerminated)
     Buffer = MemoryBuffer::getMemBuffer(Str, "<inline asm>");
   else
     Buffer = MemoryBuffer::getMemBufferCopy(Str, "<inline asm>");
 
   // Tell SrcMgr about this buffer, it takes ownership of the buffer.
-  SrcMgr.AddNewSourceBuffer(Buffer, SMLoc());
+  SrcMgr.AddNewSourceBuffer(std::move(Buffer), SMLoc());
 
   std::unique_ptr<MCAsmParser> Parser(
       createMCAsmParser(SrcMgr, OutContext, OutStreamer, *MAI));
@@ -151,6 +152,10 @@ void AsmPrinter::EmitInlineAsm(StringRef Str, const MDNode *LocMDNode,
                        " we don't have an asm parser for this target\n");
   Parser->setAssemblerDialect(Dialect);
   Parser->setTargetParser(*TAP.get());
+  if (MF) {
+    const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
+    TAP->SetFrameRegister(TRI->getFrameRegister(*MF));
+  }
 
   // Don't implicitly switch to the text section before the asm.
   int Res = Parser->Run(/*NoInitialTextSection*/ true,
@@ -511,7 +516,7 @@ void AsmPrinter::EmitInlineAsm(const MachineInstr *MI) const {
 /// for their own strange codes.
 void AsmPrinter::PrintSpecial(const MachineInstr *MI, raw_ostream &OS,
                               const char *Code) const {
-  const DataLayout *DL = TM.getDataLayout();
+  const DataLayout *DL = TM.getSubtargetImpl()->getDataLayout();
   if (!strcmp(Code, "private")) {
     OS << DL->getPrivateGlobalPrefix();
   } else if (!strcmp(Code, "comment")) {

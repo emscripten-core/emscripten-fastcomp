@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TARGET_X86_TARGETOBJECTFILE_H
-#define LLVM_TARGET_X86_TARGETOBJECTFILE_H
+#ifndef LLVM_LIB_TARGET_X86_X86TARGETOBJECTFILE_H
+#define LLVM_LIB_TARGET_X86_X86TARGETOBJECTFILE_H
 
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
@@ -32,9 +32,9 @@ namespace llvm {
                                       MachineModuleInfo *MMI) const override;
   };
 
-  /// X86LinuxTargetObjectFile - This implementation is used for linux x86
+  /// X86LinuxNaClTargetObjectFile - This implementation is used for linux x86
   /// and x86-64.
-  class X86LinuxTargetObjectFile : public TargetLoweringObjectFileELF {
+  class X86LinuxNaClTargetObjectFile : public TargetLoweringObjectFileELF {
     void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
 
     /// \brief Describe a TLS variable address within debug info.
@@ -52,13 +52,6 @@ namespace llvm {
     const MCSection *getSectionForConstant(SectionKind Kind,
                                            const Constant *C) const override;
   };
-
-  // @LOCALMOD-BEGIN
-  class TargetLoweringObjectFileNaCl : public TargetLoweringObjectFileELF {
-  public:
-    virtual void Initialize(MCContext &ctx, const TargetMachine &TM);
-  };
- // @LOCALMOD-END
 
 } // end namespace llvm
 

@@ -80,7 +80,7 @@ char HexagonSplitTFRCondSets::ID = 0;
 
 bool HexagonSplitTFRCondSets::runOnMachineFunction(MachineFunction &Fn) {
 
-  const TargetInstrInfo *TII = QTM.getInstrInfo();
+  const TargetInstrInfo *TII = QTM.getSubtargetImpl()->getInstrInfo();
 
   // Loop over all of the basic blocks.
   for (MachineFunction::iterator MBBb = Fn.begin(), MBBe = Fn.end();
@@ -92,15 +92,13 @@ bool HexagonSplitTFRCondSets::runOnMachineFunction(MachineFunction &Fn) {
       MachineInstr *MI = MII;
       int Opc1, Opc2;
       switch(MI->getOpcode()) {
-        case Hexagon::TFR_condset_rr:
         case Hexagon::TFR_condset_rr_f:
         case Hexagon::TFR_condset_rr64_f: {
           int DestReg = MI->getOperand(0).getReg();
           int SrcReg1 = MI->getOperand(2).getReg();
           int SrcReg2 = MI->getOperand(3).getReg();
 
-          if (MI->getOpcode() == Hexagon::TFR_condset_rr ||
-              MI->getOpcode() == Hexagon::TFR_condset_rr_f) {
+          if (MI->getOpcode() == Hexagon::TFR_condset_rr_f) {
             Opc1 = Hexagon::TFR_cPt;
             Opc2 = Hexagon::TFR_cNotPt;
           }

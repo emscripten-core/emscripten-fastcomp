@@ -115,7 +115,6 @@ LLVM is known to work on the following host platforms:
 ================== ===================== =============
 OS                 Arch                  Compilers               
 ================== ===================== =============
-AuroraUX           x86\ :sup:`1`         GCC                     
 Linux              x86\ :sup:`1`         GCC, Clang              
 Linux              amd64                 GCC, Clang              
 Linux              ARM\ :sup:`4`         GCC, Clang              
@@ -331,10 +330,23 @@ of this information from.
 .. _GCC wiki entry:
   http://gcc.gnu.org/wiki/InstallingGCC
 
-Once you have a GCC toolchain, use it as your host compiler. Things should
-generally "just work". You may need to pass a special linker flag,
-``-Wl,-rpath,$HOME/toolchains/lib`` or some variant thereof to get things to
-find the libstdc++ DSO in this toolchain.
+Once you have a GCC toolchain, configure your build of LLVM to use the new
+toolchain for your host compiler and C++ standard library. Because the new
+version of libstdc++ is not on the system library search path, you need to pass
+extra linker flags so that it can be found at link time (``-L``) and at runtime
+(``-rpath``). If you are using CMake, this invocation should produce working
+binaries:
+
+.. code-block:: console
+
+  % mkdir build
+  % cd build
+  % CC=$HOME/toolchains/bin/gcc CXX=$HOME/toolchains/bin/g++ \
+    cmake .. -DCMAKE_CXX_LINK_FLAGS="-Wl,-rpath,$HOME/toolchains/lib64 -L$HOME/toolchains/lib64"
+
+If you fail to set rpath, most LLVM binaries will fail on startup with a message
+from the loader similar to ``libstdc++.so.6: version `GLIBCXX_3.4.20' not
+found``. This means you need to tweak the -rpath linker flag.
 
 When you build Clang, you will need to give *it* access to modern C++11
 standard library in order to use it as your new host in part of a bootstrap.
@@ -1006,7 +1018,7 @@ This directory contains most of the source files of the LLVM system. In LLVM,
 almost all code exists in libraries, making it very easy to share code among the
 different `tools`_.
 
-``llvm/lib/VMCore/``
+``llvm/lib/IR/``
 
   This directory holds the core LLVM source files that implement core classes
   like Instruction and BasicBlock.

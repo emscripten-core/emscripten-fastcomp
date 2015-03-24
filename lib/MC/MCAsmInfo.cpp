@@ -32,7 +32,6 @@ MCAsmInfo::MCAsmInfo() {
   HasMachoZeroFillDirective = false;
   HasMachoTBSSDirective = false;
   HasStaticCtorDtorReferenceInStaticMode = false;
-  LinkerRequiresNonEmptyDwarfLines = false;
   MaxInstLength = 4;
   MinInstAlignment = 1;
   DollarIsPC = false;
@@ -64,7 +63,7 @@ MCAsmInfo::MCAsmInfo() {
   GPRel64Directive = nullptr;
   GPRel32Directive = nullptr;
   GlobalDirective = "\t.globl\t";
-  HasSetDirective = true;
+  SetDirectiveSuppressesReloc = false;
   HasAggressiveSymbolFolding = true;
   COMMDirectiveAlignmentIsInBytes = true;
   LCOMMDirectiveAlignmentType = LCOMM::NoAlignment;
@@ -72,6 +71,7 @@ MCAsmInfo::MCAsmInfo() {
   HasSingleParameterDotFile = true;
   HasIdentDirective = false;
   HasNoDeadStrip = false;
+  WeakDirective = "\t.weak\t";
   WeakRefDirective = nullptr;
   HasWeakDefDirective = false;
   HasWeakDefCanBeHiddenDirective = false;
@@ -79,10 +79,9 @@ MCAsmInfo::MCAsmInfo() {
   HiddenVisibilityAttr = MCSA_Hidden;
   HiddenDeclarationVisibilityAttr = MCSA_Hidden;
   ProtectedVisibilityAttr = MCSA_Protected;
-  HasLEB128 = false;
   SupportsDebugInformation = false;
   ExceptionsType = ExceptionHandling::None;
-  WinEHEncodingType = WinEH::EncodingType::ET_Invalid;
+  WinEHEncodingType = WinEH::EncodingType::Invalid;
   DwarfUsesRelocationsAcrossSections = true;
   DwarfFDESymbolsUseAbsDiff = false;
   DwarfRegNumForCFI = false;

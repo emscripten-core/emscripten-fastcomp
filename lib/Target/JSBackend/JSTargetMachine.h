@@ -18,13 +18,22 @@
 #include "JS.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 
 namespace llvm {
 
 class formatted_raw_ostream;
 
+class JSSubtarget : public TargetSubtargetInfo {
+  const DataLayout *DL;
+public:
+  JSSubtarget(const DataLayout *DL_) : DL(DL_) {}
+  virtual const DataLayout *getDataLayout() const { return DL; }
+};
+
 class JSTargetMachine : public TargetMachine {
   const DataLayout DL;
+  JSSubtarget Subtarget;
 
 public:
   JSTargetMachine(const Target &T, StringRef Triple,
@@ -40,6 +49,7 @@ public:
                                    AnalysisID StopAfter);
 
   virtual const DataLayout *getDataLayout() const { return &DL; }
+  const JSSubtarget *getSubtargetImpl() const override { return &Subtarget; }
 
   /// \brief Register X86 analysis passes with a pass manager.
   virtual void addAnalysisPasses(PassManagerBase &PM);

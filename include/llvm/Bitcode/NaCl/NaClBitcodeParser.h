@@ -78,9 +78,7 @@
 // with the enclosing block.
 //
 // Currently, the default processing of abbreviations is handled by
-// the PNaCl bitstream reader, rather than by the parser. A hook,
-// ProcessBlockInfo exists if you want to do some processing before the
-// BlockInfo block is exited.
+// the PNaCl bitstream reader, rather than by the parser.
 //
 // If you need to process abbreviations processed by the PNaCl
 // bitstream reader, you must explicitly define a
@@ -413,8 +411,25 @@ class NaClBitcodeParser {
   // Allow listener privledges, so that it can update/call the parser
   // using a clean API.
   friend class NaClBitcodeParserListener;
-public:
 
+  // Implements an error handler for errors in the bitstream reader.
+  // Redirects bitstream reader errors to corresponding parrser error
+  // reporting function.
+  class ErrorHandler : public NaClBitstreamCursor::ErrorHandler {
+    NaClBitcodeParser *Parser;
+  public:
+    ErrorHandler(NaClBitcodeParser *Parser,
+                 NaClBitstreamCursor &Cursor):
+        NaClBitstreamCursor::ErrorHandler(Cursor), Parser(Parser) {}
+    LLVM_ATTRIBUTE_NORETURN
+    void Fatal(const std::string &ErrorMessage) const final {
+      Parser->FatalAt(getCurrentBitNo(), ErrorMessage);
+      llvm_unreachable("GCC treats noreturn virtual functions as returning");
+    }
+    ~ErrorHandler() override {}
+  };
+
+public:
   // Creates a parser to parse the the block at the given cursor in
   // the PNaCl bitcode stream. This instance is a "dummy" instance
   // that starts the parser.
@@ -423,8 +438,11 @@ public:
         Block(ILLEGAL_BLOCK_ID, Cursor),
         Record(Block),
         Listener(0),
-        ErrStream(&errs())
-  {}
+        ErrStream(&errs()) {
+    std::unique_ptr<NaClBitstreamCursor::ErrorHandler>
+        ErrHandler(new ErrorHandler(this, Cursor));
+    Cursor.setErrorHandler(ErrHandler);
+  }
 
   virtual ~NaClBitcodeParser();
 
@@ -436,14 +454,11 @@ public:
   // Called once the bitstream reader has entered the corresponding
   // subblock.  Argument NumWords is set to the number of words in the
   // corresponding subblock.
-  virtual void EnterBlock(unsigned NumWords) {}
+  virtual void EnterBlock(unsigned /*NumWords*/) {}
 
   // Called when the corresponding EndBlock of the block being parsed
   // is found.
   virtual void ExitBlock() {}
-
-  // Called after a BlockInfo block is parsed.
-  virtual void ProcessBlockInfo() {}
 
   // Called after each record (within the block) is read (into field Record).
   virtual void ProcessRecord() {}
@@ -453,9 +468,9 @@ public:
   virtual void SetBID() {}
 
   // Called to process an abbreviation if the parser has a listener.
-  virtual void ProcessAbbreviation(unsigned BlockID,
-                                   NaClBitCodeAbbrev *Abbrev,
-                                   bool IsLocal) {}
+  virtual void ProcessAbbreviation(unsigned /*BlockID*/,
+                                   NaClBitCodeAbbrev * /*Abbrev*/,
+                                   bool /*IsLocal*/) {}
 
   // Creates an instance of the NaClBitcodeParser to use to parse the
   // block with the given block ID, and then call's method
@@ -468,21 +483,56 @@ public:
     return Parser.ParseThisBlock();
   }
 
-  // Changes the error stream to print errors to Stream.  Warning:
-  // Stream must exist till the next call to setErrStream.  Otherwise
-  // it must exist for the entire lifetime of the bitcode parser.
-  // Note: This err stream should be set immediately after
-  // construction.  Assigning after nested bitcode parsers have been
-  // built will not work.
-  void setErrStream(raw_ostream &Stream) {
+  // Changes the stream to print errors to, and returns the old error stream.
+  // There are two use cases:
+  // 1) To change (from the default errs()) inside the constructor of the
+  //    derived class. In this context, it will be used for all error
+  //    messages for the derived class.
+  // 2) Temporarily modify it for a single error message.
+  raw_ostream &setErrStream(raw_ostream &Stream) {
+    raw_ostream &OldErrStream = *ErrStream;
     ErrStream = &Stream;
+    return OldErrStream;
   }
 
-  // Called when error occurs. Message is the error to report. Always
-  // returns true (the error return value of Parse).
-  virtual bool Error(const std::string &Message) {
-    *ErrStream << "Error: " << Message << "\n";
-    return true;
+  // Called when an error occurs. BitPosition is the bit position the
+  // error was found, and Message is the error to report. Always
+  // returns true (the error return value of Parse). Level is
+  // the severity of the error.
+  virtual bool ErrorAt(naclbitc::ErrorLevel Level, uint64_t BitPosition,
+                       const std::string &Message);
+
+  bool ErrorAt(uint64_t BitPosition, const std::string &Message) {
+    return ErrorAt(naclbitc::Error, BitPosition, Message);
+  }
+
+  // Called when an error occurs. Message is the error to
+  // report. Always returns true (the error return value of Parse).
+  bool Error(const std::string &Message) {
+    return ErrorAt(Record.GetStartBit(), Message);
+  }
+
+  // Called when a fatal error occurs. BitPosition is the bit position
+  // the error was found, and Message is the error to report. Does not
+  // return.
+  LLVM_ATTRIBUTE_NORETURN
+  void FatalAt(uint64_t BitPosition, const std::string &Message) {
+    ErrorAt(naclbitc::Fatal, BitPosition, Message);
+    llvm_unreachable("Fatal errors should not return");
+  }
+
+  // Called when a fatal error occurs. Message is the error to
+  // report. Does not return.
+  LLVM_ATTRIBUTE_NORETURN
+  void Fatal(const std::string &Message) {
+    FatalAt(Record.GetStartBit(), Message);
+    llvm_unreachable("GCC treats noreturn virtual functions as returning");
+  }
+
+  // Generates fatal generic error message.
+  LLVM_ATTRIBUTE_NORETURN
+  void Fatal() {
+    Fatal("Fatal error occurred!");
   }
 
   // Returns the number of bits in this block, including nested blocks.
@@ -594,7 +644,6 @@ private:
   // Parses the non-BlockInfo block. Returns true if unable to parse the
   // block.
   bool ParseBlockInternal();
-
 
   void operator=(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
   NaClBitcodeParser(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;

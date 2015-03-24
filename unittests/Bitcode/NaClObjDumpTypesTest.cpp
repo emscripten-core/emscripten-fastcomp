@@ -38,7 +38,7 @@ TEST(NaClObjDumpTypesTest, BadTypeReferences) {
   const uint64_t ReplaceIndex = 4;
 
   // Show base input.
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
   EXPECT_TRUE(Munger.runTestForAssembly("Bad type references base"));
   EXPECT_EQ(
@@ -102,7 +102,7 @@ TEST(NaClObjDumpTypesTest, TestCountRecord) {
   const uint64_t AddBeforeIndex = 5;
   const uint64_t ReplaceIndex = 2;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test case where count is correct.
@@ -197,7 +197,7 @@ TEST(NaClObjDumpTypesTest, TestVoidRecord) {
 
   const uint64_t ReplaceIndex = 3;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test where void is properly specified.
@@ -238,7 +238,7 @@ TEST(NaClObjDumpTypesTest, TestIntegerRecord) {
 
   const uint64_t ReplaceIndex = 3;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Tests that we accept i1.
@@ -347,7 +347,7 @@ TEST(NaClObjDumpTypesTest, TestFloatRecord) {
 
   const uint64_t ReplaceIndex = 3;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept the float record.
@@ -389,7 +389,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleRecord) {
 
   const uint64_t ReplaceIndex = 3;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept the double record.
@@ -432,7 +432,7 @@ TEST(NaClObjDumpTypesTest, TestVectorRecordLength) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test correct length vector record.
@@ -488,7 +488,7 @@ TEST(NaClObjDumpTypesTest, TestI1VectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept <4 x i1>.
@@ -584,7 +584,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept <16 x i8>.
@@ -692,7 +692,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept <8 x i16>.
@@ -800,7 +800,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept <4 x i32>.
@@ -908,7 +908,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we reject <1 x i64>.
@@ -1017,7 +1017,7 @@ TEST(NaClObjDumpTypesTest, TestFloatVectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we accept <4 x float>.
@@ -1099,7 +1099,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleVectorRecord) {
 
   const uint64_t ReplaceIndex = 4;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test that we reject <4 x double>.
@@ -1179,7 +1179,7 @@ TEST(NaClObjDumpTypesTest, TestVoidVectorRecord) {
     0, 65534, Terminator,
     0, 65534, Terminator
   };
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
   EXPECT_FALSE(Munger.runTestForAssembly("Type <4 x void>"));
   EXPECT_EQ(
@@ -1207,7 +1207,7 @@ TEST(NaClObjDumpTypesTest, TestNestedVectorRecord) {
     0, 65534, Terminator,
     0, 65534, Terminator
   };
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
   EXPECT_FALSE(Munger.runTestForAssembly("Type <4 x <4 x float>>"));
   EXPECT_EQ(
@@ -1244,7 +1244,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
   const uint64_t TypeCountIndex = 2;
   const uint64_t ReplaceIndex = 9;
 
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
 
   // Test void() signature.
@@ -1394,7 +1394,7 @@ TEST(NaClObjDumpTypesTest, TestUnknownTypesRecordCode) {
     0, 65534, Terminator,
     0, 65534, Terminator
   };
-  NaClBitcodeMunger Munger(BitcodeRecords,
+  NaClObjDumpMunger Munger(BitcodeRecords,
                            array_lengthof(BitcodeRecords), Terminator);
   EXPECT_FALSE(Munger.runTestForAssembly("Unknown types record code"));
   EXPECT_EQ(

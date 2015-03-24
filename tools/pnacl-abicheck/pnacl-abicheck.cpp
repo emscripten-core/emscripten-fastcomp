@@ -29,6 +29,12 @@ static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
 static cl::opt<bool>
+VerboseErrors(
+    "verbose-parse-errors",
+    cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
+    cl::init(false));
+
+static cl::opt<bool>
 Quiet("q", cl::desc("Do not print error messages"));
 
 static cl::opt<NaClFileFormat>
@@ -39,7 +45,7 @@ InputFileFormat(
         clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
         clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
         clEnumValEnd),
-    cl::init(LLVMFormat));
+    cl::init(AutodetectFileFormat));
 
 // Print any errors collected by the error reporter. Return true if
 // there were any.
@@ -61,8 +67,12 @@ int main(int argc, char **argv) {
   SMDiagnostic Err;
   cl::ParseCommandLineOptions(argc, argv, "PNaCl Bitcode ABI checker\n");
 
+  if (Quiet)
+    VerboseErrors = false;
+
+  raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
   std::unique_ptr<Module> Mod(
-      NaClParseIRFile(InputFilename, InputFileFormat, Err, Context));
+      NaClParseIRFile(InputFilename, InputFileFormat, Err, Verbose, Context));
   if (Mod.get() == 0) {
     Err.print(argv[0], errs());
     return 1;
@@ -78,7 +88,7 @@ int main(int argc, char **argv) {
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
 
   std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(&*Mod));
-  PM->add(new DataLayoutPass(&*Mod));
+  PM->add(new DataLayoutPass());
   PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
 
   PM->doInitialization();

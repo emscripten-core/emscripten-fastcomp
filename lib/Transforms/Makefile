@@ -11,9 +11,11 @@ LEVEL = ../..
 PARALLEL_DIRS = Utils Instrumentation Scalar InstCombine IPO Vectorize Hello ObjCARC NaCl MinSFI
 
 
-ifeq ($(NACL_SANDBOX),1)
+# @LOCALMOD-BEGIN
+ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
   PARALLEL_DIRS := $(filter-out Hello, $(PARALLEL_DIRS))
 endif
+# @LOCALMOD-END
 
 include $(LEVEL)/Makefile.config
 

@@ -133,7 +133,6 @@ static Value *convertConstant(Constant *C, bool SignExt=false) {
 }
 
 namespace {
-
 // Holds the state for converting/replacing values. Conversion is done in one
 // pass, with each value requiring conversion possibly having two stages. When
 // an instruction needs to be replaced (i.e. it has illegal operands or result)
@@ -156,14 +155,14 @@ class ConversionState {
       report_fatal_error("Can't convert illegal GlobalVariables");
     if (RewrittenMap.count(Val))
       return RewrittenMap[Val];
-    Value *P;
+
     // Directly convert constants.
-    if (Constant *C = dyn_cast<Constant>(Val)) {
+    if (Constant *C = dyn_cast<Constant>(Val))
       return convertConstant(C, /*SignExt=*/false);
-    } else {
-      // No converted value available yet, so create a placeholder.
-      P = new Argument(getPromotedType(Val->getType()));
-    }
+
+    // No converted value available yet, so create a placeholder.
+    Value *P = new Argument(getPromotedType(Val->getType()));
+
     RewrittenMap[Val] = P;
     Placeholders[Val] = P;
     return P;
@@ -210,7 +209,6 @@ class ConversionState {
   // Illegal values which have already been converted, will be erased.
   SmallVector<Instruction *, 8> ToErase;
 };
-
 } // anonymous namespace
 
 // Split an illegal load into multiple legal loads and return the resulting
@@ -318,16 +316,18 @@ Value *PromoteIntegers::splitStore(StoreInst *Inst, ConversionState &State) {
 
   if (!isLegalSize(Width - LoWidth)) {
     // HiTrunc is still illegal, and is redundant with the truncate in the
-    // recursive call, so just get rid of it.
-#if 0 /// XXX EMSCRIPTEN: Allow these to be ConstantExprs
-    State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
-                          /*TakeName=*/false);
-#else
-    if (Instruction *HiTruncInst = dyn_cast<Instruction>(HiTrunc)) {
+    // recursive call, so just get rid of it. If HiTrunc is a constant then the
+    // IRB will have just returned a shifted, truncated constant, which is
+    // already uniqued (and does not need to be RAUWed), and recordConverted
+    // expects constants.
+    if (!isa<Constant>(HiTrunc))
+      State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
+                            /*TakeName=*/false);
+    else if (Instruction *HiTruncInst = dyn_cast<Instruction>(HiTrunc)) { /// XXX EMSCRIPTEN: Allow these to be ConstantExprs
+
       State.recordConverted(HiTruncInst, HiLShr,
                             /*TakeName=*/false);
     }
-#endif
     StoreHi = splitStore(cast<StoreInst>(StoreHi), State);
   }
   State.recordConverted(Inst, StoreHi, /*TakeName=*/false);

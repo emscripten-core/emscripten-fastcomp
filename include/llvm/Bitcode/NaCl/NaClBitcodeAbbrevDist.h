@@ -36,7 +36,6 @@ public:
 
   explicit NaClBitcodeAbbrevDistElement(unsigned BlockID=0)
       : NaClBitcodeDistElement(RDE_AbbrevDist),
-        BlockID(BlockID),
         CodeDist(BlockID, &NaClCompressCodeDistElement::Sentinel) {
     NestedDists.push_back(&CodeDist);
   }
@@ -70,9 +69,6 @@ public:
   }
 
 private:
-  // The block id associated with the abbreviation.
-  unsigned BlockID;
-
   // Nested blocks used by GetNestedDistributions.
   SmallVector<NaClBitcodeDist*, 1> NestedDists;
 

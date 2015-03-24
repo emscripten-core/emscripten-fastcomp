@@ -23,6 +23,7 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/CBindingWrapping.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/DataTypes.h"
 #include <system_error>
 
@@ -137,6 +138,11 @@ public:
   /// The Function constant iterator
   typedef FunctionListType::const_iterator               const_iterator;
 
+  /// The Function reverse iterator.
+  typedef FunctionListType::reverse_iterator             reverse_iterator;
+  /// The Function constant reverse iterator.
+  typedef FunctionListType::const_reverse_iterator const_reverse_iterator;
+
   /// The Global Alias iterators.
   typedef AliasListType::iterator                        alias_iterator;
   /// The Global Alias constant iterator
@@ -177,8 +183,16 @@ public:
     /// Appends the two values, which are required to be metadata
     /// nodes. However, duplicate entries in the second list are dropped
     /// during the append operation.
-    AppendUnique = 6
+    AppendUnique = 6,
+
+    // Markers:
+    ModFlagBehaviorFirstVal = Error,
+    ModFlagBehaviorLastVal = AppendUnique
   };
+
+  /// Checks if Value represents a valid ModFlagBehavior, and stores the
+  /// converted result in MFB.
+  static bool isValidModFlagBehavior(Value *V, ModFlagBehavior &MFB);
 
   struct ModuleFlagEntry {
     ModFlagBehavior Behavior;
@@ -339,11 +353,11 @@ public:
   /// function arguments, which makes it easier for clients to use.
   Constant *getOrInsertFunction(StringRef Name,
                                 AttributeSet AttributeList,
-                                Type *RetTy, ...)  END_WITH_NULL;
+                                Type *RetTy, ...) LLVM_END_WITH_NULL;
 
   /// Same as above, but without the attributes.
   Constant *getOrInsertFunction(StringRef Name, Type *RetTy, ...)
-    END_WITH_NULL;
+    LLVM_END_WITH_NULL;
 
   /// Look up the specified function in the module symbol table. If it does not
   /// exist, return null.
@@ -357,8 +371,11 @@ public:
   /// does not exist, return null. If AllowInternal is set to true, this
   /// function will return types that have InternalLinkage. By default, these
   /// types are not returned.
-  const GlobalVariable *getGlobalVariable(StringRef Name,
-                                          bool AllowInternal = false) const {
+  GlobalVariable *getGlobalVariable(StringRef Name) const {
+    return getGlobalVariable(Name, false);
+  }
+
+  GlobalVariable *getGlobalVariable(StringRef Name, bool AllowInternal) const {
     return const_cast<Module *>(this)->getGlobalVariable(Name, AllowInternal);
   }
 
@@ -456,9 +473,6 @@ public:
   /// Retrieves the GVMaterializer, if any, for this Module.
   GVMaterializer *getMaterializer() const { return Materializer.get(); }
 
-  /// True if the definition of GV has yet to be materializedfrom the
-  /// GVMaterializer.
-  bool isMaterializable(const GlobalValue *GV) const;
   /// Returns true if this GV was loaded from this Module's GVMaterializer and
   /// the GVMaterializer knows how to dematerialize the GV.
   bool isDematerializable(const GlobalValue *GV) const;
@@ -466,7 +480,7 @@ public:
   /// Make sure the GlobalValue is fully read. If the module is corrupt, this
   /// returns true and fills in the optional string with information about the
   /// problem. If successful, this returns false.
-  bool Materialize(GlobalValue *GV, std::string *ErrInfo = nullptr);
+  std::error_code materialize(GlobalValue *GV);
   /// If the GlobalValue is read in, and if the GVMaterializer supports it,
   /// release the memory for the function, and set it up to be materialized
   /// lazily. If !isDematerializable(), this method is a noop.
@@ -478,7 +492,7 @@ public:
   /// Make sure all GlobalValues in this Module are fully read and clear the
   /// Materializer. If the module is corrupt, this DOES NOT clear the old
   /// Materializer.
-  std::error_code materializeAllPermanently(bool ReleaseBuffer = false);
+  std::error_code materializeAllPermanently();
 
 /// @}
 /// @name Direct access to the globals list, functions list, and symbol table
@@ -546,8 +560,19 @@ public:
   const_iterator          begin() const { return FunctionList.begin(); }
   iterator                end  ()       { return FunctionList.end();   }
   const_iterator          end  () const { return FunctionList.end();   }
+  reverse_iterator        rbegin()      { return FunctionList.rbegin(); }
+  const_reverse_iterator  rbegin() const{ return FunctionList.rbegin(); }
+  reverse_iterator        rend()        { return FunctionList.rend(); }
+  const_reverse_iterator  rend() const  { return FunctionList.rend(); }
   size_t                  size() const  { return FunctionList.size(); }
   bool                    empty() const { return FunctionList.empty(); }
+
+  iterator_range<iterator> functions() {
+    return iterator_range<iterator>(begin(), end());
+  }
+  iterator_range<const_iterator> functions() const {
+    return iterator_range<const_iterator>(begin(), end());
+  }
 
 /// @}
 /// @name Alias Iteration
@@ -619,6 +644,15 @@ public:
   /// \brief Returns the Dwarf Version by checking module flags.
   unsigned getDwarfVersion() const;
 
+/// @}
+/// @name Utility functions for querying and setting PIC level
+/// @{
+
+  /// \brief Returns the PIC level (small or large model)
+  PICLevel::Level getPICLevel() const;
+
+  /// \brief Set the PIC level (small or large model)
+  void setPICLevel(PICLevel::Level PL);
 /// @}
 };
 
