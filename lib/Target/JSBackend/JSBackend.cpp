@@ -2368,13 +2368,15 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     const char *HeapName;
     std::string Index = getHeapNameAndIndex(P, &HeapName);
     std::string Assign = getJSName(I);
+    UsedVars[Assign + "_0"] = I->getOperand(1)->getType();
+    UsedVars[Assign + "_1"] = Type::getInt1Ty(P->getContext());
     if (EnablePthreads) {
       Code << Assign << "_0 = Atomics_compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ");\n";
       Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0)";
     } else {
       Code << Assign << "_0 = " << HeapName << "[" << Index << "];\n";
       Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0); ";
-	  Code << "if (" << Assign << "_1) " << getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
+      Code << "if (" << Assign << "_1) " << getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
     }
     break;
   }
