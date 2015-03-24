@@ -2395,11 +2395,11 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       const char *atomicFunc = 0;
       switch (rmwi->getOperation()) {
         case AtomicRMWInst::Xchg: atomicFunc = "Atomics_store"; break;
-        case AtomicRMWInst::Add: atomicFunc = "Atomics_add"; break;
-        case AtomicRMWInst::Sub: atomicFunc = "Atomics_sub"; break;
-        case AtomicRMWInst::And: atomicFunc = "Atomics_and"; break;
-        case AtomicRMWInst::Or: atomicFunc = "Atomics_or"; break;
-        case AtomicRMWInst::Xor: atomicFunc = "Atomics_xor"; break;
+        case AtomicRMWInst::Add:  atomicFunc = "Atomics_add"; break;
+        case AtomicRMWInst::Sub:  atomicFunc = "Atomics_sub"; break;
+        case AtomicRMWInst::And:  atomicFunc = "Atomics_and"; break;
+        case AtomicRMWInst::Or:   atomicFunc = "Atomics_or"; break;
+        case AtomicRMWInst::Xor:  atomicFunc = "Atomics_xor"; break;
         case AtomicRMWInst::Nand: // TODO
         case AtomicRMWInst::Max:
         case AtomicRMWInst::Min:
@@ -2419,7 +2419,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
       switch (rmwi->getOperation()) {
         case AtomicRMWInst::Xchg: Code << getStore(rmwi, P, I->getType(), VS, 0); break;
-        case AtomicRMWInst::Add: Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '+' + VS + ")|0)", 0); break;
+        case AtomicRMWInst::Add:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '+' + VS + ")|0)", 0); break;
         case AtomicRMWInst::Sub:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '-' + VS + ")|0)", 0); break;
         case AtomicRMWInst::And:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '&' + VS + ")", 0); break;
         case AtomicRMWInst::Nand: Code << getStore(rmwi, P, I->getType(), "(~(" + getJSName(I) + '&' + VS + "))", 0); break;
