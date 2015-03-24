@@ -1010,8 +1010,6 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   return text;
 }
 
-static const std::string AtomicsStore = "Atomics_store(";
-
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
@@ -1025,7 +1023,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         // implemented, we could remove the emulation, but until then we must emulate manually.
         text = std::string("__Atomics_store_") + HeapName + "_emulated(" + getByteAddressAsStr(P) + ',' + VS + ')';
       } else {
-        text = AtomicsStore + HeapName + ',' + Index + ',' + VS + ')';
+        text = std::string("Atomics_store(") + HeapName + ',' + Index + ',' + VS + ')';
       }
     } else {
       text = getPtrUse(P) + " = " + VS;
