@@ -689,8 +689,8 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDNode *Op,
                                                      SDValue &Opc) {
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-     (Op->getOpcode() == ISD::LOAD || Op->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(Op);
   // This is neither a sandboxable load nor a sandboxable store.
   if (!restrict_addressing_modes_for_nacl) {
   // @LOCALMOD-END
@@ -861,8 +861,8 @@ bool ARMDAGToDAGISel::SelectAddrMode2OffsetReg(SDNode *Op, SDValue N,
 
   // @LOCALMOD-BEGIN
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-     (Op->getOpcode() == ISD::LOAD || Op->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(Op);
   // @LOCALMOD-END
 
   Offset = N;
@@ -945,8 +945,8 @@ bool ARMDAGToDAGISel::SelectAddrMode3(SDNode *Op, SDValue N,
                                       SDValue &Opc) {
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-     (Op->getOpcode() == ISD::LOAD || Op->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(Op);
   if (!restrict_addressing_modes_for_nacl) {
   // @LOCALMOD-END
   if (N.getOpcode() == ISD::SUB) {

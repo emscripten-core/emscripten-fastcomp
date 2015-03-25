@@ -10522,8 +10522,8 @@ ARMTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
 
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-      (N->getOpcode() == ISD::LOAD || N->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(N);
   if (restrict_addressing_modes_for_nacl) {
     return false;
   }
@@ -10569,8 +10569,8 @@ bool ARMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
     return false;
    // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-      (N->getOpcode() == ISD::LOAD || N->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(N);
   if (restrict_addressing_modes_for_nacl) {
     return false;
   }
