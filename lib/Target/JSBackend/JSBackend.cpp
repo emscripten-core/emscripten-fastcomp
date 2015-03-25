@@ -93,6 +93,21 @@ GlobalBase("emscripten-global-base",
            cl::desc("Where global variables start out in memory (see emscripten GLOBAL_BASE option)"),
            cl::init(8));
 
+static cl::opt<int>
+MemWriteLoopMax("emscripten-mem-write-loop-max",
+                cl::desc("The count of memcpy or memset steps that should be done as a loop."),
+                cl::init(128));
+
+static cl::opt<int>
+MemUnrollLoopMax("emscripten-mem-unroll-loop-max",
+                 cl::desc("The count of memcpy or memset steps that should be unrolled."),
+                 cl::init(8));
+
+static cl::opt<int>
+PreferSmallerJS("emscripten-prefer-smaller-js",
+                cl::desc("The priority of generating smaller JS. 0 is off, 1 is somewhat, 2 is max."),
+                cl::init(0));
+
 
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
