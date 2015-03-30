@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
@@ -72,25 +73,32 @@ static bool CleanUpLinkage(GlobalValue *GV) {
 bool GlobalCleanup::runOnModule(Module &M) {
   bool Modified = false;
 
-  if (GlobalVariable *GV = M.getNamedGlobal("llvm.compiler.used")) {
-    GV->eraseFromParent();
-    Modified = true;
-  }
-  if (GlobalVariable *GV = M.getNamedGlobal("llvm.used")) {
+  // TODO(jfb) Emscripten's JSBackend relies on llvm.used to figure out what's
+  //           exported. Should it instead rely on visibility attributes?
+  bool keepLLVMUsed = Triple(M.getTargetTriple()).isOSEmscripten();
+
+  if (auto *GV = M.getNamedGlobal("llvm.compiler.used")) {
     GV->eraseFromParent();
     Modified = true;
   }
 
-  for (Module::global_iterator I = M.global_begin(), E = M.global_end();
-       I != E; ) {
+  if (!keepLLVMUsed) {
+    if (auto *GV = M.getNamedGlobal("llvm.used")) {
+      GV->eraseFromParent();
+      Modified = true;
+    }
+  }
+
+  for (auto I = M.global_begin(), E = M.global_end(); I != E;) {
     GlobalVariable *GV = I++;
     Modified |= CleanUpLinkage(GV);
   }
 
-  for (Module::iterator I = M.begin(), E = M.end(); I != E; ) {
+  for (auto I = M.begin(), E = M.end(); I != E;) {
     Function *F = I++;
     Modified |= CleanUpLinkage(F);
   }
+
   return Modified;
 }
 
