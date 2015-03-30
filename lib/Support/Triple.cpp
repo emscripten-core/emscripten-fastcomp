@@ -1011,13 +1011,6 @@ const char *Triple::getARMCPUForArch(StringRef MArch) const {
   case llvm::Triple::Win32:
     // FIXME: this is invalid for WindowsCE
     return "cortex-a9";
-  // @LOCALMOD-START
-  case llvm::Triple::NaCl:
-    // Default to armv7 unless something more specific is specified.
-    if (MArch == "arm")
-      return "cortex-a9";
-    break;
-  // @LOCALMOD-END
   default:
     break;
   }
@@ -1076,6 +1069,8 @@ const char *Triple::getARMCPUForArch(StringRef MArch) const {
     default:
       return "strongarm";
     }
+  case llvm::Triple::NaCl:
+    return "cortex-a8";
   default:
     switch (getEnvironment()) {
     case llvm::Triple::EABIHF:

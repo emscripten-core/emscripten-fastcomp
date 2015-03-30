@@ -663,5 +663,9 @@ TEST(TripleTest, getARMCPUForArch) {
     EXPECT_STREQ("cortex-a8", Triple.getARMCPUForArch());
     EXPECT_STREQ("swift", Triple.getARMCPUForArch("armv7s"));
   }
+  {
+    llvm::Triple Triple("arm--nacl");
+    EXPECT_STREQ("cortex-a8", Triple.getARMCPUForArch("arm"));
+  }
 }
 }
