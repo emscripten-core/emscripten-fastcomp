@@ -173,8 +173,6 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // ReplacePtrsWithInts leaves the lifetime.start/end intrinsics.
   PM.add(createStripDeadPrototypesPass());
 
-  // Eliminate simple dead code that the post-opt passes could have
-  // created.
-  PM.add(createDeadInstEliminationPass());
+  // Eliminate simple dead code that the post-opt passes could have created.
   PM.add(createDeadCodeEliminationPass());
 }
