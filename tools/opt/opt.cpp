@@ -391,6 +391,8 @@ int main(int argc, char **argv) {
   initializeGlobalCleanupPass(Registry);
   initializeGlobalizeConstantVectorsPass(Registry);
   initializeInsertDivideCheckPass(Registry);
+  initializeInternalizeUsedGlobalsPass(Registry);
+  initializeSimplifyStructRegSignaturesPass(Registry);
   initializePNaClABIVerifyFunctionsPass(Registry);
   initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);

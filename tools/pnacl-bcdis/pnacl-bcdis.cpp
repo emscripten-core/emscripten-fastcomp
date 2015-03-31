@@ -64,7 +64,8 @@ static bool DisassembleBitcode() {
   }
 
   // Parse the the bitcode file.
-  return NaClObjDump(ErrOrFile.get().release(), Output, NoRecords, NoAssembly);
+  return NaClObjDump(ErrOrFile.get()->getMemBufferRef(), Output, NoRecords,
+                     NoAssembly);
 }
 
 }

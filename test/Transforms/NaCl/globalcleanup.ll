@@ -1,8 +1,15 @@
 ; RUN: opt < %s -nacl-global-cleanup -S | FileCheck %s
 ; RUN: opt < %s -nacl-global-cleanup -S | FileCheck -check-prefix=GV %s
+; RUN: opt < %s -nacl-global-cleanup -mtriple=asmjs-unknown-emscripten -S | FileCheck -check-prefix=EM %s
 
-@llvm.compiler.used = appending global [0 x i8*] zeroinitializer, section "llvm.metadata"
-@llvm.used = appending global [0 x i8*] zeroinitializer, section "llvm.metadata"
+@a = global i8 42
+
+@llvm.compiler.used = appending global [1 x i8*] [i8* @a], section "llvm.metadata"
+@llvm.used = appending global [1 x i8*] [i8* @a], section "llvm.metadata"
+
+; Emscripten preserves llvm.used but not llvm.compiler.used.
+; EM-NOT: llvm.compiler.used
+; EM: llvm.used
 
 ; GV-NOT: llvm.used
 ; GV-NOT: llvm.compiler.used

@@ -115,8 +115,10 @@ bool RewriteLLVMIntrinsics::runOnModule(Module &M) {
 
   // Remove all @llvm.prefetch intrinsics.
   ToNothing PrefetchRewriter(M, Intrinsic::prefetch);
+  ToNothing AssumeRewriter(M, Intrinsic::assume);
 
-  return visitUses(FltRoundsRewriter) | visitUses(PrefetchRewriter);
+  return visitUses(FltRoundsRewriter) | visitUses(PrefetchRewriter)
+    | visitUses(AssumeRewriter);
 }
 
 bool RewriteLLVMIntrinsics::visitUses(IntrinsicRewriter &Rewriter) {

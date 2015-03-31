@@ -500,6 +500,11 @@ endmacro(add_llvm_example name)
 macro(add_llvm_utility name)
   add_llvm_executable(${name} ${ARGN})
   set_target_properties(${name} PROPERTIES FOLDER "Utils")
+# @LOCALMOD-BEGIN
+  if( LLVM_INSTALL_UTILS )
+    install (TARGETS ${name} RUNTIME DESTINATION bin)
+  endif()
+# @LOCALMOD-END
 endmacro(add_llvm_utility name)
 
 

@@ -41,9 +41,8 @@ void NaClBitcodeMunger::setupTest(
   DumpResults.clear(); // Throw away any previous results.
   std::string DumpBuffer;
   DumpStream = new raw_string_ostream(DumpResults);
-  SmallVector<char, 0> StreamBuffer;
-  StreamBuffer.reserve(256*1024);
-  NaClBitstreamWriter OutStream(StreamBuffer);
+  MungedInputBuffer.clear();
+  NaClBitstreamWriter OutStream(MungedInputBuffer);
   Writer = &OutStream;
 
   if (DebugEmitRecord) {
@@ -54,14 +53,13 @@ void NaClBitcodeMunger::setupTest(
   SetBID = -1;
   writeMungedData(Munges, MungesSize, AddHeader);
 
-  std::string OutBuffer;
-  raw_string_ostream BitcodeStrm(OutBuffer);
-  for (SmallVectorImpl<char>::const_iterator
-           Iter = StreamBuffer.begin(), IterEnd = StreamBuffer.end();
-       Iter != IterEnd; ++Iter) {
-    BitcodeStrm << *Iter;
-  }
-  MungedInput = MemoryBuffer::getMemBufferCopy(BitcodeStrm.str(), TestName);
+  // Add null terminator, so that we meet the requirements of the
+  // MemoryBuffer API.
+  MungedInputBuffer.push_back('\0');
+
+  MungedInput = MemoryBuffer::getMemBuffer(
+      StringRef(MungedInputBuffer.data(), MungedInputBuffer.size()-1),
+      TestName);
 }
 
 void NaClBitcodeMunger::cleanupTest() {
@@ -401,9 +399,8 @@ bool NaClObjDumpMunger::runTestWithFlags(
   /// error stream (rather than buffering in DumpStream), so that
   /// output can be seen in gtest death test.
   raw_ostream &Output = RunAsDeathTest ? errs() : *DumpStream;
-  // TODO(jvoung,kschimpf): Should NaClObjDump take a MemoryBufferRef
-  // like the parser?
-  if (NaClObjDump(MungedInput.get(), Output, NoRecords, NoAssembly))
+  if (NaClObjDump(MungedInput.get()->getMemBufferRef(),
+                  Output, NoRecords, NoAssembly))
     FoundErrors = true;
   cleanupTest();
   return !FoundErrors;

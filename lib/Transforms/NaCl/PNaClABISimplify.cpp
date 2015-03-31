@@ -58,11 +58,7 @@ void llvm::PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM) {
   PM.add(createLowerEmSetjmpPass()); // XXX EMSCRIPTEN
 
 #if 0 // EMSCRIPTEN: we allow arbitrary symbols to be preserved
-  // Internalize all symbols in the module except the entry point.  A PNaCl
-  // pexe is only allowed to export "_start", whereas a PNaCl PSO is only
-  // allowed to export "__pnacl_pso_root".
-  const char *SymbolsToPreserve[] = { "_start", "__pnacl_pso_root" };
-  PM.add(createInternalizePass(SymbolsToPreserve));
+  PM.add(createInternalizeUsedGlobalsPass());
 #endif
 
   // Expand out computed gotos (indirectbr and blockaddresses) into switches.
@@ -202,6 +198,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createReplacePtrsWithIntsPass());
 #endif
 
+  // Convert struct reg function params to struct* byval
+  PM.add(createSimplifyStructRegSignaturesPass());
+
   // The atomic cmpxchg instruction returns a struct, and is rewritten to an
   // intrinsic as a post-opt pass, we therefore need to expand struct regs.
   PM.add(createExpandStructRegsPass());
@@ -221,9 +220,8 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   PM.add(createStripDeadPrototypesPass());
 #endif
 
-  // Eliminate simple dead code that the post-opt passes could have
-  // created.
 #if 0 // EMSCRIPTEN: There's no point in running this since we're running DeadCodeElimination right after.
+  // Eliminate simple dead code that the post-opt passes could have created.
   PM.add(createDeadInstEliminationPass());
 #endif
   PM.add(createDeadCodeEliminationPass());

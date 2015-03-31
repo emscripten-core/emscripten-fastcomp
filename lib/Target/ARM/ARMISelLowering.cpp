@@ -7459,16 +7459,18 @@ ARMTargetLowering::EmitStructByval(MachineInstr *MI,
 
   // Load an immediate to varEnd.
   unsigned varEnd = MRI.createVirtualRegister(TRC);
-  if (IsThumb2) {
+  if (IsThumb2 || Subtarget->useMovt(*MF)) {
     unsigned Vtmp = varEnd;
     if ((LoopSize & 0xFFFF0000) != 0)
       Vtmp = MRI.createVirtualRegister(TRC);
-    AddDefaultPred(BuildMI(BB, dl, TII->get(ARM::t2MOVi16), Vtmp)
-                       .addImm(LoopSize & 0xFFFF));
+    AddDefaultPred(BuildMI(BB, dl,
+                           TII->get(IsThumb2 ? ARM::t2MOVi16 : ARM::MOVi16),
+                           Vtmp).addImm(LoopSize & 0xFFFF));
 
     if ((LoopSize & 0xFFFF0000) != 0)
-      AddDefaultPred(BuildMI(BB, dl, TII->get(ARM::t2MOVTi16), varEnd)
-                         .addReg(Vtmp).addImm(LoopSize >> 16));
+      AddDefaultPred(BuildMI(BB, dl,
+                             TII->get(IsThumb2 ? ARM::t2MOVTi16 : ARM::MOVTi16),
+                             varEnd).addReg(Vtmp).addImm(LoopSize >> 16));
   } else {
     MachineConstantPool *ConstantPool = MF->getConstantPool();
     Type *Int32Ty = Type::getInt32Ty(MF->getFunction()->getContext());
@@ -10520,8 +10522,8 @@ ARMTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
 
   // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-      (N->getOpcode() == ISD::LOAD || N->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(N);
   if (restrict_addressing_modes_for_nacl) {
     return false;
   }
@@ -10567,8 +10569,8 @@ bool ARMTargetLowering::getPostIndexedAddressParts(SDNode *N, SDNode *Op,
     return false;
    // @LOCALMOD-START
   // Avoid two reg addressing mode for loads and stores
-  const bool restrict_addressing_modes_for_nacl = Subtarget->isTargetNaCl() &&
-      (N->getOpcode() == ISD::LOAD || N->getOpcode() == ISD::STORE);
+  const bool restrict_addressing_modes_for_nacl =
+      Subtarget->isTargetNaCl() && isa<MemSDNode>(N);
   if (restrict_addressing_modes_for_nacl) {
     return false;
   }

@@ -17,6 +17,7 @@
 #include "X86CallingConv.h"
 #include "X86InstrBuilder.h"
 #include "X86MachineFunctionInfo.h"
+#include "X86NaClDecls.h" // @LOCALMOD
 #include "X86TargetMachine.h"
 #include "X86TargetObjectFile.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -3404,6 +3405,23 @@ X86TargetLowering::IsEligibleForTailCallOptimization(SDValue Callee,
     for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i)
       if (!ArgLocs[i].isRegLoc())
         return false;
+    // @LOCALMOD-BEGIN
+    // Do not optimize vararg calls with 6 arguments. TCrets use a reduced
+    // subset of registers because they cannot use callee-saves. When using
+    // sandbox base hiding (with r11 reserved) there are not enough registers
+    // because all of the available registers are used for arguments (%al is
+    // also used for the float/vector register count).
+    // Another option to fix this would be to replace r11 with r10 in the
+    // GR64_TC register class if we decide we don't care about supporting "nest"
+    // parameters. It might even be technically possible to actually use r11
+    // because for tcreturn it's used as a jump target and not read, but I don't
+    // know if reserved regs can be set differently for different purposes like
+    // that.
+    if (Subtarget->isTargetNaCl64() &&
+        FlagHideSandboxBase &&
+        ArgLocs.size() > 5)
+      return false;
+    // @LOCALMOD-END
   }
 
   // If the call result is in ST0 / ST1, it needs to be popped off the x87

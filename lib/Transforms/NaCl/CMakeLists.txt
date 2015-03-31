@@ -23,6 +23,7 @@ add_llvm_library(LLVMNaClTransforms
   GlobalCleanup.cpp
   GlobalizeConstantVectors.cpp
   InsertDivideCheck.cpp
+  InternalizeUsedGlobals.cpp
   PNaClABISimplify.cpp
   PNaClSjLjEH.cpp
   PromoteI1Ops.cpp
@@ -34,6 +35,7 @@ add_llvm_library(LLVMNaClTransforms
   RewriteLLVMIntrinsics.cpp
   RewritePNaClLibraryCalls.cpp
   SimplifyAllocas.cpp
+  SimplifyStructRegSignatures.cpp
   StripAttributes.cpp
   StripMetadata.cpp
   LowerEmExceptionsPass.cpp

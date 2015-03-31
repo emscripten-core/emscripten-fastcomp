@@ -48,7 +48,6 @@ public:
 
     arm,        // ARM (little endian): arm, armv.*, xscale
     armeb,      // ARM (big endian): armeb
-    asmjs,      // asm.js: asmjs
     aarch64,    // AArch64 (little endian): aarch64
     aarch64_be, // AArch64 (big endian): aarch64_be
     hexagon,    // Hexagon: hexagon
@@ -74,6 +73,7 @@ public:
     nvptx64,    // NVPTX: 64-bit
     le32,       // le32: generic little-endian 32-bit CPU (PNaCl / Emscripten)
     le64,       // le64: generic little-endian 64-bit CPU (PNaCl / Emscripten)
+    asmjs,      // asm.js JavaScript subset @LOCALMOD Emscripten
     amdil,      // AMDIL
     amdil64,    // AMDIL with 64-bit pointers
     hsail,      // AMD HSAIL
@@ -134,7 +134,7 @@ public:
     Haiku,
     Minix,
     RTEMS,
-    Emscripten, // Emscripten
+    Emscripten, // Emscripten JavaScript runtime @LOCALMOD Emscripten
     NaCl,       // Native Client
     CNK,        // BG/P Compute-Node Kernel
     Bitrig,
@@ -380,6 +380,30 @@ public:
   bool isOSMSVCRT() const { return false; }
   bool isOSWindows() const { return false; }
   bool isOSNaCl() const { return true; }
+  bool isOSEmscripten() const { return false; }
+  bool isOSLinux() const { return false; }
+  bool isOSBinFormatELF() const { return true; }
+  bool isOSBinFormatCOFF() const { return false; }
+  bool isOSBinFormatMachO() const { return false; }
+#elif defined(__EMSCRIPTEN__)
+  bool isMacOSX() const { return false; }
+  bool isiOS() const { return false; }
+  bool isOSDarwin() const { return false; }
+  bool isOSNetBSD() const { return false; }
+  bool isOSOpenBSD() const { return false; }
+  bool isOSFreeBSD() const { return false; }
+  bool isOSSolaris() const { return false; }
+  bool isOSBitrig() const { return false; }
+  bool isWindowsMSVCEnvironment() const { return false; }
+  bool isKnownWindowsMSVCEnvironment() const { return false; }
+  bool isWindowsItaniumEnvironment() const { return false; }
+  bool isWindowsCygwinEnvironment() const { return false; }
+  bool isWindowsGNUEnvironment() const { return false; }
+  bool isOSCygMing() const { return false; }
+  bool isOSMSVCRT() const { return false; }
+  bool isOSWindows() const { return false; }
+  bool isOSNaCl() const { return false; }
+  bool isOSEmscripten() const { return true; }
   bool isOSLinux() const { return false; }
   bool isOSBinFormatELF() const { return true; }
   bool isOSBinFormatCOFF() const { return false; }
@@ -463,6 +487,13 @@ public:
   bool isOSNaCl() const {
     return getOS() == Triple::NaCl;
   }
+
+  // @LOCALMOD-START Emscripten
+  /// \brief Tests whether the OS is Emscripten.
+  bool isOSEmscripten() const {
+    return getOS() == Triple::Emscripten;
+  }
+  // @LOCALMOD-END Emscripten
 
   /// \brief Tests whether the OS is Linux.
   bool isOSLinux() const {

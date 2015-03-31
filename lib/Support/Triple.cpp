@@ -23,7 +23,6 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case aarch64_be:  return "aarch64_be";
   case arm:         return "arm";
   case armeb:       return "armeb";
-  case asmjs:       return "asmjs";
   case hexagon:     return "hexagon";
   case mips:        return "mips";
   case mipsel:      return "mipsel";
@@ -47,6 +46,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case nvptx64:     return "nvptx64";
   case le32:        return "le32";
   case le64:        return "le64";
+  case asmjs:       return "asmjs"; // @LOCALMOD Emscripten
   case amdil:       return "amdil";
   case amdil64:     return "amdil64";
   case hsail:       return "hsail";
@@ -66,8 +66,6 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
 
   case aarch64:
   case aarch64_be:  return "aarch64";
-
-  case asmjs:   return "asmjs";
 
   case arm:
   case armeb:
@@ -102,6 +100,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
 
   case le32:        return "le32";
   case le64:        return "le64";
+
+  case asmjs:       return "asmjs"; // @LOCALMOD Emscripten
 
   case amdil:
   case amdil64:     return "amdil";
@@ -141,7 +141,6 @@ const char *Triple::getOSTypeName(OSType Kind) {
 
   case Darwin: return "darwin";
   case DragonFly: return "dragonfly";
-  case Emscripten: return "emscripten";
   case FreeBSD: return "freebsd";
   case IOS: return "ios";
   case KFreeBSD: return "kfreebsd";
@@ -155,6 +154,7 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case Haiku: return "haiku";
   case Minix: return "minix";
   case RTEMS: return "rtems";
+  case Emscripten: return "emscripten"; // @LOCALMOD Emscripten
   case NaCl: return "nacl";
   case CNK: return "cnk";
   case Bitrig: return "bitrig";
@@ -217,6 +217,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("le32", le32)
     .Case("asmjs", asmjs)
     .Case("le64", le64)
+    .Case("asmjs", asmjs) // @LOCALMOD Emscripten
     .Case("amdil", amdil)
     .Case("amdil64", amdil64)
     .Case("hsail", hsail)
@@ -301,6 +302,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("le32", Triple::le32)
     .Case("asmjs", Triple::asmjs)
     .Case("le64", Triple::le64)
+    .Case("asmjs", Triple::asmjs) // @LOCALMOD Emscripten
     .Case("amdil", Triple::amdil)
     .Case("amdil64", Triple::amdil64)
     .Case("hsail", Triple::hsail)
@@ -345,6 +347,7 @@ static Triple::OSType parseOS(StringRef OSName) {
     .StartsWith("haiku", Triple::Haiku)
     .StartsWith("minix", Triple::Minix)
     .StartsWith("rtems", Triple::RTEMS)
+    .StartsWith("emscripten", Triple::Emscripten) // @LOCALMOD Emscripten
     .StartsWith("nacl", Triple::NaCl)
     .StartsWith("cnk", Triple::CNK)
     .StartsWith("bitrig", Triple::Bitrig)
@@ -848,9 +851,9 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
 
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
-  case llvm::Triple::asmjs:
   case llvm::Triple::hexagon:
   case llvm::Triple::le32:
+  case llvm::Triple::asmjs: // @LOCALMOD Emscripten
   case llvm::Triple::mips:
   case llvm::Triple::mipsel:
   case llvm::Triple::nvptx:
@@ -916,10 +919,10 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::spir:
   case Triple::arm:
   case Triple::armeb:
-  case Triple::asmjs:
   case Triple::hexagon:
   case Triple::kalimba:
   case Triple::le32:
+  case Triple::asmjs: // @LOCALMOD Emscripten
   case Triple::mips:
   case Triple::mipsel:
   case Triple::nvptx:
@@ -954,7 +957,6 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::UnknownArch:
   case Triple::arm:
   case Triple::armeb:
-  case Triple::asmjs:
   case Triple::hexagon:
   case Triple::kalimba:
   case Triple::msp430:
@@ -963,6 +965,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::thumb:
   case Triple::thumbeb:
   case Triple::xcore:
+  case Triple::asmjs: // @LOCALMOD Emscripten
     T.setArch(UnknownArch);
     break;
 
@@ -1011,13 +1014,6 @@ const char *Triple::getARMCPUForArch(StringRef MArch) const {
   case llvm::Triple::Win32:
     // FIXME: this is invalid for WindowsCE
     return "cortex-a9";
-  // @LOCALMOD-START
-  case llvm::Triple::NaCl:
-    // Default to armv7 unless something more specific is specified.
-    if (MArch == "arm")
-      return "cortex-a9";
-    break;
-  // @LOCALMOD-END
   default:
     break;
   }
@@ -1076,6 +1072,8 @@ const char *Triple::getARMCPUForArch(StringRef MArch) const {
     default:
       return "strongarm";
     }
+  case llvm::Triple::NaCl:
+    return "cortex-a8";
   default:
     switch (getEnvironment()) {
     case llvm::Triple::EABIHF:
