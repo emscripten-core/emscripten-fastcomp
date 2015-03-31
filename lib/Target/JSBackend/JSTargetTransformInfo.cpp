@@ -67,12 +67,14 @@ public:
 
   unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
                                   OperandValueKind Opd1Info = OK_AnyValue,
-                                  OperandValueKind Opd2Info = OK_AnyValue) const override;
+                                  OperandValueKind Opd2Info = OK_AnyValue,
+                                  OperandValueProperties Opd1PropInfo = OP_None,
+                                  OperandValueProperties Opd2PropInfo = OP_None) const override;
 
   unsigned getVectorInstrCost(unsigned Opcode, Type *Val,
                               unsigned Index = -1) const override;
 
-  void getUnrollingPreferences(Loop *L, UnrollingPreferences &UP) const override;
+  void getUnrollingPreferences(const Function *F, Loop *L, UnrollingPreferences &UP) const override;
 };
 
 } // end anonymous namespace
@@ -109,7 +111,9 @@ unsigned JSTTI::getRegisterBitWidth(bool Vector) const {
 
 unsigned JSTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
                                        OperandValueKind Opd1Info,
-                                       OperandValueKind Opd2Info) const {
+                                       OperandValueKind Opd2Info,
+                                       OperandValueProperties Opd1PropInfo,
+                                       OperandValueProperties Opd2PropInfo) const {
   const unsigned Nope = 65536;
 
   unsigned Cost = TargetTransformInfo::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
@@ -154,7 +158,7 @@ unsigned JSTTI::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) c
   return Cost;
 }
 
-void JSTTI::getUnrollingPreferences(Loop *L, UnrollingPreferences &UP) const {
+void JSTTI::getUnrollingPreferences(const Function *F, Loop *L, UnrollingPreferences &UP) const {
   // We generally don't want a lot of unrolling.
   UP.Partial = false;
   UP.Runtime = false;
