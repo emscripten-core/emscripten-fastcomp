@@ -43,11 +43,11 @@ public:
     initializeJSTTIPass(*PassRegistry::getPassRegistry());
   }
 
-  virtual void initializePass() {
+  void initializePass() override {
     pushTTIStack(this);
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
     TargetTransformInfo::getAnalysisUsage(AU);
   }
 
@@ -55,24 +55,24 @@ public:
   static char ID;
 
   /// Provide necessary pointer adjustments for the two base classes.
-  virtual void *getAdjustedAnalysisPointer(const void *ID) {
+  void *getAdjustedAnalysisPointer(const void *ID) override {
     if (ID == &TargetTransformInfo::ID)
       return (TargetTransformInfo*)this;
     return this;
   }
 
-  virtual PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) const;
+  PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) const override;
 
-  virtual unsigned getRegisterBitWidth(bool Vector) const;
+  unsigned getRegisterBitWidth(bool Vector) const override;
 
-  virtual unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
-                                          OperandValueKind Opd1Info = OK_AnyValue,
-                                          OperandValueKind Opd2Info = OK_AnyValue) const;
+  unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
+                                  OperandValueKind Opd1Info = OK_AnyValue,
+                                  OperandValueKind Opd2Info = OK_AnyValue) const override;
 
-  virtual unsigned getVectorInstrCost(unsigned Opcode, Type *Val,
-                                      unsigned Index = -1) const;
+  unsigned getVectorInstrCost(unsigned Opcode, Type *Val,
+                              unsigned Index = -1) const override;
 
-  virtual void getUnrollingPreferences(Loop *L, UnrollingPreferences &UP) const;
+  void getUnrollingPreferences(Loop *L, UnrollingPreferences &UP) const override;
 };
 
 } // end anonymous namespace

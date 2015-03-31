@@ -38,9 +38,9 @@ struct SimplifyAllocas : public FunctionPass {
   SimplifyAllocas() : FunctionPass(ID) {}
     // XXX initialize..(*PassRegistry::getPassRegistry()); }
 
-  virtual bool runOnFunction(Function &Func);
+  bool runOnFunction(Function &Func) override;
 
-  virtual const char *getPassName() const { return "SimplifyAllocas"; }
+  const char *getPassName() const override { return "SimplifyAllocas"; }
 };
 
 char SimplifyAllocas::ID = 0;

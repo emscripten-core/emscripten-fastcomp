@@ -44,7 +44,7 @@ namespace {
       initializeExpandInsertExtractElementPass(*PassRegistry::getPassRegistry());
     }
 
-    virtual bool runOnFunction(Function &F);
+    bool runOnFunction(Function &F) override;
   };
 }
 

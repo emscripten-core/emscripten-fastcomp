@@ -165,11 +165,11 @@ namespace {
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
         OptLevel(OptLevel), StackBumped(false) {}
 
-    virtual const char *getPassName() const { return "JavaScript backend"; }
+    const char *getPassName() const override { return "JavaScript backend"; }
 
-    virtual bool runOnModule(Module &M);
+    bool runOnModule(Module &M) override;
 
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+    void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesAll();
       AU.addRequired<DataLayoutPass>();
       ModulePass::getAnalysisUsage(AU);
@@ -2938,7 +2938,7 @@ class CheckTriple : public ModulePass {
 public:
   static char ID;
   CheckTriple() : ModulePass(ID) {}
-  virtual bool runOnModule(Module &M) {
+  bool runOnModule(Module &M) override {
     if (M.getTargetTriple() != "asmjs-unknown-emscripten") {
       prettyWarning() << "incorrect target triple '" << M.getTargetTriple() << "' (did you use emcc/em++ on all source files and not clang directly?)\n";
     }
