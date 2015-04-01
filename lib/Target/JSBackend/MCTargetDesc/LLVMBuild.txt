@@ -1,4 +1,4 @@
-;===- ./tools/bugpoint/LLVMBuild.txt ---------------------------*- Conf -*--===;
+;===- ./lib/Target/JSBackend/MCTargetDesc/LLVMBuild.txt --------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -16,7 +16,9 @@
 ;===------------------------------------------------------------------------===;
 
 [component_0]
-type = Tool
-name = bugpoint
-parent = Tools
-required_libraries = AsmParser BitReader BitWriter IRReader IPO Instrumentation Linker Scalar ObjCARC CodeGen NaClTransforms NaClAnalysis MinSFITransforms NaClBitReader JSBackend
+type = Library
+name = JSBackendDesc
+parent = JSBackend
+required_libraries = MC Support JSBackendInfo
+add_to_library_groups = JSBackend
+

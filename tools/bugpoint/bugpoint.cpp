@@ -186,6 +186,14 @@ int main(int argc, char **argv) {
   initializeStripModuleFlagsPass(Registry);
   initializeStripTlsPass(Registry);
   initializeSubstituteUndefsPass(Registry);
+  // Emscripten passes:
+  initializeExpandI64Pass(Registry);
+  initializeLowerEmAsyncifyPass(Registry);
+  initializeLowerEmExceptionsPass(Registry);
+  initializeLowerEmSetjmpPass(Registry);
+  initializeNoExitRuntimePass(Registry);
+  initializeNoExitRuntimePass(Registry);
+  // Emscripten passes end.
   // @LOCALMOD-END
   
   cl::ParseCommandLineOptions(argc, argv,

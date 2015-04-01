@@ -172,6 +172,7 @@ set(LLVM_ALL_TARGETS
   ARM
   CppBackend
   Hexagon
+  JSBackend # @LOCALMOD
   Mips
   MSP430
   NVPTX

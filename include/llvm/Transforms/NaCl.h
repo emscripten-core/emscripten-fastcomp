@@ -22,6 +22,7 @@ class FunctionPass;
 class FunctionType;
 class Instruction;
 class ModulePass;
+class Triple;
 class Use;
 class Value;
 
@@ -66,8 +67,17 @@ ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 ModulePass *createStripModuleFlagsPass();
 
-void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
-void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
+// Emscripten passes:
+ModulePass *createExpandI64Pass();
+ModulePass *createExpandInsertExtractElementPass();
+ModulePass *createLowerEmAsyncifyPass();
+ModulePass *createLowerEmExceptionsPass();
+ModulePass *createLowerEmSetjmpPass();
+ModulePass *createNoExitRuntimePass();
+// Emscripten passes end.
+
+void PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM);
+void PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM);
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);
