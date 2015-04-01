@@ -25,6 +25,7 @@ add_llvm_library(LLVMNaClTransforms
   GlobalizeConstantVectors.cpp
   InsertDivideCheck.cpp
   InternalizeUsedGlobals.cpp
+  NormalizeAlignment.cpp
   PNaClABISimplify.cpp
   PNaClSjLjEH.cpp
   PromoteI1Ops.cpp

@@ -168,6 +168,9 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
   // ExpandSmallArguments.
   PM.add(createStripAttributesPass());
 
+  // Many passes create loads and stores. This pass changes their alignment.
+  PM.add(createNormalizeAlignmentPass());
+
   // Strip dead prototytes to appease the intrinsic ABI checks.
   // ExpandVarArgs leaves around vararg intrinsics, and
   // ReplacePtrsWithInts leaves the lifetime.start/end intrinsics.

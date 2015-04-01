@@ -393,7 +393,7 @@ int main(int argc, char **argv) {
   initializeGlobalizeConstantVectorsPass(Registry);
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
-  initializeSimplifyStructRegSignaturesPass(Registry);
+  initializeNormalizeAlignmentPass(Registry);
   initializePNaClABIVerifyFunctionsPass(Registry);
   initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
@@ -410,6 +410,7 @@ int main(int argc, char **argv) {
   initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
+  initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
