@@ -24,13 +24,13 @@
 //
 //===------------------------------------------------------------------===//
 
-#include "OptPasses.h"
 #include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -38,8 +38,8 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/IR/CFG.h"
 #include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
 #include <vector>
@@ -1162,6 +1162,6 @@ void ExpandI64::getAnalysisUsage(AnalysisUsage &AU) const {
   ModulePass::getAnalysisUsage(AU);
 }
 
-Pass *llvm::createExpandI64Pass() {
+ModulePass *llvm::createExpandI64Pass() {
   return new ExpandI64();
 }

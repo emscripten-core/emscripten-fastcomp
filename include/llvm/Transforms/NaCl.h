@@ -69,7 +69,6 @@ ModulePass *createStripModuleFlagsPass();
 
 // Emscripten passes:
 ModulePass *createExpandI64Pass();
-ModulePass *createExpandInsertExtractElementPass();
 ModulePass *createLowerEmAsyncifyPass();
 ModulePass *createLowerEmExceptionsPass();
 ModulePass *createLowerEmSetjmpPass();
