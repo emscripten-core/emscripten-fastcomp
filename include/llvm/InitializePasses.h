@@ -292,6 +292,7 @@ void initializeAddPNaClExternalDeclsPass(PassRegistry&);
 void initializeAllocateDataSegmentPass(PassRegistry&);
 void initializeBackendCanonicalizePass(PassRegistry&);
 void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
+void initializeCleanupUsedGlobalsMetadataPass(PassRegistry&);
 void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
 void initializeExpandAllocasPass(PassRegistry&);
 void initializeExpandArithWithOverflowPass(PassRegistry&);

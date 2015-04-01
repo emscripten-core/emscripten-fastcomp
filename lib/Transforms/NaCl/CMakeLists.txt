@@ -2,6 +2,7 @@ add_llvm_library(LLVMNaClTransforms
   AddPNaClExternalDecls.cpp
   BackendCanonicalize.cpp
   CanonicalizeMemIntrinsics.cpp
+  CleanupUsedGlobalsMetadata.cpp
   ConstantInsertExtractElementIndex.cpp
   ExceptionInfoWriter.cpp
   ExpandArithWithOverflow.cpp

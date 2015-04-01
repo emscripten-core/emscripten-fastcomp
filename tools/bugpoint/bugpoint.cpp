@@ -141,6 +141,7 @@ int main(int argc, char **argv) {
   initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
+  initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
   initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);

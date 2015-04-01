@@ -41,6 +41,7 @@ FunctionPass *createRemoveAsmMemoryPass();
 FunctionPass *createResolvePNaClIntrinsicsPass();
 ModulePass *createAddPNaClExternalDeclsPass();
 ModulePass *createCanonicalizeMemIntrinsicsPass();
+ModulePass *createCleanupUsedGlobalsMetadataPass();
 ModulePass *createExpandArithWithOverflowPass();
 ModulePass *createExpandByValPass();
 ModulePass *createExpandCtorsPass();

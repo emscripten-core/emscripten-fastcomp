@@ -175,4 +175,7 @@ void llvm::PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM) {
 
   // Eliminate simple dead code that the post-opt passes could have created.
   PM.add(createDeadCodeEliminationPass());
+
+  // This should be the last step before PNaCl ABI validation.
+  PM.add(createCleanupUsedGlobalsMetadataPass());
 }
