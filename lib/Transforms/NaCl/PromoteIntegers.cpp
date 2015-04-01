@@ -9,9 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Legal sizes are currently 1, 8, 16, 32, 64 (and higher, see note below).
-// Operations on illegal integers are changed to operate on the next-higher
-// legal size.
+// Legal sizes are currently 1, 8, and large power-of-two sizes. Operations on
+// illegal integers are changed to operate on the next-higher legal size.
+//
 // It maintains no invariants about the upper bits (above the size of the
 // original type); therefore before operations which can be affected by the
 // value of these bits (e.g. cmp, select, lshr), the upper bits of the operands
@@ -19,22 +19,21 @@
 //
 // Limitations:
 // 1) It can't change function signatures or global variables
-// 2) It won't promote (and can't expand) types larger than i64
-// 3) Doesn't support div operators
-// 4) Doesn't handle arrays or structs with illegal types
-// 5) Doesn't handle constant expressions (it also doesn't produce them, so it
+// 2) Doesn't handle arrays or structs with illegal types
+// 3) Doesn't handle constant expressions (it also doesn't produce them, so it
 //    can run after ExpandConstantExpr)
 //
 //===----------------------------------------------------------------------===//
 
-
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 
@@ -42,35 +41,30 @@ using namespace llvm;
 
 namespace {
 class PromoteIntegers : public FunctionPass {
- public:
+public:
   static char ID;
   PromoteIntegers() : FunctionPass(ID) {
     initializePromoteIntegersPass(*PassRegistry::getPassRegistry());
   }
   virtual bool runOnFunction(Function &F);
 };
-}
+} // anonymous namespace
 
 char PromoteIntegers::ID = 0;
 INITIALIZE_PASS(PromoteIntegers, "nacl-promote-ints",
                 "Promote integer types which are illegal in PNaCl",
                 false, false)
 
-// Legal sizes are currently 1, 8, 16, 32, and 64.
-// We can't yet expand types above 64 bit, so don't try to touch them for now.
-// TODO(dschuff): expand >64bit types or disallow >64bit packed bitfields.
-// There are currently none in our tests that use the ABI checker.
-// See https://code.google.com/p/nativeclient/issues/detail?id=3360
 static bool isLegalSize(unsigned Size) {
-  if (Size > 64) return true;
-  return Size == 1 || Size == 8 || Size == 16 || Size == 32 || Size == 64;
+  return Size == 1 || (Size >= 8 && isPowerOf2_32(Size));
 }
 
 static Type *getPromotedIntType(IntegerType *Ty) {
-  unsigned Width = Ty->getBitWidth();
-  assert(Width <= 64 && "Don't know how to legalize >64 bit types yet");
+  auto Width = Ty->getBitWidth();
   if (isLegalSize(Width))
     return Ty;
+  assert(Width < (1ull << (sizeof(Width) * CHAR_BIT - 1)) &&
+         "width can't be rounded to the next power of two");
   return IntegerType::get(Ty->getContext(),
                           Width < 8 ? 8 : NextPowerOf2(Width));
 }
@@ -83,28 +77,18 @@ static Type *getPromotedType(Type *Ty) {
 
 // Return true if Val is an int which should be converted.
 static bool shouldConvert(Value *Val) {
-  if (IntegerType *ITy = dyn_cast<IntegerType>(Val->getType())) {
-    if (!isLegalSize(ITy->getBitWidth())) {
-      return true;
-    }
-  }
+  if (auto *ITy = dyn_cast<IntegerType>(Val->getType()))
+    return !isLegalSize(ITy->getBitWidth());
   return false;
 }
 
 // Return a constant which has been promoted to a legal size.
-static Value *convertConstant(Constant *C, bool SignExt=false) {
+static Value *convertConstant(Constant *C, bool SignExt) {
   assert(shouldConvert(C));
-  if (isa<UndefValue>(C)) {
-    return UndefValue::get(getPromotedType(C->getType()));
-  } else if (ConstantInt *CInt = dyn_cast<ConstantInt>(C)) {
-    return ConstantInt::get(
-        getPromotedType(C->getType()),
-        SignExt ? CInt->getSExtValue() : CInt->getZExtValue(),
-        /*isSigned=*/SignExt);
-  } else {
-    errs() << "Value: " << *C << "\n";
-    report_fatal_error("Unexpected constant value");
-  }
+  Type *ProTy = getPromotedType(C->getType());
+  // ConstantExpr of a Constant yields a Constant, not a ConstantExpr.
+  return SignExt ? ConstantExpr::getSExt(C, ProTy)
+                 : ConstantExpr::getZExt(C, ProTy);
 }
 
 namespace {
@@ -117,26 +101,28 @@ namespace {
 // instruction. After a new instruction is created to replace an illegal one,
 // recordConverted is called to register the replacement. All users are updated,
 // and if there is a placeholder, its users are also updated.
+//
 // recordConverted also queues the old value for deletion.
+//
 // This strategy avoids the need for recursion or worklists for conversion.
 class ConversionState {
- public:
+public:
   // Return the promoted value for Val. If Val has not yet been converted,
   // return a placeholder, which will be converted later.
   Value *getConverted(Value *Val) {
     if (!shouldConvert(Val))
-        return Val;
+      return Val;
     if (isa<GlobalVariable>(Val))
       report_fatal_error("Can't convert illegal GlobalVariables");
     if (RewrittenMap.count(Val))
       return RewrittenMap[Val];
 
     // Directly convert constants.
-    if (Constant *C = dyn_cast<Constant>(Val))
+    if (auto *C = dyn_cast<Constant>(Val))
       return convertConstant(C, /*SignExt=*/false);
 
     // No converted value available yet, so create a placeholder.
-    Value *P = new Argument(getPromotedType(Val->getType()));
+    auto *P = new Argument(getPromotedType(Val->getType()));
 
     RewrittenMap[Val] = P;
     Placeholders[Val] = P;
@@ -146,7 +132,7 @@ class ConversionState {
   // Replace the uses of From with To, replace the uses of any
   // placeholders for From, and optionally give From's name to To.
   // Also mark To for deletion.
-  void recordConverted(Instruction *From, Value *To, bool TakeName=true) {
+  void recordConverted(Instruction *From, Value *To, bool TakeName = true) {
     ToErase.push_back(From);
     if (!shouldConvert(From)) {
       // From does not produce an illegal value, update its users in place.
@@ -167,15 +153,13 @@ class ConversionState {
   }
 
   void eraseReplacedInstructions() {
-    for (SmallVectorImpl<Instruction *>::iterator I = ToErase.begin(),
-             E = ToErase.end(); I != E; ++I)
-      (*I)->dropAllReferences();
-    for (SmallVectorImpl<Instruction *>::iterator I = ToErase.begin(),
-             E = ToErase.end(); I != E; ++I)
-      (*I)->eraseFromParent();
+    for (Instruction *E : ToErase)
+      E->dropAllReferences();
+    for (Instruction *E : ToErase)
+      E->eraseFromParent();
   }
 
- private:
+private:
   // Maps illegal values to their new converted values (or placeholders
   // if no new value is available yet)
   DenseMap<Value *, Value *> RewrittenMap;
@@ -186,94 +170,104 @@ class ConversionState {
 };
 } // anonymous namespace
 
+// Create a BitCast instruction from the original Value being cast. These
+// instructions aren't replaced by convertInstruction because they are pointer
+// types (which are always valid), but their uses eventually lead to an invalid
+// type.
+static Value *CreateBitCast(IRBuilder<> *IRB, Value *From, Type *ToTy,
+                            const Twine &Name) {
+  if (auto *BC = dyn_cast<BitCastInst>(From))
+    return CreateBitCast(IRB, BC->getOperand(0), ToTy, Name);
+  return IRB->CreateBitCast(From, ToTy, Name);
+}
+
 // Split an illegal load into multiple legal loads and return the resulting
 // promoted value. The size of the load is assumed to be a multiple of 8.
-static Value *splitLoad(LoadInst *Inst, ConversionState &State) {
+//
+// \param BaseAlign Alignment of the base load.
+// \param Offset    Offset from the base load.
+static Value *splitLoad(DataLayout *DL, LoadInst *Inst, ConversionState &State,
+                        unsigned BaseAlign, unsigned Offset) {
   if (Inst->isVolatile() || Inst->isAtomic())
     report_fatal_error("Can't split volatile/atomic loads");
-  if (cast<IntegerType>(Inst->getType())->getBitWidth() % 8 != 0)
+  if (DL->getTypeSizeInBits(Inst->getType()) % 8 != 0)
     report_fatal_error("Loads must be a multiple of 8 bits");
 
-  Value *OrigPtr = State.getConverted(Inst->getPointerOperand());
-  // OrigPtr is a placeholder in recursive calls, and so has no name
+  auto *OrigPtr = State.getConverted(Inst->getPointerOperand());
+  // OrigPtr is a placeholder in recursive calls, and so has no name.
   if (OrigPtr->getName().empty())
     OrigPtr->setName(Inst->getPointerOperand()->getName());
-  unsigned Width = cast<IntegerType>(Inst->getType())->getBitWidth();
-  Type *NewType = getPromotedType(Inst->getType());
-  unsigned LoWidth = Width;
+  unsigned Width = DL->getTypeSizeInBits(Inst->getType());
+  auto *NewType = getPromotedType(Inst->getType());
+  unsigned LoWidth = PowerOf2Floor(Width);
+  assert(isLegalSize(LoWidth));
 
-  while (!isLegalSize(LoWidth)) LoWidth -= 8;
-  IntegerType *LoType = IntegerType::get(Inst->getContext(), LoWidth);
-  IntegerType *HiType = IntegerType::get(Inst->getContext(), Width - LoWidth);
+  auto *LoType = IntegerType::get(Inst->getContext(), LoWidth);
+  auto *HiType = IntegerType::get(Inst->getContext(), Width - LoWidth);
   IRBuilder<> IRB(Inst);
 
-  Value *BCLo = IRB.CreateBitCast(
-      OrigPtr,
-      LoType->getPointerTo(),
-      OrigPtr->getName() + ".loty");
-  Value *LoadLo = IRB.CreateAlignedLoad(
-      BCLo, Inst->getAlignment(), Inst->getName() + ".lo");
-  Value *LoExt = IRB.CreateZExt(LoadLo, NewType, LoadLo->getName() + ".ext");
-  Value *GEPHi = IRB.CreateConstGEP1_32(BCLo, 1, OrigPtr->getName() + ".hi");
-  Value *BCHi = IRB.CreateBitCast(
-        GEPHi,
-        HiType->getPointerTo(),
-        OrigPtr->getName() + ".hity");
+  auto *BCLo = CreateBitCast(&IRB, OrigPtr, LoType->getPointerTo(),
+                             OrigPtr->getName() + ".loty");
+  auto *LoadLo = IRB.CreateAlignedLoad(BCLo, MinAlign(BaseAlign, Offset),
+                                       Inst->getName() + ".lo");
+  auto *LoExt = IRB.CreateZExt(LoadLo, NewType, LoadLo->getName() + ".ext");
+  auto *GEPHi = IRB.CreateConstGEP1_32(BCLo, 1, OrigPtr->getName() + ".hi");
+  auto *BCHi = CreateBitCast(&IRB, GEPHi, HiType->getPointerTo(),
+                             OrigPtr->getName() + ".hity");
 
-  Value *LoadHi = IRB.CreateLoad(BCHi, Inst->getName() + ".hi");
-  if (!isLegalSize(Width - LoWidth)) {
-    LoadHi = splitLoad(cast<LoadInst>(LoadHi), State);
-  }
+  auto HiOffset = (Offset + LoWidth) / CHAR_BIT;
+  auto *LoadHi = IRB.CreateAlignedLoad(
+      BCHi, MinAlign(BaseAlign, HiOffset), Inst->getName() + ".hi");
+  auto *Hi = !isLegalSize(Width - LoWidth)
+                 ? splitLoad(DL, LoadHi, State, BaseAlign, HiOffset)
+                 : LoadHi;
 
-  Value *HiExt = IRB.CreateZExt(LoadHi, NewType, LoadHi->getName() + ".ext");
-  Value *HiShift = IRB.CreateShl(HiExt, LoWidth, HiExt->getName() + ".sh");
-  Value *Result = IRB.CreateOr(LoExt, HiShift);
+  auto *HiExt = IRB.CreateZExt(Hi, NewType, Hi->getName() + ".ext");
+  auto *HiShift = IRB.CreateShl(HiExt, LoWidth, HiExt->getName() + ".sh");
+  auto *Result = IRB.CreateOr(LoExt, HiShift);
 
   State.recordConverted(Inst, Result);
 
   return Result;
 }
 
-static Value *splitStore(StoreInst *Inst, ConversionState &State) {
+static Value *splitStore(DataLayout *DL, StoreInst *Inst,
+                         ConversionState &State, unsigned BaseAlign,
+                         unsigned Offset) {
   if (Inst->isVolatile() || Inst->isAtomic())
     report_fatal_error("Can't split volatile/atomic stores");
-  if (cast<IntegerType>(Inst->getValueOperand()->getType())->getBitWidth() % 8
-      != 0)
+  if (DL->getTypeSizeInBits(Inst->getValueOperand()->getType()) % 8 != 0)
     report_fatal_error("Stores must be a multiple of 8 bits");
 
-  Value *OrigPtr = State.getConverted(Inst->getPointerOperand());
+  auto *OrigPtr = State.getConverted(Inst->getPointerOperand());
   // OrigPtr is now a placeholder in recursive calls, and so has no name.
   if (OrigPtr->getName().empty())
     OrigPtr->setName(Inst->getPointerOperand()->getName());
-  Value *OrigVal = State.getConverted(Inst->getValueOperand());
-  unsigned Width = cast<IntegerType>(
-      Inst->getValueOperand()->getType())->getBitWidth();
-  unsigned LoWidth = Width;
+  auto *OrigVal = State.getConverted(Inst->getValueOperand());
+  unsigned Width = DL->getTypeSizeInBits(Inst->getValueOperand()->getType());
+  unsigned LoWidth = PowerOf2Floor(Width);
+  assert(isLegalSize(LoWidth));
 
-  while (!isLegalSize(LoWidth)) LoWidth -= 8;
-  IntegerType *LoType = IntegerType::get(Inst->getContext(), LoWidth);
-  IntegerType *HiType = IntegerType::get(Inst->getContext(), Width - LoWidth);
+  auto *LoType = IntegerType::get(Inst->getContext(), LoWidth);
+  auto *HiType = IntegerType::get(Inst->getContext(), Width - LoWidth);
   IRBuilder<> IRB(Inst);
 
-  Value *BCLo = IRB.CreateBitCast(
-      OrigPtr,
-      LoType->getPointerTo(),
-      OrigPtr->getName() + ".loty");
-  Value *LoTrunc = IRB.CreateTrunc(
-      OrigVal, LoType, OrigVal->getName() + ".lo");
-  IRB.CreateAlignedStore(LoTrunc, BCLo, Inst->getAlignment());
+  auto *BCLo = CreateBitCast(&IRB, OrigPtr, LoType->getPointerTo(),
+                             OrigPtr->getName() + ".loty");
+  auto *LoTrunc = IRB.CreateTrunc(OrigVal, LoType, OrigVal->getName() + ".lo");
+  IRB.CreateAlignedStore(LoTrunc, BCLo, MinAlign(BaseAlign, Offset));
 
-  Value *HiLShr = IRB.CreateLShr(
-      OrigVal, LoWidth, OrigVal->getName() + ".hi.sh");
-  Value *GEPHi = IRB.CreateConstGEP1_32(BCLo, 1, OrigPtr->getName() + ".hi");
-  Value *HiTrunc = IRB.CreateTrunc(
-      HiLShr, HiType, OrigVal->getName() + ".hi");
-  Value *BCHi = IRB.CreateBitCast(
-        GEPHi,
-        HiType->getPointerTo(),
-        OrigPtr->getName() + ".hity");
+  auto HiOffset = (Offset + LoWidth) / CHAR_BIT;
+  auto *HiLShr =
+      IRB.CreateLShr(OrigVal, LoWidth, OrigVal->getName() + ".hi.sh");
+  auto *GEPHi = IRB.CreateConstGEP1_32(BCLo, 1, OrigPtr->getName() + ".hi");
+  auto *HiTrunc = IRB.CreateTrunc(HiLShr, HiType, OrigVal->getName() + ".hi");
+  auto *BCHi = CreateBitCast(&IRB, GEPHi, HiType->getPointerTo(),
+                             OrigPtr->getName() + ".hity");
 
-  Value *StoreHi = IRB.CreateStore(HiTrunc, BCHi);
+  auto *StoreHi =
+      IRB.CreateAlignedStore(HiTrunc, BCHi, MinAlign(BaseAlign, HiOffset));
+  Value *Hi = StoreHi;
 
   if (!isLegalSize(Width - LoWidth)) {
     // HiTrunc is still illegal, and is redundant with the truncate in the
@@ -284,32 +278,30 @@ static Value *splitStore(StoreInst *Inst, ConversionState &State) {
     if (!isa<Constant>(HiTrunc))
       State.recordConverted(cast<Instruction>(HiTrunc), HiLShr,
                             /*TakeName=*/false);
-    StoreHi = splitStore(cast<StoreInst>(StoreHi), State);
+    Hi = splitStore(DL, StoreHi, State, BaseAlign, HiOffset);
   }
-  State.recordConverted(Inst, StoreHi, /*TakeName=*/false);
-  return StoreHi;
+  State.recordConverted(Inst, Hi, /*TakeName=*/false);
+  return Hi;
 }
 
 // Return a converted value with the bits of the operand above the size of the
 // original type cleared.
 static Value *getClearConverted(Value *Operand, Instruction *InsertPt,
                                 ConversionState &State) {
-  Type *OrigType = Operand->getType();
-  Instruction *OrigInst = dyn_cast<Instruction>(Operand);
+  auto *OrigType = Operand->getType();
+  auto *OrigInst = dyn_cast<Instruction>(Operand);
   Operand = State.getConverted(Operand);
   // If the operand is a constant, it will have been created by
   // ConversionState.getConverted, which zero-extends by default.
   if (isa<Constant>(Operand))
     return Operand;
   Instruction *NewInst = BinaryOperator::Create(
-      Instruction::And,
-      Operand,
+      Instruction::And, Operand,
       ConstantInt::get(
           getPromotedType(OrigType),
           APInt::getLowBitsSet(getPromotedType(OrigType)->getIntegerBitWidth(),
                                OrigType->getIntegerBitWidth())),
-      Operand->getName() + ".clear",
-      InsertPt);
+      Operand->getName() + ".clear", InsertPt);
   if (OrigInst)
     CopyDebug(NewInst, OrigInst);
   return NewInst;
@@ -328,30 +320,26 @@ static Value *getSignExtend(Value *Operand, Value *OrigOperand,
   if (Constant *C = dyn_cast<Constant>(OrigOperand))
     return convertConstant(C, /*SignExt=*/true);
   Type *OrigType = OrigOperand->getType();
-  ConstantInt *ShiftAmt = ConstantInt::getSigned(
-      cast<IntegerType>(getPromotedType(OrigType)),
-      getPromotedType(OrigType)->getIntegerBitWidth() -
-        OrigType->getIntegerBitWidth());
-  BinaryOperator *Shl = BinaryOperator::Create(
-      Instruction::Shl,
-      Operand,
-      ShiftAmt,
-      Operand->getName() + ".getsign",
-      InsertPt);
+  ConstantInt *ShiftAmt =
+      ConstantInt::getSigned(cast<IntegerType>(getPromotedType(OrigType)),
+                             getPromotedType(OrigType)->getIntegerBitWidth() -
+                                 OrigType->getIntegerBitWidth());
+  BinaryOperator *Shl =
+      BinaryOperator::Create(Instruction::Shl, Operand, ShiftAmt,
+                             Operand->getName() + ".getsign", InsertPt);
   if (Instruction *Inst = dyn_cast<Instruction>(OrigOperand))
     CopyDebug(Shl, Inst);
-  return CopyDebug(BinaryOperator::Create(
-      Instruction::AShr,
-      Shl,
-      ShiftAmt,
-      Operand->getName() + ".signed",
-      InsertPt), Shl);
+  return CopyDebug(BinaryOperator::Create(Instruction::AShr, Shl, ShiftAmt,
+                                          Operand->getName() + ".signed",
+                                          InsertPt),
+                   Shl);
 }
 
-static void convertInstruction(Instruction *Inst, ConversionState &State) {
+static void convertInstruction(DataLayout *DL, Instruction *Inst,
+                               ConversionState &State) {
   if (SExtInst *Sext = dyn_cast<SExtInst>(Inst)) {
     Value *Op = Sext->getOperand(0);
-    Value *NewInst = NULL;
+    Value *NewInst = nullptr;
     // If the operand to be extended is illegal, we first need to fill its
     // upper bits with its sign bit.
     if (shouldConvert(Op)) {
@@ -371,7 +359,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     State.recordConverted(Sext, NewInst);
   } else if (ZExtInst *Zext = dyn_cast<ZExtInst>(Inst)) {
     Value *Op = Zext->getOperand(0);
-    Value *NewInst = NULL;
+    Value *NewInst = nullptr;
     if (shouldConvert(Op)) {
       NewInst = getClearConverted(Op, Zext, State);
     }
@@ -407,23 +395,30 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     State.recordConverted(Trunc, NewInst);
   } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
     if (shouldConvert(Load)) {
-      splitLoad(Load, State);
+      unsigned BaseAlign = Load->getAlignment() == 0
+                               ? DL->getABITypeAlignment(Load->getType())
+                               : Load->getAlignment();
+      splitLoad(DL, Load, State, BaseAlign, /*Offset=*/0);
     }
   } else if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
     if (shouldConvert(Store->getValueOperand())) {
-      splitStore(Store, State);
+      unsigned BaseAlign =
+          Store->getAlignment() == 0
+              ? DL->getABITypeAlignment(Store->getValueOperand()->getType())
+              : Store->getAlignment();
+      splitStore(DL, Store, State, BaseAlign, /*Offset=*/0);
     }
   } else if (isa<CallInst>(Inst)) {
     report_fatal_error("can't convert calls with illegal types");
   } else if (BinaryOperator *Binop = dyn_cast<BinaryOperator>(Inst)) {
-    Value *NewInst = NULL;
+    Value *NewInst = nullptr;
     switch (Binop->getOpcode()) {
       case Instruction::AShr: {
         // The AShr operand needs to be sign-extended to the promoted size
         // before shifting. Because the sign-extension is implemented with
         // with AShr, it can be combined with the original operation.
         Value *Op = Binop->getOperand(0);
-        Value *ShiftAmount = NULL;
+        Value *ShiftAmount = nullptr;
         APInt SignShiftAmt = APInt(
             getPromotedType(Op->getType())->getIntegerBitWidth(),
             getPromotedType(Op->getType())->getIntegerBitWidth() -
@@ -485,23 +480,39 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
             State.getConverted(Binop->getOperand(1)),
             Binop->getName() + ".result", Binop), Binop);
         break;
+      case Instruction::UDiv:
+      case Instruction::URem:
+        NewInst =
+            CopyDebug(BinaryOperator::Create(
+                          Binop->getOpcode(),
+                          getClearConverted(Binop->getOperand(0), Binop, State),
+                          getClearConverted(Binop->getOperand(1), Binop, State),
+                          Binop->getName() + ".result", Binop),
+                      Binop);
+        break;
+      case Instruction::SDiv:
+      case Instruction::SRem:
+        NewInst = CopyDebug(
+            BinaryOperator::Create(
+                Binop->getOpcode(),
+                getSignExtend(State.getConverted(Binop->getOperand(0)),
+                              Binop->getOperand(0), Binop),
+                getSignExtend(State.getConverted(Binop->getOperand(1)),
+                              Binop->getOperand(0), Binop),
+                Binop->getName() + ".result", Binop),
+            Binop);
+        break;
       case Instruction::FAdd:
       case Instruction::FSub:
       case Instruction::FMul:
-      case Instruction::UDiv:
-      case Instruction::SDiv:
       case Instruction::FDiv:
-      case Instruction::URem:
-      case Instruction::SRem:
       case Instruction::FRem:
       case Instruction::BinaryOpsEnd:
         // We should not see FP operators here.
-        // We don't handle div.
         errs() << *Inst << "\n";
         llvm_unreachable("Cannot handle binary operator");
         break;
     }
-
     if (isa<OverflowingBinaryOperator>(NewInst)) {
       cast<BinaryOperator>(NewInst)->setHasNoUnsignedWrap(
           Binop->hasNoUnsignedWrap());
@@ -557,17 +568,20 @@ static void convertInstruction(Instruction *Inst, ConversionState &State) {
     for (SwitchInst::CaseIt I = Switch->case_begin(),
              E = Switch->case_end();
          I != E; ++I) {
-      NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue())),
+      NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue(),
+                                                         /*SignExt=*/false)),
                        I.getCaseSuccessor());
     }
     Switch->eraseFromParent();
   } else {
-    errs() << *Inst<<"\n";
+    errs() << *Inst <<"\n";
     llvm_unreachable("unhandled instruction");
   }
 }
 
 bool PromoteIntegers::runOnFunction(Function &F) {
+  DataLayout DL(F.getParent());
+
   // Don't support changing the function arguments. This should not be
   // generated by clang.
   for (Function::arg_iterator I = F.arg_begin(), E = F.arg_end(); I != E; ++I) {
@@ -591,7 +605,7 @@ bool PromoteIntegers::runOnFunction(Function &F) {
         ShouldConvert |= shouldConvert(cast<Value>(OI));
 
       if (ShouldConvert) {
-        convertInstruction(Inst, State);
+        convertInstruction(&DL, Inst, State);
         Modified = true;
       }
     }
