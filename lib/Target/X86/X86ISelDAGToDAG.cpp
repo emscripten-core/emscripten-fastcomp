@@ -1098,6 +1098,8 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
     break;
 
   case ISD::SHL:
+    if (Subtarget->isTargetNaCl64() && selectingMemOp) // @LOCALMOD
+        break;
     if (AM.IndexReg.getNode() != nullptr || AM.Scale != 1)
       break;
 
