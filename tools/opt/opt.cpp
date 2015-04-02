@@ -418,6 +418,7 @@ int main(int argc, char **argv) {
   initializeSubstituteUndefsPass(Registry);
   // Emscripten passes:
   initializeExpandI64Pass(Registry);
+  initializeExpandInsertExtractElementPass(Registry);
   initializeLowerEmAsyncifyPass(Registry);
   initializeLowerEmExceptionsPass(Registry);
   initializeLowerEmSetjmpPass(Registry);

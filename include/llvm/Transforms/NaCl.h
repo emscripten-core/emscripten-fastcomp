@@ -68,6 +68,7 @@ ModulePass *createStripMetadataPass();
 ModulePass *createStripModuleFlagsPass();
 
 // Emscripten passes:
+FunctionPass *createExpandInsertExtractElementPass();
 ModulePass *createExpandI64Pass();
 ModulePass *createLowerEmAsyncifyPass();
 ModulePass *createLowerEmExceptionsPass();

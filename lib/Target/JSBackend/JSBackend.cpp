@@ -41,6 +41,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/Transforms/NaCl.h"
 #include <algorithm>
 #include <cstdio>
 #include <map>

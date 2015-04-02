@@ -12,14 +12,14 @@
 //
 //===------------------------------------------------------------------===//
 
-#include "OptPasses.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/IR/InstIterator.h"
+#include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
 #include <vector>
@@ -101,6 +101,6 @@ bool ExpandInsertExtractElement::runOnFunction(Function &F) {
   return Changed;
 }
 
-Pass *llvm::createExpandInsertExtractElementPass() {
+FunctionPass *llvm::createExpandInsertExtractElementPass() {
   return new ExpandInsertExtractElement();
 }
