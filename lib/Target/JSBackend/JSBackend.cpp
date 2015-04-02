@@ -295,8 +295,11 @@ namespace {
       if (NoAliasingFunctionPointers) {
         while (Table.size() < NextFunctionIndex) Table.push_back("0");
       }
-      unsigned Alignment = F->getAlignment() || 1; // XXX this is wrong, it's always 1. but, that's fine in the ARM-like ABI we have which allows unaligned functions.
-                                                   //     the one risk is if someone forces a function to be aligned, and relies on that.
+      // XXX this is wrong, it's always 1. but, that's fine in the ARM-like ABI
+      // we have which allows unaligned func the one risk is if someone forces a
+      // function to be aligned, and relies on that. Could do F->getAlignment()
+      // instead.
+      unsigned Alignment = 1;
       while (Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
       Table.push_back(Name);

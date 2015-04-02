@@ -28,7 +28,7 @@ class JSSubtarget : public TargetSubtargetInfo {
   const DataLayout *DL;
 public:
   JSSubtarget(const DataLayout *DL_) : DL(DL_) {}
-  virtual const DataLayout *getDataLayout() const { return DL; }
+  const DataLayout *getDataLayout() const override { return DL; }
 };
 
 class JSTargetMachine : public TargetMachine {
@@ -41,18 +41,16 @@ public:
                   Reloc::Model RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
 
-  virtual bool addPassesToEmitFile(PassManagerBase &PM,
-                                   formatted_raw_ostream &Out,
-                                   CodeGenFileType FileType,
-                                   bool DisableVerify,
-                                   AnalysisID StartAfter,
-                                   AnalysisID StopAfter);
+  bool addPassesToEmitFile(PassManagerBase &PM, formatted_raw_ostream &Out,
+                           CodeGenFileType FileType, bool DisableVerify,
+                           AnalysisID StartAfter,
+                           AnalysisID StopAfter) override;
 
-  virtual const DataLayout *getDataLayout() const { return &DL; }
+  const DataLayout *getDataLayout() const { return &DL; }
   const JSSubtarget *getSubtargetImpl() const override { return &Subtarget; }
 
   /// \brief Register X86 analysis passes with a pass manager.
-  virtual void addAnalysisPasses(PassManagerBase &PM);
+  void addAnalysisPasses(PassManagerBase &PM) override;
 };
 
 } // End llvm namespace

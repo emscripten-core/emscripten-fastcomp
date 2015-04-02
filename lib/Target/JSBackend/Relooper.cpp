@@ -215,7 +215,7 @@ void Block::Render(bool InLoop) {
   // into the Simple's branches.
   MultipleShape *Fused = Shape::IsMultiple(Parent->Next);
   if (Fused) {
-    PrintDebug("Fusing Multiple to Simple\n");
+    PrintDebug("Fusing Multiple to Simple\n", 0);
     Parent->Next = Parent->Next->Next;
     Fused->UseSwitch = false; // TODO: emit switches here
     Fused->RenderLoopPrefix();
@@ -710,7 +710,7 @@ void Relooper::Calculate(Block *Entry) {
       }
 #endif
 
-      PrintDebug("creating loop block:\n");
+      PrintDebug("creating loop block:\n", 0);
       DebugDump(InnerBlocks, "  inner blocks:");
       DebugDump(Entries, "  inner entries:");
       DebugDump(Blocks, "  outer blocks:");
@@ -912,7 +912,7 @@ void Relooper::Calculate(Block *Entry) {
     //   ->Next block on them, and the blocks are what remains in Blocks (which Make* modify). In this way
     //   we avoid recursing on Next (imagine a long chain of Simples, if we recursed we could blow the stack).
     Shape *Process(BlockSet &Blocks, BlockSet& InitialEntries, Shape *Prev) {
-      PrintDebug("Process() called\n");
+      PrintDebug("Process() called\n", 0);
       BlockSet *Entries = &InitialEntries;
       BlockSet TempEntries[2];
       int CurrTempIndex = 0;
@@ -922,12 +922,12 @@ void Relooper::Calculate(Block *Entry) {
         Shape *Temp = call; \
         if (Prev) Prev->Next = Temp; \
         if (!Ret) Ret = Temp; \
-        if (!NextEntries->size()) { PrintDebug("Process() returning\n"); return Ret; } \
+        if (!NextEntries->size()) { PrintDebug("Process() returning\n", 0); return Ret; } \
         Prev = Temp; \
         Entries = NextEntries; \
         continue;
       while (1) {
-        PrintDebug("Process() running\n");
+      PrintDebug("Process() running\n", 0);
         DebugDump(Blocks, "  blocks : ");
         DebugDump(*Entries, "  entries: ");
 
@@ -1013,7 +1013,7 @@ void Relooper::Calculate(Block *Entry) {
                 if (!DeadEnd) break;
               }
               if (DeadEnd) {
-                PrintDebug("Removing nesting by not handling large group because small group is dead end\n");
+                PrintDebug("Removing nesting by not handling large group because small group is dead end\n", 0);
                 IndependentGroups.erase(LargeEntry);
               }
             }
@@ -1066,10 +1066,13 @@ void Relooper::Calculate(Block *Entry) {
 
     #define SHAPE_SWITCH(var, simple, multiple, loop) \
       if (SimpleShape *Simple = Shape::IsSimple(var)) { \
+        (void)Simple; \
         simple; \
       } else if (MultipleShape *Multiple = Shape::IsMultiple(var)) { \
+        (void)Multiple; \
         multiple; \
       } else if (LoopShape *Loop = Shape::IsLoop(var)) { \
+        (void)Loop; \
         loop; \
       }
 
@@ -1142,7 +1145,6 @@ void Relooper::Calculate(Block *Entry) {
               }
               if (Found && !Abort) {
                 for (BlockBranchMap::iterator iter = Simple->Inner->ProcessedBranchesOut.begin(); iter != Simple->Inner->ProcessedBranchesOut.end(); iter++) {
-                  Block *Target = iter->first;
                   Branch *Details = iter->second;
                   if (Details->Type == Branch::Break) {
                     Details->Type = Branch::Direct;
@@ -1219,7 +1221,6 @@ void Relooper::Calculate(Block *Entry) {
             RECURSE_Multiple(Fused, FindLabeledLoops);
           }
           for (BlockBranchMap::iterator iter = Simple->Inner->ProcessedBranchesOut.begin(); iter != Simple->Inner->ProcessedBranchesOut.end(); iter++) {
-            Block *Target = iter->first;
             Branch *Details = iter->second;
             if (Details->Type == Branch::Break || Details->Type == Branch::Continue) {
               assert(LoopStack.size() > 0);
@@ -1274,7 +1275,7 @@ void Relooper::Calculate(Block *Entry) {
     }
   };
 
-  PrintDebug("=== Optimizing shapes ===\n");
+  PrintDebug("=== Optimizing shapes ===\n", 0);
 
   PostOptimizer(this).Process(Root);
 }
@@ -1435,4 +1436,3 @@ RELOOPERDLL_API void rl_relooper_render(void *relooper) {
 }
 
 }
-
