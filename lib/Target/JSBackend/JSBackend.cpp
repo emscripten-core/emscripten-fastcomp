@@ -149,6 +149,7 @@ namespace {
     std::vector<std::string> GlobalInitializers;
     std::vector<std::string> Exports; // additional exports
     BlockAddressMap BlockAddresses;
+    NameIntMap AsmConsts;
 
     std::string CantValidate;
     bool UsesSIMD;
@@ -362,6 +363,19 @@ namespace {
         }
         return getGlobalAddress(V->getName().str());
       }
+    }
+
+    // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
+    // into an id. We emit a map of id => string contents, and emscripten
+    // wraps it up so that calling that id calls that function.
+    unsigned getAsmConstId(const Value *V) {
+      V = resolveFully(V);
+      const Constant *CI = cast<GlobalVariable>(V)->getInitializer();
+      const ConstantDataSequential *CDS = cast<ConstantDataSequential>(CI);
+      std::string code = CDS->getAsString();
+      unsigned id = AsmConsts.size();
+      AsmConsts[code] = id;
+      return id;
     }
 
     // Test whether the given value is known to be an absolute value or one we turn into an absolute value
@@ -2651,6 +2665,18 @@ void JSWriter::printModuleBody() {
       Out << ", ";
     }
     Out << "\"_" << I->first << "\": \"" << utostr(I->second) << "\"";
+  }
+  Out << "},";
+
+  Out << "\"asmConsts\": {";
+  first = true;
+  for (NameIntMap::const_iterator I = AsmConsts.begin(), E = AsmConsts.end(); I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" << utostr(I->second) << "\": \"" << I->first.c_str() << "\"";
   }
   Out << "}";
 
