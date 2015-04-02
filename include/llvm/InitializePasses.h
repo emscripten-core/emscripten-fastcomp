@@ -346,6 +346,7 @@ void initializeStripTlsPass(PassRegistry&);
 void initializeSubstituteUndefsPass(PassRegistry&);
 // Emscripten passes:
 void initializeExpandI64Pass(PassRegistry&);
+void initializeExpandInsertExtractElementPass(PassRegistry&);
 void initializeLowerEmAsyncifyPass(PassRegistry&);
 void initializeLowerEmExceptionsPass(PassRegistry&);
 void initializeLowerEmSetjmpPass(PassRegistry&);

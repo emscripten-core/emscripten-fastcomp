@@ -1162,6 +1162,10 @@ void ExpandI64::getAnalysisUsage(AnalysisUsage &AU) const {
   ModulePass::getAnalysisUsage(AU);
 }
 
-Pass *llvm::createExpandI64Pass() {
+namespace llvm {
+
+ModulePass *createExpandI64Pass() {
   return new ExpandI64();
+}
+
 }

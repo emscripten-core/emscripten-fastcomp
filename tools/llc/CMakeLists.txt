@@ -5,6 +5,7 @@ set(LLVM_LINK_COMPONENTS
   Core
   IRReader
   MC
+  NaClTransforms
   ScalarOpts
   SelectionDAG
   Support

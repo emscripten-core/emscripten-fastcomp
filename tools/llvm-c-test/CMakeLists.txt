@@ -3,6 +3,7 @@ set(LLVM_LINK_COMPONENTS
   BitReader
   Core
   MCDisassembler
+  NaClTransforms
   Object
   Target
   )

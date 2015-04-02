@@ -42,6 +42,7 @@ add_llvm_library(LLVMNaClTransforms
   StripMetadata.cpp
   # Emscripten files:
   ExpandI64.cpp
+  ExpandInsertExtractElement.cpp
   LowerEmAsyncify.cpp
   LowerEmExceptionsPass.cpp
   LowerEmSetjmp.cpp
