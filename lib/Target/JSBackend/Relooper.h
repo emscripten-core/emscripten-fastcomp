@@ -126,7 +126,7 @@ struct SimpleShape : public Shape {
   Block *Inner;
 
   SimpleShape() : Shape(Simple), Inner(NULL) {}
-  void Render(bool InLoop) {
+  void Render(bool InLoop) override {
     Inner->Render(InLoop);
     if (Next) Next->Render(InLoop);
   }
@@ -153,14 +153,14 @@ struct MultipleShape : public LabeledShape {
   void RenderLoopPrefix();
   void RenderLoopPostfix();
 
-  void Render(bool InLoop);
+  void Render(bool InLoop) override;
 };
 
 struct LoopShape : public LabeledShape {
   Shape *Inner;
 
   LoopShape() : LabeledShape(Loop), Inner(NULL) {}
-  void Render(bool InLoop);
+  void Render(bool InLoop) override;
 };
 
 // TODO EmulatedShape is only partially functional. Currently it can be used for the
@@ -170,7 +170,7 @@ struct EmulatedShape : public LabeledShape {
   BlockSet Blocks;
 
   EmulatedShape() : LabeledShape(Emulated) { Labeled = true; }
-  void Render(bool InLoop);
+  void Render(bool InLoop) override;
 };
 
 // Implements the relooper algorithm for a function's blocks.
