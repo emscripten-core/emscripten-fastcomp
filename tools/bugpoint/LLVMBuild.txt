@@ -19,5 +19,5 @@
 type = Tool
 name = bugpoint
 parent = Tools
-required_libraries = AsmParser BitReader BitWriter IRReader IPO Instrumentation Linker Scalar ObjCARC CodeGen NaClTransforms NaClAnalysis MinSFITransforms NaClBitReader
+required_libraries = AsmParser BitReader BitWriter IRReader IPO Instrumentation Linker Scalar ObjCARC CodeGen NaClTransforms NaClAnalysis MinSFITransforms NaClBitReader JSBackend
 

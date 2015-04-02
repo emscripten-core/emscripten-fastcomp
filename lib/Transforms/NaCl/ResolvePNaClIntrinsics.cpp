@@ -30,6 +30,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #if defined(PNACL_BROWSER_TRANSLATOR)
@@ -46,7 +47,7 @@ public:
   }
 
   static char ID;
-  virtual bool runOnFunction(Function &F);
+  bool runOnFunction(Function &F) override;
 
   /// Interface specifying how intrinsic calls should be resolved. Each
   /// intrinsic call handled by the implementor will be visited by the
@@ -85,8 +86,8 @@ public:
     virtual bool doResolve(IntrinsicInst *Call) = 0;
 
   private:
-    CallResolver(const CallResolver &) LLVM_DELETED_FUNCTION;
-    CallResolver &operator=(const CallResolver &) LLVM_DELETED_FUNCTION;
+    CallResolver(const CallResolver &) = delete;
+    CallResolver &operator=(const CallResolver &) = delete;
   };
 
 private:
@@ -109,16 +110,16 @@ public:
       report_fatal_error(std::string(
           "Expected to find external declaration of ") + TargetFunctionName);
   }
-  virtual ~IntrinsicCallToFunctionCall() {}
+  ~IntrinsicCallToFunctionCall() override {}
 
 private:
   Function *TargetFunction;
 
-  virtual Function *doGetDeclaration() const {
+  Function *doGetDeclaration() const override {
     return Intrinsic::getDeclaration(M, IntrinsicID);
   }
 
-  virtual bool doResolve(IntrinsicInst *Call) {
+  bool doResolve(IntrinsicInst *Call) override {
     Call->setCalledFunction(TargetFunction);
     if (IntrinsicID == Intrinsic::nacl_setjmp) {
       // The "returns_twice" attribute is required for correctness,
@@ -130,10 +131,9 @@ private:
     return true;
   }
 
-  IntrinsicCallToFunctionCall(const IntrinsicCallToFunctionCall &)
-      LLVM_DELETED_FUNCTION;
-  IntrinsicCallToFunctionCall &operator=(const IntrinsicCallToFunctionCall &)
-      LLVM_DELETED_FUNCTION;
+  IntrinsicCallToFunctionCall(const IntrinsicCallToFunctionCall &) = delete;
+  IntrinsicCallToFunctionCall &
+  operator=(const IntrinsicCallToFunctionCall &) = delete;
 };
 
 /// Rewrite intrinsic calls to a constant whose value is determined by a
@@ -145,34 +145,33 @@ public:
   ConstantCallResolver(Function &F, Intrinsic::ID IntrinsicID,
                        Callable Functor)
       : CallResolver(F, IntrinsicID), Functor(Functor) {}
-  virtual ~ConstantCallResolver() {}
+  ~ConstantCallResolver() override {}
 
 private:
   Callable Functor;
 
-  virtual Function *doGetDeclaration() const {
+  Function *doGetDeclaration() const override {
     return Intrinsic::getDeclaration(M, IntrinsicID);
   }
 
-  virtual bool doResolve(IntrinsicInst *Call) {
+  bool doResolve(IntrinsicInst *Call) override {
     Constant *C = Functor(Call);
     Call->replaceAllUsesWith(C);
     Call->eraseFromParent();
     return true;
   }
 
-  ConstantCallResolver(const ConstantCallResolver &) LLVM_DELETED_FUNCTION;
-  ConstantCallResolver &operator=(const ConstantCallResolver &)
-      LLVM_DELETED_FUNCTION;
+  ConstantCallResolver(const ConstantCallResolver &) = delete;
+  ConstantCallResolver &operator=(const ConstantCallResolver &) = delete;
 };
 
 /// Resolve __nacl_atomic_is_lock_free to true/false at translation
-/// time. PNaCl's currently supported platforms all support lock-free
-/// atomics at byte sizes {1,2,4,8} except for MIPS arch that supports
-/// lock-free atomics at byte sizes {1,2,4}, and the alignment of the
-/// pointer is always expected to be natural (as guaranteed by C11 and
-/// C++11). PNaCl's Module-level ABI verification checks that the byte
-/// size is constant and in {1,2,4,8}.
+/// time. PNaCl's currently supported platforms all support lock-free atomics at
+/// byte sizes {1,2,4,8} except for MIPS and asmjs architectures that supports
+/// lock-free atomics at byte sizes {1,2,4}, and the alignment of the pointer is
+/// always expected to be natural (as guaranteed by C11 and C++11). PNaCl's
+/// Module-level ABI verification checks that the byte size is constant and in
+/// {1,2,4,8}.
 struct IsLockFreeToConstant {
   Constant *operator()(CallInst *Call) {
     uint64_t MaxLockFreeByteSize = 8;
@@ -189,22 +188,34 @@ struct IsLockFreeToConstant {
       MaxLockFreeByteSize = 4;
       break;
     default:
-      report_fatal_error("Unhandled arch from __builtin_nacl_target_arch()");
+      errs() << "Architecture: " << Triple::getArchTypeName(Arch) << "\n";
+      report_fatal_error("is_lock_free: unhandled architecture");
     }
-#   elif defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
-         defined(__pnacl__) || defined(_M_X64) // XXX Emscripten TODO: Move this fix to PNaCl upstream.
-    // TODO(jfb): MaxLockFreeByteSize should actually be selected at runtime.
-    // Continue.
-#   elif defined(__mips__) || defined(_M_IX86) // XXX Emscripten TODO: Move this fix to PNaCl upstream.
-    MaxLockFreeByteSize = 4;
 #   else
-#     error "Unknown architecture"
+    switch (Arch) {
+    case Triple::x86:
+    case Triple::x86_64:
+    case Triple::arm:
+      break;
+    case Triple::mipsel:
+    case Triple::asmjs:
+      MaxLockFreeByteSize = 4;
+      break;
+    default:
+      errs() << "Architecture: " << Triple::getArchTypeName(Arch) << "\n";
+      report_fatal_error("is_lock_free: unhandled architecture");
+    }
 #   endif
 
     bool IsLockFree = ByteSize.ule(MaxLockFreeByteSize);
-    Constant *C = ConstantInt::get(Call->getType(), IsLockFree);
+    auto *C = ConstantInt::get(Call->getType(), IsLockFree);
     return C;
   }
+
+  Triple::ArchType Arch;
+  IsLockFreeToConstant(Module *M)
+      : Arch(Triple(M->getTargetTriple()).getArch()) {}
+  IsLockFreeToConstant() = delete;
 };
 
 /// Rewrite atomic intrinsics to LLVM IR instructions.
@@ -213,14 +224,14 @@ public:
   AtomicCallResolver(Function &F,
                      const NaCl::AtomicIntrinsics::AtomicIntrinsic *I)
       : CallResolver(F, I->ID), I(I) {}
-  virtual ~AtomicCallResolver() {}
+  ~AtomicCallResolver() override {}
 
 private:
   const NaCl::AtomicIntrinsics::AtomicIntrinsic *I;
 
-  virtual Function *doGetDeclaration() const { return I->getDeclaration(M); }
+  Function *doGetDeclaration() const override { return I->getDeclaration(M); }
 
-  virtual bool doResolve(IntrinsicInst *Call) {
+  bool doResolve(IntrinsicInst *Call) override {
     // Assume the @llvm.nacl.atomic.* intrinsics follow the PNaCl ABI:
     // this should have been checked by the verifier.
     bool isVolatile = false;
@@ -369,7 +380,7 @@ private:
     Call->eraseFromParent();
 
     // Remove dead code.
-    for (auto Kill : MaybeDead)
+    for (Instruction *Kill : MaybeDead)
       if (isInstructionTriviallyDead(Kill))
         Kill->eraseFromParent();
 
@@ -377,14 +388,14 @@ private:
   }
 
   unsigned alignmentFromPointer(const Value *Ptr) const {
-    const PointerType *PtrType = cast<PointerType>(Ptr->getType());
+    auto *PtrType = cast<PointerType>(Ptr->getType());
     unsigned BitWidth = PtrType->getElementType()->getIntegerBitWidth();
     return BitWidth / 8;
   }
 
   AtomicOrdering thawMemoryOrder(const Value *MemoryOrder) const {
-    NaCl::MemoryOrder MO = (NaCl::MemoryOrder)
-        cast<Constant>(MemoryOrder)->getUniqueInteger().getLimitedValue();
+    auto MO = static_cast<NaCl::MemoryOrder>(
+        cast<Constant>(MemoryOrder)->getUniqueInteger().getLimitedValue());
     switch (MO) {
     // Only valid values should pass validation.
     default: llvm_unreachable("unknown memory order");
@@ -399,8 +410,8 @@ private:
   }
 
   AtomicRMWInst::BinOp thawRMWOperation(const Value *Operation) const {
-    NaCl::AtomicRMWOperation Op = (NaCl::AtomicRMWOperation)
-        cast<Constant>(Operation)->getUniqueInteger().getLimitedValue();
+    auto Op = static_cast<NaCl::AtomicRMWOperation>(
+        cast<Constant>(Operation)->getUniqueInteger().getLimitedValue());
     switch (Op) {
     // Only valid values should pass validation.
     default: llvm_unreachable("unknown atomic RMW operation");
@@ -429,21 +440,22 @@ bool ResolvePNaClIntrinsics::visitCalls(
   for (User *U : IntrinsicFunction->users()) {
     // At this point, the only uses of the intrinsic can be calls, since we
     // assume this pass runs on bitcode that passed ABI verification.
-    IntrinsicInst *Call = dyn_cast<IntrinsicInst>(U);
+    auto *Call = dyn_cast<IntrinsicInst>(U);
     if (!Call)
       report_fatal_error("Expected use of intrinsic to be a call: " +
                          Resolver.getName());
     Calls.push_back(Call);
   }
 
-  for (auto Call : Calls)
+  for (IntrinsicInst *Call : Calls)
     Changed |= Resolver.resolve(Call);
 
   return Changed;
 }
 
 bool ResolvePNaClIntrinsics::runOnFunction(Function &F) {
-  LLVMContext &C = F.getParent()->getContext();
+  Module *M = F.getParent();
+  LLVMContext &C = M->getContext();
   bool Changed = false;
 
   IntrinsicCallToFunctionCall SetJmpResolver(F, Intrinsic::nacl_setjmp,
@@ -455,14 +467,13 @@ bool ResolvePNaClIntrinsics::runOnFunction(Function &F) {
 
   NaCl::AtomicIntrinsics AI(C);
   NaCl::AtomicIntrinsics::View V = AI.allIntrinsicsAndOverloads();
-  for (NaCl::AtomicIntrinsics::View::iterator I = V.begin(), E = V.end();
-       I != E; ++I) {
+  for (auto I = V.begin(), E = V.end(); I != E; ++I) {
     AtomicCallResolver AtomicResolver(F, I);
     Changed |= visitCalls(AtomicResolver);
   }
 
   ConstantCallResolver<IsLockFreeToConstant> IsLockFreeResolver(
-      F, Intrinsic::nacl_atomic_is_lock_free, IsLockFreeToConstant());
+      F, Intrinsic::nacl_atomic_is_lock_free, IsLockFreeToConstant(M));
   Changed |= visitCalls(IsLockFreeResolver);
 
   return Changed;

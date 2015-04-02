@@ -22,6 +22,7 @@ class FunctionPass;
 class FunctionType;
 class Instruction;
 class ModulePass;
+class Triple;
 class Use;
 class Value;
 
@@ -36,11 +37,13 @@ FunctionPass *createExpandConstantExprPass();
 FunctionPass *createExpandLargeIntegersPass();
 FunctionPass *createExpandStructRegsPass();
 FunctionPass *createInsertDivideCheckPass();
+FunctionPass *createNormalizeAlignmentPass();
 FunctionPass *createPromoteIntegersPass();
 FunctionPass *createRemoveAsmMemoryPass();
 FunctionPass *createResolvePNaClIntrinsicsPass();
 ModulePass *createAddPNaClExternalDeclsPass();
 ModulePass *createCanonicalizeMemIntrinsicsPass();
+ModulePass *createCleanupUsedGlobalsMetadataPass();
 ModulePass *createExpandArithWithOverflowPass();
 ModulePass *createExpandByValPass();
 ModulePass *createExpandCtorsPass();
@@ -53,26 +56,27 @@ ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createGlobalizeConstantVectorsPass();
 ModulePass *createInternalizeUsedGlobalsPass();
-ModulePass *createSimplifyStructRegSignaturesPass();
 ModulePass *createPNaClSjLjEHPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createRewriteAtomicsPass();
 ModulePass *createRewriteLLVMIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
+ModulePass *createSimplifyStructRegSignaturesPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 ModulePass *createStripModuleFlagsPass();
 
-ModulePass *createExpandI64Pass(); // XXX EMSCRIPTEN
-ModulePass *createExpandInsertExtractElementPass(); // XXX EMSCRIPTEN
-ModulePass *createLowerEmExceptionsPass(); // XXX EMSCRIPTEN
-ModulePass *createLowerEmSetjmpPass(); // XXX EMSCRIPTEN
-ModulePass *createNoExitRuntimePass(); // XXX EMSCRIPTEN
-ModulePass *createLowerEmAsyncifyPass(); // XXX EMSCRIPTEN
+// Emscripten passes:
+ModulePass *createExpandI64Pass();
+ModulePass *createLowerEmAsyncifyPass();
+ModulePass *createLowerEmExceptionsPass();
+ModulePass *createLowerEmSetjmpPass();
+ModulePass *createNoExitRuntimePass();
+// Emscripten passes end.
 
-void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
-void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
+void PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM);
+void PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM);
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);

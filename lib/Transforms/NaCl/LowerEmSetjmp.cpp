@@ -307,7 +307,8 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           Iter = BB->begin();
           E = BB->end();
         } else if (InvokeInst *CI = dyn_cast<InvokeInst>(I)) { // XXX check if target is setjmp
-          assert("TODO: invoke inside setjmping functions");
+          (void)CI;
+          report_fatal_error("TODO: invoke inside setjmping functions");
         }
       }
     }

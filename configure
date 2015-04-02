@@ -1436,7 +1436,7 @@ Optional Features:
                           target1,target2,... Valid targets are: host, x86,
                           x86_64, sparc, powerpc, arm64, arm, aarch64, mips,
                           hexagon, xcore, msp430, nvptx, systemz, r600, and
-                          js, and cpp (default=all)
+                          js, cpp (default=all)
   --enable-experimental-targets
                           Build experimental host targets: disable or
                           target1,target2,... (default=disable)
@@ -5347,7 +5347,7 @@ case "$enableval" in
         xcore)    TARGETS_TO_BUILD="XCore $TARGETS_TO_BUILD" ;;
         msp430)   TARGETS_TO_BUILD="MSP430 $TARGETS_TO_BUILD" ;;
         cpp)      TARGETS_TO_BUILD="CppBackend $TARGETS_TO_BUILD" ;;
-        js)       TARGETS_TO_BUILD="JSBackend $TARGETS_TO_BUILD" ;;
+        js)       TARGETS_TO_BUILD="JSBackend $TARGETS_TO_BUILD" ;; # @LOCALMOD
         hexagon)  TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
         nvptx)    TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
         systemz)  TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;

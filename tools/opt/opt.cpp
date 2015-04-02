@@ -371,6 +371,7 @@ int main(int argc, char **argv) {
   initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
+  initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
   initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
@@ -392,7 +393,7 @@ int main(int argc, char **argv) {
   initializeGlobalizeConstantVectorsPass(Registry);
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
-  initializeSimplifyStructRegSignaturesPass(Registry);
+  initializeNormalizeAlignmentPass(Registry);
   initializePNaClABIVerifyFunctionsPass(Registry);
   initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
@@ -409,6 +410,7 @@ int main(int argc, char **argv) {
   initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
+  initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeExpandI64Pass(Registry);
@@ -416,6 +418,14 @@ int main(int argc, char **argv) {
   initializeStripModuleFlagsPass(Registry);
   initializeStripTlsPass(Registry);
   initializeSubstituteUndefsPass(Registry);
+  // Emscripten passes:
+  initializeExpandI64Pass(Registry);
+  initializeLowerEmAsyncifyPass(Registry);
+  initializeLowerEmExceptionsPass(Registry);
+  initializeLowerEmSetjmpPass(Registry);
+  initializeNoExitRuntimePass(Registry);
+  initializeNoExitRuntimePass(Registry);
+  // Emscripten passes end.
   // @LOCALMOD-END
 
   cl::ParseCommandLineOptions(argc, argv,
@@ -555,7 +565,7 @@ int main(int argc, char **argv) {
     // @LOCALMOD-BEGIN
     if (PNaClABISimplifyPreOpt &&
         PNaClABISimplifyPreOpt.getPosition() < PassList.getPosition(i)) {
-      PNaClABISimplifyAddPreOptPasses(Passes);
+      PNaClABISimplifyAddPreOptPasses(&ModuleTriple, Passes);
       PNaClABISimplifyPreOpt = false;
     }
     // @LOCALMOD-END
@@ -594,7 +604,7 @@ int main(int argc, char **argv) {
     // @LOCALMOD-BEGIN
     if (PNaClABISimplifyPostOpt &&
         PNaClABISimplifyPostOpt.getPosition() < PassList.getPosition(i)) {
-      PNaClABISimplifyAddPostOptPasses(Passes);
+      PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
       PNaClABISimplifyPostOpt = false;
     }
 
@@ -647,7 +657,7 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   if (PNaClABISimplifyPreOpt)
-    PNaClABISimplifyAddPreOptPasses(Passes);
+    PNaClABISimplifyAddPreOptPasses(&ModuleTriple, Passes);
   // @LOCALMOD-END
 
   if (StandardLinkOpts) {
@@ -679,7 +689,7 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   if (PNaClABISimplifyPostOpt)
-    PNaClABISimplifyAddPostOptPasses(Passes);
+    PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
 
   if (MinSFI)
      MinSFIPasses(Passes);

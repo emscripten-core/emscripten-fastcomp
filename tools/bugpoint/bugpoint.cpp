@@ -141,6 +141,7 @@ int main(int argc, char **argv) {
   initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
+  initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
   initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
@@ -162,7 +163,7 @@ int main(int argc, char **argv) {
   initializeGlobalizeConstantVectorsPass(Registry);
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
-  initializeSimplifyStructRegSignaturesPass(Registry);
+  initializeNormalizeAlignmentPass(Registry);
   initializePNaClABIVerifyFunctionsPass(Registry);
   initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
@@ -179,11 +180,20 @@ int main(int argc, char **argv) {
   initializeSandboxIndirectCallsPass(Registry);
   initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
+  initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
   initializeStripTlsPass(Registry);
   initializeSubstituteUndefsPass(Registry);
+  // Emscripten passes:
+  initializeExpandI64Pass(Registry);
+  initializeLowerEmAsyncifyPass(Registry);
+  initializeLowerEmExceptionsPass(Registry);
+  initializeLowerEmSetjmpPass(Registry);
+  initializeNoExitRuntimePass(Registry);
+  initializeNoExitRuntimePass(Registry);
+  // Emscripten passes end.
   // @LOCALMOD-END
   
   cl::ParseCommandLineOptions(argc, argv,
