@@ -501,6 +501,30 @@ DEF_CALL_HANDLER(emscripten_float32x4_storexy, {
   return "SIMD_float32x4_storeXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
+// EM_ASM support
+
+std::string handleAsmConst(const Instruction *CI, std::string suffix="") {
+  std::string ret = "_emscripten_asm_const" + suffix + "(" + utostr(getAsmConstId(CI->getOperand(0)));
+  unsigned Num = getNumArgOperands(CI);
+  for (unsigned i = 1; i < Num; i++) {
+    ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
+  }
+  return ret + ")";
+}
+
+DEF_CALL_HANDLER(emscripten_asm_const, {
+  Declares.insert("emscripten_asm_const");
+  return handleAsmConst(CI);
+})
+DEF_CALL_HANDLER(emscripten_asm_const_int, {
+  Declares.insert("emscripten_asm_const_int");
+  return getAssign(CI) + getCast(handleAsmConst(CI, "_int"), Type::getInt32Ty(CI->getContext()));
+})
+DEF_CALL_HANDLER(emscripten_asm_const_double, {
+  Declares.insert("emscripten_asm_const_double");
+  return getAssign(CI) + getCast(handleAsmConst(CI, "_double"), Type::getDoubleTy(CI->getContext()));
+})
+
 #define DEF_BUILTIN_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   return CH___default__(CI, #to); \
@@ -674,6 +698,9 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_loadxy);
   SETUP_CALL_HANDLER(emscripten_float32x4_storex);
   SETUP_CALL_HANDLER(emscripten_float32x4_storexy);
+  SETUP_CALL_HANDLER(emscripten_asm_const);
+  SETUP_CALL_HANDLER(emscripten_asm_const_int);
+  SETUP_CALL_HANDLER(emscripten_asm_const_double);
 
   SETUP_CALL_HANDLER(abs);
   SETUP_CALL_HANDLER(labs);
