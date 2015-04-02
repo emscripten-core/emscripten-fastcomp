@@ -375,8 +375,16 @@ namespace {
       const ConstantDataSequential *CDS = cast<ConstantDataSequential>(CI);
       std::string code = CDS->getAsString();
       if (code.find('"') != std::string::npos) {
-        errs() << "asm const: " << code.c_str() << "\n";
-        error("cannot have \" characters in EM_ASM, use single-quotes (') instead");
+        if (code.find('\'') == std::string::npos) {
+          // replace double quotes with single quotes
+          size_t curr;
+          while ((curr = code.find('"')) != std::string::npos) {
+            code = code.replace(curr, 1, "'");
+          }
+        } else {
+          errs() << "asm const: " << code.c_str() << "\n";
+          error("cannot have \" characters in EM_ASM, use single-quotes (') instead");
+        }
       }
       unsigned id = AsmConsts.size();
       AsmConsts[code] = id;
