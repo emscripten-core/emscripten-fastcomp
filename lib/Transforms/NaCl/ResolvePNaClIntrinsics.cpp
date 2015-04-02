@@ -197,7 +197,7 @@ struct IsLockFreeToConstant {
     case Triple::x86_64:
     case Triple::arm:
       break;
-    case Triple::mips:
+    case Triple::mipsel:
     case Triple::asmjs:
       MaxLockFreeByteSize = 4;
       break;

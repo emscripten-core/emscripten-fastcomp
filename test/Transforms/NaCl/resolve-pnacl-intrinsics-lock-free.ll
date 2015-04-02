@@ -3,7 +3,7 @@
 ; RUN: opt < %s -resolve-pnacl-intrinsics -mtriple=x86_64 -S | FileCheck %s -check-prefix=X8664
 ; RUN: opt < %s -resolve-pnacl-intrinsics -mtriple=i386   -S | FileCheck %s -check-prefix=X8632
 ; RUN: opt < %s -resolve-pnacl-intrinsics -mtriple=arm    -S | FileCheck %s -check-prefix=ARM32
-; RUN: opt < %s -resolve-pnacl-intrinsics -mtriple=mips   -S | FileCheck %s -check-prefix=MIPS32
+; RUN: opt < %s -resolve-pnacl-intrinsics -mtriple=mipsel -S | FileCheck %s -check-prefix=MIPS32
 ; RUN: opt < %s -resolve-pnacl-intrinsics -mtriple=asmjs  -S | FileCheck %s -check-prefix=ASMJS
 
 ; CLEANED-NOT: call {{.*}} @llvm.nacl.atomic
