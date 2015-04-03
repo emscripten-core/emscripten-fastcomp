@@ -40,8 +40,6 @@
 using namespace llvm;
 
 namespace {
-class ConversionState;
-
 class PromoteIntegers : public FunctionPass {
 public:
   static char ID;
@@ -49,10 +47,6 @@ public:
     initializePromoteIntegersPass(*PassRegistry::getPassRegistry());
   }
   virtual bool runOnFunction(Function &F);
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.addRequired<DataLayoutPass>();
-    return FunctionPass::getAnalysisUsage(AU);
-  }
 };
 } // anonymous namespace
 
