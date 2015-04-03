@@ -413,8 +413,6 @@ int main(int argc, char **argv) {
   initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
-  initializeExpandI64Pass(Registry);
-  initializeNoExitRuntimePass(Registry);
   initializeStripModuleFlagsPass(Registry);
   initializeStripTlsPass(Registry);
   initializeSubstituteUndefsPass(Registry);
