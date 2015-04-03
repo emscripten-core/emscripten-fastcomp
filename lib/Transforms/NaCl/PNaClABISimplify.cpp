@@ -225,6 +225,7 @@ void llvm::PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM) {
   if (!isEmscripten) // Dead prototypes ignored by JSBackend.
     PM.add(createStripDeadPrototypesPass());
 
+  // Eliminate simple dead code that the post-opt passes could have created.
   PM.add(createDeadCodeEliminationPass());
 
   // This should be the last step before PNaCl ABI validation.
