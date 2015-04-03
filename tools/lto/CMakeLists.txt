@@ -3,6 +3,7 @@ set(LLVM_LINK_COMPONENTS
   LTO
   MC
   MCDisassembler
+  NaClTransforms
   Support
   )
 
