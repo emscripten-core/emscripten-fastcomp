@@ -215,7 +215,6 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("nvptx", nvptx)
     .Case("nvptx64", nvptx64)
     .Case("le32", le32)
-    .Case("asmjs", asmjs)
     .Case("le64", le64)
     .Case("asmjs", asmjs) // @LOCALMOD Emscripten
     .Case("amdil", amdil)
@@ -300,7 +299,6 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("nvptx", Triple::nvptx)
     .Case("nvptx64", Triple::nvptx64)
     .Case("le32", Triple::le32)
-    .Case("asmjs", Triple::asmjs)
     .Case("le64", Triple::le64)
     .Case("asmjs", Triple::asmjs) // @LOCALMOD Emscripten
     .Case("amdil", Triple::amdil)
@@ -352,7 +350,6 @@ static Triple::OSType parseOS(StringRef OSName) {
     .StartsWith("cnk", Triple::CNK)
     .StartsWith("bitrig", Triple::Bitrig)
     .StartsWith("aix", Triple::AIX)
-    .StartsWith("emscripten", Triple::Emscripten)
     .StartsWith("cuda", Triple::CUDA)
     .StartsWith("nvcl", Triple::NVCL)
     .Default(Triple::UnknownOS);
