@@ -144,7 +144,6 @@ static bool ExpandCall(DataLayout *DL, InstType *Call) {
       // the alignment attribute specifies "the alignment of the stack
       // slot to form and the known alignment of the pointer specified
       // to the call site".
-
       Instruction *MemCpy = Builder.CreateMemCpy(CopyBuf, ArgPtr, ArgSize,
                                                  Alignment);
       MemCpy->setDebugLoc(Call->getDebugLoc());
