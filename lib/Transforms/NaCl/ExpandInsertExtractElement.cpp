@@ -55,11 +55,6 @@ INITIALIZE_PASS(ExpandInsertExtractElement, "expand-insert-extract-elements",
 
 // Utilities
 
-static Instruction *CopyDebug(Instruction *NewInst, Instruction *Original) {
-  NewInst->setDebugLoc(Original->getDebugLoc());
-  return NewInst;
-}
-
 bool ExpandInsertExtractElement::runOnFunction(Function &F) {
   Changed = false;
 
@@ -101,11 +96,6 @@ bool ExpandInsertExtractElement::runOnFunction(Function &F) {
   return Changed;
 }
 
-namespace llvm {
-
-FunctionPass *createExpandInsertExtractElementPass() {
+FunctionPass *llvm::createExpandInsertExtractElementPass() {
   return new ExpandInsertExtractElement();
 }
-
-}
-
