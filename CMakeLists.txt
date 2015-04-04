@@ -167,12 +167,12 @@ set(LLVM_EXAMPLES_BINARY_DIR ${LLVM_BINARY_DIR}/examples)
 set(LLVM_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
 set(LLVM_LIBDIR_SUFFIX "" CACHE STRING "Define suffix of library directory name (32/64)" )
 
-# TODO Add CppBackend back once it's restored. XXX Emscripten
 set(LLVM_ALL_TARGETS
   AArch64
   ARM
   JSBackend
   Hexagon
+  CppBackend
   JSBackend # @LOCALMOD
   Mips
   MSP430
