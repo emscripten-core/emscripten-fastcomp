@@ -1,4 +1,4 @@
-;===- ./lib/Target/CppBackend/LLVMBuild.txt --------------------*- Conf -*--===;
+;===- ./lib/Target/CppBackend/TargetInfo/LLVMBuild.txt ---------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,17 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = TargetInfo
-
 [component_0]
-type = TargetGroup
-name = CppBackend
-parent = Target
-
-[component_1]
 type = Library
-name = CppBackendCodeGen
+name = CppBackendInfo
 parent = CppBackend
-required_libraries = Core CppBackendInfo Support Target
+required_libraries = Support
 add_to_library_groups = CppBackend

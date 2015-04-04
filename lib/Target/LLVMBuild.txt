@@ -15,8 +15,6 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-; TODO Add CppBackend back once it's restored. XXX Emscripten
-
 [common]
 subdirectories = ARM AArch64 CppBackend JSBackend Hexagon MSP430 NVPTX Mips PowerPC R600 Sparc SystemZ X86 XCore
 
