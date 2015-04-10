@@ -262,8 +262,7 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM)
 
   // @LOCALMOD: use standard names and calling conventions for pnacl
   if (Subtarget->isAAPCS_ABI() && !Subtarget->isTargetMachO() &&
-      !Subtarget->isTargetWindows() && !Subtarget->isTargetNaCl() &&
-      EnableARMAEABIFunctions) {
+      !Subtarget->isTargetWindows() && EnableARMAEABIFunctions) {
     static const struct {
       const RTLIB::Libcall Op;
       const char * const Name;
