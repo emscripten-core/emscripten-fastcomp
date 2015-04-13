@@ -503,9 +503,12 @@ DEF_CALL_HANDLER(emscripten_float32x4_storexy, {
 
 // EM_ASM support
 
-std::string handleAsmConst(const Instruction *CI, std::string suffix="") {
-  std::string ret = "_emscripten_asm_const" + suffix + "(" + utostr(getAsmConstId(CI->getOperand(0)));
+std::string handleAsmConst(const Instruction *CI) {
   unsigned Num = getNumArgOperands(CI);
+  unsigned ActualNum = Num - 1; // ignore the first argument, which is a pointer to the code
+  std::string func = "emscripten_asm_const_" + utostr(ActualNum);
+  AsmConstArities.insert(ActualNum);
+  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0)));
   for (unsigned i = 1; i < Num; i++) {
     ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
   }
@@ -518,11 +521,11 @@ DEF_CALL_HANDLER(emscripten_asm_const, {
 })
 DEF_CALL_HANDLER(emscripten_asm_const_int, {
   Declares.insert("emscripten_asm_const_int");
-  return getAssign(CI) + getCast(handleAsmConst(CI, "_int"), Type::getInt32Ty(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI), Type::getInt32Ty(CI->getContext()));
 })
 DEF_CALL_HANDLER(emscripten_asm_const_double, {
   Declares.insert("emscripten_asm_const_double");
-  return getAssign(CI) + getCast(handleAsmConst(CI, "_double"), Type::getDoubleTy(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI), Type::getDoubleTy(CI->getContext()));
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \

@@ -114,6 +114,7 @@ namespace {
 
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
+  typedef std::set<int> IntSet;
   typedef std::vector<unsigned char> HeapData;
   typedef std::pair<unsigned, unsigned> Address;
   typedef std::map<std::string, Type *> VarMap;
@@ -151,6 +152,7 @@ namespace {
     std::vector<std::string> Exports; // additional exports
     BlockAddressMap BlockAddresses;
     NameIntMap AsmConsts;
+    IntSet AsmConstArities;
 
     std::string CantValidate;
     bool UsesSIMD;
@@ -2697,7 +2699,20 @@ void JSWriter::printModuleBody() {
     }
     Out << "\"" << utostr(I->second) << "\": \"" << I->first.c_str() << "\"";
   }
-  Out << "}";
+  Out << "},";
+
+  Out << "\"asmConstArities\": [";
+  first = true;
+  for (IntSet::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << utostr(*I);
+  }
+  Out << "]";
 
   Out << "\n}\n";
 }
