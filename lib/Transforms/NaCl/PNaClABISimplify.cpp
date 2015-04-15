@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/NaCl.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Scalar.h"

@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Transforms/MinSFI.h"
 
