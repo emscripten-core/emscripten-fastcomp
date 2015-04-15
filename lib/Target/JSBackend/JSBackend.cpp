@@ -902,9 +902,10 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+        bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
-        text = Assign + "__Atomics_load_" + HeapName + "_emulated(" + getByteAddressAsStr(P) + ')';
+        text = Assign + (fround ? "Math_fround(" : "+") + "__Atomics_load_" + HeapName + "_emulated(" + getByteAddressAsStr(P) + (fround ? "))" : ")");
       } else {
         text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
       }
@@ -2410,7 +2411,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
-        Code << Assign << "__" << atomicFunc << HeapName << "_emulated(" << getByteAddressAsStr(P) << ", " << VS << ")"; break;
+        bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
+        Code << Assign << (fround ? "Math_fround(" : "+") << "__" << atomicFunc << HeapName << "_emulated(" << getByteAddressAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
       } else {
         Code << Assign << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
       }

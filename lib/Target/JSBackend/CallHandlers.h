@@ -588,13 +588,13 @@ DEF_CALL_HANDLER(emscripten_atomic_load_u32, {
 DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
-  return getAssign(CI) + "__Atomics_load_f32_emulated(" + getAddressAsString(CI->getOperand(0), 2) + ")";
+  return getAssign(CI) + (PreciseF32 ? "Math_fround(" : "+") + "__Atomics_load_f32_emulated(" + getAddressAsString(CI->getOperand(0), 2) + (PreciseF32 ? "))" : ")");
 //  return getAssign(CI) + "Atomics_load(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
-  return getAssign(CI) + "__Atomics_load_f64_emulated(" + getAddressAsString(CI->getOperand(0), 3) + ")";
+  return getAssign(CI) + "+__Atomics_load_f64_emulated(" + getAddressAsString(CI->getOperand(0), 3) + ")";
 //  return getAssign(CI) + "Atomics_load(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ")";
 })
 
