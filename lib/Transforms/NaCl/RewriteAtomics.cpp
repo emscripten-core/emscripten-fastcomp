@@ -85,9 +85,9 @@ private:
   NaCl::AtomicIntrinsics AI;
   bool ModifiedModule;
 
-  AtomicVisitor() LLVM_DELETED_FUNCTION;
-  AtomicVisitor(const AtomicVisitor &) LLVM_DELETED_FUNCTION;
-  AtomicVisitor &operator=(const AtomicVisitor &) LLVM_DELETED_FUNCTION;
+  AtomicVisitor() = delete;
+  AtomicVisitor(const AtomicVisitor &) = delete;
+  AtomicVisitor &operator=(const AtomicVisitor &) = delete;
 
   /// Create an integer constant holding a NaCl::MemoryOrder that can be
   /// passed as an argument to one of the @llvm.nacl.atomic.*

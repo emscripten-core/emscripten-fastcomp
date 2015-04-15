@@ -22,8 +22,8 @@ class ModulePass;
 extern cl::opt<bool> PNaClABIAllowDebugMetadata;
 
 class PNaClABIErrorReporter {
-  PNaClABIErrorReporter(const PNaClABIErrorReporter&) LLVM_DELETED_FUNCTION;
-  void operator=(const PNaClABIErrorReporter&) LLVM_DELETED_FUNCTION;
+  PNaClABIErrorReporter(const PNaClABIErrorReporter&) = delete;
+  void operator=(const PNaClABIErrorReporter&) = delete;
  public:
   PNaClABIErrorReporter() : ErrorCount(0), Errors(ErrorString),
                             UseFatalErrors(true) {}

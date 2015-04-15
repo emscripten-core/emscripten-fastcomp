@@ -45,9 +45,8 @@ public:
 private:
   bool ModifiedFunction;
 
-  AsmDirectivesVisitor(const AsmDirectivesVisitor &) LLVM_DELETED_FUNCTION;
-  AsmDirectivesVisitor &operator=(
-      const AsmDirectivesVisitor &) LLVM_DELETED_FUNCTION;
+  AsmDirectivesVisitor(const AsmDirectivesVisitor &) = delete;
+  AsmDirectivesVisitor &operator=(const AsmDirectivesVisitor &) = delete;
 };
 }
 

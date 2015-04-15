@@ -123,7 +123,7 @@ class NaClBitcodeParserListener;
 // Defines the base class for data extracted from the input bitstream
 // (i.e blocks and records).
 class NaClBitcodeData {
-  void operator=(const NaClBitcodeData&) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClBitcodeData&) = delete;
 
 public:
   /// Create data element to be read from input cursor.
@@ -173,8 +173,8 @@ private:
 /// Models the block defined by a (begin) block record, through the
 /// (end) block record.
 class NaClBitcodeBlock : public NaClBitcodeData {
-  NaClBitcodeBlock(const NaClBitcodeBlock &) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeBlock &) LLVM_DELETED_FUNCTION;
+  NaClBitcodeBlock(const NaClBitcodeBlock &) = delete;
+  void operator=(const NaClBitcodeBlock &) = delete;
 
 public:
   /// Given the found (begin) block record for block BlockID, create
@@ -363,8 +363,8 @@ private:
     Data.Code = GetCursor().readRecord(Entry.ID, Data.Values);
   }
 
-  NaClBitcodeRecord(const NaClBitcodeRecord &Rcd) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeRecord &Rcd) LLVM_DELETED_FUNCTION;
+  NaClBitcodeRecord(const NaClBitcodeRecord &Rcd) = delete;
+  void operator=(const NaClBitcodeRecord &Rcd) = delete;
 };
 
 inline raw_ostream &operator<<(raw_ostream &Strm,
@@ -645,8 +645,8 @@ private:
   // block.
   bool ParseBlockInternal();
 
-  void operator=(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
-  NaClBitcodeParser(const NaClBitcodeParser &Parser) LLVM_DELETED_FUNCTION;
+  void operator=(const NaClBitcodeParser &Parser) = delete;
+  NaClBitcodeParser(const NaClBitcodeParser &Parser) = delete;
 
 };
 

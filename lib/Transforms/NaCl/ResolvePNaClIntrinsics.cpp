@@ -85,8 +85,8 @@ public:
     virtual bool doResolve(IntrinsicInst *Call) = 0;
 
   private:
-    CallResolver(const CallResolver &) LLVM_DELETED_FUNCTION;
-    CallResolver &operator=(const CallResolver &) LLVM_DELETED_FUNCTION;
+    CallResolver(const CallResolver &) = delete;
+    CallResolver &operator=(const CallResolver &) = delete;
   };
 
 private:
@@ -130,10 +130,9 @@ private:
     return true;
   }
 
-  IntrinsicCallToFunctionCall(const IntrinsicCallToFunctionCall &)
-      LLVM_DELETED_FUNCTION;
+  IntrinsicCallToFunctionCall(const IntrinsicCallToFunctionCall &) = delete;
   IntrinsicCallToFunctionCall &operator=(const IntrinsicCallToFunctionCall &)
-      LLVM_DELETED_FUNCTION;
+      = delete;
 };
 
 /// Rewrite intrinsic calls to a constant whose value is determined by a
@@ -161,9 +160,8 @@ private:
     return true;
   }
 
-  ConstantCallResolver(const ConstantCallResolver &) LLVM_DELETED_FUNCTION;
-  ConstantCallResolver &operator=(const ConstantCallResolver &)
-      LLVM_DELETED_FUNCTION;
+  ConstantCallResolver(const ConstantCallResolver &) = delete;
+  ConstantCallResolver &operator=(const ConstantCallResolver &) = delete;
 };
 
 /// Resolve __nacl_atomic_is_lock_free to true/false at translation

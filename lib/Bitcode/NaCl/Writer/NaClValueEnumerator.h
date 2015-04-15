@@ -84,8 +84,8 @@ private:
   /// \brief Integer type use for PNaCl conversion of pointers.
   Type *IntPtrType;
 
-  NaClValueEnumerator(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClValueEnumerator &) LLVM_DELETED_FUNCTION;
+  NaClValueEnumerator(const NaClValueEnumerator &) = delete;
+  void operator=(const NaClValueEnumerator &) = delete;
 public:
   NaClValueEnumerator(const Module *M);
 

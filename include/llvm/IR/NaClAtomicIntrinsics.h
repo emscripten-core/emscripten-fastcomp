@@ -67,9 +67,9 @@ public:
 private:
   AtomicIntrinsic I[NumAtomicIntrinsics][NumAtomicIntrinsicOverloadTypes];
 
-  AtomicIntrinsics() LLVM_DELETED_FUNCTION;
-  AtomicIntrinsics(const AtomicIntrinsics &) LLVM_DELETED_FUNCTION;
-  AtomicIntrinsics &operator=(const AtomicIntrinsics &) LLVM_DELETED_FUNCTION;
+  AtomicIntrinsics() = delete;
+  AtomicIntrinsics(const AtomicIntrinsics &) = delete;
+  AtomicIntrinsics &operator=(const AtomicIntrinsics &) = delete;
 };
 
 /// Operations that can be represented by the @llvm.nacl.atomic.rmw

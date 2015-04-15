@@ -28,8 +28,8 @@ namespace llvm {
 // Checks that examine anything in the function body should be in
 // FunctionPasses to make them streaming-friendly.
 class PNaClABIVerifyFunctions : public FunctionPass {
-  PNaClABIVerifyFunctions(const PNaClABIVerifyFunctions&) LLVM_DELETED_FUNCTION;
-  void operator=(const PNaClABIVerifyFunctions&) LLVM_DELETED_FUNCTION;
+  PNaClABIVerifyFunctions(const PNaClABIVerifyFunctions&) = delete;
+  void operator=(const PNaClABIVerifyFunctions&) = delete;
  public:
   static char ID;
   PNaClABIVerifyFunctions() :

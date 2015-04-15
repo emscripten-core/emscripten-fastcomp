@@ -27,8 +27,8 @@ class PNaClAllowedIntrinsics;
 
 // This pass should not touch function bodies, to stay streaming-friendly
 class PNaClABIVerifyModule : public ModulePass {
-  PNaClABIVerifyModule(const PNaClABIVerifyModule&) LLVM_DELETED_FUNCTION;
-  void operator=(const PNaClABIVerifyModule&) LLVM_DELETED_FUNCTION;
+  PNaClABIVerifyModule(const PNaClABIVerifyModule&) = delete;
+  void operator=(const PNaClABIVerifyModule&) = delete;
  public:
   static char ID;
   PNaClABIVerifyModule() :

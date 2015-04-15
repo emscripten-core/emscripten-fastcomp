@@ -454,10 +454,8 @@ typedef std::pair<unsigned, BlockAbbrevs*> BlockAbbrevsMapElmtType;
 /// corresponding lists of global abbreviations to use in the
 /// generated (compressed) bitcode file.
 class NaClAnalyzeParser : public NaClBitcodeParser {
-  NaClAnalyzeParser(const NaClAnalyzeParser&)
-      LLVM_DELETED_FUNCTION;
-  void operator=(const NaClAnalyzeParser&)
-      LLVM_DELETED_FUNCTION;
+  NaClAnalyzeParser(const NaClAnalyzeParser&) = delete;
+  void operator=(const NaClAnalyzeParser&) = delete;
 
 public:
   // Creates the analysis parser, which will fill the given
@@ -492,10 +490,8 @@ public:
 };
 
 class NaClBlockAnalyzeParser : public NaClBitcodeParser {
-  NaClBlockAnalyzeParser(const NaClBlockAnalyzeParser&)
-      LLVM_DELETED_FUNCTION;
-  void operator=(NaClBlockAnalyzeParser&)
-      LLVM_DELETED_FUNCTION;
+  NaClBlockAnalyzeParser(const NaClBlockAnalyzeParser&) = delete;
+  void operator=(NaClBlockAnalyzeParser&) = delete;
 
 public:
   /// Top-level constructor to build the top-level block with the
@@ -650,7 +646,7 @@ bool NaClAnalyzeParser::ParseBlock(unsigned BlockID) {
 /// keep the array abbreviation op, for untracked elements within the
 /// distribution maps.
 class UnrolledAbbreviation {
-  void operator=(const UnrolledAbbreviation&) LLVM_DELETED_FUNCTION;
+  void operator=(const UnrolledAbbreviation&) = delete;
 public:
   /// Unroll the given abbreviation, assuming it has the given size
   /// (as specified in the distribution maps).

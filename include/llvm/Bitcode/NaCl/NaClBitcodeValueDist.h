@@ -45,9 +45,8 @@ NaClValueRangeType GetNaClValueRange(NaClValueRangeIndexType RangeIndex);
 
 /// Defines the distribution of range indices.
 class NaClBitcodeValueDistElement : public NaClBitcodeDistElement {
-  NaClBitcodeValueDistElement(const NaClBitcodeValueDistElement&)
-  LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeValueDistElement&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeValueDistElement(const NaClBitcodeValueDistElement&) = delete;
+  void operator=(const NaClBitcodeValueDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {
@@ -82,8 +81,8 @@ public:
 /// Defines the distribution of values for a set of value indices for
 /// bitcode records.
 class NaClBitcodeValueDist : public NaClBitcodeDist {
-  NaClBitcodeValueDist(const NaClBitcodeValueDist&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeValueDist&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeValueDist(const NaClBitcodeValueDist&) = delete;
+  void operator=(const NaClBitcodeValueDist&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDist *Dist) {
@@ -125,9 +124,9 @@ private:
 /// for each element.
 class NaClBitcodeValueIndexDistElement : public NaClBitcodeDistElement {
   NaClBitcodeValueIndexDistElement(
-      const NaClBitcodeValueIndexDistElement&) LLVM_DELETED_FUNCTION;
+      const NaClBitcodeValueIndexDistElement&) = delete;
   void operator=(
-      const NaClBitcodeValueIndexDistElement&) LLVM_DELETED_FUNCTION;
+      const NaClBitcodeValueIndexDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {

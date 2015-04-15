@@ -108,8 +108,8 @@ class ThreadedFunctionQueue {
   volatile unsigned CurrentFunction;
 
   ThreadedFunctionQueue(
-      const ThreadedFunctionQueue&) LLVM_DELETED_FUNCTION;
-  void operator=(const ThreadedFunctionQueue&) LLVM_DELETED_FUNCTION;
+      const ThreadedFunctionQueue&) = delete;
+  void operator=(const ThreadedFunctionQueue&) = delete;
 };
 
 } // end namespace llvm

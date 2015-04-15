@@ -24,9 +24,9 @@ namespace llvm {
 class NaClBitcodeCodeDistElement
     : public NaClBitcodeBitsAndAbbrevsDistElement {
   NaClBitcodeCodeDistElement(const NaClBitcodeCodeDistElement&)
-      LLVM_DELETED_FUNCTION;
+      = delete;
   void operator=(const NaClBitcodeCodeDistElement&)
-      LLVM_DELETED_FUNCTION;
+      = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {
@@ -60,10 +60,8 @@ public:
 // particular blockID. Assumes distribution elements are instances of
 // NaClBitcodeCodeDistElement.
 class NaClBitcodeCodeDist : public NaClBitcodeDist {
-  NaClBitcodeCodeDist(const NaClBitcodeCodeDist&)
-      LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeCodeDist&)
-      LLVM_DELETED_FUNCTION;
+  NaClBitcodeCodeDist(const NaClBitcodeCodeDist&) = delete;
+  void operator=(const NaClBitcodeCodeDist&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDist *Dist) {

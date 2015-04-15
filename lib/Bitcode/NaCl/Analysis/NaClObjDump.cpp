@@ -550,8 +550,8 @@ static void NaClGetExpectedLoadStoreAlignment(
 /// Top-level class to parse bitcode file and transform to
 /// corresponding disassembled code.
 class NaClDisTopLevelParser : public NaClBitcodeParser {
-  NaClDisTopLevelParser(const NaClDisTopLevelParser&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClDisTopLevelParser&) LLVM_DELETED_FUNCTION;
+  NaClDisTopLevelParser(const NaClDisTopLevelParser&) = delete;
+  void operator=(const NaClDisTopLevelParser&) = delete;
 
 public:
   NaClDisTopLevelParser(NaClBitcodeHeader &Header,

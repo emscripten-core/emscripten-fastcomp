@@ -24,9 +24,8 @@ namespace llvm {
 /// Holds block distribution, and nested subblock and record code distributions,
 /// to be collected during analysis.
 class NaClAnalyzerBlockDistElement : public NaClBitcodeBlockDistElement {
-  NaClAnalyzerBlockDistElement(const NaClAnalyzerBlockDistElement&)
-  LLVM_DELETED_FUNCTION;
-  void operator=(const NaClAnalyzerBlockDistElement&) LLVM_DELETED_FUNCTION;
+  NaClAnalyzerBlockDistElement(const NaClAnalyzerBlockDistElement&) = delete;
+  void operator=(const NaClAnalyzerBlockDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {
@@ -83,8 +82,8 @@ private:
 /// Holds block distribution, and nested subblock and record code distributions,
 /// to be collected during analysis.
 class NaClAnalyzerBlockDist : public NaClBitcodeBlockDist {
-  NaClAnalyzerBlockDist(const NaClAnalyzerBlockDist&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClAnalyzerBlockDist&) LLVM_DELETED_FUNCTION;
+  NaClAnalyzerBlockDist(const NaClAnalyzerBlockDist&) = delete;
+  void operator=(const NaClAnalyzerBlockDist&) = delete;
 public:
   NaClAnalyzerBlockDist(NaClAnalyzerBlockDistElement &Sentinel)
       : NaClBitcodeBlockDist(&Sentinel)

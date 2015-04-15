@@ -29,8 +29,8 @@ class DataLayout;
 // PNaClABIVerifyFunctions and PNaClABIVerifyModule, this class is
 // pass-free, and checks individual elements within IR.
 class PNaClABIProps {
-  PNaClABIProps(const PNaClABIProps&) LLVM_DELETED_FUNCTION;
-  void operator=(const PNaClABIProps&) LLVM_DELETED_FUNCTION;
+  PNaClABIProps(const PNaClABIProps&) = delete;
+  void operator=(const PNaClABIProps&) = delete;
 public:
   // Returns true if metadata kind MDKind is allowed.
   static bool isWhitelistedMetadata(unsigned MDKind);

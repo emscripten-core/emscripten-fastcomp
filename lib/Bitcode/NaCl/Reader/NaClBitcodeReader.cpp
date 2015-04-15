@@ -342,8 +342,8 @@ namespace {
 // placeholders for relocation records, and the corresponding cost
 // of duplicating initializers when these placeholders are replaced.
 class ParseGlobalsHandler {
-  ParseGlobalsHandler(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
-  void operator=(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
+  ParseGlobalsHandler(const ParseGlobalsHandler &H) = delete;
+  void operator=(const ParseGlobalsHandler &H) = delete;
 
   NaClBitcodeReader &Reader;
   NaClBitcodeReaderValueList &ValueList;
