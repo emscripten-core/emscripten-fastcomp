@@ -22,10 +22,10 @@
 
 namespace llvm {
   class BitstreamWriter;
-  class DataStreamer;
   class LLVMContext;
   class Module;
   class ModulePass;
+  class StreamingMemoryObject; // @LOCALMOD
   class raw_ostream;
 
   /// Read the header of the specified bitcode buffer and prepare for lazy
@@ -39,7 +39,7 @@ namespace llvm {
   /// Read the header of the specified stream and prepare for lazy
   /// deserialization and streaming of function bodies.
   ErrorOr<std::unique_ptr<Module>> getStreamedBitcodeModule(
-      StringRef Name, DataStreamer *Streamer, LLVMContext &Context,
+      StringRef Name, StreamingMemoryObject *Streamer, LLVMContext &Context, //@LOCALMOD
       DiagnosticHandlerFunction DiagnosticHandler = nullptr);
 
   /// Read the header of the specified bitcode buffer and extract just the

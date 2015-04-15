@@ -44,9 +44,10 @@ namespace llvm {
     const MCExpr *getDebugThreadLocalSymbol(const MCSymbol *Sym) const override;
   };
 
-  /// X86LinuxTargetObjectFile - This implementation is used for linux x86
+  /// X86LinuxNaClTargetObjectFile - This implementation is used for linux x86
   /// and x86-64.
-  class X86LinuxTargetObjectFile : public X86ELFTargetObjectFile {
+  //MERGETODO(dschuff) is this right?
+  class X86LinuxNaClTargetObjectFile : public X86ELFTargetObjectFile {
     void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
   };
 

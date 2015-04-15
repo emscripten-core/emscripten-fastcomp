@@ -295,6 +295,55 @@ void initializeWinEHPreparePass(PassRegistry&);
 void initializePlaceBackedgeSafepointsImplPass(PassRegistry&);
 void initializePlaceSafepointsPass(PassRegistry&);
 void initializeDwarfEHPreparePass(PassRegistry&);
+
+// @LOCALMOD-BEGIN
+void initializeAddPNaClExternalDeclsPass(PassRegistry&);
+void initializeAllocateDataSegmentPass(PassRegistry&);
+void initializeBackendCanonicalizePass(PassRegistry&);
+void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
+void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
+void initializeExpandAllocasPass(PassRegistry&);
+void initializeExpandArithWithOverflowPass(PassRegistry&);
+void initializeExpandByValPass(PassRegistry&);
+void initializeExpandConstantExprPass(PassRegistry&);
+void initializeExpandCtorsPass(PassRegistry&);
+void initializeExpandGetElementPtrPass(PassRegistry&);
+void initializeExpandIndirectBrPass(PassRegistry&);
+void initializeExpandLargeIntegersPass(PassRegistry&);
+void initializeExpandShuffleVectorPass(PassRegistry&);
+void initializeExpandSmallArgumentsPass(PassRegistry&);
+void initializeExpandStructRegsPass(PassRegistry&);
+void initializeExpandTlsConstantExprPass(PassRegistry&);
+void initializeExpandTlsPass(PassRegistry&);
+void initializeExpandVarArgsPass(PassRegistry&);
+void initializeFixVectorLoadStoreAlignmentPass(PassRegistry&);
+void initializeFlattenGlobalsPass(PassRegistry&);
+void initializeGlobalCleanupPass(PassRegistry&);
+void initializeGlobalizeConstantVectorsPass(PassRegistry&);
+void initializeInsertDivideCheckPass(PassRegistry&);
+void initializeNaClCcRewritePass(PassRegistry&);
+void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
+void initializePNaClABIVerifyModulePass(PassRegistry&);
+void initializePNaClSjLjEHPass(PassRegistry&);
+void initializePromoteI1OpsPass(PassRegistry&);
+void initializePromoteIntegersPass(PassRegistry&);
+void initializeRemoveAsmMemoryPass(PassRegistry&);
+void initializeRenameEntryPointPass(PassRegistry&);
+void initializeReplacePtrsWithIntsPass(PassRegistry&);
+void initializeResolveAliasesPass(PassRegistry&);
+void initializeResolvePNaClIntrinsicsPass(PassRegistry&);
+void initializeRewriteAtomicsPass(PassRegistry&);
+void initializeRewriteLLVMIntrinsicsPass(PassRegistry&);
+void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
+void initializeSandboxIndirectCallsPass(PassRegistry&);
+void initializeSandboxMemoryAccessesPass(PassRegistry&);
+void initializeSimplifyAllocasPass(PassRegistry&);
+void initializeStripAttributesPass(PassRegistry&);
+void initializeStripMetadataPass(PassRegistry&);
+void initializeStripModuleFlagsPass(PassRegistry&);
+void initializeStripTlsPass(PassRegistry&);
+void initializeSubstituteUndefsPass(PassRegistry&);
+// @LOCALMOD-END
 }
 
 #endif

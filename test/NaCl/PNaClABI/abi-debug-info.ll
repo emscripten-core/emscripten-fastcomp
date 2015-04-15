@@ -1,0 +1,38 @@
+; RUN: not pnacl-abicheck < %s | FileCheck %s
+; RUN: not pnacl-abicheck -pnaclabi-allow-debug-metadata < %s | \
+; RUN:   FileCheck %s --check-prefix=DBG
+
+; DBG-NOT: disallowed
+
+; A debuginfo version is required.
+!llvm.module.flags = !{!0}
+!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+!1 = metadata !{}
+
+declare void @llvm.dbg.declare(metadata, metadata)
+declare void @llvm.dbg.value(metadata, i64, metadata)
+
+; CHECK: Function llvm.dbg.declare is a disallowed LLVM intrinsic
+; CHECK: Function llvm.dbg.value is a disallowed LLVM intrinsic
+
+
+define internal void @debug_declare(i32 %val) {
+  ; We normally expect llvm.dbg.declare to be used on an alloca.
+  %var = alloca [4 x i8]
+  tail call void @llvm.dbg.declare(metadata !{[4 x i8]* %var}, metadata !1)
+  tail call void @llvm.dbg.declare(metadata !{i32 %val}, metadata !1)
+  ret void
+}
+
+define internal void @debug_value(i32 %ptr_as_int, i32 %val) {
+  %ptr = inttoptr i32 %ptr_as_int to i8*
+  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !1)
+  tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !1)
+  ret void
+}
+
+; FileCheck gives an error if its input file is empty, so ensure that
+; the output of pnacl-abicheck is non-empty by generating at least one
+; error.
+declare void @bad_func(ppc_fp128 %bad_arg)
+; DBG: Function bad_func has disallowed type: void (ppc_fp128)

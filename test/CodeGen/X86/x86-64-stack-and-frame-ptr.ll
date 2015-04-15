@@ -14,11 +14,13 @@
 ; X32ABI: movl %esp, %ebp
 ; X32ABI: movl %edi, -4(%ebp)
 ; X32ABI: popq %rbp
+; @LOCALMOD for sandbox base address hiding.
 ; NACL-LABEL: foo
-; NACL: pushq %rbp
+; NACL: movl %ebp, %e[[REG:.*]]
+; NACL: pushq %r[[REG]]
 ; NACL: movq %rsp, %rbp
 ; NACL: movl %edi, -4(%rbp)
-; NACL: popq %rbp
+; NACL: naclrestbp (%rsp), %r15
 
 
 define void @foo(i32* %a) #0 {

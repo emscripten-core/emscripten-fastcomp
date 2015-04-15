@@ -27,6 +27,7 @@ class MCInst;
 class MCRelaxableFragment;
 class MCObjectWriter;
 class MCSection;
+class MCStreamer;
 class MCValue;
 class raw_ostream;
 
@@ -135,6 +136,16 @@ public:
       generateCompactUnwindEncoding(ArrayRef<MCCFIInstruction>) const {
     return 0;
   }
+  
+  // @LOCALMOD-BEGIN
+  /// CustomExpandInst -
+  ///   If the MCInst instruction has a custom expansion, write it to the
+  /// MCStreamer 'Out'. This can be used to perform "last minute" rewrites of
+  /// MCInst instructions for emission.
+  virtual bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) {
+    return false;
+  }
+  // @LOCALMOD-END
 };
 
 } // End llvm namespace

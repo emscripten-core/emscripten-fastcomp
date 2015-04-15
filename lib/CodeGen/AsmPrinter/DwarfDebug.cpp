@@ -1236,7 +1236,11 @@ void DwarfDebug::endFunction(const MachineFunction *MF) {
     assert(DbgValues.empty());
     // FIXME: This wouldn't be true in LTO with a -g (with inlining) CU followed
     // by a -gmlt CU. Add a test and remove this assertion.
-    assert(AbstractVariables.empty());
+    // @LOCALMOD-BEGIN -- The PNaCl IRT build does bitcode linking
+    // and mixes -g w/ -gmlt.
+    // https://code.google.com/p/nativeclient/issues/detail?id=4026
+    // assert(AbstractVariables.empty());
+    // @LOCALMOD-END
     LabelsBeforeInsn.clear();
     LabelsAfterInsn.clear();
     PrevLabel = nullptr;

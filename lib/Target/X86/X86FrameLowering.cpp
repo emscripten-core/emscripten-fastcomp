@@ -15,6 +15,7 @@
 #include "X86InstrBuilder.h"
 #include "X86InstrInfo.h"
 #include "X86MachineFunctionInfo.h"
+#include "X86NaClDecls.h" // @LOCALMOD
 #include "X86Subtarget.h"
 #include "X86TargetMachine.h"
 #include "llvm/ADT/SmallSet.h"
@@ -165,6 +166,7 @@ static unsigned findDeadCallerSavedReg(MachineBasicBlock &MBB,
   case X86::TCRETURNmi:
   case X86::TCRETURNdi64:
   case X86::TCRETURNri64:
+  case X86::NACL_CG_TCRETURNdi64: // @LOCALMOD
   case X86::TCRETURNmi64:
   case X86::EH_RETURN:
   case X86::EH_RETURN64: {
@@ -685,8 +687,49 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
     MFI->setOffsetAdjustment(-NumBytes);
 
     // Save EBP/RBP into the appropriate stack slot.
+    // @LOCALMOD-BEGIN
+    unsigned RegToPush = MachineFramePtr;
+    const bool HideSandboxBase = (FlagHideSandboxBase &&
+                                  STI.isTargetNaCl64() &&
+                                  !FlagUseZeroBasedSandbox);
+    if (HideSandboxBase) {
+      // Hide the sandbox base address by masking off the upper 32
+      // bits of the pushed/saved RBP on the stack, using:
+      //   mov %ebp, %r10d
+      //   push %r10
+      // instead of:
+      //   push %rbp
+      // Additionally, we can use rax instead of r10 when it is not a
+      // varargs function and therefore rax is available, saving one
+      // byte of REX prefix per instruction.
+      // Note that the epilog already adds R15 when restoring RBP.
+
+      // mov %ebp, %r10d
+      if (Fn->isVarArg()) {
+        // Note: This use of r10 in the prolog can't be used with the
+        // gcc "nest" attribute, due to its use of r10.  Example:
+        // target triple = "x86_64-pc-linux-gnu"
+        // define i64 @func(i64 nest %arg) {
+        //   ret i64 %arg
+        // }
+        //
+        // $ clang -m64 llvm_nest_attr.ll -S -o -
+        // ...
+        // func:
+        //     movq    %r10, %rax
+        //     ret
+        RegToPush = X86::R10;
+      } else {
+        RegToPush = X86::RAX;
+      }
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32rr),
+              getX86SubSuperRegister(RegToPush, MVT::i32, false))
+        .addReg(getX86SubSuperRegister(FramePtr, MVT::i32, false))
+        .setMIFlag(MachineInstr::FrameSetup);
+    }
+    // @LOCALMOD-END
     BuildMI(MBB, MBBI, DL, TII.get(Is64Bit ? X86::PUSH64r : X86::PUSH32r))
-      .addReg(MachineFramePtr, RegState::Kill)
+      .addReg(RegToPush, RegState::Kill) // @LOCALMOD
       .setMIFlag(MachineInstr::FrameSetup);
 
     if (NeedsDwarfCFI) {
@@ -1019,6 +1062,7 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   case X86::TCRETURNdi64:
   case X86::TCRETURNri64:
   case X86::TCRETURNmi64:
+  case X86::NACL_CG_TCRETURNdi64: // @LOCALMOD
   case X86::EH_RETURN:
   case X86::EH_RETURN64:
     break;  // These are ok
@@ -1122,6 +1166,7 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   } else if (RetOpcode == X86::TCRETURNri || RetOpcode == X86::TCRETURNdi ||
              RetOpcode == X86::TCRETURNmi ||
              RetOpcode == X86::TCRETURNri64 || RetOpcode == X86::TCRETURNdi64 ||
+             RetOpcode == X86::NACL_CG_TCRETURNdi64 || // @LOCALMOD
              RetOpcode == X86::TCRETURNmi64) {
     bool isMem = RetOpcode == X86::TCRETURNmi || RetOpcode == X86::TCRETURNmi64;
     // Tail call return: adjust the stack pointer and jump to callee.
@@ -1149,10 +1194,23 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
 
     // Jump to label or value in register.
     bool IsWin64 = STI.isTargetWin64();
-    if (RetOpcode == X86::TCRETURNdi || RetOpcode == X86::TCRETURNdi64) {
-      unsigned Op = (RetOpcode == X86::TCRETURNdi)
-                        ? X86::TAILJMPd
-                        : (IsWin64 ? X86::TAILJMPd64_REX : X86::TAILJMPd64);
+    if (RetOpcode == X86::TCRETURNdi || RetOpcode == X86::TCRETURNdi64 ||
+        RetOpcode == X86::NACL_CG_TCRETURNdi64) { // @LOCALMOD
+      // @LOCALMOD-BEGIN
+      unsigned Op;
+      switch (RetOpcode) {
+      case X86::TCRETURNdi: 
+        Op = X86::TAILJMPd;
+        break;
+      case X86::TCRETURNdi64: 
+        Op = (IsWin64 ? X86::TAILJMPd64_REX : X86::TAILJMPd64);
+        break;
+      case X86::NACL_CG_TCRETURNdi64:
+        Op = X86::NACL_CG_TAILJMPd64;
+        break;
+      default: llvm_unreachable("Unexpected return opcode");
+      }
+      // @LOCALMOD-END
       MachineInstrBuilder MIB = BuildMI(MBB, MBBI, DL, TII.get(Op));
       if (JumpTarget.isGlobal())
         MIB.addGlobalAddress(JumpTarget.getGlobal(), JumpTarget.getOffset(),
@@ -1982,7 +2040,11 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
   bool reserveCallFrame = hasReservedCallFrame(MF);
   int Opcode = I->getOpcode();
   bool isDestroy = Opcode == TII.getCallFrameDestroyOpcode();
-  bool IsLP64 = STI.isTarget64BitLP64();
+  // @LOCALMOD-BEGIN
+  // standard x86_64 and NaCl use 64-bit frame/stack pointers, x32 - 32-bit.
+  const bool Uses64BitStackPtr =
+      STI.isTarget64BitLP64() || STI.isTargetNaCl64();
+  // @LOCALMOD-END
   DebugLoc DL = I->getDebugLoc();
   uint64_t Amount = !reserveCallFrame ? I->getOperand(0).getImm() : 0;
   uint64_t InternalAmt = (isDestroy || Amount) ? I->getOperand(1).getImm() : 0;
@@ -2035,7 +2097,8 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     // If we are performing frame pointer elimination and if the callee pops
     // something off the stack pointer, add it back.  We do this until we have
     // more advanced stack pointer tracking ability.
-    unsigned Opc = getSUBriOpcode(IsLP64, InternalAmt);
+    // @LOCALMOD
+    unsigned Opc = getSUBriOpcode(Uses64BitStackPtr, InternalAmt); //MERGETODO(dschuff): is this correct, or should it be IsLP64?
     MachineInstr *New = BuildMI(MF, DL, TII.get(Opc), StackPtr)
       .addReg(StackPtr).addImm(InternalAmt);
 

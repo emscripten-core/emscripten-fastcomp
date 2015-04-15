@@ -143,6 +143,10 @@ public:
   void EmitStartOfAsmFile(Module &M) override;
   void EmitEndOfAsmFile(Module &M) override;
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
+
+  // @LOCALMOD-START
+  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
+  // @LOCALMOD-END
 };
 }
 

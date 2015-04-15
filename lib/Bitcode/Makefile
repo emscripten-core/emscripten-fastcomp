@@ -8,7 +8,7 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL = ../..
-PARALLEL_DIRS = Reader Writer
+PARALLEL_DIRS = Reader Writer NaCl
 
 include $(LEVEL)/Makefile.common
 

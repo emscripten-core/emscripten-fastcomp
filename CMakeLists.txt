@@ -38,6 +38,17 @@ endif()
 
 project(LLVM)
 
+# @LOCALMOD-BEGIN
+# Enable ccache for builds, if cmake is invoked with -DSYSTEM_HAS_CCACHE=ON.
+# Set CCACHE_CPP2 envvar, to avoid an error due to a strange ccache/clang++
+# interaction.  Specifically, errors about "argument unused during compilation".
+option(SYSTEM_HAS_CCACHE "Use ccache for building" OFF)
+if(SYSTEM_HAS_CCACHE)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+  set(ENV(CCACHE_CPP2) "yes")
+endif()
+# @LOCALMOD-END
+
 # The following only works with the Ninja generator in CMake >= 3.0.
 set(LLVM_PARALLEL_COMPILE_JOBS "" CACHE STRING
   "Define the maximum number of concurrent compilation jobs.")

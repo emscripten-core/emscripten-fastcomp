@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86TargetObjectFile.h"
+#include "X86Subtarget.h"  // @LOCALMOD
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
@@ -66,7 +67,7 @@ const MCExpr *X86ELFTargetObjectFile::getDebugThreadLocalSymbol(
 }
 
 void
-X86LinuxTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
+X86LinuxNaClTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
   InitializeELF(TM.Options.UseInitArray);
 }

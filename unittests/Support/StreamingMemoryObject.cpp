@@ -24,6 +24,7 @@ class NullDataStreamer : public DataStreamer {
 
 TEST(StreamingMemoryObject, Test) {
   auto *DS = new NullDataStreamer();
-  StreamingMemoryObject O(DS);
+  // @LOCALMOD -- Separated StreamingMemoryObject into interface + Impl.
+  StreamingMemoryObjectImpl O(DS);
   EXPECT_TRUE(O.isValidAddress(32 * 1024));
 }

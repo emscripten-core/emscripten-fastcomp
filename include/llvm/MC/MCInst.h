@@ -50,7 +50,11 @@ class MCOperand {
   };
 public:
 
-  MCOperand() : Kind(kInvalid), FPImmVal(0.0) {}
+  // @LOCALMOD-START
+  // Initialize ImmVal instead of FPImmVal, thanks to
+  // http://gcc.gnu.org/bugzilla/show_bug.cgi?id=58416
+  MCOperand() : Kind(kInvalid), ImmVal(0) {}
+  // @LOCALMOD-END
 
   bool isValid() const { return Kind != kInvalid; }
   bool isReg() const { return Kind == kRegister; }

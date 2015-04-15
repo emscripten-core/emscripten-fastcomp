@@ -9,7 +9,8 @@ define i32 @test1(i32 %A, i32 %B) {
   %tmp4 = add i32 %tmp3, %tmp1
 ; The above computation of %tmp4 should match a single lea, without using
 ; actual add instructions.
-; CHECK-NOT: add
+; @LOCALMOD: The original regex would match ".dwarf_addr_size 4".
+; CHECK-NOT: add{{.*}},
 ; CHECK: lea {{[a-z]+}}, [{{[a-z]+}} + 4*{{[a-z]+}} - 5]
 
   ret i32 %tmp4

@@ -40,6 +40,7 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCSymbol.h"
@@ -749,7 +750,33 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
   if (ABI.IsO32() && (!STI.useOddSPReg() || STI.isABI_FPXX()))
     getTargetStreamer().emitDirectiveModuleOddSPReg(STI.useOddSPReg(),
                                                     ABI.IsO32());
+
+  // @LOCALMOD-START
+  if (Subtarget->isTargetNaCl()) {
+    initializeNaClMCStreamer(OutStreamer, OutContext,
+                             Triple(Subtarget->getTargetTriple()));
+  }
+  // @LOCALMOD-END
 }
+
+// @LOCALMOD-START
+unsigned MipsAsmPrinter::GetTargetLabelAlign(const MachineInstr *MI) const {
+  if (Subtarget->isTargetNaCl()) {
+    switch (MI->getOpcode()) {
+      default: return 0;
+      // These labels may indicate an indirect entry point that is
+      // externally reachable and hence must be bundle aligned.
+      // Note: these labels appear to be always at basic block beginnings
+      // so it may be possible to simply set the MBB alignment.
+      // However, it is unclear whether this always holds.
+      case TargetOpcode::EH_LABEL:
+      case TargetOpcode::GC_LABEL:
+        return 4;
+    }
+  }
+  return 0;
+}
+// @LOCALMOD-END
 
 void MipsAsmPrinter::emitInlineAsmStart() const {
   MipsTargetStreamer &TS = getTargetStreamer();

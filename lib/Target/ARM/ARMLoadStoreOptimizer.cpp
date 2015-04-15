@@ -1096,6 +1096,7 @@ static unsigned getUpdatingLSMultipleOpcode(unsigned Opc,
 /// ldmia rn, <ra, rb, rc>
 /// =>
 /// ldmdb rn!, <ra, rb, rc>
+/// @LOCALMOD This is especially useful for rn == sp
 bool ARMLoadStoreOpt::MergeBaseUpdateLSMultiple(MachineBasicBlock &MBB,
                                                MachineBasicBlock::iterator MBBI,
                                                bool &Advance,
@@ -1782,7 +1783,16 @@ bool ARMLoadStoreOpt::LoadStoreMultipleOpti(MachineBasicBlock &MBB) {
 ///   mov pc, lr
 /// =>
 ///   ldmfd sp!, {..., pc}
+// @LOCALMOD for sfi we do not want this to happen
 bool ARMLoadStoreOpt::MergeReturnIntoLDM(MachineBasicBlock &MBB) {
+  // @LOCALMOD-START
+  // For NaCl, do not load into PC directly for a return, since NaCl requires
+  // masking the address first.
+  if (STI->isTargetNaCl()) {
+    return false;
+  }
+  // @LOCALMOD-END
+
   // Thumb1 LDM doesn't allow high registers.
   if (isThumb1) return false;
   if (MBB.empty()) return false;

@@ -77,9 +77,15 @@ public:
   void EmitInstruction(const MachineInstr *MI) override;
   bool runOnMachineFunction(MachineFunction &F) override;
 
+  // @LOCALMOD-START
+  // Usually this does nothing on ARM as constants pools are handled with
+  // custom code (for constant islands).
+  // When not using constant islands, fall back to the default implementation.
   void EmitConstantPool() override {
-    // we emit constant pools customly!
+    if (!Subtarget->useConstIslands()) AsmPrinter::EmitConstantPool();
   }
+  // @LOCALMOD-END
+
   void EmitFunctionBodyEnd() override;
   void EmitFunctionEntryLabel() override;
   void EmitStartOfAsmFile(Module &M) override;
@@ -88,6 +94,17 @@ public:
 
   // lowerOperand - Convert a MachineOperand into the equivalent MCOperand.
   bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
+  
+  // @LOCALMOD-START
+  /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
+  bool UseReadOnlyJumpTables() const override;
+  /// GetTargetBasicBlockAlign - Get the target alignment for basic blocks.
+  unsigned GetTargetBasicBlockAlign() const override;
+  /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
+  /// labels E.g., EH_LABEL.
+  /// TODO(sehr,robertm): remove this if the labeled block has address taken.
+  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
+  // @LOCALMOD-END
 
 private:
   // Helpers for EmitStartOfAsmFile() and EmitEndOfAsmFile()

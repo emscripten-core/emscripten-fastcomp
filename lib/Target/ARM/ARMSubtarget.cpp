@@ -46,6 +46,15 @@ ReserveR9("arm-reserve-r9", cl::Hidden,
 static cl::opt<bool>
 ArmUseMOVT("arm-use-movt", cl::init(true), cl::Hidden);
 
+// @LOCALMOD-START
+// TODO: * JITing has not been tested at all
+//       * Thumb mode operation is also not clear: it seems jump tables
+//         for thumb are broken independent of this option
+static cl::opt<bool>
+NoInlineJumpTables("no-inline-jumptables",
+                  cl::desc("Do not place jump tables inline in the code"));
+// @LOCALMOD-END
+
 static cl::opt<bool>
 UseFusedMulOps("arm-use-mulops",
                cl::init(true), cl::Hidden);
@@ -138,6 +147,10 @@ void ARMSubtarget::initializeEnvironment() {
   HasFPARMv8 = false;
   HasNEON = false;
   UseNEONForSinglePrecisionFP = false;
+  // @LOCALMOD-START
+  UseInlineJumpTables = !NoInlineJumpTables;
+  UseConstIslands = true;
+  // @LOCALMOD-END
   UseMulOps = UseFusedMulOps;
   SlowFPVMLx = false;
   HasVMLxForwarding = false;
@@ -222,6 +235,17 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
     IsR9Reserved = ReserveR9;
     SupportsTailCall = !isThumb1Only();
   }
+
+  // @LOCALMOD-BEGIN
+  if (isTargetNaCl()) {
+    // NaCl reserves R9 for TLS.
+    IsR9Reserved = true;
+    // NaCl uses MovT to avoid generating constant islands.
+    UseMovt = true;
+    UseInlineJumpTables = false;
+    UseConstIslands = false;
+  }
+  // @LOCALMOD-END
 
   if (Align == DefaultAlign) {
     // Assume pre-ARMv6 doesn't support unaligned accesses.

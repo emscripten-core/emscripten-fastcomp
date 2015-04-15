@@ -77,8 +77,11 @@ static void WriteOutputFile(const Module *M) {
     exit(1);
   }
 
-  if (Force || !CheckBitcodeOutputToConsole(Out->os(), true))
+  // @LOCALMOD-BEGIN
+  if (Force || !CheckBitcodeOutputToConsole(Out->os(), true)) {
     WriteBitcodeToFile(M, Out->os());
+  }
+  // @LOCALMOD-END
 
   // Declare success.
   Out->keep();

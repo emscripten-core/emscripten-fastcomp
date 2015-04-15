@@ -694,6 +694,13 @@ namespace ISD {
     /// is the chain and the second operand is the alloca pointer.
     LIFETIME_START, LIFETIME_END,
 
+    // @LOCALMOD-BEGIN
+    // NACL_* - Native Client instrinsics.
+    // NACL_READ_TP is a fast built-in version of NaCl's tls_get() IRT
+    // interface.
+    NACL_READ_TP,
+    // @LOCALMOD-END
+
     /// BUILTIN_OP_END - This must be the last enum value in this list.
     /// The target-specific pre-isel opcode values start here.
     BUILTIN_OP_END

@@ -20,6 +20,7 @@ add_llvm_tool_subdirectory(llvm-dis)
 add_llvm_tool_subdirectory(llvm-mc)
 
 add_llvm_tool_subdirectory(llc)
+add_llvm_tool_subdirectory(pnacl-llc)
 add_llvm_tool_subdirectory(llvm-ar)
 add_llvm_tool_subdirectory(llvm-nm)
 add_llvm_tool_subdirectory(llvm-size)
@@ -53,6 +54,12 @@ add_llvm_tool_subdirectory(llvm-mcmarkup)
 add_llvm_tool_subdirectory(verify-uselistorder)
 
 add_llvm_tool_subdirectory(llvm-symbolizer)
+add_llvm_tool_subdirectory(pnacl-abicheck)
+add_llvm_tool_subdirectory(pnacl-bcanalyzer)
+add_llvm_tool_subdirectory(pnacl-bccompress)
+add_llvm_tool_subdirectory(pnacl-bcdis)
+add_llvm_tool_subdirectory(pnacl-freeze)
+add_llvm_tool_subdirectory(pnacl-thaw)
 
 add_llvm_tool_subdirectory(llvm-c-test)
 
@@ -75,6 +82,7 @@ add_llvm_tool_subdirectory(gold)
 
 add_llvm_external_project(clang)
 add_llvm_external_project(llgo)
+add_llvm_external_project(subzero) # LOCALMOD
 
 if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
   add_llvm_external_project(lld)

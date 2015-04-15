@@ -236,8 +236,20 @@ public:
   /// getVendor - Get the parsed vendor type of this triple.
   VendorType getVendor() const { return Vendor; }
 
+  // @LOCALMOD-BEGIN -- hardcode NaCl for NaCl builds, to help
+  // prune OS-specific code that is litered all over and not
+  // cleanly separated.
+#if defined(__native_client__)
+  OSType getOS() const { return NaCl; }
+  ObjectFormatType getObjectFormat() const { return ELF; }
+#else
   /// getOS - Get the parsed operating system type of this triple.
   OSType getOS() const { return OS; }
+
+  /// getFormat - Get the object format for this triple.
+  ObjectFormatType getObjectFormat() const { return ObjectFormat; }
+#endif
+  // @LOCALMOD-END
 
   /// hasEnvironment - Does this triple have the optional environment
   /// (fourth) component?
@@ -247,9 +259,6 @@ public:
 
   /// getEnvironment - Get the parsed environment type of this triple.
   EnvironmentType getEnvironment() const { return Environment; }
-
-  /// getFormat - Get the object format for this triple.
-  ObjectFormatType getObjectFormat() const { return ObjectFormat; }
 
   /// getOSVersion - Parse the version number from the OS name component of the
   /// triple, if present.
@@ -369,6 +378,32 @@ public:
     return isOSVersionLT(Minor + 4, Micro, 0);
   }
 
+  // @LOCALMOD-BEGIN: Hardcode OS predicates to help prune code
+  // that is OS-specific, but not cleanly separated.
+  // Perhaps this would be cleaner if Triple.h was partly Table-gen'ed.
+#if defined(__native_client__)
+  bool isMacOSX() const { return false; }
+  bool isiOS() const { return false; }
+  bool isOSDarwin() const { return false; }
+  bool isOSNetBSD() const { return false; }
+  bool isOSOpenBSD() const { return false; }
+  bool isOSFreeBSD() const { return false; }
+  bool isOSSolaris() const { return false; }
+  bool isOSBitrig() const { return false; }
+  bool isWindowsMSVCEnvironment() const { return false; }
+  bool isKnownWindowsMSVCEnvironment() const { return false; }
+  bool isWindowsItaniumEnvironment() const { return false; }
+  bool isWindowsCygwinEnvironment() const { return false; }
+  bool isWindowsGNUEnvironment() const { return false; }
+  bool isOSCygMing() const { return false; }
+  bool isOSMSVCRT() const { return false; }
+  bool isOSWindows() const { return false; }
+  bool isOSNaCl() const { return true; }
+  bool isOSLinux() const { return false; }
+  bool isOSBinFormatELF() const { return true; }
+  bool isOSBinFormatCOFF() const { return false; }
+  bool isOSBinFormatMachO() const { return false; }
+#else
   /// isMacOSX - Is this a Mac OS X triple. For legacy reasons, we support both
   /// "darwin" and "osx" as OS X triples.
   bool isMacOSX() const {
@@ -469,6 +504,8 @@ public:
   bool isOSBinFormatMachO() const {
     return getObjectFormat() == Triple::MachO;
   }
+#endif
+  // @LOCALMOD-END
 
   /// \brief Tests whether the target is the PS4 CPU
   bool isPS4CPU() const {

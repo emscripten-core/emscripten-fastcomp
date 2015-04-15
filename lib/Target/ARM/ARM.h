@@ -17,6 +17,9 @@
 
 #include "llvm/Support/CodeGen.h"
 
+// @LOCALMOD (for LowerARMMachineInstrToMCInstPCRel)
+#include "llvm/MC/MCSymbol.h"
+
 namespace llvm {
 
 class ARMAsmPrinter;
@@ -40,8 +43,25 @@ FunctionPass *createThumb2ITBlockPass();
 FunctionPass *createARMOptimizeBarriersPass();
 FunctionPass *createThumb2SizeReductionPass();
 
+/* @LOCALMOD-START */
+FunctionPass *createARMNaClRewritePass();
+/* @LOCALMOD-END */
+
 void LowerARMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                   ARMAsmPrinter &AP);
+
+/* @LOCALMOD-START */
+// Used to lower the pc-relative MOVi16PIC / MOVTi16PIC pseudo instructions
+// into the real MOVi16 / MOVTi16 instructions.
+// See comment on MOVi16PIC for more details.
+void LowerARMMachineInstrToMCInstPCRel(const MachineInstr *MI,
+                                       MCInst &OutMI,
+                                       ARMAsmPrinter &AP,
+                                       unsigned ImmIndex,
+                                       unsigned PCIndex,
+                                       MCSymbol *PCLabel,
+                                       unsigned PCAdjustment);
+/* @LOCALMOD-END */
 
 } // end namespace llvm;
 

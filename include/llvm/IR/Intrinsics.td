@@ -575,11 +575,55 @@ def int_convertus  : Intrinsic<[llvm_anyint_ty],
                                [llvm_anyint_ty, llvm_i32_ty, llvm_i32_ty]>;
 def int_convertuu  : Intrinsic<[llvm_anyint_ty],
                                [llvm_anyint_ty, llvm_i32_ty, llvm_i32_ty]>;
-
 // Clear cache intrinsic, default to ignore (ie. emit nothing)
 // maps to void __clear_cache() on supporting platforms
 def int_clear_cache : Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty],
                                 [], "llvm.clear_cache">;
+
+// @LOCALMOD-BEGIN
+//===----------------------- Native Client Intrinsics ---------------------===//
+// NaCl-specific setjmp/longjmp intrinsics.
+// See https://code.google.com/p/nativeclient/issues/detail?id=3429
+def int_nacl_setjmp   : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty]>;
+def int_nacl_longjmp  : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty],
+                                  [IntrNoReturn]>;
+
+// Fast built-in version of NaCl's tls_get() IRT interface.
+def int_nacl_read_tp : Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
+
+// Atomic intrinsics.
+//
+// Volatiles and atomics are encoded through these intrinsics to make
+// them platform-independent, remove some of LLVM's legacy, and isolate
+// PNaCl from future changes to IR. The intrinsics allow user code to
+// use `__sync_*` builtins as well as C11/C++11 atomics.
+//
+// These are further documented in docs/PNaClLangRef.rst.
+//
+// Note that IntrReadWriteArgMem is used in all cases to prevent
+// reordering.
+def int_nacl_atomic_load : Intrinsic<[llvm_anyint_ty],
+    [LLVMPointerType<LLVMMatchType<0>>, llvm_i32_ty],
+    [IntrReadWriteArgMem]>;
+def int_nacl_atomic_store : Intrinsic<[],
+    [llvm_anyint_ty, LLVMPointerType<LLVMMatchType<0>>, llvm_i32_ty],
+    [IntrReadWriteArgMem]>;
+def int_nacl_atomic_rmw : Intrinsic<[llvm_anyint_ty],
+    [llvm_i32_ty, LLVMPointerType<LLVMMatchType<0>>, LLVMMatchType<0>,
+     llvm_i32_ty],
+    [IntrReadWriteArgMem]>;
+def int_nacl_atomic_cmpxchg : Intrinsic<[llvm_anyint_ty],
+    [LLVMPointerType<LLVMMatchType<0>>, LLVMMatchType<0>, LLVMMatchType<0>,
+     llvm_i32_ty, llvm_i32_ty],
+    [IntrReadWriteArgMem]>;
+def int_nacl_atomic_fence : Intrinsic<[], [llvm_i32_ty],
+    [IntrReadWriteArgMem]>;
+def int_nacl_atomic_fence_all : Intrinsic<[], [],
+    [IntrReadWriteArgMem]>;
+def int_nacl_atomic_is_lock_free : Intrinsic<[llvm_i1_ty],
+    [llvm_i32_ty, llvm_ptr_ty], [IntrNoMem]>,
+    GCCBuiltin<"__nacl_atomic_is_lock_free">;
+// @LOCALMOD-END
 
 //===-------------------------- Masked Intrinsics -------------------------===//
 //

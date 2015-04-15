@@ -18,6 +18,7 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -445,7 +446,9 @@ int main(int argc, char **argv) {
   std::unique_ptr<MCSubtargetInfo> STI(
       TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
-  MCInstPrinter *IP = nullptr;
+  Triple T(TripleName); // @LOCALMOD
+
+  MCInstPrinter *IP = NULL;
   if (FileType == OFT_AssemblyFile) {
     IP =
       TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI, *MCII, *MRI, *STI);
@@ -456,7 +459,7 @@ int main(int argc, char **argv) {
     // Set up the AsmStreamer.
     MCCodeEmitter *CE = nullptr;
     MCAsmBackend *MAB = nullptr;
-    if (ShowEncoding) {
+    if (ShowEncoding || T.isOSNaCl()) { // @LOCALMOD
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
       MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
@@ -474,6 +477,14 @@ int main(int argc, char **argv) {
                                                 *STI, RelaxAll));
     if (NoExecStack)
       Str->InitSections(true);
+    // @LOCALMOD-BEGIN
+    if (T.isOSNaCl()) {
+      // If the above non-localmod does InitSections unconditionally,
+      // we can use that.
+      Str->InitSections(NoExecStack);
+      initializeNaClMCStreamer(*Str.get(), Ctx, T);
+    }
+    // @LOCALMOD-END
   }
 
   int Res = 1;

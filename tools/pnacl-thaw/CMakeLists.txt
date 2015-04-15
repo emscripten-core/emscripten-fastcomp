@@ -1,0 +1,9 @@
+set(LLVM_LINK_COMPONENTS
+  BitWriter
+  Core
+  NaClBitReader
+  Support)
+
+add_llvm_tool(pnacl-thaw
+  pnacl-thaw.cpp
+  )

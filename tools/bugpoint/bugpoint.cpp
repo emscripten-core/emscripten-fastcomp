@@ -136,6 +136,54 @@ int main(int argc, char **argv) {
   polly::initializePollyPasses(Registry);
 #endif
 
+  // @LOCALMOD-BEGIN
+  initializeAddPNaClExternalDeclsPass(Registry);
+  initializeAllocateDataSegmentPass(Registry);
+  initializeBackendCanonicalizePass(Registry);
+  initializeCanonicalizeMemIntrinsicsPass(Registry);
+  initializeConstantInsertExtractElementIndexPass(Registry);
+  initializeExpandAllocasPass(Registry);
+  initializeExpandArithWithOverflowPass(Registry);
+  initializeExpandByValPass(Registry);
+  initializeExpandConstantExprPass(Registry);
+  initializeExpandCtorsPass(Registry);
+  initializeExpandGetElementPtrPass(Registry);
+  initializeExpandIndirectBrPass(Registry);
+  initializeExpandLargeIntegersPass(Registry);
+  initializeExpandShuffleVectorPass(Registry);
+  initializeExpandSmallArgumentsPass(Registry);
+  initializeExpandStructRegsPass(Registry);
+  initializeExpandTlsConstantExprPass(Registry);
+  initializeExpandTlsPass(Registry);
+  initializeExpandVarArgsPass(Registry);
+  initializeFixVectorLoadStoreAlignmentPass(Registry);
+  initializeFlattenGlobalsPass(Registry);
+  initializeGlobalCleanupPass(Registry);
+  initializeGlobalizeConstantVectorsPass(Registry);
+  initializeInsertDivideCheckPass(Registry);
+  initializePNaClABIVerifyFunctionsPass(Registry);
+  initializePNaClABIVerifyModulePass(Registry);
+  initializePNaClSjLjEHPass(Registry);
+  initializePromoteI1OpsPass(Registry);
+  initializePromoteIntegersPass(Registry);
+  initializeRemoveAsmMemoryPass(Registry);
+  initializeRenameEntryPointPass(Registry);
+  initializeReplacePtrsWithIntsPass(Registry);
+  initializeResolveAliasesPass(Registry);
+  initializeResolvePNaClIntrinsicsPass(Registry);
+  initializeRewriteAtomicsPass(Registry);
+  initializeRewriteLLVMIntrinsicsPass(Registry);
+  initializeRewritePNaClLibraryCallsPass(Registry);
+  initializeSandboxIndirectCallsPass(Registry);
+  initializeSandboxMemoryAccessesPass(Registry);
+  initializeSimplifyAllocasPass(Registry);
+  initializeStripAttributesPass(Registry);
+  initializeStripMetadataPass(Registry);
+  initializeStripModuleFlagsPass(Registry);
+  initializeStripTlsPass(Registry);
+  initializeSubstituteUndefsPass(Registry);
+  // @LOCALMOD-END
+  
   cl::ParseCommandLineOptions(argc, argv,
                               "LLVM automatic testcase reducer. See\nhttp://"
                               "llvm.org/cmds/bugpoint.html"

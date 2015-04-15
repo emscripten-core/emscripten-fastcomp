@@ -18,6 +18,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"  // @LOCALMOD
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -25,6 +26,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IRReader/IRReader.h"  // @LOCALMOD
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/FileSystem.h"
@@ -33,6 +35,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/StreamingMemoryObject.h" // @LOCALMOD
 #include "llvm/Support/ToolOutputFile.h"
 #include <system_error>
 using namespace llvm;
@@ -53,6 +56,18 @@ DontPrint("disable-output", cl::desc("Don't output the .ll file"), cl::Hidden);
 static cl::opt<bool>
 ShowAnnotations("show-annotations",
                 cl::desc("Add informational comments to the .ll file"));
+
+// @LOCALMOD-BEGIN
+static cl::opt<NaClFileFormat>
+InputFileFormat(
+    "bitcode-format",
+    cl::desc("Define format of input bitcode file:"),
+    cl::values(
+        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode file (default)"),
+        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
+        clEnumValEnd),
+    cl::init(LLVMFormat));
+// @LOCALMOD-END
 
 namespace {
 
@@ -150,15 +165,48 @@ int main(int argc, char **argv) {
   // Use the bitcode streaming interface
   DataStreamer *Streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
   if (Streamer) {
+    std::unique_ptr<StreamingMemoryObject> Buffer(
+        new StreamingMemoryObjectImpl(Streamer));  // @LOCALMOD
     std::string DisplayFilename;
     if (InputFilename == "-")
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
-    ErrorOr<std::unique_ptr<Module>> MOrErr =
-        getStreamedBitcodeModule(DisplayFilename, Streamer, Context);
-    M = std::move(*MOrErr);
-    M->materializeAllPermanently();
+
+    // @LOCALMOD-BEGIN
+    switch (InputFileFormat) {
+      case LLVMFormat:
+        // The Module's BitcodeReader's BitstreamReader takes ownership
+        // of the StreamingMemoryObject.
+        ErrorOr<std::unique_ptr<Module>> MOrErr =
+            getStreamedBitcodeModule(DisplayFilename, Buffer.release(), Context);
+        M = std::move(*MOrErr);
+        M->materializeAllPermanently();
+        break;
+      case PNaClFormat: {
+        M.reset(getNaClStreamedBitcodeModule(
+            DisplayFilename, Buffer.release(), Context, nullptr,
+            &ErrorMessage));
+        if(M.get()) {
+          if (std::error_code EC = M->materializeAllPermanently()) {
+            ErrorMessage = EC.message();
+            M.reset();
+          }
+        } else {
+          errs() << argv[0] << ": ";
+          if (ErrorMessage.size())
+            errs() << ErrorMessage << "\n";
+          else
+            errs() << "bitcode didn't read correctly.\n";
+          return 1;
+        }
+        break;
+      }
+      case AutodetectFileFormat:
+        report_fatal_error("Command can't autodetect file format!");
+    }
+    // @LOCALMOD-END
+
   }
 
   // Just use stdout.  We won't actually print anything on it.

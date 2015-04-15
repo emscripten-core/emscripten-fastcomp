@@ -102,6 +102,13 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
 
   void EmitInstruction(const MachineInstr *MI) override;
 
+  bool UseReadOnlyJumpTables() const override; // @LOCALMOD
+
+  unsigned GetTargetBasicBlockAlign() const override; // @LOCLAMOD
+
+  unsigned
+  GetTargetLabelAlign(const MachineInstr *MI) const override; //@LOCALMOD
+
   void EmitBasicBlockEnd(const MachineBasicBlock &MBB) override {
     SMShadowTracker.emitShadowPadding(OutStreamer, getSubtargetInfo());
   }
@@ -117,7 +124,14 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   MCSymbol *GetCPISymbol(unsigned CPID) const override;
 
   bool doInitialization(Module &M) override {
-    SMShadowTracker.reset(0);
+    // @LOCALMOD-BEGIN -- disable ShadowMapShadowTracker for NaCl for now.
+    // This requires knowing the size of instructions, and with NaCl pseudos
+    // being expanded late by the streamer, it isn't going to be counting
+    // the expanded instruction. It might not be counting the bundle padding
+    // correctly either.
+    if (!Subtarget->isTargetNaCl())
+      SMShadowTracker.reset(0);
+    // @LOCALMOD-END
     SM.reset();
     return AsmPrinter::doInitialization(M);
   }

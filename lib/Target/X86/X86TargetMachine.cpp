@@ -24,6 +24,13 @@
 #include "llvm/Target/TargetOptions.h"
 using namespace llvm;
 
+// @LOCALMOD-START
+static cl::opt<bool>
+MalignDouble("malign-double", cl::Hidden,
+             cl::desc("Align i64 and f64 types to 8 bytes"));
+// @LOCALMOD-END
+
+
 extern "C" void LLVMInitializeX86Target() {
   // Register the target.
   RegisterTargetMachine<X86TargetMachine> X(TheX86_32Target);
@@ -37,8 +44,8 @@ static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
     return make_unique<TargetLoweringObjectFileMachO>();
   }
 
-  if (TT.isOSLinux())
-    return make_unique<X86LinuxTargetObjectFile>();
+  if (TT.isOSLinux() || TT.isOSNaCl())
+    return make_unique<X86LinuxNaClTargetObjectFile>();
   if (TT.isOSBinFormatELF())
     return make_unique<X86ELFTargetObjectFile>();
   if (TT.isKnownWindowsMSVCEnvironment())
@@ -60,7 +67,8 @@ static std::string computeDataLayout(const Triple &TT) {
     Ret += "-p:32:32";
 
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
-  if (TT.isArch64Bit() || TT.isOSWindows() || TT.isOSNaCl())
+  if (TT.isArch64Bit() || TT.isOSWindows() || TT.isOSNaCl() ||
+      MalignDouble) //@LOCALMOD
     Ret += "-i64:64";
   else
     Ret += "-f64:32:64";
@@ -239,4 +247,9 @@ void X86PassConfig::addPreEmitPass() {
     addPass(createX86PadShortFunctions());
     addPass(createX86FixupLEAs());
   }
+  // @LOCALMOD-START
+  if (getX86Subtarget().isTargetNaCl()) {
+    addPass(createX86NaClRewritePass());
+  }
+  // @LOCALMOD-END
 }

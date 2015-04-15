@@ -656,7 +656,13 @@ public:
   /// Opcode op is valid or not.
   /// @returns true iff the proposed cast is valid.
   /// @brief Determine if a cast is valid without creating one.
-  static bool castIsValid(Instruction::CastOps op, Value *S, Type *DstTy);
+  // @LOCALMOD-BEGIN
+  static bool castIsValid(Instruction::CastOps op, Type *SrcTy, Type *DstTy);
+
+  static bool castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
+    return castIsValid(op, S->getType(), DstTy);
+  }
+  // @LOCALMOD-END
 
   /// @brief Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const Instruction *I) {

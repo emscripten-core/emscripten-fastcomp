@@ -139,7 +139,7 @@ class BitcodeReader : public GVMaterializer {
   std::unique_ptr<MemoryBuffer> Buffer;
   std::unique_ptr<BitstreamReader> StreamFile;
   BitstreamCursor Stream;
-  DataStreamer *LazyStreamer;
+  StreamingMemoryObject *LazyStreamer; // @LOCALMOD
   uint64_t NextUnreadBit;
   bool SeenValueSymbolTable;
 
@@ -219,7 +219,7 @@ public:
 
   explicit BitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
                          DiagnosticHandlerFunction DiagnosticHandler);
-  explicit BitcodeReader(DataStreamer *streamer, LLVMContext &C,
+  explicit BitcodeReader(StreamingMemoryObject *streamer, LLVMContext &C, //@LOCALMOD
                          DiagnosticHandlerFunction DiagnosticHandler);
   ~BitcodeReader() { FreeState(); }
 

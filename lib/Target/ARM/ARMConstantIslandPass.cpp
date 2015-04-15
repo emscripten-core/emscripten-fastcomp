@@ -387,6 +387,8 @@ bool ARMConstantIslands::runOnMachineFunction(MachineFunction &mf) {
   TII = STI->getInstrInfo();
   AFI = MF->getInfo<ARMFunctionInfo>();
 
+  if (!STI->useConstIslands()) return false;   // @LOCALMOD
+
   isThumb = AFI->isThumbFunction();
   isThumb1 = AFI->isThumb1OnlyFunction();
   isThumb2 = AFI->isThumb2Function();

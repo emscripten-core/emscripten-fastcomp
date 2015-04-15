@@ -18,6 +18,7 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSection.h"
@@ -307,8 +308,16 @@ MCSectionData::MCSectionData(const MCSection &_Section, MCAssembler *A)
     BundleGroupBeforeFirstInst(false),
     HasInstructions(false)
 {
-  if (A)
+  // @LOCALMOD-BEGIN
+  if (A) {
+    // Necessary for IRT building because the IRT loader expects the end of
+    // the section to be bundle-aligned. Padding happens with 0's though,
+    // so it's not really ideal. TODO(dschuff) figure out how to do it right.
     A->getSectionList().push_back(this);
+    if (A->isBundlingEnabled() && _Section.UseCodeAlign())
+      setAlignment(A->getBundleAlignSize());
+  }
+  // @LOCALMOD-END
 }
 
 MCSectionData::iterator

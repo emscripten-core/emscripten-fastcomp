@@ -142,6 +142,9 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                             bool DisableVerify,
                                             AnalysisID StartAfter,
                                             AnalysisID StopAfter) {
+  // @LOCALMOD: When there is no ModulePassManager in the PMStack, the
+  // JumpInstrTablesPass will silently be dropped and not added to the pass
+  // manager, because it is a module pass.
   // Add common CodeGen passes.
   MCContext *Context = addPassesToGenerateCode(this, PM, DisableVerify,
                                                StartAfter, StopAfter);

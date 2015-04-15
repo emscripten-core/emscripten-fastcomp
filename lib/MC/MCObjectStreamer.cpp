@@ -203,6 +203,13 @@ void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
 
 void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
                                        const MCSubtargetInfo &STI) {
+  // @LOCALMOD-BEGIN
+  if (getAssembler().isBundlingEnabled() &&
+      getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
+    return;
+  }
+  // @LOCALMOD-END
+
   MCStreamer::EmitInstruction(Inst, STI);
 
   MCSectionData *SD = getCurrentSectionData();

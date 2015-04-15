@@ -210,10 +210,12 @@ static void initialize(TargetLibraryInfoImpl &TLI, const Triple &T,
     TLI.setUnavailable(LibFunc::ffs);
     TLI.setUnavailable(LibFunc::fileno);
     TLI.setUnavailable(LibFunc::flockfile);
-    TLI.setUnavailable(LibFunc::fseeko);
+    // @LOCALMOD: https://code.google.com/p/nativeclient/issues/detail?id=4089
+    TLI.setUnavailable(LibFunc::Fseeko);
     TLI.setUnavailable(LibFunc::fstat);
     TLI.setUnavailable(LibFunc::fstatvfs);
-    TLI.setUnavailable(LibFunc::ftello);
+    // @LOCALMOD (same as fseeko -> Fseeko)
+    TLI.setUnavailable(LibFunc::Ftello);
     TLI.setUnavailable(LibFunc::ftrylockfile);
     TLI.setUnavailable(LibFunc::funlockfile);
     TLI.setUnavailable(LibFunc::getc_unlocked);

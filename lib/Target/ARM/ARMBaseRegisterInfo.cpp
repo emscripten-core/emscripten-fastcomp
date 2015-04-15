@@ -60,6 +60,8 @@ ARMBaseRegisterInfo::ARMBaseRegisterInfo(const ARMSubtarget &sti)
 
 const MCPhysReg*
 ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
+  if (STI.isTargetNaCl()) return CSR_NaCl_SaveList; // @LOCALMOD
+
   const MCPhysReg *RegList =
       STI.isTargetDarwin() ? CSR_iOS_SaveList : CSR_AAPCS_SaveList;
 
@@ -91,6 +93,7 @@ ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
 
 const uint32_t*
 ARMBaseRegisterInfo::getCallPreservedMask(CallingConv::ID CC) const {
+  if (STI.isTargetNaCl()) return CSR_NaCl_RegMask; // @LOCALMOD
   if (CC == CallingConv::GHC)
     // This is academic becase all GHC calls are (supposed to be) tail calls
     return CSR_NoRegs_RegMask;

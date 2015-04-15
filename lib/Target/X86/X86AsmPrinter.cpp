@@ -30,6 +30,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCNaCl.h" // @LOCALMOD
 #include "llvm/MC/MCSectionCOFF.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
@@ -72,6 +73,35 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // We didn't modify anything.
   return false;
 }
+
+// @LOCALMOD-BEGIN
+bool X86AsmPrinter::UseReadOnlyJumpTables() const {
+  return Subtarget->isTargetNaCl();
+}
+
+unsigned X86AsmPrinter::GetTargetBasicBlockAlign() const {
+  if (Subtarget->isTargetNaCl())
+    return 5;
+  return 0;
+}
+
+unsigned X86AsmPrinter::GetTargetLabelAlign(const MachineInstr *MI) const {
+  if (Subtarget->isTargetNaCl()) {
+    switch (MI->getOpcode()) {
+      default: return 0;
+      // These labels may indicate an indirect entry point that is
+      // externally reachable and hence must be bundle aligned.
+      // Note: these labels appear to be always at basic block beginnings
+      // so it may be possible to simply set the MBB alignment.
+      // However, it is unclear whether this always holds.
+      case TargetOpcode::EH_LABEL:
+      case TargetOpcode::GC_LABEL:
+        return 5;
+    }
+  }
+  return 0;
+}
+// @LOCALMOD-END
 
 /// printSymbolOperand - Print a raw symbol reference operand.  This handles
 /// jump tables, constant pools, global address and external symbols, all of
@@ -532,6 +562,12 @@ void X86AsmPrinter::EmitStartOfAsmFile(Module &M) {
           S, MCConstantExpr::Create(int64_t(1), MMI->getContext()));
     }
   }
+
+  // @LOCALMOD-BEGIN
+  if (Subtarget->isTargetNaCl())
+    initializeNaClMCStreamer(OutStreamer, OutContext,
+                             Subtarget->getTargetTriple());
+  // @LOCALMOD-END
 }
 
 static void

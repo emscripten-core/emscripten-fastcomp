@@ -9,6 +9,12 @@ set(LLVM_LINK_COMPONENTS
   InstCombine
   Instrumentation
   Linker
+  # @LOCALMOD-BEGIN
+  MinSFITransforms
+  NaClAnalysis
+  NaClBitReader
+  NaClTransforms
+  # @LOCALMOD-END
   ObjCARCOpts
   ScalarOpts
   Support

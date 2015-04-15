@@ -742,7 +742,13 @@ namespace llvm {
     /// @param Fn - A function to construct an MCInstPrinter for the target.
     static void RegisterMCInstPrinter(Target &T,
                                       Target::MCInstPrinterCtorTy Fn) {
+      // @LOCALMOD-BEGIN
+      // Prune out the .s printer for the sandboxed translator,
+      // by preventing an InstPrinter from being used at all.
+      #if !defined(__native_client__)
       T.MCInstPrinterCtorFn = Fn;
+      #endif
+      // @LOCALMOD-END
     }
 
     /// RegisterMCCodeEmitter - Register a MCCodeEmitter implementation for the

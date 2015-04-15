@@ -35,7 +35,9 @@ entry:
 ; CHECK-X32ABI-NEXT:  popq %rbp
 ; CHECK-X32ABI-NEXT:  ret
 ; CHECK-NACL64-LABEL: test1
-; CHECK-NACL64:       pushq %rbp
+; @LOCALMOD: base address hiding avoids pushing the full rbp onto the stack.
+; CHECK-NACL64:       movl %ebp, %eax
+; CHECK-NACL64-NEXT:  pushq %rax
 ; CHECK-NACL64-NEXT:  movq %rsp, %rbp
 ; CHECK-NACL64-NEXT:  movl %ebp, %eax
   %0 = tail call i8* @llvm.frameaddress(i32 0)
@@ -72,10 +74,14 @@ entry:
 ; CHECK-X32ABI-NEXT:  popq %rbp
 ; CHECK-X32ABI-NEXT:  ret
 ; CHECK-NACL64-LABEL: test2
-; CHECK-NACL64:       pushq %rbp
+; @LOCALMOD base-address hiding.
+; CHECK-NACL64:       movl %ebp, %eax
+; CHECK-NACL64-NEXT:  pushq %rax
 ; CHECK-NACL64-NEXT:  movq %rsp, %rbp
-; CHECK-NACL64-NEXT:  movl (%ebp), %eax
-; CHECK-NACL64-NEXT:  movl (%eax), %eax
+; -fast-isel and -O2 are a bit different in how they load from rbp
+; (we can use NACL64-NEXT if we ever make the sequences the same).
+; CHECK-NACL64:       movl {{.*}}(%{{.*}}), %eax
+; CHECK-NACL64-NEXT:  movl %nacl:(%r15,%rax), %eax
   %0 = tail call i8* @llvm.frameaddress(i32 2)
   ret i8* %0
 }

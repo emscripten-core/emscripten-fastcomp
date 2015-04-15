@@ -817,9 +817,14 @@ void AsmPrinter::EmitFunctionBody() {
         break;
 
       case TargetOpcode::EH_LABEL:
-      case TargetOpcode::GC_LABEL:
+      case TargetOpcode::GC_LABEL: {
+        // @LOCALMOD-START
+        if (unsigned LabelAlign = GetTargetLabelAlign(&MI))
+          EmitAlignment(LabelAlign);
+        // @LOCALMOD-END
         OutStreamer.EmitLabel(MI.getOperand(0).getMCSymbol());
         break;
+      }
       case TargetOpcode::INLINEASM:
         EmitInlineAsm(&MI);
         break;
@@ -1274,7 +1279,8 @@ void AsmPrinter::EmitJumpTableInfo() {
     // For the EK_LabelDifference32 entry, if using .set avoids a relocation,
     /// emit a .set directive for each unique entry.
     if (MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference32 &&
-        MAI->doesSetDirectiveSuppressesReloc()) {
+        MAI->doesSetDirectiveSuppressesReloc() &&
+        !UseReadOnlyJumpTables()) { // @LOCALMOD
       SmallPtrSet<const MachineBasicBlock*, 16> EmittedSets;
       const TargetLowering *TLI = MF->getSubtarget().getTargetLowering();
       const MCExpr *Base = TLI->getPICJumpTableRelocBaseExpr(MF,JTI,OutContext);
@@ -1354,7 +1360,8 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
     // If the .set directive avoids relocations, this is emitted as:
     //      .set L4_5_set_123, LBB123 - LJTI1_2
     //      .word L4_5_set_123
-    if (MAI->doesSetDirectiveSuppressesReloc()) {
+    if (MAI->doesSetDirectiveSuppressesReloc() &&
+        !UseReadOnlyJumpTables()) { // @LOCALMOD
       Value = MCSymbolRefExpr::Create(GetJTSetSymbol(UID, MBB->getNumber()),
                                       OutContext);
       break;

@@ -23,6 +23,9 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetOptions.h"
+// @LOCALMOD-START
+#include "llvm/Transforms/NaCl.h"
+// @LOCALMOD-END
 #include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
@@ -308,6 +311,11 @@ TargetPassConfig *ARMBaseTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 void ARMPassConfig::addIRPasses() {
+  // @LOCALMOD-START
+  if (getARMSubtarget().isTargetNaCl())
+    addPass(createInsertDivideCheckPass());
+  // @LOCALMOD-END
+
   if (TM->Options.ThreadModel == ThreadModel::Single)
     addPass(createLowerAtomicPass());
   else
@@ -325,13 +333,24 @@ void ARMPassConfig::addIRPasses() {
 }
 
 bool ARMPassConfig::addPreISel() {
-  if (TM->getOptLevel() != CodeGenOpt::None)
+  // @LOCALMOD-START
+  // We disable the GlobalMerge pass for PNaCl because it causes the
+  // PNaCl ABI checker to reject the program when the PNaCl translator
+  // is run in streaming mode.  This is because GlobalMerge replaces
+  // functions' GlobalVariable references with ConstantExprs which the
+  // ABI verifier rejects.
+  // TODO(mseaborn): Make the ABI checks coexist with GlobalMerge to
+  // get back the performance benefits of GlobalMerge.
+  if (!getARMSubtarget().isTargetNaCl() &&
+      TM->getOptLevel() != CodeGenOpt::None)
+  // @LOCALMOD-END
     // FIXME: This is using the thumb1 only constant value for
     // maximal global offset for merging globals. We may want
     // to look into using the old value for non-thumb1 code of
     // 4095 based on the TargetMachine, but this starts to become
     // tricky when doing code gen per function.
     addPass(createGlobalMergePass(TM, 127));
+
 
   return false;
 }
@@ -383,5 +402,15 @@ void ARMPassConfig::addPreEmitPass() {
     addPass(&UnpackMachineBundlesID);
 
   addPass(createARMOptimizeBarriersPass());
-  addPass(createARMConstantIslandPass());
+
+  // @LOCALMOD-START
+  if (getARMSubtarget().useConstIslands())
+    addPass(createARMConstantIslandPass());
+  // @LOCALMOD-END
+  // @LOCALMOD-START
+  // This pass does all the heavy sfi lifting.
+  if (getARMSubtarget().isTargetNaCl()) {
+    addPass(createARMNaClRewritePass());
+  }
+  // @LOCALMOD-END
 }

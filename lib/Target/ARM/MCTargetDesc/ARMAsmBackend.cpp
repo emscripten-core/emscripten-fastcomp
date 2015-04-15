@@ -12,6 +12,7 @@
 #include "MCTargetDesc/ARMAsmBackend.h"
 #include "MCTargetDesc/ARMAsmBackendDarwin.h"
 #include "MCTargetDesc/ARMAsmBackendELF.h"
+#include "MCTargetDesc/ARMAsmBackendNaClELF.h" // @LOCALMOD
 #include "MCTargetDesc/ARMAsmBackendWinCOFF.h"
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "MCTargetDesc/ARMFixupKinds.h"
@@ -771,6 +772,10 @@ MCAsmBackend *llvm::createARMAsmBackend(const Target &T,
   case Triple::ELF:
     assert(TheTriple.isOSBinFormatELF() && "using ELF for non-ELF target");
     uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
+    // @LOCALMOD-END
+    if (TheTriple.isOSNaCl())
+      return new ARMAsmBackendNaClELF(T, TT, OSABI, isLittle);
+    // @LOCALMOD-END
     return new ARMAsmBackendELF(T, TT, OSABI, isLittle);
   }
 }

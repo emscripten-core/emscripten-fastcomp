@@ -2,6 +2,10 @@ set(LLVM_LINK_COMPONENTS
   AsmParser
   BitReader
   BitWriter
+  NaClBitAnalysis
+  NaClBitTestUtils
+  NaClBitReader
+  NaClBitWriter
   Core
   Support
   )
@@ -9,4 +13,15 @@ set(LLVM_LINK_COMPONENTS
 add_llvm_unittest(BitcodeTests
   BitReaderTest.cpp
   BitstreamReaderTest.cpp
+  NaClAbbrevErrorTests.cpp
+  NaClAbbrevTrieTest.cpp
+  NaClBitReaderTest.cpp
+  NaClBitstreamReaderTest.cpp
+  NaClCompressTests.cpp
+  NaClObjDumpTest.cpp
+  NaClObjDumpTypesTest.cpp
+  NaClParseTypesTest.cpp
+  NaClParseInstsTest.cpp
+  BitReaderTest.cpp
+  NaClTextFormatterTest.cpp
   )

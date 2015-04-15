@@ -88,6 +88,13 @@ public:
   ///
   static bool Verify(FunctionType *Ty, StringRef Constraints);
 
+  // @LOCALMOD-START
+  /// isAsmMemory - Returns true if the Instruction corresponds to
+  /// ``asm("":::"memory")``, which is often used as a compiler barrier.
+  ///
+  bool isAsmMemory() const;
+  // @LOCALMOD-END
+
   // Constraint String Parsing 
   enum ConstraintPrefix {
     isInput,            // 'x'

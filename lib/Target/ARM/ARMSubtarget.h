@@ -39,6 +39,8 @@ class StringRef;
 class TargetOptions;
 class ARMBaseTargetMachine;
 
+extern cl::opt<bool>  EnableARMDwarfEH; // @LOCALMOD
+
 class ARMSubtarget : public ARMGenSubtargetInfo {
 protected:
   enum ARMProcFamilyEnum {
@@ -106,6 +108,14 @@ protected:
 
   /// IsR9Reserved - True if R9 is a not available as general purpose register.
   bool IsR9Reserved;
+
+  // @LOCALMOD-START
+  /// UseInlineJumpTables - True if jump tables should be in-line in the code.
+  bool UseInlineJumpTables;
+
+  /// UseConstIslands - True if constant islands should be used.
+  bool UseConstIslands;
+  // @LOCALMOD-END
 
   /// UseMovt - True if MOVT / MOVW pairs are used for materialization of 32-bit
   /// imms (including global addresses).
@@ -373,7 +383,8 @@ public:
             TargetTriple.getEnvironment() == Triple::EABIHF ||
             TargetTriple.getEnvironment() == Triple::GNUEABIHF ||
             TargetTriple.getEnvironment() == Triple::Android) &&
-           !isTargetDarwin() && !isTargetWindows();
+        !isTargetDarwin() && !isTargetWindows() &&
+        !isTargetNaCl() && !EnableARMDwarfEH; // @LOCALMOD
   }
 
   bool isTargetHardFloat() const {
@@ -406,6 +417,9 @@ public:
   bool useMovt(const MachineFunction &MF) const;
 
   bool supportsTailCall() const { return SupportsTailCall; }
+
+  // @LOCALMOD
+  bool useConstIslands() const { return UseConstIslands; }
 
   bool allowsUnalignedMem() const { return AllowsUnalignedMem; }
 
@@ -442,6 +456,7 @@ public:
   /// symbol.
   bool GVIsIndirectSymbol(const GlobalValue *GV, Reloc::Model RelocM) const;
 
+  bool useInlineJumpTables() const {return UseInlineJumpTables;} // @LOCALMOD
 };
 } // End llvm namespace
 

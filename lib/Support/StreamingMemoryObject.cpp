@@ -74,12 +74,14 @@ const uint8_t *RawMemoryObject::getPointer(uint64_t address,
 namespace llvm {
 // If the bitcode has a header, then its size is known, and we don't have to
 // block until we actually want to read it.
-bool StreamingMemoryObject::isValidAddress(uint64_t address) const {
+// @LOCALMOD -- separated into Impl (revisit after merge)
+bool StreamingMemoryObjectImpl::isValidAddress(uint64_t address) const {
   if (ObjectSize && address < ObjectSize) return true;
     return fetchToPos(address);
 }
 
-uint64_t StreamingMemoryObject::getExtent() const {
+// @LOCALMOD -- separated into Impl
+uint64_t StreamingMemoryObjectImpl::getExtent() const {
   if (ObjectSize) return ObjectSize;
   size_t pos = BytesRead + kChunkSize;
   // keep fetching until we run out of bytes
@@ -87,7 +89,8 @@ uint64_t StreamingMemoryObject::getExtent() const {
   return ObjectSize;
 }
 
-uint64_t StreamingMemoryObject::readBytes(uint8_t *Buf, uint64_t Size,
+// @LOCALMOD --separated into Impl
+uint64_t StreamingMemoryObjectImpl::readBytes(uint8_t *Buf, uint64_t Size,
                                           uint64_t Address) const {
   fetchToPos(Address + Size - 1);
   if (Address >= BytesRead)
@@ -102,14 +105,16 @@ uint64_t StreamingMemoryObject::readBytes(uint8_t *Buf, uint64_t Size,
   return Size;
 }
 
-bool StreamingMemoryObject::dropLeadingBytes(size_t s) {
+// @LOCALMOD -- separated into Impl
+bool StreamingMemoryObjectImpl::dropLeadingBytes(size_t s) {
   if (BytesRead < s) return true;
   BytesSkipped = s;
   BytesRead -= s;
   return false;
 }
 
-void StreamingMemoryObject::setKnownObjectSize(size_t size) {
+// @LOCALMOD -- separated into Impl
+void StreamingMemoryObjectImpl::setKnownObjectSize(size_t size) {
   ObjectSize = size;
   Bytes.reserve(size);
 }
@@ -119,7 +124,9 @@ MemoryObject *getNonStreamedMemoryObject(const unsigned char *Start,
   return new RawMemoryObject(Start, End);
 }
 
-StreamingMemoryObject::StreamingMemoryObject(DataStreamer *streamer) :
+// @LOCALMOD -- separated into Impl
+StreamingMemoryObjectImpl::StreamingMemoryObjectImpl(
+    DataStreamer *streamer) :
   Bytes(kChunkSize), Streamer(streamer), BytesRead(0), BytesSkipped(0),
   ObjectSize(0), EOFReached(false) {
   BytesRead = streamer->GetBytes(&Bytes[0], kChunkSize);

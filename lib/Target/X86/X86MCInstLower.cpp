@@ -685,6 +685,18 @@ void X86AsmPrinter::LowerTlsAddr(X86MCInstLower &MCInstLowering,
 
   MCContext &context = OutStreamer.getContext();
 
+  // @LOCALMOD-START
+  // TODO(dschuff): Instead of testing the target OS we should add (upstream) a
+  // method to one of the MC classes to test whether bundle alignment is enabled
+  // (currently only the AsmBackend has this, which can't be used when emitting
+  // asm files). That facility should be used here and in MCAsmStreamer.cpp
+  // (this should be done once we are unblocked from switching to gas by
+  // default, so we know exactly where we need it).
+  Triple TT(getSubtargetInfo().getTargetTriple());
+  const bool needsBundleLock = TT.getOS() == Triple::NaCl;
+  if (needsBundleLock)
+    OutStreamer.EmitBundleLock(false);
+  // @LOCALMOD-END
   if (needsPadding)
     EmitAndCountInstruction(MCInstBuilder(X86::DATA16_PREFIX));
 
@@ -751,6 +763,10 @@ void X86AsmPrinter::LowerTlsAddr(X86MCInstLower &MCInstLowering,
   EmitAndCountInstruction(MCInstBuilder(is64Bits ? X86::CALL64pcrel32
                                                  : X86::CALLpcrel32)
                             .addExpr(tlsRef));
+  // @LOCALMOD-START
+  if (needsBundleLock)
+    OutStreamer.EmitBundleUnlock();
+  // @LOCALMOD-END
 }
 
 /// \brief Emit the optimal amount of multi-byte nops on X86.
@@ -1063,6 +1079,29 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     //   MYGLOBAL + (. - PICBASE)
     // However, we can't generate a ".", so just emit a new label here and refer
     // to it.
+
+    // @LOCALMOD-START
+    // When using the gas assembler, emitting a new label and then using it in
+    // the difference expression gives the wrong value when the instruction
+    // following the label gets bundle padding added to it. (The label will
+    // point to the nop padding instead of the instruction, which works when
+    // jumping to the label, but not when calculating GOT addresses. See
+    // https://code.google.com/p/nativeclient/issues/detail?id=3982) For this
+    // case, just emit the instruction using the "." directly rather than going
+    // through all the MC layers. The LLVM assembler is smart enough to make the
+    // label point to the actual instruction rather than the nop, so this hack
+    // isn't necessary.
+    if (Subtarget->isTargetNaCl32() &&
+        OutStreamer.hasRawTextSupport()) {
+      std::string OS;
+      raw_string_ostream ROS(OS);
+      ROS << "\taddl\t$_GLOBAL_OFFSET_TABLE_+(.-" << *MF->getPICBaseSymbol()
+          << "), %"
+          << X86ATTInstPrinter::getRegisterName(MI->getOperand(0).getReg());
+      OutStreamer.EmitRawText(ROS.str());
+      return;
+    }
+    // @LOCALMOD-END
     MCSymbol *DotSym = OutContext.CreateTempSymbol();
     OutStreamer.EmitLabel(DotSym);
 

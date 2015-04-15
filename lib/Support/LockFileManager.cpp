@@ -24,6 +24,10 @@
 #endif
 using namespace llvm;
 
+// @LOCALMOD-BEGIN
+#if !defined(PNACL_BROWSER_TRANSLATOR)
+// @LOCALMOD-END
+
 /// \brief Attempt to read the lock file with the given name, if it exists.
 ///
 /// \param LockFileName The name of the lock file to read.
@@ -58,7 +62,9 @@ LockFileManager::readLockFile(StringRef LockFileName) {
 }
 
 bool LockFileManager::processStillExecuting(StringRef Hostname, int PID) {
-#if LLVM_ON_UNIX && !defined(__ANDROID__)
+// @LOCALMOD-BEGIN
+#if LLVM_ON_UNIX && !defined(__ANDROID__) && !defined(__native_client__)
+// @LOCALMOD-END
   char MyHostname[256];
   MyHostname[255] = 0;
   MyHostname[0] = 0;
@@ -238,3 +244,5 @@ LockFileManager::WaitForUnlockResult LockFileManager::waitForUnlock() {
 std::error_code LockFileManager::unsafeRemoveLockFile() {
   return sys::fs::remove(LockFileName.str());
 }
+
+#endif // __native_client__ @LOCALMOD

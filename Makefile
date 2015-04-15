@@ -43,6 +43,11 @@ EXTRA_DIST := test unittests llvm.spec include win32 Xcode
 
 include $(LEVEL)/Makefile.config
 
+ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
+  DIRS := $(filter-out tools/llvm-shlib runtime docs unittests, $(DIRS))
+  OPTIONAL_DIRS :=
+endif
+
 ifneq ($(ENABLE_SHARED),1)
   DIRS := $(filter-out tools/llvm-shlib, $(DIRS))
 endif
@@ -106,12 +111,15 @@ all:: cross-compile-build-tools
 clean::
 	$(Verb) rm -rf BuildTools
 
+# @LOCALMOD-START Pass BUILD_CFLAGS et al through for host libcxx;
+# Only required to build on Ubuntu Precise
 cross-compile-build-tools:
 	$(Verb) if [ ! -f BuildTools/Makefile ]; then \
           $(MKDIR) BuildTools; \
 	  cd BuildTools ; \
-	  unset CFLAGS ; \
-	  unset CXXFLAGS ; \
+	  CFLAGS="$(BUILD_CFLAGS)" ; \
+	  CXXFLAGS="$(BUILD_CXXFLAGS)" ; \
+	  LDFLAGS="$(BUILD_LDFLAGS)" ; \
 	  AR=$(BUILD_AR) ; \
 	  AS=$(BUILD_AS) ; \
 	  LD=$(BUILD_LD) ; \
@@ -130,6 +138,7 @@ cross-compile-build-tools:
 	fi; \
 	($(MAKE) -C BuildTools \
 	  BUILD_DIRS_ONLY=1 \
+	  PNACL_BROWSER_TRANSLATOR=0 \
 	  UNIVERSAL= \
 	  UNIVERSAL_SDK_PATH= \
 	  SDKROOT= \
@@ -142,10 +151,14 @@ cross-compile-build-tools:
 	  DISABLE_ASSERTIONS=$(DISABLE_ASSERTIONS) \
 	  ENABLE_EXPENSIVE_CHECKS=$(ENABLE_EXPENSIVE_CHECKS) \
 	  ENABLE_LIBCPP=$(ENABLE_LIBCPP) \
-	  CFLAGS= \
-	  CXXFLAGS= \
+	  CC=$(BUILD_CC) \
+	  CXX=$(BUILD_CXX) \
+	  CFLAGS="$(BUILD_CFLAGS)" \
+	  CXXFLAGS="$(BUILD_CXXFLAGS)" \
+	  LDFLAGS="$(BUILD_LDFLAGS)" \
 	) || exit 1;
 endif
+# @LOCALMOD-END
 
 # Include the main makefile machinery.
 include $(LLVM_SRC_ROOT)/Makefile.rules
