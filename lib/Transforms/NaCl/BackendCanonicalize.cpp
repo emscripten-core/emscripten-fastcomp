@@ -36,7 +36,7 @@
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/Pass.h"
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 
@@ -225,7 +225,7 @@ public:
     initializeBackendCanonicalizePass(*PassRegistry::getPassRegistry());
   }
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.addRequired<TargetLibraryInfo>();
+    AU.addRequired<TargetLibraryInfoWrapperPass>();
     FunctionPass::getAnalysisUsage(AU);
   }
 
@@ -262,7 +262,7 @@ INITIALIZE_PASS(BackendCanonicalize, "backend-canonicalize",
 bool BackendCanonicalize::runOnFunction(Function &F) {
   bool Modified = false;
   DL = &F.getParent()->getDataLayout();
-  TLI = &getAnalysis<TargetLibraryInfo>();
+  TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
   for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
     for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE; ++BI)
