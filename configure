@@ -5521,6 +5521,7 @@ case "$withval" in
 esac
 EXTRA_LD_OPTIONS=$EXTRA_LD_OPTIONS
 
+
 # Check whether --enable-bindings was given.
 if test "${enable_bindings+set}" = set; then
   enableval=$enable_bindings;
