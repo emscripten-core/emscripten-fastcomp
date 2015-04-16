@@ -34,10 +34,6 @@ public:
     initializeConstantInsertExtractElementIndexPass(
         *PassRegistry::getPassRegistry());
   }
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<DataLayoutPass>();
-    BasicBlockPass::getAnalysisUsage(AU);
-  }
   using BasicBlockPass::doInitialization;
   bool doInitialization(Module &Mod) override {
     M = &Mod;
@@ -162,7 +158,7 @@ void ConstantInsertExtractElementIndex::fixNonConstantVectorIndices(
 bool ConstantInsertExtractElementIndex::runOnBasicBlock(BasicBlock &BB) {
   bool Changed = false;
   if (!DL)
-    DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+    DL = &BB.getParent()->getParent().getDataLayout();
   Instructions OutOfRangeConstantIndices;
   Instructions NonConstantVectorIndices;
 

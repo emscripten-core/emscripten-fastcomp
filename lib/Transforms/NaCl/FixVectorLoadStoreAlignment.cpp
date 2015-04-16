@@ -41,10 +41,6 @@ public:
   FixVectorLoadStoreAlignment() : BasicBlockPass(ID), M(0), DL(0) {
     initializeFixVectorLoadStoreAlignmentPass(*PassRegistry::getPassRegistry());
   }
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<DataLayoutPass>();
-    BasicBlockPass::getAnalysisUsage(AU);
-  }
   using BasicBlockPass::doInitialization;
   bool doInitialization(Module &Mod) override {
     M = &Mod;
@@ -251,7 +247,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
 bool FixVectorLoadStoreAlignment::runOnBasicBlock(BasicBlock &BB) {
   bool Changed = false;
   if (!DL)
-    DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+    DL = &BB.getParent()->getParent()->getDataLayout();
   Instructions Loads;
   Instructions Stores;
   visitVectorLoadStore(BB, Loads, Stores);

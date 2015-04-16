@@ -437,7 +437,6 @@ static int runCompilePasses(Module *ModuleRef,
   // Add the target data from the target machine, if it exists, or the module.
   if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
     ModuleRef->setDataLayout(DL);
-  PM->add(new DataLayoutPass());
 
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only

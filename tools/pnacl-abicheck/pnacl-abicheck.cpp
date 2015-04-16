@@ -88,7 +88,6 @@ int main(int argc, char **argv) {
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
 
   std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(&*Mod));
-  PM->add(new DataLayoutPass());
   PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
 
   PM->doInitialization();

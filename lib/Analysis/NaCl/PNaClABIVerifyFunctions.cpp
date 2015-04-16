@@ -561,7 +561,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
 }
 
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
-  const DataLayout *DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+  const DataLayout *DL = &F.getParent()->getDataLayout();
   SmallVector<StringRef, 8> MDNames;
   F.getContext().getMDKindNames(MDNames);
 

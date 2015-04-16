@@ -51,7 +51,6 @@ class PNaClABIVerifyFunctions : public FunctionPass {
   }
   virtual void getAnalysisUsage(AnalysisUsage &Info) const {
     Info.setPreservesAll();
-    Info.addRequired<DataLayoutPass>();
   }
   bool runOnFunction(Function &F);
   virtual void print(raw_ostream &O, const Module *M) const;
