@@ -193,7 +193,6 @@ int main(int argc, char **argv) {
   initializeLowerEmExceptionsPass(Registry);
   initializeLowerEmSetjmpPass(Registry);
   initializeNoExitRuntimePass(Registry);
-  initializeNoExitRuntimePass(Registry);
   // Emscripten passes end.
   // @LOCALMOD-END
   
