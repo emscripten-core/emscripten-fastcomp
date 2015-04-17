@@ -443,8 +443,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
           const Value *Arg = Call->getArgOperand(ArgNum);
           if (!(isValidScalarOperand(Arg) ||
                 isValidVectorOperand(Arg) ||
-                isNormalizedPtr(Arg) ||
-                isa<MDNode>(Arg)))
+                isNormalizedPtr(Arg)))
             return "bad intrinsic operand";
         }
 

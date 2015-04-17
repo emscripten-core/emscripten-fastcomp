@@ -248,7 +248,7 @@ void X86PassConfig::addPreEmitPass() {
     addPass(createX86FixupLEAs());
   }
   // @LOCALMOD-START
-  if (getX86Subtarget().isTargetNaCl()) {
+  if (getX86TargetMachine().getSubtargetImpl()->isTargetNaCl()) {
     addPass(createX86NaClRewritePass());
   }
   // @LOCALMOD-END

@@ -87,7 +87,8 @@ int main(int argc, char **argv) {
   ModuleChecker->runOnModule(*Mod);
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
 
-  std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(&*Mod));
+  std::unique_ptr<legacy::FunctionPassManager> PM(
+      new legacy::FunctionPassManager(&*Mod));
   PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
 
   PM->doInitialization();
