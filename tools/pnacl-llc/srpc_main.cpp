@@ -90,13 +90,6 @@ void AddFixedArguments(ArgStringList *CmdLineArgs) {
   CmdLineArgs->push_back(kBitcodeFilename);
   CmdLineArgs->push_back("-o");
   CmdLineArgs->push_back(kObjectFilename);
-  // Disable AEABI functions in the ARM backend, since libgcc doesn't have them.
-#if defined(__pnacl__)
-  if (__builtin_nacl_target_arch() == PnaclTargetArchitectureARM_32)
-    CmdLineArgs->push_back("-arm-enable-aeabi-functions=0");
-#elif defined(__arm__)
-  CmdLineArgs->push_back("-arm-enable-aeabi-functions=0");
-#endif
 }
 
 bool AddDefaultCPU(ArgStringList *CmdLineArgs) {

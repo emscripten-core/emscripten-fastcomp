@@ -18,7 +18,6 @@
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/Support/CommandLine.h"  // @LOCALMOD
 #include "llvm/Target/TargetLowering.h"
 #include <vector>
 
@@ -629,9 +628,6 @@ namespace llvm {
                              const TargetLibraryInfo *libInfo);
   }
 
-  // @LOCALMOD-START
-  extern cl::opt<bool> EnableARMAEABIFunctions;
-  // @LOCALMOD-END
 }
 
 #endif  // ARMISELLOWERING_H

@@ -152,12 +152,9 @@ EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
                         MachinePointerInfo DstPtrInfo) const {
   const ARMSubtarget &Subtarget = DAG.getTarget().getSubtarget<ARMSubtarget>();
   // Use default for non-AAPCS (or MachO) subtargets
-  // @LOCALMOD-START
-  if (!EnableARMAEABIFunctions ||
-      !Subtarget.isAAPCS_ABI() || Subtarget.isTargetMachO() ||
+  if (!Subtarget.isAAPCS_ABI() || Subtarget.isTargetMachO() ||
       Subtarget.isTargetWindows())
     return SDValue();
-  // @LOCALMOD-END
 
   const ARMTargetLowering &TLI =
       *DAG.getTarget().getSubtarget<ARMSubtarget>().getTargetLowering();
