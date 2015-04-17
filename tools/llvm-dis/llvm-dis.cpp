@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
 
     // @LOCALMOD-BEGIN
     switch (InputFileFormat) {
-      case LLVMFormat:
+      case LLVMFormat: {
         // The Module's BitcodeReader's BitstreamReader takes ownership
         // of the StreamingMemoryObject.
         ErrorOr<std::unique_ptr<Module>> MOrErr =
@@ -183,6 +183,7 @@ int main(int argc, char **argv) {
         M = std::move(*MOrErr);
         M->materializeAllPermanently();
         break;
+      }
       case PNaClFormat: {
         M.reset(getNaClStreamedBitcodeModule(
             DisplayFilename, Buffer.release(), Context, nullptr,
