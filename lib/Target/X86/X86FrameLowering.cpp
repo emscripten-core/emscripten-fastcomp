@@ -2071,12 +2071,12 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 
     if (Amount) {
       if (Opcode == TII.getCallFrameSetupOpcode()) {
-        New = BuildMI(MF, DL, TII.get(getSUBriOpcode(IsLP64, Amount)), StackPtr)
+        New = BuildMI(MF, DL, TII.get(getSUBriOpcode(Uses64BitStackPtr, Amount)), StackPtr)
           .addReg(StackPtr).addImm(Amount);
       } else {
         assert(Opcode == TII.getCallFrameDestroyOpcode());
 
-        unsigned Opc = getADDriOpcode(IsLP64, Amount);
+        unsigned Opc = getADDriOpcode(Uses64BitStackPtr, Amount);
         New = BuildMI(MF, DL, TII.get(Opc), StackPtr)
           .addReg(StackPtr).addImm(Amount);
       }
@@ -2114,4 +2114,3 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     MBB.insert(I, New);
   }
 }
-
