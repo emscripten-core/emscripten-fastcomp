@@ -235,6 +235,7 @@ public:
   bool isDematerializable(const GlobalValue *GV) const override;
   std::error_code materialize(GlobalValue *GV) override;
   std::error_code MaterializeModule(Module *M) override;
+  std::vector<StructType *> getIdentifiedStructTypes() const override;
   void Dematerialize(GlobalValue *GV) override;
   void releaseBuffer();
 

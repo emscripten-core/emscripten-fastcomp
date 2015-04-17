@@ -84,7 +84,8 @@ BitcodeReader::BitcodeReader(MemoryBuffer *buffer, LLVMContext &C,
       MDValueList(C), SeenFirstFunctionBody(false), UseRelativeIDs(false),
       WillMaterializeAllForwardRefs(false) {}
 
-BitcodeReader::BitcodeReader(DataStreamer *streamer, LLVMContext &C,
+// @LOCALMOD:StreamingMemoryObject
+BitcodeReader::BitcodeReader(StreamingMemoryObject *streamer, LLVMContext &C,
                              DiagnosticHandlerFunction DiagnosticHandler)
     : Context(C), DiagnosticHandler(getDiagHandler(DiagnosticHandler, C)),
       TheModule(nullptr), Buffer(nullptr), LazyStreamer(streamer),
@@ -4041,7 +4042,8 @@ std::error_code BitcodeReader::InitLazyStream() {
   // Check and strip off the bitcode wrapper; BitstreamReader expects never to
   // see it.
   // @LOCALMOD Bytes -> LazyStreamer
-  StreamFile = llvm::make_unique<BitstreamReader>(LazyStreamer);
+  std::unique_ptr<StreamingMemoryObject> OwnedBytes(LazyStreamer);
+  StreamFile = llvm::make_unique<BitstreamReader>(std::move(OwnedBytes));
   Stream.init(&*StreamFile);
 
   unsigned char buf[16];

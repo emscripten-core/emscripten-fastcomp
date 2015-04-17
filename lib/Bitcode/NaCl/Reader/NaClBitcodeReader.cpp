@@ -1830,6 +1830,11 @@ std::error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   return std::error_code();
 }
 
+std::vector<StructType *> NaClBitcodeReader::getIdentifiedStructTypes() const {
+  // MERGETODO(dschuff): does this need to contain anything for TypeFinder?
+  return std::vector<StructType *>();
+}
+
 std::error_code NaClBitcodeReader::InitStream() {
   if (LazyStreamer)
     return InitLazyStream();
