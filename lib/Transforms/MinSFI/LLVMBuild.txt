@@ -20,4 +20,4 @@ type = Library
 name = MinSFITransforms
 parent = Transforms
 library_name = MinSFITransforms
-required_libraries = Core Support IPO NaClTransforms
+required_libraries = Core Support IPO NaClAnalysis NaClTransforms
