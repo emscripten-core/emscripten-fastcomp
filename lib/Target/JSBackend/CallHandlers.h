@@ -48,11 +48,16 @@ DEF_CALL_HANDLER(__default__, {
   bool NeedCasts = true;
   FunctionType *FT;
   bool Invoke = false;
+  bool Emulated = false;
   if (InvokeState == 1) {
     InvokeState = 2;
     Invoke = canInvoke(CV);
   }
   std::string Sig;
+
+  bool ForcedNumArgs = NumArgs != -1;
+  if (!ForcedNumArgs) NumArgs = getNumArgOperands(CI);
+
   const Function *F = dyn_cast<const Function>(CV);
   if (F) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
@@ -66,14 +71,17 @@ DEF_CALL_HANDLER(__default__, {
       ensureFunctionTable(FT);
       if (!Invoke) {
         Sig = getFunctionSignature(FT, &Name);
-        Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
-        NeedCasts = false; // function table call, so stays in asm module
+        if (!EmulatedFunctionPointers) {
+          Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+          NeedCasts = false; // function table call, so stays in asm module
+        } else {
+          Name = std::string("ftCall_") + Sig + "(" + getCast(Name, Type::getInt32Ty(CI->getContext()));
+          if (NumArgs > 0) Name += ',';
+          Emulated = true;
+        }
       }
     }
   }
-
-  bool ForcedNumArgs = NumArgs != -1;
-  if (!ForcedNumArgs) NumArgs = getNumArgOperands(CI);
 
   if (!FT->isVarArg() && !ForcedNumArgs) {
     int TypeNumArgs = FT->getNumParams();
@@ -104,7 +112,8 @@ DEF_CALL_HANDLER(__default__, {
     Name = "invoke_" + Sig;
     NeedCasts = true;
   }
-  std::string text = Name + "(";
+  std::string text = Name;
+  if (!Emulated) text += "(";
   if (Invoke) {
     // add first param
     if (F) {

@@ -79,6 +79,11 @@ ReservedFunctionPointers("emscripten-reserved-function-pointers",
                          cl::desc("Number of reserved slots in function tables for functions to be added at runtime (see emscripten RESERVED_FUNCTION_POINTERS option)"),
                          cl::init(0));
 
+static cl::opt<bool>
+EmulatedFunctionPointers("emscripten-emulated-function-pointers",
+                         cl::desc("Emulate function pointers, avoiding asm.js function tables (see emscripten EMULATED_FUNCTION_POINTERS option)"),
+                         cl::init(false));
+
 static cl::opt<int>
 EmscriptenAssertions("emscripten-assertions",
                      cl::desc("Additional JS-specific assertions (see emscripten ASSERTIONS)"),
