@@ -225,6 +225,13 @@ option(LLVM_ENABLE_THREADS "Use threads if available." ON)
 
 option(LLVM_ENABLE_ZLIB "Use zlib for compression/decompression if available." ON)
 
+set(SUBZERO_TARGETS_TO_BUILD "none"
+    CACHE STRING "Semicolon-separated list of targets to build, or \"none\".")
+
+if( SUBZERO_TARGETS_TO_BUILD STREQUAL "none" )
+  set( SUBZERO_TARGETS_TO_BUILD "" )
+endif()
+
 if( LLVM_TARGETS_TO_BUILD STREQUAL "all" )
   set( LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS} )
 endif()
@@ -457,6 +464,11 @@ foreach(t ${LLVM_TARGETS_TO_BUILD})
   endif()
 endforeach(t)
 
+set(SUBZERO_ENUM_TARGETS "")
+foreach(t ${SUBZERO_TARGETS_TO_BUILD})
+  set(SUBZERO_ENUM_TARGETS "${SUBZERO_ENUM_TARGETS}SUBZERO_TARGET(${t})\n")
+endforeach(t)
+
 # Produce the target definition files, which provide a way for clients to easily
 # include various classes of targets.
 configure_file(
@@ -470,6 +482,10 @@ configure_file(
 configure_file(
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Config/Disassemblers.def.in
   ${LLVM_INCLUDE_DIR}/llvm/Config/Disassemblers.def
+  )
+configure_file(
+  ${LLVM_MAIN_INCLUDE_DIR}/llvm/Config/SZTargets.def.in
+  ${LLVM_INCLUDE_DIR}/llvm/Config/SZTargets.def
   )
 configure_file(
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Config/Targets.def.in
