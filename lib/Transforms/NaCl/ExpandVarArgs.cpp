@@ -243,10 +243,8 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
       IRB.CreateMemCpy(Ptr, Arg, DL->getTypeAllocSize(
                                      Arg->getType()->getPointerElementType()),
                        /*Align=*/1);
-    else {
-      StoreInst *S = IRB.CreateStore(Arg, Ptr);
-      S->setAlignment(4); // EMSCRIPTEN: pnacl stack is only 4-byte aligned
-    }
+    else
+      IRB.CreateStore(Arg, Ptr);
     ++Index;
   }
 
