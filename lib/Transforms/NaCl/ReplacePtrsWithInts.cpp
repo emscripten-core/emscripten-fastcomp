@@ -285,20 +285,28 @@ void FunctionConverter::eraseReplacedInstructions() {
 
 static void ConvertMetadataOperand(FunctionConverter *FC,
                                    IntrinsicInst *Call, int Index) {
-  MDNode *MD = cast<MDNode>(Call->getArgOperand(Index));
+  (void)FC;
+  (void)Call;
+  (void)Index;
+#if 0
+  auto *Operand = cast<MetadataAsValue>(Call->getArgOperand(Index));
+  MDNode *MD = cast<MDNode>(Operand->getMetadata());
   if (MD->getNumOperands() != 1)
     return;
-  Value *MDArg = MD->getOperand(0);
+  const MDOperand *MDOp = &MD->getOperand(0);
+  Value *MDArg = MetadataAsValue::get(Call->getContext(), MDOp);
   if (MDArg && (isa<Argument>(MDArg) || isa<Instruction>(MDArg))) {
     MDArg = FC->convert(MDArg, /* BypassPlaceholder= */ true);
     if (PtrToIntInst *Cast = dyn_cast<PtrToIntInst>(MDArg)) {
       // Unwrapping this is necessary for llvm.dbg.declare to work.
       MDArg = Cast->getPointerOperand();
     }
-    SmallVector<Value *, 1> Args;
-    Args.push_back(MDArg);
-    Call->setArgOperand(Index, MDNode::get(Call->getContext(), Args));
+    MD->replaceOperandWith(0, ValueAsMetadata::get(MDArg));
+    //SmallVector<MDNode *, 1> Args;
+    //Args.push_back(MDArg);
+    //Call->setArgOperand(Index, MetadataAsValue::get(Call->getContext(), Args));
   }
+#endif
 }
 
 // Remove attributes that only apply to pointer arguments.  Returns
