@@ -221,7 +221,8 @@ void llvm::PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM) {
     PM.add(createStripAttributesPass());
 
   // Many passes create loads and stores. This pass changes their alignment.
-  PM.add(createNormalizeAlignmentPass());
+  if (!isEmscripten)
+    PM.add(createNormalizeAlignmentPass());
 
   // Strip dead prototytes to appease the intrinsic ABI checks.
   // ExpandVarArgs leaves around vararg intrinsics, and
@@ -233,5 +234,6 @@ void llvm::PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM) {
   PM.add(createDeadCodeEliminationPass());
 
   // This should be the last step before PNaCl ABI validation.
-  PM.add(createCleanupUsedGlobalsMetadataPass());
+  if (!isEmscripten)
+    PM.add(createCleanupUsedGlobalsMetadataPass());
 }
