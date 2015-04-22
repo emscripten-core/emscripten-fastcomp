@@ -99,6 +99,11 @@ GlobalBase("emscripten-global-base",
            cl::desc("Where global variables start out in memory (see emscripten GLOBAL_BASE option)"),
            cl::init(8));
 
+static cl::opt<bool>
+Relocatable("emscripten-relocatable",
+            cl::desc("Whether to emit relocatable code (see emscripten RELOCATABLE option)"),
+            cl::init(false));
+
 
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
@@ -350,11 +355,23 @@ namespace {
       return V;
     }
 
+    std::string relocateFunctionPointer(std::string FP) {
+      return Relocatable ? "(fb + (" + FP + ") | 0)" : FP;
+    }
+
+    std::string relocateGlobal(std::string G) {
+      return Relocatable ? "(gb + (" + G + ") | 0)" : G;
+    }
+
     // Return a constant we are about to write into a global as a numeric offset. If the
     // value is not known at compile time, emit a postSet to that location.
     unsigned getConstAsOffset(const Value *V, unsigned AbsoluteTarget) {
       V = resolveFully(V);
       if (const Function *F = dyn_cast<const Function>(V)) {
+        if (Relocatable) {
+          PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + relocateFunctionPointer(utostr(getFunctionIndex(F))) + ';';
+          return 0; // emit zero in there for now, until the postSet
+        }
         return getFunctionIndex(F);
       } else if (const BlockAddress *BA = dyn_cast<const BlockAddress>(V)) {
         return getBlockAddress(BA);
@@ -365,10 +382,15 @@ namespace {
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
             Externals.insert(Name);
-            PostSets += "HEAP32[" + utostr(AbsoluteTarget>>2) + "] = " + Name + ';';
+            PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';';
+            return 0; // emit zero in there for now, until the postSet
+          } else if (Relocatable) {
+            // this is one of our globals, but we must relocate it
+            PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + relocateGlobal(utostr(getGlobalAddress(V->getName().str()))) + ';';
             return 0; // emit zero in there for now, until the postSet
           }
         }
+        assert(!Relocatable);
         return getGlobalAddress(V->getName().str());
       }
     }
@@ -1035,28 +1057,27 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
     unsigned Addr = getGlobalAddress(GV->getName().str());
     switch (Bytes) {
     default: llvm_unreachable("Unsupported type");
-    case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
+    case 8: return "HEAPF64[" + relocateGlobal(utostr(Addr >> 3)) + "]";
     case 4: {
       if (t->isIntegerTy() || t->isPointerTy()) {
-        return "HEAP32[" + utostr(Addr >> 2) + "]";
+        return "HEAP32[" + relocateGlobal(utostr(Addr >> 2)) + "]";
       } else {
         assert(t->isFloatingPointTy());
-        return "HEAPF32[" + utostr(Addr >> 2) + "]";
+        return "HEAPF32[" + relocateGlobal(utostr(Addr >> 2)) + "]";
       }
     }
-    case 2: return "HEAP16[" + utostr(Addr >> 1) + "]";
-    case 1: return "HEAP8[" + utostr(Addr) + "]";
+    case 2: return "HEAP16[" + relocateGlobal(utostr(Addr >> 1)) + "]";
+    case 1: return "HEAP8[" + relocateGlobal(utostr(Addr)) + "]";
     }
-  } else {
-    return getHeapAccess(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
   }
+  return getHeapAccess(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
 }
 
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
   if (const Function *F = dyn_cast<Function>(CV)) {
-    return utostr(getFunctionIndex(F));
+    return relocateFunctionPointer(utostr(getFunctionIndex(F)));
   }
 
   if (const GlobalValue *GV = dyn_cast<GlobalValue>(CV)) {
@@ -1070,7 +1091,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       // to worry about weak or other kinds of aliases.
       return getConstant(GA->getAliasee(), sign);
     }
-    return utostr(getGlobalAddress(GV->getName().str()));
+    return relocateGlobal(utostr(getGlobalAddress(GV->getName().str())));
   }
 
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
@@ -2522,7 +2543,7 @@ void JSWriter::printModuleBody() {
     if (!I->isDeclaration()) printFunction(I);
   }
   Out << "function runPostSets() {\n";
-  Out << " " << PostSets << "\n";
+  Out << PostSets << "\n";
   Out << "}\n";
   PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
@@ -2989,6 +3010,10 @@ void JSWriter::printModule(const std::string& fname,
 bool JSWriter::runOnModule(Module &M) {
   TheModule = &M;
   DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+
+  // sanity checks on options
+  assert(Relocatable ? GlobalBase == 0 : true);
+  assert(Relocatable ? EmulatedFunctionPointers : true);
 
   setupCallHandlers();
 

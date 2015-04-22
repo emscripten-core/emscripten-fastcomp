@@ -117,7 +117,7 @@ DEF_CALL_HANDLER(__default__, {
   if (Invoke) {
     // add first param
     if (F) {
-      text += utostr(getFunctionIndex(F)); // convert to function pointer
+      text += relocateFunctionPointer(utostr(getFunctionIndex(F))); // convert to function pointer
     } else {
       text += getValueAsCastStr(CV); // already a function pointer
     }
