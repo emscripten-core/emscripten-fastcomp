@@ -307,7 +307,6 @@ void AtomicVisitor::replaceInstructionWithIntrinsicCall(
 /// becomes:
 ///   %res = call T @llvm.nacl.atomic.load.i<size>(%ptr, memory_order)
 void AtomicVisitor::visitLoadInst(LoadInst &I) {
-  return; // XXX EMSCRIPTEN
   if (I.isSimple())
     return;
   PointerHelper<LoadInst> PH(*this, I);
@@ -323,7 +322,6 @@ void AtomicVisitor::visitLoadInst(LoadInst &I) {
 /// becomes:
 ///   call void @llvm.nacl.atomic.store.i<size>(%val, %ptr, memory_order)
 void AtomicVisitor::visitStoreInst(StoreInst &I) {
-  return; // XXX EMSCRIPTEN
   if (I.isSimple())
     return;
   PointerHelper<StoreInst> PH(*this, I);
@@ -350,7 +348,6 @@ void AtomicVisitor::visitStoreInst(StoreInst &I) {
 /// becomes:
 ///   %res = call T @llvm.nacl.atomic.rmw.i<size>(OP, %ptr, %val, memory_order)
 void AtomicVisitor::visitAtomicRMWInst(AtomicRMWInst &I) {
-  return; // XXX EMSCRIPTEN
   NaCl::AtomicRMWOperation Op;
   switch (I.getOperation()) {
   default: report_fatal_error("unsupported atomicrmw operation: " + ToStr(I));
@@ -408,7 +405,6 @@ void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
 ///   call void asm sideeffect "", "~{memory}"()
 /// Note that the assembly gets eliminated by the -remove-asm-memory pass.
 void AtomicVisitor::visitFenceInst(FenceInst &I) {
-  return; // XXX EMSCRIPTEN
   Type *T = Type::getInt32Ty(C); // Fences aren't overloaded on type.
   BasicBlock::InstListType &IL(I.getParent()->getInstList());
   bool isFirst = IL.empty() || &*I.getParent()->getInstList().begin() == &I;
