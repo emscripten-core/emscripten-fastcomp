@@ -327,17 +327,22 @@ static std::unique_ptr<Module> getModule(
   if (LazyBitcode) {
     std::string StrError;
     switch (InputFileFormat) {
-    case PNaClFormat:
+    case PNaClFormat: {
+      std::unique_ptr<StreamingMemoryObject> Cache(
+          new ThreadedStreamingCache(StreamingObject));
       M.reset(getNaClStreamedBitcodeModule(
-          InputFilename,
-          new ThreadedStreamingCache(StreamingObject), Context, &VerboseStrm,
-          &StrError));
+          InputFilename, Cache.release(), Context, &VerboseStrm, &StrError));
       break;
-    case LLVMFormat:
-      M.reset(getStreamedBitcodeModule(
-          InputFilename,
-          new ThreadedStreamingCache(StreamingObject), Context, &StrError));
+    }
+    case LLVMFormat: {
+      std::unique_ptr<StreamingMemoryObject> Cache(
+          new ThreadedStreamingCache(StreamingObject));
+      ErrorOr<std::unique_ptr<Module>> MOrErr =
+          getStreamedBitcodeModule(
+          InputFilename, Cache.release(), Context);
+      M = std::move(*MOrErr);
       break;
+    }
     case AutodetectFileFormat:
       report_fatal_error("Command can't autodetect file format!");
     }
@@ -428,15 +433,15 @@ static int runCompilePasses(Module *ModuleRef,
   }
 
   // Build up all of the passes that we want to do to the module.
-  std::unique_ptr<PassManagerBase> PM;
+  std::unique_ptr<legacy::PassManagerBase> PM;
   if (LazyBitcode)
-    PM.reset(new FunctionPassManager(ModuleRef));
+    PM.reset(new legacy::FunctionPassManager(ModuleRef));
   else
-    PM.reset(new PassManager());
+    PM.reset(new legacy::PassManager());
 
   // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
-    ModuleRef->setDataLayout(DL);
+  if (const DataLayout *DL = Target.getDataLayout())
+    ModuleRef->setDataLayout(*DL);
 
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
@@ -452,10 +457,12 @@ static int runCompilePasses(Module *ModuleRef,
   PM->add(createResolvePNaClIntrinsicsPass());
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
+  TargetLibraryInfoImpl TLII(TheTriple);
+
+  // The -disable-simplify-libcalls flag actually disables all builtin optzns.
   if (DisableSimplifyLibCalls)
-    TLI->disableAllFunctions();
-  PM->add(TLI);
+    TLII.disableAllFunctions();
+  PM->add(new TargetLibraryInfoWrapperPass(TLII));
 
   // Allow subsequent passes and the backend to better optimize instructions
   // that were simplified for PNaCl's ABI. This pass uses the TargetLibraryInfo
@@ -463,7 +470,7 @@ static int runCompilePasses(Module *ModuleRef,
   PM->add(createBackendCanonicalizePass());
 
   // Add internal analysis passes from the target machine.
-  Target.addAnalysisPasses(*PM);
+  //Target.addAnalysisPasses(*PM);
 
   // Ask the target to add backend passes as necessary. We explicitly ask it
   // not to add the verifier pass because we added it earlier.
@@ -475,7 +482,7 @@ static int runCompilePasses(Module *ModuleRef,
   }
 
   if (LazyBitcode) {
-    auto FPM = static_cast<FunctionPassManager *>(PM.get());
+    auto FPM = static_cast<legacy::FunctionPassManager *>(PM.get());
     FPM->doInitialization();
     unsigned FuncIndex = 0;
     switch (SplitModuleSched) {
@@ -525,7 +532,7 @@ static int runCompilePasses(Module *ModuleRef,
     }
     FPM->doFinalization();
   } else
-    static_cast<PassManager *>(PM.get())->run(*ModuleRef);
+    static_cast<legacy::PassManager *>(PM.get())->run(*ModuleRef);
 
   return 0;
 }
@@ -546,8 +553,6 @@ static int compileSplitModule(const TargetOptions &Options,
                                           RelocModel, CMModel, OLvl));
   assert(target.get() && "Could not allocate target machine!");
   TargetMachine &Target = *target.get();
-  // Override default to generate verbose assembly.
-  Target.setAsmVerbosityDefault(true);
   if (RelaxAll.getNumOccurrences() > 0 &&
       FileType != TargetMachine::CGFT_ObjectFile)
     errs() << ProgramName
@@ -711,6 +716,7 @@ static int compileModule(StringRef ProgramName) {
 
   TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
   Options.DisableIntegratedAS = NoIntegratedAssembler;
+  Options.MCOptions.AsmVerbose = true;
 
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;
