@@ -1053,21 +1053,23 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   unsigned Bytes = DL->getTypeAllocSize(t);
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-    std::string text = "";
     unsigned Addr = getGlobalAddress(GV->getName().str());
+    if (Relocatable) {
+      return getHeapAccess(relocateGlobal(utostr(Addr)), Bytes, t->isIntegerTy() || t->isPointerTy());
+    }
     switch (Bytes) {
     default: llvm_unreachable("Unsupported type");
-    case 8: return "HEAPF64[" + relocateGlobal(utostr(Addr >> 3)) + "]";
+    case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
     case 4: {
       if (t->isIntegerTy() || t->isPointerTy()) {
-        return "HEAP32[" + relocateGlobal(utostr(Addr >> 2)) + "]";
+        return "HEAP32[" + utostr(Addr >> 2) + "]";
       } else {
         assert(t->isFloatingPointTy());
-        return "HEAPF32[" + relocateGlobal(utostr(Addr >> 2)) + "]";
+        return "HEAPF32[" + utostr(Addr >> 2) + "]";
       }
     }
-    case 2: return "HEAP16[" + relocateGlobal(utostr(Addr >> 1)) + "]";
-    case 1: return "HEAP8[" + relocateGlobal(utostr(Addr)) + "]";
+    case 2: return "HEAP16[" + utostr(Addr >> 1) + "]";
+    case 1: return "HEAP8[" + utostr(Addr) + "]";
     }
   }
   return getHeapAccess(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
