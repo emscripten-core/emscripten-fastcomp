@@ -490,6 +490,16 @@ define void @readonly_readnone(i8* readonly readnone) {
 }
 ; CHECK-LABEL: define void @readonly_readnone(i32)
 
+define nonnull i8* @nonnull_ptr(i8* nonnull) {
+  ret i8* undef
+}
+; CHECK-LABEL: define i32 @nonnull_ptr(i32)
+
+define dereferenceable(16) i8* @dereferenceable_ptr(i8* dereferenceable(8)) {
+  ret i8* undef
+}
+; CHECK-LABEL: define i32 @dereferenceable_ptr(i32)
+
 ; "nounwind" should be preserved.
 define void @nounwind_func_attr() nounwind {
   ret void

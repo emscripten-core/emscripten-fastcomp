@@ -22,6 +22,7 @@ class FunctionPass;
 class FunctionType;
 class Instruction;
 class ModulePass;
+class Triple;
 class Use;
 class Value;
 
@@ -36,11 +37,12 @@ FunctionPass *createExpandConstantExprPass();
 FunctionPass *createExpandLargeIntegersPass();
 FunctionPass *createExpandStructRegsPass();
 FunctionPass *createInsertDivideCheckPass();
-FunctionPass *createPromoteIntegersPass();
+FunctionPass *createNormalizeAlignmentPass();
 FunctionPass *createRemoveAsmMemoryPass();
 FunctionPass *createResolvePNaClIntrinsicsPass();
 ModulePass *createAddPNaClExternalDeclsPass();
 ModulePass *createCanonicalizeMemIntrinsicsPass();
+ModulePass *createCleanupUsedGlobalsMetadataPass();
 ModulePass *createExpandArithWithOverflowPass();
 ModulePass *createExpandByValPass();
 ModulePass *createExpandCtorsPass();
@@ -52,18 +54,30 @@ ModulePass *createExpandVarArgsPass();
 ModulePass *createFlattenGlobalsPass();
 ModulePass *createGlobalCleanupPass();
 ModulePass *createGlobalizeConstantVectorsPass();
+ModulePass *createInternalizeUsedGlobalsPass();
 ModulePass *createPNaClSjLjEHPass();
+ModulePass *createPromoteIntegersPass();
 ModulePass *createReplacePtrsWithIntsPass();
 ModulePass *createResolveAliasesPass();
 ModulePass *createRewriteAtomicsPass();
 ModulePass *createRewriteLLVMIntrinsicsPass();
 ModulePass *createRewritePNaClLibraryCallsPass();
+ModulePass *createSimplifyStructRegSignaturesPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 ModulePass *createStripModuleFlagsPass();
 
-void PNaClABISimplifyAddPreOptPasses(PassManagerBase &PM);
-void PNaClABISimplifyAddPostOptPasses(PassManagerBase &PM);
+// Emscripten passes:
+FunctionPass *createExpandInsertExtractElementPass();
+ModulePass *createExpandI64Pass();
+ModulePass *createLowerEmAsyncifyPass();
+ModulePass *createLowerEmExceptionsPass();
+ModulePass *createLowerEmSetjmpPass();
+ModulePass *createNoExitRuntimePass();
+// Emscripten passes end.
+
+void PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM);
+void PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM);
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);

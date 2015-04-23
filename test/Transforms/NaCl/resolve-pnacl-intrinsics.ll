@@ -31,7 +31,6 @@ declare i32 @llvm.nacl.atomic.cmpxchg.i32(i32*, i32, i32, i32, i32)
 declare i64 @llvm.nacl.atomic.cmpxchg.i64(i64*, i64, i64, i32, i32)
 declare void @llvm.nacl.atomic.fence(i32)
 declare void @llvm.nacl.atomic.fence.all()
-declare i1 @llvm.nacl.atomic.is.lock.free(i32, i8*)
 
 ; These declarations must be here because the function pass expects
 ; to find them. In real life they're inserted by the translator
@@ -218,37 +217,6 @@ define void @test_synchronize() {
   ; CHECK: call void asm sideeffect "", "~{memory}"()
   call void @llvm.nacl.atomic.fence.all()
   ret void
-}
-
-; CHECK-LABEL: @test_is_lock_free_1
-define i1 @test_is_lock_free_1(i8* %ptr) {
-  ; CHECK: ret i1 {{true|false}}
-  %res = call i1 @llvm.nacl.atomic.is.lock.free(i32 1, i8* %ptr)
-  ret i1 %res
-}
-
-; CHECK-LABEL: @test_is_lock_free_2
-define i1 @test_is_lock_free_2(i16* %ptr) {
-  ; CHECK: ret i1 {{true|false}}
-  %ptr2 = bitcast i16* %ptr to i8*
-  %res = call i1 @llvm.nacl.atomic.is.lock.free(i32 2, i8* %ptr2)
-  ret i1 %res
-}
-
-; CHECK-LABEL: @test_is_lock_free_4
-define i1 @test_is_lock_free_4(i32* %ptr) {
-  ; CHECK: ret i1 {{true|false}}
-  %ptr2 = bitcast i32* %ptr to i8*
-  %res = call i1 @llvm.nacl.atomic.is.lock.free(i32 4, i8* %ptr2)
-  ret i1 %res
-}
-
-; CHECK-LABEL: @test_is_lock_free_8
-define i1 @test_is_lock_free_8(i64* %ptr) {
-  ; CHECK: ret i1 {{true|false}}
-  %ptr2 = bitcast i64* %ptr to i8*
-  %res = call i1 @llvm.nacl.atomic.is.lock.free(i32 8, i8* %ptr2)
-  ret i1 %res
 }
 
 ; CHECK-LABEL: @test_lock_test_and_set_i32

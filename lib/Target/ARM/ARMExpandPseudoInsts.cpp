@@ -1165,6 +1165,7 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
     }
 
     case ARM::MOVi32imm:
+    case ARM::MOVti32imm: // @LOCALMOD
     case ARM::MOVCCi32imm:
     case ARM::t2MOVi32imm:
     case ARM::t2MOVCCi32imm:

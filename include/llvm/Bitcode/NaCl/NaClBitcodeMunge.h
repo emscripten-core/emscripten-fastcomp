@@ -141,6 +141,8 @@ protected:
   raw_string_ostream FatalStream;
   // The stack of maximum abbreviation indices allowed by block enter record.
   SmallVector<uint64_t, 3> AbbrevIndexLimitStack;
+  // The buffer for the contents of the munged input.
+  SmallVector<char, 1024> MungedInputBuffer;
 
   // Records that an error occurred, and returns stream to print error
   // message to.

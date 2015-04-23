@@ -1089,7 +1089,7 @@ if test "$llvm_cv_enable_crash_overrides" = "yes" ; then
 fi
 
 dnl List all possible targets
-ALL_TARGETS="X86 Sparc PowerPC ARM AArch64 Mips XCore MSP430 CppBackend NVPTX Hexagon SystemZ R600"
+ALL_TARGETS="X86 Sparc PowerPC ARM AArch64 Mips XCore MSP430 CppBackend JSBackend NVPTX Hexagon SystemZ R600"
 AC_SUBST(ALL_TARGETS,$ALL_TARGETS)
 
 dnl Allow specific targets to be specified for building (or not)
@@ -1097,7 +1097,7 @@ TARGETS_TO_BUILD=""
 AC_ARG_ENABLE([targets],AS_HELP_STRING([--enable-targets],
     [Build specific host targets: all or target1,target2,... Valid targets are:
      host, x86, x86_64, sparc, powerpc, arm64, arm, aarch64, mips, hexagon,
-     xcore, msp430, nvptx, systemz, r600, and cpp (default=all)]),,
+     xcore, msp430, nvptx, systemz, r600, js, and cpp (default=all)]),,
     enableval=all)
 if test "$enableval" = host-only ; then
   enableval=host
@@ -1120,6 +1120,7 @@ case "$enableval" in
         xcore)    TARGETS_TO_BUILD="XCore $TARGETS_TO_BUILD" ;;
         msp430)   TARGETS_TO_BUILD="MSP430 $TARGETS_TO_BUILD" ;;
         cpp)      TARGETS_TO_BUILD="CppBackend $TARGETS_TO_BUILD" ;;
+        js)       TARGETS_TO_BUILD="JSBackend $TARGETS_TO_BUILD" ;; # @LOCALMOD
         hexagon)  TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
         nvptx)    TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
         systemz)  TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
@@ -1214,6 +1215,33 @@ AC_SUBST(LLVM_ENUM_TARGETS)
 AC_SUBST(LLVM_ENUM_ASM_PRINTERS)
 AC_SUBST(LLVM_ENUM_ASM_PARSERS)
 AC_SUBST(LLVM_ENUM_DISASSEMBLERS)
+
+
+dnl Allow specific Subzero targets to be specified for building (or not)
+SUBZERO_TARGETS_TO_BUILD=""
+AC_ARG_ENABLE([subzero_targets],AS_HELP_STRING([--enable-subzero-targets],
+    [Build specific subzero targets: target1,target2,...(default=none)]),,
+    enableval=none)
+case "$enableval" in
+  none) ;;
+  *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
+      case "$a_target" in
+        X8632)  SUBZERO_TARGETS_TO_BUILD="X8632 $SUBZERO_TARGETS_TO_BUILD" ;;
+        X8664)  SUBZERO_TARGETS_TO_BUILD="X8664 $SUBZERO_TARGETS_TO_BUILD" ;;
+        ARM32)  SUBZERO_TARGETS_TO_BUILD="ARM32 $SUBZERO_TARGETS_TO_BUILD" ;;
+        ARM64)  SUBZERO_TARGETS_TO_BUILD="ARM64 $SUBZERO_TARGETS_TO_BUILD" ;;
+        *) AC_MSG_ERROR([Unrecognized subzero target $a_target]) ;;
+      esac
+  done
+  ;;
+esac
+
+dnl Build the SUBZERO_ENUM_TARGETS macro for SZTargets.def.
+SUBZERO_ENUM_TARGETS=""
+for target_to_build in $SUBZERO_TARGETS_TO_BUILD; do
+  SUBZERO_ENUM_TARGETS="SUBZERO_TARGET($target_to_build) $SUBZERO_ENUM_TARGETS"
+done
+AC_SUBST(SUBZERO_ENUM_TARGETS)
 
 dnl Override the option to use for optimized builds.
 AC_ARG_WITH(optimize-option,
@@ -2158,6 +2186,7 @@ AH_TOP([#ifndef CONFIG_H
 #define CONFIG_H])
 AH_BOTTOM([#endif])
 
+AC_CONFIG_FILES([include/llvm/Config/SZTargets.def])
 AC_CONFIG_FILES([include/llvm/Config/Targets.def])
 AC_CONFIG_FILES([include/llvm/Config/AsmPrinters.def])
 AC_CONFIG_FILES([include/llvm/Config/AsmParsers.def])

@@ -3518,19 +3518,19 @@ bool NaClDisTopLevelParser::ParseBlock(unsigned BlockID) {
 
 namespace llvm {
 
-bool NaClObjDump(MemoryBuffer *MemBuf, raw_ostream &Output,
+bool NaClObjDump(MemoryBufferRef MemBuf, raw_ostream &Output,
                  bool NoRecords, bool NoAssembly) {
   // Create objects needed to run parser.
   naclbitc::ObjDumpStream ObjDump(Output, !NoRecords, !NoAssembly);
 
-  if (MemBuf->getBufferSize() % 4 != 0) {
+  if (MemBuf.getBufferSize() % 4 != 0) {
     ObjDump.Error()
         << "Bitcode stream should be a multiple of 4 bytes in length.\n";
     return true;
   }
 
-  const unsigned char *BufPtr = (const unsigned char *)MemBuf->getBufferStart();
-  const unsigned char *EndBufPtr = BufPtr+MemBuf->getBufferSize();
+  const unsigned char *BufPtr = (const unsigned char *)MemBuf.getBufferStart();
+  const unsigned char *EndBufPtr = BufPtr+MemBuf.getBufferSize();
   const unsigned char *HeaderPtr = BufPtr;
 
   // Read header and verify it is good.

@@ -556,10 +556,9 @@ unsigned ARMFastISel::ARMMaterializeInt(const Constant *C, MVT VT) {
   if (ResultReg)
     return ResultReg;
 
-  // @LOCALMOD-START -- Can this just be an assert? (useMovt should be true
-  // so the above code would have handled the constant).
-  if (!Subtarget->useConstIslands())
-    return false;
+  // @LOCALMOD-START
+  // Should have been handled by fastEmit_i above.
+  assert(Subtarget->useConstIslands());
   // @LOCALMOD-END
 
   // Load from constant pool.  For now 32-bit only.
@@ -626,7 +625,7 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, MVT VT) {
   } else {
     // @LOCALMOD-BEGIN
     if (!Subtarget->useConstIslands())
-      return false;
+      return 0;
     // @LOCALMOD-END
 
     // MachineConstantPool wants an explicit alignment.

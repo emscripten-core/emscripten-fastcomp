@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
@@ -23,23 +24,23 @@
 using namespace llvm;
 
 namespace {
-  class GlobalCleanup : public ModulePass {
-  public:
-    static char ID;
-    GlobalCleanup() : ModulePass(ID) {
-      initializeGlobalCleanupPass(*PassRegistry::getPassRegistry());
-    }
-    virtual bool runOnModule(Module &M);
-  };
+class GlobalCleanup : public ModulePass {
+public:
+  static char ID;
+  GlobalCleanup() : ModulePass(ID) {
+    initializeGlobalCleanupPass(*PassRegistry::getPassRegistry());
+  }
+  bool runOnModule(Module &M) override;
+};
 
-  class ResolveAliases : public ModulePass {
-  public:
-    static char ID;
-    ResolveAliases() : ModulePass(ID) {
-      initializeResolveAliasesPass(*PassRegistry::getPassRegistry());
-    }
-    virtual bool runOnModule(Module &M);
-  };
+class ResolveAliases : public ModulePass {
+public:
+  static char ID;
+  ResolveAliases() : ModulePass(ID) {
+    initializeResolveAliasesPass(*PassRegistry::getPassRegistry());
+  }
+  bool runOnModule(Module &M) override;
+};
 }
 
 char GlobalCleanup::ID = 0;
@@ -52,19 +53,19 @@ static bool CleanUpLinkage(GlobalValue *GV) {
   // TODO(dschuff): handle the rest of the linkage types as necessary without
   // running afoul of the IR verifier or breaking the native link
   switch (GV->getLinkage()) {
-    case GlobalValue::ExternalWeakLinkage: {
-      Constant *NullRef = Constant::getNullValue(GV->getType());
-      GV->replaceAllUsesWith(NullRef);
-      GV->eraseFromParent();
-      return true;
-    }
-    case GlobalValue::WeakAnyLinkage: {
-      GV->setLinkage(GlobalValue::InternalLinkage);
-      return true;
-    }
-    default:
-      // default with fall through to avoid compiler warning
-      return false;
+  case GlobalValue::ExternalWeakLinkage: {
+    auto *NullRef = Constant::getNullValue(GV->getType());
+    GV->replaceAllUsesWith(NullRef);
+    GV->eraseFromParent();
+    return true;
+  }
+  case GlobalValue::WeakAnyLinkage: {
+    GV->setLinkage(GlobalValue::InternalLinkage);
+    return true;
+  }
+  default:
+    // default with fall through to avoid compiler warning
+    return false;
   }
   return false;
 }
@@ -72,31 +73,29 @@ static bool CleanUpLinkage(GlobalValue *GV) {
 bool GlobalCleanup::runOnModule(Module &M) {
   bool Modified = false;
 
-  if (GlobalVariable *GV = M.getNamedGlobal("llvm.compiler.used")) {
-    GV->eraseFromParent();
-    Modified = true;
-  }
-  if (GlobalVariable *GV = M.getNamedGlobal("llvm.used")) {
+  // Cleanup llvm.compiler.used. We leave llvm.used as-is,
+  // because optimization passes feed off it to understand
+  // what globals may/may not be optimized away. For PNaCl,
+  // it is removed before ABI validation by CleanupUsedGlobalsMetadata.
+  if (auto *GV = M.getNamedGlobal("llvm.compiler.used")) {
     GV->eraseFromParent();
     Modified = true;
   }
 
-  for (Module::global_iterator I = M.global_begin(), E = M.global_end();
-       I != E; ) {
+  for (auto I = M.global_begin(), E = M.global_end(); I != E;) {
     GlobalVariable *GV = I++;
     Modified |= CleanUpLinkage(GV);
   }
 
-  for (Module::iterator I = M.begin(), E = M.end(); I != E; ) {
+  for (auto I = M.begin(), E = M.end(); I != E;) {
     Function *F = I++;
     Modified |= CleanUpLinkage(F);
   }
+
   return Modified;
 }
 
-ModulePass *llvm::createGlobalCleanupPass() {
-  return new GlobalCleanup();
-}
+ModulePass *llvm::createGlobalCleanupPass() { return new GlobalCleanup(); }
 
 char ResolveAliases::ID = 0;
 INITIALIZE_PASS(ResolveAliases, "resolve-aliases",
@@ -105,8 +104,7 @@ INITIALIZE_PASS(ResolveAliases, "resolve-aliases",
 bool ResolveAliases::runOnModule(Module &M) {
   bool Modified = false;
 
-  for (Module::alias_iterator I = M.alias_begin(), E = M.alias_end();
-       I != E; ) {
+  for (auto I = M.alias_begin(), E = M.alias_end(); I != E;) {
     GlobalAlias *Alias = I++;
     Alias->replaceAllUsesWith(Alias->getAliasee());
     Alias->eraseFromParent();
@@ -115,6 +113,4 @@ bool ResolveAliases::runOnModule(Module &M) {
   return Modified;
 }
 
-ModulePass *llvm::createResolveAliasesPass() {
-  return new ResolveAliases();
-}
+ModulePass *llvm::createResolveAliasesPass() { return new ResolveAliases(); }

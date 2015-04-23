@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
@@ -45,7 +46,22 @@ INITIALIZE_PASS(ExpandVarArgs, "expand-varargs",
                 "Expand out variable argument function definitions and calls",
                 false, false)
 
-static void ExpandVarArgFunc(Function *Func) {
+static bool isEmscriptenJSArgsFunc(Module *M, StringRef Name) {
+  // TODO(jfb) Make these intrinsics in clang and remove the assert: these
+  //           intrinsics should only exist for Emscripten.
+  bool isEmscriptenSpecial = Name.equals("emscripten_asm_const_int") ||
+                             Name.equals("emscripten_asm_const_double") ||
+                             Name.equals("emscripten_landingpad") ||
+                             Name.equals("emscripten_resume");
+  assert(isEmscriptenSpecial ? Triple(M->getTargetTriple()).isOSEmscripten()
+                             : true);
+  return isEmscriptenSpecial;
+}
+
+static bool ExpandVarArgFunc(Module *M, Function *Func) {
+  if (isEmscriptenJSArgsFunc(M, Func->getName()))
+    return false;
+
   Type *PtrType = Type::getInt8PtrTy(Func->getContext());
 
   FunctionType *FTy = Func->getFunctionType();
@@ -84,6 +100,8 @@ static void ExpandVarArgFunc(Function *Func) {
       }
     }
   }
+
+  return true;
 }
 
 static void ExpandVAArgInst(VAArgInst *Inst, DataLayout *DL) {
@@ -146,14 +164,16 @@ static void ExpandVACopyInst(VACopyInst *Inst) {
 // ExpandVarArgCall() converts a CallInst or InvokeInst to expand out
 // of varargs.  It returns whether the module was modified.
 template <class InstType>
-static bool ExpandVarArgCall(InstType *Call, DataLayout *DL) {
+static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   FunctionType *FuncType = cast<FunctionType>(
       Call->getCalledValue()->getType()->getPointerElementType());
   if (!FuncType->isFunctionVarArg())
     return false;
+  if (auto *F = dyn_cast<Function>(Call->getCalledValue()))
+    if (isEmscriptenJSArgsFunc(M, F->getName()))
+      return false;
 
   Function *F = Call->getParent()->getParent();
-  Module *M = F->getParent();
   LLVMContext &Ctx = M->getContext();
 
   SmallVector<AttributeSet, 8> Attrs;
@@ -284,17 +304,15 @@ bool ExpandVarArgs::runOnModule(Module &M) {
           Changed = true;
           ExpandVACopyInst(VAC);
         } else if (auto *Call = dyn_cast<CallInst>(I)) {
-          Changed |= ExpandVarArgCall(Call, &DL);
+          Changed |= ExpandVarArgCall(&M, Call, &DL);
         } else if (auto *Call = dyn_cast<InvokeInst>(I)) {
-          Changed |= ExpandVarArgCall(Call, &DL);
+          Changed |= ExpandVarArgCall(&M, Call, &DL);
         }
       }
     }
 
-    if (F->isVarArg()) {
-      Changed = true;
-      ExpandVarArgFunc(F);
-    }
+    if (F->isVarArg())
+      Changed |= ExpandVarArgFunc(&M, F);
   }
 
   return Changed;

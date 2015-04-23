@@ -303,6 +303,7 @@ void initializeAddPNaClExternalDeclsPass(PassRegistry&);
 void initializeAllocateDataSegmentPass(PassRegistry&);
 void initializeBackendCanonicalizePass(PassRegistry&);
 void initializeCanonicalizeMemIntrinsicsPass(PassRegistry&);
+void initializeCleanupUsedGlobalsMetadataPass(PassRegistry&);
 void initializeConstantInsertExtractElementIndexPass(PassRegistry&);
 void initializeExpandAllocasPass(PassRegistry&);
 void initializeExpandArithWithOverflowPass(PassRegistry&);
@@ -323,7 +324,9 @@ void initializeFlattenGlobalsPass(PassRegistry&);
 void initializeGlobalCleanupPass(PassRegistry&);
 void initializeGlobalizeConstantVectorsPass(PassRegistry&);
 void initializeInsertDivideCheckPass(PassRegistry&);
+void initializeInternalizeUsedGlobalsPass(PassRegistry&);
 void initializeNaClCcRewritePass(PassRegistry&);
+void initializeNormalizeAlignmentPass(PassRegistry&);
 void initializePNaClABIVerifyFunctionsPass(PassRegistry&);
 void initializePNaClABIVerifyModulePass(PassRegistry&);
 void initializePNaClSjLjEHPass(PassRegistry&);
@@ -340,11 +343,20 @@ void initializeRewritePNaClLibraryCallsPass(PassRegistry&);
 void initializeSandboxIndirectCallsPass(PassRegistry&);
 void initializeSandboxMemoryAccessesPass(PassRegistry&);
 void initializeSimplifyAllocasPass(PassRegistry&);
+void initializeSimplifyStructRegSignaturesPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 void initializeStripModuleFlagsPass(PassRegistry&);
 void initializeStripTlsPass(PassRegistry&);
 void initializeSubstituteUndefsPass(PassRegistry&);
+// Emscripten passes:
+void initializeExpandI64Pass(PassRegistry&);
+void initializeExpandInsertExtractElementPass(PassRegistry&);
+void initializeLowerEmAsyncifyPass(PassRegistry&);
+void initializeLowerEmExceptionsPass(PassRegistry&);
+void initializeLowerEmSetjmpPass(PassRegistry&);
+void initializeNoExitRuntimePass(PassRegistry&);
+// Emscripten passes end.
 // @LOCALMOD-END
 }
 

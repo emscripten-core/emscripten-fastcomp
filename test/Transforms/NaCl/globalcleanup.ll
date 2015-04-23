@@ -1,11 +1,14 @@
 ; RUN: opt < %s -nacl-global-cleanup -S | FileCheck %s
 ; RUN: opt < %s -nacl-global-cleanup -S | FileCheck -check-prefix=GV %s
 
-@llvm.compiler.used = appending global [0 x i8*] zeroinitializer, section "llvm.metadata"
-@llvm.used = appending global [0 x i8*] zeroinitializer, section "llvm.metadata"
+@a = global i8 42
 
-; GV-NOT: llvm.used
+@llvm.compiler.used = appending global [1 x i8*] [i8* @a], section "llvm.metadata"
 ; GV-NOT: llvm.compiler.used
+
+@llvm.used = appending global [1 x i8*] [i8* @a], section "llvm.metadata"
+; The used list remains unchanged.
+; CHECK: llvm.used
 
 @extern_weak_const = extern_weak constant i32
 @extern_weak_gv = extern_weak global i32
