@@ -20,20 +20,16 @@
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
-                                   raw_ostream &OS, MCCodeEmitter *Emitter_)
+                                   raw_pwrite_stream &OS,
+                                   MCCodeEmitter *Emitter_)
     : MCStreamer(Context),
       Assembler(new MCAssembler(Context, TAB, *Emitter_,
                                 *TAB.createObjectWriter(OS), OS)),
       CurSectionData(nullptr), EmitEHFrame(true), EmitDebugFrame(false) {}
-
-MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
-                                   raw_ostream &OS, MCCodeEmitter *Emitter_,
-                                   MCAssembler *_Assembler)
-    : MCStreamer(Context), Assembler(_Assembler), CurSectionData(nullptr),
-      EmitEHFrame(true), EmitDebugFrame(false) {}
 
 MCObjectStreamer::~MCObjectStreamer() {
   delete &Assembler->getBackend();
@@ -42,7 +38,7 @@ MCObjectStreamer::~MCObjectStreamer() {
   delete Assembler;
 }
 
-void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
+void MCObjectStreamer::flushPendingLabels(MCFragment *F, uint64_t FOffset) {
   if (PendingLabels.size()) {
     if (!F) {
       F = new MCDataFragment();
@@ -51,7 +47,7 @@ void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
     }
     for (MCSymbolData *SD : PendingLabels) {
       SD->setFragment(F);
-      SD->setOffset(0);
+      SD->setOffset(FOffset);
     }
     PendingLabels.clear();
   }
@@ -92,7 +88,8 @@ MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() {
   MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
   // When bundling is enabled, we don't want to add data to a fragment that
   // already has instructions (see MCELFStreamer::EmitInstToData for details)
-  if (!F || (Assembler->isBundlingEnabled() && F->hasInstructions())) {
+  if (!F || (Assembler->isBundlingEnabled() && !Assembler->getRelaxAll() &&
+             F->hasInstructions())) {
     F = new MCDataFragment();
     insert(F);
   }
@@ -148,7 +145,9 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   // If there is a current fragment, mark the symbol as pointing into it.
   // Otherwise queue the label and set its fragment pointer when we emit the
   // next fragment.
-  if (auto *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment())) {
+  auto *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
+  if (F && !(getAssembler().isBundlingEnabled() &&
+             getAssembler().getRelaxAll())) {
     SD.setFragment(F);
     SD.setOffset(F->getContents().size());
   } else {
@@ -181,10 +180,16 @@ void MCObjectStreamer::EmitWeakReference(MCSymbol *Alias,
 
 void MCObjectStreamer::ChangeSection(const MCSection *Section,
                                      const MCExpr *Subsection) {
+  changeSectionImpl(Section, Subsection);
+}
+
+bool MCObjectStreamer::changeSectionImpl(const MCSection *Section,
+                                         const MCExpr *Subsection) {
   assert(Section && "Cannot switch to a null section!");
   flushPendingLabels(nullptr);
 
-  CurSectionData = &getAssembler().getOrCreateSectionData(*Section);
+  bool Created;
+  CurSectionData = &getAssembler().getOrCreateSectionData(*Section, &Created);
 
   int64_t IntSubsection = 0;
   if (Subsection &&
@@ -194,6 +199,7 @@ void MCObjectStreamer::ChangeSection(const MCSection *Section,
     report_fatal_error("Subsection number out of range");
   CurInsertionPoint =
     CurSectionData->getSubsectionInsertionPoint(unsigned(IntSubsection));
+  return Created;
 }
 
 void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
@@ -247,6 +253,9 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
 
 void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst,
                                           const MCSubtargetInfo &STI) {
+  if (getAssembler().getRelaxAll() && getAssembler().isBundlingEnabled())
+    llvm_unreachable("All instructions should have already been relaxed");
+
   // Always create a new, separate fragment here, because its size can change
   // during relaxation.
   MCRelaxableFragment *IF = new MCRelaxableFragment(Inst, STI);

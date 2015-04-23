@@ -174,6 +174,7 @@ static PTOP_LEVEL_EXCEPTION_FILTER OldFilter = NULL;
 // (such as CTRL/C) occurs.  This causes concurrency issues with the above
 // globals which this critical section addresses.
 static CRITICAL_SECTION CriticalSection;
+static bool CriticalSectionInitialized = false;
 
 static void PrintStackTraceForThread(llvm::raw_ostream &OS, HANDLE hProcess,
                                      HANDLE hThread, STACKFRAME64 &StackFrame,
@@ -290,6 +291,16 @@ extern "C" void HandleAbort(int Sig) {
   }
 }
 
+static void InitializeThreading() {
+  if (CriticalSectionInitialized)
+    return;
+
+  // Now's the time to create the critical section. This is the first time
+  // through here, and there's only one thread.
+  InitializeCriticalSection(&CriticalSection);
+  CriticalSectionInitialized = true;
+}
+
 static void RegisterHandler() {
 #if __MINGW32__ && !defined(__MINGW64_VERSION_MAJOR)
   // On MinGW.org, we need to load up the symbols explicitly, because the
@@ -308,9 +319,7 @@ static void RegisterHandler() {
     return;
   }
 
-  // Now's the time to create the critical section.  This is the first time
-  // through here, and there's only one thread.
-  InitializeCriticalSection(&CriticalSection);
+  InitializeThreading();
 
   // Enter it immediately.  Now if someone hits CTRL/C, the console handler
   // can't proceed until the globals are updated.
@@ -380,11 +389,18 @@ void sys::DisableSystemDialogsOnCrash() {
 
 /// PrintStackTraceOnErrorSignal - When an error signal (such as SIBABRT or
 /// SIGSEGV) is delivered to the process, print a stack trace and then exit.
-void sys::PrintStackTraceOnErrorSignal() {
+void sys::PrintStackTraceOnErrorSignal(bool DisableCrashReporting) {
   DisableSystemDialogsOnCrash();
   RegisterHandler();
   LeaveCriticalSection(&CriticalSection);
 }
+}
+
+#if defined(__MINGW32__) && !defined(__MINGW64_VERSION_MAJOR)
+// Provide a prototype for RtlCaptureContext, mingw32 from mingw.org is
+// missing it but mingw-w64 has it.
+extern "C" VOID WINAPI RtlCaptureContext(PCONTEXT ContextRecord);
+#endif
 
 void llvm::sys::PrintStackTrace(raw_ostream &OS) {
 
@@ -408,7 +424,7 @@ void llvm::sys::PrintStackTrace(raw_ostream &OS) {
 }
 
 
-void sys::SetInterruptFunction(void (*IF)()) {
+void llvm::sys::SetInterruptFunction(void (*IF)()) {
   RegisterHandler();
   InterruptFunction = IF;
   LeaveCriticalSection(&CriticalSection);
@@ -418,13 +434,12 @@ void sys::SetInterruptFunction(void (*IF)()) {
 /// AddSignalHandler - Add a function to be called when a signal is delivered
 /// to the process.  The handler can have a cookie passed to it to identify
 /// what instance of the handler it is.
-void sys::AddSignalHandler(void (*FnPtr)(void *), void *Cookie) {
+void llvm::sys::AddSignalHandler(void (*FnPtr)(void *), void *Cookie) {
   if (CallBacksToRun == 0)
     CallBacksToRun = new std::vector<std::pair<void(*)(void*), void*> >();
   CallBacksToRun->push_back(std::make_pair(FnPtr, Cookie));
   RegisterHandler();
   LeaveCriticalSection(&CriticalSection);
-}
 }
 
 static void Cleanup() {
@@ -450,6 +465,11 @@ static void Cleanup() {
 }
 
 void llvm::sys::RunInterruptHandlers() {
+  // The interrupt handler may be called from an interrupt, but it may also be
+  // called manually (such as the case of report_fatal_error with no registered
+  // error handler). We must ensure that the critical section is properly
+  // initialized.
+  InitializeThreading();
   Cleanup();
 }
 

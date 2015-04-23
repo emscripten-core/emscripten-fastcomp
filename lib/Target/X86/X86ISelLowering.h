@@ -705,6 +705,12 @@ namespace llvm {
                                       std::vector<SDValue> &Ops,
                                       SelectionDAG &DAG) const override;
 
+    unsigned getInlineAsmMemConstraint(
+        const std::string &ConstraintCode) const override {
+      // FIXME: Map different constraints differently.
+      return InlineAsm::Constraint_m;
+    }
+
     /// Given a physical register constraint
     /// (e.g. {edx}), return the register number and the register class for the
     /// register.  This should only be used for C_Register constraints.  On
@@ -1085,6 +1091,9 @@ namespace llvm {
     /// Use rcp* to speed up fdiv calculations.
     SDValue getRecipEstimate(SDValue Operand, DAGCombinerInfo &DCI,
                              unsigned &RefinementSteps) const override;
+
+    /// Reassociate floating point divisions into multiply by reciprocal.
+    bool combineRepeatedFPDivisors(unsigned NumUsers) const override;
   };
 
   namespace X86 {

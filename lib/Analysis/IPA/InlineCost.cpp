@@ -45,9 +45,6 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
   typedef InstVisitor<CallAnalyzer, bool> Base;
   friend class InstVisitor<CallAnalyzer, bool>;
 
-  // DataLayout if available, or null.
-  const DataLayout *const DL;
-
   /// The TargetTransformInfo available for this compilation.
   const TargetTransformInfo &TTI;
 
@@ -67,6 +64,7 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
   bool ContainsNoDuplicateCall;
   bool HasReturn;
   bool HasIndirectBr;
+  bool HasFrameEscape;
 
   /// Number of bytes allocated statically by the callee.
   uint64_t AllocatedSize;
@@ -145,18 +143,18 @@ class CallAnalyzer : public InstVisitor<CallAnalyzer, bool> {
   bool visitUnreachableInst(UnreachableInst &I);
 
 public:
-  CallAnalyzer(const DataLayout *DL, const TargetTransformInfo &TTI,
-               AssumptionCacheTracker *ACT, Function &Callee, int Threshold)
-      : DL(DL), TTI(TTI), ACT(ACT), F(Callee), Threshold(Threshold), Cost(0),
+  CallAnalyzer(const TargetTransformInfo &TTI, AssumptionCacheTracker *ACT,
+               Function &Callee, int Threshold)
+      : TTI(TTI), ACT(ACT), F(Callee), Threshold(Threshold), Cost(0),
         IsCallerRecursive(false), IsRecursiveCall(false),
         ExposesReturnsTwice(false), HasDynamicAlloca(false),
         ContainsNoDuplicateCall(false), HasReturn(false), HasIndirectBr(false),
-        AllocatedSize(0), NumInstructions(0), NumVectorInstructions(0),
-        FiftyPercentVectorBonus(0), TenPercentVectorBonus(0), VectorBonus(0),
-        NumConstantArgs(0), NumConstantOffsetPtrArgs(0), NumAllocaArgs(0),
-        NumConstantPtrCmps(0), NumConstantPtrDiffs(0),
-        NumInstructionsSimplified(0), SROACostSavings(0),
-        SROACostSavingsLost(0) {}
+        HasFrameEscape(false), AllocatedSize(0), NumInstructions(0),
+        NumVectorInstructions(0), FiftyPercentVectorBonus(0),
+        TenPercentVectorBonus(0), VectorBonus(0), NumConstantArgs(0),
+        NumConstantOffsetPtrArgs(0), NumAllocaArgs(0), NumConstantPtrCmps(0),
+        NumConstantPtrDiffs(0), NumInstructionsSimplified(0),
+        SROACostSavings(0), SROACostSavingsLost(0) {}
 
   bool analyzeCall(CallSite CS);
 
@@ -244,10 +242,8 @@ bool CallAnalyzer::isGEPOffsetConstant(GetElementPtrInst &GEP) {
 /// Returns false if unable to compute the offset for any reason. Respects any
 /// simplified values known during the analysis of this callsite.
 bool CallAnalyzer::accumulateGEPOffset(GEPOperator &GEP, APInt &Offset) {
-  if (!DL)
-    return false;
-
-  unsigned IntPtrWidth = DL->getPointerSizeInBits();
+  const DataLayout &DL = F.getParent()->getDataLayout();
+  unsigned IntPtrWidth = DL.getPointerSizeInBits();
   assert(IntPtrWidth == Offset.getBitWidth());
 
   for (gep_type_iterator GTI = gep_type_begin(GEP), GTE = gep_type_end(GEP);
@@ -263,12 +259,12 @@ bool CallAnalyzer::accumulateGEPOffset(GEPOperator &GEP, APInt &Offset) {
     // Handle a struct index, which adds its field offset to the pointer.
     if (StructType *STy = dyn_cast<StructType>(*GTI)) {
       unsigned ElementIdx = OpC->getZExtValue();
-      const StructLayout *SL = DL->getStructLayout(STy);
+      const StructLayout *SL = DL.getStructLayout(STy);
       Offset += APInt(IntPtrWidth, SL->getElementOffset(ElementIdx));
       continue;
     }
 
-    APInt TypeSize(IntPtrWidth, DL->getTypeAllocSize(GTI.getIndexedType()));
+    APInt TypeSize(IntPtrWidth, DL.getTypeAllocSize(GTI.getIndexedType()));
     Offset += OpC->getValue().sextOrTrunc(IntPtrWidth) * TypeSize;
   }
   return true;
@@ -289,9 +285,9 @@ bool CallAnalyzer::visitAlloca(AllocaInst &I) {
 
   // Accumulate the allocated size.
   if (I.isStaticAlloca()) {
+    const DataLayout &DL = F.getParent()->getDataLayout();
     Type *Ty = I.getAllocatedType();
-    AllocatedSize += (DL ? DL->getTypeAllocSize(Ty) :
-                      Ty->getPrimitiveSizeInBits());
+    AllocatedSize += DL.getTypeAllocSize(Ty);
   }
 
   // We will happily inline static alloca instructions.
@@ -327,7 +323,7 @@ bool CallAnalyzer::visitGetElementPtr(GetElementPtrInst &I) {
 
   // Try to fold GEPs of constant-offset call site argument pointers. This
   // requires target data and inbounds GEPs.
-  if (DL && I.isInBounds()) {
+  if (I.isInBounds()) {
     // Check if we have a base + offset for the pointer.
     Value *Ptr = I.getPointerOperand();
     std::pair<Value *, APInt> BaseAndOffset = ConstantOffsetPtrs.lookup(Ptr);
@@ -409,7 +405,7 @@ bool CallAnalyzer::visitPtrToInt(PtrToIntInst &I) {
   // Track base/offset pairs when converted to a plain integer provided the
   // integer is large enough to represent the pointer.
   unsigned IntegerSize = I.getType()->getScalarSizeInBits();
-  const DataLayout &DL = I.getModule()->getDataLayout();
+  const DataLayout &DL = F.getParent()->getDataLayout();
   if (IntegerSize >= DL.getPointerSizeInBits()) {
     std::pair<Value *, APInt> BaseAndOffset
       = ConstantOffsetPtrs.lookup(I.getOperand(0));
@@ -447,7 +443,7 @@ bool CallAnalyzer::visitIntToPtr(IntToPtrInst &I) {
   // modifications provided the integer is not too large.
   Value *Op = I.getOperand(0);
   unsigned IntegerSize = Op->getType()->getScalarSizeInBits();
-  const DataLayout &DL = I.getModule()->getDataLayout();
+  const DataLayout &DL = F.getParent()->getDataLayout();
   if (IntegerSize <= DL.getPointerSizeInBits()) {
     std::pair<Value *, APInt> BaseAndOffset = ConstantOffsetPtrs.lookup(Op);
     if (BaseAndOffset.first)
@@ -485,12 +481,14 @@ bool CallAnalyzer::visitUnaryInstruction(UnaryInstruction &I) {
   Constant *COp = dyn_cast<Constant>(Operand);
   if (!COp)
     COp = SimplifiedValues.lookup(Operand);
-  if (COp)
+  if (COp) {
+    const DataLayout &DL = F.getParent()->getDataLayout();
     if (Constant *C = ConstantFoldInstOperands(I.getOpcode(), I.getType(),
                                                COp, DL)) {
       SimplifiedValues[&I] = C;
       return true;
     }
+  }
 
   // Disable any SROA on the argument to arbitrary unary operators.
   disableSROA(Operand);
@@ -595,6 +593,7 @@ bool CallAnalyzer::visitSub(BinaryOperator &I) {
 
 bool CallAnalyzer::visitBinaryOperator(BinaryOperator &I) {
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
+  const DataLayout &DL = F.getParent()->getDataLayout();
   if (!isa<Constant>(LHS))
     if (Constant *SimpleLHS = SimplifiedValues.lookup(LHS))
       LHS = SimpleLHS;
@@ -623,7 +622,7 @@ bool CallAnalyzer::visitBinaryOperator(BinaryOperator &I) {
 bool CallAnalyzer::visitLoad(LoadInst &I) {
   Value *SROAArg;
   DenseMap<Value *, int>::iterator CostIt;
-  if (lookupSROAArgAndCost(I.getOperand(0), SROAArg, CostIt)) {
+  if (lookupSROAArgAndCost(I.getPointerOperand(), SROAArg, CostIt)) {
     if (I.isSimple()) {
       accumulateSROACost(CostIt, InlineConstants::InstrCost);
       return true;
@@ -638,7 +637,7 @@ bool CallAnalyzer::visitLoad(LoadInst &I) {
 bool CallAnalyzer::visitStore(StoreInst &I) {
   Value *SROAArg;
   DenseMap<Value *, int>::iterator CostIt;
-  if (lookupSROAArgAndCost(I.getOperand(0), SROAArg, CostIt)) {
+  if (lookupSROAArgAndCost(I.getPointerOperand(), SROAArg, CostIt)) {
     if (I.isSimple()) {
       accumulateSROACost(CostIt, InlineConstants::InstrCost);
       return true;
@@ -745,6 +744,9 @@ bool CallAnalyzer::visitCallSite(CallSite CS) {
       case Intrinsic::memmove:
         // SROA can usually chew through these intrinsics, but they aren't free.
         return false;
+      case Intrinsic::frameescape:
+        HasFrameEscape = true;
+        return false;
       }
     }
 
@@ -788,7 +790,7 @@ bool CallAnalyzer::visitCallSite(CallSite CS) {
   // during devirtualization and so we want to give it a hefty bonus for
   // inlining, but cap that bonus in the event that inlining wouldn't pan
   // out. Pretend to inline the function, with a custom threshold.
-  CallAnalyzer CA(DL, TTI, ACT, *F, InlineConstants::IndirectCallThreshold);
+  CallAnalyzer CA(TTI, ACT, *F, InlineConstants::IndirectCallThreshold);
   if (CA.analyzeCall(CS)) {
     // We were able to inline the indirect call! Subtract the cost from the
     // bonus we want to apply, but don't go below zero.
@@ -943,7 +945,7 @@ bool CallAnalyzer::analyzeBlock(BasicBlock *BB,
 
     // If the visit this instruction detected an uninlinable pattern, abort.
     if (IsRecursiveCall || ExposesReturnsTwice || HasDynamicAlloca ||
-        HasIndirectBr)
+        HasIndirectBr || HasFrameEscape)
       return false;
 
     // If the caller is a recursive function then we don't want to inline
@@ -976,10 +978,11 @@ bool CallAnalyzer::analyzeBlock(BasicBlock *BB,
 /// returns 0 if V is not a pointer, and returns the constant '0' if there are
 /// no constant offsets applied.
 ConstantInt *CallAnalyzer::stripAndComputeInBoundsConstantOffsets(Value *&V) {
-  if (!DL || !V->getType()->isPointerTy())
+  if (!V->getType()->isPointerTy())
     return nullptr;
 
-  unsigned IntPtrWidth = DL->getPointerSizeInBits();
+  const DataLayout &DL = F.getParent()->getDataLayout();
+  unsigned IntPtrWidth = DL.getPointerSizeInBits();
   APInt Offset = APInt::getNullValue(IntPtrWidth);
 
   // Even though we don't look through PHI nodes, we could be called on an
@@ -1003,7 +1006,7 @@ ConstantInt *CallAnalyzer::stripAndComputeInBoundsConstantOffsets(Value *&V) {
     assert(V->getType()->isPointerTy() && "Unexpected operand type!");
   } while (Visited.insert(V).second);
 
-  Type *IntPtrTy = DL->getIntPtrType(V->getContext());
+  Type *IntPtrTy = DL.getIntPtrType(V->getContext());
   return cast<ConstantInt>(ConstantInt::get(IntPtrTy, Offset));
 }
 
@@ -1034,16 +1037,17 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
   assert(NumVectorInstructions == 0);
   FiftyPercentVectorBonus = Threshold;
   TenPercentVectorBonus = Threshold / 2;
+  const DataLayout &DL = F.getParent()->getDataLayout();
 
   // Give out bonuses per argument, as the instructions setting them up will
   // be gone after inlining.
   for (unsigned I = 0, E = CS.arg_size(); I != E; ++I) {
-    if (DL && CS.isByValArgument(I)) {
+    if (CS.isByValArgument(I)) {
       // We approximate the number of loads and stores needed by dividing the
       // size of the byval type by the target's pointer size.
       PointerType *PTy = cast<PointerType>(CS.getArgument(I)->getType());
-      unsigned TypeSize = DL->getTypeSizeInBits(PTy->getElementType());
-      unsigned PointerSize = DL->getPointerSizeInBits();
+      unsigned TypeSize = DL.getTypeSizeInBits(PTy->getElementType());
+      unsigned PointerSize = DL.getPointerSizeInBits();
       // Ceiling division.
       unsigned NumStores = (TypeSize + PointerSize - 1) / PointerSize;
 
@@ -1171,7 +1175,7 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
     // returns false, and we can bail on out.
     if (!analyzeBlock(BB, EphValues)) {
       if (IsRecursiveCall || ExposesReturnsTwice || HasDynamicAlloca ||
-          HasIndirectBr)
+          HasIndirectBr || HasFrameEscape)
         return false;
 
       // If the caller is a recursive function then we don't want to inline
@@ -1286,16 +1290,18 @@ InlineCost InlineCostAnalysis::getInlineCost(CallSite CS, int Threshold) {
 
 /// \brief Test that two functions either have or have not the given attribute
 ///        at the same time.
-static bool attributeMatches(Function *F1, Function *F2,
-                             Attribute::AttrKind Attr) {
-  return F1->hasFnAttribute(Attr) == F2->hasFnAttribute(Attr);
+template<typename AttrKind>
+static bool attributeMatches(Function *F1, Function *F2, AttrKind Attr) {
+  return F1->getFnAttribute(Attr) == F2->getFnAttribute(Attr);
 }
 
 /// \brief Test that there are no attribute conflicts between Caller and Callee
 ///        that prevent inlining.
 static bool functionsHaveCompatibleAttributes(Function *Caller,
                                               Function *Callee) {
-  return attributeMatches(Caller, Callee, Attribute::SanitizeAddress) &&
+  return attributeMatches(Caller, Callee, "target-cpu") &&
+         attributeMatches(Caller, Callee, "target-features") &&
+         attributeMatches(Caller, Callee, Attribute::SanitizeAddress) &&
          attributeMatches(Caller, Callee, Attribute::SanitizeMemory) &&
          attributeMatches(Caller, Callee, Attribute::SanitizeThread);
 }
@@ -1333,8 +1339,7 @@ InlineCost InlineCostAnalysis::getInlineCost(CallSite CS, Function *Callee,
   DEBUG(llvm::dbgs() << "      Analyzing call of " << Callee->getName()
         << "...\n");
 
-  CallAnalyzer CA(&Callee->getParent()->getDataLayout(), TTIWP->getTTI(*Callee),
-                  ACT, *Callee, Threshold);
+  CallAnalyzer CA(TTIWP->getTTI(*Callee), ACT, *Callee, Threshold);
   bool ShouldInline = CA.analyzeCall(CS);
 
   DEBUG(CA.dump());
@@ -1370,6 +1375,13 @@ bool InlineCostAnalysis::isInlineViable(Function &F) {
       // attributed as such.
       if (!ReturnsTwice && CS.isCall() &&
           cast<CallInst>(CS.getInstruction())->canReturnTwice())
+        return false;
+
+      // Disallow inlining functions that call @llvm.frameescape. Doing this
+      // correctly would require major changes to the inliner.
+      if (CS.getCalledFunction() &&
+          CS.getCalledFunction()->getIntrinsicID() ==
+              llvm::Intrinsic::frameescape)
         return false;
     }
   }

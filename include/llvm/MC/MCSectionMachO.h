@@ -35,8 +35,8 @@ class MCSectionMachO : public MCSection {
   /// size of stubs, for example.
   unsigned Reserved2;
 
-  MCSectionMachO(StringRef Segment, StringRef Section,
-                 unsigned TAA, unsigned reserved2, SectionKind K);
+  MCSectionMachO(StringRef Segment, StringRef Section, unsigned TAA,
+                 unsigned reserved2, SectionKind K, MCSymbol *Begin);
   friend class MCContext;
 public:
 
@@ -51,10 +51,6 @@ public:
     if (SectionName[15])
       return StringRef(SectionName, 16);
     return StringRef(SectionName);
-  }
-
-  std::string getLabelBeginName() const override {
-    return StringRef(getSegmentName().str() + getSectionName().str() + "_begin");
   }
 
   unsigned getTypeAndAttributes() const { return TypeAndAttributes; }

@@ -26,8 +26,5 @@ int main() {                             // CHECK:   1| [[@LINE]]|int main(
 // after coverage                   // WHOLE-FILE:    | [[@LINE]]|// after
                                     // FILTER-NOT:    | [[@LINE-1]]|// after
 
-// RUN: llvm-cov show %S/Inputs/lineExecutionCounts.covmapping -instr-profile %t.profdata -no-colors -filename-equivalence %s | FileCheck -check-prefix=CHECK -check-prefix=WHOLE-FILE %s
-// RUN: llvm-cov show %S/Inputs/lineExecutionCounts.covmapping -instr-profile %t.profdata -no-colors -filename-equivalence -name=main %s | FileCheck -check-prefix=CHECK -check-prefix=FILTER %s
-
-// llvm-cov doesn't work on big endian yet
-// XFAIL: powerpc64-, s390x, mips-, mips64-, sparc
+// RUN: llvm-cov show %S/Inputs/lineExecutionCounts.covmapping -instr-profile %t.profdata -filename-equivalence %s | FileCheck -check-prefix=CHECK -check-prefix=WHOLE-FILE %s
+// RUN: llvm-cov show %S/Inputs/lineExecutionCounts.covmapping -instr-profile %t.profdata -filename-equivalence -name=main %s | FileCheck -check-prefix=CHECK -check-prefix=FILTER %s

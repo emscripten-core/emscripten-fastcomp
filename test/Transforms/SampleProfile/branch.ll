@@ -32,8 +32,8 @@ define i32 @main(i32 %argc, i8** nocapture readonly %argv) #0 {
 ; CHECK: Printing analysis 'Branch Probability Analysis' for function 'main':
 
 entry:
-  tail call void @llvm.dbg.value(metadata i32 %argc, i64 0, metadata !13, metadata !{}), !dbg !27
-  tail call void @llvm.dbg.value(metadata i8** %argv, i64 0, metadata !14, metadata !{}), !dbg !27
+  tail call void @llvm.dbg.value(metadata i32 %argc, i64 0, metadata !13, metadata !MDExpression()), !dbg !27
+  tail call void @llvm.dbg.value(metadata i8** %argv, i64 0, metadata !14, metadata !MDExpression()), !dbg !27
   %cmp = icmp slt i32 %argc, 2, !dbg !28
   br i1 %cmp, label %return, label %if.end, !dbg !28
 ; CHECK: edge entry -> return probability is 1 / 2 = 50%
@@ -43,7 +43,7 @@ if.end:                                           ; preds = %entry
   %arrayidx = getelementptr inbounds i8*, i8** %argv, i64 1, !dbg !30
   %0 = load i8*, i8** %arrayidx, align 8, !dbg !30, !tbaa !31
   %call = tail call i32 @atoi(i8* %0) #4, !dbg !30
-  tail call void @llvm.dbg.value(metadata i32 %call, i64 0, metadata !17, metadata !{}), !dbg !30
+  tail call void @llvm.dbg.value(metadata i32 %call, i64 0, metadata !17, metadata !MDExpression()), !dbg !30
   %cmp1 = icmp sgt i32 %call, 100, !dbg !35
   br i1 %cmp1, label %for.body, label %if.end6, !dbg !35
 ; CHECK: edge if.end -> for.body probability is 1 / 2 = 50%
@@ -55,14 +55,14 @@ for.body:                                         ; preds = %if.end, %for.body
   %add = fadd double %s.015, 3.049000e+00, !dbg !36
   %conv = sitofp i32 %u.016 to double, !dbg !36
   %add4 = fadd double %add, %conv, !dbg !36
-  tail call void @llvm.dbg.value(metadata double %add4, i64 0, metadata !18, metadata !{}), !dbg !36
+  tail call void @llvm.dbg.value(metadata double %add4, i64 0, metadata !18, metadata !MDExpression()), !dbg !36
   %div = fdiv double 3.940000e+00, %s.015, !dbg !37
   %mul = fmul double %div, 3.200000e-01, !dbg !37
   %add5 = fadd double %add4, %mul, !dbg !37
   %sub = fsub double %add4, %add5, !dbg !37
-  tail call void @llvm.dbg.value(metadata double %sub, i64 0, metadata !18, metadata !{}), !dbg !37
+  tail call void @llvm.dbg.value(metadata double %sub, i64 0, metadata !18, metadata !MDExpression()), !dbg !37
   %inc = add nsw i32 %u.016, 1, !dbg !38
-  tail call void @llvm.dbg.value(metadata i32 %inc, i64 0, metadata !21, metadata !{}), !dbg !38
+  tail call void @llvm.dbg.value(metadata i32 %inc, i64 0, metadata !21, metadata !MDExpression()), !dbg !38
   %exitcond = icmp eq i32 %inc, %call, !dbg !38
   br i1 %exitcond, label %if.end6, label %for.body, !dbg !38
 ; CHECK: edge for.body -> if.end6 probability is 1 / 10227 = 0.00977804
@@ -70,7 +70,7 @@ for.body:                                         ; preds = %if.end, %for.body
 
 if.end6:                                          ; preds = %for.body, %if.end
   %result.0 = phi double [ 0.000000e+00, %if.end ], [ %sub, %for.body ]
-  %call7 = tail call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([15 x i8]* @.str, i64 0, i64 0), double %result.0), !dbg !39
+  %call7 = tail call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str, i64 0, i64 0), double %result.0), !dbg !39
   br label %return, !dbg !40
 ; CHECK: edge if.end6 -> return probability is 16 / 16 = 100% [HOT edge]
 
@@ -100,7 +100,7 @@ attributes #4 = { nounwind readonly }
 
 !0 = !MDCompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.4 (trunk 192896) (llvm/trunk 192895)", isOptimized: true, emissionKind: 0, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !MDFile(filename: "branch.cc", directory: ".")
-!2 = !{i32 0}
+!2 = !{}
 !3 = !{!4}
 !4 = !MDSubprogram(name: "main", line: 4, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 4, file: !1, scope: !5, type: !6, function: i32 (i32, i8**)* @main, variables: !12)
 !5 = !MDFile(filename: "branch.cc", directory: ".")

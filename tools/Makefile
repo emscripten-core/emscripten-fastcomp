@@ -37,7 +37,7 @@ PARALLEL_DIRS := pnacl-llc pnacl-abicheck pnacl-bcanalyzer pnacl-freeze \
                  macho-dump llvm-objdump llvm-readobj llvm-rtdyld \
                  llvm-dwarfdump llvm-cov llvm-size llvm-stress llvm-mcmarkup \
                  llvm-profdata llvm-symbolizer obj2yaml yaml2obj llvm-c-test \
-                 llvm-vtabledump verify-uselistorder dsymutil llvm-pdbdump
+                 llvm-cxxdump verify-uselistorder dsymutil llvm-pdbdump
 
 # If Intel JIT Events support is configured, build an extra tool to test it.
 ifeq ($(USE_INTEL_JITEVENTS), 1)

@@ -37,6 +37,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -4512,7 +4513,7 @@ breakPartialRegDependency(MachineBasicBlock::iterator MI,
 }
 
 bool ARMBaseInstrInfo::hasNOP() const {
-  return (Subtarget.getFeatureBits() & ARM::HasV6T2Ops) != 0;
+  return (Subtarget.getFeatureBits() & ARM::HasV6KOps) != 0;
 }
 
 bool ARMBaseInstrInfo::isSwiftFastImmShift(const MachineInstr *MI) const {

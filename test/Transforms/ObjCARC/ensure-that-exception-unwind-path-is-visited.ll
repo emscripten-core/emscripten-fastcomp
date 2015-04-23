@@ -22,17 +22,17 @@ target triple = "x86_64-apple-macosx10.9.0"
 @"OBJC_CLASS_$_NSObject" = external global %struct._class_t
 @"\01L_OBJC_CLASSLIST_REFERENCES_$_" = internal global %struct._class_t* @"OBJC_CLASS_$_NSObject", section "__DATA, __objc_classrefs, regular, no_dead_strip", align 8
 @"\01L_OBJC_METH_VAR_NAME_" = internal global [4 x i8] c"new\00", section "__TEXT,__objc_methname,cstring_literals", align 1
-@"\01L_OBJC_SELECTOR_REFERENCES_" = internal global i8* getelementptr inbounds ([4 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i64 0, i64 0), section "__DATA, __objc_selrefs, literal_pointers, no_dead_strip"
+@"\01L_OBJC_SELECTOR_REFERENCES_" = internal global i8* getelementptr inbounds ([4 x i8], [4 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i64 0, i64 0), section "__DATA, __objc_selrefs, literal_pointers, no_dead_strip"
 @__CFConstantStringClassReference = external global [0 x i32]
 @.str = private unnamed_addr constant [11 x i8] c"Failed: %@\00", align 1
-@_unnamed_cfstring_ = private constant %struct.NSConstantString { i32* getelementptr inbounds ([0 x i32]* @__CFConstantStringClassReference, i32 0, i32 0), i32 1992, i8* getelementptr inbounds ([11 x i8]* @.str, i32 0, i32 0), i64 10 }, section "__DATA,__cfstring"
+@_unnamed_cfstring_ = private constant %struct.NSConstantString { i32* getelementptr inbounds ([0 x i32], [0 x i32]* @__CFConstantStringClassReference, i32 0, i32 0), i32 1992, i8* getelementptr inbounds ([11 x i8], [11 x i8]* @.str, i32 0, i32 0), i64 10 }, section "__DATA,__cfstring"
 @"OBJC_CLASS_$_NSException" = external global %struct._class_t
 @"\01L_OBJC_CLASSLIST_REFERENCES_$_1" = internal global %struct._class_t* @"OBJC_CLASS_$_NSException", section "__DATA, __objc_classrefs, regular, no_dead_strip", align 8
 @.str2 = private unnamed_addr constant [4 x i8] c"Foo\00", align 1
-@_unnamed_cfstring_3 = private constant %struct.NSConstantString { i32* getelementptr inbounds ([0 x i32]* @__CFConstantStringClassReference, i32 0, i32 0), i32 1992, i8* getelementptr inbounds ([4 x i8]* @.str2, i32 0, i32 0), i64 3 }, section "__DATA,__cfstring"
+@_unnamed_cfstring_3 = private constant %struct.NSConstantString { i32* getelementptr inbounds ([0 x i32], [0 x i32]* @__CFConstantStringClassReference, i32 0, i32 0), i32 1992, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str2, i32 0, i32 0), i64 3 }, section "__DATA,__cfstring"
 @"\01L_OBJC_METH_VAR_NAME_4" = internal global [14 x i8] c"raise:format:\00", section "__TEXT,__objc_methname,cstring_literals", align 1
-@"\01L_OBJC_SELECTOR_REFERENCES_5" = internal global i8* getelementptr inbounds ([14 x i8]* @"\01L_OBJC_METH_VAR_NAME_4", i64 0, i64 0), section "__DATA, __objc_selrefs, literal_pointers, no_dead_strip"
-@llvm.used = appending global [6 x i8*] [i8* bitcast (%struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_" to i8*), i8* getelementptr inbounds ([4 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i32 0, i32 0), i8* bitcast (i8** @"\01L_OBJC_SELECTOR_REFERENCES_" to i8*), i8* bitcast (%struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_1" to i8*), i8* getelementptr inbounds ([14 x i8]* @"\01L_OBJC_METH_VAR_NAME_4", i32 0, i32 0), i8* bitcast (i8** @"\01L_OBJC_SELECTOR_REFERENCES_5" to i8*)], section "llvm.metadata"
+@"\01L_OBJC_SELECTOR_REFERENCES_5" = internal global i8* getelementptr inbounds ([14 x i8], [14 x i8]* @"\01L_OBJC_METH_VAR_NAME_4", i64 0, i64 0), section "__DATA, __objc_selrefs, literal_pointers, no_dead_strip"
+@llvm.used = appending global [6 x i8*] [i8* bitcast (%struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_" to i8*), i8* getelementptr inbounds ([4 x i8], [4 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i32 0, i32 0), i8* bitcast (i8** @"\01L_OBJC_SELECTOR_REFERENCES_" to i8*), i8* bitcast (%struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_1" to i8*), i8* getelementptr inbounds ([14 x i8], [14 x i8]* @"\01L_OBJC_METH_VAR_NAME_4", i32 0, i32 0), i8* bitcast (i8** @"\01L_OBJC_SELECTOR_REFERENCES_5" to i8*)], section "llvm.metadata"
 
 define i32 @main() uwtable ssp {
 entry:
@@ -41,10 +41,10 @@ entry:
   %tmp2 = bitcast %struct._class_t* %tmp to i8*, !dbg !37
 ; CHECK: call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to i8* (i8*, i8*)*)(i8* %tmp2, i8* %tmp1)
   %call = call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to i8* (i8*, i8*)*)(i8* %tmp2, i8* %tmp1), !dbg !37, !clang.arc.no_objc_arc_exceptions !38
-  call void @llvm.dbg.value(metadata i8* %call, i64 0, metadata i32 02, metadata !{}), !dbg !37
+  call void @llvm.dbg.value(metadata i8* %call, i64 0, metadata !25, metadata !MDExpression()), !dbg !37
 ; CHECK: call i8* @objc_retain(i8* %call) [[NUW:#[0-9]+]]
   %tmp3 = call i8* @objc_retain(i8* %call) nounwind, !dbg !39
-  call void @llvm.dbg.value(metadata i8* %call, i64 0, metadata !25, metadata !{}), !dbg !39
+  call void @llvm.dbg.value(metadata i8* %call, i64 0, metadata !25, metadata !MDExpression()), !dbg !39
   invoke fastcc void @ThrowFunc(i8* %call)
           to label %eh.cont unwind label %lpad, !dbg !40, !clang.arc.no_objc_arc_exceptions !38
 
@@ -58,15 +58,15 @@ lpad:                                             ; preds = %entry
           catch i8* null, !dbg !40
   %tmp5 = extractvalue { i8*, i32 } %tmp4, 0, !dbg !40
   %exn.adjusted = call i8* @objc_begin_catch(i8* %tmp5) nounwind, !dbg !44
-  call void @llvm.dbg.value(metadata i8 0, i64 0, metadata !21, metadata !{}), !dbg !46
+  call void @llvm.dbg.value(metadata i8 0, i64 0, metadata !21, metadata !MDExpression()), !dbg !46
   call void @objc_end_catch(), !dbg !49, !clang.arc.no_objc_arc_exceptions !38
 ; CHECK: call void @objc_release(i8* %call)
   call void @objc_release(i8* %call) nounwind, !dbg !42, !clang.imprecise_release !38
-  call void (i8*, ...)* @NSLog(i8* bitcast (%struct.NSConstantString* @_unnamed_cfstring_ to i8*), i8* %call), !dbg !50, !clang.arc.no_objc_arc_exceptions !38
+  call void (i8*, ...) @NSLog(i8* bitcast (%struct.NSConstantString* @_unnamed_cfstring_ to i8*), i8* %call), !dbg !50, !clang.arc.no_objc_arc_exceptions !38
   br label %if.end, !dbg !52
 
 if.end:                                           ; preds = %lpad, %eh.cont
-  call void (i8*, ...)* @NSLog(i8* bitcast (%struct.NSConstantString* @_unnamed_cfstring_ to i8*), i8* %call), !dbg !53, !clang.arc.no_objc_arc_exceptions !38
+  call void (i8*, ...) @NSLog(i8* bitcast (%struct.NSConstantString* @_unnamed_cfstring_ to i8*), i8* %call), !dbg !53, !clang.arc.no_objc_arc_exceptions !38
 ; CHECK: call void @objc_release(i8* %call)
   call void @objc_release(i8* %call) nounwind, !dbg !54, !clang.imprecise_release !38
   ret i32 0, !dbg !54
@@ -87,11 +87,11 @@ declare void @objc_exception_rethrow()
 define internal fastcc void @ThrowFunc(i8* %obj) uwtable noinline ssp {
 entry:
   %tmp = call i8* @objc_retain(i8* %obj) nounwind
-  call void @llvm.dbg.value(metadata i8* %obj, i64 0, metadata !32, metadata !{}), !dbg !55
+  call void @llvm.dbg.value(metadata i8* %obj, i64 0, metadata !32, metadata !MDExpression()), !dbg !55
   %tmp1 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_1", align 8, !dbg !56
   %tmp2 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_5", align 8, !dbg !56, !invariant.load !38
   %tmp3 = bitcast %struct._class_t* %tmp1 to i8*, !dbg !56
-  call void (i8*, i8*, %0*, %0*, ...)* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to void (i8*, i8*, %0*, %0*, ...)*)(i8* %tmp3, i8* %tmp2, %0* bitcast (%struct.NSConstantString* @_unnamed_cfstring_3 to %0*), %0* bitcast (%struct.NSConstantString* @_unnamed_cfstring_3 to %0*)), !dbg !56, !clang.arc.no_objc_arc_exceptions !38
+  call void (i8*, i8*, %0*, %0*, ...) bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to void (i8*, i8*, %0*, %0*, ...)*)(i8* %tmp3, i8* %tmp2, %0* bitcast (%struct.NSConstantString* @_unnamed_cfstring_3 to %0*), %0* bitcast (%struct.NSConstantString* @_unnamed_cfstring_3 to %0*)), !dbg !56, !clang.arc.no_objc_arc_exceptions !38
   call void @objc_release(i8* %obj) nounwind, !dbg !58, !clang.imprecise_release !38
   ret void, !dbg !58
 }
@@ -114,14 +114,13 @@ declare void @llvm.dbg.value(metadata, i64, metadata, metadata) nounwind readnon
 !llvm.module.flags = !{!33, !34, !35, !36, !61}
 
 !0 = !MDCompileUnit(language: DW_LANG_ObjC, producer: "clang version 3.3 ", isOptimized: true, runtimeVersion: 2, emissionKind: 0, file: !60, enums: !1, retainedTypes: !1, subprograms: !3, globals: !1)
-!1 = !{i32 0}
+!1 = !{}
 !3 = !{!5, !27}
-!5 = !MDSubprogram(name: "main", line: 9, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: true, scopeLine: 10, file: !60, scope: !6, type: !7, function: i32 ()* @main, variables: !10)
+!5 = !MDSubprogram(name: "main", line: 9, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: true, scopeLine: 10, file: !60, scope: !6, type: !7, function: i32 ()* @main, variables: !11)
 !6 = !MDFile(filename: "test.m", directory: "/Volumes/Files/gottesmmcab/Radar/12906997")
 !7 = !MDSubroutineType(types: !8)
 !8 = !{!9}
 !9 = !MDBasicType(tag: DW_TAG_base_type, name: "int", size: 32, align: 32, encoding: DW_ATE_signed)
-!10 = !{!11}
 !11 = !{!12, !21, !25}
 !12 = !MDLocalVariable(tag: DW_TAG_auto_variable, name: "obj", line: 11, scope: !13, file: !6, type: !14)
 !13 = distinct !MDLexicalBlock(line: 10, column: 0, file: !60, scope: !5)
@@ -138,10 +137,9 @@ declare void @llvm.dbg.value(metadata, i64, metadata, metadata) nounwind readnon
 !24 = !MDBasicType(tag: DW_TAG_base_type, name: "signed char", size: 8, align: 8, encoding: DW_ATE_signed_char)
 !25 = !MDLocalVariable(tag: DW_TAG_auto_variable, name: "obj2", line: 15, scope: !26, file: !6, type: !14)
 !26 = distinct !MDLexicalBlock(line: 14, column: 0, file: !60, scope: !22)
-!27 = !MDSubprogram(name: "ThrowFunc", line: 4, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 5, file: !60, scope: !6, type: !28, function: void (i8*)* @ThrowFunc, variables: !30)
+!27 = !MDSubprogram(name: "ThrowFunc", line: 4, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 5, file: !60, scope: !6, type: !28, function: void (i8*)* @ThrowFunc, variables: !31)
 !28 = !MDSubroutineType(types: !29)
 !29 = !{null, !14}
-!30 = !{!31}
 !31 = !{!32}
 !32 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "obj", line: 4, arg: 1, scope: !27, file: !6, type: !14)
 !33 = !{i32 1, !"Objective-C Version", i32 2}

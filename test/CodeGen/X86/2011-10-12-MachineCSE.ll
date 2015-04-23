@@ -20,7 +20,7 @@ entry:
   %2 = lshr i32 %1, 16
   %bf.clear = and i32 %2, 255
   %idxprom = sext i32 %bf.clear to i64
-  %3 = load %struct.optab*, %struct.optab** getelementptr inbounds ([49 x %struct.optab*]* @optab_table, i32 0, i64 0), align 8
+  %3 = load %struct.optab*, %struct.optab** getelementptr inbounds ([49 x %struct.optab*], [49 x %struct.optab*]* @optab_table, i32 0, i64 0), align 8
   %handlers = getelementptr inbounds %struct.optab, %struct.optab* %3, i32 0, i32 1
   %arrayidx = getelementptr inbounds [59 x %struct.anon.3], [59 x %struct.anon.3]* %handlers, i32 0, i64 %idxprom
   %insn_code = getelementptr inbounds %struct.anon.3, %struct.anon.3* %arrayidx, i32 0, i32 0
@@ -102,7 +102,7 @@ if.end:                                           ; preds = %lor.lhs.false23
   %arrayidx38 = getelementptr inbounds [0 x %struct.insn_data], [0 x %struct.insn_data]* @insn_data, i32 0, i64 %idxprom37
   %genfun = getelementptr inbounds %struct.insn_data, %struct.insn_data* %arrayidx38, i32 0, i32 2
   %23 = load %struct.rtx_def* (%struct.rtx_def*, ...)*, %struct.rtx_def* (%struct.rtx_def*, ...)** %genfun, align 8
-  %call39 = tail call %struct.rtx_def* (%struct.rtx_def*, ...)* %23(%struct.rtx_def* %r0, %struct.rtx_def* %r1, %struct.rtx_def* %c)
+  %call39 = tail call %struct.rtx_def* (%struct.rtx_def*, ...) %23(%struct.rtx_def* %r0, %struct.rtx_def* %r1, %struct.rtx_def* %c)
   br label %return
 
 return:                                           ; preds = %if.end, %if.then

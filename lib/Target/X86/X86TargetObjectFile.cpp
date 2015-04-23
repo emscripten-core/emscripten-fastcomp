@@ -67,7 +67,8 @@ const MCExpr *X86ELFTargetObjectFile::getDebugThreadLocalSymbol(
 }
 
 void
-X86LinuxNaClTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
+X86LinuxNaClTargetObjectFile::Initialize(MCContext &Ctx,
+                                         const TargetMachine &TM) {
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
   InitializeELF(TM.Options.UseInitArray);
 }

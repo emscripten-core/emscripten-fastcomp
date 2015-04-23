@@ -144,7 +144,9 @@ public:
     ///< Skip this instruction but continue cloning the current basic block.
     SkipInstruction,
     ///< Skip this instruction and stop cloning the current basic block.
-    StopCloningBB
+    StopCloningBB,
+    ///< Don't clone the terminator but clone the current block's successors.
+    CloneSuccessors
   };
 
   virtual ~CloningDirector() {}
@@ -164,7 +166,6 @@ void CloneAndPruneIntoFromInst(Function *NewFunc, const Function *OldFunc,
                                SmallVectorImpl<ReturnInst*> &Returns,
                                const char *NameSuffix = "", 
                                ClonedCodeInfo *CodeInfo = nullptr,
-                               const DataLayout *DL = nullptr,
                                CloningDirector *Director = nullptr);
 
 
@@ -184,7 +185,6 @@ void CloneAndPruneFunctionInto(Function *NewFunc, const Function *OldFunc,
                                SmallVectorImpl<ReturnInst*> &Returns,
                                const char *NameSuffix = "",
                                ClonedCodeInfo *CodeInfo = nullptr,
-                               const DataLayout *DL = nullptr,
                                Instruction *TheCall = nullptr);
 
 /// InlineFunctionInfo - This class captures the data input to the

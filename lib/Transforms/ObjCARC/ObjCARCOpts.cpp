@@ -26,10 +26,10 @@
 
 #include "ObjCARC.h"
 #include "ARCRuntimeEntryPoints.h"
+#include "BlotMapVector.h"
 #include "DependencyAnalysis.h"
 #include "ObjCARCAliasAnalysis.h"
 #include "ProvenanceAnalysis.h"
-#include "BlotMapVector.h"
 #include "PtrState.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -83,13 +83,14 @@ static const Value *FindSingleUseIdentifiedObject(const Value *Arg) {
 /// This is a wrapper around getUnderlyingObjCPtr along the lines of
 /// GetUnderlyingObjects except that it returns early when it sees the first
 /// alloca.
-static inline bool AreAnyUnderlyingObjectsAnAlloca(const Value *V) {
+static inline bool AreAnyUnderlyingObjectsAnAlloca(const Value *V,
+                                                   const DataLayout &DL) {
   SmallPtrSet<const Value *, 4> Visited;
   SmallVector<const Value *, 4> Worklist;
   Worklist.push_back(V);
   do {
     const Value *P = Worklist.pop_back_val();
-    P = GetUnderlyingObjCPtr(P);
+    P = GetUnderlyingObjCPtr(P, DL);
 
     if (isa<AllocaInst>(P))
       return true;
@@ -217,6 +218,9 @@ namespace {
     const_top_down_ptr_iterator top_down_ptr_end() const {
       return PerPtrTopDown.end();
     }
+    bool hasTopDownPtrs() const {
+      return !PerPtrTopDown.empty();
+    }
 
     typedef decltype(PerPtrBottomUp)::iterator bottom_up_ptr_iterator;
     typedef decltype(
@@ -231,6 +235,9 @@ namespace {
     }
     const_bottom_up_ptr_iterator bottom_up_ptr_end() const {
       return PerPtrBottomUp.end();
+    }
+    bool hasBottomUpPtrs() const {
+      return !PerPtrBottomUp.empty();
     }
 
     /// Mark this block as being an entry block, which has one path from the
@@ -306,6 +313,11 @@ namespace {
   };
 
   const unsigned BBState::OverflowOccurredValue = 0xffffffff;
+}
+
+namespace llvm {
+raw_ostream &operator<<(raw_ostream &OS,
+                        BBState &BBState) LLVM_ATTRIBUTE_UNUSED;
 }
 
 void BBState::InitFromPred(const BBState &Other) {
@@ -405,6 +417,51 @@ void BBState::MergeSucc(const BBState &Other) {
       MI->second.Merge(BottomUpPtrState(), /*TopDown=*/false);
 }
 
+raw_ostream &llvm::operator<<(raw_ostream &OS, BBState &BBInfo) {
+  // Dump the pointers we are tracking.
+  OS << "    TopDown State:\n";
+  if (!BBInfo.hasTopDownPtrs()) {
+    DEBUG(llvm::dbgs() << "        NONE!\n");
+  } else {
+    for (auto I = BBInfo.top_down_ptr_begin(), E = BBInfo.top_down_ptr_end();
+         I != E; ++I) {
+      const PtrState &P = I->second;
+      OS << "        Ptr: " << *I->first
+         << "\n            KnownSafe:        " << (P.IsKnownSafe()?"true":"false")
+         << "\n            ImpreciseRelease: "
+           << (P.IsTrackingImpreciseReleases()?"true":"false") << "\n"
+         << "            HasCFGHazards:    "
+           << (P.IsCFGHazardAfflicted()?"true":"false") << "\n"
+         << "            KnownPositive:    "
+           << (P.HasKnownPositiveRefCount()?"true":"false") << "\n"
+         << "            Seq:              "
+         << P.GetSeq() << "\n";
+    }
+  }
+
+  OS << "    BottomUp State:\n";
+  if (!BBInfo.hasBottomUpPtrs()) {
+    DEBUG(llvm::dbgs() << "        NONE!\n");
+  } else {
+    for (auto I = BBInfo.bottom_up_ptr_begin(), E = BBInfo.bottom_up_ptr_end();
+         I != E; ++I) {
+      const PtrState &P = I->second;
+      OS << "        Ptr: " << *I->first
+         << "\n            KnownSafe:        " << (P.IsKnownSafe()?"true":"false")
+         << "\n            ImpreciseRelease: "
+           << (P.IsTrackingImpreciseReleases()?"true":"false") << "\n"
+         << "            HasCFGHazards:    "
+           << (P.IsCFGHazardAfflicted()?"true":"false") << "\n"
+         << "            KnownPositive:    "
+           << (P.HasKnownPositiveRefCount()?"true":"false") << "\n"
+         << "            Seq:              "
+         << P.GetSeq() << "\n";
+    }
+  }
+
+  return OS;
+}
+
 namespace {
 
   /// \brief The main ARC optimization pass.
@@ -458,15 +515,16 @@ namespace {
                    DenseMap<Value *, RRInfo> &Releases,
                    SmallVectorImpl<Instruction *> &DeadInsts, Module *M);
 
-    bool ConnectTDBUTraversals(DenseMap<const BasicBlock *, BBState> &BBStates,
-                               BlotMapVector<Value *, RRInfo> &Retains,
-                               DenseMap<Value *, RRInfo> &Releases, Module *M,
-                               SmallVectorImpl<Instruction *> &NewRetains,
-                               SmallVectorImpl<Instruction *> &NewReleases,
-                               SmallVectorImpl<Instruction *> &DeadInsts,
-                               RRInfo &RetainsToMove, RRInfo &ReleasesToMove,
-                               Value *Arg, bool KnownSafe,
-                               bool &AnyPairsCompletelyEliminated);
+    bool
+    PairUpRetainsAndReleases(DenseMap<const BasicBlock *, BBState> &BBStates,
+                             BlotMapVector<Value *, RRInfo> &Retains,
+                             DenseMap<Value *, RRInfo> &Releases, Module *M,
+                             SmallVectorImpl<Instruction *> &NewRetains,
+                             SmallVectorImpl<Instruction *> &NewReleases,
+                             SmallVectorImpl<Instruction *> &DeadInsts,
+                             RRInfo &RetainsToMove, RRInfo &ReleasesToMove,
+                             Value *Arg, bool KnownSafe,
+                             bool &AnyPairsCompletelyEliminated);
 
     bool PerformCodePlacement(DenseMap<const BasicBlock *, BBState> &BBStates,
                               BlotMapVector<Value *, RRInfo> &Retains,
@@ -566,7 +624,7 @@ ObjCARCOpt::OptimizeRetainRVCall(Function &F, Instruction *RetainRV) {
                   "objc_retain since the operand is not a return value.\n"
                   "Old = " << *RetainRV << "\n");
 
-  Constant *NewDecl = EP.get(ARCRuntimeEntryPoints::EPT_Retain);
+  Constant *NewDecl = EP.get(ARCRuntimeEntryPointKind::Retain);
   cast<CallInst>(RetainRV)->setCalledFunction(NewDecl);
 
   DEBUG(dbgs() << "New = " << *RetainRV << "\n");
@@ -602,7 +660,7 @@ void ObjCARCOpt::OptimizeAutoreleaseRVCall(Function &F,
                   "Old = " << *AutoreleaseRV << "\n");
 
   CallInst *AutoreleaseRVCI = cast<CallInst>(AutoreleaseRV);
-  Constant *NewDecl = EP.get(ARCRuntimeEntryPoints::EPT_Autorelease);
+  Constant *NewDecl = EP.get(ARCRuntimeEntryPointKind::Autorelease);
   AutoreleaseRVCI->setCalledFunction(NewDecl);
   AutoreleaseRVCI->setTailCall(false); // Never tail call objc_autorelease.
   Class = ARCInstKind::Autorelease;
@@ -708,10 +766,10 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
         // Create the declaration lazily.
         LLVMContext &C = Inst->getContext();
 
-        Constant *Decl = EP.get(ARCRuntimeEntryPoints::EPT_Release);
+        Constant *Decl = EP.get(ARCRuntimeEntryPointKind::Release);
         CallInst *NewCall = CallInst::Create(Decl, Call->getArgOperand(0), "",
                                              Call);
-        NewCall->setMetadata(MDKindCache.ImpreciseReleaseMDKind,
+        NewCall->setMetadata(MDKindCache.get(ARCMDKindID::ImpreciseRelease),
                              MDNode::get(C, None));
 
         DEBUG(dbgs() << "Replacing autorelease{,RV}(x) with objc_release(x) "
@@ -1041,7 +1099,7 @@ bool ObjCARCOpt::VisitInstructionBottomUp(
   ARCInstKind Class = GetARCInstKind(Inst);
   const Value *Arg = nullptr;
 
-  DEBUG(dbgs() << "Class: " << Class << "\n");
+  DEBUG(dbgs() << "        Class: " << Class << "\n");
 
   switch (Class) {
   case ARCInstKind::Release: {
@@ -1063,8 +1121,10 @@ bool ObjCARCOpt::VisitInstructionBottomUp(
     if (S.MatchWithRetain()) {
       // Don't do retain+release tracking for ARCInstKind::RetainRV, because
       // it's better to let it remain as the first instruction after a call.
-      if (Class != ARCInstKind::RetainRV)
+      if (Class != ARCInstKind::RetainRV) {
+        DEBUG(llvm::dbgs() << "        Matching with: " << *Inst << "\n");
         Retains[Inst] = S.GetRRInfo();
+      }
       S.ClearSequenceProgress();
     }
     // A retain moving bottom up can be a use.
@@ -1092,7 +1152,8 @@ bool ObjCARCOpt::VisitInstructionBottomUp(
     // in the presence of allocas we only unconditionally remove pointers if
     // both our retain and our release are KnownSafe.
     if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
-      if (AreAnyUnderlyingObjectsAnAlloca(SI->getPointerOperand())) {
+      const DataLayout &DL = BB->getModule()->getDataLayout();
+      if (AreAnyUnderlyingObjectsAnAlloca(SI->getPointerOperand(), DL)) {
         auto I = MyStates.findPtrBottomUpState(
             GetRCIdentityRoot(SI->getValueOperand()));
         if (I != MyStates.bottom_up_ptr_end())
@@ -1150,6 +1211,9 @@ bool ObjCARCOpt::VisitBottomUp(BasicBlock *BB,
     }
   }
 
+  DEBUG(llvm::dbgs() << "Before:\n" << BBStates[BB] << "\n"
+                     << "Performing Dataflow:\n");
+
   // Visit all the instructions, bottom-up.
   for (BasicBlock::iterator I = BB->end(), E = BB->begin(); I != E; --I) {
     Instruction *Inst = std::prev(I);
@@ -1158,7 +1222,7 @@ bool ObjCARCOpt::VisitBottomUp(BasicBlock *BB,
     if (isa<InvokeInst>(Inst))
       continue;
 
-    DEBUG(dbgs() << "Visiting " << *Inst << "\n");
+    DEBUG(dbgs() << "    Visiting " << *Inst << "\n");
 
     NestingDetected |= VisitInstructionBottomUp(Inst, BB, Retains, MyStates);
   }
@@ -1173,6 +1237,8 @@ bool ObjCARCOpt::VisitBottomUp(BasicBlock *BB,
       NestingDetected |= VisitInstructionBottomUp(II, BB, Retains, MyStates);
   }
 
+  DEBUG(llvm::dbgs() << "\nFinal State:\n" << BBStates[BB] << "\n");
+
   return NestingDetected;
 }
 
@@ -1183,6 +1249,8 @@ ObjCARCOpt::VisitInstructionTopDown(Instruction *Inst,
   bool NestingDetected = false;
   ARCInstKind Class = GetARCInstKind(Inst);
   const Value *Arg = nullptr;
+
+  DEBUG(llvm::dbgs() << "        Class: " << Class << "\n");
 
   switch (Class) {
   case ARCInstKind::RetainBlock:
@@ -1208,6 +1276,7 @@ ObjCARCOpt::VisitInstructionTopDown(Instruction *Inst,
     if (S.MatchWithRelease(MDKindCache, Inst)) {
       // If we succeed, copy S's RRInfo into the Release -> {Retain Set
       // Map}. Then we clear S.
+      DEBUG(llvm::dbgs() << "        Matching with: " << *Inst << "\n");
       Releases[Inst] = S.GetRRInfo();
       S.ClearSequenceProgress();
     }
@@ -1269,16 +1338,22 @@ ObjCARCOpt::VisitTopDown(BasicBlock *BB,
     }
   }
 
+  DEBUG(llvm::dbgs() << "Before:\n" << BBStates[BB]  << "\n"
+                     << "Performing Dataflow:\n");
+
   // Visit all the instructions, top-down.
   for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
     Instruction *Inst = I;
 
-    DEBUG(dbgs() << "Visiting " << *Inst << "\n");
+    DEBUG(dbgs() << "    Visiting " << *Inst << "\n");
 
     NestingDetected |= VisitInstructionTopDown(Inst, Releases, MyStates);
   }
 
+  DEBUG(llvm::dbgs() << "\nState Before Checking for CFG Hazards:\n"
+                     << BBStates[BB] << "\n\n");
   CheckForCFGHazards(BB, BBStates, MyStates);
+  DEBUG(llvm::dbgs() << "Final State:\n" << BBStates[BB] << "\n");
   return NestingDetected;
 }
 
@@ -1377,7 +1452,8 @@ bool ObjCARCOpt::Visit(Function &F,
   SmallVector<BasicBlock *, 16> PostOrder;
   SmallVector<BasicBlock *, 16> ReverseCFGPostOrder;
   ComputePostOrders(F, PostOrder, ReverseCFGPostOrder,
-                    MDKindCache.NoObjCARCExceptionsMDKind, BBStates);
+                    MDKindCache.get(ARCMDKindID::NoObjCARCExceptions),
+                    BBStates);
 
   // Use reverse-postorder on the reverse CFG for bottom-up.
   bool BottomUpNestingDetected = false;
@@ -1412,7 +1488,7 @@ void ObjCARCOpt::MoveCalls(Value *Arg, RRInfo &RetainsToMove,
   for (Instruction *InsertPt : ReleasesToMove.ReverseInsertPts) {
     Value *MyArg = ArgTy == ParamTy ? Arg :
                    new BitCastInst(Arg, ParamTy, "", InsertPt);
-    Constant *Decl = EP.get(ARCRuntimeEntryPoints::EPT_Retain);
+    Constant *Decl = EP.get(ARCRuntimeEntryPointKind::Retain);
     CallInst *Call = CallInst::Create(Decl, MyArg, "", InsertPt);
     Call->setDoesNotThrow();
     Call->setTailCall();
@@ -1423,11 +1499,11 @@ void ObjCARCOpt::MoveCalls(Value *Arg, RRInfo &RetainsToMove,
   for (Instruction *InsertPt : RetainsToMove.ReverseInsertPts) {
     Value *MyArg = ArgTy == ParamTy ? Arg :
                    new BitCastInst(Arg, ParamTy, "", InsertPt);
-    Constant *Decl = EP.get(ARCRuntimeEntryPoints::EPT_Release);
+    Constant *Decl = EP.get(ARCRuntimeEntryPointKind::Release);
     CallInst *Call = CallInst::Create(Decl, MyArg, "", InsertPt);
     // Attach a clang.imprecise_release metadata tag, if appropriate.
     if (MDNode *M = ReleasesToMove.ReleaseMetadata)
-      Call->setMetadata(MDKindCache.ImpreciseReleaseMDKind, M);
+      Call->setMetadata(MDKindCache.get(ARCMDKindID::ImpreciseRelease), M);
     Call->setDoesNotThrow();
     if (ReleasesToMove.IsTailCallRelease)
       Call->setTailCall();
@@ -1450,7 +1526,7 @@ void ObjCARCOpt::MoveCalls(Value *Arg, RRInfo &RetainsToMove,
 
 }
 
-bool ObjCARCOpt::ConnectTDBUTraversals(
+bool ObjCARCOpt::PairUpRetainsAndReleases(
     DenseMap<const BasicBlock *, BBState> &BBStates,
     BlotMapVector<Value *, RRInfo> &Retains,
     DenseMap<Value *, RRInfo> &Releases, Module *M,
@@ -1613,11 +1689,8 @@ bool ObjCARCOpt::ConnectTDBUTraversals(
     if (NewRetains.empty()) break;
   }
 
-  // If the pointer is known incremented in 1 direction and we do not have
-  // MultipleOwners, we can safely remove the retain/releases. Otherwise we need
-  // to be known safe in both directions.
-  bool UnconditionallySafe = (KnownSafeTD && KnownSafeBU) ||
-    ((KnownSafeTD || KnownSafeBU) && !MultipleOwners);
+  // We can only remove pointers if we are known safe in both directions.
+  bool UnconditionallySafe = KnownSafeTD && KnownSafeBU;
   if (UnconditionallySafe) {
     RetainsToMove.ReverseInsertPts.clear();
     ReleasesToMove.ReverseInsertPts.clear();
@@ -1702,11 +1775,10 @@ bool ObjCARCOpt::PerformCodePlacement(
     // Connect the dots between the top-down-collected RetainsToMove and
     // bottom-up-collected ReleasesToMove to form sets of related calls.
     NewRetains.push_back(Retain);
-    bool PerformMoveCalls =
-      ConnectTDBUTraversals(BBStates, Retains, Releases, M, NewRetains,
-                            NewReleases, DeadInsts, RetainsToMove,
-                            ReleasesToMove, Arg, KnownSafe,
-                            AnyPairsCompletelyEliminated);
+    bool PerformMoveCalls = PairUpRetainsAndReleases(
+        BBStates, Retains, Releases, M, NewRetains, NewReleases, DeadInsts,
+        RetainsToMove, ReleasesToMove, Arg, KnownSafe,
+        AnyPairsCompletelyEliminated);
 
     if (PerformMoveCalls) {
       // Ok, everything checks out and we're all set. Let's move/delete some
@@ -1778,7 +1850,7 @@ void ObjCARCOpt::OptimizeWeakCalls(Function &F) {
           Changed = true;
           // If the load has a builtin retain, insert a plain retain for it.
           if (Class == ARCInstKind::LoadWeakRetained) {
-            Constant *Decl = EP.get(ARCRuntimeEntryPoints::EPT_Retain);
+            Constant *Decl = EP.get(ARCRuntimeEntryPointKind::Retain);
             CallInst *CI = CallInst::Create(Decl, EarlierCall, "", Call);
             CI->setTailCall();
           }
@@ -1807,7 +1879,7 @@ void ObjCARCOpt::OptimizeWeakCalls(Function &F) {
           Changed = true;
           // If the load has a builtin retain, insert a plain retain for it.
           if (Class == ARCInstKind::LoadWeakRetained) {
-            Constant *Decl = EP.get(ARCRuntimeEntryPoints::EPT_Retain);
+            Constant *Decl = EP.get(ARCRuntimeEntryPointKind::Retain);
             CallInst *CI = CallInst::Create(Decl, EarlierCall, "", Call);
             CI->setTailCall();
           }
@@ -2096,20 +2168,13 @@ bool ObjCARCOpt::doInitialization(Module &M) {
   if (!Run)
     return false;
 
-  // Identify the imprecise release metadata kind.
-  MDKindCache.ImpreciseReleaseMDKind =
-      M.getContext().getMDKindID("clang.imprecise_release");
-  MDKindCache.CopyOnEscapeMDKind =
-      M.getContext().getMDKindID("clang.arc.copy_on_escape");
-  MDKindCache.NoObjCARCExceptionsMDKind =
-      M.getContext().getMDKindID("clang.arc.no_objc_arc_exceptions");
-
   // Intuitively, objc_retain and others are nocapture, however in practice
   // they are not, because they return their argument value. And objc_release
   // calls finalizers which can have arbitrary side effects.
+  MDKindCache.init(&M);
 
   // Initialize our runtime entry point cache.
-  EP.Initialize(&M);
+  EP.init(&M);
 
   return false;
 }

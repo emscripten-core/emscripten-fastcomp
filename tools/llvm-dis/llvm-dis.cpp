@@ -57,6 +57,11 @@ static cl::opt<bool>
 ShowAnnotations("show-annotations",
                 cl::desc("Add informational comments to the .ll file"));
 
+static cl::opt<bool> PreserveAssemblyUseListOrder(
+    "preserve-ll-uselistorder",
+    cl::desc("Preserve use-list order when writing LLVM assembly."),
+    cl::init(false), cl::Hidden);
+
 // @LOCALMOD-BEGIN
 static cl::opt<NaClFileFormat>
 InputFileFormat(
@@ -73,12 +78,9 @@ namespace {
 
 static void printDebugLoc(const DebugLoc &DL, formatted_raw_ostream &OS) {
   OS << DL.getLine() << ":" << DL.getCol();
-  if (MDNode *N = DL.getInlinedAt(getGlobalContext())) {
-    DebugLoc IDL = DebugLoc::getFromDILocation(N);
-    if (!IDL.isUnknown()) {
-      OS << "@";
-      printDebugLoc(IDL,OS);
-    }
+  if (MDLocation *IDL = DL.getInlinedAt()) {
+    OS << "@";
+    printDebugLoc(IDL, OS);
   }
 }
 class CommentWriter : public AssemblyAnnotationWriter {
@@ -96,8 +98,7 @@ public:
       OS << "; [#uses=" << V.getNumUses() << " type=" << *V.getType() << "]";  // Output # uses and type
     }
     if (const Instruction *I = dyn_cast<Instruction>(&V)) {
-      const DebugLoc &DL = I->getDebugLoc();
-      if (!DL.isUnknown()) {
+      if (const DebugLoc &DL = I->getDebugLoc()) {
         if (!Padded) {
           OS.PadToColumn(50);
           Padded = true;
@@ -113,7 +114,7 @@ public:
           OS.PadToColumn(50);
           OS << ";";
         }
-        OS << " [debug variable = " << Var.getName() << "]";
+        OS << " [debug variable = " << Var->getName() << "]";
       }
       else if (const DbgValueInst *DVI = dyn_cast<DbgValueInst>(I)) {
         DIVariable Var(DVI->getVariable());
@@ -121,7 +122,7 @@ public:
           OS.PadToColumn(50);
           OS << ";";
         }
-        OS << " [debug variable = " << Var.getName() << "]";
+        OS << " [debug variable = " << Var->getName() << "]";
       }
     }
   }
@@ -242,7 +243,7 @@ int main(int argc, char **argv) {
 
   // All that llvm-dis does is write the assembly to a file.
   if (!DontPrint)
-    M->print(Out->os(), Annotator.get());
+    M->print(Out->os(), Annotator.get(), PreserveAssemblyUseListOrder);
 
   // Declare success.
   Out->keep();

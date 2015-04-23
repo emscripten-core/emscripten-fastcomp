@@ -2553,7 +2553,8 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
 
   // Add a register mask operand representing the call-preserved registers.
   const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
-  const uint32_t *Mask = TRI->getCallPreservedMask(CLI.CallConv);
+  const uint32_t *Mask =
+      TRI->getCallPreservedMask(CLI.DAG.getMachineFunction(), CLI.CallConv);
   assert(Mask && "Missing call preserved mask for calling convention");
   if (Subtarget.inMips16HardFloat()) {
     if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(CLI.Callee)) {
@@ -3103,6 +3104,15 @@ MipsTargetLowering::CanLowerReturn(CallingConv::ID CallConv,
   return CCInfo.CheckReturn(Outs, RetCC_Mips);
 }
 
+bool
+MipsTargetLowering::shouldSignExtendTypeInLibCall(EVT Type, bool IsSigned) const {
+  if (Subtarget.hasMips3() && Subtarget.abiUsesSoftFloat()) {
+    if (Type == MVT::i32)
+      return true;
+  }
+  return IsSigned;
+}
+
 SDValue
 MipsTargetLowering::LowerReturn(SDValue Chain,
                                 CallingConv::ID CallConv, bool IsVarArg,
@@ -3235,6 +3245,10 @@ getConstraintType(const std::string &Constraint) const
         return C_Memory;
     }
   }
+
+  if (Constraint == "ZC")
+    return C_Memory;
+
   return TargetLowering::getConstraintType(Constraint);
 }
 
@@ -3740,6 +3754,7 @@ void MipsTargetLowering::passByValArg(
                             DAG.getIntPtrConstant(VA.getLocMemOffset()));
   Chain = DAG.getMemcpy(Chain, DL, Dst, Src, DAG.getConstant(MemCpySize, PtrTy),
                         Alignment, /*isVolatile=*/false, /*AlwaysInline=*/false,
+                        /*isTailCall=*/false,
                         MachinePointerInfo(), MachinePointerInfo());
   MemOpChains.push_back(Chain);
 }

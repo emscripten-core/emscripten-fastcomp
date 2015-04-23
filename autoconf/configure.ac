@@ -51,8 +51,8 @@ AC_SUBST([LLVM_VERSION_SUFFIX])
 
 dnl Provide a copyright substitution and ensure the copyright notice is included
 dnl in the output of --version option of the generated configure script.
-AC_SUBST(LLVM_COPYRIGHT,["Copyright (c) 2003-2014 University of Illinois at Urbana-Champaign."])
-AC_COPYRIGHT([Copyright (c) 2003-2014 University of Illinois at Urbana-Champaign.])
+AC_SUBST(LLVM_COPYRIGHT,["Copyright (c) 2003-2015 University of Illinois at Urbana-Champaign."])
+AC_COPYRIGHT([Copyright (c) 2003-2015 University of Illinois at Urbana-Champaign.])
 
 dnl Indicate that we require autoconf 2.60 or later.
 AC_PREREQ(2.60)
@@ -706,8 +706,10 @@ AC_ARG_ENABLE(assertions,AS_HELP_STRING(
   --enable-assertions,[Compile with assertion checks enabled (default is YES)]),, enableval="yes")
 if test ${enableval} = "yes" ; then
   AC_SUBST(DISABLE_ASSERTIONS,[[]])
+  assertions_enabled="yes"
 else
   AC_SUBST(DISABLE_ASSERTIONS,[[DISABLE_ASSERTIONS=1]])
+  assertions_enabled="no"
 fi
 
 dnl --enable-werror : check whether we want Werror on by default
@@ -730,6 +732,28 @@ else
   AC_SUBST(ENABLE_EXPENSIVE_CHECKS,[[]])
   AC_SUBST(EXPENSIVE_CHECKS,[[no]])
 fi
+
+dnl --enable-abi-breaking-checks : decide whether we should compile in asserts and
+dnl checks that make the build ABI incompatible with an llvm built without these
+dnl checks enabled.
+AC_ARG_ENABLE(abi-breaking-checks,AS_HELP_STRING(
+  --enable-abi-breaking-checks,[Compile with abi-breaking asserts support (default is with-asserts)]),, enableval="with-asserts")
+case "$enableval" in
+  with-asserts)  if test ${assertions_enabled} = "yes" ; then
+                   AC_DEFINE([LLVM_ENABLE_ABI_BREAKING_CHECKS],[1],[Define to enable checks that alter the LLVM C++ ABI])
+                   AC_SUBST(ENABLE_ABI_BREAKING_CHECKS,[1])
+                 else
+                   AC_SUBST(ENABLE_ABI_BREAKING_CHECKS,[0])
+		 fi ;;
+  yes)
+                 AC_DEFINE([LLVM_ENABLE_ABI_BREAKING_CHECKS],[1],[Define to enable checks that alter the LLVM C++ ABI])
+                 AC_SUBST(ENABLE_ABI_BREAKING_CHECKS,[1])
+                 ;;
+  no)
+                 AC_SUBST(ENABLE_ABI_BREAKING_CHECKS,[0])
+                 ;;
+  *) AC_MSG_ERROR([Invalid setting for --enable-abi-breaking-checks.  Use "with-asserts", "yes" or "no"])
+esac
 
 dnl --enable-debug-runtime : should runtime libraries have debug symbols?
 AC_ARG_ENABLE(debug-runtime,
@@ -806,9 +830,137 @@ AC_ARG_ENABLE(doxygen,
                              enableval=default)
 case "$enableval" in
   yes) AC_SUBST(ENABLE_DOXYGEN,[1]) ;;
-  no)  AC_SUBST(ENABLE_DOXYGEN,[0]) ;;
-  default) AC_SUBST(ENABLE_DOXYGEN,[0]) ;;
+  no|default) AC_SUBST(ENABLE_DOXYGEN,[0]) ;;
   *) AC_MSG_ERROR([Invalid setting for --enable-doxygen. Use "yes" or "no"]) ;;
+esac
+
+dnl Allow enablement of doxygen search engine
+AC_ARG_ENABLE(doxygen-search,
+              AS_HELP_STRING([--enable-doxygen-search],
+                             [Enable doxygen search support (default is NO)]),,
+                             enableval=default)
+ENABLE_DOXYGEN_SEARCH="$enableval"
+
+case "$enableval" in
+  yes|no|default) ;;
+  *) AC_MSG_ERROR([Invalid setting for --enable-doxygen-search. Use "yes" or "no"]) ;;
+esac
+
+AC_ARG_ENABLE(doxygen-external-search,
+              AS_HELP_STRING([--enable-doxygen-external-search],
+                             [Enable doxygen exteranl search (default is NO)]),,
+                             enableval=default)
+ENABLE_DOXYGEN_EXTERNAL_SEARCH="$enableval"
+
+case "$enableval" in
+  yes)
+    dnl To match with the CMake behavior, enable doxygen when
+    dnl --enable-doxygen-external-search is enabled.
+    case "$ENABLE_DOXYGEN_SEARCH" in
+      yes|default) ENABLE_DOXYGEN_SEARCH="yes" ;;
+      no) AC_MSG_ERROR([The option --enable-doxygen-external-search requires --enable-doxygen-search]) ;;
+    esac
+    ;;
+  no|default) ;;
+  *) AC_MSG_ERROR([Invalid setting for --enable-doxygen-external-search. Use "yes" or "no"]) ;;
+esac
+
+AC_ARG_WITH(doxygen-search-engine-url,
+            AS_HELP_STRING([--with-doxygen-search-engine-url],
+                           [Specify the external search engine for doxygen]),,)
+WITH_DOXYGEN_SEARCH_ENGINE_URL="$withval"
+
+AC_ARG_WITH(doxygen-search-mappings,
+            AS_HELP_STRING([--with-doxygen-search-mappings],
+                           [Specify the extra search mapping for doxygen]),,)
+WITH_DOXYGEN_SEARCH_MAPPINGS="$withval"
+
+case "$ENABLE_DOXYGEN_SEARCH" in
+  yes)
+    if test "$ENABLE_DOXYGEN" = "0" ; then
+      AC_MSG_ERROR([The option --enable-doxygen-search requires --enable-doxygen.])
+    fi
+
+    AC_SUBST(enable_searchengine,[YES])
+
+    case "$ENABLE_DOXYGEN_EXTERNAL_SEARCH" in
+      yes)
+        AC_SUBST(enable_external_search,[YES])
+        AC_SUBST(enable_server_based_search,[YES])
+        AC_SUBST(searchengine_url,["$WITH_DOXYGEN_SEARCH_ENGINE_URL"])
+        AC_SUBST(extra_search_mappings,["$WITH_DOXYGEN_SEARCH_MAPPINGS"])
+        ;;
+
+      no|default)
+        AC_SUBST(enable_external_search,[NO])
+        AC_SUBST(enable_server_based_search,[NO])
+        AC_SUBST(searchengine_url,[])
+        AC_SUBST(extra_search_mappings,[])
+        ;;
+    esac
+    ;;
+
+  no|default)
+    AC_SUBST(enable_searchengine,[NO])
+    AC_SUBST(searchengine_url,[])
+    AC_SUBST(enable_server_based_search,[NO])
+    AC_SUBST(enable_external_search,[NO])
+    AC_SUBST(extra_search_mappings,[])
+    ;;
+
+  *)
+    AC_MSG_ERROR([Invalid setting for --enable-doxygen-search. Use "yes" or "no"])
+    ;;
+esac
+
+dnl Allow enablement of doxygen generated Qt help files
+AC_ARG_ENABLE(doxygen-qt-help,
+	      AS_HELP_STRING([--enable-doxygen-qt-help],
+			     [Build Qt help files (default is NO)]),,
+			     enableval=default)
+case "$enableval" in
+  yes)
+    if test "$ENABLE_DOXYGEN" = "0" ; then
+      AC_MSG_ERROR([The option --enable-doxygen-qt-help requires --enable-doxygen.])
+    fi
+
+    AC_PATH_PROG(QHELPGENERATOR, [qhelpgenerator], [qhelpgenerator])
+
+    dnl Qt help file for llvm doxygen documentation
+    AC_SUBST(llvm_doxygen_generate_qhp,[YES])
+    AC_SUBST(llvm_doxygen_qch_filename,[org.llvm.qch])
+    AC_SUBST(llvm_doxygen_qhp_namespace,[org.llvm])
+    AC_SUBST(llvm_doxygen_qhelpgenerator_path,["$QHELPGENERATOR"])
+    AC_SUBST(llvm_doxygen_qhp_cust_filter_name,["$PACKAGE_STRING"])
+    AC_SUBST(llvm_doxygen_qhp_cust_filter_attrs,["$PACKAGE_NAME,$PACKAGE_VERSION"])
+
+    dnl Qt help file for clang doxygen documentation
+    AC_SUBST(clang_doxygen_generate_qhp,[YES])
+    AC_SUBST(clang_doxygen_qch_filename,[org.llvm.clang.qch])
+    AC_SUBST(clang_doxygen_qhp_namespace,[org.llvm.clang])
+    AC_SUBST(clang_doxygen_qhelpgenerator_path,["$QHELPGENERATOR"])
+    AC_SUBST(clang_doxygen_qhp_cust_filter_name,["Clang $PACKAGE_VERSION"])
+    AC_SUBST(clang_doxygen_qhp_cust_filter_attrs,["Clang,$PACKAGE_VERSION"])
+    ;;
+
+  no|default)
+    AC_SUBST(llvm_doxygen_generate_qhp,[NO])
+    AC_SUBST(llvm_doxygen_qch_filename,[])
+    AC_SUBST(llvm_doxygen_qhp_namespace,[])
+    AC_SUBST(llvm_doxygen_qhelpgenerator_path,[])
+    AC_SUBST(llvm_doxygen_qhp_cust_filter_name,[])
+    AC_SUBST(llvm_doxygen_qhp_cust_filter_attrs,[])
+
+    AC_SUBST(clang_doxygen_generate_qhp,[NO])
+    AC_SUBST(clang_doxygen_qch_filename,[])
+    AC_SUBST(clang_doxygen_qhp_namespace,[])
+    AC_SUBST(clang_doxygen_qhelpgenerator_path,[])
+    AC_SUBST(clang_doxygen_qhp_cust_filter_name,["Clang $PACKAGE_VERSION"])
+    AC_SUBST(clang_doxygen_qhp_cust_filter_attrs,["Clang,$PACKAGE_VERSION"])
+    ;;
+
+  *)
+    AC_MSG_ERROR([Invalid setting for --enable-doxygen-qt-help. Use "yes" or "no"]) ;;
 esac
 
 dnl Allow disablement of threads

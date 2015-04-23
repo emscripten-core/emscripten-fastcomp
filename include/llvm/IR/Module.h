@@ -294,6 +294,7 @@ public:
   void setTargetTriple(StringRef T) { TargetTriple = T; }
 
   /// Set the module-scope inline assembly blocks.
+  /// A trailing newline is added if the input doesn't have one.
   void setModuleInlineAsm(StringRef Asm) {
     GlobalScopeAsm = Asm;
     if (!GlobalScopeAsm.empty() &&
@@ -301,8 +302,8 @@ public:
       GlobalScopeAsm += '\n';
   }
 
-  /// Append to the module-scope inline assembly blocks, automatically inserting
-  /// a separating newline if necessary.
+  /// Append to the module-scope inline assembly blocks.
+  /// A trailing newline is added if the input doesn't have one.
   void appendModuleInlineAsm(StringRef Asm) {
     GlobalScopeAsm += Asm;
     if (!GlobalScopeAsm.empty() &&
@@ -501,6 +502,8 @@ public:
   /// Materializer.
   std::error_code materializeAllPermanently();
 
+  std::error_code materializeMetadata();
+
 /// @}
 /// @name Direct access to the globals list, functions list, and symbol table
 /// @{
@@ -639,8 +642,11 @@ public:
 /// @{
 
   /// Print the module to an output stream with an optional
-  /// AssemblyAnnotationWriter.
-  void print(raw_ostream &OS, AssemblyAnnotationWriter *AAW) const;
+  /// AssemblyAnnotationWriter.  If \c ShouldPreserveUseListOrder, then include
+  /// uselistorder directives so that use-lists can be recreated when reading
+  /// the assembly.
+  void print(raw_ostream &OS, AssemblyAnnotationWriter *AAW,
+             bool ShouldPreserveUseListOrder = false) const;
 
   /// Dump the module to stderr (for debugging).
   void dump() const;

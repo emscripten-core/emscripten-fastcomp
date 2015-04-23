@@ -68,12 +68,12 @@ if.end:                                           ; preds = %entry, %if.then
   tail call void @llvm.dbg.value(metadata %struct.AAA3* %var1, i64 0, metadata !56, metadata !MDExpression()), !dbg !57
   tail call void @llvm.dbg.value(metadata !58, i64 0, metadata !59, metadata !MDExpression()), !dbg !60
   %arraydecay.i = getelementptr inbounds %struct.AAA3, %struct.AAA3* %var1, i64 0, i32 0, i64 0, !dbg !61
-  call void @_Z3fooPcjPKc(i8* %arraydecay.i, i32 4, i8* getelementptr inbounds ([1 x i8]* @.str, i64 0, i64 0)), !dbg !61
+  call void @_Z3fooPcjPKc(i8* %arraydecay.i, i32 4, i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str, i64 0, i64 0)), !dbg !61
   call void @llvm.dbg.value(metadata %struct.AAA3* %var2, i64 0, metadata !34, metadata !MDExpression()), !dbg !63
   call void @llvm.dbg.value(metadata %struct.AAA3* %var2, i64 0, metadata !64, metadata !MDExpression()), !dbg !65
   call void @llvm.dbg.value(metadata !58, i64 0, metadata !66, metadata !MDExpression()), !dbg !67
   %arraydecay.i5 = getelementptr inbounds %struct.AAA3, %struct.AAA3* %var2, i64 0, i32 0, i64 0, !dbg !68
-  call void @_Z3fooPcjPKc(i8* %arraydecay.i5, i32 4, i8* getelementptr inbounds ([1 x i8]* @.str, i64 0, i64 0)), !dbg !68
+  call void @_Z3fooPcjPKc(i8* %arraydecay.i5, i32 4, i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str, i64 0, i64 0)), !dbg !68
   %tobool1 = icmp eq i32 %param1, 0, !dbg !69
   call void @llvm.dbg.value(metadata %struct.AAA3* %var2, i64 0, metadata !34, metadata !MDExpression()), !dbg !63
   br i1 %tobool1, label %if.else, label %if.then2, !dbg !69
@@ -81,20 +81,20 @@ if.end:                                           ; preds = %entry, %if.then
 if.then2:                                         ; preds = %if.end
   call void @llvm.dbg.value(metadata %struct.AAA3* %var2, i64 0, metadata !71, metadata !MDExpression()), !dbg !73
   call void @llvm.dbg.value(metadata !74, i64 0, metadata !75, metadata !MDExpression()), !dbg !76
-  call void @_Z3fooPcjPKc(i8* %arraydecay.i5, i32 4, i8* getelementptr inbounds ([2 x i8]* @.str1, i64 0, i64 0)), !dbg !76
+  call void @_Z3fooPcjPKc(i8* %arraydecay.i5, i32 4, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.str1, i64 0, i64 0)), !dbg !76
   br label %if.end3, !dbg !72
 
 if.else:                                          ; preds = %if.end
   call void @llvm.dbg.value(metadata %struct.AAA3* %var2, i64 0, metadata !77, metadata !MDExpression()), !dbg !79
   call void @llvm.dbg.value(metadata !80, i64 0, metadata !81, metadata !MDExpression()), !dbg !82
-  call void @_Z3fooPcjPKc(i8* %arraydecay.i5, i32 4, i8* getelementptr inbounds ([2 x i8]* @.str2, i64 0, i64 0)), !dbg !82
+  call void @_Z3fooPcjPKc(i8* %arraydecay.i5, i32 4, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.str2, i64 0, i64 0)), !dbg !82
   br label %if.end3
 
 if.end3:                                          ; preds = %if.else, %if.then2
   call void @llvm.dbg.value(metadata %struct.AAA3* %var1, i64 0, metadata !33, metadata !MDExpression()), !dbg !55
   call void @llvm.dbg.value(metadata %struct.AAA3* %var1, i64 0, metadata !83, metadata !MDExpression()), !dbg !85
   call void @llvm.dbg.value(metadata !58, i64 0, metadata !86, metadata !MDExpression()), !dbg !87
-  call void @_Z3fooPcjPKc(i8* %arraydecay.i, i32 4, i8* getelementptr inbounds ([1 x i8]* @.str, i64 0, i64 0)), !dbg !87
+  call void @_Z3fooPcjPKc(i8* %arraydecay.i, i32 4, i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str, i64 0, i64 0)), !dbg !87
   ret void, !dbg !88
 }
 
@@ -169,36 +169,36 @@ attributes #2 = { nounwind readnone }
 !53 = distinct !MDLexicalBlock(line: 14, column: 0, file: !1, scope: !51)
 !54 = !MDLocation(line: 16, scope: !53)
 !55 = !MDLocation(line: 17, scope: !24)
-!56 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !40, type: !38, inlinedAt: !55)
+!56 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !40, type: !38)
 !57 = !MDLocation(line: 0, scope: !40, inlinedAt: !55)
-!58 = !{i8* getelementptr inbounds ([1 x i8]* @.str, i64 0, i64 0)}
-!59 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 5, arg: 2, scope: !40, file: !25, type: !15, inlinedAt: !55)
+!58 = !{i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str, i64 0, i64 0)}
+!59 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 5, arg: 2, scope: !40, file: !25, type: !15)
 !60 = !MDLocation(line: 5, scope: !40, inlinedAt: !55)
 !61 = !MDLocation(line: 5, scope: !62, inlinedAt: !55)
 !62 = distinct !MDLexicalBlock(line: 5, column: 0, file: !1, scope: !40)
 !63 = !MDLocation(line: 18, scope: !24)
-!64 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !40, type: !38, inlinedAt: !63)
+!64 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !40, type: !38)
 !65 = !MDLocation(line: 0, scope: !40, inlinedAt: !63)
-!66 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 5, arg: 2, scope: !40, file: !25, type: !15, inlinedAt: !63)
+!66 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 5, arg: 2, scope: !40, file: !25, type: !15)
 !67 = !MDLocation(line: 5, scope: !40, inlinedAt: !63)
 !68 = !MDLocation(line: 5, scope: !62, inlinedAt: !63)
 !69 = !MDLocation(line: 20, scope: !70)
 !70 = distinct !MDLexicalBlock(line: 20, column: 0, file: !1, scope: !24)
-!71 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !35, type: !38, inlinedAt: !72)
+!71 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !35, type: !38)
 !72 = !MDLocation(line: 21, scope: !70)
 !73 = !MDLocation(line: 0, scope: !35, inlinedAt: !72)
-!74 = !{i8* getelementptr inbounds ([2 x i8]* @.str1, i64 0, i64 0)}
-!75 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 6, arg: 2, scope: !35, file: !25, type: !15, inlinedAt: !72)
+!74 = !{i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.str1, i64 0, i64 0)}
+!75 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 6, arg: 2, scope: !35, file: !25, type: !15)
 !76 = !MDLocation(line: 6, scope: !35, inlinedAt: !72)
-!77 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !35, type: !38, inlinedAt: !78)
+!77 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !35, type: !38)
 !78 = !MDLocation(line: 23, scope: !70)
 !79 = !MDLocation(line: 0, scope: !35, inlinedAt: !78)
-!80 = !{i8* getelementptr inbounds ([2 x i8]* @.str2, i64 0, i64 0)}
-!81 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 6, arg: 2, scope: !35, file: !25, type: !15, inlinedAt: !78)
+!80 = !{i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.str2, i64 0, i64 0)}
+!81 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 6, arg: 2, scope: !35, file: !25, type: !15)
 !82 = !MDLocation(line: 6, scope: !35, inlinedAt: !78)
-!83 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !35, type: !38, inlinedAt: !84)
+!83 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !35, type: !38)
 !84 = !MDLocation(line: 24, scope: !24)
 !85 = !MDLocation(line: 0, scope: !35, inlinedAt: !84)
-!86 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 6, arg: 2, scope: !35, file: !25, type: !15, inlinedAt: !84)
+!86 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "value", line: 6, arg: 2, scope: !35, file: !25, type: !15)
 !87 = !MDLocation(line: 6, scope: !35, inlinedAt: !84)
 !88 = !MDLocation(line: 25, scope: !24)

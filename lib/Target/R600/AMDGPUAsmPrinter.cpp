@@ -17,6 +17,7 @@
 //
 
 #include "AMDGPUAsmPrinter.h"
+#include "InstPrinter/AMDGPUInstPrinter.h"
 #include "AMDGPU.h"
 #include "AMDKernelCodeT.h"
 #include "AMDGPUSubtarget.h"
@@ -105,8 +106,6 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
 
   SetupMachineFunction(MF);
 
-  EmitFunctionHeader();
-
   MCContext &Context = getObjFileLowering().getContext();
   const MCSectionELF *ConfigSection =
       Context.getELFSection(".AMDGPU.config", ELF::SHT_PROGBITS, 0);
@@ -129,7 +128,6 @@ bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   HexLines.clear();
   DisasmLineMaxLen = 0;
 
-  OutStreamer.SwitchSection(getObjFileLowering().getTextSection());
   EmitFunctionBody();
 
   if (isVerbose()) {
@@ -576,4 +574,25 @@ void AMDGPUAsmPrinter::EmitAmdKernelCodeT(const MachineFunction &MF,
   }
 
   OutStreamer.EmitBytes(StringRef((char*)&header, sizeof(header)));
+}
+
+bool AMDGPUAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                                       unsigned AsmVariant,
+                                       const char *ExtraCode, raw_ostream &O) {
+  if (ExtraCode && ExtraCode[0]) {
+    if (ExtraCode[1] != 0)
+      return true; // Unknown modifier.
+
+    switch (ExtraCode[0]) {
+    default:
+      // See if this is a generic print operand
+      return AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, O);
+    case 'r':
+      break;
+    }
+  }
+
+  AMDGPUInstPrinter::printRegOperand(MI->getOperand(OpNo).getReg(), O,
+                   *TM.getSubtargetImpl(*MF->getFunction())->getRegisterInfo());
+  return false;
 }

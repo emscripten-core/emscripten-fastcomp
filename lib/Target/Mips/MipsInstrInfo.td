@@ -186,10 +186,8 @@ def InMips16Mode :    Predicate<"Subtarget->inMips16Mode()">,
                       AssemblerPredicate<"FeatureMips16">;
 def HasCnMips    :    Predicate<"Subtarget->hasCnMips()">,
                       AssemblerPredicate<"FeatureCnMips">;
-def RelocStatic :     Predicate<"TM.getRelocationModel() == Reloc::Static">,
-                      AssemblerPredicate<"FeatureMips32">;
-def RelocPIC    :     Predicate<"TM.getRelocationModel() == Reloc::PIC_">,
-                      AssemblerPredicate<"FeatureMips32">;
+def RelocStatic :     Predicate<"TM.getRelocationModel() == Reloc::Static">;
+def RelocPIC    :     Predicate<"TM.getRelocationModel() == Reloc::PIC_">;
 def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">;
 def HasStdEnc :       Predicate<"Subtarget->hasStandardEncoding()">,
                       AssemblerPredicate<"!FeatureMips16">;
@@ -1000,7 +998,7 @@ class ExtBase<string opstr, RegisterOperand RO, Operand PosOpnd,
               SDPatternOperator Op = null_frag>:
   InstSE<(outs RO:$rt), (ins RO:$rs, PosOpnd:$pos, size_ext:$size),
          !strconcat(opstr, " $rt, $rs, $pos, $size"),
-         [(set RO:$rt, (Op RO:$rs, imm:$pos, imm:$size))], NoItinerary,
+         [(set RO:$rt, (Op RO:$rs, imm:$pos, imm:$size))], II_EXT,
          FrmR, opstr>, ISA_MIPS32R2;
 
 class InsBase<string opstr, RegisterOperand RO, Operand PosOpnd,
@@ -1008,7 +1006,7 @@ class InsBase<string opstr, RegisterOperand RO, Operand PosOpnd,
   InstSE<(outs RO:$rt), (ins RO:$rs, PosOpnd:$pos, size_ins:$size, RO:$src),
          !strconcat(opstr, " $rt, $rs, $pos, $size"),
          [(set RO:$rt, (Op RO:$rs, imm:$pos, imm:$size, RO:$src))],
-         NoItinerary, FrmR, opstr>, ISA_MIPS32R2 {
+         II_INS, FrmR, opstr>, ISA_MIPS32R2 {
   let Constraints = "$src = $rt";
 }
 
@@ -1580,6 +1578,8 @@ def : MipsInstAlias<"sltu $rt, $rs, $imm",
                     (SLTiu GPR32Opnd:$rt, GPR32Opnd:$rs, simm16:$imm), 0>;
 def : MipsInstAlias<"xor $rs, $rt, $imm",
                     (XORi GPR32Opnd:$rs, GPR32Opnd:$rt, uimm16:$imm), 0>;
+def : MipsInstAlias<"xor $rs, $imm",
+                    (XORi GPR32Opnd:$rs, GPR32Opnd:$rs, uimm16:$imm), 0>;
 def : MipsInstAlias<"or $rs, $rt, $imm",
                     (ORi GPR32Opnd:$rs, GPR32Opnd:$rt, uimm16:$imm), 0>;
 def : MipsInstAlias<"or $rs, $imm",
@@ -1594,8 +1594,12 @@ def : MipsInstAlias<"b $offset", (BEQ ZERO, ZERO, brtarget:$offset), 0>;
 }
 def : MipsInstAlias<"bnez $rs,$offset",
                     (BNE GPR32Opnd:$rs, ZERO, brtarget:$offset), 0>;
+def : MipsInstAlias<"bnezl $rs,$offset",
+                    (BNEL GPR32Opnd:$rs, ZERO, brtarget:$offset), 0>;
 def : MipsInstAlias<"beqz $rs,$offset",
                     (BEQ GPR32Opnd:$rs, ZERO, brtarget:$offset), 0>;
+def : MipsInstAlias<"beqzl $rs,$offset",
+                    (BEQL GPR32Opnd:$rs, ZERO, brtarget:$offset), 0>;
 def : MipsInstAlias<"syscall", (SYSCALL 0), 1>;
     
 def : MipsInstAlias<"break", (BREAK 0, 0), 1>;
@@ -1763,9 +1767,11 @@ def : WrapperPat<tblockaddress, ADDiu, GPR32>;
 def : WrapperPat<tjumptable, ADDiu, GPR32>;
 def : WrapperPat<tglobaltlsaddr, ADDiu, GPR32>;
 
+let AdditionalPredicates = [NotInMicroMips] in {
 // Mips does not have "not", so we expand our way
 def : MipsPat<(not GPR32:$in),
               (NOR GPR32Opnd:$in, ZERO)>;
+}
 
 // extended loads
 def : MipsPat<(i32 (extloadi1  addr:$src)), (LBu addr:$src)>;

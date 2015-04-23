@@ -39,7 +39,7 @@ using namespace llvm;
 
 namespace llvm {
 MCWinCOFFStreamer::MCWinCOFFStreamer(MCContext &Context, MCAsmBackend &MAB,
-                                     MCCodeEmitter &CE, raw_ostream &OS)
+                                     MCCodeEmitter &CE, raw_pwrite_stream &OS)
     : MCObjectStreamer(Context, MAB, OS, &CE), CurSymbol(nullptr) {}
 
 void MCWinCOFFStreamer::EmitInstToData(const MCInst &Inst,
@@ -230,11 +230,11 @@ void MCWinCOFFStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
   AssignSection(Symbol, Section);
 
   if (ByteAlignment != 1)
-    new MCAlignFragment(ByteAlignment, /*_Value=*/0, /*_ValueSize=*/0,
+    new MCAlignFragment(ByteAlignment, /*Value=*/0, /*ValueSize=*/0,
                         ByteAlignment, &SectionData);
 
   MCFillFragment *Fragment =
-      new MCFillFragment(/*_Value=*/0, /*_ValueSize=*/0, Size, &SectionData);
+      new MCFillFragment(/*Value=*/0, /*ValueSize=*/0, Size, &SectionData);
   SD.setFragment(Fragment);
 }
 

@@ -41,6 +41,7 @@
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
@@ -73,6 +74,12 @@ static cl::opt<bool> OutlineOptionalBranches(
     cl::desc("Put completely optional branches, i.e. branches with a common "
              "post dominator, out of line."),
     cl::init(false), cl::Hidden);
+
+static cl::opt<unsigned> OutlineOptionalThreshold(
+    "outline-optional-threshold",
+    cl::desc("Don't outline optional branches that are a single block with an "
+             "instruction count below this threshold"),
+    cl::init(4), cl::Hidden);
 
 namespace {
 class BlockChain;
@@ -377,8 +384,25 @@ MachineBlockPlacement::selectBestSuccessor(MachineBasicBlock *BB,
     // dominates all terminators of the MachineFunction. If it does, other
     // successors must be optional. Don't do this for cold branches.
     if (OutlineOptionalBranches && SuccProb > HotProb.getCompl() &&
-        UnavoidableBlocks.count(Succ) > 0)
-      return Succ;
+        UnavoidableBlocks.count(Succ) > 0) {
+      auto HasShortOptionalBranch = [&]() {
+        for (MachineBasicBlock *Pred : Succ->predecessors()) {
+          // Check whether there is an unplaced optional branch.
+          if (Pred == Succ || (BlockFilter && !BlockFilter->count(Pred)) ||
+              BlockToChain[Pred] == &Chain)
+            continue;
+          // Check whether the optional branch has exactly one BB.
+          if (Pred->pred_size() > 1 || *Pred->pred_begin() != BB)
+            continue;
+          // Check whether the optional branch is small.
+          if (Pred->size() < OutlineOptionalThreshold)
+            return true;
+        }
+        return false;
+      };
+      if (!HasShortOptionalBranch())
+        return Succ;
+    }
 
     // Only consider successors which are either "hot", or wouldn't violate
     // any CFG constraints.
@@ -637,7 +661,7 @@ MachineBlockPlacement::findBestLoopExit(MachineFunction &F, MachineLoop &L,
   for (MachineBasicBlock *MBB : L.getBlocks()) {
     BlockChain &Chain = *BlockToChain[MBB];
     // Ensure that this block is at the end of a chain; otherwise it could be
-    // mid-way through an inner loop or a successor of an analyzable branch.
+    // mid-way through an inner loop or a successor of an unanalyzable branch.
     if (MBB != *std::prev(Chain.end()))
       continue;
 
@@ -691,7 +715,7 @@ MachineBlockPlacement::findBestLoopExit(MachineFunction &F, MachineLoop &L,
       // a frequency higher than the current exit before we consider breaking
       // the layout.
       BranchProbability Bias(100 - ExitBlockBias, 100);
-      if (!ExitingBB || BestExitLoopDepth < SuccLoopDepth ||
+      if (!ExitingBB || SuccLoopDepth > BestExitLoopDepth ||
           ExitEdgeFreq > BestExitEdgeFreq ||
           (MBB->isLayoutSuccessor(Succ) &&
            !(ExitEdgeFreq < BestExitEdgeFreq * Bias))) {
@@ -700,8 +724,8 @@ MachineBlockPlacement::findBestLoopExit(MachineFunction &F, MachineLoop &L,
       }
     }
 
-    // Restore the old exiting state, no viable looping successor was found.
     if (!HasLoopingSucc) {
+      // Restore the old exiting state, no viable looping successor was found.
       ExitingBB = OldExitingBB;
       BestExitEdgeFreq = OldBestExitEdgeFreq;
       continue;

@@ -40,6 +40,16 @@ EnableAtomicTidy("arm-atomic-cfg-tidy", cl::Hidden,
                           " to make use of cmpxchg flow-based information"),
                  cl::init(true));
 
+static cl::opt<bool>
+EnableARMLoadStoreOpt("arm-load-store-opt", cl::Hidden,
+                      cl::desc("Enable ARM load/store optimization pass"),
+                      cl::init(true));
+
+// FIXME: Unify control over GlobalMerge.
+static cl::opt<cl::boolOrDefault>
+EnableGlobalMerge("arm-global-merge", cl::Hidden,
+                  cl::desc("Enable the global merge pass"));
+
 extern "C" void LLVMInitializeARMTarget() {
   // Register the target.
   RegisterTargetMachine<ARMLETargetMachine> X(TheARMLETarget);
@@ -108,9 +118,11 @@ computeTargetABI(const Triple &TT, StringRef CPU,
   return TargetABI;
 }
 
-static std::string computeDataLayout(const Triple &TT,
-                                     ARMBaseTargetMachine::ARMABI ABI,
+static std::string computeDataLayout(StringRef TT, StringRef CPU,
+                                     const TargetOptions &Options,
                                      bool isLittle) {
+  const Triple Triple(TT);
+  auto ABI = computeTargetABI(Triple, CPU, Options);
   std::string Ret = "";
 
   if (isLittle)
@@ -120,7 +132,7 @@ static std::string computeDataLayout(const Triple &TT,
     // Big endian.
     Ret += "E";
 
-  Ret += DataLayout::getManglingComponent(TT);
+  Ret += DataLayout::getManglingComponent(Triple);
 
   // Pointers are 32 bits and aligned to 32 bits.
   Ret += "-p:32:32";
@@ -150,7 +162,7 @@ static std::string computeDataLayout(const Triple &TT,
 
   // The stack is 128 bit aligned on NaCl, 64 bit aligned on AAPCS and 32 bit
   // aligned everywhere else.
-  if (TT.isOSNaCl())
+  if (Triple.isOSNaCl())
     Ret += "-S128";
   else if (ABI == ARMBaseTargetMachine::ARM_ABI_AAPCS)
     Ret += "-S64";
@@ -167,9 +179,9 @@ ARMBaseTargetMachine::ARMBaseTargetMachine(const Target &T, StringRef TT,
                                            const TargetOptions &Options,
                                            Reloc::Model RM, CodeModel::Model CM,
                                            CodeGenOpt::Level OL, bool isLittle)
-    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+    : LLVMTargetMachine(T, computeDataLayout(TT, CPU, Options, isLittle), TT,
+                        CPU, FS, Options, RM, CM, OL),
       TargetABI(computeTargetABI(Triple(TT), CPU, Options)),
-      DL(computeDataLayout(Triple(TT), TargetABI, isLittle)),
       TLOF(createTLOF(Triple(getTargetTriple()))),
       Subtarget(TT, CPU, FS, *this, isLittle), isLittle(isLittle) {
 
@@ -342,7 +354,9 @@ bool ARMPassConfig::addPreISel() {
   // TODO(mseaborn): Make the ABI checks coexist with GlobalMerge to
   // get back the performance benefits of GlobalMerge.
   if (!getARMSubtarget().isTargetNaCl() &&
-      TM->getOptLevel() != CodeGenOpt::None)
+      (TM->getOptLevel() == CodeGenOpt::Aggressive &&
+       EnableGlobalMerge == cl::BOU_UNSET) ||
+      EnableGlobalMerge == cl::BOU_TRUE)
   // @LOCALMOD-END
     // FIXME: This is using the thumb1 only constant value for
     // maximal global offset for merging globals. We may want
@@ -365,18 +379,22 @@ bool ARMPassConfig::addInstSelector() {
 }
 
 void ARMPassConfig::addPreRegAlloc() {
-  if (getOptLevel() != CodeGenOpt::None)
-    addPass(createARMLoadStoreOptimizationPass(true));
-  if (getOptLevel() != CodeGenOpt::None)
+  if (getOptLevel() != CodeGenOpt::None) {
     addPass(createMLxExpansionPass());
-  if (getOptLevel() != CodeGenOpt::None && !DisableA15SDOptimization) {
-    addPass(createA15SDOptimizerPass());
+
+    if (EnableARMLoadStoreOpt)
+      addPass(createARMLoadStoreOptimizationPass(/* pre-register alloc */ true));
+
+    if (!DisableA15SDOptimization)
+      addPass(createA15SDOptimizerPass());
   }
 }
 
 void ARMPassConfig::addPreSched2() {
   if (getOptLevel() != CodeGenOpt::None) {
-    addPass(createARMLoadStoreOptimizationPass());
+    if (EnableARMLoadStoreOpt)
+      addPass(createARMLoadStoreOptimizationPass());
+
     addPass(createExecutionDependencyFixPass(&ARM::DPRRegClass));
   }
 
@@ -390,7 +408,7 @@ void ARMPassConfig::addPreSched2() {
       addPass(createThumb2SizeReductionPass());
     if (!getARMSubtarget().isThumb1Only())
       addPass(&IfConverterID);
-   }
+  }
   addPass(createThumb2ITBlockPass());
 }
 

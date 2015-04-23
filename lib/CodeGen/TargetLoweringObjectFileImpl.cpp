@@ -245,9 +245,11 @@ static StringRef getSectionPrefixForGlobal(SectionKind Kind) {
   return ".data.rel.ro";
 }
 
-static const MCSectionELF *selectELFSectionForGlobal(
-    MCContext &Ctx, const GlobalValue *GV, SectionKind Kind, Mangler &Mang,
-    const TargetMachine &TM, bool EmitUniqueSection, unsigned Flags) {
+static const MCSectionELF *
+selectELFSectionForGlobal(MCContext &Ctx, const GlobalValue *GV,
+                          SectionKind Kind, Mangler &Mang,
+                          const TargetMachine &TM, bool EmitUniqueSection,
+                          unsigned Flags, unsigned *NextUniqueID) {
   unsigned EntrySize = 0;
   if (Kind.isMergeableCString()) {
     if (Kind.isMergeable2ByteCString()) {
@@ -297,9 +299,13 @@ static const MCSectionELF *selectELFSectionForGlobal(
     Name.push_back('.');
     TM.getNameWithPrefix(Name, GV, Mang, true);
   }
+  unsigned UniqueID = ~0;
+  if (EmitUniqueSection && !UniqueSectionNames) {
+    UniqueID = *NextUniqueID;
+    (*NextUniqueID)++;
+  }
   return Ctx.getELFSection(Name, getELFSectionType(Name, Kind), Flags,
-                           EntrySize, Group,
-                           EmitUniqueSection && !UniqueSectionNames);
+                           EntrySize, Group, UniqueID);
 }
 
 const MCSection *TargetLoweringObjectFileELF::SelectSectionForGlobal(
@@ -319,7 +325,7 @@ const MCSection *TargetLoweringObjectFileELF::SelectSectionForGlobal(
   EmitUniqueSection |= GV->hasComdat();
 
   return selectELFSectionForGlobal(getContext(), GV, Kind, Mang, TM,
-                                   EmitUniqueSection, Flags);
+                                   EmitUniqueSection, Flags, &NextUniqueID);
 }
 
 const MCSection *TargetLoweringObjectFileELF::getSectionForJumpTable(
@@ -332,7 +338,8 @@ const MCSection *TargetLoweringObjectFileELF::getSectionForJumpTable(
     return ReadOnlySection;
 
   return selectELFSectionForGlobal(getContext(), &F, SectionKind::getReadOnly(),
-                                   Mang, TM, EmitUniqueSection, ELF::SHF_ALLOC);
+                                   Mang, TM, EmitUniqueSection, ELF::SHF_ALLOC,
+                                   &NextUniqueID);
 }
 
 bool TargetLoweringObjectFileELF::shouldPutJumpTableInFunctionSection(
@@ -927,6 +934,11 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
       StringRef COMDATSymName = Sym->getName();
       return getContext().getCOFFSection(Name, Characteristics, Kind,
                                          COMDATSymName, Selection);
+    } else {
+      SmallString<256> TmpData;
+      getNameWithPrefix(TmpData, GV, /*CannotUsePrivateLabel=*/true, Mang, TM);
+      return getContext().getCOFFSection(Name, Characteristics, Kind, TmpData,
+                                         Selection);
     }
   }
 
@@ -946,6 +958,42 @@ SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
     return BSSSection;
 
   return DataSection;
+}
+
+void TargetLoweringObjectFileCOFF::getNameWithPrefix(
+    SmallVectorImpl<char> &OutName, const GlobalValue *GV,
+    bool CannotUsePrivateLabel, Mangler &Mang, const TargetMachine &TM) const {
+  if (GV->hasPrivateLinkage() &&
+      ((isa<Function>(GV) && TM.getFunctionSections()) ||
+       (isa<GlobalVariable>(GV) && TM.getDataSections())))
+    CannotUsePrivateLabel = true;
+
+  Mang.getNameWithPrefix(OutName, GV, CannotUsePrivateLabel);
+}
+
+const MCSection *TargetLoweringObjectFileCOFF::getSectionForJumpTable(
+    const Function &F, Mangler &Mang, const TargetMachine &TM) const {
+  // If the function can be removed, produce a unique section so that
+  // the table doesn't prevent the removal.
+  const Comdat *C = F.getComdat();
+  bool EmitUniqueSection = TM.getFunctionSections() || C;
+  if (!EmitUniqueSection)
+    return ReadOnlySection;
+
+  // FIXME: we should produce a symbol for F instead.
+  if (F.hasPrivateLinkage())
+    return ReadOnlySection;
+
+  MCSymbol *Sym = TM.getSymbol(&F, Mang);
+  StringRef COMDATSymName = Sym->getName();
+
+  SectionKind Kind = SectionKind::getReadOnly();
+  const char *Name = getCOFFSectionNameForUniqueGlobal(Kind);
+  unsigned Characteristics = getCOFFSectionFlags(Kind);
+  Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
+
+  return getContext().getCOFFSection(Name, Characteristics, Kind, COMDATSymName,
+                                     COFF::IMAGE_COMDAT_SELECT_ASSOCIATIVE);
 }
 
 StringRef TargetLoweringObjectFileCOFF::

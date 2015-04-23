@@ -23,11 +23,11 @@ target triple = "x86_64-apple-macosx10.7.0"
 
 define i32 @depth(double* nocapture %A, i32 %m) #0 {
 entry:
-  tail call void @llvm.dbg.value(metadata double* %A, i64 0, metadata !12, metadata !{}), !dbg !19
-  tail call void @llvm.dbg.value(metadata i32 %m, i64 0, metadata !13, metadata !{}), !dbg !19
-  tail call void @llvm.dbg.value(metadata i32 00, i64 0, metadata !14, metadata !{}), !dbg !21
-  tail call void @llvm.dbg.value(metadata i32 02, i64 0, metadata !15, metadata !{}), !dbg !21
-  tail call void @llvm.dbg.value(metadata i32 0, i64 0, metadata !16, metadata !{}), !dbg !23
+  tail call void @llvm.dbg.value(metadata double* %A, i64 0, metadata !12, metadata !MDExpression()), !dbg !19
+  tail call void @llvm.dbg.value(metadata i32 %m, i64 0, metadata !13, metadata !MDExpression()), !dbg !19
+  tail call void @llvm.dbg.value(metadata i32 00, i64 0, metadata !14, metadata !MDExpression()), !dbg !21
+  tail call void @llvm.dbg.value(metadata i32 02, i64 0, metadata !15, metadata !MDExpression()), !dbg !21
+  tail call void @llvm.dbg.value(metadata i32 0, i64 0, metadata !16, metadata !MDExpression()), !dbg !23
   %cmp8 = icmp sgt i32 %m, 0, !dbg !23
   br i1 %cmp8, label %for.body.lr.ph, label %for.end, !dbg !23
 
@@ -59,7 +59,7 @@ attributes #1 = { nounwind readnone }
 
 !0 = !MDCompileUnit(language: DW_LANG_C99, producer: "clang version 3.4 (trunk 187335) (llvm/trunk 187335:187340M)", isOptimized: true, emissionKind: 0, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !MDFile(filename: "file.c", directory: "/Users/nadav")
-!2 = !{i32 0}
+!2 = !{}
 !3 = !{!4}
 !4 = !MDSubprogram(name: "depth", line: 1, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 1, file: !1, scope: !5, type: !6, function: i32 (double*, i32)* @depth, variables: !11)
 !5 = !MDFile(filename: "file.c", directory: "/Users/nadav")

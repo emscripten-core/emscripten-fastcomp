@@ -46,6 +46,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/SwapByteOrder.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/ASanStackFrameLayout.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -83,8 +84,6 @@ static const char *const kAsanModuleCtorName = "asan.module_ctor";
 static const char *const kAsanModuleDtorName = "asan.module_dtor";
 static const uint64_t kAsanCtorAndDtorPriority = 1;
 static const char *const kAsanReportErrorTemplate = "__asan_report_";
-static const char *const kAsanReportLoadN = "__asan_report_load_n";
-static const char *const kAsanReportStoreN = "__asan_report_store_n";
 static const char *const kAsanRegisterGlobalsName = "__asan_register_globals";
 static const char *const kAsanUnregisterGlobalsName =
     "__asan_unregister_globals";
@@ -106,10 +105,6 @@ static const char *const kAsanUnpoisonStackMemoryName =
 
 static const char *const kAsanOptionDetectUAR =
     "__asan_option_detect_stack_use_after_return";
-
-#ifndef NDEBUG
-static const int kAsanStackAfterReturnMagic = 0xf5;
-#endif
 
 // Accesses sizes are powers of two: 1, 2, 4, 8, 16.
 static const size_t kNumberOfAccessSizes = 5;
@@ -215,6 +210,11 @@ static cl::opt<bool> ClDynamicAllocaStack(
     "asan-stack-dynamic-alloca",
     cl::desc("Use dynamic alloca to represent stack variables"), cl::Hidden,
     cl::init(true));
+
+static cl::opt<uint32_t> ClForceExperiment(
+    "asan-force-experiment",
+    cl::desc("Force optimization experiment (for testing)"), cl::Hidden,
+    cl::init(0));
 
 // Debug flags.
 static cl::opt<int> ClDebug("asan-debug", cl::desc("debug"), cl::Hidden,
@@ -396,27 +396,32 @@ struct AddressSanitizer : public FunctionPass {
   }
   uint64_t getAllocaSizeInBytes(AllocaInst *AI) const {
     Type *Ty = AI->getAllocatedType();
-    uint64_t SizeInBytes = DL->getTypeAllocSize(Ty);
+    uint64_t SizeInBytes =
+        AI->getModule()->getDataLayout().getTypeAllocSize(Ty);
     return SizeInBytes;
   }
   /// Check if we want (and can) handle this alloca.
-  bool isInterestingAlloca(AllocaInst &AI) const;
+  bool isInterestingAlloca(AllocaInst &AI);
   /// If it is an interesting memory access, return the PointerOperand
   /// and set IsWrite/Alignment. Otherwise return nullptr.
   Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
                                    uint64_t *TypeSize,
-                                   unsigned *Alignment) const;
+                                   unsigned *Alignment);
   void instrumentMop(ObjectSizeOffsetVisitor &ObjSizeVis, Instruction *I,
-                     bool UseCalls);
+                     bool UseCalls, const DataLayout &DL);
   void instrumentPointerComparisonOrSubtraction(Instruction *I);
   void instrumentAddress(Instruction *OrigIns, Instruction *InsertBefore,
                          Value *Addr, uint32_t TypeSize, bool IsWrite,
-                         Value *SizeArgument, bool UseCalls);
+                         Value *SizeArgument, bool UseCalls, uint32_t Exp);
+  void instrumentUnusualSizeOrAlignment(Instruction *I, Value *Addr,
+                                        uint32_t TypeSize, bool IsWrite,
+                                        Value *SizeArgument, bool UseCalls,
+                                        uint32_t Exp);
   Value *createSlowPathCmp(IRBuilder<> &IRB, Value *AddrLong,
                            Value *ShadowValue, uint32_t TypeSize);
   Instruction *generateCrashCode(Instruction *InsertBefore, Value *Addr,
                                  bool IsWrite, size_t AccessSizeIndex,
-                                 Value *SizeArgument);
+                                 Value *SizeArgument, uint32_t Exp);
   void instrumentMemIntrinsic(MemIntrinsic *MI);
   Value *memToShadow(Value *Shadow, IRBuilder<> &IRB);
   bool runOnFunction(Function &F) override;
@@ -435,7 +440,6 @@ struct AddressSanitizer : public FunctionPass {
                     uint64_t TypeSize) const;
 
   LLVMContext *C;
-  const DataLayout *DL;
   Triple TargetTriple;
   int LongSize;
   Type *IntptrTy;
@@ -445,14 +449,16 @@ struct AddressSanitizer : public FunctionPass {
   Function *AsanInitFunction;
   Function *AsanHandleNoReturnFunc;
   Function *AsanPtrCmpFunction, *AsanPtrSubFunction;
-  // This array is indexed by AccessIsWrite and log2(AccessSize).
-  Function *AsanErrorCallback[2][kNumberOfAccessSizes];
-  Function *AsanMemoryAccessCallback[2][kNumberOfAccessSizes];
-  // This array is indexed by AccessIsWrite.
-  Function *AsanErrorCallbackSized[2], *AsanMemoryAccessCallbackSized[2];
+  // This array is indexed by AccessIsWrite, Experiment and log2(AccessSize).
+  Function *AsanErrorCallback[2][2][kNumberOfAccessSizes];
+  Function *AsanMemoryAccessCallback[2][2][kNumberOfAccessSizes];
+  // This array is indexed by AccessIsWrite and Experiment.
+  Function *AsanErrorCallbackSized[2][2];
+  Function *AsanMemoryAccessCallbackSized[2][2];
   Function *AsanMemmove, *AsanMemcpy, *AsanMemset;
   InlineAsm *EmptyAsm;
   GlobalsMetadata GlobalsMD;
+  DenseMap<AllocaInst *, bool> ProcessedAllocas;
 
   friend struct FunctionStackPoisoner;
 };
@@ -478,7 +484,6 @@ class AddressSanitizerModule : public ModulePass {
   GlobalsMetadata GlobalsMD;
   Type *IntptrTy;
   LLVMContext *C;
-  const DataLayout *DL;
   Triple TargetTriple;
   ShadowMapping Mapping;
   Function *AsanPoisonGlobals;
@@ -605,8 +610,9 @@ struct FunctionStackPoisoner : public InstVisitor<FunctionStackPoisoner> {
 
   // Right shift for BigEndian and left shift for LittleEndian.
   Value *shiftAllocaMagic(Value *Val, IRBuilder<> &IRB, Value *Shift) {
-    return ASan.DL->isLittleEndian() ? IRB.CreateShl(Val, Shift)
-                                     : IRB.CreateLShr(Val, Shift);
+    auto &DL = F.getParent()->getDataLayout();
+    return DL.isLittleEndian() ? IRB.CreateShl(Val, Shift)
+                               : IRB.CreateLShr(Val, Shift);
   }
 
   // Compute PartialRzMagic for dynamic alloca call. Since we don't know the
@@ -799,13 +805,21 @@ void AddressSanitizer::instrumentMemIntrinsic(MemIntrinsic *MI) {
 }
 
 /// Check if we want (and can) handle this alloca.
-bool AddressSanitizer::isInterestingAlloca(AllocaInst &AI) const {
-  return (AI.getAllocatedType()->isSized() &&
-          // alloca() may be called with 0 size, ignore it.
-          getAllocaSizeInBytes(&AI) > 0 &&
-          // We are only interested in allocas not promotable to registers.
-          // Promotable allocas are common under -O0.
-          (!ClSkipPromotableAllocas || !isAllocaPromotable(&AI)));
+bool AddressSanitizer::isInterestingAlloca(AllocaInst &AI) {
+  auto PreviouslySeenAllocaInfo = ProcessedAllocas.find(&AI);
+
+  if (PreviouslySeenAllocaInfo != ProcessedAllocas.end())
+    return PreviouslySeenAllocaInfo->getSecond();
+
+  bool IsInteresting = (AI.getAllocatedType()->isSized() &&
+    // alloca() may be called with 0 size, ignore it.
+    getAllocaSizeInBytes(&AI) > 0 &&
+    // We are only interested in allocas not promotable to registers.
+    // Promotable allocas are common under -O0.
+    (!ClSkipPromotableAllocas || !isAllocaPromotable(&AI)));
+
+  ProcessedAllocas[&AI] = IsInteresting;
+  return IsInteresting;
 }
 
 /// If I is an interesting memory access, return the PointerOperand
@@ -813,34 +827,34 @@ bool AddressSanitizer::isInterestingAlloca(AllocaInst &AI) const {
 Value *AddressSanitizer::isInterestingMemoryAccess(Instruction *I,
                                                    bool *IsWrite,
                                                    uint64_t *TypeSize,
-                                                   unsigned *Alignment) const {
+                                                   unsigned *Alignment) {
   // Skip memory accesses inserted by another instrumentation.
   if (I->getMetadata("nosanitize")) return nullptr;
 
   Value *PtrOperand = nullptr;
+  const DataLayout &DL = I->getModule()->getDataLayout();
   if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
     if (!ClInstrumentReads) return nullptr;
     *IsWrite = false;
-    *TypeSize = DL->getTypeStoreSizeInBits(LI->getType());
+    *TypeSize = DL.getTypeStoreSizeInBits(LI->getType());
     *Alignment = LI->getAlignment();
     PtrOperand = LI->getPointerOperand();
   } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
     if (!ClInstrumentWrites) return nullptr;
     *IsWrite = true;
-    *TypeSize = DL->getTypeStoreSizeInBits(SI->getValueOperand()->getType());
+    *TypeSize = DL.getTypeStoreSizeInBits(SI->getValueOperand()->getType());
     *Alignment = SI->getAlignment();
     PtrOperand = SI->getPointerOperand();
   } else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(I)) {
     if (!ClInstrumentAtomics) return nullptr;
     *IsWrite = true;
-    *TypeSize = DL->getTypeStoreSizeInBits(RMW->getValOperand()->getType());
+    *TypeSize = DL.getTypeStoreSizeInBits(RMW->getValOperand()->getType());
     *Alignment = 0;
     PtrOperand = RMW->getPointerOperand();
   } else if (AtomicCmpXchgInst *XCHG = dyn_cast<AtomicCmpXchgInst>(I)) {
     if (!ClInstrumentAtomics) return nullptr;
     *IsWrite = true;
-    *TypeSize =
-        DL->getTypeStoreSizeInBits(XCHG->getCompareOperand()->getType());
+    *TypeSize = DL.getTypeStoreSizeInBits(XCHG->getCompareOperand()->getType());
     *Alignment = 0;
     PtrOperand = XCHG->getPointerOperand();
   }
@@ -896,18 +910,31 @@ void AddressSanitizer::instrumentPointerComparisonOrSubtraction(
 }
 
 void AddressSanitizer::instrumentMop(ObjectSizeOffsetVisitor &ObjSizeVis,
-                                     Instruction *I, bool UseCalls) {
+                                     Instruction *I, bool UseCalls,
+                                     const DataLayout &DL) {
   bool IsWrite = false;
   unsigned Alignment = 0;
   uint64_t TypeSize = 0;
   Value *Addr = isInterestingMemoryAccess(I, &IsWrite, &TypeSize, &Alignment);
   assert(Addr);
 
+  // Optimization experiments.
+  // The experiments can be used to evaluate potential optimizations that remove
+  // instrumentation (assess false negatives). Instead of completely removing
+  // some instrumentation, you set Exp to a non-zero value (mask of optimization
+  // experiments that want to remove instrumentation of this instruction).
+  // If Exp is non-zero, this pass will emit special calls into runtime
+  // (e.g. __asan_report_exp_load1 instead of __asan_report_load1). These calls
+  // make runtime terminate the program in a special way (with a different
+  // exit status). Then you run the new compiler on a buggy corpus, collect
+  // the special terminations (ideally, you don't see them at all -- no false
+  // negatives) and make the decision on the optimization.
+  uint32_t Exp = ClForceExperiment;
+
   if (ClOpt && ClOptGlobals) {
     // If initialization order checking is disabled, a simple access to a
     // dynamically initialized global is always valid.
-    GlobalVariable *G =
-        dyn_cast<GlobalVariable>(GetUnderlyingObject(Addr, nullptr));
+    GlobalVariable *G = dyn_cast<GlobalVariable>(GetUnderlyingObject(Addr, DL));
     if (G != NULL && (!ClInitializers || GlobalIsLinkerInitialized(G)) &&
         isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
       NumOptimizedAccessesToGlobalVar++;
@@ -917,7 +944,7 @@ void AddressSanitizer::instrumentMop(ObjectSizeOffsetVisitor &ObjSizeVis,
 
   if (ClOpt && ClOptStack) {
     // A direct inbounds access to a stack variable is always valid.
-    if (isa<AllocaInst>(GetUnderlyingObject(Addr, nullptr)) &&
+    if (isa<AllocaInst>(GetUnderlyingObject(Addr, DL)) &&
         isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
       NumOptimizedAccessesToStackVar++;
       return;
@@ -935,46 +962,35 @@ void AddressSanitizer::instrumentMop(ObjectSizeOffsetVisitor &ObjSizeVis,
   if ((TypeSize == 8 || TypeSize == 16 || TypeSize == 32 || TypeSize == 64 ||
        TypeSize == 128) &&
       (Alignment >= Granularity || Alignment == 0 || Alignment >= TypeSize / 8))
-    return instrumentAddress(I, I, Addr, TypeSize, IsWrite, nullptr, UseCalls);
-  // Instrument unusual size or unusual alignment.
-  // We can not do it with a single check, so we do 1-byte check for the first
-  // and the last bytes. We call __asan_report_*_n(addr, real_size) to be able
-  // to report the actual access size.
-  IRBuilder<> IRB(I);
-  Value *Size = ConstantInt::get(IntptrTy, TypeSize / 8);
-  Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
-  if (UseCalls) {
-    IRB.CreateCall2(AsanMemoryAccessCallbackSized[IsWrite], AddrLong, Size);
-  } else {
-    Value *LastByte = IRB.CreateIntToPtr(
-        IRB.CreateAdd(AddrLong, ConstantInt::get(IntptrTy, TypeSize / 8 - 1)),
-        Addr->getType());
-    instrumentAddress(I, I, Addr, 8, IsWrite, Size, false);
-    instrumentAddress(I, I, LastByte, 8, IsWrite, Size, false);
-  }
-}
-
-// Validate the result of Module::getOrInsertFunction called for an interface
-// function of AddressSanitizer. If the instrumented module defines a function
-// with the same name, their prototypes must match, otherwise
-// getOrInsertFunction returns a bitcast.
-static Function *checkInterfaceFunction(Constant *FuncOrBitcast) {
-  if (isa<Function>(FuncOrBitcast)) return cast<Function>(FuncOrBitcast);
-  FuncOrBitcast->dump();
-  report_fatal_error(
-      "trying to redefine an AddressSanitizer "
-      "interface function");
+    return instrumentAddress(I, I, Addr, TypeSize, IsWrite, nullptr, UseCalls,
+                             Exp);
+  instrumentUnusualSizeOrAlignment(I, Addr, TypeSize, IsWrite, nullptr,
+                                   UseCalls, Exp);
 }
 
 Instruction *AddressSanitizer::generateCrashCode(Instruction *InsertBefore,
                                                  Value *Addr, bool IsWrite,
                                                  size_t AccessSizeIndex,
-                                                 Value *SizeArgument) {
+                                                 Value *SizeArgument,
+                                                 uint32_t Exp) {
   IRBuilder<> IRB(InsertBefore);
-  CallInst *Call =
-      SizeArgument
-          ? IRB.CreateCall2(AsanErrorCallbackSized[IsWrite], Addr, SizeArgument)
-          : IRB.CreateCall(AsanErrorCallback[IsWrite][AccessSizeIndex], Addr);
+  Value *ExpVal = Exp == 0 ? nullptr : ConstantInt::get(IRB.getInt32Ty(), Exp);
+  CallInst *Call = nullptr;
+  if (SizeArgument) {
+    if (Exp == 0)
+      Call = IRB.CreateCall2(AsanErrorCallbackSized[IsWrite][0], Addr,
+                             SizeArgument);
+    else
+      Call = IRB.CreateCall3(AsanErrorCallbackSized[IsWrite][1], Addr,
+                             SizeArgument, ExpVal);
+  } else {
+    if (Exp == 0)
+      Call =
+          IRB.CreateCall(AsanErrorCallback[IsWrite][0][AccessSizeIndex], Addr);
+    else
+      Call = IRB.CreateCall2(AsanErrorCallback[IsWrite][1][AccessSizeIndex],
+                             Addr, ExpVal);
+  }
 
   // We don't do Call->setDoesNotReturn() because the BB already has
   // UnreachableInst at the end.
@@ -1004,14 +1020,19 @@ Value *AddressSanitizer::createSlowPathCmp(IRBuilder<> &IRB, Value *AddrLong,
 void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
                                          Instruction *InsertBefore, Value *Addr,
                                          uint32_t TypeSize, bool IsWrite,
-                                         Value *SizeArgument, bool UseCalls) {
+                                         Value *SizeArgument, bool UseCalls,
+                                         uint32_t Exp) {
   IRBuilder<> IRB(InsertBefore);
   Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
   size_t AccessSizeIndex = TypeSizeToSizeIndex(TypeSize);
 
   if (UseCalls) {
-    IRB.CreateCall(AsanMemoryAccessCallback[IsWrite][AccessSizeIndex],
-                   AddrLong);
+    if (Exp == 0)
+      IRB.CreateCall(AsanMemoryAccessCallback[IsWrite][0][AccessSizeIndex],
+                     AddrLong);
+    else
+      IRB.CreateCall2(AsanMemoryAccessCallback[IsWrite][1][AccessSizeIndex],
+                      AddrLong, ConstantInt::get(IRB.getInt32Ty(), Exp));
     return;
   }
 
@@ -1032,7 +1053,7 @@ void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
     // path is rarely taken. This seems to be the case for SPEC benchmarks.
     TerminatorInst *CheckTerm = SplitBlockAndInsertIfThen(
         Cmp, InsertBefore, false, MDBuilder(*C).createBranchWeights(1, 100000));
-    assert(dyn_cast<BranchInst>(CheckTerm)->isUnconditional());
+    assert(cast<BranchInst>(CheckTerm)->isUnconditional());
     BasicBlock *NextBB = CheckTerm->getSuccessor(0);
     IRB.SetInsertPoint(CheckTerm);
     Value *Cmp2 = createSlowPathCmp(IRB, AddrLong, ShadowValue, TypeSize);
@@ -1046,8 +1067,34 @@ void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
   }
 
   Instruction *Crash = generateCrashCode(CrashTerm, AddrLong, IsWrite,
-                                         AccessSizeIndex, SizeArgument);
+                                         AccessSizeIndex, SizeArgument, Exp);
   Crash->setDebugLoc(OrigIns->getDebugLoc());
+}
+
+// Instrument unusual size or unusual alignment.
+// We can not do it with a single check, so we do 1-byte check for the first
+// and the last bytes. We call __asan_report_*_n(addr, real_size) to be able
+// to report the actual access size.
+void AddressSanitizer::instrumentUnusualSizeOrAlignment(
+    Instruction *I, Value *Addr, uint32_t TypeSize, bool IsWrite,
+    Value *SizeArgument, bool UseCalls, uint32_t Exp) {
+  IRBuilder<> IRB(I);
+  Value *Size = ConstantInt::get(IntptrTy, TypeSize / 8);
+  Value *AddrLong = IRB.CreatePointerCast(Addr, IntptrTy);
+  if (UseCalls) {
+    if (Exp == 0)
+      IRB.CreateCall2(AsanMemoryAccessCallbackSized[IsWrite][0], AddrLong,
+                      Size);
+    else
+      IRB.CreateCall3(AsanMemoryAccessCallbackSized[IsWrite][1], AddrLong, Size,
+                      ConstantInt::get(IRB.getInt32Ty(), Exp));
+  } else {
+    Value *LastByte = IRB.CreateIntToPtr(
+        IRB.CreateAdd(AddrLong, ConstantInt::get(IntptrTy, TypeSize / 8 - 1)),
+        Addr->getType());
+    instrumentAddress(I, I, Addr, 8, IsWrite, Size, false, Exp);
+    instrumentAddress(I, I, LastByte, 8, IsWrite, Size, false, Exp);
+  }
 }
 
 void AddressSanitizerModule::poisonOneInitializer(Function &GlobalInit,
@@ -1169,17 +1216,17 @@ bool AddressSanitizerModule::ShouldInstrumentGlobal(GlobalVariable *G) {
 void AddressSanitizerModule::initializeCallbacks(Module &M) {
   IRBuilder<> IRB(*C);
   // Declare our poisoning and unpoisoning functions.
-  AsanPoisonGlobals = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanPoisonGlobals = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       kAsanPoisonGlobalsName, IRB.getVoidTy(), IntptrTy, nullptr));
   AsanPoisonGlobals->setLinkage(Function::ExternalLinkage);
-  AsanUnpoisonGlobals = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanUnpoisonGlobals = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       kAsanUnpoisonGlobalsName, IRB.getVoidTy(), nullptr));
   AsanUnpoisonGlobals->setLinkage(Function::ExternalLinkage);
   // Declare functions that register/unregister globals.
-  AsanRegisterGlobals = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanRegisterGlobals = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       kAsanRegisterGlobalsName, IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
   AsanRegisterGlobals->setLinkage(Function::ExternalLinkage);
-  AsanUnregisterGlobals = checkInterfaceFunction(
+  AsanUnregisterGlobals = checkSanitizerInterfaceFunction(
       M.getOrInsertFunction(kAsanUnregisterGlobalsName, IRB.getVoidTy(),
                             IntptrTy, IntptrTy, nullptr));
   AsanUnregisterGlobals->setLinkage(Function::ExternalLinkage);
@@ -1221,6 +1268,7 @@ bool AddressSanitizerModule::InstrumentGlobals(IRBuilder<> &IRB, Module &M) {
   GlobalVariable *ModuleName = createPrivateGlobalForString(
       M, M.getModuleIdentifier(), /*AllowMerging*/ false);
 
+  auto &DL = M.getDataLayout();
   for (size_t i = 0; i < n; i++) {
     static const uint64_t kMaxGlobalRedzone = 1 << 18;
     GlobalVariable *G = GlobalsToChange[i];
@@ -1234,7 +1282,7 @@ bool AddressSanitizerModule::InstrumentGlobals(IRBuilder<> &IRB, Module &M) {
 
     PointerType *PtrTy = cast<PointerType>(G->getType());
     Type *Ty = PtrTy->getElementType();
-    uint64_t SizeInBytes = DL->getTypeAllocSize(Ty);
+    uint64_t SizeInBytes = DL.getTypeAllocSize(Ty);
     uint64_t MinRZ = MinRedzoneSizeForGlobal();
     // MinRZ <= RZ <= kMaxGlobalRedzone
     // and trying to make RZ to be ~ 1/4 of SizeInBytes.
@@ -1266,7 +1314,7 @@ bool AddressSanitizerModule::InstrumentGlobals(IRBuilder<> &IRB, Module &M) {
     Indices2[1] = IRB.getInt32(0);
 
     G->replaceAllUsesWith(
-        ConstantExpr::getGetElementPtr(NewGlobal, Indices2, true));
+        ConstantExpr::getGetElementPtr(NewTy, NewGlobal, Indices2, true));
     NewGlobal->takeName(G);
     G->eraseFromParent();
 
@@ -1320,9 +1368,8 @@ bool AddressSanitizerModule::InstrumentGlobals(IRBuilder<> &IRB, Module &M) {
 }
 
 bool AddressSanitizerModule::runOnModule(Module &M) {
-  DL = &M.getDataLayout();
   C = &(M.getContext());
-  int LongSize = DL->getPointerSizeInBits();
+  int LongSize = M.getDataLayout().getPointerSizeInBits();
   IntptrTy = Type::getIntNTy(*C, LongSize);
   TargetTriple = Triple(M.getTargetTriple());
   Mapping = getShadowMapping(TargetTriple, LongSize);
@@ -1342,50 +1389,51 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
 void AddressSanitizer::initializeCallbacks(Module &M) {
   IRBuilder<> IRB(*C);
   // Create __asan_report* callbacks.
-  for (size_t AccessIsWrite = 0; AccessIsWrite <= 1; AccessIsWrite++) {
-    for (size_t AccessSizeIndex = 0; AccessSizeIndex < kNumberOfAccessSizes;
-         AccessSizeIndex++) {
-      // IsWrite and TypeSize are encoded in the function name.
-      std::string Suffix =
-          (AccessIsWrite ? "store" : "load") + itostr(1 << AccessSizeIndex);
-      AsanErrorCallback[AccessIsWrite][AccessSizeIndex] =
-          checkInterfaceFunction(
-              M.getOrInsertFunction(kAsanReportErrorTemplate + Suffix,
-                                    IRB.getVoidTy(), IntptrTy, nullptr));
-      AsanMemoryAccessCallback[AccessIsWrite][AccessSizeIndex] =
-          checkInterfaceFunction(
-              M.getOrInsertFunction(ClMemoryAccessCallbackPrefix + Suffix,
-                                    IRB.getVoidTy(), IntptrTy, nullptr));
+  // IsWrite, TypeSize and Exp are encoded in the function name.
+  for (int Exp = 0; Exp < 2; Exp++) {
+    for (size_t AccessIsWrite = 0; AccessIsWrite <= 1; AccessIsWrite++) {
+      const std::string TypeStr = AccessIsWrite ? "store" : "load";
+      const std::string ExpStr = Exp ? "exp_" : "";
+      const Type *ExpType = Exp ? Type::getInt32Ty(*C) : nullptr;
+      AsanErrorCallbackSized[AccessIsWrite][Exp] =
+          checkSanitizerInterfaceFunction(M.getOrInsertFunction(
+              kAsanReportErrorTemplate + ExpStr + TypeStr + "_n",
+              IRB.getVoidTy(), IntptrTy, IntptrTy, ExpType, nullptr));
+      AsanMemoryAccessCallbackSized[AccessIsWrite][Exp] =
+          checkSanitizerInterfaceFunction(M.getOrInsertFunction(
+              ClMemoryAccessCallbackPrefix + ExpStr + TypeStr + "N",
+              IRB.getVoidTy(), IntptrTy, IntptrTy, ExpType, nullptr));
+      for (size_t AccessSizeIndex = 0; AccessSizeIndex < kNumberOfAccessSizes;
+           AccessSizeIndex++) {
+        const std::string Suffix = TypeStr + itostr(1 << AccessSizeIndex);
+        AsanErrorCallback[AccessIsWrite][Exp][AccessSizeIndex] =
+            checkSanitizerInterfaceFunction(M.getOrInsertFunction(
+                kAsanReportErrorTemplate + ExpStr + Suffix, IRB.getVoidTy(),
+                IntptrTy, ExpType, nullptr));
+        AsanMemoryAccessCallback[AccessIsWrite][Exp][AccessSizeIndex] =
+            checkSanitizerInterfaceFunction(M.getOrInsertFunction(
+                ClMemoryAccessCallbackPrefix + ExpStr + Suffix, IRB.getVoidTy(),
+                IntptrTy, ExpType, nullptr));
+      }
     }
   }
-  AsanErrorCallbackSized[0] = checkInterfaceFunction(M.getOrInsertFunction(
-      kAsanReportLoadN, IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
-  AsanErrorCallbackSized[1] = checkInterfaceFunction(M.getOrInsertFunction(
-      kAsanReportStoreN, IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
 
-  AsanMemoryAccessCallbackSized[0] = checkInterfaceFunction(
-      M.getOrInsertFunction(ClMemoryAccessCallbackPrefix + "loadN",
-                            IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
-  AsanMemoryAccessCallbackSized[1] = checkInterfaceFunction(
-      M.getOrInsertFunction(ClMemoryAccessCallbackPrefix + "storeN",
-                            IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
-
-  AsanMemmove = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanMemmove = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       ClMemoryAccessCallbackPrefix + "memmove", IRB.getInt8PtrTy(),
       IRB.getInt8PtrTy(), IRB.getInt8PtrTy(), IntptrTy, nullptr));
-  AsanMemcpy = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanMemcpy = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       ClMemoryAccessCallbackPrefix + "memcpy", IRB.getInt8PtrTy(),
       IRB.getInt8PtrTy(), IRB.getInt8PtrTy(), IntptrTy, nullptr));
-  AsanMemset = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanMemset = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       ClMemoryAccessCallbackPrefix + "memset", IRB.getInt8PtrTy(),
       IRB.getInt8PtrTy(), IRB.getInt32Ty(), IntptrTy, nullptr));
 
-  AsanHandleNoReturnFunc = checkInterfaceFunction(
+  AsanHandleNoReturnFunc = checkSanitizerInterfaceFunction(
       M.getOrInsertFunction(kAsanHandleNoReturnName, IRB.getVoidTy(), nullptr));
 
-  AsanPtrCmpFunction = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanPtrCmpFunction = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       kAsanPtrCmp, IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
-  AsanPtrSubFunction = checkInterfaceFunction(M.getOrInsertFunction(
+  AsanPtrSubFunction = checkSanitizerInterfaceFunction(M.getOrInsertFunction(
       kAsanPtrSub, IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
   // We insert an empty inline asm after __asan_report* to avoid callback merge.
   EmptyAsm = InlineAsm::get(FunctionType::get(IRB.getVoidTy(), false),
@@ -1396,12 +1444,11 @@ void AddressSanitizer::initializeCallbacks(Module &M) {
 // virtual
 bool AddressSanitizer::doInitialization(Module &M) {
   // Initialize the private fields. No one has accessed them before.
-  DL = &M.getDataLayout();
 
   GlobalsMD.init(M);
 
   C = &(M.getContext());
-  LongSize = DL->getPointerSizeInBits();
+  LongSize = M.getDataLayout().getPointerSizeInBits();
   IntptrTy = Type::getIntNTy(*C, LongSize);
   TargetTriple = Triple(M.getTargetTriple());
 
@@ -1411,7 +1458,7 @@ bool AddressSanitizer::doInitialization(Module &M) {
   BasicBlock *AsanCtorBB = BasicBlock::Create(*C, "", AsanCtorFunction);
   // call __asan_init in the module ctor.
   IRBuilder<> IRB(ReturnInst::Create(*C, AsanCtorBB));
-  AsanInitFunction = checkInterfaceFunction(
+  AsanInitFunction = checkSanitizerInterfaceFunction(
       M.getOrInsertFunction(kAsanInitName, IRB.getVoidTy(), nullptr));
   AsanInitFunction->setLinkage(Function::ExternalLinkage);
   IRB.CreateCall(AsanInitFunction);
@@ -1507,6 +1554,7 @@ bool AddressSanitizer::runOnFunction(Function &F) {
 
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+  const DataLayout &DL = F.getParent()->getDataLayout();
   ObjectSizeOffsetVisitor ObjSizeVis(DL, TLI, F.getContext(),
                                      /*RoundToAlign=*/true);
 
@@ -1516,7 +1564,8 @@ bool AddressSanitizer::runOnFunction(Function &F) {
     if (ClDebugMin < 0 || ClDebugMax < 0 ||
         (NumInstrumented >= ClDebugMin && NumInstrumented <= ClDebugMax)) {
       if (isInterestingMemoryAccess(Inst, &IsWrite, &TypeSize, &Alignment))
-        instrumentMop(ObjSizeVis, Inst, UseCalls);
+        instrumentMop(ObjSizeVis, Inst, UseCalls,
+                      F.getParent()->getDataLayout());
       else
         instrumentMemIntrinsic(cast<MemIntrinsic>(Inst));
     }
@@ -1561,16 +1610,17 @@ void FunctionStackPoisoner::initializeCallbacks(Module &M) {
   IRBuilder<> IRB(*C);
   for (int i = 0; i <= kMaxAsanStackMallocSizeClass; i++) {
     std::string Suffix = itostr(i);
-    AsanStackMallocFunc[i] = checkInterfaceFunction(M.getOrInsertFunction(
-        kAsanStackMallocNameTemplate + Suffix, IntptrTy, IntptrTy, nullptr));
-    AsanStackFreeFunc[i] = checkInterfaceFunction(
+    AsanStackMallocFunc[i] = checkSanitizerInterfaceFunction(
+        M.getOrInsertFunction(kAsanStackMallocNameTemplate + Suffix, IntptrTy,
+                              IntptrTy, nullptr));
+    AsanStackFreeFunc[i] = checkSanitizerInterfaceFunction(
         M.getOrInsertFunction(kAsanStackFreeNameTemplate + Suffix,
                               IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
   }
-  AsanPoisonStackMemoryFunc = checkInterfaceFunction(
+  AsanPoisonStackMemoryFunc = checkSanitizerInterfaceFunction(
       M.getOrInsertFunction(kAsanPoisonStackMemoryName, IRB.getVoidTy(),
                             IntptrTy, IntptrTy, nullptr));
-  AsanUnpoisonStackMemoryFunc = checkInterfaceFunction(
+  AsanUnpoisonStackMemoryFunc = checkSanitizerInterfaceFunction(
       M.getOrInsertFunction(kAsanUnpoisonStackMemoryName, IRB.getVoidTy(),
                             IntptrTy, IntptrTy, nullptr));
 }
@@ -1588,7 +1638,7 @@ void FunctionStackPoisoner::poisonRedZones(ArrayRef<uint8_t> ShadowBytes,
     for (; i + LargeStoreSizeInBytes - 1 < n; i += LargeStoreSizeInBytes) {
       uint64_t Val = 0;
       for (size_t j = 0; j < LargeStoreSizeInBytes; j++) {
-        if (ASan.DL->isLittleEndian())
+        if (F.getParent()->getDataLayout().isLittleEndian())
           Val |= (uint64_t)ShadowBytes[i + j] << (8 * j);
         else
           Val = (Val << 8) | ShadowBytes[i + j];
@@ -1620,11 +1670,15 @@ static int StackMallocSizeClass(uint64_t LocalStackSize) {
 void FunctionStackPoisoner::SetShadowToStackAfterReturnInlined(
     IRBuilder<> &IRB, Value *ShadowBase, int Size) {
   assert(!(Size % 8));
-  assert(kAsanStackAfterReturnMagic == 0xf5);
+
+  // kAsanStackAfterReturnMagic is 0xf5.
+  const uint64_t kAsanStackAfterReturnMagic64 = 0xf5f5f5f5f5f5f5f5ULL;
+
   for (int i = 0; i < Size; i += 8) {
     Value *p = IRB.CreateAdd(ShadowBase, ConstantInt::get(IntptrTy, i));
-    IRB.CreateStore(ConstantInt::get(IRB.getInt64Ty(), 0xf5f5f5f5f5f5f5f5ULL),
-                    IRB.CreateIntToPtr(p, IRB.getInt64Ty()->getPointerTo()));
+    IRB.CreateStore(
+        ConstantInt::get(IRB.getInt64Ty(), kAsanStackAfterReturnMagic64),
+        IRB.CreateIntToPtr(p, IRB.getInt64Ty()->getPointerTo()));
   }
 }
 
@@ -1701,9 +1755,11 @@ void FunctionStackPoisoner::poisonStack() {
   uint64_t LocalStackSize = L.FrameSize;
   bool DoStackMalloc =
       ClUseAfterReturn && LocalStackSize <= kMaxStackMallocSize;
-  // Don't do dynamic alloca in presence of inline asm: too often it
-  // makes assumptions on which registers are available.
+  // Don't do dynamic alloca in presence of inline asm: too often it makes
+  // assumptions on which registers are available. Don't do stack malloc in the
+  // presence of inline asm on 32-bit platforms for the same reason.
   bool DoDynamicAlloca = ClDynamicAllocaStack && !HasNonEmptyInlineAsm;
+  DoStackMalloc &= !HasNonEmptyInlineAsm || ASan.LongSize != 32;
 
   Value *StaticAlloca =
       DoDynamicAlloca ? nullptr : createAllocaForLayout(IRB, L, false);
@@ -1932,14 +1988,14 @@ Value *FunctionStackPoisoner::computePartialRzMagic(Value *PartialSize,
   Value *Shift = IRB.CreateAnd(PartialSize, IRB.getInt32(~7));
   unsigned Val1Int = kAsanAllocaPartialVal1;
   unsigned Val2Int = kAsanAllocaPartialVal2;
-  if (!ASan.DL->isLittleEndian()) {
+  if (!F.getParent()->getDataLayout().isLittleEndian()) {
     Val1Int = sys::getSwappedBytes(Val1Int);
     Val2Int = sys::getSwappedBytes(Val2Int);
   }
   Value *Val1 = shiftAllocaMagic(IRB.getInt32(Val1Int), IRB, Shift);
   Value *PartialBits = IRB.CreateAnd(PartialSize, IRB.getInt32(7));
   // For BigEndian get 0x000000YZ -> 0xYZ000000.
-  if (ASan.DL->isBigEndian())
+  if (F.getParent()->getDataLayout().isBigEndian())
     PartialBits = IRB.CreateShl(PartialBits, IRB.getInt32(24));
   Value *Val2 = IRB.getInt32(Val2Int);
   Value *Cond =
@@ -1973,7 +2029,8 @@ void FunctionStackPoisoner::handleDynamicAllocaCall(
   // redzones, and OldSize is number of allocated blocks with
   // ElementSize size, get allocated memory size in bytes by
   // OldSize * ElementSize.
-  unsigned ElementSize = ASan.DL->getTypeAllocSize(AI->getAllocatedType());
+  unsigned ElementSize =
+      F.getParent()->getDataLayout().getTypeAllocSize(AI->getAllocatedType());
   Value *OldSize = IRB.CreateMul(AI->getArraySize(),
                                  ConstantInt::get(IntptrTy, ElementSize));
 
@@ -2049,12 +2106,12 @@ bool AddressSanitizer::isSafeAccess(ObjectSizeOffsetVisitor &ObjSizeVis,
                                     Value *Addr, uint64_t TypeSize) const {
   SizeOffsetType SizeOffset = ObjSizeVis.compute(Addr);
   if (!ObjSizeVis.bothKnown(SizeOffset)) return false;
-  int64_t Size = SizeOffset.first.getSExtValue();
+  uint64_t Size = SizeOffset.first.getZExtValue();
   int64_t Offset = SizeOffset.second.getSExtValue();
   // Three checks are required to ensure safety:
   // . Offset >= 0  (since the offset is given from the base ptr)
   // . Size >= Offset  (unsigned)
   // . Size - Offset >= NeededSize  (unsigned)
-  return Offset >= 0 && Size >= Offset &&
-         uint64_t(Size - Offset) >= TypeSize / 8;
+  return Offset >= 0 && Size >= uint64_t(Offset) &&
+         Size - uint64_t(Offset) >= TypeSize / 8;
 }

@@ -36,7 +36,7 @@
 ; X86-NEXT: .long   _localfoo@GOTPCREL+4
   %struct.data { i32 4, %struct.anon { i32 5,
     i32 trunc (i64 sub (i64 ptrtoint (i32** @localgotequiv to i64),
-                        i64 ptrtoint (i32* getelementptr inbounds ([4 x %struct.data]* @table, i32 0, i64 1, i32 1, i32 1) to i64))
+                        i64 ptrtoint (i32* getelementptr inbounds ([4 x %struct.data], [4 x %struct.data]* @table, i32 0, i64 1, i32 1, i32 1) to i64))
                         to i32)}
   },
 ; X86: .long   5
@@ -44,7 +44,7 @@
 ; X86-NEXT: .long   _extfoo@GOTPCREL+4
   %struct.data { i32 4, %struct.anon { i32 5,
     i32 trunc (i64 sub (i64 ptrtoint (i32** @extgotequiv to i64),
-                        i64 ptrtoint (i32* getelementptr inbounds ([4 x %struct.data]* @table, i32 0, i64 2, i32 1, i32 1) to i64))
+                        i64 ptrtoint (i32* getelementptr inbounds ([4 x %struct.data], [4 x %struct.data]* @table, i32 0, i64 2, i32 1, i32 1) to i64))
                         to i32)}
   },
 ; Test support for arbitrary constants into the GOTPCREL offset.
@@ -54,7 +54,7 @@
 ; X86-NEXT: .long   _extfoo@GOTPCREL+28
   %struct.data { i32 4, %struct.anon { i32 5,
     i32 add (i32 trunc (i64 sub (i64 ptrtoint (i32** @extgotequiv to i64),
-                                 i64 ptrtoint (i32* getelementptr inbounds ([4 x %struct.data]* @table, i32 0, i64 3, i32 1, i32 1) to i64))
+                                 i64 ptrtoint (i32* getelementptr inbounds ([4 x %struct.data], [4 x %struct.data]* @table, i32 0, i64 3, i32 1, i32 1) to i64))
                                  to i32), i32 24)}
   }
 ], align 16
@@ -78,4 +78,9 @@ define i32 @t0(i32 %a) {
                                i64 ptrtoint (i32 (i32)* @t0 to i64))
                            to i32), %a
   ret i32 %x
+}
+
+; Also test direct instruction uses.
+define i32** @t1() {
+  ret i32** @bargotequiv
 }

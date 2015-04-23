@@ -37,9 +37,9 @@ define void @f1(<4 x i32>* nocapture %a, <4 x i32>* nocapture readonly %b, <4 x 
 ; CHECK: store i32 %add.i3, i32* %a.i3, align 4, !dbg ![[TAG1]], !tbaa ![[TAG2]]
 ; CHECK: ret void
 entry:
-  tail call void @llvm.dbg.value(metadata <4 x i32>* %a, i64 0, metadata !15, metadata !{}), !dbg !20
-  tail call void @llvm.dbg.value(metadata <4 x i32>* %b, i64 0, metadata !16, metadata !{}), !dbg !20
-  tail call void @llvm.dbg.value(metadata <4 x i32>* %c, i64 0, metadata !17, metadata !{}), !dbg !20
+  tail call void @llvm.dbg.value(metadata <4 x i32>* %a, i64 0, metadata !15, metadata !MDExpression()), !dbg !20
+  tail call void @llvm.dbg.value(metadata <4 x i32>* %b, i64 0, metadata !16, metadata !MDExpression()), !dbg !20
+  tail call void @llvm.dbg.value(metadata <4 x i32>* %c, i64 0, metadata !17, metadata !MDExpression()), !dbg !20
   %bval = load <4 x i32>, <4 x i32>* %b, align 16, !dbg !21, !tbaa !22
   %cval = load <4 x i32>, <4 x i32>* %c, align 16, !dbg !21, !tbaa !22
   %add = add <4 x i32> %bval, %cval, !dbg !21
@@ -59,7 +59,7 @@ attributes #1 = { nounwind readnone }
 
 !0 = !MDCompileUnit(language: DW_LANG_C99, producer: "clang version 3.4 (trunk 194134) (llvm/trunk 194126)", isOptimized: true, emissionKind: 0, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !MDFile(filename: "/tmp/add.c", directory: "/home/richards/llvm/build")
-!2 = !{i32 0}
+!2 = !{}
 !3 = !{!4}
 !4 = !MDSubprogram(name: "f1", line: 3, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 4, file: !1, scope: !5, type: !6, function: void (<4 x i32>*, <4 x i32>*, <4 x i32>*)* @f1, variables: !14)
 !5 = !MDFile(filename: "/tmp/add.c", directory: "/home/richards/llvm/build")

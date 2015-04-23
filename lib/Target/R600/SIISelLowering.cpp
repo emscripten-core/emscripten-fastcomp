@@ -76,8 +76,6 @@ SITargetLowering::SITargetLowering(TargetMachine &TM,
   setOperationAction(ISD::FSIN, MVT::f32, Custom);
   setOperationAction(ISD::FCOS, MVT::f32, Custom);
 
-  setOperationAction(ISD::FMINNUM, MVT::f32, Legal);
-  setOperationAction(ISD::FMAXNUM, MVT::f32, Legal);
   setOperationAction(ISD::FMINNUM, MVT::f64, Legal);
   setOperationAction(ISD::FMAXNUM, MVT::f64, Legal);
 
@@ -202,10 +200,10 @@ SITargetLowering::SITargetLowering(TargetMachine &TM,
   if (Subtarget->getGeneration() >= AMDGPUSubtarget::SEA_ISLANDS) {
     setOperationAction(ISD::FTRUNC, MVT::f64, Legal);
     setOperationAction(ISD::FCEIL, MVT::f64, Legal);
-    setOperationAction(ISD::FFLOOR, MVT::f64, Legal);
     setOperationAction(ISD::FRINT, MVT::f64, Legal);
   }
 
+  setOperationAction(ISD::FFLOOR, MVT::f64, Legal);
   setOperationAction(ISD::FDIV, MVT::f32, Custom);
   setOperationAction(ISD::FDIV, MVT::f64, Custom);
 
@@ -928,6 +926,12 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
                        Op.getOperand(1),
                        Op.getOperand(2),
                        Op.getOperand(3));
+
+  case AMDGPUIntrinsic::AMDGPU_fract:
+  case AMDGPUIntrinsic::AMDIL_fraction: // Legacy name.
+    return DAG.getNode(ISD::FSUB, DL, VT, Op.getOperand(1),
+                       DAG.getNode(ISD::FFLOOR, DL, VT, Op.getOperand(1)));
+
   default:
     return AMDGPUTargetLowering::LowerOperation(Op, DAG);
   }
@@ -1342,6 +1346,35 @@ SDValue SITargetLowering::performUCharToFloatCombine(SDNode *N,
   return SDValue();
 }
 
+/// \brief Return true if the given offset Size in bytes can be folded into
+/// the immediate offsets of a memory instruction for the given address space.
+static bool canFoldOffset(unsigned OffsetSize, unsigned AS,
+                          const AMDGPUSubtarget &STI) {
+  switch (AS) {
+  case AMDGPUAS::GLOBAL_ADDRESS: {
+    // MUBUF instructions a 12-bit offset in bytes.
+    return isUInt<12>(OffsetSize);
+  }
+  case AMDGPUAS::CONSTANT_ADDRESS: {
+    // SMRD instructions have an 8-bit offset in dwords on SI and
+    // a 20-bit offset in bytes on VI.
+    if (STI.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS)
+      return isUInt<20>(OffsetSize);
+    else
+      return (OffsetSize % 4 == 0) && isUInt<8>(OffsetSize / 4);
+  }
+  case AMDGPUAS::LOCAL_ADDRESS:
+  case AMDGPUAS::REGION_ADDRESS: {
+    // The single offset versions have a 16-bit offset in bytes.
+    return isUInt<16>(OffsetSize);
+  }
+  case AMDGPUAS::PRIVATE_ADDRESS:
+  // Indirect register addressing does not use any offsets.
+  default:
+    return 0;
+  }
+}
+
 // (shl (add x, c1), c2) -> add (shl x, c2), (shl c1, c2)
 
 // This is a variant of
@@ -1373,13 +1406,10 @@ SDValue SITargetLowering::performSHLPtrCombine(SDNode *N,
   if (!CAdd)
     return SDValue();
 
-  const SIInstrInfo *TII =
-      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
-
   // If the resulting offset is too large, we can't fold it into the addressing
   // mode offset.
   APInt Offset = CAdd->getAPIntValue() << CN1->getAPIntValue();
-  if (!TII->canFoldOffset(Offset.getZExtValue(), AddrSpace))
+  if (!canFoldOffset(Offset.getZExtValue(), AddrSpace, *Subtarget))
     return SDValue();
 
   SelectionDAG &DAG = DCI.DAG;
@@ -1591,6 +1621,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
   case AMDGPUISD::UMAX:
   case AMDGPUISD::UMIN: {
     if (DCI.getDAGCombineLevel() >= AfterLegalizeDAG &&
+        N->getValueType(0) != MVT::f64 &&
         getTargetMachine().getOptLevel() > CodeGenOpt::None)
       return performMin3Max3Combine(N, DCI);
     break;
@@ -2055,4 +2086,39 @@ SDValue SITargetLowering::CreateLiveInRegister(SelectionDAG &DAG,
 
   return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(DAG.getEntryNode()),
                             cast<RegisterSDNode>(VReg)->getReg(), VT);
+}
+
+//===----------------------------------------------------------------------===//
+//                         SI Inline Assembly Support
+//===----------------------------------------------------------------------===//
+
+std::pair<unsigned, const TargetRegisterClass *>
+SITargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                                               const std::string &Constraint,
+                                               MVT VT) const {
+  if (Constraint == "r") {
+    switch(VT.SimpleTy) {
+      default: llvm_unreachable("Unhandled type for 'r' inline asm constraint");
+      case MVT::i64:
+        return std::make_pair(0U, &AMDGPU::SGPR_64RegClass);
+      case MVT::i32:
+        return std::make_pair(0U, &AMDGPU::SGPR_32RegClass);
+    }
+  }
+
+  if (Constraint.size() > 1) {
+    const TargetRegisterClass *RC = nullptr;
+    if (Constraint[1] == 'v') {
+      RC = &AMDGPU::VGPR_32RegClass;
+    } else if (Constraint[1] == 's') {
+      RC = &AMDGPU::SGPR_32RegClass;
+    }
+
+    if (RC) {
+      unsigned Idx = std::atoi(Constraint.substr(2).c_str());
+      if (Idx < RC->getNumRegs())
+        return std::make_pair(RC->getRegister(Idx), RC);
+    }
+  }
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
 }

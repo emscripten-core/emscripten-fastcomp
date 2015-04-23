@@ -16,6 +16,7 @@
 #ifndef LLVM_CODEGEN_ASMPRINTER_H
 #define LLVM_CODEGEN_ASMPRINTER_H
 
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/IR/InlineAsm.h"
@@ -102,11 +103,12 @@ public:
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
   typedef std::pair<const GlobalVariable *, unsigned> GOTEquivUsePair;
-  DenseMap<const MCSymbol *, GOTEquivUsePair> GlobalGOTEquivs;
+  MapVector<const MCSymbol *, GOTEquivUsePair> GlobalGOTEquivs;
 
 private:
   MCSymbol *CurrentFnBegin;
   MCSymbol *CurrentFnEnd;
+  MCSymbol *CurExceptionSym;
 
   // The garbage collection metadata printer table.
   void *GCMetadataPrinters; // Really a DenseMap.
@@ -138,7 +140,7 @@ protected:
   explicit AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
 
 public:
-  virtual ~AsmPrinter();
+  ~AsmPrinter() override;
 
   DwarfDebug *getDwarfDebug() { return DD; }
   DwarfDebug *getDwarfDebug() const { return DD; }
@@ -153,6 +155,7 @@ public:
 
   MCSymbol *getFunctionBegin() const { return CurrentFnBegin; }
   MCSymbol *getFunctionEnd() const { return CurrentFnEnd; }
+  MCSymbol *getCurExceptionSym();
 
   /// Return information about object file lowering.
   const TargetLoweringObjectFile &getObjFileLowering() const;
@@ -195,7 +198,6 @@ public:
   /// Emit the specified function out to the OutStreamer.
   bool runOnMachineFunction(MachineFunction &MF) override {
     SetupMachineFunction(MF);
-    EmitFunctionHeader();
     EmitFunctionBody();
     return false;
   }
@@ -207,9 +209,6 @@ public:
   /// This should be called when a new MachineFunction is being processed from
   /// runOnMachineFunction.
   void SetupMachineFunction(MachineFunction &MF);
-
-  /// This method emits the header for the current function.
-  void EmitFunctionHeader();
 
   /// This method emits the body and trailer for a function.
   void EmitFunctionBody();
@@ -349,14 +348,7 @@ public:
   // Symbol Lowering Routines.
   //===------------------------------------------------------------------===//
 public:
-  /// Return the MCSymbol corresponding to the assembler temporary label with
-  /// the specified stem and unique ID.
-  MCSymbol *GetTempSymbol(const Twine &Name, unsigned ID) const;
-
-  /// Return an assembler temporary label with the specified stem.
-  MCSymbol *GetTempSymbol(const Twine &Name) const;
-
-  MCSymbol *createTempSymbol(const Twine &Name, unsigned ID) const;
+  MCSymbol *createTempSymbol(const Twine &Name) const;
 
   /// Return the MCSymbol for a private symbol with global value name as its
   /// base, with the specified suffix.
@@ -444,14 +436,10 @@ public:
   /// Emit the 4-byte offset of Label from the start of its section.  This can
   /// be done with a special directive if the target supports it (e.g. cygwin)
   /// or by emitting it as an offset from a label at the start of the section.
-  ///
-  /// SectionLabel is a temporary label emitted at the start of the section
-  /// that Label lives in.
-  void EmitSectionOffset(const MCSymbol *Label,
-                         const MCSymbol *SectionLabel) const;
+  void emitSectionOffset(const MCSymbol *Label) const;
 
   /// Get the value for DW_AT_APPLE_isa. Zero if no isa encoding specified.
-  virtual unsigned getISAEncoding(const Function *) { return 0; }
+  virtual unsigned getISAEncoding() { return 0; }
 
   /// EmitDwarfRegOp - Emit a dwarf register operation.
   virtual void EmitDwarfRegOp(ByteStreamer &BS,
@@ -520,11 +508,14 @@ private:
   mutable const MachineInstr *LastMI;
   mutable unsigned LastFn;
   mutable unsigned Counter;
-  mutable unsigned SetCounter;
+
+  /// This method emits the header for the current function.
+  void EmitFunctionHeader();
 
   /// Emit a blob of inline asm to the output streamer.
   void
-  EmitInlineAsm(StringRef Str, const MDNode *LocMDNode = nullptr,
+  EmitInlineAsm(StringRef Str, const MCSubtargetInfo &STI,
+                const MDNode *LocMDNode = nullptr,
                 InlineAsm::AsmDialect AsmDialect = InlineAsm::AD_ATT) const;
 
   /// This method formats and emits the specified machine instruction that is an

@@ -180,7 +180,8 @@ static Module *parseBitcodeFileImpl(MemoryBufferRef Buffer,
   std::unique_ptr<MemoryBuffer> LightweightBuf =
       MemoryBuffer::getMemBuffer(*MBOrErr, false);
   ErrorOr<Module *> M = getLazyBitcodeModule(std::move(LightweightBuf), Context,
-                                             DiagnosticHandler);
+                                             DiagnosticHandler,
+                                             true/*ShouldLazyLoadMetadata*/);
   if (!M)
     return nullptr;
   return *M;
@@ -274,7 +275,7 @@ LTOModule::objcClassNameFromExpression(const Constant *c, std::string &name) {
       Constant *cn = gvn->getInitializer();
       if (ConstantDataArray *ca = dyn_cast<ConstantDataArray>(cn)) {
         if (ca->isCString()) {
-          name = ".objc_class_name_" + ca->getAsCString().str();
+          name = (".objc_class_name_" + ca->getAsCString()).str();
           return true;
         }
       }

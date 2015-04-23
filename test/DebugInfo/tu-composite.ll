@@ -84,7 +84,7 @@
 @_ZTV1C = unnamed_addr constant [3 x i8*] [i8* null, i8* bitcast ({ i8*, i8* }* @_ZTI1C to i8*), i8* bitcast (void (%struct.C*)* @_ZN1C3fooEv to i8*)]
 @_ZTVN10__cxxabiv117__class_type_infoE = external global i8*
 @_ZTS1C = constant [3 x i8] c"1C\00"
-@_ZTI1C = unnamed_addr constant { i8*, i8* } { i8* bitcast (i8** getelementptr inbounds (i8** @_ZTVN10__cxxabiv117__class_type_infoE, i64 2) to i8*), i8* getelementptr inbounds ([3 x i8]* @_ZTS1C, i32 0, i32 0) }
+@_ZTI1C = unnamed_addr constant { i8*, i8* } { i8* bitcast (i8** getelementptr inbounds (i8*, i8** @_ZTVN10__cxxabiv117__class_type_infoE, i64 2) to i8*), i8* getelementptr inbounds ([3 x i8], [3 x i8]* @_ZTS1C, i32 0, i32 0) }
 
 ; Function Attrs: nounwind ssp uwtable
 define void @_ZN1C3fooEv(%struct.C* %this) unnamed_addr #0 align 2 {
@@ -136,11 +136,10 @@ attributes #1 = { nounwind readnone }
 !10 = !MDSubroutineType(types: !11)
 !11 = !{!12}
 !12 = !MDBasicType(tag: DW_TAG_base_type, name: "int", size: 32, align: 32, encoding: DW_ATE_signed)
-!13 = !MDSubprogram(name: "foo", linkageName: "_ZN1C3fooEv", line: 2, isLocal: false, isDefinition: false, virtuality: DW_VIRTUALITY_virtual, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !1, scope: !"_ZTS1C", type: !14, containingType: !"_ZTS1C", variables: !17)
+!13 = !MDSubprogram(name: "foo", linkageName: "_ZN1C3fooEv", line: 2, isLocal: false, isDefinition: false, virtuality: DW_VIRTUALITY_virtual, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !1, scope: !"_ZTS1C", type: !14, containingType: !"_ZTS1C")
 !14 = !MDSubroutineType(types: !15)
 !15 = !{null, !16}
 !16 = !MDDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, flags: DIFlagArtificial | DIFlagObjectPointer, baseType: !"_ZTS1C")
-!17 = !{i32 786468}
 !18 = !MDCompositeType(tag: DW_TAG_structure_type, name: "bar", line: 7, size: 8, align: 8, file: !1, elements: !2, identifier: "_ZTS3bar")
 !19 = !MDCompositeType(tag: DW_TAG_structure_type, name: "D", line: 9, size: 8, align: 8, file: !1, elements: !20, identifier: "_ZTS1D")
 !20 = !{!21}

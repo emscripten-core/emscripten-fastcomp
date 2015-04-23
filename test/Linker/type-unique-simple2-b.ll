@@ -15,7 +15,7 @@
 @_ZTV1A = unnamed_addr constant [4 x i8*] [i8* null, i8* bitcast ({ i8*, i8* }* @_ZTI1A to i8*), i8* bitcast (void (%class.A*)* @_ZN1A6setFooEv to i8*), i8* bitcast (i32 (%class.A*)* @_ZN1A6getFooEv to i8*)]
 @_ZTVN10__cxxabiv117__class_type_infoE = external global i8*
 @_ZTS1A = constant [3 x i8] c"1A\00"
-@_ZTI1A = unnamed_addr constant { i8*, i8* } { i8* bitcast (i8** getelementptr inbounds (i8** @_ZTVN10__cxxabiv117__class_type_infoE, i64 2) to i8*), i8* getelementptr inbounds ([3 x i8]* @_ZTS1A, i32 0, i32 0) }
+@_ZTI1A = unnamed_addr constant { i8*, i8* } { i8* bitcast (i8** getelementptr inbounds (i8*, i8** @_ZTVN10__cxxabiv117__class_type_infoE, i64 2) to i8*), i8* getelementptr inbounds ([3 x i8], [3 x i8]* @_ZTS1A, i32 0, i32 0) }
 
 ; Function Attrs: nounwind
 define void @_ZN1A6setFooEv(%class.A* %this) unnamed_addr #0 align 2 {
@@ -61,17 +61,15 @@ attributes #1 = { nounwind readnone }
 !11 = !MDSubroutineType(types: !12)
 !12 = !{!13}
 !13 = !MDBasicType(tag: DW_TAG_base_type, name: "int", size: 32, align: 32, encoding: DW_ATE_signed)
-!14 = !MDSubprogram(name: "setFoo", linkageName: "_ZN1A6setFooEv", line: 4, isLocal: false, isDefinition: false, virtuality: DW_VIRTUALITY_virtual, virtualIndex: 6, flags: DIFlagPublic | DIFlagPrototyped, isOptimized: false, scopeLine: 4, file: !5, scope: !"_ZTS1A", type: !15, containingType: !"_ZTS1A", variables: !18)
+!14 = !MDSubprogram(name: "setFoo", linkageName: "_ZN1A6setFooEv", line: 4, isLocal: false, isDefinition: false, virtuality: DW_VIRTUALITY_virtual, virtualIndex: 6, flags: DIFlagPublic | DIFlagPrototyped, isOptimized: false, scopeLine: 4, file: !5, scope: !"_ZTS1A", type: !15, containingType: !"_ZTS1A")
 !15 = !MDSubroutineType(types: !16)
 !16 = !{null, !17}
 !17 = !MDDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, flags: DIFlagArtificial | DIFlagObjectPointer, baseType: !"_ZTS1A")
-!18 = !{i32 786468}
-!19 = !MDSubprogram(name: "getFoo", linkageName: "_ZN1A6getFooEv", line: 5, isLocal: false, isDefinition: false, virtuality: DW_VIRTUALITY_virtual, virtualIndex: 6, flags: DIFlagPublic | DIFlagPrototyped, isOptimized: false, scopeLine: 5, file: !5, scope: !"_ZTS1A", type: !20, containingType: !"_ZTS1A", variables: !24)
+!19 = !MDSubprogram(name: "getFoo", linkageName: "_ZN1A6getFooEv", line: 5, isLocal: false, isDefinition: false, virtuality: DW_VIRTUALITY_virtual, virtualIndex: 6, flags: DIFlagPublic | DIFlagPrototyped, isOptimized: false, scopeLine: 5, file: !5, scope: !"_ZTS1A", type: !20, containingType: !"_ZTS1A")
 !20 = !MDSubroutineType(types: !21)
 !21 = !{!22, !17}
 !22 = !MDDerivedType(tag: DW_TAG_const_type, baseType: !23)
 !23 = !MDDerivedType(tag: DW_TAG_typedef, name: "foo_t", line: 1, file: !5, baseType: !13)
-!24 = !{i32 786468}
 !25 = !{!26, !28}
 !26 = !MDSubprogram(name: "setFoo", linkageName: "_ZN1A6setFooEv", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPublic | DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !27, scope: !"_ZTS1A", type: !15, function: void (%class.A*)* @_ZN1A6setFooEv, declaration: !14, variables: !2)
 !27 = !MDFile(filename: "b.cpp", directory: "")

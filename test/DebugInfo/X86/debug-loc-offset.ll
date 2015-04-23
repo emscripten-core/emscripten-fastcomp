@@ -41,7 +41,7 @@
 
 ; CHECK: DW_TAG_subprogram
 ; CHECK-NOT: DW_TAG
-; CHECK: DW_AT_MIPS_linkage_name [DW_FORM_strp]{{.*}}"_Z3baz1A"
+; CHECK: DW_AT_linkage_name [DW_FORM_strp]{{.*}}"_Z3baz1A"
 ; CHECK-NOT: {{DW_TAG|NULL}}
 ; CHECK: DW_TAG_formal_parameter
 ; CHECK-NOT: DW_TAG
@@ -55,7 +55,7 @@
 
 ; CHECK: .debug_loc contents:
 ; CHECK: 0x00000000: Beginning address offset: 0x0000000000000000
-; CHECK:                Ending address offset: 0x000000000000001a
+; CHECK:                Ending address offset: 0x0000000000000017
 
 %struct.A = type { i32 (...)**, i32 }
 

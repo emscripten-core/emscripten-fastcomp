@@ -69,12 +69,11 @@ namespace {
   protected:
     MapVector<MCSymbol*, MCSymbol*> TOC;
     const PPCSubtarget *Subtarget;
-    uint64_t TOCLabelID;
     StackMaps SM;
   public:
     explicit PPCAsmPrinter(TargetMachine &TM,
                            std::unique_ptr<MCStreamer> Streamer)
-        : AsmPrinter(TM, std::move(Streamer)), TOCLabelID(0), SM(*this) {}
+        : AsmPrinter(TM, std::move(Streamer)), SM(*this) {}
 
     const char *getPassName() const override {
       return "PowerPC Assembly Printer";
@@ -321,17 +320,9 @@ bool PPCAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
 /// exists for it.  If not, create one.  Then return a symbol that references
 /// the TOC entry.
 MCSymbol *PPCAsmPrinter::lookUpOrCreateTOCEntry(MCSymbol *Sym) {
-  const DataLayout *DL = TM.getDataLayout();
   MCSymbol *&TOCEntry = TOC[Sym];
-
-  // To avoid name clash check if the name already exists.
-  while (!TOCEntry) {
-    if (OutContext.LookupSymbol(Twine(DL->getPrivateGlobalPrefix()) +
-                                "C" + Twine(TOCLabelID++)) == nullptr) {
-      TOCEntry = GetTempSymbol("C", TOCLabelID);
-    }
-  }
-
+  if (!TOCEntry)
+    TOCEntry = createTempSymbol("C");
   return TOCEntry;
 }
 
@@ -1112,25 +1103,6 @@ bool PPCLinuxAsmPrinter::doFinalization(Module &M) {
       else
         OutStreamer.EmitSymbolValue(S, 4);
     }
-  }
-
-  MachineModuleInfoELF &MMIELF =
-    MMI->getObjFileInfo<MachineModuleInfoELF>();
-
-  MachineModuleInfoELF::SymbolListTy Stubs = MMIELF.GetGVStubList();
-  if (!Stubs.empty()) {
-    OutStreamer.SwitchSection(getObjFileLowering().getDataSection());
-    for (unsigned i = 0, e = Stubs.size(); i != e; ++i) {
-      // L_foo$stub:
-      OutStreamer.EmitLabel(Stubs[i].first);
-      //   .long _foo
-      OutStreamer.EmitValue(MCSymbolRefExpr::Create(Stubs[i].second.getPointer(),
-                                                    OutContext),
-                            isPPC64 ? 8 : 4/*size*/);
-    }
-
-    Stubs.clear();
-    OutStreamer.AddBlankLine();
   }
 
   return AsmPrinter::doFinalization(M);

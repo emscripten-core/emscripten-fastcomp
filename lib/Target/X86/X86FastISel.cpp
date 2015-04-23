@@ -90,7 +90,7 @@ private:
   bool X86FastEmitCompare(const Value *LHS, const Value *RHS, EVT VT, DebugLoc DL);
 
   bool X86FastEmitLoad(EVT VT, const X86AddressMode &AM, MachineMemOperand *MMO,
-                       unsigned &ResultReg);
+                       unsigned &ResultReg, unsigned Alignment = 1);
 
   bool X86FastEmitStore(EVT VT, const Value *Val, const X86AddressMode &AM,
                         MachineMemOperand *MMO = nullptr, bool Aligned = false);
@@ -333,7 +333,8 @@ bool X86FastISel::isTypeLegal(Type *Ty, MVT &VT, bool AllowI1) {
 /// The address is either pre-computed, i.e. Ptr, or a GlobalAddress, i.e. GV.
 /// Return true and the result register by reference if it is possible.
 bool X86FastISel::X86FastEmitLoad(EVT VT, const X86AddressMode &AM,
-                                  MachineMemOperand *MMO, unsigned &ResultReg) {
+                                  MachineMemOperand *MMO, unsigned &ResultReg,
+                                  unsigned Alignment) {
   // Get opcode and regclass of the output for the given load instruction.
   unsigned Opc = 0;
   const TargetRegisterClass *RC = nullptr;
@@ -378,6 +379,30 @@ bool X86FastISel::X86FastEmitLoad(EVT VT, const X86AddressMode &AM,
   case MVT::f80:
     // No f80 support yet.
     return false;
+  case MVT::v4f32:
+    if (Alignment >= 16)
+      Opc = Subtarget->hasAVX() ? X86::VMOVAPSrm : X86::MOVAPSrm;
+    else
+      Opc = Subtarget->hasAVX() ? X86::VMOVUPSrm : X86::MOVUPSrm;
+    RC  = &X86::VR128RegClass;
+    break;
+  case MVT::v2f64:
+    if (Alignment >= 16)
+      Opc = Subtarget->hasAVX() ? X86::VMOVAPDrm : X86::MOVAPDrm;
+    else
+      Opc = Subtarget->hasAVX() ? X86::VMOVUPDrm : X86::MOVUPDrm;
+    RC  = &X86::VR128RegClass;
+    break;
+  case MVT::v4i32:
+  case MVT::v2i64:
+  case MVT::v8i16:
+  case MVT::v16i8:
+    if (Alignment >= 16)
+      Opc = Subtarget->hasAVX() ? X86::VMOVDQArm : X86::MOVDQArm;
+    else
+      Opc = Subtarget->hasAVX() ? X86::VMOVDQUrm : X86::MOVDQUrm;
+    RC  = &X86::VR128RegClass;
+    break;
   }
 
   ResultReg = createResultReg(RC);
@@ -1195,8 +1220,14 @@ bool X86FastISel::X86SelectLoad(const Instruction *I) {
   if (!X86SelectAddress(Ptr, AM))
     return false;
 
+  unsigned Alignment = LI->getAlignment();
+  unsigned ABIAlignment = DL.getABITypeAlignment(LI->getType());
+  if (Alignment == 0) // Ensure that codegen never sees alignment 0
+    Alignment = ABIAlignment;
+
   unsigned ResultReg = 0;
-  if (!X86FastEmitLoad(VT, AM, createMachineMemOperandFor(LI), ResultReg))
+  if (!X86FastEmitLoad(VT, AM, createMachineMemOperandFor(LI), ResultReg,
+                       Alignment))
     return false;
 
   updateValueMap(I, ResultReg);
@@ -1221,20 +1252,30 @@ static unsigned X86ChooseCmpOpcode(EVT VT, const X86Subtarget *Subtarget) {
   }
 }
 
-/// X86ChooseCmpImmediateOpcode - If we have a comparison with RHS as the RHS
-/// of the comparison, return an opcode that works for the compare (e.g.
-/// CMP32ri) otherwise return 0.
+/// If we have a comparison with RHS as the RHS  of the comparison, return an
+/// opcode that works for the compare (e.g. CMP32ri) otherwise return 0.
 static unsigned X86ChooseCmpImmediateOpcode(EVT VT, const ConstantInt *RHSC) {
+  int64_t Val = RHSC->getSExtValue();
   switch (VT.getSimpleVT().SimpleTy) {
   // Otherwise, we can't fold the immediate into this comparison.
-  default: return 0;
-  case MVT::i8: return X86::CMP8ri;
-  case MVT::i16: return X86::CMP16ri;
-  case MVT::i32: return X86::CMP32ri;
+  default:
+    return 0;
+  case MVT::i8:
+    return X86::CMP8ri;
+  case MVT::i16:
+    if (isInt<8>(Val))
+      return X86::CMP16ri8;
+    return X86::CMP16ri;
+  case MVT::i32:
+    if (isInt<8>(Val))
+      return X86::CMP32ri8;
+    return X86::CMP32ri;
   case MVT::i64:
+    if (isInt<8>(Val))
+      return X86::CMP64ri8;
     // 64-bit comparisons are only valid if the immediate fits in a 32-bit sext
     // field.
-    if ((int)RHSC->getSExtValue() == RHSC->getSExtValue())
+    if (isInt<32>(Val))
       return X86::CMP64ri32;
     return 0;
   }
@@ -2504,6 +2545,8 @@ bool X86FastISel::fastLowerIntrinsicCall(const IntrinsicInst *II) {
     const MCInstrDesc &II = TII.get(TargetOpcode::DBG_VALUE);
     // FIXME may need to add RegState::Debug to any registers produced,
     // although ESP/EBP should be the only ones at the moment.
+    assert(DI->getVariable()->isValidLocationForIntrinsic(DbgLoc) &&
+           "Expected inlined-at fields to agree");
     addFullAddress(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, II), AM)
         .addImm(0)
         .addMetadata(DI->getVariable())
@@ -3209,7 +3252,7 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {
 
   // Add a register mask operand representing the call-preserved registers.
   // Proper defs for return values will be added by setPhysRegsDeadExcept().
-  MIB.addRegMask(TRI.getCallPreservedMask(CC));
+  MIB.addRegMask(TRI.getCallPreservedMask(*FuncInfo.MF, CC));
 
   // Add an implicit use GOT pointer in EBX.
   if (Subtarget->isPICStyleGOT())

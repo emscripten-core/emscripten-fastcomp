@@ -28,7 +28,7 @@
 #include "llvm/CodeGen/MachineInstrBundle.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
-#include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Mangler.h"
@@ -77,11 +77,11 @@ static gcp_map_type &getGCMap(void *&P) {
 /// getGVAlignmentLog2 - Return the alignment to use for the specified global
 /// value in log2 form.  This rounds up to the preferred alignment if possible
 /// and legal.
-static unsigned getGVAlignmentLog2(const GlobalValue *GV, const DataLayout &TD,
+static unsigned getGVAlignmentLog2(const GlobalValue *GV, const DataLayout &DL,
                                    unsigned InBits = 0) {
   unsigned NumBits = 0;
   if (const GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV))
-    NumBits = TD.getPreferredAlignmentLog(GVar);
+    NumBits = DL.getPreferredAlignmentLog(GVar);
 
   // If InBits is specified, round it to it.
   if (InBits > NumBits)
@@ -103,12 +103,12 @@ static unsigned getGVAlignmentLog2(const GlobalValue *GV, const DataLayout &TD,
 AsmPrinter::AsmPrinter(TargetMachine &tm, std::unique_ptr<MCStreamer> Streamer)
     : MachineFunctionPass(ID), TM(tm), MAI(tm.getMCAsmInfo()),
       OutContext(Streamer->getContext()), OutStreamer(*Streamer.release()),
-      LastMI(nullptr), LastFn(0), Counter(~0U), SetCounter(0) {
+      LastMI(nullptr), LastFn(0), Counter(~0U) {
   DD = nullptr;
   MMI = nullptr;
   LI = nullptr;
   MF = nullptr;
-  CurrentFnSym = CurrentFnSymForSize = nullptr;
+  CurExceptionSym = CurrentFnSym = CurrentFnSymForSize = nullptr;
   CurrentFnBegin = nullptr;
   CurrentFnEnd = nullptr;
   GCMetadataPrinters = nullptr;
@@ -221,9 +221,13 @@ bool AsmPrinter::doInitialization(Module &M) {
 
   // Emit module-level inline asm if it exists.
   if (!M.getModuleInlineAsm().empty()) {
+    // We're at the module level. Construct MCSubtarget from the default CPU
+    // and target triple.
+    std::unique_ptr<MCSubtargetInfo> STI(TM.getTarget().createMCSubtargetInfo(
+        TM.getTargetTriple(), TM.getTargetCPU(), TM.getTargetFeatureString()));
     OutStreamer.AddComment("Start of file scope inline assembly");
     OutStreamer.AddBlankLine();
-    EmitInlineAsm(M.getModuleInlineAsm()+"\n");
+    EmitInlineAsm(M.getModuleInlineAsm()+"\n", *STI);
     OutStreamer.AddComment("End of file scope inline assembly");
     OutStreamer.AddBlankLine();
   }
@@ -527,7 +531,8 @@ void AsmPrinter::EmitFunctionHeader() {
   EmitVisibility(CurrentFnSym, F->getVisibility());
 
   EmitLinkage(F, CurrentFnSym);
-  EmitAlignment(MF->getAlignment(), F);
+  if (MAI->hasFunctionAlignment())
+    EmitAlignment(MF->getAlignment(), F);
 
   if (MAI->hasDotTypeDotSizeDirective())
     OutStreamer.EmitSymbolAttribute(CurrentFnSym, MCSA_ELF_TypeFunction);
@@ -666,17 +671,17 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
   OS << "DEBUG_VALUE: ";
 
   DIVariable V = MI->getDebugVariable();
-  if (V.getContext().isSubprogram()) {
-    StringRef Name = DISubprogram(V.getContext()).getDisplayName();
+  if (auto *SP = dyn_cast<MDSubprogram>(V->getScope())) {
+    StringRef Name = SP->getDisplayName();
     if (!Name.empty())
       OS << Name << ":";
   }
-  OS << V.getName();
+  OS << V->getName();
 
   DIExpression Expr = MI->getDebugExpression();
-  if (Expr.isBitPiece())
-    OS << " [bit_piece offset=" << Expr.getBitPieceOffset()
-       << " size=" << Expr.getBitPieceSize() << "]";
+  if (Expr->isBitPiece())
+    OS << " [bit_piece offset=" << Expr->getBitPieceOffset()
+       << " size=" << Expr->getBitPieceSize() << "]";
   OS << " <- ";
 
   // The second operand is only an offset if it's an immediate.
@@ -777,6 +782,8 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
 /// EmitFunctionBody - This method emits the body and trailer for a
 /// function.
 void AsmPrinter::EmitFunctionBody() {
+  EmitFunctionHeader();
+
   // Emit target-specific gunk before the function body.
   EmitFunctionBodyStart();
 
@@ -888,7 +895,7 @@ void AsmPrinter::EmitFunctionBody() {
   if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
       MAI->hasDotTypeDotSizeDirective()) {
     // Create a symbol for the end of function.
-    CurrentFnEnd = createTempSymbol("func_end", getFunctionNumber());
+    CurrentFnEnd = createTempSymbol("func_end");
     OutStreamer.EmitLabel(CurrentFnEnd);
   }
 
@@ -955,7 +962,7 @@ static bool isGOTEquivalentCandidate(const GlobalVariable *GV,
   // To be a got equivalent, at least one of its users need to be a constant
   // expression used by another global variable.
   for (auto *U : GV->users())
-    NumGOTEquivUsers += getNumGlobalVariableUses(cast<Constant>(U));
+    NumGOTEquivUsers += getNumGlobalVariableUses(dyn_cast<Constant>(U));
 
   return NumGOTEquivUsers > 0;
 }
@@ -988,17 +995,25 @@ void AsmPrinter::emitGlobalGOTEquivs() {
   if (!getObjFileLowering().supportIndirectSymViaGOTPCRel())
     return;
 
-  while (!GlobalGOTEquivs.empty()) {
-    DenseMap<const MCSymbol *, GOTEquivUsePair>::iterator I =
-      GlobalGOTEquivs.begin();
-    const MCSymbol *S = I->first;
-    const GlobalVariable *GV = I->second.first;
-    GlobalGOTEquivs.erase(S);
-    EmitGlobalVariable(GV);
+  SmallVector<const GlobalVariable *, 8> FailedCandidates;
+  for (auto &I : GlobalGOTEquivs) {
+    const GlobalVariable *GV = I.second.first;
+    unsigned Cnt = I.second.second;
+    if (Cnt)
+      FailedCandidates.push_back(GV);
   }
+  GlobalGOTEquivs.clear();
+
+  for (auto *GV : FailedCandidates)
+    EmitGlobalVariable(GV);
 }
 
 bool AsmPrinter::doFinalization(Module &M) {
+  // Set the MachineFunction to nullptr so that we can catch attempted
+  // accesses to MF specific features at the module level and so that
+  // we can conditionalize accesses based on whether or not it is nullptr.
+  MF = nullptr;
+
   // Gather all GOT equivalent globals in the module. We really need two
   // passes over the globals: one to compute and another to avoid its emission
   // in EmitGlobalVariable, otherwise we would not be able to handle cases
@@ -1024,11 +1039,31 @@ bool AsmPrinter::doFinalization(Module &M) {
     EmitVisibility(Name, V, false);
   }
 
+  const TargetLoweringObjectFile &TLOF = getObjFileLowering();
+
   // Emit module flags.
   SmallVector<Module::ModuleFlagEntry, 8> ModuleFlags;
   M.getModuleFlagsMetadata(ModuleFlags);
   if (!ModuleFlags.empty())
-    getObjFileLowering().emitModuleFlags(OutStreamer, ModuleFlags, *Mang, TM);
+    TLOF.emitModuleFlags(OutStreamer, ModuleFlags, *Mang, TM);
+
+  Triple TT(TM.getTargetTriple());
+  if (TT.isOSBinFormatELF()) {
+    MachineModuleInfoELF &MMIELF = MMI->getObjFileInfo<MachineModuleInfoELF>();
+
+    // Output stubs for external and common global variables.
+    MachineModuleInfoELF::SymbolListTy Stubs = MMIELF.GetGVStubList();
+    if (!Stubs.empty()) {
+      OutStreamer.SwitchSection(TLOF.getDataRelSection());
+      const DataLayout *DL = TM.getDataLayout();
+
+      for (const auto &Stub : Stubs) {
+        OutStreamer.EmitLabel(Stub.first);
+        OutStreamer.EmitSymbolValue(Stub.second.getPointer(),
+                                    DL->getPointerSize());
+      }
+    }
+  }
 
   // Make sure we wrote out everything we need.
   OutStreamer.Flush();
@@ -1126,16 +1161,23 @@ bool AsmPrinter::doFinalization(Module &M) {
   return false;
 }
 
+MCSymbol *AsmPrinter::getCurExceptionSym() {
+  if (!CurExceptionSym)
+    CurExceptionSym = createTempSymbol("exception");
+  return CurExceptionSym;
+}
+
 void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   this->MF = &MF;
   // Get the function symbol.
   CurrentFnSym = getSymbol(MF.getFunction());
   CurrentFnSymForSize = CurrentFnSym;
   CurrentFnBegin = nullptr;
+  CurExceptionSym = nullptr;
   bool NeedsLocalForSize = MAI->needsLocalForSize();
   if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
       NeedsLocalForSize) {
-    CurrentFnBegin = createTempSymbol("func_begin", getFunctionNumber());
+    CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;
   }
@@ -1567,7 +1609,7 @@ void AsmPrinter::EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
   }
 
   // Otherwise, emit with .set (aka assignment).
-  MCSymbol *SetLabel = GetTempSymbol("set", SetCounter++);
+  MCSymbol *SetLabel = createTempSymbol("set");
   OutStreamer.EmitAssignment(SetLabel, Diff);
   OutStreamer.EmitSymbolValue(SetLabel, Size);
 }
@@ -1649,8 +1691,7 @@ const MCExpr *AsmPrinter::lowerConstant(const Constant *CV) {
     // If the code isn't optimized, there may be outstanding folding
     // opportunities. Attempt to fold the expression using DataLayout as a
     // last resort before giving up.
-    if (Constant *C = ConstantFoldConstantExpression(
-            CE, TM.getDataLayout()))
+    if (Constant *C = ConstantFoldConstantExpression(CE, *TM.getDataLayout()))
       if (C != CE)
         return lowerConstant(C);
 
@@ -2122,7 +2163,7 @@ static void handleIndirectSymViaGOTPCRel(AsmPrinter &AP, const MCExpr **ME,
   //
   AsmPrinter::GOTEquivUsePair Result = AP.GlobalGOTEquivs[GOTEquivSym];
   const GlobalVariable *GV = Result.first;
-  unsigned NumUses = Result.second;
+  int NumUses = (int)Result.second;
   const GlobalValue *FinalGV = dyn_cast<GlobalValue>(GV->getOperand(0));
   const MCSymbol *FinalSym = AP.getSymbol(FinalGV);
   *ME = AP.getObjFileLowering().getIndirectSymViaGOTPCRel(
@@ -2130,10 +2171,8 @@ static void handleIndirectSymViaGOTPCRel(AsmPrinter &AP, const MCExpr **ME,
 
   // Update GOT equivalent usage information
   --NumUses;
-  if (NumUses)
+  if (NumUses >= 0)
     AP.GlobalGOTEquivs[GOTEquivSym] = std::make_pair(GV, NumUses);
-  else
-    AP.GlobalGOTEquivs.erase(GOTEquivSym);
 }
 
 static void emitGlobalConstantImpl(const Constant *CV, AsmPrinter &AP,
@@ -2194,7 +2233,7 @@ static void emitGlobalConstantImpl(const Constant *CV, AsmPrinter &AP,
       // If the constant expression's size is greater than 64-bits, then we have
       // to emit the value in chunks. Try to constant fold the value and emit it
       // that way.
-      Constant *New = ConstantFoldConstantExpression(CE, DL);
+      Constant *New = ConstantFoldConstantExpression(CE, *DL);
       if (New && New != CE)
         return emitGlobalConstantImpl(New, AP);
     }
@@ -2245,24 +2284,8 @@ void AsmPrinter::printOffset(int64_t Offset, raw_ostream &OS) const {
 // Symbol Lowering Routines.
 //===----------------------------------------------------------------------===//
 
-/// GetTempSymbol - Return the MCSymbol corresponding to the assembler
-/// temporary label with the specified stem and unique ID.
-MCSymbol *AsmPrinter::GetTempSymbol(const Twine &Name, unsigned ID) const {
-  const DataLayout *DL = TM.getDataLayout();
-  return OutContext.GetOrCreateSymbol(Twine(DL->getPrivateGlobalPrefix()) +
-                                      Name + Twine(ID));
-}
-
-/// GetTempSymbol - Return an assembler temporary label with the specified
-/// stem.
-MCSymbol *AsmPrinter::GetTempSymbol(const Twine &Name) const {
-  const DataLayout *DL = TM.getDataLayout();
-  return OutContext.GetOrCreateSymbol(Twine(DL->getPrivateGlobalPrefix())+
-                                      Name);
-}
-
-MCSymbol *AsmPrinter::createTempSymbol(const Twine &Name, unsigned ID) const {
-  return OutContext.createTempSymbol(Name + Twine(ID));
+MCSymbol *AsmPrinter::createTempSymbol(const Twine &Name) const {
+  return OutContext.createTempSymbol(Name, true);
 }
 
 MCSymbol *AsmPrinter::GetBlockAddressSymbol(const BlockAddress *BA) const {
@@ -2306,7 +2329,7 @@ MCSymbol *AsmPrinter::getSymbolWithGlobalValueBase(const GlobalValue *GV,
 MCSymbol *AsmPrinter::GetExternalSymbolSymbol(StringRef Sym) const {
   SmallString<60> NameStr;
   Mang->getNameWithPrefix(NameStr, Sym);
-  return OutContext.GetOrCreateSymbol(NameStr.str());
+  return OutContext.GetOrCreateSymbol(NameStr);
 }
 
 

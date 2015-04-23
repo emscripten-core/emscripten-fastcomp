@@ -900,13 +900,14 @@ entry:
   ret i8* %x
 }
 
-; Trivial retain,release pair with intervening call, but it's dominated
-; by another retain - delete!
+; We can not delete this retain, release since we do not have a post-dominating
+; use of the release.
 
 ; CHECK-LABEL: define void @test12(
 ; CHECK-NEXT: entry:
 ; CHECK-NEXT: @objc_retain(i8* %x)
-; CHECK-NOT: @objc_
+; CHECK-NEXT: @objc_retain
+; CHECK: @objc_release
 ; CHECK: }
 define void @test12(i8* %x, i64 %n) {
 entry:
@@ -942,6 +943,8 @@ entry:
 ; CHECK-NEXT: @objc_retain(i8* %x)
 ; CHECK-NEXT: @use_pointer
 ; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @objc_release
 ; CHECK-NEXT: ret void
 ; CHECK-NEXT: }
 define void @test13b(i8* %x, i64 %n) {
@@ -949,6 +952,8 @@ entry:
   call i8* @objc_retain(i8* %x) nounwind
   call i8* @objc_retain(i8* %x) nounwind
   call void @use_pointer(i8* %x)
+  call void @use_pointer(i8* %x)
+  call void @objc_release(i8* %x) nounwind
   call void @use_pointer(i8* %x)
   call void @objc_release(i8* %x) nounwind
   ret void
@@ -984,6 +989,8 @@ entry:
 ; CHECK-NEXT: @objc_autoreleasePoolPush
 ; CHECK-NEXT: @use_pointer
 ; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @objc_release
 ; CHECK-NEXT: ret void
 ; CHECK-NEXT: }
 define void @test13d(i8* %x, i64 %n) {
@@ -994,16 +1001,21 @@ entry:
   call void @use_pointer(i8* %x)
   call void @use_pointer(i8* %x)
   call void @objc_release(i8* %x) nounwind
+  call void @use_pointer(i8* %x)
+  call void @objc_release(i8* %x) nounwind
   ret void
 }
 
-; Trivial retain,release pair with intervening call, but it's post-dominated
-; by another release - delete!
+; Trivial retain,release pair with intervening call, and it's post-dominated by
+; another release. But it is not known safe in the top down direction. We can
+; not eliminate it.
 
 ; CHECK-LABEL: define void @test14(
 ; CHECK-NEXT: entry:
+; CHECK-NEXT: @objc_retain
 ; CHECK-NEXT: @use_pointer
 ; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @objc_release
 ; CHECK-NEXT: @objc_release
 ; CHECK-NEXT: ret void
 ; CHECK-NEXT: }
@@ -1073,6 +1085,9 @@ entry:
 ; CHECK-LABEL: define void @test16a(
 ; CHECK: @objc_retain(i8* %x)
 ; CHECK-NOT: @objc
+; CHECK: purple:
+; CHECK: @use_pointer
+; CHECK: @objc_release
 ; CHECK: }
 define void @test16a(i1 %a, i1 %b, i8* %x) {
 entry:
@@ -1101,12 +1116,18 @@ blue:
   br label %purple
 
 purple:
+  call void @use_pointer(i8* %x)
+  call void @objc_release(i8* %x) nounwind
   ret void
 }
 
 ; CHECK-LABEL: define void @test16b(
 ; CHECK: @objc_retain(i8* %x)
 ; CHECK-NOT: @objc
+; CHECK: purple:
+; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @use_pointer
+; CHECK-NEXT: @objc_release
 ; CHECK: }
 define void @test16b(i1 %a, i1 %b, i8* %x) {
 entry:
@@ -1135,12 +1156,18 @@ blue:
   br label %purple
 
 purple:
+  call void @use_pointer(i8* %x)
+  call void @use_pointer(i8* %x)
+  call void @objc_release(i8* %x) nounwind
   ret void
 }
 
 ; CHECK-LABEL: define void @test16c(
 ; CHECK: @objc_retain(i8* %x)
 ; CHECK-NOT: @objc
+; CHECK: purple:
+; CHECK: @use_pointer
+; CHECK: @objc_release
 ; CHECK: }
 define void @test16c(i1 %a, i1 %b, i8* %x) {
 entry:
@@ -1169,12 +1196,14 @@ blue:
   br label %purple
 
 purple:
+  call void @use_pointer(i8* %x)
+  call void @objc_release(i8* %x) nounwind, !clang.imprecise_release !0
   ret void
 }
 
 ; CHECK-LABEL: define void @test16d(
 ; CHECK: @objc_retain(i8* %x)
-; CHECK-NOT: @objc
+; CHECK: @objc
 ; CHECK: }
 define void @test16d(i1 %a, i1 %b, i8* %x) {
 entry:
@@ -1203,44 +1232,6 @@ blue:
   br label %purple
 
 purple:
-  ret void
-}
-
-
-; Retain+release pairs in diamonds, all post-dominated by a release.
-
-; CHECK-LABEL: define void @test17(
-; CHECK-NOT: @objc_
-; CHECK: purple:
-; CHECK: @objc_release
-; CHECK: }
-define void @test17(i1 %a, i1 %b, i8* %x) {
-entry:
-  br i1 %a, label %red, label %orange
-
-red:
-  call i8* @objc_retain(i8* %x) nounwind
-  br label %yellow
-
-orange:
-  call i8* @objc_retain(i8* %x) nounwind
-  br label %yellow
-
-yellow:
-  call void @use_pointer(i8* %x)
-  call void @use_pointer(i8* %x)
-  br i1 %b, label %green, label %blue
-
-green:
-  call void @objc_release(i8* %x) nounwind
-  br label %purple
-
-blue:
-  call void @objc_release(i8* %x) nounwind
-  br label %purple
-
-purple:
-  call void @objc_release(i8* %x) nounwind
   ret void
 }
 
@@ -1936,6 +1927,9 @@ exit:                                             ; preds = %loop
 ; CHECK-NEXT: call i8* @objc_autorelease(i8* %p)
 ; CHECK-NEXT: call void @use_pointer(i8* %p)
 ; CHECK-NEXT: call void @use_pointer(i8* %p)
+; CHECK-NEXT: call void @use_pointer(i8* %p)
+; CHECK-NEXT: call void @use_pointer(i8* %p)
+; CHECK-NEXT: call void @objc_release(i8* %p)
 ; CHECK-NEXT: ret void
 ; CHECK-NEXT: }
 define void @test42(i8* %p) {
@@ -1943,6 +1937,9 @@ entry:
   call i8* @objc_retain(i8* %p)
   call i8* @objc_autorelease(i8* %p)
   call i8* @objc_retain(i8* %p)
+  call void @use_pointer(i8* %p)
+  call void @use_pointer(i8* %p)
+  call void @objc_release(i8* %p)
   call void @use_pointer(i8* %p)
   call void @use_pointer(i8* %p)
   call void @objc_release(i8* %p)
@@ -1985,6 +1982,8 @@ entry:
 ; CHECK-NEXT: call void @use_pointer(i8* %p)
 ; CHECK-NEXT: call void @use_pointer(i8* %p)
 ; CHECK-NEXT: call i8* @objc_autoreleasePoolPush()
+; CHECK-NEXT: call void @use_pointer(i8* %p)
+; CHECK-NEXT: call void @objc_release
 ; CHECK-NEXT: ret void
 ; CHECK-NEXT: }
 define void @test43b(i8* %p) {
@@ -1995,6 +1994,8 @@ entry:
   call void @use_pointer(i8* %p)
   call void @use_pointer(i8* %p)
   call i8* @objc_autoreleasePoolPush()
+  call void @objc_release(i8* %p)
+  call void @use_pointer(i8* %p)
   call void @objc_release(i8* %p)
   ret void
 }
@@ -2260,15 +2261,16 @@ if.end:                                           ; preds = %entry, %if.then
   ret void
 }
 
-; When there are adjacent retain+release pairs, the first one is
-; known unnecessary because the presence of the second one means that
-; the first one won't be deleting the object.
+; When there are adjacent retain+release pairs, the first one is known
+; unnecessary because the presence of the second one means that the first one
+; won't be deleting the object.
 
 ; CHECK-LABEL:      define void @test57(
 ; CHECK-NEXT: entry:
+; CHECK-NEXT:   tail call i8* @objc_retain(i8* %x) [[NUW]]
 ; CHECK-NEXT:   call void @use_pointer(i8* %x)
 ; CHECK-NEXT:   call void @use_pointer(i8* %x)
-; CHECK-NEXT:   %0 = tail call i8* @objc_retain(i8* %x) [[NUW]]
+; CHECK-NEXT:   tail call i8* @objc_retain(i8* %x) [[NUW]]
 ; CHECK-NEXT:   call void @use_pointer(i8* %x)
 ; CHECK-NEXT:   call void @use_pointer(i8* %x)
 ; CHECK-NEXT:   call void @objc_release(i8* %x) [[NUW]]
@@ -2276,6 +2278,7 @@ if.end:                                           ; preds = %entry, %if.then
 ; CHECK-NEXT: }
 define void @test57(i8* %x) nounwind {
 entry:
+  call i8* @objc_retain(i8* %x) nounwind
   call i8* @objc_retain(i8* %x) nounwind
   call void @use_pointer(i8* %x)
   call void @use_pointer(i8* %x)
@@ -2292,12 +2295,14 @@ entry:
 
 ; CHECK-LABEL:      define void @test58(
 ; CHECK-NEXT: entry:
+; CHECK-NEXT:   @objc_retain
 ; CHECK-NEXT:   call void @use_pointer(i8* %x)
 ; CHECK-NEXT:   call void @use_pointer(i8* %x)
 ; CHECK-NEXT:   ret void
 ; CHECK-NEXT: }
 define void @test58(i8* %x) nounwind {
 entry:
+  call i8* @objc_retain(i8* %x) nounwind
   call i8* @objc_retain(i8* %x) nounwind
   call void @use_pointer(i8* %x)
   call void @use_pointer(i8* %x)
@@ -2353,16 +2358,16 @@ define void @test60a() {
 ; CHECK-LABEL: define void @test60b(
 ; CHECK: call i8* @objc_retain
 ; CHECK-NOT: call i8* @objc_retain
-; CHECK-NOT: call i8* @objc_rrelease
+; CHECK-NOT: call i8* @objc_release
 ; CHECK: }
 define void @test60b() {
   %t = load i8*, i8** @constptr
   %s = load i8*, i8** @something
-  call i8* @objc_retain(i8* %s)
-  call i8* @objc_retain(i8* %s)
+  call i8* @objc_retain(i8* %t)
+  call i8* @objc_retain(i8* %t)
   call void @callee()
-  call void @use_pointer(i8* %t)
-  call void @objc_release(i8* %s)
+  call void @use_pointer(i8* %s)
+  call void @objc_release(i8* %t)
   ret void
 }
 
@@ -2372,10 +2377,10 @@ define void @test60b() {
 define void @test60c() {
   %t = load i8*, i8** @constptr
   %s = load i8*, i8** @something
-  call i8* @objc_retain(i8* %s)
+  call i8* @objc_retain(i8* %t)
   call void @callee()
-  call void @use_pointer(i8* %t)
-  call void @objc_release(i8* %s), !clang.imprecise_release !0
+  call void @use_pointer(i8* %s)
+  call void @objc_release(i8* %t), !clang.imprecise_release !0
   ret void
 }
 
@@ -2679,8 +2684,8 @@ define {<2 x float>, <2 x float>} @"\01-[A z]"({}* %self, i8* nocapture %_cmd) n
 invoke.cont:
   %0 = bitcast {}* %self to i8*
   %1 = tail call i8* @objc_retain(i8* %0) nounwind
-  tail call void @llvm.dbg.value(metadata {}* %self, i64 0, metadata !0, metadata !{})
-  tail call void @llvm.dbg.value(metadata {}* %self, i64 0, metadata !0, metadata !{})
+  tail call void @llvm.dbg.value(metadata {}* %self, i64 0, metadata !MDLocalVariable(tag: DW_TAG_auto_variable, scope: !2), metadata !MDExpression()), !dbg !MDLocation(scope: !2)
+  tail call void @llvm.dbg.value(metadata {}* %self, i64 0, metadata !MDLocalVariable(tag: DW_TAG_auto_variable, scope: !2), metadata !MDExpression()), !dbg !MDLocation(scope: !2)
   %ivar = load i64, i64* @"OBJC_IVAR_$_A.myZ", align 8
   %add.ptr = getelementptr i8, i8* %0, i64 %ivar
   %tmp1 = bitcast i8* %add.ptr to float*
@@ -2701,7 +2706,7 @@ invoke.cont:
   %3 = bitcast i8* %arrayidx19 to float*
   %tmp20 = load float, float* %3, align 4
   %conv21 = fpext float %tmp20 to double
-  %call = tail call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([33 x i8]* @.str4, i64 0, i64 0), double %conv, double %conv8, double %conv14, double %conv21)
+  %call = tail call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([33 x i8], [33 x i8]* @.str4, i64 0, i64 0), double %conv, double %conv8, double %conv14, double %conv21)
   %ivar23 = load i64, i64* @"OBJC_IVAR_$_A.myZ", align 8
   %add.ptr24 = getelementptr i8, i8* %0, i64 %ivar23
   %4 = bitcast i8* %add.ptr24 to i128*
@@ -2725,14 +2730,14 @@ define i32 @"\01-[Top0 _getX]"({}* %self, i8* nocapture %_cmd) nounwind {
 invoke.cont:
   %0 = bitcast {}* %self to i8*
   %1 = tail call i8* @objc_retain(i8* %0) nounwind
-  %puts = tail call i32 @puts(i8* getelementptr inbounds ([16 x i8]* @str, i64 0, i64 0))
+  %puts = tail call i32 @puts(i8* getelementptr inbounds ([16 x i8], [16 x i8]* @str, i64 0, i64 0))
   tail call void @objc_release(i8* %0) nounwind
   ret i32 0
 }
 
-@"\01L_OBJC_METH_VAR_NAME_" = internal global [5 x i8] c"frob\00", section "__TEXT,__cstring,cstring_literals", align 1@"\01L_OBJC_SELECTOR_REFERENCES_" = internal global i8* getelementptr inbounds ([5 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i64 0, i64 0), section "__DATA, __objc_selrefs, literal_pointers, no_dead_strip"
+@"\01L_OBJC_METH_VAR_NAME_" = internal global [5 x i8] c"frob\00", section "__TEXT,__cstring,cstring_literals", align 1@"\01L_OBJC_SELECTOR_REFERENCES_" = internal global i8* getelementptr inbounds ([5 x i8], [5 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i64 0, i64 0), section "__DATA, __objc_selrefs, literal_pointers, no_dead_strip"
 @"\01L_OBJC_IMAGE_INFO" = internal constant [2 x i32] [i32 0, i32 16], section "__DATA, __objc_imageinfo, regular, no_dead_strip"
-@llvm.used = appending global [3 x i8*] [i8* getelementptr inbounds ([5 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i32 0, i32 0), i8* bitcast (i8** @"\01L_OBJC_SELECTOR_REFERENCES_" to i8*), i8* bitcast ([2 x i32]* @"\01L_OBJC_IMAGE_INFO" to i8*)], section "llvm.metadata"
+@llvm.used = appending global [3 x i8*] [i8* getelementptr inbounds ([5 x i8], [5 x i8]* @"\01L_OBJC_METH_VAR_NAME_", i32 0, i32 0), i8* bitcast (i8** @"\01L_OBJC_SELECTOR_REFERENCES_" to i8*), i8* bitcast ([2 x i32]* @"\01L_OBJC_IMAGE_INFO" to i8*)], section "llvm.metadata"
 
 ; A simple loop. Eliminate the retain and release inside of it!
 
@@ -2753,7 +2758,7 @@ for.body:                                         ; preds = %entry, %for.body
   %i.010 = phi i64 [ %inc, %for.body ], [ 0, %entry ]
   %1 = tail call i8* @objc_retain(i8* %x) nounwind
   %tmp5 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_", align 8
-  %call = tail call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %1, i8* %tmp5)
+  %call = tail call i8* (i8*, i8*, ...) @objc_msgSend(i8* %1, i8* %tmp5)
   tail call void @objc_release(i8* %1) nounwind, !clang.imprecise_release !0
   %inc = add nsw i64 %i.010, 1
   %exitcond = icmp eq i64 %inc, %n
@@ -2832,17 +2837,17 @@ entry:
   %tmp2 = load %struct.__CFString*, %struct.__CFString** @kUTTypePlainText, align 8
   %tmp3 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_19", align 8
   %tmp4 = bitcast %struct._class_t* %tmp1 to i8*
-  %call5 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp4, i8* %tmp3, %struct.__CFString* %tmp2)
+  %call5 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp4, i8* %tmp3, %struct.__CFString* %tmp2)
   %tmp5 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_21", align 8
   %tmp6 = bitcast %3* %pboard to i8*
-  %call76 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp6, i8* %tmp5, i8* %call5)
+  %call76 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp6, i8* %tmp5, i8* %call5)
   %tmp9 = call i8* @objc_retain(i8* %call76) nounwind
   %tobool = icmp eq i8* %tmp9, null
   br i1 %tobool, label %end, label %land.lhs.true
 
 land.lhs.true:                                    ; preds = %entry
   %tmp11 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_23", align 8
-  %call137 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp6, i8* %tmp11, i8* %tmp9)
+  %call137 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp6, i8* %tmp11, i8* %tmp9)
   %tmp = bitcast i8* %call137 to %1*
   %tmp10 = call i8* @objc_retain(i8* %call137) nounwind
   call void @objc_release(i8* null) nounwind
@@ -2861,7 +2866,7 @@ land.lhs.true23:                                  ; preds = %if.then
   %tmp24 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_26", align 8
   %tmp26 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_28", align 8
   %tmp27 = bitcast %struct._class_t* %tmp24 to i8*
-  %call2822 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp27, i8* %tmp26, i8* %call137)
+  %call2822 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp27, i8* %tmp26, i8* %call137)
   %tmp13 = bitcast i8* %call2822 to %5*
   %tmp14 = call i8* @objc_retain(i8* %call2822) nounwind
   call void @objc_release(i8* null) nounwind
@@ -2872,9 +2877,9 @@ if.end:                                           ; preds = %land.lhs.true23
   %tmp32 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_29", align 8
   %tmp33 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_31", align 8
   %tmp34 = bitcast %struct._class_t* %tmp32 to i8*
-  %call35 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp34, i8* %tmp33)
+  %call35 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp34, i8* %tmp33)
   %tmp37 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_33", align 8
-  %call3923 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %call35, i8* %tmp37, i8* %call2822, i32 signext 1, %4** %err)
+  %call3923 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %call35, i8* %tmp37, i8* %call2822, i32 signext 1, %4** %err)
   %cmp = icmp eq i8* %call3923, null
   br i1 %cmp, label %if.then44, label %end
 
@@ -2885,13 +2890,13 @@ if.then44:                                        ; preds = %if.end, %land.lhs.t
   %call513 = extractvalue %struct._NSRange %call51, 0
   %call514 = extractvalue %struct._NSRange %call51, 1
   %tmp52 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_37", align 8
-  %call548 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %call137, i8* %tmp52, i64 %call513, i64 %call514)
+  %call548 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %call137, i8* %tmp52, i64 %call513, i64 %call514)
   %tmp55 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_38", align 8
   %tmp56 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_40", align 8
   %tmp57 = bitcast %struct._class_t* %tmp55 to i8*
-  %call58 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp57, i8* %tmp56)
+  %call58 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp57, i8* %tmp56)
   %tmp59 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_42", align 8
-  %call6110 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %call548, i8* %tmp59, i8* %call58)
+  %call6110 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %call548, i8* %tmp59, i8* %call58)
   %tmp15 = call i8* @objc_retain(i8* %call6110) nounwind
   call void @objc_release(i8* %call137) nounwind
   %tmp64 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_46", align 8
@@ -2901,7 +2906,7 @@ if.then44:                                        ; preds = %if.end, %land.lhs.t
 
 if.then68:                                        ; preds = %if.then44
   %tmp70 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_48", align 8
-  %call7220 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %call6110, i8* %tmp70)
+  %call7220 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %call6110, i8* %tmp70)
   %tmp16 = call i8* @objc_retain(i8* %call7220) nounwind
   call void @objc_release(i8* %call6110) nounwind
   br label %if.end74
@@ -2911,7 +2916,7 @@ if.end74:                                         ; preds = %if.then68, %if.then
   %filename.0 = bitcast i8* %filename.0.in to %1*
   %tmp17 = load i8*, i8** bitcast (%0* @"\01l_objc_msgSend_fixup_isEqual_" to i8**), align 16
   %tmp18 = bitcast i8* %tmp17 to i8 (i8*, %struct._message_ref_t*, i8*, ...)*
-  %call78 = call signext i8 (i8*, %struct._message_ref_t*, i8*, ...)* %tmp18(i8* %call137, %struct._message_ref_t* bitcast (%0* @"\01l_objc_msgSend_fixup_isEqual_" to %struct._message_ref_t*), i8* %filename.0.in)
+  %call78 = call signext i8 (i8*, %struct._message_ref_t*, i8*, ...) %tmp18(i8* %call137, %struct._message_ref_t* bitcast (%0* @"\01l_objc_msgSend_fixup_isEqual_" to %struct._message_ref_t*), i8* %filename.0.in)
   %tobool79 = icmp eq i8 %call78, 0
   br i1 %tobool79, label %land.lhs.true80, label %if.then109
 
@@ -2925,7 +2930,7 @@ if.end106:                                        ; preds = %land.lhs.true80
   %tmp88 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_26", align 8
   %tmp90 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_28", align 8
   %tmp91 = bitcast %struct._class_t* %tmp88 to i8*
-  %call9218 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp91, i8* %tmp90, i8* %filename.0.in)
+  %call9218 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp91, i8* %tmp90, i8* %filename.0.in)
   %tmp20 = bitcast i8* %call9218 to %5*
   %tmp21 = call i8* @objc_retain(i8* %call9218) nounwind
   %tmp22 = bitcast %5* %url.025 to i8*
@@ -2933,9 +2938,9 @@ if.end106:                                        ; preds = %land.lhs.true80
   %tmp94 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_29", align 8
   %tmp95 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_31", align 8
   %tmp96 = bitcast %struct._class_t* %tmp94 to i8*
-  %call97 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp96, i8* %tmp95)
+  %call97 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp96, i8* %tmp95)
   %tmp99 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_33", align 8
-  %call10119 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %call97, i8* %tmp99, i8* %call9218, i32 signext 1, %4** %err)
+  %call10119 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %call97, i8* %tmp99, i8* %call9218, i32 signext 1, %4** %err)
   %phitmp = icmp eq i8* %call10119, null
   br i1 %phitmp, label %if.then109, label %end
 
@@ -2953,10 +2958,10 @@ if.then112:                                       ; preds = %if.then109
   %tmp118 = load %1*, %1** @NSFilePathErrorKey, align 8
   %tmp119 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_53", align 8
   %tmp120 = bitcast %struct._class_t* %tmp115 to i8*
-  %call12113 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp120, i8* %tmp119, %1* %call117, %1* %tmp118, i8* null)
+  %call12113 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp120, i8* %tmp119, %1* %call117, %1* %tmp118, i8* null)
   %tmp122 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_55", align 8
   %tmp123 = bitcast %struct._class_t* %tmp113 to i8*
-  %call12414 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp123, i8* %tmp122, %1* %tmp114, i64 258, i8* %call12113)
+  %call12414 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp123, i8* %tmp122, %1* %tmp114, i64 258, i8* %call12113)
   %tmp23 = call i8* @objc_retain(i8* %call12414) nounwind
   %tmp25 = call i8* @objc_autorelease(i8* %tmp23) nounwind
   %tmp28 = bitcast i8* %tmp25 to %4*
@@ -2968,9 +2973,9 @@ if.end125:                                        ; preds = %if.then112, %if.the
   %tmp126 = load %struct._class_t*, %struct._class_t** @"\01L_OBJC_CLASSLIST_REFERENCES_$_56", align 8
   %tmp128 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_58", align 8
   %tmp129 = bitcast %struct._class_t* %tmp126 to i8*
-  %call13015 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %tmp129, i8* %tmp128, %4* %tmp127)
+  %call13015 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %tmp129, i8* %tmp128, %4* %tmp127)
   %tmp131 = load i8*, i8** @"\01L_OBJC_SELECTOR_REFERENCES_60", align 8
-  %call13317 = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %call13015, i8* %tmp131)
+  %call13317 = call i8* (i8*, i8*, ...) @objc_msgSend(i8* %call13015, i8* %tmp131)
   br label %end
 
 end:                                              ; preds = %if.end125, %if.end106, %if.end, %land.lhs.true, %entry
@@ -3013,6 +3018,7 @@ define void @test67(i8* %x) {
 
 !0 = !{}
 !1 = !{i32 1, !"Debug Info Version", i32 3}
+!2 = !MDSubprogram()
 
 ; CHECK: attributes #0 = { nounwind readnone }
 ; CHECK: attributes [[NUW]] = { nounwind }

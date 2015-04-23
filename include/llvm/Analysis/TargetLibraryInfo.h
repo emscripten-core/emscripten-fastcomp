@@ -11,6 +11,7 @@
 #define LLVM_ANALYSIS_TARGETLIBRARYINFO_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
@@ -18,6 +19,14 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
+/// VecDesc - Describes a possible vectorization of a function.
+/// Function 'VectorFnName' is equivalent to 'ScalarFnName' vectorized
+/// by a factor 'VectorizationFactor'.
+struct VecDesc {
+  const char *ScalarFnName;
+  const char *VectorFnName;
+  unsigned VectorizationFactor;
+};
 class PreservedAnalyses;
 
   namespace LibFunc {
@@ -55,7 +64,25 @@ class TargetLibraryInfoImpl {
     return static_cast<AvailabilityState>((AvailableArray[F/4] >> 2*(F&3)) & 3);
   }
 
+  /// Vectorization descriptors - sorted by ScalarFnName.
+  std::vector<VecDesc> VectorDescs;
+  /// Scalarization descriptors - same content as VectorDescs but sorted based
+  /// on VectorFnName rather than ScalarFnName.
+  std::vector<VecDesc> ScalarDescs;
+
 public:
+  /// \brief  List of known vector-functions libraries.
+  ///
+  /// The vector-functions library defines, which functions are vectorizable
+  /// and with which factor. The library can be specified by either frontend,
+  /// or a commandline option, and then used by
+  /// addVectorizableFunctionsFromVecLib for filling up the tables of
+  /// vectorizable functions.
+  enum VectorLibrary {
+    NoLibrary, // Don't use any vector library.
+    Accelerate // Use Accelerate framework.
+  };
+
   TargetLibraryInfoImpl();
   explicit TargetLibraryInfoImpl(const Triple &T);
 
@@ -97,6 +124,41 @@ public:
   ///
   /// This can be used for options like -fno-builtin.
   void disableAllFunctions();
+
+  /// addVectorizableFunctions - Add a set of scalar -> vector mappings,
+  /// queryable via getVectorizedFunction and getScalarizedFunction.
+  void addVectorizableFunctions(ArrayRef<VecDesc> Fns);
+
+  /// Calls addVectorizableFunctions with a known preset of functions for the
+  /// given vector library.
+  void addVectorizableFunctionsFromVecLib(enum VectorLibrary VecLib);
+
+  /// isFunctionVectorizable - Return true if the function F has a
+  /// vector equivalent with vectorization factor VF.
+  bool isFunctionVectorizable(StringRef F, unsigned VF) const {
+    return !getVectorizedFunction(F, VF).empty();
+  }
+
+  /// isFunctionVectorizable - Return true if the function F has a
+  /// vector equivalent with any vectorization factor.
+  bool isFunctionVectorizable(StringRef F) const;
+
+  /// getVectorizedFunction - Return the name of the equivalent of
+  /// F, vectorized with factor VF. If no such mapping exists,
+  /// return the empty string.
+  StringRef getVectorizedFunction(StringRef F, unsigned VF) const;
+
+  /// isFunctionScalarizable - Return true if the function F has a
+  /// scalar equivalent, and set VF to be the vectorization factor.
+  bool isFunctionScalarizable(StringRef F, unsigned &VF) const {
+    return !getScalarizedFunction(F, VF).empty();
+  }
+
+  /// getScalarizedFunction - Return the name of the equivalent of
+  /// F, scalarized. If no such mapping exists, return the empty string.
+  ///
+  /// Set VF to the vectorization factor.
+  StringRef getScalarizedFunction(StringRef F, unsigned &VF) const;
 };
 
 /// \brief Provides information about what library functions are available for
@@ -137,6 +199,15 @@ public:
   bool has(LibFunc::Func F) const {
     return Impl->getState(F) != TargetLibraryInfoImpl::Unavailable;
   }
+  bool isFunctionVectorizable(StringRef F, unsigned VF) const {
+    return Impl->isFunctionVectorizable(F, VF);
+  };
+  bool isFunctionVectorizable(StringRef F) const {
+    return Impl->isFunctionVectorizable(F);
+  };
+  StringRef getVectorizedFunction(StringRef F, unsigned VF) const {
+    return Impl->getVectorizedFunction(F, VF);
+  };
 
   /// \brief Tests if the function is both available and a candidate for
   /// optimized code generation.

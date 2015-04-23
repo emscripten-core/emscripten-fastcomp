@@ -76,6 +76,10 @@ bool TargetTransformInfo::hasBranchDivergence() const {
   return TTIImpl->hasBranchDivergence();
 }
 
+bool TargetTransformInfo::isSourceOfDivergence(const Value *V) const {
+  return TTIImpl->isSourceOfDivergence(V);
+}
+
 bool TargetTransformInfo::isLoweredToCall(const Function *F) const {
   return TTIImpl->isLoweredToCall(F);
 }
@@ -235,6 +239,11 @@ unsigned
 TargetTransformInfo::getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
                                            ArrayRef<Type *> Tys) const {
   return TTIImpl->getIntrinsicInstrCost(ID, RetTy, Tys);
+}
+
+unsigned TargetTransformInfo::getCallInstrCost(Function *F, Type *RetTy,
+                                               ArrayRef<Type *> Tys) const {
+  return TTIImpl->getCallInstrCost(F, RetTy, Tys);
 }
 
 unsigned TargetTransformInfo::getNumberOfParts(Type *Tp) const {

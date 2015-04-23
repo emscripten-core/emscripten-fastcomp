@@ -26,6 +26,7 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeWriterPass.h" // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassNameParser.h"
@@ -39,6 +40,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PluginLoader.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -197,6 +199,10 @@ DefaultDataLayout("default-data-layout",
           cl::desc("data layout string to use if not specified by module"),
           cl::value_desc("layout-string"), cl::init(""));
 
+static cl::opt<bool> PreserveBitcodeUseListOrder(
+    "preserve-bc-uselistorder",
+    cl::desc("Preserve use-list order when writing LLVM bitcode."),
+    cl::init(true), cl::Hidden);
 // @LOCALMOD-BEGIN
 static cl::opt<NaClFileFormat>
 OutputFileFormat(
@@ -210,16 +216,18 @@ OutputFileFormat(
 extern bool OutputFileFormatIsPNaCl;
 // @LOCALMOD-END
 
+static cl::opt<bool> PreserveAssemblyUseListOrder(
+    "preserve-ll-uselistorder",
+    cl::desc("Preserve use-list order when writing LLVM assembly."),
+    cl::init(false), cl::Hidden);
 
 static inline void addPass(legacy::PassManagerBase &PM, Pass *P) {
   // Add the pass to the pass manager...
   PM.add(P);
 
   // If we are verifying all of the intermediate steps, add the verifier...
-  if (VerifyEach) {
+  if (VerifyEach)
     PM.add(createVerifierPass());
-    PM.add(createDebugInfoVerifierPass());
-  }
 }
 
 /// This routine adds optimization passes based on selected optimization level,
@@ -229,8 +237,7 @@ static inline void addPass(legacy::PassManagerBase &PM, Pass *P) {
 static void AddOptimizationPasses(legacy::PassManagerBase &MPM,
                                   legacy::FunctionPassManager &FPM,
                                   unsigned OptLevel, unsigned SizeLevel) {
-  FPM.add(createVerifierPass());          // Verify that input is correct
-  MPM.add(createDebugInfoVerifierPass()); // Verify that debug info is correct
+  FPM.add(createVerifierPass()); // Verify that input is correct
 
   PassManagerBuilder Builder;
   Builder.OptLevel = OptLevel;
@@ -265,7 +272,6 @@ static void AddOptimizationPasses(legacy::PassManagerBase &MPM,
 static void AddStandardLinkPasses(legacy::PassManagerBase &PM) {
   PassManagerBuilder Builder;
   Builder.VerifyInput = true;
-  Builder.StripDebug = StripDebug;
   if (DisableOptimizations)
     Builder.OptLevel = 0;
 
@@ -308,12 +314,27 @@ static TargetMachine* GetTargetMachine(Triple TheTriple) {
 
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;
-  if (MAttrs.size()) {
+  if (MAttrs.size() || MCPU == "native") {
     SubtargetFeatures Features;
+
+    // If user asked for the 'native' CPU, we need to autodetect features.
+    // This is necessary for x86 where the CPU might not support all the
+    // features the autodetected CPU name lists in the target. For example,
+    // not all Sandybridge processors support AVX.
+    if (MCPU == "native") {
+      StringMap<bool> HostFeatures;
+      if (sys::getHostCPUFeatures(HostFeatures))
+        for (auto &F : HostFeatures)
+          Features.AddFeature(F.first(), F.second);
+    }
+
     for (unsigned i = 0; i != MAttrs.size(); ++i)
       Features.AddFeature(MAttrs[i]);
     FeaturesStr = Features.getString();
   }
+
+  if (MCPU == "native")
+    MCPU = sys::getHostCPUName();
 
   return TheTarget->createTargetMachine(TheTriple.getTriple(),
                                         MCPU, FeaturesStr,
@@ -436,6 +457,19 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  // Strip debug info before running the verifier.
+  if (StripDebug)
+    StripDebugInfo(*M);
+
+  // Immediately run the verifier to catch any problems before starting up the
+  // pass pipelines.  Otherwise we can crash on broken code during
+  // doInitialization().
+  if (!NoVerify && verifyModule(*M, &errs())) {
+    errs() << argv[0] << ": " << InputFilename
+           << ": error: input module is broken!\n";
+    return 1;
+  }
+
   // If we are supposed to override the target triple, do so now.
   if (!TargetTriple.empty())
     M->setTargetTriple(Triple::normalize(TargetTriple));
@@ -487,7 +521,8 @@ int main(int argc, char **argv) {
     // string. Hand off the rest of the functionality to the new code for that
     // layer.
     return runPassPipeline(argv[0], Context, *M, TM.get(), Out.get(),
-                           PassPipeline, OK, VK)
+                           PassPipeline, OK, VK, PreserveAssemblyUseListOrder,
+                           PreserveBitcodeUseListOrder)
                ? 0
                : 1;
   }
@@ -539,10 +574,6 @@ int main(int argc, char **argv) {
     Passes.add(createBreakpointPrinter(Out->os()));
     NoOutput = true;
   }
-
-  // If the -strip-debug command line option was specified, add it.
-  if (StripDebug)
-    addPass(Passes, createStripSymbolsPass(true));
 
   // Create a new optimization pass for each one specified on the command line
   for (unsigned i = 0; i < PassList.size(); ++i) {
@@ -636,7 +667,8 @@ int main(int argc, char **argv) {
     }
 
     if (PrintEachXForm)
-      Passes.add(createPrintModulePass(errs()));
+      Passes.add(
+          createPrintModulePass(errs(), "", PreserveAssemblyUseListOrder));
   }
 
   // @LOCALMOD-BEGIN
@@ -680,20 +712,19 @@ int main(int argc, char **argv) {
   // @LOCALMOD-END
 
   // Check that the module is well formed on completion of optimization
-  if (!NoVerify && !VerifyEach) {
+  if (!NoVerify && !VerifyEach)
     Passes.add(createVerifierPass());
-    Passes.add(createDebugInfoVerifierPass());
-  }
 
   // Write bitcode or assembly to the output as the last step...
   if (!NoOutput && !AnalyzeOnly) {
     if (OutputAssembly)
-      Passes.add(createPrintModulePass(Out->os()));
+      Passes.add(
+          createPrintModulePass(Out->os(), "", PreserveAssemblyUseListOrder));
     else
       // @LOCALMOD-START
       switch (OutputFileFormat) {
       case LLVMFormat:
-        Passes.add(createBitcodeWriterPass(Out->os()));
+        Passes.add(createBitcodeWriterPass(Out->os(), PreserveBitcodeUseListOrder));
         break;
       case PNaClFormat:
         Passes.add(createNaClBitcodeWriterPass(Out->os()));

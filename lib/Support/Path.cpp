@@ -19,9 +19,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include <cctype>
-#include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 
 #if !defined(_MSC_VER) && !defined(__MINGW32__)
 #include <unistd.h>
@@ -49,7 +47,6 @@ namespace {
     // * empty (in this case we return an empty string)
     // * either C: or {//,\\}net.
     // * {/,\}
-    // * {.,..}
     // * {file,directory}name
 
     if (path.empty())
@@ -74,12 +71,6 @@ namespace {
 
     // {/,\}
     if (is_separator(path[0]))
-      return path.substr(0, 1);
-
-    if (path.startswith(".."))
-      return path.substr(0, 2);
-
-    if (path[0] == '.')
       return path.substr(0, 1);
 
     // * {file,directory}name
