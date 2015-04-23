@@ -5407,6 +5407,19 @@ def MOVi32imm : PseudoInst<(outs GPR:$dst), (ins i32imm:$src), IIC_iMOVix2,
                            [(set GPR:$dst, (arm_i32imm:$src))]>,
                            Requires<[IsARM]>;
 
+// @LOCALMOD-START
+// MOVi32imm doesn't get a fast-isel because it's not a leaf pattern (it uses
+// arm_i32imm which differs based on whether UseMovt is true.) This means
+// ARMFastISel::ARMMaterializeInt fails when useConstIslands is disabled, and
+// ARMFastISel::ARMSimplifyAddress can't bail out of fast isel. For upstreaming
+// we could probably just split MOVi32imm directly instead of duplicating it,
+// but this is cleaner as a localmod.
+let isReMaterializable = 1, isMoveImm = 1 in
+def MOVti32imm : PseudoInst<(outs GPR:$dst), (ins i32imm:$src), IIC_iMOVix2,
+                           [(set GPR:$dst, (i32 imm:$src))]>,
+                           Requires<[IsARM, DontUseConstIslands]>;
+// @LOCALMOD-END
+
 def LDRLIT_ga_abs : PseudoInst<(outs GPR:$dst), (ins i32imm:$src), IIC_iLoad_i,
                                [(set GPR:$dst, (ARMWrapper tglobaladdr:$src))]>,
                     Requires<[IsARM, DontUseMovt]>;
