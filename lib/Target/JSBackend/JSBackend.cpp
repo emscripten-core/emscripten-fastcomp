@@ -385,8 +385,10 @@ namespace {
             PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';';
             return 0; // emit zero in there for now, until the postSet
           } else if (Relocatable) {
-            // this is one of our globals, but we must relocate it
-            PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + relocateGlobal(utostr(getGlobalAddress(V->getName().str()))) + ';';
+            // this is one of our globals, but we must relocate it. we return zero, but the caller may store
+            // an added offset, which we read at postSet time; in other words, we just add to that offset
+            std::string access = "HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2]";
+            PostSets += "\n " + access + " = (" + access + " | 0) + " + relocateGlobal(utostr(getGlobalAddress(V->getName().str()))) + ';';
             return 0; // emit zero in there for now, until the postSet
           }
         }
