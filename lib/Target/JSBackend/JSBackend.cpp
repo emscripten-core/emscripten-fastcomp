@@ -2476,6 +2476,12 @@ void JSWriter::printFunctionBody(const Function *F) {
       Out << " return " << getParenCast(getConstant(UndefValue::get(RT)), RT, ASM_NONSPECIFIC) << ";\n";
     }
   }
+
+  if (Relocatable) {
+    if (!F->hasInternalLinkage()) {
+      Exports.push_back(getJSName(F));
+    }
+  }
 }
 
 void JSWriter::processConstants() {
@@ -2493,6 +2499,14 @@ void JSWriter::processConstants() {
       parseConstant(I->getName().str(), I->getInitializer(), false);
     }
   }
+  /*if (Relocatable) {
+    for (Module::const_global_iterator I = TheModule->global_begin(),
+           E = TheModule->global_end(); I != E; ++I) {
+      if (I->hasInitializer() && !I->hasInternalLinkage()) {
+        Exports.push_back(getJSName(I));
+      }
+    }
+  }*/
 }
 
 void JSWriter::printFunction(const Function *F) {
