@@ -2499,14 +2499,20 @@ void JSWriter::processConstants() {
       parseConstant(I->getName().str(), I->getInitializer(), false);
     }
   }
-  /*if (Relocatable) {
+  if (Relocatable) {
     for (Module::const_global_iterator I = TheModule->global_begin(),
            E = TheModule->global_end(); I != E; ++I) {
       if (I->hasInitializer() && !I->hasInternalLinkage()) {
-        Exports.push_back(getJSName(I));
+        std::string Name = I->getName().str();
+        if (GlobalAddresses.find(Name) != GlobalAddresses.end()) {
+          std::string JSName = getJSName(I).substr(1);
+          if (Name == JSName) { // don't export things that have weird internal names, that C can't dlsym anyhow
+            NamedGlobals[Name] = getGlobalAddress(Name);
+          }
+        }
       }
     }
-  }*/
+  }
 }
 
 void JSWriter::printFunction(const Function *F) {
@@ -2729,7 +2735,7 @@ void JSWriter::printModuleBody() {
     } else {
       Out << ", ";
     }
-    Out << "\"_" << I->first << "\": \"" << utostr(I->second) << "\"";
+    Out << "\"" << I->first << "\": \"" << utostr(I->second) << "\"";
   }
   Out << "},";
 
