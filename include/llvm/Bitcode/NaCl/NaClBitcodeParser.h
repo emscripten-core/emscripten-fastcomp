@@ -225,7 +225,13 @@ protected:
 typedef NaClBitcodeRecordVector NaClRecordVector;
 
 class NaClBitcodeRecordData {
+  NaClBitcodeRecordData &operator=(const NaClBitcodeRecordData &) = delete;
 public:
+  NaClBitcodeRecordData(unsigned Code, const NaClRecordVector &Values)
+      : Code(Code), Values(Values) {}
+  explicit NaClBitcodeRecordData(const NaClBitcodeRecordData &Record)
+      : Code(Record.Code), Values(Record.Values) {}
+  NaClBitcodeRecordData() : Code(0) {}
   // The selector code associated with the record.
   unsigned Code;
   // The sequence of values defining the parsed record.
