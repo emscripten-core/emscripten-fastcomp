@@ -418,8 +418,13 @@ namespace {
         // replace double quotes with escaped single quotes
         curr = 0;
         while ((curr = code.find('"', curr)) != std::string::npos) {
-          code = code.replace(curr, 1, "\\" "\"");
-          curr += 2; // skip this one
+          if (curr == 0 || code[curr-1] != '\\') {
+            code = code.replace(curr, 1, "\\" "\"");
+            curr += 2; // skip this one
+          } else { // already escaped, escape the slash as well
+            code = code.replace(curr, 1, "\\" "\\" "\"");
+            curr += 3; // skip this one
+          }
         }
       }
       if (AsmConsts.count(code) > 0) return AsmConsts[code];
