@@ -2844,7 +2844,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
             if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
               C = CE->getOperand(0); // ignore bitcasts
             }
-            Exports.push_back(getJSName(C));
+            if (isa<Function>(C)) Exports.push_back(getJSName(C));
           }
         } else if ((*UI)->getName() == "llvm.global.annotations") {
           // llvm.global.annotations can be ignored.
