@@ -255,6 +255,14 @@ public:
   /// an error message and returns corresponding error code.
   std::error_code getAlignmentValue(uint64_t Exponent, unsigned &Alignment);
 
+  // GVMaterializer interface. It's a no-op for PNaCl bitcode, which has no
+  // metadata.
+  std::error_code materializeMetadata() override {};
+
+  // GVMaterializer interface. Causes debug info to be stripped from the module
+  // on materialization. It's a no-op for PNaCl bitcode, which has no metadata.
+  void setStripDebugInfo() override {};
+
 private:
   // Returns false if Header is acceptable.
   bool AcceptHeader() const {
