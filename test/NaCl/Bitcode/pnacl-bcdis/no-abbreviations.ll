@@ -29,7 +29,7 @@ false:
 ; ABV-NEXT:      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8
 ; ABV-NEXT:      24:0|  3: <1, 1>                  |  version 1;
 ; ABV-NEXT:      26:4|  1: <65535, 0, 2>           |  abbreviations {  // BlockID = 0
-; ABV-NEXT:      36:0|    1: <1, 14>               |    valuesymtab:
+; ABV-NEXT:      36:0|    3: <1, 14>               |    valuesymtab:
 ; ABV-NEXT:      38:4|    2: <65533, 4, 0, 1, 3, 0,|      @a0 = abbrev <fixed(3), vbr(8), 
 ; ABV-NEXT:          |        2, 8, 0, 3, 0, 1, 8> |                   array(fixed(8))>;
 ; ABV-NEXT:      43:2|    2: <65533, 4, 1, 1, 0, 2,|      @a1 = abbrev <1, vbr(8), 
@@ -38,7 +38,7 @@ false:
 ; ABV-NEXT:          |        8, 0, 3, 0, 4>       |                   array(char6)>;
 ; ABV-NEXT:      52:1|    2: <65533, 4, 1, 2, 0, 2,|      @a3 = abbrev <2, vbr(8), 
 ; ABV-NEXT:          |        8, 0, 3, 0, 4>       |                   array(char6)>;
-; ABV-NEXT:      56:2|    1: <1, 11>               |    constants:
+; ABV-NEXT:      56:2|    3: <1, 11>               |    constants:
 ; ABV-NEXT:      58:6|    2: <65533, 2, 1, 1, 0, 1,|      @a0 = abbrev <1, fixed(3)>;
 ; ABV-NEXT:          |        3>                   |
 ; ABV-NEXT:      61:7|    2: <65533, 2, 1, 4, 0, 2,|      @a1 = abbrev <4, vbr(8)>;
@@ -46,7 +46,7 @@ false:
 ; ABV-NEXT:      65:0|    2: <65533, 2, 1, 4, 1, 0>|      @a2 = abbrev <4, 0>;
 ; ABV-NEXT:      68:1|    2: <65533, 2, 1, 6, 0, 2,|      @a3 = abbrev <6, vbr(8)>;
 ; ABV-NEXT:          |        8>                   |
-; ABV-NEXT:      71:2|    1: <1, 12>               |    function:
+; ABV-NEXT:      71:2|    3: <1, 12>               |    function:
 ; ABV-NEXT:      73:6|    2: <65533, 4, 1, 20, 0,  |      @a0 = abbrev <20, vbr(6), vbr(4),
 ; ABV-NEXT:          |        2, 6, 0, 2, 4, 0, 2, |                   vbr(4)>;
 ; ABV-NEXT:          |        4>                   |
@@ -63,7 +63,7 @@ false:
 ; ABV-NEXT:     101:2|    2: <65533, 4, 1, 24, 0,  |      @a7 = abbrev <24, vbr(6), vbr(6),
 ; ABV-NEXT:          |        2, 6, 0, 2, 6, 0, 2, |                   vbr(4)>;
 ; ABV-NEXT:          |        4>                   |
-; ABV-NEXT:     106:5|    1: <1, 19>               |    globals:
+; ABV-NEXT:     106:5|    3: <1, 19>               |    globals:
 ; ABV-NEXT:     109:1|    2: <65533, 3, 1, 0, 0, 2,|      @a0 = abbrev <0, vbr(6), 
 ; ABV-NEXT:          |        6, 0, 1, 1>          |                   fixed(1)>;
 ; ABV-NEXT:     113:3|    2: <65533, 2, 1, 1, 0, 2,|      @a1 = abbrev <1, vbr(8)>;

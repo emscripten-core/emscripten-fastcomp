@@ -51,7 +51,7 @@ void NaClBitcodeParserListener::BeginBlockInfoBlock(unsigned NumWords) {
 void NaClBitcodeParserListener::SetBID() {
   Parser->Record.SetStartBit(StartBit);
   Parser->Record.Entry.Kind = NaClBitstreamEntry::Record;
-  Parser->Record.Entry.ID = naclbitc::BLOCKINFO_CODE_SETBID;
+  Parser->Record.Entry.ID = naclbitc::UNABBREV_RECORD;
   Parser->Record.Data.Code = naclbitc::BLOCKINFO_CODE_SETBID;
   Parser->Record.Data.Values = Values;
   GlobalBlockID = Values[0];
