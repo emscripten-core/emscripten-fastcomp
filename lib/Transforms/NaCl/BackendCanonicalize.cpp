@@ -342,7 +342,7 @@ bool BackendCanonicalize::visitLoadInst(LoadInst &L) {
 }
 
 bool BackendCanonicalize::visitConstantFoldableInstruction(Instruction *I) {
-  if (Constant *Folded = ConstantFoldInstruction(I, DL, TLI)) {
+  if (Constant *Folded = ConstantFoldInstruction(I, *DL, TLI)) {
     I->replaceAllUsesWith(Folded);
     Kill.push_back(I);
     return true;

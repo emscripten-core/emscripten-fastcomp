@@ -192,20 +192,20 @@ void FuncRewriter::initializeFrame() {
   Value *JmpBufIndexes[] = { ConstantInt::get(I32, 0),
                              ConstantInt::get(I32, 0),
                              ConstantInt::get(I32, 0) };
-  FrameJmpBuf = GetElementPtrInst::Create(Frame, JmpBufIndexes,
-                                          "invoke_jmp_buf");
+  FrameJmpBuf = GetElementPtrInst::Create(
+      ExceptionFrameTy, Frame, JmpBufIndexes, "invoke_jmp_buf");
   FrameJmpBuf->insertAfter(Frame);
 
   Value *NextPtrIndexes[] = { ConstantInt::get(I32, 0),
                               ConstantInt::get(I32, 1) };
-  FrameNextPtr = GetElementPtrInst::Create(Frame, NextPtrIndexes,
-                                           "invoke_next");
+  FrameNextPtr = GetElementPtrInst::Create(
+      ExceptionFrameTy, Frame, NextPtrIndexes, "invoke_next");
   FrameNextPtr->insertAfter(Frame);
 
   Value *ExcInfoIndexes[] = { ConstantInt::get(I32, 0),
                               ConstantInt::get(I32, 2) };
-  FrameExcInfo = GetElementPtrInst::Create(Frame, ExcInfoIndexes,
-                                           "exc_info_ptr");
+  FrameExcInfo = GetElementPtrInst::Create(
+      ExceptionFrameTy, Frame, ExcInfoIndexes, "exc_info_ptr");
   FrameExcInfo->insertAfter(Frame);
 }
 

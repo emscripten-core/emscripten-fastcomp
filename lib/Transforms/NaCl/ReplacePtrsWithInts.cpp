@@ -617,7 +617,7 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
     // Patch the pointer to LLVM function in debug info descriptor.
     auto DI = FunctionDIs.find(OldFunc);
     if (DI != FunctionDIs.end())
-      DI->second.replaceFunction(NewFunc);
+      DI->second->replaceFunction(NewFunc);
 
     OldFunc->eraseFromParent();
   }

@@ -203,11 +203,13 @@ static PointerType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
   TemplateDataVar->setName(StartSymbol);
 
   Constant *TdataEnd = ConstantExpr::getGetElementPtr(
+      InitTemplateType,
       TemplateDataVar,
       ConstantInt::get(M.getContext(), APInt(32, 1)));
   setGlobalVariableValue(M, "__tls_template_tdata_end", TdataEnd);
 
   Constant *TotalEnd = ConstantExpr::getGetElementPtr(
+      TemplatePtrType,
       ConstantExpr::getBitCast(TemplateDataVar, TemplatePtrType),
       ConstantInt::get(M.getContext(), APInt(32, 1)));
   setGlobalVariableValue(M, "__tls_template_end", TotalEnd);
@@ -254,8 +256,8 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
           M.getContext(), APInt(32, VarInfo->IsBss ? 1 : 0)));
       Indexes.push_back(ConstantInt::get(
           M.getContext(), APInt(32, VarInfo->TemplateIndex)));
-      Value *TlsField = GetElementPtrInst::Create(TypedThreadPtr, Indexes,
-                                                  "field", InsertPt);
+      Value *TlsField = GetElementPtrInst::Create(
+          TemplatePtrType, TypedThreadPtr, Indexes, "field", InsertPt);
       PhiSafeReplaceUses(U, TlsField);
     }
     VarInfo->TlsVar->eraseFromParent();

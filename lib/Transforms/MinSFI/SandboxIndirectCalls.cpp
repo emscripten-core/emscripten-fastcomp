@@ -174,8 +174,8 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
               Instruction *MaskedIndex =
                   BinaryOperator::CreateAnd(FuncIndex, IndexMask, "", Call);
               Value *Indexes[] = { ConstantInt::get(I32, 0), MaskedIndex };
-              Instruction *TableElemPtr =
-                  GetElementPtrInst::Create(GlobalVar, Indexes, "", Call);
+              Instruction *TableElemPtr = GetElementPtrInst::Create(
+                  GlobalVar->getType(), GlobalVar, Indexes, "", Call);
               FuncPtr = CopyDebug(new LoadInst(TableElemPtr, "", Call), Cast);
             } else {
               // There is no function table for this signature, i.e. the module

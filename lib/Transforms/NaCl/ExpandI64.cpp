@@ -38,7 +38,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
@@ -116,7 +116,6 @@ namespace {
     }
 
     virtual bool runOnModule(Module &M);
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
   };
 }
 
@@ -334,7 +333,7 @@ bool ExpandI64::splitInst(Instruction *I) {
           NewOps.push_back(Op);
         }
       }
-      Value *NewGEP = CopyDebug(GetElementPtrInst::Create(GEP->getPointerOperand(), NewOps, "", GEP), GEP);
+      Value *NewGEP = CopyDebug(GetElementPtrInst::Create(GEP->getPointerOperand()->getType(), GEP->getPointerOperand(), NewOps, "", GEP), GEP);
       Chunks.push_back(NewGEP);
       I->replaceAllUsesWith(NewGEP);
       break;
@@ -602,7 +601,7 @@ bool ExpandI64::splitInst(Instruction *I) {
           }
 
           // Or the parts together. Since we may have zero, try to fold it away.
-          if (Value *V = SimplifyBinOp(Instruction::Or, L, H, DL)) {
+          if (Value *V = SimplifyBinOp(Instruction::Or, L, H, *DL)) {
             Chunks.push_back(V);
           } else {
             Chunks.push_back(CopyDebug(BinaryOperator::Create(Instruction::Or, L, H, "", I), I));
@@ -725,7 +724,7 @@ bool ExpandI64::splitInst(Instruction *I) {
         // If there's a constant operand, it's likely enough that one of the
         // chunks will be a trivial operation, so it's worth calling
         // SimplifyBinOp here.
-        if (Value *V = SimplifyBinOp(BO->getOpcode(), LeftChunks[i], RightChunks[i], DL)) {
+        if (Value *V = SimplifyBinOp(BO->getOpcode(), LeftChunks[i], RightChunks[i], *DL)) {
           Chunks.push_back(V);
         } else {
           Chunks.push_back(CopyDebug(BinaryOperator::Create(BO->getOpcode(), LeftChunks[i], RightChunks[i], "", BO), BO));
@@ -955,7 +954,7 @@ ChunksVec ExpandI64::getChunks(Value *V, bool AllowUnreachable) {
       Constant *NewC = ConstantExpr::getTrunc(ConstantExpr::getLShr(C, Count), i32);
       TargetLibraryInfo *TLI = 0; // TODO
       if (ConstantExpr *NewCE = dyn_cast<ConstantExpr>(NewC)) {
-        if (Constant *FoldedC = ConstantFoldConstantExpression(NewCE, DL, TLI)) {
+        if (Constant *FoldedC = ConstantFoldConstantExpression(NewCE, *DL, TLI)) {
           NewC = FoldedC;
         }
       }
@@ -1069,7 +1068,7 @@ void ExpandI64::ensureFuncs() {
 
 bool ExpandI64::runOnModule(Module &M) {
   TheModule = &M;
-  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+  DL = &M.getDataLayout();
   Splits.clear();
   Changed = false;
 
@@ -1155,11 +1154,6 @@ bool ExpandI64::runOnModule(Module &M) {
   }
 
   return Changed;
-}
-
-void ExpandI64::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addRequired<DataLayoutPass>();
-  ModulePass::getAnalysisUsage(AU);
 }
 
 ModulePass *llvm::createExpandI64Pass() {

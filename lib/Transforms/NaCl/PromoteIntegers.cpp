@@ -715,7 +715,7 @@ bool PromoteIntegers::ensureCompliantSignature(
 
   auto Found = DISubprogramMap.find(OldFct);
   if (Found != DISubprogramMap.end())
-    Found->second.replaceFunction(NewFct);
+    Found->second->replaceFunction(NewFct);
 
   return true;
 }

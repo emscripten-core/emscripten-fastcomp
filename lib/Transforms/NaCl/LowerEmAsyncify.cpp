@@ -67,11 +67,6 @@ namespace {
     virtual ~LowerEmAsyncify() { }
     bool runOnModule(Module &M);
 
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-      AU.addRequired<DataLayoutPass>();
-      ModulePass::getAnalysisUsage(AU);
-    }
-
   private:
     const DataLayout *DL;
 
@@ -124,6 +119,7 @@ INITIALIZE_PASS(LowerEmAsyncify, "loweremasyncify",
 
 bool LowerEmAsyncify::runOnModule(Module &M) {
   TheModule = &M;
+  DL = &M.getDataLayout();
 
   std::set<std::string> WhiteList(AsyncifyWhiteList.begin(), AsyncifyWhiteList.end());
 
@@ -197,8 +193,6 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
 }
 
 void LowerEmAsyncify::initTypesAndFunctions(void) {
-  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
-
   // Data types
   Void = Type::getVoidTy(TheModule->getContext());
   I1 = Type::getInt1Ty(TheModule->getContext());
@@ -437,7 +431,7 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // The block containing the async call
     BasicBlock *CurBlock = CurAsyncCall->getParent();
     // The block should run after the async call
-    BasicBlock *AfterCallBlock = SplitBlock(CurBlock, CurAsyncCall->getNextNode(), this);
+    BasicBlock *AfterCallBlock = SplitBlock(CurBlock, CurAsyncCall->getNextNode());
     // The block where we store the context and return
     BasicBlock *SaveAsyncCtxBlock = BasicBlock::Create(TheModule->getContext(), "SaveAsyncCtx", &F, AfterCallBlock);
     // return a dummy value at the end, to make the block valid
@@ -506,13 +500,14 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
       CurEntry.SaveAsyncCtxBlock->getTerminator()->eraseFromParent();
       assert(CurEntry.SaveAsyncCtxBlock->empty());
 
-      BitCastInst *AsyncCtxAddr = new BitCastInst(CurEntry.AllocAsyncCtxInst, CurEntry.ContextStructType->getPointerTo(), "AsyncCtxAddr", CurEntry.SaveAsyncCtxBlock);
+      Type *AsyncCtxAddrTy = CurEntry.ContextStructType->getPointerTo();
+      BitCastInst *AsyncCtxAddr = new BitCastInst(CurEntry.AllocAsyncCtxInst, AsyncCtxAddrTy, "AsyncCtxAddr", CurEntry.SaveAsyncCtxBlock);
       SmallVector<Value*, 2> Indices;
       // store the callback
       {
         Indices.push_back(ConstantInt::get(I32, 0));
         Indices.push_back(ConstantInt::get(I32, 0));
-        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", CurEntry.SaveAsyncCtxBlock);
+        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddrTy, AsyncCtxAddr, Indices, "", CurEntry.SaveAsyncCtxBlock);
         new StoreInst(CurEntry.CallbackFunc, AsyncVarAddr, CurEntry.SaveAsyncCtxBlock);
       }
       // store the context variables
@@ -520,7 +515,7 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
         Indices.clear();
         Indices.push_back(ConstantInt::get(I32, 0));
         Indices.push_back(ConstantInt::get(I32, i + 1)); // the 0th element is the callback function
-        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", CurEntry.SaveAsyncCtxBlock);
+        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddrTy, AsyncCtxAddr, Indices, "", CurEntry.SaveAsyncCtxBlock);
         new StoreInst(CurEntry.ContextVariables[i], AsyncVarAddr, CurEntry.SaveAsyncCtxBlock);
       }
       // to exit the block, we want to return without unwinding the stack frame
@@ -547,13 +542,14 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     BasicBlock *EntryBlock = BasicBlock::Create(TheModule->getContext(), "AsyncCallbackEntry", CurCallbackFunc);
     std::vector<LoadInst *> LoadedAsyncVars;
     {
-      BitCastInst *AsyncCtxAddr = new BitCastInst(CurCallbackFunc->arg_begin(), CurEntry.ContextStructType->getPointerTo(), "AsyncCtx", EntryBlock);
+      Type *AsyncCtxAddrTy = CurEntry.ContextStructType->getPointerTo();
+      BitCastInst *AsyncCtxAddr = new BitCastInst(CurCallbackFunc->arg_begin(), AsyncCtxAddrTy, "AsyncCtx", EntryBlock);
       SmallVector<Value*, 2> Indices;
       for (size_t i = 0; i < CurEntry.ContextVariables.size(); ++i) {
         Indices.clear();
         Indices.push_back(ConstantInt::get(I32, 0));
         Indices.push_back(ConstantInt::get(I32, i + 1)); // the 0th element of AsyncCtx is the callback function
-        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddr, Indices, "", EntryBlock);
+        GetElementPtrInst *AsyncVarAddr = GetElementPtrInst::Create(AsyncCtxAddrTy, AsyncCtxAddr, Indices, "", EntryBlock);
         LoadedAsyncVars.push_back(new LoadInst(AsyncVarAddr, "", EntryBlock));
         // we want the argument to be replaced by the loaded value
         if (isa<Argument>(CurEntry.ContextVariables[i]))
@@ -727,4 +723,3 @@ bool LowerEmAsyncify::IsFunctionPointerCall(const Instruction *I) {
 ModulePass *llvm::createLowerEmAsyncifyPass() {
   return new LowerEmAsyncify();
 }
-

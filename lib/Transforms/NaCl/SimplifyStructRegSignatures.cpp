@@ -55,6 +55,7 @@
 #include "llvm/PassSupport.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
 #include <cstddef>
@@ -478,7 +479,7 @@ bool SimplifyStructRegSignatures::simplifyFunction(
     FunctionsToDelete.insert(OldFunc);
     auto Found = DISubprogramMap.find(OldFunc);
     if (Found != DISubprogramMap.end())
-      Found->second.replaceFunction(NewFunc);
+      Found->second->replaceFunction(NewFunc);
   } else {
     AssociatedFctLoc = OldFunc;
   }
@@ -489,10 +490,8 @@ bool SimplifyStructRegSignatures::simplifyFunction(
 bool SimplifyStructRegSignatures::runOnModule(Module &M) {
   bool Changed = false;
 
-  const DataLayout *DL = M.getDataLayout();
   unsigned PreferredAlignment = 0;
-  if (DL)
-    PreferredAlignment = DL->getStackAlignment();
+  PreferredAlignment = M.getDataLayout().getStackAlignment();
 
   LLVMContext &Ctx = M.getContext();
   auto DISubprogramMap = makeSubprogramMap(M);
