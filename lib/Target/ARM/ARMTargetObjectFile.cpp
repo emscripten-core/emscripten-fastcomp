@@ -35,7 +35,7 @@ void ARMElfTargetObjectFile::Initialize(MCContext &Ctx,
   InitializeELF(isAAPCS_ABI);
 
   // @LOCALMOD-BEGIN
-  if (isAAPCS_ABI && !TM.getSubtarget<ARMSubtarget>().isTargetNaCl()) {
+  if (isAAPCS_ABI && !Triple(TM.getTargetTriple()).isOSNaCl()) {
   // @LOCALMOD-END
     LSDASection = nullptr;
   }

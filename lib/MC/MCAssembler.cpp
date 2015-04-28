@@ -309,7 +309,7 @@ MCSectionData::MCSectionData(const MCSection &Section, MCAssembler *A)
     // the section to be bundle-aligned. Padding happens with 0's though,
     // so it's not really ideal. TODO(dschuff) figure out how to do it right.
     A->getSectionList().push_back(this);
-    if (A->isBundlingEnabled() && _Section.UseCodeAlign())
+    if (A->isBundlingEnabled() && Section.UseCodeAlign())
       setAlignment(A->getBundleAlignSize());
   }
   // @LOCALMOD-END

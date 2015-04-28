@@ -363,14 +363,14 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
     O << '\t' << SFIInst;
     if (SFIEmitDest != (unsigned)~0) {
       O << ' ';
-      printOperand(MI, SFIEmitDest, O);
+      printOperand(MI, SFIEmitDest, STI, O);
     }
     if (SFIEmitDest != (unsigned)~0 && SFIEmitPred != (unsigned)~0) {
       O << ',';
     }
     if (SFIEmitPred != (unsigned)~0) {
       O << ' ';
-      printPredicateOperand(MI, SFIEmitPred, O);
+      printPredicateOperand(MI, SFIEmitPred, STI, O);
     }
     O << '\n';
     return;
