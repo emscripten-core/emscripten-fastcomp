@@ -430,7 +430,7 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   }
 
   // @LOCALMOD-START
-  const X86Subtarget& Subtarget = MF.getTarget().getSubtarget<X86Subtarget>();
+  const X86Subtarget& Subtarget = MF.getSubtarget<X86Subtarget>();
   const bool RestrictR15 = FlagRestrictR15;
   assert(FlagUseZeroBasedSandbox || RestrictR15);
   if (Subtarget.isTargetNaCl64()) {
