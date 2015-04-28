@@ -594,7 +594,7 @@ DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
 DEF_CALL_HANDLER(emscripten_atomic_load_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
-  return getAssign(CI) + "+__Atomics_load_f64_emulated(" + getAddressAsString(CI->getOperand(0), 3) + ")";
+  return getAssign(CI) + "+_emscripten_atomic_load_f64(" + getAddressAsString(CI->getOperand(0), 3) + ")";
 //  return getAssign(CI) + "Atomics_load(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ")";
 })
 
@@ -610,13 +610,13 @@ DEF_CALL_HANDLER(emscripten_atomic_store_u32, {
 DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
-  return getAssign(CI) + "__Atomics_store_f32_emulated(" + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "_emscripten_atomic_store_f32(" + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 //  return getAssign(CI) + "Atomics_store(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
-  return getAssign(CI) + "__Atomics_store_f64_emulated(" + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "_emscripten_atomic_store_f64(" + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 //  return getAssign(CI) + "Atomics_store(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 

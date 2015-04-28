@@ -893,6 +893,13 @@ std::string JSWriter::getByteAddressAsStr(const Value *Ptr)
   }
 }
 
+static const char *heapNameToAtomicTypeName(const char *HeapName)
+{
+  if (!strcmp(HeapName, "HEAPF32")) return "f32";
+  if (!strcmp(HeapName, "HEAPF64")) return "f64";
+  return "";
+}
+
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
@@ -905,7 +912,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
-        text = Assign + (fround ? "Math_fround(" : "+") + "__Atomics_load_" + HeapName + "_emulated(" + getByteAddressAsStr(P) + (fround ? "))" : ")");
+        text = Assign + (fround ? "Math_fround(" : "+") + "_emscripten_atomic_load_" + heapNameToAtomicTypeName(HeapName) + "(" + getByteAddressAsStr(P) + (fround ? "))" : ")");
       } else {
         text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
       }
@@ -1022,7 +1029,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
       if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
-        text = std::string("__Atomics_store_") + HeapName + "_emulated(" + getByteAddressAsStr(P) + ',' + VS + ')';
+        text = std::string("_emscripten_atomic_store_") + heapNameToAtomicTypeName(HeapName) + "(" + getByteAddressAsStr(P) + ',' + VS + ')';
       } else {
         text = std::string("Atomics_store(") + HeapName + ',' + Index + ',' + VS + ')';
       }
@@ -2395,12 +2402,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       const char *atomicFunc = 0;
       switch (rmwi->getOperation()) {
-        case AtomicRMWInst::Xchg: atomicFunc = "Atomics_store"; break;
-        case AtomicRMWInst::Add:  atomicFunc = "Atomics_add"; break;
-        case AtomicRMWInst::Sub:  atomicFunc = "Atomics_sub"; break;
-        case AtomicRMWInst::And:  atomicFunc = "Atomics_and"; break;
-        case AtomicRMWInst::Or:   atomicFunc = "Atomics_or"; break;
-        case AtomicRMWInst::Xor:  atomicFunc = "Atomics_xor"; break;
+        case AtomicRMWInst::Xchg: atomicFunc = "store"; break;
+        case AtomicRMWInst::Add:  atomicFunc = "add"; break;
+        case AtomicRMWInst::Sub:  atomicFunc = "sub"; break;
+        case AtomicRMWInst::And:  atomicFunc = "and"; break;
+        case AtomicRMWInst::Or:   atomicFunc = "or"; break;
+        case AtomicRMWInst::Xor:  atomicFunc = "xor"; break;
         case AtomicRMWInst::Nand: // TODO
         case AtomicRMWInst::Max:
         case AtomicRMWInst::Min:
@@ -2412,9 +2419,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
-        Code << Assign << (fround ? "Math_fround(" : "+") << "__" << atomicFunc << HeapName << "_emulated(" << getByteAddressAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
+        Code << Assign << (fround ? "Math_fround(" : "+") << "_emscripten_atomic_" << atomicFunc << "_" << heapNameToAtomicTypeName(HeapName) << "(" << getByteAddressAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
       } else {
-        Code << Assign << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
+        Code << Assign << "Atomics_" << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
       }
     } else {
       Code << getLoad(rmwi, P, I->getType(), 0) << ';';
