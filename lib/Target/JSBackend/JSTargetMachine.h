@@ -16,41 +16,25 @@
 #define JSTARGETMACHINE_H
 
 #include "JS.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 
 namespace llvm {
 
 class formatted_raw_ostream;
 
-class JSSubtarget : public TargetSubtargetInfo {
-  const DataLayout *DL;
-public:
-  JSSubtarget(const DataLayout *DL_) : DL(DL_) {}
-  const DataLayout *getDataLayout() const override { return DL; }
-};
-
 class JSTargetMachine : public TargetMachine {
-  const DataLayout DL;
-  JSSubtarget Subtarget;
-
 public:
   JSTargetMachine(const Target &T, StringRef Triple,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
                   Reloc::Model RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
 
-  bool addPassesToEmitFile(PassManagerBase &PM, formatted_raw_ostream &Out,
+  bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
                            CodeGenFileType FileType, bool DisableVerify,
                            AnalysisID StartAfter,
                            AnalysisID StopAfter) override;
 
-  const DataLayout *getDataLayout() const { return &DL; }
-  const JSSubtarget *getSubtargetImpl() const override { return &Subtarget; }
-
-  /// \brief Register X86 analysis passes with a pass manager.
-  void addAnalysisPasses(PassManagerBase &PM) override;
+  TargetIRAnalysis getTargetIRAnalysis() override;
 };
 
 } // End llvm namespace

@@ -12,23 +12,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "JSTargetMachine.h"
-#include "llvm/CodeGen/Passes.h"
+#include "JSTargetTransformInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/PassManager.h"
 using namespace llvm;
 
 JSTargetMachine::JSTargetMachine(const Target &T, StringRef Triple,
                                  StringRef CPU, StringRef FS, const TargetOptions &Options,
                                  Reloc::Model RM, CodeModel::Model CM,
                                  CodeGenOpt::Level OL)
-  : TargetMachine(T, Triple, CPU, FS, Options),
-    DL("e-p:32:32-i64:64-v128:32:128-n32-S128"),
-    Subtarget(&DL) {
+    : TargetMachine(T, "e-p:32:32-i64:64-v128:32:128-n32-S128", Triple, CPU,
+                    FS, Options) {
   CodeGenInfo = T.createMCCodeGenInfo(Triple, RM, CM, OL);
 }
 
-void JSTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
-  // We don't currently use BasicTTI because that depends on
-  // TargetLoweringInfo, which we don't currently implement.
-  PM.add(createJSTargetTransformInfoPass(this));
+
+TargetIRAnalysis JSTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis(
+      [this](Function &F) { return TargetTransformInfo(JSTTI(this, F)); });
 }
