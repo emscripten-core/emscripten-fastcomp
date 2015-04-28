@@ -382,7 +382,7 @@ static int runCompilePasses(Module *ModuleRef,
                             const Triple &TheTriple,
                             TargetMachine &Target,
                             StringRef ProgramName,
-                            formatted_raw_ostream &FOS){
+                            raw_pwrite_stream &OS){
   PNaClABIErrorReporter ABIErrorReporter;
 
   if (SplitModuleCount > 1 || ExternalizeAll) {
@@ -474,7 +474,7 @@ static int runCompilePasses(Module *ModuleRef,
 
   // Ask the target to add backend passes as necessary. We explicitly ask it
   // not to add the verifier pass because we added it earlier.
-  if (Target.addPassesToEmitFile(*PM, FOS, FileType,
+  if (Target.addPassesToEmitFile(*PM, OS, FileType,
                                  /* DisableVerify */ true)) {
     errs() << ProgramName
     << ": target does not support generation of this file type!\n";
@@ -595,20 +595,18 @@ static int compileSplitModule(const TargetOptions &Options,
         (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
                          OutFileName.str()));
     if (!Out) return 1;
-    formatted_raw_ostream FOS(Out->os());
+    raw_pwrite_stream &OS = Out->os();
 #else
-    raw_fd_ostream ROS(getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
-    ROS.SetBufferSize(1 << 20);
-    formatted_raw_ostream FOS(ROS);
+    raw_fd_ostream OS(getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
+    OS.SetBufferSize(1 << 20);
 #endif
     int ret = runCompilePasses(ModuleRef, ModuleIndex, FuncQueue,
                                TheTriple, Target, ProgramName,
-                               FOS);
+                               OS);
     if (ret)
       return ret;
 #if defined(PNACL_BROWSER_TRANSLATOR)
-    FOS.flush();
-    ROS.flush();
+    OS.flush();
 #else
     // Declare success.
     Out->keep();
