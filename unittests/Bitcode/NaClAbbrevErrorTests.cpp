@@ -72,7 +72,7 @@ TEST(MyDeathNaClAbbrevErrorTests, BadAbbreviationIndex) {
   // Shows what happens when we change the abbreviation index to an
   // illegal value.
   const uint64_t AbbrevIndex4[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace,
+    ReplaceIndex, NaClMungedBitcode::Replace,
     4, naclbitc::TYPE_CODE_VOID, Terminator,
   };
   DumpMunger.setRunAsDeathTest(true);

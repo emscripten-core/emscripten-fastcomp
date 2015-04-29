@@ -51,7 +51,9 @@ void NaClBitcodeMunger::setupTest(
 
   WriteBlockID = -1;
   SetBID = -1;
-  writeMungedData(Munges, MungesSize, AddHeader);
+
+  MungedBitcode.munge(Munges, MungesSize, RecordTerminator);
+  writeMungedBitcode(MungedBitcode, AddHeader);
 
   // Add null terminator, so that we meet the requirements of the
   // MemoryBuffer API.
@@ -63,6 +65,7 @@ void NaClBitcodeMunger::setupTest(
 }
 
 void NaClBitcodeMunger::cleanupTest() {
+  MungedBitcode.removeEdits();
   MungedInput.reset();
   assert(DumpStream && "Dump stream removed before cleanup!");
   DumpStream->flush();
@@ -105,107 +108,37 @@ getLinesWithTextMatch(const std::string &Substring, bool MustBePrefix) const {
   return Messages;
 }
 
-void NaClBitcodeMunger::writeMungedData(const uint64_t Munges[],
-                                        size_t MungesSize, bool AddHeader) {
-  uint64_t RecordCount = 0;
-  size_t MungesIndex = 0;
+void NaClBitcodeMunger::writeMungedBitcode(const NaClMungedBitcode &Bitcode,
+                                           bool AddHeader) {
   if (AddHeader) {
     NaClWriteHeader(*Writer, true);
   }
-  for (size_t RecordsIndex = 0; RecordsIndex < RecordsSize;) {
-    if (MungesIndex < MungesSize && Munges[MungesIndex] == RecordCount) {
-      if (MungesIndex + 2 > MungesSize) {
-        Fatal() << "Munges entry must contain at least 2 elements. Found: "
-                << MungesIndex;
-        ReportFatalError();
-      }
-      ++MungesIndex;
-      switch (Munges[MungesIndex++]) {
-      case NaClBitcodeMunger::AddBefore:
-        emitRecordAtIndex(Munges, MungesSize, MungesIndex);
-        break;
-      case NaClBitcodeMunger::AddAfter:
-        emitRecordAtIndex(Records, RecordsSize, RecordsIndex);
-        ++RecordCount;
-        emitRecordAtIndex(Munges, MungesSize, MungesIndex);
-        break;
-      case NaClBitcodeMunger::Remove:
-        deleteRecord(Records, RecordsSize, RecordsIndex);
-        ++RecordCount;
-        break;
-      case NaClBitcodeMunger::Replace:
-        deleteRecord(Records, RecordsSize, RecordsIndex);
-        emitRecordAtIndex(Munges, MungesSize, MungesIndex);
-        ++RecordCount;
-        break;
-      default:
-        Fatal() << "Munge directive not understood: " << Munges[MungesIndex];
-        ReportFatalError();
-        break;
-      }
-    } else {
-      emitRecordAtIndex(Records, RecordsSize, RecordsIndex);
-      ++RecordCount;
-    }
-  }
-  if (MungesIndex < MungesSize) {
-    Fatal() << "Unprocessed modifications. At index " << MungesIndex << "\n";
-    ReportFatalError();
+  for (const NaClBitcodeAbbrevRecord &Record : Bitcode) {
+    emitRecord(Record);
   }
 }
 
-void NaClBitcodeMunger::deleteRecord(
-    const uint64_t Record[], size_t RecordSize, size_t &Index) {
-  while (Index < RecordSize) {
-    if (Record[Index++] == RecordTerminator)
-      break;
-  }
-}
-
-void NaClBitcodeMunger::emitRecordAtIndex(
-    const uint64_t Record[], size_t RecordSize, size_t &Index) {
-  if (Index + 3 > RecordSize) {
-    Fatal() << "Last record doesn't contain at least 3 elements. Found: "
-            << (RecordSize - Index);
-    ReportFatalError();
-  }
-  SmallVector<uint64_t, 32> RecordValues;
-  unsigned AbbrevIndex = static_cast<unsigned>(Record[Index++]);
-  unsigned RecordCode = static_cast<unsigned>(Record[Index++]);
-  while (Index < RecordSize && Record[Index] != RecordTerminator) {
-    RecordValues.push_back(Record[Index++]);
-  }
-  emitRecord(AbbrevIndex, RecordCode, RecordValues);
-  if (Index == RecordSize) {
-    Fatal() << "Last record not followed by terminator.\n";
-    ReportFatalError();
-  }
-  ++Index;
-}
-
-void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
-                                   unsigned RecordCode,
-                                   SmallVectorImpl<uint64_t> &Values) {
+void NaClBitcodeMunger::emitRecord(const NaClBitcodeAbbrevRecord &Record) {
   if (DebugEmitRecord) {
-    errs() << "Emit " << AbbrevIndex << ": <" << RecordCode;
-    for (size_t i = 0; i < Values.size(); ++i) {
-      errs() << ", " << Values[i];
+    errs() << "Emit " << Record.Abbrev << ": <" << Record.Code;
+    for (size_t i = 0, e = Record.Values.size(); i < e; ++i) {
+      errs() << ", " << Record.Values[i];
     }
     errs() << ">\n";
   }
 
-  switch (RecordCode) {
+  switch (Record.Code) {
   case naclbitc::BLK_CODE_ENTER: {
     unsigned NumBits = naclbitc::DEFAULT_MAX_ABBREV;
     WriteBlockID = -1;
-    if (AbbrevIndex != naclbitc::ENTER_SUBBLOCK) {
-      Fatal() << "Enter block record code " << RecordCode
-              << " uses illegal abbreviation index " << AbbrevIndex << "\n";
+    if (Record.Abbrev != naclbitc::ENTER_SUBBLOCK) {
+      Fatal() << "Enter block record code " << Record.Code
+              << " uses illegal abbreviation index " << Record.Abbrev << "\n";
       ReportFatalError();
     }
-    if (Values.size() == 2) {
-      WriteBlockID = Values[0];
-      NumBits = Values[1];
+    if (Record.Values.size() == 2) {
+      WriteBlockID = Record.Values[0];
+      NumBits = Record.Values[1];
       if (NumBits > 32) {
         Fatal() << "Error: Bit size " << NumBits
                 << " for record should be <= 32\n";
@@ -218,7 +151,7 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
       }
     } else {
       Fatal() << "Error: Values for enter record should be of size 2. Found: "
-              << Values.size();
+              << Record.Values.size();
       ReportFatalError();
     }
     uint64_t MaxAbbrev = (static_cast<uint64_t>(1) << NumBits) - 1;
@@ -238,14 +171,14 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
     return;
   }
   case naclbitc::BLK_CODE_EXIT:
-    if (AbbrevIndex != naclbitc::END_BLOCK) {
-      Fatal() << "Error: Exit block record code " << RecordCode
-              << " uses illegal abbreviation index " << AbbrevIndex << "\n";
+    if (Record.Abbrev != naclbitc::END_BLOCK) {
+      Fatal() << "Error: Exit block record code " << Record.Code
+              << " uses illegal abbreviation index " << Record.Abbrev << "\n";
       ReportFatalError();
     }
-    if (!Values.empty()) {
+    if (!Record.Values.empty()) {
       Fatal() << "Error: Exit block should not have values. Found: "
-              << Values.size() << "\n";
+              << Record.Values.size() << "\n";
       ReportFatalError();
     }
     if (!AbbrevIndexLimitStack.empty())
@@ -253,12 +186,12 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
     Writer->ExitBlock();
     return;
   case naclbitc::BLK_CODE_DEFINE_ABBREV: {
-    if (AbbrevIndex != naclbitc::DEFINE_ABBREV) {
-      Fatal() << "Error: Define abbreviation record code " << RecordCode
-               << " uses illegal abbreviation index " << AbbrevIndex << "\n";
+    if (Record.Abbrev != naclbitc::DEFINE_ABBREV) {
+      Fatal() << "Error: Define abbreviation record code " << Record.Code
+               << " uses illegal abbreviation index " << Record.Abbrev << "\n";
       ReportFatalError();
     }
-    NaClBitCodeAbbrev *Abbrev = buildAbbrev(RecordCode, Values);
+    NaClBitCodeAbbrev *Abbrev = buildAbbrev(Record);
     if (Abbrev == NULL) return;
     if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
       Writer->EmitBlockInfoAbbrev(SetBID, Abbrev);
@@ -269,21 +202,18 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
   }
   case naclbitc::BLK_CODE_HEADER:
     // Note: There is no abbreviation index here. Ignore.
-    for (SmallVectorImpl<uint64_t>::const_iterator
-             Iter = Values.begin(), IterEnd = Values.end();
-         Iter != IterEnd; ++Iter) {
-      Writer->Emit(*Iter, 8);
-    }
+    for (uint64_t Value : Record.Values)
+      Writer->Emit(Value, 8);
     return;
   default:
-    if ((AbbrevIndex != naclbitc::UNABBREV_RECORD
-         && !Writer->isUserRecordAbbreviation(AbbrevIndex))) {
+    if ((Record.Abbrev != naclbitc::UNABBREV_RECORD
+         && !Writer->isUserRecordAbbreviation(Record.Abbrev))) {
       uint64_t BlockAbbrevIndexLimit = 0;
       if (!AbbrevIndexLimitStack.empty())
         BlockAbbrevIndexLimit = AbbrevIndexLimitStack.back();
-      if (AbbrevIndex > BlockAbbrevIndexLimit) {
-        Fatal() << "Error: Record code " << RecordCode
-                << " uses illegal abbreviation index " << AbbrevIndex
+      if (Record.Abbrev > BlockAbbrevIndexLimit) {
+        Fatal() << "Error: Record code " << Record.Code
+                << " uses illegal abbreviation index " << Record.Abbrev
                 << ". Must not exceed " << BlockAbbrevIndexLimit << "\n";
         ReportFatalError();
       }
@@ -293,21 +223,21 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
       // that the reader can be tested on this bad input.  For
       // simplicity, we output the record data using the default
       // abbreviation pattern.
-      errs() << "Warning: Record code " << RecordCode
-             << " uses illegal abbreviation index " << AbbrevIndex << "\n";
-      Writer->EmitCode(AbbrevIndex);
-      Writer->EmitVBR(RecordCode, 6);
-      uint32_t NumValues = static_cast<uint32_t>(Values.size());
+      errs() << "Warning: Record code " << Record.Code
+             << " uses illegal abbreviation index " << Record.Abbrev << "\n";
+      Writer->EmitCode(Record.Abbrev);
+      Writer->EmitVBR(Record.Code, 6);
+      uint32_t NumValues = static_cast<uint32_t>(Record.Values.size());
       Writer->EmitVBR(NumValues, 6);
       for (uint32_t i = 0; i < NumValues; ++i) {
-        Writer->EmitVBR64(Values[i], 6);
+        Writer->EmitVBR64(Record.Values[i], 6);
       }
       return;
     }
-    if (AbbrevIndex == naclbitc::UNABBREV_RECORD)
-      Writer->EmitRecord(RecordCode, Values);
+    if (Record.Abbrev == naclbitc::UNABBREV_RECORD)
+      Writer->EmitRecord(Record.Code, Record.Values);
     else
-      Writer->EmitRecord(RecordCode, Values, AbbrevIndex);
+      Writer->EmitRecord(Record.Code, Record.Values, Record.Abbrev);
     return;
   }
   Fatal() << "emitRecord on unimplemented code" << "\n";
@@ -315,58 +245,59 @@ void NaClBitcodeMunger::emitRecord(unsigned AbbrevIndex,
 }
 
 NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
-    unsigned RecordCode, SmallVectorImpl<uint64_t> &Values) {
+    const NaClBitcodeAbbrevRecord &Record) {
   NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
   size_t Index = 0;
-  if (Values.empty()) {
+  if (Record.Values.empty()) {
     Fatal() << "Empty abbreviation record not allowed\n";
     ReportFatalError();
   }
-  size_t NumAbbreviations = Values[Index++];
+  size_t NumAbbreviations = Record.Values[Index++];
+  size_t NumValues = Record.Values.size();
   if (NumAbbreviations == 0) {
     Fatal() << "Abbreviation must contain at least one operator\n";
     ReportFatalError();
   }
   for (size_t Count = 0; Count < NumAbbreviations; ++Count) {
-    if (Index >= Values.size()) {
+    if (Index >= NumValues) {
       Fatal() << "Malformed abbreviation found. Expects "
               << NumAbbreviations << " operands. Found: "
               << Count << "\n";
       ReportFatalError();
     }
-    switch (Values[Index++]) {
+    switch (Record.Values[Index++]) {
     case 1:
-      if (Index >= Values.size()) {
+      if (Index >= NumValues) {
         Fatal() << "Malformed literal abbreviation.\n";
         ReportFatalError();
       }
-      Abbrev->Add(NaClBitCodeAbbrevOp(Values[Index++]));
+      Abbrev->Add(NaClBitCodeAbbrevOp(Record.Values[Index++]));
       break;
     case 0: {
-      if (Index >= Values.size()) {
+      if (Index >= NumValues) {
         Fatal() << "Malformed abbreviation found.\n";
         ReportFatalError();
       }
-      unsigned Kind = Values[Index++];
+      unsigned Kind = Record.Values[Index++];
       switch (Kind) {
       case NaClBitCodeAbbrevOp::Fixed:
-        if (Index >= Values.size()) {
+        if (Index >= NumValues) {
           Fatal() << "Malformed fixed abbreviation found.\n";
           ReportFatalError();
         }
         Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                        Values[Index++]));
+                                        Record.Values[Index++]));
         break;
       case NaClBitCodeAbbrevOp::VBR:
-        if (Index >= Values.size()) {
+        if (Index >= NumValues) {
           Fatal() << "Malformed vbr abbreviation found.\n";
           ReportFatalError();
         }
         Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR,
-                                        Values[Index++]));
+                                        Record.Values[Index++]));
         break;
       case NaClBitCodeAbbrevOp::Array:
-        if (Index >= Values.size()) {
+        if (Index >= NumValues) {
           Fatal() << "Malformed array abbreviation found.\n";
           ReportFatalError();
         }
@@ -383,7 +314,7 @@ NaClBitCodeAbbrev *NaClBitcodeMunger::buildAbbrev(
     }
     default:
       Fatal() << "Error: Bad literal flag in abbreviation. Found: "
-              << Values[Index];
+              << Record.Values[Index];
       ReportFatalError();
     }
   }

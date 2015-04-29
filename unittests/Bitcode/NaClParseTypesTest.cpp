@@ -64,7 +64,7 @@ TEST(NaClParseTypesTest, BadTypeReferences) {
 
   // Show what happens when misdefining: @t1 = float"
   const uint64_t AddSelfReference[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 3, 1, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 3, 1, Terminator
   };
   EXPECT_FALSE(Munger.runTest(
       "@t1 = float(1)",

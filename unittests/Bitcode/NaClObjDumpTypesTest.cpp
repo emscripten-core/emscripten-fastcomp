@@ -53,7 +53,7 @@ TEST(NaClObjDumpTypesTest, BadTypeReferences) {
 
   // Show what happens when defining: @t1 = <4 x @t1>
   const uint64_t AddSelfReference[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 1, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 1, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "@t1 = <4 x @t1>", AddSelfReference, array_lengthof(AddSelfReference)));
@@ -71,7 +71,7 @@ TEST(NaClObjDumpTypesTest, BadTypeReferences) {
 
   // Show what happens when defining: @t1 = <4 x @t5>
   const uint64_t AddForwardReference[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 5, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 5, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "@t1 = <4 x @t5>", AddForwardReference,
@@ -120,7 +120,7 @@ TEST(NaClObjDumpTypesTest, TestCountRecord) {
   // Test case where more types are defined then specified by the
   // count record.
   const uint64_t AddDoubleType[] = {
-    AddBeforeIndex, NaClBitcodeMunger::AddBefore, 3, 4, Terminator
+    AddBeforeIndex, NaClMungedBitcode::AddBefore, 3, 4, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Add double type", AddDoubleType, array_lengthof(AddDoubleType)));
@@ -134,7 +134,7 @@ TEST(NaClObjDumpTypesTest, TestCountRecord) {
 
   // Test case where fewer types are defined then specified by the count
   // record.
-  const uint64_t DeleteI32Type[] = { 3, NaClBitcodeMunger::Remove };
+  const uint64_t DeleteI32Type[] = { 3, NaClMungedBitcode::Remove };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Delete I32 type", DeleteI32Type, array_lengthof(DeleteI32Type)));
   EXPECT_EQ("Error(36:2): Expected 2 types but found: 1\n",
@@ -145,7 +145,7 @@ TEST(NaClObjDumpTypesTest, TestCountRecord) {
 
   // Test if we generate an error message if the count record isn't first.
   const uint64_t AddI16BeforeCount[] = {
-    ReplaceIndex, NaClBitcodeMunger::AddBefore, 3,  7, 16, Terminator };
+    ReplaceIndex, NaClMungedBitcode::AddBefore, 3,  7, 16, Terminator };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Add I16 before count", AddI16BeforeCount,
       array_lengthof(AddI16BeforeCount)));
@@ -164,7 +164,7 @@ TEST(NaClObjDumpTypesTest, TestCountRecord) {
 
   // Test if count record doesn't contain enough elements.
   const uint64_t CountRecordEmpty[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 1, Terminator };
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 1, Terminator };
   EXPECT_FALSE(Munger.runTestForErrors(
       "Count record empty", CountRecordEmpty,
       array_lengthof(CountRecordEmpty)));
@@ -174,7 +174,7 @@ TEST(NaClObjDumpTypesTest, TestCountRecord) {
 
   // Test if count record has extraneous values.
   const uint64_t CountRecordTooLong[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 1, 14, 2, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 1, 14, 2, Terminator
   };
   EXPECT_FALSE(Munger.runTestForErrors(
       "Count record too long", CountRecordTooLong,
@@ -213,7 +213,7 @@ TEST(NaClObjDumpTypesTest, TestVoidRecord) {
 
   // Test where void record has extraneous values.
   const uint64_t VoidRecordTooLong[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 2, 5, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 2, 5, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Void record too long", VoidRecordTooLong,
@@ -254,7 +254,7 @@ TEST(NaClObjDumpTypesTest, TestIntegerRecord) {
 
   // Tests that we reject i2.
   const uint64_t TestTypeI2[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 2, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 2, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type type i2", TestTypeI2, array_lengthof(TestTypeI2)));
@@ -268,35 +268,35 @@ TEST(NaClObjDumpTypesTest, TestIntegerRecord) {
 
   // Tests that we accept i8.
   const uint64_t TestTypeI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 8, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 8, Terminator
   };
   EXPECT_TRUE(Munger.runTest(
       "Type type i8", TestTypeI8, array_lengthof(TestTypeI8)));
 
   // Tests that we accept i16.
   const uint64_t TestTypeI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 16, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 16, Terminator
   };
   EXPECT_TRUE(Munger.runTest(
       "Type type i16", TestTypeI16, array_lengthof(TestTypeI16)));
 
   // Tests that we accept i32.
   const uint64_t TestTypeI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 32, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 32, Terminator
   };
   EXPECT_TRUE(Munger.runTest(
       "Type type i32", TestTypeI32, array_lengthof(TestTypeI32)));
 
   // Tests that we accept i64.
   const uint64_t TestTypeI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 64, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 64, Terminator
   };
   EXPECT_TRUE(Munger.runTest(
       "Type type i64", TestTypeI64, array_lengthof(TestTypeI64)));
 
   // Tests that we reject i128.
   const uint64_t TestTypeI128[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 128, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 128, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type type i128", TestTypeI128, array_lengthof(TestTypeI128)));
@@ -310,7 +310,7 @@ TEST(NaClObjDumpTypesTest, TestIntegerRecord) {
 
   // Tests when not enough values are in the integer record.
   const uint64_t RecordTooShort[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Integer record too short", RecordTooShort,
@@ -325,7 +325,7 @@ TEST(NaClObjDumpTypesTest, TestIntegerRecord) {
 
   // Tests when too many values are in the integer record.
   const uint64_t RecordTooLong[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 7, 32, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 7, 32, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForErrors(
       "Integer record too long", RecordTooLong, array_lengthof(RecordTooLong)));
@@ -363,7 +363,7 @@ TEST(NaClObjDumpTypesTest, TestFloatRecord) {
 
   // Test error for float record that has extraneous values.
   const uint64_t FloatRecordTooLong[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 3, 5, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 3, 5, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Float record too long", FloatRecordTooLong,
@@ -405,7 +405,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleRecord) {
 
   // Test error for double record that has extraneous values.
   const uint64_t DoubleRecordTooLong[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 4, 5, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 4, 5, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Double record too long", DoubleRecordTooLong,
@@ -449,7 +449,7 @@ TEST(NaClObjDumpTypesTest, TestVectorRecordLength) {
 
   // Test vector record too short.
   uint64_t RecordTooShort[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Record too short", RecordTooShort, array_lengthof(RecordTooShort)));
@@ -462,7 +462,7 @@ TEST(NaClObjDumpTypesTest, TestVectorRecordLength) {
 
   // Test vector record too long.
   uint64_t RecordTooLong[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 0, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 0, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Record too long", RecordTooLong, array_lengthof(RecordTooLong)));
@@ -505,7 +505,7 @@ TEST(NaClObjDumpTypesTest, TestI1VectorRecord) {
 
   // Test that we don't handle <1 x i1>.
   const uint64_t Vector1xI1[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 1, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <1 x i1>", Vector1xI1, array_lengthof(Vector1xI1)));
@@ -518,7 +518,7 @@ TEST(NaClObjDumpTypesTest, TestI1VectorRecord) {
 
   // Test that we don't handle <2 x i1>.
   const uint64_t Vector2xI1[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x i1>", Vector2xI1, array_lengthof(Vector2xI1)));
@@ -531,7 +531,7 @@ TEST(NaClObjDumpTypesTest, TestI1VectorRecord) {
 
   // Test that we don't handle <3 x i1>.
   const uint64_t Vector3xI1[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 3, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 3, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <3 x i1>", Vector3xI1, array_lengthof(Vector3xI1)));
@@ -544,21 +544,21 @@ TEST(NaClObjDumpTypesTest, TestI1VectorRecord) {
 
   // Test that we handle <8 x i1>.
   const uint64_t Vector8xI1[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 8, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 8, 0, Terminator
   };
   EXPECT_TRUE(Munger.runTest(
       "Type <8 x i1>", Vector8xI1, array_lengthof(Vector8xI1)));
 
   // Test that we handle <16 x i1>.
   const uint64_t Vector16xI1[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 16, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 16, 0, Terminator
   };
   EXPECT_TRUE(Munger.runTest(
       "Type <16 x i1>", Vector16xI1, array_lengthof(Vector16xI1)));
 
   // Test that we reject <32 x i1>.
   const uint64_t Vector32xI1[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 32, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 32, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <32 x i1>", Vector32xI1, array_lengthof(Vector32xI1)));
@@ -601,7 +601,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   // Test that we reject <1 x i8>.
   const uint64_t Vector1xI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 1, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <1 x i8>", Vector1xI8, array_lengthof(Vector1xI8)));
@@ -614,7 +614,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   // Test that we don't handle <2 x i8>.
   const uint64_t Vector2xI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x i8>", Vector2xI8, array_lengthof(Vector2xI8)));
@@ -627,7 +627,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   // Test that we don't handle <3 x i8>.
   const uint64_t Vector3xI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 3, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 3, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <3 x i8>", Vector3xI8, array_lengthof(Vector3xI8)));
@@ -640,7 +640,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   // Test that we don't handle <4 x i8>.
   const uint64_t Vector4xI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <4 x i8>", Vector4xI8, array_lengthof(Vector4xI8)));
@@ -653,7 +653,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   // Test that we don't handle <8 x i8>.
   const uint64_t Vector8xI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 8, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 8, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <8 x i8>", Vector8xI8, array_lengthof(Vector8xI8)));
@@ -666,7 +666,7 @@ TEST(NaClObjDumpTypesTest, TestI8VectorRecord) {
 
   // Test that we don't handle <32 x i8>.
   const uint64_t Vector32xI8[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 32, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 32, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <32 x i8>", Vector32xI8, array_lengthof(Vector32xI8)));
@@ -709,7 +709,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   // Test that we reject <1 x i16>.
   const uint64_t Vector1xI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 1, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <1 x i16>", Vector1xI16, array_lengthof(Vector1xI16)));
@@ -722,7 +722,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   // Test that we don't handle <2 x i16>.
   const uint64_t Vector2xI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x i16>", Vector2xI16, array_lengthof(Vector2xI16)));
@@ -735,7 +735,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   // Test that we don't handle <3 x i16>.
   const uint64_t Vector3xI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 3, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 3, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <3 x i16>", Vector3xI16, array_lengthof(Vector3xI16)));
@@ -748,7 +748,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   // Test that we don't handle <4 x i16>.
   const uint64_t Vector4xI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <4 x i16>", Vector4xI16, array_lengthof(Vector4xI16)));
@@ -761,7 +761,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   // Test that we don't handle <16 x i16>.
   const uint64_t Vector16xI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 16, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 16, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <16 x i16>", Vector16xI16, array_lengthof(Vector16xI16)));
@@ -774,7 +774,7 @@ TEST(NaClObjDumpTypesTest, TestI16VectorRecord) {
 
   // Test that we don't handle <32 x i16>.
   const uint64_t Vector32xI16[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 32, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 32, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <32 x i16>", Vector32xI16, array_lengthof(Vector32xI16)));
@@ -817,7 +817,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   // Test that we reject <1 x i32>.
   const uint64_t Vector1xI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 1, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <1 x i32>", Vector1xI32, array_lengthof(Vector1xI32)));
@@ -830,7 +830,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   // Test that we don't handle <2 x i32>.
   const uint64_t Vector2xI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x i32>", Vector2xI32, array_lengthof(Vector2xI32)));
@@ -843,7 +843,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   // Test that we don't handle <3 x i32>.
   const uint64_t Vector3xI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 3, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 3, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <3 x i32>", Vector3xI32, array_lengthof(Vector3xI32)));
@@ -856,7 +856,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   // Test that we don't handle <8 x i32>.
   const uint64_t Vector8xI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 8, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 8, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <8 x i32>", Vector8xI32, array_lengthof(Vector8xI32)));
@@ -869,7 +869,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   // Test that we don't handle <16 x i32>.
   const uint64_t Vector16xI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 16, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 16, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <16 x i32>", Vector16xI32, array_lengthof(Vector16xI32)));
@@ -882,7 +882,7 @@ TEST(NaClObjDumpTypesTest, TestI32VectorRecord) {
 
   // Test that we don't handle <32 x i32>.
   const uint64_t Vector32xI32[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 32, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 32, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <32 x i32>", Vector32xI32, array_lengthof(Vector32xI32)));
@@ -926,7 +926,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   // Test that we don't handle <2 x i64>.
   const uint64_t Vector2xI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x i64>", Vector2xI64, array_lengthof(Vector2xI64)));
@@ -939,7 +939,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   // Test that we don't handle <3 x i64>.
   const uint64_t Vector3xI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 3, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 3, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <3 x i64>", Vector3xI64, array_lengthof(Vector3xI64)));
@@ -952,7 +952,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   // Test that we reject <4 x i64>.
   const uint64_t Vector4xI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <4 x i64>", Vector4xI64, array_lengthof(Vector4xI64)));
@@ -965,7 +965,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   // Test that we don't handle <8 x i64>.
   const uint64_t Vector8xI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 8, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 8, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <8 x i64>", Vector8xI64, array_lengthof(Vector8xI64)));
@@ -978,7 +978,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   // Test that we don't handle <16 x i64>.
   const uint64_t Vector16xI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 16, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 16, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <16 x i64>", Vector16xI64, array_lengthof(Vector16xI64)));
@@ -991,7 +991,7 @@ TEST(NaClObjDumpTypesTest, TestI64VectorRecord) {
 
   // Test that we don't handle <32 x i64>.
   const uint64_t Vector32xI64[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 32, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 32, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <32 x i64>", Vector32xI64, array_lengthof(Vector32xI64)));
@@ -1034,7 +1034,7 @@ TEST(NaClObjDumpTypesTest, TestFloatVectorRecord) {
 
   // Test that we reject <1 x float>.
   const uint64_t Vector1xFloat[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 1, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <1 x float>", Vector1xFloat, array_lengthof(Vector1xFloat)));
@@ -1047,7 +1047,7 @@ TEST(NaClObjDumpTypesTest, TestFloatVectorRecord) {
 
   // Test that we reject <2 x float>.
   const uint64_t Vector2xFloat[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x float>", Vector2xFloat, array_lengthof(Vector2xFloat)));
@@ -1060,7 +1060,7 @@ TEST(NaClObjDumpTypesTest, TestFloatVectorRecord) {
 
   // Test that we reject <3 x float>.
   const uint64_t Vector3xFloat[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 3, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 3, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <3 x float>", Vector3xFloat, array_lengthof(Vector3xFloat)));
@@ -1073,7 +1073,7 @@ TEST(NaClObjDumpTypesTest, TestFloatVectorRecord) {
 
   // Test that we reject <8 x float>.
   const uint64_t Vector8xFloat[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 8, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 8, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <8 x float>", Vector8xFloat, array_lengthof(Vector8xFloat)));
@@ -1117,7 +1117,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleVectorRecord) {
 
   // Test that we reject <1 x double>.
   const uint64_t Vector1xDouble[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 1, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <1 x double>", Vector1xDouble, array_lengthof(Vector1xDouble)));
@@ -1130,7 +1130,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleVectorRecord) {
 
   // Test that we reject <2 x double>.
   const uint64_t Vector2xDouble[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 2, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 2, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <2 x double>", Vector2xDouble, array_lengthof(Vector2xDouble)));
@@ -1143,7 +1143,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleVectorRecord) {
 
   // Test that we reject <4 x double>.
   const uint64_t Vector3xDouble[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 4, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 4, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <4 x double>", Vector3xDouble, array_lengthof(Vector3xDouble)));
@@ -1156,7 +1156,7 @@ TEST(NaClObjDumpTypesTest, TestDoubleVectorRecord) {
 
   // Test that we reject <8 x double>.
   const uint64_t Vector8xDouble[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 12, 8, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 12, 8, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Type <8 x double>", Vector8xDouble, array_lengthof(Vector8xDouble)));
@@ -1268,7 +1268,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Tests using integers for parameters and return types.
   const uint64_t UsesIntegerTypes[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 21, 0, 1, 2, 1, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 21, 0, 1, 2, 1, Terminator
   };
   EXPECT_TRUE(Munger.runTestForAssembly(
       "Function record with integer types", UsesIntegerTypes,
@@ -1279,7 +1279,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Test using float point types for parameters and return types.
   const uint64_t UsesFloatingTypes[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 21, 0, 3, 3, 4, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 21, 0, 3, 3, 4, Terminator
   };
   EXPECT_TRUE(Munger.runTestForAssembly(
       "Function record with floating point types", UsesFloatingTypes,
@@ -1290,7 +1290,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Test using vector types for parameters and return types.
   const uint64_t UsesVectorTypes[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 21, 0, 5, 5, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 21, 0, 5, 5, Terminator
   };
   EXPECT_TRUE(Munger.runTestForAssembly(
       "Function record with vector types", UsesVectorTypes,
@@ -1301,7 +1301,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Test error if function record is too short.
   const uint64_t FunctionRecordTooShort[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 21, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 21, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Function record too short", FunctionRecordTooShort,
@@ -1316,7 +1316,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Tests errror if function record specifies varargs.
   const uint64_t FunctionRecordWithVarArgs[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 21, 1, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 21, 1, 0, Terminator
   };
   EXPECT_FALSE(
       Munger.runTestForAssembly(
@@ -1332,7 +1332,7 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Tests if void is used as a parameter type.
   const uint64_t VoidParamType[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 21, 0, 0, 0, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 21, 0, 0, 0, Terminator
   };
   EXPECT_FALSE(Munger.runTestForAssembly(
       "Function record with void param type", VoidParamType,
@@ -1346,8 +1346,8 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Tests using a function type as the return type.
   const uint64_t FunctionReturnType[] = {
-    TypeCountIndex, NaClBitcodeMunger::Replace, 3, 1, 8, Terminator,
-    ReplaceIndex, NaClBitcodeMunger::AddAfter, 3, 21, 0, 6, Terminator
+    TypeCountIndex, NaClMungedBitcode::Replace, 3, 1, 8, Terminator,
+    ReplaceIndex, NaClMungedBitcode::AddAfter, 3, 21, 0, 6, Terminator
   };
   EXPECT_FALSE(
       Munger.runTestForAssembly(
@@ -1365,8 +1365,8 @@ TEST(NaClObjDumpTypesTest, TestFunctionRecord) {
 
   // Tests using a function type as a parameter type.
   const uint64_t FunctionParamType[] = {
-    TypeCountIndex, NaClBitcodeMunger::Replace, 3, 1, 8, Terminator,
-    ReplaceIndex, NaClBitcodeMunger::AddAfter, 3, 21, 0, 0, 6, Terminator
+    TypeCountIndex, NaClMungedBitcode::Replace, 3, 1, 8, Terminator,
+    ReplaceIndex, NaClMungedBitcode::AddAfter, 3, 21, 0, 0, 6, Terminator
   };
   EXPECT_FALSE(
       Munger.runTestForAssembly(

@@ -88,6 +88,17 @@ class NaClMungedBitcodeIter;   // iterator over edited bitcode records.
 typedef std::vector<std::unique_ptr<NaClBitcodeAbbrevRecord>>
     NaClBitcodeRecordList;
 
+/// \brief Extracts out the records in Records, and puts them into RecordList.
+///
+/// \brief RecordList[in/out] Record list to read into.
+/// \brief Records Array containing data defining records.
+/// \brief RecordsSize The size of array Records.
+/// \brief RecordTerminator The value used to terminate records.
+void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
+                               const uint64_t Records[],
+                               size_t RecordsSize,
+                               uint64_t RecordTerminator);
+
 /// \brief An edited (i.e. munged) list of bitcode records. Edits are
 /// always relative to the initial list of records.
 class NaClMungedBitcode {
@@ -175,6 +186,10 @@ public:
   /// \param Terminator The value used to terminate records in editing actions.
   void munge(const uint64_t Munges[], size_t MungesSize, uint64_t Terminator);
 
+  /// \brief Removes all editing actions and resets back to the original
+  /// set of base records.
+  void removeEdits();
+
 private:
   typedef std::list<NaClBitcodeAbbrevRecord *> RecordListType;
   typedef std::map<size_t, RecordListType *> InsertionsMapType;
@@ -256,6 +271,99 @@ inline raw_ostream &operator<<(raw_ostream &Out,
   Record.print(Out);
   return Out;
 }
+
+/// \brief Defines an iterator to walk over elements of an edited
+/// record list.
+class NaClMungedBitcodeIter {
+
+public:
+  /// \brief Returns an iterator pointing to the first record in the
+  /// edited list of records.
+  static NaClMungedBitcodeIter begin(const NaClMungedBitcode &MungedBitcode) {
+    return NaClMungedBitcodeIter(MungedBitcode, 0);
+  }
+
+  /// \brief Returns an iterator pointing past the last record in the
+  /// edited list of records.
+  static NaClMungedBitcodeIter end(const NaClMungedBitcode &MungedBitcode) {
+    return NaClMungedBitcodeIter(MungedBitcode,
+                                 MungedBitcode.BaseRecords->size());
+  }
+
+  bool operator==(const NaClMungedBitcodeIter &Iter) const;
+
+  bool operator!=(const NaClMungedBitcodeIter &Iter) const {
+    return !operator==(Iter);
+  }
+
+  /// \brief Advances the iterator over one record in the list of
+  /// edited records.
+  NaClMungedBitcodeIter &operator++();
+
+  /// \brief Returns the bitcode record the iterator is before.
+  NaClBitcodeAbbrevRecord &operator*();
+
+private:
+  /// \brief Defines position of the iterator, relative to the corresponding
+  /// record index in the base list of records.
+  enum MungedPosition {
+    /// Processing the list of records inserted before the record
+    /// index of the base list of records.
+    InBeforeInsertions,
+    /// Processing the record at the given record index of the base
+    /// list of records.
+    AtIndex,
+    /// Processing the list of records inserted after the record index
+    /// of the base list of records.
+    InAfterInsertions,
+  };
+
+  // The edited list of records to iterate over.
+  const NaClMungedBitcode *MungedBitcode;
+  // The corresponding index, wrt to the edited list of records, that
+  // is being processed.
+  size_t Index;
+  // The position of the iterator wrt to Index.
+  MungedPosition Position;
+  // An iterator defining the current position within a
+  // BeforeInsertions or AfterInsertions list. When the iterator is
+  // not in the corresponding position (i.e. InBeforeInsertions or
+  // InAfterInsertions) this iterator is undefined.
+  NaClMungedBitcode::RecordListType::const_iterator InsertionsIter;
+  // An iterator defining the end position of the corresponding list
+  // of records defined by InsertionsIter. Only defined when
+  // InsertionsIter is defined.
+  NaClMungedBitcode::RecordListType::const_iterator InsertionsIterEnd;
+  // Dummy list to initialize InsertionsIter if no such list exists.
+  NaClMungedBitcode::RecordListType EmptyList;
+
+  // \brief Defines an iterator at the beginning of the
+  // BeforeInsertions list associated with the given Index in
+  // MungedBitcode.
+  NaClMungedBitcodeIter(const NaClMungedBitcode &MungedBitcode, size_t Index)
+      : MungedBitcode(&MungedBitcode), Index(Index),
+        Position(InBeforeInsertions), InsertionsIter(), InsertionsIterEnd() {
+    placeAt(MungedBitcode.BeforeInsertionsMap, 0);
+    updatePosition();
+  }
+
+  // \brief Places the corresponding insertions iterator based on the
+  // list of records defined at Index for the given insertions Map.
+  void placeAt(const NaClMungedBitcode::InsertionsMapType &Map, size_t Index) {
+    NaClMungedBitcode::InsertionsMapType::const_iterator Pos = Map.find(Index);
+    if (Pos == Map.end()) {
+      InsertionsIter = EmptyList.end();
+      InsertionsIterEnd = EmptyList.end();
+    } else {
+      InsertionsIter = Pos->second->begin();
+      InsertionsIterEnd = Pos->second->end();
+    }
+  }
+
+  // \brief Moves the iterator to the position of the next edited
+  // record.
+  void updatePosition();
+};
 
 } // end namespace llvm.
 

@@ -13,16 +13,8 @@
 // Generates a bitcode memory buffer from an array containing 1 or
 // more PNaCl records. Used to test errors in PNaCl bitcode.
 //
-// For simplicity of API, we model records as an array of uint64_t. To
-// specify the end of a record in the array, a special "terminator"
-// value is used. This terminator value must be a uint64_t value that
-// is not used by any of the records.
-//
-// A record is defined as a sequence of integers consisting of:
-//   * The abbreviation index associated with the record.
-//   * The record code associated with the record.
-//   * The sequence of values associated with the record code.
-//   * The terminator value.
+// Bitcode records are modeleled using arrays using the format
+// specified in NaClBitcodeMungeUtils.h.
 //
 // Note: Since the header record doesn't have any abbreviation indices
 // associated with it, one can use any value. The value will simply be
@@ -31,16 +23,8 @@
 // In addition to specifying the sequence of records, one can also
 // define a sequence of edits to be applied to the original sequence
 // of records. This allows the same record sequence to be used in
-// multiple tests.
-//
-// An edit consists of:
-//
-//   * A record number defining where the edit is to be applied.
-//   * An action defining the type of edit.
-//   * An optional record associated with the action.
-//
-// Note that edits must be sorted by record number, so that the records
-// and edits can be processed with a linear pass.
+// multiple tests. Again, see NaClBitcodeMungeUtils.h for the
+// format of editing arrays.
 //
 // Generally, you can generate any legal/illegal record
 // sequence. However, abbreviations are intimately tied to the
@@ -55,9 +39,7 @@
 #define LLVM_BITCODE_NACL_NACLBITCODEMUNGE_H
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/DataTypes.h"
-#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeMungeUtils.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -71,18 +53,21 @@ class NaClBitCodeAbbrev;
 /// Base class to run tests on munged bitcode files.
 class NaClBitcodeMunger {
 public:
+  // TODO(kschimpf) Replace uses in subzero with corresponding
+  // NaClMungedBitcode::EditAction values, so that following constants
+  // can be removed.
+
   /// The types of editing actions that can be applied.
-  enum EditAction {
-    AddBefore, // Insert record before record with index.
-    AddAfter,  // Insert record after record with index.
-    Remove,    // Remove record with index.
-    Replace    // Replace record with index with specified record.
-  };
+  typedef NaClMungedBitcode::EditAction EditAction;
+  static const EditAction AddBefore = NaClMungedBitcode::AddBefore;
+  static const EditAction AddAfter = NaClMungedBitcode::AddAfter;
+  static const EditAction Remove = NaClMungedBitcode::Remove;
+  static const EditAction Replace = NaClMungedBitcode::Replace;
 
   /// Creates a bitcode munger, based on the given array of values.
   NaClBitcodeMunger(const uint64_t Records[], size_t RecordsSize,
                     uint64_t RecordTerminator)
-      : Records(Records), RecordsSize(RecordsSize),
+      : MungedBitcode(Records, RecordsSize, RecordTerminator),
         RecordTerminator(RecordTerminator), WriteBlockID(-1), SetBID(-1),
         DumpResults("Error: No previous dump results!\n"),
         DumpStream(nullptr), Writer(nullptr), FoundErrors(false),
@@ -115,10 +100,8 @@ public:
   }
 
 protected:
-  // The list of (base) records.
-  const uint64_t *Records;
-  // The number of (base) records.
-  size_t RecordsSize;
+  // The bitcode records being munged.
+  NaClMungedBitcode MungedBitcode;
   // The value used as record terminator.
   uint64_t RecordTerminator;
   // The block ID associated with the block being written.
@@ -164,34 +147,20 @@ protected:
     report_fatal_error(FatalStream.str());
   }
 
-  /// Returns the lines containing the given Substring, from the
-  /// string getTestResults(). If MustBePrefix, then Substring must
-  /// match at the beginning of the line.
+  // Returns the lines containing the given Substring, from the string
+  // getTestResults(). If MustBePrefix, then Substring must match at
+  // the beginning of the line.
   std::string getLinesWithTextMatch(const std::string &Substring,
                                     bool MustBePrefix = false) const;
 
-  // Writes out sequence of records, applying the given sequence of
-  // munges.
-  void writeMungedData(const uint64_t Munges[], size_t MungesSize,
-                       bool AddHeader);
+  // Writes out munged bitcode records.
+  void writeMungedBitcode(const NaClMungedBitcode &Bitcode, bool AddHeader);
 
   // Emits the given record to the bitcode file.
-  void emitRecord(unsigned AbbrevIndex, unsigned RecordCode,
-                  SmallVectorImpl<uint64_t> &Values);
+  void emitRecord(const NaClBitcodeAbbrevRecord &Record);
 
   // Converts the abbreviation record to the corresponding abbreviation.
-  NaClBitCodeAbbrev *buildAbbrev(unsigned RecordCode,
-                                 SmallVectorImpl<uint64_t> &Values);
-
-  // Emits the record at the given Index to the bitcode file.  Then
-  // updates Index by one.
-  void emitRecordAtIndex(const uint64_t Record[], size_t RecordSize,
-                         size_t &Index);
-
-  // Skips the record starting at Index by advancing Index past the
-  // contents of the record.
-  void deleteRecord(const uint64_t Record[], size_t RecordSize,
-                    size_t &Index);
+  NaClBitCodeAbbrev *buildAbbrev(const NaClBitcodeAbbrevRecord &Record);
 };
 
 /// Class to run tests for function llvm::NaClObjDump.
