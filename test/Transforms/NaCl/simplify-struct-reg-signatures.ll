@@ -171,7 +171,7 @@ declare void @vararg_fp_fct(%vararg_fp_struct %arg)
 
 define void @call_vararg(%vararg_fp_struct %param1, ...) {
   %fptr = extractvalue %vararg_fp_struct %param1, 1
-  call void (i32, ...)* %fptr(i32 0, i32 1)
+  call void (i32, ...) %fptr(i32 0, i32 1)
   ret void
 }
 

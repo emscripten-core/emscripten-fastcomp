@@ -46,14 +46,14 @@ target triple = "asmjs-unknown-emscripten"
 define hidden i8* @_ZN12MediaInfoLib22Mxf_EssenceCompressionEN6ZenLib7uint128E(%"class.ZenLib::uint128"* nocapture readonly %EssenceCompression) #0 {
 entry:
   %hi = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 1
-  %0 = load i64, i64* %hi, align 1, !tbaa !2
+  %0 = load i64, i64* %hi, align 1
   %and = and i64 %0, -256
   %cmp = icmp eq i64 %and, 436333716306985216
   br i1 %cmp, label %lor.lhs.false, label %return
 
 lor.lhs.false:                                    ; preds = %entry
   %lo = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 0
-  %1 = load i64, i64* %lo, align 1, !tbaa !7
+  %1 = load i64, i64* %lo, align 1
   %and1 = and i64 %1, -72057594037927936
   switch i64 %and1, label %return [
     i64 288230376151711744, label %if.end
@@ -336,7 +336,7 @@ return:                                           ; preds = %sw.bb135, %sw.bb127
 define hidden i8* @_ZN12MediaInfoLib27Mxf_Sequence_DataDefinitionEN6ZenLib7uint128E(%"class.ZenLib::uint128"* nocapture readonly %DataDefinition) #0 {
 entry:
   %lo = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %DataDefinition, i32 0, i32 0
-  %0 = load i64, i64* %lo, align 1, !tbaa !7
+  %0 = load i64, i64* %lo, align 1
   %and = lshr i64 %0, 32
   %conv = trunc i64 %and to i32
   %and2 = lshr i64 %0, 24
@@ -385,27 +385,15 @@ return:                                           ; preds = %sw.default14, %sw.b
   ret i8* %retval.0
 }
 
+
 define i32 @main() {
 entry:
   %retval = alloca i32, align 4
   store i32 0, i32* %retval
-  %call = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str, i32 0, i32 0))
+  %call = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str, i32 0, i32 0))
   ret i32 0
 }
 
 declare i32 @printf(i8*, ...)
 
 attributes #0 = { nounwind readonly }
-
-!llvm.ident = !{!0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0}
-!llvm.module.flags = !{!1}
-
-!0 = metadata !{metadata !"clang version 3.4 (git@github.com:kripken/emscripten-fastcomp-clang.git 406c991ba0416c838ee097361c27a12411a088b9) (https://chromium.googlesource.com/native_client/pnacl-llvm a5e8942da586a7ef0ed02361b77a3010f16428cf)"}
-!1 = metadata !{i32 2, metadata !"Dwarf Version", i32 4}
-!2 = metadata !{metadata !3, metadata !4, i64 8}
-!3 = metadata !{metadata !"_ZTSN6ZenLib7uint128E", metadata !4, i64 0, metadata !4, i64 8}
-!4 = metadata !{metadata !"long long", metadata !5, i64 0}
-!5 = metadata !{metadata !"omnipotent char", metadata !6, i64 0}
-!6 = metadata !{metadata !"Simple C/C++ TBAA"}
-!7 = metadata !{metadata !3, metadata !4, i64 0}
-

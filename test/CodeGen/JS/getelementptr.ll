@@ -7,9 +7,7 @@ target triple = "asmjs-unknown-emscripten"
 
 ; CHECK: function _getelementptr([[VAL_P:\$[a-z_]+]]) {
 ; CHECK:  [[GEP:\$[a-z_]+]] = (([[GEPINT:\$[a-z_]+]]) + 588)|0;
-define i32, [[VAL_P:\$[a-z_]+]]) {
-; CHECK:  [[GEP:\$[a-z_]+]] = (([[GEPINT:\$[a-z_]+]]) + 588)|0;
-define i32* @getelementptr([10 x [12 x i32] ], [10 x [12 x i32] ]* %p) {
+define i32* @getelementptr([10 x [12 x i32] ]* %p) {
   %t = getelementptr [10 x [12 x i32]], [10 x [12 x i32]]* %p, i32 1, i32 2, i32 3
   ret i32* %t
 }

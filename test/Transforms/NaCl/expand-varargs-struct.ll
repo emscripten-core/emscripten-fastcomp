@@ -7,7 +7,7 @@ declare i32 @varargs_func(i32 %arg, ...)
 
 ; Test passing a struct by value.
 define i32 @varargs_call_struct(%MyStruct* %ptr) {
-  %result = call i32 (i32, ...)* @varargs_func(i32 111, i64 222, %MyStruct* byval %ptr)
+  %result = call i32 (i32, ...) @varargs_func(i32 111, i64 222, %MyStruct* byval %ptr)
   ret i32 %result
 }
 ; CHECK-LABEL: @varargs_call_struct(
