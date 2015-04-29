@@ -535,15 +535,14 @@ void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
     emitAttributes();
 
   // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl()) {
+  if (TT.isOSNaCl()) {
     if (OutStreamer.hasRawTextSupport()) {
       std::string str;
       raw_string_ostream OS(str);
       EmitSFIHeaders(OS);
       OutStreamer.EmitRawText(StringRef(OS.str()));
     }
-    initializeNaClMCStreamer(OutStreamer, OutContext,
-                             Subtarget->getTargetTriple());
+    initializeNaClMCStreamer(OutStreamer, OutContext, TT);
   }
   // @LOCALMOD-END
 

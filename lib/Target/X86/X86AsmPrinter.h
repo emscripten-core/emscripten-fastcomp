@@ -13,6 +13,7 @@
 #include "X86Subtarget.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/StackMaps.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 
 // Implemented in X86MCInstLower.cpp
@@ -129,7 +130,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
     // being expanded late by the streamer, it isn't going to be counting
     // the expanded instruction. It might not be counting the bundle padding
     // correctly either.
-    if (!Subtarget->isTargetNaCl())
+    if (!Triple(M.getTargetTriple()).isOSNaCl())
       SMShadowTracker.reset(0);
     // @LOCALMOD-END
     SM.reset();

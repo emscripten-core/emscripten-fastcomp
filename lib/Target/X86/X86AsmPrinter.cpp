@@ -560,9 +560,8 @@ void X86AsmPrinter::EmitStartOfAsmFile(Module &M) {
   }
 
   // @LOCALMOD-BEGIN
-  if (Subtarget->isTargetNaCl())
-    initializeNaClMCStreamer(OutStreamer, OutContext,
-                             Subtarget->getTargetTriple());
+  if (TT.isOSNaCl())
+    initializeNaClMCStreamer(OutStreamer, OutContext, TT);
   // @LOCALMOD-END
 }
 

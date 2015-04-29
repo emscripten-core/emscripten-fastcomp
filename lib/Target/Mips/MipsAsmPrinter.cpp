@@ -748,9 +748,8 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
                                                     ABI.IsO32());
 
   // @LOCALMOD-START
-  if (Subtarget->isTargetNaCl()) {
-    initializeNaClMCStreamer(OutStreamer, OutContext,
-                             Triple(Subtarget->getTargetTriple()));
+  if (STI.isTargetNaCl()) {
+    initializeNaClMCStreamer(OutStreamer, OutContext, Triple(TT));
   }
   // @LOCALMOD-END
 }
