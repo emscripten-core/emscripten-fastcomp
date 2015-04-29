@@ -148,7 +148,7 @@ define internal void @memory() {
   %a2 = load i32* %ptr, align 1
   store i32 undef, i32* %ptr, align 1
  ; CHECK-NOT: disallowed
-  %a4 = getelementptr { i32, i32}* undef ; CHECK-NEXT: disallowed: bad instruction opcode: {{.*}} getelementptr
+  %a4 = getelementptr { i32, i32}, { i32, i32}* undef ; CHECK-NEXT: disallowed: bad instruction opcode: {{.*}} getelementptr
   ret void
 }
 

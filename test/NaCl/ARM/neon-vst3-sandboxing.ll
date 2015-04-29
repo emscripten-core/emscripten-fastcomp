@@ -37,7 +37,7 @@ define void @vst3Qi16_update(i16** %ptr, <8 x i16>* %B) nounwind {
   call void @llvm.arm.neon.vst3.v8i16(i8* %tmp0, <8 x i16> %tmp1, <8 x i16> %tmp1, <8 x i16> %tmp1, i32 1)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vst3.16 {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r1]!
-  %tmp2 = getelementptr i16* %A, i32 24
+  %tmp2 = getelementptr i16, i16* %A, i32 24
   store i16* %tmp2, i16** %ptr
   ret void
 }

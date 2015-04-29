@@ -183,7 +183,7 @@ define void @call_vararg(%vararg_fp_struct %param1, ...) {
 
 %vararg_fp_problem_struct = type { void(%vararg_fp_problem_struct)* }
 define void @vararg_fp_problem_call(%vararg_fp_problem_struct* byval %param) {
-  %fct_ptr = getelementptr %vararg_fp_problem_struct* %param, i32 0, i32 0
+  %fct_ptr = getelementptr %vararg_fp_problem_struct, %vararg_fp_problem_struct* %param, i32 0, i32 0
   %fct = load void(%vararg_fp_problem_struct)** %fct_ptr
   %param_for_call = load %vararg_fp_problem_struct* %param
   call void %fct(%vararg_fp_problem_struct %param_for_call)
@@ -192,7 +192,7 @@ define void @vararg_fp_problem_call(%vararg_fp_problem_struct* byval %param) {
 
 ; CHECK-LABEL: define void @vararg_fp_problem_call(%vararg_fp_problem_struct.simplified* byval %param)
 ; CHECK-NEXT:  %param_for_call.ptr = alloca %vararg_fp_problem_struct.simplified
-; CHECK-NEXT:  %fct_ptr = getelementptr %vararg_fp_problem_struct.simplified* %param, i32 0, i32 0
+; CHECK-NEXT:  %fct_ptr = getelementptr %vararg_fp_problem_struct.simplified, %vararg_fp_problem_struct.simplified* %param, i32 0, i32 0
 ; CHECK-NEXT:  %fct = load void (%vararg_fp_problem_struct.simplified*)** %fct_ptr
 ; CHECK-NEXT:  %param_for_call = load %vararg_fp_problem_struct.simplified* %param
 ; CHECK-NEXT:  store %vararg_fp_problem_struct.simplified %param_for_call, %vararg_fp_problem_struct.simplified* %param_for_call.ptr
@@ -215,7 +215,7 @@ define void @call_with_array([4 x void(%struct)*] %fptrs, %struct %str) {
 ; CHECK-NEXT:  ret void
 
 define void @call_with_array_ptr([4 x void(%struct)*]* %fptrs, %struct %str) {
-  %fptr_ptr = getelementptr [4 x void(%struct)*]* %fptrs, i32 0, i32 2
+  %fptr_ptr = getelementptr [4 x void(%struct)*], [4 x void(%struct)*]* %fptrs, i32 0, i32 2
   %fptr = load void(%struct)** %fptr_ptr
   call void %fptr(%struct %str)
   ret void
@@ -224,7 +224,7 @@ define void @call_with_array_ptr([4 x void(%struct)*]* %fptrs, %struct %str) {
 ; CHECK-LABEL: define void @call_with_array_ptr([4 x void (%struct*)*]* %fptrs, %struct* byval %str.ptr)
 ; CHECK-NEXT:  %str.sreg.ptr = alloca %struct
 ; CHECK-NEXT:  %str.sreg = load %struct* %str.ptr
-; CHECK-NEXT:  %fptr_ptr = getelementptr [4 x void (%struct*)*]* %fptrs, i32 0, i32 2
+; CHECK-NEXT:  %fptr_ptr = getelementptr [4 x void (%struct*)*], [4 x void (%struct*)*]* %fptrs, i32 0, i32 2
 ; CHECK-NEXT:  %fptr = load void (%struct*)** %fptr_ptr
 ; CHECK-NEXT:  store %struct %str.sreg, %struct* %str.sreg.ptr
 ; CHECK-NEXT:  call void %fptr(%struct* byval %str.sreg.ptr)

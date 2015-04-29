@@ -84,7 +84,7 @@ define <16 x i8> @vld1Qi8_update(i8** %ptr) nounwind {
   %tmp1 = call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %A, i32 8)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}, {{d[0-9]+}}}, [r1:64]!
-  %tmp2 = getelementptr i8* %A, i32 16
+  %tmp2 = getelementptr i8, i8* %A, i32 16
   store i8* %tmp2, i8** %ptr
   ret <16 x i8> %tmp1
 }
@@ -95,7 +95,7 @@ define <4 x i16> @vld1i16_update(i16** %ptr) nounwind {
   %tmp1 = call <4 x i16> @llvm.arm.neon.vld1.v4i16(i8* %tmp0, i32 1)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vld1.16 {{{d[0-9]+}}}, [r1]!
-  %tmp2 = getelementptr i16* %A, i32 4
+  %tmp2 = getelementptr i16, i16* %A, i32 4
          store i16* %tmp2, i16** %ptr
   ret <4 x i16> %tmp1
 }
@@ -106,7 +106,7 @@ define <2 x i32> @vld1i32_update(i32** %ptr, i32 %inc) nounwind {
   %tmp1 = call <2 x i32> @llvm.arm.neon.vld1.v2i32(i8* %tmp0, i32 1)
 ; CHECK:         bic r2, r2, #3221225472
 ; CHECK-NEXT:    vld1.32 {{{d[0-9]+}}}, [r2], r1
-  %tmp2 = getelementptr i32* %A, i32 %inc
+  %tmp2 = getelementptr i32, i32* %A, i32 %inc
   store i32* %tmp2, i32** %ptr
   ret <2 x i32> %tmp1
 }

@@ -16,7 +16,7 @@ define i32* @get_tvar2() {
   ret i32* @tvar_alias2
 }
 ; CHECK: define i32* @get_tvar2()
-; CHECK: %expanded = getelementptr i32* @real_tvar, i32 100
+; CHECK: %expanded = getelementptr i32, i32* @real_tvar, i32 100
 ; CHECK: ret i32* %expanded
 
 
@@ -24,5 +24,5 @@ define i32* @get_tvar3() {
   ret i32* getelementptr (i32* @tvar_alias2, i32 100)
 }
 ; CHECK: define i32* @get_tvar3()
-; CHECK: %expanded = getelementptr i32* @real_tvar, i32 200
+; CHECK: %expanded = getelementptr i32, i32* @real_tvar, i32 200
 ; CHECK: ret i32* %expanded

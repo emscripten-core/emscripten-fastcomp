@@ -53,7 +53,7 @@ define i32* @test_converting_getelementptr() {
   ret i32* getelementptr (i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr()
-; CHECK: %expanded = getelementptr i32* @tvar, i32 2
+; CHECK: %expanded = getelementptr i32, i32* @tvar, i32 2
 ; CHECK: ret i32* %expanded
 
 
@@ -63,7 +63,7 @@ define i32* @test_converting_getelementptr_copy() {
   ret i32* getelementptr (i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr_copy()
-; CHECK: %expanded = getelementptr i32* @tvar, i32 2
+; CHECK: %expanded = getelementptr i32, i32* @tvar, i32 2
 ; CHECK: ret i32* %expanded
 
 
@@ -71,7 +71,7 @@ define i32* @test_converting_getelementptr_inbounds() {
   ret i32* getelementptr inbounds (i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr_inbounds()
-; CHECK: %expanded = getelementptr inbounds i32* @tvar, i32 2
+; CHECK: %expanded = getelementptr inbounds i32, i32* @tvar, i32 2
 ; CHECK: ret i32* %expanded
 
 
@@ -90,7 +90,7 @@ return:
 ; incoming block, which might be suboptimal but works in all cases.
 ; CHECK: define i32* @test_converting_phi(i1 %cmp)
 ; CHECK: entry:
-; CHECK: %expanded = getelementptr inbounds i32* @tvar, i32 1
+; CHECK: %expanded = getelementptr inbounds i32, i32* @tvar, i32 1
 ; CHECK: else:
 ; CHECK: return:
 ; CHECK: %result = phi i32* [ %expanded, %entry ], [ null, %else ]
@@ -111,7 +111,7 @@ return:
 }
 ; CHECK: define i32* @test_converting_phi_with_indirectbr(i8* %addr)
 ; CHECK: entry:
-; CHECK: %expanded = getelementptr inbounds i32* @tvar, i32 1
+; CHECK: %expanded = getelementptr inbounds i32, i32* @tvar, i32 1
 ; CHECK: return:
 ; CHECK: %result = phi i32* [ %expanded, %entry ], [ null, %else ]
 

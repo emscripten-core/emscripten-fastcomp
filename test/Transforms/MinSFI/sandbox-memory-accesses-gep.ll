@@ -20,7 +20,7 @@ declare void @llvm.memset.p0i8.i32(i8* nocapture, i8, i32, i32, i1)
 ; address sandboxing than in the general case.
 
 define i32 @test_load_elementptr([100 x i32]* %foo) {
-  %elem = getelementptr inbounds [100 x i32]* %foo, i32 0, i32 97
+  %elem = getelementptr inbounds [100 x i32], [100 x i32]* %foo, i32 0, i32 97
   %val = load i32* %elem
   ret i32 %val
 }

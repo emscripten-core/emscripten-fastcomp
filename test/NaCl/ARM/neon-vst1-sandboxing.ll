@@ -108,7 +108,7 @@ define void @vst1f_update(float** %ptr, <2 x float>* %B) nounwind {
   call void @llvm.arm.neon.vst1.v2f32(i8* %tmp0, <2 x float> %tmp1, i32 1)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vst1.32 {{{d[0-9]+}}}, [r1]!
-  %tmp2 = getelementptr float* %A, i32 2
+  %tmp2 = getelementptr float, float* %A, i32 2
   store float* %tmp2, float** %ptr
   ret void
 }

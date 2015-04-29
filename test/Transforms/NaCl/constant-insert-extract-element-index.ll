@@ -296,13 +296,13 @@ define <16 x i1> @test_16xi1_variable(<16 x i1> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca i1, i32 16, align 16
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast i1* %[[EALLOCA]] to <16 x i1>*
   ; CHECK-NEXT: store <16 x i1> %in, <16 x i1>* %[[ECAST]], align 16
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i1* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i1, i1* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load i1* %[[EGEP]], align 1
   %e.16 = extractelement <16 x i1> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca i1, i32 16, align 16
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast i1* %[[IALLOCA]] to <16 x i1>*
   ; CHECK-NEXT: store <16 x i1> %in, <16 x i1>* %[[ICAST]], align 16
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i1* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i1, i1* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store i1 %[[ELOAD]], i1* %[[IGEP]], align 1
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <16 x i1>* %[[ICAST]], align 16
   %i.16 = insertelement <16 x i1> %in, i1 %e.16, i32 %idx
@@ -315,13 +315,13 @@ define <8 x i1> @test_8xi1_variable(<8 x i1> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca i1, i32 8, align 8
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast i1* %[[EALLOCA]] to <8 x i1>*
   ; CHECK-NEXT: store <8 x i1> %in, <8 x i1>* %[[ECAST]], align 8
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i1* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i1, i1* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load i1* %[[EGEP]], align 1
   %e.8 = extractelement <8 x i1> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca i1, i32 8, align 8
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast i1* %[[IALLOCA]] to <8 x i1>*
   ; CHECK-NEXT: store <8 x i1> %in, <8 x i1>* %[[ICAST]], align 8
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i1* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i1, i1* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store i1 %[[ELOAD]], i1* %[[IGEP]], align 1
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <8 x i1>* %[[ICAST]], align 8
   %i.8 = insertelement <8 x i1> %in, i1 %e.8, i32 %idx
@@ -334,13 +334,13 @@ define <4 x i1> @test_4xi1_variable(<4 x i1> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca i1, i32 4, align 4
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast i1* %[[EALLOCA]] to <4 x i1>*
   ; CHECK-NEXT: store <4 x i1> %in, <4 x i1>* %[[ECAST]], align 4
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i1* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i1, i1* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load i1* %[[EGEP]], align 1
   %e.4 = extractelement <4 x i1> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca i1, i32 4, align 4
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast i1* %[[IALLOCA]] to <4 x i1>*
   ; CHECK-NEXT: store <4 x i1> %in, <4 x i1>* %[[ICAST]], align 4
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i1* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i1, i1* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store i1 %[[ELOAD]], i1* %[[IGEP]], align 1
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <4 x i1>* %[[ICAST]], align 4
   %i.4 = insertelement <4 x i1> %in, i1 %e.4, i32 %idx
@@ -353,13 +353,13 @@ define <16 x i8> @test_16xi8_variable(<16 x i8> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca i8, i32 16, align 4
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast i8* %[[EALLOCA]] to <16 x i8>*
   ; CHECK-NEXT: store <16 x i8> %in, <16 x i8>* %[[ECAST]], align 4
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i8* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i8, i8* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load i8* %[[EGEP]], align 1
   %e.16 = extractelement <16 x i8> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca i8, i32 16, align 4
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast i8* %[[IALLOCA]] to <16 x i8>*
   ; CHECK-NEXT: store <16 x i8> %in, <16 x i8>* %[[ICAST]], align 4
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i8* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i8, i8* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store i8 %[[ELOAD]], i8* %[[IGEP]], align 1
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <16 x i8>* %[[ICAST]], align 4
   %i.16 = insertelement <16 x i8> %in, i8 %e.16, i32 %idx
@@ -372,13 +372,13 @@ define <8 x i16> @test_8xi16_variable(<8 x i16> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca i16, i32 8, align 4
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast i16* %[[EALLOCA]] to <8 x i16>*
   ; CHECK-NEXT: store <8 x i16> %in, <8 x i16>* %[[ECAST]], align 4
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i16* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i16, i16* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load i16* %[[EGEP]], align 2
   %e.8 = extractelement <8 x i16> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca i16, i32 8, align 4
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast i16* %[[IALLOCA]] to <8 x i16>*
   ; CHECK-NEXT: store <8 x i16> %in, <8 x i16>* %[[ICAST]], align 4
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i16* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i16, i16* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store i16 %[[ELOAD]], i16* %[[IGEP]], align 2
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <8 x i16>* %[[ICAST]], align 4
   %i.8 = insertelement <8 x i16> %in, i16 %e.8, i32 %idx
@@ -391,13 +391,13 @@ define <4 x i32> @test_4xi32_variable(<4 x i32> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca i32, i32 4, align 4
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast i32* %[[EALLOCA]] to <4 x i32>*
   ; CHECK-NEXT: store <4 x i32> %in, <4 x i32>* %[[ECAST]], align 4
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i32* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr i32, i32* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load i32* %[[EGEP]], align 4
   %e.4 = extractelement <4 x i32> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca i32, i32 4, align 4
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast i32* %[[IALLOCA]] to <4 x i32>*
   ; CHECK-NEXT: store <4 x i32> %in, <4 x i32>* %[[ICAST]], align 4
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i32* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr i32, i32* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store i32 %[[ELOAD]], i32* %[[IGEP]], align 4
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <4 x i32>* %[[ICAST]], align 4
   %i.4 = insertelement <4 x i32> %in, i32 %e.4, i32 %idx
@@ -410,13 +410,13 @@ define <4 x float> @test_4xfloat_variable(<4 x float> %in, i32 %idx) {
   ; CHECK-NEXT: %[[EALLOCA:[0-9]+]] = alloca float, i32 4, align 4
   ; CHECK-NEXT: %[[ECAST:[0-9]+]] = bitcast float* %[[EALLOCA]] to <4 x float>*
   ; CHECK-NEXT: store <4 x float> %in, <4 x float>* %[[ECAST]], align 4
-  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr float* %[[EALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[EGEP:[0-9]+]] = getelementptr float, float* %[[EALLOCA]], i32 %idx
   ; CHECK-NEXT: %[[ELOAD:[0-9]+]] = load float* %[[EGEP]], align 4
   %e.4 = extractelement <4 x float> %in, i32 %idx
   ; CHECK-NEXT: %[[IALLOCA:[0-9]+]] = alloca float, i32 4, align 4
   ; CHECK-NEXT: %[[ICAST:[0-9]+]] = bitcast float* %[[IALLOCA]] to <4 x float>*
   ; CHECK-NEXT: store <4 x float> %in, <4 x float>* %[[ICAST]], align 4
-  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr float* %[[IALLOCA]], i32 %idx
+  ; CHECK-NEXT: %[[IGEP:[0-9]+]] = getelementptr float, float* %[[IALLOCA]], i32 %idx
   ; CHECK-NEXT: store float %[[ELOAD]], float* %[[IGEP]], align 4
   ; CHECK-NEXT: %[[ILOAD:[0-9]+]] = load <4 x float>* %[[ICAST]], align 4
   %i.4 = insertelement <4 x float> %in, float %e.4, i32 %idx

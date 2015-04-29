@@ -19,9 +19,9 @@ define void @struct_load(%struct* %p, i8* %out0, i32* %out1) {
   ret void
 }
 ; CHECK: define void @struct_load
-; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct* %p, i32 0, i32 0
+; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %p, i32 0, i32 0
 ; CHECK-NEXT: %val.field{{.*}} = load i8* %val.index{{.*}}
-; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct* %p, i32 0, i32 1
+; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %p, i32 0, i32 1
 ; CHECK-NEXT: %val.field{{.*}} = load i32* %val.index{{.*}}
 ; CHECK-NEXT: store i8 %val.field{{.*}}, i8* %out0
 ; CHECK-NEXT: store i32 %val.field{{.*}}, i32* %out1
@@ -33,13 +33,13 @@ define void @struct_store(%struct* %in_ptr, %struct* %out_ptr) {
   ret void
 }
 ; CHECK: define void @struct_store
-; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct* %in_ptr, i32 0, i32 0
+; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %in_ptr, i32 0, i32 0
 ; CHECK-NEXT: %val.field{{.*}} = load i8* %val.index{{.*}}
-; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct* %in_ptr, i32 0, i32 1
+; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %in_ptr, i32 0, i32 1
 ; CHECK-NEXT: %val.field{{.*}} = load i32* %val.index{{.*}}
-; CHECK-NEXT: %out_ptr.index{{.*}} = getelementptr %struct* %out_ptr, i32 0, i32 0
+; CHECK-NEXT: %out_ptr.index{{.*}} = getelementptr %struct, %struct* %out_ptr, i32 0, i32 0
 ; CHECK-NEXT: store i8 %val.field{{.*}}, i8* %out_ptr.index{{.*}}
-; CHECK-NEXT: %out_ptr.index{{.*}} = getelementptr %struct* %out_ptr, i32 0, i32 1
+; CHECK-NEXT: %out_ptr.index{{.*}} = getelementptr %struct, %struct* %out_ptr, i32 0, i32 1
 ; CHECK-NEXT: store i32 %val.field{{.*}}, i32* %out_ptr.index{{.*}}
 
 
@@ -151,10 +151,10 @@ define void @nested_structs() {
 ; CHECK-NEXT:    %a3 = alloca { { i32, i64 } }
 ; CHECK-NEXT:    store i64 6, i64* %a1
 ; CHECK-NEXT:    store i32 5, i32* %a2
-; CHECK-NEXT:    %a3.index = getelementptr { { i32, i64 } }* %a3, i32 0, i32 0
-; CHECK-NEXT:    %a3.index.index = getelementptr { i32, i64 }* %a3.index, i32 0, i32 0
+; CHECK-NEXT:    %a3.index = getelementptr { { i32, i64 } }, { { i32, i64 } }* %a3, i32 0, i32 0
+; CHECK-NEXT:    %a3.index.index = getelementptr { i32, i64 }, { i32, i64 }* %a3.index, i32 0, i32 0
 ; CHECK-NEXT:    store i32 5, i32* %a3.index.index
-; CHECK-NEXT:    %a3.index.index1 = getelementptr { i32, i64 }* %a3.index, i32 0, i32 1
+; CHECK-NEXT:    %a3.index.index1 = getelementptr { i32, i64 }, { i32, i64 }* %a3.index, i32 0, i32 1
 ; CHECK-NEXT:    store i64 6, i64* %a3.index.index1
 
 define void @load_another_pass() {
@@ -189,22 +189,22 @@ define void @select_another_pass() {
   ret void
 }
 ; CHECK-LABEL: define void @select_another_pass()
-; CHECK-NEXT:    %a.index = getelementptr { { i8, i64 } }* null, i32 0, i32 0
-; CHECK-NEXT:    %a.field.index = getelementptr { i8, i64 }* %a.index, i32 0, i32 0
+; CHECK-NEXT:    %a.index = getelementptr { { i8, i64 } }, { { i8, i64 } }* null, i32 0, i32 0
+; CHECK-NEXT:    %a.field.index = getelementptr { i8, i64 }, { i8, i64 }* %a.index, i32 0, i32 0
 ; CHECK-NEXT:    %a.field.field = load i8* %a.field.index
-; CHECK-NEXT:    %a.field.index2 = getelementptr { i8, i64 }* %a.index, i32 0, i32 1
+; CHECK-NEXT:    %a.field.index2 = getelementptr { i8, i64 }, { i8, i64 }* %a.index, i32 0, i32 1
 ; CHECK-NEXT:    %a.field.field3 = load i64* %a.field.index2
-; CHECK-NEXT:    %b.index = getelementptr { { i8, i64 } }* null, i32 0, i32 0
-; CHECK-NEXT:    %b.field.index = getelementptr { i8, i64 }* %b.index, i32 0, i32 0
+; CHECK-NEXT:    %b.index = getelementptr { { i8, i64 } }, { { i8, i64 } }* null, i32 0, i32 0
+; CHECK-NEXT:    %b.field.index = getelementptr { i8, i64 }, { i8, i64 }* %b.index, i32 0, i32 0
 ; CHECK-NEXT:    %b.field.field = load i8* %b.field.index
-; CHECK-NEXT:    %b.field.index5 = getelementptr { i8, i64 }* %b.index, i32 0, i32 1
+; CHECK-NEXT:    %b.field.index5 = getelementptr { i8, i64 }, { i8, i64 }* %b.index, i32 0, i32 1
 ; CHECK-NEXT:    %b.field.field6 = load i64* %b.field.index5
 ; CHECK-NEXT:    %c.index.index = select i1 undef, i8 %a.field.field, i8 %b.field.field
 ; CHECK-NEXT:    %c.index.index11 = select i1 undef, i64 %a.field.field3, i64 %b.field.field6
-; CHECK-NEXT:    %.index = getelementptr { { i8, i64 } }* null, i32 0, i32 0
-; CHECK-NEXT:    %.index.index = getelementptr { i8, i64 }* %.index, i32 0, i32 0
+; CHECK-NEXT:    %.index = getelementptr { { i8, i64 } }, { { i8, i64 } }* null, i32 0, i32 0
+; CHECK-NEXT:    %.index.index = getelementptr { i8, i64 }, { i8, i64 }* %.index, i32 0, i32 0
 ; CHECK-NEXT:    store i8 %c.index.index, i8* %.index.index
-; CHECK-NEXT:    %.index.index13 = getelementptr { i8, i64 }* %.index, i32 0, i32 1
+; CHECK-NEXT:    %.index.index13 = getelementptr { i8, i64 }, { i8, i64 }* %.index, i32 0, i32 1
 ; CHECK-NEXT:    store i64 %c.index.index11, i64* %.index.index13
 ; CHECK-NEXT:    ret void
 

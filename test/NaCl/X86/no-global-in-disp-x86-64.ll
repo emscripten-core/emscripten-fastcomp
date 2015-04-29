@@ -39,12 +39,12 @@ entry:
   store i32 %arg, i32* %arg.addr, align 4
   %0 = load i32* %arg.addr, align 4
   %1 = load i32* %arg.addr, align 4
-  %arrayidx = getelementptr inbounds [100 x i32]* @myglobal, i32 0, i32 %1
+  %arrayidx = getelementptr inbounds [100 x i32], [100 x i32]* @myglobal, i32 0, i32 %1
   store i32 %0, i32* %arrayidx, align 4
   %2 = load i32* %arg.addr, align 4
   %3 = load i32* %arg.addr, align 4
   %add = add nsw i32 %3, 1
-  %arrayidx1 = getelementptr inbounds [100 x i32]* @myglobal, i32 0, i32 %add
+  %arrayidx1 = getelementptr inbounds [100 x i32], [100 x i32]* @myglobal, i32 0, i32 %add
   store i32 %2, i32* %arrayidx1, align 4
   ret void
 }

@@ -537,7 +537,7 @@ define void @tail_call() {
 ; should not depend unnecessarily on ExpandGetElementPtr having been
 ; run.)
 define i8* @getelementptr(i8* %ptr) {
-  %gep = getelementptr i8* %ptr, i32 10
+  %gep = getelementptr i8, i8* %ptr, i32 10
   ret i8* %gep
 }
 

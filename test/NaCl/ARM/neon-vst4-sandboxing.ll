@@ -37,7 +37,7 @@ define void @vst4Qf_update(float** %ptr, <4 x float>* %B) nounwind {
   call void @llvm.arm.neon.vst4.v4f32(i8* %tmp0, <4 x float> %tmp1, <4 x float> %tmp1, <4 x float> %tmp1, <4 x float> %tmp1, i32 1)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vst4.32 {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r1]!
-  %tmp2 = getelementptr float* %A, i32 16
+  %tmp2 = getelementptr float, float* %A, i32 16
   store float* %tmp2, float** %ptr
   ret void
 }

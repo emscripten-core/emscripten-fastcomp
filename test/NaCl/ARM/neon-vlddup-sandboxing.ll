@@ -145,7 +145,7 @@ define <4 x i16> @vld4dupi16_update(i16** %ptr) nounwind {
   %tmp9 = add <4 x i16> %tmp2, %tmp4
   %tmp10 = add <4 x i16> %tmp6, %tmp8
   %tmp11 = add <4 x i16> %tmp9, %tmp10
-  %tmp12 = getelementptr i16* %A, i32 4
+  %tmp12 = getelementptr i16, i16* %A, i32 4
   store i16* %tmp12, i16** %ptr
   ret <4 x i16> %tmp11
 }

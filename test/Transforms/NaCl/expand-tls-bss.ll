@@ -13,5 +13,5 @@ define i64* @get_tvar_bss1() {
   ret i64* @tvar_bss1
 }
 ; CHECK: define i64* @get_tvar_bss1()
-; CHECK: %field = getelementptr %tls_struct* %tls_struct, i32 -1, i32 1, i32 0
+; CHECK: %field = getelementptr %tls_struct, %tls_struct* %tls_struct, i32 -1, i32 1, i32 0
 ; CHECK: ret i64* %field

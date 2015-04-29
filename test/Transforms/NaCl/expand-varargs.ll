@@ -44,14 +44,14 @@ entry:
   %odouble = bitcast i8* %o8 to double*
 
   %arglist_alloc = alloca [4 x i32], align 4
-  %arglist = getelementptr inbounds [4 x i32]* %arglist_alloc, i32 0, i32 0
+  %arglist = getelementptr inbounds [4 x i32], [4 x i32]* %arglist_alloc, i32 0, i32 0
   %arglist.i8 = bitcast [4 x i32]* %arglist_alloc to i8*
   call void @llvm.va_start(i8* %arglist.i8)
   br label %start
 
 start:
   %idx = phi i32 [ 0, %entry ], [ %inc, %next ]
-  %fmt.gep = getelementptr inbounds i8* %fmt, i32 %idx
+  %fmt.gep = getelementptr inbounds i8, i8* %fmt, i32 %idx
   %arg.type = load i8* %fmt.gep
   switch i8 %arg.type, label %next [
     i8 0, label %done
@@ -76,7 +76,7 @@ type.i8: ; CHECK: type.i8:
 ; CHECK-NEXT: %[[B8:[0-9]+]] = and i32 %[[A8]], xor (i32 sub nuw (i32 ptrtoint (i8* getelementptr ({ i1, i8 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[C8:[0-9]+]] = inttoptr i32 %[[B8]] to i8*
 ; CHECK-NEXT: %i8 = load i8* %[[C8]]
-; CHECK-NEXT: %arglist_next = getelementptr inbounds i8* %[[C8]], i32 1
+; CHECK-NEXT: %arglist_next = getelementptr inbounds i8, i8* %[[C8]], i32 1
 ; CHECK-NEXT: store i8* %arglist_next, i8** %arglist1
 ; CHECK-NEXT: store i8 %i8, i8* %o8
 ; CHECK-NEXT: br label %next
@@ -144,11 +144,11 @@ define i32 @varargs_call1() {
 ; CHECK-NEXT: %vararg_buffer = alloca { i64, i32, double }
 ; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast { i64, i32, double }* %vararg_buffer to i8*
 ; CHECK-NEXT: call void @llvm.lifetime.start(i64 24, i8* %vararg_lifetime_bitcast)
-; CHECK-NEXT: %vararg_ptr = getelementptr inbounds { i64, i32, double }* %vararg_buffer, i32 0, i32 0
+; CHECK-NEXT: %vararg_ptr = getelementptr inbounds { i64, i32, double }, { i64, i32, double }* %vararg_buffer, i32 0, i32 0
 ; CHECK-NEXT: store i64 222, i64* %vararg_ptr
-; CHECK-NEXT: %vararg_ptr1 = getelementptr inbounds { i64, i32, double }* %vararg_buffer, i32 0, i32 1
+; CHECK-NEXT: %vararg_ptr1 = getelementptr inbounds { i64, i32, double }, { i64, i32, double }* %vararg_buffer, i32 0, i32 1
 ; CHECK-NEXT: store i32 333, i32* %vararg_ptr1
-; CHECK-NEXT: %vararg_ptr2 = getelementptr inbounds { i64, i32, double }* %vararg_buffer, i32 0, i32 2
+; CHECK-NEXT: %vararg_ptr2 = getelementptr inbounds { i64, i32, double }, { i64, i32, double }* %vararg_buffer, i32 0, i32 2
 ; CHECK-NEXT: store double 4.{{0*}}e+00, double* %vararg_ptr2
 ; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32, double }*)*)(i32 111, { i64, i32, double }* %vararg_buffer)
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 24, i8* %vararg_lifetime_bitcast)
@@ -216,7 +216,7 @@ define i32 @va_arg_i32(i8* %arglist) {
 ; CHECK-NEXT: %3 = and i32 %2, xor (i32 sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %4 = inttoptr i32 %3 to i32*
 ; CHECK-NEXT: %result = load i32* %4
-; CHECK-NEXT: %arglist_next = getelementptr inbounds i32* %4, i32 1
+; CHECK-NEXT: %arglist_next = getelementptr inbounds i32, i32* %4, i32 1
 ; CHECK-NEXT: store i32* %arglist_next, i32** %arglist1
 ; CHECK-NEXT: ret i32 %result
 
@@ -233,7 +233,7 @@ define i64 @va_arg_i64(i8* %arglist) {
 ; CHECK-NEXT: %3 = and i32 %2, xor (i32 sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %4 = inttoptr i32 %3 to i64*
 ; CHECK-NEXT: %result = load i64* %4
-; CHECK-NEXT: %arglist_next = getelementptr inbounds i64* %4, i32 1
+; CHECK-NEXT: %arglist_next = getelementptr inbounds i64, i64* %4, i32 1
 ; CHECK-NEXT: store i64* %arglist_next, i64** %arglist1
 ; CHECK-NEXT: ret i64 %result
 

@@ -85,7 +85,7 @@ define <4 x i16> @vld3i16_update(i16** %ptr, i32 %inc) nounwind {
   %tmp2 = extractvalue %struct.__neon_int16x4x3_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int16x4x3_t %tmp1, 2
   %tmp4 = add <4 x i16> %tmp2, %tmp3
-  %tmp5 = getelementptr i16* %A, i32 %inc
+  %tmp5 = getelementptr i16, i16* %A, i32 %inc
   store i16* %tmp5, i16** %ptr
   ret <4 x i16> %tmp4
 }
@@ -99,7 +99,7 @@ define <4 x i32> @vld3Qi32_update(i32** %ptr) nounwind {
   %tmp2 = extractvalue %struct.__neon_int32x4x3_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int32x4x3_t %tmp1, 2
   %tmp4 = add <4 x i32> %tmp2, %tmp3
-  %tmp5 = getelementptr i32* %A, i32 12
+  %tmp5 = getelementptr i32, i32* %A, i32 12
   store i32* %tmp5, i32** %ptr
   ret <4 x i32> %tmp4
 }

@@ -10,7 +10,7 @@ define i16 @negativedisp(i32 %b) {
 ; CHECK: negativedisp
   %a = alloca [1 x i16], align 2
   %add = add nsw i32 1073741824, %b
-  %arrayidx = getelementptr inbounds [1 x i16]* %a, i32 0, i32 %add
+  %arrayidx = getelementptr inbounds [1 x i16], [1 x i16]* %a, i32 0, i32 %add
 ; CHECK-NOT: nacl:-2147483648(
   %c = load i16* %arrayidx, align 2
   ret i16 %c
@@ -33,9 +33,9 @@ entry:
   %1 = load i32* %i, align 4
   %mul1 = mul nsw i32 %1, 947877507
   %add2 = add nsw i32 %mul1, 1574375955
-  %arrayidx = getelementptr inbounds [1 x i32]* getelementptr inbounds ([1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add2
+  %arrayidx = getelementptr inbounds [1 x i32], [1 x i32]* getelementptr inbounds ([1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add2
   %2 = bitcast [1 x i32]* %arrayidx to i32*
-  %arrayidx3 = getelementptr inbounds i32* %2, i32 %add
+  %arrayidx3 = getelementptr inbounds i32, i32* %2, i32 %add
   store i32* %arrayidx3, i32** %madat, align 4
 ; Ensure the large constant doesn't get folded into the load
 ; CHECK: nacl:(%r15
@@ -48,9 +48,9 @@ entry:
   %6 = load i32* %i, align 4
   %mul6 = mul nsw i32 %6, 947877507
   %add7 = add nsw i32 %mul6, 1574375955
-  %arrayidx8 = getelementptr inbounds [1 x i32]* getelementptr inbounds ([1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add7
+  %arrayidx8 = getelementptr inbounds [1 x i32], [1 x i32]* getelementptr inbounds ([1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add7
   %7 = bitcast [1 x i32]* %arrayidx8 to i32*
-  %arrayidx9 = getelementptr inbounds i32* %7, i32 %add5
+  %arrayidx9 = getelementptr inbounds i32, i32* %7, i32 %add5
 ; Ensure the large constant doesn't get folded into the load
 ; CHECK: nacl:(%r15
   %8 = load i32* %arrayidx9, align 4
@@ -91,7 +91,7 @@ entry:
   %mul = mul i32 %1, 947877507
   %add = add i32 %mul, 1574375955
   %2 = bitcast [1 x i64]* %array to i64*
-  %arrayidx = getelementptr inbounds i64* %2, i32 %add
+  %arrayidx = getelementptr inbounds i64, i64* %2, i32 %add
 ; Ensure the large constant didn't get folded into the load
 ; CHECK: nacl:(%r15
   %3 = load i64* %arrayidx, align 8
@@ -100,25 +100,25 @@ entry:
   %mul2 = mul i32 %4, 947877507
   %add3 = add i32 %mul2, 1574375955
   %5 = bitcast [1 x i64]* %array to i64*
-  %arrayidx4 = getelementptr inbounds i64* %5, i32 %add3
+  %arrayidx4 = getelementptr inbounds i64, i64* %5, i32 %add3
   store i64 %add1, i64* %arrayidx4, align 8
   %6 = load i32* %i, align 4
   %mul5 = mul nsw i32 %6, 947877507
   %add6 = add nsw i32 %mul5, 1574375955
-  %arrayidx7 = getelementptr inbounds [1 x i64]* %array, i32 0, i32 %add6
+  %arrayidx7 = getelementptr inbounds [1 x i64], [1 x i64]* %array, i32 0, i32 %add6
 ; CHECK: nacl:(%r15
   %7 = load i64* %arrayidx7, align 8
   %add8 = add i64 %7, -5707596139582126917
   %8 = load i32* %i, align 4
   %mul9 = mul nsw i32 %8, 947877507
   %add10 = add nsw i32 %mul9, 1574375955
-  %arrayidx11 = getelementptr inbounds [1 x i64]* %array, i32 0, i32 %add10
+  %arrayidx11 = getelementptr inbounds [1 x i64], [1 x i64]* %array, i32 0, i32 %add10
   store i64 %add8, i64* %arrayidx11, align 8
   %9 = load i32* %i, align 4
   %mul12 = mul nsw i32 %9, 947877507
   %add13 = add nsw i32 %mul12, 1574375955
   %10 = bitcast [1 x i64]* %array to i64*
-  %arrayidx14 = getelementptr inbounds i64* %10, i32 %add13
+  %arrayidx14 = getelementptr inbounds i64, i64* %10, i32 %add13
   store i64* %arrayidx14, i64** %adat, align 4
   %11 = load i64** %adat, align 4
   %12 = load i64* %11, align 8

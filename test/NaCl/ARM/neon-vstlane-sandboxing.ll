@@ -203,7 +203,7 @@ define void @vst2lanei16_update(i16** %ptr, <4 x i16>* %B, i32 %inc) nounwind {
   call void @llvm.arm.neon.vst2lane.v4i16(i8* %tmp0, <4 x i16> %tmp1, <4 x i16> %tmp1, i32 1, i32 2)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vst2.16 {d{{[0-9]+}}[1], d{{[0-9]+}}[1]}, [r1], r2
-  %tmp2 = getelementptr i16* %A, i32 %inc
+  %tmp2 = getelementptr i16, i16* %A, i32 %inc
   store i16* %tmp2, i16** %ptr
   ret void
 }

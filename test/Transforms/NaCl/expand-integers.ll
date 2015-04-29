@@ -6,7 +6,7 @@
 define void @simpleload(i32* %a) {
 ; CHECK: %a96.loty = bitcast i96* %a96 to i64*
 ; CHECK-NEXT: %load.lo = load i64* %a96.loty
-; CHECK-NEXT: %a96.hi.gep = getelementptr i64* %a96.loty, i32 1
+; CHECK-NEXT: %a96.hi.gep = getelementptr i64, i64* %a96.loty, i32 1
 ; CHECK-NEXT: %a96.hity = bitcast i64* %a96.hi.gep to i32*
 ; CHECK-NEXT: %load.hi = load i32* %a96.hity
   %a96 = bitcast i32* %a to i96*
@@ -14,24 +14,24 @@ define void @simpleload(i32* %a) {
 
 ; CHECK: %a128.loty = bitcast i128* %a128 to i64*
 ; CHECK-NEXT: %load128.lo = load i64* %a128.loty
-; CHECK-NEXT: %a128.hi.gep = getelementptr i64* %a128.loty, i32 1
+; CHECK-NEXT: %a128.hi.gep = getelementptr i64, i64* %a128.loty, i32 1
 ; CHECK-NEXT: %load128.hi = load i64* %a128.hi.gep
   %a128 = bitcast i32* %a to i128*
   %load128 = load i128* %a128
 
 ; CHECK: %a256.loty = bitcast i256* %a256 to i64*
 ; CHECK-NEXT: %load256.lo = load i64* %a256.loty
-; CHECK-NEXT: %a256.hi.gep = getelementptr i64* %a256.loty, i32 1
+; CHECK-NEXT: %a256.hi.gep = getelementptr i64, i64* %a256.loty, i32 1
 ; CHECK-NEXT: %a256.hity = bitcast i64* %a256.hi.gep to i192*
 ; intermediate expansion: %load256.hi = load i192* %a256.hity
 ; CHECK-NEXT: %a256.hity.loty = bitcast i192* %a256.hity to i64*
 ; CHECK-NEXT: %load256.hi.lo = load i64* %a256.hity.loty
-; CHECK-NEXT: %a256.hity.hi.gep = getelementptr i64* %a256.hity.loty, i32 1
+; CHECK-NEXT: %a256.hity.hi.gep = getelementptr i64, i64* %a256.hity.loty, i32 1
 ; CHECK-NEXT: %a256.hity.hity = bitcast i64* %a256.hity.hi.gep to i128*
 ; intermediate expansion: %load256.hi.hi = load i128* %a256.hity.hity
 ; CHECK-NEXT: %a256.hity.hity.loty = bitcast i128* %a256.hity.hity to i64*
 ; CHECK-NEXT: %load256.hi.hi.lo = load i64* %a256.hity.hity.loty
-; CHECK-NEXT: %a256.hity.hity.hi.gep = getelementptr i64* %a256.hity.hity.loty, i32 1
+; CHECK-NEXT: %a256.hity.hity.hi.gep = getelementptr i64, i64* %a256.hity.hity.loty, i32 1
 ; CHECK-NEXT: %load256.hi.hi.hi = load i64* %a256.hity.hity.hi.gep
   %a256 = bitcast i32* %a to i256*
   %load256 = load i256* %a256
@@ -70,7 +70,7 @@ define void @simplestore(i32* %a, i32* %b) {
   %load96 = load i96* %a96
 ; CHECK: %b96.loty = bitcast i96* %b96 to i64*
 ; CHECK-NEXT: store i64 %load96.lo, i64* %b96.loty
-; CHECK-NEXT: %b96.hi.gep = getelementptr i64* %b96.loty, i32 1
+; CHECK-NEXT: %b96.hi.gep = getelementptr i64, i64* %b96.loty, i32 1
 ; CHECK-NEXT: %b96.hity = bitcast i64* %b96.hi.gep to i32*
 ; CHECK-NEXT: store i32 %load96.hi, i32* %b96.hity
   store i96 %load96, i96* %b96
@@ -80,7 +80,7 @@ define void @simplestore(i32* %a, i32* %b) {
   %load128 = load i128* %a128
 ; CHECK: %b128.loty = bitcast i128* %b128 to i64*
 ; CHECK-NEXT: store i64 %load128.lo, i64* %b128.loty
-; CHECK-NEXT: %b128.hi.gep = getelementptr i64* %b128.loty, i32 1
+; CHECK-NEXT: %b128.hi.gep = getelementptr i64, i64* %b128.loty, i32 1
 ; CHECK-NEXT: store i64 %load128.hi, i64* %b128.hi.gep
   store i128 %load128, i128* %b128
 
@@ -90,15 +90,15 @@ define void @simplestore(i32* %a, i32* %b) {
 
 ; CHECK: %b256.loty = bitcast i256* %b256 to i64*
 ; CHECK-NEXT: store i64 %load256.lo, i64* %b256.loty
-; CHECK-NEXT: %b256.hi.gep = getelementptr i64* %b256.loty, i32 1
+; CHECK-NEXT: %b256.hi.gep = getelementptr i64, i64* %b256.loty, i32 1
 ; CHECK-NEXT: %b256.hity = bitcast i64* %b256.hi.gep to i192*
 ; CHECK-NEXT: %b256.hity.loty = bitcast i192* %b256.hity to i64*
 ; CHECK-NEXT: store i64 %load256.hi.lo, i64* %b256.hity.loty
-; CHECK-NEXT: %b256.hity.hi.gep = getelementptr i64* %b256.hity.loty, i32 1
+; CHECK-NEXT: %b256.hity.hi.gep = getelementptr i64, i64* %b256.hity.loty, i32 1
 ; CHECK-NEXT: %b256.hity.hity = bitcast i64* %b256.hity.hi.gep to i128*
 ; CHECK-NEXT: %b256.hity.hity.loty = bitcast i128* %b256.hity.hity to i64*
 ; CHECK-NEXT: store i64 %load256.hi.hi.lo, i64* %b256.hity.hity.loty
-; CHECK-NEXT: %b256.hity.hity.hi.gep = getelementptr i64* %b256.hity.hity.loty, i32 1
+; CHECK-NEXT: %b256.hity.hity.hi.gep = getelementptr i64, i64* %b256.hity.hity.loty, i32 1
 ; CHECK-NEXT: store i64 %load256.hi.hi.hi, i64* %b256.hity.hity.hi.gep
   store i256 %load256, i256* %b256
   ret void

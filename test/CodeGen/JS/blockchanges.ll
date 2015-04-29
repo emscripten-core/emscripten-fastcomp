@@ -45,14 +45,14 @@ target triple = "asmjs-unknown-emscripten"
 ; Function Attrs: nounwind readonly
 define hidden i8* @_ZN12MediaInfoLib22Mxf_EssenceCompressionEN6ZenLib7uint128E(%"class.ZenLib::uint128"* nocapture readonly %EssenceCompression) #0 {
 entry:
-  %hi = getelementptr inbounds %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 1
+  %hi = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 1
   %0 = load i64* %hi, align 1, !tbaa !2
   %and = and i64 %0, -256
   %cmp = icmp eq i64 %and, 436333716306985216
   br i1 %cmp, label %lor.lhs.false, label %return
 
 lor.lhs.false:                                    ; preds = %entry
-  %lo = getelementptr inbounds %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 0
+  %lo = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 0
   %1 = load i64* %lo, align 1, !tbaa !7
   %and1 = and i64 %1, -72057594037927936
   switch i64 %and1, label %return [
@@ -335,7 +335,7 @@ return:                                           ; preds = %sw.bb135, %sw.bb127
 ; Function Attrs: nounwind readonly
 define hidden i8* @_ZN12MediaInfoLib27Mxf_Sequence_DataDefinitionEN6ZenLib7uint128E(%"class.ZenLib::uint128"* nocapture readonly %DataDefinition) #0 {
 entry:
-  %lo = getelementptr inbounds %"class.ZenLib::uint128"* %DataDefinition, i32 0, i32 0
+  %lo = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %DataDefinition, i32 0, i32 0
   %0 = load i64* %lo, align 1, !tbaa !7
   %and = lshr i64 %0, 32
   %conv = trunc i64 %and to i32

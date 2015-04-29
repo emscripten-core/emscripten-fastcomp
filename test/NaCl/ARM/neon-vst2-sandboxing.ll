@@ -87,7 +87,7 @@ define void @vst2i8_update(i8** %ptr, <8 x i8>* %B, i32 %inc) nounwind {
   call void @llvm.arm.neon.vst2.v8i8(i8* %A, <8 x i8> %tmp1, <8 x i8> %tmp1, i32 4)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vst2.8 {{{d[0-9]+, d[0-9]+}}}, [r1], r2
-  %tmp2 = getelementptr i8* %A, i32 %inc
+  %tmp2 = getelementptr i8, i8* %A, i32 %inc
   store i8* %tmp2, i8** %ptr
   ret void
 }
