@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -161,53 +162,42 @@ SplitModuleSched(
 static int compileModule(StringRef ProgramName);
 
 #if !defined(PNACL_BROWSER_TRANSLATOR)
-// GetFileNameRoot - Helper function to get the basename of a filename.
-static std::string
-GetFileNameRoot(StringRef InputFilename) {
-  std::string IFN = InputFilename;
-  std::string outputFilename;
-  int Len = IFN.length();
-  if ((Len > 2) &&
-      IFN[Len-3] == '.' &&
-      ((IFN[Len-2] == 'b' && IFN[Len-1] == 'c') ||
-       (IFN[Len-2] == 'l' && IFN[Len-1] == 'l'))) {
-    outputFilename = std::string(IFN.begin(), IFN.end()-3); // s/.bc/.s/
-  } else {
-    outputFilename = IFN;
-  }
-  return outputFilename;
-}
-
-static tool_output_file *GetOutputStream(const char *TargetName,
-                                         Triple::OSType OS,
-                                         std::string Filename) {
+static std::unique_ptr<tool_output_file>
+GetOutputStream(const char *TargetName,
+                Triple::OSType OS,
+                std::string Filename) {
   // If we don't yet have an output filename, make one.
   if (Filename.empty()) {
     if (InputFilename == "-")
       Filename = "-";
     else {
-      Filename = GetFileNameRoot(InputFilename);
+      // If InputFilename ends in .bc or .ll, remove it.
+      StringRef IFN = InputFilename;
+      if (IFN.endswith(".bc") || IFN.endswith(".ll"))
+        OutputFilename = IFN.drop_back(3);
+      else
+        OutputFilename = IFN;
 
       switch (FileType) {
       case TargetMachine::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
-            Filename += ".cbe.c";
+            OutputFilename += ".cbe.c";
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
-            Filename += ".cpp";
+            OutputFilename += ".cpp";
           else
-            Filename += ".s";
+            OutputFilename += ".s";
         } else
-          Filename += ".s";
+          OutputFilename += ".s";
         break;
       case TargetMachine::CGFT_ObjectFile:
         if (OS == Triple::Win32)
-          Filename += ".obj";
+          OutputFilename += ".obj";
         else
-          Filename += ".o";
+          OutputFilename += ".o";
         break;
       case TargetMachine::CGFT_Null:
-        Filename += ".null";
+        OutputFilename += ".null";
         break;
       }
     }
@@ -229,10 +219,10 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (!Binary)
     OpenFlags |= sys::fs::F_Text;
-  tool_output_file *FDOut = new tool_output_file(Filename, EC, OpenFlags);
+  auto FDOut = llvm::make_unique<tool_output_file>(OutputFilename, EC,
+                                                   OpenFlags);
   if (EC) {
     errs() << EC.message() << '\n';
-    delete FDOut;
     return nullptr;
   }
 
@@ -469,9 +459,6 @@ static int runCompilePasses(Module *ModuleRef,
   // above.
   PM->add(createBackendCanonicalizePass());
 
-  // Add internal analysis passes from the target machine.
-  //Target.addAnalysisPasses(*PM);
-
   // Ask the target to add backend passes as necessary. We explicitly ask it
   // not to add the verifier pass because we added it earlier.
   if (Target.addPassesToEmitFile(*PM, OS, FileType,
@@ -591,22 +578,29 @@ static int compileSplitModule(const TargetOptions &Options,
     raw_string_ostream OutFileName(N);
     if (ModuleIndex > 0)
       OutFileName << ".module" << ModuleIndex;
-    std::unique_ptr<tool_output_file> Out
-        (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
-                         OutFileName.str()));
+    std::unique_ptr<tool_output_file> Out =
+        GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
+                         OutFileName.str());
     if (!Out) return 1;
-    raw_pwrite_stream &OS = Out->os();
+    raw_pwrite_stream *OS = &Out->os();
+    std::unique_ptr<buffer_ostream> BOS;
+    if (FileType != TargetMachine::CGFT_AssemblyFile &&
+        !Out->os().supportsSeeking()) {
+      BOS = make_unique<buffer_ostream>(*OS);
+      OS = BOS.get();
+    }
 #else
-    raw_fd_ostream OS(getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
-    OS.SetBufferSize(1 << 20);
+    auto OS = llvm::make_unique<raw_fd_ostream>(
+        getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
+    OS->SetBufferSize(1 << 20);
 #endif
     int ret = runCompilePasses(ModuleRef, ModuleIndex, FuncQueue,
                                TheTriple, Target, ProgramName,
-                               OS);
+                               *OS);
     if (ret)
       return ret;
 #if defined(PNACL_BROWSER_TRANSLATOR)
-    OS.flush();
+    OS->flush();
 #else
     // Declare success.
     Out->keep();
