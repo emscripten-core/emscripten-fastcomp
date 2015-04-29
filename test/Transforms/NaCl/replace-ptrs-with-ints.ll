@@ -536,7 +536,7 @@ define void @tail_call() {
 ; Just check that the pass does not crash on getelementptr.  (The pass
 ; should not depend unnecessarily on ExpandGetElementPtr having been
 ; run.)
-define i8* @getelementptr(i8* %ptr) {
+define i8* @getelementptr(i8, i8* %ptr) {
   %gep = getelementptr i8, i8* %ptr, i32 10
   ret i8* %gep
 }

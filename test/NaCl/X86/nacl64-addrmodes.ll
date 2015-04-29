@@ -33,7 +33,7 @@ entry:
   %1 = load i32, i32* %i, align 4
   %mul1 = mul nsw i32 %1, 947877507
   %add2 = add nsw i32 %mul1, 1574375955
-  %arrayidx = getelementptr inbounds [1 x i32], [1 x i32]* getelementptr inbounds ([1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add2
+  %arrayidx = getelementptr inbounds [1 x i32], [1 x i32]* getelementptr inbounds ([1 x [1 x i32]], [1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add2
   %2 = bitcast [1 x i32]* %arrayidx to i32*
   %arrayidx3 = getelementptr inbounds i32, i32* %2, i32 %add
   store i32* %arrayidx3, i32** %madat, align 4
@@ -48,7 +48,7 @@ entry:
   %6 = load i32, i32* %i, align 4
   %mul6 = mul nsw i32 %6, 947877507
   %add7 = add nsw i32 %mul6, 1574375955
-  %arrayidx8 = getelementptr inbounds [1 x i32], [1 x i32]* getelementptr inbounds ([1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add7
+  %arrayidx8 = getelementptr inbounds [1 x i32], [1 x i32]* getelementptr inbounds ([1 x [1 x i32]], [1 x [1 x i32]]* @main.m2, i32 0, i32 0), i32 %add7
   %7 = bitcast [1 x i32]* %arrayidx8 to i32*
   %arrayidx9 = getelementptr inbounds i32, i32* %7, i32 %add5
 ; Ensure the large constant doesn't get folded into the load

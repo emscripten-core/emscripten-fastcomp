@@ -50,17 +50,22 @@ define i8* @test_converting_bitcast() {
 
 define i32* @test_converting_getelementptr() {
   ; Use an index >1 to ensure that "inbounds" is not added automatically.
-  ret i32* getelementptr (i32* @tvar, i32 2)
+  ret i32, ) {
+  ; Use an index >1 to ensure that "inbounds" is not added automatically.
+  ret i32* getelementptr (i32, i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr()
+; CHECK: %expanded = getelementptr i32, i32, )
 ; CHECK: %expanded = getelementptr i32, i32* @tvar, i32 2
 ; CHECK: ret i32* %expanded
 
 
 ; This is identical to @test_converting_getelementptr().
 ; We need to check that both copies of getelementptr are fixed.
+define i32, ).
+; We need to check that both copies of getelementptr are fixed.
 define i32* @test_converting_getelementptr_copy() {
-  ret i32* getelementptr (i32* @tvar, i32 2)
+  ret i32* getelementptr (i32, i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr_copy()
 ; CHECK: %expanded = getelementptr i32, i32* @tvar, i32 2
@@ -68,7 +73,7 @@ define i32* @test_converting_getelementptr_copy() {
 
 
 define i32* @test_converting_getelementptr_inbounds() {
-  ret i32* getelementptr inbounds (i32* @tvar, i32 2)
+  ret i32* getelementptr inbounds (i32, i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr_inbounds()
 ; CHECK: %expanded = getelementptr inbounds i32, i32* @tvar, i32 2
@@ -83,7 +88,7 @@ else:
   br label %return
 
 return:
-  %result = phi i32* [ getelementptr (i32* @tvar, i32 1), %entry ], [ null, %else ]
+  %result = phi i32* [ getelementptr (i32, i32* @tvar, i32 1), %entry ], [ null, %else ]
   ret i32* %result
 }
 ; The converted ConstantExprs get pushed back into the PHI node's
@@ -106,7 +111,7 @@ else:
   br label %return
 
 return:
-  %result = phi i32* [ getelementptr (i32* @tvar, i32 1), %entry ], [ null, %else ]
+  %result = phi i32* [ getelementptr (i32, i32* @tvar, i32 1), %entry ], [ null, %else ]
   ret i32* %result
 }
 ; CHECK: define i32* @test_converting_phi_with_indirectbr(i8* %addr)

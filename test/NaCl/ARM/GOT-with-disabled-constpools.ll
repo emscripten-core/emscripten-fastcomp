@@ -19,7 +19,7 @@ declare void @__register_frame_info(i8* %begin, %struct.object* %ob)
 
 define internal void @__do_eh_ctor() {
 entry:
-  call void @__register_frame_info(i8* getelementptr inbounds ([0 x i8]* @__EH_FRAME_BEGIN__, i32 0, i32 0), %struct.object* @__do_eh_ctor.object)
+  call void @__register_frame_info(i8* getelementptr inbounds ([0 x i8], [0 x i8]* @__EH_FRAME_BEGIN__, i32 0, i32 0), %struct.object* @__do_eh_ctor.object)
 ; CHECK-LABEL: __do_eh_ctor
 
 ; CHECK: movw r[[REG0:[0-9]+]]

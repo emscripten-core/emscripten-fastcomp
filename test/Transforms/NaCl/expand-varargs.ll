@@ -71,9 +71,9 @@ type.i8: ; CHECK: type.i8:
 ; CHECK-NEXT: %arglist_current = load i8*, i8** %arglist1
 ; CHECK-NEXT: %[[P2I:[0-9]+]] = ptrtoint i8* %arglist_current to i32
 ; %A8 = (uintptr_t)Addr + Alignment - 1
-; CHECK-NEXT: %[[A8:[0-9]+]] = add nuw i32 %[[P2I]], sub nuw (i32 ptrtoint (i8* getelementptr ({ i1, i8 }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %[[A8:[0-9]+]] = add nuw i32 %[[P2I]], sub nuw (i32 ptrtoint (i8* getelementptr ({ i1, i8 }, { i1, i8 }* null, i64 0, i32 1) to i32), i32 1)
 ; %B8 = %1 & ~(uintptr_t)(Alignment - 1)
-; CHECK-NEXT: %[[B8:[0-9]+]] = and i32 %[[A8]], xor (i32 sub nuw (i32 ptrtoint (i8* getelementptr ({ i1, i8 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK-NEXT: %[[B8:[0-9]+]] = and i32 %[[A8]], xor (i32 sub nuw (i32 ptrtoint (i8* getelementptr ({ i1, i8 }, { i1, i8 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[C8:[0-9]+]] = inttoptr i32 %[[B8]] to i8*
 ; CHECK-NEXT: %i8 = load i8, i8* %[[C8]]
 ; CHECK-NEXT: %arglist_next = getelementptr inbounds i8, i8* %[[C8]], i32 1
@@ -85,8 +85,8 @@ type.i16: ; CHECK: type.i16:
   %i16 = va_arg i32* %arglist, i16
   store i16 %i16, i16* %o16
   br label %next
-; CHECK:      %[[A16:[0-9]+]] = add nuw i32 %4, sub nuw (i32 ptrtoint (i16* getelementptr ({ i1, i16 }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %[[B16:[0-9]+]] = and i32 %[[A16]], xor (i32 sub nuw (i32 ptrtoint (i16* getelementptr ({ i1, i16 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK:      %[[A16:[0-9]+]] = add nuw i32 %4, sub nuw (i32 ptrtoint (i16* getelementptr ({ i1, i16 }, { i1, i16 }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %[[B16:[0-9]+]] = and i32 %[[A16]], xor (i32 sub nuw (i32 ptrtoint (i16* getelementptr ({ i1, i16 }, { i1, i16 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[C16:[0-9]+]] = inttoptr i32 %[[B16]] to i16*
 ; CHECK-NEXT: %i16 = load i16, i16* %[[C16]]
 
@@ -94,8 +94,8 @@ type.i32: ; CHECK: type.i32:
   %i32 = va_arg i32* %arglist, i32
   store i32 %i32, i32* %o32
   br label %next
-; CHECK:      %[[A32:[0-9]+]] = add nuw i32 %8, sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %[[B32:[0-9]+]] = and i32 %[[A32]], xor (i32 sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK:      %[[A32:[0-9]+]] = add nuw i32 %8, sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }, { i1, i32 }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %[[B32:[0-9]+]] = and i32 %[[A32]], xor (i32 sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }, { i1, i32 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[C32:[0-9]+]] = inttoptr i32 %[[B32]] to i32*
 ; CHECK-NEXT: %i32 = load i32, i32* %[[C32]]
 
@@ -103,8 +103,8 @@ type.i64: ; CHECK: type.i64:
   %i64 = va_arg i32* %arglist, i64
   store i64 %i64, i64* %o64
   br label %next
-; CHECK:      %[[A64:[0-9]+]] = add nuw i32 %12, sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %[[B64:[0-9]+]] = and i32 %[[A64]], xor (i32 sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK:      %[[A64:[0-9]+]] = add nuw i32 %12, sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }, { i1, i64 }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %[[B64:[0-9]+]] = and i32 %[[A64]], xor (i32 sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }, { i1, i64 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[C64:[0-9]+]] = inttoptr i32 %[[B64]] to i64*
 ; CHECK-NEXT: %i64 = load i64, i64* %[[C64]]
 
@@ -112,8 +112,8 @@ type.float: ; CHECK: type.float:
   %float = va_arg i32* %arglist, float
   store float %float, float* %ofloat
   br label %next
-; CHECK:      %[[AF:[0-9]+]] = add nuw i32 %16, sub nuw (i32 ptrtoint (float* getelementptr ({ i1, float }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %[[BF:[0-9]+]] = and i32 %[[AF]], xor (i32 sub nuw (i32 ptrtoint (float* getelementptr ({ i1, float }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK:      %[[AF:[0-9]+]] = add nuw i32 %16, sub nuw (i32 ptrtoint (float* getelementptr ({ i1, float }, { i1, float }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %[[BF:[0-9]+]] = and i32 %[[AF]], xor (i32 sub nuw (i32 ptrtoint (float* getelementptr ({ i1, float }, { i1, float }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[CF:[0-9]+]] = inttoptr i32 %[[BF]] to float*
 ; CHECK-NEXT: %float = load float, float* %[[CF]]
 
@@ -121,8 +121,8 @@ type.double: ; CHECK: type.double:
   %double = va_arg i32* %arglist, double
   store double %double, double* %odouble
   br label %next
-; CHECK:      %[[AD:[0-9]+]] = add nuw i32 %20, sub nuw (i32 ptrtoint (double* getelementptr ({ i1, double }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %[[BD:[0-9]+]] = and i32 %[[AD]], xor (i32 sub nuw (i32 ptrtoint (double* getelementptr ({ i1, double }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK:      %[[AD:[0-9]+]] = add nuw i32 %20, sub nuw (i32 ptrtoint (double* getelementptr ({ i1, double }, { i1, double }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %[[BD:[0-9]+]] = and i32 %[[AD]], xor (i32 sub nuw (i32 ptrtoint (double* getelementptr ({ i1, double }, { i1, double }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %[[CD:[0-9]+]] = inttoptr i32 %[[BD]] to double*
 ; CHECK-NEXT: %double = load double, double* %[[CD]]
 
@@ -212,8 +212,8 @@ define i32 @va_arg_i32(i8* %arglist) {
 ; CHECK-NEXT: %arglist1 = bitcast i8* %arglist to i32**
 ; CHECK-NEXT: %arglist_current = load i32*, i32** %arglist1
 ; CHECK-NEXT: %1 = ptrtoint i32* %arglist_current to i32
-; CHECK-NEXT: %2 = add nuw i32 %1, sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %3 = and i32 %2, xor (i32 sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK-NEXT: %2 = add nuw i32 %1, sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }, { i1, i32 }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %3 = and i32 %2, xor (i32 sub nuw (i32 ptrtoint (i32* getelementptr ({ i1, i32 }, { i1, i32 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %4 = inttoptr i32 %3 to i32*
 ; CHECK-NEXT: %result = load i32, i32* %4
 ; CHECK-NEXT: %arglist_next = getelementptr inbounds i32, i32* %4, i32 1
@@ -229,8 +229,8 @@ define i64 @va_arg_i64(i8* %arglist) {
 ; CHECK-NEXT: %arglist1 = bitcast i8* %arglist to i64**
 ; CHECK-NEXT: %arglist_current = load i64*, i64** %arglist1
 ; CHECK-NEXT: %1 = ptrtoint i64* %arglist_current to i32
-; CHECK-NEXT: %2 = add nuw i32 %1, sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }* null, i64 0, i32 1) to i32), i32 1)
-; CHECK-NEXT: %3 = and i32 %2, xor (i32 sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
+; CHECK-NEXT: %2 = add nuw i32 %1, sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }, { i1, i64 }* null, i64 0, i32 1) to i32), i32 1)
+; CHECK-NEXT: %3 = and i32 %2, xor (i32 sub nuw (i32 ptrtoint (i64* getelementptr ({ i1, i64 }, { i1, i64 }* null, i64 0, i32 1) to i32), i32 1), i32 -1)
 ; CHECK-NEXT: %4 = inttoptr i32 %3 to i64*
 ; CHECK-NEXT: %result = load i64, i64* %4
 ; CHECK-NEXT: %arglist_next = getelementptr inbounds i64, i64* %4, i32 1

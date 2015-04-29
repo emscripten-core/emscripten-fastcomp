@@ -144,23 +144,23 @@ entry:
   ]
 
 sw.bb:                                            ; preds = %entry
-  %call = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str, i32 0, i32 0))
+  %call = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb1:                                           ; preds = %entry
-  %call2 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str1, i32 0, i32 0))
+  %call2 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str1, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb3:                                           ; preds = %entry
-  %call4 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str2, i32 0, i32 0))
+  %call4 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str2, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb5:                                           ; preds = %entry
-  %call6 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str3, i32 0, i32 0))
+  %call6 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str3, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb7:                                           ; preds = %entry
-  %call8 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str4, i32 0, i32 0))
+  %call8 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str4, i32 0, i32 0))
   br label %sw.epilog
 
 sw.epilog:                                        ; preds = %entry, %sw.bb7, %sw.bb5, %sw.bb3, %sw.bb1, %sw.bb

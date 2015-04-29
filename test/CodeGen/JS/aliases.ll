@@ -19,7 +19,7 @@ target triple = "asmjs-unknown-emscripten"
 @value3 = alias i32* @value
 
 define internal void @doit(i32 %x) {
-  %call = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([18 x i8]* @.str, i32 0, i32 0), i32 %x) ; [#uses=0 type=i32]
+  %call = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([18 x i8], [18 x i8]* @.str, i32 0, i32 0), i32 %x) ; [#uses=0 type=i32]
   ret void
 }
 

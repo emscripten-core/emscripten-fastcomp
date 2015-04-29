@@ -88,7 +88,7 @@ if.end:                                           ; preds = %_Z7func_34v.exit, %
   store i32** %l_1565.i, i32*** %vararg_ptr1, align 4
   %vararg_ptr2 = getelementptr <{ i32*, i32**, i32* }>, <{ i32*, i32**, i32* }>* %vararg_buffer, i32 0, i32 2
   store i32* bitcast ([4 x i8]* @g_784 to i32*), i32** %vararg_ptr2, align 4
-  %call.i = call i32 bitcast (i32 (i8*, i8*)* @printf to i32 (i8*, <{ i32*, i32**, i32* }>*)*)(i8* getelementptr inbounds ([25 x i8]* @.str, i32 0, i32 0), <{ i32*, i32**, i32* }>* %vararg_buffer)
+  %call.i = call i32 bitcast (i32 (i8*, i8*)* @printf to i32 (i8*, <{ i32*, i32**, i32* }>*)*)(i8* getelementptr inbounds ([25 x i8], [25 x i8]* @.str, i32 0, i32 0), <{ i32*, i32**, i32* }>* %vararg_buffer)
   call void @llvm.lifetime.end(i64 12, i8* %vararg_lifetime_bitcast)
   %7 = bitcast i32* %l_767.i.i to i8*
   call void @llvm.lifetime.start(i64 4, i8* %7)
@@ -117,14 +117,14 @@ _Z7func_34v.exit.i:                               ; preds = %for.body.i.i
   store i32** %l_1565.i, i32*** %vararg_ptr6, align 4
   %vararg_ptr7 = getelementptr <{ i32*, i32**, i32* }>, <{ i32*, i32**, i32* }>* %vararg_buffer3, i32 0, i32 2
   store i32* bitcast ([4 x i8]* @g_784 to i32*), i32** %vararg_ptr7, align 4
-  %call1.i = call i32 bitcast (i32 (i8*, i8*)* @printf to i32 (i8*, <{ i32*, i32**, i32* }>*)*)(i8* getelementptr inbounds ([25 x i8]* @.str1, i32 0, i32 0), <{ i32*, i32**, i32* }>* %vararg_buffer3)
+  %call1.i = call i32 bitcast (i32 (i8*, i8*)* @printf to i32 (i8*, <{ i32*, i32**, i32* }>*)*)(i8* getelementptr inbounds ([25 x i8], [25 x i8]* @.str1, i32 0, i32 0), <{ i32*, i32**, i32* }>* %vararg_buffer3)
   call void @llvm.lifetime.end(i64 12, i8* %vararg_lifetime_bitcast4)
   %10 = load i32*, i32** %l_1565.i, align 4
   %cmp.i = icmp eq i32* %10, bitcast ([4 x i8]* @g_784 to i32*)
   br i1 %cmp.i, label %_Z6func_6v.exit, label %lor.rhs.i
 
 lor.rhs.i:                                        ; preds = %_Z7func_34v.exit.i
-  call void @__assert_fail(i8* getelementptr inbounds ([15 x i8]* @.str2, i32 0, i32 0), i8* getelementptr inbounds ([8 x i8]* @.str3, i32 0, i32 0), i32 33, i8* getelementptr inbounds ([7 x i8]* @__func__._Z6func_6v, i32 0, i32 0)) #1
+  call void @__assert_fail(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str2, i32 0, i32 0), i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str3, i32 0, i32 0), i32 33, i8* getelementptr inbounds ([7 x i8], [7 x i8]* @__func__._Z6func_6v, i32 0, i32 0)) #1
   unreachable
 
 _Z6func_6v.exit:                                  ; preds = %_Z7func_34v.exit.i

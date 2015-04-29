@@ -53,13 +53,13 @@ define i8* @get_tls_template_tdata_end() {
   ret i8* @__tls_template_tdata_end
 }
 ; CHECK: define i8* @get_tls_template_tdata_end()
-; CHECK: ret i8* bitcast (%tls_init_template* getelementptr inbounds (%tls_init_template* @__tls_template_start, i32 1) to i8*)
+; CHECK: ret i8* bitcast (%tls_init_template* getelementptr inbounds (%tls_init_template, %tls_init_template* @__tls_template_start, i32 1) to i8*)
 
 define i8* @get_tls_template_end() {
   ret i8* @__tls_template_end
 }
 ; CHECK: define i8* @get_tls_template_end()
-; CHECK: ret i8* bitcast (%tls_struct* getelementptr (%tls_struct* bitcast (%tls_init_template* @__tls_template_start to %tls_struct*), i32 1) to i8*)
+; CHECK: ret i8* bitcast (%tls_struct* getelementptr (%tls_struct, %tls_struct* bitcast (%tls_init_template* @__tls_template_start to %tls_struct*), i32 1) to i8*)
 
 
 ; Check that we define the TLS layout functions

@@ -413,7 +413,7 @@ define internal i32 @va_arg(i32 %va_list_as_int) {
 
 define internal void @constantexpr() {
 ; CHECK: ERROR: Function constantexpr
-  ptrtoint i8* getelementptr ([4 x i8]* @global_var, i32 1, i32 0) to i32
+  ptrtoint i8* getelementptr ([4 x i8], [4 x i8]* @global_var, i32 1, i32 0) to i32
   ret void
 }
 ; CHECK-NOT: disallowed
