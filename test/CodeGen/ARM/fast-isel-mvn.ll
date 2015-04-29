@@ -4,7 +4,7 @@
 ; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=thumbv7-apple-ios   < %s | FileCheck %s --check-prefix=CHECK --check-prefix=THUMB
 ; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=armv7-apple-ios     < %s | FileCheck %s --check-prefix=MOVT
 ; @LOCALMOD: check that we use movt in t10
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=armv7-unknown-nacl-gnueabi     < %s | FileCheck %s --check-prefix=CHECK --check-prefix=NACL
+; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=armv7-unknown-nacl-gnueabi     < %s | FileCheck %s --check-prefix=CHECK --check-prefix=NACL
 ; rdar://10412592
 
 define void @t1() nounwind {
