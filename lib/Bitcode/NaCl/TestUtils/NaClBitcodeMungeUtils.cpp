@@ -329,6 +329,7 @@ NaClBitcodeAbbrevRecord &NaClMungedBitcodeIter::operator*() {
         MungedBitcode->ReplaceMap.find(Index);
     if (Pos == MungedBitcode->ReplaceMap.end())
       return *(*MungedBitcode->BaseRecords)[Index];
+    assert(Pos->second);
     return *Pos->second;
   }
   }

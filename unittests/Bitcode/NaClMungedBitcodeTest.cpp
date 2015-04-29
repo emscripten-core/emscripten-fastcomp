@@ -490,7 +490,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
       "      10: [11]\n",
       stringify(MungedRecords));
 
-  // Remove second.
+  // Remove First
   const uint64_t RemoveFirst[] = {
     0, NaClMungedBitcode::Remove
   };
@@ -501,7 +501,8 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
       "      10: [11]\n",
       stringify(MungedRecords));
 
-  // Add records after the first record.
+  // Add records after the first (base) record, which corresponds to
+  // before the first record in the munged result.
   const uint64_t AddAfterFirst[] = {
     0, NaClMungedBitcode::AddAfter, 12, 13, 14, Terminator,
     0, NaClMungedBitcode::AddAfter, 15, 16, Terminator
@@ -515,7 +516,8 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
       "      10: [11]\n",
       stringify(MungedRecords));
 
-  // Add records before the third record.
+  // Add records before the second (base) record, which corresponds to
+  // before the third record in the munged result.
   const uint64_t AddBeforeSecond[] = {
     1, NaClMungedBitcode::AddBefore, 17, 18, 19, 20, Terminator,
     1, NaClMungedBitcode::AddBefore, 21, 22, 23, Terminator
@@ -531,12 +533,35 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
       "      10: [11]\n",
       stringify(MungedRecords));
 
-  // Put first record back.
+  // Put the first (base) record back, which will also be the first
+  // record in the munged result.
   const uint64_t ReplaceFirst[] = {
     0, NaClMungedBitcode::Replace, 1, 2, 3, Terminator
   };
   MungedRecords.munge(ARRAY_ARGS(ReplaceFirst));
   EXPECT_EQ(
+      "       1: [2, 3]\n"
+      "      12: [13, 14]\n"
+      "      15: [16]\n"
+      "      17: [18, 19, 20]\n"
+      "      21: [22, 23]\n"
+      "       4: [5]\n"
+      "       6: [7, 8, 9]\n"
+      "      10: [11]\n",
+      stringify(MungedRecords));
+
+  // Add before the first (base) record, which will also be before all
+  // other records in the munged result.
+  const uint64_t AddBeforeFirst[] = {
+    0, NaClMungedBitcode::AddBefore, 24, 25, 26, 27, Terminator,
+    0, NaClMungedBitcode::AddBefore, 28, 29, Terminator,
+    0, NaClMungedBitcode::AddBefore, 30, 31, 32, Terminator
+  };
+  MungedRecords.munge(ARRAY_ARGS(AddBeforeFirst));
+  EXPECT_EQ(
+      "      24: [25, 26, 27]\n"
+      "      28: [29]\n"
+      "      30: [31, 32]\n"
       "       1: [2, 3]\n"
       "      12: [13, 14]\n"
       "      15: [16]\n"
