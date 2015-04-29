@@ -23,7 +23,7 @@ declare %struct.__neon_int32x2x4_t @llvm.arm.neon.vld4lane.v2i32(i8*, <2 x i32>,
 
 define <8 x i8> @vld1dupi8(i32 %foo, i32 %bar,
                            i8* %A) nounwind {
-  %tmp1 = load i8* %A, align 8
+  %tmp1 = load i8, i8* %A, align 8
   %tmp2 = insertelement <8 x i8> undef, i8 %tmp1, i32 0
   %tmp3 = shufflevector <8 x i8> %tmp2, <8 x i8> undef, <8 x i32> zeroinitializer
 ; CHECK:         bic r2, r2, #3221225472
@@ -32,7 +32,7 @@ define <8 x i8> @vld1dupi8(i32 %foo, i32 %bar,
 }
 
 define <4 x i16> @vld1dupi16(i16* %A) nounwind {
-  %tmp1 = load i16* %A, align 8
+  %tmp1 = load i16, i16* %A, align 8
   %tmp2 = insertelement <4 x i16> undef, i16 %tmp1, i32 0
   %tmp3 = shufflevector <4 x i16> %tmp2, <4 x i16> undef, <4 x i32> zeroinitializer
 ; CHECK:         bic r0, r0, #3221225472
@@ -41,7 +41,7 @@ define <4 x i16> @vld1dupi16(i16* %A) nounwind {
 }
 
 define <2 x i32> @vld1dupi32(i32* %A) nounwind {
-  %tmp1 = load i32* %A, align 8
+  %tmp1 = load i32, i32* %A, align 8
   %tmp2 = insertelement <2 x i32> undef, i32 %tmp1, i32 0
   %tmp3 = shufflevector <2 x i32> %tmp2, <2 x i32> undef, <2 x i32> zeroinitializer
 ; CHECK:         bic r0, r0, #3221225472
@@ -50,7 +50,7 @@ define <2 x i32> @vld1dupi32(i32* %A) nounwind {
 }
 
 define <16 x i8> @vld1dupQi8(i8* %A) nounwind {
-  %tmp1 = load i8* %A, align 8
+  %tmp1 = load i8, i8* %A, align 8
   %tmp2 = insertelement <16 x i8> undef, i8 %tmp1, i32 0
   %tmp3 = shufflevector <16 x i8> %tmp2, <16 x i8> undef, <16 x i32> zeroinitializer
 ; CHECK:         bic r0, r0, #3221225472
@@ -129,7 +129,7 @@ define <2 x i32> @vld4dupi32(i8* %A) nounwind {
 
 ;Check for a post-increment updating load.
 define <4 x i16> @vld4dupi16_update(i16** %ptr) nounwind {
-  %A = load i16** %ptr
+  %A = load i16*, i16** %ptr
   %A2 = bitcast i16* %A to i8*
   %tmp0 = tail call %struct.__neon_int16x4x4_t @llvm.arm.neon.vld4lane.v4i16(i8* %A2, <4 x i16> undef, <4 x i16> undef, <4 x i16> undef, <4 x i16> undef, i32 0, i32 1)
 ; CHECK:         bic r1, r1, #3221225472

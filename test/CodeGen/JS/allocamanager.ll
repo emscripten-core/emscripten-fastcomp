@@ -38,7 +38,7 @@ entry:
   %cupcake = alloca [119 x i8], align 1
   %tmp = getelementptr [117 x i8], [117 x i8]* %muffin, i32 0, i32 0
   call void @llvm.lifetime.start(i64 117, i8* %tmp) #0
-  %tmp1 = load i8** %argv, align 4
+  %tmp1 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast)
   %vararg_ptr = getelementptr <{ i8*, i32 }>, <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 0
   store i8* %tmp1, i8** %vararg_ptr, align 4
@@ -46,7 +46,7 @@ entry:
   store i32 %argc, i32* %vararg_ptr1, align 4
   %call = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i8*, i32 }>*)*)(i8* %tmp, i8* getelementptr inbounds ([26 x i8]* @.str, i32 0, i32 0), <{ i8*, i32 }>* %vararg_buffer1) #0
   call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)
-  %tmp2 = load %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
+  %tmp2 = load %struct._IO_FILE*, %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
   call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast3)
   %vararg_ptr4 = getelementptr <{ i8* }>, <{ i8* }>* %vararg_buffer2, i32 0, i32 0
   store i8* %tmp, i8** %vararg_ptr4, align 4
@@ -55,7 +55,7 @@ entry:
   call void @llvm.lifetime.end(i64 117, i8* %tmp) #0
   %tmp3 = getelementptr [119 x i8], [119 x i8]* %cupcake, i32 0, i32 0
   call void @llvm.lifetime.start(i64 119, i8* %tmp3) #0
-  %tmp4 = load i8** %argv, align 4
+  %tmp4 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast6)
   %vararg_ptr7 = getelementptr <{ i32, i8* }>, <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 0
   store i32 %argc, i32* %vararg_ptr7, align 4
@@ -102,11 +102,11 @@ if.end.thread:                                    ; preds = %entry
   call void @llvm.lifetime.end(i64 117, i8* %tmp) #0
   %tmp1 = getelementptr [119 x i8], [119 x i8]* %cupcake, i32 0, i32 0
   call void @llvm.lifetime.start(i64 119, i8* %tmp1) #0
-  %.pre = load %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
+  %.pre = load %struct._IO_FILE*, %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
   br label %if.then4
 
 if.end:                                           ; preds = %entry
-  %tmp2 = load i8** %argv, align 4
+  %tmp2 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast)
   %vararg_ptr = getelementptr <{ i8*, i32 }>, <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 0
   store i8* %tmp2, i8** %vararg_ptr, align 4
@@ -114,7 +114,7 @@ if.end:                                           ; preds = %entry
   store i32 %argc, i32* %vararg_ptr1, align 4
   %call = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i8*, i32 }>*)*)(i8* %tmp, i8* getelementptr inbounds ([26 x i8]* @.str, i32 0, i32 0), <{ i8*, i32 }>* %vararg_buffer1) #0
   call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)
-  %tmp3 = load %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
+  %tmp3 = load %struct._IO_FILE*, %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
   call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast3)
   %vararg_ptr4 = getelementptr <{ i8* }>, <{ i8* }>* %vararg_buffer2, i32 0, i32 0
   store i8* %tmp, i8** %vararg_ptr4, align 4
@@ -129,7 +129,7 @@ if.end:                                           ; preds = %entry
 if.then4:                                         ; preds = %if.end, %if.end.thread
   %tmp5 = phi %struct._IO_FILE* [ %.pre, %if.end.thread ], [ %tmp3, %if.end ]
   %tmp6 = phi i8* [ %tmp1, %if.end.thread ], [ %tmp4, %if.end ]
-  %tmp7 = load i8** %argv, align 4
+  %tmp7 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast6)
   %vararg_ptr7 = getelementptr <{ i32, i8* }>, <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 0
   store i32 %argc, i32* %vararg_ptr7, align 4

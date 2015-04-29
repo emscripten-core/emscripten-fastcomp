@@ -15,13 +15,13 @@ define void @inttoptr_of_ptrtoint() {
   ; bitcast, but either sequence is allowed by the PNaCl ABI verifier.
   %1 = ptrtoint [4 x i8]* @bytes to i32
   %2 = inttoptr i32 %1 to i8*
-  load i8* %2
+  load i8, i8* %2
   ret void
 }
 
 ; TD2:      define void @inttoptr_of_ptrtoint() {
 ; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i8*
-; TD2-NEXT:   %2 = load i8* %1
+; TD2-NEXT:   %2 = load i8, i8* %1
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 

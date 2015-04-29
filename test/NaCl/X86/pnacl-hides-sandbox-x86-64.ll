@@ -63,7 +63,7 @@ declare hidden void @DirectCallTarget() #1
 ; Function Attrs: nounwind
 define void @TestIndirectCall() #0 {
 entry:
-  %0 = load void ()** @IndirectCallTarget, align 4
+  %0 = load void ()*, void ()** @IndirectCallTarget, align 4
   call void %0()
   ret void
 }
@@ -94,10 +94,10 @@ entry:
   %Arg.addr = alloca i32, align 4
   %Tmp = alloca i8*, align 4
   store i32 %Arg, i32* %Arg.addr, align 4
-  %0 = load i32* %Arg.addr, align 4
+  %0 = load i32, i32* %Arg.addr, align 4
   %1 = alloca i8, i32 %0
   store i8* %1, i8** %Tmp, align 4
-  %2 = load i8** %Tmp, align 4
+  %2 = load i8*, i8** %Tmp, align 4
   call void @Consume(i8* %2)
   ret void
 }
@@ -115,10 +115,10 @@ entry:
   %Arg.addr = alloca i32, align 4
   %Tmp = alloca i8*, align 4
   store i32 %Arg, i32* %Arg.addr, align 4
-  %0 = load i32* %Arg.addr, align 4
+  %0 = load i32, i32* %Arg.addr, align 4
   %1 = alloca i8, i32 %0
   store i8* %1, i8** %Tmp, align 4
-  %2 = load i8** %Tmp, align 4
+  %2 = load i8*, i8** %Tmp, align 4
   call void @Consume(i8* %2)
   ret void
 }
@@ -134,7 +134,7 @@ define void @TestIndirectJump(i32 %Arg) #0 {
 entry:
   %Arg.addr = alloca i32, align 4
   store i32 %Arg, i32* %Arg.addr, align 4
-  %0 = load i32* %Arg.addr, align 4
+  %0 = load i32, i32* %Arg.addr, align 4
   switch i32 %0, label %sw.epilog [
     i32 2, label %sw.bb
     i32 3, label %sw.bb1

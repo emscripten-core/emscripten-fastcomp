@@ -80,7 +80,7 @@ declare <4 x float> @llvm.arm.neon.vld1.v4f32(i8*, i32) nounwind readonly
 declare <2 x i64> @llvm.arm.neon.vld1.v2i64(i8*, i32) nounwind readonly
 
 define <16 x i8> @vld1Qi8_update(i8** %ptr) nounwind {
-  %A = load i8** %ptr
+  %A = load i8*, i8** %ptr
   %tmp1 = call <16 x i8> @llvm.arm.neon.vld1.v16i8(i8* %A, i32 8)
 ; CHECK:         bic r1, r1, #3221225472
 ; CHECK-NEXT:    vld1.8 {{{d[0-9]+}}, {{d[0-9]+}}}, [r1:64]!
@@ -90,7 +90,7 @@ define <16 x i8> @vld1Qi8_update(i8** %ptr) nounwind {
 }
 
 define <4 x i16> @vld1i16_update(i16** %ptr) nounwind {
-  %A = load i16** %ptr
+  %A = load i16*, i16** %ptr
   %tmp0 = bitcast i16* %A to i8*
   %tmp1 = call <4 x i16> @llvm.arm.neon.vld1.v4i16(i8* %tmp0, i32 1)
 ; CHECK:         bic r1, r1, #3221225472
@@ -101,7 +101,7 @@ define <4 x i16> @vld1i16_update(i16** %ptr) nounwind {
 }
 
 define <2 x i32> @vld1i32_update(i32** %ptr, i32 %inc) nounwind {
-  %A = load i32** %ptr
+  %A = load i32*, i32** %ptr
   %tmp0 = bitcast i32* %A to i8*
   %tmp1 = call <2 x i32> @llvm.arm.neon.vld1.v2i32(i8* %tmp0, i32 1)
 ; CHECK:         bic r2, r2, #3221225472

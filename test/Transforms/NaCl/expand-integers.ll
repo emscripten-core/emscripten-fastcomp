@@ -5,36 +5,36 @@
 ; CHECK-LABEL: @simpleload
 define void @simpleload(i32* %a) {
 ; CHECK: %a96.loty = bitcast i96* %a96 to i64*
-; CHECK-NEXT: %load.lo = load i64* %a96.loty
+; CHECK-NEXT: %load.lo = load i64, i64* %a96.loty
 ; CHECK-NEXT: %a96.hi.gep = getelementptr i64, i64* %a96.loty, i32 1
 ; CHECK-NEXT: %a96.hity = bitcast i64* %a96.hi.gep to i32*
-; CHECK-NEXT: %load.hi = load i32* %a96.hity
+; CHECK-NEXT: %load.hi = load i32, i32* %a96.hity
   %a96 = bitcast i32* %a to i96*
-  %load = load i96* %a96
+  %load = load i96, i96* %a96
 
 ; CHECK: %a128.loty = bitcast i128* %a128 to i64*
-; CHECK-NEXT: %load128.lo = load i64* %a128.loty
+; CHECK-NEXT: %load128.lo = load i64, i64* %a128.loty
 ; CHECK-NEXT: %a128.hi.gep = getelementptr i64, i64* %a128.loty, i32 1
-; CHECK-NEXT: %load128.hi = load i64* %a128.hi.gep
+; CHECK-NEXT: %load128.hi = load i64, i64* %a128.hi.gep
   %a128 = bitcast i32* %a to i128*
-  %load128 = load i128* %a128
+  %load128 = load i128, i128* %a128
 
 ; CHECK: %a256.loty = bitcast i256* %a256 to i64*
-; CHECK-NEXT: %load256.lo = load i64* %a256.loty
+; CHECK-NEXT: %load256.lo = load i64, i64* %a256.loty
 ; CHECK-NEXT: %a256.hi.gep = getelementptr i64, i64* %a256.loty, i32 1
 ; CHECK-NEXT: %a256.hity = bitcast i64* %a256.hi.gep to i192*
-; intermediate expansion: %load256.hi = load i192* %a256.hity
+; intermediate expansion: %load256.hi = load i192, i192* %a256.hity
 ; CHECK-NEXT: %a256.hity.loty = bitcast i192* %a256.hity to i64*
-; CHECK-NEXT: %load256.hi.lo = load i64* %a256.hity.loty
+; CHECK-NEXT: %load256.hi.lo = load i64, i64* %a256.hity.loty
 ; CHECK-NEXT: %a256.hity.hi.gep = getelementptr i64, i64* %a256.hity.loty, i32 1
 ; CHECK-NEXT: %a256.hity.hity = bitcast i64* %a256.hity.hi.gep to i128*
-; intermediate expansion: %load256.hi.hi = load i128* %a256.hity.hity
+; intermediate expansion: %load256.hi.hi = load i128, i128* %a256.hity.hity
 ; CHECK-NEXT: %a256.hity.hity.loty = bitcast i128* %a256.hity.hity to i64*
-; CHECK-NEXT: %load256.hi.hi.lo = load i64* %a256.hity.hity.loty
+; CHECK-NEXT: %load256.hi.hi.lo = load i64, i64* %a256.hity.hity.loty
 ; CHECK-NEXT: %a256.hity.hity.hi.gep = getelementptr i64, i64* %a256.hity.hity.loty, i32 1
-; CHECK-NEXT: %load256.hi.hi.hi = load i64* %a256.hity.hity.hi.gep
+; CHECK-NEXT: %load256.hi.hi.hi = load i64, i64* %a256.hity.hity.hi.gep
   %a256 = bitcast i32* %a to i256*
-  %load256 = load i256* %a256
+  %load256 = load i256, i256* %a256
   ret void
 }
 
@@ -44,22 +44,22 @@ define void @loadalign(i32* %a) {
 
 ; CHECK: %load.lo = load{{.*}}, align 16
 ; CHECK: %load.hi = load{{.*}}, align 8
-  %load = load i96* %a96, align 16
+  %load = load i96, i96* %a96, align 16
 
 ; CHECK: %loadnoalign.lo = load{{.*}}, align 8
 ; CHECK: %loadnoalign.hi = load{{.*}}, align 8
-  %loadnoalign = load i96* %a96
+  %loadnoalign = load i96, i96* %a96
 
 ; CHECK: %load4.lo = load{{.*}}, align 4
 ; CHECK: %load4.hi = load{{.*}}, align 4
-  %load4 = load i96* %a96, align 4
+  %load4 = load i96, i96* %a96, align 4
 
   %a256 = bitcast i32* %a to i256*
 ; CHECK: %load256.lo = load{{.*}}, align 16
 ; CHECK: %load256.hi.lo = load{{.*}}, align 8
 ; CHECK: %load256.hi.hi.lo = load{{.*}}, align 8
 ; CHECK: %load256.hi.hi.hi = load{{.*}}, align 8
-  %load256 = load i256* %a256, align 16
+  %load256 = load i256, i256* %a256, align 16
   ret void
 }
 
@@ -67,7 +67,7 @@ define void @loadalign(i32* %a) {
 define void @simplestore(i32* %a, i32* %b) {
   %a96 = bitcast i32* %a to i96*
   %b96 = bitcast i32* %b to i96*
-  %load96 = load i96* %a96
+  %load96 = load i96, i96* %a96
 ; CHECK: %b96.loty = bitcast i96* %b96 to i64*
 ; CHECK-NEXT: store i64 %load96.lo, i64* %b96.loty
 ; CHECK-NEXT: %b96.hi.gep = getelementptr i64, i64* %b96.loty, i32 1
@@ -77,7 +77,7 @@ define void @simplestore(i32* %a, i32* %b) {
 
   %a128 = bitcast i32* %a to i128*
   %b128 = bitcast i32* %b to i128*
-  %load128 = load i128* %a128
+  %load128 = load i128, i128* %a128
 ; CHECK: %b128.loty = bitcast i128* %b128 to i64*
 ; CHECK-NEXT: store i64 %load128.lo, i64* %b128.loty
 ; CHECK-NEXT: %b128.hi.gep = getelementptr i64, i64* %b128.loty, i32 1
@@ -86,7 +86,7 @@ define void @simplestore(i32* %a, i32* %b) {
 
   %a256 = bitcast i32* %a to i256*
   %b256 = bitcast i32* %b to i256*
-  %load256 = load i256* %a256
+  %load256 = load i256, i256* %a256
 
 ; CHECK: %b256.loty = bitcast i256* %b256 to i64*
 ; CHECK-NEXT: store i64 %load256.lo, i64* %b256.loty
@@ -108,7 +108,7 @@ define void @simplestore(i32* %a, i32* %b) {
 define void @storealign(i32* %a, i32* %b) {
   %a96 = bitcast i32* %a to i96*
   %b96 = bitcast i32* %b to i96*
-  %load96 = load i96* %a96
+  %load96 = load i96, i96* %a96
 
 ; CHECK: store i64 %load96.lo{{.*}}, align 16
 ; CHECK: store i32 %load96.hi{{.*}}, align 8
@@ -124,7 +124,7 @@ define void @storealign(i32* %a, i32* %b) {
 
   %a256 = bitcast i32* %a to i256*
   %b256 = bitcast i32* %b to i256*
-  %load256 = load i256* %a256
+  %load256 = load i256, i256* %a256
 ; CHECK: store i64 %load256.lo{{.*}}, align 16
 ; CHECK: store i64 %load256.hi.lo{{.*}}, align 8
 ; CHECK: store i64 %load256.hi.hi.lo{{.*}}, align 8
@@ -147,9 +147,9 @@ block2:
   ret void
 block1:
   %a96 = bitcast i32* %a to i96*
-; CHECK: load i64* %a96.loty
-; CHECK: load i32* %a96.hity
-  %load96 = load i96* %a96
+; CHECK: load i64, i64* %a96.loty
+; CHECK: load i32, i32* %a96.hity
+  %load96 = load i96, i96* %a96
   br label %block2
 }
 
@@ -170,7 +170,7 @@ define void @zext(i32 %a, i64 %b, i8* %p) {
   store i96 %b96, i96* %p96
 
   %p128 = bitcast i8* %p to i128*
-  %c96 = load i96* %p96
+  %c96 = load i96, i96* %p96
 ; CHECK: %a128.hi = zext i32 %c96.hi to i64
   %a128 = zext i96 %c96 to i128
 ; CHECK: store i64 %c96.lo, i64* %p128.loty
@@ -201,8 +201,8 @@ define void @zext(i32 %a, i64 %b, i8* %p) {
 ; CHECK-LABEL: @bitwise
 define void @bitwise(i32* %a) {
   %a96p = bitcast i32* %a to i96*
-  %a96 = load i96* %a96p
-  %b96 = load i96* %a96p
+  %a96 = load i96, i96* %a96p
+  %b96 = load i96, i96* %a96p
 
 ; CHECK: %c96.lo = and i64 %a96.lo, %b96.lo
 ; CHECK: %c96.hi = and i32 %a96.hi, %b96.hi
@@ -220,17 +220,17 @@ define void @bitwise(i32* %a) {
 ; CHECK-LABEL: @truncs
 define void @truncs(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %a96 = load i96* %p96
+  %a96 = load i96, i96* %p96
 
 ; CHECK: %t32 = trunc i64 %a96.lo to i32
   %t32 = trunc i96 %a96 to i32
 
-  %b96 = load i96* %p96
+  %b96 = load i96, i96* %p96
 ; Check that t64 refers directly to the low loaded value from %p96
-; CHECK: %t64 = load i64* %p96.loty
+; CHECK: %t64 = load i64, i64* %p96.loty
   %t64 = trunc i96 %b96 to i64
 
-  %c96 = load i96* %p96
+  %c96 = load i96, i96* %p96
 ; Use the and to get a use of %t90.lo and check that it refers directly to
 ; %c96.lo
 ; CHECK: %t90.hi = trunc i32 %c96.hi to i26
@@ -244,11 +244,11 @@ define void @truncs(i32* %p) {
 ; CHECK-LABEL: @shls
 define void @shls(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %a96 = load i96* %p96
+  %a96 = load i96, i96* %p96
   %p128 = bitcast i32* %p to i128*
-  %a128 = load i128* %p128
+  %a128 = load i128, i128* %p128
   %p192 = bitcast i32* %p to i192*
-  %a192 = load i192* %p192
+  %a192 = load i192, i192* %p192
 
 ; CHECK: %b96.lo = shl i64 %a96.lo, 5
 ; CHECK-NEXT: %b96.lo.shr = lshr i64 %a96.lo, 59
@@ -307,11 +307,11 @@ define void @shls(i32* %p) {
 ; CHECK-LABEL: @lshrs
 define void @lshrs(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %a96 = load i96* %p96
+  %a96 = load i96, i96* %p96
   %p128 = bitcast i32* %p to i128*
-  %a128 = load i128* %p128
+  %a128 = load i128, i128* %p128
   %p192 = bitcast i32* %p to i192*
-  %a192 = load i192* %p192
+  %a192 = load i192, i192* %p192
 
 ; CHECK:      %b96.hi.shr = lshr i32 %a96.hi, 3
 ; CHECK-NEXT: %b96.lo.ext = zext i32 %b96.hi.shr to i64
@@ -361,7 +361,7 @@ define void @lshrs(i32* %p) {
 ; CHECK-LABEL: @lshr_big
 define void @lshr_big(i32* %a) {
   %p536 = bitcast i32* %a to i536*
-  %loaded = load i536* %p536, align 4
+  %loaded = load i536, i536* %p536, align 4
   %shifted = lshr i536 %loaded, 161
   store i536 %shifted, i536* %p536
   ret void
@@ -370,9 +370,9 @@ define void @lshr_big(i32* %a) {
 ; CHECK-LABEL: @ashrs
 define void @ashrs(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %a96 = load i96* %p96
+  %a96 = load i96, i96* %p96
   %p128 = bitcast i32* %p to i128*
-  %a128 = load i128* %p128
+  %a128 = load i128, i128* %p128
 
 ; CHECK:      %b96.hi.shr = ashr i32 %a96.hi, 3
 ; CHECK-NEXT: %b96.lo.ext = sext i32 %b96.hi.shr to i64
@@ -416,9 +416,9 @@ define void @ashrs(i32* %p) {
 define void @adds(i32 *%dest, i32* %lhs, i32* %rhs) {
   %d = bitcast i32* %dest to i96*
   %lp = bitcast i32* %lhs to i96*
-  %lv = load i96* %lp
+  %lv = load i96, i96* %lp
   %rp = bitcast i32* %rhs to i96*
-  %rv = load i96* %rp
+  %rv = load i96, i96* %rp
 
 ; CHECK: %result.lo = add i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %result.cmp = icmp ult i64 %lv.lo, %rv.lo
@@ -436,9 +436,9 @@ define void @adds(i32 *%dest, i32* %lhs, i32* %rhs) {
 define void @subs(i32 *%dest, i32* %lhs, i32* %rhs) {
   %d = bitcast i32* %dest to i96*
   %lp = bitcast i32* %lhs to i96*
-  %lv = load i96* %lp
+  %lv = load i96, i96* %lp
   %rp = bitcast i32* %rhs to i96*
-  %rv = load i96* %rp
+  %rv = load i96, i96* %rp
 
 ; CHECK: %result.borrow = icmp ult i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %result.borrowing = sext i1 %result.borrow to i32
@@ -453,8 +453,8 @@ define void @subs(i32 *%dest, i32* %lhs, i32* %rhs) {
 ; CHECK-LABEL: @icmp_equality
 define void @icmp_equality(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %a96 = load i96* %p96
-  %b96 = load i96* %p96
+  %a96 = load i96, i96* %p96
+  %b96 = load i96, i96* %p96
 
 ; CHECK: %eq.lo = icmp eq i64 %a96.lo, %b96.lo
 ; CHECK-NEXT: %eq.hi = icmp eq i32 %a96.hi, %b96.hi
@@ -471,8 +471,8 @@ define void @icmp_equality(i32* %p) {
 ; CHECK-LABEL: @icmp_uge
 define void @icmp_uge(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %lv = load i96* %p96
-  %rv = load i96* %p96
+  %lv = load i96, i96* %p96
+  %rv = load i96, i96* %p96
 ; Do an add.
 ; CHECK: %uge.lo = add i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %uge.cmp = icmp ult i64 %lv.lo, %rv.lo
@@ -492,8 +492,8 @@ define void @icmp_uge(i32* %p) {
 ; CHECK-LABEL: @icmp_ule
 define void @icmp_ule(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %lv = load i96* %p96
-  %rv = load i96* %p96
+  %lv = load i96, i96* %p96
+  %rv = load i96, i96* %p96
 ; Do an add.
 ; CHECK: %ule.lo = add i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %ule.cmp = icmp ult i64 %lv.lo, %rv.lo
@@ -515,8 +515,8 @@ define void @icmp_ule(i32* %p) {
 ; CHECK-LABEL: @icmp_ugt
 define void @icmp_ugt(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %lv = load i96* %p96
-  %rv = load i96* %p96
+  %lv = load i96, i96* %p96
+  %rv = load i96, i96* %p96
 ; Do an add.
 ; CHECK: %ugt.lo = add i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %ugt.cmp = icmp ult i64 %lv.lo, %rv.lo
@@ -542,8 +542,8 @@ define void @icmp_ugt(i32* %p) {
 ; CHECK-LABEL: @icmp_ult
 define void @icmp_ult(i32* %p) {
   %p96 = bitcast i32* %p to i96*
-  %lv = load i96* %p96
-  %rv = load i96* %p96
+  %lv = load i96, i96* %p96
+  %rv = load i96, i96* %p96
 ; Do an add.
 ; CHECK: %ult.lo = add i64 %lv.lo, %rv.lo
 ; CHECK-NEXT: %ult.cmp = icmp ult i64 %lv.lo, %rv.lo
@@ -572,8 +572,8 @@ define void @icmp_ult(i32* %p) {
 define void @selects(i1 %c, i32* %pl, i32* %pr) {
   %pl96 = bitcast i32* %pl to i96*
   %pr96 = bitcast i32* %pr to i96*
-  %l = load i96* %pl96
-  %r = load i96* %pr96
+  %l = load i96, i96* %pl96
+  %r = load i96, i96* %pr96
 
 ; CHECK: %result.lo = select i1 %c, i64 %l.lo, i64 %r.lo
 ; CHECK-NEXT: %result.hi = select i1 %c, i32 %l.hi, i32 %r.hi
@@ -609,9 +609,9 @@ label1:
   %foo = phi i72 [ %bar, %label2 ], [ undef, %entry ]
   br i1 undef, label %label2, label %end
 label2:
-; CHECK: %bar.lo = load i64* undef, align 4
-; CHECK-NEXT: %bar.hi = load i8* undef, align 4
-  %bar = load i72* undef, align 4
+; CHECK: %bar.lo = load i64, i64* undef, align 4
+; CHECK-NEXT: %bar.hi = load i8, i8* undef, align 4
+  %bar = load i72, i72* undef, align 4
   br label %label1
 end:
   ret void

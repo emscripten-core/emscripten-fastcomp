@@ -5,7 +5,7 @@
 ; CHECK-NOT: !tbaa
 define double @foo(i32* nocapture %ptr1, double* nocapture %ptr2) nounwind readonly {
   store i32 99999, i32* %ptr1, align 1, !tbaa !0
-  %1 = load double* %ptr2, align 8, !tbaa !3
+  %1 = load double, double* %ptr2, align 8, !tbaa !3
   ret double %1
 }
 

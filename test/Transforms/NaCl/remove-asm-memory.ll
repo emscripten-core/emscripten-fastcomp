@@ -39,31 +39,31 @@ define void @memory_assembly_encoding_test() {
 
 define void @memory_assembly_ordering_test() {
 ; CHECK: @memory_assembly_ordering_test()
-  %1 = load i32* @a, align 4
+  %1 = load i32, i32* @a, align 4
   store i32 %1, i32* @b, align 4
   call void asm sideeffect "", "~{memory}"()
   fence seq_cst
   call void asm sideeffect "", "~{memory}"()
-  ; CHECK-NEXT: %1 = load i32* @a, align 4
+  ; CHECK-NEXT: %1 = load i32, i32* @a, align 4
   ; CHECK-NEXT: store i32 %1, i32* @b, align 4
   ; CHECK-NEXT: call void @llvm.nacl.atomic.fence.all()
 
   ; Redundant load from the previous location, and store to the same
   ; location (making the previous one dead). Shouldn't get eliminated
   ; because of the fence.
-  %2 = load i32* @a, align 4
+  %2 = load i32, i32* @a, align 4
   store i32 %2, i32* @b, align 4
   call void asm sideeffect "", "~{memory}"()
   fence seq_cst
   call void asm sideeffect "", "~{memory}"()
-  ; CHECK-NEXT: %2 = load i32* @a, align 4
+  ; CHECK-NEXT: %2 = load i32, i32* @a, align 4
   ; CHECK-NEXT: store i32 %2, i32* @b, align 4
   ; CHECK-NEXT: call void @llvm.nacl.atomic.fence.all()
 
   ; Same here.
-  %3 = load i32* @a, align 4
+  %3 = load i32, i32* @a, align 4
   store i32 %3, i32* @b, align 4
-  ; CHECK-NEXT: %3 = load i32* @a, align 4
+  ; CHECK-NEXT: %3 = load i32, i32* @a, align 4
   ; CHECK-NEXT: store i32 %3, i32* @b, align 4
 
   ret void
@@ -74,13 +74,13 @@ define void @memory_assembly_ordering_test() {
 ; stores should get eliminated.
 define void @memory_ordering_test() {
 ; ELIM: @memory_ordering_test()
-  %1 = load i32* @a, align 4
+  %1 = load i32, i32* @a, align 4
   store i32 %1, i32* @b, align 4
-  %2 = load i32* @a, align 4
+  %2 = load i32, i32* @a, align 4
   store i32 %2, i32* @b, align 4
-  %3 = load i32* @a, align 4
+  %3 = load i32, i32* @a, align 4
   store i32 %3, i32* @b, align 4
-  ; ELIM-NEXT: %1 = load i32* @a, align 4
+  ; ELIM-NEXT: %1 = load i32, i32* @a, align 4
   ; ELIM-NEXT: store i32 %1, i32* @b, align 4
 
   ret void

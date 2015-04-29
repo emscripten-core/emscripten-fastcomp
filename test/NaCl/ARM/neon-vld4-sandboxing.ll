@@ -79,7 +79,7 @@ define <16 x i8> @vld4Qi8(i8* %A) nounwind {
 }
 
 define <8 x i8> @vld4i8_update(i8** %ptr, i32 %inc) nounwind {
-  %A = load i8** %ptr
+  %A = load i8*, i8** %ptr
   %tmp1 = call %struct.__neon_int8x8x4_t @llvm.arm.neon.vld4.v8i8(i8* %A, i32 16)
 ; CHECK:         bic r2, r2, #3221225472
 ; CHECK-NEXT:    vld4.8 {{{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}, {{d[0-9]+}}}, [r2:128], r1
@@ -92,7 +92,7 @@ define <8 x i8> @vld4i8_update(i8** %ptr, i32 %inc) nounwind {
 }
 
 define <8 x i16> @vld4Qi16_update(i16** %ptr) nounwind {
-  %A = load i16** %ptr
+  %A = load i16*, i16** %ptr
   %tmp0 = bitcast i16* %A to i8*
   %tmp1 = call %struct.__neon_int16x8x4_t @llvm.arm.neon.vld4.v8i16(i8* %tmp0, i32 8)
 ; CHECK:         bic r1, r1, #3221225472

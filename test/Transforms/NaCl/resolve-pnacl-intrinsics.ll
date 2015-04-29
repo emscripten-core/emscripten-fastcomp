@@ -55,7 +55,7 @@ define void @call_longjmp(i8* %arg, i32 %num) {
 
 ; CHECK-LABEL: @test_atomic_acquire
 define i32 @test_atomic_acquire(i32* %ptr) {
-  ; CHECK: %1 = load atomic i32* %ptr acquire, align 4
+  ; CHECK: %1 = load atomic i32, i32* %ptr acquire, align 4
   %1 = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr, i32 3)
   ret i32 %1
 }
@@ -236,7 +236,7 @@ define void @test_lock_release_i32(i32* %ptr) {
 
 ; CHECK-LABEL: @test_atomic_load_i8
 define zeroext i8 @test_atomic_load_i8(i8* %ptr) {
-  ; CHECK: %1 = load atomic i8* %ptr seq_cst, align 1
+  ; CHECK: %1 = load atomic i8, i8* %ptr seq_cst, align 1
   %1 = call i8 @llvm.nacl.atomic.load.i8(i8* %ptr, i32 6)
   ret i8 %1
 }
@@ -250,7 +250,7 @@ define void @test_atomic_store_i8(i8* %ptr, i8 zeroext %value) {
 
 ; CHECK-LABEL: @test_atomic_load_i16
 define zeroext i16 @test_atomic_load_i16(i16* %ptr) {
-  ; CHECK: %1 = load atomic i16* %ptr seq_cst, align 2
+  ; CHECK: %1 = load atomic i16, i16* %ptr seq_cst, align 2
   %1 = call i16 @llvm.nacl.atomic.load.i16(i16* %ptr, i32 6)
   ret i16 %1
 }
@@ -264,7 +264,7 @@ define void @test_atomic_store_i16(i16* %ptr, i16 zeroext %value) {
 
 ; CHECK-LABEL: @test_atomic_load_i32
 define i32 @test_atomic_load_i32(i32* %ptr) {
-  ; CHECK: %1 = load atomic i32* %ptr seq_cst, align 4
+  ; CHECK: %1 = load atomic i32, i32* %ptr seq_cst, align 4
   %1 = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr, i32 6)
   ret i32 %1
 }
@@ -278,7 +278,7 @@ define void @test_atomic_store_i32(i32* %ptr, i32 %value) {
 
 ; CHECK-LABEL: @test_atomic_load_i64
 define i64 @test_atomic_load_i64(i64* %ptr) {
-  ; CHECK: %1 = load atomic i64* %ptr seq_cst, align 8
+  ; CHECK: %1 = load atomic i64, i64* %ptr seq_cst, align 8
   %1 = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr, i32 6)
   ret i64 %1
 }

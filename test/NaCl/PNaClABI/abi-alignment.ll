@@ -11,18 +11,18 @@ declare void @llvm.memset.p0i8.i32(i8*, i8, i32, i32, i1)
 
 define internal void @allowed_cases(i32 %ptr, float %f, double %d) {
   %ptr.i32 = inttoptr i32 %ptr to i32*
-  load i32* %ptr.i32, align 1
+  load i32, i32* %ptr.i32, align 1
   store i32 123, i32* %ptr.i32, align 1
 
   %ptr.float = inttoptr i32 %ptr to float*
-  load float* %ptr.float, align 1
-  load float* %ptr.float, align 4
+  load float, float* %ptr.float, align 1
+  load float, float* %ptr.float, align 4
   store float %f, float* %ptr.float, align 1
   store float %f, float* %ptr.float, align 4
 
   %ptr.double = inttoptr i32 %ptr to double*
-  load double* %ptr.double, align 1
-  load double* %ptr.double, align 8
+  load double, double* %ptr.double, align 1
+  load double, double* %ptr.double, align 8
   store double %d, double* %ptr.double, align 1
   store double %d, double* %ptr.double, align 8
 
@@ -42,15 +42,15 @@ define internal void @allowed_cases(i32 %ptr, float %f, double %d) {
 
 define internal void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) {
   %ptr.i32 = inttoptr i32 %ptr to i32*
-  load i32* %ptr.i32, align 4
+  load i32, i32* %ptr.i32, align 4
   store i32 123, i32* %ptr.i32, align 4
 ; CHECK: disallowed: bad alignment: {{.*}} load i32{{.*}} align 4
 ; CHECK-NEXT: disallowed: bad alignment: store i32{{.*}} align 4
 
   ; Unusual, not-very-useful alignments are rejected.
   %ptr.float = inttoptr i32 %ptr to float*
-  load float* %ptr.float, align 2
-  load float* %ptr.float, align 8
+  load float, float* %ptr.float, align 2
+  load float, float* %ptr.float, align 8
   store float %f, float* %ptr.float, align 2
   store float %f, float* %ptr.float, align 8
 ; CHECK-NEXT: disallowed: bad alignment: {{.*}} load float{{.*}} align 2
@@ -59,8 +59,8 @@ define internal void @rejected_cases(i32 %ptr, float %f, double %d, i32 %align) 
 ; CHECK-NEXT: disallowed: bad alignment: store float{{.*}} align 8
 
   %ptr.double = inttoptr i32 %ptr to double*
-  load double* %ptr.double, align 2
-  load double* %ptr.double, align 4
+  load double, double* %ptr.double, align 2
+  load double, double* %ptr.double, align 4
   store double %d, double* %ptr.double, align 2
   store double %d, double* %ptr.double, align 4
 ; CHECK-NEXT: disallowed: bad alignment: {{.*}} load double{{.*}} align 2

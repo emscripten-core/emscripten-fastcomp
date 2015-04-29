@@ -17,13 +17,13 @@
 ; Test that we elide the simple case of global.
 define void @SimpleLoad() {
   %1 = bitcast [4 x i8]* @bytes to i32*
-  %2 = load i32* %1, align 4
+  %2 = load i32, i32* %1, align 4
   ret void
 }
 
 ; TD2:      define void @SimpleLoad() {
 ; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %2 = load i32* %1, align 4
+; TD2-NEXT:   %2 = load i32, i32* %1, align 4
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -39,14 +39,14 @@ define void @SimpleLoad() {
 define void @SimpleLoadAlloca() {
   %1 = alloca i8, i32 4, align 4
   %2 = bitcast i8* %1 to i32*
-  %3 = load i32* %2, align 4
+  %3 = load i32, i32* %2, align 4
   ret void
 }
 
 ; TD2:      define void @SimpleLoadAlloca() {
 ; TD2-NEXT:   %1 = alloca i8, i32 4, align 4
 ; TD2-NEXT:   %2 = bitcast i8* %1 to i32*
-; TD2-NEXT:   %3 = load i32* %2, align 4
+; TD2-NEXT:   %3 = load i32, i32* %2, align 4
 ; TD2-NEXT:   ret void
 ; TD2-NEXT: }
 
@@ -62,17 +62,17 @@ define void @SimpleLoadAlloca() {
 ; Test that we can handle multiple bitcasts.
 define i32 @TwoLoads(i32 %i) {
   %1 = bitcast [4 x i8]* @bytes to i32*       
-  %2 = load i32* %1, align 4
+  %2 = load i32, i32* %1, align 4
   %3 = bitcast [4 x i8]* @bytes to i32*       
-  %4 = load i32* %3, align 4
+  %4 = load i32, i32* %3, align 4
   %5 = add i32 %2, %4
   ret i32 %5
 }
 
 ; TD2:      define i32 @TwoLoads(i32 %i) {
 ; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %2 = load i32* %1, align 4
-; TD2-NEXT:   %3 = load i32* %1, align 4
+; TD2-NEXT:   %2 = load i32, i32* %1, align 4
+; TD2-NEXT:   %3 = load i32, i32* %1, align 4
 ; TD2-NEXT:   %4 = add i32 %2, %3
 ; TD2-NEXT:   ret i32 %4
 ; TD2-NEXT: }
@@ -91,16 +91,16 @@ define i32 @TwoLoads(i32 %i) {
 ; case tests within a single block.
 define i32 @TwoLoadOptOneBlock(i32 %i) {
   %1 = bitcast [4 x i8]* @bytes to i32*       
-  %2 = load i32* %1, align 4
-  %3 = load i32* %1, align 4
+  %2 = load i32, i32* %1, align 4
+  %3 = load i32, i32* %1, align 4
   %4 = add i32 %2, %3
   ret i32 %4
 }
 
 ; TD2:      define i32 @TwoLoadOptOneBlock(i32 %i) {
 ; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %2 = load i32* %1, align 4
-; TD2-NEXT:   %3 = load i32* %1, align 4
+; TD2-NEXT:   %2 = load i32, i32* %1, align 4
+; TD2-NEXT:   %3 = load i32, i32* %1, align 4
 ; TD2-NEXT:   %4 = add i32 %2, %3
 ; TD2-NEXT:   ret i32 %4
 ; TD2-NEXT: }
@@ -119,28 +119,28 @@ define i32 @TwoLoadOptOneBlock(i32 %i) {
 ; case tests accross blocks.
 define i32 @TwoLoadOptTwoBlocks(i32 %i) {
   %1 = bitcast [4 x i8]* @bytes to i32*       
-  %2 = load i32* %1, align 4
-  %3 = load i32* %1, align 4
+  %2 = load i32, i32* %1, align 4
+  %3 = load i32, i32* %1, align 4
   %4 = add i32 %2, %3
   br label %BB
 
 BB:
-  %5 = load i32* %1, align 4
-  %6 = load i32* %1, align 4
+  %5 = load i32, i32* %1, align 4
+  %6 = load i32, i32* %1, align 4
   %7 = add i32 %5, %6
   ret i32 %4
 }
 
 ; TD2:      define i32 @TwoLoadOptTwoBlocks(i32 %i) {
 ; TD2-NEXT:   %1 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %2 = load i32* %1, align 4
-; TD2-NEXT:   %3 = load i32* %1, align 4
+; TD2-NEXT:   %2 = load i32, i32* %1, align 4
+; TD2-NEXT:   %3 = load i32, i32* %1, align 4
 ; TD2-NEXT:   %4 = add i32 %2, %3
 ; TD2-NEXT:   br label %BB
 ; TD2:      BB:
 ; TD2-NEXT:   %5 = bitcast [4 x i8]* @bytes to i32*
-; TD2-NEXT:   %6 = load i32* %5, align 4
-; TD2-NEXT:   %7 = load i32* %5, align 4
+; TD2-NEXT:   %6 = load i32, i32* %5, align 4
+; TD2-NEXT:   %7 = load i32, i32* %5, align 4
 ; TD2-NEXT:   %8 = add i32 %6, %7
 ; TD2-NEXT:   ret i32 %4
 ; TD2-NEXT: }

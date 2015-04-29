@@ -35,8 +35,8 @@ define void @test4xi1(<4 x i1> %in) {
 ; C4xi1: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i1> <i1 false, i1 true, i1 false, i1 true>, align 4
 ; C4xi1: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i1> <i1 true, i1 false, i1 true, i1 false>, align 4
 ; C4xi1: define void @test4xi1(<4 x i1> %in) {
-; C4xi1-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i1>* @[[C1]], align 4
-; C4xi1-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x i1>* @[[C2]], align 4
+; C4xi1-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i1>, <4 x i1>* @[[C1]], align 4
+; C4xi1-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x i1>, <4 x i1>* @[[C2]], align 4
 ; C4xi1-NEXT: %ft0 = and <4 x i1> %in, %[[M1]]
 ; C4xi1-NEXT: %ft1 = and <4 x i1> %[[M2]], %in
 ; C4xi1-NEXT: ret void
@@ -50,8 +50,8 @@ define void @test8xi1(<8 x i1> %in) {
 ; C8xi1: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <8 x i1> <i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true>, align 8
 ; C8xi1: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <8 x i1> <i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false>, align 8
 ; C8xi1: define void @test8xi1(<8 x i1> %in) {
-; C8xi1-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i1>* @[[C1]], align 8
-; C8xi1-NEXT: %[[M2:[_a-z0-9]+]] = load <8 x i1>* @[[C2]], align 8
+; C8xi1-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i1>, <8 x i1>* @[[C1]], align 8
+; C8xi1-NEXT: %[[M2:[_a-z0-9]+]] = load <8 x i1>, <8 x i1>* @[[C2]], align 8
 ; C8xi1-NEXT: %ft0 = and <8 x i1> %in, %[[M1]]
 ; C8xi1-NEXT: %ft1 = and <8 x i1> %[[M2]], %in
 ; C8xi1-NEXT: ret void
@@ -65,8 +65,8 @@ define void @test16xi1(<16 x i1> %in) {
 ; C16xi1: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <16 x i1> <i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true>, align 16
 ; C16xi1: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <16 x i1> <i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false, i1 true, i1 false>, align 16
 ; C16xi1: define void @test16xi1(<16 x i1> %in) {
-; C16xi1-NEXT: %[[M1:[_a-z0-9]+]] = load <16 x i1>* @[[C1]], align 16
-; C16xi1-NEXT: %[[M2:[_a-z0-9]+]] = load <16 x i1>* @[[C2]], align 16
+; C16xi1-NEXT: %[[M1:[_a-z0-9]+]] = load <16 x i1>, <16 x i1>* @[[C1]], align 16
+; C16xi1-NEXT: %[[M2:[_a-z0-9]+]] = load <16 x i1>, <16 x i1>* @[[C2]], align 16
 ; C16xi1-NEXT: %ft0 = and <16 x i1> %in, %[[M1]]
 ; C16xi1-NEXT: %ft1 = and <16 x i1> %[[M2]], %in
 ; C16xi1-NEXT: ret void
@@ -80,8 +80,8 @@ define void @test16xi8(<16 x i8> %in) {
 ; C16xi8: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <16 x i8> <i8 2, i8 3, i8 5, i8 6, i8 7, i8 8, i8 10, i8 11, i8 12, i8 13, i8 14, i8 15, i8 17, i8 18, i8 19, i8 20>, align 4
 ; C16xi8: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <16 x i8> <i8 0, i8 1, i8 3, i8 5, i8 9, i8 11, i8 14, i8 17, i8 25, i8 27, i8 30, i8 33, i8 38, i8 41, i8 45, i8 49>, align 4
 ; C16xi8: define void @test16xi8(<16 x i8> %in) {
-; C16xi8-NEXT: %[[M1:[_a-z0-9]+]] = load <16 x i8>* @[[C1]], align 4
-; C16xi8-NEXT: %[[M2:[_a-z0-9]+]] = load <16 x i8>* @[[C2]], align 4
+; C16xi8-NEXT: %[[M1:[_a-z0-9]+]] = load <16 x i8>, <16 x i8>* @[[C1]], align 4
+; C16xi8-NEXT: %[[M2:[_a-z0-9]+]] = load <16 x i8>, <16 x i8>* @[[C2]], align 4
 ; C16xi8-NEXT: %nonsquares = add <16 x i8> %in, %[[M1]]
 ; C16xi8-NEXT: %sort = add <16 x i8> %[[M2]], %in
 ; C16xi8-NEXT: ret void
@@ -95,8 +95,8 @@ define void @test8xi16(<8 x i16> %in) {
 ; C8xi16: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <8 x i16> <i16 0, i16 1, i16 1, i16 2, i16 3, i16 5, i16 8, i16 13>, align 4
 ; C8xi16: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <8 x i16> <i16 42, i16 42, i16 42, i16 42, i16 42, i16 42, i16 42, i16 42>, align 4
 ; C8xi16: define void @test8xi16(<8 x i16> %in) {
-; C8xi16-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i16>* @[[C1]], align 4
-; C8xi16-NEXT: %[[M2:[_a-z0-9]+]] = load <8 x i16>* @[[C2]], align 4
+; C8xi16-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i16>, <8 x i16>* @[[C1]], align 4
+; C8xi16-NEXT: %[[M2:[_a-z0-9]+]] = load <8 x i16>, <8 x i16>* @[[C2]], align 4
 ; C8xi16-NEXT: %fib = add <8 x i16> %in, %[[M1]]
 ; C8xi16-NEXT: %answer = add <8 x i16> %[[M2]], %in
 ; C8xi16-NEXT: ret void
@@ -110,8 +110,8 @@ define void @test4xi32(<4 x i32> %in) {
 ; C4xi32: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 1, i32 4, i32 10, i32 20>, align 4
 ; C4xi32: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 1, i32 4, i32 9, i32 61>, align 4
 ; C4xi32: define void @test4xi32(<4 x i32> %in) {
-; C4xi32-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
-; C4xi32-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x i32>* @[[C2]], align 4
+; C4xi32-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>, <4 x i32>* @[[C1]], align 4
+; C4xi32-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x i32>, <4 x i32>* @[[C2]], align 4
 ; C4xi32-NEXT: %tetrahedral = add <4 x i32> %in, %[[M1]]
 ; C4xi32-NEXT: %serauqs = add <4 x i32> %[[M2]], %in
 ; C4xi32-NEXT: ret void
@@ -125,8 +125,8 @@ define void @test4xfloat(<4 x float> %in) {
 ; C4xfloat: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x float> <float 1.000000e+00, float 1.000000e+00, float 3.000000e+00, float 7.000000e+00>, align 4
 ; C4xfloat: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <4 x float> <float 1.000000e+00, float 1.000000e+00, float 3.000000e+00, float 1.900000e+01>, align 4
 ; C4xfloat: define void @test4xfloat(<4 x float> %in) {
-; C4xfloat-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x float>* @[[C1]], align 4
-; C4xfloat-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x float>* @[[C2]], align 4
+; C4xfloat-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x float>, <4 x float>* @[[C1]], align 4
+; C4xfloat-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x float>, <4 x float>* @[[C2]], align 4
 ; C4xfloat-NEXT: %polyhex = fadd <4 x float> %in, %[[M1]]
 ; C4xfloat-NEXT: %poset = fadd <4 x float> %[[M2]], %in
 ; C4xfloat-NEXT: ret void
@@ -147,8 +147,8 @@ done:
 ; Cbranch: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 1, i32 1, i32 2, i32 2>, align 4
 ; Cbranch: @[[C2:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 2, i32 2, i32 1, i32 1>, align 4
 ; Cbranch: define void @testbranch(i1 %cond, <4 x i32> %in) {
-; Cbranch-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
-; Cbranch-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x i32>* @[[C2]], align 4
+; Cbranch-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>, <4 x i32>* @[[C1]], align 4
+; Cbranch-NEXT: %[[M2:[_a-z0-9]+]] = load <4 x i32>, <4 x i32>* @[[C2]], align 4
 ; Cbranch-NEXT: br i1 %cond, label %lhs, label %rhs
 ; Cbranch: lhs:
 ; Cbranch-NEXT: %from_lhs = add <4 x i32> %in, %[[M1]]
@@ -172,11 +172,11 @@ define void @testduplicate2() {
 }
 ; Cduplicate: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x i32> <i32 1, i32 1, i32 1, i32 1>, align 4
 ; Cduplicate: define void @testduplicate1() {
-; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
+; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>, <4 x i32>* @[[C1]], align 4
 ; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], undef
 ; Cduplicate-NEXT: ret void
 ; Cduplicate: define void @testduplicate2() {
-; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>* @[[C1]], align 4
+; Cduplicate-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x i32>, <4 x i32>* @[[C1]], align 4
 ; Cduplicate-NEXT: %foo = add <4 x i32> %[[M1]], undef
 ; Cduplicate-NEXT: ret void
 
@@ -187,7 +187,7 @@ define void @testzeroinitializer(<4 x float> %in) {
 }
 ; Czeroinitializer: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <4 x float> zeroinitializer, align 4
 ; Czeroinitializer: define void @testzeroinitializer(<4 x float> %in) {
-; Czeroinitializer-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x float>* @[[C1]], align 4
+; Czeroinitializer-NEXT: %[[M1:[_a-z0-9]+]] = load <4 x float>, <4 x float>* @[[C1]], align 4
 ; Czeroinitializer-NEXT: %id = fadd <4 x float> %in, %[[M1]]
 ; Czeroinitializer-NEXT: ret void
 
@@ -198,7 +198,7 @@ define i64 @test_nested_const(i64 %x) {
 }
 ; Cnestedconst: @[[C1:[_a-z0-9]+]] = internal unnamed_addr constant <8 x i8> <i8 10, i8 20, i8 30, i8 40, i8 50, i8 60, i8 70, i8 80>, align 8
 ; Cnestedconst: define i64 @test_nested_const(i64 %x) {
-; Cnestedconst-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i8>* @[[C1]], align 8
+; Cnestedconst-NEXT: %[[M1:[_a-z0-9]+]] = load <8 x i8>, <8 x i8>* @[[C1]], align 8
 ; Cnestedconst-NEXT: %[[X1:[_a-z0-9]+]] = bitcast <8 x i8> %[[M1]] to i64
 ; Cnestedconst-NEXT: add i64 %[[X1]], %x
 ; Cnestedconst-NEXT: ret i64 %foo

@@ -33,17 +33,17 @@ entry:
   %fp = ptrtoint void ()* @othername4 to i32
   %fp1 = add i32 %fp, 0
   %pf = inttoptr i32 %fp1 to void (i32)*
-  %x = load i32* @value3
+  %x = load i32, i32* @value3
   call void (i32)* %pf(i32 %x)
-  %x1 = load i32* @value2
+  %x1 = load i32, i32* @value2
   call void (i32)* @othername3(i32 %x1)
-  %x2 = load i32* @value
+  %x2 = load i32, i32* @value
   call void (i32)* @othername2(i32 %x2)
   store i32 18, i32* @value
-  %x3 = load i32* @value
+  %x3 = load i32, i32* @value
   call void (i32)* @othername(i32 %x3)
   store i32 19, i32* @value3
-  %x4 = load i32* @value3
+  %x4 = load i32, i32* @value3
   call void (i32)* @doit(i32 %x4)
   ret i32 1
 }

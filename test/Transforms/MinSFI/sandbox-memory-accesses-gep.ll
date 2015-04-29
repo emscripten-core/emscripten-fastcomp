@@ -21,46 +21,46 @@ declare void @llvm.memset.p0i8.i32(i8* nocapture, i8, i32, i32, i1)
 
 define i32 @test_load_elementptr([100 x i32]* %foo) {
   %elem = getelementptr inbounds [100 x i32], [100 x i32]* %foo, i32 0, i32 97
-  %val = load i32* %elem
+  %val = load i32, i32* %elem
   ret i32 %val
 }
 
 ; CHECK-GEP-LABEL: define i32 @test_load_elementptr(i32 %foo) {
-; CHECK-GEP-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-GEP-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-GEP-NEXT:    %1 = zext i32 %foo to i64
 ; CHECK-GEP-NEXT:    %2 = add i64 %mem_base, %1
 ; CHECK-GEP-NEXT:    %3 = add i64 %2, 388
 ; CHECK-GEP-NEXT:    %4 = inttoptr i64 %3 to i32*
-; CHECK-GEP-NEXT:    %val = load i32* %4
+; CHECK-GEP-NEXT:    %val = load i32, i32* %4
 ; CHECK-GEP-NEXT:    ret i32 %val
 ; CHECK-GEP-NEXT:  }
 
 ; CHECK-GEP-MASK-LABEL: define i32 @test_load_elementptr(i32 %foo) {
-; CHECK-GEP-MASK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-GEP-MASK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-GEP-MASK-NEXT:    %1 = and i32 %foo, 1048575
 ; CHECK-GEP-MASK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-GEP-MASK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-GEP-MASK-NEXT:    %4 = add i64 %3, 388
 ; CHECK-GEP-MASK-NEXT:    %5 = inttoptr i64 %4 to i32*
-; CHECK-GEP-MASK-NEXT:    %val = load i32* %5
+; CHECK-GEP-MASK-NEXT:    %val = load i32, i32* %5
 ; CHECK-GEP-MASK-NEXT:    ret i32 %val
 ; CHECK-GEP-MASK-NEXT:  }
 
 define <4 x float> @test_max_offset(i32 %x) {
   %1 = add i32 %x, 1048560  ; 1MB - 16B
   %ptr = inttoptr i32 %1 to <4 x float>*
-  %val = load <4 x float>* %ptr
+  %val = load <4 x float>, <4 x float>* %ptr
   ret <4 x float> %val
 }
 
 ; CHECK-LABEL: define <4 x float> @test_max_offset(i32 %x) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = and i32 %x, 1048575
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-NEXT:    %4 = add i64 %3, 1048560
 ; CHECK-NEXT:    %5 = inttoptr i64 %4 to <4 x float>*
-; CHECK-NEXT:    %val = load <4 x float>* %5
+; CHECK-NEXT:    %val = load <4 x float>, <4 x float>* %5
 ; CHECK-NEXT:    ret <4 x float> %val
 ; CHECK-NEXT:  }
 
@@ -68,12 +68,12 @@ define <4 x float> @test_max_offset(i32 %x) {
 define <4 x float> @test_offset_overflow(i32 %x) {
   %1 = add i32 %x, 1048561
   %ptr = inttoptr i32 %1 to <4 x float>*
-  %val = load <4 x float>* %ptr
+  %val = load <4 x float>, <4 x float>* %ptr
   ret <4 x float> %val
 }
 
 ; CHECK-LABEL: define <4 x float> @test_offset_overflow(i32 %x) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = add i32 %x, 1048561
 ; CHECK-NEXT:    %ptr = inttoptr i32 %1 to <4 x float>*
 ; CHECK-NEXT:    %2 = ptrtoint <4 x float>* %ptr to i32
@@ -81,7 +81,7 @@ define <4 x float> @test_offset_overflow(i32 %x) {
 ; CHECK-NEXT:    %4 = zext i32 %3 to i64
 ; CHECK-NEXT:    %5 = add i64 %mem_base, %4
 ; CHECK-NEXT:    %6 = inttoptr i64 %5 to <4 x float>*
-; CHECK-NEXT:    %val = load <4 x float>* %6
+; CHECK-NEXT:    %val = load <4 x float>, <4 x float>* %6
 ; CHECK-NEXT:    ret <4 x float> %val
 ; CHECK-NEXT:  }
 

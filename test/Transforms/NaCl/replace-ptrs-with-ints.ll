@@ -80,7 +80,7 @@ block2:
   %cast = bitcast %struct* %val to i8*
   br label %block3
 block1:
-  %val = load %struct** %ptr
+  %val = load %struct*, %struct** %ptr
   br label %block2
 block3:
   ; Backwards reference to a forwards reference that has already been
@@ -93,7 +93,7 @@ block3:
 ; CHECK-NEXT: br label %block3
 ; CHECK: block1:
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
-; CHECK-NEXT: %val = load i32* %ptr.asptr
+; CHECK-NEXT: %val = load i32, i32* %ptr.asptr
 ; CHECK-NEXT: br label %block2
 ; CHECK: block3:
 ; CHECK-NEXT: ret i32 %val
@@ -195,29 +195,29 @@ define i32 @constant_pointer_undef() {
 ; CHECK-NEXT: ret i32 undef
 
 define i16* @constant_pointer_null_load() {
-  %val = load i16** null
+  %val = load i16*, i16** null
   ret i16* %val
 }
 ; CHECK: define i32 @constant_pointer_null_load() {
 ; CHECK-NEXT: %.asptr = inttoptr i32 0 to i32*
-; CHECK-NEXT: %val = load i32* %.asptr
+; CHECK-NEXT: %val = load i32, i32* %.asptr
 
 define i16* @constant_pointer_undef_load() {
-  %val = load i16** undef
+  %val = load i16*, i16** undef
   ret i16* %val
 }
 ; CHECK: define i32 @constant_pointer_undef_load() {
 ; CHECK-NEXT: %.asptr = inttoptr i32 undef to i32*
-; CHECK-NEXT: %val = load i32* %.asptr
+; CHECK-NEXT: %val = load i32, i32* %.asptr
 
 
 define i8 @load(i8* %ptr) {
-  %x = load i8* %ptr
+  %x = load i8, i8* %ptr
   ret i8 %x
 }
 ; CHECK: define i8 @load(i32 %ptr) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i8*
-; CHECK-NEXT: %x = load i8* %ptr.asptr
+; CHECK-NEXT: %x = load i8, i8* %ptr.asptr
 
 define void @store(i8* %ptr, i8 %val) {
   store i8 %val, i8* %ptr
@@ -229,12 +229,12 @@ define void @store(i8* %ptr, i8 %val) {
 
 
 define i8* @load_ptr(i8** %ptr) {
-  %x = load i8** %ptr
+  %x = load i8*, i8** %ptr
   ret i8* %x
 }
 ; CHECK: define i32 @load_ptr(i32 %ptr) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
-; CHECK-NEXT: %x = load i32* %ptr.asptr
+; CHECK-NEXT: %x = load i32, i32* %ptr.asptr
 
 define void @store_ptr(i8** %ptr, i8* %val) {
   store i8* %val, i8** %ptr
@@ -246,12 +246,12 @@ define void @store_ptr(i8** %ptr, i8* %val) {
 
 
 define i8 @load_attrs(i8* %ptr) {
-  %x = load atomic volatile i8* %ptr seq_cst, align 128
+  %x = load atomic volatile i8, i8* %ptr seq_cst, align 128
   ret i8 %x
 }
 ; CHECK: define i8 @load_attrs(i32 %ptr) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i8*
-; CHECK-NEXT: %x = load atomic volatile i8* %ptr.asptr seq_cst, align 128
+; CHECK-NEXT: %x = load atomic volatile i8, i8* %ptr.asptr seq_cst, align 128
 
 define void @store_attrs(i8* %ptr, i8 %val) {
   store atomic volatile i8 %val, i8* %ptr singlethread release, align 256
@@ -327,21 +327,21 @@ define %struct* (%struct*)* @get_addr_of_func() {
 
 
 define i32 @load_global() {
-  %val = load i32* @var
+  %val = load i32, i32* @var
   ret i32 %val
 }
 ; CHECK: define i32 @load_global() {
-; CHECK-NEXT: %val = load i32* @var
+; CHECK-NEXT: %val = load i32, i32* @var
 ; CHECK-NEXT: ret i32 %val
 
 define i16 @load_global_bitcast() {
   %ptr = bitcast i32* @var to i16*
-  %val = load i16* %ptr
+  %val = load i16, i16* %ptr
   ret i16 %val
 }
 ; CHECK: define i16 @load_global_bitcast() {
 ; CHECK-NEXT: %var.bc = bitcast i32* @var to i16*
-; CHECK-NEXT: %val = load i16* %var.bc
+; CHECK-NEXT: %val = load i16, i16* %var.bc
 ; CHECK-NEXT: ret i16 %val
 
 

@@ -39,7 +39,7 @@ define i8* @test_const_alloca() {
 }
 
 ; CHECK-LABEL: define i8* @test_const_alloca() {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 9
 ; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr
@@ -51,7 +51,7 @@ define i8* @test_const_alloca_align() {
 }
 
 ; CHECK-LABEL: define i8* @test_const_alloca_align() {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 9
 ; CHECK-NEXT:    %2 = and i32 %1, -536870912
 ; CHECK-NEXT:    %ptr = inttoptr i32 %2 to i8*
@@ -64,7 +64,7 @@ define i8* @test_variable_length_alloca(i32 %size) {
 }
 
 ; CHECK-LABEL: define i8* @test_variable_length_alloca(i32 %size) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, %size
 ; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr
@@ -76,7 +76,7 @@ define i8* @test_variable_length_alloca_align(i32 %size) {
 }
 
 ; CHECK-LABEL: define i8* @test_variable_length_alloca_align(i32 %size) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, %size
 ; CHECK-NEXT:    %2 = and i32 %1, -32
 ; CHECK-NEXT:    %ptr = inttoptr i32 %2 to i8*
@@ -90,7 +90,7 @@ define i8* @test_const_after_const_alloca() {
 }
 
 ; CHECK-LABEL: define i8* @test_const_after_const_alloca() {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 4
 ; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*
 ; CHECK-NEXT:    %2 = sub i32 %1, 8
@@ -105,7 +105,7 @@ define i8* @test_const_after_variable_alloca(i32 %size) {
 }
 
 ; CHECK-LABEL: define i8* @test_const_after_variable_alloca(i32 %size) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, %size
 ; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*
 ; CHECK-NEXT:    %2 = sub i32 %1, 19
@@ -119,7 +119,7 @@ define i8* @test_stacksave() {
 }
 
 ; CHECK-LABEL: define i8* @test_stacksave() {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %ptr = inttoptr i32 %frame_top to i8*, !dbg !1
 ; CHECK-NEXT:    ret i8* %ptr
 ; CHECK-NEXT:  }
@@ -131,7 +131,7 @@ define i8* @test_stacksave_after_alloca() {
 }
 
 ; CHECK-LABEL: define i8* @test_stacksave_after_alloca() {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 11
 ; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*
 ; CHECK-NEXT:    %ptr2 = inttoptr i32 %1 to i8*, !dbg !1
@@ -145,7 +145,7 @@ define i8* @test_stackrestore(i8* %new_stack) {
 }
 
 ; CHECK-LABEL: define i8* @test_stackrestore(i8* %new_stack) {
-; CHECK-NEXT:    frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = ptrtoint i8* %new_stack to i32, !dbg !1
 ; CHECK-NEXT:    %2 = sub i32 %1, 5
 ; CHECK-NEXT:    %ptr = inttoptr i32 %2 to i8*, !dbg !2
@@ -160,7 +160,7 @@ define i8* @test_stackrestore_after_push(i8* %new_stack) {
 }
 
 ; CHECK-LABEL: define i8* @test_stackrestore_after_push(i8* %new_stack) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 5
 ; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*, !dbg !1
 ; CHECK-NEXT:    %2 = ptrtoint i8* %new_stack to i32, !dbg !2
@@ -180,7 +180,7 @@ IfNotOne:
 }
 
 ; CHECK-LABEL: define i8* @test_stackptr_bb_propagation(i1 %cond) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 8
 ; CHECK-NEXT:    %ptr1 = inttoptr i32 %1 to i8*
 ; CHECK-NEXT:    br i1 %cond, label %IfOne, label %IfNotOne
@@ -206,7 +206,7 @@ done:
 }
 
 ; CHECK-LABEL: define i8* @test_scoped_alloca(i1 %cmp) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    br label %loop
 ; CHECK:       loop:
 ; CHECK-NEXT:    %1 = phi i32 [ %frame_top, %0 ], [ %3, %loop ]
@@ -230,7 +230,7 @@ define i8* @test_global_ptr_updates(i32 %size) {
 }
 
 ; CHECK-LABEL: define i8* @test_global_ptr_updates(i32 %size) {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr
 ; CHECK-NEXT:    %ptr0 = inttoptr i32 %frame_top to i8*
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 32
 ; CHECK-NEXT:    store i32 %1, i32* @__sfi_stack_ptr

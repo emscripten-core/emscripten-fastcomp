@@ -32,7 +32,7 @@ declare %struct @struct_returning_extern(i32, %struct)
 ; CHECK-LABEL: declare void @struct_returning_extern(%struct* sret, i32, %struct* byval)
 
 define void @main(%struct* byval %ptr) {
-  %val = load %struct* %ptr
+  %val = load %struct, %struct* %ptr
   call void @extern_func(%struct %val)
   ret void
 }
@@ -74,15 +74,15 @@ Cleanup:
 ; CHECK-NEXT:  %tmp.sreg.ptr = alloca %struct
 ; CHECK-NEXT:  %tmp = alloca %struct
 ; CHECK-NEXT:  %val.sreg.ptr = alloca %struct
-; CHECK-NEXT:  %val.sreg = load %struct* %val.ptr
+; CHECK-NEXT:  %val.sreg = load %struct, %struct* %val.ptr
 ; CHECK-NEXT:  store %struct %val.sreg, %struct* %val.sreg.ptr
 ; CHECK-NEXT:  call void @struct_returning_extern(%struct* sret %tmp, i32 %an_int, %struct* byval %val.sreg.ptr)
-; CHECK-NEXT:  %tmp.sreg = load %struct* %tmp
+; CHECK-NEXT:  %tmp.sreg = load %struct, %struct* %tmp
 ; CHECK-NEXT:  store %struct %tmp.sreg, %struct* %tmp.sreg.ptr
 ; CHECK-NEXT:  invoke void @struct_returning_extern(%struct* sret %tmp2, i32 1, %struct* byval %tmp.sreg.ptr)
 ; CHECK-NEXT:            to label %Cont unwind label %Cleanup
 ; CHECK-DAG:   Cont:
-; CHECK-NEXT:    %tmp2.sreg = load %struct* %tmp2
+; CHECK-NEXT:    %tmp2.sreg = load %struct, %struct* %tmp2
 ; CHECK-NEXT:    store %struct %tmp2.sreg, %struct* %retVal
 ; CHECK-NEXT:    ret void
 ; CHECK-DAG:   Cleanup:
@@ -132,11 +132,11 @@ define %rec_returning @rec_returning_fun(%rec_returning %str) {
 ; CHECK-LABEL: define void @rec_returning_fun(%rec_returning.simplified* sret %retVal, %rec_returning.simplified* byval %str.ptr)
 ; CHECK-NEXT:   %ret = alloca %rec_returning.simplified
 ; CHECK-NEXT:   %str.sreg.ptr = alloca %rec_returning.simplified
-; CHECK-NEXT:   %str.sreg = load %rec_returning.simplified* %str.ptr
+; CHECK-NEXT:   %str.sreg = load %rec_returning.simplified, %rec_returning.simplified* %str.ptr
 ; CHECK-NEXT:   %tmp = extractvalue %rec_returning.simplified %str.sreg, 0
 ; CHECK-NEXT:   store %rec_returning.simplified %str.sreg, %rec_returning.simplified* %str.sreg.ptr
 ; CHECK-NEXT:   call void %tmp(%rec_returning.simplified* sret %ret, %rec_returning.simplified* byval %str.sreg.ptr)
-; CHECK-NEXT:   %ret.sreg = load %rec_returning.simplified* %ret
+; CHECK-NEXT:   %ret.sreg = load %rec_returning.simplified, %rec_returning.simplified* %ret
 ; CHECK-NEXT:   store %rec_returning.simplified %ret.sreg, %rec_returning.simplified* %retVal
 ; CHECK-NEXT:   ret void
 
@@ -149,7 +149,7 @@ define void @direct_caller(%direct_def %def) {
 
 ; CHECK-LABEL: define void @direct_caller(%direct_def.simplified* byval %def.ptr)
 ; CHECK-NEXT:  %param.ptr = alloca %struct
-; CHECK-NEXT:  %def.sreg = load %direct_def.simplified* %def.ptr
+; CHECK-NEXT:  %def.sreg = load %direct_def.simplified, %direct_def.simplified* %def.ptr
 ; CHECK-NEXT:  %func = extractvalue %direct_def.simplified %def.sreg, 0
 ; CHECK-NEXT:  %param = extractvalue %direct_def.simplified %def.sreg, 1
 ; CHECK-NEXT:  store %struct %param, %struct* %param.ptr
@@ -176,7 +176,7 @@ define void @call_vararg(%vararg_fp_struct %param1, ...) {
 }
 
 ; CHECK-LABEL: define void @call_vararg(%vararg_fp_struct* byval %param1.ptr, ...)
-; CHECK-NEXT:  %param1.sreg = load %vararg_fp_struct* %param1.ptr
+; CHECK-NEXT:  %param1.sreg = load %vararg_fp_struct, %vararg_fp_struct* %param1.ptr
 ; CHECK-NEXT:  %fptr = extractvalue %vararg_fp_struct %param1.sreg, 1
 ; CHECK-NEXT:  call void (i32, ...)* %fptr(i32 0, i32 1)
 ; CHECK-NEXT:  ret void
@@ -184,8 +184,8 @@ define void @call_vararg(%vararg_fp_struct %param1, ...) {
 %vararg_fp_problem_struct = type { void(%vararg_fp_problem_struct)* }
 define void @vararg_fp_problem_call(%vararg_fp_problem_struct* byval %param) {
   %fct_ptr = getelementptr %vararg_fp_problem_struct, %vararg_fp_problem_struct* %param, i32 0, i32 0
-  %fct = load void(%vararg_fp_problem_struct)** %fct_ptr
-  %param_for_call = load %vararg_fp_problem_struct* %param
+  %fct = load void(%vararg_fp_problem_struct)*, void(%vararg_fp_problem_struct)** %fct_ptr
+  %param_for_call = load %vararg_fp_problem_struct, %vararg_fp_problem_struct* %param
   call void %fct(%vararg_fp_problem_struct %param_for_call)
   ret void
 }
@@ -193,8 +193,8 @@ define void @vararg_fp_problem_call(%vararg_fp_problem_struct* byval %param) {
 ; CHECK-LABEL: define void @vararg_fp_problem_call(%vararg_fp_problem_struct.simplified* byval %param)
 ; CHECK-NEXT:  %param_for_call.ptr = alloca %vararg_fp_problem_struct.simplified
 ; CHECK-NEXT:  %fct_ptr = getelementptr %vararg_fp_problem_struct.simplified, %vararg_fp_problem_struct.simplified* %param, i32 0, i32 0
-; CHECK-NEXT:  %fct = load void (%vararg_fp_problem_struct.simplified*)** %fct_ptr
-; CHECK-NEXT:  %param_for_call = load %vararg_fp_problem_struct.simplified* %param
+; CHECK-NEXT:  %fct = load void (%vararg_fp_problem_struct.simplified*)*, void (%vararg_fp_problem_struct.simplified*)** %fct_ptr
+; CHECK-NEXT:  %param_for_call = load %vararg_fp_problem_struct.simplified, %vararg_fp_problem_struct.simplified* %param
 ; CHECK-NEXT:  store %vararg_fp_problem_struct.simplified %param_for_call, %vararg_fp_problem_struct.simplified* %param_for_call.ptr
 ; CHECK-NEXT:  call void %fct(%vararg_fp_problem_struct.simplified* byval %param_for_call.ptr)
 ; CHECK-NEXT:  ret void
@@ -207,8 +207,8 @@ define void @call_with_array([4 x void(%struct)*] %fptrs, %struct %str) {
 
 ; CHECK-LABEL: define void @call_with_array([4 x void (%struct*)*]* byval %fptrs.ptr, %struct* byval %str.ptr)
 ; CHECK-NEXT:  %str.sreg.ptr = alloca %struct
-; CHECK-NEXT:  %fptrs.sreg = load [4 x void (%struct*)*]* %fptrs.ptr
-; CHECK-NEXT:  %str.sreg = load %struct* %str.ptr
+; CHECK-NEXT:  %fptrs.sreg = load [4 x void (%struct*)*], [4 x void (%struct*)*]* %fptrs.ptr
+; CHECK-NEXT:  %str.sreg = load %struct, %struct* %str.ptr
 ; CHECK-NEXT:  %fptr = extractvalue [4 x void (%struct*)*] %fptrs.sreg, 2
 ; CHECK-NEXT:  store %struct %str.sreg, %struct* %str.sreg.ptr
 ; CHECK-NEXT:  call void %fptr(%struct* byval %str.sreg.ptr)
@@ -216,16 +216,16 @@ define void @call_with_array([4 x void(%struct)*] %fptrs, %struct %str) {
 
 define void @call_with_array_ptr([4 x void(%struct)*]* %fptrs, %struct %str) {
   %fptr_ptr = getelementptr [4 x void(%struct)*], [4 x void(%struct)*]* %fptrs, i32 0, i32 2
-  %fptr = load void(%struct)** %fptr_ptr
+  %fptr = load void(%struct)*, void(%struct)** %fptr_ptr
   call void %fptr(%struct %str)
   ret void
 }
 
 ; CHECK-LABEL: define void @call_with_array_ptr([4 x void (%struct*)*]* %fptrs, %struct* byval %str.ptr)
 ; CHECK-NEXT:  %str.sreg.ptr = alloca %struct
-; CHECK-NEXT:  %str.sreg = load %struct* %str.ptr
+; CHECK-NEXT:  %str.sreg = load %struct, %struct* %str.ptr
 ; CHECK-NEXT:  %fptr_ptr = getelementptr [4 x void (%struct*)*], [4 x void (%struct*)*]* %fptrs, i32 0, i32 2
-; CHECK-NEXT:  %fptr = load void (%struct*)** %fptr_ptr
+; CHECK-NEXT:  %fptr = load void (%struct*)*, void (%struct*)** %fptr_ptr
 ; CHECK-NEXT:  store %struct %str.sreg, %struct* %str.sreg.ptr
 ; CHECK-NEXT:  call void %fptr(%struct* byval %str.sreg.ptr)
 ; CHECK-NEXT:  ret void
@@ -238,7 +238,7 @@ define void @call_with_vector(<4 x void (%struct)*> %fptrs, %struct %str) {
 
 ; CHECK-LABEL: define void @call_with_vector(<4 x void (%struct*)*> %fptrs, %struct* byval %str.ptr)
 ; CHECK-NEXT:  %str.sreg.ptr = alloca %struct
-; CHECK-NEXT:  %str.sreg = load %struct* %str.ptr
+; CHECK-NEXT:  %str.sreg = load %struct, %struct* %str.ptr
 ; CHECK-NEXT:  %fptr = extractelement <4 x void (%struct*)*> %fptrs, i32 2
 ; CHECK-NEXT:  store %struct %str.sreg, %struct* %str.sreg.ptr
 ; CHECK-NEXT:  call void %fptr(%struct* byval %str.sreg.ptr)
@@ -253,8 +253,8 @@ define void @call_with_array_vect([4 x <2 x void(%struct)*>] %fptrs, %struct %st
 
 ; CHECK-LABEL: define void @call_with_array_vect([4 x <2 x void (%struct*)*>]* byval %fptrs.ptr, %struct* byval %str.ptr)
 ; CHECK-NEXT:  %str.sreg.ptr = alloca %struct
-; CHECK-NEXT:  %fptrs.sreg = load [4 x <2 x void (%struct*)*>]* %fptrs.ptr
-; CHECK-NEXT:  %str.sreg = load %struct* %str.ptr
+; CHECK-NEXT:  %fptrs.sreg = load [4 x <2 x void (%struct*)*>], [4 x <2 x void (%struct*)*>]* %fptrs.ptr
+; CHECK-NEXT:  %str.sreg = load %struct, %struct* %str.ptr
 ; CHECK-NEXT:  %vect = extractvalue [4 x <2 x void (%struct*)*>] %fptrs.sreg, 2
 ; CHECK-NEXT:  %fptr = extractelement <2 x void (%struct*)*> %vect, i32 1
 ; CHECK-NEXT:  store %struct %str.sreg, %struct* %str.sreg.ptr

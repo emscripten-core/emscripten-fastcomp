@@ -13,20 +13,20 @@ define void @small_arg(i8 %val) {
 
 
 define i8 @small_result() {
-  %val = load i8* @var
+  %val = load i8, i8* @var
   ret i8 %val
 }
 ; CHECK: define i32 @small_result() {
-; CHECK-NEXT: %val = load i8* @var
+; CHECK-NEXT: %val = load i8, i8* @var
 ; CHECK-NEXT: %val.ret_ext = zext i8 %val to i32
 ; CHECK-NEXT: ret i32 %val.ret_ext
 
 define signext i8 @small_result_signext() {
-  %val = load i8* @var
+  %val = load i8, i8* @var
   ret i8 %val
 }
 ; CHECK: define signext i32 @small_result_signext() {
-; CHECK-NEXT: %val = load i8* @var
+; CHECK-NEXT: %val = load i8, i8* @var
 ; CHECK-NEXT: %val.ret_ext = sext i8 %val to i32
 ; CHECK-NEXT: ret i32 %val.ret_ext
 

@@ -20,13 +20,13 @@ target triple = "le32-unknown-nacl"
 ; Use each variable to verify its location
  
 define void @use_variables() {
-  %a = load [1 x i8]* @a
-  %b = load [3 x i8]* @b
-  %c = load [5 x i8]* @c
-  %d = load i32* @d
-  %e = load i32* @e
-  %f = load <{ [1 x i8], i32 }>* @f
-  %g = load [1 x i8]* @g
+  %a = load [1 x i8], [1 x i8]* @a
+  %b = load [3 x i8], [3 x i8]* @b
+  %c = load [5 x i8], [5 x i8]* @c
+  %d = load i32, i32* @d
+  %e = load i32, i32* @e
+  %f = load <{ [1 x i8], i32 }>, <{ [1 x i8], i32 }>* @f
+  %g = load [1 x i8], [1 x i8]* @g
   ret void
 }
 
@@ -35,12 +35,12 @@ define void @use_variables() {
 ; CHECK: @__sfi_data_segment_size = constant i32 38 
 
 ; CHECK-LABEL: define void @use_variables() {
-; CHECK-NEXT:    %a = load [1 x i8]* inttoptr (i32 65536 to [1 x i8]*)
-; CHECK-NEXT:    %b = load [3 x i8]* inttoptr (i32 65537 to [3 x i8]*)
-; CHECK-NEXT:    %c = load [5 x i8]* inttoptr (i32 65552 to [5 x i8]*)
-; CHECK-NEXT:    %d = load i32* inttoptr (i32 65560 to i32*)
-; CHECK-NEXT:    %e = load i32* inttoptr (i32 65564 to i32*)
-; CHECK-NEXT:    %f = load <{ [1 x i8], i32 }>* inttoptr (i32 65568 to <{ [1 x i8], i32 }>*)
-; CHECK-NEXT:    %g = load [1 x i8]* inttoptr (i32 65573 to [1 x i8]*)
+; CHECK-NEXT:    %a = load [1 x i8], [1 x i8]* inttoptr (i32 65536 to [1 x i8]*)
+; CHECK-NEXT:    %b = load [3 x i8], [3 x i8]* inttoptr (i32 65537 to [3 x i8]*)
+; CHECK-NEXT:    %c = load [5 x i8], [5 x i8]* inttoptr (i32 65552 to [5 x i8]*)
+; CHECK-NEXT:    %d = load i32, i32* inttoptr (i32 65560 to i32*)
+; CHECK-NEXT:    %e = load i32, i32* inttoptr (i32 65564 to i32*)
+; CHECK-NEXT:    %f = load <{ [1 x i8], i32 }>, <{ [1 x i8], i32 }>* inttoptr (i32 65568 to <{ [1 x i8], i32 }>*)
+; CHECK-NEXT:    %g = load [1 x i8], [1 x i8]* inttoptr (i32 65573 to [1 x i8]*)
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }

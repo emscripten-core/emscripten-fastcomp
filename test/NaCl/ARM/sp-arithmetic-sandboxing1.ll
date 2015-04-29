@@ -12,12 +12,12 @@ entry:
 
   store i32* %input, i32** %input.addr, align 4
   store i32* %output, i32** %output.addr, align 4
-  %0 = load i32** %input.addr, align 4
+  %0 = load i32*, i32** %input.addr, align 4
   %arrayidx = getelementptr inbounds i32, i32* %0, i32 1
-  %1 = load i32* %arrayidx, align 4
+  %1 = load i32, i32* %arrayidx, align 4
   store i32 %1, i32* %temp, align 4
-  %2 = load i32* %temp, align 4
-  %3 = load i32** %output.addr, align 4
+  %2 = load i32, i32* %temp, align 4
+  %3 = load i32*, i32** %output.addr, align 4
   %arrayidx1 = getelementptr inbounds i32, i32* %3, i32 0
   store i32 %2, i32* %arrayidx1, align 4
 

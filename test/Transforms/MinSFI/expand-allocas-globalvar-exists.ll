@@ -13,7 +13,7 @@ define i8* @test_correct_global_var_used() {
 }
 
 ; CHECK-LABEL: define i8* @test_correct_global_var_used() {
-; CHECK-NEXT:    %frame_top = load i32* @__sfi_stack_ptr1
+; CHECK-NEXT:    %frame_top = load i32, i32* @__sfi_stack_ptr1
 ; CHECK-NEXT:    %1 = sub i32 %frame_top, 1
 ; CHECK-NEXT:    %ptr = inttoptr i32 %1 to i8*
 ; CHECK-NEXT:    ret i8* %ptr

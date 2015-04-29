@@ -40,7 +40,7 @@ entry:
   %l_1565.i = alloca i32*, align 4
   %l_767.i = alloca i32, align 4
   %l_766.i = alloca [1 x i16*], align 4
-  %0 = load i32* bitcast ([4 x i8]* @g_15 to i32*), align 4
+  %0 = load i32, i32* bitcast ([4 x i8]* @g_15 to i32*), align 4
   %tobool = icmp eq i32 %0, 0
   br i1 %tobool, label %if.then, label %entry.if.end_crit_edge
 
@@ -61,7 +61,7 @@ if.then:                                          ; preds = %entry
 
 for.body.i:                                       ; preds = %for.body.i, %if.then
   %l_82.02.i = phi i32 [ 0, %if.then ], [ %inc.i, %for.body.i ]
-  %4 = load i32*** bitcast (i32* @g_423 to i32***), align 4
+  %4 = load i32**, i32*** bitcast (i32* @g_423 to i32***), align 4
   store i32* %l_767.i, i32** %4, align 4
   store i16** %3, i16*** bitcast ([4 x i8]* @g_779 to i16***), align 4
   %inc.i = add i32 %l_82.02.i, 1
@@ -71,7 +71,7 @@ for.body.i:                                       ; preds = %for.body.i, %if.the
 _Z7func_34v.exit:                                 ; preds = %for.body.i
   call void @llvm.lifetime.end(i64 4, i8* %1)
   call void @llvm.lifetime.end(i64 4, i8* %2)
-  %5 = load i32*** bitcast (i32* @g_423 to i32***), align 4
+  %5 = load i32**, i32*** bitcast (i32* @g_423 to i32***), align 4
   store i32* bitcast ([4 x i8]* @g_285 to i32*), i32** %5, align 4
   br label %if.end
 
@@ -99,7 +99,7 @@ if.end:                                           ; preds = %_Z7func_34v.exit, %
 
 for.body.i.i:                                     ; preds = %for.body.i.i, %if.end
   %l_82.02.i.i = phi i32 [ 0, %if.end ], [ %inc.i.i, %for.body.i.i ]
-  %8 = load i32*** bitcast (i32* @g_423 to i32***), align 4
+  %8 = load i32**, i32*** bitcast (i32* @g_423 to i32***), align 4
   store i32* %l_767.i.i, i32** %8, align 4
   store i16** %.pre-phi2, i16*** bitcast ([4 x i8]* @g_779 to i16***), align 4
   %inc.i.i = add i32 %l_82.02.i.i, 1
@@ -109,7 +109,7 @@ for.body.i.i:                                     ; preds = %for.body.i.i, %if.e
 _Z7func_34v.exit.i:                               ; preds = %for.body.i.i
   call void @llvm.lifetime.end(i64 4, i8* %7)
   call void @llvm.lifetime.end(i64 4, i8* %.pre-phi)
-  %9 = load i32** %l_1565.i, align 4
+  %9 = load i32*, i32** %l_1565.i, align 4
   call void @llvm.lifetime.start(i64 12, i8* %vararg_lifetime_bitcast4)
   %vararg_ptr5 = getelementptr <{ i32*, i32**, i32* }>, <{ i32*, i32**, i32* }>* %vararg_buffer3, i32 0, i32 0
   store i32* %9, i32** %vararg_ptr5, align 4
@@ -119,7 +119,7 @@ _Z7func_34v.exit.i:                               ; preds = %for.body.i.i
   store i32* bitcast ([4 x i8]* @g_784 to i32*), i32** %vararg_ptr7, align 4
   %call1.i = call i32 bitcast (i32 (i8*, i8*)* @printf to i32 (i8*, <{ i32*, i32**, i32* }>*)*)(i8* getelementptr inbounds ([25 x i8]* @.str1, i32 0, i32 0), <{ i32*, i32**, i32* }>* %vararg_buffer3)
   call void @llvm.lifetime.end(i64 12, i8* %vararg_lifetime_bitcast4)
-  %10 = load i32** %l_1565.i, align 4
+  %10 = load i32*, i32** %l_1565.i, align 4
   %cmp.i = icmp eq i32* %10, bitcast ([4 x i8]* @g_784 to i32*)
   br i1 %cmp.i, label %_Z6func_6v.exit, label %lor.rhs.i
 

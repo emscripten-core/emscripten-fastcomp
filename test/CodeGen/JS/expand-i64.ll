@@ -205,30 +205,30 @@ define i32 @icmp_ult(i64 %a, i64 %b) {
 ; CHECK: define i32 @load(i64* %a) {
 ; CHECK:   %1 = ptrtoint i64* %a to i32
 ; CHECK:   %2 = inttoptr i32 %1 to i32*
-; CHECK:   %3 = load i32* %2
+; CHECK:   %3 = load i32, i32* %2
 ; CHECK:   %4 = add i32 %1, 4
 ; CHECK:   %5 = inttoptr i32 %4 to i32*
-; CHECK:   %6 = load i32* %5
+; CHECK:   %6 = load i32, i32* %5
 ; CHECK:   call void @setHigh32(i32 %6)
 ; CHECK:   ret i32 %3
 ; CHECK: }
 define i64 @load(i64 *%a) {
-  %c = load i64* %a
+  %c = load i64, i64* %a
   ret i64 %c
 }
 
 ; CHECK: define i32 @aligned_load(i64* %a) {
 ; CHECK:   %1 = ptrtoint i64* %a to i32
 ; CHECK:   %2 = inttoptr i32 %1 to i32*
-; CHECK:   %3 = load i32* %2, align 16
+; CHECK:   %3 = load i32, i32* %2, align 16
 ; CHECK:   %4 = add i32 %1, 4
 ; CHECK:   %5 = inttoptr i32 %4 to i32*
-; CHECK:   %6 = load i32* %5, align 4
+; CHECK:   %6 = load i32, i32* %5, align 4
 ; CHECK:   call void @setHigh32(i32 %6)
 ; CHECK:   ret i32 %3
 ; CHECK: }
 define i64 @aligned_load(i64 *%a) {
-  %c = load i64* %a, align 16
+  %c = load i64, i64* %a, align 16
   ret i64 %c
 }
 
@@ -307,7 +307,7 @@ define void @unreachable_blocks(i64* %p) {
   ret void
 
 dead:
-  %t = load i64* %p
+  %t = load i64, i64* %p
   %s = add i64 %t, 1
   store i64 %s, i64* %p
   ret void

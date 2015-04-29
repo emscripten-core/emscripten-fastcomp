@@ -71,15 +71,15 @@ define void @test_indirect_calls(i32 %index_v_i, i32 %index_i_ii) {
 ; CHECK-LABEL: define void @test_indirect_calls(i32 %index_v_i, i32 %index_i_ii) {
 ; CHECK-NEXT:    %1 = and i32 %index_v_i, 7
 ; CHECK-NEXT:    %2 = getelementptr [8 x void (i32)*], [8 x void (i32)*]* [[TAB_V_I]], i32 0, i32 %1
-; CHECK-NEXT:    %3 = load void (i32)** %2, !dbg !1
+; CHECK-NEXT:    %3 = load void (i32)*, void (i32)** %2, !dbg !1
 ; CHECK-NEXT:    call void %3(i32 7), !dbg !2
 ; CHECK-NEXT:    %4 = and i32 %index_v_i, 7
 ; CHECK-NEXT:    %5 = getelementptr [8 x void (i32)*], [8 x void (i32)*]* [[TAB_V_I]], i32 0, i32 %4
-; CHECK-NEXT:    %6 = load void (i32)** %5, !dbg !1
+; CHECK-NEXT:    %6 = load void (i32)*, void (i32)** %5, !dbg !1
 ; CHECK-NEXT:    call void %6(i32 9), !dbg !3
 ; CHECK-NEXT:    %7 = and i32 %index_i_ii, 7
 ; CHECK-NEXT:    %8 = getelementptr [8 x i32 (i32, i32)*], [8 x i32 (i32, i32)*]* [[TAB_I_II]], i32 0, i32 %7
-; CHECK-NEXT:    %9 = load i32 (i32, i32)** %8, !dbg !4
+; CHECK-NEXT:    %9 = load i32 (i32, i32)*, i32 (i32, i32)** %8, !dbg !4
 ; CHECK-NEXT:    call i32 %9(i32 11, i32 13), !dbg !5
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }

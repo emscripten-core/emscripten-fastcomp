@@ -11,7 +11,7 @@ target datalayout = "p:32:32:32"
 
 
 define void @struct_load(%struct* %p, i8* %out0, i32* %out1) {
-  %val = load %struct* %p
+  %val = load %struct, %struct* %p
   %field0 = extractvalue %struct %val, 0
   %field1 = extractvalue %struct %val, 1
   store i8 %field0, i8* %out0
@@ -20,23 +20,23 @@ define void @struct_load(%struct* %p, i8* %out0, i32* %out1) {
 }
 ; CHECK: define void @struct_load
 ; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %p, i32 0, i32 0
-; CHECK-NEXT: %val.field{{.*}} = load i8* %val.index{{.*}}
+; CHECK-NEXT: %val.field{{.*}} = load i8, i8* %val.index{{.*}}
 ; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %p, i32 0, i32 1
-; CHECK-NEXT: %val.field{{.*}} = load i32* %val.index{{.*}}
+; CHECK-NEXT: %val.field{{.*}} = load i32, i32* %val.index{{.*}}
 ; CHECK-NEXT: store i8 %val.field{{.*}}, i8* %out0
 ; CHECK-NEXT: store i32 %val.field{{.*}}, i32* %out1
 
 
 define void @struct_store(%struct* %in_ptr, %struct* %out_ptr) {
-  %val = load %struct* %in_ptr
+  %val = load %struct, %struct* %in_ptr
   store %struct %val, %struct* %out_ptr
   ret void
 }
 ; CHECK: define void @struct_store
 ; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %in_ptr, i32 0, i32 0
-; CHECK-NEXT: %val.field{{.*}} = load i8* %val.index{{.*}}
+; CHECK-NEXT: %val.field{{.*}} = load i8, i8* %val.index{{.*}}
 ; CHECK-NEXT: %val.index{{.*}} = getelementptr %struct, %struct* %in_ptr, i32 0, i32 1
-; CHECK-NEXT: %val.field{{.*}} = load i32* %val.index{{.*}}
+; CHECK-NEXT: %val.field{{.*}} = load i32, i32* %val.index{{.*}}
 ; CHECK-NEXT: %out_ptr.index{{.*}} = getelementptr %struct, %struct* %out_ptr, i32 0, i32 0
 ; CHECK-NEXT: store i8 %val.field{{.*}}, i8* %out_ptr.index{{.*}}
 ; CHECK-NEXT: %out_ptr.index{{.*}} = getelementptr %struct, %struct* %out_ptr, i32 0, i32 1
@@ -45,7 +45,7 @@ define void @struct_store(%struct* %in_ptr, %struct* %out_ptr) {
 
 ; Ensure that the pass works correctly across basic blocks.
 define void @across_basic_block(%struct* %in_ptr, %struct* %out_ptr) {
-  %val = load %struct* %in_ptr
+  %val = load %struct, %struct* %in_ptr
   br label %bb
 bb:
   store %struct %val, %struct* %out_ptr
@@ -70,7 +70,7 @@ define void @const_struct_store(%struct* %ptr) {
 
 define void @struct_phi_node(%struct* %ptr) {
 entry:
-  %val = load %struct* %ptr
+  %val = load %struct, %struct* %ptr
   br label %bb
 bb:
   %phi = phi %struct [ %val, %entry ]
@@ -83,7 +83,7 @@ bb:
 
 define void @struct_phi_node_multiple_entry(i1 %arg, %struct* %ptr) {
 entry:
-  %val = load %struct* %ptr
+  %val = load %struct, %struct* %ptr
   br i1 %arg, label %bb, label %bb
 bb:
   %phi = phi %struct [ %val, %entry ], [ %val, %entry ]
@@ -95,8 +95,8 @@ bb:
 
 
 define void @struct_select_inst(i1 %cond, %struct* %ptr1, %struct* %ptr2) {
-  %val1 = load %struct* %ptr1
-  %val2 = load %struct* %ptr2
+  %val1 = load %struct, %struct* %ptr1
+  %val2 = load %struct, %struct* %ptr2
   %select = select i1 %cond, %struct %val1, %struct %val2
   ret void
 }
@@ -159,15 +159,15 @@ define void @nested_structs() {
 
 define void @load_another_pass() {
   %a = alloca { { i8, i64 } }
-  %b = load { { i8, i64 } }* %a
-  %c = load { { i8, i64 } }* %a, align 16
+  %b = load { { i8, i64 } }, { { i8, i64 } }* %a
+  %c = load { { i8, i64 } }, { { i8, i64 } }* %a, align 16
   ret void
 }
 ; CHECK-LABEL: define void @load_another_pass()
-; CHECK:         %b.field.field = load i8* %b.field.index
-; CHECK:         %b.field.field{{.*}} = load i64* %b.field.index{{.*}}
-; CHECK:         %c.field.field = load i8* %c.field.index, align 16
-; CHECK:         %c.field.field{{.*}} = load i64* %c.field.index{{.*}}, align 4
+; CHECK:         %b.field.field = load i8, i8* %b.field.index
+; CHECK:         %b.field.field{{.*}} = load i64, i64* %b.field.index{{.*}}
+; CHECK:         %c.field.field = load i8, i8* %c.field.index, align 16
+; CHECK:         %c.field.field{{.*}} = load i64, i64* %c.field.index{{.*}}, align 4
 
 define void @store_another_pass() {
   %a = alloca { { i16, i64 } }
@@ -182,8 +182,8 @@ define void @store_another_pass() {
 ; CHECK:         store i64 undef, i64* %a.index1.index{{.*}}, align 4
 
 define void @select_another_pass() {
-  %a = load { { i8, i64 } }* null
-  %b = load { { i8, i64 } }* null
+  %a = load { { i8, i64 } }, { { i8, i64 } }* null
+  %b = load { { i8, i64 } }, { { i8, i64 } }* null
   %c = select i1 undef, { { i8, i64 } } %a, { { i8, i64 } } %b
   store { { i8, i64 } } %c, { { i8, i64 } }* null
   ret void
@@ -191,14 +191,14 @@ define void @select_another_pass() {
 ; CHECK-LABEL: define void @select_another_pass()
 ; CHECK-NEXT:    %a.index = getelementptr { { i8, i64 } }, { { i8, i64 } }* null, i32 0, i32 0
 ; CHECK-NEXT:    %a.field.index = getelementptr { i8, i64 }, { i8, i64 }* %a.index, i32 0, i32 0
-; CHECK-NEXT:    %a.field.field = load i8* %a.field.index
+; CHECK-NEXT:    %a.field.field = load i8, i8* %a.field.index
 ; CHECK-NEXT:    %a.field.index2 = getelementptr { i8, i64 }, { i8, i64 }* %a.index, i32 0, i32 1
-; CHECK-NEXT:    %a.field.field3 = load i64* %a.field.index2
+; CHECK-NEXT:    %a.field.field3 = load i64, i64* %a.field.index2
 ; CHECK-NEXT:    %b.index = getelementptr { { i8, i64 } }, { { i8, i64 } }* null, i32 0, i32 0
 ; CHECK-NEXT:    %b.field.index = getelementptr { i8, i64 }, { i8, i64 }* %b.index, i32 0, i32 0
-; CHECK-NEXT:    %b.field.field = load i8* %b.field.index
+; CHECK-NEXT:    %b.field.field = load i8, i8* %b.field.index
 ; CHECK-NEXT:    %b.field.index5 = getelementptr { i8, i64 }, { i8, i64 }* %b.index, i32 0, i32 1
-; CHECK-NEXT:    %b.field.field6 = load i64* %b.field.index5
+; CHECK-NEXT:    %b.field.field6 = load i64, i64* %b.field.index5
 ; CHECK-NEXT:    %c.index.index = select i1 undef, i8 %a.field.field, i8 %b.field.field
 ; CHECK-NEXT:    %c.index.index11 = select i1 undef, i64 %a.field.field3, i64 %b.field.field6
 ; CHECK-NEXT:    %.index = getelementptr { { i8, i64 } }, { { i8, i64 } }* null, i32 0, i32 0
@@ -214,7 +214,7 @@ entry:
 
 not_next:
   %a = alloca { { i64, i16 }, i8* }
-  %b = load { { i64, i16 }, i8* }* %a
+  %b = load { { i64, i16 }, i8* }, { { i64, i16 }, i8* }* %a
   br label %next
 
 next:

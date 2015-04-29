@@ -42,28 +42,28 @@ define i32 @test_no_sandbox(i32 %x, i32 %y) {
 ; CHECK-NEXT:  }
 
 define i32 @test_load(i32* %ptr) {
-  %val = load i32* %ptr
+  %val = load i32, i32* %ptr
   ret i32 %val
 }
 
 ; CHECK-LABEL: define i32 @test_load(i32* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32* 
-; CHECK-NEXT:    %val = load i32* %4
+; CHECK-NEXT:    %val = load i32, i32* %4
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
 ; CHECK-MASK-LABEL: define i32 @test_load(i32* %ptr) {
-; CHECK-MASK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-MASK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-MASK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-MASK-NEXT:    %2 = and i32 %1, 1048575
 ; CHECK-MASK-NEXT:    %3 = zext i32 %2 to i64
 ; CHECK-MASK-NEXT:    %4 = add i64 %mem_base, %3
 ; CHECK-MASK-NEXT:    %5 = inttoptr i64 %4 to i32* 
-; CHECK-MASK-NEXT:    %val = load i32* %5
+; CHECK-MASK-NEXT:    %val = load i32, i32* %5
 ; CHECK-MASK-NEXT:    ret i32 %val
 ; CHECK-MASK-NEXT:  }
 
@@ -73,7 +73,7 @@ define void @test_store(i32* %ptr) {
 }
 
 ; CHECK-LABEL: define void @test_store(i32* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -83,7 +83,7 @@ define void @test_store(i32* %ptr) {
 ; CHECK-NEXT:  }
 
 ; CHECK-MASK-LABEL: define void @test_store(i32* %ptr) {
-; CHECK-MASK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-MASK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-MASK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-MASK-NEXT:    %2 = and i32 %1, 1048575
 ; CHECK-MASK-NEXT:    %3 = zext i32 %2 to i64
@@ -99,7 +99,7 @@ define void @test_memcpy_32(i8* %dest, i8* %src, i32 %len) {
 }
 
 ; CHECK-LABEL: define void @test_memcpy_32(i8* %dest, i8* %src, i32 %len) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i8* %dest to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -122,7 +122,7 @@ define void @test_memmove_32(i8* %dest, i8* %src, i32 %len) {
 }
 
 ; CHECK-LABEL: define void @test_memmove_32(i8* %dest, i8* %src, i32 %len) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i8* %dest to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -145,7 +145,7 @@ define void @test_memset_32(i8* %dest, i32 %len) {
 }
 
 ; CHECK-LABEL: define void @test_memset_32(i8* %dest, i32 %len) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i8* %dest to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -164,7 +164,7 @@ define i32 @test_atomic_load_32(i32* %ptr) {
 }
 
 ; CHECK-LABEL: define i32 @test_atomic_load_32(i32* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -182,7 +182,7 @@ define i64 @test_atomic_load_64(i64* %ptr) {
 }
 
 ; CHECK-LABEL: define i64 @test_atomic_load_64(i64* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i64* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -200,7 +200,7 @@ define void @test_atomic_store_32(i32* %ptr) {
 }
 
 ; CHECK-LABEL: define void @test_atomic_store_32(i32* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -218,7 +218,7 @@ define void @test_atomic_store_64(i64* %ptr) {
 }
 
 ; CHECK-LABEL: define void @test_atomic_store_64(i64* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i64* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -236,7 +236,7 @@ define i32 @test_atomic_rmw_32(i32* %ptr) {
 }
 
 ; CHECK-LABEL: define i32 @test_atomic_rmw_32(i32* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -254,7 +254,7 @@ define i64 @test_atomic_rmw_64(i64* %ptr) {
 }
 
 ; CHECK-LABEL: define i64 @test_atomic_rmw_64(i64* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i64* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -272,7 +272,7 @@ define i32 @test_atomic_cmpxchg_32(i32* %ptr) {
 }
 
 ; CHECK-LABEL: define i32 @test_atomic_cmpxchg_32(i32* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -290,7 +290,7 @@ define i64 @test_atomic_cmpxchg_64(i64* %ptr) {
 }
 
 ; CHECK-LABEL: define i64 @test_atomic_cmpxchg_64(i64* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i64* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -328,7 +328,7 @@ define i1 @test_atomic_is_lock_free(i8* %ptr) {
 }
 
 ; CHECK-LABEL: define i1 @test_atomic_is_lock_free(i8* %ptr) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i8* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -356,18 +356,18 @@ define void @test_bitcast_whitelisted(i32 %val) {
 ; this won't get optimized because IntToPtr is not casting a result of an Add  
 define i32 @test_no_opt__cast_not_add(i32 %ptr_int) {
   %ptr = inttoptr i32 %ptr_int to i32*
-  %val = load i32* %ptr
+  %val = load i32, i32* %ptr
   ret i32 %val
 }
 
 ; CHECK-LABEL: define i32 @test_no_opt__cast_not_add(i32 %ptr_int) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %ptr = inttoptr i32 %ptr_int to i32*
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*
-; CHECK-NEXT:    %val = load i32* %4
+; CHECK-NEXT:    %val = load i32, i32* %4
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
@@ -375,19 +375,19 @@ define i32 @test_no_opt__cast_not_add(i32 %ptr_int) {
 define i32 @test_no_opt__cast_not_32(i64 %ptr_int1) {
   %ptr_sum = add i64 %ptr_int1, 5
   %ptr = inttoptr i64 %ptr_sum to i32*
-  %val = load i32* %ptr
+  %val = load i32, i32* %ptr
   ret i32 %val
 }
 
 ; CHECK-LABEL: define i32 @test_no_opt__cast_not_32(i64 %ptr_int1) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %ptr_sum = add i64 %ptr_int1, 5
 ; CHECK-NEXT:    %ptr = inttoptr i64 %ptr_sum to i32*
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*
-; CHECK-NEXT:    %val = load i32* %4
+; CHECK-NEXT:    %val = load i32, i32* %4
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
@@ -395,19 +395,19 @@ define i32 @test_no_opt__cast_not_32(i64 %ptr_int1) {
 define i32 @test_no_opt__add_not_constant(i32 %ptr_int1, i32 %ptr_int2) {
   %ptr_sum = add i32 %ptr_int1, %ptr_int2  
   %ptr = inttoptr i32 %ptr_sum to i32*
-  %val = load i32* %ptr
+  %val = load i32, i32* %ptr
   ret i32 %val
 }
 
 ; CHECK-LABEL: define i32 @test_no_opt__add_not_constant(i32 %ptr_int1, i32 %ptr_int2) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %ptr_sum = add i32 %ptr_int1, %ptr_int2  
 ; CHECK-NEXT:    %ptr = inttoptr i32 %ptr_sum to i32*
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*
-; CHECK-NEXT:    %val = load i32* %4
+; CHECK-NEXT:    %val = load i32, i32* %4
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
@@ -415,37 +415,37 @@ define i32 @test_no_opt__add_not_constant(i32 %ptr_int1, i32 %ptr_int2) {
 define i32 @test_no_opt__add_not_positive(i32 %ptr_int) {
   %ptr_sum = add i32 %ptr_int, -5  
   %ptr = inttoptr i32 %ptr_sum to i32*
-  %val = load i32* %ptr
+  %val = load i32, i32* %ptr
   ret i32 %val
 }
 
 ; CHECK-LABEL: define i32 @test_no_opt__add_not_positive(i32 %ptr_int) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %ptr_sum = add i32 %ptr_int, -5  
 ; CHECK-NEXT:    %ptr = inttoptr i32 %ptr_sum to i32*
 ; CHECK-NEXT:    %1 = ptrtoint i32* %ptr to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*
-; CHECK-NEXT:    %val = load i32* %4
+; CHECK-NEXT:    %val = load i32, i32* %4
 ; CHECK-NEXT:    ret i32 %val
 ; CHECK-NEXT:  }
 
 define i32 @test_opt_dont_remove_cast_if_used(i32 %ptr_int, i32 %replace) {
   %ptr_sum = add i32 %ptr_int, 5  
   %ptr = inttoptr i32 %ptr_sum to i32*
-  %val = load i32* %ptr             ; %ptr is used later => keep cast
+  %val = load i32, i32* %ptr             ; %ptr is used later => keep cast
   store i32 %replace, i32* %ptr     ; %ptr not used any more => remove cast
   ret i32 %val
 }
 
 ; CHECK-LABEL: define i32 @test_opt_dont_remove_cast_if_used(i32 %ptr_int, i32 %replace) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = zext i32 %ptr_int to i64
 ; CHECK-NEXT:    %2 = add i64 %mem_base, %1
 ; CHECK-NEXT:    %3 = add i64 %2, 5
 ; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*
-; CHECK-NEXT:    %val = load i32* %4
+; CHECK-NEXT:    %val = load i32, i32* %4
 ; CHECK-NEXT:    %5 = zext i32 %ptr_int to i64
 ; CHECK-NEXT:    %6 = add i64 %mem_base, %5
 ; CHECK-NEXT:    %7 = add i64 %6, 5
@@ -462,7 +462,7 @@ define i32 @test_opt_dont_remove_add_if_used(i32 %ptr_int, i32 %replace) {
 }
 
 ; CHECK-LABEL: define i32 @test_opt_dont_remove_add_if_used(i32 %ptr_int, i32 %replace) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %ptr_sum = add i32 %ptr_int, 5  
 ; CHECK-NEXT:    %1 = zext i32 %ptr_int to i64
 ; CHECK-NEXT:    %2 = add i64 %mem_base, %1
@@ -482,7 +482,7 @@ define void @test_len_dbg(i8* %dest, i8* %src, i32 %len) {
 }
 
 ; CHECK-LABEL: define void @test_len_dbg(i8* %dest, i8* %src, i32 %len) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = ptrtoint i8* %dest to i32
 ; CHECK-NEXT:    %2 = zext i32 %1 to i64
 ; CHECK-NEXT:    %3 = add i64 %mem_base, %2
@@ -503,7 +503,7 @@ define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
 }
 
 ; CHECK-LABEL: define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
-; CHECK-NEXT:    %mem_base = load i64* @__sfi_memory_base
+; CHECK-NEXT:    %mem_base = load i64, i64* @__sfi_memory_base
 ; CHECK-NEXT:    %1 = zext i32 %ptr_int to i64
 ; CHECK-NEXT:    %2 = add i64 %mem_base, %1
 ; CHECK-NEXT:    %3 = add i64 %2, 5, !dbg !1

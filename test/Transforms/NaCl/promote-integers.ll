@@ -339,62 +339,62 @@ define void @select1(i32 %a) {
 define void @alloca40() {
   %a = alloca i40, align 8
   %b = bitcast i40* %a to i8*
-  %c = load i8* %b
+  %c = load i8, i8* %b
   ret void
 }
 
 ; CHECK-LABEL: @load24(
 ; CHECK:      %bc.loty = bitcast i8* %a to i16*
-; CHECK-NEXT: %load.lo = load i16* %bc.loty, align 8
+; CHECK-NEXT: %load.lo = load i16, i16* %bc.loty, align 8
 ; CHECK-NEXT: %load.lo.ext = zext i16 %load.lo to i32
 ; CHECK-NEXT: %bc.hi = getelementptr i16, i16* %bc.loty, i32 1
 ; CHECK-NEXT: %bc.hity = bitcast i16* %bc.hi to i8*
-; CHECK-NEXT: %load.hi = load i8* %bc.hity, align 2
+; CHECK-NEXT: %load.hi = load i8, i8* %bc.hity, align 2
 ; CHECK-NEXT: %load.hi.ext = zext i8 %load.hi to i32
 ; CHECK-NEXT: %load.hi.ext.sh = shl i32 %load.hi.ext, 16
 ; CHECK-NEXT: %load = or i32 %load.lo.ext, %load.hi.ext.sh
 define void @load24(i8* %a) {
   %bc = bitcast i8* %a to i24*
-  %load = load i24* %bc, align 8
+  %load = load i24, i24* %bc, align 8
   ret void
 }
 
 ; CHECK-LABEL: @load24_overaligned(
-; CHECK: %load.lo = load i16* %bc.loty, align 32
-; CHECK: %load.hi = load i8* %bc.hity, align 2
+; CHECK: %load.lo = load i16, i16* %bc.loty, align 32
+; CHECK: %load.hi = load i8, i8* %bc.hity, align 2
 define void @load24_overaligned(i8* %a) {
   %bc = bitcast i8* %a to i24*
-  %load = load i24* %bc, align 32
+  %load = load i24, i24* %bc, align 32
   ret void
 }
 
 ; CHECK-LABEL: @load48(
-; CHECK:      %load.lo = load i32* %a, align 8
+; CHECK:      %load.lo = load i32, i32* %a, align 8
 ; CHECK-NEXT: %load.lo.ext = zext i32 %load.lo to i64
 ; CHECK-NEXT: %bc.hi = getelementptr i32, i32* %a, i32 1
 ; CHECK-NEXT: %bc.hity = bitcast i32* %bc.hi to i16*
-; CHECK-NEXT: %load.hi = load i16* %bc.hity, align 4
+; CHECK-NEXT: %load.hi = load i16, i16* %bc.hity, align 4
 ; CHECK-NEXT: %load.hi.ext = zext i16 %load.hi to i64
 ; CHECK-NEXT: %load.hi.ext.sh = shl i64 %load.hi.ext, 32
 ; CHECK-NEXT: %load = or i64 %load.lo.ext, %load.hi.ext.sh
 define void @load48(i32* %a) {
   %bc = bitcast i32* %a to i48*
-  %load = load i48* %bc, align 8
+  %load = load i48, i48* %bc, align 8
   ret void
 }
 
 ; CHECK-LABEL: @load56(
 ; CHECK:       %bc = bitcast i32* %a to i56*
-; CHECK-NEXT:  %load.lo = load i32* %a, align 8
+; CHECK-NEXT:  %load.lo = load i32, i32* %a, align 8
 ; CHECK-NEXT:  %load.lo.ext = zext i32 %load.lo to i64
 ; CHECK-NEXT:  %bc.hi = getelementptr i32, i32* %a, i32 1
 ; CHECK-NEXT:  %bc.hity = bitcast i32* %bc.hi to i24*
 ; CHECK-NEXT:  %bc.hity.loty = bitcast i32* %bc.hi to i16*
-; CHECK-NEXT:  %load.hi.lo = load i16* %bc.hity.loty, align 4
+; CHECK-NEXT:  %load.hi.lo = load i16, i16* %bc.hity.loty, align 4
 ; CHECK-NEXT:  %load.hi.lo.ext = zext i16 %load.hi.lo to i32
 ; CHECK-NEXT:  %bc.hity.hi = getelementptr i16, i16* %bc.hity.loty, i32 1
 ; CHECK-NEXT:  %bc.hity.hity = bitcast i16* %bc.hity.hi to i8*
-; CHECK-NEXT:  %load.hi.hi = load i8* %bc.hity.hity, align 2
+; CHECK-NEXT:  %load.hi.hi = load i8, i8* %bc.hity.hity, align 2
 ; CHECK-NEXT:  %load.hi.hi.ext = zext i8 %load.hi.hi to i32
 ; CHECK-NEXT:  %load.hi.hi.ext.sh = shl i32 %load.hi.hi.ext, 16
 ; CHECK-NEXT:  %load.hi = or i32 %load.hi.lo.ext, %load.hi.hi.ext.sh
@@ -403,7 +403,7 @@ define void @load48(i32* %a) {
 ; CHECK-NEXT:  %load = or i64 %load.lo.ext, %load.hi.ext.sh
 define void @load56(i32* %a) {
   %bc = bitcast i32* %a to i56*
-  %load = load i56* %bc
+  %load = load i56, i56* %bc
   ret void
 }
 
@@ -411,9 +411,9 @@ define void @load56(i32* %a) {
 ; CHECK-LABEL: @load_large(
 define void @load_large(i32* %a) {
   %bc1 = bitcast i32* %a to i2056*
-  %load1 = load i2056* %bc1
+  %load1 = load i2056, i2056* %bc1
   %bc2 = bitcast i32* %a to i4088*
-  %load2 = load i4088* %bc2
+  %load2 = load i4088, i4088* %bc2
   ret void
 }
 
@@ -524,7 +524,7 @@ end:
 ; CHECK: %element_ptr = getelementptr [2 x i40], [2 x i40]* %ptr, i32 0, i32 0
 define void @pointer_to_array([2 x i40]* %ptr) {
   %element_ptr = getelementptr [2 x i40], [2 x i40]* %ptr, i32 0, i32 0
-  load i40* %element_ptr
+  load i40, i40* %element_ptr
   ret void
 }
 
@@ -543,12 +543,12 @@ define void @constants(i56* %ptr) {
 
 ; CHECK-LABEL: @load_bc_to_i80(
 ; CHECK-NEXT:  %expanded = bitcast [300 x i8]* @from to i64*
-; CHECK-NEXT:  %loaded.short.lo = load i64* %expanded, align 4
+; CHECK-NEXT:  %loaded.short.lo = load i64, i64* %expanded, align 4
 ; CHECK-NEXT:  %loaded.short.lo.ext = zext i64 %loaded.short.lo to i128
 ; CHECK-NEXT:  %expanded5 = bitcast [300 x i8]* @from to i64*
 ; CHECK-NEXT:  %expanded4 = getelementptr i64, i64* %expanded5, i32 1
 ; CHECK-NEXT:  %expanded3 = bitcast i64* %expanded4 to i16*
-; CHECK-NEXT:  %loaded.short.hi = load i16* %expanded3, align 4
+; CHECK-NEXT:  %loaded.short.hi = load i16, i16* %expanded3, align 4
 ; CHECK-NEXT:  %loaded.short.hi.ext = zext i16 %loaded.short.hi to i128
 ; CHECK-NEXT:  %loaded.short.hi.ext.sh = shl i128 %loaded.short.hi.ext, 64
 ; CHECK-NEXT:  %loaded.short = or i128 %loaded.short.lo.ext, %loaded.short.hi.ext.sh
@@ -562,7 +562,7 @@ define void @constants(i56* %ptr) {
 ; CHECK-NEXT:  %expanded7 = bitcast i64* %expanded8 to i16*
 ; CHECK-NEXT:  store i16 %loaded.short.hi2, i16* %expanded7, align 4
 define void @load_bc_to_i80() {
-  %loaded.short = load i80* bitcast ([300 x i8]* @from to i80*), align 4
+  %loaded.short = load i80, i80* bitcast ([300 x i8]* @from to i80*), align 4
   store i80 %loaded.short, i80* bitcast ([300 x i8]* @to to i80*), align 4
   ret void
 }
