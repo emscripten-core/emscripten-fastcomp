@@ -160,6 +160,7 @@ namespace {
     FunctionTableMap FunctionTables; // sig => list of functions
     std::vector<std::string> GlobalInitializers;
     std::vector<std::string> Exports; // additional exports
+    StringMap Aliases;
     BlockAddressMap BlockAddresses;
     NameIntMap AsmConsts;
     IntSet AsmConstArities;
@@ -2565,6 +2566,16 @@ void JSWriter::printFunction(const Function *F) {
 void JSWriter::printModuleBody() {
   processConstants();
 
+  if (Relocatable) {
+    for (Module::const_alias_iterator I = TheModule->alias_begin(), E = TheModule->alias_end();
+         I != E; ++I) {
+      if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(I)) {
+        const Value* Target = resolveFully(GA);
+        Aliases[getJSName(GA)] = getJSName(Target);
+      }
+    }
+  }
+
   // Emit function bodies.
   nl(Out) << "// EMSCRIPTEN_START_FUNCTIONS"; nl(Out);
   for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
@@ -2725,6 +2736,19 @@ void JSWriter::printModuleBody() {
     Out << "\"" << Exports[i] << "\"";
   }
   Out << "],";
+
+  Out << "\"aliases\": {";
+  first = true;
+  for (StringMap::const_iterator I = Aliases.begin(), E = Aliases.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" << I->first << "\": \"" << I->second << "\"";
+  }
+  Out << "},";
 
   Out << "\"cantValidate\": \"" << CantValidate << "\",";
 
