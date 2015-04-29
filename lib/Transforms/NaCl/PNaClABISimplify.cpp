@@ -187,7 +187,8 @@ void llvm::PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM) {
   if (!isEmscripten) // Handled by JSBackend.
     PM.add(createExpandGetElementPtrPass());
   // Rewrite atomic and volatile instructions with intrinsic calls.
-  PM.add(createRewriteAtomicsPass());
+  if (!isEmscripten) // No atomics currently.
+    PM.add(createRewriteAtomicsPass());
   // Remove ``asm("":::"memory")``. This must occur after rewriting
   // atomics: a ``fence seq_cst`` surrounded by ``asm("":::"memory")``
   // has special meaning and is translated differently.
