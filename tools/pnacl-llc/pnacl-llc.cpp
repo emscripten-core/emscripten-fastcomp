@@ -169,7 +169,7 @@ GetOutputStream(const char *TargetName,
   // If we don't yet have an output filename, make one.
   if (Filename.empty()) {
     if (InputFilename == "-")
-      Filename = "-";
+      OutputFilename = "-";
     else {
       // If InputFilename ends in .bc or .ll, remove it.
       StringRef IFN = InputFilename;
