@@ -8,7 +8,7 @@ entry:
   %temp = alloca i32, align 4
 
 ; CHECK:        sub   sp, sp
-; CHECK-NEXT:   bic   sp, sp, #3221225472
+; CHECK-NEXT:   bic   sp, sp, #-1073741824
 
   store i32* %input, i32** %input.addr, align 4
   store i32* %output, i32** %output.addr, align 4
@@ -22,7 +22,7 @@ entry:
   store i32 %2, i32* %arrayidx1, align 4
 
 ; CHECK:        add   sp, sp
-; CHECK-NEXT:   bic   sp, sp, #3221225472
+; CHECK-NEXT:   bic   sp, sp, #-1073741824
 
   ret void
 }

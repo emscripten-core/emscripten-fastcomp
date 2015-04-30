@@ -5,7 +5,7 @@ define i32 @foo(i32 %aa, i32 %bb) nounwind {
 entry:
 
 ; CHECK:      sub sp, sp, #16
-; CHECK-NEXT: bic	sp, sp, #3221225472
+; CHECK-NEXT: bic	sp, sp, #-1073741824
 
   %aa.addr = alloca i32, align 4
   %bb.addr = alloca i32, align 4
@@ -28,7 +28,7 @@ entry:
 ; The nop here is to prevent add/bic to straddle a bundle boundary
 ; CHECK:      nop
 ; CHECK-NEXT: add sp, sp, #16
-; CHECK-NEXT: bic	sp, sp, #3221225472
+; CHECK-NEXT: bic	sp, sp, #-1073741824
 
 }
 

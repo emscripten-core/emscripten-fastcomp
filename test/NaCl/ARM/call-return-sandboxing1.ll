@@ -22,7 +22,7 @@ entry:
 ; 1. bx lr is sandboxed by prepending a bic
 ; 2. The bic/bx pair don't straddle a 16-byte bundle boundary, hence the nop
 ; CHECK:                    nop
-; CHECK-NEXT: {{.*}}0:{{.*}}bic lr, lr, #3221225487
+; CHECK-NEXT: {{.*}}0:{{.*}}bic lr, lr, #-1073741809
 ; CHECK-NEXT:               bx lr
 
 }

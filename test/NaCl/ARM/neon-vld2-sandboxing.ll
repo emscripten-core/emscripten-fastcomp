@@ -28,7 +28,7 @@ define <8 x i8> @vld2i8(i8* %A) nounwind {
   %tmp2 = extractvalue %struct.__neon_int8x8x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int8x8x2_t %tmp1, 1
   %tmp4 = add <8 x i8> %tmp2, %tmp3
-; CHECK: bic      r0, r0, #3221225472
+; CHECK: bic      r0, r0, #-1073741824
 ; CHECK: vld2.8   {d{{[0-9]+}}, d{{[0-9]+}}}, [r0:64]
   ret <8 x i8> %tmp4
 }
@@ -39,7 +39,7 @@ define <4 x i16> @vld2i16(i16* %A) nounwind {
   %tmp2 = extractvalue %struct.__neon_int16x4x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int16x4x2_t %tmp1, 1
   %tmp4 = add <4 x i16> %tmp2, %tmp3
-; CHECK: bic      r0, r0, #3221225472
+; CHECK: bic      r0, r0, #-1073741824
 ; CHECK: vld2.16   {d{{[0-9]+}}, d{{[0-9]+}}}, [r0:128]
   ret <4 x i16> %tmp4
 }
@@ -50,7 +50,7 @@ define <2 x i32> @vld2i32(i32* %A) nounwind {
   %tmp2 = extractvalue %struct.__neon_int32x2x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int32x2x2_t %tmp1, 1
   %tmp4 = add <2 x i32> %tmp2, %tmp3
-; CHECK: bic      r0, r0, #3221225472
+; CHECK: bic      r0, r0, #-1073741824
 ; CHECK: vld2.32   {d{{[0-9]+}}, d{{[0-9]+}}}, [r0]
   ret <2 x i32> %tmp4
 }
@@ -60,7 +60,7 @@ define <16 x i8> @vld2Qi8(i8* %A) nounwind {
   %tmp2 = extractvalue %struct.__neon_int8x16x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int8x16x2_t %tmp1, 1
   %tmp4 = add <16 x i8> %tmp2, %tmp3
-; CHECK: bic      r0, r0, #3221225472
+; CHECK: bic      r0, r0, #-1073741824
 ; CHECK: vld2.8   {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r0:64]
   ret <16 x i8> %tmp4
 }
@@ -71,7 +71,7 @@ define <8 x i16> @vld2Qi16(i16* %A) nounwind {
   %tmp2 = extractvalue %struct.__neon_int16x8x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int16x8x2_t %tmp1, 1
   %tmp4 = add <8 x i16> %tmp2, %tmp3
-; CHECK: bic      r0, r0, #3221225472
+; CHECK: bic      r0, r0, #-1073741824
 ; CHECK: vld2.16   {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r0:128]
   ret <8 x i16> %tmp4
 }
@@ -82,7 +82,7 @@ define <4 x i32> @vld2Qi32(i32* %A) nounwind {
   %tmp2 = extractvalue %struct.__neon_int32x4x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int32x4x2_t %tmp1, 1
   %tmp4 = add <4 x i32> %tmp2, %tmp3
-; CHECK: bic      r0, r0, #3221225472
+; CHECK: bic      r0, r0, #-1073741824
 ; CHECK: vld2.32   {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r0:256]
   ret <4 x i32> %tmp4
 }
@@ -93,7 +93,7 @@ define <16 x i8> @vld2Qi8_update(i8** %ptr, i32 %inc) nounwind {
   %tmp2 = extractvalue %struct.__neon_int8x16x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_int8x16x2_t %tmp1, 1
   %tmp4 = add <16 x i8> %tmp2, %tmp3
-; CHECK: bic      r2, r2, #3221225472
+; CHECK: bic      r2, r2, #-1073741824
 ; CHECK: vld2.8   {d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}}, [r2:128], r1
   %tmp5 = getelementptr i8, i8* %A, i32 %inc
   store i8* %tmp5, i8** %ptr
@@ -104,7 +104,7 @@ define <2 x float> @vld2f_update(float** %ptr) nounwind {
   %A = load float*, float** %ptr
   %tmp0 = bitcast float* %A to i8*
   %tmp1 = call %struct.__neon_float32x2x2_t @llvm.arm.neon.vld2.v2f32(i8* %tmp0, i32 1)
-; CHECK: bic       r1, r1, #3221225472
+; CHECK: bic       r1, r1, #-1073741824
 ; CHECK: vld2.32   {d{{[0-9]+}}, d{{[0-9]+}}}, [r1]!
   %tmp2 = extractvalue %struct.__neon_float32x2x2_t %tmp1, 0
   %tmp3 = extractvalue %struct.__neon_float32x2x2_t %tmp1, 1

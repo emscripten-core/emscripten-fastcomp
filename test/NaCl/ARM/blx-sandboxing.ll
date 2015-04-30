@@ -9,7 +9,7 @@ entry:
   %0 = load i32 (i32)*, i32 (i32)** %f.addr, align 8
   %1 = load i32, i32* %aa.addr, align 4
   %call1 = call i32 %0(i32 %1)
-; CHECK: bic	r1, r1, #3221225487
+; CHECK: bic	r1, r1, #-1073741809
 ; CHECK-NEXT: blx r1
   ret i32 %call1
 }
