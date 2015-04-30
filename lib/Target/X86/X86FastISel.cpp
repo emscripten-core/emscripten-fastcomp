@@ -2339,7 +2339,6 @@ bool X86FastISel::TryEmitSmallMemcpy(X86AddressMode DestAM,
     else if (Len >= 2)
       VT = MVT::i16;
     else
-      assert(Len == 1);
       VT = MVT::i8;
 
     unsigned Reg;
