@@ -116,7 +116,7 @@ static void addVarToTlsTemplate(PassState *State,
       State->DL.getTypeAllocSize(TlsVar->getType()->getElementType());
 }
 
-static PointerType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
+static StructType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
   std::vector<Type*> FieldBssTypes;
   std::vector<Type*> FieldInitTypes;
   std::vector<Constant*> FieldInitValues;
@@ -209,7 +209,7 @@ static PointerType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
   setGlobalVariableValue(M, "__tls_template_tdata_end", TdataEnd);
 
   Constant *TotalEnd = ConstantExpr::getGetElementPtr(
-      TemplatePtrType,
+      TemplateType,
       ConstantExpr::getBitCast(TemplateDataVar, TemplatePtrType),
       ConstantInt::get(M.getContext(), APInt(32, 1)));
   setGlobalVariableValue(M, "__tls_template_end", TotalEnd);
@@ -223,11 +223,11 @@ static PointerType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
   setGlobalVariableValue(M, AlignmentSymbol, AlignmentVar);
   AlignmentVar->setName(AlignmentSymbol);
 
-  return TemplatePtrType;
+  return TemplateType;
 }
 
 static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
-                           PointerType *TemplatePtrType) {
+                           StructType *TemplateType) {
   // Set up the intrinsic that reads the thread pointer.
   Function *ReadTpFunc = Intrinsic::getDeclaration(&M, Intrinsic::nacl_read_tp);
 
@@ -239,8 +239,8 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
       Use *U = &*Var->use_begin();
       Instruction *InsertPt = PhiSafeInsertPt(U);
       Value *RawThreadPtr = CallInst::Create(ReadTpFunc, "tls_raw", InsertPt);
-      Value *TypedThreadPtr = new BitCastInst(RawThreadPtr, TemplatePtrType,
-                                              "tls_struct", InsertPt);
+      Value *TypedThreadPtr = new BitCastInst(
+          RawThreadPtr, TemplateType->getPointerTo(), "tls_struct", InsertPt);
       SmallVector<Value*, 3> Indexes;
       // We use -1 because we use the x86-style TLS layout in which
       // the TLS data is stored at addresses below the thread pointer.
@@ -257,7 +257,7 @@ static void rewriteTlsVars(Module &M, std::vector<VarInfo> *TlsVars,
       Indexes.push_back(ConstantInt::get(
           M.getContext(), APInt(32, VarInfo->TemplateIndex)));
       Value *TlsField = GetElementPtrInst::Create(
-          TemplatePtrType, TypedThreadPtr, Indexes, "field", InsertPt);
+          TemplateType, TypedThreadPtr, Indexes, "field", InsertPt);
       PhiSafeReplaceUses(U, TlsField);
     }
     VarInfo->TlsVar->eraseFromParent();
@@ -323,8 +323,8 @@ bool ExpandTls::runOnModule(Module &M) {
   delete Pass;
 
   std::vector<VarInfo> TlsVars;
-  PointerType *TemplatePtrType = buildTlsTemplate(M, &TlsVars);
-  rewriteTlsVars(M, &TlsVars, TemplatePtrType);
+  StructType *TemplateType = buildTlsTemplate(M, &TlsVars);
+  rewriteTlsVars(M, &TlsVars, TemplateType);
 
   defineTlsLayoutFunctions(M);
 

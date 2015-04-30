@@ -200,8 +200,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
     for (unsigned Elem = 0, NumElems = LoadedVecTy->getNumElements();
          Elem != NumElems; ++Elem) {
       unsigned Align = MinAlign(BaseAlign, ElemAllocSize * Elem);
-      Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy->getPointerTo(),
-                                                  Base, Elem);
+      Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy, Base, Elem);
       LoadInst *LoadedElem =
           IRB.CreateAlignedLoad(GEP, Align, VecLoad->isVolatile());
       LoadedElem->setSynchScope(VecLoad->getSynchScope());
@@ -234,8 +233,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
     for (unsigned Elem = 0, NumElems = StoredVecTy->getNumElements();
          Elem != NumElems; ++Elem) {
       unsigned Align = MinAlign(BaseAlign, ElemAllocSize * Elem);
-      Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy->getPointerTo(),
-                                                  Base, Elem);
+      Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy, Base, Elem);
       Value *ElemToStore = IRB.CreateExtractElement(
           StoredVec, ConstantInt::get(Type::getInt32Ty(M->getContext()), Elem));
       StoreInst *StoredElem = IRB.CreateAlignedStore(ElemToStore, GEP, Align,
