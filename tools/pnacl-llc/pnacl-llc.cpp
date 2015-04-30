@@ -428,11 +428,9 @@ static int runCompilePasses(Module *ModuleRef,
   }
 
   // Build up all of the passes that we want to do to the module.
-  std::unique_ptr<PassManagerBase> PM;
-  if (LazyBitcode)
-    PM.reset(new FunctionPassManager(ModuleRef));
-  else
-    PM.reset(new PassManager());
+  // We always use a FunctionPassManager to divide up the functions
+  // among threads (instead of a whole-module PassManager).
+  std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(ModuleRef));
 
   // Add the target data from the target machine, if it exists, or the module.
   if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
@@ -475,59 +473,54 @@ static int runCompilePasses(Module *ModuleRef,
     return 1;
   }
 
-  if (LazyBitcode) {
-    auto FPM = static_cast<FunctionPassManager *>(PM.get());
-    FPM->doInitialization();
-    unsigned FuncIndex = 0;
-    switch (SplitModuleSched) {
-    case SplitModuleStatic:
-      for (Function &F : *ModuleRef) {
-        if (FuncQueue->GrabFunctionStatic(FuncIndex, ModuleIndex)) {
-          FPM->run(F);
-          CheckABIVerifyErrors(ABIErrorReporter, "Function " + F.getName());
-          F.Dematerialize();
-        }
-        ++FuncIndex;
+  PM->doInitialization();
+  unsigned FuncIndex = 0;
+  switch (SplitModuleSched) {
+  case SplitModuleStatic:
+    for (Function &F : *ModuleRef) {
+      if (FuncQueue->GrabFunctionStatic(FuncIndex, ModuleIndex)) {
+        PM->run(F);
+        CheckABIVerifyErrors(ABIErrorReporter, "Function " + F.getName());
+        F.Dematerialize();
       }
-      break;
-    case SplitModuleDynamic:
-      unsigned ChunkSize = 0;
-      unsigned NumFunctions = FuncQueue->Size();
-      Module::iterator I = ModuleRef->begin();
-      while (FuncIndex < NumFunctions) {
-        ChunkSize = FuncQueue->RecommendedChunkSize();
-        unsigned NextIndex;
-        bool grabbed = FuncQueue->GrabFunctionDynamic(FuncIndex, ChunkSize,
-                                                      NextIndex);
-        if (grabbed) {
-          while (FuncIndex < NextIndex) {
-            if (!I->isMaterializable() && I->isDeclaration()) {
-              ++I;
-              continue;
-            }
-            FPM->run(*I);
-            CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
-            I->Dematerialize();
-            ++FuncIndex;
-            ++I;
-          }
-        } else {
-          while (FuncIndex < NextIndex) {
-            if (!I->isMaterializable() && I->isDeclaration()) {
-              ++I;
-              continue;
-            }
-            ++FuncIndex;
-            ++I;
-          }
-        }
-      }
-      break;
+      ++FuncIndex;
     }
-    FPM->doFinalization();
-  } else
-    static_cast<PassManager *>(PM.get())->run(*ModuleRef);
-
+    break;
+  case SplitModuleDynamic:
+    unsigned ChunkSize = 0;
+    unsigned NumFunctions = FuncQueue->Size();
+    Module::iterator I = ModuleRef->begin();
+    while (FuncIndex < NumFunctions) {
+      ChunkSize = FuncQueue->RecommendedChunkSize();
+      unsigned NextIndex;
+      bool grabbed =
+          FuncQueue->GrabFunctionDynamic(FuncIndex, ChunkSize, NextIndex);
+      if (grabbed) {
+        while (FuncIndex < NextIndex) {
+          if (!I->isMaterializable() && I->isDeclaration()) {
+            ++I;
+            continue;
+          }
+          PM->run(*I);
+          CheckABIVerifyErrors(ABIErrorReporter, "Function " + I->getName());
+          I->Dematerialize();
+          ++FuncIndex;
+          ++I;
+        }
+      } else {
+        while (FuncIndex < NextIndex) {
+          if (!I->isMaterializable() && I->isDeclaration()) {
+            ++I;
+            continue;
+          }
+          ++FuncIndex;
+          ++I;
+        }
+      }
+    }
+    break;
+  }
+  PM->doFinalization();
   return 0;
 }
 
