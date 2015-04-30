@@ -5,13 +5,13 @@
 
 define internal void @loadstore(i32 %addr) { ; CHECK-LABEL: loadstore
   %ptr16xi8 = inttoptr i32 %addr to <16 x i8>*        ; CHECK-NEXT: %[[ptr16xi8:[0-9]+]] = inttoptr i32 %[[addr:[0-9]+]] to <16 x i8>*
-  %l16xi8 = load <16 x i8>, <16 x i8>* %ptr16xi8, align 1        ; CHECK-NEXT: %[[l16xi8:[0-9]+]] = load <16 x i8>* %[[ptr16xi8]], align 1
+  %l16xi8 = load <16 x i8>, <16 x i8>* %ptr16xi8, align 1        ; CHECK-NEXT: %[[l16xi8:[0-9]+]] = load <16 x i8>, <16 x i8>* %[[ptr16xi8]], align 1
   %ptr8xi16 = inttoptr i32 %addr to <8 x i16>*        ; CHECK-NEXT: %[[ptr8xi16:[0-9]+]] = inttoptr i32 %[[addr]] to <8 x i16>*
-  %l8xi16 = load <8 x i16>, <8 x i16>* %ptr8xi16, align 2        ; CHECK-NEXT: %[[l8xi16:[0-9]+]] = load <8 x i16>* %[[ptr8xi16]], align 2
+  %l8xi16 = load <8 x i16>, <8 x i16>* %ptr8xi16, align 2        ; CHECK-NEXT: %[[l8xi16:[0-9]+]] = load <8 x i16>, <8 x i16>* %[[ptr8xi16]], align 2
   %ptr4xi32 = inttoptr i32 %addr to <4 x i32>*        ; CHECK-NEXT: %[[ptr4xi32:[0-9]+]] = inttoptr i32 %[[addr]] to <4 x i32>*
-  %l4xi32 = load <4 x i32>, <4 x i32>* %ptr4xi32, align 4        ; CHECK-NEXT: %[[l4xi32:[0-9]+]] = load <4 x i32>* %[[ptr4xi32]], align 4
+  %l4xi32 = load <4 x i32>, <4 x i32>* %ptr4xi32, align 4        ; CHECK-NEXT: %[[l4xi32:[0-9]+]] = load <4 x i32>, <4 x i32>* %[[ptr4xi32]], align 4
   %ptr4xfloat = inttoptr i32 %addr to <4 x float>*    ; CHECK-NEXT: %[[ptr4xfloat:[0-9]+]] = inttoptr i32 %[[addr]] to <4 x float>*
-  %l4xfloat = load <4 x float>, <4 x float>* %ptr4xfloat, align 4  ; CHECK-NEXT: %[[l4xfloat:[0-9]+]] = load <4 x float>* %[[ptr4xfloat]], align 4
+  %l4xfloat = load <4 x float>, <4 x float>* %ptr4xfloat, align 4  ; CHECK-NEXT: %[[l4xfloat:[0-9]+]] = load <4 x float>, <4 x float>* %[[ptr4xfloat]], align 4
 
   store <16 x i8> undef, <16 x i8>* %ptr16xi8, align 1       ; CHECK-NEXT: store <16 x i8> undef, <16 x i8>* %[[ptr16xi8]], align 1
   store <8 x i16> undef, <8 x i16>* %ptr8xi16, align 2       ; CHECK-NEXT: store <8 x i16> undef, <8 x i16>* %[[ptr8xi16]], align 2
