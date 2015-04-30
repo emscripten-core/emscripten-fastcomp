@@ -50,19 +50,14 @@ define i8* @test_converting_bitcast() {
 
 define i32* @test_converting_getelementptr() {
   ; Use an index >1 to ensure that "inbounds" is not added automatically.
-  ret i32, ) {
-  ; Use an index >1 to ensure that "inbounds" is not added automatically.
   ret i32* getelementptr (i32, i32* @tvar, i32 2)
 }
 ; CHECK: define i32* @test_converting_getelementptr()
-; CHECK: %expanded = getelementptr i32, i32, )
 ; CHECK: %expanded = getelementptr i32, i32* @tvar, i32 2
 ; CHECK: ret i32* %expanded
 
 
 ; This is identical to @test_converting_getelementptr().
-; We need to check that both copies of getelementptr are fixed.
-define i32, ).
 ; We need to check that both copies of getelementptr are fixed.
 define i32* @test_converting_getelementptr_copy() {
   ret i32* getelementptr (i32, i32* @tvar, i32 2)

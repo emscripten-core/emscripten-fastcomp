@@ -178,7 +178,7 @@ define void @call_vararg(%vararg_fp_struct %param1, ...) {
 ; CHECK-LABEL: define void @call_vararg(%vararg_fp_struct* byval %param1.ptr, ...)
 ; CHECK-NEXT:  %param1.sreg = load %vararg_fp_struct, %vararg_fp_struct* %param1.ptr
 ; CHECK-NEXT:  %fptr = extractvalue %vararg_fp_struct %param1.sreg, 1
-; CHECK-NEXT:  call void (i32, ...)* %fptr(i32 0, i32 1)
+; CHECK-NEXT:  call void (i32, ...) %fptr(i32 0, i32 1)
 ; CHECK-NEXT:  ret void
 
 %vararg_fp_problem_struct = type { void(%vararg_fp_problem_struct)* }

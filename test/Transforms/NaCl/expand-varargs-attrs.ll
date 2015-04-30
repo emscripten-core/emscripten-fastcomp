@@ -16,7 +16,7 @@ define void @func_with_arg_attrs(%MyStruct* byval, ...) {
 declare void @take_struct_arg(%MyStruct* byval %s, ...)
 
 define void @call_with_arg_attrs(%MyStruct* %s) {
-  call void (%MyStruct*, ...)* @take_struct_arg(%MyStruct* byval %s)
+  call void (%MyStruct*, ...) @take_struct_arg(%MyStruct* byval %s)
   ret void
 }
 ; CHECK-LABEL: @call_with_arg_attrs(
@@ -25,7 +25,7 @@ define void @call_with_arg_attrs(%MyStruct* %s) {
 
 ; The "byval" attribute here should be dropped.
 define i32 @pass_struct_via_vararg1(%MyStruct* %s) {
-  %result = call i32 (i32, ...)* @varargs_func(i32 111, %MyStruct* byval %s)
+  %result = call i32 (i32, ...) @varargs_func(i32 111, %MyStruct* byval %s)
   ret i32 %result
 }
 ; CHECK-LABEL: @pass_struct_via_vararg1(
@@ -34,7 +34,7 @@ define i32 @pass_struct_via_vararg1(%MyStruct* %s) {
 
 ; The "byval" attribute here should be dropped.
 define i32 @pass_struct_via_vararg2(%MyStruct* %s) {
-  %result = call i32 (i32, ...)* @varargs_func(i32 111, i32 2, %MyStruct* byval %s)
+  %result = call i32 (i32, ...) @varargs_func(i32 111, i32 2, %MyStruct* byval %s)
   ret i32 %result
 }
 ; CHECK-LABEL: @pass_struct_via_vararg2(
@@ -43,7 +43,7 @@ define i32 @pass_struct_via_vararg2(%MyStruct* %s) {
 
 ; Check that return attributes such as "signext" are preserved.
 define i32 @call_with_return_attr() {
-  %result = call signext i32 (i32, ...)* @varargs_func(i32 111, i64 222)
+  %result = call signext i32 (i32, ...) @varargs_func(i32 111, i64 222)
   ret i32 %result
 }
 ; CHECK-LABEL: @call_with_return_attr(
@@ -52,7 +52,7 @@ define i32 @call_with_return_attr() {
 
 ; Check that the "readonly" function attribute is preserved.
 define i32 @call_readonly() {
-  %result = call i32 (i32, ...)* @varargs_func(i32 111, i64 222) readonly
+  %result = call i32 (i32, ...) @varargs_func(i32 111, i64 222) readonly
   ret i32 %result
 }
 ; CHECK-LABEL: @call_readonly(
@@ -62,7 +62,7 @@ define i32 @call_readonly() {
 ; Check that the "tail" attribute gets removed, because the callee
 ; reads space alloca'd by the caller.
 define i32 @tail_call() {
-  %result = tail call i32 (i32, ...)* @varargs_func(i32 111, i64 222)
+  %result = tail call i32 (i32, ...) @varargs_func(i32 111, i64 222)
   ret i32 %result
 }
 ; CHECK-LABEL: @tail_call(

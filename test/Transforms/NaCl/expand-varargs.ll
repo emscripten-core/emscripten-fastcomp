@@ -150,7 +150,7 @@ define i32 @varargs_call1() {
 ; CHECK-NEXT: store i32 333, i32* %vararg_ptr1
 ; CHECK-NEXT: %vararg_ptr2 = getelementptr inbounds { i64, i32, double }, { i64, i32, double }* %vararg_buffer, i32 0, i32 2
 ; CHECK-NEXT: store double 4.{{0*}}e+00, double* %vararg_ptr2
-; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*) @varargs_func to i32 (i32, { i64, i32, double }*)*)(i32 111, { i64, i32, double }* %vararg_buffer)
+; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32, double }*)*)(i32 111, { i64, i32, double }* %vararg_buffer)
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 24, i8* %vararg_lifetime_bitcast)
 ; CHECK-NEXT: ret i32 %result
 
@@ -165,7 +165,7 @@ define i32 @call_with_zero_varargs() {
 ; CHECK-NEXT: %vararg_buffer = alloca { i32 }
 ; CHECK-NEXT: %vararg_lifetime_bitcast = bitcast { i32 }* %vararg_buffer to i8*
 ; CHECK-NEXT: call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast)
-; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*) @varargs_func to i32 (i32, { i32 }*)*)(i32 111, { i32 }* %vararg_buffer)
+; CHECK-NEXT: %result = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i32 }*)*)(i32 111, { i32 }* %vararg_buffer)
 ; CHECK-NEXT: call void @llvm.lifetime.end(i64 4, i8* %vararg_lifetime_bitcast)
 ; CHECK-NEXT: ret i32 %result
 
@@ -199,8 +199,8 @@ define void @varargs_multiple_calls() {
 ; The added allocas should appear at the start of the function.
 ; CHECK: %vararg_buffer{{.*}} = alloca { i64, i32 }
 ; CHECK: %vararg_buffer{{.*}} = alloca { i64, i32 }
-; CHECK: %call1 = call i32 bitcast (i32 (i32, i8*) @varargs_func to i32 (i32, { i64, i32 }*)*)(i32 11, { i64, i32 }* %vararg_buffer{{.*}})
-; CHECK: %call2 = call i32 bitcast (i32 (i32, i8*) @varargs_func to i32 (i32, { i64, i32 }*)*)(i32 44, { i64, i32 }* %vararg_buffer{{.*}})
+; CHECK: %call1 = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32 }*)*)(i32 11, { i64, i32 }* %vararg_buffer{{.*}})
+; CHECK: %call2 = call i32 bitcast (i32 (i32, i8*)* @varargs_func to i32 (i32, { i64, i32 }*)*)(i32 44, { i64, i32 }* %vararg_buffer{{.*}})
 
 
 
