@@ -383,6 +383,7 @@ namespace {
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
             Externals.insert(Name);
+            if (Relocatable) Name = "g$" + Name + "() | 0"; // we access linked externs through calls
             PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';';
             return 0; // emit zero in there for now, until the postSet
           } else if (Relocatable) {
@@ -1094,6 +1095,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (GV->isDeclaration()) {
       std::string Name = getOpName(GV);
       Externals.insert(Name);
+      if (Relocatable) Name = "(g$" + Name + "() | 0)"; // we access linked externs through calls
       return Name;
     }
     if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(CV)) {
