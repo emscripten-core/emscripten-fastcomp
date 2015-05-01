@@ -164,6 +164,7 @@ namespace {
     BlockAddressMap BlockAddresses;
     NameIntMap AsmConsts;
     IntSet AsmConstArities;
+    NameSet BlockRelocatableExterns; // which externals are accessed in this block; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
     bool UsesSIMD;
@@ -1095,7 +1096,11 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (GV->isDeclaration()) {
       std::string Name = getOpName(GV);
       Externals.insert(Name);
-      if (Relocatable) Name = "(g$" + Name + "() | 0)"; // we access linked externs through calls
+      if (Relocatable) {
+        // we access linked externs through calls, which we load at the beginning of basic blocks
+        BlockRelocatableExterns.insert(Name);
+        Name = "t$" + Name;
+      }
       return Name;
     }
     if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(CV)) {
@@ -2286,6 +2291,18 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
     }
   }
   CodeStream.flush();
+  if (Relocatable) {
+    // add code to load externals once at the beginning
+    if (BlockRelocatableExterns.size() > 0) {
+      for (auto& RE : BlockRelocatableExterns) {
+        std::string Temp = "t$" + RE;
+        std::string Call = "g$" + RE;
+        UsedVars[Temp] = Type::getInt32Ty(BB->getContext());
+        Code = Temp + " = " + Call + "() | 0; " + Code;
+      }
+      BlockRelocatableExterns.clear();
+    }
+  }
   const Value* Condition = considerConditionVar(BB->getTerminator());
   Block *Curr = new Block(Code.c_str(), Condition ? getValueAsCastStr(Condition).c_str() : NULL);
   LLVMToRelooper[BB] = Curr;
