@@ -62,42 +62,6 @@ define void @test_atomic_store_i64(i64* %ptr, i64 %value) {
   ret void  ; CHECK-NEXT: ret void
 }
 
-; CHECK-LABEL: @test_atomic_load_float
-define float @test_atomic_load_float(float* %ptr) {
-  ; CHECK-NEXT: %ptr.cast = bitcast float* %ptr to i32*
-  ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr.cast, i32 6)
-  ; CHECK-NEXT: %res.cast = bitcast i32 %res to float
-  %res = load atomic float, float* %ptr seq_cst, align 4
-  ret float %res  ; CHECK-NEXT: ret float %res.cast
-}
-
-; CHECK-LABEL: @test_atomic_store_float
-define void @test_atomic_store_float(float* %ptr, float %value) {
-  ; CHECK-NEXT: %ptr.cast = bitcast float* %ptr to i32*
-  ; CHECK-NEXT: %value.cast = bitcast float %value to i32
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i32(i32 %value.cast, i32* %ptr.cast, i32 6)
-  store atomic float %value, float* %ptr seq_cst, align 4
-  ret void  ; CHECK-NEXT: ret void
-}
-
-; CHECK-LABEL: @test_atomic_load_double
-define double @test_atomic_load_double(double* %ptr) {
-  ; CHECK-NEXT: %ptr.cast = bitcast double* %ptr to i64*
-  ; CHECK-NEXT: %res = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr.cast, i32 6)
-  ; CHECK-NEXT: %res.cast = bitcast i64 %res to double
-  %res = load atomic double, double* %ptr seq_cst, align 8
-  ret double %res  ; CHECK-NEXT: ret double %res.cast
-}
-
-; CHECK-LABEL: @test_atomic_store_double
-define void @test_atomic_store_double(double* %ptr, double %value) {
-  ; CHECK-NEXT: %ptr.cast = bitcast double* %ptr to i64*
-  ; CHECK-NEXT: %value.cast = bitcast double %value to i64
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i64(i64 %value.cast, i64* %ptr.cast, i32 6)
-  store atomic double %value, double* %ptr seq_cst, align 8
-  ret void  ; CHECK-NEXT: ret void
-}
-
 ; CHECK-LABEL: @test_atomic_load_i32_pointer
 define i32* @test_atomic_load_i32_pointer(i32** %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast i32** %ptr to i32*
@@ -131,41 +95,5 @@ define void @test_atomic_store_double_pointer(double** %ptr, double* %value) {
   ; CHECK-NEXT: %value.cast = ptrtoint double* %value to i32
   ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i32(i32 %value.cast, i32* %ptr.cast, i32 6)
   store atomic double* %value, double** %ptr seq_cst, align 4
-  ret void  ; CHECK-NEXT: ret void
-}
-
-; CHECK-LABEL: @test_atomic_load_v4i8
-define <4 x i8> @test_atomic_load_v4i8(<4 x i8>* %ptr) {
-  ; CHECK-NEXT: %ptr.cast = bitcast <4 x i8>* %ptr to i32*
-  ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr.cast, i32 6)
-  ; CHECK-NEXT: %res.cast = bitcast i32 %res to <4 x i8>
-  %res = load atomic <4 x i8>, <4 x i8>* %ptr seq_cst, align 8
-  ret <4 x i8> %res  ; CHECK-NEXT: ret <4 x i8> %res.cast
-}
-
-; CHECK-LABEL: @test_atomic_store_v4i8
-define void @test_atomic_store_v4i8(<4 x i8>* %ptr, <4 x i8> %value) {
-  ; CHECK-NEXT: %ptr.cast = bitcast <4 x i8>* %ptr to i32*
-  ; CHECK-NEXT: %value.cast = bitcast <4 x i8> %value to i32
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i32(i32 %value.cast, i32* %ptr.cast, i32 6)
-  store atomic <4 x i8> %value, <4 x i8>* %ptr seq_cst, align 8
-  ret void  ; CHECK-NEXT: ret void
-}
-
-; CHECK-LABEL: @test_atomic_load_v4i16
-define <4 x i16> @test_atomic_load_v4i16(<4 x i16>* %ptr) {
-  ; CHECK-NEXT: %ptr.cast = bitcast <4 x i16>* %ptr to i64*
-  ; CHECK-NEXT: %res = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr.cast, i32 6)
-  ; CHECK-NEXT: %res.cast = bitcast i64 %res to <4 x i16>
-  %res = load atomic <4 x i16>, <4 x i16>* %ptr seq_cst, align 8
-  ret <4 x i16> %res  ; CHECK-NEXT: ret <4 x i16> %res.cast
-}
-
-; CHECK-LABEL: @test_atomic_store_v4i16
-define void @test_atomic_store_v4i16(<4 x i16>* %ptr, <4 x i16> %value) {
-  ; CHECK-NEXT: %ptr.cast = bitcast <4 x i16>* %ptr to i64*
-  ; CHECK-NEXT: %value.cast = bitcast <4 x i16> %value to i64
-  ; CHECK-NEXT: call void @llvm.nacl.atomic.store.i64(i64 %value.cast, i64* %ptr.cast, i32 6)
-  store atomic <4 x i16> %value, <4 x i16>* %ptr seq_cst, align 8
   ret void  ; CHECK-NEXT: ret void
 }
