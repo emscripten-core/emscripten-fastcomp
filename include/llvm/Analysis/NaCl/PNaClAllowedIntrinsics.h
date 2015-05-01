@@ -47,6 +47,8 @@ public:
     return isIntrinsicName(Name) ? TypeMap[Name] : 0;
   }
 
+  static bool isAllowedDebugInfoIntrinsic(unsigned IntrinsicID);
+
 private:
   LLVMContext *Context;
   // Maps from an allowed intrinsic's name to its type.

@@ -28,9 +28,9 @@ define void @bar(i8* nocapture %p, i8* nocapture %q,
 ; Test that the metadata nodes aren't left over.
 ; CHECK-NOT: !0 =
 
-!0 = metadata !{metadata !"int", metadata !1}
-!1 = metadata !{metadata !"omnipotent char", metadata !2}
-!2 = metadata !{metadata !"Simple C/C++ TBAA"}
-!3 = metadata !{metadata !"double", metadata !1}
-!4 = metadata !{metadata !"A", metadata !1}
-!5 = metadata !{metadata !"B", metadata !1}
+!0 = !{!"int", !1}
+!1 = !{!"omnipotent char", !2}
+!2 = !{!"Simple C/C++ TBAA"}
+!3 = !{!"double", !1}
+!4 = !{!"A", !1}
+!5 = !{!"B", !1}

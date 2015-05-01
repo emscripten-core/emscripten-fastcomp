@@ -26,4 +26,4 @@ define i32 @foo(i32 %c) {
 
 ; CHECK: ret i32 %.0
 ; CHECK-NOT: !0 =
-!0 = metadata !{metadata !"branch_weights", i32 4, i32 256, i32 8, i32 4}
+!0 = !{!"branch_weights", i32 4, i32 256, i32 8, i32 4}
