@@ -635,7 +635,8 @@ static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
     DILocation Loc(N);
     unsigned Line = Loc.getLineNumber();
     StringRef File = Loc.getFilename();
-    Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+    if (Line > 0)
+      Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
   }
 }
 
