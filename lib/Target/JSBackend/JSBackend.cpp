@@ -1831,6 +1831,18 @@ static uint64_t LSBMask(unsigned numBits) {
   return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits) - 1;
 }
 
+// Given a string which contains a printed base address, print a new string
+// which contains that address plus the given offset.
+static std::string AddOffset(const std::string &base, int32_t Offset) {
+  if (base.empty())
+    return itostr(Offset);
+
+  if (Offset == 0)
+    return base;
+
+  return "((" + base + ") + " + itostr(Offset) + "|0)";
+}
+
 // Generate code for and operator, either an Instruction or a ConstantExpr.
 void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   // To avoid emiting code and variables for the no-op pointer bitcasts
@@ -2113,7 +2125,16 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     const GEPOperator *GEP = cast<GEPOperator>(I);
     gep_type_iterator GTI = gep_type_begin(GEP);
     int32_t ConstantOffset = 0;
-    std::string text = getValueAsParenStr(GEP->getPointerOperand());
+    std::string text;
+
+    // If the base is an initialized global variable, the address is just an
+    // integer constant, so we can fold it into the ConstantOffset directly.
+    const Value *Ptr = GEP->getPointerOperand()->stripPointerCasts();
+    if (isa<GlobalVariable>(Ptr) && cast<GlobalVariable>(Ptr)->hasInitializer()) {
+      ConstantOffset = getGlobalAddress(Ptr->getName().str());
+    } else {
+      text = getValueAsParenStr(Ptr);
+    }
 
     GetElementPtrInst::const_op_iterator I = GEP->op_begin();
     I++;
@@ -2129,16 +2150,22 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         // For an array, add the element offset, explicitly scaled.
         uint32_t ElementSize = DL->getTypeAllocSize(*GTI);
         if (const ConstantInt *CI = dyn_cast<ConstantInt>(Index)) {
+          // The index is constant. Add it to the accumulating offset.
           ConstantOffset = (uint32_t)ConstantOffset + (uint32_t)CI->getSExtValue() * ElementSize;
         } else {
-          text = "(" + text + " + (" + getIMul(Index, ConstantInt::get(Type::getInt32Ty(GEP->getContext()), ElementSize)) + ")|0)";
+          // The index is non-constant. To avoid reassociating, which increases
+          // the risk of slow wraparounds, add the accumulated offset first.
+          text = AddOffset(text, ConstantOffset);
+          ConstantOffset = 0;
+
+          // Now add the scaled dynamic index.
+          std::string Mul = getIMul(Index, ConstantInt::get(Type::getInt32Ty(GEP->getContext()), ElementSize));
+          text = text.empty() ? Mul : ("(" + text + " + (" + Mul + ")|0)");
         }
       }
     }
-    if (ConstantOffset != 0) {
-      text = "(" + text + " + " + itostr(ConstantOffset) + "|0)";
-    }
-    Code << text;
+    // Add in the final accumulated offset.
+    Code << AddOffset(text, ConstantOffset);
     break;
   }
   case Instruction::PHI: {
