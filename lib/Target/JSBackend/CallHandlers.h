@@ -181,6 +181,14 @@ DEF_CALL_HANDLER(emscripten_resume, {
   return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
 })
 
+std::string getTempRet0() {
+  return Relocatable ? "(getTempRet0() | 0)" : "tempRet0";
+}
+
+std::string setTempRet0(std::string Value) {
+  return Relocatable ? "setTempRet0((" + Value + ") | 0)" : "tempRet0 = (" + Value + ")";
+}
+
 // setjmp support
 
 DEF_CALL_HANDLER(emscripten_prep_setjmp, {
@@ -194,7 +202,7 @@ DEF_CALL_HANDLER(emscripten_cleanup_setjmp, {
 DEF_CALL_HANDLER(emscripten_setjmp, {
   // env, label, table
   Declares.insert("saveSetjmp");
-  return "_setjmpTable = _saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0,_setjmpTableSize|0)|0;_setjmpTableSize = tempRet0";
+  return "_setjmpTable = _saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0,_setjmpTableSize|0)|0;_setjmpTableSize = " + getTempRet0();
 })
 DEF_CALL_HANDLER(emscripten_longjmp, {
   Declares.insert("longjmp");
@@ -207,12 +215,12 @@ DEF_CALL_HANDLER(emscripten_check_longjmp, {
   return "if (((" + Threw + "|0) != 0) & ((threwValue|0) != 0)) { " +
            Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable|0, _setjmpTableSize|0)|0; " +
            "if ((" + Target + "|0) == 0) { _longjmp(" + Threw + "|0, threwValue|0); } " + // rethrow
-           "tempRet0 = threwValue; " +
+           setTempRet0("threwValue") + "; " +
          "} else { " + Assign + "-1; }";
 })
 DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
   std::string Threw = getValueAsStr(CI->getOperand(0));
-  return getAssign(CI) + "tempRet0";
+  return getAssign(CI) + getTempRet0();
 })
 
 // supporting async functions, see `<emscripten>/src/library_async.js` for detail.
@@ -245,10 +253,10 @@ DEF_CALL_HANDLER(emscripten_debugger, {
 // i64 support
 
 DEF_CALL_HANDLER(getHigh32, {
-  return getAssign(CI) + "tempRet0";
+  return getAssign(CI) + getTempRet0();
 })
 DEF_CALL_HANDLER(setHigh32, {
-  return "tempRet0 = " + getValueAsStr(CI->getOperand(0));
+  return setTempRet0(getValueAsStr(CI->getOperand(0)));
 })
 // XXX float handling here is not optimal
 #define TO_I(low, high) \
