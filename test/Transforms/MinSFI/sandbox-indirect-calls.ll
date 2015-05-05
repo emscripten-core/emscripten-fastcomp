@@ -1,7 +1,7 @@
 ; RUN: opt %s -minsfi-sandbox-indirect-calls -S | FileCheck %s
 
 !llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+!0 = !{i32 1, !"Debug Info Version", i32 3}
 
 target datalayout = "p:32:32:32"
 target triple = "le32-unknown-nacl"
@@ -61,10 +61,10 @@ define void @test_ptr_insts_replaced() {
 
 define void @test_indirect_calls(i32 %index_v_i, i32 %index_i_ii) {
   %fn_v_i = inttoptr i32 %index_v_i to void (i32)*, !dbg !1
-  call void %fn_v_i(i32 7), !dbg !2
-  call void %fn_v_i(i32 9), !dbg !3
-  %fn_i_ii = inttoptr i32 %index_i_ii to i32 (i32, i32)*, !dbg !4
-  call i32 %fn_i_ii(i32 11, i32 13), !dbg !5
+  call void %fn_v_i(i32 7), !dbg !3
+  call void %fn_v_i(i32 9), !dbg !4
+  %fn_i_ii = inttoptr i32 %index_i_ii to i32 (i32, i32)*, !dbg !5
+  call i32 %fn_i_ii(i32 11, i32 13), !dbg !6
   ret void
 }
 
@@ -72,15 +72,15 @@ define void @test_indirect_calls(i32 %index_v_i, i32 %index_i_ii) {
 ; CHECK-NEXT:    %1 = and i32 %index_v_i, 7
 ; CHECK-NEXT:    %2 = getelementptr [8 x void (i32)*], [8 x void (i32)*]* [[TAB_V_I]], i32 0, i32 %1
 ; CHECK-NEXT:    %3 = load void (i32)*, void (i32)** %2, !dbg !1
-; CHECK-NEXT:    call void %3(i32 7), !dbg !2
+; CHECK-NEXT:    call void %3(i32 7), !dbg !3
 ; CHECK-NEXT:    %4 = and i32 %index_v_i, 7
 ; CHECK-NEXT:    %5 = getelementptr [8 x void (i32)*], [8 x void (i32)*]* [[TAB_V_I]], i32 0, i32 %4
 ; CHECK-NEXT:    %6 = load void (i32)*, void (i32)** %5, !dbg !1
-; CHECK-NEXT:    call void %6(i32 9), !dbg !3
+; CHECK-NEXT:    call void %6(i32 9), !dbg !4
 ; CHECK-NEXT:    %7 = and i32 %index_i_ii, 7
 ; CHECK-NEXT:    %8 = getelementptr [8 x i32 (i32, i32)*], [8 x i32 (i32, i32)*]* [[TAB_I_II]], i32 0, i32 %7
-; CHECK-NEXT:    %9 = load i32 (i32, i32)*, i32 (i32, i32)** %8, !dbg !4
-; CHECK-NEXT:    call i32 %9(i32 11, i32 13), !dbg !5
+; CHECK-NEXT:    %9 = load i32 (i32, i32)*, i32 (i32, i32)** %8, !dbg !5
+; CHECK-NEXT:    call i32 %9(i32 11, i32 13), !dbg !6
 ; CHECK-NEXT:    ret void
 ; CHECK-NEXT:  }
 
@@ -96,8 +96,10 @@ define float @test_call_without_a_table(i32 %index) {
 ; CHECK-NEXT:    ret float %ret
 ; CHECK-NEXT:  }
 
-!1 = metadata !{i32 138, i32 0, metadata !1, null}
-!2 = metadata !{i32 142, i32 0, metadata !2, null}
-!3 = metadata !{i32 144, i32 0, metadata !3, null}
-!4 = metadata !{i32 144, i32 0, metadata !4, null}
-!5 = metadata !{i32 144, i32 0, metadata !5, null}
+
+!1 = !MDLocation(line: 1, column: 13, scope: !2)
+!2 = !MDSubprogram(name: "foo")
+!3 = !MDLocation(line: 2, column: 10, scope: !2)
+!4 = !MDLocation(line: 2, column: 3, scope: !2)
+!5 = !MDLocation(line: 23, column: 3, scope: !2)
+!6 = !MDLocation(line: 234, column: 3, scope: !2)

@@ -1,9 +1,9 @@
 ; RUN: opt %s -minsfi-sandbox-memory-accesses -S | FileCheck %s
-; RUN: opt %s -minsfi-ptrsize=20 -minsfi-sandbox-memory-accesses -S \ 
-; RUN:   | FileCheck %s -check-prefix=CHECK-MASK
+; RUN: opt %s -minsfi-ptrsize=20 -minsfi-sandbox-memory-accesses -S \
+; RUN: | FileCheck %s -check-prefix=CHECK-MASK
 
 !llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+!0 = !{i32 1, !"Debug Info Version", i32 3}
 
 target datalayout = "p:32:32:32"
 target triple = "le32-unknown-nacl"
@@ -497,9 +497,9 @@ define void @test_len_dbg(i8* %dest, i8* %src, i32 %len) {
 
 define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
   %ptr_sum = add i32 %ptr_int, 5, !dbg !1
-  %ptr = inttoptr i32 %ptr_sum to i32*, !dbg !2
-  store i32 %replace, i32* %ptr, !dbg !3
-  ret void, !dbg !4
+  %ptr = inttoptr i32 %ptr_sum to i32*, !dbg !3
+  store i32 %replace, i32* %ptr, !dbg !4
+  ret void, !dbg !5
 }
 
 ; CHECK-LABEL: define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
@@ -507,12 +507,14 @@ define void @test_opt_dbg(i32 %ptr_int, i32 %replace) {
 ; CHECK-NEXT:    %1 = zext i32 %ptr_int to i64
 ; CHECK-NEXT:    %2 = add i64 %mem_base, %1
 ; CHECK-NEXT:    %3 = add i64 %2, 5, !dbg !1
-; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*, !dbg !2
-; CHECK-NEXT:    store i32 %replace, i32* %4, !dbg !3
-; CHECK-NEXT:    ret void, !dbg !4
+; CHECK-NEXT:    %4 = inttoptr i64 %3 to i32*, !dbg !3
+; CHECK-NEXT:    store i32 %replace, i32* %4, !dbg !4
+; CHECK-NEXT:    ret void, !dbg !5
 ; CHECK-NEXT:  }
 
-!1 = metadata !{i32 138, i32 0, metadata !1, null}
-!2 = metadata !{i32 142, i32 0, metadata !2, null}
-!3 = metadata !{i32 144, i32 0, metadata !3, null}
-!4 = metadata !{i32 144, i32 0, metadata !4, null}
+
+!1 = !MDLocation(line: 1, column: 13, scope: !2)
+!2 = !MDSubprogram(name: "foo")
+!3 = !MDLocation(line: 2, column: 10, scope: !2)
+!4 = !MDLocation(line: 2, column: 3, scope: !2)
+!5 = !MDLocation(line: 23, column: 3, scope: !2)
