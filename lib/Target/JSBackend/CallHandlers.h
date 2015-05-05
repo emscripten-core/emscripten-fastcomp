@@ -616,7 +616,7 @@ DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
 DEF_CALL_HANDLER(emscripten_atomic_store_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
-  return getAssign(CI) + "_emscripten_atomic_store_f64(" + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "+_emscripten_atomic_store_f64(" + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 //  return getAssign(CI) + "Atomics_store(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 

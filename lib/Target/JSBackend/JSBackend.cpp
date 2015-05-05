@@ -1030,6 +1030,10 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         text = std::string("_emscripten_atomic_store_") + heapNameToAtomicTypeName(HeapName) + "(" + getByteAddressAsStr(P) + ',' + VS + ')';
+        if (PreciseF32 && !strcmp(HeapName, "HEAPF32"))
+          text = "Math_fround(" + text + ")";
+        else
+          text = "+" + text;
       } else {
         text = std::string("Atomics_store(") + HeapName + ',' + Index + ',' + VS + ')';
       }
