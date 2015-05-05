@@ -53,17 +53,6 @@ class NaClBitCodeAbbrev;
 /// Base class to run tests on munged bitcode files.
 class NaClBitcodeMunger {
 public:
-  // TODO(kschimpf) Replace uses in subzero with corresponding
-  // NaClMungedBitcode::EditAction values, so that following constants
-  // can be removed.
-
-  /// The types of editing actions that can be applied.
-  typedef NaClMungedBitcode::EditAction EditAction;
-  static const EditAction AddBefore = NaClMungedBitcode::AddBefore;
-  static const EditAction AddAfter = NaClMungedBitcode::AddAfter;
-  static const EditAction Remove = NaClMungedBitcode::Remove;
-  static const EditAction Replace = NaClMungedBitcode::Replace;
-
   /// Creates a bitcode munger, based on the given array of values.
   NaClBitcodeMunger(const uint64_t Records[], size_t RecordsSize,
                     uint64_t RecordTerminator)
