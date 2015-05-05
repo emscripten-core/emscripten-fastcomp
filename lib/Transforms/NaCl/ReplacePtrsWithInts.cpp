@@ -283,32 +283,6 @@ void FunctionConverter::eraseReplacedInstructions() {
   }
 }
 
-static void ConvertMetadataOperand(FunctionConverter *FC,
-                                   IntrinsicInst *Call, int Index) {
-  (void)FC;
-  (void)Call;
-  (void)Index;
-#if 0
-  auto *Operand = cast<MetadataAsValue>(Call->getArgOperand(Index));
-  MDNode *MD = cast<MDNode>(Operand->getMetadata());
-  if (MD->getNumOperands() != 1)
-    return;
-  const MDOperand *MDOp = &MD->getOperand(0);
-  Value *MDArg = MetadataAsValue::get(Call->getContext(), MDOp);
-  if (MDArg && (isa<Argument>(MDArg) || isa<Instruction>(MDArg))) {
-    MDArg = FC->convert(MDArg, /* BypassPlaceholder= */ true);
-    if (PtrToIntInst *Cast = dyn_cast<PtrToIntInst>(MDArg)) {
-      // Unwrapping this is necessary for llvm.dbg.declare to work.
-      MDArg = Cast->getPointerOperand();
-    }
-    MD->replaceOperandWith(0, ValueAsMetadata::get(MDArg));
-    //SmallVector<MDNode *, 1> Args;
-    //Args.push_back(MDArg);
-    //Call->setArgOperand(Index, MetadataAsValue::get(Call->getContext(), Args));
-  }
-#endif
-}
-
 // Remove attributes that only apply to pointer arguments.  Returns
 // the updated AttributeSet.
 static AttributeSet RemovePointerAttrs(LLVMContext &Context,
@@ -341,6 +315,7 @@ static AttributeSet RemovePointerAttrs(LLVMContext &Context,
         case Attribute::ReadOnly:
         case Attribute::NonNull:
         case Attribute::Dereferenceable:
+        case Attribute::DereferenceableOrNull:
           break;
         default:
           AB.addAttribute(*Attr);
@@ -597,19 +572,6 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
         ConvertInstruction(&DL, IntPtrType, &FC, Iter++);
-      }
-    }
-    // Now that all the replacement instructions have been created, we
-    // can update the debug intrinsic calls.
-    for (Function::iterator BB = NewFunc->begin(), E = NewFunc->end();
-         BB != E; ++BB) {
-      for (BasicBlock::iterator Inst = BB->begin(), E = BB->end();
-           Inst != E; ++Inst) {
-        if (IntrinsicInst *Call = dyn_cast<IntrinsicInst>(Inst)) {
-          if (Call->getIntrinsicID() == Intrinsic::dbg_declare) {
-            ConvertMetadataOperand(&FC, Call, 0);
-          }
-        }
       }
     }
     FC.eraseReplacedInstructions();
