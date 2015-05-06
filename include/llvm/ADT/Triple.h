@@ -392,6 +392,7 @@ public:
   bool isOSNetBSD() const { return false; }
   bool isOSOpenBSD() const { return false; }
   bool isOSFreeBSD() const { return false; }
+  bool isOSDragonFly() const { return false; }
   bool isOSSolaris() const { return false; }
   bool isOSBitrig() const { return false; }
   bool isWindowsMSVCEnvironment() const { return false; }
@@ -408,6 +409,8 @@ public:
   bool isOSBinFormatELF() const { return true; }
   bool isOSBinFormatCOFF() const { return false; }
   bool isOSBinFormatMachO() const { return false; }
+  bool isPS4CPU() const { return false; }
+  bool isPS4() const { return false; }
 #elif defined(__EMSCRIPTEN__)
   bool isMacOSX() const { return false; }
   bool isiOS() const { return false; }
@@ -415,6 +418,7 @@ public:
   bool isOSNetBSD() const { return false; }
   bool isOSOpenBSD() const { return false; }
   bool isOSFreeBSD() const { return false; }
+  bool isOSDragonFly() const { return false; }
   bool isOSSolaris() const { return false; }
   bool isOSBitrig() const { return false; }
   bool isWindowsMSVCEnvironment() const { return false; }
@@ -431,6 +435,8 @@ public:
   bool isOSBinFormatELF() const { return true; }
   bool isOSBinFormatCOFF() const { return false; }
   bool isOSBinFormatMachO() const { return false; }
+  bool isPS4CPU() const { return false; }
+  bool isPS4() const { return false; }
 #else
   /// isMacOSX - Is this a Mac OS X triple. For legacy reasons, we support both
   /// "darwin" and "osx" as OS X triples.
@@ -539,8 +545,6 @@ public:
   bool isOSBinFormatMachO() const {
     return getObjectFormat() == Triple::MachO;
   }
-#endif
-  // @LOCALMOD-END
 
   /// \brief Tests whether the target is the PS4 CPU
   bool isPS4CPU() const {
@@ -554,6 +558,8 @@ public:
     return getVendor() == Triple::SCEI &&
            getOS() == Triple::PS4;
   }
+#endif
+  // @LOCALMOD-END
 
   /// @}
   /// @name Mutators
