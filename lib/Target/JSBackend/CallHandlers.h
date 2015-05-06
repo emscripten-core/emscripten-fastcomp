@@ -354,13 +354,15 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
             if (Factor <= UNROLL_LOOP_MAX) {
               // unroll
               for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
-                std::string Add = "+" + utostr(Pos + Offset);
+                unsigned PosOffset = Pos + Offset;
+                std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
                 Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + getHeapAccess(Src + Add, Align) + "|0";
               }
             } else {
               // emit a loop
               UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
-              Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; src=" + Src + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+              std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
+              Ret += "dest=" + Dest + Add + "; src=" + Src + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
             }
             Pos += CurrLen;
             Len -= CurrLen;
@@ -408,13 +410,15 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
               if (Factor <= UNROLL_LOOP_MAX) {
                 // unroll
                 for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
-                  std::string Add = "+" + utostr(Pos + Offset);
+                  unsigned PosOffset = Pos + Offset;
+                  std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
                   Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
                 }
               } else {
                 // emit a loop
                 UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
-                Ret += "dest=" + Dest + "+" + utostr(Pos) + "|0; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+                std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
+                Ret += "dest=" + Dest + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
               }
               Pos += CurrLen;
               Len -= CurrLen;
