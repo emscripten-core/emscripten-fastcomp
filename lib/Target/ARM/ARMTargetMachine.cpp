@@ -354,9 +354,9 @@ bool ARMPassConfig::addPreISel() {
   // TODO(mseaborn): Make the ABI checks coexist with GlobalMerge to
   // get back the performance benefits of GlobalMerge.
   if (!getARMSubtarget().isTargetNaCl() &&
-      (TM->getOptLevel() == CodeGenOpt::Aggressive &&
-       EnableGlobalMerge == cl::BOU_UNSET) ||
-      EnableGlobalMerge == cl::BOU_TRUE)
+      ((TM->getOptLevel() == CodeGenOpt::Aggressive &&
+        EnableGlobalMerge == cl::BOU_UNSET) ||
+       EnableGlobalMerge == cl::BOU_TRUE))
   // @LOCALMOD-END
     // FIXME: This is using the thumb1 only constant value for
     // maximal global offset for merging globals. We may want

@@ -257,7 +257,7 @@ public:
 
   // GVMaterializer interface. It's a no-op for PNaCl bitcode, which has no
   // metadata.
-  std::error_code materializeMetadata() override {};
+  std::error_code materializeMetadata() override { return std::error_code(); };
 
   // GVMaterializer interface. Causes debug info to be stripped from the module
   // on materialization. It's a no-op for PNaCl bitcode, which has no metadata.
