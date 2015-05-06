@@ -87,8 +87,10 @@ InputFileFormat(
 static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
+// Primary output filename. If module splitting is used, the other output files
+// will have names derived from this one.
 static cl::opt<std::string>
-OutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
+MainOutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
 
 // Using bitcode streaming allows compilation of one function at a time. This
 // allows earlier functions to be compiled before later functions are read from
@@ -165,9 +167,9 @@ static int compileModule(StringRef ProgramName);
 static std::unique_ptr<tool_output_file>
 GetOutputStream(const char *TargetName,
                 Triple::OSType OS,
-                std::string Filename) {
+                std::string OutputFilename) {
   // If we don't yet have an output filename, make one.
-  if (Filename.empty()) {
+  if (OutputFilename.empty()) {
     if (InputFilename == "-")
       OutputFilename = "-";
     else {
@@ -574,7 +576,7 @@ static int compileSplitModule(const TargetOptions &Options,
   {
 #if !defined(PNACL_BROWSER_TRANSLATOR)
       // Figure out where we are going to send the output.
-    std::string N(OutputFilename);
+    std::string N(MainOutputFilename);
     raw_string_ostream OutFileName(N);
     if (ModuleIndex > 0)
       OutFileName << ".module" << ModuleIndex;
