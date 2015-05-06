@@ -2130,7 +2130,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     // If the base is an initialized global variable, the address is just an
     // integer constant, so we can fold it into the ConstantOffset directly.
     const Value *Ptr = GEP->getPointerOperand()->stripPointerCasts();
-    if (isa<GlobalVariable>(Ptr) && cast<GlobalVariable>(Ptr)->hasInitializer()) {
+    if (isa<GlobalVariable>(Ptr) && cast<GlobalVariable>(Ptr)->hasInitializer() && !Relocatable) {
       ConstantOffset = getGlobalAddress(Ptr->getName().str());
     } else {
       text = getValueAsParenStr(Ptr);
