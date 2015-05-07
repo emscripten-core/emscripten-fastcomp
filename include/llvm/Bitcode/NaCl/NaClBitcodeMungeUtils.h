@@ -81,6 +81,7 @@
 
 namespace llvm {
 
+class MemoryBuffer;            // Buffer to read bitcode from
 class NaClBitcodeAbbrevRecord; // bitcode record.
 class NaClMungedBitcodeIter;   // iterator over edited bitcode records.
 
@@ -99,6 +100,10 @@ void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
                                size_t RecordsSize,
                                uint64_t RecordTerminator);
 
+/// \brief Read in the list of records from bitcode in a memory buffer.
+void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
+                               std::unique_ptr<MemoryBuffer> InputBuffer);
+
 /// \brief An edited (i.e. munged) list of bitcode records. Edits are
 /// always relative to the initial list of records.
 class NaClMungedBitcode {
@@ -110,6 +115,9 @@ class NaClMungedBitcode {
 public:
   /// \brief Iterator over edited records.
   typedef NaClMungedBitcodeIter iterator;
+
+  /// \brief Read in initial list of records from bitcode in a memory buffer.
+  explicit NaClMungedBitcode(std::unique_ptr<MemoryBuffer> InputBuffer);
 
   /// \brief Initialize the list of records to be edited.
   explicit NaClMungedBitcode(std::unique_ptr<NaClBitcodeRecordList> BaseRecords)
@@ -160,6 +168,84 @@ public:
   /// \brief Print out the resulting edited list of records.
   void print(raw_ostream &Out) const;
 
+  /// Defines set of possible write flags.
+  struct WriteFlags {
+    /// True if error recovery should be applied.
+    bool getTryToRecover() const { return TryToRecover; }
+
+    /// Define that error recovery should be applied when writing.
+    void setTryToRecover(bool NewValue) {
+      TryToRecover = NewValue;
+      assert(!(TryToRecover && WriteBadAbbrevIndex));
+    }
+
+    /// True if a bad abbreviation index should be written (rather than
+    /// trying error recovery) so that bitcode readers can be tested for
+    /// this condition.
+    bool getWriteBadAbbrevIndex() const { return WriteBadAbbrevIndex; }
+
+    /// Define that the first bad abbreviation index should be written,
+    /// and corresponding minimal context added so that the bitcode can
+    /// be used to test reading the erroneous written bitcode.
+    void setWriteBadAbbrevIndex(bool NewValue) {
+      WriteBadAbbrevIndex = NewValue;
+      assert(!(TryToRecover && WriteBadAbbrevIndex));
+    }
+
+    /// Get the stream to print errors while writing bitcode.
+    raw_ostream &getErrStream() const {
+      return ErrStream ? *ErrStream : errs();
+    }
+
+    /// Set the stream to print errors to.
+    void setErrStream(raw_ostream &NewValue) {
+      ErrStream = &NewValue;
+    }
+
+    void reset() {
+      TryToRecover = false;
+      WriteBadAbbrevIndex = false;
+      ErrStream = nullptr;
+    }
+
+  private:
+    bool TryToRecover = false;
+    bool WriteBadAbbrevIndex = false;
+    raw_ostream *ErrStream = nullptr;
+  };
+
+  /// Defines the results associated with writing bitcode.
+  struct WriteResults {
+    /// Number of errors generated.
+    size_t NumErrors = 0;
+    /// Number of repairs (via error recovery) that were applied.
+    size_t NumRepairs = 0;
+    /// True if a bad abbreviation index were written.
+    bool WroteBadAbbrevIndex = false;
+  };
+
+  /// \brief Write out the edited list of bitcode records using
+  /// the given buffer.
+  ///
+  /// \param Buffer The buffer to write into.
+  /// \param AddHeader Add header block when true.
+  /// \param Flags Write flags to use.
+  ///
+  /// \return Returns the results of the write.
+  WriteResults writeMaybeRepair(
+      SmallVectorImpl<char> &Buffer, bool AddHeader,
+      const WriteFlags &Flags) const;
+
+  bool write(SmallVectorImpl<char> &Buffer, bool AddHeader,
+             const WriteFlags &Flags) const {
+    return writeMaybeRepair(Buffer, AddHeader, Flags).NumErrors == 0;
+  }
+
+  bool write(SmallVectorImpl<char> &Buffer, bool AddHeader) const {
+    WriteFlags Flags;
+    return write(Buffer, AddHeader, Flags);
+  }
+
   /// \brief The types of editing actions that can be applied.
   enum EditAction {
     AddBefore, // Insert new record before base record at index.
@@ -189,6 +275,11 @@ public:
   /// \brief Removes all editing actions and resets back to the original
   /// set of base records.
   void removeEdits();
+
+  /// Returns the unedited list of bitcode records.
+  const NaClBitcodeRecordList &getBaseRecords() const {
+    return *BaseRecords;
+  }
 
 private:
   typedef std::list<NaClBitcodeAbbrevRecord *> RecordListType;
@@ -241,7 +332,7 @@ public:
   /// \param Code The selector code of the record.
   /// \param Values The values associated with the selector code.
   NaClBitcodeAbbrevRecord(unsigned Abbrev, unsigned Code,
-                          NaClRecordVector &Values)
+                          const NaClRecordVector &Values)
       : NaClBitcodeRecordData(Code, Values), Abbrev(Abbrev) {}
 
   /// \brief Creates a copy of the given abbreviated bitcode record.

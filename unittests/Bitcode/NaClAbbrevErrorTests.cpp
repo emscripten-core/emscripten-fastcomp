@@ -40,13 +40,7 @@ TEST(MyDeathNaClAbbrevErrorTests, BadAbbreviationIndex) {
     0, naclbitc::BLK_CODE_EXIT, Terminator
   };
 
-  const uint64_t ReplaceIndex = 3; // Index for TYPE_CODE_VOID;
-
-  // Show that we can parse this code.
-  NaClObjDumpMunger DumpMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTest("BadAbbreviationIndex assembly"));
-  EXPECT_EQ(
+  const char* ExpectedDump =
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
       "88, 69)\n"
       "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
@@ -66,28 +60,85 @@ TEST(MyDeathNaClAbbrevErrorTests, BadAbbreviationIndex) {
       "      58:4|    3: <10>                  |    ret void;\n"
       "      60:2|  0: <65534>                 |  }\n"
       "      64:0|0: <65534>                   |}\n"
-      "",
-      DumpMunger.getTestResults());
+      ;
+
+  // Show that we can parse this code.
+  NaClObjDumpMunger DumpMunger(BitcodeRecords,
+                               array_lengthof(BitcodeRecords), Terminator);
+
+  EXPECT_TRUE(DumpMunger.runTest("BadAbbreviationIndex assembly"));
+  EXPECT_EQ(ExpectedDump, DumpMunger.getTestResults());
 
   // Shows what happens when we change the abbreviation index to an
   // illegal value.
+  const uint64_t ReplaceIndex = 3; // Index for TYPE_CODE_VOID;
   const uint64_t AbbrevIndex4[] = {
     ReplaceIndex, NaClMungedBitcode::Replace,
     4, naclbitc::TYPE_CODE_VOID, Terminator,
   };
-  DumpMunger.setRunAsDeathTest(true);
-  EXPECT_DEATH(
+
+  // Show that by default, one can't write a bad abbreviation index.
+  {
+    NaClObjDumpMunger DumpMunger(BitcodeRecords,
+                                 array_lengthof(BitcodeRecords), Terminator);
+    DumpMunger.setRunAsDeathTest(true);
+    EXPECT_DEATH(
+        DumpMunger.runTest("Bad abbreviation index 4",
+                           AbbrevIndex4, array_lengthof(AbbrevIndex4)),
+        ".*Error \\(Block 17\\)\\: Uses illegal abbreviation index\\:"
+        "        4\\: \\[2\\].*");
+  }
+
+  // Show that the corresponding error is generated when reading
+  // bitcode with a bad abbreviation index.
+  {
+    NaClObjDumpMunger DumpMunger(BitcodeRecords,
+                                 array_lengthof(BitcodeRecords), Terminator);
+    DumpMunger.setRunAsDeathTest(true);
+    DumpMunger.setWriteBadAbbrevIndex(true);
+    EXPECT_DEATH(
       DumpMunger.runTest("Bad abbreviation index 4",
                          AbbrevIndex4, array_lengthof(AbbrevIndex4)),
+      ".*Error \\(Block 17\\)\\: Uses illegal abbreviation index\\:"
+      "        4\\: \\[2\\].*"
       ".*Fatal\\(35\\:0\\)\\: Invalid abbreviation \\# 4 defined for record.*");
+  }
 
   // Test that bitcode reader reports problem correctly.
-  NaClParseBitcodeMunger Munger(BitcodeRecords,
-                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_DEATH(
+  {
+    NaClParseBitcodeMunger Munger(BitcodeRecords,
+                                  array_lengthof(BitcodeRecords), Terminator);
+    Munger.setRunAsDeathTest(true);
+    Munger.setWriteBadAbbrevIndex(true);
+    EXPECT_DEATH(
       Munger.runTest("Bad abbreviation index",
                      AbbrevIndex4, array_lengthof(AbbrevIndex4), true),
+      ".*Error \\(Block 17\\)\\: Uses illegal abbreviation index\\:"
+      "        4\\: \\[2\\].*"
       ".*Fatal\\(35\\:0\\)\\: Invalid abbreviation \\# 4 defined for record.*");
+  }
+
+  // Show that error recovery works when dumping bitcode.
+  DumpMunger.setTryToRecoverOnWrite(true);
+  EXPECT_TRUE(
+      DumpMunger.runTest("Bad abbreviation index 4",
+                         AbbrevIndex4, array_lengthof(AbbrevIndex4)));
+  std::string Results(
+      "Error (Block 17): Uses illegal abbreviation index:        4: [2]\n");
+  Results.append(ExpectedDump);
+  EXPECT_EQ(Results, DumpMunger.getTestResults());
+
+  // Show that error recovery works when parsing bitcode.
+  NaClParseBitcodeMunger Munger(BitcodeRecords,
+                                array_lengthof(BitcodeRecords), Terminator);
+  Munger.setTryToRecoverOnWrite(true);
+  EXPECT_TRUE(
+      Munger.runTest("Bad abbreviation index 4",
+                     AbbrevIndex4, array_lengthof(AbbrevIndex4), true));
+  EXPECT_EQ(
+      "Error (Block 17): Uses illegal abbreviation index:        4: [2]\n"
+      "Successful parse!\n",
+      Munger.getTestResults());
 }
 
 } // end of anonymous namespace.
