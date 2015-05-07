@@ -164,7 +164,7 @@ namespace {
     BlockAddressMap BlockAddresses;
     NameIntMap AsmConsts;
     IntSet AsmConstArities;
-    NameSet BlockRelocatableExterns; // which externals are accessed in this block; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
+    NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
     bool UsesSIMD;
@@ -1099,8 +1099,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       Externals.insert(Name);
       if (Relocatable) {
         // we access linked externs through calls, which we load at the beginning of basic blocks
-        BlockRelocatableExterns.insert(Name);
+        FuncRelocatableExterns.insert(Name);
         Name = "t$" + Name;
+        UsedVars[Name] = Type::getInt32Ty(CV->getContext());
       }
       return Name;
     }
@@ -2319,18 +2320,6 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
     }
   }
   CodeStream.flush();
-  if (Relocatable) {
-    // add code to load externals once at the beginning
-    if (BlockRelocatableExterns.size() > 0) {
-      for (auto& RE : BlockRelocatableExterns) {
-        std::string Temp = "t$" + RE;
-        std::string Call = "g$" + RE;
-        UsedVars[Temp] = Type::getInt32Ty(BB->getContext());
-        Code = Temp + " = " + Call + "() | 0; " + Code;
-      }
-      BlockRelocatableExterns.clear();
-    }
-  }
   const Value* Condition = considerConditionVar(BB->getTerminator());
   Block *Curr = new Block(Code.c_str(), Condition ? getValueAsCastStr(Condition).c_str() : NULL);
   LLVMToRelooper[BB] = Curr;
@@ -2513,6 +2502,18 @@ void JSWriter::printFunctionBody(const Function *F) {
     }
     Out << "\n ";
     Out << getStackBump(FrameSize);
+  }
+
+  // Emit extern loads, if we have any
+  if (Relocatable) {
+    if (FuncRelocatableExterns.size() > 0) {
+      for (auto& RE : FuncRelocatableExterns) {
+        std::string Temp = "t$" + RE;
+        std::string Call = "g$" + RE;
+        Out << Temp + " = " + Call + "() | 0;\n";
+      }
+      FuncRelocatableExterns.clear();
+    }
   }
 
   // Emit (relooped) code
