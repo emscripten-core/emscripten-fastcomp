@@ -1108,7 +1108,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(CV)) {
       // Since we don't currently support linking of our output, we don't need
       // to worry about weak or other kinds of aliases.
-      return getConstant(GA->getAliasee(), sign);
+      return getConstant(GA->getAliasee()->stripPointerCasts(), sign);
     }
     return relocateGlobal(utostr(getGlobalAddress(GV->getName().str())));
   }
