@@ -384,8 +384,12 @@ namespace {
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
             Externals.insert(Name);
-            if (Relocatable) Name = "g$" + Name + "() | 0"; // we access linked externs through calls
-            PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';';
+            if (Relocatable) {
+              PostSets += "\n temp = g$" + Name + "() | 0;"; // we access linked externs through calls, and must do so to a temp for heap growth validation
+              PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = temp;";
+            } else {
+              PostSets += "\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';';
+            }
             return 0; // emit zero in there for now, until the postSet
           } else if (Relocatable) {
             // this is one of our globals, but we must relocate it. we return zero, but the caller may store
@@ -2631,6 +2635,7 @@ void JSWriter::printModuleBody() {
     if (!I->isDeclaration()) printFunction(I);
   }
   Out << "function runPostSets() {\n";
+  if (Relocatable) Out << " var temp = 0;\n"; // need a temp var for relocation calls, for proper validation in heap growth
   Out << PostSets << "\n";
   Out << "}\n";
   PostSets = "";
