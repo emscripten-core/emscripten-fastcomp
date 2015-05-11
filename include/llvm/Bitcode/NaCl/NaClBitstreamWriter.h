@@ -18,6 +18,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Bitcode/NaCl/NaClBitCodes.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include <vector>
 
 namespace llvm {
@@ -60,6 +61,9 @@ class NaClBitstreamWriter {
     std::vector<NaClBitCodeAbbrev*> Abbrevs;
   };
   std::vector<BlockInfo> BlockInfoRecords;
+
+  // True if filler should be added to byte align records.
+  bool AlignBitcodeRecords = false;
 
   /// AbbrevValues - Wrapper class that allows the bitstream writer to
   /// prefix a code to the set of values, associated with a record to
@@ -137,6 +141,10 @@ public:
     }
   }
 
+  void initFromHeader(const NaClBitcodeHeader &Header) {
+    AlignBitcodeRecords = Header.getAlignBitcodeRecords();
+  }
+
   /// \brief Retrieve the current position in the stream, in bits.
   uint64_t GetCurrentBitNo() const { return GetBufferOffset() * 8 + CurBit; }
 
@@ -170,6 +178,17 @@ public:
       Emit((uint32_t)Val, 32);
       Emit((uint32_t)(Val >> 32), NumBits-32);
     }
+  }
+
+  void flushToByte() {
+    unsigned BitsToFlush = (32 - CurBit) % CHAR_BIT;
+    if (BitsToFlush)
+      Emit(0, BitsToFlush);
+  }
+
+  void flushToByteIfAligned() {
+    if (AlignBitcodeRecords)
+      flushToByte();
   }
 
   void FlushToWord() {
@@ -416,12 +435,14 @@ public:
       EmitVBR(static_cast<uint32_t>(Vals.size()), 6);
       for (unsigned i = 0, e = static_cast<unsigned>(Vals.size()); i != e; ++i)
         EmitVBR64(Vals[i], 6);
+      flushToByteIfAligned();
       return;
     }
 
     // combine code and values, and then emit.
     AbbrevValues<uintty> AbbrevVals(Code, Vals);
     EmitRecordWithAbbrevImpl(Abbrev, AbbrevVals);
+    flushToByteIfAligned();
   }
 
   //===--------------------------------------------------------------------===//
@@ -446,6 +467,7 @@ private:
           EmitVBR64(Op.getValue(), 5);
       }
     }
+    flushToByteIfAligned();
   }
 public:
 

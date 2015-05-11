@@ -3531,18 +3531,23 @@ bool NaClObjDump(MemoryBufferRef MemBuf, raw_ostream &Output,
 
   const unsigned char *BufPtr = (const unsigned char *)MemBuf.getBufferStart();
   const unsigned char *EndBufPtr = BufPtr+MemBuf.getBufferSize();
-  const unsigned char *HeaderPtr = BufPtr;
 
   // Read header and verify it is good.
   NaClBitcodeHeader Header;
-  if (Header.Read(HeaderPtr, EndBufPtr) || !Header.IsSupported()) {
+  if (Header.Read(BufPtr, EndBufPtr)) {
     ObjDump.Error() << "Invalid PNaCl bitcode header.\n";
     return true;
   }
+  if (!Header.IsSupported()) {
+    ObjDump.Warning() << Header.Unsupported();
+    if (!Header.IsReadable()) {
+      ObjDump.Error() << "Invalid PNaCl bitcode header.\n";
+      return true;
+    }
+  }
 
   // Create a bitstream reader to read the bitcode file.
-  NaClBitstreamReader InputStreamFile(BufPtr, EndBufPtr,
-                                      Header.getHeaderSize());
+  NaClBitstreamReader InputStreamFile(BufPtr, EndBufPtr, Header);
   NaClBitstreamCursor InputStream(InputStreamFile);
 
   // Parse the the bitcode file.

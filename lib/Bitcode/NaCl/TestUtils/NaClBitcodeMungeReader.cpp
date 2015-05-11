@@ -131,14 +131,17 @@ void llvm::readNaClBitcodeRecordList(
   const unsigned char *BufPtr =
       (const unsigned char *) InputBuffer->getBufferStart();
   const unsigned char *EndBufPtr = BufPtr + InputBuffer->getBufferSize();
-  const unsigned char *HeaderPtr = BufPtr;
 
   // Read header and verify it is good.
   NaClBitcodeHeader Header;
-  if (Header.Read(HeaderPtr, EndBufPtr) || !Header.IsSupported())
+  if (Header.Read(BufPtr, EndBufPtr))
+    report_fatal_error("Invalid PNaCl bitcode header.\n");
+  if (!Header.IsSupported())
+    errs() << Header.Unsupported();
+  if (!Header.IsReadable())
     report_fatal_error("Invalid PNaCl bitcode header.\n");
 
-  NaClBitstreamReader Reader(BufPtr, EndBufPtr, Header.getHeaderSize());
+  NaClBitstreamReader Reader(BufPtr, EndBufPtr, Header);
   NaClBitstreamCursor Cursor(Reader);
 
   // Parse the bitcode buffer.

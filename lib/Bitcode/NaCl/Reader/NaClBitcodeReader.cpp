@@ -1844,16 +1844,15 @@ std::error_code NaClBitcodeReader::InitStreamFromBuffer() {
     return Error(InvalidBitstream,
                  "Bitcode stream should be a multiple of 4 bytes in length");
 
-  const unsigned char *HeaderPtr = BufPtr;
-  if (Header.Read(HeaderPtr, BufEnd))
+  if (Header.Read(BufPtr, BufEnd))
     return Error(InvalidBitstream, Header.Unsupported());
-
-  StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd,
-                                           Header.getHeaderSize()));
-  Stream.init(StreamFile.get());
 
   if (AcceptHeader())
     return Error(InvalidBitstream, Header.Unsupported());
+
+  StreamFile.reset(new NaClBitstreamReader(BufPtr, BufEnd, Header));
+  Stream.init(StreamFile.get());
+
   return std::error_code();
 }
 
@@ -1861,11 +1860,11 @@ std::error_code NaClBitcodeReader::InitLazyStream() {
   if (Header.Read(LazyStreamer))
     return Error(InvalidBitstream, Header.Unsupported());
 
-  StreamFile.reset(new NaClBitstreamReader(LazyStreamer,
-                                           Header.getHeaderSize()));
-  Stream.init(StreamFile.get());
   if (AcceptHeader())
     return Error(InvalidBitstream, Header.Unsupported());
+
+  StreamFile.reset(new NaClBitstreamReader(LazyStreamer, Header));
+  Stream.init(StreamFile.get());
   return std::error_code();
 }
 
