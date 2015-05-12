@@ -1,7 +1,7 @@
-; RUN: llc -mtriple=i386-unknown-linux %s -o - | FileCheck %s
-; RUN: llc -mtriple=i386-unknown-linux -pre-RA-sched=fast %s -o - | FileCheck %s
-; RUN: llc -mtriple=x86_64-unknown-linux %s -o - | FileCheck %s
-; RUN: llc -mtriple=x86_64-unknown-linux -pre-RA-sched=fast %s -o - | FileCheck %s
+; RUN: llc -verify-machineinstrs -mtriple=i386-linux-gnu %s -o - | FileCheck %s
+; RUN: llc -verify-machineinstrs -mtriple=i386-linux-gnu -pre-RA-sched=fast %s -o - | FileCheck %s
+; RUN: llc -verify-machineinstrs -mtriple=x86_64-linux-gnu %s -o - | FileCheck %s
+; RUN: llc -verify-machineinstrs -mtriple=x86_64-linux-gnu -pre-RA-sched=fast %s -o - | FileCheck %s
 ; RUN: llc -mtriple=i386-unknown-nacl %s -o - | FileCheck %s -check-prefix=NACL
 ; RUN: llc -mtriple=i386-unknown-nacl -pre-RA-sched=fast %s -o - | FileCheck %s -check-prefix=NACL
 ; RUN: llc -mtriple=x86_64-unknown-nacl %s -o - | FileCheck %s -check-prefix=NACL
@@ -67,7 +67,7 @@ loop_start:
   br label %while.condthread-pre-split.i
 
 while.condthread-pre-split.i:
-  %.pr.i = load i32* %p, align 4
+  %.pr.i = load i32, i32* %p, align 4
   br label %while.cond.i
 
 while.cond.i:
@@ -116,7 +116,6 @@ define i32 @test_feed_cmov(i32* %addr, i32 %desired, i32 %new) {
 ; NACL-NEXT: mov[[LQ]] [[FLAGS]], [[AX]]
 ; NACL-NEXT: sahf
 ; NACL-NEXT: pop[[LQ]] [[AX]]
-
   %res = cmpxchg i32* %addr, i32 %desired, i32 %new seq_cst seq_cst
   %success = extractvalue { i32, i1 } %res, 1
 

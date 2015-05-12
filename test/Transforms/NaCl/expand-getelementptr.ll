@@ -9,7 +9,7 @@ target datalayout = "p:32:32:32"
 
 ; Test indexing struct field
 define i8* @test_struct_field(%MyStruct* %ptr) {
-  %addr = getelementptr %MyStruct* %ptr, i32 0, i32 2
+  %addr = getelementptr %MyStruct, %MyStruct* %ptr, i32 0, i32 2
   ret i8* %addr
 }
 ; CHECK: @test_struct_field
@@ -21,7 +21,7 @@ define i8* @test_struct_field(%MyStruct* %ptr) {
 
 ; Test non-constant index into an array
 define i64* @test_array_index(%MyArray* %ptr, i32 %index) {
-  %addr = getelementptr %MyArray* %ptr, i32 0, i32 0, i32 %index
+  %addr = getelementptr %MyArray, %MyArray* %ptr, i32 0, i32 0, i32 %index
   ret i64* %addr
 }
 ; CHECK: @test_array_index
@@ -34,7 +34,7 @@ define i64* @test_array_index(%MyArray* %ptr, i32 %index) {
 
 ; Test constant index into an array (as a pointer)
 define %MyStruct* @test_ptr_add(%MyStruct* %ptr) {
-  %addr = getelementptr %MyStruct* %ptr, i32 2
+  %addr = getelementptr %MyStruct, %MyStruct* %ptr, i32 2
   ret %MyStruct* %addr
 }
 ; CHECK: @test_ptr_add
@@ -46,7 +46,7 @@ define %MyStruct* @test_ptr_add(%MyStruct* %ptr) {
 
 ; Test that additions and multiplications are combined properly
 define i64* @test_add_and_index(%MyArray* %ptr, i32 %index) {
-  %addr = getelementptr %MyArray* %ptr, i32 1, i32 0, i32 %index
+  %addr = getelementptr %MyArray, %MyArray* %ptr, i32 1, i32 0, i32 %index
   ret i64* %addr
 }
 ; CHECK: @test_add_and_index
@@ -60,7 +60,7 @@ define i64* @test_add_and_index(%MyArray* %ptr, i32 %index) {
 
 ; Test that we don't multiply by 1 unnecessarily
 define i8* @test_add_and_index_one_byte(%MyArrayOneByte* %ptr, i32 %index) {
-  %addr = getelementptr %MyArrayOneByte* %ptr, i32 1, i32 0, i32 %index
+  %addr = getelementptr %MyArrayOneByte, %MyArrayOneByte* %ptr, i32 1, i32 0, i32 %index
   ret i8* %addr
 }
 ; CHECK: @test_add_and_index
@@ -73,7 +73,7 @@ define i8* @test_add_and_index_one_byte(%MyArrayOneByte* %ptr, i32 %index) {
 
 ; Test >32-bit array index
 define i64* @test_array_index64(%MyArray* %ptr, i64 %index) {
-  %addr = getelementptr %MyArray* %ptr, i32 0, i32 0, i64 %index
+  %addr = getelementptr %MyArray, %MyArray* %ptr, i32 0, i32 0, i64 %index
   ret i64* %addr
 }
 ; CHECK: @test_array_index64
@@ -87,7 +87,7 @@ define i64* @test_array_index64(%MyArray* %ptr, i64 %index) {
 
 ; Test <32-bit array index
 define i64* @test_array_index16(%MyArray* %ptr, i16 %index) {
-  %addr = getelementptr %MyArray* %ptr, i32 0, i32 0, i16 %index
+  %addr = getelementptr %MyArray, %MyArray* %ptr, i32 0, i32 0, i16 %index
   ret i64* %addr
 }
 ; CHECK: @test_array_index16
@@ -101,7 +101,7 @@ define i64* @test_array_index16(%MyArray* %ptr, i16 %index) {
 
 ; Test >32-bit constant array index
 define i64* @test_array_index64_const(%MyArray* %ptr) {
-  %addr = getelementptr %MyArray* %ptr, i32 0, i32 0, i64 100
+  %addr = getelementptr %MyArray, %MyArray* %ptr, i32 0, i32 0, i64 100
   ret i64* %addr
 }
 ; CHECK: @test_array_index64_const
@@ -113,7 +113,7 @@ define i64* @test_array_index64_const(%MyArray* %ptr) {
 
 ; Test <32-bit constant array index -- test sign extension
 define i64* @test_array_index16_const(%MyArray* %ptr) {
-  %addr = getelementptr %MyArray* %ptr, i32 0, i32 0, i16 -100
+  %addr = getelementptr %MyArray, %MyArray* %ptr, i32 0, i32 0, i16 -100
   ret i64* %addr
 }
 ; CHECK: @test_array_index16_const

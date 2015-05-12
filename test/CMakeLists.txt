@@ -28,8 +28,10 @@ set(LLVM_TEST_DEPENDS
           llvm-bcanalyzer
           llvm-c-test
           llvm-cov
+          llvm-cxxdump
           llvm-diff
           llvm-dis
+          llvm-dsymutil
           llvm-dwarfdump
           llvm-extract
           llvm-link
@@ -37,14 +39,14 @@ set(LLVM_TEST_DEPENDS
           llvm-mc
           llvm-mcmarkup
           llvm-nm
-          llvm-size
           llvm-objdump
           llvm-profdata
+          llvm-ranlib
           llvm-readobj
           llvm-rtdyld
+          llvm-size
           llvm-symbolizer
           llvm-tblgen
-          llvm-vtabledump
           macho-dump
           opt
           pnacl-bcanalyzer
@@ -73,6 +75,10 @@ if(TARGET llvm-go)
   set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} llvm-go)
 endif()
 
+if(APPLE)
+  set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} LTO)
+endif()
+
 if(TARGET ocaml_llvm)
   set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS}
           ocaml_llvm
@@ -99,6 +105,12 @@ add_lit_testsuite(check-llvm "Running the LLVM regression tests"
   DEPENDS ${LLVM_TEST_DEPENDS}
   )
 set_target_properties(check-llvm PROPERTIES FOLDER "Tests")
+
+add_lit_testsuites(LLVM ${CMAKE_CURRENT_SOURCE_DIR}
+  PARAMS llvm_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
+         llvm_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
+  DEPENDS ${LLVM_TEST_DEPENDS}
+  )
 
 # Setup a legacy alias for 'check-llvm'. This will likely change to be an
 # alias for 'check-all' at some point in the future.

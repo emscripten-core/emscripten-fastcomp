@@ -1,5 +1,6 @@
 ; RUN: opt < %s -dfsan -dfsan-args-abi -dfsan-abilist=%S/Inputs/abilist.txt -S | FileCheck %s
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
 
 ; CHECK: i32 @discard(i32 %a, i32 %b)
 define i32 @discard(i32 %a, i32 %b) {
@@ -23,7 +24,7 @@ declare void @custom1(i32 %a, i32 %b)
 ; CHECK: define linkonce_odr { i32, i16 } @"dfsw$custom2"(i32, i32, i16, i16)
 ; CHECK: %[[LABELRETURN2:.*]] = alloca i16
 ; CHECK: %[[RV:.*]] = call i32 @__dfsw_custom2
-; CHECK: %[[RVSHADOW:.*]] = load i16* %[[LABELRETURN2]]
+; CHECK: %[[RVSHADOW:.*]] = load i16, i16* %[[LABELRETURN2]]
 ; CHECK: insertvalue {{.*}}[[RV]], 0
 ; CHECK: insertvalue {{.*}}[[RVSHADOW]], 1
 ; CHECK: ret { i32, i16 }
@@ -55,18 +56,18 @@ define void @f(i32 %x) {
   ; CHECK: call void @__dfsw_customcb({{.*}} @"dfst0$customcb", i8* bitcast ({{.*}} @"dfs$cb" to i8*), i16 0)
   call void @customcb(i32 (i32)* @cb)
 
-  ; CHECK: %[[LABELVA1_0:.*]] = getelementptr inbounds [2 x i16]* %[[LABELVA1]], i32 0, i32 0
+  ; CHECK: %[[LABELVA1_0:.*]] = getelementptr inbounds [2 x i16], [2 x i16]* %[[LABELVA1]], i32 0, i32 0
   ; CHECK: store i16 0, i16* %[[LABELVA1_0]]
-  ; CHECK: %[[LABELVA1_1:.*]] = getelementptr inbounds [2 x i16]* %[[LABELVA1]], i32 0, i32 1
+  ; CHECK: %[[LABELVA1_1:.*]] = getelementptr inbounds [2 x i16], [2 x i16]* %[[LABELVA1]], i32 0, i32 1
   ; CHECK: store i16 %{{.*}}, i16* %[[LABELVA1_1]]
-  ; CHECK: %[[LABELVA1_0A:.*]] = getelementptr inbounds [2 x i16]* %[[LABELVA1]], i32 0, i32 0
-  ; CHECK: call void (i32, i16, i16*, ...)* @__dfsw_custom3(i32 1, i16 0, i16* %[[LABELVA1_0A]], i32 2, i32 %{{.*}})
-  call void (i32, ...)* @custom3(i32 1, i32 2, i32 %x)
+  ; CHECK: %[[LABELVA1_0A:.*]] = getelementptr inbounds [2 x i16], [2 x i16]* %[[LABELVA1]], i32 0, i32 0
+  ; CHECK: call void (i32, i16, i16*, ...) @__dfsw_custom3(i32 1, i16 0, i16* %[[LABELVA1_0A]], i32 2, i32 %{{.*}})
+  call void (i32, ...) @custom3(i32 1, i32 2, i32 %x)
 
-  ; CHECK: %[[LABELVA2_0:.*]] = getelementptr inbounds [2 x i16]* %[[LABELVA2]], i32 0, i32 0
-  ; CHECK: %[[LABELVA2_0A:.*]] = getelementptr inbounds [2 x i16]* %[[LABELVA2]], i32 0, i32 0
-  ; CHECK: call i32 (i32, i16, i16*, i16*, ...)* @__dfsw_custom4(i32 1, i16 0, i16* %[[LABELVA2_0A]], i16* %[[LABELRETURN]], i32 2, i32 3)
-  call i32 (i32, ...)* @custom4(i32 1, i32 2, i32 3)
+  ; CHECK: %[[LABELVA2_0:.*]] = getelementptr inbounds [2 x i16], [2 x i16]* %[[LABELVA2]], i32 0, i32 0
+  ; CHECK: %[[LABELVA2_0A:.*]] = getelementptr inbounds [2 x i16], [2 x i16]* %[[LABELVA2]], i32 0, i32 0
+  ; CHECK: call i32 (i32, i16, i16*, i16*, ...) @__dfsw_custom4(i32 1, i16 0, i16* %[[LABELVA2_0A]], i16* %[[LABELRETURN]], i32 2, i32 3)
+  call i32 (i32, ...) @custom4(i32 1, i32 2, i32 3)
 
   ret void
 }

@@ -10,7 +10,7 @@ define void @test() {
   %i = ptrtoint [516 x i8]* @i16_large to i32
   %a = add i32 %i, 512
   %a.asptr = inttoptr i32 %a to i16*
-  %loaded = load atomic i16* %a.asptr seq_cst, align 2
+  %loaded = load atomic i16, i16* %a.asptr seq_cst, align 2
   ret void
 }
 ; CHECK-LABEL: test:

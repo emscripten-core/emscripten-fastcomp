@@ -80,7 +80,7 @@ block2:
   %cast = bitcast %struct* %val to i8*
   br label %block3
 block1:
-  %val = load %struct** %ptr
+  %val = load %struct*, %struct** %ptr
   br label %block2
 block3:
   ; Backwards reference to a forwards reference that has already been
@@ -93,7 +93,7 @@ block3:
 ; CHECK-NEXT: br label %block3
 ; CHECK: block1:
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
-; CHECK-NEXT: %val = load i32* %ptr.asptr
+; CHECK-NEXT: %val = load i32, i32* %ptr.asptr
 ; CHECK-NEXT: br label %block2
 ; CHECK: block3:
 ; CHECK-NEXT: ret i32 %val
@@ -195,29 +195,29 @@ define i32 @constant_pointer_undef() {
 ; CHECK-NEXT: ret i32 undef
 
 define i16* @constant_pointer_null_load() {
-  %val = load i16** null
+  %val = load i16*, i16** null
   ret i16* %val
 }
 ; CHECK: define i32 @constant_pointer_null_load() {
 ; CHECK-NEXT: %.asptr = inttoptr i32 0 to i32*
-; CHECK-NEXT: %val = load i32* %.asptr
+; CHECK-NEXT: %val = load i32, i32* %.asptr
 
 define i16* @constant_pointer_undef_load() {
-  %val = load i16** undef
+  %val = load i16*, i16** undef
   ret i16* %val
 }
 ; CHECK: define i32 @constant_pointer_undef_load() {
 ; CHECK-NEXT: %.asptr = inttoptr i32 undef to i32*
-; CHECK-NEXT: %val = load i32* %.asptr
+; CHECK-NEXT: %val = load i32, i32* %.asptr
 
 
 define i8 @load(i8* %ptr) {
-  %x = load i8* %ptr
+  %x = load i8, i8* %ptr
   ret i8 %x
 }
 ; CHECK: define i8 @load(i32 %ptr) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i8*
-; CHECK-NEXT: %x = load i8* %ptr.asptr
+; CHECK-NEXT: %x = load i8, i8* %ptr.asptr
 
 define void @store(i8* %ptr, i8 %val) {
   store i8 %val, i8* %ptr
@@ -229,12 +229,12 @@ define void @store(i8* %ptr, i8 %val) {
 
 
 define i8* @load_ptr(i8** %ptr) {
-  %x = load i8** %ptr
+  %x = load i8*, i8** %ptr
   ret i8* %x
 }
 ; CHECK: define i32 @load_ptr(i32 %ptr) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i32*
-; CHECK-NEXT: %x = load i32* %ptr.asptr
+; CHECK-NEXT: %x = load i32, i32* %ptr.asptr
 
 define void @store_ptr(i8** %ptr, i8* %val) {
   store i8* %val, i8** %ptr
@@ -246,12 +246,12 @@ define void @store_ptr(i8** %ptr, i8* %val) {
 
 
 define i8 @load_attrs(i8* %ptr) {
-  %x = load atomic volatile i8* %ptr seq_cst, align 128
+  %x = load atomic volatile i8, i8* %ptr seq_cst, align 128
   ret i8 %x
 }
 ; CHECK: define i8 @load_attrs(i32 %ptr) {
 ; CHECK-NEXT: %ptr.asptr = inttoptr i32 %ptr to i8*
-; CHECK-NEXT: %x = load atomic volatile i8* %ptr.asptr seq_cst, align 128
+; CHECK-NEXT: %x = load atomic volatile i8, i8* %ptr.asptr seq_cst, align 128
 
 define void @store_attrs(i8* %ptr, i8 %val) {
   store atomic volatile i8 %val, i8* %ptr singlethread release, align 256
@@ -327,21 +327,21 @@ define %struct* (%struct*)* @get_addr_of_func() {
 
 
 define i32 @load_global() {
-  %val = load i32* @var
+  %val = load i32, i32* @var
   ret i32 %val
 }
 ; CHECK: define i32 @load_global() {
-; CHECK-NEXT: %val = load i32* @var
+; CHECK-NEXT: %val = load i32, i32* @var
 ; CHECK-NEXT: ret i32 %val
 
 define i16 @load_global_bitcast() {
   %ptr = bitcast i32* @var to i16*
-  %val = load i16* %ptr
+  %val = load i16, i16* %ptr
   ret i16 %val
 }
 ; CHECK: define i16 @load_global_bitcast() {
 ; CHECK-NEXT: %var.bc = bitcast i32* @var to i16*
-; CHECK-NEXT: %val = load i16* %var.bc
+; CHECK-NEXT: %val = load i16, i16* %var.bc
 ; CHECK-NEXT: ret i16 %val
 
 
@@ -399,28 +399,28 @@ declare void @llvm.dbg.value(metadata, i64, metadata, metadata)
 define void @debug_declare(i32 %val) {
   ; We normally expect llvm.dbg.declare to be used on an alloca.
   %var = alloca i32
-  call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !2, metadata !14)
-  call void @llvm.dbg.declare(metadata !{i32 %val}, metadata !2, metadata !14)
+  call void @llvm.dbg.declare(metadata i32* %var, metadata !11, metadata !12), !dbg !13
+  call void @llvm.dbg.declare(metadata i32 %val, metadata !14, metadata !12), !dbg !13
   ret void
 }
 ; CHECK: define void @debug_declare(i32 %val) {
 ; CHECK-NEXT: %var = alloca i32
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{i32* %var}, metadata !2, metadata !14)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata i32* %var, metadata !11, metadata !12), !dbg !13
 ; This case is currently not converted.
-; CHECK-NEXT: call void @llvm.dbg.declare(metadata !{null}, metadata !2, metadata !14)
+; CHECK-NEXT: call void @llvm.dbg.declare(metadata !2, metadata !14, metadata !12)
 ; CHECK-NEXT: ret void
 
 ; For now, debugging info for values is lost.  replaceAllUsesWith()
 ; does not work for metadata references -- it converts them to nulls.
 ; This makes dbg.value too tricky to handle for now.
 define void @debug_value(i32 %val, i8* %ptr) {
-  tail call void @llvm.dbg.value(metadata !{i32 %val}, i64 1, metadata !1, metadata !14)
-  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 2, metadata !1, metadata !14)
+  tail call void @llvm.dbg.value(metadata i32 %val, i64 1, metadata !11, metadata !12), !dbg !18
+  tail call void @llvm.dbg.value(metadata i8* %ptr, i64 2, metadata !14, metadata !12), !dbg !18
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 1, metadata !1, metadata !14)
-; CHECK-NEXT: call void @llvm.dbg.value(metadata !{null}, i64 2, metadata !1, metadata !14)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !2, i64 1, metadata !11, metadata !12)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !2, i64 2, metadata !14, metadata !12)
 ; CHECK-NEXT: ret void
 
 
@@ -485,7 +485,7 @@ define void @nocapture_attr(i8* nocapture noalias %ptr) {
 ; CHECK: define void @nocapture_attr(i32 %ptr) {
 
 
-define void @readonly_readnone(i8* readonly readnone) {
+define void @readonly_readnone(i8* readonly dereferenceable_or_null(4)) {
   ret void
 }
 ; CHECK-LABEL: define void @readonly_readnone(i32)
@@ -536,8 +536,8 @@ define void @tail_call() {
 ; Just check that the pass does not crash on getelementptr.  (The pass
 ; should not depend unnecessarily on ExpandGetElementPtr having been
 ; run.)
-define i8* @getelementptr(i8* %ptr) {
-  %gep = getelementptr i8* %ptr, i32 10
+define i8* @getelementptr(i8, i8* %ptr) {
+  %gep = getelementptr i8, i8* %ptr, i32 10
   ret i8* %gep
 }
 
@@ -609,8 +609,8 @@ define void @typeid_for() {
 ; }
 
 define void @nop(i8* %ptr) {
-  tail call void @llvm.dbg.value(metadata !{i8* %ptr}, i64 0, metadata !10, metadata !14), !dbg !15
-  ret void, !dbg !16
+  tail call void @llvm.dbg.value(metadata i8* %ptr, i64 0, metadata !11, metadata !12), !dbg !19
+  ret void, !dbg !19
 }
 ; CHECK: define void @nop(i32 %ptr) {
 ; CHECK-NEXT: call void @llvm.dbg.value{{.*}}
@@ -620,25 +620,29 @@ define void @nop(i8* %ptr) {
 ; CHECK: attributes {{.*}}[[NOUNWIND]] = { nounwind }
 
 !llvm.dbg.cu = !{!0}
-!llvm.module.flags = !{!11, !12}
-!llvm.ident = !{!13}
+!llvm.module.flags = !{!8, !9}
+!llvm.ident = !{!10}
 
-!0 = metadata !{metadata !"0x11\0012\00clang version 3.6.0", metadata !1, metadata !2, metadata !2, metadata !3, metadata !2, metadata !2} ; [ DW_TAG_compile_unit ] [/home/foo/test_debug.c] [DW_LANG_C99]
-!1 = metadata !{metadata !"test_debug.c", metadata !"/home/foo"}
-!2 = metadata !{}
-!3 = metadata !{metadata !4}
-!4 = metadata !{metadata !"0x2e\00nop\00nop\00\001\000\001\000\000\00256\001\001", metadata !1, metadata !5, metadata !6, null, void (i8*)* @nop, null, null, metadata !9} ; [ DW_TAG_subprogram ] [line 1] [def] [nop]
-!5 = metadata !{metadata !"0x29", metadata !1}    ; [ DW_TAG_file_type ] [/home/foo/test_debug.c]
-!6 = metadata !{metadata !"0x15\00\000\000\000\000\000\000", null, null, null, metadata !7, null, null, null} ; [ DW_TAG_subroutine_type ] [line 0, size 0, align 0, offset 0] [from ]
-!7 = metadata !{null, metadata !8}
-!8 = metadata !{metadata !"0xf\00\000\0032\0032\000\000", null, null, null} ; [ DW_TAG_pointer_type ] [line 0, size 32, align 32, offset 0] [from ]
-!9 = metadata !{metadata !10}
-!10 = metadata !{metadata !"0x101\00ptr\0016777217\000", metadata !4, metadata !5, metadata !8} ; [ DW_TAG_arg_variable ] [ptr] [line 1]
-!11 = metadata !{i32 2, metadata !"Dwarf Version", i32 4}
-!12 = metadata !{i32 2, metadata !"Debug Info Version", i32 2}
-!13 = metadata !{metadata !"clang version 3.6.0"}
-!14 = metadata !{metadata !"0x102"}               ; [ DW_TAG_expression ]
-!15 = metadata !{i32 1, i32 16, metadata !4, null}
-!16 = metadata !{i32 2, i32 1, metadata !4, null}
+; CHECK: !4 = !MDSubprogram(name: "debug_declare", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, flags: DIFlagPrototyped, isOptimized: false, function: void (i32)* @debug_declare, variables: !2)
 
-; CHECK: !4 = metadata !{{{.*}}nop{{.*}}, void (i32)* @nop, {{.*}}} ; [ DW_TAG_subprogram ] [line 1] [def] [nop]
+!0 = !MDCompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.7.0 (trunk 235150) (llvm/trunk 235152)", isOptimized: false, runtimeVersion: 0, emissionKind: 1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!1 = !MDFile(filename: "foo.c", directory: "/s/llvm/cmakebuild")
+!2 = !{}
+!3 = !{!4}
+!4 = !MDSubprogram(name: "debug_declare", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, flags: DIFlagPrototyped, isOptimized: false, function: void (i32)* @debug_declare, variables: !2)
+!5 = !MDSubroutineType(types: !6)
+!6 = !{null, !7}
+!7 = !MDBasicType(name: "int", size: 32, align: 32, encoding: DW_ATE_signed)
+!8 = !{i32 2, !"Dwarf Version", i32 4}
+!9 = !{i32 2, !"Debug Info Version", i32 3}
+!10 = !{!"clang version 3.7.0 (trunk 235150) (llvm/trunk 235152)"}
+!11 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "val", arg: 1, scope: !4, file: !1, line: 1, type: !7)
+!12 = !MDExpression()
+!13 = !MDLocation(line: 1, column: 24, scope: !4)
+
+!14 = !MDLocalVariable(tag: DW_TAG_auto_variable, name: "var", scope: !4, file: !1, line: 2, type: !15)
+!15 = !MDCompositeType(tag: DW_TAG_array_type, baseType: !7, align: 32, elements: !16)
+!16 = !{!17}
+!17 = !MDSubrange(count: -1)
+!18 = !MDLocation(line: 2, column: 11, scope: !4)
+!19 = !MDLocation(line: 2, column: 3, scope: !4)

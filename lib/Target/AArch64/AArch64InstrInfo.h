@@ -16,8 +16,8 @@
 
 #include "AArch64.h"
 #include "AArch64RegisterInfo.h"
-#include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/CodeGen/MachineCombinerPattern.h"
+#include "llvm/Target/TargetInstrInfo.h"
 
 #define GET_INSTRINFO_HEADER
 #include "AArch64GenInstrInfo.inc"
@@ -129,10 +129,9 @@ public:
                             const TargetRegisterInfo *TRI) const override;
 
   using TargetInstrInfo::foldMemoryOperandImpl;
-  MachineInstr *
-  foldMemoryOperandImpl(MachineFunction &MF, MachineInstr *MI,
-                        const SmallVectorImpl<unsigned> &Ops,
-                        int FrameIndex) const override;
+  MachineInstr *foldMemoryOperandImpl(MachineFunction &MF, MachineInstr *MI,
+                                      ArrayRef<unsigned> Ops,
+                                      int FrameIndex) const override;
 
   bool AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,

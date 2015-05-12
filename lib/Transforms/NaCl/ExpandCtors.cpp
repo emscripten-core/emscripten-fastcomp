@@ -135,7 +135,7 @@ static void defineFuncArray(Module &M, const char *LlvmArrayName,
   // does not generate correct code when a GlobalAlias contains a
   // GetElementPtr ConstantExpr.
   Constant *NewArrayEnd =
-      ConstantExpr::getGetElementPtr(NewArray,
+      ConstantExpr::getGetElementPtr(ArrayTy, NewArray,
                                      ConstantInt::get(M.getContext(),
                                                       APInt(32, 1)));
   setGlobalVariableValue(M, EndSymbol, NewArrayEnd);

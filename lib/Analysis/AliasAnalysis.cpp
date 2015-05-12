@@ -27,6 +27,7 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DataLayout.h"
@@ -37,7 +38,6 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Pass.h"
-#include "llvm/Target/TargetLibraryInfo.h"
 using namespace llvm;
 
 // Register the AliasAnalysis interface, providing a nice name to refer to.
@@ -82,6 +82,23 @@ void AliasAnalysis::addEscapingUse(Use &U) {
   AA->addEscapingUse(U);
 }
 
+AliasAnalysis::ModRefResult
+AliasAnalysis::getModRefInfo(Instruction *I, ImmutableCallSite Call) {
+  // We may have two calls
+  if (auto CS = ImmutableCallSite(I)) {
+    // Check if the two calls modify the same memory
+    return getModRefInfo(Call, CS);
+  } else {
+    // Otherwise, check if the call modifies or references the
+    // location this memory access defines.  The best we can say
+    // is that if the call references what this instruction
+    // defines, it must be clobbered by this location.
+    const AliasAnalysis::Location DefLoc = AA->getLocation(I);
+    if (getModRefInfo(Call, DefLoc) != AliasAnalysis::NoModRef)
+      return AliasAnalysis::ModRef;
+  }
+  return AliasAnalysis::NoModRef;
+}
 
 AliasAnalysis::ModRefResult
 AliasAnalysis::getModRefInfo(ImmutableCallSite CS,
@@ -330,7 +347,7 @@ AliasAnalysis::getModRefInfo(const LoadInst *L, const Location &Loc) {
 
   // If the load address doesn't alias the given address, it doesn't read
   // or write the specified memory.
-  if (!alias(getLocation(L), Loc))
+  if (Loc.Ptr && !alias(getLocation(L), Loc))
     return NoModRef;
 
   // Otherwise, a load just reads.
@@ -343,15 +360,18 @@ AliasAnalysis::getModRefInfo(const StoreInst *S, const Location &Loc) {
   if (!S->isUnordered())
     return ModRef;
 
-  // If the store address cannot alias the pointer in question, then the
-  // specified memory cannot be modified by the store.
-  if (!alias(getLocation(S), Loc))
-    return NoModRef;
+  if (Loc.Ptr) {
+    // If the store address cannot alias the pointer in question, then the
+    // specified memory cannot be modified by the store.
+    if (!alias(getLocation(S), Loc))
+      return NoModRef;
 
-  // If the pointer is a pointer to constant memory, then it could not have been
-  // modified by this store.
-  if (pointsToConstantMemory(Loc))
-    return NoModRef;
+    // If the pointer is a pointer to constant memory, then it could not have
+    // been modified by this store.
+    if (pointsToConstantMemory(Loc))
+      return NoModRef;
+
+  }
 
   // Otherwise, a store just writes.
   return Mod;
@@ -407,9 +427,10 @@ AliasAnalysis::ModRefResult
 AliasAnalysis::callCapturesBefore(const Instruction *I,
                                   const AliasAnalysis::Location &MemLoc,
                                   DominatorTree *DT) {
-  if (!DT || !DL) return AliasAnalysis::ModRef;
+  if (!DT)
+    return AliasAnalysis::ModRef;
 
-  const Value *Object = GetUnderlyingObject(MemLoc.Ptr, DL);
+  const Value *Object = GetUnderlyingObject(MemLoc.Ptr, *DL);
   if (!isIdentifiedObject(Object) || isa<GlobalValue>(Object) ||
       isa<Constant>(Object))
     return AliasAnalysis::ModRef;
@@ -462,10 +483,10 @@ AliasAnalysis::~AliasAnalysis() {}
 /// InitializeAliasAnalysis - Subclasses must call this method to initialize the
 /// AliasAnalysis interface before any other methods are called.
 ///
-void AliasAnalysis::InitializeAliasAnalysis(Pass *P) {
-  DataLayoutPass *DLP = P->getAnalysisIfAvailable<DataLayoutPass>();
-  DL = DLP ? &DLP->getDataLayout() : nullptr;
-  TLI = P->getAnalysisIfAvailable<TargetLibraryInfo>();
+void AliasAnalysis::InitializeAliasAnalysis(Pass *P, const DataLayout *NewDL) {
+  DL = NewDL;
+  auto *TLIP = P->getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
+  TLI = TLIP ? &TLIP->getTLI() : nullptr;
   AA = &P->getAnalysis<AliasAnalysis>();
 }
 
@@ -483,21 +504,22 @@ uint64_t AliasAnalysis::getTypeStoreSize(Type *Ty) {
 }
 
 /// canBasicBlockModify - Return true if it is possible for execution of the
-/// specified basic block to modify the value pointed to by Ptr.
+/// specified basic block to modify the location Loc.
 ///
 bool AliasAnalysis::canBasicBlockModify(const BasicBlock &BB,
                                         const Location &Loc) {
-  return canInstructionRangeModify(BB.front(), BB.back(), Loc);
+  return canInstructionRangeModRef(BB.front(), BB.back(), Loc, Mod);
 }
 
-/// canInstructionRangeModify - Return true if it is possible for the execution
-/// of the specified instructions to modify the value pointed to by Ptr.  The
-/// instructions to consider are all of the instructions in the range of [I1,I2]
-/// INCLUSIVE.  I1 and I2 must be in the same basic block.
-///
-bool AliasAnalysis::canInstructionRangeModify(const Instruction &I1,
+/// canInstructionRangeModRef - Return true if it is possible for the
+/// execution of the specified instructions to mod\ref (according to the
+/// mode) the location Loc. The instructions to consider are all
+/// of the instructions in the range of [I1,I2] INCLUSIVE.
+/// I1 and I2 must be in the same basic block.  
+bool AliasAnalysis::canInstructionRangeModRef(const Instruction &I1,
                                               const Instruction &I2,
-                                              const Location &Loc) {
+                                              const Location &Loc,
+                                              const ModRefResult Mode) {
   assert(I1.getParent() == I2.getParent() &&
          "Instructions not in same basic block!");
   BasicBlock::const_iterator I = &I1;
@@ -505,7 +527,7 @@ bool AliasAnalysis::canInstructionRangeModify(const Instruction &I1,
   ++E;  // Convert from inclusive to exclusive range.
 
   for (; I != E; ++I) // Check every instruction in range
-    if (getModRefInfo(I, Loc) & Mod)
+    if (getModRefInfo(I, Loc) & Mode)
       return true;
   return false;
 }

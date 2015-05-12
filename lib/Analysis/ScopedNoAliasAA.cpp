@@ -33,8 +33,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/Passes.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
@@ -80,7 +80,7 @@ public:
     initializeScopedNoAliasAAPass(*PassRegistry::getPassRegistry());
   }
 
-  void initializePass() override { InitializeAliasAnalysis(this); }
+  bool doInitialization(Module &M) override;
 
   /// getAdjustedAnalysisPointer - This method is used when a pass implements
   /// an analysis interface through multiple inheritance.  If needed, it
@@ -117,6 +117,11 @@ INITIALIZE_AG_PASS(ScopedNoAliasAA, AliasAnalysis, "scoped-noalias",
 
 ImmutablePass *llvm::createScopedNoAliasAAPass() {
   return new ScopedNoAliasAA();
+}
+
+bool ScopedNoAliasAA::doInitialization(Module &M) {
+  InitializeAliasAnalysis(this, &M.getDataLayout());
+  return true;
 }
 
 void

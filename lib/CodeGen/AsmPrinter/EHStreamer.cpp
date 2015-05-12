@@ -121,7 +121,8 @@ computeActionsTable(const SmallVectorImpl<const LandingPadInfo*> &LandingPads,
       for (unsigned J = NumShared, M = TypeIds.size(); J != M; ++J) {
         int TypeID = TypeIds[J];
         assert(-1 - TypeID < (int)FilterOffsets.size() && "Unknown filter id!");
-        int ValueForTypeID = TypeID < 0 ? FilterOffsets[-1 - TypeID] : TypeID;
+        int ValueForTypeID =
+            isFilterEHSelector(TypeID) ? FilterOffsets[-1 - TypeID] : TypeID;
         unsigned SizeTypeID = getSLEB128Size(ValueForTypeID);
 
         int NextAction = SizeAction ? -(SizeAction + SizeTypeID) : 0;
@@ -187,6 +188,23 @@ bool EHStreamer::callToNoUnwindFunction(const MachineInstr *MI) {
   return MarkedNoUnwind;
 }
 
+void EHStreamer::computePadMap(
+    const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
+    RangeMapType &PadMap) {
+  // Invokes and nounwind calls have entries in PadMap (due to being bracketed
+  // by try-range labels when lowered).  Ordinary calls do not, so appropriate
+  // try-ranges for them need be deduced so we can put them in the LSDA.
+  for (unsigned i = 0, N = LandingPads.size(); i != N; ++i) {
+    const LandingPadInfo *LandingPad = LandingPads[i];
+    for (unsigned j = 0, E = LandingPad->BeginLabels.size(); j != E; ++j) {
+      MCSymbol *BeginLabel = LandingPad->BeginLabels[j];
+      assert(!PadMap.count(BeginLabel) && "Duplicate landing pad labels!");
+      PadRange P = { i, j };
+      PadMap[BeginLabel] = P;
+    }
+  }
+}
+
 /// Compute the call-site table.  The entry for an invoke has a try-range
 /// containing the call, a non-zero landing pad, and an appropriate action.  The
 /// entry for an ordinary call has a try-range containing the call and zero for
@@ -195,9 +213,11 @@ bool EHStreamer::callToNoUnwindFunction(const MachineInstr *MI) {
 /// table.  Entries must be ordered by try-range address.
 void EHStreamer::
 computeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
-                     const RangeMapType &PadMap,
                      const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
                      const SmallVectorImpl<unsigned> &FirstActions) {
+  RangeMapType PadMap;
+  computePadMap(LandingPads, PadMap);
+
   // The end label of the previous invoke or nounwind try-range.
   MCSymbol *LastLabel = nullptr;
 
@@ -207,6 +227,8 @@ computeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
 
   // Whether the last CallSite entry was for an invoke.
   bool PreviousIsInvoke = false;
+
+  bool IsSJLJ = Asm->MAI->getExceptionHandlingType() == ExceptionHandling::SjLj;
 
   // Visit all instructions in order of address.
   for (const auto &MBB : *Asm->MF) {
@@ -237,7 +259,7 @@ computeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
       // instruction between the previous try-range and this one may throw,
       // create a call-site entry with no landing pad for the region between the
       // try-ranges.
-      if (SawPotentiallyThrowing && Asm->MAI->usesItaniumLSDAForExceptions()) {
+      if (SawPotentiallyThrowing && Asm->MAI->usesCFIForEH()) {
         CallSiteEntry Site = { LastLabel, BeginLabel, nullptr, 0 };
         CallSites.push_back(Site);
         PreviousIsInvoke = false;
@@ -254,14 +276,14 @@ computeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
         CallSiteEntry Site = {
           BeginLabel,
           LastLabel,
-          LandingPad->LandingPadLabel,
+          LandingPad,
           FirstActions[P.PadIndex]
         };
 
         // Try to merge with the previous call-site. SJLJ doesn't do this
-        if (PreviousIsInvoke && Asm->MAI->usesItaniumLSDAForExceptions()) {
+        if (PreviousIsInvoke && !IsSJLJ) {
           CallSiteEntry &Prev = CallSites.back();
-          if (Site.PadLabel == Prev.PadLabel && Site.Action == Prev.Action) {
+          if (Site.LPad == Prev.LPad && Site.Action == Prev.Action) {
             // Extend the range of the previous entry.
             Prev.EndLabel = Site.EndLabel;
             continue;
@@ -269,7 +291,7 @@ computeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
         }
 
         // Otherwise, create a new call-site.
-        if (Asm->MAI->usesItaniumLSDAForExceptions())
+        if (!IsSJLJ)
           CallSites.push_back(Site);
         else {
           // SjLj EH must maintain the call sites in the order assigned
@@ -287,7 +309,7 @@ computeCallSiteTable(SmallVectorImpl<CallSiteEntry> &CallSites,
   // If some instruction between the previous try-range and the end of the
   // function may throw, create a call-site entry with no landing pad for the
   // region following the try-range.
-  if (SawPotentiallyThrowing && Asm->MAI->usesItaniumLSDAForExceptions()) {
+  if (SawPotentiallyThrowing && !IsSJLJ) {
     CallSiteEntry Site = { LastLabel, nullptr, nullptr, 0 };
     CallSites.push_back(Site);
   }
@@ -338,23 +360,9 @@ void EHStreamer::emitExceptionTable() {
   unsigned SizeActions =
     computeActionsTable(LandingPads, Actions, FirstActions);
 
-  // Invokes and nounwind calls have entries in PadMap (due to being bracketed
-  // by try-range labels when lowered).  Ordinary calls do not, so appropriate
-  // try-ranges for them need be deduced when using DWARF exception handling.
-  RangeMapType PadMap;
-  for (unsigned i = 0, N = LandingPads.size(); i != N; ++i) {
-    const LandingPadInfo *LandingPad = LandingPads[i];
-    for (unsigned j = 0, E = LandingPad->BeginLabels.size(); j != E; ++j) {
-      MCSymbol *BeginLabel = LandingPad->BeginLabels[j];
-      assert(!PadMap.count(BeginLabel) && "Duplicate landing pad labels!");
-      PadRange P = { i, j };
-      PadMap[BeginLabel] = P;
-    }
-  }
-
   // Compute the call-site table.
   SmallVector<CallSiteEntry, 64> CallSites;
-  computeCallSiteTable(CallSites, PadMap, LandingPads, FirstActions);
+  computeCallSiteTable(CallSites, LandingPads, FirstActions);
 
   // Final tallies.
 
@@ -434,12 +442,7 @@ void EHStreamer::emitExceptionTable() {
     Asm->OutContext.GetOrCreateSymbol(Twine("GCC_except_table")+
                                       Twine(Asm->getFunctionNumber()));
   Asm->OutStreamer.EmitLabel(GCCETSym);
-  Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("exception",
-                                                Asm->getFunctionNumber()));
-
-  if (IsSJLJ)
-    Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("_LSDA_",
-                                                  Asm->getFunctionNumber()));
+  Asm->OutStreamer.EmitLabel(Asm->getCurExceptionSym());
 
   // Emit the LSDA header.
   Asm->EmitEncodingByte(dwarf::DW_EH_PE_omit, "@LPStart");
@@ -519,8 +522,7 @@ void EHStreamer::emitExceptionTable() {
       Asm->EmitULEB128(S.Action);
     }
   } else {
-    // DWARF Exception handling
-    assert(Asm->MAI->usesItaniumLSDAForExceptions());
+    // Itanium LSDA exception handling
 
     // The call-site table is a list of all call sites that may throw an
     // exception (including C++ 'throw' statements) in the procedure
@@ -551,16 +553,14 @@ void EHStreamer::emitExceptionTable() {
          I = CallSites.begin(), E = CallSites.end(); I != E; ++I) {
       const CallSiteEntry &S = *I;
 
-      MCSymbol *EHFuncBeginSym =
-        Asm->GetTempSymbol("eh_func_begin", Asm->getFunctionNumber());
+      MCSymbol *EHFuncBeginSym = Asm->getFunctionBegin();
 
       MCSymbol *BeginLabel = S.BeginLabel;
       if (!BeginLabel)
         BeginLabel = EHFuncBeginSym;
       MCSymbol *EndLabel = S.EndLabel;
       if (!EndLabel)
-        EndLabel = Asm->GetTempSymbol("eh_func_end", Asm->getFunctionNumber());
-
+        EndLabel = Asm->getFunctionEnd();
 
       // Offset of the call site relative to the previous call site, counted in
       // number of 16-byte bundles. The first call site is counted relative to
@@ -576,15 +576,15 @@ void EHStreamer::emitExceptionTable() {
 
       // Offset of the landing pad, counted in 16-byte bundles relative to the
       // @LPStart address.
-      if (!S.PadLabel) {
+      if (!S.LPad) {
         if (VerboseAsm)
           Asm->OutStreamer.AddComment("    has no landing pad");
         Asm->OutStreamer.EmitIntValue(0, 4/*size*/);
       } else {
         if (VerboseAsm)
           Asm->OutStreamer.AddComment(Twine("    jumps to ") +
-                                      S.PadLabel->getName());
-        Asm->EmitLabelDifference(S.PadLabel, EHFuncBeginSym, 4);
+                                      S.LPad->LandingPadLabel->getName());
+        Asm->EmitLabelDifference(S.LPad->LandingPadLabel, EHFuncBeginSym, 4);
       }
 
       // Offset of the first associated action record, relative to the start of
@@ -681,26 +681,10 @@ void EHStreamer::emitTypeInfos(unsigned TTypeEncoding) {
     unsigned TypeID = *I;
     if (VerboseAsm) {
       --Entry;
-      if (TypeID != 0)
+      if (isFilterEHSelector(TypeID))
         Asm->OutStreamer.AddComment("FilterInfo " + Twine(Entry));
     }
 
     Asm->EmitULEB128(TypeID);
   }
-}
-
-/// Emit all exception information that should come after the content.
-void EHStreamer::endModule() {
-  llvm_unreachable("Should be implemented");
-}
-
-/// Gather pre-function exception information. Assumes it's being emitted
-/// immediately after the function entry point.
-void EHStreamer::beginFunction(const MachineFunction *MF) {
-  llvm_unreachable("Should be implemented");
-}
-
-/// Gather and emit post-function exception information.
-void EHStreamer::endFunction(const MachineFunction *) {
-  llvm_unreachable("Should be implemented");
 }

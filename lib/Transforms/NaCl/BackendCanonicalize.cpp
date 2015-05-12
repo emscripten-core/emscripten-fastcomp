@@ -36,7 +36,7 @@
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/Pass.h"
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 
@@ -225,8 +225,7 @@ public:
     initializeBackendCanonicalizePass(*PassRegistry::getPassRegistry());
   }
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.addRequired<DataLayoutPass>();
-    AU.addRequired<TargetLibraryInfo>();
+    AU.addRequired<TargetLibraryInfoWrapperPass>();
     FunctionPass::getAnalysisUsage(AU);
   }
 
@@ -262,8 +261,8 @@ INITIALIZE_PASS(BackendCanonicalize, "backend-canonicalize",
 
 bool BackendCanonicalize::runOnFunction(Function &F) {
   bool Modified = false;
-  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
-  TLI = &getAnalysis<TargetLibraryInfo>();
+  DL = &F.getParent()->getDataLayout();
+  TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
   for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
     for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE; ++BI)
@@ -343,7 +342,7 @@ bool BackendCanonicalize::visitLoadInst(LoadInst &L) {
 }
 
 bool BackendCanonicalize::visitConstantFoldableInstruction(Instruction *I) {
-  if (Constant *Folded = ConstantFoldInstruction(I, DL, TLI)) {
+  if (Constant *Folded = ConstantFoldInstruction(I, *DL, TLI)) {
     I->replaceAllUsesWith(Folded);
     Kill.push_back(I);
     return true;

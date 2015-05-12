@@ -9,7 +9,7 @@
 declare void @func(i15 %arg)
 
 !llvm.foo = !{!0}
-!0 = metadata !{ half 0.0}
+!0 = !{ half 0.0}
 
 define void @types() {
 ; CHECK: bad result type: {{.*}} fptrunc

@@ -22,4 +22,4 @@ subdirectories = IPA NaCl
 type = Library
 name = Analysis
 parent = Libraries
-required_libraries = Core Support Target
+required_libraries = Core Support

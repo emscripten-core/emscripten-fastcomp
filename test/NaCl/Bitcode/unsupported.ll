@@ -5,7 +5,7 @@
 define i8 @foo(i32 %i) {
   %v1 = add i32 %i, %i
   %v2 = inttoptr i32 %v1 to i8*
-  %v3 = load i8* %v2
+  %v3 = load i8, i8* %v2
   ret i8 %v3
 }
 
@@ -17,7 +17,7 @@ define i8 @foo(i32 %i) {
 ; CSUP:      define i8 @foo(i32) {
 ; CSUP-NEXT:   %2 = add i32 %0, %0
 ; CSUP-NEXT:   %3 = inttoptr i32 %2 to i8*
-; CSUP-NEXT:   %4 = load i8* %3
+; CSUP-NEXT:   %4 = load i8, i8* %3
 ; CSUP-NEXT:   ret i8 %4
 ; CSUP-NEXT: }
 
@@ -29,7 +29,7 @@ define i8 @foo(i32 %i) {
 ; CUNS:      define i8 @foo(i32 %i) {
 ; CUNS-NEXT:   %v1 = add i32 %i, %i
 ; CUNS-NEXT:   %1 = inttoptr i32 %v1 to i8*
-; CUNS-NEXT:   %v3 = load i8* %1
+; CUNS-NEXT:   %v3 = load i8, i8* %1
 ; CUNS-NEXT:   ret i8 %v3
 ; CUNS-NEXT: }
 

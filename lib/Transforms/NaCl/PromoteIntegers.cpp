@@ -25,13 +25,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "SimplifiedFuncTypeMap.h"
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -39,21 +43,63 @@
 
 using namespace llvm;
 
+static Type *getPromotedType(Type *Ty);
+
 namespace {
-class PromoteIntegers : public FunctionPass {
+
+class TypeMap : public SimplifiedFuncTypeMap {
+protected:
+  MappingResult getSimpleFuncType(LLVMContext &Ctx, StructMap &Tentatives,
+                                  FunctionType *OldFnTy) override {
+    ParamTypeVector NewArgTypes;
+
+    auto Ret = getPromotedArgType(Ctx, OldFnTy->getReturnType(), Tentatives);
+    bool Changed = Ret.isChanged();
+    for (auto &ArgTy : OldFnTy->params()) {
+      auto NewArgTy = getPromotedArgType(Ctx, ArgTy, Tentatives);
+      NewArgTypes.push_back(NewArgTy);
+      Changed |= NewArgTy.isChanged();
+    }
+
+    auto *NewFctType = FunctionType::get(Ret, NewArgTypes, OldFnTy->isVarArg());
+    return {NewFctType, Changed};
+  }
+
+private:
+  MappingResult getPromotedArgType(LLVMContext &Ctx, Type *Ty,
+                                   StructMap &Tentatives) {
+    if (Ty->isIntegerTy()) {
+      auto *NTy = getPromotedType(Ty);
+      return {NTy, NTy != Ty};
+    }
+    return getSimpleAggregateTypeInternal(Ctx, Ty, Tentatives);
+  }
+};
+
+class PromoteIntegers : public ModulePass {
 public:
   static char ID;
-  PromoteIntegers() : FunctionPass(ID) {
+
+  PromoteIntegers() : ModulePass(ID) {
     initializePromoteIntegersPass(*PassRegistry::getPassRegistry());
   }
-  virtual bool runOnFunction(Function &F);
+
+  bool runOnModule(Module &M) override;
+
+private:
+  typedef DenseMap<const llvm::Function *, DISubprogram> DebugMap;
+  TypeMap TypeMapper;
+
+  bool ensureCompliantSignature(LLVMContext &Ctx, Function *OldFct, Module &M,
+                                DebugMap &DISubprogramMap);
 };
 } // anonymous namespace
 
 char PromoteIntegers::ID = 0;
+
 INITIALIZE_PASS(PromoteIntegers, "nacl-promote-ints",
-                "Promote integer types which are illegal in PNaCl",
-                false, false)
+                "Promote integer types which are illegal in PNaCl", false,
+                false)
 
 static bool isLegalSize(unsigned Size) {
   return Size == 1 || (Size >= 8 && isPowerOf2_32(Size));
@@ -216,8 +262,8 @@ static Value *splitLoad(DataLayout *DL, LoadInst *Inst, ConversionState &State,
                              OrigPtr->getName() + ".hity");
 
   auto HiOffset = (Offset + LoWidth) / CHAR_BIT;
-  auto *LoadHi = IRB.CreateAlignedLoad(
-      BCHi, MinAlign(BaseAlign, HiOffset), Inst->getName() + ".hi");
+  auto *LoadHi = IRB.CreateAlignedLoad(BCHi, MinAlign(BaseAlign, HiOffset),
+                                       Inst->getName() + ".hi");
   auto *Hi = !isLegalSize(Width - LoWidth)
                  ? splitLoad(DL, LoadHi, State, BaseAlign, HiOffset)
                  : LoadHi;
@@ -348,12 +394,12 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     // If the converted type of the operand is the same as the converted
     // type of the result, we won't actually be changing the type of the
     // variable, just its value.
-    if (getPromotedType(Op->getType()) !=
-        getPromotedType(Sext->getType())) {
-      NewInst = CopyDebug(new SExtInst(
-          NewInst ? NewInst : State.getConverted(Op),
-          getPromotedType(cast<IntegerType>(Sext->getType())),
-          Sext->getName() + ".sext", Sext), Sext);
+    if (getPromotedType(Op->getType()) != getPromotedType(Sext->getType())) {
+      NewInst = CopyDebug(
+          new SExtInst(NewInst ? NewInst : State.getConverted(Op),
+                       getPromotedType(cast<IntegerType>(Sext->getType())),
+                       Sext->getName() + ".sext", Sext),
+          Sext);
     }
     assert(NewInst && "Failed to convert sign extension");
     State.recordConverted(Sext, NewInst);
@@ -366,12 +412,12 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     // If the converted type of the operand is the same as the converted
     // type of the result, we won't actually be changing the type of the
     // variable, just its value.
-    if (getPromotedType(Op->getType()) !=
-        getPromotedType(Zext->getType())) {
-      NewInst = CopyDebug(CastInst::CreateZExtOrBitCast(
-          NewInst ? NewInst : State.getConverted(Op),
-          getPromotedType(cast<IntegerType>(Zext->getType())),
-          "", Zext), Zext);
+    if (getPromotedType(Op->getType()) != getPromotedType(Zext->getType())) {
+      NewInst = CopyDebug(
+          CastInst::CreateZExtOrBitCast(
+              NewInst ? NewInst : State.getConverted(Op),
+              getPromotedType(cast<IntegerType>(Zext->getType())), "", Zext),
+          Zext);
     }
     assert(NewInst);
     State.recordConverted(Zext, NewInst);
@@ -382,13 +428,12 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     // type of the result, we don't actually need to change the type of the
     // variable, just its value. However, because we don't care about the values
     // of the upper bits until they are consumed, truncation can be a no-op.
-    if (getPromotedType(Op->getType()) !=
-        getPromotedType(Trunc->getType())) {
-      NewInst = CopyDebug(new TruncInst(
-          State.getConverted(Op),
-          getPromotedType(cast<IntegerType>(Trunc->getType())),
-          State.getConverted(Op)->getName() + ".trunc",
-          Trunc), Trunc);
+    if (getPromotedType(Op->getType()) != getPromotedType(Trunc->getType())) {
+      NewInst = CopyDebug(
+          new TruncInst(State.getConverted(Op),
+                        getPromotedType(cast<IntegerType>(Trunc->getType())),
+                        State.getConverted(Op)->getName() + ".trunc", Trunc),
+          Trunc);
     } else {
       NewInst = State.getConverted(Op);
     }
@@ -408,116 +453,133 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
               : Store->getAlignment();
       splitStore(DL, Store, State, BaseAlign, /*Offset=*/0);
     }
-  } else if (isa<CallInst>(Inst)) {
-    report_fatal_error("can't convert calls with illegal types");
+  } else if (isa<InvokeInst>(Inst) || isa<CallInst>(Inst) ||
+             isa<LandingPadInst>(Inst)) {
+    for (unsigned I = 0; I < Inst->getNumOperands(); I++) {
+      auto *Arg = Inst->getOperand(I);
+      if (shouldConvert(Arg))
+        Inst->setOperand(I, State.getConverted(Arg));
+    }
+    if (shouldConvert(Inst)) {
+      Inst->mutateType(getPromotedType(Inst->getType()));
+    }
+  } else if (auto *Ret = dyn_cast<ReturnInst>(Inst)) {
+    auto *NewRet = ReturnInst::Create(
+        Ret->getContext(), State.getConverted(Ret->getReturnValue()), Inst);
+    State.recordConverted(Ret, NewRet);
+  } else if (auto *Resume = dyn_cast<ResumeInst>(Inst)) {
+    auto *NewRes =
+        ResumeInst::Create(State.getConverted(Resume->getValue()), Inst);
+    State.recordConverted(Ret, NewRes);
   } else if (BinaryOperator *Binop = dyn_cast<BinaryOperator>(Inst)) {
     Value *NewInst = nullptr;
     switch (Binop->getOpcode()) {
-      case Instruction::AShr: {
-        // The AShr operand needs to be sign-extended to the promoted size
-        // before shifting. Because the sign-extension is implemented with
-        // with AShr, it can be combined with the original operation.
-        Value *Op = Binop->getOperand(0);
-        Value *ShiftAmount = nullptr;
-        APInt SignShiftAmt = APInt(
-            getPromotedType(Op->getType())->getIntegerBitWidth(),
-            getPromotedType(Op->getType())->getIntegerBitWidth() -
-            Op->getType()->getIntegerBitWidth());
-        NewInst = CopyDebug(BinaryOperator::Create(
-            Instruction::Shl,
-            State.getConverted(Op),
-            ConstantInt::get(getPromotedType(Op->getType()), SignShiftAmt),
-            State.getConverted(Op)->getName() + ".getsign",
-            Binop), Binop);
-        if (ConstantInt *C = dyn_cast<ConstantInt>(
-                State.getConverted(Binop->getOperand(1)))) {
-          ShiftAmount = ConstantInt::get(getPromotedType(Op->getType()),
-                                         SignShiftAmt + C->getValue());
-        } else {
-          // Clear the upper bits of the original shift amount, and add back the
-          // amount we shifted to get the sign bit.
-          ShiftAmount = getClearConverted(Binop->getOperand(1), Binop, State);
-          ShiftAmount = CopyDebug(BinaryOperator::Create(
-              Instruction::Add,
-              ShiftAmount,
-              ConstantInt::get(
-                  getPromotedType(Binop->getOperand(1)->getType()),
-                  SignShiftAmt),
-              State.getConverted(Op)->getName() + ".shamt", Binop), Binop);
-        }
-        NewInst = CopyDebug(BinaryOperator::Create(
-            Instruction::AShr,
-            NewInst,
-            ShiftAmount,
-            Binop->getName() + ".result", Binop), Binop);
-        break;
-      }
-
-      case Instruction::LShr:
-      case Instruction::Shl: {
-        // For LShr, clear the upper bits of the operand before shifting them
-        // down into the valid part of the value.
-        Value *Op = Binop->getOpcode() == Instruction::LShr
-                        ? getClearConverted(Binop->getOperand(0), Binop, State)
-                        : State.getConverted(Binop->getOperand(0));
-        NewInst = BinaryOperator::Create(
-            Binop->getOpcode(), Op,
-            // Clear the upper bits of the shift amount.
-            getClearConverted(Binop->getOperand(1), Binop, State),
-            Binop->getName() + ".result", Binop);
-        break;
-      }
-      case Instruction::Add:
-      case Instruction::Sub:
-      case Instruction::Mul:
-      case Instruction::And:
-      case Instruction::Or:
-      case Instruction::Xor:
-        // These operations don't care about the state of the upper bits.
-        NewInst = CopyDebug(BinaryOperator::Create(
-            Binop->getOpcode(),
-            State.getConverted(Binop->getOperand(0)),
-            State.getConverted(Binop->getOperand(1)),
-            Binop->getName() + ".result", Binop), Binop);
-        break;
-      case Instruction::UDiv:
-      case Instruction::URem:
-        NewInst =
+    case Instruction::AShr: {
+      // The AShr operand needs to be sign-extended to the promoted size
+      // before shifting. Because the sign-extension is implemented with
+      // with AShr, it can be combined with the original operation.
+      Value *Op = Binop->getOperand(0);
+      Value *ShiftAmount = nullptr;
+      APInt SignShiftAmt =
+          APInt(getPromotedType(Op->getType())->getIntegerBitWidth(),
+                getPromotedType(Op->getType())->getIntegerBitWidth() -
+                    Op->getType()->getIntegerBitWidth());
+      NewInst = CopyDebug(
+          BinaryOperator::Create(
+              Instruction::Shl, State.getConverted(Op),
+              ConstantInt::get(getPromotedType(Op->getType()), SignShiftAmt),
+              State.getConverted(Op)->getName() + ".getsign", Binop),
+          Binop);
+      if (ConstantInt *C =
+              dyn_cast<ConstantInt>(State.getConverted(Binop->getOperand(1)))) {
+        ShiftAmount = ConstantInt::get(getPromotedType(Op->getType()),
+                                       SignShiftAmt + C->getValue());
+      } else {
+        // Clear the upper bits of the original shift amount, and add back the
+        // amount we shifted to get the sign bit.
+        ShiftAmount = getClearConverted(Binop->getOperand(1), Binop, State);
+        ShiftAmount =
             CopyDebug(BinaryOperator::Create(
-                          Binop->getOpcode(),
-                          getClearConverted(Binop->getOperand(0), Binop, State),
-                          getClearConverted(Binop->getOperand(1), Binop, State),
-                          Binop->getName() + ".result", Binop),
+                          Instruction::Add, ShiftAmount,
+                          ConstantInt::get(
+                              getPromotedType(Binop->getOperand(1)->getType()),
+                              SignShiftAmt),
+                          State.getConverted(Op)->getName() + ".shamt", Binop),
                       Binop);
-        break;
-      case Instruction::SDiv:
-      case Instruction::SRem:
-        NewInst = CopyDebug(
-            BinaryOperator::Create(
-                Binop->getOpcode(),
-                getSignExtend(State.getConverted(Binop->getOperand(0)),
-                              Binop->getOperand(0), Binop),
-                getSignExtend(State.getConverted(Binop->getOperand(1)),
-                              Binop->getOperand(0), Binop),
-                Binop->getName() + ".result", Binop),
-            Binop);
-        break;
-      case Instruction::FAdd:
-      case Instruction::FSub:
-      case Instruction::FMul:
-      case Instruction::FDiv:
-      case Instruction::FRem:
-      case Instruction::BinaryOpsEnd:
-        // We should not see FP operators here.
-        errs() << *Inst << "\n";
-        llvm_unreachable("Cannot handle binary operator");
-        break;
+      }
+      NewInst = CopyDebug(
+          BinaryOperator::Create(Instruction::AShr, NewInst, ShiftAmount,
+                                 Binop->getName() + ".result", Binop),
+          Binop);
+      break;
+    }
+
+    case Instruction::LShr:
+    case Instruction::Shl: {
+      // For LShr, clear the upper bits of the operand before shifting them
+      // down into the valid part of the value.
+      Value *Op = Binop->getOpcode() == Instruction::LShr
+                      ? getClearConverted(Binop->getOperand(0), Binop, State)
+                      : State.getConverted(Binop->getOperand(0));
+      NewInst = BinaryOperator::Create(
+          Binop->getOpcode(), Op,
+          // Clear the upper bits of the shift amount.
+          getClearConverted(Binop->getOperand(1), Binop, State),
+          Binop->getName() + ".result", Binop);
+      break;
+    }
+    case Instruction::Add:
+    case Instruction::Sub:
+    case Instruction::Mul:
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor:
+      // These operations don't care about the state of the upper bits.
+      NewInst = CopyDebug(
+          BinaryOperator::Create(Binop->getOpcode(),
+                                 State.getConverted(Binop->getOperand(0)),
+                                 State.getConverted(Binop->getOperand(1)),
+                                 Binop->getName() + ".result", Binop),
+          Binop);
+      break;
+    case Instruction::UDiv:
+    case Instruction::URem:
+      NewInst =
+          CopyDebug(BinaryOperator::Create(
+                        Binop->getOpcode(),
+                        getClearConverted(Binop->getOperand(0), Binop, State),
+                        getClearConverted(Binop->getOperand(1), Binop, State),
+                        Binop->getName() + ".result", Binop),
+                    Binop);
+      break;
+    case Instruction::SDiv:
+    case Instruction::SRem:
+      NewInst =
+          CopyDebug(BinaryOperator::Create(
+                        Binop->getOpcode(),
+                        getSignExtend(State.getConverted(Binop->getOperand(0)),
+                                      Binop->getOperand(0), Binop),
+                        getSignExtend(State.getConverted(Binop->getOperand(1)),
+                                      Binop->getOperand(0), Binop),
+                        Binop->getName() + ".result", Binop),
+                    Binop);
+      break;
+    case Instruction::FAdd:
+    case Instruction::FSub:
+    case Instruction::FMul:
+    case Instruction::FDiv:
+    case Instruction::FRem:
+    case Instruction::BinaryOpsEnd:
+      // We should not see FP operators here.
+      errs() << *Inst << "\n";
+      llvm_unreachable("Cannot handle binary operator");
+      break;
     }
     if (isa<OverflowingBinaryOperator>(NewInst)) {
-      cast<BinaryOperator>(NewInst)->setHasNoUnsignedWrap(
-          Binop->hasNoUnsignedWrap());
-      cast<BinaryOperator>(NewInst)->setHasNoSignedWrap(
-          Binop->hasNoSignedWrap());
+      cast<BinaryOperator>(NewInst)
+          ->setHasNoUnsignedWrap(Binop->hasNoUnsignedWrap());
+      cast<BinaryOperator>(NewInst)
+          ->setHasNoSignedWrap(Binop->hasNoSignedWrap());
     }
     State.recordConverted(Binop, NewInst);
   } else if (ICmpInst *Cmp = dyn_cast<ICmpInst>(Inst)) {
@@ -527,30 +589,26 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     // cleared.
     if (Cmp->isSigned()) {
       Op0 = getSignExtend(State.getConverted(Cmp->getOperand(0)),
-                          Cmp->getOperand(0),
-                          Cmp);
+                          Cmp->getOperand(0), Cmp);
       Op1 = getSignExtend(State.getConverted(Cmp->getOperand(1)),
-                          Cmp->getOperand(1),
-                          Cmp);
+                          Cmp->getOperand(1), Cmp);
     } else {
       Op0 = getClearConverted(Cmp->getOperand(0), Cmp, State);
       Op1 = getClearConverted(Cmp->getOperand(1), Cmp, State);
     }
-    Instruction *NewInst = CopyDebug(new ICmpInst(
-        Cmp, Cmp->getPredicate(), Op0, Op1, ""), Cmp);
+    Instruction *NewInst =
+        CopyDebug(new ICmpInst(Cmp, Cmp->getPredicate(), Op0, Op1, ""), Cmp);
     State.recordConverted(Cmp, NewInst);
   } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
-    Instruction *NewInst = CopyDebug(SelectInst::Create(
-        Select->getCondition(),
-        State.getConverted(Select->getTrueValue()),
-        State.getConverted(Select->getFalseValue()),
-        "", Select), Select);
+    Instruction *NewInst = CopyDebug(
+        SelectInst::Create(
+            Select->getCondition(), State.getConverted(Select->getTrueValue()),
+            State.getConverted(Select->getFalseValue()), "", Select),
+        Select);
     State.recordConverted(Select, NewInst);
   } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
-    PHINode *NewPhi = PHINode::Create(
-        getPromotedType(Phi->getType()),
-        Phi->getNumIncomingValues(),
-        "", Phi);
+    PHINode *NewPhi = PHINode::Create(getPromotedType(Phi->getType()),
+                                      Phi->getNumIncomingValues(), "", Phi);
     CopyDebug(NewPhi, Phi);
     for (unsigned I = 0, E = Phi->getNumIncomingValues(); I < E; ++I) {
       NewPhi->addIncoming(State.getConverted(Phi->getIncomingValue(I)),
@@ -560,13 +618,9 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
   } else if (SwitchInst *Switch = dyn_cast<SwitchInst>(Inst)) {
     Value *Condition = getClearConverted(Switch->getCondition(), Switch, State);
     SwitchInst *NewInst = SwitchInst::Create(
-        Condition,
-        Switch->getDefaultDest(),
-        Switch->getNumCases(),
-        Switch);
+        Condition, Switch->getDefaultDest(), Switch->getNumCases(), Switch);
     CopyDebug(NewInst, Switch);
-    for (SwitchInst::CaseIt I = Switch->case_begin(),
-             E = Switch->case_end();
+    for (SwitchInst::CaseIt I = Switch->case_begin(), E = Switch->case_end();
          I != E; ++I) {
       NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue(),
                                                          /*SignExt=*/false)),
@@ -574,52 +628,117 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     }
     Switch->eraseFromParent();
   } else {
-    errs() << *Inst <<"\n";
+    errs() << *Inst << "\n";
     llvm_unreachable("unhandled instruction");
   }
 }
 
-bool PromoteIntegers::runOnFunction(Function &F) {
-  DataLayout DL(F.getParent());
+static bool processFunction(Function &F, DataLayout &DL) {
+  ConversionState State;
+  bool Modified;
+  for (auto FI = F.begin(), FE = F.end(); FI != FE; ++FI) {
+    for (auto BBI = FI->begin(), BBE = FI->end(); BBI != BBE;) {
+      Instruction *Inst = BBI++;
+      // Only attempt to convert an instruction if its result or any of its
+      // operands are illegal.
+      bool ShouldConvert = shouldConvert(Inst);
+      for (auto OI = Inst->op_begin(), OE = Inst->op_end(); OI != OE; ++OI)
+        ShouldConvert |= shouldConvert(cast<Value>(OI));
 
-  // Don't support changing the function arguments. This should not be
-  // generated by clang.
-  for (auto &Arg : F.args())
-    if (shouldConvert(&Arg)) {
-      errs() << "Function " << F.getName() << ": " << Arg << "\n";
-      report_fatal_error("Function has illegal integer/pointer argument");
-    }
-
-  bool Modified = false;
-
-  {
-    ConversionState State;
-    for (auto FI = F.begin(), FE = F.end(); FI != FE; ++FI) {
-      for (auto BBI = FI->begin(), BBE = FI->end(); BBI != BBE;) {
-        Instruction *Inst = BBI++;
-        // Only attempt to convert an instruction if its result or any of its
-        // operands are illegal.
-        bool ShouldConvert = shouldConvert(Inst);
-        for (auto OI = Inst->op_begin(), OE = Inst->op_end(); OI != OE; ++OI)
-          ShouldConvert |= shouldConvert(cast<Value>(OI));
-
-        if (ShouldConvert) {
-          convertInstruction(&DL, Inst, State);
-          Modified = true;
-        }
+      if (ShouldConvert) {
+        convertInstruction(&DL, Inst, State);
+        Modified = true;
       }
     }
-    State.eraseReplacedInstructions();
   }
+  State.eraseReplacedInstructions();
 
   if (Modified)
     // Clean up bitcasts that were create with constexprs in them.
     std::unique_ptr<FunctionPass>(createExpandConstantExprPass())
         ->runOnFunction(F);
+  return Modified;
+}
+
+bool PromoteIntegers::ensureCompliantSignature(
+    LLVMContext &Ctx, Function *OldFct, Module &M,
+    DenseMap<const llvm::Function *, DISubprogram> &DISubprogramMap) {
+
+  auto *NewFctType = cast<FunctionType>(
+      TypeMapper.getSimpleType(Ctx, OldFct->getFunctionType()));
+  if (NewFctType == OldFct->getFunctionType())
+    return false;
+
+  auto *NewFct = Function::Create(NewFctType, OldFct->getLinkage(), "", &M);
+
+  NewFct->takeName(OldFct);
+  NewFct->copyAttributesFrom(OldFct);
+  for (auto UseIter = OldFct->use_begin(), E = OldFct->use_end();
+       E != UseIter;) {
+    Use &FctUse = *(UseIter++);
+    // Types are not going to match after this.
+    FctUse.set(NewFct);
+  }
+
+  if (OldFct->empty())
+    return true;
+
+  NewFct->getBasicBlockList().splice(NewFct->begin(),
+                                     OldFct->getBasicBlockList());
+  IRBuilder<> Builder(NewFct->getEntryBlock().getFirstInsertionPt());
+
+  auto OldArgIter = OldFct->getArgumentList().begin();
+  for (auto &NewArg : NewFct->getArgumentList()) {
+    Argument *OldArg = OldArgIter++;
+
+    if (OldArg->getType() != NewArg.getType()) {
+      if (NewArg.getType()->isIntegerTy()) {
+        auto *Replacement = Builder.CreateTrunc(&NewArg, OldArg->getType());
+        Replacement->takeName(OldArg);
+        NewArg.setName(Replacement->getName() + ".exp");
+        OldArg->replaceAllUsesWith(Replacement);
+      } else {
+        // Blindly replace the type of the uses, this is some composite
+        // like a function type.
+        NewArg.takeName(OldArg);
+        for (auto UseIter = OldArg->use_begin(), E = OldArg->use_end();
+             E != UseIter;) {
+          Use &AUse = *(UseIter++);
+          AUse.set(&NewArg);
+        }
+      }
+    } else {
+      NewArg.takeName(OldArg);
+      OldArg->replaceAllUsesWith(&NewArg);
+    }
+  }
+
+  auto Found = DISubprogramMap.find(OldFct);
+  if (Found != DISubprogramMap.end())
+    Found->second->replaceFunction(NewFct);
+
+  return true;
+}
+
+bool PromoteIntegers::runOnModule(Module &M) {
+  DataLayout DL(&M);
+  LLVMContext &Ctx = M.getContext();
+  bool Modified = false;
+  auto DISubprogramMap = makeSubprogramMap(M);
+
+  // Change function signatures first.
+  for (auto I = M.begin(), E = M.end(); I != E;) {
+    Function *F = I++;
+    bool Changed = ensureCompliantSignature(Ctx, F, M, DISubprogramMap);
+    if (Changed)
+      F->eraseFromParent();
+    Modified |= Changed;
+  }
+
+  for (auto &F : M.getFunctionList())
+    Modified |= processFunction(F, DL);
 
   return Modified;
 }
 
-FunctionPass *llvm::createPromoteIntegersPass() {
-  return new PromoteIntegers();
-}
+ModulePass *llvm::createPromoteIntegersPass() { return new PromoteIntegers(); }

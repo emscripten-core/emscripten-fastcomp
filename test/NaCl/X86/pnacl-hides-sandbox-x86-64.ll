@@ -63,7 +63,7 @@ declare hidden void @DirectCallTarget() #1
 ; Function Attrs: nounwind
 define void @TestIndirectCall() #0 {
 entry:
-  %0 = load void ()** @IndirectCallTarget, align 4
+  %0 = load void ()*, void ()** @IndirectCallTarget, align 4
   call void %0()
   ret void
 }
@@ -94,10 +94,10 @@ entry:
   %Arg.addr = alloca i32, align 4
   %Tmp = alloca i8*, align 4
   store i32 %Arg, i32* %Arg.addr, align 4
-  %0 = load i32* %Arg.addr, align 4
+  %0 = load i32, i32* %Arg.addr, align 4
   %1 = alloca i8, i32 %0
   store i8* %1, i8** %Tmp, align 4
-  %2 = load i8** %Tmp, align 4
+  %2 = load i8*, i8** %Tmp, align 4
   call void @Consume(i8* %2)
   ret void
 }
@@ -115,10 +115,10 @@ entry:
   %Arg.addr = alloca i32, align 4
   %Tmp = alloca i8*, align 4
   store i32 %Arg, i32* %Arg.addr, align 4
-  %0 = load i32* %Arg.addr, align 4
+  %0 = load i32, i32* %Arg.addr, align 4
   %1 = alloca i8, i32 %0
   store i8* %1, i8** %Tmp, align 4
-  %2 = load i8** %Tmp, align 4
+  %2 = load i8*, i8** %Tmp, align 4
   call void @Consume(i8* %2)
   ret void
 }
@@ -134,7 +134,7 @@ define void @TestIndirectJump(i32 %Arg) #0 {
 entry:
   %Arg.addr = alloca i32, align 4
   store i32 %Arg, i32* %Arg.addr, align 4
-  %0 = load i32* %Arg.addr, align 4
+  %0 = load i32, i32* %Arg.addr, align 4
   switch i32 %0, label %sw.epilog [
     i32 2, label %sw.bb
     i32 3, label %sw.bb1
@@ -144,23 +144,23 @@ entry:
   ]
 
 sw.bb:                                            ; preds = %entry
-  %call = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str, i32 0, i32 0))
+  %call = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb1:                                           ; preds = %entry
-  %call2 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str1, i32 0, i32 0))
+  %call2 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str1, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb3:                                           ; preds = %entry
-  %call4 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str2, i32 0, i32 0))
+  %call4 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str2, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb5:                                           ; preds = %entry
-  %call6 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str3, i32 0, i32 0))
+  %call6 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str3, i32 0, i32 0))
   br label %sw.epilog
 
 sw.bb7:                                           ; preds = %entry
-  %call8 = call i32 @puts(i8* getelementptr inbounds ([8 x i8]* @.str4, i32 0, i32 0))
+  %call8 = call i32 @puts(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str4, i32 0, i32 0))
   br label %sw.epilog
 
 sw.epilog:                                        ; preds = %entry, %sw.bb7, %sw.bb5, %sw.bb3, %sw.bb1, %sw.bb

@@ -48,14 +48,6 @@ unsigned getX86SubSuperRegister_(unsigned Reg, EVT VT, bool High=false);
 unsigned DemoteRegTo32_(unsigned RegIn);
 } // namespace
 
-static MCSymbol *CreateTempLabel(MCContext &Context, const char *Prefix) {
-  SmallString<128> NameSV;
-  raw_svector_ostream(NameSV)
-    << Context.getAsmInfo()->getPrivateGlobalPrefix() // get internal label
-    << Prefix << Context.getUniqueSymbolID();
-  return Context.GetOrCreateSymbol(NameSV);
-}
-
 static void PushReturnAddress(const llvm::MCSubtargetInfo &STI,
                               MCContext &Context, MCStreamer &Out,
                               MCSymbol *RetTarget) {
@@ -115,7 +107,7 @@ static void EmitDirectCall(const llvm::MCSubtargetInfo &STI,
     MCContext &Context = Out.getContext();
 
     // Generate a label for the return address.
-    MCSymbol *RetTarget = CreateTempLabel(Context, "DirectCallRetAddr");
+    MCSymbol *RetTarget = Context.createTempSymbol("DirectCallRetAddr", true);
 
     PushReturnAddress(STI, Context, Out, RetTarget);
 
@@ -205,7 +197,7 @@ static void EmitIndirectBranch(const llvm::MCSubtargetInfo &STI,
     if (IsCall) {
       MCContext &Context = Out.getContext();
       // Generate a label for the return address.
-      RetTarget = CreateTempLabel(Context, "IndirectCallRetAddr");
+      RetTarget = Context.createTempSymbol("IndirectCallRetAddr", true);
       // Explicitly push the (32-bit) return address for a NaCl64 call
       // instruction.
       PushReturnAddress(STI, Context, Out, RetTarget);

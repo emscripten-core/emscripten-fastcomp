@@ -192,11 +192,6 @@ public:
     }
     bool operator!=(const iterator& x) const { return !operator==(x); }
 
-    const iterator &operator=(const iterator &I) {
-      CurNode = I.CurNode;
-      return *this;
-    }
-
     value_type &operator*() const {
       assert(CurNode && "Dereferencing AliasSet.end()!");
       return *CurNode;
@@ -226,8 +221,8 @@ private:
       AccessTy(NoModRef), AliasTy(MustAlias), Volatile(false) {
   }
 
-  AliasSet(const AliasSet &AS) LLVM_DELETED_FUNCTION;
-  void operator=(const AliasSet &AS) LLVM_DELETED_FUNCTION;
+  AliasSet(const AliasSet &AS) = delete;
+  void operator=(const AliasSet &AS) = delete;
 
   PointerRec *getSomePointer() const {
     return PtrList;

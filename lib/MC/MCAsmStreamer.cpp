@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmBackend.h"
@@ -32,16 +32,14 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Path.h"
 #include <cctype>
-#include <unordered_map>
 using namespace llvm;
 
 namespace {
 
-class MCAsmStreamer : public MCStreamer {
-protected:
+class MCAsmStreamer final : public MCStreamer {
+  std::unique_ptr<formatted_raw_ostream> OSOwner;
   formatted_raw_ostream &OS;
   const MCAsmInfo *MAI;
-private:
   std::unique_ptr<MCInstPrinter> InstPrinter;
   std::unique_ptr<MCCodeEmitter> Emitter;
   std::unique_ptr<MCAsmBackend> AsmBackend;
@@ -61,14 +59,15 @@ private:
   void EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) override;
 
 public:
-  MCAsmStreamer(MCContext &Context, formatted_raw_ostream &os,
+  MCAsmStreamer(MCContext &Context, std::unique_ptr<formatted_raw_ostream> os,
                 bool isVerboseAsm, bool useDwarfDirectory,
                 MCInstPrinter *printer, MCCodeEmitter *emitter,
                 MCAsmBackend *asmbackend, bool showInst)
-      : MCStreamer(Context), OS(os), MAI(Context.getAsmInfo()),
-        InstPrinter(printer), Emitter(emitter), AsmBackend(asmbackend),
-        CommentStream(CommentToEmit), IsVerboseAsm(isVerboseAsm),
-        ShowInst(showInst), UseDwarfDirectory(useDwarfDirectory),
+      : MCStreamer(Context), OSOwner(std::move(os)), OS(*OSOwner),
+        MAI(Context.getAsmInfo()), InstPrinter(printer), Emitter(emitter),
+        AsmBackend(asmbackend), CommentStream(CommentToEmit),
+        IsVerboseAsm(isVerboseAsm), ShowInst(showInst),
+        UseDwarfDirectory(useDwarfDirectory),
         BundleAlignmentEnabled(0) {
     if (InstPrinter && IsVerboseAsm)
       InstPrinter->setCommentStream(CommentStream);
@@ -272,7 +271,7 @@ void MCAsmStreamer::EmitCommentsAndEOL() {
   }
 
   CommentStream.flush();
-  StringRef Comments = CommentToEmit.str();
+  StringRef Comments = CommentToEmit;
 
   assert(Comments.back() == '\n' &&
          "Comment array not newline terminated");
@@ -440,7 +439,11 @@ bool MCAsmStreamer::EmitSymbolAttribute(MCSymbol *Symbol,
   case MCSA_Internal:       OS << "\t.internal\t";        break;
   case MCSA_LazyReference:  OS << "\t.lazy_reference\t";  break;
   case MCSA_Local:          OS << "\t.local\t";           break;
-  case MCSA_NoDeadStrip:    OS << "\t.no_dead_strip\t";   break;
+  case MCSA_NoDeadStrip:
+    if (!MAI->hasNoDeadStrip())
+      return false;
+    OS << "\t.no_dead_strip\t";
+    break;
   case MCSA_SymbolResolver: OS << "\t.symbol_resolver\t"; break;
   case MCSA_PrivateExtern:
     OS << "\t.private_extern\t";
@@ -686,7 +689,11 @@ void MCAsmStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
       // We truncate our partial emission to fit within the bounds of the
       // emission domain.  This produces nicer output and silences potential
       // truncation warnings when round tripping through another assembler.
-      ValueToEmit &= ~0ULL >> (64 - EmissionSize * 8);
+      uint64_t Shift = 64 - EmissionSize * 8;
+      assert(Shift < static_cast<uint64_t>(
+                         std::numeric_limits<unsigned long long>::digits) &&
+             "undefined behavior");
+      ValueToEmit &= ~0ULL >> Shift;
       EmitIntValue(ValueToEmit, EmissionSize);
       Emitted += EmissionSize;
     }
@@ -869,8 +876,6 @@ void MCAsmStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
                                           unsigned Isa,
                                           unsigned Discriminator,
                                           StringRef FileName) {
-  this->MCStreamer::EmitDwarfLocDirective(FileNo, Line, Column, Flags,
-                                          Isa, Discriminator, FileName);
   OS << "\t.loc\t" << FileNo << " " << Line << " " << Column;
   if (Flags & DWARF2_FLAG_BASIC_BLOCK)
     OS << " basic_block";
@@ -900,6 +905,8 @@ void MCAsmStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
        << Line << ':' << Column;
   }
   EmitEOL();
+  this->MCStreamer::EmitDwarfLocDirective(FileNo, Line, Column, Flags,
+                                          Isa, Discriminator, FileName);
 }
 
 MCSymbol *MCAsmStreamer::getDwarfLineTableSymbol(unsigned CUID) {
@@ -1259,15 +1266,15 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
 
   // Show the MCInst if enabled.
   if (ShowInst) {
-    Inst.dump_pretty(GetCommentOS(), MAI, InstPrinter.get(), "\n ");
+    Inst.dump_pretty(GetCommentOS(), InstPrinter.get(), "\n ");
     GetCommentOS() << "\n";
   }
 
   // If we have an AsmPrinter, use that to print, otherwise print the MCInst.
   if (InstPrinter)
-    InstPrinter->printInst(&Inst, OS, "");
+    InstPrinter->printInst(&Inst, OS, "", STI);
   else
-    Inst.print(OS, MAI);
+    Inst.print(OS);
   EmitEOL();
 }
 
@@ -1318,10 +1325,10 @@ void MCAsmStreamer::FinishImpl() {
 }
 
 MCStreamer *llvm::createAsmStreamer(MCContext &Context,
-                                    formatted_raw_ostream &OS,
+                                    std::unique_ptr<formatted_raw_ostream> OS,
                                     bool isVerboseAsm, bool useDwarfDirectory,
                                     MCInstPrinter *IP, MCCodeEmitter *CE,
                                     MCAsmBackend *MAB, bool ShowInst) {
-  return new MCAsmStreamer(Context, OS, isVerboseAsm, useDwarfDirectory, IP, CE,
-                           MAB, ShowInst);
+  return new MCAsmStreamer(Context, std::move(OS), isVerboseAsm,
+                           useDwarfDirectory, IP, CE, MAB, ShowInst);
 }

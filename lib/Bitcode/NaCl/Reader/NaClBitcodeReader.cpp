@@ -342,8 +342,8 @@ namespace {
 // placeholders for relocation records, and the corresponding cost
 // of duplicating initializers when these placeholders are replaced.
 class ParseGlobalsHandler {
-  ParseGlobalsHandler(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
-  void operator=(const ParseGlobalsHandler &H) LLVM_DELETED_FUNCTION;
+  ParseGlobalsHandler(const ParseGlobalsHandler &H) = delete;
+  void operator=(const ParseGlobalsHandler &H) = delete;
 
   NaClBitcodeReader &Reader;
   NaClBitcodeReaderValueList &ValueList;
@@ -1828,6 +1828,11 @@ std::error_code NaClBitcodeReader::MaterializeModule(Module *M) {
   std::vector<std::pair<Function*, Function*> >().swap(UpgradedIntrinsics);
 
   return std::error_code();
+}
+
+std::vector<StructType *> NaClBitcodeReader::getIdentifiedStructTypes() const {
+  // MERGETODO(dschuff): does this need to contain anything for TypeFinder?
+  return std::vector<StructType *>();
 }
 
 std::error_code NaClBitcodeReader::InitStream() {

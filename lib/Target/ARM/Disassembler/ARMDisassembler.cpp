@@ -91,7 +91,7 @@ public:
     MCDisassembler(STI, Ctx) {
   }
 
-  ~ARMDisassembler() {}
+  ~ARMDisassembler() override {}
 
   DecodeStatus getInstruction(MCInst &Instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
@@ -106,7 +106,7 @@ public:
     MCDisassembler(STI, Ctx) {
   }
 
-  ~ThumbDisassembler() {}
+  ~ThumbDisassembler() override {}
 
   DecodeStatus getInstruction(MCInst &Instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
@@ -176,8 +176,6 @@ static DecodeStatus DecodePredicateOperand(MCInst &Inst, unsigned Val,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeCCOutOperand(MCInst &Inst, unsigned Val,
                                uint64_t Address, const void *Decoder);
-static DecodeStatus DecodeSOImmOperand(MCInst &Inst, unsigned Val,
-                               uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeRegListOperand(MCInst &Inst, unsigned Val,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeSPRRegListOperand(MCInst &Inst, unsigned Val,
@@ -213,6 +211,10 @@ static DecodeStatus DecodeArmMOVTWInstruction(MCInst &Inst, unsigned Insn,
 static DecodeStatus DecodeSMLAInstruction(MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeCPSInstruction(MCInst &Inst, unsigned Insn,
+                               uint64_t Address, const void *Decoder);
+static DecodeStatus DecodeTSTInstruction(MCInst &Inst, unsigned Insn,
+                               uint64_t Address, const void *Decoder);
+static DecodeStatus DecodeSETPANInstruction(MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeT2CPSInstruction(MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
@@ -1132,15 +1134,6 @@ static DecodeStatus DecodeCCOutOperand(MCInst &Inst, unsigned Val,
     Inst.addOperand(MCOperand::CreateReg(ARM::CPSR));
   else
     Inst.addOperand(MCOperand::CreateReg(0));
-  return MCDisassembler::Success;
-}
-
-static DecodeStatus DecodeSOImmOperand(MCInst &Inst, unsigned Val,
-                               uint64_t Address, const void *Decoder) {
-  uint32_t imm = Val & 0xFF;
-  uint32_t rot = (Val & 0xF00) >> 7;
-  uint32_t rot_imm = (imm >> rot) | (imm << ((32-rot) & 0x1F));
-  Inst.addOperand(MCOperand::CreateImm(rot_imm));
   return MCDisassembler::Success;
 }
 
@@ -2126,6 +2119,54 @@ static DecodeStatus DecodeSMLAInstruction(MCInst &Inst, unsigned Insn,
 
   if (!Check(S, DecodePredicateOperand(Inst, pred, Address, Decoder)))
     return MCDisassembler::Fail;
+
+  return S;
+}
+
+static DecodeStatus DecodeTSTInstruction(MCInst &Inst, unsigned Insn,
+                                  uint64_t Address, const void *Decoder) {
+  DecodeStatus S = MCDisassembler::Success;
+
+  unsigned Pred = fieldFromInstruction(Insn, 28, 4);
+  unsigned Rn = fieldFromInstruction(Insn, 16, 4);
+  unsigned Rm = fieldFromInstruction(Insn, 0, 4);
+
+  if (Pred == 0xF)
+    return DecodeSETPANInstruction(Inst, Insn, Address, Decoder);
+
+  if (!Check(S, DecodeGPRRegisterClass(Inst, Rn, Address, Decoder)))
+    return MCDisassembler::Fail;
+  if (!Check(S, DecodeGPRRegisterClass(Inst, Rm, Address, Decoder)))
+    return MCDisassembler::Fail;
+  if (!Check(S, DecodePredicateOperand(Inst, Pred, Address, Decoder)))
+    return MCDisassembler::Fail;
+
+  return S;
+}
+
+static DecodeStatus DecodeSETPANInstruction(MCInst &Inst, unsigned Insn,
+                                  uint64_t Address, const void *Decoder) {
+  DecodeStatus S = MCDisassembler::Success;
+
+  unsigned Imm = fieldFromInstruction(Insn, 9, 1);
+
+  const MCDisassembler *Dis = static_cast<const MCDisassembler*>(Decoder);
+  uint64_t FeatureBits = Dis->getSubtargetInfo().getFeatureBits();
+  if ((FeatureBits & ARM::HasV8_1aOps) == 0 || 
+      (FeatureBits & ARM::HasV8Ops) == 0 )
+    return MCDisassembler::Fail;
+
+  // Decoder can be called from DecodeTST, which does not check the full
+  // encoding is valid.
+  if (fieldFromInstruction(Insn, 20,12) != 0xf11 ||
+      fieldFromInstruction(Insn, 4,4) != 0)
+    return MCDisassembler::Fail;
+  if (fieldFromInstruction(Insn, 10,10) != 0 ||
+      fieldFromInstruction(Insn, 0,4) != 0)
+    S = MCDisassembler::SoftFail;
+
+  Inst.setOpcode(ARM::SETPAN);
+  Inst.addOperand(MCOperand::CreateImm(Imm));
 
   return S;
 }
@@ -4982,7 +5023,7 @@ static DecodeStatus DecodeT2ShifterImmOperand(MCInst &Inst, uint32_t Val,
   DecodeStatus S = MCDisassembler::Success;
 
   // Shift of "asr #32" is not allowed in Thumb2 mode.
-  if (Val == 0x20) S = MCDisassembler::SoftFail;
+  if (Val == 0x20) S = MCDisassembler::Fail;
   Inst.addOperand(MCOperand::CreateImm(Val));
   return S;
 }

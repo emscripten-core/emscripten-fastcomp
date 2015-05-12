@@ -93,11 +93,11 @@ class ARMFastISel final : public FastISel {
     explicit ARMFastISel(FunctionLoweringInfo &funcInfo,
                          const TargetLibraryInfo *libInfo)
         : FastISel(funcInfo, libInfo),
+          Subtarget(
+              &static_cast<const ARMSubtarget &>(funcInfo.MF->getSubtarget())),
           M(const_cast<Module &>(*funcInfo.Fn->getParent())),
-          TM(funcInfo.MF->getTarget()),
-          TII(*TM.getSubtargetImpl()->getInstrInfo()),
-          TLI(*TM.getSubtargetImpl()->getTargetLowering()) {
-      Subtarget = &TM.getSubtarget<ARMSubtarget>();
+          TM(funcInfo.MF->getTarget()), TII(*Subtarget->getInstrInfo()),
+          TLI(*Subtarget->getTargetLowering()) {
       AFI = funcInfo.MF->getInfo<ARMFunctionInfo>();
       isThumb2 = AFI->isThumbFunction();
       Context = &funcInfo.Fn->getContext();
@@ -189,9 +189,7 @@ class ARMFastISel final : public FastISel {
     unsigned ARMSelectCallOp(bool UseReg);
     unsigned ARMLowerPICELF(const GlobalValue *GV, unsigned Align, MVT VT);
 
-    const TargetLowering *getTargetLowering() {
-      return TM.getSubtargetImpl()->getTargetLowering();
-    }
+    const TargetLowering *getTargetLowering() { return &TLI; }
 
     // Call handling routines.
   private:
@@ -558,10 +556,9 @@ unsigned ARMFastISel::ARMMaterializeInt(const Constant *C, MVT VT) {
   if (ResultReg)
     return ResultReg;
 
-  // @LOCALMOD-START -- Can this just be an assert? (useMovt should be true
-  // so the above code would have handled the constant).
-  if (!Subtarget->useConstIslands())
-    return false;
+  // @LOCALMOD-START
+  // Should have been handled by fastEmit_i above.
+  assert(Subtarget->useConstIslands());
   // @LOCALMOD-END
 
   // Load from constant pool.  For now 32-bit only.
@@ -628,7 +625,7 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, MVT VT) {
   } else {
     // @LOCALMOD-BEGIN
     if (!Subtarget->useConstIslands())
-      return false;
+      return 0;
     // @LOCALMOD-END
 
     // MachineConstantPool wants an explicit alignment.
@@ -2283,7 +2280,7 @@ bool ARMFastISel::ARMEmitLibcall(const Instruction *I, RTLIB::Libcall Call) {
 
   // Add a register mask with the call-preserved registers.
   // Proper defs for return values will be added by setPhysRegsDeadExcept().
-  MIB.addRegMask(TRI.getCallPreservedMask(CC));
+  MIB.addRegMask(TRI.getCallPreservedMask(*FuncInfo.MF, CC));
 
   // Finish off the call including any return values.
   SmallVector<unsigned, 4> UsedRegs;
@@ -2434,7 +2431,7 @@ bool ARMFastISel::SelectCall(const Instruction *I,
 
   // Add a register mask with the call-preserved registers.
   // Proper defs for return values will be added by setPhysRegsDeadExcept().
-  MIB.addRegMask(TRI.getCallPreservedMask(CC));
+  MIB.addRegMask(TRI.getCallPreservedMask(*FuncInfo.MF, CC));
 
   // Finish off the call including any return values.
   SmallVector<unsigned, 4> UsedRegs;
@@ -2507,8 +2504,7 @@ bool ARMFastISel::SelectIntrinsicCall(const IntrinsicInst &I) {
                                              : &ARM::GPRRegClass;
 
     const ARMBaseRegisterInfo *RegInfo =
-        static_cast<const ARMBaseRegisterInfo *>(
-            TM.getSubtargetImpl()->getRegisterInfo());
+        static_cast<const ARMBaseRegisterInfo *>(Subtarget->getRegisterInfo());
     unsigned FramePtr = RegInfo->getFrameRegister(*(FuncInfo.MF));
     unsigned SrcReg = FramePtr;
 
@@ -3081,13 +3077,13 @@ namespace llvm {
   FastISel *ARM::createFastISel(FunctionLoweringInfo &funcInfo,
                                 const TargetLibraryInfo *libInfo) {
     const TargetMachine &TM = funcInfo.MF->getTarget();
-
-    const ARMSubtarget *Subtarget = &TM.getSubtarget<ARMSubtarget>();
+    const ARMSubtarget &STI =
+        static_cast<const ARMSubtarget &>(funcInfo.MF->getSubtarget());
     // Thumb2 support on iOS; ARM support on iOS, Linux and NaCl.
     bool UseFastISel = false;
-    UseFastISel |= Subtarget->isTargetMachO() && !Subtarget->isThumb1Only();
-    UseFastISel |= Subtarget->isTargetLinux() && !Subtarget->isThumb();
-    UseFastISel |= Subtarget->isTargetNaCl() && !Subtarget->isThumb();
+    UseFastISel |= STI.isTargetMachO() && !STI.isThumb1Only();
+    UseFastISel |= STI.isTargetLinux() && !STI.isThumb();
+    UseFastISel |= STI.isTargetNaCl() && !STI.isThumb();
 
     if (UseFastISel) {
       // iOS always has a FP for backtracking, force other targets

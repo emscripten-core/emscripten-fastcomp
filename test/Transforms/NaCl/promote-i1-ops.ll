@@ -9,12 +9,12 @@
 ; explicit casts.
 
 define i1 @load(i1* %ptr) {
-  %val = load i1* %ptr
+  %val = load i1, i1* %ptr
   ret i1 %val
 }
 ; CHECK: define i1 @load
 ; CHECK-NEXT: %ptr.i8ptr = bitcast i1* %ptr to i8*
-; CHECK-NEXT: %val.pre_trunc = load i8* %ptr.i8ptr
+; CHECK-NEXT: %val.pre_trunc = load i8, i8* %ptr.i8ptr
 ; CHECK-NEXT: %val = trunc i8 %val.pre_trunc to i1
 
 define void @store(i1 %val, i1* %ptr) {
@@ -66,14 +66,14 @@ define void @bitwise_ops(i1 %x, i1 %y) {
 define void @unchanged_cases(i32 %x, i32 %y, i32* %ptr) {
   %add = add i32 %x, %y
   %cmp = icmp slt i32 %x, %y
-  %val = load i32* %ptr
+  %val = load i32, i32* %ptr
   store i32 %x, i32* %ptr
   ret void
 }
 ; CHECK: define void @unchanged_cases
 ; CHECK-NEXT: %add = add i32 %x, %y
 ; CHECK-NEXT: %cmp = icmp slt i32 %x, %y
-; CHECK-NEXT: %val = load i32* %ptr
+; CHECK-NEXT: %val = load i32, i32* %ptr
 ; CHECK-NEXT: store i32 %x, i32* %ptr
 
 define void @i1_switch(i1 %a) {

@@ -25,6 +25,72 @@
 
 using namespace llvm;
 
+/*
+  The constructor sets up the whitelist of allowed intrinsics and their expected
+  types.  The comments in that code have some details on the allowed intrinsics.
+  Additionally, the following intrinsics are disallowed for the stated reasons:
+
+  * Trampolines depend on a target-specific-sized/aligned buffer.
+    Intrinsic::adjust_trampoline:
+    Intrinsic::init_trampoline:
+  * CXX exception handling is not stable.
+    Intrinsic::eh_dwarf_cfa:
+    Intrinsic::eh_return_i32:
+    Intrinsic::eh_return_i64:
+    Intrinsic::eh_sjlj_callsite:
+    Intrinsic::eh_sjlj_functioncontext:
+    Intrinsic::eh_sjlj_longjmp:
+    Intrinsic::eh_sjlj_lsda:
+    Intrinsic::eh_sjlj_setjmp:
+    Intrinsic::eh_typeid_for:
+    Intrinsic::eh_unwind_init:
+  * We do not want to expose addresses to the user.
+    Intrinsic::frameaddress:
+    Intrinsic::returnaddress:
+  * We do not support stack protectors.
+    Intrinsic::stackprotector:
+  * Var-args handling is done w/out intrinsics.
+    Intrinsic::vacopy:
+    Intrinsic::vaend:
+    Intrinsic::vastart:
+  * Disallow the *_with_overflow intrinsics because they return
+    struct types.  All of them can be introduced by passing -ftrapv
+    to Clang, which we do not support for now.  umul_with_overflow
+    and uadd_with_overflow are introduced by Clang for C++'s new[],
+    but ExpandArithWithOverflow expands out this use.
+    Intrinsic::sadd_with_overflow:
+    Intrinsic::ssub_with_overflow:
+    Intrinsic::uadd_with_overflow:
+    Intrinsic::usub_with_overflow:
+    Intrinsic::smul_with_overflow:
+    Intrinsic::umul_with_overflow:
+  * Disallow lifetime.start/end because the semantics of what
+    arguments they accept are not very well defined, and because it
+    would be better to do merging of stack slots in the user
+    toolchain than in the PNaCl translator.
+    See https://code.google.com/p/nativeclient/issues/detail?id=3443
+    Intrinsic::lifetime_end:
+    Intrinsic::lifetime_start:
+    Intrinsic::invariant_end:
+    Intrinsic::invariant_start:
+  * Some transcendental functions not needed yet.
+    Intrinsic::cos:
+    Intrinsic::exp:
+    Intrinsic::exp2:
+    Intrinsic::log:
+    Intrinsic::log2:
+    Intrinsic::log10:
+    Intrinsic::pow:
+    Intrinsic::powi:
+    Intrinsic::sin:
+  * We run -lower-expect to convert Intrinsic::expect into branch weights
+    and consume in the middle-end. The backend just ignores llvm.expect.
+    Intrinsic::expect:
+  * For FLT_ROUNDS macro from float.h. It works for ARM and X86
+    (but not MIPS). Also, wait until we add a set_flt_rounds intrinsic
+    before we bless this.
+    case Intrinsic::flt_rounds:
+*/
 PNaClAllowedIntrinsics::
 PNaClAllowedIntrinsics(LLVMContext *Context) : Context(Context) {
   Type *I8Ptr = Type::getInt8PtrTy(*Context);
@@ -110,88 +176,14 @@ bool PNaClAllowedIntrinsics::isAllowed(const Function *Func) {
     return Func->getFunctionType() == TypeMap[Func->getName()];
   // Check to see if debugging intrinsic, which can be allowed if
   // command-line flag set.
-  return isAllowedIntrinsicID(Func->getIntrinsicID());
+  return isAllowedDebugInfoIntrinsic(Func->getIntrinsicID());
 }
 
-bool PNaClAllowedIntrinsics::isAllowedIntrinsicID(unsigned ID) {
-  // (1) Allowed always, provided the exact name and type match.
-  // (2) Never allowed.
-  // (3) Debug info intrinsics.
-  //
-  // Please keep these sorted or grouped in a sensible way, within
-  // each category.
-  switch (ID) {
-    // Disallow by default.
+bool PNaClAllowedIntrinsics::isAllowedDebugInfoIntrinsic(unsigned IntrinsicID) {
+  /* These intrinsics are allowed when debug info metadata is also allowed,
+     and we just assume that they are called correctly by the frontend. */
+  switch (IntrinsicID) {
     default: return false;
-
-    /* The following is intentionally commented out, since the default
-       will return false.
-    // (2) Known to be never allowed.
-    case Intrinsic::not_intrinsic:
-    // Trampolines depend on a target-specific-sized/aligned buffer.
-    case Intrinsic::adjust_trampoline:
-    case Intrinsic::init_trampoline:
-    // CXX exception handling is not stable.
-    case Intrinsic::eh_dwarf_cfa:
-    case Intrinsic::eh_return_i32:
-    case Intrinsic::eh_return_i64:
-    case Intrinsic::eh_sjlj_callsite:
-    case Intrinsic::eh_sjlj_functioncontext:
-    case Intrinsic::eh_sjlj_longjmp:
-    case Intrinsic::eh_sjlj_lsda:
-    case Intrinsic::eh_sjlj_setjmp:
-    case Intrinsic::eh_typeid_for:
-    case Intrinsic::eh_unwind_init:
-    // We do not want to expose addresses to the user.
-    case Intrinsic::frameaddress:
-    case Intrinsic::returnaddress:
-    // Not supporting stack protectors.
-    case Intrinsic::stackprotector:
-    // Var-args handling is done w/out intrinsics.
-    case Intrinsic::vacopy:
-    case Intrinsic::vaend:
-    case Intrinsic::vastart:
-    // Disallow the *_with_overflow intrinsics because they return
-    // struct types.  All of them can be introduced by passing -ftrapv
-    // to Clang, which we do not support for now.  umul_with_overflow
-    // and uadd_with_overflow are introduced by Clang for C++'s new[],
-    // but ExpandArithWithOverflow expands out this use.
-    case Intrinsic::sadd_with_overflow:
-    case Intrinsic::ssub_with_overflow:
-    case Intrinsic::uadd_with_overflow:
-    case Intrinsic::usub_with_overflow:
-    case Intrinsic::smul_with_overflow:
-    case Intrinsic::umul_with_overflow:
-    // Disallow lifetime.start/end because the semantics of what
-    // arguments they accept are not very well defined, and because it
-    // would be better to do merging of stack slots in the user
-    // toolchain than in the PNaCl translator.
-    // See https://code.google.com/p/nativeclient/issues/detail?id=3443
-    case Intrinsic::lifetime_end:
-    case Intrinsic::lifetime_start:
-    case Intrinsic::invariant_end:
-    case Intrinsic::invariant_start:
-    // Some transcendental functions not needed yet.
-    case Intrinsic::cos:
-    case Intrinsic::exp:
-    case Intrinsic::exp2:
-    case Intrinsic::log:
-    case Intrinsic::log2:
-    case Intrinsic::log10:
-    case Intrinsic::pow:
-    case Intrinsic::powi:
-    case Intrinsic::sin:
-    // We run -lower-expect to convert Intrinsic::expect into branch weights
-    // and consume in the middle-end. The backend just ignores llvm.expect.
-    case Intrinsic::expect:
-    // For FLT_ROUNDS macro from float.h. It works for ARM and X86
-    // (but not MIPS). Also, wait until we add a set_flt_rounds intrinsic
-    // before we bless this.
-    case Intrinsic::flt_rounds:
-      return false;
-    */
-
-    // (3) Debug info intrinsics.
     case Intrinsic::dbg_declare:
     case Intrinsic::dbg_value:
       return PNaClABIAllowDebugMetadata;

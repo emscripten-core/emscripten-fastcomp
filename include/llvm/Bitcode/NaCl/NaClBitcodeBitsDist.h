@@ -25,10 +25,8 @@ namespace llvm {
 /// bits used by each record. Also tracks the number to times an
 /// abbreviation was used to parse the corresponding record.
 class NaClBitcodeBitsDistElement : public NaClBitcodeDistElement {
-  NaClBitcodeBitsDistElement(const NaClBitcodeBitsDistElement&)
-      LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeBitsDistElement&)
-      LLVM_DELETED_FUNCTION;
+  NaClBitcodeBitsDistElement(const NaClBitcodeBitsDistElement&) = delete;
+  void operator=(const NaClBitcodeBitsDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Dist) {

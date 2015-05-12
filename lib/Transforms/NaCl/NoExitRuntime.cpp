@@ -23,7 +23,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/IR/CFG.h"
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <map>
@@ -94,4 +94,3 @@ bool NoExitRuntime::runOnModule(Module &M) {
 ModulePass *llvm::createNoExitRuntimePass() {
   return new NoExitRuntime();
 }
-

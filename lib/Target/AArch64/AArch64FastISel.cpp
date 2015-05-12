@@ -245,9 +245,10 @@ public:
   unsigned fastMaterializeFloatZero(const ConstantFP* CF) override;
 
   explicit AArch64FastISel(FunctionLoweringInfo &FuncInfo,
-                         const TargetLibraryInfo *LibInfo)
+                           const TargetLibraryInfo *LibInfo)
       : FastISel(FuncInfo, LibInfo, /*SkipTargetIndependentISel=*/true) {
-    Subtarget = &TM.getSubtarget<AArch64Subtarget>();
+    Subtarget =
+        &static_cast<const AArch64Subtarget &>(FuncInfo.MF->getSubtarget());
     Context = &FuncInfo.Fn->getContext();
   }
 
@@ -302,6 +303,8 @@ static unsigned getImplicitScaleFactor(MVT VT) {
 CCAssignFn *AArch64FastISel::CCAssignFnForCall(CallingConv::ID CC) const {
   if (CC == CallingConv::WebKit_JS)
     return CC_AArch64_WebKit_JS;
+  if (CC == CallingConv::GHC)
+    return CC_AArch64_GHC;
   return Subtarget->isTargetDarwin() ? CC_AArch64_DarwinPCS : CC_AArch64_AAPCS;
 }
 
@@ -365,6 +368,24 @@ unsigned AArch64FastISel::materializeFP(const ConstantFP *CFP, MVT VT) {
     assert((Imm != -1) && "Cannot encode floating-point constant.");
     unsigned Opc = Is64Bit ? AArch64::FMOVDi : AArch64::FMOVSi;
     return fastEmitInst_i(Opc, TLI.getRegClassFor(VT), Imm);
+  }
+
+  // For the MachO large code model materialize the FP constant in code.
+  if (Subtarget->isTargetMachO() && TM.getCodeModel() == CodeModel::Large) {
+    unsigned Opc1 = Is64Bit ? AArch64::MOVi64imm : AArch64::MOVi32imm;
+    const TargetRegisterClass *RC = Is64Bit ?
+        &AArch64::GPR64RegClass : &AArch64::GPR32RegClass;
+
+    unsigned TmpReg = createResultReg(RC);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(Opc1), TmpReg)
+        .addImm(CFP->getValueAPF().bitcastToAPInt().getZExtValue());
+
+    unsigned ResultReg = createResultReg(TLI.getRegClassFor(VT));
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+            TII.get(TargetOpcode::COPY), ResultReg)
+        .addReg(TmpReg, getKillRegState(true));
+
+    return ResultReg;
   }
 
   // Materialize via constant pool.  MachineConstantPool wants an explicit
@@ -753,7 +774,7 @@ bool AArch64FastISel::computeAddress(const Value *Obj, Address &Addr, Type *Ty)
     if (Addr.getOffsetReg())
       break;
 
-    if (DL.getTypeSizeInBits(Ty) != 8)
+    if (!Ty || DL.getTypeSizeInBits(Ty) != 8)
       break;
 
     const Value *LHS = U->getOperand(0);
@@ -1896,7 +1917,8 @@ bool AArch64FastISel::selectLoad(const Instruction *I) {
     // could select it. Emit a copy to subreg if necessary. FastISel will remove
     // it when it selects the integer extend.
     unsigned Reg = lookUpRegForValue(IntExtVal);
-    if (!Reg) {
+    auto *MI = MRI.getUniqueVRegDef(Reg);
+    if (!MI) {
       if (RetVT == MVT::i64 && VT <= MVT::i32) {
         if (WantZExt) {
           // Delete the last emitted instruction from emitLoad (SUBREG_TO_REG).
@@ -1914,10 +1936,7 @@ bool AArch64FastISel::selectLoad(const Instruction *I) {
     // The integer extend has already been emitted - delete all the instructions
     // that have been emitted by the integer extend lowering code and use the
     // result from the load instruction directly.
-    while (Reg) {
-      auto *MI = MRI.getUniqueVRegDef(Reg);
-      if (!MI)
-        break;
+    while (MI) {
       Reg = 0;
       for (auto &Opnd : MI->uses()) {
         if (Opnd.isReg()) {
@@ -1926,6 +1945,9 @@ bool AArch64FastISel::selectLoad(const Instruction *I) {
         }
       }
       MI->eraseFromParent();
+      MI = nullptr;
+      if (Reg)
+        MI = MRI.getUniqueVRegDef(Reg);
     }
     updateValueMap(IntExtVal, ResultReg);
     return true;
@@ -3013,6 +3035,11 @@ bool AArch64FastISel::finishCall(CallLoweringInfo &CLI, MVT RetVT,
 
     // Copy all of the result registers out of their specified physreg.
     MVT CopyVT = RVLocs[0].getValVT();
+
+    // TODO: Handle big-endian results
+    if (CopyVT.isVector() && !Subtarget->isLittleEndian())
+      return false;
+
     unsigned ResultReg = createResultReg(TLI.getRegClassFor(CopyVT));
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
             TII.get(TargetOpcode::COPY), ResultReg)
@@ -3137,7 +3164,7 @@ bool AArch64FastISel::fastLowerCall(CallLoweringInfo &CLI) {
 
   // Add a register mask with the call-preserved registers.
   // Proper defs for return values will be added by setPhysRegsDeadExcept().
-  MIB.addRegMask(TRI.getCallPreservedMask(CC));
+  MIB.addRegMask(TRI.getCallPreservedMask(*FuncInfo.MF, CC));
 
   CLI.Call = MIB;
 
@@ -3304,8 +3331,7 @@ bool AArch64FastISel::fastLowerIntrinsicCall(const IntrinsicInst *II) {
     MFI->setFrameAddressIsTaken(true);
 
     const AArch64RegisterInfo *RegInfo =
-        static_cast<const AArch64RegisterInfo *>(
-            TM.getSubtargetImpl()->getRegisterInfo());
+        static_cast<const AArch64RegisterInfo *>(Subtarget->getRegisterInfo());
     unsigned FramePtr = RegInfo->getFrameRegister(*(FuncInfo.MF));
     unsigned SrcReg = MRI.createVirtualRegister(&AArch64::GPR64RegClass);
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
@@ -4543,7 +4569,7 @@ bool AArch64FastISel::selectShift(const Instruction *I) {
     unsigned ResultReg = 0;
     uint64_t ShiftVal = C->getZExtValue();
     MVT SrcVT = RetVT;
-    bool IsZExt = (I->getOpcode() == Instruction::AShr) ? false : true;
+    bool IsZExt = I->getOpcode() != Instruction::AShr;
     const Value *Op0 = I->getOperand(0);
     if (const auto *ZExt = dyn_cast<ZExtInst>(Op0)) {
       if (!isIntExtFree(ZExt)) {

@@ -31,8 +31,8 @@ class MemoryObject;
 // The serialized format has 2 fixed subfields (ID:type and data length) and the
 // variable-length data subfield
 class NaClBitcodeHeaderField {
-  NaClBitcodeHeaderField(const NaClBitcodeHeaderField &) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeHeaderField &)LLVM_DELETED_FUNCTION;
+  NaClBitcodeHeaderField(const NaClBitcodeHeaderField &) = delete;
+  void operator=(const NaClBitcodeHeaderField &) = delete;
 
 public:
   // Defines the ID associated with the value. Valid values are in
@@ -128,8 +128,8 @@ private:
 
 /// \brief Class holding parsed header fields in PNaCl bitcode file.
 class NaClBitcodeHeader {
-  NaClBitcodeHeader(const NaClBitcodeHeader &) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeHeader &) LLVM_DELETED_FUNCTION;
+  NaClBitcodeHeader(const NaClBitcodeHeader &) = delete;
+  void operator=(const NaClBitcodeHeader &) = delete;
 
   // The set of parsed header fields. The header takes ownership of
   // all fields in this vector.

@@ -16,7 +16,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PrologEpilogInserter.h"
 #include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -28,8 +27,10 @@
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/StackProtector.h"
+#include "llvm/CodeGen/WinEHFuncInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/LLVMContext.h"
@@ -47,6 +48,53 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "pei"
+
+namespace {
+class PEI : public MachineFunctionPass {
+public:
+  static char ID;
+  PEI() : MachineFunctionPass(ID) {
+    initializePEIPass(*PassRegistry::getPassRegistry());
+  }
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+
+  /// runOnMachineFunction - Insert prolog/epilog code and replace abstract
+  /// frame indexes with appropriate references.
+  ///
+  bool runOnMachineFunction(MachineFunction &Fn) override;
+
+private:
+  RegScavenger *RS;
+
+  // MinCSFrameIndex, MaxCSFrameIndex - Keeps the range of callee saved
+  // stack frame indexes.
+  unsigned MinCSFrameIndex, MaxCSFrameIndex;
+
+  // Entry and return blocks of the current function.
+  MachineBasicBlock *EntryBlock;
+  SmallVector<MachineBasicBlock *, 4> ReturnBlocks;
+
+  // Flag to control whether to use the register scavenger to resolve
+  // frame index materialization registers. Set according to
+  // TRI->requiresFrameIndexScavenging() for the current function.
+  bool FrameIndexVirtualScavenging;
+
+  void calculateSets(MachineFunction &Fn);
+  void calculateCallsInformation(MachineFunction &Fn);
+  void calculateCalleeSavedRegisters(MachineFunction &Fn);
+  void insertCSRSpillsAndRestores(MachineFunction &Fn);
+  void calculateFrameObjectOffsets(MachineFunction &Fn);
+  void replaceFrameIndices(MachineFunction &Fn);
+  void replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &Fn,
+                           int &SPAdj);
+  void scavengeFrameVirtualRegs(MachineFunction &Fn);
+  void insertPrologEpilogCode(MachineFunction &Fn);
+
+  // Convenience for recognizing return blocks.
+  bool isReturnBlock(MachineBasicBlock *MBB);
+};
+} // namespace
 
 char PEI::ID = 0;
 char &llvm::PrologEpilogCodeInserterID = PEI::ID;
@@ -495,7 +543,7 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &Fn) {
 
       unsigned Align = MFI->getObjectAlignment(i);
       // Adjust to alignment boundary
-      Offset = (Offset+Align-1)/Align*Align;
+      Offset = RoundUpToAlignment(Offset, Align);
 
       MFI->setObjectOffset(i, -Offset);        // Set the computed offset
     }
@@ -504,7 +552,7 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &Fn) {
     for (int i = MaxCSFI; i >= MinCSFI ; --i) {
       unsigned Align = MFI->getObjectAlignment(i);
       // Adjust to alignment boundary
-      Offset = (Offset+Align-1)/Align*Align;
+      Offset = RoundUpToAlignment(Offset, Align);
 
       MFI->setObjectOffset(i, Offset);
       Offset += MFI->getObjectSize(i);
@@ -537,7 +585,7 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &Fn) {
     unsigned Align = MFI->getLocalFrameMaxAlign();
 
     // Adjust to alignment boundary.
-    Offset = (Offset + Align - 1) / Align * Align;
+    Offset = RoundUpToAlignment(Offset, Align);
 
     DEBUG(dbgs() << "Local frame base offset: " << Offset << "\n");
 
@@ -656,8 +704,7 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &Fn) {
     // If the frame pointer is eliminated, all frame offsets will be relative to
     // SP not FP. Align to MaxAlign so this works.
     StackAlign = std::max(StackAlign, MaxAlign);
-    unsigned AlignMask = StackAlign - 1;
-    Offset = (Offset + AlignMask) & ~uint64_t(AlignMask);
+    Offset = RoundUpToAlignment(Offset, StackAlign);
   }
 
   // Update frame info to pretend that this is part of the stack...
@@ -703,7 +750,27 @@ void PEI::insertPrologEpilogCode(MachineFunction &Fn) {
 /// register references and actual offsets.
 ///
 void PEI::replaceFrameIndices(MachineFunction &Fn) {
-  if (!Fn.getFrameInfo()->hasStackObjects()) return; // Nothing to do?
+  const TargetFrameLowering &TFI = *Fn.getSubtarget().getFrameLowering();
+  if (!TFI.needsFrameIndexResolution(Fn)) return;
+
+  MachineModuleInfo &MMI = Fn.getMMI();
+  const Function *F = Fn.getFunction();
+  const Function *ParentF = MMI.getWinEHParent(F);
+  unsigned FrameReg;
+  if (F == ParentF) {
+    WinEHFuncInfo &FuncInfo = MMI.getWinEHFuncInfo(Fn.getFunction());
+    // FIXME: This should be unconditional but we have bugs in the preparation
+    // pass.
+    if (FuncInfo.UnwindHelpFrameIdx != INT_MAX)
+      FuncInfo.UnwindHelpFrameOffset = TFI.getFrameIndexReferenceFromSP(
+          Fn, FuncInfo.UnwindHelpFrameIdx, FrameReg);
+  } else if (MMI.hasWinEHFuncInfo(F)) {
+    WinEHFuncInfo &FuncInfo = MMI.getWinEHFuncInfo(Fn.getFunction());
+    auto I = FuncInfo.CatchHandlerParentFrameObjIdx.find(F);
+    if (I != FuncInfo.CatchHandlerParentFrameObjIdx.end())
+      FuncInfo.CatchHandlerParentFrameObjOffset[F] =
+          TFI.getFrameIndexReferenceFromSP(Fn, I->second, FrameReg);
+  }
 
   // Store SPAdj at exit of a basic block.
   SmallVector<int, 8> SPState;
@@ -743,26 +810,19 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &Fn,
   const TargetInstrInfo &TII = *Fn.getSubtarget().getInstrInfo();
   const TargetRegisterInfo &TRI = *Fn.getSubtarget().getRegisterInfo();
   const TargetFrameLowering *TFI = Fn.getSubtarget().getFrameLowering();
-  bool StackGrowsDown =
-    TFI->getStackGrowthDirection() == TargetFrameLowering::StackGrowsDown;
   int FrameSetupOpcode   = TII.getCallFrameSetupOpcode();
   int FrameDestroyOpcode = TII.getCallFrameDestroyOpcode();
 
   if (RS && !FrameIndexVirtualScavenging) RS->enterBasicBlock(BB);
 
+  bool InsideCallSequence = false;
+
   for (MachineBasicBlock::iterator I = BB->begin(); I != BB->end(); ) {
 
     if (I->getOpcode() == FrameSetupOpcode ||
         I->getOpcode() == FrameDestroyOpcode) {
-      // Remember how much SP has been adjusted to create the call
-      // frame.
-      int Size = I->getOperand(0).getImm();
-
-      if ((!StackGrowsDown && I->getOpcode() == FrameSetupOpcode) ||
-          (StackGrowsDown && I->getOpcode() == FrameDestroyOpcode))
-        Size = -Size;
-
-      SPAdj += Size;
+      InsideCallSequence = (I->getOpcode() == FrameSetupOpcode);
+      SPAdj += TII.getSPAdjust(I);
 
       MachineBasicBlock::iterator PrevI = BB->end();
       if (I != BB->begin()) PrevI = std::prev(I);
@@ -842,6 +902,16 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &Fn,
       MI = nullptr;
       break;
     }
+
+    // If we are looking at a call sequence, we need to keep track of
+    // the SP adjustment made by each instruction in the sequence.
+    // This includes both the frame setup/destroy pseudos (handled above),
+    // as well as other instructions that have side effects w.r.t the SP.
+    // Note that this must come after eliminateFrameIndex, because 
+    // if I itself referred to a frame index, we shouldn't count its own
+    // adjustment.
+    if (MI && InsideCallSequence)
+      SPAdj += TII.getSPAdjust(MI);
 
     if (DoIncr && I != BB->end()) ++I;
 

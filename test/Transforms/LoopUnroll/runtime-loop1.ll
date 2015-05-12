@@ -3,7 +3,7 @@
 ; This tests that setting the unroll count works
 
 ; CHECK: for.body.prol:
-; CHECK: br i1 %prol.iter.cmp, label %for.body.prol, label %for.body.preheader.split
+; CHECK: br label %for.body.preheader.split
 ; CHECK: for.body:
 ; CHECK: br i1 %exitcond.1, label %for.end.loopexit.unr-lcssa, label %for.body
 ; CHECK-NOT: br i1 %exitcond.4, label %for.end.loopexit{{.*}}, label %for.body
@@ -16,8 +16,8 @@ entry:
 for.body:                                         ; preds = %for.body, %entry
   %indvars.iv = phi i64 [ %indvars.iv.next, %for.body ], [ 0, %entry ]
   %sum.02 = phi i32 [ %add, %for.body ], [ 0, %entry ]
-  %arrayidx = getelementptr inbounds i32* %a, i64 %indvars.iv
-  %0 = load i32* %arrayidx, align 4
+  %arrayidx = getelementptr inbounds i32, i32* %a, i64 %indvars.iv
+  %0 = load i32, i32* %arrayidx, align 4
   %add = add nsw i32 %0, %sum.02
   %indvars.iv.next = add i64 %indvars.iv, 1
   %lftr.wideiv = trunc i64 %indvars.iv.next to i32

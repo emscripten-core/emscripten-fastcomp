@@ -4,7 +4,7 @@
 // correctly point to the section or the symbol.
 
 // CHECK:      Relocations [
-// CHECK-NEXT:   Section (2) .rel.text {
+// CHECK-NEXT:   Section {{.*}} .rel.text {
 // CHECK-NEXT:     0x2          R_386_GOTOFF     .Lfoo 0x0
 // CHECK-NEXT:     0x{{[^ ]+}}  R_386_PLT32      bar2 0x0
 // CHECK-NEXT:     0x{{[^ ]+}}  R_386_GOTPC      _GLOBAL_OFFSET_TABLE_ 0x0
@@ -63,6 +63,11 @@
 // Relocation 28 (und_symbol-bar2) is of type R_386_PC8
 // CHECK-NEXT:     0xA0         R_386_PC8        und_symbol 0x0
 // CHECK-NEXT:     0xA3         R_386_GOTOFF     und_symbol 0x0
+// Relocation 29 (zed@PLT) is of type R_386_PLT32 and uses the symbol
+// CHECK-NEXT:     0xA9         R_386_PLT32      zed 0x0
+// CHECK-NEXT:     0xAF         R_386_PC32       tr_start 0x0
+// CHECK-NEXT:     0xB3         R_386_16         foo      0x0
+// CHECK-NEXT:     0xB5         R_386_8          foo      0x0
 // CHECK-NEXT:   }
 // CHECK-NEXT: ]
 
@@ -74,7 +79,7 @@
 // CHECK-NEXT:     Binding: Local
 // CHECK-NEXT:     Type: TLS
 // CHECK-NEXT:     Other: 0
-// CHECK-NEXT:     Section: zedsec (0x5)
+// CHECK-NEXT:     Section: zedsec
 // CHECK-NEXT:   }
 // Symbol 7 is section 4
 // CHECK:        Symbol {
@@ -84,7 +89,7 @@
 // CHECK-NEXT:     Binding: Local
 // CHECK-NEXT:     Type: Section
 // CHECK-NEXT:     Other: 0
-// CHECK-NEXT:     Section: .bss (0x4)
+// CHECK-NEXT:     Section: .bss
 // CHECK-NEXT:   }
 
         .text
@@ -129,6 +134,13 @@ bar2:
         .byte und_symbol-bar2
 
         leal 1 + und_symbol@GOTOFF, %edi
+        movl zed@PLT(%eax), %eax
+
+        .code64
+        jmpq *tr_start(%rip)
+
+        .word foo
+        .byte foo
 
         .section        zedsec,"awT",@progbits
 zed:

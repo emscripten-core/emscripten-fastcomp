@@ -40,7 +40,6 @@ public:
   }
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesCFG();
-    AU.addRequired<DataLayoutPass>();
   }
   virtual bool runOnModule(Module &M);
 
@@ -151,7 +150,7 @@ void GlobalizeConstantVectors::materializeConstantVectors(
 }
 
 bool GlobalizeConstantVectors::runOnModule(Module &M) {
-  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+  DL = &M.getDataLayout();
 
   FunctionConstantList FCs;
   FCs.reserve(M.size());

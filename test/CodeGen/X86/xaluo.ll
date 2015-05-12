@@ -1,5 +1,5 @@
 ; RUN: llc -mtriple=x86_64-darwin-unknown                             < %s | FileCheck %s --check-prefix=CHECK --check-prefix=SDAG
-; RUN: llc -mtriple=x86_64-darwin-unknown -fast-isel -fast-isel-abort < %s | FileCheck %s --check-prefix=CHECK --check-prefix=FAST
+; RUN: llc -mtriple=x86_64-darwin-unknown -fast-isel -fast-isel-abort=1 < %s | FileCheck %s --check-prefix=CHECK --check-prefix=FAST
 
 ;
 ; Get the actual value of the overflow bit.
@@ -755,4 +755,4 @@ declare {i16, i1} @llvm.umul.with.overflow.i16(i16, i16) nounwind readnone
 declare {i32, i1} @llvm.umul.with.overflow.i32(i32, i32) nounwind readnone
 declare {i64, i1} @llvm.umul.with.overflow.i64(i64, i64) nounwind readnone
 
-!0 = metadata !{metadata !"branch_weights", i32 0, i32 2147483647}
+!0 = !{!"branch_weights", i32 0, i32 2147483647}

@@ -1,4 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
 ; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck -check-prefix=R600 -check-prefix=FUNC %s
 
 ; FUNC-LABEL: {{^}}fneg_fabs_fadd_f32:
@@ -71,7 +72,7 @@ define void @fneg_fabs_f32(float addrspace(1)* %out, float %in) {
 ; FUNC-LABEL: {{^}}v_fneg_fabs_f32:
 ; SI: v_or_b32_e32 v{{[0-9]+}}, 0x80000000, v{{[0-9]+}}
 define void @v_fneg_fabs_f32(float addrspace(1)* %out, float addrspace(1)* %in) {
-  %val = load float addrspace(1)* %in, align 4
+  %val = load float, float addrspace(1)* %in, align 4
   %fabs = call float @llvm.fabs.f32(float %val)
   %fsub = fsub float -0.000000e+00, %fabs
   store float %fsub, float addrspace(1)* %out, align 4

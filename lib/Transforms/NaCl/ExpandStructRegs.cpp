@@ -43,6 +43,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -151,7 +152,8 @@ static bool SplitUpSelect(SelectInst *Select) {
 
 template <class InstType>
 static void ProcessLoadOrStoreAttrs(InstType *Dest, InstType *Src,
-                                    StructType* STy, const unsigned Index) {
+                                    StructType* STy, const unsigned Index,
+                                    const DataLayout *DL) {
   CopyDebug(Dest, Src);
   Dest->setVolatile(Src->isVolatile());
   if (Src->isAtomic()) {
@@ -163,16 +165,12 @@ static void ProcessLoadOrStoreAttrs(InstType *Dest, InstType *Src,
     return;
   }
 
-  const DataLayout *DL = Src->getParent()->getDataLayout();
-  if (!DL) {
-    report_fatal_error("Need DataLayout");
-  }
   const StructLayout *SL = DL->getStructLayout(STy);
   const unsigned Alignment = Src->getAlignment();
   Dest->setAlignment(MinAlign(Alignment, SL->getElementOffset(Index)));
 }
 
-static bool SplitUpStore(StoreInst *Store) {
+static bool SplitUpStore(StoreInst *Store, const DataLayout *DL) {
   StructType *STy = cast<StructType>(Store->getValueOperand()->getType());
 
   bool NeedsAnotherPass = false;
@@ -183,6 +181,7 @@ static bool SplitUpStore(StoreInst *Store) {
     Indexes.push_back(ConstantInt::get(Store->getContext(), APInt(32, Index)));
     Value *GEP =
         CopyDebug(GetElementPtrInst::Create(
+                      STy,
                       Store->getPointerOperand(), Indexes,
                       Store->getPointerOperand()->getName() + ".index", Store),
                   Store);
@@ -194,14 +193,14 @@ static bool SplitUpStore(StoreInst *Store) {
     Value *Field = ExtractValueInst::Create(Store->getValueOperand(), EVIndexes,
                                             "", Store);
     StoreInst *NewStore = new StoreInst(Field, GEP, Store);
-    ProcessLoadOrStoreAttrs(NewStore, Store, STy, Index);
+    ProcessLoadOrStoreAttrs(NewStore, Store, STy, Index, DL);
   }
   Store->eraseFromParent();
 
   return NeedsAnotherPass;
 }
 
-static bool SplitUpLoad(LoadInst *Load) {
+static bool SplitUpLoad(LoadInst *Load, const DataLayout *DL) {
   StructType *STy = cast<StructType>(Load->getType());
   Value *NewStruct = UndefValue::get(STy);
 
@@ -212,13 +211,14 @@ static bool SplitUpLoad(LoadInst *Load) {
     Indexes.push_back(ConstantInt::get(Load->getContext(), APInt(32, 0)));
     Indexes.push_back(ConstantInt::get(Load->getContext(), APInt(32, Index)));
     Value *GEP =
-        CopyDebug(GetElementPtrInst::Create(Load->getPointerOperand(), Indexes,
+        CopyDebug(GetElementPtrInst::Create(STy,
+                                            Load->getPointerOperand(), Indexes,
                                             Load->getName() + ".index", Load),
                   Load);
     LoadInst *NewLoad = new LoadInst(GEP, Load->getName() + ".field", Load);
 
     NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewLoad);
-    ProcessLoadOrStoreAttrs(NewLoad, Load, STy, Index);
+    ProcessLoadOrStoreAttrs(NewLoad, Load, STy, Index, DL);
 
     // Reconstruct the struct value.
     SmallVector<unsigned, 1> EVIndexes;
@@ -425,6 +425,7 @@ static bool ExpandExtractValues(Function &Func) {
 bool ExpandStructRegs::runOnFunction(Function &Func) {
   bool Changed = false;
   bool NeedsAnotherPass;
+  const DataLayout *DL = &Func.getParent()->getDataLayout();
 
   do {
     NeedsAnotherPass = false;
@@ -436,12 +437,12 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
         Instruction *Inst = Iter++;
         if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
           if (Store->getValueOperand()->getType()->isStructTy()) {
-            NeedsAnotherPass |= SplitUpStore(Store);
+            NeedsAnotherPass |= SplitUpStore(Store, DL);
             Changed = true;
           }
         } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
           if (Load->getType()->isStructTy()) {
-            NeedsAnotherPass |= SplitUpLoad(Load);
+            NeedsAnotherPass |= SplitUpLoad(Load, DL);
             Changed = true;
           }
         } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {

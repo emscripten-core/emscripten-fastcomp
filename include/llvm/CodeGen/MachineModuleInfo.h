@@ -35,6 +35,7 @@
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/LibCallSemantics.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/ValueHandle.h"
@@ -57,21 +58,25 @@ class MachineFunction;
 class Module;
 class PointerType;
 class StructType;
+struct WinEHFuncInfo;
 
 //===----------------------------------------------------------------------===//
 /// LandingPadInfo - This structure is used to retain landing pad info for
 /// the current function.
 ///
 struct LandingPadInfo {
-  MachineBasicBlock *LandingPadBlock;    // Landing pad block.
-  SmallVector<MCSymbol*, 1> BeginLabels; // Labels prior to invoke.
-  SmallVector<MCSymbol*, 1> EndLabels;   // Labels after invoke.
-  MCSymbol *LandingPadLabel;             // Label at beginning of landing pad.
-  const Function *Personality;           // Personality function.
-  std::vector<int> TypeIds;              // List of type ids (filters negative)
+  MachineBasicBlock *LandingPadBlock;      // Landing pad block.
+  SmallVector<MCSymbol *, 1> BeginLabels;  // Labels prior to invoke.
+  SmallVector<MCSymbol *, 1> EndLabels;    // Labels after invoke.
+  SmallVector<MCSymbol *, 1> ClauseLabels; // Labels for each clause.
+  MCSymbol *LandingPadLabel;               // Label at beginning of landing pad.
+  const Function *Personality;             // Personality function.
+  std::vector<int> TypeIds;               // List of type ids (filters negative).
+  int WinEHState;                         // WinEH specific state number.
 
   explicit LandingPadInfo(MachineBasicBlock *MBB)
-    : LandingPadBlock(MBB), LandingPadLabel(nullptr), Personality(nullptr) {}
+      : LandingPadBlock(MBB), LandingPadLabel(nullptr), Personality(nullptr),
+        WinEHState(-1) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -86,7 +91,10 @@ public:
   virtual ~MachineModuleInfoImpl();
   typedef std::vector<std::pair<MCSymbol*, StubValueTy> > SymbolListTy;
 protected:
-  static SymbolListTy GetSortedStubs(const DenseMap<MCSymbol*, StubValueTy>&);
+
+  /// Return the entries from a DenseMap in a deterministic sorted orer.
+  /// Clears the map.
+  static SymbolListTy getSortedStubs(DenseMap<MCSymbol*, StubValueTy>&);
 };
 
 //===----------------------------------------------------------------------===//
@@ -161,14 +169,29 @@ class MachineModuleInfo : public ImmutablePass {
   /// to _fltused on Windows targets.
   bool UsesVAFloatArgument;
 
+  /// UsesMorestackAddr - True if the module calls the __morestack function
+  /// indirectly, as is required under the large code model on x86. This is used
+  /// to emit a definition of a symbol, __morestack_addr, containing the
+  /// address. See comments in lib/Target/X86/X86FrameLowering.cpp for more
+  /// details.
+  bool UsesMorestackAddr;
+
+  EHPersonality PersonalityTypeCache;
+
+  DenseMap<const Function *, std::unique_ptr<WinEHFuncInfo>> FuncInfoMap;
+
 public:
   static char ID; // Pass identification, replacement for typeid
 
   struct VariableDbgInfo {
-    TrackingVH<MDNode> Var;
-    TrackingVH<MDNode> Expr;
+    const MDLocalVariable *Var;
+    const MDExpression *Expr;
     unsigned Slot;
-    DebugLoc Loc;
+    const MDLocation *Loc;
+
+    VariableDbgInfo(const MDLocalVariable *Var, const MDExpression *Expr,
+                    unsigned Slot, const MDLocation *Loc)
+        : Var(Var), Expr(Expr), Slot(Slot), Loc(Loc) {}
   };
   typedef SmallVector<VariableDbgInfo, 4> VariableDbgInfoMapTy;
   VariableDbgInfoMapTy VariableDbgInfos;
@@ -177,7 +200,7 @@ public:
   // Real constructor.
   MachineModuleInfo(const MCAsmInfo &MAI, const MCRegisterInfo &MRI,
                     const MCObjectFileInfo *MOFI);
-  ~MachineModuleInfo();
+  ~MachineModuleInfo() override;
 
   // Initialization and Finalization
   bool doInitialization(Module &) override;
@@ -192,6 +215,12 @@ public:
 
   void setModule(const Module *M) { TheModule = M; }
   const Module *getModule() const { return TheModule; }
+
+  const Function *getWinEHParent(const Function *F) const;
+  WinEHFuncInfo &getWinEHFuncInfo(const Function *F);
+  bool hasWinEHFuncInfo(const Function *F) const {
+    return FuncInfoMap.count(getWinEHParent(F)) > 0;
+  }
 
   /// getInfo - Keep track of various per-function pieces of information for
   /// backends that would like to do so.
@@ -229,6 +258,14 @@ public:
 
   void setUsesVAFloatArgument(bool b) {
     UsesVAFloatArgument = b;
+  }
+
+  bool usesMorestackAddr() const {
+    return UsesMorestackAddr;
+  }
+
+  void setUsesMorestackAddr(bool b) {
+    UsesMorestackAddr = b;
   }
 
   /// \brief Returns a reference to a list of cfi instructions in the current
@@ -282,6 +319,8 @@ public:
   void addPersonality(MachineBasicBlock *LandingPad,
                       const Function *Personality);
 
+  void addWinEHState(MachineBasicBlock *LandingPad, int State);
+
   /// getPersonalityIndex - Get index of the current personality function inside
   /// Personalitites array
   unsigned getPersonalityIndex() const;
@@ -311,6 +350,11 @@ public:
   /// addCleanup - Add a cleanup action for a landing pad.
   ///
   void addCleanup(MachineBasicBlock *LandingPad);
+
+  /// Add a clause for a landing pad. Returns a new label for the clause. This
+  /// is used by EH schemes that have more than one landing pad. In this case,
+  /// each clause gets its own basic block.
+  MCSymbol *addClauseForLandingPad(MachineBasicBlock *LandingPad);
 
   /// getTypeIDFor - Return the type id for the specified typeinfo.  This is
   /// function wide.
@@ -389,12 +433,14 @@ public:
   /// of one is required to emit exception handling info.
   const Function *getPersonality() const;
 
+  /// Classify the personality function amongst known EH styles.
+  EHPersonality getPersonalityType();
+
   /// setVariableDbgInfo - Collect information used to emit debugging
   /// information of a variable.
-  void setVariableDbgInfo(MDNode *Var, MDNode *Expr, unsigned Slot,
-                          DebugLoc Loc) {
-    VariableDbgInfo Info = {Var, Expr, Slot, Loc};
-    VariableDbgInfos.push_back(std::move(Info));
+  void setVariableDbgInfo(const MDLocalVariable *Var, const MDExpression *Expr,
+                          unsigned Slot, const MDLocation *Loc) {
+    VariableDbgInfos.emplace_back(Var, Expr, Slot, Loc);
   }
 
   VariableDbgInfoMapTy &getVariableDbgInfo() { return VariableDbgInfos; }

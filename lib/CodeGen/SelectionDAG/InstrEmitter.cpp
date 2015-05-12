@@ -406,10 +406,10 @@ void InstrEmitter::AddOperand(MachineInstrBuilder &MIB,
     Type *Type = CP->getType();
     // MachineConstantPool wants an explicit alignment.
     if (Align == 0) {
-      Align = MF->getSubtarget().getDataLayout()->getPrefTypeAlignment(Type);
+      Align = MF->getTarget().getDataLayout()->getPrefTypeAlignment(Type);
       if (Align == 0) {
         // Alignment of vector types.  FIXME!
-        Align = MF->getSubtarget().getDataLayout()->getTypeAllocSize(Type);
+        Align = MF->getTarget().getDataLayout()->getTypeAllocSize(Type);
       }
     }
 
@@ -650,6 +650,8 @@ InstrEmitter::EmitDbgValue(SDDbgValue *SD,
   MDNode *Var = SD->getVariable();
   MDNode *Expr = SD->getExpression();
   DebugLoc DL = SD->getDebugLoc();
+  assert(cast<MDLocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
+         "Expected inlined-at fields to agree");
 
   if (SD->getKind() == SDDbgValue::FRAMEIX) {
     // Stack address; this needs to be lowered in target-dependent fashion.

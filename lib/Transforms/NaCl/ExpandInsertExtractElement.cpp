@@ -68,11 +68,13 @@ bool ExpandInsertExtractElement::runOnFunction(Function &F) {
       if (isa<ConstantInt>(III->getOperand(2)))
           continue;
 
-      Instruction *A = new AllocaInst(III->getType(), 0, "", Entry);
+      Type *AllocaTy = III->getType();
+      Instruction *A = new AllocaInst(AllocaTy, 0, "", Entry);
       CopyDebug(new StoreInst(III->getOperand(0), A, III), III);
 
       Value *Idxs[] = { Zero, III->getOperand(2) };
-      Instruction *B = CopyDebug(GetElementPtrInst::Create(A, Idxs, "", III), III);
+      Instruction *B = CopyDebug(
+          GetElementPtrInst::Create(AllocaTy, A, Idxs, "", III), III);
       CopyDebug(new StoreInst(III->getOperand(1), B, III), III);
 
       Instruction *L = CopyDebug(new LoadInst(A, "", III), III);
@@ -82,11 +84,13 @@ bool ExpandInsertExtractElement::runOnFunction(Function &F) {
       if (isa<ConstantInt>(EII->getOperand(1)))
           continue;
 
-      Instruction *A = new AllocaInst(EII->getOperand(0)->getType(), 0, "", Entry);
+      Type *AllocaTy = EII->getOperand(0)->getType();
+      Instruction *A = new AllocaInst(AllocaTy, 0, "", Entry);
       CopyDebug(new StoreInst(EII->getOperand(0), A, EII), EII);
 
       Value *Idxs[] = { Zero, EII->getOperand(1) };
-      Instruction *B = CopyDebug(GetElementPtrInst::Create(A, Idxs, "", EII), EII);
+      Instruction *B = CopyDebug(
+          GetElementPtrInst::Create(AllocaTy, A, Idxs, "", EII), EII);
       Instruction *L = CopyDebug(new LoadInst(B, "", EII), EII);
       EII->replaceAllUsesWith(L);
       EII->eraseFromParent();

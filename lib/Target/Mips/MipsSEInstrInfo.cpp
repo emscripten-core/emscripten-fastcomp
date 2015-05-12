@@ -27,7 +27,7 @@ using namespace llvm;
 MipsSEInstrInfo::MipsSEInstrInfo(const MipsSubtarget &STI)
     : MipsInstrInfo(STI, STI.getRelocationModel() == Reloc::PIC_ ? Mips::B
                                                                  : Mips::J),
-      RI(STI), IsN64(STI.isABI_N64()) {}
+      RI() {}
 
 const MipsRegisterInfo &MipsSEInstrInfo::getRegisterInfo() const {
   return RI;
@@ -38,9 +38,8 @@ const MipsRegisterInfo &MipsSEInstrInfo::getRegisterInfo() const {
 /// the destination along with the FrameIndex of the loaded stack slot.  If
 /// not, return 0.  This predicate must return 0 if the instruction has
 /// any side effects other than loading from the stack slot.
-unsigned MipsSEInstrInfo::
-isLoadFromStackSlot(const MachineInstr *MI, int &FrameIndex) const
-{
+unsigned MipsSEInstrInfo::isLoadFromStackSlot(const MachineInstr *MI,
+                                              int &FrameIndex) const {
   unsigned Opc = MI->getOpcode();
 
   if ((Opc == Mips::LW)   || (Opc == Mips::LD)   ||
@@ -61,9 +60,8 @@ isLoadFromStackSlot(const MachineInstr *MI, int &FrameIndex) const
 /// the source reg along with the FrameIndex of the loaded stack slot.  If
 /// not, return 0.  This predicate must return 0 if the instruction has
 /// any side effects other than storing to the stack slot.
-unsigned MipsSEInstrInfo::
-isStoreToStackSlot(const MachineInstr *MI, int &FrameIndex) const
-{
+unsigned MipsSEInstrInfo::isStoreToStackSlot(const MachineInstr *MI,
+                                             int &FrameIndex) const {
   unsigned Opc = MI->getOpcode();
 
   if ((Opc == Mips::SW)   || (Opc == Mips::SD)   ||
@@ -366,6 +364,9 @@ void MipsSEInstrInfo::adjustStackPtr(unsigned SP, int64_t Amount,
   unsigned ADDu = STI.isABI_N64() ? Mips::DADDu : Mips::ADDu;
   unsigned ADDiu = STI.isABI_N64() ? Mips::DADDiu : Mips::ADDiu;
 
+  if (Amount == 0)
+    return;
+
   if (isInt<16>(Amount))// addi sp, sp, amount
     BuildMI(MBB, I, DL, get(ADDiu), SP).addReg(SP).addImm(Amount);
   else { // Expand immediate that doesn't fit in 16-bit.
@@ -622,18 +623,13 @@ void MipsSEInstrInfo::expandEhReturn(MachineBasicBlock &MBB,
   // jr   $ra (via RetRA)
   const TargetMachine &TM = MBB.getParent()->getTarget();
   if (TM.getRelocationModel() == Reloc::PIC_)
-    BuildMI(MBB, I, I->getDebugLoc(),
-            TM.getSubtargetImpl()->getInstrInfo()->get(ADDU), T9)
+    BuildMI(MBB, I, I->getDebugLoc(), get(ADDU), T9)
         .addReg(TargetReg)
         .addReg(ZERO);
-  BuildMI(MBB, I, I->getDebugLoc(),
-          TM.getSubtargetImpl()->getInstrInfo()->get(ADDU), RA)
+  BuildMI(MBB, I, I->getDebugLoc(), get(ADDU), RA)
       .addReg(TargetReg)
       .addReg(ZERO);
-  BuildMI(MBB, I, I->getDebugLoc(),
-          TM.getSubtargetImpl()->getInstrInfo()->get(ADDU), SP)
-      .addReg(SP)
-      .addReg(OffsetReg);
+  BuildMI(MBB, I, I->getDebugLoc(), get(ADDU), SP).addReg(SP).addReg(OffsetReg);
   expandRetRA(MBB, I);
 }
 

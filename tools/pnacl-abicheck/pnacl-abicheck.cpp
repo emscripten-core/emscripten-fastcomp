@@ -17,7 +17,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Pass.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/SourceMgr.h"
@@ -87,8 +87,8 @@ int main(int argc, char **argv) {
   ModuleChecker->runOnModule(*Mod);
   ErrorsFound |= CheckABIVerifyErrors(ABIErrorReporter, "Module");
 
-  std::unique_ptr<FunctionPassManager> PM(new FunctionPassManager(&*Mod));
-  PM->add(new DataLayoutPass());
+  std::unique_ptr<legacy::FunctionPassManager> PM(
+      new legacy::FunctionPassManager(&*Mod));
   PM->add(createPNaClABIVerifyFunctionsPass(&ABIErrorReporter));
 
   PM->doInitialization();

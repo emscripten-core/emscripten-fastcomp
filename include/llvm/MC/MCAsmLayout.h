@@ -50,13 +50,8 @@ private:
   /// \brief Is the layout for this fragment valid?
   bool isFragmentValid(const MCFragment *F) const;
 
-  /// \brief Compute the amount of padding required before this fragment to
-  /// obey bundling restrictions.
-  uint64_t computeBundlePadding(const MCFragment *F,
-                                uint64_t FOffset, uint64_t FSize);
-
 public:
-  MCAsmLayout(MCAssembler &_Assembler);
+  MCAsmLayout(MCAssembler &Assembler);
 
   /// Get the assembler object this is a layout for.
   MCAssembler &getAssembler() const { return Assembler; }

@@ -283,24 +283,6 @@ void FunctionConverter::eraseReplacedInstructions() {
   }
 }
 
-static void ConvertMetadataOperand(FunctionConverter *FC,
-                                   IntrinsicInst *Call, int Index) {
-  MDNode *MD = cast<MDNode>(Call->getArgOperand(Index));
-  if (MD->getNumOperands() != 1)
-    return;
-  Value *MDArg = MD->getOperand(0);
-  if (MDArg && (isa<Argument>(MDArg) || isa<Instruction>(MDArg))) {
-    MDArg = FC->convert(MDArg, /* BypassPlaceholder= */ true);
-    if (PtrToIntInst *Cast = dyn_cast<PtrToIntInst>(MDArg)) {
-      // Unwrapping this is necessary for llvm.dbg.declare to work.
-      MDArg = Cast->getPointerOperand();
-    }
-    SmallVector<Value *, 1> Args;
-    Args.push_back(MDArg);
-    Call->setArgOperand(Index, MDNode::get(Call->getContext(), Args));
-  }
-}
-
 // Remove attributes that only apply to pointer arguments.  Returns
 // the updated AttributeSet.
 static AttributeSet RemovePointerAttrs(LLVMContext &Context,
@@ -333,6 +315,7 @@ static AttributeSet RemovePointerAttrs(LLVMContext &Context,
         case Attribute::ReadOnly:
         case Attribute::NonNull:
         case Attribute::Dereferenceable:
+        case Attribute::DereferenceableOrNull:
           break;
         default:
           AB.addAttribute(*Attr);
@@ -591,25 +574,12 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
         ConvertInstruction(&DL, IntPtrType, &FC, Iter++);
       }
     }
-    // Now that all the replacement instructions have been created, we
-    // can update the debug intrinsic calls.
-    for (Function::iterator BB = NewFunc->begin(), E = NewFunc->end();
-         BB != E; ++BB) {
-      for (BasicBlock::iterator Inst = BB->begin(), E = BB->end();
-           Inst != E; ++Inst) {
-        if (IntrinsicInst *Call = dyn_cast<IntrinsicInst>(Inst)) {
-          if (Call->getIntrinsicID() == Intrinsic::dbg_declare) {
-            ConvertMetadataOperand(&FC, Call, 0);
-          }
-        }
-      }
-    }
     FC.eraseReplacedInstructions();
 
     // Patch the pointer to LLVM function in debug info descriptor.
     auto DI = FunctionDIs.find(OldFunc);
     if (DI != FunctionDIs.end())
-      DI->second.replaceFunction(NewFunc);
+      DI->second->replaceFunction(NewFunc);
 
     OldFunc->eraseFromParent();
   }

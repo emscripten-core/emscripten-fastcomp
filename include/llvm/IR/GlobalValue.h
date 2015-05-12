@@ -20,7 +20,6 @@
 
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/DerivedTypes.h"
-
 #include <system_error>
 
 namespace llvm {
@@ -30,7 +29,7 @@ class PointerType;
 class Module;
 
 class GlobalValue : public Constant {
-  GlobalValue(const GlobalValue &) LLVM_DELETED_FUNCTION;
+  GlobalValue(const GlobalValue &) = delete;
 public:
   /// @brief An enumeration for the kinds of linkage for global values.
   enum LinkageTypes {
@@ -62,7 +61,7 @@ public:
   };
 
 protected:
-  GlobalValue(Type *Ty, ValueTy VTy, Use *Ops, unsigned NumOps,
+  GlobalValue(PointerType *Ty, ValueTy VTy, Use *Ops, unsigned NumOps,
               LinkageTypes Linkage, const Twine &Name)
       : Constant(Ty, VTy, Ops, NumOps), Linkage(Linkage),
         Visibility(DefaultVisibility), UnnamedAddr(0),
@@ -105,7 +104,7 @@ public:
     LocalExecTLSModel
   };
 
-  ~GlobalValue() {
+  ~GlobalValue() override {
     removeDeadConstantUsers();   // remove any dead constants using this.
   }
 
@@ -166,9 +165,9 @@ public:
   const char *getSection() const;
 
   /// Global values are always pointers.
-  inline PointerType *getType() const {
-    return cast<PointerType>(User::getType());
-  }
+  PointerType *getType() const { return cast<PointerType>(User::getType()); }
+
+  Type *getValueType() const { return getType()->getElementType(); }
 
   static LinkageTypes getLinkOnceLinkage(bool ODR) {
     return ODR ? LinkOnceODRLinkage : LinkOnceAnyLinkage;
@@ -344,13 +343,11 @@ public:
   virtual void eraseFromParent() = 0;
 
   /// Get the module that this global value is contained inside of...
-  inline Module *getParent() { return Parent; }
-  inline const Module *getParent() const { return Parent; }
-
-  const DataLayout *getDataLayout() const;
+  Module *getParent() { return Parent; }
+  const Module *getParent() const { return Parent; }
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Value *V) {
+  static bool classof(const Value *V) {
     return V->getValueID() == Value::FunctionVal ||
            V->getValueID() == Value::GlobalVariableVal ||
            V->getValueID() == Value::GlobalAliasVal;

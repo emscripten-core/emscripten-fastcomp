@@ -17,16 +17,16 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/GCOV.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include <system_error>
 using namespace llvm;
 
-void reportCoverage(StringRef SourceFile, StringRef ObjectDir,
-                    const std::string &InputGCNO, const std::string &InputGCDA,
-                    bool DumpGCOV, const GCOVOptions &Options) {
+static void reportCoverage(StringRef SourceFile, StringRef ObjectDir,
+                           const std::string &InputGCNO,
+                           const std::string &InputGCDA, bool DumpGCOV,
+                           const GCOVOptions &Options) {
   SmallString<128> CoverageFileStem(ObjectDir);
   if (CoverageFileStem.empty()) {
     // If no directory was specified with -o, look next to the source file.
@@ -81,7 +81,7 @@ void reportCoverage(StringRef SourceFile, StringRef ObjectDir,
 
   FileInfo FI(Options);
   GF.collectLineCounts(FI);
-  FI.print(SourceFile, GCNO, GCDA);
+  FI.print(llvm::outs(), SourceFile, GCNO, GCDA);
 }
 
 int gcovMain(int argc, const char *argv[]) {

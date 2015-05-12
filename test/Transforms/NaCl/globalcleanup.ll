@@ -25,15 +25,15 @@ define void @_start() {
 }
 
 define i32* @ewgv() {
-; CHECK: %bc = getelementptr i8* null, i32 0
-  %bc = getelementptr i8* bitcast (i32* @extern_weak_gv to i8*), i32 0
+; CHECK: %bc = getelementptr i8, i8* null, i32 0
+  %bc = getelementptr i8, i8* bitcast (i32* @extern_weak_gv to i8*), i32 0
 ; CHECK: ret i32* null
   ret i32* @extern_weak_gv
 }
 
 define i32* @ewc() {
-; CHECK: %bc = getelementptr i8* null, i32 0
-  %bc = getelementptr i8* bitcast (i32* @extern_weak_const to i8*), i32 0
+; CHECK: %bc = getelementptr i8, i8* null, i32 0
+  %bc = getelementptr i8, i8* bitcast (i32* @extern_weak_const to i8*), i32 0
 ; CHECK: ret i32* null
   ret i32* @extern_weak_gv
 }

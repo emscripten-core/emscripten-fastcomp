@@ -15,6 +15,7 @@
 #define LLVM_TRANSFORMS_INSTRUMENTATION_H
 
 #include "llvm/ADT/StringRef.h"
+#include <vector>
 
 #if defined(__GNUC__) && defined(__linux__) && !defined(ANDROID)
 inline void *getDFSanArgTLSPtrForJIT() {
@@ -59,9 +60,25 @@ struct GCOVOptions {
   // Emit the name of the function in the .gcda files. This is redundant, as
   // the function identifier can be used to find the name from the .gcno file.
   bool FunctionNamesInData;
+
+  // Emit the exit block immediately after the start block, rather than after
+  // all of the function body's blocks.
+  bool ExitBlockBeforeBody;
 };
 ModulePass *createGCOVProfilerPass(const GCOVOptions &Options =
                                    GCOVOptions::getDefault());
+
+/// Options for the frontend instrumentation based profiling pass.
+struct InstrProfOptions {
+  InstrProfOptions() : NoRedZone(false) {}
+
+  // Add the 'noredzone' attribute to added runtime library calls.
+  bool NoRedZone;
+};
+
+/// Insert frontend instrumentation based profiling.
+ModulePass *createInstrProfilingPass(
+    const InstrProfOptions &Options = InstrProfOptions());
 
 // Insert AddressSanitizer (address sanity checking) instrumentation
 FunctionPass *createAddressSanitizerFunctionPass();
@@ -74,17 +91,17 @@ FunctionPass *createMemorySanitizerPass(int TrackOrigins = 0);
 FunctionPass *createThreadSanitizerPass();
 
 // Insert DataFlowSanitizer (dynamic data flow analysis) instrumentation
-ModulePass *createDataFlowSanitizerPass(StringRef ABIListFile = StringRef(),
-                                        void *(*getArgTLS)() = nullptr,
-                                        void *(*getRetValTLS)() = nullptr);
+ModulePass *createDataFlowSanitizerPass(
+    const std::vector<std::string> &ABIListFiles = std::vector<std::string>(),
+    void *(*getArgTLS)() = nullptr, void *(*getRetValTLS)() = nullptr);
 
 // Insert SanitizerCoverage instrumentation.
 ModulePass *createSanitizerCoverageModulePass(int CoverageLevel);
 
 #if defined(__GNUC__) && defined(__linux__) && !defined(ANDROID)
-inline ModulePass *createDataFlowSanitizerPassForJIT(StringRef ABIListFile =
-                                                         StringRef()) {
-  return createDataFlowSanitizerPass(ABIListFile, getDFSanArgTLSPtrForJIT,
+inline ModulePass *createDataFlowSanitizerPassForJIT(
+    const std::vector<std::string> &ABIListFiles = std::vector<std::string>()) {
+  return createDataFlowSanitizerPass(ABIListFiles, getDFSanArgTLSPtrForJIT,
                                      getDFSanRetValTLSPtrForJIT);
 }
 #endif

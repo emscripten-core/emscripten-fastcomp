@@ -1,4 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
 ; RUN: llc -march=r600 -mcpu=cypress -verify-machineinstrs < %s | FileCheck -check-prefix=EG -check-prefix=FUNC %s
 
 ; FUNC-LABEL: {{^}}global_copy_i1_to_i1:
@@ -10,7 +11,7 @@
 ; EG: VTX_READ_8
 ; EG: AND_INT
 define void @global_copy_i1_to_i1(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
-  %load = load i1 addrspace(1)* %in
+  %load = load i1, i1 addrspace(1)* %in
   store i1 %load, i1 addrspace(1)* %out, align 1
   ret void
 }
@@ -25,7 +26,7 @@ define void @global_copy_i1_to_i1(i1 addrspace(1)* %out, i1 addrspace(1)* %in) n
 ; EG: AND_INT
 ; EG: LDS_BYTE_WRITE
 define void @local_copy_i1_to_i1(i1 addrspace(3)* %out, i1 addrspace(3)* %in) nounwind {
-  %load = load i1 addrspace(3)* %in
+  %load = load i1, i1 addrspace(3)* %in
   store i1 %load, i1 addrspace(3)* %out, align 1
   ret void
 }
@@ -39,7 +40,7 @@ define void @local_copy_i1_to_i1(i1 addrspace(3)* %out, i1 addrspace(3)* %in) no
 ; EG: VTX_READ_8
 ; EG: AND_INT
 define void @constant_copy_i1_to_i1(i1 addrspace(1)* %out, i1 addrspace(2)* %in) nounwind {
-  %load = load i1 addrspace(2)* %in
+  %load = load i1, i1 addrspace(2)* %in
   store i1 %load, i1 addrspace(1)* %out, align 1
   ret void
 }
@@ -53,7 +54,7 @@ define void @constant_copy_i1_to_i1(i1 addrspace(1)* %out, i1 addrspace(2)* %in)
 ; EG: VTX_READ_8
 ; EG: BFE_INT
 define void @global_sextload_i1_to_i32(i32 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
-  %load = load i1 addrspace(1)* %in
+  %load = load i1, i1 addrspace(1)* %in
   %ext = sext i1 %load to i32
   store i32 %ext, i32 addrspace(1)* %out, align 4
   ret void
@@ -65,7 +66,7 @@ define void @global_sextload_i1_to_i32(i32 addrspace(1)* %out, i1 addrspace(1)* 
 ; SI: s_endpgm
 
 define void @global_zextload_i1_to_i32(i32 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
-  %load = load i1 addrspace(1)* %in
+  %load = load i1, i1 addrspace(1)* %in
   %ext = zext i1 %load to i32
   store i32 %ext, i32 addrspace(1)* %out, align 4
   ret void
@@ -77,7 +78,7 @@ define void @global_zextload_i1_to_i32(i32 addrspace(1)* %out, i1 addrspace(1)* 
 ; SI: buffer_store_dwordx2
 ; SI: s_endpgm
 define void @global_sextload_i1_to_i64(i64 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
-  %load = load i1 addrspace(1)* %in
+  %load = load i1, i1 addrspace(1)* %in
   %ext = sext i1 %load to i64
   store i64 %ext, i64 addrspace(1)* %out, align 4
   ret void
@@ -89,7 +90,7 @@ define void @global_sextload_i1_to_i64(i64 addrspace(1)* %out, i1 addrspace(1)* 
 ; SI: buffer_store_dwordx2
 ; SI: s_endpgm
 define void @global_zextload_i1_to_i64(i64 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
-  %load = load i1 addrspace(1)* %in
+  %load = load i1, i1 addrspace(1)* %in
   %ext = zext i1 %load to i64
   store i64 %ext, i64 addrspace(1)* %out, align 4
   ret void

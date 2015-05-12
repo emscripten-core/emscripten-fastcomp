@@ -30,6 +30,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/NaCl.h"
 
 using namespace llvm;
@@ -40,10 +41,6 @@ public:
   static char ID; // Pass identification, replacement for typeid
   FixVectorLoadStoreAlignment() : BasicBlockPass(ID), M(0), DL(0) {
     initializeFixVectorLoadStoreAlignmentPass(*PassRegistry::getPassRegistry());
-  }
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<DataLayoutPass>();
-    BasicBlockPass::getAnalysisUsage(AU);
   }
   using BasicBlockPass::doInitialization;
   bool doInitialization(Module &Mod) override {
@@ -203,7 +200,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
     for (unsigned Elem = 0, NumElems = LoadedVecTy->getNumElements();
          Elem != NumElems; ++Elem) {
       unsigned Align = MinAlign(BaseAlign, ElemAllocSize * Elem);
-      Value *GEP = IRB.CreateConstInBoundsGEP1_32(Base, Elem);
+      Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy, Base, Elem);
       LoadInst *LoadedElem =
           IRB.CreateAlignedLoad(GEP, Align, VecLoad->isVolatile());
       LoadedElem->setSynchScope(VecLoad->getSynchScope());
@@ -236,7 +233,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
     for (unsigned Elem = 0, NumElems = StoredVecTy->getNumElements();
          Elem != NumElems; ++Elem) {
       unsigned Align = MinAlign(BaseAlign, ElemAllocSize * Elem);
-      Value *GEP = IRB.CreateConstInBoundsGEP1_32(Base, Elem);
+      Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy, Base, Elem);
       Value *ElemToStore = IRB.CreateExtractElement(
           StoredVec, ConstantInt::get(Type::getInt32Ty(M->getContext()), Elem));
       StoreInst *StoredElem = IRB.CreateAlignedStore(ElemToStore, GEP, Align,
@@ -251,7 +248,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
 bool FixVectorLoadStoreAlignment::runOnBasicBlock(BasicBlock &BB) {
   bool Changed = false;
   if (!DL)
-    DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+    DL = &BB.getParent()->getParent()->getDataLayout();
   Instructions Loads;
   Instructions Stores;
   visitVectorLoadStore(BB, Loads, Stores);

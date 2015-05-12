@@ -17,6 +17,8 @@
 ;; Intern in both testlink[12].ll
 @Intern1 = internal constant i32 52
 
+@Use2Intern1 = global i32* @Intern1
+
 ;; Intern in one but not in other
 @Intern2 = constant i32 12345
 
@@ -30,9 +32,9 @@
 
 define i32 @foo(i32 %blah) {
   store i32 %blah, i32* @MyVar
-  %idx = getelementptr %intlist* @MyIntList, i64 0, i32 1
+  %idx = getelementptr %intlist, %intlist* @MyIntList, i64 0, i32 1
   store i32 12, i32* %idx
-  %ack = load i32* @0
+  %ack = load i32, i32* @0
   %fzo = add i32 %ack, %blah
   ret i32 %fzo
 }

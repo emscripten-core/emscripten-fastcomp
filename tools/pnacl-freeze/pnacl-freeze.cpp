@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "Generates NaCl pexe wire format\n");
 
   std::string ErrorMessage;
-  std::auto_ptr<Module> M;
+  std::unique_ptr<Module> M;
 
   // Use the bitcode streaming interface
   DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
@@ -73,13 +73,10 @@ int main(int argc, char **argv) {
       DisplayFilename = "<stdin>";
     else
       DisplayFilename = InputFilename;
-    M.reset(getStreamedBitcodeModule(DisplayFilename, Buffer.release(), Context,
-                                     &ErrorMessage));
-    if (M.get())
-      if (std::error_code EC = M->materializeAllPermanently()) {
-        ErrorMessage = EC.message();
-        M.reset();
-      }
+    ErrorOr<std::unique_ptr<Module>> MOrErr =
+        getStreamedBitcodeModule(DisplayFilename, Buffer.release(), Context);
+    M = std::move(*MOrErr);
+    M->materializeAllPermanently();
   }
 
   if (!M.get()) {

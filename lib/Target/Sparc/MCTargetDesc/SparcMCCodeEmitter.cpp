@@ -31,14 +31,14 @@ STATISTIC(MCNumEmitted, "Number of MC instructions emitted");
 
 namespace {
 class SparcMCCodeEmitter : public MCCodeEmitter {
-  SparcMCCodeEmitter(const SparcMCCodeEmitter &) LLVM_DELETED_FUNCTION;
-  void operator=(const SparcMCCodeEmitter &) LLVM_DELETED_FUNCTION;
+  SparcMCCodeEmitter(const SparcMCCodeEmitter &) = delete;
+  void operator=(const SparcMCCodeEmitter &) = delete;
   MCContext &Ctx;
 
 public:
   SparcMCCodeEmitter(MCContext &ctx): Ctx(ctx) {}
 
-  ~SparcMCCodeEmitter() {}
+  ~SparcMCCodeEmitter() override {}
 
   void EncodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
@@ -74,7 +74,6 @@ public:
 
 MCCodeEmitter *llvm::createSparcMCCodeEmitter(const MCInstrInfo &MCII,
                                               const MCRegisterInfo &MRI,
-                                              const MCSubtargetInfo &STI,
                                               MCContext &Ctx) {
   return new SparcMCCodeEmitter(Ctx);
 }

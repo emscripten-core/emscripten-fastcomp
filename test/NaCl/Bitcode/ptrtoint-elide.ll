@@ -540,11 +540,11 @@ define void @PhiBackwardRefs(i1) {
   br i1 %0, label %true, label %false
 
 true:
-  %6 = load i32* %3
+  %6 = load i32, i32* %3
   br label %merge
 
 false:
-  %7 = load i32* %3
+  %7 = load i32, i32* %3
   br label %merge
 
 merge:
@@ -559,12 +559,12 @@ merge:
 ; TD2-NEXT:   br i1 %0, label %true, label %false
 ; TD2:      true:
 ; TD2-NEXT:   %4 = bitcast i8* %2 to i32*
-; TD2-NEXT:   %5 = load i32* %4
+; TD2-NEXT:   %5 = load i32, i32* %4
 ; TD2-NEXT:   %6 = ptrtoint i8* %3 to i32
 ; TD2-NEXT:   br label %merge
 ; TD2:      false:
 ; TD2-NEXT:   %7 = bitcast i8* %2 to i32*
-; TD2-NEXT:   %8 = load i32* %7
+; TD2-NEXT:   %8 = load i32, i32* %7
 ; TD2-NEXT:   %9 = ptrtoint i8* %3 to i32
 ; TD2-NEXT:   br label %merge
 ; TD2:      merge:
@@ -600,11 +600,11 @@ merge:
   ret void
 
 true:
-  %4 = load i32* %7
+  %4 = load i32, i32* %7
   br label %merge
 
 false:
-  %5 = load i32* %7
+  %5 = load i32, i32* %7
   br label %merge
 
 start:
@@ -623,11 +623,11 @@ start:
 ; TD2-NEXT:   ret void
 ; TD2:      true:
 ; TD2-NEXT:   %4 = inttoptr i32 %9 to i32*
-; TD2-NEXT:   %5 = load i32* %4
+; TD2-NEXT:   %5 = load i32, i32* %4
 ; TD2-NEXT:   br label %merge
 ; TD2:      false:
 ; TD2-NEXT:   %6 = inttoptr i32 %9 to i32*
-; TD2-NEXT:   %7 = load i32* %6
+; TD2-NEXT:   %7 = load i32, i32* %6
 ; TD2-NEXT:   br label %merge
 ; TD2:      start:
 ; TD2-NEXT:   %8 = alloca i8, i32 4, align 8
@@ -669,13 +669,13 @@ define void @PhiMergeCast(i1) {
   br i1 %0, label %true, label %false
 
 true:
-  %6 = load i32* %3
+  %6 = load i32, i32* %3
   %7 = ptrtoint i8* %4 to i32
   %8 = add i32 %6, %7
   br label %merge
 
 false:
-  %9 = load i32* %3
+  %9 = load i32, i32* %3
   br label %merge
 
 merge:
@@ -690,13 +690,13 @@ merge:
 ; TD2-NEXT:   br i1 %0, label %true, label %false
 ; TD2:      true:
 ; TD2-NEXT:   %4 = bitcast i8* %2 to i32*
-; TD2-NEXT:   %5 = load i32* %4
+; TD2-NEXT:   %5 = load i32, i32* %4
 ; TD2-NEXT:   %6 = ptrtoint i8* %3 to i32
 ; TD2-NEXT:   %7 = add i32 %5, %6
 ; TD2-NEXT:   br label %merge
 ; TD2:      false:
 ; TD2-NEXT:   %8 = bitcast i8* %2 to i32*
-; TD2-NEXT:   %9 = load i32* %8
+; TD2-NEXT:   %9 = load i32, i32* %8
 ; TD2-NEXT:   %10 = ptrtoint i8* %3 to i32
 ; TD2-NEXT:   br label %merge
 ; TD2:      merge:

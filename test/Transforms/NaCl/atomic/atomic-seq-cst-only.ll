@@ -25,7 +25,7 @@ define void @test_atomic_store_unordered_i32(i32* %ptr, i32 %value) {
 ; CHECK-LABEL: @test_atomic_load_acquire_i32
 define i32 @test_atomic_load_acquire_i32(i32* %ptr) {
   ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr, i32 6)
-  %res = load atomic i32* %ptr acquire, align 4
+  %res = load atomic i32, i32* %ptr acquire, align 4
   ret i32 %res  ; CHECK-NEXT: ret i32 %res
 }
 

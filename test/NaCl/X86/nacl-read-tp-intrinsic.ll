@@ -34,7 +34,7 @@ define i8* @get_thread_pointer() {
 ; and generate the code above.
 define i8* @get_thread_pointer_add() {
   %tp = call i8* @llvm.nacl.read.tp()
-  %result = getelementptr i8* %tp, i32 1000
+  %result = getelementptr i8, i8* %tp, i32 1000
   ret i8* %result
 }
 

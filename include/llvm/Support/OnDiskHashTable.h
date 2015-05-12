@@ -14,8 +14,8 @@
 #ifndef LLVM_SUPPORT_ONDISKHASHTABLE_H
 #define LLVM_SUPPORT_ONDISKHASHTABLE_H
 
-#include "llvm/Support/Allocator.h"
 #include "llvm/Support/AlignOf.h"
+#include "llvm/Support/Allocator.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/Host.h"
@@ -75,13 +75,10 @@ template <typename Info> class OnDiskChainedHashTableGenerator {
   llvm::SpecificBumpPtrAllocator<Item> BA;
 
   /// \brief A linked list of values in a particular hash bucket.
-  class Bucket {
-  public:
+  struct Bucket {
     offset_type Off;
-    Item *Head;
     unsigned Length;
-
-    Bucket() {}
+    Item *Head;
   };
 
   Bucket *Buckets;

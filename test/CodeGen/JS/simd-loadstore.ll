@@ -13,7 +13,7 @@ target triple = "asmjs-unknown-emscripten"
 ; CHECK: }
 define void @fx1(i8* %p) {
     %q = bitcast i8* %p to <1 x float>*
-    %t = load <1 x float>* %q
+    %t = load <1 x float>, <1 x float>* %q
     %s = fadd <1 x float> %t, <float 0.5>
     store <1 x float> %s, <1 x float>* %q
     ret void
@@ -29,7 +29,7 @@ define void @fx1(i8* %p) {
 ; CHECK: }
 define void @fx2(i8* %p) {
     %q = bitcast i8* %p to <2 x float>*
-    %t = load <2 x float>* %q
+    %t = load <2 x float>, <2 x float>* %q
     %s = fadd <2 x float> %t, <float 3.5, float 7.5>
     store <2 x float> %s, <2 x float>* %q
     ret void
@@ -45,7 +45,7 @@ define void @fx2(i8* %p) {
 ; CHECK: }
 define void @fx3(i8* %p) {
     %q = bitcast i8* %p to <3 x float>*
-    %t = load <3 x float>* %q
+    %t = load <3 x float>, <3 x float>* %q
     %s = fadd <3 x float> %t, <float 1.5, float 4.5, float 6.5>
     store <3 x float> %s, <3 x float>* %q
     ret void
@@ -61,7 +61,7 @@ define void @fx3(i8* %p) {
 ; CHECK: }
 define void @fx4(i8* %p) {
     %q = bitcast i8* %p to <4 x float>*
-    %t = load <4 x float>* %q
+    %t = load <4 x float>, <4 x float>* %q
     %s = fadd <4 x float> %t, <float 9.5, float 5.5, float 1.5, float -3.5>
     store <4 x float> %s, <4 x float>* %q
     ret void

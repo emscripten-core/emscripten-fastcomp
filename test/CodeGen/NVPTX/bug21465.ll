@@ -11,8 +11,8 @@ entry:
 ; CHECK-LABEL @_Z22TakesStruct1SPi
 ; CHECK:   bitcast %struct.S* %input to i8*
 ; CHECK:   call i8 addrspace(101)* @llvm.nvvm.ptr.gen.to.param.p101i8.p0i8
-  %b = getelementptr inbounds %struct.S* %input, i64 0, i32 1
-  %0 = load i32* %b, align 4
+  %b = getelementptr inbounds %struct.S, %struct.S* %input, i64 0, i32 1
+  %0 = load i32, i32* %b, align 4
   store i32 %0, i32* %output, align 4
   ret void
 }
@@ -21,4 +21,4 @@ attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"=
 
 !nvvm.annotations = !{!0}
 
-!0 = metadata !{void (%struct.S*, i32*)* @_Z11TakesStruct1SPi, metadata !"kernel", i32 1}
+!0 = !{void (%struct.S*, i32*)* @_Z11TakesStruct1SPi, !"kernel", i32 1}

@@ -186,8 +186,8 @@ typedef ValueListType::const_iterator ValueListIterator;
 /// associated with that value. Assumes distributions elements are
 /// instances of NaClBitcodeDistElement.
 class NaClBitcodeDist {
-  NaClBitcodeDist(const NaClBitcodeDist&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeDist&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeDist(const NaClBitcodeDist&) = delete;
+  void operator=(const NaClBitcodeDist&) = delete;
   friend class NaClBitcodeDistElement;
 
 public:
@@ -358,9 +358,9 @@ private:
 /// of the corresponding distribution values is recorded.
 class NaClBitcodeDistElement {
   NaClBitcodeDistElement(const NaClBitcodeDistElement &)
-      LLVM_DELETED_FUNCTION;
+      = delete;
   void operator=(const NaClBitcodeDistElement &)
-      LLVM_DELETED_FUNCTION;
+      = delete;
 
 public:
   /// Define kinds for isa, dyn_cast, etc. support. Only defined

@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "ARMMCAsmInfo.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
@@ -68,6 +68,7 @@ ARMELFMCAsmInfo::ARMELFMCAsmInfo(StringRef TT) {
 
   // Exceptions handling
   switch (TheTriple.getOS()) {
+  case Triple::Bitrig:
   case Triple::NetBSD:
   case Triple::NaCl: // @LOCALMOD: NaCl uses DWARF EH
     ExceptionsType = ExceptionHandling::DwarfCFI;
@@ -102,6 +103,7 @@ ARMCOFFMCAsmInfoMicrosoft::ARMCOFFMCAsmInfoMicrosoft() {
   AlignmentIsInBytes = false;
 
   PrivateGlobalPrefix = "$M";
+  PrivateLabelPrefix = "$M";
 }
 
 void ARMCOFFMCAsmInfoGNU::anchor() { }
@@ -114,6 +116,7 @@ ARMCOFFMCAsmInfoGNU::ARMCOFFMCAsmInfoGNU() {
   Code16Directive = ".code\t16";
   Code32Directive = ".code\t32";
   PrivateGlobalPrefix = ".L";
+  PrivateLabelPrefix = ".L";
 
   SupportsDebugInformation = true;
   ExceptionsType = ExceptionHandling::None;

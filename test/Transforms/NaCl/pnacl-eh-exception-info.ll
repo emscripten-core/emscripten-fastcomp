@@ -78,7 +78,7 @@ cont:
   ret void
 lpad:
   landingpad i32 personality i8* null
-      filter [0 x i8*] []
+      filter [0 x i8*] zeroinitializer
   ret void
 }
 ; CHECK: define void @test_empty_filter_clause

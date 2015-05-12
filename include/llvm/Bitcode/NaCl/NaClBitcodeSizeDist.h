@@ -22,9 +22,8 @@ namespace llvm {
 /// Collects the number of bitcode record instances with the same number
 /// of elements in the vector of values, with nested value distribution maps.
 class NaClBitcodeSizeDistElement : public NaClBitcodeDistElement {
-  NaClBitcodeSizeDistElement(const NaClBitcodeSizeDistElement&)
-  LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeSizeDistElement&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeSizeDistElement(const NaClBitcodeSizeDistElement&) = delete;
+  void operator=(const NaClBitcodeSizeDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {

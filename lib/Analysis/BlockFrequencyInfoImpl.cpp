@@ -14,6 +14,7 @@
 #include "llvm/Analysis/BlockFrequencyInfoImpl.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/Support/raw_ostream.h"
+#include <numeric>
 
 using namespace llvm;
 using namespace llvm::bfi_detail;
@@ -122,8 +123,12 @@ static void combineWeight(Weight &W, const Weight &OtherW) {
   }
   assert(W.Type == OtherW.Type);
   assert(W.TargetNode == OtherW.TargetNode);
-  assert(W.Amount < W.Amount + OtherW.Amount && "Unexpected overflow");
-  W.Amount += OtherW.Amount;
+  assert(OtherW.Amount && "Expected non-zero weight");
+  if (W.Amount > W.Amount + OtherW.Amount)
+    // Saturate on overflow.
+    W.Amount = UINT64_MAX;
+  else
+    W.Amount += OtherW.Amount;
 }
 static void combineWeightsBySorting(WeightList &Weights) {
   // Sort so edges to the same node are adjacent.
@@ -206,11 +211,19 @@ void Distribution::normalize() {
     Shift = 33 - countLeadingZeros(Total);
 
   // Early exit if nothing needs to be scaled.
-  if (!Shift)
+  if (!Shift) {
+    // If we didn't overflow then combineWeights() shouldn't have changed the
+    // sum of the weights, but let's double-check.
+    assert(Total == std::accumulate(Weights.begin(), Weights.end(), UINT64_C(0),
+                                    [](uint64_t Sum, const Weight &W) {
+                      return Sum + W.Amount;
+                    }) &&
+           "Expected total to be correct");
     return;
+  }
 
   // Recompute the total through accumulation (rather than shifting it) so that
-  // it's accurate after shifting.
+  // it's accurate after shifting and any changes combineWeights() made above.
   Total = 0;
 
   // Sum the weights to each node and shift right if necessary.
@@ -318,32 +331,35 @@ bool BlockFrequencyInfoImplBase::addLoopSuccessorsToDist(
   return true;
 }
 
-/// \brief Get the maximum allowed loop scale.
-///
-/// Gives the maximum number of estimated iterations allowed for a loop.  Very
-/// large numbers cause problems downstream (even within 64-bits).
-static Scaled64 getMaxLoopScale() { return Scaled64(1, 12); }
-
 /// \brief Compute the loop scale for a loop.
 void BlockFrequencyInfoImplBase::computeLoopScale(LoopData &Loop) {
   // Compute loop scale.
   DEBUG(dbgs() << "compute-loop-scale: " << getLoopName(Loop) << "\n");
 
+  // Infinite loops need special handling. If we give the back edge an infinite
+  // mass, they may saturate all the other scales in the function down to 1,
+  // making all the other region temperatures look exactly the same. Choose an
+  // arbitrary scale to avoid these issues.
+  //
+  // FIXME: An alternate way would be to select a symbolic scale which is later
+  // replaced to be the maximum of all computed scales plus 1. This would
+  // appropriately describe the loop as having a large scale, without skewing
+  // the final frequency computation.
+  const Scaled64 InifiniteLoopScale(1, 12);
+
   // LoopScale == 1 / ExitMass
   // ExitMass == HeadMass - BackedgeMass
   BlockMass ExitMass = BlockMass::getFull() - Loop.BackedgeMass;
 
-  // Block scale stores the inverse of the scale.
-  Loop.Scale = ExitMass.toScaled().inverse();
+  // Block scale stores the inverse of the scale. If this is an infinite loop,
+  // its exit mass will be zero. In this case, use an arbitrary scale for the
+  // loop scale.
+  Loop.Scale =
+      ExitMass.isEmpty() ? InifiniteLoopScale : ExitMass.toScaled().inverse();
 
   DEBUG(dbgs() << " - exit-mass = " << ExitMass << " (" << BlockMass::getFull()
                << " - " << Loop.BackedgeMass << ")\n"
                << " - scale = " << Loop.Scale << "\n");
-
-  if (Loop.Scale > getMaxLoopScale()) {
-    Loop.Scale = getMaxLoopScale();
-    DEBUG(dbgs() << " - reduced-to-max-scale: " << getMaxLoopScale() << "\n");
-  }
 }
 
 /// \brief Package up a loop.
@@ -411,15 +427,24 @@ static void convertFloatingToInteger(BlockFrequencyInfoImplBase &BFI,
                                      const Scaled64 &Min, const Scaled64 &Max) {
   // Scale the Factor to a size that creates integers.  Ideally, integers would
   // be scaled so that Max == UINT64_MAX so that they can be best
-  // differentiated.  However, the register allocator currently deals poorly
-  // with large numbers.  Instead, push Min up a little from 1 to give some
-  // room to differentiate small, unequal numbers.
-  //
-  // TODO: fix issues downstream so that ScalingFactor can be
-  // Scaled64(1,64)/Max.
-  Scaled64 ScalingFactor = Min.inverse();
-  if ((Max / Min).lg() < 60)
+  // differentiated.  However, in the presence of large frequency values, small
+  // frequencies are scaled down to 1, making it impossible to differentiate
+  // small, unequal numbers. When the spread between Min and Max frequencies
+  // fits well within MaxBits, we make the scale be at least 8.
+  const unsigned MaxBits = 64;
+  const unsigned SpreadBits = (Max / Min).lg();
+  Scaled64 ScalingFactor;
+  if (SpreadBits <= MaxBits - 3) {
+    // If the values are small enough, make the scaling factor at least 8 to
+    // allow distinguishing small values.
+    ScalingFactor = Min.inverse();
     ScalingFactor <<= 3;
+  } else {
+    // If the values need more than MaxBits to be represented, saturate small
+    // frequency values down to 1 by using a scaling factor that benefits large
+    // frequency values.
+    ScalingFactor = Scaled64(1, MaxBits) / Max;
+  }
 
   // Translate the floats to integers.
   DEBUG(dbgs() << "float-to-int: min = " << Min << ", max = " << Max

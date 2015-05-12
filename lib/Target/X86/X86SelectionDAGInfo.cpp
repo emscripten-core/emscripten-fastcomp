@@ -57,7 +57,8 @@ X86SelectionDAGInfo::EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
                                              bool isVolatile,
                                          MachinePointerInfo DstPtrInfo) const {
   ConstantSDNode *ConstantSize = dyn_cast<ConstantSDNode>(Size);
-  const X86Subtarget &Subtarget = DAG.getTarget().getSubtarget<X86Subtarget>();
+  const X86Subtarget &Subtarget =
+      DAG.getMachineFunction().getSubtarget<X86Subtarget>();
 
   // @LOCALMOD-BEGIN
   if (Subtarget.isTargetNaCl()) {
@@ -68,8 +69,8 @@ X86SelectionDAGInfo::EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
   // @LOCALMOD-END
 #ifndef NDEBUG
   // If the base register might conflict with our physical registers, bail out.
-  unsigned ClobberSet[] = {X86::RCX, X86::RAX, X86::RDI,
-                           X86::ECX, X86::EAX, X86::EDI};
+  const unsigned ClobberSet[] = {X86::RCX, X86::RAX, X86::RDI,
+                                 X86::ECX, X86::EAX, X86::EDI};
   assert(!isBaseRegConflictPossible(DAG, ClobberSet));
 #endif
 
@@ -199,24 +200,23 @@ X86SelectionDAGInfo::EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
                                       DAG.getConstant(Offset, AddrVT)),
                           Src,
                           DAG.getConstant(BytesLeft, SizeVT),
-                          Align, isVolatile, DstPtrInfo.getWithOffset(Offset));
+                          Align, isVolatile, false,
+                          DstPtrInfo.getWithOffset(Offset));
   }
 
   // TODO: Use a Tokenfactor, as in memcpy, instead of a single chain.
   return Chain;
 }
 
-SDValue
-X86SelectionDAGInfo::EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc dl,
-                                        SDValue Chain, SDValue Dst, SDValue Src,
-                                        SDValue Size, unsigned Align,
-                                        bool isVolatile, bool AlwaysInline,
-                                         MachinePointerInfo DstPtrInfo,
-                                         MachinePointerInfo SrcPtrInfo) const {
+SDValue X86SelectionDAGInfo::EmitTargetCodeForMemcpy(
+    SelectionDAG &DAG, SDLoc dl, SDValue Chain, SDValue Dst, SDValue Src,
+    SDValue Size, unsigned Align, bool isVolatile, bool AlwaysInline,
+    MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo) const {
   // This requires the copy size to be a constant, preferably
   // within a subtarget-specific limit.
   ConstantSDNode *ConstantSize = dyn_cast<ConstantSDNode>(Size);
-  const X86Subtarget &Subtarget = DAG.getTarget().getSubtarget<X86Subtarget>();
+  const X86Subtarget &Subtarget =
+      DAG.getMachineFunction().getSubtarget<X86Subtarget>();
   if (!ConstantSize)
     return SDValue();
   uint64_t SizeVal = ConstantSize->getZExtValue();
@@ -243,8 +243,8 @@ X86SelectionDAGInfo::EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc dl,
     return SDValue();
 
   // If the base register might conflict with our physical registers, bail out.
-  unsigned ClobberSet[] = {X86::RCX, X86::RSI, X86::RDI,
-                           X86::ECX, X86::ESI, X86::EDI};
+  const unsigned ClobberSet[] = {X86::RCX, X86::RSI, X86::RDI,
+                                 X86::ECX, X86::ESI, X86::EDI};
   if (isBaseRegConflictPossible(DAG, ClobberSet))
     return SDValue();
 
@@ -297,7 +297,7 @@ X86SelectionDAGInfo::EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc dl,
                                     DAG.getNode(ISD::ADD, dl, SrcVT, Src,
                                                 DAG.getConstant(Offset, SrcVT)),
                                     DAG.getConstant(BytesLeft, SizeVT),
-                                    Align, isVolatile, AlwaysInline,
+                                    Align, isVolatile, AlwaysInline, false,
                                     DstPtrInfo.getWithOffset(Offset),
                                     SrcPtrInfo.getWithOffset(Offset)));
   }

@@ -169,13 +169,13 @@ define void @PhiBackwardRefs(i1) {
 
 true:                                             ; preds = %1
   %4 = bitcast i8* %2 to i32*
-  %5 = load i32* %4
+  %5 = load i32, i32* %4
   %6 = ptrtoint i8* %3 to i32
   br label %merge
 
 false:                                            ; preds = %1
   %7 = bitcast i8* %2 to i32*
-  %8 = load i32* %7
+  %8 = load i32, i32* %7
   %9 = ptrtoint i8* %3 to i32
   br label %merge
 
@@ -195,12 +195,12 @@ merge:                                            ; preds = %false, %true
 
 true:                                             ; preds = %start
   %4 = inttoptr i32 %9 to i32*
-  %5 = load i32* %4
+  %5 = load i32, i32* %4
   br label %merge
 
 false:                                            ; preds = %start
   %6 = inttoptr i32 %9 to i32*
-  %7 = load i32* %6
+  %7 = load i32, i32* %6
   br label %merge
 
 start:                                            ; preds = %1
@@ -218,14 +218,14 @@ define void @PhiMergeCast(i1) {
 
 true:                                             ; preds = %1
   %4 = bitcast i8* %2 to i32*
-  %5 = load i32* %4
+  %5 = load i32, i32* %4
   %6 = ptrtoint i8* %3 to i32
   %7 = add i32 %5, %6
   br label %merge
 
 false:                                            ; preds = %1
   %8 = bitcast i8* %2 to i32*
-  %9 = load i32* %8
+  %9 = load i32, i32* %8
   %10 = ptrtoint i8* %3 to i32
   br label %merge
 

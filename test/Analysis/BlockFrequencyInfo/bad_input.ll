@@ -23,7 +23,7 @@ for.end:
   ret void
 }
 
-!0 = metadata !{metadata !"branch_weights", i32 0, i32 3}
+!0 = !{!"branch_weights", i32 0, i32 3}
 
 ; CHECK-LABEL: Printing analysis {{.*}} for function 'infinite_loop'
 ; CHECK-NEXT: block-frequency-info: infinite_loop
@@ -32,7 +32,8 @@ define void @infinite_loop(i1 %x) {
 entry:
   br i1 %x, label %for.body, label %for.end, !prof !1
 
-; Check that the loop scale maxes out at 4096, giving 2048 here.
+; Check that the infinite loop is arbitrarily scaled to max out at 4096,
+; giving 2048 here.
 ; CHECK-NEXT: for.body: float = 2048.0,
 for.body:
   %i = phi i32 [ 0, %entry ], [ %inc, %for.body ]
@@ -47,4 +48,4 @@ for.end:
   ret void
 }
 
-!1 = metadata !{metadata !"branch_weights", i32 1, i32 1}
+!1 = !{!"branch_weights", i32 1, i32 1}

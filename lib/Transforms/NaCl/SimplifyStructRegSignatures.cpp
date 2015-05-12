@@ -26,6 +26,8 @@
 // %a_struct.0 = type { void (%some_struct*)*, i32 }
 //===----------------------------------------------------------------------===//
 
+#include "SimplifiedFuncTypeMap.h"
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -53,6 +55,7 @@
 #include "llvm/PassSupport.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
 #include <cstddef>
@@ -62,130 +65,17 @@ using namespace llvm;
 namespace {
 
 static const unsigned int TypicalFuncArity = 8;
-static const unsigned int TypicalStructArity = 8;
-
-class MappingResult {
-public:
-  MappingResult(Type *ATy, bool Chg) {
-    Ty = ATy;
-    Changed = Chg;
-  }
-
-  bool isChanged() { return Changed; }
-
-  Type *operator->() { return Ty; }
-
-  operator Type *() { return Ty; }
-
-private:
-  Type *Ty;
-  bool Changed;
-};
 
 // Utility class. For any given type, get the associated type that is free of
 // struct register arguments.
-class TypeMapper {
-public:
-  typedef DenseMap<StructType *, StructType *> StructMap;
-  Type *getSimpleType(LLVMContext &Ctx, Type *Ty);
-
-private:
-  DenseMap<Type *, Type *> MappedTypes;
-  MappingResult getSimpleArgumentType(LLVMContext &Ctx, Type *Ty,
-                                      StructMap &Tentatives);
-  MappingResult getSimpleAggregateTypeInternal(LLVMContext &Ctx, Type *Ty,
-                                               StructMap &Tentatives);
-
-  bool isChangedStruct(LLVMContext &Ctx, StructType *StructTy,
-                       SmallVector<Type *, TypicalStructArity> &ElemTypes,
-                       StructMap &Tentatives);
-};
-
-// This is a ModulePass because the pass recreates functions in
-// order to change their signatures.
-class SimplifyStructRegSignatures : public ModulePass {
-public:
-  static char ID;
-
-  SimplifyStructRegSignatures() : ModulePass(ID) {
-    initializeSimplifyStructRegSignaturesPass(*PassRegistry::getPassRegistry());
-  }
-  virtual bool runOnModule(Module &M);
-
-private:
-  TypeMapper Mapper;
-  DenseSet<Function *> FunctionsToDelete;
-  SetVector<CallInst *> CallsToPatch;
-  SetVector<InvokeInst *> InvokesToPatch;
-  DenseMap<Function *, Function *> FunctionMap;
-  bool
-  simplifyFunction(LLVMContext &Ctx, Function *OldFunc,
-                   DenseMap<const Function *, DISubprogram> &DISubprogramMap);
-  void scheduleInstructionsForCleanup(Function *NewFunc);
-  template <class TCall>
-  void fixCallSite(LLVMContext &Ctx, TCall *Call, unsigned PreferredAlignment);
-  void fixFunctionBody(LLVMContext &Ctx, Function *OldFunc, Function *NewFunc);
-
-  template <class TCall>
-  TCall *fixCallTargetAndArguments(LLVMContext &Ctx, IRBuilder<> &Builder,
-                                   TCall *OldCall, Value *NewTarget,
-                                   FunctionType *NewType,
-                                   BasicBlock::iterator AllocaInsPoint,
-                                   Value *ExtraArg = nullptr);
-  void checkNoUnsupportedInstructions(LLVMContext &Ctx, Function *Fct);
-};
-}
-
-char SimplifyStructRegSignatures::ID = 0;
-
-INITIALIZE_PASS(
-    SimplifyStructRegSignatures, "simplify-struct-reg-signatures",
-    "Simplify function signatures by removing struct register parameters",
-    false, false)
-
-// The type is "simple" if it does not recursively reference a
-// function type with at least an operand (arg or return) typed as struct
-// register.
-Type *TypeMapper::getSimpleType(LLVMContext &Ctx, Type *Ty) {
-  auto Found = MappedTypes.find(Ty);
-  if (Found != MappedTypes.end()) {
-    return Found->second;
-  }
-
-  StructMap Tentatives;
-  auto Ret = getSimpleAggregateTypeInternal(Ctx, Ty, Tentatives);
-  assert(Tentatives.size() == 0);
-
-  if (!Ty->isStructTy()) {
-    // Structs are memoized in getSimpleAggregateTypeInternal.
-    MappedTypes[Ty] = Ret;
-  }
-  return Ret;
-}
-
-// Transforms any type that could transitively reference a function pointer
-// into a simplified type.
-// We enter this function trying to determine the mapping of a type. Because
-// of how structs are handled (not interned by llvm - see further comments
-// below) we may be working with temporary types - types (pointers, for example)
-// transitively referencing "tentative" structs. For that reason, we do not
-// memoize anything here, except for structs. The latter is so that we avoid
-// unnecessary repeated creation of types (pointers, function types, etc),
-// as we try to map a given type.
-MappingResult
-TypeMapper::getSimpleAggregateTypeInternal(LLVMContext &Ctx, Type *Ty,
-                                           StructMap &Tentatives) {
-  // Leverage the map for types we encounter on the way.
-  auto Found = MappedTypes.find(Ty);
-  if (Found != MappedTypes.end()) {
-    return {Found->second, Found->second != Ty};
-  }
-
-  if (auto *OldFnTy = dyn_cast<FunctionType>(Ty)) {
+class TypeMapper : public SimplifiedFuncTypeMap {
+protected:
+  MappingResult getSimpleFuncType(LLVMContext &Ctx, StructMap &Tentatives,
+                                  FunctionType *OldFnTy) override {
     Type *OldRetType = OldFnTy->getReturnType();
     Type *NewRetType = OldRetType;
     Type *Void = Type::getVoidTy(Ctx);
-    SmallVector<Type *, TypicalFuncArity> NewArgs;
+    ParamTypeVector NewArgs;
     bool Changed = false;
     // Struct register returns become the first parameter of the new FT.
     // The new FT has void for the return type
@@ -204,106 +94,68 @@ TypeMapper::getSimpleAggregateTypeInternal(LLVMContext &Ctx, Type *Ty,
     return {NewFuncType, Changed};
   }
 
-  if (auto PtrTy = dyn_cast<PointerType>(Ty)) {
-    auto NewTy = getSimpleAggregateTypeInternal(
-        Ctx, PtrTy->getPointerElementType(), Tentatives);
-
-    return {NewTy->getPointerTo(PtrTy->getAddressSpace()), NewTy.isChanged()};
-  }
-
-  if (auto ArrTy = dyn_cast<ArrayType>(Ty)) {
-    auto NewTy = getSimpleAggregateTypeInternal(
-        Ctx, ArrTy->getArrayElementType(), Tentatives);
-    return {ArrayType::get(NewTy, ArrTy->getArrayNumElements()),
-            NewTy.isChanged()};
-  }
-
-  if (auto VecTy = dyn_cast<VectorType>(Ty)) {
-    auto NewTy = getSimpleAggregateTypeInternal(
-        Ctx, VecTy->getVectorElementType(), Tentatives);
-    return {VectorType::get(NewTy, VecTy->getVectorNumElements()),
-            NewTy.isChanged()};
-  }
-
-  // LLVM doesn't intern identified structs (the ones with a name). This,
-  // together with the fact that such structs can be recursive,
-  // complicates things a bit. We want to make sure that we only change
-  // "unsimplified" structs (those that somehow reference funcs that
-  // are not simple).
-  // We don't want to change "simplified" structs, otherwise converting
-  // instruction types will become trickier.
-  if (auto StructTy = dyn_cast<StructType>(Ty)) {
-    SmallVector<Type *, TypicalStructArity> ElemTypes;
-    if (!StructTy->isLiteral()) {
-      // Literals - struct without a name - cannot be recursive, so we
-      // don't need to form tentatives.
-      auto Found = Tentatives.find(StructTy);
-
-      // Having a tentative means we are in a recursion trying to map this
-      // particular struct, so arriving back to it is not a change.
-      // We will determine if this struct is actually
-      // changed by checking its other fields.
-      if (Found != Tentatives.end()) {
-        return {Found->second, false};
-      }
-      // We have never seen this struct, so we start a tentative.
-      std::string NewName = StructTy->getStructName();
-      NewName += ".simplified";
-      StructType *Tentative = StructType::create(Ctx, NewName);
-      Tentatives[StructTy] = Tentative;
-
-      bool Changed = isChangedStruct(Ctx, StructTy, ElemTypes, Tentatives);
-
-      Tentatives.erase(StructTy);
-      // We can now decide the mapping of the struct. We will register it
-      // early with MappedTypes, to avoid leaking tentatives unnecessarily.
-      // We are leaking the created struct here, but there is no way to
-      // correctly delete it.
-      if (!Changed) {
-        return {MappedTypes[StructTy] = StructTy, false};
-      } else {
-        Tentative->setBody(ElemTypes, StructTy->isPacked());
-        return {MappedTypes[StructTy] = Tentative, true};
-      }
-    } else {
-      bool Changed = isChangedStruct(Ctx, StructTy, ElemTypes, Tentatives);
-      return {MappedTypes[StructTy] =
-                  StructType::get(Ctx, ElemTypes, StructTy->isPacked()),
-              Changed};
+private:
+  // Get the simplified type of a function argument.
+  MappingResult getSimpleArgumentType(LLVMContext &Ctx, Type *Ty,
+                                      StructMap &Tentatives) {
+    // struct registers become pointers to simple structs
+    if (Ty->isAggregateType()) {
+      return {PointerType::get(
+                  getSimpleAggregateTypeInternal(Ctx, Ty, Tentatives), 0),
+              true};
     }
+
+    return getSimpleAggregateTypeInternal(Ctx, Ty, Tentatives);
+  }
+};
+
+// This is a ModulePass because the pass recreates functions in
+// order to change their signatures.
+class SimplifyStructRegSignatures : public ModulePass {
+public:
+  static char ID;
+
+  SimplifyStructRegSignatures() : ModulePass(ID) {
+    initializeSimplifyStructRegSignaturesPass(*PassRegistry::getPassRegistry());
   }
 
-  // Anything else stays the same.
-  return {Ty, false};
+  virtual bool runOnModule(Module &M);
+
+private:
+  TypeMapper Mapper;
+  DenseSet<Function *> FunctionsToDelete;
+  SetVector<CallInst *> CallsToPatch;
+  SetVector<InvokeInst *> InvokesToPatch;
+  DenseMap<Function *, Function *> FunctionMap;
+
+  bool
+  simplifyFunction(LLVMContext &Ctx, Function *OldFunc,
+                   DenseMap<const Function *, DISubprogram> &DISubprogramMap);
+
+  void scheduleInstructionsForCleanup(Function *NewFunc);
+
+  template <class TCall>
+  void fixCallSite(LLVMContext &Ctx, TCall *Call, unsigned PreferredAlignment);
+
+  void fixFunctionBody(LLVMContext &Ctx, Function *OldFunc, Function *NewFunc);
+
+  template <class TCall>
+  TCall *fixCallTargetAndArguments(LLVMContext &Ctx, IRBuilder<> &Builder,
+                                   TCall *OldCall, Value *NewTarget,
+                                   FunctionType *NewType,
+                                   BasicBlock::iterator AllocaInsPoint,
+                                   Value *ExtraArg = nullptr);
+
+  void checkNoUnsupportedInstructions(LLVMContext &Ctx, Function *Fct);
+};
 }
 
-bool TypeMapper::isChangedStruct(
-    LLVMContext &Ctx, StructType *StructTy,
-    SmallVector<Type *, TypicalStructArity> &ElemTypes, StructMap &Tentatives) {
-  bool Changed = false;
-  unsigned StructElemCount = StructTy->getStructNumElements();
-  for (unsigned I = 0; I < StructElemCount; I++) {
-    auto NewElem = getSimpleAggregateTypeInternal(
-        Ctx, StructTy->getStructElementType(I), Tentatives);
-    ElemTypes.push_back(NewElem);
-    Changed |= NewElem.isChanged();
-  }
-  return Changed;
-}
+char SimplifyStructRegSignatures::ID = 0;
 
-// Get the simplified type of a function argument.
-MappingResult TypeMapper::getSimpleArgumentType(LLVMContext &Ctx, Type *Ty,
-                                                StructMap &Tentatives) {
-  // struct registers become pointers to simple structs
-  if (Ty->isAggregateType()) {
-    return MappingResult(
-        PointerType::get(getSimpleAggregateTypeInternal(Ctx, Ty, Tentatives),
-                         0),
-        true);
-  }
-
-  return getSimpleAggregateTypeInternal(Ctx, Ty, Tentatives);
-}
+INITIALIZE_PASS(
+    SimplifyStructRegSignatures, "simplify-struct-reg-signatures",
+    "Simplify function signatures by removing struct register parameters",
+    false, false)
 
 // Apply 'byval' to func arguments that used to be struct regs.
 // Apply 'sret' to the argument corresponding to the return in the old
@@ -627,7 +479,7 @@ bool SimplifyStructRegSignatures::simplifyFunction(
     FunctionsToDelete.insert(OldFunc);
     auto Found = DISubprogramMap.find(OldFunc);
     if (Found != DISubprogramMap.end())
-      Found->second.replaceFunction(NewFunc);
+      Found->second->replaceFunction(NewFunc);
   } else {
     AssociatedFctLoc = OldFunc;
   }
@@ -638,10 +490,8 @@ bool SimplifyStructRegSignatures::simplifyFunction(
 bool SimplifyStructRegSignatures::runOnModule(Module &M) {
   bool Changed = false;
 
-  const DataLayout *DL = M.getDataLayout();
   unsigned PreferredAlignment = 0;
-  if (DL)
-    PreferredAlignment = DL->getStackAlignment();
+  PreferredAlignment = M.getDataLayout().getStackAlignment();
 
   LLVMContext &Ctx = M.getContext();
   auto DISubprogramMap = makeSubprogramMap(M);

@@ -11,7 +11,7 @@ define i32 @test1(i32 %A, i32 %B) {
 ; actual add instructions.
 ; @LOCALMOD: The original regex would match ".dwarf_addr_size 4".
 ; CHECK-NOT: add{{.*}},
-; CHECK: lea {{[a-z]+}}, dword ptr [{{[a-z]+}} + 4*{{[a-z]+}} - 5]
+; CHECK: lea {{[a-z]+}}, [{{[a-z]+}} + 4*{{[a-z]+}} - 5]
 
   ret i32 %tmp4
 }

@@ -20,6 +20,7 @@
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include <functional>
 
 namespace llvm {
 
@@ -45,6 +46,7 @@ enum DiagnosticSeverity {
 /// \brief Defines the different supported kind of a diagnostic.
 /// This enum should be extended with a new ID for each added concrete subclass.
 enum DiagnosticKind {
+  DK_Bitcode,
   DK_InlineAsm,
   DK_StackSize,
   DK_Linker,
@@ -96,6 +98,8 @@ public:
   /// keyword.
   virtual void print(DiagnosticPrinter &DP) const = 0;
 };
+
+typedef std::function<void(const DiagnosticInfo &)> DiagnosticHandlerFunction;
 
 /// Diagnostic information for inline asm reporting.
 /// This is basically a message and an optional location.

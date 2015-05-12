@@ -10,7 +10,7 @@
 define i32 @check_i64_size() {
 ; CHECK-LABEL: check_i64_size:
   %starti = ptrtoint %structi64* null to i32
-  %endp = getelementptr %structi64* null, i32 1
+  %endp = getelementptr %structi64, %structi64* null, i32 1
   %endi = ptrtoint %structi64* %endp to i32
   %diff = sub i32 %endi, %starti
 ; CHECK: movl $12, %eax
@@ -21,7 +21,7 @@ define i32 @check_i64_size() {
 define i32 @check_i64_offset() {
 ; CHECK-LABEL: check_i64_offset:
   %starti = ptrtoint %structi64* null to i32
-  %endp = getelementptr %structi64* null, i32 0, i32 1
+  %endp = getelementptr %structi64, %structi64* null, i32 0, i32 1
   %endi = ptrtoint i64* %endp to i32
   %diff = sub i32 %endi, %starti
 ; CHECK: movl $4, %eax
@@ -34,7 +34,7 @@ define i32 @check_i64_offset() {
 define i32 @check_f64_size() {
 ; CHECK-LABEL: check_f64_size:
   %starti = ptrtoint %structf64* null to i32
-  %endp = getelementptr %structf64* null, i32 1
+  %endp = getelementptr %structf64, %structf64* null, i32 1
   %endi = ptrtoint %structf64* %endp to i32
   %diff = sub i32 %endi, %starti
 ; CHECK: movl $12, %eax
@@ -45,7 +45,7 @@ define i32 @check_f64_size() {
 define i32 @check_f64_offset() {
 ; CHECK-LABEL: check_f64_offset:
   %starti = ptrtoint %structf64* null to i32
-  %endp = getelementptr %structf64* null, i32 0, i32 1
+  %endp = getelementptr %structf64, %structf64* null, i32 0, i32 1
   %endi = ptrtoint double* %endp to i32
   %diff = sub i32 %endi, %starti
 ; CHECK: movl $4, %eax

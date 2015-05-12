@@ -34,4 +34,4 @@ define [0 x void ()*]* @get_array_end() {
 ; @get_array_end() is converted to use a GetElementPtr that returns
 ; the end of the generated array:
 ; CHECK: @get_array_end()
-; CHECK: ret {{.*}} bitcast ([3 x void ()*]* getelementptr inbounds ([3 x void ()*]* @__init_array_start, i32 1)
+; CHECK: ret {{.*}} bitcast ([3 x void ()*]* getelementptr inbounds ([3 x void ()*], [3 x void ()*]* @__init_array_start, i32 1)

@@ -67,10 +67,10 @@ static inline size_t RoundToPowerOf2(size_t n) {
     return NextPowerOf2(n);
 }
 
-static inline bool IsPtrToIntUse(const Function::user_iterator &FuncUser) {
-  if (isa<PtrToIntInst>(*FuncUser))
+static inline bool IsPtrToIntUse(const Use &FuncUse) {
+  if (isa<PtrToIntInst>(FuncUse.getUser()))
     return true;
-  else if (ConstantExpr *Expr = dyn_cast<ConstantExpr>(*FuncUser))
+  else if (auto *Expr = dyn_cast<ConstantExpr>(FuncUse.getUser()))
     return Expr->getOpcode() == Instruction::PtrToInt;
   else
     return false;
@@ -78,11 +78,11 @@ static inline bool IsPtrToIntUse(const Function::user_iterator &FuncUser) {
 
 // Function use is a direct call if the user is a call instruction and
 // the function is its last operand.
-static inline bool IsDirectCallUse(const Function::user_iterator &FuncUser) {
-  if (CallInst *Call = dyn_cast<CallInst>(*FuncUser))
-    return FuncUser.getOperandNo() == Call->getNumArgOperands();
-  else
-    return false;
+static inline bool IsDirectCallUse(const Use &FuncUse) {
+  if (auto *Call = dyn_cast<CallInst>(FuncUse.getUser())) {
+    return FuncUse.getOperandNo() == Call->getNumOperands() - 1;
+  }
+  return false;
 }
 
 bool SandboxIndirectCalls::runOnModule(Module &M) {
@@ -98,15 +98,13 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
     bool HasIndirectUse = false;
     Constant *Index = ConstantInt::get(IntPtrType, AddrTakenFuncs.size() + 1);
-    for (Function::user_iterator User = Func->user_begin(),
-                                 E = Func->user_end();
-         User != E; ++User) {
-      if (IsPtrToIntUse(User)) {
+    for (auto &Use : Func->uses()) {
+      if (IsPtrToIntUse(Use)) {
         HasIndirectUse = true;
-        (*User)->replaceAllUsesWith(Index);
-        if (Instruction *UserInst = dyn_cast<Instruction>(*User))
+        Use.getUser()->replaceAllUsesWith(Index);
+        if (auto *UserInst = dyn_cast<Instruction>(Use.getUser()))
           UserInst->eraseFromParent();
-      } else if (!IsDirectCallUse(User)) {
+      } else if (!IsDirectCallUse(Use)) {
         report_fatal_error("SandboxIndirectCalls: Invalid reference to "
                            "function @" + Func->getName());
       }
@@ -176,8 +174,9 @@ bool SandboxIndirectCalls::runOnModule(Module &M) {
               Instruction *MaskedIndex =
                   BinaryOperator::CreateAnd(FuncIndex, IndexMask, "", Call);
               Value *Indexes[] = { ConstantInt::get(I32, 0), MaskedIndex };
-              Instruction *TableElemPtr =
-                  GetElementPtrInst::Create(GlobalVar, Indexes, "", Call);
+              Instruction *TableElemPtr = GetElementPtrInst::Create(
+                  cast<PointerType>(GlobalVar->getType())->getElementType(),
+                  GlobalVar, Indexes, "", Call);
               FuncPtr = CopyDebug(new LoadInst(TableElemPtr, "", Call), Cast);
             } else {
               // There is no function table for this signature, i.e. the module

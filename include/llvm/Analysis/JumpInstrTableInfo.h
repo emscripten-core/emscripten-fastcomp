@@ -16,7 +16,6 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Pass.h"
-
 #include <vector>
 
 namespace llvm {
@@ -40,7 +39,7 @@ public:
   /// The default byte alignment for jump tables is 16, which is large but
   /// usually safe.
   JumpInstrTableInfo(uint64_t ByteAlign = 16);
-  virtual ~JumpInstrTableInfo();
+  ~JumpInstrTableInfo() override;
   const char *getPassName() const override {
     return "Jump-Instruction Table Info";
   }

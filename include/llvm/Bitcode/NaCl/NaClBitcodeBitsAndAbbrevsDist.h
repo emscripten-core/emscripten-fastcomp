@@ -25,9 +25,8 @@ namespace llvm {
 /// abbreviation was used to parse the corresponding record.
 class NaClBitcodeBitsAndAbbrevsDistElement : public NaClBitcodeBitsDistElement {
   NaClBitcodeBitsAndAbbrevsDistElement(
-      const NaClBitcodeBitsAndAbbrevsDistElement&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeBitsAndAbbrevsDistElement&)
-      LLVM_DELETED_FUNCTION;
+      const NaClBitcodeBitsAndAbbrevsDistElement&) = delete;
+  void operator=(const NaClBitcodeBitsAndAbbrevsDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Dist) {

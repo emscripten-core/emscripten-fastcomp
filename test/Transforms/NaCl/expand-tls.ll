@@ -25,7 +25,7 @@ define i64* @get_tvar1() {
 ; CHECK: define i64* @get_tvar1()
 ; CHECK: %tls_raw = call i8* @llvm.nacl.read.tp()
 ; CHECK: %tls_struct = bitcast i8* %tls_raw to %tls_struct*
-; CHECK: %field = getelementptr %tls_struct* %tls_struct, i32 -1, i32 0, i32 0
+; CHECK: %field = getelementptr %tls_struct, %tls_struct* %tls_struct, i32 -1, i32 0, i32 0
 ; CHECK: ret i64* %field
 
 
@@ -34,7 +34,7 @@ define i32* @get_tvar2() {
 }
 ; Much the same as for get_tvar1.
 ; CHECK: define i32* @get_tvar2()
-; CHECK: %field = getelementptr %tls_struct* %tls_struct, i32 -1, i32 0, i32 1
+; CHECK: %field = getelementptr %tls_struct, %tls_struct* %tls_struct, i32 -1, i32 0, i32 1
 
 
 ; Check that we define global variables for TLS templates
@@ -53,13 +53,13 @@ define i8* @get_tls_template_tdata_end() {
   ret i8* @__tls_template_tdata_end
 }
 ; CHECK: define i8* @get_tls_template_tdata_end()
-; CHECK: ret i8* bitcast (%tls_init_template* getelementptr inbounds (%tls_init_template* @__tls_template_start, i32 1) to i8*)
+; CHECK: ret i8* bitcast (%tls_init_template* getelementptr inbounds (%tls_init_template, %tls_init_template* @__tls_template_start, i32 1) to i8*)
 
 define i8* @get_tls_template_end() {
   ret i8* @__tls_template_end
 }
 ; CHECK: define i8* @get_tls_template_end()
-; CHECK: ret i8* bitcast (%tls_struct* getelementptr (%tls_struct* bitcast (%tls_init_template* @__tls_template_start to %tls_struct*), i32 1) to i8*)
+; CHECK: ret i8* bitcast (%tls_struct* getelementptr (%tls_struct, %tls_struct* bitcast (%tls_init_template* @__tls_template_start to %tls_struct*), i32 1) to i8*)
 
 
 ; Check that we define the TLS layout functions

@@ -54,10 +54,10 @@ public:
     : MCMachObjectTargetWriter(Is64Bit, CPUType, CPUSubtype,
                                /*UseAggressiveSymbolFolding=*/true) {}
 
-  void RecordRelocation(MachObjectWriter *Writer,
-                        const MCAssembler &Asm, const MCAsmLayout &Layout,
-                        const MCFragment *Fragment, const MCFixup &Fixup,
-                        MCValue Target, uint64_t &FixedValue) override;
+  void RecordRelocation(MachObjectWriter *Writer, MCAssembler &Asm,
+                        const MCAsmLayout &Layout, const MCFragment *Fragment,
+                        const MCFixup &Fixup, MCValue Target,
+                        uint64_t &FixedValue) override;
 };
 }
 
@@ -88,6 +88,7 @@ static bool getARMFixupKindMachOInfo(unsigned Kind, unsigned &RelocType,
   case ARM::fixup_arm_ldst_pcrel_12:
   case ARM::fixup_arm_pcrel_10:
   case ARM::fixup_arm_adr_pcrel_12:
+  case ARM::fixup_arm_thumb_br:
     return false;
 
     // Handle 24-bit branch kinds.
@@ -99,12 +100,6 @@ static bool getARMFixupKindMachOInfo(unsigned Kind, unsigned &RelocType,
     RelocType = unsigned(MachO::ARM_RELOC_BR24);
     // Report as 'long', even though that is not quite accurate.
     Log2Size = llvm::Log2_32(4);
-    return true;
-
-    // Handle Thumb branches.
-  case ARM::fixup_arm_thumb_br:
-    RelocType = unsigned(MachO::ARM_THUMB_RELOC_BR22);
-    Log2Size = llvm::Log2_32(2);
     return true;
 
   case ARM::fixup_t2_uncondbranch:
@@ -232,7 +227,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
                    (IsPCRel               << 30) |
                    MachO::R_SCATTERED);
     MRE.r_word1 = Value2;
-    Writer->addRelocation(Fragment->getParent(), MRE);
+    Writer->addRelocation(nullptr, Fragment->getParent(), MRE);
   }
 
   MachO::any_relocation_info MRE;
@@ -243,7 +238,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
                  (IsPCRel     << 30) |
                  MachO::R_SCATTERED);
   MRE.r_word1 = Value;
-  Writer->addRelocation(Fragment->getParent(), MRE);
+  Writer->addRelocation(nullptr, Fragment->getParent(), MRE);
 }
 
 void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
@@ -297,7 +292,7 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
                    (IsPCRel               << 30) |
                    MachO::R_SCATTERED);
     MRE.r_word1 = Value2;
-    Writer->addRelocation(Fragment->getParent(), MRE);
+    Writer->addRelocation(nullptr, Fragment->getParent(), MRE);
   }
 
   MachO::any_relocation_info MRE;
@@ -307,7 +302,7 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
                  (IsPCRel     << 30) |
                  MachO::R_SCATTERED);
   MRE.r_word1 = Value;
-  Writer->addRelocation(Fragment->getParent(), MRE);
+  Writer->addRelocation(nullptr, Fragment->getParent(), MRE);
 }
 
 bool ARMMachObjectWriter::requiresExternRelocation(MachObjectWriter *Writer,
@@ -351,11 +346,10 @@ bool ARMMachObjectWriter::requiresExternRelocation(MachObjectWriter *Writer,
 }
 
 void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
-                                           const MCAssembler &Asm,
+                                           MCAssembler &Asm,
                                            const MCAsmLayout &Layout,
                                            const MCFragment *Fragment,
-                                           const MCFixup &Fixup,
-                                           MCValue Target,
+                                           const MCFixup &Fixup, MCValue Target,
                                            uint64_t &FixedValue) {
   unsigned IsPCRel = Writer->isFixupKindPCRel(Asm, Fixup.getKind());
   unsigned Log2Size;
@@ -401,8 +395,8 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
   // See <reloc.h>.
   uint32_t FixupOffset = Layout.getFragmentOffset(Fragment)+Fixup.getOffset();
   unsigned Index = 0;
-  unsigned IsExtern = 0;
   unsigned Type = 0;
+  const MCSymbolData *RelSymbol = nullptr;
 
   if (Target.isAbsolute()) { // constant
     // FIXME!
@@ -422,8 +416,7 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
     // Check whether we need an external or internal relocation.
     if (requiresExternRelocation(Writer, Asm, *Fragment, RelocType, SD,
                                  FixedValue)) {
-      IsExtern = 1;
-      Index = SD->getIndex();
+      RelSymbol = SD;
 
       // For external relocations, make sure to offset the fixup value to
       // compensate for the addend of the symbol address, if it was
@@ -447,11 +440,8 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
   // struct relocation_info (8 bytes)
   MachO::any_relocation_info MRE;
   MRE.r_word0 = FixupOffset;
-  MRE.r_word1 = ((Index     <<  0) |
-                 (IsPCRel   << 24) |
-                 (Log2Size  << 25) |
-                 (IsExtern  << 27) |
-                 (Type      << 28));
+  MRE.r_word1 =
+      (Index << 0) | (IsPCRel << 24) | (Log2Size << 25) | (Type << 28);
 
   // Even when it's not a scattered relocation, movw/movt always uses
   // a PAIR relocation.
@@ -476,15 +466,14 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
                        (Log2Size              << 25) |
                        (MachO::ARM_RELOC_PAIR << 28));
 
-    Writer->addRelocation(Fragment->getParent(), MREPair);
+    Writer->addRelocation(nullptr, Fragment->getParent(), MREPair);
   }
 
-  Writer->addRelocation(Fragment->getParent(), MRE);
+  Writer->addRelocation(RelSymbol, Fragment->getParent(), MRE);
 }
 
-MCObjectWriter *llvm::createARMMachObjectWriter(raw_ostream &OS,
-                                                bool Is64Bit,
-                                                uint32_t CPUType,
+MCObjectWriter *llvm::createARMMachObjectWriter(raw_pwrite_stream &OS,
+                                                bool Is64Bit, uint32_t CPUType,
                                                 uint32_t CPUSubtype) {
   return createMachObjectWriter(new ARMMachObjectWriter(Is64Bit,
                                                         CPUType,

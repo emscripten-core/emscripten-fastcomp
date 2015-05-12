@@ -1,4 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
 
 declare double @llvm.AMDGPU.trig.preop.f64(double, i32) nounwind readnone
 
@@ -9,8 +10,8 @@ declare double @llvm.AMDGPU.trig.preop.f64(double, i32) nounwind readnone
 ; SI: buffer_store_dwordx2 [[RESULT]],
 ; SI: s_endpgm
 define void @test_trig_preop_f64(double addrspace(1)* %out, double addrspace(1)* %aptr, i32 addrspace(1)* %bptr) nounwind {
-  %a = load double addrspace(1)* %aptr, align 8
-  %b = load i32 addrspace(1)* %bptr, align 4
+  %a = load double, double addrspace(1)* %aptr, align 8
+  %b = load i32, i32 addrspace(1)* %bptr, align 4
   %result = call double @llvm.AMDGPU.trig.preop.f64(double %a, i32 %b) nounwind readnone
   store double %result, double addrspace(1)* %out, align 8
   ret void
@@ -22,7 +23,7 @@ define void @test_trig_preop_f64(double addrspace(1)* %out, double addrspace(1)*
 ; SI: buffer_store_dwordx2 [[RESULT]],
 ; SI: s_endpgm
 define void @test_trig_preop_f64_imm_segment(double addrspace(1)* %out, double addrspace(1)* %aptr) nounwind {
-  %a = load double addrspace(1)* %aptr, align 8
+  %a = load double, double addrspace(1)* %aptr, align 8
   %result = call double @llvm.AMDGPU.trig.preop.f64(double %a, i32 7) nounwind readnone
   store double %result, double addrspace(1)* %out, align 8
   ret void

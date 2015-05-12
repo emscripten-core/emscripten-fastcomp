@@ -114,7 +114,7 @@ for.inc12:                                        ; preds = %for.inc
 
 for.end14:                                        ; preds = %for.inc12
   %S.2.lcssa.lcssa = phi double [ %S.2.lcssa, %for.inc12 ]
-  %call15 = tail call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([9 x i8]* @.str, i64 0, i64 0), double %S.2.lcssa.lcssa), !dbg !24
+  %call15 = tail call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([9 x i8], [9 x i8]* @.str, i64 0, i64 0), double %S.2.lcssa.lcssa), !dbg !24
   ret i32 0, !dbg !25
 }
 
@@ -127,29 +127,29 @@ declare i32 @printf(i8* nocapture readonly, ...) #1
 !llvm.module.flags = !{!0}
 !llvm.ident = !{!1}
 
-!0 = metadata !{i32 2, metadata !"Debug Info Version", i32 2}
-!1 = metadata !{metadata !"clang version 3.6.0 "}
-!2 = metadata !{i32 9, i32 3, metadata !3, null}
-!3 = metadata !{metadata !"0x2e\00foo\00foo\00\008\000\001\000\000\00256\001\008", metadata !4, metadata !5, metadata !6, null, double (i32)* @_Z3fooi, null, null, metadata !7} ; [ DW_TAG_subprogram ] [line 8] [def] [foo]
-!4 = metadata !{metadata !"fnptr.cc", metadata !"."}
-!5 = metadata !{metadata !"0x29", metadata !4}    ; [ DW_TAG_file_type ] [./fnptr.cc]
-!6 = metadata !{metadata !"0x15\00\000\000\000\000\000\000", null, null, null, metadata !7, null, null, null} ; [ DW_TAG_subroutine_type ] [line 0, size 0, align 0, offset 0] [from ]
-!7 = metadata !{}
-!8 = metadata !{i32 9, i32 14, metadata !3, null}
-!9 = metadata !{i32 13, i32 3, metadata !10, null}
-!10 = metadata !{metadata !"0x2e\00bar\00bar\00\0012\000\001\000\000\00256\001\0012", metadata !4, metadata !5, metadata !6, null, double (i32)* @_Z3bari, null, null, metadata !7} ; [ DW_TAG_subprogram ] [line 12] [def] [bar]
-!11 = metadata !{i32 13, i32 14, metadata !10, null}
-!12 = metadata !{i32 19, i32 3, metadata !13, null}
-!13 = metadata !{metadata !"0x2e\00main\00main\00\0016\000\001\000\000\00256\001\0016", metadata !4, metadata !5, metadata !6, null, i32 ()* @main, null, null, metadata !7} ; [ DW_TAG_subprogram ] [line 16] [def] [main]
-!14 = metadata !{i32 20, i32 5, metadata !13, null}
-!15 = metadata !{i32 21, i32 15, metadata !13, null}
-!16 = metadata !{i32 22, i32 11, metadata !13, null}
-!17 = metadata !{metadata !"branch_weights", i32 534, i32 2064}
-!18 = metadata !{i32 23, i32 14, metadata !13, null}
-!19 = metadata !{i32 25, i32 14, metadata !13, null}
-!20 = metadata !{i32 20, i32 28, metadata !13, null}
-!21 = metadata !{metadata !"branch_weights", i32 0, i32 1075}
-!22 = metadata !{i32 19, i32 26, metadata !13, null}
-!23 = metadata !{metadata !"branch_weights", i32 0, i32 534}
-!24 = metadata !{i32 27, i32 3, metadata !13, null}
-!25 = metadata !{i32 28, i32 3, metadata !13, null}
+!0 = !{i32 2, !"Debug Info Version", i32 3}
+!1 = !{!"clang version 3.6.0 "}
+!2 = !MDLocation(line: 9, column: 3, scope: !3)
+!3 = !MDSubprogram(name: "foo", line: 8, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 8, file: !4, scope: !5, type: !6, function: double (i32)* @_Z3fooi, variables: !7)
+!4 = !MDFile(filename: "fnptr.cc", directory: ".")
+!5 = !MDFile(filename: "fnptr.cc", directory: ".")
+!6 = !MDSubroutineType(types: !7)
+!7 = !{}
+!8 = !MDLocation(line: 9, column: 14, scope: !3)
+!9 = !MDLocation(line: 13, column: 3, scope: !10)
+!10 = !MDSubprogram(name: "bar", line: 12, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 12, file: !4, scope: !5, type: !6, function: double (i32)* @_Z3bari, variables: !7)
+!11 = !MDLocation(line: 13, column: 14, scope: !10)
+!12 = !MDLocation(line: 19, column: 3, scope: !13)
+!13 = !MDSubprogram(name: "main", line: 16, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 16, file: !4, scope: !5, type: !6, function: i32 ()* @main, variables: !7)
+!14 = !MDLocation(line: 20, column: 5, scope: !13)
+!15 = !MDLocation(line: 21, column: 15, scope: !13)
+!16 = !MDLocation(line: 22, column: 11, scope: !13)
+!17 = !{!"branch_weights", i32 534, i32 2064}
+!18 = !MDLocation(line: 23, column: 14, scope: !13)
+!19 = !MDLocation(line: 25, column: 14, scope: !13)
+!20 = !MDLocation(line: 20, column: 28, scope: !13)
+!21 = !{!"branch_weights", i32 0, i32 1075}
+!22 = !MDLocation(line: 19, column: 26, scope: !13)
+!23 = !{!"branch_weights", i32 0, i32 534}
+!24 = !MDLocation(line: 27, column: 3, scope: !13)
+!25 = !MDLocation(line: 28, column: 3, scope: !13)

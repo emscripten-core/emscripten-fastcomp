@@ -21,6 +21,12 @@ else
 	LLVM_ENABLE_ASSERTIONS := 1
 endif
 
+ifeq ($(ENABLE_ABI_BREAKING_CHECKS),1)
+	LLVM_ABI_BREAKING_CHECKS := FORCE_ON
+else
+	LLVM_ABI_BREAKING_CHECKS := FORCE_OFF
+endif
+
 ifeq ($(REQUIRES_EH),1)
 	LLVM_ENABLE_EH := 1
 else
@@ -48,7 +54,7 @@ endif
 
 OBJMODS := LLVMConfig.cmake LLVMConfigVersion.cmake LLVMExports.cmake
 
-$(PROJ_OBJ_DIR)/LLVMConfig.cmake: LLVMConfig.cmake.in $(LLVMBuildCMakeFrag)
+$(PROJ_OBJ_DIR)/LLVMConfig.cmake: LLVMConfig.cmake.in Makefile $(LLVMBuildCMakeFrag)
 	$(Echo) 'Generating LLVM CMake package config file'
 	$(Verb) ( \
 	 cat $< | sed \
@@ -63,6 +69,7 @@ $(PROJ_OBJ_DIR)/LLVMConfig.cmake: LLVMConfig.cmake.in $(LLVMBuildCMakeFrag)
 	  -e 's/@LLVM_TARGETS_TO_BUILD@/'"$(TARGETS_TO_BUILD)"'/' \
 	  -e 's/@LLVM_TARGETS_WITH_JIT@/'"$(TARGETS_WITH_JIT)"'/' \
 	  -e 's/@TARGET_TRIPLE@/'"$(TARGET_TRIPLE)"'/' \
+	  -e 's/@LLVM_ABI_BREAKING_CHECKS@/'"$(LLVM_ABI_BREAKING_CHECKS)"'/' \
 	  -e 's/@LLVM_ENABLE_ASSERTIONS@/'"$(LLVM_ENABLE_ASSERTIONS)"'/' \
 	  -e 's/@LLVM_ENABLE_EH@/'"$(LLVM_ENABLE_EH)"'/' \
 	  -e 's/@LLVM_ENABLE_RTTI@/'"$(LLVM_ENABLE_RTTI)"'/' \
@@ -73,6 +80,7 @@ $(PROJ_OBJ_DIR)/LLVMConfig.cmake: LLVMConfig.cmake.in $(LLVMBuildCMakeFrag)
 	  -e 's/@LLVM_ENABLE_PIC@/'"$(ENABLE_PIC)"'/' \
 	  -e 's/@LLVM_ON_UNIX@/'"$(LLVM_ON_UNIX)"'/' \
 	  -e 's/@LLVM_ON_WIN32@/'"$(LLVM_ON_WIN32)"'/' \
+	  -e 's/@LLVM_LIBDIR_SUFFIX@//' \
 	  -e 's/@LLVM_CONFIG_INCLUDE_DIRS@/'"$(subst /,\/,$(PROJ_includedir))"'/' \
 	  -e 's/@LLVM_CONFIG_LIBRARY_DIRS@/'"$(subst /,\/,$(PROJ_libdir))"'/' \
 	  -e 's/@LLVM_CONFIG_CMAKE_DIR@/'"$(subst /,\/,$(PROJ_cmake))"'/' \

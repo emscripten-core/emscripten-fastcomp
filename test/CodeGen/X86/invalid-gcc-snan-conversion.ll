@@ -12,7 +12,7 @@ entry:
   store i32 0, i32* %retval
 ; -4503599627370495 == 0xfff0000000000001
   store i64 -4503599627370495, i64* %tmp, align 8
-  %0 = load i64* %tmp, align 8
+  %0 = load i64, i64* %tmp, align 8
   call void @Consume(i64 %0)
   ret i32 0
 }

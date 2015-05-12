@@ -7,7 +7,7 @@
 
 define void @test1(i16* nocapture %data) {
 entry:
-  %0 = load i16* %data, align 2
+  %0 = load i16, i16* %data, align 2
   %1 = tail call i16 @llvm.bswap.i16(i16 %0)
   store i16 %1, i16* %data, align 2
   ret void
@@ -43,7 +43,7 @@ entry:
 
 define i16 @test3(i16* nocapture %data) {
 entry:
-  %0 = load i16* %data, align 2
+  %0 = load i16, i16* %data, align 2
   %1 = tail call i16 @llvm.bswap.i16(i16 %0)
   ret i16 %1
 
@@ -60,7 +60,7 @@ entry:
 define i16 @test4(i32 %in) {
   %1 = add i32 %in, 256
   %2 = inttoptr i32 %1 to i32*
-  %3 = load i32* %2, align 2
+  %3 = load i32, i32* %2, align 2
   %4 = trunc i32 %3 to i16
   %5 = tail call i16 @llvm.bswap.i16(i16 %4)
   %6 = add i32 %in, 258

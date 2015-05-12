@@ -68,8 +68,8 @@ private:
   /// \brief Holds the offset of the first byte after the header.
   size_t InitialAddress;
 
-  NaClBitstreamReader(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitstreamReader&) LLVM_DELETED_FUNCTION;
+  NaClBitstreamReader(const NaClBitstreamReader&) = delete;
+  void operator=(const NaClBitstreamReader&) = delete;
 public:
   NaClBitstreamReader() : InitialAddress(0) {}
 
@@ -183,8 +183,8 @@ typedef SmallVector<uint64_t, 8> NaClBitcodeRecordVector;
 /// to allow the readers to update internals of the bit stream reader
 /// appropriately.
 class NaClAbbrevListener {
-  NaClAbbrevListener(const NaClAbbrevListener&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClAbbrevListener&) LLVM_DELETED_FUNCTION;
+  NaClAbbrevListener(const NaClAbbrevListener&) = delete;
+  void operator=(const NaClAbbrevListener&) = delete;
 public:
   NaClAbbrevListener() {}
   virtual ~NaClAbbrevListener() {}
@@ -279,8 +279,8 @@ private:
   /// This tracks the codesize of parent blocks.
   SmallVector<Block, 8> BlockScope;
 
-  NaClBitstreamCursor(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
-  NaClBitstreamCursor &operator=(const NaClBitstreamCursor &) LLVM_DELETED_FUNCTION;
+  NaClBitstreamCursor(const NaClBitstreamCursor &) = delete;
+  NaClBitstreamCursor &operator=(const NaClBitstreamCursor &) = delete;
 
 public:
   NaClBitstreamCursor() : ErrHandler(new ErrorHandler(*this)) {

@@ -8,7 +8,7 @@
 ;PIC:   foo2
 ;PIC:   ldr [[R0:r[0-9]+]], [[LABEL0:LCPI[0-9_]+]]
 ;PIC: [[LABEL1:LPC0_1]]:
-;PIC:   ldr [[R1:r[0-9]+]], [pc, [[R0]]]
+;PIC:   add [[R1:r[0-9]+]], pc, [[R0]]
 ;PIC:   ldr [[R2:r[0-9]+]], {{\[}}[[R1]]{{\]}}
 ;PIC:   ldr {{r[0-9]+}}, {{\[}}[[R2]]{{\]}}
 
@@ -52,7 +52,7 @@ define i32 @test_stack_guard_remat() #0 {
   %a1 = alloca [256 x i32], align 4
   %1 = bitcast [256 x i32]* %a1 to i8*
   call void @llvm.lifetime.start(i64 1024, i8* %1)
-  %2 = getelementptr inbounds [256 x i32]* %a1, i32 0, i32 0
+  %2 = getelementptr inbounds [256 x i32], [256 x i32]* %a1, i32 0, i32 0
   call void @foo3(i32* %2) #3
   call void asm sideeffect "foo2", "~{r0},~{r1},~{r2},~{r3},~{r4},~{r5},~{r6},~{r7},~{r8},~{r9},~{r10},~{r11},~{r12},~{sp},~{lr}"()
   call void @llvm.lifetime.end(i64 1024, i8* %1)

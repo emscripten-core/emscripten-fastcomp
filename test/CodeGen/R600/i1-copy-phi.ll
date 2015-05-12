@@ -1,11 +1,12 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
 
 ; SI-LABEL: {{^}}br_i1_phi:
 ; SI: v_mov_b32_e32 [[REG:v[0-9]+]], 0{{$}}
 ; SI: s_and_saveexec_b64
 ; SI: s_xor_b64
 ; SI: v_mov_b32_e32 [[REG]], -1{{$}}
-; SI: v_cmp_ne_i32_e64 {{s\[[0-9]+:[0-9]+\]}}, [[REG]], 0
+; SI: v_cmp_ne_i32_e32 vcc, 0, [[REG]]
 ; SI: s_and_saveexec_b64
 ; SI: s_xor_b64
 ; SI: s_endpgm

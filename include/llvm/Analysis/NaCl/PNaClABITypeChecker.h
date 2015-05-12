@@ -23,8 +23,8 @@ namespace llvm {
 class FunctionType;
 
 class PNaClABITypeChecker {
-  PNaClABITypeChecker(const PNaClABITypeChecker&) LLVM_DELETED_FUNCTION;
-  void operator=(const PNaClABITypeChecker&) LLVM_DELETED_FUNCTION;
+  PNaClABITypeChecker(const PNaClABITypeChecker&) = delete;
+  void operator=(const PNaClABITypeChecker&) = delete;
 public:
   // Returns true if Ty is a valid argument or return value type for PNaCl.
   static bool isValidParamType(const Type *Ty);

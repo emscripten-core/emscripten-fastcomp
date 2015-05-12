@@ -21,6 +21,7 @@ add_llvm_library(LLVMNaClTransforms
   ExpandVarArgs.cpp
   FixVectorLoadStoreAlignment.cpp
   FlattenGlobals.cpp
+  SimplifiedFuncTypeMap.cpp
   GlobalCleanup.cpp
   GlobalizeConstantVectors.cpp
   InsertDivideCheck.cpp
