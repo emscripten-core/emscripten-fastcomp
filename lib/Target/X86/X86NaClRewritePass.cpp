@@ -260,21 +260,37 @@ bool X86NaClRewritePass::ApplyStackSFI(MachineBasicBlock &MBB,
     return true;
   }
 
-  //  Promote 32-bit lea to 64-bit lea (does this ever happen?)
   assert(Opc != X86::LEA32r && "Invalid opcode in 64-bit mode!");
-  if (Opc == X86::LEA64_32r) {
-    unsigned DestReg = MI.getOperand(0).getReg();
+  if (Opc == X86::LEA64_32r){
     unsigned BaseReg = MI.getOperand(1).getReg();
-    unsigned Scale   = MI.getOperand(2).getImm();
-    unsigned IndexReg = MI.getOperand(3).getReg();
-    assert(DestReg == X86::ESP);
-    assert(Scale == 1);
-    assert(BaseReg == X86::EBP);
-    assert(IndexReg == 0);
-    MI.getOperand(0).setReg(X86::RSP);
-    MI.getOperand(1).setReg(X86::RBP);
-    MI.setDesc(TII->get(X86::LEA64r));
-    Opc = X86::LEA64r;
+    if (BaseReg == X86::EBP) {
+      // leal N(%ebp), %esp can be promoted to leaq N(%rbp), %rsp, which
+      // converts to SPAJDi32 below.
+      unsigned DestReg = MI.getOperand(0).getReg();
+      unsigned Scale   = MI.getOperand(2).getImm();
+      unsigned IndexReg = MI.getOperand(3).getReg();
+      assert(DestReg == X86::ESP);
+      assert(Scale == 1);
+      assert(BaseReg == X86::EBP);
+      assert(IndexReg == 0);
+      MI.getOperand(0).setReg(X86::RSP);
+      MI.getOperand(1).setReg(X86::RBP);
+      MI.setDesc(TII->get(X86::LEA64r));
+      Opc = X86::LEA64r;
+    } else {
+      // Create a MachineInstr bundle (i.e. a bundle-locked group) and fix up
+      // the stack pointer by adding R15.  TODO(dschuff): generalize this for
+      // other uses if needed, and try to replace some pseudos if
+      // possible. Eventually replace with auto-sandboxing.
+      auto NextMBBI = MBBI;
+      ++NextMBBI;
+      BuildMI(MBB, NextMBBI, MBBI->getDebugLoc(),
+              TII->get(X86::ADD64rr), X86::RSP)
+          .addReg(X86::RSP).addReg(X86::R15);
+      MIBundleBuilder(MBB, MBBI, NextMBBI);
+      finalizeBundle(MBB, MBBI.getInstrIterator());
+      return true;
+    }
   }
 
   if (Opc == X86::LEA64r && MatchesSPAdj(MI)) {
