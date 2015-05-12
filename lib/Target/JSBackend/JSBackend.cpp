@@ -3172,6 +3172,8 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   if (OptLevel == CodeGenOpt::None)
     PM.add(createEmscriptenSimplifyAllocasPass());
 
+  PM.add(createEmscriptenRemoveLLVMAssumePass());
+
   PM.add(new JSWriter(o, OptLevel));
 
   return false;
