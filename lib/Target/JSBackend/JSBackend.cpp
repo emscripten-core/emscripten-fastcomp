@@ -2406,7 +2406,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       std::string Index = getHeapNameAndIndex(P, &HeapName);
       const char *atomicFunc = 0;
       switch (rmwi->getOperation()) {
-        case AtomicRMWInst::Xchg: atomicFunc = "store"; break;
+        case AtomicRMWInst::Xchg: atomicFunc = "exchange"; break;
         case AtomicRMWInst::Add:  atomicFunc = "add"; break;
         case AtomicRMWInst::Sub:  atomicFunc = "sub"; break;
         case AtomicRMWInst::And:  atomicFunc = "and"; break;
