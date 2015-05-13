@@ -42,7 +42,7 @@ MCObjectStreamer::~MCObjectStreamer() {
   delete Assembler;
 }
 
-void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
+void MCObjectStreamer::flushPendingLabels(MCFragment *F, uint64_t FOffset) {
   if (PendingLabels.size()) {
     if (!F) {
       F = new MCDataFragment();
@@ -51,7 +51,7 @@ void MCObjectStreamer::flushPendingLabels(MCFragment *F) {
     }
     for (MCSymbolData *SD : PendingLabels) {
       SD->setFragment(F);
-      SD->setOffset(0);
+      SD->setOffset(FOffset);
     }
     PendingLabels.clear();
   }
@@ -92,7 +92,8 @@ MCDataFragment *MCObjectStreamer::getOrCreateDataFragment() {
   MCDataFragment *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
   // When bundling is enabled, we don't want to add data to a fragment that
   // already has instructions (see MCELFStreamer::EmitInstToData for details)
-  if (!F || (Assembler->isBundlingEnabled() && F->hasInstructions())) {
+  if (!F || (Assembler->isBundlingEnabled() && !Assembler->getRelaxAll() &&
+             F->hasInstructions())) {
     F = new MCDataFragment();
     insert(F);
   }
@@ -148,7 +149,9 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   // If there is a current fragment, mark the symbol as pointing into it.
   // Otherwise queue the label and set its fragment pointer when we emit the
   // next fragment.
-  if (auto *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment())) {
+  auto *F = dyn_cast_or_null<MCDataFragment>(getCurrentFragment());
+  if (F && !(getAssembler().isBundlingEnabled() &&
+             getAssembler().getRelaxAll())) {
     SD.setFragment(F);
     SD.setOffset(F->getContents().size());
   } else {
@@ -247,6 +250,9 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
 
 void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst,
                                           const MCSubtargetInfo &STI) {
+  if (getAssembler().getRelaxAll() && getAssembler().isBundlingEnabled())
+    llvm_unreachable("All instructions should have already been relaxed");
+
   // Always create a new, separate fragment here, because its size can change
   // during relaxation.
   MCRelaxableFragment *IF = new MCRelaxableFragment(Inst, STI);
