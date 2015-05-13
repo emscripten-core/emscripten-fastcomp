@@ -558,6 +558,22 @@ std::string getAddressAsString(const Value *Ptr, int shift) {
   }
 }
 
+DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
+  return getAssign(CI) + "Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_atomic_exchange_u16, {
+  return getAssign(CI) + "Atomics_exchange(HEAP16, " + getAddressAsString(CI->getOperand(0), 1) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_atomic_exchange_u32, {
+  return getAssign(CI) + "Atomics_exchange(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_atomic_exchange_f32, {
+  return getAssign(CI) + "Atomics_exchange(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_atomic_exchange_f64, {
+  return getAssign(CI) + "Atomics_exchange(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+
 DEF_CALL_HANDLER(emscripten_atomic_cas_u8, {
   return getAssign(CI) + "Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
 })
@@ -864,6 +880,12 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_asm_const);
   SETUP_CALL_HANDLER(emscripten_asm_const_int);
   SETUP_CALL_HANDLER(emscripten_asm_const_double);
+
+  SETUP_CALL_HANDLER(emscripten_atomic_exchange_u8);
+  SETUP_CALL_HANDLER(emscripten_atomic_exchange_u16);
+  SETUP_CALL_HANDLER(emscripten_atomic_exchange_u32);
+  SETUP_CALL_HANDLER(emscripten_atomic_exchange_f32);
+  SETUP_CALL_HANDLER(emscripten_atomic_exchange_f64);
 
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u16);
