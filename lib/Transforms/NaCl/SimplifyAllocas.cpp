@@ -15,9 +15,10 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/NaCl.h"
-
+#include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 namespace {
 class SimplifyAllocas : public BasicBlockPass {
@@ -53,7 +54,8 @@ private:
     bool Changed = false;
     for (BasicBlock::iterator I = BB.getFirstInsertionPt(), E = BB.end();
          I != E;) {
-      if (AllocaInst *Alloca = dyn_cast<AllocaInst>(I++)) {
+      Instruction *Inst = &*I++;
+      if (AllocaInst *Alloca = dyn_cast<AllocaInst>(Inst)) {
         Changed = true;
         Type *ElementTy = Alloca->getType()->getPointerElementType();
         Constant *ElementSize =
@@ -92,6 +94,28 @@ private:
         CopyDebug(BC, Alloca);
         Alloca->replaceAllUsesWith(BC);
         Alloca->eraseFromParent();
+      }
+      else if (auto *Call = dyn_cast<IntrinsicInst>(Inst)) {
+        if (Call->getIntrinsicID() == Intrinsic::dbg_declare) {
+          // dbg.declare's first argument is a special metadata that wraps a
+          // value, and RAUW works on those. It is supposed to refer to the
+          // alloca that represents the variable's storage, but the alloca
+          // simplification may have RAUWed it to use the bitcast.
+          // Fix it up here by recreating the metadata to use the new alloca.
+          auto *MV = cast<MetadataAsValue>(Call->getArgOperand(0));
+          // Sometimes dbg.declare points to an argument instead of an alloca.
+          if (auto *VM = dyn_cast<ValueAsMetadata>(MV->getMetadata())) {
+            if (auto *BCInst = dyn_cast<BitCastInst>(VM->getValue())) {
+              Value *CastSrc = BCInst->getOperand(0);
+              assert(isa<AllocaInst>(CastSrc));
+              Call->setArgOperand(
+                  0,
+                  MetadataAsValue::get(Inst->getContext(),
+                                       ValueAsMetadata::get(CastSrc)));
+              Changed = true;
+            }
+          }
+        }
       }
     }
     return Changed;

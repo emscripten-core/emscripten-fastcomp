@@ -134,3 +134,35 @@ define void @dyn_inst_alloca_array_zext(i8 %a) {
 ; CHECK-NEXT:    zext i8 %b to i32
 ; CHECK-NEXT:    mul i32 4,
 ; CHECK-NEXT:    %c = alloca i8, i32
+
+declare void @llvm.dbg.declare(metadata, metadata, metadata)
+define void @debug_declare() {
+  %var = alloca i32
+  call void @llvm.dbg.declare(metadata i32* %var, metadata !11, metadata !12), !dbg !13
+  unreachable
+}
+; Ensure that the first arg to dbg.declare points to the alloca, not the bitcast
+; CHECK-LABEL: define void @debug_declare
+; CHECK-NEXT: %var = alloca i8, i32 4
+; CHECK: call void @llvm.dbg.declare(metadata i8* %var, metadata !11, metadata !12), !dbg !13
+
+!llvm.dbg.cu = !{!0}
+!llvm.module.flags = !{!8, !9}
+!llvm.ident = !{!10}
+
+; CHECK: !4 = !MDSubprogram(name: "debug_declare", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, flags: DIFlagPrototyped, isOptimized: false, function: void ()* @debug_declare, variables: !2)
+
+!0 = !MDCompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.7.0 (trunk 235150) (llvm/trunk 235152)", isOptimized: false, runtimeVersion: 0, emissionKind: 1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!1 = !MDFile(filename: "foo.c", directory: "/s/llvm/cmakebuild")
+!2 = !{}
+!3 = !{!4}
+!4 = !MDSubprogram(name: "debug_declare", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, flags: DIFlagPrototyped, isOptimized: false, function: void ()* @debug_declare, variables: !2)
+!5 = !MDSubroutineType(types: !6)
+!6 = !{null, !7}
+!7 = !MDBasicType(name: "int", size: 32, align: 32, encoding: DW_ATE_signed)
+!8 = !{i32 2, !"Dwarf Version", i32 4}
+!9 = !{i32 2, !"Debug Info Version", i32 3}
+!10 = !{!"clang version 3.7.0 (trunk 235150) (llvm/trunk 235152)"}
+!11 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "val", arg: 1, scope: !4, file: !1, line: 1, type: !7)
+!12 = !MDExpression()
+!13 = !MDLocation(line: 1, column: 24, scope: !4)
