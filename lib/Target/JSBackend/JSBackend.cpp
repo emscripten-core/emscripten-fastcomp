@@ -2424,6 +2424,11 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         // implemented, we could remove the emulation, but until then we must emulate manually.
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
         Code << Assign << (fround ? "Math_fround(" : "+") << "_emscripten_atomic_" << atomicFunc << "_" << heapNameToAtomicTypeName(HeapName) << "(" << getByteAddressAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
+
+      // TODO: Remove the following two lines once https://bugzilla.mozilla.org/show_bug.cgi?id=1141986 is implemented!
+      } else if (rmwi->getOperation() == AtomicRMWInst::Xchg && !strcmp(HeapName, "HEAP32")) {
+        Code << Assign << "_emscripten_atomic_exchange_u32(" << getByteAddressAsStr(P) << ", " << VS << ")|0"; break;
+
       } else {
         Code << Assign << "Atomics_" << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
       }

@@ -558,6 +558,8 @@ std::string getAddressAsString(const Value *Ptr, int shift) {
   }
 }
 
+/* TODO: Uncomment once https://bugzilla.mozilla.org/show_bug.cgi?id=1141986 is implemented!
+
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
   return getAssign(CI) + "Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
@@ -573,6 +575,7 @@ DEF_CALL_HANDLER(emscripten_atomic_exchange_f32, {
 DEF_CALL_HANDLER(emscripten_atomic_exchange_f64, {
   return getAssign(CI) + "Atomics_exchange(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
+*/
 
 DEF_CALL_HANDLER(emscripten_atomic_cas_u8, {
   return getAssign(CI) + "Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
@@ -881,11 +884,13 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_asm_const_int);
   SETUP_CALL_HANDLER(emscripten_asm_const_double);
 
+/* TODO: Uncomment once https://bugzilla.mozilla.org/show_bug.cgi?id=1141986 is implemented!
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u16);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u32);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_f32);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_f64);
+*/
 
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u16);
