@@ -38,10 +38,17 @@ typedef SmallVector<char, 1024> TextBuffer;
 // the text buffer. Returns a corresponding memory buffer containing
 // the munged bitcode records.
 std::unique_ptr<MemoryBuffer> writeMungedBitcode(
-    NaClMungedBitcode &Bitcode, TextBuffer &Buffer) {
-  Bitcode.write(Buffer, /* AddHeader = */ true);
+    NaClMungedBitcode &Bitcode, TextBuffer &Buffer,
+    NaClMungedBitcode::WriteFlags &Flags) {
+  Bitcode.write(Buffer, /* AddHeader = */ true, Flags);
   StringRef Input(Buffer.data(), Buffer.size());
   return MemoryBuffer::getMemBuffer(Input, "Test", false);
+}
+
+std::unique_ptr<MemoryBuffer> writeMungedBitcode(
+    NaClMungedBitcode &Bitcode, TextBuffer &Buffer) {
+  NaClMungedBitcode::WriteFlags Flags;
+  return writeMungedBitcode(Bitcode, Buffer, Flags);
 }
 
 // Write out the bitcode, parse it back, and return the resulting
@@ -160,9 +167,15 @@ TEST(NaClMungedIoTest, TestTruncatedNonalignedBitcode) {
       stringify(Bitcode));
 
   // Show that we can't write the bitcode correctly.
-  TextBuffer Buffer;
-  EXPECT_DEATH(writeMungedBitcode(Bitcode, Buffer),
-               ".*Unflushed data remaining.*");
+  TextBuffer WriteBuffer;
+  std::string LogBuffer;
+  raw_string_ostream StrBuf(LogBuffer);
+  NaClMungedBitcode::WriteFlags Flags;
+  Flags.setErrStream(StrBuf);
+  writeMungedBitcode(Bitcode, WriteBuffer, Flags);
+  EXPECT_EQ(
+      "Error (Block 8): Missing close block.\n",
+      StrBuf.str());
 }
 
 } // end of anonymous namespace

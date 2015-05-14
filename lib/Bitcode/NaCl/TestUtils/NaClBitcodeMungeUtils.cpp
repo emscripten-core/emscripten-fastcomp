@@ -87,7 +87,7 @@ void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
 } // end of namespace llvm
 
 void NaClBitcodeAbbrevRecord::print(raw_ostream &Out) const {
-  NaClBitcodeRecordData::Print(Out << format("%8u", Abbrev) << ": ");
+  NaClBitcodeRecordData::Print(Out << Abbrev << ": ");
 }
 
 void NaClBitcodeAbbrevRecord::read(const uint64_t Vals[], size_t ValsSize,
@@ -118,6 +118,13 @@ void NaClMungedBitcode::print(raw_ostream &Out) const {
       --Indent;
     for (size_t i = 0; i < Indent; ++i) {
       Out << "  ";
+    }
+    // Blank fill to make abbreviation indices right align, and then
+    // print record.
+    uint32_t Cutoff = 9999999;
+    while (Record.Abbrev <= Cutoff && Cutoff) {
+      Out << " ";
+      Cutoff /= 10;
     }
     Out << Record << "\n";
     if (Record.Code == naclbitc::BLK_CODE_ENTER)

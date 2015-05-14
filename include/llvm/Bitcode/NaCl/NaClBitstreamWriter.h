@@ -148,6 +148,12 @@ public:
   /// \brief Retrieve the current position in the stream, in bits.
   uint64_t GetCurrentBitNo() const { return GetBufferOffset() * 8 + CurBit; }
 
+  /// \brief Returns the maximum abbreviation index allowed for the
+  /// current block.
+  size_t getMaxCurAbbrevIndex() const {
+    return CurAbbrevs.size() + naclbitc::DEFAULT_MAX_ABBREV;
+  }
+
   //===--------------------------------------------------------------------===//
   // Basic Primitives for emitting bits to the stream.
   //===--------------------------------------------------------------------===//

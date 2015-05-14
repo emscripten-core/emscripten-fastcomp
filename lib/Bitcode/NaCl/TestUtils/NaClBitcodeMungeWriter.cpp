@@ -14,35 +14,58 @@
 
 #include "llvm/Bitcode/NaCl/NaClBitstreamWriter.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
 namespace {
 
-// For debugging. When true, shows each PNaCl record that is
-// emitted to the bitcode file.
-static bool DebugEmitRecord = false;
+// For debugging. When true, shows trace information of emitting
+// bitcode.
+static bool DebugEmit = false;
+
+// Description of current block scope
+struct BlockScope {
+  BlockScope(unsigned CurBlockID, size_t AbbrevIndexLimit)
+      : CurBlockID(CurBlockID), AbbrevIndexLimit(AbbrevIndexLimit) {}
+  unsigned CurBlockID;
+  // Defines the maximum value for abbreviation indices in block.
+  size_t AbbrevIndexLimit;
+  void print(raw_ostream &Out) const {
+    Out << "BlockScope(ID=" << CurBlockID << ", AbbrevIndexLimit="
+        << AbbrevIndexLimit << ")";
+  }
+};
+
+inline raw_ostream &operator<<(raw_ostream &Out, const BlockScope &Scope) {
+  Scope.print(Out);
+  return Out;
+}
 
 // State of bitcode writing.
 struct WriteState {
-  // The block ID associated with the block being written.
-  int WriteBlockID = -1;
+  // The block ID associated with records not in any block.
+  static const unsigned UnknownWriteBlockID = UINT_MAX;
   // The SetBID for the blockinfo block.
-  int SetBID = -1;
-  // The stack of maximum abbreviation indices allowed by block enter record.
-  SmallVector<uint64_t, 3> AbbrevIndexLimitStack;
+  unsigned SetBID = UnknownWriteBlockID;
+  // The stack of scopes the writer is in.
+  SmallVector<BlockScope, 3> ScopeStack;
   // The set of write flags to use.
   const NaClMungedBitcode::WriteFlags &Flags;
   // The results of the attempted write.
   NaClMungedBitcode::WriteResults Results;
+  // The minimum number of bits allowed to be specified in a block.
+  const unsigned BlockMinBits;
 
-  WriteState(const NaClMungedBitcode::WriteFlags &Flags) : Flags(Flags) {}
+  WriteState(const NaClMungedBitcode::WriteFlags &Flags)
+      : Flags(Flags),
+        BlockMinBits(NaClBitsNeededForValue(naclbitc::DEFAULT_MAX_ABBREV)) {
+    BlockScope Scope(UnknownWriteBlockID, naclbitc::DEFAULT_MAX_ABBREV);
+    ScopeStack.push_back(Scope);
+  }
 
   // Returns stream to print error message to.
-  raw_ostream &Error() {
-    ++Results.NumErrors;
-    return Flags.getErrStream() << "Error (Block " << WriteBlockID << "): ";
-  }
+  raw_ostream &Error();
 
   // Returns stream to print error message to, assuming that
   // the error message can be repaired if Flags.TryToRecover is true.
@@ -52,28 +75,142 @@ struct WriteState {
     return Error();
   }
 
+  bool atOutermostScope() {
+    assert(!ScopeStack.empty());
+    return ScopeStack.size() == 1;
+  }
+
+  unsigned getCurWriteBlockID() const {
+    assert(!ScopeStack.empty());
+    return ScopeStack.back().CurBlockID;
+  }
+
+  unsigned getCurAbbrevIndexLimit() const {
+    assert(!ScopeStack.empty());
+    return ScopeStack.back().AbbrevIndexLimit;
+  }
+
   // Converts the abbreviation record to the corresponding abbreviation.
   // Returns nullptr if unable to build abbreviation.
   NaClBitCodeAbbrev *buildAbbrev(const NaClBitcodeAbbrevRecord &Record);
 
   // Emits the given record to the bitcode file. Returns true if
   // successful.
-  bool emitRecord(NaClBitstreamWriter &Writer,
-                  const NaClBitcodeAbbrevRecord &Record);
+  bool LLVM_ATTRIBUTE_UNUSED_RESULT
+  emitRecord(NaClBitstreamWriter &Writer, const NaClBitcodeAbbrevRecord &Record);
 
-  // Adds any missing end blocks to written bitcode.
-  void writeMissingEndBlocks(NaClBitstreamWriter &Writer) {
-    while (!AbbrevIndexLimitStack.empty()) {
-      Writer.ExitBlock();
-      AbbrevIndexLimitStack.pop_back();
-    }
+  // Enter the given block
+  bool LLVM_ATTRIBUTE_UNUSED_RESULT
+  enterBlock(NaClBitstreamWriter &Writer, uint64_t WriteBlockID,
+             uint64_t NumBits, const NaClBitcodeAbbrevRecord &Record);
+
+  // Exit current block and return to previous block. Silently recovers
+  // if at outermost scope.
+  bool LLVM_ATTRIBUTE_UNUSED_RESULT
+  exitBlock(NaClBitstreamWriter &Writer,
+            const NaClBitcodeAbbrevRecord *Record = nullptr) {
+    if (atOutermostScope())
+      return false;
+    Writer.ExitBlock();
+    ScopeStack.pop_back();
+    if (DebugEmit)
+      printScopeStack(errs());
+    return true;
+  }
+
+  // Completes the write.
+  NaClMungedBitcode::WriteResults &finish(NaClBitstreamWriter &Writer,
+                                          bool RecoverSilently);
+
+  void printScopeStack(raw_ostream &Out) {
+    Out << "Scope Stack:\n";
+    for (auto &Scope : ScopeStack)
+      Out << "  " << Scope << "\n";
   }
 };
+
+raw_ostream &WriteState::Error() {
+  ++Results.NumErrors;
+  raw_ostream &ErrStrm = Flags.getErrStream();
+  unsigned WriteBlockID = getCurWriteBlockID();
+  ErrStrm << "Error (Block ";
+  if (WriteBlockID == UnknownWriteBlockID)
+    ErrStrm << "unknown";
+  else
+    ErrStrm << WriteBlockID;
+  return ErrStrm <<  "): ";
+}
+
+bool WriteState::enterBlock(NaClBitstreamWriter &Writer, uint64_t WriteBlockID,
+                            uint64_t NumBits,
+                            const NaClBitcodeAbbrevRecord &Record) {
+  if (NumBits < BlockMinBits || NumBits > naclbitc::MaxAbbrevWidth) {
+    RecoverableError()
+        << "Block index bit limit " << NumBits << " invalid. Must be in ["
+        << BlockMinBits << ".." << naclbitc::MaxAbbrevWidth << "]: "
+        << Record << "\n";
+    if (!Flags.getTryToRecover())
+      return false;
+    NumBits = naclbitc::MaxAbbrevWidth;
+  }
+  if (WriteBlockID > UINT_MAX) {
+    RecoverableError() << "Block id must be <= " << UINT_MAX
+                       << ": " << Record << "\n";
+    if (!Flags.getTryToRecover())
+      return false;
+    WriteBlockID = UnknownWriteBlockID;
+  }
+
+  uint64_t MaxAbbrev = (static_cast<uint64_t>(1) << NumBits) - 1;
+  BlockScope Scope(WriteBlockID, MaxAbbrev);
+  ScopeStack.push_back(Scope);
+  if (DebugEmit)
+    printScopeStack(errs());
+  if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
+    unsigned DefaultMaxBits =
+        NaClBitsNeededForValue(naclbitc::DEFAULT_MAX_ABBREV);
+    if (NumBits != DefaultMaxBits) {
+      RecoverableError()
+          << "Numbits entry for abbreviations record not "
+          << DefaultMaxBits << " but found " << NumBits <<
+          ": " << Record << "\n";
+      if (!Flags.getTryToRecover())
+        return false;
+    }
+    Writer.EnterBlockInfoBlock();
+  } else {
+    NaClBitcodeSelectorAbbrev CurCodeLen(MaxAbbrev);
+    Writer.EnterSubblock(WriteBlockID, CurCodeLen);
+  }
+  return true;
+}
+
+NaClMungedBitcode::WriteResults &WriteState::finish(
+    NaClBitstreamWriter &Writer, bool RecoverSilently) {
+  // Be sure blocks are balanced.
+  while (!atOutermostScope()) {
+    if (!RecoverSilently)
+      RecoverableError() << "Missing close block.\n";
+    if (!exitBlock(Writer)) {
+      Error() << "Failed to add missing close block at end of file.\n";
+      break;
+    }
+  }
+
+  // Be sure that generated bitcode buffer is word aligned.
+  if (Writer.GetCurrentBitNo() % 4 * CHAR_BIT) {
+    if (!RecoverSilently)
+      RecoverableError() << "Written bitstream not word aligned\n";
+    // Force a repair so that the bitstream writer doesn't crash.
+    Writer.FlushToWord();
+  }
+  return Results;
+}
 
 bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
                             const NaClBitcodeAbbrevRecord &Record) {
   size_t NumValues = Record.Values.size();
-  if (DebugEmitRecord) {
+  if (DebugEmit) {
     errs() << "Emit " << Record.Abbrev << ": <" << Record.Code;
     for (size_t i = 0; i < NumValues; ++i) {
       errs() << ", " << Record.Values[i];
@@ -83,8 +220,8 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
 
   switch (Record.Code) {
   case naclbitc::BLK_CODE_ENTER: {
-    unsigned NumBits = NaClBitsNeededForValue(naclbitc::DEFAULT_MAX_ABBREV);
-    WriteBlockID = -1;
+    uint64_t WriteBlockID = UnknownWriteBlockID;
+    uint64_t NumBits = naclbitc::MaxAbbrevWidth; // Default to safest value.
     if (Record.Abbrev != naclbitc::ENTER_SUBBLOCK) {
       RecoverableError()
           << "Uses illegal abbreviation index in enter block record: "
@@ -92,43 +229,27 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       if (!Flags.getTryToRecover())
         return false;
     }
-    if (NumValues == 2) {
+    if (NumValues != 2) {
+      RecoverableError()
+          << "Values for enter record should be of size 2, but found "
+          << NumValues << ": " << Record << "\n";
+      if (!Flags.getTryToRecover())
+        return false;
+    }
+    if (NumValues > 0)
       WriteBlockID = Record.Values[0];
+    if (NumValues > 1)
       NumBits = Record.Values[1];
-      if (NumBits > 32 || NumBits < 2) {
-        RecoverableError()
-            << "Bit size " << NumBits << " for record should be "
-            << (NumBits > 32 ? "<= 32" : ">= 2") << ": " << Record << "\n";
-        if (!Flags.getTryToRecover())
-          return false;
-        NumBits = 32;
-      }
-    } else {
-      Error() << "Values for enter record should be of size 2, but found "
-              << NumValues << ": " << Record << "\n";
-      return false;
-    }
-    uint64_t MaxAbbrev = (static_cast<uint64_t>(1) << NumBits) - 1;
-    AbbrevIndexLimitStack.push_back(MaxAbbrev);
-    if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
-      unsigned DefaultMaxBits =
-          NaClBitsNeededForValue(naclbitc::DEFAULT_MAX_ABBREV);
-      if (NumBits != DefaultMaxBits) {
-        RecoverableError()
-            << "Numbits entry for abbreviations record not "
-            << DefaultMaxBits << " but found " << NumBits <<
-            ": " << Record << "\n";
-        if (!Flags.getTryToRecover())
-          return false;
-      }
-      Writer.EnterBlockInfoBlock();
-    } else {
-      NaClBitcodeSelectorAbbrev CurCodeLen(MaxAbbrev);
-      Writer.EnterSubblock(WriteBlockID, CurCodeLen);
-    }
-    break;
+    return enterBlock(Writer, WriteBlockID, NumBits, Record);
   }
-  case naclbitc::BLK_CODE_EXIT:
+  case naclbitc::BLK_CODE_EXIT: {
+    if (atOutermostScope()) {
+      RecoverableError()
+          << "Extraneous exit block: " << Record << "\n";
+      if (!Flags.getTryToRecover())
+        return false;
+      break;
+    }
     if (Record.Abbrev != naclbitc::END_BLOCK) {
       RecoverableError()
           << "Uses illegal abbreviation index in exit block record: "
@@ -142,10 +263,13 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       if (!Flags.getTryToRecover())
         return false;
     }
-    if (!AbbrevIndexLimitStack.empty())
-      AbbrevIndexLimitStack.pop_back();
-    Writer.ExitBlock();
+    if (!exitBlock(Writer)) {
+      Error() << "Failed to write exit block, can't continue: "
+              << Record << "\n";
+      return false;
+    }
     break;
+  }
   case naclbitc::BLK_CODE_DEFINE_ABBREV: {
     if (Record.Abbrev != naclbitc::DEFINE_ABBREV) {
       RecoverableError()
@@ -154,10 +278,17 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       if (!Flags.getTryToRecover())
         return false;
     }
+    if (getCurWriteBlockID() != naclbitc::BLOCKINFO_BLOCK_ID
+        && Writer.getMaxCurAbbrevIndex() >= getCurAbbrevIndexLimit()) {
+      RecoverableError() << "Exceeds abbreviation index limit of "
+                         << getCurAbbrevIndexLimit() << ": " << Record << "\n";
+      // Recover by not writing.
+      return Flags.getTryToRecover();
+    }
     NaClBitCodeAbbrev *Abbrev = buildAbbrev(Record);
     if (Abbrev == NULL)
       return Flags.getTryToRecover();
-    if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID) {
+    if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
       Writer.EmitBlockInfoAbbrev(SetBID, Abbrev);
     } else {
       Writer.EmitAbbrev(Abbrev);
@@ -170,23 +301,30 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       Writer.Emit(Value, 8);
     break;
   default:
-    if (AbbrevIndexLimitStack.empty()) {
-      Error() << "Can't write record outside record block: " << Record << "\n";
-      return false;
-    }
     bool UsesDefaultAbbrev = Record.Abbrev == naclbitc::UNABBREV_RECORD;
+    if (atOutermostScope()) {
+      RecoverableError() << "Record outside block: " << Record << "\n";
+      if (!Flags.getTryToRecover())
+        return false;
+      // Create a dummy block to hold record.
+      if (!enterBlock(Writer, UnknownWriteBlockID,
+                      naclbitc::DEFAULT_MAX_ABBREV, Record)) {
+        Error() << "Failed to recover from record outside block\n";
+        return false;
+      }
+      UsesDefaultAbbrev = true;
+    }
     if (!UsesDefaultAbbrev
         && !Writer.isUserRecordAbbreviation(Record.Abbrev)) {
       // Illegal abbreviation index found.
       if (Flags.getWriteBadAbbrevIndex()) {
         Error() << "Uses illegal abbreviation index: " << Record << "\n";
         // Generate bad abbreviation index so that the bitcode reader
-        // can be tested.
+        // can be tested, and then quit.
         Results.WroteBadAbbrevIndex = true;
         Writer.EmitCode(Record.Abbrev);
-        // Note: We need to close blocks or the bitcode Writer will terminate
-        // due to assertions.
-        writeMissingEndBlocks(Writer);
+        bool RecoverSilently = true;
+        finish(Writer, RecoverSilently);
         return false;
       }
       RecoverableError() << "Uses illegal abbreviation index: "
@@ -195,7 +333,7 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
         return false;
       UsesDefaultAbbrev = true;
     }
-    if (WriteBlockID == naclbitc::BLOCKINFO_BLOCK_ID
+    if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID
         && Record.Code == naclbitc::BLOCKINFO_CODE_SETBID) {
       // Note: SetBID records are handled by Writer->EmitBlockInfoAbbrev,
       // based on the SetBID value. Don't bother to generate SetBID record here.
@@ -322,12 +460,7 @@ NaClMungedBitcode::WriteResults NaClMungedBitcode::writeMaybeRepair(
     if (!State.emitRecord(Writer, Record))
       break;
   }
-  if (!State.AbbrevIndexLimitStack.empty()) {
-    State.RecoverableError()
-        << "Bitcode missing " << State.AbbrevIndexLimitStack.size()
-        << " close blocks.\n";
-    if (Flags.getTryToRecover())
-      State.writeMissingEndBlocks(Writer);
-  }
-  return State.Results;
+  bool RecoverSilently =
+      State.Results.NumErrors > 0 && !Flags.getTryToRecover();
+  return State.finish(Writer, RecoverSilently);
 }
