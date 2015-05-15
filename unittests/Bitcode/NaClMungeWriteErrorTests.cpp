@@ -10,8 +10,8 @@
 
 // Tests write errors for munged bitcode.
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeMunge.h"
+#include "NaClMungeTest.h"
+
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 
@@ -19,24 +19,23 @@
 
 using namespace llvm;
 
-namespace {
+namespace naclmungetest {
 
 // Test list of bitcode records.
-static const uint64_t Terminator = 0x5768798008978675LL;
-  const uint64_t BitcodeRecords[] = {
-    1, naclbitc::BLK_CODE_ENTER, naclbitc::MODULE_BLOCK_ID, 2, Terminator,
-    1, naclbitc::BLK_CODE_ENTER, naclbitc::TYPE_BLOCK_ID_NEW, 3, Terminator,
-    3, naclbitc::TYPE_CODE_NUMENTRY, 2, Terminator,
-    3, naclbitc::TYPE_CODE_VOID, Terminator,
-    3, naclbitc::TYPE_CODE_FUNCTION, 0, 0, Terminator,
-    0, naclbitc::BLK_CODE_EXIT, Terminator,
-    3, naclbitc::MODULE_CODE_FUNCTION, 1, 0, 0, 0, Terminator,
-    1, naclbitc::BLK_CODE_ENTER, naclbitc::FUNCTION_BLOCK_ID, 2, Terminator,
-    3, naclbitc::FUNC_CODE_DECLAREBLOCKS, 1, Terminator,
-    3, naclbitc::FUNC_CODE_INST_RET, Terminator,
-    0, naclbitc::BLK_CODE_EXIT, Terminator,
-    0, naclbitc::BLK_CODE_EXIT, Terminator
-  };
+const uint64_t BitcodeRecords[] = {
+  1, naclbitc::BLK_CODE_ENTER, naclbitc::MODULE_BLOCK_ID, 2, Terminator,
+  1, naclbitc::BLK_CODE_ENTER, naclbitc::TYPE_BLOCK_ID_NEW, 3, Terminator,
+  3, naclbitc::TYPE_CODE_NUMENTRY, 2, Terminator,
+  3, naclbitc::TYPE_CODE_VOID, Terminator,
+  3, naclbitc::TYPE_CODE_FUNCTION, 0, 0, Terminator,
+  0, naclbitc::BLK_CODE_EXIT, Terminator,
+  3, naclbitc::MODULE_CODE_FUNCTION, 1, 0, 0, 0, Terminator,
+  1, naclbitc::BLK_CODE_ENTER, naclbitc::FUNCTION_BLOCK_ID, 2, Terminator,
+  3, naclbitc::FUNC_CODE_DECLAREBLOCKS, 1, Terminator,
+  3, naclbitc::FUNC_CODE_INST_RET, Terminator,
+  0, naclbitc::BLK_CODE_EXIT, Terminator,
+  0, naclbitc::BLK_CODE_EXIT, Terminator
+};
 
 // Expected output when bitcode records are dumped.
 const char* ExpectedDump =
@@ -79,28 +78,17 @@ const uint64_t UseLocalRetVoidAbbrevEdits[] = {
     4, naclbitc::FUNC_CODE_INST_RET, Terminator
 };
 
-#define ARRAY_ARGS(Records) Records, array_lengthof(Records)
-
-#define ARRAY_ARGS_TERM(Records) ARRAY_ARGS(Records), Terminator
-
-std::string stringify(NaClBitcodeMunger &Munger) {
-  std::string Buffer;
-  raw_string_ostream StrBuf(Buffer);
-  Munger.getMungedBitcode().print(StrBuf);
-  return StrBuf.str();
-}
-
 // Show that we can dump the bitcode records
 TEST(NaClMungeWriteErrorTests, DumpBitcodeRecords) {
-  NaClObjDumpMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   EXPECT_TRUE(Munger.runTest());
   EXPECT_EQ(ExpectedDump, Munger.getTestResults());
 }
 
 // Show that by default, one can't write a bad abbreviation index.
 TEST(NaClMungeWriteErrorTests, CantWriteBadAbbrevIndex) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
-  EXPECT_FALSE(Munger.runTest(ARRAY_ARGS(AbbrevIndex4VoidTypeEdit)));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_FALSE(Munger.runTest(ARRAY(AbbrevIndex4VoidTypeEdit)));
   EXPECT_EQ(
       "Error (Block 17): Uses illegal abbreviation index: 4: [2]\n"
       "Error: Unable to generate bitcode file due to write errors\n",
@@ -110,8 +98,8 @@ TEST(NaClMungeWriteErrorTests, CantWriteBadAbbrevIndex) {
 // Show that we can't write more local abbreviations than specified in
 // the corresponding enclosing block.
 TEST(NaClMungeWriteErrorTests, CantWriteTooManyLocalAbbreviations) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
-  Munger.munge(ARRAY_ARGS(UseLocalRetVoidAbbrevEdits));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  Munger.munge(ARRAY(UseLocalRetVoidAbbrevEdits));
   EXPECT_EQ(
       "       1: [65535, 8, 2]\n"
       "         1: [65535, 17, 3]\n"
@@ -138,7 +126,7 @@ TEST(NaClMungeWriteErrorTests, CantWriteTooManyLocalAbbreviations) {
 
 // Show what happens when there are more enter blocks then exit blocks.
 TEST(NaClMungeWriteErrorTests, CantWriteTooManyEnterBlocks) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
   // Remove all but first two records (i.e. two enter blocks).
   NaClMungedBitcode &MungedBitcode = Munger.getMungedBitcode();
   for (size_t i = 2; i < MungedBitcode.getBaseRecords().size(); ++i) {
@@ -156,7 +144,7 @@ TEST(NaClMungeWriteErrorTests, CantWriteTooManyEnterBlocks) {
 // Show what happens when there are fewer enter blocks than exit
 // blocks.
 TEST(NaClMungeWriteErrorTests, CantWriteTooManyExitBlocks) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
   // Add two exit blocks.
   NaClMungedBitcode &MungedBitcode = Munger.getMungedBitcode();
   NaClRecordVector Values;
@@ -174,7 +162,7 @@ TEST(NaClMungeWriteErrorTests, CantWriteTooManyExitBlocks) {
 // Show that an error occurs when writing a bitcode record that isn't
 // in any block.
 TEST(NaClMungeWriteErrorTests, CantWriteRecordOutsideBlock) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
   NaClMungedBitcode &MungedBitcode = Munger.getMungedBitcode();
   NaClRecordVector Values;
   Values.push_back(4);
@@ -199,8 +187,8 @@ TEST(NaClMungerWriteErrorTests, CanWriteBlockWithMaxLimit) {
     1, naclbitc::BLK_CODE_ENTER, naclbitc::MODULE_BLOCK_ID,
        naclbitc::MaxAbbrevWidth, Terminator
   };
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
-  EXPECT_TRUE(Munger.runTest(ARRAY_ARGS(Edit)));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Edit)));
   EXPECT_EQ(
       "       1: [65535, 8, 32]\n"
       "         1: [65535, 17, 3]\n"
@@ -226,8 +214,8 @@ TEST(NaClMungerWriteErrorTests, CantWriteBlockWithBadBitLimit) {
     1, naclbitc::BLK_CODE_ENTER, naclbitc::MODULE_BLOCK_ID,
        naclbitc::MaxAbbrevWidth + 1, Terminator
   };
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
-  EXPECT_FALSE(Munger.runTest(ARRAY_ARGS(Edit)));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_FALSE(Munger.runTest(ARRAY(Edit)));
   EXPECT_EQ(
       "Error (Block unknown): Block index bit limit 33 invalid. Must be in"
       " [2..32]: 1: [65535, 8, 33]\n"
@@ -242,8 +230,8 @@ TEST(NaClMungerWriteErrorTests, CantWriteBlockWithLargeBlockID) {
     0, NaClMungedBitcode::Replace,
     1, naclbitc::BLK_CODE_ENTER, (uint64_t)1 << 33, 2, Terminator
   };
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
-  EXPECT_FALSE(Munger.runTest(ARRAY_ARGS(Edit)));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_FALSE(Munger.runTest(ARRAY(Edit)));
   EXPECT_EQ(
       "Error (Block unknown): Block id must be <= 4294967295: 1:"
       " [65535, 8589934592, 2]\n"
@@ -254,11 +242,11 @@ TEST(NaClMungerWriteErrorTests, CantWriteBlockWithLargeBlockID) {
 // Show that writing successfully writes out an illegal abbreviation
 // index, and then the parser fails to parse that illegal abbreviation.
 TEST(MyNaClMungerWriteErrorTests, DieOnWriteBadAbbreviationIndex) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
   Munger.setWriteBadAbbrevIndex(true);
   Munger.setRunAsDeathTest(true);
   EXPECT_DEATH(
-      Munger.runTest(ARRAY_ARGS(AbbrevIndex4VoidTypeEdit)),
+      Munger.runTest(ARRAY(AbbrevIndex4VoidTypeEdit)),
       ".*"
       // Report problem while writing.
       "Error \\(Block 17\\)\\: Uses illegal abbreviation index\\: 4\\: \\[2\\]"
@@ -274,10 +262,10 @@ TEST(MyNaClMungerWriteErrorTests, DieOnWriteBadAbbreviationIndex) {
 // Show that error recovery works when writing an illegal abbreviation
 // index. Show success by parsing fixed bitcode.
 TEST(NaClMungeWriteErrorTests, RecoverWhenParsingBadAbbrevIndex) {
-  NaClParseBitcodeMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClParseBitcodeMunger Munger(ARRAY_TERM(BitcodeRecords));
   Munger.setTryToRecoverOnWrite(true);
   EXPECT_TRUE(
-      Munger.runTest(ARRAY_ARGS(AbbrevIndex4VoidTypeEdit), true));
+      Munger.runTest(ARRAY(AbbrevIndex4VoidTypeEdit), true));
   EXPECT_EQ(
       "Error (Block 17): Uses illegal abbreviation index: 4: [2]\n"
       "Successful parse!\n",
@@ -287,9 +275,9 @@ TEST(NaClMungeWriteErrorTests, RecoverWhenParsingBadAbbrevIndex) {
 // Show that error recovery works when writing an illegal abbreviation
 // index.  Show success by Dumping fixed bitcode.
 TEST(NaClMungeWriteErrorTests, RecoverWhenParsingBadAbbreviationIndex) {
-  NaClObjDumpMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   Munger.setTryToRecoverOnWrite(true);
-  EXPECT_TRUE(Munger.runTest(ARRAY_ARGS(AbbrevIndex4VoidTypeEdit)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(AbbrevIndex4VoidTypeEdit)));
   std::string Results(
       "Error (Block 17): Uses illegal abbreviation index: 4: [2]\n");
   Results.append(ExpectedDump);
@@ -301,9 +289,9 @@ TEST(NaClMungeWriteErrorTests, RecoverWhenParsingBadAbbreviationIndex) {
 // in the corresponding enter block. Show success by dumping the fixed
 // bitcode.
 TEST(NaClMungeWriteErrorTests, RecoverTooManyLocalAbbreviations) {
-  NaClObjDumpMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   Munger.setTryToRecoverOnWrite(true);
-  Munger.munge(ARRAY_ARGS(UseLocalRetVoidAbbrevEdits));
+  Munger.munge(ARRAY(UseLocalRetVoidAbbrevEdits));
 
   EXPECT_TRUE(Munger.runTest());
   std::string Results(
@@ -320,7 +308,7 @@ TEST(NaClMungeWriteErrorTests, RecoverTooManyLocalAbbreviations) {
 // enter blocks than exit blocks. Show success by dumping fixed
 // bitcode.
 TEST(NaClMungeWriteErrorTests, RecoverTooManyEnterBlocks) {
-  NaClObjDumpMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   // Remove all but first two records (i.e. two enter blocks).
   NaClMungedBitcode &MungedBitcode = Munger.getMungedBitcode();
   for (size_t i = 2; i < MungedBitcode.getBaseRecords().size(); ++i) {
@@ -347,7 +335,7 @@ TEST(NaClMungeWriteErrorTests, RecoverTooManyEnterBlocks) {
 // enter blocks than exit blocks. Show success by dumping the fixed
 // bitcode.
 TEST(NaClMungeWriteErrorTests, RecoverTooManyExitBlocks) {
-  NaClObjDumpMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   // Add two exit blocks.
   NaClMungedBitcode &MungedBitcode = Munger.getMungedBitcode();
   NaClRecordVector Values;
@@ -369,7 +357,7 @@ TEST(NaClMungeWriteErrorTests, RecoverTooManyExitBlocks) {
 // Show that error recovery works when writing a bitcode record that
 // isn't in any block. Show success by showing fixed bitcode records.
 TEST(NaClMungeWriteErrorTests, RecoverWriteRecordOutsideBlock) {
-  NaClWriteMunger Munger(ARRAY_ARGS_TERM(BitcodeRecords));
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
   NaClMungedBitcode &MungedBitcode = Munger.getMungedBitcode();
   NaClRecordVector Values;
   Values.push_back(4);
@@ -401,4 +389,4 @@ TEST(NaClMungeWriteErrorTests, RecoverWriteRecordOutsideBlock) {
       Munger.getTestResults());
 }
 
-} // end of anonymous namespace.
+} // end of namespace naclmungetest

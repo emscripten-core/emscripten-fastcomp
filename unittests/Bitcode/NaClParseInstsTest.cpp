@@ -12,18 +12,14 @@
 
 // TODO(kschimpf) Add more tests.
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeMunge.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
-#include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 
-#include "gtest/gtest.h"
+#include "NaClMungeTest.h"
+
+#include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 
 using namespace llvm;
 
-namespace {
-
-static const uint64_t Terminator = 0x5768798008978675LL;
+namespace naclmungetest {
 
 // Note: alignment stored as 0 or log2(Alignment)+1.
 uint64_t getEncAlignPower(unsigned Power) {
@@ -53,9 +49,8 @@ TEST(NaClParseInstsTest, NonexistantCallArg) {
   };
 
   // Show text of base input.
-  NaClObjDumpMunger DumpMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_FALSE(DumpMunger.runTest("Nonexistant call arg"));
+  NaClObjDumpMunger DumpMunger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_FALSE(DumpMunger.runTest());
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
       "88, 69)\n"
@@ -86,9 +81,8 @@ TEST(NaClParseInstsTest, NonexistantCallArg) {
       "      76:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
 
-  NaClParseBitcodeMunger Munger(BitcodeRecords,
-                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_FALSE(Munger.runTest("Nonexistant call arg", true));
+  NaClParseBitcodeMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_FALSE(Munger.runTest(true));
   EXPECT_EQ(
       "Error(72:6): Invalid call argument: Index 1\n"
       "Error: Invalid value in record\n",
@@ -118,9 +112,8 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
   const uint64_t ReplaceIndex = 11; // index for FUNC_CODE_INST_ALLOCA
 
   // Show text when alignment is 1.
-  NaClObjDumpMunger DumpMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTest("BadAllocaAlignment"));
+  NaClObjDumpMunger DumpMunger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(DumpMunger.runTest());
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
       "88, 69)\n"
@@ -148,19 +141,16 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
       "      67:4|  0: <65534>                 |  }\n"
       "      68:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
-  NaClParseBitcodeMunger Munger(BitcodeRecords,
-                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(Munger.runTest("BadAllocaAlignment", true));
+  NaClParseBitcodeMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(Munger.runTest(true));
 
   // Show what happens when changing alignment to 0.
   const uint64_t Align0[] = {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_ALLOCA, 1, getEncAlignZero(), Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadAllocaAlignment-0", Align0, array_lengthof(Align0), true));
-  EXPECT_TRUE(DumpMunger.runTestForAssembly(
-      "BadAllocaAlignment-0", Align0, array_lengthof(Align0)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align0), true));
+  EXPECT_TRUE(DumpMunger.runTestForAssembly(ARRAY(Align0)));
   EXPECT_EQ(
       "    %v0 = alloca i8, i32 %p0, align 0;\n",
       DumpMunger.getLinesWithSubstring("alloca"));
@@ -170,14 +160,12 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_ALLOCA, 1, getEncAlignPower(30), Terminator,
   };
-  EXPECT_FALSE(Munger.runTest(
-      "BadAllocaAlignment-30", Align30, array_lengthof(Align30), true));
+  EXPECT_FALSE(Munger.runTest(ARRAY(Align30), true));
   EXPECT_EQ(
       "Error(65:6): Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadAllocaAlignment-30", Align30, array_lengthof(Align30)));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align30)));
   EXPECT_EQ(
       "    %v0 = alloca i8, i32 %p0, align 0;\n",
       DumpMunger.getLinesWithSubstring("alloca"));
@@ -190,13 +178,11 @@ TEST(NaClParseInstsTests, BadAllocaAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_ALLOCA, 1, getEncAlignPower(29), Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadAllocaAlignment-29", Align29, array_lengthof(Align29), true));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align29), true));
   EXPECT_EQ(
       "Successful parse!\n",
       Munger.getTestResults());
-  EXPECT_TRUE(DumpMunger.runTestForAssembly(
-      "BadAllocaAlignment-29", Align29, array_lengthof(Align29)));
+  EXPECT_TRUE(DumpMunger.runTestForAssembly(ARRAY(Align29)));
   EXPECT_EQ(
       "    %v0 = alloca i8, i32 %p0, align 536870912;\n",
       DumpMunger.getLinesWithSubstring("alloca"));
@@ -223,9 +209,8 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
   const uint64_t ReplaceIndex = 9; // index for FUNC_CODE_INST_LOAD
 
   // Show text when alignment is 1.
-  NaClObjDumpMunger DumpMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTest("BadLoadAlignment-1"));
+  NaClObjDumpMunger DumpMunger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(DumpMunger.runTest());
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
       "88, 69)\n"
@@ -251,9 +236,8 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
       "      65:0|  0: <65534>                 |  }\n"
       "      68:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
-  NaClParseBitcodeMunger Munger(BitcodeRecords,
-                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(Munger.runTest("BadLoadAlignment", true));
+  NaClParseBitcodeMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(Munger.runTest(true));
 
   // Show what happens when changing alignment to 0.
   const uint64_t Align0[] = {
@@ -264,10 +248,8 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
   // bitcode reader). It is checked later by the PNaCl ABI checker in
   // pnacl-llc. On the other hand, the DumpMunger checks alignment for
   // loads while parsing.
-  EXPECT_TRUE(Munger.runTest(
-      "BadLoadAlignment-0", Align0, array_lengthof(Align0), true));
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadLoadAlignment-0", Align0, array_lengthof(Align0)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align0), true));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align0)));
   EXPECT_EQ(
       "    %v0 = load i32* %p0, align 0;\n"
       "Error(58:4): load: Illegal alignment for i32. Expects: 1\n",
@@ -278,10 +260,8 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_LOAD, 1, getEncAlignPower(2), 0, Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadLoadAlignment-4", Align4, array_lengthof(Align4), true));
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadLoadAlignment-4", Align4, array_lengthof(Align4)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align4), true));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align4)));
   EXPECT_EQ(
       "    %v0 = load i32* %p0, align 4;\n"
       "Error(58:4): load: Illegal alignment for i32. Expects: 1\n",
@@ -292,10 +272,8 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_LOAD, 1, getEncAlignPower(29), 0, Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadLoadAlignment-29", Align29, array_lengthof(Align29), true));
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadLoadAlignment-29", Align29, array_lengthof(Align29)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align29), true));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align29)));
   EXPECT_EQ(
       "    %v0 = load i32* %p0, align 536870912;\n"
       "Error(58:4): load: Illegal alignment for i32. Expects: 1\n",
@@ -306,14 +284,12 @@ TEST(NaClParseInstsTests, BadLoadAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_LOAD, 1, getEncAlignPower(30), 0, Terminator,
   };
-  EXPECT_FALSE(Munger.runTest(
-      "BadLoadAlignment-30", Align30, array_lengthof(Align30), true));
+  EXPECT_FALSE(Munger.runTest(ARRAY(Align30), true));
   EXPECT_EQ(
       "Error(62:4): Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadLoadAlignment-30", Align30, array_lengthof(Align30)));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align30)));
   EXPECT_EQ(
       "    %v0 = load i32* %p0, align 0;\n"
       "Error(58:4): load: Illegal alignment for i32. Expects: 1\n",
@@ -342,9 +318,8 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
   const uint64_t ReplaceIndex = 10; // index for FUNC_CODE_INST_STORE
 
   // Show text when alignment is 1.
-  NaClObjDumpMunger DumpMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTest("BadStoreAlignment"));
+  NaClObjDumpMunger DumpMunger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(DumpMunger.runTest());
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
       "88, 69)\n"
@@ -373,9 +348,8 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
       "      69:0|  0: <65534>                 |  }\n"
       "      72:0|0: <65534>                   |}\n",
       DumpMunger.getTestResults());
-  NaClParseBitcodeMunger Munger(BitcodeRecords,
-                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(Munger.runTest("BadStoreAlignment", true));
+  NaClParseBitcodeMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(Munger.runTest(true));
 
   // Show what happens when changing alignment to 0.
   const uint64_t Align0[] = {
@@ -386,10 +360,8 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
   // bitcode reader). It is checked later by the PNaCl ABI checker in
   // pnacl-llc. On the other hand, the DumpMunger checks alignment for
   // stores while parsing.
-  EXPECT_TRUE(Munger.runTest(
-      "BadStoreAlignment-0", Align0, array_lengthof(Align0), true));
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadStoreAlignment-0", Align0, array_lengthof(Align0)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align0), true));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align0)));
   EXPECT_EQ(
       "    store float %p1, float* %p0, align 0;\n"
       "Error(62:4): store: Illegal alignment for float. Expects: 1 or 4\n",
@@ -400,20 +372,16 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_STORE, 2, 1, getEncAlignPower(2), Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadStoreAlignment-4", Align4, array_lengthof(Align4), true));
-  EXPECT_TRUE(DumpMunger.runTestForAssembly(
-      "BadStoreAlignment-4", Align4, array_lengthof(Align4)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align4), true));
+  EXPECT_TRUE(DumpMunger.runTestForAssembly(ARRAY(Align4)));
 
   // Show what happens when changing alignment to 8.
   const uint64_t Align8[] = {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_STORE, 2, 1, getEncAlignPower(3), Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadStoreAlignment-8", Align8, array_lengthof(Align8), true));
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadStoreAlignment-8", Align8, array_lengthof(Align8)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align8), true));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align8)));
   EXPECT_EQ(
       "    store float %p1, float* %p0, align 8;\n"
       "Error(62:4): store: Illegal alignment for float. Expects: 1 or 4\n",
@@ -424,10 +392,8 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_STORE, 2, 1, getEncAlignPower(29), Terminator,
   };
-  EXPECT_TRUE(Munger.runTest(
-      "BadStoreAlignment-29", Align29, array_lengthof(Align29), true));
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadStoreAlignment-29", Align29, array_lengthof(Align29)));
+  EXPECT_TRUE(Munger.runTest(ARRAY(Align29), true));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align29)));
   EXPECT_EQ(
       "    store float %p1, float* %p0, align 536870912;\n"
       "Error(62:4): store: Illegal alignment for float. Expects: 1 or 4\n",
@@ -438,18 +404,16 @@ TEST(NaClParseInstsTests, BadStoreAlignment) {
     ReplaceIndex, NaClMungedBitcode::Replace,
     3, naclbitc::FUNC_CODE_INST_STORE, 2, 1, getEncAlignPower(30), Terminator,
   };
-  EXPECT_FALSE(Munger.runTest(
-      "BadStoreAlignment-30", Align30, array_lengthof(Align30), true));
+  EXPECT_FALSE(Munger.runTest(ARRAY(Align30), true));
   EXPECT_EQ(
       "Error(66:4): Alignment can't be greater than 2**29. Found: 2**30\n"
       "Error: Invalid value in record\n",
       Munger.getTestResults());
-  EXPECT_FALSE(DumpMunger.runTestForAssembly(
-      "BadStoreAlignment-30", Align30, array_lengthof(Align30)));
+  EXPECT_FALSE(DumpMunger.runTestForAssembly(ARRAY(Align30)));
   EXPECT_EQ(
       "    store float %p1, float* %p0, align 0;\n"
       "Error(62:4): store: Illegal alignment for float. Expects: 1 or 4\n",
       DumpMunger.getLinesWithSubstring("store"));
 }
 
-} // end of anonamous namespace.
+} // end of namespace naclmungetest

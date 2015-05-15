@@ -10,30 +10,13 @@
 
 // Tests munging NaCl bitcode records.
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeMungeUtils.h"
+#include "NaClMungeTest.h"
 
-#include "gtest/gtest.h"
 #include <limits>
 
 using namespace llvm;
 
-namespace {
-
-static const uint64_t Terminator = 0x5768798008978675LL;
-
-std::string stringify(NaClMungedBitcode &MungedBitcode) {
-  std::string Buffer;
-  raw_string_ostream StrBuf(Buffer);
-  MungedBitcode.print(StrBuf);
-  return StrBuf.str();
-}
-
-} // end of anonymous namespace
-
-#define ARRAY_ARGS(name) name, array_lengthof(name), Terminator
-
-namespace NaClMungedBc {
+namespace naclmungetest {
 
 TEST(NaClMungedBitcodeTest, TestInsertBefore) {
   const uint64_t Records[] = {
@@ -42,7 +25,7 @@ TEST(NaClMungedBitcodeTest, TestInsertBefore) {
     6, 7, 8 , 9, Terminator,
     10, 11, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -54,7 +37,7 @@ TEST(NaClMungedBitcodeTest, TestInsertBefore) {
   const uint64_t BeforeSecond[] = {
     1, NaClMungedBitcode::AddBefore, 12, 13, 14, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(BeforeSecond));
+  MungedRecords.munge(ARRAY_TERM(BeforeSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      12: [13, 14]\n"
@@ -68,7 +51,7 @@ TEST(NaClMungedBitcodeTest, TestInsertBefore) {
     1, NaClMungedBitcode::AddBefore, 15, 16, 17, Terminator,
     1, NaClMungedBitcode::AddBefore, 18, 19, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(BeforeSecondMore));
+  MungedRecords.munge(ARRAY_TERM(BeforeSecondMore));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      12: [13, 14]\n"
@@ -84,7 +67,7 @@ TEST(NaClMungedBitcodeTest, TestInsertBefore) {
     3, NaClMungedBitcode::AddBefore, 21, 22, 23, Terminator,
     3, NaClMungedBitcode::AddBefore, 24, 25, 26, 27, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(BeforeLast));
+  MungedRecords.munge(ARRAY_TERM(BeforeLast));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      12: [13, 14]\n"
@@ -105,7 +88,7 @@ TEST(NaClMungedBitcodeTest, TestInsertAfter) {
     6, 7, 8 , 9, Terminator,
     10, 11, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -117,7 +100,7 @@ TEST(NaClMungedBitcodeTest, TestInsertAfter) {
   const uint64_t AfterSecond[] = {
     1, NaClMungedBitcode::AddAfter, 12, 13, 14, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AfterSecond));
+  MungedRecords.munge(ARRAY_TERM(AfterSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -131,7 +114,7 @@ TEST(NaClMungedBitcodeTest, TestInsertAfter) {
     1, NaClMungedBitcode::AddAfter, 15, 16, 17, Terminator,
     1, NaClMungedBitcode::AddAfter, 18, 19, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AfterSecondMore));
+  MungedRecords.munge(ARRAY_TERM(AfterSecondMore));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -147,7 +130,7 @@ TEST(NaClMungedBitcodeTest, TestInsertAfter) {
     3, NaClMungedBitcode::AddAfter, 21, 22, 23, Terminator,
     3, NaClMungedBitcode::AddAfter, 24, 25, 26, 27, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AfterLast));
+  MungedRecords.munge(ARRAY_TERM(AfterLast));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -168,7 +151,7 @@ TEST(NaClMungedBitcodeTest, TestRemove) {
     6, 7, 8 , 9, Terminator,
     10, 11, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -180,7 +163,7 @@ TEST(NaClMungedBitcodeTest, TestRemove) {
   const uint64_t RemoveSecond[] = {
     1, NaClMungedBitcode::Remove
   };
-  MungedRecords.munge(ARRAY_ARGS(RemoveSecond));
+  MungedRecords.munge(ARRAY_TERM(RemoveSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       6: [7, 8, 9]\n"
@@ -192,7 +175,7 @@ TEST(NaClMungedBitcodeTest, TestRemove) {
     0, NaClMungedBitcode::Remove,
     3, NaClMungedBitcode::Remove
   };
-  MungedRecords.munge(ARRAY_ARGS(RemoveEnds));
+  MungedRecords.munge(ARRAY_TERM(RemoveEnds));
   EXPECT_EQ(
       "       6: [7, 8, 9]\n",
       stringify(MungedRecords));
@@ -201,7 +184,7 @@ TEST(NaClMungedBitcodeTest, TestRemove) {
   const uint64_t RemoveOther[] = {
     2, NaClMungedBitcode::Remove
   };
-  MungedRecords.munge(ARRAY_ARGS(RemoveOther));
+  MungedRecords.munge(ARRAY_TERM(RemoveOther));
   EXPECT_EQ(
       "",
       stringify(MungedRecords));
@@ -214,7 +197,7 @@ TEST(NaClMungedBitcodeTest, TestReplace) {
     6, 7, 8 , 9, Terminator,
     10, 11, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -226,7 +209,7 @@ TEST(NaClMungedBitcodeTest, TestReplace) {
   const uint64_t ReplaceSecond[] = {
     1, NaClMungedBitcode::Replace, 12, 13, 14, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ReplaceSecond));
+  MungedRecords.munge(ARRAY_TERM(ReplaceSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      12: [13, 14]\n"
@@ -239,7 +222,7 @@ TEST(NaClMungedBitcodeTest, TestReplace) {
     0, NaClMungedBitcode::Replace, 15, 16, 17, 18, Terminator,
     3, NaClMungedBitcode::Replace, 19, 20, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ReplaceEnds));
+  MungedRecords.munge(ARRAY_TERM(ReplaceEnds));
   EXPECT_EQ(
       "      15: [16, 17, 18]\n"
       "      12: [13, 14]\n"
@@ -254,7 +237,7 @@ TEST(NaClMungedBitcodeTest, TestReplace) {
     1, NaClMungedBitcode::Replace, 24, 25, Terminator,
     2, NaClMungedBitcode::Replace, 26, 27, 28, 29, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ReplaceFirst3));
+  MungedRecords.munge(ARRAY_TERM(ReplaceFirst3));
   EXPECT_EQ(
       "      21: [22, 23]\n"
       "      24: [25]\n"
@@ -267,7 +250,7 @@ TEST(NaClMungedBitcodeTest, TestReplace) {
     1, NaClMungedBitcode::Remove,
     3, NaClMungedBitcode::Remove
   };
-  MungedRecords.munge(ARRAY_ARGS(RemoveReplaced));
+  MungedRecords.munge(ARRAY_TERM(RemoveReplaced));
   EXPECT_EQ(
       "      21: [22, 23]\n"
       "      26: [27, 28, 29]\n",
@@ -287,7 +270,7 @@ TEST(NaClMungedBitcodeTest, TestBlockStructure) {
     19, 20, 21, Terminator,
     22, naclbitc::BLK_CODE_EXIT, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3, 4]\n"
       "       5: [65535, 6]\n"
@@ -307,7 +290,7 @@ TEST(NaClMungedBitcodeTest, TestBlockStructure) {
     4, NaClMungedBitcode::AddAfter, 0, naclbitc::BLK_CODE_EXIT, Terminator,
     2, NaClMungedBitcode::Replace, 0, naclbitc::BLK_CODE_EXIT, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ExitEdits));
+  MungedRecords.munge(ARRAY_TERM(ExitEdits));
   EXPECT_EQ(
       "       1: [2, 3, 4]\n"
       "       5: [65535, 6]\n"
@@ -333,7 +316,7 @@ TEST(NaClMungedBitcodeTest, TestReplaceRemoveEffects) {
     6, 7, 8 , 9, Terminator,
     10, 11, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -345,7 +328,7 @@ TEST(NaClMungedBitcodeTest, TestReplaceRemoveEffects) {
   const uint64_t RemoveSecond[] = {
     1, NaClMungedBitcode::Remove
   };
-  MungedRecords.munge(ARRAY_ARGS(RemoveSecond));
+  MungedRecords.munge(ARRAY_TERM(RemoveSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       6: [7, 8, 9]\n"
@@ -353,7 +336,7 @@ TEST(NaClMungedBitcodeTest, TestReplaceRemoveEffects) {
       stringify(MungedRecords));
 
   // Try it again. Should have no effect.
-  MungedRecords.munge(ARRAY_ARGS(RemoveSecond));
+  MungedRecords.munge(ARRAY_TERM(RemoveSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       6: [7, 8, 9]\n"
@@ -364,7 +347,7 @@ TEST(NaClMungedBitcodeTest, TestReplaceRemoveEffects) {
   const uint64_t ReplaceSecond[] = {
     1, NaClMungedBitcode::Replace, 12, 12, 14, 15, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ReplaceSecond));
+  MungedRecords.munge(ARRAY_TERM(ReplaceSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      12: [12, 14, 15]\n"
@@ -376,7 +359,7 @@ TEST(NaClMungedBitcodeTest, TestReplaceRemoveEffects) {
   const uint64_t ReplaceSecondAgain[] = {
     1, NaClMungedBitcode::Replace, 16, 17, 18, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ReplaceSecondAgain));
+  MungedRecords.munge(ARRAY_TERM(ReplaceSecondAgain));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      16: [17, 18]\n"
@@ -385,7 +368,7 @@ TEST(NaClMungedBitcodeTest, TestReplaceRemoveEffects) {
       stringify(MungedRecords));
 
   // Override replacement with a remove.
-  MungedRecords.munge(ARRAY_ARGS(RemoveSecond));
+  MungedRecords.munge(ARRAY_TERM(RemoveSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       6: [7, 8, 9]\n"
@@ -401,7 +384,7 @@ TEST(NaClMungedBitcodeTest, TestBeforeAfterInteraction) {
     6, 7, 8 , 9, Terminator,
     10, 11, Terminator
   };
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -413,7 +396,7 @@ TEST(NaClMungedBitcodeTest, TestBeforeAfterInteraction) {
   const uint64_t AddBeforeThird[] = {
     2, NaClMungedBitcode::AddBefore, 12, 13, 14, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddBeforeThird));
+  MungedRecords.munge(ARRAY_TERM(AddBeforeThird));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -426,7 +409,7 @@ TEST(NaClMungedBitcodeTest, TestBeforeAfterInteraction) {
   const uint64_t AddAfterSecond[] = {
     1, NaClMungedBitcode::AddAfter, 15, 16, 17, 18, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddAfterSecond));
+  MungedRecords.munge(ARRAY_TERM(AddAfterSecond));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -441,7 +424,7 @@ TEST(NaClMungedBitcodeTest, TestBeforeAfterInteraction) {
     2, NaClMungedBitcode::AddBefore, 19, 20, Terminator,
     2, NaClMungedBitcode::AddBefore, 21, 22, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddBeforeThirdMore));
+  MungedRecords.munge(ARRAY_TERM(AddBeforeThirdMore));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -458,7 +441,7 @@ TEST(NaClMungedBitcodeTest, TestBeforeAfterInteraction) {
     1, NaClMungedBitcode::AddAfter, 23, 24, 25, Terminator,
     1, NaClMungedBitcode::AddAfter, 26, 27, 28, 29, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddAfterSecondMore));
+  MungedRecords.munge(ARRAY_TERM(AddAfterSecondMore));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -482,7 +465,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
     10, 11, Terminator
   };
 
-  NaClMungedBitcode MungedRecords(ARRAY_ARGS(Records));
+  NaClMungedBitcode MungedRecords(ARRAY_TERM(Records));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "       4: [5]\n"
@@ -494,7 +477,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
   const uint64_t RemoveFirst[] = {
     0, NaClMungedBitcode::Remove
   };
-  MungedRecords.munge(ARRAY_ARGS(RemoveFirst));
+  MungedRecords.munge(ARRAY_TERM(RemoveFirst));
   EXPECT_EQ(
       "       4: [5]\n"
       "       6: [7, 8, 9]\n"
@@ -507,7 +490,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
     0, NaClMungedBitcode::AddAfter, 12, 13, 14, Terminator,
     0, NaClMungedBitcode::AddAfter, 15, 16, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddAfterFirst));
+  MungedRecords.munge(ARRAY_TERM(AddAfterFirst));
   EXPECT_EQ(
       "      12: [13, 14]\n"
       "      15: [16]\n"
@@ -522,7 +505,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
     1, NaClMungedBitcode::AddBefore, 17, 18, 19, 20, Terminator,
     1, NaClMungedBitcode::AddBefore, 21, 22, 23, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddBeforeSecond));
+  MungedRecords.munge(ARRAY_TERM(AddBeforeSecond));
   EXPECT_EQ(
       "      12: [13, 14]\n"
       "      15: [16]\n"
@@ -538,7 +521,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
   const uint64_t ReplaceFirst[] = {
     0, NaClMungedBitcode::Replace, 1, 2, 3, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(ReplaceFirst));
+  MungedRecords.munge(ARRAY_TERM(ReplaceFirst));
   EXPECT_EQ(
       "       1: [2, 3]\n"
       "      12: [13, 14]\n"
@@ -557,7 +540,7 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
     0, NaClMungedBitcode::AddBefore, 28, 29, Terminator,
     0, NaClMungedBitcode::AddBefore, 30, 31, 32, Terminator
   };
-  MungedRecords.munge(ARRAY_ARGS(AddBeforeFirst));
+  MungedRecords.munge(ARRAY_TERM(AddBeforeFirst));
   EXPECT_EQ(
       "      24: [25, 26, 27]\n"
       "      28: [29]\n"
@@ -573,4 +556,4 @@ TEST(NaClMungedBitcodeTest, CombinationEdits) {
       stringify(MungedRecords));
 }
 
-} // end of namespace NaClMungedBc
+} // end of namespace naclmungetest

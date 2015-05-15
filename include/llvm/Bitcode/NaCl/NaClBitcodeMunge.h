@@ -74,9 +74,15 @@ public:
 
   /// Creates MungedInput and DumpStream for running tests, based on
   /// given Munges. Returns true if able to set up test.
-  bool setupTest(
-      const char *TestName, const uint64_t Munges[], size_t MungesSize,
-      bool AddHeader);
+  bool setupTest(const uint64_t Munges[], size_t MungesSize, bool AddHeader);
+
+  // TODO(kschimpf): The following function is deprecated and only
+  // provided until subzero is updated to use the new API that no
+  // longer uses test names.
+  bool setupTest(const char *, const uint64_t Munges[], size_t MungesSize,
+                 bool AddHeader) {
+    return setupTest(Munges, MungesSize, AddHeader);
+  }
 
   /// Cleans up state after a test. Returns true if no errors found.
   bool cleanupTest();
@@ -170,23 +176,12 @@ public:
 
   /// Writes munged bitcode and puts error messages into DumpResults.
   /// Returns true if successful.
-  bool runTest(const char* TestName, const uint64_t Munges[],
-               size_t MungesSize);
-
-  /// Same as above, but without test name.
-  bool runTest(const uint64_t Munges[], size_t MungesSize) {
-    return runTest("Test", Munges, MungesSize);
-  }
+  bool runTest(const uint64_t Munges[], size_t MungesSize);
 
   /// Same as above, but without any edits.
-  bool runTest(const char* TestName) {
-    uint64_t NoMunges[] = {0};
-    return runTest(TestName, NoMunges, 0);
-  }
-
-  /// Same as above, but without test name.
   bool runTest() {
-    return runTest("Test");
+    uint64_t NoMunges[] = {0};
+    return runTest(NoMunges, 0);
   }
 };
 
@@ -202,38 +197,36 @@ public:
   /// Runs function NaClObjDump on the sequence of records associated
   /// with the instance. The memory buffer containing the bitsequence
   /// associated with the record is automatically generated, and
-  /// passed to NaClObjDump.  TestName is the name associated with the
-  /// memory buffer.  If AddHeader is true, test assumes that the
+  /// passed to NaClObjDump. If AddHeader is true, test assumes that the
   /// sequence of records doesn't contain a header record, and the
   /// test should add one. Arguments NoRecords and NoAssembly are
   /// passed to NaClObjDump. Returns true if test succeeds without
   /// errors.
-  bool runTestWithFlags(const char *TestName, bool AddHeader,
-                        bool NoRecords, bool NoAssembly) {
+  bool runTestWithFlags(bool AddHeader, bool NoRecords, bool NoAssembly) {
     uint64_t NoMunges[] = {0};
-    return runTestWithFlags(TestName, NoMunges, 0, AddHeader, NoRecords,
-                            NoAssembly);
+    return runTestWithFlags(NoMunges, 0, AddHeader, NoRecords, NoAssembly);
   }
 
   /// Same as above except it runs function NaClObjDump with flags
   /// NoRecords and NoAssembly set to false, and AddHeader set to true.
-  bool runTest(const char *TestName) {
-    return runTestWithFlags(TestName, true, false, false);
+  bool runTest() {
+    return runTestWithFlags(true, false, false);
   }
 
-  /// Same as above but without test name.
-  bool runTest() {
-    return runTest("Test");
+  // TODO(kschimpf): The following function is deprecated and only
+  // provided until subzero is updated to use the new API that no
+  // longer uses test names.
+  bool runTest(const char *) {
+    return runTest();
   }
 
   /// Same as above, but only print out assembly and errors.
-  bool runTestForAssembly(const char *TestName) {
-    return runTestWithFlags(TestName, true, true, false);
+  bool runTestForAssembly() {
+    return runTestWithFlags(true, true, false);
   }
-
   /// Same as above, but only generate error messages.
-  bool runTestForErrors(const char *TestName) {
-    return runTestWithFlags(TestName, true, true, true);
+  bool runTestForErrors() {
+    return runTestWithFlags(true, true, true);
   }
 
   /// Runs function llvm::NaClObjDump on the sequence of records
@@ -244,30 +237,31 @@ public:
   /// with the memory buffer.  Arguments NoRecords and NoAssembly are
   /// passed to NaClObjDump. Returns true if test succeeds without
   /// errors.
-  bool runTestWithFlags(const char* TestName, const uint64_t Munges[],
-                        size_t MungesSize, bool AddHeader,
-                        bool NoRecords, bool NoAssembly);
+  bool runTestWithFlags(const uint64_t Munges[], size_t MungesSize,
+                        bool AddHeader, bool NoRecords, bool NoAssembly);
 
   /// Same as above except it runs function NaClObjDump with flags
   /// NoRecords and NoAssembly set to false, and AddHeader set to
   /// true.
-  bool runTest(const char* TestName, const uint64_t Munges[],
-                      size_t MungesSize) {
-    return runTestWithFlags(TestName, Munges, MungesSize, true, false, false);
-  }
-
   bool runTest(const uint64_t Munges[], size_t MungesSize) {
-    return runTest("Test", Munges, MungesSize);
+    return runTestWithFlags(Munges, MungesSize, true, false, false);
   }
 
-  bool runTestForAssembly(const char* TestName, const uint64_t Munges[],
+  bool runTestForAssembly(const uint64_t Munges[], size_t MungesSize) {
+    return runTestWithFlags(Munges, MungesSize, true, true, false);
+  }
+
+  // TODO(kschimpf): The following function is deprecated and only
+  // provided until subzero is updated to use the new API that no
+  // longer uses test names.
+  bool runTestForAssembly(const char *, const uint64_t Munges[],
                           size_t MungesSize) {
-    return runTestWithFlags(TestName, Munges, MungesSize, true, true, false);
+    return runTestForAssembly(Munges, MungesSize);
   }
 
-  bool runTestForErrors(const char* TestName, const uint64_t Munges[],
-                        size_t MungesSize) {
-    return runTestWithFlags(TestName, Munges, MungesSize, true, true, true);
+
+  bool runTestForErrors(const uint64_t Munges[], size_t MungesSize) {
+    return runTestWithFlags(Munges, MungesSize, true, true, true);
   }
 };
 
@@ -280,18 +274,12 @@ public:
 
   /// Runs function llvm::NaClParseBitcodeFile, and puts error messages
   /// into DumpResults. Returns true if parse is successful.
-  bool runTest(const char* TestName, const uint64_t Munges[],
-               size_t MungesSize, bool VerboseErrors);
-
-  /// Same as above, but without test name.
-  bool runTest(const uint64_t Munges[], size_t MungesSize, bool VerboseErrors) {
-    return runTest("Test", Munges, MungesSize, VerboseErrors);
-  }
+  bool runTest(const uint64_t Munges[], size_t MungesSize, bool VerboseErrors);
 
   // Same as above, but without any edits.
-  bool runTest(const char* TestName, bool VerboseErrors) {
+  bool runTest(bool VerboseErrors) {
     uint64_t NoMunges[] = {0};
-    return runTest(TestName, NoMunges, 0, VerboseErrors);
+    return runTest(NoMunges, 0, VerboseErrors);
   }
 };
 
@@ -302,12 +290,11 @@ public:
                      uint64_t RecordTerminator)
       : NaClBitcodeMunger(Records, RecordsSize, RecordTerminator) {}
 
-  bool runTest(const char* TestName, const uint64_t Munges[],
-               size_t MungesSize);
+  bool runTest(const uint64_t Munges[], size_t MungesSize);
 
-  bool runTest(const char* TestName) {
+  bool runTest() {
     uint64_t NoMunges[] = {0};
-    return runTest(TestName, NoMunges, 0);
+    return runTest(NoMunges, 0);
   }
 };
 

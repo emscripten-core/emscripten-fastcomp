@@ -29,9 +29,8 @@ using namespace llvm;
 // For debugging. When true, shows each test being run.
 static bool TraceTestRuns = false;
 
-bool NaClBitcodeMunger::setupTest(
-    const char *TestName, const uint64_t Munges[], size_t MungesSize,
-    bool AddHeader) {
+bool NaClBitcodeMunger::setupTest(const uint64_t Munges[], size_t MungesSize,
+                                  bool AddHeader) {
   assert(DumpStream == nullptr && "Test run with DumpStream already defined");
   assert(MungedInput.get() == nullptr
          && "Test run with MungedInput already defined");
@@ -42,7 +41,7 @@ bool NaClBitcodeMunger::setupTest(
   MungedInputBuffer.clear();
 
   if (TraceTestRuns) {
-    errs() << "*** Run test: " << TestName << "\n";
+    errs() << "*** Run test:\n";
   }
 
   MungedBitcode.munge(Munges, MungesSize, RecordTerminator);
@@ -63,8 +62,7 @@ bool NaClBitcodeMunger::setupTest(
   MungedInputBuffer.push_back('\0');
 
   MungedInput = MemoryBuffer::getMemBuffer(
-      StringRef(MungedInputBuffer.data(), MungedInputBuffer.size()-1),
-      TestName);
+      StringRef(MungedInputBuffer.data(), MungedInputBuffer.size()-1));
   return true;
 }
 
@@ -114,10 +112,9 @@ getLinesWithTextMatch(const std::string &Substring, bool MustBePrefix) const {
   return Messages;
 }
 
-bool NaClWriteMunger::runTest(const char* Name, const uint64_t Munges[],
-                              size_t MungesSize) {
+bool NaClWriteMunger::runTest(const uint64_t Munges[], size_t MungesSize) {
   bool AddHeader = true;
-  if (!setupTest(Name, Munges, MungesSize, AddHeader))
+  if (!setupTest(Munges, MungesSize, AddHeader))
     return cleanupTest();
   MemoryBufferRef InputRef(MungedInput->getMemBufferRef());
   NaClMungedBitcode WrittenBitcode(MemoryBuffer::getMemBuffer(InputRef));
@@ -126,9 +123,9 @@ bool NaClWriteMunger::runTest(const char* Name, const uint64_t Munges[],
 }
 
 bool NaClObjDumpMunger::runTestWithFlags(
-    const char *Name, const uint64_t Munges[], size_t MungesSize,
-    bool AddHeader, bool NoRecords, bool NoAssembly) {
-  if (!setupTest(Name, Munges, MungesSize, AddHeader))
+    const uint64_t Munges[], size_t MungesSize, bool AddHeader,
+    bool NoRecords, bool NoAssembly) {
+  if (!setupTest(Munges, MungesSize, AddHeader))
     return cleanupTest();
 
   if (NaClObjDump(MungedInput.get()->getMemBufferRef(),
@@ -137,11 +134,10 @@ bool NaClObjDumpMunger::runTestWithFlags(
   return cleanupTest();
 }
 
-bool NaClParseBitcodeMunger::runTest(
-    const char *Name, const uint64_t Munges[], size_t MungesSize,
-    bool VerboseErrors) {
+bool NaClParseBitcodeMunger::runTest(const uint64_t Munges[], size_t MungesSize,
+                                     bool VerboseErrors) {
   bool AddHeader = true;
-  if (!setupTest(Name, Munges, MungesSize, AddHeader))
+  if (!setupTest(Munges, MungesSize, AddHeader))
     return cleanupTest();
 
   LLVMContext &Context = getGlobalContext();
@@ -160,10 +156,9 @@ bool NaClParseBitcodeMunger::runTest(
   return cleanupTest();
 }
 
-bool NaClCompressMunger::runTest(const char* Name, const uint64_t Munges[],
-                                 size_t MungesSize) {
+bool NaClCompressMunger::runTest(const uint64_t Munges[], size_t MungesSize) {
   bool AddHeader = true;
-  if (!setupTest(Name, Munges, MungesSize, AddHeader))
+  if (!setupTest(Munges, MungesSize, AddHeader))
     return cleanupTest();
 
   NaClBitcodeCompressor Compressor;
