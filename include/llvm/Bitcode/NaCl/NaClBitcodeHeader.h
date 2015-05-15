@@ -38,13 +38,18 @@ public:
   // Defines the ID associated with the value. Valid values are in
   // {0x0, ..., 0xFFF}
   typedef enum {
-    kInvalid = 0,     // KUnknownType.
-    kPNaClVersion = 1 // kUint32.
+    kInvalid = 0,             // KUnknownType.
+    kPNaClVersion = 1,        // kUint32Type.
+    kAlignBitcodeRecords = 2, // kFlagType.
+    kTag_MAX = kAlignBitcodeRecords
   } Tag;
   // Defines the type of value.
   typedef enum {
     kBufferType, // Buffer of form uint8_t[len].
-    kUInt32Type
+    kUInt32Type,
+    kFlagType,
+    kUnknownType,
+    kFieldType_MAX = kUnknownType
   } FieldType;
   // Defines the number of bytes in a (32-bit) word.
   static const int WordSize = 4;
@@ -54,6 +59,9 @@ public:
 
   // Create an invalid header field.
   NaClBitcodeHeaderField();
+
+  // Creates a header field where MyID is a flag.
+  NaClBitcodeHeaderField(Tag MyID);
 
   // Create a header field with an uint32_t value.
   NaClBitcodeHeaderField(Tag MyID, uint32_t value);
@@ -77,6 +85,18 @@ public:
 
   /// \brief Read field from Buf[BufLen].
   bool Read(const uint8_t *Buf, size_t BufLen);
+
+  /// \brief Returns string describing ID of field.
+  static const char *IDName(Tag ID);
+  const char *IDName() const {
+    return IDName(ID);
+  }
+
+  /// \brief Returns string describing type of field.
+  static const char *TypeName(FieldType FType);
+  const char *TypeName() const {
+    return TypeName(FType);
+  }
 
   /// \brief Returns string describing field.
   std::string Contents() const;
@@ -108,8 +128,11 @@ private:
   FixedSubfield EncodeTypedID() const { return (ID << 4) | FType; }
   // Extract out ID and Type from a fixed subfield.
   void DecodeTypedID(FixedSubfield Subfield, Tag &ID, FieldType &FType) {
-    ID = static_cast<Tag>(Subfield >> 4);
-    FType = static_cast<FieldType>(Subfield & 0xF);
+    FixedSubfield PossibleID = Subfield >> 4;
+    ID = (PossibleID > kTag_MAX ? kInvalid : static_cast<Tag>(PossibleID));
+    FixedSubfield PossibleFType = Subfield & 0xF;
+    FType = (PossibleFType > kFieldType_MAX
+             ? kUnknownType : static_cast<FieldType>(PossibleFType));
   }
   // Combined size of the fixed subfields
   const static size_t kTagLenSize = 2 * sizeof(FixedSubfield);
@@ -144,6 +167,8 @@ class NaClBitcodeHeader {
   bool IsReadableFlag;
   // Defines the PNaCl version defined by the header file.
   uint32_t PNaClVersion;
+  // Byte align bitcode records when nonzero.
+  bool AlignBitcodeRecords = false;
 
 public:
   static const int WordSize = NaClBitcodeHeaderField::WordSize;
@@ -173,7 +198,7 @@ public:
   /// field.
   ///
   /// Returns false if able to read (all of) the bitcode header.
-  bool Read(const unsigned char *&BufPtr, const unsigned char *&BufEnd);
+  bool Read(const unsigned char *BufPtr, const unsigned char *BufEnd);
 
   // \brief Read the PNaCl bitcode header, recording the fields found
   // in the header. Returns false if able to read (all of) the bitcode header.
@@ -208,6 +233,9 @@ public:
 
   /// \brief Returns the PNaClVersion, as defined by the header.
   uint32_t GetPNaClVersion() const { return PNaClVersion; }
+
+  /// \brief Returns if one should byte align bitcode records.
+  bool getAlignBitcodeRecords() const { return AlignBitcodeRecords; }
 
 private:
   // Reads and verifies the first 8 bytes of the header, consisting

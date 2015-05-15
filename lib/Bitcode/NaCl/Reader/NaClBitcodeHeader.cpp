@@ -9,6 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
+
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -16,17 +18,57 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/StreamingMemoryObject.h"
 
-#include <limits>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 
 using namespace llvm;
 
+namespace {
+
+// The name for each ID tag.
+static const char *TagName[] = {
+  "Invalid",              // kInvalid
+  "PNaCl Version",        // kPNaClVersion
+  "Align bitcode records" // kAlignBitcodeRecords
+};
+
+// The name for each field type.
+static const char *FieldTypeName[] = {
+  "uint8[]", // kBufferType
+  "uint32",  // kUInt32Type
+  "flag",    // kFlagType
+  "unknown"  // kUnknownType
+};
+
+// The type associated with each ID tag.
+static const NaClBitcodeHeaderField::FieldType ExpectedType[] = {
+  NaClBitcodeHeaderField::kUnknownType, // kInvalid
+  NaClBitcodeHeaderField::kUInt32Type,  // kPNaClVersion
+  NaClBitcodeHeaderField::kFlagType     // kAlignBitcodeRecords
+};
+
+} // end of anonymous namespace
+
+const char *NaClBitcodeHeaderField::IDName(Tag ID) {
+  return ID > kTag_MAX ? "???" : TagName[ID];
+}
+
+const char *NaClBitcodeHeaderField::TypeName(FieldType FType) {
+  return FType > kFieldType_MAX ? "???" : FieldTypeName[FType];
+}
+
 NaClBitcodeHeaderField::NaClBitcodeHeaderField()
-    : ID(kInvalid), FType(kBufferType), Len(0), Data(0) {}
+  : ID(kInvalid), FType(kBufferType), Len(0), Data(0) {}
+
+NaClBitcodeHeaderField::NaClBitcodeHeaderField(Tag MyID)
+  : ID(MyID), FType(kFlagType), Len(0), Data(0) {
+  assert(MyID <= kTag_MAX);
+}
 
 NaClBitcodeHeaderField::NaClBitcodeHeaderField(Tag MyID, uint32_t MyValue)
     : ID(MyID), FType(kUInt32Type), Len(4), Data(new uint8_t[4]) {
+  assert(MyID <= kTag_MAX);
   Data[0] = static_cast<uint8_t>(MyValue & 0xFF);
   Data[1] = static_cast<uint8_t>((MyValue >> 8) & 0xFF);
   Data[2] = static_cast<uint8_t>((MyValue >> 16) & 0xFF);
@@ -44,6 +86,7 @@ uint32_t NaClBitcodeHeaderField::GetUInt32Value() const {
 NaClBitcodeHeaderField::NaClBitcodeHeaderField(Tag MyID, size_t MyLen,
                                                uint8_t *MyData)
     : ID(MyID), FType(kBufferType), Len(MyLen), Data(new uint8_t[MyLen]) {
+  assert(MyID <= kTag_MAX);
   for (size_t i = 0; i < MyLen; ++i) {
     Data[i] = MyData[i];
   }
@@ -94,16 +137,11 @@ bool NaClBitcodeHeaderField::Read(const uint8_t *Buf, size_t BufLen) {
 std::string NaClBitcodeHeaderField::Contents() const {
   std::string buffer;
   raw_string_ostream ss(buffer);
-  switch (ID) {
-  case kPNaClVersion:
-    ss << "PNaCl Version";
-    break;
-  case kInvalid:
-    ss << "Invalid";
-    break;
-  }
-  ss << ": ";
+  ss << IDName() << ": ";
   switch (FType) {
+  case kFlagType:
+    ss << "true";
+    break;
   case kUInt32Type:
     ss << GetUInt32Value();
     break;
@@ -115,6 +153,9 @@ std::string NaClBitcodeHeaderField::Contents() const {
       ss << format("%02x", Data[i]);
     }
     ss << "]";
+    break;
+  case kUnknownType:
+    ss << "unknown value";
     break;
   }
   return ss.str();
@@ -175,8 +216,8 @@ bool NaClBitcodeHeader::ReadFields(const unsigned char *BufPtr,
   return false;
 }
 
-bool NaClBitcodeHeader::Read(const unsigned char *&BufPtr,
-                             const unsigned char *&BufEnd) {
+bool NaClBitcodeHeader::Read(const unsigned char *BufPtr,
+                             const unsigned char *BufEnd) {
   unsigned NumFields;
   unsigned NumBytes;
   if (ReadPrefix(BufPtr, BufEnd, NumFields, NumBytes))
@@ -244,29 +285,67 @@ NaClBitcodeHeaderField *GetPNaClVersionPtr(NaClBitcodeHeader *Header) {
 }
 
 void NaClBitcodeHeader::InstallFields() {
-  // Assume supported until contradicted.
-  bool UpdatedUnsupportedMessage = false;
   IsSupportedFlag = true;
   IsReadableFlag = true;
-  UnsupportedMessage = "Supported";
+  AlignBitcodeRecords = false;
   PNaClVersion = 0;
-  if (NaClBitcodeHeaderField *Version = GetPNaClVersionPtr(this)) {
-    PNaClVersion = Version->GetUInt32Value();
-  }
-  if (PNaClVersion != 2) {
+  UnsupportedMessage.clear();
+  SmallSet<unsigned, NaClBitcodeHeaderField::kTag_MAX> FieldIDs;
+
+  auto ReportProblem = [&](bool IsReadable=false) {
+    UnsupportedMessage.append("\n");
     IsSupportedFlag = false;
-    IsReadableFlag = false;
-    UpdatedUnsupportedMessage = true;
-    UnsupportedMessage.clear();
-    raw_string_ostream UnsupportedStream(UnsupportedMessage);
-    UnsupportedStream << "Unsupported PNaCl bitcode version: "
-                      << PNaClVersion << "\n";
-    UnsupportedStream.flush();
-  }
-  if (Fields.size() != 1) {
-    IsSupportedFlag = false;
-    IsReadableFlag = false;
-    if (!UpdatedUnsupportedMessage)
-      UnsupportedMessage = "Unknown header field(s) found";
+    IsReadableFlag = IsReadableFlag && IsReadable;
+  };
+
+  auto ReportProblemWithContents = [&](NaClBitcodeHeaderField *Field,
+                                       bool IsReadable=false) {
+    UnsupportedMessage.append(": ");
+    UnsupportedMessage.append(Field->Contents());
+    ReportProblem(IsReadable);
+  };
+
+  for (size_t i = 0, e = NumberFields(); i < e; ++i) {
+    // Start by checking expected properties for any field
+    NaClBitcodeHeaderField *Field = GetField(i);
+    if (!FieldIDs.insert(Field->GetID()).second) {
+      UnsupportedMessage.append("Specified multiple times: ");
+      UnsupportedMessage.append(Field->IDName());
+      ReportProblem();
+      continue;
+    }
+    NaClBitcodeHeaderField::FieldType ExpectedTy = ExpectedType[Field->GetID()];
+    if (Field->GetType() != ExpectedTy) {
+      UnsupportedMessage.append("Expects type ");
+      UnsupportedMessage.append(NaClBitcodeHeaderField::TypeName(ExpectedTy));
+      ReportProblemWithContents(Field);
+      continue;
+    }
+    if (Field->GetType() == NaClBitcodeHeaderField::kUnknownType) {
+      UnsupportedMessage.append("Unknown value");
+      ReportProblemWithContents(Field);
+      continue;
+    }
+
+    // Check specific ID values and install.
+    switch (Field->GetID()) {
+    case NaClBitcodeHeaderField::kInvalid:
+      UnsupportedMessage.append("Unsupported");
+      ReportProblemWithContents(Field);
+      continue;
+    case NaClBitcodeHeaderField::kPNaClVersion:
+      PNaClVersion = Field->GetUInt32Value();
+      if (PNaClVersion != 2) {
+        UnsupportedMessage.append("Unsupported");
+        ReportProblemWithContents(Field);
+        continue;
+      }
+      break;
+    case NaClBitcodeHeaderField::kAlignBitcodeRecords:
+      AlignBitcodeRecords = true;
+      UnsupportedMessage.append("Unsupported");
+      ReportProblemWithContents(Field, true);
+      continue;
+    }
   }
 }

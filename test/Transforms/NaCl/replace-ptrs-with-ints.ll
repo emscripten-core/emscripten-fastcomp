@@ -416,11 +416,19 @@ define void @debug_declare(i32 %val) {
 define void @debug_value(i32 %val, i8* %ptr) {
   tail call void @llvm.dbg.value(metadata i32 %val, i64 1, metadata !11, metadata !12), !dbg !18
   tail call void @llvm.dbg.value(metadata i8* %ptr, i64 2, metadata !14, metadata !12), !dbg !18
+
+; check that we don't crash when encountering odd things:
+  tail call void @llvm.dbg.value(metadata i8* null, i64 3, metadata !11, metadata !12), !dbg !18
+  tail call void @llvm.dbg.value(metadata i8* undef, i64 4, metadata !11, metadata !12), !dbg !18
+  tail call void @llvm.dbg.value(metadata !{}, i64 5, metadata !11, metadata !12), !dbg !18
   ret void
 }
 ; CHECK: define void @debug_value(i32 %val, i32 %ptr) {
 ; CHECK-NEXT: call void @llvm.dbg.value(metadata !2, i64 1, metadata !11, metadata !12)
 ; CHECK-NEXT: call void @llvm.dbg.value(metadata !2, i64 2, metadata !14, metadata !12)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata i8* null, i64 3, metadata !11, metadata !12)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata i8* undef, i64 4, metadata !11, metadata !12)
+; CHECK-NEXT: call void @llvm.dbg.value(metadata !2, i64 5, metadata !11, metadata !12)
 ; CHECK-NEXT: ret void
 
 

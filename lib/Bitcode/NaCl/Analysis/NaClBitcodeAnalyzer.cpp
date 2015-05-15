@@ -419,7 +419,7 @@ int AnalyzeBitcodeInBuffer(const std::unique_ptr<MemoryBuffer> &Buf,
   if (!Header.IsReadable())
     Error("Bitcode file is not readable");
 
-  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
+  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr, Header);
   NaClBitstreamCursor Stream(StreamFile);
 
   unsigned NumTopBlocks = 0;

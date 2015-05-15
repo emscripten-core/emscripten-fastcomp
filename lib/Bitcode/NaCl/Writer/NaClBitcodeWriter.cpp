@@ -40,6 +40,11 @@ PNaClVersion("pnacl-version",
              cl::desc("Specify PNaCl bitcode version to write"),
              cl::init(2));
 
+static cl::opt<bool>
+AlignBitcodeRecords("align-bitcode-records",
+    cl::desc("Align bitcode records in PNaCl bitcode files (experimental)"),
+    cl::init(false));
+
 /// These are manifest constants used by the bitcode writer. They do
 /// not need to be kept in sync with the reader, but need to be
 /// consistent within this file.
@@ -1174,6 +1179,10 @@ void llvm::NaClWriteHeader(NaClBitstreamWriter &Stream,
   Header.push_back(
       new NaClBitcodeHeaderField(NaClBitcodeHeaderField::kPNaClVersion,
                                  PNaClVersion));
+  if (AlignBitcodeRecords)
+    Header.push_back(new NaClBitcodeHeaderField(
+        NaClBitcodeHeaderField::kAlignBitcodeRecords));
+
   Header.InstallFields();
   if (!(Header.IsSupported() ||
         (!AcceptSupportedOnly && Header.IsReadable()))) {
@@ -1185,6 +1194,8 @@ void llvm::NaClWriteHeader(NaClBitstreamWriter &Stream,
 // Write out the given Header to the bitstream.
 void llvm::NaClWriteHeader(const NaClBitcodeHeader &Header,
                            NaClBitstreamWriter &Stream) {
+  Stream.initFromHeader(Header);
+
   // Emit the file magic number;
   Stream.Emit((unsigned)'P', 8);
   Stream.Emit((unsigned)'E', 8);

@@ -17,6 +17,7 @@
 #define LLVM_BITCODE_NACL_NACLBITSTREAMREADER_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/StreamingMemoryObject.h"
@@ -61,6 +62,8 @@ public:
     std::vector<NaClBitCodeAbbrev*> Abbrevs;
   };
 private:
+  friend class NaClBitstreamCursor;
+
   std::unique_ptr<MemoryObject> BitcodeBytes;
 
   std::vector<BlockInfo> BlockInfoRecords;
@@ -68,27 +71,39 @@ private:
   /// \brief Holds the offset of the first byte after the header.
   size_t InitialAddress;
 
+  // True if filler should be added to byte align records.
+  bool AlignBitcodeRecords = false;
   NaClBitstreamReader(const NaClBitstreamReader&) = delete;
   void operator=(const NaClBitstreamReader&) = delete;
+
+
+  void initFromHeader(NaClBitcodeHeader &Header) {
+    InitialAddress = Header.getHeaderSize();
+    AlignBitcodeRecords = Header.getAlignBitcodeRecords();
+  }
+
 public:
-  NaClBitstreamReader() : InitialAddress(0) {}
-
+  /// Read stream from sequence of bytes [Start .. End) after parsing
+  /// the given bitcode header.
   NaClBitstreamReader(const unsigned char *Start, const unsigned char *End,
-                      size_t MyInitialAddress=0) {
-    InitialAddress = MyInitialAddress;
-    init(Start, End);
+                      NaClBitcodeHeader &Header)
+      : BitcodeBytes(getNonStreamedMemoryObject(Start, End)) {
+    initFromHeader(Header);
   }
 
-  NaClBitstreamReader(MemoryObject *Bytes, size_t MyInitialAddress=0)
-      : InitialAddress(MyInitialAddress) {
-    BitcodeBytes.reset(Bytes);
+  /// Read stream from Bytes, after parsing the given bitcode header.
+  NaClBitstreamReader(MemoryObject *Bytes, NaClBitcodeHeader &Header)
+      : BitcodeBytes(Bytes) {
+    initFromHeader(Header);
   }
 
-  void init(const unsigned char *Start, const unsigned char *End) {
-    assert(((End-Start) & 3) == 0 &&"Bitcode stream not a multiple of 4 bytes");
-    BitcodeBytes.reset(getNonStreamedMemoryObject(Start, End));
+  /// Read stream from bytes, starting at the given initial address.
+  /// Provides simple API for unit testing.
+  NaClBitstreamReader(MemoryObject *Bytes, size_t InitialAddress)
+      : BitcodeBytes(Bytes), InitialAddress(InitialAddress) {
   }
 
+  // Returns the memory object that is being read.
   MemoryObject &getBitcodeBytes() { return *BitcodeBytes; }
 
   ~NaClBitstreamReader() {
@@ -516,6 +531,19 @@ public:
   }
 
 private:
+  void SkipToByteBoundary() {
+    unsigned BitsToSkip = BitsInCurWord % CHAR_BIT;
+    if (BitsToSkip) {
+      CurWord >>= BitsToSkip;
+      BitsInCurWord -= BitsToSkip;
+    }
+  }
+
+  void SkipToByteBoundaryIfAligned() {
+    if (BitStream->AlignBitcodeRecords)
+      SkipToByteBoundary();
+  }
+
   void SkipToFourByteBoundary() {
     // If word_t is 64-bits and if we've read less than 32 bits, just dump
     // the bits we have up to the next 32-bit boundary.

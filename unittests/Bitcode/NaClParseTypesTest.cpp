@@ -12,16 +12,11 @@
 
 // TODO(kschimpf) Add more tests.
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeMunge.h"
-
-#include "gtest/gtest.h"
+#include "NaClMungeTest.h"
 
 using namespace llvm;
 
-namespace {
-
-static const uint64_t Terminator = 0x5768798008978675LL;
+namespace naclmungetest {
 
 TEST(NaClParseTypesTest, BadTypeReferences) {
   const uint64_t BitcodeRecords[] = {
@@ -37,9 +32,8 @@ TEST(NaClParseTypesTest, BadTypeReferences) {
   const uint64_t ReplaceIndex = 4;
 
   // Show text of base input.
-  NaClObjDumpMunger BaseMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(BaseMunger.runTest("Bad type references base"));
+  NaClObjDumpMunger BaseMunger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(BaseMunger.runTest());
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, "
       "88, 69)\n"
@@ -55,32 +49,25 @@ TEST(NaClParseTypesTest, BadTypeReferences) {
       BaseMunger.getTestResults());
 
   // Show that we successfully parse the base input.
-  NaClParseBitcodeMunger Munger(BitcodeRecords,
-                                array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(Munger.runTest("base parse", true));
+  NaClParseBitcodeMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(Munger.runTest(true));
   EXPECT_EQ(
       "Successful parse!\n",
       Munger.getTestResults());
 
   // Show what happens when misdefining: @t1 = float"
   const uint64_t AddSelfReference[] = {
-    ReplaceIndex, NaClBitcodeMunger::Replace, 3, 3, 1, Terminator
+    ReplaceIndex, NaClMungedBitcode::Replace, 3, 3, 1, Terminator
   };
-  EXPECT_FALSE(Munger.runTest(
-      "@t1 = float(1)",
-      AddSelfReference, array_lengthof(AddSelfReference),
-      false));
+  EXPECT_FALSE(Munger.runTest(ARRAY(AddSelfReference), false));
   EXPECT_EQ(
       "Error: Record doesn't have expected size or structure\n",
       Munger.getTestResults());
-  EXPECT_FALSE(Munger.runTest(
-      "@t1 = float(1)",
-      AddSelfReference, array_lengthof(AddSelfReference),
-      true));
+  EXPECT_FALSE(Munger.runTest(ARRAY(AddSelfReference), true));
   EXPECT_EQ(
       "Error(40:2): Invalid TYPE_CODE_FLOAT record\n"
       "Error: Record doesn't have expected size or structure\n",
       Munger.getTestResults());
 }
 
-} // end of anonamous namespace.
+} // end of namespace naclmungetest
