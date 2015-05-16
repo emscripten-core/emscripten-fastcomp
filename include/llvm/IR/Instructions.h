@@ -17,8 +17,8 @@
 #define LLVM_IR_INSTRUCTIONS_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -91,7 +91,7 @@ public:
              const Twine &Name, BasicBlock *InsertAtEnd);
 
   // Out of line virtual method, so the vtable, etc. has a home.
-  virtual ~AllocaInst();
+  ~AllocaInst() override;
 
   /// isArrayAllocation - Return true if there is an allocation size parameter
   /// to the allocation instruction that is not 1.
@@ -180,7 +180,12 @@ public:
            unsigned Align, Instruction *InsertBefore = nullptr);
   LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile,
            unsigned Align, BasicBlock *InsertAtEnd);
-  LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile,
+  LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile, unsigned Align,
+           AtomicOrdering Order, SynchronizationScope SynchScope = CrossThread,
+           Instruction *InsertBefore = nullptr)
+      : LoadInst(cast<PointerType>(Ptr->getType())->getElementType(), Ptr,
+                 NameStr, isVolatile, Align, Order, SynchScope, InsertBefore) {}
+  LoadInst(Type *Ty, Value *Ptr, const Twine &NameStr, bool isVolatile,
            unsigned Align, AtomicOrdering Order,
            SynchronizationScope SynchScope = CrossThread,
            Instruction *InsertBefore = nullptr);
@@ -285,7 +290,7 @@ private:
 /// StoreInst - an instruction for storing to memory
 ///
 class StoreInst : public Instruction {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   void AssertOK();
 protected:
   StoreInst *clone_impl() const override;
@@ -411,7 +416,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(StoreInst, Value)
 /// FenceInst - an instruction for ordering other memory operations
 ///
 class FenceInst : public Instruction {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   void Init(AtomicOrdering Ordering, SynchronizationScope SynchScope);
 protected:
   FenceInst *clone_impl() const override;
@@ -478,7 +483,7 @@ private:
 /// there.  Returns the value that was loaded.
 ///
 class AtomicCmpXchgInst : public Instruction {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   void Init(Value *Ptr, Value *Cmp, Value *NewVal,
             AtomicOrdering SuccessOrdering, AtomicOrdering FailureOrdering,
             SynchronizationScope SynchScope);
@@ -634,7 +639,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(AtomicCmpXchgInst, Value)
 /// the old value.
 ///
 class AtomicRMWInst : public Instruction {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
 protected:
   AtomicRMWInst *clone_impl() const override;
 public:
@@ -794,28 +799,31 @@ class GetElementPtrInst : public Instruction {
   /// list of indices. The first ctor can optionally insert before an existing
   /// instruction, the second appends the new instruction to the specified
   /// BasicBlock.
-  inline GetElementPtrInst(Value *Ptr, ArrayRef<Value *> IdxList,
-                           unsigned Values, const Twine &NameStr,
-                           Instruction *InsertBefore);
-  inline GetElementPtrInst(Value *Ptr, ArrayRef<Value *> IdxList,
-                           unsigned Values, const Twine &NameStr,
-                           BasicBlock *InsertAtEnd);
+  inline GetElementPtrInst(Type *PointeeType, Value *Ptr,
+                           ArrayRef<Value *> IdxList, unsigned Values,
+                           const Twine &NameStr, Instruction *InsertBefore);
+  inline GetElementPtrInst(Type *PointeeType, Value *Ptr,
+                           ArrayRef<Value *> IdxList, unsigned Values,
+                           const Twine &NameStr, BasicBlock *InsertAtEnd);
+
 protected:
   GetElementPtrInst *clone_impl() const override;
 public:
-  static GetElementPtrInst *Create(Value *Ptr, ArrayRef<Value *> IdxList,
+  static GetElementPtrInst *Create(Type *PointeeType, Value *Ptr,
+                                   ArrayRef<Value *> IdxList,
                                    const Twine &NameStr = "",
                                    Instruction *InsertBefore = nullptr) {
     unsigned Values = 1 + unsigned(IdxList.size());
-    return new(Values)
-      GetElementPtrInst(Ptr, IdxList, Values, NameStr, InsertBefore);
+    return new (Values) GetElementPtrInst(PointeeType, Ptr, IdxList, Values,
+                                          NameStr, InsertBefore);
   }
-  static GetElementPtrInst *Create(Value *Ptr, ArrayRef<Value *> IdxList,
+  static GetElementPtrInst *Create(Type *PointeeType, Value *Ptr,
+                                   ArrayRef<Value *> IdxList,
                                    const Twine &NameStr,
                                    BasicBlock *InsertAtEnd) {
     unsigned Values = 1 + unsigned(IdxList.size());
-    return new(Values)
-      GetElementPtrInst(Ptr, IdxList, Values, NameStr, InsertAtEnd);
+    return new (Values) GetElementPtrInst(PointeeType, Ptr, IdxList, Values,
+                                          NameStr, InsertAtEnd);
   }
 
   /// Create an "inbounds" getelementptr. See the documentation for the
@@ -824,7 +832,14 @@ public:
                                            ArrayRef<Value *> IdxList,
                                            const Twine &NameStr = "",
                                            Instruction *InsertBefore = nullptr){
-    GetElementPtrInst *GEP = Create(Ptr, IdxList, NameStr, InsertBefore);
+    return CreateInBounds(nullptr, Ptr, IdxList, NameStr, InsertBefore);
+  }
+  static GetElementPtrInst *
+  CreateInBounds(Type *PointeeType, Value *Ptr, ArrayRef<Value *> IdxList,
+                 const Twine &NameStr = "",
+                 Instruction *InsertBefore = nullptr) {
+    GetElementPtrInst *GEP =
+        Create(PointeeType, Ptr, IdxList, NameStr, InsertBefore);
     GEP->setIsInBounds(true);
     return GEP;
   }
@@ -832,7 +847,14 @@ public:
                                            ArrayRef<Value *> IdxList,
                                            const Twine &NameStr,
                                            BasicBlock *InsertAtEnd) {
-    GetElementPtrInst *GEP = Create(Ptr, IdxList, NameStr, InsertAtEnd);
+    return CreateInBounds(nullptr, Ptr, IdxList, NameStr, InsertAtEnd);
+  }
+  static GetElementPtrInst *CreateInBounds(Type *PointeeType, Value *Ptr,
+                                           ArrayRef<Value *> IdxList,
+                                           const Twine &NameStr,
+                                           BasicBlock *InsertAtEnd) {
+    GetElementPtrInst *GEP =
+        Create(PointeeType, Ptr, IdxList, NameStr, InsertAtEnd);
     GEP->setIsInBounds(true);
     return GEP;
   }
@@ -844,6 +866,13 @@ public:
   SequentialType *getType() const {
     return cast<SequentialType>(Instruction::getType());
   }
+
+  Type *getSourceElementType() const {
+    return cast<SequentialType>(getPointerOperandType()->getScalarType())
+        ->getElementType();
+  }
+
+  Type *getResultElementType() const { return getType()->getElementType(); }
 
   /// \brief Returns the address space of this instruction's pointer type.
   unsigned getAddressSpace() const {
@@ -858,9 +887,9 @@ public:
   /// Null is returned if the indices are invalid for the specified
   /// pointer type.
   ///
-  static Type *getIndexedType(Type *Ptr, ArrayRef<Value *> IdxList);
-  static Type *getIndexedType(Type *Ptr, ArrayRef<Constant *> IdxList);
-  static Type *getIndexedType(Type *Ptr, ArrayRef<uint64_t> IdxList);
+  static Type *getIndexedType(Type *Ty, ArrayRef<Value *> IdxList);
+  static Type *getIndexedType(Type *Ty, ArrayRef<Constant *> IdxList);
+  static Type *getIndexedType(Type *Ty, ArrayRef<uint64_t> IdxList);
 
   inline op_iterator       idx_begin()       { return op_begin()+1; }
   inline const_op_iterator idx_begin() const { return op_begin()+1; }
@@ -891,9 +920,12 @@ public:
   /// GetGEPReturnType - Returns the pointer type returned by the GEP
   /// instruction, which may be a vector of pointers.
   static Type *getGEPReturnType(Value *Ptr, ArrayRef<Value *> IdxList) {
-    Type *PtrTy = PointerType::get(checkGEPType(
-                                   getIndexedType(Ptr->getType(), IdxList)),
-                                   Ptr->getType()->getPointerAddressSpace());
+    Type *PtrTy =
+        PointerType::get(checkGEPType(getIndexedType(
+                             cast<PointerType>(Ptr->getType()->getScalarType())
+                                 ->getElementType(),
+                             IdxList)),
+                         Ptr->getType()->getPointerAddressSpace());
     // Vector GEP
     if (Ptr->getType()->isVectorTy()) {
       unsigned NumElem = cast<VectorType>(Ptr->getType())->getNumElements();
@@ -953,27 +985,25 @@ struct OperandTraits<GetElementPtrInst> :
   public VariadicOperandTraits<GetElementPtrInst, 1> {
 };
 
-GetElementPtrInst::GetElementPtrInst(Value *Ptr,
-                                     ArrayRef<Value *> IdxList,
-                                     unsigned Values,
+GetElementPtrInst::GetElementPtrInst(Type *PointeeType, Value *Ptr,
+                                     ArrayRef<Value *> IdxList, unsigned Values,
                                      const Twine &NameStr,
                                      Instruction *InsertBefore)
-  : Instruction(getGEPReturnType(Ptr, IdxList),
-                GetElementPtr,
-                OperandTraits<GetElementPtrInst>::op_end(this) - Values,
-                Values, InsertBefore) {
+    : Instruction(getGEPReturnType(Ptr, IdxList), GetElementPtr,
+                  OperandTraits<GetElementPtrInst>::op_end(this) - Values,
+                  Values, InsertBefore) {
   init(Ptr, IdxList, NameStr);
+  assert(!PointeeType || PointeeType == getSourceElementType());
 }
-GetElementPtrInst::GetElementPtrInst(Value *Ptr,
-                                     ArrayRef<Value *> IdxList,
-                                     unsigned Values,
+GetElementPtrInst::GetElementPtrInst(Type *PointeeType, Value *Ptr,
+                                     ArrayRef<Value *> IdxList, unsigned Values,
                                      const Twine &NameStr,
                                      BasicBlock *InsertAtEnd)
-  : Instruction(getGEPReturnType(Ptr, IdxList),
-                GetElementPtr,
-                OperandTraits<GetElementPtrInst>::op_end(this) - Values,
-                Values, InsertAtEnd) {
+    : Instruction(getGEPReturnType(Ptr, IdxList), GetElementPtr,
+                  OperandTraits<GetElementPtrInst>::op_end(this) - Values,
+                  Values, InsertAtEnd) {
   init(Ptr, IdxList, NameStr);
+  assert(!PointeeType || PointeeType == getSourceElementType());
 }
 
 
@@ -1194,10 +1224,14 @@ public:
 
   /// @returns true if the predicate of this instruction is EQ or NE.
   /// \brief Determine if this is an equality predicate.
-  bool isEquality() const {
-    return getPredicate() == FCMP_OEQ || getPredicate() == FCMP_ONE ||
-           getPredicate() == FCMP_UEQ || getPredicate() == FCMP_UNE;
+  static bool isEquality(Predicate Pred) {
+    return Pred == FCMP_OEQ || Pred == FCMP_ONE || Pred == FCMP_UEQ ||
+           Pred == FCMP_UNE;
   }
+
+  /// @returns true if the predicate of this instruction is EQ or NE.
+  /// \brief Determine if this is an equality predicate.
+  bool isEquality() const { return isEquality(getPredicate()); }
 
   /// @returns true if the predicate of this instruction is commutative.
   /// \brief Determine if this is a commutative predicate.
@@ -1301,7 +1335,11 @@ public:
   static Instruction* CreateFree(Value* Source, Instruction *InsertBefore);
   static Instruction* CreateFree(Value* Source, BasicBlock *InsertAtEnd);
 
-  ~CallInst();
+  ~CallInst() override;
+
+  Type *getFunctionType() const {
+    return cast<PointerType>(getCalledValue()->getType())->getElementType();
+  }
 
   // Note that 'musttail' implies 'tail'.
   enum TailCallKind { TCK_None = 0, TCK_Tail = 1, TCK_MustTail = 2 };
@@ -1374,6 +1412,13 @@ public:
 
   /// removeAttribute - removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, Attribute attr);
+
+  /// \brief adds the dereferenceable attribute to the list of attributes.
+  void addDereferenceableAttr(unsigned i, uint64_t Bytes);
+
+  /// \brief adds the dereferenceable_or_null attribute to the list of
+  /// attributes.
+  void addDereferenceableOrNullAttr(unsigned i, uint64_t Bytes);
 
   /// \brief Determine whether this call has the given attribute.
   bool hasFnAttr(Attribute::AttrKind A) const {
@@ -1898,6 +1943,9 @@ public:
   typedef const unsigned* idx_iterator;
   inline idx_iterator idx_begin() const { return Indices.begin(); }
   inline idx_iterator idx_end()   const { return Indices.end(); }
+  inline iterator_range<idx_iterator> indices() const {
+    return iterator_range<idx_iterator>(idx_begin(), idx_end());
+  }
 
   Value *getAggregateOperand() {
     return getOperand(0);
@@ -1958,7 +2006,7 @@ ExtractValueInst::ExtractValueInst(Value *Agg,
 class InsertValueInst : public Instruction {
   SmallVector<unsigned, 4> Indices;
 
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   InsertValueInst(const InsertValueInst &IVI);
   void init(Value *Agg, Value *Val, ArrayRef<unsigned> Idxs,
             const Twine &NameStr);
@@ -2009,6 +2057,9 @@ public:
   typedef const unsigned* idx_iterator;
   inline idx_iterator idx_begin() const { return Indices.begin(); }
   inline idx_iterator idx_end()   const { return Indices.end(); }
+  inline iterator_range<idx_iterator> indices() const {
+    return iterator_range<idx_iterator>(idx_begin(), idx_end());
+  }
 
   Value *getAggregateOperand() {
     return getOperand(0);
@@ -2088,7 +2139,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(InsertValueInst, Value)
 // scientist's overactive imagination.
 //
 class PHINode : public Instruction {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   /// ReservedSpace - The number of operands actually allocated.  NumOperands is
   /// the number actually in use.
   unsigned ReservedSpace;
@@ -2132,7 +2183,7 @@ public:
                          const Twine &NameStr, BasicBlock *InsertAtEnd) {
     return new PHINode(Ty, NumReservedValues, NameStr, InsertAtEnd);
   }
-  ~PHINode();
+  ~PHINode() override;
 
   /// Provide fast operand accessors
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
@@ -2162,6 +2213,8 @@ public:
   const_block_iterator block_end() const {
     return block_begin() + getNumOperands();
   }
+
+  op_range incoming_values() { return operands(); }
 
   /// getNumIncomingValues - Return the number of incoming edges
   ///
@@ -2295,7 +2348,7 @@ class LandingPadInst : public Instruction {
 public:
   enum ClauseType { Catch, Filter };
 private:
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   // Allocate space for exactly zero operands.
   void *operator new(size_t s) {
     return User::operator new(s, 0);
@@ -2321,7 +2374,7 @@ public:
   static LandingPadInst *Create(Type *RetTy, Value *PersonalityFn,
                                 unsigned NumReservedClauses,
                                 const Twine &NameStr, BasicBlock *InsertAtEnd);
-  ~LandingPadInst();
+  ~LandingPadInst() override;
 
   /// Provide fast operand accessors
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
@@ -2423,7 +2476,7 @@ public:
   static ReturnInst* Create(LLVMContext &C, BasicBlock *InsertAtEnd) {
     return new(0) ReturnInst(C, InsertAtEnd);
   }
-  virtual ~ReturnInst();
+  ~ReturnInst() override;
 
   /// Provide fast operand accessors
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
@@ -2562,7 +2615,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(BranchInst, Value)
 /// SwitchInst - Multiway switch
 ///
 class SwitchInst : public TerminatorInst {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   unsigned ReservedSpace;
   // Operand[0]    = Value to switch on
   // Operand[1]    = Default basic block destination
@@ -2720,7 +2773,7 @@ public:
     return new SwitchInst(Value, Default, NumCases, InsertAtEnd);
   }
 
-  ~SwitchInst();
+  ~SwitchInst() override;
 
   /// Provide fast operand accessors
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
@@ -2871,7 +2924,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(SwitchInst, Value)
 /// IndirectBrInst - Indirect Branch Instruction.
 ///
 class IndirectBrInst : public TerminatorInst {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
   unsigned ReservedSpace;
   // Operand[0]    = Value to switch on
   // Operand[1]    = Default basic block destination
@@ -2906,7 +2959,7 @@ public:
                                 BasicBlock *InsertAtEnd) {
     return new IndirectBrInst(Address, NumDests, InsertAtEnd);
   }
-  ~IndirectBrInst();
+  ~IndirectBrInst() override;
 
   /// Provide fast operand accessors.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
@@ -3055,6 +3108,13 @@ public:
 
   /// removeAttribute - removes the attribute from the list of attributes.
   void removeAttribute(unsigned i, Attribute attr);
+
+  /// \brief adds the dereferenceable attribute to the list of attributes.
+  void addDereferenceableAttr(unsigned i, uint64_t Bytes);
+
+  /// \brief adds the dereferenceable_or_null attribute to the list of
+  /// attributes.
+  void addDereferenceableOrNullAttr(unsigned i, uint64_t Bytes);
 
   /// \brief Determine whether this call has the given attribute.
   bool hasFnAttr(Attribute::AttrKind A) const {
@@ -3296,7 +3356,7 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ResumeInst, Value)
 /// end of the block cannot be reached.
 ///
 class UnreachableInst : public TerminatorInst {
-  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void *operator new(size_t, unsigned) = delete;
 protected:
   UnreachableInst *clone_impl() const override;
 

@@ -1,4 +1,3 @@
-//===-- JSTargetTransformInfo.cpp - JS specific TTI pass ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,102 +5,36 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-/// \file
-/// This file implements a TargetTransformInfo analysis pass specific to the
-/// JS target machine. It uses the target's detailed information to provide
-/// more precise answers to certain TTI queries, while letting the target
-/// independent and default TTI implementations handle the rest.
-///
+//
+// \file
+// This file implements a TargetTransformInfo analysis pass specific to the
+// JS target machine. It uses the target's detailed information to provide
+// more precise answers to certain TTI queries, while letting the target
+// independent and default TTI implementations handle the rest.
+//
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "jstti"
-#include "JS.h"
-#include "JSTargetMachine.h"
+#include "JSTargetTransformInfo.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/CodeGen/BasicTTIImpl.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/CostTable.h"
+#include "llvm/Target/TargetLowering.h"
 using namespace llvm;
 
-// Declare the pass initialization routine locally as target-specific passes
-// don't havve a target-wide initialization entry point, and so we rely on the
-// pass constructor initialization.
-namespace llvm {
-void initializeJSTTIPass(PassRegistry &);
+#define DEBUG_TYPE "JStti"
+
+void JSTTIImpl::getUnrollingPreferences(Loop *L,
+                                            TTI::UnrollingPreferences &UP) {
+  // We generally don't want a lot of unrolling.
+  UP.Partial = false;
+  UP.Runtime = false;
 }
 
-namespace {
-
-class JSTTI : public ImmutablePass, public TargetTransformInfo {
-public:
-  JSTTI() : ImmutablePass(ID) {
-    llvm_unreachable("This pass cannot be directly constructed");
-  }
-
-  JSTTI(const JSTargetMachine *TM)
-      : ImmutablePass(ID) {
-    initializeJSTTIPass(*PassRegistry::getPassRegistry());
-  }
-
-  void initializePass() override {
-    pushTTIStack(this);
-  }
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    TargetTransformInfo::getAnalysisUsage(AU);
-  }
-
-  /// Pass identification.
-  static char ID;
-
-  /// Provide necessary pointer adjustments for the two base classes.
-  void *getAdjustedAnalysisPointer(const void *ID) override {
-    if (ID == &TargetTransformInfo::ID)
-      return (TargetTransformInfo*)this;
-    return this;
-  }
-
-  PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) const override;
-
-  unsigned getRegisterBitWidth(bool Vector) const override;
-
-  unsigned getArithmeticInstrCost(unsigned Opcode, Type *Ty,
-                                  OperandValueKind Opd1Info = OK_AnyValue,
-                                  OperandValueKind Opd2Info = OK_AnyValue,
-                                  OperandValueProperties Opd1PropInfo = OP_None,
-                                  OperandValueProperties Opd2PropInfo = OP_None) const override;
-
-  unsigned getVectorInstrCost(unsigned Opcode, Type *Val,
-                              unsigned Index = -1) const override;
-
-  void getUnrollingPreferences(const Function *F, Loop *L, UnrollingPreferences &UP) const override;
-};
-
-} // end anonymous namespace
-
-INITIALIZE_AG_PASS(JSTTI, TargetTransformInfo, "jstti",
-                   "JS Target Transform Info", true, true, false)
-char JSTTI::ID = 0;
-
-ImmutablePass *
-llvm::createJSTargetTransformInfoPass(const JSTargetMachine *TM) {
-  return new JSTTI(TM);
-}
-
-
-//===----------------------------------------------------------------------===//
-//
-// JS cost model.
-//
-//===----------------------------------------------------------------------===//
-
-JSTTI::PopcntSupportKind JSTTI::getPopcntSupport(unsigned TyWidth) const {
-  assert(isPowerOf2_32(TyWidth) && "Ty width must be power of 2");
-  // Hopefully we'll get popcnt in ES7, but for now, we just have software.
-  return PSK_Software;
-}
-
-unsigned JSTTI::getRegisterBitWidth(bool Vector) const {
+unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) {
   if (Vector) {
     return 128;
   }
@@ -109,14 +42,13 @@ unsigned JSTTI::getRegisterBitWidth(bool Vector) const {
   return 32;
 }
 
-unsigned JSTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
-                                       OperandValueKind Opd1Info,
-                                       OperandValueKind Opd2Info,
-                                       OperandValueProperties Opd1PropInfo,
-                                       OperandValueProperties Opd2PropInfo) const {
+unsigned JSTTIImpl::getArithmeticInstrCost(
+    unsigned Opcode, Type *Ty, TTI::OperandValueKind Opd1Info,
+    TTI::OperandValueKind Opd2Info, TTI::OperandValueProperties Opd1PropInfo,
+    TTI::OperandValueProperties Opd2PropInfo) {
   const unsigned Nope = 65536;
 
-  unsigned Cost = TargetTransformInfo::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
+  unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
     switch (VTy->getNumElements()) {
@@ -139,7 +71,7 @@ unsigned JSTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
       case Instruction::AShr:
       case Instruction::Shl:
         // SIMD.js' shifts are currently only ByScalar.
-        if (Opd2Info != OK_UniformValue && Opd2Info != OK_UniformConstantValue)
+        if (Opd2Info != TTI::OK_UniformValue && Opd2Info != TTI::OK_UniformConstantValue)
           Cost = Cost * VTy->getNumElements() + 100;
         break;
     }
@@ -148,8 +80,8 @@ unsigned JSTTI::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
   return Cost;
 }
 
-unsigned JSTTI::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) const {
-  unsigned Cost = TargetTransformInfo::getVectorInstrCost(Opcode, Val, Index);
+unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
+  unsigned Cost = BasicTTIImplBase::getVectorInstrCost(Opcode, Val, Index);
 
   // SIMD.js' insert/extract currently only take constant indices.
   if (Index == -1u)
@@ -158,8 +90,3 @@ unsigned JSTTI::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) c
   return Cost;
 }
 
-void JSTTI::getUnrollingPreferences(const Function *F, Loop *L, UnrollingPreferences &UP) const {
-  // We generally don't want a lot of unrolling.
-  UP.Partial = false;
-  UP.Runtime = false;
-}

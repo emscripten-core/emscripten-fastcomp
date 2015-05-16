@@ -45,15 +45,15 @@ target triple = "asmjs-unknown-emscripten"
 ; Function Attrs: nounwind readonly
 define hidden i8* @_ZN12MediaInfoLib22Mxf_EssenceCompressionEN6ZenLib7uint128E(%"class.ZenLib::uint128"* nocapture readonly %EssenceCompression) #0 {
 entry:
-  %hi = getelementptr inbounds %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 1
-  %0 = load i64* %hi, align 1, !tbaa !2
+  %hi = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 1
+  %0 = load i64, i64* %hi, align 1
   %and = and i64 %0, -256
   %cmp = icmp eq i64 %and, 436333716306985216
   br i1 %cmp, label %lor.lhs.false, label %return
 
 lor.lhs.false:                                    ; preds = %entry
-  %lo = getelementptr inbounds %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 0
-  %1 = load i64* %lo, align 1, !tbaa !7
+  %lo = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %EssenceCompression, i32 0, i32 0
+  %1 = load i64, i64* %lo, align 1
   %and1 = and i64 %1, -72057594037927936
   switch i64 %and1, label %return [
     i64 288230376151711744, label %if.end
@@ -100,7 +100,7 @@ sw.bb37:                                          ; preds = %sw.bb35
 sw.bb39:                                          ; preds = %sw.bb37
   %conv40 = and i64 %and22, 255
   %cond14 = icmp eq i64 %conv40, 1
-  %. = select i1 %cond14, i8* getelementptr inbounds ([4 x i8]* @.str214409, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0)
+  %. = select i1 %cond14, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str214409, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0)
   br label %return
 
 sw.bb42:                                          ; preds = %sw.bb37
@@ -153,7 +153,7 @@ sw.default54:                                     ; preds = %sw.bb44
 sw.bb56:                                          ; preds = %sw.bb42
   %conv57 = and i64 %and26, 255
   %cond13 = icmp eq i64 %conv57, 1
-  %.35 = select i1 %cond13, i8* getelementptr inbounds ([10 x i8]* @.str368164, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0)
+  %.35 = select i1 %cond13, i8* getelementptr inbounds ([10 x i8], [10 x i8]* @.str368164, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0)
   br label %return
 
 sw.bb60:                                          ; preds = %sw.bb42
@@ -242,7 +242,7 @@ sw.default91:                                     ; preds = %sw.bb84
 sw.bb92:                                          ; preds = %sw.bb77
   %conv93 = and i64 %and30, 255
   %cond11 = icmp eq i64 %conv93, 1
-  %.36 = select i1 %cond11, i8* getelementptr inbounds ([14 x i8]* @.str778205, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0)
+  %.36 = select i1 %cond11, i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str778205, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0)
   br label %return
 
 sw.bb96:                                          ; preds = %sw.bb77
@@ -304,7 +304,7 @@ sw.bb114:                                         ; preds = %sw.bb112
 sw.bb120:                                         ; preds = %sw.bb114
   %conv121 = and i64 %and26, 255
   %cond8 = icmp eq i64 %conv121, 4
-  %.37 = select i1 %cond8, i8* getelementptr inbounds ([5 x i8]* @.str514367, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0)
+  %.37 = select i1 %cond8, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.str514367, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0)
   br label %return
 
 sw.bb127:                                         ; preds = %sw.bb112
@@ -324,19 +324,19 @@ sw.bb127:                                         ; preds = %sw.bb112
 sw.bb135:                                         ; preds = %sw.bb127
   %conv136 = and i64 %and30, 255
   %cond4 = icmp eq i64 %conv136, 2
-  %.38 = select i1 %cond4, i8* getelementptr inbounds ([12 x i8]* @.str868214, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0)
+  %.38 = select i1 %cond4, i8* getelementptr inbounds ([12 x i8], [12 x i8]* @.str868214, i32 0, i32 0), i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0)
   br label %return
 
 return:                                           ; preds = %sw.bb135, %sw.bb127, %sw.bb120, %sw.bb114, %sw.bb112, %sw.default106, %sw.bb105, %sw.bb104, %sw.bb103, %sw.bb102, %sw.bb101, %sw.bb100, %sw.bb99, %sw.bb96, %sw.bb92, %sw.default91, %sw.bb90, %sw.bb89, %sw.bb88, %sw.bb87, %sw.bb84, %sw.default83, %sw.bb82, %sw.bb79, %sw.bb77, %sw.bb75, %sw.default74, %sw.bb68, %sw.bb68, %sw.bb68, %sw.bb68, %sw.bb66, %sw.bb64, %sw.default61, %sw.bb60, %sw.bb56, %sw.default54, %sw.bb53, %sw.bb52, %sw.bb44, %sw.bb44, %sw.bb44, %sw.bb44, %sw.bb44, %sw.bb44, %sw.bb42, %sw.bb39, %sw.bb37, %sw.bb35, %sw.bb, %if.end, %lor.lhs.false, %entry
-  %retval.0 = phi i8* [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default106 ], [ getelementptr inbounds ([44 x i8]* @.str858213, i32 0, i32 0), %sw.bb105 ], [ getelementptr inbounds ([29 x i8]* @.str848212, i32 0, i32 0), %sw.bb104 ], [ getelementptr inbounds ([31 x i8]* @.str838211, i32 0, i32 0), %sw.bb103 ], [ getelementptr inbounds ([34 x i8]* @.str828210, i32 0, i32 0), %sw.bb102 ], [ getelementptr inbounds ([20 x i8]* @.str818209, i32 0, i32 0), %sw.bb101 ], [ getelementptr inbounds ([24 x i8]* @.str808208, i32 0, i32 0), %sw.bb100 ], [ getelementptr inbounds ([25 x i8]* @.str798207, i32 0, i32 0), %sw.bb99 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default91 ], [ getelementptr inbounds ([8 x i8]* @.str768204, i32 0, i32 0), %sw.bb90 ], [ getelementptr inbounds ([21 x i8]* @.str758203, i32 0, i32 0), %sw.bb89 ], [ getelementptr inbounds ([26 x i8]* @.str748202, i32 0, i32 0), %sw.bb88 ], [ getelementptr inbounds ([21 x i8]* @.str738201, i32 0, i32 0), %sw.bb87 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default83 ], [ getelementptr inbounds ([9 x i8]* @.str718199, i32 0, i32 0), %sw.bb82 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default74 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default61 ], [ getelementptr inbounds ([5 x i8]* @.str514367, i32 0, i32 0), %sw.bb60 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default54 ], [ getelementptr inbounds ([4 x i8]* @.str2417235, i32 0, i32 0), %sw.bb53 ], [ getelementptr inbounds ([14 x i8]* @.str2317234, i32 0, i32 0), %sw.bb52 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %lor.lhs.false ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %entry ], [ %., %sw.bb39 ], [ getelementptr inbounds ([11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([3 x i8]* @.str20216493, i32 0, i32 0), %sw.bb42 ], [ %.35, %sw.bb56 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb37 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb35 ], [ getelementptr inbounds ([4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([6 x i8]* @.str398167, i32 0, i32 0), %sw.bb79 ], [ getelementptr inbounds ([5 x i8]* @.str2717238, i32 0, i32 0), %sw.bb84 ], [ %.36, %sw.bb92 ], [ getelementptr inbounds ([22 x i8]* @.str788206, i32 0, i32 0), %sw.bb96 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb77 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb75 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb66 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb64 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb ], [ %.37, %sw.bb120 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb114 ], [ %.38, %sw.bb135 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb127 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.bb112 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %if.end ]
+  %retval.0 = phi i8* [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default106 ], [ getelementptr inbounds ([44 x i8], [44 x i8]* @.str858213, i32 0, i32 0), %sw.bb105 ], [ getelementptr inbounds ([29 x i8], [29 x i8]* @.str848212, i32 0, i32 0), %sw.bb104 ], [ getelementptr inbounds ([31 x i8], [31 x i8]* @.str838211, i32 0, i32 0), %sw.bb103 ], [ getelementptr inbounds ([34 x i8], [34 x i8]* @.str828210, i32 0, i32 0), %sw.bb102 ], [ getelementptr inbounds ([20 x i8], [20 x i8]* @.str818209, i32 0, i32 0), %sw.bb101 ], [ getelementptr inbounds ([24 x i8], [24 x i8]* @.str808208, i32 0, i32 0), %sw.bb100 ], [ getelementptr inbounds ([25 x i8], [25 x i8]* @.str798207, i32 0, i32 0), %sw.bb99 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default91 ], [ getelementptr inbounds ([8 x i8], [8 x i8]* @.str768204, i32 0, i32 0), %sw.bb90 ], [ getelementptr inbounds ([21 x i8], [21 x i8]* @.str758203, i32 0, i32 0), %sw.bb89 ], [ getelementptr inbounds ([26 x i8], [26 x i8]* @.str748202, i32 0, i32 0), %sw.bb88 ], [ getelementptr inbounds ([21 x i8], [21 x i8]* @.str738201, i32 0, i32 0), %sw.bb87 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default83 ], [ getelementptr inbounds ([9 x i8], [9 x i8]* @.str718199, i32 0, i32 0), %sw.bb82 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default74 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default61 ], [ getelementptr inbounds ([5 x i8], [5 x i8]* @.str514367, i32 0, i32 0), %sw.bb60 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default54 ], [ getelementptr inbounds ([4 x i8], [4 x i8]* @.str2417235, i32 0, i32 0), %sw.bb53 ], [ getelementptr inbounds ([14 x i8], [14 x i8]* @.str2317234, i32 0, i32 0), %sw.bb52 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %lor.lhs.false ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %entry ], [ %., %sw.bb39 ], [ getelementptr inbounds ([11 x i8], [11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8], [11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8], [11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8], [11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8], [11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([11 x i8], [11 x i8]* @.str2017231, i32 0, i32 0), %sw.bb44 ], [ getelementptr inbounds ([3 x i8], [3 x i8]* @.str20216493, i32 0, i32 0), %sw.bb42 ], [ %.35, %sw.bb56 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb37 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb35 ], [ getelementptr inbounds ([4 x i8], [4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([4 x i8], [4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([4 x i8], [4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([4 x i8], [4 x i8]* @.str3217243, i32 0, i32 0), %sw.bb68 ], [ getelementptr inbounds ([6 x i8], [6 x i8]* @.str398167, i32 0, i32 0), %sw.bb79 ], [ getelementptr inbounds ([5 x i8], [5 x i8]* @.str2717238, i32 0, i32 0), %sw.bb84 ], [ %.36, %sw.bb92 ], [ getelementptr inbounds ([22 x i8], [22 x i8]* @.str788206, i32 0, i32 0), %sw.bb96 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb77 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb75 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb66 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb64 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb ], [ %.37, %sw.bb120 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb114 ], [ %.38, %sw.bb135 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb127 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.bb112 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %if.end ]
   ret i8* %retval.0
 }
 
 ; Function Attrs: nounwind readonly
 define hidden i8* @_ZN12MediaInfoLib27Mxf_Sequence_DataDefinitionEN6ZenLib7uint128E(%"class.ZenLib::uint128"* nocapture readonly %DataDefinition) #0 {
 entry:
-  %lo = getelementptr inbounds %"class.ZenLib::uint128"* %DataDefinition, i32 0, i32 0
-  %0 = load i64* %lo, align 1, !tbaa !7
+  %lo = getelementptr inbounds %"class.ZenLib::uint128", %"class.ZenLib::uint128"* %DataDefinition, i32 0, i32 0
+  %0 = load i64, i64* %lo, align 1
   %and = lshr i64 %0, 32
   %conv = trunc i64 %and to i32
   %and2 = lshr i64 %0, 24
@@ -381,31 +381,20 @@ sw.default14:                                     ; preds = %sw.bb9
   br label %return
 
 return:                                           ; preds = %sw.default14, %sw.bb13, %sw.bb12, %sw.bb9, %sw.default, %sw.bb8, %sw.bb, %sw.bb, %sw.bb, %entry
-  %retval.0 = phi i8* [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default14 ], [ getelementptr inbounds ([5 x i8]* @.str1717689, i32 0, i32 0), %sw.bb13 ], [ getelementptr inbounds ([6 x i8]* @.str928220, i32 0, i32 0), %sw.bb12 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %sw.default ], [ getelementptr inbounds ([21 x i8]* @.str908218, i32 0, i32 0), %sw.bb8 ], [ getelementptr inbounds ([5 x i8]* @.str9210864, i32 0, i32 0), %sw.bb ], [ getelementptr inbounds ([5 x i8]* @.str9210864, i32 0, i32 0), %sw.bb ], [ getelementptr inbounds ([5 x i8]* @.str9210864, i32 0, i32 0), %sw.bb ], [ getelementptr inbounds ([8 x i8]* @.str918219, i32 0, i32 0), %sw.bb9 ], [ getelementptr inbounds ([1 x i8]* @.str2104, i32 0, i32 0), %entry ]
+  %retval.0 = phi i8* [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default14 ], [ getelementptr inbounds ([5 x i8], [5 x i8]* @.str1717689, i32 0, i32 0), %sw.bb13 ], [ getelementptr inbounds ([6 x i8], [6 x i8]* @.str928220, i32 0, i32 0), %sw.bb12 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %sw.default ], [ getelementptr inbounds ([21 x i8], [21 x i8]* @.str908218, i32 0, i32 0), %sw.bb8 ], [ getelementptr inbounds ([5 x i8], [5 x i8]* @.str9210864, i32 0, i32 0), %sw.bb ], [ getelementptr inbounds ([5 x i8], [5 x i8]* @.str9210864, i32 0, i32 0), %sw.bb ], [ getelementptr inbounds ([5 x i8], [5 x i8]* @.str9210864, i32 0, i32 0), %sw.bb ], [ getelementptr inbounds ([8 x i8], [8 x i8]* @.str918219, i32 0, i32 0), %sw.bb9 ], [ getelementptr inbounds ([1 x i8], [1 x i8]* @.str2104, i32 0, i32 0), %entry ]
   ret i8* %retval.0
 }
+
 
 define i32 @main() {
 entry:
   %retval = alloca i32, align 4
   store i32 0, i32* %retval
-  %call = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([15 x i8]* @.str, i32 0, i32 0))
+  %call = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str, i32 0, i32 0))
   ret i32 0
 }
 
 declare i32 @printf(i8*, ...)
 
 attributes #0 = { nounwind readonly }
-
-!llvm.ident = !{!0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0, !0}
-!llvm.module.flags = !{!1}
-
-!0 = metadata !{metadata !"clang version 3.4 (git@github.com:kripken/emscripten-fastcomp-clang.git 406c991ba0416c838ee097361c27a12411a088b9) (https://chromium.googlesource.com/native_client/pnacl-llvm a5e8942da586a7ef0ed02361b77a3010f16428cf)"}
-!1 = metadata !{i32 2, metadata !"Dwarf Version", i32 4}
-!2 = metadata !{metadata !3, metadata !4, i64 8}
-!3 = metadata !{metadata !"_ZTSN6ZenLib7uint128E", metadata !4, i64 0, metadata !4, i64 8}
-!4 = metadata !{metadata !"long long", metadata !5, i64 0}
-!5 = metadata !{metadata !"omnipotent char", metadata !6, i64 0}
-!6 = metadata !{metadata !"Simple C/C++ TBAA"}
-!7 = metadata !{metadata !3, metadata !4, i64 0}
 

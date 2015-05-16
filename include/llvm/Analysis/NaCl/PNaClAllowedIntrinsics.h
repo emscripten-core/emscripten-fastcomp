@@ -25,8 +25,8 @@ class FunctionType;
 
 // Holds the set of allowed instrinsics.
 class PNaClAllowedIntrinsics {
-  PNaClAllowedIntrinsics(const PNaClAllowedIntrinsics&) LLVM_DELETED_FUNCTION;
-  void operator=(const PNaClAllowedIntrinsics&) LLVM_DELETED_FUNCTION;
+  PNaClAllowedIntrinsics(const PNaClAllowedIntrinsics&) = delete;
+  void operator=(const PNaClAllowedIntrinsics&) = delete;
 public:
   PNaClAllowedIntrinsics(LLVMContext *Context);
 
@@ -46,6 +46,8 @@ public:
   FunctionType *getIntrinsicType(const std::string &Name) {
     return isIntrinsicName(Name) ? TypeMap[Name] : 0;
   }
+
+  static bool isAllowedDebugInfoIntrinsic(unsigned IntrinsicID);
 
 private:
   LLVMContext *Context;

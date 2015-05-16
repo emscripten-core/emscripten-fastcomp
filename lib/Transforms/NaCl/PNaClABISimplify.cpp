@@ -15,7 +15,7 @@
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/NaCl.h"
 #include "llvm/Transforms/Scalar.h"
@@ -55,9 +55,14 @@ void llvm::PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM) {
     // LowerInvoke prevents use of C++ exception handling by removing
     // references to BasicBlocks which handle exceptions.
     PM.add(createLowerInvokePass());
-    // Remove landingpad blocks made unreachable by LowerInvoke.
-    PM.add(createCFGSimplificationPass());
   }
+  // Run CFG simplification passes for a few reasons:
+  // (1) Landingpad blocks can be made unreachable by LowerInvoke
+  // when EnableSjLjEH is not enabled, so clean those up to ensure
+  // there are no landingpad instructions in the stable ABI.
+  // (2) Unreachable blocks can have strange properties like self-referencing
+  // instructions, so remove them.
+  PM.add(createCFGSimplificationPass());
 
   if (isEmscripten)
     PM.add(createLowerEmSetjmpPass());

@@ -16,24 +16,32 @@
 #define JSTARGETMACHINE_H
 
 #include "JS.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
 
 class formatted_raw_ostream;
 
-class JSSubtarget : public TargetSubtargetInfo {
-  const DataLayout *DL;
+class JSTargetLowering : public TargetLowering {
 public:
-  JSSubtarget(const DataLayout *DL_) : DL(DL_) {}
-  const DataLayout *getDataLayout() const override { return DL; }
+  explicit JSTargetLowering(const TargetMachine& TM) : TargetLowering(TM) {}
+};
+
+class JSSubtarget : public TargetSubtargetInfo {
+  JSTargetLowering TL;
+
+public:
+  JSSubtarget(const TargetMachine& TM) : TL(TM) {}
+
+  const TargetLowering *getTargetLowering() const override {
+    return &TL;
+  }
 };
 
 class JSTargetMachine : public TargetMachine {
-  const DataLayout DL;
-  JSSubtarget Subtarget;
+  const JSSubtarget ST;
 
 public:
   JSTargetMachine(const Target &T, StringRef Triple,
@@ -41,18 +49,19 @@ public:
                   Reloc::Model RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
 
-  bool addPassesToEmitFile(PassManagerBase &PM,
-                           formatted_raw_ostream &Out,
-                           CodeGenFileType FileType,
-                           bool DisableVerify,
+  bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
+                           CodeGenFileType FileType, bool DisableVerify,
                            AnalysisID StartAfter,
                            AnalysisID StopAfter) override;
 
-  const DataLayout *getDataLayout() const { return &DL; }
-  const JSSubtarget *getSubtargetImpl() const override { return &Subtarget; }
+  TargetIRAnalysis getTargetIRAnalysis() override;
+
+  const TargetSubtargetInfo *getSubtargetImpl() const {
+    return &ST;
+  }
 
   /// \brief Register X86 analysis passes with a pass manager.
-  void addAnalysisPasses(PassManagerBase &PM) override;
+  // XXX void addAnalysisPasses(PassManagerBase &PM) override;
 };
 
 } // End llvm namespace

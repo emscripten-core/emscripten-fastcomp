@@ -51,6 +51,11 @@ static cl::opt<bool>
 DisableVerify("disable-verify", cl::Hidden,
               cl::desc("Do not run verifier on input LLVM (dangerous!)"));
 
+static cl::opt<bool> PreserveBitcodeUseListOrder(
+    "preserve-bc-uselistorder",
+    cl::desc("Preserve use-list order when writing LLVM bitcode."),
+    cl::init(true), cl::Hidden);
+
 static void WriteOutputFile(const Module *M) {
   // Infer the output filename if needed.
   if (OutputFilename.empty()) {
@@ -77,11 +82,8 @@ static void WriteOutputFile(const Module *M) {
     exit(1);
   }
 
-  // @LOCALMOD-BEGIN
-  if (Force || !CheckBitcodeOutputToConsole(Out->os(), true)) {
-    WriteBitcodeToFile(M, Out->os());
-  }
-  // @LOCALMOD-END
+  if (Force || !CheckBitcodeOutputToConsole(Out->os(), true))
+    WriteBitcodeToFile(M, Out->os(), PreserveBitcodeUseListOrder);
 
   // Declare success.
   Out->keep();

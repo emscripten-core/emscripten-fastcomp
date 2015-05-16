@@ -23,7 +23,7 @@ namespace llvm {
 /// block.
 class NaClBitcodeSubblockDistElement : public NaClBitcodeDistElement {
   NaClBitcodeSubblockDistElement(const NaClBitcodeSubblockDistElement &)
-  LLVM_DELETED_FUNCTION;
+  = delete;
   void operator=(const NaClBitcodeSubblockDistElement&);
 
 public:
@@ -53,8 +53,8 @@ public:
 /// defined) block. Assumes distribution elements are instances of
 /// NaClBitcodeSubblockDistElement.
 class NaClBitcodeSubblockDist : public NaClBitcodeDist {
-  NaClBitcodeSubblockDist(const NaClBitcodeSubblockDist&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeSubblockDist&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeSubblockDist(const NaClBitcodeSubblockDist&) = delete;
+  void operator=(const NaClBitcodeSubblockDist&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDist *Dist) {

@@ -35,7 +35,7 @@ MCSubtargetInfo::InitCPUSchedModel(StringRef CPU) {
 }
 
 void
-MCSubtargetInfo::InitMCSubtargetInfo(StringRef TT, StringRef CPU, StringRef FS,
+MCSubtargetInfo::InitMCSubtargetInfo(StringRef TT, StringRef C, StringRef FS,
                                      ArrayRef<SubtargetFeatureKV> PF,
                                      ArrayRef<SubtargetFeatureKV> PD,
                                      const SubtargetInfoKV *ProcSched,
@@ -46,6 +46,7 @@ MCSubtargetInfo::InitMCSubtargetInfo(StringRef TT, StringRef CPU, StringRef FS,
                                      const unsigned *OC,
                                      const unsigned *FP) {
   TargetTriple = TT;
+  CPU = C;
   ProcFeatures = PF;
   ProcDesc = PD;
   ProcSchedModels = ProcSched;
@@ -92,9 +93,10 @@ MCSubtargetInfo::getSchedModelForCPU(StringRef CPU) const {
   const SubtargetInfoKV *Found =
     std::lower_bound(ProcSchedModels, ProcSchedModels+NumProcs, CPU);
   if (Found == ProcSchedModels+NumProcs || StringRef(Found->Key) != CPU) {
-    errs() << "'" << CPU
-           << "' is not a recognized processor for this target"
-           << " (ignoring processor)\n";
+    if (CPU != "help") // Don't error if the user asked for help.
+      errs() << "'" << CPU
+             << "' is not a recognized processor for this target"
+             << " (ignoring processor)\n";
     return MCSchedModel::GetDefaultSchedModel();
   }
   assert(Found->Value && "Missing processor SchedModel value");

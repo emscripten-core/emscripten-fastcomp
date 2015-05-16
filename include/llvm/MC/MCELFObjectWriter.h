@@ -24,6 +24,18 @@ class MCSectionData;
 class MCSymbol;
 class MCSymbolData;
 class MCValue;
+class raw_pwrite_stream;
+
+struct ELFRelocationEntry {
+  uint64_t Offset; // Where is the relocation.
+  const MCSymbol *Symbol;       // The symbol to relocate with.
+  unsigned Type;   // The type of the relocation.
+  uint64_t Addend; // The addend to use.
+
+  ELFRelocationEntry(uint64_t Offset, const MCSymbol *Symbol, unsigned Type,
+                     uint64_t Addend)
+      : Offset(Offset), Symbol(Symbol), Type(Type), Addend(Addend) {}
+};
 
 class MCELFObjectTargetWriter {
   const uint8_t OSABI;
@@ -41,6 +53,9 @@ protected:
 public:
   static uint8_t getOSABI(Triple::OSType OSType) {
     switch (OSType) {
+      case Triple::CloudABI:
+        return ELF::ELFOSABI_CLOUDABI;
+      case Triple::PS4:
       case Triple::FreeBSD:
         return ELF::ELFOSABI_FREEBSD;
       case Triple::Linux:
@@ -57,6 +72,9 @@ public:
 
   virtual bool needsRelocateWithSymbol(const MCSymbolData &SD,
                                        unsigned Type) const;
+
+  virtual void sortRelocs(const MCAssembler &Asm,
+                          std::vector<ELFRelocationEntry> &Relocs);
 
   /// @name Accessors
   /// @{
@@ -113,7 +131,8 @@ public:
 /// \param OS - The stream to write to.
 /// \returns The constructed object writer.
 MCObjectWriter *createELFObjectWriter(MCELFObjectTargetWriter *MOTW,
-                                      raw_ostream &OS, bool IsLittleEndian);
+                                      raw_pwrite_stream &OS,
+                                      bool IsLittleEndian);
 } // End llvm namespace
 
 #endif

@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
@@ -24,7 +25,7 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/Debug.h"
@@ -40,7 +41,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/NaCl.h"
@@ -86,8 +87,10 @@ InputFileFormat(
 static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
+// Primary output filename. If module splitting is used, the other output files
+// will have names derived from this one.
 static cl::opt<std::string>
-OutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
+MainOutputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"));
 
 // Using bitcode streaming allows compilation of one function at a time. This
 // allows earlier functions to be compiled before later functions are read from
@@ -161,53 +164,42 @@ SplitModuleSched(
 static int compileModule(StringRef ProgramName);
 
 #if !defined(PNACL_BROWSER_TRANSLATOR)
-// GetFileNameRoot - Helper function to get the basename of a filename.
-static std::string
-GetFileNameRoot(StringRef InputFilename) {
-  std::string IFN = InputFilename;
-  std::string outputFilename;
-  int Len = IFN.length();
-  if ((Len > 2) &&
-      IFN[Len-3] == '.' &&
-      ((IFN[Len-2] == 'b' && IFN[Len-1] == 'c') ||
-       (IFN[Len-2] == 'l' && IFN[Len-1] == 'l'))) {
-    outputFilename = std::string(IFN.begin(), IFN.end()-3); // s/.bc/.s/
-  } else {
-    outputFilename = IFN;
-  }
-  return outputFilename;
-}
-
-static tool_output_file *GetOutputStream(const char *TargetName,
-                                         Triple::OSType OS,
-                                         std::string Filename) {
+static std::unique_ptr<tool_output_file>
+GetOutputStream(const char *TargetName,
+                Triple::OSType OS,
+                std::string OutputFilename) {
   // If we don't yet have an output filename, make one.
-  if (Filename.empty()) {
+  if (OutputFilename.empty()) {
     if (InputFilename == "-")
-      Filename = "-";
+      OutputFilename = "-";
     else {
-      Filename = GetFileNameRoot(InputFilename);
+      // If InputFilename ends in .bc or .ll, remove it.
+      StringRef IFN = InputFilename;
+      if (IFN.endswith(".bc") || IFN.endswith(".ll"))
+        OutputFilename = IFN.drop_back(3);
+      else
+        OutputFilename = IFN;
 
       switch (FileType) {
       case TargetMachine::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
-            Filename += ".cbe.c";
+            OutputFilename += ".cbe.c";
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
-            Filename += ".cpp";
+            OutputFilename += ".cpp";
           else
-            Filename += ".s";
+            OutputFilename += ".s";
         } else
-          Filename += ".s";
+          OutputFilename += ".s";
         break;
       case TargetMachine::CGFT_ObjectFile:
         if (OS == Triple::Win32)
-          Filename += ".obj";
+          OutputFilename += ".obj";
         else
-          Filename += ".o";
+          OutputFilename += ".o";
         break;
       case TargetMachine::CGFT_Null:
-        Filename += ".null";
+        OutputFilename += ".null";
         break;
       }
     }
@@ -229,10 +221,10 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
   if (!Binary)
     OpenFlags |= sys::fs::F_Text;
-  tool_output_file *FDOut = new tool_output_file(Filename, EC, OpenFlags);
+  auto FDOut = llvm::make_unique<tool_output_file>(OutputFilename, EC,
+                                                   OpenFlags);
   if (EC) {
     errs() << EC.message() << '\n';
-    delete FDOut;
     return nullptr;
   }
 
@@ -327,17 +319,22 @@ static std::unique_ptr<Module> getModule(
   if (LazyBitcode) {
     std::string StrError;
     switch (InputFileFormat) {
-    case PNaClFormat:
+    case PNaClFormat: {
+      std::unique_ptr<StreamingMemoryObject> Cache(
+          new ThreadedStreamingCache(StreamingObject));
       M.reset(getNaClStreamedBitcodeModule(
-          InputFilename,
-          new ThreadedStreamingCache(StreamingObject), Context, &VerboseStrm,
-          &StrError));
+          InputFilename, Cache.release(), Context, &VerboseStrm, &StrError));
       break;
-    case LLVMFormat:
-      M.reset(getStreamedBitcodeModule(
-          InputFilename,
-          new ThreadedStreamingCache(StreamingObject), Context, &StrError));
+    }
+    case LLVMFormat: {
+      std::unique_ptr<StreamingMemoryObject> Cache(
+          new ThreadedStreamingCache(StreamingObject));
+      ErrorOr<std::unique_ptr<Module>> MOrErr =
+          getStreamedBitcodeModule(
+          InputFilename, Cache.release(), Context);
+      M = std::move(*MOrErr);
       break;
+    }
     case AutodetectFileFormat:
       report_fatal_error("Command can't autodetect file format!");
     }
@@ -377,7 +374,7 @@ static int runCompilePasses(Module *ModuleRef,
                             const Triple &TheTriple,
                             TargetMachine &Target,
                             StringRef ProgramName,
-                            formatted_raw_ostream &FOS){
+                            raw_pwrite_stream &OS){
   PNaClABIErrorReporter ABIErrorReporter;
 
   if (SplitModuleCount > 1 || ExternalizeAll) {
@@ -428,16 +425,15 @@ static int runCompilePasses(Module *ModuleRef,
   }
 
   // Build up all of the passes that we want to do to the module.
-  std::unique_ptr<PassManagerBase> PM;
+  std::unique_ptr<legacy::PassManagerBase> PM;
   if (LazyBitcode)
-    PM.reset(new FunctionPassManager(ModuleRef));
+    PM.reset(new legacy::FunctionPassManager(ModuleRef));
   else
-    PM.reset(new PassManager());
+    PM.reset(new legacy::PassManager());
 
   // Add the target data from the target machine, if it exists, or the module.
-  if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
-    ModuleRef->setDataLayout(DL);
-  PM->add(new DataLayoutPass());
+  if (const DataLayout *DL = Target.getDataLayout())
+    ModuleRef->setDataLayout(*DL);
 
   // For conformance with llc, we let the user disable LLVM IR verification with
   // -disable-verify. Unlike llc, when LLVM IR verification is enabled we only
@@ -453,22 +449,21 @@ static int runCompilePasses(Module *ModuleRef,
   PM->add(createResolvePNaClIntrinsicsPass());
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  TargetLibraryInfo *TLI = new TargetLibraryInfo(TheTriple);
+  TargetLibraryInfoImpl TLII(TheTriple);
+
+  // The -disable-simplify-libcalls flag actually disables all builtin optzns.
   if (DisableSimplifyLibCalls)
-    TLI->disableAllFunctions();
-  PM->add(TLI);
+    TLII.disableAllFunctions();
+  PM->add(new TargetLibraryInfoWrapperPass(TLII));
 
   // Allow subsequent passes and the backend to better optimize instructions
   // that were simplified for PNaCl's ABI. This pass uses the TargetLibraryInfo
   // above.
   PM->add(createBackendCanonicalizePass());
 
-  // Add internal analysis passes from the target machine.
-  Target.addAnalysisPasses(*PM);
-
   // Ask the target to add backend passes as necessary. We explicitly ask it
   // not to add the verifier pass because we added it earlier.
-  if (Target.addPassesToEmitFile(*PM, FOS, FileType,
+  if (Target.addPassesToEmitFile(*PM, OS, FileType,
                                  /* DisableVerify */ true)) {
     errs() << ProgramName
     << ": target does not support generation of this file type!\n";
@@ -476,7 +471,7 @@ static int runCompilePasses(Module *ModuleRef,
   }
 
   if (LazyBitcode) {
-    auto FPM = static_cast<FunctionPassManager *>(PM.get());
+    auto FPM = static_cast<legacy::FunctionPassManager *>(PM.get());
     FPM->doInitialization();
     unsigned FuncIndex = 0;
     switch (SplitModuleSched) {
@@ -526,7 +521,7 @@ static int runCompilePasses(Module *ModuleRef,
     }
     FPM->doFinalization();
   } else
-    static_cast<PassManager *>(PM.get())->run(*ModuleRef);
+    static_cast<legacy::PassManager *>(PM.get())->run(*ModuleRef);
 
   return 0;
 }
@@ -547,8 +542,6 @@ static int compileSplitModule(const TargetOptions &Options,
                                           RelocModel, CMModel, OLvl));
   assert(target.get() && "Could not allocate target machine!");
   TargetMachine &Target = *target.get();
-  // Override default to generate verbose assembly.
-  Target.setAsmVerbosityDefault(true);
   if (RelaxAll.getNumOccurrences() > 0 &&
       FileType != TargetMachine::CGFT_ObjectFile)
     errs() << ProgramName
@@ -583,28 +576,33 @@ static int compileSplitModule(const TargetOptions &Options,
   {
 #if !defined(PNACL_BROWSER_TRANSLATOR)
       // Figure out where we are going to send the output.
-    std::string N(OutputFilename);
+    std::string N(MainOutputFilename);
     raw_string_ostream OutFileName(N);
     if (ModuleIndex > 0)
       OutFileName << ".module" << ModuleIndex;
-    std::unique_ptr<tool_output_file> Out
-        (GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
-                         OutFileName.str()));
+    std::unique_ptr<tool_output_file> Out =
+        GetOutputStream(TheTarget->getName(), TheTriple.getOS(),
+                         OutFileName.str());
     if (!Out) return 1;
-    formatted_raw_ostream FOS(Out->os());
+    raw_pwrite_stream *OS = &Out->os();
+    std::unique_ptr<buffer_ostream> BOS;
+    if (FileType != TargetMachine::CGFT_AssemblyFile &&
+        !Out->os().supportsSeeking()) {
+      BOS = make_unique<buffer_ostream>(*OS);
+      OS = BOS.get();
+    }
 #else
-    raw_fd_ostream ROS(getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
-    ROS.SetBufferSize(1 << 20);
-    formatted_raw_ostream FOS(ROS);
+    auto OS = llvm::make_unique<raw_fd_ostream>(
+        getObjectFileFD(ModuleIndex), /* ShouldClose */ true);
+    OS->SetBufferSize(1 << 20);
 #endif
     int ret = runCompilePasses(ModuleRef, ModuleIndex, FuncQueue,
                                TheTriple, Target, ProgramName,
-                               FOS);
+                               *OS);
     if (ret)
       return ret;
 #if defined(PNACL_BROWSER_TRANSLATOR)
-    FOS.flush();
-    ROS.flush();
+    OS->flush();
 #else
     // Declare success.
     Out->keep();
@@ -712,6 +710,7 @@ static int compileModule(StringRef ProgramName) {
 
   TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
   Options.DisableIntegratedAS = NoIntegratedAssembler;
+  Options.MCOptions.AsmVerbose = true;
 
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;

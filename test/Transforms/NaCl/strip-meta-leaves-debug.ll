@@ -11,15 +11,15 @@ define i32 @foo(i32 %c) {
 ; STRIPMODF-NEXT: ret{{.*}}, !dbg
 ; STRIPALL: @foo
 ; STRIPALL-NOT: !dbg
-  tail call void @llvm.dbg.value(metadata !{i32 %c}, i64 0, metadata !9), !dbg !10
-  ret i32 %c, !dbg !11
+  tail call void @llvm.dbg.value(metadata i32 %c, i64 0, metadata !9, metadata !13), !dbg !14
+  ret i32 %c, !dbg !15
 }
 
 ; STRIPMETA: @llvm.dbg.value
 ; STRIPMODF: @llvm.dbg.value
 ; STRIPALL: ret i32
 ; STRIPALL-NOT: @llvm.dbg.value
-declare void @llvm.dbg.value(metadata, i64, metadata) #1
+declare void @llvm.dbg.value(metadata, i64, metadata, metadata)
 
 ; STRIPMETA-NOT: MadeUpMetadata
 ; STRIPMODF-NOT: MadeUpMetadata
@@ -32,30 +32,38 @@ declare void @llvm.dbg.value(metadata, i64, metadata) #1
 ; STRIPMETA: llvm.module.flags
 ; STRIPMODF-NOT: llvm.module.flags
 ; STRIPALL-NOT: llvm.module.flags
-!llvm.module.flags = !{!12,!13}
+!llvm.module.flags = !{!10, !11, !24}
 
 ; STRIPMETA: !0 =
 ; STRIPMODF: !0 =
-!0 = metadata !{i32 786449, i32 0, i32 12, metadata !"test.c", metadata !"/tmp", metadata !"clang version 3.3 (trunk 176732) (llvm/trunk 176733)", i1 true, i1 true, metadata !"", i32 0, metadata !1, metadata !1, metadata !2, metadata !1, metadata !""} ; [ DW_TAG_compile_unit ] [/tmp/test.c] [DW_LANG_C99]
-!1 = metadata !{i32 0}
-!2 = metadata !{metadata !3}
-!3 = metadata !{i32 786478, i32 0, metadata !4, metadata !"foo", metadata !"foo", metadata !"", metadata !4, i32 1, metadata !5, i1 false, i1 true, i32 0, i32 0, null, i32 256, i1 true, i32 (i32)* @foo, null, null, metadata !8, i32 1} ; [ DW_TAG_subprogram ] [line 1] [def] [foo]
-!4 = metadata !{i32 786473, metadata !"test.c", metadata !"/tmp", null} ; [ DW_TAG_file_type ]
-!5 = metadata !{i32 786453, i32 0, metadata !"", i32 0, i32 0, i64 0, i64 0, i64 0, i32 0, null, metadata !6, i32 0, i32 0} ; [ DW_TAG_subroutine_type ] [line 0, size 0, align 0, offset 0] [from ]
-!6 = metadata !{metadata !7, metadata !7}
-!7 = metadata !{i32 786468, null, metadata !"int", null, i32 0, i64 32, i64 32, i64 0, i32 0, i32 5} ; [ DW_TAG_base_type ] [int] [line 0, size 32, align 32, offset 0, enc DW_ATE_signed]
-!8 = metadata !{metadata !9}
-!9 = metadata !{i32 786689, metadata !3, metadata !"c", metadata !4, i32 16777217, metadata !7, i32 0, i32 0} ; [ DW_TAG_arg_variable ] [c] [line 1]
-!10 = metadata !{i32 1, i32 0, metadata !3, null}
-!11 = metadata !{i32 2, i32 0, metadata !3, null}
-; STRIPMETA: Linker Options
-; STRIPMODF-NOT: Linker Options
-; STRIPALL-NOT: Linker Options
-!12 = metadata !{ i32 6, metadata !"Linker Options",
-     metadata !{
-        metadata !{ metadata !"-lz" },
-        metadata !{ metadata !"-framework", metadata !"Cocoa" } } }
+
+
 ; STRIPMETA: Debug Info Version
 ; STRIPMODF-NOT: Debug Info Version
 ; STRIPALL-NOT: Debug Info Version
-!13 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+!11 = !{i32 2, !"Debug Info Version", i32 3}
+
+; STRIPMETA: Linker Options
+; STRIPMODF-NOT: Linker Options
+; STRIPALL-NOT: Linker Options
+!24 = !{i32 6, !"Linker Options", !{!{!"-lz"}, !{!"-framework", !"Cocoa"}, !{!"-lmath"}}}
+
+
+!llvm.ident = !{!12}
+
+!0 = !MDCompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.7.0 (trunk 235150) (llvm/trunk 235152)", isOptimized: true, runtimeVersion: 0, emissionKind: 1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!1 = !MDFile(filename: "foo.c", directory: "/s/llvm/cmakebuild")
+!2 = !{}
+!3 = !{!4}
+!4 = !MDSubprogram(name: "foo", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, flags: DIFlagPrototyped, isOptimized: true, function: i32 (i32)* @foo, variables: !8)
+!5 = !MDSubroutineType(types: !6)
+!6 = !{!7, !7}
+!7 = !MDBasicType(name: "int", size: 32, align: 32, encoding: DW_ATE_signed)
+!8 = !{!9}
+!9 = !MDLocalVariable(tag: DW_TAG_arg_variable, name: "c", arg: 1, scope: !4, file: !1, line: 1, type: !7)
+!10 = !{i32 2, !"Dwarf Version", i32 4}
+!12 = !{!"clang version 3.7.0 (trunk 235150) (llvm/trunk 235152)"}
+!13 = !MDExpression()
+!14 = !MDLocation(line: 1, column: 13, scope: !4)
+!15 = !MDLocation(line: 2, column: 3, scope: !4)
+

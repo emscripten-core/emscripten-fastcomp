@@ -705,7 +705,7 @@ bool X86NaClRewritePass::runOnMachineFunction(MachineFunction &MF) {
   TM = &MF.getTarget();
   TII = MF.getSubtarget().getInstrInfo();
   TRI = MF.getSubtarget().getRegisterInfo();
-  Subtarget = &TM->getSubtarget<X86Subtarget>();
+  Subtarget = &MF.getSubtarget<X86Subtarget>();
   Is64Bit = Subtarget->is64Bit();
 
   assert(Subtarget->isTargetNaCl() && "Unexpected target in NaClRewritePass!");

@@ -260,7 +260,7 @@ SelectionDAGLegalize::ExpandConstantFP(ConstantFPSDNode *CFP, bool UseCP) {
     if (ConstantFPSDNode::isValueValidForType(SVT, CFP->getValueAPF()) &&
         // Only do this if the target has a native EXTLOAD instruction from
         // smaller type.
-        TLI.isLoadExtLegal(ISD::EXTLOAD, SVT) &&
+        TLI.isLoadExtLegal(ISD::EXTLOAD, OrigVT, SVT) &&
         TLI.ShouldShrinkFPConstant(OrigVT)) {
       Type *SType = SVT.getTypeForEVT(*DAG.getContext());
       LLVMC = cast<ConstantFP>(ConstantExpr::getFPTrunc(LLVMC, SType));
@@ -731,7 +731,7 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
         }
         case TargetLowering::Custom: {
           SDValue Res = TLI.LowerOperation(SDValue(Node, 0), DAG);
-          if (Res.getNode())
+          if (Res && Res != SDValue(Node, 0))
             ReplaceNode(SDValue(Node, 0), Res);
           return;
         }
@@ -843,7 +843,7 @@ void SelectionDAGLegalize::LegalizeStoreOps(SDNode *Node) {
         }
         case TargetLowering::Custom: {
           SDValue Res = TLI.LowerOperation(SDValue(Node, 0), DAG);
-          if (Res.getNode())
+          if (Res && Res != SDValue(Node, 0))
             ReplaceNode(SDValue(Node, 0), Res);
           return;
         }
@@ -944,7 +944,8 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
       // nice to have an effective generic way of getting these benefits...
       // Until such a way is found, don't insist on promoting i1 here.
       (SrcVT != MVT::i1 ||
-       TLI.getLoadExtAction(ExtType, MVT::i1) == TargetLowering::Promote)) {
+       TLI.getLoadExtAction(ExtType, Node->getValueType(0), MVT::i1) ==
+         TargetLowering::Promote)) {
     // Promote to a byte-sized load if not loading an integral number of
     // bytes.  For example, promote EXTLOAD:i20 -> EXTLOAD:i24.
     unsigned NewWidth = SrcVT.getStoreSizeInBits();
@@ -1056,7 +1057,8 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
     Chain = Ch;
   } else {
     bool isCustom = false;
-    switch (TLI.getLoadExtAction(ExtType, SrcVT.getSimpleVT())) {
+    switch (TLI.getLoadExtAction(ExtType, Node->getValueType(0),
+                                 SrcVT.getSimpleVT())) {
     default: llvm_unreachable("This action is not supported yet!");
     case TargetLowering::Custom:
       isCustom = true;
@@ -1088,21 +1090,25 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
       break;
     }
     case TargetLowering::Expand:
-      if (!TLI.isLoadExtLegal(ISD::EXTLOAD, SrcVT) && TLI.isTypeLegal(SrcVT)) {
-        SDValue Load = DAG.getLoad(SrcVT, dl, Chain, Ptr, LD->getMemOperand());
-        unsigned ExtendOp;
-        switch (ExtType) {
-        case ISD::EXTLOAD:
-          ExtendOp = (SrcVT.isFloatingPoint() ?
-                      ISD::FP_EXTEND : ISD::ANY_EXTEND);
+      if (!TLI.isLoadExtLegal(ISD::EXTLOAD, Node->getValueType(0), SrcVT)) {
+        // If the source type is not legal, see if there is a legal extload to
+        // an intermediate type that we can then extend further.
+        EVT LoadVT = TLI.getRegisterType(SrcVT.getSimpleVT());
+        if (TLI.isTypeLegal(SrcVT) || // Same as SrcVT == LoadVT?
+            TLI.isLoadExtLegal(ExtType, LoadVT, SrcVT)) {
+          // If we are loading a legal type, this is a non-extload followed by a
+          // full extend.
+          ISD::LoadExtType MidExtType =
+              (LoadVT == SrcVT) ? ISD::NON_EXTLOAD : ExtType;
+
+          SDValue Load = DAG.getExtLoad(MidExtType, dl, LoadVT, Chain, Ptr,
+                                        SrcVT, LD->getMemOperand());
+          unsigned ExtendOp =
+              ISD::getExtForLoadExtType(SrcVT.isFloatingPoint(), ExtType);
+          Value = DAG.getNode(ExtendOp, dl, Node->getValueType(0), Load);
+          Chain = Load.getValue(1);
           break;
-        case ISD::SEXTLOAD: ExtendOp = ISD::SIGN_EXTEND; break;
-        case ISD::ZEXTLOAD: ExtendOp = ISD::ZERO_EXTEND; break;
-        default: llvm_unreachable("Unexpected extend load type!");
         }
-        Value = DAG.getNode(ExtendOp, dl, Node->getValueType(0), Load);
-        Chain = Load.getValue(1);
-        break;
       }
 
       assert(!SrcVT.isVector() &&
@@ -1436,13 +1442,27 @@ SDValue SelectionDAGLegalize::ExpandExtractFromVectorThroughStack(SDValue Op) {
   Idx = DAG.getZExtOrTrunc(Idx, dl, TLI.getPointerTy());
   StackPtr = DAG.getNode(ISD::ADD, dl, Idx.getValueType(), Idx, StackPtr);
 
+  SDValue NewLoad;
+
   if (Op.getValueType().isVector())
-    return DAG.getLoad(Op.getValueType(), dl, Ch, StackPtr,MachinePointerInfo(),
-                       false, false, false, 0);
-  return DAG.getExtLoad(ISD::EXTLOAD, dl, Op.getValueType(), Ch, StackPtr,
-                        MachinePointerInfo(),
-                        Vec.getValueType().getVectorElementType(),
-                        false, false, false, 0);
+    NewLoad = DAG.getLoad(Op.getValueType(), dl, Ch, StackPtr,
+                          MachinePointerInfo(), false, false, false, 0);
+  else
+    NewLoad = DAG.getExtLoad(
+        ISD::EXTLOAD, dl, Op.getValueType(), Ch, StackPtr, MachinePointerInfo(),
+        Vec.getValueType().getVectorElementType(), false, false, false, 0);
+
+  // Replace the chain going out of the store, by the one out of the load.
+  DAG.ReplaceAllUsesOfValueWith(Ch, SDValue(NewLoad.getNode(), 1));
+
+  // We introduced a cycle though, so update the loads operands, making sure
+  // to use the original store's chain as an incoming chain.
+  SmallVector<SDValue, 6> NewLoadOperands(NewLoad->op_begin(),
+                                          NewLoad->op_end());
+  NewLoadOperands[0] = Ch;
+  NewLoad =
+      SDValue(DAG.UpdateNodeOperands(NewLoad.getNode(), NewLoadOperands), 0);
+  return NewLoad;
 }
 
 SDValue SelectionDAGLegalize::ExpandInsertToVectorThroughStack(SDValue Op) {
@@ -2811,132 +2831,8 @@ SDValue SelectionDAGLegalize::ExpandBitCount(unsigned Opc, SDValue Op,
 std::pair <SDValue, SDValue> SelectionDAGLegalize::ExpandAtomic(SDNode *Node) {
   unsigned Opc = Node->getOpcode();
   MVT VT = cast<AtomicSDNode>(Node)->getMemoryVT().getSimpleVT();
-  RTLIB::Libcall LC;
-
-  switch (Opc) {
-  default:
-    llvm_unreachable("Unhandled atomic intrinsic Expand!");
-  case ISD::ATOMIC_SWAP:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_LOCK_TEST_AND_SET_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_LOCK_TEST_AND_SET_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_LOCK_TEST_AND_SET_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_LOCK_TEST_AND_SET_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_LOCK_TEST_AND_SET_16;break;
-    }
-    break;
-  case ISD::ATOMIC_CMP_SWAP:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_VAL_COMPARE_AND_SWAP_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_VAL_COMPARE_AND_SWAP_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_VAL_COMPARE_AND_SWAP_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_VAL_COMPARE_AND_SWAP_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_VAL_COMPARE_AND_SWAP_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_ADD:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_ADD_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_ADD_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_ADD_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_ADD_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_ADD_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_SUB:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_SUB_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_SUB_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_SUB_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_SUB_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_SUB_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_AND:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_AND_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_AND_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_AND_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_AND_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_AND_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_OR:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_OR_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_OR_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_OR_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_OR_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_OR_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_XOR:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_XOR_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_XOR_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_XOR_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_XOR_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_XOR_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_NAND:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_NAND_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_NAND_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_NAND_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_NAND_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_NAND_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_MAX:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_MAX_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_MAX_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_MAX_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_MAX_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_MAX_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_UMAX:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_UMAX_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_UMAX_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_UMAX_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_UMAX_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_UMAX_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_MIN:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_MIN_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_MIN_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_MIN_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_MIN_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_MIN_16;break;
-    }
-    break;
-  case ISD::ATOMIC_LOAD_UMIN:
-    switch (VT.SimpleTy) {
-    default: llvm_unreachable("Unexpected value type for atomic!");
-    case MVT::i8:  LC = RTLIB::SYNC_FETCH_AND_UMIN_1; break;
-    case MVT::i16: LC = RTLIB::SYNC_FETCH_AND_UMIN_2; break;
-    case MVT::i32: LC = RTLIB::SYNC_FETCH_AND_UMIN_4; break;
-    case MVT::i64: LC = RTLIB::SYNC_FETCH_AND_UMIN_8; break;
-    case MVT::i128:LC = RTLIB::SYNC_FETCH_AND_UMIN_16;break;
-    }
-    break;
-  }
+  RTLIB::Libcall LC = RTLIB::getATOMIC(Opc, VT);
+  assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unexpected atomic op or value type!");
 
   return ExpandChainLibCall(LC, Node, false);
 }
@@ -3513,6 +3409,9 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
                                       RTLIB::FMA_F80, RTLIB::FMA_F128,
                                       RTLIB::FMA_PPCF128));
     break;
+  case ISD::FMAD:
+    llvm_unreachable("Illegal fmad should never be formed");
+
   case ISD::FADD:
     Results.push_back(ExpandFPLibCall(Node, RTLIB::ADD_F32, RTLIB::ADD_F64,
                                       RTLIB::ADD_F80, RTLIB::ADD_F128,
@@ -3539,6 +3438,21 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
     break;
   }
   case ISD::FP_TO_FP16: {
+    if (!TM.Options.UseSoftFloat && TM.Options.UnsafeFPMath) {
+      SDValue Op = Node->getOperand(0);
+      MVT SVT = Op.getSimpleValueType();
+      if ((SVT == MVT::f64 || SVT == MVT::f80) &&
+          TLI.isOperationLegalOrCustom(ISD::FP_TO_FP16, MVT::f32)) {
+        // Under fastmath, we can expand this node into a fround followed by
+        // a float-half conversion.
+        SDValue FloatVal = DAG.getNode(ISD::FP_ROUND, dl, MVT::f32, Op,
+                                       DAG.getIntPtrConstant(0));
+        Results.push_back(
+            DAG.getNode(ISD::FP_TO_FP16, dl, MVT::i16, FloatVal));
+        break;
+      }
+    }
+
     RTLIB::Libcall LC =
         RTLIB::getFPROUND(Node->getOperand(0).getValueType(), MVT::f16);
     assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unable to expand fp_to_fp16");
@@ -4119,6 +4033,8 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
       Node->getOpcode() == ISD::SETCC) {
     OVT = Node->getOperand(0).getSimpleValueType();
   }
+  if (Node->getOpcode() == ISD::BR_CC)
+    OVT = Node->getOperand(2).getSimpleValueType();
   MVT NVT = TLI.getTypeToPromoteTo(Node->getOpcode(), OVT);
   SDLoc dl(Node);
   SDValue Tmp1, Tmp2, Tmp3;
@@ -4274,11 +4190,28 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
                                   Tmp1, Tmp2, Node->getOperand(2)));
     break;
   }
+  case ISD::BR_CC: {
+    unsigned ExtOp = ISD::FP_EXTEND;
+    if (NVT.isInteger()) {
+      ISD::CondCode CCCode =
+        cast<CondCodeSDNode>(Node->getOperand(1))->get();
+      ExtOp = isSignedIntSetCC(CCCode) ? ISD::SIGN_EXTEND : ISD::ZERO_EXTEND;
+    }
+    Tmp1 = DAG.getNode(ExtOp, dl, NVT, Node->getOperand(2));
+    Tmp2 = DAG.getNode(ExtOp, dl, NVT, Node->getOperand(3));
+    Results.push_back(DAG.getNode(ISD::BR_CC, dl, Node->getValueType(0),
+                                  Node->getOperand(0), Node->getOperand(1),
+                                  Tmp1, Tmp2, Node->getOperand(4)));
+    break;
+  }
   case ISD::FADD:
   case ISD::FSUB:
   case ISD::FMUL:
   case ISD::FDIV:
   case ISD::FREM:
+  case ISD::FMINNUM:
+  case ISD::FMAXNUM:
+  case ISD::FCOPYSIGN:
   case ISD::FPOW: {
     Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
     Tmp2 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(1));
@@ -4287,10 +4220,40 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
                                   Tmp3, DAG.getIntPtrConstant(0)));
     break;
   }
-  case ISD::FLOG2:
-  case ISD::FEXP2:
+  case ISD::FMA: {
+    Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
+    Tmp2 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(1));
+    Tmp3 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(2));
+    Results.push_back(
+        DAG.getNode(ISD::FP_ROUND, dl, OVT,
+                    DAG.getNode(Node->getOpcode(), dl, NVT, Tmp1, Tmp2, Tmp3),
+                    DAG.getIntPtrConstant(0)));
+    break;
+  }
+  case ISD::FPOWI: {
+    Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
+    Tmp2 = Node->getOperand(1);
+    Tmp3 = DAG.getNode(Node->getOpcode(), dl, NVT, Tmp1, Tmp2);
+    Results.push_back(DAG.getNode(ISD::FP_ROUND, dl, OVT,
+                                  Tmp3, DAG.getIntPtrConstant(0)));
+    break;
+  }
+  case ISD::FFLOOR:
+  case ISD::FCEIL:
+  case ISD::FRINT:
+  case ISD::FNEARBYINT:
+  case ISD::FROUND:
+  case ISD::FTRUNC:
+  case ISD::FNEG:
+  case ISD::FSQRT:
+  case ISD::FSIN:
+  case ISD::FCOS:
   case ISD::FLOG:
-  case ISD::FEXP: {
+  case ISD::FLOG2:
+  case ISD::FLOG10:
+  case ISD::FABS:
+  case ISD::FEXP:
+  case ISD::FEXP2: {
     Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
     Tmp2 = DAG.getNode(Node->getOpcode(), dl, NVT, Tmp1);
     Results.push_back(DAG.getNode(ISD::FP_ROUND, dl, OVT,

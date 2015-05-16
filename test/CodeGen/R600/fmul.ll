@@ -1,4 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
 ; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck -check-prefix=R600 -check-prefix=FUNC %s
 
 
@@ -41,9 +42,9 @@ entry:
 ; SI: v_mul_f32
 ; SI: v_mul_f32
 define void @fmul_v4f32(<4 x float> addrspace(1)* %out, <4 x float> addrspace(1)* %in) {
-  %b_ptr = getelementptr <4 x float> addrspace(1)* %in, i32 1
-  %a = load <4 x float> addrspace(1) * %in
-  %b = load <4 x float> addrspace(1) * %b_ptr
+  %b_ptr = getelementptr <4 x float>, <4 x float> addrspace(1)* %in, i32 1
+  %a = load <4 x float>, <4 x float> addrspace(1) * %in
+  %b = load <4 x float>, <4 x float> addrspace(1) * %b_ptr
   %result = fmul <4 x float> %a, %b
   store <4 x float> %result, <4 x float> addrspace(1)* %out
   ret void

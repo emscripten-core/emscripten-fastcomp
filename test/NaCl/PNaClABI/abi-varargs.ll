@@ -7,7 +7,7 @@ define void @varargs_func(i32 %arg, ...) {
 
 define void @call_varargs_func(i32 %ptr) {
   %ptr2 = inttoptr i32 %ptr to void (i32, ...)*
-  call void (i32, ...)* %ptr2(i32 123)
+  call void (i32, ...) %ptr2(i32 123)
   ret void
 }
-; CHECK: Function call_varargs_func disallowed: bad function callee operand: call void (i32, ...)*
+; CHECK: Function call_varargs_func disallowed: bad function callee operand: call void (i32, ...)

@@ -111,7 +111,7 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
     fprintf(stderr, "no target architecture match.\n");
     return false;
   }
-// Some cases for building this with nacl-gcc.
+// Some cases for building this with nacl-gcc or nacl-clang.
 #elif defined(__i386__)
   CmdLineArgs->push_back("-mcpu=pentium4m");
 #elif defined(__x86_64__)

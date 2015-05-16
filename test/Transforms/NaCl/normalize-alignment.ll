@@ -4,10 +4,10 @@ target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64
 
 ; Implicit default alignments are changed to explicit alignments.
 define void @default_alignment_attrs(float %f, double %d) {
-  load i8* null
-  load i32* null
-  load float* null
-  load double* null
+  load i8, i8* null
+  load i32, i32* null
+  load float, float* null
+  load double, double* null
 
   store i8 100, i8* null
   store i32 100, i32* null
@@ -16,41 +16,41 @@ define void @default_alignment_attrs(float %f, double %d) {
   ret void
 }
 ; CHECK-LABEL: @default_alignment_attrs
-; CHECK-NEXT: load i8* null, align 1
-; CHECK-NEXT: load i32* null, align 1
-; CHECK-NEXT: load float* null, align 4
-; CHECK-NEXT: load double* null, align 8
+; CHECK-NEXT: load i8, i8* null, align 1
+; CHECK-NEXT: load i32, i32* null, align 1
+; CHECK-NEXT: load float, float* null, align 4
+; CHECK-NEXT: load double, double* null, align 8
 ; CHECK-NEXT: store i8 100, i8* null, align 1
 ; CHECK-NEXT: store i32 100, i32* null, align 1
 ; CHECK-NEXT: store float %f, float* null, align 4
 ; CHECK-NEXT: store double %d, double* null, align 8
 
 define void @reduce_alignment_assumptions() {
-  load i32* null, align 4
-  load float* null, align 2
-  load float* null, align 4
-  load float* null, align 8
-  load double* null, align 2
-  load double* null, align 8
-  load double* null, align 16
+  load i32, i32* null, align 4
+  load float, float* null, align 2
+  load float, float* null, align 4
+  load float, float* null, align 8
+  load double, double* null, align 2
+  load double, double* null, align 8
+  load double, double* null, align 16
 
   ; Higher alignment assumptions must be retained for atomics.
-  load atomic i32* null seq_cst, align 4
-  load atomic i32* null seq_cst, align 8
+  load atomic i32, i32* null seq_cst, align 4
+  load atomic i32, i32* null seq_cst, align 8
   store atomic i32 100, i32* null seq_cst, align 4
   store atomic i32 100, i32* null seq_cst, align 8
   ret void
 }
 ; CHECK-LABEL: @reduce_alignment_assumptions
-; CHECK-NEXT: load i32* null, align 1
-; CHECK-NEXT: load float* null, align 1
-; CHECK-NEXT: load float* null, align 4
-; CHECK-NEXT: load float* null, align 4
-; CHECK-NEXT: load double* null, align 1
-; CHECK-NEXT: load double* null, align 8
-; CHECK-NEXT: load double* null, align 8
-; CHECK-NEXT: load atomic i32* null seq_cst, align 4
-; CHECK-NEXT: load atomic i32* null seq_cst, align 4
+; CHECK-NEXT: load i32, i32* null, align 1
+; CHECK-NEXT: load float, float* null, align 1
+; CHECK-NEXT: load float, float* null, align 4
+; CHECK-NEXT: load float, float* null, align 4
+; CHECK-NEXT: load double, double* null, align 1
+; CHECK-NEXT: load double, double* null, align 8
+; CHECK-NEXT: load double, double* null, align 8
+; CHECK-NEXT: load atomic i32, i32* null seq_cst, align 4
+; CHECK-NEXT: load atomic i32, i32* null seq_cst, align 4
 ; CHECK-NEXT: store atomic i32 100, i32* null seq_cst, align 4
 ; CHECK-NEXT: store atomic i32 100, i32* null seq_cst, align 4
 

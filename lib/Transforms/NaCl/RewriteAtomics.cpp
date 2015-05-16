@@ -51,9 +51,6 @@ public:
   }
 
   virtual bool runOnModule(Module &M);
-  virtual void getAnalysisUsage(AnalysisUsage &Info) const {
-    Info.addRequired<DataLayoutPass>();
-  }
 };
 
 template <class T> std::string ToStr(const T &V) {
@@ -67,7 +64,7 @@ class AtomicVisitor : public InstVisitor<AtomicVisitor> {
 public:
   AtomicVisitor(Module &M, Pass &P)
       : M(M), C(M.getContext()),
-        TD(P.getAnalysis<DataLayoutPass>().getDataLayout()), AI(C),
+        TD(M.getDataLayout()), AI(C),
         ModifiedModule(false) {}
   ~AtomicVisitor() {}
   bool modifiedModule() const { return ModifiedModule; }
@@ -85,9 +82,9 @@ private:
   NaCl::AtomicIntrinsics AI;
   bool ModifiedModule;
 
-  AtomicVisitor() LLVM_DELETED_FUNCTION;
-  AtomicVisitor(const AtomicVisitor &) LLVM_DELETED_FUNCTION;
-  AtomicVisitor &operator=(const AtomicVisitor &) LLVM_DELETED_FUNCTION;
+  AtomicVisitor() = delete;
+  AtomicVisitor(const AtomicVisitor &) = delete;
+  AtomicVisitor &operator=(const AtomicVisitor &) = delete;
 
   /// Create an integer constant holding a NaCl::MemoryOrder that can be
   /// passed as an argument to one of the @llvm.nacl.atomic.*

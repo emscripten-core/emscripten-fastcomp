@@ -13,7 +13,7 @@ target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64
 
 define <4 x i32> @test_vec_i32() {
   %bc = bitcast [4 x i32]* @veci32 to <4 x i32>*
-  %v = load <4 x i32>* %bc
+  %v = load <4 x i32>, <4 x i32>* %bc
   ret <4 x i32> %v
 }
 ; CHECK-LABEL: @test_vec_i32(
@@ -21,7 +21,7 @@ define <4 x i32> @test_vec_i32() {
 
 define <4 x i32> @test_vec_i32_zero() {
   %bc = bitcast [4 x i32]* @veci32zero to <4 x i32>*
-  %v = load <4 x i32>* %bc
+  %v = load <4 x i32>, <4 x i32>* %bc
   ret <4 x i32> %v
 }
 ; CHECK-LABEL: @test_vec_i32_zero(
@@ -29,7 +29,7 @@ define <4 x i32> @test_vec_i32_zero() {
 
 define <4 x i32> @test_vec_i8() {
   %bc = bitcast [16 x i8]* @veci8 to <4 x i32>*
-  %v = load <4 x i32>* %bc
+  %v = load <4 x i32>, <4 x i32>* %bc
   ret <4 x i32> %v
 }
 ; CHECK-LABEL: @test_vec_i8(
@@ -37,7 +37,7 @@ define <4 x i32> @test_vec_i8() {
 
 define <4 x i32> @test_vec_i8_zero() {
   %bc = bitcast [16 x i8]* @veci8zero to <4 x i32>*
-  %v = load <4 x i32>* %bc
+  %v = load <4 x i32>, <4 x i32>* %bc
   ret <4 x i32> %v
 }
 ; CHECK-LABEL: @test_vec_i8_zero(

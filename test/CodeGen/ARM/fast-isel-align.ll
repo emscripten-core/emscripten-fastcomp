@@ -1,21 +1,21 @@
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=ARM
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
+; RUN: llc < %s -O0 -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN
 
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=ARM
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
+; RUN: llc < %s -O0 -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=thumbv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=dynamic-no-pic -mtriple=thumbv7-linux-gnueabi -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN
 
-; LOCALMOD: use -relocation-model=static for NaCl to keep fast-isel simple.
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=static -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; LOCALMOD: use -relocation-model=static for NaCl to keep fast-isel simple. MERGETODO(dschuff): remove this localmod?
+; RUN: llc < %s -O0 -fast-isel-abort=1 -relocation-model=static -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM
 ; RUN: llc < %s -O0 -arm-strict-align -relocation-model=static -mtriple=armv7-unknown-nacl -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 
-; RUN: llc < %s -O0  -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
-; RUN: llc < %s -O0  -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN
-; RUN: llc < %s -O0 -arm-no-strict-align -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=ARM
-; RUN: llc < %s -O0 -arm-no-strict-align -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
+; RUN: llc < %s -O0  -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
+; RUN: llc < %s -O0  -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=thumbv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN
+; RUN: llc < %s -O0 -arm-no-strict-align -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -arm-no-strict-align -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=thumbv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=THUMB
 ; RUN: llc < %s -O0 -relocation-model=dynamic-no-pic -mtriple=armv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=ARM-STRICT-ALIGN
 ; RUN: llc < %s -O0 -relocation-model=dynamic-no-pic -mtriple=thumbv7-unknown-unknown -verify-machineinstrs | FileCheck %s --check-prefix=THUMB-STRICT-ALIGN
 
@@ -35,8 +35,8 @@ entry:
 ; THUMB: str r1, [r0]
 
   %add = fadd float %x, %y
-  %0 = load %struct.anon** @a, align 4
-  %x1 = getelementptr inbounds %struct.anon* %0, i32 0, i32 0
+  %0 = load %struct.anon*, %struct.anon** @a, align 4
+  %x1 = getelementptr inbounds %struct.anon, %struct.anon* %0, i32 0, i32 0
   store float %add, float* %x1, align 1
   ret void
 }
@@ -52,7 +52,7 @@ entry:
 ; ARM: @word_aligned_f64_store
 ; THUMB: @word_aligned_f64_store
   %add = fadd double %a, %b
-  store double %add, double* getelementptr inbounds (%struct.anon.0* @foo_unpacked, i32 0, i32 0), align 4
+  store double %add, double* getelementptr inbounds (%struct.anon.0, %struct.anon.0* @foo_unpacked, i32 0, i32 0), align 4
 ; ARM: vstr d16, [r0]
 ; THUMB: vstr d16, [r0]
   ret void
@@ -67,9 +67,9 @@ entry:
 ; THUMB: @unaligned_f32_load
   %0 = alloca %class.TAlignTest*, align 4
   store %class.TAlignTest* %this, %class.TAlignTest** %0, align 4
-  %1 = load %class.TAlignTest** %0
-  %2 = getelementptr inbounds %class.TAlignTest* %1, i32 0, i32 1
-  %3 = load float* %2, align 1
+  %1 = load %class.TAlignTest*, %class.TAlignTest** %0
+  %2 = getelementptr inbounds %class.TAlignTest, %class.TAlignTest* %1, i32 0, i32 1
+  %3 = load float, float* %2, align 1
   %4 = fcmp une float %3, 0.000000e+00
 ; ARM: ldr r[[R:[0-9]+]], [r0, #2]
 ; ARM: vmov s0, r[[R]]
@@ -104,7 +104,7 @@ entry:
 ; THUMB-STRICT-ALIGN: ldrb
 ; THUMB-STRICT-ALIGN: ldrb
 
-  %0 = load i16* %x, align 1
+  %0 = load i16, i16* %x, align 1
   ret i16 %0
 }
 
@@ -140,6 +140,6 @@ entry:
 ; THUMB-STRICT-ALIGN: ldrb
 ; THUMB-STRICT-ALIGN: ldrb
 
-  %0 = load i32* %x, align 1
+  %0 = load i32, i32* %x, align 1
   ret i32 %0
 }

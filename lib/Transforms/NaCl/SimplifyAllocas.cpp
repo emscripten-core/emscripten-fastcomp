@@ -40,7 +40,7 @@ private:
   bool doInitialization(Function &F) override {
     if (!Initialized) {
       M = F.getParent();
-      DL = M->getDataLayout();
+      DL = &M->getDataLayout();
       IntPtrType = DL->getIntPtrType(M->getContext());
       Int8Type = Type::getInt8Ty(M->getContext());
       Initialized = true;

@@ -1,5 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
-; RUN: llc -march=r600 -mcpu=bonaire -verify-machineinstrs < %s | FileCheck -check-prefix=CI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=bonaire -verify-machineinstrs < %s | FileCheck -check-prefix=CI -check-prefix=FUNC %s
 
 declare i32 @llvm.r600.read.tidig.x() nounwind readnone
 
@@ -48,8 +48,8 @@ define void @fp_to_sint_v4f64_v4i32(<4 x i32> addrspace(1)* %out, <4 x double> %
 ; CI: buffer_store_dwordx2 v{{\[}}[[LO]]:[[HI]]{{\]}}
 define void @fp_to_sint_i64_f64(i64 addrspace(1)* %out, double addrspace(1)* %in) {
   %tid = call i32 @llvm.r600.read.tidig.x() nounwind readnone
-  %gep = getelementptr double addrspace(1)* %in, i32 %tid
-  %val = load double addrspace(1)* %gep, align 8
+  %gep = getelementptr double, double addrspace(1)* %in, i32 %tid
+  %val = load double, double addrspace(1)* %gep, align 8
   %cast = fptosi double %val to i64
   store i64 %cast, i64 addrspace(1)* %out, align 8
   ret void

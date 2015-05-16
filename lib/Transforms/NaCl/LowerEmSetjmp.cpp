@@ -213,7 +213,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
         BasicBlock *SJBB = CI->getParent();
         // The tail is everything right after the call, and will be reached once when setjmp is
         // called, and later when longjmp returns to the setjmp
-        BasicBlock *Tail = SplitBlock(SJBB, CI->getNextNode(), this);
+        BasicBlock *Tail = SplitBlock(SJBB, CI->getNextNode());
         // Add a phi to the tail, which will be the output of setjmp, which indicates if this is the
         // first call or a longjmp back. The phi directly uses the right value based on where we
         // arrive from
@@ -268,7 +268,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
             // use the pre|postinvoke that exceptions lowering already made
             Check = Iter++;
           }
-          BasicBlock *Tail = SplitBlock(BB, Iter, this); // Iter already points to the next instruction, as we need
+          BasicBlock *Tail = SplitBlock(BB, Iter); // Iter already points to the next instruction, as we need
           TerminatorInst *TI = BB->getTerminator();
           if (!Check) {
             // no existing pre|postinvoke, create our own

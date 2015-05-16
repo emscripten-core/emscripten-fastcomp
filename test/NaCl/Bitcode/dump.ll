@@ -23,13 +23,13 @@ define void @PhiBackwardRefs(i1) {
 
 true:                                             ; preds = %1
   %4 = bitcast i8* %2 to i32*
-  %5 = load i32* %4
+  %5 = load i32, i32* %4
   %6 = ptrtoint i8* %3 to i32
   br label %merge
 
 false:                                            ; preds = %1
   %7 = bitcast i8* %2 to i32*
-  %8 = load i32* %7
+  %8 = load i32, i32* %7
   %9 = ptrtoint i8* %3 to i32
   br label %merge
 

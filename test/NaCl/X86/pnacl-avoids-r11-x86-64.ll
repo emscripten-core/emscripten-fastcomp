@@ -60,7 +60,7 @@ entry:
   %add19 = add nsw i32 %add18, %call5
   %add20 = add nsw i32 %add19, %call6
   %add21 = add nsw i32 %add20, %call7
-  store volatile i32 %add21, i32* @v1a, align 4, !tbaa !0
+  store volatile i32 %add21, i32* @v1a, align 4
   %add22 = add nsw i32 %call9, %call8
   %add23 = add nsw i32 %add22, %call10
   %add24 = add nsw i32 %add23, %call11
@@ -68,12 +68,12 @@ entry:
   %add26 = add nsw i32 %add25, %call13
   %add27 = add nsw i32 %add26, %call14
   %add28 = add nsw i32 %add27, %call15
-  store volatile i32 %add28, i32* @v1b, align 4, !tbaa !0
+  store volatile i32 %add28, i32* @v1b, align 4
   %add32 = add nsw i32 %call8, %add17
   %add33 = add nsw i32 %add32, %call9
   %add34 = add nsw i32 %add33, %call10
   %add35 = add nsw i32 %add34, %call11
-  store volatile i32 %add35, i32* @v2a, align 4, !tbaa !0
+  store volatile i32 %add35, i32* @v2a, align 4
   %add36 = add nsw i32 %call5, %call4
   %add37 = add nsw i32 %add36, %call6
   %add38 = add nsw i32 %add37, %call7
@@ -81,14 +81,14 @@ entry:
   %add40 = add nsw i32 %add39, %call13
   %add41 = add nsw i32 %add40, %call14
   %add42 = add nsw i32 %add41, %call15
-  store volatile i32 %add42, i32* @v2b, align 4, !tbaa !0
+  store volatile i32 %add42, i32* @v2b, align 4
   %add44 = add nsw i32 %call4, %add
   %add45 = add nsw i32 %add44, %call5
   %add46 = add nsw i32 %add45, %call8
   %add47 = add nsw i32 %add46, %call9
   %add48 = add nsw i32 %add47, %call12
   %add49 = add nsw i32 %add48, %call13
-  store volatile i32 %add49, i32* @v3a, align 4, !tbaa !0
+  store volatile i32 %add49, i32* @v3a, align 4
   %add50 = add nsw i32 %call3, %call2
   %add51 = add nsw i32 %add50, %call6
   %add52 = add nsw i32 %add51, %call7
@@ -96,7 +96,7 @@ entry:
   %add54 = add nsw i32 %add53, %call11
   %add55 = add nsw i32 %add54, %call14
   %add56 = add nsw i32 %add55, %call15
-  store volatile i32 %add56, i32* @v3b, align 4, !tbaa !0
+  store volatile i32 %add56, i32* @v3b, align 4
   %add57 = add nsw i32 %call2, %call
   %add58 = add nsw i32 %add57, %call4
   %add59 = add nsw i32 %add58, %call6
@@ -104,7 +104,7 @@ entry:
   %add61 = add nsw i32 %add60, %call10
   %add62 = add nsw i32 %add61, %call12
   %add63 = add nsw i32 %add62, %call14
-  store volatile i32 %add63, i32* @v4a, align 4, !tbaa !0
+  store volatile i32 %add63, i32* @v4a, align 4
   %add64 = add nsw i32 %call3, %call1
   %add65 = add nsw i32 %add64, %call5
   %add66 = add nsw i32 %add65, %call7
@@ -112,7 +112,7 @@ entry:
   %add68 = add nsw i32 %add67, %call11
   %add69 = add nsw i32 %add68, %call13
   %add70 = add nsw i32 %add69, %call15
-  store volatile i32 %add70, i32* @v4b, align 4, !tbaa !0
+  store volatile i32 %add70, i32* @v4b, align 4
   tail call void @Use(i32 %call, i32 %call1, i32 %call2, i32 %call3, i32 %call4, i32 %call5, i32 %call6, i32 %call7, i32 %call8, i32 %call9, i32 %call10, i32 %call11, i32 %call12, i32 %call13, i32 %call14, i32 %call15) #2
   tail call void @Use(i32 %call, i32 %call1, i32 %call2, i32 %call3, i32 %call4, i32 %call5, i32 %call6, i32 %call7, i32 %call8, i32 %call9, i32 %call10, i32 %call11, i32 %call12, i32 %call13, i32 %call14, i32 %call15) #2
   ret void
@@ -125,7 +125,3 @@ declare void @Use(i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i3
 attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf"="true" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf"="true" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #2 = { nounwind }
-
-!0 = metadata !{metadata !"int", metadata !1}
-!1 = metadata !{metadata !"omnipotent char", metadata !2}
-!2 = metadata !{metadata !"Simple C/C++ TBAA"}

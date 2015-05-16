@@ -34,6 +34,11 @@ enum {
   CALL,
   SIBCALL,
 
+  // TLS calls.  Like regular calls, except operand 1 is the TLS symbol.
+  // (The call target is implicitly __tls_get_offset.)
+  TLS_GDCALL,
+  TLS_LDCALL,
+
   // Wraps a TargetGlobalAddress that should be loaded using PC-relative
   // accesses (LARL).  Operand 0 is the address.
   PCREL_WRAPPER,
@@ -81,6 +86,9 @@ enum {
   // Extracts the value of a 32-bit access register.  Operand 0 is
   // the number of the register.
   EXTRACT_ACCESS,
+
+  // Count number of bits set in operand 0 per byte.
+  POPCNT,
 
   // Wrappers around the ISD opcodes of the same name.  The output and
   // first input operands are GR128s.  The trailing numbers are the
@@ -137,6 +145,15 @@ enum {
 
   // Perform a serialization operation.  (BCR 15,0 or BCR 14,0.)
   SERIALIZE,
+
+  // Transaction begin.  The first operand is the chain, the second
+  // the TDB pointer, and the third the immediate control field.
+  // Returns chain and glue.
+  TBEGIN,
+  TBEGIN_NOFLOAT,
+
+  // Transaction end.  Just the chain operand.  Returns chain and glue.
+  TEND,
 
   // Wrappers around the inner loop of an 8- or 16-bit ATOMIC_SWAP or
   // ATOMIC_LOAD_<op>.
@@ -198,7 +215,8 @@ class SystemZTargetMachine;
 
 class SystemZTargetLowering : public TargetLowering {
 public:
-  explicit SystemZTargetLowering(const TargetMachine &TM);
+  explicit SystemZTargetLowering(const TargetMachine &TM,
+                                 const SystemZSubtarget &STI);
 
   // Override TargetLowering.
   MVT getScalarShiftAmountTy(EVT LHSTy) const override {
@@ -207,6 +225,8 @@ public:
   EVT getSetCCResultType(LLVMContext &, EVT) const override;
   bool isFMAFasterThanFMulAndFAdd(EVT VT) const override;
   bool isFPImmLegal(const APFloat &Imm, EVT VT) const override;
+  bool isLegalICmpImmediate(int64_t Imm) const override;
+  bool isLegalAddImmediate(int64_t Imm) const override;
   bool isLegalAddressingMode(const AddrMode &AM, Type *Ty) const override;
   bool allowsMisalignedMemoryAccesses(EVT VT, unsigned AS,
                                       unsigned Align,
@@ -215,8 +235,9 @@ public:
   bool isTruncateFree(EVT, EVT) const override;
   const char *getTargetNodeName(unsigned Opcode) const override;
   std::pair<unsigned, const TargetRegisterClass *>
-    getRegForInlineAsmConstraint(const std::string &Constraint,
-                                 MVT VT) const override;
+  getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                               const std::string &Constraint,
+                               MVT VT) const override;
   TargetLowering::ConstraintType
     getConstraintType(const std::string &Constraint) const override;
   TargetLowering::ConstraintWeight
@@ -226,6 +247,26 @@ public:
                                     std::string &Constraint,
                                     std::vector<SDValue> &Ops,
                                     SelectionDAG &DAG) const override;
+
+  unsigned getInlineAsmMemConstraint(
+      const std::string &ConstraintCode) const override {
+    if (ConstraintCode.size() == 1) {
+      switch(ConstraintCode[0]) {
+      default:
+        break;
+      case 'Q':
+        return InlineAsm::Constraint_Q;
+      case 'R':
+        return InlineAsm::Constraint_R;
+      case 'S':
+        return InlineAsm::Constraint_S;
+      case 'T':
+        return InlineAsm::Constraint_T;
+      }
+    }
+    return TargetLowering::getInlineAsmMemConstraint(ConstraintCode);
+  }
+
   MachineBasicBlock *EmitInstrWithCustomInserter(MachineInstr *MI,
                                                  MachineBasicBlock *BB) const
     override;
@@ -257,6 +298,9 @@ private:
   SDValue lowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerGlobalAddress(GlobalAddressSDNode *Node,
                              SelectionDAG &DAG) const;
+  SDValue lowerTLSGetOffset(GlobalAddressSDNode *Node,
+                            SelectionDAG &DAG, unsigned Opcode,
+                            SDValue GOTOffset) const;
   SDValue lowerGlobalTLSAddress(GlobalAddressSDNode *Node,
                                 SelectionDAG &DAG) const;
   SDValue lowerBlockAddress(BlockAddressSDNode *Node,
@@ -272,6 +316,7 @@ private:
   SDValue lowerUDIVREM(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerBITCAST(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerOR(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerCTPOP(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerATOMIC_LOAD(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerATOMIC_STORE(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerATOMIC_LOAD_OP(SDValue Op, SelectionDAG &DAG,
@@ -282,6 +327,7 @@ private:
   SDValue lowerSTACKSAVE(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerSTACKRESTORE(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerPREFETCH(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerINTRINSIC_W_CHAIN(SDValue Op, SelectionDAG &DAG) const;
 
   // If the last instruction before MBBI in MBB was some form of COMPARE,
   // try to replace it with a COMPARE AND BRANCH just before MBBI.
@@ -319,6 +365,10 @@ private:
   MachineBasicBlock *emitStringWrapper(MachineInstr *MI,
                                        MachineBasicBlock *BB,
                                        unsigned Opcode) const;
+  MachineBasicBlock *emitTransactionBegin(MachineInstr *MI,
+                                          MachineBasicBlock *MBB,
+                                          unsigned Opcode,
+                                          bool NoFloat) const;
 };
 } // end namespace llvm
 

@@ -1,5 +1,5 @@
 ; RUN: llc                             -aarch64-atomic-cfg-tidy=0 -verify-machineinstrs -mtriple=aarch64-apple-darwin < %s | FileCheck --check-prefix=CHECK %s
-; RUN: llc -fast-isel -fast-isel-abort -aarch64-atomic-cfg-tidy=0 -verify-machineinstrs -mtriple=aarch64-apple-darwin < %s | FileCheck --check-prefix=CHECK --check-prefix=FAST %s
+; RUN: llc -fast-isel -fast-isel-abort=1 -aarch64-atomic-cfg-tidy=0 -verify-machineinstrs -mtriple=aarch64-apple-darwin < %s | FileCheck --check-prefix=CHECK --check-prefix=FAST %s
 
 define i32 @icmp_eq_i8(i8 zeroext %a) {
 ; CHECK-LABEL: icmp_eq_i8
@@ -291,5 +291,5 @@ bb2:
   ret i32 0
 }
 
-!0 = metadata !{metadata !"branch_weights", i32 0, i32 2147483647}
-!1 = metadata !{metadata !"branch_weights", i32 2147483647, i32 0}
+!0 = !{!"branch_weights", i32 0, i32 2147483647}
+!1 = !{!"branch_weights", i32 2147483647, i32 0}

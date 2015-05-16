@@ -14,24 +14,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "RenderingSupport.h"
-#include "CoverageViewOptions.h"
 #include "CoverageFilters.h"
-#include "SourceCoverageView.h"
-#include "CoverageSummary.h"
 #include "CoverageReport.h"
-#include "llvm/ADT/StringRef.h"
+#include "CoverageViewOptions.h"
+#include "SourceCoverageView.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ProfileData/InstrProfReader.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/ProfileData/CoverageMapping.h"
-#include "llvm/ProfileData/CoverageMappingReader.h"
+#include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/Signals.h"
 #include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/Process.h"
+#include "llvm/Support/Signals.h"
 #include <functional>
 #include <system_error>
 
@@ -90,6 +89,7 @@ public:
       LoadedSourceFiles;
   bool CompareFilenamesOnly;
   StringMap<std::string> RemappedFilenames;
+  llvm::Triple::ArchType CoverageArch;
 };
 }
 
@@ -196,7 +196,8 @@ CodeCoverageTool::createSourceFileView(StringRef SourceFile,
 }
 
 std::unique_ptr<CoverageMapping> CodeCoverageTool::load() {
-  auto CoverageOrErr = CoverageMapping::load(ObjectFilename, PGOFilename);
+  auto CoverageOrErr = CoverageMapping::load(ObjectFilename, PGOFilename,
+                                             CoverageArch);
   if (std::error_code EC = CoverageOrErr.getError()) {
     colored_ostream(errs(), raw_ostream::RED)
         << "error: Failed to load coverage: " << EC.message();
@@ -245,6 +246,9 @@ int CodeCoverageTool::run(Command Cmd, int argc, const char **argv) {
       cl::desc(
           "File with the profile data obtained after an instrumented run"));
 
+  cl::opt<std::string> Arch(
+      "arch", cl::desc("architecture of the coverage mapping binary"));
+
   cl::opt<bool> DebugDump("dump", cl::Optional,
                           cl::desc("Show internal debug dump"));
 
@@ -290,10 +294,18 @@ int CodeCoverageTool::run(Command Cmd, int argc, const char **argv) {
                "greater than the given threshold"),
       cl::cat(FilteringCategory));
 
+  cl::opt<cl::boolOrDefault> UseColor(
+      "use-color", cl::desc("Emit colored output (default=autodetect)"),
+      cl::init(cl::BOU_UNSET));
+
   auto commandLineParser = [&, this](int argc, const char **argv) -> int {
     cl::ParseCommandLineOptions(argc, argv, "LLVM code coverage tool\n");
     ViewOpts.Debug = DebugDump;
     CompareFilenamesOnly = FilenameEquivalence;
+
+    ViewOpts.Colors = UseColor == cl::BOU_UNSET
+                          ? sys::Process::StandardOutHasColors()
+                          : UseColor == cl::BOU_TRUE;
 
     // Create the function filters
     if (!NameFilters.empty() || !NameRegexFilters.empty()) {
@@ -325,12 +337,23 @@ int CodeCoverageTool::run(Command Cmd, int argc, const char **argv) {
       Filters.push_back(std::unique_ptr<CoverageFilter>(StatFilterer));
     }
 
-    for (const auto &File : InputSourceFiles) {
-      SmallString<128> Path(File);
-      if (std::error_code EC = sys::fs::make_absolute(Path)) {
-        errs() << "error: " << File << ": " << EC.message();
+    if (Arch.empty())
+      CoverageArch = llvm::Triple::ArchType::UnknownArch;
+    else {
+      CoverageArch = Triple(Arch).getArch();
+      if (CoverageArch == llvm::Triple::ArchType::UnknownArch) {
+        errs() << "error: Unknown architecture: " << Arch << "\n";
         return 1;
       }
+    }
+
+    for (const auto &File : InputSourceFiles) {
+      SmallString<128> Path(File);
+      if (!CompareFilenamesOnly)
+        if (std::error_code EC = sys::fs::make_absolute(Path)) {
+          errs() << "error: " << File << ": " << EC.message();
+          return 1;
+        }
       SourceFiles.push_back(Path.str());
     }
     return 0;
@@ -374,15 +397,10 @@ int CodeCoverageTool::show(int argc, const char **argv,
                                    cl::desc("Show function instantiations"),
                                    cl::cat(ViewCategory));
 
-  cl::opt<bool> NoColors("no-colors", cl::Optional,
-                         cl::desc("Don't show text colors"), cl::init(false),
-                         cl::cat(ViewCategory));
-
   auto Err = commandLineParser(argc, argv);
   if (Err)
     return Err;
 
-  ViewOpts.Colors = !NoColors;
   ViewOpts.ShowLineNumbers = true;
   ViewOpts.ShowLineStats = ShowLineExecutionCounts.getNumOccurrences() != 0 ||
                            !ShowRegions || ShowBestLineRegionsCounts;
@@ -448,28 +466,19 @@ int CodeCoverageTool::show(int argc, const char **argv,
 
 int CodeCoverageTool::report(int argc, const char **argv,
                              CommandLineParserType commandLineParser) {
-  cl::opt<bool> NoColors("no-colors", cl::Optional,
-                         cl::desc("Don't show text colors"), cl::init(false));
-
   auto Err = commandLineParser(argc, argv);
   if (Err)
     return Err;
-
-  ViewOpts.Colors = !NoColors;
 
   auto Coverage = load();
   if (!Coverage)
     return 1;
 
-  CoverageSummary Summarizer;
-  Summarizer.createSummaries(*Coverage);
-  CoverageReport Report(ViewOpts, Summarizer);
-  if (SourceFiles.empty() && Filters.empty()) {
+  CoverageReport Report(ViewOpts, std::move(Coverage));
+  if (SourceFiles.empty())
     Report.renderFileReports(llvm::outs());
-    return 0;
-  }
-
-  Report.renderFunctionReports(llvm::outs());
+  else
+    Report.renderFunctionReports(SourceFiles, llvm::outs());
   return 0;
 }
 

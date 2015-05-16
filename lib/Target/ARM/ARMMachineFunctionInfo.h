@@ -16,10 +16,10 @@
 
 #include "ARMSubtarget.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/ADT/DenseMap.h"
 
 namespace llvm {
 
@@ -149,11 +149,7 @@ public:
   unsigned getStoredByValParamsPadding() const { return StByValParamsPadding; }
   void setStoredByValParamsPadding(unsigned p) { StByValParamsPadding = p; }
 
-  unsigned getArgRegsSaveSize(unsigned Align = 0) const {
-    if (!Align)
-      return ArgRegsSaveSize;
-    return (ArgRegsSaveSize + Align - 1) & ~(Align - 1);
-  }
+  unsigned getArgRegsSaveSize() const { return ArgRegsSaveSize; }
   void setArgRegsSaveSize(unsigned s) { ArgRegsSaveSize = s; }
 
   unsigned getReturnRegsCount() const { return ReturnRegsCount; }

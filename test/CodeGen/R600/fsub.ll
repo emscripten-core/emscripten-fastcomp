@@ -1,13 +1,14 @@
 ; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck -check-prefix=R600 -check-prefix=FUNC %s
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
 
 
 ; FUNC-LABEL: {{^}}v_fsub_f32:
 ; SI: v_subrev_f32_e32 {{v[0-9]+}}, {{v[0-9]+}}, {{v[0-9]+}}
 define void @v_fsub_f32(float addrspace(1)* %out, float addrspace(1)* %in) {
-  %b_ptr = getelementptr float addrspace(1)* %in, i32 1
-  %a = load float addrspace(1)* %in, align 4
-  %b = load float addrspace(1)* %b_ptr, align 4
+  %b_ptr = getelementptr float, float addrspace(1)* %in, i32 1
+  %a = load float, float addrspace(1)* %in, align 4
+  %b = load float, float addrspace(1)* %b_ptr, align 4
   %result = fsub float %a, %b
   store float %result, float addrspace(1)* %out, align 4
   ret void
@@ -51,9 +52,9 @@ define void @fsub_v2f32(<2 x float> addrspace(1)* %out, <2 x float> %a, <2 x flo
 ; SI: v_subrev_f32_e32 {{v[0-9]+}}, {{v[0-9]+}}, {{v[0-9]+}}
 ; SI: v_subrev_f32_e32 {{v[0-9]+}}, {{v[0-9]+}}, {{v[0-9]+}}
 define void @v_fsub_v4f32(<4 x float> addrspace(1)* %out, <4 x float> addrspace(1)* %in) {
-  %b_ptr = getelementptr <4 x float> addrspace(1)* %in, i32 1
-  %a = load <4 x float> addrspace(1)* %in, align 16
-  %b = load <4 x float> addrspace(1)* %b_ptr, align 16
+  %b_ptr = getelementptr <4 x float>, <4 x float> addrspace(1)* %in, i32 1
+  %a = load <4 x float>, <4 x float> addrspace(1)* %in, align 16
+  %b = load <4 x float>, <4 x float> addrspace(1)* %b_ptr, align 16
   %result = fsub <4 x float> %a, %b
   store <4 x float> %result, <4 x float> addrspace(1)* %out, align 16
   ret void

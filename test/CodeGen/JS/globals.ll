@@ -15,9 +15,9 @@ target triple = "asmjs-unknown-emscripten"
 ; CHECK:  [[VAR_d:\$[a-z]+]] = (([[VAR_c:\$[a-z]+]]) + ([[VAR_b:\$[a-z]+]]))|0;
 ; CHECK:  return ([[VAR_d:\$[a-z]+]]|0);
 define i32 @loads() {
-  %t = load i32* @A
-  %s = load double* @B
-  %u = load i8* @C
+  %t = load i32, i32* @A
+  %s = load double, double* @B
+  %u = load i8, i8* @C
   %a = fptoui double %s to i32
   %b = sext i8 %u to i32
   %c = add i32 %t, %a

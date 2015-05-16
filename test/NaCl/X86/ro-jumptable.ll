@@ -39,11 +39,12 @@ sw.epilog:                                        ; preds = %sw.bb5, %entry
 
 ; CHECK: .section .text.foo_linkonce,"axG",@progbits,foo_linkonce,comdat
 ; CHECK: @foo_linkonce
-; Check that the jump table for the linkonce_odr function goes into a comdat
+; Check that the jump table for the comdat function goes into a comdat
 ; group uniqued like the function
 ; CHECK: .section .rodata.foo_linkonce,"aG",@progbits,foo_linkonce,comdat
 ; CHECK: .long .LBB1
-define linkonce_odr void @foo_linkonce(i32 %a) {
+$foo_linkonce = comdat any
+define linkonce_odr void @foo_linkonce(i32 %a) comdat {
 entry:
   switch i32 %a, label %sw.epilog [
     i32 3, label %sw.bb

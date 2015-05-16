@@ -21,6 +21,8 @@
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"  // @LOCALMOD
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -55,6 +57,11 @@ static cl::opt<bool>
 ShowAnnotations("show-annotations",
                 cl::desc("Add informational comments to the .ll file"));
 
+static cl::opt<bool> PreserveAssemblyUseListOrder(
+    "preserve-ll-uselistorder",
+    cl::desc("Preserve use-list order when writing LLVM assembly."),
+    cl::init(false), cl::Hidden);
+
 // @LOCALMOD-BEGIN
 static cl::opt<NaClFileFormat>
 InputFileFormat(
@@ -71,12 +78,9 @@ namespace {
 
 static void printDebugLoc(const DebugLoc &DL, formatted_raw_ostream &OS) {
   OS << DL.getLine() << ":" << DL.getCol();
-  if (MDNode *N = DL.getInlinedAt(getGlobalContext())) {
-    DebugLoc IDL = DebugLoc::getFromDILocation(N);
-    if (!IDL.isUnknown()) {
-      OS << "@";
-      printDebugLoc(IDL,OS);
-    }
+  if (MDLocation *IDL = DL.getInlinedAt()) {
+    OS << "@";
+    printDebugLoc(IDL, OS);
   }
 }
 class CommentWriter : public AssemblyAnnotationWriter {
@@ -94,8 +98,7 @@ public:
       OS << "; [#uses=" << V.getNumUses() << " type=" << *V.getType() << "]";  // Output # uses and type
     }
     if (const Instruction *I = dyn_cast<Instruction>(&V)) {
-      const DebugLoc &DL = I->getDebugLoc();
-      if (!DL.isUnknown()) {
+      if (const DebugLoc &DL = I->getDebugLoc()) {
         if (!Padded) {
           OS.PadToColumn(50);
           Padded = true;
@@ -111,7 +114,7 @@ public:
           OS.PadToColumn(50);
           OS << ";";
         }
-        OS << " [debug variable = " << Var.getName() << "]";
+        OS << " [debug variable = " << Var->getName() << "]";
       }
       else if (const DbgValueInst *DVI = dyn_cast<DbgValueInst>(I)) {
         DIVariable Var(DVI->getVariable());
@@ -119,13 +122,31 @@ public:
           OS.PadToColumn(50);
           OS << ";";
         }
-        OS << " [debug variable = " << Var.getName() << "]";
+        OS << " [debug variable = " << Var->getName() << "]";
       }
     }
   }
 };
 
 } // end anon namespace
+
+static void diagnosticHandler(const DiagnosticInfo &DI, void *Context) {
+  raw_ostream &OS = errs();
+  OS << (char *)Context << ": ";
+  switch (DI.getSeverity()) {
+  case DS_Error: OS << "error: "; break;
+  case DS_Warning: OS << "warning: "; break;
+  case DS_Remark: OS << "remark: "; break;
+  case DS_Note: OS << "note: "; break;
+  }
+
+  DiagnosticPrinterRawOStream DP(OS);
+  DI.print(DP);
+  OS << '\n';
+
+  if (DI.getSeverity() == DS_Error)
+    exit(1);
+}
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
@@ -135,6 +156,7 @@ int main(int argc, char **argv) {
   LLVMContext &Context = getGlobalContext();
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
+  Context.setDiagnosticHandler(diagnosticHandler, argv[0]);
 
   cl::ParseCommandLineOptions(argc, argv, "llvm .bc -> .ll disassembler\n");
 
@@ -142,10 +164,10 @@ int main(int argc, char **argv) {
   std::unique_ptr<Module> M;
 
   // Use the bitcode streaming interface
-  DataStreamer *streamer(getDataFileStreamer(InputFilename, &ErrorMessage));
-  if (streamer) {
+  DataStreamer *Streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
+  if (Streamer) {
     std::unique_ptr<StreamingMemoryObject> Buffer(
-        new StreamingMemoryObjectImpl(streamer));  // @LOCALMOD
+        new StreamingMemoryObjectImpl(Streamer));  // @LOCALMOD
     std::string DisplayFilename;
     if (InputFilename == "-")
       DisplayFilename = "<stdin>";
@@ -154,38 +176,39 @@ int main(int argc, char **argv) {
 
     // @LOCALMOD-BEGIN
     switch (InputFileFormat) {
-      case LLVMFormat:
+      case LLVMFormat: {
         // The Module's BitcodeReader's BitstreamReader takes ownership
         // of the StreamingMemoryObject.
-        M.reset(getStreamedBitcodeModule(
-            DisplayFilename, Buffer.release(), Context, &ErrorMessage));
+        ErrorOr<std::unique_ptr<Module>> MOrErr =
+            getStreamedBitcodeModule(DisplayFilename, Buffer.release(), Context);
+        M = std::move(*MOrErr);
+        M->materializeAllPermanently();
         break;
+      }
       case PNaClFormat: {
         M.reset(getNaClStreamedBitcodeModule(
             DisplayFilename, Buffer.release(), Context, nullptr,
             &ErrorMessage));
+        if(M.get()) {
+          if (std::error_code EC = M->materializeAllPermanently()) {
+            ErrorMessage = EC.message();
+            M.reset();
+          }
+        } else {
+          errs() << argv[0] << ": ";
+          if (ErrorMessage.size())
+            errs() << ErrorMessage << "\n";
+          else
+            errs() << "bitcode didn't read correctly.\n";
+          return 1;
+        }
         break;
+      }
       case AutodetectFileFormat:
         report_fatal_error("Command can't autodetect file format!");
-      }
     }
     // @LOCALMOD-END
 
-    if(M.get()) {
-      if (std::error_code EC = M->materializeAllPermanently()) {
-        ErrorMessage = EC.message();
-        M.reset();
-      }
-    }
-  }
-
-  if (!M.get()) {
-    errs() << argv[0] << ": ";
-    if (ErrorMessage.size())
-      errs() << ErrorMessage << "\n";
-    else
-      errs() << "bitcode didn't read correctly.\n";
-    return 1;
   }
 
   // Just use stdout.  We won't actually print anything on it.
@@ -220,7 +243,7 @@ int main(int argc, char **argv) {
 
   // All that llvm-dis does is write the assembly to a file.
   if (!DontPrint)
-    M->print(Out->os(), Annotator.get());
+    M->print(Out->os(), Annotator.get(), PreserveAssemblyUseListOrder);
 
   // Declare success.
   Out->keep();

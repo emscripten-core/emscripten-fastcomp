@@ -54,10 +54,9 @@ public:
     Function *F;
 
   private:
-    IntrinsicRewriter() LLVM_DELETED_FUNCTION;
-    IntrinsicRewriter(const IntrinsicRewriter &) LLVM_DELETED_FUNCTION;
-    IntrinsicRewriter &operator=(
-        const IntrinsicRewriter &) LLVM_DELETED_FUNCTION;
+    IntrinsicRewriter() = delete;
+    IntrinsicRewriter(const IntrinsicRewriter &) = delete;
+    IntrinsicRewriter &operator=(const IntrinsicRewriter &) = delete;
   };
 
 private:

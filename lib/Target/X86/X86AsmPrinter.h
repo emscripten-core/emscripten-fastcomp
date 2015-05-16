@@ -13,6 +13,7 @@
 #include "X86Subtarget.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/StackMaps.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 
 // Implemented in X86MCInstLower.cpp
@@ -57,6 +58,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
     void emitShadowPadding(MCStreamer &OutStreamer, const MCSubtargetInfo &STI);
   private:
     TargetMachine &TM;
+    const MachineFunction *MF;
     std::unique_ptr<MCCodeEmitter> CodeEmitter;
     bool InShadow;
 
@@ -85,10 +87,9 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   void LowerTlsAddr(X86MCInstLower &MCInstLowering, const MachineInstr &MI);
 
  public:
-  explicit X86AsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
-    : AsmPrinter(TM, Streamer), SM(*this), SMShadowTracker(TM) {
-    Subtarget = &TM.getSubtarget<X86Subtarget>();
-  }
+   explicit X86AsmPrinter(TargetMachine &TM,
+                          std::unique_ptr<MCStreamer> Streamer)
+       : AsmPrinter(TM, std::move(Streamer)), SM(*this), SMShadowTracker(TM) {}
 
   const char *getPassName() const override {
     return "X86 Assembly / Object Emitter";
@@ -129,7 +130,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
     // being expanded late by the streamer, it isn't going to be counting
     // the expanded instruction. It might not be counting the bundle padding
     // correctly either.
-    if (!Subtarget->isTargetNaCl())
+    if (!Triple(M.getTargetTriple()).isOSNaCl())
       SMShadowTracker.reset(0);
     // @LOCALMOD-END
     SM.reset();

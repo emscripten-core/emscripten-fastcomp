@@ -28,8 +28,8 @@ for.cond:                                         ; preds = %for.body
 
 for.body:                                         ; preds = %for.body.preheader, %for.cond
   %i.06 = phi i32 [ %dec, %for.cond ], [ %s, %for.body.preheader ]
-  %arrayidx = getelementptr inbounds i32* %a, i32 %i.06
-  %0 = load i32* %arrayidx, align 4, !tbaa !1
+  %arrayidx = getelementptr inbounds i32, i32* %a, i32 %i.06
+  %0 = load i32, i32* %arrayidx, align 4, !tbaa !1
   %cmp1 = icmp eq i32 %0, 0
 ;
   %dec = add nsw i32 %i.06, -1
@@ -59,8 +59,8 @@ for.cond:                                         ; preds = %for.body
 
 for.body:                                         ; preds = %for.body.preheader, %for.cond
   %i.06 = phi i32 [ %inc, %for.cond ], [ %s, %for.body.preheader ]
-  %arrayidx = getelementptr inbounds i32* %a, i32 %i.06
-  %0 = load i32* %arrayidx, align 4, !tbaa !1
+  %arrayidx = getelementptr inbounds i32, i32* %a, i32 %i.06
+  %0 = load i32, i32* %arrayidx, align 4, !tbaa !1
   %cmp1 = icmp eq i32 %0, 0
   %inc = add nsw i32 %i.06, 1
   br i1 %cmp1, label %for.end.loopexit, label %for.cond
@@ -74,7 +74,7 @@ for.end:                                          ; preds = %for.end.loopexit, %
   ret i32 %i.0.lcssa
 }
 
-!1 = metadata !{metadata !2, metadata !2, i64 0}
-!2 = metadata !{metadata !"int", metadata !3, i64 0}
-!3 = metadata !{metadata !"omnipotent char", metadata !4, i64 0}
-!4 = metadata !{metadata !"Simple C/C++ TBAA"}
+!1 = !{!2, !2, i64 0}
+!2 = !{!"int", !3, i64 0}
+!3 = !{!"omnipotent char", !4, i64 0}
+!4 = !{!"Simple C/C++ TBAA"}

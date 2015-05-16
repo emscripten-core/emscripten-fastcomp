@@ -79,6 +79,9 @@ def SDT_ZI32Intrinsic       : SDTypeProfile<1, 0, [SDTCisVT<0, i32>]>;
 def SDT_ZPrefetch           : SDTypeProfile<0, 2,
                                             [SDTCisVT<0, i32>,
                                              SDTCisPtrTy<1>]>;
+def SDT_ZTBegin             : SDTypeProfile<0, 2,
+                                            [SDTCisPtrTy<0>,
+                                             SDTCisVT<1, i32>]>;
 
 //===----------------------------------------------------------------------===//
 // Node definitions
@@ -90,6 +93,7 @@ def callseq_start       : SDNode<"ISD::CALLSEQ_START", SDT_CallSeqStart,
 def callseq_end         : SDNode<"ISD::CALLSEQ_END",   SDT_CallSeqEnd,
                                  [SDNPHasChain, SDNPSideEffect, SDNPOptInGlue,
                                   SDNPOutGlue]>;
+def global_offset_table : SDNode<"ISD::GLOBAL_OFFSET_TABLE", SDTPtrLeaf>;
 
 // Nodes for SystemZISD::*.  See SystemZISelLowering.h for more details.
 def z_retflag           : SDNode<"SystemZISD::RET_FLAG", SDTNone,
@@ -99,6 +103,12 @@ def z_call              : SDNode<"SystemZISD::CALL", SDT_ZCall,
                                   SDNPVariadic]>;
 def z_sibcall           : SDNode<"SystemZISD::SIBCALL", SDT_ZCall,
                                  [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
+                                  SDNPVariadic]>;
+def z_tls_gdcall        : SDNode<"SystemZISD::TLS_GDCALL", SDT_ZCall,
+                                 [SDNPHasChain, SDNPInGlue, SDNPOutGlue,
+                                  SDNPVariadic]>;
+def z_tls_ldcall        : SDNode<"SystemZISD::TLS_LDCALL", SDT_ZCall,
+                                 [SDNPHasChain, SDNPInGlue, SDNPOutGlue,
                                   SDNPVariadic]>;
 def z_pcrel_wrapper     : SDNode<"SystemZISD::PCREL_WRAPPER", SDT_ZWrapPtr, []>;
 def z_pcrel_offset      : SDNode<"SystemZISD::PCREL_OFFSET",
@@ -114,6 +124,7 @@ def z_select_ccmask     : SDNode<"SystemZISD::SELECT_CCMASK", SDT_ZSelectCCMask,
 def z_adjdynalloc       : SDNode<"SystemZISD::ADJDYNALLOC", SDT_ZAdjDynAlloc>;
 def z_extract_access    : SDNode<"SystemZISD::EXTRACT_ACCESS",
                                  SDT_ZExtractAccess>;
+def z_popcnt            : SDNode<"SystemZISD::POPCNT", SDTIntUnaryOp>;
 def z_umul_lohi64       : SDNode<"SystemZISD::UMUL_LOHI64", SDT_ZGR128Binary64>;
 def z_sdivrem32         : SDNode<"SystemZISD::SDIVREM32", SDT_ZGR128Binary32>;
 def z_sdivrem64         : SDNode<"SystemZISD::SDIVREM64", SDT_ZGR128Binary64>;
@@ -171,6 +182,15 @@ def z_ipm               : SDNode<"SystemZISD::IPM", SDT_ZI32Intrinsic,
 def z_prefetch          : SDNode<"SystemZISD::PREFETCH", SDT_ZPrefetch,
                                  [SDNPHasChain, SDNPMayLoad, SDNPMayStore,
                                   SDNPMemOperand]>;
+
+def z_tbegin            : SDNode<"SystemZISD::TBEGIN", SDT_ZTBegin,
+                                 [SDNPHasChain, SDNPOutGlue, SDNPMayStore,
+                                  SDNPSideEffect]>;
+def z_tbegin_nofloat    : SDNode<"SystemZISD::TBEGIN_NOFLOAT", SDT_ZTBegin,
+                                 [SDNPHasChain, SDNPOutGlue, SDNPMayStore,
+                                  SDNPSideEffect]>;
+def z_tend              : SDNode<"SystemZISD::TEND", SDTNone,
+                                 [SDNPHasChain, SDNPOutGlue, SDNPSideEffect]>;
 
 //===----------------------------------------------------------------------===//
 // Pattern fragments

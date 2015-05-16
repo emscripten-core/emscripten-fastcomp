@@ -447,6 +447,7 @@ public:
 
   virtual void beginEnumScalar() = 0;
   virtual bool matchEnumScalar(const char*, bool) = 0;
+  virtual bool matchEnumFallback() = 0;
   virtual void endEnumScalar() = 0;
 
   virtual bool beginBitSetScalar(bool &) = 0;
@@ -469,6 +470,16 @@ public:
   void enumCase(T &Val, const char* Str, const uint32_t ConstVal) {
     if ( matchEnumScalar(Str, outputting() && Val == static_cast<T>(ConstVal)) ) {
       Val = ConstVal;
+    }
+  }
+
+  template <typename FBT, typename T>
+  void enumFallback(T &Val) {
+    if ( matchEnumFallback() ) {
+      // FIXME: Force integral conversion to allow strong typedefs to convert.
+      FBT Res = (uint64_t)Val;
+      yamlize(*this, Res, true);
+      Val = (uint64_t)Res;
     }
   }
 
@@ -532,7 +543,7 @@ public:
   void mapOptional(const char* Key, T& Val, const T& Default) {
     this->processKeyWithDefault(Key, Val, Default, false);
   }
-  
+
 private:
   template <typename T>
   void processKeyWithDefault(const char *Key, Optional<T> &Val,
@@ -706,7 +717,7 @@ struct ScalarTraits<StringRef> {
   static StringRef input(StringRef, void*, StringRef &);
   static bool mustQuote(StringRef S) { return needsQuotes(S); }
 };
- 
+
 template<>
 struct ScalarTraits<std::string> {
   static void output(const std::string &, void*, llvm::raw_ostream &);
@@ -877,7 +888,7 @@ public:
         void *Ctxt = nullptr,
         SourceMgr::DiagHandlerTy DiagHandler = nullptr,
         void *DiagHandlerCtxt = nullptr);
-  ~Input();
+  ~Input() override;
 
   // Check if there was an syntax or semantic error during parsing.
   std::error_code error();
@@ -899,6 +910,7 @@ private:
   void endFlowSequence() override;
   void beginEnumScalar() override;
   bool matchEnumScalar(const char*, bool) override;
+  bool matchEnumFallback() override;
   void endEnumScalar() override;
   bool beginBitSetScalar(bool &) override;
   bool bitSetMatch(const char *, bool ) override;
@@ -943,7 +955,7 @@ private:
   };
 
   class MapHNode : public HNode {
-    virtual void anchor();
+    void anchor() override;
 
   public:
     MapHNode(Node *n) : HNode(n) { }
@@ -962,7 +974,7 @@ private:
   };
 
   class SequenceHNode : public HNode {
-    virtual void anchor();
+    void anchor() override;
 
   public:
     SequenceHNode(Node *n) : HNode(n) { }
@@ -1008,7 +1020,7 @@ private:
 class Output : public IO {
 public:
   Output(llvm::raw_ostream &, void *Ctxt=nullptr);
-  virtual ~Output();
+  ~Output() override;
 
   bool outputting() override;
   bool mapTag(StringRef, bool) override;
@@ -1026,6 +1038,7 @@ public:
   void endFlowSequence() override;
   void beginEnumScalar() override;
   bool matchEnumScalar(const char*, bool) override;
+  bool matchEnumFallback() override;
   void endEnumScalar() override;
   bool beginBitSetScalar(bool &) override;
   bool bitSetMatch(const char *, bool ) override;

@@ -19,4 +19,4 @@
 type = Library
 name = NaClBitTestUtils
 parent = NaClBitcode
-required_libraries = Core Support NaClBitWriter NaClBitAnalysis
+required_libraries = Core Support NaClBitReader NaClBitWriter NaClBitAnalysis

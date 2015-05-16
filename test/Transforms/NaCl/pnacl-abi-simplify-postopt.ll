@@ -12,11 +12,11 @@ target datalayout = "p:32:32:32"
 ; CHECK: @var = global [4 x i8]
 
 define i16 @read_var() {
-  %val = load i16* bitcast (i32* @var to i16*)
+  %val = load i16, i16* bitcast (i32* @var to i16*)
   ret i16 %val
 }
 ; CHECK: = bitcast [4 x i8]* @var
-; CHECK-NEXT: load i16*
+; CHECK-NEXT: load i16, i16*
 
 ; Check that dead prototypes are successfully removed.
 declare void @unused_prototype(i8*)

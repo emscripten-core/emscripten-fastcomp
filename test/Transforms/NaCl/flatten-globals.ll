@@ -150,13 +150,13 @@ target datalayout = "p:32:32:32"
 
 ; Global references with addends
 
-@reloc_addend = global i32* getelementptr (%ptrs1* @ptrs1, i32 0, i32 2)
+@reloc_addend = global i32* getelementptr (%ptrs1, %ptrs1* @ptrs1, i32 0, i32 2)
 ; CHECK: @reloc_addend = global i32 add (i32 ptrtoint (<{ i32, [8 x i8] }>* @ptrs1 to i32), i32 8)
 
-@negative_addend = global %ptrs1* getelementptr (%ptrs1* @ptrs1, i32 -1)
+@negative_addend = global %ptrs1* getelementptr (%ptrs1, %ptrs1* @ptrs1, i32 -1)
 ; CHECK: @negative_addend = global i32 add (i32 ptrtoint (<{ i32, [8 x i8] }>* @ptrs1 to i32), i32 -12)
 
-@const_ptr = global i32* getelementptr (%ptrs1* null, i32 0, i32 2)
+@const_ptr = global i32* getelementptr (%ptrs1, %ptrs1* null, i32 0, i32 2)
 ; CHECK: @const_ptr = global [4 x i8] c"\08\00\00\00"
 
 @int_to_ptr = global i32* inttoptr (i16 260 to i32*)
@@ -170,18 +170,20 @@ target datalayout = "p:32:32:32"
 ; This is handled via Constant folding.  The getelementptr is
 ; converted to an undef when it is created, so the pass does not see a
 ; getelementptr here.
-@undef_gep = global i32* getelementptr (%ptrs1* undef, i32 0, i32 2)
+@undef_gep = global i32* getelementptr (%ptrs1, %ptrs1* undef, i32 0, i32 2)
 ; CHECK: @undef_gep = global [4 x i8] zeroinitializer
 
 ; Adding an offset to a function address isn't useful, but check that
 ; the pass handles it anyway.
 @func_addend = global i8* getelementptr (
+    i8, 
     i8* bitcast (void ()* @func_with_block to i8*), i32 123)
 ; CHECK: @func_addend = global i32 add (i32 ptrtoint (void ()* @func_with_block to i32), i32 123)
 
 ; Similarly, adding an offset to a label address isn't useful, but
 ; check it anyway.
 @block_addend = global i8* getelementptr (
+    i8, 
     i8* blockaddress(@func_with_block, %label), i32 100)
 ; CHECK: @block_addend = global i32 add (i32 ptrtoint (i8* blockaddress(@func_with_block, %label) to i32), i32 100)
 

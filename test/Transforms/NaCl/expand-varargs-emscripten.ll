@@ -14,15 +14,15 @@ declare void @emscripten_landingpad(...)
 declare void @emscripten_resume(...)
 
 define void @test(i32 %arg) {
-  call void (...)* @emscripten_asm_const_int(i32 %arg)
-  call void (...)* @emscripten_asm_const_double(i32 %arg)
-  call void (...)* @emscripten_landingpad(i32 %arg)
-  call void (...)* @emscripten_resume(i32 %arg)
+  call void (...) @emscripten_asm_const_int(i32 %arg)
+  call void (...) @emscripten_asm_const_double(i32 %arg)
+  call void (...) @emscripten_landingpad(i32 %arg)
+  call void (...) @emscripten_resume(i32 %arg)
   ret void
 }
 ; CHECK-LABEL: define void @test(
-; CHECK-NEXT: call void (...)* @emscripten_asm_const_int(i32 %arg)
-; CHECK-NEXT: call void (...)* @emscripten_asm_const_double(i32 %arg)
-; CHECK-NEXT: call void (...)* @emscripten_landingpad(i32 %arg)
-; CHECK-NEXT: call void (...)* @emscripten_resume(i32 %arg)
+; CHECK-NEXT: call void (...) @emscripten_asm_const_int(i32 %arg)
+; CHECK-NEXT: call void (...) @emscripten_asm_const_double(i32 %arg)
+; CHECK-NEXT: call void (...) @emscripten_landingpad(i32 %arg)
+; CHECK-NEXT: call void (...) @emscripten_resume(i32 %arg)
 ; CHECK-NEXT: ret void

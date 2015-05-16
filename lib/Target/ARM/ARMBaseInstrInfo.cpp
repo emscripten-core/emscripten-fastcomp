@@ -37,6 +37,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -1836,8 +1837,10 @@ bool ARMBaseInstrInfo::analyzeSelect(const MachineInstr *MI,
   return false;
 }
 
-MachineInstr *ARMBaseInstrInfo::optimizeSelect(MachineInstr *MI,
-                                               bool PreferFalse) const {
+MachineInstr *
+ARMBaseInstrInfo::optimizeSelect(MachineInstr *MI,
+                                 SmallPtrSetImpl<MachineInstr *> &SeenMIs,
+                                 bool PreferFalse) const {
   assert((MI->getOpcode() == ARM::MOVCCr || MI->getOpcode() == ARM::t2MOVCCr) &&
          "Unknown select instruction");
   MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
@@ -1884,6 +1887,10 @@ MachineInstr *ARMBaseInstrInfo::optimizeSelect(MachineInstr *MI,
   FalseReg.setImplicit();
   NewMI.addOperand(FalseReg);
   NewMI->tieOperands(0, NewMI->getNumOperands() - 1);
+
+  // Update SeenMIs set: register newly created MI and erase removed DefMI.
+  SeenMIs.insert(NewMI);
+  SeenMIs.erase(DefMI);
 
   // The caller will erase MI, but not DefMI.
   DefMI->eraseFromParent();
@@ -1985,8 +1992,7 @@ bool llvm::tryFoldSPUpdateIntoPushPop(const ARMSubtarget &Subtarget,
                                       unsigned NumBytes) {
   // This optimisation potentially adds lots of load and store
   // micro-operations, it's only really a great benefit to code-size.
-  if (!MF.getFunction()->getAttributes().hasAttribute(
-          AttributeSet::FunctionIndex, Attribute::MinSize))
+  if (!MF.getFunction()->hasFnAttribute(Attribute::MinSize))
     return false;
 
   // If only one register is pushed/popped, LLVM can use an LDR/STR
@@ -3659,9 +3665,7 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     // instructions).
     if (Latency > 0 && Subtarget.isThumb2()) {
       const MachineFunction *MF = DefMI->getParent()->getParent();
-      if (MF->getFunction()->getAttributes().
-            hasAttribute(AttributeSet::FunctionIndex,
-                         Attribute::OptimizeForSize))
+      if (MF->getFunction()->hasFnAttribute(Attribute::OptimizeForSize))
         --Latency;
     }
     return Latency;
@@ -4112,19 +4116,21 @@ enum ARMExeDomain {
 //
 std::pair<uint16_t, uint16_t>
 ARMBaseInstrInfo::getExecutionDomain(const MachineInstr *MI) const {
-  // VMOVD, VMOVRS and VMOVSR are VFP instructions, but can be changed to NEON
-  // if they are not predicated.
-  if (MI->getOpcode() == ARM::VMOVD && !isPredicated(MI))
-    return std::make_pair(ExeVFP, (1<<ExeVFP) | (1<<ExeNEON));
+  // If we don't have access to NEON instructions then we won't be able
+  // to swizzle anything to the NEON domain. Check to make sure.
+  if (Subtarget.hasNEON()) {
+    // VMOVD, VMOVRS and VMOVSR are VFP instructions, but can be changed to NEON
+    // if they are not predicated.
+    if (MI->getOpcode() == ARM::VMOVD && !isPredicated(MI))
+      return std::make_pair(ExeVFP, (1 << ExeVFP) | (1 << ExeNEON));
 
-  // CortexA9 is particularly picky about mixing the two and wants these
-  // converted.
-  if (Subtarget.isCortexA9() && !isPredicated(MI) &&
-      (MI->getOpcode() == ARM::VMOVRS ||
-       MI->getOpcode() == ARM::VMOVSR ||
-       MI->getOpcode() == ARM::VMOVS))
-    return std::make_pair(ExeVFP, (1<<ExeVFP) | (1<<ExeNEON));
-
+    // CortexA9 is particularly picky about mixing the two and wants these
+    // converted.
+    if (Subtarget.isCortexA9() && !isPredicated(MI) &&
+        (MI->getOpcode() == ARM::VMOVRS || MI->getOpcode() == ARM::VMOVSR ||
+         MI->getOpcode() == ARM::VMOVS))
+      return std::make_pair(ExeVFP, (1 << ExeVFP) | (1 << ExeNEON));
+  }
   // No other instructions can be swizzled, so just determine their domain.
   unsigned Domain = MI->getDesc().TSFlags & ARMII::DomainMask;
 
@@ -4216,6 +4222,9 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
 
       // Zap the predicate operands.
       assert(!isPredicated(MI) && "Cannot predicate a VORRd");
+
+      // Make sure we've got NEON instructions.
+      assert(Subtarget.hasNEON() && "VORRd requires NEON");
 
       // Source instruction is %DDst = VMOVD %DSrc, 14, %noreg (; implicits)
       DstReg = MI->getOperand(0).getReg();
@@ -4504,7 +4513,7 @@ breakPartialRegDependency(MachineBasicBlock::iterator MI,
 }
 
 bool ARMBaseInstrInfo::hasNOP() const {
-  return (Subtarget.getFeatureBits() & ARM::HasV6T2Ops) != 0;
+  return (Subtarget.getFeatureBits() & ARM::HasV6KOps) != 0;
 }
 
 bool ARMBaseInstrInfo::isSwiftFastImmShift(const MachineInstr *MI) const {

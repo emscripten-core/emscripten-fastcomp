@@ -21,8 +21,7 @@
 namespace llvm {
 
 class NaClBitcodeBlockDistElement : public NaClBitcodeBitsDistElement {
-  NaClBitcodeBlockDistElement(const NaClBitcodeBlockDistElement&)
-  LLVM_DELETED_FUNCTION;
+  NaClBitcodeBlockDistElement(const NaClBitcodeBlockDistElement&) = delete;
   void operator=(const NaClBitcodeBlockDistElement&);
 
 public:
@@ -62,8 +61,8 @@ public:
 };
 
 class NaClBitcodeBlockDist : public NaClBitcodeDist {
-  NaClBitcodeBlockDist(const NaClBitcodeBlockDist&) LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeBlockDist&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeBlockDist(const NaClBitcodeBlockDist&) = delete;
+  void operator=(const NaClBitcodeBlockDist&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDist *Dist) {

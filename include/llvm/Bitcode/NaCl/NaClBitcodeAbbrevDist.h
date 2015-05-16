@@ -24,9 +24,8 @@ namespace llvm {
 /// index of a bitcode record. Note: Uses naclbitc::UNABBREV_RECORD index
 /// to denote bitcode records that did not use an abbreviation.
 class NaClBitcodeAbbrevDistElement : public NaClBitcodeDistElement {
-  NaClBitcodeAbbrevDistElement(const NaClBitcodeAbbrevDistElement&)
-  LLVM_DELETED_FUNCTION;
-  void operator=(const NaClBitcodeAbbrevDistElement&) LLVM_DELETED_FUNCTION;
+  NaClBitcodeAbbrevDistElement(const NaClBitcodeAbbrevDistElement&) = delete;
+  void operator=(const NaClBitcodeAbbrevDistElement&) = delete;
 
 public:
   static bool classof(const NaClBitcodeDistElement *Element) {

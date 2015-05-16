@@ -68,8 +68,8 @@ class ThreadedStreamingCache : public llvm::StreamingMemoryObject {
   mutable uint64_t CacheBase;
 
   ThreadedStreamingCache(
-      const ThreadedStreamingCache&) LLVM_DELETED_FUNCTION;
-  void operator=(const ThreadedStreamingCache&) LLVM_DELETED_FUNCTION;
+      const ThreadedStreamingCache&) = delete;
+  void operator=(const ThreadedStreamingCache&) = delete;
 };
 
 } // namespace llvm

@@ -1,4 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs< %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs< %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs< %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
 
 ; Test that we correctly commute a sub instruction
 ; FUNC-LABEL: {{^}}sub_rev:
@@ -14,7 +15,7 @@ entry:
   br i1 %tmp, label %if, label %else
 
 if:                                               ; preds = %entry
-  %tmp1 = getelementptr i32 addrspace(1)* %out, i32 1
+  %tmp1 = getelementptr i32, i32 addrspace(1)* %out, i32 1
   %tmp2 = extractelement <4 x i32> %sgpr, i32 1
   store i32 %tmp2, i32 addrspace(1)* %out
   br label %endif

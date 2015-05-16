@@ -10,17 +10,16 @@
 #ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFFILE_H
 #define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFFILE_H
 
+#include "AddressPool.h"
+#include "DwarfStringPool.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
-#include "AddressPool.h"
-#include "DwarfStringPool.h"
-
-#include <vector>
-#include <string>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace llvm {
 class AsmPrinter;
@@ -37,8 +36,6 @@ class MCSection;
 class DwarfFile {
   // Target of Dwarf emission, used for sizing of abbreviations.
   AsmPrinter *Asm;
-
-  DwarfDebug &DD;
 
   // Used to uniquely define abbreviations.
   FoldingSet<DIEAbbrev> AbbreviationsSet;
@@ -63,8 +60,7 @@ class DwarfFile {
   DenseMap<const MDNode *, DIE *> MDTypeNodeToDieMap;
 
 public:
-  DwarfFile(AsmPrinter *AP, DwarfDebug &DD, StringRef Pref,
-            BumpPtrAllocator &DA);
+  DwarfFile(AsmPrinter *AP, StringRef Pref, BumpPtrAllocator &DA);
 
   ~DwarfFile();
 
@@ -84,7 +80,7 @@ public:
 
   /// \brief Emit all of the units to the section listed with the given
   /// abbreviation section.
-  void emitUnits(const MCSymbol *ASectionSym);
+  void emitUnits(bool UseOffsets);
 
   /// \brief Emit a set of abbreviations to the specific section.
   void emitAbbrevs(const MCSection *);
@@ -96,7 +92,8 @@ public:
   /// \brief Returns the string pool.
   DwarfStringPool &getStringPool() { return StrPool; }
 
-  void addScopeVariable(LexicalScope *LS, DbgVariable *Var);
+  /// \returns false if the variable was merged with a previous one.
+  bool addScopeVariable(LexicalScope *LS, DbgVariable *Var);
 
   DenseMap<LexicalScope *, SmallVector<DbgVariable *, 8>> &getScopeVariables() {
     return ScopeVariables;

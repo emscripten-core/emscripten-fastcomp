@@ -13,6 +13,8 @@ add_llvm_unittest(SupportTests
   CompressionTest.cpp
   ConvertUTFTest.cpp
   DataExtractorTest.cpp
+  DwarfTest.cpp
+  EndianStreamTest.cpp
   EndianTest.cpp
   ErrorOrTest.cpp
   FileOutputBufferTest.cpp
@@ -42,6 +44,7 @@ add_llvm_unittest(SupportTests
   YAMLParserTest.cpp
   formatted_raw_ostream_test.cpp
   raw_ostream_test.cpp
+  raw_pwrite_stream_test.cpp
   )
 
 # ManagedStatic.cpp uses <pthread>.

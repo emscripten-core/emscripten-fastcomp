@@ -95,7 +95,7 @@ public:
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
-    AU.addRequired<LoopInfo>();
+    AU.addRequired<LoopInfoWrapperPass>();
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addRequired<PostDominatorTree>();
   }
@@ -217,13 +217,16 @@ void SampleProfileLoader::printBlockWeight(raw_ostream &OS, BasicBlock *BB) {
 /// \returns The profiled weight of I.
 unsigned SampleProfileLoader::getInstWeight(Instruction &Inst) {
   DebugLoc DLoc = Inst.getDebugLoc();
+  if (!DLoc)
+    return 0;
+
   unsigned Lineno = DLoc.getLine();
   if (Lineno < HeaderLineno)
     return 0;
 
-  DILocation DIL(DLoc.getAsMDNode(*Ctx));
+  DILocation DIL = DLoc.get();
   int LOffset = Lineno - HeaderLineno;
-  unsigned Discriminator = DIL.getDiscriminator();
+  unsigned Discriminator = DIL->getDiscriminator();
   unsigned Weight = Samples->samplesAt(LOffset, Discriminator);
   DEBUG(dbgs() << "    " << Lineno << "." << Discriminator << ":" << Inst
                << " (line offset: " << LOffset << "." << Discriminator
@@ -639,9 +642,8 @@ void SampleProfileLoader::propagateWeights(Function &F) {
 /// \returns the line number where \p F is defined. If it returns 0,
 ///          it means that there is no debug information available for \p F.
 unsigned SampleProfileLoader::getFunctionLoc(Function &F) {
-  DISubprogram S = getDISubprogram(&F);
-  if (S.isSubprogram())
-    return S.getLineNumber();
+  if (MDSubprogram *S = getDISubprogram(&F))
+    return S->getLine();
 
   // If could not find the start of \p F, emit a diagnostic to inform the user
   // about the missed opportunity.
@@ -731,7 +733,7 @@ INITIALIZE_PASS_BEGIN(SampleProfileLoader, "sample-profile",
                       "Sample Profile loader", false, false)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(PostDominatorTree)
-INITIALIZE_PASS_DEPENDENCY(LoopInfo)
+INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(AddDiscriminators)
 INITIALIZE_PASS_END(SampleProfileLoader, "sample-profile",
                     "Sample Profile loader", false, false)
@@ -762,7 +764,7 @@ bool SampleProfileLoader::runOnFunction(Function &F) {
 
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   PDT = &getAnalysis<PostDominatorTree>();
-  LI = &getAnalysis<LoopInfo>();
+  LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
   Ctx = &F.getParent()->getContext();
   Samples = Reader->getSamplesFor(F);
   if (!Samples->empty())

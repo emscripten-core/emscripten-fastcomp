@@ -22,8 +22,8 @@
 #define LLVM_LIB_CODEGEN_LIVEDEBUGVARIABLES_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/IR/DebugInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/IR/DebugInfo.h"
 
 namespace llvm {
 
@@ -38,7 +38,7 @@ public:
   static char ID; // Pass identification, replacement for typeid
 
   LiveDebugVariables();
-  ~LiveDebugVariables();
+  ~LiveDebugVariables() override;
 
   /// renameRegister - Move any user variables in OldReg to NewReg:SubIdx.
   /// @param OldReg Old virtual register that is going away.

@@ -9,7 +9,7 @@ target datalayout = "p:32:32:32"
 ; CHECK-LABEL: @test_volatile_load_i8
 define zeroext i8 @test_volatile_load_i8(i8* %ptr) {
   ; CHECK-NEXT: %res = call i8 @llvm.nacl.atomic.load.i8(i8* %ptr, i32 6)
-  %res = load volatile i8* %ptr, align 1
+  %res = load volatile i8, i8* %ptr, align 1
   ret i8 %res  ; CHECK-NEXT: ret i8 %res
 }
 
@@ -23,7 +23,7 @@ define void @test_volatile_store_i8(i8* %ptr, i8 zeroext %value) {
 ; CHECK-LABEL: @test_volatile_load_i16
 define zeroext i16 @test_volatile_load_i16(i16* %ptr) {
   ; CHECK-NEXT: %res = call i16 @llvm.nacl.atomic.load.i16(i16* %ptr, i32 6)
-  %res = load volatile i16* %ptr, align 2
+  %res = load volatile i16, i16* %ptr, align 2
   ret i16 %res  ; CHECK-NEXT: ret i16 %res
 }
 
@@ -37,7 +37,7 @@ define void @test_volatile_store_i16(i16* %ptr, i16 zeroext %value) {
 ; CHECK-LABEL: @test_volatile_load_i32
 define i32 @test_volatile_load_i32(i32* %ptr) {
   ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr, i32 6)
-  %res = load volatile i32* %ptr, align 4
+  %res = load volatile i32, i32* %ptr, align 4
   ret i32 %res  ; CHECK-NEXT: ret i32 %res
 }
 
@@ -51,7 +51,7 @@ define void @test_volatile_store_i32(i32* %ptr, i32 %value) {
 ; CHECK-LABEL: @test_volatile_load_i64
 define i64 @test_volatile_load_i64(i64* %ptr) {
   ; CHECK-NEXT: %res = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr, i32 6)
-  %res = load volatile i64* %ptr, align 8
+  %res = load volatile i64, i64* %ptr, align 8
   ret i64 %res  ; CHECK-NEXT: ret i64 %res
 }
 
@@ -67,7 +67,7 @@ define float @test_volatile_load_float(float* %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast float* %ptr to i32*
   ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr.cast, i32 6)
   ; CHECK-NEXT: %res.cast = bitcast i32 %res to float
-  %res = load volatile float* %ptr, align 4
+  %res = load volatile float, float* %ptr, align 4
   ret float %res  ; CHECK-NEXT: ret float %res.cast
 }
 
@@ -85,7 +85,7 @@ define double @test_volatile_load_double(double* %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast double* %ptr to i64*
   ; CHECK-NEXT: %res = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr.cast, i32 6)
   ; CHECK-NEXT: %res.cast = bitcast i64 %res to double
-  %res = load volatile double* %ptr, align 8
+  %res = load volatile double, double* %ptr, align 8
   ret double %res  ; CHECK-NEXT: ret double %res.cast
 }
 
@@ -103,7 +103,7 @@ define i32* @test_volatile_load_i32_pointer(i32** %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast i32** %ptr to i32*
   ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr.cast, i32 6)
   ; CHECK-NEXT: %res.cast = inttoptr i32 %res to i32*
-  %res = load volatile i32** %ptr, align 4
+  %res = load volatile i32*, i32** %ptr, align 4
   ret i32* %res  ; CHECK-NEXT: ret i32* %res.cast
 }
 
@@ -121,7 +121,7 @@ define double* @test_volatile_load_double_pointer(double** %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast double** %ptr to i32*
   ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr.cast, i32 6)
   ; CHECK-NEXT: %res.cast = inttoptr i32 %res to double*
-  %res = load volatile double** %ptr, align 4
+  %res = load volatile double*, double** %ptr, align 4
   ret double* %res  ; CHECK-NEXT: ret double* %res.cast
 }
 
@@ -139,7 +139,7 @@ define <4 x i8> @test_volatile_load_v4i8(<4 x i8>* %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast <4 x i8>* %ptr to i32*
   ; CHECK-NEXT: %res = call i32 @llvm.nacl.atomic.load.i32(i32* %ptr.cast, i32 6)
   ; CHECK-NEXT: %res.cast = bitcast i32 %res to <4 x i8>
-  %res = load volatile <4 x i8>* %ptr, align 8
+  %res = load volatile <4 x i8>, <4 x i8>* %ptr, align 8
   ret <4 x i8> %res  ; CHECK-NEXT: ret <4 x i8> %res.cast
 }
 
@@ -157,7 +157,7 @@ define <4 x i16> @test_volatile_load_v4i16(<4 x i16>* %ptr) {
   ; CHECK-NEXT: %ptr.cast = bitcast <4 x i16>* %ptr to i64*
   ; CHECK-NEXT: %res = call i64 @llvm.nacl.atomic.load.i64(i64* %ptr.cast, i32 6)
   ; CHECK-NEXT: %res.cast = bitcast i64 %res to <4 x i16>
-  %res = load volatile <4 x i16>* %ptr, align 8
+  %res = load volatile <4 x i16>, <4 x i16>* %ptr, align 8
   ret <4 x i16> %res  ; CHECK-NEXT: ret <4 x i16> %res.cast
 }
 

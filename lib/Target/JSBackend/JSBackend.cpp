@@ -32,11 +32,10 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/FormattedStream.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -140,7 +139,7 @@ namespace {
   /// JSWriter - This class is the main chunk of code that converts an LLVM
   /// module to JavaScript.
   class JSWriter : public ModulePass {
-    formatted_raw_ostream &Out;
+    raw_pwrite_stream &Out;
     const Module *TheModule;
     unsigned UniqueNum;
     unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
@@ -170,14 +169,14 @@ namespace {
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
-    const DataLayout *DL;
+   const DataLayout *DL;
     bool StackBumped;
 
     #include "CallHandlers.h"
 
   public:
     static char ID;
-    JSWriter(formatted_raw_ostream &o, CodeGenOpt::Level OptLevel)
+    JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
         OptLevel(OptLevel), StackBumped(false) {}
 
@@ -187,7 +186,6 @@ namespace {
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesAll();
-      AU.addRequired<DataLayoutPass>();
       ModulePass::getAnalysisUsage(AU);
     }
 
@@ -197,7 +195,7 @@ namespace {
 
     LLVM_ATTRIBUTE_NORETURN void error(const std::string& msg);
 
-    formatted_raw_ostream& nl(formatted_raw_ostream &Out, int delta = 0);
+    raw_pwrite_stream& nl(raw_pwrite_stream &Out, int delta = 0);
 
   private:
     void printCommaSeparated(const HeapData v);
@@ -310,8 +308,11 @@ namespace {
       if (NoAliasingFunctionPointers) {
         while (Table.size() < NextFunctionIndex) Table.push_back("0");
       }
-      unsigned Alignment = F->getAlignment() || 1; // XXX this is wrong, it's always 1. but, that's fine in the ARM-like ABI we have which allows unaligned functions.
-                                                   //     the one risk is if someone forces a function to be aligned, and relies on that.
+      // XXX this is wrong, it's always 1. but, that's fine in the ARM-like ABI
+      // we have which allows unaligned func the one risk is if someone forces a
+      // function to be aligned, and relies on that. Could do F->getAlignment()
+      // instead.
+      unsigned Alignment = 1;
       while (Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
       Table.push_back(Name);
@@ -554,7 +555,7 @@ namespace {
   };
 } // end anonymous namespace.
 
-formatted_raw_ostream &JSWriter::nl(formatted_raw_ostream &Out, int delta) {
+raw_pwrite_stream &JSWriter::nl(raw_pwrite_stream &Out, int delta) {
   Out << '\n';
   return Out;
 }
@@ -635,12 +636,15 @@ static inline std::string ensureFloat(const std::string &S, Type *T) {
 }
 
 static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
-  if (MDNode *N = I->getMetadata("dbg")) {
-    DILocation Loc(N);
-    unsigned Line = Loc.getLineNumber();
-    StringRef File = Loc.getFilename();
-    if (Line > 0)
-      Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+  auto &Loc = I->getDebugLoc();
+  if (Loc) {
+    unsigned Line = Loc.getLine();
+    auto *Scope = cast_or_null<MDScope>(Loc.getScope());
+    if (Scope) {
+      StringRef File = Scope->getFilename();
+      if (Line > 0)
+        Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+    }
   }
 }
 
@@ -3033,7 +3037,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
 
         // Deconstruct getelementptrs.
         int64_t BaseOffset;
-        V = GetPointerBaseWithConstantOffset(V, BaseOffset, DL);
+        V = GetPointerBaseWithConstantOffset(V, BaseOffset, *DL);
         Data += (uint64_t)BaseOffset;
 
         Data += getConstAsOffset(V, getGlobalAddress(name));
@@ -3115,7 +3119,7 @@ void JSWriter::printModule(const std::string& fname,
 
 bool JSWriter::runOnModule(Module &M) {
   TheModule = &M;
-  DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+  DL = &M.getDataLayout();
 
   // sanity checks on options
   assert(Relocatable ? GlobalBase == 0 : true);
@@ -3153,7 +3157,7 @@ Pass *createCheckTriplePass() {
 //===----------------------------------------------------------------------===//
 
 bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
-                                          formatted_raw_ostream &o,
+                                          raw_pwrite_stream &o,
                                           CodeGenFileType FileType,
                                           bool DisableVerify,
                                           AnalysisID StartAfter,

@@ -36,19 +36,19 @@ define internal void @allowed_cases(i32 %arg) {
 
   %alloc = alloca i8
   ptrtoint i8* %alloc to i32
-  load i8* %alloc, align 1
+  load i8, i8* %alloc, align 1
 
   ; These instructions may use a NormalizedPtr, which may be a global.
-  load i32* @ptr, align 1
+  load i32, i32* @ptr, align 1
   store i32 123, i32* @ptr, align 1
 
   ; A NormalizedPtr may be a bitcast.
   %ptr_bitcast = bitcast [4 x i8]* @var to i32*
-  load i32* %ptr_bitcast, align 1
+  load i32, i32* %ptr_bitcast, align 1
 
   ; A NormalizedPtr may be an inttoptr.
   %ptr_from_int = inttoptr i32 123 to i32*
-  load i32* %ptr_from_int, align 1
+  load i32, i32* %ptr_from_int, align 1
 
   ; Check direct and indirect function calls.
   %func_as_int = ptrtoint void ()* @func to i32

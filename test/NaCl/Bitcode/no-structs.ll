@@ -12,7 +12,7 @@ declare void @func()
 
 define void @CheckBitcastGlobal() {
   %1 = bitcast <{ [4 x i8], i32}>* @compound to i32*
-  %2 = load i32* %1, align 4
+  %2 = load i32, i32* %1, align 4
   ret void
 }
 

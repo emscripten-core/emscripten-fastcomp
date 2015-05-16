@@ -7,62 +7,77 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "gtest/gtest.h"
 
 using namespace llvm;
 
-namespace llvm {
-
-static void PrintTo(const StringRef &S, ::std::ostream *os) {
-  *os << "(" << (const void *)S.data() << "," << S.size() << ") = '";
-  for (auto C : S)
-    if (C)
-      *os << C;
-    else
-      *os << "\\00";
-  *os << "'";
-}
-static void PrintTo(const DIHeaderFieldIterator &I, ::std::ostream *os) {
-  PrintTo(I.getCurrent(), os);
-  *os << " in ";
-  PrintTo(I.getHeader(), os);
-}
-
-} // end namespace llvm
-
 namespace {
 
-#define MAKE_FIELD_ITERATOR(S)                                                 \
-  DIHeaderFieldIterator(StringRef(S, sizeof(S) - 1))
-TEST(DebugInfoTest, DIHeaderFieldIterator) {
-  ASSERT_EQ(DIHeaderFieldIterator(), DIHeaderFieldIterator());
+TEST(DebugNodeTest, getFlag) {
+  // Some valid flags.
+  EXPECT_EQ(DebugNode::FlagPublic, DebugNode::getFlag("DIFlagPublic"));
+  EXPECT_EQ(DebugNode::FlagProtected, DebugNode::getFlag("DIFlagProtected"));
+  EXPECT_EQ(DebugNode::FlagPrivate, DebugNode::getFlag("DIFlagPrivate"));
+  EXPECT_EQ(DebugNode::FlagVector, DebugNode::getFlag("DIFlagVector"));
+  EXPECT_EQ(DebugNode::FlagRValueReference,
+            DebugNode::getFlag("DIFlagRValueReference"));
 
-  ASSERT_NE(DIHeaderFieldIterator(), MAKE_FIELD_ITERATOR(""));
-  ASSERT_EQ(DIHeaderFieldIterator(), ++MAKE_FIELD_ITERATOR(""));
-  ASSERT_EQ("", *DIHeaderFieldIterator(""));
+  // FlagAccessibility shouldn't work.
+  EXPECT_EQ(0u, DebugNode::getFlag("DIFlagAccessibility"));
 
-  ASSERT_NE(DIHeaderFieldIterator(), MAKE_FIELD_ITERATOR("stuff"));
-  ASSERT_EQ(DIHeaderFieldIterator(), ++MAKE_FIELD_ITERATOR("stuff"));
-  ASSERT_EQ("stuff", *DIHeaderFieldIterator("stuff"));
+  // Some other invalid strings.
+  EXPECT_EQ(0u, DebugNode::getFlag("FlagVector"));
+  EXPECT_EQ(0u, DebugNode::getFlag("Vector"));
+  EXPECT_EQ(0u, DebugNode::getFlag("other things"));
+  EXPECT_EQ(0u, DebugNode::getFlag("DIFlagOther"));
+}
 
-  ASSERT_NE(DIHeaderFieldIterator(), MAKE_FIELD_ITERATOR("st\0uff"));
-  ASSERT_NE(DIHeaderFieldIterator(), ++MAKE_FIELD_ITERATOR("st\0uff"));
-  ASSERT_EQ(DIHeaderFieldIterator(), ++++MAKE_FIELD_ITERATOR("st\0uff"));
-  ASSERT_EQ("st", *MAKE_FIELD_ITERATOR("st\0uff"));
-  ASSERT_EQ("uff", *++MAKE_FIELD_ITERATOR("st\0uff"));
+TEST(DebugNodeTest, getFlagString) {
+  // Some valid flags.
+  EXPECT_EQ(StringRef("DIFlagPublic"),
+            DebugNode::getFlagString(DebugNode::FlagPublic));
+  EXPECT_EQ(StringRef("DIFlagProtected"),
+            DebugNode::getFlagString(DebugNode::FlagProtected));
+  EXPECT_EQ(StringRef("DIFlagPrivate"),
+            DebugNode::getFlagString(DebugNode::FlagPrivate));
+  EXPECT_EQ(StringRef("DIFlagVector"),
+            DebugNode::getFlagString(DebugNode::FlagVector));
+  EXPECT_EQ(StringRef("DIFlagRValueReference"),
+            DebugNode::getFlagString(DebugNode::FlagRValueReference));
 
-  ASSERT_NE(DIHeaderFieldIterator(), MAKE_FIELD_ITERATOR("stuff\0"));
-  ASSERT_NE(DIHeaderFieldIterator(), ++MAKE_FIELD_ITERATOR("stuff\0"));
-  ASSERT_EQ(DIHeaderFieldIterator(), ++++MAKE_FIELD_ITERATOR("stuff\0"));
-  ASSERT_EQ("stuff", *MAKE_FIELD_ITERATOR("stuff\0"));
-  ASSERT_EQ("", *++MAKE_FIELD_ITERATOR("stuff\0"));
+  // FlagAccessibility actually equals FlagPublic.
+  EXPECT_EQ(StringRef("DIFlagPublic"),
+            DebugNode::getFlagString(DebugNode::FlagAccessibility));
 
-  ASSERT_NE(DIHeaderFieldIterator(), MAKE_FIELD_ITERATOR("\0stuff"));
-  ASSERT_NE(DIHeaderFieldIterator(), ++MAKE_FIELD_ITERATOR("\0stuff"));
-  ASSERT_EQ(DIHeaderFieldIterator(), ++++MAKE_FIELD_ITERATOR("\0stuff"));
-  ASSERT_EQ("", *MAKE_FIELD_ITERATOR("\0stuff"));
-  ASSERT_EQ("stuff", *++MAKE_FIELD_ITERATOR("\0stuff"));
+  // Some other invalid flags.
+  EXPECT_EQ(StringRef(), DebugNode::getFlagString(DebugNode::FlagPublic |
+                                                  DebugNode::FlagVector));
+  EXPECT_EQ(StringRef(), DebugNode::getFlagString(DebugNode::FlagFwdDecl |
+                                                  DebugNode::FlagArtificial));
+  EXPECT_EQ(StringRef(), DebugNode::getFlagString(0xffff));
+}
+
+TEST(DebugNodeTest, splitFlags) {
+// Some valid flags.
+#define CHECK_SPLIT(FLAGS, VECTOR, REMAINDER)                                  \
+  {                                                                            \
+    SmallVector<unsigned, 8> V;                                                \
+    EXPECT_EQ(REMAINDER, DebugNode::splitFlags(FLAGS, V));                     \
+    EXPECT_TRUE(makeArrayRef(V).equals(VECTOR));                               \
+  }
+  CHECK_SPLIT(DebugNode::FlagPublic, {DebugNode::FlagPublic}, 0u);
+  CHECK_SPLIT(DebugNode::FlagProtected, {DebugNode::FlagProtected}, 0u);
+  CHECK_SPLIT(DebugNode::FlagPrivate, {DebugNode::FlagPrivate}, 0u);
+  CHECK_SPLIT(DebugNode::FlagVector, {DebugNode::FlagVector}, 0u);
+  CHECK_SPLIT(DebugNode::FlagRValueReference, {DebugNode::FlagRValueReference},
+              0u);
+  unsigned Flags[] = {DebugNode::FlagFwdDecl, DebugNode::FlagVector};
+  CHECK_SPLIT(DebugNode::FlagFwdDecl | DebugNode::FlagVector, Flags, 0u);
+  CHECK_SPLIT(0x100000u, {}, 0x100000u);
+  CHECK_SPLIT(0x100000u | DebugNode::FlagVector, {DebugNode::FlagVector},
+              0x100000u);
+#undef CHECK_SPLIT
 }
 
 } // end namespace

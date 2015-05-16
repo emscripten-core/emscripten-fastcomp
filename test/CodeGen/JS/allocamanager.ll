@@ -36,37 +36,37 @@ entry:
   %vararg_lifetime_bitcast = bitcast <{ i8*, i32 }>* %vararg_buffer1 to i8*
   %muffin = alloca [117 x i8], align 1
   %cupcake = alloca [119 x i8], align 1
-  %tmp = getelementptr [117 x i8]* %muffin, i32 0, i32 0
+  %tmp = getelementptr [117 x i8], [117 x i8]* %muffin, i32 0, i32 0
   call void @llvm.lifetime.start(i64 117, i8* %tmp) #0
-  %tmp1 = load i8** %argv, align 4
+  %tmp1 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast)
-  %vararg_ptr = getelementptr <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 0
+  %vararg_ptr = getelementptr <{ i8*, i32 }>, <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 0
   store i8* %tmp1, i8** %vararg_ptr, align 4
-  %vararg_ptr1 = getelementptr <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 1
+  %vararg_ptr1 = getelementptr <{ i8*, i32 }>, <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 1
   store i32 %argc, i32* %vararg_ptr1, align 4
-  %call = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i8*, i32 }>*)*)(i8* %tmp, i8* getelementptr inbounds ([26 x i8]* @.str, i32 0, i32 0), <{ i8*, i32 }>* %vararg_buffer1) #0
+  %call = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i8*, i32 }>*)*)(i8* %tmp, i8* getelementptr inbounds ([26 x i8], [26 x i8]* @.str, i32 0, i32 0), <{ i8*, i32 }>* %vararg_buffer1) #0
   call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)
-  %tmp2 = load %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
+  %tmp2 = load %struct._IO_FILE*, %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
   call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast3)
-  %vararg_ptr4 = getelementptr <{ i8* }>* %vararg_buffer2, i32 0, i32 0
+  %vararg_ptr4 = getelementptr <{ i8* }>, <{ i8* }>* %vararg_buffer2, i32 0, i32 0
   store i8* %tmp, i8** %vararg_ptr4, align 4
-  %call2 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp2, i8* getelementptr inbounds ([33 x i8]* @.str1, i32 0, i32 0), <{ i8* }>* %vararg_buffer2) #0
+  %call2 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp2, i8* getelementptr inbounds ([33 x i8], [33 x i8]* @.str1, i32 0, i32 0), <{ i8* }>* %vararg_buffer2) #0
   call void @llvm.lifetime.end(i64 4, i8* %vararg_lifetime_bitcast3)
   call void @llvm.lifetime.end(i64 117, i8* %tmp) #0
-  %tmp3 = getelementptr [119 x i8]* %cupcake, i32 0, i32 0
+  %tmp3 = getelementptr [119 x i8], [119 x i8]* %cupcake, i32 0, i32 0
   call void @llvm.lifetime.start(i64 119, i8* %tmp3) #0
-  %tmp4 = load i8** %argv, align 4
+  %tmp4 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast6)
-  %vararg_ptr7 = getelementptr <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 0
+  %vararg_ptr7 = getelementptr <{ i32, i8* }>, <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 0
   store i32 %argc, i32* %vararg_ptr7, align 4
-  %vararg_ptr8 = getelementptr <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 1
+  %vararg_ptr8 = getelementptr <{ i32, i8* }>, <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 1
   store i8* %tmp4, i8** %vararg_ptr8, align 4
-  %call5 = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i32, i8* }>*)*)(i8* %tmp3, i8* getelementptr inbounds ([38 x i8]* @.str2, i32 0, i32 0), <{ i32, i8* }>* %vararg_buffer5) #0
+  %call5 = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i32, i8* }>*)*)(i8* %tmp3, i8* getelementptr inbounds ([38 x i8], [38 x i8]* @.str2, i32 0, i32 0), <{ i32, i8* }>* %vararg_buffer5) #0
   call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast6)
   call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast10)
-  %vararg_ptr11 = getelementptr <{ i8* }>* %vararg_buffer0, i32 0, i32 0
+  %vararg_ptr11 = getelementptr <{ i8* }>, <{ i8* }>* %vararg_buffer0, i32 0, i32 0
   store i8* %tmp3, i8** %vararg_ptr11, align 4
-  %call7 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp2, i8* getelementptr inbounds ([43 x i8]* @.str3, i32 0, i32 0), <{ i8* }>* %vararg_buffer0) #0
+  %call7 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp2, i8* getelementptr inbounds ([43 x i8], [43 x i8]* @.str3, i32 0, i32 0), <{ i8* }>* %vararg_buffer0) #0
   call void @llvm.lifetime.end(i64 4, i8* %vararg_lifetime_bitcast10)
   call void @llvm.lifetime.end(i64 119, i8* %tmp3) #0
   ret void
@@ -93,35 +93,35 @@ entry:
   %vararg_lifetime_bitcast = bitcast <{ i8*, i32 }>* %vararg_buffer1 to i8*
   %muffin = alloca [117 x i8], align 1
   %cupcake = alloca [119 x i8], align 1
-  %tmp = getelementptr [117 x i8]* %muffin, i32 0, i32 0
+  %tmp = getelementptr [117 x i8], [117 x i8]* %muffin, i32 0, i32 0
   call void @llvm.lifetime.start(i64 117, i8* %tmp) #0
   %cmp = icmp eq i32 %argc, 39
   br i1 %cmp, label %if.end.thread, label %if.end
 
 if.end.thread:                                    ; preds = %entry
   call void @llvm.lifetime.end(i64 117, i8* %tmp) #0
-  %tmp1 = getelementptr [119 x i8]* %cupcake, i32 0, i32 0
+  %tmp1 = getelementptr [119 x i8], [119 x i8]* %cupcake, i32 0, i32 0
   call void @llvm.lifetime.start(i64 119, i8* %tmp1) #0
-  %.pre = load %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
+  %.pre = load %struct._IO_FILE*, %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
   br label %if.then4
 
 if.end:                                           ; preds = %entry
-  %tmp2 = load i8** %argv, align 4
+  %tmp2 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast)
-  %vararg_ptr = getelementptr <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 0
+  %vararg_ptr = getelementptr <{ i8*, i32 }>, <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 0
   store i8* %tmp2, i8** %vararg_ptr, align 4
-  %vararg_ptr1 = getelementptr <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 1
+  %vararg_ptr1 = getelementptr <{ i8*, i32 }>, <{ i8*, i32 }>* %vararg_buffer1, i32 0, i32 1
   store i32 %argc, i32* %vararg_ptr1, align 4
-  %call = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i8*, i32 }>*)*)(i8* %tmp, i8* getelementptr inbounds ([26 x i8]* @.str, i32 0, i32 0), <{ i8*, i32 }>* %vararg_buffer1) #0
+  %call = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i8*, i32 }>*)*)(i8* %tmp, i8* getelementptr inbounds ([26 x i8], [26 x i8]* @.str, i32 0, i32 0), <{ i8*, i32 }>* %vararg_buffer1) #0
   call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast)
-  %tmp3 = load %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
+  %tmp3 = load %struct._IO_FILE*, %struct._IO_FILE** bitcast ([4 x i8]* @stderr to %struct._IO_FILE**), align 4
   call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast3)
-  %vararg_ptr4 = getelementptr <{ i8* }>* %vararg_buffer2, i32 0, i32 0
+  %vararg_ptr4 = getelementptr <{ i8* }>, <{ i8* }>* %vararg_buffer2, i32 0, i32 0
   store i8* %tmp, i8** %vararg_ptr4, align 4
-  %call2 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp3, i8* getelementptr inbounds ([33 x i8]* @.str1, i32 0, i32 0), <{ i8* }>* %vararg_buffer2) #0
+  %call2 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp3, i8* getelementptr inbounds ([33 x i8], [33 x i8]* @.str1, i32 0, i32 0), <{ i8* }>* %vararg_buffer2) #0
   call void @llvm.lifetime.end(i64 4, i8* %vararg_lifetime_bitcast3)
   call void @llvm.lifetime.end(i64 117, i8* %tmp) #0
-  %tmp4 = getelementptr [119 x i8]* %cupcake, i32 0, i32 0
+  %tmp4 = getelementptr [119 x i8], [119 x i8]* %cupcake, i32 0, i32 0
   call void @llvm.lifetime.start(i64 119, i8* %tmp4) #0
   %cmp3 = icmp eq i32 %argc, 45
   br i1 %cmp3, label %if.end10, label %if.then4
@@ -129,18 +129,18 @@ if.end:                                           ; preds = %entry
 if.then4:                                         ; preds = %if.end, %if.end.thread
   %tmp5 = phi %struct._IO_FILE* [ %.pre, %if.end.thread ], [ %tmp3, %if.end ]
   %tmp6 = phi i8* [ %tmp1, %if.end.thread ], [ %tmp4, %if.end ]
-  %tmp7 = load i8** %argv, align 4
+  %tmp7 = load i8*, i8** %argv, align 4
   call void @llvm.lifetime.start(i64 8, i8* %vararg_lifetime_bitcast6)
-  %vararg_ptr7 = getelementptr <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 0
+  %vararg_ptr7 = getelementptr <{ i32, i8* }>, <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 0
   store i32 %argc, i32* %vararg_ptr7, align 4
-  %vararg_ptr8 = getelementptr <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 1
+  %vararg_ptr8 = getelementptr <{ i32, i8* }>, <{ i32, i8* }>* %vararg_buffer5, i32 0, i32 1
   store i8* %tmp7, i8** %vararg_ptr8, align 4
-  %call7 = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i32, i8* }>*)*)(i8* %tmp6, i8* getelementptr inbounds ([38 x i8]* @.str2, i32 0, i32 0), <{ i32, i8* }>* %vararg_buffer5) #0
+  %call7 = call i32 bitcast (i32 (i8*, i8*, i8*)* @sprintf to i32 (i8*, i8*, <{ i32, i8* }>*)*)(i8* %tmp6, i8* getelementptr inbounds ([38 x i8], [38 x i8]* @.str2, i32 0, i32 0), <{ i32, i8* }>* %vararg_buffer5) #0
   call void @llvm.lifetime.end(i64 8, i8* %vararg_lifetime_bitcast6)
   call void @llvm.lifetime.start(i64 4, i8* %vararg_lifetime_bitcast10)
-  %vararg_ptr11 = getelementptr <{ i8* }>* %vararg_buffer0, i32 0, i32 0
+  %vararg_ptr11 = getelementptr <{ i8* }>, <{ i8* }>* %vararg_buffer0, i32 0, i32 0
   store i8* %tmp6, i8** %vararg_ptr11, align 4
-  %call9 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp5, i8* getelementptr inbounds ([43 x i8]* @.str3, i32 0, i32 0), <{ i8* }>* %vararg_buffer0) #0
+  %call9 = call i32 bitcast (i32 (%struct._IO_FILE*, i8*, i8*)* @fprintf to i32 (%struct._IO_FILE*, i8*, <{ i8* }>*)*)(%struct._IO_FILE* %tmp5, i8* getelementptr inbounds ([43 x i8], [43 x i8]* @.str3, i32 0, i32 0), <{ i8* }>* %vararg_buffer0) #0
   call void @llvm.lifetime.end(i64 4, i8* %vararg_lifetime_bitcast10)
   br label %if.end10
 

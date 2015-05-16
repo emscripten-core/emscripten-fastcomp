@@ -27,7 +27,7 @@ define void @invoke_optimize_test() {
 lpad:
   landingpad i32 personality i8* null
       catch i8* null
-  %value = load i32* %var
+  %value = load i32, i32* %var
   %is_zero = icmp eq i32 %value, 0
   br i1 %is_zero, label %exit, label %do_call
 
@@ -66,7 +66,7 @@ iftrue:
   ret void
 
 iffalse:
-  %value = load i32* %var
+  %value = load i32, i32* %var
   %is_zero = icmp eq i32 %value, 0
   br i1 %is_zero, label %exit, label %do_call
 

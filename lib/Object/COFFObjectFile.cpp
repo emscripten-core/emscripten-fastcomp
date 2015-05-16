@@ -190,7 +190,9 @@ std::error_code COFFObjectFile::getSymbolType(DataRefImpl Ref,
     Result = SymbolRef::ST_Data;
   } else if (Symb.isFileRecord()) {
     Result = SymbolRef::ST_File;
-  } else if (SectionNumber == COFF::IMAGE_SYM_DEBUG) {
+  } else if (SectionNumber == COFF::IMAGE_SYM_DEBUG ||
+             Symb.isSectionDefinition()) {
+    // TODO: perhaps we need a new symbol type ST_Section.
     Result = SymbolRef::ST_Debug;
   } else if (!COFF::isReservedSectionNumber(SectionNumber)) {
     const coff_section *Section = nullptr;
@@ -260,7 +262,7 @@ std::error_code COFFObjectFile::getSymbolSize(DataRefImpl Ref,
   }
   const section_iterator SecEnd = section_end();
   uint64_t AfterAddr = UnknownAddressOrSize;
-  for (const symbol_iterator &SymbI : symbols()) {
+  for (const symbol_iterator SymbI : symbols()) {
     section_iterator SecI = SecEnd;
     if (std::error_code EC = SymbI->getSection(SecI))
       return EC;
@@ -359,40 +361,17 @@ bool COFFObjectFile::isSectionData(DataRefImpl Ref) const {
 
 bool COFFObjectFile::isSectionBSS(DataRefImpl Ref) const {
   const coff_section *Sec = toSec(Ref);
-  return Sec->Characteristics & COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA;
-}
-
-bool COFFObjectFile::isSectionRequiredForExecution(DataRefImpl Ref) const {
-  // Sections marked 'Info', 'Remove', or 'Discardable' aren't required for
-  // execution.
-  const coff_section *Sec = toSec(Ref);
-  return !(Sec->Characteristics &
-           (COFF::IMAGE_SCN_LNK_INFO | COFF::IMAGE_SCN_LNK_REMOVE |
-            COFF::IMAGE_SCN_MEM_DISCARDABLE));
+  const uint32_t BssFlags = COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA |
+                            COFF::IMAGE_SCN_MEM_READ |
+                            COFF::IMAGE_SCN_MEM_WRITE;
+  return (Sec->Characteristics & BssFlags) == BssFlags;
 }
 
 bool COFFObjectFile::isSectionVirtual(DataRefImpl Ref) const {
   const coff_section *Sec = toSec(Ref);
-  return Sec->Characteristics & COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA;
-}
-
-bool COFFObjectFile::isSectionZeroInit(DataRefImpl Ref) const {
-  const coff_section *Sec = toSec(Ref);
-  return Sec->Characteristics & COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA;
-}
-
-bool COFFObjectFile::isSectionReadOnlyData(DataRefImpl Ref) const {
-  const coff_section *Sec = toSec(Ref);
-  // Check if it's any sort of data section.
-  if (!(Sec->Characteristics & (COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA |
-                                COFF::IMAGE_SCN_CNT_INITIALIZED_DATA)))
-    return false;
-  // If it's writable or executable or contains code, it isn't read-only data.
-  if (Sec->Characteristics &
-      (COFF::IMAGE_SCN_CNT_CODE | COFF::IMAGE_SCN_MEM_EXECUTE |
-       COFF::IMAGE_SCN_MEM_WRITE))
-    return false;
-  return true;
+  // In COFF, a virtual section won't have any in-file 
+  // content, so the file pointer to the content will be zero.
+  return Sec->PointerToRawData == 0;
 }
 
 bool COFFObjectFile::sectionContainsSymbol(DataRefImpl SecRef,

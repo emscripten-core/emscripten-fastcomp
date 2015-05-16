@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 #define DEBUG_TYPE "arm-mc-nacl"
 
+#include "ARMAddressingModes.h"
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "MCTargetDesc/ARMMCExpr.h"
 #include "MCTargetDesc/ARMMCNaCl.h"
@@ -27,10 +28,12 @@ static void EmitBICMask(const MCSubtargetInfo &STI, MCStreamer &Out,
                         unsigned Addr, int64_t Pred, unsigned Mask) {
   // bic\Pred \Addr, \Addr, #Mask
   MCInst BICInst;
+  const int32_t EncodedMask = ARM_AM::getSOImmVal(Mask);
+  assert(EncodedMask != -1);
   BICInst.setOpcode(ARM::BICri);
   BICInst.addOperand(MCOperand::CreateReg(Addr)); // rD
   BICInst.addOperand(MCOperand::CreateReg(Addr)); // rS
-  BICInst.addOperand(MCOperand::CreateImm(Mask)); // imm
+  BICInst.addOperand(MCOperand::CreateImm(EncodedMask)); // imm
   BICInst.addOperand(MCOperand::CreateImm(Pred));  // predicate
   BICInst.addOperand(MCOperand::CreateReg(ARM::CPSR)); // CPSR
   BICInst.addOperand(MCOperand::CreateReg(0)); // flag out
@@ -39,7 +42,8 @@ static void EmitBICMask(const MCSubtargetInfo &STI, MCStreamer &Out,
 
 static void EmitTST(const MCSubtargetInfo &STI, MCStreamer &Out, unsigned Reg) {
   // tst \reg, #\MASK typically 0xc0000000
-  const unsigned Mask = 0xC0000000;
+  const int32_t Mask = ARM_AM::getSOImmVal(0xC0000000U);
+  assert(Mask != -1);
   MCInst TSTInst;
   TSTInst.setOpcode(ARM::TSTri);
   TSTInst.addOperand(MCOperand::CreateReg(Reg));  // rS

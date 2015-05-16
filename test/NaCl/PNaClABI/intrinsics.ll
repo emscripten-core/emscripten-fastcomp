@@ -155,7 +155,7 @@ declare void @llvm.memset.foo(i8* %dest, i8 %val,
 
 ; A debuginfo version is required.
 !llvm.module.flags = !{!0}
-!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}
+!0 = !{i32 1, !"Debug Info Version", i32 3}
 
 ; ===================================
 ; Debug info intrinsics, which are disallowed by default.

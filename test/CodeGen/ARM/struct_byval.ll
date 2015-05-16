@@ -1,5 +1,9 @@
 ; RUN: llc < %s -mtriple=armv7-apple-ios6.0 | FileCheck %s
 ; RUN: llc < %s -mtriple=thumbv7-apple-ios6.0 | FileCheck %s -check-prefix=THUMB
+; RUN: llc < %s -mtriple=armv7-unknown-nacl-gnueabi | FileCheck %s -check-prefix=NACL
+; RUN: llc < %s -mtriple=armv5-none-linux-gnueabi | FileCheck %s -check-prefix=NOMOVT
+
+; NOMOVT-NOT: movt
 
 ; For NaCl (where we always want movt) ensure no const pool loads are generated.
 ; RUN: llc < %s -mtriple=armv7-unknown-nacl-gnueabi | FileCheck %s -check-prefix=NACL
@@ -37,6 +41,14 @@ entry:
 ; THUMB: sub
 ; THUMB: str
 ; THUMB: bne
+; NACL-LABEL: g:
+; Ensure that use movw instead of constpool for the loop trip count. But don't
+; match the __stack_chk_guard movw
+; NACL: movw r{{[1-9]}}, #
+; NACL: ldr
+; NACL: sub
+; NACL: str
+; NACL: bne
   %st = alloca %struct.LargeStruct, align 4
   %call = call i32 @e2(%struct.LargeStruct* byval %st)
   ret i32 0
@@ -55,6 +67,11 @@ entry:
 ; THUMB: sub
 ; THUMB: vst1
 ; THUMB: bne
+; NACL: movw r{{[1-9]}}, #
+; NACL: vld1
+; NACL: sub
+; NACL: vst1
+; NACL: bne
   %st = alloca %struct.LargeStruct, align 16
   %call = call i32 @e3(%struct.LargeStruct* byval align 16 %st)
   ret i32 0
@@ -84,7 +101,7 @@ define void @f4(%struct.SmallStruct* nocapture byval %s) nounwind optsize {
 ; THUMB-LABEL: f4
 ; THUMB: blx _consumestruct
 entry:
-  %addr = getelementptr inbounds %struct.SmallStruct* %s, i32 0, i32 0
+  %addr = getelementptr inbounds %struct.SmallStruct, %struct.SmallStruct* %s, i32 0, i32 0
   %0 = bitcast i32* %addr to i8*
   tail call void @consumestruct(i8* %0, i32 80) optsize
   ret void
@@ -108,7 +125,7 @@ define void @f6(i32 %a, i32 %b, i32 %c, i32 %d, %struct.SmallStruct* nocapture b
 ; THUMB-LABEL: f6
 ; THUMB: b.w _consumestruct
 entry:
-  %addr = getelementptr inbounds %struct.SmallStruct* %s, i32 0, i32 0
+  %addr = getelementptr inbounds %struct.SmallStruct, %struct.SmallStruct* %s, i32 0, i32 0
   %0 = bitcast i32* %addr to i8*
   tail call void @consumestruct(i8* %0, i32 80) optsize
   ret void

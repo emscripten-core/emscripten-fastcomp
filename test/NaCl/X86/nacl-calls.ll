@@ -96,7 +96,7 @@ define fastcc i32 @tail_call_other_function2() {
 
 ; With a load.
 define i32 @call_indirect() {
-  %1 = load i32 (i32)** @fp, align 4
+  %1 = load i32 (i32)*, i32 (i32)** @fp, align 4
   %call1 = call i32 %1(i32 10)
   ret i32 %call1
 }
@@ -111,7 +111,7 @@ define i32 @call_indirect() {
 ; NACL64: naclcall %{{.*}},%r15
 
 define fastcc i32 @tail_call_indirect() {
-  %1 = load i32 (i32)** @fp, align 4
+  %1 = load i32 (i32)*, i32 (i32)** @fp, align 4
   %call1 = tail call fastcc i32 %1(i32 10)
   ret i32 %call1
 }

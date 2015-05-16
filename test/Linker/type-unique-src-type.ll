@@ -9,14 +9,16 @@
 ; CHECK: %C.0 = type { %B }
 ; CHECK-NEXT: %B = type { %A }
 ; CHECK-NEXT: %A = type { i8 }
-; CHECK-NEXT: %C = type { %B }
+
+; CHECK: @g1 = external global %C.0
+; CHECK:  getelementptr %C.0, %C.0* null, i64 0, i32 0, i32 0
 
 %A   = type { i8 }
 %B   = type { %A }
 %C   = type { %B }
 %C.0 = type { %B }
 define void @f1() {
-  getelementptr %C* null, i64 0, i32 0, i32 0
+  getelementptr %C, %C* null, i64 0, i32 0, i32 0
   ret void
 }
 @g1 = external global %C.0

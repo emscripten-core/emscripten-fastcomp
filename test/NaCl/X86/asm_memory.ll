@@ -4,7 +4,7 @@
 ; CHECK: func:
 define void @func(i32* %i) {
 entry:
-  %0 = load i32* %i, align 4
+  %0 = load i32, i32* %i, align 4
 ; Check that the inline asm expression is correctly transformed to NaCl
 ; pseudo-segment memory operand syntax.
 ; CHECK: movl %e{{[a-z]+}}, %e[[REG:[a-z]{2}]]

@@ -16,6 +16,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/NaCl.h"
 #include "llvm/Analysis/NaCl/PNaClABITypeChecker.h"
+#include "llvm/Analysis/NaCl/PNaClAllowedIntrinsics.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -438,13 +439,18 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
       // metadata arguments, so handle them specially.
       // TODO(kschimpf) How can we lift this to pnacl-bcdis.
       if (const IntrinsicInst *Call = dyn_cast<IntrinsicInst>(Inst)) {
+        if (PNaClAllowedIntrinsics::isAllowedDebugInfoIntrinsic(
+                Call->getIntrinsicID())) {
+          // If debug metadata is allowed, always allow calling debug intrinsics
+          // and assume they are correct.
+          return nullptr;
+        }
         for (unsigned ArgNum = 0, E = Call->getNumArgOperands();
              ArgNum < E; ++ArgNum) {
           const Value *Arg = Call->getArgOperand(ArgNum);
           if (!(isValidScalarOperand(Arg) ||
                 isValidVectorOperand(Arg) ||
-                isNormalizedPtr(Arg) ||
-                isa<MDNode>(Arg)))
+                isNormalizedPtr(Arg)))
             return "bad intrinsic operand";
         }
 
@@ -561,7 +567,7 @@ const char *PNaClABIVerifyFunctions::checkInstruction(const DataLayout *DL,
 }
 
 bool PNaClABIVerifyFunctions::runOnFunction(Function &F) {
-  const DataLayout *DL = &getAnalysis<DataLayoutPass>().getDataLayout();
+  const DataLayout *DL = &F.getParent()->getDataLayout();
   SmallVector<StringRef, 8> MDNames;
   F.getContext().getMDKindNames(MDNames);
 

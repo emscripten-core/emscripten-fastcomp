@@ -10,7 +10,7 @@ define i32 @forward_ref() {
   br label %block1
 
 block2:
-  %1 = load i8* %3
+  %1 = load i8, i8* %3
   %2 = ptrtoint i8* %3 to i32
   ret i32 %2
 
@@ -23,7 +23,7 @@ block1:
 ; TD2-NEXT:   br label %block1
 ; TD2:      block2:
 ; TD2-NEXT:   %1 = inttoptr i32 %4 to i8*
-; TD2-NEXT:   %2 = load i8* %1
+; TD2-NEXT:   %2 = load i8, i8* %1
 ; TD2-NEXT:   ret i32 %4
 ; TD2:      block1:
 ; TD2-NEXT:   %3 = call i8* @llvm.nacl.read.tp()

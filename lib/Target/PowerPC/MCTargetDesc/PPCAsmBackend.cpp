@@ -9,8 +9,8 @@
 
 #include "MCTargetDesc/PPCMCTargetDesc.h"
 #include "MCTargetDesc/PPCFixupKinds.h"
-#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCELF.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCFixupKindInfo.h"
@@ -208,7 +208,7 @@ namespace {
   public:
     DarwinPPCAsmBackend(const Target &T) : PPCAsmBackend(T, false) { }
 
-    MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+    MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override {
       bool is64 = getPointerSize() == 8;
       return createPPCMachObjectWriter(
           OS,
@@ -224,8 +224,7 @@ namespace {
     ELFPPCAsmBackend(const Target &T, bool IsLittleEndian, uint8_t OSABI) :
       PPCAsmBackend(T, IsLittleEndian), OSABI(OSABI) { }
 
-
-    MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+    MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override {
       bool is64 = getPointerSize() == 8;
       return createPPCELFObjectWriter(OS, is64, isLittleEndian(), OSABI);
     }

@@ -55,11 +55,11 @@ define <16 x i8> @InnerLoop(<16 x i8>* %pixel_line, <16 x i8> %src00, <16 x i8> 
   %shuffle20 = shufflevector <16 x i8> %and, <16 x i8> <i8 0, i8 -1, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef>, <16 x i32> <i32 16, i32 8, i32 16, i32 17, i32 16, i32 9, i32 16, i32 17, i32 16, i32 10, i32 16, i32 17, i32 16, i32 11, i32 16, i32 17>
   %shuffle21 = shufflevector <16 x i8> %and, <16 x i8> <i8 0, i8 -1, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef, i8 undef>, <16 x i32> <i32 16, i32 12, i32 16, i32 17, i32 16, i32 13, i32 16, i32 17, i32 16, i32 14, i32 16, i32 17, i32 16, i32 15, i32 16, i32 17>
   store <16 x i8> %shuffle18, <16 x i8>* %pixel_line, align 16
-  %add.ptr22 = getelementptr inbounds <16 x i8>* %pixel_line, i32 1
+  %add.ptr22 = getelementptr inbounds <16 x i8>, <16 x i8>* %pixel_line, i32 1
   store <16 x i8> %shuffle19, <16 x i8>* %add.ptr22, align 16
-  %add.ptr23 = getelementptr inbounds <16 x i8>* %pixel_line, i32 2
+  %add.ptr23 = getelementptr inbounds <16 x i8>, <16 x i8>* %pixel_line, i32 2
   store <16 x i8> %shuffle20, <16 x i8>* %add.ptr23, align 16
-  %add.ptr24 = getelementptr inbounds <16 x i8>* %pixel_line, i32 3
+  %add.ptr24 = getelementptr inbounds <16 x i8>, <16 x i8>* %pixel_line, i32 3
   store <16 x i8> %shuffle21, <16 x i8>* %add.ptr24, align 16
   %and25 = and <16 x i8> %and, <i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1>
   ret <16 x i8> %and25

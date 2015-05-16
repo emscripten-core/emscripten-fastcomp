@@ -18,7 +18,7 @@ return:
 ; which might be suboptimal but works in all cases.
 ; CHECK: define i32* @get_tvar(i1 %cmp) {
 ; CHECK: entry:
-; CHECK: %field = getelementptr %tls_struct* %tls_struct, i32 -1, i32 0, i32 0
+; CHECK: %field = getelementptr %tls_struct, %tls_struct* %tls_struct, i32 -1, i32 0, i32 0
 ; CHECK: else:
 ; CHECK: return:
 ; CHECK: %result = phi i32* [ %field, %entry ], [ null, %else ]
@@ -40,9 +40,9 @@ exit:
 }
 ; CHECK: define i32* @tls_phi_twice(i1 %arg) {
 ; CHECK: iftrue:
-; CHECK: %field{{.*}} = getelementptr %tls_struct* %tls_struct{{.*}}, i32 -1, i32 0, i32 0
+; CHECK: %field{{.*}} = getelementptr %tls_struct, %tls_struct* %tls_struct{{.*}}, i32 -1, i32 0, i32 0
 ; CHECK: iffalse:
-; CHECK: %field{{.*}} = getelementptr %tls_struct* %tls_struct{{.*}}, i32 -1, i32 0, i32 0
+; CHECK: %field{{.*}} = getelementptr %tls_struct, %tls_struct* %tls_struct{{.*}}, i32 -1, i32 0, i32 0
 ; CHECK: exit:
 ; CHECK: %result = phi i32* [ %field{{.*}}, %iftrue ], [ %field{{.*}}, %iffalse ]
 

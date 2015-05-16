@@ -207,6 +207,12 @@ class RegisterClass<string namespace, list<ValueType> regTypes, int alignment,
   // The function should return 0 to select the default order defined by
   // MemberList, 1 to select the first AltOrders entry and so on.
   code AltOrderSelect = [{}];
+
+  // Specify allocation priority for register allocators using a greedy
+  // heuristic. Classes with higher priority values are assigned first. This is
+  // useful as it is sometimes beneficial to assign registers to highly
+  // constrained classes first. The value has to be in the range [0,63].
+  int AllocationPriority = 0;
 }
 
 // The memberList in a RegisterClass is a dag of set operations. TableGen
@@ -624,6 +630,9 @@ class RegisterOperand<RegisterClass regclass, string pm = "printOperand">
   // can match a subset of some other class, in which case the AsmOperandClass
   // should declare the other operand as one of its super classes.
   AsmOperandClass ParserMatchClass;
+
+  string OperandNamespace = "MCOI";
+  string OperandType = "OPERAND_REGISTER";
 }
 
 let OperandType = "OPERAND_IMMEDIATE" in {
@@ -862,6 +871,15 @@ def LOAD_STACK_GUARD : Instruction {
   let hasSideEffects = 0;
   bit isPseudo = 1;
 }
+def FRAME_ALLOC : Instruction {
+  // This instruction is really just a label. It has to be part of the chain so
+  // that it doesn't get dropped from the DAG, but it produces nothing and has
+  // no side effects.
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptr_rc:$symbol, i32imm:$id);
+  let hasSideEffects = 0;
+  let hasCtrlDep = 1;
+}
 }
 
 //===----------------------------------------------------------------------===//
@@ -1002,6 +1020,11 @@ class AsmWriter {
   // class.  Generated AsmWriter classes are always prefixed with the target
   // name.
   string AsmWriterClassName  = "InstPrinter";
+
+  // PassSubtarget - Determines whether MCSubtargetInfo should be passed to
+  // the various print methods.
+  // FIXME: Remove after all ports are updated.
+  int PassSubtarget = 0;
 
   // Variant - AsmWriters can be of multiple different variants.  Variants are
   // used to support targets that need to emit assembly code in ways that are

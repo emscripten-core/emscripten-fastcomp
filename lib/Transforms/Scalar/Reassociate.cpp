@@ -321,10 +321,8 @@ unsigned Reassociate::getRank(Value *V) {
 
   // If this is a not or neg instruction, do not count it for rank.  This
   // assures us that X and ~X will have the same rank.
-  Type *Ty = V->getType();
-  if ((!Ty->isIntegerTy() && !Ty->isFloatingPointTy()) ||
-      (!BinaryOperator::isNot(I) && !BinaryOperator::isNeg(I) &&
-       !BinaryOperator::isFNeg(I)))
+  if  (!BinaryOperator::isNot(I) && !BinaryOperator::isNeg(I) &&
+       !BinaryOperator::isFNeg(I))
     ++Rank;
 
   DEBUG(dbgs() << "Calculated Rank[" << V->getName() << "] = " << Rank << "\n");
@@ -351,7 +349,7 @@ void Reassociate::canonicalizeOperands(Instruction *I) {
 
 static BinaryOperator *CreateAdd(Value *S1, Value *S2, const Twine &Name,
                                  Instruction *InsertBefore, Value *FlagsOp) {
-  if (S1->getType()->isIntegerTy())
+  if (S1->getType()->isIntOrIntVectorTy())
     return BinaryOperator::CreateAdd(S1, S2, Name, InsertBefore);
   else {
     BinaryOperator *Res =
@@ -363,7 +361,7 @@ static BinaryOperator *CreateAdd(Value *S1, Value *S2, const Twine &Name,
 
 static BinaryOperator *CreateMul(Value *S1, Value *S2, const Twine &Name,
                                  Instruction *InsertBefore, Value *FlagsOp) {
-  if (S1->getType()->isIntegerTy())
+  if (S1->getType()->isIntOrIntVectorTy())
     return BinaryOperator::CreateMul(S1, S2, Name, InsertBefore);
   else {
     BinaryOperator *Res =
@@ -375,7 +373,7 @@ static BinaryOperator *CreateMul(Value *S1, Value *S2, const Twine &Name,
 
 static BinaryOperator *CreateNeg(Value *S1, const Twine &Name,
                                  Instruction *InsertBefore, Value *FlagsOp) {
-  if (S1->getType()->isIntegerTy())
+  if (S1->getType()->isIntOrIntVectorTy())
     return BinaryOperator::CreateNeg(S1, Name, InsertBefore);
   else {
     BinaryOperator *Res = BinaryOperator::CreateFNeg(S1, Name, InsertBefore);
@@ -388,8 +386,8 @@ static BinaryOperator *CreateNeg(Value *S1, const Twine &Name,
 ///
 static BinaryOperator *LowerNegateToMultiply(Instruction *Neg) {
   Type *Ty = Neg->getType();
-  Constant *NegOne = Ty->isIntegerTy() ? ConstantInt::getAllOnesValue(Ty)
-                                       : ConstantFP::get(Ty, -1.0);
+  Constant *NegOne = Ty->isIntOrIntVectorTy() ?
+    ConstantInt::getAllOnesValue(Ty) : ConstantFP::get(Ty, -1.0);
 
   BinaryOperator *Res = CreateMul(Neg->getOperand(1), NegOne, "", Neg, Neg);
   Neg->setOperand(1, Constant::getNullValue(Ty)); // Drop use of op.
@@ -872,7 +870,7 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
       Constant *Undef = UndefValue::get(I->getType());
       NewOp = BinaryOperator::Create(Instruction::BinaryOps(Opcode),
                                      Undef, Undef, "", I);
-      if (NewOp->getType()->isFloatingPointTy())
+      if (NewOp->getType()->isFPOrFPVectorTy())
         NewOp->setFastMathFlags(I->getFastMathFlags());
     } else {
       NewOp = NodesToRewrite.pop_back_val();
@@ -917,10 +915,13 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
 /// version of the value is returned, and BI is left pointing at the instruction
 /// that should be processed next by the reassociation pass.
 static Value *NegateValue(Value *V, Instruction *BI) {
-  if (ConstantFP *C = dyn_cast<ConstantFP>(V))
-    return ConstantExpr::getFNeg(C);
-  if (Constant *C = dyn_cast<Constant>(V))
+  if (Constant *C = dyn_cast<Constant>(V)) {
+    if (C->getType()->isFPOrFPVectorTy()) {
+      return ConstantExpr::getFNeg(C);
+    }
     return ConstantExpr::getNeg(C);
+  }
+
 
   // We are trying to expose opportunity for reassociation.  One of the things
   // that we want to do to achieve this is to push a negation as deep into an
@@ -1512,13 +1513,13 @@ Value *Reassociate::OptimizeAdd(Instruction *I,
         ++NumFound;
       } while (i != Ops.size() && Ops[i].Op == TheOp);
 
-      DEBUG(errs() << "\nFACTORING [" << NumFound << "]: " << *TheOp << '\n');
+      DEBUG(dbgs() << "\nFACTORING [" << NumFound << "]: " << *TheOp << '\n');
       ++NumFactor;
 
       // Insert a new multiply.
       Type *Ty = TheOp->getType();
-      Constant *C = Ty->isIntegerTy() ? ConstantInt::get(Ty, NumFound)
-                                      : ConstantFP::get(Ty, NumFound);
+      Constant *C = Ty->isIntOrIntVectorTy() ?
+        ConstantInt::get(Ty, NumFound) : ConstantFP::get(Ty, NumFound);
       Instruction *Mul = CreateMul(TheOp, C, "factor", I, I);
 
       // Now that we have inserted a multiply, optimize it. This allows us to
@@ -1650,7 +1651,7 @@ Value *Reassociate::OptimizeAdd(Instruction *I,
 
   // If any factor occurred more than one time, we can pull it out.
   if (MaxOcc > 1) {
-    DEBUG(errs() << "\nFACTORING [" << MaxOcc << "]: " << *MaxOccVal << '\n');
+    DEBUG(dbgs() << "\nFACTORING [" << MaxOcc << "]: " << *MaxOccVal << '\n');
     ++NumFactor;
 
     // Create a new instruction that uses the MaxOccVal twice.  If we don't do
@@ -1658,7 +1659,7 @@ Value *Reassociate::OptimizeAdd(Instruction *I,
     // from an expression will drop a use of maxocc, and this can cause
     // RemoveFactorFromExpression on successive values to behave differently.
     Instruction *DummyInst =
-        I->getType()->isIntegerTy()
+        I->getType()->isIntOrIntVectorTy()
             ? BinaryOperator::CreateAdd(MaxOccVal, MaxOccVal)
             : BinaryOperator::CreateFAdd(MaxOccVal, MaxOccVal);
 
@@ -1789,7 +1790,7 @@ static Value *buildMultiplyTree(IRBuilder<> &Builder,
 
   Value *LHS = Ops.pop_back_val();
   do {
-    if (LHS->getType()->isIntegerTy())
+    if (LHS->getType()->isIntOrIntVectorTy())
       LHS = Builder.CreateMul(LHS, Ops.pop_back_val());
     else
       LHS = Builder.CreateFMul(LHS, Ops.pop_back_val());
@@ -1988,7 +1989,7 @@ Instruction *Reassociate::canonicalizeNegConstExpr(Instruction *I) {
   Constant *C = C0 ? C0 : C1;
   unsigned ConstIdx = C0 ? 0 : 1;
   if (auto *CI = dyn_cast<ConstantInt>(C)) {
-    if (!CI->isNegative())
+    if (!CI->isNegative() || CI->isMinValue(true))
       return nullptr;
   } else if (auto *CF = dyn_cast<ConstantFP>(C)) {
     if (!CF->isNegative())
@@ -2087,8 +2088,9 @@ void Reassociate::OptimizeInst(Instruction *I) {
   if (I->isCommutative())
     canonicalizeOperands(I);
 
-  // Don't optimize vector instructions.
-  if (I->getType()->isVectorTy())
+  // TODO: We should optimize vector Xor instructions, but they are
+  // currently unsupported.
+  if (I->getType()->isVectorTy() && I->getOpcode() == Instruction::Xor)
     return;
 
   // Don't optimize floating point instructions that don't have unsafe algebra.
@@ -2167,9 +2169,6 @@ void Reassociate::OptimizeInst(Instruction *I) {
 }
 
 void Reassociate::ReassociateExpression(BinaryOperator *I) {
-  assert(!I->getType()->isVectorTy() &&
-         "Reassociation of vector instructions is not supported.");
-
   // First, walk the expression tree, linearizing the tree, collecting the
   // operand information.
   SmallVector<RepeatedValue, 8> Tree;

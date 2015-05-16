@@ -240,8 +240,8 @@ public:
   /// into the base stream. Finally, it calls virtual method MyApply
   /// to do the actions of the directive.
   class Directive {
-    Directive(const Directive&) LLVM_DELETED_FUNCTION;
-    void operator=(const Directive&) LLVM_DELETED_FUNCTION;
+    Directive(const Directive&) = delete;
+    void operator=(const Directive&) = delete;
   public:
     /// Creates a directive for the given stream.
     explicit Directive(TextFormatter *Formatter)
@@ -759,8 +759,8 @@ private:
 /// RecordWidth).  On the other hand, we assume that the assembly is
 /// formatted by the caller (i.e. owner of this object).
 class ObjDumpStream {
-  ObjDumpStream(const ObjDumpStream&) LLVM_DELETED_FUNCTION;
-  void operator=(const ObjDumpStream&) LLVM_DELETED_FUNCTION;
+  ObjDumpStream(const ObjDumpStream&) = delete;
+  void operator=(const ObjDumpStream&) = delete;
 public:
   /// The default number of error messages that will be printed before
   /// execution is stopped due to too many errors.

@@ -21,6 +21,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -28,7 +29,7 @@ using namespace llvm;
 
 INITIALIZE_PASS_BEGIN(BranchProbabilityInfo, "branch-prob",
                       "Branch Probability Analysis", false, true)
-INITIALIZE_PASS_DEPENDENCY(LoopInfo)
+INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_END(BranchProbabilityInfo, "branch-prob",
                     "Branch Probability Analysis", false, true)
 
@@ -196,7 +197,8 @@ bool BranchProbabilityInfo::calcMetadataWeights(BasicBlock *BB) {
   SmallVector<uint32_t, 2> Weights;
   Weights.reserve(TI->getNumSuccessors());
   for (unsigned i = 1, e = WeightsNode->getNumOperands(); i != e; ++i) {
-    ConstantInt *Weight = dyn_cast<ConstantInt>(WeightsNode->getOperand(i));
+    ConstantInt *Weight =
+        mdconst::dyn_extract<ConstantInt>(WeightsNode->getOperand(i));
     if (!Weight)
       return false;
     Weights.push_back(
@@ -377,6 +379,14 @@ bool BranchProbabilityInfo::calcZeroHeuristics(BasicBlock *BB) {
   if (!CV)
     return false;
 
+  // If the LHS is the result of AND'ing a value with a single bit bitmask,
+  // we don't have information about probabilities.
+  if (Instruction *LHS = dyn_cast<Instruction>(CI->getOperand(0)))
+    if (LHS->getOpcode() == Instruction::And)
+      if (ConstantInt *AndRHS = dyn_cast<ConstantInt>(LHS->getOperand(1)))
+        if (AndRHS->getUniqueInteger().isPowerOf2())
+          return false;
+
   bool isProb;
   if (CV->isZero()) {
     switch (CI->getPredicate()) {
@@ -483,7 +493,7 @@ bool BranchProbabilityInfo::calcInvokeHeuristics(BasicBlock *BB) {
 }
 
 void BranchProbabilityInfo::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addRequired<LoopInfo>();
+  AU.addRequired<LoopInfoWrapperPass>();
   AU.setPreservesAll();
 }
 
@@ -491,31 +501,29 @@ bool BranchProbabilityInfo::runOnFunction(Function &F) {
   DEBUG(dbgs() << "---- Branch Probability Info : " << F.getName()
                << " ----\n\n");
   LastF = &F; // Store the last function we ran on for printing.
-  LI = &getAnalysis<LoopInfo>();
+  LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
   assert(PostDominatedByUnreachable.empty());
   assert(PostDominatedByColdCall.empty());
 
   // Walk the basic blocks in post-order so that we can build up state about
   // the successors of a block iteratively.
-  for (po_iterator<BasicBlock *> I = po_begin(&F.getEntryBlock()),
-                                 E = po_end(&F.getEntryBlock());
-       I != E; ++I) {
-    DEBUG(dbgs() << "Computing probabilities for " << I->getName() << "\n");
-    if (calcUnreachableHeuristics(*I))
+  for (auto BB : post_order(&F.getEntryBlock())) {
+    DEBUG(dbgs() << "Computing probabilities for " << BB->getName() << "\n");
+    if (calcUnreachableHeuristics(BB))
       continue;
-    if (calcMetadataWeights(*I))
+    if (calcMetadataWeights(BB))
       continue;
-    if (calcColdCallHeuristics(*I))
+    if (calcColdCallHeuristics(BB))
       continue;
-    if (calcLoopBranchHeuristics(*I))
+    if (calcLoopBranchHeuristics(BB))
       continue;
-    if (calcPointerHeuristics(*I))
+    if (calcPointerHeuristics(BB))
       continue;
-    if (calcZeroHeuristics(*I))
+    if (calcZeroHeuristics(BB))
       continue;
-    if (calcFloatingPointHeuristics(*I))
+    if (calcFloatingPointHeuristics(BB))
       continue;
-    calcInvokeHeuristics(*I);
+    calcInvokeHeuristics(BB);
   }
 
   PostDominatedByUnreachable.clear();

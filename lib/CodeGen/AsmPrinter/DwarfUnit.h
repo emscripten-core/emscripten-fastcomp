@@ -14,17 +14,17 @@
 #ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFUNIT_H
 #define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFUNIT_H
 
-#include "DIE.h"
 #include "DwarfDebug.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/DIE.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSection.h"
-#include "llvm/MC/MCDwarf.h"
 
 namespace llvm {
 
@@ -120,7 +120,6 @@ protected:
   DwarfUnit(unsigned UID, dwarf::Tag, DICompileUnit CU, AsmPrinter *A,
             DwarfDebug *DW, DwarfFile *DWU);
 
-  void initSection(const MCSection *Section);
 
   /// Add a string attribute data and value.
   void addLocalString(DIE &Die, dwarf::Attribute Attribute, StringRef Str);
@@ -132,14 +131,17 @@ protected:
 public:
   virtual ~DwarfUnit();
 
+  void initSection(const MCSection *Section);
+
   const MCSection *getSection() const {
     assert(Section);
     return Section;
   }
 
   // Accessors.
+  AsmPrinter* getAsmPrinter() const { return Asm; }
   unsigned getUniqueID() const { return UniqueID; }
-  uint16_t getLanguage() const { return CUNode.getLanguage(); }
+  uint16_t getLanguage() const { return CUNode->getSourceLanguage(); }
   DICompileUnit getCUNode() const { return CUNode; }
   DIE &getUnitDie() { return UnitDie; }
 
@@ -250,15 +252,22 @@ public:
   void addConstantFPValue(DIE &Die, const MachineOperand &MO);
   void addConstantFPValue(DIE &Die, const ConstantFP *CFP);
 
+  /// \brief Add a linkage name, if it isn't empty.
+  void addLinkageName(DIE &Die, StringRef LinkageName);
+
   /// addTemplateParams - Add template parameters in buffer.
   void addTemplateParams(DIE &Buffer, DIArray TParams);
 
-  /// addRegisterOp - Add register operand.
-  void addRegisterOpPiece(DIELoc &TheDie, unsigned Reg,
+  /// \brief Add register operand.
+  /// \returns false if the register does not exist, e.g., because it was never
+  /// materialized.
+  bool addRegisterOpPiece(DIELoc &TheDie, unsigned Reg,
                           unsigned SizeInBits = 0, unsigned OffsetInBits = 0);
 
-  /// addRegisterOffset - Add register offset.
-  void addRegisterOffset(DIELoc &TheDie, unsigned Reg, int64_t Offset);
+  /// \brief Add register offset.
+  /// \returns false if the register does not exist, e.g., because it was never
+  /// materialized.
+  bool addRegisterOffset(DIELoc &TheDie, unsigned Reg, int64_t Offset);
 
   // FIXME: Should be reformulated in terms of addComplexAddress.
   /// addBlockByrefAddress - Start with the address based on the location
@@ -316,7 +325,7 @@ public:
   }
 
   /// Emit the header for this unit, not including the initial length field.
-  virtual void emitHeader(const MCSymbol *ASectionSym) const;
+  virtual void emitHeader(bool UseOffsets);
 
   virtual DwarfCompileUnit &getCU() = 0;
 
@@ -333,7 +342,7 @@ protected:
 
   /// resolve - Look in the DwarfDebug map for the MDNode that
   /// corresponds to the reference.
-  template <typename T> T resolve(DIRef<T> Ref) const {
+  template <typename T> T *resolve(TypedDebugNodeRef<T> Ref) const {
     return DD->resolve(Ref);
   }
 
@@ -418,12 +427,11 @@ public:
   void setType(const DIE *Ty) { this->Ty = Ty; }
 
   /// Emit the header for this unit, not including the initial length field.
-  void emitHeader(const MCSymbol *ASectionSym) const override;
+  void emitHeader(bool UseOffsets) override;
   unsigned getHeaderSize() const override {
     return DwarfUnit::getHeaderSize() + sizeof(uint64_t) + // Type Signature
            sizeof(uint32_t);                               // Type DIE Offset
   }
-  using DwarfUnit::initSection;
   DwarfCompileUnit &getCU() override { return CU; }
 };
 } // end llvm namespace

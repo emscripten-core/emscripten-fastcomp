@@ -1,4 +1,5 @@
-; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
 
 declare i32 @llvm.r600.read.tidig.x() #1
 
@@ -9,8 +10,8 @@ declare i32 @llvm.r600.read.tidig.x() #1
 ; SI: s_endpgm
 define void @v_cnd_nan_nosgpr(float addrspace(1)* %out, i32 %c, float addrspace(1)* %fptr) #0 {
   %idx = call i32 @llvm.r600.read.tidig.x() #1
-  %f.gep = getelementptr float addrspace(1)* %fptr, i32 %idx
-  %f = load float addrspace(1)* %fptr
+  %f.gep = getelementptr float, float addrspace(1)* %fptr, i32 %idx
+  %f = load float, float addrspace(1)* %fptr
   %setcc = icmp ne i32 %c, 0
   %select = select i1 %setcc, float 0xFFFFFFFFE0000000, float %f
   store float %select, float addrspace(1)* %out

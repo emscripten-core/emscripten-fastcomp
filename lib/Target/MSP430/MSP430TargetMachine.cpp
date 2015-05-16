@@ -12,11 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "MSP430TargetMachine.h"
-#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "MSP430.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/MC/MCAsmInfo.h"
-#include "llvm/PassManager.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
@@ -30,8 +30,10 @@ MSP430TargetMachine::MSP430TargetMachine(const Target &T, StringRef TT,
                                          const TargetOptions &Options,
                                          Reloc::Model RM, CodeModel::Model CM,
                                          CodeGenOpt::Level OL)
-    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+    : LLVMTargetMachine(T, "e-m:e-p:16:16-i32:16:32-a:16-n8:16", TT, CPU, FS,
+                        Options, RM, CM, OL),
       TLOF(make_unique<TargetLoweringObjectFileELF>()),
+      // FIXME: Check DataLayout string.
       Subtarget(TT, CPU, FS, *this) {
   initAsmInfo();
 }
@@ -50,7 +52,7 @@ public:
   }
 
   bool addInstSelector() override;
-  bool addPreEmitPass() override;
+  void addPreEmitPass() override;
 };
 } // namespace
 
@@ -64,8 +66,7 @@ bool MSP430PassConfig::addInstSelector() {
   return false;
 }
 
-bool MSP430PassConfig::addPreEmitPass() {
+void MSP430PassConfig::addPreEmitPass() {
   // Must run branch selection immediately preceding the asm printer.
-  addPass(createMSP430BranchSelectionPass());
-  return false;
+  addPass(createMSP430BranchSelectionPass(), false);
 }

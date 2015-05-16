@@ -69,7 +69,7 @@ namespace {
 
   class RegDefsUses {
   public:
-    RegDefsUses(TargetMachine &TM);
+    RegDefsUses(const TargetRegisterInfo &TRI);
     void init(const MachineInstr &MI);
 
     /// This function sets all caller-saved registers in Defs.
@@ -140,7 +140,7 @@ namespace {
   /// memory instruction can be moved to a delay slot.
   class MemDefsUses : public InspectMemInstr {
   public:
-    MemDefsUses(const MachineFrameInfo *MFI);
+    MemDefsUses(const DataLayout &DL, const MachineFrameInfo *MFI);
 
   private:
     typedef PointerUnion<const Value *, const PseudoSourceValue *> ValueType;
@@ -158,6 +158,7 @@ namespace {
 
     const MachineFrameInfo *MFI;
     SmallPtrSet<ValueType, 4> Uses, Defs;
+    const DataLayout &DL;
 
     /// Flags indicating whether loads or stores with no underlying objects have
     /// been seen.
@@ -199,6 +200,9 @@ namespace {
     Iter replaceWithCompactBranch(MachineBasicBlock &MBB,
                                   Iter Branch, DebugLoc DL);
 
+    Iter replaceWithCompactJump(MachineBasicBlock &MBB,
+                                Iter Jump, DebugLoc DL);
+
     /// This function checks if it is valid to move Candidate to the delay slot
     /// and returns true if it isn't. It also updates memory and register
     /// dependence information.
@@ -209,7 +213,7 @@ namespace {
     /// moved to the delay slot. Returns true on success.
     template<typename IterTy>
     bool searchRange(MachineBasicBlock &MBB, IterTy Begin, IterTy End,
-                     RegDefsUses &RegDU, InspectMemInstr &IM,
+                     RegDefsUses &RegDU, InspectMemInstr &IM, Iter Slot,
                      IterTy &Filler) const;
 
     /// This function searches in the backward direction for an instruction that
@@ -278,11 +282,7 @@ static void addLiveInRegs(Iter Filler, MachineBasicBlock &MBB) {
 
 #ifndef NDEBUG
     const MachineFunction &MF = *MBB.getParent();
-    assert(MF.getTarget()
-               .getSubtargetImpl()
-               ->getRegisterInfo()
-               ->getAllocatableSet(MF)
-               .test(R) &&
+    assert(MF.getSubtarget().getRegisterInfo()->getAllocatableSet(MF).test(R) &&
            "Shouldn't move an instruction with unallocatable registers across "
            "basic block boundaries.");
 #endif
@@ -292,9 +292,8 @@ static void addLiveInRegs(Iter Filler, MachineBasicBlock &MBB) {
   }
 }
 
-RegDefsUses::RegDefsUses(TargetMachine &TM)
-    : TRI(*TM.getSubtargetImpl()->getRegisterInfo()),
-      Defs(TRI.getNumRegs(), false), Uses(TRI.getNumRegs(), false) {}
+RegDefsUses::RegDefsUses(const TargetRegisterInfo &TRI)
+    : TRI(TRI), Defs(TRI.getNumRegs(), false), Uses(TRI.getNumRegs(), false) {}
 
 void RegDefsUses::init(const MachineInstr &MI) {
   // Add all register operands which are explicit and non-variadic.
@@ -322,7 +321,8 @@ void RegDefsUses::setCallerSaved(const MachineInstr &MI) {
   CallerSavedRegs.reset(Mips::ZERO);
   CallerSavedRegs.reset(Mips::ZERO_64);
 
-  for (const MCPhysReg *R = TRI.getCalleeSavedRegs(); *R; ++R)
+  for (const MCPhysReg *R = TRI.getCalleeSavedRegs(MI.getParent()->getParent());
+       *R; ++R)
     for (MCRegAliasIterator AI(*R, &TRI, true); AI.isValid(); ++AI)
       CallerSavedRegs.reset(*AI);
 
@@ -429,9 +429,9 @@ bool LoadFromStackOrConst::hasHazard_(const MachineInstr &MI) {
   return true;
 }
 
-MemDefsUses::MemDefsUses(const MachineFrameInfo *MFI_)
-  : InspectMemInstr(false), MFI(MFI_), SeenNoObjLoad(false),
-    SeenNoObjStore(false) {}
+MemDefsUses::MemDefsUses(const DataLayout &DL, const MachineFrameInfo *MFI_)
+    : InspectMemInstr(false), MFI(MFI_), DL(DL), SeenNoObjLoad(false),
+      SeenNoObjStore(false) {}
 
 bool MemDefsUses::hasHazard_(const MachineInstr &MI) {
   bool HasHazard = false;
@@ -484,7 +484,7 @@ getUnderlyingObjects(const MachineInstr &MI,
   const Value *V = (*MI.memoperands_begin())->getValue();
 
   SmallVector<Value *, 4> Objs;
-  GetUnderlyingObjects(const_cast<Value *>(V), Objs);
+  GetUnderlyingObjects(const_cast<Value *>(V), Objs, DL);
 
   for (SmallVectorImpl<Value *>::iterator I = Objs.begin(), E = Objs.end();
        I != E; ++I) {
@@ -500,8 +500,8 @@ getUnderlyingObjects(const MachineInstr &MI,
 // Replace Branch with the compact branch instruction.
 Iter Filler::replaceWithCompactBranch(MachineBasicBlock &MBB,
                                       Iter Branch, DebugLoc DL) {
-  const MipsInstrInfo *TII= static_cast<const MipsInstrInfo *>(
-    TM.getSubtargetImpl()->getInstrInfo());
+  const MipsInstrInfo *TII =
+      MBB.getParent()->getSubtarget<MipsSubtarget>().getInstrInfo();
 
   unsigned NewOpcode =
     (((unsigned) Branch->getOpcode()) == Mips::BEQ) ? Mips::BEQZC_MM
@@ -518,6 +518,24 @@ Iter Filler::replaceWithCompactBranch(MachineBasicBlock &MBB,
   MBB.erase(tmpIter);
 
   return Branch;
+}
+
+// Replace Jumps with the compact jump instruction.
+Iter Filler::replaceWithCompactJump(MachineBasicBlock &MBB,
+                                    Iter Jump, DebugLoc DL) {
+  const MipsInstrInfo *TII =
+      MBB.getParent()->getSubtarget<MipsSubtarget>().getInstrInfo();
+
+  const MCInstrDesc &NewDesc = TII->get(Mips::JRC16_MM);
+  MachineInstrBuilder MIB = BuildMI(MBB, Jump, DL, NewDesc);
+
+  MIB.addReg(Jump->getOperand(0).getReg());
+
+  Iter tmpIter = Jump;
+  Jump = std::prev(Jump);
+  MBB.erase(tmpIter);
+
+  return Jump;
 }
 
 // For given opcode returns opcode of corresponding instruction with short
@@ -543,9 +561,9 @@ static int getEquivalentCallShort(int Opcode) {
 /// We assume there is only one delay slot per delayed instruction.
 bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
-  bool InMicroMipsMode = TM.getSubtarget<MipsSubtarget>().inMicroMipsMode();
-  const MipsInstrInfo *TII =
-      static_cast<const MipsInstrInfo *>(TM.getSubtargetImpl()->getInstrInfo());
+  const MipsSubtarget &STI = MBB.getParent()->getSubtarget<MipsSubtarget>();
+  bool InMicroMipsMode = STI.inMicroMipsMode();
+  const MipsInstrInfo *TII = STI.getInstrInfo();
 
   for (Iter I = MBB.begin(); I != MBB.end(); ++I) {
     if (!hasUnoccupiedSlot(&*I))
@@ -587,17 +605,29 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     // adding NOP replace this instruction with the corresponding compact
     // branch instruction, i.e. BEQZC or BNEZC.
     unsigned Opcode = I->getOpcode();
-    if (InMicroMipsMode &&
-        (Opcode == Mips::BEQ || Opcode == Mips::BNE) &&
-        ((unsigned) I->getOperand(1).getReg()) == Mips::ZERO) {
-
-      I = replaceWithCompactBranch(MBB, I, I->getDebugLoc());
-
-    } else {
-      // Bundle the NOP to the instruction with the delay slot.
-      BuildMI(MBB, std::next(I), I->getDebugLoc(), TII->get(Mips::NOP));
-      MIBundleBuilder(MBB, I, std::next(I, 2));
+    if (InMicroMipsMode) {
+      switch (Opcode) {
+        case Mips::BEQ:
+        case Mips::BNE:
+          if (((unsigned) I->getOperand(1).getReg()) == Mips::ZERO) {
+            I = replaceWithCompactBranch(MBB, I, I->getDebugLoc());
+            continue;
+          }
+          break;
+        case Mips::JR:
+        case Mips::PseudoReturn:
+        case Mips::PseudoIndirectBranch:
+          // For microMIPS the PseudoReturn and PseudoIndirectBranch are allways
+          // expanded to JR_MM, so they can be replaced with JRC16_MM.
+          I = replaceWithCompactJump(MBB, I, I->getDebugLoc());
+          continue;
+        default:
+          break;
+      }
     }
+    // Bundle the NOP to the instruction with the delay slot.
+    BuildMI(MBB, std::next(I), I->getDebugLoc(), TII->get(Mips::NOP));
+    MIBundleBuilder(MBB, I, std::next(I, 2));
   }
 
   return Changed;
@@ -611,7 +641,7 @@ FunctionPass *llvm::createMipsDelaySlotFillerPass(MipsTargetMachine &tm) {
 
 template<typename IterTy>
 bool Filler::searchRange(MachineBasicBlock &MBB, IterTy Begin, IterTy End,
-                         RegDefsUses &RegDU, InspectMemInstr& IM,
+                         RegDefsUses &RegDU, InspectMemInstr& IM, Iter Slot,
                          IterTy &Filler) const {
   for (IterTy I = Begin; I != End; ++I) {
     // skip debug value
@@ -627,7 +657,8 @@ bool Filler::searchRange(MachineBasicBlock &MBB, IterTy Begin, IterTy End,
     if (delayHasHazard(*I, RegDU, IM))
       continue;
 
-    if (TM.getSubtarget<MipsSubtarget>().isTargetNaCl()) {
+    const MipsSubtarget &STI = MBB.getParent()->getSubtarget<MipsSubtarget>();
+    if (STI.isTargetNaCl()) {
       // In NaCl, instructions that must be masked are forbidden in delay slots.
       // We only check for loads, stores and SP changes.  Calls, returns and
       // branches are not checked because non-NaCl targets never put them in
@@ -635,10 +666,17 @@ bool Filler::searchRange(MachineBasicBlock &MBB, IterTy Begin, IterTy End,
       unsigned AddrIdx;
       if ((isBasePlusOffsetMemoryAccess(I->getOpcode(), &AddrIdx) &&
            baseRegNeedsLoadStoreMask(I->getOperand(AddrIdx).getReg())) ||
-          I->modifiesRegister(Mips::SP,
-                              TM.getSubtargetImpl()->getRegisterInfo()))
+          I->modifiesRegister(Mips::SP, STI.getRegisterInfo()))
         continue;
     }
+
+    bool InMicroMipsMode = STI.inMicroMipsMode();
+    const MipsInstrInfo *TII = STI.getInstrInfo();
+    unsigned Opcode = (*Slot).getOpcode();
+    if (InMicroMipsMode && TII->GetInstSizeInBytes(&(*I)) == 2 &&
+        (Opcode == Mips::JR || Opcode == Mips::PseudoIndirectBranch ||
+         Opcode == Mips::PseudoReturn))
+      continue;
 
     Filler = I;
     return true;
@@ -651,13 +689,14 @@ bool Filler::searchBackward(MachineBasicBlock &MBB, Iter Slot) const {
   if (DisableBackwardSearch)
     return false;
 
-  RegDefsUses RegDU(TM);
-  MemDefsUses MemDU(MBB.getParent()->getFrameInfo());
+  RegDefsUses RegDU(*MBB.getParent()->getSubtarget().getRegisterInfo());
+  MemDefsUses MemDU(*TM.getDataLayout(), MBB.getParent()->getFrameInfo());
   ReverseIter Filler;
 
   RegDU.init(*Slot);
 
-  if (!searchRange(MBB, ReverseIter(Slot), MBB.rend(), RegDU, MemDU, Filler))
+  if (!searchRange(MBB, ReverseIter(Slot), MBB.rend(), RegDU, MemDU, Slot,
+                   Filler))
     return false;
 
   MBB.splice(std::next(Slot), &MBB, std::next(Filler).base());
@@ -671,13 +710,13 @@ bool Filler::searchForward(MachineBasicBlock &MBB, Iter Slot) const {
   if (DisableForwardSearch || !Slot->isCall())
     return false;
 
-  RegDefsUses RegDU(TM);
+  RegDefsUses RegDU(*MBB.getParent()->getSubtarget().getRegisterInfo());
   NoMemInstr NM;
   Iter Filler;
 
   RegDU.setCallerSaved(*Slot);
 
-  if (!searchRange(MBB, std::next(Slot), MBB.end(), RegDU, NM, Filler))
+  if (!searchRange(MBB, std::next(Slot), MBB.end(), RegDU, NM, Slot, Filler))
     return false;
 
   MBB.splice(std::next(Slot), &MBB, Filler);
@@ -695,7 +734,7 @@ bool Filler::searchSuccBBs(MachineBasicBlock &MBB, Iter Slot) const {
   if (!SuccBB)
     return false;
 
-  RegDefsUses RegDU(TM);
+  RegDefsUses RegDU(*MBB.getParent()->getSubtarget().getRegisterInfo());
   bool HasMultipleSuccs = false;
   BB2BrMap BrMap;
   std::unique_ptr<InspectMemInstr> IM;
@@ -717,10 +756,11 @@ bool Filler::searchSuccBBs(MachineBasicBlock &MBB, Iter Slot) const {
     IM.reset(new LoadFromStackOrConst());
   } else {
     const MachineFrameInfo *MFI = MBB.getParent()->getFrameInfo();
-    IM.reset(new MemDefsUses(MFI));
+    IM.reset(new MemDefsUses(*TM.getDataLayout(), MFI));
   }
 
-  if (!searchRange(MBB, SuccBB->begin(), SuccBB->end(), RegDU, *IM, Filler))
+  if (!searchRange(MBB, SuccBB->begin(), SuccBB->end(), RegDU, *IM, Slot,
+                   Filler))
     return false;
 
   insertDelayFiller(Filler, BrMap);
@@ -747,7 +787,7 @@ MachineBasicBlock *Filler::selectSuccBB(MachineBasicBlock &B) const {
 std::pair<MipsInstrInfo::BranchType, MachineInstr *>
 Filler::getBranch(MachineBasicBlock &MBB, const MachineBasicBlock &Dst) const {
   const MipsInstrInfo *TII =
-      static_cast<const MipsInstrInfo *>(TM.getSubtargetImpl()->getInstrInfo());
+      MBB.getParent()->getSubtarget<MipsSubtarget>().getInstrInfo();
   MachineBasicBlock *TrueBB = nullptr, *FalseBB = nullptr;
   SmallVector<MachineInstr*, 2> BranchInstrs;
   SmallVector<MachineOperand, 2> Cond;
