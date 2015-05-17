@@ -56,12 +56,9 @@ public:
 
   TargetIRAnalysis getTargetIRAnalysis() override;
 
-  const TargetSubtargetInfo *getSubtargetImpl() const {
+  const TargetSubtargetInfo *getJSSubtargetImpl() const {
     return &ST;
   }
-
-  /// \brief Register X86 analysis passes with a pass manager.
-  // XXX void addAnalysisPasses(PassManagerBase &PM) override;
 };
 
 } // End llvm namespace

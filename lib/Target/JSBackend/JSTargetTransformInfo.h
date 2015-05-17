@@ -37,7 +37,7 @@ class JSTTIImpl : public BasicTTIImplBase<JSTTIImpl> {
 
 public:
   explicit JSTTIImpl(const JSTargetMachine *TM)
-      : BaseT(TM), ST(TM->getSubtargetImpl()), TLI(ST->getTargetLowering()) {
+      : BaseT(TM), ST(TM->getJSSubtargetImpl()), TLI(ST->getTargetLowering()) {
     assert(ST);
     assert(TLI);
   }
