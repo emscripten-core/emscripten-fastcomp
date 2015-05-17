@@ -65,7 +65,7 @@ public:
 
   void getUnrollingPreferences(Loop *L, TTI::UnrollingPreferences &UP);
 
-  TTI::TargetTransformInfo::PopcntSupportKind getPopcntSupport(
+  TTI::PopcntSupportKind getPopcntSupport(
       unsigned TyWidth) {
     assert(isPowerOf2_32(TyWidth) && "Ty width must be power of 2");
     // Hopefully we'll get popcnt in ES7, but for now, we just have software.
