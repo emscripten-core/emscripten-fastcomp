@@ -95,8 +95,8 @@ TEST(NaClMungeWriteErrorTests, CantWriteBadAbbrevIndex) {
       Munger.getTestResults());
 }
 
-// Show that we can't write more local abbreviations than specified in
-// the corresponding enclosing block.
+// Show that we use more local abbreviations than specified in the
+// corresponding enclosing block.
 TEST(NaClMungeWriteErrorTests, CantWriteTooManyLocalAbbreviations) {
   NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
   Munger.munge(ARRAY(UseLocalRetVoidAbbrevEdits));
@@ -108,18 +108,17 @@ TEST(NaClMungeWriteErrorTests, CantWriteTooManyLocalAbbreviations) {
       "           3: [21, 0, 0]\n"
       "         0: [65534]\n"
       "         3: [8, 1, 0, 0, 0]\n"
-      "         1: [65535, 12, 2]\n"
+      "         1: [65535, 12, 2]\n"      // Only allows 2 bits for abbrevs.
       "           3: [1, 1]\n"
-      "           2: [65533, 1, 1, 10]\n"
-      "           4: [10]\n"
+      "           2: [65533, 1, 1, 10]\n" // defines abbev 4:
+      "           4: [10]\n"              // can't use, 4 can't fit in two bits.
       "         0: [65534]\n"
       "       0: [65534]\n",
       stringify(Munger));
 
   EXPECT_FALSE(Munger.runTest());
   EXPECT_EQ(
-      "Error (Block 12): Exceeds abbreviation index limit of 3: 2: [65533,"
-      " 1, 1, 10]\n"
+      "Error (Block 12): Uses illegal abbreviation index: 4: [10]\n"
       "Error: Unable to generate bitcode file due to write errors\n",
       Munger.getTestResults());
 }
@@ -259,6 +258,162 @@ TEST(MyNaClMungerWriteErrorTests, DieOnWriteBadAbbreviationIndex) {
       ".*");
 }
 
+// Show that we check that the abbreviation actually applies to the
+// record associated with that abbreviation. Also shows that we repair
+// the problem by applying the default abbreviation instead.
+TEST(NaClMungeWriteErrorsTests, TestMismatchedAbbreviation) {
+  // Create edits to:
+  // 1) Expand the number of abbreviation index bits for the block from 2 to 3.
+  // 2) Introduce the incorrect abbreviation for the return instruction.
+  //    i.e. [9] instead of [10].
+  // 3) Apply the bad abbreviation to record "ret"
+  const uint64_t FunctionEnterIndex = 7;
+  const uint64_t Edits[] {
+    FunctionEnterIndex, NaClMungedBitcode::Replace,
+        1, naclbitc::BLK_CODE_ENTER, naclbitc::FUNCTION_BLOCK_ID, 3, Terminator,
+    RetVoidIndex, NaClMungedBitcode::AddBefore,
+        2, naclbitc::BLK_CODE_DEFINE_ABBREV, 1, 1,
+        naclbitc::FUNC_CODE_INST_RET - 1, Terminator,
+    RetVoidIndex, NaClMungedBitcode::Replace,
+        4, naclbitc::FUNC_CODE_INST_RET, Terminator
+        };
+
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  Munger.munge(ARRAY(Edits));
+  EXPECT_EQ(
+      "       1: [65535, 8, 2]\n"
+      "         1: [65535, 17, 3]\n"
+      "           3: [1, 2]\n"
+      "           3: [2]\n"
+      "           3: [21, 0, 0]\n"
+      "         0: [65534]\n"
+      "         3: [8, 1, 0, 0, 0]\n"
+      "         1: [65535, 12, 3]\n"     // Upped abbreviation index bits to 3
+      "           3: [1, 1]\n"
+      "           2: [65533, 1, 1, 9]\n" // added abbrev 4: [9]
+      "           4: [10]\n"             // "ret" with bad abbreviation.
+      "         0: [65534]\n"
+      "       0: [65534]\n",
+      stringify(Munger));
+
+  // Show detected error
+  EXPECT_FALSE(Munger.runTest());
+  EXPECT_EQ(
+      "Error (Block 12): Abbreviation doesn't apply to record: 4: [10]\n"
+      "Error: Unable to generate bitcode file due to write errors\n",
+      Munger.getTestResults());
+
+  // Show that the writer can recover.
+  Munger.setTryToRecoverOnWrite(true);
+  EXPECT_TRUE(Munger.runTest(ARRAY(Edits)));
+  EXPECT_EQ(
+      "Error (Block 12): Abbreviation doesn't apply to record: 4: [10]\n"
+      "       1: [65535, 8, 2]\n"
+      "         1: [65535, 17, 3]\n"
+      "           3: [1, 2]\n"
+      "           3: [2]\n"
+      "           3: [21, 0, 0]\n"
+      "         0: [65534]\n"
+      "         3: [8, 1, 0, 0, 0]\n"
+      "         1: [65535, 12, 3]\n"
+      "           3: [1, 1]\n"
+      "           2: [65533, 1, 1, 9]\n"
+      "           3: [10]\n"              // Implicit repair here.
+      "         0: [65534]\n"
+      "       0: [65534]\n",
+      Munger.getTestResults());
+}
+
+// Show that we recognize when an abbreviation definition record is
+// malformed.  Also show that we repair the problem by removing the
+// definition.
+TEST(NaClMungeWriteErrorsTests, TestWritingMalformedAbbreviation) {
+  // Create edits to:
+  // 1) Expand the number of abbreviation index bits for the block from 2 to 3.
+  // 2) Leave out the "literal" operand encoding out.
+  const uint64_t FunctionEnterIndex = 7;
+  const uint64_t Edits[] {
+    FunctionEnterIndex, NaClMungedBitcode::Replace,   // Set Abbrev bits = 3
+        1, naclbitc::BLK_CODE_ENTER, naclbitc::FUNCTION_BLOCK_ID, 3, Terminator,
+    RetVoidIndex, NaClMungedBitcode::AddBefore,
+        // Bad abbreviation! Intentionally leave out "literal" operand: 1
+        2, naclbitc::BLK_CODE_DEFINE_ABBREV, 1, // 1,
+        naclbitc::FUNC_CODE_INST_RET, Terminator,
+        };
+
+  // Show that the error is detected.
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_FALSE(Munger.runTest(ARRAY(Edits)));
+  EXPECT_EQ(
+      "Error (Block 12): Error: Bad abbreviation operand encoding 10:"
+      " 2: [65533, 1, 10]\n"
+      "Error: Unable to generate bitcode file due to write errors\n",
+      Munger.getTestResults());
+
+  // Show that the writer can recover.
+  Munger.setTryToRecoverOnWrite(true);
+  EXPECT_TRUE(Munger.runTest(ARRAY(Edits)));
+  EXPECT_EQ(
+      "Error (Block 12): Error: Bad abbreviation operand encoding 10: "
+      "2: [65533, 1, 10]\n"
+      "       1: [65535, 8, 2]\n"
+      "         1: [65535, 17, 3]\n"
+      "           3: [1, 2]\n"
+      "           3: [2]\n"
+      "           3: [21, 0, 0]\n"
+      "         0: [65534]\n"
+      "         3: [8, 1, 0, 0, 0]\n"
+      "         1: [65535, 12, 3]\n"  // Note: not followed by abbreviation def.
+      "           3: [1, 1]\n"
+      "           3: [10]\n"
+      "         0: [65534]\n"
+      "       0: [65534]\n",
+      Munger.getTestResults());
+}
+
+// Show how we deal with additional abbreviations defined for a block,
+// once a bad abbreviation definition record is found. That is, we
+// remove all succeeding abbreviations definitions for that block. In
+// addition, any record refering to a remove abbreviation is changed
+// to use the default abbreviation.
+TEST(NaClMungedWriteErrorTests, TestRemovingAbbrevWithMultAbbrevs) {
+  NaClWriteMunger Munger(ARRAY_TERM(BitcodeRecords));
+  const uint64_t FunctionEnterIndex = 7;
+  const uint64_t Edits[] {
+    FunctionEnterIndex, NaClMungedBitcode::Replace,   // Set Abbrev bits = 3
+        1, naclbitc::BLK_CODE_ENTER, naclbitc::FUNCTION_BLOCK_ID, 3, Terminator,
+    RetVoidIndex, NaClMungedBitcode::AddBefore,  // bad abbreviation!
+        2, naclbitc::BLK_CODE_DEFINE_ABBREV, 1, // 1,
+        naclbitc::FUNC_CODE_INST_RET - 1, Terminator,
+    RetVoidIndex, NaClMungedBitcode::AddBefore,  // good abbreviation to ignore.
+        2, naclbitc::BLK_CODE_DEFINE_ABBREV, 1, 1,
+        naclbitc::FUNC_CODE_INST_RET, Terminator,
+    RetVoidIndex, NaClMungedBitcode::Replace,  // reference to good abreviation.
+        5, naclbitc::FUNC_CODE_INST_RET, Terminator
+        };
+
+  Munger.setTryToRecoverOnWrite(true);
+  EXPECT_TRUE(Munger.runTest(ARRAY(Edits)));
+  EXPECT_EQ(
+      "Error (Block 12): Error: Bad abbreviation operand encoding 9:"
+      " 2: [65533, 1, 9]\n"
+      "Error (Block 12): Ignoring abbreviation: 2: [65533, 1, 1, 10]\n"
+      "Error (Block 12): Uses illegal abbreviation index: 5: [10]\n"
+      "       1: [65535, 8, 2]\n"
+      "         1: [65535, 17, 3]\n"
+      "           3: [1, 2]\n"
+      "           3: [2]\n"
+      "           3: [21, 0, 0]\n"
+      "         0: [65534]\n"
+      "         3: [8, 1, 0, 0, 0]\n"
+      "         1: [65535, 12, 3]\n"
+      "           3: [1, 1]\n"
+      "           3: [10]\n"     // Abbreviation index 5 replaced with default.
+      "         0: [65534]\n"
+      "       0: [65534]\n",
+      Munger.getTestResults());
+}
+
 // Show that error recovery works when writing an illegal abbreviation
 // index. Show success by parsing fixed bitcode.
 TEST(NaClMungeWriteErrorTests, RecoverWhenParsingBadAbbrevIndex) {
@@ -292,15 +447,32 @@ TEST(NaClMungeWriteErrorTests, RecoverTooManyLocalAbbreviations) {
   NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   Munger.setTryToRecoverOnWrite(true);
   Munger.munge(ARRAY(UseLocalRetVoidAbbrevEdits));
-
   EXPECT_TRUE(Munger.runTest());
-  std::string Results(
-      "Error (Block 12): Exceeds abbreviation index limit of 3: 2:"
-      " [65533, 1, 1, 10]\n"
-      "Error (Block 12): Uses illegal abbreviation index: 4: [10]\n");
-  Results.append(ExpectedDump);
   EXPECT_EQ(
-      Results,
+      "Error (Block 12): Uses illegal abbreviation index: 4: [10]\n"
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE'"
+      " (80, 69, 88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 17, 3>          |  types {  // BlockID = 17\n"
+      "      32:0|    3: <1, 2>                |    count 2;\n"
+      "      34:5|    3: <2>                   |    @t0 = void;\n"
+      "      36:4|    3: <21, 0, 0>            |    @t1 = void ();\n"
+      "      39:7|  0: <65534>                 |  }\n"
+      "      44:0|  3: <8, 1, 0, 0, 0>         |  define external void @f0();\n"
+      // Block only specifies 2 bits for abbreviations (i.e. limit = 3).
+      "      48:6|  1: <65535, 12, 2>          |  function void @f0() {  \n"
+      "          |                             |                   // BlockID"
+      " = 12\n"
+      "      56:0|    3: <1, 1>                |    blocks 1;\n"
+      // Added abbreviation. Defines abbreviation index 4.
+      "      58:4|    2: <65533, 1, 1, 10>     |    %a0 = abbrev <10>;\n"
+      "          |                             |  %b0:\n"
+      // Repaired abbreviation index of 4 (now 3).
+      "      60:4|    3: <10>                  |    ret void;\n"
+      "      62:2|  0: <65534>                 |  }\n"
+      "      64:0|0: <65534>                   |}\n",
       Munger.getTestResults());
 }
 
