@@ -16,6 +16,8 @@
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <set>
+
 using namespace llvm;
 
 namespace {
@@ -27,13 +29,19 @@ static bool DebugEmit = false;
 // Description of current block scope
 struct BlockScope {
   BlockScope(unsigned CurBlockID, size_t AbbrevIndexLimit)
-      : CurBlockID(CurBlockID), AbbrevIndexLimit(AbbrevIndexLimit) {}
+      : CurBlockID(CurBlockID), AbbrevIndexLimit(AbbrevIndexLimit),
+        OmittedAbbreviations(false) {}
   unsigned CurBlockID;
   // Defines the maximum value for abbreviation indices in block.
   size_t AbbrevIndexLimit;
+  // Defines if an abbreviation definition was omitted (i.e. not
+  // written) from this block. Used to turn off writing further
+  // abbreviation definitions for this block.
+  bool OmittedAbbreviations;
   void print(raw_ostream &Out) const {
     Out << "BlockScope(ID=" << CurBlockID << ", AbbrevIndexLimit="
-        << AbbrevIndexLimit << ")";
+        << AbbrevIndexLimit << "OmittedAbbreviations="
+        << OmittedAbbreviations << ")";
   }
 };
 
@@ -49,13 +57,16 @@ struct WriteState {
   // The SetBID for the blockinfo block.
   unsigned SetBID = UnknownWriteBlockID;
   // The stack of scopes the writer is in.
-  SmallVector<BlockScope, 3> ScopeStack;
+  SmallVector<BlockScope, 4> ScopeStack;
   // The set of write flags to use.
   const NaClMungedBitcode::WriteFlags &Flags;
   // The results of the attempted write.
   NaClMungedBitcode::WriteResults Results;
   // The minimum number of bits allowed to be specified in a block.
   const unsigned BlockMinBits;
+  // The set of block IDs for which abbreviation definitions have been
+  // omitted in the blockinfo block.
+  std::set<unsigned> BlocksWithOmittedAbbrevs;
 
   WriteState(const NaClMungedBitcode::WriteFlags &Flags)
       : Flags(Flags),
@@ -90,6 +101,23 @@ struct WriteState {
     return ScopeStack.back().AbbrevIndexLimit;
   }
 
+  // Returns whether any abbreviation definitions were not written to
+  // the bitcode buffer.
+  bool curBlockHasOmittedAbbreviations() const {
+    assert(!ScopeStack.empty());
+    return ScopeStack.back().OmittedAbbreviations
+        || BlocksWithOmittedAbbrevs.count(getCurWriteBlockID());
+  }
+
+  // Marks that an abbreviation definition is being omitted (i.e. not
+  // written) for the current block.
+  void markCurrentBlockWithOmittedAbbreviations() {
+    assert(!ScopeStack.empty());
+    ScopeStack.back().OmittedAbbreviations = true;
+    if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID)
+      BlocksWithOmittedAbbrevs.insert(SetBID);
+  }
+
   // Converts the abbreviation record to the corresponding abbreviation.
   // Returns nullptr if unable to build abbreviation.
   NaClBitCodeAbbrev *buildAbbrev(const NaClBitcodeAbbrevRecord &Record);
@@ -97,7 +125,8 @@ struct WriteState {
   // Emits the given record to the bitcode file. Returns true if
   // successful.
   bool LLVM_ATTRIBUTE_UNUSED_RESULT
-  emitRecord(NaClBitstreamWriter &Writer, const NaClBitcodeAbbrevRecord &Record);
+  emitRecord(NaClBitstreamWriter &Writer,
+             const NaClBitcodeAbbrevRecord &Record);
 
   // Enter the given block
   bool LLVM_ATTRIBUTE_UNUSED_RESULT
@@ -117,6 +146,21 @@ struct WriteState {
       printScopeStack(errs());
     return true;
   }
+
+  void WriteRecord(NaClBitstreamWriter &Writer,
+                   const NaClBitcodeAbbrevRecord &Record,
+                   bool UsesDefaultAbbrev) {
+    if (UsesDefaultAbbrev)
+      Writer.EmitRecord(Record.Code, Record.Values);
+    else
+      Writer.EmitRecord(Record.Code, Record.Values, Record.Abbrev);
+  }
+
+  // Returns true if the abbreviation index defines an abbreviation
+  // that can be applied to the record.
+  bool LLVM_ATTRIBUTE_UNUSED_RESULT
+  canApplyAbbreviation(NaClBitstreamWriter &Writer,
+                       const NaClBitcodeAbbrevRecord &Record);
 
   // Completes the write.
   NaClMungedBitcode::WriteResults &finish(NaClBitstreamWriter &Writer,
@@ -183,6 +227,55 @@ bool WriteState::enterBlock(NaClBitstreamWriter &Writer, uint64_t WriteBlockID,
     Writer.EnterSubblock(WriteBlockID, CurCodeLen);
   }
   return true;
+}
+
+bool WriteState::canApplyAbbreviation(
+    NaClBitstreamWriter &Writer, const NaClBitcodeAbbrevRecord &Record) {
+  const NaClBitCodeAbbrev *Abbrev = Writer.getAbbreviation(Record.Abbrev);
+  if (Abbrev == nullptr)
+    return false;
+
+  // Merge record code into values and then match abbreviation.
+  NaClBitcodeValues Values(Record);
+  size_t ValueIndex = 0;
+  size_t ValuesSize = Values.size();
+  size_t AbbrevIndex = 0;
+  size_t AbbrevSize = Abbrev->getNumOperandInfos();
+  bool FoundArray = false;
+  while (ValueIndex < ValuesSize && AbbrevIndex < AbbrevSize) {
+    const NaClBitCodeAbbrevOp *Op = &Abbrev->getOperandInfo(AbbrevIndex++);
+    uint64_t Value = Values[ValueIndex++];
+    if (Op->getEncoding() == NaClBitCodeAbbrevOp::Array) {
+      if (AbbrevIndex + 1 != AbbrevSize)
+        return false;
+      Op = &Abbrev->getOperandInfo(AbbrevIndex);
+      --AbbrevIndex; // i.e. don't advance to next abbreviation op.
+      FoundArray = true;
+    }
+    switch (Op->getEncoding()) {
+    case NaClBitCodeAbbrevOp::Literal:
+      if (Value != Op->getValue())
+        return false;
+      continue;
+    case NaClBitCodeAbbrevOp::Fixed:
+      if (Value >= (static_cast<uint64_t>(1)
+                    << NaClBitstreamWriter::MaxEmitNumBits)
+          || NaClBitsNeededForValue(Value) > Op->getValue())
+        return false;
+      continue;
+    case NaClBitCodeAbbrevOp::VBR:
+      if (Op->getValue() < 2)
+        return false;
+      continue;
+    case NaClBitCodeAbbrevOp::Array:
+      llvm_unreachable("Array(Array) abbreviation is not legal!");
+    case NaClBitCodeAbbrevOp::Char6:
+      if (!Op->isChar6(Value))
+        return false;
+      continue;
+    }
+  }
+  return ValueIndex == ValuesSize && (FoundArray || AbbrevIndex == AbbrevSize);
 }
 
 NaClMungedBitcode::WriteResults &WriteState::finish(
@@ -271,6 +364,12 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
     break;
   }
   case naclbitc::BLK_CODE_DEFINE_ABBREV: {
+    if (curBlockHasOmittedAbbreviations()) {
+      // If reached, a previous abbreviation for the block was omitted. Can't
+      // generate more abbreviations without having to fix abbreviation indices.
+      RecoverableError() << "Ignoring abbreviation: " << Record << "\n";
+      return Flags.getTryToRecover();
+    }
     if (Record.Abbrev != naclbitc::DEFINE_ABBREV) {
       RecoverableError()
           << "Uses illegal abbreviation index in define abbreviation record: "
@@ -278,16 +377,11 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       if (!Flags.getTryToRecover())
         return false;
     }
-    if (getCurWriteBlockID() != naclbitc::BLOCKINFO_BLOCK_ID
-        && Writer.getMaxCurAbbrevIndex() >= getCurAbbrevIndexLimit()) {
-      RecoverableError() << "Exceeds abbreviation index limit of "
-                         << getCurAbbrevIndexLimit() << ": " << Record << "\n";
-      // Recover by not writing.
+    NaClBitCodeAbbrev *Abbrev = buildAbbrev(Record);
+    if (Abbrev == nullptr) {
+      markCurrentBlockWithOmittedAbbreviations();
       return Flags.getTryToRecover();
     }
-    NaClBitCodeAbbrev *Abbrev = buildAbbrev(Record);
-    if (Abbrev == NULL)
-      return Flags.getTryToRecover();
     if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
       Writer.EmitBlockInfoAbbrev(SetBID, Abbrev);
     } else {
@@ -314,10 +408,21 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       }
       UsesDefaultAbbrev = true;
     }
-    if (!UsesDefaultAbbrev
-        && !Writer.isUserRecordAbbreviation(Record.Abbrev)) {
-      // Illegal abbreviation index found.
+    if (!UsesDefaultAbbrev && !canApplyAbbreviation(Writer, Record)) {
+      if (Writer.getAbbreviation(Record.Abbrev) != nullptr) {
+        RecoverableError() << "Abbreviation doesn't apply to record: "
+                           << Record << "\n";
+        UsesDefaultAbbrev = true;
+        if (!Flags.getTryToRecover())
+          return false;
+        WriteRecord(Writer, Record, UsesDefaultAbbrev);
+        return true;
+      }
       if (Flags.getWriteBadAbbrevIndex()) {
+        // The abbreviation is not understood by the bitcode writer,
+        // and the flag value implies that we should still write it
+        // out so that unit tests for this error condition can be
+        // applied.
         Error() << "Uses illegal abbreviation index: " << Record << "\n";
         // Generate bad abbreviation index so that the bitcode reader
         // can be tested, and then quit.
@@ -329,9 +434,11 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       }
       RecoverableError() << "Uses illegal abbreviation index: "
                          << Record << "\n";
+      UsesDefaultAbbrev = true;
       if (!Flags.getTryToRecover())
         return false;
-      UsesDefaultAbbrev = true;
+      WriteRecord(Writer, Record, UsesDefaultAbbrev);
+      return true;
     }
     if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID
         && Record.Code == naclbitc::BLOCKINFO_CODE_SETBID) {
@@ -347,10 +454,8 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       SetBID = Record.Values[0];
       return true;
     }
-    if (UsesDefaultAbbrev)
-      Writer.EmitRecord(Record.Code, Record.Values);
-    else
-      Writer.EmitRecord(Record.Code, Record.Values, Record.Abbrev);
+    WriteRecord(Writer, Record, UsesDefaultAbbrev);
+    break;
   }
   return true;
 }
@@ -381,7 +486,7 @@ NaClBitCodeAbbrev *WriteState::buildAbbrev(
     if (Index >= NumValues) {
       RecoverableError()
           << "Malformed abbreviation found. Expects " << NumAbbreviations
-          << " operands but ound " << Count << ": " << Record << "\n";
+          << " operands but found " << Count << ": " << Record << "\n";
       return deleteAbbrev(Abbrev);
     }
     switch (Record.Values[Index++]) {
@@ -438,8 +543,8 @@ NaClBitCodeAbbrev *WriteState::buildAbbrev(
       break;
     }
     default:
-      RecoverableError() << "Error: Bad literal flag " << Record.Values[Index]
-                         << ": " << Record << "\n";
+      RecoverableError() << "Error: Bad abbreviation operand encoding "
+                         << Record.Values[Index-1] << ": " << Record << "\n";
       return deleteAbbrev(Abbrev);
     }
   }

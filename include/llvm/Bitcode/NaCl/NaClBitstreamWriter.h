@@ -44,11 +44,14 @@ class NaClBitstreamWriter {
   std::vector<NaClBitCodeAbbrev*> CurAbbrevs;
 
   struct Block {
-    NaClBitcodeSelectorAbbrev PrevCodeSize;
-    unsigned StartSizeWord;
+    const NaClBitcodeSelectorAbbrev PrevCodeSize;
+    const unsigned StartSizeWord;
     std::vector<NaClBitCodeAbbrev*> PrevAbbrevs;
-    Block(const NaClBitcodeSelectorAbbrev& PCS, unsigned SSW)
-        : PrevCodeSize(PCS), StartSizeWord(SSW) {}
+    const unsigned AbbreviationIndexLimit;
+    Block(const NaClBitcodeSelectorAbbrev& PCS, unsigned SSW,
+          unsigned AbbreviationIndexLimit)
+        : PrevCodeSize(PCS), StartSizeWord(SSW),
+          AbbreviationIndexLimit(AbbreviationIndexLimit) {}
   };
 
   /// BlockScope - This tracks the current blocks that we have entered.
@@ -158,11 +161,15 @@ public:
   // Basic Primitives for emitting bits to the stream.
   //===--------------------------------------------------------------------===//
 
+  // Max Number of bits that can be written using Emit.
+  static const unsigned MaxEmitNumBits = 32;
+
   void Emit(uint32_t Val, unsigned NumBits) {
-    assert(NumBits && NumBits <= 32 && "Invalid value size!");
-    assert((Val & ~(~0U >> (32-NumBits))) == 0 && "High bits set!");
+    assert(NumBits && NumBits <= MaxEmitNumBits && "Invalid value size!");
+    assert((Val &
+            ~(~0U >> (MaxEmitNumBits-NumBits))) == 0 && "High bits set!");
     CurValue |= Val << CurBit;
-    if (CurBit + NumBits < 32) {
+    if (CurBit + NumBits < MaxEmitNumBits) {
       CurBit += NumBits;
       return;
     }
@@ -171,19 +178,19 @@ public:
     WriteWord(CurValue);
 
     if (CurBit)
-      CurValue = Val >> (32-CurBit);
+      CurValue = Val >> (MaxEmitNumBits-CurBit);
     else
       CurValue = 0;
-    CurBit = (CurBit+NumBits) & 31;
+    CurBit = (CurBit+NumBits) & (MaxEmitNumBits-1);
   }
 
   void Emit64(uint64_t Val, unsigned NumBits) {
-    if (NumBits <= 32)
-      Emit((uint32_t)Val, NumBits);
-    else {
-      Emit((uint32_t)Val, 32);
-      Emit((uint32_t)(Val >> 32), NumBits-32);
+    while (NumBits > MaxEmitNumBits) {
+      Emit((uint32_t)Val, MaxEmitNumBits);
+      Val >>= MaxEmitNumBits;
+      NumBits -= MaxEmitNumBits;
     }
+    Emit((uint32_t)Val, NumBits);
   }
 
   void flushToByte() {
@@ -287,7 +294,8 @@ private:
 
     // Push the outer block's abbrev set onto the stack, start out with an
     // empty abbrev set.
-    BlockScope.push_back(Block(OldCodeSize, BlockSizeWordIndex));
+    BlockScope.push_back(Block(OldCodeSize, BlockSizeWordIndex,
+                               1 << CodeLen.NumBits));
     BlockScope.back().PrevAbbrevs.swap(CurAbbrevs);
 
     // If there is a blockinfo for this BlockID, add all the predefined abbrevs
@@ -389,9 +397,8 @@ private:
   template<typename uintty>
   void EmitRecordWithAbbrevImpl(unsigned Abbrev,
                                 const AbbrevValues<uintty> &Vals) {
-    unsigned AbbrevNo = Abbrev-naclbitc::FIRST_APPLICATION_ABBREV;
-    assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
-    NaClBitCodeAbbrev *Abbv = CurAbbrevs[AbbrevNo];
+    const NaClBitCodeAbbrev *Abbv = getAbbreviation(Abbrev);
+    assert(Abbv && "Abbreviation index is invalid");
 
     EmitCode(Abbrev);
 
@@ -421,11 +428,17 @@ private:
 
 public:
 
-  /// Returns true if the given abbreviation index corresponds to a user-defined
-  /// abbreviation.
-  bool isUserRecordAbbreviation(unsigned Abbrev) const {
-    return Abbrev >= naclbitc::FIRST_APPLICATION_ABBREV
-        && Abbrev < (CurAbbrevs.size() + naclbitc::FIRST_APPLICATION_ABBREV);
+  /// Returns a pointer to the abbreviation currently associated with
+  /// the abbreviation index. Returns nullptr if no such abbreviation.
+  const NaClBitCodeAbbrev *getAbbreviation(unsigned Index) const {
+    if (Index < naclbitc::FIRST_APPLICATION_ABBREV)
+      return nullptr;
+    if (Index >= BlockScope.back().AbbreviationIndexLimit)
+      return nullptr;
+    unsigned AbbrevNo = Index - naclbitc::FIRST_APPLICATION_ABBREV;
+    if (AbbrevNo >= CurAbbrevs.size())
+      return nullptr;
+    return CurAbbrevs[AbbrevNo];
   }
 
   /// EmitRecord - Emit the specified record to the stream, using an abbrev if
