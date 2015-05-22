@@ -258,10 +258,10 @@ extern "C" void LLVMInitializeX86TargetMC() {
 
     // Register the code emitter.
     TargetRegistry::RegisterMCCodeEmitter(*T, createX86MCCodeEmitter);
-
+#ifndef __native_client__
     // Register the object streamer.
     TargetRegistry::RegisterCOFFStreamer(*T, createX86WinCOFFStreamer);
-
+#endif
     // Register the MCInstPrinter.
     TargetRegistry::RegisterMCInstPrinter(*T, createX86MCInstPrinter);
 
