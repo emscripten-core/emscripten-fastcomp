@@ -118,9 +118,31 @@ struct WriteState {
       BlocksWithOmittedAbbrevs.insert(SetBID);
   }
 
+  // Returns true if abbreviation operand is legal. If not, logs
+  // a recoverable error message and returns false. Assumes that
+  // the caller does the actual error recovery if applicable.
+  bool verifyAbbrevOp(NaClBitCodeAbbrevOp::Encoding Encoding, uint64_t Value,
+                      const NaClBitcodeAbbrevRecord &Record);
+
   // Converts the abbreviation record to the corresponding abbreviation.
   // Returns nullptr if unable to build abbreviation.
   NaClBitCodeAbbrev *buildAbbrev(const NaClBitcodeAbbrevRecord &Record);
+
+  // Gets the next value (based on Index) from the record values,
+  // assigns it to ExtractedValue, and returns true. Otherwise, logs a
+  // recoverable error message and returns false. Assumes that the
+  // caller does the actual error recovery if applicable.
+  bool LLVM_ATTRIBUTE_UNUSED_RESULT
+  nextAbbrevValue(uint64_t &ExtractedValue,
+                  const NaClBitcodeAbbrevRecord &Record, size_t &Index) {
+    if (Index >= Record.Values.size()) {
+      RecoverableError()
+          << "Malformed abbreviation found: " << Record << "\n";
+      return false;
+    }
+    ExtractedValue = Record.Values[Index++];
+    return true;
+  }
 
   // Emits the given record to the bitcode file. Returns true if
   // successful.
@@ -465,68 +487,71 @@ static NaClBitCodeAbbrev *deleteAbbrev(NaClBitCodeAbbrev *Abbrev) {
   return nullptr;
 }
 
+bool WriteState::verifyAbbrevOp(NaClBitCodeAbbrevOp::Encoding Encoding,
+                                uint64_t Value,
+                                const NaClBitcodeAbbrevRecord &Record) {
+  if (NaClBitCodeAbbrevOp::isValid(Encoding, Value))
+    return true;
+  RecoverableError() << "Invalid abbreviation "
+                     << NaClBitCodeAbbrevOp::getEncodingName(Encoding)
+                     << "(" << static_cast<int64_t>(Value)
+                     << ") in: " << Record << "\n";
+  return false;
+}
+
 NaClBitCodeAbbrev *WriteState::buildAbbrev(
     const NaClBitcodeAbbrevRecord &Record) {
   // Note: Recover by removing abbreviation.
   NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
   size_t Index = 0;
-  size_t NumValues = Record.Values.size();
-  if (NumValues == 0) {
-    RecoverableError() << "Empty abbreviation record not allowed: "
-                       << Record << "\n";
+  size_t NumAbbrevOps;
+  if (!nextAbbrevValue(NumAbbrevOps, Record, Index))
     return deleteAbbrev(Abbrev);
-  }
-  size_t NumAbbreviations = Record.Values[Index++];
-  if (NumAbbreviations == 0) {
+  if (NumAbbrevOps == 0) {
     RecoverableError() << "Abbreviation must contain at least one operator: "
                        << Record << "\n";
     return deleteAbbrev(Abbrev);
   }
-  for (size_t Count = 0; Count < NumAbbreviations; ++Count) {
-    if (Index >= NumValues) {
-      RecoverableError()
-          << "Malformed abbreviation found. Expects " << NumAbbreviations
-          << " operands but found " << Count << ": " << Record << "\n";
+  for (size_t Count = 0; Count < NumAbbrevOps; ++Count) {
+    uint64_t IsLiteral;
+    if (!nextAbbrevValue(IsLiteral, Record, Index))
       return deleteAbbrev(Abbrev);
-    }
-    switch (Record.Values[Index++]) {
-    case 1:
-      if (Index >= NumValues) {
-        RecoverableError() << "Malformed literal abbreviation: "
-                           << Record << "\n";
+    switch (IsLiteral) {
+    case 1: {
+      uint64_t Value;
+      if (!nextAbbrevValue(Value, Record, Index))
         return deleteAbbrev(Abbrev);
-      }
-      Abbrev->Add(NaClBitCodeAbbrevOp(Record.Values[Index++]));
+      if (!verifyAbbrevOp(NaClBitCodeAbbrevOp::Literal, Value, Record))
+        return deleteAbbrev(Abbrev);
+      Abbrev->Add(NaClBitCodeAbbrevOp(Value));
       break;
+    }
     case 0: {
-      if (Index >= NumValues) {
-        RecoverableError() << "Malformed abbreviation found: "
-                           << Record << "\n";
+      uint64_t Kind;
+      if (!nextAbbrevValue(Kind, Record, Index))
         return deleteAbbrev(Abbrev);
-      }
-      unsigned Kind = Record.Values[Index++];
       switch (Kind) {
-      case NaClBitCodeAbbrevOp::Fixed:
-        if (Index >= NumValues) {
-          RecoverableError() << "Malformed fixed abbreviation found: "
-                             << Record << "\n";
+      case NaClBitCodeAbbrevOp::Fixed: {
+        uint64_t Value;
+        if (!nextAbbrevValue(Value, Record, Index))
           return deleteAbbrev(Abbrev);
-        }
-        Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed,
-                                        Record.Values[Index++]));
-        break;
-      case NaClBitCodeAbbrevOp::VBR:
-        if (Index >= NumValues) {
-          RecoverableError() << "Malformed vbr abbreviation found: "
-                             << Record << "\n";
+        if (!verifyAbbrevOp(NaClBitCodeAbbrevOp::Fixed, Value, Record))
           return deleteAbbrev(Abbrev);
-        }
-        Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR,
-                                        Record.Values[Index++]));
+        Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::Fixed, Value));
         break;
+      }
+      case NaClBitCodeAbbrevOp::VBR: {
+        uint64_t Value;
+        if (!nextAbbrevValue(Value, Record, Index))
+          return deleteAbbrev(Abbrev);
+        if (!verifyAbbrevOp(NaClBitCodeAbbrevOp::VBR, Value, Record))
+          return deleteAbbrev(Abbrev);
+        Abbrev->Add(NaClBitCodeAbbrevOp(NaClBitCodeAbbrevOp::VBR, Value));
+        break;
+      }
       case NaClBitCodeAbbrevOp::Array:
-        if (Index >= NumValues) {
-          RecoverableError() << "Malformed array abbreviation found: "
+        if (Count + 2 != NumAbbrevOps) {
+          RecoverableError() << "Array abbreviation must be second to last: "
                              << Record << "\n";
           return deleteAbbrev(Abbrev);
         }
@@ -543,10 +568,22 @@ NaClBitCodeAbbrev *WriteState::buildAbbrev(
       break;
     }
     default:
-      RecoverableError() << "Error: Bad abbreviation operand encoding "
+      RecoverableError() << "Bad abbreviation operand encoding "
                          << Record.Values[Index-1] << ": " << Record << "\n";
       return deleteAbbrev(Abbrev);
     }
+  }
+  if (Index != Record.Values.size()) {
+    RecoverableError() << "Error: Too many values for number of operands ("
+                       << NumAbbrevOps << "): "
+                       << Record << "\n";
+    return deleteAbbrev(Abbrev);
+  }
+  if (!Abbrev->isValid()) {
+    raw_ostream &Out = RecoverableError();
+    Abbrev->Print(Out << "Abbreviation ");
+    Out << " not valid: " << Record << "\n";
+    return deleteAbbrev(Abbrev);
   }
   return Abbrev;
 }
