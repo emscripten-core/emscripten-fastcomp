@@ -314,16 +314,21 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
   return "HEAP32[" + getValueAsStr(CI->getOperand(0)) + ">>2]=" + getValueAsStr(CI->getOperand(1));
 })
 
-#define CMPXCHG_HANDLER(name) \
+#define CMPXCHG_HANDLER(name, HeapName) \
 DEF_CALL_HANDLER(name, { \
   const Value *P = CI->getOperand(0); \
-  return getLoad(CI, P, CI->getType(), 0) + ';' + \
-         "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
-            getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0); \
+  if (EnablePthreads) { \
+    return getAssign(CI) + "Atomics_compareExchange(" HeapName ", " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")"; \
+  } else { \
+    return getLoad(CI, P, CI->getType(), 0) + ';' + \
+             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
+                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0); \
+  } \
 })
-CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i8);
-CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16);
-CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32);
+
+CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i8, "HEAP8");
+CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16, "HEAP16");
+CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32, "HEAP32");
 
 #define UNROLL_LOOP_MAX 8
 #define WRITE_LOOP_MAX 128

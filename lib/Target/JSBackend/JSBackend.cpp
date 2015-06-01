@@ -2367,30 +2367,6 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
                                     getValueAsStr(I->getOperand(2));
     break;
   }
-  case Instruction::ExtractValue: {
-    const ExtractValueInst *evi = cast<ExtractValueInst>(I);
-    std::string Assign = getAssign(evi);
-    Code << Assign << getValueAsStr(I->getOperand(0)) << "_" << evi->idx_begin()[0];
-    break;
-  }
-  case Instruction::AtomicCmpXchg: {
-    const AtomicCmpXchgInst *cxi = cast<AtomicCmpXchgInst>(I);
-    const Value *P = I->getOperand(0);
-    const char *HeapName;
-    std::string Index = getHeapNameAndIndex(P, &HeapName);
-    std::string Assign = getJSName(I);
-    UsedVars[Assign + "_0"] = I->getOperand(1)->getType();
-    UsedVars[Assign + "_1"] = Type::getInt1Ty(P->getContext());
-    if (EnablePthreads) {
-      Code << Assign << "_0 = Atomics_compareExchange(" << HeapName << ", " << Index << ", " << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(2)) << ");\n";
-      Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0)";
-    } else {
-      Code << Assign << "_0 = " << HeapName << "[" << Index << "];\n";
-      Code << Assign << "_1 = (" << Assign << "_0|0) == (" << getValueAsStr(I->getOperand(1)) << "|0); ";
-      Code << "if (" << Assign << "_1) " << getStore(cxi, P, I->getType(), getValueAsStr(I->getOperand(2)), 0);
-    }
-    break;
-  }
   case Instruction::AtomicRMW: {
     const AtomicRMWInst *rmwi = cast<AtomicRMWInst>(I);
     const Value *P = rmwi->getOperand(0);
