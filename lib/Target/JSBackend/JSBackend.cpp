@@ -507,11 +507,16 @@ namespace {
     /// @return The index to the heap HeapName for the memory access.
     std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName);
 
+    // Like getHeapNameAndIndex(), but uses the given memory operation size instead of the one from Ptr.
+    std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes);
+
     /// Like getHeapNameAndIndex(), but for global variables only.
     std::string getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const char **HeapName);
 
     /// Like getHeapNameAndIndex(), but for pointers represented in string expression form.
     static std::string getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName);
+
+    std::string getShiftedPtr(const Value *Ptr, unsigned Bytes);
 
     /// Returns a string expression for accessing the given memory address.
     std::string getPtrUse(const Value* Ptr);
@@ -910,16 +915,22 @@ std::string JSWriter::getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned 
   return Ptr + getHeapShiftStr(Bytes);
 }
 
-std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
+std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes)
 {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  unsigned Bytes = DL->getTypeAllocSize(t);
 
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
     return getHeapNameAndIndexToGlobal(GV, HeapName);
   } else {
     return getHeapNameAndIndexToPtr(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy(), HeapName);
   }
+}
+
+std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
+{
+  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
+  unsigned Bytes = DL->getTypeAllocSize(t);
+  return getHeapNameAndIndex(Ptr, HeapName, Bytes);
 }
 
 static const char *heapNameToAtomicTypeName(const char *HeapName)
@@ -1190,6 +1201,11 @@ std::string JSWriter::getHeapAccess(const std::string& Name, unsigned Bytes, boo
   const char *HeapName = 0;
   std::string Index = getHeapNameAndIndexToPtr(Name, Bytes, Integer, &HeapName);
   return std::string(HeapName) + '[' + Index + ']';
+}
+
+std::string JSWriter::getShiftedPtr(const Value *Ptr, unsigned Bytes) {
+  const char *HeapName = 0; // unused
+  return getHeapNameAndIndex(Ptr, &HeapName, Bytes);
 }
 
 std::string JSWriter::getPtrUse(const Value* Ptr) {
