@@ -552,7 +552,7 @@ DEF_CALL_HANDLER(emscripten_asm_const_double, {
 std::string getAddressAsString(const Value *Ptr, int shift) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-    return utostr(getGlobalAddress(GV->getName().str()) >> shift);
+    return relocateGlobal(utostr(getGlobalAddress(GV->getName().str()) >> shift));
   } else {
     return getValueAsStr(Ptr) + ">>" + utostr(shift);
   }
@@ -585,14 +585,6 @@ DEF_CALL_HANDLER(emscripten_atomic_cas_u16, {
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u32, {
   return getAssign(CI) + "Atomics_compareExchange(HEAP32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
-})
-DEF_CALL_HANDLER(emscripten_atomic_cas_f32, {
-  errs() << "emcc: warning: float32 compare-and-swap is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
-  return getAssign(CI) + "Atomics_compareExchange(HEAPF32, " + getAddressAsString(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
-})
-DEF_CALL_HANDLER(emscripten_atomic_cas_f64, {
-  errs() << "emcc: warning: float64 compare-and-swap is not supported!" << CI->getParent()->getParent()->getName() << ":" << *CI << "\n";
-  return getAssign(CI) + "Atomics_compareExchange(HEAPF64, " + getAddressAsString(CI->getOperand(0), 3) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_load_u8, {
@@ -895,8 +887,6 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u16);
   SETUP_CALL_HANDLER(emscripten_atomic_cas_u32);
-  SETUP_CALL_HANDLER(emscripten_atomic_cas_f32);
-  SETUP_CALL_HANDLER(emscripten_atomic_cas_f64);
 
   SETUP_CALL_HANDLER(emscripten_atomic_load_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_load_u16);
