@@ -513,9 +513,6 @@ namespace {
     /// Like getHeapNameAndIndex(), but for pointers represented in string expression form.
     static std::string getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName);
 
-    /// Converts the given pointer to a string expression form.
-    std::string getByteAddressAsStr(const Value *Ptr);
-
     /// Returns a string expression for accessing the given memory address.
     std::string getPtrUse(const Value* Ptr);
 
@@ -925,16 +922,6 @@ std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapNam
   }
 }
 
-std::string JSWriter::getByteAddressAsStr(const Value *Ptr)
-{
-  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-    return utostr(getGlobalAddress(GV->getName().str()));
-  } else {
-    return getValueAsStr(Ptr);
-  }
-}
-
 static const char *heapNameToAtomicTypeName(const char *HeapName)
 {
   if (!strcmp(HeapName, "HEAPF32")) return "f32";
@@ -954,7 +941,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
-        text = Assign + (fround ? "Math_fround(" : "+") + "_emscripten_atomic_load_" + heapNameToAtomicTypeName(HeapName) + "(" + getByteAddressAsStr(P) + (fround ? "))" : ")");
+        text = Assign + (fround ? "Math_fround(" : "+") + "_emscripten_atomic_load_" + heapNameToAtomicTypeName(HeapName) + "(" + getValueAsStr(P) + (fround ? "))" : ")");
       } else {
         text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
       }
@@ -1071,7 +1058,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
       if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
-        text = std::string("_emscripten_atomic_store_") + heapNameToAtomicTypeName(HeapName) + "(" + getByteAddressAsStr(P) + ',' + VS + ')';
+        text = std::string("_emscripten_atomic_store_") + heapNameToAtomicTypeName(HeapName) + "(" + getValueAsStr(P) + ',' + VS + ')';
         if (PreciseF32 && !strcmp(HeapName, "HEAPF32"))
           text = "Math_fround(" + text + ")";
         else
@@ -2435,11 +2422,11 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
-        Code << Assign << (fround ? "Math_fround(" : "+") << "_emscripten_atomic_" << atomicFunc << "_" << heapNameToAtomicTypeName(HeapName) << "(" << getByteAddressAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
+        Code << Assign << (fround ? "Math_fround(" : "+") << "_emscripten_atomic_" << atomicFunc << "_" << heapNameToAtomicTypeName(HeapName) << "(" << getValueAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
 
       // TODO: Remove the following two lines once https://bugzilla.mozilla.org/show_bug.cgi?id=1141986 is implemented!
       } else if (rmwi->getOperation() == AtomicRMWInst::Xchg && !strcmp(HeapName, "HEAP32")) {
-        Code << Assign << "_emscripten_atomic_exchange_u32(" << getByteAddressAsStr(P) << ", " << VS << ")|0"; break;
+        Code << Assign << "_emscripten_atomic_exchange_u32(" << getValueAsStr(P) << ", " << VS << ")|0"; break;
 
       } else {
         Code << Assign << "Atomics_" << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
