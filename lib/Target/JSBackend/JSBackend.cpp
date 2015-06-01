@@ -500,10 +500,28 @@ namespace {
     }
 
     std::string getPtrLoad(const Value* Ptr);
+
+    /// Given a pointer to memory, returns the HEAP object and index to that object that is used to access that memory.
+    /// @param Ptr [in] The heap object.
+    /// @param HeapName [out] Receives the name of the HEAP object used to perform the memory acess.
+    /// @return The index to the heap HeapName for the memory access.
     std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName);
+
+    /// Like getHeapNameAndIndex(), but for global variables only.
+    std::string getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const char **HeapName);
+
+    /// Like getHeapNameAndIndex(), but for pointers represented in string expression form.
+    static std::string getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName);
+
+    /// Converts the given pointer to a string expression form.
     std::string getByteAddressAsStr(const Value *Ptr);
-    std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
+
+    /// Returns a string expression for accessing the given memory address.
     std::string getPtrUse(const Value* Ptr);
+
+    /// Like getPtrUse(), but for pointers represented in string expression form.
+    static std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
+
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
     std::string getConstantVector(Type *ElementType, std::string x, std::string y, std::string z, std::string w);
     std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
@@ -847,39 +865,63 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
 
-/// Given a pointer to memory, returns the HEAP object and index to that object that is used to access that memory.
-/// @param Ptr [in] The heap object.
-/// @param HeapName [out] Receives the name of the HEAP object used to perform the memory acess.
-/// @return The index to the heap HeapName for the memory access.
+static inline const char *getHeapName(int Bytes, int Integer)
+{
+  switch (Bytes) {
+    default: llvm_unreachable("Unsupported type");
+    case 8: return "HEAPF64";
+    case 4: return Integer ? "HEAP32" : "HEAPF32";
+    case 2: return "HEAP16";
+    case 1: return "HEAP8";
+  }
+}
+
+static inline int getHeapShift(int Bytes)
+{
+  switch (Bytes) {
+    default: llvm_unreachable("Unsupported type");
+    case 8: return 3;
+    case 4: return 2;
+    case 2: return 1;
+    case 1: return 0;
+  }
+}
+
+static inline const char *getHeapShiftStr(int Bytes)
+{
+  switch (Bytes) {
+    default: llvm_unreachable("Unsupported type");
+    case 8: return ">>3";
+    case 4: return ">>2";
+    case 2: return ">>1";
+    case 1: return ">>0";
+  }
+}
+
+std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const char **HeapName)
+{
+  Type *t = cast<PointerType>(GV->getType())->getElementType();
+  unsigned Bytes = DL->getTypeAllocSize(t);
+  unsigned Addr = getGlobalAddress(GV->getName().str());
+  *HeapName = getHeapName(Bytes, t->isIntegerTy() || t->isPointerTy());
+  return relocateGlobal(utostr(Addr >> getHeapShift(Bytes)));
+}
+
+std::string JSWriter::getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName)
+{
+  *HeapName = getHeapName(Bytes, Integer);
+  return Ptr + getHeapShiftStr(Bytes);
+}
+
 std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
 {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   unsigned Bytes = DL->getTypeAllocSize(t);
 
   if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-    unsigned Addr = getGlobalAddress(GV->getName().str());
-    switch (Bytes) {
-      default: llvm_unreachable("Unsupported type");
-      case 8: *HeapName = "HEAPF64"; return utostr(Addr >> 3);
-      case 4:
-        if (t->isIntegerTy() || t->isPointerTy()) *HeapName = "HEAP32";
-        else *HeapName = "HEAPF32";
-        return utostr(Addr >> 2);
-      case 2: *HeapName = "HEAP16"; return utostr(Addr >> 1); break;
-      case 1: *HeapName = "HEAP8"; return utostr(Addr); break;
-    }
+    return getHeapNameAndIndexToGlobal(GV, HeapName);
   } else {
-    std::string Index = getValueAsStr(Ptr);
-    switch (Bytes) {
-      default: llvm_unreachable("Unsupported type");
-      case 8: *HeapName = "HEAPF64"; return Index + ">>3";
-      case 4:
-        if (t->isIntegerTy() || t->isPointerTy()) *HeapName = "HEAP32";
-        else *HeapName = "HEAPF32";
-        return Index + ">>2";
-      case 2: *HeapName = "HEAP16"; return Index + ">>1";
-      case 1: *HeapName = "HEAP8"; return Index;
-    }
+    return getHeapNameAndIndexToPtr(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy(), HeapName);
   }
 }
 
@@ -1158,45 +1200,15 @@ std::string JSWriter::getPtrLoad(const Value* Ptr) {
 }
 
 std::string JSWriter::getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer) {
-  switch (Bytes) {
-  default: llvm_unreachable("Unsupported type");
-  case 8: return "HEAPF64[" + Name + ">>3]";
-  case 4: {
-    if (Integer) {
-      return "HEAP32[" + Name + ">>2]";
-    } else {
-      return "HEAPF32[" + Name + ">>2]";
-    }
-  }
-  case 2: return "HEAP16[" + Name + ">>1]";
-  case 1: return "HEAP8[" + Name + ">>0]";
-  }
+  const char *HeapName = 0;
+  std::string Index = getHeapNameAndIndexToPtr(Name, Bytes, Integer, &HeapName);
+  return std::string(HeapName) + '[' + Index + ']';
 }
 
 std::string JSWriter::getPtrUse(const Value* Ptr) {
-  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  unsigned Bytes = DL->getTypeAllocSize(t);
-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-    unsigned Addr = getGlobalAddress(GV->getName().str());
-    if (Relocatable) {
-      return getHeapAccess(relocateGlobal(utostr(Addr)), Bytes, t->isIntegerTy() || t->isPointerTy());
-    }
-    switch (Bytes) {
-    default: llvm_unreachable("Unsupported type");
-    case 8: return "HEAPF64[" + utostr(Addr >> 3) + "]";
-    case 4: {
-      if (t->isIntegerTy() || t->isPointerTy()) {
-        return "HEAP32[" + utostr(Addr >> 2) + "]";
-      } else {
-        assert(t->isFloatingPointTy());
-        return "HEAPF32[" + utostr(Addr >> 2) + "]";
-      }
-    }
-    case 2: return "HEAP16[" + utostr(Addr >> 1) + "]";
-    case 1: return "HEAP8[" + utostr(Addr) + "]";
-    }
-  }
-  return getHeapAccess(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy());
+  const char *HeapName = 0;
+  std::string Index = getHeapNameAndIndex(Ptr, &HeapName);
+  return std::string(HeapName) + '[' + Index + ']';
 }
 
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
