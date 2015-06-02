@@ -54,13 +54,18 @@ DEF_CALL_HANDLER(__default__, {
     Invoke = canInvoke(CV);
   }
   std::string Sig;
-
+  bool IsMath = Name.find("Math_") == 0;
   bool ForcedNumArgs = NumArgs != -1;
   if (!ForcedNumArgs) NumArgs = getNumArgOperands(CI);
 
   const Function *F = dyn_cast<const Function>(CV);
   if (F) {
     NeedCasts = F->isDeclaration(); // if ffi call, need casts
+    if (IsMath && !NeedCasts) {
+      // this was renamed to a math function, but the actual function is implemented, presumably from libc; use that
+      IsMath = false;
+      Name = getJSName(F);
+    }
     FT = F->getFunctionType();
   } else {
     FT = dyn_cast<FunctionType>(dyn_cast<PointerType>(CV->getType())->getElementType());
@@ -125,7 +130,7 @@ DEF_CALL_HANDLER(__default__, {
   }
   // this is an ffi call if we need casts, and it is not a special Math_ builtin
   bool FFI = NeedCasts;
-  if (FFI && Name.find("Math_") == 0) {
+  if (FFI && IsMath) {
     if (Name == "Math_ceil" || Name == "Math_floor" || Name == "Math_min" || Name == "Math_max" || Name == "Math_sqrt" || Name == "Math_abs") {
       // This special Math builtin is optimizable with all types, including floats, so can treat it as non-ffi
       FFI = false;
