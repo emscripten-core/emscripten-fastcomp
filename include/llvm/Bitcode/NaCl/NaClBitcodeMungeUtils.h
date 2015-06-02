@@ -238,7 +238,9 @@ public:
 
   bool write(SmallVectorImpl<char> &Buffer, bool AddHeader,
              const WriteFlags &Flags) const {
-    return writeMaybeRepair(Buffer, AddHeader, Flags).NumErrors == 0;
+    WriteResults Results = writeMaybeRepair(Buffer, AddHeader, Flags);
+    return Results.NumErrors == 0
+        || (Flags.getTryToRecover() && Results.NumErrors == Results.NumRepairs);
   }
 
   bool write(SmallVectorImpl<char> &Buffer, bool AddHeader) const {
