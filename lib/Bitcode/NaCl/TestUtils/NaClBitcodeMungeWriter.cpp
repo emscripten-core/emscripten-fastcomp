@@ -404,6 +404,11 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       markCurrentBlockWithOmittedAbbreviations();
       return Flags.getTryToRecover();
     }
+    if (atOutermostScope()) {
+      RecoverableError() << "Abbreviation definition not in block: "
+                         << Record << "\n";
+      return Flags.getTryToRecover();
+    }
     if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
       Writer.EmitBlockInfoAbbrev(SetBID, Abbrev);
     } else {

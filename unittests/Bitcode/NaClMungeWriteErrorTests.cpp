@@ -663,4 +663,21 @@ TEST(NaClMungeWriteErrorTests, SpecifiesTooManyOperands) {
       ExpectedDumpedBitcode);
 }
 
+// Show what happens if an abbreviation definition is defined outside a block.
+TEST(NaClMungeWriteErrorTests, AbbreviationNotInBlock) {
+  // Add abbreviation before all records.
+  const uint64_t Edit[] = {
+    0, NaClMungedBitcode::AddBefore,
+    naclbitc::DEFINE_ABBREV, naclbitc::BLK_CODE_DEFINE_ABBREV, 1,
+    1, 10,                          // lit(10)
+    Terminator
+  };
+  CheckDumpEdits(
+      ARRAY(Edit),
+      "Error (Block unknown): Abbreviation definition not in block: 2:"
+      " [65533, 1, 1, 10]\n",
+      NoErrorRecoveryMessages,
+      ExpectedDumpedBitcode);
+}
+
 } // end of namespace naclmungetest
