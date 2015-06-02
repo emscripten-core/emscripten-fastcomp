@@ -509,7 +509,7 @@ NaClBitCodeAbbrev *WriteState::buildAbbrev(
   // Note: Recover by removing abbreviation.
   NaClBitCodeAbbrev *Abbrev = new NaClBitCodeAbbrev();
   size_t Index = 0;
-  size_t NumAbbrevOps;
+  uint64_t NumAbbrevOps;
   if (!nextAbbrevValue(NumAbbrevOps, Record, Index))
     return deleteAbbrev(Abbrev);
   if (NumAbbrevOps == 0) {
@@ -517,7 +517,7 @@ NaClBitCodeAbbrev *WriteState::buildAbbrev(
                        << Record << "\n";
     return deleteAbbrev(Abbrev);
   }
-  for (size_t Count = 0; Count < NumAbbrevOps; ++Count) {
+  for (uint64_t Count = 0; Count < NumAbbrevOps; ++Count) {
     uint64_t IsLiteral;
     if (!nextAbbrevValue(IsLiteral, Record, Index))
       return deleteAbbrev(Abbrev);
