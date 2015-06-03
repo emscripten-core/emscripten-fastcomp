@@ -765,23 +765,16 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
   if (!Subtarget->isTargetMachO()) {
     // Non-MachO platforms may return values in these registers via the
     // personality function.
-    // @LOCALMOD-START
-    if (Subtarget->isTargetNaCl()) {
-      // we use the first caller saved regs here
-      // c.f.: llvm-gcc/llvm-gcc-4.2/gcc/unwind-dw2.c::uw_install_context
-      // NOTE: these are related to the _Unwind_PNaClSetResult{0,1} functions
-      setExceptionPointerRegister(ARM::R4);
-      setExceptionSelectorRegister(ARM::R5);
-  
-      setOperationAction(ISD::FRAME_TO_ARGS_OFFSET, MVT::i32, Custom);
-
-      setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
-    } else {
-      setExceptionPointerRegister(ARM::R0);
-      setExceptionSelectorRegister(ARM::R1);
-    }
-    // @LOCALMOD-END
+    setExceptionPointerRegister(ARM::R0);
+    setExceptionSelectorRegister(ARM::R1);
   }
+
+  // @LOCALMOD-START
+  if (Subtarget->isTargetNaCl()) {
+    setOperationAction(ISD::FRAME_TO_ARGS_OFFSET, MVT::i32, Custom);
+    setOperationAction(ISD::EH_RETURN, MVT::Other, Custom);
+  }
+  // @LOCALMOD-END
 
   if (Subtarget->getTargetTriple().isWindowsItaniumEnvironment())
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, Custom);

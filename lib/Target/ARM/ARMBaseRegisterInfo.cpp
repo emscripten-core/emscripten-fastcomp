@@ -24,6 +24,7 @@
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineModuleInfo.h" // @LOCALMOD
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/VirtRegMap.h"
@@ -63,7 +64,14 @@ static unsigned getFramePointerReg(const ARMSubtarget &STI) {
 const MCPhysReg*
 ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   const ARMSubtarget &STI = MF->getSubtarget<ARMSubtarget>();
-  if (STI.isTargetNaCl()) return CSR_NaCl_SaveList; // @LOCALMOD
+  // @LOCALMOD-START
+  // We don't support special calling conventions for NaCl here.
+  if (STI.isTargetNaCl()) {
+    if (MF->getMMI().callsEHReturn())
+      return CSR_NaCl_EHRet_SaveList;
+    return CSR_NaCl_SaveList;
+  }
+  // @LOCALMOD-END
 
   const MCPhysReg *RegList =
       STI.isTargetDarwin() ? CSR_iOS_SaveList : CSR_AAPCS_SaveList;

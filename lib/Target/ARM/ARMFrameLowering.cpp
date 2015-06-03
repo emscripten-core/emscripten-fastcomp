@@ -966,6 +966,15 @@ void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
           isKill = false;
       }
 
+      // @LOCALMOD-START
+      // Functions which call EHReturn spill all CSRs plus R0/R1
+      if ((Reg == ARM::R0 || Reg == ARM::R1) &&
+          MF.getRegInfo().isLiveIn(Reg)) {
+        assert(MF.getMMI().callsEHReturn());
+        isKill = false;
+      }
+      // @LOCALMOD-END
+
       if (isKill)
         MBB.addLiveIn(Reg);
 
@@ -1025,6 +1034,7 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
   while (i != 0) {
     unsigned LastReg = 0;
     bool DeleteRet = false;
+    unsigned SkippedPop = 0; // @LOCALMOD
     for (; i != 0; --i) {
       unsigned Reg = CSI[i-1].getReg();
       if (!(Func)(Reg, STI.isTargetDarwin())) continue;
@@ -1032,6 +1042,19 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
       // The aligned reloads from area DPRCS2 are not inserted here.
       if (Reg >= ARM::D8 && Reg < ARM::D8 + NumAlignedDPRCS2Regs)
         continue;
+
+      // @LOCALMOD-START
+      // Functions which call EHReturn spill all of their CSRs plus R0 and R1,
+      // (the EHReturn return value registers). Epilogs which return via
+      // EHreturn pop all of them, but epilogs which return via normal return
+      // must not restore R0 and R1, as that would clobber the return value.
+      if (MF.getMMI().callsEHReturn() &&
+          RetOpcode != ARM::ARMeh_return &&
+          (Reg == ARM::R0 || Reg == ARM::R1)) {
+        SkippedPop++;
+        continue;
+      }
+      // @LOCALMOD-END
 
       if (Reg == ARM::LR && !isTailCall && !isVarArg && !isInterrupt &&
           STI.hasV5TOps() &&
@@ -1051,6 +1074,21 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
       LastReg = Reg;
       Regs.push_back(Reg);
     }
+
+    // @LOCALMOD-START
+    if (SkippedPop) {
+      // We need to increment the stack pointer to compensate for the skipped
+      // pops. However we cannot directly increment it because the epilog
+      // insertion code places the stack pointer restore before the CSR
+      // restores; it does this by finding the first instruction that's not a
+      // pop.  If we put an add here, the restore would go in between the
+      // restore of the FP registers and the GPRs, instead of before the FP
+      // restore. So use a pop into R12 to adjust SP.
+      while(SkippedPop--)
+         AddDefaultPred(BuildMI(MBB, MI, DL, TII.get(LdmOpc), ARM::SP)
+                         .addReg(ARM::SP)).addReg(ARM::R12);
+    }
+    // @LOCALMOD-END
 
     if (Regs.empty())
       continue;
