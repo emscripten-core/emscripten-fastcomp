@@ -104,6 +104,8 @@ namespace {
 
     Function *Add, *Sub, *Mul, *SDiv, *UDiv, *SRem, *URem, *LShr, *AShr, *Shl, *GetHigh, *SetHigh, *FtoILow, *FtoIHigh, *DtoILow, *DtoIHigh, *SItoF, *UItoF, *SItoD, *UItoD, *BItoD, *BDtoILow, *BDtoIHigh;
 
+    Function *AtomicAdd, *AtomicSub, *AtomicAnd, *AtomicOr, *AtomicXor;
+
     void ensureFuncs();
     unsigned getNumChunks(Type *T);
 
@@ -112,7 +114,7 @@ namespace {
     ExpandI64() : ModulePass(ID) {
       initializeExpandI64Pass(*PassRegistry::getPassRegistry());
 
-      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = Shl = GetHigh = SetHigh = NULL;
+      Add = Sub = Mul = SDiv = UDiv = SRem = URem = LShr = AShr = Shl = GetHigh = SetHigh = AtomicAdd = AtomicSub = AtomicAnd = AtomicOr = AtomicXor = NULL;
     }
 
     virtual bool runOnModule(Module &M);
@@ -929,6 +931,42 @@ bool ExpandI64::splitInst(Instruction *I) {
       }
       break;
     }
+    case Instruction::AtomicRMW: {
+      const AtomicRMWInst *rmwi = cast<AtomicRMWInst>(I);
+      ChunksVec Chunks32Bit = getChunks(I->getOperand(1));
+      unsigned Num = getNumChunks(I->getType());
+      assert(Num == 2 && "Only know how to handle 32-bit and 64-bit AtomicRMW instructions!");
+      ensureFuncs();
+      Value *Low = NULL, *High = NULL;
+      Function *F = NULL;
+      switch (rmwi->getOperation()) {
+        case AtomicRMWInst::Add: F = AtomicAdd; break;
+        case AtomicRMWInst::Sub: F = AtomicSub; break;
+        case AtomicRMWInst::And: F = AtomicAnd; break;
+        case AtomicRMWInst::Or: F = AtomicOr; break;
+        case AtomicRMWInst::Xor: F = AtomicXor; break;
+        case AtomicRMWInst::Xchg:
+        case AtomicRMWInst::Nand:
+        case AtomicRMWInst::Max:
+        case AtomicRMWInst::Min:
+        case AtomicRMWInst::UMax:
+        case AtomicRMWInst::UMin:
+        default: llvm_unreachable("Bad atomic operation");
+      }
+      SmallVector<Value *, 3> Args;
+      Args.push_back(new BitCastInst(I->getOperand(0), Type::getInt8PtrTy(TheModule->getContext()), "", I));
+      Args.push_back(Chunks32Bit[0]);
+      Args.push_back(Chunks32Bit[1]);
+      Low = CopyDebug(CallInst::Create(F, Args, "", I), I);
+      High = CopyDebug(CallInst::Create(GetHigh, "", I), I);
+      Chunks.push_back(Low);
+      Chunks.push_back(High);
+      break;
+    }
+    case Instruction::AtomicCmpXchg: {
+      assert(0 && "64-bit compare-and-exchange (__sync_bool_compare_and_swap & __sync_val_compare_and_swap) are not supported! Please directly call emscripten_atomic_cas_u64() instead in order to emulate!");
+      break;
+    }
     default: {
       I->dump();
       assert(0 && "some i64 thing we can't legalize yet");
@@ -978,6 +1016,12 @@ void ExpandI64::ensureFuncs() {
   if (Add != NULL) return;
 
   Type *i32 = Type::getInt32Ty(TheModule->getContext());
+
+  AtomicAdd = TheModule->getFunction("_emscripten_atomic_fetch_and_add_u64");
+  AtomicSub = TheModule->getFunction("_emscripten_atomic_fetch_and_sub_u64");
+  AtomicAnd = TheModule->getFunction("_emscripten_atomic_fetch_and_and_u64");
+  AtomicOr = TheModule->getFunction("_emscripten_atomic_fetch_and_or_u64");
+  AtomicXor = TheModule->getFunction("_emscripten_atomic_fetch_and_xor_u64");
 
   SmallVector<Type*, 4> FourArgTypes;
   FourArgTypes.push_back(i32);
