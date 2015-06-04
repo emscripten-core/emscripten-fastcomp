@@ -98,7 +98,8 @@ void CheckParseEdits(const uint64_t *Edits, size_t EditsSize,
 void CheckDumpEdits(const uint64_t *Edits, size_t EditsSize,
                     std::string ErrorMessages,
                     std::string ErrorRecoveryMessages,
-                    std::string DumpedBitcode) {
+                    std::string DumpedBitcode,
+                    bool RecoveredTestHasError=false) {
   NaClObjDumpMunger Munger(ARRAY_TERM(BitcodeRecords));
   EXPECT_FALSE(Munger.runTest(Edits, EditsSize));
   std::string BadResults(ErrorMessages);
@@ -106,7 +107,10 @@ void CheckDumpEdits(const uint64_t *Edits, size_t EditsSize,
   EXPECT_EQ(BadResults, Munger.getTestResults());
 
   Munger.setTryToRecoverOnWrite(true);
-  EXPECT_TRUE(Munger.runTest(Edits, EditsSize));
+  if (RecoveredTestHasError)
+     EXPECT_FALSE(Munger.runTest(Edits, EditsSize));
+  else
+     EXPECT_TRUE(Munger.runTest(Edits, EditsSize));
   std::string GoodResults(ErrorMessages);
   GoodResults.append(ErrorRecoveryMessages);
   GoodResults.append(DumpedBitcode);
@@ -678,6 +682,161 @@ TEST(NaClMungeWriteErrorTests, AbbreviationNotInBlock) {
       " [65533, 1, 1, 10]\n",
       NoErrorRecoveryMessages,
       ExpectedDumpedBitcode);
+}
+
+// Show what happens when the SetBID record (in a block-info block) is
+// malformed.
+TEST(NaClMungeWriteErrorTests, SetBIDWrongSize) {
+  // Build a block-info example before the types block.
+  const uint64_t TypesEnter = 1;
+  const uint64_t Edits[] = {
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    // Enter the blockinfo block
+    1, naclbitc::BLK_CODE_ENTER, naclbitc::BLOCKINFO_BLOCK_ID, 2, Terminator,
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    // Define a SetBID with too many arguments (2 instead of 1)
+    3, naclbitc::BLOCKINFO_CODE_SETBID, naclbitc::GLOBALVAR_BLOCK_ID, 2,
+    Terminator,
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    // Add an abbreviation to block globalvar block.
+    naclbitc::DEFINE_ABBREV, naclbitc::BLK_CODE_DEFINE_ABBREV, 1,
+    1, 10, Terminator,              // lit(10)
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    // Define a SetBID with too few arguments (none).
+    3, naclbitc::BLOCKINFO_CODE_SETBID, Terminator,
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    // Add an abbreviation to the unknown block.
+    naclbitc::DEFINE_ABBREV, naclbitc::BLK_CODE_DEFINE_ABBREV, 1,
+    1, 20, Terminator,             // lit(20)
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    // Exit the blockinfo block.
+    0, naclbitc::BLK_CODE_EXIT, Terminator
+  };
+  bool RecoveredTestHasErrors = true;
+  // TODO(kschimpf) Why don't we also get an error when running CheckParseEdits
+  // inside CheckDumpEdits?
+  CheckDumpEdits(
+      ARRAY(Edits),
+      "Error (Block 0): SetBID record expects 1 value but found 2: 3: [1,"
+      " 19, 2]\n",
+      "Error (Block 0): SetBID record expects 1 value but found 0: 3: [1]\n",
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69,"
+      " 88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 0, 2>           |  abbreviations {  // BlockID"
+      " = 0\n"
+      "      32:0|    3: <1, 19>               |    globals:\n"
+      "      34:4|    2: <65533, 1, 1, 10>     |      @a0 = abbrev <10>;\n"
+      "      36:4|    3: <1, 4294967295>       |    block(4294967295):\n"
+      "Error(34:4): Block id 4294967295 not understood.\n"
+      "      43:4|    2: <65533, 1, 1, 20>     |      @a0 = abbrev <20>;\n"
+      "      45:4|  0: <65534>                 |  }\n"
+      "      48:0|  1: <65535, 17, 3>          |  types {  // BlockID = 17\n"
+      "      56:0|    3: <1, 2>                |    count 2;\n"
+      "      58:5|    3: <2>                   |    @t0 = void;\n"
+      "      60:4|    3: <21, 0, 0>            |    @t1 = void ();\n"
+      "      63:7|  0: <65534>                 |  }\n"
+      "      68:0|  3: <8, 1, 0, 0, 0>         |  define external void @f0();\n"
+      "      72:6|  1: <65535, 12, 2>          |  function void @f0() {  \n"
+      "          |                             |                   // BlockID"
+      " = 12\n"
+      "      80:0|    3: <1, 1>                |    blocks 1;\n"
+      "          |                             |  %b0:\n"
+      "      82:4|    3: <10>                  |    ret void;\n"
+      "      84:2|  0: <65534>                 |  }\n"
+      "      88:0|0: <65534>                   |}\n",
+      RecoveredTestHasErrors);
+}
+
+// Show what happens when records other than setBID and abbreviation
+// definitions appear in a blockinfo block.
+TEST(NaClMungeWriteErrorTests, BlockInfoBlockWithUnknownRecord) {
+  // Build a block-info example before the types block.
+  const uint64_t TypesEnter = 1;
+  const uint64_t Edits[] = {
+    // Enter the blockinfo block
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    1, naclbitc::BLK_CODE_ENTER, naclbitc::BLOCKINFO_BLOCK_ID, 2, Terminator,
+    // Define abbreviations for globalvar block.
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    3, naclbitc::BLOCKINFO_CODE_SETBID, naclbitc::GLOBALVAR_BLOCK_ID,
+    Terminator,
+    // Add unknown record (i.e. not setBID).
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    3, naclbitc::BLOCKINFO_CODE_SETBID + 3, 2, Terminator,
+    // Exit the blockinfo block.
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    0, naclbitc::BLK_CODE_EXIT, Terminator
+  };
+  CheckDumpEdits(
+      ARRAY(Edits),
+      "Error (Block 0): Record not allowed in blockinfo block: 3: [4, 2]\n",
+      NoErrorRecoveryMessages,
+      "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69,"
+      " 88, 69)\n"
+      "          | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2\n"
+      "          | 0>                          |\n"
+      "      16:0|1: <65535, 8, 2>             |module {  // BlockID = 8\n"
+      "      24:0|  1: <65535, 0, 2>           |  abbreviations {  // BlockID"
+      " = 0\n"
+      "      32:0|  0: <65534>                 |  }\n"
+      "      36:0|  1: <65535, 17, 3>          |  types {  // BlockID = 17\n"
+      "      44:0|    3: <1, 2>                |    count 2;\n"
+      "      46:5|    3: <2>                   |    @t0 = void;\n"
+      "      48:4|    3: <21, 0, 0>            |    @t1 = void ();\n"
+      "      51:7|  0: <65534>                 |  }\n"
+      "      56:0|  3: <8, 1, 0, 0, 0>         |  define external void @f0();\n"
+      "      60:6|  1: <65535, 12, 2>          |  function void @f0() {  \n"
+      "          |                             |                   // BlockID"
+      " = 12\n"
+      "      68:0|    3: <1, 1>                |    blocks 1;\n"
+      "          |                             |  %b0:\n"
+      "      70:4|    3: <10>                  |    ret void;\n"
+      "      72:2|  0: <65534>                 |  }\n"
+      "      76:0|0: <65534>                   |}\n");
+}
+
+// Show what happens when a block is nested within a blockinfo block.
+TEST(NaClMungeWriteErrorTests, BlockWithinBlockInfoBlock) {
+  // Build a block-info example before the types block.
+  const uint64_t TypesEnter = 1;
+  const uint64_t Edits[] = {
+    // Enter the blockinfo block
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    1, naclbitc::BLK_CODE_ENTER, naclbitc::BLOCKINFO_BLOCK_ID, 2, Terminator,
+    // Create a globalvar block (which will be ignored by error recovery).
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    1, naclbitc::BLK_CODE_ENTER, naclbitc::GLOBALVAR_BLOCK_ID, 2, Terminator,
+    // Exit the globalvar block.
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    0, naclbitc::BLK_CODE_EXIT, Terminator,
+    // Exit the blockinfo block.
+    TypesEnter, NaClMungedBitcode::AddBefore,
+    0, naclbitc::BLK_CODE_EXIT, Terminator
+  };
+  CheckWriteEdits(
+      ARRAY(Edits),
+      "Error (Block 0): Can't nest blocks inside blockinfo block: 1: [65535,"
+      " 19, 2]\n",
+      "Error (Block unknown): Record outside block: 3: [8, 1, 0, 0, 0]\n",
+      "       1: [65535, 8, 2]\n"
+      "         1: [65535, 0, 2]\n"
+      "         0: [65534]\n"
+      "       0: [65534]\n"
+      "       1: [65535, 17, 3]\n"
+      "         3: [1, 2]\n"
+      "         3: [2]\n"
+      "         3: [21, 0, 0]\n"
+      "       0: [65534]\n"
+      "       1: [65535, 4294967295, 3]\n"
+      "         3: [8, 1, 0, 0, 0]\n"
+      "         1: [65535, 12, 2]\n"
+      "           3: [1, 1]\n"
+      "           3: [10]\n"
+      "         0: [65534]\n"
+      "       0: [65534]\n");
 }
 
 } // end of namespace naclmungetest

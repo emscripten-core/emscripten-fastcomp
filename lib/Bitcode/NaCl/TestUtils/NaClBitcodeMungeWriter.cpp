@@ -335,6 +335,11 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
 
   switch (Record.Code) {
   case naclbitc::BLK_CODE_ENTER: {
+    if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
+      RecoverableError() << "Can't nest blocks inside blockinfo block: "
+                         << Record << "\n";
+      return Flags.getTryToRecover();
+    }
     uint64_t WriteBlockID = UnknownWriteBlockID;
     uint64_t NumBits = naclbitc::MaxAbbrevWidth; // Default to safest value.
     if (Record.Abbrev != naclbitc::ENTER_SUBBLOCK) {
@@ -435,6 +440,29 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       }
       UsesDefaultAbbrev = true;
     }
+    if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID) {
+      // Note: only abbreviations and setBID records can appear in
+      // blockinfo blocks.
+      if (Record.Code != naclbitc::BLOCKINFO_CODE_SETBID) {
+        RecoverableError() << "Record not allowed in blockinfo block: "
+                           << Record << "\n";
+        return Flags.getTryToRecover();
+      }
+      // Note: SetBID records are handled by Writer->EmitBlockInfoAbbrev,
+      // based on the SetBID value. Don't bother to generate SetBID record here.
+      // Rather just set SetBID and let call to Writer->EmitBlockInfoAbbrev
+      // generate the SetBID record.
+      if (NumValues != 1) {
+        RecoverableError() << "SetBID record expects 1 value but found "
+                           << NumValues << ": " << Record << "\n";
+        if (!Flags.getTryToRecover())
+          return false;
+        SetBID = NumValues > 0 ? Record.Values[0] : UnknownWriteBlockID;
+        return true;
+      }
+      SetBID = Record.Values[0];
+      return true;
+    }
     if (!UsesDefaultAbbrev && !canApplyAbbreviation(Writer, Record)) {
       if (Writer.getAbbreviation(Record.Abbrev) != nullptr) {
         RecoverableError() << "Abbreviation doesn't apply to record: "
@@ -465,20 +493,6 @@ bool WriteState::emitRecord(NaClBitstreamWriter &Writer,
       if (!Flags.getTryToRecover())
         return false;
       WriteRecord(Writer, Record, UsesDefaultAbbrev);
-      return true;
-    }
-    if (getCurWriteBlockID() == naclbitc::BLOCKINFO_BLOCK_ID
-        && Record.Code == naclbitc::BLOCKINFO_CODE_SETBID) {
-      // Note: SetBID records are handled by Writer->EmitBlockInfoAbbrev,
-      // based on the SetBID value. Don't bother to generate SetBID record here.
-      // Rather just set SetBID and let call to Writer->EmitBlockInfoAbbrev
-      // generate the SetBID record.
-      if (NumValues != 1) {
-        Error() << "SetBID record expects 1 value but found "
-                << NumValues << ": " << Record << "\n";
-        return false;
-      }
-      SetBID = Record.Values[0];
       return true;
     }
     WriteRecord(Writer, Record, UsesDefaultAbbrev);
