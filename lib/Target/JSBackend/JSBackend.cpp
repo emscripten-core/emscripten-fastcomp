@@ -906,7 +906,11 @@ std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, cons
   unsigned Bytes = DL->getTypeAllocSize(t);
   unsigned Addr = getGlobalAddress(GV->getName().str());
   *HeapName = getHeapName(Bytes, t->isIntegerTy() || t->isPointerTy());
-  return relocateGlobal(utostr(Addr >> getHeapShift(Bytes)));
+  if (!Relocatable) {
+    return utostr(Addr >> getHeapShift(Bytes));
+  } else {
+    return relocateGlobal(utostr(Addr)) + getHeapShiftStr(Bytes);
+  }
 }
 
 std::string JSWriter::getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName)
