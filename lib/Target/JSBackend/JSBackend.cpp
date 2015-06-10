@@ -2096,8 +2096,11 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::FCmp: {
+    unsigned predicate = isa<ConstantExpr>(I) ?
+                         cast<ConstantExpr>(I)->getPredicate() :
+                         cast<FCmpInst>(I)->getPredicate();
     Code << getAssignIfNeeded(I);
-    switch (cast<FCmpInst>(I)->getPredicate()) {
+    switch (predicate) {
       // Comparisons which are simple JS operators.
       case FCmpInst::FCMP_OEQ:   Code << getValueAsStr(I->getOperand(0)) << " == " << getValueAsStr(I->getOperand(1)); break;
       case FCmpInst::FCMP_UNE:   Code << getValueAsStr(I->getOperand(0)) << " != " << getValueAsStr(I->getOperand(1)); break;
