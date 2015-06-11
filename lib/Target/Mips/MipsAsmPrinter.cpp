@@ -342,6 +342,12 @@ void MipsAsmPrinter::EmitFunctionEntryLabel() {
   OutStreamer.EmitLabel(CurrentFnSym);
 }
 
+// @LOCALMOD-START
+bool MipsAsmPrinter::UseReadOnlyJumpTables() const {
+  return Subtarget->isTargetNaCl();
+}
+// @LOCALMOD-END
+
 /// EmitFunctionBodyStart - Targets can override this to emit stuff before
 /// the first basic block in the function.
 void MipsAsmPrinter::EmitFunctionBodyStart() {

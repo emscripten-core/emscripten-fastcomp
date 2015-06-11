@@ -146,6 +146,8 @@ public:
 
   // @LOCALMOD-START
   unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
+  /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
+  bool UseReadOnlyJumpTables() const override;
   // @LOCALMOD-END
 };
 }
