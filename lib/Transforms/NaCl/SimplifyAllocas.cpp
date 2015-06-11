@@ -18,7 +18,9 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/NaCl.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 namespace {
 class SimplifyAllocas : public BasicBlockPass {
@@ -48,6 +50,21 @@ private:
       return true;
     }
     return false;
+  }
+
+  AllocaInst *findAllocaFromBC(BitCastInst *BCInst) {
+    Value *Op0 = BCInst->getOperand(0);
+    while (!llvm::isa<AllocaInst>(Op0)) {
+      if (auto *NextBC = llvm::dyn_cast<BitCastInst>(Op0)) {
+        Op0 = NextBC->getOperand(0);
+      } else {
+        dbgs() << "findAllocaFromBC encountered a non-bitcast intermediate val "
+               << *Op0 << " starting w/ BCInst " << *BCInst << "\n";
+        report_fatal_error(
+            "findAllocaFromBC encountered a non-bitcast intermediate");
+      }
+    }
+    return llvm::cast<AllocaInst>(Op0);
   }
 
   bool runOnBasicBlock(BasicBlock &BB) override {
@@ -106,12 +123,11 @@ private:
           // Sometimes dbg.declare points to an argument instead of an alloca.
           if (auto *VM = dyn_cast<ValueAsMetadata>(MV->getMetadata())) {
             if (auto *BCInst = dyn_cast<BitCastInst>(VM->getValue())) {
-              Value *CastSrc = BCInst->getOperand(0);
-              assert(isa<AllocaInst>(CastSrc));
+              AllocaInst *Alloca = findAllocaFromBC(BCInst);
               Call->setArgOperand(
                   0,
                   MetadataAsValue::get(Inst->getContext(),
-                                       ValueAsMetadata::get(CastSrc)));
+                                       ValueAsMetadata::get(Alloca)));
               Changed = true;
             }
           }
