@@ -107,6 +107,10 @@ bool AddDefaultCPU(ArgStringList *CmdLineArgs) {
     CmdLineArgs->push_back("-mcpu=cortex-a9");
     break;
   }
+  case PnaclTargetArchitectureMips_32: {
+    CmdLineArgs->push_back("-mcpu=mips32r2");
+    break;
+  }
   default:
     fprintf(stderr, "no target architecture match.\n");
     return false;
@@ -150,6 +154,9 @@ ArgStringList *GetDefaultCommandLine() {
     "-mtriple=armv7a-none-nacl-gnueabi", "-mattr=+neon",
     "-float-abi=hard", NULL
   };
+  static const char *llc_args_mips32[] = {
+    "-mtriple=mipsel-none-nacl-gnu", NULL
+  };
 
   const char **llc_args = NULL;
 #if defined(__pnacl__)
@@ -164,6 +171,10 @@ ArgStringList *GetDefaultCommandLine() {
   }
   case PnaclTargetArchitectureARM_32: {
     llc_args = llc_args_arm;
+    break;
+  }
+  case PnaclTargetArchitectureMips_32: {
+    llc_args = llc_args_mips32;
     break;
   }
   default:
