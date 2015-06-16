@@ -19,6 +19,7 @@
 #include "llvm/Analysis/NaCl/PNaClAllowedIntrinsics.h"
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeDefs.h"
 #include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 #include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -30,9 +31,10 @@
 #include <vector>
 
 namespace llvm {
-  class MemoryBuffer;
-  class LLVMContext;
-  class CastInst;
+
+class MemoryBuffer;
+class LLVMContext;
+class CastInst;
 
 // Models a Cast.  Used to cache casts created in a basic block by the
 // PNaCl bitcode reader.
@@ -65,7 +67,9 @@ public:
     Tuple.first = C.Op;
     Tuple.second.first = C.Ty;
     Tuple.second.second = C.Val;
-    return DenseMapInfo<std::pair<int, std::pair<Type*, Value*> > >::getHashValue(Tuple);
+    return DenseMapInfo<std::pair<int,
+                                  std::pair<Type*,
+                                            Value*> > >::getHashValue(Tuple);
   }
   static bool isEqual(const NaClBitcodeReaderCast &LHS,
                       const NaClBitcodeReaderCast &RHS) {
@@ -84,8 +88,8 @@ public:
   ~NaClBitcodeReaderValueList() {}
 
   // vector compatibility methods
-  unsigned size() const { return ValuePtrs.size(); }
-  void resize(unsigned N) { ValuePtrs.resize(N); }
+  size_t size() const { return ValuePtrs.size(); }
+  void resize(size_t N) { ValuePtrs.resize(N); }
   void push_back(Value *V) {
     ValuePtrs.push_back(V);
   }
@@ -94,15 +98,15 @@ public:
     ValuePtrs.clear();
   }
 
-  Value *operator[](unsigned i) const {
+  Value *operator[](size_t i) const {
     assert(i < ValuePtrs.size());
     return ValuePtrs[i];
   }
 
   Value *back() const { return ValuePtrs.back(); }
-    void pop_back() { ValuePtrs.pop_back(); }
+  void pop_back() { ValuePtrs.pop_back(); }
   bool empty() const { return ValuePtrs.empty(); }
-  void shrinkTo(unsigned N) {
+  void shrinkTo(size_t N) {
     assert(N <= size() && "Invalid shrinkTo request!");
     ValuePtrs.resize(N);
   }
@@ -110,17 +114,17 @@ public:
   // Declares the type of the forward-referenced value Idx.  Returns
   // true if an error occurred.  It is an error if Idx's type has
   // already been declared.
-  bool createValueFwdRef(unsigned Idx, Type *Ty);
+  bool createValueFwdRef(NaClBcIndexSize_t Idx, Type *Ty);
 
   // Gets the forward reference value for Idx.
-  Value *getValueFwdRef(unsigned Idx);
+  Value *getValueFwdRef(NaClBcIndexSize_t Idx);
 
   // Assigns V to value index Idx.
-  void AssignValue(Value *V, unsigned Idx);
+  void AssignValue(Value *V, NaClBcIndexSize_t Idx);
 
   // Assigns Idx to the given value, overwriting the existing entry
   // and possibly modifying the type of the entry.
-  void OverwriteValue(Value *V, unsigned Idx);
+  void OverwriteValue(Value *V, NaClBcIndexSize_t Idx);
 };
 
 
@@ -263,6 +267,11 @@ public:
   // on materialization. It's a no-op for PNaCl bitcode, which has no metadata.
   void setStripDebugInfo() override {};
 
+  // Returns the value associated with ID.  The value must already exist.
+  Value *getFnValueByID(NaClBcIndexSize_t ID) {
+    return ValueList.getValueFwdRef(ID);
+  }
+
 private:
   // Returns false if Header is acceptable.
   bool AcceptHeader() const {
@@ -272,13 +281,8 @@ private:
   uint32_t GetPNaClVersion() const {
     return Header.GetPNaClVersion();
   }
-  Type *getTypeByID(unsigned ID);
-  // Returns the value associated with ID.  The value must already exist,
-  // or a forward referenced value created by getOrCreateFnVaueByID.
-  Value *getFnValueByID(unsigned ID) {
-    return ValueList.getValueFwdRef(ID);
-  }
-  BasicBlock *getBasicBlock(unsigned ID) const {
+  Type *getTypeByID(NaClBcIndexSize_t ID);
+  BasicBlock *getBasicBlock(NaClBcIndexSize_t ID) const {
     if (ID >= FunctionBBs.size()) return 0; // Invalid ID
     return FunctionBBs[ID].BB;
   }
@@ -286,32 +290,35 @@ private:
   /// \brief Read a value out of the specified record from slot '*Slot'.
   /// Increment *Slot past the number of slots used by the value in the record.
   /// Return true if there is an error.
-  bool popValue(const SmallVector<uint64_t, 64> &Record, unsigned *Slot,
-                unsigned InstNum, Value **ResVal) {
+  bool popValue(const SmallVector<uint64_t, 64> &Record, size_t *Slot,
+                NaClBcIndexSize_t InstNum, Value **ResVal) {
     if (*Slot == Record.size()) return true;
     // ValNo is encoded relative to the InstNum.
-    unsigned ValNo = InstNum - (unsigned)Record[(*Slot)++];
+    NaClBcIndexSize_t ValNo = InstNum -
+        static_cast<NaClRelBcIndexSize_t>(Record[(*Slot)++]);
     *ResVal = getFnValueByID(ValNo);
     return *ResVal == 0;
   }
 
   /// getValue -- Version of getValue that returns ResVal directly,
   /// or 0 if there is an error.
-  Value *getValue(const SmallVector<uint64_t, 64> &Record, unsigned Slot,
-                  unsigned InstNum) {
+  Value *getValue(const SmallVector<uint64_t, 64> &Record, size_t Slot,
+                  NaClBcIndexSize_t InstNum) {
     if (Slot == Record.size()) return 0;
     // ValNo is encoded relative to the InstNum.
-    unsigned ValNo = InstNum - (unsigned)Record[Slot];
+    NaClBcIndexSize_t ValNo = InstNum -
+        static_cast<NaClRelBcIndexSize_t>(Record[Slot]);
     return getFnValueByID(ValNo);
   }
 
   /// getValueSigned -- Like getValue, but decodes signed VBRs.
-  Value *getValueSigned(const SmallVector<uint64_t, 64> &Record, unsigned Slot,
-                        unsigned InstNum) {
+  Value *getValueSigned(const SmallVector<uint64_t, 64> &Record, size_t Slot,
+                        NaClBcIndexSize_t InstNum) {
     if (Slot == Record.size()) return 0;
     // ValNo is encoded relative to the InstNum.
-    unsigned ValNo = InstNum -
-        (unsigned) NaClDecodeSignRotatedValue(Record[Slot]);
+    NaClBcIndexSize_t ValNo = InstNum -
+        static_cast<NaClRelBcIndexSize_t>(
+            NaClDecodeSignRotatedValue(Record[Slot]));
     return getFnValueByID(ValNo);
   }
 
@@ -322,7 +329,7 @@ private:
   /// BBIndex.  Note: For PHI nodes, we don't insert when created
   /// (i.e. DeferInsertion=true), since they must be inserted at the end
   /// of the corresponding incoming basic block.
-  CastInst *CreateCast(unsigned BBIndex, Instruction::CastOps Op,
+  CastInst *CreateCast(NaClBcIndexSize_t BBIndex, Instruction::CastOps Op,
                        Type *CT, Value *V, bool DeferInsertion = false);
 
   /// \brief Add instructions to cast Op to the given type T into
@@ -331,13 +338,13 @@ private:
   ///
   /// Returns 0 if unable to generate conversion value (also generates
   /// an appropriate error message and calls Error).
-  Value *ConvertOpToType(Value *Op, Type *T, unsigned BBIndex);
+  Value *ConvertOpToType(Value *Op, Type *T, NaClBcIndexSize_t BBIndex);
 
   /// \brief If Op is a scalar value, this is a nop.  If Op is a
   /// pointer value, a PtrToInt instruction is inserted (in BBIndex)
   /// to convert Op to an integer.  For defaults on DeferInsertion,
   /// see comments for method CreateCast.
-  Value *ConvertOpToScalar(Value *Op, unsigned BBIndex,
+  Value *ConvertOpToScalar(Value *Op, NaClBcIndexSize_t BBIndex,
                            bool DeferInsertion = false);
 
   /// \brief Install instruction I into basic block BB.

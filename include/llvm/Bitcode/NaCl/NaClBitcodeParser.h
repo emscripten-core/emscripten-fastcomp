@@ -98,23 +98,11 @@
 #define LLVM_BITCODE_NACL_NACLBITCODEPARSER_H
 
 #include "llvm/Bitcode/NaCl/NaClBitstreamReader.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeDefs.h"
 #include "llvm/Support/raw_ostream.h"
 #include <vector>
 
 namespace llvm {
-
-namespace naclbitc {
-  // Special record codes used to model codes for predefined records.
-  // They are very large so that they do not conflict with existing
-  // record codes for user-defined blocks.
-  enum SpecialBlockCodes {
-    BLK_CODE_ENTER = 65535,
-    BLK_CODE_EXIT  = 65534,
-    BLK_CODE_DEFINE_ABBREV = 65533,
-    BLK_CODE_HEADER = 65532
-  };
-
-}
 
 class NaClBitcodeRecord;
 class NaClBitcodeParser;
