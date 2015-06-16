@@ -16,6 +16,7 @@ namespace llvm {
 
   extern FunctionPass *createEmscriptenSimplifyAllocasPass();
   extern ModulePass *createEmscriptenRemoveLLVMAssumePass();
+  extern FunctionPass *createEmscriptenExpandBigSwitchesPass();
 
 } // End llvm namespace
 

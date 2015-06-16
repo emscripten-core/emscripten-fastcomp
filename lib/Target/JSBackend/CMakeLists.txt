@@ -1,5 +1,6 @@
 add_llvm_target(JSBackendCodeGen
   AllocaManager.cpp
+  ExpandBigSwitches.cpp
   JSBackend.cpp
   JSTargetMachine.cpp
   JSTargetTransformInfo.cpp
