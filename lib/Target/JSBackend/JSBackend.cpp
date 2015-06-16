@@ -2474,16 +2474,8 @@ static const Value *considerConditionVar(const Instruction *I) {
   }
   const SwitchInst *SI = dyn_cast<SwitchInst>(I);
   if (!SI) return NULL;
-  // use a switch if the range is not too big or sparse
-  int64_t Minn = INT64_MAX, Maxx = INT64_MIN;
-  for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-    int64_t Curr = i.getCaseValue()->getSExtValue();
-    if (Curr < Minn) Minn = Curr;
-    if (Curr > Maxx) Maxx = Curr;
-  }
-  int64_t Range = Maxx - Minn;
-  int Num = SI->getNumCases();
-  return Num < 5 || Range > 10*1024 || (Range/Num) > 1024 ? NULL : SI->getCondition(); // heuristics
+  // otherwise, we trust LLVM switches. if they were too big or sparse, the switch expansion pass should have fixed that
+  return SI->getCondition();
 }
 
 void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
@@ -3351,6 +3343,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
     PM.add(createEmscriptenSimplifyAllocasPass());
 
   PM.add(createEmscriptenRemoveLLVMAssumePass());
+  PM.add(createEmscriptenExpandBigSwitchesPass());
 
   PM.add(new JSWriter(o, OptLevel));
 
