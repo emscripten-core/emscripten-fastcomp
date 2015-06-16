@@ -3351,6 +3351,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
     PM.add(createEmscriptenSimplifyAllocasPass());
 
   PM.add(createEmscriptenRemoveLLVMAssumePass());
+  PM.add(createEmscriptenExpandBigSwitchesPass());
 
   PM.add(new JSWriter(o, OptLevel));
 
