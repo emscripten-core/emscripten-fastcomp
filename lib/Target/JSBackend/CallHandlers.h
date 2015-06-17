@@ -865,6 +865,10 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalApproximation);
   SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation);
   SETUP_CALL_HANDLER(emscripten_float32x4_select);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4);
   SETUP_CALL_HANDLER(emscripten_float32x4_load1);
   SETUP_CALL_HANDLER(emscripten_float32x4_load2);
   SETUP_CALL_HANDLER(emscripten_float32x4_store1);
