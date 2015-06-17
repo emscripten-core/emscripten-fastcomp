@@ -3,6 +3,7 @@ add_llvm_library(LLVMNaClBitTestUtils
   NaClBitcodeMungeReader.cpp
   NaClBitcodeMungeUtils.cpp
   NaClBitcodeMungeWriter.cpp
+  NaClBitcodeTextWriter.cpp
   NaClFuzz.cpp
   NaClRandNumGen.cpp
   NaClSimpleRecordFuzzer.cpp

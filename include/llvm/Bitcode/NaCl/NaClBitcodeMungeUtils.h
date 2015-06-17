@@ -104,6 +104,12 @@ void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
 void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
                                std::unique_ptr<MemoryBuffer> InputBuffer);
 
+/// Write out RecordList (as text) to Buffer. Returns true when
+/// successful. Error message are written to ErrStream.
+bool writeNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
+                                SmallVectorImpl<char> &Buffer,
+                                raw_ostream &ErrStream);
+
 /// \brief An edited (i.e. munged) list of bitcode records. Edits are
 /// always relative to the initial list of records.
 class NaClMungedBitcode {

@@ -34,6 +34,12 @@ static cl::opt<unsigned>
 FuzzCount("count", cl::desc("Number of fuzz results to generate"),
           cl::init(1));
 
+static cl::opt<bool>
+ConvertToTextRecords(
+    "convert-to-text",
+    cl::desc("Convert input to record text file (specified by -output)"),
+    cl::init(false));
+
 static cl::opt<std::string>
 RandomSeed("random-seed",
      cl::desc("Use this value for seed of random number generator "
@@ -90,36 +96,27 @@ static void WriteOutputFile(SmallVectorImpl<char> &Buffer,
   Out->keep();
 }
 
-int main(int argc, char **argv) {
-  // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal();
-  PrettyStackTraceProgram X(argc, argv);
-
-  cl::ParseCommandLineOptions(argc, argv, "Fuzz a PNaCl bitcode file\n");
-
-  if (PercentageToEdit > PercentageBase) {
-    errs() << "Edit percentage " << PercentageToEdit
-           << " must not exceed: " << PercentageBase << "\n";
-    return 1;
+static bool WriteBitcode(NaClMungedBitcode &Bitcode,
+                         NaClMungedBitcode::WriteFlags &WriteFlags,
+                         StringRef OutputFile) {
+  if (Verbose) {
+    errs() << "Records:\n";
+    for (const auto &Record : Bitcode) {
+      errs() << "  " << Record << "\n";
+    }
   }
 
-  if (OutputPrefix.empty()) {
-    errs() << "Output prefix not specified!\n";
-    return 1;
+  SmallVector<char, 100> Buffer;
+  if (!Bitcode.write(Buffer, true, WriteFlags)) {
+    errs() << "Error: Failed to write bitcode: " << OutputFile << "\n";
+    return false;
   }
+  WriteOutputFile(Buffer, OutputFile);
+  return true;
+}
 
-  ErrorOr<std::unique_ptr<MemoryBuffer>>
-      MemBuf(MemoryBuffer::getFile(InputFilename));
-  if (!MemBuf) {
-    errs() << MemBuf.getError().message() << "\n";
-    return 1;
-  }
-
-  // Stream to dump bitcode write errors to if not verbose.
-  raw_null_ostream NullStrm;
-
-  NaClMungedBitcode Bitcode(std::move(MemBuf.get()));
-
+static void WriteFuzzedBitcodeFiles(NaClMungedBitcode &Bitcode,
+                                    NaClMungedBitcode::WriteFlags &WriteFlags) {
   std::string RandSeed(RandomSeed);
   if (RandomSeed.empty())
     RandSeed = InputFilename;
@@ -139,38 +136,65 @@ int main(int argc, char **argv) {
 
     if (Verbose)
       errs() << "Generating " << OutputFile << "\n";
-
     if (!Fuzzer->fuzz(PercentageToEdit, PercentageBase)) {
       errs() << "Error: Fuzzing failed: " << OutputFile << "\n";
       continue;
     }
-
-    if (Verbose) {
-      errs() << "Records:\n";
-      for (const auto &Record : Bitcode) {
-        errs() << "  " << Record << "\n";
-      }
-    }
-
-    SmallVector<char, 100> Buffer;
-    NaClMungedBitcode::WriteFlags WriteFlags;
-    WriteFlags.setTryToRecover(true);
-    if (!Verbose) {
-      WriteFlags.setErrStream(NullStrm);
-    }
-    if (!Bitcode.write(Buffer, true, WriteFlags)) {
-      errs() << "Error: Failed to write fuzzed code: "
-             << OutputFile << "\n";
-      continue;
-    }
-    WriteOutputFile(Buffer, OutputFile);
+    WriteBitcode(Bitcode, WriteFlags, OutputFile);
   }
-
 
   if (ShowFuzzRecordDistribution)
     Fuzzer->showRecordDistribution(outs());
   if (ShowFuzzEditDistribution)
     Fuzzer->showEditDistribution(outs());
+}
 
+bool writeTextualBitcodeRecords(std::unique_ptr<MemoryBuffer> InputBuffer) {
+  NaClBitcodeRecordList Records;
+  readNaClBitcodeRecordList(Records, std::move(InputBuffer));
+  SmallVector<char, 1024> OutputBuffer;
+  if (!writeNaClBitcodeRecordList(Records, OutputBuffer, errs()))
+    return false;
+  WriteOutputFile(OutputBuffer, OutputPrefix);
+  return true;
+}
+
+int main(int argc, char **argv) {
+  // Print a stack trace if we signal out.
+  sys::PrintStackTraceOnErrorSignal();
+  PrettyStackTraceProgram X(argc, argv);
+
+  cl::ParseCommandLineOptions(argc, argv, "Fuzz a PNaCl bitcode file\n");
+
+  if (OutputPrefix.empty()) {
+    errs() << "Output prefix not specified!\n";
+    return 1;
+  }
+
+  ErrorOr<std::unique_ptr<MemoryBuffer>>
+      MemBuf(MemoryBuffer::getFileOrSTDIN(InputFilename));
+  if (!MemBuf) {
+    errs() << MemBuf.getError().message() << "\n";
+    return 1;
+  }
+
+  if (ConvertToTextRecords)
+    return !writeTextualBitcodeRecords(std::move(MemBuf.get()));
+
+  if (PercentageToEdit > PercentageBase) {
+    errs() << "Edit percentage " << PercentageToEdit
+           << " must not exceed: " << PercentageBase << "\n";
+    return 1;
+  }
+
+  raw_null_ostream NullStrm;
+  NaClMungedBitcode::WriteFlags WriteFlags;
+  WriteFlags.setTryToRecover(true);
+  if (!Verbose) {
+    WriteFlags.setErrStream(NullStrm);
+  }
+
+  NaClMungedBitcode Bitcode(std::move(MemBuf.get()));
+  WriteFuzzedBitcodeFiles(Bitcode, WriteFlags);
   return 0;
 }
