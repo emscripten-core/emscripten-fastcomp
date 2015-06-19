@@ -795,6 +795,7 @@ std::string SIMDType(VectorType *t, bool caps = false) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
   int numElems = t->getNumElements();
+  if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
 
   return (caps ? (isInt ? "Int" : "Float") : (isInt ? "int" : "float")) + std::to_string(primSize) + 'x' + std::to_string(numElems);
 }
