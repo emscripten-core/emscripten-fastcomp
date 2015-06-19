@@ -785,6 +785,8 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_xor, SIMD_Float32x4_xor);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_not, SIMD_Float32x4_not);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4Bits, SIMD_Float32x4_fromInt32x4Bits);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4, SIMD_Float32x4_fromInt32x4);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4Bits, SIMD_Float64x2_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4, SIMD_Float64x2_fromFloat32x4);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_equal, SIMD_Int32x4_equal);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_notEqual, SIMD_Int32x4_notEqual);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThan, SIMD_Int32x4_lessThan);
@@ -898,6 +900,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_select);
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
   SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromFloat32x4);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromFloat32x4Bits);
   SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
   SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4);
   SETUP_CALL_HANDLER(emscripten_int8x16_shiftLeftByScalar);
