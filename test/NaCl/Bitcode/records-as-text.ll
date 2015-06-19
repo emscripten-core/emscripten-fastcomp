@@ -8,6 +8,12 @@
 ; RUN:              | pnacl-bcfuzz -convert-to-text -output - \
 ; RUN:              | FileCheck %s --check-prefix=TB
 
+; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
+; RUN:              | pnacl-bcfuzz -convert-to-text -output - \
+; RUN:              | pnacl-thaw -bitcode-as-text -allow-local-symbol-tables \
+; RUN:              | llvm-dis - \
+; RUN:              | FileCheck %s --check-prefix=IN
+
 define i32 @fact(i32 %p0) {
   %v0 = icmp ult i32 %p0, 1
   br i1 %v0, label %true, label %false
@@ -19,6 +25,18 @@ false:
   %v4 = mul i32 %v3, %p0
   ret i32 %v4
 }
+
+; IN: define i32 @fact(i32 %p0) {
+; IN:   %v0 = icmp ult i32 %p0, 1
+; IN:   br i1 %v0, label %true, label %false
+; IN: true:
+; IN:   ret i32 1
+; IN: false:
+; IN:   %v2 = sub i32 %p0, 1
+; IN:   %v3 = call i32 @fact(i32 %v2)
+; IN:   %v4 = mul i32 %v3, %p0
+; IN:   ret i32 %v4
+; IN: }
 
 ; BC:        0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, 88, 69)
 ; BC-NEXT:      | 8, 0, 17, 0, 4, 0, 2, 0, 0, |PNaCl Version: 2

@@ -12,7 +12,6 @@
 #include "llvm/Bitcode/NaCl/NaClBitcodeMungeUtils.h"
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 using namespace llvm;
 
@@ -151,10 +150,4 @@ void llvm::readNaClBitcodeRecordList(
     if (Parser.Parse())
       report_fatal_error("Malformed records founds, unable to continue");
   }
-}
-
-
-NaClMungedBitcode::NaClMungedBitcode(std::unique_ptr<MemoryBuffer> InputBuffer)
-    : BaseRecords(new NaClBitcodeRecordList()) {
-  readNaClBitcodeRecordList(*BaseRecords, std::move(InputBuffer));
 }

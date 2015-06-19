@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := pnacl-thaw
-LINK_COMPONENTS := bitwriter naclbitreader
+LINK_COMPONENTS := bitwriter naclbitreader naclbittestutils
 
 # This tool has no plugins, optimize startup time.
 TOOL_NO_EXPORTS := 1

@@ -88,6 +88,14 @@ namespace llvm {
                                          raw_ostream *Verbose = nullptr,
                                          bool AcceptSupportedOnly = true);
 
+  /// Read the textual bitcode records in Filename, returning the module.
+  /// Note: If Filename is "-", stdin will be read.
+  ///
+  /// See getNaClLazyBitcodeModule for an explanation of argument Verbose.
+  ErrorOr<Module *> parseNaClBitcodeText(const std::string &Filename,
+                                         LLVMContext &Context,
+                                         raw_ostream *Verbose = nullptr);
+
   /// Write the specified module to the specified raw output stream, using
   /// PNaCl wire format.  For streams where it matters, the given stream
   /// should be in "binary" mode.

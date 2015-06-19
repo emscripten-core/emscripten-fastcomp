@@ -13,4 +13,4 @@
 type = Tool
 name = pnacl-thaw
 parent = Tools
-required_libraries = BitWriter NaClBitReader
+required_libraries = BitWriter NaClBitReader NaClBitTestUtils

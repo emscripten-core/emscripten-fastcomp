@@ -137,6 +137,15 @@ static cl::opt<bool>
     DisableSimplifyLibCalls("disable-simplify-libcalls",
                             cl::desc("Disable simplify-libcalls"));
 
+#if !defined(PNACL_BROWSER_TRANSLATOR)
+static cl::opt<bool>
+AcceptBitcodeRecordText(
+    "bitcode-as-text",
+    cl::desc(
+        "Accept textual form of PNaCl bitcode records (i.e. not .ll assembly)"),
+    cl::init(false));
+#endif
+
 static cl::opt<unsigned>
 SplitModuleCount("split-module",
                  cl::desc("Split PNaCl module"), cl::init(1U));
@@ -285,6 +294,19 @@ int llc_main(int argc, char **argv) {
   if (InputFileFormat == LLVMFormat) {
     PNaClABIAllowDebugMetadata = true;
   }
+#else
+  if (AcceptBitcodeRecordText) {
+    if (LazyBitcode)
+      report_fatal_error(
+          "Can't stream file inputs when reading bitcode records as text");
+    if (SplitModuleCount != 1)
+      report_fatal_error(
+          "Can't split module when using bitcode records as text");
+    if (InputFileFormat != PNaClFormat)
+      report_fatal_error(
+          "Can't parse non-pnacl bitcode files when reading bitcode records"
+          " as text");
+  }
 #endif
 
   if (SplitModuleCount > 1)
@@ -308,6 +330,27 @@ static void CheckABIVerifyErrors(PNaClABIErrorReporter &Reporter,
   }
   Reporter.reset();
 }
+
+#if !defined(PNACL_BROWSER_TRANSLATOR)
+// Read in module from bitcode text records in Filename. Returns
+// module if successful (using the given Context). Otherwise, return
+// error message using Err, and return nullptr. Verbose, if non-null,
+// may contain more verbose descriptions of the errors found while
+// parsing.
+static std::unique_ptr<Module> parseBitcodeRecordsAsText(
+    StringRef Filename,
+    SMDiagnostic &Err,
+    raw_ostream *Verbose,
+    LLVMContext &Context) {
+  ErrorOr<Module *> M = parseNaClBitcodeText(Filename, Context, Verbose);
+  if (!M) {
+    Err = SMDiagnostic(Filename, SourceMgr::DK_Error, M.getError().message());
+    return nullptr;
+  }
+  std::unique_ptr<Module> Mptr(M.get());
+  return std::move(Mptr);
+}
+#endif
 
 static std::unique_ptr<Module> getModule(
     StringRef ProgramName, LLVMContext &Context,
@@ -344,10 +387,14 @@ static std::unique_ptr<Module> getModule(
 #if defined(PNACL_BROWSER_TRANSLATOR)
     llvm_unreachable("native client SRPC only supports streaming");
 #else
-    // Parses binary bitcode as well as textual assembly
-    // (so pulls in more code into pnacl-llc).
-    M = NaClParseIRFile(InputFilename, InputFileFormat, Err, &VerboseStrm,
-                        Context);
+    if (AcceptBitcodeRecordText) {
+      M = parseBitcodeRecordsAsText(InputFilename, Err, &VerboseStrm, Context);
+    } else {
+      // Parses binary bitcode as well as textual assembly
+      // (so pulls in more code into pnacl-llc).
+      M = NaClParseIRFile(InputFilename, InputFileFormat, Err, &VerboseStrm,
+                          Context);
+    }
 #endif
   }
   if (!M) {

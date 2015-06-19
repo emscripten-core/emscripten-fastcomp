@@ -75,19 +75,21 @@
 #define LLVM_BITCODE_NACL_NACLBITCODEMUNGEUTILS_H
 
 #include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 #include <list>
 #include <map>
 
 namespace llvm {
 
-class MemoryBuffer;            // Buffer to read bitcode from
 class NaClBitcodeAbbrevRecord; // bitcode record.
 class NaClMungedBitcodeIter;   // iterator over edited bitcode records.
 
 /// \brief Defines a list of bitcode records.
 typedef std::vector<std::unique_ptr<NaClBitcodeAbbrevRecord>>
     NaClBitcodeRecordList;
+
+// TODO(kschimpf): Modify following two methods to return error_code.
 
 /// \brief Extracts out the records in Records, and puts them into RecordList.
 ///
@@ -100,9 +102,14 @@ void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
                                size_t RecordsSize,
                                uint64_t RecordTerminator);
 
-/// \brief Read in the list of records from bitcode in a memory buffer.
+/// Read in the list of records from binary bitcode from a memory buffer.
 void readNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,
                                std::unique_ptr<MemoryBuffer> InputBuffer);
+
+/// Read in the list of records from textual bitcode from a memory buffer.
+std::error_code readNaClTextBcRecordList(
+    NaClBitcodeRecordList &RecordList,
+    std::unique_ptr<MemoryBuffer> InputBuffer);
 
 /// Write out RecordList (as text) to Buffer. Returns true when
 /// successful. Error message are written to ErrStream.
@@ -123,7 +130,14 @@ public:
   typedef NaClMungedBitcodeIter iterator;
 
   /// \brief Read in initial list of records from bitcode in a memory buffer.
-  explicit NaClMungedBitcode(std::unique_ptr<MemoryBuffer> InputBuffer);
+  explicit NaClMungedBitcode(std::unique_ptr<MemoryBuffer> InputBuffer,
+                             bool ReadAsText=false)
+      : BaseRecords(new NaClBitcodeRecordList()) {
+    if (ReadAsText)
+      readNaClTextBcRecordList(*BaseRecords, std::move(InputBuffer));
+    else
+      readNaClBitcodeRecordList(*BaseRecords, std::move(InputBuffer));
+  }
 
   /// \brief Initialize the list of records to be edited.
   explicit NaClMungedBitcode(std::unique_ptr<NaClBitcodeRecordList> BaseRecords)
