@@ -1569,21 +1569,11 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   std::string B = getValueAsStr(SVI->getOperand(1));
   int OpNumElements = cast<VectorType>(SVI->getOperand(0)->getType())->getNumElements();
   int ResultNumElements = SVI->getType()->getNumElements();
-  int Mask0 = ResultNumElements > 0 ? SVI->getMaskValue(0) : -1;
-  int Mask1 = ResultNumElements > 1 ? SVI->getMaskValue(1) : -1;
-  int Mask2 = ResultNumElements > 2 ? SVI->getMaskValue(2) : -1;
-  int Mask3 = ResultNumElements > 3 ? SVI->getMaskValue(3) : -1;
-  bool swizzleA = false;
-  bool swizzleB = false;
-  if ((Mask0 < OpNumElements) && (Mask1 < OpNumElements) &&
-      (Mask2 < OpNumElements) && (Mask3 < OpNumElements)) {
-    swizzleA = true;
-  }
-  if ((Mask0 < 0 || (Mask0 >= OpNumElements && Mask0 < OpNumElements * 2)) &&
-      (Mask1 < 0 || (Mask1 >= OpNumElements && Mask1 < OpNumElements * 2)) &&
-      (Mask2 < 0 || (Mask2 >= OpNumElements && Mask2 < OpNumElements * 2)) &&
-      (Mask3 < 0 || (Mask3 >= OpNumElements && Mask3 < OpNumElements * 2))) {
-    swizzleB = true;
+  bool swizzleA = true;
+  bool swizzleB = true;
+  for(int i = 0; i < ResultNumElements; ++i) {
+    if (SVI->getMaskValue(i) >= OpNumElements) swizzleA = false;
+    if (SVI->getMaskValue(i) < OpNumElements) swizzleB = false;
   }
   assert(!(swizzleA && swizzleB));
   if (swizzleA || swizzleB) {
