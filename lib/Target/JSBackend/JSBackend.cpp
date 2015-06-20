@@ -671,9 +671,16 @@ static inline void sanitizeLocal(std::string& str) {
 
 static inline std::string ensureFloat(const std::string &S, Type *T) {
   if (PreciseF32 && T->isFloatTy()) {
-    return "Math_fround(" + S + ")";
+    return "Math_fround(" + S + ')';
   }
   return S;
+}
+
+static inline std::string ensureFloat(const std::string &value, bool wrap) {
+  if (wrap) {
+    return "Math_fround(" + value + ')';
+  }
+  return value;
 }
 
 static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
@@ -816,14 +823,6 @@ std::string SIMDType(VectorType *t, bool caps = false) {
   if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
 
   return (caps ? (isInt ? "Int" : "Float") : (isInt ? "int" : "float")) + std::to_string(primSize) + 'x' + std::to_string(numElems);
-}
-
-std::string WrapMathFRound(const std::string &value, bool wrap) {
-  if (wrap) {
-    return std::string("Math_fround(") + value + ')';
-  } else {
-    return value;
-  }
 }
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
@@ -1287,7 +1286,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     std::string S;
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       checkVectorType(VT);
-      S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + WrapMathFRound("0", !VT->getElementType()->isIntegerTy()) + ')';
+      S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
     } else {
       S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
       if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
@@ -1298,7 +1297,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       checkVectorType(VT);
-      return std::string("SIMD_") + SIMDType(VT) + "_splat(" + WrapMathFRound("0", !VT->getElementType()->isIntegerTy()) + ')';
+      return std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
     } else {
       // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
       return "0";
@@ -1345,12 +1344,12 @@ std::string JSWriter::getConstantVector(const ConstantVector *C) {
     }
   }
   if (allEqual) {
-    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + WrapMathFRound(op0, !isInt) + ')';
+    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
   }
 
-  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + WrapMathFRound(op0, !isInt);
+  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
   for (unsigned i = 1; i < NumElts; ++i) {
-    c += ',' + WrapMathFRound(getConstant(C->getOperand(i)), !isInt);
+    c += ',' + ensureFloat(getConstant(C->getOperand(i)), !isInt);
   }
   return c + ')';
 }
@@ -1370,12 +1369,12 @@ std::string JSWriter::getConstantVector(const ConstantDataVector *C) {
   }
   // Check for a splat.
   if (allEqual) {
-    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + WrapMathFRound(op0, !isInt) + ')';
+    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
   }
 
-  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + WrapMathFRound(op0, !isInt);
+  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
   for (unsigned i = 1; i < NumElts; ++i) {
-    c += ',' + WrapMathFRound(getConstant(C->getElementAsConstant(i)), !isInt);
+    c += ',' + ensureFloat(getConstant(C->getElementAsConstant(i)), !isInt);
   }
   return c + ')';
 }
@@ -1667,10 +1666,10 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
   bool Invert = false;
   switch (cast<FCmpInst>(I)->getPredicate()) {
     case ICmpInst::FCMP_FALSE:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" + WrapMathFRound("0", true) << ')';
+      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" + ensureFloat("0", true) << ')';
       return;
     case ICmpInst::FCMP_TRUE:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" + WrapMathFRound("-1", true) + ')';
+      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" + ensureFloat("-1", true) + ')';
       return;
     case ICmpInst::FCMP_ONE:
       Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and(SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and("
