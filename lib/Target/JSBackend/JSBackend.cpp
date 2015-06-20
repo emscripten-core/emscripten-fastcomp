@@ -169,7 +169,11 @@ namespace {
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
-    bool UsesSIMD;
+    bool UsesSIMDInt8x16;
+    bool UsesSIMDInt16x8;
+    bool UsesSIMDInt32x4;
+    bool UsesSIMDFloat32x4;
+    bool UsesSIMDFloat64x2;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
     const DataLayout *DL;
@@ -460,7 +464,21 @@ namespace {
              VT->getElementType()->getPrimitiveSizeInBits() == 1);
       assert(VT->getBitWidth() <= 128);
       assert(VT->getNumElements() <= 16);
-      UsesSIMD = true;
+      if (VT->getElementType()->isIntegerTy())
+      {
+        if (VT->getNumElements() == 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
+        else if (VT->getNumElements() == 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
+        else if (VT->getNumElements() == 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
+        else if (VT->getElementType()->getPrimitiveSizeInBits() != 1 && VT->getElementType()->getPrimitiveSizeInBits() != 128) {
+          report_fatal_error("Unsupported integer vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
+        }
+      }
+      else
+      {
+        if (VT->getNumElements() == 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDFloat32x4 = true;
+        else if (VT->getNumElements() == 2 && VT->getElementType()->getPrimitiveSizeInBits() == 64) UsesSIMDFloat64x2 = true;
+        else report_fatal_error("Unsupported floating point vector type numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
+      }
     }
 
     std::string ensureCast(std::string S, Type *T, AsmCast sign) {
@@ -3018,9 +3036,12 @@ void JSWriter::printModuleBody() {
 
   Out << "\"cantValidate\": \"" << CantValidate << "\",";
 
-  Out << "\"simd\": ";
-  Out << (UsesSIMD ? "1" : "0");
-  Out << ",";
+  Out << "\"simd\": " << (UsesSIMDInt8x16 || UsesSIMDInt8x16 || UsesSIMDInt32x4 || UsesSIMDFloat32x4 || UsesSIMDFloat64x2 ? "1" : "0") << ",";
+  Out << "\"simd_int8x16\": " << (UsesSIMDInt8x16 ? "1" : "0") << ",";
+  Out << "\"simd_int16x8\": " << (UsesSIMDInt16x8 ? "1" : "0") << ",";
+  Out << "\"simd_int32x4\": " << (UsesSIMDInt32x4 ? "1" : "0") << ",";
+  Out << "\"simd_float32x4\": " << (UsesSIMDFloat32x4 ? "1" : "0") << ",";
+  Out << "\"simd_float64x2\": " << (UsesSIMDFloat64x2 ? "1" : "0") << ",";
 
   Out << "\"maxGlobalAlign\": " << utostr(MaxGlobalAlign) << ",";
 
