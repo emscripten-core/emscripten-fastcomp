@@ -111,6 +111,15 @@ std::error_code readNaClTextBcRecordList(
     NaClBitcodeRecordList &RecordList,
     std::unique_ptr<MemoryBuffer> InputBuffer);
 
+/// Read textual bitcode records from Filename, and fill Buffer with
+/// corresponding bitcode. Return error_code describing success of
+/// read.  Verbose (if not nullptr) is used to generate more human
+/// readable error messages than the text in the returned error
+/// message.
+std::error_code readNaClRecordTextAndBuildBitcode(
+    StringRef Filename, SmallVectorImpl<char> &Buffer,
+    raw_ostream *Verbose = nullptr);
+
 /// Write out RecordList (as text) to Buffer. Returns true when
 /// successful. Error message are written to ErrStream.
 bool writeNaClBitcodeRecordList(NaClBitcodeRecordList &RecordList,

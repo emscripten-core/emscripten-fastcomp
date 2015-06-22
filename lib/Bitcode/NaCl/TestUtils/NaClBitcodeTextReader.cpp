@@ -225,14 +225,10 @@ std::error_code TextRecordParser::readRecord() {
   }
 }
 
-// Read textual bitcode records from Filename, and fill Buffer with
-// corresponding bitcode. Return error_code describing success of
-// read.  Verbose (if not nullptr) is used to generate more human
-// readable error messages than the text in the returned error
-// message.
-static std::error_code ReadRecordTextAndBuildBitcode(
-    StringRef Filename, SmallVectorImpl<char> &Buffer,
-    raw_ostream *Verbose = nullptr) {
+} // end of anonymous namespace
+
+std::error_code llvm::readNaClRecordTextAndBuildBitcode(
+    StringRef Filename, SmallVectorImpl<char> &Buffer, raw_ostream *Verbose) {
   // Open the input file with text records.
   ErrorOr<std::unique_ptr<MemoryBuffer>>
       MemBuf(MemoryBuffer::getFileOrSTDIN(Filename));
@@ -258,8 +254,6 @@ static std::error_code ReadRecordTextAndBuildBitcode(
   return std::error_code();
 }
 
-} // end of anonymous namespace
-
 std::error_code llvm::readNaClTextBcRecordList(
     NaClBitcodeRecordList &RecordList,
     std::unique_ptr<MemoryBuffer> InputBuffer) {
@@ -274,7 +268,7 @@ llvm::parseNaClBitcodeText(const std::string &Filename, LLVMContext &Context,
 
   // Fill Buffer with corresponding bitcode records from Filename.
   if (std::error_code EC =
-      ReadRecordTextAndBuildBitcode(Filename, Buffer, Verbose))
+      readNaClRecordTextAndBuildBitcode(Filename, Buffer, Verbose))
     return EC;
 
   // Parse buffer as ordinary binary bitcode file.
