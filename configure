@@ -5614,7 +5614,7 @@ _ACEOF
 
 fi
 
-ALL_TARGETS="X86 X86_64 Sparc PowerPC ARM AArch64 Mips XCore MSP430 CppBackend JSBackend NVPTX Hexagon SystemZ R600"
+ALL_TARGETS="X86 Sparc PowerPC ARM AArch64 Mips XCore MSP430 CppBackend JSBackend NVPTX Hexagon SystemZ R600"
 ALL_TARGETS=$ALL_TARGETS
 
 
