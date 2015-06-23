@@ -44,6 +44,15 @@ enum ReaderErrorType {
 
 // Defines the corresponding error messages.
 class ReaderErrorCategoryType : public std::error_category {
+  ReaderErrorCategoryType(const ReaderErrorCategoryType&) = delete;
+  void operator=(const ReaderErrorCategoryType&) = delete;
+public:
+  static const ReaderErrorCategoryType &get() {
+    return Sentinel;
+  }
+private:
+  static const ReaderErrorCategoryType Sentinel;
+  ReaderErrorCategoryType() {}
   const char *name() const LLVM_NOEXCEPT override {
     return "pnacl.text_bitcode";
   }
@@ -66,7 +75,10 @@ class ReaderErrorCategoryType : public std::error_category {
     }
     llvm_unreachable("Unknown error type!");
   }
+  ~ReaderErrorCategoryType() override = default;
 };
+
+const ReaderErrorCategoryType ReaderErrorCategoryType::Sentinel;
 
 /// Parses text bitcode records, and adds them to an existing list of
 /// bitcode records.
@@ -173,7 +185,8 @@ std::error_code TextRecordParser::readRecord() {
         if (!readNumber(Number)) {
           if (atEof())
             return std::error_code();
-          return std::error_code(NoCodeForRecord, ReaderErrorCategoryType());
+          return std::error_code(NoCodeForRecord,
+                                 ReaderErrorCategoryType::get());
         }
         Code = Number;
         State = AfterValue;
@@ -181,7 +194,7 @@ std::error_code TextRecordParser::readRecord() {
       case BeforeValue:
         if (!readNumber(Number))
           return std::error_code(NoValueAfterSeparator,
-                                 ReaderErrorCategoryType());
+                                 ReaderErrorCategoryType::get());
         Values.push_back(Number);
         State = AfterValue;
         continue;
@@ -194,11 +207,11 @@ std::error_code TextRecordParser::readRecord() {
           State = FinishParse;
           if (!readChar(Newline))
             return std::error_code(NoNewlineAfterTerminator,
-                                   ReaderErrorCategoryType());
+                                   ReaderErrorCategoryType::get());
           continue;
         }
         return std::error_code(NoSeparatorOrTerminator,
-                               ReaderErrorCategoryType());
+                               ReaderErrorCategoryType::get());
       case FinishParse: {
         unsigned Abbrev = naclbitc::UNABBREV_RECORD;
         switch (Code) {
@@ -210,10 +223,10 @@ std::error_code TextRecordParser::readRecord() {
           break;
         case naclbitc::BLK_CODE_HEADER:
           return std::error_code(BitcodeHeaderNotAllowed,
-                                 ReaderErrorCategoryType());
+                                 ReaderErrorCategoryType::get());
         case naclbitc::BLK_CODE_DEFINE_ABBREV:
           return std::error_code(NoAbbreviationsAllowed,
-                                 ReaderErrorCategoryType());
+                                 ReaderErrorCategoryType::get());
         default: // All other records.
           break;
         }
@@ -249,7 +262,7 @@ std::error_code llvm::readNaClRecordTextAndBuildBitcode(
   bool AddHeader = true;
   if (!Bitcode.write(Buffer, AddHeader)) {
     return std::error_code(UnableToWriteBitcode,
-                           ReaderErrorCategoryType());
+                           ReaderErrorCategoryType::get());
   }
   return std::error_code();
 }

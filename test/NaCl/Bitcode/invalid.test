@@ -1,0 +1,4 @@
+RUN: not pnacl-thaw -bitcode-as-text %p/Inputs/bad-separator.tbc \
+RUN:    -o /dev/null 2>&1 | FileCheck --check-prefix=BAD-SEP %s
+
+BAD-SEP: Value expected after separator, but not found
