@@ -43,6 +43,7 @@ static cl::opt<bool> EnableEmAsyncify(
 void llvm::PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM) {
   bool isEmscripten = T->isOSEmscripten();
 
+  PM.add(createStripDanglingDISubprogramsPass());
   if (EnableSjLjEH) {
     // This comes before ExpandTls because it introduces references to
     // a TLS variable, __pnacl_eh_stack.  This comes before
