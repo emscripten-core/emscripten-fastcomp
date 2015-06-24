@@ -145,7 +145,7 @@ namespace {
   /// module to JavaScript.
   class JSWriter : public ModulePass {
     raw_pwrite_stream &Out;
-    const Module *TheModule;
+    Module *TheModule;
     unsigned UniqueNum;
     unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
     ValueMap ValueNames;
@@ -2707,6 +2707,24 @@ void JSWriter::printFunctionBody(const Function *F) {
 }
 
 void JSWriter::processConstants() {
+  // Ensure a name for each global
+  for (Module::global_iterator I = TheModule->global_begin(),
+         E = TheModule->global_end(); I != E; ++I) {
+    if (I->hasInitializer()) {
+      if (!I->hasName()) {
+        // ensure a unique name
+        static int id = 1;
+        std::string newName;
+        while (1) {
+          newName = std::string("glb_") + utostr(id);
+          if (!TheModule->getGlobalVariable("glb_" + utostr(id))) break;
+          id++;
+          assert(id != 0);
+        }
+        I->setName(Twine(newName));
+      }
+    }
+  }
   // First, calculate the address of each constant
   for (Module::const_global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
