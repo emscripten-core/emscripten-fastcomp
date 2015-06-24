@@ -209,6 +209,8 @@ namespace {
     // parsing of constants has two phases: calculate, and then emit
     void parseConstant(const std::string& name, const Constant* CV, int Alignment, bool calculate);
 
+    #define DEFAULT_MEM_ALIGN 8
+
     #define STACK_ALIGN 16
     #define STACK_ALIGN_BITS 128
 
@@ -3038,6 +3040,7 @@ void JSWriter::printModuleBody() {
 void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Alignment, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
+  if (Alignment == 0) Alignment = DEFAULT_MEM_ALIGN;
   //errs() << "parsing constant " << name << " : " << Alignment << "\n";
   // TODO: we repeat some work in both calculate and emit phases here
   // FIXME: use the proper optimal alignments
