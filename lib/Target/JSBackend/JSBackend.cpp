@@ -130,6 +130,7 @@ namespace {
   typedef std::set<std::string> NameSet;
   typedef std::set<int> IntSet;
   typedef std::vector<unsigned char> HeapData;
+  typedef std::map<int, HeapData> HeapDataMap;
   typedef std::pair<unsigned, unsigned> Address;
   typedef std::map<std::string, Type *> VarMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
@@ -145,15 +146,13 @@ namespace {
   /// module to JavaScript.
   class JSWriter : public ModulePass {
     raw_pwrite_stream &Out;
-    const Module *TheModule;
+    Module *TheModule;
     unsigned UniqueNum;
     unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
     ValueMap ValueNames;
     VarMap UsedVars;
     AllocaManager Allocas;
-    HeapData GlobalData8;
-    HeapData GlobalData32;
-    HeapData GlobalData64;
+    HeapDataMap GlobalDataMap;
     GlobalAddressMap GlobalAddresses;
     NameSet Externals; // vars
     NameSet Declares; // funcs
@@ -174,8 +173,10 @@ namespace {
     bool UsesSIMD;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
-   const DataLayout *DL;
+    const DataLayout *DL;
     bool StackBumped;
+    int GlobalBasePadding;
+    int MaxGlobalAlign;
 
     #include "CallHandlers.h"
 
@@ -183,7 +184,7 @@ namespace {
     static char ID;
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
-        OptLevel(OptLevel), StackBumped(false) {}
+        OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {}
 
     const char *getPassName() const override { return "JavaScript backend"; }
 
@@ -206,10 +207,10 @@ namespace {
     void printCommaSeparated(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
-    void parseConstant(const std::string& name, const Constant* CV, bool calculate);
+    void parseConstant(const std::string& name, const Constant* CV, int Alignment, bool calculate);
 
-    #define MEM_ALIGN 8
-    #define MEM_ALIGN_BITS 64
+    #define DEFAULT_MEM_ALIGN 8
+
     #define STACK_ALIGN 16
     #define STACK_ALIGN_BITS 128
 
@@ -220,17 +221,18 @@ namespace {
       return "((" + x + "+" + utostr(STACK_ALIGN-1) + ")&-" + utostr(STACK_ALIGN) + ")";
     }
 
-    HeapData *allocateAddress(const std::string& Name, unsigned Bits = MEM_ALIGN_BITS) {
-      assert(Bits == 64); // FIXME when we use optimal alignments
-      HeapData *GlobalData = NULL;
-      switch (Bits) {
-        case 8:  GlobalData = &GlobalData8;  break;
-        case 32: GlobalData = &GlobalData32; break;
-        case 64: GlobalData = &GlobalData64; break;
-        default: llvm_unreachable("Unsupported data element size");
-      }
-      while (GlobalData->size() % (Bits/8) != 0) GlobalData->push_back(0);
-      GlobalAddresses[Name] = Address(GlobalData->size(), Bits);
+    void ensureAligned(int Alignment, HeapData* GlobalData) {
+      while (GlobalData->size() % Alignment != 0) GlobalData->push_back(0);
+    }
+    void ensureAligned(int Alignment, HeapData& GlobalData) {
+      while (GlobalData.size() % Alignment != 0) GlobalData.push_back(0);
+    }
+
+    HeapData *allocateAddress(const std::string& Name, unsigned Alignment) {
+      assert(isPowerOf2_32(Alignment) && Alignment > 0);
+      HeapData* GlobalData = &GlobalDataMap[Alignment];
+      ensureAligned(Alignment, GlobalData);
+      GlobalAddresses[Name] = Address(GlobalData->size(), Alignment*8);
       return GlobalData;
     }
 
@@ -241,25 +243,14 @@ namespace {
         report_fatal_error("cannot find global address " + Twine(s));
       }
       Address a = I->second;
-      assert(a.second == 64); // FIXME when we use optimal alignments
-      unsigned Ret;
-      switch (a.second) {
-        case 64:
-          assert((a.first + GlobalBase)%8 == 0);
-          Ret = a.first + GlobalBase;
-          break;
-        case 32:
-          assert((a.first + GlobalBase)%4 == 0);
-          Ret = a.first + GlobalBase + GlobalData64.size();
-          break;
-        case 8:
-          Ret = a.first + GlobalBase + GlobalData64.size() + GlobalData32.size();
-          break;
-        default:
-          report_fatal_error("bad global address " + Twine(s) + ": "
-                             "count=" + Twine(a.first) + " "
-                             "elementsize=" + Twine(a.second));
+      int Alignment = a.second/8;
+      int Ret = a.first + GlobalBase + GlobalBasePadding;
+      for (auto GI : GlobalDataMap) { // bigger alignments show up first, smaller later
+        if (GI.first > Alignment) {
+          Ret += GI.second.size();
+        }
       }
+      assert(Ret % Alignment == 0);
       return Ret;
     }
     // returns the internal offset inside the proper block: GlobalData8, 32, 64
@@ -2707,18 +2698,46 @@ void JSWriter::printFunctionBody(const Function *F) {
 }
 
 void JSWriter::processConstants() {
+  // Ensure a name for each global
+  for (Module::global_iterator I = TheModule->global_begin(),
+         E = TheModule->global_end(); I != E; ++I) {
+    if (I->hasInitializer()) {
+      if (!I->hasName()) {
+        // ensure a unique name
+        static int id = 1;
+        std::string newName;
+        while (1) {
+          newName = std::string("glb_") + utostr(id);
+          if (!TheModule->getGlobalVariable("glb_" + utostr(id))) break;
+          id++;
+          assert(id != 0);
+        }
+        I->setName(Twine(newName));
+      }
+    }
+  }
   // First, calculate the address of each constant
   for (Module::const_global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
     if (I->hasInitializer()) {
-      parseConstant(I->getName().str(), I->getInitializer(), true);
+      parseConstant(I->getName().str(), I->getInitializer(), I->getAlignment(), true);
     }
+  }
+  // Calculate MaxGlobalAlign, adjust final paddings, and adjust GlobalBasePadding
+  assert(MaxGlobalAlign == 0);
+  for (auto GI : GlobalDataMap) {
+    int Alignment = GI.first;
+    if (Alignment > MaxGlobalAlign) MaxGlobalAlign = Alignment;
+    ensureAligned(Alignment, &GlobalDataMap[Alignment]);
+  }
+  if (!Relocatable && MaxGlobalAlign > 0) {
+    while ((GlobalBase+GlobalBasePadding) % MaxGlobalAlign != 0) GlobalBasePadding++;
   }
   // Second, allocate their contents
   for (Module::const_global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
     if (I->hasInitializer()) {
-      parseConstant(I->getName().str(), I->getInitializer(), false);
+      parseConstant(I->getName().str(), I->getInitializer(), I->getAlignment(), false);
     }
   }
   if (Relocatable) {
@@ -2805,27 +2824,42 @@ void JSWriter::printModuleBody() {
   PostSets = "";
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
-  assert(GlobalData32.size() == 0 && GlobalData8.size() == 0); // FIXME when we use optimal constant alignments
-
   if (EnablePthreads) {
     Out << "if (!ENVIRONMENT_IS_PTHREAD) {\n";
   }
   Out << "/* memory initializer */ allocate([";
-  // TODO fix commas
-  printCommaSeparated(GlobalData64);
-  if (GlobalData64.size() > 0 && GlobalData32.size() + GlobalData8.size() > 0) {
-    Out << ",";
+  if (MaxGlobalAlign > 0) {
+    bool First = true;
+    for (int i = 0; i < GlobalBasePadding; i++) {
+      if (First) {
+        First = false;
+      } else {
+        Out << ",";
+      }
+      Out << "0";
+    }
+    int Curr = MaxGlobalAlign;
+    while (Curr > 0) {
+      if (GlobalDataMap.find(Curr) == GlobalDataMap.end()) {
+        Curr = Curr/2;
+        continue;
+      }
+      HeapData* GlobalData = &GlobalDataMap[Curr];
+      if (GlobalData->size() > 0) {
+        if (First) {
+          First = false;
+        } else {
+          Out << ",";
+        }
+        printCommaSeparated(*GlobalData);
+      }
+      Curr = Curr/2;
+    }
   }
-  printCommaSeparated(GlobalData32);
-  if (GlobalData32.size() > 0 && GlobalData8.size() > 0) {
-    Out << ",";
-  }
-  printCommaSeparated(GlobalData8);
   Out << "], \"i8\", ALLOC_NONE, Runtime.GLOBAL_BASE);\n";
   if (EnablePthreads) {
     Out << "}\n";
   }
-
   // Emit metadata for emcc driver
   Out << "\n\n// EMSCRIPTEN_METADATA\n";
   Out << "{\n";
@@ -2979,6 +3013,8 @@ void JSWriter::printModuleBody() {
   Out << (UsesSIMD ? "1" : "0");
   Out << ",";
 
+  Out << "\"maxGlobalAlign\": " << utostr(MaxGlobalAlign) << ",";
+
   Out << "\"namedGlobals\": {";
   first = true;
   for (NameIntMap::const_iterator I = NamedGlobals.begin(), E = NamedGlobals.end(); I != E; ++I) {
@@ -3019,18 +3055,20 @@ void JSWriter::printModuleBody() {
   Out << "\n}\n";
 }
 
-void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool calculate) {
+void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Alignment, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
-  //errs() << "parsing constant " << name << "\n";
+  if (Alignment == 0) Alignment = DEFAULT_MEM_ALIGN;
+  //errs() << "parsing constant " << name << " : " << Alignment << "\n";
   // TODO: we repeat some work in both calculate and emit phases here
   // FIXME: use the proper optimal alignments
   if (const ConstantDataSequential *CDS =
          dyn_cast<ConstantDataSequential>(CV)) {
     assert(CDS->isString());
     if (calculate) {
-      HeapData *GlobalData = allocateAddress(name);
+      HeapData *GlobalData = allocateAddress(name, Alignment);
       StringRef Str = CDS->getAsString();
+      ensureAligned(Alignment, GlobalData);
       for (unsigned int i = 0; i < Str.size(); i++) {
         GlobalData->push_back(Str.data()[i]);
       }
@@ -3039,18 +3077,20 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
     APFloat APF = CFP->getValueAPF();
     if (CFP->getType() == Type::getFloatTy(CFP->getContext())) {
       if (calculate) {
-        HeapData *GlobalData = allocateAddress(name);
+        HeapData *GlobalData = allocateAddress(name, Alignment);
         union flt { float f; unsigned char b[sizeof(float)]; } flt;
         flt.f = APF.convertToFloat();
+        ensureAligned(Alignment, GlobalData);
         for (unsigned i = 0; i < sizeof(float); ++i) {
           GlobalData->push_back(flt.b[i]);
         }
       }
     } else if (CFP->getType() == Type::getDoubleTy(CFP->getContext())) {
       if (calculate) {
-        HeapData *GlobalData = allocateAddress(name);
+        HeapData *GlobalData = allocateAddress(name, Alignment);
         union dbl { double d; unsigned char b[sizeof(double)]; } dbl;
         dbl.d = APF.convertToDouble();
+        ensureAligned(Alignment, GlobalData);
         for (unsigned i = 0; i < sizeof(double); ++i) {
           GlobalData->push_back(dbl.b[i]);
         }
@@ -3064,8 +3104,9 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
       integer.i = *CI->getValue().getRawData();
       unsigned BitWidth = 64; // CI->getValue().getBitWidth();
       assert(BitWidth == 32 || BitWidth == 64);
-      HeapData *GlobalData = allocateAddress(name);
+      HeapData *GlobalData = allocateAddress(name, Alignment);
       // assuming compiler is little endian
+      ensureAligned(Alignment, GlobalData);
       for (unsigned i = 0; i < BitWidth / 8; ++i) {
         GlobalData->push_back(integer.b[i]);
       }
@@ -3075,7 +3116,8 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (calculate) {
       unsigned Bytes = DL->getTypeStoreSize(CV->getType());
-      HeapData *GlobalData = allocateAddress(name);
+      HeapData *GlobalData = allocateAddress(name, Alignment);
+      ensureAligned(Alignment, GlobalData);
       for (unsigned i = 0; i < Bytes; ++i) {
         GlobalData->push_back(0);
       }
@@ -3115,8 +3157,9 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
         }
       }
     } else if (calculate) {
-      HeapData *GlobalData = allocateAddress(name);
+      HeapData *GlobalData = allocateAddress(name, Alignment);
       unsigned Bytes = DL->getTypeStoreSize(CV->getType());
+      ensureAligned(Alignment, GlobalData);
       for (unsigned i = 0; i < Bytes; ++i) {
         GlobalData->push_back(0);
       }
@@ -3150,16 +3193,20 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
           }
           union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
           integer.i = Data;
-          assert(Offset+4 <= GlobalData64.size());
+          HeapData& GlobalData = GlobalDataMap[Alignment];
+          assert(Offset+4 <= GlobalData.size());
+          ensureAligned(Alignment, GlobalData);
           for (unsigned i = 0; i < 4; ++i) {
-            GlobalData64[Offset++] = integer.b[i];
+            GlobalData[Offset++] = integer.b[i];
           }
         } else if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
           assert(CDS->isString());
           StringRef Str = CDS->getAsString();
-          assert(Offset+Str.size() <= GlobalData64.size());
+          HeapData& GlobalData = GlobalDataMap[Alignment];
+          assert(Offset+Str.size() <= GlobalData.size());
+          ensureAligned(Alignment, GlobalData);
           for (unsigned int i = 0; i < Str.size(); i++) {
-            GlobalData64[Offset++] = Str.data()[i];
+            GlobalData[Offset++] = Str.data()[i];
           }
         } else {
           C->dump();
@@ -3184,7 +3231,8 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
     } else {
       // a global equal to a ptrtoint of some function, so a 32-bit integer for us
       if (calculate) {
-        HeapData *GlobalData = allocateAddress(name);
+        HeapData *GlobalData = allocateAddress(name, Alignment);
+        ensureAligned(Alignment, GlobalData);
         for (unsigned i = 0; i < 4; ++i) {
           GlobalData->push_back(0);
         }
@@ -3210,9 +3258,11 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, bool c
         union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
         integer.i = Data;
         unsigned Offset = getRelativeGlobalAddress(name);
-        assert(Offset+4 <= GlobalData64.size());
+        HeapData& GlobalData = GlobalDataMap[Alignment];
+        assert(Offset+4 <= GlobalData.size());
+        ensureAligned(Alignment, GlobalData);
         for (unsigned i = 0; i < 4; ++i) {
-          GlobalData64[Offset++] = integer.b[i];
+          GlobalData[Offset++] = integer.b[i];
         }
       }
     }
