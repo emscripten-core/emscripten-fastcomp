@@ -2703,7 +2703,7 @@ const char *NaClDisFunctionParser::GetCastOp(uint32_t Opcode,
   }
   if (!CastInst::castIsValid(Cast, FromType, ToType)) {
     Errors() << "Invalid cast '" << CastName << "'. Not defined on "
-             << FromType << " to " << ToType << "\n";
+             << *FromType << " to " << *ToType << "\n";
   }
   return CastName;
 }
