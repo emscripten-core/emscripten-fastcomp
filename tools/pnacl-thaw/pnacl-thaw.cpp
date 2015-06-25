@@ -36,13 +36,6 @@ static cl::opt<std::string>
 InputFilename(cl::Positional, cl::desc("<frozen file>"), cl::init("-"));
 
 static cl::opt<bool>
-AcceptBitcodeRecordsAsText(
-    "bitcode-as-text",
-    cl::desc(
-        "Accept textual form of PNaCl bitcode records (i.e. not .ll assembly)"),
-    cl::init(false));
-
-static cl::opt<bool>
 VerboseErrors(
     "verbose-parse-errors",
     cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
@@ -64,18 +57,7 @@ static void WriteOutputFile(const Module *M) {
   Out->keep();
 }
 
-static Module *readAsBitcodeText(std::string &Filename,
-                                 LLVMContext &Context,
-                                 raw_ostream *Verbose,
-                                 std::string &ErrorMessage) {
-  ErrorOr<Module *> M = parseNaClBitcodeText(Filename, Context, Verbose);
-  if (M)
-    return M.get();
-  ErrorMessage = M.getError().message();
-  return nullptr;
-}
-
-static Module *readAsBinaryBitcode(
+static Module *readBitcode(
     std::string &Filename, LLVMContext &Context, raw_ostream *Verbose,
     std::string &ErrorMessage) {
   // Use the bitcode streaming interface
@@ -117,13 +99,9 @@ int main(int argc, char **argv) {
       argc, argv, "Converts NaCl pexe wire format into LLVM bitcode format\n");
 
   std::string ErrorMessage;
-  std::unique_ptr<Module> M;
   raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
-
-  if (AcceptBitcodeRecordsAsText)
-    M.reset(readAsBitcodeText(InputFilename, Context, Verbose, ErrorMessage));
-  else
-    M.reset(readAsBinaryBitcode(InputFilename, Context, Verbose, ErrorMessage));
+  std::unique_ptr<Module> M(readBitcode(InputFilename, Context,
+                                        Verbose, ErrorMessage));
 
   if (!M.get()) {
     errs() << argv[0] << ": ";

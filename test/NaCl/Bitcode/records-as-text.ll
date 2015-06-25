@@ -10,7 +10,8 @@
 
 ; RUN: llvm-as < %s | pnacl-freeze -allow-local-symbol-tables \
 ; RUN:              | pnacl-bcfuzz -convert-to-text -output - \
-; RUN:              | pnacl-thaw -bitcode-as-text -allow-local-symbol-tables \
+; RUN:              | pnacl-bcfuzz -bitcode-as-text -output - \
+; RUN:              | pnacl-thaw -allow-local-symbol-tables \
 ; RUN:              | llvm-dis - \
 ; RUN:              | FileCheck %s --check-prefix=IN
 
