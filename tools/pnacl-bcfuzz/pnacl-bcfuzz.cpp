@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Bitcode/NaCl/NaClFuzz.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -37,7 +38,14 @@ FuzzCount("count", cl::desc("Number of fuzz results to generate"),
 static cl::opt<bool>
 ConvertToTextRecords(
     "convert-to-text",
-    cl::desc("Convert input to record text file (specified by -output)"),
+    cl::desc("Convert binary file to record text file (specified by -output)"),
+    cl::init(false));
+
+static cl::opt<bool>
+AcceptBitcodeRecordsAsText(
+    "bitcode-as-text",
+    cl::desc(
+        "Convert record text file to binary file (specified by -output)"),
     cl::init(false));
 
 static cl::opt<std::string>
@@ -76,7 +84,7 @@ Verbose("verbose",
         cl::desc("Show details of fuzzing/writing of bitcode files"),
         cl::init(false));
 
-static void WriteOutputFile(SmallVectorImpl<char> &Buffer,
+static void writeOutputFile(SmallVectorImpl<char> &Buffer,
                             StringRef OutputFilename) {
   std::error_code EC;
   std::unique_ptr<tool_output_file> Out(
@@ -96,7 +104,7 @@ static void WriteOutputFile(SmallVectorImpl<char> &Buffer,
   Out->keep();
 }
 
-static bool WriteBitcode(NaClMungedBitcode &Bitcode,
+static bool writeBitcode(NaClMungedBitcode &Bitcode,
                          NaClMungedBitcode::WriteFlags &WriteFlags,
                          StringRef OutputFile) {
   if (Verbose) {
@@ -111,11 +119,11 @@ static bool WriteBitcode(NaClMungedBitcode &Bitcode,
     errs() << "Error: Failed to write bitcode: " << OutputFile << "\n";
     return false;
   }
-  WriteOutputFile(Buffer, OutputFile);
+  writeOutputFile(Buffer, OutputFile);
   return true;
 }
 
-static void WriteFuzzedBitcodeFiles(NaClMungedBitcode &Bitcode,
+static void writeFuzzedBitcodeFiles(NaClMungedBitcode &Bitcode,
                                     NaClMungedBitcode::WriteFlags &WriteFlags) {
   std::string RandSeed(RandomSeed);
   if (RandomSeed.empty())
@@ -140,7 +148,7 @@ static void WriteFuzzedBitcodeFiles(NaClMungedBitcode &Bitcode,
       errs() << "Error: Fuzzing failed: " << OutputFile << "\n";
       continue;
     }
-    WriteBitcode(Bitcode, WriteFlags, OutputFile);
+    writeBitcode(Bitcode, WriteFlags, OutputFile);
   }
 
   if (ShowFuzzRecordDistribution)
@@ -155,8 +163,21 @@ bool writeTextualBitcodeRecords(std::unique_ptr<MemoryBuffer> InputBuffer) {
   SmallVector<char, 1024> OutputBuffer;
   if (!writeNaClBitcodeRecordList(Records, OutputBuffer, errs()))
     return false;
-  WriteOutputFile(OutputBuffer, OutputPrefix);
+  writeOutputFile(OutputBuffer, OutputPrefix);
   return true;
+}
+
+bool writeBinaryBitcodeRecords(std::unique_ptr<MemoryBuffer> InputBuffer) {
+  std::unique_ptr<NaClBitcodeRecordList> Records
+      = make_unique<NaClBitcodeRecordList>();
+  if (std::error_code EC = readNaClTextBcRecordList(*Records,
+                                                    std::move(InputBuffer))) {
+    errs() << "Error: " << EC.message() << "\n";
+    return false;
+  }
+  NaClMungedBitcode Bitcode(std::move(Records));
+  NaClMungedBitcode::WriteFlags WriteFlags;
+  return writeBitcode(Bitcode, WriteFlags, OutputPrefix);
 }
 
 int main(int argc, char **argv) {
@@ -181,6 +202,9 @@ int main(int argc, char **argv) {
   if (ConvertToTextRecords)
     return !writeTextualBitcodeRecords(std::move(MemBuf.get()));
 
+  if (AcceptBitcodeRecordsAsText)
+    return !writeBinaryBitcodeRecords(std::move(MemBuf.get()));
+
   if (PercentageToEdit > PercentageBase) {
     errs() << "Edit percentage " << PercentageToEdit
            << " must not exceed: " << PercentageBase << "\n";
@@ -195,6 +219,6 @@ int main(int argc, char **argv) {
   }
 
   NaClMungedBitcode Bitcode(std::move(MemBuf.get()));
-  WriteFuzzedBitcodeFiles(Bitcode, WriteFlags);
+  writeFuzzedBitcodeFiles(Bitcode, WriteFlags);
   return 0;
 }

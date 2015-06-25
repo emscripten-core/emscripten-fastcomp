@@ -1468,6 +1468,13 @@ std::error_code NaClBitcodeReader::ParseFunctionBody(Function *F) {
         Value *Cond = getValue(Record, 2, NextValueNo);
         if (FalseDest == 0 || Cond == 0)
           return Error(InvalidValue, "Invalid BR record");
+        if (!Cond->getType()->isIntegerTy(1)) {
+          std::string Buffer;
+          raw_string_ostream StrBuf(Buffer);
+          StrBuf << "Type of branch condition not i1. Found: "
+                 << *Cond->getType() << "\n";
+          return Error(InvalidValue, StrBuf.str());
+        }
         I = BranchInst::Create(TrueDest, FalseDest, Cond);
       }
       break;

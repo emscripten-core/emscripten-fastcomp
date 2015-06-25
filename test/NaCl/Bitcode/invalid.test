@@ -1,4 +1,20 @@
-RUN: not pnacl-thaw -bitcode-as-text %p/Inputs/bad-separator.tbc \
-RUN:    -o /dev/null 2>&1 | FileCheck --check-prefix=BAD-SEP %s
+; Check when separator(,) not followed by a value.
+
+RUN: not pnacl-bcfuzz -bitcode-as-text %p/Inputs/bad-separator.tbc \
+RUN:    -output - 2>&1 | FileCheck --check-prefix=BAD-SEP %s
 
 BAD-SEP: Value expected after separator, but not found
+
+; Check that comparison operator of branch is i1.
+
+RUN: pnacl-bcfuzz -bitcode-as-text %p/Inputs/bad-branch-compare.tbc \
+RUN:    -output - | not pnacl-bcdis | FileCheck --check-prefix=BAD-BC-BR-CMP %s
+
+BAD-BC-BR-CMP:      br i32 %p0, label %b1, label %b2;
+BAD-BC-BR-CMP-NEXT: Branch condition not i1
+
+RUN: pnacl-bcfuzz -bitcode-as-text %p/Inputs/bad-branch-compare.tbc \
+RUN:     -output - | not pnacl-thaw -verbose-parse-errors -o /dev/null 2>&1 \
+RUN:               | FileCheck --check-prefix=BAD-BR-CMP %s
+
+BAD-BR-CMP: Type of branch condition not i1. Found: i32

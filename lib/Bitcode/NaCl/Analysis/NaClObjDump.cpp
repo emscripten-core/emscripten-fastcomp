@@ -2919,10 +2919,12 @@ void NaClDisFunctionParser::ProcessRecord() {
     Tokens() << "br" << Space();
     if (Values.size() == 3) {
       NaClBcIndexSize_t OpIndex = RelativeToAbsId(Values[2]);
-      if (GetValueType(OpIndex) != GetComparisonType())
+      Type *CondType = GetValueType(OpIndex);
+      if (CondType != GetComparisonType())
         Errors() << "Branch condition not i1\n";
-      Tokens() << StartCluster() << "i1" << Space() << GetBitcodeId(OpIndex)
-               << Comma() << FinishCluster() << Space();
+      Tokens() << StartCluster() << TokenizeType(CondType) << Space()
+               << GetBitcodeId(OpIndex) << Comma()
+               << FinishCluster() << Space();
     }
     VerifyBranchRange(Values[0]);
     Tokens() << StartCluster() << "label" << Space()
