@@ -502,16 +502,39 @@ private:
   /// \note Completely ignores \a Use::Prev (doesn't read, doesn't update).
   template <class Compare>
   static Use *mergeUseLists(Use *L, Use *R, Compare Cmp) {
-    Use *Merged;
-    mergeUseListsImpl(L, R, &Merged, Cmp);
+    // XXX EMSCRIPTEN: Reimplemented to operate iteratively instead of recursively,
+    //                 since there exists use lists that have ~300k elems, which would
+    //                 blow up the stack.
+    if (!L && !R) return 0;
+    Use *Merged = 0;
+    Use *MergedLast = 0;
+    if (!L || (R && Cmp(*R, *L))) {
+      Merged = MergedLast = R;
+      R = R->Next;
+    } else {
+      Merged = MergedLast = L;
+      L = L->Next;
+    }
+
+    while (L && R) {
+      if (Cmp(*R, *L)) {
+        MergedLast->Next = R;
+        MergedLast = R;
+        R = R->Next;
+      } else {
+        MergedLast->Next = L;
+        MergedLast = L;
+        L = L->Next;
+      }
+    }
+    if (L) {
+      MergedLast->Next = L;
+    }
+    if (R) {
+      MergedLast->Next = R;
+    }
     return Merged;
   }
-
-  /// \brief Tail-recursive helper for \a mergeUseLists().
-  ///
-  /// \param[out] Next the first element in the list.
-  template <class Compare>
-  static void mergeUseListsImpl(Use *L, Use *R, Use **Next, Compare Cmp);
 
 protected:
   unsigned short getSubclassDataFromValue() const { return SubclassData; }
@@ -594,25 +617,6 @@ template <class Compare> void Value::sortUseList(Compare Cmp) {
     I->setPrev(Prev);
     Prev = &I->Next;
   }
-}
-
-template <class Compare>
-void Value::mergeUseListsImpl(Use *L, Use *R, Use **Next, Compare Cmp) {
-  if (!L) {
-    *Next = R;
-    return;
-  }
-  if (!R) {
-    *Next = L;
-    return;
-  }
-  if (Cmp(*R, *L)) {
-    *Next = R;
-    mergeUseListsImpl(L, R->Next, &R->Next, Cmp);
-    return;
-  }
-  *Next = L;
-  mergeUseListsImpl(L->Next, R, &L->Next, Cmp);
 }
 
 // isa - Provide some specializations of isa so that we don't have to include
