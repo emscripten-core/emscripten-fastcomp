@@ -18,3 +18,12 @@ RUN:     -output - | not pnacl-thaw -verbose-parse-errors -o /dev/null 2>&1 \
 RUN:               | FileCheck --check-prefix=BAD-BR-CMP %s
 
 BAD-BR-CMP: Type of branch condition not i1. Found: i32
+
+; Tests that we recognize wrong abbreviation index bitsize in a blockinfo block,
+; and properly exit with an appropriate error message.
+; Tests issue: https://code.google.com/p/nativeclient/issues/detail?id=4215
+RUN: not pnacl-bcfuzz -bitcode-as-text %p/Inputs/bad-blockinfo-numbits.tbc \
+RUN:     -output - 2>&1 | FileCheck --check-prefix=BAD-BLKINFO_BITS %s
+
+BAD-BLKINFO_BITS: Numbits entry for abbreviations in blockinfo block not 2.
+BAD-BLKINFO_BITS: Failed to write bitcode

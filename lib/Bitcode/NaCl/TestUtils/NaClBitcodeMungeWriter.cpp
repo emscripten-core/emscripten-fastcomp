@@ -24,7 +24,7 @@ namespace {
 
 // For debugging. When true, shows trace information of emitting
 // bitcode.
-static bool DebugEmit = false;
+constexpr bool DebugEmit = false;
 
 // Description of current block scope
 struct BlockScope {
@@ -237,11 +237,15 @@ bool WriteState::enterBlock(NaClBitstreamWriter &Writer, uint64_t WriteBlockID,
         NaClBitsNeededForValue(naclbitc::DEFAULT_MAX_ABBREV);
     if (NumBits != DefaultMaxBits) {
       RecoverableError()
-          << "Numbits entry for abbreviations record not "
-          << DefaultMaxBits << " but found " << NumBits <<
+          << "Numbits entry for abbreviations in blockinfo block not "
+          << DefaultMaxBits << ". found " << NumBits <<
           ": " << Record << "\n";
-      if (!Flags.getTryToRecover())
+      if (!Flags.getTryToRecover()) {
+        ScopeStack.pop_back();
+        if (DebugEmit)
+          printScopeStack(errs());
         return false;
+      }
     }
     Writer.EnterBlockInfoBlock();
   } else {
