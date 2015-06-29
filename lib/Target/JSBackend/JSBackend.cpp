@@ -131,6 +131,7 @@ namespace {
   typedef std::set<int> IntSet;
   typedef std::vector<unsigned char> HeapData;
   typedef std::map<int, HeapData> HeapDataMap;
+  typedef std::vector<int> AlignedHeapStartMap;
   typedef std::pair<unsigned, unsigned> Address;
   typedef std::map<std::string, Type *> VarMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
@@ -153,6 +154,7 @@ namespace {
     VarMap UsedVars;
     AllocaManager Allocas;
     HeapDataMap GlobalDataMap;
+    AlignedHeapStartMap AlignedHeapStarts;
     GlobalAddressMap GlobalAddresses;
     NameSet Externals; // vars
     NameSet Declares; // funcs
@@ -246,12 +248,8 @@ namespace {
       }
       Address a = I->second;
       int Alignment = a.second/8;
-      int Ret = a.first + GlobalBase + GlobalBasePadding;
-      for (auto GI : GlobalDataMap) { // bigger alignments show up first, smaller later
-        if (GI.first > Alignment) {
-          Ret += GI.second.size();
-        }
-      }
+      assert(AlignedHeapStarts.size() > (unsigned)Alignment);
+      int Ret = a.first + AlignedHeapStarts[Alignment];
       assert(Ret % Alignment == 0);
       return Ret;
     }
@@ -2727,13 +2725,24 @@ void JSWriter::processConstants() {
   }
   // Calculate MaxGlobalAlign, adjust final paddings, and adjust GlobalBasePadding
   assert(MaxGlobalAlign == 0);
-  for (auto GI : GlobalDataMap) {
+  for (auto& GI : GlobalDataMap) {
     int Alignment = GI.first;
     if (Alignment > MaxGlobalAlign) MaxGlobalAlign = Alignment;
     ensureAligned(Alignment, &GlobalDataMap[Alignment]);
   }
   if (!Relocatable && MaxGlobalAlign > 0) {
     while ((GlobalBase+GlobalBasePadding) % MaxGlobalAlign != 0) GlobalBasePadding++;
+  }
+  while (AlignedHeapStarts.size() <= (unsigned)MaxGlobalAlign) AlignedHeapStarts.push_back(0);
+  for (auto& GI : GlobalDataMap) {
+    int Alignment = GI.first;
+    int Curr = GlobalBase + GlobalBasePadding;
+    for (auto& GI : GlobalDataMap) { // bigger alignments show up first, smaller later
+      if (GI.first > Alignment) {
+        Curr += GI.second.size();
+      }
+    }
+    AlignedHeapStarts[Alignment] = Curr;
   }
   // Second, allocate their contents
   for (Module::const_global_iterator I = TheModule->global_begin(),
