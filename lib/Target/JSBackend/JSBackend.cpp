@@ -222,10 +222,12 @@ namespace {
     }
 
     void ensureAligned(int Alignment, HeapData* GlobalData) {
-      while (GlobalData->size() % Alignment != 0) GlobalData->push_back(0);
+      assert(isPowerOf2_32(Alignment) && Alignment > 0);
+      while (GlobalData->size() & (Alignment-1)) GlobalData->push_back(0);
     }
     void ensureAligned(int Alignment, HeapData& GlobalData) {
-      while (GlobalData.size() % Alignment != 0) GlobalData.push_back(0);
+      assert(isPowerOf2_32(Alignment) && Alignment > 0);
+      while (GlobalData.size() & (Alignment-1)) GlobalData.push_back(0);
     }
 
     HeapData *allocateAddress(const std::string& Name, unsigned Alignment) {
