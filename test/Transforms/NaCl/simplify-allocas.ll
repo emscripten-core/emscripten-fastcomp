@@ -158,6 +158,30 @@ define void @debug_declare_morecasts() {
 ; CHECK-NEXT: %var = alloca i8, i32 8, align 8
 ; CHECK: call void @llvm.dbg.declare(metadata i8* %var, metadata !15, metadata !13), !dbg !16
 
+define void @debug_declare_inttoptr() {
+  %var = alloca i32, i32 2, align 8
+  %i = ptrtoint i32* %var to i32
+  %p = inttoptr i32 %i to i8*
+  call void @llvm.dbg.declare(metadata i8* %p, metadata !15, metadata !13), !dbg !16
+  unreachable
+}
+; Ensure that we can look through ptrtoint/inttoptr
+; CHECK-LABEL: define void @debug_declare_inttoptr
+; CHECK-NEXT: alloca i8, i32 8, align 8
+; CHECK: call void @llvm.dbg.declare(metadata i8* %var, metadata !15, metadata !13), !dbg !16
+
+declare i8* @foo()
+define void @debug_declare_noalloca() {
+  %call = tail call i8* @foo()
+  %config_.i.i = getelementptr inbounds i8, i8* %call, i32 104, !dbg !16
+  %bc = bitcast i8* %config_.i.i to i16*, !dbg !16
+  tail call void @llvm.dbg.declare(metadata i16* %bc, metadata !15, metadata !13), !dbg !16
+  unreachable
+}
+; Don't modify dbg.declares which don't ultimately point to an alloca.
+; CHECK-LABEL: define void @debug_declare_noalloca()
+; CHECK: call void @llvm.dbg.declare(metadata i16* %bc, metadata !15, metadata !13), !dbg !16
+
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!9, !10}
 !llvm.ident = !{!11}

@@ -52,16 +52,15 @@ private:
     return false;
   }
 
-  AllocaInst *findAllocaFromBC(BitCastInst *BCInst) {
-    Value *Op0 = BCInst->getOperand(0);
+  AllocaInst *findAllocaFromCast(CastInst *CInst) {
+    Value *Op0 = CInst->getOperand(0);
     while (!llvm::isa<AllocaInst>(Op0)) {
-      if (auto *NextBC = llvm::dyn_cast<BitCastInst>(Op0)) {
-        Op0 = NextBC->getOperand(0);
+      auto *NextCast = llvm::dyn_cast<CastInst>(Op0);
+      if (NextCast &&
+          NextCast->isNoopCast(Type::getInt32Ty(CInst->getContext()))) {
+        Op0 = NextCast->getOperand(0);
       } else {
-        dbgs() << "findAllocaFromBC encountered a non-bitcast intermediate val "
-               << *Op0 << " starting w/ BCInst " << *BCInst << "\n";
-        report_fatal_error(
-            "findAllocaFromBC encountered a non-bitcast intermediate");
+        return nullptr;
       }
     }
     return llvm::cast<AllocaInst>(Op0);
@@ -122,13 +121,14 @@ private:
           auto *MV = cast<MetadataAsValue>(Call->getArgOperand(0));
           // Sometimes dbg.declare points to an argument instead of an alloca.
           if (auto *VM = dyn_cast<ValueAsMetadata>(MV->getMetadata())) {
-            if (auto *BCInst = dyn_cast<BitCastInst>(VM->getValue())) {
-              AllocaInst *Alloca = findAllocaFromBC(BCInst);
-              Call->setArgOperand(
-                  0,
-                  MetadataAsValue::get(Inst->getContext(),
-                                       ValueAsMetadata::get(Alloca)));
-              Changed = true;
+            if (auto *CInst = dyn_cast<CastInst>(VM->getValue())) {
+              if (AllocaInst *Alloca = findAllocaFromCast(CInst)) {
+                Call->setArgOperand(
+                    0,
+                    MetadataAsValue::get(Inst->getContext(),
+                                         ValueAsMetadata::get(Alloca)));
+                Changed = true;
+              }
             }
           }
         }
