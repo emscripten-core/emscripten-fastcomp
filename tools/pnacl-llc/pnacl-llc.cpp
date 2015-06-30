@@ -752,6 +752,13 @@ static int compileModule(StringRef ProgramName) {
   TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
   Options.DisableIntegratedAS = NoIntegratedAssembler;
   Options.MCOptions.AsmVerbose = true;
+#if defined(__native_client__)
+  // This enables LLVM MC to write instruction padding directly into fragments
+  // reducing memory usage of the translator. However, this could result in
+  // suboptimal machine code since we cannot use short jumps where possible
+  // which is why we enable this for sandboxed translator case.
+  Options.MCOptions.MCRelaxAll = true;
+#endif
 
   if (GenerateSoftFloatCalls)
     FloatABIForCalls = FloatABI::Soft;
