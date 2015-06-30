@@ -27,3 +27,10 @@ RUN:     -output - 2>&1 | FileCheck --check-prefix=BAD-BLKINFO_BITS %s
 
 BAD-BLKINFO_BITS: Numbits entry for abbreviations in blockinfo block not 2.
 BAD-BLKINFO_BITS: Failed to write bitcode
+
+; Check that we catch error where line doesn't begin with a record code.
+
+RUN: not pnacl-bcfuzz -bitcode-as-text %p/Inputs/bad-code.tbc \
+RUN:    -output - 2>&1 | FileCheck --check-prefix=BAD-CODE %s
+
+BAD-CODE: Bitcode record doesn't begin with a record code

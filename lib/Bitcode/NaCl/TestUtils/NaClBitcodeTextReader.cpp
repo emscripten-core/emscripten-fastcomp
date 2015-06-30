@@ -33,7 +33,7 @@ namespace {
 
 // Defines a text reader error code.
 enum ReaderErrorType {
-  NoCodeForRecord,
+  NoCodeForRecord=1,  // Note: Error types must not be zero!
   NoValueAfterSeparator,
   NoSeparatorOrTerminator,
   NoNewlineAfterTerminator,

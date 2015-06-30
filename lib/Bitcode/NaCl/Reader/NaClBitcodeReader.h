@@ -190,7 +190,8 @@ public:
 
   /// Types of errors reported.
   enum ErrorType {
-    CouldNotFindFunctionInStream, // Unable to find function in bitcode stream.
+    CouldNotFindFunctionInStream // Unable to find function in bitcode stream.
+    = 1,                         // Note: Error types must not be zero!
     InsufficientFunctionProtos,
     InvalidBitstream,         // Error in bitstream format.
     InvalidBlock,             // Invalid block found in bitcode.
