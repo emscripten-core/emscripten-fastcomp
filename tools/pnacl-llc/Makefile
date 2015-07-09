@@ -15,10 +15,5 @@ LINK_COMPONENTS := all-targets bitreader naclbitreader irreader \
 include $(LEVEL)/Makefile.common
 
 ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
-  # NOTE: we specify --noirt to tell the driver that we should link
-  # against private (non-stable, non-IRT) libraries for the
-  # sandboxed translator.  This could have been specified directly,
-  # except that LLVM slips in -lpthread elsewhere in the build system,
-  # and we need it to use -lpthread_private instead.
-  LIBS += -Wl,--noirt -lsrpc -limc_syscalls -lplatform -lgio -lpthread
+  LIBS += -lsrpc -limc_syscalls -lplatform -lgio
 endif
