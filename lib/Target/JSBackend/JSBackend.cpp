@@ -1900,7 +1900,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         std::string PS = getValueAsStr(P);
 
         // Determine if this is a partial load.
-        static const std::string partialAccess[4] = { "X", "XY", "XYZ", "" };
+        static const std::string partialAccess[4] = { "1", "2", "3", "" };
         if (VT->getNumElements() < 1 || VT->getNumElements() > 4) {
           error("invalid number of lanes in SIMD operation!");
           break;
@@ -1949,7 +1949,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
 
       // Determine if this is a partial store.
-      static const std::string partialAccess[4] = { "X", "XY", "XYZ", "" };
+      static const std::string partialAccess[4] = { "1", "2", "3", "" };
       if (VT->getNumElements() < 1 || VT->getNumElements() > 4) {
         error("invalid number of lanes in SIMD operation!");
         return false;
