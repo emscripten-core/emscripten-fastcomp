@@ -53,7 +53,7 @@ unsigned JSTTIImpl::getArithmeticInstrCost(
   if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
     switch (VTy->getNumElements()) {
     case 4:
-      // SIMD.js supports int32x4 and float32x4, and we can emulate <4 x i1>.
+      // SIMD.js supports Int32x4 and Float32x4, and we can emulate <4 x i1>.
       if (!VTy->getElementType()->isIntegerTy(1) &&
           !VTy->getElementType()->isIntegerTy(32) &&
           !VTy->getElementType()->isFloatTy())

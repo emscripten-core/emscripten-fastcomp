@@ -796,8 +796,8 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
     }
     case Type::VectorTyID:
       return (cast<VectorType>(t)->getElementType()->isIntegerTy() ?
-              "SIMD_int32x4_check(" + s + ")" :
-              "SIMD_float32x4_check(" + s + ")").str();
+              "SIMD_Int32x4_check(" + s + ")" :
+              "SIMD_Float32x4_check(" + s + ")").str();
     case Type::FloatTyID: {
       if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
         if (sign & ASM_FFI_IN) {
@@ -1252,9 +1252,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       checkVectorType(VT);
       if (VT->getElementType()->isIntegerTy()) {
-        S = "SIMD_int32x4_splat(0)";
+        S = "SIMD_Int32x4_splat(0)";
       } else {
-        S = "SIMD_float32x4_splat(Math_fround(0))";
+        S = "SIMD_Float32x4_splat(Math_fround(0))";
       }
     } else {
       S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
@@ -1267,9 +1267,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       checkVectorType(VT);
       if (VT->getElementType()->isIntegerTy()) {
-        return "SIMD_int32x4_splat(0)";
+        return "SIMD_Int32x4_splat(0)";
       } else {
-        return "SIMD_float32x4_splat(Math_fround(0))";
+        return "SIMD_Float32x4_splat(Math_fround(0))";
       }
     } else {
       // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
@@ -1321,16 +1321,16 @@ std::string JSWriter::getConstantVector(Type *ElementType, std::string x, std::s
   // Check for a splat.
   if (x == y && x == z && x == w) {
     if (ElementType->isIntegerTy()) {
-      return "SIMD_int32x4_splat(" + x + ')';
+      return "SIMD_Int32x4_splat(" + x + ')';
     } else {
-      return "SIMD_float32x4_splat(Math_fround(" + x + "))";
+      return "SIMD_Float32x4_splat(Math_fround(" + x + "))";
     }
   }
 
   if (ElementType->isIntegerTy()) {
-    return "SIMD_int32x4(" + x + ',' + y + ',' + z + ',' + w + ')';
+    return "SIMD_Int32x4(" + x + ',' + y + ',' + z + ',' + w + ')';
   } else {
-    return "SIMD_float32x4(Math_fround(" + x + "),Math_fround(" + y + "),Math_fround(" + z + "),Math_fround(" + w + "))";
+    return "SIMD_Float32x4(Math_fround(" + x + "),Math_fround(" + y + "),Math_fround(" + z + "),Math_fround(" + w + "))";
   }
 }
 
@@ -1428,29 +1428,29 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
     if (Splat) {
       // Emit splat code.
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "SIMD_int32x4_splat(" << getValueAsStr(Splat) << ")";
+        Code << "SIMD_Int32x4_splat(" << getValueAsStr(Splat) << ")";
       } else {
         std::string operand = getValueAsStr(Splat);
         if (!PreciseF32) {
-          // SIMD_float32x4_splat requires an actual float32 even if we're
+          // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
           operand = "Math_fround(" + operand + ")";
         }
-        Code << "SIMD_float32x4_splat(" << operand << ")";
+        Code << "SIMD_Float32x4_splat(" << operand << ")";
       }
     } else {
       // Emit constructor code.
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "SIMD_int32x4(";
+        Code << "SIMD_Int32x4(";
       } else {
-        Code << "SIMD_float32x4(";
+        Code << "SIMD_Float32x4(";
       }
       for (unsigned Index = 0; Index < NumElems; ++Index) {
         if (Index != 0)
           Code << ", ";
         std::string operand = getValueAsStr(Operands[Index]);
         if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
-          // SIMD_float32x4_splat requires an actual float32 even if we're
+          // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
           operand = "Math_fround(" + operand + ")";
         }
@@ -1466,9 +1466,9 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       if (!Operands[Index])
         continue;
       if (VT->getElementType()->isIntegerTy()) {
-        with = "SIMD_int32x4_with";
+        with = "SIMD_Int32x4_with";
       } else {
-        with = "SIMD_float32x4_with";
+        with = "SIMD_Float32x4_with";
       }
       std::string operand = getValueAsStr(Operands[Index]);
       if (!PreciseF32) {
@@ -1513,14 +1513,14 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
       if (CI->isZero()) {
         std::string operand = getValueAsStr(IEI->getOperand(1));
         if (!PreciseF32) {
-          // SIMD_float32x4_splat requires an actual float32 even if we're
+          // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
           operand = "Math_fround(" + operand + ")";
         }
         if (SVI->getType()->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4_splat(";
+          Code << "SIMD_Int32x4_splat(";
         } else {
-          Code << "SIMD_float32x4_splat(";
+          Code << "SIMD_Float32x4_splat(";
         }
         Code << operand << ")";
         return;
@@ -1553,9 +1553,9 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   if (swizzleA || swizzleB) {
     std::string T = (swizzleA ? A : B);
     if (SVI->getType()->getElementType()->isIntegerTy()) {
-      Code << "SIMD_int32x4_swizzle(" << T;
+      Code << "SIMD_Int32x4_swizzle(" << T;
     } else {
-      Code << "SIMD_float32x4_swizzle(" << T;
+      Code << "SIMD_Float32x4_swizzle(" << T;
     }
     int i = 0;
     for (; i < ResultNumElements; ++i) {
@@ -1579,9 +1579,9 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
 
   // Emit a fully-general shuffle.
   if (SVI->getType()->getElementType()->isIntegerTy()) {
-    Code << "SIMD_int32x4_shuffle(";
+    Code << "SIMD_Int32x4_shuffle(";
   } else {
-    Code << "SIMD_float32x4_shuffle(";
+    Code << "SIMD_Float32x4_shuffle(";
   }
 
   Code << A << ", " << B << ", ";
@@ -1621,9 +1621,9 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
   }
 
   if (Invert)
-    Code << "SIMD_int32x4_not(";
+    Code << "SIMD_Int32x4_not(";
 
-  Code << getAssignIfNeeded(I) << "SIMD_int32x4_" << Name << "("
+  Code << getAssignIfNeeded(I) << "SIMD_Int32x4_" << Name << "("
        << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
 
   if (Invert)
@@ -1635,39 +1635,39 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
   bool Invert = false;
   switch (cast<FCmpInst>(I)->getPredicate()) {
     case ICmpInst::FCMP_FALSE:
-      Code << "SIMD_int32x4_splat(0)";
+      Code << "SIMD_Int32x4_splat(0)";
       return;
     case ICmpInst::FCMP_TRUE:
-      Code << "SIMD_int32x4_splat(-1)";
+      Code << "SIMD_Int32x4_splat(-1)";
       return;
     case ICmpInst::FCMP_ONE:
-      Code << "SIMD_float32x4_and(SIMD_float32x4_and("
-              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
+      Code << "SIMD_Float32x4_and(SIMD_Float32x4_and("
+              "SIMD_Float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
                                       << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", "
+              "SIMD_Float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", "
                                       << getValueAsStr(I->getOperand(1)) << ")), " <<
-              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
+              "SIMD_Float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
                                          << getValueAsStr(I->getOperand(1)) << "))";
       return;
     case ICmpInst::FCMP_UEQ:
-      Code << "SIMD_float32x4_or(SIMD_float32x4_or("
-              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
+      Code << "SIMD_Float32x4_or(SIMD_Float32x4_or("
+              "SIMD_Float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
                                          << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", "
+              "SIMD_Float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", "
                                          << getValueAsStr(I->getOperand(1)) << ")), " <<
-              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
+              "SIMD_Float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", "
                                       << getValueAsStr(I->getOperand(1)) << "))";
       return;
     case FCmpInst::FCMP_ORD:
-      Code << "SIMD_float32x4_and("
-              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
+      Code << "SIMD_Float32x4_and("
+              "SIMD_Float32x4_equal(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
+              "SIMD_Float32x4_equal(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
       return;
 
     case FCmpInst::FCMP_UNO:
-      Code << "SIMD_float32x4_or("
-              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
+      Code << "SIMD_Float32x4_or("
+              "SIMD_Float32x4_notEqual(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
+              "SIMD_Float32x4_notEqual(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
       return;
 
     case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
@@ -1684,9 +1684,9 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
   }
 
   if (Invert)
-    Code << "SIMD_int32x4_not(";
+    Code << "SIMD_Int32x4_not(";
 
-  Code << getAssignIfNeeded(I) << "SIMD_float32x4_" << Name << "("
+  Code << getAssignIfNeeded(I) << "SIMD_Float32x4_" << Name << "("
        << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
 
   if (Invert)
@@ -1728,7 +1728,7 @@ void JSWriter::generateShiftExpression(const BinaryOperator *I, raw_string_ostre
     // then we can use a ByScalar shift.
     const Value *Count = I->getOperand(1);
     if (const Value *Splat = getSplatValue(Count)) {
-        Code << getAssignIfNeeded(I) << "SIMD_int32x4_";
+        Code << getAssignIfNeeded(I) << "SIMD_Int32x4_";
         if (I->getOpcode() == Instruction::AShr)
             Code << "shiftRightArithmeticByScalar";
         else if (I->getOpcode() == Instruction::LShr)
@@ -1749,9 +1749,9 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
   Code << getAssignIfNeeded(I);
 
   if (VT->getElementType()->isIntegerTy()) {
-    Code << "SIMD_int32x4(";
+    Code << "SIMD_Int32x4(";
   } else {
-    Code << "SIMD_float32x4(";
+    Code << "SIMD_Float32x4(";
   }
 
   for (unsigned Index = 0; Index < VT->getNumElements(); ++Index) {
@@ -1832,46 +1832,46 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         // selecting on them is just an elementwise select.
         if (isa<VectorType>(I->getOperand(0)->getType())) {
           if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-            Code << getAssignIfNeeded(I) << "SIMD_int32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+            Code << getAssignIfNeeded(I) << "SIMD_Int32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
           } else {
-            Code << getAssignIfNeeded(I) << "SIMD_float32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
+            Code << getAssignIfNeeded(I) << "SIMD_Float32x4_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
           }
           return true;
         }
         // Otherwise we have a scalar condition, so it's a ?: operator.
         return false;
-      case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD_float32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD_float32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::FDiv: Code << getAssignIfNeeded(I) << "SIMD_float32x4_div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Add: Code << getAssignIfNeeded(I) << "SIMD_int32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Sub: Code << getAssignIfNeeded(I) << "SIMD_int32x4_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Mul: Code << getAssignIfNeeded(I) << "SIMD_int32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::And: Code << getAssignIfNeeded(I) << "SIMD_int32x4_and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Or:  Code << getAssignIfNeeded(I) << "SIMD_int32x4_or(" <<  getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD_Float32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD_Float32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::FDiv: Code << getAssignIfNeeded(I) << "SIMD_Float32x4_div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Add: Code << getAssignIfNeeded(I) << "SIMD_Int32x4_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Sub: Code << getAssignIfNeeded(I) << "SIMD_Int32x4_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Mul: Code << getAssignIfNeeded(I) << "SIMD_Int32x4_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::And: Code << getAssignIfNeeded(I) << "SIMD_Int32x4_and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+      case Instruction::Or:  Code << getAssignIfNeeded(I) << "SIMD_Int32x4_or(" <<  getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
       case Instruction::Xor:
         // LLVM represents a not(x) as -1 ^ x
         Code << getAssignIfNeeded(I);
         if (BinaryOperator::isNot(I)) {
-          Code << "SIMD_int32x4_not(" << getValueAsStr(BinaryOperator::getNotArgument(I)) << ")"; break;
+          Code << "SIMD_Int32x4_not(" << getValueAsStr(BinaryOperator::getNotArgument(I)) << ")"; break;
         } else {
-          Code << "SIMD_int32x4_xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+          Code << "SIMD_Int32x4_xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         }
         break;
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
         Code << getAssignIfNeeded(I);
         if (BinaryOperator::isFNeg(I)) {
-          Code << "SIMD_float32x4_neg(" << getValueAsStr(BinaryOperator::getFNegArgument(I)) << ")";
+          Code << "SIMD_Float32x4_neg(" << getValueAsStr(BinaryOperator::getFNegArgument(I)) << ")";
         } else {
-          Code << "SIMD_float32x4_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")";
+          Code << "SIMD_Float32x4_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")";
         }
         break;
       case Instruction::BitCast: {
         Code << getAssignIfNeeded(I);
         if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4_fromFloat32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
+          Code << "SIMD_Int32x4_fromFloat32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
         } else {
-          Code << "SIMD_float32x4_fromInt32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
+          Code << "SIMD_Float32x4_fromInt32x4Bits(" << getValueAsStr(I->getOperand(0)) << ')';
         }
         break;
       }
@@ -1890,9 +1890,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
 
         Code << getAssignIfNeeded(I);
         if (VT->getElementType()->isIntegerTy()) {
-          Code << "SIMD_int32x4_load" << Part << "(HEAPU8, " << PS << ")";
+          Code << "SIMD_Int32x4_load" << Part << "(HEAPU8, " << PS << ")";
         } else {
-          Code << "SIMD_float32x4_load" << Part << "(HEAPU8, " << PS << ")";
+          Code << "SIMD_Float32x4_load" << Part << "(HEAPU8, " << PS << ")";
         }
         break;
       }
@@ -1938,9 +1938,9 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       const std::string &Part = partialAccess[VT->getNumElements() - 1];
 
       if (VT->getElementType()->isIntegerTy()) {
-        Code << "SIMD_int32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
+        Code << "SIMD_Int32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
       } else {
-        Code << "SIMD_float32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
+        Code << "SIMD_Float32x4_store" << Part << "(HEAPU8, " << PS << ", " << VS << ")";
       }
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
@@ -2632,9 +2632,9 @@ void JSWriter::printFunctionBody(const Function *F) {
           break;
         case Type::VectorTyID:
           if (cast<VectorType>(VI->second)->getElementType()->isIntegerTy()) {
-              Out << "SIMD_int32x4(0,0,0,0)";
+              Out << "SIMD_Int32x4(0,0,0,0)";
           } else {
-              Out << "SIMD_float32x4(0,0,0,0)";
+              Out << "SIMD_Float32x4(0,0,0,0)";
           }
           break;
       }
