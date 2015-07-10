@@ -123,9 +123,6 @@ namespace {
   #define ASM_MUST_CAST 16 // this value must be explicitly cast (or be an integer constant)
   typedef unsigned AsmCast;
 
-  const char *const SIMDLane = "XYZW";
-  const char *const simdLane = "xyzw";
-
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
   typedef std::set<int> IntSet;
@@ -1462,19 +1459,19 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
     // Emit a series of inserts.
     std::string Result = getValueAsStr(Base);
     for (unsigned Index = 0; Index < NumElems; ++Index) {
-      std::string with;
+      std::string replace;
       if (!Operands[Index])
         continue;
       if (VT->getElementType()->isIntegerTy()) {
-        with = "SIMD_Int32x4_with";
+        replace = "SIMD_Int32x4_replaceLane";
       } else {
-        with = "SIMD_Float32x4_with";
+        replace = "SIMD_Float32x4_replaceLane";
       }
       std::string operand = getValueAsStr(Operands[Index]);
       if (!PreciseF32) {
         operand = "Math_fround(" + operand + ")";
       }
-      Result = with + SIMDLane[Index] + "(" + Result + ',' + operand + ')';
+      Result = replace + '(' + Result + ',' + utostr(Index) + ',' + operand + ')';
     }
     Code << Result;
   }
@@ -1490,7 +1487,12 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
     Code << getAssignIfNeeded(EEI);
     std::string OperandCode;
     raw_string_ostream CodeStream(OperandCode);
-    CodeStream << getValueAsStr(EEI->getVectorOperand()) << '.' << simdLane[Index];
+    if (VT->getElementType()->isIntegerTy()) {
+      CodeStream << "SIMD_Int32x4_extractLane(";
+    } else {
+      CodeStream << "SIMD_Float32x4_extractLane(";
+    }
+    CodeStream << getValueAsStr(EEI->getVectorOperand()) << "," << Index << ")";
     Code << getCast(CodeStream.str(), EEI->getType());
     return;
   }
@@ -1760,37 +1762,54 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
     if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
         Code << "Math_fround(";
     }
-    std::string Lane = VT->getNumElements() <= 4 ?
-                       std::string(".") + simdLane[Index] :
-                       ".s" + utostr(Index);
+    std::string Extract;
+    if (VT->getElementType()->isIntegerTy()) {
+      Extract = "SIMD_Int32x4_extractLane(";
+    } else {
+      Extract = "SIMD_Float32x4_extractLane(";
+    }
     switch (Operator::getOpcode(I)) {
       case Instruction::SDiv:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) / ("
-             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
+                " / "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
+                "|0";
         break;
       case Instruction::UDiv:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << ">>>0) / ("
-             << getValueAsStr(I->getOperand(1)) << Lane << ">>>0)>>>0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")>>>0)"
+                " / "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")>>>0)"
+                ">>>0";
         break;
       case Instruction::SRem:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) / ("
-             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
+                " / "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
+                "|0";
         break;
       case Instruction::URem:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << ">>>0) / ("
-             << getValueAsStr(I->getOperand(1)) << Lane << ">>>0)>>>0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")>>>0)"
+                " / "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")>>>0)"
+                ">>>0";
         break;
       case Instruction::AShr:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) >> ("
-             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
+                " >> "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
+                "|0";
         break;
       case Instruction::LShr:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) >>> ("
-             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
+                " >>> "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
+                "|0";
         break;
       case Instruction::Shl:
-        Code << "(" << getValueAsStr(I->getOperand(0)) << Lane << "|0) << ("
-             << getValueAsStr(I->getOperand(1)) << Lane << "|0)|0";
+        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
+                " << "
+                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
+                "|0";
         break;
       default: I->dump(); error("invalid unrolled vector instr"); break;
     }
