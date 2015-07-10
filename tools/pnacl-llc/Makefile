@@ -13,7 +13,3 @@ LINK_COMPONENTS := all-targets bitreader naclbitreader irreader \
                    asmparser naclanalysis naclbittestutils nacltransforms
 
 include $(LEVEL)/Makefile.common
-
-ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
-  LIBS += -lsrpc -limc_syscalls -lplatform -lgio
-endif
