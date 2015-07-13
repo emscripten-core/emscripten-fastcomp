@@ -6,7 +6,7 @@ target triple = "asmjs-unknown-emscripten"
 ; Basic constructor.
 
 ; CHECK: function _test0($x,$y,$z,$w) {
-; CHECK:   $d = SIMD_float32x4($x, $y, $z, $w)
+; CHECK:   $d = SIMD_Float32x4($x, $y, $z, $w)
 ; CHECK: }
 define <4 x float> @test0(float %x, float %y, float %z, float %w) {
     %a = insertelement <4 x float> undef, float %x, i32 0
@@ -19,7 +19,7 @@ define <4 x float> @test0(float %x, float %y, float %z, float %w) {
 ; Same as test0 but elements inserted in a different order.
 
 ; CHECK: function _test1($x,$y,$z,$w) {
-; CHECK:   $d = SIMD_float32x4($x, $y, $z, $w)
+; CHECK:   $d = SIMD_Float32x4($x, $y, $z, $w)
 ; CHECK: }
 define <4 x float> @test1(float %x, float %y, float %z, float %w) {
     %a = insertelement <4 x float> undef, float %w, i32 3
@@ -32,7 +32,7 @@ define <4 x float> @test1(float %x, float %y, float %z, float %w) {
 ; Overwriting elements.
 
 ; CHECK: function _test2($x,$y,$z,$w) {
-; CHECK:   $h = SIMD_float32x4($x, $y, $z, $w)
+; CHECK:   $h = SIMD_Float32x4($x, $y, $z, $w)
 ; CHECK: }
 define <4 x float> @test2(float %x, float %y, float %z, float %w) {
     %a = insertelement <4 x float> undef, float %z, i32 0
@@ -49,7 +49,7 @@ define <4 x float> @test2(float %x, float %y, float %z, float %w) {
 ; Basic splat testcase.
 
 ; CHECK: function _test3($x) {
-; CHECK:   $d = SIMD_float32x4_splat($x)
+; CHECK:   $d = SIMD_Float32x4_splat($x)
 ; CHECK: }
 define <4 x float> @test3(float %x) {
     %a = insertelement <4 x float> undef, float %x, i32 0
@@ -62,7 +62,7 @@ define <4 x float> @test3(float %x) {
 ; Same as test3 but elements inserted in a different order.
 
 ; CHECK: function _test4($x) {
-; CHECK:   $d = SIMD_float32x4_splat($x)
+; CHECK:   $d = SIMD_Float32x4_splat($x)
 ; CHECK: }
 define <4 x float> @test4(float %x) {
     %a = insertelement <4 x float> undef, float %x, i32 3
@@ -75,7 +75,7 @@ define <4 x float> @test4(float %x) {
 ; Insert chain.
 
 ; CHECK: function _test5($x,$y,$z,$w) {
-; CHECK:   $f = SIMD_float32x4_withZ(SIMD_float32x4_withY(SIMD_float32x4_withX(SIMD_float32x4_splat(Math_fround(0)),$x),$y),$z)
+; CHECK:   $f = SIMD_Float32x4_replaceLane(SIMD_Float32x4_replaceLane(SIMD_Float32x4_replaceLane(SIMD_Float32x4_splat(Math_fround(0)),0,$x),1,$y),2,$z)
 ; CHECK: }
 define <4 x float> @test5(float %x, float %y, float %z, float %w) {
     %a = insertelement <4 x float> undef, float %z, i32 0
@@ -90,7 +90,7 @@ define <4 x float> @test5(float %x, float %y, float %z, float %w) {
 ; Splat via insert+shuffle.
 
 ; CHECK: function _test6($x) {
-; CHECK:   $b = SIMD_float32x4_splat($x)
+; CHECK:   $b = SIMD_Float32x4_splat($x)
 ; CHECK: }
 define <4 x float> @test6(float %x) {
     %a = insertelement <4 x float> undef, float %x, i32 0
