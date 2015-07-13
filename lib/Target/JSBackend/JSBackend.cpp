@@ -1842,9 +1842,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::SExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        // Since we represent vectors of i1 as vectors of sign extended wider integers,
-        // sign extending them is a no-op.
-        Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
+        Code << getAssignIfNeeded(I) << "SIMD_Int32x4_select(" << getValueAsStr(I->getOperand(0)) << ",SIMD_Int32x4_splat(-1),SIMD_Int32x4_splat(0))";
         break;
       case Instruction::Select:
         // Since we represent vectors of i1 as vectors of sign extended wider integers,
