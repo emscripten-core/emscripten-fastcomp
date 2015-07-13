@@ -1783,13 +1783,13 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
         break;
       case Instruction::SRem:
         Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
-                " / "
+                " % "
                 "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
                 "|0";
         break;
       case Instruction::URem:
         Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")>>>0)"
-                " / "
+                " % "
                 "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")>>>0)"
                 ">>>0";
         break;
