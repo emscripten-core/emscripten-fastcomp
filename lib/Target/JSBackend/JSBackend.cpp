@@ -2580,8 +2580,7 @@ void JSWriter::printFunctionBody(const Function *F) {
         std::set<const BasicBlock *> alreadyProcessed;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
           const BasicBlock *BB = i.getCaseSuccessor();
-          if (!alreadyProcessed.insert(BB).second)
-            continue;
+          if (!alreadyProcessed.insert(BB).second) continue;
           if (BB == DD) continue; // ok to eliminate this, default dest will get there anyhow
           std::string P = getPhiCode(&*BI, BB);
           LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], BlocksToConditions[BB].c_str(), P.size() > 0 ? P.c_str() : NULL);

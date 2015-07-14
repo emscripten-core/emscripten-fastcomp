@@ -52,44 +52,40 @@ struct InsertOrderedSet
 {
   std::map<T, typename std::list<T>::iterator>  Map;
   std::list<T>                                  List;
-  
-  typedef typename std::list<T>::iterator iterator;    
+
+  typedef typename std::list<T>::iterator iterator;
   iterator begin() { return List.begin(); }
   iterator end() { return List.end(); }
 
-  void erase(const T& val)
-  {
+  void erase(const T& val) {
     auto it = Map.find(val);
     if (it != Map.end()) {
       List.erase(it->second);
       Map.erase(it);
     }
   }
-  
-  void erase(iterator position)
-  {
+
+  void erase(iterator position) {
     Map.erase(*position);
     List.erase(position);
   }
-  
+
   // cheating a bit, not returning the iterator
-  void insert(const T& val)
-  {
+  void insert(const T& val) {
     auto it = Map.find(val);
     if (it == Map.end()) {
-        List.push_back(val);
-        Map.insert(std::make_pair(val, --List.end()));
+      List.push_back(val);
+      Map.insert(std::make_pair(val, --List.end()));
     }
   }
-  
+
   size_t size() const { return Map.size(); }
-  
-  void clear()
-  {
+
+  void clear() {
     Map.clear();
     List.clear();
   }
-  
+
   size_t count(const T& val) const { return Map.count(val); }
 };
 
@@ -101,37 +97,34 @@ struct InsertOrderedMap
 {
   std::map<Key, typename std::list<std::pair<Key,T>>::iterator> Map;
   std::list<std::pair<Key,T>>                                   List;
-  
-  T& operator[](const Key& k)
-  {
+
+  T& operator[](const Key& k) {
     auto it = Map.find(k);
     if (it == Map.end()) {
-        List.push_back(std::make_pair(k, T()));
-        auto e = --List.end();
-        Map.insert(std::make_pair(k, e));
-        return e->second;
+      List.push_back(std::make_pair(k, T()));
+      auto e = --List.end();
+      Map.insert(std::make_pair(k, e));
+      return e->second;
     }
     return it->second->second;
   }
-  
-  typedef typename std::list<std::pair<Key,T>>::iterator iterator;    
+
+  typedef typename std::list<std::pair<Key,T>>::iterator iterator;
   iterator begin() { return List.begin(); }
   iterator end() { return List.end(); }
-  
-  void erase(const Key& k)
-  {
+
+  void erase(const Key& k) {
     auto it = Map.find(k);
     if (it != Map.end()) {
       List.erase(it->second);
       Map.erase(it);
     }
   }
-  
-  void erase(iterator position)
-  {
+
+  void erase(iterator position) {
     erase(position->first);
   }
-  
+
   size_t size() const { return Map.size(); }
   size_t count(const Key& k) const { return Map.count(k); }
 };
