@@ -2577,11 +2577,14 @@ void JSWriter::printFunctionBody(const Function *F) {
           }
           BlocksToConditions[BB] = Condition + (!UseSwitch && BlocksToConditions[BB].size() > 0 ? " | " : "") + BlocksToConditions[BB];
         }
-        for (BlockCondMap::const_iterator I = BlocksToConditions.begin(), E = BlocksToConditions.end(); I != E; ++I) {
-          const BasicBlock *BB = I->first;
+        std::set<const BasicBlock *> alreadyProcessed;
+        for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
+          const BasicBlock *BB = i.getCaseSuccessor();
+          if (!alreadyProcessed.insert(BB).second)
+            continue;
           if (BB == DD) continue; // ok to eliminate this, default dest will get there anyhow
           std::string P = getPhiCode(&*BI, BB);
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], I->second.c_str(), P.size() > 0 ? P.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], BlocksToConditions[BB].c_str(), P.size() > 0 ? P.c_str() : NULL);
         }
         break;
       }

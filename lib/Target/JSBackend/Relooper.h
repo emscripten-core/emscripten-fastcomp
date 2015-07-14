@@ -17,6 +17,7 @@ LLVM.
 #include <map>
 #include <deque>
 #include <set>
+#include <list>
 
 struct Block;
 struct Shape;
@@ -43,8 +44,93 @@ struct Branch {
   void Render(Block *Target, bool SetLabel);
 };
 
-typedef std::set<Block*> BlockSet;
-typedef std::map<Block*, Branch*> BlockBranchMap;
+template<typename T>
+struct OrderedSet
+{
+  std::map<T, typename std::list<T>::iterator>  Map;
+  std::list<T>                                  List;
+  
+  typedef typename std::list<T>::iterator iterator;    
+  iterator begin() { return List.begin(); }
+  iterator end() { return List.end(); }
+
+  void erase(const T& val)
+  {
+    auto it = Map.find(val);
+    if (it != Map.end()) {
+      List.erase(it->second);
+      Map.erase(it);
+    }
+  }
+  
+  void erase(iterator position)
+  {
+    Map.erase(*position);
+    List.erase(position);
+  }
+  
+  // cheating a bit, not returning the iterator
+  void insert(const T& val)
+  {
+    auto it = Map.find(val);
+    if (it == Map.end()) {
+        List.push_back(val);
+        Map.insert(std::make_pair(val, --List.end()));
+    }
+  }
+  
+  size_t size() const { return Map.size(); }
+  
+  void clear()
+  {
+    Map.clear();
+    List.clear();
+  }
+  
+  size_t count(const T& val) const { return Map.count(val); }
+};
+
+template<typename Key, typename T>
+struct OrderedMap
+{
+  std::map<Key, typename std::list<std::pair<Key,T>>::iterator> Map;
+  std::list<std::pair<Key,T>>                                   List;
+  
+  T& operator[](const Key& k)
+  {
+    auto it = Map.find(k);
+    if (it == Map.end()) {
+        List.push_back(std::make_pair(k, T()));
+        Map.insert(std::make_pair(k, --List.end()));
+    }
+    return Map[k]->second;
+  }
+  
+  typedef typename std::list<std::pair<Key,T>>::iterator iterator;    
+  iterator begin() { return List.begin(); }
+  iterator end() { return List.end(); }
+  
+  void erase(const Key& k)
+  {
+    auto it = Map.find(k);
+    if (it != Map.end()) {
+      List.erase(it->second);
+      Map.erase(it);
+    }
+  }
+  
+  void erase(iterator position)
+  {
+    erase(position->first);
+  }
+  
+  size_t size() const { return Map.size(); }
+  size_t count(const Key& k) const { return Map.count(k); }
+};
+
+
+typedef OrderedSet<Block*> BlockSet;
+typedef OrderedMap<Block*, Branch*> BlockBranchMap;
 
 // Represents a basic block of code - some instructions that end with a
 // control flow modifier (a branch, return or throw).
@@ -225,7 +311,7 @@ struct Relooper {
   void SetMinSize(bool MinSize_) { MinSize = MinSize_; }
 };
 
-typedef std::map<Block*, BlockSet> BlockBlockSetMap;
+typedef OrderedMap<Block*, BlockSet> BlockBlockSetMap;
 
 #if DEBUG
 struct Debugging {
