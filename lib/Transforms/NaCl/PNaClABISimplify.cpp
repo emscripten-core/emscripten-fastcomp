@@ -93,6 +93,11 @@ void llvm::PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM) {
   // "va_arg" instructions have been removed.
   PM.add(createExpandVarArgsPass());
 
+  // Convert struct reg function params to struct* byval. This needs to be
+  // before ExpandStructRegs so it has a chance to rewrite aggregates from
+  // function arguments and returns into something ExpandStructRegs can expand.
+  PM.add(createSimplifyStructRegSignaturesPass());
+
   // TODO(mtrofin) Remove the following and only run it as a post-opt pass once
   //               the following bug is fixed.
   // https://code.google.com/p/nativeclient/issues/detail?id=3857
@@ -206,9 +211,6 @@ void llvm::PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM) {
   // ConstantExprs have already been expanded out.
   if (!isEmscripten) // Handled by JSBackend.
     PM.add(createReplacePtrsWithIntsPass());
-
-  // Convert struct reg function params to struct* byval
-  PM.add(createSimplifyStructRegSignaturesPass());
 
   // The atomic cmpxchg instruction returns a struct, and is rewritten to an
   // intrinsic as a post-opt pass, we therefore need to expand struct regs.
