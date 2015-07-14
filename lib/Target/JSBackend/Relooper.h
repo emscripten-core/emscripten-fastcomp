@@ -44,8 +44,11 @@ struct Branch {
   void Render(Block *Target, bool SetLabel);
 };
 
+// like std::set, except that begin() -> end() iterates in the
+// order that elements were added to the set (not in the order
+// of operator<(T, T))
 template<typename T>
-struct OrderedSet
+struct InsertOrderedSet
 {
   std::map<T, typename std::list<T>::iterator>  Map;
   std::list<T>                                  List;
@@ -90,8 +93,11 @@ struct OrderedSet
   size_t count(const T& val) const { return Map.count(val); }
 };
 
+// like std::map, except that begin() -> end() iterates in the
+// order that elements were added to the map (not in the order
+// of operator<(Key, Key))
 template<typename Key, typename T>
-struct OrderedMap
+struct InsertOrderedMap
 {
   std::map<Key, typename std::list<std::pair<Key,T>>::iterator> Map;
   std::list<std::pair<Key,T>>                                   List;
@@ -101,9 +107,11 @@ struct OrderedMap
     auto it = Map.find(k);
     if (it == Map.end()) {
         List.push_back(std::make_pair(k, T()));
-        Map.insert(std::make_pair(k, --List.end()));
+        auto e = --List.end();
+        Map.insert(std::make_pair(k, e));
+        return e->second;
     }
-    return Map[k]->second;
+    return it->second->second;
   }
   
   typedef typename std::list<std::pair<Key,T>>::iterator iterator;    
@@ -129,8 +137,8 @@ struct OrderedMap
 };
 
 
-typedef OrderedSet<Block*> BlockSet;
-typedef OrderedMap<Block*, Branch*> BlockBranchMap;
+typedef InsertOrderedSet<Block*> BlockSet;
+typedef InsertOrderedMap<Block*, Branch*> BlockBranchMap;
 
 // Represents a basic block of code - some instructions that end with a
 // control flow modifier (a branch, return or throw).
@@ -311,7 +319,7 @@ struct Relooper {
   void SetMinSize(bool MinSize_) { MinSize = MinSize_; }
 };
 
-typedef OrderedMap<Block*, BlockSet> BlockBlockSetMap;
+typedef InsertOrderedMap<Block*, BlockSet> BlockBlockSetMap;
 
 #if DEBUG
 struct Debugging {
