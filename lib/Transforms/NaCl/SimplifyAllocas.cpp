@@ -56,8 +56,7 @@ private:
     Value *Op0 = CInst->getOperand(0);
     while (!llvm::isa<AllocaInst>(Op0)) {
       auto *NextCast = llvm::dyn_cast<CastInst>(Op0);
-      if (NextCast &&
-          NextCast->isNoopCast(Type::getInt32Ty(CInst->getContext()))) {
+      if (NextCast && NextCast->isNoopCast(IntPtrType)) {
         Op0 = NextCast->getOperand(0);
       } else {
         return nullptr;
