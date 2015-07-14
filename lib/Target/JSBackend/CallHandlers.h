@@ -513,23 +513,31 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
 
 // vector ops
 DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
-  return getAssign(CI) + getValueAsStr(CI->getOperand(0)) + ".signMask";
+  // The following code is obviously quite suboptimal. The goal is to avoid
+  // using it whenever possible by optimizing signmask calls into anyTrue() or
+  // allTrue() calls.
+  std::string Op = getValueAsStr(CI->getOperand(0));
+  return getAssign(CI) + "("
+         "(SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),0)<0)|"
+         "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),1)<0)<<1)|"
+         "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),2)<0)<<2)|"
+         "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),3)<0)<<3))";
 })
 
-DEF_CALL_HANDLER(emscripten_float32x4_loadx, {
-  return getAssign(CI) + "SIMD_float32x4_loadX(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+DEF_CALL_HANDLER(emscripten_float32x4_load1, {
+  return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
 })
 
-DEF_CALL_HANDLER(emscripten_float32x4_loadxy, {
-  return getAssign(CI) + "SIMD_float32x4_loadXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+DEF_CALL_HANDLER(emscripten_float32x4_load2, {
+  return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
 })
 
-DEF_CALL_HANDLER(emscripten_float32x4_storex, {
-  return "SIMD_float32x4_storeX(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+DEF_CALL_HANDLER(emscripten_float32x4_store1, {
+  return "SIMD_Float32x4_storeX(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
-DEF_CALL_HANDLER(emscripten_float32x4_storexy, {
-  return "SIMD_float32x4_storeXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+DEF_CALL_HANDLER(emscripten_float32x4_store2, {
+  return "SIMD_Float32x4_storeXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
 // EM_ASM support
@@ -758,35 +766,37 @@ DEF_BUILTIN_HANDLER(llvm_log_f32, Math_log);
 DEF_BUILTIN_HANDLER(llvm_log_f64, Math_log);
 DEF_BUILTIN_HANDLER(llvm_exp_f32, Math_exp);
 DEF_BUILTIN_HANDLER(llvm_exp_f64, Math_exp);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_equal, SIMD_float32x4_equal);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_notEqual, SIMD_float32x4_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_lessThan, SIMD_float32x4_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_lessThanOrEqual, SIMD_float32x4_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_greaterThan, SIMD_float32x4_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_greaterThanOrEqual, SIMD_float32x4_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_select, SIMD_float32x4_select);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_min, SIMD_float32x4_min);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_max, SIMD.float32x4_max);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_float32x4_abs);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_sqrt, SIMD_float32x4_sqrt);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalApproximation, SIMD_float32x4_reciprocalApproximation);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation, SIMD_float32x4_reciprocalSqrtApproximation);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_and, SIMD_float32x4_and);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_or, SIMD_float32x4_or);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_xor, SIMD_float32x4_xor);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_not, SIMD_float32x4_not);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4Bits, SIMD_float32x4_fromInt32x4Bits);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4, SIMD_float32x4_fromInt32x4);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_equal, SIMD_int32x4_equal);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_notEqual, SIMD_int32x4_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThan, SIMD_int32x4_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThanOrEqual, SIMD_int32x4_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThan, SIMD_int32x4_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThanOrEqual, SIMD_int32x4_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_select, SIMD_int32x4_select);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4Bits, SIMD_int32x4_fromFloat32x4Bits);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4, SIMD_int32x4_fromFloat32x4);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_min, SIMD_Float32x4_min);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_max, SIMD.Float32x4_max);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_Float32x4_abs);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_sqrt, SIMD_Float32x4_sqrt);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalApproximation, SIMD_Float32x4_reciprocalApproximation);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation, SIMD_Float32x4_reciprocalSqrtApproximation);
 DEF_BUILTIN_HANDLER(emscripten_atomic_fence, Atomics_fence);
+
+DEF_CALL_HANDLER(emscripten_float32x4_select, {
+  // FIXME: We really need a more general way of handling boolean types,
+  // including an optimization to allow more Int32x4 operations to be
+  // translated as Bool32x4 operations.
+  std::string Op;
+  if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
+    Op = getValueAsStr(SE->getOperand(0));
+  } else {
+    Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ",SIMD_Int32x4_splat(0))";
+  }
+  return getAssign(CI) + "SIMD_Float32x4_select(" + Op + "," +
+         getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int32x4_select, {
+  std::string Op;
+  if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
+    Op = getValueAsStr(SE->getOperand(0));
+  } else {
+    Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ",SIMD_Int32x4_splat(0))";
+  }
+  return getAssign(CI) + "SIMD_Int32x4_select(" + Op + "," +
+         getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+})
 
 // Setups
 
@@ -854,25 +864,12 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_float32x4_sqrt);
   SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalApproximation);
   SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation);
-  SETUP_CALL_HANDLER(emscripten_float32x4_equal);
-  SETUP_CALL_HANDLER(emscripten_float32x4_notEqual);
-  SETUP_CALL_HANDLER(emscripten_float32x4_lessThan);
-  SETUP_CALL_HANDLER(emscripten_float32x4_lessThanOrEqual);
-  SETUP_CALL_HANDLER(emscripten_float32x4_greaterThan);
-  SETUP_CALL_HANDLER(emscripten_float32x4_greaterThanOrEqual);
-  SETUP_CALL_HANDLER(emscripten_float32x4_and);
-  SETUP_CALL_HANDLER(emscripten_float32x4_or);
-  SETUP_CALL_HANDLER(emscripten_float32x4_xor);
-  SETUP_CALL_HANDLER(emscripten_float32x4_not);
   SETUP_CALL_HANDLER(emscripten_float32x4_select);
-  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
-  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
-  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
-  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4);
-  SETUP_CALL_HANDLER(emscripten_float32x4_loadx);
-  SETUP_CALL_HANDLER(emscripten_float32x4_loadxy);
-  SETUP_CALL_HANDLER(emscripten_float32x4_storex);
-  SETUP_CALL_HANDLER(emscripten_float32x4_storexy);
+  SETUP_CALL_HANDLER(emscripten_float32x4_load1);
+  SETUP_CALL_HANDLER(emscripten_float32x4_load2);
+  SETUP_CALL_HANDLER(emscripten_float32x4_store1);
+  SETUP_CALL_HANDLER(emscripten_float32x4_store2);
+  SETUP_CALL_HANDLER(emscripten_int32x4_select);
   SETUP_CALL_HANDLER(emscripten_asm_const);
   SETUP_CALL_HANDLER(emscripten_asm_const_int);
   SETUP_CALL_HANDLER(emscripten_asm_const_double);
