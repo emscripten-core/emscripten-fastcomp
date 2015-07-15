@@ -500,6 +500,7 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
   // wiring the new arguments. Call sites are unchanged at this point.
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E;) {
     Function *Func = Iter++;
+    if(Func->isIntrinsic()) { continue; } // Can't rewrite the intrinsics.
     checkNoUnsupportedInstructions(Ctx, Func);
     Changed |= simplifyFunction(Ctx, Func, DISubprogramMap);
   }
