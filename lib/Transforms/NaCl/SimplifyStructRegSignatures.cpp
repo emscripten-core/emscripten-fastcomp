@@ -405,6 +405,11 @@ void SimplifyStructRegSignatures::scheduleInstructionsForCleanup(
   for (auto &BBIter : NewFunc->getBasicBlockList()) {
     for (auto &IIter : BBIter.getInstList()) {
       if (CallInst *Call = dyn_cast<CallInst>(&IIter)) {
+        if (Function* F = dyn_cast<Function>(Call->getCalledValue())) {
+          if (F->isIntrinsic()) {
+            continue;
+          }
+        }
         CallsToPatch.insert(Call);
       } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(&IIter)) {
         InvokesToPatch.insert(Invoke);

@@ -21,8 +21,15 @@ declare i32 @__gxx_personality_v0(...)
 ; CHECK-NEXT: %direct_def.simplified = type { void (%struct*)*, %struct }
 
 ; Leave intrinsics alone:
-; CHECK: { i32, i1 } @llvm.uadd.with.overflow.i32()
-declare { i32, i1 } @llvm.uadd.with.overflow.i32()
+; CHECK: { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+
+; CHECK-LABEL: define void @call_intrinsic()
+define void @call_intrinsic() {
+  %a = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 5, i32 5)
+; CHECK-NEXT: %a = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 5, i32 5)
+  ret void
+}
 
 ; externs
 declare void @extern_func(%struct)
