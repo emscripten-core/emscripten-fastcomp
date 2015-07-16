@@ -328,16 +328,11 @@ static void EmitSPAdj(const llvm::MCSubtargetInfo &STI, const MCOperand &ImmOp,
 
 static void EmitPrefix(const llvm::MCSubtargetInfo &STI, unsigned Opc,
                        MCStreamer &Out, X86MCNaClSFIState &State) {
-  assert(State.PrefixSaved == 0);
-  assert(State.PrefixPass == false);
-
   MCInst PrefixInst;
   PrefixInst.setOpcode(Opc);
-  State.PrefixPass = true;
+  State.EmitRaw = true;
   Out.EmitInstruction(PrefixInst, STI);
-
-  assert(State.PrefixSaved == 0);
-  assert(State.PrefixPass == false);
+  State.EmitRaw = false;
 }
 
 static void EmitMoveRegReg(const llvm::MCSubtargetInfo &STI, bool Is64Bit,
@@ -488,8 +483,8 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
   }
   // If we make a call to EmitInstruction, we will be called recursively. In
   // this case we just want the raw instruction to be emitted instead of
-  // handling the insruction here.
-  if (State.EmitRaw == true && !State.PrefixPass) {
+  // handling the instruction here.
+  if (State.EmitRaw == true) {
     return false;
   }
   EmitRawState E(State);
@@ -502,11 +497,6 @@ bool CustomExpandInstNaClX86(const llvm::MCSubtargetInfo &STI,
   case X86::REX64_PREFIX:
     // Ugly hack because LLVM AsmParser is not smart enough to combine
     // prefixes back into the instruction they modify.
-    if (State.PrefixPass) {
-      State.PrefixPass = false;
-      State.PrefixSaved = 0;
-      return false;
-    }
     assert(State.PrefixSaved == 0);
     State.PrefixSaved = Opc;
     return true;
