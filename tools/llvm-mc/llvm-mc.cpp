@@ -470,6 +470,13 @@ int main(int argc, char **argv) {
         Ctx, std::move(FOut), /*asmverbose*/ true,
         /*useDwarfDirectory*/ true, IP, CE, MAB, ShowInst));
 
+    // @LOCALMOD-START
+    if (T.isOSNaCl()) {
+      Str->InitSections(NoExecStack);
+      initializeNaClMCStreamer(*Str.get(), Ctx, T);
+    }
+    // @LOCALMOD-END
+
   } else if (FileType == OFT_Null) {
     Str.reset(TheTarget->createNullStreamer(Ctx));
   } else {

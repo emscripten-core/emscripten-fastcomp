@@ -13,6 +13,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
@@ -210,11 +211,15 @@ void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
 
 void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
                                        const MCSubtargetInfo &STI) {
-  // @LOCALMOD-BEGIN
+
+  // @LOCALMOD-START
   if (getAssembler().isBundlingEnabled() &&
       getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
     return;
   }
+
+  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
+    return;
   // @LOCALMOD-END
 
   MCStreamer::EmitInstruction(Inst, STI);

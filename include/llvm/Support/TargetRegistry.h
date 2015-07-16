@@ -39,6 +39,7 @@ namespace llvm {
   class MCInstrAnalysis;
   class MCInstPrinter;
   class MCInstrInfo;
+  class MCNaClExpander; // @LOCALMOD
   class MCRegisterInfo;
   class MCStreamer;
   class MCSubtargetInfo;
@@ -160,6 +161,8 @@ namespace llvm {
         LLVMSymbolLookupCallback SymbolLookUp, void *DisInfo, MCContext *Ctx,
         std::unique_ptr<MCRelocationInfo> &&RelInfo);
 
+    typedef void (*MCNaClExpanderCtorTy)(MCStreamer &S); // @LOCALMOD
+
   private:
     /// Next - The next registered target in the linked list, maintained by the
     /// TargetRegistry.
@@ -253,6 +256,12 @@ namespace llvm {
     /// MCSymbolizerCtorFn - Construction function for this target's
     /// MCSymbolizer, if registered (default = llvm::createMCSymbolizer)
     MCSymbolizerCtorTy MCSymbolizerCtorFn;
+
+    // @LOCALMOD-START
+    // MCNaClExpanderCtorFn - Construction function for this target's
+    // MCNaClExpander, if registered.
+    MCNaClExpanderCtorTy MCNaClExpanderCtorFn;
+    // @LOCALMOD-END
 
   public:
     Target()
@@ -485,6 +494,13 @@ namespace llvm {
       createAsmTargetStreamer(*S, OSRef, InstPrint, IsVerboseAsm);
       return S;
     }
+
+    // @LOCALMOD-START
+    void createMCNaClExpander(MCStreamer &S) const {
+      if (MCNaClExpanderCtorFn)
+        MCNaClExpanderCtorFn(S);
+    }
+    // @LOCALMOD-END
 
     MCTargetStreamer *createAsmTargetStreamer(MCStreamer &S,
                                               formatted_raw_ostream &OS,
@@ -868,6 +884,13 @@ namespace llvm {
                                      Target::MCSymbolizerCtorTy Fn) {
       T.MCSymbolizerCtorFn = Fn;
     }
+
+    // @LOCALMOD-START
+    static void RegisterMCNaClExpander(Target &T,
+                                       Target::MCNaClExpanderCtorTy Fn) {
+      T.MCNaClExpanderCtorFn = Fn;
+    }
+    // @LOCALMOD-END
 
     /// @}
   };

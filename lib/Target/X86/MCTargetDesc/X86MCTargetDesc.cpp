@@ -15,6 +15,7 @@
 #include "InstPrinter/X86ATTInstPrinter.h"
 #include "InstPrinter/X86IntelInstPrinter.h"
 #include "X86MCAsmInfo.h"
+#include "X86MCNaClExpander.h" // @LOCALMOD
 #include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrAnalysis.h"
@@ -234,6 +235,13 @@ static MCInstrAnalysis *createX86MCInstrAnalysis(const MCInstrInfo *Info) {
   return new MCInstrAnalysis(Info);
 }
 
+// @LOCALMOD-START
+static void createX86MCNaClExpander(MCStreamer &S) {
+  auto *Exp = new X86::X86MCNaClExpander();
+  S.setNaClExpander(Exp);
+}
+// @LOCALMOD-END
+
 // Force static initialization.
 extern "C" void LLVMInitializeX86TargetMC() {
   for (Target *T : {&TheX86_32Target, &TheX86_64Target}) {
@@ -267,6 +275,10 @@ extern "C" void LLVMInitializeX86TargetMC() {
 
     // Register the MC relocation info.
     TargetRegistry::RegisterMCRelocationInfo(*T, createX86MCRelocationInfo);
+
+    // @LOCALMOD-START
+    TargetRegistry::RegisterMCNaClExpander(*T, createX86MCNaClExpander);
+    // @LOCALMOD-END
   }
 
   // Register the asm backend.

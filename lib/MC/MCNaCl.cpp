@@ -12,7 +12,9 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/MCNaClExpander.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/ELF.h"
 
 static const char NoteNamespace[] = "NaCl";
@@ -49,6 +51,14 @@ void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
     default:
       report_fatal_error("Unsupported architecture for NaCl");
   }
+
+  std::string Error; //empty
+  const Target *TheTarget = 
+    TargetRegistry::lookupTarget(TheTriple.getTriple(), Error);
+
+  // Create the Target specific MCNaClExpander
+  assert(TheTarget != nullptr);
+  TheTarget->createMCNaClExpander(Streamer);
 
   // Set bundle-alignment as required by the NaCl ABI for the target.
   Streamer.EmitBundleAlignMode(BundleAlign);
