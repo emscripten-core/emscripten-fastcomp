@@ -161,7 +161,11 @@ namespace llvm {
         LLVMSymbolLookupCallback SymbolLookUp, void *DisInfo, MCContext *Ctx,
         std::unique_ptr<MCRelocationInfo> &&RelInfo);
 
-    typedef void (*MCNaClExpanderCtorTy)(MCStreamer &S); // @LOCALMOD
+    // @LOCALMOD-START
+    typedef void (*MCNaClExpanderCtorTy)(
+        MCStreamer &S, std::unique_ptr<MCRegisterInfo> &&RegInfo,
+        std::unique_ptr<MCInstrInfo> &&InstInfo);
+    // @LOCALMOD-END
 
   private:
     /// Next - The next registered target in the linked list, maintained by the
@@ -496,9 +500,11 @@ namespace llvm {
     }
 
     // @LOCALMOD-START
-    void createMCNaClExpander(MCStreamer &S) const {
+    void createMCNaClExpander(MCStreamer &S,
+                              std::unique_ptr<MCRegisterInfo> &&RegInfo,
+                              std::unique_ptr<MCInstrInfo> &&InstInfo) const {
       if (MCNaClExpanderCtorFn)
-        MCNaClExpanderCtorFn(S);
+        MCNaClExpanderCtorFn(S, std::move(RegInfo), std::move(InstInfo));
     }
     // @LOCALMOD-END
 

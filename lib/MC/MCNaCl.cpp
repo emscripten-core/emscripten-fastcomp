@@ -10,9 +10,9 @@
 #include "llvm/MC/MCNaCl.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCNaClExpander.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCNaClExpander.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/ELF.h"
@@ -58,7 +58,10 @@ void initializeNaClMCStreamer(MCStreamer &Streamer, MCContext &Ctx,
 
   // Create the Target specific MCNaClExpander
   assert(TheTarget != nullptr);
-  TheTarget->createMCNaClExpander(Streamer);
+  TheTarget->createMCNaClExpander(
+      Streamer, std::unique_ptr<MCRegisterInfo>(
+                    TheTarget->createMCRegInfo(TheTriple.getTriple())),
+      std::unique_ptr<MCInstrInfo>(TheTarget->createMCInstrInfo()));
 
   // Set bundle-alignment as required by the NaCl ABI for the target.
   Streamer.EmitBundleAlignMode(BundleAlign);

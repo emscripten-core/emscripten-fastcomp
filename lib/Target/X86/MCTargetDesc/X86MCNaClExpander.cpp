@@ -13,7 +13,12 @@
 //===----------------------------------------------------------------------===//
 #include "X86MCNaClExpander.h"
 #include "X86BaseInfo.h"
+
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrDesc.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCNaClExpander.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 
 using namespace llvm;
@@ -60,6 +65,7 @@ void X86::X86MCNaClExpander::emitReturn(const MCInst &Inst, MCStreamer &Out,
     ADDInst.addOperand(Inst.getOperand(0));
     Out.EmitInstruction(ADDInst, STI);
   }
+
   Out.EmitBundleLock(false);
   Out.EmitInstruction(getMaskInst(scratchReg, -kNaClX86InstructionBundleSize),
                       STI);
@@ -70,28 +76,28 @@ void X86::X86MCNaClExpander::emitReturn(const MCInst &Inst, MCStreamer &Out,
 
 void X86::X86MCNaClExpander::doExpandInst(const MCInst &Inst, MCStreamer &Out,
                                           const MCSubtargetInfo &STI) {
-  unsigned opcode = Inst.getOpcode();
-  switch (opcode) {
+  unsigned Opcode = Inst.getOpcode();
+  switch (Opcode) {
   case X86::LOCK_PREFIX:
   case X86::REP_PREFIX:
   case X86::REPNE_PREFIX:
   case X86::REX64_PREFIX:
     Prefixes.push_back(Inst);
     return;
-  case X86::RETL:
-  case X86::RETIL:
+  default:
+    break;
+  }
+
+  if (isReturn(Inst)) {
     emitReturn(Inst, Out, STI);
     return;
-
-  default:
-    for (const MCInst &Prefix : Prefixes)
-      Out.EmitInstruction(Prefix, STI);
-    Prefixes.clear();
-    Out.EmitInstruction(Inst, STI);
   }
+
+  for (const MCInst &Prefix : Prefixes)
+    Out.EmitInstruction(Prefix, STI);
+  Prefixes.clear();
+  Out.EmitInstruction(Inst, STI);
 }
-
-
 
 bool X86::X86MCNaClExpander::expandInst(const MCInst &Inst, MCStreamer &Out,
                                         const MCSubtargetInfo &STI) {
