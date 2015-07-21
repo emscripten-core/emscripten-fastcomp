@@ -1256,13 +1256,13 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
          "Cannot emit contents before setting section!");
 
   // @LOCALMOD-START
+  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
+    return;
+
   if (BundleAlignmentEnabled && AsmBackend &&
       AsmBackend->CustomExpandInst(Inst, *this)) {
     return;
   }
-
-  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
-    return;
   // @LOCALMOD-END
   // Show the encoding in a comment if we have a code emitter.
   if (Emitter)

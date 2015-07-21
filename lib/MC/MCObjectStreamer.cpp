@@ -213,13 +213,13 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
                                        const MCSubtargetInfo &STI) {
 
   // @LOCALMOD-START
+  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
+    return;
+
   if (getAssembler().isBundlingEnabled() &&
       getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
     return;
   }
-
-  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
-    return;
   // @LOCALMOD-END
 
   MCStreamer::EmitInstruction(Inst, STI);

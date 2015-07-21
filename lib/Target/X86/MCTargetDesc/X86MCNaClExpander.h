@@ -13,11 +13,13 @@
 //===----------------------------------------------------------------------===//
 #ifndef LLVM_MC_X86MCNACLEXPANDER_H
 #define LLVM_MC_X86MCNACLEXPANDER_H
-#include "llvm/MC/MCStreamer.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCNaClExpander.h"
 
 namespace llvm {
+class MCStreamer;
+class MCSubtargetInfo;
 namespace X86 {
 
 class X86MCNaClExpander : public MCNaClExpander {
@@ -28,7 +30,8 @@ public:
                   const MCSubtargetInfo &STI) override;
 
 private:
-  bool guard = false; // recursion guard
+  bool Guard = false; // recursion guard
+  SmallVector<MCInst, 4> Prefixes;
   void emitReturn(const MCInst &Inst, MCStreamer &Out,
                   const MCSubtargetInfo &STI);
   void doExpandInst(const MCInst &Inst, MCStreamer &Out,
