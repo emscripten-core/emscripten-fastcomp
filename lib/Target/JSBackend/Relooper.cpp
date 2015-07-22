@@ -9,13 +9,7 @@
 #include <stdlib.h>
 #include <list>
 #include <stack>
-
-#if EMSCRIPTEN
-#include "ministring.h"
-#else
 #include <string>
-typedef std::string ministring;
-#endif
 
 // uncomment these out to get LLVM errs() debugging support
 //#include <llvm/Support/raw_ostream.h>
@@ -244,7 +238,7 @@ void Block::Render(bool InLoop) {
     PrintIndented("switch (%s) {\n", BranchVar);
   }
 
-  ministring RemainingConditions;
+  std::string RemainingConditions;
   bool First = !useSwitch; // when using a switch, there is no special first
   for (BlockBranchMap::iterator iter = ProcessedBranchesOut.begin();; iter++) {
     Block *Target;
