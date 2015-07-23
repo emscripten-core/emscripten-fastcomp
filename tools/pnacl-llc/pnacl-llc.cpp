@@ -137,7 +137,9 @@ static cl::opt<bool>
     DisableSimplifyLibCalls("disable-simplify-libcalls",
                             cl::desc("Disable simplify-libcalls"));
 
-#if !defined(PNACL_BROWSER_TRANSLATOR)
+#if defined(PNACL_BROWSER_TRANSLATOR)
+constexpr bool AcceptBitcodeRecordText = false;
+#else
 static cl::opt<bool>
 AcceptBitcodeRecordText(
     "bitcode-as-text",
