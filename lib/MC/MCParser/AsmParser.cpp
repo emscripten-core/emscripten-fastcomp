@@ -22,6 +22,7 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/AsmCond.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
@@ -333,6 +334,7 @@ private:
     DK_SINGLE, DK_FLOAT, DK_DOUBLE, DK_ALIGN, DK_ALIGN32, DK_BALIGN, DK_BALIGNW,
     DK_BALIGNL, DK_P2ALIGN, DK_P2ALIGNW, DK_P2ALIGNL, DK_ORG, DK_FILL, DK_ENDR,
     DK_BUNDLE_ALIGN_MODE, DK_BUNDLE_LOCK, DK_BUNDLE_UNLOCK,
+    DK_SCRATCH, DK_UNSCRATCH, // @LOCALMOD
     DK_ZERO, DK_EXTERN, DK_GLOBL, DK_GLOBAL,
     DK_LAZY_REFERENCE, DK_NO_DEAD_STRIP, DK_SYMBOL_RESOLVER, DK_PRIVATE_EXTERN,
     DK_REFERENCE, DK_WEAK_DEFINITION, DK_WEAK_REFERENCE,
@@ -412,6 +414,13 @@ private:
   bool parseDirectiveBundleLock();
   // ".bundle_unlock"
   bool parseDirectiveBundleUnlock();
+
+  // @LOCALMOD-START
+  // ".scratch"
+  bool parseDirectiveScratch();
+  // ".unscratch"
+  bool parseDirectiveUnscratch();
+  // @LOCALMOD-END
 
   // ".space", ".skip"
   bool parseDirectiveSpace(StringRef IDVal);
@@ -1483,6 +1492,12 @@ bool AsmParser::parseStatement(ParseStatementInfo &Info,
       return parseDirectiveBundleLock();
     case DK_BUNDLE_UNLOCK:
       return parseDirectiveBundleUnlock();
+    // @LOCALMOD-START
+    case DK_SCRATCH:
+      return parseDirectiveScratch();
+    case DK_UNSCRATCH:
+      return parseDirectiveUnscratch();
+    // @LOCALMOD-END
     case DK_SLEB128:
       return parseDirectiveLEB128(true);
     case DK_ULEB128:
@@ -3603,6 +3618,60 @@ bool AsmParser::parseDirectiveBundleUnlock() {
   return false;
 }
 
+// @LOCALMOD-START
+/// parseDirectiveScratch
+/// ::= {.scratch} reg
+bool AsmParser::parseDirectiveScratch() {
+  checkForValidSection();
+  unsigned RegNo;
+  SMLoc Loc = getTok().getLoc();
+  const char *kInvalidOptionError =
+      "expected register name after '.scratch' directive";
+
+  if (getLexer().isNot(AsmToken::EndOfStatement)) {
+    if (getTargetParser().ParseRegister(RegNo, Loc, Loc))
+      return Error(Loc, kInvalidOptionError);
+
+    else if (getLexer().isNot(AsmToken::EndOfStatement))
+      return Error(Loc, kInvalidOptionError);
+  }
+  else {
+    return Error(Loc, kInvalidOptionError);
+  }
+
+  Lex();
+
+  MCNaClExpander *Exp = getStreamer().getNaClExpander();
+  if (Exp) {
+    Exp->pushScratchReg(RegNo);
+  } else {
+    return Error(Loc, ".scratch directive is only suported for Native Client");
+  }
+  return false;
+}
+
+/// parseDirectiveUnscratch
+/// ::= {.unscratch}
+bool AsmParser::parseDirectiveUnscratch() {
+  checkForValidSection();
+  SMLoc Loc = getTok().getLoc();
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.unscratch' directive");
+  Lex();
+
+  MCNaClExpander *Exp = getStreamer().getNaClExpander();
+  if (Exp) {
+    if (Exp->numScratchRegs() == 0)
+      return Error(Loc, "No scratch registers specified");
+    Exp->popScratchReg();
+  } else {
+    return Error(Loc,
+                 ".unscratch directive is only supported for Native Client");
+  }
+  return false;
+}
+// @LOCALMOD-END
+
 /// parseDirectiveSpace
 /// ::= (.skip | .space) expression [ , expression ]
 bool AsmParser::parseDirectiveSpace(StringRef IDVal) {
@@ -4218,6 +4287,10 @@ void AsmParser::initializeDirectiveKindMap() {
   DirectiveKindMap[".bundle_align_mode"] = DK_BUNDLE_ALIGN_MODE;
   DirectiveKindMap[".bundle_lock"] = DK_BUNDLE_LOCK;
   DirectiveKindMap[".bundle_unlock"] = DK_BUNDLE_UNLOCK;
+  // @LOCALMOD-START
+  DirectiveKindMap[".scratch"] = DK_SCRATCH;
+  DirectiveKindMap[".unscratch"] = DK_UNSCRATCH;
+  // @LOCALMOD-END
   DirectiveKindMap[".if"] = DK_IF;
   DirectiveKindMap[".ifeq"] = DK_IFEQ;
   DirectiveKindMap[".ifge"] = DK_IFGE;

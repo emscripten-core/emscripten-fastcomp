@@ -21,15 +21,16 @@
 #include "llvm/MC/MCRegisterInfo.h"
 
 namespace llvm {
+class MCContext;
 class MCStreamer;
 class MCSubtargetInfo;
 
 namespace X86 {
 class X86MCNaClExpander : public MCNaClExpander {
 public:
-  X86MCNaClExpander(std::unique_ptr<MCRegisterInfo> &&RI,
+  X86MCNaClExpander(const MCContext &Ctx, std::unique_ptr<MCRegisterInfo> &&RI,
                     std::unique_ptr<MCInstrInfo> &&II)
-      : MCNaClExpander(std::move(RI), std::move(II)) {}
+      : MCNaClExpander(Ctx, std::move(RI), std::move(II)) {}
 
   bool expandInst(const MCInst &Inst, MCStreamer &Out,
                   const MCSubtargetInfo &STI) override;

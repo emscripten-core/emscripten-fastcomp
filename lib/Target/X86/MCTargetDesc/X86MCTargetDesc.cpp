@@ -239,8 +239,8 @@ static MCInstrAnalysis *createX86MCInstrAnalysis(const MCInstrInfo *Info) {
 static void createX86MCNaClExpander(MCStreamer &S,
                                     std::unique_ptr<MCRegisterInfo> &&RegInfo,
                                     std::unique_ptr<MCInstrInfo> &&InstInfo) {
-  auto *Exp =
-      new X86::X86MCNaClExpander(std::move(RegInfo), std::move(InstInfo));
+  auto *Exp = new X86::X86MCNaClExpander(S.getContext(), std::move(RegInfo),
+                                         std::move(InstInfo));
   S.setNaClExpander(Exp);
 }
 // @LOCALMOD-END
