@@ -48,7 +48,4 @@ unsigned MCNaClExpander::getScratchReg(int index) {
 
 unsigned MCNaClExpander::numScratchRegs() { return ScratchRegs.size(); }
 
-bool MCNaClExpander::isReturn(const MCInst &Inst) {
-  return InstInfo->get(Inst.getOpcode()).isReturn();
-}
 }

@@ -50,8 +50,6 @@ public:
   unsigned getScratchReg(int index);
   unsigned numScratchRegs();
 
-  bool isReturn(const MCInst &Inst);
-
   virtual ~MCNaClExpander() = default;
   virtual bool expandInst(const MCInst &Inst, MCStreamer &Out,
                           const MCSubtargetInfo &STI) = 0;

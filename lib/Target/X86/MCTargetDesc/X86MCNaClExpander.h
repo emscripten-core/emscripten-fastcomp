@@ -38,8 +38,14 @@ private:
   bool Guard = false; // recursion guard
   SmallVector<MCInst, 4> Prefixes;
 
-  void emitReturn(const MCInst &Inst, MCStreamer &Out,
-                  const MCSubtargetInfo &STI);
+  void emitPrefixes(MCStreamer &Out, const MCSubtargetInfo &STI);
+
+  void expandIndirectBranch(const MCInst &Inst, MCStreamer &Out,
+                            const MCSubtargetInfo &STI);
+
+  void expandReturn(const MCInst &Inst, MCStreamer &Out,
+                    const MCSubtargetInfo &STI);
+
   void doExpandInst(const MCInst &Inst, MCStreamer &Out,
                     const MCSubtargetInfo &STI);
 };

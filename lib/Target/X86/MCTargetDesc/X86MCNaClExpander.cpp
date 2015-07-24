@@ -23,80 +23,142 @@
 
 using namespace llvm;
 
-const int kNaClX86InstructionBundleSize = 32;
+static const int kBundleSize = 32;
 
-static MCInst getMaskInst(const MCOperand &Target, int mask);
-static MCInst getPopInst(const MCOperand &Reg);
-static MCInst getJmpRegInst(const MCOperand &TargetReg);
+unsigned getReg32(unsigned Reg);
 
-static MCInst getMaskInst(const MCOperand &Target, int mask) {
-  MCInst Inst;
-  Inst.setOpcode(X86::AND32ri8);
-  Inst.addOperand(Target);
-  Inst.addOperand(Target);
-  Inst.addOperand(MCOperand::CreateImm(mask));
-  return Inst;
-}
-
-static MCInst getPopInst(const MCOperand &Reg) {
-  MCInst Inst;
-  Inst.setOpcode(X86::POP32r);
-  Inst.addOperand(Reg);
-  return Inst;
-}
-
-static MCInst getJmpRegInst(const MCOperand &Target) {
-  MCInst Inst;
-  Inst.setOpcode(X86::JMP32r);
-  Inst.addOperand(Target);
-  return Inst;
-}
-
-void X86::X86MCNaClExpander::emitReturn(const MCInst &Inst, MCStreamer &Out,
-                                        const MCSubtargetInfo &STI) {
-  MCOperand scratchReg = MCOperand::CreateReg(X86::ECX);
-  Out.EmitInstruction(getPopInst(scratchReg), STI);
-
-  if (Inst.getOpcode() == RETIL) {
-    MCInst ADDInst;
-    ADDInst.setOpcode(X86::ADD32ri);
-    ADDInst.addOperand(MCOperand::CreateReg(X86::ESP));
-    ADDInst.addOperand(MCOperand::CreateReg(X86::ESP));
-    ADDInst.addOperand(Inst.getOperand(0));
-    Out.EmitInstruction(ADDInst, STI);
+void X86::X86MCNaClExpander::expandIndirectBranch(const MCInst &Inst,
+                                                  MCStreamer &Out,
+                                                  const MCSubtargetInfo &STI) {
+  bool ThroughMemory = false, isCall = false;
+  switch (Inst.getOpcode()) {
+  case X86::CALL16m:
+  case X86::CALL32m:
+    ThroughMemory = true;
+  case X86::CALL16r:
+  case X86::CALL32r:
+    isCall = true;
+    break;
+  case X86::JMP16m:
+  case X86::JMP32m:
+    ThroughMemory = true;
+  case X86::JMP16r:
+  case X86::JMP32r:
+    break;
+  default:
+    llvm_unreachable("invalid indirect jmp/call");
   }
 
-  Out.EmitBundleLock(false);
-  Out.EmitInstruction(getMaskInst(scratchReg, -kNaClX86InstructionBundleSize),
-                      STI);
-  Out.EmitInstruction(getJmpRegInst(scratchReg), STI);
+  MCOperand Target;
+  if (ThroughMemory) {
+    if (numScratchRegs() == 0) {
+      Error(Inst, "No scratch registers specified");
+      exit(1);
+    }
+
+    Target = MCOperand::CreateReg(getReg32(getScratchReg(0)));
+
+    MCInst Mov;
+    Mov.setOpcode(X86::MOV32rm);
+    Mov.addOperand(Target);
+    Mov.addOperand(Inst.getOperand(0)); // Base
+    Mov.addOperand(Inst.getOperand(1)); // Scale
+    Mov.addOperand(Inst.getOperand(2)); // Index
+    Mov.addOperand(Inst.getOperand(3)); // Offset
+    Mov.addOperand(Inst.getOperand(4)); // Segment
+    Out.EmitInstruction(Mov, STI);
+  } else {
+    Target = MCOperand::CreateReg(getReg32(Inst.getOperand(0).getReg()));
+  }
+
+  Out.EmitBundleLock(isCall);
+
+  MCInst And;
+  And.setOpcode(X86::AND32ri8);
+  And.addOperand(Target);
+  And.addOperand(Target);
+  And.addOperand(MCOperand::CreateImm(-kBundleSize));
+  Out.EmitInstruction(And, STI);
+
+  MCInst Branch;
+  Branch.setOpcode(isCall ? X86::CALL32r : X86::JMP32r);
+  Branch.addOperand(Target);
+  Out.EmitInstruction(Branch, STI);
 
   Out.EmitBundleUnlock();
 }
 
-void X86::X86MCNaClExpander::doExpandInst(const MCInst &Inst, MCStreamer &Out,
+void X86::X86MCNaClExpander::expandReturn(const MCInst &Inst, MCStreamer &Out,
                                           const MCSubtargetInfo &STI) {
-  unsigned Opcode = Inst.getOpcode();
-  switch (Opcode) {
+  if (numScratchRegs() == 0) {
+    Error(Inst, "No scratch registers specified.");
+    exit(1);
+  }
+
+  MCOperand ScratchReg = MCOperand::CreateReg(getReg32(getScratchReg(0)));
+  MCInst Pop;
+  Pop.setOpcode(X86::POP32r);
+  Pop.addOperand(ScratchReg);
+  Out.EmitInstruction(Pop, STI);
+
+  if (Inst.getNumOperands() > 0) {
+    assert(Inst.getOpcode() == X86::RETIL);
+    MCInst Add;
+    Add.setOpcode(X86::ADD32ri);
+    Add.addOperand(MCOperand::CreateReg(X86::ESP));
+    Add.addOperand(MCOperand::CreateReg(X86::ESP));
+    Add.addOperand(Inst.getOperand(0));
+    Out.EmitInstruction(Add, STI);
+  }
+
+  MCInst Jmp;
+  Jmp.setOpcode(X86::JMP32r);
+  Jmp.addOperand(ScratchReg);
+  expandIndirectBranch(Jmp, Out, STI);
+}
+
+static bool isPrefix(const MCInst &Inst) {
+  switch (Inst.getOpcode()) {
   case X86::LOCK_PREFIX:
   case X86::REP_PREFIX:
   case X86::REPNE_PREFIX:
   case X86::REX64_PREFIX:
-    Prefixes.push_back(Inst);
-    return;
+    return true;
   default:
-    break;
+    return false;
   }
+}
 
-  if (isReturn(Inst)) {
-    emitReturn(Inst, Out, STI);
-    return;
-  }
-
+void X86::X86MCNaClExpander::emitPrefixes(MCStreamer &Out,
+                                          const MCSubtargetInfo &STI) {
   for (const MCInst &Prefix : Prefixes)
     Out.EmitInstruction(Prefix, STI);
   Prefixes.clear();
-  Out.EmitInstruction(Inst, STI);
+}
+
+void X86::X86MCNaClExpander::doExpandInst(const MCInst &Inst, MCStreamer &Out,
+                                          const MCSubtargetInfo &STI) {
+  if (isPrefix(Inst)) {
+    Prefixes.push_back(Inst);
+  } else {
+    switch (Inst.getOpcode()) {
+    case X86::CALL16r:
+    case X86::CALL32r:
+    case X86::CALL16m:
+    case X86::CALL32m:
+    case X86::JMP16r:
+    case X86::JMP32r:
+    case X86::JMP16m:
+    case X86::JMP32m:
+      return expandIndirectBranch(Inst, Out, STI);
+    case X86::RETL:
+    case X86::RETIL:
+      return expandReturn(Inst, Out, STI);
+    default:
+      emitPrefixes(Out, STI);
+      Out.EmitInstruction(Inst, STI);
+    }
+  }
 }
 
 bool X86::X86MCNaClExpander::expandInst(const MCInst &Inst, MCStreamer &Out,
