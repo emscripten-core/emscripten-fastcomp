@@ -21,6 +21,7 @@
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCLinkerOptimizationHint.h"
 #include "llvm/MC/MCWinEH.h"
+#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/Support/DataTypes.h"
 #include <string>
 
@@ -210,6 +211,7 @@ protected:
   virtual void EmitWindowsUnwindTables();
 
   virtual void EmitRawTextImpl(StringRef String);
+  std::unique_ptr<MCNaClExpander> NaClExpander; //@LOCALMOD
 
 public:
   virtual ~MCStreamer();
@@ -221,6 +223,11 @@ public:
     TargetStreamer.reset(TS);
   }
 
+  // @LOCALMOD-START
+  void setNaClExpander(MCNaClExpander *Exp) { NaClExpander.reset(Exp); }
+
+  MCNaClExpander *getNaClExpander() { return NaClExpander.get(); }
+  // @LOCALMOD-END
   /// State management
   ///
   virtual void reset();

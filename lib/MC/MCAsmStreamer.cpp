@@ -14,6 +14,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -1255,6 +1256,9 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
          "Cannot emit contents before setting section!");
 
   // @LOCALMOD-START
+  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
+    return;
+
   if (BundleAlignmentEnabled && AsmBackend &&
       AsmBackend->CustomExpandInst(Inst, *this)) {
     return;

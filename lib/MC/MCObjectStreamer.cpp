@@ -13,6 +13,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
@@ -110,6 +111,7 @@ void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
                                      const SMLoc &Loc) {
   MCStreamer::EmitValueImpl(Value, Size, Loc);
   MCDataFragment *DF = getOrCreateDataFragment();
+  flushPendingLabels(DF, DF->getContents().size());
 
   MCLineEntry::Make(this, getCurrentSection().first);
 
@@ -209,7 +211,11 @@ void MCObjectStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
 
 void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
                                        const MCSubtargetInfo &STI) {
-  // @LOCALMOD-BEGIN
+
+  // @LOCALMOD-START
+  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
+    return;
+
   if (getAssembler().isBundlingEnabled() &&
       getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
     return;
@@ -352,7 +358,9 @@ void MCObjectStreamer::EmitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
 
 void MCObjectStreamer::EmitBytes(StringRef Data) {
   MCLineEntry::Make(this, getCurrentSection().first);
-  getOrCreateDataFragment()->getContents().append(Data.begin(), Data.end());
+  MCDataFragment *DF = getOrCreateDataFragment();
+  flushPendingLabels(DF, DF->getContents().size());
+  DF->getContents().append(Data.begin(), Data.end());
 }
 
 void MCObjectStreamer::EmitValueToAlignment(unsigned ByteAlignment,
@@ -399,6 +407,7 @@ bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
 // Associate GPRel32 fixup with data and resize data area
 void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
   MCDataFragment *DF = getOrCreateDataFragment();
+  flushPendingLabels(DF, DF->getContents().size());
 
   DF->getFixups().push_back(MCFixup::Create(DF->getContents().size(), 
                                             Value, FK_GPRel_4));
@@ -408,6 +417,7 @@ void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
 // Associate GPRel32 fixup with data and resize data area
 void MCObjectStreamer::EmitGPRel64Value(const MCExpr *Value) {
   MCDataFragment *DF = getOrCreateDataFragment();
+  flushPendingLabels(DF, DF->getContents().size());
 
   DF->getFixups().push_back(MCFixup::Create(DF->getContents().size(), 
                                             Value, FK_GPRel_4));
@@ -417,7 +427,9 @@ void MCObjectStreamer::EmitGPRel64Value(const MCExpr *Value) {
 void MCObjectStreamer::EmitFill(uint64_t NumBytes, uint8_t FillValue) {
   // FIXME: A MCFillFragment would be more memory efficient but MCExpr has
   //        problems evaluating expressions across multiple fragments.
-  getOrCreateDataFragment()->getContents().append(NumBytes, FillValue);
+  MCDataFragment *DF = getOrCreateDataFragment();
+  flushPendingLabels(DF, DF->getContents().size());
+  DF->getContents().append(NumBytes, FillValue);
 }
 
 void MCObjectStreamer::EmitZeros(uint64_t NumBytes) {

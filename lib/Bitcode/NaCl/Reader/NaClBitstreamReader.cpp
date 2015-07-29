@@ -117,7 +117,7 @@ void NaClBitstreamCursor::skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op) {
   // Decode the value as we are commanded.
   switch (Op.getEncoding()) {
   case NaClBitCodeAbbrevOp::Literal:
-    llvm_unreachable("Not to be used with literals!");
+    // No read necessary for literal.
     break;
   case NaClBitCodeAbbrevOp::Fixed:
     (void)Read((unsigned)Op.getValue());
@@ -126,6 +126,7 @@ void NaClBitstreamCursor::skipAbbreviatedField(const NaClBitCodeAbbrevOp &Op) {
     (void)ReadVBR64((unsigned)Op.getValue());
     break;
   case NaClBitCodeAbbrevOp::Array:
+    // This can't happen because the abbreviation must be valid.
     llvm_unreachable("Bad array abbreviation encoding!");
     break;
   case NaClBitCodeAbbrevOp::Char6:
@@ -143,6 +144,7 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
     unsigned NumElts = ReadVBR(6);
     for (unsigned i = 0; i != NumElts; ++i)
       (void)ReadVBR64(6);
+    SkipToByteBoundaryIfAligned();
     return;
   }
 
@@ -170,6 +172,7 @@ void NaClBitstreamCursor::skipRecord(unsigned AbbrevID) {
     }
     }
   }
+  SkipToByteBoundaryIfAligned();
 }
 
 bool NaClBitstreamCursor::readRecordAbbrevField(
@@ -200,19 +203,18 @@ uint64_t NaClBitstreamCursor::readArrayAbbreviatedField(
   // Decode the value as we are commanded.
   switch (Op.getEncoding()) {
   case NaClBitCodeAbbrevOp::Literal:
-    llvm_unreachable("Not to be used with literals!");
-    break;
+    return Op.getValue();
   case NaClBitCodeAbbrevOp::Fixed:
     return Read((unsigned)Op.getValue());
   case NaClBitCodeAbbrevOp::VBR:
     return ReadVBR64((unsigned)Op.getValue());
   case NaClBitCodeAbbrevOp::Array:
+    // This can't happen because the abbreviation must be valid.
     llvm_unreachable("Bad array abbreviation encoding!");
     break;
   case NaClBitCodeAbbrevOp::Char6:
     return NaClBitCodeAbbrevOp::DecodeChar6(Read(6));
   }
-  llvm_unreachable("unhandled NaClBitCodeAbbrevOp encoding");
 }
 
 void NaClBitstreamCursor::readArrayAbbrev(
@@ -230,6 +232,7 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
     unsigned NumElts = ReadVBR(6);
     for (unsigned i = 0; i != NumElts; ++i)
       Vals.push_back(ReadVBR64(6));
+    SkipToByteBoundaryIfAligned();
     return Code;
   }
 
@@ -244,6 +247,7 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
     const NaClBitCodeAbbrevOp &Op = Abbv->getOperandInfo(1);
     Code = readArrayAbbreviatedField(Op);
     readArrayAbbrev(Op, Value - 1, Vals);
+    SkipToByteBoundaryIfAligned();
     return Code;
   }
   Code = Value;
@@ -254,10 +258,12 @@ unsigned NaClBitstreamCursor::readRecord(unsigned AbbrevID,
     if (readRecordAbbrevField(Abbv->getOperandInfo(i), Value)) {
       ++i;
       readArrayAbbrev(Abbv->getOperandInfo(i), Value, Vals);
+      SkipToByteBoundaryIfAligned();
       return Code;
     }
     Vals.push_back(Value);
   }
+  SkipToByteBoundaryIfAligned();
   return Code;
 }
 
@@ -309,7 +315,7 @@ void NaClBitstreamCursor::ReadAbbrevRecord(bool IsLocal,
         StrBuf << "Invalid abbreviation encoding ("
                << NaClBitCodeAbbrevOp::getEncodingName(E)
                << ", " << Data << ")";
-        report_fatal_error(StrBuf.str());
+        ErrHandler->Fatal(StrBuf.str());
       }
       Abbv->Add(NaClBitCodeAbbrevOp(E, Data));
     } else {
@@ -318,13 +324,14 @@ void NaClBitstreamCursor::ReadAbbrevRecord(bool IsLocal,
         raw_string_ostream StrBuf(Buffer);
         StrBuf << "Invalid abbreviation encoding ("
                << NaClBitCodeAbbrevOp::getEncodingName(E) << ")";
-        report_fatal_error(StrBuf.str());
+        ErrHandler->Fatal(StrBuf.str());
       }
       Abbv->Add(NaClBitCodeAbbrevOp(E));
     }
   }
+  SkipToByteBoundaryIfAligned();
   if (!Abbv->isValid())
-    report_fatal_error("Invalid abbreviation specified in bitcode file");
+    ErrHandler->Fatal("Invalid abbreviation specified in bitcode file");
   CurAbbrevs.push_back(Abbv);
   if (Listener) {
     Listener->ProcessAbbreviation(Abbv, IsLocal);
@@ -347,6 +354,7 @@ void NaClBitstreamCursor::SkipAbbrevRecord() {
       ReadVBR64(5);
     }
   }
+  SkipToByteBoundaryIfAligned();
 }
 
 bool NaClBitstreamCursor::ReadBlockInfoBlock(NaClAbbrevListener *Listener) {

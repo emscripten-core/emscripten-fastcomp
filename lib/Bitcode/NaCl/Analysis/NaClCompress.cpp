@@ -1157,11 +1157,16 @@ static bool analyzeBitcode(
 
   // First read header and verify it is good.
   NaClBitcodeHeader Header;
-  if (Header.Read(BufPtr, EndBufPtr) || !Header.IsSupported())
+  if (Header.Read(BufPtr, EndBufPtr))
     return Error("Invalid PNaCl bitcode header");
+  if (!Header.IsSupported()) {
+    errs() << Header.Unsupported();
+    if (!Header.IsReadable())
+      return Error("Invalid PNaCl bitcode header");
+  }
 
   // Create a bitstream reader to read the bitcode file.
-  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
+  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr, Header);
   NaClBitstreamCursor Stream(StreamFile);
 
   // Parse the the bitcode file.
@@ -1385,7 +1390,7 @@ static bool chooseAbbrevs(MemoryBuffer *MemBuf, BlockAbbrevsMapType &AbbrevsMap,
     return Error("Invalid PNaCl bitcode header");
 
   // Create the bitcode reader.
-  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
+  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr, Header);
   NaClBitstreamCursor Stream(StreamFile);
 
   // Set up the parser.
@@ -1583,7 +1588,7 @@ static bool copyBitcode(const NaClBitcodeCompressor::CompressFlags &Flags,
     return Error("Invalid PNaCl bitcode header");
 
   // Create the bitcode reader.
-  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr);
+  NaClBitstreamReader StreamFile(BufPtr, EndBufPtr, Header);
   NaClBitstreamCursor Stream(StreamFile);
 
   // Create the bitcode writer.

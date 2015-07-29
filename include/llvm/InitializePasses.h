@@ -347,6 +347,7 @@ void initializeSimplifyStructRegSignaturesPass(PassRegistry&);
 void initializeStripAttributesPass(PassRegistry&);
 void initializeStripMetadataPass(PassRegistry&);
 void initializeStripModuleFlagsPass(PassRegistry&);
+void initializeStripDanglingDISubprogramsPass(PassRegistry&);
 void initializeStripTlsPass(PassRegistry&);
 void initializeSubstituteUndefsPass(PassRegistry&);
 // Emscripten passes:

@@ -19,6 +19,7 @@
 // We don't know yet which kind of metadata is considered stable.
 //===----------------------------------------------------------------------===//
 
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
@@ -52,6 +53,25 @@ namespace {
       ShouldStripModuleFlags = true;
     }
   };
+
+// In certain cases, linked bitcode files can have DISupbrogram metadata which
+// points to a Function that has no dbg attachments. This causes problem later
+// (e.g. in inlining). See https://llvm.org/bugs/show_bug.cgi?id=23874
+// Until that bug is fixed upstream (the fix will involve infrastructure that we
+// don't have in our branch yet) we have to ensure we don't expose this case
+// to further optimizations. So we'd like to strip out such debug info.
+// Unfortunately once created the metadata is not easily deleted or even
+// modified; the best we can easily do is to set the Function object it points
+// to to null. Fortunately this is legitimate (declarations have no Function
+// either) and should be workable until the fix lands.
+class StripDanglingDISubprograms : public ModulePass {
+ public:
+  static char ID;
+  StripDanglingDISubprograms() : ModulePass(ID) {
+    initializeStripDanglingDISubprogramsPass(*PassRegistry::getPassRegistry());
+  }
+  bool runOnModule(Module &M) override;
+};
 }
 
 char StripMetadata::ID = 0;
@@ -65,12 +85,21 @@ INITIALIZE_PASS(StripModuleFlags, "strip-module-flags",
                 "including the llvm.module.flags metadata.",
                 false, false)
 
+char StripDanglingDISubprograms::ID = 0;
+INITIALIZE_PASS(StripDanglingDISubprograms, "strip-dangling-disubprograms",
+                "Strip DISubprogram metadata for functions with no debug info",
+                false, false)
+
 ModulePass *llvm::createStripMetadataPass() {
   return new StripMetadata();
 }
 
 ModulePass *llvm::createStripModuleFlagsPass() {
   return new StripModuleFlags();
+}
+
+ModulePass *llvm::createStripDanglingDISubprogramsPass() {
+  return new StripDanglingDISubprograms();
 }
 
 static bool IsWhitelistedMetadata(const NamedMDNode *node,
@@ -112,4 +141,44 @@ static bool DoStripMetadata(Module &M, bool StripModuleFlags) {
 
 bool StripMetadata::runOnModule(Module &M) {
   return DoStripMetadata(M, ShouldStripModuleFlags);
+}
+
+static bool functionHasDbgAttachment(const Function &F) {
+  for (const BasicBlock &BB : F) {
+    for (const Instruction &I : BB) {
+      if (I.getDebugLoc()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool StripDanglingDISubprograms::runOnModule(Module &M) {
+  NamedMDNode *CU_Nodes = M.getNamedMetadata("llvm.dbg.cu");
+  if (!CU_Nodes)
+    return false;
+
+  bool Changed = false;
+  for (MDNode *N : CU_Nodes->operands()) {
+    auto *CUNode = cast<MDCompileUnit>(N);
+    for (auto *SP : CUNode->getSubprograms()) {
+      // For each subprogram in the debug info, check its function for dbg
+      // attachments. The allocas and some other stuff in the entry block
+      // typically do not have attachments but everything else usually does.
+      // In the worst case this walks the whole function (if there are no
+      // attachments) but this only happens in the (uncommon) bad case that
+      // we want to fix; i.e. there is a DISubprogram but no attachments).
+      // Usually either there will be no DISubprograms or we will have to
+      // check just a few instructions per function.
+      Function *F = SP->getFunction();
+      if (F && !functionHasDbgAttachment(*F)) {
+        // Can't really delete it, just remove the reference to the Function.
+        SP->replaceFunction(nullptr);
+        Changed = true;
+      }
+    }
+  }
+
+  return Changed;
 }

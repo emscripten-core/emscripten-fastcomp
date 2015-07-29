@@ -39,23 +39,13 @@ TEST(NaClBitstreamTest, DefaultCursorAtBitZero) {
   EXPECT_EQ(BitZero, Cursor->GetCurrentBitNo());
 }
 
-// Tests that when we initialize the bitstream cursor with a default bitstream
-// reader, the cursor is at bit zero.
-TEST(NaClBitstreamTest, CursorOnDefaultReaderAtBitZero) {
-  NaClBitstreamReader Reader;
-  uint8_t CursorMemory[sizeof(NaClBitstreamCursor)];
-  NaClBitstreamCursor *Cursor =
-      new (InitAltOnes(CursorMemory, sizeof(NaClBitstreamCursor)))
-      NaClBitstreamCursor(Reader);
-  EXPECT_EQ(BitZero, Cursor->GetCurrentBitNo());
-}
-
 // Tests that when we initialize the bitstream cursor with an array-filled
 // bitstream reader, the cursor is at bit zero.
 TEST(NaClBitstreamTest, ReaderCursorAtBitZero) {
   static const size_t BufferSize = 12;
   unsigned char Buffer[BufferSize];
-  NaClBitstreamReader Reader(Buffer, Buffer+BufferSize);
+  NaClBitstreamReader Reader(
+      getNonStreamedMemoryObject(Buffer, Buffer+BufferSize), 0);
   uint8_t CursorMemory[sizeof(NaClBitstreamCursor)];
   NaClBitstreamCursor *Cursor =
       new (InitAltOnes(CursorMemory, sizeof(NaClBitstreamCursor)))
@@ -67,7 +57,8 @@ TEST(NaClBitstreamTest, CursorAtReaderInitialAddress) {
   static const size_t BufferSize = 12;
   static const size_t InitialAddress = 8;
   unsigned char Buffer[BufferSize];
-  NaClBitstreamReader Reader(Buffer, Buffer+BufferSize, InitialAddress);
+  NaClBitstreamReader Reader(
+      getNonStreamedMemoryObject(Buffer, Buffer+BufferSize), InitialAddress);
   uint8_t CursorMemory[sizeof(NaClBitstreamCursor)];
   NaClBitstreamCursor *Cursor =
       new (InitAltOnes(CursorMemory, sizeof(NaClBitstreamCursor)))

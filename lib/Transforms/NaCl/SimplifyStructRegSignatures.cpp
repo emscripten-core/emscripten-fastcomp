@@ -405,6 +405,11 @@ void SimplifyStructRegSignatures::scheduleInstructionsForCleanup(
   for (auto &BBIter : NewFunc->getBasicBlockList()) {
     for (auto &IIter : BBIter.getInstList()) {
       if (CallInst *Call = dyn_cast<CallInst>(&IIter)) {
+        if (Function* F = dyn_cast<Function>(Call->getCalledValue())) {
+          if (F->isIntrinsic()) {
+            continue;
+          }
+        }
         CallsToPatch.insert(Call);
       } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(&IIter)) {
         InvokesToPatch.insert(Invoke);
@@ -500,6 +505,7 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
   // wiring the new arguments. Call sites are unchanged at this point.
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E;) {
     Function *Func = Iter++;
+    if(Func->isIntrinsic()) { continue; } // Can't rewrite the intrinsics.
     checkNoUnsupportedInstructions(Ctx, Func);
     Changed |= simplifyFunction(Ctx, Func, DISubprogramMap);
   }

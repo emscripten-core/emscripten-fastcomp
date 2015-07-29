@@ -8,6 +8,7 @@ set(LLVM_LINK_COMPONENTS
   MC
   NaClAnalysis
   NaClBitReader
+  NaClBitTestUtils
   NaClTransforms
   ScalarOpts
   SelectionDAG

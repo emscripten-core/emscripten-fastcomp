@@ -20,6 +20,17 @@ declare i32 @__gxx_personality_v0(...)
 ; CHECK-NEXT: %rec_returning.simplified = type { void (%rec_returning.simplified*, %rec_returning.simplified*)* }
 ; CHECK-NEXT: %direct_def.simplified = type { void (%struct*)*, %struct }
 
+; Leave intrinsics alone:
+; CHECK: { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+
+; CHECK-LABEL: define void @call_intrinsic()
+define void @call_intrinsic() {
+  %a = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 5, i32 5)
+; CHECK-NEXT: %a = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 5, i32 5)
+  ret void
+}
+
 ; externs
 declare void @extern_func(%struct)
 declare %struct @struct_returning_extern(i32, %struct)
@@ -99,7 +110,7 @@ define i32 @lots_of_call_attrs() {
 
 ; verify attributes are copied
 ; CHECK_LABEL: @lots_of_call_attrs
-; CHECK: %ret = tail call zeroext i32 @another_func(i32 1, %struct* byval %tmp.1.ptr, i64 2) #0
+; CHECK: %ret = tail call zeroext i32 @another_func(i32 1, %struct* byval %tmp.1.ptr, i64 2) #1
 ; CHECK-NEXT: ret i32 %ret
 
 declare void @rec_struct_ok(%rec_struct*)
@@ -262,4 +273,4 @@ define void @call_with_array_vect([4 x <2 x void(%struct)*>] %fptrs, %struct %st
 ; CHECK-NEXT:  ret void
 
 ; this is at the end, corresponds to the call marked as readonly
-; CHECK: attributes #0 = { readonly }
+; CHECK: attributes #1 = { readonly }
