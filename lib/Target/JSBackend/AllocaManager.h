@@ -65,10 +65,11 @@ class AllocaManager {
     const AllocaInst *Inst;
     uint64_t Size;
     unsigned Alignment;
+    unsigned Index;
 
   public:
-    AllocaInfo(const AllocaInst *I, uint64_t S, unsigned A)
-      : Inst(I), Size(S), Alignment(A) {
+    AllocaInfo(const AllocaInst *I, uint64_t S, unsigned A, unsigned X)
+      : Inst(I), Size(S), Alignment(A), Index(X) {
       assert(I != NULL);
       assert(A != 0);
       assert(!isForwarded());
@@ -93,6 +94,7 @@ class AllocaManager {
 
     uint64_t getSize() const { assert(!isForwarded()); return Size; }
     unsigned getAlignment() const { assert(!isForwarded()); return Alignment; }
+    unsigned getIndex() const { return Index; }
 
     void mergeSize(uint64_t S) {
       assert(!isForwarded());
@@ -132,7 +134,7 @@ class AllocaManager {
 
   uint64_t getSize(const AllocaInst *AI);
   unsigned getAlignment(const AllocaInst *AI);
-  AllocaInfo getInfo(const AllocaInst *AI);
+  AllocaInfo getInfo(const AllocaInst *AI, unsigned Index);
   const Value *getPointerFromIntrinsic(const CallInst *CI);
   const AllocaInst *isFavorableAlloca(const Value *V);
   static int AllocaSort(const AllocaInfo *l, const AllocaInfo *r);

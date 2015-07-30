@@ -46,9 +46,9 @@ unsigned AllocaManager::getAlignment(const AllocaInst *AI) {
   return Alignment;
 }
 
-AllocaManager::AllocaInfo AllocaManager::getInfo(const AllocaInst *AI) {
+AllocaManager::AllocaInfo AllocaManager::getInfo(const AllocaInst *AI, unsigned Index) {
   assert(AI->isStaticAlloca());
-  return AllocaInfo(AI, getSize(AI), getAlignment(AI));
+  return AllocaInfo(AI, getSize(AI), getAlignment(AI), Index);
 }
 
 // Given a lifetime_start or lifetime_end intrinsic, determine if it's
@@ -136,10 +136,10 @@ int AllocaManager::AllocaSort(const AllocaInfo *li, const AllocaInfo *ri) {
   if (li->getAlignment() > ri->getAlignment()) return -1;
   if (li->getAlignment() < ri->getAlignment()) return 1;
 
-  // Ensure a stable sort. We can do this because the pointers are
-  // pointing into the same array.
-  if (li > ri) return -1;
-  if (li < ri) return 1;
+  // Ensure a stable sort by comparing an index value which we've kept for
+  // this purpose.
+  if (li->getIndex() > ri->getIndex()) return -1;
+  if (li->getIndex() < ri->getIndex()) return 1;
 
   return 0;
 }
@@ -197,7 +197,7 @@ void AllocaManager::collectMarkedAllocas() {
     AllocaMap::iterator I = Allocas.find(AI);
     if (I != Allocas.end()) {
       I->second = AllocasByIndex.size();
-      AllocasByIndex.push_back(getInfo(AI));
+      AllocasByIndex.push_back(getInfo(AI, AllocasByIndex.size()));
     }
   }
   assert(AllocasByIndex.size() == Allocas.size());
@@ -460,7 +460,7 @@ void AllocaManager::computeFrameOffsets() {
       }
     } else {
       // An alloca with no lifetime markers.
-      SortedAllocas.push_back(getInfo(AI));
+      SortedAllocas.push_back(getInfo(AI, SortedAllocas.size()));
     }
   }
 
