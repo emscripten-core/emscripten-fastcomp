@@ -2406,7 +2406,6 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
 
     if (EnablePthreads) {
       std::string Assign = getAssign(rmwi);
-      unsigned Bytes = DL->getTypeAllocSize(T);
       std::string text;
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
