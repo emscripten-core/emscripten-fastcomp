@@ -77,7 +77,7 @@ DEF_CALL_HANDLER(__default__, {
       if (!Invoke) {
         Sig = getFunctionSignature(FT, &Name);
         if (!EmulatedFunctionPointers) {
-          Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+          Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & FM_" + Sig + "$]";
           NeedCasts = false; // function table call, so stays in asm module
         } else {
           Name = std::string("ftCall_") + Sig + "(" + getCast(Name, Type::getInt32Ty(CI->getContext()));
