@@ -45,10 +45,14 @@
 #include <cstdio>
 #include <map>
 #include <set> // TODO: unordered_set?
+#include <sstream>
+
 using namespace llvm;
 
 #include <OptPasses.h>
 #include <Relooper.h>
+
+extern void emscripten_optimizer(char *input, raw_pwrite_stream& Out);
 
 #ifdef NDEBUG
 #undef assert
@@ -144,6 +148,7 @@ namespace {
   /// module to JavaScript.
   class JSWriter : public ModulePass {
     raw_pwrite_stream &Out;
+    std::stringstream Fout; // waka
     Module *TheModule;
     unsigned UniqueNum;
     unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
@@ -2623,42 +2628,41 @@ void JSWriter::printFunctionBody(const Function *F) {
     unsigned Count = 0;
     for (VarMap::const_iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
       if (Count == 20) {
-        Out << ";\n";
+        Fout << ";\n";
         Count = 0;
       }
-      if (Count == 0) Out << " var ";
+      if (Count == 0) Fout << " var ";
       if (Count > 0) {
-        Out << ", ";
+        Fout << ", ";
       }
       Count++;
-      Out << VI->first << " = ";
+      Fout << VI->first << " = ";
       switch (VI->second->getTypeID()) {
         default:
           llvm_unreachable("unsupported variable initializer type");
         case Type::PointerTyID:
         case Type::IntegerTyID:
-          Out << "0";
+          Fout << "0";
           break;
         case Type::FloatTyID:
           if (PreciseF32) {
-            Out << "Math_fround(0)";
+            Fout << "Math_fround(0)";
             break;
           }
           // otherwise fall through to double
         case Type::DoubleTyID:
-          Out << "+0";
+          Fout << "+0";
           break;
         case Type::VectorTyID:
           if (cast<VectorType>(VI->second)->getElementType()->isIntegerTy()) {
-              Out << "SIMD_Int32x4(0,0,0,0)";
+              Fout << "SIMD_Int32x4(0,0,0,0)";
           } else {
-              Out << "SIMD_Float32x4(0,0,0,0)";
+              Fout << "SIMD_Float32x4(0,0,0,0)";
           }
           break;
       }
     }
-    Out << ";";
-    nl(Out);
+    Fout << ";\n";
   }
 
   {
@@ -2670,15 +2674,15 @@ void JSWriter::printFunctionBody(const Function *F) {
   }
 
   // Emit stack entry
-  Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
+  Fout << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
   if (uint64_t FrameSize = Allocas.getFrameSize()) {
     if (MaxAlignment > STACK_ALIGN) {
       // We must align this entire stack frame to something higher than the default
-      Out << "\n ";
-      Out << "sp_a = STACKTOP = (STACKTOP + " << utostr(MaxAlignment-1) << ")&-" << utostr(MaxAlignment) << ";";
+      Fout << "\n ";
+      Fout << "sp_a = STACKTOP = (STACKTOP + " << utostr(MaxAlignment-1) << ")&-" << utostr(MaxAlignment) << ";";
     }
-    Out << "\n ";
-    Out << getStackBump(FrameSize);
+    Fout << "\n ";
+    Fout << getStackBump(FrameSize);
   }
 
   // Emit extern loads, if we have any
@@ -2687,7 +2691,7 @@ void JSWriter::printFunctionBody(const Function *F) {
       for (auto& RE : FuncRelocatableExterns) {
         std::string Temp = "t$" + RE;
         std::string Call = "g$" + RE;
-        Out << Temp + " = " + Call + "() | 0;\n";
+        Fout << Temp + " = " + Call + "() | 0;\n";
       }
       FuncRelocatableExterns.clear();
     }
@@ -2695,7 +2699,7 @@ void JSWriter::printFunctionBody(const Function *F) {
 
   // Emit (relooped) code
   char *buffer = Relooper::GetOutputBuffer();
-  nl(Out) << buffer;
+  Fout << "\n" << buffer;
 
   // Ensure a final return if necessary
   Type *RT = F->getFunctionType()->getReturnType();
@@ -2704,7 +2708,7 @@ void JSWriter::printFunctionBody(const Function *F) {
     if (!LastCurly) LastCurly = buffer;
     char *FinalReturn = strstr(LastCurly, "return ");
     if (!FinalReturn) {
-      Out << " return " << getParenCast(getConstant(UndefValue::get(RT)), RT, ASM_NONSPECIFIC) << ";\n";
+      Fout << " return " << getParenCast(getConstant(UndefValue::get(RT)), RT, ASM_NONSPECIFIC) << ";\n";
     }
   }
 
@@ -2805,23 +2809,26 @@ void JSWriter::printFunction(const Function *F) {
 
   std::string Name = F->getName();
   sanitizeGlobal(Name);
-  Out << "function " << Name << "(";
+  Fout << "function " << Name << "(";
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
-    if (AI != F->arg_begin()) Out << ",";
-    Out << getJSName(AI);
+    if (AI != F->arg_begin()) Fout << ",";
+    Fout << getJSName(AI);
   }
-  Out << ") {";
-  nl(Out);
+  Fout << ") {\n";
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
     std::string name = getJSName(AI);
-    Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
-    nl(Out);
+    Fout << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";\n";
   }
   printFunctionBody(F);
-  Out << "}";
-  nl(Out);
+  Fout << "}\n";
+
+  // optimize function
+
+  char *leak = strdup(Fout.str().c_str()); // XXX OMG
+  emscripten_optimizer(leak, Out); // waka
+  Fout.str("");
 
   Allocas.clear();
   StackBumped = false;
@@ -3353,12 +3360,12 @@ void JSWriter::printCommaSeparated(const HeapData data) {
 }
 
 void JSWriter::printProgram(const std::string& fname,
-                             const std::string& mName) {
+                            const std::string& mName) {
   printModule(fname,mName);
 }
 
 void JSWriter::printModule(const std::string& fname,
-                            const std::string& mName) {
+                           const std::string& mName) {
   printModuleBody();
 }
 

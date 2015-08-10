@@ -8,6 +8,7 @@ add_llvm_target(JSBackendCodeGen
   RemoveLLVMAssume.cpp
   SimplifyAllocas.cpp
   optimizer.cpp
+  optimizer-main.cpp
   parser.cpp
   simple_ast.cpp
   )
