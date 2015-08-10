@@ -63,6 +63,9 @@ struct Arena {
   Arena() : index(0) {}
 
   Ref alloc();
+
+  unsigned get(); // get the current position
+  void set(unsigned position); // set the current position, unwinding
 };
 
 extern Arena arena;

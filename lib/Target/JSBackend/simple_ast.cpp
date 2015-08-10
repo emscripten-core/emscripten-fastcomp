@@ -47,6 +47,22 @@ Ref Arena::alloc() {
   return &chunks.back()[index++];
 }
 
+unsigned Arena::get() {
+  return chunks.size()*CHUNK_SIZE + index;
+}
+
+void Arena::set(unsigned position) {
+  unsigned neededChunks = position / CHUNK_SIZE;
+  while (chunks.size() > neededChunks) {
+    delete[] chunks.back();
+    chunks.pop_back();
+  }
+  while (chunks.size() < neededChunks) {
+    chunks.push_back(new Value[CHUNK_SIZE]);
+  }
+  index = position % CHUNK_SIZE;
+}
+
 // dump
 
 void dump(const char *str, Ref node, bool pretty) {
