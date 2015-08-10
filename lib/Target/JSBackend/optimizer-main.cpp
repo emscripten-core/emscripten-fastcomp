@@ -8,7 +8,8 @@ void emscripten_optimizer(char *input, llvm::raw_pwrite_stream& Out) {
   cashew::Parser<Ref, ValueBuilder> builder;
   Ref doc = builder.parseToplevel(input);
   eliminate(doc);
-  JSPrinter jser(!minifyWhitespace, last, doc);
+  simplifyExpressions(doc);
+  JSPrinter jser(true, false, doc);
   jser.printAst();
   Out << jser.buffer << "\n";
 }

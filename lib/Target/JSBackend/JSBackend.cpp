@@ -112,6 +112,11 @@ Relocatable("emscripten-relocatable",
             cl::desc("Whether to emit relocatable code (see emscripten RELOCATABLE option)"),
             cl::init(false));
 
+static cl::opt<bool>
+Optimizer("emscripten-optimizer",
+          cl::desc("Whether to run the emscripten optimizer internally in the backend"),
+          cl::init(false));
+
 
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
@@ -2824,10 +2829,12 @@ void JSWriter::printFunction(const Function *F) {
   printFunctionBody(F);
   Fout << "}\n";
 
-  // optimize function
-
-  char *leak = strdup(Fout.str().c_str()); // XXX OMG
-  emscripten_optimizer(leak, Out); // waka
+  if (Optimizer) {
+    char *leak = strdup(Fout.str().c_str()); // XXX OMG
+    emscripten_optimizer(leak, Out); // waka
+  } else {
+    Out << Fout.str();
+  }
   Fout.str("");
 
   Allocas.clear();
