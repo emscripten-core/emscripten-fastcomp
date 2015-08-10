@@ -7,6 +7,9 @@ add_llvm_target(JSBackendCodeGen
   Relooper.cpp
   RemoveLLVMAssume.cpp
   SimplifyAllocas.cpp
+  optimizer.cpp
+  parser.cpp
+  simple_ast.cpp
   )
 
 add_dependencies(LLVMJSBackendCodeGen intrinsics_gen)
