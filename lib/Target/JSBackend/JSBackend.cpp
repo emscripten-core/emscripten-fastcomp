@@ -141,15 +141,14 @@ struct OptimizerWorker {
       {
         std::unique_lock<std::mutex> lock(parent->mutex);
         parent->ready = true;
-        errs() << "optimizer looking for work\n";
-
+        //errs() << "optimizer looking for work\n";
         parent->condition.wait(lock, [&]{ return parent->done || parent->inputs.size() > 0; });
         parent->ready = false;
         if (parent->done) return;
         curr = parent->inputs;
         parent->inputs.clear();
       }
-      errs() << "optimizer working!\n";
+      //errs() << "optimizer working!\n";
       for (auto input : curr) {
         emscripten_optimizer(input, parent->Out); // waka
       }
@@ -159,15 +158,15 @@ struct OptimizerWorker {
 
   OptimizerWorker(raw_pwrite_stream &o) : Out(o), ready(false), done(false), thread(child, this) {}
   ~OptimizerWorker() {
-    errs() << "optimizer shutting down!\n";
+    //errs() << "optimizer shutting down!\n";
     {
       std::lock_guard<std::mutex> lock(mutex);
       done = true;
     }
-    errs() << "optimizer joining!\n";
+    //errs() << "optimizer joining!\n";
     condition.notify_all();
     thread.join();
-    errs() << "optimizer joined!\n";
+    //errs() << "optimizer joined!\n";
   }
 
   void addInput(char *input) {
@@ -258,12 +257,12 @@ namespace {
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {
       if (Optimizer) {
         int n = 1; //std::thread::hardware_concurrency());
-        errs() << "optimizers!\n";
+        //errs() << "optimizers!\n";
         for (int i = 0; i < n; i++) {
-          errs() << "optimizer add!\n";
+          //errs() << "optimizer add!\n";
           OptimizerWorkers.push_back(make_unique<OptimizerWorker>(Out));
         }
-        errs() << "optimizers ready!\n";
+        //errs() << "optimizers ready!\n";
       }
     }
 
@@ -2947,9 +2946,9 @@ void JSWriter::printModuleBody() {
   if (Optimizer) {
     // join all the worker threads here
     // TODO: add another thread once we are here, as the main thread is just waiting? need work-stealing
-    errs() << "waiting on all optimizers...\n";
+    //errs() << "waiting on all optimizers...\n";
     OptimizerWorkers.clear();
-    errs() << "waiting on all optimizers complete!...\n";
+    //errs() << "waiting on all optimizers complete!...\n";
   }
   Out << "function runPostSets() {\n";
   if (Relocatable) Out << " var temp = 0;\n"; // need a temp var for relocation calls, for proper validation in heap growth
