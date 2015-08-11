@@ -1527,7 +1527,7 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
     Code << getAssignIfNeeded(EEI);
     std::string OperandCode;
     raw_string_ostream CodeStream(OperandCode);
-    CodeStream << std::string("SIMD.") << SIMDType(VT) << ".extractLane(" << getValueAsStr(EEI->getVectorOperand()) << ',' << std::to_string(Index) << ')';
+    CodeStream << std::string("SIMD_") << SIMDType(VT) << "_extractLane(" << getValueAsStr(EEI->getVectorOperand()) << ',' << std::to_string(Index) << ')';
     Code << getCast(CodeStream.str(), EEI->getType());
     return;
   }
