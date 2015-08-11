@@ -787,7 +787,6 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_and, SIMD_Float32x4_and);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_or, SIMD_Float32x4_or);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_xor, SIMD_Float32x4_xor);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_not, SIMD_Float32x4_not);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_select, SIMD_Float32x4_select);
 
 DEF_BUILTIN_HANDLER(emscripten_float64x2_min, SIMD_Float64x2_min);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_minNum, SIMD_Float64x2_minNum);
@@ -820,7 +819,6 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThan, SIMD_Int32x4_lessThan);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThanOrEqual, SIMD_Int32x4_lessThanOrEqual);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThan, SIMD_Int32x4_greaterThan);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThanOrEqual, SIMD_Int32x4_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_select, SIMD_Int32x4_select);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4Bits, SIMD_Int32x4_fromFloat32x4Bits);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4, SIMD_Int32x4_fromFloat32x4);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat64x2Bits, SIMD_Int32x4_fromFloat64x2Bits);

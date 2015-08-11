@@ -186,7 +186,9 @@ namespace {
   public:
     static char ID;
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
-      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
+      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
+        UsesSIMDInt8x16(false), UsesSIMDInt16x8(false), UsesSIMDInt32x4(false),
+        UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), InvokeState(0),
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {}
 
     const char *getPassName() const override { return "JavaScript backend"; }
@@ -816,13 +818,13 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
-std::string SIMDType(VectorType *t, bool caps = false) {
+std::string SIMDType(VectorType *t) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
   int numElems = t->getNumElements();
   if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
 
-  return (caps ? (isInt ? "Int" : "Float") : (isInt ? "int" : "float")) + std::to_string(primSize) + 'x' + std::to_string(numElems);
+  return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
 }
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
@@ -1506,7 +1508,6 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       std::string replace;
       if (!Operands[Index])
         continue;
-      with = std::string("SIMD_") + SIMDType(VT) + "_with";
       std::string operand = getValueAsStr(Operands[Index]);
       if (!PreciseF32) {
         operand = "Math_fround(" + operand + ")";
@@ -1526,11 +1527,7 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
     Code << getAssignIfNeeded(EEI);
     std::string OperandCode;
     raw_string_ostream CodeStream(OperandCode);
-    if (cast<VectorType>(EEI->getVectorOperand()->getType())->getNumElements() <= 4) {
-      CodeStream << getValueAsStr(EEI->getVectorOperand()) << '.' << simdLane[Index];
-    } else {
-      CodeStream << getValueAsStr(EEI->getVectorOperand()) << ".s" << Index;
-    }
+    CodeStream << std::string("SIMD.") << SIMDType(VT) << ".extractLane(" << getValueAsStr(EEI->getVectorOperand()) << ',' << std::to_string(Index) << ')';
     Code << getCast(CodeStream.str(), EEI->getType());
     return;
   }
@@ -1553,7 +1550,7 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
     // To and from are the same types, no cast needed.
     return valueStr;
   }
-  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType, true) + "Bits(" + valueStr + ")";
+  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + "Bits(" + valueStr + ")";
 }
 
 void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
@@ -3036,11 +3033,11 @@ void JSWriter::printModuleBody() {
   Out << "\"cantValidate\": \"" << CantValidate << "\",";
 
   Out << "\"simd\": " << (UsesSIMDInt8x16 || UsesSIMDInt8x16 || UsesSIMDInt32x4 || UsesSIMDFloat32x4 || UsesSIMDFloat64x2 ? "1" : "0") << ",";
-  Out << "\"simd_int8x16\": " << (UsesSIMDInt8x16 ? "1" : "0") << ",";
-  Out << "\"simd_int16x8\": " << (UsesSIMDInt16x8 ? "1" : "0") << ",";
-  Out << "\"simd_int32x4\": " << (UsesSIMDInt32x4 ? "1" : "0") << ",";
-  Out << "\"simd_float32x4\": " << (UsesSIMDFloat32x4 ? "1" : "0") << ",";
-  Out << "\"simd_float64x2\": " << (UsesSIMDFloat64x2 ? "1" : "0") << ",";
+  Out << "\"simdInt8x16\": " << (UsesSIMDInt8x16 ? "1" : "0") << ",";
+  Out << "\"simdInt16x8\": " << (UsesSIMDInt16x8 ? "1" : "0") << ",";
+  Out << "\"simdInt32x4\": " << (UsesSIMDInt32x4 ? "1" : "0") << ",";
+  Out << "\"simdFloat32x4\": " << (UsesSIMDFloat32x4 ? "1" : "0") << ",";
+  Out << "\"simdFloat64x2\": " << (UsesSIMDFloat64x2 ? "1" : "0") << ",";
 
   Out << "\"maxGlobalAlign\": " << utostr(MaxGlobalAlign) << ",";
 
