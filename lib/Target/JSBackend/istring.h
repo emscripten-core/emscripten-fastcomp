@@ -46,7 +46,7 @@ struct IString {
     reuse = false;
 
     typedef std::unordered_set<const char *, CStringHash, CStringEqual> StringSet;
-    static StringSet* strings = new StringSet();
+    thread_local static StringSet* strings = new StringSet();
 
     if (reuse) {
       auto result = strings->insert(s); // if already present, does nothing
