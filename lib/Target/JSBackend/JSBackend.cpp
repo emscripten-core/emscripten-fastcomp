@@ -136,6 +136,7 @@ struct OptimizerWorker {
 
   static void child(OptimizerWorker *parent) {
     std::vector<char*> curr;
+    bool done;
     while (1) {
       // get the next work item
       {
@@ -143,22 +144,28 @@ struct OptimizerWorker {
         parent->ready = true;
         //errs() << "optimizer looking for work\n";
         parent->condition.wait(lock, [&]{ return parent->done || parent->inputs.size() > 0; });
+        //errs() << "optimizer now sees " << parent->inputs.size() << ", done=" << parent->done << "\n";
         parent->ready = false;
-        if (parent->done) return;
         curr = parent->inputs;
         parent->inputs.clear();
+        done = parent->done;
       }
       //errs() << "optimizer working!\n";
       for (auto input : curr) {
         emscripten_optimizer(input, parent->Out); // waka
       }
       curr.clear();
+      if (done) { // note this is the done we snapshotted before
+        //errs() << "optimizer is leaving its main loop!\n";
+        return;
+      }
     }
   }
 
   OptimizerWorker(raw_pwrite_stream &o) : Out(o), ready(false), done(false), thread(child, this) {}
-  ~OptimizerWorker() {
-    //errs() << "optimizer shutting down!\n";
+
+  void join() {
+    //errs() << "optimizer ready to join!\n";
     {
       std::lock_guard<std::mutex> lock(mutex);
       done = true;
@@ -2947,6 +2954,9 @@ void JSWriter::printModuleBody() {
     // join all the worker threads here
     // TODO: add another thread once we are here, as the main thread is just waiting? need work-stealing
     //errs() << "waiting on all optimizers...\n";
+    for (auto& worker : OptimizerWorkers) {
+      worker->join();
+    }
     OptimizerWorkers.clear();
     //errs() << "waiting on all optimizers complete!...\n";
   }
