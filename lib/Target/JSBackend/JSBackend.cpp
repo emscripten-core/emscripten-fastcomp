@@ -1537,10 +1537,6 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
 
 std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr)
 {
-  if (fromType->getBitWidth() != toType->getBitWidth()) {
-    error("Invalid SIMD cast between items of different bit sizes!");
-  }
-
   bool toInt = toType->getElementType()->isIntegerTy();
   bool fromInt = fromType->getElementType()->isIntegerTy();
   int fromPrimSize = fromType->getElementType()->getPrimitiveSizeInBits();
@@ -1550,6 +1546,17 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
     // To and from are the same types, no cast needed.
     return valueStr;
   }
+
+  bool fromIsBool = (fromInt && fromPrimSize == 1);
+  bool toIsBool = (toInt && toPrimSize == 1);
+  if (fromIsBool && !toIsBool) { // Casting from bool vector to a bit vector looks more complicated (e.g. Bool32x4 to Int32x4)
+    return std::string("SIMD_") + SIMDType(toType) + "_select(" + valueStr + ", SIMD_" + SIMDType(toType) + "_splat(-1), SIMD_" + SIMDType(toType) + "_splat(0))";
+  }
+
+  if (fromType->getBitWidth() != toType->getBitWidth() && !fromIsBool && !toIsBool) {
+    error("Invalid SIMD cast between items of different bit sizes!");
+  }
+
   return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + "Bits(" + valueStr + ")";
 }
 
@@ -1651,7 +1658,7 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
   if (Invert)
     Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
 
-  Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << '_' << Name << '('
+  Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << '_' << Name << '('
        << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(1)) << ')';
 
   if (Invert)
@@ -1714,7 +1721,7 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
   if (Invert)
     Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
 
-  Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_" << Name << "("
+  Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_" << Name << "("
        << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
 
   if (Invert)
@@ -1865,7 +1872,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::SExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << "SIMD_Int32x4_select(" << getValueAsStr(I->getOperand(0)) << ",SIMD_Int32x4_splat(-1),SIMD_Int32x4_splat(0))";
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)));
         break;
       case Instruction::Select:
         // Since we represent vectors of i1 as vectors of sign extended wider integers,
