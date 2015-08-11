@@ -46,6 +46,9 @@
 #include <map>
 #include <set> // TODO: unordered_set?
 #include <sstream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 using namespace llvm;
 
@@ -123,6 +126,63 @@ extern "C" void LLVMInitializeJSBackendTarget() {
   RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
 }
 
+struct OptimizerWorker {
+  raw_pwrite_stream &Out;
+  std::vector<char*> inputs;
+  bool ready, done;
+  std::mutex mutex;
+  std::condition_variable condition;
+  std::thread thread; // XXX last
+
+  static void child(OptimizerWorker *parent) {
+    std::vector<char*> curr;
+    while (1) {
+      // get the next work item
+      {
+        std::unique_lock<std::mutex> lock(parent->mutex);
+        parent->ready = true;
+        errs() << "optimizer looking for work\n";
+
+        parent->condition.wait(lock, [&]{ return parent->done || parent->inputs.size() > 0; });
+        parent->ready = false;
+        if (parent->done) return;
+        curr = parent->inputs;
+        parent->inputs.clear();
+      }
+      errs() << "optimizer working!\n";
+      for (auto input : curr) {
+        emscripten_optimizer(input, parent->Out); // waka
+      }
+      curr.clear();
+    }
+  }
+
+  OptimizerWorker(raw_pwrite_stream &o) : Out(o), ready(false), done(false), thread(child, this) {}
+  ~OptimizerWorker() {
+    errs() << "optimizer shutting down!\n";
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      done = true;
+    }
+    errs() << "optimizer joining!\n";
+    condition.notify_all();
+    thread.join();
+    errs() << "optimizer joined!\n";
+  }
+
+  void addInput(char *input) {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      inputs.push_back(input);
+    }
+    condition.notify_all();
+  }
+
+  bool isReady() { // racey, not truly to be trusted, but good enough for guessing to whose queue to add TODO: proper work-stealing etc.
+    return ready;
+  }
+};
+
 namespace {
   #define ASM_SIGNED 0
   #define ASM_UNSIGNED 1
@@ -187,13 +247,25 @@ namespace {
     int GlobalBasePadding;
     int MaxGlobalAlign;
 
+    std::vector<std::unique_ptr<OptimizerWorker>> OptimizerWorkers;
+
     #include "CallHandlers.h"
 
   public:
     static char ID;
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
-        OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {}
+        OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {
+      if (Optimizer) {
+        int n = 1; //std::thread::hardware_concurrency());
+        errs() << "optimizers!\n";
+        for (int i = 0; i < n; i++) {
+          errs() << "optimizer add!\n";
+          OptimizerWorkers.push_back(make_unique<OptimizerWorker>(Out));
+        }
+        errs() << "optimizers ready!\n";
+      }
+    }
 
     const char *getPassName() const override { return "JavaScript backend"; }
 
@@ -2830,7 +2902,20 @@ void JSWriter::printFunction(const Function *F) {
   Fout << "}\n";
 
   if (Optimizer) {
-    emscripten_optimizer(const_cast<char*>(Fout.str().c_str()), Out); // waka
+    // pick a worker that at least looks ready
+    errs() << "find an optimizer!\n";
+    assert(OptimizerWorkers.size() > 0);
+    OptimizerWorker *worker = nullptr;
+    for (auto& curr : OptimizerWorkers) {
+      if (curr->ready) {
+        worker = curr.get();
+        break;
+      }
+    }
+    if (!worker) worker = OptimizerWorkers[0].get();
+    worker->addInput(strdup(Fout.str().c_str())); // XXX strdup
+    errs() << "added an optimizer input!\n";
+    while(1) {}
   } else {
     Out << Fout.str();
   }

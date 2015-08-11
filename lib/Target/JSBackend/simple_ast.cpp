@@ -37,7 +37,7 @@ bool Ref::operator!() {
 
 // Arena
 
-Arena arena;
+thread_local Arena arena;
 
 Ref Arena::alloc() {
   if (chunks.size() == 0 || index == CHUNK_SIZE) {

@@ -15,7 +15,7 @@ namespace cashew {
 
 // common strings
 
-extern IString TOPLEVEL,
+extern thread_local IString TOPLEVEL,
                DEFUN,
                BLOCK,
                STAT,
@@ -96,7 +96,7 @@ extern IString TOPLEVEL,
                THROW,
                SET;
 
-extern IStringSet keywords;
+extern thread_local IStringSet keywords;
 
 extern const char *OPERATOR_INITS, *SEPARATORS;
 
@@ -120,7 +120,7 @@ struct OperatorClass {
   static bool getRtl(int prec);
 };
 
-extern std::vector<OperatorClass> operatorClasses;
+extern thread_local std::vector<OperatorClass> operatorClasses;
 
 extern bool isIdentInit(char x);
 extern bool isIdentPart(char x);
@@ -715,7 +715,7 @@ class Parser {
           initial = parseIndexing(initial.getNode(), src);
         } else {
           dump("bad parseExpression state", src);
-          assert(0);
+          abort();
         }
         return parseExpression(initial, src, seps);
       }

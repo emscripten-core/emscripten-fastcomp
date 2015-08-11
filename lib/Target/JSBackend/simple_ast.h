@@ -68,7 +68,7 @@ struct Arena {
   void set(unsigned position); // set the current position, unwinding
 };
 
-extern Arena arena;
+extern thread_local Arena arena;
 
 // Main value type
 struct Value {
