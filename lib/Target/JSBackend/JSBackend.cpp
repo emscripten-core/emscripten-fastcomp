@@ -2944,6 +2944,13 @@ void JSWriter::printModuleBody() {
        I != E; ++I) {
     if (!I->isDeclaration()) printFunction(I);
   }
+  if (Optimizer) {
+    // join all the worker threads here
+    // TODO: add another thread once we are here, as the main thread is just waiting? need work-stealing
+    errs() << "waiting on all optimizers...\n";
+    OptimizerWorkers.clear();
+    errs() << "waiting on all optimizers complete!...\n";
+  }
   Out << "function runPostSets() {\n";
   if (Relocatable) Out << " var temp = 0;\n"; // need a temp var for relocation calls, for proper validation in heap growth
   Out << PostSets << "\n";
