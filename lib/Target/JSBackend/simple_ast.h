@@ -56,7 +56,7 @@ struct Ref {
 // Arena allocation, free it all on process exit
 
 struct Arena {
-  #define CHUNK_SIZE 1000
+  #define CHUNK_SIZE 10000
   std::vector<Value*> chunks;
   int index; // in last chunk
 

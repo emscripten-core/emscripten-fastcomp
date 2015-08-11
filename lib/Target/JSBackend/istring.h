@@ -38,10 +38,13 @@ struct IString {
 
   IString() : str(nullptr) {}
   IString(const char *s, bool reuse=true) { // if reuse=true, then input is assumed to remain alive; not copied
+    reuse = false;
     set(s, reuse);
   }
 
   void set(const char *s, bool reuse=true) {
+    reuse = false;
+
     typedef std::unordered_set<const char *, CStringHash, CStringEqual> StringSet;
     static StringSet* strings = new StringSet();
 

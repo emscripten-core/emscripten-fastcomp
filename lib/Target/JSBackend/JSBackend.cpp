@@ -2830,8 +2830,7 @@ void JSWriter::printFunction(const Function *F) {
   Fout << "}\n";
 
   if (Optimizer) {
-    char *leak = strdup(Fout.str().c_str()); // XXX OMG
-    emscripten_optimizer(leak, Out); // waka
+    emscripten_optimizer(const_cast<char*>(Fout.str().c_str()), Out); // waka
   } else {
     Out << Fout.str();
   }
