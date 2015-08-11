@@ -1269,7 +1269,7 @@ struct JSPrinter {
 // cashew builder
 
 class ValueBuilder {
-  static IStringSet statable;
+  static thread_local IStringSet statable;
 
   static Ref makeRawString(const IString& s) {
     return &arena.alloc()->setString(s);

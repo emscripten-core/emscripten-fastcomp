@@ -275,7 +275,7 @@ class Parser {
         src[1] = temp;
         src++;
       } else {
-        dump("frag parsing", src);
+        dumps("frag parsing", src);
         assert(0);
       }
       size = src - start;
@@ -284,7 +284,7 @@ class Parser {
 
   // Parses an element in a list of such elements, e.g. list of statements in a block, or list of parameters in a call
   NodeRef parseElement(char*& src, const char* seps=";") {
-    //dump("parseElement", src);
+    //dumps("parseElement", src);
     src = skipSpace(src);
     Frag frag(src);
     src += frag.size;
@@ -309,7 +309,7 @@ class Parser {
       case OPERATOR: {
         return parseExpression(frag.str, src, seps);
       }
-      default: /* dump("parseElement", src); printf("bad frag type: %d\n", frag.type); */ assert(0);
+      default: /* dumps("parseElement", src); printf("bad frag type: %d\n", frag.type); */ assert(0);
     }
     return nullptr;
   }
@@ -338,7 +338,7 @@ class Parser {
     else if (frag.str == CONTINUE) return parseContinue(frag, src, seps);
     else if (frag.str == SWITCH) return parseSwitch(frag, src, seps);
     else if (frag.str == NEW) return parseNew(frag, src, seps);
-    dump(frag.str.str, src);
+    dumps(frag.str.str, src);
     assert(0);
     return nullptr;
   }
@@ -692,7 +692,7 @@ class Parser {
   }
 
   NodeRef parseExpression(ExpressionElement initial, char*&src, const char* seps) {
-    //dump("parseExpression", src);
+    //dumps("parseExpression", src);
     ExpressionParts& parts = expressionPartsStack.back();
     src = skipSpace(src);
     if (*src == 0 || hasChar(seps, *src)) {
@@ -714,7 +714,7 @@ class Parser {
         } else if (*src == '[') {
           initial = parseIndexing(initial.getNode(), src);
         } else {
-          dump("bad parseExpression state", src);
+          dumps("bad parseExpression state", src);
           abort();
         }
         return parseExpression(initial, src, seps);
@@ -785,7 +785,7 @@ class Parser {
 
   // Parses a block of code (e.g. a bunch of statements inside {,}, or the top level of o file)
   NodeRef parseBlock(char*& src, NodeRef block=nullptr, const char* seps=";", IString keywordSep1=IString(), IString keywordSep2=IString()) {
-    //dump("parseBlock", src);
+    //dumps("parseBlock", src);
     if (!block) block = Builder::makeBlock();
     while (*src) {
       src = skipSpace(src);
@@ -861,7 +861,7 @@ class Parser {
   char *allSource;
   int allSize;
 
-  static void dump(const char *where, char* curr) {
+  static void dumps(const char *where, char* curr) {
     /*
     printf("%s:\n=============\n", where);
     for (int i = 0; i < allSize; i++) printf("%c", allSource[i] ? allSource[i] : '?');

@@ -15,8 +15,8 @@ typedef std::vector<IString> StringVec;
 
 Ref extraInfo;
 
-IString SIMD_INT32X4_CHECK("SIMD_Int32x4_check"),
-        SIMD_FLOAT32X4_CHECK("SIMD_Float32x4_check");
+thread_local IString SIMD_INT32X4_CHECK("SIMD_Int32x4_check"),
+                     SIMD_FLOAT32X4_CHECK("SIMD_Float32x4_check");
 
 //==================
 // Infrastructure
@@ -191,6 +191,7 @@ struct AsmData {
         Ref type = node[0];
         if (type == VAR) {
           dump("bad, seeing a var in need of fixing", func);
+          dump("the node:", node);
           assert(0); //, 'should be no vars to fix! ' + func[1] + ' : ' + JSON.stringify(node));
         }
       });
@@ -315,7 +316,7 @@ bool isInteger32(double x) {
   return isInteger(x) && (x == (int32_t)x || x == (uint32_t)x);
 }
 
-IString ASM_FLOAT_ZERO;
+thread_local IString ASM_FLOAT_ZERO;
 
 AsmType detectType(Ref node, AsmData *asmData, bool inVarDef) {
   switch (node[0]->getCString()[0]) {
@@ -786,6 +787,7 @@ public:
   }
 };
 
+thread_local
 StringSet USEFUL_BINARY_OPS("<< >> | & ^"),
           COMPARE_OPS("< <= > >= == == != !=="),
           BITWISE("| & ^"),
@@ -793,6 +795,7 @@ StringSet USEFUL_BINARY_OPS("<< >> | & ^"),
           COERCION_REQUIRING_OPS("sub unary-prefix"), // ops that in asm must be coerced right away
           COERCION_REQUIRING_BINARIES("* / %"); // binary ops that in asm must be coerced
 
+thread_local
 StringSet ASSOCIATIVE_BINARIES("+ * | & ^"),
           CONTROL_FLOW("do while for if switch"),
           LOOP("do while for"),
@@ -800,6 +803,7 @@ StringSet ASSOCIATIVE_BINARIES("+ * | & ^"),
           CONDITION_CHECKERS("if do while switch"),
           SAFE_TO_DROP_COERCION("unary-prefix name num");
 
+thread_local
 StringSet BREAK_CAPTURERS("do while for switch"),
           CONTINUE_CAPTURERS("do while for"),
           FUNCTIONS_THAT_ALWAYS_THROW("abort ___resumeException ___cxa_throw ___cxa_rethrow");
@@ -887,8 +891,11 @@ Ref simplifyCondition(Ref node) {
 // In memSafe mode, we are more careful and assume functions can replace HEAP and FUNCTION_TABLE, which
 // can happen in ALLOW_MEMORY_GROWTH mode
 
+thread_local
 StringSet ELIMINATION_SAFE_NODES("var assign call if toplevel do return label switch binary unary-prefix"); // do is checked carefully, however
+thread_local
 StringSet IGNORABLE_ELIMINATOR_SCAN_NODES("num toplevel string break continue dot"); // dot can only be STRING_TABLE.*
+thread_local
 StringSet ABORTING_ELIMINATOR_SCAN_NODES("new object function defun for while array throw"); // we could handle some of these, TODO, but nontrivial (e.g. for while, the condition is hit multiple times after the body)
 
 bool isTempDoublePtrAccess(Ref node) { // these are used in bitcasts; they are not really affecting memory, and should cause no invalidation
@@ -3694,11 +3701,14 @@ void registerizeHarder(Ref ast) {
 // end registerizeHarder
 
 // minified names generation
+thread_local
 StringSet RESERVED("do if in for new try var env let");
 const char *VALID_MIN_INITS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$";
 const char *VALID_MIN_LATERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$0123456789";
 
+thread_local
 StringVec minifiedNames;
+thread_local
 std::vector<int> minifiedState;
 
 void ensureMinifiedNames(int n) { // make sure the nth index in minifiedNames exists. done 100% deterministically

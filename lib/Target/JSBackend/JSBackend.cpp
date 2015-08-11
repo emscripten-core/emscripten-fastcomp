@@ -159,15 +159,15 @@ struct OptimizerWorker {
 
   OptimizerWorker(raw_pwrite_stream &o) : Out(o), ready(false), done(false), thread(child, this) {}
   ~OptimizerWorker() {
-    errs() << "optimizer shutting down!\n";
+    //errs() << "optimizer shutting down!\n";
     {
       std::lock_guard<std::mutex> lock(mutex);
       done = true;
     }
-    errs() << "optimizer joining!\n";
+    //errs() << "optimizer joining!\n";
     condition.notify_all();
     thread.join();
-    errs() << "optimizer joined!\n";
+    //errs() << "optimizer joined!\n";
   }
 
   void addInput(char *input) {
@@ -2903,7 +2903,7 @@ void JSWriter::printFunction(const Function *F) {
 
   if (Optimizer) {
     // pick a worker that at least looks ready
-    errs() << "find an optimizer!\n";
+    //errs() << "find an optimizer!\n";
     assert(OptimizerWorkers.size() > 0);
     OptimizerWorker *worker = nullptr;
     for (auto& curr : OptimizerWorkers) {
@@ -2914,8 +2914,8 @@ void JSWriter::printFunction(const Function *F) {
     }
     if (!worker) worker = OptimizerWorkers[0].get();
     worker->addInput(strdup(Fout.str().c_str())); // XXX strdup
-    errs() << "added an optimizer input!\n";
-    while(1) {}
+    //errs() << "added an optimizer input!\n";
+    //while(1) {}
   } else {
     Out << Fout.str();
   }
