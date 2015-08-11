@@ -10,7 +10,7 @@ static std::mutex printMutex;
 
 void emscripten_optimizer(char *input, llvm::raw_pwrite_stream& Out) {
   //unsigned arenaState = arena.get();
-  llvm::errs() << "optimizer about to work on:\n[START]\n" << input << "\n[STOP]\n";
+  //llvm::errs() << "optimizer about to work on:\n[START]\n" << input << "\n[STOP]\n";
   cashew::Parser<Ref, ValueBuilder> builder;
   Ref doc = builder.parseToplevel(input);
   eliminate(doc);

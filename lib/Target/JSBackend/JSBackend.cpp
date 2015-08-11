@@ -159,15 +159,15 @@ struct OptimizerWorker {
 
   OptimizerWorker(raw_pwrite_stream &o) : Out(o), ready(false), done(false), thread(child, this) {}
   ~OptimizerWorker() {
-    //errs() << "optimizer shutting down!\n";
+    errs() << "optimizer shutting down!\n";
     {
       std::lock_guard<std::mutex> lock(mutex);
       done = true;
     }
-    //errs() << "optimizer joining!\n";
+    errs() << "optimizer joining!\n";
     condition.notify_all();
     thread.join();
-    //errs() << "optimizer joined!\n";
+    errs() << "optimizer joined!\n";
   }
 
   void addInput(char *input) {
