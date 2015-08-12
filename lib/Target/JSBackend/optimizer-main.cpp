@@ -15,11 +15,13 @@ void emscripten_optimizer(char *input, llvm::raw_pwrite_stream& Out) {
   Ref doc = builder.parseToplevel(input);
   eliminate(doc);
   simplifyExpressions(doc);
+  simplifyIfs(doc);
+  registerize(doc);
   JSPrinter jser(true, false, doc);
   jser.printAst();
   {
     std::lock_guard<std::mutex> lock(printMutex);
-    Out << jser.buffer << "\n"; // XXX is this actually needed? perhaps raw_pwrite_stream is threadsafe?
+    Out << jser.buffer << "\n";
   }
   //arena.set(arenaState);
   //assert(arenaState == arena.get());
