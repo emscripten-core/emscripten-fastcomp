@@ -17,8 +17,14 @@ void emscripten_optimizer(char *input, llvm::raw_pwrite_stream& Out) {
   simplifyExpressions(doc);
   simplifyIfs(doc);
   registerize(doc);
+
+  static thread_local char *buffer = nullptr;
+  static thread_local int size = 0;
   JSPrinter jser(true, false, doc);
+  jser.reserve(buffer, size);
   jser.printAst();
+  jser.preserve(buffer, size);
+
   {
     std::lock_guard<std::mutex> lock(printMutex);
     Out << jser.buffer << "\n";

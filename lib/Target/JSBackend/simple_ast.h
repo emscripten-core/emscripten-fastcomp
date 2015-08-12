@@ -563,6 +563,16 @@ struct JSPrinter {
 
   JSPrinter(bool pretty_, bool finalize_, Ref ast_) : pretty(pretty_), finalize(finalize_), buffer(0), size(0), used(0), indent(0), possibleSpace(false), ast(ast_) {}
 
+  // utilities to reuse a buffer and size
+  void reserve(char *b, int s) {
+    buffer = b;
+    size = s;
+  }
+  void preserve(char*& b, int& s) {
+    b = buffer;
+    s = size;
+  }
+
   void printAst() {
     print(ast);
     buffer[used] = 0;
