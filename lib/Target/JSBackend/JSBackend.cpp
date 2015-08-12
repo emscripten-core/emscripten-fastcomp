@@ -1449,6 +1449,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   // instructions. Collect all the inserted elements so that we can categorize
   // the chain as either a splat, a constructor, or an actual series of inserts.
   VectorType *VT = III->getType();
+  checkVectorType(VT);
   unsigned NumElems = VT->getNumElements();
   unsigned NumInserted = 0;
   SmallVector<const Value *, 8> Operands(NumElems, NULL);
@@ -1505,14 +1506,13 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
     // Emit a series of inserts.
     std::string Result = getValueAsStr(Base);
     for (unsigned Index = 0; Index < NumElems; ++Index) {
-      std::string replace;
       if (!Operands[Index])
         continue;
       std::string operand = getValueAsStr(Operands[Index]);
       if (!PreciseF32) {
         operand = "Math_fround(" + operand + ")";
       }
-      Result = replace + '(' + Result + ',' + utostr(Index) + ',' + operand + ')';
+      Result = "SIMD_" + SIMDType(VT) + "_replaceLane(" + Result + ',' + utostr(Index) + ',' + operand + ')';
     }
     Code << Result;
   }
