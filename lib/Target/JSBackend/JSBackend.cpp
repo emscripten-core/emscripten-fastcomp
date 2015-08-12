@@ -1940,6 +1940,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         }
         break;
       case Instruction::BitCast: {
+      case Instruction::SIToFP:
         Code << getAssignIfNeeded(I);
         Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)));
         break;
