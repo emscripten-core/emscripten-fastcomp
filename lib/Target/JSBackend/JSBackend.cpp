@@ -1535,6 +1535,20 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
   error("SIMD extract element with non-constant index not implemented yet");
 }
 
+std::string castBoolVecToIntVec(int numElems, const std::string &str)
+{
+  int elemWidth = 128 / numElems;
+  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
+  return simdType + "_select(" + str + ", " + simdType + "_splat(-1), " + simdType + "_splat(0))";
+}
+
+std::string castIntVecToBoolVec(int numElems, const std::string &str)
+{
+  int elemWidth = 128 / numElems;
+  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
+  return simdType + "_notEqual(" + str + ", " + simdType + "_splat(0))";
+}
+
 std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr)
 {
   bool toInt = toType->getElementType()->isIntegerTy();
@@ -1550,7 +1564,7 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
   bool fromIsBool = (fromInt && fromPrimSize == 1);
   bool toIsBool = (toInt && toPrimSize == 1);
   if (fromIsBool && !toIsBool) { // Casting from bool vector to a bit vector looks more complicated (e.g. Bool32x4 to Int32x4)
-    return std::string("SIMD_") + SIMDType(toType) + "_select(" + valueStr + ", SIMD_" + SIMDType(toType) + "_splat(-1), SIMD_" + SIMDType(toType) + "_splat(0))";
+    return castBoolVecToIntVec(toType->getNumElements(), valueStr);
   }
 
   if (fromType->getBitWidth() != toType->getBitWidth() && !fromIsBool && !toIsBool) {
@@ -1668,41 +1682,49 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
 void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code) {
   const char *Name;
   bool Invert = false;
+  VectorType *VT = cast<VectorType>(I->getType());
+  checkVectorType(VT);
   switch (cast<FCmpInst>(I)->getPredicate()) {
     case ICmpInst::FCMP_FALSE:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" + ensureFloat("0", true) << ')';
+      Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" << ensureFloat("0", true) << ')';
       return;
     case ICmpInst::FCMP_TRUE:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" + ensureFloat("-1", true) + ')';
+      Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" << ensureFloat("-1", true) << ')';
       return;
     case ICmpInst::FCMP_ONE:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and(SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and("
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_equal(" << getValueAsStr(I->getOperand(0)) << ", "
-                                      << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_equal(" << getValueAsStr(I->getOperand(1)) << ", "
-                                      << getValueAsStr(I->getOperand(1)) << ")), " <<
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
-                                         << getValueAsStr(I->getOperand(1)) << "))";
+      checkVectorType(I->getOperand(0)->getType());
+      checkVectorType(I->getOperand(1)->getType());
+      Code << getAssignIfNeeded(I)
+           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
       return;
     case ICmpInst::FCMP_UEQ:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_or(SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_or("
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(0)) << ", "
-                                         << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(1)) << ", "
-                                         << getValueAsStr(I->getOperand(1)) << ")), " <<
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_equal(" << getValueAsStr(I->getOperand(0)) << ", "
-                                      << getValueAsStr(I->getOperand(1)) << "))";
+      checkVectorType(I->getOperand(0)->getType());
+      checkVectorType(I->getOperand(1)->getType());
+      Code << getAssignIfNeeded(I)
+           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
       return;
     case FCmpInst::FCMP_ORD:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and("
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_equal(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_equal(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
+      checkVectorType(I->getOperand(0)->getType());
+      checkVectorType(I->getOperand(1)->getType());
+      Code << getAssignIfNeeded(I)
+           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
       return;
 
     case FCmpInst::FCMP_UNO:
-      Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_or("
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(0)) << "), " <<
-              "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(1)) << ", " << getValueAsStr(I->getOperand(1)) << "))";
+      checkVectorType(I->getOperand(0)->getType());
+      checkVectorType(I->getOperand(1)->getType());
+      Code << getAssignIfNeeded(I)
+           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
       return;
 
     case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
@@ -1721,6 +1743,8 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
   if (Invert)
     Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
 
+  checkVectorType(I->getOperand(0)->getType());
+  checkVectorType(I->getOperand(1)->getType());
   Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_" << Name << "("
        << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
 
