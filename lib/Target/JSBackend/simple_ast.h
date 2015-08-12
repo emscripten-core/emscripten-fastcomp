@@ -354,7 +354,7 @@ struct Value {
   }
 
   void stringify(std::ostream &os, bool pretty=false) {
-    static int indent = 0;
+    static thread_local int indent = 0;
     #define indentify() { for (int i = 0; i < indent; i++) os << "  "; }
     switch (type) {
       case String:
@@ -816,13 +816,13 @@ struct JSPrinter {
     // try to emit the fewest necessary characters
     bool integer = fmod(d, 1) == 0;
     #define BUFFERSIZE 1000
-    static char storage_f[BUFFERSIZE], storage_e[BUFFERSIZE]; // f is normal, e is scientific for float, x for integer
+    static thread_local char storage_f[BUFFERSIZE], storage_e[BUFFERSIZE]; // f is normal, e is scientific for float, x for integer
     double err_f, err_e;
     for (int e = 0; e <= 1; e++) {
       char *buffer = e ? storage_e : storage_f;
       double temp;
       if (!integer) {
-        static char format[6];
+        static thread_local char format[6];
         for (int i = 0; i <= 18; i++) {
           format[0] = '%';
           format[1] = '.';

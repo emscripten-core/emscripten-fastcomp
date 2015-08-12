@@ -263,8 +263,8 @@ namespace {
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""), UsesSIMD(false), InvokeState(0),
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {
       if (Optimizer) {
-        int n = 1; //std::thread::hardware_concurrency());
-        //errs() << "optimizers!\n";
+        int n = std::thread::hardware_concurrency();
+        errs() << "preparing " << n << " optimizers!\n";
         for (int i = 0; i < n; i++) {
           //errs() << "optimizer add!\n";
           OptimizerWorkers.push_back(make_unique<OptimizerWorker>(Out));
