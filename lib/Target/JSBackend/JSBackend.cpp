@@ -1794,8 +1794,10 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
     std::string Extract;
     if (VT->getElementType()->isIntegerTy()) {
       Extract = "SIMD_Int32x4_extractLane(";
+      UsesSIMDInt32x4 = true;
     } else {
       Extract = "SIMD_Float32x4_extractLane(";
+      UsesSIMDFloat32x4 = true;
     }
     switch (Operator::getOpcode(I)) {
       case Instruction::SDiv:

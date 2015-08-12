@@ -517,6 +517,8 @@ DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
   // using it whenever possible by optimizing signmask calls into anyTrue() or
   // allTrue() calls.
   std::string Op = getValueAsStr(CI->getOperand(0));
+  UsesSIMDInt32x4 = true;
+  UsesSIMDFloat32x4 = true;
   return getAssign(CI) + "("
          "(SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),0)<0)|"
          "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),1)<0)<<1)|"
@@ -525,19 +527,23 @@ DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
 })
 
 DEF_CALL_HANDLER(emscripten_float32x4_load1, {
+  UsesSIMDFloat32x4 = true;
   return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
 })
 
 DEF_CALL_HANDLER(emscripten_float32x4_load2, {
+  UsesSIMDFloat32x4 = true;
   return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
 })
 
 DEF_CALL_HANDLER(emscripten_float32x4_store1, {
-  return "SIMD_Float32x4_storeX(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  UsesSIMDFloat32x4 = true;
+  return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
 DEF_CALL_HANDLER(emscripten_float32x4_store2, {
-  return "SIMD_Float32x4_storeXY(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  UsesSIMDFloat32x4 = true;
+  return "SIMD_Float32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 
 // EM_ASM support
