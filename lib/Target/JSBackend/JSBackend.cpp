@@ -264,6 +264,7 @@ namespace {
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {
       if (Optimizer) {
         int n = std::thread::hardware_concurrency();
+        if (n < 1) n = 1;
         errs() << "preparing " << n << " optimizers!\n";
         for (int i = 0; i < n; i++) {
           //errs() << "optimizer add!\n";
@@ -2910,15 +2911,21 @@ void JSWriter::printFunction(const Function *F) {
   if (Optimizer) {
     // pick a worker that at least looks ready
     //errs() << "find an optimizer!\n";
-    assert(OptimizerWorkers.size() > 0);
     OptimizerWorker *worker = nullptr;
-    for (auto& curr : OptimizerWorkers) {
+    static int look = 0;
+    int n = OptimizerWorkers.size();
+    for (int i = 0; i < n; i++) {
+      OptimizerWorker* curr = OptimizerWorkers[look].get();
       if (curr->ready) {
-        worker = curr.get();
+        worker = curr;
         break;
       }
+      look++;
+      if (look == n) look = 0;
     }
-    if (!worker) worker = OptimizerWorkers[0].get();
+    if (!worker) worker = OptimizerWorkers[look].get();
+    look++; // one more increment, to try another next time
+    if (look == n) look = 0;
     worker->addInput(strdup(Fout.str().c_str())); // XXX strdup
     //errs() << "added an optimizer input!\n";
     //while(1) {}
