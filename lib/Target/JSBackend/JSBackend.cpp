@@ -174,11 +174,18 @@ struct OptimizerWorker {
     }
   }
 
-  OptimizerWorker(raw_pwrite_stream &o) : Out(o), thread(child, this) {}
-
-  void join() {
-    thread.join();
+  static void addInput(char *input) {
+    std::lock_guard<std::mutex> lock(OptimizerWorker::mutex);
+    OptimizerWorker::inputs.push_back(input);
+    OptimizerWorker::condition.notify_one();
   }
+
+  static void prepareJoin() {
+    OptimizerWorker::done = true;
+    OptimizerWorker::condition.notify_all();
+  }
+
+  OptimizerWorker(raw_pwrite_stream &o) : Out(o), thread(child, this) {}
 };
 
 std::vector<char*> OptimizerWorker::inputs;
@@ -2906,11 +2913,7 @@ void JSWriter::printFunction(const Function *F) {
 
   if (Optimizer) {
     char *input = strdup(Fout.str().c_str());
-    {
-      std::lock_guard<std::mutex> lock(OptimizerWorker::mutex);
-      OptimizerWorker::inputs.push_back(input);
-      OptimizerWorker::condition.notify_one();
-    }
+    OptimizerWorker::addInput(input);
   } else {
     Out << Fout.str();
   }
@@ -2941,11 +2944,9 @@ void JSWriter::printModuleBody() {
   }
   if (Optimizer) {
     // join all the worker threads here
-    // TODO: add another thread once we are here, as the main thread is just waiting? need work-stealing
-    OptimizerWorker::done = true;
-    OptimizerWorker::condition.notify_all();
+    OptimizerWorker::prepareJoin();
     for (auto& worker : OptimizerWorkers) {
-      worker->join();
+      worker->thread.join();
     }
     OptimizerWorkers.clear();
   }
