@@ -141,6 +141,7 @@ struct OptimizerWorker {
     bool seenDone = false;
     while (1) {
       bool idle = true;
+      bool leftovers = false;
       // seek work
       {
         std::unique_lock<std::mutex> lock(OptimizerWorker::mutex);
@@ -150,12 +151,18 @@ struct OptimizerWorker {
           idle = false;
         }
         int available = OptimizerWorker::inputs.size();
-        if (available > BATCH) available = BATCH;
+        if (available > BATCH) {
+          available = BATCH;
+          leftovers = true;
+        }
         for (int i = 0; i < available; i++) {
           curr.push_back(OptimizerWorker::inputs.back());
           OptimizerWorker::inputs.pop_back();
         }
         seenDone = OptimizerWorker::done || seenDone;
+      }
+      if (leftovers) {
+        OptimizerWorker::condition.notify_one();
       }
       //errs() << "optimizer working!\n";
       for (auto input : curr) {
