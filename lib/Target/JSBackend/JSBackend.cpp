@@ -164,13 +164,11 @@ struct OptimizerWorker {
       if (leftovers) {
         OptimizerWorker::condition.notify_one();
       }
-      //errs() << "optimizer working!\n";
       for (auto input : curr) {
         emscripten_optimizer(input, parent->Out); // waka
       }
       curr.clear();
       if (seenDone && idle) { // note this is the done we snapshotted before
-        //errs() << "optimizer is leaving its main loop!\n";
         return;
       }
     }
@@ -265,12 +263,10 @@ namespace {
       if (Optimizer) {
         int n = std::thread::hardware_concurrency();
         if (n < 1) n = 1;
-        errs() << "preparing " << n << " optimizers!\n";
+        //errs() << "preparing " << n << " optimizers!\n";
         for (int i = 0; i < n; i++) {
-          //errs() << "optimizer add!\n";
           OptimizerWorkers.push_back(make_unique<OptimizerWorker>(Out));
         }
-        //errs() << "optimizers ready!\n";
       }
     }
 
@@ -2909,14 +2905,12 @@ void JSWriter::printFunction(const Function *F) {
   Fout << "}\n";
 
   if (Optimizer) {
-    // pick a worker that at least looks ready
     char *input = strdup(Fout.str().c_str());
     {
       std::lock_guard<std::mutex> lock(OptimizerWorker::mutex);
       OptimizerWorker::inputs.push_back(input);
       OptimizerWorker::condition.notify_one();
     }
-    //errs() << "added an optimizer input!\n";
   } else {
     Out << Fout.str();
   }
@@ -2948,14 +2942,12 @@ void JSWriter::printModuleBody() {
   if (Optimizer) {
     // join all the worker threads here
     // TODO: add another thread once we are here, as the main thread is just waiting? need work-stealing
-    //errs() << "waiting on all optimizers...\n";
     OptimizerWorker::done = true;
     OptimizerWorker::condition.notify_all();
     for (auto& worker : OptimizerWorkers) {
       worker->join();
     }
     OptimizerWorkers.clear();
-    //errs() << "waiting on all optimizers complete!...\n";
   }
   Out << "function runPostSets() {\n";
   if (Relocatable) Out << " var temp = 0;\n"; // need a temp var for relocation calls, for proper validation in heap growth
