@@ -269,8 +269,8 @@ namespace {
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {
       if (Optimizer) {
         int n = std::thread::hardware_concurrency();
-        if (n < 1) n = 1;
-        //errs() << "preparing " << n << " optimizers!\n";
+        n--; // one less; we work alongside the workers, and when we are done, will add a final worker
+        if (n < 0) n = 0;
         for (int i = 0; i < n; i++) {
           OptimizerWorkers.push_back(make_unique<OptimizerWorker>(Out));
         }
@@ -2943,8 +2943,10 @@ void JSWriter::printModuleBody() {
     if (!I->isDeclaration()) printFunction(I);
   }
   if (Optimizer) {
-    // join all the worker threads here
-    OptimizerWorker::prepareJoin();
+    // we need all worker threads to finish before proceeding.
+    // since we are going to wait on them, we freed a core, and can allocate one more worker (we allocated n-1 before)
+    OptimizerWorkers.push_back(make_unique<OptimizerWorker>(Out));
+    OptimizerWorker::prepareJoin(); // notifies them all, including the new one
     for (auto& worker : OptimizerWorkers) {
       worker->thread.join();
     }
