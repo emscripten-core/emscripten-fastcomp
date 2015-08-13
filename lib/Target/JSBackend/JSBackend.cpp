@@ -127,67 +127,60 @@ extern "C" void LLVMInitializeJSBackendTarget() {
 }
 
 struct OptimizerWorker {
+  static std::vector<char*> inputs;
+  static std::mutex mutex;
+  static std::condition_variable condition;
+  static bool done;
+
   raw_pwrite_stream &Out;
-  std::vector<char*> inputs;
-  bool ready, done;
-  std::mutex mutex;
-  std::condition_variable condition;
   std::thread thread; // XXX last
 
   static void child(OptimizerWorker *parent) {
+    const int BATCH = 1;
     std::vector<char*> curr;
-    bool done;
+    bool seenDone = false;
     while (1) {
-      // get the next work item
+      bool idle = true;
+      // seek work
       {
-        std::unique_lock<std::mutex> lock(parent->mutex);
-        parent->ready = true;
-        //errs() << "optimizer looking for work\n";
-        parent->condition.wait(lock, [&]{ return parent->done || parent->inputs.size() > 0; });
-        //errs() << "optimizer now sees " << parent->inputs.size() << ", done=" << parent->done << "\n";
-        parent->ready = false;
-        curr = parent->inputs;
-        parent->inputs.clear();
-        done = parent->done;
+        std::unique_lock<std::mutex> lock(OptimizerWorker::mutex);
+        if (OptimizerWorker::inputs.size() == 0) {
+          OptimizerWorker::condition.wait(lock, [&]{ return OptimizerWorker::done || OptimizerWorker::inputs.size() > 0; });
+        } else {
+          idle = false;
+        }
+        int available = OptimizerWorker::inputs.size();
+        if (available > BATCH) available = BATCH;
+        for (int i = 0; i < available; i++) {
+          curr.push_back(OptimizerWorker::inputs.back());
+          OptimizerWorker::inputs.pop_back();
+        }
+        seenDone = OptimizerWorker::done || seenDone;
       }
       //errs() << "optimizer working!\n";
       for (auto input : curr) {
         emscripten_optimizer(input, parent->Out); // waka
       }
       curr.clear();
-      if (done) { // note this is the done we snapshotted before
+      if (seenDone && idle) { // note this is the done we snapshotted before
         //errs() << "optimizer is leaving its main loop!\n";
         return;
       }
     }
   }
 
-  OptimizerWorker(raw_pwrite_stream &o) : Out(o), ready(false), done(false), thread(child, this) {}
+  OptimizerWorker(raw_pwrite_stream &o) : Out(o), thread(child, this) {}
 
   void join() {
-    //errs() << "optimizer ready to join!\n";
-    {
-      std::lock_guard<std::mutex> lock(mutex);
-      done = true;
-    }
-    //errs() << "optimizer joining!\n";
-    condition.notify_all();
     thread.join();
-    //errs() << "optimizer joined!\n";
-  }
-
-  void addInput(char *input) {
-    {
-      std::lock_guard<std::mutex> lock(mutex);
-      inputs.push_back(input);
-    }
-    condition.notify_all();
-  }
-
-  bool isReady() { // racey, not truly to be trusted, but good enough for guessing to whose queue to add TODO: proper work-stealing etc.
-    return ready;
   }
 };
+
+std::vector<char*> OptimizerWorker::inputs;
+std::mutex OptimizerWorker::mutex;
+std::condition_variable OptimizerWorker::condition;
+bool OptimizerWorker::done = false;
+
 
 namespace {
   #define ASM_SIGNED 0
@@ -2910,25 +2903,13 @@ void JSWriter::printFunction(const Function *F) {
 
   if (Optimizer) {
     // pick a worker that at least looks ready
-    //errs() << "find an optimizer!\n";
-    OptimizerWorker *worker = nullptr;
-    static int look = 0;
-    int n = OptimizerWorkers.size();
-    for (int i = 0; i < n; i++) {
-      OptimizerWorker* curr = OptimizerWorkers[look].get();
-      if (curr->ready) {
-        worker = curr;
-        break;
-      }
-      look++;
-      if (look == n) look = 0;
+    char *input = strdup(Fout.str().c_str());
+    {
+      std::lock_guard<std::mutex> lock(OptimizerWorker::mutex);
+      OptimizerWorker::inputs.push_back(input);
+      OptimizerWorker::condition.notify_one();
     }
-    if (!worker) worker = OptimizerWorkers[look].get();
-    look++; // one more increment, to try another next time
-    if (look == n) look = 0;
-    worker->addInput(strdup(Fout.str().c_str())); // XXX strdup
     //errs() << "added an optimizer input!\n";
-    //while(1) {}
   } else {
     Out << Fout.str();
   }
@@ -2961,6 +2942,8 @@ void JSWriter::printModuleBody() {
     // join all the worker threads here
     // TODO: add another thread once we are here, as the main thread is just waiting? need work-stealing
     //errs() << "waiting on all optimizers...\n";
+    OptimizerWorker::done = true;
+    OptimizerWorker::condition.notify_all();
     for (auto& worker : OptimizerWorkers) {
       worker->join();
     }
