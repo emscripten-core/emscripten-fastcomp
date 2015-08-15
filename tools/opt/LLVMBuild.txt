@@ -19,4 +19,4 @@
 type = Tool
 name = opt
 parent = Tools
-required_libraries = NaClBitWriter NaClTransforms NaClAnalysis MinSFITransforms AsmParser BitReader BitWriter CodeGen IRReader IPO Instrumentation Scalar ObjCARC Passes all-targets
+required_libraries = NaClBitWriter NaClTransforms NaClAnalysis MinSFITransforms AsmParser BitReader BitWriter CodeGen IRReader IPO Instrumentation Linker Scalar ObjCARC Passes all-targets
