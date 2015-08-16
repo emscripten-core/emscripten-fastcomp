@@ -635,7 +635,7 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
 
 static bool processFunction(Function &F, DataLayout &DL) {
   ConversionState State;
-  bool Modified;
+  bool Modified = false; // XXX Emscripten: Fixed use of an uninitialized variable.
   for (auto FI = F.begin(), FE = F.end(); FI != FE; ++FI) {
     for (auto BBI = FI->begin(), BBE = FI->end(); BBI != BBE;) {
       Instruction *Inst = BBI++;
