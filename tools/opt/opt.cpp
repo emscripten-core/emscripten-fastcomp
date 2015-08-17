@@ -482,7 +482,7 @@ int main(int argc, char **argv) {
         return 1;
       }
 
-      if (verifyModule(*MM, &errs())) {
+      if (!NoVerify && verifyModule(*MM, &errs())) {
         errs() << argv[0] << ": " << InputFilenames[i]
                << ": error: input module is broken!\n";
         return 1;
