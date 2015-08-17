@@ -472,8 +472,8 @@ int main(int argc, char **argv) {
     M = parseIRFile(InputFilenames[0], Err, Context);
   else {
     // link them in
-    M = make_unique<Module>("opt-link", Context);
-    Linker L(M.get());
+    M = nullptr;
+    std::unique_ptr<Linker> L;
 
     for (unsigned i = 0; i < InputFilenames.size(); ++i) {
       std::unique_ptr<Module> MM = parseIRFile(InputFilenames[i], Err, Context);
@@ -488,8 +488,13 @@ int main(int argc, char **argv) {
         return 1;
       }
 
-      if (L.linkInModule(MM.get()))
-        return 1;
+      if (i == 0) {
+        M.swap(MM);
+        L = make_unique<Linker>(M.get());
+      } else {
+        if (L->linkInModule(MM.get()))
+          return 1;
+      }
     }
   }
 
