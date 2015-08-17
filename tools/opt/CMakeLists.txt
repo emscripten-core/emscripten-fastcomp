@@ -7,6 +7,7 @@ set(LLVM_LINK_COMPONENTS
   IPA
   IPO
   IRReader
+  Linker
   # @LOCALMOD-BEGIN
   NaClAnalysis
   NaClBitWriter
