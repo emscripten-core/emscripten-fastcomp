@@ -745,10 +745,15 @@ bool ExpandI64::splitInst(Instruction *I) {
       FunctionType *OFT = NULL;
       if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
         assert(CE);
-        assert(CE->getOpcode() == Instruction::BitCast);
         OFT = cast<FunctionType>(cast<PointerType>(CE->getType())->getElementType());
         Constant *C = CE->getOperand(0);
-        CV = ConstantExpr::getBitCast(C, getLegalizedFunctionType(OFT)->getPointerTo());
+        if (CE->getOpcode() == Instruction::BitCast) {
+          CV = ConstantExpr::getBitCast(C, getLegalizedFunctionType(OFT)->getPointerTo());
+        } else if (CE->getOpcode() == Instruction::IntToPtr) {
+          CV = ConstantExpr::getIntToPtr(C, getLegalizedFunctionType(OFT)->getPointerTo());
+        } else {
+          llvm_unreachable("Bad CE in i64 Call");
+        }
       } else {
         // this is a function pointer call
         OFT = cast<FunctionType>(cast<PointerType>(CV->getType())->getElementType());
