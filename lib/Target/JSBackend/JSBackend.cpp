@@ -136,6 +136,7 @@ namespace {
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
   typedef std::map<std::string, std::string> StringMap;
   typedef std::map<std::string, unsigned> NameIntMap;
+  typedef std::map<unsigned, unsigned> IntIntMap;
   typedef std::map<const BasicBlock*, unsigned> BlockIndexMap;
   typedef std::map<const Function*, BlockIndexMap> BlockAddressMap;
   typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
@@ -165,7 +166,7 @@ namespace {
     StringMap Aliases;
     BlockAddressMap BlockAddresses;
     NameIntMap AsmConsts;
-    IntSet AsmConstArities;
+    IntIntMap AsmConstArities;
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
@@ -409,7 +410,7 @@ namespace {
     // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
     // into an id. We emit a map of id => string contents, and emscripten
     // wraps it up so that calling that id calls that function.
-    unsigned getAsmConstId(const Value *V) {
+    unsigned getAsmConstId(const Value *V, int Arity) {
       V = resolveFully(V);
       const Constant *CI = cast<GlobalVariable>(V)->getInitializer();
       std::string code;
@@ -439,6 +440,7 @@ namespace {
       if (AsmConsts.count(code) > 0) return AsmConsts[code];
       unsigned id = AsmConsts.size();
       AsmConsts[code] = id;
+      AsmConstArities[id] = Arity;
       return id;
     }
 
@@ -3122,18 +3124,18 @@ void JSWriter::printModuleBody() {
   }
   Out << "},";
 
-  Out << "\"asmConstArities\": [";
+  Out << "\"asmConstArities\": {";
   first = true;
-  for (IntSet::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
+  for (IntIntMap::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
        I != E; ++I) {
     if (first) {
       first = false;
     } else {
       Out << ", ";
     }
-    Out << utostr(*I);
+    Out << "\"" << utostr(I->first) << "\": " << utostr(I->second) << "";
   }
-  Out << "]";
+  Out << "}";
 
   Out << "\n}\n";
 }
