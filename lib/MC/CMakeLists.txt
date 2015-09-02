@@ -24,6 +24,7 @@ add_llvm_library(LLVMMC
   MCMachOStreamer.cpp
   MCMachObjectTargetWriter.cpp
   MCNaCl.cpp
+  MCNaClExpander.cpp # LOCALMOD
   MCNullStreamer.cpp
   MCObjectFileInfo.cpp
   MCObjectStreamer.cpp

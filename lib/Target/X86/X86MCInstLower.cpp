@@ -1007,6 +1007,22 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   X86MCInstLower MCInstLowering(*MF, *this);
   const X86RegisterInfo *RI = MF->getSubtarget<X86Subtarget>().getRegisterInfo();
 
+  // @LOCALMOD-START
+  // MI Bundles are used to represent bundle-locked groups.
+  // MBB iterators skip bundles, so when we reach a bundle head, unpack it here.
+  if (MI->isBundle()) {
+    MachineBasicBlock::const_iterator MBBI(MI);
+    MachineBasicBlock::const_instr_iterator MII (MBBI.getInstrIterator());
+    ++MBBI;
+    OutStreamer.EmitBundleLock(false);
+    while (++MII != MBBI) {
+      EmitInstruction(MII);
+    }
+    OutStreamer.EmitBundleUnlock();
+    return;
+  }
+  // @LOCALMOD-END
+
   switch (MI->getOpcode()) {
   case TargetOpcode::DBG_VALUE:
     llvm_unreachable("Should be handled target independently");

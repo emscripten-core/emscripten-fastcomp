@@ -124,6 +124,7 @@ bool NaClBitCodeAbbrev::isValid() const {
   for (unsigned i = 0; i < NumOperands; ++i) {
     const NaClBitCodeAbbrevOp &Op = getOperandInfo(i);
     if (Op.isArrayOp() && i + 2 != NumOperands)
+      // Note: Unlike LLVM bitcode, we allow literals in arrays!
       return false;
   }
   return true;

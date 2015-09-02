@@ -26,6 +26,8 @@
 
 using namespace llvm;
 
+namespace {
+
 static cl::opt<std::string>
 OutputFilename("o", cl::desc("Specify thawed pexe filename"),
 	       cl::value_desc("filename"), cl::init("-"));
@@ -55,6 +57,36 @@ static void WriteOutputFile(const Module *M) {
   Out->keep();
 }
 
+static Module *readBitcode(
+    std::string &Filename, LLVMContext &Context, raw_ostream *Verbose,
+    std::string &ErrorMessage) {
+  // Use the bitcode streaming interface
+  DataStreamer *Streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
+  if (Streamer == nullptr)
+    return nullptr;
+  std::unique_ptr<StreamingMemoryObject> Buffer(
+      new StreamingMemoryObjectImpl(Streamer));
+  std::string DisplayFilename;
+  if (Filename == "-")
+    DisplayFilename = "<stdin>";
+  else
+    DisplayFilename = Filename;
+  Module *M = getNaClStreamedBitcodeModule(DisplayFilename, Buffer.release(),
+                                           Context, Verbose,
+                                           &ErrorMessage,
+                                           /*AcceptSupportedOnly=*/false);
+  if (!M)
+    return nullptr;
+  if (std::error_code EC = M->materializeAllPermanently()) {
+    ErrorMessage = EC.message();
+    delete M;
+    return nullptr;
+  }
+  return M;
+}
+
+} // end of anonymous namespace
+
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
@@ -67,29 +99,9 @@ int main(int argc, char **argv) {
       argc, argv, "Converts NaCl pexe wire format into LLVM bitcode format\n");
 
   std::string ErrorMessage;
-  std::auto_ptr<Module> M;
-
-  // Use the bitcode streaming interface
-  DataStreamer *streamer = getDataFileStreamer(InputFilename, &ErrorMessage);
-  std::unique_ptr<StreamingMemoryObject> Buffer(
-      new StreamingMemoryObjectImpl(streamer));
-  if (streamer) {
-    std::string DisplayFilename;
-    if (InputFilename == "-")
-      DisplayFilename = "<stdin>";
-    else
-      DisplayFilename = InputFilename;
-    raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
-    M.reset(getNaClStreamedBitcodeModule(DisplayFilename, Buffer.release(),
-                                         Context, Verbose,
-                                         &ErrorMessage,
-                                         /*AcceptSupportedOnly=*/false));
-    if (M.get())
-      if (std::error_code EC = M->materializeAllPermanently()) {
-        ErrorMessage = EC.message();
-        M.reset();
-      }
-  }
+  raw_ostream *Verbose = VerboseErrors ? &errs() : nullptr;
+  std::unique_ptr<Module> M(readBitcode(InputFilename, Context,
+                                        Verbose, ErrorMessage));
 
   if (!M.get()) {
     errs() << argv[0] << ": ";

@@ -8,18 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeMunge.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeParser.h"
-#include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
+#include "NaClMungeTest.h"
 
-#include "gtest/gtest.h"
+#include "llvm/Bitcode/NaCl/NaClLLVMBitCodes.h"
 
 using namespace llvm;
 
-namespace {
-
-static const uint64_t Terminator = 0x5768798008978675LL;
+namespace naclmungetest {
 
 // Note: Tests fix for bug in
 // https://code.google.com/p/nativeclient/issues/detail?id=4104
@@ -41,9 +36,8 @@ TEST(NaClCompressTests, FixedModuleAbbrevIdBug) {
   };
 
   // Show textual version of sample input.
-  NaClObjDumpMunger DumpMunger(BitcodeRecords,
-                               array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(DumpMunger.runTest("Test fixed module abbreviation ID bug"));
+  NaClObjDumpMunger DumpMunger(ARRAY_TERM(BitcodeRecords));
+  EXPECT_TRUE(DumpMunger.runTest());
   EXPECT_EQ(
       "       0:0|<65532, 80, 69, 88, 69, 1, 0,|Magic Number: 'PEXE' (80, 69, 8"
       "8, 69)\n"
@@ -63,7 +57,7 @@ TEST(NaClCompressTests, FixedModuleAbbrevIdBug) {
   // Show that we can compress as well.
   NaClCompressMunger CompressMunger(BitcodeRecords,
                                     array_lengthof(BitcodeRecords), Terminator);
-  EXPECT_TRUE(CompressMunger.runTest("Test fixed module abbreviation ID bug"));
+  EXPECT_TRUE(CompressMunger.runTest());
 }
 
-}
+} // end of namespace naclmungetest

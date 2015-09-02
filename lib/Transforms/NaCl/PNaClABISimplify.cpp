@@ -43,6 +43,7 @@ static cl::opt<bool> EnableEmAsyncify(
 void llvm::PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM) {
   bool isEmscripten = T->isOSEmscripten();
 
+  PM.add(createStripDanglingDISubprogramsPass());
   if (EnableSjLjEH) {
     // This comes before ExpandTls because it introduces references to
     // a TLS variable, __pnacl_eh_stack.  This comes before
@@ -91,6 +92,11 @@ void llvm::PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM) {
   // ExpandStructRegs must be run after ExpandVarArgs so that struct-typed
   // "va_arg" instructions have been removed.
   PM.add(createExpandVarArgsPass());
+
+  // Convert struct reg function params to struct* byval. This needs to be
+  // before ExpandStructRegs so it has a chance to rewrite aggregates from
+  // function arguments and returns into something ExpandStructRegs can expand.
+  PM.add(createSimplifyStructRegSignaturesPass());
 
   // TODO(mtrofin) Remove the following and only run it as a post-opt pass once
   //               the following bug is fixed.
@@ -205,9 +211,6 @@ void llvm::PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM) {
   // ConstantExprs have already been expanded out.
   if (!isEmscripten) // Handled by JSBackend.
     PM.add(createReplacePtrsWithIntsPass());
-
-  // Convert struct reg function params to struct* byval
-  PM.add(createSimplifyStructRegSignaturesPass());
 
   // The atomic cmpxchg instruction returns a struct, and is rewritten to an
   // intrinsic as a post-opt pass, we therefore need to expand struct regs.

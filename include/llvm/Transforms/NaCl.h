@@ -66,6 +66,7 @@ ModulePass *createSimplifyStructRegSignaturesPass();
 ModulePass *createStripAttributesPass();
 ModulePass *createStripMetadataPass();
 ModulePass *createStripModuleFlagsPass();
+ModulePass *createStripDanglingDISubprogramsPass();
 
 // Emscripten passes:
 FunctionPass *createExpandInsertExtractElementPass();

@@ -19,4 +19,4 @@
 type = Tool
 name = pnacl-llc
 parent = Tools
-required_libraries = Analysis AsmParser BitReader NaClBitReader IRReader all-targets NaClAnalysis NaClTransforms
+required_libraries = Analysis AsmParser BitReader NaClBitReader IRReader all-targets NaClAnalysis NaClBitTestUtils NaClTransforms

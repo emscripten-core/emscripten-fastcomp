@@ -18,6 +18,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Bitcode/NaCl/NaClBitCodes.h"
+#include "llvm/Bitcode/NaCl/NaClBitcodeHeader.h"
 #include <vector>
 
 namespace llvm {
@@ -43,11 +44,14 @@ class NaClBitstreamWriter {
   std::vector<NaClBitCodeAbbrev*> CurAbbrevs;
 
   struct Block {
-    NaClBitcodeSelectorAbbrev PrevCodeSize;
-    unsigned StartSizeWord;
+    const NaClBitcodeSelectorAbbrev PrevCodeSize;
+    const unsigned StartSizeWord;
     std::vector<NaClBitCodeAbbrev*> PrevAbbrevs;
-    Block(const NaClBitcodeSelectorAbbrev& PCS, unsigned SSW)
-        : PrevCodeSize(PCS), StartSizeWord(SSW) {}
+    const unsigned AbbreviationIndexLimit;
+    Block(const NaClBitcodeSelectorAbbrev& PCS, unsigned SSW,
+          unsigned AbbreviationIndexLimit)
+        : PrevCodeSize(PCS), StartSizeWord(SSW),
+          AbbreviationIndexLimit(AbbreviationIndexLimit) {}
   };
 
   /// BlockScope - This tracks the current blocks that we have entered.
@@ -60,6 +64,9 @@ class NaClBitstreamWriter {
     std::vector<NaClBitCodeAbbrev*> Abbrevs;
   };
   std::vector<BlockInfo> BlockInfoRecords;
+
+  // True if filler should be added to byte align records.
+  bool AlignBitcodeRecords = false;
 
   /// AbbrevValues - Wrapper class that allows the bitstream writer to
   /// prefix a code to the set of values, associated with a record to
@@ -123,7 +130,7 @@ public:
       : Out(O), CurBit(0), CurValue(0), CurCodeSize() {}
 
   ~NaClBitstreamWriter() {
-    assert(CurBit == 0 && "Unflused data remaining");
+    assert(CurBit == 0 && "Unflushed data remaining");
     assert(BlockScope.empty() && CurAbbrevs.empty() && "Block imbalance");
 
     // Free the BlockInfoRecords.
@@ -137,18 +144,32 @@ public:
     }
   }
 
+  void initFromHeader(const NaClBitcodeHeader &Header) {
+    AlignBitcodeRecords = Header.getAlignBitcodeRecords();
+  }
+
   /// \brief Retrieve the current position in the stream, in bits.
   uint64_t GetCurrentBitNo() const { return GetBufferOffset() * 8 + CurBit; }
+
+  /// \brief Returns the maximum abbreviation index allowed for the
+  /// current block.
+  size_t getMaxCurAbbrevIndex() const {
+    return CurAbbrevs.size() + naclbitc::DEFAULT_MAX_ABBREV;
+  }
 
   //===--------------------------------------------------------------------===//
   // Basic Primitives for emitting bits to the stream.
   //===--------------------------------------------------------------------===//
 
+  // Max Number of bits that can be written using Emit.
+  static const unsigned MaxEmitNumBits = 32;
+
   void Emit(uint32_t Val, unsigned NumBits) {
-    assert(NumBits && NumBits <= 32 && "Invalid value size!");
-    assert((Val & ~(~0U >> (32-NumBits))) == 0 && "High bits set!");
+    assert(NumBits && NumBits <= MaxEmitNumBits && "Invalid value size!");
+    assert((Val &
+            ~(~0U >> (MaxEmitNumBits-NumBits))) == 0 && "High bits set!");
     CurValue |= Val << CurBit;
-    if (CurBit + NumBits < 32) {
+    if (CurBit + NumBits < MaxEmitNumBits) {
       CurBit += NumBits;
       return;
     }
@@ -157,19 +178,30 @@ public:
     WriteWord(CurValue);
 
     if (CurBit)
-      CurValue = Val >> (32-CurBit);
+      CurValue = Val >> (MaxEmitNumBits-CurBit);
     else
       CurValue = 0;
-    CurBit = (CurBit+NumBits) & 31;
+    CurBit = (CurBit+NumBits) & (MaxEmitNumBits-1);
   }
 
   void Emit64(uint64_t Val, unsigned NumBits) {
-    if (NumBits <= 32)
-      Emit((uint32_t)Val, NumBits);
-    else {
-      Emit((uint32_t)Val, 32);
-      Emit((uint32_t)(Val >> 32), NumBits-32);
+    while (NumBits > MaxEmitNumBits) {
+      Emit((uint32_t)Val, MaxEmitNumBits);
+      Val >>= MaxEmitNumBits;
+      NumBits -= MaxEmitNumBits;
     }
+    Emit((uint32_t)Val, NumBits);
+  }
+
+  void flushToByte() {
+    unsigned BitsToFlush = (32 - CurBit) % CHAR_BIT;
+    if (BitsToFlush)
+      Emit(0, BitsToFlush);
+  }
+
+  void flushToByteIfAligned() {
+    if (AlignBitcodeRecords)
+      flushToByte();
   }
 
   void FlushToWord() {
@@ -262,7 +294,8 @@ private:
 
     // Push the outer block's abbrev set onto the stack, start out with an
     // empty abbrev set.
-    BlockScope.push_back(Block(OldCodeSize, BlockSizeWordIndex));
+    BlockScope.push_back(Block(OldCodeSize, BlockSizeWordIndex,
+                               1 << CodeLen.NumBits));
     BlockScope.back().PrevAbbrevs.swap(CurAbbrevs);
 
     // If there is a blockinfo for this BlockID, add all the predefined abbrevs
@@ -364,9 +397,8 @@ private:
   template<typename uintty>
   void EmitRecordWithAbbrevImpl(unsigned Abbrev,
                                 const AbbrevValues<uintty> &Vals) {
-    unsigned AbbrevNo = Abbrev-naclbitc::FIRST_APPLICATION_ABBREV;
-    assert(AbbrevNo < CurAbbrevs.size() && "Invalid abbrev #!");
-    NaClBitCodeAbbrev *Abbv = CurAbbrevs[AbbrevNo];
+    const NaClBitCodeAbbrev *Abbv = getAbbreviation(Abbrev);
+    assert(Abbv && "Abbreviation index is invalid");
 
     EmitCode(Abbrev);
 
@@ -396,11 +428,17 @@ private:
 
 public:
 
-  /// Returns true if the given abbreviation index corresponds to a user-defined
-  /// abbreviation.
-  bool isUserRecordAbbreviation(unsigned Abbrev) const {
-    return Abbrev >= naclbitc::FIRST_APPLICATION_ABBREV
-        && Abbrev < (CurAbbrevs.size() + naclbitc::FIRST_APPLICATION_ABBREV);
+  /// Returns a pointer to the abbreviation currently associated with
+  /// the abbreviation index. Returns nullptr if no such abbreviation.
+  const NaClBitCodeAbbrev *getAbbreviation(unsigned Index) const {
+    if (Index < naclbitc::FIRST_APPLICATION_ABBREV)
+      return nullptr;
+    if (Index >= BlockScope.back().AbbreviationIndexLimit)
+      return nullptr;
+    unsigned AbbrevNo = Index - naclbitc::FIRST_APPLICATION_ABBREV;
+    if (AbbrevNo >= CurAbbrevs.size())
+      return nullptr;
+    return CurAbbrevs[AbbrevNo];
   }
 
   /// EmitRecord - Emit the specified record to the stream, using an abbrev if
@@ -416,12 +454,14 @@ public:
       EmitVBR(static_cast<uint32_t>(Vals.size()), 6);
       for (unsigned i = 0, e = static_cast<unsigned>(Vals.size()); i != e; ++i)
         EmitVBR64(Vals[i], 6);
+      flushToByteIfAligned();
       return;
     }
 
     // combine code and values, and then emit.
     AbbrevValues<uintty> AbbrevVals(Code, Vals);
     EmitRecordWithAbbrevImpl(Abbrev, AbbrevVals);
+    flushToByteIfAligned();
   }
 
   //===--------------------------------------------------------------------===//
@@ -446,6 +486,7 @@ private:
           EmitVBR64(Op.getValue(), 5);
       }
     }
+    flushToByteIfAligned();
   }
 public:
 
