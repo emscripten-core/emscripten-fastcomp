@@ -20,6 +20,7 @@
 
 #include "llvm/ADT/StringRef.h"
 #include <random>
+#include <stdint.h>
 
 namespace naclfuzz {
 

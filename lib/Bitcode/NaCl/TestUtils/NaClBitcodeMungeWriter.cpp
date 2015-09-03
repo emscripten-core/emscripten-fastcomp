@@ -24,7 +24,7 @@ namespace {
 
 // For debugging. When true, shows trace information of emitting
 // bitcode.
-constexpr bool DebugEmit = false;
+const bool DebugEmit = false;
 
 // Description of current block scope
 struct BlockScope {

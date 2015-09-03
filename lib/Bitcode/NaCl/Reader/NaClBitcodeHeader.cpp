@@ -292,14 +292,14 @@ void NaClBitcodeHeader::InstallFields() {
   UnsupportedMessage.clear();
   SmallSet<unsigned, NaClBitcodeHeaderField::kTag_MAX> FieldIDs;
 
-  auto ReportProblem = [&](bool IsReadable=false) {
+  auto ReportProblem = [&](bool IsReadable) {
     UnsupportedMessage.append("\n");
     IsSupportedFlag = false;
     IsReadableFlag = IsReadableFlag && IsReadable;
   };
 
   auto ReportProblemWithContents = [&](NaClBitcodeHeaderField *Field,
-                                       bool IsReadable=false) {
+                                       bool IsReadable) {
     UnsupportedMessage.append(": ");
     UnsupportedMessage.append(Field->Contents());
     ReportProblem(IsReadable);
@@ -311,19 +311,19 @@ void NaClBitcodeHeader::InstallFields() {
     if (!FieldIDs.insert(Field->GetID()).second) {
       UnsupportedMessage.append("Specified multiple times: ");
       UnsupportedMessage.append(Field->IDName());
-      ReportProblem();
+      ReportProblem(false);
       continue;
     }
     NaClBitcodeHeaderField::FieldType ExpectedTy = ExpectedType[Field->GetID()];
     if (Field->GetType() != ExpectedTy) {
       UnsupportedMessage.append("Expects type ");
       UnsupportedMessage.append(NaClBitcodeHeaderField::TypeName(ExpectedTy));
-      ReportProblemWithContents(Field);
+      ReportProblemWithContents(Field, false);
       continue;
     }
     if (Field->GetType() == NaClBitcodeHeaderField::kUnknownType) {
       UnsupportedMessage.append("Unknown value");
-      ReportProblemWithContents(Field);
+      ReportProblemWithContents(Field, false);
       continue;
     }
 
@@ -331,13 +331,13 @@ void NaClBitcodeHeader::InstallFields() {
     switch (Field->GetID()) {
     case NaClBitcodeHeaderField::kInvalid:
       UnsupportedMessage.append("Unsupported");
-      ReportProblemWithContents(Field);
+      ReportProblemWithContents(Field, false);
       continue;
     case NaClBitcodeHeaderField::kPNaClVersion:
       PNaClVersion = Field->GetUInt32Value();
       if (PNaClVersion != 2) {
         UnsupportedMessage.append("Unsupported");
-        ReportProblemWithContents(Field);
+        ReportProblemWithContents(Field, false);
         continue;
       }
       break;
