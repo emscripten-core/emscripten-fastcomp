@@ -121,6 +121,7 @@ namespace {
   #define ASM_FFI_IN 4 // FFI return values are limited to things that work in ffis
   #define ASM_FFI_OUT 8 // params to FFIs are limited to things that work in ffis
   #define ASM_MUST_CAST 16 // this value must be explicitly cast (or be an integer constant)
+  #define ASM_FORCE_FLOAT_AS_INTBITS 32 // if the value is a float, it should be returned as an integer representing the float bits (or NaN canonicalization will eat them away)
   typedef unsigned AsmCast;
 
   typedef std::map<const Value*,std::string> ValueMap;
@@ -495,7 +496,15 @@ namespace {
 
       // Emscripten has its own spellings for infinity and NaN.
       if (flt.getCategory() == APFloat::fcInfinity) return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
-      else if (flt.getCategory() == APFloat::fcNaN) return ensureCast("nan", CFP->getType(), sign);
+      else if (flt.getCategory() == APFloat::fcNaN) {
+        APInt i = flt.bitcastToAPInt();
+        if ((i.getBitWidth() == 32 && i != APInt(32, 0x7FC00000)) || (i.getBitWidth() == 64 && i != APInt(64, 0x7FC0000000000000ULL))) {
+          // If we reach here, things have already gone bad, and JS engine NaN canonicalization will kill the bits in the float. However can't make
+          // this a build error in order to not break people's existing code, so issue a warning instead.
+          prettyWarning() << "Warning: ftostr() cannot represent a NaN literal '" << CFP << "' with custom bit pattern without erasing bits!\n";
+        }
+        return ensureCast("nan", CFP->getType(), sign);
+      }
 
       // Request 9 or 17 digits, aka FLT_DECIMAL_DIG or DBL_DECIMAL_DIG (our
       // long double is the the same as our double), to avoid rounding errors.
@@ -539,8 +548,8 @@ namespace {
     static std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
 
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
-    std::string getConstantVector(const ConstantVector *C);
-    std::string getConstantVector(const ConstantDataVector *C);
+    template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
+    std::string getConstantVector(const VectorType *C);
     std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsCastStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
@@ -820,13 +829,16 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
+std::string SIMDType(bool isInt, int primSize, int numElems) {
+  if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
+  return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
+}
+
 std::string SIMDType(VectorType *t) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
   int numElems = t->getNumElements();
-  if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
-
-  return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
+  return SIMDType(isInt, primSize, numElems);
 }
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
@@ -1276,11 +1288,28 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-    std::string S = ftostr(CFP, sign);
-    if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
-      S = "Math_fround(" + S + ")";
+    if (!(sign & ASM_FORCE_FLOAT_AS_INTBITS)) {
+      std::string S = ftostr(CFP, sign);
+      if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+        S = "Math_fround(" + S + ")";
+      }
+      return S;
+    } else {
+      const APFloat &flt = CFP->getValueAPF();
+      APInt i = flt.bitcastToAPInt();
+      if ((sign & ASM_UNSIGNED)) {
+        if (i.getBitWidth() <= 64 && *i.getRawData() < 1000000) {
+          // Small ints as digits, where adding '0x' makes the string longer. "1000000" == "0xF4240" is equal length.
+          return utostr(*i.getRawData());
+        } else {
+          // Large ints as hex.
+          return std::string("0x") + utohexstr(*i.getRawData());
+        }
+      } else {
+        if (i.getBitWidth() == 32) return itostr((int)(uint32_t)*i.getRawData());
+        else return itostr(*i.getRawData());
+      }
     }
-    return S;
   } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
     if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
       sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
@@ -1332,55 +1361,90 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 }
 
-std::string JSWriter::getConstantVector(const ConstantVector *C) {
+template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
+class VectorOperandAccessor
+{
+public:
+  static Constant *getOperand(const VectorType *C, unsigned index);
+};
+Constant *VectorOperandAccessor<ConstantVector>::getOperand(const ConstantVector *C, unsigned index) { return C->getOperand(index); }
+Constant *VectorOperandAccessor<ConstantDataVector>::getOperand(const ConstantDataVector *C, unsigned index) { return C->getElementAsConstant(index); }
+
+template<typename ConstantVectorType/*= ConstantVector or ConstantDataVector*/>
+std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
   checkVectorType(C->getType());
   unsigned NumElts = cast<VectorType>(C->getType())->getNumElements();
 
   bool isInt = C->getType()->getElementType()->isIntegerTy();
 
+  // Test if this is a float vector, but it contains NaNs that have non-canonical bits that can't be represented as nans.
+  // These must be casted via an integer vector.
+  bool hasSpecialNaNs = false;
+
+  if (!isInt) {
+    const APInt nan32(32, 0x7FC00000);
+    const APInt nan64(64, 0x7FC0000000000000ULL);
+
+    for (unsigned i = 0; i < NumElts; ++i) {
+      Constant *CV = VectorOperandAccessor<ConstantVectorType>::getOperand(C, i);
+      const ConstantFP *CFP = dyn_cast<ConstantFP>(CV);
+      if (CFP) {
+        const APFloat &flt = CFP->getValueAPF();
+        if (flt.getCategory() == APFloat::fcNaN) {
+          APInt i = flt.bitcastToAPInt();
+          if ((i.getBitWidth() == 32 && i != nan32) || (i.getBitWidth() == 64 && i != nan64)) {
+            hasSpecialNaNs = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  AsmCast cast = hasSpecialNaNs ? ASM_FORCE_FLOAT_AS_INTBITS : 0;
+
   // Check for a splat.
   bool allEqual = true;
-  std::string op0 = getConstant(C->getOperand(0));
-  for (unsigned i = 0; i < NumElts; ++i) {
-    if (getConstant(C->getOperand(i)) != op0) {
+  std::string op0 = getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, 0), cast);
+  for (unsigned i = 1; i < NumElts; ++i) {
+    if (getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), cast) != op0) {
       allEqual = false;
       break;
     }
   }
   if (allEqual) {
-    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
-  }
+    if (!hasSpecialNaNs) {
+      return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
+    } else {
+      int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
+      int numElems = C->getType()->getNumElements();
+      if (numElems == 4 && primSize == 32) UsesSIMDInt32x4 = true;
 
-  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
-  for (unsigned i = 1; i < NumElts; ++i) {
-    c += ',' + ensureFloat(getConstant(C->getOperand(i)), !isInt);
-  }
-  return c + ')';
-}
-
-std::string JSWriter::getConstantVector(const ConstantDataVector *C) {
-  checkVectorType(C->getType());
-  unsigned NumElts = cast<VectorType>(C->getType())->getNumElements();
-
-  bool isInt = C->getType()->getElementType()->isIntegerTy();
-  bool allEqual = true;
-  std::string op0 = getConstant(C->getElementAsConstant(0));
-  for (unsigned i = 0; i < NumElts; ++i) {
-    if (getConstant(C->getElementAsConstant(i)) != op0) {
-      allEqual = false;
-      break;
+      std::string intType = SIMDType(true, primSize, numElems);
+      return std::string("SIMD_") + SIMDType(C->getType()) + "_from" + intType + "Bits(SIMD_" +
+        intType + "_splat(" + op0 + "))";
     }
   }
-  // Check for a splat.
-  if (allEqual) {
-    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
-  }
 
-  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
-  for (unsigned i = 1; i < NumElts; ++i) {
-    c += ',' + ensureFloat(getConstant(C->getElementAsConstant(i)), !isInt);
+  std::string c;
+  if (!hasSpecialNaNs) {
+    c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
+    for (unsigned i = 1; i < NumElts; ++i) {
+      c += ',' + ensureFloat(getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i)), !isInt);
+    }
+    return c + ')';
+  } else {
+    int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
+    int numElems = C->getType()->getNumElements();
+    if (numElems == 4 && primSize == 32) UsesSIMDInt32x4 = true;
+    std::string intType = SIMDType(true, primSize, numElems);
+    c = std::string("SIMD_") + SIMDType(C->getType()) + "_from" + intType + "Bits(SIMD_" +
+      intType + '(' + op0;
+    for (unsigned i = 1; i < NumElts; ++i) {
+      c += ',' + getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), ASM_FORCE_FLOAT_AS_INTBITS);
+    }
+    return c + "))";
   }
-  return c + ')';
 }
 
 std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
