@@ -78,6 +78,11 @@ WarnOnUnaligned("emscripten-warn-unaligned",
                 cl::desc("Warns about unaligned loads and stores (which can negatively affect performance)"),
                 cl::init(false));
 
+static cl::opt<bool>
+WarnOnNoncanonicalNans("emscripten-warn-noncanonical-nans",
+                cl::desc("Warns about detected noncanonical bit patterns in NaNs that will not be preserved in the generated output (this can cause code to run wrong if the exact bits were important)"),
+                cl::init(true));
+
 static cl::opt<int>
 ReservedFunctionPointers("emscripten-reserved-function-pointers",
                          cl::desc("Number of reserved slots in function tables for functions to be added at runtime (see emscripten RESERVED_FUNCTION_POINTERS option)"),
@@ -501,7 +506,9 @@ namespace {
         if ((i.getBitWidth() == 32 && i != APInt(32, 0x7FC00000)) || (i.getBitWidth() == 64 && i != APInt(64, 0x7FC0000000000000ULL))) {
           // If we reach here, things have already gone bad, and JS engine NaN canonicalization will kill the bits in the float. However can't make
           // this a build error in order to not break people's existing code, so issue a warning instead.
-          prettyWarning() << "Warning: ftostr() cannot represent a NaN literal '" << CFP << "' with custom bit pattern without erasing bits!\n";
+          if (WarnOnNoncanonicalNans) {
+            errs() << "emcc: warning: cannot represent a NaN literal '" << CFP << "' with custom bit pattern in NaN-canonicalizing JS engines (e.g. Firefox and Safari) without erasing bits!\n";
+          }
         }
         return ensureCast("nan", CFP->getType(), sign);
       }
@@ -829,16 +836,12 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
-std::string SIMDType(bool isInt, int primSize, int numElems) {
-  if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
-  return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
-}
-
 std::string SIMDType(VectorType *t) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
   int numElems = t->getNumElements();
-  return SIMDType(isInt, primSize, numElems);
+  if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
+  return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
 }
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
@@ -1416,13 +1419,9 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     if (!hasSpecialNaNs) {
       return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
     } else {
-      int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
-      int numElems = C->getType()->getNumElements();
-      if (numElems == 4 && primSize == 32) UsesSIMDInt32x4 = true;
-
-      std::string intType = SIMDType(true, primSize, numElems);
-      return std::string("SIMD_") + SIMDType(C->getType()) + "_from" + intType + "Bits(SIMD_" +
-        intType + "_splat(" + op0 + "))";
+      VectorType *IntTy = VectorType::getInteger(C->getType());
+      checkVectorType(IntTy);
+      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')');
     }
   }
 
@@ -1434,16 +1433,13 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     }
     return c + ')';
   } else {
-    int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
-    int numElems = C->getType()->getNumElements();
-    if (numElems == 4 && primSize == 32) UsesSIMDInt32x4 = true;
-    std::string intType = SIMDType(true, primSize, numElems);
-    c = std::string("SIMD_") + SIMDType(C->getType()) + "_from" + intType + "Bits(SIMD_" +
-      intType + '(' + op0;
+    VectorType *IntTy = VectorType::getInteger(C->getType());
+    checkVectorType(IntTy);
+    c = std::string("SIMD_") + SIMDType(IntTy) + '(' + op0;
     for (unsigned i = 1; i < NumElts; ++i) {
       c += ',' + getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), ASM_FORCE_FLOAT_AS_INTBITS);
     }
-    return c + "))";
+    return getSIMDCast(IntTy, C->getType(), c + ")");
   }
 }
 
