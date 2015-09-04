@@ -503,7 +503,7 @@ namespace {
       if (flt.getCategory() == APFloat::fcInfinity) return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
       else if (flt.getCategory() == APFloat::fcNaN) {
         APInt i = flt.bitcastToAPInt();
-        if ((i.getBitWidth() == 32 && i != APInt(32, 0x7FC00000)) || (i.getBitWidth() == 64 && i != APInt(64, 0x7FC0000000000000ULL))) {
+        if ((i.getBitWidth() == 32 && i != APInt(32, 0x7FC00000)) || (i.getBitWidth() == 64 && i != APInt(64, 0x7FF8000000000000ULL))) {
           // If we reach here, things have already gone bad, and JS engine NaN canonicalization will kill the bits in the float. However can't make
           // this a build error in order to not break people's existing code, so issue a warning instead.
           if (WarnOnNoncanonicalNans) {
@@ -1386,7 +1386,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
 
   if (!isInt) {
     const APInt nan32(32, 0x7FC00000);
-    const APInt nan64(64, 0x7FC0000000000000ULL);
+    const APInt nan64(64, 0x7FF8000000000000ULL);
 
     for (unsigned i = 0; i < NumElts; ++i) {
       Constant *CV = VectorOperandAccessor<ConstantVectorType>::getOperand(C, i);
