@@ -807,12 +807,45 @@ DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt32x4Bits, SIMD_Float64x2_fromInt
 DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt32x4, SIMD_Float64x2_fromInt32x4);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4Bits, SIMD_Float64x2_fromFloat32x4Bits);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4, SIMD_Float64x2_fromFloat32x4);
+
+static std::string castBool64x2ToInt32x4(const std::string &valueStr) {
+  return std::string("SIMD_Int32x4_fromBool64x2Bits(") + valueStr + ')';
+}
+
+DEF_CALL_HANDLER(emscripten_float64x2_equal, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+
+DEF_CALL_HANDLER(emscripten_float64x2_notEqual, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+
+DEF_CALL_HANDLER(emscripten_float64x2_lessThan, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+
+DEF_CALL_HANDLER(emscripten_float64x2_lessThanOrEqual, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+
+DEF_CALL_HANDLER(emscripten_float64x2_greaterThan, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+
+DEF_CALL_HANDLER(emscripten_float64x2_greaterThanOrEqual, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+
+// The above code to handle Float64x2 comparisons to a booleans is temporary. Once Bool64x2 is in the spec and SpiderMonkey has the type, revert to the code below.
+#if 0
 DEF_BUILTIN_HANDLER(emscripten_float64x2_equal, SIMD_Float64x2_equal);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_notEqual, SIMD_Float64x2_notEqual);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_lessThan, SIMD_Float64x2_lessThan);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_lessThanOrEqual, SIMD_Float64x2_lessThanOrEqual);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_greaterThan, SIMD_Float64x2_greaterThan);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_greaterThanOrEqual, SIMD_Float64x2_greaterThanOrEqual);
+#endif
+
 DEF_BUILTIN_HANDLER(emscripten_float64x2_and, SIMD_Float64x2_and);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_or, SIMD_Float64x2_or);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_xor, SIMD_Float64x2_xor);
