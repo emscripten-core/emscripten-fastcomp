@@ -822,15 +822,15 @@ bool ExpandI64::splitInst(Instruction *I) {
         Chunks.push_back(H);
         break;
       } else if (isa<VectorType>(I->getOperand(0)->getType()) && !isa<VectorType>(I->getType())) {
-          unsigned NumElts = getNumChunks(I->getType());
-          VectorType *IVTy = VectorType::get(i32, NumElts);
-          Instruction *B = CopyDebug(new BitCastInst(I->getOperand(0), IVTy, "", I), I);
-          for (unsigned i = 0; i < NumElts; ++i) {
-              Constant *Idx = ConstantInt::get(i32, i);
-              Instruction *Ext = CopyDebug(ExtractElementInst::Create(B, Idx, "", I), I);
-              Chunks.push_back(Ext);
-          }
-          break;
+        unsigned NumElts = getNumChunks(I->getType());
+        VectorType *IVTy = VectorType::get(i32, NumElts);
+        Instruction *B = CopyDebug(new BitCastInst(I->getOperand(0), IVTy, "", I), I);
+        for (unsigned i = 0; i < NumElts; ++i) {
+          Constant *Idx = ConstantInt::get(i32, i);
+          Instruction *Ext = CopyDebug(ExtractElementInst::Create(B, Idx, "", I), I);
+          Chunks.push_back(Ext);
+        }
+        break;
       } else {
         // no-op bitcast
         assert(I->getType() == I->getOperand(0)->getType());
