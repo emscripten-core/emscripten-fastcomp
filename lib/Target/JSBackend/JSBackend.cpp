@@ -1987,7 +1987,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       const Value *P = SI->getPointerOperand();
       std::string PS = getOpName(P);
       std::string VS = getValueAsStr(SI->getValueOperand());
-      Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
+      Code << PS << " = " << getValueAsStr(P) << ';';
       Code << "SIMD_" << simdType << "_store" << "(HEAPU8, " << PS << ", " << VS << ")";
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
