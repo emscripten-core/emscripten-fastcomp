@@ -831,6 +831,18 @@ bool ExpandI64::splitInst(Instruction *I) {
           Chunks.push_back(Ext);
         }
         break;
+      } else if (I->getOperand(0)->getType() == i64 && isa<VectorType>(I->getType())) {
+        // i64 to vector of two i32s
+        unsigned NumElts = getNumChunks(I->getType());
+        assert(NumElts == 2);
+        Type *ElementType = cast<VectorType>(I->getType())->getElementType();
+        assert(ElementType == i32);
+        ensureFuncs();
+        ChunksVec InputChunks = getChunks(I->getOperand(0));
+        Instruction *L = InsertElementInst::Create(Constant::getNullValue(I->getType()), InputChunks[0], ConstantInt::get(i32, 0), "lo-i642v", I);
+        Instruction *H = InsertElementInst::Create(L,                                    InputChunks[1], ConstantInt::get(i32, 1), "hi-i642v", I);
+        I->replaceAllUsesWith(H);
+        break;
       } else {
         // no-op bitcast
         assert(I->getType() == I->getOperand(0)->getType());
