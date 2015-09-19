@@ -476,17 +476,17 @@ namespace {
       assert(VT->getNumElements() <= 16);
       if (VT->getElementType()->isIntegerTy())
       {
-        if (VT->getNumElements() == 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
-        else if (VT->getNumElements() == 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
-        else if (VT->getNumElements() == 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
+        if (VT->getNumElements() <= 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
+        else if (VT->getNumElements() <= 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
+        else if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
         else if (VT->getElementType()->getPrimitiveSizeInBits() != 1 && VT->getElementType()->getPrimitiveSizeInBits() != 128) {
           report_fatal_error("Unsupported integer vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
         }
       }
       else
       {
-        if (VT->getNumElements() == 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDFloat32x4 = true;
-        else if (VT->getNumElements() == 2 && VT->getElementType()->getPrimitiveSizeInBits() == 64) UsesSIMDFloat64x2 = true;
+        if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDFloat32x4 = true;
+        else if (VT->getNumElements() <= 2 && VT->getElementType()->getPrimitiveSizeInBits() == 64) UsesSIMDFloat64x2 = true;
         else report_fatal_error("Unsupported floating point vector type numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
       }
     }
@@ -839,8 +839,11 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
 std::string SIMDType(VectorType *t) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
+  assert(primSize <= 128);
   int numElems = t->getNumElements();
   if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
+  assert(128 % primSize == 0);
+  numElems = 128 / primSize; // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
   return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
 }
 
@@ -1425,12 +1428,20 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     }
   }
 
+  int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
+  const int SIMDJsRetNumElements = 128 / primSize;
+
   std::string c;
   if (!hasSpecialNaNs) {
     c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
     for (unsigned i = 1; i < NumElts; ++i) {
       c += ',' + ensureFloat(getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i)), !isInt);
     }
+    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+    for (int i = NumElts; i < SIMDJsRetNumElements; ++i) {
+      c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
+    }
+
     return c + ')';
   } else {
     VectorType *IntTy = VectorType::getInteger(C->getType());
@@ -1439,6 +1450,12 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     for (unsigned i = 1; i < NumElts; ++i) {
       c += ',' + getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), ASM_FORCE_FLOAT_AS_INTBITS);
     }
+
+    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+    for (int i = NumElts; i < SIMDJsRetNumElements; ++i) {
+      c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
+    }
+
     return getSIMDCast(IntTy, C->getType(), c + ")");
   }
 }
@@ -1623,10 +1640,13 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
     return valueStr;
   }
 
+  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  int toNumElems = 128 / toPrimSize;
+
   bool fromIsBool = (fromInt && fromPrimSize == 1);
   bool toIsBool = (toInt && toPrimSize == 1);
   if (fromIsBool && !toIsBool) { // Casting from bool vector to a bit vector looks more complicated (e.g. Bool32x4 to Int32x4)
-    return castBoolVecToIntVec(toType->getNumElements(), valueStr);
+    return castBoolVecToIntVec(toNumElems, valueStr);
   }
 
   if (fromType->getBitWidth() != toType->getBitWidth() && !fromIsBool && !toIsBool) {
@@ -1664,8 +1684,12 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   // Check whether can generate SIMD.js swizzle or shuffle.
   std::string A = getValueAsStr(SVI->getOperand(0));
   std::string B = getValueAsStr(SVI->getOperand(1));
-  int OpNumElements = cast<VectorType>(SVI->getOperand(0)->getType())->getNumElements();
+  VectorType *op0 = cast<VectorType>(SVI->getOperand(0)->getType());
+  int OpNumElements = op0->getNumElements();
   int ResultNumElements = SVI->getType()->getNumElements();
+  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  int SIMDJsRetNumElements = 128 / cast<VectorType>(SVI->getType())->getElementType()->getPrimitiveSizeInBits();
+  int SIMDJsOp0NumElements = 128 / op0->getElementType()->getPrimitiveSizeInBits();
   bool swizzleA = true;
   bool swizzleB = true;
   for(int i = 0; i < ResultNumElements; ++i) {
@@ -1689,6 +1713,10 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
         Code << (Mask-OpNumElements);
       }
     }
+    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+    for(int i = ResultNumElements; i < SIMDJsRetNumElements; ++i) {
+      Code << ", 0";
+    }
     Code << ")";
     return;
   }
@@ -1707,8 +1735,15 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
     int Mask = Indices[i];
     if (Mask < 0)
       Code << 0;
-    else
+    else if (Mask < OpNumElements)
       Code << Mask;
+    else
+      Code << (Mask  + SIMDJsOp0NumElements - OpNumElements); // Fix up indices to second operand, since the first operand has potentially different number of lanes in SIMD.js compared to LLVM.
+  }
+
+  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  for(int i = Indices.size(); i < SIMDJsRetNumElements; ++i) {
+    Code << ", 0";
   }
 
   Code << ')';
@@ -1871,6 +1906,12 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
 
   Code << "SIMD_" << SIMDType(VT) << '(';
 
+  int primSize = VT->getElementType()->getPrimitiveSizeInBits();
+  int numElems = VT->getNumElements();
+  if (primSize == 32 && numElems < 4) {
+    report_fatal_error("generateUnrolledExpression not expected to handle less than four-wide 32-bit vector types!");
+  }
+
   for (unsigned Index = 0; Index < VT->getNumElements(); ++Index) {
     if (Index != 0)
         Code << ", ";
@@ -2011,8 +2052,16 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         const LoadInst *LI = cast<LoadInst>(I);
         const Value *P = LI->getPointerOperand();
         std::string PS = getValueAsStr(P);
-
-        Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_load" << "(HEAPU8, " << PS << ")";
+        const char *load = "_load";
+        if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
+          switch(VT->getNumElements()) {
+            case 1: load = "_load1"; break;
+            case 2: load = "_load2"; break;
+            case 3: load = "_load3"; break;
+            default: break;
+          }
+        }
+        Code << getAssignIfNeeded(I) << "SIMD_" << simdType << load << "(HEAPU8, " << PS << ")";
         break;
       }
       case Instruction::InsertElement:
@@ -2048,7 +2097,16 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       std::string PS = "temp_" + simdType;
       std::string VS = getValueAsStr(SI->getValueOperand());
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
-      Code << "SIMD_" << simdType << "_store" << "(HEAPU8, " << PS << ", " << VS << ")";
+      const char *store = "_store";
+      if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
+        switch(VT->getNumElements()) {
+          case 1: store = "_store1"; break;
+          case 2: store = "_store2"; break;
+          case 3: store = "_store3"; break;
+          default: break;
+        }
+      }
+      Code << "SIMD_" << simdType << store << "(HEAPU8, " << PS << ", " << VS << ")";
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
       generateExtractElementExpression(cast<ExtractElementInst>(I), Code);
@@ -2738,13 +2796,18 @@ void JSWriter::printFunctionBody(const Function *F) {
         case Type::DoubleTyID:
           Out << "+0";
           break;
-        case Type::VectorTyID:
-          Out << "SIMD_" << SIMDType(cast<VectorType>(VI->second)) << "(0";
-          for (unsigned i = 1; i < cast<VectorType>(VI->second)->getNumElements(); ++i) {
+        case Type::VectorTyID: {
+          VectorType *VT = cast<VectorType>(VI->second);
+          int primSize = VT->getElementType()->getPrimitiveSizeInBits();
+          // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+          int numElems = 128 / primSize;
+          Out << "SIMD_" << SIMDType(VT) << "(0";
+          for (int i = 1; i < numElems; ++i) {
             Out << ",0";
           }
           Out << ')';
           break;
+        }
       }
     }
     Out << ";";

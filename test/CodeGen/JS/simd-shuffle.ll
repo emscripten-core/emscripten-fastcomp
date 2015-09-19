@@ -46,7 +46,7 @@ entry:
 ; CHECK:  $a = SIMD_Float32x4_check($a);
 ; CHECK:  $b = SIMD_Float32x4_check($b);
 ; CHECK:  var $sel = SIMD_Float32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 7, 0, 0);
+; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 7, 0, 0, 0);
 ; CHECK:  return (SIMD_Float32x4_check($sel));
 ; CHECK: }
 define <3 x float> @shuffleXY_float32x4to3(<4 x float> %a, <4 x float> %b) nounwind {
@@ -124,7 +124,7 @@ entry:
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = SIMD_Int32x4_check($b);
 ; CHECK:  var $sel = SIMD_Int32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 6, 0, 5);
+; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 6, 0, 5, 0);
 ; CHECK:  return (SIMD_Int32x4_check($sel));
 ; CHECK: }
 define <3 x i32> @shuffle_int32x3(<3 x i32> %a, <3 x i32> %b) nounwind {
@@ -137,7 +137,7 @@ entry:
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = SIMD_Int32x4_check($b);
 ; CHECK:  var $sel = SIMD_Int32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 6, 0, 0);
+; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 6, 0, 0, 0);
 ; CHECK:  return (SIMD_Int32x4_check($sel));
 ; CHECK: }
 define <3 x i32> @shuffleXY_int32x3(<3 x i32> %a, <3 x i32> %b) nounwind {
@@ -254,7 +254,7 @@ entry:
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = SIMD_Int32x4_check($b);
 ; CHECK:  var $sel = SIMD_Int32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 7, 0, 5);
+; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 7, 0, 5, 0);
 ; CHECK:  return (SIMD_Int32x4_check($sel));
 ; CHECK: }
 define <3 x i32> @shuffle_int32x4to3(<4 x i32> %a, <4 x i32> %b) nounwind {
@@ -267,7 +267,7 @@ entry:
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = SIMD_Int32x4_check($b);
 ; CHECK:  var $sel = SIMD_Int32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 7, 0, 0);
+; CHECK:  $sel = SIMD_Int32x4_shuffle($a, $b, 7, 0, 0, 0);
 ; CHECK:  return (SIMD_Int32x4_check($sel));
 ; CHECK: }
 define <3 x i32> @shuffleXY_int32x4to3(<4 x i32> %a, <4 x i32> %b) nounwind {
@@ -384,7 +384,7 @@ entry:
 ; CHECK:  $a = SIMD_Float32x4_check($a);
 ; CHECK:  $b = SIMD_Float32x4_check($b);
 ; CHECK:  var $sel = SIMD_Float32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 6, 0, 5);
+; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 6, 0, 5, 0);
 ; CHECK:  return (SIMD_Float32x4_check($sel));
 ; CHECK: }
 define <3 x float> @shuffle_float32x3(<3 x float> %a, <3 x float> %b) nounwind {
@@ -397,7 +397,7 @@ entry:
 ; CHECK:  $a = SIMD_Float32x4_check($a);
 ; CHECK:  $b = SIMD_Float32x4_check($b);
 ; CHECK:  var $sel = SIMD_Float32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 6, 0, 0);
+; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 6, 0, 0, 0);
 ; CHECK:  return (SIMD_Float32x4_check($sel));
 ; CHECK: }
 define <3 x float> @shuffleXY_float32x3(<3 x float> %a, <3 x float> %b) nounwind {
@@ -514,7 +514,7 @@ entry:
 ; CHECK:  $a = SIMD_Float32x4_check($a);
 ; CHECK:  $b = SIMD_Float32x4_check($b);
 ; CHECK:  var $sel = SIMD_Float32x4(0,0,0,0)
-; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 7, 0, 5);
+; CHECK:  $sel = SIMD_Float32x4_shuffle($a, $b, 7, 0, 5, 0);
 ; CHECK:  return (SIMD_Float32x4_check($sel));
 ; CHECK: }
 define <3 x float> @shuffle_float32x4to3(<4 x float> %a, <4 x float> %b) nounwind {

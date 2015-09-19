@@ -7,7 +7,7 @@ target triple = "asmjs-unknown-emscripten"
 ; CHECK:  $p = $p|0;
 ; CHECK:  var $q = 0, $s = SIMD_Float32x4(0,0,0,0), $t = SIMD_Float32x4(0,0,0,0)
 ; CHECK:  $t = SIMD_Float32x4_load1(HEAPU8, $p);
-; CHECK:  $s = SIMD_Float32x4_add($t,SIMD_Float32x4(Math_fround(+0.5),Math_fround(+0),Math_fround(+0),Math_fround(+0)));
+; CHECK:  $s = SIMD_Float32x4_add($t,SIMD_Float32x4_splat(Math_fround(+0.5)));
 ; CHECK:  $q = $p;SIMD_Float32x4_store1(HEAPU8, $q, $s);
 ; CHECK:  return;
 ; CHECK: }
