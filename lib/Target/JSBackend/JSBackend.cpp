@@ -78,6 +78,11 @@ WarnOnUnaligned("emscripten-warn-unaligned",
                 cl::desc("Warns about unaligned loads and stores (which can negatively affect performance)"),
                 cl::init(false));
 
+static cl::opt<bool>
+WarnOnNoncanonicalNans("emscripten-warn-noncanonical-nans",
+                cl::desc("Warns about detected noncanonical bit patterns in NaNs that will not be preserved in the generated output (this can cause code to run wrong if the exact bits were important)"),
+                cl::init(true));
+
 static cl::opt<int>
 ReservedFunctionPointers("emscripten-reserved-function-pointers",
                          cl::desc("Number of reserved slots in function tables for functions to be added at runtime (see emscripten RESERVED_FUNCTION_POINTERS option)"),
@@ -121,6 +126,7 @@ namespace {
   #define ASM_FFI_IN 4 // FFI return values are limited to things that work in ffis
   #define ASM_FFI_OUT 8 // params to FFIs are limited to things that work in ffis
   #define ASM_MUST_CAST 16 // this value must be explicitly cast (or be an integer constant)
+  #define ASM_FORCE_FLOAT_AS_INTBITS 32 // if the value is a float, it should be returned as an integer representing the float bits (or NaN canonicalization will eat them away). This flag cannot be used with ASM_UNSIGNED set.
   typedef unsigned AsmCast;
 
   typedef std::map<const Value*,std::string> ValueMap;
@@ -470,17 +476,17 @@ namespace {
       assert(VT->getNumElements() <= 16);
       if (VT->getElementType()->isIntegerTy())
       {
-        if (VT->getNumElements() == 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
-        else if (VT->getNumElements() == 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
-        else if (VT->getNumElements() == 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
+        if (VT->getNumElements() <= 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
+        else if (VT->getNumElements() <= 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
+        else if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
         else if (VT->getElementType()->getPrimitiveSizeInBits() != 1 && VT->getElementType()->getPrimitiveSizeInBits() != 128) {
           report_fatal_error("Unsupported integer vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
         }
       }
       else
       {
-        if (VT->getNumElements() == 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDFloat32x4 = true;
-        else if (VT->getNumElements() == 2 && VT->getElementType()->getPrimitiveSizeInBits() == 64) UsesSIMDFloat64x2 = true;
+        if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDFloat32x4 = true;
+        else if (VT->getNumElements() <= 2 && VT->getElementType()->getPrimitiveSizeInBits() == 64) UsesSIMDFloat64x2 = true;
         else report_fatal_error("Unsupported floating point vector type numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
       }
     }
@@ -495,7 +501,17 @@ namespace {
 
       // Emscripten has its own spellings for infinity and NaN.
       if (flt.getCategory() == APFloat::fcInfinity) return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
-      else if (flt.getCategory() == APFloat::fcNaN) return ensureCast("nan", CFP->getType(), sign);
+      else if (flt.getCategory() == APFloat::fcNaN) {
+        APInt i = flt.bitcastToAPInt();
+        if ((i.getBitWidth() == 32 && i != APInt(32, 0x7FC00000)) || (i.getBitWidth() == 64 && i != APInt(64, 0x7FF8000000000000ULL))) {
+          // If we reach here, things have already gone bad, and JS engine NaN canonicalization will kill the bits in the float. However can't make
+          // this a build error in order to not break people's existing code, so issue a warning instead.
+          if (WarnOnNoncanonicalNans) {
+            errs() << "emcc: warning: cannot represent a NaN literal '" << CFP << "' with custom bit pattern in NaN-canonicalizing JS engines (e.g. Firefox and Safari) without erasing bits!\n";
+          }
+        }
+        return ensureCast("nan", CFP->getType(), sign);
+      }
 
       // Request 9 or 17 digits, aka FLT_DECIMAL_DIG or DBL_DECIMAL_DIG (our
       // long double is the the same as our double), to avoid rounding errors.
@@ -539,8 +555,8 @@ namespace {
     static std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
 
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
-    std::string getConstantVector(const ConstantVector *C);
-    std::string getConstantVector(const ConstantDataVector *C);
+    template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
+    std::string getConstantVector(const VectorType *C);
     std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsCastStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
@@ -823,9 +839,11 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
 std::string SIMDType(VectorType *t) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
+  assert(primSize <= 128);
   int numElems = t->getNumElements();
   if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
-
+  assert(128 % primSize == 0);
+  numElems = 128 / primSize; // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
   return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
 }
 
@@ -1276,11 +1294,19 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV)) {
-    std::string S = ftostr(CFP, sign);
-    if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
-      S = "Math_fround(" + S + ")";
+    if (!(sign & ASM_FORCE_FLOAT_AS_INTBITS)) {
+      std::string S = ftostr(CFP, sign);
+      if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+        S = "Math_fround(" + S + ")";
+      }
+      return S;
+    } else {
+      const APFloat &flt = CFP->getValueAPF();
+      APInt i = flt.bitcastToAPInt();
+      assert(!(sign & ASM_UNSIGNED));
+      if (i.getBitWidth() == 32) return itostr((int)(uint32_t)*i.getRawData());
+      else return itostr(*i.getRawData());
     }
-    return S;
   } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
     if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
       sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
@@ -1332,55 +1358,97 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 }
 
-std::string JSWriter::getConstantVector(const ConstantVector *C) {
+template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
+class VectorOperandAccessor
+{
+public:
+  static Constant *getOperand(const VectorType *C, unsigned index);
+};
+Constant *VectorOperandAccessor<ConstantVector>::getOperand(const ConstantVector *C, unsigned index) { return C->getOperand(index); }
+Constant *VectorOperandAccessor<ConstantDataVector>::getOperand(const ConstantDataVector *C, unsigned index) { return C->getElementAsConstant(index); }
+
+template<typename ConstantVectorType/*= ConstantVector or ConstantDataVector*/>
+std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
   checkVectorType(C->getType());
   unsigned NumElts = cast<VectorType>(C->getType())->getNumElements();
 
   bool isInt = C->getType()->getElementType()->isIntegerTy();
 
+  // Test if this is a float vector, but it contains NaNs that have non-canonical bits that can't be represented as nans.
+  // These must be casted via an integer vector.
+  bool hasSpecialNaNs = false;
+
+  if (!isInt) {
+    const APInt nan32(32, 0x7FC00000);
+    const APInt nan64(64, 0x7FF8000000000000ULL);
+
+    for (unsigned i = 0; i < NumElts; ++i) {
+      Constant *CV = VectorOperandAccessor<ConstantVectorType>::getOperand(C, i);
+      const ConstantFP *CFP = dyn_cast<ConstantFP>(CV);
+      if (CFP) {
+        const APFloat &flt = CFP->getValueAPF();
+        if (flt.getCategory() == APFloat::fcNaN) {
+          APInt i = flt.bitcastToAPInt();
+          if ((i.getBitWidth() == 32 && i != nan32) || (i.getBitWidth() == 64 && i != nan64)) {
+            hasSpecialNaNs = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  AsmCast cast = hasSpecialNaNs ? ASM_FORCE_FLOAT_AS_INTBITS : 0;
+
   // Check for a splat.
   bool allEqual = true;
-  std::string op0 = getConstant(C->getOperand(0));
-  for (unsigned i = 0; i < NumElts; ++i) {
-    if (getConstant(C->getOperand(i)) != op0) {
+  std::string op0 = getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, 0), cast);
+  for (unsigned i = 1; i < NumElts; ++i) {
+    if (getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), cast) != op0) {
       allEqual = false;
       break;
     }
   }
   if (allEqual) {
-    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
-  }
-
-  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
-  for (unsigned i = 1; i < NumElts; ++i) {
-    c += ',' + ensureFloat(getConstant(C->getOperand(i)), !isInt);
-  }
-  return c + ')';
-}
-
-std::string JSWriter::getConstantVector(const ConstantDataVector *C) {
-  checkVectorType(C->getType());
-  unsigned NumElts = cast<VectorType>(C->getType())->getNumElements();
-
-  bool isInt = C->getType()->getElementType()->isIntegerTy();
-  bool allEqual = true;
-  std::string op0 = getConstant(C->getElementAsConstant(0));
-  for (unsigned i = 0; i < NumElts; ++i) {
-    if (getConstant(C->getElementAsConstant(i)) != op0) {
-      allEqual = false;
-      break;
+    if (!hasSpecialNaNs) {
+      return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
+    } else {
+      VectorType *IntTy = VectorType::getInteger(C->getType());
+      checkVectorType(IntTy);
+      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')');
     }
   }
-  // Check for a splat.
-  if (allEqual) {
-    return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
-  }
 
-  std::string c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
-  for (unsigned i = 1; i < NumElts; ++i) {
-    c += ',' + ensureFloat(getConstant(C->getElementAsConstant(i)), !isInt);
+  int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
+  const int SIMDJsRetNumElements = 128 / primSize;
+
+  std::string c;
+  if (!hasSpecialNaNs) {
+    c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
+    for (unsigned i = 1; i < NumElts; ++i) {
+      c += ',' + ensureFloat(getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i)), !isInt);
+    }
+    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+    for (int i = NumElts; i < SIMDJsRetNumElements; ++i) {
+      c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
+    }
+
+    return c + ')';
+  } else {
+    VectorType *IntTy = VectorType::getInteger(C->getType());
+    checkVectorType(IntTy);
+    c = std::string("SIMD_") + SIMDType(IntTy) + '(' + op0;
+    for (unsigned i = 1; i < NumElts; ++i) {
+      c += ',' + getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), ASM_FORCE_FLOAT_AS_INTBITS);
+    }
+
+    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+    for (int i = NumElts; i < SIMDJsRetNumElements; ++i) {
+      c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
+    }
+
+    return getSIMDCast(IntTy, C->getType(), c + ")");
   }
-  return c + ')';
 }
 
 std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
@@ -1563,10 +1631,13 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
     return valueStr;
   }
 
+  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  int toNumElems = 128 / toPrimSize;
+
   bool fromIsBool = (fromInt && fromPrimSize == 1);
   bool toIsBool = (toInt && toPrimSize == 1);
   if (fromIsBool && !toIsBool) { // Casting from bool vector to a bit vector looks more complicated (e.g. Bool32x4 to Int32x4)
-    return castBoolVecToIntVec(toType->getNumElements(), valueStr);
+    return castBoolVecToIntVec(toNumElems, valueStr);
   }
 
   if (fromType->getBitWidth() != toType->getBitWidth() && !fromIsBool && !toIsBool) {
@@ -1604,8 +1675,12 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   // Check whether can generate SIMD.js swizzle or shuffle.
   std::string A = getValueAsStr(SVI->getOperand(0));
   std::string B = getValueAsStr(SVI->getOperand(1));
-  int OpNumElements = cast<VectorType>(SVI->getOperand(0)->getType())->getNumElements();
+  VectorType *op0 = cast<VectorType>(SVI->getOperand(0)->getType());
+  int OpNumElements = op0->getNumElements();
   int ResultNumElements = SVI->getType()->getNumElements();
+  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  int SIMDJsRetNumElements = 128 / cast<VectorType>(SVI->getType())->getElementType()->getPrimitiveSizeInBits();
+  int SIMDJsOp0NumElements = 128 / op0->getElementType()->getPrimitiveSizeInBits();
   bool swizzleA = true;
   bool swizzleB = true;
   for(int i = 0; i < ResultNumElements; ++i) {
@@ -1629,6 +1704,10 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
         Code << (Mask-OpNumElements);
       }
     }
+    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+    for(int i = ResultNumElements; i < SIMDJsRetNumElements; ++i) {
+      Code << ", 0";
+    }
     Code << ")";
     return;
   }
@@ -1647,8 +1726,15 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
     int Mask = Indices[i];
     if (Mask < 0)
       Code << 0;
-    else
+    else if (Mask < OpNumElements)
       Code << Mask;
+    else
+      Code << (Mask  + SIMDJsOp0NumElements - OpNumElements); // Fix up indices to second operand, since the first operand has potentially different number of lanes in SIMD.js compared to LLVM.
+  }
+
+  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  for(int i = Indices.size(); i < SIMDJsRetNumElements; ++i) {
+    Code << ", 0";
   }
 
   Code << ')';
@@ -1811,6 +1897,12 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
 
   Code << "SIMD_" << SIMDType(VT) << '(';
 
+  int primSize = VT->getElementType()->getPrimitiveSizeInBits();
+  int numElems = VT->getNumElements();
+  if (primSize == 32 && numElems < 4) {
+    report_fatal_error("generateUnrolledExpression not expected to handle less than four-wide 32-bit vector types!");
+  }
+
   for (unsigned Index = 0; Index < VT->getNumElements(); ++Index) {
     if (Index != 0)
         Code << ", ";
@@ -1951,8 +2043,16 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         const LoadInst *LI = cast<LoadInst>(I);
         const Value *P = LI->getPointerOperand();
         std::string PS = getValueAsStr(P);
-
-        Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_load" << "(HEAPU8, " << PS << ")";
+        const char *load = "_load";
+        if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
+          switch(VT->getNumElements()) {
+            case 1: load = "_load1"; break;
+            case 2: load = "_load2"; break;
+            case 3: load = "_load3"; break;
+            default: break;
+          }
+        }
+        Code << getAssignIfNeeded(I) << "SIMD_" << simdType << load << "(HEAPU8, " << PS << ")";
         break;
       }
       case Instruction::InsertElement:
@@ -1988,7 +2088,16 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       std::string PS = "temp_" + simdType;
       std::string VS = getValueAsStr(SI->getValueOperand());
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
-      Code << "SIMD_" << simdType << "_store" << "(HEAPU8, " << PS << ", " << VS << ")";
+      const char *store = "_store";
+      if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
+        switch(VT->getNumElements()) {
+          case 1: store = "_store1"; break;
+          case 2: store = "_store2"; break;
+          case 3: store = "_store3"; break;
+          default: break;
+        }
+      }
+      Code << "SIMD_" << simdType << store << "(HEAPU8, " << PS << ", " << VS << ")";
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
       generateExtractElementExpression(cast<ExtractElementInst>(I), Code);
@@ -2678,13 +2787,18 @@ void JSWriter::printFunctionBody(const Function *F) {
         case Type::DoubleTyID:
           Out << "+0";
           break;
-        case Type::VectorTyID:
-          Out << "SIMD_" << SIMDType(cast<VectorType>(VI->second)) << "(0";
-          for (unsigned i = 1; i < cast<VectorType>(VI->second)->getNumElements(); ++i) {
+        case Type::VectorTyID: {
+          VectorType *VT = cast<VectorType>(VI->second);
+          int primSize = VT->getElementType()->getPrimitiveSizeInBits();
+          // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+          int numElems = 128 / primSize;
+          Out << "SIMD_" << SIMDType(VT) << "(0";
+          for (int i = 1; i < numElems; ++i) {
             Out << ",0";
           }
           Out << ')';
           break;
+        }
       }
     }
     Out << ";";
