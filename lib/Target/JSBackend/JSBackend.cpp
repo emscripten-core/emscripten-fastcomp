@@ -126,7 +126,7 @@ namespace {
   #define ASM_FFI_IN 4 // FFI return values are limited to things that work in ffis
   #define ASM_FFI_OUT 8 // params to FFIs are limited to things that work in ffis
   #define ASM_MUST_CAST 16 // this value must be explicitly cast (or be an integer constant)
-  #define ASM_FORCE_FLOAT_AS_INTBITS 32 // if the value is a float, it should be returned as an integer representing the float bits (or NaN canonicalization will eat them away)
+  #define ASM_FORCE_FLOAT_AS_INTBITS 32 // if the value is a float, it should be returned as an integer representing the float bits (or NaN canonicalization will eat them away). This flag cannot be used with ASM_UNSIGNED set.
   typedef unsigned AsmCast;
 
   typedef std::map<const Value*,std::string> ValueMap;
@@ -1303,18 +1303,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     } else {
       const APFloat &flt = CFP->getValueAPF();
       APInt i = flt.bitcastToAPInt();
-      if ((sign & ASM_UNSIGNED)) {
-        if (i.getBitWidth() <= 64 && *i.getRawData() < 1000000) {
-          // Small ints as digits, where adding '0x' makes the string longer. "1000000" == "0xF4240" is equal length.
-          return utostr(*i.getRawData());
-        } else {
-          // Large ints as hex.
-          return std::string("0x") + utohexstr(*i.getRawData());
-        }
-      } else {
-        if (i.getBitWidth() == 32) return itostr((int)(uint32_t)*i.getRawData());
-        else return itostr(*i.getRawData());
-      }
+      assert(!(sign & ASM_UNSIGNED));
+      if (i.getBitWidth() == 32) return itostr((int)(uint32_t)*i.getRawData());
+      else return itostr(*i.getRawData());
     }
   } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
     if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
