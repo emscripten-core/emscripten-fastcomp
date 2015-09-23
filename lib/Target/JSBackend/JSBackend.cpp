@@ -840,14 +840,21 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
-std::string SIMDType(VectorType *t) {
+// We currently replace <i1 x 4> with <i32 x 4>
+int actualPrimitiveSize(VectorType *t) {
   bool isInt = t->getElementType()->isIntegerTy();
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
   assert(primSize <= 128);
   int numElems = t->getNumElements();
   if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
   assert(128 % primSize == 0);
-  numElems = 128 / primSize; // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
+  return primSize;
+}
+
+std::string SIMDType(VectorType *t) {
+  bool isInt = t->getElementType()->isIntegerTy();
+  int primSize = actualPrimitiveSize(t);
+  int numElems = 128 / primSize; // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
   return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
 }
 
@@ -2793,7 +2800,7 @@ void JSWriter::printFunctionBody(const Function *F) {
           break;
         case Type::VectorTyID: {
           VectorType *VT = cast<VectorType>(VI->second);
-          int primSize = VT->getElementType()->getPrimitiveSizeInBits();
+          int primSize = actualPrimitiveSize(VT);
           // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
           int numElems = 128 / primSize;
           Out << "SIMD_" << SIMDType(VT) << "(0";
