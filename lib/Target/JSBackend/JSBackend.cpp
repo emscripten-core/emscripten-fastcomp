@@ -3128,6 +3128,14 @@ void JSWriter::printModuleBody() {
   }
   Out << "},";
 
+  // Output a structure like:
+  // "asmConstArities": {
+  //   "<ASM_CONST_ID_1>": [<ARITY>, <ARITY>],
+  //   "<ASM_CONST_ID_2>": [<ARITY>]
+  // }
+  // Each ASM_CONST_ID represents a single EM_ASM_* block in the code and each
+  // ARITY represents the number of arguments defined in the block in compiled
+  // output (which may vary, if the EM_ASM_* block is used inside a template).
   Out << "\"asmConstArities\": {";
   first = true;
   for (IntIntSetMap::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
