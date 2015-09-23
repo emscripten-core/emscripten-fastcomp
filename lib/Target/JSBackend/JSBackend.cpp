@@ -126,7 +126,6 @@ namespace {
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
   typedef std::set<int> IntSet;
-  typedef std::set<int> OrderedIntSet;
   typedef std::vector<unsigned char> HeapData;
   typedef std::map<int, HeapData> HeapDataMap;
   typedef std::vector<int> AlignedHeapStartMap;
@@ -137,7 +136,7 @@ namespace {
   typedef std::map<std::string, FunctionTable> FunctionTableMap;
   typedef std::map<std::string, std::string> StringMap;
   typedef std::map<std::string, unsigned> NameIntMap;
-  typedef std::map<unsigned, OrderedIntSet> IntOrderedIntSetMap;
+  typedef std::map<unsigned, IntSet> IntIntSetMap;
   typedef std::map<const BasicBlock*, unsigned> BlockIndexMap;
   typedef std::map<const Function*, BlockIndexMap> BlockAddressMap;
   typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
@@ -167,7 +166,7 @@ namespace {
     StringMap Aliases;
     BlockAddressMap BlockAddresses;
     NameIntMap AsmConsts;
-    IntOrderedIntSetMap AsmConstArities;
+    IntIntSetMap AsmConstArities;
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
@@ -3131,14 +3130,14 @@ void JSWriter::printModuleBody() {
 
   Out << "\"asmConstArities\": {";
   first = true;
-  for (IntOrderedIntSetMap::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
+  for (IntIntSetMap::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
        I != E; ++I) {
     if (!first) {
       Out << ", ";
     }
     Out << "\"" << utostr(I->first) << "\": [";
     first = true;
-    for (OrderedIntSet::const_iterator J = I->second.begin(), F = I->second.end();
+    for (IntSet::const_iterator J = I->second.begin(), F = I->second.end();
          J != F; ++J) {
       if (first) {
         first = false;
