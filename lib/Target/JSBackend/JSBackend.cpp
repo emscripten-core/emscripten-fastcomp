@@ -1364,7 +1364,9 @@ class VectorOperandAccessor
 public:
   static Constant *getOperand(const VectorType *C, unsigned index);
 };
+template<>
 Constant *VectorOperandAccessor<ConstantVector>::getOperand(const ConstantVector *C, unsigned index) { return C->getOperand(index); }
+template<>
 Constant *VectorOperandAccessor<ConstantDataVector>::getOperand(const ConstantDataVector *C, unsigned index) { return C->getElementAsConstant(index); }
 
 template<typename ConstantVectorType/*= ConstantVector or ConstantDataVector*/>
