@@ -2255,8 +2255,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   }
   case Instruction::FCmp: {
     unsigned predicate = isa<ConstantExpr>(I) ?
-                         cast<ConstantExpr>(I)->getPredicate() :
-                         cast<FCmpInst>(I)->getPredicate();
+                         (unsigned)cast<ConstantExpr>(I)->getPredicate() :
+                         (unsigned)cast<FCmpInst>(I)->getPredicate();
     Code << getAssignIfNeeded(I);
     switch (predicate) {
       // Comparisons which are simple JS operators.
@@ -2309,8 +2309,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   }
   case Instruction::ICmp: {
     unsigned predicate = isa<ConstantExpr>(I) ?
-                         cast<ConstantExpr>(I)->getPredicate() :
-                         cast<ICmpInst>(I)->getPredicate();
+                         (unsigned)cast<ConstantExpr>(I)->getPredicate() :
+                         (unsigned)cast<ICmpInst>(I)->getPredicate();
     AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
     Code << getAssignIfNeeded(I) << "(" <<
       getValueAsCastStr(I->getOperand(0), sign) <<
