@@ -2096,7 +2096,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       std::string simdType = SIMDType(VT);
       const StoreInst *SI = cast<StoreInst>(I);
       const Value *P = SI->getPointerOperand();
-      std::string PS = "temp_" + simdType;
+      std::string PS = "temp_" + simdType + "_ptr";
       std::string VS = getValueAsStr(SI->getValueOperand());
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
       const char *store = "_store";

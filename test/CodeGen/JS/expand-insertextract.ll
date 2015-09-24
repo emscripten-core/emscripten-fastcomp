@@ -6,7 +6,7 @@ target triple = "asmjs-unknown-emscripten"
 ; CHECK:  sp = STACKTOP;
 ; CHECK:  STACKTOP = STACKTOP + 16|0;
 ; CHECK:  $0 = sp;
-; CHECK:  SIMD_Float32x4_store(HEAPU8, $0, $p);
+; CHECK:  SIMD_Float32x4_store(HEAPU8, temp_Float32x4_ptr, $p);
 ; CHECK:  $1 = (($0) + ($i<<2)|0);
 ; CHECK:  $2 = +HEAPF32[$1>>2];
 ; CHECK:  STACKTOP = sp;return (+$2);
@@ -19,7 +19,7 @@ define float @ext(<4 x float> %p, i32 %i) {
 ; CHECK:  sp = STACKTOP;
 ; CHECK:  STACKTOP = STACKTOP + 16|0;
 ; CHECK:  $0 = sp;
-; CHECK:  SIMD_Float32x4_store(HEAPU8, $0, $p);
+; CHECK:  SIMD_Float32x4_store(HEAPU8, temp_Float32x4_ptr, $p);
 ; CHECK:  $1 = (($0) + ($i<<2)|0);
 ; CHECK:  HEAPF32[$1>>2] = $f;
 ; CHECK:  $2 = SIMD_Float32x4_load(HEAPU8, $0);
