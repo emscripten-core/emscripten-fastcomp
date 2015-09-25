@@ -21,6 +21,7 @@
 #include "llvm/CodeGen/BasicTTIImpl.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/CostTable.h"
 #include "llvm/Target/TargetLowering.h"
 using namespace llvm;
@@ -42,30 +43,31 @@ unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) {
   return 32;
 }
 
+static const unsigned Nope = 65536;
+
+// Certain types are fine, but some vector types must be avoided at all Costs.
+static bool isOkType(Type *Ty) {
+  if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
+    if (VTy->getNumElements() != 4 || !(VTy->getElementType()->isIntegerTy(1) ||
+                                        VTy->getElementType()->isIntegerTy(32) ||
+                                        VTy->getElementType()->isFloatTy())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 unsigned JSTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::OperandValueKind Opd1Info,
     TTI::OperandValueKind Opd2Info, TTI::OperandValueProperties Opd1PropInfo,
     TTI::OperandValueProperties Opd2PropInfo) {
-  const unsigned Nope = 65536;
 
   unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
 
-  if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
-    switch (VTy->getNumElements()) {
-    case 4:
-      // SIMD.js supports Int32x4 and Float32x4, and we can emulate <4 x i1>.
-      if (!VTy->getElementType()->isIntegerTy(1) &&
-          !VTy->getElementType()->isIntegerTy(32) &&
-          !VTy->getElementType()->isFloatTy())
-      {
-          return Nope;
-      }
-      break;
-    default:
-      // Wait until the other types are optimized.
-      return Nope;
-    }
+  if (!isOkType(Ty))
+    return Nope;
 
+  if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
     switch (Opcode) {
       case Instruction::LShr:
       case Instruction::AShr:
@@ -76,17 +78,35 @@ unsigned JSTTIImpl::getArithmeticInstrCost(
         break;
     }
   }
-
   return Cost;
 }
 
 unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
+  if (!isOkType(Val))
+    return Nope;
+
   unsigned Cost = BasicTTIImplBase::getVectorInstrCost(Opcode, Val, Index);
 
   // SIMD.js' insert/extract currently only take constant indices.
   if (Index == -1u)
-      return Cost + 100;
+    return Cost + 100;
 
   return Cost;
+}
+
+
+unsigned JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
+                                    unsigned AddressSpace) {
+  if (!isOkType(Src))
+    return Nope;
+
+  return BasicTTIImplBase::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
+}
+
+unsigned JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) {
+  if (!isOkType(Src) || !isOkType(Dst))
+    return Nope;
+
+  return BasicTTIImplBase::getCastInstrCost(Opcode, Dst, Src);
 }
 
