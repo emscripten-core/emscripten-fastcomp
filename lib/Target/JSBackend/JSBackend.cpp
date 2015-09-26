@@ -1590,7 +1590,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       if (!Operands[Index])
         continue;
       std::string operand = getValueAsStr(Operands[Index]);
-      if (!PreciseF32) {
+      if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
         operand = "Math_fround(" + operand + ")";
       }
       Result = "SIMD_" + SIMDType(VT) + "_replaceLane(" + Result + ',' + utostr(Index) + ',' + operand + ')';
@@ -1672,7 +1672,7 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
     if (ConstantInt *CI = dyn_cast<ConstantInt>(IEI->getOperand(2))) {
       if (CI->isZero()) {
         std::string operand = getValueAsStr(IEI->getOperand(1));
-        if (!PreciseF32) {
+        if (!PreciseF32 && SVI->getType()->getElementType()->isFloatTy()) {
           // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
           operand = "Math_fround(" + operand + ")";
