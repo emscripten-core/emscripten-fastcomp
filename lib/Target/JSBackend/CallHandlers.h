@@ -767,6 +767,8 @@ DEF_BUILTIN_HANDLER(llvm_sqrt_f32, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_sqrt_f64, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_pow_f32, Math_pow);
 DEF_BUILTIN_HANDLER(llvm_pow_f64, Math_pow);
+DEF_BUILTIN_HANDLER(llvm_powi_f32, Math_pow);
+DEF_BUILTIN_HANDLER(llvm_powi_f64, Math_pow);
 DEF_BUILTIN_HANDLER(llvm_log_f32, Math_log);
 DEF_BUILTIN_HANDLER(llvm_log_f64, Math_log);
 DEF_BUILTIN_HANDLER(llvm_exp_f32, Math_exp);
@@ -1143,6 +1145,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_sqrt_f64);
   SETUP_CALL_HANDLER(llvm_pow_f32);
   SETUP_CALL_HANDLER(llvm_pow_f64);
+  SETUP_CALL_HANDLER(llvm_powi_f32);
+  SETUP_CALL_HANDLER(llvm_powi_f64);
   SETUP_CALL_HANDLER(llvm_log_f32);
   SETUP_CALL_HANDLER(llvm_log_f64);
   SETUP_CALL_HANDLER(llvm_exp_f32);
