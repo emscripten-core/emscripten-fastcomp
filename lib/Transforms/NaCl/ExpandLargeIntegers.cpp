@@ -572,17 +572,26 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     State.recordConverted(Select, {Lo, Hi});
 
   } else if (BitCastInst *BitCast = dyn_cast<BitCastInst>(Inst)) {
-    // XXX EMSCRIPTEN handle bitcast <4 x i32> to i128
+    // XXX EMSCRIPTEN handle bitcast <4 x i32|float> to i128
     Value *Input = BitCast->getOperand(0);
     assert(Input->getType()->isVectorTy());
     VectorType *VT = cast<VectorType>(Input->getType());
-    assert(VT->getNumElements() == 4 && VTy->getElementType()->isIntegerTy(32));
+    assert(VT->getNumElements() == 4);
+    Type *ET = VT->getElementType();
+    assert(ET->isIntegerTy(32) || ET->isFloatTy());
 
     Type *I32 = Type::getInt32Ty(VT->getContext());
     Value *P0 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 0), Twine(Name, ".p0"));
     Value *P1 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 1), Twine(Name, ".p1"));
     Value *P2 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 2), Twine(Name, ".p2"));
     Value *P3 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 3), Twine(Name, ".p3"));
+
+    if (ET->isFloatTy()) {
+      P0 = IRB.CreateBitCast(P0, I32, Twine(Name, ".i0"));
+      P1 = IRB.CreateBitCast(P1, I32, Twine(Name, ".i1"));
+      P2 = IRB.CreateBitCast(P2, I32, Twine(Name, ".i2"));
+      P3 = IRB.CreateBitCast(P3, I32, Twine(Name, ".i3"));
+    }
 
     Type *I64 = Type::getInt64Ty(VT->getContext());
     P0 = IRB.CreateZExt(P0, I64, Twine(Name, ".p0.64"));
