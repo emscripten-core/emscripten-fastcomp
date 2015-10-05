@@ -571,6 +571,38 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     Value *Hi = IRB.CreateSelect(Cond, True.Hi, False.Hi, Twine(Name, ".hi"));
     State.recordConverted(Select, {Lo, Hi});
 
+  } else if (BitCastInst *BitCast = dyn_cast<BitCastInst>(Inst)) {
+    // XXX EMSCRIPTEN handle bitcast <4 x i32|float> to i128
+    Value *Input = BitCast->getOperand(0);
+    assert(Input->getType()->isVectorTy());
+    VectorType *VT = cast<VectorType>(Input->getType());
+    assert(VT->getNumElements() == 4);
+    Type *ET = VT->getElementType();
+    assert(ET->isIntegerTy(32) || ET->isFloatTy());
+
+    Type *I32 = Type::getInt32Ty(VT->getContext());
+    Value *P0 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 0), Twine(Name, ".p0"));
+    Value *P1 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 1), Twine(Name, ".p1"));
+    Value *P2 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 2), Twine(Name, ".p2"));
+    Value *P3 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 3), Twine(Name, ".p3"));
+
+    if (ET->isFloatTy()) {
+      P0 = IRB.CreateBitCast(P0, I32, Twine(Name, ".i0"));
+      P1 = IRB.CreateBitCast(P1, I32, Twine(Name, ".i1"));
+      P2 = IRB.CreateBitCast(P2, I32, Twine(Name, ".i2"));
+      P3 = IRB.CreateBitCast(P3, I32, Twine(Name, ".i3"));
+    }
+
+    Type *I64 = Type::getInt64Ty(VT->getContext());
+    P0 = IRB.CreateZExt(P0, I64, Twine(Name, ".p0.64"));
+    P1 = IRB.CreateZExt(P1, I64, Twine(Name, ".p1.64"));
+    P2 = IRB.CreateZExt(P2, I64, Twine(Name, ".p2.64"));
+    P3 = IRB.CreateZExt(P3, I64, Twine(Name, ".p3.64"));
+
+    Value *Lo = IRB.CreateBinOp(Instruction::BinaryOps::Or, P0, IRB.CreateBinOp(Instruction::BinaryOps::Shl, P1, ConstantInt::get(I64, 32), Twine(Name, ".mid.lo")), Twine(Name, ".lo"));
+    Value *Hi = IRB.CreateBinOp(Instruction::BinaryOps::Or, P2, IRB.CreateBinOp(Instruction::BinaryOps::Shl, P3, ConstantInt::get(I64, 32), Twine(Name, ".mid.hi")), Twine(Name, ".hi"));
+    State.recordConverted(BitCast, {Lo, Hi});
+
   } else {
     DIE_IF(true, Inst, "Instruction");
   }
