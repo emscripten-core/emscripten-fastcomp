@@ -1833,6 +1833,18 @@ bool GVN::processLoad(LoadInst *L) {
 
   // ... to a pointer that has been loaded from before...
   MemDepResult Dep = MD->getDependency(L);
+
+  // XXX EMSCRIPTEN: avoid GVNing between vector and non-vector types, as
+  //                 our bitcasts are very expensive
+  if (Dep.getInst()) {
+    if (Dep.getInst()->getType()->isVectorTy() ^ L->getType()->isVectorTy())
+      return false;
+    if (StoreInst *DepSI = dyn_cast<StoreInst>(Dep.getInst())) {
+      if (DepSI->getOperand(0)->getType()->isVectorTy() ^ L->getType()->isVectorTy())
+        return false;
+    }
+  }
+
   const DataLayout &DL = L->getModule()->getDataLayout();
 
   // If we have a clobber and target data is around, see if this is a clobber
