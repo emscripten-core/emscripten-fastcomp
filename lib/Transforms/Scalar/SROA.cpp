@@ -3996,8 +3996,8 @@ AllocaInst *SROA::rewritePartition(AllocaInst &AI, AllocaSlices &AS,
 
   bool IsIntegerPromotable = isIntegerWideningViable(P, SliceTy, DL);
 
-  VectorType *VecTy = nullptr; // XXX EMSCRIPTEN - never promote to vectors
-      //IsIntegerPromotable ? nullptr : isVectorPromotionViable(P, DL); // waka
+  VectorType *VecTy =
+      IsIntegerPromotable ? nullptr : isVectorPromotionViable(P, DL);
   if (VecTy)
     SliceTy = VecTy;
 
