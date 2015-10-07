@@ -833,7 +833,7 @@ bool ExpandI64::splitInst(Instruction *I) {
         break;
       } else {
         // no-op bitcast
-        assert(I->getType() == I->getOperand(0)->getType());
+        assert(I->getType() == I->getOperand(0)->getType() && "possible hint: optimize with -O0 or -O2+, and not -O1");
         Chunks = getChunks(I->getOperand(0));
         break;
       }
@@ -974,7 +974,7 @@ bool ExpandI64::splitInst(Instruction *I) {
     }
     default: {
       I->dump();
-      assert(0 && "some i64 thing we can't legalize yet");
+      assert(0 && "some i64 thing we can't legalize yet. possible hint: optimize with -O0 or -O2+, and not -O1");
     }
   }
 
