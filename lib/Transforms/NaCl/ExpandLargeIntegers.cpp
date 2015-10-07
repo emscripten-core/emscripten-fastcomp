@@ -572,18 +572,23 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
     State.recordConverted(Select, {Lo, Hi});
 
   } else if (BitCastInst *BitCast = dyn_cast<BitCastInst>(Inst)) {
-    // XXX EMSCRIPTEN handle bitcast <4 x i32|float> to i128
+    // XXX EMSCRIPTEN handle bitcast <4 x i32|float> or <2 x double> to i128
     Value *Input = BitCast->getOperand(0);
     assert(Input->getType()->isVectorTy());
     VectorType *VT = cast<VectorType>(Input->getType());
-    assert(VT->getNumElements() == 4);
     Type *ET = VT->getElementType();
-    assert(ET->isIntegerTy(32) || ET->isFloatTy());
-
     Type *I32 = Type::getInt32Ty(VT->getContext());
 
-    if (ET->isFloatTy()) {
+    if (VT->getNumElements() == 4) {
+      assert(ET->isIntegerTy(32) || ET->isFloatTy());
+      if (ET->isFloatTy()) {
+        Input = IRB.CreateBitCast(Input, VectorType::get(I32, 4), Twine(Name, "toint"));
+      }
+    } else if (VT->getNumElements() == 2) {
+      assert(ET->isDoubleTy());
       Input = IRB.CreateBitCast(Input, VectorType::get(I32, 4), Twine(Name, "toint"));
+    } else {
+      DIE_IF(true, Inst, "BitCast Instruction");
     }
 
     Value *P0 = IRB.CreateExtractElement(Input, ConstantInt::get(I32, 0), Twine(Name, ".p0"));
