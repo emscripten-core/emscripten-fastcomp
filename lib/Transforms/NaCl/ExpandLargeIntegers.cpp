@@ -432,6 +432,10 @@ public:
     RewrittenLegals[From] = To;
   }
 
+  void recordToErase(Instruction *TE) {
+    ToErase.push_back(TE);
+  }
+
   void patchForwardPHIs() {
     DEBUG(if (!ForwardPHIs.empty()) dbgs() << "Patching forward PHIs:\n");
     for (ForwardPHI &F : ForwardPHIs) {
@@ -574,9 +578,28 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
   } else if (BitCastInst *BitCast = dyn_cast<BitCastInst>(Inst)) {
     // XXX EMSCRIPTEN handle bitcast <4 x i32|float> or <2 x double> to i128
     Value *Input = BitCast->getOperand(0);
-    assert(Input->getType()->isVectorTy());
+    if (!Input->getType()->isVectorTy()) {
+      return; // we can't do anything for it, but see below on trivial casts to i128 and back, it might get handled there
+    }
     VectorType *VT = cast<VectorType>(Input->getType());
     Type *ET = VT->getElementType();
+
+    // handle trivial casts to i128 and immediately back
+    if (BitCast->hasOneUse()) {
+      User* U = *BitCast->user_begin();
+      if (BitCastInst *UserBitCast = dyn_cast<BitCastInst>(U)) {
+        if (UserBitCast->getType()->isVectorTy()) {
+          Value* Direct = Input;
+          if (VT != UserBitCast->getType()) {
+            Direct = IRB.CreateBitCast(Direct, UserBitCast->getType(), Twine(Name, "dcast"));
+          }
+          State.recordToErase(BitCast);
+          State.recordConverted(UserBitCast, Direct);
+          return;
+        }
+      }
+    }
+
     Type *I32 = Type::getInt32Ty(VT->getContext());
 
     if (VT->getNumElements() == 4) {
