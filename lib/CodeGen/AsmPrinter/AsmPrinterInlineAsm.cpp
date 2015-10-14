@@ -443,7 +443,7 @@ void AsmPrinter::EmitInlineAsm(const MachineInstr *MI) const {
 #if defined(__native__client__)
   // See above LOCALMOD for pruning generic AsmParsing.
   return;
-#else
+#endif
   assert(MI->isInlineAsm() && "printInlineAsm only works on inline asms");
 
   // Count the number of register definitions to find the asm string.
