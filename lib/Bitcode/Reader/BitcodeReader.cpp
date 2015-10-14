@@ -4746,8 +4746,8 @@ BitcodeReader::initLazyStream(std::unique_ptr<DataStreamer> Streamer) {
     const unsigned char *bitcodeStart = buf;
     const unsigned char *bitcodeEnd = buf + 16;
     SkipBitcodeWrapperHeader(bitcodeStart, bitcodeEnd, false);
-    LazyStreamer->dropLeadingBytes(bitcodeStart - buf);
-    LazyStreamer->setKnownObjectSize(bitcodeEnd - bitcodeStart);
+    Bytes.dropLeadingBytes(bitcodeStart - buf);
+    Bytes.setKnownObjectSize(bitcodeEnd - bitcodeStart);
   }
   return std::error_code();
 }
